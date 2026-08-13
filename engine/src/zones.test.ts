@@ -16,6 +16,7 @@ const ZONES: ZoneName[] = [
   "graveyard",
   "exile",
   "command",
+  "removed",
 ];
 
 function gameWithOneCard(): { game: GameState; cardId: string; otherId: string } {
@@ -47,7 +48,7 @@ function gameWithOneCard(): { game: GameState; cardId: string; otherId: string }
 }
 
 describe("zone movement", () => {
-  it("moves a card through all six player zones with a stable instance id", () => {
+  it("moves a card through all player zones with a stable instance id", () => {
     let { game, cardId } = gameWithOneCard();
     const originalId = cardId;
     for (const zone of ZONES) {

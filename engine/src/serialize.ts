@@ -20,6 +20,7 @@ const ZONE_KEYS = [
   "exile",
   "command",
   "stack",
+  "removed",
 ] as const;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -88,6 +89,10 @@ function parsePlayer(value: unknown): PlayerState {
     graveyard: expectStringArray(value.zones.graveyard, "zones.graveyard"),
     exile: expectStringArray(value.zones.exile, "zones.exile"),
     command: expectStringArray(value.zones.command, "zones.command"),
+    removed:
+      value.zones.removed === undefined
+        ? []
+        : expectStringArray(value.zones.removed, "zones.removed"),
   };
 
   return {

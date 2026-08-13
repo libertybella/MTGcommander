@@ -20,17 +20,17 @@ A checkbox becomes 🟢 Complete only when the work has been implemented **and**
 
 ## Project Status
 
-**Current Phase:** Phase 13 complete — awaiting review
-**Current Checkpoint:** Checkpoint 13 — Targeting
+**Current Phase:** Phase 13 complete; Checkpoint 12b recorded
+**Current Checkpoint:** Checkpoint 12b — Player Elimination
 **Overall Status:** 🟡 In Progress
 
 ### Current Objective
 
-Stop. Do not start Battlefield UI, deck import, or real-card integration until Checkpoint 13 is reviewed.
+Stop. Do not continue until Checkpoint 12b is reviewed. Do not start Battlefield UI, deck import, or real-card integration.
 
 ### Last Completed Milestone
 
-Phase 13: Targets are chosen when a spell is cast and stored on the stack. Legality is checked at cast and again on resolve.
+Checkpoint 12b: Player elimination is a leave-the-game transition shared by 0 life, 21 commander damage, and concede.
 
 ### Next Milestone
 
@@ -208,8 +208,11 @@ Do not modify, import, link, or share code with the sibling deck builder during 
 * 🟢 0 life causes a player to lose.
 * 🟢 Concede.
 * 🟢 Skip lost players in turns, priority, and combat.
+* 🟢 Player elimination is a leave-the-game transition (owned cards removed; controlled unowned permanents exiled).
+* 🟢 0 life, commander-damage loss, and concede share one elimination path.
 * 🟢 Synthetic basic land test fixture only (no real-card database).
 * 🟢 Checkpoint 12 — Playable Loop.
+* 🟢 Checkpoint 12b — Player Elimination.
 
 Battlefield UI was previously listed as Phase 12. It remains later, after targeting and this playable loop.
 
@@ -1428,5 +1431,60 @@ Add normal Magic targeting: choose targets when a spell is cast and placed on th
 ### Next Task
 
 Stop. Do not start Battlefield UI, deck import, or real-card integration yet.
+
+---
+
+## 2026-08-13 — Player elimination as a leave-the-game transition
+
+### Objective
+
+Treat player elimination as a Commander multiplayer game-state transition, not only a `lost` flag. Life loss, commander-damage loss, and concede must share one path.
+
+### Work Completed
+
+- Added `eliminatePlayerInPlace`: mark the player lost, empty their mana, move owned objects to a new owner `removed` zone (left the game), exile objects they control but do not own (controller returns to owner), drop their stack objects, and clean combat.
+- 0 life and 21 commander damage call that transition from state-based actions. Concede calls the same function.
+- Remaining living players stay in turn order and priority. One remaining player sets `winnerId` and `isGameOver`.
+- Did not implement leave-the-game triggered abilities.
+
+### Tests Run
+
+- `npm test` — PASS (138 tests)
+- `npm run typecheck` — PASS
+- `npm run lint` — PASS
+- `npm run build` — PASS
+
+### Results
+
+- Eliminated players no longer participate. Their owned cards are out of the game. Stolen permanents they controlled are exiled under the owner, not taken with them.
+
+### Decisions Made
+
+- `removed` is a player zone in the existing zone model so owned objects still have a serializable location after leaving the game. It is not exile.
+- Commanders among stolen permanents still follow the existing command-zone replacement when they would be exiled.
+- `lost` remains the participation flag; the transition is what actually changes zones.
+
+### Files Changed
+
+- `engine/src/types.ts`
+- `engine/src/createGame.ts`
+- `engine/src/zones.ts`
+- `engine/src/zones.test.ts`
+- `engine/src/serialize.ts`
+- `engine/src/elimination.ts`
+- `engine/src/elimination.test.ts`
+- `engine/src/status.ts`
+- `engine/src/actions.ts`
+- `engine/src/index.ts`
+- `docs/DEVELOPMENT_PROGRESS.md`
+
+### Checkpoint
+
+- PASS. Tag: `checkpoint-12b-player-elimination`
+- Existing tags were not moved or rewritten, including `checkpoint-12-playable-loop` and `checkpoint-13-targeting`.
+
+### Next Task
+
+Stop. Do not continue until Checkpoint 12b is reviewed. Do not start Battlefield UI, deck import, or real-card integration yet.
 
 

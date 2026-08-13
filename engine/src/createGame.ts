@@ -25,6 +25,7 @@ export function emptyPlayerZones(): PlayerZones {
     graveyard: [],
     exile: [],
     command: [],
+    removed: [],
   };
 }
 

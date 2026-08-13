@@ -9,6 +9,7 @@ export const PLAYER_ZONES: (keyof PlayerZones)[] = [
   "graveyard",
   "exile",
   "command",
+  "removed",
 ];
 
 export function isPlayerZone(zone: ZoneName): zone is keyof PlayerZones {
@@ -100,26 +101,35 @@ export function enterOwnerZone(
   toZone: ZoneName,
   options: MoveCardOptions = {},
 ): GameState {
+  const next = cloneGameState(state);
+  enterOwnerZoneInPlace(next, cardId, toZone, options);
+  return next;
+}
+
+export function enterOwnerZoneInPlace(
+  state: GameState,
+  cardId: CardInstanceId,
+  toZone: ZoneName,
+  options: MoveCardOptions = {},
+): void {
   if (!isPlayerZone(toZone)) {
     throw new Error(`Cannot enter zone ${toZone}`);
   }
   const destination = commanderAwareDestination(state, cardId, toZone);
-  const next = cloneGameState(state);
-  const card = next.cards[cardId];
+  const card = state.cards[cardId];
   if (!card) {
     throw new Error(`Unknown card ${cardId}`);
   }
-  if (findCardZone(next, cardId)) {
+  if (findCardZone(state, cardId)) {
     throw new Error(`Card ${cardId} is already in a player zone`);
   }
-  const owner = next.players.find((p) => p.id === card.ownerId);
+  const owner = state.players.find((p) => p.id === card.ownerId);
   if (!owner) {
     throw new Error(`Card ${cardId} owner is missing`);
   }
   insertIntoZone(owner, destination, cardId, options.libraryPosition ?? "top");
   card.zone = destination;
   applyZoneChangeFlags(card, destination);
-  return next;
 }
 
 function applyZoneChangeFlags(card: CardInstance, toZone: keyof PlayerZones): void {
@@ -160,17 +170,27 @@ export function moveCard(
   toZone: ZoneName,
   options: MoveCardOptions = {},
 ): GameState {
+  const next = cloneGameState(state);
+  moveCardInPlace(next, cardId, toZone, options);
+  return next;
+}
+
+export function moveCardInPlace(
+  state: GameState,
+  cardId: CardInstanceId,
+  toZone: ZoneName,
+  options: MoveCardOptions = {},
+): void {
   if (!isPlayerZone(toZone)) {
     throw new Error(`Cannot move to zone ${toZone}`);
   }
 
-  const next = cloneGameState(state);
-  const card = next.cards[cardId];
+  const card = state.cards[cardId];
   if (!card) {
     throw new Error(`Unknown card ${cardId}`);
   }
 
-  const located = findCardZone(next, cardId);
+  const located = findCardZone(state, cardId);
   if (!located) {
     throw new Error(`Card ${cardId} is not in any player zone`);
   }
@@ -178,8 +198,8 @@ export function moveCard(
     throw new Error(`Card ${cardId} zone data is inconsistent`);
   }
 
-  const owner = next.players.find((p) => p.id === card.ownerId);
-  const occupant = next.players.find((p) => p.id === located.playerId);
+  const owner = state.players.find((p) => p.id === card.ownerId);
+  const occupant = state.players.find((p) => p.id === located.playerId);
   if (!owner || !occupant) {
     throw new Error(`Card ${cardId} owner/zone player is missing`);
   }
@@ -187,9 +207,9 @@ export function moveCard(
     throw new Error(`Card ${cardId} is not in its owner's zones`);
   }
 
-  const destination = commanderAwareDestination(next, cardId, toZone);
+  const destination = commanderAwareDestination(state, cardId, toZone);
   if (located.zone === destination) {
-    return next;
+    return;
   }
 
   removeFromZone(occupant, located.zone, cardId);
@@ -197,9 +217,7 @@ export function moveCard(
   card.zone = destination;
   applyZoneChangeFlags(card, destination);
 
-  if (countCardPlacements(next, cardId) !== 1) {
+  if (countCardPlacements(state, cardId) !== 1) {
     throw new Error(`Zone integrity failed for ${cardId}`);
   }
-
-  return next;
 }

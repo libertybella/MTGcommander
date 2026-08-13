@@ -23,7 +23,8 @@ export type ZoneName =
   | "graveyard"
   | "exile"
   | "command"
-  | "stack";
+  | "stack"
+  | "removed";
 
 export type Phase =
   | "beginning"
@@ -60,6 +61,8 @@ export type PlayerZones = {
   graveyard: CardInstanceId[];
   exile: CardInstanceId[];
   command: CardInstanceId[];
+  /** Owned objects that have left the game with an eliminated player. */
+  removed: CardInstanceId[];
 };
 
 export type CardDefinition = {

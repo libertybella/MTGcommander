@@ -45,6 +45,8 @@ export type { MoveCardOptions } from "./zones";
 export { TURN_SEQUENCE, advanceStep, advanceSteps } from "./turn";
 export type { TurnSlot } from "./turn";
 export { livingPlayers, livingPlayerCount, winnerId } from "./players";
+export { eliminatePlayer } from "./elimination";
+export { isGameOver } from "./status";
 export { isChosenTargetLegal, validateChosenTargets } from "./targeting";
 export {
   addMana,

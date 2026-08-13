@@ -1,6 +1,7 @@
 import { declareAttackers, declareBlockers, pendingBlockerPlayer, priorityForStep } from "./combat";
 import { isCommander, isInstant, isInstantOrSorcery, isLand, isMainPhase } from "./cardTypes";
 import { cloneGameState } from "./clone";
+import { eliminatePlayerInPlace } from "./elimination";
 import { canPayManaCost, parseManaCost, payManaCost } from "./mana";
 import { isLiving, livingPlayerCount, requireLiving } from "./players";
 import { passPriority, putSpellOnStack } from "./stack";
@@ -196,11 +197,7 @@ function applyConcede(state: GameState, playerId: PlayerId): GameState {
     throw new Error("That player has already lost");
   }
   const next = cloneGameState(state);
-  const player = next.players.find((entry) => entry.id === playerId);
-  if (!player) {
-    throw new Error(`Unknown player ${playerId}`);
-  }
-  player.lost = true;
+  eliminatePlayerInPlace(next, playerId);
   return next;
 }
 
