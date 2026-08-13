@@ -641,3 +641,51 @@ Networking implemented: NO
 
 Stop. Do not start Phase 2 until Checkpoint 1 is approved.
 
+---
+
+## 2026-08-13 — Fix Electron launch from client workspace
+
+### Objective
+
+Fix the “Error launching app / Unable to find Electron app at …\client” dialog that appeared during Phase 1 `npm run dev`.
+
+### Work Completed
+
+- Pointed Electron startup at the repo root so it loads `dist-electron/main.js`.
+- Added `client/package.json` `"main"` as a fallback for workspace cwd.
+
+### Tests Run
+
+- `npm test` — PASS
+- `npm run typecheck` — PASS
+- `npm run lint` — PASS
+- `npm run build` — PASS
+- `npm run dev` — PASS. Electron window title **BizzyMTG Commander** (process 26052), Vite HTTP 200 on port 5175.
+
+### Results
+
+- The desktop window launches. This is a follow-up commit after `checkpoint-01-project-foundation`; that tag was not moved.
+
+### Problems Encountered
+
+- `vite-plugin-electron` defaulted to `electron .` with cwd `client/`, which has no Electron main entry.
+
+### Decisions Made
+
+- Keep the workspace layout; do not move Electron into the client package.
+- Do not retag Checkpoint 1.
+
+### Files Changed
+
+- `client/vite.config.ts`
+- `client/package.json`
+- `docs/DEVELOPMENT_PROGRESS.md`
+
+### Checkpoint
+
+- PASS (Phase 1 launch fix; Checkpoint 1 tag unchanged)
+
+### Next Task
+
+Phase 2 — GameState data model only.
+

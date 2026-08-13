@@ -14,6 +14,11 @@ export default defineConfig({
     electron({
       main: {
         entry: path.join(repoRoot, "electron/main.ts"),
+        onstart({ startup }) {
+          // Workspace `npm run dev -w client` uses client/ as cwd.
+          // Electron must load the repo-root package.json (`main`: dist-electron/main.js).
+          return startup([".", "--no-sandbox"], { cwd: repoRoot });
+        },
         vite: {
           build: {
             outDir: path.join(repoRoot, "dist-electron"),
