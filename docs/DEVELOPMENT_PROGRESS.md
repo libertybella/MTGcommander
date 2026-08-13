@@ -20,21 +20,21 @@ A checkbox becomes 🟢 Complete only when the work has been implemented **and**
 
 ## Project Status
 
-**Current Phase:** Phase 13 complete; Checkpoint 12b recorded
-**Current Checkpoint:** Checkpoint 12b — Player Elimination
+**Current Phase:** Phase 20 complete
+**Current Checkpoint:** Checkpoint 20 — Rules Coverage
 **Overall Status:** 🟡 In Progress
 
 ### Current Objective
 
-Stop. Do not continue until Checkpoint 12b is reviewed. Do not start Battlefield UI, deck import, or real-card integration.
+Stop. Do not continue until Checkpoint 20 is reviewed. Do not start Battlefield UI, deck import, real-card integration, or networking.
 
 ### Last Completed Milestone
 
-Checkpoint 12b: Player elimination is a leave-the-game transition shared by 0 life, 21 commander damage, and concede.
+Checkpoint 20: Engine V1 rules coverage through four-player hidden information, ability effects, keywords, derived P/T, ETB triggers, draw replacement, and expanded state-based actions.
 
 ### Next Milestone
 
-Battlefield UI remains later. Deck import and real-card integration remain later.
+Battlefield UI remains later. Deck import, real-card integration, and two-client realtime remain later.
 
 ---
 
@@ -229,93 +229,96 @@ Battlefield UI was previously listed as Phase 12. It remains later, after target
 
 Two-client realtime was previously listed as Phase 13. It remains later. Battlefield UI also remains later.
 
-## Phase 14 — Four-Player Multiplayer
+## Phase 14 — Four-Player Engine & Hidden Information
 
-* ⬜ Four-player room.
-* ⬜ Four identities.
-* ⬜ Public information.
-* ⬜ Hidden information.
-* ⬜ Four-player turns.
-* ⬜ Four-player priority.
-* ⬜ Four-player combat.
-* ⬜ Concession.
-* ⬜ Checkpoint 14 — Four Real Players.
+Rooms and WebSockets were previously listed as Phase 14. They remain later. This phase is engine-only: four identities, turns, priority, combat, concession, and hidden information.
+
+* 🟢 Four player identities in GameState.
+* 🟢 Public information (battlefield, graveyard, exile, command, stack, life, commander damage).
+* 🟢 Hidden information (opponent hands and libraries redact identity).
+* 🟢 Four-player turns.
+* 🟢 Four-player priority.
+* 🟢 Four-player combat (attack different opponents).
+* 🟢 Concession among four players.
+* 🟢 Checkpoint 14 — Four-Player Engine.
+
+Four-player rooms / four real networked players remain later.
 
 ## Phase 15 — Card Ability Architecture
 
-* ⬜ Event system.
-* ⬜ Trigger system.
-* ⬜ Effect system.
+* 🟢 Event log (`GameState.log` zone changes).
+* ⬜ Trigger system (Phase 18).
+* 🟢 Effect system (mill, discard, sacrifice, counters added to existing effects).
 * ⬜ Choice system.
-* ⬜ Draw.
-* ⬜ Damage.
-* ⬜ Life gain/loss.
-* ⬜ Zone movement.
-* ⬜ Sacrifice.
-* ⬜ Discard.
-* ⬜ Mill.
-* ⬜ Counters.
-* ⬜ Tokens.
+* 🟢 Draw.
+* 🟢 Damage.
+* 🟢 Life gain/loss.
+* 🟢 Zone movement.
+* 🟢 Sacrifice.
+* 🟢 Discard.
+* 🟢 Mill.
+* 🟢 Counters.
+* 🟢 Tokens.
 * ⬜ Search.
-* ⬜ Targeting.
-* ⬜ Checkpoint 15 — Reusable Card Mechanics.
+* 🟢 Targeting (Phase 13).
+* 🟢 Checkpoint 15 — Reusable Card Mechanics.
 
 ## Phase 16 — Keywords
 
-* ⬜ Flying.
-* ⬜ Reach.
-* ⬜ Haste.
-* ⬜ Vigilance.
-* ⬜ Trample.
-* ⬜ Deathtouch.
-* ⬜ Lifelink.
-* ⬜ First strike.
-* ⬜ Double strike.
-* ⬜ Menace.
-* ⬜ Hexproof.
-* ⬜ Indestructible.
+* 🟢 Flying.
+* 🟢 Reach.
+* 🟢 Haste.
+* 🟢 Vigilance.
+* 🟢 Trample.
+* 🟢 Deathtouch.
+* 🟢 Lifelink.
+* 🟢 First strike.
+* 🟢 Double strike.
+* 🟢 Menace.
+* 🟢 Hexproof.
+* 🟢 Indestructible.
 * ⬜ Ward.
-* ⬜ Flash.
-* ⬜ Defender.
-* ⬜ Checkpoint 16 — Keyword System.
+* 🟢 Flash.
+* 🟢 Defender.
+* 🟢 Checkpoint 16 — Keyword System.
 
 ## Phase 17 — Continuous Effects
 
-* ⬜ Base characteristics.
-* ⬜ Counters.
-* ⬜ Static effects.
+* 🟢 Base characteristics.
+* 🟢 Counters (`p1p1`).
+* 🟢 Static effects (V1 P/T `self` and `controlled_creatures`).
 * ⬜ Temporary modifiers.
-* ⬜ Derived characteristics.
-* ⬜ Checkpoint 17 — Derived State.
+* 🟢 Derived characteristics.
+* 🟢 Checkpoint 17 — Derived State.
 
 ## Phase 18 — Triggered Abilities
 
-* ⬜ Event detection.
-* ⬜ Trigger creation.
-* ⬜ Stack insertion.
+* 🟢 Event detection (zone change onto battlefield).
+* 🟢 Trigger creation (`enter_battlefield` on definitions).
+* 🟢 Stack insertion (kind `ability`).
 * ⬜ Choices.
-* ⬜ Simultaneous triggers.
+* ⬜ Simultaneous triggers (AP order).
 * ⬜ Trigger ordering.
-* ⬜ Checkpoint 18 — Trigger System.
+* 🟢 Checkpoint 18 — Trigger System.
 
 ## Phase 19 — Replacement Effects
 
-* ⬜ Replacement-effect model.
-* ⬜ Event modification.
-* ⬜ Draw replacement.
+* 🟢 Replacement-effect model (definition `replacements`).
+* 🟢 Event modification (skip draw).
+* 🟢 Draw replacement.
 * ⬜ Damage replacement.
 * ⬜ Multiple replacements.
-* ⬜ Checkpoint 19 — Replacement Effects.
+* 🟢 Checkpoint 19 — Replacement Effects.
 
 ## Phase 20 — Advanced Rules
 
-* ⬜ Rules coverage document.
+* 🟢 Rules coverage document.
 * ⬜ Advanced continuous effects.
 * ⬜ Layers.
 * ⬜ Copy effects.
-* ⬜ State-based actions.
+* 🟢 State-based actions (0 toughness in addition to 0 life and 21 commander damage).
 * ⬜ Advanced targeting.
-* ⬜ Checkpoint 20 — Rules Coverage.
+* 🟢 Checkpoint 20 — Rules Coverage.
 
 ## Phase 21 — 20-Card Engine
 
@@ -1487,4 +1490,293 @@ Treat player elimination as a Commander multiplayer game-state transition, not o
 
 Stop. Do not continue until Checkpoint 12b is reviewed. Do not start Battlefield UI, deck import, or real-card integration yet.
 
+---
+
+## 2026-08-13 — Four-player engine and hidden information
+
+### Objective
+
+Prove four-player Commander identities, turns, priority, combat, and concession in the engine, plus a viewer projection that hides opponent hands and libraries. Not rooms or WebSockets.
+
+### Work Completed
+
+- Four-player GameState already existed; added tests for identities, turn order, priority, attacking two opponents, and one concession among four.
+- Added `redactForViewer`: opponent hand and library cards keep instance IDs and zone counts but use a hidden definition. Battlefield, graveyard, exile, command, stack, life, and commander damage stay public.
+
+### Tests Run
+
+- `npm test` — PASS
+- `npm run typecheck` — PASS
+- `npm run lint` — PASS
+- `npm run build` — PASS
+
+### Results
+
+- A four-player engine game can walk turns and combat without networking. Hidden information is a pure projection of GameState.
+
+### Decisions Made
+
+- Phase 14 is engine-only. Four-player rooms remain later.
+- Existing tags were not moved, including `checkpoint-13-targeting` and `checkpoint-12b-player-elimination`.
+
+### Files Changed
+
+- `engine/src/visibility.ts`
+- `engine/src/fourPlayer.test.ts`
+- `engine/src/types.ts`
+- `engine/src/createGame.ts`
+- `engine/src/serialize.ts`
+- `engine/src/index.ts`
+- `docs/DEVELOPMENT_PROGRESS.md`
+
+### Checkpoint
+
+- PASS. Tag: `checkpoint-14-four-player-engine`
+
+### Next Task
+
+Phase 15 — mill, discard, sacrifice, counters, and a zone-change event log.
+
+---
+
+## 2026-08-13 — Card ability architecture
+
+### Objective
+
+Add reusable engine effects for mill, discard, sacrifice, and counters, plus an append-only zone-change log.
+
+### Work Completed
+
+- `mill` moves that many cards from library to graveyard, or fewer if the library is short.
+- `discard` moves that many cards from the front of hand to graveyard, or fewer if the hand is short.
+- `sacrifice` moves a battlefield card to graveyard.
+- `add_counter` increments a named counter on a card instance.
+- Zone moves append `GameState.log` entries.
+
+### Tests Run
+
+- `npm test` — PASS
+- `npm run typecheck` — PASS
+- `npm run lint` — PASS
+- `npm run build` — PASS
+
+### Results
+
+- Ability effects are data on definitions/effects, not functions. No general choice system yet.
+
+### Files Changed
+
+- `engine/src/effects.ts`
+- `engine/src/zones.ts`
+- `engine/src/serialize.ts`
+- `engine/src/abilities.test.ts`
+- `docs/DEVELOPMENT_PROGRESS.md`
+
+### Checkpoint
+
+- PASS. Tag: `checkpoint-15-card-ability-architecture`
+
+### Next Task
+
+Phase 16 — keywords.
+
+---
+
+## 2026-08-13 — Keywords
+
+### Objective
+
+Store keywords on card definitions and apply the V1 combat/timing/targeting set.
+
+### Work Completed
+
+- Flying/reach, menace, defender, haste, vigilance, trample, deathtouch, lifelink, first strike, double strike (two damage passes), indestructible, flash, hexproof.
+- Ward is not implemented.
+
+### Tests Run
+
+- `npm test` — PASS
+- `npm run typecheck` — PASS
+- `npm run lint` — PASS
+- `npm run build` — PASS
+
+### Results
+
+- Combat uses a first-strike pass then a normal pass. Hexproof is checked against the caster at targeting time.
+
+### Files Changed
+
+- `engine/src/keywords.ts`
+- `engine/src/keywords.test.ts`
+- `engine/src/combat.ts`
+- `engine/src/targeting.ts`
+- `engine/src/actions.ts`
+- `docs/DEVELOPMENT_PROGRESS.md`
+
+### Checkpoint
+
+- PASS. Tag: `checkpoint-16-keywords`
+
+### Next Task
+
+Phase 17 — derived power and toughness.
+
+---
+
+## 2026-08-13 — Derived characteristics
+
+### Objective
+
+Compute creature power and toughness from printed values, +1/+1 counters, and simple static modifiers.
+
+### Work Completed
+
+- `creaturePower` / `creatureToughness` use definition P/T, `p1p1` counters, and `staticModifiers` with selectors `self` and `controlled_creatures`.
+- Combat and lethal damage use derived toughness.
+
+### Tests Run
+
+- `npm test` — PASS
+- `npm run typecheck` — PASS
+- `npm run lint` — PASS
+- `npm run build` — PASS
+
+### Results
+
+- This is not CR 613 layers. Temporary modifiers, copy, and timestamps remain later.
+
+### Files Changed
+
+- `engine/src/derived.ts`
+- `engine/src/derived.test.ts`
+- `engine/src/combat.ts`
+- `docs/DEVELOPMENT_PROGRESS.md`
+
+### Checkpoint
+
+- PASS. Tag: `checkpoint-17-derived-state`
+
+### Next Task
+
+Phase 18 — ETB triggers.
+
+---
+
+## 2026-08-13 — Enter-the-battlefield triggers
+
+### Objective
+
+When a permanent enters the battlefield, queue definition `enter_battlefield` triggers as stack abilities.
+
+### Work Completed
+
+- Zone moves onto the battlefield and token creation call `queueEnterBattlefieldTriggersInPlace`.
+- Resolving an `ability` stack object runs that trigger’s effects and does not move the source card.
+
+### Tests Run
+
+- `npm test` — PASS
+- `npm run typecheck` — PASS
+- `npm run lint` — PASS
+- `npm run build` — PASS
+
+### Results
+
+- V1 has no trigger target choices and no AP ordering for simultaneous triggers.
+
+### Files Changed
+
+- `engine/src/triggers.ts`
+- `engine/src/triggers.test.ts`
+- `engine/src/zones.ts`
+- `engine/src/stack.ts`
+- `engine/src/effects.ts`
+- `docs/DEVELOPMENT_PROGRESS.md`
+
+### Checkpoint
+
+- PASS. Tag: `checkpoint-18-triggered-abilities`
+
+### Next Task
+
+Phase 19 — draw replacement.
+
+---
+
+## 2026-08-13 — Draw replacement
+
+### Objective
+
+Skip draws while a player controls a permanent with `replace_draw` / `skip`.
+
+### Work Completed
+
+- Turn-step draws and `draw` effects check `wouldSkipDraw` and skip instead of moving a card.
+
+### Tests Run
+
+- `npm test` — PASS
+- `npm run typecheck` — PASS
+- `npm run lint` — PASS
+- `npm run build` — PASS
+
+### Results
+
+- Damage replacement and multiple interacting replacements remain later.
+
+### Files Changed
+
+- `engine/src/derived.ts`
+- `engine/src/effects.ts`
+- `engine/src/turn.ts`
+- `engine/src/replacement.test.ts`
+- `docs/DEVELOPMENT_PROGRESS.md`
+
+### Checkpoint
+
+- PASS. Tag: `checkpoint-19-replacement-effects`
+
+### Next Task
+
+Phase 20 — extra SBAs and a rules coverage document.
+
+---
+
+## 2026-08-13 — Rules coverage and 0-toughness SBAs
+
+### Objective
+
+Record what the engine implements, expand state-based actions for 0 toughness, and stop.
+
+### Work Completed
+
+- Creatures with a printed toughness whose derived toughness is 0 go to the graveyard, including indestructible.
+- Added `docs/RULES_COVERAGE.md` for implemented rules and documented gaps (layers, copy, ward, networking, UI, deck import).
+
+### Tests Run
+
+- `npm test` — PASS (164 tests)
+- `npm run typecheck` — PASS
+- `npm run lint` — PASS
+- `npm run build` — PASS
+
+### Results
+
+- Engine V1 through Phase 20 is checkpointed. Battlefield UI, deck import, real cards, and networking remain later.
+
+### Files Changed
+
+- `engine/src/status.ts`
+- `engine/src/sba.test.ts`
+- `docs/RULES_COVERAGE.md`
+- `docs/DEVELOPMENT_PROGRESS.md`
+
+### Checkpoint
+
+- PASS. Tag: `checkpoint-20-rules-coverage`
+- Existing tags were not moved or rewritten.
+
+### Next Task
+
+Stop. Do not start Battlefield UI, deck import, real-card integration, or networking yet.
 

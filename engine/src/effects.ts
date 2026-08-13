@@ -1,10 +1,13 @@
 import { cloneGameState } from "./clone";
 import { createCardDefinition, createCardInstance } from "./createGame";
 import { isCreature } from "./cardTypes";
+import { creatureToughness, wouldSkipDraw } from "./derived";
+import { hasKeyword } from "./keywords";
 import { addMana, tapCard, untapCard } from "./mana";
 import { nextLivingPlayerId } from "./players";
 import { applyStateBasedActionsInPlace } from "./status";
 import { isChosenTargetLegal } from "./targeting";
+import { queueEnterBattlefieldTriggersInPlace } from "./triggers";
 import { countCardPlacements, moveCard } from "./zones";
 import type {
   CardEffect,
@@ -57,7 +60,7 @@ function chosenTargetAt(
 ): ChosenTarget | null {
   const requirement = context.targetRequirements?.[index];
   const target = context.targets?.[index];
-  if (!requirement || !target || !isChosenTargetLegal(state, requirement, target)) {
+  if (!requirement || !target || !isChosenTargetLegal(state, requirement, target, context.controllerId)) {
     return null;
   }
   return target;
@@ -143,6 +146,26 @@ export function bindCardEffect(
       }
       return { kind: effect.kind, cardId };
     }
+    case "mill":
+    case "discard":
+      return {
+        ...effect,
+        playerId: bindPlayer(state, effect.playerId, context.controllerId),
+      };
+    case "sacrifice": {
+      const cardId = bindCardId(state, effect.cardId, context);
+      if (!cardId) {
+        return null;
+      }
+      return { kind: "sacrifice", cardId };
+    }
+    case "add_counter": {
+      const cardId = bindCardId(state, effect.cardId, context);
+      if (!cardId) {
+        return null;
+      }
+      return { kind: "add_counter", cardId, counter: effect.counter, amount: effect.amount };
+    }
     default: {
       const exhaustive: never = effect;
       throw new Error(`Unknown card effect ${(exhaustive as CardEffect).kind}`);
@@ -217,8 +240,14 @@ function applyDealDamage(state: GameState, effect: Extract<GameEffect, { kind: "
     throw new Error(`Unknown card ${card.id}`);
   }
   damaged.damageMarked += effect.amount;
-  const toughness = next.definitions[damaged.definitionId]?.toughness;
-  if (toughness !== null && toughness !== undefined && damaged.damageMarked >= toughness) {
+  const lethal =
+    hasKeyword(next, damaged.id, "deathtouch") ||
+    (effect.sourceId ? hasKeyword(next, effect.sourceId, "deathtouch") : false);
+  const toughness = creatureToughness(next, damaged.id);
+  if (
+    ((lethal && effect.amount > 0) || damaged.damageMarked >= toughness) &&
+    !hasKeyword(next, damaged.id, "indestructible")
+  ) {
     return moveCard(next, damaged.id, "graveyard");
   }
   return next;
@@ -226,6 +255,9 @@ function applyDealDamage(state: GameState, effect: Extract<GameEffect, { kind: "
 
 function applyDraw(state: GameState, playerId: PlayerId, count: number): GameState {
   requirePositiveInteger(count, "draw count");
+  if (wouldSkipDraw(state, playerId)) {
+    return cloneGameState(state);
+  }
   const player = requirePlayer(state, playerId);
   if (player.zones.library.length < count) {
     throw new Error("Library is empty");
@@ -239,6 +271,66 @@ function applyDraw(state: GameState, playerId: PlayerId, count: number): GameSta
     }
     next = moveCard(next, top, "hand");
   }
+  return next;
+}
+
+function applyMill(state: GameState, playerId: PlayerId, count: number): GameState {
+  requirePositiveInteger(count, "mill count");
+  requirePlayer(state, playerId);
+  let next = state;
+  for (let i = 0; i < count; i += 1) {
+    const current = next.players.find((entry) => entry.id === playerId);
+    const top = current?.zones.library[0];
+    if (!top) {
+      return next === state ? cloneGameState(state) : next;
+    }
+    next = moveCard(next, top, "graveyard");
+  }
+  return next;
+}
+
+function applyDiscard(state: GameState, playerId: PlayerId, count: number): GameState {
+  requirePositiveInteger(count, "discard count");
+  requirePlayer(state, playerId);
+  let next = state;
+  for (let i = 0; i < count; i += 1) {
+    const current = next.players.find((entry) => entry.id === playerId);
+    const first = current?.zones.hand[0];
+    if (!first) {
+      return next === state ? cloneGameState(state) : next;
+    }
+    next = moveCard(next, first, "graveyard");
+  }
+  return next;
+}
+
+function applySacrifice(state: GameState, cardId: CardInstanceId): GameState {
+  const card = state.cards[cardId];
+  if (!card) {
+    throw new Error(`Unknown card ${cardId}`);
+  }
+  if (card.zone !== "battlefield") {
+    throw new Error(`Card ${cardId} is not on the battlefield`);
+  }
+  return moveCard(state, cardId, "graveyard");
+}
+
+function applyAddCounter(
+  state: GameState,
+  cardId: CardInstanceId,
+  counter: string,
+  amount: number,
+): GameState {
+  requirePositiveInteger(amount, "counter amount");
+  if (!state.cards[cardId]) {
+    throw new Error(`Unknown card ${cardId}`);
+  }
+  const next = cloneGameState(state);
+  const card = next.cards[cardId];
+  if (!card) {
+    throw new Error(`Unknown card ${cardId}`);
+  }
+  card.counters[counter] = (card.counters[counter] ?? 0) + amount;
   return next;
 }
 
@@ -269,6 +361,7 @@ function applyCreateToken(
   if (countCardPlacements(next, token.id) !== 1) {
     throw new Error(`Token zone integrity failed for ${token.id}`);
   }
+  queueEnterBattlefieldTriggersInPlace(next, token.id);
   return next;
 }
 
@@ -309,6 +402,18 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
         break;
       case "create_token":
         next = applyCreateToken(state, effect);
+        break;
+      case "mill":
+        next = applyMill(state, effect.playerId, effect.count);
+        break;
+      case "discard":
+        next = applyDiscard(state, effect.playerId, effect.count);
+        break;
+      case "sacrifice":
+        next = applySacrifice(state, effect.cardId);
+        break;
+      case "add_counter":
+        next = applyAddCounter(state, effect.cardId, effect.counter, effect.amount);
         break;
       default: {
         const exhaustive: never = effect;

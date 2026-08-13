@@ -34,7 +34,7 @@ export function createCardDefinition(
     Partial<
       Pick<
         CardDefinition,
-        "manaCost" | "oracleText" | "id" | "power" | "toughness" | "effects" | "targetRequirements"
+        "manaCost" | "oracleText" | "id" | "power" | "toughness" | "effects" | "targetRequirements" | "keywords" | "triggers" | "replacements" | "staticModifiers"
       >
     >,
 ): CardDefinition {
@@ -50,6 +50,10 @@ export function createCardDefinition(
     targetRequirements: input.targetRequirements
       ? input.targetRequirements.map((requirement) => ({ ...requirement }))
       : [],
+    keywords: input.keywords ? [...input.keywords] : [],
+    triggers: input.triggers ? input.triggers.map((trigger) => ({ ...trigger, effects: trigger.effects.map((effect) => ({ ...effect })) })) : [],
+    replacements: input.replacements ? input.replacements.map((replacement) => ({ ...replacement })) : [],
+    staticModifiers: input.staticModifiers ? input.staticModifiers.map((modifier) => ({ ...modifier })) : [],
   };
 }
 
@@ -72,6 +76,7 @@ export function createCardInstance(input: {
     attacking: false,
     blockingAttackerId: null,
     summoningSick: input.summoningSick ?? input.zone === "battlefield",
+    counters: {},
   };
 }
 
@@ -124,5 +129,6 @@ export function createGameState(options: CreateGameOptions): GameState {
     passesSinceAction: 0,
     combat: null,
     winnerId: null,
+    log: [],
   };
 }

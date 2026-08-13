@@ -1,15 +1,37 @@
 import type {
   CardEffect,
   CardIdSelector,
+  CardTrigger,
   ChosenTarget,
   GameAction,
   GameEvent,
+  GameLogEntry,
   GameState,
+  Keyword,
   ManaPool,
   PlayerState,
+  ReplacementEffect,
+  StaticModifier,
   TargetRequirement,
   ZoneName,
 } from "./types";
+
+const KEYWORDS = new Set<Keyword>([
+  "flying",
+  "reach",
+  "haste",
+  "vigilance",
+  "trample",
+  "deathtouch",
+  "lifelink",
+  "first_strike",
+  "double_strike",
+  "menace",
+  "hexproof",
+  "indestructible",
+  "flash",
+  "defender",
+]);
 
 const MANA_KEYS = ["W", "U", "B", "R", "G", "C"] as const;
 const ZONE_KEYS = [
@@ -170,6 +192,7 @@ export function parseGameState(json: string): GameState {
           ? null
           : expectString(card.blockingAttackerId, "card.blockingAttackerId"),
       summoningSick: card.summoningSick === true,
+      counters: parseCounters(card.counters, `card.${id}.counters`),
     };
   }
 
@@ -198,6 +221,13 @@ export function parseGameState(json: string): GameState {
         def.targetRequirements,
         `definition.${id}.targetRequirements`,
       ),
+      keywords: parseKeywords(def.keywords, `definition.${id}.keywords`),
+      triggers: parseTriggers(def.triggers, `definition.${id}.triggers`),
+      replacements: parseReplacements(def.replacements, `definition.${id}.replacements`),
+      staticModifiers: parseStaticModifiers(
+        def.staticModifiers,
+        `definition.${id}.staticModifiers`,
+      ),
     };
   }
 
@@ -219,12 +249,16 @@ export function parseGameState(json: string): GameState {
     if (sourceId !== null && typeof sourceId !== "string") {
       throw new Error("Invalid stack sourceId");
     }
+    const triggerIndex = entry.triggerIndex;
     return {
       id: expectString(entry.id, "stack.id"),
       controllerId: expectString(entry.controllerId, "stack.controllerId"),
       sourceId,
       kind,
       targets: parseChosenTargets(entry.targets, `stack[${index}].targets`),
+      ...(triggerIndex === undefined
+        ? {}
+        : { triggerIndex: expectNumber(triggerIndex, `stack[${index}].triggerIndex`) }),
     };
   });
 
@@ -253,6 +287,7 @@ export function parseGameState(json: string): GameState {
       raw.winnerId === undefined || raw.winnerId === null
         ? null
         : expectString(raw.winnerId, "winnerId"),
+    log: parseLog(raw.log),
   };
 }
 
@@ -439,9 +474,154 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
         kind,
         cardId: parseCardIdSelector(value.cardId, `${label}.cardId`),
       };
+    case "mill":
+    case "discard":
+      return {
+        kind,
+        playerId: parsePlayerSelector(value.playerId, `${label}.playerId`),
+        count: expectNumber(value.count, `${label}.count`),
+      };
+    case "sacrifice":
+      return {
+        kind,
+        cardId: parseCardIdSelector(value.cardId, `${label}.cardId`),
+      };
+    case "add_counter":
+      return {
+        kind,
+        cardId: parseCardIdSelector(value.cardId, `${label}.cardId`),
+        counter: expectString(value.counter, `${label}.counter`),
+        amount: expectNumber(value.amount, `${label}.amount`),
+      };
     default:
       throw new Error(`Unknown effect kind ${kind}`);
   }
+}
+
+function parseCounters(value: unknown, label: string): Record<string, number> {
+  if (value === undefined) {
+    return {};
+  }
+  if (!isRecord(value)) {
+    throw new Error(`Invalid ${label}`);
+  }
+  const counters: Record<string, number> = {};
+  for (const [key, amount] of Object.entries(value)) {
+    counters[key] = expectNumber(amount, `${label}.${key}`);
+  }
+  return counters;
+}
+
+function parseKeywords(value: unknown, label: string): Keyword[] {
+  if (value === undefined) {
+    return [];
+  }
+  const keywords = expectStringArray(value, label);
+  for (const keyword of keywords) {
+    if (!KEYWORDS.has(keyword as Keyword)) {
+      throw new Error(`Invalid ${label} keyword ${keyword}`);
+    }
+  }
+  return keywords as Keyword[];
+}
+
+function parseTriggers(value: unknown, label: string): CardTrigger[] {
+  if (value === undefined) {
+    return [];
+  }
+  if (!Array.isArray(value)) {
+    throw new Error(`Invalid ${label}`);
+  }
+  return value.map((entry, index) => {
+    if (!isRecord(entry)) {
+      throw new Error(`Invalid ${label}[${index}]`);
+    }
+    const event = expectString(entry.event, `${label}[${index}].event`);
+    if (event !== "enter_battlefield") {
+      throw new Error(`Invalid ${label}[${index}].event`);
+    }
+    return {
+      event,
+      effects: parseCardEffects(entry.effects, `${label}[${index}].effects`),
+    };
+  });
+}
+
+function parseReplacements(value: unknown, label: string): ReplacementEffect[] {
+  if (value === undefined) {
+    return [];
+  }
+  if (!Array.isArray(value)) {
+    throw new Error(`Invalid ${label}`);
+  }
+  return value.map((entry, index) => {
+    if (!isRecord(entry)) {
+      throw new Error(`Invalid ${label}[${index}]`);
+    }
+    const kind = expectString(entry.kind, `${label}[${index}].kind`);
+    const instead = expectString(entry.instead, `${label}[${index}].instead`);
+    if (kind !== "replace_draw" || instead !== "skip") {
+      throw new Error(`Invalid ${label}[${index}]`);
+    }
+    return { kind, instead };
+  });
+}
+
+function parseStaticModifiers(value: unknown, label: string): StaticModifier[] {
+  if (value === undefined) {
+    return [];
+  }
+  if (!Array.isArray(value)) {
+    throw new Error(`Invalid ${label}`);
+  }
+  return value.map((entry, index) => {
+    if (!isRecord(entry)) {
+      throw new Error(`Invalid ${label}[${index}]`);
+    }
+    const kind = expectString(entry.kind, `${label}[${index}].kind`);
+    const selector = expectString(entry.selector, `${label}[${index}].selector`);
+    if (kind !== "pt" || (selector !== "self" && selector !== "controlled_creatures")) {
+      throw new Error(`Invalid ${label}[${index}]`);
+    }
+    return {
+      kind,
+      selector,
+      power: expectNumber(entry.power, `${label}[${index}].power`),
+      toughness: expectNumber(entry.toughness, `${label}[${index}].toughness`),
+    };
+  });
+}
+
+function parseLog(value: unknown): GameLogEntry[] {
+  if (value === undefined) {
+    return [];
+  }
+  if (!Array.isArray(value)) {
+    throw new Error("Invalid log");
+  }
+  return value.map((entry, index) => {
+    if (!isRecord(entry)) {
+      throw new Error(`Invalid log[${index}]`);
+    }
+    const kind = expectString(entry.kind, `log[${index}].kind`);
+    if (kind !== "zone_change") {
+      throw new Error(`Invalid log[${index}].kind`);
+    }
+    const from = expectString(entry.from, `log[${index}].from`);
+    const to = expectString(entry.to, `log[${index}].to`);
+    if (!ZONE_KEYS.includes(from as (typeof ZONE_KEYS)[number])) {
+      throw new Error(`Invalid log[${index}].from`);
+    }
+    if (!ZONE_KEYS.includes(to as (typeof ZONE_KEYS)[number])) {
+      throw new Error(`Invalid log[${index}].to`);
+    }
+    return {
+      kind,
+      cardId: expectString(entry.cardId, `log[${index}].cardId`),
+      from: from as ZoneName,
+      to: to as ZoneName,
+    };
+  });
 }
 
 function parseCardEffects(value: unknown, label: string): CardEffect[] {

@@ -1,5 +1,6 @@
 import { cloneGameState } from "./clone";
 import { isCommander } from "./cardTypes";
+import { queueEnterBattlefieldTriggersInPlace } from "./triggers";
 import type { CardInstance, CardInstanceId, GameState, PlayerState, PlayerZones, ZoneName } from "./types";
 
 export const PLAYER_ZONES: (keyof PlayerZones)[] = [
@@ -127,9 +128,14 @@ export function enterOwnerZoneInPlace(
   if (!owner) {
     throw new Error(`Card ${cardId} owner is missing`);
   }
+  const fromZone = card.zone;
   insertIntoZone(owner, destination, cardId, options.libraryPosition ?? "top");
   card.zone = destination;
   applyZoneChangeFlags(card, destination);
+  state.log.push({ kind: "zone_change", cardId, from: fromZone, to: destination });
+  if (destination === "battlefield") {
+    queueEnterBattlefieldTriggersInPlace(state, cardId);
+  }
 }
 
 function applyZoneChangeFlags(card: CardInstance, toZone: keyof PlayerZones): void {
@@ -216,6 +222,10 @@ export function moveCardInPlace(
   insertIntoZone(owner, destination, cardId, options.libraryPosition ?? "top");
   card.zone = destination;
   applyZoneChangeFlags(card, destination);
+  state.log.push({ kind: "zone_change", cardId, from: located.zone, to: destination });
+  if (destination === "battlefield") {
+    queueEnterBattlefieldTriggersInPlace(state, cardId);
+  }
 
   if (countCardPlacements(state, cardId) !== 1) {
     throw new Error(`Zone integrity failed for ${cardId}`);

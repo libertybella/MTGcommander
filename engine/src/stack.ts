@@ -23,7 +23,7 @@ export function putSpellOnStack(
     throw new Error(`Card ${cardId} must be in hand to put on the stack`);
   }
   const definition = state.definitions[card.definitionId];
-  validateChosenTargets(state, definition?.targetRequirements ?? [], targets);
+  validateChosenTargets(state, definition?.targetRequirements ?? [], targets, card.controllerId);
 
   let next = cloneGameState(state);
   next = removeCardFromCurrentZone(next, cardId);
@@ -62,12 +62,30 @@ export function resolveTopOfStack(state: GameState): GameState {
     return next;
   }
 
+  if (top.kind === "ability") {
+    const source = next.cards[top.sourceId];
+    const definition = source ? next.definitions[source.definitionId] : undefined;
+    const trigger = definition?.triggers[top.triggerIndex ?? 0];
+    if (trigger) {
+      const bound = bindCardEffects(next, trigger.effects, {
+        controllerId: top.controllerId,
+        sourceId: top.sourceId,
+        targets: top.targets,
+        targetRequirements: [],
+      });
+      next = applyEffects(next, bound);
+    }
+    applyStateBasedActionsInPlace(next);
+    redirectPriorityIfLost(next);
+    return next;
+  }
+
   const source = next.cards[top.sourceId];
   const definition = source ? next.definitions[source.definitionId] : undefined;
   const requirements = definition?.targetRequirements ?? [];
   const shouldResolveEffects =
     Boolean(definition && definition.effects.length > 0) &&
-    hasLegalTargetRemaining(next, requirements, top.targets);
+    hasLegalTargetRemaining(next, requirements, top.targets, top.controllerId);
   if (shouldResolveEffects && definition) {
     const bound = bindCardEffects(next, definition.effects, {
       controllerId: top.controllerId,

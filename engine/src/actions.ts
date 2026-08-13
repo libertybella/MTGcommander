@@ -2,6 +2,7 @@ import { declareAttackers, declareBlockers, pendingBlockerPlayer, priorityForSte
 import { isCommander, isInstant, isInstantOrSorcery, isLand, isMainPhase } from "./cardTypes";
 import { cloneGameState } from "./clone";
 import { eliminatePlayerInPlace } from "./elimination";
+import { hasKeyword } from "./keywords";
 import { canPayManaCost, parseManaCost, payManaCost } from "./mana";
 import { isLiving, livingPlayerCount, requireLiving } from "./players";
 import { passPriority, putSpellOnStack } from "./stack";
@@ -86,7 +87,7 @@ function validateCast(
     throw new Error(`Card ${cardId} is a land and cannot be cast as a spell`);
   }
 
-  if (!isInstant(state, cardId) && !canCastNonInstantNow(state, playerId)) {
+  if (!isInstant(state, cardId) && !hasKeyword(state, cardId, "flash") && !canCastNonInstantNow(state, playerId)) {
     throw new Error("That spell cannot be cast at this time");
   }
 
@@ -114,7 +115,7 @@ function applyCastSpell(
   const { cost, fromCommand } = validateCast(state, playerId, cardId);
   const card = state.cards[cardId];
   const definition = card ? state.definitions[card.definitionId] : undefined;
-  validateChosenTargets(state, definition?.targetRequirements ?? [], targets ?? []);
+  validateChosenTargets(state, definition?.targetRequirements ?? [], targets ?? [], playerId);
   const paid = payManaCost(state, playerId, cost);
   const stacked = putSpellOnStack(paid, cardId, targets ?? []);
   if (!fromCommand) {

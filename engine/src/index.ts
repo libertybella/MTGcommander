@@ -14,9 +14,11 @@ export {
   PLAYER_ZONES,
 } from "./zones";
 export { applyAction, applyActions } from "./actions";
-export { declareAttackers, declareBlockers, priorityForStep } from "./combat";
+export { declareAttackers, declareBlockers, priorityForStep, creaturePower, creatureToughness } from "./combat";
 export { applyEffect, applyEffects, bindCardEffect, bindCardEffects } from "./effects";
 export type { BindEffectContext } from "./effects";
+export { hasKeyword } from "./keywords";
+export { wouldSkipDraw } from "./derived";
 export {
   testBear,
   testBlankInstant,
@@ -47,6 +49,7 @@ export type { TurnSlot } from "./turn";
 export { livingPlayers, livingPlayerCount, winnerId } from "./players";
 export { eliminatePlayer } from "./elimination";
 export { isGameOver } from "./status";
+export { redactForViewer, isHiddenFromViewer, HIDDEN_DEFINITION_ID } from "./visibility";
 export { isChosenTargetLegal, validateChosenTargets } from "./targeting";
 export {
   addMana,
@@ -92,12 +95,15 @@ export type {
   CommanderState,
   CombatAttack,
   CombatState,
+  CardTrigger,
   GameAction,
   GameEffect,
   EffectTarget,
   GameEvent,
   GameId,
+  GameLogEntry,
   GameState,
+  Keyword,
   ManaColor,
   ManaPool,
   Phase,
@@ -106,8 +112,10 @@ export type {
   PlayerId,
   PlayerState,
   PlayerZones,
+  ReplacementEffect,
   StackObject,
   StackObjectId,
+  StaticModifier,
   Step,
   TargetKind,
   TargetRequirement,

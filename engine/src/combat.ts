@@ -1,5 +1,7 @@
 import { cloneGameState } from "./clone";
 import { isCommander, isCreature } from "./cardTypes";
+import { creaturePower, creatureToughness } from "./derived";
+import { hasKeyword } from "./keywords";
 import { isLiving, nextLivingPlayerId } from "./players";
 import { applyStateBasedActionsInPlace } from "./status";
 import { moveCard } from "./zones";
@@ -23,13 +25,7 @@ export function emptyCombat(): CombatState {
 
 export { isCommander };
 
-export function creaturePower(state: GameState, cardId: CardInstanceId): number {
-  return state.definitions[state.cards[cardId]?.definitionId ?? ""]?.power ?? 0;
-}
-
-export function creatureToughness(state: GameState, cardId: CardInstanceId): number {
-  return state.definitions[state.cards[cardId]?.definitionId ?? ""]?.toughness ?? 0;
-}
+export { creaturePower, creatureToughness };
 
 export function pendingBlockerPlayer(state: GameState): PlayerId | null {
   if (!state.combat) {
@@ -115,8 +111,11 @@ function assertLegalAttacker(
   if (card.tapped) {
     throw new Error(`Card ${attackerId} is tapped`);
   }
-  if (card.summoningSick) {
+  if (card.summoningSick && !hasKeyword(state, attackerId, "haste")) {
     throw new Error(`Card ${attackerId} has summoning sickness`);
+  }
+  if (hasKeyword(state, attackerId, "defender")) {
+    throw new Error(`Card ${attackerId} cannot attack`);
   }
   if (defenderId === playerId) {
     throw new Error("A player cannot attack themselves");
@@ -167,7 +166,9 @@ export function declareAttackers(state: GameState, playerId: PlayerId, attacks: 
   for (const attack of combat.attacks) {
     const card = requireCard(next, attack.attackerId);
     card.attacking = true;
-    card.tapped = true;
+    if (!hasKeyword(next, attack.attackerId, "vigilance")) {
+      card.tapped = true;
+    }
   }
   next.passesSinceAction = 0;
   next.priorityPlayerId = next.turn.activePlayerId;
@@ -218,6 +219,19 @@ export function declareBlockers(
     if (blocker.attacking) {
       throw new Error(`Card ${block.blockerId} is attacking`);
     }
+    if (hasKeyword(state, block.attackerId, "flying") && !hasKeyword(state, block.blockerId, "flying") && !hasKeyword(state, block.blockerId, "reach")) {
+      throw new Error(`Card ${block.blockerId} cannot block a flying attacker`);
+    }
+  }
+
+  const blocksByAttacker: Record<string, number> = {};
+  for (const block of blocks) {
+    blocksByAttacker[block.attackerId] = (blocksByAttacker[block.attackerId] ?? 0) + 1;
+  }
+  for (const [attackerId, count] of Object.entries(blocksByAttacker)) {
+    if (hasKeyword(state, attackerId, "menace") && count === 1) {
+      throw new Error(`Card ${attackerId} has menace and cannot be blocked by only one creature`);
+    }
   }
 
   const next = cloneGameState(state);
@@ -241,6 +255,9 @@ function destroyLethalCreatures(state: GameState): GameState {
     if (card.zone !== "battlefield" || !isCreature(next, card.id)) {
       return false;
     }
+    if (hasKeyword(next, card.id, "indestructible")) {
+      return false;
+    }
     const toughness = creatureToughness(next, card.id);
     return toughness > 0 && card.damageMarked >= toughness;
   });
@@ -252,7 +269,76 @@ function destroyLethalCreatures(state: GameState): GameState {
   return next;
 }
 
-export function dealCombatDamageInPlace(state: GameState): void {
+function dealsInStrike(state: GameState, cardId: CardInstanceId, strike: "first" | "normal"): boolean {
+  const firstStrike =
+    hasKeyword(state, cardId, "first_strike") || hasKeyword(state, cardId, "double_strike");
+  if (strike === "first") {
+    return firstStrike;
+  }
+  return hasKeyword(state, cardId, "double_strike") || !hasKeyword(state, cardId, "first_strike");
+}
+
+function gainLifeInPlace(state: GameState, playerId: PlayerId, amount: number): void {
+  if (amount <= 0) {
+    return;
+  }
+  const player = state.players.find((entry) => entry.id === playerId);
+  if (player) {
+    player.life += amount;
+  }
+}
+
+function dealDamageToPlayerInPlace(
+  state: GameState,
+  defenderId: PlayerId,
+  amount: number,
+  sourceId: CardInstanceId,
+): void {
+  if (amount <= 0) {
+    return;
+  }
+  const defender = state.players.find((player) => player.id === defenderId);
+  if (!defender) {
+    return;
+  }
+  defender.life -= amount;
+  if (isCommander(state, sourceId)) {
+    defender.commander.damageReceived[sourceId] =
+      (defender.commander.damageReceived[sourceId] ?? 0) + amount;
+  }
+  const source = state.cards[sourceId];
+  if (source && hasKeyword(state, sourceId, "lifelink")) {
+    gainLifeInPlace(state, source.controllerId, amount);
+  }
+}
+
+function markCreatureDamageInPlace(
+  state: GameState,
+  targetId: CardInstanceId,
+  amount: number,
+  sourceId: CardInstanceId,
+): void {
+  if (amount <= 0) {
+    return;
+  }
+  const target = state.cards[targetId];
+  if (!target) {
+    return;
+  }
+  target.damageMarked += amount;
+  if (hasKeyword(state, sourceId, "deathtouch")) {
+    target.damageMarked = Math.max(target.damageMarked, creatureToughness(state, targetId));
+  }
+  const source = state.cards[sourceId];
+  if (source && hasKeyword(state, sourceId, "lifelink")) {
+    gainLifeInPlace(state, source.controllerId, amount);
+  }
+}
+
+export function dealCombatDamageInPlace(
+  state: GameState,
+  strike: "first" | "normal" = "normal",
+): void {
   if (!state.combat) {
     return;
   }
@@ -263,41 +349,70 @@ export function dealCombatDamageInPlace(state: GameState): void {
     }
     const power = creaturePower(state, attack.attackerId);
     const blockerIds = state.combat.blockers[attack.attackerId] ?? [];
+    const wasBlocked = blockerIds.length > 0;
     const livingBlockers = blockerIds.filter((id) => state.cards[id]?.zone === "battlefield");
+    const attackerDeals = dealsInStrike(state, attack.attackerId, strike);
 
-    if (livingBlockers.length === 0) {
-      const defender = state.players.find((player) => player.id === attack.defenderId);
-      if (defender) {
-        defender.life -= power;
-        if (isCommander(state, attack.attackerId) && power > 0) {
-          defender.commander.damageReceived[attack.attackerId] =
-            (defender.commander.damageReceived[attack.attackerId] ?? 0) + power;
-        }
+    if (!wasBlocked) {
+      if (attackerDeals) {
+        dealDamageToPlayerInPlace(state, attack.defenderId, power, attack.attackerId);
       }
       continue;
     }
 
-    let remaining = power;
-    for (let index = 0; index < livingBlockers.length; index += 1) {
-      const blockerId = livingBlockers[index];
-      const blocker = state.cards[blockerId];
-      if (!blocker || remaining <= 0) {
+    if (attackerDeals) {
+      if (livingBlockers.length === 0) {
+        if (hasKeyword(state, attack.attackerId, "trample")) {
+          dealDamageToPlayerInPlace(state, attack.defenderId, power, attack.attackerId);
+        }
+      } else {
+        let remaining = power;
+        const trample = hasKeyword(state, attack.attackerId, "trample");
+        const deathtouch = hasKeyword(state, attack.attackerId, "deathtouch");
+        for (let index = 0; index < livingBlockers.length; index += 1) {
+          const blockerId = livingBlockers[index];
+          const blocker = state.cards[blockerId];
+          if (!blocker || remaining <= 0) {
+            continue;
+          }
+          const toughness = creatureToughness(state, blockerId);
+          const lethalNeeded = deathtouch
+            ? blocker.damageMarked > 0
+              ? 0
+              : 1
+            : Math.max(0, toughness - blocker.damageMarked);
+          const isLast = index === livingBlockers.length - 1;
+          const needed = lethalNeeded <= 0 ? 0 : Math.max(lethalNeeded, 1);
+          const assigned = isLast && !trample ? remaining : Math.min(remaining, needed);
+          markCreatureDamageInPlace(state, blockerId, assigned, attack.attackerId);
+          remaining -= assigned;
+        }
+        if (trample && remaining > 0) {
+          dealDamageToPlayerInPlace(state, attack.defenderId, remaining, attack.attackerId);
+        }
+      }
+    }
+
+    for (const blockerId of livingBlockers) {
+      if (!dealsInStrike(state, blockerId, strike)) {
         continue;
       }
-      const toughness = creatureToughness(state, blockerId);
-      const lethalNeeded = Math.max(0, toughness - blocker.damageMarked);
-      const assigned =
-        index === livingBlockers.length - 1 ? remaining : Math.min(remaining, Math.max(lethalNeeded, 1));
-      blocker.damageMarked += assigned;
-      remaining -= assigned;
-      attacker.damageMarked += creaturePower(state, blockerId);
+      markCreatureDamageInPlace(
+        state,
+        attack.attackerId,
+        creaturePower(state, blockerId),
+        blockerId,
+      );
     }
   }
 }
 
 export function applyCombatDamage(state: GameState): GameState {
-  const next = cloneGameState(state);
-  dealCombatDamageInPlace(next);
+  let next = cloneGameState(state);
+  dealCombatDamageInPlace(next, "first");
+  applyStateBasedActionsInPlace(next);
+  next = destroyLethalCreatures(next);
+  dealCombatDamageInPlace(next, "normal");
   applyStateBasedActionsInPlace(next);
   return destroyLethalCreatures(next);
 }

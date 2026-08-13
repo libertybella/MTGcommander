@@ -6,6 +6,7 @@ import {
   ensureCombatInPlace,
 } from "./combat";
 import { applyEffect } from "./effects";
+import { wouldSkipDraw } from "./derived";
 import { emptyManaPoolsInPlace } from "./mana";
 import { livingPlayers, nextLivingPlayerId } from "./players";
 import { applyStateBasedActionsInPlace } from "./status";
@@ -67,7 +68,7 @@ function onEnterStep(state: GameState): GameState {
   }
   if (state.turn.step === "draw") {
     const active = state.players.find((player) => player.id === state.turn.activePlayerId);
-    if (active && !active.lost && active.zones.library.length > 0) {
+    if (active && !active.lost && active.zones.library.length > 0 && !wouldSkipDraw(state, active.id)) {
       return applyEffect(state, { kind: "draw", playerId: active.id, count: 1 });
     }
     return state;

@@ -77,6 +77,11 @@ export type CardDefinition = {
   effects: CardEffect[];
   /** Targets that must be chosen when the spell is cast. Empty means untargeted. */
   targetRequirements: TargetRequirement[];
+  keywords: Keyword[];
+  /** ETB and similar definition triggers. Bound on the event, not on spell resolve. */
+  triggers: CardTrigger[];
+  replacements: ReplacementEffect[];
+  staticModifiers: StaticModifier[];
 };
 
 export type CardInstance = {
@@ -90,6 +95,7 @@ export type CardInstance = {
   attacking: boolean;
   blockingAttackerId: CardInstanceId | null;
   summoningSick: boolean;
+  counters: Record<string, number>;
 };
 
 export type CommanderState = {
@@ -119,6 +125,8 @@ export type StackObject = {
   kind: "spell" | "ability";
   /** Chosen when the object was put on the stack. */
   targets: ChosenTarget[];
+  /** Index into the source definition's `triggers` for stacked abilities. */
+  triggerIndex?: number;
 };
 
 export type CombatAttack = {
@@ -146,6 +154,8 @@ export type GameState = {
   passesSinceAction: number;
   /** Sole remaining living player, if any. */
   winnerId: PlayerId | null;
+  /** Append-only zone-change log for future trigger systems. */
+  log: GameLogEntry[];
 };
 
 export type GameEffect =
@@ -174,7 +184,11 @@ export type GameEffect =
       typeLine: string;
       power?: number | null;
       toughness?: number | null;
-    };
+    }
+  | { kind: "mill"; playerId: PlayerId; count: number }
+  | { kind: "discard"; playerId: PlayerId; count: number }
+  | { kind: "sacrifice"; cardId: CardInstanceId }
+  | { kind: "add_counter"; cardId: CardInstanceId; counter: string; amount: number };
 
 export type EffectTarget =
   | { type: "player"; playerId: PlayerId }
@@ -235,7 +249,51 @@ export type CardEffect =
       typeLine: string;
       power?: number | null;
       toughness?: number | null;
-    };
+    }
+  | { kind: "mill"; playerId: PlayerSelector; count: number }
+  | { kind: "discard"; playerId: PlayerSelector; count: number }
+  | { kind: "sacrifice"; cardId: CardIdSelector }
+  | { kind: "add_counter"; cardId: CardIdSelector; counter: string; amount: number };
+
+export type Keyword =
+  | "flying"
+  | "reach"
+  | "haste"
+  | "vigilance"
+  | "trample"
+  | "deathtouch"
+  | "lifelink"
+  | "first_strike"
+  | "double_strike"
+  | "menace"
+  | "hexproof"
+  | "indestructible"
+  | "flash"
+  | "defender";
+
+export type CardTrigger = {
+  event: "enter_battlefield";
+  effects: CardEffect[];
+};
+
+export type ReplacementEffect = {
+  kind: "replace_draw";
+  instead: "skip";
+};
+
+export type StaticModifier = {
+  kind: "pt";
+  selector: "self" | "controlled_creatures";
+  power: number;
+  toughness: number;
+};
+
+export type GameLogEntry = {
+  kind: "zone_change";
+  cardId: CardInstanceId;
+  from: ZoneName;
+  to: ZoneName;
+};
 
 export type GameAction =
   | { kind: "pass_priority"; playerId: PlayerId }
