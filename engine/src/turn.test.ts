@@ -1,0 +1,113 @@
+import { describe, expect, it } from "vitest";
+import {
+  createCardDefinition,
+  createCardInstance,
+  createGameState,
+} from "./index";
+import { TURN_SEQUENCE, advanceStep, advanceSteps } from "./turn";
+
+describe("turn progression", () => {
+  it("walks every step in a turn", () => {
+    let game = createGameState({ playerCount: 2 });
+    expect(game.turn).toMatchObject({
+      number: 1,
+      phase: "beginning",
+      step: "untap",
+    });
+    const seen: string[] = [`${game.turn.phase}/${game.turn.step}`];
+    for (let i = 1; i < TURN_SEQUENCE.length; i += 1) {
+      game = advanceStep(game);
+      seen.push(`${game.turn.phase}/${game.turn.step}`);
+    }
+    expect(seen).toEqual(
+      TURN_SEQUENCE.map((slot) => `${slot.phase}/${slot.step}`),
+    );
+    expect(game.turn.activePlayerId).toBe(game.players[0]?.id);
+  });
+
+  it("passes the turn to the next player after cleanup", () => {
+    const game = createGameState({ playerCount: 2 });
+    const first = game.players[0]?.id;
+    const second = game.players[1]?.id;
+    const nextTurn = advanceSteps(game, TURN_SEQUENCE.length);
+    expect(nextTurn.turn.activePlayerId).toBe(second);
+    expect(nextTurn.turn.number).toBe(2);
+    expect(nextTurn.turn.phase).toBe("beginning");
+    expect(nextTurn.turn.step).toBe("untap");
+    const thirdTurn = advanceSteps(nextTurn, TURN_SEQUENCE.length);
+    expect(thirdTurn.turn.activePlayerId).toBe(first);
+    expect(thirdTurn.turn.number).toBe(3);
+  });
+
+  it("wraps turn order with four players", () => {
+    let game = createGameState({ playerCount: 4 });
+    const order = game.players.map((p) => p.id);
+    for (let turn = 0; turn < 4; turn += 1) {
+      expect(game.turn.activePlayerId).toBe(order[turn]);
+      game = advanceSteps(game, TURN_SEQUENCE.length);
+    }
+    expect(game.turn.activePlayerId).toBe(order[0]);
+    expect(game.turn.number).toBe(5);
+  });
+
+  it("visits the draw step without drawing cards", () => {
+    const game = createGameState({ playerCount: 2 });
+    const p1 = game.players[0];
+    if (!p1) {
+      throw new Error("missing player");
+    }
+    const def = createCardDefinition({ name: "Forest", typeLine: "Basic Land — Forest" });
+    const card = createCardInstance({
+      definitionId: def.id,
+      ownerId: p1.id,
+      zone: "library",
+    });
+    game.definitions[def.id] = def;
+    game.cards[card.id] = card;
+    p1.zones.library.push(card.id);
+
+    const atDraw = advanceSteps(game, 2);
+    expect(atDraw.turn.step).toBe("draw");
+    expect(atDraw.players[0]?.zones.library).toEqual([card.id]);
+    expect(atDraw.players[0]?.zones.hand).toEqual([]);
+  });
+
+  it("untaps the active player's battlefield permanents", () => {
+    const game = createGameState({ playerCount: 2 });
+    const p1 = game.players[0];
+    const p2 = game.players[1];
+    if (!p1 || !p2) {
+      throw new Error("missing players");
+    }
+    const def = createCardDefinition({ name: "Bear", typeLine: "Creature — Bear" });
+    game.definitions[def.id] = def;
+    const activeBear = createCardInstance({
+      definitionId: def.id,
+      ownerId: p1.id,
+      zone: "battlefield",
+    });
+    const opponentBear = createCardInstance({
+      definitionId: def.id,
+      ownerId: p2.id,
+      zone: "battlefield",
+    });
+    activeBear.tapped = true;
+    opponentBear.tapped = true;
+    game.cards[activeBear.id] = activeBear;
+    game.cards[opponentBear.id] = opponentBear;
+    p1.zones.battlefield.push(activeBear.id);
+    p2.zones.battlefield.push(opponentBear.id);
+
+    const afterFullTurn = advanceSteps(game, TURN_SEQUENCE.length);
+    expect(afterFullTurn.turn.activePlayerId).toBe(p2.id);
+    expect(afterFullTurn.cards[opponentBear.id]?.tapped).toBe(false);
+    expect(afterFullTurn.cards[activeBear.id]?.tapped).toBe(true);
+  });
+
+  it("simulates multiple turns without changing player count", () => {
+    const start = createGameState({ playerCount: 3 });
+    const later = advanceSteps(start, TURN_SEQUENCE.length * 6);
+    expect(later.players).toHaveLength(3);
+    expect(later.turn.number).toBe(7);
+  });
+});

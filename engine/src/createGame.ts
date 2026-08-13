@@ -54,6 +54,7 @@ export function createCardInstance(input: {
     ownerId: input.ownerId,
     controllerId: input.controllerId ?? input.ownerId,
     zone: input.zone,
+    tapped: false,
   };
 }
 

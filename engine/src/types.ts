@@ -75,6 +75,7 @@ export type CardInstance = {
   ownerId: PlayerId;
   controllerId: PlayerId;
   zone: ZoneName;
+  tapped: boolean;
 };
 
 export type CommanderState = {

@@ -20,21 +20,21 @@ A checkbox becomes 🟢 Complete only when the work has been implemented **and**
 
 ## Project Status
 
-**Current Phase:** Phase 3 — Zone Engine
-**Current Checkpoint:** Checkpoint 3 — Zone Integrity
+**Current Phase:** Phase 4 — Turn Engine
+**Current Checkpoint:** Checkpoint 4 — Turn Structure
 **Overall Status:** 🟡 In Progress
 
 ### Current Objective
 
-Autonomous run through Phases 3–6. Phase 3 zone movement is implemented.
+Autonomous run through Phases 3–6. Phase 4 turn skeleton is implemented.
 
 ### Last Completed Milestone
 
-Phase 3: immutable `moveCard` with one-zone integrity. Stack movement deferred to Phase 5.
+Phase 4: step/phase/turn order, untap on entering the untap step, draw step visited without drawing.
 
 ### Next Milestone
 
-Phase 4 — Turn / phase / step system.
+Phase 5 — Priority and stack.
 
 ---
 
@@ -111,16 +111,16 @@ Do not modify, import, link, or share code with the sibling deck builder during 
 
 ## Phase 4 — Turn Engine
 
-* ⬜ Turn order.
-* ⬜ Untap.
-* ⬜ Upkeep.
-* ⬜ Draw.
-* ⬜ Main phases.
-* ⬜ Combat phases.
-* ⬜ End step.
-* ⬜ Cleanup.
-* ⬜ Automated multi-turn simulation.
-* ⬜ Checkpoint 4 — Turn Structure.
+* 🟢 Turn order.
+* 🟢 Untap.
+* 🟢 Upkeep.
+* 🟢 Draw.
+* 🟢 Main phases.
+* 🟢 Combat phases.
+* 🟢 End step.
+* 🟢 Cleanup.
+* 🟢 Automated multi-turn simulation.
+* 🟢 Checkpoint 4 — Turn Structure.
 
 ## Phase 5 — Priority & Stack
 
@@ -811,4 +811,57 @@ Move cards between the six player zones with immutable updates and one-place int
 ### Next Task
 
 Phase 4 — turn/phase/step progression.
+
+---
+
+## 2026-08-13 — Checkpoint 4 turn system
+
+### Objective
+
+Advance turns through CR-like phases and steps, including multi-player wrap.
+
+### Work Completed
+
+- Added `advanceStep` / `advanceSteps` and `TURN_SEQUENCE`.
+- Untap step untaps the active player's battlefield permanents (`CardInstance.tapped`).
+- Draw step is visited but does not move cards.
+- Tests for full step walk, 2- and 4-player wrap, multi-turn simulation, and untap.
+
+### Tests Run
+
+- `npm test` — PASS (28 tests)
+- `npm run typecheck` — PASS
+- `npm run lint` — PASS
+- `npm run build` — PASS
+
+### Results
+
+- Turn skeleton works without combat or drawing.
+
+### Problems Encountered
+
+- None.
+
+### Decisions Made
+
+- Turn number increments on every player’s new turn.
+- No automatic draw; that stays a later action using `moveCard`.
+
+### Files Changed
+
+- `engine/src/turn.ts`
+- `engine/src/turn.test.ts`
+- `engine/src/types.ts`
+- `engine/src/createGame.ts`
+- `engine/src/serialize.ts`
+- `engine/src/index.ts`
+- `docs/DEVELOPMENT_PROGRESS.md`
+
+### Checkpoint
+
+- PASS
+
+### Next Task
+
+Phase 5 — priority and stack.
 

@@ -139,6 +139,7 @@ export function parseGameState(json: string): GameState {
       ownerId: expectString(card.ownerId, "card.ownerId"),
       controllerId: expectString(card.controllerId, "card.controllerId"),
       zone: zone as (typeof ZONE_KEYS)[number],
+      tapped: card.tapped === undefined ? false : card.tapped === true,
     };
   }
 
