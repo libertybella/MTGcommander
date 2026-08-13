@@ -127,17 +127,18 @@ describe("spell resolution with definition effects", () => {
     const study = addToHand(game, p1.id, testStudy());
     const ritual = addToHand(game, p1.id, testRitual());
     const recruit = addToHand(game, p1.id, testRecruit());
+
+    let next = toPrecombatMain(game);
+    const bearDef = testBear();
     const libraryCard = createCardInstance({
-      definitionId: testBear().id,
+      definitionId: bearDef.id,
       ownerId: p1.id,
       zone: "library",
     });
-    const bearDef = testBear();
-    game.definitions[bearDef.id] = bearDef;
-    game.cards[libraryCard.id] = libraryCard;
-    game.players[0]!.zones.library.push(libraryCard.id);
+    next.definitions[bearDef.id] = bearDef;
+    next.cards[libraryCard.id] = libraryCard;
+    next.players[0]!.zones.library.push(libraryCard.id);
 
-    let next = toPrecombatMain(game);
     next = addMana(next, p1.id, { W: 2, U: 1, B: 1 });
 
     next = castAndResolve(next, p1.id, p2.id, gift.id);

@@ -21,6 +21,7 @@ export {
   testBear,
   testBlankInstant,
   testDrain,
+  testForest,
   testGift,
   testRecruit,
   testRitual,
@@ -42,6 +43,7 @@ export {
 export type { MoveCardOptions } from "./zones";
 export { TURN_SEQUENCE, advanceStep, advanceSteps } from "./turn";
 export type { TurnSlot } from "./turn";
+export { livingPlayers, livingPlayerCount, winnerId } from "./players";
 export {
   addMana,
   canPayManaCost,

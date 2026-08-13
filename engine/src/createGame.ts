@@ -81,6 +81,7 @@ function createPlayer(displayName: string): PlayerState {
       damageReceived: {},
     },
     lost: false,
+    landsPlayedThisTurn: 0,
   };
 }
 
@@ -115,5 +116,6 @@ export function createGameState(options: CreateGameOptions): GameState {
     priorityPlayerId: first.id,
     passesSinceAction: 0,
     combat: null,
+    winnerId: null,
   };
 }

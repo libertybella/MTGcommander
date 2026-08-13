@@ -102,6 +102,10 @@ function parsePlayer(value: unknown): PlayerState {
       damageReceived,
     },
     lost: value.lost === true,
+    landsPlayedThisTurn:
+      value.landsPlayedThisTurn === undefined
+        ? 0
+        : expectNumber(value.landsPlayedThisTurn, "player.landsPlayedThisTurn"),
   };
 }
 
@@ -232,6 +236,10 @@ export function parseGameState(json: string): GameState {
       "priorityPlayerId",
     ),
     passesSinceAction: expectNumber(raw.passesSinceAction ?? 0, "passesSinceAction"),
+    winnerId:
+      raw.winnerId === undefined || raw.winnerId === null
+        ? null
+        : expectString(raw.winnerId, "winnerId"),
   };
 }
 
@@ -406,6 +414,13 @@ export function parseGameAction(json: string): GameAction {
   const playerId = expectString(raw.playerId, "action.playerId");
   if (kind === "pass_priority" || kind === "concede") {
     return { kind, playerId };
+  }
+  if (kind === "play_land") {
+    return {
+      kind,
+      playerId,
+      cardId: expectString(raw.cardId, "action.cardId"),
+    };
   }
   if (kind === "cast_spell") {
     if (raw.targets !== undefined) {

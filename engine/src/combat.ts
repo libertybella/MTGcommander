@@ -1,5 +1,7 @@
 import { cloneGameState } from "./clone";
-import { COMMANDER_DAMAGE_TO_LOSE, isCommander, isCreature } from "./cardTypes";
+import { isCommander, isCreature } from "./cardTypes";
+import { isLiving, nextLivingPlayerId } from "./players";
+import { applyStateBasedActionsInPlace } from "./status";
 import { moveCard } from "./zones";
 import type {
   CardInstance,
@@ -39,14 +41,27 @@ export function pendingBlockerPlayer(state: GameState): PlayerId | null {
       defenders.push(attack.defenderId);
     }
   }
-  return defenders.find((id) => !state.combat?.declaredBlockersFor.includes(id)) ?? null;
+  return (
+    defenders.find((id) => {
+      if (state.combat?.declaredBlockersFor.includes(id)) {
+        return false;
+      }
+      return isLiving(state, id);
+    }) ?? null
+  );
 }
 
 export function priorityForStep(state: GameState): PlayerId {
   if (state.turn.step === "declareBlockers") {
-    return pendingBlockerPlayer(state) ?? state.turn.activePlayerId;
+    const pending = pendingBlockerPlayer(state);
+    if (pending) {
+      return pending;
+    }
   }
-  return state.turn.activePlayerId;
+  if (isLiving(state, state.turn.activePlayerId)) {
+    return state.turn.activePlayerId;
+  }
+  return nextLivingPlayerId(state, state.turn.activePlayerId);
 }
 
 function requireCombat(state: GameState): CombatState {
@@ -108,6 +123,9 @@ function assertLegalAttacker(
   }
   if (!state.players.some((player) => player.id === defenderId)) {
     throw new Error(`Unknown player ${defenderId}`);
+  }
+  if (!isLiving(state, defenderId)) {
+    throw new Error("Cannot attack a player who has lost");
   }
 }
 
@@ -280,16 +298,6 @@ export function dealCombatDamageInPlace(state: GameState): void {
 export function applyCombatDamage(state: GameState): GameState {
   const next = cloneGameState(state);
   dealCombatDamageInPlace(next);
-  checkCommanderLossInPlace(next);
+  applyStateBasedActionsInPlace(next);
   return destroyLethalCreatures(next);
-}
-
-export function checkCommanderLossInPlace(state: GameState): void {
-  for (const player of state.players) {
-    for (const amount of Object.values(player.commander.damageReceived)) {
-      if (amount >= COMMANDER_DAMAGE_TO_LOSE) {
-        player.lost = true;
-      }
-    }
-  }
 }

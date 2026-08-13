@@ -3,19 +3,9 @@ import { cloneGameState } from "./clone";
 import { isCommander, isInstantOrSorcery } from "./cardTypes";
 import { enterOwnerZone, findCardZone, removeCardFromCurrentZone } from "./zones";
 import { applyEffects, bindCardEffects } from "./effects";
+import { isLiving, livingPlayerCount, nextLivingPlayerId } from "./players";
+import { applyStateBasedActionsInPlace, redirectPriorityIfLost } from "./status";
 import type { CardInstanceId, GameState, PlayerId, ZoneName } from "./types";
-
-function nextSeatedPlayer(state: GameState, currentId: PlayerId): PlayerId {
-  const index = state.players.findIndex((p) => p.id === currentId);
-  if (index === -1) {
-    throw new Error(`Unknown player ${currentId}`);
-  }
-  const next = state.players[(index + 1) % state.players.length];
-  if (!next) {
-    throw new Error("No next player");
-  }
-  return next.id;
-}
 
 export function putSpellOnStack(state: GameState, cardId: CardInstanceId): GameState {
   const card = state.cards[cardId];
@@ -59,6 +49,8 @@ export function resolveTopOfStack(state: GameState): GameState {
   next.priorityPlayerId = next.turn.activePlayerId;
 
   if (!top.sourceId) {
+    applyStateBasedActionsInPlace(next);
+    redirectPriorityIfLost(next);
     return next;
   }
 
@@ -75,17 +67,23 @@ export function resolveTopOfStack(state: GameState): GameState {
   const destination: ZoneName = isInstantOrSorcery(next, top.sourceId)
     ? "graveyard"
     : "battlefield";
-  return enterOwnerZone(next, top.sourceId, destination);
+  next = enterOwnerZone(next, top.sourceId, destination);
+  applyStateBasedActionsInPlace(next);
+  redirectPriorityIfLost(next);
+  return next;
 }
 
 export function passPriority(state: GameState, playerId: PlayerId): GameState {
   if (playerId !== state.priorityPlayerId) {
     throw new Error("It is not that player's priority");
   }
+  if (!isLiving(state, playerId)) {
+    throw new Error("That player has lost");
+  }
   let next = cloneGameState(state);
   next.passesSinceAction += 1;
-  if (next.passesSinceAction < next.players.length) {
-    next.priorityPlayerId = nextSeatedPlayer(next, playerId);
+  if (next.passesSinceAction < livingPlayerCount(next)) {
+    next.priorityPlayerId = nextLivingPlayerId(next, playerId);
     return next;
   }
 
@@ -94,6 +92,8 @@ export function passPriority(state: GameState, playerId: PlayerId): GameState {
   }
 
   next.passesSinceAction = 0;
-  next.priorityPlayerId = next.turn.activePlayerId;
+  next.priorityPlayerId = isLiving(next, next.turn.activePlayerId)
+    ? next.turn.activePlayerId
+    : nextLivingPlayerId(next, next.turn.activePlayerId);
   return next;
 }

@@ -2,6 +2,8 @@ import { cloneGameState } from "./clone";
 import { createCardDefinition, createCardInstance } from "./createGame";
 import { isCreature } from "./cardTypes";
 import { addMana, tapCard, untapCard } from "./mana";
+import { nextLivingPlayerId } from "./players";
+import { applyStateBasedActionsInPlace } from "./status";
 import { countCardPlacements, moveCard } from "./zones";
 import type {
   CardEffect,
@@ -19,15 +21,7 @@ export type BindEffectContext = {
 };
 
 function nextOpponentId(state: GameState, controllerId: PlayerId): PlayerId {
-  const index = state.players.findIndex((player) => player.id === controllerId);
-  if (index === -1) {
-    throw new Error(`Unknown player ${controllerId}`);
-  }
-  const opponent = state.players[(index + 1) % state.players.length];
-  if (!opponent) {
-    throw new Error("No opponent");
-  }
-  return opponent.id;
+  return nextLivingPlayerId(state, controllerId);
 }
 
 function bindPlayer(state: GameState, selector: PlayerSelector, controllerId: PlayerId): PlayerId {
@@ -219,32 +213,44 @@ function applyCreateToken(
 export function applyEffect(state: GameState, effect: GameEffect): GameState {
   const before = snapshot(state);
   try {
+    let next: GameState;
     switch (effect.kind) {
       case "gain_life":
-        return applyGainLife(state, effect.playerId, effect.amount);
+        next = applyGainLife(state, effect.playerId, effect.amount);
+        break;
       case "lose_life":
-        return applyLoseLife(state, effect.playerId, effect.amount);
+        next = applyLoseLife(state, effect.playerId, effect.amount);
+        break;
       case "deal_damage":
-        return applyDealDamage(state, effect);
+        next = applyDealDamage(state, effect);
+        break;
       case "draw":
-        return applyDraw(state, effect.playerId, effect.count);
+        next = applyDraw(state, effect.playerId, effect.count);
+        break;
       case "move_card":
-        return moveCard(state, effect.cardId, effect.toZone, {
+        next = moveCard(state, effect.cardId, effect.toZone, {
           libraryPosition: effect.libraryPosition,
         });
+        break;
       case "tap":
-        return tapCard(state, effect.cardId);
+        next = tapCard(state, effect.cardId);
+        break;
       case "untap":
-        return untapCard(state, effect.cardId);
+        next = untapCard(state, effect.cardId);
+        break;
       case "add_mana":
-        return addMana(state, effect.playerId, effect.mana);
+        next = addMana(state, effect.playerId, effect.mana);
+        break;
       case "create_token":
-        return applyCreateToken(state, effect);
+        next = applyCreateToken(state, effect);
+        break;
       default: {
         const exhaustive: never = effect;
         throw new Error(`Unknown effect ${(exhaustive as GameEffect).kind}`);
       }
     }
+    applyStateBasedActionsInPlace(next);
+    return next;
   } catch (error) {
     if (JSON.stringify(state) !== before) {
       throw new Error("Illegal effect mutated GameState");

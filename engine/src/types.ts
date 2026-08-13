@@ -103,6 +103,8 @@ export type PlayerState = {
   zones: PlayerZones;
   commander: CommanderState;
   lost: boolean;
+  /** Lands played this turn. Resets on that player's untap. */
+  landsPlayedThisTurn: number;
 };
 
 export type StackObject = {
@@ -135,6 +137,8 @@ export type GameState = {
   combat: CombatState | null;
   priorityPlayerId: PlayerId;
   passesSinceAction: number;
+  /** Sole remaining living player, if any. */
+  winnerId: PlayerId | null;
 };
 
 export type GameEffect =
@@ -214,6 +218,7 @@ export type CardEffect =
 export type GameAction =
   | { kind: "pass_priority"; playerId: PlayerId }
   | { kind: "cast_spell"; playerId: PlayerId; cardId: CardInstanceId; targets?: unknown }
+  | { kind: "play_land"; playerId: PlayerId; cardId: CardInstanceId }
   | {
       kind: "declare_attackers";
       playerId: PlayerId;

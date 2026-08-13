@@ -50,7 +50,7 @@ describe("turn progression", () => {
     expect(game.turn.number).toBe(5);
   });
 
-  it("visits the draw step without drawing cards", () => {
+  it("draws a card for the active player on the draw step", () => {
     const game = createGameState({ playerCount: 2 });
     const p1 = game.players[0];
     if (!p1) {
@@ -68,8 +68,9 @@ describe("turn progression", () => {
 
     const atDraw = advanceSteps(game, 2);
     expect(atDraw.turn.step).toBe("draw");
-    expect(atDraw.players[0]?.zones.library).toEqual([card.id]);
-    expect(atDraw.players[0]?.zones.hand).toEqual([]);
+    expect(atDraw.players[0]?.zones.library).toEqual([]);
+    expect(atDraw.players[0]?.zones.hand).toEqual([card.id]);
+    expect(atDraw.cards[card.id]?.zone).toBe("hand");
   });
 
   it("untaps the active player's battlefield permanents", () => {

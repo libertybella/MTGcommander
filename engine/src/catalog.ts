@@ -90,3 +90,12 @@ export function testBlankInstant(): CardDefinition {
     manaCost: "{0}",
   });
 }
+
+/** Synthetic basic land for land-play tests. Not a real-card database entry. */
+export function testForest(): CardDefinition {
+  return createCardDefinition({
+    name: "Test Forest",
+    typeLine: "Basic Land — Forest",
+    oracleText: "{T}: Add {G}.",
+  });
+}

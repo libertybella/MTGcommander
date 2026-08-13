@@ -20,21 +20,21 @@ A checkbox becomes 🟢 Complete only when the work has been implemented **and**
 
 ## Project Status
 
-**Current Phase:** Phase 11 complete — awaiting review
-**Current Checkpoint:** Checkpoint 11 — Card Definitions & Effects
+**Current Phase:** Phase 12 complete — awaiting review
+**Current Checkpoint:** Checkpoint 12 — Playable Loop
 **Overall Status:** 🟡 In Progress
 
 ### Current Objective
 
-Stop. Do not start Phase 12 until Checkpoint 11 is reviewed.
+Stop. Do not start targeting, Battlefield UI, deck import, or real-card integration until Checkpoint 12 is reviewed.
 
 ### Last Completed Milestone
 
-Phase 11: CardDefinitions carry serializable effects that execute on spell resolution through the existing GameEffect system.
+Phase 12: Playable-loop engine gaps — land play, draw step, 0 life, concede, and elimination handling.
 
 ### Next Milestone
 
-Phase 12 — Battlefield UI (not started). Deck import remains later.
+Targeting (choose targets on cast, legality at cast and resolve). Battlefield UI and deck import remain later.
 
 ---
 
@@ -200,18 +200,18 @@ Do not modify, import, link, or share code with the sibling deck builder during 
 * 🟢 Effect serialization (no functions).
 * 🟢 Checkpoint 11 — Card Definitions & Effects.
 
-## Phase 12 — Battlefield UI
+## Phase 12 — Playable Loop
 
-* ⬜ Player panels.
-* ⬜ Battlefield.
-* ⬜ Hand.
-* ⬜ Graveyard.
-* ⬜ Exile.
-* ⬜ Command zone.
-* ⬜ Stack.
-* ⬜ Priority display.
-* ⬜ Card selection.
-* ⬜ Checkpoint 12 — UI Mirrors Engine.
+* 🟢 Play a land as a special action (not a spell).
+* 🟢 One land play per player per turn.
+* 🟢 Draw step draws a card.
+* 🟢 0 life causes a player to lose.
+* 🟢 Concede.
+* 🟢 Skip lost players in turns, priority, and combat.
+* 🟢 Synthetic basic land test fixture only (no real-card database).
+* 🟢 Checkpoint 12 — Playable Loop.
+
+Battlefield UI was previously listed as Phase 12. It remains later, after targeting and this playable loop.
 
 ## Phase 13 — Two-Client Realtime
 
@@ -1294,5 +1294,72 @@ Let CardDefinitions carry serializable effects and execute them through the exis
 ### Next Task
 
 Stop. Do not start Phase 12 until Checkpoint 11 is reviewed.
+
+---
+
+## 2026-08-13 — Checkpoint 12 playable-loop engine gaps
+
+### Objective
+
+Close the missing fundamental gameplay pieces so the existing engine is much closer to a complete basic game loop before Battlefield UI.
+
+### Work Completed
+
+- Added `play_land` as a special action: active player, main phase, empty stack, priority, land in hand, one land per turn. The land moves to the battlefield and does not use the stack.
+- Draw step draws the top library card for the active player, including on turn 1.
+- Life at or below 0 marks a player as lost. Concede is implemented and does not require priority.
+- Lost players are skipped in turn order and priority. Attackers cannot target a lost player. A sole survivor is recorded as `winnerId`.
+- Added a synthetic `testForest` fixture only. No Scryfall, Moxfield, deck import, or card database.
+
+### Tests Run
+
+- `npm test` — PASS (122 tests)
+- `npm run typecheck` — PASS
+- `npm run lint` — PASS
+- `npm run build` — PASS
+- Engine remains free of React/Electron imports.
+
+### Results
+
+- The engine can play a land, draw, concede, and lose at 0 life. Targeting, Battlefield UI, and deck import were not started.
+
+### Problems Encountered
+
+- The Phase 11 Study-spell test put a library card in before advancing to main. The draw step now draws that card, so the library card is placed after the turn draw.
+
+### Decisions Made
+
+- Land play is a special action, not a spell. Casting a land as a spell is still rejected.
+- Targeting remains future work and must be choose-on-cast (not choose-on-resolution).
+- Drawing from an empty library during the draw step does not yet cause a loss (no throw; the step is skipped). Spell draws from an empty library still throw.
+- Synthetic cards only. A basic land fixture is allowed; real-card integration is later.
+- Battlefield UI was previously listed as Phase 12; this checkpoint uses Phase 12 for playable-loop gaps instead.
+
+### Files Changed
+
+- `engine/src/types.ts`
+- `engine/src/createGame.ts`
+- `engine/src/players.ts`
+- `engine/src/status.ts`
+- `engine/src/turn.ts`
+- `engine/src/turn.test.ts`
+- `engine/src/actions.ts`
+- `engine/src/stack.ts`
+- `engine/src/combat.ts`
+- `engine/src/effects.ts`
+- `engine/src/serialize.ts`
+- `engine/src/catalog.ts`
+- `engine/src/index.ts`
+- `engine/src/playableLoop.test.ts`
+- `engine/src/cardEffects.test.ts`
+- `docs/DEVELOPMENT_PROGRESS.md`
+
+### Checkpoint
+
+- PASS
+
+### Next Task
+
+Stop. Do not start targeting, Battlefield UI, deck import, or real-card integration yet.
 
 

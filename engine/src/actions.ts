@@ -1,9 +1,12 @@
 import { declareAttackers, declareBlockers, pendingBlockerPlayer, priorityForStep } from "./combat";
 import { isCommander, isInstant, isInstantOrSorcery, isLand, isMainPhase } from "./cardTypes";
+import { cloneGameState } from "./clone";
 import { canPayManaCost, parseManaCost, payManaCost } from "./mana";
+import { isLiving, livingPlayerCount, requireLiving } from "./players";
 import { passPriority, putSpellOnStack } from "./stack";
-import { advanceStep } from "./turn";
-import { findCardZone } from "./zones";
+import { applyStateBasedActionsInPlace, redirectPriorityIfLost } from "./status";
+import { advanceStep, beginNextLivingTurnInPlace } from "./turn";
+import { findCardZone, moveCard } from "./zones";
 import type { CardInstanceId, GameAction, GameState, PlayerId } from "./types";
 
 function requirePlayer(state: GameState, playerId: PlayerId): void {
@@ -13,7 +16,7 @@ function requirePlayer(state: GameState, playerId: PlayerId): void {
 }
 
 function requirePriority(state: GameState, playerId: PlayerId): void {
-  requirePlayer(state, playerId);
+  requireLiving(state, playerId);
   if (playerId !== state.priorityPlayerId) {
     throw new Error("It is not that player's priority");
   }
@@ -35,6 +38,18 @@ function canCastNonInstantNow(state: GameState, playerId: PlayerId): boolean {
     isMainPhase(state) &&
     state.stack.length === 0
   );
+}
+
+function finalizeActionState(state: GameState): GameState {
+  applyStateBasedActionsInPlace(state);
+  const active = state.players.find((player) => player.id === state.turn.activePlayerId);
+  if (active?.lost && livingPlayerCount(state) > 0) {
+    beginNextLivingTurnInPlace(state);
+    applyStateBasedActionsInPlace(state);
+    return state;
+  }
+  redirectPriorityIfLost(state);
+  return state;
 }
 
 function validateCast(
@@ -103,6 +118,50 @@ function applyCastSpell(state: GameState, playerId: PlayerId, cardId: CardInstan
   return stacked;
 }
 
+function applyPlayLand(state: GameState, playerId: PlayerId, cardId: CardInstanceId): GameState {
+  requirePriority(state, playerId);
+  if (playerId !== state.turn.activePlayerId) {
+    throw new Error("Only the active player can play a land");
+  }
+  if (!isMainPhase(state)) {
+    throw new Error("A land can only be played during a main phase");
+  }
+  if (state.stack.length > 0) {
+    throw new Error("A land can only be played when the stack is empty");
+  }
+
+  const card = state.cards[cardId];
+  if (!card) {
+    throw new Error(`Unknown card ${cardId}`);
+  }
+  if (!isLand(state, cardId)) {
+    throw new Error(`Card ${cardId} is not a land`);
+  }
+
+  const located = findCardZone(state, cardId);
+  if (!located || located.zone !== "hand" || located.playerId !== playerId) {
+    throw new Error(`Card ${cardId} must be in the player's hand`);
+  }
+
+  const player = state.players.find((entry) => entry.id === playerId);
+  if (!player) {
+    throw new Error(`Unknown player ${playerId}`);
+  }
+  if (player.landsPlayedThisTurn >= 1) {
+    throw new Error("Already played a land this turn");
+  }
+
+  const next = moveCard(state, cardId, "battlefield");
+  const movedPlayer = next.players.find((entry) => entry.id === playerId);
+  if (!movedPlayer) {
+    throw new Error(`Unknown player ${playerId}`);
+  }
+  movedPlayer.landsPlayedThisTurn += 1;
+  next.passesSinceAction = 0;
+  next.priorityPlayerId = playerId;
+  return next;
+}
+
 function applyPassPriority(state: GameState, playerId: PlayerId): GameState {
   requirePriority(state, playerId);
   if (
@@ -112,13 +171,27 @@ function applyPassPriority(state: GameState, playerId: PlayerId): GameState {
     return declareBlockers(state, playerId, []);
   }
   const completingEmptyPass =
-    state.stack.length === 0 && state.passesSinceAction + 1 >= state.players.length;
+    state.stack.length === 0 && state.passesSinceAction + 1 >= livingPlayerCount(state);
   let next = passPriority(state, playerId);
   if (completingEmptyPass) {
     next = advanceStep(next);
     next.priorityPlayerId = priorityForStep(next);
     next.passesSinceAction = 0;
   }
+  return next;
+}
+
+function applyConcede(state: GameState, playerId: PlayerId): GameState {
+  requirePlayer(state, playerId);
+  if (!isLiving(state, playerId)) {
+    throw new Error("That player has already lost");
+  }
+  const next = cloneGameState(state);
+  const player = next.players.find((entry) => entry.id === playerId);
+  if (!player) {
+    throw new Error(`Unknown player ${playerId}`);
+  }
+  player.lost = true;
   return next;
 }
 
@@ -129,25 +202,37 @@ function applyPassPriority(state: GameState, playerId: PlayerId): GameState {
 export function applyAction(state: GameState, action: GameAction): GameState {
   const before = snapshot(state);
   try {
+    let next: GameState;
     switch (action.kind) {
       case "pass_priority":
-        return applyPassPriority(state, action.playerId);
+        next = applyPassPriority(state, action.playerId);
+        break;
       case "cast_spell":
         if (action.targets !== undefined) {
           throw new Error("Targets are not supported");
         }
-        return applyCastSpell(state, action.playerId, action.cardId);
+        next = applyCastSpell(state, action.playerId, action.cardId);
+        break;
+      case "play_land":
+        next = applyPlayLand(state, action.playerId, action.cardId);
+        break;
       case "declare_attackers":
-        return declareAttackers(state, action.playerId, action.attacks);
+        requireLiving(state, action.playerId);
+        next = declareAttackers(state, action.playerId, action.attacks);
+        break;
       case "declare_blockers":
-        return declareBlockers(state, action.playerId, action.blocks);
+        requireLiving(state, action.playerId);
+        next = declareBlockers(state, action.playerId, action.blocks);
+        break;
       case "concede":
-        throw new Error("Concede is not implemented");
+        next = applyConcede(state, action.playerId);
+        break;
       default: {
         const exhaustive: never = action;
         throw new Error(`Unknown GameAction ${(exhaustive as GameAction).kind}`);
       }
     }
+    return finalizeActionState(next);
   } catch (error) {
     assertUnchanged(before, state, "Illegal action");
     throw error;
