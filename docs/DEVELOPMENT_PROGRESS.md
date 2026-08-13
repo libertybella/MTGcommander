@@ -20,21 +20,21 @@ A checkbox becomes 🟢 Complete only when the work has been implemented **and**
 
 ## Project Status
 
-**Current Phase:** Phase 1 — Project Foundation
-**Current Checkpoint:** Checkpoint 1 — Project Baseline
+**Current Phase:** Phase 2 — Core Game-State Model
+**Current Checkpoint:** Checkpoint 2 — Game State Exists Without UI
 **Overall Status:** ⚠️ Needs Review
 
 ### Current Objective
 
-Checkpoint 1 is implemented and verified locally. Waiting for Ross to review before Phase 2 GameState.
+Checkpoint 2 data model is implemented and verified. Waiting for review before Phase 3 (zone movement).
 
 ### Last Completed Milestone
 
-Phase 1 project foundation: Git, TypeScript, oxlint, Vitest, npm workspaces, and a placeholder Electron + React app. No GameState.
+Phase 2: serializable GameState in `@mtgcommander/engine` with 2–4 player factories and JSON round-trip tests. No rules engine.
 
 ### Next Milestone
 
-Phase 2 — Core Game-State Model, only after Checkpoint 1 is approved.
+Phase 3 — Zone Engine, only after Checkpoint 2 is approved.
 
 ---
 
@@ -82,19 +82,19 @@ Do not modify, import, link, or share code with the sibling deck builder during 
 
 ## Phase 2 — Core Game-State Model
 
-* ⬜ GameState.
-* ⬜ PlayerState.
-* ⬜ CardDefinition.
-* ⬜ CardInstance.
-* ⬜ Zone model.
-* ⬜ Turn model.
-* ⬜ ManaPool.
-* ⬜ Stack.
-* ⬜ CommanderState.
-* ⬜ GameAction.
-* ⬜ GameEvent.
-* ⬜ Serialization tests.
-* ⬜ Checkpoint 2 — Game State Exists Without UI.
+* 🟢 GameState.
+* 🟢 PlayerState.
+* 🟢 CardDefinition.
+* 🟢 CardInstance.
+* 🟢 Zone model.
+* 🟢 Turn model.
+* 🟢 ManaPool.
+* 🟢 Stack.
+* 🟢 CommanderState.
+* 🟢 GameAction.
+* 🟢 GameEvent.
+* 🟢 Serialization tests.
+* 🟢 Checkpoint 2 — Game State Exists Without UI.
 
 ## Phase 3 — Zone Engine
 
@@ -688,4 +688,75 @@ Fix the “Error launching app / Unable to find Electron app at …\client” di
 ### Next Task
 
 Phase 2 — GameState data model only.
+
+---
+
+## 2026-08-13 — Checkpoint 2 game-state data model
+
+### Objective
+
+Add a UI-free, serializable Commander GameState model. Data only — no zone movement, stack resolution, or networking.
+
+### Work Completed
+
+- Added engine types: GameState, PlayerState, CardDefinition, CardInstance, zones, turn/phase/step, ManaPool, stack, CommanderState, GameAction, GameEvent.
+- Added `createGameState` for 2–4 players (40 life, empty zones).
+- Added JSON serialize/parse for GameState, GameAction, and GameEvent.
+- Added Vitest coverage for creation, unique IDs, zones, turn, mana, commander fields, actions/events, and round-trip equality.
+- Engine package still has no React/Electron/DOM/network imports.
+
+### Tests Run
+
+- `npm test` — PASS (13 tests)
+- `npm run typecheck` — PASS
+- `npm run lint` — PASS
+- `npm run build` — PASS
+
+### Results
+
+- A GameState can be created and reconstructed from JSON without a UI.
+- Checkpoint tag: `checkpoint-02-game-state`
+
+### Problems Encountered
+
+- First round-trip failed because empty `oracleText` was rejected. Parser now allows empty manaCost/oracleText strings.
+
+### Decisions Made
+
+- Commander tax is a number on `CommanderState`; damage is `damageReceived` keyed by commander instance ID.
+- GameAction/GameEvent are small discriminated unions (`pass_priority` / `concede`, plus created/passed/conceded events). More kinds later when those systems exist.
+- Did not move the Checkpoint 1 tag; Electron launch fix is a separate commit on `main`.
+
+### Files Changed
+
+- `engine/src/types.ts`
+- `engine/src/ids.ts`
+- `engine/src/info.ts`
+- `engine/src/createGame.ts`
+- `engine/src/serialize.ts`
+- `engine/src/index.ts`
+- `engine/src/index.test.ts`
+- `engine/src/gameState.test.ts`
+- `docs/DEVELOPMENT_PROGRESS.md`
+
+### Checkpoint
+
+- PASS (awaiting human review before Phase 3)
+
+```text
+CHECKPOINT 2 — GAME STATE EXISTS WITHOUT UI
+
+Status: PASS
+
+Tests: PASS
+Typecheck: PASS
+Lint: PASS
+Build: PASS
+Engine independent of React/Electron: PASS
+Rules engine / zone movement: NOT implemented
+```
+
+### Next Task
+
+Stop. Do not start Phase 3 until Checkpoint 2 is approved.
 

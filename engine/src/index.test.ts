@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getEngineInfo } from "./index";
+import { getEngineInfo } from "./info";
 
 describe("engine foundation", () => {
   it("reports package identity without a UI", () => {
