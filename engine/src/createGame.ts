@@ -30,7 +30,7 @@ export function emptyPlayerZones(): PlayerZones {
 
 export function createCardDefinition(
   input: Pick<CardDefinition, "name" | "typeLine"> &
-    Partial<Pick<CardDefinition, "manaCost" | "oracleText" | "id">>,
+    Partial<Pick<CardDefinition, "manaCost" | "oracleText" | "id" | "power" | "toughness">>,
 ): CardDefinition {
   return {
     id: input.id ?? createId("def"),
@@ -38,6 +38,8 @@ export function createCardDefinition(
     manaCost: input.manaCost ?? "",
     typeLine: input.typeLine,
     oracleText: input.oracleText ?? "",
+    power: input.power ?? null,
+    toughness: input.toughness ?? null,
   };
 }
 
@@ -55,6 +57,7 @@ export function createCardInstance(input: {
     controllerId: input.controllerId ?? input.ownerId,
     zone: input.zone,
     tapped: false,
+    damageMarked: 0,
   };
 }
 

@@ -141,6 +141,8 @@ export function parseGameState(json: string): GameState {
       controllerId: expectString(card.controllerId, "card.controllerId"),
       zone: zone as (typeof ZONE_KEYS)[number],
       tapped: card.tapped === undefined ? false : card.tapped === true,
+      damageMarked:
+        card.damageMarked === undefined ? 0 : expectNumber(card.damageMarked, "card.damageMarked"),
     };
   }
 
@@ -159,6 +161,11 @@ export function parseGameState(json: string): GameState {
       manaCost: expectString(def.manaCost, "definition.manaCost", true),
       typeLine: expectString(def.typeLine, "definition.typeLine"),
       oracleText: expectString(def.oracleText, "definition.oracleText", true),
+      power: def.power === undefined || def.power === null ? null : expectNumber(def.power, "definition.power"),
+      toughness:
+        def.toughness === undefined || def.toughness === null
+          ? null
+          : expectNumber(def.toughness, "definition.toughness"),
     };
   }
 

@@ -20,21 +20,21 @@ A checkbox becomes 🟢 Complete only when the work has been implemented **and**
 
 ## Project Status
 
-**Current Phase:** Phase 7 complete — continuing autonomously
-**Current Checkpoint:** Checkpoint 7 — Game Actions
+**Current Phase:** Phase 8 complete — continuing autonomously
+**Current Checkpoint:** Checkpoint 8 — Basic Effects
 **Overall Status:** 🟡 In Progress
 
 ### Current Objective
 
-Autonomous run through Phases 7–10. Phase 7 game actions are implemented.
+Autonomous run through Phases 7–10. Phase 8 basic effects are implemented.
 
 ### Last Completed Milestone
 
-Phase 7: authoritative `applyAction` for pass and basic spell casting with mana payment, stack, resolution, and illegal-action atomicity.
+Phase 8: reusable effects for life, damage, draw, zone moves, tap/untap, mana, and basic tokens.
 
 ### Next Milestone
 
-Phase 8 — Basic Card Effects.
+Phase 9 — Combat.
 
 ---
 
@@ -157,15 +157,15 @@ Do not modify, import, link, or share code with the sibling deck builder during 
 
 ## Phase 8 — Basic Card Effects
 
-* ⬜ Gain life.
-* ⬜ Lose life.
-* ⬜ Deal damage.
-* ⬜ Draw.
-* ⬜ Move a card between zones.
-* ⬜ Tap / untap.
-* ⬜ Add mana.
-* ⬜ Basic token.
-* ⬜ Checkpoint 8 — Basic Effects.
+* 🟢 Gain life.
+* 🟢 Lose life.
+* 🟢 Deal damage.
+* 🟢 Draw.
+* 🟢 Move a card between zones.
+* 🟢 Tap / untap.
+* 🟢 Add mana.
+* 🟢 Basic token.
+* 🟢 Checkpoint 8 — Basic Effects.
 
 ## Phase 9 — Combat
 
@@ -1060,5 +1060,59 @@ Connect zones, priority, stack, mana, and turns behind an authoritative `applyAc
 ### Next Task
 
 Phase 8 — basic card effects.
+
+---
+
+## 2026-08-13 — Checkpoint 8 basic effects
+
+### Objective
+
+Establish reusable card-effect primitives that change GameState without the UI owning rules.
+
+### Work Completed
+
+- Added `GameEffect` and `applyEffect` for gain/lose life, damage, draw, zone moves, tap/untap, add mana, and basic tokens.
+- Card definitions now carry optional power/toughness. Card instances track `damageMarked`.
+- Lethal creature damage moves the card to the graveyard via the zone engine.
+- Draw moves library index 0 to hand and rejects overdraw without partial draws.
+
+### Tests Run
+
+- `npm test` — PASS (83 tests)
+- `npm run typecheck` — PASS
+- `npm run lint` — PASS
+- `npm run build` — PASS
+
+### Results
+
+- Effects modify only intended state, preserve instance IDs and zone integrity, and serialize.
+
+### Problems Encountered
+
+- Duplicate type re-exports failed typecheck; fixed by exporting `GameEffect` once from `index.ts`.
+
+### Decisions Made
+
+- Effects are data plus `applyEffect`, not per-card hard-coding.
+- Player damage is life loss. Commander-damage tracking waits for combat.
+- Tokens are real CardInstance + CardDefinition objects on the battlefield.
+
+### Files Changed
+
+- `engine/src/effects.ts`
+- `engine/src/effects.test.ts`
+- `engine/src/types.ts`
+- `engine/src/createGame.ts`
+- `engine/src/serialize.ts`
+- `engine/src/index.ts`
+- `docs/DEVELOPMENT_PROGRESS.md`
+
+### Checkpoint
+
+- PASS
+
+### Next Task
+
+Phase 9 — combat.
 
 

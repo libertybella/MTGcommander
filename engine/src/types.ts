@@ -68,6 +68,8 @@ export type CardDefinition = {
   manaCost: string;
   typeLine: string;
   oracleText: string;
+  power: number | null;
+  toughness: number | null;
 };
 
 export type CardInstance = {
@@ -77,6 +79,7 @@ export type CardInstance = {
   controllerId: PlayerId;
   zone: ZoneName;
   tapped: boolean;
+  damageMarked: number;
 };
 
 export type CommanderState = {
@@ -113,6 +116,38 @@ export type GameState = {
   priorityPlayerId: PlayerId;
   passesSinceAction: number;
 };
+
+export type GameEffect =
+  | { kind: "gain_life"; playerId: PlayerId; amount: number }
+  | { kind: "lose_life"; playerId: PlayerId; amount: number }
+  | {
+      kind: "deal_damage";
+      sourceId: CardInstanceId | null;
+      target: EffectTarget;
+      amount: number;
+    }
+  | { kind: "draw"; playerId: PlayerId; count: number }
+  | {
+      kind: "move_card";
+      cardId: CardInstanceId;
+      toZone: Exclude<ZoneName, "stack">;
+      libraryPosition?: "top" | "bottom";
+    }
+  | { kind: "tap"; cardId: CardInstanceId }
+  | { kind: "untap"; cardId: CardInstanceId }
+  | { kind: "add_mana"; playerId: PlayerId; mana: Partial<ManaPool> }
+  | {
+      kind: "create_token";
+      ownerId: PlayerId;
+      name: string;
+      typeLine: string;
+      power?: number | null;
+      toughness?: number | null;
+    };
+
+export type EffectTarget =
+  | { type: "player"; playerId: PlayerId }
+  | { type: "creature"; cardId: CardInstanceId };
 
 export type GameAction =
   | { kind: "pass_priority"; playerId: PlayerId }

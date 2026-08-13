@@ -14,6 +14,7 @@ export {
   PLAYER_ZONES,
 } from "./zones";
 export { applyAction, applyActions } from "./actions";
+export { applyEffect, applyEffects } from "./effects";
 export { passPriority, putSpellOnStack, resolveTopOfStack } from "./stack";
 export {
   definitionTypeLine,
@@ -65,6 +66,8 @@ export type {
   Color,
   CommanderState,
   GameAction,
+  GameEffect,
+  EffectTarget,
   GameEvent,
   GameId,
   GameState,
