@@ -1,3 +1,4 @@
+import { declareAttackers, declareBlockers, pendingBlockerPlayer, priorityForStep } from "./combat";
 import { isInstant, isInstantOrSorcery, isLand, isMainPhase } from "./cardTypes";
 import { canPayManaCost, payManaCost } from "./mana";
 import { passPriority, putSpellOnStack } from "./stack";
@@ -80,12 +81,18 @@ function applyCastSpell(state: GameState, playerId: PlayerId, cardId: CardInstan
 
 function applyPassPriority(state: GameState, playerId: PlayerId): GameState {
   requirePriority(state, playerId);
+  if (
+    state.turn.step === "declareBlockers" &&
+    pendingBlockerPlayer(state) === playerId
+  ) {
+    return declareBlockers(state, playerId, []);
+  }
   const completingEmptyPass =
     state.stack.length === 0 && state.passesSinceAction + 1 >= state.players.length;
   let next = passPriority(state, playerId);
   if (completingEmptyPass) {
     next = advanceStep(next);
-    next.priorityPlayerId = next.turn.activePlayerId;
+    next.priorityPlayerId = priorityForStep(next);
     next.passesSinceAction = 0;
   }
   return next;
@@ -106,6 +113,10 @@ export function applyAction(state: GameState, action: GameAction): GameState {
           throw new Error("Targets are not supported");
         }
         return applyCastSpell(state, action.playerId, action.cardId);
+      case "declare_attackers":
+        return declareAttackers(state, action.playerId, action.attacks);
+      case "declare_blockers":
+        return declareBlockers(state, action.playerId, action.blocks);
       case "concede":
         throw new Error("Concede is not implemented");
       default: {

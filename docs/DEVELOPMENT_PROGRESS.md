@@ -20,21 +20,21 @@ A checkbox becomes 🟢 Complete only when the work has been implemented **and**
 
 ## Project Status
 
-**Current Phase:** Phase 8 complete — continuing autonomously
-**Current Checkpoint:** Checkpoint 8 — Basic Effects
+**Current Phase:** Phase 9 complete — continuing autonomously
+**Current Checkpoint:** Checkpoint 9 — Combat
 **Overall Status:** 🟡 In Progress
 
 ### Current Objective
 
-Autonomous run through Phases 7–10. Phase 8 basic effects are implemented.
+Autonomous run through Phases 7–10. Phase 9 combat is implemented.
 
 ### Last Completed Milestone
 
-Phase 8: reusable effects for life, damage, draw, zone moves, tap/untap, mana, and basic tokens.
+Phase 9: declare attackers/blockers, combat damage, lethal death, commander combat damage, combat cleanup.
 
 ### Next Milestone
 
-Phase 9 — Combat.
+Phase 10 — Commander.
 
 ---
 
@@ -169,15 +169,15 @@ Do not modify, import, link, or share code with the sibling deck builder during 
 
 ## Phase 9 — Combat
 
-* ⬜ Attackers.
-* ⬜ Blockers.
-* ⬜ Combat damage.
-* ⬜ Lethal damage.
-* ⬜ Creature death.
-* ⬜ Player damage.
-* ⬜ Multiple attackers/blockers.
-* ⬜ Commander combat damage.
-* ⬜ Checkpoint 9 — Combat.
+* 🟢 Attackers.
+* 🟢 Blockers.
+* 🟢 Combat damage.
+* 🟢 Lethal damage.
+* 🟢 Creature death.
+* 🟢 Player damage.
+* 🟢 Multiple attackers/blockers.
+* 🟢 Commander combat damage.
+* 🟢 Checkpoint 9 — Combat.
 
 ## Phase 10 — Commander
 
@@ -1114,5 +1114,66 @@ Establish reusable card-effect primitives that change GameState without the UI o
 ### Next Task
 
 Phase 9 — combat.
+
+---
+
+## 2026-08-13 — Checkpoint 9 combat
+
+### Objective
+
+Support a basic Commander combat sequence on the existing turn, zone, and priority systems.
+
+### Work Completed
+
+- Added declare_attackers and declare_blockers game actions.
+- Attackers must be untapped, non-sick creatures the active player controls.
+- Blockers must be untapped creatures the defending player controls.
+- Combat damage is dealt when the combat damage step begins.
+- Lethal damage moves creatures to the graveyard.
+- Unblocked commanders add to that player's commander.damageReceived.
+- Combat flags clear at end of combat; marked damage clears at cleanup.
+
+### Tests Run
+
+- `npm test` — PASS (92 tests)
+- `npm run typecheck` — PASS
+- `npm run lint` — PASS
+- `npm run build` — PASS
+
+### Results
+
+- Basic combat works for unblocked, blocked, multiple attackers/blockers, illegal declarations, and cleanup.
+
+### Problems Encountered
+
+- Unblocked-combat tests originally under-counted passes through declare blockers. Tests now walk to the named step.
+
+### Decisions Made
+
+- Passing as the pending defending player in declare blockers is an empty block declaration.
+- Multiple blockers use lethal-then-overflow damage assignment in declaration order. No trample.
+- Summoning sickness is set on battlefield entry and cleared on the controller's untap.
+- Combat keywords are not implemented.
+
+### Files Changed
+
+- `engine/src/combat.ts`
+- `engine/src/combat.test.ts`
+- `engine/src/types.ts`
+- `engine/src/createGame.ts`
+- `engine/src/serialize.ts`
+- `engine/src/zones.ts`
+- `engine/src/turn.ts`
+- `engine/src/actions.ts`
+- `engine/src/index.ts`
+- `docs/DEVELOPMENT_PROGRESS.md`
+
+### Checkpoint
+
+- PASS
+
+### Next Task
+
+Phase 10 — commander rules.
 
 

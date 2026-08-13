@@ -49,6 +49,7 @@ export function createCardInstance(input: {
   zone: CardInstance["zone"];
   controllerId?: CardInstance["controllerId"];
   id?: CardInstance["id"];
+  summoningSick?: boolean;
 }): CardInstance {
   return {
     id: input.id ?? createId("card"),
@@ -58,6 +59,9 @@ export function createCardInstance(input: {
     zone: input.zone,
     tapped: false,
     damageMarked: 0,
+    attacking: false,
+    blockingAttackerId: null,
+    summoningSick: input.summoningSick ?? input.zone === "battlefield",
   };
 }
 
@@ -106,5 +110,6 @@ export function createGameState(options: CreateGameOptions): GameState {
     definitions: {},
     priorityPlayerId: first.id,
     passesSinceAction: 0,
+    combat: null,
   };
 }

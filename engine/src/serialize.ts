@@ -143,6 +143,12 @@ export function parseGameState(json: string): GameState {
       tapped: card.tapped === undefined ? false : card.tapped === true,
       damageMarked:
         card.damageMarked === undefined ? 0 : expectNumber(card.damageMarked, "card.damageMarked"),
+      attacking: card.attacking === true,
+      blockingAttackerId:
+        card.blockingAttackerId === undefined || card.blockingAttackerId === null
+          ? null
+          : expectString(card.blockingAttackerId, "card.blockingAttackerId"),
+      summoningSick: card.summoningSick === true,
     };
   }
 
@@ -210,11 +216,46 @@ export function parseGameState(json: string): GameState {
     stack,
     cards,
     definitions,
+    combat: parseCombat(raw.combat),
     priorityPlayerId: expectString(
       raw.priorityPlayerId ?? raw.turn.activePlayerId,
       "priorityPlayerId",
     ),
     passesSinceAction: expectNumber(raw.passesSinceAction ?? 0, "passesSinceAction"),
+  };
+}
+
+function parseCombat(value: unknown): GameState["combat"] {
+  if (value === undefined || value === null) {
+    return null;
+  }
+  if (!isRecord(value)) {
+    throw new Error("Invalid combat");
+  }
+  if (!Array.isArray(value.attacks) || !isRecord(value.blockers)) {
+    throw new Error("Invalid combat attacks/blockers");
+  }
+  const attacks = value.attacks.map((entry, index) => {
+    if (!isRecord(entry)) {
+      throw new Error(`Invalid combat attack ${index}`);
+    }
+    return {
+      attackerId: expectString(entry.attackerId, "combat.attackerId"),
+      defenderId: expectString(entry.defenderId, "combat.defenderId"),
+    };
+  });
+  const blockers: Record<string, string[]> = {};
+  for (const [attackerId, list] of Object.entries(value.blockers)) {
+    blockers[attackerId] = expectStringArray(list, `combat.blockers.${attackerId}`);
+  }
+  return {
+    attacks,
+    blockers,
+    attackersDeclared: value.attackersDeclared === true,
+    declaredBlockersFor: expectStringArray(
+      value.declaredBlockersFor ?? [],
+      "combat.declaredBlockersFor",
+    ),
   };
 }
 
@@ -240,6 +281,42 @@ export function parseGameAction(json: string): GameAction {
       kind,
       playerId,
       cardId: expectString(raw.cardId, "action.cardId"),
+    };
+  }
+  if (kind === "declare_attackers") {
+    if (!Array.isArray(raw.attacks)) {
+      throw new Error("Invalid declare_attackers attacks");
+    }
+    return {
+      kind,
+      playerId,
+      attacks: raw.attacks.map((entry, index) => {
+        if (!isRecord(entry)) {
+          throw new Error(`Invalid attack ${index}`);
+        }
+        return {
+          attackerId: expectString(entry.attackerId, "attack.attackerId"),
+          defenderId: expectString(entry.defenderId, "attack.defenderId"),
+        };
+      }),
+    };
+  }
+  if (kind === "declare_blockers") {
+    if (!Array.isArray(raw.blocks)) {
+      throw new Error("Invalid declare_blockers blocks");
+    }
+    return {
+      kind,
+      playerId,
+      blocks: raw.blocks.map((entry, index) => {
+        if (!isRecord(entry)) {
+          throw new Error(`Invalid block ${index}`);
+        }
+        return {
+          blockerId: expectString(entry.blockerId, "block.blockerId"),
+          attackerId: expectString(entry.attackerId, "block.attackerId"),
+        };
+      }),
     };
   }
   throw new Error(`Unknown GameAction kind ${kind}`);

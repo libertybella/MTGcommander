@@ -80,6 +80,9 @@ export type CardInstance = {
   zone: ZoneName;
   tapped: boolean;
   damageMarked: number;
+  attacking: boolean;
+  blockingAttackerId: CardInstanceId | null;
+  summoningSick: boolean;
 };
 
 export type CommanderState = {
@@ -106,6 +109,19 @@ export type StackObject = {
   kind: "spell" | "ability";
 };
 
+export type CombatAttack = {
+  attackerId: CardInstanceId;
+  defenderId: PlayerId;
+};
+
+export type CombatState = {
+  attacks: CombatAttack[];
+  /** attackerId -> blockerIds in damage-assignment order */
+  blockers: Record<CardInstanceId, CardInstanceId[]>;
+  attackersDeclared: boolean;
+  declaredBlockersFor: PlayerId[];
+};
+
 export type GameState = {
   id: GameId;
   players: PlayerState[];
@@ -113,6 +129,7 @@ export type GameState = {
   stack: StackObject[];
   cards: Record<CardInstanceId, CardInstance>;
   definitions: Record<CardDefinitionId, CardDefinition>;
+  combat: CombatState | null;
   priorityPlayerId: PlayerId;
   passesSinceAction: number;
 };
@@ -152,6 +169,16 @@ export type EffectTarget =
 export type GameAction =
   | { kind: "pass_priority"; playerId: PlayerId }
   | { kind: "cast_spell"; playerId: PlayerId; cardId: CardInstanceId; targets?: unknown }
+  | {
+      kind: "declare_attackers";
+      playerId: PlayerId;
+      attacks: CombatAttack[];
+    }
+  | {
+      kind: "declare_blockers";
+      playerId: PlayerId;
+      blocks: { blockerId: CardInstanceId; attackerId: CardInstanceId }[];
+    }
   | { kind: "concede"; playerId: PlayerId };
 
 export type GameEvent =

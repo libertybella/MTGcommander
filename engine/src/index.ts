@@ -14,6 +14,7 @@ export {
   PLAYER_ZONES,
 } from "./zones";
 export { applyAction, applyActions } from "./actions";
+export { declareAttackers, declareBlockers, isCommander, priorityForStep } from "./combat";
 export { applyEffect, applyEffects } from "./effects";
 export { passPriority, putSpellOnStack, resolveTopOfStack } from "./stack";
 export {
@@ -65,6 +66,8 @@ export type {
   CardInstanceId,
   Color,
   CommanderState,
+  CombatAttack,
+  CombatState,
   GameAction,
   GameEffect,
   EffectTarget,

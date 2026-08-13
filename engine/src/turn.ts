@@ -1,4 +1,10 @@
 import { cloneGameState } from "./clone";
+import {
+  applyCombatDamage,
+  clearCombatFlagsInPlace,
+  clearDamageInPlace,
+  ensureCombatInPlace,
+} from "./combat";
 import { emptyManaPoolsInPlace } from "./mana";
 import type { GameState, Phase, PlayerId, Step } from "./types";
 
@@ -42,16 +48,34 @@ function nextPlayerId(state: GameState, currentId: PlayerId): PlayerId {
   return next.id;
 }
 
-function onEnterStep(state: GameState): void {
-  if (state.turn.step !== "untap") {
-    return;
-  }
-  const activeId = state.turn.activePlayerId;
-  for (const card of Object.values(state.cards)) {
-    if (card.zone === "battlefield" && card.controllerId === activeId) {
-      card.tapped = false;
+function onEnterStep(state: GameState): GameState {
+  if (state.turn.step === "untap") {
+    const activeId = state.turn.activePlayerId;
+    for (const card of Object.values(state.cards)) {
+      if (card.zone === "battlefield" && card.controllerId === activeId) {
+        card.tapped = false;
+        card.summoningSick = false;
+      }
     }
+    return state;
   }
+  if (state.turn.step === "declareAttackers") {
+    ensureCombatInPlace(state);
+    return state;
+  }
+  if (state.turn.step === "combatDamage") {
+    return applyCombatDamage(state);
+  }
+  if (state.turn.step === "endCombat") {
+    clearCombatFlagsInPlace(state);
+    return state;
+  }
+  if (state.turn.step === "cleanup") {
+    clearDamageInPlace(state);
+    clearCombatFlagsInPlace(state);
+    return state;
+  }
+  return state;
 }
 
 /**
@@ -78,8 +102,7 @@ export function advanceStep(state: GameState): GameState {
     next.turn.step = slot.step;
   }
 
-  onEnterStep(next);
-  return next;
+  return onEnterStep(next);
 }
 
 export function advanceSteps(state: GameState, count: number): GameState {

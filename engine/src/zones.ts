@@ -1,5 +1,5 @@
 import { cloneGameState } from "./clone";
-import type { CardInstanceId, GameState, PlayerState, PlayerZones, ZoneName } from "./types";
+import type { CardInstance, CardInstanceId, GameState, PlayerState, PlayerZones, ZoneName } from "./types";
 
 export const PLAYER_ZONES: (keyof PlayerZones)[] = [
   "library",
@@ -105,7 +105,19 @@ export function enterOwnerZone(
   }
   insertIntoZone(owner, toZone, cardId, options.libraryPosition ?? "top");
   card.zone = toZone;
+  applyZoneChangeFlags(card, toZone);
   return next;
+}
+
+function applyZoneChangeFlags(card: CardInstance, toZone: keyof PlayerZones): void {
+  card.attacking = false;
+  card.blockingAttackerId = null;
+  if (toZone === "battlefield") {
+    card.summoningSick = true;
+    card.damageMarked = 0;
+  } else {
+    card.damageMarked = 0;
+  }
 }
 
 function insertIntoZone(
@@ -169,6 +181,7 @@ export function moveCard(
   removeFromZone(occupant, located.zone, cardId);
   insertIntoZone(owner, toZone, cardId, options.libraryPosition ?? "top");
   card.zone = toZone;
+  applyZoneChangeFlags(card, toZone);
 
   if (countCardPlacements(next, cardId) !== 1) {
     throw new Error(`Zone integrity failed for ${cardId}`);
