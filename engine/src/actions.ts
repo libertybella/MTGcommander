@@ -1,6 +1,6 @@
 import { declareAttackers, declareBlockers, pendingBlockerPlayer, priorityForStep } from "./combat";
-import { isInstant, isInstantOrSorcery, isLand, isMainPhase } from "./cardTypes";
-import { canPayManaCost, payManaCost } from "./mana";
+import { isCommander, isInstant, isInstantOrSorcery, isLand, isMainPhase } from "./cardTypes";
+import { canPayManaCost, parseManaCost, payManaCost } from "./mana";
 import { passPriority, putSpellOnStack } from "./stack";
 import { advanceStep } from "./turn";
 import { findCardZone } from "./zones";
@@ -37,7 +37,11 @@ function canCastNonInstantNow(state: GameState, playerId: PlayerId): boolean {
   );
 }
 
-function validateCast(state: GameState, playerId: PlayerId, cardId: CardInstanceId): string {
+function validateCast(
+  state: GameState,
+  playerId: PlayerId,
+  cardId: CardInstanceId,
+): { cost: ReturnType<typeof parseManaCost>; fromCommand: boolean } {
   requirePriority(state, playerId);
 
   const card = state.cards[cardId];
@@ -50,7 +54,14 @@ function validateCast(state: GameState, playerId: PlayerId, cardId: CardInstance
   }
 
   const located = findCardZone(state, cardId);
-  if (!located || located.zone !== "hand" || located.playerId !== playerId) {
+  const fromHand = Boolean(located && located.zone === "hand" && located.playerId === playerId);
+  const fromCommand = Boolean(
+    located &&
+      located.zone === "command" &&
+      located.playerId === playerId &&
+      isCommander(state, cardId),
+  );
+  if (!fromHand && !fromCommand) {
     throw new Error(`Card ${cardId} must be in the player's hand`);
   }
 
@@ -66,17 +77,30 @@ function validateCast(state: GameState, playerId: PlayerId, cardId: CardInstance
   if (!player) {
     throw new Error(`Unknown player ${playerId}`);
   }
-  if (!canPayManaCost(player.mana, definition.manaCost)) {
+  const cost = parseManaCost(definition.manaCost);
+  if (fromCommand) {
+    cost.generic += player.commander.tax;
+  }
+  if (!canPayManaCost(player.mana, cost)) {
     throw new Error("Cannot pay mana cost");
   }
 
-  return definition.manaCost;
+  return { cost, fromCommand };
 }
 
 function applyCastSpell(state: GameState, playerId: PlayerId, cardId: CardInstanceId): GameState {
-  const cost = validateCast(state, playerId, cardId);
+  const { cost, fromCommand } = validateCast(state, playerId, cardId);
   const paid = payManaCost(state, playerId, cost);
-  return putSpellOnStack(paid, cardId);
+  const stacked = putSpellOnStack(paid, cardId);
+  if (!fromCommand) {
+    return stacked;
+  }
+  const caster = stacked.players.find((player) => player.id === playerId);
+  if (!caster) {
+    throw new Error(`Unknown player ${playerId}`);
+  }
+  caster.commander.tax += 2;
+  return stacked;
 }
 
 function applyPassPriority(state: GameState, playerId: PlayerId): GameState {

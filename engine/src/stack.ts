@@ -1,6 +1,6 @@
 import { createId } from "./ids";
 import { cloneGameState } from "./clone";
-import { isInstantOrSorcery } from "./cardTypes";
+import { isCommander, isInstantOrSorcery } from "./cardTypes";
 import { enterOwnerZone, findCardZone, removeCardFromCurrentZone } from "./zones";
 import type { CardInstanceId, GameState, PlayerId, ZoneName } from "./types";
 
@@ -22,7 +22,8 @@ export function putSpellOnStack(state: GameState, cardId: CardInstanceId): GameS
     throw new Error(`Unknown card ${cardId}`);
   }
   const located = findCardZone(state, cardId);
-  if (!located || located.zone !== "hand") {
+  const fromCommand = located?.zone === "command" && isCommander(state, cardId);
+  if (!located || (located.zone !== "hand" && !fromCommand)) {
     throw new Error(`Card ${cardId} must be in hand to put on the stack`);
   }
 

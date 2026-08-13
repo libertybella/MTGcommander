@@ -163,10 +163,15 @@ export function emptyManaPools(state: GameState): GameState {
   return next;
 }
 
-export function payManaCost(state: GameState, playerId: PlayerId, cost: string): GameState {
+export function payManaCost(
+  state: GameState,
+  playerId: PlayerId,
+  cost: string | ParsedManaCost,
+): GameState {
   const next = cloneGameState(state);
   const player = requirePlayer(next, playerId);
-  player.mana = spendFromPool(player.mana, parseManaCost(cost));
+  const parsed = typeof cost === "string" ? parseManaCost(cost) : cost;
+  player.mana = spendFromPool(player.mana, parsed);
   return next;
 }
 

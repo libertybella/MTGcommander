@@ -14,12 +14,14 @@ export {
   PLAYER_ZONES,
 } from "./zones";
 export { applyAction, applyActions } from "./actions";
-export { declareAttackers, declareBlockers, isCommander, priorityForStep } from "./combat";
+export { declareAttackers, declareBlockers, priorityForStep } from "./combat";
 export { applyEffect, applyEffects } from "./effects";
 export { passPriority, putSpellOnStack, resolveTopOfStack } from "./stack";
 export {
   definitionTypeLine,
+  isCommander,
   isCreature,
+  COMMANDER_DAMAGE_TO_LOSE,
   isInstant,
   isInstantOrSorcery,
   isLand,

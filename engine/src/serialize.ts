@@ -93,6 +93,7 @@ function parsePlayer(value: unknown): PlayerState {
       tax: expectNumber(value.commander.tax, "commander.tax"),
       damageReceived,
     },
+    lost: value.lost === true,
   };
 }
 

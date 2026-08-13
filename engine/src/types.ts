@@ -100,6 +100,7 @@ export type PlayerState = {
   mana: ManaPool;
   zones: PlayerZones;
   commander: CommanderState;
+  lost: boolean;
 };
 
 export type StackObject = {

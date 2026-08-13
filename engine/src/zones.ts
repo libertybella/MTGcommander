@@ -1,4 +1,5 @@
 import { cloneGameState } from "./clone";
+import { isCommander } from "./cardTypes";
 import type { CardInstance, CardInstanceId, GameState, PlayerState, PlayerZones, ZoneName } from "./types";
 
 export const PLAYER_ZONES: (keyof PlayerZones)[] = [
@@ -12,6 +13,17 @@ export const PLAYER_ZONES: (keyof PlayerZones)[] = [
 
 export function isPlayerZone(zone: ZoneName): zone is keyof PlayerZones {
   return (PLAYER_ZONES as readonly string[]).includes(zone);
+}
+
+function commanderAwareDestination(
+  state: GameState,
+  cardId: CardInstanceId,
+  toZone: keyof PlayerZones,
+): keyof PlayerZones {
+  if ((toZone === "graveyard" || toZone === "exile") && isCommander(state, cardId)) {
+    return "command";
+  }
+  return toZone;
 }
 
 export type MoveCardOptions = {
@@ -91,6 +103,7 @@ export function enterOwnerZone(
   if (!isPlayerZone(toZone)) {
     throw new Error(`Cannot enter zone ${toZone}`);
   }
+  const destination = commanderAwareDestination(state, cardId, toZone);
   const next = cloneGameState(state);
   const card = next.cards[cardId];
   if (!card) {
@@ -103,9 +116,9 @@ export function enterOwnerZone(
   if (!owner) {
     throw new Error(`Card ${cardId} owner is missing`);
   }
-  insertIntoZone(owner, toZone, cardId, options.libraryPosition ?? "top");
-  card.zone = toZone;
-  applyZoneChangeFlags(card, toZone);
+  insertIntoZone(owner, destination, cardId, options.libraryPosition ?? "top");
+  card.zone = destination;
+  applyZoneChangeFlags(card, destination);
   return next;
 }
 
@@ -174,14 +187,15 @@ export function moveCard(
     throw new Error(`Card ${cardId} is not in its owner's zones`);
   }
 
-  if (located.zone === toZone) {
+  const destination = commanderAwareDestination(next, cardId, toZone);
+  if (located.zone === destination) {
     return next;
   }
 
   removeFromZone(occupant, located.zone, cardId);
-  insertIntoZone(owner, toZone, cardId, options.libraryPosition ?? "top");
-  card.zone = toZone;
-  applyZoneChangeFlags(card, toZone);
+  insertIntoZone(owner, destination, cardId, options.libraryPosition ?? "top");
+  card.zone = destination;
+  applyZoneChangeFlags(card, destination);
 
   if (countCardPlacements(next, cardId) !== 1) {
     throw new Error(`Zone integrity failed for ${cardId}`);

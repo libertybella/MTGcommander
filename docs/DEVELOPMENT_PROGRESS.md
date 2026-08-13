@@ -20,21 +20,21 @@ A checkbox becomes 🟢 Complete only when the work has been implemented **and**
 
 ## Project Status
 
-**Current Phase:** Phase 9 complete — continuing autonomously
-**Current Checkpoint:** Checkpoint 9 — Combat
+**Current Phase:** Phase 10 complete — awaiting review
+**Current Checkpoint:** Checkpoint 10 — Commander
 **Overall Status:** 🟡 In Progress
 
 ### Current Objective
 
-Autonomous run through Phases 7–10. Phase 9 combat is implemented.
+Stop. Do not start Phase 11 until Checkpoint 10 is reviewed.
 
 ### Last Completed Milestone
 
-Phase 9: declare attackers/blockers, combat damage, lethal death, commander combat damage, combat cleanup.
+Phase 10: commander designation, command-zone casting, tax, return to command zone, commander damage, and 21-damage loss.
 
 ### Next Milestone
 
-Phase 10 — Commander.
+Phase 11 — Deck Import (not started).
 
 ---
 
@@ -181,13 +181,13 @@ Do not modify, import, link, or share code with the sibling deck builder during 
 
 ## Phase 10 — Commander
 
-* ⬜ 40 life.
-* ⬜ Commander zone.
-* ⬜ Commander tax.
-* ⬜ Commander cast tracking.
-* ⬜ Commander damage.
-* ⬜ 21 commander damage loss.
-* ⬜ Checkpoint 10 — Commander.
+* 🟢 40 life.
+* 🟢 Commander zone.
+* 🟢 Commander tax.
+* 🟢 Commander cast tracking.
+* 🟢 Commander damage.
+* 🟢 21 commander damage loss.
+* 🟢 Checkpoint 10 — Commander.
 
 ## Phase 11 — Deck Import
 
@@ -1175,5 +1175,67 @@ Support a basic Commander combat sequence on the existing turn, zone, and priori
 ### Next Task
 
 Phase 10 — commander rules.
+
+---
+
+## 2026-08-13 — Checkpoint 10 commander
+
+### Objective
+
+Implement fundamental Commander rules: command zone, tax, casting, return, damage tracking, and the 21-damage loss condition.
+
+### Work Completed
+
+- Commanders can be cast from the command zone through `applyAction`.
+- Casts from the command zone pay printed cost plus current tax, then tax increases by 2.
+- A commander that would go to the graveyard or exile returns to the command zone instead.
+- Commander combat damage is tracked by CardInstance ID.
+- 21 or more damage from a single commander instance sets `player.lost`.
+- 40 life remains the starting total.
+
+### Tests Run
+
+- `npm test` — PASS (98 tests)
+- `npm run typecheck` — PASS
+- `npm run lint` — PASS
+- `npm run build` — PASS
+
+### Results
+
+- Commander identity is the instance ID, not the card name. Serialization preserves tax, damage, and loss.
+
+### Problems Encountered
+
+- None after moving `isCommander` into `cardTypes` so zones can redirect without a circular import.
+
+### Decisions Made
+
+- Owner always returns the commander to the command zone (no replacement choice yet).
+- Tax increments when the commander is put on the stack from the command zone, even before it resolves.
+- Partner/background/companion are not implemented.
+- Life-total loss (0 life) is not implemented; only the 21 commander-damage condition is.
+
+### Files Changed
+
+- `engine/src/commander.test.ts`
+- `engine/src/cardTypes.ts`
+- `engine/src/actions.ts`
+- `engine/src/stack.ts`
+- `engine/src/zones.ts`
+- `engine/src/combat.ts`
+- `engine/src/mana.ts`
+- `engine/src/types.ts`
+- `engine/src/createGame.ts`
+- `engine/src/serialize.ts`
+- `engine/src/index.ts`
+- `docs/DEVELOPMENT_PROGRESS.md`
+
+### Checkpoint
+
+- PASS
+
+### Next Task
+
+Stop. Do not start Phase 11 until Checkpoint 10 is reviewed.
 
 

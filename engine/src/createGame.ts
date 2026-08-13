@@ -77,6 +77,7 @@ function createPlayer(displayName: string): PlayerState {
       tax: 0,
       damageReceived: {},
     },
+    lost: false,
   };
 }
 

@@ -31,3 +31,9 @@ export function isCreature(state: GameState, cardId: CardInstanceId): boolean {
 export function isMainPhase(state: GameState): boolean {
   return state.turn.phase === "precombatMain" || state.turn.phase === "postcombatMain";
 }
+
+export const COMMANDER_DAMAGE_TO_LOSE = 21;
+
+export function isCommander(state: GameState, cardId: CardInstanceId): boolean {
+  return state.players.some((player) => player.commander.commanderIds.includes(cardId));
+}

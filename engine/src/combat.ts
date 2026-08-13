@@ -1,5 +1,5 @@
 import { cloneGameState } from "./clone";
-import { isCreature } from "./cardTypes";
+import { COMMANDER_DAMAGE_TO_LOSE, isCommander, isCreature } from "./cardTypes";
 import { moveCard } from "./zones";
 import type {
   CardInstance,
@@ -19,9 +19,7 @@ export function emptyCombat(): CombatState {
   };
 }
 
-export function isCommander(state: GameState, cardId: CardInstanceId): boolean {
-  return state.players.some((player) => player.commander.commanderIds.includes(cardId));
-}
+export { isCommander };
 
 export function creaturePower(state: GameState, cardId: CardInstanceId): number {
   return state.definitions[state.cards[cardId]?.definitionId ?? ""]?.power ?? 0;
@@ -282,5 +280,16 @@ export function dealCombatDamageInPlace(state: GameState): void {
 export function applyCombatDamage(state: GameState): GameState {
   const next = cloneGameState(state);
   dealCombatDamageInPlace(next);
+  checkCommanderLossInPlace(next);
   return destroyLethalCreatures(next);
+}
+
+export function checkCommanderLossInPlace(state: GameState): void {
+  for (const player of state.players) {
+    for (const amount of Object.values(player.commander.damageReceived)) {
+      if (amount >= COMMANDER_DAMAGE_TO_LOSE) {
+        player.lost = true;
+      }
+    }
+  }
 }
