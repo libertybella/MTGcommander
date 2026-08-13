@@ -225,6 +225,16 @@ export function parseGameAction(json: string): GameAction {
   if (kind === "pass_priority" || kind === "concede") {
     return { kind, playerId };
   }
+  if (kind === "cast_spell") {
+    if (raw.targets !== undefined) {
+      throw new Error("Targets are not supported");
+    }
+    return {
+      kind,
+      playerId,
+      cardId: expectString(raw.cardId, "action.cardId"),
+    };
+  }
   throw new Error(`Unknown GameAction kind ${kind}`);
 }
 

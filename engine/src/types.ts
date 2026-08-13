@@ -116,6 +116,7 @@ export type GameState = {
 
 export type GameAction =
   | { kind: "pass_priority"; playerId: PlayerId }
+  | { kind: "cast_spell"; playerId: PlayerId; cardId: CardInstanceId; targets?: unknown }
   | { kind: "concede"; playerId: PlayerId };
 
 export type GameEvent =

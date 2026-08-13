@@ -20,21 +20,21 @@ A checkbox becomes 🟢 Complete only when the work has been implemented **and**
 
 ## Project Status
 
-**Current Phase:** Phase 6 complete — awaiting review
-**Current Checkpoint:** Checkpoint 6 — Mana
+**Current Phase:** Phase 7 complete — continuing autonomously
+**Current Checkpoint:** Checkpoint 7 — Game Actions
 **Overall Status:** 🟡 In Progress
 
 ### Current Objective
 
-Stop. Do not start Phase 7 until Checkpoint 6 is reviewed.
+Autonomous run through Phases 7–10. Phase 7 game actions are implemented.
 
 ### Last Completed Milestone
 
-Phase 6: add/remove mana, colored and colorless tracking, generic payment, tap/untap, tap-for-mana, illegal payment rejection, unused mana empties at step end.
+Phase 7: authoritative `applyAction` for pass and basic spell casting with mana payment, stack, resolution, and illegal-action atomicity.
 
 ### Next Milestone
 
-Phase 7 — Combat (not started).
+Phase 8 — Basic Card Effects.
 
 ---
 
@@ -144,7 +144,30 @@ Do not modify, import, link, or share code with the sibling deck builder during 
 * 🟢 Illegal payment rejection.
 * 🟢 Checkpoint 6 — Mana.
 
-## Phase 7 — Combat
+## Phase 7 — Game Actions / Basic Spell Casting
+
+* 🟢 Pass priority as a game action.
+* 🟢 Cast a basic spell from hand.
+* 🟢 Mana payment on cast.
+* 🟢 Stack object creation.
+* 🟢 Spell resolution by card type.
+* 🟢 Illegal-action rejection without mutating GameState.
+* 🟢 Action serialization.
+* 🟢 Checkpoint 7 — Game Actions.
+
+## Phase 8 — Basic Card Effects
+
+* ⬜ Gain life.
+* ⬜ Lose life.
+* ⬜ Deal damage.
+* ⬜ Draw.
+* ⬜ Move a card between zones.
+* ⬜ Tap / untap.
+* ⬜ Add mana.
+* ⬜ Basic token.
+* ⬜ Checkpoint 8 — Basic Effects.
+
+## Phase 9 — Combat
 
 * ⬜ Attackers.
 * ⬜ Blockers.
@@ -153,19 +176,20 @@ Do not modify, import, link, or share code with the sibling deck builder during 
 * ⬜ Creature death.
 * ⬜ Player damage.
 * ⬜ Multiple attackers/blockers.
-* ⬜ Checkpoint 7 — Combat.
+* ⬜ Commander combat damage.
+* ⬜ Checkpoint 9 — Combat.
 
-## Phase 8 — Commander
+## Phase 10 — Commander
 
 * ⬜ 40 life.
 * ⬜ Commander zone.
 * ⬜ Commander tax.
 * ⬜ Commander cast tracking.
 * ⬜ Commander damage.
-* ⬜ Commander-specific UI.
-* ⬜ Checkpoint 8 — Commander Initialization.
+* ⬜ 21 commander damage loss.
+* ⬜ Checkpoint 10 — Commander.
 
-## Phase 9 — Deck Import
+## Phase 11 — Deck Import
 
 * ⬜ Decklist text import.
 * ⬜ Card data lookup.
@@ -175,9 +199,9 @@ Do not modify, import, link, or share code with the sibling deck builder during 
 * ⬜ Color identity validation.
 * ⬜ Save deck.
 * ⬜ Reload deck.
-* ⬜ Checkpoint 9 — Real Deck Import.
+* ⬜ Checkpoint 11 — Real Deck Import.
 
-## Phase 10 — Battlefield UI
+## Phase 12 — Battlefield UI
 
 * ⬜ Player panels.
 * ⬜ Battlefield.
@@ -188,18 +212,18 @@ Do not modify, import, link, or share code with the sibling deck builder during 
 * ⬜ Stack.
 * ⬜ Priority display.
 * ⬜ Card selection.
-* ⬜ Checkpoint 10 — UI Mirrors Engine.
+* ⬜ Checkpoint 12 — UI Mirrors Engine.
 
-## Phase 11 — Two-Client Realtime
+## Phase 13 — Two-Client Realtime
 
 * ⬜ Create room.
 * ⬜ Join room.
 * ⬜ Synchronize game state.
 * ⬜ Synchronize actions.
 * ⬜ Reconnect.
-* ⬜ Checkpoint 11 — Two Computers.
+* ⬜ Checkpoint 13 — Two Computers.
 
-## Phase 12 — Four-Player Multiplayer
+## Phase 14 — Four-Player Multiplayer
 
 * ⬜ Four-player room.
 * ⬜ Four identities.
@@ -209,9 +233,9 @@ Do not modify, import, link, or share code with the sibling deck builder during 
 * ⬜ Four-player priority.
 * ⬜ Four-player combat.
 * ⬜ Concession.
-* ⬜ Checkpoint 12 — Four Real Players.
+* ⬜ Checkpoint 14 — Four Real Players.
 
-## Phase 13 — Card Ability Architecture
+## Phase 15 — Card Ability Architecture
 
 * ⬜ Event system.
 * ⬜ Trigger system.
@@ -228,9 +252,9 @@ Do not modify, import, link, or share code with the sibling deck builder during 
 * ⬜ Tokens.
 * ⬜ Search.
 * ⬜ Targeting.
-* ⬜ Checkpoint 13 — Reusable Card Mechanics.
+* ⬜ Checkpoint 15 — Reusable Card Mechanics.
 
-## Phase 14 — Keywords
+## Phase 16 — Keywords
 
 * ⬜ Flying.
 * ⬜ Reach.
@@ -247,18 +271,18 @@ Do not modify, import, link, or share code with the sibling deck builder during 
 * ⬜ Ward.
 * ⬜ Flash.
 * ⬜ Defender.
-* ⬜ Checkpoint 14 — Keyword System.
+* ⬜ Checkpoint 16 — Keyword System.
 
-## Phase 15 — Continuous Effects
+## Phase 17 — Continuous Effects
 
 * ⬜ Base characteristics.
 * ⬜ Counters.
 * ⬜ Static effects.
 * ⬜ Temporary modifiers.
 * ⬜ Derived characteristics.
-* ⬜ Checkpoint 15 — Derived State.
+* ⬜ Checkpoint 17 — Derived State.
 
-## Phase 16 — Triggered Abilities
+## Phase 18 — Triggered Abilities
 
 * ⬜ Event detection.
 * ⬜ Trigger creation.
@@ -266,18 +290,18 @@ Do not modify, import, link, or share code with the sibling deck builder during 
 * ⬜ Choices.
 * ⬜ Simultaneous triggers.
 * ⬜ Trigger ordering.
-* ⬜ Checkpoint 16 — Trigger System.
+* ⬜ Checkpoint 18 — Trigger System.
 
-## Phase 17 — Replacement Effects
+## Phase 19 — Replacement Effects
 
 * ⬜ Replacement-effect model.
 * ⬜ Event modification.
 * ⬜ Draw replacement.
 * ⬜ Damage replacement.
 * ⬜ Multiple replacements.
-* ⬜ Checkpoint 17 — Replacement Effects.
+* ⬜ Checkpoint 19 — Replacement Effects.
 
-## Phase 18 — Advanced Rules
+## Phase 20 — Advanced Rules
 
 * ⬜ Rules coverage document.
 * ⬜ Advanced continuous effects.
@@ -285,17 +309,17 @@ Do not modify, import, link, or share code with the sibling deck builder during 
 * ⬜ Copy effects.
 * ⬜ State-based actions.
 * ⬜ Advanced targeting.
-* ⬜ Checkpoint 18 — Rules Coverage.
+* ⬜ Checkpoint 20 — Rules Coverage.
 
-## Phase 19 — 20-Card Engine
+## Phase 21 — 20-Card Engine
 
 * ⬜ Representative card pool.
 * ⬜ Test deck.
 * ⬜ Complete game.
 * ⬜ Unsupported interaction log.
-* ⬜ Checkpoint 19 — 20-Card Magic.
+* ⬜ Checkpoint 21 — 20-Card Magic.
 
-## Phase 20 — Arena-Like UX
+## Phase 22 — Arena-Like UX
 
 * ⬜ Card animations.
 * ⬜ Card zoom.
@@ -305,18 +329,18 @@ Do not modify, import, link, or share code with the sibling deck builder during 
 * ⬜ Target highlighting.
 * ⬜ Mana display.
 * ⬜ Game log.
-* ⬜ Checkpoint 20 — UX Validation.
+* ⬜ Checkpoint 22 — UX Validation.
 
-## Phase 21 — Persistence & Reconnect
+## Phase 23 — Persistence & Reconnect
 
 * ⬜ Persist game metadata.
 * ⬜ Persist/recover state.
 * ⬜ Reconnect player.
 * ⬜ Restore player view.
 * ⬜ Browser refresh recovery.
-* ⬜ Checkpoint 21 — Reconnect.
+* ⬜ Checkpoint 23 — Reconnect.
 
-## Phase 22 — Security
+## Phase 24 — Security
 
 * ⬜ Server validation.
 * ⬜ Illegal-action rejection.
@@ -325,17 +349,17 @@ Do not modify, import, link, or share code with the sibling deck builder during 
 * ⬜ Zone protection.
 * ⬜ Hidden-card protection.
 * ⬜ Malicious-client tests.
-* ⬜ Checkpoint 22 — Security.
+* ⬜ Checkpoint 24 — Security.
 
-## Phase 23 — Hidden Information
+## Phase 25 — Hidden Information
 
 * ⬜ Private hand view.
 * ⬜ Hidden library.
 * ⬜ Hidden face-down cards.
 * ⬜ Player-specific game view.
-* ⬜ Checkpoint 23 — Information Security.
+* ⬜ Checkpoint 25 — Information Security.
 
-## Phase 24 — Card Database
+## Phase 26 — Card Database
 
 * ⬜ Card schema.
 * ⬜ Data ingestion.
@@ -343,45 +367,45 @@ Do not modify, import, link, or share code with the sibling deck builder during 
 * ⬜ Card search.
 * ⬜ Data updates.
 * ⬜ Error handling.
-* ⬜ Checkpoint 24 — Card Database.
+* ⬜ Checkpoint 26 — Card Database.
 
-## Phase 25 — Rules Expansion
+## Phase 27 — Rules Expansion
 
 * ⬜ Rules coverage matrix.
 * ⬜ Mechanics expansion.
 * ⬜ Regression tests.
 * ⬜ Multiplayer regression tests.
 * ⬜ Unsupported interaction documentation.
-* ⬜ Checkpoint 25 — Rules Expansion.
+* ⬜ Checkpoint 27 — Rules Expansion.
 
-## Phase 26 — Real Commander Decks
+## Phase 28 — Real Commander Decks
 
 * ⬜ Ross's real deck.
 * ⬜ Friend's deck.
 * ⬜ Repeated games.
 * ⬜ Unsupported-card tracking.
 * ⬜ Engine fixes.
-* ⬜ Checkpoint 26 — Real Deck Validation.
+* ⬜ Checkpoint 28 — Real Deck Validation.
 
-## Phase 27 — Game Log / Replay
+## Phase 29 — Game Log / Replay
 
 * ⬜ Game events.
 * ⬜ Readable game log.
 * ⬜ Event IDs.
 * ⬜ Reproduction data.
 * ⬜ Replay foundation.
-* ⬜ Checkpoint 27 — Reproducible Games.
+* ⬜ Checkpoint 29 — Reproducible Games.
 
-## Phase 28 — Performance
+## Phase 30 — Performance
 
 * ⬜ CPU measurement.
 * ⬜ Memory measurement.
 * ⬜ Network measurement.
 * ⬜ Payload measurement.
 * ⬜ Concurrent-game test.
-* ⬜ Checkpoint 28 — Reliability.
+* ⬜ Checkpoint 30 — Reliability.
 
-## Phase 29 — Private Alpha
+## Phase 31 — Private Alpha
 
 * ⬜ Invite testers.
 * ⬜ Complete games.
@@ -389,16 +413,16 @@ Do not modify, import, link, or share code with the sibling deck builder during 
 * ⬜ UX feedback.
 * ⬜ Desync tracking.
 * ⬜ Unsupported-card tracking.
-* ⬜ Checkpoint 29 — Private Alpha.
+* ⬜ Checkpoint 31 — Private Alpha.
 
-## Phase 30 — Productization
+## Phase 32 — Productization
 
 * ⬜ Product identity.
 * ⬜ IP/legal review.
 * ⬜ Hosting/security review.
 * ⬜ Distribution strategy.
 * ⬜ Documentation.
-* ⬜ Checkpoint 30 — Release Decision.
+* ⬜ Checkpoint 32 — Release Decision.
 
 ---
 
@@ -979,4 +1003,62 @@ Turn the Phase 2 ManaPool data model into engine behavior: add/remove mana, pay 
 ### Next Task
 
 Stop. Do not start Phase 7 until Checkpoint 6 is reviewed.
+
+---
+
+## 2026-08-13 — Checkpoint 7 game actions
+
+### Objective
+
+Connect zones, priority, stack, mana, and turns behind an authoritative `applyAction` entry point for passing and basic spell casting.
+
+### Work Completed
+
+- Added `cast_spell` to GameAction and `applyAction` / `applyActions`.
+- Casting checks priority, hand membership, timing, and mana, then pays with the existing mana system and uses the existing stack.
+- Instants/sorceries resolve to the owner's graveyard; other spells resolve to the battlefield.
+- Illegal actions throw and leave the original GameState unchanged.
+- A complete pass cycle on an empty stack advances the step at the action layer; `passPriority` itself is unchanged.
+
+### Tests Run
+
+- `npm test` — PASS (71 tests)
+- `npm run typecheck` — PASS
+- `npm run lint` — PASS
+- `npm run build` — PASS
+
+### Results
+
+- Players can pass and cast through one engine API. Failed casts do not spend mana or move cards.
+
+### Problems Encountered
+
+- None.
+
+### Decisions Made
+
+- Non-instant spells require the active player, a main phase, and an empty stack.
+- Lands cannot be cast as spells.
+- Targeting is rejected until a later phase.
+- Concede remains parsed but is not implemented.
+
+### Files Changed
+
+- `engine/src/actions.ts`
+- `engine/src/actions.test.ts`
+- `engine/src/cardTypes.ts`
+- `engine/src/stack.ts`
+- `engine/src/types.ts`
+- `engine/src/serialize.ts`
+- `engine/src/index.ts`
+- `docs/DEVELOPMENT_PROGRESS.md`
+
+### Checkpoint
+
+- PASS
+
+### Next Task
+
+Phase 8 — basic card effects.
+
 

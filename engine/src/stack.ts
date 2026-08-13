@@ -1,5 +1,6 @@
 import { createId } from "./ids";
 import { cloneGameState } from "./clone";
+import { isInstantOrSorcery } from "./cardTypes";
 import { enterOwnerZone, findCardZone, removeCardFromCurrentZone } from "./zones";
 import type { CardInstanceId, GameState, PlayerId, ZoneName } from "./types";
 
@@ -13,15 +14,6 @@ function nextSeatedPlayer(state: GameState, currentId: PlayerId): PlayerId {
     throw new Error("No next player");
   }
   return next.id;
-}
-
-function isInstantOrSorcery(state: GameState, cardId: CardInstanceId): boolean {
-  const card = state.cards[cardId];
-  if (!card) {
-    return false;
-  }
-  const typeLine = state.definitions[card.definitionId]?.typeLine.toLowerCase() ?? "";
-  return typeLine.includes("instant") || typeLine.includes("sorcery");
 }
 
 export function putSpellOnStack(state: GameState, cardId: CardInstanceId): GameState {

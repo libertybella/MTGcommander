@@ -13,7 +13,17 @@ export {
   moveCard,
   PLAYER_ZONES,
 } from "./zones";
+export { applyAction, applyActions } from "./actions";
 export { passPriority, putSpellOnStack, resolveTopOfStack } from "./stack";
+export {
+  definitionTypeLine,
+  isCreature,
+  isInstant,
+  isInstantOrSorcery,
+  isLand,
+  isMainPhase,
+  isSorcery,
+} from "./cardTypes";
 export type { MoveCardOptions } from "./zones";
 export { TURN_SEQUENCE, advanceStep, advanceSteps } from "./turn";
 export type { TurnSlot } from "./turn";
