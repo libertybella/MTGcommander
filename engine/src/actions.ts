@@ -5,9 +5,10 @@ import { canPayManaCost, parseManaCost, payManaCost } from "./mana";
 import { isLiving, livingPlayerCount, requireLiving } from "./players";
 import { passPriority, putSpellOnStack } from "./stack";
 import { applyStateBasedActionsInPlace, redirectPriorityIfLost } from "./status";
+import { validateChosenTargets } from "./targeting";
 import { advanceStep, beginNextLivingTurnInPlace } from "./turn";
 import { findCardZone, moveCard } from "./zones";
-import type { CardInstanceId, GameAction, GameState, PlayerId } from "./types";
+import type { CardInstanceId, ChosenTarget, GameAction, GameState, PlayerId } from "./types";
 
 function requirePlayer(state: GameState, playerId: PlayerId): void {
   if (!state.players.some((player) => player.id === playerId)) {
@@ -103,10 +104,18 @@ function validateCast(
   return { cost, fromCommand };
 }
 
-function applyCastSpell(state: GameState, playerId: PlayerId, cardId: CardInstanceId): GameState {
+function applyCastSpell(
+  state: GameState,
+  playerId: PlayerId,
+  cardId: CardInstanceId,
+  targets: ChosenTarget[] | undefined,
+): GameState {
   const { cost, fromCommand } = validateCast(state, playerId, cardId);
+  const card = state.cards[cardId];
+  const definition = card ? state.definitions[card.definitionId] : undefined;
+  validateChosenTargets(state, definition?.targetRequirements ?? [], targets ?? []);
   const paid = payManaCost(state, playerId, cost);
-  const stacked = putSpellOnStack(paid, cardId);
+  const stacked = putSpellOnStack(paid, cardId, targets ?? []);
   if (!fromCommand) {
     return stacked;
   }
@@ -208,10 +217,7 @@ export function applyAction(state: GameState, action: GameAction): GameState {
         next = applyPassPriority(state, action.playerId);
         break;
       case "cast_spell":
-        if (action.targets !== undefined) {
-          throw new Error("Targets are not supported");
-        }
-        next = applyCastSpell(state, action.playerId, action.cardId);
+        next = applyCastSpell(state, action.playerId, action.cardId, action.targets);
         break;
       case "play_land":
         next = applyPlayLand(state, action.playerId, action.cardId);

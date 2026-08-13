@@ -72,6 +72,8 @@ export type CardDefinition = {
   toughness: number | null;
   /** Serializable on-resolve effects. Not executable functions. */
   effects: CardEffect[];
+  /** Targets that must be chosen when the spell is cast. Empty means untargeted. */
+  targetRequirements: TargetRequirement[];
 };
 
 export type CardInstance = {
@@ -112,6 +114,8 @@ export type StackObject = {
   controllerId: PlayerId;
   sourceId: CardInstanceId | null;
   kind: "spell" | "ability";
+  /** Chosen when the object was put on the stack. */
+  targets: ChosenTarget[];
 };
 
 export type CombatAttack = {
@@ -173,16 +177,31 @@ export type EffectTarget =
   | { type: "player"; playerId: PlayerId }
   | { type: "creature"; cardId: CardInstanceId };
 
+export type TargetKind = "player" | "creature" | "player_or_creature";
+
+export type TargetRequirement = {
+  kind: TargetKind;
+};
+
+export type ChosenTarget =
+  | { type: "player"; playerId: PlayerId }
+  | { type: "creature"; cardId: CardInstanceId };
+
+export type ChosenTargetRef = { type: "chosen"; index: number };
+
+export type CardIdSelector = CardInstanceId | ChosenTargetRef;
+
 /**
- * Relative player used in CardDefinition effects.
- * "next_opponent" is a Phase 11 stand-in for targeting, not a targeting system.
+ * Relative player used in untargeted CardDefinition effects.
+ * Targeted spells use ChosenTargetRef instead of next_opponent.
  */
 export type RelativePlayer = "controller" | "next_opponent";
 export type PlayerSelector = PlayerId | RelativePlayer;
 
 export type CardEffectTarget =
   | { type: "player"; playerId: PlayerSelector }
-  | { type: "creature"; cardId: CardInstanceId };
+  | { type: "creature"; cardId: CardInstanceId }
+  | ChosenTargetRef;
 
 /**
  * Definition-stored effect data. Bound to concrete GameEffect values on resolve.
@@ -199,12 +218,12 @@ export type CardEffect =
   | { kind: "draw"; playerId: PlayerSelector; count: number }
   | {
       kind: "move_card";
-      cardId: CardInstanceId;
+      cardId: CardIdSelector;
       toZone: Exclude<ZoneName, "stack">;
       libraryPosition?: "top" | "bottom";
     }
-  | { kind: "tap"; cardId: CardInstanceId }
-  | { kind: "untap"; cardId: CardInstanceId }
+  | { kind: "tap"; cardId: CardIdSelector }
+  | { kind: "untap"; cardId: CardIdSelector }
   | { kind: "add_mana"; playerId: PlayerSelector; mana: Partial<ManaPool> }
   | {
       kind: "create_token";
@@ -217,7 +236,7 @@ export type CardEffect =
 
 export type GameAction =
   | { kind: "pass_priority"; playerId: PlayerId }
-  | { kind: "cast_spell"; playerId: PlayerId; cardId: CardInstanceId; targets?: unknown }
+  | { kind: "cast_spell"; playerId: PlayerId; cardId: CardInstanceId; targets?: ChosenTarget[] }
   | { kind: "play_land"; playerId: PlayerId; cardId: CardInstanceId }
   | {
       kind: "declare_attackers";

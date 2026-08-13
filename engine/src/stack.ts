@@ -5,9 +5,14 @@ import { enterOwnerZone, findCardZone, removeCardFromCurrentZone } from "./zones
 import { applyEffects, bindCardEffects } from "./effects";
 import { isLiving, livingPlayerCount, nextLivingPlayerId } from "./players";
 import { applyStateBasedActionsInPlace, redirectPriorityIfLost } from "./status";
-import type { CardInstanceId, GameState, PlayerId, ZoneName } from "./types";
+import { hasLegalTargetRemaining, validateChosenTargets } from "./targeting";
+import type { CardInstanceId, ChosenTarget, GameState, PlayerId, ZoneName } from "./types";
 
-export function putSpellOnStack(state: GameState, cardId: CardInstanceId): GameState {
+export function putSpellOnStack(
+  state: GameState,
+  cardId: CardInstanceId,
+  targets: ChosenTarget[] = [],
+): GameState {
   const card = state.cards[cardId];
   if (!card) {
     throw new Error(`Unknown card ${cardId}`);
@@ -17,6 +22,8 @@ export function putSpellOnStack(state: GameState, cardId: CardInstanceId): GameS
   if (!located || (located.zone !== "hand" && !fromCommand)) {
     throw new Error(`Card ${cardId} must be in hand to put on the stack`);
   }
+  const definition = state.definitions[card.definitionId];
+  validateChosenTargets(state, definition?.targetRequirements ?? [], targets);
 
   let next = cloneGameState(state);
   next = removeCardFromCurrentZone(next, cardId);
@@ -30,6 +37,7 @@ export function putSpellOnStack(state: GameState, cardId: CardInstanceId): GameS
     controllerId: moved.controllerId,
     sourceId: cardId,
     kind: "spell",
+    targets: targets.map((target) => ({ ...target })),
   });
   next.passesSinceAction = 0;
   next.priorityPlayerId = moved.controllerId;
@@ -56,10 +64,16 @@ export function resolveTopOfStack(state: GameState): GameState {
 
   const source = next.cards[top.sourceId];
   const definition = source ? next.definitions[source.definitionId] : undefined;
-  if (definition && definition.effects.length > 0) {
+  const requirements = definition?.targetRequirements ?? [];
+  const shouldResolveEffects =
+    Boolean(definition && definition.effects.length > 0) &&
+    hasLegalTargetRemaining(next, requirements, top.targets);
+  if (shouldResolveEffects && definition) {
     const bound = bindCardEffects(next, definition.effects, {
       controllerId: top.controllerId,
       sourceId: top.sourceId,
+      targets: top.targets,
+      targetRequirements: requirements,
     });
     next = applyEffects(next, bound);
   }

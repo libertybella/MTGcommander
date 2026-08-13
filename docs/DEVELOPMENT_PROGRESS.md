@@ -20,21 +20,21 @@ A checkbox becomes 🟢 Complete only when the work has been implemented **and**
 
 ## Project Status
 
-**Current Phase:** Phase 12 complete — awaiting review
-**Current Checkpoint:** Checkpoint 12 — Playable Loop
+**Current Phase:** Phase 13 complete — awaiting review
+**Current Checkpoint:** Checkpoint 13 — Targeting
 **Overall Status:** 🟡 In Progress
 
 ### Current Objective
 
-Stop. Do not start targeting, Battlefield UI, deck import, or real-card integration until Checkpoint 12 is reviewed.
+Stop. Do not start Battlefield UI, deck import, or real-card integration until Checkpoint 13 is reviewed.
 
 ### Last Completed Milestone
 
-Phase 12: Playable-loop engine gaps — land play, draw step, 0 life, concede, and elimination handling.
+Phase 13: Targets are chosen when a spell is cast and stored on the stack. Legality is checked at cast and again on resolve.
 
 ### Next Milestone
 
-Targeting (choose targets on cast, legality at cast and resolve). Battlefield UI and deck import remain later.
+Battlefield UI remains later. Deck import and real-card integration remain later.
 
 ---
 
@@ -213,14 +213,18 @@ Do not modify, import, link, or share code with the sibling deck builder during 
 
 Battlefield UI was previously listed as Phase 12. It remains later, after targeting and this playable loop.
 
-## Phase 13 — Two-Client Realtime
+## Phase 13 — Targeting
 
-* ⬜ Create room.
-* ⬜ Join room.
-* ⬜ Synchronize game state.
-* ⬜ Synchronize actions.
-* ⬜ Reconnect.
-* ⬜ Checkpoint 13 — Two Computers.
+* 🟢 Choose targets when a spell is cast and placed on the stack.
+* 🟢 Store chosen targets on the stack object.
+* 🟢 Check target legality at cast.
+* 🟢 Check target legality again on resolve.
+* 🟢 Fizzle when no targets remain legal.
+* 🟢 Player, creature, and player-or-creature requirements.
+* 🟢 Synthetic targeted test cards only.
+* 🟢 Checkpoint 13 — Targeting.
+
+Two-client realtime was previously listed as Phase 13. It remains later. Battlefield UI also remains later.
 
 ## Phase 14 — Four-Player Multiplayer
 
@@ -1361,5 +1365,68 @@ Close the missing fundamental gameplay pieces so the existing engine is much clo
 ### Next Task
 
 Stop. Do not start targeting, Battlefield UI, deck import, or real-card integration yet.
+
+---
+
+## 2026-08-13 — Checkpoint 13 targeting
+
+### Objective
+
+Add normal Magic targeting: choose targets when a spell is cast and placed on the stack, then check legality again when it resolves.
+
+### Work Completed
+
+- Added `targetRequirements` on CardDefinition and `targets` on stack objects and `cast_spell`.
+- Cast-time validation: count must match, every target must be legal (living player, or creature on the battlefield). Untargeted spells reject extra targets.
+- Resolve-time check: if no required targets remain legal, effects are skipped (fizzle) and the instant/sorcery still goes to the graveyard.
+- Test Shock is now a targeted "any target" damage spell. Test Terror is a targeted destroy-creature fixture.
+- `next_opponent` remains only for untargeted relative effects, not as a targeting substitute.
+
+### Tests Run
+
+- `npm test` — PASS (129 tests)
+- `npm run typecheck` — PASS
+- `npm run lint` — PASS
+- `npm run build` — PASS
+- Engine remains free of React/Electron imports.
+
+### Results
+
+- Targets are chosen on cast, stored on the stack, and rechecked on resolve. Battlefield UI, deck import, and real-card integration were not started.
+
+### Problems Encountered
+
+- Existing Shock tests cast without targets. They now pass an explicit player target.
+
+### Decisions Made
+
+- Choose-on-cast, not choose-on-resolution.
+- Hexproof, shroud, protection, and targeting spells on the stack are not in this phase.
+- Two-client realtime was previously listed as Phase 13; this checkpoint uses Phase 13 for targeting instead.
+
+### Files Changed
+
+- `engine/src/types.ts`
+- `engine/src/createGame.ts`
+- `engine/src/targeting.ts`
+- `engine/src/targeting.test.ts`
+- `engine/src/actions.ts`
+- `engine/src/actions.test.ts`
+- `engine/src/stack.ts`
+- `engine/src/effects.ts`
+- `engine/src/serialize.ts`
+- `engine/src/catalog.ts`
+- `engine/src/index.ts`
+- `engine/src/cardEffects.test.ts`
+- `engine/src/gameState.test.ts`
+- `docs/DEVELOPMENT_PROGRESS.md`
+
+### Checkpoint
+
+- PASS
+
+### Next Task
+
+Stop. Do not start Battlefield UI, deck import, or real-card integration yet.
 
 

@@ -101,6 +101,7 @@ function populateForRoundTrip(game: GameState): GameState {
     controllerId: p1.id,
     sourceId: inHand.id,
     kind: "spell",
+    targets: [],
   });
 
   return game;

@@ -63,6 +63,7 @@ describe("card definitions", () => {
   it("creates a CardDefinition with serializable effects", () => {
     const shock = testShock();
     expect(shock.effects[0]?.kind).toBe("deal_damage");
+    expect(shock.targetRequirements).toEqual([{ kind: "player_or_creature" }]);
     expect(typeof shock.effects[0]).toBe("object");
     expect(typeof shock.effects[0]).not.toBe("function");
   });
@@ -102,12 +103,17 @@ describe("spell resolution with definition effects", () => {
     expect(next.cards[card.id]?.id).toBe(card.id);
   });
 
-  it("executes a damage spell against the next opponent and pays mana", () => {
+  it("executes a damage spell against the chosen player and pays mana", () => {
     const { game, p1, p2 } = twoPlayers();
     const card = addToHand(game, p1.id, testShock());
     const ready = addMana(game, p1.id, { R: 1 });
     const originalLife = ready.players[1]?.life;
-    let next = applyAction(ready, { kind: "cast_spell", playerId: p1.id, cardId: card.id });
+    let next = applyAction(ready, {
+      kind: "cast_spell",
+      playerId: p1.id,
+      cardId: card.id,
+      targets: [{ type: "player", playerId: p2.id }],
+    });
     expect(next.stack).toHaveLength(1);
     expect(next.cards[card.id]?.zone).toBe("stack");
     expect(next.players[0]?.zones.hand).not.toContain(card.id);
@@ -223,7 +229,12 @@ describe("spell resolution with definition effects", () => {
     const shock = addToHand(game, p1.id, testShock());
     const bear = addToHand(game, p1.id, testBear());
     let next = addMana(game, p1.id, { R: 2, G: 1, C: 1 });
-    next = applyAction(next, { kind: "cast_spell", playerId: p1.id, cardId: shock.id });
+    next = applyAction(next, {
+      kind: "cast_spell",
+      playerId: p1.id,
+      cardId: shock.id,
+      targets: [{ type: "player", playerId: p1.id }],
+    });
     const restored = parseGameState(serializeGameState(next));
     expect(restored).toEqual(next);
     expect(restored.definitions[testShock().id]).toBeUndefined();

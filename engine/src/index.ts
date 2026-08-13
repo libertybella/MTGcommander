@@ -27,6 +27,7 @@ export {
   testRitual,
   testShock,
   testStudy,
+  testTerror,
 } from "./catalog";
 export { passPriority, putSpellOnStack, resolveTopOfStack } from "./stack";
 export {
@@ -44,6 +45,7 @@ export type { MoveCardOptions } from "./zones";
 export { TURN_SEQUENCE, advanceStep, advanceSteps } from "./turn";
 export type { TurnSlot } from "./turn";
 export { livingPlayers, livingPlayerCount, winnerId } from "./players";
+export { isChosenTargetLegal, validateChosenTargets } from "./targeting";
 export {
   addMana,
   canPayManaCost,
@@ -79,8 +81,11 @@ export type {
   CardDefinitionId,
   CardEffect,
   CardEffectTarget,
+  CardIdSelector,
   CardInstance,
   CardInstanceId,
+  ChosenTarget,
+  ChosenTargetRef,
   Color,
   CommanderState,
   CombatAttack,
@@ -102,6 +107,8 @@ export type {
   StackObject,
   StackObjectId,
   Step,
+  TargetKind,
+  TargetRequirement,
   TurnState,
   ZoneName,
 } from "./types";

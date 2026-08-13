@@ -209,7 +209,7 @@ describe("illegal actions leave GameState unchanged", () => {
     expect(game).toEqual(original);
   });
 
-  it("rejects target information because targeting is not supported", () => {
+  it("rejects extra targets on an untargeted spell", () => {
     const { game, p1 } = twoPlayers();
     const { card } = addSpellToHand(game, p1.id, {
       name: "Lightning Bolt",
@@ -218,15 +218,15 @@ describe("illegal actions leave GameState unchanged", () => {
     });
     const ready = addMana(game, p1.id, { R: 1 });
     const original = structuredClone(ready);
-    const action = {
+    const action: GameAction = {
       kind: "cast_spell",
       playerId: p1.id,
       cardId: card.id,
-      targets: [p1.id],
-    } as GameAction;
-    expect(() => applyAction(ready, action)).toThrow(/Targets/);
+      targets: [{ type: "player", playerId: p1.id }],
+    };
+    expect(() => applyAction(ready, action)).toThrow(/does not require targets/);
     expect(ready).toEqual(original);
-    expect(() => parseGameAction(JSON.stringify(action))).toThrow(/Targets/);
+    expect(ready.players[0]?.mana.R).toBe(1);
   });
 
   it("rejects casting a creature outside the active player's main phase", () => {

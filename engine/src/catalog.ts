@@ -7,12 +7,13 @@ export function testShock(): CardDefinition {
     name: "Test Shock",
     typeLine: "Instant",
     manaCost: "{R}",
-    oracleText: "Deal 2 damage to the next opponent. Not a targeting system.",
+    oracleText: "Deal 2 damage to any target.",
+    targetRequirements: [{ kind: "player_or_creature" }],
     effects: [
       {
         kind: "deal_damage",
         sourceId: "self",
-        target: { type: "player", playerId: "next_opponent" },
+        target: { type: "chosen", index: 0 },
         amount: 2,
       },
     ],
@@ -88,6 +89,24 @@ export function testBlankInstant(): CardDefinition {
     name: "Test Blank",
     typeLine: "Instant",
     manaCost: "{0}",
+  });
+}
+
+/** Synthetic destroy-target-creature spell for targeting tests. */
+export function testTerror(): CardDefinition {
+  return createCardDefinition({
+    name: "Test Terror",
+    typeLine: "Instant",
+    manaCost: "{B}",
+    oracleText: "Destroy target creature.",
+    targetRequirements: [{ kind: "creature" }],
+    effects: [
+      {
+        kind: "move_card",
+        cardId: { type: "chosen", index: 0 },
+        toZone: "graveyard",
+      },
+    ],
   });
 }
 

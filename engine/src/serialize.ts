@@ -1,10 +1,13 @@
 import type {
   CardEffect,
+  CardIdSelector,
+  ChosenTarget,
   GameAction,
   GameEvent,
   GameState,
   ManaPool,
   PlayerState,
+  TargetRequirement,
   ZoneName,
 } from "./types";
 
@@ -186,6 +189,10 @@ export function parseGameState(json: string): GameState {
           ? null
           : expectNumber(def.toughness, "definition.toughness"),
       effects: parseCardEffects(def.effects, `definition.${id}.effects`),
+      targetRequirements: parseTargetRequirements(
+        def.targetRequirements,
+        `definition.${id}.targetRequirements`,
+      ),
     };
   }
 
@@ -212,6 +219,7 @@ export function parseGameState(json: string): GameState {
       controllerId: expectString(entry.controllerId, "stack.controllerId"),
       sourceId,
       kind,
+      targets: parseChosenTargets(entry.targets, `stack[${index}].targets`),
     };
   });
 
@@ -241,6 +249,68 @@ export function parseGameState(json: string): GameState {
         ? null
         : expectString(raw.winnerId, "winnerId"),
   };
+}
+
+function parseChosenTarget(value: unknown, label: string): ChosenTarget {
+  if (!isRecord(value)) {
+    throw new Error(`Invalid ${label}`);
+  }
+  const type = expectString(value.type, `${label}.type`);
+  if (type === "player") {
+    return { type, playerId: expectString(value.playerId, `${label}.playerId`) };
+  }
+  if (type === "creature") {
+    return { type, cardId: expectString(value.cardId, `${label}.cardId`) };
+  }
+  throw new Error(`Invalid ${label}.type`);
+}
+
+function parseChosenTargets(value: unknown, label: string): ChosenTarget[] {
+  if (value === undefined) {
+    return [];
+  }
+  if (!Array.isArray(value)) {
+    throw new Error(`Invalid ${label}`);
+  }
+  return value.map((entry, index) => parseChosenTarget(entry, `${label}[${index}]`));
+}
+
+function parseTargetRequirement(value: unknown, label: string): TargetRequirement {
+  if (!isRecord(value)) {
+    throw new Error(`Invalid ${label}`);
+  }
+  const kind = expectString(value.kind, `${label}.kind`);
+  if (kind !== "player" && kind !== "creature" && kind !== "player_or_creature") {
+    throw new Error(`Invalid ${label}.kind`);
+  }
+  return { kind };
+}
+
+function parseTargetRequirements(value: unknown, label: string): TargetRequirement[] {
+  if (value === undefined) {
+    return [];
+  }
+  if (!Array.isArray(value)) {
+    throw new Error(`Invalid ${label}`);
+  }
+  return value.map((entry, index) => parseTargetRequirement(entry, `${label}[${index}]`));
+}
+
+function parseCardIdSelector(value: unknown, label: string): CardIdSelector {
+  if (typeof value === "string") {
+    return expectString(value, label);
+  }
+  if (!isRecord(value)) {
+    throw new Error(`Invalid ${label}`);
+  }
+  if (expectString(value.type, `${label}.type`) !== "chosen") {
+    throw new Error(`Invalid ${label}.type`);
+  }
+  const index = expectNumber(value.index, `${label}.index`);
+  if (!Number.isInteger(index) || index < 0) {
+    throw new Error(`Invalid ${label}.index`);
+  }
+  return { type: "chosen", index };
 }
 
 function parsePlayerSelector(value: unknown, label: string): string {
@@ -316,6 +386,18 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
           },
         };
       }
+      if (targetType === "chosen") {
+        const index = expectNumber(value.target.index, `${label}.target.index`);
+        if (!Number.isInteger(index) || index < 0) {
+          throw new Error(`Invalid ${label}.target.index`);
+        }
+        return {
+          kind,
+          amount: expectNumber(value.amount, `${label}.amount`),
+          sourceId,
+          target: { type: "chosen", index },
+        };
+      }
       throw new Error(`Invalid ${label}.target.type`);
     }
     case "create_token":
@@ -341,7 +423,7 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
       }
       return {
         kind,
-        cardId: expectString(value.cardId, `${label}.cardId`),
+        cardId: parseCardIdSelector(value.cardId, `${label}.cardId`),
         toZone: toZone as Exclude<ZoneName, "stack">,
         libraryPosition,
       };
@@ -350,7 +432,7 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
     case "untap":
       return {
         kind,
-        cardId: expectString(value.cardId, `${label}.cardId`),
+        cardId: parseCardIdSelector(value.cardId, `${label}.cardId`),
       };
     default:
       throw new Error(`Unknown effect kind ${kind}`);
@@ -423,13 +505,13 @@ export function parseGameAction(json: string): GameAction {
     };
   }
   if (kind === "cast_spell") {
-    if (raw.targets !== undefined) {
-      throw new Error("Targets are not supported");
-    }
     return {
       kind,
       playerId,
       cardId: expectString(raw.cardId, "action.cardId"),
+      ...(raw.targets === undefined
+        ? {}
+        : { targets: parseChosenTargets(raw.targets, "action.targets") }),
     };
   }
   if (kind === "declare_attackers") {
