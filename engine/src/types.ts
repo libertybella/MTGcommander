@@ -82,6 +82,8 @@ export type CardDefinition = {
   triggers: CardTrigger[];
   replacements: ReplacementEffect[];
   staticModifiers: StaticModifier[];
+  /** Mana this permanent adds when tapped for mana. Empty means it cannot. */
+  produces: Partial<ManaPool>;
 };
 
 export type CardInstance = {
@@ -309,7 +311,8 @@ export type GameAction =
       playerId: PlayerId;
       blocks: { blockerId: CardInstanceId; attackerId: CardInstanceId }[];
     }
-  | { kind: "concede"; playerId: PlayerId };
+  | { kind: "concede"; playerId: PlayerId }
+  | { kind: "tap_for_mana"; playerId: PlayerId; cardId: CardInstanceId };
 
 export type GameEvent =
   | { kind: "game_created"; gameId: GameId }

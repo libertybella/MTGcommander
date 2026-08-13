@@ -31,6 +31,9 @@ export {
   testStudy,
   testTerror,
 } from "./catalog";
+export { POOL_ID, syntheticPool, syntheticPoolById } from "./pool";
+export { dealOpeningHands, seatCatalogDecks, startCatalogGame } from "./setup";
+export type { CatalogDeckSpec, StartCatalogGameOptions } from "./setup";
 export { passPriority, putSpellOnStack, resolveTopOfStack } from "./stack";
 export {
   definitionTypeLine,

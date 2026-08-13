@@ -228,6 +228,7 @@ export function parseGameState(json: string): GameState {
         def.staticModifiers,
         `definition.${id}.staticModifiers`,
       ),
+      produces: parseProduces(def.produces, `definition.${id}.produces`),
     };
   }
 
@@ -592,6 +593,13 @@ function parseStaticModifiers(value: unknown, label: string): StaticModifier[] {
   });
 }
 
+function parseProduces(value: unknown, label: string): Partial<ManaPool> {
+  if (value === undefined) {
+    return {};
+  }
+  return parsePartialMana(value, label);
+}
+
 function parseLog(value: unknown): GameLogEntry[] {
   if (value === undefined) {
     return [];
@@ -733,6 +741,13 @@ export function parseGameAction(json: string): GameAction {
           attackerId: expectString(entry.attackerId, "block.attackerId"),
         };
       }),
+    };
+  }
+  if (kind === "tap_for_mana") {
+    return {
+      kind,
+      playerId,
+      cardId: expectString(raw.cardId, "action.cardId"),
     };
   }
   throw new Error(`Unknown GameAction kind ${kind}`);

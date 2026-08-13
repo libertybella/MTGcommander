@@ -10,6 +10,8 @@ This document records what the engine implements and what it intentionally does 
 - Choose-on-cast targeting; legality at cast and again on resolve. If no legal targets remain, the spell’s effects are skipped (fizzle) and the card still goes to its destination.
 - Hidden information projection: opponent hands and libraries hide card identity; battlefield, graveyard, exile, command, stack, life, and commander damage stay public.
 - Basic effects: damage, life, draw, mill (mill what’s there), discard (front of hand), sacrifice, counters, tokens, tap/untap, mana, zone moves.
+- `tap_for_mana` for permanents whose definition has `produces`.
+- A 20-card synthetic pool and catalog seating (`startCatalogGame`). Not real Magic cards.
 - Keywords: flying, reach, haste, vigilance, trample, deathtouch, lifelink, first strike, double strike, menace, hexproof, indestructible, flash, defender.
 - Derived power/toughness: printed values, `p1p1` counters, and simple static P/T modifiers (`self` or `controlled_creatures`).
 - Enter-the-battlefield triggers become stack abilities. No target choices and no AP-order for simultaneous triggers.

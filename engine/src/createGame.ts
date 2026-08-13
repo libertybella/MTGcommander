@@ -34,7 +34,18 @@ export function createCardDefinition(
     Partial<
       Pick<
         CardDefinition,
-        "manaCost" | "oracleText" | "id" | "power" | "toughness" | "effects" | "targetRequirements" | "keywords" | "triggers" | "replacements" | "staticModifiers"
+        | "manaCost"
+        | "oracleText"
+        | "id"
+        | "power"
+        | "toughness"
+        | "effects"
+        | "targetRequirements"
+        | "keywords"
+        | "triggers"
+        | "replacements"
+        | "staticModifiers"
+        | "produces"
       >
     >,
 ): CardDefinition {
@@ -54,6 +65,7 @@ export function createCardDefinition(
     triggers: input.triggers ? input.triggers.map((trigger) => ({ ...trigger, effects: trigger.effects.map((effect) => ({ ...effect })) })) : [],
     replacements: input.replacements ? input.replacements.map((replacement) => ({ ...replacement })) : [],
     staticModifiers: input.staticModifiers ? input.staticModifiers.map((modifier) => ({ ...modifier })) : [],
+    produces: input.produces ? { ...input.produces } : {},
   };
 }
 

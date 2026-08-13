@@ -24,6 +24,7 @@ function hiddenDefinition(): CardDefinition {
     triggers: [],
     replacements: [],
     staticModifiers: [],
+    produces: {},
   };
 }
 

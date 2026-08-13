@@ -20,21 +20,21 @@ A checkbox becomes 🟢 Complete only when the work has been implemented **and**
 
 ## Project Status
 
-**Current Phase:** Phase 20 complete
-**Current Checkpoint:** Checkpoint 20 — Rules Coverage
+**Current Phase:** Phase 21 complete
+**Current Checkpoint:** Checkpoint 21 — 20-Card Magic
 **Overall Status:** 🟡 In Progress
 
 ### Current Objective
 
-Stop. Do not continue until Checkpoint 20 is reviewed. Do not start Battlefield UI, deck import, real-card integration, or networking.
+Stop. Do not continue until Checkpoint 21 is reviewed. Do not start Battlefield UI, deck import, real-card integration, or networking.
 
 ### Last Completed Milestone
 
-Checkpoint 20: Engine V1 rules coverage through four-player hidden information, ability effects, keywords, derived P/T, ETB triggers, draw replacement, and expanded state-based actions.
+Checkpoint 21: A 20-card synthetic pool, test decks, `tap_for_mana`, and a complete engine game that reaches a winner.
 
 ### Next Milestone
 
-Battlefield UI remains later. Deck import, real-card integration, and two-client realtime remain later.
+Battlefield UI remains later (Phase 22). Deck import, real-card integration, and two-client realtime remain later.
 
 ---
 
@@ -322,11 +322,13 @@ Four-player rooms / four real networked players remain later.
 
 ## Phase 21 — 20-Card Engine
 
-* ⬜ Representative card pool.
-* ⬜ Test deck.
-* ⬜ Complete game.
-* ⬜ Unsupported interaction log.
-* ⬜ Checkpoint 21 — 20-Card Magic.
+* 🟢 Representative card pool (20 synthetic definitions).
+* 🟢 Test deck (`startCatalogGame` / `seatCatalogDecks`).
+* 🟢 Complete game (pool actions through a winner).
+* 🟢 Unsupported interaction log.
+* 🟢 Checkpoint 21 — 20-Card Magic.
+
+Still synthetic only. No Scryfall, Moxfield, or Battlefield UI.
 
 ## Phase 22 — Arena-Like UX
 
@@ -1780,3 +1782,59 @@ Record what the engine implements, expand state-based actions for 0 toughness, a
 
 Stop. Do not start Battlefield UI, deck import, real-card integration, or networking yet.
 
+---
+
+## 2026-08-13 — 20-card synthetic engine
+
+### Objective
+
+Seat a representative 20-card synthetic pool, build test decks, play a complete engine game to a winner, and log unsupported interactions. Stay off real-card databases and UI.
+
+### Work Completed
+
+- Added 20 uniquely named `Test …` definitions covering basics, a commander, creatures with keywords/ETB/anthem, and instants/sorceries already supported by the engine.
+- `startCatalogGame` seats commanders, libraries, and opening hands from pool IDs. It does not shuffle or import Moxfield lists.
+- Added `tap_for_mana` so lands with `produces` can pay costs through `applyAction`.
+- A scripted complete game from the pool reaches a winner (0 life).
+- Added `docs/UNSUPPORTED_INTERACTIONS.md`.
+
+### Tests Run
+
+- `npm test` — PASS (170 tests)
+- `npm run typecheck` — PASS
+- `npm run lint` — PASS
+- `npm run build` — PASS
+
+### Results
+
+- Two players can play a full loop using only pool cards and game actions: land, tap for mana, cast, combat, elimination.
+
+### Decisions Made
+
+- Pool cards keep synthetic names. No Scryfall or real oracle text.
+- `produces` on the definition drives tap-for-mana. Other activated abilities remain later.
+- Complete-game tests may set `startingLife` so the loop can finish without a 40-life slog.
+
+### Files Changed
+
+- `engine/src/types.ts`
+- `engine/src/createGame.ts`
+- `engine/src/serialize.ts`
+- `engine/src/actions.ts`
+- `engine/src/visibility.ts`
+- `engine/src/pool.ts`
+- `engine/src/setup.ts`
+- `engine/src/twentyCard.test.ts`
+- `engine/src/index.ts`
+- `docs/UNSUPPORTED_INTERACTIONS.md`
+- `docs/RULES_COVERAGE.md`
+- `docs/DEVELOPMENT_PROGRESS.md`
+
+### Checkpoint
+
+- PASS. Tag: `checkpoint-21-20-card-engine`
+- Existing tags were not moved or rewritten.
+
+### Next Task
+
+Stop. Do not start Battlefield UI, deck import, real-card integration, or networking yet.

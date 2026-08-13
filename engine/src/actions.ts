@@ -1,16 +1,16 @@
 import { declareAttackers, declareBlockers, pendingBlockerPlayer, priorityForStep } from "./combat";
-import { isCommander, isInstant, isInstantOrSorcery, isLand, isMainPhase } from "./cardTypes";
+import { isCommander, isCreature, isInstant, isInstantOrSorcery, isLand, isMainPhase } from "./cardTypes";
 import { cloneGameState } from "./clone";
 import { eliminatePlayerInPlace } from "./elimination";
 import { hasKeyword } from "./keywords";
-import { canPayManaCost, parseManaCost, payManaCost } from "./mana";
+import { canPayManaCost, MANA_COLORS, parseManaCost, payManaCost, tapForMana } from "./mana";
 import { isLiving, livingPlayerCount, requireLiving } from "./players";
 import { passPriority, putSpellOnStack } from "./stack";
 import { applyStateBasedActionsInPlace, redirectPriorityIfLost } from "./status";
 import { validateChosenTargets } from "./targeting";
 import { advanceStep, beginNextLivingTurnInPlace } from "./turn";
 import { findCardZone, moveCard } from "./zones";
-import type { CardInstanceId, ChosenTarget, GameAction, GameState, PlayerId } from "./types";
+import type { CardInstanceId, ChosenTarget, GameAction, GameState, ManaPool, PlayerId } from "./types";
 
 function requirePlayer(state: GameState, playerId: PlayerId): void {
   if (!state.players.some((player) => player.id === playerId)) {
@@ -202,6 +202,34 @@ function applyConcede(state: GameState, playerId: PlayerId): GameState {
   return next;
 }
 
+function producesAnyMana(produces: Partial<ManaPool>): boolean {
+  return MANA_COLORS.some((color) => (produces[color] ?? 0) > 0);
+}
+
+function applyTapForMana(state: GameState, playerId: PlayerId, cardId: CardInstanceId): GameState {
+  requirePriority(state, playerId);
+  const card = state.cards[cardId];
+  if (!card) {
+    throw new Error(`Unknown card ${cardId}`);
+  }
+  if (card.controllerId !== playerId) {
+    throw new Error(`Card ${cardId} is not controlled by that player`);
+  }
+  if (card.zone !== "battlefield") {
+    throw new Error(`Card ${cardId} must be on the battlefield`);
+  }
+  if (isCreature(state, cardId) && card.summoningSick && !hasKeyword(state, cardId, "haste")) {
+    throw new Error(`Card ${cardId} has summoning sickness`);
+  }
+  const produces = state.definitions[card.definitionId]?.produces ?? {};
+  if (!producesAnyMana(produces)) {
+    throw new Error(`Card ${cardId} does not produce mana`);
+  }
+  const next = tapForMana(state, cardId, produces);
+  next.priorityPlayerId = playerId;
+  return next;
+}
+
 /**
  * Authoritative entry point for player actions. Illegal actions throw and leave
  * the original GameState unchanged.
@@ -230,6 +258,9 @@ export function applyAction(state: GameState, action: GameAction): GameState {
         break;
       case "concede":
         next = applyConcede(state, action.playerId);
+        break;
+      case "tap_for_mana":
+        next = applyTapForMana(state, action.playerId, action.cardId);
         break;
       default: {
         const exhaustive: never = action;
