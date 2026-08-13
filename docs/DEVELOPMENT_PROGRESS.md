@@ -20,21 +20,21 @@ A checkbox becomes 🟢 Complete only when the work has been implemented **and**
 
 ## Project Status
 
-**Current Phase:** Phase 2 — Core Game-State Model
-**Current Checkpoint:** Checkpoint 2 — Game State Exists Without UI
-**Overall Status:** ⚠️ Needs Review
+**Current Phase:** Phase 3 — Zone Engine
+**Current Checkpoint:** Checkpoint 3 — Zone Integrity
+**Overall Status:** 🟡 In Progress
 
 ### Current Objective
 
-Checkpoint 2 data model is implemented and verified. Waiting for review before Phase 3 (zone movement).
+Autonomous run through Phases 3–6. Phase 3 zone movement is implemented.
 
 ### Last Completed Milestone
 
-Phase 2: serializable GameState in `@mtgcommander/engine` with 2–4 player factories and JSON round-trip tests. No rules engine.
+Phase 3: immutable `moveCard` with one-zone integrity. Stack movement deferred to Phase 5.
 
 ### Next Milestone
 
-Phase 3 — Zone Engine, only after Checkpoint 2 is approved.
+Phase 4 — Turn / phase / step system.
 
 ---
 
@@ -98,16 +98,16 @@ Do not modify, import, link, or share code with the sibling deck builder during 
 
 ## Phase 3 — Zone Engine
 
-* ⬜ Library.
-* ⬜ Hand.
-* ⬜ Battlefield.
-* ⬜ Graveyard.
-* ⬜ Exile.
-* ⬜ Command Zone.
+* 🟢 Library.
+* 🟢 Hand.
+* 🟢 Battlefield.
+* 🟢 Graveyard.
+* 🟢 Exile.
+* 🟢 Command Zone.
 * ⬜ Stack.
-* ⬜ Zone movement.
-* ⬜ Card identity/integrity tests.
-* ⬜ Checkpoint 3 — Zone Integrity.
+* 🟢 Zone movement.
+* 🟢 Card identity/integrity tests.
+* 🟢 Checkpoint 3 — Zone Integrity.
 
 ## Phase 4 — Turn Engine
 
@@ -759,4 +759,56 @@ Rules engine / zone movement: NOT implemented
 ### Next Task
 
 Stop. Do not start Phase 3 until Checkpoint 2 is approved.
+
+---
+
+## 2026-08-13 — Checkpoint 3 zone engine
+
+### Objective
+
+Move cards between the six player zones with immutable updates and one-place integrity. Stack movement is out of scope.
+
+### Work Completed
+
+- Added `moveCard` returning a new GameState.
+- Library index 0 is the top.
+- Ownership/controller do not change on move.
+- Tests for all six zones, invalid moves, unrelated-card isolation, immutability, and JSON round-trip.
+
+### Tests Run
+
+- `npm test` — PASS (22 tests)
+- `npm run typecheck` — PASS
+- `npm run lint` — PASS
+- `npm run build` — PASS
+
+### Results
+
+- Zone integrity holds. Stack remains a separate `StackObject[]`.
+
+### Problems Encountered
+
+- None.
+
+### Decisions Made
+
+- Destination is always the owner's zone list.
+- Same-zone move is a no-op clone.
+- Phase 3 Stack checklist item left incomplete until Phase 5.
+
+### Files Changed
+
+- `engine/src/clone.ts`
+- `engine/src/zones.ts`
+- `engine/src/zones.test.ts`
+- `engine/src/index.ts`
+- `docs/DEVELOPMENT_PROGRESS.md`
+
+### Checkpoint
+
+- PASS
+
+### Next Task
+
+Phase 4 — turn/phase/step progression.
 

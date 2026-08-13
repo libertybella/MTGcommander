@@ -4,6 +4,9 @@
  */
 
 export { getEngineInfo, type EngineInfo } from "./info";
+export { cloneGameState } from "./clone";
+export { countCardPlacements, findCardZone, moveCard, PLAYER_ZONES } from "./zones";
+export type { MoveCardOptions } from "./zones";
 export { createId } from "./ids";
 export {
   createCardDefinition,
