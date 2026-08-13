@@ -20,21 +20,21 @@ A checkbox becomes 🟢 Complete only when the work has been implemented **and**
 
 ## Project Status
 
-**Current Phase:** Phase 5 — Priority & Stack
-**Current Checkpoint:** Checkpoint 5 — Stack
+**Current Phase:** Phase 6 complete — awaiting review
+**Current Checkpoint:** Checkpoint 6 — Mana
 **Overall Status:** 🟡 In Progress
 
 ### Current Objective
 
-Autonomous run through Phases 3–6. Phase 5 priority/stack is implemented.
+Stop. Do not start Phase 7 until Checkpoint 6 is reviewed.
 
 ### Last Completed Milestone
 
-Phase 5: priority passing, putting spells on the stack from hand, LIFO resolve, counterspell-order test.
+Phase 6: add/remove mana, colored and colorless tracking, generic payment, tap/untap, tap-for-mana, illegal payment rejection, unused mana empties at step end.
 
 ### Next Milestone
 
-Phase 6 — Mana.
+Phase 7 — Combat (not started).
 
 ---
 
@@ -135,14 +135,14 @@ Do not modify, import, link, or share code with the sibling deck builder during 
 
 ## Phase 6 — Mana
 
-* ⬜ Mana pool.
-* ⬜ Colored mana.
-* ⬜ Generic mana.
-* ⬜ Tap/untap.
-* ⬜ Mana production.
-* ⬜ Mana costs.
-* ⬜ Illegal payment rejection.
-* ⬜ Checkpoint 6 — Mana.
+* 🟢 Mana pool.
+* 🟢 Colored mana.
+* 🟢 Generic mana.
+* 🟢 Tap/untap.
+* 🟢 Mana production.
+* 🟢 Mana costs.
+* 🟢 Illegal payment rejection.
+* 🟢 Checkpoint 6 — Mana.
 
 ## Phase 7 — Combat
 
@@ -924,4 +924,59 @@ Represent priority and the stack as engine behavior: pass priority around the ta
 ### Next Task
 
 Phase 6 — mana.
+
+---
+
+## 2026-08-13 — Checkpoint 6 mana
+
+### Objective
+
+Turn the Phase 2 ManaPool data model into engine behavior: add/remove mana, pay simple costs, tap for mana, and empty unused mana when a step ends.
+
+### Work Completed
+
+- Added `addMana`, `removeMana`, `emptyManaPools`, `parseManaCost`, `canPayManaCost`, and `payManaCost`.
+- Added `tapCard`, `untapCard`, and `tapForMana`.
+- `advanceStep` empties all players' mana pools as the current step ends (CR 500.4).
+- Generic costs can be paid with any remaining mana after colored/colorless requirements.
+- Tests cover colors, colorless, illegal removal, illegal payment, tap/untap, production, step-end emptying, and serialization.
+
+### Tests Run
+
+- `npm test` — PASS (58 tests)
+- `npm run typecheck` — PASS
+- `npm run lint` — PASS
+- `npm run build` — PASS
+
+### Results
+
+- Mana pools are independently tracked per player. Payment is available as a standalone engine operation and is not wired into spell casting.
+
+### Problems Encountered
+
+- None.
+
+### Decisions Made
+
+- `tapForMana` takes the produced amount from the caller; lands do not infer their mana from type lines yet.
+- Hybrid, Phyrexian, and `{X}` symbols are rejected as unsupported.
+- Generic leftover is spent in order C, W, U, B, R, G.
+- `payManaCost` is not hooked into `putSpellOnStack` (full casting stays later).
+- Unused mana empties on every `advanceStep`, including turn wrap.
+
+### Files Changed
+
+- `engine/src/mana.ts`
+- `engine/src/mana.test.ts`
+- `engine/src/turn.ts`
+- `engine/src/index.ts`
+- `docs/DEVELOPMENT_PROGRESS.md`
+
+### Checkpoint
+
+- PASS
+
+### Next Task
+
+Stop. Do not start Phase 7 until Checkpoint 6 is reviewed.
 

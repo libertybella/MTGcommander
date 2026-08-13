@@ -17,6 +17,19 @@ export { passPriority, putSpellOnStack, resolveTopOfStack } from "./stack";
 export type { MoveCardOptions } from "./zones";
 export { TURN_SEQUENCE, advanceStep, advanceSteps } from "./turn";
 export type { TurnSlot } from "./turn";
+export {
+  addMana,
+  canPayManaCost,
+  emptyManaPools,
+  MANA_COLORS,
+  parseManaCost,
+  payManaCost,
+  removeMana,
+  tapCard,
+  tapForMana,
+  untapCard,
+} from "./mana";
+export type { ParsedManaCost } from "./mana";
 export { createId } from "./ids";
 export {
   createCardDefinition,

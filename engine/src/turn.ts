@@ -1,4 +1,5 @@
 import { cloneGameState } from "./clone";
+import { emptyManaPoolsInPlace } from "./mana";
 import type { GameState, Phase, PlayerId, Step } from "./types";
 
 export type TurnSlot = {
@@ -59,6 +60,7 @@ function onEnterStep(state: GameState): void {
  */
 export function advanceStep(state: GameState): GameState {
   const next = cloneGameState(state);
+  emptyManaPoolsInPlace(next);
   const current = slotIndex(next.turn.phase, next.turn.step);
   const lastIndex = TURN_SEQUENCE.length - 1;
 
