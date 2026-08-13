@@ -20,21 +20,21 @@ A checkbox becomes 🟢 Complete only when the work has been implemented **and**
 
 ## Project Status
 
-**Current Phase:** Phase 10 complete — awaiting review
-**Current Checkpoint:** Checkpoint 10 — Commander
+**Current Phase:** Phase 11 complete — awaiting review
+**Current Checkpoint:** Checkpoint 11 — Card Definitions & Effects
 **Overall Status:** 🟡 In Progress
 
 ### Current Objective
 
-Stop. Do not start Phase 11 until Checkpoint 10 is reviewed.
+Stop. Do not start Phase 12 until Checkpoint 11 is reviewed.
 
 ### Last Completed Milestone
 
-Phase 10: commander designation, command-zone casting, tax, return to command zone, commander damage, and 21-damage loss.
+Phase 11: CardDefinitions carry serializable effects that execute on spell resolution through the existing GameEffect system.
 
 ### Next Milestone
 
-Phase 11 — Deck Import (not started).
+Phase 12 — Battlefield UI (not started). Deck import remains later.
 
 ---
 
@@ -189,17 +189,16 @@ Do not modify, import, link, or share code with the sibling deck builder during 
 * 🟢 21 commander damage loss.
 * 🟢 Checkpoint 10 — Commander.
 
-## Phase 11 — Deck Import
+## Phase 11 — Card Definitions & Effect Execution
 
-* ⬜ Decklist text import.
-* ⬜ Card data lookup.
-* ⬜ 100-card validation.
-* ⬜ Commander validation.
-* ⬜ Singleton validation.
-* ⬜ Color identity validation.
-* ⬜ Save deck.
-* ⬜ Reload deck.
-* ⬜ Checkpoint 11 — Real Deck Import.
+* 🟢 CardDefinition effects as data.
+* 🟢 Multiple instances sharing one definition.
+* 🟢 Bind controller-relative effects on resolve.
+* 🟢 Instant/sorcery effect execution.
+* 🟢 Creature resolves to battlefield.
+* 🟢 Synthetic test cards.
+* 🟢 Effect serialization (no functions).
+* 🟢 Checkpoint 11 — Card Definitions & Effects.
 
 ## Phase 12 — Battlefield UI
 
@@ -1237,5 +1236,63 @@ Implement fundamental Commander rules: command zone, tax, casting, return, damag
 ### Next Task
 
 Stop. Do not start Phase 11 until Checkpoint 10 is reviewed.
+
+---
+
+## 2026-08-13 — Checkpoint 11 card definitions and effect execution
+
+### Objective
+
+Let CardDefinitions carry serializable effects and execute them through the existing GameEffect system when a spell resolves.
+
+### Work Completed
+
+- Added `CardEffect` data on `CardDefinition` (not functions).
+- Relative player refs `controller` and `next_opponent` bind to concrete player IDs on resolve. `next_opponent` is a test stand-in, not a targeting system.
+- `resolveTopOfStack` binds definition effects, runs `applyEffects`, then moves the spell to graveyard or battlefield.
+- Added synthetic test cards (shock, gift, drain, study, ritual, recruit, bear, blank instant).
+- Round-trip serialization includes definition effects.
+
+### Tests Run
+
+- `npm test` — PASS (106 tests)
+- `npm run typecheck` — PASS
+- `npm run lint` — PASS
+- `npm run build` — PASS
+- Engine remains free of React/Electron imports.
+
+### Results
+
+- Multiple CardInstances can share one definition. Resolving a defined spell changes GameState via GameEffect, then the card goes to the correct zone.
+
+### Problems Encountered
+
+- `resolveTopOfStack` used `const next` and then reassigned after applying effects. Changed to `let`.
+
+### Decisions Made
+
+- CardDefinition stores `CardEffect[]`; resolve binds them to `GameEffect[]` and reuses `applyEffect`. No second executor.
+- Tap/untap/move tests use an explicit instance ID in the definition. That is not a targeting system.
+- Deck import was previously listed as Phase 11; this checkpoint uses Phase 11 for card-definition execution instead. Deck import remains future work.
+
+### Files Changed
+
+- `engine/src/types.ts`
+- `engine/src/createGame.ts`
+- `engine/src/effects.ts`
+- `engine/src/stack.ts`
+- `engine/src/serialize.ts`
+- `engine/src/catalog.ts`
+- `engine/src/cardEffects.test.ts`
+- `engine/src/index.ts`
+- `docs/DEVELOPMENT_PROGRESS.md`
+
+### Checkpoint
+
+- PASS
+
+### Next Task
+
+Stop. Do not start Phase 12 until Checkpoint 11 is reviewed.
 
 

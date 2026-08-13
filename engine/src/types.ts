@@ -70,6 +70,8 @@ export type CardDefinition = {
   oracleText: string;
   power: number | null;
   toughness: number | null;
+  /** Serializable on-resolve effects. Not executable functions. */
+  effects: CardEffect[];
 };
 
 export type CardInstance = {
@@ -166,6 +168,48 @@ export type GameEffect =
 export type EffectTarget =
   | { type: "player"; playerId: PlayerId }
   | { type: "creature"; cardId: CardInstanceId };
+
+/**
+ * Relative player used in CardDefinition effects.
+ * "next_opponent" is a Phase 11 stand-in for targeting, not a targeting system.
+ */
+export type RelativePlayer = "controller" | "next_opponent";
+export type PlayerSelector = PlayerId | RelativePlayer;
+
+export type CardEffectTarget =
+  | { type: "player"; playerId: PlayerSelector }
+  | { type: "creature"; cardId: CardInstanceId };
+
+/**
+ * Definition-stored effect data. Bound to concrete GameEffect values on resolve.
+ */
+export type CardEffect =
+  | { kind: "gain_life"; playerId: PlayerSelector; amount: number }
+  | { kind: "lose_life"; playerId: PlayerSelector; amount: number }
+  | {
+      kind: "deal_damage";
+      sourceId: CardInstanceId | "self" | null;
+      target: CardEffectTarget;
+      amount: number;
+    }
+  | { kind: "draw"; playerId: PlayerSelector; count: number }
+  | {
+      kind: "move_card";
+      cardId: CardInstanceId;
+      toZone: Exclude<ZoneName, "stack">;
+      libraryPosition?: "top" | "bottom";
+    }
+  | { kind: "tap"; cardId: CardInstanceId }
+  | { kind: "untap"; cardId: CardInstanceId }
+  | { kind: "add_mana"; playerId: PlayerSelector; mana: Partial<ManaPool> }
+  | {
+      kind: "create_token";
+      ownerId: PlayerSelector;
+      name: string;
+      typeLine: string;
+      power?: number | null;
+      toughness?: number | null;
+    };
 
 export type GameAction =
   | { kind: "pass_priority"; playerId: PlayerId }

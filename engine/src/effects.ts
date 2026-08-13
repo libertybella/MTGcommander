@@ -4,11 +4,102 @@ import { isCreature } from "./cardTypes";
 import { addMana, tapCard, untapCard } from "./mana";
 import { countCardPlacements, moveCard } from "./zones";
 import type {
+  CardEffect,
+  CardInstanceId,
   GameEffect,
   GameState,
   PlayerId,
+  PlayerSelector,
   PlayerState,
 } from "./types";
+
+export type BindEffectContext = {
+  controllerId: PlayerId;
+  sourceId: CardInstanceId | null;
+};
+
+function nextOpponentId(state: GameState, controllerId: PlayerId): PlayerId {
+  const index = state.players.findIndex((player) => player.id === controllerId);
+  if (index === -1) {
+    throw new Error(`Unknown player ${controllerId}`);
+  }
+  const opponent = state.players[(index + 1) % state.players.length];
+  if (!opponent) {
+    throw new Error("No opponent");
+  }
+  return opponent.id;
+}
+
+function bindPlayer(state: GameState, selector: PlayerSelector, controllerId: PlayerId): PlayerId {
+  if (selector === "controller") {
+    return controllerId;
+  }
+  if (selector === "next_opponent") {
+    return nextOpponentId(state, controllerId);
+  }
+  return selector;
+}
+
+function bindSourceId(
+  sourceId: CardInstanceId | "self" | null,
+  context: BindEffectContext,
+): CardInstanceId | null {
+  if (sourceId === "self") {
+    return context.sourceId;
+  }
+  return sourceId;
+}
+
+export function bindCardEffect(
+  state: GameState,
+  effect: CardEffect,
+  context: BindEffectContext,
+): GameEffect {
+  switch (effect.kind) {
+    case "gain_life":
+    case "lose_life":
+    case "draw":
+    case "add_mana":
+      return {
+        ...effect,
+        playerId: bindPlayer(state, effect.playerId, context.controllerId),
+      };
+    case "deal_damage":
+      return {
+        kind: "deal_damage",
+        amount: effect.amount,
+        sourceId: bindSourceId(effect.sourceId, context),
+        target:
+          effect.target.type === "player"
+            ? {
+                type: "player",
+                playerId: bindPlayer(state, effect.target.playerId, context.controllerId),
+              }
+            : effect.target,
+      };
+    case "create_token":
+      return {
+        ...effect,
+        ownerId: bindPlayer(state, effect.ownerId, context.controllerId),
+      };
+    case "move_card":
+    case "tap":
+    case "untap":
+      return effect;
+    default: {
+      const exhaustive: never = effect;
+      throw new Error(`Unknown card effect ${(exhaustive as CardEffect).kind}`);
+    }
+  }
+}
+
+export function bindCardEffects(
+  state: GameState,
+  effects: CardEffect[],
+  context: BindEffectContext,
+): GameEffect[] {
+  return effects.map((effect) => bindCardEffect(state, effect, context));
+}
 
 function requirePlayer(state: GameState, playerId: PlayerId): PlayerState {
   const player = state.players.find((entry) => entry.id === playerId);

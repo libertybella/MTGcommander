@@ -2,6 +2,7 @@ import { createId } from "./ids";
 import { cloneGameState } from "./clone";
 import { isCommander, isInstantOrSorcery } from "./cardTypes";
 import { enterOwnerZone, findCardZone, removeCardFromCurrentZone } from "./zones";
+import { applyEffects, bindCardEffects } from "./effects";
 import type { CardInstanceId, GameState, PlayerId, ZoneName } from "./types";
 
 function nextSeatedPlayer(state: GameState, currentId: PlayerId): PlayerId {
@@ -49,7 +50,7 @@ export function resolveTopOfStack(state: GameState): GameState {
   if (state.stack.length === 0) {
     throw new Error("Stack is empty");
   }
-  const next = cloneGameState(state);
+  let next = cloneGameState(state);
   const top = next.stack.pop();
   if (!top) {
     throw new Error("Stack is empty");
@@ -60,6 +61,17 @@ export function resolveTopOfStack(state: GameState): GameState {
   if (!top.sourceId) {
     return next;
   }
+
+  const source = next.cards[top.sourceId];
+  const definition = source ? next.definitions[source.definitionId] : undefined;
+  if (definition && definition.effects.length > 0) {
+    const bound = bindCardEffects(next, definition.effects, {
+      controllerId: top.controllerId,
+      sourceId: top.sourceId,
+    });
+    next = applyEffects(next, bound);
+  }
+
   const destination: ZoneName = isInstantOrSorcery(next, top.sourceId)
     ? "graveyard"
     : "battlefield";

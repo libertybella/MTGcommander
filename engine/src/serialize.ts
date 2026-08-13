@@ -1,4 +1,12 @@
-import type { GameAction, GameEvent, GameState, ManaPool, PlayerState } from "./types";
+import type {
+  CardEffect,
+  GameAction,
+  GameEvent,
+  GameState,
+  ManaPool,
+  PlayerState,
+  ZoneName,
+} from "./types";
 
 const MANA_KEYS = ["W", "U", "B", "R", "G", "C"] as const;
 const ZONE_KEYS = [
@@ -173,6 +181,7 @@ export function parseGameState(json: string): GameState {
         def.toughness === undefined || def.toughness === null
           ? null
           : expectNumber(def.toughness, "definition.toughness"),
+      effects: parseCardEffects(def.effects, `definition.${id}.effects`),
     };
   }
 
@@ -224,6 +233,130 @@ export function parseGameState(json: string): GameState {
     ),
     passesSinceAction: expectNumber(raw.passesSinceAction ?? 0, "passesSinceAction"),
   };
+}
+
+function parsePlayerSelector(value: unknown, label: string): string {
+  return expectString(value, label);
+}
+
+function parsePartialMana(value: unknown, label: string): Partial<ManaPool> {
+  if (!isRecord(value)) {
+    throw new Error(`Invalid ${label}`);
+  }
+  const mana: Partial<ManaPool> = {};
+  for (const key of MANA_KEYS) {
+    if (value[key] !== undefined) {
+      mana[key] = expectNumber(value[key], `${label}.${key}`);
+    }
+  }
+  return mana;
+}
+
+function parseCardEffect(value: unknown, label: string): CardEffect {
+  if (!isRecord(value)) {
+    throw new Error(`Invalid ${label}`);
+  }
+  const kind = expectString(value.kind, `${label}.kind`);
+  switch (kind) {
+    case "gain_life":
+    case "lose_life":
+      return {
+        kind,
+        playerId: parsePlayerSelector(value.playerId, `${label}.playerId`),
+        amount: expectNumber(value.amount, `${label}.amount`),
+      };
+    case "draw":
+      return {
+        kind,
+        playerId: parsePlayerSelector(value.playerId, `${label}.playerId`),
+        count: expectNumber(value.count, `${label}.count`),
+      };
+    case "add_mana":
+      return {
+        kind,
+        playerId: parsePlayerSelector(value.playerId, `${label}.playerId`),
+        mana: parsePartialMana(value.mana, `${label}.mana`),
+      };
+    case "deal_damage": {
+      if (!isRecord(value.target)) {
+        throw new Error(`Invalid ${label}.target`);
+      }
+      const targetType = expectString(value.target.type, `${label}.target.type`);
+      const sourceId = value.sourceId;
+      if (sourceId !== null && sourceId !== "self" && typeof sourceId !== "string") {
+        throw new Error(`Invalid ${label}.sourceId`);
+      }
+      if (targetType === "player") {
+        return {
+          kind,
+          amount: expectNumber(value.amount, `${label}.amount`),
+          sourceId,
+          target: {
+            type: "player",
+            playerId: parsePlayerSelector(value.target.playerId, `${label}.target.playerId`),
+          },
+        };
+      }
+      if (targetType === "creature") {
+        return {
+          kind,
+          amount: expectNumber(value.amount, `${label}.amount`),
+          sourceId,
+          target: {
+            type: "creature",
+            cardId: expectString(value.target.cardId, `${label}.target.cardId`),
+          },
+        };
+      }
+      throw new Error(`Invalid ${label}.target.type`);
+    }
+    case "create_token":
+      return {
+        kind,
+        ownerId: parsePlayerSelector(value.ownerId, `${label}.ownerId`),
+        name: expectString(value.name, `${label}.name`),
+        typeLine: expectString(value.typeLine, `${label}.typeLine`),
+        power: value.power === undefined || value.power === null ? null : expectNumber(value.power, `${label}.power`),
+        toughness:
+          value.toughness === undefined || value.toughness === null
+            ? null
+            : expectNumber(value.toughness, `${label}.toughness`),
+      };
+    case "move_card": {
+      const toZone = expectString(value.toZone, `${label}.toZone`);
+      if (toZone === "stack" || !ZONE_KEYS.includes(toZone as (typeof ZONE_KEYS)[number])) {
+        throw new Error(`Invalid ${label}.toZone`);
+      }
+      const libraryPosition = value.libraryPosition;
+      if (libraryPosition !== undefined && libraryPosition !== "top" && libraryPosition !== "bottom") {
+        throw new Error(`Invalid ${label}.libraryPosition`);
+      }
+      return {
+        kind,
+        cardId: expectString(value.cardId, `${label}.cardId`),
+        toZone: toZone as Exclude<ZoneName, "stack">,
+        libraryPosition,
+      };
+    }
+    case "tap":
+    case "untap":
+      return {
+        kind,
+        cardId: expectString(value.cardId, `${label}.cardId`),
+      };
+    default:
+      throw new Error(`Unknown effect kind ${kind}`);
+  }
+}
+
+function parseCardEffects(value: unknown, label: string): CardEffect[] {
+  if (value === undefined) {
+    return [];
+  }
+  if (!Array.isArray(value)) {
+    throw new Error(`Invalid ${label}`);
+  }
+  return value.map((entry, index) => parseCardEffect(entry, `${label}[${index}]`));
 }
 
 function parseCombat(value: unknown): GameState["combat"] {

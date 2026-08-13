@@ -30,7 +30,9 @@ export function emptyPlayerZones(): PlayerZones {
 
 export function createCardDefinition(
   input: Pick<CardDefinition, "name" | "typeLine"> &
-    Partial<Pick<CardDefinition, "manaCost" | "oracleText" | "id" | "power" | "toughness">>,
+    Partial<
+      Pick<CardDefinition, "manaCost" | "oracleText" | "id" | "power" | "toughness" | "effects">
+    >,
 ): CardDefinition {
   return {
     id: input.id ?? createId("def"),
@@ -40,6 +42,7 @@ export function createCardDefinition(
     oracleText: input.oracleText ?? "",
     power: input.power ?? null,
     toughness: input.toughness ?? null,
+    effects: input.effects ? input.effects.map((effect) => ({ ...effect })) : [],
   };
 }
 

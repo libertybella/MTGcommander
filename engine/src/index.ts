@@ -15,7 +15,18 @@ export {
 } from "./zones";
 export { applyAction, applyActions } from "./actions";
 export { declareAttackers, declareBlockers, priorityForStep } from "./combat";
-export { applyEffect, applyEffects } from "./effects";
+export { applyEffect, applyEffects, bindCardEffect, bindCardEffects } from "./effects";
+export type { BindEffectContext } from "./effects";
+export {
+  testBear,
+  testBlankInstant,
+  testDrain,
+  testGift,
+  testRecruit,
+  testRitual,
+  testShock,
+  testStudy,
+} from "./catalog";
 export { passPriority, putSpellOnStack, resolveTopOfStack } from "./stack";
 export {
   definitionTypeLine,
@@ -64,6 +75,8 @@ export {
 export type {
   CardDefinition,
   CardDefinitionId,
+  CardEffect,
+  CardEffectTarget,
   CardInstance,
   CardInstanceId,
   Color,
@@ -79,6 +92,8 @@ export type {
   ManaColor,
   ManaPool,
   Phase,
+  PlayerSelector,
+  RelativePlayer,
   PlayerId,
   PlayerState,
   PlayerZones,
