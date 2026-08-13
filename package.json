@@ -1,0 +1,30 @@
+{
+  "name": "mtgcommander",
+  "private": true,
+  "version": "0.1.0",
+  "description": "BizzyMTG Commander — unofficial PC-hosted multiplayer Commander client",
+  "type": "module",
+  "main": "dist-electron/main.js",
+  "workspaces": [
+    "engine",
+    "server",
+    "client"
+  ],
+  "scripts": {
+    "dev": "npm run dev -w @mtgcommander/client",
+    "build": "npm run build -w @mtgcommander/client",
+    "test": "vitest run",
+    "typecheck": "tsc -p engine/tsconfig.json --noEmit && tsc -p server/tsconfig.json --noEmit && tsc -p client/tsconfig.json --noEmit && tsc -p client/tsconfig.node.json --noEmit && tsc -p electron/tsconfig.json --noEmit",
+    "lint": "oxlint engine server client electron vitest.config.ts"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "devDependencies": {
+    "@types/node": "^24.3.0",
+    "electron": "^37.2.6",
+    "oxlint": "^1.75.0",
+    "typescript": "~5.8.3",
+    "vitest": "^3.2.4"
+  }
+}

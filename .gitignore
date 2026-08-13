@@ -1,0 +1,11 @@
+node_modules
+dist
+dist-electron
+*.tsbuildinfo
+*.local
+.DS_Store
+logs
+*.log
+npm-debug.log*
+.vite
+coverage
