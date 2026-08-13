@@ -8,6 +8,7 @@ const ZONE_KEYS = [
   "graveyard",
   "exile",
   "command",
+  "stack",
 ] as const;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -202,6 +203,11 @@ export function parseGameState(json: string): GameState {
     stack,
     cards,
     definitions,
+    priorityPlayerId: expectString(
+      raw.priorityPlayerId ?? raw.turn.activePlayerId,
+      "priorityPlayerId",
+    ),
+    passesSinceAction: expectNumber(raw.passesSinceAction ?? 0, "passesSinceAction"),
   };
 }
 

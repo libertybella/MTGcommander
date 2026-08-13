@@ -101,5 +101,7 @@ export function createGameState(options: CreateGameOptions): GameState {
     stack: [],
     cards: {},
     definitions: {},
+    priorityPlayerId: first.id,
+    passesSinceAction: 0,
   };
 }

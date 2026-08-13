@@ -22,7 +22,8 @@ export type ZoneName =
   | "battlefield"
   | "graveyard"
   | "exile"
-  | "command";
+  | "command"
+  | "stack";
 
 export type Phase =
   | "beginning"
@@ -109,6 +110,8 @@ export type GameState = {
   stack: StackObject[];
   cards: Record<CardInstanceId, CardInstance>;
   definitions: Record<CardDefinitionId, CardDefinition>;
+  priorityPlayerId: PlayerId;
+  passesSinceAction: number;
 };
 
 export type GameAction =

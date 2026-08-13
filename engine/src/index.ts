@@ -5,7 +5,15 @@
 
 export { getEngineInfo, type EngineInfo } from "./info";
 export { cloneGameState } from "./clone";
-export { countCardPlacements, findCardZone, moveCard, PLAYER_ZONES } from "./zones";
+export {
+  countCardPlacements,
+  enterOwnerZone,
+  findCardZone,
+  isPlayerZone,
+  moveCard,
+  PLAYER_ZONES,
+} from "./zones";
+export { passPriority, putSpellOnStack, resolveTopOfStack } from "./stack";
 export type { MoveCardOptions } from "./zones";
 export { TURN_SEQUENCE, advanceStep, advanceSteps } from "./turn";
 export type { TurnSlot } from "./turn";

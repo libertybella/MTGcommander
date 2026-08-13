@@ -20,21 +20,21 @@ A checkbox becomes 🟢 Complete only when the work has been implemented **and**
 
 ## Project Status
 
-**Current Phase:** Phase 4 — Turn Engine
-**Current Checkpoint:** Checkpoint 4 — Turn Structure
+**Current Phase:** Phase 5 — Priority & Stack
+**Current Checkpoint:** Checkpoint 5 — Stack
 **Overall Status:** 🟡 In Progress
 
 ### Current Objective
 
-Autonomous run through Phases 3–6. Phase 4 turn skeleton is implemented.
+Autonomous run through Phases 3–6. Phase 5 priority/stack is implemented.
 
 ### Last Completed Milestone
 
-Phase 4: step/phase/turn order, untap on entering the untap step, draw step visited without drawing.
+Phase 5: priority passing, putting spells on the stack from hand, LIFO resolve, counterspell-order test.
 
 ### Next Milestone
 
-Phase 5 — Priority and stack.
+Phase 6 — Mana.
 
 ---
 
@@ -104,7 +104,7 @@ Do not modify, import, link, or share code with the sibling deck builder during 
 * 🟢 Graveyard.
 * 🟢 Exile.
 * 🟢 Command Zone.
-* ⬜ Stack.
+* 🟢 Stack.
 * 🟢 Zone movement.
 * 🟢 Card identity/integrity tests.
 * 🟢 Checkpoint 3 — Zone Integrity.
@@ -124,14 +124,14 @@ Do not modify, import, link, or share code with the sibling deck builder during 
 
 ## Phase 5 — Priority & Stack
 
-* ⬜ Priority.
-* ⬜ Pass priority.
-* ⬜ Stack objects.
-* ⬜ Spell casting.
-* ⬜ Resolution.
-* ⬜ Responses.
-* ⬜ Counterspell test.
-* ⬜ Checkpoint 5 — Stack.
+* 🟢 Priority.
+* 🟢 Pass priority.
+* 🟢 Stack objects.
+* 🟢 Spell casting.
+* 🟢 Resolution.
+* 🟢 Responses.
+* 🟢 Counterspell test.
+* 🟢 Checkpoint 5 — Stack.
 
 ## Phase 6 — Mana
 
@@ -864,4 +864,64 @@ Advance turns through CR-like phases and steps, including multi-player wrap.
 ### Next Task
 
 Phase 5 — priority and stack.
+
+---
+
+## 2026-08-13 — Checkpoint 5 priority and stack
+
+### Objective
+
+Represent priority and the stack as engine behavior: pass priority around the table, put spells on the stack from hand, and resolve the top object in LIFO order.
+
+### Work Completed
+
+- Added `priorityPlayerId` and `passesSinceAction` to GameState.
+- Added `putSpellOnStack`, `passPriority`, and `resolveTopOfStack`.
+- Spells leave hand and exist only on the stack until they resolve.
+- Instants/sorceries resolve to the owner's graveyard; other spells resolve to the battlefield.
+- After all players pass with a nonempty stack, the top object resolves and priority returns to the active player.
+- After all players pass with an empty stack, priority returns to the active player without advancing the step.
+- `ZoneName` includes `"stack"`; player zone lists still do not contain a stack array.
+- Tests cover passing, illegal passes, LIFO/counterspell order, creature resolution, empty-stack wrap, and serialization.
+
+### Tests Run
+
+- `npm test` — PASS (40 tests)
+- `npm run typecheck` — PASS
+- `npm run lint` — PASS
+- `npm run build` — PASS
+
+### Results
+
+- Stack is a separate `StackObject[]`. Cards on the stack are not in any player zone.
+
+### Problems Encountered
+
+- Typecheck failed because `PLAYER_ZONES` was typed as `ZoneName[]`, which includes `"stack"`, and was used to index `PlayerZones`. Fixed by typing player zones separately and adding `isPlayerZone`.
+
+### Decisions Made
+
+- Minimal cast: the card must be in hand; mana payment is Phase 6.
+- Putting a spell on the stack resets pass count and gives priority to the spell's controller.
+- Full pass with an empty stack does not auto-advance the step.
+- Destination after resolve is owner's zone (graveyard or battlefield).
+
+### Files Changed
+
+- `engine/src/stack.ts`
+- `engine/src/stack.test.ts`
+- `engine/src/types.ts`
+- `engine/src/createGame.ts`
+- `engine/src/serialize.ts`
+- `engine/src/zones.ts`
+- `engine/src/index.ts`
+- `docs/DEVELOPMENT_PROGRESS.md`
+
+### Checkpoint
+
+- PASS
+
+### Next Task
+
+Phase 6 — mana.
 

@@ -1,7 +1,7 @@
 import { cloneGameState } from "./clone";
-import type { CardInstanceId, GameState, PlayerState, ZoneName } from "./types";
+import type { CardInstanceId, GameState, PlayerState, PlayerZones, ZoneName } from "./types";
 
-export const PLAYER_ZONES: ZoneName[] = [
+export const PLAYER_ZONES: (keyof PlayerZones)[] = [
   "library",
   "hand",
   "battlefield",
@@ -10,12 +10,16 @@ export const PLAYER_ZONES: ZoneName[] = [
   "command",
 ];
 
+export function isPlayerZone(zone: ZoneName): zone is keyof PlayerZones {
+  return (PLAYER_ZONES as readonly string[]).includes(zone);
+}
+
 export type MoveCardOptions = {
   /** Library only: index 0 is the top. Defaults to top when moving onto the library. */
   libraryPosition?: "top" | "bottom";
 };
 
-function playerHasCard(player: PlayerState, cardId: CardInstanceId): ZoneName | null {
+function playerHasCard(player: PlayerState, cardId: CardInstanceId): keyof PlayerZones | null {
   for (const zone of PLAYER_ZONES) {
     if (player.zones[zone].includes(cardId)) {
       return zone;
@@ -27,7 +31,7 @@ function playerHasCard(player: PlayerState, cardId: CardInstanceId): ZoneName | 
 export function findCardZone(
   state: GameState,
   cardId: CardInstanceId,
-): { playerId: string; zone: ZoneName } | null {
+): { playerId: string; zone: keyof PlayerZones } | null {
   for (const player of state.players) {
     const zone = playerHasCard(player, cardId);
     if (zone) {
@@ -47,7 +51,11 @@ export function countCardPlacements(state: GameState, cardId: CardInstanceId): n
   return count;
 }
 
-function removeFromZone(player: PlayerState, zone: ZoneName, cardId: CardInstanceId): void {
+function removeFromZone(
+  player: PlayerState,
+  zone: keyof PlayerZones,
+  cardId: CardInstanceId,
+): void {
   const list = player.zones[zone];
   const index = list.indexOf(cardId);
   if (index === -1) {
@@ -56,9 +64,53 @@ function removeFromZone(player: PlayerState, zone: ZoneName, cardId: CardInstanc
   list.splice(index, 1);
 }
 
+export function removeCardFromCurrentZone(state: GameState, cardId: CardInstanceId): GameState {
+  const next = cloneGameState(state);
+  const card = next.cards[cardId];
+  if (!card) {
+    throw new Error(`Unknown card ${cardId}`);
+  }
+  const located = findCardZone(next, cardId);
+  if (!located) {
+    throw new Error(`Card ${cardId} is not in any player zone`);
+  }
+  const occupant = next.players.find((p) => p.id === located.playerId);
+  if (!occupant) {
+    throw new Error(`Card ${cardId} zone player is missing`);
+  }
+  removeFromZone(occupant, located.zone, cardId);
+  return next;
+}
+
+export function enterOwnerZone(
+  state: GameState,
+  cardId: CardInstanceId,
+  toZone: ZoneName,
+  options: MoveCardOptions = {},
+): GameState {
+  if (!isPlayerZone(toZone)) {
+    throw new Error(`Cannot enter zone ${toZone}`);
+  }
+  const next = cloneGameState(state);
+  const card = next.cards[cardId];
+  if (!card) {
+    throw new Error(`Unknown card ${cardId}`);
+  }
+  if (findCardZone(next, cardId)) {
+    throw new Error(`Card ${cardId} is already in a player zone`);
+  }
+  const owner = next.players.find((p) => p.id === card.ownerId);
+  if (!owner) {
+    throw new Error(`Card ${cardId} owner is missing`);
+  }
+  insertIntoZone(owner, toZone, cardId, options.libraryPosition ?? "top");
+  card.zone = toZone;
+  return next;
+}
+
 function insertIntoZone(
   player: PlayerState,
-  zone: ZoneName,
+  zone: keyof PlayerZones,
   cardId: CardInstanceId,
   libraryPosition: "top" | "bottom",
 ): void {
@@ -83,7 +135,7 @@ export function moveCard(
   toZone: ZoneName,
   options: MoveCardOptions = {},
 ): GameState {
-  if (!PLAYER_ZONES.includes(toZone)) {
+  if (!isPlayerZone(toZone)) {
     throw new Error(`Cannot move to zone ${toZone}`);
   }
 
