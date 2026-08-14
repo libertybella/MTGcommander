@@ -1,5 +1,6 @@
 import {
   compileOracleCard,
+  defaultPlayerNames,
   expandDeckCards,
   normalizeCardName,
   parseTextDecklist,
@@ -8,6 +9,7 @@ import {
   type GameState,
   type OracleCard,
   type ParsedDecklist,
+  type TablePlayerCount,
 } from "@mtgcommander/engine";
 import { CardDatabase } from "./cards";
 import { fetchMoxfieldDeck } from "./moxfield";
@@ -123,35 +125,37 @@ export async function importTextDeck(
 }
 
 export function startImportedTable(options: {
-  you: CompiledDeck;
-  opponent: CompiledDeck;
-  playerNames?: [string, string];
+  decks: CompiledDeck[];
+  playerNames?: string[];
   random?: () => number;
 }): ImportedTable {
-  const definitions = { ...options.you.definitions, ...options.opponent.definitions };
+  const playerCount = options.decks.length;
+  if (playerCount !== 2 && playerCount !== 3 && playerCount !== 4) {
+    throw new Error("Imported tables need 2–4 decks");
+  }
+  const count = playerCount as TablePlayerCount;
+  const names = options.playerNames ?? defaultPlayerNames(count);
+  const definitions: Record<string, CardDefinition> = {};
+  for (const deck of options.decks) {
+    Object.assign(definitions, deck.definitions);
+  }
   const state = startDefinitionGame({
-    playerCount: 2,
-    playerNames: options.playerNames ?? ["You", "Opponent"],
+    playerCount: count,
+    playerNames: names,
     definitions,
     shuffle: true,
     random: options.random,
-    decks: [
-      {
-        commanderDefinitionIds: options.you.commanderDefinitionIds,
-        libraryDefinitionIds: options.you.libraryDefinitionIds,
-      },
-      {
-        commanderDefinitionIds: options.opponent.commanderDefinitionIds,
-        libraryDefinitionIds: options.opponent.libraryDefinitionIds,
-      },
-    ],
+    decks: options.decks.map((deck) => ({
+      commanderDefinitionIds: deck.commanderDefinitionIds,
+      libraryDefinitionIds: deck.libraryDefinitionIds,
+    })),
   });
   return {
     state,
     missing: [],
-    notes: [
-      { player: options.playerNames?.[0] ?? "You", cards: options.you.notes },
-      { player: options.playerNames?.[1] ?? "Opponent", cards: options.opponent.notes },
-    ],
+    notes: options.decks.map((deck, index) => ({
+      player: names[index] ?? `Player ${index + 1}`,
+      cards: deck.notes,
+    })),
   };
 }

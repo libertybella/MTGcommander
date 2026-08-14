@@ -114,6 +114,12 @@ describe("GameState data model", () => {
     expect(game.players.every((p) => p.life === 40)).toBe(true);
   });
 
+  it("creates a valid 3-player GameState", () => {
+    const game = createGameState({ playerCount: 3 });
+    expect(game.players).toHaveLength(3);
+    expect(game.players.every((p) => p.life === 40)).toBe(true);
+  });
+
   it("creates a valid 4-player GameState", () => {
     const game = createGameState({
       playerCount: 4,

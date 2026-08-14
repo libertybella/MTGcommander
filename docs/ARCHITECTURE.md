@@ -75,7 +75,7 @@ If we later move hosting to the cloud, we keep `engine/` and `server/`, and opti
 
 ## Current Repository State
 
-`mtgCommander` is an independent project. The engine, a local `GameHost` in `server/`, and a React battlefield UI exist. The host is the only caller of `applyAction`. Scryfall oracle cards cache locally and compile into definitions. Moxfield URLs and pasted Commander lists can seat a 2-player table. WebSockets, rooms, and a second client are **not implemented yet**.
+`mtgCommander` is an independent project. The engine, a local `GameHost` in `server/`, and a React battlefield UI exist. The host is the only caller of `applyAction`. Scryfall oracle cards cache locally and compile into definitions. Moxfield URLs and pasted Commander lists can seat a 2-, 3-, or 4-player table. Local hotseat is optional. WebSockets, rooms, and a second client are **not implemented yet**.
 
 The sibling Electron deck builder is **out of scope**. This project must not import or depend on it.
 

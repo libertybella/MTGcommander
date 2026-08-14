@@ -1,4 +1,4 @@
-import { POOL_ID, startCatalogGame, type GameState } from "@mtgcommander/engine";
+import { POOL_ID, defaultPlayerNames, startCatalogGame, type GameState, type TablePlayerCount } from "@mtgcommander/engine";
 
 function testLibrary(): string[] {
   return [
@@ -20,15 +20,12 @@ function testLibrary(): string[] {
   ];
 }
 
-export type SyntheticPlayerCount = 2 | 4;
+export type SyntheticPlayerCount = TablePlayerCount;
 
 /** Local Phase 21 synthetic table. Not a real-card or networked game. */
 export function startSyntheticTable(playerCount: SyntheticPlayerCount = 2): GameState {
   const library = testLibrary();
-  const names =
-    playerCount === 2
-      ? ["You", "Opponent"]
-      : ["You", "Opponent 1", "Opponent 2", "Opponent 3"];
+  const names = defaultPlayerNames(playerCount);
   return startCatalogGame({
     playerCount,
     playerNames: names,

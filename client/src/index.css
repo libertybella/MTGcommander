@@ -168,18 +168,39 @@ h3 {
 }
 
 .actions button.is-selected,
-.player-meta button.is-selected {
+.player-meta button.is-selected,
+.table-size button.is-selected,
+.seat-switcher button.is-selected {
   border-color: #f3d27a;
 }
 
 .actions button,
 .player-meta button,
-.shell button {
+.shell button,
+.seat-switcher button {
   background: #2b4c66;
   color: #e8eef4;
   border: 1px solid #3d6a88;
   border-radius: 0.35rem;
   padding: 0.4rem 0.75rem;
+}
+
+.table-size,
+.seat-switcher {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.seat-switcher {
+  margin: 0.75rem;
+}
+
+.hotseat-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
 }
 
 .import-panel {

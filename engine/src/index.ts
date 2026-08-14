@@ -33,8 +33,20 @@ export {
   testCounter,
 } from "./catalog";
 export { POOL_ID, syntheticPool, syntheticPoolById } from "./pool";
-export { dealOpeningHands, seatCatalogDecks, seatDecks, startCatalogGame, startDefinitionGame } from "./setup";
-export type { CatalogDeckSpec, StartCatalogGameOptions, StartDefinitionGameOptions } from "./setup";
+export {
+  dealOpeningHands,
+  defaultPlayerNames,
+  seatCatalogDecks,
+  seatDecks,
+  startCatalogGame,
+  startDefinitionGame,
+} from "./setup";
+export type {
+  CatalogDeckSpec,
+  StartCatalogGameOptions,
+  StartDefinitionGameOptions,
+  TablePlayerCount,
+} from "./setup";
 export { passPriority, putSpellOnStack, resolveTopOfStack } from "./stack";
 export {
   definitionTypeLine,

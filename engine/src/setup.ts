@@ -5,6 +5,17 @@ import { shuffleInPlace } from "./shuffle";
 import { moveCard } from "./zones";
 import type { CardDefinition, GameState, PlayerId } from "./types";
 
+export type TablePlayerCount = 2 | 3 | 4;
+
+export function defaultPlayerNames(playerCount: TablePlayerCount): string[] {
+  if (playerCount === 2) {
+    return ["You", "Opponent"];
+  }
+  return Array.from({ length: playerCount }, (_, index) =>
+    index === 0 ? "You" : `Opponent ${index}`,
+  );
+}
+
 export type CatalogDeckSpec = {
   commanderDefinitionId?: string;
   commanderDefinitionIds?: string[];

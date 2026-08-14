@@ -20,8 +20,8 @@ A checkbox becomes 🟢 Complete only when the work has been implemented **and**
 
 ## Project Status
 
-**Current Phase:** Phase 30 complete
-**Current Checkpoint:** Checkpoint 30 — Card Database & Moxfield
+**Current Phase:** Phase 31 complete
+**Current Checkpoint:** Checkpoint 31 — 2–4 Player Tables & Hotseat
 **Overall Status:** 🟡 In Progress
 
 ### Current Objective
@@ -30,7 +30,7 @@ Stop. Do not start networking, mulligans, activated abilities, or a full oracle-
 
 ### Last Completed Milestone
 
-Checkpoint 30: Scryfall oracle cards compile into `CardDefinition`s and cache locally. Moxfield URLs (Electron) and pasted Commander lists seat a 2-player table. Uncompiled oracle text is noted; those cards still sit in the deck.
+Checkpoint 31: Synthetic and imported tables seat 2, 3, or 4 players. Empty opponent URLs still mirror your deck. Local hotseat seats everyone at this PC so extra players do not auto-pass.
 
 ### Next Milestone
 
@@ -435,7 +435,18 @@ Performance was previously listed as Phase 30. That remains later. This phase ca
 * 🟢 Synthetic 2-player / 4-player start buttons remain.
 * 🟢 Checkpoint 30 — Card Database & Moxfield.
 
-## Phase 31 — Private Alpha
+## Phase 31 — 2–4 Player Tables & Local Hotseat
+
+Private Alpha was previously listed as Phase 31. That remains later. This phase seats 2, 3, or 4 players for synthetic and imported tables, and lets one PC play hotseat.
+
+* 🟢 Synthetic start for 2, 3, and 4 players.
+* 🟢 Imported tables take 2–4 compiled decks (empty opponent URLs mirror you).
+* 🟢 Default names: You / Opponent, or You / Opponent 1–3.
+* 🟢 Local hotseat seats every player; `setViewer` switches the shown hand.
+* 🟢 Unchecked hotseat still auto-passes unseated opponents (solo practice).
+* 🟢 Checkpoint 31 — 2–4 Player Tables & Hotseat.
+
+## Phase 32 — Private Alpha
 
 * ⬜ Invite testers.
 * ⬜ Complete games.
@@ -443,16 +454,16 @@ Performance was previously listed as Phase 30. That remains later. This phase ca
 * ⬜ UX feedback.
 * ⬜ Desync tracking.
 * ⬜ Unsupported-card tracking.
-* ⬜ Checkpoint 31 — Private Alpha.
+* ⬜ Checkpoint 32 — Private Alpha.
 
-## Phase 32 — Productization
+## Phase 33 — Productization
 
 * ⬜ Product identity.
 * ⬜ IP/legal review.
 * ⬜ Hosting/security review.
 * ⬜ Distribution strategy.
 * ⬜ Documentation.
-* ⬜ Checkpoint 32 — Release Decision.
+* ⬜ Checkpoint 33 — Release Decision.
 
 ---
 
@@ -2234,6 +2245,55 @@ Load real Magic cards from a cached Scryfall oracle snapshot and seat Commander 
 ### Checkpoint
 
 - PASS. Tag: `checkpoint-30-card-database`
+- Existing tags were not moved or rewritten.
+
+### Next Task
+
+Stop. Do not start networking, mulligans, activated abilities, or a full oracle-text parser.
+
+---
+
+## 2026-08-13 — 2–4 player tables and local hotseat
+
+### Objective
+
+Seat 2, 3, or 4 players for synthetic and imported games. Make extra seats playable at one PC via hotseat instead of only auto-passing.
+
+### Work Completed
+
+- Default names: 2-player You / Opponent; 3–4 player You / Opponent 1–3.
+- Synthetic start buttons for 2, 3, and 4 players.
+- Imported tables take 2–4 compiled decks. Empty opponent Moxfield URLs still mirror your deck.
+- `GameHost.start(..., { hotseat: true })` seats every player. `setViewer` switches the local hand. Unchecked hotseat still auto-passes unseated opponents.
+- Seat switcher on the table when more than one player is seated.
+
+### Tests Run
+
+- `npm test` — PASS (210 tests)
+- `npm run typecheck` — PASS
+- `npm run lint` — PASS
+- `npm run build` — PASS
+
+### Results
+
+- A 3-player imported table shows two opponent areas. Hotseat pass leaves priority on the next player instead of flushing the table.
+
+### Decisions Made
+
+- Solo practice stays the default (only the viewer is seated). Hotseat is an explicit checkbox.
+- Hidden information still uses `viewFor` after a seat switch; you see that player's hand, not everyone's.
+- Networking, London mulligan, and activated abilities remain later.
+
+### Files Changed
+
+- `engine/src/setup.ts`, `engine/src/index.ts`, `engine/src/gameState.test.ts`, `engine/src/decklist.test.ts`
+- `server/src/importDeck.ts`, `server/src/cards.test.ts`, `server/src/session.ts`, `server/src/session.test.ts`
+- `client/src/game/syntheticTable.ts`, `client/src/App.tsx`, `client/src/App.test.tsx`, `client/src/index.css`
+- `docs/DEVELOPMENT_PROGRESS.md`, `docs/RULES_COVERAGE.md`, `docs/UNSUPPORTED_INTERACTIONS.md`, `docs/ARCHITECTURE.md`
+
+### Checkpoint
+
+- PASS. Tag: `checkpoint-31-player-tables`
 - Existing tags were not moved or rewritten.
 
 ### Next Task

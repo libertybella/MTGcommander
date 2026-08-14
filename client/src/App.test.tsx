@@ -10,6 +10,47 @@ afterEach(() => {
   window.localStorage.clear();
 });
 
+function seedOracleCache() {
+  window.localStorage.setItem(
+    ORACLE_CACHE_KEY,
+    JSON.stringify({
+      version: 1,
+      cards: {
+        forest: {
+          oracleId: "forest",
+          name: "Forest",
+          manaCost: "",
+          typeLine: "Basic Land — Forest",
+          oracleText: "{T}: Add {G}.",
+          power: null,
+          toughness: null,
+          printedKeywords: [],
+        },
+        "sol ring": {
+          oracleId: "sol",
+          name: "Sol Ring",
+          manaCost: "{1}",
+          typeLine: "Artifact",
+          oracleText: "{T}: Add {C}{C}.",
+          power: null,
+          toughness: null,
+          printedKeywords: [],
+        },
+        "atraxa, praetors' voice": {
+          oracleId: "atraxa",
+          name: "Atraxa, Praetors' Voice",
+          manaCost: "{G}{W}{U}{B}",
+          typeLine: "Legendary Creature — Phyrexian Angel Horror",
+          oracleText: "Flying, vigilance, deathtouch, lifelink",
+          power: "4",
+          toughness: "4",
+          printedKeywords: ["Flying", "Vigilance", "Deathtouch", "Lifelink"],
+        },
+      },
+    }),
+  );
+}
+
 function startGame() {
   render(<App />);
   fireEvent.click(screen.getByTestId("start-game"));
@@ -85,45 +126,32 @@ describe("battlefield UI", () => {
     expect(screen.getByText("Opponent 3")).toBeTruthy();
   });
 
-  it("loads a pasted Commander list from the local oracle cache", async () => {
-    window.localStorage.setItem(
-      ORACLE_CACHE_KEY,
-      JSON.stringify({
-        version: 1,
-        cards: {
-          forest: {
-            oracleId: "forest",
-            name: "Forest",
-            manaCost: "",
-            typeLine: "Basic Land — Forest",
-            oracleText: "{T}: Add {G}.",
-            power: null,
-            toughness: null,
-            printedKeywords: [],
-          },
-          "sol ring": {
-            oracleId: "sol",
-            name: "Sol Ring",
-            manaCost: "{1}",
-            typeLine: "Artifact",
-            oracleText: "{T}: Add {C}{C}.",
-            power: null,
-            toughness: null,
-            printedKeywords: [],
-          },
-          "atraxa, praetors' voice": {
-            oracleId: "atraxa",
-            name: "Atraxa, Praetors' Voice",
-            manaCost: "{G}{W}{U}{B}",
-            typeLine: "Legendary Creature — Phyrexian Angel Horror",
-            oracleText: "Flying, vigilance, deathtouch, lifelink",
-            power: "4",
-            toughness: "4",
-            printedKeywords: ["Flying", "Vigilance", "Deathtouch", "Lifelink"],
-          },
-        },
-      }),
+  it("starts a three-player table with two opponent areas", () => {
+    render(<App />);
+    fireEvent.click(screen.getByTestId("start-3p"));
+    expect(screen.getByTestId("area-opponents").querySelectorAll(".player-area.opponent").length).toBe(
+      2,
     );
+    expect(screen.getByText("Opponent 1")).toBeTruthy();
+    expect(screen.getByText("Opponent 2")).toBeTruthy();
+    expect(screen.queryByText("Opponent 3")).toBeNull();
+  });
+
+  it("lets a hotseat opponent take priority instead of auto-passing", () => {
+    render(<App />);
+    fireEvent.click(screen.getByTestId("hotseat"));
+    fireEvent.click(screen.getByTestId("start-game"));
+    expect(screen.getByTestId("priority").textContent).toContain("You");
+    fireEvent.click(screen.getByTestId("pass"));
+    expect(screen.getByTestId("priority").textContent).toContain("Opponent");
+    expect(screen.getByTestId("turn-step").textContent).toContain("untap");
+    fireEvent.click(screen.getByTestId("play-as-Opponent"));
+    expect(within(screen.getByTestId("hand-you")).queryByText("Unknown Card")).toBeNull();
+    expect(within(screen.getByTestId("hand-opponent")).getAllByText("Unknown Card").length).toBe(7);
+  });
+
+  it("loads a pasted Commander list from the local oracle cache", async () => {
+    seedOracleCache();
     render(<App />);
     fireEvent.change(screen.getByTestId("decklist-you"), {
       target: {
@@ -135,6 +163,26 @@ describe("battlefield UI", () => {
       expect(within(screen.getByTestId("command-you")).getByText("Atraxa, Praetors' Voice")).toBeTruthy();
     });
     expect(screen.getByTestId("life-you").textContent).toContain("Life 40");
+  });
+
+  it("loads a three-player imported table by mirroring the pasted list", async () => {
+    seedOracleCache();
+    render(<App />);
+    fireEvent.click(screen.getByTestId("import-size-3"));
+    fireEvent.change(screen.getByTestId("decklist-you"), {
+      target: {
+        value: "Commander\n1 Atraxa, Praetors' Voice\nDeck\n1 Sol Ring\n10 Forest\n",
+      },
+    });
+    fireEvent.click(screen.getByTestId("import-deck"));
+    await waitFor(() => {
+      expect(within(screen.getByTestId("command-you")).getByText("Atraxa, Praetors' Voice")).toBeTruthy();
+    });
+    expect(screen.getByTestId("area-opponents").querySelectorAll(".player-area.opponent").length).toBe(
+      2,
+    );
+    expect(screen.getByText("Opponent 1")).toBeTruthy();
+    expect(screen.getByText("Opponent 2")).toBeTruthy();
   });
 
   it("restores a saved table after remount", () => {

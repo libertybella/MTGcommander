@@ -162,13 +162,36 @@ describe("deck import", () => {
     expect(imported.compiled.commanderDefinitionIds).toHaveLength(1);
     expect(imported.compiled.libraryDefinitionIds).toHaveLength(4);
     const table = startImportedTable({
-      you: imported.compiled,
-      opponent: imported.compiled,
+      decks: [imported.compiled, imported.compiled],
       random: () => 0,
     });
     expect(table.state.players[0]?.zones.command).toHaveLength(1);
     expect(table.state.players[0]?.zones.hand.length).toBe(4);
     expect(table.state.definitions[imported.compiled.libraryDefinitionIds[0] ?? ""]?.name).toBeTruthy();
+  });
+
+  it("starts a three-player imported table from mirrored decks", async () => {
+    const db = new CardDatabase(async () => {
+      throw new Error("network should not run");
+    });
+    db.put(atraxa());
+    db.put(solRing());
+    db.put(forest());
+    const imported = await importTextDeck(
+      db,
+      `Commander\n1 Atraxa, Praetors' Voice\nDeck\n1 Sol Ring\n3 Forest\n`,
+    );
+    const table = startImportedTable({
+      decks: [imported.compiled, imported.compiled, imported.compiled],
+      random: () => 0,
+    });
+    expect(table.state.players).toHaveLength(3);
+    expect(table.state.players.map((player) => player.displayName)).toEqual([
+      "You",
+      "Opponent 1",
+      "Opponent 2",
+    ]);
+    expect(table.state.players.every((player) => player.zones.command.length === 1)).toBe(true);
   });
 
   it("keeps compile notes for spells with uncompiled oracle text", () => {

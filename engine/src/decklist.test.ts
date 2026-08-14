@@ -80,4 +80,47 @@ describe("definition seating", () => {
     expect(game.players[0]?.zones.library).toHaveLength(1);
     expect(game.definitions[forestDef.id]?.produces).toEqual({ G: 1 });
   });
+
+  it("seats three definition decks", () => {
+    const forest: OracleCard = {
+      oracleId: "f3",
+      name: "Forest",
+      manaCost: "",
+      typeLine: "Basic Land — Forest",
+      oracleText: "{T}: Add {G}.",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+    };
+    const dragon: OracleCard = {
+      oracleId: "d3",
+      name: "Test Dragon",
+      manaCost: "{5}",
+      typeLine: "Legendary Creature — Dragon",
+      oracleText: "Flying",
+      power: "5",
+      toughness: "5",
+      printedKeywords: ["Flying"],
+    };
+    const forestDef = compileOracleCard(forest).definition;
+    const dragonDef = compileOracleCard(dragon).definition;
+    const deck = {
+      commanderDefinitionId: dragonDef.id,
+      libraryDefinitionIds: [forestDef.id, forestDef.id, forestDef.id],
+    };
+    const game = startDefinitionGame({
+      playerCount: 3,
+      playerNames: ["You", "Opponent 1", "Opponent 2"],
+      definitions: {
+        [forestDef.id]: forestDef,
+        [dragonDef.id]: dragonDef,
+      },
+      openingHandSize: 2,
+      shuffle: false,
+      decks: [deck, deck, deck],
+    });
+    expect(game.players).toHaveLength(3);
+    expect(game.players.every((player) => player.zones.command.length === 1)).toBe(true);
+    expect(game.players.every((player) => player.zones.hand.length === 2)).toBe(true);
+  });
 });

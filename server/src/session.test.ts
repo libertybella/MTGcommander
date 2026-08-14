@@ -163,4 +163,56 @@ describe("game host session", () => {
     clearTable(store);
     expect(loadTable(store)).toBeNull();
   });
+
+  it("does not auto-pass opponents in hotseat", () => {
+    const state = startCatalogGame({
+      playerCount: 2,
+      playerNames: ["You", "Opponent"],
+      openingHandSize: 7,
+      decks: [
+        {
+          commanderDefinitionId: POOL_ID.dragon,
+          libraryDefinitionIds: [
+            POOL_ID.mountain,
+            POOL_ID.shock,
+            POOL_ID.forest,
+            POOL_ID.bear,
+            POOL_ID.plains,
+            POOL_ID.gift,
+            POOL_ID.island,
+          ],
+        },
+        {
+          commanderDefinitionId: POOL_ID.dragon,
+          libraryDefinitionIds: [
+            POOL_ID.mountain,
+            POOL_ID.shock,
+            POOL_ID.forest,
+            POOL_ID.bear,
+            POOL_ID.plains,
+            POOL_ID.gift,
+            POOL_ID.island,
+          ],
+        },
+      ],
+    });
+    const you = state.players[0]?.id;
+    const them = state.players[1]?.id;
+    if (!you || !them) {
+      throw new Error("need players");
+    }
+    const host = GameHost.start(state, you, { hotseat: true });
+    const step = host.viewFor(you).turn.step;
+    const passed = host.submit(you, { kind: "pass_priority", playerId: you });
+    expect(passed.ok).toBe(true);
+    expect(host.viewFor(you).priorityPlayerId).toBe(them);
+    expect(host.viewFor(you).turn.step).toBe(step);
+    host.setViewer(them);
+    expect(host.getViewerId()).toBe(them);
+    const asOpponent = host.viewFor(them);
+    const theirHand = asOpponent.players.find((player) => player.id === them)?.zones.hand[0];
+    expect(asOpponent.cards[theirHand ?? ""]?.definitionId).not.toBe(HIDDEN_DEFINITION_ID);
+    const yourCard = asOpponent.players.find((player) => player.id === you)?.zones.hand[0];
+    expect(asOpponent.cards[yourCard ?? ""]?.definitionId).toBe(HIDDEN_DEFINITION_ID);
+  });
 });

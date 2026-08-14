@@ -1,4 +1,4 @@
-# Rules Coverage (Engine V1 through Checkpoint 30)
+# Rules Coverage (Engine V1 through Checkpoint 31)
 
 This document records what the engine implements and what it intentionally does not. It is not a complete CR translation.
 
@@ -13,8 +13,8 @@ This document records what the engine implements and what it intentionally does 
 - `tap_for_mana` for permanents whose definition has `produces`.
 - A 21-card synthetic pool and catalog seating (`startCatalogGame`). Still available from the start screen.
 - Real cards: Scryfall-shaped `OracleCard` data compiles into `CardDefinition`. Instant/sorcery oracle text is not executed. Creatures get printed P/T and known keywords. Lands/artifacts get `produces` only for a single simple `{T}: Add {M}` line.
-- Deck import: Moxfield public URL (Electron IPC) or pasted Commander/Arena text. `startDefinitionGame` shuffles and seats commanders plus library. Compile notes are shown; uncompiled cards stay in the deck.
-- Local React battlefield for 2 or 4 players. Actions go through `GameHost.submit`. Authority persists in localStorage. Oracle cache key `mtgcommander.oracle.v1`. Not a networked client.
+- Deck import: Moxfield public URL (Electron IPC) or pasted Commander/Arena text. `startDefinitionGame` shuffles and seats 2, 3, or 4 players. Empty opponent URLs mirror your deck. Compile notes are shown; uncompiled cards stay in the deck.
+- Local React battlefield for 2, 3, or 4 players. Actions go through `GameHost.submit`. Optional local hotseat seats every player at this PC; otherwise unseated opponents auto-pass. Authority persists in localStorage. Oracle cache key `mtgcommander.oracle.v1`. Not a networked client.
 - Keywords: flying, reach, haste, vigilance, trample, deathtouch, lifelink, first strike, double strike, menace, hexproof, indestructible, flash, defender.
 - Derived power/toughness: printed values, `p1p1` counters, and simple static P/T modifiers (`self` or `controlled_creatures`).
 - Enter-the-battlefield triggers become stack abilities. No target choices and no AP-order for simultaneous triggers.

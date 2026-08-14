@@ -20,17 +20,24 @@ export type SubmitResult =
 export class GameHost {
   private constructor(
     private state: GameState,
-    private readonly viewerId: PlayerId,
+    private viewerId: PlayerId,
     private readonly seatedPlayerIds: ReadonlySet<PlayerId>,
   ) {
     this.flushUnseated();
   }
 
-  static start(state: GameState, viewerId: PlayerId): GameHost {
+  static start(
+    state: GameState,
+    viewerId: PlayerId,
+    options: { hotseat?: boolean } = {},
+  ): GameHost {
     if (!state.players.some((player) => player.id === viewerId)) {
       throw new Error(`Unknown player ${viewerId}`);
     }
-    return new GameHost(state, viewerId, new Set([viewerId]));
+    const seated = options.hotseat
+      ? new Set(state.players.map((player) => player.id))
+      : new Set([viewerId]);
+    return new GameHost(state, viewerId, seated);
   }
 
   static restore(state: GameState, viewerId: PlayerId, seatedPlayerIds: PlayerId[]): GameHost {
@@ -43,6 +50,14 @@ export class GameHost {
 
   getSeatedPlayerIds(): PlayerId[] {
     return [...this.seatedPlayerIds];
+  }
+
+  /** Switch which seated player this local client is showing. */
+  setViewer(playerId: PlayerId): void {
+    if (!this.seatedPlayerIds.has(playerId)) {
+      throw new Error("That player is not seated at this client");
+    }
+    this.viewerId = playerId;
   }
 
   /** Player-specific projection. Mutating it cannot change the host. */
