@@ -4,11 +4,18 @@ import {
   createCardInstance,
   createGameState,
 } from "./index";
+import { fillLibraries } from "./testSupport";
 import { TURN_SEQUENCE, advanceStep, advanceSteps } from "./turn";
+
+function gameWithLibraries(playerCount: 2 | 3 | 4) {
+  const game = createGameState({ playerCount });
+  fillLibraries(game);
+  return game;
+}
 
 describe("turn progression", () => {
   it("walks every step in a turn", () => {
-    let game = createGameState({ playerCount: 2 });
+    let game = gameWithLibraries(2);
     expect(game.turn).toMatchObject({
       number: 1,
       phase: "beginning",
@@ -26,7 +33,7 @@ describe("turn progression", () => {
   });
 
   it("passes the turn to the next player after cleanup", () => {
-    const game = createGameState({ playerCount: 2 });
+    const game = gameWithLibraries(2);
     const first = game.players[0]?.id;
     const second = game.players[1]?.id;
     const nextTurn = advanceSteps(game, TURN_SEQUENCE.length);
@@ -40,7 +47,7 @@ describe("turn progression", () => {
   });
 
   it("wraps turn order with four players", () => {
-    let game = createGameState({ playerCount: 4 });
+    let game = gameWithLibraries(4);
     const order = game.players.map((p) => p.id);
     for (let turn = 0; turn < 4; turn += 1) {
       expect(game.turn.activePlayerId).toBe(order[turn]);
@@ -74,7 +81,7 @@ describe("turn progression", () => {
   });
 
   it("untaps the active player's battlefield permanents", () => {
-    const game = createGameState({ playerCount: 2 });
+    const game = gameWithLibraries(2);
     const p1 = game.players[0];
     const p2 = game.players[1];
     if (!p1 || !p2) {
@@ -106,7 +113,7 @@ describe("turn progression", () => {
   });
 
   it("simulates multiple turns without changing player count", () => {
-    const start = createGameState({ playerCount: 3 });
+    const start = gameWithLibraries(3);
     const later = advanceSteps(start, TURN_SEQUENCE.length * 6);
     expect(later.players).toHaveLength(3);
     expect(later.turn.number).toBe(7);

@@ -34,7 +34,7 @@ describe("ability architecture", () => {
     const milled = applyEffect(game, { kind: "mill", playerId: p1.id, count: 1 });
     expect(milled.players[0]?.zones.graveyard).toEqual([top.id]);
     expect(milled.players[0]?.zones.library).toEqual([bottom.id]);
-    expect(milled.log.some((entry) => entry.cardId === top.id && entry.to === "graveyard")).toBe(
+    expect(milled.log.some((entry) => entry.kind === "zone_change" && entry.cardId === top.id && entry.to === "graveyard")).toBe(
       true,
     );
 

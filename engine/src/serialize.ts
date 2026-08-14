@@ -136,6 +136,7 @@ function parsePlayer(value: unknown): PlayerState {
       value.landsPlayedThisTurn === undefined
         ? 0
         : expectNumber(value.landsPlayedThisTurn, "player.landsPlayedThisTurn"),
+    failedToDraw: value.failedToDraw === true,
   };
 }
 
@@ -303,6 +304,12 @@ function parseChosenTarget(value: unknown, label: string): ChosenTarget {
   if (type === "creature") {
     return { type, cardId: expectString(value.cardId, `${label}.cardId`) };
   }
+  if (type === "spell") {
+    return {
+      type,
+      stackObjectId: expectString(value.stackObjectId, `${label}.stackObjectId`),
+    };
+  }
   throw new Error(`Invalid ${label}.type`);
 }
 
@@ -321,7 +328,12 @@ function parseTargetRequirement(value: unknown, label: string): TargetRequiremen
     throw new Error(`Invalid ${label}`);
   }
   const kind = expectString(value.kind, `${label}.kind`);
-  if (kind !== "player" && kind !== "creature" && kind !== "player_or_creature") {
+  if (
+    kind !== "player" &&
+    kind !== "creature" &&
+    kind !== "player_or_creature" &&
+    kind !== "spell"
+  ) {
     throw new Error(`Invalid ${label}.kind`);
   }
   return { kind };
@@ -494,6 +506,20 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
         counter: expectString(value.counter, `${label}.counter`),
         amount: expectNumber(value.amount, `${label}.amount`),
       };
+    case "counter_spell": {
+      if (!isRecord(value.target)) {
+        throw new Error(`Invalid ${label}.target`);
+      }
+      const targetType = expectString(value.target.type, `${label}.target.type`);
+      if (targetType !== "chosen") {
+        throw new Error(`Invalid ${label}.target.type`);
+      }
+      const index = expectNumber(value.target.index, `${label}.target.index`);
+      if (!Number.isInteger(index) || index < 0) {
+        throw new Error(`Invalid ${label}.target.index`);
+      }
+      return { kind, target: { type: "chosen", index } };
+    }
     default:
       throw new Error(`Unknown effect kind ${kind}`);
   }
@@ -612,6 +638,13 @@ function parseLog(value: unknown): GameLogEntry[] {
       throw new Error(`Invalid log[${index}]`);
     }
     const kind = expectString(entry.kind, `log[${index}].kind`);
+    if (kind === "life_change") {
+      return {
+        kind,
+        playerId: expectString(entry.playerId, `log[${index}].playerId`),
+        delta: expectNumber(entry.delta, `log[${index}].delta`),
+      };
+    }
     if (kind !== "zone_change") {
       throw new Error(`Invalid log[${index}].kind`);
     }

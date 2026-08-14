@@ -12,6 +12,7 @@ import {
   serializeGameState,
   testShock,
   testTerror,
+  testCounter,
 } from "./index";
 import type { GameState } from "./types";
 
@@ -223,5 +224,49 @@ describe("targeting", () => {
     expect(restored.definitions[card.definitionId]?.targetRequirements).toEqual([
       { kind: "player_or_creature" },
     ]);
+  });
+
+  it("counters a spell on the stack chosen at cast", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const shock = addToHand(game, p1.id, testShock());
+    const counter = addToHand(game, p2.id, testCounter());
+    let next = addMana(game, p1.id, { R: 1 });
+    next = addMana(next, p2.id, { U: 2 });
+    next = applyAction(next, {
+      kind: "cast_spell",
+      playerId: p1.id,
+      cardId: shock.id,
+      targets: [{ type: "player", playerId: p2.id }],
+    });
+    next = applyAction(next, { kind: "pass_priority", playerId: p1.id });
+    const stackId = next.stack[0]?.id;
+    if (!stackId) {
+      throw new Error("expected shock on the stack");
+    }
+    next = applyAction(next, {
+      kind: "cast_spell",
+      playerId: p2.id,
+      cardId: counter.id,
+      targets: [{ type: "spell", stackObjectId: stackId }],
+    });
+    next = passAll(next);
+    expect(next.stack).toHaveLength(0);
+    expect(next.cards[shock.id]?.zone).toBe("graveyard");
+    expect(next.cards[counter.id]?.zone).toBe("graveyard");
+    expect(next.players[1]?.life).toBe(40);
+  });
+
+  it("rejects countering when the stack has no spell", () => {
+    const { game, p1 } = twoPlayers();
+    const counter = addToHand(game, p1.id, testCounter());
+    const ready = addMana(game, p1.id, { U: 2 });
+    expect(() =>
+      applyAction(ready, {
+        kind: "cast_spell",
+        playerId: p1.id,
+        cardId: counter.id,
+        targets: [{ type: "spell", stackObjectId: "stack-missing" }],
+      }),
+    ).toThrow(/Illegal target/);
   });
 });

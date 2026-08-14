@@ -110,6 +110,17 @@ export function testTerror(): CardDefinition {
   });
 }
 
+export function testCounter(): CardDefinition {
+  return createCardDefinition({
+    name: "Test Counter",
+    typeLine: "Instant",
+    manaCost: "{U}{U}",
+    oracleText: "Counter target spell.",
+    targetRequirements: [{ kind: "spell" }],
+    effects: [{ kind: "counter_spell", target: { type: "chosen", index: 0 } }],
+  });
+}
+
 /** Synthetic basic land for land-play tests. Not a real-card database entry. */
 export function testForest(): CardDefinition {
   return createCardDefinition({

@@ -19,6 +19,7 @@ import {
   testShock,
   testStudy,
 } from "./catalog";
+import { fillLibraries } from "./testSupport";
 import { advanceSteps } from "./turn";
 import type { CardDefinition, GameState } from "./types";
 
@@ -33,6 +34,7 @@ function twoPlayers() {
 }
 
 function toPrecombatMain(game: GameState): GameState {
+  fillLibraries(game);
   return advanceSteps(game, 3);
 }
 
@@ -143,7 +145,7 @@ describe("spell resolution with definition effects", () => {
     });
     next.definitions[bearDef.id] = bearDef;
     next.cards[libraryCard.id] = libraryCard;
-    next.players[0]!.zones.library.push(libraryCard.id);
+    next.players[0]!.zones.library.unshift(libraryCard.id);
 
     next = addMana(next, p1.id, { W: 2, U: 1, B: 1 });
 

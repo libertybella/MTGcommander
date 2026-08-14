@@ -8,7 +8,7 @@ import {
   saveTable,
   type SnapshotStore,
 } from "@mtgcommander/server";
-import { startSyntheticTable } from "./game/syntheticTable";
+import { startSyntheticTable, type SyntheticPlayerCount } from "./game/syntheticTable";
 import { Battlefield, type UiMode } from "./ui/Battlefield";
 
 const emptyStore: SnapshotStore = {
@@ -29,8 +29,8 @@ function persist(next: GameHost): void {
   saveTable(browserStore(), next);
 }
 
-function createHost(): GameHost {
-  const table = startSyntheticTable();
+function createHost(playerCount: SyntheticPlayerCount = 2): GameHost {
+  const table = startSyntheticTable(playerCount);
   const viewerId = table.players[0]?.id;
   if (!viewerId) {
     throw new Error("Synthetic table is missing a viewer");
@@ -58,10 +58,10 @@ export default function App() {
   const [mode, setMode] = useState<UiMode>({ type: "idle" });
   const bridge = window.mtgCommander;
 
-  function startGame() {
+  function startGame(playerCount: SyntheticPlayerCount = 2) {
     setError(null);
     setMode({ type: "idle" });
-    setSession(sessionFrom(createHost()));
+    setSession(sessionFrom(createHost(playerCount)));
   }
 
   if (!session) {
@@ -79,8 +79,11 @@ export default function App() {
         </p>
         <p className="muted">{bridge?.isElectron ? "Electron shell" : "Browser (Vite)"}</p>
         <div className="actions">
-          <button type="button" data-testid="start-game" onClick={startGame}>
-            Start synthetic game
+          <button type="button" data-testid="start-game" onClick={() => startGame(2)}>
+            Start 2-player game
+          </button>
+          <button type="button" data-testid="start-4p" onClick={() => startGame(4)}>
+            Start 4-player game
           </button>
           {hasSave ? (
             <button
@@ -117,7 +120,7 @@ export default function App() {
       onMode={setMode}
       onNewGame={() => {
         clearTable(browserStore());
-        startGame();
+        startGame(2);
       }}
       onAction={(action: GameAction) => {
         const result = host.submit(viewerId, action);

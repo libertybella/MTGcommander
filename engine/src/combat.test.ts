@@ -7,6 +7,7 @@ import {
   parseGameState,
   serializeGameState,
 } from "./index";
+import { fillLibraries } from "./testSupport";
 import type { GameState } from "./types";
 
 function twoPlayers() {
@@ -16,6 +17,7 @@ function twoPlayers() {
   if (!p1 || !p2) {
     throw new Error("need players");
   }
+  fillLibraries(game);
   return { game, p1, p2 };
 }
 

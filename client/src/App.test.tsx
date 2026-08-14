@@ -63,6 +63,7 @@ describe("battlefield UI", () => {
     fireEvent.click(screen.getByTestId("target-opponent"));
     fireEvent.click(screen.getByTestId("pass"));
     expect(screen.getByTestId("life-opponent").textContent).toContain("Life 38");
+    expect(screen.getByTestId("game-log").textContent).toMatch(/life -2/);
   });
 
   it("shows game-over after concede and hides play actions", () => {
@@ -71,6 +72,16 @@ describe("battlefield UI", () => {
     expect(screen.getByTestId("game-over").textContent).toContain("Opponent");
     expect(screen.queryByTestId("pass")).toBeNull();
     expect(screen.getByTestId("new-game")).toBeTruthy();
+  });
+
+  it("starts a four-player table with three opponent areas", () => {
+    render(<App />);
+    fireEvent.click(screen.getByTestId("start-4p"));
+    expect(screen.getByTestId("area-opponents").querySelectorAll(".player-area.opponent").length).toBe(
+      3,
+    );
+    expect(screen.getByText("Opponent 1")).toBeTruthy();
+    expect(screen.getByText("Opponent 3")).toBeTruthy();
   });
 
   it("restores a saved table after remount", () => {

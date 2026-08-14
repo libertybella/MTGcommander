@@ -118,6 +118,8 @@ export type PlayerState = {
   lost: boolean;
   /** Lands played this turn. Resets on that player's untap. */
   landsPlayedThisTurn: number;
+  /** Set when a draw is attempted from an empty library. SBA then eliminates. */
+  failedToDraw: boolean;
 };
 
 export type StackObject = {
@@ -190,13 +192,14 @@ export type GameEffect =
   | { kind: "mill"; playerId: PlayerId; count: number }
   | { kind: "discard"; playerId: PlayerId; count: number }
   | { kind: "sacrifice"; cardId: CardInstanceId }
-  | { kind: "add_counter"; cardId: CardInstanceId; counter: string; amount: number };
+  | { kind: "add_counter"; cardId: CardInstanceId; counter: string; amount: number }
+  | { kind: "counter_spell"; stackObjectId: StackObjectId };
 
 export type EffectTarget =
   | { type: "player"; playerId: PlayerId }
   | { type: "creature"; cardId: CardInstanceId };
 
-export type TargetKind = "player" | "creature" | "player_or_creature";
+export type TargetKind = "player" | "creature" | "player_or_creature" | "spell";
 
 export type TargetRequirement = {
   kind: TargetKind;
@@ -204,7 +207,8 @@ export type TargetRequirement = {
 
 export type ChosenTarget =
   | { type: "player"; playerId: PlayerId }
-  | { type: "creature"; cardId: CardInstanceId };
+  | { type: "creature"; cardId: CardInstanceId }
+  | { type: "spell"; stackObjectId: StackObjectId };
 
 export type ChosenTargetRef = { type: "chosen"; index: number };
 
@@ -255,7 +259,8 @@ export type CardEffect =
   | { kind: "mill"; playerId: PlayerSelector; count: number }
   | { kind: "discard"; playerId: PlayerSelector; count: number }
   | { kind: "sacrifice"; cardId: CardIdSelector }
-  | { kind: "add_counter"; cardId: CardIdSelector; counter: string; amount: number };
+  | { kind: "add_counter"; cardId: CardIdSelector; counter: string; amount: number }
+  | { kind: "counter_spell"; target: ChosenTargetRef };
 
 export type Keyword =
   | "flying"
@@ -290,12 +295,18 @@ export type StaticModifier = {
   toughness: number;
 };
 
-export type GameLogEntry = {
-  kind: "zone_change";
-  cardId: CardInstanceId;
-  from: ZoneName;
-  to: ZoneName;
-};
+export type GameLogEntry =
+  | {
+      kind: "zone_change";
+      cardId: CardInstanceId;
+      from: ZoneName;
+      to: ZoneName;
+    }
+  | {
+      kind: "life_change";
+      playerId: PlayerId;
+      delta: number;
+    };
 
 export type GameAction =
   | { kind: "pass_priority"; playerId: PlayerId }

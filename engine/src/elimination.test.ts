@@ -11,6 +11,7 @@ import {
   serializeGameState,
   TURN_SEQUENCE,
 } from "./index";
+import { fillLibraries } from "./testSupport";
 import { advanceSteps } from "./turn";
 import type { GameState } from "./types";
 
@@ -22,6 +23,7 @@ function threePlayers() {
   if (!p1 || !p2 || !p3) {
     throw new Error("need players");
   }
+  fillLibraries(game);
   return { game, p1, p2, p3 };
 }
 

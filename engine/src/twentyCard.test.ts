@@ -63,6 +63,14 @@ function chooseTargets(state: GameState, playerId: string, cardId: string): Chos
       targets.push({ type: "creature", cardId: creatureId });
       continue;
     }
+    if (requirement.kind === "spell") {
+      const spell = state.stack.find((entry) => entry.kind === "spell");
+      if (!spell) {
+        return null;
+      }
+      targets.push({ type: "spell", stackObjectId: spell.id });
+      continue;
+    }
     targets.push({ type: "player", playerId: opponent.id });
   }
   return targets;
@@ -202,11 +210,11 @@ function autoplayUntilWinner(state: GameState, limit = 2500): GameState {
 }
 
 describe("20-card engine", () => {
-  it("has twenty uniquely named synthetic definitions", () => {
+  it("has twenty-one uniquely named synthetic definitions", () => {
     const pool = syntheticPool();
-    expect(pool).toHaveLength(20);
-    expect(new Set(pool.map((definition) => definition.id)).size).toBe(20);
-    expect(new Set(pool.map((definition) => definition.name)).size).toBe(20);
+    expect(pool).toHaveLength(21);
+    expect(new Set(pool.map((definition) => definition.id)).size).toBe(21);
+    expect(new Set(pool.map((definition) => definition.name)).size).toBe(21);
   });
 
   it("seats commanders, libraries, and opening hands from the pool", () => {

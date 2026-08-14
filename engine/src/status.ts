@@ -7,6 +7,9 @@ import { moveCardInPlace } from "./zones";
 import type { GameState } from "./types";
 
 function shouldLose(player: GameState["players"][number]): boolean {
+  if (player.failedToDraw) {
+    return true;
+  }
   if (player.life <= 0) {
     return true;
   }
@@ -35,9 +38,9 @@ function destroyZeroToughnessInPlace(state: GameState): boolean {
 }
 
 /**
- * Apply current loss conditions: 0 life and 21 commander damage use the same
- * leave-the-game transition as concede. Creatures with 0 toughness also die
- * (including indestructible). Does not skip turns.
+ * Apply current loss conditions: 0 life, 21 commander damage, and failing to
+ * draw from an empty library use the same leave-the-game transition as concede.
+ * Creatures with 0 toughness also die (including indestructible). Does not skip turns.
  */
 export function applyStateBasedActionsInPlace(state: GameState): void {
   let changed = true;

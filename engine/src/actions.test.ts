@@ -10,6 +10,7 @@ import {
   serializeGameAction,
   serializeGameState,
 } from "./index";
+import { fillLibraries } from "./testSupport";
 import { TURN_SEQUENCE, advanceSteps } from "./turn";
 import type { GameAction, GameState } from "./types";
 
@@ -24,6 +25,7 @@ function twoPlayers() {
 }
 
 function toPrecombatMain(game: GameState): GameState {
+  fillLibraries(game);
   return advanceSteps(game, 3);
 }
 

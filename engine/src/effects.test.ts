@@ -199,13 +199,13 @@ describe("invalid effects", () => {
     expect(game).toEqual(original);
   });
 
-  it("rejects drawing more cards than the library contains", () => {
-    const { game, p1 } = twoPlayers();
-    const original = structuredClone(game);
-    expect(() => applyEffect(game, { kind: "draw", playerId: p1.id, count: 1 })).toThrow(
-      /Library is empty/,
-    );
-    expect(game).toEqual(original);
+  it("marks a failed draw from an empty library and eliminates that player", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const next = applyEffect(game, { kind: "draw", playerId: p1.id, count: 1 });
+    expect(next.players[0]?.failedToDraw).toBe(true);
+    expect(next.players[0]?.lost).toBe(true);
+    expect(next.winnerId).toBe(p2.id);
+    expect(game.players[0]?.lost).toBe(false);
   });
 
   it("rejects damaging a card that is not a battlefield creature", () => {

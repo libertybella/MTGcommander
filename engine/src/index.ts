@@ -30,6 +30,7 @@ export {
   testShock,
   testStudy,
   testTerror,
+  testCounter,
 } from "./catalog";
 export { POOL_ID, syntheticPool, syntheticPoolById } from "./pool";
 export { dealOpeningHands, seatCatalogDecks, startCatalogGame } from "./setup";

@@ -12,6 +12,7 @@ import {
   testForest,
   TURN_SEQUENCE,
 } from "./index";
+import { fillLibraries } from "./testSupport";
 import { advanceSteps } from "./turn";
 import type { GameState } from "./types";
 
@@ -37,6 +38,7 @@ function threePlayers() {
 }
 
 function toPrecombatMain(game: GameState): GameState {
+  fillLibraries(game);
   return advanceSteps(game, 3);
 }
 
@@ -181,12 +183,14 @@ describe("playable loop: draw, life, concede, elimination", () => {
     expect(atDraw.players[0]?.zones.hand).toEqual([card.id]);
   });
 
-  it("does not throw when the draw step has an empty library", () => {
-    const { game } = twoPlayers();
+  it("eliminates a player who would draw from an empty library", () => {
+    const { game, p1, p2 } = twoPlayers();
     const atDraw = advanceSteps(game, 2);
     expect(atDraw.turn.step).toBe("draw");
-    expect(atDraw.players[0]?.lost).toBe(false);
-    expect(atDraw.players[0]?.zones.hand).toEqual([]);
+    expect(atDraw.players[0]?.lost).toBe(true);
+    expect(atDraw.players[0]?.failedToDraw).toBe(true);
+    expect(atDraw.winnerId).toBe(p2.id);
+    expect(atDraw.players[0]?.id).toBe(p1.id);
   });
 
   it("marks a player as lost at 0 life and awards the winner", () => {

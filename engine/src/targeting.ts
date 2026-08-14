@@ -5,6 +5,7 @@ import type {
   ChosenTarget,
   GameState,
   PlayerId,
+  StackObjectId,
   TargetRequirement,
 } from "./types";
 
@@ -27,6 +28,11 @@ function isLegalCreatureTarget(state: GameState, cardId: string, casterId?: Play
   return true;
 }
 
+function isLegalSpellTarget(state: GameState, stackObjectId: StackObjectId): boolean {
+  const entry = state.stack.find((object) => object.id === stackObjectId);
+  return Boolean(entry && entry.kind === "spell");
+}
+
 export function isChosenTargetLegal(
   state: GameState,
   requirement: TargetRequirement,
@@ -39,8 +45,14 @@ export function isChosenTargetLegal(
   if (requirement.kind === "creature") {
     return target.type === "creature" && isLegalCreatureTarget(state, target.cardId, casterId);
   }
+  if (requirement.kind === "spell") {
+    return target.type === "spell" && isLegalSpellTarget(state, target.stackObjectId);
+  }
   if (target.type === "player") {
     return isLegalPlayerTarget(state, target.playerId);
+  }
+  if (target.type === "spell") {
+    return false;
   }
   return isLegalCreatureTarget(state, target.cardId, casterId);
 }

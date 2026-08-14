@@ -30,11 +30,31 @@ function twoPlayerTable() {
     decks: [
       {
         commanderDefinitionId: POOL_ID.dragon,
-        libraryDefinitionIds: [POOL_ID.mountain, POOL_ID.shock, POOL_ID.forest, POOL_ID.bear, POOL_ID.plains, POOL_ID.gift, POOL_ID.island],
+        libraryDefinitionIds: [
+          POOL_ID.mountain,
+          POOL_ID.shock,
+          POOL_ID.forest,
+          POOL_ID.bear,
+          POOL_ID.plains,
+          POOL_ID.gift,
+          POOL_ID.island,
+          POOL_ID.swamp,
+          POOL_ID.ritual,
+        ],
       },
       {
         commanderDefinitionId: POOL_ID.dragon,
-        libraryDefinitionIds: [POOL_ID.mountain, POOL_ID.shock, POOL_ID.forest, POOL_ID.bear, POOL_ID.plains, POOL_ID.gift, POOL_ID.island],
+        libraryDefinitionIds: [
+          POOL_ID.mountain,
+          POOL_ID.shock,
+          POOL_ID.forest,
+          POOL_ID.bear,
+          POOL_ID.plains,
+          POOL_ID.gift,
+          POOL_ID.island,
+          POOL_ID.swamp,
+          POOL_ID.ritual,
+        ],
       },
     ],
   });

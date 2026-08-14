@@ -38,4 +38,11 @@ describe("state-based actions", () => {
     const next = applyEffect(game, { kind: "gain_life", playerId: p1.id, amount: 1 });
     expect(next.cards[card.id]?.zone).toBe("graveyard");
   });
+
+  it("eliminates a player after a failed library draw", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const next = applyEffect(game, { kind: "draw", playerId: p1.id, count: 1 });
+    expect(next.players[0]?.lost).toBe(true);
+    expect(next.winnerId).toBe(p2.id);
+  });
 });

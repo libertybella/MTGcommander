@@ -68,7 +68,7 @@ function onEnterStep(state: GameState): GameState {
   }
   if (state.turn.step === "draw") {
     const active = state.players.find((player) => player.id === state.turn.activePlayerId);
-    if (active && !active.lost && active.zones.library.length > 0 && !wouldSkipDraw(state, active.id)) {
+    if (active && !active.lost && !wouldSkipDraw(state, active.id)) {
       return applyEffect(state, { kind: "draw", playerId: active.id, count: 1 });
     }
     return state;
@@ -114,7 +114,8 @@ export function beginNextLivingTurnInPlace(state: GameState): void {
 
 /**
  * Advance to the next step. After cleanup, the next living player starts a new turn at untap.
- * Entering the draw step draws one card for the active player when their library is not empty.
+ * Entering the draw step draws one card for the active player. An empty library
+ * is a failed draw and loses the game.
  */
 export function advanceStep(state: GameState): GameState {
   const next = cloneGameState(state);

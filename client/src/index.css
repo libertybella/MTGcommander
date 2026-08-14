@@ -146,6 +146,32 @@ h3 {
   gap: 0.5rem;
 }
 
+.opponents {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+}
+
+.log-strip {
+  background: #18222c;
+  border: 1px solid #2a3b4d;
+  border-radius: 0.5rem;
+  padding: 0.75rem 1rem;
+  max-height: 8rem;
+  overflow: auto;
+}
+
+.log-strip ol {
+  margin: 0.35rem 0 0;
+  padding-left: 1.2rem;
+  font-size: 0.82rem;
+}
+
+.actions button.is-selected,
+.player-meta button.is-selected {
+  border-color: #f3d27a;
+}
+
 .actions button,
 .player-meta button,
 .shell button {

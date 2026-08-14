@@ -20,21 +20,21 @@ A checkbox becomes 🟢 Complete only when the work has been implemented **and**
 
 ## Project Status
 
-**Current Phase:** Phase 25 complete
-**Current Checkpoint:** Checkpoint 25 — Hidden Information
+**Current Phase:** Phase 29 complete
+**Current Checkpoint:** Checkpoint 29 — Four-Player Battlefield
 **Overall Status:** 🟡 In Progress
 
 ### Current Objective
 
-Stop. Do not continue until Checkpoints 23–25 are reviewed. Do not start deck import, real-card integration, networking, or Phase 26.
+Stop. The next steps need a product choice: real-card database/import, WebSockets/rooms, mulligans, or activated abilities. Do not start Phase 30 until that is chosen.
 
 ### Last Completed Milestone
 
-Checkpoint 25: The battlefield UI shows `redactForViewer` output from an in-process `GameHost`. Opponent hands are Unknown Card backs. Authority persists in localStorage.
+Checkpoint 29: The battlefield shows every opponent. Empty-library draws lose, Test Counter targets spells, and the table log shows public zone and life changes.
 
 ### Next Milestone
 
-Deck import, real-card integration, and two-client realtime remain later. Card database is Phase 26.
+Needs input: Scryfall/Moxfield, two-client realtime, London mulligan, or activated abilities beyond tap-for-mana.
 
 ---
 
@@ -381,42 +381,45 @@ Engine `redactForViewer` already existed in Phase 14. This phase wires that proj
 * 🟢 Player-specific game view (`host.viewFor(viewerId)`).
 * 🟢 Checkpoint 25 — Information Security.
 
-## Phase 26 — Card Database
+## Phase 26 — Empty-Library Loss
 
-* ⬜ Card schema.
-* ⬜ Data ingestion.
-* ⬜ Local cache.
-* ⬜ Card search.
-* ⬜ Data updates.
-* ⬜ Error handling.
-* ⬜ Checkpoint 26 — Card Database.
+Card database / Scryfall was previously listed as Phase 26. That remains later. This phase is the missing draw SBA.
 
-## Phase 27 — Rules Expansion
+* 🟢 Failed draw from an empty library (`failedToDraw`).
+* 🟢 Draw step and `draw` effects share that path.
+* 🟢 Skip-draw replacements still do not count as a failed draw.
+* 🟢 Mill does not cause library-out loss.
+* 🟢 Checkpoint 26 — Empty-Library Loss.
 
-* ⬜ Rules coverage matrix.
-* ⬜ Mechanics expansion.
-* ⬜ Regression tests.
-* ⬜ Multiplayer regression tests.
-* ⬜ Unsupported interaction documentation.
-* ⬜ Checkpoint 27 — Rules Expansion.
+## Phase 27 — Stack Targeting
 
-## Phase 28 — Real Commander Decks
+Rules expansion was previously listed as Phase 27. This phase is targeting spells on the stack.
 
-* ⬜ Ross's real deck.
-* ⬜ Friend's deck.
-* ⬜ Repeated games.
-* ⬜ Unsupported-card tracking.
-* ⬜ Engine fixes.
-* ⬜ Checkpoint 28 — Real Deck Validation.
+* 🟢 Target kind `spell`.
+* 🟢 Cast-time and resolve-time legality for stack objects.
+* 🟢 `counter_spell` effect (Test Counter).
+* 🟢 Countered spells go to the graveyard (commanders still return to the command zone).
+* 🟢 UI can choose a stack object as a target.
+* 🟢 Checkpoint 27 — Stack Targeting.
 
-## Phase 29 — Game Log / Replay
+## Phase 28 — Readable Game Log
 
-* ⬜ Game events.
-* ⬜ Readable game log.
-* ⬜ Event IDs.
-* ⬜ Reproduction data.
-* ⬜ Replay foundation.
-* ⬜ Checkpoint 29 — Reproducible Games.
+Real Commander decks were previously listed as Phase 28. They remain later. This phase surfaces the existing zone log plus life changes.
+
+* 🟢 Zone-change log (already in the engine).
+* 🟢 Life-change log entries.
+* 🟢 Battlefield log strip uses the player view (hidden cards stay Unknown Card).
+* ⬜ Event IDs / replay / reproduction dumps.
+* 🟢 Checkpoint 28 — Game Log.
+
+## Phase 29 — Four-Player Battlefield
+
+Replay/performance were previously later. This phase projects 2–4 players in the UI. Unseated opponents still auto-pass.
+
+* 🟢 Opponent areas for every non-viewer player.
+* 🟢 Attack a chosen defender when more than one opponent is alive.
+* 🟢 Start 2-player or 4-player synthetic tables.
+* 🟢 Checkpoint 29 — Four-Player Battlefield.
 
 ## Phase 30 — Performance
 
@@ -2058,3 +2061,119 @@ Show the player-specific projection from `redactForViewer` in the battlefield, s
 ### Next Task
 
 Stop. Do not start deck import, real-card integration, networking, or Phase 26.
+
+---
+
+## 2026-08-13 — Empty-library loss
+
+### Objective
+
+A player who would draw from an empty library loses the game. Draw-step and spell draws share one path. Mill and skipped draws do not lose.
+
+### Work Completed
+
+- Added `failedToDraw` on PlayerState. `draw` effects set it when the library is empty instead of throwing.
+- State-based actions eliminate that player.
+- Skip-draw replacements still skip without setting the flag.
+
+### Tests Run
+
+- `npm test` — PASS
+- `npm run typecheck` — PASS
+- `npm run lint` — PASS
+- `npm run build` — PASS
+
+### Checkpoint
+
+- PASS. Tag: `checkpoint-26-empty-library-loss`
+
+### Next Task
+
+Phase 27 — stack targeting.
+
+---
+
+## 2026-08-13 — Stack targeting and Test Counter
+
+### Objective
+
+Let spells target other spells on the stack. Add a synthetic counterspell.
+
+### Work Completed
+
+- Target kind `spell` and ChosenTarget `{ type: "spell", stackObjectId }`.
+- `counter_spell` removes the stack object and puts its source into the graveyard (commanders still bounce to the command zone).
+- Test Counter in the synthetic pool. The battlefield can click a stack object when targeting a spell.
+
+### Tests Run
+
+- `npm test` — PASS
+- `npm run typecheck` — PASS
+- `npm run lint` — PASS
+- `npm run build` — PASS
+
+### Checkpoint
+
+- PASS. Tag: `checkpoint-27-stack-targeting`
+
+### Next Task
+
+Phase 28 — readable game log.
+
+---
+
+## 2026-08-13 — Readable game log
+
+### Objective
+
+Show public events on the battlefield without leaking hidden card names.
+
+### Work Completed
+
+- Life-change log entries on gain/lose life.
+- Battlefield log strip of the last zone and life events, using the redacted view.
+
+### Tests Run
+
+- `npm test` — PASS
+- `npm run typecheck` — PASS
+- `npm run lint` — PASS
+- `npm run build` — PASS
+
+### Checkpoint
+
+- PASS. Tag: `checkpoint-28-game-log`
+
+### Next Task
+
+Phase 29 — four-player battlefield layout.
+
+---
+
+## 2026-08-13 — Four-player battlefield UI
+
+### Objective
+
+Project every opponent, not only the first other player. Keep unseated players auto-passing.
+
+### Work Completed
+
+- Opponent areas for all non-viewer players.
+- Attack picker when more than one opponent is alive.
+- Start 2-player or 4-player synthetic tables.
+
+### Tests Run
+
+- `npm test` — PASS (185 tests)
+- `npm run typecheck` — PASS
+- `npm run lint` — PASS
+- `npm run build` — PASS
+
+### Checkpoint
+
+- PASS. Tag: `checkpoint-29-four-player-ui`
+- Existing tags were not moved or rewritten.
+
+### Next Task
+
+Stop. Needs input: real cards/Scryfall/Moxfield, WebSockets, London mulligan, or activated abilities.

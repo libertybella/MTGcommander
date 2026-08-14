@@ -1,6 +1,6 @@
 # Unsupported Interactions (20-Card Engine)
 
-This log is for the synthetic 20-card pool and the local host as of Checkpoint 25. It is not a complete Comprehensive Rules gap list. See also `RULES_COVERAGE.md`.
+This log is for the synthetic pool and the local host as of Checkpoint 29. It is not a complete Comprehensive Rules gap list. See also `RULES_COVERAGE.md`.
 
 Cards in the pool are named `Test …` on purpose. They are not real Magic cards, Scryfall data, or Moxfield imports.
 
@@ -9,7 +9,7 @@ Cards in the pool are named `Test …` on purpose. They are not real Magic cards
 - Five basic lands that tap for one colored mana via `tap_for_mana`.
 - A legendary 5/5 flying trample commander.
 - Creatures: vanilla, first strike, flying/lifelink, defender, ETB life, and a +1/+1 anthem.
-- Instants/sorceries: damage, life gain, opponent life loss, draw, ritual mana, token, destroy creature, mill.
+- Instants/sorceries: damage, life gain, opponent life loss, draw, ritual mana, token, destroy creature, mill, counter target spell.
 
 ## Not representable in this pool / engine V1
 
@@ -21,9 +21,9 @@ Cards in the pool are named `Test …` on purpose. They are not real Magic cards
 | Equipment, auras, planeswalkers | No card types in the pool. |
 | Search, shuffle, modal choices | No effects. |
 | Ward, shroud, protection | Hexproof exists; the others do not. |
-| Counterspells that target a spell on the stack | Targeting is players and creatures only. |
+| Counterspells that target a spell on the stack | Test Counter does. Other stack targets (abilities) are not implemented. |
 | Mulligans | Opening hands are dealt; no take-backs. |
-| Library-out loss | Empty library skips or rejects a draw; it does not lose the game. |
+| Library-out loss | Implemented: a failed draw from an empty library loses. Mill does not. |
 | Triggered abilities other than ETB | Only `enter_battlefield` queues. |
 | Replacement effects other than skip-draw | Not in the pool. |
 | Layers / copy / face-down | Not implemented. |

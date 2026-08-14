@@ -10,6 +10,7 @@ import {
   parseGameState,
   serializeGameState,
 } from "./index";
+import { fillLibraries } from "./testSupport";
 import { advanceSteps } from "./turn";
 import type { GameState } from "./types";
 
@@ -20,6 +21,7 @@ function twoPlayers() {
   if (!p1 || !p2) {
     throw new Error("need players");
   }
+  fillLibraries(game);
   return { game, p1, p2 };
 }
 
@@ -49,6 +51,7 @@ function placeCommander(game: GameState, ownerId: string, name: string, power: n
 }
 
 function toPrecombatMain(game: GameState): GameState {
+  fillLibraries(game);
   return advanceSteps(game, 3);
 }
 

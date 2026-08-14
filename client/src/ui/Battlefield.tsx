@@ -7,14 +7,17 @@ import {
   type CardInstanceId,
   type ChosenTarget,
   type GameAction,
+  type GameLogEntry,
   type GameState,
   type PlayerId,
+  type PlayerState,
+  type StackObjectId,
 } from "@mtgcommander/engine";
 
 export type UiMode =
   | { type: "idle" }
   | { type: "targets"; cardId: CardInstanceId; chosen: ChosenTarget[] }
-  | { type: "attackers"; attackerIds: CardInstanceId[] }
+  | { type: "attackers"; attackerIds: CardInstanceId[]; defenderId: PlayerId | null }
   | { type: "block-pick-blocker" }
   | { type: "block-pick-attacker"; blockerId: CardInstanceId };
 
@@ -42,6 +45,17 @@ function manaLine(mana: GameState["players"][number]["mana"]): string {
   return MANA_COLORS.filter((color) => mana[color] > 0)
     .map((color) => `${color}:${mana[color]}`)
     .join(" ") || "none";
+}
+
+function formatLogEntry(state: GameState, entry: GameLogEntry): string {
+  if (entry.kind === "life_change") {
+    const player = state.players.find((item) => item.id === entry.playerId);
+    const name = player?.displayName ?? entry.playerId;
+    const delta = entry.delta > 0 ? `+${entry.delta}` : `${entry.delta}`;
+    return `${name} life ${delta}`;
+  }
+  const name = definition(state, entry.cardId)?.name ?? "Unknown Card";
+  return `${name}: ${entry.from} → ${entry.to}`;
 }
 
 function CardTile(props: {
@@ -84,19 +98,91 @@ function CardTile(props: {
   );
 }
 
+function OpponentArea(props: {
+  state: GameState;
+  opponent: PlayerState;
+  legacyIds: boolean;
+  targeting: boolean;
+  selectingDefender: boolean;
+  selectedDefender: boolean;
+  blockPick: boolean;
+  onTargetPlayer: () => void;
+  onSelectDefender: () => void;
+  onPermanent: (cardId: CardInstanceId) => void;
+}) {
+  const { state, opponent, legacyIds } = props;
+  const areaId = legacyIds ? "area-opponent" : `area-${opponent.id}`;
+  const lifeId = legacyIds ? "life-opponent" : `life-${opponent.id}`;
+  const handId = legacyIds ? "hand-opponent" : `hand-${opponent.id}`;
+  const fieldId = legacyIds ? "battlefield-opponent" : `battlefield-${opponent.id}`;
+  const targetId = legacyIds ? "target-opponent" : `target-${opponent.id}`;
+  const attackId = legacyIds ? "attack-opponent" : `attack-${opponent.id}`;
+  return (
+    <section className="player-area opponent" data-testid={areaId}>
+      <div className="player-meta">
+        <h2>{opponent.displayName}</h2>
+        <p data-testid={lifeId}>Life {opponent.life}</p>
+        <p data-testid={legacyIds ? "counts-opponent" : `counts-${opponent.id}`}>
+          Hand {opponent.zones.hand.length} · Library {opponent.zones.library.length} · Graveyard{" "}
+          {opponent.zones.graveyard.length} · Command {opponent.zones.command.length}
+        </p>
+        {props.targeting ? (
+          <button type="button" data-testid={targetId} onClick={props.onTargetPlayer}>
+            Target {opponent.displayName}
+          </button>
+        ) : null}
+        {props.selectingDefender ? (
+          <button
+            type="button"
+            data-testid={attackId}
+            className={props.selectedDefender ? "is-selected" : ""}
+            onClick={props.onSelectDefender}
+          >
+            Attack {opponent.displayName}
+          </button>
+        ) : null}
+      </div>
+      <div className="hand" data-testid={handId}>
+        {opponent.zones.hand.map((cardId) => (
+          <CardTile key={cardId} state={state} cardId={cardId} />
+        ))}
+      </div>
+      <div className="permanents" data-testid={fieldId}>
+        {opponent.zones.battlefield.map((cardId) => (
+          <CardTile
+            key={cardId}
+            state={state}
+            cardId={cardId}
+            onClick={
+              props.targeting || props.blockPick ? () => props.onPermanent(cardId) : undefined
+            }
+          />
+        ))}
+      </div>
+    </section>
+  );
+}
+
 export function Battlefield(props: Props) {
   const { state, viewerId, error, mode, onMode, onAction, onNewGame } = props;
   const you = state.players.find((player) => player.id === viewerId);
-  const opponent = state.players.find((player) => player.id !== viewerId);
-  if (!you || !opponent) {
+  const opponents = state.players.filter((player) => player.id !== viewerId);
+  if (!you || opponents.length === 0) {
     return <p>Missing players.</p>;
   }
-  const opponentId = opponent.id;
 
   const over = isGameOver(state);
   const winner = state.players.find((player) => player.id === state.winnerId);
   const priority = state.players.find((player) => player.id === state.priorityPlayerId);
   const yourPriority = state.priorityPlayerId === viewerId;
+  const targeting = mode.type === "targets";
+  const nextRequirement =
+    mode.type === "targets"
+      ? (definition(state, mode.cardId)?.targetRequirements ?? [])[mode.chosen.length]
+      : undefined;
+  const targetingSpell = targeting && nextRequirement?.kind === "spell";
+  const livingOpponents = opponents.filter((player) => !player.lost);
+  const logLines = state.log.slice(-12);
 
   function send(action: GameAction) {
     onMode({ type: "idle" });
@@ -127,7 +213,7 @@ export function Battlefield(props: Props) {
       const next = mode.attackerIds.includes(cardId)
         ? mode.attackerIds.filter((id) => id !== cardId)
         : [...mode.attackerIds, cardId];
-      onMode({ type: "attackers", attackerIds: next });
+      onMode({ type: "attackers", attackerIds: next, defenderId: mode.defenderId });
       return;
     }
     if (mode.type === "block-pick-blocker" && isCreature(state, cardId)) {
@@ -174,8 +260,14 @@ export function Battlefield(props: Props) {
     onMode({ type: "targets", cardId: mode.cardId, chosen });
   }
 
+  function clickStack(stackObjectId: StackObjectId) {
+    if (targetingSpell) {
+      addTarget({ type: "spell", stackObjectId });
+    }
+  }
+
   function confirmAttackers() {
-    if (mode.type !== "attackers") {
+    if (mode.type !== "attackers" || !mode.defenderId) {
       return;
     }
     send({
@@ -183,12 +275,18 @@ export function Battlefield(props: Props) {
       playerId: viewerId,
       attacks: mode.attackerIds.map((attackerId) => ({
         attackerId,
-        defenderId: opponentId,
+        defenderId: mode.defenderId as PlayerId,
       })),
     });
   }
 
-  const targeting = mode.type === "targets";
+  function beginAttackers() {
+    onMode({
+      type: "attackers",
+      attackerIds: [],
+      defenderId: livingOpponents.length === 1 ? (livingOpponents[0]?.id ?? null) : null,
+    });
+  }
 
   return (
     <div className="table">
@@ -212,48 +310,35 @@ export function Battlefield(props: Props) {
           </p>
         ) : null}
         {mode.type === "targets" ? (
-          <p data-testid="targeting-hint">Choose a target for {definition(state, mode.cardId)?.name}.</p>
+          <p data-testid="targeting-hint">
+            {targetingSpell
+              ? `Choose a spell on the stack for ${definition(state, mode.cardId)?.name}.`
+              : `Choose a target for ${definition(state, mode.cardId)?.name}.`}
+          </p>
         ) : null}
       </header>
 
-      <section className="player-area opponent" data-testid="area-opponent">
-        <div className="player-meta">
-          <h2>{opponent.displayName}</h2>
-          <p data-testid="life-opponent">Life {opponent.life}</p>
-          <p data-testid="counts-opponent">
-            Hand {opponent.zones.hand.length} · Library {opponent.zones.library.length} · Graveyard{" "}
-            {opponent.zones.graveyard.length} · Command {opponent.zones.command.length}
-          </p>
-          {targeting ? (
-            <button
-              type="button"
-              data-testid="target-opponent"
-              onClick={() => addTarget({ type: "player", playerId: opponentId })}
-            >
-              Target opponent
-            </button>
-          ) : null}
-        </div>
-        <div className="hand" data-testid="hand-opponent">
-          {opponent.zones.hand.map((cardId) => (
-            <CardTile key={cardId} state={state} cardId={cardId} />
-          ))}
-        </div>
-        <div className="permanents" data-testid="battlefield-opponent">
-          {opponent.zones.battlefield.map((cardId) => (
-            <CardTile
-              key={cardId}
-              state={state}
-              cardId={cardId}
-              onClick={
-                targeting || mode.type === "block-pick-attacker"
-                  ? () => clickOpponentPermanent(cardId)
-                  : undefined
+      <div className="opponents" data-testid="area-opponents">
+        {opponents.map((opponent, index) => (
+          <OpponentArea
+            key={opponent.id}
+            state={state}
+            opponent={opponent}
+            legacyIds={index === 0}
+            targeting={targeting && !targetingSpell}
+            selectingDefender={mode.type === "attackers" && livingOpponents.length > 1}
+            selectedDefender={mode.type === "attackers" && mode.defenderId === opponent.id}
+            blockPick={mode.type === "block-pick-attacker"}
+            onTargetPlayer={() => addTarget({ type: "player", playerId: opponent.id })}
+            onSelectDefender={() => {
+              if (mode.type === "attackers") {
+                onMode({ ...mode, defenderId: opponent.id });
               }
-            />
-          ))}
-        </div>
-      </section>
+            }}
+            onPermanent={clickOpponentPermanent}
+          />
+        ))}
+      </div>
 
       {state.stack.length > 0 ? (
         <section className="stack-strip" data-testid="stack">
@@ -265,13 +350,36 @@ export function Battlefield(props: Props) {
                 : entry.kind;
               return (
                 <li key={entry.id}>
-                  {entry.kind}: {sourceName}
+                  {targetingSpell ? (
+                    <button
+                      type="button"
+                      data-testid={`stack-target-${entry.id}`}
+                      onClick={() => clickStack(entry.id)}
+                    >
+                      {entry.kind}: {sourceName}
+                    </button>
+                  ) : (
+                    `${entry.kind}: ${sourceName}`
+                  )}
                 </li>
               );
             })}
           </ul>
         </section>
       ) : null}
+
+      <section className="log-strip" data-testid="game-log">
+        <h3>Log</h3>
+        {logLines.length === 0 ? (
+          <p className="muted">No public events yet.</p>
+        ) : (
+          <ol>
+            {logLines.map((entry, index) => (
+              <li key={`${entry.kind}-${index}`}>{formatLogEntry(state, entry)}</li>
+            ))}
+          </ol>
+        )}
+      </section>
 
       <section className="player-area you" data-testid="area-you">
         <div className="permanents" data-testid="battlefield-you">
@@ -333,15 +441,16 @@ export function Battlefield(props: Props) {
             state.turn.activePlayerId === viewerId &&
             yourPriority ? (
               mode.type === "attackers" ? (
-                <button type="button" data-testid="confirm-attackers" onClick={confirmAttackers}>
+                <button
+                  type="button"
+                  data-testid="confirm-attackers"
+                  disabled={!mode.defenderId}
+                  onClick={confirmAttackers}
+                >
                   Confirm attackers
                 </button>
               ) : (
-                <button
-                  type="button"
-                  data-testid="choose-attackers"
-                  onClick={() => onMode({ type: "attackers", attackerIds: [] })}
-                >
+                <button type="button" data-testid="choose-attackers" onClick={beginAttackers}>
                   Choose attackers
                 </button>
               )

@@ -23,6 +23,7 @@ export const POOL_ID = {
   recruit: "def-test-recruit",
   terror: "def-test-terror",
   mill: "def-test-mill",
+  counter: "def-test-counter",
 } as const;
 
 export function syntheticPool(): CardDefinition[] {
@@ -217,6 +218,15 @@ export function syntheticPool(): CardDefinition[] {
       manaCost: "{U}",
       oracleText: "Target player mills two cards.",
       effects: [{ kind: "mill", playerId: "next_opponent", count: 2 }],
+    }),
+    createCardDefinition({
+      id: POOL_ID.counter,
+      name: "Test Counter",
+      typeLine: "Instant",
+      manaCost: "{U}{U}",
+      oracleText: "Counter target spell.",
+      targetRequirements: [{ kind: "spell" }],
+      effects: [{ kind: "counter_spell", target: { type: "chosen", index: 0 } }],
     }),
   ];
 }

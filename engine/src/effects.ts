@@ -8,7 +8,7 @@ import { nextLivingPlayerId } from "./players";
 import { applyStateBasedActionsInPlace } from "./status";
 import { isChosenTargetLegal } from "./targeting";
 import { queueEnterBattlefieldTriggersInPlace } from "./triggers";
-import { countCardPlacements, moveCard } from "./zones";
+import { countCardPlacements, enterOwnerZone, moveCard } from "./zones";
 import type {
   CardEffect,
   CardIdSelector,
@@ -19,6 +19,7 @@ import type {
   PlayerId,
   PlayerSelector,
   PlayerState,
+  StackObjectId,
   TargetRequirement,
 } from "./types";
 
@@ -98,7 +99,7 @@ export function bindCardEffect(
     case "deal_damage": {
       if (effect.target.type === "chosen") {
         const chosen = chosenTargetAt(context, effect.target.index, state);
-        if (!chosen) {
+        if (!chosen || chosen.type === "spell") {
           return null;
         }
         return {
@@ -166,6 +167,13 @@ export function bindCardEffect(
       }
       return { kind: "add_counter", cardId, counter: effect.counter, amount: effect.amount };
     }
+    case "counter_spell": {
+      const chosen = chosenTargetAt(context, effect.target.index, state);
+      if (!chosen || chosen.type !== "spell") {
+        return null;
+      }
+      return { kind: "counter_spell", stackObjectId: chosen.stackObjectId };
+    }
     default: {
       const exhaustive: never = effect;
       throw new Error(`Unknown card effect ${(exhaustive as CardEffect).kind}`);
@@ -206,6 +214,7 @@ function applyGainLife(state: GameState, playerId: PlayerId, amount: number): Ga
   requirePositiveInteger(amount, "life gain");
   const next = cloneGameState(state);
   requirePlayer(next, playerId).life += amount;
+  next.log.push({ kind: "life_change", playerId, delta: amount });
   return next;
 }
 
@@ -213,6 +222,7 @@ function applyLoseLife(state: GameState, playerId: PlayerId, amount: number): Ga
   requirePositiveInteger(amount, "life loss");
   const next = cloneGameState(state);
   requirePlayer(next, playerId).life -= amount;
+  next.log.push({ kind: "life_change", playerId, delta: -amount });
   return next;
 }
 
@@ -258,16 +268,20 @@ function applyDraw(state: GameState, playerId: PlayerId, count: number): GameSta
   if (wouldSkipDraw(state, playerId)) {
     return cloneGameState(state);
   }
-  const player = requirePlayer(state, playerId);
-  if (player.zones.library.length < count) {
-    throw new Error("Library is empty");
-  }
-  let next = state;
+  requirePlayer(state, playerId);
+  let next = cloneGameState(state);
   for (let i = 0; i < count; i += 1) {
+    if (wouldSkipDraw(next, playerId)) {
+      return next;
+    }
     const current = next.players.find((entry) => entry.id === playerId);
-    const top = current?.zones.library[0];
+    if (!current) {
+      throw new Error(`Unknown player ${playerId}`);
+    }
+    const top = current.zones.library[0];
     if (!top) {
-      throw new Error("Library is empty");
+      current.failedToDraw = true;
+      return next;
     }
     next = moveCard(next, top, "hand");
   }
@@ -332,6 +346,19 @@ function applyAddCounter(
   }
   card.counters[counter] = (card.counters[counter] ?? 0) + amount;
   return next;
+}
+
+function applyCounterSpell(state: GameState, stackObjectId: StackObjectId): GameState {
+  const next = cloneGameState(state);
+  const index = next.stack.findIndex((entry) => entry.id === stackObjectId);
+  if (index === -1) {
+    return next;
+  }
+  const [removed] = next.stack.splice(index, 1);
+  if (!removed?.sourceId) {
+    return next;
+  }
+  return enterOwnerZone(next, removed.sourceId, "graveyard");
 }
 
 function applyCreateToken(
@@ -414,6 +441,9 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
         break;
       case "add_counter":
         next = applyAddCounter(state, effect.cardId, effect.counter, effect.amount);
+        break;
+      case "counter_spell":
+        next = applyCounterSpell(state, effect.stackObjectId);
         break;
       default: {
         const exhaustive: never = effect;

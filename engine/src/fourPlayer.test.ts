@@ -9,6 +9,7 @@ import {
   serializeGameState,
   TURN_SEQUENCE,
 } from "./index";
+import { fillLibraries } from "./testSupport";
 import { advanceSteps } from "./turn";
 import { HIDDEN_DEFINITION_ID } from "./visibility";
 import type { GameState } from "./types";
@@ -22,6 +23,7 @@ function fourPlayers() {
   if (!p1 || !p2 || !p3 || !p4) {
     throw new Error("need four players");
   }
+  fillLibraries(game);
   return { game, p1, p2, p3, p4 };
 }
 

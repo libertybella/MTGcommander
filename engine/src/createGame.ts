@@ -106,6 +106,7 @@ function createPlayer(displayName: string): PlayerState {
     },
     lost: false,
     landsPlayedThisTurn: 0,
+    failedToDraw: false,
   };
 }
 
