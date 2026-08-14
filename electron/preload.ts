@@ -16,4 +16,6 @@ contextBridge.exposeInMainWorld("mtgCommander", {
       json: async () => JSON.parse(result.text) as unknown,
     };
   },
+  hostStart: (snapshot: unknown) => ipcRenderer.invoke("mtgcommander:host-start", snapshot),
+  hostStop: () => ipcRenderer.invoke("mtgcommander:host-stop"),
 });

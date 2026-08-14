@@ -1,6 +1,7 @@
 import type {
   CardEffect,
   CardIdSelector,
+  CardInstanceId,
   CardTrigger,
   ChosenTarget,
   GameAction,
@@ -9,6 +10,8 @@ import type {
   GameState,
   Keyword,
   ManaPool,
+  MulliganState,
+  PlayerId,
   PlayerState,
   ReplacementEffect,
   StaticModifier,
@@ -290,6 +293,36 @@ export function parseGameState(json: string): GameState {
         ? null
         : expectString(raw.winnerId, "winnerId"),
     log: parseLog(raw.log),
+    mulligan: parseMulligan(raw.mulligan, playerIds),
+  };
+}
+
+function parseMulligan(value: unknown, playerIds: Set<string>): MulliganState | null {
+  if (value === undefined || value === null) {
+    return null;
+  }
+  if (!isRecord(value)) {
+    throw new Error("Invalid mulligan");
+  }
+  const decidingPlayerId = expectString(value.decidingPlayerId, "mulligan.decidingPlayerId");
+  if (!playerIds.has(decidingPlayerId)) {
+    throw new Error("mulligan.decidingPlayerId must be a player");
+  }
+  if (!isRecord(value.taken) || !isRecord(value.kept)) {
+    throw new Error("Invalid mulligan taken/kept");
+  }
+  const taken: Record<PlayerId, number> = {};
+  const kept: Record<PlayerId, boolean> = {};
+  for (const playerId of playerIds) {
+    taken[playerId] = expectNumber(value.taken[playerId] ?? 0, `mulligan.taken.${playerId}`);
+    kept[playerId] = value.kept[playerId] === true;
+  }
+  return {
+    decidingPlayerId,
+    taken,
+    kept,
+    pendingBottom: expectNumber(value.pendingBottom ?? 0, "mulligan.pendingBottom"),
+    startingHandSize: expectNumber(value.startingHandSize ?? 7, "mulligan.startingHandSize"),
   };
 }
 
@@ -720,7 +753,7 @@ export function parseGameAction(json: string): GameAction {
   }
   const kind = expectString(raw.kind, "action.kind");
   const playerId = expectString(raw.playerId, "action.playerId");
-  if (kind === "pass_priority" || kind === "concede") {
+  if (kind === "pass_priority" || kind === "concede" || kind === "keep_hand" || kind === "mulligan") {
     return { kind, playerId };
   }
   if (kind === "play_land") {
@@ -781,6 +814,13 @@ export function parseGameAction(json: string): GameAction {
       kind,
       playerId,
       cardId: expectString(raw.cardId, "action.cardId"),
+    };
+  }
+  if (kind === "bottom_cards") {
+    return {
+      kind,
+      playerId,
+      cardIds: expectStringArray(raw.cardIds, "action.cardIds") as CardInstanceId[],
     };
   }
   throw new Error(`Unknown GameAction kind ${kind}`);

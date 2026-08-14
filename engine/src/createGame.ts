@@ -143,5 +143,6 @@ export function createGameState(options: CreateGameOptions): GameState {
     combat: null,
     winnerId: null,
     log: [],
+    mulligan: null,
   };
 }

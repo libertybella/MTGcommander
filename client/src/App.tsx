@@ -8,10 +8,12 @@ import {
   importTextDeck,
   loadTable,
   saveTable,
+  snapshotHost,
   startImportedTable,
   type CompiledDeck,
 } from "@mtgcommander/server";
 import { cardDatabase, hostFetch } from "./game/cardDatabase";
+import { openRemoteTable, type SeatInfo } from "./game/remoteTable";
 import { browserStore } from "./game/storage";
 import { startSyntheticTable, type SyntheticPlayerCount } from "./game/syntheticTable";
 import { Battlefield, type UiMode } from "./ui/Battlefield";
@@ -41,13 +43,27 @@ function hostFromState(state: GameState, hotseat = false): GameHost {
   return host;
 }
 
-type Session = {
+type LocalSession = {
+  kind: "local";
   host: GameHost;
   view: GameState;
 };
 
-function sessionFrom(host: GameHost): Session {
-  return { host, view: host.viewFor(host.getViewerId()) };
+type RemoteSession = {
+  kind: "remote";
+  playerId: PlayerId;
+  view: GameState;
+  roomCode: string;
+  hostLabel: string;
+  seats: SeatInfo[];
+  send: (action: GameAction) => void;
+  disconnect: () => void;
+};
+
+type Session = LocalSession | RemoteSession;
+
+function sessionFrom(host: GameHost): LocalSession {
+  return { kind: "local", host, view: host.viewFor(host.getViewerId()) };
 }
 
 function formatNotes(notes: { player: string; cards: { name: string; notes: string[] }[] }[]): string[] {
@@ -76,6 +92,11 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [hotseat, setHotseat] = useState(false);
   const [importCount, setImportCount] = useState<TablePlayerCount>(2);
+  const [joinHost, setJoinHost] = useState("");
+  const [joinPort, setJoinPort] = useState("8787");
+  const [joinCode, setJoinCode] = useState("");
+  const [joinName, setJoinName] = useState("Friend");
+  const [hosting, setHosting] = useState(false);
   const bridge = window.mtgCommander;
 
   function startGame(playerCount: SyntheticPlayerCount = 2) {
@@ -123,6 +144,96 @@ export default function App() {
       setError(caught instanceof Error ? caught.message : "Import failed");
     } finally {
       setLoading(false);
+    }
+  }
+
+  function connectRemote(
+    url: string,
+    join: { roomCode: string; displayName: string; playerId?: PlayerId },
+    hostLabel: string,
+    stopServer: boolean,
+  ) {
+    const remote = openRemoteTable(url, join, {
+      onJoined(info) {
+        setError(null);
+        setMode({ type: "idle" });
+        setSession({
+          kind: "remote",
+          playerId: info.playerId,
+          view: info.view,
+          roomCode: info.roomCode,
+          hostLabel,
+          seats: info.seats,
+          send: remote.send,
+          disconnect: () => {
+            remote.close();
+            if (stopServer) {
+              void bridge?.hostStop?.();
+            }
+          },
+        });
+      },
+      onState(view, seats) {
+        setSession((current) =>
+          current?.kind === "remote" ? { ...current, view, seats } : current,
+        );
+      },
+      onError(message) {
+        setError(message);
+      },
+      onClose() {
+        setSession((current) => (current?.kind === "remote" ? null : current));
+      },
+    });
+  }
+
+  function joinTable() {
+    const code = joinCode.trim().toUpperCase();
+    if (!code) {
+      setError("Enter the room code from the host.");
+      return;
+    }
+    const host = joinHost.trim() || "127.0.0.1";
+    const port = Number(joinPort.trim() || "8787");
+    if (!Number.isInteger(port) || port < 1) {
+      setError("Enter a valid port.");
+      return;
+    }
+    setError(null);
+    connectRemote(
+      `ws://${host}:${port}`,
+      { roomCode: code, displayName: joinName.trim() || "Friend" },
+      `${host}:${port}`,
+      false,
+    );
+  }
+
+  async function openForFriends(local: LocalSession) {
+    if (!bridge?.hostStart) {
+      setError("Hosting needs the Electron app so friends can connect over the LAN.");
+      return;
+    }
+    setHosting(true);
+    setError(null);
+    try {
+      const info = await bridge.hostStart(snapshotHost(local.host));
+      clearTable(browserStore());
+      connectRemote(
+        `ws://127.0.0.1:${info.port}`,
+        {
+          roomCode: info.roomCode,
+          displayName:
+            local.view.players.find((player) => player.id === local.host.getViewerId())?.displayName ??
+            "You",
+          playerId: local.host.getViewerId(),
+        },
+        info.addresses[0] ? `${info.addresses[0]}:${info.port}` : `127.0.0.1:${info.port}`,
+        true,
+      );
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Could not host the table");
+    } finally {
+      setHosting(false);
     }
   }
 
@@ -246,25 +357,90 @@ export default function App() {
             plain browser window, paste the exported list instead.
           </p>
         </section>
+        <section className="import-panel">
+          <h2>Join a hosted table</h2>
+          <label>
+            Host address
+            <input
+              data-testid="join-host"
+              value={joinHost}
+              onChange={(event) => setJoinHost(event.target.value)}
+              placeholder="127.0.0.1 or a Tailscale / LAN IP"
+            />
+          </label>
+          <label>
+            Port
+            <input
+              data-testid="join-port"
+              value={joinPort}
+              onChange={(event) => setJoinPort(event.target.value)}
+              placeholder="8787"
+            />
+          </label>
+          <label>
+            Room code
+            <input
+              data-testid="join-code"
+              value={joinCode}
+              onChange={(event) => setJoinCode(event.target.value)}
+              placeholder="ABC123"
+            />
+          </label>
+          <label>
+            Display name
+            <input
+              data-testid="join-name"
+              value={joinName}
+              onChange={(event) => setJoinName(event.target.value)}
+              placeholder="Friend"
+            />
+          </label>
+          <button type="button" data-testid="join-table" onClick={() => joinTable()}>
+            Join table
+          </button>
+          <p className="muted">
+            The host starts a table in Electron, then clicks Open table for
+            friends. Joiners enter that PC&apos;s address and room code.
+          </p>
+        </section>
       </main>
     );
   }
 
-  const { host, view } = session;
-  const viewerId = host.getViewerId();
-  const seatedIds = host.getSeatedPlayerIds();
-  const hotseatTable = seatedIds.length > 1;
+  const table = session;
+  const view = table.view;
+  const viewerId = table.kind === "local" ? table.host.getViewerId() : table.playerId;
+  const hotseatTable = table.kind === "local" && table.host.getSeatedPlayerIds().length > 1;
 
   function switchSeat(playerId: PlayerId) {
-    host.setViewer(playerId);
-    persist(host);
+    if (table.kind !== "local") {
+      return;
+    }
+    table.host.setViewer(playerId);
+    persist(table.host);
     setMode({ type: "idle" });
-    setSession(sessionFrom(host));
+    setSession(sessionFrom(table.host));
     setError(null);
   }
 
   return (
     <>
+      {table.kind === "remote" ? (
+        <aside className="room-banner" data-testid="room-banner">
+          Room {table.roomCode} · {table.hostLabel}
+          {table.seats.some((seat) => seat.connected) ? (
+            <span className="muted">
+              {" "}
+              ·{" "}
+              {table.seats
+                .filter((seat) => seat.connected)
+                .map((seat) => seat.displayName)
+                .join(", ")}{" "}
+              connected
+            </span>
+          ) : null}
+        </aside>
+      ) : null}
       {notes.length > 0 ? (
         <aside className="import-notes" data-testid="import-notes">
           <p>Unsupported oracle text (cards still sit in the deck):</p>
@@ -291,6 +467,20 @@ export default function App() {
           ))}
         </div>
       ) : null}
+      {table.kind === "local" && bridge?.hostStart ? (
+        <div className="seat-switcher">
+          <button
+            type="button"
+            data-testid="host-table"
+            disabled={hosting}
+            onClick={() => {
+              void openForFriends(table);
+            }}
+          >
+            {hosting ? "Opening…" : "Open table for friends"}
+          </button>
+        </div>
+      ) : null}
       <Battlefield
         state={view}
         viewerId={viewerId}
@@ -298,16 +488,24 @@ export default function App() {
         mode={mode}
         onMode={setMode}
         onNewGame={() => {
+          if (table.kind === "remote") {
+            table.disconnect();
+          }
           clearTable(browserStore());
           startGame(2);
         }}
         onAction={(action: GameAction) => {
-          const result = host.submit(viewerId, action);
-          if (result.ok) {
-            persist(host);
-            setSession(sessionFrom(host));
+          if (table.kind === "remote") {
+            table.send(action);
             setError(null);
-            if (isGameOver(host.viewFor(viewerId))) {
+            return;
+          }
+          const result = table.host.submit(viewerId, action);
+          if (result.ok) {
+            persist(table.host);
+            setSession(sessionFrom(table.host));
+            setError(null);
+            if (isGameOver(table.host.viewFor(viewerId))) {
               setMode({ type: "idle" });
             }
           } else {

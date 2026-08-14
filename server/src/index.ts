@@ -1,6 +1,6 @@
 /**
  * Authoritative host process.
- * Local tables use GameHost in-process. WebSockets and rooms remain later.
+ * Local tables use GameHost in-process. Electron can also start GameServer.
  */
 
 import { getEngineInfo, type EngineInfo } from "@mtgcommander/engine";

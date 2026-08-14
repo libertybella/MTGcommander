@@ -65,6 +65,16 @@ export type { TurnSlot } from "./turn";
 export { livingPlayers, livingPlayerCount, winnerId } from "./players";
 export { eliminatePlayer } from "./elimination";
 export { isGameOver } from "./status";
+export {
+  applyBottomCards,
+  applyKeepHand,
+  applyTakeMulligan,
+  beginMulligan,
+  countedMulligans,
+  DEFAULT_STARTING_HAND_SIZE,
+  freeMulliganCount,
+  isMulliganOpen,
+} from "./mulligan";
 export { redactForViewer, isHiddenFromViewer, HIDDEN_DEFINITION_ID } from "./visibility";
 export { isChosenTargetLegal, validateChosenTargets } from "./targeting";
 export {
@@ -138,6 +148,7 @@ export type {
   Keyword,
   ManaColor,
   ManaPool,
+  MulliganState,
   Phase,
   PlayerSelector,
   RelativePlayer,

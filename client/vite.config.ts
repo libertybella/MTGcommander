@@ -23,7 +23,7 @@ export default defineConfig({
           build: {
             outDir: path.join(repoRoot, "dist-electron"),
             rollupOptions: {
-              external: ["electron"],
+              external: ["electron", "ws"],
             },
           },
         },

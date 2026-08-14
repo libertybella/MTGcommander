@@ -145,6 +145,7 @@ export function startImportedTable(options: {
     definitions,
     shuffle: true,
     random: options.random,
+    skipMulligan: false,
     decks: options.decks.map((deck) => ({
       commanderDefinitionIds: deck.commanderDefinitionIds,
       libraryDefinitionIds: deck.libraryDefinitionIds,

@@ -1,4 +1,4 @@
-# Rules Coverage (Engine V1 through Checkpoint 31)
+# Rules Coverage (Engine V1 through Checkpoint 33)
 
 This document records what the engine implements and what it intentionally does not. It is not a complete CR translation.
 
@@ -14,7 +14,9 @@ This document records what the engine implements and what it intentionally does 
 - A 21-card synthetic pool and catalog seating (`startCatalogGame`). Still available from the start screen.
 - Real cards: Scryfall-shaped `OracleCard` data compiles into `CardDefinition`. Instant/sorcery oracle text is not executed. Creatures get printed P/T and known keywords. Lands/artifacts get `produces` only for a single simple `{T}: Add {M}` line.
 - Deck import: Moxfield public URL (Electron IPC) or pasted Commander/Arena text. `startDefinitionGame` shuffles and seats 2, 3, or 4 players. Empty opponent URLs mirror your deck. Compile notes are shown; uncompiled cards stay in the deck.
-- Local React battlefield for 2, 3, or 4 players. Actions go through `GameHost.submit`. Optional local hotseat seats every player at this PC; otherwise unseated opponents auto-pass. Authority persists in localStorage. Oracle cache key `mtgcommander.oracle.v1`. Not a networked client.
+- Local React battlefield for 2, 3, or 4 players. Actions go through `GameHost.submit`. Optional local hotseat seats every player at this PC; otherwise unseated opponents auto-pass. Authority persists in localStorage for local tables. Oracle cache key `mtgcommander.oracle.v1`.
+- London mulligan before the first turn: keep or shuffle-and-draw-7, then put counted cards on the bottom. In 3–4 player games the first mulligan is free (CR 103.5c).
+- Optional WebSocket table: Electron hosts on port 8787 with a room code. Friends join with a display name and receive `viewFor` themselves. Unjoined seats still auto-pass.
 - Keywords: flying, reach, haste, vigilance, trample, deathtouch, lifelink, first strike, double strike, menace, hexproof, indestructible, flash, defender.
 - Derived power/toughness: printed values, `p1p1` counters, and simple static P/T modifiers (`self` or `controlled_creatures`).
 - Enter-the-battlefield triggers become stack abilities. No target choices and no AP-order for simultaneous triggers.
@@ -25,7 +27,7 @@ This document records what the engine implements and what it intentionally does 
 
 ## Documented gaps
 
-- Rooms, WebSockets, and two-client realtime. Local `GameHost` only. Networking remains later.
+- Rooms exist as one in-memory table per Electron host. No matchmaking, no accounts, no cloud hosting. Friends need the host IP (LAN or Tailscale) and room code.
 - Full oracle-text parsing. Most real cards sit in the deck without their written abilities. Hybrid / Phyrexian / `{X}` costs are unpayable. Command Tower–style any-color lands do not produce mana.
 - Scryfall bulk JSON is not shipped in git. Cache is filled on demand. A plain browser tab cannot fetch Moxfield (CORS); paste the export instead.
 - Face-down cards (morph/manifest). Opponent hand/library identity is hidden; there is no face-down battlefield state.

@@ -14,6 +14,12 @@ declare global {
         json: () => Promise<unknown>;
         text: () => Promise<string>;
       }>;
+      hostStart?: (snapshot: unknown) => Promise<{
+        port: number;
+        roomCode: string;
+        addresses: string[];
+      }>;
+      hostStop?: () => Promise<void>;
     };
   }
 }

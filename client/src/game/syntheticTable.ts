@@ -30,6 +30,7 @@ export function startSyntheticTable(playerCount: SyntheticPlayerCount = 2): Game
     playerCount,
     playerNames: names,
     openingHandSize: 7,
+    skipMulligan: false,
     decks: names.map(() => ({
       commanderDefinitionId: POOL_ID.dragon,
       libraryDefinitionIds: library,

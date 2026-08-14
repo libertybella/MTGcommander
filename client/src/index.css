@@ -123,9 +123,8 @@ h3 {
   opacity: 0.85;
 }
 
-.card-tile.is-hidden {
-  background: #1a2430;
-  color: #8aa0b5;
+.card-tile.is-selected {
+  border-color: #f3d27a;
 }
 
 .card-name {
@@ -223,6 +222,15 @@ h3 {
   border: 1px solid #2a3b4d;
   border-radius: 0.35rem;
   padding: 0.4rem 0.5rem;
+}
+
+.room-banner {
+  background: #18222c;
+  border: 1px solid #2a3b4d;
+  border-radius: 0.5rem;
+  margin: 0.75rem;
+  padding: 0.75rem 1rem;
+  font-size: 0.9rem;
 }
 
 .import-notes {

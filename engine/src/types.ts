@@ -146,6 +146,14 @@ export type CombatState = {
   declaredBlockersFor: PlayerId[];
 };
 
+export type MulliganState = {
+  decidingPlayerId: PlayerId;
+  taken: Record<PlayerId, number>;
+  kept: Record<PlayerId, boolean>;
+  pendingBottom: number;
+  startingHandSize: number;
+};
+
 export type GameState = {
   id: GameId;
   players: PlayerState[];
@@ -160,6 +168,8 @@ export type GameState = {
   winnerId: PlayerId | null;
   /** Append-only zone-change log for future trigger systems. */
   log: GameLogEntry[];
+  /** Null after every living player has kept an opening hand. */
+  mulligan: MulliganState | null;
 };
 
 export type GameEffect =
@@ -323,7 +333,10 @@ export type GameAction =
       blocks: { blockerId: CardInstanceId; attackerId: CardInstanceId }[];
     }
   | { kind: "concede"; playerId: PlayerId }
-  | { kind: "tap_for_mana"; playerId: PlayerId; cardId: CardInstanceId };
+  | { kind: "tap_for_mana"; playerId: PlayerId; cardId: CardInstanceId }
+  | { kind: "keep_hand"; playerId: PlayerId }
+  | { kind: "mulligan"; playerId: PlayerId }
+  | { kind: "bottom_cards"; playerId: PlayerId; cardIds: CardInstanceId[] };
 
 export type GameEvent =
   | { kind: "game_created"; gameId: GameId }

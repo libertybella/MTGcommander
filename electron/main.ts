@@ -1,6 +1,8 @@
 import { app, BrowserWindow, ipcMain, net } from "electron";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { hostFromSnapshot, type TableSnapshot } from "@mtgcommander/server";
+import { GameServer } from "@mtgcommander/server/realtime";
 
 const electronDir = path.dirname(fileURLToPath(import.meta.url));
 
@@ -53,6 +55,26 @@ ipcMain.handle("mtgcommander:fetch", async (_event, url: string, init: FetchInit
   return { ok: response.ok, status: response.status, text };
 });
 
+let gameServer: GameServer | null = null;
+
+ipcMain.handle("mtgcommander:host-start", async (_event, snapshot: TableSnapshot) => {
+  if (gameServer) {
+    await gameServer.stop();
+    gameServer = null;
+  }
+  const host = hostFromSnapshot(snapshot);
+  gameServer = new GameServer();
+  gameServer.attach(host);
+  return gameServer.listen(8787);
+});
+
+ipcMain.handle("mtgcommander:host-stop", async () => {
+  if (gameServer) {
+    await gameServer.stop();
+    gameServer = null;
+  }
+});
+
 app.whenReady().then(() => {
   createWindow();
   app.on("activate", () => {
@@ -61,5 +83,7 @@ app.whenReady().then(() => {
 });
 
 app.on("window-all-closed", () => {
+  void gameServer?.stop();
+  gameServer = null;
   if (process.platform !== "darwin") app.quit();
 });

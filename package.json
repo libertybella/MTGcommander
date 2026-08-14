@@ -22,9 +22,13 @@
   },
   "devDependencies": {
     "@types/node": "^24.3.0",
+    "@types/ws": "^8.18.1",
     "electron": "^37.2.6",
     "oxlint": "^1.75.0",
     "typescript": "~5.8.3",
     "vitest": "^3.2.4"
+  },
+  "dependencies": {
+    "ws": "^8.21.3"
   }
 }

@@ -1,6 +1,6 @@
 # Unsupported Interactions (20-Card Engine)
 
-This log is for the synthetic pool, imported real decks, and the local host as of Checkpoint 31. It is not a complete Comprehensive Rules gap list. See also `RULES_COVERAGE.md`.
+This log is for the synthetic pool, imported real decks, and the local/hosted table as of Checkpoint 33. It is not a complete Comprehensive Rules gap list. See also `RULES_COVERAGE.md`.
 
 Cards in the synthetic pool are named `Test …` on purpose. Real decks load through a Scryfall oracle cache and Moxfield/text import; most oracle text is still not executed.
 
@@ -23,12 +23,12 @@ Cards in the synthetic pool are named `Test …` on purpose. Real decks load thr
 | Search, shuffle, modal choices | No effects. |
 | Ward, shroud, protection | Hexproof exists; the others do not. |
 | Counterspells that target a spell on the stack | Test Counter does. Other stack targets (abilities) are not implemented. |
-| Mulligans | Opening hands are dealt; no take-backs. |
+| Mulligans | London mulligan before turn 1. Unseated opponents auto-keep. |
 | Library-out loss | Implemented: a failed draw from an empty library loses. Mill does not. |
 | Triggered abilities other than ETB | Only `enter_battlefield` queues. |
 | Replacement effects other than skip-draw | Not in the pool. |
 | Layers / copy / face-down | Not implemented. |
-| Networking / two clients / rooms | Not implemented. `GameHost` runs in-process. Unseated opponents auto-pass unless local hotseat is on. |
+| Networking / two clients / rooms | Electron can host on `ws://<host>:8787` with a room code. Joiners get a redacted view. Unjoined seats still auto-pass. No accounts or public matchmaking. |
 | Face-down / morph / manifest | Not implemented. Hidden info is opponent hand and library identity only. |
 | Arena-like polish (animations, zoom, real card frames) | Functional battlefield tiles only. |
 

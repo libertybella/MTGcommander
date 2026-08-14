@@ -1,0 +1,72 @@
+import type { GameAction, GameState, PlayerId } from "@mtgcommander/engine";
+
+export type SeatInfo = {
+  playerId: PlayerId;
+  displayName: string;
+  connected: boolean;
+};
+
+export type RemoteHandlers = {
+  onJoined: (info: { playerId: PlayerId; roomCode: string; view: GameState; seats: SeatInfo[] }) => void;
+  onState: (view: GameState, seats: SeatInfo[]) => void;
+  onError: (message: string) => void;
+  onClose: () => void;
+};
+
+export type RemoteTable = {
+  send: (action: GameAction) => void;
+  close: () => void;
+};
+
+export function openRemoteTable(
+  url: string,
+  join: { roomCode: string; displayName: string; playerId?: PlayerId },
+  handlers: RemoteHandlers,
+): RemoteTable {
+  const socket = new WebSocket(url);
+  socket.addEventListener("open", () => {
+    socket.send(JSON.stringify({ type: "join", ...join }));
+  });
+  socket.addEventListener("message", (event) => {
+    const parsed: unknown = JSON.parse(String(event.data));
+    if (typeof parsed !== "object" || parsed === null || !("type" in parsed)) {
+      return;
+    }
+    const message = parsed as {
+      type: string;
+      playerId?: PlayerId;
+      roomCode?: string;
+      view?: GameState;
+      seats?: SeatInfo[];
+      message?: string;
+    };
+    if (message.type === "error") {
+      handlers.onError(message.message ?? "Table error");
+      return;
+    }
+    if (message.type === "joined" && message.playerId && message.roomCode && message.view) {
+      handlers.onJoined({
+        playerId: message.playerId,
+        roomCode: message.roomCode,
+        view: message.view,
+        seats: message.seats ?? [],
+      });
+      return;
+    }
+    if (message.type === "state" && message.view) {
+      handlers.onState(message.view, message.seats ?? []);
+    }
+  });
+  socket.addEventListener("close", () => handlers.onClose());
+  socket.addEventListener("error", () => handlers.onError("Could not reach the host"));
+  return {
+    send(action) {
+      if (socket.readyState === WebSocket.OPEN) {
+        socket.send(JSON.stringify({ type: "submit", action }));
+      }
+    },
+    close() {
+      socket.close();
+    },
+  };
+}

@@ -1,6 +1,7 @@
 import { cloneGameState } from "./clone";
 import { createCardInstance, createGameState, type CreateGameOptions } from "./createGame";
 import { syntheticPoolById } from "./pool";
+import { beginMulligan } from "./mulligan";
 import { shuffleInPlace } from "./shuffle";
 import { moveCard } from "./zones";
 import type { CardDefinition, GameState, PlayerId } from "./types";
@@ -28,6 +29,8 @@ export type StartCatalogGameOptions = CreateGameOptions & {
   openingHandSize?: number;
   /** Seating aid for short complete-game tests. Defaults to 40. */
   startingLife?: number;
+  /** Engine tests skip opening mulligans. The client leaves this false. */
+  skipMulligan?: boolean;
 };
 
 export type StartDefinitionGameOptions = StartCatalogGameOptions & {
@@ -148,10 +151,18 @@ function applyStartingLife(state: GameState, startingLife: number | undefined): 
   return next;
 }
 
+function finishStart(state: GameState, openingHandSize: number, startingLife: number | undefined, skipMulligan: boolean): GameState {
+  const dealt = applyStartingLife(dealOpeningHands(state, openingHandSize), startingLife);
+  if (skipMulligan) {
+    return dealt;
+  }
+  return beginMulligan(dealt, openingHandSize);
+}
+
 export function startCatalogGame(options: StartCatalogGameOptions): GameState {
-  const { decks, openingHandSize = 7, startingLife, ...createOptions } = options;
+  const { decks, openingHandSize = 7, startingLife, skipMulligan = true, ...createOptions } = options;
   const seated = seatCatalogDecks(createGameState(createOptions), decks);
-  return applyStartingLife(dealOpeningHands(seated, openingHandSize), startingLife);
+  return finishStart(seated, openingHandSize, startingLife, skipMulligan);
 }
 
 export function startDefinitionGame(options: StartDefinitionGameOptions): GameState {
@@ -162,11 +173,12 @@ export function startDefinitionGame(options: StartDefinitionGameOptions): GameSt
     startingLife,
     shuffle = true,
     random,
+    skipMulligan = true,
     ...createOptions
   } = options;
   const seated = seatDecks(createGameState(createOptions), decks, definitions, {
     shuffle,
     random,
   });
-  return applyStartingLife(dealOpeningHands(seated, openingHandSize), startingLife);
+  return finishStart(seated, openingHandSize, startingLife, skipMulligan);
 }

@@ -20,21 +20,21 @@ A checkbox becomes 🟢 Complete only when the work has been implemented **and**
 
 ## Project Status
 
-**Current Phase:** Phase 31 complete
-**Current Checkpoint:** Checkpoint 31 — 2–4 Player Tables & Hotseat
+**Current Phase:** Phase 33 complete
+**Current Checkpoint:** Checkpoint 33 — WebSockets
 **Overall Status:** 🟡 In Progress
 
 ### Current Objective
 
-Stop. Do not start networking, mulligans, activated abilities, or a full oracle-text parser.
+Stop. Do not start activated abilities or a full oracle-text parser.
 
 ### Last Completed Milestone
 
-Checkpoint 31: Synthetic and imported tables seat 2, 3, or 4 players. Empty opponent URLs still mirror your deck. Local hotseat seats everyone at this PC so extra players do not auto-pass.
+Checkpoint 33: London mulligans run before the first turn. Electron can host a table on port 8787; friends join with a room code and get a redacted view over WebSockets.
 
 ### Next Milestone
 
-Needs input: two-client realtime / WebSockets, London mulligan, or activated abilities beyond tap-for-mana.
+Activated abilities beyond tap-for-mana, or a fuller oracle compiler. Private alpha remains later.
 
 ---
 
@@ -446,7 +446,26 @@ Private Alpha was previously listed as Phase 31. That remains later. This phase 
 * 🟢 Unchecked hotseat still auto-passes unseated opponents (solo practice).
 * 🟢 Checkpoint 31 — 2–4 Player Tables & Hotseat.
 
-## Phase 32 — Private Alpha
+## Phase 32 — London Mulligan
+
+* 🟢 Draw 7, then keep or mulligan in turn order.
+* 🟢 Taking a mulligan shuffles the hand, draws 7, then puts counted cards on the bottom.
+* 🟢 3–4 player first mulligan is free (CR 103.5c). 2-player first mulligan counts as 1.
+* 🟢 Unseated opponents auto-keep. Other actions are blocked until everyone has kept.
+* 🟢 Checkpoint 32 — London Mulligan.
+
+## Phase 33 — WebSockets
+
+Rooms were previously later. This phase is a PC-hosted table friends can join.
+
+* 🟢 `GameServer` listens on port 8787 with a room code.
+* 🟢 Join with display name; empty seats are claimed in order and become seated.
+* 🟢 Each client receives `viewFor` that player; actions go through `GameHost.submit`.
+* 🟢 Electron **Open table for friends**; start screen **Join table**.
+* 🟢 Unjoined seats still auto-pass. No accounts.
+* 🟢 Checkpoint 33 — WebSockets.
+
+## Phase 34 — Private Alpha
 
 * ⬜ Invite testers.
 * ⬜ Complete games.
@@ -454,16 +473,16 @@ Private Alpha was previously listed as Phase 31. That remains later. This phase 
 * ⬜ UX feedback.
 * ⬜ Desync tracking.
 * ⬜ Unsupported-card tracking.
-* ⬜ Checkpoint 32 — Private Alpha.
+* ⬜ Checkpoint 34 — Private Alpha.
 
-## Phase 33 — Productization
+## Phase 35 — Productization
 
 * ⬜ Product identity.
 * ⬜ IP/legal review.
 * ⬜ Hosting/security review.
 * ⬜ Distribution strategy.
 * ⬜ Documentation.
-* ⬜ Checkpoint 33 — Release Decision.
+* ⬜ Checkpoint 35 — Release Decision.
 
 ---
 
@@ -2299,3 +2318,53 @@ Seat 2, 3, or 4 players for synthetic and imported games. Make extra seats playa
 ### Next Task
 
 Stop. Do not start networking, mulligans, activated abilities, or a full oracle-text parser.
+
+---
+
+## 2026-08-13 — London mulligan and WebSocket host/join
+
+### Objective
+
+Add the London mulligan before the first turn, then let friends join a PC-hosted table over WebSockets.
+
+### Work Completed
+
+- `keep_hand`, `mulligan`, and `bottom_cards` game actions. Taking a mulligan shuffles, draws 7, then bottoms counted cards. 3–4 player first mulligan is free.
+- Unseated opponents auto-keep. Playing lands/spells is blocked until mulligans finish.
+- `GameServer` on port 8787 with a room code. Joiners claim empty seats and receive `viewFor` themselves.
+- Electron **Open table for friends** moves authority into the main process. Start screen **Join table** uses host address, port, room code, and display name.
+
+### Tests Run
+
+- `npm test` — PASS (220 tests)
+- `npm run typecheck` — PASS
+- `npm run lint` — PASS
+- `npm run build` — PASS
+
+### Results
+
+- A 2-player London mulligan bottoms 1 card. A second WebSocket client joins by room code and sees Unknown Card for the host hand.
+
+### Decisions Made
+
+- Sequential keep/mulligan in turn order, not simultaneous declaration.
+- Engine tests skip mulligans by default (`skipMulligan: true`). The client does not.
+- `ws` stays out of the engine and out of the Vite renderer bundle (`@mtgcommander/server/realtime`).
+- Unjoined seats still auto-pass. No accounts, no cloud host.
+
+### Files Changed
+
+- `engine/src/mulligan.ts`, `engine/src/mulligan.test.ts`, `engine/src/types.ts`, `engine/src/actions.ts`, `engine/src/setup.ts`, `engine/src/serialize.ts`, `engine/src/createGame.ts`, `engine/src/index.ts`
+- `server/src/session.ts`, `server/src/realtime.ts`, `server/src/realtime.test.ts`, `server/src/importDeck.ts`, `server/package.json`
+- `client/src/App.tsx`, `client/src/App.test.tsx`, `client/src/ui/Battlefield.tsx`, `client/src/game/remoteTable.ts`, `client/src/game/syntheticTable.ts`
+- `electron/main.ts`, `electron/preload.ts`, `client/vite.config.ts`
+- `docs/DEVELOPMENT_PROGRESS.md`, `docs/RULES_COVERAGE.md`, `docs/UNSUPPORTED_INTERACTIONS.md`, `docs/ARCHITECTURE.md`
+
+### Checkpoint
+
+- PASS. Tags: `checkpoint-32-london-mulligan`, `checkpoint-33-websockets`
+- Existing tags were not moved or rewritten.
+
+### Next Task
+
+Stop. Do not start activated abilities or a full oracle-text parser.

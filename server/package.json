@@ -4,7 +4,8 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./realtime": "./src/realtime.ts"
   },
   "types": "./src/index.ts",
   "scripts": {
@@ -12,6 +13,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@mtgcommander/engine": "*"
+    "@mtgcommander/engine": "*",
+    "ws": "^8.21.3"
   }
 }

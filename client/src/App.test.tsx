@@ -51,9 +51,17 @@ function seedOracleCache() {
   );
 }
 
+function keepOpeningHands() {
+  const keep = screen.queryByTestId("keep-hand");
+  if (keep) {
+    fireEvent.click(keep);
+  }
+}
+
 function startGame() {
   render(<App />);
   fireEvent.click(screen.getByTestId("start-game"));
+  keepOpeningHands();
 }
 
 function passUntil(step: string) {
@@ -68,6 +76,11 @@ function passUntil(step: string) {
 }
 
 describe("battlefield UI", () => {
+  it("shows a join form on the start screen", () => {
+    render(<App />);
+    expect(screen.getByTestId("join-table")).toBeTruthy();
+    expect(screen.getByTestId("join-code")).toBeTruthy();
+  });
   it("starts the synthetic table and renders life, hand, and turn state", () => {
     startGame();
     expect(screen.getByTestId("life-you").textContent).toContain("Life 40");
@@ -141,6 +154,10 @@ describe("battlefield UI", () => {
     render(<App />);
     fireEvent.click(screen.getByTestId("hotseat"));
     fireEvent.click(screen.getByTestId("start-game"));
+    fireEvent.click(screen.getByTestId("keep-hand"));
+    fireEvent.click(screen.getByTestId("play-as-Opponent"));
+    fireEvent.click(screen.getByTestId("keep-hand"));
+    fireEvent.click(screen.getByTestId("play-as-You"));
     expect(screen.getByTestId("priority").textContent).toContain("You");
     fireEvent.click(screen.getByTestId("pass"));
     expect(screen.getByTestId("priority").textContent).toContain("Opponent");
@@ -148,6 +165,21 @@ describe("battlefield UI", () => {
     fireEvent.click(screen.getByTestId("play-as-Opponent"));
     expect(within(screen.getByTestId("hand-you")).queryByText("Unknown Card")).toBeNull();
     expect(within(screen.getByTestId("hand-opponent")).getAllByText("Unknown Card").length).toBe(7);
+  });
+
+  it("takes a London mulligan and bottoms one card", () => {
+    render(<App />);
+    fireEvent.click(screen.getByTestId("start-game"));
+    expect(screen.getByTestId("keep-hand")).toBeTruthy();
+    fireEvent.click(screen.getByTestId("take-mulligan"));
+    expect(screen.getByTestId("mulligan-hint").textContent).toMatch(/bottom/i);
+    const hand = within(screen.getByTestId("hand-you")).getAllByRole("button");
+    fireEvent.click(hand[0]!);
+    fireEvent.click(screen.getByTestId("confirm-bottom"));
+    expect(within(screen.getByTestId("hand-you")).getAllByRole("button").length).toBe(6);
+    fireEvent.click(screen.getByTestId("keep-hand"));
+    expect(screen.queryByTestId("keep-hand")).toBeNull();
+    expect(screen.getByTestId("pass")).toBeTruthy();
   });
 
   it("loads a pasted Commander list from the local oracle cache", async () => {

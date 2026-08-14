@@ -9,12 +9,19 @@ import { passPriority, putSpellOnStack } from "./stack";
 import { applyStateBasedActionsInPlace, redirectPriorityIfLost } from "./status";
 import { validateChosenTargets } from "./targeting";
 import { advanceStep, beginNextLivingTurnInPlace } from "./turn";
+import { applyBottomCards, applyKeepHand, applyTakeMulligan, isMulliganOpen, reconcileMulliganAfterLoss } from "./mulligan";
 import { findCardZone, moveCard } from "./zones";
 import type { CardInstanceId, ChosenTarget, GameAction, GameState, ManaPool, PlayerId } from "./types";
 
 function requirePlayer(state: GameState, playerId: PlayerId): void {
   if (!state.players.some((player) => player.id === playerId)) {
     throw new Error(`Unknown player ${playerId}`);
+  }
+}
+
+function requirePlaying(state: GameState): void {
+  if (isMulliganOpen(state)) {
+    throw new Error("Finish mulligans before taking that action");
   }
 }
 
@@ -112,6 +119,7 @@ function applyCastSpell(
   cardId: CardInstanceId,
   targets: ChosenTarget[] | undefined,
 ): GameState {
+  requirePlaying(state);
   const { cost, fromCommand } = validateCast(state, playerId, cardId);
   const card = state.cards[cardId];
   const definition = card ? state.definitions[card.definitionId] : undefined;
@@ -130,6 +138,7 @@ function applyCastSpell(
 }
 
 function applyPlayLand(state: GameState, playerId: PlayerId, cardId: CardInstanceId): GameState {
+  requirePlaying(state);
   requirePriority(state, playerId);
   if (playerId !== state.turn.activePlayerId) {
     throw new Error("Only the active player can play a land");
@@ -174,6 +183,7 @@ function applyPlayLand(state: GameState, playerId: PlayerId, cardId: CardInstanc
 }
 
 function applyPassPriority(state: GameState, playerId: PlayerId): GameState {
+  requirePlaying(state);
   requirePriority(state, playerId);
   if (
     state.turn.step === "declareBlockers" &&
@@ -207,6 +217,7 @@ function producesAnyMana(produces: Partial<ManaPool>): boolean {
 }
 
 function applyTapForMana(state: GameState, playerId: PlayerId, cardId: CardInstanceId): GameState {
+  requirePlaying(state);
   requirePriority(state, playerId);
   const card = state.cards[cardId];
   if (!card) {
@@ -249,18 +260,29 @@ export function applyAction(state: GameState, action: GameAction): GameState {
         next = applyPlayLand(state, action.playerId, action.cardId);
         break;
       case "declare_attackers":
+        requirePlaying(state);
         requireLiving(state, action.playerId);
         next = declareAttackers(state, action.playerId, action.attacks);
         break;
       case "declare_blockers":
+        requirePlaying(state);
         requireLiving(state, action.playerId);
         next = declareBlockers(state, action.playerId, action.blocks);
         break;
       case "concede":
-        next = applyConcede(state, action.playerId);
+        next = reconcileMulliganAfterLoss(applyConcede(state, action.playerId));
         break;
       case "tap_for_mana":
         next = applyTapForMana(state, action.playerId, action.cardId);
+        break;
+      case "keep_hand":
+        next = applyKeepHand(state, action.playerId);
+        break;
+      case "mulligan":
+        next = applyTakeMulligan(state, action.playerId);
+        break;
+      case "bottom_cards":
+        next = applyBottomCards(state, action.playerId, action.cardIds);
         break;
       default: {
         const exhaustive: never = action;

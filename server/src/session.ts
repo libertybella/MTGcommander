@@ -1,6 +1,7 @@
 import {
   applyAction,
   isGameOver,
+  isMulliganOpen,
   redactForViewer,
   serializeGameState,
   type GameAction,
@@ -21,7 +22,8 @@ export class GameHost {
   private constructor(
     private state: GameState,
     private viewerId: PlayerId,
-    private readonly seatedPlayerIds: ReadonlySet<PlayerId>,
+    private readonly seatedPlayerIds: Set<PlayerId>,
+    private readonly listeners: Set<() => void> = new Set(),
   ) {
     this.flushUnseated();
   }
@@ -58,6 +60,31 @@ export class GameHost {
       throw new Error("That player is not seated at this client");
     }
     this.viewerId = playerId;
+    this.notify();
+  }
+
+  seatPlayer(playerId: PlayerId): void {
+    if (!this.state.players.some((player) => player.id === playerId)) {
+      throw new Error(`Unknown player ${playerId}`);
+    }
+    this.seatedPlayerIds.add(playerId);
+    this.notify();
+  }
+
+  renamePlayer(playerId: PlayerId, displayName: string): void {
+    const player = this.state.players.find((entry) => entry.id === playerId);
+    if (!player) {
+      throw new Error(`Unknown player ${playerId}`);
+    }
+    player.displayName = displayName.trim() || player.displayName;
+    this.notify();
+  }
+
+  subscribe(listener: () => void): () => void {
+    this.listeners.add(listener);
+    return () => {
+      this.listeners.delete(listener);
+    };
   }
 
   /** Player-specific projection. Mutating it cannot change the host. */
@@ -76,6 +103,7 @@ export class GameHost {
     try {
       this.state = applyAction(this.state, action);
       this.flushUnseated();
+      this.notify();
       return { ok: true };
     } catch (error) {
       if (serializeGameState(this.state) !== before) {
@@ -91,12 +119,36 @@ export class GameHost {
     return serializeGameState(this.state);
   }
 
+  private notify(): void {
+    for (const listener of this.listeners) {
+      listener();
+    }
+  }
+
   private flushUnseated(): void {
     let guard = 0;
     while (guard < 200) {
       guard += 1;
       if (isGameOver(this.state)) {
         return;
+      }
+      if (isMulliganOpen(this.state) && this.state.mulligan) {
+        const decidingId = this.state.mulligan.decidingPlayerId;
+        if (this.seatedPlayerIds.has(decidingId)) {
+          return;
+        }
+        if (this.state.mulligan.pendingBottom > 0) {
+          const player = this.state.players.find((entry) => entry.id === decidingId);
+          const cardIds = player?.zones.hand.slice(0, this.state.mulligan.pendingBottom) ?? [];
+          this.state = applyAction(this.state, {
+            kind: "bottom_cards",
+            playerId: decidingId,
+            cardIds,
+          });
+          continue;
+        }
+        this.state = applyAction(this.state, { kind: "keep_hand", playerId: decidingId });
+        continue;
       }
       if (this.seatedPlayerIds.has(this.state.priorityPlayerId)) {
         return;

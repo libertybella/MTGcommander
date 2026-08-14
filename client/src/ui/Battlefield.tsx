@@ -1,9 +1,11 @@
 import {
   HIDDEN_DEFINITION_ID,
   MANA_COLORS,
+  countedMulligans,
   isCreature,
   isGameOver,
   isLand,
+  isMulliganOpen,
   type CardInstanceId,
   type ChosenTarget,
   type GameAction,
@@ -19,7 +21,8 @@ export type UiMode =
   | { type: "targets"; cardId: CardInstanceId; chosen: ChosenTarget[] }
   | { type: "attackers"; attackerIds: CardInstanceId[]; defenderId: PlayerId | null }
   | { type: "block-pick-blocker" }
-  | { type: "block-pick-attacker"; blockerId: CardInstanceId };
+  | { type: "block-pick-attacker"; blockerId: CardInstanceId }
+  | { type: "bottom"; selected: CardInstanceId[] };
 
 type Props = {
   state: GameState;
@@ -62,6 +65,7 @@ function CardTile(props: {
   state: GameState;
   cardId: CardInstanceId;
   testId?: string;
+  selected?: boolean;
   onClick?: () => void;
 }) {
   const card = props.state.cards[props.cardId];
@@ -76,6 +80,7 @@ function CardTile(props: {
     card.tapped ? "is-tapped" : "",
     card.attacking ? "is-attacking" : "",
     def.id === HIDDEN_DEFINITION_ID ? "is-hidden" : "",
+    props.selected ? "is-selected" : "",
     props.onClick ? "is-clickable" : "",
   ]
     .filter(Boolean)
@@ -183,14 +188,27 @@ export function Battlefield(props: Props) {
   const targetingSpell = targeting && nextRequirement?.kind === "spell";
   const livingOpponents = opponents.filter((player) => !player.lost);
   const logLines = state.log.slice(-12);
+  const mulliganOpen = isMulliganOpen(state);
+  const deciding = state.mulligan?.decidingPlayerId === viewerId;
+  const pendingBottom = state.mulligan?.pendingBottom ?? 0;
+  const bottoming = deciding && pendingBottom > 0;
+  const selectedBottom = mode.type === "bottom" ? mode.selected : [];
+  const decider = state.players.find((player) => player.id === state.mulligan?.decidingPlayerId);
 
   function send(action: GameAction) {
     onMode({ type: "idle" });
     onAction(action);
   }
 
+  function toggleBottom(cardId: CardInstanceId) {
+    const selected = selectedBottom.includes(cardId)
+      ? selectedBottom.filter((id) => id !== cardId)
+      : [...selectedBottom, cardId];
+    onMode({ type: "bottom", selected });
+  }
+
   function clickHandCard(cardId: CardInstanceId) {
-    if (over || !yourPriority) {
+    if (over || mulliganOpen || !yourPriority) {
       return;
     }
     if (isLand(state, cardId)) {
@@ -316,6 +334,15 @@ export function Battlefield(props: Props) {
               : `Choose a target for ${definition(state, mode.cardId)?.name}.`}
           </p>
         ) : null}
+        {mulliganOpen ? (
+          <p data-testid="mulligan-hint">
+            {bottoming
+              ? `Put ${pendingBottom} card(s) on the bottom.`
+              : deciding
+                ? `London mulligan — ${countedMulligans(state, viewerId)} counted. Keep or mulligan.`
+                : `Waiting for ${decider?.displayName ?? "a player"} to keep or mulligan.`}
+          </p>
+        ) : null}
       </header>
 
       <div className="opponents" data-testid="area-opponents">
@@ -417,7 +444,16 @@ export function Battlefield(props: Props) {
               key={cardId}
               state={state}
               cardId={cardId}
-              onClick={!over && yourPriority ? () => clickHandCard(cardId) : undefined}
+              selected={selectedBottom.includes(cardId)}
+              onClick={
+                over
+                  ? undefined
+                  : bottoming
+                    ? () => toggleBottom(cardId)
+                    : yourPriority && !mulliganOpen
+                      ? () => clickHandCard(cardId)
+                      : undefined
+              }
             />
           ))}
         </div>
@@ -428,6 +464,46 @@ export function Battlefield(props: Props) {
           <button type="button" data-testid="new-game" onClick={onNewGame}>
             New game
           </button>
+        ) : mulliganOpen ? (
+          <>
+            {deciding && pendingBottom === 0 ? (
+              <>
+                <button
+                  type="button"
+                  data-testid="keep-hand"
+                  onClick={() => send({ kind: "keep_hand", playerId: viewerId })}
+                >
+                  Keep hand
+                </button>
+                <button
+                  type="button"
+                  data-testid="take-mulligan"
+                  onClick={() => send({ kind: "mulligan", playerId: viewerId })}
+                >
+                  Take mulligan
+                </button>
+              </>
+            ) : null}
+            {bottoming ? (
+              <button
+                type="button"
+                data-testid="confirm-bottom"
+                disabled={selectedBottom.length !== pendingBottom}
+                onClick={() =>
+                  send({ kind: "bottom_cards", playerId: viewerId, cardIds: selectedBottom })
+                }
+              >
+                Put on bottom
+              </button>
+            ) : null}
+            <button
+              type="button"
+              data-testid="concede"
+              onClick={() => send({ kind: "concede", playerId: viewerId })}
+            >
+              Concede
+            </button>
+          </>
         ) : (
           <>
             <button

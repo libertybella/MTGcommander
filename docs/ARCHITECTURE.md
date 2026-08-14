@@ -75,7 +75,7 @@ If we later move hosting to the cloud, we keep `engine/` and `server/`, and opti
 
 ## Current Repository State
 
-`mtgCommander` is an independent project. The engine, a local `GameHost` in `server/`, and a React battlefield UI exist. The host is the only caller of `applyAction`. Scryfall oracle cards cache locally and compile into definitions. Moxfield URLs and pasted Commander lists can seat a 2-, 3-, or 4-player table. Local hotseat is optional. WebSockets, rooms, and a second client are **not implemented yet**.
+`mtgCommander` is an independent project. The engine, a local `GameHost` in `server/`, and a React battlefield UI exist. The host is the only caller of `applyAction`. Scryfall oracle cards cache locally and compile into definitions. Moxfield URLs and pasted Commander lists can seat a 2-, 3-, or 4-player table. Local hotseat is optional. London mulligans run before the first turn. Electron can host a WebSocket table (port 8787, room code); friends join with a display name. Unjoined seats still auto-pass.
 
 The sibling Electron deck builder is **out of scope**. This project must not import or depend on it.
 
@@ -87,9 +87,9 @@ The sibling Electron deck builder is **out of scope**. This project must not imp
 mtgCommander/
   docs/
   engine/          Pure TypeScript rules + GameState; Vitest
-  server/          In-process GameHost (persist + action checks + redacted views). WebSockets/rooms later.
+  server/          GameHost + optional WebSocket GameServer (one room per host process)
   client/          React + Vite UI (projection of host.viewFor only)
-  electron/        Thin desktop shell: start host or join
+  electron/        Thin desktop shell: start local table, host WS, or join
 ```
 
 A small npm workspace (or equivalent) is appropriate so `engine` can be imported by `server` and tests without pulling in React.
