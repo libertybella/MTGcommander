@@ -20,21 +20,21 @@ A checkbox becomes 🟢 Complete only when the work has been implemented **and**
 
 ## Project Status
 
-**Current Phase:** Phase 21 complete
-**Current Checkpoint:** Checkpoint 21 — 20-Card Magic
+**Current Phase:** Phase 22 complete
+**Current Checkpoint:** Checkpoint 22 — Battlefield UI
 **Overall Status:** 🟡 In Progress
 
 ### Current Objective
 
-Stop. Do not continue until Checkpoint 21 is reviewed. Do not start Battlefield UI, deck import, real-card integration, or networking.
+Stop. Do not continue until Checkpoint 22 is reviewed. Do not start deck import, real-card integration, networking, or Phase 23.
 
 ### Last Completed Milestone
 
-Checkpoint 21: A 20-card synthetic pool, test decks, `tap_for_mana`, and a complete engine game that reaches a winner.
+Checkpoint 22: A local battlefield UI projects the Phase 21 synthetic game and dispatches `applyAction`.
 
 ### Next Milestone
 
-Battlefield UI remains later (Phase 22). Deck import, real-card integration, and two-client realtime remain later.
+Deck import, real-card integration, and two-client realtime remain later. Persistence/reconnect is Phase 23.
 
 ---
 
@@ -330,17 +330,20 @@ Four-player rooms / four real networked players remain later.
 
 Still synthetic only. No Scryfall, Moxfield, or Battlefield UI.
 
-## Phase 22 — Arena-Like UX
+## Phase 22 — Battlefield UI
 
+Arena-like polish (animations, zoom, target highlighting) was previously listed as Phase 22. That polish remains later. This phase is a functional projection of the existing engine.
+
+* 🟢 Start the Phase 21 synthetic test game from the client.
+* 🟢 Opponent and player areas (life, battlefield, zone counts, commander).
+* 🟢 Hand, mana, turn/step, priority, stack count.
+* 🟢 Supported actions via `applyAction` (play land, tap_for_mana, cast, pass, concede, attack/block declarations).
+* 🟢 Game-over display.
 * ⬜ Card animations.
 * ⬜ Card zoom.
-* ⬜ Stack visualization.
-* ⬜ Priority indicator.
-* ⬜ Combat UI.
-* ⬜ Target highlighting.
-* ⬜ Mana display.
-* ⬜ Game log.
-* ⬜ Checkpoint 22 — UX Validation.
+* 🟢 Checkpoint 22 — Battlefield UI.
+
+Local client calls `applyAction` directly. Networking and server-authoritative rooms remain later.
 
 ## Phase 23 — Persistence & Reconnect
 
@@ -1838,3 +1841,59 @@ Seat a representative 20-card synthetic pool, build test decks, play a complete 
 ### Next Task
 
 Stop. Do not start Battlefield UI, deck import, real-card integration, or networking yet.
+
+---
+
+## 2026-08-13 — Battlefield UI for the synthetic test game
+
+### Objective
+
+Make the Phase 21 synthetic catalog game visible and playable in the client as a projection of GameState. Keep `applyAction` authoritative. No real cards, no networking.
+
+### Work Completed
+
+- Client starts a two-player synthetic table via `startCatalogGame`.
+- Battlefield shows opponent and local player areas: life, permanents, tapped state, hand, zone counts, mana, turn/step, priority, stack, and game-over.
+- UI actions (play land, tap_for_mana, cast with targeting, pass, concede, declare attackers/blockers) call `applyAction` and replace state with the engine result.
+- Illegal actions surface the engine error and do not mutate the previous GameState.
+
+### Tests Run
+
+- `npm test` — PASS (175 tests)
+- `npm run typecheck` — PASS
+- `npm run lint` — PASS
+- `npm run build` — PASS
+
+### Results
+
+- The application can start the synthetic game and take supported actions from the battlefield view.
+
+### Decisions Made
+
+- Local in-process `applyAction` until networking exists. The server remains the intended future authority.
+- Pass priority always uses `state.priorityPlayerId` so opponent priority can be advanced without a second client.
+- Opponent does not independently play cards; their hand stays counted, not shown.
+
+### Files Changed
+
+- `client/src/App.tsx`
+- `client/src/App.test.tsx`
+- `client/src/index.css`
+- `client/src/ui/Battlefield.tsx`
+- `client/src/game/syntheticTable.ts`
+- `client/src/game/dispatch.ts`
+- `client/src/game/dispatch.test.ts`
+- `client/package.json`
+- `vitest.config.ts`
+- `docs/DEVELOPMENT_PROGRESS.md`
+- `docs/UNSUPPORTED_INTERACTIONS.md`
+- `docs/RULES_COVERAGE.md`
+
+### Checkpoint
+
+- PASS. Tag: `checkpoint-22-battlefield-ui`
+- Existing tags were not moved or rewritten.
+
+### Next Task
+
+Stop. Do not start deck import, real-card integration, networking, or Phase 23 yet.

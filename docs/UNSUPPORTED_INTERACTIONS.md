@@ -27,7 +27,7 @@ Cards in the pool are named `Test …` on purpose. They are not real Magic cards
 | Triggered abilities other than ETB | Only `enter_battlefield` queues. |
 | Replacement effects other than skip-draw | Not in the pool. |
 | Layers / copy / face-down | Not implemented. |
-| Networking / two clients / rooms | Engine-only. |
-| Battlefield UI | Later. |
+| Networking / two clients / rooms | Engine-only. The local UI calls `applyAction` in-process. |
+| Arena-like polish (animations, zoom, real card frames) | Functional battlefield tiles only. |
 
 Manual override for unsupported table talk remains a future product feature, not an engine action.

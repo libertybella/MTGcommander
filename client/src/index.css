@@ -2,7 +2,7 @@
   color: #e8eef4;
   background: #0f1419;
   font-family: "Segoe UI", system-ui, sans-serif;
-  line-height: 1.5;
+  line-height: 1.4;
 }
 
 * {
@@ -16,6 +16,15 @@ body,
   min-height: 100%;
 }
 
+button {
+  font: inherit;
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: default;
+}
+
 .shell {
   max-width: 40rem;
   margin: 0 auto;
@@ -26,33 +35,122 @@ body,
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: #8aa0b5;
-  margin: 0 0 0.5rem;
-  font-size: 0.8rem;
+  margin: 0 0 0.35rem;
+  font-size: 0.75rem;
 }
 
 h1 {
   margin: 0 0 1rem;
-  font-size: 2rem;
+  font-size: 1.8rem;
 }
 
-dl {
-  display: grid;
+h2,
+h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.muted {
+  color: #8aa0b5;
+}
+
+.table {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
   gap: 0.75rem;
-  margin: 2rem 0 0;
+  padding: 0.75rem;
 }
 
-.row {
+.status-bar,
+.player-area,
+.stack-strip,
+.actions {
   background: #18222c;
   border: 1px solid #2a3b4d;
   border-radius: 0.5rem;
   padding: 0.75rem 1rem;
 }
 
-dt {
-  color: #8aa0b5;
-  font-size: 0.8rem;
+.status-bar p,
+.player-meta p {
+  margin: 0.15rem 0 0;
 }
 
-dd {
-  margin: 0.15rem 0 0;
+.game-over {
+  color: #f3d27a;
+  font-weight: 600;
+}
+
+.action-error {
+  color: #f0a0a0;
+}
+
+.player-area {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.permanents,
+.hand,
+.command-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  min-height: 4.5rem;
+}
+
+.card-tile {
+  width: 7.5rem;
+  min-height: 5.5rem;
+  text-align: left;
+  background: #223140;
+  color: inherit;
+  border: 1px solid #3d556c;
+  border-radius: 0.4rem;
+  padding: 0.4rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.card-tile.is-clickable:hover {
+  border-color: #7cb0d6;
+}
+
+.card-tile.is-tapped {
+  transform: rotate(8deg);
+  opacity: 0.85;
+}
+
+.card-tile.is-attacking {
+  border-color: #d08a4c;
+}
+
+.card-name {
+  font-weight: 600;
+  font-size: 0.82rem;
+}
+
+.card-type,
+.card-pt,
+.card-flag {
+  font-size: 0.72rem;
+  color: #8aa0b5;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.actions button,
+.player-meta button,
+.shell button {
+  background: #2b4c66;
+  color: #e8eef4;
+  border: 1px solid #3d6a88;
+  border-radius: 0.35rem;
+  padding: 0.4rem 0.75rem;
 }

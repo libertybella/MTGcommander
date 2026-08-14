@@ -1,30 +1,66 @@
+import { useState } from "react";
+import { isGameOver, type GameState } from "@mtgcommander/engine";
+import { dispatchAction } from "./game/dispatch";
+import { startSyntheticTable } from "./game/syntheticTable";
+import { Battlefield, type UiMode } from "./ui/Battlefield";
+
 export default function App() {
+  const [state, setState] = useState<GameState | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [mode, setMode] = useState<UiMode>({ type: "idle" });
   const bridge = window.mtgCommander;
 
+  function startGame() {
+    setState(startSyntheticTable());
+    setError(null);
+    setMode({ type: "idle" });
+  }
+
+  if (!state) {
+    return (
+      <main className="shell">
+        <header>
+          <p className="eyebrow">BizzyMTG Commander</p>
+          <h1>Synthetic test table</h1>
+        </header>
+        <p>
+          Start the Phase 21 synthetic catalog game. The engine stays
+          authoritative; this window only displays GameState and sends
+          applyAction.
+        </p>
+        <p className="muted">{bridge?.isElectron ? "Electron shell" : "Browser (Vite)"}</p>
+        <button type="button" data-testid="start-game" onClick={startGame}>
+          Start synthetic game
+        </button>
+      </main>
+    );
+  }
+
+  const viewerId = state.players[0]?.id;
+  if (!viewerId) {
+    return <p>Game is missing players.</p>;
+  }
+
   return (
-    <main className="shell">
-      <header>
-        <p className="eyebrow">BizzyMTG Commander</p>
-        <h1>Project foundation</h1>
-      </header>
-      <p>
-        Phase 1 scaffold only. No game state, networking, or battlefield lives
-        here yet.
-      </p>
-      <dl>
-        <div className="row">
-          <dt>Shell</dt>
-          <dd>{bridge?.isElectron ? "Electron" : "Browser (Vite)"}</dd>
-        </div>
-        <div className="row">
-          <dt>UI</dt>
-          <dd>React + Vite client</dd>
-        </div>
-        <div className="row">
-          <dt>Next</dt>
-          <dd>Phase 2 — GameState in the engine package</dd>
-        </div>
-      </dl>
-    </main>
+    <Battlefield
+      state={state}
+      viewerId={viewerId}
+      error={error}
+      mode={mode}
+      onMode={setMode}
+      onNewGame={startGame}
+      onAction={(action) => {
+        const result = dispatchAction(state, action);
+        if (result.ok) {
+          setState(result.state);
+          setError(null);
+          if (isGameOver(result.state)) {
+            setMode({ type: "idle" });
+          }
+        } else {
+          setError(result.error);
+        }
+      }}
+    />
   );
 }
