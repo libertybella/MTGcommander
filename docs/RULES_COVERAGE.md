@@ -1,4 +1,4 @@
-# Rules Coverage (Engine V1 through Checkpoint 33)
+# Rules Coverage (Engine V1 through Checkpoint 35)
 
 This document records what the engine implements and what it intentionally does not. It is not a complete CR translation.
 
@@ -10,9 +10,10 @@ This document records what the engine implements and what it intentionally does 
 - Choose-on-cast targeting; legality at cast and again on resolve. If no legal targets remain, the spell’s effects are skipped (fizzle) and the card still goes to its destination. Targets may be players, creatures, or spells on the stack.
 - Hidden information projection: opponent hands and libraries hide card identity; battlefield, graveyard, exile, command, stack, life, and commander damage stay public. The UI shows `GameHost.viewFor`, not raw authority.
 - Basic effects: damage, life, draw, mill (mill what’s there), discard (front of hand), sacrifice, counters, tokens, tap/untap, mana, zone moves.
-- `tap_for_mana` for permanents whose definition has `produces`.
-- A 21-card synthetic pool and catalog seating (`startCatalogGame`). Still available from the start screen.
-- Real cards: Scryfall-shaped `OracleCard` data compiles into `CardDefinition`. Instant/sorcery oracle text is not executed. Creatures get printed P/T and known keywords. Lands/artifacts get `produces` only for a single simple `{T}: Add {M}` line.
+- `tap_for_mana` for permanents whose definition has `produces`, `producesOptions`, or `producesAnyColor`. Mana abilities do not use the stack. Dual lands and Command Tower ask for a color.
+- Non-mana activated abilities: `activate_ability` pays `{T}` and/or a simple mana cost, then puts an ability on the stack. Creatures with a tap cost respect summoning sickness. Targets are chosen on activate and rechecked on resolve.
+- A 22-card synthetic pool and catalog seating (`startCatalogGame`). Still available from the start screen.
+- Real cards: Scryfall-shaped `OracleCard` data compiles into `CardDefinition` by matching known oracle sentences. Instant/sorcery patterns include damage, life, draw, mill, destroy/exile/bounce, counter, ritual mana, and simple tokens. Creatures get printed P/T, known keywords, untargeted `When ~ enters` triggers, and `Creatures you control get +N/+N`. Lands/artifacts tap via `{T}: Add {M}`, `{T}: Add {G} or {U}`, or `{T}: Add one mana of any color`. `{N}, {T}:` abilities using those effects compile. Leftover sentences are notes.
 - Deck import: Moxfield public URL (Electron IPC) or pasted Commander/Arena text. `startDefinitionGame` shuffles and seats 2, 3, or 4 players. Empty opponent URLs mirror your deck. Compile notes are shown; uncompiled cards stay in the deck.
 - Local React battlefield for 2, 3, or 4 players. Actions go through `GameHost.submit`. Optional local hotseat seats every player at this PC; otherwise unseated opponents auto-pass. Authority persists in localStorage for local tables. Oracle cache key `mtgcommander.oracle.v1`.
 - London mulligan before the first turn: keep or shuffle-and-draw-7, then put counted cards on the bottom. In 3–4 player games the first mulligan is free (CR 103.5c).
@@ -28,7 +29,7 @@ This document records what the engine implements and what it intentionally does 
 ## Documented gaps
 
 - Rooms exist as one in-memory table per Electron host. No matchmaking, no accounts, no cloud hosting. Friends need the host IP (LAN or Tailscale) and room code.
-- Full oracle-text parsing. Most real cards sit in the deck without their written abilities. Hybrid / Phyrexian / `{X}` costs are unpayable. Command Tower–style any-color lands do not produce mana.
+- Full oracle-text parsing. Unmatched sentences stay as notes. Hybrid pips `{R/W}` are payable. Phyrexian and `{X}` costs are unpayable. Command Tower–style lands tap for any color; commander identity is not enforced.
 - Scryfall bulk JSON is not shipped in git. Cache is filled on demand. A plain browser tab cannot fetch Moxfield (CORS); paste the export instead.
 - Face-down cards (morph/manifest). Opponent hand/library identity is hidden; there is no face-down battlefield state.
 - Ward, shroud, protection, hexproof on players, and targeting abilities on the stack.
@@ -38,5 +39,5 @@ This document records what the engine implements and what it intentionally does 
 - Search, modal choices, and a general choice system.
 - Combat damage assignment order is the blocker list order; players cannot reorder.
 - Keyword counters, keyword-granting effects, and anthem effects other than the static P/T selectors above.
-- Stack abilities other than ETB V1, including activated abilities beyond tap-for-mana.
+- Other trigger events, loyalty abilities, until-end-of-turn pumps, modal spells, search, and oracle compile of Phyrexian/`{X}`. Activated abilities cannot yet be targeted by counterspells.
 - Commander ninjutsu, partner details beyond stored commander IDs, and dethrone-style combat restrictions.

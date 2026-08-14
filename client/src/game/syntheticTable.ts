@@ -2,6 +2,7 @@ import { POOL_ID, defaultPlayerNames, startCatalogGame, type GameState, type Tab
 
 function testLibrary(): string[] {
   return [
+    POOL_ID.oracle,
     POOL_ID.mountain,
     POOL_ID.shock,
     POOL_ID.forest,

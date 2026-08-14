@@ -8,6 +8,40 @@ import { applyStateBasedActionsInPlace, redirectPriorityIfLost } from "./status"
 import { hasLegalTargetRemaining, validateChosenTargets } from "./targeting";
 import type { CardInstanceId, ChosenTarget, GameState, PlayerId, ZoneName } from "./types";
 
+export function putActivatedAbilityOnStack(
+  state: GameState,
+  cardId: CardInstanceId,
+  abilityIndex: number,
+  targets: ChosenTarget[] = [],
+): GameState {
+  const card = state.cards[cardId];
+  if (!card) {
+    throw new Error(`Unknown card ${cardId}`);
+  }
+  if (card.zone !== "battlefield") {
+    throw new Error(`Card ${cardId} must be on the battlefield`);
+  }
+  const definition = state.definitions[card.definitionId];
+  const ability = definition?.activated[abilityIndex];
+  if (!ability) {
+    throw new Error(`Unknown activated ability ${abilityIndex}`);
+  }
+  validateChosenTargets(state, ability.targetRequirements, targets, card.controllerId);
+
+  const next = cloneGameState(state);
+  next.stack.push({
+    id: createId("stack"),
+    controllerId: card.controllerId,
+    sourceId: cardId,
+    kind: "ability",
+    targets: targets.map((target) => ({ ...target })),
+    activatedIndex: abilityIndex,
+  });
+  next.passesSinceAction = 0;
+  next.priorityPlayerId = card.controllerId;
+  return next;
+}
+
 export function putSpellOnStack(
   state: GameState,
   cardId: CardInstanceId,
@@ -65,15 +99,32 @@ export function resolveTopOfStack(state: GameState): GameState {
   if (top.kind === "ability") {
     const source = next.cards[top.sourceId];
     const definition = source ? next.definitions[source.definitionId] : undefined;
-    const trigger = definition?.triggers[top.triggerIndex ?? 0];
-    if (trigger) {
-      const bound = bindCardEffects(next, trigger.effects, {
-        controllerId: top.controllerId,
-        sourceId: top.sourceId,
-        targets: top.targets,
-        targetRequirements: [],
-      });
-      next = applyEffects(next, bound);
+    if (top.activatedIndex !== undefined) {
+      const ability = definition?.activated[top.activatedIndex];
+      const requirements = ability?.targetRequirements ?? [];
+      if (
+        ability &&
+        hasLegalTargetRemaining(next, requirements, top.targets, top.controllerId)
+      ) {
+        const bound = bindCardEffects(next, ability.effects, {
+          controllerId: top.controllerId,
+          sourceId: top.sourceId,
+          targets: top.targets,
+          targetRequirements: requirements,
+        });
+        next = applyEffects(next, bound);
+      }
+    } else {
+      const trigger = definition?.triggers[top.triggerIndex ?? 0];
+      if (trigger) {
+        const bound = bindCardEffects(next, trigger.effects, {
+          controllerId: top.controllerId,
+          sourceId: top.sourceId,
+          targets: top.targets,
+          targetRequirements: [],
+        });
+        next = applyEffects(next, bound);
+      }
     }
     applyStateBasedActionsInPlace(next);
     redirectPriorityIfLost(next);

@@ -25,6 +25,9 @@ function hiddenDefinition(): CardDefinition {
     replacements: [],
     staticModifiers: [],
     produces: {},
+    producesAnyColor: false,
+    producesOptions: [],
+    activated: [],
   };
 }
 

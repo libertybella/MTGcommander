@@ -47,7 +47,7 @@ export type {
   StartDefinitionGameOptions,
   TablePlayerCount,
 } from "./setup";
-export { passPriority, putSpellOnStack, resolveTopOfStack } from "./stack";
+export { passPriority, putActivatedAbilityOnStack, putSpellOnStack, resolveTopOfStack } from "./stack";
 export {
   definitionTypeLine,
   isCommander,
@@ -80,6 +80,7 @@ export { isChosenTargetLegal, validateChosenTargets } from "./targeting";
 export {
   addMana,
   canPayManaCost,
+  COLOR_PIPS,
   emptyManaPools,
   MANA_COLORS,
   parseManaCost,
@@ -89,7 +90,8 @@ export {
   tapForMana,
   untapCard,
 } from "./mana";
-export type { ParsedManaCost } from "./mana";
+export type { HybridPip, ParsedManaCost } from "./mana";
+export { canTapForMana, manaTapOptions } from "./manaOptions";
 export { createId } from "./ids";
 export {
   createCardDefinition,
@@ -111,6 +113,7 @@ export {
   compileOracleCard,
   definitionIdForOracle,
   inferProduces,
+  inferTapDraw,
   keywordsFromOracle,
   normalizeCardName,
 } from "./oracle";
@@ -124,6 +127,7 @@ export {
 export type { ParsedDeckCard, ParsedDecklist } from "./decklist";
 export { shuffleInPlace } from "./shuffle";
 export type {
+  ActivatedAbility,
   CardDefinition,
   CardDefinitionId,
   CardEffect,

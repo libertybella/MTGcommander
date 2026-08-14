@@ -1,28 +1,39 @@
 import {
   HIDDEN_DEFINITION_ID,
   MANA_COLORS,
+  canTapForMana,
   countedMulligans,
   isCreature,
   isGameOver,
   isLand,
   isMulliganOpen,
+  manaTapOptions,
   type CardInstanceId,
   type ChosenTarget,
   type GameAction,
   type GameLogEntry,
   type GameState,
+  type ManaColor,
   type PlayerId,
   type PlayerState,
   type StackObjectId,
+  type TargetRequirement,
 } from "@mtgcommander/engine";
 
 export type UiMode =
   | { type: "idle" }
-  | { type: "targets"; cardId: CardInstanceId; chosen: ChosenTarget[] }
+  | {
+      type: "targets";
+      cardId: CardInstanceId;
+      chosen: ChosenTarget[];
+      origin: "spell" | "ability";
+      abilityIndex?: number;
+    }
   | { type: "attackers"; attackerIds: CardInstanceId[]; defenderId: PlayerId | null }
   | { type: "block-pick-blocker" }
   | { type: "block-pick-attacker"; blockerId: CardInstanceId }
-  | { type: "bottom"; selected: CardInstanceId[] };
+  | { type: "bottom"; selected: CardInstanceId[] }
+  | { type: "mana-color"; cardId: CardInstanceId; colors: ManaColor[] };
 
 type Props = {
   state: GameState;
@@ -40,8 +51,22 @@ function definition(state: GameState, cardId: CardInstanceId) {
 }
 
 function producesMana(state: GameState, cardId: CardInstanceId): boolean {
-  const produces = definition(state, cardId)?.produces ?? {};
-  return MANA_COLORS.some((color) => (produces[color] ?? 0) > 0);
+  const def = definition(state, cardId);
+  return def ? canTapForMana(def) : false;
+}
+
+function activatedAbility(state: GameState, cardId: CardInstanceId, abilityIndex = 0) {
+  return definition(state, cardId)?.activated[abilityIndex];
+}
+
+function modeRequirements(state: GameState, mode: UiMode): TargetRequirement[] {
+  if (mode.type !== "targets") {
+    return [];
+  }
+  if (mode.origin === "ability") {
+    return activatedAbility(state, mode.cardId, mode.abilityIndex)?.targetRequirements ?? [];
+  }
+  return definition(state, mode.cardId)?.targetRequirements ?? [];
 }
 
 function manaLine(mana: GameState["players"][number]["mana"]): string {
@@ -181,10 +206,7 @@ export function Battlefield(props: Props) {
   const priority = state.players.find((player) => player.id === state.priorityPlayerId);
   const yourPriority = state.priorityPlayerId === viewerId;
   const targeting = mode.type === "targets";
-  const nextRequirement =
-    mode.type === "targets"
-      ? (definition(state, mode.cardId)?.targetRequirements ?? [])[mode.chosen.length]
-      : undefined;
+  const nextRequirement = targeting ? modeRequirements(state, mode)[mode.chosen.length] : undefined;
   const targetingSpell = targeting && nextRequirement?.kind === "spell";
   const livingOpponents = opponents.filter((player) => !player.lost);
   const logLines = state.log.slice(-12);
@@ -220,7 +242,7 @@ export function Battlefield(props: Props) {
       send({ kind: "cast_spell", playerId: viewerId, cardId });
       return;
     }
-    onMode({ type: "targets", cardId, chosen: [] });
+    onMode({ type: "targets", cardId, chosen: [], origin: "spell" });
   }
 
   function clickYourPermanent(cardId: CardInstanceId) {
@@ -238,9 +260,34 @@ export function Battlefield(props: Props) {
       onMode({ type: "block-pick-attacker", blockerId: cardId });
       return;
     }
-    if (producesMana(state, cardId)) {
-      send({ kind: "tap_for_mana", playerId: viewerId, cardId });
+    if (mode.type === "targets" && !targetingSpell) {
+      addTarget({ type: "creature", cardId });
+      return;
     }
+    if (producesMana(state, cardId)) {
+      const def = definition(state, cardId);
+      const options = def ? manaTapOptions(def) : null;
+      if (options && options.length > 0) {
+        onMode({ type: "mana-color", cardId, colors: options });
+        return;
+      }
+      send({ kind: "tap_for_mana", playerId: viewerId, cardId });
+      return;
+    }
+    const ability = activatedAbility(state, cardId, 0);
+    if (!ability || mulliganOpen) {
+      return;
+    }
+    if (ability.targetRequirements.length === 0) {
+      send({
+        kind: "activate_ability",
+        playerId: viewerId,
+        cardId,
+        abilityIndex: 0,
+      });
+      return;
+    }
+    onMode({ type: "targets", cardId, chosen: [], origin: "ability", abilityIndex: 0 });
   }
 
   function clickOpponentPermanent(cardId: CardInstanceId) {
@@ -264,9 +311,19 @@ export function Battlefield(props: Props) {
     if (mode.type !== "targets") {
       return;
     }
-    const requirements = definition(state, mode.cardId)?.targetRequirements ?? [];
+    const requirements = modeRequirements(state, mode);
     const chosen = [...mode.chosen, target];
     if (chosen.length >= requirements.length) {
+      if (mode.origin === "ability") {
+        send({
+          kind: "activate_ability",
+          playerId: viewerId,
+          cardId: mode.cardId,
+          abilityIndex: mode.abilityIndex ?? 0,
+          targets: chosen,
+        });
+        return;
+      }
       send({
         kind: "cast_spell",
         playerId: viewerId,
@@ -275,7 +332,13 @@ export function Battlefield(props: Props) {
       });
       return;
     }
-    onMode({ type: "targets", cardId: mode.cardId, chosen });
+    onMode({
+      type: "targets",
+      cardId: mode.cardId,
+      chosen,
+      origin: mode.origin,
+      abilityIndex: mode.abilityIndex,
+    });
   }
 
   function clickStack(stackObjectId: StackObjectId) {
@@ -331,7 +394,12 @@ export function Battlefield(props: Props) {
           <p data-testid="targeting-hint">
             {targetingSpell
               ? `Choose a spell on the stack for ${definition(state, mode.cardId)?.name}.`
-              : `Choose a target for ${definition(state, mode.cardId)?.name}.`}
+              : `Choose a target for ${definition(state, mode.cardId)?.name}${mode.origin === "ability" ? " ability" : ""}.`}
+          </p>
+        ) : null}
+        {mode.type === "mana-color" ? (
+          <p data-testid="mana-color-hint">
+            Choose a color for {definition(state, mode.cardId)?.name}.
           </p>
         ) : null}
         {mulliganOpen ? (
@@ -513,6 +581,25 @@ export function Battlefield(props: Props) {
             >
               Pass priority
             </button>
+            {mode.type === "mana-color"
+              ? mode.colors.map((color) => (
+                  <button
+                    key={color}
+                    type="button"
+                    data-testid={`mana-color-${color}`}
+                    onClick={() =>
+                      send({
+                        kind: "tap_for_mana",
+                        playerId: viewerId,
+                        cardId: mode.cardId,
+                        color,
+                      })
+                    }
+                  >
+                    Add {color}
+                  </button>
+                ))
+              : null}
             {state.turn.step === "declareAttackers" &&
             state.turn.activePlayerId === viewerId &&
             yourPriority ? (

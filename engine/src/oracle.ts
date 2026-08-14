@@ -1,6 +1,10 @@
 import { createCardDefinition } from "./createGame";
 import { parseManaCost } from "./mana";
-import type { CardDefinition, Keyword, ManaColor, ManaPool } from "./types";
+import {
+  compileOracleText,
+  stripReminderText,
+} from "./oraclePatterns";
+import type { ActivatedAbility, CardDefinition, Keyword, ManaPool } from "./types";
 
 export type OracleCard = {
   oracleId: string;
@@ -36,14 +40,6 @@ const KEYWORD_BY_LABEL: Record<string, Keyword> = {
   defender: "defender",
 };
 
-const BASIC_TYPE_MANA: Record<string, ManaColor> = {
-  plains: "W",
-  island: "U",
-  swamp: "B",
-  mountain: "R",
-  forest: "G",
-};
-
 export function normalizeCardName(name: string): string {
   return name
     .normalize("NFKD")
@@ -58,9 +54,7 @@ export function definitionIdForOracle(card: OracleCard): string {
   return `oracle:${card.oracleId}`;
 }
 
-function stripReminderText(oracleText: string): string {
-  return oracleText.replace(/\([^)]*\)/g, " ");
-}
+export { stripReminderText };
 
 function parseStat(value: string | null): number | null {
   if (value === null || value === "") {
@@ -91,39 +85,11 @@ export function keywordsFromOracle(card: OracleCard): Keyword[] {
 }
 
 export function inferProduces(card: OracleCard): Partial<ManaPool> {
-  const produces: Partial<ManaPool> = {};
-  const typeLine = card.typeLine.toLowerCase();
-  if (typeLine.includes("land")) {
-    for (const [landType, color] of Object.entries(BASIC_TYPE_MANA)) {
-      if (new RegExp(`\\b${landType}\\b`).test(typeLine)) {
-        produces[color] = 1;
-      }
-    }
-  }
+  return compileOracleText(card).produces;
+}
 
-  const cleaned = stripReminderText(card.oracleText).replace(/\s+/g, " ").trim();
-  const sentences = cleaned
-    .split(".")
-    .map((part) => part.trim())
-    .filter(Boolean);
-  const addLines = sentences.filter((line) => /^\{T\}: Add /i.test(line));
-  if (addLines.length !== 1) {
-    return produces;
-  }
-  const line = addLines[0] ?? "";
-  if (/\bor\b/i.test(line) || /any color/i.test(line) || /choose/i.test(line) || /commander/i.test(line)) {
-    return produces;
-  }
-  const symbols = [...line.matchAll(/\{([WUBRGC])\}/g)];
-  if (symbols.length === 0) {
-    return produces;
-  }
-  const fromTap: Partial<ManaPool> = {};
-  for (const match of symbols) {
-    const color = match[1] as ManaColor;
-    fromTap[color] = (fromTap[color] ?? 0) + 1;
-  }
-  return Object.keys(fromTap).length > 0 ? fromTap : produces;
+export function inferTapDraw(card: OracleCard): ActivatedAbility[] {
+  return compileOracleText(card).activated;
 }
 
 function manaCostIsPayable(manaCost: string): boolean {
@@ -140,45 +106,24 @@ function manaCostIsPayable(manaCost: string): boolean {
 
 /**
  * Compile Scryfall-shaped oracle data into an engine CardDefinition.
- * Does not parse general oracle text into effects.
+ * Matches known sentence patterns; leftover text is recorded as notes.
  */
 export function compileOracleCard(card: OracleCard): OracleCompileResult {
   const notes: string[] = [];
   const typeLine = card.typeLine.toLowerCase();
-  const isLand = typeLine.includes("land");
-  const isInstantOrSorcery = typeLine.includes("instant") || typeLine.includes("sorcery");
-  const produces = inferProduces(card);
   const keywords = keywordsFromOracle(card);
   const power = parseStat(card.power);
   const toughness = parseStat(card.toughness);
+  const compiled = compileOracleText(card, keywords);
+
+  notes.push(...compiled.notes);
 
   if (!manaCostIsPayable(card.manaCost)) {
-    notes.push("Mana cost cannot be paid (hybrid, Phyrexian, or {X}).");
+    notes.push("Mana cost cannot be paid (Phyrexian or {X}).");
   }
 
-  const cleanedOracle = stripReminderText(card.oracleText).replace(/\s+/g, " ").trim();
-  const hasRulesText = cleanedOracle.length > 0;
-  const onlyTapAdd =
-    hasRulesText &&
-    /^\{T\}: Add /.test(cleanedOracle.replace(/\.$/, "") + "") &&
-    cleanedOracle.split(".").filter(Boolean).length <= 2;
-
-  if (isInstantOrSorcery && hasRulesText) {
-    notes.push("Spell oracle text is not compiled; it resolves with no effect.");
-  } else if (!isLand && hasRulesText && !onlyTapAdd && keywords.length === 0) {
-    notes.push("Abilities on this card are not compiled.");
-  } else if (!isLand && hasRulesText && !onlyTapAdd && Object.keys(produces).length === 0) {
-    const leftover = cleanedOracle.replace(
-      new RegExp(`\\b(${Object.keys(KEYWORD_BY_LABEL).join("|")})\\b`, "gi"),
-      "",
-    );
-    if (leftover.replace(/[.,\s]/g, "").length > 0) {
-      notes.push("Some abilities on this card are not compiled.");
-    }
-  }
-
-  if (isLand && Object.keys(produces).length === 0 && hasRulesText) {
-    notes.push("This land does not tap for a simple mana amount.");
+  if (compiled.leftover.length > 0) {
+    notes.push(`Some oracle text is not compiled: ${compiled.leftover.join("; ")}.`);
   }
 
   if (typeLine.includes("creature") && (power === null || toughness === null)) {
@@ -194,7 +139,14 @@ export function compileOracleCard(card: OracleCard): OracleCompileResult {
     power: power ?? (typeLine.includes("creature") ? 0 : null),
     toughness: toughness ?? (typeLine.includes("creature") ? 0 : null),
     keywords,
-    produces,
+    effects: compiled.effects,
+    targetRequirements: compiled.targetRequirements,
+    triggers: compiled.triggers,
+    staticModifiers: compiled.staticModifiers,
+    produces: compiled.produces,
+    producesAnyColor: compiled.producesAnyColor,
+    producesOptions: compiled.producesOptions,
+    activated: compiled.activated,
   });
 
   return { definition, notes };

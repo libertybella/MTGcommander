@@ -24,6 +24,7 @@ export const POOL_ID = {
   terror: "def-test-terror",
   mill: "def-test-mill",
   counter: "def-test-counter",
+  oracle: "def-test-oracle",
 } as const;
 
 export function syntheticPool(): CardDefinition[] {
@@ -227,6 +228,21 @@ export function syntheticPool(): CardDefinition[] {
       oracleText: "Counter target spell.",
       targetRequirements: [{ kind: "spell" }],
       effects: [{ kind: "counter_spell", target: { type: "chosen", index: 0 } }],
+    }),
+    createCardDefinition({
+      id: POOL_ID.oracle,
+      name: "Test Oracle",
+      typeLine: "Artifact",
+      manaCost: "{0}",
+      oracleText: "{T}: Draw a card.",
+      activated: [
+        {
+          tap: true,
+          manaCost: "",
+          targetRequirements: [],
+          effects: [{ kind: "draw", playerId: "controller", count: 1 }],
+        },
+      ],
     }),
   ];
 }

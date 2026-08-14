@@ -84,6 +84,12 @@ export type CardDefinition = {
   staticModifiers: StaticModifier[];
   /** Mana this permanent adds when tapped for mana. Empty means it cannot. */
   produces: Partial<ManaPool>;
+  /** `{T}: Add one mana of any color` (WUBRG). */
+  producesAnyColor: boolean;
+  /** `{T}: Add {G} or {W}` — tap for one of these. */
+  producesOptions: ManaColor[];
+  /** Non-mana activated abilities. Mana tapping still uses `produces`. */
+  activated: ActivatedAbility[];
 };
 
 export type CardInstance = {
@@ -131,6 +137,8 @@ export type StackObject = {
   targets: ChosenTarget[];
   /** Index into the source definition's `triggers` for stacked abilities. */
   triggerIndex?: number;
+  /** Index into the source definition's `activated` for stacked abilities. */
+  activatedIndex?: number;
 };
 
 export type CombatAttack = {
@@ -228,8 +236,8 @@ export type CardIdSelector = CardInstanceId | ChosenTargetRef;
  * Relative player used in untargeted CardDefinition effects.
  * Targeted spells use ChosenTargetRef instead of next_opponent.
  */
-export type RelativePlayer = "controller" | "next_opponent";
-export type PlayerSelector = PlayerId | RelativePlayer;
+export type RelativePlayer = "controller" | "next_opponent" | "each_opponent";
+export type PlayerSelector = PlayerId | RelativePlayer | ChosenTargetRef;
 
 export type CardEffectTarget =
   | { type: "player"; playerId: PlayerSelector }
@@ -293,6 +301,15 @@ export type CardTrigger = {
   effects: CardEffect[];
 };
 
+export type ActivatedAbility = {
+  /** True when the cost includes {T}. */
+  tap: boolean;
+  /** Extra mana to pay. Empty string means no mana cost. */
+  manaCost: string;
+  effects: CardEffect[];
+  targetRequirements: TargetRequirement[];
+};
+
 export type ReplacementEffect = {
   kind: "replace_draw";
   instead: "skip";
@@ -333,7 +350,14 @@ export type GameAction =
       blocks: { blockerId: CardInstanceId; attackerId: CardInstanceId }[];
     }
   | { kind: "concede"; playerId: PlayerId }
-  | { kind: "tap_for_mana"; playerId: PlayerId; cardId: CardInstanceId }
+  | { kind: "tap_for_mana"; playerId: PlayerId; cardId: CardInstanceId; color?: ManaColor }
+  | {
+      kind: "activate_ability";
+      playerId: PlayerId;
+      cardId: CardInstanceId;
+      abilityIndex: number;
+      targets?: ChosenTarget[];
+    }
   | { kind: "keep_hand"; playerId: PlayerId }
   | { kind: "mulligan"; playerId: PlayerId }
   | { kind: "bottom_cards"; playerId: PlayerId; cardIds: CardInstanceId[] };

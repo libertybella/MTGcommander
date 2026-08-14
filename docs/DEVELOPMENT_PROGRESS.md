@@ -20,21 +20,21 @@ A checkbox becomes 🟢 Complete only when the work has been implemented **and**
 
 ## Project Status
 
-**Current Phase:** Phase 33 complete
-**Current Checkpoint:** Checkpoint 33 — WebSockets
+**Current Phase:** Phase 35 complete
+**Current Checkpoint:** Checkpoint 35 — Oracle Pattern Compiler
 **Overall Status:** 🟡 In Progress
 
 ### Current Objective
 
-Stop. Do not start activated abilities or a full oracle-text parser.
+Stop. Do not start a full English parser, temporary modifiers, or private alpha.
 
 ### Last Completed Milestone
 
-Checkpoint 33: London mulligans run before the first turn. Electron can host a table on port 8787; friends join with a room code and get a redacted view over WebSockets.
+Checkpoint 35: Oracle text compiles known sentence patterns into existing engine data. Lightning Bolt, Command Tower, dual-land taps, hybrid pips, simple ETBs, anthems, and `{N}, {T}: Draw a card` work. Leftover sentences stay as notes.
 
 ### Next Milestone
 
-Activated abilities beyond tap-for-mana, or a fuller oracle compiler. Private alpha remains later.
+Manual override for unsupported cards, more patterns (until-end-of-turn, modal, search), or private alpha.
 
 ---
 
@@ -465,7 +465,34 @@ Rooms were previously later. This phase is a PC-hosted table friends can join.
 * 🟢 Unjoined seats still auto-pass. No accounts.
 * 🟢 Checkpoint 33 — WebSockets.
 
-## Phase 34 — Private Alpha
+## Phase 34 — Activated Abilities
+
+Private Alpha was previously listed as Phase 34. That remains later. This phase is non-mana activated abilities on the stack.
+
+* 🟢 `activate_ability` game action (priority, controller, battlefield).
+* 🟢 Costs: `{T}` and/or a simple mana cost. Creatures with `{T}` respect summoning sickness.
+* 🟢 Abilities use the stack (`kind: "ability"`, `activatedIndex`). Mana tapping stays `tap_for_mana`.
+* 🟢 Choose-on-activate targeting; fizzle if no legal target remains.
+* 🟢 Synthetic Test Oracle (`{T}: Draw a card`).
+* 🟢 Oracle compile of a lone `{T}: Draw a card.` line. Other oracle abilities stay notes.
+* 🟢 Battlefield click activates; lands still tap for mana first.
+* 🟢 Checkpoint 34 — Activated Abilities.
+
+## Phase 35 — Oracle Pattern Compiler
+
+Private Alpha was previously listed as Phase 35. That remains later. This phase compiles known oracle sentences into existing engine effects.
+
+* 🟢 Instant/sorcery patterns: damage to any target / creature, gain/lose life, draw, mill, destroy/exile/bounce creature, counter spell, add mana, simple tokens.
+* 🟢 `{T}: Add {M}`, `{T}: Add {G} or {U}`, `{T}: Add one mana of any color` (identity not enforced).
+* 🟢 `{cost}, {T}:` activated abilities using those same effect patterns.
+* 🟢 `When ~ enters, …` untargeted ETBs.
+* 🟢 `Creatures you control get +N/+N`.
+* 🟢 Hybrid `{R/W}` pips auto-pay either color. Phyrexian and `{X}` stay unpayable.
+* 🟢 Dual lands tap for one chosen color, not both.
+* 🟢 Leftover sentences become compile notes.
+* 🟢 Checkpoint 35 — Oracle Pattern Compiler.
+
+## Phase 36 — Private Alpha
 
 * ⬜ Invite testers.
 * ⬜ Complete games.
@@ -473,16 +500,16 @@ Rooms were previously later. This phase is a PC-hosted table friends can join.
 * ⬜ UX feedback.
 * ⬜ Desync tracking.
 * ⬜ Unsupported-card tracking.
-* ⬜ Checkpoint 34 — Private Alpha.
+* ⬜ Checkpoint 36 — Private Alpha.
 
-## Phase 35 — Productization
+## Phase 37 — Productization
 
 * ⬜ Product identity.
 * ⬜ IP/legal review.
 * ⬜ Hosting/security review.
 * ⬜ Distribution strategy.
 * ⬜ Documentation.
-* ⬜ Checkpoint 35 — Release Decision.
+* ⬜ Checkpoint 37 — Release Decision.
 
 ---
 
@@ -2368,3 +2395,104 @@ Add the London mulligan before the first turn, then let friends join a PC-hosted
 ### Next Task
 
 Stop. Do not start activated abilities or a full oracle-text parser.
+
+---
+
+## 2026-08-13 — Activated abilities
+
+### Objective
+
+Let permanents activate non-mana abilities through `applyAction`. Keep `tap_for_mana` for lands. Do not parse general oracle text.
+
+### Work Completed
+
+- `CardDefinition.activated` plus `activate_ability` (tap and/or mana cost). Abilities go on the stack with `activatedIndex` and resolve through existing `CardEffect`s.
+- Creatures cannot pay a `{T}` cost while summoning sick unless they have haste. Illegal activations leave GameState unchanged.
+- Targeted activations choose on activate and fizzle if no target remains legal. The source stays on the battlefield.
+- Synthetic Test Oracle in the pool and opening synthetic hand. Clicking it on the battlefield draws a card after the stack resolves.
+- Oracle compile of a single `{T}: Draw a card.` sentence only.
+
+### Tests Run
+
+- `npm test` — PASS (229 tests)
+- `npm run typecheck` — PASS
+- `npm run lint` — PASS
+- `npm run build` — PASS
+
+### Results
+
+- Test Oracle taps, stacks an ability, and draws on resolve. Lands still tap for mana without using the stack.
+
+### Decisions Made
+
+- Mana abilities stay `produces` + `tap_for_mana` (no stack). Other activated abilities use the stack.
+- V1 UI activates ability index 0. Cards that both produce mana and have another ability still tap for mana on click.
+- `{2}, {T}: Draw a card` and until-end-of-turn pumps are not compiled.
+- Private alpha remains later.
+
+### Files Changed
+
+- `engine/src/types.ts`, `engine/src/createGame.ts`, `engine/src/serialize.ts`, `engine/src/stack.ts`, `engine/src/actions.ts`, `engine/src/visibility.ts`, `engine/src/index.ts`
+- `engine/src/pool.ts`, `engine/src/oracle.ts`, `engine/src/oracle.test.ts`, `engine/src/activated.test.ts`, `engine/src/twentyCard.test.ts`
+- `client/src/ui/Battlefield.tsx`, `client/src/game/syntheticTable.ts`, `client/src/App.test.tsx`
+- `docs/DEVELOPMENT_PROGRESS.md`, `docs/RULES_COVERAGE.md`, `docs/UNSUPPORTED_INTERACTIONS.md`, `docs/ARCHITECTURE.md`
+
+### Checkpoint
+
+- PASS (local verification). Tag when requested: `checkpoint-34-activated-abilities`
+- Existing tags were not moved or rewritten.
+
+### Next Task
+
+Stop. Do not start a full oracle-text parser, temporary modifiers, or private alpha.
+
+---
+
+## 2026-08-13 — Oracle pattern compiler
+
+### Objective
+
+Compile more real-card oracle text into existing engine data using known sentence patterns. Do not parse general English.
+
+### Work Completed
+
+- Sentence compiler for damage, life, draw, mill, destroy/exile/bounce, counter, ritual mana, simple tokens, untargeted ETBs, and +N/+N anthems.
+- `{T}: Add {M}`, `{T}: Add {G} or {U}`, and `{T}: Add one mana of any color`. Command Tower color identity is not enforced.
+- `{N}, {T}:` activated abilities using those same effects.
+- Hybrid `{R/W}` pips pay either color. Dual lands tap for one chosen color instead of both.
+- Battlefield color picker for any-color and or-choice lands.
+- Unrecognized sentences stay as compile notes.
+
+### Tests Run
+
+- `npm test` — PASS (233 tests)
+- `npm run typecheck` — PASS
+- `npm run lint` — PASS
+- `npm run build` — PASS
+
+### Results
+
+- Lightning Bolt deals 3 to any target. Command Tower asks for a color. Breeding Pool is G or U, not both. Jayemdae Tome `{4}, {T}: Draw a card` activates.
+
+### Decisions Made
+
+- Pattern match, do not NLP. Leftovers are notes, not guesses.
+- Any-color lands ignore commander identity for now (noted).
+- Until-end-of-turn, modal, search, Phyrexian, and `{X}` remain uncompiled.
+- Private alpha remains later.
+
+### Files Changed
+
+- `engine/src/oraclePatterns.ts`, `engine/src/oracle.ts`, `engine/src/oracle.test.ts`, `engine/src/mana.ts`, `engine/src/mana.test.ts`, `engine/src/manaOptions.ts`
+- `engine/src/types.ts`, `engine/src/createGame.ts`, `engine/src/serialize.ts`, `engine/src/actions.ts`, `engine/src/effects.ts`, `engine/src/visibility.ts`, `engine/src/index.ts`
+- `client/src/ui/Battlefield.tsx`, `client/src/App.test.tsx`, `server/src/cards.test.ts`
+- `docs/DEVELOPMENT_PROGRESS.md`, `docs/RULES_COVERAGE.md`, `docs/UNSUPPORTED_INTERACTIONS.md`, `docs/ARCHITECTURE.md`
+
+### Checkpoint
+
+- PASS (local verification). Tag when requested: `checkpoint-35-oracle-compiler`
+- Existing tags were not moved or rewritten.
+
+### Next Task
+
+Stop. Do not start a full English parser, temporary modifiers, or private alpha.

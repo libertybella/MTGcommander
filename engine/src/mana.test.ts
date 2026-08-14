@@ -142,6 +142,7 @@ describe("mana costs", () => {
       R: 0,
       G: 0,
       C: 0,
+      hybrid: [],
     });
     expect(parseManaCost("{1}{C}")).toEqual({
       generic: 1,
@@ -151,6 +152,7 @@ describe("mana costs", () => {
       R: 0,
       G: 0,
       C: 1,
+      hybrid: [],
     });
     expect(parseManaCost("")).toEqual({
       generic: 0,
@@ -160,12 +162,33 @@ describe("mana costs", () => {
       R: 0,
       G: 0,
       C: 0,
+      hybrid: [],
     });
   });
 
   it("rejects unsupported mana symbols", () => {
     expect(() => parseManaCost("{X}")).toThrow(/Unsupported/);
-    expect(() => parseManaCost("{W/U}")).toThrow(/Unsupported/);
+    expect(() => parseManaCost("{B/P}")).toThrow(/Unsupported/);
+  });
+
+  it("pays hybrid pips with either color", () => {
+    const { game, p1 } = twoPlayers();
+    expect(parseManaCost("{R/W}")).toEqual({
+      generic: 0,
+      W: 0,
+      U: 0,
+      B: 0,
+      R: 0,
+      G: 0,
+      C: 0,
+      hybrid: [{ a: "R", b: "W" }],
+    });
+    const withRed = addMana(game, p1.id, { R: 1 });
+    expect(canPayManaCost(withRed.players[0]!.mana, "{R/W}")).toBe(true);
+    expect(payManaCost(withRed, p1.id, "{R/W}").players[0]?.mana).toEqual(emptyManaPool());
+    const withWhite = addMana(game, p1.id, { W: 1 });
+    expect(payManaCost(withWhite, p1.id, "{R/W}").players[0]?.mana).toEqual(emptyManaPool());
+    expect(canPayManaCost(addMana(game, p1.id, { U: 1 }).players[0]!.mana, "{R/W}")).toBe(false);
   });
 
   it("pays colored costs from matching mana", () => {

@@ -1,4 +1,5 @@
 import type {
+  ActivatedAbility,
   CardEffect,
   CardIdSelector,
   CardInstanceId,
@@ -9,9 +10,11 @@ import type {
   GameLogEntry,
   GameState,
   Keyword,
+  ManaColor,
   ManaPool,
   MulliganState,
   PlayerId,
+  PlayerSelector,
   PlayerState,
   ReplacementEffect,
   StaticModifier,
@@ -233,6 +236,9 @@ export function parseGameState(json: string): GameState {
         `definition.${id}.staticModifiers`,
       ),
       produces: parseProduces(def.produces, `definition.${id}.produces`),
+      producesAnyColor: def.producesAnyColor === true,
+      producesOptions: parseManaOptions(def.producesOptions, `definition.${id}.producesOptions`),
+      activated: parseActivatedAbilities(def.activated, `definition.${id}.activated`),
     };
   }
 
@@ -255,6 +261,7 @@ export function parseGameState(json: string): GameState {
       throw new Error("Invalid stack sourceId");
     }
     const triggerIndex = entry.triggerIndex;
+    const activatedIndex = entry.activatedIndex;
     return {
       id: expectString(entry.id, "stack.id"),
       controllerId: expectString(entry.controllerId, "stack.controllerId"),
@@ -264,6 +271,9 @@ export function parseGameState(json: string): GameState {
       ...(triggerIndex === undefined
         ? {}
         : { triggerIndex: expectNumber(triggerIndex, `stack[${index}].triggerIndex`) }),
+      ...(activatedIndex === undefined
+        ? {}
+        : { activatedIndex: expectNumber(activatedIndex, `stack[${index}].activatedIndex`) }),
     };
   });
 
@@ -399,8 +409,21 @@ function parseCardIdSelector(value: unknown, label: string): CardIdSelector {
   return { type: "chosen", index };
 }
 
-function parsePlayerSelector(value: unknown, label: string): string {
-  return expectString(value, label);
+function parsePlayerSelector(value: unknown, label: string): PlayerSelector {
+  if (typeof value === "string") {
+    return expectString(value, label);
+  }
+  if (!isRecord(value)) {
+    throw new Error(`Invalid ${label}`);
+  }
+  if (expectString(value.type, `${label}.type`) !== "chosen") {
+    throw new Error(`Invalid ${label}.type`);
+  }
+  const index = expectNumber(value.index, `${label}.index`);
+  if (!Number.isInteger(index) || index < 0) {
+    throw new Error(`Invalid ${label}.index`);
+  }
+  return { type: "chosen", index };
 }
 
 function parsePartialMana(value: unknown, label: string): Partial<ManaPool> {
@@ -585,6 +608,29 @@ function parseKeywords(value: unknown, label: string): Keyword[] {
   return keywords as Keyword[];
 }
 
+function parseActivatedAbilities(value: unknown, label: string): ActivatedAbility[] {
+  if (value === undefined) {
+    return [];
+  }
+  if (!Array.isArray(value)) {
+    throw new Error(`Invalid ${label}`);
+  }
+  return value.map((entry, index) => {
+    if (!isRecord(entry)) {
+      throw new Error(`Invalid ${label}[${index}]`);
+    }
+    return {
+      tap: entry.tap === true,
+      manaCost: expectString(entry.manaCost, `${label}[${index}].manaCost`, true),
+      effects: parseCardEffects(entry.effects, `${label}[${index}].effects`),
+      targetRequirements: parseTargetRequirements(
+        entry.targetRequirements,
+        `${label}[${index}].targetRequirements`,
+      ),
+    };
+  });
+}
+
 function parseTriggers(value: unknown, label: string): CardTrigger[] {
   if (value === undefined) {
     return [];
@@ -657,6 +703,24 @@ function parseProduces(value: unknown, label: string): Partial<ManaPool> {
     return {};
   }
   return parsePartialMana(value, label);
+}
+
+function parseManaColor(value: unknown, label: string): ManaColor {
+  const color = expectString(value, label);
+  if (!MANA_KEYS.includes(color as (typeof MANA_KEYS)[number])) {
+    throw new Error(`Invalid ${label}`);
+  }
+  return color as ManaColor;
+}
+
+function parseManaOptions(value: unknown, label: string): ManaColor[] {
+  if (value === undefined) {
+    return [];
+  }
+  if (!Array.isArray(value)) {
+    throw new Error(`Invalid ${label}`);
+  }
+  return value.map((entry, index) => parseManaColor(entry, `${label}[${index}]`));
 }
 
 function parseLog(value: unknown): GameLogEntry[] {
@@ -814,6 +878,20 @@ export function parseGameAction(json: string): GameAction {
       kind,
       playerId,
       cardId: expectString(raw.cardId, "action.cardId"),
+      ...(raw.color === undefined
+        ? {}
+        : { color: parseManaColor(raw.color, "action.color") }),
+    };
+  }
+  if (kind === "activate_ability") {
+    return {
+      kind,
+      playerId,
+      cardId: expectString(raw.cardId, "action.cardId"),
+      abilityIndex: expectNumber(raw.abilityIndex, "action.abilityIndex"),
+      ...(raw.targets === undefined
+        ? {}
+        : { targets: parseChosenTargets(raw.targets, "action.targets") }),
     };
   }
   if (kind === "bottom_cards") {

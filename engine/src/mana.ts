@@ -11,12 +11,17 @@ import type {
 
 export const MANA_COLORS: ManaColor[] = ["W", "U", "B", "R", "G", "C"];
 
+export type HybridPip = { a: ManaColor; b: ManaColor };
+
 export type ParsedManaCost = ManaPool & {
   generic: number;
+  hybrid: HybridPip[];
 };
 
+export const COLOR_PIPS: Exclude<ManaColor, "C">[] = ["W", "U", "B", "R", "G"];
+
 export function emptyParsedManaCost(): ParsedManaCost {
-  return { W: 0, U: 0, B: 0, R: 0, G: 0, C: 0, generic: 0 };
+  return { W: 0, U: 0, B: 0, R: 0, G: 0, C: 0, generic: 0, hybrid: [] };
 }
 
 function requirePlayer(state: GameState, playerId: PlayerId): PlayerState {
@@ -78,6 +83,9 @@ export function parseManaCost(cost: string): ParsedManaCost {
       symbol === "C"
     ) {
       parsed[symbol] += 1;
+    } else if (/^[WUBRGC]\/[WUBRGC]$/.test(symbol)) {
+      const [a, b] = symbol.split("/") as [ManaColor, ManaColor];
+      parsed.hybrid.push({ a, b });
     } else {
       throw new Error(`Unsupported mana symbol {${symbol}}`);
     }
@@ -90,16 +98,35 @@ export function parseManaCost(cost: string): ParsedManaCost {
   return parsed;
 }
 
-export function canPayManaCost(pool: ManaPool, cost: string | ParsedManaCost): boolean {
-  const parsed = typeof cost === "string" ? parseManaCost(cost) : cost;
+function afterPips(pool: ManaPool, parsed: ParsedManaCost): ManaPool | null {
+  const next = { ...pool };
   for (const color of MANA_COLORS) {
-    if (pool[color] < parsed[color]) {
-      return false;
+    if (next[color] < parsed[color]) {
+      return null;
+    }
+    next[color] -= parsed[color];
+  }
+  for (const pip of parsed.hybrid) {
+    const prefer = next[pip.a] >= next[pip.b] ? pip.a : pip.b;
+    const other = prefer === pip.a ? pip.b : pip.a;
+    if (next[prefer] > 0) {
+      next[prefer] -= 1;
+    } else if (next[other] > 0) {
+      next[other] -= 1;
+    } else {
+      return null;
     }
   }
-  const leftover =
-    MANA_COLORS.reduce((sum, color) => sum + pool[color], 0) -
-    MANA_COLORS.reduce((sum, color) => sum + parsed[color], 0);
+  return next;
+}
+
+export function canPayManaCost(pool: ManaPool, cost: string | ParsedManaCost): boolean {
+  const parsed = typeof cost === "string" ? parseManaCost(cost) : cost;
+  const remaining = afterPips(pool, parsed);
+  if (!remaining) {
+    return false;
+  }
+  const leftover = MANA_COLORS.reduce((sum, color) => sum + remaining[color], 0);
   return leftover >= parsed.generic;
 }
 
@@ -107,9 +134,9 @@ function spendFromPool(pool: ManaPool, parsed: ParsedManaCost): ManaPool {
   if (!canPayManaCost(pool, parsed)) {
     throw new Error("Cannot pay mana cost");
   }
-  const next = { ...pool };
-  for (const color of MANA_COLORS) {
-    next[color] -= parsed[color];
+  const next = afterPips(pool, parsed);
+  if (!next) {
+    throw new Error("Cannot pay mana cost");
   }
   let generic = parsed.generic;
   const spendOrder: ManaColor[] = ["C", "W", "U", "B", "R", "G"];

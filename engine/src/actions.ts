@@ -3,15 +3,16 @@ import { isCommander, isCreature, isInstant, isInstantOrSorcery, isLand, isMainP
 import { cloneGameState } from "./clone";
 import { eliminatePlayerInPlace } from "./elimination";
 import { hasKeyword } from "./keywords";
-import { canPayManaCost, MANA_COLORS, parseManaCost, payManaCost, tapForMana } from "./mana";
+import { canPayManaCost, parseManaCost, payManaCost, tapCard, tapForMana } from "./mana";
+import { canTapForMana, manaTapOptions } from "./manaOptions";
 import { isLiving, livingPlayerCount, requireLiving } from "./players";
-import { passPriority, putSpellOnStack } from "./stack";
+import { passPriority, putActivatedAbilityOnStack, putSpellOnStack } from "./stack";
 import { applyStateBasedActionsInPlace, redirectPriorityIfLost } from "./status";
 import { validateChosenTargets } from "./targeting";
 import { advanceStep, beginNextLivingTurnInPlace } from "./turn";
 import { applyBottomCards, applyKeepHand, applyTakeMulligan, isMulliganOpen, reconcileMulliganAfterLoss } from "./mulligan";
 import { findCardZone, moveCard } from "./zones";
-import type { CardInstanceId, ChosenTarget, GameAction, GameState, ManaPool, PlayerId } from "./types";
+import type { CardInstanceId, ChosenTarget, GameAction, GameState, ManaColor, ManaPool, PlayerId } from "./types";
 
 function requirePlayer(state: GameState, playerId: PlayerId): void {
   if (!state.players.some((player) => player.id === playerId)) {
@@ -212,11 +213,12 @@ function applyConcede(state: GameState, playerId: PlayerId): GameState {
   return next;
 }
 
-function producesAnyMana(produces: Partial<ManaPool>): boolean {
-  return MANA_COLORS.some((color) => (produces[color] ?? 0) > 0);
-}
-
-function applyTapForMana(state: GameState, playerId: PlayerId, cardId: CardInstanceId): GameState {
+function applyTapForMana(
+  state: GameState,
+  playerId: PlayerId,
+  cardId: CardInstanceId,
+  color: ManaColor | undefined,
+): GameState {
   requirePlaying(state);
   requirePriority(state, playerId);
   const card = state.cards[cardId];
@@ -232,13 +234,76 @@ function applyTapForMana(state: GameState, playerId: PlayerId, cardId: CardInsta
   if (isCreature(state, cardId) && card.summoningSick && !hasKeyword(state, cardId, "haste")) {
     throw new Error(`Card ${cardId} has summoning sickness`);
   }
-  const produces = state.definitions[card.definitionId]?.produces ?? {};
-  if (!producesAnyMana(produces)) {
+  const definition = state.definitions[card.definitionId];
+  if (!definition || !canTapForMana(definition)) {
     throw new Error(`Card ${cardId} does not produce mana`);
   }
-  const next = tapForMana(state, cardId, produces);
+  const options = manaTapOptions(definition);
+  let addition: Partial<ManaPool>;
+  if (options) {
+    if (!color || !options.includes(color)) {
+      throw new Error("Choose a mana color");
+    }
+    addition = { [color]: 1 };
+  } else {
+    addition = definition.produces;
+  }
+  const next = tapForMana(state, cardId, addition);
   next.priorityPlayerId = playerId;
   return next;
+}
+
+function applyActivateAbility(
+  state: GameState,
+  playerId: PlayerId,
+  cardId: CardInstanceId,
+  abilityIndex: number,
+  targets: ChosenTarget[] | undefined,
+): GameState {
+  requirePlaying(state);
+  requirePriority(state, playerId);
+  if (!Number.isInteger(abilityIndex) || abilityIndex < 0) {
+    throw new Error("Invalid ability index");
+  }
+  const card = state.cards[cardId];
+  if (!card) {
+    throw new Error(`Unknown card ${cardId}`);
+  }
+  if (card.controllerId !== playerId) {
+    throw new Error(`Card ${cardId} is not controlled by that player`);
+  }
+  if (card.zone !== "battlefield") {
+    throw new Error(`Card ${cardId} must be on the battlefield`);
+  }
+  const definition = state.definitions[card.definitionId];
+  const ability = definition?.activated[abilityIndex];
+  if (!ability) {
+    throw new Error(`Unknown activated ability ${abilityIndex}`);
+  }
+  if (ability.tap && card.tapped) {
+    throw new Error(`Card ${cardId} is already tapped`);
+  }
+  if (
+    ability.tap &&
+    isCreature(state, cardId) &&
+    card.summoningSick &&
+    !hasKeyword(state, cardId, "haste")
+  ) {
+    throw new Error(`Card ${cardId} has summoning sickness`);
+  }
+  const player = state.players.find((entry) => entry.id === playerId);
+  if (!player) {
+    throw new Error(`Unknown player ${playerId}`);
+  }
+  const cost = parseManaCost(ability.manaCost);
+  if (!canPayManaCost(player.mana, cost)) {
+    throw new Error("Cannot pay mana cost");
+  }
+  let next = payManaCost(state, playerId, cost);
+  if (ability.tap) {
+    next = tapCard(next, cardId);
+  }
+  return putActivatedAbilityOnStack(next, cardId, abilityIndex, targets ?? []);
 }
 
 /**
@@ -273,7 +338,16 @@ export function applyAction(state: GameState, action: GameAction): GameState {
         next = reconcileMulliganAfterLoss(applyConcede(state, action.playerId));
         break;
       case "tap_for_mana":
-        next = applyTapForMana(state, action.playerId, action.cardId);
+        next = applyTapForMana(state, action.playerId, action.cardId, action.color);
+        break;
+      case "activate_ability":
+        next = applyActivateAbility(
+          state,
+          action.playerId,
+          action.cardId,
+          action.abilityIndex,
+          action.targets,
+        );
         break;
       case "keep_hand":
         next = applyKeepHand(state, action.playerId);

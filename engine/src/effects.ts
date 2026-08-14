@@ -4,7 +4,7 @@ import { isCreature } from "./cardTypes";
 import { creatureToughness, wouldSkipDraw } from "./derived";
 import { hasKeyword } from "./keywords";
 import { addMana, tapCard, untapCard } from "./mana";
-import { nextLivingPlayerId } from "./players";
+import { livingPlayers, nextLivingPlayerId } from "./players";
 import { applyStateBasedActionsInPlace } from "./status";
 import { isChosenTargetLegal } from "./targeting";
 import { queueEnterBattlefieldTriggersInPlace } from "./triggers";
@@ -14,6 +14,7 @@ import type {
   CardIdSelector,
   CardInstanceId,
   ChosenTarget,
+  ChosenTargetRef,
   GameEffect,
   GameState,
   PlayerId,
@@ -34,14 +35,71 @@ function nextOpponentId(state: GameState, controllerId: PlayerId): PlayerId {
   return nextLivingPlayerId(state, controllerId);
 }
 
-function bindPlayer(state: GameState, selector: PlayerSelector, controllerId: PlayerId): PlayerId {
+function bindPlayerSelector(
+  state: GameState,
+  selector: PlayerSelector,
+  context: BindEffectContext,
+): PlayerId | null {
+  if (typeof selector === "object") {
+    const chosen = chosenTargetAt(context, selector.index, state);
+    if (!chosen || chosen.type !== "player") {
+      return null;
+    }
+    return chosen.playerId;
+  }
+  return bindPlayer(state, selector, context.controllerId);
+}
+
+function bindPlayer(state: GameState, selector: Exclude<PlayerSelector, ChosenTargetRef>, controllerId: PlayerId): PlayerId {
   if (selector === "controller") {
     return controllerId;
   }
   if (selector === "next_opponent") {
     return nextOpponentId(state, controllerId);
   }
+  if (selector === "each_opponent") {
+    throw new Error("each_opponent must be expanded before binding");
+  }
   return selector;
+}
+
+function opponentIds(state: GameState, controllerId: PlayerId): PlayerId[] {
+  return livingPlayers(state)
+    .filter((player) => player.id !== controllerId)
+    .map((player) => player.id);
+}
+
+function expandEachOpponent(
+  state: GameState,
+  effect: CardEffect,
+  controllerId: PlayerId,
+): CardEffect[] {
+  const opponents = opponentIds(state, controllerId);
+  if (
+    (effect.kind === "gain_life" ||
+      effect.kind === "lose_life" ||
+      effect.kind === "draw" ||
+      effect.kind === "add_mana" ||
+      effect.kind === "mill" ||
+      effect.kind === "discard") &&
+    effect.playerId === "each_opponent"
+  ) {
+    return opponents.map((playerId) => ({ ...effect, playerId }));
+  }
+  if (effect.kind === "create_token" && effect.ownerId === "each_opponent") {
+    return opponents.map((ownerId) => ({ ...effect, ownerId }));
+  }
+  if (
+    effect.kind === "deal_damage" &&
+    effect.target.type === "player" &&
+    effect.target.playerId === "each_opponent"
+  ) {
+    return opponents.map((playerId) => ({
+      ...effect,
+      target: { type: "player" as const, playerId },
+    }));
+  }
+  return [effect];
 }
 
 function bindSourceId(
@@ -92,10 +150,17 @@ export function bindCardEffect(
     case "lose_life":
     case "draw":
     case "add_mana":
+    case "mill":
+    case "discard": {
+      const playerId = bindPlayerSelector(state, effect.playerId, context);
+      if (!playerId) {
+        return null;
+      }
       return {
         ...effect,
-        playerId: bindPlayer(state, effect.playerId, context.controllerId),
+        playerId,
       };
+    }
     case "deal_damage": {
       if (effect.target.type === "chosen") {
         const chosen = chosenTargetAt(context, effect.target.index, state);
@@ -109,24 +174,35 @@ export function bindCardEffect(
           target: chosen,
         };
       }
+      if (effect.target.type === "player") {
+        const playerId = bindPlayerSelector(state, effect.target.playerId, context);
+        if (!playerId) {
+          return null;
+        }
+        return {
+          kind: "deal_damage",
+          amount: effect.amount,
+          sourceId: bindSourceId(effect.sourceId, context),
+          target: { type: "player", playerId },
+        };
+      }
       return {
         kind: "deal_damage",
         amount: effect.amount,
         sourceId: bindSourceId(effect.sourceId, context),
-        target:
-          effect.target.type === "player"
-            ? {
-                type: "player",
-                playerId: bindPlayer(state, effect.target.playerId, context.controllerId),
-              }
-            : effect.target,
+        target: effect.target,
       };
     }
-    case "create_token":
+    case "create_token": {
+      const ownerId = bindPlayerSelector(state, effect.ownerId, context);
+      if (!ownerId) {
+        return null;
+      }
       return {
         ...effect,
-        ownerId: bindPlayer(state, effect.ownerId, context.controllerId),
+        ownerId,
       };
+    }
     case "move_card": {
       const cardId = bindCardId(state, effect.cardId, context);
       if (!cardId) {
@@ -147,12 +223,6 @@ export function bindCardEffect(
       }
       return { kind: effect.kind, cardId };
     }
-    case "mill":
-    case "discard":
-      return {
-        ...effect,
-        playerId: bindPlayer(state, effect.playerId, context.controllerId),
-      };
     case "sacrifice": {
       const cardId = bindCardId(state, effect.cardId, context);
       if (!cardId) {
@@ -187,8 +257,10 @@ export function bindCardEffects(
   context: BindEffectContext,
 ): GameEffect[] {
   return effects.flatMap((effect) => {
-    const bound = bindCardEffect(state, effect, context);
-    return bound ? [bound] : [];
+    return expandEachOpponent(state, effect, context.controllerId).flatMap((item) => {
+      const bound = bindCardEffect(state, item, context);
+      return bound ? [bound] : [];
+    });
   });
 }
 

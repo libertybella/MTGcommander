@@ -36,6 +36,16 @@ function seedOracleCache() {
           toughness: null,
           printedKeywords: [],
         },
+        "command tower": {
+          oracleId: "tower",
+          name: "Command Tower",
+          manaCost: "",
+          typeLine: "Land",
+          oracleText: "{T}: Add one mana of any color in your commander's color identity.",
+          power: null,
+          toughness: null,
+          printedKeywords: [],
+        },
         "atraxa, praetors' voice": {
           oracleId: "atraxa",
           name: "Atraxa, Praetors' Voice",
@@ -121,6 +131,20 @@ describe("battlefield UI", () => {
     expect(screen.getByTestId("game-log").textContent).toMatch(/life -2/);
   });
 
+  it("activates Test Oracle to draw a card", () => {
+    startGame();
+    passUntil("precombatMain");
+    const handBefore = within(screen.getByTestId("hand-you")).getAllByRole("button").length;
+    fireEvent.click(within(screen.getByTestId("hand-you")).getByText("Test Oracle"));
+    fireEvent.click(screen.getByTestId("pass"));
+    expect(within(screen.getByTestId("battlefield-you")).getByText("Test Oracle")).toBeTruthy();
+    fireEvent.click(within(screen.getByTestId("battlefield-you")).getByText("Test Oracle"));
+    fireEvent.click(screen.getByTestId("pass"));
+    expect(within(screen.getByTestId("hand-you")).getAllByRole("button").length).toBe(handBefore);
+    const oracle = within(screen.getByTestId("battlefield-you")).getByText("Test Oracle").closest("button");
+    expect(oracle?.getAttribute("data-tapped")).toBe("true");
+  });
+
   it("shows game-over after concede and hides play actions", () => {
     startGame();
     fireEvent.click(screen.getByTestId("concede"));
@@ -195,6 +219,27 @@ describe("battlefield UI", () => {
       expect(within(screen.getByTestId("command-you")).getByText("Atraxa, Praetors' Voice")).toBeTruthy();
     });
     expect(screen.getByTestId("life-you").textContent).toContain("Life 40");
+  });
+
+  it("lets Command Tower choose a color when tapping for mana", async () => {
+    seedOracleCache();
+    render(<App />);
+    fireEvent.change(screen.getByTestId("decklist-you"), {
+      target: {
+        value: "Commander\n1 Atraxa, Praetors' Voice\nDeck\n15 Command Tower\n",
+      },
+    });
+    fireEvent.click(screen.getByTestId("import-deck"));
+    await waitFor(() => {
+      expect(within(screen.getByTestId("command-you")).getByText("Atraxa, Praetors' Voice")).toBeTruthy();
+    });
+    keepOpeningHands();
+    passUntil("precombatMain");
+    fireEvent.click(within(screen.getByTestId("hand-you")).getAllByText("Command Tower")[0]!);
+    fireEvent.click(within(screen.getByTestId("battlefield-you")).getByText("Command Tower"));
+    expect(screen.getByTestId("mana-color-hint")).toBeTruthy();
+    fireEvent.click(screen.getByTestId("mana-color-G"));
+    expect(screen.getByTestId("mana-you").textContent).toContain("G:1");
   });
 
   it("loads a three-player imported table by mirroring the pasted list", async () => {

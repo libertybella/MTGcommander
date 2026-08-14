@@ -46,6 +46,9 @@ export function createCardDefinition(
         | "replacements"
         | "staticModifiers"
         | "produces"
+        | "producesAnyColor"
+        | "producesOptions"
+        | "activated"
       >
     >,
 ): CardDefinition {
@@ -66,6 +69,16 @@ export function createCardDefinition(
     replacements: input.replacements ? input.replacements.map((replacement) => ({ ...replacement })) : [],
     staticModifiers: input.staticModifiers ? input.staticModifiers.map((modifier) => ({ ...modifier })) : [],
     produces: input.produces ? { ...input.produces } : {},
+    producesAnyColor: input.producesAnyColor === true,
+    producesOptions: input.producesOptions ? [...input.producesOptions] : [],
+    activated: input.activated
+      ? input.activated.map((ability) => ({
+          tap: ability.tap,
+          manaCost: ability.manaCost,
+          effects: ability.effects.map((effect) => ({ ...effect })),
+          targetRequirements: ability.targetRequirements.map((requirement) => ({ ...requirement })),
+        }))
+      : [],
   };
 }
 

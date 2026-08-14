@@ -210,11 +210,11 @@ function autoplayUntilWinner(state: GameState, limit = 2500): GameState {
 }
 
 describe("20-card engine", () => {
-  it("has twenty-one uniquely named synthetic definitions", () => {
+  it("has uniquely named synthetic definitions", () => {
     const pool = syntheticPool();
-    expect(pool).toHaveLength(21);
-    expect(new Set(pool.map((definition) => definition.id)).size).toBe(21);
-    expect(new Set(pool.map((definition) => definition.name)).size).toBe(21);
+    expect(pool).toHaveLength(22);
+    expect(new Set(pool.map((definition) => definition.id)).size).toBe(22);
+    expect(new Set(pool.map((definition) => definition.name)).size).toBe(22);
   });
 
   it("seats commanders, libraries, and opening hands from the pool", () => {
