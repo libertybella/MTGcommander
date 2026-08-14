@@ -14,6 +14,7 @@ export {
   PLAYER_ZONES,
 } from "./zones";
 export { applyAction, applyActions } from "./actions";
+export { applyManualOverride } from "./override";
 export { declareAttackers, declareBlockers, priorityForStep, creaturePower, creatureToughness } from "./combat";
 export { applyEffect, applyEffects, bindCardEffect, bindCardEffects } from "./effects";
 export type { BindEffectContext } from "./effects";
@@ -149,6 +150,7 @@ export type {
   GameId,
   GameLogEntry,
   GameState,
+  ManualOverrideChange,
   Keyword,
   ManaColor,
   ManaPool,

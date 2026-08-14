@@ -9,6 +9,7 @@ import type {
   GameEvent,
   GameLogEntry,
   GameState,
+  ManualOverrideChange,
   Keyword,
   ManaColor,
   ManaPool,
@@ -742,6 +743,13 @@ function parseLog(value: unknown): GameLogEntry[] {
         delta: expectNumber(entry.delta, `log[${index}].delta`),
       };
     }
+    if (kind === "override") {
+      return {
+        kind,
+        playerId: expectString(entry.playerId, `log[${index}].playerId`),
+        summary: expectString(entry.summary, `log[${index}].summary`),
+      };
+    }
     if (kind !== "zone_change") {
       throw new Error(`Invalid log[${index}].kind`);
     }
@@ -901,7 +909,73 @@ export function parseGameAction(json: string): GameAction {
       cardIds: expectStringArray(raw.cardIds, "action.cardIds") as CardInstanceId[],
     };
   }
+  if (kind === "manual_override") {
+    return {
+      kind,
+      playerId,
+      change: parseManualOverrideChange(raw.change, "action.change"),
+    };
+  }
   throw new Error(`Unknown GameAction kind ${kind}`);
+}
+
+const OVERRIDE_MOVE_ZONES = [
+  "library",
+  "hand",
+  "battlefield",
+  "graveyard",
+  "exile",
+  "command",
+] as const;
+
+function parseManualOverrideChange(value: unknown, label: string): ManualOverrideChange {
+  if (!isRecord(value)) {
+    throw new Error(`Invalid ${label}`);
+  }
+  const type = expectString(value.type, `${label}.type`);
+  if (type === "adjust_life") {
+    return {
+      type,
+      targetPlayerId: expectString(value.targetPlayerId, `${label}.targetPlayerId`),
+      delta: expectNumber(value.delta, `${label}.delta`),
+    };
+  }
+  if (type === "draw" || type === "mill") {
+    return {
+      type,
+      targetPlayerId: expectString(value.targetPlayerId, `${label}.targetPlayerId`),
+      count: expectNumber(value.count, `${label}.count`),
+    };
+  }
+  if (type === "add_mana") {
+    return {
+      type,
+      targetPlayerId: expectString(value.targetPlayerId, `${label}.targetPlayerId`),
+      color: parseManaColor(value.color, `${label}.color`),
+    };
+  }
+  if (type === "move_card") {
+    const toZone = expectString(value.toZone, `${label}.toZone`);
+    if (!OVERRIDE_MOVE_ZONES.includes(toZone as (typeof OVERRIDE_MOVE_ZONES)[number])) {
+      throw new Error(`Invalid ${label}.toZone`);
+    }
+    return {
+      type,
+      cardId: expectString(value.cardId, `${label}.cardId`),
+      toZone: toZone as (typeof OVERRIDE_MOVE_ZONES)[number],
+    };
+  }
+  if (type === "set_tapped") {
+    if (typeof value.tapped !== "boolean") {
+      throw new Error(`Invalid ${label}.tapped`);
+    }
+    return {
+      type,
+      cardId: expectString(value.cardId, `${label}.cardId`),
+      tapped: value.tapped,
+    };
+  }
+  throw new Error(`Unknown override type ${type}`);
 }
 
 export function serializeGameEvent(event: GameEvent): string {

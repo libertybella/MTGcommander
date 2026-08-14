@@ -1,4 +1,4 @@
-# Rules Coverage (Engine V1 through Checkpoint 35)
+# Rules Coverage (Engine V1 through Checkpoint 36)
 
 This document records what the engine implements and what it intentionally does not. It is not a complete CR translation.
 
@@ -24,7 +24,8 @@ This document records what the engine implements and what it intentionally does 
 - Draw replacement: a controlled `replace_draw` / `skip` permanent skips draws.
 - State-based actions: 0 life, 21 commander damage, 0 toughness (0 toughness dies even if indestructible), and failing to draw from an empty library. Lethal damage destruction still runs after combat damage.
 - Stack targeting: spells on the stack can be chosen (`kind: "spell"`). Test Counter counters a targeted spell; the countered card goes to the graveyard (commanders still return to the command zone).
-- Public game log: zone changes and life changes. The UI shows the viewer’s projection.
+- Public game log: zone changes, life changes, and table overrides. The UI shows the viewer’s projection.
+- Manual override: a seated living player may adjust life, draw, mill, add one mana, tap/untap, or move a public card without priority. Hidden opponent hand/library cards cannot be moved. Blocked during mulligan and after game over.
 
 ## Documented gaps
 
@@ -39,5 +40,5 @@ This document records what the engine implements and what it intentionally does 
 - Search, modal choices, and a general choice system.
 - Combat damage assignment order is the blocker list order; players cannot reorder.
 - Keyword counters, keyword-granting effects, and anthem effects other than the static P/T selectors above.
-- Other trigger events, loyalty abilities, until-end-of-turn pumps, modal spells, search, and oracle compile of Phyrexian/`{X}`. Activated abilities cannot yet be targeted by counterspells.
+- Other trigger events, loyalty abilities, until-end-of-turn pumps, modal spells, search, and oracle compile of Phyrexian/`{X}`. Activated abilities cannot yet be targeted by counterspells. Use table override until those compile.
 - Commander ninjutsu, partner details beyond stored commander IDs, and dethrone-style combat restrictions.

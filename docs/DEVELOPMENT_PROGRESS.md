@@ -20,21 +20,21 @@ A checkbox becomes 🟢 Complete only when the work has been implemented **and**
 
 ## Project Status
 
-**Current Phase:** Phase 35 complete
-**Current Checkpoint:** Checkpoint 35 — Oracle Pattern Compiler
+**Current Phase:** Phase 36 complete
+**Current Checkpoint:** Checkpoint 36 — Manual Override
 **Overall Status:** 🟡 In Progress
 
 ### Current Objective
 
-Stop. Do not start a full English parser, temporary modifiers, or private alpha.
+Stop. Do not start a full English parser, temporary modifiers, or private alpha invites.
 
 ### Last Completed Milestone
 
-Checkpoint 35: Oracle text compiles known sentence patterns into existing engine data. Lightning Bolt, Command Tower, dual-land taps, hybrid pips, simple ETBs, anthems, and `{N}, {T}: Draw a card` work. Leftover sentences stay as notes.
+Checkpoint 36: seated players can submit a table-agreed override (life, draw, mill, mana, tap/untap, move a public card) without priority. Friends see it in the log.
 
 ### Next Milestone
 
-Manual override for unsupported cards, more patterns (until-end-of-turn, modal, search), or private alpha.
+Private alpha: invite testers, host a real table, play complete games, track bugs and unsupported cards.
 
 ---
 
@@ -492,24 +492,37 @@ Private Alpha was previously listed as Phase 35. That remains later. This phase 
 * 🟢 Leftover sentences become compile notes.
 * 🟢 Checkpoint 35 — Oracle Pattern Compiler.
 
-## Phase 36 — Private Alpha
+## Phase 36 — Manual Override
 
-* ⬜ Invite testers.
-* ⬜ Complete games.
-* ⬜ Bug tracking.
-* ⬜ UX feedback.
-* ⬜ Desync tracking.
-* ⬜ Unsupported-card tracking.
-* ⬜ Checkpoint 36 — Private Alpha.
+Private Alpha was previously listed as Phase 36. That remains later. This phase is the V1 table-agreement action for unsupported cards.
 
-## Phase 37 — Productization
+* 🟢 `manual_override` game action (no priority; blocked during mulligan and after game over).
+* 🟢 Adjust life, draw, mill, add one mana, tap/untap, move a public card between owner zones.
+* 🟢 Reject hidden opponent hand/library cards; illegal overrides leave GameState unchanged.
+* 🟢 Public `override` log entry so the table can see the correction.
+* 🟢 Battlefield Override panel for a seated player.
+* ⬜ Checkpoint 36 — Manual Override.
+
+## Phase 37 — Private Alpha
+
+* ⬜ Invite testers (friends who can reach the host PC).
+* ⬜ Host/join instructions (LAN or Tailscale, port 8787, room code, display name).
+* ⬜ Every seat actually joined (unjoined seats still auto-pass).
+* ⬜ Import real decks and play complete games.
+* ⬜ Use override for uncompiled cards and log what needed it.
+* ⬜ Bug tracking (issues or a shared note).
+* ⬜ UX feedback (host/join, mulligan, targeting, override).
+* ⬜ Desync tracking (if a client view disagrees with the host).
+* ⬜ Checkpoint 37 — Private Alpha.
+
+## Phase 38 — Productization
 
 * ⬜ Product identity.
 * ⬜ IP/legal review.
 * ⬜ Hosting/security review.
 * ⬜ Distribution strategy.
 * ⬜ Documentation.
-* ⬜ Checkpoint 37 — Release Decision.
+* ⬜ Checkpoint 38 — Release Decision.
 
 ---
 
@@ -531,6 +544,53 @@ Do not mark a checkbox complete simply because code was written.
 ---
 
 # Development Log
+
+## 2026-08-14 — Manual override
+
+### Objective
+
+Let seated players submit a table-agreed correction through `applyAction` so unsupported cards can still finish a game. Friends see the change. Do not parse remaining English oracle.
+
+### Work Completed
+
+- Tagged checkpoints 34 and 35 on `f1f6262` (`checkpoint-34-activated-abilities`, `checkpoint-35-oracle-compiler`). Existing tags were not moved.
+- Added `manual_override` with a small change union: life, draw, mill, add mana, tap/untap, move a public card.
+- Override does not need priority (like concede). It is blocked during mulligan and after the game is over.
+- Hidden opponent hand/library cards cannot be moved. Stack and `removed` are not valid destinations.
+- Public log kind `override`. Battlefield Override panel for a seated player.
+
+### Tests Run
+
+- `npm test` — PASS (239 tests)
+- `npm run typecheck` — PASS
+- `npm run lint` — PASS
+- `npm run build` — PASS
+
+### Results
+
+- Life -1 on the opponent works from the Override panel and shows in the log. Engine rejects hidden library moves and overrides during mulligan or after game over without mutating GameState.
+
+### Decisions Made
+
+- Discriminated override changes, not arbitrary GameState mutation.
+- Phase 36 is Manual Override. Private Alpha is Phase 37. Productization is Phase 38.
+- Override does not require priority so you can fix the table on someone else's turn.
+
+### Files Changed
+
+- `engine/src/types.ts`, `engine/src/override.ts`, `engine/src/override.test.ts`, `engine/src/actions.ts`, `engine/src/serialize.ts`, `engine/src/index.ts`
+- `client/src/ui/Battlefield.tsx`, `client/src/App.test.tsx`, `client/src/index.css`
+- `docs/DEVELOPMENT_PROGRESS.md`, `docs/RULES_COVERAGE.md`, `docs/UNSUPPORTED_INTERACTIONS.md`, `docs/ARCHITECTURE.md`
+
+### Checkpoint
+
+- PASS (local verification). Tag when requested: `checkpoint-36-manual-override`
+
+### Next Task
+
+Verify tests, then stop. Do not start private alpha invites or a full English parser.
+
+---
 
 ## 2026-08-13 — Project boundary correction and mtgCommander docs
 

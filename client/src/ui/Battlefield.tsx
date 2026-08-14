@@ -14,7 +14,9 @@ import {
   type GameLogEntry,
   type GameState,
   type ManaColor,
+  type ManualOverrideChange,
   type PlayerId,
+  type PlayerZones,
   type PlayerState,
   type StackObjectId,
   type TargetRequirement,
@@ -33,7 +35,8 @@ export type UiMode =
   | { type: "block-pick-blocker" }
   | { type: "block-pick-attacker"; blockerId: CardInstanceId }
   | { type: "bottom"; selected: CardInstanceId[] }
-  | { type: "mana-color"; cardId: CardInstanceId; colors: ManaColor[] };
+  | { type: "mana-color"; cardId: CardInstanceId; colors: ManaColor[] }
+  | { type: "override"; selectedCardId: CardInstanceId | null; targetPlayerId: PlayerId };
 
 type Props = {
   state: GameState;
@@ -81,6 +84,11 @@ function formatLogEntry(state: GameState, entry: GameLogEntry): string {
     const name = player?.displayName ?? entry.playerId;
     const delta = entry.delta > 0 ? `+${entry.delta}` : `${entry.delta}`;
     return `${name} life ${delta}`;
+  }
+  if (entry.kind === "override") {
+    const player = state.players.find((item) => item.id === entry.playerId);
+    const name = player?.displayName ?? entry.playerId;
+    return `${name} override: ${entry.summary}`;
   }
   const name = definition(state, entry.cardId)?.name ?? "Unknown Card";
   return `${name}: ${entry.from} → ${entry.to}`;
@@ -136,6 +144,8 @@ function OpponentArea(props: {
   selectingDefender: boolean;
   selectedDefender: boolean;
   blockPick: boolean;
+  overriding: boolean;
+  selectedCardId: CardInstanceId | null;
   onTargetPlayer: () => void;
   onSelectDefender: () => void;
   onPermanent: (cardId: CardInstanceId) => void;
@@ -184,8 +194,11 @@ function OpponentArea(props: {
             state={state}
             cardId={cardId}
             onClick={
-              props.targeting || props.blockPick ? () => props.onPermanent(cardId) : undefined
+              props.targeting || props.blockPick || props.overriding
+                ? () => props.onPermanent(cardId)
+                : undefined
             }
+            selected={props.overriding && props.selectedCardId === cardId}
           />
         ))}
       </div>
@@ -216,10 +229,36 @@ export function Battlefield(props: Props) {
   const bottoming = deciding && pendingBottom > 0;
   const selectedBottom = mode.type === "bottom" ? mode.selected : [];
   const decider = state.players.find((player) => player.id === state.mulligan?.decidingPlayerId);
+  const overriding = mode.type === "override";
+  const overrideTargetId = overriding ? mode.targetPlayerId : viewerId;
+  const overrideCardId = overriding ? mode.selectedCardId : null;
+  const livingPlayers = state.players.filter((player) => !player.lost);
+  const overrideMoveZones: (keyof PlayerZones)[] = [
+    "hand",
+    "battlefield",
+    "graveyard",
+    "exile",
+    "command",
+    "library",
+  ];
+
+  function sendOverride(change: ManualOverrideChange) {
+    onAction({ kind: "manual_override", playerId: viewerId, change });
+  }
 
   function send(action: GameAction) {
     onMode({ type: "idle" });
     onAction(action);
+  }
+
+  function selectOverrideCard(cardId: CardInstanceId) {
+    if (mode.type !== "override") {
+      return;
+    }
+    onMode({
+      ...mode,
+      selectedCardId: mode.selectedCardId === cardId ? null : cardId,
+    });
   }
 
   function toggleBottom(cardId: CardInstanceId) {
@@ -230,7 +269,14 @@ export function Battlefield(props: Props) {
   }
 
   function clickHandCard(cardId: CardInstanceId) {
-    if (over || mulliganOpen || !yourPriority) {
+    if (over || mulliganOpen) {
+      return;
+    }
+    if (mode.type === "override") {
+      selectOverrideCard(cardId);
+      return;
+    }
+    if (!yourPriority) {
       return;
     }
     if (isLand(state, cardId)) {
@@ -246,7 +292,14 @@ export function Battlefield(props: Props) {
   }
 
   function clickYourPermanent(cardId: CardInstanceId) {
-    if (over || !yourPriority) {
+    if (over) {
+      return;
+    }
+    if (mode.type === "override") {
+      selectOverrideCard(cardId);
+      return;
+    }
+    if (!yourPriority) {
       return;
     }
     if (mode.type === "attackers") {
@@ -292,6 +345,10 @@ export function Battlefield(props: Props) {
 
   function clickOpponentPermanent(cardId: CardInstanceId) {
     if (over) {
+      return;
+    }
+    if (mode.type === "override") {
+      selectOverrideCard(cardId);
       return;
     }
     if (mode.type === "targets") {
@@ -402,6 +459,11 @@ export function Battlefield(props: Props) {
             Choose a color for {definition(state, mode.cardId)?.name}.
           </p>
         ) : null}
+        {overriding ? (
+          <p data-testid="override-hint">
+            Table override — pick a player or card. This is table agreement, not a rules action.
+          </p>
+        ) : null}
         {mulliganOpen ? (
           <p data-testid="mulligan-hint">
             {bottoming
@@ -424,6 +486,8 @@ export function Battlefield(props: Props) {
             selectingDefender={mode.type === "attackers" && livingOpponents.length > 1}
             selectedDefender={mode.type === "attackers" && mode.defenderId === opponent.id}
             blockPick={mode.type === "block-pick-attacker"}
+            overriding={overriding}
+            selectedCardId={overrideCardId}
             onTargetPlayer={() => addTarget({ type: "player", playerId: opponent.id })}
             onSelectDefender={() => {
               if (mode.type === "attackers") {
@@ -483,7 +547,12 @@ export function Battlefield(props: Props) {
               key={cardId}
               state={state}
               cardId={cardId}
-              onClick={!over && yourPriority ? () => clickYourPermanent(cardId) : undefined}
+              selected={overrideCardId === cardId}
+              onClick={
+                !over && (overriding || yourPriority)
+                  ? () => clickYourPermanent(cardId)
+                  : undefined
+              }
             />
           ))}
         </div>
@@ -502,7 +571,12 @@ export function Battlefield(props: Props) {
               key={cardId}
               state={state}
               cardId={cardId}
-              onClick={!over && yourPriority ? () => clickHandCard(cardId) : undefined}
+              selected={overrideCardId === cardId}
+              onClick={
+                !over && (overriding || yourPriority)
+                  ? () => clickHandCard(cardId)
+                  : undefined
+              }
             />
           ))}
         </div>
@@ -512,13 +586,13 @@ export function Battlefield(props: Props) {
               key={cardId}
               state={state}
               cardId={cardId}
-              selected={selectedBottom.includes(cardId)}
+              selected={selectedBottom.includes(cardId) || overrideCardId === cardId}
               onClick={
                 over
                   ? undefined
                   : bottoming
                     ? () => toggleBottom(cardId)
-                    : yourPriority && !mulliganOpen
+                    : overriding || (yourPriority && !mulliganOpen)
                       ? () => clickHandCard(cardId)
                       : undefined
               }
@@ -626,6 +700,139 @@ export function Battlefield(props: Props) {
               >
                 Choose blockers
               </button>
+            ) : null}
+            <button
+              type="button"
+              data-testid="override-toggle"
+              className={overriding ? "is-selected" : ""}
+              onClick={() =>
+                onMode(
+                  overriding
+                    ? { type: "idle" }
+                    : { type: "override", selectedCardId: null, targetPlayerId: viewerId },
+                )
+              }
+            >
+              Override
+            </button>
+            {overriding ? (
+              <div className="override-panel" data-testid="override-panel">
+                {livingPlayers.map((player) => (
+                  <button
+                    key={player.id}
+                    type="button"
+                    data-testid={`override-player-${player.displayName}`}
+                    className={overrideTargetId === player.id ? "is-selected" : ""}
+                    onClick={() =>
+                      onMode({
+                        type: "override",
+                        selectedCardId: overrideCardId,
+                        targetPlayerId: player.id,
+                      })
+                    }
+                  >
+                    {player.displayName}
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  data-testid="override-life-plus"
+                  onClick={() =>
+                    sendOverride({
+                      type: "adjust_life",
+                      targetPlayerId: overrideTargetId,
+                      delta: 1,
+                    })
+                  }
+                >
+                  Life +1
+                </button>
+                <button
+                  type="button"
+                  data-testid="override-life-minus"
+                  onClick={() =>
+                    sendOverride({
+                      type: "adjust_life",
+                      targetPlayerId: overrideTargetId,
+                      delta: -1,
+                    })
+                  }
+                >
+                  Life -1
+                </button>
+                <button
+                  type="button"
+                  data-testid="override-draw"
+                  onClick={() =>
+                    sendOverride({ type: "draw", targetPlayerId: overrideTargetId, count: 1 })
+                  }
+                >
+                  Draw 1
+                </button>
+                <button
+                  type="button"
+                  data-testid="override-mill"
+                  onClick={() =>
+                    sendOverride({ type: "mill", targetPlayerId: overrideTargetId, count: 1 })
+                  }
+                >
+                  Mill 1
+                </button>
+                {MANA_COLORS.map((color) => (
+                  <button
+                    key={color}
+                    type="button"
+                    data-testid={`override-mana-${color}`}
+                    onClick={() =>
+                      sendOverride({
+                        type: "add_mana",
+                        targetPlayerId: overrideTargetId,
+                        color,
+                      })
+                    }
+                  >
+                    +{color}
+                  </button>
+                ))}
+                {overrideCardId ? (
+                  <>
+                    <button
+                      type="button"
+                      data-testid="override-tap"
+                      onClick={() =>
+                        sendOverride({ type: "set_tapped", cardId: overrideCardId, tapped: true })
+                      }
+                    >
+                      Tap
+                    </button>
+                    <button
+                      type="button"
+                      data-testid="override-untap"
+                      onClick={() =>
+                        sendOverride({ type: "set_tapped", cardId: overrideCardId, tapped: false })
+                      }
+                    >
+                      Untap
+                    </button>
+                    {overrideMoveZones.map((zone) => (
+                      <button
+                        key={zone}
+                        type="button"
+                        data-testid={`override-move-${zone}`}
+                        onClick={() =>
+                          sendOverride({
+                            type: "move_card",
+                            cardId: overrideCardId,
+                            toZone: zone,
+                          })
+                        }
+                      >
+                        To {zone}
+                      </button>
+                    ))}
+                  </>
+                ) : null}
+              </div>
             ) : null}
             <button
               type="button"

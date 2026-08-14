@@ -333,7 +333,21 @@ export type GameLogEntry =
       kind: "life_change";
       playerId: PlayerId;
       delta: number;
+    }
+  | {
+      kind: "override";
+      playerId: PlayerId;
+      summary: string;
     };
+
+/** Table-agreed correction. Not a comprehensive-rules action. */
+export type ManualOverrideChange =
+  | { type: "adjust_life"; targetPlayerId: PlayerId; delta: number }
+  | { type: "draw"; targetPlayerId: PlayerId; count: number }
+  | { type: "mill"; targetPlayerId: PlayerId; count: number }
+  | { type: "add_mana"; targetPlayerId: PlayerId; color: ManaColor }
+  | { type: "move_card"; cardId: CardInstanceId; toZone: keyof PlayerZones }
+  | { type: "set_tapped"; cardId: CardInstanceId; tapped: boolean };
 
 export type GameAction =
   | { kind: "pass_priority"; playerId: PlayerId }
@@ -360,7 +374,8 @@ export type GameAction =
     }
   | { kind: "keep_hand"; playerId: PlayerId }
   | { kind: "mulligan"; playerId: PlayerId }
-  | { kind: "bottom_cards"; playerId: PlayerId; cardIds: CardInstanceId[] };
+  | { kind: "bottom_cards"; playerId: PlayerId; cardIds: CardInstanceId[] }
+  | { kind: "manual_override"; playerId: PlayerId; change: ManualOverrideChange };
 
 export type GameEvent =
   | { kind: "game_created"; gameId: GameId }

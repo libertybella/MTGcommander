@@ -11,6 +11,7 @@ import { applyStateBasedActionsInPlace, redirectPriorityIfLost } from "./status"
 import { validateChosenTargets } from "./targeting";
 import { advanceStep, beginNextLivingTurnInPlace } from "./turn";
 import { applyBottomCards, applyKeepHand, applyTakeMulligan, isMulliganOpen, reconcileMulliganAfterLoss } from "./mulligan";
+import { applyManualOverride } from "./override";
 import { findCardZone, moveCard } from "./zones";
 import type { CardInstanceId, ChosenTarget, GameAction, GameState, ManaColor, ManaPool, PlayerId } from "./types";
 
@@ -357,6 +358,9 @@ export function applyAction(state: GameState, action: GameAction): GameState {
         break;
       case "bottom_cards":
         next = applyBottomCards(state, action.playerId, action.cardIds);
+        break;
+      case "manual_override":
+        next = applyManualOverride(state, action.playerId, action.change);
         break;
       default: {
         const exhaustive: never = action;

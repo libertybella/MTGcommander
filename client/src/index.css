@@ -169,8 +169,18 @@ h3 {
 .actions button.is-selected,
 .player-meta button.is-selected,
 .table-size button.is-selected,
-.seat-switcher button.is-selected {
+.seat-switcher button.is-selected,
+.override-panel button.is-selected {
   border-color: #f3d27a;
+}
+
+.override-panel {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  width: 100%;
+  padding-top: 0.35rem;
+  border-top: 1px solid #2a3b4d;
 }
 
 .actions button,

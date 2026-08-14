@@ -1,6 +1,6 @@
 # Unsupported Interactions (20-Card Engine)
 
-This log is for the synthetic pool, imported real decks, and the local/hosted table as of Checkpoint 35. It is not a complete Comprehensive Rules gap list. See also `RULES_COVERAGE.md`.
+This log is for the synthetic pool, imported real decks, and the local/hosted table as of Checkpoint 36. It is not a complete Comprehensive Rules gap list. See also `RULES_COVERAGE.md`.
 
 Cards in the synthetic pool are named `Test …` on purpose. Real decks load through a Scryfall oracle cache and Moxfield/text import; most oracle text is still not executed.
 
@@ -33,4 +33,4 @@ Cards in the synthetic pool are named `Test …` on purpose. Real decks load thr
 | Face-down / morph / manifest | Not implemented. Hidden info is opponent hand and library identity only. |
 | Arena-like polish (animations, zoom, real card frames) | Functional battlefield tiles only. |
 
-Manual override for unsupported table talk remains a future product feature, not an engine action.
+Manual override is an engine action (`manual_override`). A seated player can change life, draw, mill, add mana, tap/untap, or move a public card. The table sees an override log line. Hidden opponent hand/library cards stay hidden. This is table agreement, not a rules engine for every card.

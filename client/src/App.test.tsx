@@ -145,6 +145,15 @@ describe("battlefield UI", () => {
     expect(oracle?.getAttribute("data-tapped")).toBe("true");
   });
 
+  it("lets a seated player override life by table agreement", () => {
+    startGame();
+    fireEvent.click(screen.getByTestId("override-toggle"));
+    fireEvent.click(screen.getByTestId("override-player-Opponent"));
+    fireEvent.click(screen.getByTestId("override-life-minus"));
+    expect(screen.getByTestId("life-opponent").textContent).toContain("Life 39");
+    expect(screen.getByTestId("game-log").textContent).toMatch(/override/i);
+  });
+
   it("shows game-over after concede and hides play actions", () => {
     startGame();
     fireEvent.click(screen.getByTestId("concede"));
