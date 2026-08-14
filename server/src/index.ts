@@ -31,3 +31,14 @@ export {
   type SnapshotStore,
   type TableSnapshot,
 } from "./persist";
+export { CardDatabase, ORACLE_CACHE_KEY } from "./cards";
+export type { HttpFetch, HttpRequestInit, HttpResponse } from "./http";
+export { fetchMoxfieldDeck, parseMoxfieldDeckJson } from "./moxfield";
+export {
+  compileParsedDeck,
+  importMoxfieldDeck,
+  importTextDeck,
+  startImportedTable,
+} from "./importDeck";
+export type { CompiledDeck, ImportedTable } from "./importDeck";
+export { oracleCardFromScryfall, fetchOracleCardsByName } from "./scryfall";

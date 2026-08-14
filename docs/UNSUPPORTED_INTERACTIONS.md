@@ -1,8 +1,8 @@
 # Unsupported Interactions (20-Card Engine)
 
-This log is for the synthetic pool and the local host as of Checkpoint 29. It is not a complete Comprehensive Rules gap list. See also `RULES_COVERAGE.md`.
+This log is for the synthetic pool, imported real decks, and the local host as of Checkpoint 30. It is not a complete Comprehensive Rules gap list. See also `RULES_COVERAGE.md`.
 
-Cards in the pool are named `Test …` on purpose. They are not real Magic cards, Scryfall data, or Moxfield imports.
+Cards in the synthetic pool are named `Test …` on purpose. Real decks load through a Scryfall oracle cache and Moxfield/text import; most oracle text is still not executed.
 
 ## Represented by the pool
 
@@ -15,8 +15,9 @@ Cards in the pool are named `Test …` on purpose. They are not real Magic cards
 
 | Interaction | What happens today |
 | --- | --- |
-| Real-card names, set codes, or oracle text from Scryfall | Not loaded. Only synthetic definitions. |
-| Moxfield / text deck import | Not implemented. `startCatalogGame` seats pool IDs only. |
+| Real-card names from Scryfall | Loaded on demand into `mtgcommander.oracle.v1`. Instant/sorcery text does not compile into effects (Lightning Bolt resolves with no effect). |
+| Moxfield / text deck import | Implemented. Electron fetches a public Moxfield URL; a Vite browser tab should paste the export. Empty opponent URL mirrors your deck. |
+| Uncompiled permanents | Still sit in the deck. Known keywords and simple `{T}: Add {M}` work; Command Tower / any-color does not. Hybrid / Phyrexian / `{X}` costs are unpayable. |
 | Activated abilities other than tap-for-mana | No action. Lands with `produces` can tap; other tap abilities are missing. |
 | Equipment, auras, planeswalkers | No card types in the pool. |
 | Search, shuffle, modal choices | No effects. |

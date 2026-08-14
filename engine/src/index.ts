@@ -33,8 +33,8 @@ export {
   testCounter,
 } from "./catalog";
 export { POOL_ID, syntheticPool, syntheticPoolById } from "./pool";
-export { dealOpeningHands, seatCatalogDecks, startCatalogGame } from "./setup";
-export type { CatalogDeckSpec, StartCatalogGameOptions } from "./setup";
+export { dealOpeningHands, seatCatalogDecks, seatDecks, startCatalogGame, startDefinitionGame } from "./setup";
+export type { CatalogDeckSpec, StartCatalogGameOptions, StartDefinitionGameOptions } from "./setup";
 export { passPriority, putSpellOnStack, resolveTopOfStack } from "./stack";
 export {
   definitionTypeLine,
@@ -85,6 +85,22 @@ export {
   serializeGameEvent,
   serializeGameState,
 } from "./serialize";
+export {
+  compileOracleCard,
+  definitionIdForOracle,
+  inferProduces,
+  keywordsFromOracle,
+  normalizeCardName,
+} from "./oracle";
+export type { OracleCard, OracleCompileResult } from "./oracle";
+export {
+  deckNames,
+  expandDeckCards,
+  parseMoxfieldPublicId,
+  parseTextDecklist,
+} from "./decklist";
+export type { ParsedDeckCard, ParsedDecklist } from "./decklist";
+export { shuffleInPlace } from "./shuffle";
 export type {
   CardDefinition,
   CardDefinitionId,

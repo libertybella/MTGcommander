@@ -41,7 +41,7 @@ Friends' PCs                         Ross's PC (authoritative host)
 | Auth | None | Display name + room code only |
 | Persistence | In-memory game state for V1 | No database, no Supabase |
 | Deck import | Plain-text lists + Moxfield links | Archidekt / Arena export later |
-| Card data | Local/cached definitions later; fixtures for engine tests now | Engine must not call live APIs during an action |
+| Card data | Cached Scryfall `OracleCard`s compiled to `CardDefinition`; synthetic fixtures remain for engine tests | Engine must not call live APIs during an action |
 | Accounts / cloud DB / Next.js / Supabase | **Not used in V1** | Wrong fit for a free PC-hosted private game |
 
 ### How friends connect (free)
@@ -75,7 +75,7 @@ If we later move hosting to the cloud, we keep `engine/` and `server/`, and opti
 
 ## Current Repository State
 
-`mtgCommander` is an independent project. The engine, a local `GameHost` in `server/`, and a React battlefield UI exist. The host is the only caller of `applyAction`. WebSockets, rooms, and a second client are **not implemented yet**.
+`mtgCommander` is an independent project. The engine, a local `GameHost` in `server/`, and a React battlefield UI exist. The host is the only caller of `applyAction`. Scryfall oracle cards cache locally and compile into definitions. Moxfield URLs and pasted Commander lists can seat a 2-player table. WebSockets, rooms, and a second client are **not implemented yet**.
 
 The sibling Electron deck builder is **out of scope**. This project must not import or depend on it.
 

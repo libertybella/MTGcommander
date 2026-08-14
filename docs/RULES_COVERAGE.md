@@ -1,4 +1,4 @@
-# Rules Coverage (Engine V1 through Checkpoint 29)
+# Rules Coverage (Engine V1 through Checkpoint 30)
 
 This document records what the engine implements and what it intentionally does not. It is not a complete CR translation.
 
@@ -11,8 +11,10 @@ This document records what the engine implements and what it intentionally does 
 - Hidden information projection: opponent hands and libraries hide card identity; battlefield, graveyard, exile, command, stack, life, and commander damage stay public. The UI shows `GameHost.viewFor`, not raw authority.
 - Basic effects: damage, life, draw, mill (mill what’s there), discard (front of hand), sacrifice, counters, tokens, tap/untap, mana, zone moves.
 - `tap_for_mana` for permanents whose definition has `produces`.
-- A 21-card synthetic pool and catalog seating (`startCatalogGame`). Not real Magic cards.
-- Local React battlefield for 2 or 4 players. Actions go through `GameHost.submit`. Authority persists in localStorage. Not a networked client.
+- A 21-card synthetic pool and catalog seating (`startCatalogGame`). Still available from the start screen.
+- Real cards: Scryfall-shaped `OracleCard` data compiles into `CardDefinition`. Instant/sorcery oracle text is not executed. Creatures get printed P/T and known keywords. Lands/artifacts get `produces` only for a single simple `{T}: Add {M}` line.
+- Deck import: Moxfield public URL (Electron IPC) or pasted Commander/Arena text. `startDefinitionGame` shuffles and seats commanders plus library. Compile notes are shown; uncompiled cards stay in the deck.
+- Local React battlefield for 2 or 4 players. Actions go through `GameHost.submit`. Authority persists in localStorage. Oracle cache key `mtgcommander.oracle.v1`. Not a networked client.
 - Keywords: flying, reach, haste, vigilance, trample, deathtouch, lifelink, first strike, double strike, menace, hexproof, indestructible, flash, defender.
 - Derived power/toughness: printed values, `p1p1` counters, and simple static P/T modifiers (`self` or `controlled_creatures`).
 - Enter-the-battlefield triggers become stack abilities. No target choices and no AP-order for simultaneous triggers.
@@ -24,7 +26,8 @@ This document records what the engine implements and what it intentionally does 
 ## Documented gaps
 
 - Rooms, WebSockets, and two-client realtime. Local `GameHost` only. Networking remains later.
-- Deck import, Scryfall, Moxfield, real-card database. Synthetic cards only.
+- Full oracle-text parsing. Most real cards sit in the deck without their written abilities. Hybrid / Phyrexian / `{X}` costs are unpayable. Command Tower–style any-color lands do not produce mana.
+- Scryfall bulk JSON is not shipped in git. Cache is filled on demand. A plain browser tab cannot fetch Moxfield (CORS); paste the export instead.
 - Face-down cards (morph/manifest). Opponent hand/library identity is hidden; there is no face-down battlefield state.
 - Ward, shroud, protection, hexproof on players, and targeting abilities on the stack.
 - Full trigger ordering, trigger choices, and leave-the-game triggers.

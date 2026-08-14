@@ -20,21 +20,21 @@ A checkbox becomes 🟢 Complete only when the work has been implemented **and**
 
 ## Project Status
 
-**Current Phase:** Phase 29 complete
-**Current Checkpoint:** Checkpoint 29 — Four-Player Battlefield
+**Current Phase:** Phase 30 complete
+**Current Checkpoint:** Checkpoint 30 — Card Database & Moxfield
 **Overall Status:** 🟡 In Progress
 
 ### Current Objective
 
-Stop. The next steps need a product choice: real-card database/import, WebSockets/rooms, mulligans, or activated abilities. Do not start Phase 30 until that is chosen.
+Stop. Do not start networking, mulligans, activated abilities, or a full oracle-text parser.
 
 ### Last Completed Milestone
 
-Checkpoint 29: The battlefield shows every opponent. Empty-library draws lose, Test Counter targets spells, and the table log shows public zone and life changes.
+Checkpoint 30: Scryfall oracle cards compile into `CardDefinition`s and cache locally. Moxfield URLs (Electron) and pasted Commander lists seat a 2-player table. Uncompiled oracle text is noted; those cards still sit in the deck.
 
 ### Next Milestone
 
-Needs input: Scryfall/Moxfield, two-client realtime, London mulligan, or activated abilities beyond tap-for-mana.
+Needs input: two-client realtime / WebSockets, London mulligan, or activated abilities beyond tap-for-mana.
 
 ---
 
@@ -383,7 +383,7 @@ Engine `redactForViewer` already existed in Phase 14. This phase wires that proj
 
 ## Phase 26 — Empty-Library Loss
 
-Card database / Scryfall was previously listed as Phase 26. That remains later. This phase is the missing draw SBA.
+Card database / Scryfall was previously listed as Phase 26. That is now Checkpoint 30. This phase is the missing draw SBA.
 
 * 🟢 Failed draw from an empty library (`failedToDraw`).
 * 🟢 Draw step and `draw` effects share that path.
@@ -404,7 +404,7 @@ Rules expansion was previously listed as Phase 27. This phase is targeting spell
 
 ## Phase 28 — Readable Game Log
 
-Real Commander decks were previously listed as Phase 28. They remain later. This phase surfaces the existing zone log plus life changes.
+Real Commander decks were previously listed as Phase 28. That is now Checkpoint 30. This phase surfaces the existing zone log plus life changes.
 
 * 🟢 Zone-change log (already in the engine).
 * 🟢 Life-change log entries.
@@ -421,14 +421,19 @@ Replay/performance were previously later. This phase projects 2–4 players in t
 * 🟢 Start 2-player or 4-player synthetic tables.
 * 🟢 Checkpoint 29 — Four-Player Battlefield.
 
-## Phase 30 — Performance
+## Phase 30 — Card Database & Moxfield Import
 
-* ⬜ CPU measurement.
-* ⬜ Memory measurement.
-* ⬜ Network measurement.
-* ⬜ Payload measurement.
-* ⬜ Concurrent-game test.
-* ⬜ Checkpoint 30 — Reliability.
+Performance was previously listed as Phase 30. That remains later. This phase caches Scryfall oracle data and seats Moxfield or pasted Commander lists.
+
+* 🟢 Scryfall-shaped `OracleCard` compile into `CardDefinition` (keywords, printed P/T, simple `{T}: Add {M}`).
+* 🟢 Local oracle cache (`mtgcommander.oracle.v1`) with substring search.
+* 🟢 Fetch missing names via Scryfall collection (75/batch) plus named fuzzy leftovers.
+* 🟢 Moxfield public URL/ID fetch (Electron IPC; unofficial API).
+* 🟢 Pasted Commander / Arena-style text lists.
+* 🟢 Seat compiled decks into `GameHost` (`startDefinitionGame` shuffles).
+* 🟢 Unsupported oracle text is noted; those cards still sit in the deck.
+* 🟢 Synthetic 2-player / 4-player start buttons remain.
+* 🟢 Checkpoint 30 — Card Database & Moxfield.
 
 ## Phase 31 — Private Alpha
 
@@ -2177,3 +2182,60 @@ Project every opponent, not only the first other player. Keep unseated players a
 ### Next Task
 
 Stop. Needs input: real cards/Scryfall/Moxfield, WebSockets, London mulligan, or activated abilities.
+
+---
+
+## 2026-08-13 — Card database and Moxfield import
+
+### Objective
+
+Load real Magic cards from a cached Scryfall oracle snapshot and seat Commander decks from a Moxfield URL or a pasted text list. Keep the engine free of network I/O. Keep synthetic start buttons.
+
+### Work Completed
+
+- Added `OracleCard` compile: known keywords, printed P/T, and a single simple `{T}: Add {M}` line. Instant/sorcery effects are not auto-compiled.
+- Added Commander text-list parsing (Commander/Deck/Sideboard headers; strip `(SET) 123`) and Moxfield public-id parsing.
+- `startDefinitionGame` seats compiled definitions and shuffles by default. `startCatalogGame` still uses the synthetic pool and does not shuffle.
+- Server `CardDatabase` caches oracle cards, searches locally, and resolves missing names through Scryfall. Unit tests mock fetch (no live network).
+- Moxfield v3 `boards` and v2 top-level maps both parse. Electron `net.fetch` allowlists `api.scryfall.com`, `api2.moxfield.com`, and `api.moxfield.com`.
+- Start screen: Moxfield URL, optional opponent URL (empty mirrors your deck), pasted list, and compile notes on the table.
+
+### Tests Run
+
+- `npm test` — PASS (203 tests)
+- `npm run typecheck` — PASS
+- `npm run lint` — PASS
+- `npm run build` — PASS
+
+### Results
+
+- A pasted Atraxa / Sol Ring / Forest list starts a 2-player table from cached oracle data. A Moxfield URL works in Electron; a plain Vite tab should paste the export because of CORS.
+
+### Decisions Made
+
+- Compile, do not parse all oracle text. Uncompiled cards still sit in the deck and show notes.
+- Hybrid / Phyrexian / `{X}` costs are noted as unpayable.
+- Engine stays network-free. I/O lives in `server/` and Electron IPC.
+- Do not ship Scryfall bulk JSON in git.
+- Performance, WebSockets, mulligans, and activated abilities remain later.
+
+### Files Changed
+
+- `engine/src/oracle.ts`, `engine/src/oracle.test.ts`
+- `engine/src/decklist.ts`, `engine/src/decklist.test.ts`
+- `engine/src/shuffle.ts`, `engine/src/setup.ts`, `engine/src/index.ts`
+- `server/src/http.ts`, `server/src/scryfall.ts`, `server/src/cards.ts`, `server/src/cards.test.ts`
+- `server/src/moxfield.ts`, `server/src/importDeck.ts`, `server/src/index.ts`
+- `electron/main.ts`, `electron/preload.ts`
+- `client/src/App.tsx`, `client/src/App.test.tsx`, `client/src/index.css`
+- `client/src/game/cardDatabase.ts`, `client/src/game/storage.ts`, `client/src/vite-env.d.ts`
+- `docs/DEVELOPMENT_PROGRESS.md`, `docs/RULES_COVERAGE.md`, `docs/UNSUPPORTED_INTERACTIONS.md`, `docs/ARCHITECTURE.md`
+
+### Checkpoint
+
+- PASS. Tag: `checkpoint-30-card-database`
+- Existing tags were not moved or rewritten.
+
+### Next Task
+
+Stop. Do not start networking, mulligans, activated abilities, or a full oracle-text parser.

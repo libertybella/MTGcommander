@@ -5,6 +5,15 @@ declare global {
     mtgCommander?: {
       isElectron: true;
       appName: string;
+      httpFetch?: (
+        url: string,
+        init?: { method?: string; headers?: Record<string, string>; body?: string },
+      ) => Promise<{
+        ok: boolean;
+        status: number;
+        json: () => Promise<unknown>;
+        text: () => Promise<string>;
+      }>;
     };
   }
 }

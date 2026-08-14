@@ -1,7 +1,8 @@
 /** @vitest-environment happy-dom */
 
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
+import { ORACLE_CACHE_KEY } from "@mtgcommander/server";
 import App from "./App";
 
 afterEach(() => {
@@ -82,6 +83,58 @@ describe("battlefield UI", () => {
     );
     expect(screen.getByText("Opponent 1")).toBeTruthy();
     expect(screen.getByText("Opponent 3")).toBeTruthy();
+  });
+
+  it("loads a pasted Commander list from the local oracle cache", async () => {
+    window.localStorage.setItem(
+      ORACLE_CACHE_KEY,
+      JSON.stringify({
+        version: 1,
+        cards: {
+          forest: {
+            oracleId: "forest",
+            name: "Forest",
+            manaCost: "",
+            typeLine: "Basic Land — Forest",
+            oracleText: "{T}: Add {G}.",
+            power: null,
+            toughness: null,
+            printedKeywords: [],
+          },
+          "sol ring": {
+            oracleId: "sol",
+            name: "Sol Ring",
+            manaCost: "{1}",
+            typeLine: "Artifact",
+            oracleText: "{T}: Add {C}{C}.",
+            power: null,
+            toughness: null,
+            printedKeywords: [],
+          },
+          "atraxa, praetors' voice": {
+            oracleId: "atraxa",
+            name: "Atraxa, Praetors' Voice",
+            manaCost: "{G}{W}{U}{B}",
+            typeLine: "Legendary Creature — Phyrexian Angel Horror",
+            oracleText: "Flying, vigilance, deathtouch, lifelink",
+            power: "4",
+            toughness: "4",
+            printedKeywords: ["Flying", "Vigilance", "Deathtouch", "Lifelink"],
+          },
+        },
+      }),
+    );
+    render(<App />);
+    fireEvent.change(screen.getByTestId("decklist-you"), {
+      target: {
+        value: "Commander\n1 Atraxa, Praetors' Voice\nDeck\n1 Sol Ring\n10 Forest\n",
+      },
+    });
+    fireEvent.click(screen.getByTestId("import-deck"));
+    await waitFor(() => {
+      expect(within(screen.getByTestId("command-you")).getByText("Atraxa, Praetors' Voice")).toBeTruthy();
+    });
+    expect(screen.getByTestId("life-you").textContent).toContain("Life 40");
   });
 
   it("restores a saved table after remount", () => {
