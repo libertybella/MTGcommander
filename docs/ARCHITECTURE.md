@@ -75,7 +75,7 @@ If we later move hosting to the cloud, we keep `engine/` and `server/`, and opti
 
 ## Current Repository State
 
-`mtgCommander` is an independent project. Phase 1 created the `engine/`, `server/`, `client/`, and `electron/` packages. Application windows start; GameState and networking are **not implemented yet**.
+`mtgCommander` is an independent project. The engine, a local `GameHost` in `server/`, and a React battlefield UI exist. The host is the only caller of `applyAction`. WebSockets, rooms, and a second client are **not implemented yet**.
 
 The sibling Electron deck builder is **out of scope**. This project must not import or depend on it.
 
@@ -87,8 +87,8 @@ The sibling Electron deck builder is **out of scope**. This project must not imp
 mtgCommander/
   docs/
   engine/          Pure TypeScript rules + GameState; Vitest
-  server/          Node host: WebSocket, rooms, engine, hidden-info views
-  client/          React + Vite UI (projection only)
+  server/          In-process GameHost (persist + action checks + redacted views). WebSockets/rooms later.
+  client/          React + Vite UI (projection of host.viewFor only)
   electron/        Thin desktop shell: start host or join
 ```
 

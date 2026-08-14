@@ -1,7 +1,6 @@
 /**
- * Authoritative host process placeholder.
- * Phase 1 only proves the server can import the engine.
- * No listen(), WebSockets, rooms, or GameState yet.
+ * Authoritative host process.
+ * Local tables use GameHost in-process. WebSockets and rooms remain later.
  */
 
 import { getEngineInfo, type EngineInfo } from "@mtgcommander/engine";
@@ -19,3 +18,16 @@ export function getServerInfo(): ServerInfo {
     engine: getEngineInfo(),
   };
 }
+
+export { GameHost, type SubmitResult } from "./session";
+export {
+  TABLE_STORAGE_KEY,
+  TABLE_SNAPSHOT_VERSION,
+  snapshotHost,
+  hostFromSnapshot,
+  saveTable,
+  loadTable,
+  clearTable,
+  type SnapshotStore,
+  type TableSnapshot,
+} from "./persist";

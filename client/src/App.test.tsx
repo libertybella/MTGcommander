@@ -6,6 +6,7 @@ import App from "./App";
 
 afterEach(() => {
   cleanup();
+  window.localStorage.clear();
 });
 
 function startGame() {
@@ -34,7 +35,14 @@ describe("battlefield UI", () => {
     expect(screen.getByTestId("priority").textContent).toContain("You");
   });
 
-  it("plays a land, taps it for mana through applyAction, and shows tapped state", () => {
+  it("hides opponent hand identity", () => {
+    startGame();
+    expect(within(screen.getByTestId("hand-opponent")).queryByText("Test Shock")).toBeNull();
+    expect(within(screen.getByTestId("hand-opponent")).getAllByText("Unknown Card").length).toBe(7);
+    expect(within(screen.getByTestId("hand-you")).getByText("Test Shock")).toBeTruthy();
+  });
+
+  it("plays a land, taps it for mana through the host, and shows tapped state", () => {
     startGame();
     passUntil("precombatMain");
     const mountain = within(screen.getByTestId("hand-you")).getByText("Test Mountain");
@@ -46,14 +54,13 @@ describe("battlefield UI", () => {
     expect(screen.getByTestId("mana-you").textContent).toContain("R:1");
   });
 
-  it("casts a supported spell through applyAction", () => {
+  it("casts a supported spell through the host", () => {
     startGame();
     passUntil("precombatMain");
     fireEvent.click(within(screen.getByTestId("hand-you")).getByText("Test Mountain"));
     fireEvent.click(within(screen.getByTestId("battlefield-you")).getByText("Test Mountain"));
     fireEvent.click(within(screen.getByTestId("hand-you")).getByText("Test Shock"));
     fireEvent.click(screen.getByTestId("target-opponent"));
-    fireEvent.click(screen.getByTestId("pass"));
     fireEvent.click(screen.getByTestId("pass"));
     expect(screen.getByTestId("life-opponent").textContent).toContain("Life 38");
   });
@@ -64,5 +71,13 @@ describe("battlefield UI", () => {
     expect(screen.getByTestId("game-over").textContent).toContain("Opponent");
     expect(screen.queryByTestId("pass")).toBeNull();
     expect(screen.getByTestId("new-game")).toBeTruthy();
+  });
+
+  it("restores a saved table after remount", () => {
+    startGame();
+    fireEvent.click(screen.getByTestId("concede"));
+    cleanup();
+    render(<App />);
+    expect(screen.getByTestId("game-over").textContent).toContain("Opponent");
   });
 });

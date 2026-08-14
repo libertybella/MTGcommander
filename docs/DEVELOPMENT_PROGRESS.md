@@ -20,21 +20,21 @@ A checkbox becomes 🟢 Complete only when the work has been implemented **and**
 
 ## Project Status
 
-**Current Phase:** Phase 22 complete
-**Current Checkpoint:** Checkpoint 22 — Battlefield UI
+**Current Phase:** Phase 25 complete
+**Current Checkpoint:** Checkpoint 25 — Hidden Information
 **Overall Status:** 🟡 In Progress
 
 ### Current Objective
 
-Stop. Do not continue until Checkpoint 22 is reviewed. Do not start deck import, real-card integration, networking, or Phase 23.
+Stop. Do not continue until Checkpoints 23–25 are reviewed. Do not start deck import, real-card integration, networking, or Phase 26.
 
 ### Last Completed Milestone
 
-Checkpoint 22: A local battlefield UI projects the Phase 21 synthetic game and dispatches `applyAction`.
+Checkpoint 25: The battlefield UI shows `redactForViewer` output from an in-process `GameHost`. Opponent hands are Unknown Card backs. Authority persists in localStorage.
 
 ### Next Milestone
 
-Deck import, real-card integration, and two-client realtime remain later. Persistence/reconnect is Phase 23.
+Deck import, real-card integration, and two-client realtime remain later. Card database is Phase 26.
 
 ---
 
@@ -337,41 +337,49 @@ Arena-like polish (animations, zoom, target highlighting) was previously listed 
 * 🟢 Start the Phase 21 synthetic test game from the client.
 * 🟢 Opponent and player areas (life, battlefield, zone counts, commander).
 * 🟢 Hand, mana, turn/step, priority, stack count.
-* 🟢 Supported actions via `applyAction` (play land, tap_for_mana, cast, pass, concede, attack/block declarations).
+* 🟢 Supported actions via the host (`play land`, `tap_for_mana`, `cast`, `pass`, `concede`, attack/block declarations).
 * 🟢 Game-over display.
 * ⬜ Card animations.
 * ⬜ Card zoom.
 * 🟢 Checkpoint 22 — Battlefield UI.
 
-Local client calls `applyAction` directly. Networking and server-authoritative rooms remain later.
+Phase 22 originally called `applyAction` from the client. Phases 23–24 moved authority into `GameHost`. Networking and rooms remain later.
 
 ## Phase 23 — Persistence & Reconnect
 
-* ⬜ Persist game metadata.
-* ⬜ Persist/recover state.
-* ⬜ Reconnect player.
-* ⬜ Restore player view.
-* ⬜ Browser refresh recovery.
-* ⬜ Checkpoint 23 — Reconnect.
+Rooms/WebSocket reconnect were previously listed as Phase 23. They remain later. This phase is local persist/resume of the in-process host.
+
+* 🟢 Persist game metadata (viewer, seated players, snapshot version).
+* 🟢 Persist/recover authoritative GameState (`serializeGameState`).
+* 🟢 Restore the seated viewer after reload (local, not a network reconnect).
+* 🟢 Restore the player view from the recovered host.
+* 🟢 Browser refresh recovery (localStorage).
+* 🟢 Checkpoint 23 — Persistence.
 
 ## Phase 24 — Security
 
-* ⬜ Server validation.
-* ⬜ Illegal-action rejection.
-* ⬜ Life protection.
-* ⬜ Mana protection.
-* ⬜ Zone protection.
-* ⬜ Hidden-card protection.
-* ⬜ Malicious-client tests.
-* ⬜ Checkpoint 24 — Security.
+Networked rooms were previously listed as Phase 24. They remain later. This phase is an in-process `GameHost` that is the only caller of `applyAction`.
+
+* 🟢 Host validation (`submit` as the seated actor only).
+* 🟢 Illegal-action rejection without mutating authority.
+* 🟢 Life protection (view mutations do not change host life).
+* 🟢 Mana protection (view mutations do not change host mana).
+* 🟢 Zone protection (authority is cloned per view; illegal actions do not move cards).
+* 🟢 Hidden-card protection (`viewFor` uses `redactForViewer`).
+* 🟢 Malicious-client tests (spoofed `playerId`, illegal cast, mutated view).
+* 🟢 Checkpoint 24 — Security.
+
+Unseated players auto-pass so a local hotseat can advance. That is not a second client.
 
 ## Phase 25 — Hidden Information
 
-* ⬜ Private hand view.
-* ⬜ Hidden library.
-* ⬜ Hidden face-down cards.
-* ⬜ Player-specific game view.
-* ⬜ Checkpoint 25 — Information Security.
+Engine `redactForViewer` already existed in Phase 14. This phase wires that projection into the UI through the host.
+
+* 🟢 Private hand view (your cards named; opponent hand is Unknown Card).
+* 🟢 Hidden library (opponent library identity redacted).
+* ⬜ Hidden face-down cards (morph/manifest are not in the engine).
+* 🟢 Player-specific game view (`host.viewFor(viewerId)`).
+* 🟢 Checkpoint 25 — Information Security.
 
 ## Phase 26 — Card Database
 
@@ -1897,3 +1905,156 @@ Make the Phase 21 synthetic catalog game visible and playable in the client as a
 ### Next Task
 
 Stop. Do not start deck import, real-card integration, networking, or Phase 23 yet.
+
+---
+
+## 2026-08-13 — Local table persistence and resume
+
+### Objective
+
+Persist authoritative GameState so a browser refresh can restore the seated viewer's table. No WebSockets.
+
+### Work Completed
+
+- Added `serializeAuthority` on `GameHost` and localStorage snapshot helpers (`saveTable` / `loadTable` / `clearTable`).
+- The client restores a saved table on remount and can start a new synthetic game.
+- Snapshots store viewer id, seated players, version, and full unredacted GameState JSON.
+
+### Tests Run
+
+- `npm test` — PASS
+- `npm run typecheck` — PASS
+- `npm run lint` — PASS
+- `npm run build` — PASS
+
+### Results
+
+- Playing a land, then saving and loading, restores the battlefield and step. Concede then remount shows game-over.
+
+### Decisions Made
+
+- Persist authority, not the redacted view.
+- Storage key `mtgcommander.table.v1`. Corrupt snapshots are ignored.
+- Network reconnect / rooms remain later.
+
+### Files Changed
+
+- `server/src/session.ts`
+- `server/src/persist.ts`
+- `server/src/session.test.ts`
+- `server/src/index.ts`
+- `client/src/App.tsx`
+- `client/src/App.test.tsx`
+- `docs/DEVELOPMENT_PROGRESS.md`
+
+### Checkpoint
+
+- PASS. Tag: `checkpoint-23-persistence`
+- Existing tags were not moved or rewritten.
+
+### Next Task
+
+Phase 24 — host action checks (same `GameHost` module).
+
+---
+
+## 2026-08-13 — In-process GameHost action checks
+
+### Objective
+
+Make `GameHost` the only caller of `applyAction`. Clients submit `GameAction`s as themselves. Illegal and spoofed actions must not change authority.
+
+### Work Completed
+
+- `submit(actorId, action)` rejects `action.playerId !== actorId` and unseated actors.
+- Illegal engine actions return `{ ok: false }` and leave serialized authority unchanged.
+- Mutating `viewFor` cannot change host life or mana.
+- Unseated players auto-pass so a local table can advance without a second client.
+- The UI no longer calls `applyAction` or pass-as-whoever-has-priority.
+
+### Tests Run
+
+- `npm test` — PASS
+- `npm run typecheck` — PASS
+- `npm run lint` — PASS
+- `npm run build` — PASS
+
+### Results
+
+- Spoofed pass, illegal Shock cast, and mutated views leave the host unchanged.
+
+### Decisions Made
+
+- In-process host, not a network server. WebSockets remain later.
+- Pass always uses `viewerId`. Opponent priority is flushed by the host.
+
+### Files Changed
+
+- `server/src/session.ts`
+- `server/src/session.test.ts`
+- `client/src/App.tsx`
+- `client/src/ui/Battlefield.tsx`
+- `client/src/game/dispatch.ts` (removed)
+- `client/src/game/dispatch.test.ts` (removed)
+- `client/package.json`
+- `docs/DEVELOPMENT_PROGRESS.md`
+- `docs/ARCHITECTURE.md`
+- `docs/UNSUPPORTED_INTERACTIONS.md`
+
+### Checkpoint
+
+- PASS. Tag: `checkpoint-24-security`
+- Existing tags were not moved or rewritten.
+
+### Next Task
+
+Phase 25 — show redacted opponent hands in the UI.
+
+---
+
+## 2026-08-13 — Hidden information in the battlefield UI
+
+### Objective
+
+Show the player-specific projection from `redactForViewer` in the battlefield, so opponent hands are Unknown Card backs instead of named cards or a count-only row.
+
+### Work Completed
+
+- `App` renders `host.viewFor(viewerId)`, never raw authority.
+- Opponent hand tiles use `HIDDEN_DEFINITION_ID` / Unknown Card.
+- Opponent library identity stays redacted in the host view.
+
+### Tests Run
+
+- `npm test` — PASS (181 tests)
+- `npm run typecheck` — PASS
+- `npm run lint` — PASS
+- `npm run build` — PASS
+
+### Results
+
+- Your hand shows Test Shock. The opponent hand shows seven Unknown Card tiles. Face-down battlefield cards are still not a thing (no morph).
+
+### Decisions Made
+
+- Engine `redactForViewer` from Phase 14 is the single hidden-info path. The client must not hide cards itself.
+- Morph/manifest remain unimplemented.
+
+### Files Changed
+
+- `client/src/ui/Battlefield.tsx`
+- `client/src/index.css`
+- `client/src/App.test.tsx`
+- `server/src/session.test.ts`
+- `docs/DEVELOPMENT_PROGRESS.md`
+- `docs/RULES_COVERAGE.md`
+- `docs/UNSUPPORTED_INTERACTIONS.md`
+
+### Checkpoint
+
+- PASS. Tag: `checkpoint-25-hidden-information`
+- Existing tags were not moved or rewritten.
+
+### Next Task
+
+Stop. Do not start deck import, real-card integration, networking, or Phase 26.

@@ -1,4 +1,5 @@
 import {
+  HIDDEN_DEFINITION_ID,
   MANA_COLORS,
   isCreature,
   isGameOver,
@@ -60,6 +61,7 @@ function CardTile(props: {
     "card-tile",
     card.tapped ? "is-tapped" : "",
     card.attacking ? "is-attacking" : "",
+    def.id === HIDDEN_DEFINITION_ID ? "is-hidden" : "",
     props.onClick ? "is-clickable" : "",
   ]
     .filter(Boolean)
@@ -232,6 +234,11 @@ export function Battlefield(props: Props) {
             </button>
           ) : null}
         </div>
+        <div className="hand" data-testid="hand-opponent">
+          {opponent.zones.hand.map((cardId) => (
+            <CardTile key={cardId} state={state} cardId={cardId} />
+          ))}
+        </div>
         <div className="permanents" data-testid="battlefield-opponent">
           {opponent.zones.battlefield.map((cardId) => (
             <CardTile
@@ -318,7 +325,7 @@ export function Battlefield(props: Props) {
             <button
               type="button"
               data-testid="pass"
-              onClick={() => send({ kind: "pass_priority", playerId: state.priorityPlayerId })}
+              onClick={() => send({ kind: "pass_priority", playerId: viewerId })}
             >
               Pass priority
             </button>

@@ -123,8 +123,9 @@ h3 {
   opacity: 0.85;
 }
 
-.card-tile.is-attacking {
-  border-color: #d08a4c;
+.card-tile.is-hidden {
+  background: #1a2430;
+  color: #8aa0b5;
 }
 
 .card-name {

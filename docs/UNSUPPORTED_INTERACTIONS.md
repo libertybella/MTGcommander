@@ -1,6 +1,6 @@
 # Unsupported Interactions (20-Card Engine)
 
-This log is for the synthetic 20-card pool and the engine as of Checkpoint 21. It is not a complete Comprehensive Rules gap list. See also `RULES_COVERAGE.md`.
+This log is for the synthetic 20-card pool and the local host as of Checkpoint 25. It is not a complete Comprehensive Rules gap list. See also `RULES_COVERAGE.md`.
 
 Cards in the pool are named `Test …` on purpose. They are not real Magic cards, Scryfall data, or Moxfield imports.
 
@@ -27,7 +27,8 @@ Cards in the pool are named `Test …` on purpose. They are not real Magic cards
 | Triggered abilities other than ETB | Only `enter_battlefield` queues. |
 | Replacement effects other than skip-draw | Not in the pool. |
 | Layers / copy / face-down | Not implemented. |
-| Networking / two clients / rooms | Engine-only. The local UI calls `applyAction` in-process. |
+| Networking / two clients / rooms | Not implemented. `GameHost` runs in-process; unseated opponents auto-pass. |
+| Face-down / morph / manifest | Not implemented. Hidden info is opponent hand and library identity only. |
 | Arena-like polish (animations, zoom, real card frames) | Functional battlefield tiles only. |
 
 Manual override for unsupported table talk remains a future product feature, not an engine action.
