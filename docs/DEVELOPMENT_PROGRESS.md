@@ -501,7 +501,7 @@ Private Alpha was previously listed as Phase 36. That remains later. This phase 
 * 🟢 Reject hidden opponent hand/library cards; illegal overrides leave GameState unchanged.
 * 🟢 Public `override` log entry so the table can see the correction.
 * 🟢 Battlefield Override panel for a seated player.
-* ⬜ Checkpoint 36 — Manual Override.
+* 🟢 Checkpoint 36 — Manual Override.
 
 ## Phase 37 — Private Alpha
 
@@ -584,7 +584,7 @@ Let seated players submit a table-agreed correction through `applyAction` so uns
 
 ### Checkpoint
 
-- PASS (local verification). Tag when requested: `checkpoint-36-manual-override`
+- PASS. Tag: `checkpoint-36-manual-override`
 
 ### Next Task
 
