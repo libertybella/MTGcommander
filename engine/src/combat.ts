@@ -48,12 +48,6 @@ export function pendingBlockerPlayer(state: GameState): PlayerId | null {
 }
 
 export function priorityForStep(state: GameState): PlayerId {
-  if (state.turn.step === "declareBlockers") {
-    const pending = pendingBlockerPlayer(state);
-    if (pending) {
-      return pending;
-    }
-  }
   if (isLiving(state, state.turn.activePlayerId)) {
     return state.turn.activePlayerId;
   }
@@ -163,6 +157,12 @@ export function declareAttackers(state: GameState, playerId: PlayerId, attacks: 
   combat.blockers = {};
   combat.attackersDeclared = true;
   combat.declaredBlockersFor = [];
+  if (attacks.length > 0) {
+    const attacker = next.players.find((player) => player.id === playerId);
+    if (attacker) {
+      attacker.attackedThisTurn = true;
+    }
+  }
   for (const attack of combat.attacks) {
     const card = requireCard(next, attack.attackerId);
     card.attacking = true;
@@ -183,18 +183,32 @@ export function declareBlockers(
   if (state.turn.step !== "declareBlockers") {
     throw new Error("Blockers can only be declared in the declare blockers step");
   }
-  if (playerId !== state.priorityPlayerId) {
-    throw new Error("It is not that player's priority");
-  }
   if (state.stack.length > 0) {
     throw new Error("The stack must be empty to declare blockers");
   }
   const combat = requireCombat(state);
-  if (combat.declaredBlockersFor.includes(playerId)) {
+  let defenderId = playerId;
+  if (blocks.length > 0) {
+    const controllers = new Set(
+      blocks.map((block) => requireCard(state, block.blockerId).controllerId),
+    );
+    if (controllers.size !== 1) {
+      throw new Error("Blockers must share a controller");
+    }
+    const [controllerId] = controllers;
+    if (!controllerId) {
+      throw new Error("Blockers must share a controller");
+    }
+    defenderId = controllerId;
+  }
+  if (playerId !== defenderId && playerId !== state.turn.activePlayerId) {
+    throw new Error("Only the defending player or the active player can declare those blockers");
+  }
+  if (combat.declaredBlockersFor.includes(defenderId)) {
     throw new Error("That player has already declared blockers");
   }
 
-  const attackingThisPlayer = combat.attacks.filter((attack) => attack.defenderId === playerId);
+  const attackingThisPlayer = combat.attacks.filter((attack) => attack.defenderId === defenderId);
   const legalAttackers = new Set(attackingThisPlayer.map((attack) => attack.attackerId));
   const seenBlockers = new Set<CardInstanceId>();
 
@@ -210,7 +224,7 @@ export function declareBlockers(
     if (blocker.zone !== "battlefield" || !isCreature(state, block.blockerId)) {
       throw new Error(`Card ${block.blockerId} cannot block`);
     }
-    if (blocker.controllerId !== playerId) {
+    if (blocker.controllerId !== defenderId) {
       throw new Error(`Card ${block.blockerId} is not controlled by the defending player`);
     }
     if (blocker.tapped) {
@@ -243,10 +257,25 @@ export function declareBlockers(
     const blocker = requireCard(next, block.blockerId);
     blocker.blockingAttackerId = block.attackerId;
   }
-  nextCombat.declaredBlockersFor.push(playerId);
+  nextCombat.declaredBlockersFor.push(defenderId);
   next.passesSinceAction = 0;
   next.priorityPlayerId = priorityForStep(next);
   return next;
+}
+
+/** Active player locks in remaining undeclared defenders as no additional blocks. */
+export function lockRemainingBlockers(state: GameState): GameState {
+  let current = state;
+  let guard = 0;
+  while (pendingBlockerPlayer(current) && guard < 8) {
+    const pending = pendingBlockerPlayer(current);
+    if (!pending) {
+      break;
+    }
+    current = declareBlockers(current, pending, []);
+    guard += 1;
+  }
+  return current;
 }
 
 function destroyLethalCreatures(state: GameState): GameState {

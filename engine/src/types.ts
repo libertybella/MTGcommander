@@ -88,8 +88,15 @@ export type CardDefinition = {
   producesAnyColor: boolean;
   /** `{T}: Add {G} or {W}` — tap for one of these. */
   producesOptions: ManaColor[];
-  /** Non-mana activated abilities. Mana tapping still uses `produces`. */
+  /** Distinct `{T}: Add` mana abilities. Empty means use produces / producesOptions. */
+  manaAbilities: ManaAbility[];
+  /** Non-mana activated abilities. Mana tapping still uses `produces` / `manaAbilities`. */
   activated: ActivatedAbility[];
+  /** Scryfall card image, if known. Empty for synthetic / hidden cards. */
+  imageUrl: string;
+  /** Linked opposite face for modal DFCs and transforming cards. */
+  otherFaceId?: CardDefinitionId;
+  layout?: "normal" | "modal_dfc" | "transform";
 };
 
 export type CardInstance = {
@@ -104,6 +111,8 @@ export type CardInstance = {
   blockingAttackerId: CardInstanceId | null;
   summoningSick: boolean;
   counters: Record<string, number>;
+  /** 0 means not a Class. Class enchantments enter at 1. */
+  classLevel: number;
 };
 
 export type CommanderState = {
@@ -124,6 +133,8 @@ export type PlayerState = {
   lost: boolean;
   /** Lands played this turn. Resets on that player's untap. */
   landsPlayedThisTurn: number;
+  /** True after this player declared at least one attacker this turn. */
+  attackedThisTurn: boolean;
   /** Set when a draw is attempted from an empty library. SBA then eliminates. */
   failedToDraw: boolean;
 };
@@ -162,6 +173,11 @@ export type MulliganState = {
   startingHandSize: number;
 };
 
+export type OpeningRollState = {
+  rolls: Record<PlayerId, number>;
+  startingHandSize: number;
+};
+
 export type GameState = {
   id: GameId;
   players: PlayerState[];
@@ -178,6 +194,42 @@ export type GameState = {
   log: GameLogEntry[];
   /** Null after every living player has kept an opening hand. */
   mulligan: MulliganState | null;
+  /** Null after the opening d20 has chosen the first player. */
+  openingRoll: OpeningRollState | null;
+  /** Player who started the game; the turn number increases when play returns here. */
+  firstPlayerId: PlayerId;
+  /** FIFO special choices. Index 0 is the current pause; empty means play continues. */
+  prompts: PendingPrompt[];
+  /** Hidden-zone cards currently shown to a viewer (hand reveal). */
+  reveals: ZoneReveal[];
+};
+
+export type ZoneReveal = {
+  viewerId: PlayerId;
+  cardIds: CardInstanceId[];
+};
+
+export type LookDestination = "hand" | "library_bottom" | "exile";
+
+export type CardFilter = "any" | "nonland" | "noncreature_nonland";
+
+export type ChooseCardSource = {
+  playerId: PlayerSelector;
+  zone: "hand" | "graveyard";
+  filter: CardFilter;
+};
+
+export type BoundChooseCardSource = {
+  playerId: PlayerId;
+  zone: "hand" | "graveyard";
+  filter: CardFilter;
+};
+
+export type TokenTemplate = {
+  name: string;
+  typeLine: string;
+  power: number | null;
+  toughness: number | null;
 };
 
 export type GameEffect =
@@ -190,6 +242,8 @@ export type GameEffect =
       amount: number;
     }
   | { kind: "draw"; playerId: PlayerId; count: number }
+  | { kind: "scry"; playerId: PlayerId; count: number }
+  | { kind: "surveil"; playerId: PlayerId; count: number }
   | {
       kind: "move_card";
       cardId: CardInstanceId;
@@ -209,15 +263,40 @@ export type GameEffect =
     }
   | { kind: "mill"; playerId: PlayerId; count: number }
   | { kind: "discard"; playerId: PlayerId; count: number }
+  | { kind: "discard_unless_attacked"; playerId: PlayerId; count: number }
+  | { kind: "amass"; playerId: PlayerId; amount: number; subtype?: string }
+  | { kind: "reveal_zone"; fromPlayerId: PlayerId; toPlayerId: PlayerId; zone: "hand" }
+  | {
+      kind: "choose_card";
+      chooserId: PlayerId;
+      sources: BoundChooseCardSource[];
+      thenEffects: CardEffect[];
+      sourceId: CardInstanceId | null;
+    }
+  | {
+      kind: "look_and_assign";
+      playerId: PlayerId;
+      count: number;
+      destinations: LookDestination[];
+    }
   | { kind: "sacrifice"; cardId: CardInstanceId }
   | { kind: "add_counter"; cardId: CardInstanceId; counter: string; amount: number }
-  | { kind: "counter_spell"; stackObjectId: StackObjectId };
+  | { kind: "counter_spell"; stackObjectId: StackObjectId }
+  | { kind: "set_class_level"; cardId: CardInstanceId; level: number };
 
 export type EffectTarget =
   | { type: "player"; playerId: PlayerId }
   | { type: "creature"; cardId: CardInstanceId };
 
-export type TargetKind = "player" | "creature" | "player_or_creature" | "spell";
+export type TargetKind =
+  | "player"
+  | "opponent"
+  | "creature"
+  | "nonartifact_creature"
+  | "player_or_creature"
+  | "spell"
+  | "creature_spell"
+  | "noncreature_spell";
 
 export type TargetRequirement = {
   kind: TargetKind;
@@ -257,6 +336,8 @@ export type CardEffect =
       amount: number;
     }
   | { kind: "draw"; playerId: PlayerSelector; count: number }
+  | { kind: "scry"; playerId: PlayerSelector; count: number }
+  | { kind: "surveil"; playerId: PlayerSelector; count: number }
   | {
       kind: "move_card";
       cardId: CardIdSelector;
@@ -276,9 +357,30 @@ export type CardEffect =
     }
   | { kind: "mill"; playerId: PlayerSelector; count: number }
   | { kind: "discard"; playerId: PlayerSelector; count: number }
+  | { kind: "discard_unless_attacked"; playerId: PlayerSelector; count: number }
+  | { kind: "amass"; playerId: PlayerSelector; amount: number; subtype?: string }
+  | {
+      kind: "reveal_zone";
+      fromPlayerId: PlayerSelector;
+      toPlayerId: PlayerSelector;
+      zone: "hand";
+    }
+  | {
+      kind: "choose_card";
+      chooserId: PlayerSelector;
+      sources: ChooseCardSource[];
+      thenEffects: CardEffect[];
+    }
+  | {
+      kind: "look_and_assign";
+      playerId: PlayerSelector;
+      count: number;
+      destinations: LookDestination[];
+    }
   | { kind: "sacrifice"; cardId: CardIdSelector }
   | { kind: "add_counter"; cardId: CardIdSelector; counter: string; amount: number }
-  | { kind: "counter_spell"; target: ChosenTargetRef };
+  | { kind: "counter_spell"; target: ChosenTargetRef }
+  | { kind: "set_class_level"; cardId: CardIdSelector; level: number };
 
 export type Keyword =
   | "flying"
@@ -297,9 +399,67 @@ export type Keyword =
   | "defender";
 
 export type CardTrigger = {
-  event: "enter_battlefield";
+  event: "enter_battlefield" | "begin_combat";
   effects: CardEffect[];
+  /** Chosen when the trigger is put on the stack. Empty or omitted means untargeted. */
+  targetRequirements?: TargetRequirement[];
 };
+
+/** A required player decision that is not priority (targets, later modes). */
+export type PendingPrompt =
+  | {
+      kind: "choose_targets";
+      playerId: PlayerId;
+      sourceId: CardInstanceId;
+      origin: "trigger";
+      triggerIndex: number;
+      requirements: TargetRequirement[];
+    }
+  | {
+      kind: "may_pay_life_or_enter_tapped";
+      playerId: PlayerId;
+      sourceId: CardInstanceId;
+      amount: number;
+    }
+  | {
+      kind: "scry";
+      playerId: PlayerId;
+      count: number;
+      resumeEffects?: GameEffect[];
+    }
+  | {
+      kind: "surveil";
+      playerId: PlayerId;
+      count: number;
+      resumeEffects?: GameEffect[];
+    }
+  | {
+      kind: "choose_discard";
+      playerId: PlayerId;
+      count: number;
+      resumeEffects?: GameEffect[];
+    }
+  | {
+      kind: "choose_card";
+      playerId: PlayerId;
+      sources: BoundChooseCardSource[];
+      thenEffects: CardEffect[];
+      sourceId: CardInstanceId | null;
+      resumeEffects?: GameEffect[];
+    }
+  | {
+      kind: "look_and_assign";
+      playerId: PlayerId;
+      count: number;
+      destinations: LookDestination[];
+      resumeEffects?: GameEffect[];
+    };
+
+export type EnterTappedUnless =
+  | { kind: "other_lands"; count: number }
+  | { kind: "legendary_creature" }
+  | { kind: "controlled_types"; types: string[] }
+  | { kind: "basic_lands"; count: number };
 
 export type ActivatedAbility = {
   /** True when the cost includes {T}. */
@@ -308,11 +468,26 @@ export type ActivatedAbility = {
   manaCost: string;
   effects: CardEffect[];
   targetRequirements: TargetRequirement[];
+  /** Defaults to battlefield. Channel is activated from hand. */
+  zone?: "battlefield" | "hand";
+  /** True when the cost includes discarding this card (Channel). */
+  discard?: boolean;
+  /** Class level-up is a sorcery-speed class ability. */
+  timing?: "any" | "sorcery";
 };
 
-export type ReplacementEffect = {
-  kind: "replace_draw";
-  instead: "skip";
+export type ReplacementEffect =
+  | { kind: "replace_draw"; instead: "skip" }
+  | { kind: "enters_tapped" }
+  | { kind: "enters_tapped_unless"; unless: EnterTappedUnless }
+  | { kind: "enters_tapped_if"; if: EnterTappedUnless }
+  | { kind: "may_pay_life_or_enter_tapped"; amount: number };
+
+export type ManaAbility = {
+  produces: Partial<ManaPool>;
+  producesOptions: ManaColor[];
+  producesAnyColor: boolean;
+  damageToController: number;
 };
 
 export type StaticModifier = {
@@ -338,6 +513,20 @@ export type GameLogEntry =
       kind: "override";
       playerId: PlayerId;
       summary: string;
+    }
+  | {
+      kind: "die_roll";
+      playerId: PlayerId;
+      sides: number;
+      result: number;
+    }
+  | {
+      kind: "opening_tie";
+      playerIds: PlayerId[];
+    }
+  | {
+      kind: "first_player";
+      playerId: PlayerId;
     };
 
 /** Table-agreed correction. Not a comprehensive-rules action. */
@@ -347,12 +536,14 @@ export type ManualOverrideChange =
   | { type: "mill"; targetPlayerId: PlayerId; count: number }
   | { type: "add_mana"; targetPlayerId: PlayerId; color: ManaColor }
   | { type: "move_card"; cardId: CardInstanceId; toZone: keyof PlayerZones }
-  | { type: "set_tapped"; cardId: CardInstanceId; tapped: boolean };
+  | { type: "set_tapped"; cardId: CardInstanceId; tapped: boolean }
+  | { type: "discard_hand" }
+  | { type: "create_token"; template: TokenTemplate };
 
 export type GameAction =
   | { kind: "pass_priority"; playerId: PlayerId }
-  | { kind: "cast_spell"; playerId: PlayerId; cardId: CardInstanceId; targets?: ChosenTarget[] }
-  | { kind: "play_land"; playerId: PlayerId; cardId: CardInstanceId }
+  | { kind: "cast_spell"; playerId: PlayerId; cardId: CardInstanceId; targets?: ChosenTarget[]; faceIndex?: number }
+  | { kind: "play_land"; playerId: PlayerId; cardId: CardInstanceId; faceIndex?: number }
   | {
       kind: "declare_attackers";
       playerId: PlayerId;
@@ -364,7 +555,7 @@ export type GameAction =
       blocks: { blockerId: CardInstanceId; attackerId: CardInstanceId }[];
     }
   | { kind: "concede"; playerId: PlayerId }
-  | { kind: "tap_for_mana"; playerId: PlayerId; cardId: CardInstanceId; color?: ManaColor }
+  | { kind: "tap_for_mana"; playerId: PlayerId; cardId: CardInstanceId; color?: ManaColor; manaIndex?: number }
   | {
       kind: "activate_ability";
       playerId: PlayerId;
@@ -375,7 +566,23 @@ export type GameAction =
   | { kind: "keep_hand"; playerId: PlayerId }
   | { kind: "mulligan"; playerId: PlayerId }
   | { kind: "bottom_cards"; playerId: PlayerId; cardIds: CardInstanceId[] }
-  | { kind: "manual_override"; playerId: PlayerId; change: ManualOverrideChange };
+  | { kind: "manual_override"; playerId: PlayerId; change: ManualOverrideChange }
+  | { kind: "undo"; playerId: PlayerId }
+  | { kind: "roll_die"; playerId: PlayerId; sides: number }
+  | { kind: "opening_roll"; playerId: PlayerId }
+  | { kind: "advance_step"; playerId: PlayerId }
+  | { kind: "advance_turn"; playerId: PlayerId }
+  | { kind: "choose_targets"; playerId: PlayerId; targets: ChosenTarget[] }
+  | { kind: "choose_enter_replacement"; playerId: PlayerId; pay: boolean }
+  | { kind: "resolve_scry"; playerId: PlayerId; bottomIds: CardInstanceId[] }
+  | { kind: "resolve_surveil"; playerId: PlayerId; graveyardIds: CardInstanceId[] }
+  | { kind: "resolve_discard"; playerId: PlayerId; cardIds: CardInstanceId[] }
+  | { kind: "resolve_choose_card"; playerId: PlayerId; cardId: CardInstanceId }
+  | {
+      kind: "resolve_look_assign";
+      playerId: PlayerId;
+      assignments: { cardId: CardInstanceId; destination: LookDestination }[];
+    };
 
 export type GameEvent =
   | { kind: "game_created"; gameId: GameId }

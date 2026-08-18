@@ -123,4 +123,77 @@ describe("definition seating", () => {
     expect(game.players.every((player) => player.zones.command.length === 1)).toBe(true);
     expect(game.players.every((player) => player.zones.hand.length === 2)).toBe(true);
   });
+
+  it("keeps the back face definition so either modal land can be played", () => {
+    const pathway = compileOracleCard({
+      oracleId: "pathway",
+      name: "Riverglide Pathway // Lavaglide Pathway",
+      manaCost: "",
+      typeLine: "Land",
+      oracleText: "{T}: Add {U}.",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      layout: "modal_dfc",
+      faces: [
+        {
+          name: "Riverglide Pathway",
+          manaCost: "",
+          typeLine: "Land",
+          oracleText: "{T}: Add {U}.",
+          power: null,
+          toughness: null,
+        },
+        {
+          name: "Lavaglide Pathway",
+          manaCost: "",
+          typeLine: "Land",
+          oracleText: "{T}: Add {R}.",
+          power: null,
+          toughness: null,
+        },
+      ],
+    });
+    const dragon = compileOracleCard({
+      oracleId: "d-path",
+      name: "Test Dragon",
+      manaCost: "{5}",
+      typeLine: "Legendary Creature — Dragon",
+      oracleText: "Flying",
+      power: "5",
+      toughness: "5",
+      printedKeywords: ["Flying"],
+    }).definition;
+    const front = pathway.definition;
+    const back = pathway.otherDefinition;
+    if (!back) {
+      throw new Error("need back face");
+    }
+    const game = startDefinitionGame({
+      playerCount: 2,
+      playerNames: ["You", "Opponent"],
+      definitions: {
+        [front.id]: front,
+        [back.id]: back,
+        [dragon.id]: dragon,
+      },
+      openingHandSize: 1,
+      shuffle: false,
+      skipMulligan: true,
+      skipOpeningRoll: true,
+      decks: [
+        {
+          commanderDefinitionId: dragon.id,
+          libraryDefinitionIds: [front.id],
+        },
+        {
+          commanderDefinitionId: dragon.id,
+          libraryDefinitionIds: [front.id],
+        },
+      ],
+    });
+    expect(game.definitions[front.id]?.name).toBe("Riverglide Pathway");
+    expect(game.definitions[back.id]?.name).toBe("Lavaglide Pathway");
+    expect(game.definitions[front.id]?.otherFaceId).toBe(back.id);
+  });
 });

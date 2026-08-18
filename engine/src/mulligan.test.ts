@@ -22,6 +22,7 @@ function twoPlayer(skipMulligan = false) {
     playerCount: 2,
     playerNames: ["You", "Opponent"],
     skipMulligan,
+    skipOpeningRoll: true,
     openingHandSize: 7,
     decks: [
       { commanderDefinitionId: POOL_ID.dragon, libraryDefinitionIds: library() },
@@ -54,6 +55,7 @@ describe("London mulligan", () => {
     expect(kept.mulligan?.decidingPlayerId).toBe(them.id);
     const done = applyAction(kept, { kind: "keep_hand", playerId: them.id });
     expect(isMulliganOpen(done)).toBe(false);
+    expect(done.turn.step).toBe("upkeep");
   });
 
   it("shuffles, draws seven, then bottoms one card on a two-player first mulligan", () => {
@@ -96,6 +98,7 @@ describe("London mulligan", () => {
       playerCount: 3,
       playerNames: ["You", "Opponent 1", "Opponent 2"],
       skipMulligan: false,
+      skipOpeningRoll: true,
       decks: [deck, deck, deck],
     });
     const you = start.players[0];

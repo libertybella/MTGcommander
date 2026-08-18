@@ -1,7 +1,8 @@
 import { cloneGameState } from "./clone";
 import { createCardInstance, createGameState, type CreateGameOptions } from "./createGame";
-import { syntheticPoolById } from "./pool";
 import { beginMulligan } from "./mulligan";
+import { beginOpeningRoll } from "./openingRoll";
+import { syntheticPoolById } from "./pool";
 import { shuffleInPlace } from "./shuffle";
 import { moveCard } from "./zones";
 import type { CardDefinition, GameState, PlayerId } from "./types";
@@ -9,12 +10,7 @@ import type { CardDefinition, GameState, PlayerId } from "./types";
 export type TablePlayerCount = 2 | 3 | 4;
 
 export function defaultPlayerNames(playerCount: TablePlayerCount): string[] {
-  if (playerCount === 2) {
-    return ["You", "Opponent"];
-  }
-  return Array.from({ length: playerCount }, (_, index) =>
-    index === 0 ? "You" : `Opponent ${index}`,
-  );
+  return Array.from({ length: playerCount }, (_, index) => `Player ${index + 1}`);
 }
 
 export type CatalogDeckSpec = {
@@ -31,6 +27,8 @@ export type StartCatalogGameOptions = CreateGameOptions & {
   startingLife?: number;
   /** Engine tests skip opening mulligans. The client leaves this false. */
   skipMulligan?: boolean;
+  /** Engine mulligan tests skip the opening d20. The client leaves this false. */
+  skipOpeningRoll?: boolean;
 };
 
 export type StartDefinitionGameOptions = StartCatalogGameOptions & {
@@ -68,6 +66,22 @@ function requireDefinition(
   return definition;
 }
 
+function seatDefinition(
+  state: GameState,
+  definitions: Record<string, CardDefinition>,
+  definitionId: string,
+): CardDefinition {
+  const definition = requireDefinition(definitions, definitionId);
+  state.definitions[definition.id] = definition;
+  if (definition.otherFaceId) {
+    const other = definitions[definition.otherFaceId];
+    if (other) {
+      state.definitions[other.id] = other;
+    }
+  }
+  return definition;
+}
+
 export function seatDecks(
   state: GameState,
   decks: CatalogDeckSpec[],
@@ -85,8 +99,7 @@ export function seatDecks(
       throw new Error("Missing deck or player");
     }
     for (const commanderDefinitionId of commanderIdsFromSpec(spec)) {
-      const commanderDef = requireDefinition(definitions, commanderDefinitionId);
-      next.definitions[commanderDef.id] = commanderDef;
+      const commanderDef = seatDefinition(next, definitions, commanderDefinitionId);
       const commander = createCardInstance({
         definitionId: commanderDef.id,
         ownerId: player.id,
@@ -99,8 +112,7 @@ export function seatDecks(
     }
 
     for (const definitionId of spec.libraryDefinitionIds) {
-      const definition = requireDefinition(definitions, definitionId);
-      next.definitions[definition.id] = definition;
+      const definition = seatDefinition(next, definitions, definitionId);
       const card = createCardInstance({
         definitionId: definition.id,
         ownerId: player.id,
@@ -151,18 +163,34 @@ function applyStartingLife(state: GameState, startingLife: number | undefined): 
   return next;
 }
 
-function finishStart(state: GameState, openingHandSize: number, startingLife: number | undefined, skipMulligan: boolean): GameState {
+function finishStart(
+  state: GameState,
+  openingHandSize: number,
+  startingLife: number | undefined,
+  skipMulligan: boolean,
+  skipOpeningRoll: boolean,
+): GameState {
   const dealt = applyStartingLife(dealOpeningHands(state, openingHandSize), startingLife);
   if (skipMulligan) {
     return dealt;
   }
-  return beginMulligan(dealt, openingHandSize);
+  if (skipOpeningRoll) {
+    return beginMulligan(dealt, openingHandSize);
+  }
+  return beginOpeningRoll(dealt, openingHandSize);
 }
 
 export function startCatalogGame(options: StartCatalogGameOptions): GameState {
-  const { decks, openingHandSize = 7, startingLife, skipMulligan = true, ...createOptions } = options;
+  const {
+    decks,
+    openingHandSize = 7,
+    startingLife,
+    skipMulligan = true,
+    skipOpeningRoll = false,
+    ...createOptions
+  } = options;
   const seated = seatCatalogDecks(createGameState(createOptions), decks);
-  return finishStart(seated, openingHandSize, startingLife, skipMulligan);
+  return finishStart(seated, openingHandSize, startingLife, skipMulligan, skipOpeningRoll);
 }
 
 export function startDefinitionGame(options: StartDefinitionGameOptions): GameState {
@@ -174,11 +202,12 @@ export function startDefinitionGame(options: StartDefinitionGameOptions): GameSt
     shuffle = true,
     random,
     skipMulligan = true,
+    skipOpeningRoll = false,
     ...createOptions
   } = options;
   const seated = seatDecks(createGameState(createOptions), decks, definitions, {
     shuffle,
     random,
   });
-  return finishStart(seated, openingHandSize, startingLife, skipMulligan);
+  return finishStart(seated, openingHandSize, startingLife, skipMulligan, skipOpeningRoll);
 }

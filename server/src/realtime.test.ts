@@ -141,7 +141,7 @@ describe("websocket game server", () => {
     const friendState = waitFor(
       friendSocket,
       "state",
-      (message) => (message.view as GameState).priorityPlayerId === friendId,
+      (message) => (message.view as GameState).turn.step === "upkeep",
     );
     hostSocket.send(
       JSON.stringify({
@@ -151,6 +151,7 @@ describe("websocket game server", () => {
     );
     const update = await friendState;
     const view = update.view as GameState;
-    expect(view.priorityPlayerId).toBe(friendId);
+    expect(view.turn.step).toBe("upkeep");
+    expect(view.priorityPlayerId).toBe(you);
   });
 });

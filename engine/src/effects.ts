@@ -5,8 +5,10 @@ import { creatureToughness, wouldSkipDraw } from "./derived";
 import { hasKeyword } from "./keywords";
 import { addMana, tapCard, untapCard } from "./mana";
 import { livingPlayers, nextLivingPlayerId } from "./players";
+import { isPromptOpen, legalIdsForChooseSources } from "./prompt";
 import { applyStateBasedActionsInPlace } from "./status";
 import { isChosenTargetLegal } from "./targeting";
+import { amassArmyTemplate } from "./tokens";
 import { queueEnterBattlefieldTriggersInPlace } from "./triggers";
 import { countCardPlacements, enterOwnerZone, moveCard } from "./zones";
 import type {
@@ -17,6 +19,7 @@ import type {
   ChosenTargetRef,
   GameEffect,
   GameState,
+  LookDestination,
   PlayerId,
   PlayerSelector,
   PlayerState,
@@ -29,6 +32,7 @@ export type BindEffectContext = {
   sourceId: CardInstanceId | null;
   targets?: ChosenTarget[];
   targetRequirements?: TargetRequirement[];
+  chosenCardId?: CardInstanceId;
 };
 
 function nextOpponentId(state: GameState, controllerId: PlayerId): PlayerId {
@@ -131,6 +135,12 @@ function bindCardId(
   context: BindEffectContext,
 ): CardInstanceId | null {
   if (typeof selector === "string") {
+    if (selector === "self") {
+      return context.sourceId;
+    }
+    if (selector === "chosen_card") {
+      return context.chosenCardId ?? null;
+    }
     return selector;
   }
   const chosen = chosenTargetAt(context, selector.index, state);
@@ -151,7 +161,10 @@ export function bindCardEffect(
     case "draw":
     case "add_mana":
     case "mill":
-    case "discard": {
+    case "discard":
+    case "scry":
+    case "surveil":
+    case "discard_unless_attacked": {
       const playerId = bindPlayerSelector(state, effect.playerId, context);
       if (!playerId) {
         return null;
@@ -159,6 +172,58 @@ export function bindCardEffect(
       return {
         ...effect,
         playerId,
+      };
+    }
+    case "amass": {
+      const playerId = bindPlayerSelector(state, effect.playerId, context);
+      if (!playerId) {
+        return null;
+      }
+      return {
+        kind: "amass",
+        playerId,
+        amount: effect.amount,
+        ...(effect.subtype ? { subtype: effect.subtype } : {}),
+      };
+    }
+    case "look_and_assign": {
+      const playerId = bindPlayerSelector(state, effect.playerId, context);
+      if (!playerId) {
+        return null;
+      }
+      return {
+        kind: "look_and_assign",
+        playerId,
+        count: effect.count,
+        destinations: [...effect.destinations],
+      };
+    }
+    case "reveal_zone": {
+      const fromPlayerId = bindPlayerSelector(state, effect.fromPlayerId, context);
+      const toPlayerId = bindPlayerSelector(state, effect.toPlayerId, context);
+      if (!fromPlayerId || !toPlayerId) {
+        return null;
+      }
+      return { kind: "reveal_zone", fromPlayerId, toPlayerId, zone: effect.zone };
+    }
+    case "choose_card": {
+      const chooserId = bindPlayerSelector(state, effect.chooserId, context);
+      if (!chooserId) {
+        return null;
+      }
+      const sources = effect.sources.flatMap((source) => {
+        const playerId = bindPlayerSelector(state, source.playerId, context);
+        return playerId ? [{ playerId, zone: source.zone, filter: source.filter }] : [];
+      });
+      if (sources.length === 0) {
+        return null;
+      }
+      return {
+        kind: "choose_card",
+        chooserId,
+        sources,
+        thenEffects: effect.thenEffects.map((entry) => ({ ...entry })),
+        sourceId: context.sourceId,
       };
     }
     case "deal_damage": {
@@ -236,6 +301,13 @@ export function bindCardEffect(
         return null;
       }
       return { kind: "add_counter", cardId, counter: effect.counter, amount: effect.amount };
+    }
+    case "set_class_level": {
+      const cardId = bindCardId(state, effect.cardId, context);
+      if (!cardId) {
+        return null;
+      }
+      return { kind: "set_class_level", cardId, level: effect.level };
     }
     case "counter_spell": {
       const chosen = chosenTargetAt(context, effect.target.index, state);
@@ -360,6 +432,38 @@ function applyDraw(state: GameState, playerId: PlayerId, count: number): GameSta
   return next;
 }
 
+function applyScry(state: GameState, playerId: PlayerId, count: number): GameState {
+  requirePositiveInteger(count, "scry count");
+  const player = requirePlayer(state, playerId);
+  const looked = Math.min(count, player.zones.library.length);
+  if (looked === 0) {
+    return cloneGameState(state);
+  }
+  const next = cloneGameState(state);
+  next.prompts.push({
+    kind: "scry",
+    playerId,
+    count: looked,
+  });
+  return next;
+}
+
+function applySurveil(state: GameState, playerId: PlayerId, count: number): GameState {
+  requirePositiveInteger(count, "surveil count");
+  const player = requirePlayer(state, playerId);
+  const looked = Math.min(count, player.zones.library.length);
+  if (looked === 0) {
+    return cloneGameState(state);
+  }
+  const next = cloneGameState(state);
+  next.prompts.push({
+    kind: "surveil",
+    playerId,
+    count: looked,
+  });
+  return next;
+}
+
 function applyMill(state: GameState, playerId: PlayerId, count: number): GameState {
   requirePositiveInteger(count, "mill count");
   requirePlayer(state, playerId);
@@ -420,6 +524,26 @@ function applyAddCounter(
   return next;
 }
 
+function applySetClassLevel(state: GameState, cardId: CardInstanceId, level: number): GameState {
+  requirePositiveInteger(level, "class level");
+  const next = cloneGameState(state);
+  const card = next.cards[cardId];
+  if (!card) {
+    throw new Error(`Unknown card ${cardId}`);
+  }
+  if (card.zone !== "battlefield") {
+    throw new Error(`Card ${cardId} is not on the battlefield`);
+  }
+  if (card.classLevel < 1) {
+    throw new Error(`Card ${cardId} is not a Class`);
+  }
+  if (level !== card.classLevel + 1) {
+    throw new Error("Class levels must be gained in order");
+  }
+  card.classLevel = level;
+  return next;
+}
+
 function applyCounterSpell(state: GameState, stackObjectId: StackObjectId): GameState {
   const next = cloneGameState(state);
   const index = next.stack.findIndex((entry) => entry.id === stackObjectId);
@@ -464,6 +588,116 @@ function applyCreateToken(
   return next;
 }
 
+function findControlledArmy(state: GameState, playerId: PlayerId): CardInstanceId | undefined {
+  const player = state.players.find((entry) => entry.id === playerId);
+  return player?.zones.battlefield.find((cardId) => {
+    const card = state.cards[cardId];
+    const typeLine = card ? state.definitions[card.definitionId]?.typeLine.toLowerCase() ?? "" : "";
+    return Boolean(card && card.controllerId === playerId && typeLine.includes("army"));
+  });
+}
+
+function applyAmass(
+  state: GameState,
+  playerId: PlayerId,
+  amount: number,
+  subtype: string | undefined,
+): GameState {
+  requirePositiveInteger(amount, "amass amount");
+  requirePlayer(state, playerId);
+  let next = state;
+  let armyId = findControlledArmy(next, playerId);
+  if (!armyId) {
+    const template = amassArmyTemplate(subtype);
+    next = applyCreateToken(next, {
+      kind: "create_token",
+      ownerId: playerId,
+      name: template.name,
+      typeLine: template.typeLine,
+      power: template.power,
+      toughness: template.toughness,
+    });
+    armyId = findControlledArmy(next, playerId);
+  }
+  if (!armyId) {
+    throw new Error("Amass failed to create an Army");
+  }
+  return applyAddCounter(next, armyId, "p1p1", amount);
+}
+
+function applyDiscardUnlessAttacked(state: GameState, playerId: PlayerId, count: number): GameState {
+  requirePositiveInteger(count, "discard count");
+  const player = requirePlayer(state, playerId);
+  if (player.attackedThisTurn) {
+    return state;
+  }
+  const available = Math.min(count, player.zones.hand.length);
+  if (available === 0) {
+    return state;
+  }
+  const next = cloneGameState(state);
+  next.prompts.push({ kind: "choose_discard", playerId, count: available });
+  return next;
+}
+
+function applyRevealZone(
+  state: GameState,
+  fromPlayerId: PlayerId,
+  toPlayerId: PlayerId,
+  zone: "hand",
+): GameState {
+  requirePlayer(state, fromPlayerId);
+  requirePlayer(state, toPlayerId);
+  const from = state.players.find((entry) => entry.id === fromPlayerId);
+  const next = cloneGameState(state);
+  next.reveals.push({
+    viewerId: toPlayerId,
+    cardIds: [...(from?.zones[zone] ?? [])],
+  });
+  return next;
+}
+
+function applyChooseCardEffect(
+  state: GameState,
+  effect: Extract<GameEffect, { kind: "choose_card" }>,
+): GameState {
+  const legal = legalIdsForChooseSources(state, effect.sources);
+  if (legal.length === 0) {
+    return state;
+  }
+  const next = cloneGameState(state);
+  next.prompts.push({
+    kind: "choose_card",
+    playerId: effect.chooserId,
+    sources: effect.sources.map((source) => ({ ...source })),
+    thenEffects: effect.thenEffects.map((entry) => ({ ...entry })),
+    sourceId: effect.sourceId,
+  });
+  return next;
+}
+
+function applyLookAndAssign(
+  state: GameState,
+  playerId: PlayerId,
+  count: number,
+  destinations: LookDestination[],
+): GameState {
+  requirePositiveInteger(count, "look count");
+  const player = requirePlayer(state, playerId);
+  const looked = Math.min(count, player.zones.library.length);
+  if (looked === 0 || destinations.length === 0) {
+    return state;
+  }
+  const next = cloneGameState(state);
+  next.prompts.push({
+    kind: "look_and_assign",
+    playerId,
+    count: looked,
+    destinations: destinations.slice(0, Math.max(looked, destinations.length)),
+  });
+  return next;
+}
+
 /**
  * Apply a reusable rules effect. Illegal effects throw and leave the original
  * GameState unchanged.
@@ -484,6 +718,12 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
         break;
       case "draw":
         next = applyDraw(state, effect.playerId, effect.count);
+        break;
+      case "scry":
+        next = applyScry(state, effect.playerId, effect.count);
+        break;
+      case "surveil":
+        next = applySurveil(state, effect.playerId, effect.count);
         break;
       case "move_card":
         next = moveCard(state, effect.cardId, effect.toZone, {
@@ -517,6 +757,24 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
       case "counter_spell":
         next = applyCounterSpell(state, effect.stackObjectId);
         break;
+      case "set_class_level":
+        next = applySetClassLevel(state, effect.cardId, effect.level);
+        break;
+      case "discard_unless_attacked":
+        next = applyDiscardUnlessAttacked(state, effect.playerId, effect.count);
+        break;
+      case "amass":
+        next = applyAmass(state, effect.playerId, effect.amount, effect.subtype);
+        break;
+      case "reveal_zone":
+        next = applyRevealZone(state, effect.fromPlayerId, effect.toPlayerId, effect.zone);
+        break;
+      case "choose_card":
+        next = applyChooseCardEffect(state, effect);
+        break;
+      case "look_and_assign":
+        next = applyLookAndAssign(state, effect.playerId, effect.count, effect.destinations);
+        break;
       default: {
         const exhaustive: never = effect;
         throw new Error(`Unknown effect ${(exhaustive as GameEffect).kind}`);
@@ -534,8 +792,26 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
 
 export function applyEffects(state: GameState, effects: GameEffect[]): GameState {
   let current = state;
-  for (const effect of effects) {
-    current = applyEffect(current, effect);
+  for (let index = 0; index < effects.length; index += 1) {
+    current = applyEffect(current, effects[index]!);
+    if (!isPromptOpen(current)) {
+      continue;
+    }
+    const prompt = current.prompts[current.prompts.length - 1];
+    if (
+      prompt &&
+      (prompt.kind === "scry" ||
+        prompt.kind === "surveil" ||
+        prompt.kind === "choose_discard" ||
+        prompt.kind === "choose_card" ||
+        prompt.kind === "look_and_assign")
+    ) {
+      const remaining = effects.slice(index + 1);
+      if (remaining.length > 0) {
+        prompt.resumeEffects = remaining;
+      }
+    }
+    break;
   }
   return current;
 }

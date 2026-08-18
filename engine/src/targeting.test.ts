@@ -226,6 +226,16 @@ describe("targeting", () => {
     ]);
   });
 
+  it("round-trips a choose_targets action", () => {
+    const { p1 } = twoPlayers();
+    const action = {
+      kind: "choose_targets" as const,
+      playerId: p1.id,
+      targets: [{ type: "player" as const, playerId: p1.id }],
+    };
+    expect(parseGameAction(serializeGameAction(action))).toEqual(action);
+  });
+
   it("counters a spell on the stack chosen at cast", () => {
     const { game, p1, p2 } = twoPlayers();
     const shock = addToHand(game, p1.id, testShock());
@@ -266,6 +276,72 @@ describe("targeting", () => {
         playerId: p1.id,
         cardId: counter.id,
         targets: [{ type: "spell", stackObjectId: "stack-missing" }],
+      }),
+    ).toThrow(/Illegal target/);
+  });
+
+  it("rejects Go for the Throat on an artifact creature and Essence Scatter on a noncreature spell", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const golemDef = createCardDefinition({
+      name: "Golem",
+      typeLine: "Artifact Creature — Golem",
+      power: 3,
+      toughness: 3,
+    });
+    const golem = createCardInstance({
+      definitionId: golemDef.id,
+      ownerId: p2.id,
+      zone: "battlefield",
+    });
+    const throat = createCardDefinition({
+      name: "Go for the Throat",
+      manaCost: "{1}{B}",
+      typeLine: "Instant",
+      targetRequirements: [{ kind: "nonartifact_creature" }],
+      effects: [{ kind: "move_card", cardId: { type: "chosen", index: 0 }, toZone: "graveyard" }],
+    });
+    const throatCard = addToHand(game, p1.id, throat);
+    game.definitions[golemDef.id] = golemDef;
+    game.cards[golem.id] = golem;
+    p2.zones.battlefield.push(golem.id);
+    const readyThroat = addMana(game, p1.id, { B: 1, C: 1 });
+    expect(() =>
+      applyAction(readyThroat, {
+        kind: "cast_spell",
+        playerId: p1.id,
+        cardId: throatCard.id,
+        targets: [{ type: "creature", cardId: golem.id }],
+      }),
+    ).toThrow(/Illegal target/);
+
+    const scatter = createCardDefinition({
+      name: "Essence Scatter",
+      manaCost: "{1}{U}",
+      typeLine: "Instant",
+      targetRequirements: [{ kind: "creature_spell" }],
+      effects: [{ kind: "counter_spell", target: { type: "chosen", index: 0 } }],
+    });
+    const scatterCard = addToHand(game, p2.id, scatter);
+    const shock = addToHand(game, p1.id, testShock());
+    let next = addMana(game, p1.id, { R: 1 });
+    next = addMana(next, p2.id, { U: 1, C: 1 });
+    next = applyAction(next, {
+      kind: "cast_spell",
+      playerId: p1.id,
+      cardId: shock.id,
+      targets: [{ type: "player", playerId: p2.id }],
+    });
+    next = applyAction(next, { kind: "pass_priority", playerId: p1.id });
+    const stackId = next.stack[0]?.id;
+    if (!stackId) {
+      throw new Error("expected shock on the stack");
+    }
+    expect(() =>
+      applyAction(next, {
+        kind: "cast_spell",
+        playerId: p2.id,
+        cardId: scatterCard.id,
+        targets: [{ type: "spell", stackObjectId: stackId }],
       }),
     ).toThrow(/Illegal target/);
   });

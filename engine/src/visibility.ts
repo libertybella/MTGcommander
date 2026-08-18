@@ -27,7 +27,9 @@ function hiddenDefinition(): CardDefinition {
     produces: {},
     producesAnyColor: false,
     producesOptions: [],
+    manaAbilities: [],
     activated: [],
+    imageUrl: "",
   };
 }
 
@@ -40,6 +42,9 @@ export function redactForViewer(state: GameState, viewerId: PlayerId): GameState
   if (!state.players.some((player) => player.id === viewerId)) {
     throw new Error(`Unknown player ${viewerId}`);
   }
+  const revealed = new Set(
+    state.reveals.filter((entry) => entry.viewerId === viewerId).flatMap((entry) => entry.cardIds),
+  );
   const next = cloneGameState(state);
   next.definitions[HIDDEN_DEFINITION_ID] = hiddenDefinition();
   for (const player of next.players) {
@@ -48,6 +53,9 @@ export function redactForViewer(state: GameState, viewerId: PlayerId): GameState
     }
     for (const zone of HIDDEN_ZONES) {
       for (const cardId of player.zones[zone]) {
+        if (revealed.has(cardId)) {
+          continue;
+        }
         const card = next.cards[cardId];
         if (card) {
           card.definitionId = HIDDEN_DEFINITION_ID;

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  applyAction,
   applyEffect,
   applyEffects,
   countCardPlacements,
@@ -229,5 +230,49 @@ describe("invalid effects", () => {
       }),
     ).toThrow(/creature/);
     expect(game).toEqual(original);
+  });
+
+  it("pauses surveil and draws after the looked-at card is kept or ditched", () => {
+    const { game, p1 } = twoPlayers();
+    const top = createCardDefinition({ name: "Island", typeLine: "Basic Land — Island" });
+    const next = createCardDefinition({ name: "Swamp", typeLine: "Basic Land — Swamp" });
+    const topCard = createCardInstance({ definitionId: top.id, ownerId: p1.id, zone: "library" });
+    const nextCard = createCardInstance({ definitionId: next.id, ownerId: p1.id, zone: "library" });
+    game.definitions[top.id] = top;
+    game.definitions[next.id] = next;
+    game.cards[topCard.id] = topCard;
+    game.cards[nextCard.id] = nextCard;
+    p1.zones.library.push(topCard.id, nextCard.id);
+
+    const paused = applyEffects(game, [
+      { kind: "surveil", playerId: p1.id, count: 1 },
+      { kind: "draw", playerId: p1.id, count: 1 },
+    ]);
+    expect(paused.prompts[0]).toMatchObject({
+      kind: "surveil",
+      playerId: p1.id,
+      count: 1,
+      resumeEffects: [{ kind: "draw", playerId: p1.id, count: 1 }],
+    });
+    expect(paused.players[0]?.zones.hand).toEqual([]);
+
+    const kept = applyAction(paused, {
+      kind: "resolve_surveil",
+      playerId: p1.id,
+      graveyardIds: [],
+    });
+    expect(kept.prompts).toEqual([]);
+    expect(kept.players[0]?.zones.hand).toEqual([topCard.id]);
+    expect(kept.players[0]?.zones.library).toEqual([nextCard.id]);
+    expect(kept.players[0]?.zones.graveyard).toEqual([]);
+
+    const ditched = applyAction(paused, {
+      kind: "resolve_surveil",
+      playerId: p1.id,
+      graveyardIds: [topCard.id],
+    });
+    expect(ditched.players[0]?.zones.graveyard).toEqual([topCard.id]);
+    expect(ditched.players[0]?.zones.hand).toEqual([nextCard.id]);
+    expect(ditched.players[0]?.zones.library).toEqual([]);
   });
 });

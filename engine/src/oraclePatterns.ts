@@ -1,12 +1,17 @@
 import { parseManaCost } from "./mana";
+import { parseAmassClause } from "./tokens";
 import type {
   ActivatedAbility,
   CardEffect,
   CardTrigger,
+  ChooseCardSource,
   Color,
+  EnterTappedUnless,
   Keyword,
+  ManaAbility,
   ManaColor,
   ManaPool,
+  ReplacementEffect,
   StaticModifier,
   TargetRequirement,
 } from "./types";
@@ -17,10 +22,12 @@ export type CompiledOracleText = {
   targetRequirements: TargetRequirement[];
   activated: ActivatedAbility[];
   triggers: CardTrigger[];
+  replacements: ReplacementEffect[];
   staticModifiers: StaticModifier[];
   produces: Partial<ManaPool>;
   producesAnyColor: boolean;
   producesOptions: ManaColor[];
+  manaAbilities: ManaAbility[];
   leftover: string[];
   notes: string[];
 };
@@ -86,6 +93,10 @@ export function splitOracleSentences(card: OracleCard): string[] {
   const printedName = card.name.includes(" // ") ? (card.name.split(" // ")[0] ?? card.name) : card.name;
   let text = stripReminderText(card.oracleText).replace(/\r/g, "");
   text = text.replace(new RegExp(escapeRegex(printedName), "gi"), "~");
+  const shortName = printedName.split(",")[0]?.trim();
+  if (shortName && shortName !== printedName) {
+    text = text.replace(new RegExp(`\\b${escapeRegex(shortName)}\\b`, "gi"), "~");
+  }
   text = text.replace(/\bthis (?:creature|artifact|enchantment|land|permanent|planeswalker)\b/gi, "~");
   text = text.replace(/\benters the battlefield\b/gi, "enters");
   return text
@@ -136,6 +147,94 @@ function parseAbilityCost(costText: string): { tap: boolean; manaCost: string } 
   return { tap, manaCost };
 }
 
+function parseControlledTypes(text: string): string[] | null {
+  const parts = text.split(/\s+or\s+/i).map((part) => part.trim());
+  const types: string[] = [];
+  for (const part of parts) {
+    const match = part.match(/^an?\s+(.+)$/i);
+    if (!match?.[1]) {
+      return null;
+    }
+    const name = match[1].trim().toLowerCase();
+    if (!name || name.includes(" ")) {
+      return null;
+    }
+    types.push(name);
+  }
+  return types.length > 0 ? types : null;
+}
+
+function compileControlCondition(text: string): EnterTappedUnless | null {
+  const rest = text.trim();
+  if (/^two or more other lands$/i.test(rest)) {
+    return { kind: "other_lands", count: 2 };
+  }
+  if (/^two or more basic lands$/i.test(rest)) {
+    return { kind: "basic_lands", count: 2 };
+  }
+  if (/^a legendary creature$/i.test(rest)) {
+    return { kind: "legendary_creature" };
+  }
+  const types = parseControlledTypes(rest);
+  if (!types) {
+    return null;
+  }
+  return { kind: "controlled_types", types };
+}
+
+function compileEntersTappedUnless(sentence: string): ReplacementEffect | null {
+  const match = sentence.match(/^~ enters tapped unless you control (.+)$/i);
+  if (!match?.[1]) {
+    return null;
+  }
+  const unless = compileControlCondition(match[1]);
+  return unless ? { kind: "enters_tapped_unless", unless } : null;
+}
+
+function compileEntersTappedIf(sentence: string): ReplacementEffect | null {
+  const match = sentence.match(/^If you control (.+), ~ enters tapped$/i);
+  if (!match?.[1]) {
+    return null;
+  }
+  const condition = compileControlCondition(match[1]);
+  return condition ? { kind: "enters_tapped_if", if: condition } : null;
+}
+
+function manaAbilityFromAdd(add: AddManaResult): ManaAbility {
+  if (add.kind === "fixed") {
+    return {
+      produces: add.produces,
+      producesOptions: [],
+      producesAnyColor: false,
+      damageToController: 0,
+    };
+  }
+  if (add.kind === "any_color") {
+    return {
+      produces: {},
+      producesOptions: [],
+      producesAnyColor: true,
+      damageToController: 0,
+    };
+  }
+  return {
+    produces: {},
+    producesOptions: add.colors,
+    producesAnyColor: false,
+    damageToController: 0,
+  };
+}
+
+function copyFirstManaAbility(result: CompiledOracleText): void {
+  const first = result.manaAbilities[0];
+  if (!first) {
+    return;
+  }
+  result.produces = first.produces;
+  result.producesAnyColor = first.producesAnyColor;
+  result.producesOptions = first.producesOptions;
+}
+
 type AddManaResult =
   | { kind: "fixed"; produces: Partial<ManaPool> }
   | { kind: "any_color"; identityRestricted: boolean }
@@ -182,9 +281,33 @@ function basicTypeColors(typeLine: string): Color[] {
 type SimpleClause = {
   effects: CardEffect[];
   targetRequirements: TargetRequirement[];
+  leftover?: string;
 };
 
 function compileSimpleClause(sentence: string): SimpleClause | null {
+  const amass = parseAmassClause(sentence);
+  if (amass) {
+    return {
+      targetRequirements: [],
+      effects: [
+        {
+          kind: "amass",
+          playerId: "controller",
+          amount: amass.amount,
+          ...(amass.subtype ? { subtype: amass.subtype } : {}),
+        },
+      ],
+      ...(amass.rest ? { leftover: amass.rest } : {}),
+    };
+  }
+
+  if (/^(?:then )?discard a card unless you attacked this turn$/i.test(sentence)) {
+    return {
+      targetRequirements: [],
+      effects: [{ kind: "discard_unless_attacked", playerId: "controller", count: 1 }],
+    };
+  }
+
   let match =
     sentence.match(/^(?:~ )?deals (\d+) damage to any target$/i) ??
     sentence.match(/^deal (\d+) damage to any target$/i);
@@ -285,6 +408,62 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     }
   }
 
+  match = sentence.match(/^scry (\d+)$/i);
+  if (match?.[1]) {
+    const count = Number(match[1]);
+    if (count > 0) {
+      return {
+        targetRequirements: [],
+        effects: [{ kind: "scry", playerId: "controller", count }],
+      };
+    }
+  }
+
+  match = sentence.match(/^surveil (\d+)$/i);
+  if (match?.[1]) {
+    const count = Number(match[1]);
+    if (count > 0) {
+      return {
+        targetRequirements: [],
+        effects: [{ kind: "surveil", playerId: "controller", count }],
+      };
+    }
+  }
+
+  match = sentence.match(
+    /^target player draws (a|an|one|two|three|four|five|six|seven|eight|nine|ten|\d+) cards? and loses (\d+|a|an|one|two|three|four|five|six|seven|eight|nine|ten) life$/i,
+  );
+  if (match?.[1] && match[2]) {
+    const count = parseCount(match[1]);
+    const amount = parseCount(match[2]);
+    if (count && amount) {
+      return {
+        targetRequirements: [{ kind: "player" }],
+        effects: [
+          { kind: "draw", playerId: { type: "chosen", index: 0 }, count },
+          { kind: "lose_life", playerId: { type: "chosen", index: 0 }, amount },
+        ],
+      };
+    }
+  }
+
+  match = sentence.match(
+    /^Scry (\d+), then draw (a|an|one|two|three|four|five|six|seven|eight|nine|ten|\d+) cards?$/i,
+  );
+  if (match?.[1] && match[2]) {
+    const scryCount = Number(match[1]);
+    const drawCount = parseCount(match[2]);
+    if (scryCount > 0 && drawCount) {
+      return {
+        targetRequirements: [],
+        effects: [
+          { kind: "scry", playerId: "controller", count: scryCount },
+          { kind: "draw", playerId: "controller", count: drawCount },
+        ],
+      };
+    }
+  }
+
   match = sentence.match(
     /^target player draws (a|an|one|two|three|four|five|six|seven|eight|nine|ten|\d+) cards?$/i,
   );
@@ -365,6 +544,27 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     };
   }
 
+  if (/^counter target noncreature spell$/i.test(sentence)) {
+    return {
+      targetRequirements: [{ kind: "noncreature_spell" }],
+      effects: [{ kind: "counter_spell", target: { type: "chosen", index: 0 } }],
+    };
+  }
+
+  if (/^counter target creature spell$/i.test(sentence)) {
+    return {
+      targetRequirements: [{ kind: "creature_spell" }],
+      effects: [{ kind: "counter_spell", target: { type: "chosen", index: 0 } }],
+    };
+  }
+
+  if (/^destroy target nonartifact creature$/i.test(sentence)) {
+    return {
+      targetRequirements: [{ kind: "nonartifact_creature" }],
+      effects: [{ kind: "move_card", cardId: { type: "chosen", index: 0 }, toZone: "graveyard" }],
+    };
+  }
+
   const ritual = parseAddMana(sentence);
   if (ritual?.kind === "fixed") {
     return {
@@ -425,7 +625,21 @@ function offsetChosenIndexes(clause: SimpleClause, offset: number): SimpleClause
   return {
     targetRequirements: clause.targetRequirements,
     effects: clause.effects.map((effect) => shiftChosen(effect, offset)),
+    leftover: clause.leftover,
   };
+}
+
+function commitClause(
+  result: CompiledOracleText,
+  clause: SimpleClause,
+): void {
+  const offset = result.targetRequirements.length;
+  const shifted = offsetChosenIndexes(clause, offset);
+  result.targetRequirements.push(...shifted.targetRequirements);
+  result.effects.push(...shifted.effects);
+  if (clause.leftover) {
+    result.leftover.push(clause.leftover);
+  }
 }
 
 function shiftChosen(effect: CardEffect, offset: number): CardEffect {
@@ -445,6 +659,8 @@ function shiftChosen(effect: CardEffect, offset: number): CardEffect {
     case "sacrifice":
     case "add_counter":
       return { ...effect, cardId: bumpChosen(effect.cardId) };
+    case "set_class_level":
+      return { ...effect, cardId: bumpChosen(effect.cardId) };
     case "counter_spell":
       return { ...effect, target: bumpChosen(effect.target) };
     case "gain_life":
@@ -453,35 +669,161 @@ function shiftChosen(effect: CardEffect, offset: number): CardEffect {
     case "mill":
     case "discard":
     case "add_mana":
+    case "scry":
+    case "surveil":
+    case "discard_unless_attacked":
+    case "amass":
+    case "look_and_assign":
       return { ...effect, playerId: bumpChosen(effect.playerId) };
+    case "reveal_zone":
+      return {
+        ...effect,
+        fromPlayerId: bumpChosen(effect.fromPlayerId),
+        toPlayerId: bumpChosen(effect.toPlayerId),
+      };
+    case "choose_card":
+      return {
+        ...effect,
+        chooserId: bumpChosen(effect.chooserId),
+        sources: effect.sources.map((source) => ({
+          ...source,
+          playerId: bumpChosen(source.playerId),
+        })),
+        thenEffects: effect.thenEffects.map((entry) => shiftChosen(entry, offset)),
+      };
     default:
       return effect;
   }
 }
 
-/**
- * Pattern-compile oracle sentences into existing engine data.
- * Unrecognized sentences are returned in `leftover`.
- */
+function compileLookAndAssignPair(sentences: string[], index: number): SimpleClause & { consumed: number } | null {
+  const look = sentences[index]?.match(
+    /^Look at the top (a|an|one|two|three|four|five|six|seven|eight|nine|ten|\d+) cards? of your library$/i,
+  );
+  const assign = sentences[index + 1];
+  if (
+    !look?.[1] ||
+    !assign ||
+    !/^Put one of them into your hand, put one of them on the bottom of your library, and exile one of them$/i.test(
+      assign,
+    )
+  ) {
+    return null;
+  }
+  const count = parseCount(look[1]);
+  if (!count) {
+    return null;
+  }
+  return {
+    targetRequirements: [],
+    effects: [
+      {
+        kind: "look_and_assign",
+        playerId: "controller",
+        count,
+        destinations: ["hand", "library_bottom", "exile"],
+      },
+    ],
+    consumed: 2,
+  };
+}
+
+function compileRevealAndChoose(sentences: string[], index: number): SimpleClause & { consumed: number } | null {
+  const reveal = sentences[index]?.match(/^Target (opponent|player) reveals their hand$/i);
+  const choose = sentences[index + 1]?.match(
+    /^You choose a ((?:noncreature, )?nonland )?card from it(?: or a card from their (graveyard))?$/i,
+  );
+  const follow = sentences[index + 2];
+  if (!reveal?.[1] || !choose || !follow) {
+    return null;
+  }
+  const exile = /^Exile that card$/i.test(follow);
+  const discard = /^That player discards that card$/i.test(follow);
+  if (!exile && !discard) {
+    return null;
+  }
+  const opponent = reveal[1].toLowerCase() === "opponent";
+  const sources: ChooseCardSource[] = [
+    {
+      playerId: { type: "chosen", index: 0 },
+      zone: "hand",
+      filter: /noncreature/i.test(choose[1] ?? "")
+        ? "noncreature_nonland"
+        : choose[1]
+          ? "nonland"
+          : "any",
+    },
+  ];
+  if (choose[2]?.toLowerCase() === "graveyard") {
+    sources.push({
+      playerId: { type: "chosen", index: 0 },
+      zone: "graveyard",
+      filter: "any",
+    });
+  }
+  return {
+    targetRequirements: [{ kind: opponent ? "opponent" : "player" }],
+    effects: [
+      {
+        kind: "reveal_zone",
+        fromPlayerId: { type: "chosen", index: 0 },
+        toPlayerId: "controller",
+        zone: "hand",
+      },
+      {
+        kind: "choose_card",
+        chooserId: "controller",
+        sources,
+        thenEffects: [
+          {
+            kind: "move_card",
+            cardId: "chosen_card",
+            toZone: exile ? "exile" : "graveyard",
+          },
+        ],
+      },
+    ],
+    consumed: 3,
+  };
+}
 export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): CompiledOracleText {
   const result: CompiledOracleText = {
     effects: [],
     targetRequirements: [],
     activated: [],
     triggers: [],
+    replacements: [],
     staticModifiers: [],
     produces: {},
     producesAnyColor: false,
     producesOptions: [],
+    manaAbilities: [],
     leftover: [],
     notes: [],
   };
   void keywords;
 
-  let manaAddCompiled = false;
-
-  for (const sentence of splitOracleSentences(card)) {
+  const sentences = splitOracleSentences(card);
+  for (let index = 0; index < sentences.length; index += 1) {
+    const sentence = sentences[index];
+    if (!sentence) {
+      continue;
+    }
     if (isKeywordLine(sentence)) {
+      continue;
+    }
+
+    const lookPair = compileLookAndAssignPair(sentences, index);
+    if (lookPair) {
+      commitClause(result, lookPair);
+      index += lookPair.consumed - 1;
+      continue;
+    }
+
+    const revealChoose = compileRevealAndChoose(sentences, index);
+    if (revealChoose) {
+      commitClause(result, revealChoose);
+      index += revealChoose.consumed - 1;
       continue;
     }
 
@@ -491,11 +833,92 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
       continue;
     }
 
-    const etb = sentence.match(/^When ~ enters(?:,)? (.+)$/i);
+    if (/^~ enters tapped$/i.test(sentence)) {
+      result.replacements.push({ kind: "enters_tapped" });
+      continue;
+    }
+
+    const unlessTapped = compileEntersTappedUnless(sentence);
+    if (unlessTapped) {
+      result.replacements.push(unlessTapped);
+      continue;
+    }
+
+    const ifTapped = compileEntersTappedIf(sentence);
+    if (ifTapped) {
+      result.replacements.push(ifTapped);
+      continue;
+    }
+
+    const shock = sentence.match(/^As ~ enters, you may pay (\d+) life$/i);
+    if (shock?.[1]) {
+      result.replacements.push({
+        kind: "may_pay_life_or_enter_tapped",
+        amount: Number(shock[1]),
+      });
+      continue;
+    }
+    if (
+      /^If you don't, it enters tapped$/i.test(sentence) &&
+      result.replacements.some((replacement) => replacement.kind === "may_pay_life_or_enter_tapped")
+    ) {
+      continue;
+    }
+
+    const etb = sentence.match(/^When ~ enters(?: and whenever [^,]+)?, (.+)$/i);
     if (etb?.[1]) {
       const inner = compileSimpleClause(etb[1].trim());
-      if (inner && inner.targetRequirements.length === 0) {
-        result.triggers.push({ event: "enter_battlefield", effects: inner.effects });
+      if (inner) {
+        result.triggers.push({
+          event: "enter_battlefield",
+          effects: inner.effects,
+          targetRequirements: inner.targetRequirements,
+        });
+        if (inner.leftover) {
+          result.leftover.push(inner.leftover);
+        }
+        continue;
+      }
+      result.leftover.push(sentence);
+      continue;
+    }
+
+    const beginCombat = sentence.match(/^At the beginning of combat on your turn, (.+)$/i);
+    if (beginCombat?.[1]) {
+      const inner = compileSimpleClause(beginCombat[1].trim());
+      if (inner) {
+        result.triggers.push({
+          event: "begin_combat",
+          effects: inner.effects,
+          targetRequirements: inner.targetRequirements,
+        });
+        if (inner.leftover) {
+          result.leftover.push(inner.leftover);
+        }
+        continue;
+      }
+      result.leftover.push(sentence);
+      continue;
+    }
+
+    const channel = sentence.match(
+      /^Channel\s*[—-]\s*((?:\{[^}]+\}(?:,\s*)?)+),\s*Discard this card:\s*(.+)$/i,
+    );
+    if (channel?.[1] && channel[2]) {
+      const cost = parseAbilityCost(channel[1]);
+      const clause = compileSimpleClause(channel[2].trim());
+      if (cost && !cost.tap && clause) {
+        result.activated.push({
+          tap: false,
+          manaCost: cost.manaCost,
+          effects: clause.effects,
+          targetRequirements: clause.targetRequirements,
+          zone: "hand",
+          discard: true,
+        });
+        if (clause.leftover) {
+          result.leftover.push(clause.leftover);
+        }
         continue;
       }
       result.leftover.push(sentence);
@@ -511,21 +934,21 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
       }
       const add = parseAddMana(ability.rest);
       if (add && cost.tap && cost.manaCost === "") {
-        if (manaAddCompiled) {
-          result.leftover.push(sentence);
-          continue;
+        result.manaAbilities.push(manaAbilityFromAdd(add));
+        if (add.kind === "any_color" && add.identityRestricted) {
+          result.notes.push("Commander's color identity is not enforced; any color may be added.");
         }
-        manaAddCompiled = true;
-        if (add.kind === "fixed") {
-          result.produces = add.produces;
-        } else if (add.kind === "any_color") {
-          result.producesAnyColor = true;
-          if (add.identityRestricted) {
-            result.notes.push("Commander's color identity is not enforced; any color may be added.");
-          }
-        } else {
-          result.producesOptions = add.colors;
-        }
+        continue;
+      }
+      const levelUp = ability.rest.match(/^Level (\d+)$/i);
+      if (levelUp?.[1] && !cost.tap && cost.manaCost !== "") {
+        result.activated.push({
+          tap: false,
+          manaCost: cost.manaCost,
+          effects: [{ kind: "set_class_level", cardId: "self", level: Number(levelUp[1]) }],
+          targetRequirements: [],
+          timing: "sorcery",
+        });
         continue;
       }
       const clause = compileSimpleClause(ability.rest);
@@ -539,29 +962,49 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
         effects: clause.effects,
         targetRequirements: clause.targetRequirements,
       });
+      if (clause.leftover) {
+        result.leftover.push(clause.leftover);
+      }
       continue;
+    }
+
+    const pain = sentence.match(/^~ deals (\d+) damage to you$/i);
+    if (pain?.[1] && result.manaAbilities.length > 0) {
+      const last = result.manaAbilities[result.manaAbilities.length - 1];
+      if (last) {
+        last.damageToController = Number(pain[1]);
+        continue;
+      }
     }
 
     const clause = compileSimpleClause(sentence);
     if (clause) {
-      const offset = result.targetRequirements.length;
-      const shifted = offsetChosenIndexes(clause, offset);
-      result.targetRequirements.push(...shifted.targetRequirements);
-      result.effects.push(...shifted.effects);
+      commitClause(result, clause);
       continue;
     }
 
     result.leftover.push(sentence);
   }
 
-  if (!manaAddCompiled) {
+  if (result.manaAbilities.length === 0) {
     const basics = basicTypeColors(card.typeLine);
     if (basics.length === 1 && basics[0]) {
-      result.produces = { [basics[0]]: 1 };
+      result.manaAbilities.push({
+        produces: { [basics[0]]: 1 },
+        producesOptions: [],
+        producesAnyColor: false,
+        damageToController: 0,
+      });
     } else if (basics.length > 1) {
-      result.producesOptions = basics;
+      result.manaAbilities.push({
+        produces: {},
+        producesOptions: basics,
+        producesAnyColor: false,
+        damageToController: 0,
+      });
     }
   }
+  copyFirstManaAbility(result);
 
   return result;
 }

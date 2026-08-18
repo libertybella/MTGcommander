@@ -3,12 +3,20 @@ import type { SnapshotStore } from "./persist";
 import { fetchOracleCardsByName } from "./scryfall";
 import type { HttpFetch } from "./http";
 
-export const ORACLE_CACHE_KEY = "mtgcommander.oracle.v1";
+export const ORACLE_CACHE_KEY = "mtgcommander.oracle.v3";
 
 type CacheFile = {
-  version: 1;
+  version: 3;
   cards: Record<string, OracleCard>;
 };
+
+function isIncompleteDfc(card: OracleCard): boolean {
+  const layout = (card.layout ?? "").toLowerCase();
+  if (layout !== "modal_dfc" && layout !== "transform") {
+    return false;
+  }
+  return !card.faces || card.faces.length < 2;
+}
 
 export class CardDatabase {
   private cards = new Map<string, OracleCard>();
@@ -39,11 +47,7 @@ export class CardDatabase {
   }
 
   put(card: OracleCard): void {
-    this.cards.set(normalizeCardName(card.name), card);
-    const front = card.name.split(" // ")[0];
-    if (front && front !== card.name) {
-      this.cards.set(normalizeCardName(front), card);
-    }
+    this.indexCard(card);
     this.writeStore();
   }
 
@@ -52,7 +56,7 @@ export class CardDatabase {
     const needed: string[] = [];
     for (const name of names) {
       const cached = this.getCached(name);
-      if (cached) {
+      if (cached && !isIncompleteDfc(cached)) {
         found.push(cached);
       } else {
         needed.push(name);
@@ -69,6 +73,17 @@ export class CardDatabase {
     return { cards: found, missing: fetched.missing };
   }
 
+  private indexCard(card: OracleCard): void {
+    this.cards.set(normalizeCardName(card.name), card);
+    const front = card.name.split(" // ")[0];
+    if (front && front !== card.name) {
+      this.cards.set(normalizeCardName(front), card);
+    }
+    for (const face of card.faces ?? []) {
+      this.cards.set(normalizeCardName(face.name), card);
+    }
+  }
+
   private readStore(): void {
     if (!this.store) {
       return;
@@ -83,12 +98,12 @@ export class CardDatabase {
         return;
       }
       const file = parsed as CacheFile;
-      if (file.version !== 1 || typeof file.cards !== "object" || file.cards === null) {
+      if (file.version !== 3 || typeof file.cards !== "object" || file.cards === null) {
         return;
       }
       for (const card of Object.values(file.cards)) {
         if (card && typeof card.name === "string") {
-          this.cards.set(normalizeCardName(card.name), card);
+          this.indexCard(card);
         }
       }
     } catch {
@@ -104,6 +119,6 @@ export class CardDatabase {
     for (const [key, card] of this.cards) {
       cards[key] = card;
     }
-    this.store.setItem(ORACLE_CACHE_KEY, JSON.stringify({ version: 1, cards } satisfies CacheFile));
+    this.store.setItem(ORACLE_CACHE_KEY, JSON.stringify({ version: 3, cards } satisfies CacheFile));
   }
 }

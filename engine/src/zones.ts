@@ -1,5 +1,6 @@
 import { cloneGameState } from "./clone";
 import { isCommander } from "./cardTypes";
+import { queueEnterReplacementChoicesInPlace, wouldEnterTapped } from "./derived";
 import { queueEnterBattlefieldTriggersInPlace } from "./triggers";
 import type { CardInstance, CardInstanceId, GameState, PlayerState, PlayerZones, ZoneName } from "./types";
 
@@ -131,21 +132,33 @@ export function enterOwnerZoneInPlace(
   const fromZone = card.zone;
   insertIntoZone(owner, destination, cardId, options.libraryPosition ?? "top");
   card.zone = destination;
-  applyZoneChangeFlags(card, destination);
+  applyZoneChangeFlags(state, card, destination);
   state.log.push({ kind: "zone_change", cardId, from: fromZone, to: destination });
   if (destination === "battlefield") {
+    queueEnterReplacementChoicesInPlace(state, cardId);
     queueEnterBattlefieldTriggersInPlace(state, cardId);
   }
 }
 
-function applyZoneChangeFlags(card: CardInstance, toZone: keyof PlayerZones): void {
+function applyZoneChangeFlags(
+  state: GameState,
+  card: CardInstance,
+  toZone: keyof PlayerZones,
+): void {
   card.attacking = false;
   card.blockingAttackerId = null;
   if (toZone === "battlefield") {
     card.summoningSick = true;
     card.damageMarked = 0;
+    card.tapped = wouldEnterTapped(state, card.id);
+    const typeLine = state.definitions[card.definitionId]?.typeLine.toLowerCase() ?? "";
+    if (typeLine.includes("class") && card.classLevel < 1) {
+      card.classLevel = 1;
+    }
   } else {
     card.damageMarked = 0;
+    card.tapped = false;
+    card.classLevel = 0;
   }
 }
 
@@ -215,15 +228,23 @@ export function moveCardInPlace(
 
   const destination = commanderAwareDestination(state, cardId, toZone);
   if (located.zone === destination) {
+    if (destination === "library" && options.libraryPosition) {
+      removeFromZone(occupant, located.zone, cardId);
+      insertIntoZone(owner, destination, cardId, options.libraryPosition);
+      if (countCardPlacements(state, cardId) !== 1) {
+        throw new Error(`Zone integrity failed for ${cardId}`);
+      }
+    }
     return;
   }
 
   removeFromZone(occupant, located.zone, cardId);
   insertIntoZone(owner, destination, cardId, options.libraryPosition ?? "top");
   card.zone = destination;
-  applyZoneChangeFlags(card, destination);
+  applyZoneChangeFlags(state, card, destination);
   state.log.push({ kind: "zone_change", cardId, from: located.zone, to: destination });
   if (destination === "battlefield") {
+    queueEnterReplacementChoicesInPlace(state, cardId);
     queueEnterBattlefieldTriggersInPlace(state, cardId);
   }
 

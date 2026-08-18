@@ -286,3 +286,139 @@ describe("game action serialization", () => {
     expect(TURN_SEQUENCE.some((slot) => slot.step === restored.turn.step)).toBe(true);
   });
 });
+
+describe("multiple mana abilities", () => {
+  it("lets a pain land tap for colorless or for a color at 1 damage", () => {
+    const { game, p1 } = twoPlayers();
+    const river = createCardDefinition({
+      name: "Underground River",
+      typeLine: "Land",
+      produces: { C: 1 },
+      manaAbilities: [
+        {
+          produces: { C: 1 },
+          producesOptions: [],
+          producesAnyColor: false,
+          damageToController: 0,
+        },
+        {
+          produces: {},
+          producesOptions: ["U", "B"],
+          producesAnyColor: false,
+          damageToController: 1,
+        },
+      ],
+    });
+    const card = createCardInstance({
+      definitionId: river.id,
+      ownerId: p1.id,
+      zone: "battlefield",
+      summoningSick: false,
+    });
+    game.definitions[river.id] = river;
+    game.cards[card.id] = card;
+    p1.zones.battlefield.push(card.id);
+
+    const ready = toPrecombatMain(game);
+    const colorless = applyAction(ready, {
+      kind: "tap_for_mana",
+      playerId: p1.id,
+      cardId: card.id,
+      manaIndex: 0,
+    });
+    expect(colorless.players[0]?.mana.C).toBe(1);
+    expect(colorless.players[0]?.life).toBe(40);
+    expect(colorless.cards[card.id]?.tapped).toBe(true);
+
+    const colored = applyAction(ready, {
+      kind: "tap_for_mana",
+      playerId: p1.id,
+      cardId: card.id,
+      color: "U",
+      manaIndex: 1,
+    });
+    expect(colored.players[0]?.mana.U).toBe(1);
+    expect(colored.players[0]?.mana.C).toBe(0);
+    expect(colored.players[0]?.life).toBe(39);
+    expect(colored.cards[card.id]?.tapped).toBe(true);
+
+    const restored = parseGameAction(
+      serializeGameAction({
+        kind: "tap_for_mana",
+        playerId: p1.id,
+        cardId: card.id,
+        color: "B",
+        manaIndex: 1,
+      }),
+    );
+    expect(restored).toEqual({
+      kind: "tap_for_mana",
+      playerId: p1.id,
+      cardId: card.id,
+      color: "B",
+      manaIndex: 1,
+    });
+  });
+});
+
+describe("host skip actions", () => {
+  it("advances to the next action and then the next player's turn", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game);
+    const fromUpkeep = applyAction(game, { kind: "advance_step", playerId: p1.id });
+    expect(fromUpkeep.turn.step).toBe("upkeep");
+    const fromMain = applyAction(fromUpkeep, { kind: "advance_step", playerId: p1.id });
+    expect(fromMain.turn.step).toBe("precombatMain");
+    const nextTurn = applyAction(fromMain, { kind: "advance_turn", playerId: p1.id });
+    expect(nextTurn.turn.activePlayerId).toBe(p2.id);
+    expect(nextTurn.turn.step).toBe("untap");
+    expect(nextTurn.turn.number).toBe(1);
+    expect(parseGameAction(serializeGameAction({ kind: "advance_step", playerId: p1.id }))).toEqual({
+      kind: "advance_step",
+      playerId: p1.id,
+    });
+    expect(parseGameAction(serializeGameAction({ kind: "advance_turn", playerId: p1.id }))).toEqual({
+      kind: "advance_turn",
+      playerId: p1.id,
+    });
+  });
+});
+
+describe("modal double-faced lands", () => {
+  it("plays the chosen back face", () => {
+    const { game, p1 } = twoPlayers();
+    const front = createCardDefinition({
+      name: "Clearwater Pathway",
+      typeLine: "Land",
+      layout: "modal_dfc",
+      produces: { U: 1 },
+    });
+    const back = createCardDefinition({
+      name: "Murkwater Pathway",
+      typeLine: "Land",
+      layout: "modal_dfc",
+      otherFaceId: front.id,
+      produces: { B: 1 },
+    });
+    front.otherFaceId = back.id;
+    game.definitions[front.id] = front;
+    game.definitions[back.id] = back;
+    const card = createCardInstance({
+      definitionId: front.id,
+      ownerId: p1.id,
+      zone: "hand",
+    });
+    game.cards[card.id] = card;
+    p1.zones.hand.push(card.id);
+
+    const played = applyAction(toPrecombatMain(game), {
+      kind: "play_land",
+      playerId: p1.id,
+      cardId: card.id,
+      faceIndex: 1,
+    });
+    expect(played.cards[card.id]?.definitionId).toBe(back.id);
+    expect(played.cards[card.id]?.zone).toBe("battlefield");
+    expect(played.definitions[back.id]?.produces).toEqual({ B: 1 });
+  });
+});

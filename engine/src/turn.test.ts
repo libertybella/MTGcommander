@@ -5,7 +5,7 @@ import {
   createGameState,
 } from "./index";
 import { fillLibraries } from "./testSupport";
-import { TURN_SEQUENCE, advanceStep, advanceSteps } from "./turn";
+import { TURN_SEQUENCE, advanceStep, advanceSteps, skipPriorityShortcuts } from "./turn";
 
 function gameWithLibraries(playerCount: 2 | 3 | 4) {
   const game = createGameState({ playerCount });
@@ -38,12 +38,37 @@ describe("turn progression", () => {
     const second = game.players[1]?.id;
     const nextTurn = advanceSteps(game, TURN_SEQUENCE.length);
     expect(nextTurn.turn.activePlayerId).toBe(second);
-    expect(nextTurn.turn.number).toBe(2);
+    expect(nextTurn.turn.number).toBe(1);
     expect(nextTurn.turn.phase).toBe("beginning");
     expect(nextTurn.turn.step).toBe("untap");
     const thirdTurn = advanceSteps(nextTurn, TURN_SEQUENCE.length);
     expect(thirdTurn.turn.activePlayerId).toBe(first);
-    expect(thirdTurn.turn.number).toBe(3);
+    expect(thirdTurn.turn.number).toBe(2);
+  });
+
+  it("increments the turn number only when play returns to the first player", () => {
+    const game = gameWithLibraries(3);
+    const first = game.players[1];
+    const second = game.players[2];
+    const third = game.players[0];
+    if (!first || !second || !third) {
+      throw new Error("missing players");
+    }
+    game.firstPlayerId = first.id;
+    game.turn.activePlayerId = first.id;
+    game.priorityPlayerId = first.id;
+
+    const afterSecond = advanceSteps(game, TURN_SEQUENCE.length);
+    expect(afterSecond.turn.activePlayerId).toBe(second.id);
+    expect(afterSecond.turn.number).toBe(1);
+
+    const afterThird = advanceSteps(afterSecond, TURN_SEQUENCE.length);
+    expect(afterThird.turn.activePlayerId).toBe(third.id);
+    expect(afterThird.turn.number).toBe(1);
+
+    const afterFirstAgain = advanceSteps(afterThird, TURN_SEQUENCE.length);
+    expect(afterFirstAgain.turn.activePlayerId).toBe(first.id);
+    expect(afterFirstAgain.turn.number).toBe(2);
   });
 
   it("wraps turn order with four players", () => {
@@ -54,7 +79,7 @@ describe("turn progression", () => {
       game = advanceSteps(game, TURN_SEQUENCE.length);
     }
     expect(game.turn.activePlayerId).toBe(order[0]);
-    expect(game.turn.number).toBe(5);
+    expect(game.turn.number).toBe(2);
   });
 
   it("draws a card for the active player on the draw step", () => {
@@ -116,6 +141,13 @@ describe("turn progression", () => {
     const start = gameWithLibraries(3);
     const later = advanceSteps(start, TURN_SEQUENCE.length * 6);
     expect(later.players).toHaveLength(3);
-    expect(later.turn.number).toBe(7);
+    expect(later.turn.number).toBe(3);
+  });
+
+  it("skips draw, beginning of combat, and cleanup as empty-stack shortcuts", () => {
+    const fromMain = advanceSteps(gameWithLibraries(2), 3);
+    expect(fromMain.turn.step).toBe("precombatMain");
+    const skipped = skipPriorityShortcuts(advanceStep(fromMain));
+    expect(skipped.turn.step).toBe("declareAttackers");
   });
 });

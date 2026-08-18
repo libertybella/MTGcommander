@@ -38,6 +38,9 @@ function compiledFromOracle(cards: OracleCard[]): {
   for (const card of cards) {
     const compiled = compileOracleCard(card);
     definitions[compiled.definition.id] = compiled.definition;
+    if (compiled.otherDefinition) {
+      definitions[compiled.otherDefinition.id] = compiled.otherDefinition;
+    }
     byName.set(normalizeCardName(card.name), compiled);
     const front = card.name.split(" // ")[0];
     if (front) {

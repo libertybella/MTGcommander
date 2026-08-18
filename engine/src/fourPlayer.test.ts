@@ -98,7 +98,7 @@ describe("four-player engine", () => {
       next = advanceSteps(next, TURN_SEQUENCE.length);
     }
     expect(next.turn.activePlayerId).toBe(p1.id);
-    expect(next.turn.number).toBe(5);
+    expect(next.turn.number).toBe(2);
   });
 
   it("passes priority around four players", () => {

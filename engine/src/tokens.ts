@@ -1,0 +1,117 @@
+import type { CardDefinition, CardEffect, TokenTemplate } from "./types";
+
+function singularizeType(raw: string): string {
+  const trimmed = raw.trim();
+  if (trimmed.length > 3 && /s$/i.test(trimmed) && !/ss$/i.test(trimmed)) {
+    return trimmed.slice(0, -1);
+  }
+  return trimmed;
+}
+
+export function amassArmyTemplate(subtype?: string): TokenTemplate {
+  const creatureType = subtype ? `${singularizeType(subtype)} Army` : "Army";
+  return {
+    name: creatureType,
+    typeLine: `Creature — ${creatureType} Token`,
+    power: 0,
+    toughness: 0,
+  };
+}
+
+function amassOverrideTemplate(subtype?: string): TokenTemplate {
+  return { ...amassArmyTemplate(subtype), power: 1, toughness: 1 };
+}
+
+export function parseAmassClause(sentence: string): {
+  amount: number;
+  subtype?: string;
+  rest?: string;
+} | null {
+  const match = sentence.match(/^amass(?: ([A-Za-z]+))?(?: (\d+))?(?:, then (.+))?$/i);
+  if (!match) {
+    return null;
+  }
+  const amount = match[2] ? Number(match[2]) : 1;
+  if (!Number.isInteger(amount) || amount <= 0) {
+    return null;
+  }
+  return {
+    amount,
+    ...(match[1] ? { subtype: singularizeType(match[1]) } : {}),
+    ...(match[3] ? { rest: `Then ${match[3].trim()}` } : {}),
+  };
+}
+
+function addTemplate(list: TokenTemplate[], template: TokenTemplate): void {
+  if (
+    list.some(
+      (entry) =>
+        entry.name === template.name &&
+        entry.typeLine === template.typeLine &&
+        entry.power === template.power &&
+        entry.toughness === template.toughness,
+    )
+  ) {
+    return;
+  }
+  list.push(template);
+}
+
+function collectFromEffects(effects: CardEffect[], list: TokenTemplate[]): void {
+  for (const effect of effects) {
+    if (effect.kind === "create_token") {
+      addTemplate(list, {
+        name: effect.name,
+        typeLine: effect.typeLine,
+        power: effect.power ?? null,
+        toughness: effect.toughness ?? null,
+      });
+    }
+    if (effect.kind === "amass") {
+      addTemplate(list, amassOverrideTemplate(effect.subtype));
+    }
+    if (effect.kind === "choose_card") {
+      collectFromEffects(effect.thenEffects, list);
+    }
+  }
+}
+
+function collectFromOracle(oracleText: string, list: TokenTemplate[]): void {
+  const text = oracleText.replace(/\([^)]*\)/g, " ");
+  for (const part of text.split(/[.\n]+/)) {
+    const sentence = part.replace(/\s+/g, " ").trim();
+    if (!sentence) {
+      continue;
+    }
+    const amass = parseAmassClause(sentence.replace(/^whenever [^,]+, /i, "").replace(/^when [^,]+, /i, ""));
+    if (amass) {
+      addTemplate(list, amassOverrideTemplate(amass.subtype));
+    }
+    const create = sentence.match(
+      /^Create (?:a|an|one|two|three|four|five|six|seven|eight|nine|ten|\d+) (\d+)\/(\d+)(?: (?:white|blue|black|red|green|colorless))? ([\w]+(?: [\w]+)?) creature tokens?$/i,
+    );
+    if (create?.[1] && create[2] && create[4]) {
+      const subtype = create[4].replace(/\b\w/g, (letter) => letter.toUpperCase());
+      addTemplate(list, {
+        name: subtype,
+        typeLine: `Creature — ${subtype} Token`,
+        power: Number(create[1]),
+        toughness: Number(create[2]),
+      });
+    }
+  }
+}
+
+/** Token types a card can produce, for the right-click override. */
+export function tokenTemplatesOf(definition: CardDefinition): TokenTemplate[] {
+  const list: TokenTemplate[] = [];
+  collectFromEffects(definition.effects, list);
+  for (const trigger of definition.triggers) {
+    collectFromEffects(trigger.effects, list);
+  }
+  for (const ability of definition.activated) {
+    collectFromEffects(ability.effects, list);
+  }
+  collectFromOracle(definition.oracleText, list);
+  return list;
+}

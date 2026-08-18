@@ -5,11 +5,14 @@ import {
   createCardDefinition,
   createCardInstance,
   createGameState,
+  moveCard,
   parseGameAction,
   parseGameState,
   serializeGameAction,
   serializeGameState,
 } from "./index";
+import { fillLibraries } from "./testSupport";
+import { advanceSteps } from "./turn";
 import type { GameState } from "./types";
 
 function twoPlayers() {
@@ -301,5 +304,120 @@ describe("activated abilities", () => {
     const restored = parseGameState(serializeGameState(stacked));
     expect(restored.stack[0]?.activatedIndex).toBe(0);
     expect(restored.definitions[card.definitionId]?.activated).toHaveLength(1);
+  });
+
+  it("channels from hand by discarding the card, then creates tokens on resolve", () => {
+    const { game, p1 } = twoPlayers();
+    const land = createCardDefinition({
+      name: "Sokenzan, Crucible of Defiance",
+      typeLine: "Legendary Land",
+      activated: [
+        {
+          tap: false,
+          manaCost: "{3}{R}",
+          zone: "hand",
+          discard: true,
+          targetRequirements: [],
+          effects: [
+            {
+              kind: "create_token",
+              ownerId: "controller",
+              name: "Spirit",
+              typeLine: "Creature — Spirit Token",
+              power: 1,
+              toughness: 1,
+            },
+            {
+              kind: "create_token",
+              ownerId: "controller",
+              name: "Spirit",
+              typeLine: "Creature — Spirit Token",
+              power: 1,
+              toughness: 1,
+            },
+          ],
+        },
+      ],
+    });
+    const card = createCardInstance({
+      definitionId: land.id,
+      ownerId: p1.id,
+      zone: "hand",
+    });
+    game.definitions[land.id] = land;
+    game.cards[card.id] = card;
+    p1.zones.hand.push(card.id);
+
+    const stacked = applyAction(addMana(game, p1.id, { R: 1, C: 3 }), {
+      kind: "activate_ability",
+      playerId: p1.id,
+      cardId: card.id,
+      abilityIndex: 0,
+    });
+    expect(stacked.cards[card.id]?.zone).toBe("graveyard");
+    expect(stacked.players[0]?.zones.hand).not.toContain(card.id);
+    expect(stacked.stack).toHaveLength(0);
+    const tokens = Object.values(stacked.cards).filter(
+      (entry) => stacked.definitions[entry.definitionId]?.name === "Spirit",
+    );
+    expect(tokens).toHaveLength(2);
+    expect(tokens.every((token) => token.zone === "battlefield")).toBe(true);
+  });
+
+  it("enters a Class at level 1 and upgrades one level at a time", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game);
+    const wizard = createCardDefinition({
+      name: "Wizard Class",
+      typeLine: "Enchantment — Class",
+      manaCost: "{U}",
+      activated: [
+        {
+          tap: false,
+          manaCost: "{2}{U}",
+          timing: "sorcery",
+          targetRequirements: [],
+          effects: [{ kind: "set_class_level", cardId: "self", level: 2 }],
+        },
+        {
+          tap: false,
+          manaCost: "{4}{U}",
+          timing: "sorcery",
+          targetRequirements: [],
+          effects: [{ kind: "set_class_level", cardId: "self", level: 3 }],
+        },
+      ],
+    });
+    const card = createCardInstance({
+      definitionId: wizard.id,
+      ownerId: p1.id,
+      zone: "hand",
+    });
+    game.definitions[wizard.id] = wizard;
+    game.cards[card.id] = card;
+    p1.zones.hand.push(card.id);
+
+    const main = advanceSteps(game, 3);
+    const entered = moveCard(main, card.id, "battlefield");
+    expect(entered.cards[card.id]?.classLevel).toBe(1);
+
+    const funded = addMana(entered, p1.id, { U: 5, C: 6 });
+    expect(() =>
+      applyAction(funded, {
+        kind: "activate_ability",
+        playerId: p1.id,
+        cardId: card.id,
+        abilityIndex: 1,
+      }),
+    ).toThrow(/gained in order/);
+
+    const stacked = applyAction(funded, {
+      kind: "activate_ability",
+      playerId: p1.id,
+      cardId: card.id,
+      abilityIndex: 0,
+    });
+    const resolved = passUntilEmptyStack(stacked);
+    expect(resolved.cards[card.id]?.classLevel).toBe(2);
   });
 });

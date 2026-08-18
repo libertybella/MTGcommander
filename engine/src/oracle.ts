@@ -6,6 +6,16 @@ import {
 } from "./oraclePatterns";
 import type { ActivatedAbility, CardDefinition, Keyword, ManaPool } from "./types";
 
+export type OracleFace = {
+  name: string;
+  manaCost: string;
+  typeLine: string;
+  oracleText: string;
+  power: string | null;
+  toughness: string | null;
+  imageUrl?: string;
+};
+
 export type OracleCard = {
   oracleId: string;
   name: string;
@@ -16,10 +26,15 @@ export type OracleCard = {
   toughness: string | null;
   /** Scryfall-style keyword names, e.g. "Flying". */
   printedKeywords: string[];
+  /** Scryfall `image_uris.normal` when fetched. */
+  imageUrl?: string;
+  layout?: string;
+  faces?: OracleFace[];
 };
 
 export type OracleCompileResult = {
   definition: CardDefinition;
+  otherDefinition?: CardDefinition;
   notes: string[];
 };
 
@@ -104,11 +119,17 @@ function manaCostIsPayable(manaCost: string): boolean {
   }
 }
 
-/**
- * Compile Scryfall-shaped oracle data into an engine CardDefinition.
- * Matches known sentence patterns; leftover text is recorded as notes.
- */
-export function compileOracleCard(card: OracleCard): OracleCompileResult {
+function cardLayout(layout: string | undefined): CardDefinition["layout"] {
+  if (layout === "modal_dfc") {
+    return "modal_dfc";
+  }
+  if (layout === "transform" || layout === "meld" || layout === "double_faced_token") {
+    return "transform";
+  }
+  return undefined;
+}
+
+function compileOneFace(card: OracleCard, definitionId: string): OracleCompileResult {
   const notes: string[] = [];
   const typeLine = card.typeLine.toLowerCase();
   const keywords = keywordsFromOracle(card);
@@ -131,7 +152,7 @@ export function compileOracleCard(card: OracleCard): OracleCompileResult {
   }
 
   const definition = createCardDefinition({
-    id: definitionIdForOracle(card),
+    id: definitionId,
     name: card.name.includes(" // ") ? (card.name.split(" // ")[0] ?? card.name) : card.name,
     manaCost: card.manaCost,
     typeLine: card.typeLine,
@@ -142,12 +163,66 @@ export function compileOracleCard(card: OracleCard): OracleCompileResult {
     effects: compiled.effects,
     targetRequirements: compiled.targetRequirements,
     triggers: compiled.triggers,
+    replacements: compiled.replacements,
     staticModifiers: compiled.staticModifiers,
     produces: compiled.produces,
     producesAnyColor: compiled.producesAnyColor,
     producesOptions: compiled.producesOptions,
+    manaAbilities: compiled.manaAbilities,
     activated: compiled.activated,
+    imageUrl: card.imageUrl ?? "",
+    layout: cardLayout(card.layout),
   });
 
   return { definition, notes };
+}
+
+/**
+ * Compile Scryfall-shaped oracle data into an engine CardDefinition.
+ * Matches known sentence patterns; leftover text is recorded as notes.
+ */
+export function compileOracleCard(card: OracleCard): OracleCompileResult {
+  const frontFace = card.faces?.[0];
+  const frontSource: OracleCard = frontFace
+    ? {
+        ...card,
+        name: frontFace.name,
+        manaCost: frontFace.manaCost,
+        typeLine: frontFace.typeLine,
+        oracleText: frontFace.oracleText,
+        power: frontFace.power,
+        toughness: frontFace.toughness,
+        imageUrl: frontFace.imageUrl || card.imageUrl,
+      }
+    : card;
+  const front = compileOneFace(frontSource, definitionIdForOracle(card));
+  const backFace = card.faces?.[1];
+  const layout = cardLayout(card.layout);
+  if (!backFace || !layout) {
+    return front;
+  }
+  const backCard: OracleCard = {
+    oracleId: `${card.oracleId}:back`,
+    name: backFace.name,
+    manaCost: backFace.manaCost,
+    typeLine: backFace.typeLine,
+    oracleText: backFace.oracleText,
+    power: backFace.power,
+    toughness: backFace.toughness,
+    printedKeywords: card.printedKeywords,
+    imageUrl: backFace.imageUrl ?? "",
+    layout: card.layout,
+  };
+  const back = compileOneFace(backCard, `${definitionIdForOracle(card)}:back`);
+  front.definition.otherFaceId = back.definition.id;
+  back.definition.otherFaceId = front.definition.id;
+  if (layout) {
+    front.definition.layout = layout;
+    back.definition.layout = layout;
+  }
+  return {
+    definition: front.definition,
+    otherDefinition: back.definition,
+    notes: [...front.notes, ...back.notes.map((note) => `${back.definition.name}: ${note}`)],
+  };
 }

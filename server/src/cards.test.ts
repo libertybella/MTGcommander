@@ -74,6 +74,37 @@ describe("scryfall mapping", () => {
     expect(card.name).toBe("Lightning Bolt");
     expect(card.manaCost).toBe("{R}");
   });
+
+  it("keeps both faces of a modal double-faced card", () => {
+    const card = oracleCardFromScryfall({
+      oracle_id: "pathway",
+      name: "Clearwater Pathway // Murkwater Pathway",
+      layout: "modal_dfc",
+      keywords: [],
+      card_faces: [
+        {
+          name: "Clearwater Pathway",
+          mana_cost: "",
+          type_line: "Land",
+          oracle_text: "{T}: Add {U}.",
+          power: null,
+          toughness: null,
+        },
+        {
+          name: "Murkwater Pathway",
+          mana_cost: "",
+          type_line: "Land",
+          oracle_text: "{T}: Add {B}.",
+          power: null,
+          toughness: null,
+        },
+      ],
+    });
+    expect(card.layout).toBe("modal_dfc");
+    expect(card.faces).toHaveLength(2);
+    expect(card.faces?.[1]?.name).toBe("Murkwater Pathway");
+    expect(card.oracleText).toBe("{T}: Add {U}.");
+  });
 });
 
 describe("card database", () => {
@@ -87,6 +118,46 @@ describe("card database", () => {
     expect(db.search("for").map((card) => card.name)).toEqual(["Forest"]);
     const restored = new CardDatabase(fetchImpl, store);
     expect(restored.getCached("Forest")?.oracleId).toBe("forest");
+  });
+
+  it("looks up a modal DFC by either face name after reload", () => {
+    const store = memoryStore();
+    const fetchImpl: HttpFetch = async () => {
+      throw new Error("network should not run");
+    };
+    const db = new CardDatabase(fetchImpl, store);
+    db.put({
+      oracleId: "path",
+      name: "Riverglide Pathway // Lavaglide Pathway",
+      manaCost: "",
+      typeLine: "Land",
+      oracleText: "{T}: Add {U}.",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      layout: "modal_dfc",
+      faces: [
+        {
+          name: "Riverglide Pathway",
+          manaCost: "",
+          typeLine: "Land",
+          oracleText: "{T}: Add {U}.",
+          power: null,
+          toughness: null,
+        },
+        {
+          name: "Lavaglide Pathway",
+          manaCost: "",
+          typeLine: "Land",
+          oracleText: "{T}: Add {R}.",
+          power: null,
+          toughness: null,
+        },
+      ],
+    });
+    const restored = new CardDatabase(fetchImpl, store);
+    expect(restored.getCached("Riverglide Pathway")?.faces?.[1]?.name).toBe("Lavaglide Pathway");
+    expect(restored.getCached("Lavaglide Pathway")?.layout).toBe("modal_dfc");
   });
 });
 
@@ -187,9 +258,9 @@ describe("deck import", () => {
     });
     expect(table.state.players).toHaveLength(3);
     expect(table.state.players.map((player) => player.displayName)).toEqual([
-      "You",
-      "Opponent 1",
-      "Opponent 2",
+      "Player 1",
+      "Player 2",
+      "Player 3",
     ]);
     expect(table.state.players.every((player) => player.zones.command.length === 1)).toBe(true);
   });

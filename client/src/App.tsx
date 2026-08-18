@@ -63,7 +63,9 @@ type RemoteSession = {
 type Session = LocalSession | RemoteSession;
 
 function sessionFrom(host: GameHost): LocalSession {
-  return { kind: "local", host, view: host.viewFor(host.getViewerId()) };
+  const viewerId = host.getViewerId();
+  const revealHidden = host.getSeatedPlayerIds().length > 1;
+  return { kind: "local", host, view: host.viewFor(viewerId, { revealHidden }) };
 }
 
 function formatNotes(notes: { player: string; cards: { name: string; notes: string[] }[] }[]): string[] {
@@ -79,10 +81,7 @@ function formatNotes(notes: { player: string; cards: { name: string; notes: stri
 }
 
 export default function App() {
-  const [session, setSession] = useState<Session | null>(() => {
-    const restored = loadTable(browserStore());
-    return restored ? sessionFrom(restored) : null;
-  });
+  const [session, setSession] = useState<Session | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [mode, setMode] = useState<UiMode>({ type: "idle" });
   const [notes, setNotes] = useState<string[]>([]);
@@ -104,6 +103,19 @@ export default function App() {
     setNotes([]);
     setMode({ type: "idle" });
     setSession(sessionFrom(createHost(playerCount, hotseat)));
+  }
+
+  function leaveTable(clearSave = false) {
+    if (session?.kind === "remote") {
+      session.disconnect();
+    }
+    if (clearSave) {
+      clearTable(browserStore());
+    }
+    setSession(null);
+    setMode({ type: "idle" });
+    setError(null);
+    setNotes([]);
   }
 
   async function loadImported(decks: CompiledDeck[]) {
@@ -224,7 +236,7 @@ export default function App() {
           roomCode: info.roomCode,
           displayName:
             local.view.players.find((player) => player.id === local.host.getViewerId())?.displayName ??
-            "You",
+            "Player 1",
           playerId: local.host.getViewerId(),
         },
         info.addresses[0] ? `${info.addresses[0]}:${info.port}` : `127.0.0.1:${info.port}`,
@@ -243,12 +255,13 @@ export default function App() {
       <main className="shell">
         <header>
           <p className="eyebrow">BizzyMTG Commander</p>
-          <h1>Commander table</h1>
+          <h1>Set up the table</h1>
         </header>
         <p>
-          Start a synthetic test game, or load a real Commander deck from a
-          public Moxfield URL or pasted list. Oracle data comes from Scryfall
-          and is cached locally. Unsupported card text is listed after load.
+          Pick how many players, then start a synthetic test game or load
+          Commander decks from a public Moxfield URL or pasted list. Oracle
+          data comes from Scryfall and is cached locally. Unsupported card
+          text is listed after load.
         </p>
         <p className="muted">{bridge?.isElectron ? "Electron shell" : "Browser (Vite)"}</p>
         {error ? (
@@ -293,7 +306,7 @@ export default function App() {
             checked={hotseat}
             onChange={(event) => setHotseat(event.target.checked)}
           />
-          Local hotseat — every player acts at this PC (no auto-pass)
+          Solo playtest — play every seat, all cards face up
         </label>
         <section className="import-panel">
           <h2>Load a Moxfield / text deck</h2>
@@ -487,25 +500,22 @@ export default function App() {
         error={error}
         mode={mode}
         onMode={setMode}
-        onNewGame={() => {
-          if (table.kind === "remote") {
-            table.disconnect();
-          }
-          clearTable(browserStore());
-          startGame(2);
-        }}
+        isHost={table.kind === "local"}
+        openHands={hotseatTable}
+        onNewGame={() => leaveTable(true)}
+        onLeaveTable={() => leaveTable(false)}
         onAction={(action: GameAction) => {
           if (table.kind === "remote") {
             table.send(action);
             setError(null);
             return;
           }
-          const result = table.host.submit(viewerId, action);
+          const result = table.host.submit(action.playerId, action);
           if (result.ok) {
             persist(table.host);
             setSession(sessionFrom(table.host));
             setError(null);
-            if (isGameOver(table.host.viewFor(viewerId))) {
+            if (isGameOver(table.host.viewFor(viewerId, { revealHidden: hotseatTable }))) {
               setMode({ type: "idle" });
             }
           } else {

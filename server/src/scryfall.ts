@@ -6,12 +6,14 @@ type ScryfallCard = {
   oracle_id?: string;
   id?: string;
   name?: string;
+  layout?: string;
   mana_cost?: string;
   type_line?: string;
   oracle_text?: string;
   power?: string | null;
   toughness?: string | null;
   keywords?: string[];
+  image_uris?: { small?: string; normal?: string; large?: string };
   card_faces?: Array<{
     name?: string;
     mana_cost?: string;
@@ -19,8 +21,13 @@ type ScryfallCard = {
     oracle_text?: string;
     power?: string | null;
     toughness?: string | null;
+    image_uris?: { small?: string; normal?: string; large?: string };
   }>;
 };
+
+function faceImage(face: NonNullable<ScryfallCard["card_faces"]>[number] | undefined): string {
+  return face?.image_uris?.normal ?? face?.image_uris?.small ?? "";
+}
 
 export function oracleCardFromScryfall(raw: unknown): OracleCard {
   if (typeof raw !== "object" || raw === null) {
@@ -36,6 +43,22 @@ export function oracleCardFromScryfall(raw: unknown): OracleCard {
   if (!oracleId) {
     throw new Error(`Scryfall card ${name} is missing an oracle id`);
   }
+  const faces = (card.card_faces ?? [])
+    .map((entry) => {
+      if (!entry.name || !entry.type_line) {
+        return null;
+      }
+      return {
+        name: entry.name,
+        manaCost: entry.mana_cost ?? "",
+        typeLine: entry.type_line,
+        oracleText: entry.oracle_text ?? "",
+        power: entry.power ?? null,
+        toughness: entry.toughness ?? null,
+        imageUrl: faceImage(entry),
+      };
+    })
+    .filter((entry): entry is NonNullable<typeof entry> => entry !== null);
   return {
     oracleId,
     name,
@@ -45,6 +68,13 @@ export function oracleCardFromScryfall(raw: unknown): OracleCard {
     power: face?.power ?? card.power ?? null,
     toughness: face?.toughness ?? card.toughness ?? null,
     printedKeywords: Array.isArray(card.keywords) ? card.keywords.map(String) : [],
+    imageUrl:
+      card.image_uris?.normal ??
+      card.image_uris?.small ??
+      faceImage(face) ??
+      "",
+    ...(card.layout ? { layout: card.layout } : {}),
+    ...(faces.length > 1 ? { faces } : {}),
   };
 }
 

@@ -14,9 +14,9 @@ This is **not** Wizards of the Coast software. It is also **not** the sibling Bi
 
 | | |
 | --- | --- |
-| **Phase** | 36 complete — Manual Override |
+| **Phase** | Playable imported Commander tables (oracle compile + override) |
 | **Next** | Private alpha (invite friends, play complete games) |
-| **Tests** | 239 passing |
+| **Tests** | 331 passing |
 | **Installer** | Not yet. Run from source with Electron. |
 
 ---
@@ -68,10 +68,10 @@ Moxfield URLs fetch in Electron. A plain browser tab should **paste the export**
 - Hidden opponent hands and libraries
 - London mulligan
 - Real-card import (Scryfall cache + Moxfield / text)
-- Simple oracle compile (Bolt-style damage, basic taps, ETBs, anthems, `{N}, {T}:` draw/damage)
-- Activated abilities on the stack (mana taps stay off-stack)
+- Simple oracle compile: damage, taps, ETBs, begin-combat amass, Duress-style discard, Channel, modal DFCs (both faces)
+- Activated abilities on the stack (mana taps and Channel stay off-stack)
 - WebSocket host/join
-- Manual override for the rest
+- Manual override for the rest (in hotseat, options apply to the acting player)
 
 ---
 
@@ -81,7 +81,7 @@ These are **not** compiled yet. Use the Override panel:
 
 - Until-end-of-turn pumps, modal spells, search, Phyrexian, `{X}`
 - Equipment, auras, planeswalkers / loyalty
-- Triggers other than simple ETBs
+- Ring tempts, attack-trigger amass, “play the exiled card this turn”
 - Ward, protection, layers, copy, face-down cards
 - Countering abilities on the stack
 

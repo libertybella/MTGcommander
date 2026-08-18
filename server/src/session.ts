@@ -1,7 +1,14 @@
 import {
   applyAction,
+  cloneGameState,
+  currentPrompt,
+  firstLegalTargetSet,
   isGameOver,
   isMulliganOpen,
+  isOpeningRoll,
+  legalIdsForChooseSources,
+  lookedAtCardIds,
+  openingRollPending,
   redactForViewer,
   serializeGameState,
   type GameAction,
@@ -15,7 +22,8 @@ export type SubmitResult =
 
 /**
  * Authoritative in-process host. Clients may only submit GameActions as
- * themselves. Unseated players auto-pass so a local table can advance.
+ * themselves. Unseated NAPs auto-pass on an empty stack so a local table can
+ * advance; an unseated active player's turn waits for the host to skip.
  * No WebSockets.
  */
 export class GameHost {
@@ -24,6 +32,7 @@ export class GameHost {
     private viewerId: PlayerId,
     private readonly seatedPlayerIds: Set<PlayerId>,
     private readonly listeners: Set<() => void> = new Set(),
+    private readonly history: { actorId: PlayerId; state: GameState }[] = [],
   ) {
     this.flushUnseated();
   }
@@ -87,8 +96,14 @@ export class GameHost {
     };
   }
 
-  /** Player-specific projection. Mutating it cannot change the host. */
-  viewFor(playerId: PlayerId): GameState {
+  /**
+   * Player-specific projection. Mutating it cannot change the host.
+   * Local hotseat can pass `revealHidden` so every hand and library is face up.
+   */
+  viewFor(playerId: PlayerId, options: { revealHidden?: boolean } = {}): GameState {
+    if (options.revealHidden) {
+      return cloneGameState(this.state);
+    }
     return redactForViewer(this.state, playerId);
   }
 
@@ -99,9 +114,17 @@ export class GameHost {
     if (!this.seatedPlayerIds.has(actorId)) {
       return { ok: false, error: "That player is not seated at this client" };
     }
+    if (action.kind === "undo") {
+      return this.undoLast(actorId);
+    }
+    const previous = cloneGameState(this.state);
     const before = serializeGameState(this.state);
     try {
       this.state = applyAction(this.state, action);
+      this.history.push({ actorId, state: previous });
+      if (this.history.length > 100) {
+        this.history.shift();
+      }
       this.flushUnseated();
       this.notify();
       return { ok: true };
@@ -119,6 +142,21 @@ export class GameHost {
     return serializeGameState(this.state);
   }
 
+  private undoLast(actorId: PlayerId): SubmitResult {
+    const last = this.history[this.history.length - 1];
+    if (!last) {
+      return { ok: false, error: "Nothing to undo" };
+    }
+    if (last.actorId !== actorId) {
+      return { ok: false, error: "You can only undo your last action" };
+    }
+    this.history.pop();
+    this.state = cloneGameState(last.state);
+    this.flushUnseated();
+    this.notify();
+    return { ok: true };
+  }
+
   private notify(): void {
     for (const listener of this.listeners) {
       listener();
@@ -131,6 +169,28 @@ export class GameHost {
       guard += 1;
       if (isGameOver(this.state)) {
         return;
+      }
+      if (isOpeningRoll(this.state) && this.state.openingRoll) {
+        const seatedPending = this.state.players.find(
+          (player) =>
+            !player.lost &&
+            openingRollPending(this.state, player.id) &&
+            this.seatedPlayerIds.has(player.id),
+        );
+        if (seatedPending) {
+          return;
+        }
+        const pending = this.state.players.find(
+          (player) =>
+            !player.lost &&
+            this.state.openingRoll?.rolls[player.id] === undefined &&
+            !this.seatedPlayerIds.has(player.id),
+        );
+        if (pending) {
+          this.state = applyAction(this.state, { kind: "opening_roll", playerId: pending.id });
+          continue;
+        }
+        continue;
       }
       if (isMulliganOpen(this.state) && this.state.mulligan) {
         const decidingId = this.state.mulligan.decidingPlayerId;
@@ -150,12 +210,92 @@ export class GameHost {
         this.state = applyAction(this.state, { kind: "keep_hand", playerId: decidingId });
         continue;
       }
-      if (this.seatedPlayerIds.has(this.state.priorityPlayerId)) {
+      const prompt = currentPrompt(this.state);
+      if (prompt) {
+        if (this.seatedPlayerIds.has(prompt.playerId)) {
+          return;
+        }
+        if (prompt.kind === "may_pay_life_or_enter_tapped") {
+          this.state = applyAction(this.state, {
+            kind: "choose_enter_replacement",
+            playerId: prompt.playerId,
+            pay: false,
+          });
+          continue;
+        }
+        if (prompt.kind === "scry") {
+          this.state = applyAction(this.state, {
+            kind: "resolve_scry",
+            playerId: prompt.playerId,
+            bottomIds: [],
+          });
+          continue;
+        }
+        if (prompt.kind === "surveil") {
+          this.state = applyAction(this.state, {
+            kind: "resolve_surveil",
+            playerId: prompt.playerId,
+            graveyardIds: [],
+          });
+          continue;
+        }
+        if (prompt.kind === "choose_discard") {
+          const player = this.state.players.find((entry) => entry.id === prompt.playerId);
+          this.state = applyAction(this.state, {
+            kind: "resolve_discard",
+            playerId: prompt.playerId,
+            cardIds: player?.zones.hand.slice(0, prompt.count) ?? [],
+          });
+          continue;
+        }
+        if (prompt.kind === "choose_card") {
+          const pick = legalIdsForChooseSources(this.state, prompt.sources)[0];
+          if (!pick) {
+            return;
+          }
+          this.state = applyAction(this.state, {
+            kind: "resolve_choose_card",
+            playerId: prompt.playerId,
+            cardId: pick,
+          });
+          continue;
+        }
+        if (prompt.kind === "look_and_assign") {
+          const cards = lookedAtCardIds(this.state, prompt);
+          this.state = applyAction(this.state, {
+            kind: "resolve_look_assign",
+            playerId: prompt.playerId,
+            assignments: cards.map((cardId, index) => ({
+              cardId,
+              destination: prompt.destinations[index] ?? prompt.destinations[0] ?? "hand",
+            })),
+          });
+          continue;
+        }
+        const targets = firstLegalTargetSet(
+          this.state,
+          prompt.requirements,
+          prompt.playerId,
+        );
+        this.state = applyAction(this.state, {
+          kind: "choose_targets",
+          playerId: prompt.playerId,
+          targets: targets ?? [],
+        });
+        continue;
+      }
+      const priorityId = this.state.priorityPlayerId;
+      const seatedPriority = this.seatedPlayerIds.has(priorityId);
+      const activePriority = priorityId === this.state.turn.activePlayerId;
+      if (seatedPriority && (activePriority || this.state.stack.length > 0)) {
+        return;
+      }
+      if (!seatedPriority && activePriority) {
         return;
       }
       this.state = applyAction(this.state, {
         kind: "pass_priority",
-        playerId: this.state.priorityPlayerId,
+        playerId: priorityId,
       });
     }
     throw new Error("Unseated priority flush did not settle");

@@ -18,8 +18,8 @@ export function putActivatedAbilityOnStack(
   if (!card) {
     throw new Error(`Unknown card ${cardId}`);
   }
-  if (card.zone !== "battlefield") {
-    throw new Error(`Card ${cardId} must be on the battlefield`);
+  if (card.zone !== "battlefield" && card.zone !== "hand" && card.zone !== "graveyard") {
+    throw new Error(`Card ${cardId} cannot activate from ${card.zone}`);
   }
   const definition = state.definitions[card.definitionId];
   const ability = definition?.activated[abilityIndex];
@@ -116,12 +116,16 @@ export function resolveTopOfStack(state: GameState): GameState {
       }
     } else {
       const trigger = definition?.triggers[top.triggerIndex ?? 0];
-      if (trigger) {
+      const requirements = trigger?.targetRequirements ?? [];
+      if (
+        trigger &&
+        hasLegalTargetRemaining(next, requirements, top.targets, top.controllerId)
+      ) {
         const bound = bindCardEffects(next, trigger.effects, {
           controllerId: top.controllerId,
           sourceId: top.sourceId,
           targets: top.targets,
-          targetRequirements: [],
+          targetRequirements: requirements,
         });
         next = applyEffects(next, bound);
       }

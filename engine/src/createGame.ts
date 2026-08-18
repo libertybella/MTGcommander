@@ -48,7 +48,11 @@ export function createCardDefinition(
         | "produces"
         | "producesAnyColor"
         | "producesOptions"
+        | "manaAbilities"
         | "activated"
+        | "imageUrl"
+        | "otherFaceId"
+        | "layout"
       >
     >,
 ): CardDefinition {
@@ -65,20 +69,42 @@ export function createCardDefinition(
       ? input.targetRequirements.map((requirement) => ({ ...requirement }))
       : [],
     keywords: input.keywords ? [...input.keywords] : [],
-    triggers: input.triggers ? input.triggers.map((trigger) => ({ ...trigger, effects: trigger.effects.map((effect) => ({ ...effect })) })) : [],
+    triggers: input.triggers
+      ? input.triggers.map((trigger) => ({
+          event: trigger.event,
+          effects: trigger.effects.map((effect) => ({ ...effect })),
+          targetRequirements: (trigger.targetRequirements ?? []).map((requirement) => ({
+            ...requirement,
+          })),
+        }))
+      : [],
     replacements: input.replacements ? input.replacements.map((replacement) => ({ ...replacement })) : [],
     staticModifiers: input.staticModifiers ? input.staticModifiers.map((modifier) => ({ ...modifier })) : [],
     produces: input.produces ? { ...input.produces } : {},
     producesAnyColor: input.producesAnyColor === true,
     producesOptions: input.producesOptions ? [...input.producesOptions] : [],
+    manaAbilities: input.manaAbilities
+      ? input.manaAbilities.map((ability) => ({
+          produces: { ...ability.produces },
+          producesOptions: [...ability.producesOptions],
+          producesAnyColor: ability.producesAnyColor,
+          damageToController: ability.damageToController,
+        }))
+      : [],
     activated: input.activated
       ? input.activated.map((ability) => ({
           tap: ability.tap,
           manaCost: ability.manaCost,
           effects: ability.effects.map((effect) => ({ ...effect })),
           targetRequirements: ability.targetRequirements.map((requirement) => ({ ...requirement })),
+          ...(ability.zone && ability.zone !== "battlefield" ? { zone: ability.zone } : {}),
+          ...(ability.discard ? { discard: true } : {}),
+          ...(ability.timing === "sorcery" ? { timing: "sorcery" as const } : {}),
         }))
       : [],
+    imageUrl: input.imageUrl ?? "",
+    ...(input.otherFaceId ? { otherFaceId: input.otherFaceId } : {}),
+    ...(input.layout && input.layout !== "normal" ? { layout: input.layout } : {}),
   };
 }
 
@@ -102,6 +128,7 @@ export function createCardInstance(input: {
     blockingAttackerId: null,
     summoningSick: input.summoningSick ?? input.zone === "battlefield",
     counters: {},
+    classLevel: 0,
   };
 }
 
@@ -119,6 +146,7 @@ function createPlayer(displayName: string): PlayerState {
     },
     lost: false,
     landsPlayedThisTurn: 0,
+    attackedThisTurn: false,
     failedToDraw: false,
   };
 }
@@ -157,5 +185,9 @@ export function createGameState(options: CreateGameOptions): GameState {
     winnerId: null,
     log: [],
     mulligan: null,
+    openingRoll: null,
+    firstPlayerId: first.id,
+    prompts: [],
+    reveals: [],
   };
 }

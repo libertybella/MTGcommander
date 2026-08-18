@@ -1,5 +1,6 @@
 import { applyEffect } from "./effects";
 import { isLiving, requireLiving } from "./players";
+import { isOpeningRoll } from "./openingRoll";
 import { isGameOver } from "./status";
 import { isMulliganOpen } from "./mulligan";
 import { isHiddenFromViewer } from "./visibility";
@@ -37,6 +38,9 @@ function requireOverrideActor(state: GameState, playerId: PlayerId): void {
   if (isGameOver(state)) {
     throw new Error("The game is already over");
   }
+  if (isOpeningRoll(state)) {
+    throw new Error("Roll for first player first");
+  }
   if (isMulliganOpen(state)) {
     throw new Error("Finish mulligans before taking that action");
   }
@@ -48,6 +52,12 @@ function requireLivingTarget(state: GameState, playerId: PlayerId): void {
   }
   if (!isLiving(state, playerId)) {
     throw new Error("That player has already lost");
+  }
+}
+
+function requireSelfTarget(actorId: PlayerId, targetPlayerId: PlayerId): void {
+  if (actorId !== targetPlayerId) {
+    throw new Error("You can only change your own board");
   }
 }
 
@@ -69,6 +79,15 @@ function assertPublicCard(state: GameState, actorId: PlayerId, cardId: CardInsta
   return located.zone;
 }
 
+function assertOwnPublicCard(state: GameState, actorId: PlayerId, cardId: CardInstanceId): ZoneName {
+  const zone = assertPublicCard(state, actorId, cardId);
+  const located = findCardZone(state, cardId);
+  if (!located || located.playerId !== actorId) {
+    throw new Error("You can only change your own cards");
+  }
+  return zone;
+}
+
 function applyChange(
   state: GameState,
   actorId: PlayerId,
@@ -76,6 +95,7 @@ function applyChange(
 ): { next: GameState; summary: string } {
   switch (change.type) {
     case "adjust_life": {
+      requireSelfTarget(actorId, change.targetPlayerId);
       requireLivingTarget(state, change.targetPlayerId);
       if (!Number.isInteger(change.delta) || change.delta === 0) {
         throw new Error("Life override must be a non-zero integer");
@@ -96,6 +116,7 @@ function applyChange(
       return { next, summary: `${playerName(state, change.targetPlayerId)} life ${delta}` };
     }
     case "draw": {
+      requireSelfTarget(actorId, change.targetPlayerId);
       requireLivingTarget(state, change.targetPlayerId);
       const next = applyEffect(state, {
         kind: "draw",
@@ -108,6 +129,7 @@ function applyChange(
       };
     }
     case "mill": {
+      requireSelfTarget(actorId, change.targetPlayerId);
       requireLivingTarget(state, change.targetPlayerId);
       const next = applyEffect(state, {
         kind: "mill",
@@ -120,6 +142,7 @@ function applyChange(
       };
     }
     case "add_mana": {
+      requireSelfTarget(actorId, change.targetPlayerId);
       requireLivingTarget(state, change.targetPlayerId);
       const next = applyEffect(state, {
         kind: "add_mana",
@@ -132,7 +155,7 @@ function applyChange(
       };
     }
     case "move_card": {
-      const from = assertPublicCard(state, actorId, change.cardId);
+      const from = assertOwnPublicCard(state, actorId, change.cardId);
       if (!MOVE_ZONES.includes(change.toZone)) {
         throw new Error(`Cannot move a card to ${change.toZone}`);
       }
@@ -150,7 +173,7 @@ function applyChange(
       };
     }
     case "set_tapped": {
-      assertPublicCard(state, actorId, change.cardId);
+      assertOwnPublicCard(state, actorId, change.cardId);
       const next = applyEffect(state, {
         kind: change.tapped ? "tap" : "untap",
         cardId: change.cardId,
@@ -160,6 +183,26 @@ function applyChange(
         summary: `${cardName(state, change.cardId)} ${change.tapped ? "tapped" : "untapped"}`,
       };
     }
+    case "discard_hand": {
+      const player = state.players.find((entry) => entry.id === actorId);
+      const count = player?.zones.hand.length ?? 0;
+      if (count === 0) {
+        throw new Error("Hand is empty");
+      }
+      const next = applyEffect(state, { kind: "discard", playerId: actorId, count });
+      return { next, summary: `${playerName(state, actorId)} discards hand (${count})` };
+    }
+    case "create_token": {
+      const next = applyEffect(state, {
+        kind: "create_token",
+        ownerId: actorId,
+        name: change.template.name,
+        typeLine: change.template.typeLine,
+        power: change.template.power,
+        toughness: change.template.toughness,
+      });
+      return { next, summary: `${playerName(state, actorId)} creates ${change.template.name}` };
+    }
     default: {
       const exhaustive: never = change;
       throw new Error(`Unknown override ${(exhaustive as ManualOverrideChange).type}`);
@@ -168,7 +211,7 @@ function applyChange(
 }
 
 /**
- * Table-agreed correction. Does not require priority. Illegal changes throw
+ * Self-only table correction. Does not require priority. Illegal changes throw
  * and leave the original GameState unchanged (via applyAction).
  */
 export function applyManualOverride(

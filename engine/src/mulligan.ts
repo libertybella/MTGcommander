@@ -2,6 +2,7 @@ import { cloneGameState } from "./clone";
 import { isLiving, livingPlayerCount } from "./players";
 import { shuffleInPlace } from "./shuffle";
 import { isGameOver } from "./status";
+import { advanceStep } from "./turn";
 import { moveCard } from "./zones";
 import type { CardInstanceId, GameState, MulliganState, PlayerId } from "./types";
 
@@ -22,7 +23,9 @@ export function countedMulligans(state: GameState, playerId: PlayerId): number {
 
 export function beginMulligan(state: GameState, startingHandSize = DEFAULT_STARTING_HAND_SIZE): GameState {
   const next = cloneGameState(state);
-  const first = next.players.find((player) => isLiving(next, player.id));
+  const first =
+    next.players.find((player) => player.id === next.turn.activePlayerId && isLiving(next, player.id)) ??
+    next.players.find((player) => isLiving(next, player.id));
   if (!first) {
     throw new Error("No living player to begin mulligans");
   }
@@ -71,6 +74,13 @@ function requirePlayer(state: GameState, playerId: PlayerId) {
   return player;
 }
 
+function skipFirstTurnUntap(state: GameState): GameState {
+  if (state.turn.number === 1 && state.turn.step === "untap") {
+    return advanceStep(state);
+  }
+  return state;
+}
+
 function advanceDeciderInPlace(state: GameState): void {
   if (!state.mulligan) {
     return;
@@ -79,15 +89,20 @@ function advanceDeciderInPlace(state: GameState): void {
     state.mulligan = null;
     return;
   }
-  const nextPlayer = state.players.find(
-    (player) => isLiving(state, player.id) && !state.mulligan?.kept[player.id],
+  const currentId = state.mulligan.decidingPlayerId;
+  const startIndex = Math.max(
+    0,
+    state.players.findIndex((player) => player.id === currentId),
   );
-  if (!nextPlayer) {
-    state.mulligan = null;
-    return;
+  for (let offset = 1; offset <= state.players.length; offset += 1) {
+    const player = state.players[(startIndex + offset) % state.players.length];
+    if (player && isLiving(state, player.id) && !state.mulligan.kept[player.id]) {
+      state.mulligan.decidingPlayerId = player.id;
+      state.mulligan.pendingBottom = 0;
+      return;
+    }
   }
-  state.mulligan.decidingPlayerId = nextPlayer.id;
-  state.mulligan.pendingBottom = 0;
+  state.mulligan = null;
 }
 
 export function reconcileMulliganAfterLoss(state: GameState): GameState {
@@ -120,6 +135,9 @@ export function applyKeepHand(state: GameState, playerId: PlayerId): GameState {
   }
   next.mulligan.kept[playerId] = true;
   advanceDeciderInPlace(next);
+  if (!next.mulligan) {
+    return skipFirstTurnUntap(next);
+  }
   return next;
 }
 

@@ -1,26 +1,36 @@
 import type {
   ActivatedAbility,
+  BoundChooseCardSource,
   CardEffect,
   CardIdSelector,
   CardInstanceId,
   CardTrigger,
+  ChooseCardSource,
   ChosenTarget,
+  EnterTappedUnless,
   GameAction,
+  GameEffect,
   GameEvent,
   GameLogEntry,
   GameState,
+  LookDestination,
   ManualOverrideChange,
   Keyword,
+  ManaAbility,
   ManaColor,
   ManaPool,
   MulliganState,
+  OpeningRollState,
+  PendingPrompt,
   PlayerId,
   PlayerSelector,
   PlayerState,
   ReplacementEffect,
   StaticModifier,
   TargetRequirement,
+  TokenTemplate,
   ZoneName,
+  ZoneReveal,
 } from "./types";
 
 const KEYWORDS = new Set<Keyword>([
@@ -143,6 +153,7 @@ function parsePlayer(value: unknown): PlayerState {
       value.landsPlayedThisTurn === undefined
         ? 0
         : expectNumber(value.landsPlayedThisTurn, "player.landsPlayedThisTurn"),
+    attackedThisTurn: value.attackedThisTurn === true,
     failedToDraw: value.failedToDraw === true,
   };
 }
@@ -201,6 +212,8 @@ export function parseGameState(json: string): GameState {
           : expectString(card.blockingAttackerId, "card.blockingAttackerId"),
       summoningSick: card.summoningSick === true,
       counters: parseCounters(card.counters, `card.${id}.counters`),
+      classLevel:
+        card.classLevel === undefined ? 0 : expectNumber(card.classLevel, "card.classLevel"),
     };
   }
 
@@ -239,7 +252,16 @@ export function parseGameState(json: string): GameState {
       produces: parseProduces(def.produces, `definition.${id}.produces`),
       producesAnyColor: def.producesAnyColor === true,
       producesOptions: parseManaOptions(def.producesOptions, `definition.${id}.producesOptions`),
+      manaAbilities: parseManaAbilities(def.manaAbilities, `definition.${id}.manaAbilities`),
       activated: parseActivatedAbilities(def.activated, `definition.${id}.activated`),
+      imageUrl:
+        def.imageUrl === undefined ? "" : expectString(def.imageUrl, "definition.imageUrl", true),
+      ...(def.otherFaceId === undefined
+        ? {}
+        : { otherFaceId: expectString(def.otherFaceId, "definition.otherFaceId") }),
+      ...(def.layout === undefined || def.layout === "normal"
+        ? {}
+        : { layout: parseCardLayout(def.layout, "definition.layout") }),
     };
   }
 
@@ -305,6 +327,215 @@ export function parseGameState(json: string): GameState {
         : expectString(raw.winnerId, "winnerId"),
     log: parseLog(raw.log),
     mulligan: parseMulligan(raw.mulligan, playerIds),
+    openingRoll: parseOpeningRoll(raw.openingRoll, playerIds),
+    firstPlayerId: parseFirstPlayerId(raw.firstPlayerId, players),
+    prompts: parsePrompts(raw.prompts, playerIds),
+    reveals: parseReveals(raw.reveals, playerIds),
+  };
+}
+
+function parseFirstPlayerId(value: unknown, players: GameState["players"]): PlayerId {
+  const fallback = players[0]?.id;
+  if (!fallback) {
+    throw new Error("Game has no players");
+  }
+  if (value === undefined || value === null) {
+    return fallback;
+  }
+  const playerId = expectString(value, "firstPlayerId");
+  if (!players.some((player) => player.id === playerId)) {
+    throw new Error("firstPlayerId must be a player");
+  }
+  return playerId;
+}
+
+function parsePrompts(value: unknown, playerIds: Set<string>): PendingPrompt[] {
+  if (value === undefined || value === null) {
+    return [];
+  }
+  if (!Array.isArray(value)) {
+    throw new Error("Invalid prompts");
+  }
+  return value.map((entry, index) => {
+    if (!isRecord(entry)) {
+      throw new Error(`Invalid prompts[${index}]`);
+    }
+    const kind = expectString(entry.kind, `prompts[${index}].kind`);
+    const playerId = expectString(entry.playerId, `prompts[${index}].playerId`);
+    if (!playerIds.has(playerId)) {
+      throw new Error(`prompts[${index}].playerId must be a player`);
+    }
+    if (kind === "may_pay_life_or_enter_tapped") {
+      return {
+        kind,
+        playerId,
+        sourceId: expectString(entry.sourceId, `prompts[${index}].sourceId`),
+        amount: expectNumber(entry.amount, `prompts[${index}].amount`),
+      };
+    }
+    if (kind === "scry" || kind === "surveil" || kind === "choose_discard") {
+      const resumeEffects =
+        entry.resumeEffects === undefined
+          ? undefined
+          : parseGameEffects(entry.resumeEffects, `prompts[${index}].resumeEffects`);
+      return {
+        kind,
+        playerId,
+        count: expectNumber(entry.count, `prompts[${index}].count`),
+        ...(resumeEffects && resumeEffects.length > 0 ? { resumeEffects } : {}),
+      };
+    }
+    if (kind === "look_and_assign") {
+      const resumeEffects =
+        entry.resumeEffects === undefined
+          ? undefined
+          : parseGameEffects(entry.resumeEffects, `prompts[${index}].resumeEffects`);
+      return {
+        kind,
+        playerId,
+        count: expectNumber(entry.count, `prompts[${index}].count`),
+        destinations: parseLookDestinations(entry.destinations, `prompts[${index}].destinations`),
+        ...(resumeEffects && resumeEffects.length > 0 ? { resumeEffects } : {}),
+      };
+    }
+    if (kind === "choose_card") {
+      const resumeEffects =
+        entry.resumeEffects === undefined
+          ? undefined
+          : parseGameEffects(entry.resumeEffects, `prompts[${index}].resumeEffects`);
+      return {
+        kind,
+        playerId,
+        sources: parseBoundChooseSources(entry.sources, `prompts[${index}].sources`, playerIds),
+        thenEffects: parseCardEffects(entry.thenEffects, `prompts[${index}].thenEffects`),
+        sourceId:
+          entry.sourceId === undefined || entry.sourceId === null
+            ? null
+            : expectString(entry.sourceId, `prompts[${index}].sourceId`),
+        ...(resumeEffects && resumeEffects.length > 0 ? { resumeEffects } : {}),
+      };
+    }
+    if (kind !== "choose_targets") {
+      throw new Error(`Invalid prompts[${index}].kind`);
+    }
+    const origin = expectString(entry.origin, `prompts[${index}].origin`);
+    if (origin !== "trigger") {
+      throw new Error(`Invalid prompts[${index}].origin`);
+    }
+    return {
+      kind,
+      playerId,
+      sourceId: expectString(entry.sourceId, `prompts[${index}].sourceId`),
+      origin,
+      triggerIndex: expectNumber(entry.triggerIndex, `prompts[${index}].triggerIndex`),
+      requirements: parseTargetRequirements(entry.requirements, `prompts[${index}].requirements`),
+    };
+  });
+}
+
+function parseLookDestinations(value: unknown, label: string): LookDestination[] {
+  if (!Array.isArray(value) || value.length === 0) {
+    throw new Error(`Invalid ${label}`);
+  }
+  return value.map((entry, index) => {
+    const destination = expectString(entry, `${label}[${index}]`);
+    if (destination !== "hand" && destination !== "library_bottom" && destination !== "exile") {
+      throw new Error(`Invalid ${label}[${index}]`);
+    }
+    return destination;
+  });
+}
+
+function parseCardFilter(value: unknown, label: string): "any" | "nonland" | "noncreature_nonland" {
+  const filter = expectString(value, label);
+  if (filter !== "any" && filter !== "nonland" && filter !== "noncreature_nonland") {
+    throw new Error(`Invalid ${label}`);
+  }
+  return filter;
+}
+
+function parseChooseCardSources(value: unknown, label: string): ChooseCardSource[] {
+  if (!Array.isArray(value)) {
+    throw new Error(`Invalid ${label}`);
+  }
+  return value.map((entry, index) => {
+    if (!isRecord(entry)) {
+      throw new Error(`Invalid ${label}[${index}]`);
+    }
+    const zone = expectString(entry.zone, `${label}[${index}].zone`);
+    if (zone !== "hand" && zone !== "graveyard") {
+      throw new Error(`Invalid ${label}[${index}].zone`);
+    }
+    return {
+      playerId: parsePlayerSelector(entry.playerId, `${label}[${index}].playerId`),
+      zone,
+      filter: parseCardFilter(entry.filter, `${label}[${index}].filter`),
+    };
+  });
+}
+
+function parseBoundChooseSources(
+  value: unknown,
+  label: string,
+  playerIds: Set<string>,
+): BoundChooseCardSource[] {
+  if (!Array.isArray(value)) {
+    throw new Error(`Invalid ${label}`);
+  }
+  return value.map((entry, index) => {
+    if (!isRecord(entry)) {
+      throw new Error(`Invalid ${label}[${index}]`);
+    }
+    const playerId = expectString(entry.playerId, `${label}[${index}].playerId`);
+    if (!playerIds.has(playerId)) {
+      throw new Error(`${label}[${index}].playerId must be a player`);
+    }
+    const zone = expectString(entry.zone, `${label}[${index}].zone`);
+    if (zone !== "hand" && zone !== "graveyard") {
+      throw new Error(`Invalid ${label}[${index}].zone`);
+    }
+    return {
+      playerId,
+      zone,
+      filter: parseCardFilter(entry.filter, `${label}[${index}].filter`),
+    };
+  });
+}
+
+function parseReveals(value: unknown, playerIds: Set<string>): ZoneReveal[] {
+  if (value === undefined || value === null) {
+    return [];
+  }
+  if (!Array.isArray(value)) {
+    throw new Error("Invalid reveals");
+  }
+  return value.map((entry, index) => {
+    if (!isRecord(entry)) {
+      throw new Error(`Invalid reveals[${index}]`);
+    }
+    const viewerId = expectString(entry.viewerId, `reveals[${index}].viewerId`);
+    if (!playerIds.has(viewerId)) {
+      throw new Error(`reveals[${index}].viewerId must be a player`);
+    }
+    return {
+      viewerId,
+      cardIds: expectStringArray(entry.cardIds, `reveals[${index}].cardIds`) as CardInstanceId[],
+    };
+  });
+}
+
+function parseTokenTemplate(value: unknown, label: string): TokenTemplate {
+  if (!isRecord(value)) {
+    throw new Error(`Invalid ${label}`);
+  }
+  return {
+    name: expectString(value.name, `${label}.name`),
+    typeLine: expectString(value.typeLine, `${label}.typeLine`),
+    power: value.power === undefined || value.power === null ? null : expectNumber(value.power, `${label}.power`),
+    toughness:
+      value.toughness === undefined || value.toughness === null
+        ? null
+        : expectNumber(value.toughness, `${label}.toughness`),
   };
 }
 
@@ -334,6 +565,29 @@ function parseMulligan(value: unknown, playerIds: Set<string>): MulliganState | 
     kept,
     pendingBottom: expectNumber(value.pendingBottom ?? 0, "mulligan.pendingBottom"),
     startingHandSize: expectNumber(value.startingHandSize ?? 7, "mulligan.startingHandSize"),
+  };
+}
+
+function parseOpeningRoll(value: unknown, playerIds: Set<string>): OpeningRollState | null {
+  if (value === undefined || value === null) {
+    return null;
+  }
+  if (!isRecord(value)) {
+    throw new Error("Invalid openingRoll");
+  }
+  if (!isRecord(value.rolls)) {
+    throw new Error("Invalid openingRoll.rolls");
+  }
+  const rolls: Record<PlayerId, number> = {};
+  for (const [playerId, result] of Object.entries(value.rolls)) {
+    if (!playerIds.has(playerId)) {
+      throw new Error("openingRoll.rolls has an unknown player");
+    }
+    rolls[playerId] = expectNumber(result, `openingRoll.rolls.${playerId}`);
+  }
+  return {
+    rolls,
+    startingHandSize: expectNumber(value.startingHandSize ?? 7, "openingRoll.startingHandSize"),
   };
 }
 
@@ -374,9 +628,13 @@ function parseTargetRequirement(value: unknown, label: string): TargetRequiremen
   const kind = expectString(value.kind, `${label}.kind`);
   if (
     kind !== "player" &&
+    kind !== "opponent" &&
     kind !== "creature" &&
+    kind !== "nonartifact_creature" &&
     kind !== "player_or_creature" &&
-    kind !== "spell"
+    kind !== "spell" &&
+    kind !== "creature_spell" &&
+    kind !== "noncreature_spell"
   ) {
     throw new Error(`Invalid ${label}.kind`);
   }
@@ -458,6 +716,49 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
         kind,
         playerId: parsePlayerSelector(value.playerId, `${label}.playerId`),
         count: expectNumber(value.count, `${label}.count`),
+      };
+    case "scry":
+    case "surveil":
+      return {
+        kind,
+        playerId: parsePlayerSelector(value.playerId, `${label}.playerId`),
+        count: expectNumber(value.count, `${label}.count`),
+      };
+    case "discard_unless_attacked":
+      return {
+        kind,
+        playerId: parsePlayerSelector(value.playerId, `${label}.playerId`),
+        count: expectNumber(value.count, `${label}.count`),
+      };
+    case "amass":
+      return {
+        kind,
+        playerId: parsePlayerSelector(value.playerId, `${label}.playerId`),
+        amount: expectNumber(value.amount, `${label}.amount`),
+        ...(value.subtype === undefined
+          ? {}
+          : { subtype: expectString(value.subtype, `${label}.subtype`) }),
+      };
+    case "look_and_assign":
+      return {
+        kind,
+        playerId: parsePlayerSelector(value.playerId, `${label}.playerId`),
+        count: expectNumber(value.count, `${label}.count`),
+        destinations: parseLookDestinations(value.destinations, `${label}.destinations`),
+      };
+    case "reveal_zone":
+      return {
+        kind,
+        fromPlayerId: parsePlayerSelector(value.fromPlayerId, `${label}.fromPlayerId`),
+        toPlayerId: parsePlayerSelector(value.toPlayerId, `${label}.toPlayerId`),
+        zone: "hand",
+      };
+    case "choose_card":
+      return {
+        kind,
+        chooserId: parsePlayerSelector(value.chooserId, `${label}.chooserId`),
+        sources: parseChooseCardSources(value.sources, `${label}.sources`),
+        thenEffects: parseCardEffects(value.thenEffects, `${label}.thenEffects`),
       };
     case "add_mana":
       return {
@@ -577,6 +878,12 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
       }
       return { kind, target: { type: "chosen", index } };
     }
+    case "set_class_level":
+      return {
+        kind,
+        cardId: parseCardIdSelector(value.cardId, `${label}.cardId`),
+        level: expectNumber(value.level, `${label}.level`),
+      };
     default:
       throw new Error(`Unknown effect kind ${kind}`);
   }
@@ -594,6 +901,14 @@ function parseCounters(value: unknown, label: string): Record<string, number> {
     counters[key] = expectNumber(amount, `${label}.${key}`);
   }
   return counters;
+}
+
+function parseCardLayout(value: unknown, label: string): "modal_dfc" | "transform" {
+  const layout = expectString(value, label);
+  if (layout !== "modal_dfc" && layout !== "transform") {
+    throw new Error(`Invalid ${label}`);
+  }
+  return layout;
 }
 
 function parseKeywords(value: unknown, label: string): Keyword[] {
@@ -628,6 +943,9 @@ function parseActivatedAbilities(value: unknown, label: string): ActivatedAbilit
         entry.targetRequirements,
         `${label}[${index}].targetRequirements`,
       ),
+      ...(entry.zone === "hand" ? { zone: "hand" as const } : {}),
+      ...(entry.discard === true ? { discard: true } : {}),
+      ...(entry.timing === "sorcery" ? { timing: "sorcery" as const } : {}),
     };
   });
 }
@@ -644,12 +962,16 @@ function parseTriggers(value: unknown, label: string): CardTrigger[] {
       throw new Error(`Invalid ${label}[${index}]`);
     }
     const event = expectString(entry.event, `${label}[${index}].event`);
-    if (event !== "enter_battlefield") {
+    if (event !== "enter_battlefield" && event !== "begin_combat") {
       throw new Error(`Invalid ${label}[${index}].event`);
     }
     return {
       event,
       effects: parseCardEffects(entry.effects, `${label}[${index}].effects`),
+      targetRequirements: parseTargetRequirements(
+        entry.targetRequirements,
+        `${label}[${index}].targetRequirements`,
+      ),
     };
   });
 }
@@ -666,12 +988,67 @@ function parseReplacements(value: unknown, label: string): ReplacementEffect[] {
       throw new Error(`Invalid ${label}[${index}]`);
     }
     const kind = expectString(entry.kind, `${label}[${index}].kind`);
+    if (kind === "enters_tapped") {
+      return { kind };
+    }
+    if (kind === "may_pay_life_or_enter_tapped") {
+      return {
+        kind,
+        amount: expectNumber(entry.amount, `${label}[${index}].amount`),
+      };
+    }
+    if (kind === "enters_tapped_unless") {
+      return {
+        kind,
+        unless: parseEnterTappedUnless(entry.unless, `${label}[${index}].unless`),
+      };
+    }
+    if (kind === "enters_tapped_if") {
+      return {
+        kind,
+        if: parseEnterTappedUnless(entry.if, `${label}[${index}].if`),
+      };
+    }
     const instead = expectString(entry.instead, `${label}[${index}].instead`);
     if (kind !== "replace_draw" || instead !== "skip") {
       throw new Error(`Invalid ${label}[${index}]`);
     }
     return { kind, instead };
   });
+}
+
+function parseEnterTappedUnless(value: unknown, label: string): EnterTappedUnless {
+  if (!isRecord(value)) {
+    throw new Error(`Invalid ${label}`);
+  }
+  const kind = expectString(value.kind, `${label}.kind`);
+  if (kind === "other_lands") {
+    const count = expectNumber(value.count, `${label}.count`);
+    if (!Number.isInteger(count) || count <= 0) {
+      throw new Error(`Invalid ${label}.count`);
+    }
+    return { kind, count };
+  }
+  if (kind === "basic_lands") {
+    const count = expectNumber(value.count, `${label}.count`);
+    if (!Number.isInteger(count) || count <= 0) {
+      throw new Error(`Invalid ${label}.count`);
+    }
+    return { kind, count };
+  }
+  if (kind === "legendary_creature") {
+    return { kind };
+  }
+  if (kind === "controlled_types") {
+    if (!Array.isArray(value.types) || value.types.length === 0) {
+      throw new Error(`Invalid ${label}.types`);
+    }
+    return {
+      kind,
+      types: value.types.map((entry, index) => expectString(entry, `${label}.types[${index}]`)),
+    };
+  }
+  throw new Error(`Invalid ${label}.kind`);
 }
 
 function parseStaticModifiers(value: unknown, label: string): StaticModifier[] {
@@ -724,6 +1101,29 @@ function parseManaOptions(value: unknown, label: string): ManaColor[] {
   return value.map((entry, index) => parseManaColor(entry, `${label}[${index}]`));
 }
 
+function parseManaAbilities(value: unknown, label: string): ManaAbility[] {
+  if (value === undefined) {
+    return [];
+  }
+  if (!Array.isArray(value)) {
+    throw new Error(`Invalid ${label}`);
+  }
+  return value.map((entry, index) => {
+    if (!isRecord(entry)) {
+      throw new Error(`Invalid ${label}[${index}]`);
+    }
+    return {
+      produces: parseProduces(entry.produces, `${label}[${index}].produces`),
+      producesOptions: parseManaOptions(entry.producesOptions, `${label}[${index}].producesOptions`),
+      producesAnyColor: entry.producesAnyColor === true,
+      damageToController:
+        entry.damageToController === undefined
+          ? 0
+          : expectNumber(entry.damageToController, `${label}[${index}].damageToController`),
+    };
+  });
+}
+
 function parseLog(value: unknown): GameLogEntry[] {
   if (value === undefined) {
     return [];
@@ -748,6 +1148,26 @@ function parseLog(value: unknown): GameLogEntry[] {
         kind,
         playerId: expectString(entry.playerId, `log[${index}].playerId`),
         summary: expectString(entry.summary, `log[${index}].summary`),
+      };
+    }
+    if (kind === "die_roll") {
+      return {
+        kind,
+        playerId: expectString(entry.playerId, `log[${index}].playerId`),
+        sides: expectNumber(entry.sides, `log[${index}].sides`),
+        result: expectNumber(entry.result, `log[${index}].result`),
+      };
+    }
+    if (kind === "opening_tie") {
+      return {
+        kind,
+        playerIds: expectStringArray(entry.playerIds, `log[${index}].playerIds`),
+      };
+    }
+    if (kind === "first_player") {
+      return {
+        kind,
+        playerId: expectString(entry.playerId, `log[${index}].playerId`),
       };
     }
     if (kind !== "zone_change") {
@@ -778,6 +1198,48 @@ function parseCardEffects(value: unknown, label: string): CardEffect[] {
     throw new Error(`Invalid ${label}`);
   }
   return value.map((entry, index) => parseCardEffect(entry, `${label}[${index}]`));
+}
+
+function parseGameEffects(value: unknown, label: string): GameEffect[] {
+  if (!Array.isArray(value)) {
+    throw new Error(`Invalid ${label}`);
+  }
+  return value.map((entry, index) => parseGameEffect(entry, `${label}[${index}]`));
+}
+
+function parseGameEffect(value: unknown, label: string): GameEffect {
+  if (!isRecord(value)) {
+    throw new Error(`Invalid ${label}`);
+  }
+  const kind = expectString(value.kind, `${label}.kind`);
+  if (
+    kind === "draw" ||
+    kind === "scry" ||
+    kind === "surveil" ||
+    kind === "mill" ||
+    kind === "discard"
+  ) {
+    return {
+      kind,
+      playerId: expectString(value.playerId, `${label}.playerId`),
+      count: expectNumber(value.count, `${label}.count`),
+    };
+  }
+  if (kind === "gain_life" || kind === "lose_life") {
+    return {
+      kind,
+      playerId: expectString(value.playerId, `${label}.playerId`),
+      amount: expectNumber(value.amount, `${label}.amount`),
+    };
+  }
+  if (kind === "add_mana") {
+    return {
+      kind,
+      playerId: expectString(value.playerId, `${label}.playerId`),
+      mana: parsePartialMana(value.mana, `${label}.mana`),
+    };
+  }
+  throw new Error(`Unsupported resume effect ${kind}`);
 }
 
 function parseCombat(value: unknown): GameState["combat"] {
@@ -825,14 +1287,33 @@ export function parseGameAction(json: string): GameAction {
   }
   const kind = expectString(raw.kind, "action.kind");
   const playerId = expectString(raw.playerId, "action.playerId");
-  if (kind === "pass_priority" || kind === "concede" || kind === "keep_hand" || kind === "mulligan") {
+  if (
+    kind === "pass_priority" ||
+    kind === "concede" ||
+    kind === "keep_hand" ||
+    kind === "mulligan" ||
+    kind === "undo" ||
+    kind === "opening_roll" ||
+    kind === "advance_step" ||
+    kind === "advance_turn"
+  ) {
     return { kind, playerId };
+  }
+  if (kind === "roll_die") {
+    return {
+      kind,
+      playerId,
+      sides: raw.sides === undefined ? 20 : expectNumber(raw.sides, "action.sides"),
+    };
   }
   if (kind === "play_land") {
     return {
       kind,
       playerId,
       cardId: expectString(raw.cardId, "action.cardId"),
+      ...(raw.faceIndex === undefined
+        ? {}
+        : { faceIndex: expectNumber(raw.faceIndex, "action.faceIndex") }),
     };
   }
   if (kind === "cast_spell") {
@@ -843,6 +1324,9 @@ export function parseGameAction(json: string): GameAction {
       ...(raw.targets === undefined
         ? {}
         : { targets: parseChosenTargets(raw.targets, "action.targets") }),
+      ...(raw.faceIndex === undefined
+        ? {}
+        : { faceIndex: expectNumber(raw.faceIndex, "action.faceIndex") }),
     };
   }
   if (kind === "declare_attackers") {
@@ -889,6 +1373,9 @@ export function parseGameAction(json: string): GameAction {
       ...(raw.color === undefined
         ? {}
         : { color: parseManaColor(raw.color, "action.color") }),
+      ...(raw.manaIndex === undefined
+        ? {}
+        : { manaIndex: expectNumber(raw.manaIndex, "action.manaIndex") }),
     };
   }
   if (kind === "activate_ability") {
@@ -900,6 +1387,70 @@ export function parseGameAction(json: string): GameAction {
       ...(raw.targets === undefined
         ? {}
         : { targets: parseChosenTargets(raw.targets, "action.targets") }),
+    };
+  }
+  if (kind === "choose_targets") {
+    return {
+      kind,
+      playerId,
+      targets: parseChosenTargets(raw.targets, "action.targets"),
+    };
+  }
+  if (kind === "choose_enter_replacement") {
+    return {
+      kind,
+      playerId,
+      pay: raw.pay === true,
+    };
+  }
+  if (kind === "resolve_scry") {
+    return {
+      kind,
+      playerId,
+      bottomIds: expectStringArray(raw.bottomIds, "action.bottomIds") as CardInstanceId[],
+    };
+  }
+  if (kind === "resolve_surveil") {
+    return {
+      kind,
+      playerId,
+      graveyardIds: expectStringArray(raw.graveyardIds, "action.graveyardIds") as CardInstanceId[],
+    };
+  }
+  if (kind === "resolve_discard") {
+    return {
+      kind,
+      playerId,
+      cardIds: expectStringArray(raw.cardIds, "action.cardIds") as CardInstanceId[],
+    };
+  }
+  if (kind === "resolve_choose_card") {
+    return {
+      kind,
+      playerId,
+      cardId: expectString(raw.cardId, "action.cardId"),
+    };
+  }
+  if (kind === "resolve_look_assign") {
+    if (!Array.isArray(raw.assignments)) {
+      throw new Error("Invalid action.assignments");
+    }
+    return {
+      kind,
+      playerId,
+      assignments: raw.assignments.map((entry, index) => {
+        if (!isRecord(entry)) {
+          throw new Error(`Invalid action.assignments[${index}]`);
+        }
+        const destination = expectString(entry.destination, `action.assignments[${index}].destination`);
+        if (destination !== "hand" && destination !== "library_bottom" && destination !== "exile") {
+          throw new Error(`Invalid action.assignments[${index}].destination`);
+        }
+        return {
+          cardId: expectString(entry.cardId, `action.assignments[${index}].cardId`),
+          destination,
+        };
+      }),
     };
   }
   if (kind === "bottom_cards") {
@@ -974,6 +1525,12 @@ function parseManualOverrideChange(value: unknown, label: string): ManualOverrid
       cardId: expectString(value.cardId, `${label}.cardId`),
       tapped: value.tapped,
     };
+  }
+  if (type === "discard_hand") {
+    return { type };
+  }
+  if (type === "create_token") {
+    return { type, template: parseTokenTemplate(value.template, `${label}.template`) };
   }
   throw new Error(`Unknown override type ${type}`);
 }

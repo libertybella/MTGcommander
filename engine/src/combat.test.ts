@@ -140,6 +140,27 @@ describe("combat", () => {
     expect(next.cards[blocker.id]?.zone).toBe("battlefield");
   });
 
+  it("lets the active player declare another player's blockers", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const attacker = creature(game, p1.id, "Bear", 2, 2);
+    const blocker = creature(game, p2.id, "Wall", 1, 3);
+    let next = passTo(game, "declareAttackers");
+    next = applyAction(next, {
+      kind: "declare_attackers",
+      playerId: p1.id,
+      attacks: [{ attackerId: attacker.id, defenderId: p2.id }],
+    });
+    next = passN(next, 2);
+    expect(next.priorityPlayerId).toBe(p1.id);
+    next = applyAction(next, {
+      kind: "declare_blockers",
+      playerId: p1.id,
+      blocks: [{ blockerId: blocker.id, attackerId: attacker.id }],
+    });
+    expect(next.cards[blocker.id]?.blockingAttackerId).toBe(attacker.id);
+    expect(next.priorityPlayerId).toBe(p1.id);
+  });
+
   it("supports multiple blockers and kills a creature with lethal damage", () => {
     const { game, p1, p2 } = twoPlayers();
     const attacker = creature(game, p1.id, "Ogre", 3, 3);
@@ -238,7 +259,7 @@ describe("combat", () => {
         playerId: p2.id,
         blocks: [{ blockerId: attacker.id, attackerId: attacker.id }],
       }),
-    ).toThrow(/controlled|cannot block|attacking/);
+    ).toThrow(/those blockers/);
     expect(next).toEqual(original);
   });
 

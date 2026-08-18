@@ -78,6 +78,7 @@ describe("playable loop: land play", () => {
     expect(next.players[0]?.zones.battlefield).toContain(forest.id);
     expect(next.players[0]?.landsPlayedThisTurn).toBe(1);
     expect(next.priorityPlayerId).toBe(p1.id);
+    expect(next.cards[forest.id]?.tapped).toBe(false);
     expect(next.passesSinceAction).toBe(0);
     expect(ready).toEqual(original);
   });
@@ -229,7 +230,7 @@ describe("playable loop: draw, life, concede, elimination", () => {
     expect(next.winnerId).toBe(p2.id);
     expect(next.turn.activePlayerId).toBe(p2.id);
     expect(next.turn.step).toBe("untap");
-    expect(next.turn.number).toBe(2);
+    expect(next.turn.number).toBe(1);
   });
 
   it("rejects a second concede from a player who has already lost", () => {
@@ -255,7 +256,7 @@ describe("playable loop: draw, life, concede, elimination", () => {
       kind: "pass_priority",
       playerId: p3.id,
     });
-    expect(afterP3Pass.turn.step).toBe("beginCombat");
+    expect(afterP3Pass.turn.step).toBe("declareAttackers");
 
     const afterP1Turn = advanceSteps(afterConcede, TURN_SEQUENCE.length - 3);
     expect(afterP1Turn.turn.activePlayerId).toBe(p3.id);

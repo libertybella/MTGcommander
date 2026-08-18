@@ -10,6 +10,7 @@ import { wouldSkipDraw } from "./derived";
 import { emptyManaPoolsInPlace } from "./mana";
 import { livingPlayers, nextLivingPlayerId } from "./players";
 import { applyStateBasedActionsInPlace } from "./status";
+import { queueBeginCombatTriggersInPlace } from "./triggers";
 import type { GameState, Phase, PlayerId, Step } from "./types";
 
 export type TurnSlot = {
@@ -40,6 +41,34 @@ function slotIndex(phase: Phase, step: Step): number {
   return index;
 }
 
+function playerIndex(state: GameState, playerId: PlayerId): number {
+  const index = state.players.findIndex((player) => player.id === playerId);
+  return index === -1 ? 0 : index;
+}
+
+/** True when play wraps past the original first player's seat. */
+function crossesFirstPlayerSeat(state: GameState, currentId: PlayerId, nextId: PlayerId): boolean {
+  const startIndex = playerIndex(state, state.firstPlayerId);
+  let index = playerIndex(state, currentId);
+  for (let step = 0; step < state.players.length; step += 1) {
+    index = (index + 1) % state.players.length;
+    if (index === startIndex) {
+      return true;
+    }
+    if (state.players[index]?.id === nextId) {
+      return false;
+    }
+  }
+  return false;
+}
+
+function assignNextPlayerTurn(state: GameState, nextId: PlayerId): void {
+  if (crossesFirstPlayerSeat(state, state.turn.activePlayerId, nextId)) {
+    state.turn.number += 1;
+  }
+  state.turn.activePlayerId = nextId;
+}
+
 function nextTurnPlayerId(state: GameState, currentId: PlayerId): PlayerId {
   const living = livingPlayers(state);
   if (living.length === 0) {
@@ -57,6 +86,7 @@ function onEnterStep(state: GameState): GameState {
     const active = state.players.find((player) => player.id === activeId);
     if (active) {
       active.landsPlayedThisTurn = 0;
+      active.attackedThisTurn = false;
     }
     for (const card of Object.values(state.cards)) {
       if (card.zone === "battlefield" && card.controllerId === activeId) {
@@ -75,6 +105,10 @@ function onEnterStep(state: GameState): GameState {
   }
   if (state.turn.step === "declareAttackers") {
     ensureCombatInPlace(state);
+    return state;
+  }
+  if (state.turn.step === "beginCombat") {
+    queueBeginCombatTriggersInPlace(state);
     return state;
   }
   if (state.turn.step === "combatDamage") {
@@ -102,8 +136,7 @@ export function beginNextLivingTurnInPlace(state: GameState): void {
   }
   emptyManaPoolsInPlace(state);
   const nextId = nextTurnPlayerId(state, state.turn.activePlayerId);
-  state.turn.activePlayerId = nextId;
-  state.turn.number += 1;
+  assignNextPlayerTurn(state, nextId);
   state.turn.phase = "beginning";
   state.turn.step = "untap";
   state.combat = null;
@@ -124,8 +157,7 @@ export function advanceStep(state: GameState): GameState {
   const lastIndex = TURN_SEQUENCE.length - 1;
 
   if (current === lastIndex) {
-    next.turn.activePlayerId = nextTurnPlayerId(next, next.turn.activePlayerId);
-    next.turn.number += 1;
+    assignNextPlayerTurn(next, nextTurnPlayerId(next, next.turn.activePlayerId));
     next.turn.phase = "beginning";
     next.turn.step = "untap";
   } else {
@@ -140,6 +172,27 @@ export function advanceStep(state: GameState): GameState {
   const entered = onEnterStep(next);
   applyStateBasedActionsInPlace(entered);
   return entered;
+}
+
+const PRIORITY_SHORTCUTS = new Set<Step>(["draw", "beginCombat", "cleanup"]);
+
+/**
+ * Skip empty digital shortcuts after a full priority pass: the draw step
+ * (card already drawn on enter), beginning of combat, and cleanup.
+ */
+export function skipPriorityShortcuts(state: GameState): GameState {
+  let current = state;
+  let guard = 0;
+  while (
+    PRIORITY_SHORTCUTS.has(current.turn.step) &&
+    current.stack.length === 0 &&
+    current.prompts.length === 0 &&
+    guard < 12
+  ) {
+    current = advanceStep(current);
+    guard += 1;
+  }
+  return current;
 }
 
 export function advanceSteps(state: GameState, count: number): GameState {

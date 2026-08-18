@@ -1,4 +1,5 @@
-import type { CardInstanceId, GameState, StaticModifier } from "./types";
+import { isCreature, isLand, isLegendary } from "./cardTypes";
+import type { CardInstance, CardInstanceId, EnterTappedUnless, GameState, StaticModifier } from "./types";
 
 function plus1Plus1(state: GameState, cardId: CardInstanceId): number {
   return state.cards[cardId]?.counters["p1p1"] ?? 0;
@@ -54,4 +55,75 @@ export function wouldSkipDraw(state: GameState, playerId: string): boolean {
       (replacement) => replacement.kind === "replace_draw" && replacement.instead === "skip",
     );
   });
+}
+
+function controlledBattlefield(state: GameState, controllerId: string): CardInstance[] {
+  return Object.values(state.cards).filter(
+    (card) => card.zone === "battlefield" && card.controllerId === controllerId,
+  );
+}
+
+function unlessSatisfied(
+  state: GameState,
+  card: CardInstance,
+  unless: EnterTappedUnless,
+): boolean {
+  const controlled = controlledBattlefield(state, card.controllerId);
+  if (unless.kind === "other_lands") {
+    const others = controlled.filter((entry) => entry.id !== card.id && isLand(state, entry.id));
+    return others.length >= unless.count;
+  }
+  if (unless.kind === "legendary_creature") {
+    return controlled.some((entry) => isLegendary(state, entry.id) && isCreature(state, entry.id));
+  }
+  if (unless.kind === "basic_lands") {
+    const basics = controlled.filter((entry) => {
+      const typeLine = state.definitions[entry.definitionId]?.typeLine.toLowerCase() ?? "";
+      return isLand(state, entry.id) && /\bbasic\b/.test(typeLine);
+    });
+    return basics.length >= unless.count;
+  }
+  return controlled.some((entry) => {
+    const typeLine = state.definitions[entry.definitionId]?.typeLine.toLowerCase() ?? "";
+    return unless.types.some((type) => typeLine.includes(type));
+  });
+}
+
+/** Self-replacement: the permanent enters the battlefield tapped (CR 614.12). */
+export function wouldEnterTapped(state: GameState, cardId: CardInstanceId): boolean {
+  const card = state.cards[cardId];
+  if (!card) {
+    return false;
+  }
+  return (state.definitions[card.definitionId]?.replacements ?? []).some((replacement) => {
+    if (replacement.kind === "enters_tapped") {
+      return true;
+    }
+    if (replacement.kind === "enters_tapped_unless") {
+      return !unlessSatisfied(state, card, replacement.unless);
+    }
+    if (replacement.kind === "enters_tapped_if") {
+      return unlessSatisfied(state, card, replacement.if);
+    }
+    return false;
+  });
+}
+
+export function queueEnterReplacementChoicesInPlace(state: GameState, cardId: CardInstanceId): void {
+  const card = state.cards[cardId];
+  if (!card || card.zone !== "battlefield" || card.tapped) {
+    return;
+  }
+  const definition = state.definitions[card.definitionId];
+  for (const replacement of definition?.replacements ?? []) {
+    if (replacement.kind !== "may_pay_life_or_enter_tapped") {
+      continue;
+    }
+    state.prompts.push({
+      kind: "may_pay_life_or_enter_tapped",
+      playerId: card.controllerId,
+      sourceId: card.id,
+      amount: replacement.amount,
+    });
+  }
 }

@@ -15,11 +15,18 @@ export {
 } from "./zones";
 export { applyAction, applyActions } from "./actions";
 export { applyManualOverride } from "./override";
-export { declareAttackers, declareBlockers, priorityForStep, creaturePower, creatureToughness } from "./combat";
+export { applyRollDie, D20_SIDES, MIN_DIE_SIDES, MAX_DIE_SIDES, normalizeDieSides } from "./dice";
+export {
+  applyOpeningRoll,
+  beginOpeningRoll,
+  isOpeningRoll,
+  openingRollPending,
+} from "./openingRoll";
+export { declareAttackers, declareBlockers, lockRemainingBlockers, priorityForStep, creaturePower, creatureToughness } from "./combat";
 export { applyEffect, applyEffects, bindCardEffect, bindCardEffects } from "./effects";
 export type { BindEffectContext } from "./effects";
 export { hasKeyword } from "./keywords";
-export { wouldSkipDraw } from "./derived";
+export { wouldSkipDraw, wouldEnterTapped } from "./derived";
 export {
   testBear,
   testBlankInstant,
@@ -57,13 +64,16 @@ export {
   isInstant,
   isInstantOrSorcery,
   isLand,
+  isLegendary,
+  isClass,
   isMainPhase,
+  isPlaneswalker,
   isSorcery,
 } from "./cardTypes";
 export type { MoveCardOptions } from "./zones";
-export { TURN_SEQUENCE, advanceStep, advanceSteps } from "./turn";
+export { TURN_SEQUENCE, advanceStep, advanceSteps, skipPriorityShortcuts } from "./turn";
 export type { TurnSlot } from "./turn";
-export { livingPlayers, livingPlayerCount, winnerId } from "./players";
+export { livingPlayers, livingPlayerCount, nextLivingPlayerId, winnerId } from "./players";
 export { eliminatePlayer } from "./elimination";
 export { isGameOver } from "./status";
 export {
@@ -77,7 +87,8 @@ export {
   isMulliganOpen,
 } from "./mulligan";
 export { redactForViewer, isHiddenFromViewer, HIDDEN_DEFINITION_ID } from "./visibility";
-export { isChosenTargetLegal, validateChosenTargets } from "./targeting";
+export { applyChooseTargets, applyChooseEnterReplacement, applyResolveScry, applyResolveSurveil, applyResolveDiscard, applyResolveChooseCard, applyResolveLookAssign, currentPrompt, isPromptOpen, lookedAtCardIds, legalIdsForChooseSources } from "./prompt";
+export { isChosenTargetLegal, validateChosenTargets, legalChoicesForRequirement, firstLegalTargetSet, hasAnyLegalTargetSet } from "./targeting";
 export {
   addMana,
   canPayManaCost,
@@ -92,7 +103,7 @@ export {
   untapCard,
 } from "./mana";
 export type { HybridPip, ParsedManaCost } from "./mana";
-export { canTapForMana, manaTapOptions } from "./manaOptions";
+export { canTapForMana, manaAbilitiesOf, manaTapOptions, manaTapOptionsFor } from "./manaOptions";
 export { createId } from "./ids";
 export {
   createCardDefinition,
@@ -143,6 +154,7 @@ export type {
   CombatAttack,
   CombatState,
   CardTrigger,
+  EnterTappedUnless,
   GameAction,
   GameEffect,
   EffectTarget,
@@ -152,9 +164,12 @@ export type {
   GameState,
   ManualOverrideChange,
   Keyword,
+  ManaAbility,
   ManaColor,
   ManaPool,
   MulliganState,
+  OpeningRollState,
+  PendingPrompt,
   Phase,
   PlayerSelector,
   RelativePlayer,
@@ -168,6 +183,13 @@ export type {
   Step,
   TargetKind,
   TargetRequirement,
+  TokenTemplate,
   TurnState,
   ZoneName,
+  ZoneReveal,
+  LookDestination,
+  CardFilter,
+  ChooseCardSource,
+  BoundChooseCardSource,
 } from "./types";
+export { tokenTemplatesOf, amassArmyTemplate, parseAmassClause } from "./tokens";

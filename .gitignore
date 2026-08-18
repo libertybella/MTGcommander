@@ -3,7 +3,10 @@ dist
 dist-electron
 *.tsbuildinfo
 *.local
+.env
+.env.*
 .DS_Store
+Thumbs.db
 logs
 *.log
 npm-debug.log*

@@ -1,17 +1,21 @@
-import { declareAttackers, declareBlockers, pendingBlockerPlayer, priorityForStep } from "./combat";
+import { declareAttackers, declareBlockers, lockRemainingBlockers, pendingBlockerPlayer, priorityForStep } from "./combat";
 import { isCommander, isCreature, isInstant, isInstantOrSorcery, isLand, isMainPhase } from "./cardTypes";
 import { cloneGameState } from "./clone";
 import { eliminatePlayerInPlace } from "./elimination";
+import { applyEffects, bindCardEffects } from "./effects";
 import { hasKeyword } from "./keywords";
 import { canPayManaCost, parseManaCost, payManaCost, tapCard, tapForMana } from "./mana";
-import { canTapForMana, manaTapOptions } from "./manaOptions";
+import { canTapForMana, manaAbilitiesOf, manaTapOptionsFor } from "./manaOptions";
 import { isLiving, livingPlayerCount, requireLiving } from "./players";
-import { passPriority, putActivatedAbilityOnStack, putSpellOnStack } from "./stack";
+import { passPriority, putActivatedAbilityOnStack, putSpellOnStack, resolveTopOfStack } from "./stack";
 import { applyStateBasedActionsInPlace, redirectPriorityIfLost } from "./status";
 import { validateChosenTargets } from "./targeting";
-import { advanceStep, beginNextLivingTurnInPlace } from "./turn";
+import { advanceStep, beginNextLivingTurnInPlace, skipPriorityShortcuts } from "./turn";
 import { applyBottomCards, applyKeepHand, applyTakeMulligan, isMulliganOpen, reconcileMulliganAfterLoss } from "./mulligan";
+import { applyRollDie } from "./dice";
+import { applyOpeningRoll, isOpeningRoll } from "./openingRoll";
 import { applyManualOverride } from "./override";
+import { applyChooseEnterReplacement, applyChooseTargets, applyResolveChooseCard, applyResolveDiscard, applyResolveLookAssign, applyResolveScry, applyResolveSurveil, currentPrompt, dropLostPlayerPromptsInPlace, isPromptOpen } from "./prompt";
 import { findCardZone, moveCard } from "./zones";
 import type { CardInstanceId, ChosenTarget, GameAction, GameState, ManaColor, ManaPool, PlayerId } from "./types";
 
@@ -22,8 +26,14 @@ function requirePlayer(state: GameState, playerId: PlayerId): void {
 }
 
 function requirePlaying(state: GameState): void {
+  if (isOpeningRoll(state)) {
+    throw new Error("Roll for first player first");
+  }
   if (isMulliganOpen(state)) {
     throw new Error("Finish mulligans before taking that action");
+  }
+  if (isPromptOpen(state)) {
+    throw new Error("Finish the pending choice first");
   }
 }
 
@@ -54,6 +64,7 @@ function canCastNonInstantNow(state: GameState, playerId: PlayerId): boolean {
 
 function finalizeActionState(state: GameState): GameState {
   applyStateBasedActionsInPlace(state);
+  dropLostPlayerPromptsInPlace(state);
   const active = state.players.find((player) => player.id === state.turn.activePlayerId);
   if (active?.lost && livingPlayerCount(state) > 0) {
     beginNextLivingTurnInPlace(state);
@@ -115,18 +126,48 @@ function validateCast(
   return { cost, fromCommand };
 }
 
+function applyChosenFace(
+  state: GameState,
+  cardId: CardInstanceId,
+  faceIndex: number | undefined,
+): GameState {
+  if (faceIndex === undefined || faceIndex === 0) {
+    return state;
+  }
+  if (faceIndex !== 1) {
+    throw new Error("Invalid face");
+  }
+  const card = state.cards[cardId];
+  const definition = card ? state.definitions[card.definitionId] : undefined;
+  if (!card || !definition?.otherFaceId || definition.layout !== "modal_dfc") {
+    throw new Error("That card has no other face to play");
+  }
+  if (!state.definitions[definition.otherFaceId]) {
+    throw new Error("Missing other face");
+  }
+  const next = cloneGameState(state);
+  const moved = next.cards[cardId];
+  if (!moved) {
+    throw new Error(`Unknown card ${cardId}`);
+  }
+  moved.definitionId = definition.otherFaceId;
+  return next;
+}
+
 function applyCastSpell(
   state: GameState,
   playerId: PlayerId,
   cardId: CardInstanceId,
   targets: ChosenTarget[] | undefined,
+  faceIndex: number | undefined,
 ): GameState {
   requirePlaying(state);
-  const { cost, fromCommand } = validateCast(state, playerId, cardId);
-  const card = state.cards[cardId];
-  const definition = card ? state.definitions[card.definitionId] : undefined;
-  validateChosenTargets(state, definition?.targetRequirements ?? [], targets ?? [], playerId);
-  const paid = payManaCost(state, playerId, cost);
+  const faced = applyChosenFace(state, cardId, faceIndex);
+  const { cost, fromCommand } = validateCast(faced, playerId, cardId);
+  const card = faced.cards[cardId];
+  const definition = card ? faced.definitions[card.definitionId] : undefined;
+  validateChosenTargets(faced, definition?.targetRequirements ?? [], targets ?? [], playerId);
+  const paid = payManaCost(faced, playerId, cost);
   const stacked = putSpellOnStack(paid, cardId, targets ?? []);
   if (!fromCommand) {
     return stacked;
@@ -139,7 +180,12 @@ function applyCastSpell(
   return stacked;
 }
 
-function applyPlayLand(state: GameState, playerId: PlayerId, cardId: CardInstanceId): GameState {
+function applyPlayLand(
+  state: GameState,
+  playerId: PlayerId,
+  cardId: CardInstanceId,
+  faceIndex: number | undefined,
+): GameState {
   requirePlaying(state);
   requirePriority(state, playerId);
   if (playerId !== state.turn.activePlayerId) {
@@ -152,20 +198,21 @@ function applyPlayLand(state: GameState, playerId: PlayerId, cardId: CardInstanc
     throw new Error("A land can only be played when the stack is empty");
   }
 
-  const card = state.cards[cardId];
+  const faced = applyChosenFace(state, cardId, faceIndex);
+  const card = faced.cards[cardId];
   if (!card) {
     throw new Error(`Unknown card ${cardId}`);
   }
-  if (!isLand(state, cardId)) {
+  if (!isLand(faced, cardId)) {
     throw new Error(`Card ${cardId} is not a land`);
   }
 
-  const located = findCardZone(state, cardId);
+  const located = findCardZone(faced, cardId);
   if (!located || located.zone !== "hand" || located.playerId !== playerId) {
     throw new Error(`Card ${cardId} must be in the player's hand`);
   }
 
-  const player = state.players.find((entry) => entry.id === playerId);
+  const player = faced.players.find((entry) => entry.id === playerId);
   if (!player) {
     throw new Error(`Unknown player ${playerId}`);
   }
@@ -173,7 +220,7 @@ function applyPlayLand(state: GameState, playerId: PlayerId, cardId: CardInstanc
     throw new Error("Already played a land this turn");
   }
 
-  const next = moveCard(state, cardId, "battlefield");
+  const next = moveCard(faced, cardId, "battlefield");
   const movedPlayer = next.players.find((entry) => entry.id === playerId);
   if (!movedPlayer) {
     throw new Error(`Unknown player ${playerId}`);
@@ -187,20 +234,50 @@ function applyPlayLand(state: GameState, playerId: PlayerId, cardId: CardInstanc
 function applyPassPriority(state: GameState, playerId: PlayerId): GameState {
   requirePlaying(state);
   requirePriority(state, playerId);
-  if (
-    state.turn.step === "declareBlockers" &&
-    pendingBlockerPlayer(state) === playerId
+  let current = state;
+  if (current.turn.step === "declareBlockers" && playerId === current.turn.activePlayerId) {
+    current = lockRemainingBlockers(current);
+  } else if (
+    current.turn.step === "declareBlockers" &&
+    pendingBlockerPlayer(current) === playerId
   ) {
-    return declareBlockers(state, playerId, []);
+    current = declareBlockers(current, playerId, []);
   }
   const completingEmptyPass =
-    state.stack.length === 0 && state.passesSinceAction + 1 >= livingPlayerCount(state);
-  let next = passPriority(state, playerId);
+    current.stack.length === 0 && current.passesSinceAction + 1 >= livingPlayerCount(current);
+  let next = passPriority(current, playerId);
   if (completingEmptyPass) {
-    next = advanceStep(next);
+    next = skipPriorityShortcuts(advanceStep(next));
     next.priorityPlayerId = priorityForStep(next);
     next.passesSinceAction = 0;
   }
+  return next;
+}
+
+function applyAdvanceStep(state: GameState, playerId: PlayerId): GameState {
+  requirePlaying(state);
+  requireLiving(state, playerId);
+  let next = cloneGameState(state);
+  next.stack = [];
+  next.priorityPlayerId = next.turn.activePlayerId;
+  if (next.turn.step === "declareAttackers" && !next.combat?.attackersDeclared) {
+    next = declareAttackers(next, next.turn.activePlayerId, []);
+  }
+  if (next.turn.step === "declareBlockers") {
+    next = lockRemainingBlockers(next);
+  }
+  next = skipPriorityShortcuts(advanceStep(next));
+  next.priorityPlayerId = priorityForStep(next);
+  next.passesSinceAction = 0;
+  return next;
+}
+
+function applyAdvanceTurn(state: GameState, playerId: PlayerId): GameState {
+  requirePlaying(state);
+  requireLiving(state, playerId);
+  const next = cloneGameState(state);
+  next.stack = [];
+  beginNextLivingTurnInPlace(next);
   return next;
 }
 
@@ -219,6 +296,7 @@ function applyTapForMana(
   playerId: PlayerId,
   cardId: CardInstanceId,
   color: ManaColor | undefined,
+  manaIndex: number | undefined,
 ): GameState {
   requirePlaying(state);
   requirePriority(state, playerId);
@@ -239,7 +317,13 @@ function applyTapForMana(
   if (!definition || !canTapForMana(definition)) {
     throw new Error(`Card ${cardId} does not produce mana`);
   }
-  const options = manaTapOptions(definition);
+  const abilities = manaAbilitiesOf(definition);
+  const index = manaIndex ?? 0;
+  if (!Number.isInteger(index) || index < 0 || index >= abilities.length) {
+    throw new Error("Choose a mana ability");
+  }
+  const ability = abilities[index]!;
+  const options = manaTapOptionsFor(ability);
   let addition: Partial<ManaPool>;
   if (options) {
     if (!color || !options.includes(color)) {
@@ -247,10 +331,20 @@ function applyTapForMana(
     }
     addition = { [color]: 1 };
   } else {
-    addition = definition.produces;
+    addition = ability.produces;
   }
-  const next = tapForMana(state, cardId, addition);
+  let next = tapForMana(state, cardId, addition);
   next.priorityPlayerId = playerId;
+  if (ability.damageToController > 0) {
+    next = applyEffects(next, [
+      {
+        kind: "deal_damage",
+        sourceId: cardId,
+        target: { type: "player", playerId },
+        amount: ability.damageToController,
+      },
+    ]);
+  }
   return next;
 }
 
@@ -273,13 +367,26 @@ function applyActivateAbility(
   if (card.controllerId !== playerId) {
     throw new Error(`Card ${cardId} is not controlled by that player`);
   }
-  if (card.zone !== "battlefield") {
-    throw new Error(`Card ${cardId} must be on the battlefield`);
-  }
   const definition = state.definitions[card.definitionId];
   const ability = definition?.activated[abilityIndex];
   if (!ability) {
     throw new Error(`Unknown activated ability ${abilityIndex}`);
+  }
+  const fromZone = ability.zone ?? "battlefield";
+  if (card.zone !== fromZone) {
+    throw new Error(`Card ${cardId} must be in ${fromZone}`);
+  }
+  if (ability.timing === "sorcery") {
+    if (playerId !== state.turn.activePlayerId) {
+      throw new Error("That ability can only be activated as a sorcery");
+    }
+    if (!isMainPhase(state) || state.stack.length > 0) {
+      throw new Error("That ability can only be activated as a sorcery");
+    }
+  }
+  const levelUp = ability.effects.find((effect) => effect.kind === "set_class_level");
+  if (levelUp?.kind === "set_class_level" && levelUp.level !== card.classLevel + 1) {
+    throw new Error("Class levels must be gained in order");
   }
   if (ability.tap && card.tapped) {
     throw new Error(`Card ${cardId} is already tapped`);
@@ -304,7 +411,14 @@ function applyActivateAbility(
   if (ability.tap) {
     next = tapCard(next, cardId);
   }
-  return putActivatedAbilityOnStack(next, cardId, abilityIndex, targets ?? []);
+  if (ability.discard) {
+    next = moveCard(next, cardId, "graveyard");
+  }
+  next = putActivatedAbilityOnStack(next, cardId, abilityIndex, targets ?? []);
+  if (ability.discard) {
+    return resolveTopOfStack(next);
+  }
+  return next;
 }
 
 /**
@@ -320,10 +434,10 @@ export function applyAction(state: GameState, action: GameAction): GameState {
         next = applyPassPriority(state, action.playerId);
         break;
       case "cast_spell":
-        next = applyCastSpell(state, action.playerId, action.cardId, action.targets);
+        next = applyCastSpell(state, action.playerId, action.cardId, action.targets, action.faceIndex);
         break;
       case "play_land":
-        next = applyPlayLand(state, action.playerId, action.cardId);
+        next = applyPlayLand(state, action.playerId, action.cardId, action.faceIndex);
         break;
       case "declare_attackers":
         requirePlaying(state);
@@ -339,7 +453,13 @@ export function applyAction(state: GameState, action: GameAction): GameState {
         next = reconcileMulliganAfterLoss(applyConcede(state, action.playerId));
         break;
       case "tap_for_mana":
-        next = applyTapForMana(state, action.playerId, action.cardId, action.color);
+        next = applyTapForMana(
+          state,
+          action.playerId,
+          action.cardId,
+          action.color,
+          action.manaIndex,
+        );
         break;
       case "activate_ability":
         next = applyActivateAbility(
@@ -362,6 +482,85 @@ export function applyAction(state: GameState, action: GameAction): GameState {
       case "manual_override":
         next = applyManualOverride(state, action.playerId, action.change);
         break;
+      case "roll_die":
+        next = applyRollDie(state, action.playerId, action.sides);
+        break;
+      case "opening_roll":
+        next = applyOpeningRoll(state, action.playerId);
+        break;
+      case "advance_step":
+        next = applyAdvanceStep(state, action.playerId);
+        break;
+      case "advance_turn":
+        next = applyAdvanceTurn(state, action.playerId);
+        break;
+      case "choose_targets":
+        next = applyChooseTargets(state, action.playerId, action.targets);
+        break;
+      case "choose_enter_replacement":
+        next = applyChooseEnterReplacement(state, action.playerId, action.pay);
+        break;
+      case "resolve_scry": {
+        const prompt = currentPrompt(state);
+        const resume = prompt?.kind === "scry" ? prompt.resumeEffects ?? [] : [];
+        next = applyResolveScry(state, action.playerId, action.bottomIds);
+        if (resume.length > 0) {
+          next = applyEffects(next, resume);
+        }
+        break;
+      }
+      case "resolve_surveil": {
+        const prompt = currentPrompt(state);
+        const resume = prompt?.kind === "surveil" ? prompt.resumeEffects ?? [] : [];
+        next = applyResolveSurveil(state, action.playerId, action.graveyardIds);
+        if (resume.length > 0) {
+          next = applyEffects(next, resume);
+        }
+        break;
+      }
+      case "resolve_discard": {
+        const prompt = currentPrompt(state);
+        const resume = prompt?.kind === "choose_discard" ? prompt.resumeEffects ?? [] : [];
+        next = applyResolveDiscard(state, action.playerId, action.cardIds);
+        if (resume.length > 0) {
+          next = applyEffects(next, resume);
+        }
+        break;
+      }
+      case "resolve_choose_card": {
+        const prompt = currentPrompt(state);
+        const resume = prompt?.kind === "choose_card" ? prompt.resumeEffects ?? [] : [];
+        const chosen = applyResolveChooseCard(state, action.playerId, action.cardId);
+        next = chosen.next;
+        const bound = bindCardEffects(next, chosen.thenEffects, {
+          controllerId: action.playerId,
+          sourceId: chosen.sourceId,
+          chosenCardId: chosen.cardId,
+        });
+        if (bound.length > 0) {
+          next = applyEffects(next, bound);
+        }
+        if (resume.length > 0 && !isPromptOpen(next)) {
+          next = applyEffects(next, resume);
+        } else if (resume.length > 0 && isPromptOpen(next)) {
+          const open = currentPrompt(next);
+          if (open && "resumeEffects" in open) {
+            open.resumeEffects = [...(open.resumeEffects ?? []), ...resume];
+          }
+        }
+        break;
+      }
+      case "resolve_look_assign": {
+        const prompt = currentPrompt(state);
+        const resume = prompt?.kind === "look_and_assign" ? prompt.resumeEffects ?? [] : [];
+        next = applyResolveLookAssign(state, action.playerId, action.assignments);
+        if (resume.length > 0) {
+          next = applyEffects(next, resume);
+        }
+        break;
+      }
+      case "undo":
+        throw new Error("Undo is applied by the table host");
       default: {
         const exhaustive: never = action;
         throw new Error(`Unknown GameAction ${(exhaustive as GameAction).kind}`);
