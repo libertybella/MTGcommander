@@ -118,6 +118,7 @@ docs/       Spec, architecture, tracker, rules coverage.
 
 | File | What it is |
 | --- | --- |
+| [NOTES.txt](NOTES.txt) | Plain-English thought process for collaborators |
 | [docs/PROJECT_SPEC.md](docs/PROJECT_SPEC.md) | V1 product scope |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | PC-hosted architecture |
 | [docs/DEVELOPMENT_PROGRESS.md](docs/DEVELOPMENT_PROGRESS.md) | Living tracker and log |

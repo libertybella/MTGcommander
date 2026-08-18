@@ -1,0 +1,187 @@
+BizzyMTG Commander — notes for collaborators
+============================================
+
+This is a plain-English dump of how we have been building this, and why.
+It is not a spec. Specs live in docs/. README.md is the start-here page.
+
+
+What this project is
+--------------------
+
+An unofficial Commander client for Magic: The Gathering. Friends sit at a
+private table hosted on one PC. Real decks come in from Moxfield or a pasted
+list. The engine tries to execute the cards. When it cannot, the table uses
+Override so the game can still finish.
+
+This is not Wizards of the Coast software.
+This is not the sibling BizzyMTG deck-builder app. Do not import or fork that.
+
+
+The shape we chose
+------------------
+
+Three layers, one language (TypeScript):
+
+  engine/   Pure rules. No React, no Electron, no network.
+  server/   The only place that is allowed to apply a game action.
+  client/   React battlefield. It shows a view of the state; it does not
+            secretly change the rules.
+
+Electron wraps the client so friends install one app and can Host or Join.
+
+Why this split: the rules need to be testable without a window open. If we
+ever move hosting off the home PC, we keep engine/ and server/ and maybe drop
+Electron.
+
+No accounts. No cloud database. Room code + display name. Friends reach the
+host by LAN or Tailscale. Port 8787.
+
+
+How we implement cards
+----------------------
+
+We do not write a special case for "Lightning Bolt" or "Sauron, the Dark Lord".
+
+Scryfall-shaped oracle text is compiled into a CardDefinition by matching
+known sentence patterns. Examples:
+
+  "Deal 3 damage to any target."
+  "{T}: Add {U}."
+  "When ~ enters, amass Orcs 1."
+  "Channel — {3}{R}, Discard this card: Create two 1/1 ... tokens."
+
+If a sentence matches, it becomes data the engine already knows how to run.
+If it does not match, it becomes a compile note. The card still sits in the
+deck. Players use Override (life, draw, mill, tap/untap, move a card, create
+a listed token) so the table can agree and keep going.
+
+When we add a new mechanic, we add a shared pattern, then prove it with tests.
+We do not add a named-card if-statement.
+
+Unmatched text is expected. The long-term list (equipment, planeswalkers,
+modals, search, Ring tempts, {X}, Phyrexian) is still Override on purpose.
+
+
+Hard rules we keep coming back to
+---------------------------------
+
+1. Failed actions must not mutate GameState. If a play is illegal, the state
+   you had before the click is the state you still have.
+
+2. The viewer always sits South. Other players wrap clockwise. Do not reverse
+   engine player order to "fix" the table visually.
+
+3. Unseated opponents auto-pass. If you host a 4-player game and only one
+   friend joins, the empty seats will pass for themselves. That is why hotseat
+   exists for solo testing.
+
+4. The UI only submits through the host (local GameHost.submit or the
+   WebSocket). The client is not the authority.
+
+5. After an oracle/cache shape change, start a new table. Old in-memory and
+   localStorage games keep the old definitions. The oracle cache key is
+   currently mtgcommander.oracle.v3.
+
+
+Things we learned the hard way
+------------------------------
+
+Double-faced cards (pathways, etc.)
+  Scryfall stores the card under the front name. Compile still builds both
+  faces (otherFaceId). Seating must copy the back face into game.definitions
+  or the UI only offers Riverglide Pathway and never Lavaglide Pathway.
+  Hover should show both faces. The preview has to be sized for two cards
+  and clamped inside the window, or the back face runs off the screen.
+
+Hotseat / "Play as Player 3"
+  The camera seat (South) and the player you are currently acting as are
+  different. Priority follows the acting player. Override, life, draw, mill,
+  and dice must use that acting player, not Player 1 just because they are
+  drawn at the bottom of the screen.
+
+Channel (Sokenzan and similar)
+  In paper Magic, Channel uses the stack. At this table we resolve it as soon
+  as the cost is paid (discard included). Otherwise hotseat testing pauses for
+  three extra passes on a "discard this, make tokens" ability. Mana taps also
+  stay off the stack. Other activated abilities still use the stack.
+
+Amass
+  One shared effect: if you have no Army, make a 0/0 {Subtype} Army, then put
+  +1/+1 counters on an Army you control. "Amass" with no number means 1.
+  ETB amass compiles. "At the beginning of combat on your turn, amass ..."
+  compiles. Attack-trigger amass (the other half of March from the Black Gate)
+  is still a note. Right-click token create is the backup; those manual Armies
+  are offered as 1/1 so they do not die to state-based actions.
+
+Legendary names
+  Oracle often says "When Gothmog enters" on a card named
+  "Gothmog, Morgul Lieutenant". The compiler also treats the short name as ~.
+
+Begin combat
+  Digital tables usually skip an empty beginning-of-combat step. If a
+  beginning-of-combat trigger (or a prompt) is waiting, we do not skip it.
+
+
+What a playtest loop looks like
+-------------------------------
+
+We import a real Commander list and go through cards one by one.
+
+  Works          -> leave it; maybe add a compile test if the pattern is new.
+  Almost works   -> extend the shared pattern, not the card name.
+  Cannot work yet -> leave a note; use Override; do not fake a full rules
+                     implementation (Hive animate, Ring tempts, equipment,
+                     planeswalkers, modal "Choose one —").
+
+Start the app with: npm run dev
+UI: http://localhost:5175
+If Electron was already closed, Vite can complain about a missing PID.
+Just start npm run dev again.
+
+
+How to run checks
+-----------------
+
+  npm install
+  npm test
+  npm run typecheck
+  npm run lint
+
+Tests are the contract. If you change a pattern, add a small example (Duress,
+Sign in Blood, Negate, a pathway, Warg Rider begin-combat) rather than a
+one-off for a famous card.
+
+
+What is still intentionally unfinished
+--------------------------------------
+
+Ring tempts / Sauron's extra clauses
+Equipment, auras, planeswalkers
+Modal "Choose one —" (Abrade, Heartless Act, Bedevil)
+Unless-pays counters (Spell Pierce)
+Search (Fabled Passage, Ringsight)
+The One Ring, The Ozolith, Toxic Deluge, Delve
+"You may play the exiled card this turn"
+Attack-trigger amass
+Full transform mid-game (Valki)
+Hive of the Eye Tyrant animate
+Installer / animations / accounts
+
+Override exists so those gaps do not stop a kitchen-table game.
+
+
+Where to look
+-------------
+
+  README.md                         Start here
+  docs/PROJECT_SPEC.md              What V1 is for
+  docs/ARCHITECTURE.md              Why the layers look like this
+  docs/RULES_COVERAGE.md            What the engine actually does
+  docs/UNSUPPORTED_INTERACTIONS.md  What testers will still override
+  docs/DEVELOPMENT_PROGRESS.md      Longer checkpoint log
+
+engine/src/oraclePatterns.ts        Sentence compiler
+engine/src/types.ts                 Game state and effects
+server/src/session.ts               Host, seats, auto-pass
+client/src/ui/Battlefield.tsx       Table UI
+client/src/ui/advanceLabel.ts       Hotseat "who am I acting as"
