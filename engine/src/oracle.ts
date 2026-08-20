@@ -153,7 +153,7 @@ function compileOneFace(card: OracleCard, definitionId: string): OracleCompileRe
   notes.push(...compiled.notes);
 
   if (!manaCostIsPayable(card.manaCost)) {
-    notes.push("Mana cost cannot be paid (Phyrexian or {X}).");
+    notes.push("Mana cost cannot be paid (Phyrexian).");
   }
 
   if (compiled.leftover.length > 0) {

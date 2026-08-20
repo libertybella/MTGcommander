@@ -365,6 +365,26 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     };
   }
 
+  if (/^(?:~ )?deals? X damage to any target$/i.test(sentence)) {
+    return {
+      targetRequirements: [{ kind: "player_or_creature" }],
+      effects: [
+        { kind: "deal_damage", sourceId: "self", target: { type: "chosen", index: 0 }, amount: "x" },
+      ],
+    };
+  }
+
+  if (
+    /^(?:~ )?deals? X damage divided as you choose among (?:any number of|one, two, or three) targets?$/i.test(
+      sentence,
+    )
+  ) {
+    return {
+      targetRequirements: [{ kind: "player_or_creature", variable: true }],
+      effects: [{ kind: "divided_damage", sourceId: "self", amount: "x" }],
+    };
+  }
+
   match = sentence.match(/^(?:~ )?deals (\d+) damage to target creature$/i);
   if (match?.[1]) {
     return {

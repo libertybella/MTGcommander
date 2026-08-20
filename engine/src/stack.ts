@@ -6,10 +6,11 @@ import { enterOwnerZone, findCardZone, removeCardFromCurrentZone } from "./zones
 import { applyEffects, bindCardEffects } from "./effects";
 import { isLiving, livingPlayerCount, nextLivingPlayerId } from "./players";
 import { applyStateBasedActionsInPlace, redirectPriorityIfLost } from "./status";
-import { hasLegalTargetRemaining, validateChosenTargets } from "./targeting";
+import { hasLegalTargetRemaining, isChosenTargetLegal, validateChosenTargets } from "./targeting";
 import type {
   CardInstanceId,
   ChosenTarget,
+  GameEffect,
   GameState,
   PlayerId,
   StackObjectId,
@@ -90,6 +91,8 @@ export function putSpellOnStack(
   cardId: CardInstanceId,
   targets: ChosenTarget[] = [],
   modeIndex?: number,
+  xValue?: number,
+  division?: number[],
 ): GameState {
   const card = state.cards[cardId];
   if (!card) {
@@ -122,6 +125,8 @@ export function putSpellOnStack(
     kind: "spell",
     targets: targets.map((target) => ({ ...target })),
     ...(modeIndex !== undefined ? { modeIndex } : {}),
+    ...(xValue !== undefined ? { xValue } : {}),
+    ...(division !== undefined ? { division: [...division] } : {}),
   });
   next.passesSinceAction = 0;
   next.priorityPlayerId = moved.controllerId;
@@ -196,13 +201,40 @@ export function resolveTopOfStack(state: GameState): GameState {
     effects.length > 0 &&
     hasLegalTargetRemaining(next, requirements, top.targets, top.controllerId);
   if (shouldResolveEffects && definition) {
-    const bound = bindCardEffects(next, effects, {
-      controllerId: top.controllerId,
-      sourceId: top.sourceId,
-      targets: top.targets,
-      targetRequirements: requirements,
-    });
-    next = applyEffects(next, bound);
+    const divided = effects.find((effect) => effect.kind === "divided_damage");
+    if (divided?.kind === "divided_damage") {
+      // Each target takes its announced share; targets that became illegal
+      // lose their share (CR 608.2b).
+      const requirement = requirements[0];
+      const damage: GameEffect[] = [];
+      top.targets.forEach((target, index) => {
+        const share = top.division?.[index] ?? 0;
+        if (
+          share <= 0 ||
+          !requirement ||
+          !isChosenTargetLegal(next, requirement, target, top.controllerId) ||
+          target.type === "spell"
+        ) {
+          return;
+        }
+        damage.push({
+          kind: "deal_damage",
+          sourceId: divided.sourceId === "self" ? top.sourceId : divided.sourceId,
+          amount: share,
+          target,
+        });
+      });
+      next = applyEffects(next, damage);
+    } else {
+      const bound = bindCardEffects(next, effects, {
+        controllerId: top.controllerId,
+        sourceId: top.sourceId,
+        targets: top.targets,
+        targetRequirements: requirements,
+        xValue: top.xValue,
+      });
+      next = applyEffects(next, bound);
+    }
   }
 
   const destination: ZoneName = isInstantOrSorcery(next, top.sourceId)

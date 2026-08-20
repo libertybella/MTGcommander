@@ -117,6 +117,21 @@ export function validateChosenTargets(
     }
     return;
   }
+  if (requirements.length === 1 && requirements[0]?.variable) {
+    if (targets.length === 0) {
+      throw new Error("Choose at least one target");
+    }
+    const seen = new Set(targets.map((target) => JSON.stringify(target)));
+    if (seen.size !== targets.length) {
+      throw new Error("Choose each target once");
+    }
+    for (const target of targets) {
+      if (!isChosenTargetLegal(state, requirements[0]!, target, casterId)) {
+        throw new Error("Illegal target");
+      }
+    }
+    return;
+  }
   if (targets.length !== requirements.length) {
     throw new Error(`Expected ${requirements.length} target(s)`);
   }
@@ -138,6 +153,11 @@ export function hasLegalTargetRemaining(
 ): boolean {
   if (requirements.length === 0) {
     return true;
+  }
+  if (requirements.length === 1 && requirements[0]?.variable) {
+    return targets.some((target) =>
+      isChosenTargetLegal(state, requirements[0]!, target, casterId),
+    );
   }
   return requirements.some((requirement, index) => {
     const target = targets[index];

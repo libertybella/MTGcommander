@@ -36,6 +36,8 @@ export type BindEffectContext = {
   targets?: ChosenTarget[];
   targetRequirements?: TargetRequirement[];
   chosenCardId?: CardInstanceId;
+  /** Announced X for {X} spells; effects with amount "x" read it. */
+  xValue?: number;
 };
 
 function nextOpponentId(state: GameState, controllerId: PlayerId): PlayerId {
@@ -230,6 +232,10 @@ export function bindCardEffect(
       };
     }
     case "deal_damage": {
+      const amount = effect.amount === "x" ? context.xValue ?? 0 : effect.amount;
+      if (amount <= 0) {
+        return null;
+      }
       if (effect.target.type === "chosen") {
         const chosen = chosenTargetAt(context, effect.target.index, state);
         if (!chosen || chosen.type === "spell") {
@@ -237,7 +243,7 @@ export function bindCardEffect(
         }
         return {
           kind: "deal_damage",
-          amount: effect.amount,
+          amount,
           sourceId: bindSourceId(effect.sourceId, context),
           target: chosen,
         };
@@ -249,18 +255,21 @@ export function bindCardEffect(
         }
         return {
           kind: "deal_damage",
-          amount: effect.amount,
+          amount,
           sourceId: bindSourceId(effect.sourceId, context),
           target: { type: "player", playerId },
         };
       }
       return {
         kind: "deal_damage",
-        amount: effect.amount,
+        amount,
         sourceId: bindSourceId(effect.sourceId, context),
         target: effect.target,
       };
     }
+    case "divided_damage":
+      // Handled at spell resolution with the announced division.
+      return null;
     case "create_token": {
       const ownerId = bindPlayerSelector(state, effect.ownerId, context);
       if (!ownerId) {

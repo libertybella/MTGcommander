@@ -168,12 +168,41 @@ function applyCastSpell(
   targets: ChosenTarget[] | undefined,
   faceIndex: number | undefined,
   modeIndex: number | undefined,
+  xValue: number | undefined,
+  division: number[] | undefined,
 ): GameState {
   requirePlaying(state);
   const faced = applyChosenFace(state, cardId, faceIndex);
   const { cost, fromCommand } = validateCast(faced, playerId, cardId);
   const card = faced.cards[cardId];
   const definition = card ? faced.definitions[card.definitionId] : undefined;
+  if (cost.xCount > 0) {
+    if (xValue === undefined || !Number.isInteger(xValue) || xValue < 0) {
+      throw new Error("Announce a value for X");
+    }
+    cost.generic += xValue * cost.xCount;
+    const player = faced.players.find((entry) => entry.id === playerId);
+    if (!player || !canPayManaCost(player.mana, cost)) {
+      throw new Error("Cannot pay mana cost");
+    }
+  } else if (xValue !== undefined) {
+    throw new Error("That spell has no X in its cost");
+  }
+  const dividedEffect = definition?.effects.find((effect) => effect.kind === "divided_damage");
+  if (dividedEffect?.kind === "divided_damage") {
+    const expected = dividedEffect.amount === "x" ? xValue ?? 0 : dividedEffect.amount;
+    if (!division || division.length !== (targets ?? []).length) {
+      throw new Error("Divide the damage among the chosen targets");
+    }
+    if (division.some((part) => !Number.isInteger(part) || part < 1)) {
+      throw new Error("Each target must be assigned at least 1 damage");
+    }
+    if (division.reduce((sum, part) => sum + part, 0) !== expected) {
+      throw new Error(`The division must total ${expected}`);
+    }
+  } else if (division !== undefined) {
+    throw new Error("That spell does not divide damage");
+  }
   if (definition?.modes && definition.modes.length > 0) {
     if (
       modeIndex === undefined ||
@@ -195,7 +224,7 @@ function applyCastSpell(
     validateChosenTargets(faced, definition?.targetRequirements ?? [], targets ?? [], playerId);
   }
   const paid = payManaCost(faced, playerId, cost);
-  const stacked = putSpellOnStack(paid, cardId, targets ?? [], modeIndex);
+  const stacked = putSpellOnStack(paid, cardId, targets ?? [], modeIndex, xValue, division);
   if (!fromCommand) {
     return stacked;
   }
@@ -521,6 +550,8 @@ export function applyAction(
           action.targets,
           action.faceIndex,
           action.modeIndex,
+          action.xValue,
+          action.division,
         );
         break;
       case "play_land":

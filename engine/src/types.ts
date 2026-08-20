@@ -177,6 +177,10 @@ export type StackObject = {
   activatedIndex?: number;
   /** Chosen mode index for modal spells. */
   modeIndex?: number;
+  /** Announced X for {X} costs. */
+  xValue?: number;
+  /** Damage split for divided-damage spells; aligns with `targets`. */
+  division?: number[];
 };
 
 export type CombatAttack = {
@@ -352,6 +356,8 @@ export type TargetKind =
 
 export type TargetRequirement = {
   kind: TargetKind;
+  /** "any number of targets": 1..N chosen targets all matching this kind. */
+  variable?: boolean;
 };
 
 /** One bullet of a modal spell. Targets are chosen for the picked mode only. */
@@ -392,7 +398,13 @@ export type CardEffect =
       kind: "deal_damage";
       sourceId: CardInstanceId | "self" | null;
       target: CardEffectTarget;
-      amount: number;
+      amount: number | "x";
+    }
+  | {
+      /** X damage divided as the caster chose among the spell's targets. */
+      kind: "divided_damage";
+      sourceId: CardInstanceId | "self" | null;
+      amount: number | "x";
     }
   | { kind: "draw"; playerId: PlayerSelector; count: number }
   | { kind: "scry"; playerId: PlayerSelector; count: number }
@@ -727,6 +739,10 @@ export type GameAction =
       faceIndex?: number;
       /** Required for modal spells: which bullet was chosen. */
       modeIndex?: number;
+      /** Announced X for {X} costs (CR 601.2b). */
+      xValue?: number;
+      /** Damage split for divided-damage spells; aligns with `targets`. */
+      division?: number[];
     }
   | { kind: "play_land"; playerId: PlayerId; cardId: CardInstanceId; faceIndex?: number }
   | {

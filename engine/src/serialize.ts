@@ -348,6 +348,21 @@ export function parseGameState(json: string): GameState {
       ...(entry.modeIndex === undefined
         ? {}
         : { modeIndex: expectNumber(entry.modeIndex, `stack[${index}].modeIndex`) }),
+      ...(entry.xValue === undefined
+        ? {}
+        : { xValue: expectNumber(entry.xValue, `stack[${index}].xValue`) }),
+      ...(entry.division === undefined
+        ? {}
+        : {
+            division: (() => {
+              if (!Array.isArray(entry.division)) {
+                throw new Error(`Invalid stack[${index}].division`);
+              }
+              return entry.division.map((part, partIndex) =>
+                expectNumber(part, `stack[${index}].division[${partIndex}]`),
+              );
+            })(),
+          }),
     };
   });
 
@@ -824,7 +839,7 @@ function parseTargetRequirement(value: unknown, label: string): TargetRequiremen
   ) {
     throw new Error(`Invalid ${label}.kind`);
   }
-  return { kind };
+  return { kind, ...(value.variable === true ? { variable: true } : {}) };
 }
 
 function parseTargetRequirements(value: unknown, label: string): TargetRequirement[] {
@@ -961,10 +976,12 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
       if (sourceId !== null && sourceId !== "self" && typeof sourceId !== "string") {
         throw new Error(`Invalid ${label}.sourceId`);
       }
+      const amount =
+        value.amount === "x" ? ("x" as const) : expectNumber(value.amount, `${label}.amount`);
       if (targetType === "player") {
         return {
           kind,
-          amount: expectNumber(value.amount, `${label}.amount`),
+          amount,
           sourceId,
           target: {
             type: "player",
@@ -975,7 +992,7 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
       if (targetType === "creature") {
         return {
           kind,
-          amount: expectNumber(value.amount, `${label}.amount`),
+          amount,
           sourceId,
           target: {
             type: "creature",
@@ -990,12 +1007,24 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
         }
         return {
           kind,
-          amount: expectNumber(value.amount, `${label}.amount`),
+          amount,
           sourceId,
           target: { type: "chosen", index },
         };
       }
       throw new Error(`Invalid ${label}.target.type`);
+    }
+    case "divided_damage": {
+      const sourceId = value.sourceId;
+      if (sourceId !== null && sourceId !== "self" && typeof sourceId !== "string") {
+        throw new Error(`Invalid ${label}.sourceId`);
+      }
+      return {
+        kind,
+        sourceId,
+        amount:
+          value.amount === "x" ? ("x" as const) : expectNumber(value.amount, `${label}.amount`),
+      };
     }
     case "create_token":
       return {
@@ -1753,6 +1782,21 @@ export function parseGameAction(json: string): GameAction {
       ...(raw.modeIndex === undefined
         ? {}
         : { modeIndex: expectNumber(raw.modeIndex, "action.modeIndex") }),
+      ...(raw.xValue === undefined
+        ? {}
+        : { xValue: expectNumber(raw.xValue, "action.xValue") }),
+      ...(raw.division === undefined
+        ? {}
+        : {
+            division: (() => {
+              if (!Array.isArray(raw.division)) {
+                throw new Error("Invalid action.division");
+              }
+              return raw.division.map((entry, index) =>
+                expectNumber(entry, `action.division[${index}]`),
+              );
+            })(),
+          }),
     };
   }
   if (kind === "declare_attackers") {

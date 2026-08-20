@@ -16,12 +16,14 @@ export type HybridPip = { a: ManaColor; b: ManaColor };
 export type ParsedManaCost = ManaPool & {
   generic: number;
   hybrid: HybridPip[];
+  /** Number of {X} symbols; the caster announces X (CR 601.2b). */
+  xCount: number;
 };
 
 export const COLOR_PIPS: Exclude<ManaColor, "C">[] = ["W", "U", "B", "R", "G"];
 
 export function emptyParsedManaCost(): ParsedManaCost {
-  return { W: 0, U: 0, B: 0, R: 0, G: 0, C: 0, generic: 0, hybrid: [] };
+  return { W: 0, U: 0, B: 0, R: 0, G: 0, C: 0, generic: 0, hybrid: [], xCount: 0 };
 }
 
 function requirePlayer(state: GameState, playerId: PlayerId): PlayerState {
@@ -74,6 +76,8 @@ export function parseManaCost(cost: string): ParsedManaCost {
     }
     if (/^\d+$/.test(symbol)) {
       parsed.generic += Number(symbol);
+    } else if (symbol === "X") {
+      parsed.xCount += 1;
     } else if (
       symbol === "W" ||
       symbol === "U" ||
