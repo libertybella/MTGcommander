@@ -212,6 +212,62 @@ const OVERRIDES = new Map<string, OverrideBuilder>([
       }),
   ],
   [
+    // "deals 1 damage to each opponent" whenever your creature enters.
+    normalizeCardName("Impact Tremors"),
+    (card) =>
+      createCardDefinition({
+        id: definitionIdForOracle(card),
+        name: card.name,
+        manaCost: card.manaCost,
+        typeLine: card.typeLine,
+        oracleText: card.oracleText,
+        imageUrl: card.imageUrl ?? "",
+        triggers: [
+          {
+            event: "enter_battlefield",
+            watch: "controlled",
+            excludeSelf: true,
+            subjectFilter: { types: ["creature"] },
+            effects: [
+              {
+                kind: "deal_damage",
+                sourceId: "self",
+                target: { type: "player", playerId: "each_opponent" },
+                amount: 1,
+              },
+            ],
+            targetRequirements: [],
+          },
+        ],
+      }),
+  ],
+  [
+    // Documented approximation: the printed "may" is auto-taken, matching
+    // its sibling Soul Warden which compiles from text.
+    normalizeCardName("Soul's Attendant"),
+    (card) =>
+      createCardDefinition({
+        id: definitionIdForOracle(card),
+        name: card.name,
+        manaCost: card.manaCost,
+        typeLine: card.typeLine,
+        oracleText: card.oracleText,
+        imageUrl: card.imageUrl ?? "",
+        power: 1,
+        toughness: 1,
+        triggers: [
+          {
+            event: "enter_battlefield",
+            watch: "any",
+            excludeSelf: true,
+            subjectFilter: { types: ["creature"] },
+            effects: [{ kind: "gain_life", playerId: "controller", amount: 1 }],
+            targetRequirements: [],
+          },
+        ],
+      }),
+  ],
+  [
     // Documented approximation: taps for any color instead of "any color a
     // land an opponent controls could produce" (strictly more permissive).
     normalizeCardName("Fellwar Stone"),

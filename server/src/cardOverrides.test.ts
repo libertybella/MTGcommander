@@ -82,6 +82,27 @@ describe("hand-authored registry", () => {
     }
   });
 
+  it("Impact Tremors pings each opponent when your creatures enter", () => {
+    const definition = cardOverrideFor(oracle("Impact Tremors", "Enchantment"));
+    const trigger = definition?.triggers[0];
+    expect(trigger?.watch).toBe("controlled");
+    expect(trigger?.excludeSelf).toBe(true);
+    expect(trigger?.effects[0]).toMatchObject({
+      kind: "deal_damage",
+      target: { type: "player", playerId: "each_opponent" },
+      amount: 1,
+    });
+  });
+
+  it("Soul's Attendant mirrors Soul Warden (auto-taken may)", () => {
+    const definition = cardOverrideFor(oracle("Soul's Attendant", "Creature — Human Soldier"));
+    const trigger = definition?.triggers[0];
+    expect(trigger?.event).toBe("enter_battlefield");
+    expect(trigger?.watch).toBe("any");
+    expect(trigger?.excludeSelf).toBe(true);
+    expect(trigger?.effects).toEqual([{ kind: "gain_life", playerId: "controller", amount: 1 }]);
+  });
+
   it("Fellwar Stone and Exotic Orchard tap for any color (documented approximation)", () => {
     for (const name of ["Fellwar Stone", "Exotic Orchard"]) {
       const definition = cardOverrideFor(oracle(name, name.includes("Stone") ? "Artifact" : "Land"));
