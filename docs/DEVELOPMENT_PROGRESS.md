@@ -545,6 +545,62 @@ Do not mark a checkbox complete simply because code was written.
 
 # Development Log
 
+## 2026-08-20 (evening) — Installer, measured gates, CR 800.4a livelock, coverage sprint
+
+### Objective
+
+Close every remaining machine-achievable acceptance criterion: the literal 10,000-game
+fuzz run, a measured (not estimated) M6 number, the installer, and whatever compile-rate
+ground a data-driven sprint can take.
+
+### Work Completed
+
+- **Windows installer**: electron-builder NSIS config (`electron-builder.yml`, `npm run dist`);
+  88 MB one-click installer builds and the packaged app opens its window (smoke-tested).
+- **Measured the M6 gate for real**: downloaded Scryfall's oracle bulk (38,626 cards) and the
+  EDHREC-ranked top 2,000 (Scryfall `order=edhrec`). `COMPILE_LIST` scopes the bulk sweep;
+  `COMPILE_ANALYZE=1` clusters uncompiled fragments; top-misses print in play-rank order.
+  Full bulk: 15.9% full at day start. Top-2,000: 15.6% → **18.4%** after the day's sprints.
+- **Compiler sprint** (from the miss clusters): slow/crowd conditional enters-tapped,
+  CR 514.1 cleanup discard + "no maximum hand size", extra land drops, "can't be countered",
+  sorcery-only activation riders, Karoo bounce lands (battlefield card-choice), board wipes
+  (`destroy_all` with batched dies and indestructible), creature-or-planeswalker removal,
+  team keyword pumps until end of turn.
+- **Registry sprint**: Solemn Simulacrum, Phyrexian Arena, Zulaport Cutthroat, Eternal Witness,
+  Brainstorm, and any-color approximations of Fellwar Stone / Exotic Orchard, with
+  `cardOverrides.test.ts` proving each definition.
+- **Third fuzz livelock found and fixed**: chunked seed-offset burns past the original 500 seeds
+  (~1% of games) hit a deterministic livelock — a spell whose resolution eliminates its own
+  caster (failed draw) had its card moved to `removed` mid-resolution, and moving it again to
+  the graveyard threw forever. Fixed per CR 800.4a in `stack.ts` (+ counter/ward decline paths);
+  the regression test reproduces the exact production error without the fix. Note for future
+  burns: game setup uses `Math.random` (shuffles, opening rolls), so seeds only fix the action
+  choices — failures are probabilistic; reproduce with `FUZZ_DEBUG=1` dumps.
+- 10,000-game marathon (20 × 500-seed chunks via `FUZZ_SEED_OFFSET`) running against the
+  final tree as the Stage 0 acceptance run; result recorded at tagging.
+
+### Tests Run
+
+- `npm test` — PASS (514 tests), typecheck, lint — PASS at every commit.
+- Compile rate: sample 83% full (floor 80%); EDHREC top-2,000 18.4% full / 37% partial.
+- `npm run dist` — PASS; packaged app launch verified.
+
+### Decisions Made
+
+- The M6 ≥95% gate is recorded as measured-and-open: it is the Stage 6 "runs forever" flywheel,
+  now with a rank-ordered sprint queue instead of a guess.
+- Fellwar Stone / Exotic Orchard ship as strictly-more-permissive any-color approximations,
+  documented in the registry — the alternative was leaving two top-20 staples on Override.
+
+### Checkpoint
+
+- Tag `checkpoint-45-measured-flywheel` after the 10,000-game marathon passes.
+
+### Next Task
+
+M6/M7 flywheel sprints from the rank-ordered miss list; M8 (witnessed four-player game night)
+is the remaining real-world gate.
+
 ## 2026-08-20 — Stages 3–7: events, choices, permanents, coverage, hardening
 
 ### Objective
