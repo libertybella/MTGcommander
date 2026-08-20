@@ -1,6 +1,6 @@
 import { cloneGameState } from "./clone";
 import { createCardDefinition, createCardInstance } from "./createGame";
-import { isCreature } from "./cardTypes";
+import { hasSubtype, isCreature } from "./cardTypes";
 import { creatureToughness, wouldSkipDraw } from "./derived";
 import { hasKeyword } from "./keywords";
 import { addMana, tapCard, untapCard } from "./mana";
@@ -592,8 +592,7 @@ function findControlledArmy(state: GameState, playerId: PlayerId): CardInstanceI
   const player = state.players.find((entry) => entry.id === playerId);
   return player?.zones.battlefield.find((cardId) => {
     const card = state.cards[cardId];
-    const typeLine = card ? state.definitions[card.definitionId]?.typeLine.toLowerCase() ?? "" : "";
-    return Boolean(card && card.controllerId === playerId && typeLine.includes("army"));
+    return Boolean(card && card.controllerId === playerId && hasSubtype(state, cardId, "army"));
   });
 }
 

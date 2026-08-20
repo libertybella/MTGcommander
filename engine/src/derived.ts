@@ -1,4 +1,4 @@
-import { isCreature, isLand, isLegendary } from "./cardTypes";
+import { characteristicsOf, isBasic, isCreature, isLand, isLegendary } from "./cardTypes";
 import type { CardInstance, CardInstanceId, EnterTappedUnless, GameState, StaticModifier } from "./types";
 
 function plus1Plus1(state: GameState, cardId: CardInstanceId): number {
@@ -77,15 +77,16 @@ function unlessSatisfied(
     return controlled.some((entry) => isLegendary(state, entry.id) && isCreature(state, entry.id));
   }
   if (unless.kind === "basic_lands") {
-    const basics = controlled.filter((entry) => {
-      const typeLine = state.definitions[entry.definitionId]?.typeLine.toLowerCase() ?? "";
-      return isLand(state, entry.id) && /\bbasic\b/.test(typeLine);
-    });
+    const basics = controlled.filter(
+      (entry) => isLand(state, entry.id) && isBasic(state, entry.id),
+    );
     return basics.length >= unless.count;
   }
   return controlled.some((entry) => {
-    const typeLine = state.definitions[entry.definitionId]?.typeLine.toLowerCase() ?? "";
-    return unless.types.some((type) => typeLine.includes(type));
+    const printed = characteristicsOf(state, entry.id);
+    return unless.types.some(
+      (type) => printed.subtypes.includes(type) || printed.types.includes(type),
+    );
   });
 }
 

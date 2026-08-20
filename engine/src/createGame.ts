@@ -1,7 +1,9 @@
+import { deriveCharacteristics } from "./characteristics";
 import { createId } from "./ids";
 import type {
   CardDefinition,
   CardInstance,
+  Color,
   GameState,
   ManaPool,
   PlayerState,
@@ -54,13 +56,14 @@ export function createCardDefinition(
         | "otherFaceId"
         | "layout"
       >
-    >,
+    > & { colors?: Color[] },
 ): CardDefinition {
   return {
     id: input.id ?? createId("def"),
     name: input.name,
     manaCost: input.manaCost ?? "",
     typeLine: input.typeLine,
+    characteristics: deriveCharacteristics(input.typeLine, input.manaCost ?? "", input.colors),
     oracleText: input.oracleText ?? "",
     power: input.power ?? null,
     toughness: input.toughness ?? null,

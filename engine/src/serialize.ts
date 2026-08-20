@@ -1,7 +1,9 @@
+import { deriveCharacteristics } from "./characteristics";
 import type {
   ActivatedAbility,
   BoundChooseCardSource,
   CardEffect,
+  Color,
   CardIdSelector,
   CardInstanceId,
   CardTrigger,
@@ -51,6 +53,27 @@ const KEYWORDS = new Set<Keyword>([
 ]);
 
 const MANA_KEYS = ["W", "U", "B", "R", "G", "C"] as const;
+const COLOR_KEYS = ["W", "U", "B", "R", "G"] as const;
+
+/**
+ * Colors stored inside a serialized definition's characteristics, if any.
+ * Old snapshots have no characteristics at all; both cases re-derive from
+ * typeLine/manaCost, with stored colors as the explicit override.
+ */
+function parseStoredColors(raw: unknown): Color[] | undefined {
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
+    return undefined;
+  }
+  const colors = (raw as { colors?: unknown }).colors;
+  if (!Array.isArray(colors)) {
+    return undefined;
+  }
+  const valid = colors.filter(
+    (entry): entry is Color =>
+      typeof entry === "string" && (COLOR_KEYS as readonly string[]).includes(entry),
+  );
+  return valid;
+}
 const ZONE_KEYS = [
   "library",
   "hand",
@@ -226,11 +249,14 @@ export function parseGameState(json: string): GameState {
     if (definitionId !== id) {
       throw new Error("Definition key must match definition.id");
     }
+    const manaCost = expectString(def.manaCost, "definition.manaCost", true);
+    const typeLine = expectString(def.typeLine, "definition.typeLine");
     definitions[id] = {
       id: definitionId,
       name: expectString(def.name, "definition.name"),
-      manaCost: expectString(def.manaCost, "definition.manaCost", true),
-      typeLine: expectString(def.typeLine, "definition.typeLine"),
+      manaCost,
+      typeLine,
+      characteristics: deriveCharacteristics(typeLine, manaCost, parseStoredColors(def.characteristics)),
       oracleText: expectString(def.oracleText, "definition.oracleText", true),
       power: def.power === undefined || def.power === null ? null : expectNumber(def.power, "definition.power"),
       toughness:

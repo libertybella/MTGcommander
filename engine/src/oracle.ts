@@ -4,7 +4,15 @@ import {
   compileOracleText,
   stripReminderText,
 } from "./oraclePatterns";
-import type { ActivatedAbility, CardDefinition, Keyword, ManaPool } from "./types";
+import type { ActivatedAbility, CardDefinition, Color, Keyword, ManaPool } from "./types";
+
+function explicitColors(raw: string[] | undefined): Color[] | undefined {
+  if (!raw) {
+    return undefined;
+  }
+  const colors = raw.filter((entry): entry is Color => ["W", "U", "B", "R", "G"].includes(entry));
+  return colors;
+}
 
 export type OracleFace = {
   name: string;
@@ -14,6 +22,8 @@ export type OracleFace = {
   power: string | null;
   toughness: string | null;
   imageUrl?: string;
+  /** Scryfall face colors (color indicator aware), e.g. ["U"]. */
+  colors?: string[];
 };
 
 export type OracleCard = {
@@ -28,6 +38,8 @@ export type OracleCard = {
   printedKeywords: string[];
   /** Scryfall `image_uris.normal` when fetched. */
   imageUrl?: string;
+  /** Scryfall card colors (color indicator aware), e.g. ["W", "U"]. */
+  colors?: string[];
   layout?: string;
   faces?: OracleFace[];
 };
@@ -156,6 +168,7 @@ function compileOneFace(card: OracleCard, definitionId: string): OracleCompileRe
     name: card.name.includes(" // ") ? (card.name.split(" // ")[0] ?? card.name) : card.name,
     manaCost: card.manaCost,
     typeLine: card.typeLine,
+    colors: explicitColors(card.colors),
     oracleText: card.oracleText,
     power: power ?? (typeLine.includes("creature") ? 0 : null),
     toughness: toughness ?? (typeLine.includes("creature") ? 0 : null),
@@ -193,6 +206,7 @@ export function compileOracleCard(card: OracleCard): OracleCompileResult {
         power: frontFace.power,
         toughness: frontFace.toughness,
         imageUrl: frontFace.imageUrl || card.imageUrl,
+        colors: frontFace.colors ?? card.colors,
       }
     : card;
   const front = compileOneFace(frontSource, definitionIdForOracle(card));
@@ -211,6 +225,7 @@ export function compileOracleCard(card: OracleCard): OracleCompileResult {
     toughness: backFace.toughness,
     printedKeywords: card.printedKeywords,
     imageUrl: backFace.imageUrl ?? "",
+    ...(backFace.colors ? { colors: backFace.colors } : {}),
     layout: card.layout,
   };
   const back = compileOneFace(backCard, `${definitionIdForOracle(card)}:back`);

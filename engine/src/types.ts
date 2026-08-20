@@ -65,11 +65,26 @@ export type PlayerZones = {
   removed: CardInstanceId[];
 };
 
+/**
+ * Structured, printed characteristics parsed from the type line and mana cost.
+ * All names are lowercase. Base/printed data only: continuous effects that
+ * change characteristics at runtime layer on top of these values.
+ */
+export type CardCharacteristics = {
+  supertypes: string[];
+  types: string[];
+  subtypes: string[];
+  colors: Color[];
+  manaValue: number;
+};
+
 export type CardDefinition = {
   id: CardDefinitionId;
   name: string;
   manaCost: string;
   typeLine: string;
+  /** Parsed from typeLine/manaCost at construction; colors may be explicit. */
+  characteristics: CardCharacteristics;
   oracleText: string;
   power: number | null;
   toughness: number | null;

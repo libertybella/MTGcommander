@@ -13,6 +13,7 @@ type ScryfallCard = {
   power?: string | null;
   toughness?: string | null;
   keywords?: string[];
+  colors?: string[];
   image_uris?: { small?: string; normal?: string; large?: string };
   card_faces?: Array<{
     name?: string;
@@ -21,6 +22,7 @@ type ScryfallCard = {
     oracle_text?: string;
     power?: string | null;
     toughness?: string | null;
+    colors?: string[];
     image_uris?: { small?: string; normal?: string; large?: string };
   }>;
 };
@@ -56,6 +58,7 @@ export function oracleCardFromScryfall(raw: unknown): OracleCard {
         power: entry.power ?? null,
         toughness: entry.toughness ?? null,
         imageUrl: faceImage(entry),
+        ...(Array.isArray(entry.colors) ? { colors: entry.colors.map(String) } : {}),
       };
     })
     .filter((entry): entry is NonNullable<typeof entry> => entry !== null);
@@ -68,6 +71,11 @@ export function oracleCardFromScryfall(raw: unknown): OracleCard {
     power: face?.power ?? card.power ?? null,
     toughness: face?.toughness ?? card.toughness ?? null,
     printedKeywords: Array.isArray(card.keywords) ? card.keywords.map(String) : [],
+    ...(Array.isArray(card.colors)
+      ? { colors: card.colors.map(String) }
+      : Array.isArray(face?.colors)
+        ? { colors: face.colors.map(String) }
+        : {}),
     imageUrl:
       card.image_uris?.normal ??
       card.image_uris?.small ??

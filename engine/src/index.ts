@@ -57,7 +57,12 @@ export type {
 } from "./setup";
 export { passPriority, putActivatedAbilityOnStack, putSpellOnStack, resolveTopOfStack } from "./stack";
 export {
+  characteristicsOf,
   definitionTypeLine,
+  hasSubtype,
+  hasSupertype,
+  hasType,
+  isBasic,
   isCommander,
   isCreature,
   COMMANDER_DAMAGE_TO_LOSE,
@@ -70,6 +75,12 @@ export {
   isPlaneswalker,
   isSorcery,
 } from "./cardTypes";
+export {
+  colorsFromManaCost,
+  deriveCharacteristics,
+  manaValueOf,
+  parseTypeLine,
+} from "./characteristics";
 export type { MoveCardOptions } from "./zones";
 export { TURN_SEQUENCE, advanceStep, advanceSteps, skipPriorityShortcuts } from "./turn";
 export type { TurnSlot } from "./turn";
@@ -140,6 +151,7 @@ export type { ParsedDeckCard, ParsedDecklist } from "./decklist";
 export { shuffleInPlace } from "./shuffle";
 export type {
   ActivatedAbility,
+  CardCharacteristics,
   CardDefinition,
   CardDefinitionId,
   CardEffect,

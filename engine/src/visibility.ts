@@ -15,6 +15,7 @@ function hiddenDefinition(): CardDefinition {
     name: "Unknown Card",
     manaCost: "",
     typeLine: "",
+    characteristics: { supertypes: [], types: [], subtypes: [], colors: [], manaValue: 0 },
     oracleText: "",
     power: null,
     toughness: null,
