@@ -16,7 +16,7 @@ This is **not** Wizards of the Coast software. It is also **not** the sibling Bi
 | --- | --- |
 | **Phase** | Comprehensive Rules machinery (layers, events, choices, permanents) + coverage flywheel |
 | **Next** | Private alpha (invite friends, play complete games) |
-| **Tests** | 514 passing, plus multi-thousand-game fuzz burn-ins gating each checkpoint |
+| **Tests** | 520 passing; a 10,000-game random-action fuzz marathon (zero integrity violations) gates the latest checkpoint |
 | **Compile rate** | 83% of a 60-card real-staple sample compiles fully (CI floor 80%); 18.4% of the EDHREC top-2,000 (measured 2026-08-20, the Stage 6 flywheel's starting line) |
 | **Installer** | `npm run dist` builds a one-click Windows installer (`release/BizzyMTG Commander Setup 0.1.0.exe`). |
 
@@ -153,5 +153,6 @@ Git tags on `main`. Do not move old tags.
 | `checkpoint-42-permanent-types` | Auras, equipment, planeswalkers, manifest |
 | `checkpoint-43-coverage-flywheel` | Compile-rate CI, registry, rulings corpus |
 | `checkpoint-44-table-hardening` | Seat tokens, spectators, auto-tap |
+| `checkpoint-45-measured-flywheel` | Installer, measured M6 gate, 10k-game marathon, sharded fuzzer |
 
 These live on the `comprehensive-plan` branch (see docs/DEVELOPMENT_PROGRESS.md); merge to `main` at will — every checkpoint is a playable table. Next: **Private Alpha**, then productization.

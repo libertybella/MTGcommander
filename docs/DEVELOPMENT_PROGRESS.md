@@ -576,8 +576,13 @@ ground a data-driven sprint can take.
   the regression test reproduces the exact production error without the fix. Note for future
   burns: game setup uses `Math.random` (shuffles, opening rolls), so seeds only fix the action
   choices — failures are probabilistic; reproduce with `FUZZ_DEBUG=1` dumps.
-- 10,000-game marathon (20 × 500-seed chunks via `FUZZ_SEED_OFFSET`) running against the
-  final tree as the Stage 0 acceptance run; result recorded at tagging.
+- **10,000-game marathon PASSED**: seeds 1–10,000, 400 actions per game, integrity +
+  serialize round-trip after every action — 10,000/10,000, zero violations (the Stage 0
+  acceptance run). Sequential single-file execution took ~3h; the fuzzer is now sharded
+  across eight test files (`fuzzHarness.ts` + `fuzz*.test.ts`), so the same burn is one
+  command (`FUZZ_SEEDS=10000 npx vitest run engine/src/fuzz*.test.ts`, ~40 min at ~7×
+  parallelism). Each game carries a 120s timeout — a parallel-burn lesson: CPU contention
+  once produced timeout failures that looked like integrity failures.
 
 ### Tests Run
 
@@ -594,7 +599,7 @@ ground a data-driven sprint can take.
 
 ### Checkpoint
 
-- Tag `checkpoint-45-measured-flywheel` after the 10,000-game marathon passes.
+- Tagged `checkpoint-45-measured-flywheel` (marathon 10,000/10,000 green).
 
 ### Next Task
 
