@@ -1,7 +1,17 @@
+import { characteristicsOf } from "./cardTypes";
 import { abilitiesRemoved } from "./characteristicsEngine";
 import { createId } from "./ids";
 import { hasAnyLegalTargetSet } from "./targeting";
-import type { CardEffect, CardInstanceId, GameState, PlayerId, TriggerCandidate } from "./types";
+import type {
+  CardEffect,
+  CardInstance,
+  CardInstanceId,
+  CardTrigger,
+  EngineEvent,
+  GameState,
+  PlayerId,
+  TriggerCandidate,
+} from "./types";
 
 function isLookActionTrigger(effects: CardEffect[]): boolean {
   return (
@@ -164,7 +174,113 @@ export function queueSimultaneousTriggersInPlace(
   finishTriggerBookkeepingInPlace(state);
 }
 
-/** Queue enter-the-battlefield triggers for one entering card. */
+function subjectMatchesFilter(
+  state: GameState,
+  subjectId: CardInstanceId,
+  filter: CardTrigger["subjectFilter"],
+): boolean {
+  if (!filter) {
+    return true;
+  }
+  const traits = characteristicsOf(state, subjectId);
+  for (const type of filter.types ?? []) {
+    if (!traits.types.includes(type)) {
+      return false;
+    }
+  }
+  for (const subtype of filter.subtypes ?? []) {
+    if (!traits.subtypes.includes(subtype)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function triggerMatchesEvent(
+  state: GameState,
+  watcher: CardInstance,
+  trigger: CardTrigger,
+  event: EngineEvent,
+): boolean {
+  if (event.kind === "step_begins") {
+    if (trigger.event !== "upkeep" && trigger.event !== "end_step") {
+      return false;
+    }
+    const step = trigger.event === "upkeep" ? "upkeep" : "end";
+    // "At the beginning of your …": the controller's own step.
+    return event.step === step && watcher.controllerId === state.turn.activePlayerId;
+  }
+  if (
+    (event.kind === "enters" && trigger.event !== "enter_battlefield") ||
+    (event.kind === "dies" && trigger.event !== "dies") ||
+    (event.kind === "attacks" && trigger.event !== "attacks")
+  ) {
+    return false;
+  }
+  const watch = trigger.watch ?? "self";
+  if (trigger.excludeSelf && event.cardId === watcher.id) {
+    return false;
+  }
+  if (watch === "self") {
+    return event.cardId === watcher.id;
+  }
+  if (watch === "controlled") {
+    const subjectController =
+      event.kind === "dies" ? event.controllerId : state.cards[event.cardId]?.controllerId;
+    if (subjectController !== watcher.controllerId) {
+      return false;
+    }
+  }
+  return subjectMatchesFilter(state, event.cardId, trigger.subjectFilter);
+}
+
+/**
+ * The event bus (Stage 3): match a batch of simultaneous events against
+ * every ability that could see them, then queue the triggers under APNAP.
+ * Watchers are battlefield permanents; a dying object's own dies-triggers
+ * also fire, looking back from the graveyard (CR 603.10a).
+ */
+export function dispatchEventsInPlace(state: GameState, events: EngineEvent[]): void {
+  if (events.length === 0) {
+    return;
+  }
+  const candidates: TriggerCandidate[] = [];
+  const seen = new Set<string>();
+  const consider = (card: CardInstance) => {
+    const triggers = state.definitions[card.definitionId]?.triggers ?? [];
+    for (let index = 0; index < triggers.length; index += 1) {
+      const trigger = triggers[index]!;
+      for (const event of events) {
+        if (!triggerMatchesEvent(state, card, trigger, event)) {
+          continue;
+        }
+        const key = `${card.id}:${index}`;
+        if (!seen.has(key)) {
+          seen.add(key);
+          candidates.push({ cardId: card.id, triggerIndex: index });
+        }
+        break;
+      }
+    }
+  };
+  for (const card of Object.values(state.cards)) {
+    if (card.zone === "battlefield" && !abilitiesRemoved(state, card.id)) {
+      consider(card);
+    }
+  }
+  for (const event of events) {
+    if (event.kind !== "dies") {
+      continue;
+    }
+    const dead = state.cards[event.cardId];
+    if (dead && dead.zone !== "battlefield") {
+      consider(dead);
+    }
+  }
+  queueSimultaneousTriggersInPlace(state, candidates);
+}
+
+/** Queue enter-the-battlefield triggers and notify watchers of the arrival. */
 export function queueEnterBattlefieldTriggersInPlace(
   state: GameState,
   cardId: CardInstanceId,
@@ -173,14 +289,7 @@ export function queueEnterBattlefieldTriggersInPlace(
   if (!card || card.zone !== "battlefield") {
     return;
   }
-  const triggers = state.definitions[card.definitionId]?.triggers ?? [];
-  const candidates: TriggerCandidate[] = [];
-  for (let index = 0; index < triggers.length; index += 1) {
-    if (triggers[index]?.event === "enter_battlefield") {
-      candidates.push({ cardId, triggerIndex: index });
-    }
-  }
-  queueSimultaneousTriggersInPlace(state, candidates);
+  dispatchEventsInPlace(state, [{ kind: "enters", cardId }]);
 }
 
 /** Queue "at the beginning of combat on your turn" triggers for the active player. */

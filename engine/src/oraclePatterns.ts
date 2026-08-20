@@ -626,6 +626,17 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     }
   }
 
+  match = sentence.match(/^Target player loses (\d+) life and you gain (\d+) life$/i);
+  if (match?.[1] && match[2]) {
+    return {
+      targetRequirements: [{ kind: "player" }],
+      effects: [
+        { kind: "lose_life", playerId: { type: "chosen", index: 0 }, amount: Number(match[1]) },
+        { kind: "gain_life", playerId: "controller", amount: Number(match[2]) },
+      ],
+    };
+  }
+
   match = sentence.match(/^Target creature gets ([+-]\d+)\/([+-]\d+) until end of turn$/i);
   if (match?.[1] && match[2]) {
     return {
@@ -691,6 +702,66 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     return null;
   }
 
+  return null;
+}
+
+type TriggerHead = Pick<CardTrigger, "event" | "watch" | "excludeSelf" | "subjectFilter">;
+
+/** "Whenever another creature dies" → dies / any / excludeSelf, and friends. */
+function parseTriggerHead(head: string): TriggerHead | null {
+  const text = head.replace(/^Landfall\s*[—-]\s*/i, "").trim();
+  if (/^When(?:ever)? ~ dies$/i.test(text)) {
+    return { event: "dies" };
+  }
+  if (/^Whenever ~ or another creature dies$/i.test(text)) {
+    return { event: "dies", watch: "any", subjectFilter: { types: ["creature"] } };
+  }
+  if (/^Whenever another creature dies$/i.test(text)) {
+    return { event: "dies", watch: "any", excludeSelf: true, subjectFilter: { types: ["creature"] } };
+  }
+  if (/^Whenever a creature you control dies$/i.test(text)) {
+    return { event: "dies", watch: "controlled", subjectFilter: { types: ["creature"] } };
+  }
+  if (/^Whenever a creature dies$/i.test(text)) {
+    return { event: "dies", watch: "any", subjectFilter: { types: ["creature"] } };
+  }
+  if (/^At the beginning of your upkeep$/i.test(text)) {
+    return { event: "upkeep" };
+  }
+  if (/^At the beginning of your end step$/i.test(text)) {
+    return { event: "end_step" };
+  }
+  if (/^Whenever ~ attacks$/i.test(text)) {
+    return { event: "attacks" };
+  }
+  if (
+    /^Whenever a land you control enters$/i.test(text) ||
+    /^Whenever a land enters(?: under your control)?$/i.test(text)
+  ) {
+    return { event: "enter_battlefield", watch: "controlled", subjectFilter: { types: ["land"] } };
+  }
+  if (/^Whenever ~ or another creature enters$/i.test(text)) {
+    return { event: "enter_battlefield", watch: "any", subjectFilter: { types: ["creature"] } };
+  }
+  if (/^Whenever another creature enters$/i.test(text)) {
+    return {
+      event: "enter_battlefield",
+      watch: "any",
+      excludeSelf: true,
+      subjectFilter: { types: ["creature"] },
+    };
+  }
+  if (/^Whenever another creature you control enters$/i.test(text)) {
+    return {
+      event: "enter_battlefield",
+      watch: "controlled",
+      excludeSelf: true,
+      subjectFilter: { types: ["creature"] },
+    };
+  }
+  if (/^Whenever a creature enters under your control$/i.test(text)) {
+    return { event: "enter_battlefield", watch: "controlled", subjectFilter: { types: ["creature"] } };
+  }
   return null;
 }
 
@@ -1002,6 +1073,27 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
       }
       result.leftover.push(sentence);
       continue;
+    }
+
+    const generalTrigger = sentence.match(/^((?:Landfall\s*[—-]\s*)?[^,]+?), (.+)$/i);
+    if (generalTrigger?.[1] && generalTrigger[2]) {
+      const head = parseTriggerHead(generalTrigger[1]);
+      if (head) {
+        const inner = compileSimpleClause(generalTrigger[2].trim());
+        if (inner) {
+          result.triggers.push({
+            ...head,
+            effects: inner.effects,
+            targetRequirements: inner.targetRequirements,
+          });
+          if (inner.leftover) {
+            result.leftover.push(inner.leftover);
+          }
+          continue;
+        }
+        result.leftover.push(sentence);
+        continue;
+      }
     }
 
     const channel = sentence.match(

@@ -4,6 +4,7 @@ import { creaturePower, creatureToughness } from "./derived";
 import { hasKeyword } from "./keywords";
 import { isLiving, nextLivingPlayerId } from "./players";
 import { applyStateBasedActionsInPlace } from "./status";
+import { dispatchEventsInPlace } from "./triggers";
 import { moveCard } from "./zones";
 import type {
   CardInstance,
@@ -172,6 +173,12 @@ export function declareAttackers(state: GameState, playerId: PlayerId, attacks: 
   }
   next.passesSinceAction = 0;
   next.priorityPlayerId = next.turn.activePlayerId;
+  if (combat.attacks.length > 0) {
+    dispatchEventsInPlace(
+      next,
+      combat.attacks.map((attack) => ({ kind: "attacks" as const, cardId: attack.attackerId })),
+    );
+  }
   return next;
 }
 

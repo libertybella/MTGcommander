@@ -288,8 +288,18 @@ describe("oracle compile", () => {
       toughness: "1",
       printedKeywords: [],
     });
-    expect(cleric.definition.triggers).toEqual([]);
-    expect(cleric.notes.some((note) => /not compiled/.test(note))).toBe(true);
+    // Compiles as of Stage 3: an enters-watcher excluding itself.
+    expect(cleric.definition.triggers).toEqual([
+      {
+        event: "enter_battlefield",
+        watch: "any",
+        excludeSelf: true,
+        subjectFilter: { types: ["creature"] },
+        effects: [{ kind: "gain_life", playerId: "controller", amount: 1 }],
+        targetRequirements: [],
+      },
+    ]);
+    expect(cleric.notes).toEqual([]);
 
     const etb = compileOracleCard({
       oracleId: "etb",
@@ -597,7 +607,15 @@ describe("oracle compile", () => {
       printedKeywords: ["Haste"],
     });
     expect(rider.definition.keywords).toContain("haste");
-    expect(rider.notes.some((note) => /not compiled/.test(note))).toBe(true);
+    // Compiles as of Stage 3: attack triggers are real events now.
+    expect(rider.definition.triggers).toEqual([
+      {
+        event: "attacks",
+        effects: [{ kind: "amass", playerId: "controller", amount: 2, subtype: "Orc" }],
+        targetRequirements: [],
+      },
+    ]);
+    expect(rider.notes).toEqual([]);
 
     const brutality = compileOracleCard({
       oracleId: "brutality",

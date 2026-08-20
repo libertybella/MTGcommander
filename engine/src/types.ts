@@ -431,12 +431,38 @@ export type Keyword =
   | "shadow"
   | "skulk";
 
+export type TriggerEvent =
+  | "enter_battlefield"
+  | "begin_combat"
+  | "dies"
+  | "attacks"
+  | "upkeep"
+  | "end_step";
+
 export type CardTrigger = {
-  event: "enter_battlefield" | "begin_combat";
+  event: TriggerEvent;
+  /**
+   * Which objects' events fire this trigger (enter_battlefield, dies,
+   * attacks). Default "self". "controlled" watches the trigger source's
+   * controller's objects; "any" watches everyone's. upkeep/end_step fire at
+   * the beginning of the controller's own step and ignore `watch`.
+   */
+  watch?: "self" | "controlled" | "any";
+  /** "another creature": the event subject may not be the source itself. */
+  excludeSelf?: boolean;
+  /** Filter on the event subject's computed characteristics (landfall). */
+  subjectFilter?: { types?: string[]; subtypes?: string[] };
   effects: CardEffect[];
   /** Chosen when the trigger is put on the stack. Empty or omitted means untargeted. */
   targetRequirements?: TargetRequirement[];
 };
+
+/** A change the trigger system reacts to. Dispatched synchronously in batches. */
+export type EngineEvent =
+  | { kind: "enters"; cardId: CardInstanceId }
+  | { kind: "dies"; cardId: CardInstanceId; controllerId: PlayerId }
+  | { kind: "attacks"; cardId: CardInstanceId }
+  | { kind: "step_begins"; step: Step };
 
 /** One triggered ability waiting to be put on the stack. */
 export type TriggerCandidate = {

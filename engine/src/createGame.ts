@@ -75,6 +75,18 @@ export function createCardDefinition(
     triggers: input.triggers
       ? input.triggers.map((trigger) => ({
           event: trigger.event,
+          ...(trigger.watch ? { watch: trigger.watch } : {}),
+          ...(trigger.excludeSelf ? { excludeSelf: true } : {}),
+          ...(trigger.subjectFilter
+            ? {
+                subjectFilter: {
+                  ...(trigger.subjectFilter.types ? { types: [...trigger.subjectFilter.types] } : {}),
+                  ...(trigger.subjectFilter.subtypes
+                    ? { subtypes: [...trigger.subjectFilter.subtypes] }
+                    : {}),
+                },
+              }
+            : {}),
           effects: trigger.effects.map((effect) => ({ ...effect })),
           targetRequirements: (trigger.targetRequirements ?? []).map((requirement) => ({
             ...requirement,

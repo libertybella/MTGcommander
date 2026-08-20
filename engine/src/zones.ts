@@ -1,7 +1,7 @@
 import { cloneGameState } from "./clone";
 import { isCommander } from "./cardTypes";
 import { queueEnterReplacementChoicesInPlace, wouldEnterTapped } from "./derived";
-import { queueEnterBattlefieldTriggersInPlace } from "./triggers";
+import { dispatchEventsInPlace, queueEnterBattlefieldTriggersInPlace } from "./triggers";
 import type { CardInstance, CardInstanceId, GameState, PlayerState, PlayerZones, ZoneName } from "./types";
 
 export const PLAYER_ZONES: (keyof PlayerZones)[] = [
@@ -130,6 +130,7 @@ export function enterOwnerZoneInPlace(
     throw new Error(`Card ${cardId} owner is missing`);
   }
   const fromZone = card.zone;
+  const diedControllerId = card.controllerId;
   insertIntoZone(owner, destination, cardId, options.libraryPosition ?? "top");
   card.zone = destination;
   applyZoneChangeFlags(state, card, destination);
@@ -137,6 +138,9 @@ export function enterOwnerZoneInPlace(
   if (destination === "battlefield") {
     queueEnterReplacementChoicesInPlace(state, cardId);
     queueEnterBattlefieldTriggersInPlace(state, cardId);
+  }
+  if (fromZone === "battlefield" && destination === "graveyard") {
+    dispatchEventsInPlace(state, [{ kind: "dies", cardId, controllerId: diedControllerId }]);
   }
 }
 
@@ -240,6 +244,7 @@ export function moveCardInPlace(
     return;
   }
 
+  const diedControllerId = card.controllerId;
   removeFromZone(occupant, located.zone, cardId);
   insertIntoZone(owner, destination, cardId, options.libraryPosition ?? "top");
   card.zone = destination;
@@ -248,6 +253,9 @@ export function moveCardInPlace(
   if (destination === "battlefield") {
     queueEnterReplacementChoicesInPlace(state, cardId);
     queueEnterBattlefieldTriggersInPlace(state, cardId);
+  }
+  if (located.zone === "battlefield" && destination === "graveyard") {
+    dispatchEventsInPlace(state, [{ kind: "dies", cardId, controllerId: diedControllerId }]);
   }
 
   if (countCardPlacements(state, cardId) !== 1) {

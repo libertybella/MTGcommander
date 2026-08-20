@@ -1106,11 +1106,44 @@ function parseTriggers(value: unknown, label: string): CardTrigger[] {
       throw new Error(`Invalid ${label}[${index}]`);
     }
     const event = expectString(entry.event, `${label}[${index}].event`);
-    if (event !== "enter_battlefield" && event !== "begin_combat") {
+    if (
+      event !== "enter_battlefield" &&
+      event !== "begin_combat" &&
+      event !== "dies" &&
+      event !== "attacks" &&
+      event !== "upkeep" &&
+      event !== "end_step"
+    ) {
       throw new Error(`Invalid ${label}[${index}].event`);
     }
+    const watch = entry.watch;
+    if (watch !== undefined && watch !== "self" && watch !== "controlled" && watch !== "any") {
+      throw new Error(`Invalid ${label}[${index}].watch`);
+    }
+    const subjectFilter =
+      entry.subjectFilter === undefined
+        ? undefined
+        : (() => {
+            if (!isRecord(entry.subjectFilter)) {
+              throw new Error(`Invalid ${label}[${index}].subjectFilter`);
+            }
+            const types = parseStringList(entry.subjectFilter.types, `${label}[${index}].subjectFilter.types`);
+            const subtypes = parseStringList(
+              entry.subjectFilter.subtypes,
+              `${label}[${index}].subjectFilter.subtypes`,
+            );
+            return {
+              ...(types.length > 0 ? { types } : {}),
+              ...(subtypes.length > 0 ? { subtypes } : {}),
+            };
+          })();
     return {
       event,
+      ...(watch === undefined ? {} : { watch }),
+      ...(entry.excludeSelf === true ? { excludeSelf: true } : {}),
+      ...(subjectFilter && (subjectFilter.types || subjectFilter.subtypes)
+        ? { subjectFilter }
+        : {}),
       effects: parseCardEffects(entry.effects, `${label}[${index}].effects`),
       targetRequirements: parseTargetRequirements(
         entry.targetRequirements,

@@ -10,7 +10,7 @@ import { wouldSkipDraw } from "./derived";
 import { emptyManaPoolsInPlace } from "./mana";
 import { livingPlayers, nextLivingPlayerId } from "./players";
 import { applyStateBasedActionsInPlace } from "./status";
-import { queueBeginCombatTriggersInPlace } from "./triggers";
+import { dispatchEventsInPlace, queueBeginCombatTriggersInPlace } from "./triggers";
 import type { GameState, Phase, PlayerId, Step } from "./types";
 
 export type TurnSlot = {
@@ -94,6 +94,14 @@ function onEnterStep(state: GameState): GameState {
         card.summoningSick = false;
       }
     }
+    return state;
+  }
+  if (state.turn.step === "upkeep") {
+    dispatchEventsInPlace(state, [{ kind: "step_begins", step: "upkeep" }]);
+    return state;
+  }
+  if (state.turn.step === "end") {
+    dispatchEventsInPlace(state, [{ kind: "step_begins", step: "end" }]);
     return state;
   }
   if (state.turn.step === "draw") {
