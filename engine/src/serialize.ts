@@ -301,6 +301,22 @@ export function parseGameState(json: string): GameState {
       imageUrl:
         def.imageUrl === undefined ? "" : expectString(def.imageUrl, "definition.imageUrl", true),
       ...(def.ward === undefined ? {} : { ward: expectNumber(def.ward, "definition.ward") }),
+      ...(def.protectionFrom === undefined
+        ? {}
+        : {
+            protectionFrom: (() => {
+              if (!Array.isArray(def.protectionFrom)) {
+                throw new Error(`Invalid definition.${id}.protectionFrom`);
+              }
+              return def.protectionFrom.map((entry, index) => {
+                const color = expectString(entry, `definition.${id}.protectionFrom[${index}]`);
+                if (!(COLOR_KEYS as readonly string[]).includes(color)) {
+                  throw new Error(`Invalid definition.${id}.protectionFrom[${index}]`);
+                }
+                return color as Color;
+              });
+            })(),
+          }),
       ...(def.modes === undefined
         ? {}
         : { modes: parseSpellModes(def.modes, `definition.${id}.modes`) }),

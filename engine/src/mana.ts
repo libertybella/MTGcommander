@@ -18,12 +18,14 @@ export type ParsedManaCost = ManaPool & {
   hybrid: HybridPip[];
   /** Number of {X} symbols; the caster announces X (CR 601.2b). */
   xCount: number;
+  /** Phyrexian pips: each pays one mana of the color or 2 life (CR 107.4f). */
+  phyrexian: Exclude<ManaColor, "C">[];
 };
 
 export const COLOR_PIPS: Exclude<ManaColor, "C">[] = ["W", "U", "B", "R", "G"];
 
 export function emptyParsedManaCost(): ParsedManaCost {
-  return { W: 0, U: 0, B: 0, R: 0, G: 0, C: 0, generic: 0, hybrid: [], xCount: 0 };
+  return { W: 0, U: 0, B: 0, R: 0, G: 0, C: 0, generic: 0, hybrid: [], xCount: 0, phyrexian: [] };
 }
 
 function requirePlayer(state: GameState, playerId: PlayerId): PlayerState {
@@ -87,6 +89,8 @@ export function parseManaCost(cost: string): ParsedManaCost {
       symbol === "C"
     ) {
       parsed[symbol] += 1;
+    } else if (/^[WUBRG]\/P$/.test(symbol)) {
+      parsed.phyrexian.push(symbol[0] as Exclude<ManaColor, "C">);
     } else if (/^[WUBRGC]\/[WUBRGC]$/.test(symbol)) {
       const [a, b] = symbol.split("/") as [ManaColor, ManaColor];
       parsed.hybrid.push({ a, b });
@@ -124,23 +128,50 @@ function afterPips(pool: ManaPool, parsed: ParsedManaCost): ManaPool | null {
   return next;
 }
 
-export function canPayManaCost(pool: ManaPool, cost: string | ParsedManaCost): boolean {
+export function canPayManaCost(
+  pool: ManaPool,
+  cost: string | ParsedManaCost,
+  life = Number.POSITIVE_INFINITY,
+): boolean {
   const parsed = typeof cost === "string" ? parseManaCost(cost) : cost;
   const remaining = afterPips(pool, parsed);
   if (!remaining) {
+    return false;
+  }
+  let lifeNeeded = 0;
+  for (const color of parsed.phyrexian) {
+    if (remaining[color] > 0) {
+      remaining[color] -= 1;
+    } else {
+      lifeNeeded += 2;
+    }
+  }
+  if (lifeNeeded > life) {
     return false;
   }
   const leftover = MANA_COLORS.reduce((sum, color) => sum + remaining[color], 0);
   return leftover >= parsed.generic;
 }
 
-function spendFromPool(pool: ManaPool, parsed: ParsedManaCost): ManaPool {
-  if (!canPayManaCost(pool, parsed)) {
+function spendFromPool(
+  pool: ManaPool,
+  parsed: ParsedManaCost,
+  life = Number.POSITIVE_INFINITY,
+): { pool: ManaPool; lifePaid: number } {
+  if (!canPayManaCost(pool, parsed, life)) {
     throw new Error("Cannot pay mana cost");
   }
   const next = afterPips(pool, parsed);
   if (!next) {
     throw new Error("Cannot pay mana cost");
+  }
+  let lifePaid = 0;
+  for (const color of parsed.phyrexian) {
+    if (next[color] > 0) {
+      next[color] -= 1;
+    } else {
+      lifePaid += 2;
+    }
   }
   let generic = parsed.generic;
   const spendOrder: ManaColor[] = ["C", "W", "U", "B", "R", "G"];
@@ -149,7 +180,7 @@ function spendFromPool(pool: ManaPool, parsed: ParsedManaCost): ManaPool {
     next[color] -= used;
     generic -= used;
   }
-  return next;
+  return { pool: next, lifePaid };
 }
 
 export function addMana(
@@ -202,7 +233,12 @@ export function payManaCost(
   const next = cloneGameState(state);
   const player = requirePlayer(next, playerId);
   const parsed = typeof cost === "string" ? parseManaCost(cost) : cost;
-  player.mana = spendFromPool(player.mana, parsed);
+  const paid = spendFromPool(player.mana, parsed, player.life);
+  player.mana = paid.pool;
+  if (paid.lifePaid > 0) {
+    player.life -= paid.lifePaid;
+    next.log.push({ kind: "life_change", playerId, delta: -paid.lifePaid });
+  }
   return next;
 }
 

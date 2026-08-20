@@ -32,6 +32,7 @@ export type CompiledOracleText = {
   manaAbilities: ManaAbility[];
   ward?: number;
   modes?: SpellMode[];
+  protectionFrom?: Color[];
   leftover: string[];
   notes: string[];
 };
@@ -1172,6 +1173,24 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
     const wardLine = sentence.match(/^Ward \{(\d+)\}$/i);
     if (wardLine?.[1]) {
       result.ward = Number(wardLine[1]);
+      continue;
+    }
+
+    const protectionLine = sentence.match(
+      /^Protection from (white|blue|black|red|green)(?: and from (white|blue|black|red|green))?$/i,
+    );
+    if (protectionLine?.[1]) {
+      const colorOf: Record<string, Color> = {
+        white: "W",
+        blue: "U",
+        black: "B",
+        red: "R",
+        green: "G",
+      };
+      const colors = [protectionLine[1], protectionLine[2]]
+        .filter((name): name is string => Boolean(name))
+        .map((name) => colorOf[name.toLowerCase()]!);
+      result.protectionFrom = [...new Set([...(result.protectionFrom ?? []), ...colors])];
       continue;
     }
 

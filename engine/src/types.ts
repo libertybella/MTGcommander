@@ -109,6 +109,11 @@ export type CardDefinition = {
   activated: ActivatedAbility[];
   /** Ward {N}: opponents targeting this pay N generic or the spell is countered. */
   ward?: number;
+  /**
+   * Protection from these colors (CR 702.16): can't be targeted, damaged,
+   * or blocked by sources of the listed colors.
+   */
+  protectionFrom?: Color[];
   /** "Choose one —" spells: cast picks exactly one mode (CR 700.2). */
   modes?: SpellMode[];
   /** Scryfall card image, if known. Empty for synthetic / hidden cards. */

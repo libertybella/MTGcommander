@@ -346,6 +346,9 @@ describe("game host session", () => {
       throw new Error("need players");
     }
     const host = GameHost.start(state, you, { hotseat: true });
+    // Distinct mocked rolls: a real random tie legitimately re-rolls.
+    const random = vi.spyOn(Math, "random");
+    random.mockReturnValueOnce(0.1).mockReturnValueOnce(0.9);
     const rolled = host.submit(you, { kind: "opening_roll", playerId: you });
     expect(rolled.ok).toBe(true);
     expect(host.viewFor(you).openingRoll?.rolls[you]).toEqual(expect.any(Number));
@@ -355,6 +358,7 @@ describe("game host session", () => {
     expect(second.ok).toBe(true);
     expect(host.viewFor(you).openingRoll).toBeNull();
     expect(host.viewFor(you).mulligan).not.toBeNull();
+    random.mockRestore();
   });
 
   it("leaves the unseated opening-roll winner as the first player after keeps", () => {

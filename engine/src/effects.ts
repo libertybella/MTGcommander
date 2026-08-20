@@ -8,7 +8,7 @@ import { addMana, tapCard, untapCard } from "./mana";
 import { livingPlayers, nextLivingPlayerId } from "./players";
 import { isPromptOpen, legalIdsForChooseSources } from "./prompt";
 import { applyStateBasedActionsInPlace } from "./status";
-import { isChosenTargetLegal } from "./targeting";
+import { isChosenTargetLegal, sourceColorsOf } from "./targeting";
 import { amassArmyTemplate } from "./tokens";
 import { queueEnterBattlefieldTriggersInPlace } from "./triggers";
 import { countCardPlacements, enterOwnerZone, moveCard } from "./zones";
@@ -128,7 +128,17 @@ function chosenTargetAt(
 ): ChosenTarget | null {
   const requirement = context.targetRequirements?.[index];
   const target = context.targets?.[index];
-  if (!requirement || !target || !isChosenTargetLegal(state, requirement, target, context.controllerId)) {
+  if (
+    !requirement ||
+    !target ||
+    !isChosenTargetLegal(
+      state,
+      requirement,
+      target,
+      context.controllerId,
+      sourceColorsOf(state, context.sourceId),
+    )
+  ) {
     return null;
   }
   return target;
@@ -442,6 +452,14 @@ function applyDealDamage(state: GameState, effect: Extract<GameEffect, { kind: "
     throw new Error(`Card ${card.id} is not a creature on the battlefield`);
   }
 
+  // Protection prevents damage from sources of the protected colors.
+  const protection = state.definitions[card.definitionId]?.protectionFrom ?? [];
+  if (protection.length > 0) {
+    const colors = sourceColorsOf(state, effect.sourceId ?? null);
+    if (protection.some((color) => colors.includes(color))) {
+      return cloneGameState(state);
+    }
+  }
   const next = cloneGameState(state);
   const damaged = next.cards[card.id];
   if (!damaged) {

@@ -2,7 +2,9 @@ import { isCreature } from "./cardTypes";
 import { hasKeyword } from "./keywords";
 import { isLiving, livingPlayers } from "./players";
 import type {
+  CardInstanceId,
   ChosenTarget,
+  Color,
   GameState,
   PlayerId,
   StackObjectId,
@@ -13,7 +15,12 @@ function isLegalPlayerTarget(state: GameState, playerId: string): boolean {
   return isLiving(state, playerId);
 }
 
-function isLegalCreatureTarget(state: GameState, cardId: string, casterId?: PlayerId): boolean {
+function isLegalCreatureTarget(
+  state: GameState,
+  cardId: string,
+  casterId?: PlayerId,
+  sourceColors?: Color[],
+): boolean {
   const card = state.cards[cardId];
   if (!card || card.zone !== "battlefield" || !isCreature(state, cardId)) {
     return false;
@@ -29,7 +36,23 @@ function isLegalCreatureTarget(state: GameState, cardId: string, casterId?: Play
   ) {
     return false;
   }
+  if (sourceColors && sourceColors.length > 0) {
+    const protection = state.definitions[card.definitionId]?.protectionFrom ?? [];
+    if (protection.some((color) => sourceColors.includes(color))) {
+      return false;
+    }
+  }
   return true;
+}
+
+/** Colors of a spell or ability source, for protection checks. */
+export function sourceColorsOf(state: GameState, sourceId: CardInstanceId | null): Color[] {
+  if (!sourceId) {
+    return [];
+  }
+  const card = state.cards[sourceId];
+  const definition = card ? state.definitions[card.definitionId] : undefined;
+  return definition?.characteristics.colors ?? [];
 }
 
 function isLegalSpellTarget(state: GameState, stackObjectId: StackObjectId): boolean {
@@ -58,6 +81,7 @@ export function isChosenTargetLegal(
   requirement: TargetRequirement,
   target: ChosenTarget,
   casterId?: PlayerId,
+  sourceColors?: Color[],
 ): boolean {
   if (requirement.kind === "player") {
     return target.type === "player" && isLegalPlayerTarget(state, target.playerId);
@@ -71,12 +95,15 @@ export function isChosenTargetLegal(
     );
   }
   if (requirement.kind === "creature") {
-    return target.type === "creature" && isLegalCreatureTarget(state, target.cardId, casterId);
+    return (
+      target.type === "creature" &&
+      isLegalCreatureTarget(state, target.cardId, casterId, sourceColors)
+    );
   }
   if (requirement.kind === "nonartifact_creature") {
     return (
       target.type === "creature" &&
-      isLegalCreatureTarget(state, target.cardId, casterId) &&
+      isLegalCreatureTarget(state, target.cardId, casterId, sourceColors) &&
       !isArtifactPermanent(state, target.cardId)
     );
   }
@@ -99,7 +126,7 @@ export function isChosenTargetLegal(
   if (target.type === "spell") {
     return false;
   }
-  return isLegalCreatureTarget(state, target.cardId, casterId);
+  return isLegalCreatureTarget(state, target.cardId, casterId, sourceColors);
 }
 
 /**
@@ -110,6 +137,7 @@ export function validateChosenTargets(
   requirements: TargetRequirement[],
   targets: ChosenTarget[],
   casterId?: PlayerId,
+  sourceColors?: Color[],
 ): void {
   if (requirements.length === 0) {
     if (targets.length > 0) {
@@ -126,7 +154,7 @@ export function validateChosenTargets(
       throw new Error("Choose each target once");
     }
     for (const target of targets) {
-      if (!isChosenTargetLegal(state, requirements[0]!, target, casterId)) {
+      if (!isChosenTargetLegal(state, requirements[0]!, target, casterId, sourceColors)) {
         throw new Error("Illegal target");
       }
     }
@@ -138,7 +166,7 @@ export function validateChosenTargets(
   for (let index = 0; index < requirements.length; index += 1) {
     const requirement = requirements[index];
     const target = targets[index];
-    if (!requirement || !target || !isChosenTargetLegal(state, requirement, target, casterId)) {
+    if (!requirement || !target || !isChosenTargetLegal(state, requirement, target, casterId, sourceColors)) {
       throw new Error("Illegal target");
     }
   }
@@ -150,18 +178,19 @@ export function hasLegalTargetRemaining(
   requirements: TargetRequirement[],
   targets: ChosenTarget[],
   casterId?: PlayerId,
+  sourceColors?: Color[],
 ): boolean {
   if (requirements.length === 0) {
     return true;
   }
   if (requirements.length === 1 && requirements[0]?.variable) {
     return targets.some((target) =>
-      isChosenTargetLegal(state, requirements[0]!, target, casterId),
+      isChosenTargetLegal(state, requirements[0]!, target, casterId, sourceColors),
     );
   }
   return requirements.some((requirement, index) => {
     const target = targets[index];
-    return Boolean(target && isChosenTargetLegal(state, requirement, target, casterId));
+    return Boolean(target && isChosenTargetLegal(state, requirement, target, casterId, sourceColors));
   });
 }
 

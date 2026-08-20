@@ -57,6 +57,7 @@ export function createCardDefinition(
         | "layout"
         | "ward"
         | "modes"
+        | "protectionFrom"
       >
     > & { colors?: Color[] },
 ): CardDefinition {
@@ -127,6 +128,9 @@ export function createCardDefinition(
       : [],
     imageUrl: input.imageUrl ?? "",
     ...(input.ward && input.ward > 0 ? { ward: input.ward } : {}),
+    ...(input.protectionFrom && input.protectionFrom.length > 0
+      ? { protectionFrom: [...input.protectionFrom] }
+      : {}),
     ...(input.modes && input.modes.length > 0
       ? {
           modes: input.modes.map((mode) => ({

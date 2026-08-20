@@ -232,6 +232,13 @@ export function blockRestriction(
   ) {
     return `Card ${blockerId} is too powerful to block a creature with skulk`;
   }
+  const attacker = state.cards[attackerId];
+  const protection = attacker
+    ? state.definitions[attacker.definitionId]?.protectionFrom ?? []
+    : [];
+  if (protection.some((color) => blockerTraits.colors.includes(color))) {
+    return `Card ${blockerId} cannot block a creature with protection from its colors`;
+  }
   return null;
 }
 
@@ -400,6 +407,13 @@ function markCreatureDamageInPlace(
   const target = state.cards[targetId];
   if (!target) {
     return;
+  }
+  const protection = state.definitions[target.definitionId]?.protectionFrom ?? [];
+  if (protection.length > 0) {
+    const colors = characteristicsOf(state, sourceId).colors;
+    if (protection.some((color) => colors.includes(color))) {
+      return;
+    }
   }
   target.damageMarked += amount;
   if (hasKeyword(state, sourceId, "deathtouch")) {

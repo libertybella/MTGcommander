@@ -126,7 +126,7 @@ function validateCast(
   if (fromCommand) {
     cost.generic += player.commander.tax;
   }
-  if (!canPayManaCost(player.mana, cost)) {
+  if (!canPayManaCost(player.mana, cost, player.life)) {
     throw new Error("Cannot pay mana cost");
   }
 
@@ -216,12 +216,19 @@ function applyCastSpell(
       definition.modes[modeIndex]!.targetRequirements,
       targets ?? [],
       playerId,
+      definition.characteristics.colors,
     );
   } else {
     if (modeIndex !== undefined) {
       throw new Error("That spell has no modes");
     }
-    validateChosenTargets(faced, definition?.targetRequirements ?? [], targets ?? [], playerId);
+    validateChosenTargets(
+      faced,
+      definition?.targetRequirements ?? [],
+      targets ?? [],
+      playerId,
+      definition?.characteristics.colors,
+    );
   }
   const paid = payManaCost(faced, playerId, cost);
   const stacked = putSpellOnStack(paid, cardId, targets ?? [], modeIndex, xValue, division);

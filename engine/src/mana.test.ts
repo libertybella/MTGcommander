@@ -144,6 +144,7 @@ describe("mana costs", () => {
       C: 0,
       hybrid: [],
       xCount: 0,
+      phyrexian: [],
     });
     expect(parseManaCost("{1}{C}")).toEqual({
       generic: 1,
@@ -155,6 +156,7 @@ describe("mana costs", () => {
       C: 1,
       hybrid: [],
       xCount: 0,
+      phyrexian: [],
     });
     expect(parseManaCost("")).toEqual({
       generic: 0,
@@ -166,13 +168,27 @@ describe("mana costs", () => {
       C: 0,
       hybrid: [],
       xCount: 0,
+      phyrexian: [],
     });
   });
 
-  it("parses X symbols and rejects Phyrexian pips", () => {
+  it("parses X and Phyrexian symbols", () => {
     expect(parseManaCost("{X}{R}").xCount).toBe(1);
     expect(parseManaCost("{X}{X}").xCount).toBe(2);
-    expect(() => parseManaCost("{B/P}")).toThrow(/Unsupported/);
+    expect(parseManaCost("{B/P}").phyrexian).toEqual(["B"]);
+    expect(() => parseManaCost("{Q}")).toThrow(/Unsupported/);
+  });
+
+  it("[CR 107.4f] Phyrexian pips pay with mana or 2 life", () => {
+    const { game, p1 } = twoPlayers();
+    const withBlack = addMana(game, p1.id, { B: 1 });
+    const paidWithMana = payManaCost(withBlack, p1.id, "{B/P}");
+    expect(paidWithMana.players[0]?.mana).toEqual(emptyManaPool());
+    expect(paidWithMana.players[0]?.life).toBe(40);
+    const paidWithLife = payManaCost(game, p1.id, "{B/P}");
+    expect(paidWithLife.players[0]?.life).toBe(38);
+    expect(canPayManaCost(emptyManaPool(), "{B/P}", 1)).toBe(false);
+    expect(canPayManaCost(emptyManaPool(), "{B/P}", 2)).toBe(true);
   });
 
   it("pays hybrid pips with either color", () => {
@@ -187,6 +203,7 @@ describe("mana costs", () => {
       C: 0,
       hybrid: [{ a: "R", b: "W" }],
       xCount: 0,
+      phyrexian: [],
     });
     const withRed = addMana(game, p1.id, { R: 1 });
     expect(canPayManaCost(withRed.players[0]!.mana, "{R/W}")).toBe(true);
