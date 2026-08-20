@@ -64,6 +64,12 @@ export const IMPLEMENTED_KEYWORDS: Record<Keyword, string> = {
   skulk: "skulk",
 };
 
+/**
+ * Parameterized keywords implemented as definition fields rather than
+ * Keyword union members (ward: number, protectionFrom: Color[]).
+ */
+export const EXTRA_IMPLEMENTED: string[] = ["ward", "protection"];
+
 export type KeywordCoverage = {
   implemented: string[];
   missing: string[];
@@ -71,7 +77,7 @@ export type KeywordCoverage = {
 };
 
 export function keywordCoverage(): KeywordCoverage {
-  const implemented = new Set(Object.values(IMPLEMENTED_KEYWORDS));
+  const implemented = new Set([...Object.values(IMPLEMENTED_KEYWORDS), ...EXTRA_IMPLEMENTED]);
   return {
     implemented: CR702_KEYWORD_ABILITIES.filter((name) => implemented.has(name)),
     missing: CR702_KEYWORD_ABILITIES.filter((name) => !implemented.has(name)),

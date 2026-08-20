@@ -3,7 +3,7 @@
 Generated from `engine/src/keywordCatalog.ts` — do not edit by hand.
 Regenerate with: `UPDATE_COVERAGE=1 npx vitest run engine/src/keywordCatalog.test.ts`
 
-**20 of 176** keyword abilities implemented.
+**22 of 176** keyword abilities implemented.
 
 ## Implemented
 
@@ -18,10 +18,12 @@ Regenerate with: `UPDATE_COVERAGE=1 npx vitest run engine/src/keywordCatalog.tes
 - [x] indestructible
 - [x] intimidate
 - [x] lifelink
+- [x] protection
 - [x] reach
 - [x] shroud
 - [x] trample
 - [x] vigilance
+- [x] ward
 - [x] shadow
 - [x] horsemanship
 - [x] fear
@@ -33,8 +35,6 @@ Regenerate with: `UPDATE_COVERAGE=1 npx vitest run engine/src/keywordCatalog.tes
 - [ ] enchant
 - [ ] equip
 - [ ] landwalk
-- [ ] protection
-- [ ] ward
 - [ ] banding
 - [ ] rampage
 - [ ] cumulative upkeep
