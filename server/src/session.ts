@@ -1,4 +1,5 @@
 import {
+  DEFAULT_SHORTCUT_POLICY,
   applyAction,
   cloneGameState,
   currentPrompt,
@@ -14,6 +15,7 @@ import {
   type GameAction,
   type GameState,
   type PlayerId,
+  type ShortcutPolicy,
 } from "@mtgcommander/engine";
 
 export type SubmitResult =
@@ -27,6 +29,9 @@ export type SubmitResult =
  * No WebSockets.
  */
 export class GameHost {
+  /** Host-owned digital-shortcut policy; seat stops shrink it (Stage 1). */
+  private shortcuts: ShortcutPolicy = DEFAULT_SHORTCUT_POLICY;
+
   private constructor(
     private state: GameState,
     private viewerId: PlayerId,
@@ -35,6 +40,10 @@ export class GameHost {
     private readonly history: { actorId: PlayerId; state: GameState }[] = [],
   ) {
     this.flushUnseated();
+  }
+
+  private apply(action: GameAction): void {
+    this.state = applyAction(this.state, action, { shortcuts: this.shortcuts });
   }
 
   static start(
@@ -120,7 +129,7 @@ export class GameHost {
     const previous = cloneGameState(this.state);
     const before = serializeGameState(this.state);
     try {
-      this.state = applyAction(this.state, action);
+      this.state = applyAction(this.state, action, { shortcuts: this.shortcuts });
       this.history.push({ actorId, state: previous });
       if (this.history.length > 100) {
         this.history.shift();
@@ -187,7 +196,7 @@ export class GameHost {
             !this.seatedPlayerIds.has(player.id),
         );
         if (pending) {
-          this.state = applyAction(this.state, { kind: "opening_roll", playerId: pending.id });
+          this.apply({ kind: "opening_roll", playerId: pending.id });
           continue;
         }
         continue;
@@ -200,14 +209,14 @@ export class GameHost {
         if (this.state.mulligan.pendingBottom > 0) {
           const player = this.state.players.find((entry) => entry.id === decidingId);
           const cardIds = player?.zones.hand.slice(0, this.state.mulligan.pendingBottom) ?? [];
-          this.state = applyAction(this.state, {
+          this.apply({
             kind: "bottom_cards",
             playerId: decidingId,
             cardIds,
           });
           continue;
         }
-        this.state = applyAction(this.state, { kind: "keep_hand", playerId: decidingId });
+        this.apply({ kind: "keep_hand", playerId: decidingId });
         continue;
       }
       const prompt = currentPrompt(this.state);
@@ -216,7 +225,7 @@ export class GameHost {
           return;
         }
         if (prompt.kind === "may_pay_life_or_enter_tapped") {
-          this.state = applyAction(this.state, {
+          this.apply({
             kind: "choose_enter_replacement",
             playerId: prompt.playerId,
             pay: false,
@@ -224,7 +233,7 @@ export class GameHost {
           continue;
         }
         if (prompt.kind === "scry") {
-          this.state = applyAction(this.state, {
+          this.apply({
             kind: "resolve_scry",
             playerId: prompt.playerId,
             bottomIds: [],
@@ -232,7 +241,7 @@ export class GameHost {
           continue;
         }
         if (prompt.kind === "surveil") {
-          this.state = applyAction(this.state, {
+          this.apply({
             kind: "resolve_surveil",
             playerId: prompt.playerId,
             graveyardIds: [],
@@ -241,7 +250,7 @@ export class GameHost {
         }
         if (prompt.kind === "choose_discard") {
           const player = this.state.players.find((entry) => entry.id === prompt.playerId);
-          this.state = applyAction(this.state, {
+          this.apply({
             kind: "resolve_discard",
             playerId: prompt.playerId,
             cardIds: player?.zones.hand.slice(0, prompt.count) ?? [],
@@ -253,7 +262,7 @@ export class GameHost {
           if (!pick) {
             return;
           }
-          this.state = applyAction(this.state, {
+          this.apply({
             kind: "resolve_choose_card",
             playerId: prompt.playerId,
             cardId: pick,
@@ -262,7 +271,7 @@ export class GameHost {
         }
         if (prompt.kind === "look_and_assign") {
           const cards = lookedAtCardIds(this.state, prompt);
-          this.state = applyAction(this.state, {
+          this.apply({
             kind: "resolve_look_assign",
             playerId: prompt.playerId,
             assignments: cards.map((cardId, index) => ({
@@ -277,7 +286,7 @@ export class GameHost {
           prompt.requirements,
           prompt.playerId,
         );
-        this.state = applyAction(this.state, {
+        this.apply({
           kind: "choose_targets",
           playerId: prompt.playerId,
           targets: targets ?? [],
@@ -293,7 +302,7 @@ export class GameHost {
       if (!seatedPriority && activePriority) {
         return;
       }
-      this.state = applyAction(this.state, {
+      this.apply({
         kind: "pass_priority",
         playerId: priorityId,
       });

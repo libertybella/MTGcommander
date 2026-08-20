@@ -174,17 +174,32 @@ export function advanceStep(state: GameState): GameState {
   return entered;
 }
 
-const PRIORITY_SHORTCUTS = new Set<Step>(["draw", "beginCombat", "cleanup"]);
+/**
+ * Digital-shortcut policy: which quiet steps to fast-forward after a full
+ * priority pass. This is table policy, not a rule — the host owns it and can
+ * shrink it (a player's stop on a step removes that step from the skip set).
+ */
+export type ShortcutPolicy = {
+  skippableSteps: ReadonlySet<Step>;
+};
+
+export const DEFAULT_SHORTCUT_POLICY: ShortcutPolicy = {
+  skippableSteps: new Set<Step>(["draw", "beginCombat", "cleanup"]),
+};
 
 /**
- * Skip empty digital shortcuts after a full priority pass: the draw step
- * (card already drawn on enter), beginning of combat, and cleanup.
+ * Skip empty digital shortcuts after a full priority pass. By default: the
+ * draw step (card already drawn on enter), beginning of combat, and cleanup.
+ * Never skips past a waiting stack object or prompt.
  */
-export function skipPriorityShortcuts(state: GameState): GameState {
+export function skipPriorityShortcuts(
+  state: GameState,
+  policy: ShortcutPolicy = DEFAULT_SHORTCUT_POLICY,
+): GameState {
   let current = state;
   let guard = 0;
   while (
-    PRIORITY_SHORTCUTS.has(current.turn.step) &&
+    policy.skippableSteps.has(current.turn.step) &&
     current.stack.length === 0 &&
     current.prompts.length === 0 &&
     guard < 12

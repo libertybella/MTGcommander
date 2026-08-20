@@ -14,6 +14,7 @@ export {
   PLAYER_ZONES,
 } from "./zones";
 export { applyAction, applyActions } from "./actions";
+export type { ApplyActionOptions } from "./actions";
 export { applyManualOverride } from "./override";
 export { applyRollDie, D20_SIDES, MIN_DIE_SIDES, MAX_DIE_SIDES, normalizeDieSides } from "./dice";
 export {
@@ -89,8 +90,14 @@ export {
 } from "./legalActions";
 export type { LegalAction, PotentialMana } from "./legalActions";
 export type { MoveCardOptions } from "./zones";
-export { TURN_SEQUENCE, advanceStep, advanceSteps, skipPriorityShortcuts } from "./turn";
-export type { TurnSlot } from "./turn";
+export {
+  DEFAULT_SHORTCUT_POLICY,
+  TURN_SEQUENCE,
+  advanceStep,
+  advanceSteps,
+  skipPriorityShortcuts,
+} from "./turn";
+export type { ShortcutPolicy, TurnSlot } from "./turn";
 export { livingPlayers, livingPlayerCount, nextLivingPlayerId, winnerId } from "./players";
 export { eliminatePlayer } from "./elimination";
 export { isGameOver } from "./status";

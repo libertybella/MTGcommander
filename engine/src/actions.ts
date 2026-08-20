@@ -10,7 +10,13 @@ import { isLiving, livingPlayerCount, requireLiving } from "./players";
 import { passPriority, putActivatedAbilityOnStack, putSpellOnStack, resolveTopOfStack } from "./stack";
 import { applyStateBasedActionsInPlace, redirectPriorityIfLost } from "./status";
 import { validateChosenTargets } from "./targeting";
-import { advanceStep, beginNextLivingTurnInPlace, skipPriorityShortcuts } from "./turn";
+import {
+  DEFAULT_SHORTCUT_POLICY,
+  advanceStep,
+  beginNextLivingTurnInPlace,
+  skipPriorityShortcuts,
+  type ShortcutPolicy,
+} from "./turn";
 import { applyBottomCards, applyKeepHand, applyTakeMulligan, isMulliganOpen, reconcileMulliganAfterLoss } from "./mulligan";
 import { applyRollDie } from "./dice";
 import { applyOpeningRoll, isOpeningRoll } from "./openingRoll";
@@ -231,7 +237,11 @@ function applyPlayLand(
   return next;
 }
 
-function applyPassPriority(state: GameState, playerId: PlayerId): GameState {
+function applyPassPriority(
+  state: GameState,
+  playerId: PlayerId,
+  shortcuts: ShortcutPolicy,
+): GameState {
   requirePlaying(state);
   requirePriority(state, playerId);
   let current = state;
@@ -247,17 +257,27 @@ function applyPassPriority(state: GameState, playerId: PlayerId): GameState {
     current.stack.length === 0 && current.passesSinceAction + 1 >= livingPlayerCount(current);
   let next = passPriority(current, playerId);
   if (completingEmptyPass) {
-    next = skipPriorityShortcuts(advanceStep(next));
+    next = skipPriorityShortcuts(advanceStep(next), shortcuts);
     next.priorityPlayerId = priorityForStep(next);
     next.passesSinceAction = 0;
   }
   return next;
 }
 
-function applyAdvanceStep(state: GameState, playerId: PlayerId): GameState {
+/**
+ * Table fast-forward, not a rules action: it discards the stack and skips
+ * remaining priority windows, so it is logged like an override for everyone
+ * to see.
+ */
+function applyAdvanceStep(
+  state: GameState,
+  playerId: PlayerId,
+  shortcuts: ShortcutPolicy,
+): GameState {
   requirePlaying(state);
   requireLiving(state, playerId);
   let next = cloneGameState(state);
+  const discarded = next.stack.length;
   next.stack = [];
   next.priorityPlayerId = next.turn.activePlayerId;
   if (next.turn.step === "declareAttackers" && !next.combat?.attackersDeclared) {
@@ -266,17 +286,30 @@ function applyAdvanceStep(state: GameState, playerId: PlayerId): GameState {
   if (next.turn.step === "declareBlockers") {
     next = lockRemainingBlockers(next);
   }
-  next = skipPriorityShortcuts(advanceStep(next));
+  next.log.push({
+    kind: "override",
+    playerId,
+    summary: discarded > 0 ? `skipped the step, discarding ${discarded} stack object(s)` : "skipped the step",
+  });
+  next = skipPriorityShortcuts(advanceStep(next), shortcuts);
   next.priorityPlayerId = priorityForStep(next);
   next.passesSinceAction = 0;
   return next;
 }
 
+/** Table fast-forward to the next turn. Logged like an override. */
 function applyAdvanceTurn(state: GameState, playerId: PlayerId): GameState {
   requirePlaying(state);
   requireLiving(state, playerId);
   const next = cloneGameState(state);
+  const discarded = next.stack.length;
   next.stack = [];
+  next.log.push({
+    kind: "override",
+    playerId,
+    summary:
+      discarded > 0 ? `skipped to the next turn, discarding ${discarded} stack object(s)` : "skipped to the next turn",
+  });
   beginNextLivingTurnInPlace(next);
   return next;
 }
@@ -421,17 +454,27 @@ function applyActivateAbility(
   return next;
 }
 
+export type ApplyActionOptions = {
+  /** Host-owned digital-shortcut policy. Defaults to the standard skip set. */
+  shortcuts?: ShortcutPolicy;
+};
+
 /**
  * Authoritative entry point for player actions. Illegal actions throw and leave
  * the original GameState unchanged.
  */
-export function applyAction(state: GameState, action: GameAction): GameState {
+export function applyAction(
+  state: GameState,
+  action: GameAction,
+  options: ApplyActionOptions = {},
+): GameState {
+  const shortcuts = options.shortcuts ?? DEFAULT_SHORTCUT_POLICY;
   const before = snapshot(state);
   try {
     let next: GameState;
     switch (action.kind) {
       case "pass_priority":
-        next = applyPassPriority(state, action.playerId);
+        next = applyPassPriority(state, action.playerId, shortcuts);
         break;
       case "cast_spell":
         next = applyCastSpell(state, action.playerId, action.cardId, action.targets, action.faceIndex);
@@ -489,7 +532,7 @@ export function applyAction(state: GameState, action: GameAction): GameState {
         next = applyOpeningRoll(state, action.playerId);
         break;
       case "advance_step":
-        next = applyAdvanceStep(state, action.playerId);
+        next = applyAdvanceStep(state, action.playerId, shortcuts);
         break;
       case "advance_turn":
         next = applyAdvanceTurn(state, action.playerId);
@@ -573,10 +616,14 @@ export function applyAction(state: GameState, action: GameAction): GameState {
   }
 }
 
-export function applyActions(state: GameState, actions: GameAction[]): GameState {
+export function applyActions(
+  state: GameState,
+  actions: GameAction[],
+  options: ApplyActionOptions = {},
+): GameState {
   let current = state;
   for (const action of actions) {
-    current = applyAction(current, action);
+    current = applyAction(current, action, options);
   }
   return current;
 }
