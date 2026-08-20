@@ -150,9 +150,12 @@ export function splitOracleSentences(card: OracleCard): string[] {
   }
   text = text.replace(/\bthis (?:creature|artifact|enchantment|land|permanent|planeswalker)\b/gi, "~");
   text = text.replace(/\benters the battlefield\b/gi, "enters");
+  // Periods inside quoted granted abilities ('… have "{T}: Add {C}."') must
+  // not split the sentence; shield them, split, then restore.
+  text = text.replace(/"[^"]*"/g, (quoted) => quoted.replace(/\./g, ""));
   return text
     .split(/[.\n]+/)
-    .map((part) => part.replace(/\s+/g, " ").trim())
+    .map((part) => part.replace(//g, ".").replace(/\s+/g, " ").trim())
     .filter(Boolean);
 }
 
@@ -2026,6 +2029,43 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
         result.additionalCost = { ...(result.additionalCost ?? {}), ...parsed };
         continue;
       }
+    }
+
+    // Urborg / Yavimaya: every land gains a basic subtype (CR 305.6 mana too).
+    const landType = sentence.match(
+      /^Each land is a (Plains|Island|Swamp|Mountain|Forest) in addition to its other land types$/i,
+    );
+    if (landType?.[1]) {
+      result.staticAbilities.push({
+        selector: { scope: "all", types: ["land"] },
+        effect: { kind: "add_types", types: [], subtypes: [landType[1].toLowerCase()] },
+      });
+      continue;
+    }
+
+    // Cryptolith Rite: creatures gain "{T}: Add one mana of any color."
+    const grantAnyMana = sentence.match(
+      /^(Creatures|Lands|Artifacts) you control have "\{T\}: Add one mana of any color\.?"$/i,
+    );
+    if (grantAnyMana?.[1]) {
+      const typeOf: Record<string, string> = {
+        creatures: "creature",
+        lands: "land",
+        artifacts: "artifact",
+      };
+      result.staticAbilities.push({
+        selector: { scope: "controlled", types: [typeOf[grantAnyMana[1].toLowerCase()]!] },
+        effect: {
+          kind: "grant_mana_ability",
+          ability: {
+            produces: {},
+            producesOptions: [],
+            producesAnyColor: true,
+            damageToController: 0,
+          },
+        },
+      });
+      continue;
     }
 
     const chosenAnthem = sentence.match(

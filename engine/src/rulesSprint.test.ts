@@ -13,6 +13,7 @@ import {
 } from "./index";
 import { computedCard } from "./characteristicsEngine";
 import { applyCombatDamage } from "./combat";
+import { manaAbilitiesFor } from "./manaOptions";
 import { fillLibraries } from "./testSupport";
 import { advanceSteps } from "./turn";
 import type { GameState, PlayerState } from "./types";
@@ -410,6 +411,101 @@ describe("creature-or-planeswalker removal", () => {
     expect(
       isChosenTargetLegal(game, requirement, { type: "creature", cardId: rock.id }, p1.id),
     ).toBe(false);
+  });
+});
+
+describe("granted mana abilities and land subtypes", () => {
+  it("compiles Urborg and lets other lands tap for black", () => {
+    const compiled = compileOracleCard({
+      oracleId: "urborg",
+      name: "Urborg, Tomb of Yawgmoth",
+      manaCost: "",
+      typeLine: "Legendary Land",
+      oracleText: "Each land is a Swamp in addition to its other land types.",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+    });
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.staticAbilities[0]).toMatchObject({
+      selector: { scope: "all", types: ["land"] },
+      effect: { kind: "add_types", subtypes: ["swamp"] },
+    });
+
+    const { game, p1 } = twoPlayers();
+    game.definitions[compiled.definition.id] = compiled.definition;
+    const urborg = createCardInstance({
+      definitionId: compiled.definition.id,
+      ownerId: p1.id,
+      zone: "battlefield",
+    });
+    game.cards[urborg.id] = urborg;
+    p1.zones.battlefield.push(urborg.id);
+    const forest = createCardDefinition({ name: "Forest", typeLine: "Basic Land — Forest" });
+    game.definitions[forest.id] = forest;
+    const land = createCardInstance({ definitionId: forest.id, ownerId: p1.id, zone: "battlefield" });
+    game.cards[land.id] = land;
+    p1.zones.battlefield.push(land.id);
+
+    const abilities = manaAbilitiesFor(game, land.id);
+    const colors = abilities.flatMap((ability) =>
+      Object.entries(ability.produces).filter(([, n]) => (n ?? 0) > 0).map(([c]) => c),
+    );
+    expect(colors.sort()).toEqual(["B", "G"]);
+    // Urborg itself taps for black too.
+    const urborgColors = manaAbilitiesFor(game, urborg.id).flatMap((ability) =>
+      Object.entries(ability.produces).filter(([, n]) => (n ?? 0) > 0).map(([c]) => c),
+    );
+    expect(urborgColors).toEqual(["B"]);
+  });
+
+  it("compiles Cryptolith Rite and taps creatures for any color", () => {
+    const compiled = compileOracleCard({
+      oracleId: "cryptolith",
+      name: "Cryptolith Rite",
+      manaCost: "{1}{G}",
+      typeLine: "Enchantment",
+      oracleText: 'Creatures you control have "{T}: Add one mana of any color."',
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+    });
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.staticAbilities[0]?.effect.kind).toBe("grant_mana_ability");
+
+    const { game, p1 } = twoPlayers();
+    game.definitions[compiled.definition.id] = compiled.definition;
+    const rite = createCardInstance({
+      definitionId: compiled.definition.id,
+      ownerId: p1.id,
+      zone: "battlefield",
+    });
+    game.cards[rite.id] = rite;
+    p1.zones.battlefield.push(rite.id);
+    const bear = createCardDefinition({
+      name: "Bear",
+      typeLine: "Creature — Bear",
+      power: 2,
+      toughness: 2,
+    });
+    game.definitions[bear.id] = bear;
+    const dork = createCardInstance({ definitionId: bear.id, ownerId: p1.id, zone: "battlefield" });
+    dork.summoningSick = false;
+    game.cards[dork.id] = dork;
+    p1.zones.battlefield.push(dork.id);
+
+    expect(manaAbilitiesFor(game, dork.id)).toHaveLength(1);
+    game.priorityPlayerId = p1.id;
+    const tapped = applyAction(game, {
+      kind: "tap_for_mana",
+      playerId: p1.id,
+      cardId: dork.id,
+      color: "G",
+    });
+    expect(tapped.players[0]?.mana.G).toBe(1);
+    expect(tapped.cards[dork.id]?.tapped).toBe(true);
   });
 });
 

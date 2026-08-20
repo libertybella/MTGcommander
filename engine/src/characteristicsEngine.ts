@@ -7,6 +7,7 @@ import type {
   EffectSelector,
   GameState,
   Keyword,
+  ManaAbility,
 } from "./types";
 
 /**
@@ -33,6 +34,8 @@ export type ComputedCard = {
   /** Final power/toughness including counters. Zero for non-creatures. */
   power: number;
   toughness: number;
+  /** Mana abilities granted by statics (Cryptolith Rite). */
+  grantedMana: ManaAbility[];
   /** Combat restrictions from layer-6 effects (Pacifism). */
   cantAttack: boolean;
   cantBlock: boolean;
@@ -53,6 +56,7 @@ const LAYER_OF: Record<ContinuousEffectData["kind"], number> = {
   add_types: 4,
   set_colors: 5,
   grant_keyword: 6,
+  grant_mana_ability: 6,
   remove_all_abilities: 6,
   restrict: 6,
   set_pt: 7.2,
@@ -75,6 +79,7 @@ function baseComputed(state: GameState, card: CardInstance): ComputedCard {
       abilitiesRemoved: true,
       power: 2,
       toughness: 2,
+      grantedMana: [],
       cantAttack: false,
       cantBlock: false,
       cantBeBlocked: false,
@@ -104,6 +109,7 @@ function baseComputed(state: GameState, card: CardInstance): ComputedCard {
     abilitiesRemoved: false,
     power: dynamic ?? definition?.power ?? 0,
     toughness: dynamic ?? definition?.toughness ?? 0,
+    grantedMana: [],
     cantAttack: false,
     cantBlock: false,
     cantBeBlocked: false,
@@ -260,9 +266,13 @@ function applyInstance(
           computed.keywords.push(effect.keyword);
         }
         break;
+      case "grant_mana_ability":
+        computed.grantedMana.push({ ...effect.ability });
+        break;
       case "remove_all_abilities":
         computed.keywords = [];
         computed.abilitiesRemoved = true;
+        computed.grantedMana = [];
         break;
       case "restrict":
         computed.cantAttack = computed.cantAttack || effect.cantAttack === true;

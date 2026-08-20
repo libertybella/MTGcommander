@@ -3,7 +3,7 @@ import { cloneGameState } from "./clone";
 // Deferred call only (decline path) — the effects/prompt import cycle is benign.
 import { applyEffects } from "./effects";
 import { payManaCost, tapForMana } from "./mana";
-import { manaAbilitiesOf, manaTapOptionsFor } from "./manaOptions";
+import { manaAbilitiesFor, manaTapOptionsFor } from "./manaOptions";
 import { isLiving, requireLiving } from "./players";
 import { shuffleInPlace } from "./shuffle";
 import { hasAnyLegalTargetSet, validateChosenTargets } from "./targeting";
@@ -494,8 +494,7 @@ export function applyResolvePay(
     if (!card || card.controllerId !== playerId || card.zone !== "battlefield" || card.tapped) {
       throw new Error("Cannot tap that permanent for mana");
     }
-    const definition = next.definitions[card.definitionId];
-    const abilities = definition ? manaAbilitiesOf(definition) : [];
+    const abilities = manaAbilitiesFor(next, tap.cardId);
     const ability = abilities[tap.manaIndex ?? 0];
     if (!ability) {
       throw new Error("That permanent does not produce mana");

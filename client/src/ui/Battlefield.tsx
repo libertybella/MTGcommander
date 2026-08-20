@@ -18,6 +18,7 @@ import {
   lookedAtCardIds,
   legalChoicesForRequirement,
   legalIdsForChooseSources,
+  manaAbilitiesFor,
   manaAbilitiesOf,
   manaTapOptionsFor,
   tokenTemplatesOf,
@@ -1615,7 +1616,7 @@ export function Battlefield(props: Props) {
     if (!def || mulliganOpen) {
       return;
     }
-    const mana = manaAbilitiesOf(def);
+    const mana = manaAbilitiesFor(state, cardId);
     const usable = usableActivated(state, cardId);
     if (mana.length + usable.length > 1) {
       onMode({ type: "ability-pick", cardId });
@@ -1635,7 +1636,7 @@ export function Battlefield(props: Props) {
     if (!def) {
       return;
     }
-    const ability = manaAbilitiesOf(def)[manaIndex];
+    const ability = manaAbilitiesFor(state, cardId)[manaIndex];
     if (!ability) {
       return;
     }

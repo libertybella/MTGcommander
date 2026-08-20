@@ -132,7 +132,7 @@ export {
   untapCard,
 } from "./mana";
 export type { HybridPip, ParsedManaCost } from "./mana";
-export { canTapForMana, manaAbilitiesOf, manaTapOptions, manaTapOptionsFor } from "./manaOptions";
+export { canTapForMana, manaAbilitiesFor, manaAbilitiesOf, manaTapOptions, manaTapOptionsFor } from "./manaOptions";
 export { createId } from "./ids";
 export {
   createCardDefinition,

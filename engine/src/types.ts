@@ -892,6 +892,8 @@ export type ContinuousEffectData =
   | { kind: "add_types"; types: string[]; subtypes: string[] } // layer 4
   | { kind: "set_colors"; colors: Color[] } // layer 5
   | { kind: "grant_keyword"; keyword: Keyword } // layer 6
+  /** layer 6: Cryptolith Rite grants a mana ability to matching permanents. */
+  | { kind: "grant_mana_ability"; ability: ManaAbility }
   | { kind: "remove_all_abilities" } // layer 6
   | {
       // layer 6: combat restrictions (Pacifism, Whispersilk Cloak).

@@ -1843,6 +1843,13 @@ function parseContinuousEffectData(value: unknown, label: string): ContinuousEff
     }
     return { kind, keyword: keyword as Keyword };
   }
+  if (kind === "grant_mana_ability") {
+    const parsed = parseManaAbilities([value.ability], `${label}.ability`);
+    if (!parsed[0]) {
+      throw new Error(`Invalid ${label}.ability`);
+    }
+    return { kind, ability: parsed[0] };
+  }
   if (kind === "remove_all_abilities") {
     return { kind };
   }

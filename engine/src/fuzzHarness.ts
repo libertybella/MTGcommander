@@ -4,7 +4,7 @@ import { isCreature } from "./cardTypes";
 import { hasKeyword } from "./keywords";
 import { legalActions, sacrificeScopeMatches } from "./legalActions";
 import { canPayManaCost } from "./mana";
-import { manaAbilitiesOf, manaTapOptionsFor } from "./manaOptions";
+import { manaAbilitiesFor, manaTapOptionsFor } from "./manaOptions";
 import { isMulliganOpen } from "./mulligan";
 import { isOpeningRoll, openingRollPending } from "./openingRoll";
 import { isLiving, livingPlayerCount } from "./players";
@@ -305,8 +305,7 @@ function nextAction(state: GameState, rng: () => number): GameAction | null {
       };
     }
     case "mana": {
-      const card = state.cards[action.cardId]!;
-      const abilities = manaAbilitiesOf(state.definitions[card.definitionId]!);
+      const abilities = manaAbilitiesFor(state, action.cardId);
       const manaIndex = Math.floor(rng() * abilities.length);
       const options = manaTapOptionsFor(abilities[manaIndex]!);
       return {

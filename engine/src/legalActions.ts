@@ -5,7 +5,7 @@ import { emptyManaPool } from "./createGame";
 import { pendingBlockerPlayer } from "./combat";
 import { canPlayLandsFromGraveyard, castCostReduction, landDropAllowance } from "./derived";
 import { canPayManaCost, parseManaCost, type ParsedManaCost } from "./mana";
-import { manaAbilitiesOf, manaTapOptionsFor } from "./manaOptions";
+import { manaAbilitiesFor, manaTapOptionsFor } from "./manaOptions";
 import { isMulliganOpen } from "./mulligan";
 import { isOpeningRoll } from "./openingRoll";
 import { isPromptOpen } from "./prompt";
@@ -76,7 +76,7 @@ export function potentialMana(state: GameState, playerId: PlayerId): PotentialMa
     if (!definition) {
       continue;
     }
-    const abilities = manaAbilitiesOf(definition);
+    const abilities = manaAbilitiesFor(state, card.id);
     if (abilities.length === 0) {
       continue;
     }
@@ -406,7 +406,7 @@ export function legalActions(state: GameState, playerId: PlayerId): LegalAction[
     if (!definition) {
       continue;
     }
-    if (producerUsableNow(state, card) && manaAbilitiesOf(definition).length > 0) {
+    if (producerUsableNow(state, card) && manaAbilitiesFor(state, card.id).length > 0) {
       actions.push({ kind: "mana", cardId: card.id });
     }
     for (const [abilityIndex, ability] of definition.activated.entries()) {
@@ -484,8 +484,7 @@ export function autoTapPlan(
     if (card.controllerId !== playerId || !producerUsableNow(state, card)) {
       continue;
     }
-    const definition = state.definitions[card.definitionId];
-    const abilities = definition ? manaAbilitiesOf(definition) : [];
+    const abilities = manaAbilitiesFor(state, card.id);
     abilities.forEach((ability, manaIndex) => {
       if (manaIndex > 0) {
         return; // one candidate ability per permanent keeps the plan simple

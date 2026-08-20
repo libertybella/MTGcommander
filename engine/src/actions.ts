@@ -8,7 +8,7 @@ import { applyEffects, bindCardEffects } from "./effects";
 import { hasKeyword } from "./keywords";
 import { sacrificeScopeMatches } from "./legalActions";
 import { canPayManaCost, parseManaCost, payManaCost, tapCard, tapForMana } from "./mana";
-import { canTapForMana, manaAbilityAmount, manaAbilitiesOf, manaTapOptionsFor } from "./manaOptions";
+import { manaAbilityAmount, manaAbilitiesFor, manaTapOptionsFor } from "./manaOptions";
 import { createId } from "./ids";
 import { isLiving, livingPlayerCount, requireLiving } from "./players";
 import { passPriority, putActivatedAbilityOnStack, putSpellOnStack, resolveTopOfStack } from "./stack";
@@ -469,11 +469,10 @@ function applyTapForMana(
   if (isCreature(state, cardId) && card.summoningSick && !hasKeyword(state, cardId, "haste")) {
     throw new Error(`Card ${cardId} has summoning sickness`);
   }
-  const definition = state.definitions[card.definitionId];
-  if (!definition || !canTapForMana(definition) || abilitiesRemoved(state, cardId)) {
+  const abilities = manaAbilitiesFor(state, cardId);
+  if (abilities.length === 0) {
     throw new Error(`Card ${cardId} does not produce mana`);
   }
-  const abilities = manaAbilitiesOf(definition);
   const index = manaIndex ?? 0;
   if (!Number.isInteger(index) || index < 0 || index >= abilities.length) {
     throw new Error("Choose a mana ability");
