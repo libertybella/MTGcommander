@@ -545,6 +545,46 @@ Do not mark a checkbox complete simply because code was written.
 
 # Development Log
 
+## 2026-08-20 — Stages 1 & 2: Arena priority and the CR 613 layer engine
+
+### Objective
+
+Comprehensive Plan Stages 1 and 2: the MTGO/Arena priority model (stops, yield, full control, APNAP), then continuous effects with real layers so characteristics are computed, never stored.
+
+### Work Completed
+
+- APNAP simultaneous-trigger ordering (CR 101.4, 603.3b): `order_triggers` prompt + `resolve_order_triggers` action; unseated seats auto-order; UI offers resolve-first choices.
+- `SeatPreferences` on GameHost — per-seat stops (my turn / their turn), `stops-only` vs `smart` yield, full control — replacing the hard-coded empty-stack auto-pass. Seat stops shrink the step-skip policy. WS `preferences` message; clickable phase ladder in the client. Defaults reproduce old behavior; an end-step stop enables flash on an opponent's turn (verified over two real sockets).
+- CR 613 layer engine (`characteristicsEngine.ts`): `staticAbilities` ({selector, effect}) replace P/T-only staticModifiers; layers 4 (types), 5 (colors), 6 (grants/remove-all), 7b/7c/7d (P/T + counters) applied by battlefield timestamp. `hasKeyword`, P/T, and `characteristicsOf` read computed values.
+- Until-end-of-turn effects: `activeEffects` on GameState with locked affected sets (CR 611.2c), swept at cleanup (CR 514.2). New effects: `pt_until_eot`, `keyword_until_eot`, `team_pt_until_eot`; compiler patterns for Giant Growth-style pumps, targeted keyword grants, team pumps, and tribal keyword-grant statics ("All Slivers have shroud").
+- Humility semantics: `remove_all_abilities` silences keywords, statics, triggers, mana abilities, and activated abilities; layer ordering (not arrival order) resolves Humility + anthem.
+- Keywords 14 → 20: shroud (targeting), fear, intimidate, horsemanship, shadow, skulk (a shared `blockRestriction` reads computed characteristics, so granted evasion works).
+
+### Tests Run
+
+- `npm test` — PASS (424 tests), typecheck, lint — PASS
+- The Sliver test: Crystalline Sliver's printed oracle text compiles and protects future/opponent Slivers until it leaves.
+- 500-game fuzz burn-in in progress at commit time; tags applied after it passes.
+
+### Decisions Made
+
+- Characteristics recompute per query (no memoization yet): in-place mutators would stale a per-state cache; Stage 7 owns the optimization with profiling.
+- CR 613.8 dependency is not implemented; layer order + timestamps cover the targeted interactions. Noted as a known gap.
+- Landwalk and parameterized keywords (protection, ward) wait for the Stage 4 targeting work and a parameterized-keyword schema.
+
+### Files Changed
+
+- Stage 1: `engine/src/triggers.ts`, `prompt.ts`, `types.ts`, `serialize.ts`, `actions.ts`, `server/src/session.ts`, `realtime.ts`, `client/src/ui/PhaseLadder.tsx`, `stopPrefs.ts`, `Battlefield.tsx`, `App.tsx`, tests.
+- Stage 2: `engine/src/characteristicsEngine.ts`, `types.ts`, `createGame.ts`, `zones.ts`, `effects.ts`, `turn.ts`, `keywords.ts`, `derived.ts`, `cardTypes.ts`, `combat.ts`, `targeting.ts`, `oraclePatterns.ts`, `serialize.ts`, `pool.ts`, `keywordCatalog.ts`, `layers.test.ts`, `evasion.test.ts`, `oracle.test.ts`.
+
+### Checkpoint
+
+- Tags after burn-in: `checkpoint-38-priority-stops`, `checkpoint-39-layer-engine`.
+
+### Next Task
+
+Stage 3: event bus, generalized triggers, replacement system, complete SBAs.
+
 ## 2026-08-20 — Stage 0 foundations (Comprehensive Plan)
 
 ### Objective

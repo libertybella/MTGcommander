@@ -859,3 +859,77 @@ describe("oracle compile", () => {
     expect(rider.notes).toEqual([]);
   });
 });
+
+describe("Stage 2 compile patterns", () => {
+  it("compiles Giant Growth as a targeted until-end-of-turn pump", () => {
+    const compiled = compileOracleCard({
+      oracleId: "growth",
+      name: "Giant Growth",
+      manaCost: "{G}",
+      typeLine: "Instant",
+      oracleText: "Target creature gets +3/+3 until end of turn.",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+    });
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.targetRequirements).toEqual([{ kind: "creature" }]);
+    expect(compiled.definition.effects).toEqual([
+      { kind: "pt_until_eot", cardId: { type: "chosen", index: 0 }, power: 3, toughness: 3 },
+    ]);
+  });
+
+  it("compiles a targeted keyword grant until end of turn", () => {
+    const compiled = compileOracleCard({
+      oracleId: "jump",
+      name: "Jump",
+      manaCost: "{U}",
+      typeLine: "Instant",
+      oracleText: "Target creature gains flying until end of turn.",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+    });
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.effects).toEqual([
+      { kind: "keyword_until_eot", cardId: { type: "chosen", index: 0 }, keyword: "flying" },
+    ]);
+  });
+
+  it("compiles a team pump until end of turn", () => {
+    const compiled = compileOracleCard({
+      oracleId: "charge",
+      name: "Charge",
+      manaCost: "{W}",
+      typeLine: "Instant",
+      oracleText: "Creatures you control get +1/+1 until end of turn.",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+    });
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.effects).toEqual([
+      { kind: "team_pt_until_eot", playerId: "controller", power: 1, toughness: 1 },
+    ]);
+  });
+
+  it("compiles a tribal keyword grant as a static ability", () => {
+    const compiled = compileOracleCard({
+      oracleId: "crystalline",
+      name: "Crystalline Sliver",
+      manaCost: "{W}{U}",
+      typeLine: "Creature — Sliver",
+      oracleText: "All Slivers have shroud.",
+      power: "1",
+      toughness: "1",
+      printedKeywords: [],
+    });
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.staticAbilities).toEqual([
+      {
+        selector: { scope: "all", subtypes: ["sliver"] },
+        effect: { kind: "grant_keyword", keyword: "shroud" },
+      },
+    ]);
+  });
+});
