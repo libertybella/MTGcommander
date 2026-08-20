@@ -243,6 +243,9 @@ describe("battlefield UI", () => {
 
   it("waits for other seated players after you roll the opening d20", () => {
     render(<App />);
+    // Distinct mocked rolls: a real random tie would legitimately re-roll.
+    const random = vi.spyOn(Math, "random");
+    random.mockReturnValueOnce(0.1).mockReturnValueOnce(0.9);
     fireEvent.click(screen.getByTestId("hotseat"));
     fireEvent.click(screen.getByTestId("start-game"));
     expect(screen.getByTestId("roll-first").textContent).toBe("Roll d20");
@@ -253,6 +256,19 @@ describe("battlefield UI", () => {
     expect(screen.queryByTestId("roll-first")).toBeNull();
     expect(screen.queryByTestId("roll-first-wait")).toBeNull();
     expect(screen.queryByTestId("keep-hand") ?? screen.queryByTestId("mulligan-wait")).toBeTruthy();
+    random.mockRestore();
+  });
+
+  it("shows the phase ladder and toggles an opponents'-turn end-step stop", () => {
+    startGame();
+    expect(screen.getByTestId("phase-ladder")).toBeTruthy();
+    const endStop = screen.getByTestId("stop-their-end");
+    expect(endStop.getAttribute("aria-pressed")).toBe("false");
+    fireEvent.click(endStop);
+    expect(screen.getByTestId("stop-their-end").getAttribute("aria-pressed")).toBe("true");
+    // My-turn main-phase stop is on by default (mirrors the host default).
+    expect(screen.getByTestId("stop-my-precombatMain").getAttribute("aria-pressed")).toBe("true");
+    expect(screen.getByTestId("full-control")).toBeTruthy();
   });
 
   it("labels the advance button with the next step", () => {

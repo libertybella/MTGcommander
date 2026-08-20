@@ -1,6 +1,13 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { WebSocket } from "ws";
-import { POOL_ID, startCatalogGame, type GameState } from "@mtgcommander/engine";
+import {
+  POOL_ID,
+  createCardDefinition,
+  createCardInstance,
+  createGameState,
+  startCatalogGame,
+  type GameState,
+} from "@mtgcommander/engine";
 import { GameHost } from "./session";
 import { GameServer } from "./realtime";
 
@@ -153,5 +160,101 @@ describe("websocket game server", () => {
     const view = update.view as GameState;
     expect(view.turn.step).toBe("upkeep");
     expect(view.priorityPlayerId).toBe(you);
+  });
+
+  it("a joined friend with an end-step stop casts flash on the host's turn", async () => {
+    const state = createGameState({ playerCount: 2 });
+    const you = state.players[0]!.id;
+    const them = state.players[1]!.id;
+    const filler = createCardDefinition({ name: "Test Filler", typeLine: "Instant" });
+    state.definitions[filler.id] = filler;
+    for (const player of state.players) {
+      for (let i = 0; i < 8; i += 1) {
+        const card = createCardInstance({ definitionId: filler.id, ownerId: player.id, zone: "library" });
+        state.cards[card.id] = card;
+        player.zones.library.push(card.id);
+      }
+    }
+    const islandDef = createCardDefinition({
+      name: "Test Island",
+      typeLine: "Basic Land — Island",
+      produces: { U: 1 },
+    });
+    const trickDef = createCardDefinition({
+      name: "Test Trick",
+      typeLine: "Instant",
+      manaCost: "{U}",
+      effects: [{ kind: "draw", playerId: "controller", count: 1 }],
+    });
+    state.definitions[islandDef.id] = islandDef;
+    state.definitions[trickDef.id] = trickDef;
+    const islandCard = createCardInstance({ definitionId: islandDef.id, ownerId: them, zone: "battlefield", summoningSick: false });
+    const trickCard = createCardInstance({ definitionId: trickDef.id, ownerId: them, zone: "hand" });
+    state.cards[islandCard.id] = islandCard;
+    state.cards[trickCard.id] = trickCard;
+    state.players[1]!.zones.battlefield.push(islandCard.id);
+    state.players[1]!.zones.hand.push(trickCard.id);
+    state.turn.phase = "ending";
+    state.turn.step = "end";
+    state.priorityPlayerId = you;
+
+    server = new GameServer();
+    server.attach(GameHost.start(state, you), "ROOM03");
+    const info = await server.listen(0);
+    const hostSocket = await openSocket(`ws://127.0.0.1:${info.port}`);
+    const friendSocket = await openSocket(`ws://127.0.0.1:${info.port}`);
+    sockets.push(hostSocket, friendSocket);
+
+    const hostJoined = waitFor(hostSocket, "joined");
+    hostSocket.send(JSON.stringify({ type: "join", roomCode: "ROOM03", displayName: "You", playerId: you }));
+    await hostJoined;
+    const friendJoined = waitFor(friendSocket, "joined");
+    friendSocket.send(JSON.stringify({ type: "join", roomCode: "ROOM03", displayName: "Friend", playerId: them }));
+    await friendJoined;
+
+    friendSocket.send(
+      JSON.stringify({ type: "preferences", preferences: { stops: { theirTurn: ["end"] } } }),
+    );
+    // Preferences produce no reply; the next state broadcast proves the hold.
+    const held = waitFor(
+      friendSocket,
+      "state",
+      (message) =>
+        (message.view as GameState).turn.step === "end" &&
+        (message.view as GameState).priorityPlayerId === them,
+    );
+    hostSocket.send(
+      JSON.stringify({ type: "submit", action: { kind: "pass_priority", playerId: you } }),
+    );
+    await held;
+
+    const tapped = waitFor(
+      friendSocket,
+      "state",
+      (message) => (message.view as GameState).players[1]!.mana.U === 1,
+    );
+    friendSocket.send(
+      JSON.stringify({
+        type: "submit",
+        action: { kind: "tap_for_mana", playerId: them, cardId: islandCard.id },
+      }),
+    );
+    await tapped;
+
+    const stacked = waitFor(
+      friendSocket,
+      "state",
+      (message) => (message.view as GameState).stack.length === 1,
+    );
+    friendSocket.send(
+      JSON.stringify({
+        type: "submit",
+        action: { kind: "cast_spell", playerId: them, cardId: trickCard.id },
+      }),
+    );
+    const update = await stacked;
+    const view = update.view as GameState;
+    expect(view.turn.step).toBe("end");
+    expect(view.stack[0]?.sourceId).toBe(trickCard.id);
   });
 });

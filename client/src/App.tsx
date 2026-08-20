@@ -13,10 +13,11 @@ import {
   type CompiledDeck,
 } from "@mtgcommander/server";
 import { cardDatabase, hostFetch } from "./game/cardDatabase";
-import { openRemoteTable, type SeatInfo } from "./game/remoteTable";
+import { openRemoteTable, type RemoteTable, type SeatInfo } from "./game/remoteTable";
 import { browserStore } from "./game/storage";
 import { startSyntheticTable, type SyntheticPlayerCount } from "./game/syntheticTable";
 import { Battlefield, type UiMode } from "./ui/Battlefield";
+import { defaultStopPrefs, toPreferencesInput, type StopPrefs } from "./ui/stopPrefs";
 
 function persist(next: GameHost): void {
   saveTable(browserStore(), next);
@@ -57,6 +58,7 @@ type RemoteSession = {
   hostLabel: string;
   seats: SeatInfo[];
   send: (action: GameAction) => void;
+  sendPreferences: RemoteTable["sendPreferences"];
   disconnect: () => void;
 };
 
@@ -96,7 +98,22 @@ export default function App() {
   const [joinCode, setJoinCode] = useState("");
   const [joinName, setJoinName] = useState("Friend");
   const [hosting, setHosting] = useState(false);
+  const [stopPrefs, setStopPrefs] = useState<StopPrefs>(() => defaultStopPrefs());
   const bridge = window.mtgCommander;
+
+  function applyStopPrefs(next: StopPrefs, target: Session | null) {
+    setStopPrefs(next);
+    if (!target) {
+      return;
+    }
+    if (target.kind === "remote") {
+      target.sendPreferences(toPreferencesInput(next));
+      return;
+    }
+    // Local table: preferences follow the seat currently being viewed.
+    target.host.setPreferences(target.host.getViewerId(), toPreferencesInput(next));
+    setSession(sessionFrom(target.host));
+  }
 
   function startGame(playerCount: SyntheticPlayerCount = 2) {
     setError(null);
@@ -177,6 +194,7 @@ export default function App() {
           hostLabel,
           seats: info.seats,
           send: remote.send,
+          sendPreferences: remote.sendPreferences,
           disconnect: () => {
             remote.close();
             if (stopServer) {
@@ -500,6 +518,8 @@ export default function App() {
         error={error}
         mode={mode}
         onMode={setMode}
+        stopPrefs={stopPrefs}
+        onStopPrefs={(next) => applyStopPrefs(next, table)}
         isHost={table.kind === "local"}
         openHands={hotseatTable}
         onNewGame={() => leaveTable(true)}

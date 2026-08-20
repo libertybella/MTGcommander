@@ -42,6 +42,8 @@ import { assignOpponentSeats, opponentsAfterViewer } from "./seats";
 import { actorButtonSuffix, advanceButtonLabel, playtestActorId, showAdvanceButton } from "./advanceLabel";
 import { classOracleSections } from "./classOracle";
 import { cardArtUrl } from "./cardArt";
+import { PhaseLadder } from "./PhaseLadder";
+import type { StopPrefs } from "./stopPrefs";
 
 export type UiMode =
   | { type: "idle" }
@@ -86,6 +88,9 @@ type Props = {
   isHost?: boolean;
   /** Local hotseat: opponent hands and libraries are already unredacted. */
   openHands?: boolean;
+  /** Priority stops / yield / full control for this seat (phase ladder). */
+  stopPrefs?: StopPrefs;
+  onStopPrefs?: (prefs: StopPrefs) => void;
 };
 
 function definition(state: GameState, cardId: CardInstanceId) {
@@ -915,6 +920,8 @@ export function Battlefield(props: Props) {
     onLeaveTable,
     isHost = true,
     openHands = false,
+    stopPrefs,
+    onStopPrefs,
   } = props;
   const [logOpen, setLogOpen] = useState(false);
   const [hostOpen, setHostOpen] = useState(false);
@@ -1660,6 +1667,9 @@ export function Battlefield(props: Props) {
           Priority: {priority?.displayName ?? state.priorityPlayerId}
           {state.stack.length > 0 ? ` · Stack ${state.stack.length}` : ""}
         </p>
+        {stopPrefs && onStopPrefs ? (
+          <PhaseLadder state={state} prefs={stopPrefs} onChange={onStopPrefs} />
+        ) : null}
         {over ? (
           <p className="game-over" data-testid="game-over">
             Game over. Winner: {winner?.displayName ?? state.winnerId ?? "none"}
@@ -1708,7 +1718,11 @@ export function Battlefield(props: Props) {
         ) : null}
         {prompt && !targeting ? (
           <p data-testid="prompt-hint">
-            {prompt.kind === "may_pay_life_or_enter_tapped"
+            {prompt.kind === "order_triggers"
+              ? actorId === prompt.playerId
+                ? "Order your simultaneous triggers."
+                : `Waiting for ${chooser?.displayName ?? "a player"} to order triggers.`
+              : prompt.kind === "may_pay_life_or_enter_tapped"
               ? actorId === prompt.playerId
                 ? `Pay ${prompt.amount} life or have ${definition(state, prompt.sourceId)?.name ?? "this land"} enter tapped.`
                 : `Waiting for ${chooser?.displayName ?? "a player"} to pay life or enter tapped.`
@@ -2158,6 +2172,47 @@ export function Battlefield(props: Props) {
           </>
         ) : prompt ? (
           <>
+            {actorId === prompt.playerId && prompt.kind === "order_triggers" ? (
+              <>
+                <p data-testid="order-triggers-hint">
+                  Choose which trigger resolves first.
+                </p>
+                {prompt.entries.map((entry, index) => (
+                  <button
+                    key={`${entry.cardId}-${entry.triggerIndex}`}
+                    type="button"
+                    data-testid={`order-trigger-first-${index}`}
+                    onClick={() => {
+                      const rest = prompt.entries
+                        .map((_, entryIndex) => entryIndex)
+                        .filter((entryIndex) => entryIndex !== index);
+                      // Last on the stack resolves first.
+                      send({
+                        kind: "resolve_order_triggers",
+                        playerId: actorId,
+                        order: [...rest, index],
+                      });
+                    }}
+                  >
+                    Resolve {definition(state, entry.cardId)?.name ?? "trigger"} first
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  className="pass-button"
+                  data-testid="order-triggers-default"
+                  onClick={() =>
+                    send({
+                      kind: "resolve_order_triggers",
+                      playerId: actorId,
+                      order: prompt.entries.map((_, index) => index),
+                    })
+                  }
+                >
+                  Printed order
+                </button>
+              </>
+            ) : null}
             {actorId === prompt.playerId && prompt.kind === "may_pay_life_or_enter_tapped" ? (
               <>
                 <button

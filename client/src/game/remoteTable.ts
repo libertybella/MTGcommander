@@ -1,4 +1,5 @@
 import type { GameAction, GameState, PlayerId } from "@mtgcommander/engine";
+import type { SeatPreferencesInput } from "@mtgcommander/server";
 
 export type SeatInfo = {
   playerId: PlayerId;
@@ -15,6 +16,7 @@ export type RemoteHandlers = {
 
 export type RemoteTable = {
   send: (action: GameAction) => void;
+  sendPreferences: (preferences: SeatPreferencesInput) => void;
   close: () => void;
 };
 
@@ -63,6 +65,11 @@ export function openRemoteTable(
     send(action) {
       if (socket.readyState === WebSocket.OPEN) {
         socket.send(JSON.stringify({ type: "submit", action }));
+      }
+    },
+    sendPreferences(preferences) {
+      if (socket.readyState === WebSocket.OPEN) {
+        socket.send(JSON.stringify({ type: "preferences", preferences }));
       }
     },
     close() {
