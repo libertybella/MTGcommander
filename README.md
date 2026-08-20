@@ -14,9 +14,10 @@ This is **not** Wizards of the Coast software. It is also **not** the sibling Bi
 
 | | |
 | --- | --- |
-| **Phase** | Playable imported Commander tables (oracle compile + override) |
+| **Phase** | Comprehensive Rules machinery (layers, events, choices, permanents) + coverage flywheel |
 | **Next** | Private alpha (invite friends, play complete games) |
-| **Tests** | 331 passing |
+| **Tests** | 490 passing, plus 500-game fuzz burn-ins gating each checkpoint |
+| **Compile rate** | 82% of a 60-card real-staple sample compiles fully (CI floor 80%) |
 | **Installer** | Not yet. Run from source with Electron. |
 
 ---
@@ -63,27 +64,31 @@ Moxfield URLs fetch in Electron. A plain browser tab should **paste the export**
 ## What already works
 
 - 2–4 player Commander: 40 life, command zone, tax, 21 commander damage
-- Turns, priority, stack, one land per turn
-- Combat, keywords (flying, trample, deathtouch, hexproof, etc.)
-- Hidden opponent hands and libraries
-- London mulligan
-- Real-card import (Scryfall cache + Moxfield / text)
-- Simple oracle compile: damage, taps, ETBs, begin-combat amass, Duress-style discard, Channel, modal DFCs (both faces)
-- Activated abilities on the stack (mana taps and Channel stay off-stack)
-- WebSocket host/join
-- Manual override for the rest (in hotseat, options apply to the acting player)
+- Turns, priority with MTGO/Arena-style stops, yield modes, and full control (phase ladder in the UI)
+- The stack, APNAP trigger ordering, an event bus (enters/dies/attacks/upkeep/gain-life triggers)
+- A CR 613 layer engine: computed characteristics, granted keywords, Humility, until-end-of-turn effects
+- Combat with 20 keywords plus ward and protection; first/double strike; evasion; restrictions
+- Auras, Equipment, planeswalkers, token copies, transform, manifest (hidden face-down 2/2s)
+- Modal spells, {X} with divided damage, Phyrexian mana, library search with shuffle
+- Full state-based actions (legend rule, token cessation, lethal damage in the sweep)
+- Hidden opponent hands and libraries; spectators; seat tokens for safe rejoins
+- London mulligan; real-card import (refreshing Scryfall cache + Moxfield / text)
+- Auto-tap for casting; WebSocket host/join with an engine version handshake
+- Manual override for the documented gaps (usage is counted — it is the coverage metric)
 
 ---
 
 ## What testers should expect to override
 
-These are **not** compiled yet. Use the Override panel:
+Most of the old list now compiles (pumps, modal spells, search, `{X}`,
+Phyrexian, equipment, auras, planeswalkers, ward, protection, face-down).
+Still Override territory — see [docs/RULES_COVERAGE.md](docs/RULES_COVERAGE.md)
+for the full list:
 
-- Until-end-of-turn pumps, modal spells, search, Phyrexian, `{X}`
-- Equipment, auras, planeswalkers / loyalty
-- Ring tempts, attack-trigger amass, “play the exiled card this turn”
-- Ward, protection, layers, copy, face-down cards
-- Countering abilities on the stack
+- Ring tempts, “play the exiled card this turn”, sagas, morph casting
+- Copy effects beyond token copies; damage prevention shields; token doubling
+- Damage-dealt triggers (Curiosity), old-templating X spells, landwalk
+- Countering abilities on the stack; redirecting combat damage to planeswalkers
 
 Compile notes show at import. Uncompiled cards still sit in the deck.
 
@@ -139,5 +144,13 @@ Git tags on `main`. Do not move old tags.
 | `checkpoint-34-activated-abilities` | Stacked activated abilities |
 | `checkpoint-35-oracle-compiler` | Pattern compiler for real oracle text |
 | `checkpoint-36-manual-override` | Table override |
+| `checkpoint-37-foundations` | Structured characteristics, legal actions, fuzzer |
+| `checkpoint-38-priority-stops` | Stops, yield modes, full control, APNAP |
+| `checkpoint-39-layer-engine` | CR 613 layers, until-EOT effects, evasion |
+| `checkpoint-40-event-bus` | Trigger events, completed SBAs, replacements |
+| `checkpoint-41-choices-and-costs` | Search, modal, {X}, ward, protection |
+| `checkpoint-42-permanent-types` | Auras, equipment, planeswalkers, manifest |
+| `checkpoint-43-coverage-flywheel` | Compile-rate CI, registry, rulings corpus |
+| `checkpoint-44-table-hardening` | Seat tokens, spectators, auto-tap |
 
-Next numbered phases: **37 Private Alpha**, **38 Productization**.
+These live on the `comprehensive-plan` branch (see docs/DEVELOPMENT_PROGRESS.md); merge to `main` at will — every checkpoint is a playable table. Next: **Private Alpha**, then productization.

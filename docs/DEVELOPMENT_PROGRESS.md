@@ -545,6 +545,40 @@ Do not mark a checkbox complete simply because code was written.
 
 # Development Log
 
+## 2026-08-20 — Stages 3–7: events, choices, permanents, coverage, hardening
+
+### Objective
+
+Complete the Comprehensive Plan's engineering stages: the event bus and completed SBAs (3), costs/choices/search/targeting (4), every permanent type (5), the coverage flywheel (6), and table hardening with Arena conveniences (7).
+
+### Work Completed
+
+- **Stage 3**: event bus (enters/dies/attacks/step-begins/gains-life) with watch scopes, subject filters, excludeSelf; completed SBAs (lethal+deathtouch in the sweep, legend rule, token cessation, aura/equipment legality, loyalty-zero); Rest in Peace graveyard→exile replacement; SBA deaths batch-dispatch with CR 603.10a look-back. The 500-game burn caught and fixed a declare-blockers livelock with a populated stack.
+- **Stage 4**: search+shuffle with filters and fail-to-find, sacrifice-cost fetches, Spell Pierce unless-pays and ward pay-or-counter pauses (payment may tap producers mid-pause), modal Choose-one spells, announced {X} with divided damage (CR 608.2b), protection from colors threaded through targeting/damage/blocking, Phyrexian mana.
+- **Stage 5**: auras (enter attached, fizzle, die loose), Equip compiling to sorcery-speed attach, attached-scope statics, planeswalkers (loyalty counters, once-per-turn abilities, zero-loyalty SBA), token copies, transform, manifest with hidden face-down 2/2s and mid-combat turn-up, first-strike/deathtouch ordering proven.
+- **Stage 6**: vendored 60-real-staple fixture + CI compile-rate metric (60%→82% full in one sprint: color anthems, restrictions, nonblack targets, Gilded Lotus amounts, any-of search, Cultivate splits, Beast Within with chosen-controller tokens, gain-life triggers, mass counters, pay-life costs); hand-authored card registry; rulings corpus from real Gatherer rulings (first entry exposed the trigger-batching gap); override telemetry on GameHost; cache v4 refresh + bulk ingest.
+- **Stage 7**: seat tokens (claimed seats need their token; auto-assign skips them), spectators with fully-redacted views, engine version handshake, and the Arena auto-tapper (`autoTapPlan`) wired into every client cast/activation.
+
+### Tests Run
+
+- `npm test` — PASS (490 tests), typecheck, lint — PASS at every commit.
+- Compile rate: 82% full / 60 staples (floor 80% enforced in CI).
+- 500-game fuzz burn-ins gate each checkpoint tag; final burn results recorded below at tagging.
+
+### Decisions Made
+
+- Loyalty combat redirection, sagas, morph casting, CR 616 ordering, and damage-dealt triggers stay documented gaps (see RULES_COVERAGE.md) with Override as the fallback.
+- `stops-only` yield is the default because smart yield leaks "no responses".
+- Installer packaging (electron-builder) deferred: run-from-source remains the alpha path; tracked for productization.
+
+### Checkpoint
+
+- Tags: `checkpoint-43-coverage-flywheel`, `checkpoint-44-table-hardening` (after the final burn).
+
+### Next Task
+
+Private alpha at will — every checkpoint is a playable table. Remaining engineering: the documented-gaps list, ordered by override telemetry.
+
 ## 2026-08-20 — Stages 1 & 2: Arena priority and the CR 613 layer engine
 
 ### Objective
