@@ -457,6 +457,13 @@ export function bindCardEffect(
         amount: effect.amount === "x" ? context.xValue ?? 0 : effect.amount,
         ...(effect.includePlayers ? { includePlayers: true } : {}),
       };
+    case "flicker": {
+      const cardId = bindCardId(state, effect.cardId, context);
+      if (!cardId) {
+        return null;
+      }
+      return { kind: "flicker", cardId };
+    }
     case "copy_token": {
       const ownerId = bindPlayerSelector(state, effect.ownerId, context);
       if (!ownerId) {
@@ -1317,6 +1324,18 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
       case "damage_all":
         next = applyDamageAll(state, effect);
         break;
+      case "flicker": {
+        const card = state.cards[effect.cardId];
+        if (!card || card.zone !== "battlefield") {
+          next = cloneGameState(state);
+          break;
+        }
+        next = moveCard(state, effect.cardId, "exile");
+        if (next.cards[effect.cardId]?.zone === "exile") {
+          next = moveCard(next, effect.cardId, "battlefield");
+        }
+        break;
+      }
       case "unless_pays": {
         next = cloneGameState(state);
         if (isLiving(next, effect.playerId)) {

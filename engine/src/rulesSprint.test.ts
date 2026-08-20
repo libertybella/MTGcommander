@@ -412,6 +412,87 @@ describe("creature-or-planeswalker removal", () => {
   });
 });
 
+describe("flicker and controlled bounce", () => {
+  it("compiles Ephemerate's flicker and re-runs enter triggers", () => {
+    const compiled = compileOracleCard({
+      oracleId: "ephemerate",
+      name: "Ephemerate",
+      manaCost: "{W}",
+      typeLine: "Instant",
+      oracleText:
+        "Exile target creature you control, then return it to the battlefield under its owner's control.",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+    });
+    expect(compiled.definition.targetRequirements).toEqual([{ kind: "creature", control: "own" }]);
+    expect(compiled.definition.effects).toEqual([
+      { kind: "flicker", cardId: { type: "chosen", index: 0 } },
+    ]);
+
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game);
+    const etbDrawer = createCardDefinition({
+      name: "Wall of Omens Jr",
+      typeLine: "Creature — Wall",
+      power: 0,
+      toughness: 4,
+      triggers: [
+        {
+          event: "enter_battlefield",
+          effects: [{ kind: "draw", playerId: "controller", count: 1 }],
+          targetRequirements: [],
+        },
+      ],
+    });
+    game.definitions[etbDrawer.id] = etbDrawer;
+    const wall = createCardInstance({ definitionId: etbDrawer.id, ownerId: p1.id, zone: "battlefield" });
+    game.cards[wall.id] = wall;
+    p1.zones.battlefield.push(wall.id);
+    const flickered = applyEffect(game, { kind: "flicker", cardId: wall.id });
+    expect(flickered.cards[wall.id]?.zone).toBe("battlefield");
+    expect(flickered.cards[wall.id]?.summoningSick).toBe(true);
+    // The ETB trigger queued again from the return.
+    expect(flickered.stack).toHaveLength(1);
+  });
+
+  it("Cyclonic Rift's base mode only bounces what you don't control", () => {
+    const compiled = compileOracleCard({
+      oracleId: "cyc",
+      name: "Cyclonic Rift Lite",
+      manaCost: "{1}{U}",
+      typeLine: "Instant",
+      oracleText: "Return target nonland permanent you don't control to its owner's hand.",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+    });
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.targetRequirements).toEqual([
+      { kind: "nonland_permanent", control: "not_own" },
+    ]);
+
+    const { game, p1, p2 } = twoPlayers();
+    const rock = createCardDefinition({ name: "Mind Stone", typeLine: "Artifact" });
+    game.definitions[rock.id] = rock;
+    const mine = createCardInstance({ definitionId: rock.id, ownerId: p1.id, zone: "battlefield" });
+    const theirs = createCardInstance({ definitionId: rock.id, ownerId: p2.id, zone: "battlefield" });
+    game.cards[mine.id] = mine;
+    game.cards[theirs.id] = theirs;
+    p1.zones.battlefield.push(mine.id);
+    p2.zones.battlefield.push(theirs.id);
+    const requirement = { kind: "nonland_permanent" as const, control: "not_own" as const };
+    expect(isChosenTargetLegal(game, requirement, { type: "creature", cardId: mine.id }, p1.id)).toBe(
+      false,
+    );
+    expect(
+      isChosenTargetLegal(game, requirement, { type: "creature", cardId: theirs.id }, p1.id),
+    ).toBe(true);
+  });
+});
+
 describe("mass damage", () => {
   it("compiles Pyroclasm-style sweeps and kills as one batch", () => {
     const compiled = compileOracleCard({

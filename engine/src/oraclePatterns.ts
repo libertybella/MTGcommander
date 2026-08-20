@@ -968,6 +968,40 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     }
   }
 
+  // Ephemerate / Conjurer's Closet flicker.
+  match = sentence.match(
+    /^(?:you may )?Exile target creature( you control)?, then return (?:it|that card) to the battlefield(?: under its owner's control)?$/i,
+  );
+  if (match) {
+    return {
+      targetRequirements: [{ kind: "creature", ...(match[1] ? { control: "own" as const } : {}) }],
+      effects: [{ kind: "flicker", cardId: { type: "chosen", index: 0 } }],
+    };
+  }
+
+  // Generalized bounce, with Cyclonic Rift's "you don't control".
+  match = sentence.match(
+    /^Return target (creature|artifact|enchantment|permanent|nonland permanent)( you don't control)? to its owner's hand$/i,
+  );
+  if (match?.[1]) {
+    const kindOf: Record<string, TargetKind> = {
+      creature: "creature",
+      artifact: "artifact",
+      enchantment: "enchantment",
+      permanent: "permanent",
+      "nonland permanent": "nonland_permanent",
+    };
+    return {
+      targetRequirements: [
+        {
+          kind: kindOf[match[1].toLowerCase()]!,
+          ...(match[2] ? { control: "not_own" as const } : {}),
+        },
+      ],
+      effects: [{ kind: "move_card", cardId: { type: "chosen", index: 0 }, toZone: "hand" }],
+    };
+  }
+
   match = sentence.match(
     /^Return target (creature )?card from your graveyard to (your hand|the battlefield)$/i,
   );
@@ -1525,6 +1559,14 @@ function shiftChosen(effect: CardEffect, offset: number): CardEffect {
           playerId: bumpChosen(source.playerId),
         })),
         thenEffects: effect.thenEffects.map((entry) => shiftChosen(entry, offset)),
+      };
+    case "flicker":
+      return { ...effect, cardId: bumpChosen(effect.cardId) };
+    case "unless_pays":
+      return {
+        ...effect,
+        playerId: bumpChosen(effect.playerId),
+        effects: effect.effects.map((entry) => shiftChosen(entry, offset)),
       };
     default:
       return effect;

@@ -417,7 +417,9 @@ export type GameEffect =
       sourceId: CardInstanceId | null;
       amount: number;
       includePlayers?: boolean;
-    };
+    }
+  /** Ephemerate: exile a permanent and return it immediately (re-enters fresh). */
+  | { kind: "flicker"; cardId: CardInstanceId };
 
 /** What a "Destroy all …" wipe hits. */
 export type DestroyAllScope = "creatures" | "artifacts" | "enchantments" | "planeswalkers" | "nonland";
@@ -469,6 +471,8 @@ export type TargetRequirement = {
   variable?: boolean;
   /** "target nonblack creature": these colors are illegal. */
   excludeColors?: Color[];
+  /** "you don't control" (Cyclonic Rift) / "you control" (Ephemerate). */
+  control?: "own" | "not_own";
 };
 
 /** One bullet of a modal spell. Targets are chosen for the picked mode only. */
@@ -609,7 +613,8 @@ export type CardEffect =
       sourceId: CardInstanceId | "self" | null;
       amount: number | "x";
       includePlayers?: boolean;
-    };
+    }
+  | { kind: "flicker"; cardId: CardIdSelector };
 
 export type Keyword =
   | "flying"

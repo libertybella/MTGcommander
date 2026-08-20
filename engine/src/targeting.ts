@@ -57,6 +57,19 @@ function violatesColorExclusion(
   return requirement.excludeColors.some((color) => colors.includes(color));
 }
 
+function violatesControlFilter(
+  state: GameState,
+  cardId: CardInstanceId,
+  requirement: TargetRequirement,
+  casterId: PlayerId | undefined,
+): boolean {
+  if (!requirement.control || !casterId) {
+    return false;
+  }
+  const controllerId = state.cards[cardId]?.controllerId;
+  return requirement.control === "own" ? controllerId !== casterId : controllerId === casterId;
+}
+
 /** Colors of a spell or ability source, for protection checks. */
 export function sourceColorsOf(state: GameState, sourceId: CardInstanceId | null): Color[] {
   if (!sourceId) {
@@ -110,7 +123,8 @@ export function isChosenTargetLegal(
     return (
       target.type === "creature" &&
       isLegalCreatureTarget(state, target.cardId, casterId, sourceColors) &&
-      !violatesColorExclusion(state, target.cardId, requirement)
+      !violatesColorExclusion(state, target.cardId, requirement) &&
+      !violatesControlFilter(state, target.cardId, requirement, casterId)
     );
   }
   if (requirement.kind === "own_creature") {
@@ -126,6 +140,9 @@ export function isChosenTargetLegal(
     }
     const card = state.cards[target.cardId];
     if (!card || card.zone !== "battlefield") {
+      return false;
+    }
+    if (violatesControlFilter(state, target.cardId, requirement, casterId)) {
       return false;
     }
     if (hasKeyword(state, target.cardId, "shroud")) {
@@ -187,6 +204,9 @@ export function isChosenTargetLegal(
       sourceColors,
     );
     if (!permanentLegal) {
+      return false;
+    }
+    if (violatesControlFilter(state, target.cardId, requirement, casterId)) {
       return false;
     }
     const types = characteristicsOf(state, target.cardId).types;

@@ -1076,6 +1076,10 @@ function parseTargetRequirement(value: unknown, label: string): TargetRequiremen
   ) {
     throw new Error(`Invalid ${label}.kind`);
   }
+  const control = value.control;
+  if (control !== undefined && control !== "own" && control !== "not_own") {
+    throw new Error(`Invalid ${label}.control`);
+  }
   const excludeColors =
     value.excludeColors === undefined
       ? []
@@ -1095,6 +1099,7 @@ function parseTargetRequirement(value: unknown, label: string): TargetRequiremen
     kind,
     ...(value.variable === true ? { variable: true } : {}),
     ...(excludeColors.length > 0 ? { excludeColors } : {}),
+    ...(control === undefined ? {} : { control }),
   };
 }
 
@@ -1483,6 +1488,8 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
         amount: value.amount === "x" ? "x" : expectNumber(value.amount, `${label}.amount`),
         ...(value.includePlayers === true ? { includePlayers: true } : {}),
       };
+    case "flicker":
+      return { kind, cardId: parseCardIdSelector(value.cardId, `${label}.cardId`) };
     default:
       throw new Error(`Unknown effect kind ${kind}`);
   }
@@ -2151,6 +2158,9 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
       amount: expectNumber(value.amount, `${label}.amount`),
       ...(value.includePlayers === true ? { includePlayers: true } : {}),
     };
+  }
+  if (kind === "flicker") {
+    return { kind, cardId: expectString(value.cardId, `${label}.cardId`) };
   }
   throw new Error(`Unsupported resume effect ${kind}`);
 }
