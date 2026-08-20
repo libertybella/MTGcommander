@@ -2,7 +2,7 @@ import { cloneGameState } from "./clone";
 import { createCardDefinition, createCardInstance } from "./createGame";
 import { hasSubtype, isCreature } from "./cardTypes";
 import { createId } from "./ids";
-import { creatureToughness, wouldSkipDraw } from "./derived";
+import { wouldSkipDraw } from "./derived";
 import { hasKeyword } from "./keywords";
 import { addMana, tapCard, untapCard } from "./mana";
 import { livingPlayers, nextLivingPlayerId } from "./players";
@@ -418,16 +418,10 @@ function applyDealDamage(state: GameState, effect: Extract<GameEffect, { kind: "
     throw new Error(`Unknown card ${card.id}`);
   }
   damaged.damageMarked += effect.amount;
-  const lethal =
-    hasKeyword(next, damaged.id, "deathtouch") ||
-    (effect.sourceId ? hasKeyword(next, effect.sourceId, "deathtouch") : false);
-  const toughness = creatureToughness(next, damaged.id);
-  if (
-    ((lethal && effect.amount > 0) || damaged.damageMarked >= toughness) &&
-    !hasKeyword(next, damaged.id, "indestructible")
-  ) {
-    return moveCard(next, damaged.id, "graveyard");
+  if (effect.sourceId && hasKeyword(next, effect.sourceId, "deathtouch")) {
+    damaged.deathtouched = true;
   }
+  // Destruction is a state-based action (CR 704.5g/h); applyEffect sweeps.
   return next;
 }
 
@@ -597,6 +591,7 @@ function applyCreateToken(
     definitionId: definition.id,
     ownerId: effect.ownerId,
     zone: "battlefield",
+    isToken: true,
   });
   next.definitions[definition.id] = definition;
   next.cards[token.id] = token;

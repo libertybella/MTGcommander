@@ -135,6 +135,7 @@ export function createCardInstance(input: {
   controllerId?: CardInstance["controllerId"];
   id?: CardInstance["id"];
   summoningSick?: boolean;
+  isToken?: boolean;
 }): CardInstance {
   return {
     id: input.id ?? createId("card"),
@@ -150,6 +151,8 @@ export function createCardInstance(input: {
     counters: {},
     classLevel: 0,
     timestamp: 0,
+    isToken: input.isToken === true,
+    deathtouched: false,
   };
 }
 

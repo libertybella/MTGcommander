@@ -1024,6 +1024,15 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
       continue;
     }
 
+    if (
+      /^If a card or token would be put into a graveyard from anywhere, exile it instead$/i.test(
+        sentence,
+      )
+    ) {
+      result.replacements.push({ kind: "graveyard_to_exile" });
+      continue;
+    }
+
     const shock = sentence.match(/^As ~ enters, you may pay (\d+) life$/i);
     if (shock?.[1]) {
       result.replacements.push({

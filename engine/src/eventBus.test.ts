@@ -174,6 +174,39 @@ describe("Stage 3: the event bus", () => {
     expect(army?.counters["p1p1"]).toBe(1);
   });
 
+  it("passing priority with a trigger on the stack during declare blockers resolves it (fuzz regression)", () => {
+    const s = scenario();
+    const [me, opponent] = s.players as [string, string];
+    fillLibraries(s.game);
+    const captain = createCardDefinition({
+      name: "Test Captain",
+      typeLine: "Creature — Soldier",
+      power: 2,
+      toughness: 2,
+      triggers: [
+        { event: "attacks", effects: [{ kind: "gain_life", playerId: "controller", amount: 1 }] },
+      ],
+    });
+    const attacker = s.add(captain, me, "battlefield");
+    s.game.turn.activePlayerId = me;
+    s.game.turn.phase = "combat";
+    s.game.turn.step = "declareAttackers";
+    s.game.priorityPlayerId = me;
+    let state = applyAction(s.game, {
+      kind: "declare_attackers",
+      playerId: me,
+      attacks: [{ attackerId: attacker, defenderId: opponent }],
+    });
+    state = advanceStep(state);
+    expect(state.turn.step).toBe("declareBlockers");
+    expect(state.stack).toHaveLength(1);
+    // The active player passing with a stack must not auto-lock blockers.
+    state = applyAction(state, { kind: "pass_priority", playerId: me });
+    state = applyAction(state, { kind: "pass_priority", playerId: opponent });
+    expect(state.stack).toHaveLength(0);
+    expect(lifeOf(state, me)).toBe(41);
+  });
+
   it("compiles Blood Artist's actual templating", () => {
     const compiled = compileOracleCard({
       oracleId: "blood-artist",

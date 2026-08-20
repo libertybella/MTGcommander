@@ -5,7 +5,7 @@ import { hasKeyword } from "./keywords";
 import { isLiving, nextLivingPlayerId } from "./players";
 import { applyStateBasedActionsInPlace } from "./status";
 import { dispatchEventsInPlace } from "./triggers";
-import { moveCard } from "./zones";
+
 import type {
   CardInstance,
   CardInstanceId,
@@ -87,6 +87,7 @@ export function clearCombatFlagsInPlace(state: GameState): void {
 export function clearDamageInPlace(state: GameState): void {
   for (const card of Object.values(state.cards)) {
     card.damageMarked = 0;
+    card.deathtouched = false;
   }
 }
 
@@ -339,23 +340,9 @@ export function lockRemainingBlockers(state: GameState): GameState {
 }
 
 function destroyLethalCreatures(state: GameState): GameState {
-  let next = state;
-  const doomed = Object.values(next.cards).filter((card) => {
-    if (card.zone !== "battlefield" || !isCreature(next, card.id)) {
-      return false;
-    }
-    if (hasKeyword(next, card.id, "indestructible")) {
-      return false;
-    }
-    const toughness = creatureToughness(next, card.id);
-    return toughness > 0 && card.damageMarked >= toughness;
-  });
-  for (const card of doomed) {
-    if (next.cards[card.id]?.zone === "battlefield") {
-      next = moveCard(next, card.id, "graveyard");
-    }
-  }
-  return next;
+  // Lethal-damage destruction is a state-based action (CR 704.5g/h).
+  applyStateBasedActionsInPlace(state);
+  return state;
 }
 
 function dealsInStrike(state: GameState, cardId: CardInstanceId, strike: "first" | "normal"): boolean {
@@ -416,7 +403,7 @@ function markCreatureDamageInPlace(
   }
   target.damageMarked += amount;
   if (hasKeyword(state, sourceId, "deathtouch")) {
-    target.damageMarked = Math.max(target.damageMarked, creatureToughness(state, targetId));
+    target.deathtouched = true;
   }
   const source = state.cards[sourceId];
   if (source && hasKeyword(state, sourceId, "lifelink")) {

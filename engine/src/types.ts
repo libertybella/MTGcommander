@@ -130,6 +130,10 @@ export type CardInstance = {
   classLevel: number;
   /** CR 613.7 ordering: stamped when this object entered the battlefield. */
   timestamp: number;
+  /** Tokens cease to exist outside the battlefield (CR 704.5d). */
+  isToken: boolean;
+  /** Damaged by a deathtouch source this turn (CR 704.5h). */
+  deathtouched: boolean;
 };
 
 export type CommanderState = {
@@ -557,7 +561,9 @@ export type ReplacementEffect =
   | { kind: "enters_tapped" }
   | { kind: "enters_tapped_unless"; unless: EnterTappedUnless }
   | { kind: "enters_tapped_if"; if: EnterTappedUnless }
-  | { kind: "may_pay_life_or_enter_tapped"; amount: number };
+  | { kind: "may_pay_life_or_enter_tapped"; amount: number }
+  /** Rest in Peace: cards and tokens headed to a graveyard are exiled instead. */
+  | { kind: "graveyard_to_exile" };
 
 export type ManaAbility = {
   produces: Partial<ManaPool>;

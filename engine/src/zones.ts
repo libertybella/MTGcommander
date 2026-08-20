@@ -1,5 +1,6 @@
 import { cloneGameState } from "./clone";
 import { isCommander } from "./cardTypes";
+import { abilitiesRemoved } from "./characteristicsEngine";
 import { queueEnterReplacementChoicesInPlace, wouldEnterTapped } from "./derived";
 import { dispatchEventsInPlace, queueEnterBattlefieldTriggersInPlace } from "./triggers";
 import type { CardInstance, CardInstanceId, GameState, PlayerState, PlayerZones, ZoneName } from "./types";
@@ -26,7 +27,23 @@ function commanderAwareDestination(
   if ((toZone === "graveyard" || toZone === "exile") && isCommander(state, cardId)) {
     return "command";
   }
+  if (toZone === "graveyard" && graveyardReplacedByExile(state)) {
+    // Rest in Peace (CR 614.6): the object never reaches the graveyard, so
+    // dies triggers do not fire.
+    return "exile";
+  }
   return toZone;
+}
+
+function graveyardReplacedByExile(state: GameState): boolean {
+  return Object.values(state.cards).some((card) => {
+    if (card.zone !== "battlefield" || abilitiesRemoved(state, card.id)) {
+      return false;
+    }
+    return (state.definitions[card.definitionId]?.replacements ?? []).some(
+      (replacement) => replacement.kind === "graveyard_to_exile",
+    );
+  });
 }
 
 export type MoveCardOptions = {

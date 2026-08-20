@@ -246,9 +246,16 @@ function applyPassPriority(
   requirePlaying(state);
   requirePriority(state, playerId);
   let current = state;
-  if (current.turn.step === "declareBlockers" && playerId === current.turn.activePlayerId) {
+  // Blocker auto-declaration only happens on an empty stack: with a spell or
+  // trigger waiting, a pass is just a pass (found by the 500-game fuzz burn).
+  if (
+    current.stack.length === 0 &&
+    current.turn.step === "declareBlockers" &&
+    playerId === current.turn.activePlayerId
+  ) {
     current = lockRemainingBlockers(current);
   } else if (
+    current.stack.length === 0 &&
     current.turn.step === "declareBlockers" &&
     pendingBlockerPlayer(current) === playerId
   ) {
