@@ -54,7 +54,9 @@ export type UiMode =
       origin: "spell" | "ability" | "trigger";
       abilityIndex?: number;
       faceIndex?: number;
+      modeIndex?: number;
     }
+  | { type: "spell-mode-pick"; cardId: CardInstanceId }
   | { type: "attackers"; attackerIds: CardInstanceId[]; defenderId: PlayerId | null }
   | { type: "block-pick-blocker" }
   | { type: "block-pick-attacker"; blockerId: CardInstanceId }
@@ -178,7 +180,11 @@ function modeRequirements(state: GameState, mode: UiMode): TargetRequirement[] {
     const prompt = currentPrompt(state);
     return prompt?.kind === "choose_targets" ? prompt.requirements : [];
   }
-  return definition(state, mode.cardId)?.targetRequirements ?? [];
+  const def = definition(state, mode.cardId);
+  if (mode.modeIndex !== undefined && def?.modes?.[mode.modeIndex]) {
+    return def.modes[mode.modeIndex]!.targetRequirements;
+  }
+  return def?.targetRequirements ?? [];
 }
 
 function manaLine(mana: GameState["players"][number]["mana"]): string {
@@ -1167,7 +1173,7 @@ export function Battlefield(props: Props) {
     if (mode.type === "block-pick-attacker") {
       return mode.blockerId === cardId;
     }
-    if (mode.type === "mana-color" || mode.type === "ability-pick" || mode.type === "hand-choice" || mode.type === "token-create") {
+    if (mode.type === "mana-color" || mode.type === "ability-pick" || mode.type === "hand-choice" || mode.type === "token-create" || mode.type === "spell-mode-pick") {
       return mode.cardId === cardId;
     }
     if (mode.type === "targets") {
@@ -1351,12 +1357,32 @@ export function Battlefield(props: Props) {
       send({ kind: "play_land", playerId, cardId });
       return;
     }
+    if (def?.modes && def.modes.length > 0) {
+      onMode({ type: "spell-mode-pick", cardId });
+      return;
+    }
     const requirements = def?.targetRequirements ?? [];
     if (requirements.length === 0) {
       send({ kind: "cast_spell", playerId, cardId });
       return;
     }
     onMode({ type: "targets", cardId, chosen: [], origin: "spell" });
+  }
+
+  function pickSpellMode(cardId: CardInstanceId, modeIndex: number) {
+    const playerId = controllerOf(cardId) ?? actorId;
+    const def = definition(state, cardId);
+    const spellMode = def?.modes?.[modeIndex];
+    if (!spellMode) {
+      onMode({ type: "idle" });
+      return;
+    }
+    if (spellMode.targetRequirements.length === 0) {
+      send({ kind: "cast_spell", playerId, cardId, modeIndex });
+      onMode({ type: "idle" });
+      return;
+    }
+    onMode({ type: "targets", cardId, chosen: [], origin: "spell", modeIndex });
   }
 
   function pickHandChoice(cardId: CardInstanceId, optionId: string) {
@@ -1578,6 +1604,7 @@ export function Battlefield(props: Props) {
         cardId: mode.cardId,
         targets: chosen,
         ...(mode.faceIndex !== undefined ? { faceIndex: mode.faceIndex } : {}),
+        ...(mode.modeIndex !== undefined ? { modeIndex: mode.modeIndex } : {}),
       });
       return;
     }
@@ -2522,6 +2549,19 @@ export function Battlefield(props: Props) {
             return options;
           })()}
           onPick={(optionId) => pickHandChoice(mode.cardId, optionId)}
+        />
+      ) : null}
+      {mode.type === "spell-mode-pick" ? (
+        <HandChoicePop
+          cardId={mode.cardId}
+          options={(definition(state, mode.cardId)?.modes ?? []).map((spellMode, index) => ({
+            id: `mode-${index}`,
+            label: spellMode.label,
+          }))}
+          onPick={(optionId) => {
+            const modeIndex = Number(optionId.replace("mode-", ""));
+            pickSpellMode(mode.cardId, modeIndex);
+          }}
         />
       ) : null}
       {mode.type === "ability-pick" ? (

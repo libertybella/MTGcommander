@@ -33,6 +33,7 @@ import type {
   ReplacementEffect,
   SearchDestination,
   SearchFilter,
+  SpellMode,
   StaticAbility,
   TargetRequirement,
   TokenTemplate,
@@ -300,6 +301,9 @@ export function parseGameState(json: string): GameState {
       imageUrl:
         def.imageUrl === undefined ? "" : expectString(def.imageUrl, "definition.imageUrl", true),
       ...(def.ward === undefined ? {} : { ward: expectNumber(def.ward, "definition.ward") }),
+      ...(def.modes === undefined
+        ? {}
+        : { modes: parseSpellModes(def.modes, `definition.${id}.modes`) }),
       ...(def.otherFaceId === undefined
         ? {}
         : { otherFaceId: expectString(def.otherFaceId, "definition.otherFaceId") }),
@@ -341,6 +345,9 @@ export function parseGameState(json: string): GameState {
       ...(activatedIndex === undefined
         ? {}
         : { activatedIndex: expectNumber(activatedIndex, `stack[${index}].activatedIndex`) }),
+      ...(entry.modeIndex === undefined
+        ? {}
+        : { modeIndex: expectNumber(entry.modeIndex, `stack[${index}].modeIndex`) }),
     };
   });
 
@@ -1182,6 +1189,25 @@ function parseActivatedAbilities(value: unknown, label: string): ActivatedAbilit
   });
 }
 
+function parseSpellModes(value: unknown, label: string): SpellMode[] {
+  if (!Array.isArray(value) || value.length === 0) {
+    throw new Error(`Invalid ${label}`);
+  }
+  return value.map((entry, index) => {
+    if (!isRecord(entry)) {
+      throw new Error(`Invalid ${label}[${index}]`);
+    }
+    return {
+      label: expectString(entry.label, `${label}[${index}].label`),
+      effects: parseCardEffects(entry.effects, `${label}[${index}].effects`),
+      targetRequirements: parseTargetRequirements(
+        entry.targetRequirements,
+        `${label}[${index}].targetRequirements`,
+      ),
+    };
+  });
+}
+
 function parseTriggers(value: unknown, label: string): CardTrigger[] {
   if (value === undefined) {
     return [];
@@ -1724,6 +1750,9 @@ export function parseGameAction(json: string): GameAction {
       ...(raw.faceIndex === undefined
         ? {}
         : { faceIndex: expectNumber(raw.faceIndex, "action.faceIndex") }),
+      ...(raw.modeIndex === undefined
+        ? {}
+        : { modeIndex: expectNumber(raw.modeIndex, "action.modeIndex") }),
     };
   }
   if (kind === "declare_attackers") {

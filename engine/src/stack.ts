@@ -89,6 +89,7 @@ export function putSpellOnStack(
   state: GameState,
   cardId: CardInstanceId,
   targets: ChosenTarget[] = [],
+  modeIndex?: number,
 ): GameState {
   const card = state.cards[cardId];
   if (!card) {
@@ -100,7 +101,11 @@ export function putSpellOnStack(
     throw new Error(`Card ${cardId} must be in hand to put on the stack`);
   }
   const definition = state.definitions[card.definitionId];
-  validateChosenTargets(state, definition?.targetRequirements ?? [], targets, card.controllerId);
+  const requirements =
+    modeIndex !== undefined && definition?.modes?.[modeIndex]
+      ? definition.modes[modeIndex]!.targetRequirements
+      : definition?.targetRequirements ?? [];
+  validateChosenTargets(state, requirements, targets, card.controllerId);
 
   let next = cloneGameState(state);
   next = removeCardFromCurrentZone(next, cardId);
@@ -116,6 +121,7 @@ export function putSpellOnStack(
     sourceId: cardId,
     kind: "spell",
     targets: targets.map((target) => ({ ...target })),
+    ...(modeIndex !== undefined ? { modeIndex } : {}),
   });
   next.passesSinceAction = 0;
   next.priorityPlayerId = moved.controllerId;
@@ -182,12 +188,15 @@ export function resolveTopOfStack(state: GameState): GameState {
 
   const source = next.cards[top.sourceId];
   const definition = source ? next.definitions[source.definitionId] : undefined;
-  const requirements = definition?.targetRequirements ?? [];
+  const mode =
+    top.modeIndex !== undefined ? definition?.modes?.[top.modeIndex] : undefined;
+  const requirements = mode ? mode.targetRequirements : definition?.targetRequirements ?? [];
+  const effects = mode ? mode.effects : definition?.effects ?? [];
   const shouldResolveEffects =
-    Boolean(definition && definition.effects.length > 0) &&
+    effects.length > 0 &&
     hasLegalTargetRemaining(next, requirements, top.targets, top.controllerId);
   if (shouldResolveEffects && definition) {
-    const bound = bindCardEffects(next, definition.effects, {
+    const bound = bindCardEffects(next, effects, {
       controllerId: top.controllerId,
       sourceId: top.sourceId,
       targets: top.targets,

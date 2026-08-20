@@ -223,7 +223,24 @@ function nextAction(state: GameState, rng: () => number): GameAction | null {
       if (action.faceIndex === 1 && definition.otherFaceId) {
         definition = state.definitions[definition.otherFaceId]!;
       }
-      const targets = randomTargets(state, definition.targetRequirements, playerId, rng);
+      let modeIndex: number | undefined;
+      let requirements = definition.targetRequirements;
+      if (definition.modes && definition.modes.length > 0) {
+        const castable = definition.modes
+          .map((mode, index) => ({ mode, index }))
+          .filter(
+            ({ mode }) =>
+              mode.targetRequirements.length === 0 ||
+              randomTargets(state, mode.targetRequirements, playerId, rng) !== null,
+          );
+        if (castable.length === 0) {
+          return { kind: "pass_priority", playerId };
+        }
+        const picked = pick(rng, castable);
+        modeIndex = picked.index;
+        requirements = picked.mode.targetRequirements;
+      }
+      const targets = randomTargets(state, requirements, playerId, rng);
       if (targets === null) {
         return { kind: "pass_priority", playerId };
       }
@@ -233,6 +250,7 @@ function nextAction(state: GameState, rng: () => number): GameAction | null {
         cardId: action.cardId,
         targets,
         faceIndex: action.faceIndex,
+        ...(modeIndex !== undefined ? { modeIndex } : {}),
       };
     }
     case "activate_ability": {

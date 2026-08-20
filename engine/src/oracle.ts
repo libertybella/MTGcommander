@@ -185,6 +185,7 @@ function compileOneFace(card: OracleCard, definitionId: string): OracleCompileRe
     manaAbilities: compiled.manaAbilities,
     activated: compiled.activated,
     ...(compiled.ward ? { ward: compiled.ward } : {}),
+    ...(compiled.modes ? { modes: compiled.modes } : {}),
     imageUrl: card.imageUrl ?? "",
     layout: cardLayout(card.layout),
   });

@@ -204,6 +204,13 @@ function castableFace(
   if (!canPayWithPotential(potential, cost)) {
     return false;
   }
+  if (definition.modes && definition.modes.length > 0) {
+    return definition.modes.some((mode) =>
+      mode.targetRequirements.length === 0
+        ? true
+        : hasAnyLegalTargetSet(state, mode.targetRequirements, playerId),
+    );
+  }
   if (definition.targetRequirements.length > 0) {
     return hasAnyLegalTargetSet(state, definition.targetRequirements, playerId);
   }

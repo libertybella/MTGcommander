@@ -13,6 +13,7 @@ import type {
   ManaPool,
   ReplacementEffect,
   SearchFilter,
+  SpellMode,
   StaticAbility,
   TargetRequirement,
 } from "./types";
@@ -30,6 +31,7 @@ export type CompiledOracleText = {
   producesOptions: ManaColor[];
   manaAbilities: ManaAbility[];
   ward?: number;
+  modes?: SpellMode[];
   leftover: string[];
   notes: string[];
 };
@@ -1063,6 +1065,53 @@ function compileRevealAndChoose(sentences: string[], index: number): SimpleClaus
     consumed: 3,
   };
 }
+type ModalExtraction = {
+  remainingText: string;
+  modes: SpellMode[] | null;
+  raw: string;
+};
+
+/**
+ * "Choose one —" blocks compile before sentence splitting (the bullets are
+ * lines, not sentences). Every bullet must compile as a single clause, or
+ * the whole block stays a note.
+ */
+function extractModalModes(card: OracleCard): ModalExtraction | null {
+  const lines = stripReminderText(card.oracleText).replace(/\r/g, "").split("\n");
+  const headIndex = lines.findIndex((line) => /^Choose one\s*[—-]\s*$/i.test(line.trim()));
+  if (headIndex === -1) {
+    return null;
+  }
+  const bullets: string[] = [];
+  let end = headIndex + 1;
+  while (end < lines.length && lines[end]!.trim().startsWith("•")) {
+    bullets.push(lines[end]!.trim().replace(/^•\s*/, ""));
+    end += 1;
+  }
+  if (bullets.length < 2) {
+    return null;
+  }
+  const remainingText = [...lines.slice(0, headIndex), ...lines.slice(end)].join("\n");
+  const raw = lines.slice(headIndex, end).join(" ");
+  const modes: SpellMode[] = [];
+  for (const bullet of bullets) {
+    const sentences = splitOracleSentences({ ...card, oracleText: bullet });
+    if (sentences.length !== 1 || !sentences[0]) {
+      return { remainingText, modes: null, raw };
+    }
+    const clause = compileSimpleClause(sentences[0]);
+    if (!clause || clause.leftover) {
+      return { remainingText, modes: null, raw };
+    }
+    modes.push({
+      label: bullet.replace(/\.$/, ""),
+      effects: clause.effects,
+      targetRequirements: clause.targetRequirements,
+    });
+  }
+  return { remainingText, modes, raw };
+}
+
 export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): CompiledOracleText {
   const result: CompiledOracleText = {
     effects: [],
@@ -1080,7 +1129,17 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
   };
   void keywords;
 
-  const sentences = splitOracleSentences(card);
+  const modal = extractModalModes(card);
+  if (modal) {
+    if (modal.modes) {
+      result.modes = modal.modes;
+    } else {
+      result.leftover.push(modal.raw);
+    }
+  }
+  const sentences = splitOracleSentences(
+    modal ? { ...card, oracleText: modal.remainingText } : card,
+  );
   for (let index = 0; index < sentences.length; index += 1) {
     const sentence = sentences[index];
     if (!sentence) {

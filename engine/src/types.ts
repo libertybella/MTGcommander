@@ -109,6 +109,8 @@ export type CardDefinition = {
   activated: ActivatedAbility[];
   /** Ward {N}: opponents targeting this pay N generic or the spell is countered. */
   ward?: number;
+  /** "Choose one —" spells: cast picks exactly one mode (CR 700.2). */
+  modes?: SpellMode[];
   /** Scryfall card image, if known. Empty for synthetic / hidden cards. */
   imageUrl: string;
   /** Linked opposite face for modal DFCs and transforming cards. */
@@ -173,6 +175,8 @@ export type StackObject = {
   triggerIndex?: number;
   /** Index into the source definition's `activated` for stacked abilities. */
   activatedIndex?: number;
+  /** Chosen mode index for modal spells. */
+  modeIndex?: number;
 };
 
 export type CombatAttack = {
@@ -348,6 +352,13 @@ export type TargetKind =
 
 export type TargetRequirement = {
   kind: TargetKind;
+};
+
+/** One bullet of a modal spell. Targets are chosen for the picked mode only. */
+export type SpellMode = {
+  label: string;
+  effects: CardEffect[];
+  targetRequirements: TargetRequirement[];
 };
 
 export type ChosenTarget =
@@ -708,7 +719,15 @@ export type ManualOverrideChange =
 
 export type GameAction =
   | { kind: "pass_priority"; playerId: PlayerId }
-  | { kind: "cast_spell"; playerId: PlayerId; cardId: CardInstanceId; targets?: ChosenTarget[]; faceIndex?: number }
+  | {
+      kind: "cast_spell";
+      playerId: PlayerId;
+      cardId: CardInstanceId;
+      targets?: ChosenTarget[];
+      faceIndex?: number;
+      /** Required for modal spells: which bullet was chosen. */
+      modeIndex?: number;
+    }
   | { kind: "play_land"; playerId: PlayerId; cardId: CardInstanceId; faceIndex?: number }
   | {
       kind: "declare_attackers";

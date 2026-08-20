@@ -167,15 +167,35 @@ function applyCastSpell(
   cardId: CardInstanceId,
   targets: ChosenTarget[] | undefined,
   faceIndex: number | undefined,
+  modeIndex: number | undefined,
 ): GameState {
   requirePlaying(state);
   const faced = applyChosenFace(state, cardId, faceIndex);
   const { cost, fromCommand } = validateCast(faced, playerId, cardId);
   const card = faced.cards[cardId];
   const definition = card ? faced.definitions[card.definitionId] : undefined;
-  validateChosenTargets(faced, definition?.targetRequirements ?? [], targets ?? [], playerId);
+  if (definition?.modes && definition.modes.length > 0) {
+    if (
+      modeIndex === undefined ||
+      !Number.isInteger(modeIndex) ||
+      !definition.modes[modeIndex]
+    ) {
+      throw new Error("Choose a mode");
+    }
+    validateChosenTargets(
+      faced,
+      definition.modes[modeIndex]!.targetRequirements,
+      targets ?? [],
+      playerId,
+    );
+  } else {
+    if (modeIndex !== undefined) {
+      throw new Error("That spell has no modes");
+    }
+    validateChosenTargets(faced, definition?.targetRequirements ?? [], targets ?? [], playerId);
+  }
   const paid = payManaCost(faced, playerId, cost);
-  const stacked = putSpellOnStack(paid, cardId, targets ?? []);
+  const stacked = putSpellOnStack(paid, cardId, targets ?? [], modeIndex);
   if (!fromCommand) {
     return stacked;
   }
@@ -494,7 +514,14 @@ export function applyAction(
         next = applyPassPriority(state, action.playerId, shortcuts);
         break;
       case "cast_spell":
-        next = applyCastSpell(state, action.playerId, action.cardId, action.targets, action.faceIndex);
+        next = applyCastSpell(
+          state,
+          action.playerId,
+          action.cardId,
+          action.targets,
+          action.faceIndex,
+          action.modeIndex,
+        );
         break;
       case "play_land":
         next = applyPlayLand(state, action.playerId, action.cardId, action.faceIndex);
