@@ -91,8 +91,15 @@ describe("Stage 6: compile-rate metric", () => {
     if (!bulkPath) {
       return;
     }
-    const raw = JSON.parse(readFileSync(bulkPath, "utf8")) as unknown[];
-    const cards = raw
+    const text = readFileSync(bulkPath, "utf8");
+    // Accept both a JSON array and Scryfall's JSONL bulk format.
+    const entries: unknown[] = text.trimStart().startsWith("[")
+      ? (JSON.parse(text) as unknown[])
+      : text
+          .split("\n")
+          .filter((line) => line.trim().length > 0)
+          .map((line) => JSON.parse(line) as unknown);
+    let cards = entries
       .filter((entry): entry is Record<string, unknown> => typeof entry === "object" && entry !== null)
       .map((entry) => {
         try {
@@ -102,12 +109,91 @@ describe("Stage 6: compile-rate metric", () => {
         }
       })
       .filter((card): card is OracleCard => card !== null);
+    // COMPILE_LIST narrows the sweep to a JSON array of card names — the
+    // EDHREC-top-N gate uses this.
+    const listPath = process.env.COMPILE_LIST;
+    if (listPath) {
+      const wanted = new Set(
+        (JSON.parse(readFileSync(listPath, "utf8")) as string[]).map((name) =>
+          name.toLowerCase(),
+        ),
+      );
+      cards = cards.filter((card) => wanted.has(card.name.toLowerCase()));
+    }
     const rate = classify(cards);
     const total = cards.length;
     console.log(
-      `[compile-rate] bulk: ${rate.full.length}/${total} full ` +
+      `[compile-rate] ${listPath ? "list" : "bulk"}: ${rate.full.length}/${total} full ` +
         `(${((rate.full.length / total) * 100).toFixed(1)}%), ` +
         `${rate.partial.length} partial, ${rate.none.length} none`,
     );
+    if (listPath && rate.none.length > 0) {
+      console.log(`[compile-rate] top misses: ${rate.none.slice(0, 40).join(" | ")}`);
+    }
+    // COMPILE_ANALYZE=1 clusters compile notes across the swept cards so
+    // pattern sprints can target the biggest wins first.
+    if (process.env.COMPILE_ANALYZE) {
+      const noteCounts = new Map<string, { count: number; sample: string }>();
+      for (const card of cards) {
+        if (cardOverrideFor(card)) {
+          continue;
+        }
+        for (const note of compileOracleCard(card).notes) {
+          const tail = note.includes("not compiled: ")
+            ? note.slice(note.indexOf("not compiled: ") + "not compiled: ".length)
+            : note;
+          for (const fragment of tail.split("; ")) {
+            const shape = fragment
+              .replace(new RegExp(card.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "g"), "~")
+              .replace(/\{[^}]+\}/g, "{M}")
+              .replace(/\b\d+\b/g, "N")
+              .trim()
+              .toLowerCase()
+              .slice(0, 80);
+            if (!shape) {
+              continue;
+            }
+            const entry = noteCounts.get(shape);
+            if (entry) {
+              entry.count += 1;
+            } else {
+              noteCounts.set(shape, { count: 1, sample: fragment.slice(0, 100) });
+            }
+          }
+        }
+      }
+      const top = [...noteCounts.entries()].sort((a, b) => b[1].count - a[1].count).slice(0, 80);
+      for (const [, { count, sample }] of top) {
+        console.log(`[analyze] ${count}× ${sample}`);
+      }
+      const lineCounts = new Map<string, { count: number; sample: string }>();
+      for (const card of cards) {
+        if (cardOverrideFor(card)) {
+          continue;
+        }
+        const notes = compileOracleCard(card).notes;
+        for (const note of notes) {
+          const match = /"([^"]*)"/.exec(note);
+          if (!match) {
+            continue;
+          }
+          const shape = match[1]
+            .replace(new RegExp(card.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "g"), "~")
+            .replace(/\{[^}]+\}/g, "{M}")
+            .replace(/\d+/g, "N")
+            .slice(0, 90);
+          const entry = lineCounts.get(shape);
+          if (entry) {
+            entry.count += 1;
+          } else {
+            lineCounts.set(shape, { count: 1, sample: match[1].slice(0, 110) });
+          }
+        }
+      }
+      const topLines = [...lineCounts.entries()].sort((a, b) => b[1].count - a[1].count).slice(0, 50);
+      for (const [, { count, sample }] of topLines) {
+        console.log(`[analyze-line] ${count}× ${sample}`);
+      }
+    }
   });
 });

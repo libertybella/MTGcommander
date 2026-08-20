@@ -319,9 +319,11 @@ function roundTrip(state: GameState, context: string): void {
 
 const SEEDS = Number(process.env.FUZZ_SEEDS ?? 6);
 const ACTIONS = Number(process.env.FUZZ_ACTIONS ?? 400);
+/** Chunked burn-ins: offset the seed range so chunks cover distinct games. */
+const SEED_OFFSET = Number(process.env.FUZZ_SEED_OFFSET ?? 0);
 
 describe("state-integrity fuzzer", () => {
-  for (let seed = 1; seed <= SEEDS; seed += 1) {
+  for (let seed = 1 + SEED_OFFSET; seed <= SEEDS + SEED_OFFSET; seed += 1) {
     it(`survives a random game (seed ${seed})`, () => {
       const rng = mulberry32(seed * 7919);
       let state = buildGame(rng);
