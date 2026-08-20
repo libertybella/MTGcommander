@@ -57,6 +57,11 @@ export const IMPLEMENTED_KEYWORDS: Record<Keyword, string> = {
   indestructible: "indestructible",
   flash: "flash",
   defender: "defender",
+  fear: "fear",
+  intimidate: "intimidate",
+  horsemanship: "horsemanship",
+  shadow: "shadow",
+  skulk: "skulk",
 };
 
 export type KeywordCoverage = {

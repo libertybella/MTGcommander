@@ -48,6 +48,11 @@ const KEYWORD_LINE = new Set([
   "indestructible",
   "flash",
   "defender",
+  "fear",
+  "intimidate",
+  "horsemanship",
+  "shadow",
+  "skulk",
 ]);
 
 const BASIC_TYPE_MANA: Record<string, Color> = {
@@ -74,6 +79,11 @@ const KEYWORD_GRANTS: Record<string, Keyword> = {
   indestructible: "indestructible",
   shroud: "shroud",
   defender: "defender",
+  fear: "fear",
+  intimidate: "intimidate",
+  horsemanship: "horsemanship",
+  shadow: "shadow",
+  skulk: "skulk",
 };
 
 const COUNT_WORDS: Record<string, number> = {

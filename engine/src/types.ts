@@ -424,7 +424,12 @@ export type Keyword =
   | "shroud"
   | "indestructible"
   | "flash"
-  | "defender";
+  | "defender"
+  | "fear"
+  | "intimidate"
+  | "horsemanship"
+  | "shadow"
+  | "skulk";
 
 export type CardTrigger = {
   event: "enter_battlefield" | "begin_combat";

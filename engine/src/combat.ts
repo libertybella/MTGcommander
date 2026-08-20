@@ -1,5 +1,5 @@
 import { cloneGameState } from "./clone";
-import { isCommander, isCreature } from "./cardTypes";
+import { characteristicsOf, isCommander, isCreature } from "./cardTypes";
 import { creaturePower, creatureToughness } from "./derived";
 import { hasKeyword } from "./keywords";
 import { isLiving, nextLivingPlayerId } from "./players";
@@ -175,6 +175,58 @@ export function declareAttackers(state: GameState, playerId: PlayerId, attacks: 
   return next;
 }
 
+/**
+ * Evasion legality for one block (CR 702): flying/reach, fear, intimidate,
+ * horsemanship, shadow (both directions), and skulk. Returns an error
+ * message, or null when the block is legal.
+ */
+export function blockRestriction(
+  state: GameState,
+  attackerId: CardInstanceId,
+  blockerId: CardInstanceId,
+): string | null {
+  const blockerTraits = characteristicsOf(state, blockerId);
+  const isArtifact = blockerTraits.types.includes("artifact");
+  if (
+    hasKeyword(state, attackerId, "flying") &&
+    !hasKeyword(state, blockerId, "flying") &&
+    !hasKeyword(state, blockerId, "reach")
+  ) {
+    return `Card ${blockerId} cannot block a flying attacker`;
+  }
+  if (
+    hasKeyword(state, attackerId, "fear") &&
+    !isArtifact &&
+    !blockerTraits.colors.includes("B")
+  ) {
+    return `Card ${blockerId} cannot block a creature with fear`;
+  }
+  if (hasKeyword(state, attackerId, "intimidate") && !isArtifact) {
+    const attackerColors = characteristicsOf(state, attackerId).colors;
+    if (!attackerColors.some((color) => blockerTraits.colors.includes(color))) {
+      return `Card ${blockerId} cannot block a creature with intimidate`;
+    }
+  }
+  if (
+    hasKeyword(state, attackerId, "horsemanship") &&
+    !hasKeyword(state, blockerId, "horsemanship")
+  ) {
+    return `Card ${blockerId} cannot block a creature with horsemanship`;
+  }
+  if (hasKeyword(state, attackerId, "shadow") !== hasKeyword(state, blockerId, "shadow")) {
+    return hasKeyword(state, attackerId, "shadow")
+      ? `Card ${blockerId} cannot block a creature with shadow`
+      : `Card ${blockerId} has shadow and can block only creatures with shadow`;
+  }
+  if (
+    hasKeyword(state, attackerId, "skulk") &&
+    creaturePower(state, blockerId) > creaturePower(state, attackerId)
+  ) {
+    return `Card ${blockerId} is too powerful to block a creature with skulk`;
+  }
+  return null;
+}
+
 export function declareBlockers(
   state: GameState,
   playerId: PlayerId,
@@ -233,8 +285,9 @@ export function declareBlockers(
     if (blocker.attacking) {
       throw new Error(`Card ${block.blockerId} is attacking`);
     }
-    if (hasKeyword(state, block.attackerId, "flying") && !hasKeyword(state, block.blockerId, "flying") && !hasKeyword(state, block.blockerId, "reach")) {
-      throw new Error(`Card ${block.blockerId} cannot block a flying attacker`);
+    const evasionError = blockRestriction(state, block.attackerId, block.blockerId);
+    if (evasionError) {
+      throw new Error(evasionError);
     }
   }
 

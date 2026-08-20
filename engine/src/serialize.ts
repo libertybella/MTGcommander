@@ -55,6 +55,11 @@ const KEYWORDS = new Set<Keyword>([
   "indestructible",
   "flash",
   "defender",
+  "fear",
+  "intimidate",
+  "horsemanship",
+  "shadow",
+  "skulk",
 ]);
 
 const MANA_KEYS = ["W", "U", "B", "R", "G", "C"] as const;
