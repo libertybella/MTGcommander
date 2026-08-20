@@ -478,7 +478,7 @@ export function applyResolvePay(
   next.prompts.shift();
   if (!pay) {
     if (prompt.kind === "pay_or_effect") {
-      return applyEffects(next, prompt.thenEffects);
+      return prompt.whenPaid ? next : applyEffects(next, prompt.thenEffects);
     }
     const index = next.stack.findIndex((entry) => entry.id === prompt.stackObjectId);
     if (index !== -1) {
@@ -512,7 +512,11 @@ export function applyResolvePay(
     }
     next = tapForMana(next, tap.cardId, addition);
   }
-  return payManaCost(next, playerId, prompt.cost);
+  next = payManaCost(next, playerId, prompt.cost);
+  if (prompt.kind === "pay_or_effect" && prompt.whenPaid) {
+    next = applyEffects(next, prompt.thenEffects);
+  }
+  return next;
 }
 
 export function applyResolveLookAssign(

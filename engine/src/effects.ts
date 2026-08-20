@@ -450,6 +450,18 @@ export function bindCardEffect(
         effects: bindCardEffects(state, effect.effects, context),
       };
     }
+    case "may_pay": {
+      const playerId = bindPlayerSelector(state, effect.playerId, context);
+      if (!playerId) {
+        return null;
+      }
+      return {
+        kind: "may_pay",
+        playerId,
+        cost: effect.cost,
+        effects: bindCardEffects(state, effect.effects, context),
+      };
+    }
     case "damage_all":
       return {
         kind: "damage_all",
@@ -1363,6 +1375,20 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
           });
         } else {
           next = applyEffects(next, effect.effects);
+        }
+        break;
+      }
+      case "may_pay": {
+        next = cloneGameState(state);
+        if (isLiving(next, effect.playerId)) {
+          next.prompts.push({
+            kind: "pay_or_effect",
+            playerId: effect.playerId,
+            cost: effect.cost,
+            thenEffects: effect.effects.map((entry) => ({ ...entry })),
+            sourceId: null,
+            whenPaid: true,
+          });
         }
         break;
       }

@@ -1581,6 +1581,7 @@ function shiftChosen(effect: CardEffect, offset: number): CardEffect {
     case "flicker":
       return { ...effect, cardId: bumpChosen(effect.cardId) };
     case "unless_pays":
+    case "may_pay":
       return {
         ...effect,
         playerId: bumpChosen(effect.playerId),
@@ -2125,6 +2126,32 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
       continue;
     }
 
+    // "When ~ enters, you may pay {2}." + "If you do, <clause>." — must run
+    // before the general ETB branch eats the sentence.
+    const mayPayEtb = sentence.match(
+      /^(When(?:ever)? ~ enters), you may pay ((?:\{[^}]+\})+)$/i,
+    );
+    if (mayPayEtb?.[2]) {
+      const follow = sentences[index + 1]?.match(/^If you do, (.+)$/i);
+      const inner = follow?.[1] ? compileSimpleClause(follow[1].trim()) : null;
+      if (inner && !inner.leftover && inner.targetRequirements.length === 0) {
+        result.triggers.push({
+          event: "enter_battlefield",
+          effects: [
+            {
+              kind: "may_pay",
+              playerId: "controller",
+              cost: mayPayEtb[2],
+              effects: inner.effects,
+            },
+          ],
+          targetRequirements: [],
+        });
+        index += 1;
+        continue;
+      }
+    }
+
     const etb = sentence.match(/^When ~ enters(?: and whenever [^,]+)?, (.+)$/i);
     if (etb?.[1]) {
       const inner = compileSimpleClause(etb[1].trim());
@@ -2159,6 +2186,31 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
       }
       result.leftover.push(sentence);
       continue;
+    }
+
+    // "When ~ enters, you may pay {2}." + "If you do, <clause>."
+    const mayPayPair = sentence.match(/^(When(?:ever)? [^,]+), you may pay ((?:\{[^}]+\})+)$/i);
+    if (mayPayPair?.[1] && mayPayPair[2]) {
+      const head = parseTriggerHead(mayPayPair[1]);
+      const follow = sentences[index + 1]?.match(/^If you do, (.+)$/i);
+      const inner = follow?.[1] ? compileSimpleClause(follow[1].trim()) : null;
+      if (head && inner && !inner.leftover && inner.targetRequirements.length === 0) {
+        const { extraEvents: _skip, ...headRest } = head;
+        result.triggers.push({
+          ...headRest,
+          effects: [
+            {
+              kind: "may_pay",
+              playerId: "controller",
+              cost: mayPayPair[2],
+              effects: inner.effects,
+            },
+          ],
+          targetRequirements: [],
+        });
+        index += 1;
+        continue;
+      }
     }
 
     // Smothering Tithe: "…, that player may pay {2}." + "If they don't, <clause>."

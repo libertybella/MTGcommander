@@ -413,6 +413,8 @@ export type GameEffect =
   | { kind: "destroy_all"; what: DestroyAllScope }
   /** Rhystic Study: the payer chooses to pay or the effects happen. */
   | { kind: "unless_pays"; playerId: PlayerId; cost: string; effects: GameEffect[] }
+  /** "You may pay {N}. If you do, …" — paying causes the effects. */
+  | { kind: "may_pay"; playerId: PlayerId; cost: string; effects: GameEffect[] }
   /** Blasphemous Act: damage every creature (and optionally player) at once. */
   | {
       kind: "damage_all";
@@ -622,6 +624,7 @@ export type CardEffect =
     }
   | { kind: "destroy_all"; what: DestroyAllScope }
   | { kind: "unless_pays"; playerId: PlayerSelector; cost: string; effects: CardEffect[] }
+  | { kind: "may_pay"; playerId: PlayerSelector; cost: string; effects: CardEffect[] }
   | {
       kind: "damage_all";
       sourceId: CardInstanceId | "self" | null;
@@ -753,12 +756,16 @@ export type PendingPrompt =
       sourceId: CardInstanceId;
     }
   | {
-      /** Rhystic Study: pay `cost` or `thenEffects` happen. */
+      /**
+       * Rhystic Study: pay `cost` or `thenEffects` happen. With `whenPaid`,
+       * the polarity flips: paying causes the effects ("If you do, …").
+       */
       kind: "pay_or_effect";
       playerId: PlayerId;
       cost: string;
       thenEffects: GameEffect[];
       sourceId: CardInstanceId | null;
+      whenPaid?: boolean;
       resumeEffects?: GameEffect[];
     }
   | {

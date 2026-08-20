@@ -413,6 +413,45 @@ describe("creature-or-planeswalker removal", () => {
   });
 });
 
+describe("may-pay effects", () => {
+  it("compiles the ETB pay-to-draw pair and applies effects only when paid", () => {
+    const compiled = compileOracleCard({
+      oracleId: "maypay",
+      name: "Curious Obelisk",
+      manaCost: "{2}",
+      typeLine: "Artifact",
+      oracleText: "When Curious Obelisk enters, you may pay {2}. If you do, draw a card.",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+    });
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.triggers[0]?.effects[0]).toMatchObject({
+      kind: "may_pay",
+      cost: "{2}",
+    });
+
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game);
+    const prompted = applyEffect(game, {
+      kind: "may_pay",
+      playerId: p1.id,
+      cost: "{2}",
+      effects: [{ kind: "draw", playerId: p1.id, count: 1 }],
+    });
+    expect(prompted.prompts[0]?.kind).toBe("pay_or_effect");
+
+    const declined = applyAction(prompted, { kind: "resolve_pay", playerId: p1.id, pay: false });
+    expect(declined.players[0]?.zones.hand).toHaveLength(0);
+
+    prompted.players[0]!.mana.C = 2;
+    const paid = applyAction(prompted, { kind: "resolve_pay", playerId: p1.id, pay: true });
+    expect(paid.players[0]?.zones.hand).toHaveLength(1);
+    expect(paid.players[0]?.mana.C).toBe(0);
+  });
+});
+
 describe("wave 18: mixed removal and graveyard exile", () => {
   it("compiles Putrefy, Abrade, and Bojuka Bog cleanly", () => {
     const putrefy = compileOracleCard({

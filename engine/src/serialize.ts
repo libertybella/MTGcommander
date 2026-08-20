@@ -702,6 +702,7 @@ function parsePrompts(value: unknown, playerIds: Set<string>): PendingPrompt[] {
           entry.sourceId === undefined || entry.sourceId === null
             ? null
             : expectString(entry.sourceId, `prompts[${index}].sourceId`),
+        ...(entry.whenPaid === true ? { whenPaid: true } : {}),
         ...(resumeEffects && resumeEffects.length > 0 ? { resumeEffects } : {}),
       };
     }
@@ -1492,6 +1493,7 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
     case "destroy_all":
       return { kind, what: parseDestroyAllScope(value.what, `${label}.what`) };
     case "unless_pays":
+    case "may_pay":
       return {
         kind,
         playerId: parsePlayerSelector(value.playerId, `${label}.playerId`),
@@ -2167,7 +2169,7 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
   if (kind === "destroy_all") {
     return { kind, what: parseDestroyAllScope(value.what, `${label}.what`) };
   }
-  if (kind === "unless_pays") {
+  if (kind === "unless_pays" || kind === "may_pay") {
     return {
       kind,
       playerId: expectString(value.playerId, `${label}.playerId`),
