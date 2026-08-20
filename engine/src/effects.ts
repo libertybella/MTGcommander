@@ -1,6 +1,6 @@
 import { cloneGameState } from "./clone";
 import { createCardDefinition, createCardInstance } from "./createGame";
-import { hasSubtype, isCreature } from "./cardTypes";
+import { characteristicsOf, hasSubtype, isCreature, isLand } from "./cardTypes";
 import { createId } from "./ids";
 import { wouldSkipDraw } from "./derived";
 import { hasKeyword } from "./keywords";
@@ -20,6 +20,7 @@ import type {
   ChosenTarget,
   ChosenTargetRef,
   ContinuousEffectData,
+  EngineEvent,
   GameEffect,
   GameState,
   Keyword,
@@ -364,6 +365,13 @@ export function bindCardEffect(
       }
       return { kind: "team_pt_until_eot", playerId, power: effect.power, toughness: effect.toughness };
     }
+    case "team_keyword_until_eot": {
+      const playerId = bindPlayerSelector(state, effect.playerId, context);
+      if (!playerId) {
+        return null;
+      }
+      return { kind: "team_keyword_until_eot", playerId, keyword: effect.keyword };
+    }
     case "search_library": {
       const playerId = bindPlayerSelector(state, effect.playerId, context);
       if (!playerId) {
@@ -421,6 +429,8 @@ export function bindCardEffect(
         amount: effect.amount,
       };
     }
+    case "destroy_all":
+      return { kind: "destroy_all", what: effect.what };
     case "copy_token": {
       const ownerId = bindPlayerSelector(state, effect.ownerId, context);
       if (!ownerId) {
@@ -683,6 +693,16 @@ function applySetClassLevel(state: GameState, cardId: CardInstanceId, level: num
   return next;
 }
 
+/** "This spell can't be countered" (CR 608.2r); counter effects fizzle against it. */
+function cantBeCountered(state: GameState, stackObjectId: StackObjectId): boolean {
+  const entry = state.stack.find((object) => object.id === stackObjectId);
+  if (!entry || entry.kind !== "spell" || !entry.sourceId) {
+    return false;
+  }
+  const card = state.cards[entry.sourceId];
+  return Boolean(card && state.definitions[card.definitionId]?.cantBeCountered);
+}
+
 function applyCounterUnlessPays(
   state: GameState,
   stackObjectId: StackObjectId,
@@ -690,6 +710,9 @@ function applyCounterUnlessPays(
 ): GameState {
   const entry = state.stack.find((object) => object.id === stackObjectId);
   if (!entry) {
+    return state;
+  }
+  if (cantBeCountered(state, stackObjectId)) {
     return state;
   }
   const next = cloneGameState(state);
@@ -704,6 +727,9 @@ function applyCounterUnlessPays(
 }
 
 function applyCounterSpell(state: GameState, stackObjectId: StackObjectId): GameState {
+  if (cantBeCountered(state, stackObjectId)) {
+    return state;
+  }
   const next = cloneGameState(state);
   const index = next.stack.findIndex((entry) => entry.id === stackObjectId);
   if (index === -1) {
@@ -876,6 +902,27 @@ function applyTeamPtUntilEot(
   return pushUntilEotEffect(state, team, { kind: "modify_pt", power, toughness });
 }
 
+function applyTeamKeywordUntilEot(
+  state: GameState,
+  playerId: PlayerId,
+  keyword: Keyword,
+): GameState {
+  requirePlayer(state, playerId);
+  // CR 611.2c: the affected set locks in when the effect is created.
+  const team = Object.values(state.cards)
+    .filter(
+      (card) =>
+        card.zone === "battlefield" &&
+        card.controllerId === playerId &&
+        isCreature(state, card.id),
+    )
+    .map((card) => card.id);
+  if (team.length === 0) {
+    return state;
+  }
+  return pushUntilEotEffect(state, team, { kind: "grant_keyword", keyword });
+}
+
 function applySearchLibrary(
   state: GameState,
   effect: Extract<GameEffect, { kind: "search_library" }>,
@@ -1004,6 +1051,42 @@ function applyRevealZone(
   return next;
 }
 
+/** Board wipe (Wrath of God): destroy every matching permanent as one event batch. */
+function applyDestroyAll(
+  state: GameState,
+  what: Extract<GameEffect, { kind: "destroy_all" }>["what"],
+): GameState {
+  const next = cloneGameState(state);
+  const matches = (cardId: CardInstanceId): boolean => {
+    if (what === "creatures") {
+      return isCreature(next, cardId);
+    }
+    if (what === "nonland") {
+      return !isLand(next, cardId);
+    }
+    const types = characteristicsOf(next, cardId).types;
+    if (what === "artifacts") {
+      return types.includes("artifact");
+    }
+    if (what === "enchantments") {
+      return types.includes("enchantment");
+    }
+    return types.includes("planeswalker");
+  };
+  const doomed = Object.values(next.cards)
+    .filter((card) => card.zone === "battlefield" && matches(card.id))
+    .filter((card) => !hasKeyword(next, card.id, "indestructible"))
+    .map((card) => card.id);
+  const collectDies: EngineEvent[] = [];
+  for (const cardId of doomed) {
+    moveCardInPlace(next, cardId, "graveyard", { collectDies });
+  }
+  if (collectDies.length > 0) {
+    dispatchEventsInPlace(next, collectDies);
+  }
+  return next;
+}
+
 function applyChooseCardEffect(
   state: GameState,
   effect: Extract<GameEffect, { kind: "choose_card" }>,
@@ -1122,6 +1205,9 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
       case "team_pt_until_eot":
         next = applyTeamPtUntilEot(state, effect.playerId, effect.power, effect.toughness);
         break;
+      case "team_keyword_until_eot":
+        next = applyTeamKeywordUntilEot(state, effect.playerId, effect.keyword);
+        break;
       case "search_library":
         next = applySearchLibrary(state, effect);
         break;
@@ -1144,6 +1230,9 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
           effect.counter,
           effect.amount,
         );
+        break;
+      case "destroy_all":
+        next = applyDestroyAll(state, effect.what);
         break;
       case "amass":
         next = applyAmass(state, effect.playerId, effect.amount, effect.subtype);

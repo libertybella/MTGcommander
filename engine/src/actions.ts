@@ -2,6 +2,7 @@ import { declareAttackers, declareBlockers, lockRemainingBlockers, pendingBlocke
 import { abilitiesRemoved } from "./characteristicsEngine";
 import { isCommander, isCreature, isInstant, isInstantOrSorcery, isLand, isMainPhase } from "./cardTypes";
 import { cloneGameState } from "./clone";
+import { landDropAllowance } from "./derived";
 import { eliminatePlayerInPlace } from "./elimination";
 import { applyEffects, bindCardEffects } from "./effects";
 import { hasKeyword } from "./keywords";
@@ -280,8 +281,8 @@ function applyPlayLand(
   if (!player) {
     throw new Error(`Unknown player ${playerId}`);
   }
-  if (player.landsPlayedThisTurn >= 1) {
-    throw new Error("Already played a land this turn");
+  if (player.landsPlayedThisTurn >= landDropAllowance(faced, playerId)) {
+    throw new Error("No land drops remain this turn");
   }
 
   const next = moveCard(faced, cardId, "battlefield");

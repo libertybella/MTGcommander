@@ -39,6 +39,35 @@ export function wouldSkipDraw(state: GameState, playerId: string): boolean {
   });
 }
 
+/** CR 402.2: 7 unless a permanent removes the maximum. null means no maximum. */
+export function maxHandSizeOf(state: GameState, playerId: string): number | null {
+  const unlimited = Object.values(state.cards).some((card) => {
+    if (card.zone !== "battlefield" || card.controllerId !== playerId) {
+      return false;
+    }
+    if (abilitiesRemoved(state, card.id)) {
+      return false;
+    }
+    return state.definitions[card.definitionId]?.noMaxHandSize === true;
+  });
+  return unlimited ? null : 7;
+}
+
+/** CR 305.2: one land drop plus any extras granted by permanents (Exploration). */
+export function landDropAllowance(state: GameState, playerId: string): number {
+  let extra = 0;
+  for (const card of Object.values(state.cards)) {
+    if (card.zone !== "battlefield" || card.controllerId !== playerId) {
+      continue;
+    }
+    if (abilitiesRemoved(state, card.id)) {
+      continue;
+    }
+    extra += state.definitions[card.definitionId]?.extraLandDrops ?? 0;
+  }
+  return 1 + extra;
+}
+
 function controlledBattlefield(state: GameState, controllerId: string): CardInstance[] {
   return Object.values(state.cards).filter(
     (card) => card.zone === "battlefield" && card.controllerId === controllerId,
@@ -54,6 +83,16 @@ function unlessSatisfied(
   if (unless.kind === "other_lands") {
     const others = controlled.filter((entry) => entry.id !== card.id && isLand(state, entry.id));
     return others.length >= unless.count;
+  }
+  if (unless.kind === "other_lands_at_most") {
+    const others = controlled.filter((entry) => entry.id !== card.id && isLand(state, entry.id));
+    return others.length <= unless.count;
+  }
+  if (unless.kind === "opponents") {
+    const opponents = state.players.filter(
+      (player) => player.id !== card.controllerId && !player.lost,
+    );
+    return opponents.length >= unless.count;
   }
   if (unless.kind === "legendary_creature") {
     return controlled.some((entry) => isLegendary(state, entry.id) && isCreature(state, entry.id));

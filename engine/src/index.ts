@@ -184,6 +184,7 @@ export type {
   CombatAttack,
   CombatState,
   CardTrigger,
+  DestroyAllScope,
   EnterTappedUnless,
   GameAction,
   GameEffect,

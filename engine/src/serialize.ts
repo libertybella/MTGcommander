@@ -12,6 +12,7 @@ import type {
   CardTrigger,
   ChooseCardSource,
   ChosenTarget,
+  DestroyAllScope,
   EnterTappedUnless,
   GameAction,
   GameEffect,
@@ -307,6 +308,11 @@ export function parseGameState(json: string): GameState {
       imageUrl:
         def.imageUrl === undefined ? "" : expectString(def.imageUrl, "definition.imageUrl", true),
       ...(def.ward === undefined ? {} : { ward: expectNumber(def.ward, "definition.ward") }),
+      ...(def.noMaxHandSize === true ? { noMaxHandSize: true } : {}),
+      ...(def.extraLandDrops === undefined
+        ? {}
+        : { extraLandDrops: expectNumber(def.extraLandDrops, `definition.${id}.extraLandDrops`) }),
+      ...(def.cantBeCountered === true ? { cantBeCountered: true } : {}),
       ...(def.protectionFrom === undefined
         ? {}
         : {
@@ -703,9 +709,31 @@ function parseLookDestinations(value: unknown, label: string): LookDestination[]
   });
 }
 
-function parseCardFilter(value: unknown, label: string): "any" | "nonland" | "noncreature_nonland" {
+function parseDestroyAllScope(value: unknown, label: string): DestroyAllScope {
+  const scope = expectString(value, label);
+  if (
+    scope !== "creatures" &&
+    scope !== "artifacts" &&
+    scope !== "enchantments" &&
+    scope !== "planeswalkers" &&
+    scope !== "nonland"
+  ) {
+    throw new Error(`Invalid ${label}`);
+  }
+  return scope;
+}
+
+function parseCardFilter(
+  value: unknown,
+  label: string,
+): "any" | "land" | "nonland" | "noncreature_nonland" {
   const filter = expectString(value, label);
-  if (filter !== "any" && filter !== "nonland" && filter !== "noncreature_nonland") {
+  if (
+    filter !== "any" &&
+    filter !== "land" &&
+    filter !== "nonland" &&
+    filter !== "noncreature_nonland"
+  ) {
     throw new Error(`Invalid ${label}`);
   }
   return filter;
@@ -720,7 +748,7 @@ function parseChooseCardSources(value: unknown, label: string): ChooseCardSource
       throw new Error(`Invalid ${label}[${index}]`);
     }
     const zone = expectString(entry.zone, `${label}[${index}].zone`);
-    if (zone !== "hand" && zone !== "graveyard") {
+    if (zone !== "hand" && zone !== "graveyard" && zone !== "battlefield") {
       throw new Error(`Invalid ${label}[${index}].zone`);
     }
     return {
@@ -748,7 +776,7 @@ function parseBoundChooseSources(
       throw new Error(`${label}[${index}].playerId must be a player`);
     }
     const zone = expectString(entry.zone, `${label}[${index}].zone`);
-    if (zone !== "hand" && zone !== "graveyard") {
+    if (zone !== "hand" && zone !== "graveyard" && zone !== "battlefield") {
       throw new Error(`Invalid ${label}[${index}].zone`);
     }
     return {
@@ -889,6 +917,7 @@ function parseTargetRequirement(value: unknown, label: string): TargetRequiremen
     kind !== "creature" &&
     kind !== "own_creature" &&
     kind !== "permanent" &&
+    kind !== "creature_or_planeswalker" &&
     kind !== "nonartifact_creature" &&
     kind !== "player_or_creature" &&
     kind !== "spell" &&
@@ -1220,6 +1249,17 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
         power: expectNumber(value.power, `${label}.power`),
         toughness: expectNumber(value.toughness, `${label}.toughness`),
       };
+    case "team_keyword_until_eot": {
+      const keyword = expectString(value.keyword, `${label}.keyword`);
+      if (!KEYWORDS.has(keyword as Keyword)) {
+        throw new Error(`Invalid ${label}.keyword`);
+      }
+      return {
+        kind,
+        playerId: parsePlayerSelector(value.playerId, `${label}.playerId`),
+        keyword: keyword as Keyword,
+      };
+    }
     case "search_library":
       return {
         kind,
@@ -1268,6 +1308,8 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
         counter: expectString(value.counter, `${label}.counter`),
         amount: expectNumber(value.amount, `${label}.amount`),
       };
+    case "destroy_all":
+      return { kind, what: parseDestroyAllScope(value.what, `${label}.what`) };
     default:
       throw new Error(`Unknown effect kind ${kind}`);
   }
@@ -1469,9 +1511,9 @@ function parseEnterTappedUnless(value: unknown, label: string): EnterTappedUnles
     }
     return { kind, count };
   }
-  if (kind === "basic_lands") {
+  if (kind === "basic_lands" || kind === "other_lands_at_most" || kind === "opponents") {
     const count = expectNumber(value.count, `${label}.count`);
-    if (!Number.isInteger(count) || count <= 0) {
+    if (!Number.isInteger(count) || count < 0) {
       throw new Error(`Invalid ${label}.count`);
     }
     return { kind, count };
@@ -1828,6 +1870,17 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
       toughness: expectNumber(value.toughness, `${label}.toughness`),
     };
   }
+  if (kind === "team_keyword_until_eot") {
+    const keyword = expectString(value.keyword, `${label}.keyword`);
+    if (!KEYWORDS.has(keyword as Keyword)) {
+      throw new Error(`Invalid ${label}.keyword`);
+    }
+    return {
+      kind,
+      playerId: expectString(value.playerId, `${label}.playerId`),
+      keyword: keyword as Keyword,
+    };
+  }
   if (kind === "search_library") {
     return {
       kind,
@@ -1869,6 +1922,9 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
       counter: expectString(value.counter, `${label}.counter`),
       amount: expectNumber(value.amount, `${label}.amount`),
     };
+  }
+  if (kind === "destroy_all") {
+    return { kind, what: parseDestroyAllScope(value.what, `${label}.what`) };
   }
   throw new Error(`Unsupported resume effect ${kind}`);
 }

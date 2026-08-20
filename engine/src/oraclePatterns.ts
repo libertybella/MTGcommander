@@ -6,6 +6,7 @@ import type {
   CardTrigger,
   ChooseCardSource,
   Color,
+  DestroyAllScope,
   EnterTappedUnless,
   Keyword,
   LoyaltyAbility,
@@ -36,6 +37,9 @@ export type CompiledOracleText = {
   protectionFrom?: Color[];
   enchant?: "creature";
   loyaltyAbilities?: LoyaltyAbility[];
+  noMaxHandSize?: boolean;
+  extraLandDrops?: number;
+  cantBeCountered?: boolean;
   leftover: string[];
   notes: string[];
 };
@@ -218,6 +222,9 @@ function compileControlCondition(text: string): EnterTappedUnless | null {
   if (/^two or more other lands$/i.test(rest)) {
     return { kind: "other_lands", count: 2 };
   }
+  if (/^two or fewer other lands$/i.test(rest)) {
+    return { kind: "other_lands_at_most", count: 2 };
+  }
   if (/^two or more basic lands$/i.test(rest)) {
     return { kind: "basic_lands", count: 2 };
   }
@@ -232,6 +239,13 @@ function compileControlCondition(text: string): EnterTappedUnless | null {
 }
 
 function compileEntersTappedUnless(sentence: string): ReplacementEffect | null {
+  const crowd = sentence.match(/^~ enters tapped unless you have (two|three) or more opponents$/i);
+  if (crowd?.[1]) {
+    return {
+      kind: "enters_tapped_unless",
+      unless: { kind: "opponents", count: parseCount(crowd[1]) ?? 2 },
+    };
+  }
   const match = sentence.match(/^~ enters tapped unless you control (.+)$/i);
   if (!match?.[1]) {
     return null;
@@ -359,6 +373,37 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     return {
       targetRequirements: [],
       effects: [{ kind: "discard_unless_attacked", playerId: "controller", count: 1 }],
+    };
+  }
+
+  const wipe = sentence.match(
+    /^Destroy all (creatures|artifacts|enchantments|planeswalkers|nonland permanents|artifacts and enchantments)$/i,
+  );
+  if (wipe?.[1]) {
+    const named = wipe[1].toLowerCase();
+    const scopes: DestroyAllScope[] =
+      named === "artifacts and enchantments"
+        ? ["artifacts", "enchantments"]
+        : named === "nonland permanents"
+          ? ["nonland"]
+          : [named as DestroyAllScope];
+    return {
+      targetRequirements: [],
+      effects: scopes.map((what) => ({ kind: "destroy_all", what })),
+    };
+  }
+
+  if (/^return a land you control to its owner's hand$/i.test(sentence)) {
+    return {
+      targetRequirements: [],
+      effects: [
+        {
+          kind: "choose_card",
+          chooserId: "controller",
+          sources: [{ playerId: "controller", zone: "battlefield", filter: "land" }],
+          thenEffects: [{ kind: "move_card", cardId: "chosen_card", toZone: "hand" }],
+        },
+      ],
     };
   }
 
@@ -658,6 +703,13 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     };
   }
 
+  if (/^Destroy target creature or planeswalker$/i.test(sentence)) {
+    return {
+      targetRequirements: [{ kind: "creature_or_planeswalker" }],
+      effects: [{ kind: "move_card", cardId: { type: "chosen", index: 0 }, toZone: "graveyard" }],
+    };
+  }
+
   if (/^destroy target nonartifact creature$/i.test(sentence)) {
     return {
       targetRequirements: [{ kind: "nonartifact_creature" }],
@@ -866,6 +918,24 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
         },
       ],
     };
+  }
+
+  match = sentence.match(
+    /^Creatures you control gain ([a-z ]+?)(?: and ([a-z ]+?))? until end of turn$/i,
+  );
+  if (match?.[1]) {
+    const names = [match[1], match[2]].filter((name): name is string => Boolean(name));
+    const keywords = names.map((name) => KEYWORD_GRANTS[name.trim().toLowerCase()]);
+    if (keywords.every((keyword): keyword is Keyword => Boolean(keyword))) {
+      return {
+        targetRequirements: [],
+        effects: keywords.map((keyword) => ({
+          kind: "team_keyword_until_eot",
+          playerId: "controller",
+          keyword,
+        })),
+      };
+    }
   }
 
   match = sentence.match(/^Creatures you control get \+(\d+)\/\+(\d+)$/i);
@@ -1475,6 +1545,31 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
       continue;
     }
 
+    if (/^You have no maximum hand size$/i.test(sentence)) {
+      result.noMaxHandSize = true;
+      continue;
+    }
+
+    // Regeneration is not implemented, so the denial is inert on this table.
+    if (/^(?:They|It) can't be regenerated$/i.test(sentence)) {
+      continue;
+    }
+
+    const extraLands = sentence.match(
+      /^You may play (an|one|two|three) additional lands? on each of your turns$/i,
+    );
+    if (extraLands?.[1]) {
+      const count =
+        extraLands[1].toLowerCase() === "an" ? 1 : (parseCount(extraLands[1]) ?? 1);
+      result.extraLandDrops = (result.extraLandDrops ?? 0) + count;
+      continue;
+    }
+
+    if (/^This spell can't be countered$/i.test(sentence)) {
+      result.cantBeCountered = true;
+      continue;
+    }
+
     if (/^~ enters tapped$/i.test(sentence)) {
       result.replacements.push({ kind: "enters_tapped" });
       continue;
@@ -1667,6 +1762,14 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
         result.leftover.push(clause.leftover);
       }
       continue;
+    }
+
+    if (/^Activate only as a sorcery$/i.test(sentence) && result.activated.length > 0) {
+      const last = result.activated[result.activated.length - 1];
+      if (last && !last.timing) {
+        last.timing = "sorcery";
+        continue;
+      }
     }
 
     const pain = sentence.match(/^~ deals (\d+) damage to you$/i);

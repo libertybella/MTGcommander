@@ -231,6 +231,9 @@ function cardMatchesFilter(
   if (filter === "noncreature_nonland") {
     return !types.includes("land") && !types.includes("creature");
   }
+  if (filter === "land") {
+    return types.includes("land");
+  }
   return !types.includes("land");
 }
 

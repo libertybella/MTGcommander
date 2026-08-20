@@ -61,6 +61,9 @@ export function createCardDefinition(
         | "enchant"
         | "loyalty"
         | "loyaltyAbilities"
+        | "noMaxHandSize"
+        | "extraLandDrops"
+        | "cantBeCountered"
       >
     > & { colors?: Color[] },
 ): CardDefinition {
@@ -156,6 +159,11 @@ export function createCardDefinition(
           })),
         }
       : {}),
+    ...(input.noMaxHandSize ? { noMaxHandSize: true } : {}),
+    ...(input.extraLandDrops && input.extraLandDrops > 0
+      ? { extraLandDrops: input.extraLandDrops }
+      : {}),
+    ...(input.cantBeCountered ? { cantBeCountered: true } : {}),
     ...(input.otherFaceId ? { otherFaceId: input.otherFaceId } : {}),
     ...(input.layout && input.layout !== "normal" ? { layout: input.layout } : {}),
   };

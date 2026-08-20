@@ -3,6 +3,7 @@ import { abilitiesRemoved } from "./characteristicsEngine";
 import { hasKeyword } from "./keywords";
 import { emptyManaPool } from "./createGame";
 import { pendingBlockerPlayer } from "./combat";
+import { landDropAllowance } from "./derived";
 import { canPayManaCost, parseManaCost, type ParsedManaCost } from "./mana";
 import { manaAbilitiesOf, manaTapOptionsFor } from "./manaOptions";
 import { isMulliganOpen } from "./mulligan";
@@ -309,7 +310,10 @@ export function legalActions(state: GameState, playerId: PlayerId): LegalAction[
     for (const face of faceDefinitions(state, definition)) {
       const faceIsLand = face.definition.characteristics.types.includes("land");
       if (faceIsLand) {
-        if (inSorceryWindow(state, playerId) && player.landsPlayedThisTurn < 1) {
+        if (
+          inSorceryWindow(state, playerId) &&
+          player.landsPlayedThisTurn < landDropAllowance(state, playerId)
+        ) {
           actions.push({ kind: "play_land", cardId, faceIndex: face.faceIndex });
         }
         continue;

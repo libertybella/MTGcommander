@@ -1,4 +1,4 @@
-# Rules Coverage (Engine through Checkpoint 44)
+# Rules Coverage (Engine through Checkpoint 45)
 
 What the engine implements and what it intentionally does not. Tests are tagged with CR rule numbers; `docs/KEYWORD_COVERAGE.md` tracks the CR 702 keyword list. This is not a complete CR translation.
 
@@ -9,7 +9,7 @@ What the engine implements and what it intentionally does not. Tests are tagged 
 - **Priority is the MTGO/Arena model.** Per-seat stops (my turn / opponents' turns), `stops-only` vs `smart` yield (smart pauses only when `legalActions` says the seat could act — note this leaks "I have nothing"; stops-only is the default), and full control. Seat stops shrink the digital step-skip policy. APNAP simultaneous-trigger ordering with an `order_triggers` choice (CR 101.4, 603.3b).
 - **An event bus** dispatches enters, dies, attacks, step-begins, and gains-life events to watching triggers with scopes (self/controlled/any), subject filters, and exclude-self. Simultaneous SBA deaths dispatch as one batch, so dies-watchers that died together still see each other (CR 603.10a — the Blood Artist ruling).
 - **State-based actions** (CR 704): 0 life / commander damage / failed draw eliminate; 0 toughness and lethal or deathtouch damage destroy in the sweep (a pump can save a damaged creature); the legend rule keeps the newest copy (controller choice is a documented simplification); loose Auras die and Equipment detaches; zero-loyalty planeswalkers die; tokens cease to exist after their dies-triggers fire.
-- **Replacements**: skip-draw, enters-tapped families, shock-land life prompts, and Rest in Peace-style graveyard→exile (which suppresses dies triggers and applies to its own demise). Full CR 616 multi-replacement ordering choice is **not** implemented.
+- **Replacements**: skip-draw, enters-tapped families (including slow-land "two or fewer other lands" and crowd-land "two or more opponents" conditions), shock-land life prompts, and Rest in Peace-style graveyard→exile (which suppresses dies triggers and applies to its own demise). Full CR 616 multi-replacement ordering choice is **not** implemented.
 - **Casting**: modal "Choose one —" spells (one mode, per-mode targets), announced {X} (stored on the stack, readable by effects), divided damage validated to total X with illegal targets losing their share (CR 608.2b), Phyrexian pips paying mana or 2 life (CR 107.4f), hybrid pips, commander tax, flash timing.
 - **Targeting**: creatures/players/opponents/spells/creature- and noncreature-spells/own creatures/any permanent, variable "any number of targets", color exclusions ("nonblack"), shroud, hexproof, protection-from-colors (targeting + damage prevention + blocking), and ward {N} as a pay-or-countered pause. Targets recheck at resolution; empty means fizzle.
 - **Search** (CR 701.19): filtered library searches (supertype/type/subtype, any-of lists) to battlefield (tapped) / hand / graveyard with fail-to-find, shuffling on resolution; Cultivate-style split destinations; sacrifice-cost fetch lands resolving without a priority round.
@@ -17,6 +17,7 @@ What the engine implements and what it intentionally does not. Tests are tagged 
 - **Combat**: attack/damage two-step for first/double strike, trample, deathtouch (as an SBA), lifelink, evasion (flying/reach, menace, fear, intimidate, horsemanship, shadow, skulk), protection, can't-attack/block/be-blocked restrictions, commander damage.
 - **Keywords implemented**: 20 of the CR 702 list as engine keywords, plus parameterized ward and protection — see `docs/KEYWORD_COVERAGE.md`.
 - **Mana**: pools, hybrid, Phyrexian, {X}, multi-mana any-one-color abilities (Gilded Lotus), pain lands, color pickers, and an Arena-style auto-tapper (`autoTapPlan`) the client uses before casts and activations.
+- **Turn structure extras**: the cleanup step discards down to maximum hand size (CR 514.1), suspended by "no maximum hand size" permanents; land-drop allowance sums "additional land" statics (Exploration); "Activate only as a sorcery" riders and "This spell can't be countered" are honored; Karoo bounce lands prompt for the land to return.
 
 ## The card pipeline (Stage 6)
 
@@ -38,7 +39,7 @@ What the engine implements and what it intentionally does not. Tests are tagged 
 - CR 616 replacement-ordering choice; damage prevention/redirection shields; token-doubling replacements (Anointed Procession).
 - Casting face-down (morph); adventures/split cards; sagas; day/night automation (transform exists as an effect).
 - Damage-assignment order is blocker-list order; attack requirements ("must attack") and cost-to-attack effects.
-- Landwalk and other parameterized evasion; poison/infect; hand-size cleanup discard; damage-dealt triggers (Curiosity).
+- Landwalk and other parameterized evasion; poison/infect; damage-dealt triggers (Curiosity).
 - Old-templating X spells (original Fireball's surcharge); commander color identity is not enforced.
 - Loyalty abilities are once per turn per walker; combat damage cannot yet be redirected to planeswalkers.
 - Manual override remains for everything above — its per-game usage count is the coverage metric.

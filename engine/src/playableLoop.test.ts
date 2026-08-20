@@ -96,7 +96,7 @@ describe("playable loop: land play", () => {
     const original = structuredClone(afterFirst);
     expect(() =>
       applyAction(afterFirst, { kind: "play_land", playerId: p1.id, cardId: second.id }),
-    ).toThrow(/Already played a land/);
+    ).toThrow(/No land drops remain/);
     expect(afterFirst).toEqual(original);
   });
 

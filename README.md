@@ -18,7 +18,7 @@ This is **not** Wizards of the Coast software. It is also **not** the sibling Bi
 | **Next** | Private alpha (invite friends, play complete games) |
 | **Tests** | 490 passing, plus 500-game fuzz burn-ins gating each checkpoint |
 | **Compile rate** | 82% of a 60-card real-staple sample compiles fully (CI floor 80%) |
-| **Installer** | Not yet. Run from source with Electron. |
+| **Installer** | `npm run dist` builds a one-click Windows installer (`release/BizzyMTG Commander Setup 0.1.0.exe`). |
 
 ---
 
@@ -41,6 +41,7 @@ Dev UI is on **http://localhost:5175**. Electron should open a window titled **B
 | `npm run typecheck` | TypeScript |
 | `npm run lint` | oxlint |
 | `npm run build` | Production client + Electron bundles |
+| `npm run dist` | Windows NSIS installer in `release/` |
 
 ---
 
@@ -103,7 +104,7 @@ Do these before inviting friends:
 3. Give testers: Tailscale/LAN, port **8787**, room code, how to import a deck, how to Override.
 4. Keep a bug list (GitHub Issues is fine). Track which cards needed override.
 
-**Not required for this alpha:** installer, animations, full English parser, accounts, cloud hosting, legal/productization.
+**Not required for this alpha:** animations, full English parser, accounts, cloud hosting, legal/productization. (An installer exists now — `npm run dist` — but running from source is fine too.)
 
 ---
 

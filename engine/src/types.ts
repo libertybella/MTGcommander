@@ -122,6 +122,12 @@ export type CardDefinition = {
   loyaltyAbilities?: LoyaltyAbility[];
   /** "Choose one —" spells: cast picks exactly one mode (CR 700.2). */
   modes?: SpellMode[];
+  /** "You have no maximum hand size" while this permanent is on the battlefield. */
+  noMaxHandSize?: boolean;
+  /** Additional land drops granted each of the controller's turns (Exploration). */
+  extraLandDrops?: number;
+  /** "This spell can't be countered" (Abrupt Decay). */
+  cantBeCountered?: boolean;
   /** Scryfall card image, if known. Empty for synthetic / hidden cards. */
   imageUrl: string;
   /** Linked opposite face for modal DFCs and transforming cards. */
@@ -276,17 +282,17 @@ export type SearchFilter = {
 
 export type SearchDestination = "hand" | "battlefield" | "graveyard";
 
-export type CardFilter = "any" | "nonland" | "noncreature_nonland";
+export type CardFilter = "any" | "land" | "nonland" | "noncreature_nonland";
 
 export type ChooseCardSource = {
   playerId: PlayerSelector;
-  zone: "hand" | "graveyard";
+  zone: "hand" | "graveyard" | "battlefield";
   filter: CardFilter;
 };
 
 export type BoundChooseCardSource = {
   playerId: PlayerId;
-  zone: "hand" | "graveyard";
+  zone: "hand" | "graveyard" | "battlefield";
   filter: CardFilter;
 };
 
@@ -352,6 +358,7 @@ export type GameEffect =
   | { kind: "pt_until_eot"; cardId: CardInstanceId; power: number; toughness: number }
   | { kind: "keyword_until_eot"; cardId: CardInstanceId; keyword: Keyword }
   | { kind: "team_pt_until_eot"; playerId: PlayerId; power: number; toughness: number }
+  | { kind: "team_keyword_until_eot"; playerId: PlayerId; keyword: Keyword }
   | {
       kind: "search_library";
       playerId: PlayerId;
@@ -369,7 +376,12 @@ export type GameEffect =
       playerId: PlayerId;
       counter: string;
       amount: number;
-    };
+    }
+  /** Board wipes: destroy every battlefield permanent of the scope at once. */
+  | { kind: "destroy_all"; what: DestroyAllScope };
+
+/** What a "Destroy all …" wipe hits. */
+export type DestroyAllScope = "creatures" | "artifacts" | "enchantments" | "planeswalkers" | "nonland";
 
 export type EffectTarget =
   | { type: "player"; playerId: PlayerId }
@@ -381,6 +393,7 @@ export type TargetKind =
   | "creature"
   | "own_creature"
   | "permanent"
+  | "creature_or_planeswalker"
   | "nonartifact_creature"
   | "player_or_creature"
   | "spell"
@@ -500,6 +513,7 @@ export type CardEffect =
   | { kind: "pt_until_eot"; cardId: CardIdSelector; power: number; toughness: number }
   | { kind: "keyword_until_eot"; cardId: CardIdSelector; keyword: Keyword }
   | { kind: "team_pt_until_eot"; playerId: PlayerSelector; power: number; toughness: number }
+  | { kind: "team_keyword_until_eot"; playerId: PlayerSelector; keyword: Keyword }
   | {
       kind: "search_library";
       playerId: PlayerSelector;
@@ -517,7 +531,8 @@ export type CardEffect =
       playerId: PlayerSelector;
       counter: string;
       amount: number;
-    };
+    }
+  | { kind: "destroy_all"; what: DestroyAllScope };
 
 export type Keyword =
   | "flying"
@@ -664,9 +679,13 @@ export type PendingPrompt =
 
 export type EnterTappedUnless =
   | { kind: "other_lands"; count: number }
+  /** "unless you control N or fewer other lands" (slow lands inverted). */
+  | { kind: "other_lands_at_most"; count: number }
   | { kind: "legendary_creature" }
   | { kind: "controlled_types"; types: string[] }
-  | { kind: "basic_lands"; count: number };
+  | { kind: "basic_lands"; count: number }
+  /** "unless you have N or more opponents" (Battlebond crowd lands). */
+  | { kind: "opponents"; count: number };
 
 export type ActivatedAbility = {
   /** True when the cost includes {T}. */

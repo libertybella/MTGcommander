@@ -6,7 +6,7 @@ import {
   ensureCombatInPlace,
 } from "./combat";
 import { applyEffect } from "./effects";
-import { wouldSkipDraw } from "./derived";
+import { maxHandSizeOf, wouldSkipDraw } from "./derived";
 import { emptyManaPoolsInPlace } from "./mana";
 import { livingPlayers, nextLivingPlayerId } from "./players";
 import { applyStateBasedActionsInPlace } from "./status";
@@ -128,6 +128,21 @@ function onEnterStep(state: GameState): GameState {
     return state;
   }
   if (state.turn.step === "cleanup") {
+    // CR 514.1: the active player discards down to maximum hand size.
+    const active = state.players.find((player) => player.id === state.turn.activePlayerId);
+    if (active && !active.lost) {
+      const max = maxHandSizeOf(state, active.id);
+      const handCount = Object.values(state.cards).filter(
+        (card) => card.zone === "hand" && card.ownerId === active.id,
+      ).length;
+      if (max !== null && handCount > max) {
+        state.prompts.push({
+          kind: "choose_discard",
+          playerId: active.id,
+          count: handCount - max,
+        });
+      }
+    }
     clearDamageInPlace(state);
     clearCombatFlagsInPlace(state);
     // CR 514.2: "until end of turn" effects end during cleanup.

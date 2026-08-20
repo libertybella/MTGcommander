@@ -192,6 +192,9 @@ function compileOneFace(card: OracleCard, definitionId: string): OracleCompileRe
       ? { protectionFrom: compiled.protectionFrom }
       : {}),
     ...(compiled.enchant ? { enchant: compiled.enchant } : {}),
+    ...(compiled.noMaxHandSize ? { noMaxHandSize: true } : {}),
+    ...(compiled.extraLandDrops ? { extraLandDrops: compiled.extraLandDrops } : {}),
+    ...(compiled.cantBeCountered ? { cantBeCountered: true } : {}),
     ...(compiled.loyaltyAbilities && compiled.loyaltyAbilities.length > 0
       ? { loyaltyAbilities: compiled.loyaltyAbilities }
       : {}),

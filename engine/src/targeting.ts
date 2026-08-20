@@ -1,4 +1,4 @@
-import { characteristicsOf, isCreature } from "./cardTypes";
+import { characteristicsOf, isCreature, isPlaneswalker } from "./cardTypes";
 import { hasKeyword } from "./keywords";
 import { isLiving, livingPlayers } from "./players";
 import type {
@@ -153,6 +153,22 @@ export function isChosenTargetLegal(
       !isArtifactPermanent(state, target.cardId)
     );
   }
+  if (requirement.kind === "creature_or_planeswalker") {
+    if (target.type !== "creature") {
+      return false;
+    }
+    const permanentLegal = isChosenTargetLegal(
+      state,
+      { kind: "permanent" },
+      target,
+      casterId,
+      sourceColors,
+    );
+    return (
+      permanentLegal &&
+      (isCreature(state, target.cardId) || isPlaneswalker(state, target.cardId))
+    );
+  }
   if (requirement.kind === "spell") {
     return target.type === "spell" && isLegalSpellTarget(state, target.stackObjectId);
   }
@@ -263,7 +279,7 @@ export function legalChoicesForRequirement(
         choice.type === "creature" && state.cards[choice.cardId]?.controllerId === casterId,
     );
   }
-  if (requirement.kind === "permanent") {
+  if (requirement.kind === "permanent" || requirement.kind === "creature_or_planeswalker") {
     const choices: ChosenTarget[] = [];
     for (const player of livingPlayers(state)) {
       for (const cardId of player.zones.battlefield) {
