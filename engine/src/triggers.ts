@@ -202,6 +202,12 @@ function triggerMatchesEvent(
   trigger: CardTrigger,
   event: EngineEvent,
 ): boolean {
+  if (event.kind === "gains_life") {
+    return trigger.event === "you_gain_life" && watcher.controllerId === event.playerId;
+  }
+  if (trigger.event === "you_gain_life") {
+    return false;
+  }
   if (event.kind === "step_begins") {
     if (trigger.event !== "upkeep" && trigger.event !== "end_step") {
       return false;

@@ -673,10 +673,12 @@ function parseSearchFilter(value: unknown, label: string): SearchFilter {
   const supertypes = parseStringList(value.supertypes, `${label}.supertypes`);
   const types = parseStringList(value.types, `${label}.types`);
   const subtypes = parseStringList(value.subtypes, `${label}.subtypes`);
+  const subtypesAny = parseStringList(value.subtypesAny, `${label}.subtypesAny`);
   return {
     ...(supertypes.length > 0 ? { supertypes } : {}),
     ...(types.length > 0 ? { types } : {}),
     ...(subtypes.length > 0 ? { subtypes } : {}),
+    ...(subtypesAny.length > 0 ? { subtypesAny } : {}),
   };
 }
 
@@ -886,6 +888,7 @@ function parseTargetRequirement(value: unknown, label: string): TargetRequiremen
     kind !== "opponent" &&
     kind !== "creature" &&
     kind !== "own_creature" &&
+    kind !== "permanent" &&
     kind !== "nonartifact_creature" &&
     kind !== "player_or_creature" &&
     kind !== "spell" &&
@@ -894,7 +897,26 @@ function parseTargetRequirement(value: unknown, label: string): TargetRequiremen
   ) {
     throw new Error(`Invalid ${label}.kind`);
   }
-  return { kind, ...(value.variable === true ? { variable: true } : {}) };
+  const excludeColors =
+    value.excludeColors === undefined
+      ? []
+      : (() => {
+          if (!Array.isArray(value.excludeColors)) {
+            throw new Error(`Invalid ${label}.excludeColors`);
+          }
+          return value.excludeColors.map((entry, index) => {
+            const color = expectString(entry, `${label}.excludeColors[${index}]`);
+            if (!(COLOR_KEYS as readonly string[]).includes(color)) {
+              throw new Error(`Invalid ${label}.excludeColors[${index}]`);
+            }
+            return color as Color;
+          });
+        })();
+  return {
+    kind,
+    ...(value.variable === true ? { variable: true } : {}),
+    ...(excludeColors.length > 0 ? { excludeColors } : {}),
+  };
 }
 
 function parseTargetRequirements(value: unknown, label: string): TargetRequirement[] {
@@ -931,14 +953,15 @@ function parsePlayerSelector(value: unknown, label: string): PlayerSelector {
   if (!isRecord(value)) {
     throw new Error(`Invalid ${label}`);
   }
-  if (expectString(value.type, `${label}.type`) !== "chosen") {
+  const type = expectString(value.type, `${label}.type`);
+  if (type !== "chosen" && type !== "chosen_controller") {
     throw new Error(`Invalid ${label}.type`);
   }
   const index = expectNumber(value.index, `${label}.index`);
   if (!Number.isInteger(index) || index < 0) {
     throw new Error(`Invalid ${label}.index`);
   }
-  return { type: "chosen", index };
+  return { type, index };
 }
 
 function parsePartialMana(value: unknown, label: string): Partial<ManaPool> {
@@ -1238,6 +1261,13 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
         playerId: parsePlayerSelector(value.playerId, `${label}.playerId`),
         count: expectNumber(value.count, `${label}.count`),
       };
+    case "counter_on_controlled_creatures":
+      return {
+        kind,
+        playerId: parsePlayerSelector(value.playerId, `${label}.playerId`),
+        counter: expectString(value.counter, `${label}.counter`),
+        amount: expectNumber(value.amount, `${label}.amount`),
+      };
     default:
       throw new Error(`Unknown effect kind ${kind}`);
   }
@@ -1300,6 +1330,9 @@ function parseActivatedAbilities(value: unknown, label: string): ActivatedAbilit
       ...(entry.zone === "hand" ? { zone: "hand" as const } : {}),
       ...(entry.discard === true ? { discard: true } : {}),
       ...(entry.sacrificeSelf === true ? { sacrificeSelf: true } : {}),
+      ...(entry.lifeCost === undefined
+        ? {}
+        : { lifeCost: expectNumber(entry.lifeCost, `${label}[${index}].lifeCost`) }),
       ...(entry.timing === "sorcery" ? { timing: "sorcery" as const } : {}),
     };
   });
@@ -1478,10 +1511,26 @@ function parseEffectSelector(value: unknown, label: string): EffectSelector {
   }
   const types = parseStringList(value.types, `${label}.types`);
   const subtypes = parseStringList(value.subtypes, `${label}.subtypes`);
+  const colors =
+    value.colors === undefined
+      ? []
+      : (() => {
+          if (!Array.isArray(value.colors)) {
+            throw new Error(`Invalid ${label}.colors`);
+          }
+          return value.colors.map((entry, index) => {
+            const color = expectString(entry, `${label}.colors[${index}]`);
+            if (!(COLOR_KEYS as readonly string[]).includes(color)) {
+              throw new Error(`Invalid ${label}.colors[${index}]`);
+            }
+            return color as Color;
+          });
+        })();
   return {
     scope,
     ...(types.length > 0 ? { types } : {}),
     ...(subtypes.length > 0 ? { subtypes } : {}),
+    ...(colors.length > 0 ? { colors } : {}),
   };
 }
 
@@ -1521,6 +1570,14 @@ function parseContinuousEffectData(value: unknown, label: string): ContinuousEff
   }
   if (kind === "remove_all_abilities") {
     return { kind };
+  }
+  if (kind === "restrict") {
+    return {
+      kind,
+      ...(value.cantAttack === true ? { cantAttack: true } : {}),
+      ...(value.cantBlock === true ? { cantBlock: true } : {}),
+      ...(value.cantBeBlocked === true ? { cantBeBlocked: true } : {}),
+    };
   }
   if (kind === "set_pt" || kind === "modify_pt") {
     return {
@@ -1622,6 +1679,9 @@ function parseManaAbilities(value: unknown, label: string): ManaAbility[] {
         entry.damageToController === undefined
           ? 0
           : expectNumber(entry.damageToController, `${label}[${index}].damageToController`),
+      ...(entry.count === undefined
+        ? {}
+        : { count: expectNumber(entry.count, `${label}[${index}].count`) }),
     };
   });
 }
@@ -1800,6 +1860,14 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
       kind,
       playerId: expectString(value.playerId, `${label}.playerId`),
       count: expectNumber(value.count, `${label}.count`),
+    };
+  }
+  if (kind === "counter_on_controlled_creatures") {
+    return {
+      kind,
+      playerId: expectString(value.playerId, `${label}.playerId`),
+      counter: expectString(value.counter, `${label}.counter`),
+      amount: expectNumber(value.amount, `${label}.amount`),
     };
   }
   throw new Error(`Unsupported resume effect ${kind}`);

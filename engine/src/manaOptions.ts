@@ -38,6 +38,10 @@ export function manaAbilitiesOf(definition: CardDefinition): ManaAbility[] {
   return [];
 }
 
+export function manaAbilityAmount(ability: ManaAbility): number {
+  return ability.count && ability.count > 0 ? ability.count : 1;
+}
+
 export function manaTapOptionsFor(ability: ManaAbility): ManaColor[] | null {
   if (ability.producesAnyColor) {
     return [...COLOR_PIPS];

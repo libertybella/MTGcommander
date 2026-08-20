@@ -270,6 +270,8 @@ export type SearchFilter = {
   supertypes?: string[];
   types?: string[];
   subtypes?: string[];
+  /** "a Plains, Island, Swamp, or Mountain card": any listed subtype matches. */
+  subtypesAny?: string[];
 };
 
 export type SearchDestination = "hand" | "battlefield" | "graveyard";
@@ -361,7 +363,13 @@ export type GameEffect =
   | { kind: "attach"; cardId: CardInstanceId; toId: CardInstanceId }
   | { kind: "transform"; cardId: CardInstanceId }
   | { kind: "copy_token"; ownerId: PlayerId; ofCardId: CardInstanceId }
-  | { kind: "manifest"; playerId: PlayerId; count: number };
+  | { kind: "manifest"; playerId: PlayerId; count: number }
+  | {
+      kind: "counter_on_controlled_creatures";
+      playerId: PlayerId;
+      counter: string;
+      amount: number;
+    };
 
 export type EffectTarget =
   | { type: "player"; playerId: PlayerId }
@@ -372,6 +380,7 @@ export type TargetKind =
   | "opponent"
   | "creature"
   | "own_creature"
+  | "permanent"
   | "nonartifact_creature"
   | "player_or_creature"
   | "spell"
@@ -382,6 +391,8 @@ export type TargetRequirement = {
   kind: TargetKind;
   /** "any number of targets": 1..N chosen targets all matching this kind. */
   variable?: boolean;
+  /** "target nonblack creature": these colors are illegal. */
+  excludeColors?: Color[];
 };
 
 /** One bullet of a modal spell. Targets are chosen for the picked mode only. */
@@ -412,7 +423,9 @@ export type CardIdSelector = CardInstanceId | ChosenTargetRef;
  * Targeted spells use ChosenTargetRef instead of next_opponent.
  */
 export type RelativePlayer = "controller" | "next_opponent" | "each_opponent";
-export type PlayerSelector = PlayerId | RelativePlayer | ChosenTargetRef;
+/** The controller of the Nth chosen target (Beast Within). */
+export type ChosenControllerRef = { type: "chosen_controller"; index: number };
+export type PlayerSelector = PlayerId | RelativePlayer | ChosenTargetRef | ChosenControllerRef;
 
 export type CardEffectTarget =
   | { type: "player"; playerId: PlayerSelector }
@@ -498,7 +511,13 @@ export type CardEffect =
   | { kind: "attach"; cardId: CardIdSelector; toId: ChosenTargetRef | CardInstanceId }
   | { kind: "transform"; cardId: CardIdSelector }
   | { kind: "copy_token"; ownerId: PlayerSelector; ofCardId: ChosenTargetRef | CardInstanceId }
-  | { kind: "manifest"; playerId: PlayerSelector; count: number };
+  | { kind: "manifest"; playerId: PlayerSelector; count: number }
+  | {
+      kind: "counter_on_controlled_creatures";
+      playerId: PlayerSelector;
+      counter: string;
+      amount: number;
+    };
 
 export type Keyword =
   | "flying"
@@ -528,7 +547,8 @@ export type TriggerEvent =
   | "dies"
   | "attacks"
   | "upkeep"
-  | "end_step";
+  | "end_step"
+  | "you_gain_life";
 
 export type CardTrigger = {
   event: TriggerEvent;
@@ -553,7 +573,8 @@ export type EngineEvent =
   | { kind: "enters"; cardId: CardInstanceId }
   | { kind: "dies"; cardId: CardInstanceId; controllerId: PlayerId }
   | { kind: "attacks"; cardId: CardInstanceId }
-  | { kind: "step_begins"; step: Step };
+  | { kind: "step_begins"; step: Step }
+  | { kind: "gains_life"; playerId: PlayerId };
 
 /** One triggered ability waiting to be put on the stack. */
 export type TriggerCandidate = {
@@ -660,6 +681,8 @@ export type ActivatedAbility = {
   discard?: boolean;
   /** True when the cost includes sacrificing this permanent (fetch lands). */
   sacrificeSelf?: boolean;
+  /** Life paid as part of the cost (Doom Whisperer). */
+  lifeCost?: number;
   /** Class level-up is a sorcery-speed class ability. */
   timing?: "any" | "sorcery";
 };
@@ -678,6 +701,8 @@ export type ManaAbility = {
   producesOptions: ManaColor[];
   producesAnyColor: boolean;
   damageToController: number;
+  /** Gilded Lotus: how much of the chosen color one tap adds (default 1). */
+  count?: number;
 };
 
 /**
@@ -691,6 +716,8 @@ export type EffectSelector = {
   scope: "self" | "controlled" | "all" | "attached";
   types?: string[];
   subtypes?: string[];
+  /** Any listed color must be present ("White creatures you control"). */
+  colors?: Color[];
 };
 
 /** What a continuous effect does, in CR 613 layer order (derived from kind). */
@@ -699,6 +726,13 @@ export type ContinuousEffectData =
   | { kind: "set_colors"; colors: Color[] } // layer 5
   | { kind: "grant_keyword"; keyword: Keyword } // layer 6
   | { kind: "remove_all_abilities" } // layer 6
+  | {
+      // layer 6: combat restrictions (Pacifism, Whispersilk Cloak).
+      kind: "restrict";
+      cantAttack?: boolean;
+      cantBlock?: boolean;
+      cantBeBlocked?: boolean;
+    }
   | { kind: "set_pt"; power: number; toughness: number } // layer 7b
   | { kind: "modify_pt"; power: number; toughness: number }; // layer 7c
 

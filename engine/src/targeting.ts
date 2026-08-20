@@ -1,4 +1,4 @@
-import { isCreature } from "./cardTypes";
+import { characteristicsOf, isCreature } from "./cardTypes";
 import { hasKeyword } from "./keywords";
 import { isLiving, livingPlayers } from "./players";
 import type {
@@ -43,6 +43,18 @@ function isLegalCreatureTarget(
     }
   }
   return true;
+}
+
+function violatesColorExclusion(
+  state: GameState,
+  cardId: CardInstanceId,
+  requirement: TargetRequirement,
+): boolean {
+  if (!requirement.excludeColors || requirement.excludeColors.length === 0) {
+    return false;
+  }
+  const colors = characteristicsOf(state, cardId).colors;
+  return requirement.excludeColors.some((color) => colors.includes(color));
 }
 
 /** Colors of a spell or ability source, for protection checks. */
@@ -97,7 +109,8 @@ export function isChosenTargetLegal(
   if (requirement.kind === "creature") {
     return (
       target.type === "creature" &&
-      isLegalCreatureTarget(state, target.cardId, casterId, sourceColors)
+      isLegalCreatureTarget(state, target.cardId, casterId, sourceColors) &&
+      !violatesColorExclusion(state, target.cardId, requirement)
     );
   }
   if (requirement.kind === "own_creature") {
@@ -106,6 +119,32 @@ export function isChosenTargetLegal(
       isLegalCreatureTarget(state, target.cardId, casterId, sourceColors) &&
       state.cards[target.cardId]?.controllerId === casterId
     );
+  }
+  if (requirement.kind === "permanent") {
+    if (target.type !== "creature") {
+      return false;
+    }
+    const card = state.cards[target.cardId];
+    if (!card || card.zone !== "battlefield") {
+      return false;
+    }
+    if (hasKeyword(state, target.cardId, "shroud")) {
+      return false;
+    }
+    if (
+      casterId &&
+      hasKeyword(state, target.cardId, "hexproof") &&
+      casterId !== card.controllerId
+    ) {
+      return false;
+    }
+    if (sourceColors && sourceColors.length > 0) {
+      const protection = state.definitions[card.definitionId]?.protectionFrom ?? [];
+      if (protection.some((color) => sourceColors.includes(color))) {
+        return false;
+      }
+    }
+    return true;
   }
   if (requirement.kind === "nonartifact_creature") {
     return (
@@ -223,6 +262,18 @@ export function legalChoicesForRequirement(
       (choice) =>
         choice.type === "creature" && state.cards[choice.cardId]?.controllerId === casterId,
     );
+  }
+  if (requirement.kind === "permanent") {
+    const choices: ChosenTarget[] = [];
+    for (const player of livingPlayers(state)) {
+      for (const cardId of player.zones.battlefield) {
+        const choice: ChosenTarget = { type: "creature", cardId };
+        if (isChosenTargetLegal(state, requirement, choice, casterId)) {
+          choices.push(choice);
+        }
+      }
+    }
+    return choices;
   }
   if (requirement.kind === "nonartifact_creature") {
     return legalCreatureTargets(state, casterId).filter(

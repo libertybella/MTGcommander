@@ -10,12 +10,13 @@ import { isPromptOpen, legalIdsForChooseSources } from "./prompt";
 import { applyStateBasedActionsInPlace } from "./status";
 import { isChosenTargetLegal, sourceColorsOf } from "./targeting";
 import { amassArmyTemplate } from "./tokens";
-import { queueEnterBattlefieldTriggersInPlace } from "./triggers";
+import { dispatchEventsInPlace, queueEnterBattlefieldTriggersInPlace } from "./triggers";
 import { countCardPlacements, enterOwnerZone, moveCard, moveCardInPlace } from "./zones";
 import type {
   CardEffect,
   CardIdSelector,
   CardInstanceId,
+  ChosenControllerRef,
   ChosenTarget,
   ChosenTargetRef,
   ContinuousEffectData,
@@ -50,6 +51,13 @@ function bindPlayerSelector(
   context: BindEffectContext,
 ): PlayerId | null {
   if (typeof selector === "object") {
+    if (selector.type === "chosen_controller") {
+      const chosen = chosenTargetAt(context, selector.index, state);
+      if (!chosen || chosen.type !== "creature") {
+        return null;
+      }
+      return state.cards[chosen.cardId]?.controllerId ?? null;
+    }
     const chosen = chosenTargetAt(context, selector.index, state);
     if (!chosen || chosen.type !== "player") {
       return null;
@@ -59,7 +67,11 @@ function bindPlayerSelector(
   return bindPlayer(state, selector, context.controllerId);
 }
 
-function bindPlayer(state: GameState, selector: Exclude<PlayerSelector, ChosenTargetRef>, controllerId: PlayerId): PlayerId {
+function bindPlayer(
+  state: GameState,
+  selector: Exclude<PlayerSelector, ChosenTargetRef | ChosenControllerRef>,
+  controllerId: PlayerId,
+): PlayerId {
   if (selector === "controller") {
     return controllerId;
   }
@@ -397,6 +409,18 @@ export function bindCardEffect(
       }
       return { kind: "manifest", playerId, count: effect.count };
     }
+    case "counter_on_controlled_creatures": {
+      const playerId = bindPlayerSelector(state, effect.playerId, context);
+      if (!playerId) {
+        return null;
+      }
+      return {
+        kind: "counter_on_controlled_creatures",
+        playerId,
+        counter: effect.counter,
+        amount: effect.amount,
+      };
+    }
     case "copy_token": {
       const ownerId = bindPlayerSelector(state, effect.ownerId, context);
       if (!ownerId) {
@@ -471,6 +495,7 @@ function applyGainLife(state: GameState, playerId: PlayerId, amount: number): Ga
   const next = cloneGameState(state);
   requirePlayer(next, playerId).life += amount;
   next.log.push({ kind: "life_change", playerId, delta: amount });
+  dispatchEventsInPlace(next, [{ kind: "gains_life", playerId }]);
   return next;
 }
 
@@ -926,6 +951,23 @@ function applyCopyToken(
   return next;
 }
 
+function applyCounterOnControlledCreatures(
+  state: GameState,
+  playerId: PlayerId,
+  counter: string,
+  amount: number,
+): GameState {
+  requirePositiveInteger(amount, "counter amount");
+  requirePlayer(state, playerId);
+  const next = cloneGameState(state);
+  for (const card of Object.values(next.cards)) {
+    if (card.zone === "battlefield" && card.controllerId === playerId && isCreature(next, card.id)) {
+      card.counters[counter] = (card.counters[counter] ?? 0) + amount;
+    }
+  }
+  return next;
+}
+
 function applyManifest(state: GameState, playerId: PlayerId, count: number): GameState {
   requirePositiveInteger(count, "manifest count");
   requirePlayer(state, playerId);
@@ -1094,6 +1136,14 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
         break;
       case "manifest":
         next = applyManifest(state, effect.playerId, effect.count);
+        break;
+      case "counter_on_controlled_creatures":
+        next = applyCounterOnControlledCreatures(
+          state,
+          effect.playerId,
+          effect.counter,
+          effect.amount,
+        );
         break;
       case "amass":
         next = applyAmass(state, effect.playerId, effect.amount, effect.subtype);

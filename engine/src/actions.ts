@@ -6,7 +6,7 @@ import { eliminatePlayerInPlace } from "./elimination";
 import { applyEffects, bindCardEffects } from "./effects";
 import { hasKeyword } from "./keywords";
 import { canPayManaCost, parseManaCost, payManaCost, tapCard, tapForMana } from "./mana";
-import { canTapForMana, manaAbilitiesOf, manaTapOptionsFor } from "./manaOptions";
+import { canTapForMana, manaAbilityAmount, manaAbilitiesOf, manaTapOptionsFor } from "./manaOptions";
 import { createId } from "./ids";
 import { isLiving, livingPlayerCount, requireLiving } from "./players";
 import { passPriority, putActivatedAbilityOnStack, putSpellOnStack, resolveTopOfStack } from "./stack";
@@ -427,7 +427,7 @@ function applyTapForMana(
     if (!color || !options.includes(color)) {
       throw new Error("Choose a mana color");
     }
-    addition = { [color]: 1 };
+    addition = { [color]: manaAbilityAmount(ability) };
   } else {
     addition = ability.produces;
   }
@@ -508,7 +508,15 @@ function applyActivateAbility(
   if (!canPayManaCost(player.mana, cost)) {
     throw new Error("Cannot pay mana cost");
   }
+  if (ability.lifeCost && player.life < ability.lifeCost) {
+    throw new Error("Cannot pay that much life");
+  }
   let next = payManaCost(state, playerId, cost);
+  if (ability.lifeCost && ability.lifeCost > 0) {
+    const payer = next.players.find((entry) => entry.id === playerId)!;
+    payer.life -= ability.lifeCost;
+    next.log.push({ kind: "life_change", playerId, delta: -ability.lifeCost });
+  }
   if (ability.tap) {
     next = tapCard(next, cardId);
   }

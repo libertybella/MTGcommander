@@ -1,0 +1,885 @@
+{
+ "fetchedAt": "2026-08-20",
+ "source": "api.scryfall.com/cards/collection",
+ "cards": [
+  {
+   "object": "card",
+   "oracle_id": "6ad8011d-3471-4369-9d68-b264cc027487",
+   "id": "91fdb56b-54d5-4272-8319-505ff987fe9b",
+   "name": "Sol Ring",
+   "layout": "normal",
+   "mana_cost": "{1}",
+   "type_line": "Artifact",
+   "oracle_text": "{T}: Add {C}{C}.",
+   "keywords": [],
+   "colors": []
+  },
+  {
+   "object": "card",
+   "oracle_id": "0bc7f093-bef0-4f1a-852c-4b75ebf54838",
+   "id": "1cad1bd2-7c56-4ce0-99a6-b2a49c1288dd",
+   "name": "Arcane Signet",
+   "layout": "normal",
+   "mana_cost": "{2}",
+   "type_line": "Artifact",
+   "oracle_text": "{T}: Add one mana of any color in your commander's color identity.",
+   "keywords": [],
+   "colors": []
+  },
+  {
+   "object": "card",
+   "oracle_id": "0895c9b7-ae7d-4bb3-af17-3b75deb50a25",
+   "id": "0548fb60-c843-4f8f-a029-6f10efc63a41",
+   "name": "Command Tower",
+   "layout": "normal",
+   "mana_cost": "",
+   "type_line": "Land",
+   "oracle_text": "{T}: Add one mana of any color in your commander's color identity.",
+   "keywords": [],
+   "colors": []
+  },
+  {
+   "object": "card",
+   "oracle_id": "cc187110-1148-4090-bbb8-e205694a39f5",
+   "id": "4f616706-ec97-4923-bb1e-11a69fbaa1f8",
+   "name": "Counterspell",
+   "layout": "normal",
+   "mana_cost": "{U}{U}",
+   "type_line": "Instant",
+   "oracle_text": "Counter target spell.",
+   "keywords": [],
+   "colors": [
+    "U"
+   ]
+  },
+  {
+   "object": "card",
+   "oracle_id": "b1544f21-7e98-461b-aed5-e748b0168c52",
+   "id": "b4e9c870-23c0-413a-ae39-265f09da16d1",
+   "name": "Swords to Plowshares",
+   "layout": "normal",
+   "mana_cost": "{W}",
+   "type_line": "Instant",
+   "oracle_text": "Exile target creature. Its controller gains life equal to its power.",
+   "keywords": [],
+   "colors": [
+    "W"
+   ]
+  },
+  {
+   "object": "card",
+   "oracle_id": "8b755881-a72d-4e21-a369-d2924eb4585a",
+   "id": "e60deb92-f7dd-4f4e-9036-e47dd586f985",
+   "name": "Cultivate",
+   "layout": "normal",
+   "mana_cost": "{2}{G}",
+   "type_line": "Sorcery",
+   "oracle_text": "Search your library for up to two basic land cards, reveal those cards, put one onto the battlefield tapped and the other into your hand, then shuffle.",
+   "keywords": [],
+   "colors": [
+    "G"
+   ]
+  },
+  {
+   "object": "card",
+   "oracle_id": "4457ed35-7c10-48c8-9776-456485fdf070",
+   "id": "7673784e-db4b-43a1-8d55-1bb9fc1e284f",
+   "name": "Lightning Bolt",
+   "layout": "normal",
+   "mana_cost": "{R}",
+   "type_line": "Instant",
+   "oracle_text": "Lightning Bolt deals 3 damage to any target.",
+   "keywords": [],
+   "colors": [
+    "R"
+   ]
+  },
+  {
+   "object": "card",
+   "oracle_id": "a75445d3-1303-4bb5-89ad-26ea93fecd48",
+   "id": "c0318a48-30e4-4ef7-be3d-5e561c5ce428",
+   "name": "Evolving Wilds",
+   "layout": "normal",
+   "mana_cost": "",
+   "type_line": "Land",
+   "oracle_text": "{T}, Sacrifice this land: Search your library for a basic land card, put it onto the battlefield tapped, then shuffle.",
+   "keywords": [],
+   "colors": []
+  },
+  {
+   "object": "card",
+   "oracle_id": "5748ebf1-24e3-499d-ab7c-c2cebd462a24",
+   "id": "fd1f95bf-48ea-455a-8a6c-0249b11c8900",
+   "name": "Giant Growth",
+   "layout": "normal",
+   "mana_cost": "{G}",
+   "type_line": "Instant",
+   "oracle_text": "Target creature gets +3/+3 until end of turn.",
+   "keywords": [],
+   "colors": [
+    "G"
+   ]
+  },
+  {
+   "object": "card",
+   "oracle_id": "33d405ea-7a9a-4970-b70f-9c05d90dd6f0",
+   "id": "34c3a894-ee75-4db9-a69f-711bb3cc150a",
+   "name": "Duress",
+   "layout": "normal",
+   "mana_cost": "{B}",
+   "type_line": "Sorcery",
+   "oracle_text": "Target opponent reveals their hand. You choose a noncreature, nonland card from it. That player discards that card.",
+   "keywords": [],
+   "colors": [
+    "B"
+   ]
+  },
+  {
+   "object": "card",
+   "oracle_id": "3407fe41-fdd3-4119-8f70-4bc4590a379f",
+   "id": "52d58fe4-6070-4022-9cd7-c35a11b44525",
+   "name": "Negate",
+   "layout": "normal",
+   "mana_cost": "{1}{U}",
+   "type_line": "Instant",
+   "oracle_text": "Counter target noncreature spell.",
+   "keywords": [],
+   "colors": [
+    "U"
+   ]
+  },
+  {
+   "object": "card",
+   "oracle_id": "310f141c-7f37-4729-aed6-dd9c09db448d",
+   "id": "b5275d76-2947-4219-be21-614c7421614a",
+   "name": "Blood Artist",
+   "layout": "normal",
+   "mana_cost": "{1}{B}",
+   "type_line": "Creature — Vampire",
+   "oracle_text": "Whenever this creature or another creature dies, target player loses 1 life and you gain 1 life.",
+   "power": "0",
+   "toughness": "1",
+   "keywords": [],
+   "colors": [
+    "B"
+   ]
+  },
+  {
+   "object": "card",
+   "oracle_id": "f3fad295-1af2-4ecc-8546-b121ad6be27b",
+   "id": "d96266b3-a7cb-40ce-a328-ac13719fe5f0",
+   "name": "Soul Warden",
+   "layout": "normal",
+   "mana_cost": "{W}",
+   "type_line": "Creature — Human Cleric",
+   "oracle_text": "Whenever another creature enters, you gain 1 life.",
+   "power": "1",
+   "toughness": "1",
+   "keywords": [],
+   "colors": [
+    "W"
+   ]
+  },
+  {
+   "object": "card",
+   "oracle_id": "087f9ad7-e74f-40e2-8102-1ed2925d0418",
+   "id": "d108c2b1-236e-4b8d-8445-d9749ccc4fea",
+   "name": "Rest in Peace",
+   "layout": "normal",
+   "mana_cost": "{1}{W}",
+   "type_line": "Enchantment",
+   "oracle_text": "When this enchantment enters, exile all graveyards.\nIf a card or token would be put into a graveyard from anywhere, exile it instead.",
+   "keywords": [],
+   "colors": [
+    "W"
+   ]
+  },
+  {
+   "object": "card",
+   "oracle_id": "d64b0848-0193-4025-ba62-63ecd8fb9f50",
+   "id": "8dd4374f-0301-4b2e-bc99-2cd19568cb3b",
+   "name": "Spell Pierce",
+   "layout": "normal",
+   "mana_cost": "{U}",
+   "type_line": "Instant",
+   "oracle_text": "Counter target noncreature spell unless its controller pays {2}.",
+   "keywords": [],
+   "colors": [
+    "U"
+   ]
+  },
+  {
+   "object": "card",
+   "oracle_id": "ba3aa1eb-722a-47d3-83be-96daddb50265",
+   "id": "a0c7f341-c61e-491d-850a-221c6a57ac64",
+   "name": "Crystalline Sliver",
+   "layout": "normal",
+   "mana_cost": "{W}{U}",
+   "type_line": "Creature — Sliver",
+   "oracle_text": "All Slivers have shroud. (They can't be the targets of spells or abilities.)",
+   "power": "2",
+   "toughness": "2",
+   "keywords": [],
+   "colors": [
+    "U",
+    "W"
+   ]
+  },
+  {
+   "object": "card",
+   "oracle_id": "59e7f2ae-4535-4191-98be-3e65b6b2befa",
+   "id": "5dcd0c4e-4047-47a2-8969-c62616d457c2",
+   "name": "Doom Blade",
+   "layout": "normal",
+   "mana_cost": "{1}{B}",
+   "type_line": "Instant",
+   "oracle_text": "Destroy target nonblack creature.",
+   "keywords": [],
+   "colors": [
+    "B"
+   ]
+  },
+  {
+   "object": "card",
+   "oracle_id": "273b339c-964b-4a18-8eb5-ceb8abcdfd9e",
+   "id": "cb3b35b8-f321-46d8-a441-6b9a6efa9021",
+   "name": "Divination",
+   "layout": "normal",
+   "mana_cost": "{2}{U}",
+   "type_line": "Sorcery",
+   "oracle_text": "Draw two cards.",
+   "keywords": [],
+   "colors": [
+    "U"
+   ]
+  },
+  {
+   "object": "card",
+   "oracle_id": "711eea87-0fa3-46e0-a42b-fa5a86455f04",
+   "id": "702c4781-670b-49ae-b511-90ed119841b0",
+   "name": "Shivan Dragon",
+   "layout": "normal",
+   "mana_cost": "{4}{R}{R}",
+   "type_line": "Creature — Dragon",
+   "oracle_text": "Flying\n{R}: This creature gets +1/+0 until end of turn.",
+   "power": "5",
+   "toughness": "5",
+   "keywords": [
+    "Flying"
+   ],
+   "colors": [
+    "R"
+   ]
+  },
+  {
+   "object": "card",
+   "oracle_id": "4b7ac066-e5c7-43e6-9e7e-2739b24a905d",
+   "id": "b8c5e74c-96e7-4a1f-93b7-14d776fe4b2d",
+   "name": "Serra Angel",
+   "layout": "normal",
+   "mana_cost": "{3}{W}{W}",
+   "type_line": "Creature — Angel",
+   "oracle_text": "Flying\nVigilance (Attacking doesn't cause this creature to tap.)",
+   "power": "4",
+   "toughness": "4",
+   "keywords": [
+    "Flying",
+    "Vigilance"
+   ],
+   "colors": [
+    "W"
+   ]
+  },
+  {
+   "object": "card",
+   "oracle_id": "7735eeba-693b-47e2-bd51-414379cf1016",
+   "id": "400b43aa-c1d2-4435-b863-061f43889422",
+   "name": "Beast Within",
+   "layout": "normal",
+   "mana_cost": "{2}{G}",
+   "type_line": "Instant",
+   "oracle_text": "Destroy target permanent. Its controller creates a 3/3 green Beast creature token.",
+   "keywords": [],
+   "colors": [
+    "G"
+   ]
+  },
+  {
+   "object": "card",
+   "oracle_id": "8539f295-5d58-4436-a73a-b9277c4c7795",
+   "id": "b7c47024-5e08-4b17-b41a-7647f8b814b9",
+   "name": "Rampant Growth",
+   "layout": "normal",
+   "mana_cost": "{1}{G}",
+   "type_line": "Sorcery",
+   "oracle_text": "Search your library for a basic land card, put that card onto the battlefield tapped, then shuffle.",
+   "keywords": [],
+   "colors": [
+    "G"
+   ]
+  },
+  {
+   "object": "card",
+   "oracle_id": "1bd3e453-aa21-4ee6-95c2-d6d920ee8e7a",
+   "id": "a81f924b-0527-4311-8120-9bfff71524f6",
+   "name": "Terramorphic Expanse",
+   "layout": "normal",
+   "mana_cost": "",
+   "type_line": "Land",
+   "oracle_text": "{T}, Sacrifice this land: Search your library for a basic land card, put it onto the battlefield tapped, then shuffle.",
+   "keywords": [],
+   "colors": []
+  },
+  {
+   "object": "card",
+   "oracle_id": "9a02a9a7-39d9-4763-85d3-747a0540b60b",
+   "id": "28e619e6-ecc1-49c3-8fa9-ce42becdb9ba",
+   "name": "Gilded Lotus",
+   "layout": "normal",
+   "mana_cost": "{5}",
+   "type_line": "Artifact",
+   "oracle_text": "{T}: Add three mana of any one color.",
+   "keywords": [],
+   "colors": []
+  },
+  {
+   "object": "card",
+   "oracle_id": "c97361b5-af16-4a7b-af85-a429dbaf4ad2",
+   "id": "b30a8f92-ce42-4b27-a893-bcf97fde228d",
+   "name": "Mind Stone",
+   "layout": "normal",
+   "mana_cost": "{2}",
+   "type_line": "Artifact",
+   "oracle_text": "{T}: Add {C}.\n{1}, {T}, Sacrifice this artifact: Draw a card.",
+   "keywords": [],
+   "colors": []
+  },
+  {
+   "object": "card",
+   "oracle_id": "938b4e2c-88d9-4637-bc00-e228920c9a78",
+   "id": "2c249609-9cf7-46f1-b94c-9329add966bb",
+   "name": "Murder",
+   "layout": "normal",
+   "mana_cost": "{1}{B}{B}",
+   "type_line": "Instant",
+   "oracle_text": "Destroy target creature.",
+   "keywords": [],
+   "colors": [
+    "B"
+   ]
+  },
+  {
+   "object": "card",
+   "oracle_id": "7d00fb28-ea6c-49a9-b4af-ffb38860a9a7",
+   "id": "475bff39-220a-4490-9c2e-d311e306a6db",
+   "name": "Cancel",
+   "layout": "normal",
+   "mana_cost": "{1}{U}{U}",
+   "type_line": "Instant",
+   "oracle_text": "Counter target spell.",
+   "keywords": [],
+   "colors": [
+    "U"
+   ]
+  },
+  {
+   "object": "card",
+   "oracle_id": "46665089-aa3d-44c3-964d-6638dfbb5782",
+   "id": "32840097-0531-4c43-b6a8-e76c17420b04",
+   "name": "Essence Scatter",
+   "layout": "normal",
+   "mana_cost": "{1}{U}",
+   "type_line": "Instant",
+   "oracle_text": "Counter target creature spell.",
+   "keywords": [],
+   "colors": [
+    "U"
+   ]
+  },
+  {
+   "object": "card",
+   "oracle_id": "a9d288b8-cdc1-4e55-a0c9-d6edfc95e65d",
+   "id": "b23900fb-efe9-43ab-9f67-4545dd01fb9c",
+   "name": "Shock",
+   "layout": "normal",
+   "mana_cost": "{R}",
+   "type_line": "Instant",
+   "oracle_text": "Shock deals 2 damage to any target.",
+   "keywords": [],
+   "colors": [
+    "R"
+   ]
+  },
+  {
+   "object": "card",
+   "oracle_id": "aa7714b0-2bfb-458a-8ebf-37ec2c53383e",
+   "id": "df45a43e-a5b7-4fd4-873b-7b3c021be198",
+   "name": "Fireball",
+   "layout": "normal",
+   "mana_cost": "{X}{R}",
+   "type_line": "Sorcery",
+   "oracle_text": "This spell costs {1} more to cast for each target beyond the first.\nFireball deals X damage divided evenly, rounded down, among any number of targets.",
+   "keywords": [],
+   "colors": [
+    "R"
+   ]
+  },
+  {
+   "object": "card",
+   "oracle_id": "f7518456-45ed-41d4-bd3c-5aacea28eb35",
+   "id": "2edd7be9-9334-4684-b642-1aaf2000e054",
+   "name": "Jump",
+   "layout": "normal",
+   "mana_cost": "{U}",
+   "type_line": "Instant",
+   "oracle_text": "Target creature gains flying until end of turn.",
+   "keywords": [],
+   "colors": [
+    "U"
+   ]
+  },
+  {
+   "object": "card",
+   "oracle_id": "837182db-1bf3-4a2c-bd01-1af9d9873561",
+   "id": "2815d8e6-3668-4b9d-abe6-eca6a500707d",
+   "name": "Unsummon",
+   "layout": "normal",
+   "mana_cost": "{U}",
+   "type_line": "Instant",
+   "oracle_text": "Return target creature to its owner's hand.",
+   "keywords": [],
+   "colors": [
+    "U"
+   ]
+  },
+  {
+   "object": "card",
+   "oracle_id": "713332c1-5bd8-400f-bfff-c1ca0697a043",
+   "id": "bbc99a51-1501-4525-a3cc-f48249b64bed",
+   "name": "Opt",
+   "layout": "normal",
+   "mana_cost": "{U}",
+   "type_line": "Instant",
+   "oracle_text": "Scry 1. (Look at the top card of your library. You may put that card on the bottom.)\nDraw a card.",
+   "keywords": [
+    "Scry"
+   ],
+   "colors": [
+    "U"
+   ]
+  },
+  {
+   "object": "card",
+   "oracle_id": "c6207f6a-a624-4754-88f5-dbe700c841ff",
+   "id": "b89d9372-8682-4a61-a003-8bccfbb6cbb4",
+   "name": "Sign in Blood",
+   "layout": "normal",
+   "mana_cost": "{B}{B}",
+   "type_line": "Sorcery",
+   "oracle_text": "Target player draws two cards and loses 2 life.",
+   "keywords": [],
+   "colors": [
+    "B"
+   ]
+  },
+  {
+   "object": "card",
+   "oracle_id": "7ffae8f8-3006-4969-a339-6d30678f87ea",
+   "id": "e8399c2e-ecc8-41c9-a690-a0eeafb27f77",
+   "name": "Night's Whisper",
+   "layout": "normal",
+   "mana_cost": "{1}{B}",
+   "type_line": "Sorcery",
+   "oracle_text": "You draw two cards and lose 2 life.",
+   "keywords": [],
+   "colors": [
+    "B"
+   ]
+  },
+  {
+   "object": "card",
+   "oracle_id": "68954295-54e3-4303-a6bc-fc4547a4e3a3",
+   "id": "6a0b230b-d391-4998-a3f7-7b158a0ec2cd",
+   "name": "Llanowar Elves",
+   "layout": "normal",
+   "mana_cost": "{G}",
+   "type_line": "Creature — Elf Druid",
+   "oracle_text": "{T}: Add {G}.",
+   "power": "1",
+   "toughness": "1",
+   "keywords": [],
+   "colors": [
+    "G"
+   ]
+  },
+  {
+   "object": "card",
+   "oracle_id": "d3a0b660-358c-41bd-9cd2-41fbf3491b1a",
+   "id": "492c2f9a-51e7-4e0f-9899-23bf43ea988b",
+   "name": "Birds of Paradise",
+   "layout": "normal",
+   "mana_cost": "{G}",
+   "type_line": "Creature — Bird",
+   "oracle_text": "Flying\n{T}: Add one mana of any color.",
+   "power": "0",
+   "toughness": "1",
+   "keywords": [
+    "Flying"
+   ],
+   "colors": [
+    "G"
+   ]
+  },
+  {
+   "object": "card",
+   "oracle_id": "14c8f55d-d177-4c25-a931-ebeb9e6062a0",
+   "id": "409f9b88-f03e-40b6-9883-68c14c37c0de",
+   "name": "Grizzly Bears",
+   "layout": "normal",
+   "mana_cost": "{1}{G}",
+   "type_line": "Creature — Bear",
+   "oracle_text": "",
+   "power": "2",
+   "toughness": "2",
+   "keywords": [],
+   "colors": [
+    "G"
+   ]
+  },
+  {
+   "object": "card",
+   "oracle_id": "7744bae4-a8b7-44a5-9b4c-0048ad4cc448",
+   "id": "a27efec0-40c4-48bc-a21a-3af28a6529b5",
+   "name": "Air Elemental",
+   "layout": "normal",
+   "mana_cost": "{3}{U}{U}",
+   "type_line": "Creature — Elemental",
+   "oracle_text": "Flying",
+   "power": "4",
+   "toughness": "4",
+   "keywords": [
+    "Flying"
+   ],
+   "colors": [
+    "U"
+   ]
+  },
+  {
+   "object": "card",
+   "oracle_id": "4a01db2e-cd43-4b1a-a480-169018f82501",
+   "id": "e8aabcaf-0968-402f-bc9f-289756e4d4b7",
+   "name": "Doom Whisperer",
+   "layout": "normal",
+   "mana_cost": "{3}{B}{B}",
+   "type_line": "Creature — Nightmare Demon",
+   "oracle_text": "Flying, trample\nPay 2 life: Surveil 2. (Look at the top two cards of your library, then put any number of them into your graveyard and the rest on top of your library in any order.)",
+   "power": "6",
+   "toughness": "6",
+   "keywords": [
+    "Flying",
+    "Surveil",
+    "Trample"
+   ],
+   "colors": [
+    "B"
+   ]
+  },
+  {
+   "object": "card",
+   "oracle_id": "79f94050-d850-41ca-b1db-5ae0cf743f0a",
+   "id": "cc63cd97-de9e-4d31-babb-aaad1277169e",
+   "name": "Temple of Epiphany",
+   "layout": "normal",
+   "mana_cost": "",
+   "type_line": "Land",
+   "oracle_text": "This land enters tapped.\nWhen this land enters, scry 1. (Look at the top card of your library. You may put that card on the bottom.)\n{T}: Add {U} or {R}.",
+   "keywords": [
+    "Scry"
+   ],
+   "colors": []
+  },
+  {
+   "object": "card",
+   "oracle_id": "04b7362d-0490-4cb0-b5d7-2a7732f659ce",
+   "id": "55b5b094-9d2d-4d96-b90c-78fecdae725a",
+   "name": "Bojuka Bog",
+   "layout": "normal",
+   "mana_cost": "",
+   "type_line": "Land",
+   "oracle_text": "This land enters tapped.\nWhen this land enters, exile target player's graveyard.\n{T}: Add {B}.",
+   "keywords": [],
+   "colors": []
+  },
+  {
+   "object": "card",
+   "oracle_id": "c23e5b80-08d2-4e24-9908-fe2aa4f30f6f",
+   "id": "e2a27742-08c1-4153-af7f-25a7a98f585e",
+   "name": "Reliquary Tower",
+   "layout": "normal",
+   "mana_cost": "",
+   "type_line": "Land",
+   "oracle_text": "You have no maximum hand size.\n{T}: Add {C}.",
+   "keywords": [],
+   "colors": []
+  },
+  {
+   "object": "card",
+   "oracle_id": "9ad4f730-a18e-4a7c-a468-a926c718c741",
+   "id": "a3f31ac4-09ca-4712-a311-50d28824bfad",
+   "name": "Whispersilk Cloak",
+   "layout": "normal",
+   "mana_cost": "{3}",
+   "type_line": "Artifact — Equipment",
+   "oracle_text": "Equipped creature can't be blocked and has shroud. (It can't be the target of spells or abilities.)\nEquip {2}",
+   "keywords": [
+    "Equip"
+   ],
+   "colors": []
+  },
+  {
+   "object": "card",
+   "oracle_id": "dba35ac5-7ad3-488a-a006-6b9a1d54eea5",
+   "id": "13eeff85-9e4a-46c9-841f-f3b1c556ef18",
+   "name": "Loxodon Warhammer",
+   "layout": "normal",
+   "mana_cost": "{3}",
+   "type_line": "Artifact — Equipment",
+   "oracle_text": "Equipped creature gets +3/+0 and has trample and lifelink.\nEquip {3}",
+   "keywords": [
+    "Equip"
+   ],
+   "colors": []
+  },
+  {
+   "object": "card",
+   "oracle_id": "5f5e0b10-c8cf-450c-bfd3-bcb0528ec330",
+   "id": "433eed50-81af-4a59-b624-57b6f5f1bb0f",
+   "name": "Pacifism",
+   "layout": "normal",
+   "mana_cost": "{1}{W}",
+   "type_line": "Enchantment — Aura",
+   "oracle_text": "Enchant creature\nEnchanted creature can't attack or block.",
+   "keywords": [
+    "Enchant"
+   ],
+   "colors": [
+    "W"
+   ]
+  },
+  {
+   "object": "card",
+   "oracle_id": "9d2d6479-531c-4ce1-b52b-00e36fa63b64",
+   "id": "86d6b411-4a31-4bfc-8dd6-e19f553bb29b",
+   "name": "Rancor",
+   "layout": "normal",
+   "mana_cost": "{G}",
+   "type_line": "Enchantment — Aura",
+   "oracle_text": "Enchant creature\nEnchanted creature gets +2/+0 and has trample.\nWhen this Aura is put into a graveyard from the battlefield, return it to its owner's hand.",
+   "keywords": [
+    "Enchant"
+   ],
+   "colors": [
+    "G"
+   ]
+  },
+  {
+   "object": "card",
+   "oracle_id": "223fa044-d387-4884-bf4e-75f1b61c6a46",
+   "id": "c5a0be10-c20f-4ac0-89a5-1770ecf48aad",
+   "name": "Curiosity",
+   "layout": "normal",
+   "mana_cost": "{U}",
+   "type_line": "Enchantment — Aura",
+   "oracle_text": "Enchant creature\nWhenever enchanted creature deals damage to an opponent, you may draw a card.",
+   "keywords": [
+    "Enchant"
+   ],
+   "colors": [
+    "U"
+   ]
+  },
+  {
+   "object": "card",
+   "oracle_id": "95e94dea-5ac0-4d6f-adec-ca147aee861f",
+   "id": "222c1a68-e34c-4103-b1be-17d4ceaef6ce",
+   "name": "Ajani's Pridemate",
+   "layout": "normal",
+   "mana_cost": "{1}{W}",
+   "type_line": "Creature — Cat Soldier",
+   "oracle_text": "Whenever you gain life, put a +1/+1 counter on this creature.",
+   "power": "2",
+   "toughness": "2",
+   "keywords": [],
+   "colors": [
+    "W"
+   ]
+  },
+  {
+   "object": "card",
+   "oracle_id": "eb4188bb-62df-4309-bde1-f66318fe2f05",
+   "id": "650a6831-c352-4ca7-9f8f-43ea99a1cf33",
+   "name": "Honor of the Pure",
+   "layout": "normal",
+   "mana_cost": "{1}{W}",
+   "type_line": "Enchantment",
+   "oracle_text": "White creatures you control get +1/+1.",
+   "keywords": [],
+   "colors": [
+    "W"
+   ]
+  },
+  {
+   "object": "card",
+   "oracle_id": "e3886fe8-9b76-4613-8891-4ec74657c087",
+   "id": "17d154d3-7ae5-43ff-9978-d974285e2c89",
+   "name": "Glorious Anthem",
+   "layout": "normal",
+   "mana_cost": "{1}{W}{W}",
+   "type_line": "Enchantment",
+   "oracle_text": "Creatures you control get +1/+1.",
+   "keywords": [],
+   "colors": [
+    "W"
+   ]
+  },
+  {
+   "object": "card",
+   "oracle_id": "7246d45b-2185-4cdd-981b-5419b7d52bce",
+   "id": "9a52c265-6920-4929-ba0a-70da08df01f1",
+   "name": "Anointed Procession",
+   "layout": "normal",
+   "mana_cost": "{3}{W}",
+   "type_line": "Enchantment",
+   "oracle_text": "If an effect would create one or more tokens under your control, it creates twice that many of those tokens instead.",
+   "keywords": [],
+   "colors": [
+    "W"
+   ]
+  },
+  {
+   "object": "card",
+   "oracle_id": "cc65ac73-5bef-4ecb-ad8e-39199084c027",
+   "id": "5296e353-2efc-4d72-a877-7957eff630b9",
+   "name": "Cathars' Crusade",
+   "layout": "normal",
+   "mana_cost": "{3}{W}{W}",
+   "type_line": "Enchantment",
+   "oracle_text": "Whenever a creature you control enters, put a +1/+1 counter on each creature you control.",
+   "keywords": [],
+   "colors": [
+    "W"
+   ]
+  },
+  {
+   "object": "card",
+   "oracle_id": "495e52e6-4c2b-4574-9474-eadbdcc8b4ac",
+   "id": "c1aac0f5-1d01-4673-b8d3-878d9a1d423c",
+   "name": "Farseek",
+   "layout": "normal",
+   "mana_cost": "{1}{G}",
+   "type_line": "Sorcery",
+   "oracle_text": "Search your library for a Plains, Island, Swamp, or Mountain card, put it onto the battlefield tapped, then shuffle.",
+   "keywords": [],
+   "colors": [
+    "G"
+   ]
+  },
+  {
+   "object": "card",
+   "oracle_id": "1593ea18-2f2f-4ab4-83fb-6ccc0bec8a90",
+   "id": "90c423cc-1264-4067-9c50-e7c88c68ef2d",
+   "name": "Kodama's Reach",
+   "layout": "normal",
+   "mana_cost": "{2}{G}",
+   "type_line": "Sorcery — Arcane",
+   "oracle_text": "Search your library for up to two basic land cards, reveal those cards, put one onto the battlefield tapped and the other into your hand, then shuffle.",
+   "keywords": [],
+   "colors": [
+    "G"
+   ]
+  },
+  {
+   "object": "card",
+   "oracle_id": "a0abd957-01a0-4aa9-8fc8-0e6840d21606",
+   "id": "8de3fdf8-d55e-4ffc-8f8b-6314d4d467ce",
+   "name": "Explosive Vegetation",
+   "layout": "normal",
+   "mana_cost": "{3}{G}",
+   "type_line": "Sorcery",
+   "oracle_text": "Search your library for up to two basic land cards, put them onto the battlefield tapped, then shuffle.",
+   "keywords": [],
+   "colors": [
+    "G"
+   ]
+  },
+  {
+   "object": "card",
+   "oracle_id": "974f788a-039f-4310-a2fe-16b14a1e2d35",
+   "id": "cab69fbd-0179-4b02-adba-71d2a0eeea5c",
+   "name": "Skyscanner",
+   "layout": "normal",
+   "mana_cost": "{3}",
+   "type_line": "Artifact Creature — Thopter",
+   "oracle_text": "Flying\nWhen this creature enters, draw a card.",
+   "power": "1",
+   "toughness": "1",
+   "keywords": [
+    "Flying"
+   ],
+   "colors": []
+  },
+  {
+   "object": "card",
+   "oracle_id": "c6a3a882-a127-4590-93d7-679ef4313efe",
+   "id": "6d2f4a37-453f-4a2c-bfba-2d1227394c90",
+   "name": "Elvish Visionary",
+   "layout": "normal",
+   "mana_cost": "{1}{G}",
+   "type_line": "Creature — Elf Shaman",
+   "oracle_text": "When this creature enters, draw a card.",
+   "power": "1",
+   "toughness": "1",
+   "keywords": [],
+   "colors": [
+    "G"
+   ]
+  },
+  {
+   "object": "card",
+   "oracle_id": "5f601f48-d24b-4883-9fde-b3f620e7c9ea",
+   "id": "3d134bb2-17ec-4e65-976e-f06fa983f3fb",
+   "name": "Wall of Omens",
+   "layout": "normal",
+   "mana_cost": "{1}{W}",
+   "type_line": "Creature — Wall",
+   "oracle_text": "Defender\nWhen this creature enters, draw a card.",
+   "power": "0",
+   "toughness": "4",
+   "keywords": [
+    "Defender"
+   ],
+   "colors": [
+    "W"
+   ]
+  },
+  {
+   "object": "card",
+   "oracle_id": "24d0f5e7-0d9e-4b76-900e-a7274e80312d",
+   "id": "3de308cc-14ac-407e-99e7-568572ecd0e7",
+   "name": "Mulldrifter",
+   "layout": "normal",
+   "mana_cost": "{4}{U}",
+   "type_line": "Creature — Elemental",
+   "oracle_text": "Flying\nWhen this creature enters, draw two cards.\nEvoke {2}{U} (You may cast this spell for its evoke cost. If you do, it's sacrificed when it enters.)",
+   "power": "2",
+   "toughness": "2",
+   "keywords": [
+    "Flying",
+    "Evoke"
+   ],
+   "colors": [
+    "U"
+   ]
+  }
+ ]
+}

@@ -343,6 +343,23 @@ describe("state-integrity fuzzer", () => {
             `${context}: unexpected mutation guard: ${message}`,
           ).toBe(false);
           stuck += 1;
+          if (stuck === 24 && process.env.FUZZ_DEBUG) {
+            console.log(
+              "STUCK",
+              JSON.stringify(
+                {
+                  action,
+                  stack: state.stack,
+                  prompts: state.prompts,
+                  stackSources: state.stack.map((entry) =>
+                    entry.sourceId ? state.cards[entry.sourceId]?.zone : null,
+                  ),
+                },
+                null,
+                1,
+              ),
+            );
+          }
           expect(stuck, `${context}: engine rejected ${stuck} actions in a row: ${message}`).toBeLessThan(
             25,
           );

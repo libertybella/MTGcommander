@@ -252,6 +252,12 @@ function abilityUsable(
   if (!cost || !canPayWithPotential(potential, cost)) {
     return false;
   }
+  if (ability.lifeCost) {
+    const player = state.players.find((entry) => entry.id === playerId);
+    if (!player || player.life < ability.lifeCost) {
+      return false;
+    }
+  }
   if (ability.targetRequirements.length > 0) {
     return hasAnyLegalTargetSet(state, ability.targetRequirements, playerId);
   }

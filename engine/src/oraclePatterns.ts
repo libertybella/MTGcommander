@@ -151,10 +151,13 @@ function isKeywordLine(sentence: string): boolean {
 }
 
 const SACRIFICE_COST = /Sacrifice (?:~|this land|this creature|this artifact|this permanent)/i;
+const LIFE_COST = /Pay (\d+) life/i;
+const COST_UNIT =
+  "(?:\\{[^}]+\\})+|Sacrifice (?:~|this land|this creature|this artifact|this permanent)|Pay \\d+ life";
 
 function splitAbility(sentence: string): { costText: string; rest: string } | null {
   const match = sentence.match(
-    /^((?:(?:\{[^}]+\})+|Sacrifice (?:~|this land|this creature|this artifact|this permanent))(?:,\s*(?:(?:\{[^}]+\})+|Sacrifice (?:~|this land|this creature|this artifact|this permanent)))*):\s*(.+)$/i,
+    new RegExp(`^((?:${COST_UNIT})(?:,\\s*(?:${COST_UNIT}))*):\\s*(.+)$`, "i"),
   );
   if (!match?.[1] || !match[2]) {
     return null;
@@ -164,10 +167,12 @@ function splitAbility(sentence: string): { costText: string; rest: string } | nu
 
 function parseAbilityCost(
   costText: string,
-): { tap: boolean; manaCost: string; sacrificeSelf: boolean } | null {
+): { tap: boolean; manaCost: string; sacrificeSelf: boolean; lifeCost?: number } | null {
   const sacrificeSelf = SACRIFICE_COST.test(costText);
+  const lifeMatch = costText.match(LIFE_COST);
+  const lifeCost = lifeMatch?.[1] ? Number(lifeMatch[1]) : undefined;
   const symbols = [...costText.matchAll(/\{([^}]+)\}/g)].map((match) => match[1] ?? "");
-  if (symbols.length === 0 && !sacrificeSelf) {
+  if (symbols.length === 0 && !sacrificeSelf && !lifeCost) {
     return null;
   }
   let tap = false;
@@ -188,7 +193,7 @@ function parseAbilityCost(
   } catch {
     return null;
   }
-  return { tap, manaCost, sacrificeSelf };
+  return { tap, manaCost, sacrificeSelf, ...(lifeCost ? { lifeCost } : {}) };
 }
 
 function parseControlledTypes(text: string): string[] | null {
@@ -259,6 +264,7 @@ function manaAbilityFromAdd(add: AddManaResult): ManaAbility {
       producesOptions: [],
       producesAnyColor: true,
       damageToController: 0,
+      ...(add.count && add.count > 1 ? { count: add.count } : {}),
     };
   }
   return {
@@ -281,7 +287,7 @@ function copyFirstManaAbility(result: CompiledOracleText): void {
 
 type AddManaResult =
   | { kind: "fixed"; produces: Partial<ManaPool> }
-  | { kind: "any_color"; identityRestricted: boolean }
+  | { kind: "any_color"; identityRestricted: boolean; count?: number }
   | { kind: "or"; colors: ManaColor[] };
 
 function parseAddMana(rest: string): AddManaResult | null {
@@ -289,6 +295,10 @@ function parseAddMana(rest: string): AddManaResult | null {
   const identity = /any color in your commander'?s color identity/i.test(text);
   if (/^Add one mana of any color(?: in your commander'?s color identity)?$/i.test(text)) {
     return { kind: "any_color", identityRestricted: identity };
+  }
+  const big = text.match(/^Add (two|three|four|five) mana of any one color$/i);
+  if (big?.[1]) {
+    return { kind: "any_color", identityRestricted: false, count: parseCount(big[1]) ?? 1 };
   }
   if (!/^Add /i.test(text)) {
     return null;
@@ -655,6 +665,16 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     };
   }
 
+  match = sentence.match(/^Destroy target non(white|blue|black|red|green) creature$/i);
+  if (match?.[1]) {
+    return {
+      targetRequirements: [
+        { kind: "creature", excludeColors: [COLOR_WORDS[match[1].toLowerCase()]!] },
+      ],
+      effects: [{ kind: "move_card", cardId: { type: "chosen", index: 0 }, toZone: "graveyard" }],
+    };
+  }
+
   const ritual = parseAddMana(sentence);
   if (ritual?.kind === "fixed") {
     return {
@@ -687,6 +707,34 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     }
   }
 
+  // Cultivate / Kodama's Reach: two basics, split destinations.
+  if (
+    /^Search your library for up to two basic land cards, reveal (?:those cards|them), put one onto the battlefield tapped and the other into your hand, then shuffle(?: your library)?$/i.test(
+      sentence,
+    )
+  ) {
+    return {
+      targetRequirements: [],
+      effects: [
+        {
+          kind: "search_library",
+          playerId: "controller",
+          filter: { supertypes: ["basic"], types: ["land"] },
+          destination: "battlefield",
+          count: 1,
+          entersTapped: true,
+        },
+        {
+          kind: "search_library",
+          playerId: "controller",
+          filter: { supertypes: ["basic"], types: ["land"] },
+          destination: "hand",
+          count: 1,
+        },
+      ],
+    };
+  }
+
   match = sentence.match(
     /^Search your library for (?:up to (one|two|three|\d+) )?(?:an? )?(.+?) cards?(?: and)?, (?:and )?put (?:it|them|that card|those cards) (onto the battlefield(?: tapped)?|into your hand|into your graveyard), then shuffle(?: your library)?$/i,
   );
@@ -713,6 +761,32 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
         ],
       };
     }
+  }
+
+  // Beast Within (single sentence: destroy; the token clause is a pair).
+  if (/^Destroy target permanent$/i.test(sentence)) {
+    return {
+      targetRequirements: [{ kind: "permanent" }],
+      effects: [{ kind: "move_card", cardId: { type: "chosen", index: 0 }, toZone: "graveyard" }],
+    };
+  }
+
+  match = sentence.match(/^Put a \+1\/\+1 counter on each creature you control$/i);
+  if (match) {
+    return {
+      targetRequirements: [],
+      effects: [
+        { kind: "counter_on_controlled_creatures", playerId: "controller", counter: "p1p1", amount: 1 },
+      ],
+    };
+  }
+
+  match = sentence.match(/^Surveil (\d+)$/i);
+  if (match?.[1]) {
+    return {
+      targetRequirements: [],
+      effects: [{ kind: "surveil", playerId: "controller", count: Number(match[1]) }],
+    };
   }
 
   match = sentence.match(/^Target player loses (\d+) life and you gain (\d+) life$/i);
@@ -754,6 +828,14 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
         ],
       };
     }
+  }
+
+  match = sentence.match(/^Put a \+1\/\+1 counter on ~$/i);
+  if (match) {
+    return {
+      targetRequirements: [],
+      effects: [{ kind: "add_counter", cardId: "self", counter: "p1p1", amount: 1 }],
+    };
   }
 
   match = sentence.match(/^~ gets ([+-]\d+)\/([+-]\d+) until end of turn$/i);
@@ -811,7 +893,22 @@ const SEARCH_SUPERTYPES = new Set(["basic", "legendary", "snow"]);
  * unsupported searches stay compile notes.
  */
 function parseSearchDescriptor(descriptor: string): SearchFilter | null {
-  const filter: Required<SearchFilter> = { supertypes: [], types: [], subtypes: [] };
+  // "Plains, Island, Swamp, or Mountain" — an any-of subtype list (Farseek).
+  if (/,|\bor\b/i.test(descriptor)) {
+    const options = descriptor
+      .split(/,\s*(?:or\s+)?|\s+or\s+/i)
+      .map((word) => word.trim().toLowerCase().replace(/\s*cards?$/, ""))
+      .filter(Boolean);
+    if (options.length >= 2 && options.every((word) => /^[a-z]+$/.test(word))) {
+      return { subtypesAny: options };
+    }
+    return null;
+  }
+  const filter: Required<Omit<SearchFilter, "subtypesAny">> = {
+    supertypes: [],
+    types: [],
+    subtypes: [],
+  };
   const words = descriptor.trim().toLowerCase().split(/\s+/).filter(Boolean);
   for (const word of words) {
     if (word === "card" || word === "cards" || word === "a" || word === "an") {
@@ -841,6 +938,9 @@ function parseTriggerHead(head: string): TriggerHead | null {
   const text = head.replace(/^Landfall\s*[—-]\s*/i, "").trim();
   if (/^When(?:ever)? ~ dies$/i.test(text)) {
     return { event: "dies" };
+  }
+  if (/^Whenever you gain life$/i.test(text)) {
+    return { event: "you_gain_life" };
   }
   if (/^Whenever ~ or another creature dies$/i.test(text)) {
     return { event: "dies", watch: "any", subjectFilter: { types: ["creature"] } };
@@ -888,11 +988,22 @@ function parseTriggerHead(head: string): TriggerHead | null {
       subjectFilter: { types: ["creature"] },
     };
   }
-  if (/^Whenever a creature enters under your control$/i.test(text)) {
+  if (
+    /^Whenever a creature enters under your control$/i.test(text) ||
+    /^Whenever a creature you control enters$/i.test(text)
+  ) {
     return { event: "enter_battlefield", watch: "controlled", subjectFilter: { types: ["creature"] } };
   }
   return null;
 }
+
+const COLOR_WORDS: Record<string, Color> = {
+  white: "W",
+  blue: "U",
+  black: "B",
+  red: "R",
+  green: "G",
+};
 
 function compileAnthem(sentence: string): StaticAbility | null {
   const match = sentence.match(/^(?:Other )?Creatures you control get \+(\d+)\/\+(\d+)$/i);
@@ -900,6 +1011,19 @@ function compileAnthem(sentence: string): StaticAbility | null {
     return {
       selector: { scope: "controlled", types: ["creature"] },
       effect: { kind: "modify_pt", power: Number(match[1]), toughness: Number(match[2]) },
+    };
+  }
+  const colored = sentence.match(
+    /^(White|Blue|Black|Red|Green) creatures(?: you control)? get \+(\d+)\/\+(\d+)$/i,
+  );
+  if (colored?.[1] && colored[2] && colored[3]) {
+    return {
+      selector: {
+        scope: /you control/i.test(sentence) ? "controlled" : "all",
+        types: ["creature"],
+        colors: [COLOR_WORDS[colored[1].toLowerCase()]!],
+      },
+      effect: { kind: "modify_pt", power: Number(colored[2]), toughness: Number(colored[3]) },
     };
   }
   // "All Slivers have flying" / "Sliver creatures you control have shroud".
@@ -947,15 +1071,40 @@ function commitClause(
 
 function shiftChosen(effect: CardEffect, offset: number): CardEffect {
   function bumpChosen<T>(value: T): T {
-    if (value && typeof value === "object" && "type" in value && (value as { type: string }).type === "chosen") {
-      const chosen = value as unknown as { type: "chosen"; index: number };
-      return { type: "chosen", index: chosen.index + offset } as T;
+    if (
+      value &&
+      typeof value === "object" &&
+      "type" in value &&
+      ((value as { type: string }).type === "chosen" ||
+        (value as { type: string }).type === "chosen_controller")
+    ) {
+      const chosen = value as unknown as { type: "chosen" | "chosen_controller"; index: number };
+      return { type: chosen.type, index: chosen.index + offset } as T;
     }
     return value;
   }
   switch (effect.kind) {
     case "deal_damage":
       return { ...effect, target: bumpChosen(effect.target) };
+    case "create_token":
+      return { ...effect, ownerId: bumpChosen(effect.ownerId) };
+    case "counter_on_controlled_creatures":
+    case "manifest":
+    case "team_pt_until_eot":
+    case "search_library":
+      return { ...effect, playerId: bumpChosen(effect.playerId) };
+    case "pt_until_eot":
+    case "keyword_until_eot":
+    case "transform":
+      return { ...effect, cardId: bumpChosen(effect.cardId) };
+    case "attach":
+      return { ...effect, cardId: bumpChosen(effect.cardId), toId: bumpChosen(effect.toId) };
+    case "copy_token":
+      return { ...effect, ownerId: bumpChosen(effect.ownerId), ofCardId: bumpChosen(effect.ofCardId) };
+    case "counter_unless_pays":
+      return { ...effect, target: bumpChosen(effect.target) };
+    case "divided_damage":
+      return effect;
     case "move_card":
     case "tap":
     case "untap":
@@ -1188,7 +1337,7 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
     }
 
     const attachedBuff = sentence.match(
-      /^(?:Enchanted|Equipped) creature gets ([+-]\d+)\/([+-]\d+)(?: and has ([a-z ]+))?$/i,
+      /^(?:Enchanted|Equipped) creature gets ([+-]\d+)\/([+-]\d+)(?: and has ([a-z ,]+))?$/i,
     );
     if (attachedBuff?.[1] && attachedBuff[2]) {
       result.staticAbilities.push({
@@ -1200,7 +1349,41 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
         },
       });
       if (attachedBuff[3]) {
-        const keyword = KEYWORD_GRANTS[attachedBuff[3].trim().toLowerCase()];
+        const grants = attachedBuff[3]
+          .split(/,\s*|\s+and\s+/i)
+          .map((word) => word.trim().toLowerCase())
+          .filter(Boolean);
+        const keywords = grants.map((word) => KEYWORD_GRANTS[word]);
+        if (keywords.every((keyword): keyword is Keyword => Boolean(keyword))) {
+          for (const keyword of keywords) {
+            result.staticAbilities.push({
+              selector: { scope: "attached" },
+              effect: { kind: "grant_keyword", keyword },
+            });
+          }
+        } else {
+          result.leftover.push(sentence);
+        }
+      }
+      continue;
+    }
+
+    const attachedRestrict = sentence.match(
+      /^(?:Enchanted|Equipped) creature can't (attack or block|be blocked|attack|block)(?: and has ([a-z ]+))?$/i,
+    );
+    if (attachedRestrict?.[1]) {
+      const what = attachedRestrict[1].toLowerCase();
+      result.staticAbilities.push({
+        selector: { scope: "attached" },
+        effect: {
+          kind: "restrict",
+          ...(what.includes("attack") ? { cantAttack: true } : {}),
+          ...(what === "attack or block" || what === "block" ? { cantBlock: true } : {}),
+          ...(what === "be blocked" ? { cantBeBlocked: true } : {}),
+        },
+      });
+      if (attachedRestrict[2]) {
+        const keyword = KEYWORD_GRANTS[attachedRestrict[2].trim().toLowerCase()];
         if (keyword) {
           result.staticAbilities.push({
             selector: { scope: "attached" },
@@ -1369,6 +1552,33 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
       continue;
     }
 
+    // Beast Within: destroy + the next sentence's consolation token.
+    if (/^Destroy target permanent$/i.test(sentence)) {
+      const tokenClause = sentences[index + 1]?.match(
+        /^Its controller creates a (\d+)\/(\d+)(?: (white|blue|black|red|green|colorless))? ([A-Za-z]+) creature token$/i,
+      );
+      if (tokenClause?.[1] && tokenClause[2] && tokenClause[4]) {
+        const subtype =
+          tokenClause[4][0]!.toUpperCase() + tokenClause[4].slice(1).toLowerCase();
+        commitClause(result, {
+          targetRequirements: [{ kind: "permanent" }],
+          effects: [
+            { kind: "move_card", cardId: { type: "chosen", index: 0 }, toZone: "graveyard" },
+            {
+              kind: "create_token",
+              ownerId: { type: "chosen_controller", index: 0 },
+              name: subtype,
+              typeLine: `Creature — ${subtype} Token`,
+              power: Number(tokenClause[1]),
+              toughness: Number(tokenClause[2]),
+            },
+          ],
+        });
+        index += 1;
+        continue;
+      }
+    }
+
     const generalTrigger = sentence.match(/^((?:Landfall\s*[—-]\s*)?[^,]+?), (.+)$/i);
     if (generalTrigger?.[1] && generalTrigger[2]) {
       const head = parseTriggerHead(generalTrigger[1]);
@@ -1451,6 +1661,7 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
         effects: clause.effects,
         targetRequirements: clause.targetRequirements,
         ...(cost.sacrificeSelf ? { sacrificeSelf: true } : {}),
+        ...(cost.lifeCost ? { lifeCost: cost.lifeCost } : {}),
       });
       if (clause.leftover) {
         result.leftover.push(clause.leftover);

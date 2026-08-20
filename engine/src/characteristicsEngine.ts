@@ -32,6 +32,10 @@ export type ComputedCard = {
   /** Final power/toughness including counters. Zero for non-creatures. */
   power: number;
   toughness: number;
+  /** Combat restrictions from layer-6 effects (Pacifism). */
+  cantAttack: boolean;
+  cantBlock: boolean;
+  cantBeBlocked: boolean;
 };
 
 type EffectInstance = {
@@ -49,6 +53,7 @@ const LAYER_OF: Record<ContinuousEffectData["kind"], number> = {
   set_colors: 5,
   grant_keyword: 6,
   remove_all_abilities: 6,
+  restrict: 6,
   set_pt: 7.2,
   modify_pt: 7.3,
 };
@@ -69,6 +74,9 @@ function baseComputed(state: GameState, card: CardInstance): ComputedCard {
       abilitiesRemoved: true,
       power: 2,
       toughness: 2,
+      cantAttack: false,
+      cantBlock: false,
+      cantBeBlocked: false,
     };
   }
   const definition = state.definitions[card.definitionId];
@@ -91,6 +99,9 @@ function baseComputed(state: GameState, card: CardInstance): ComputedCard {
     abilitiesRemoved: false,
     power: definition?.power ?? 0,
     toughness: definition?.toughness ?? 0,
+    cantAttack: false,
+    cantBlock: false,
+    cantBeBlocked: false,
   };
 }
 
@@ -134,6 +145,11 @@ function matches(
   }
   for (const subtype of selector.subtypes ?? []) {
     if (!computed.characteristics.subtypes.includes(subtype)) {
+      return false;
+    }
+  }
+  for (const color of selector.colors ?? []) {
+    if (!computed.characteristics.colors.includes(color)) {
       return false;
     }
   }
@@ -209,6 +225,11 @@ function applyInstance(
       case "remove_all_abilities":
         computed.keywords = [];
         computed.abilitiesRemoved = true;
+        break;
+      case "restrict":
+        computed.cantAttack = computed.cantAttack || effect.cantAttack === true;
+        computed.cantBlock = computed.cantBlock || effect.cantBlock === true;
+        computed.cantBeBlocked = computed.cantBeBlocked || effect.cantBeBlocked === true;
         break;
       case "set_pt":
         computed.power = effect.power;

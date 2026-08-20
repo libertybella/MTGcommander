@@ -12,6 +12,7 @@ import {
   type TablePlayerCount,
 } from "@mtgcommander/engine";
 import { CardDatabase } from "./cards";
+import { cardOverrideFor } from "./cardOverrides";
 import { fetchMoxfieldDeck } from "./moxfield";
 import type { HttpFetch } from "./http";
 
@@ -36,7 +37,11 @@ function compiledFromOracle(cards: OracleCard[]): {
   const byName = new Map<string, { definition: CardDefinition; notes: string[] }>();
   const definitions: Record<string, CardDefinition> = {};
   for (const card of cards) {
-    const compiled = compileOracleCard(card);
+    // Hand-authored registry entries beat the sentence compiler (Stage 6).
+    const override = cardOverrideFor(card);
+    const compiled = override
+      ? { definition: override, otherDefinition: undefined, notes: [] as string[] }
+      : compileOracleCard(card);
     definitions[compiled.definition.id] = compiled.definition;
     if (compiled.otherDefinition) {
       definitions[compiled.otherDefinition.id] = compiled.otherDefinition;

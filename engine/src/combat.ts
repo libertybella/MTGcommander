@@ -1,5 +1,6 @@
 import { cloneGameState } from "./clone";
 import { characteristicsOf, isCommander, isCreature } from "./cardTypes";
+import { computedCard } from "./characteristicsEngine";
 import { creaturePower, creatureToughness } from "./derived";
 import { hasKeyword } from "./keywords";
 import { isLiving, nextLivingPlayerId } from "./players";
@@ -113,6 +114,9 @@ function assertLegalAttacker(
   if (hasKeyword(state, attackerId, "defender")) {
     throw new Error(`Card ${attackerId} cannot attack`);
   }
+  if (computedCard(state, attackerId)?.cantAttack) {
+    throw new Error(`Card ${attackerId} cannot attack`);
+  }
   if (defenderId === playerId) {
     throw new Error("A player cannot attack themselves");
   }
@@ -137,9 +141,9 @@ export function declareAttackers(state: GameState, playerId: PlayerId, attacks: 
   if (state.stack.length > 0) {
     throw new Error("The stack must be empty to declare attackers");
   }
-  ensureCombatInPlace(state);
-  const current = requireCombat(state);
-  if (current.attackersDeclared) {
+  // Validate against a view of combat without touching the input state: an
+  // illegal declaration must leave the original untouched.
+  if ((state.combat ?? emptyCombat()).attackersDeclared) {
     throw new Error("Attackers have already been declared");
   }
 
@@ -193,6 +197,12 @@ export function blockRestriction(
   attackerId: CardInstanceId,
   blockerId: CardInstanceId,
 ): string | null {
+  if (computedCard(state, attackerId)?.cantBeBlocked) {
+    return `Card ${attackerId} cannot be blocked`;
+  }
+  if (computedCard(state, blockerId)?.cantBlock) {
+    return `Card ${blockerId} cannot block`;
+  }
   const blockerTraits = characteristicsOf(state, blockerId);
   const isArtifact = blockerTraits.types.includes("artifact");
   if (
@@ -368,6 +378,7 @@ function gainLifeInPlace(state: GameState, playerId: PlayerId, amount: number): 
   const player = state.players.find((entry) => entry.id === playerId);
   if (player) {
     player.life += amount;
+    dispatchEventsInPlace(state, [{ kind: "gains_life", playerId }]);
   }
 }
 

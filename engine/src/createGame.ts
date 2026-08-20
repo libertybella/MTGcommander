@@ -115,6 +115,7 @@ export function createCardDefinition(
           producesOptions: [...ability.producesOptions],
           producesAnyColor: ability.producesAnyColor,
           damageToController: ability.damageToController,
+          ...(ability.count && ability.count > 1 ? { count: ability.count } : {}),
         }))
       : [],
     activated: input.activated
@@ -126,6 +127,7 @@ export function createCardDefinition(
           ...(ability.zone && ability.zone !== "battlefield" ? { zone: ability.zone } : {}),
           ...(ability.discard ? { discard: true } : {}),
           ...(ability.sacrificeSelf ? { sacrificeSelf: true } : {}),
+          ...(ability.lifeCost && ability.lifeCost > 0 ? { lifeCost: ability.lifeCost } : {}),
           ...(ability.timing === "sorcery" ? { timing: "sorcery" as const } : {}),
         }))
       : [],
