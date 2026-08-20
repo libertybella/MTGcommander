@@ -1,0 +1,188 @@
+# Keyword Ability Coverage (CR 702)
+
+Generated from `engine/src/keywordCatalog.ts` — do not edit by hand.
+Regenerate with: `UPDATE_COVERAGE=1 npx vitest run engine/src/keywordCatalog.test.ts`
+
+**14 of 176** keyword abilities implemented.
+
+## Implemented
+
+- [x] deathtouch
+- [x] defender
+- [x] double strike
+- [x] first strike
+- [x] flash
+- [x] flying
+- [x] haste
+- [x] hexproof
+- [x] indestructible
+- [x] lifelink
+- [x] reach
+- [x] trample
+- [x] vigilance
+- [x] menace
+
+## Not yet implemented
+
+- [ ] enchant
+- [ ] equip
+- [ ] intimidate
+- [ ] landwalk
+- [ ] protection
+- [ ] shroud
+- [ ] ward
+- [ ] banding
+- [ ] rampage
+- [ ] cumulative upkeep
+- [ ] flanking
+- [ ] phasing
+- [ ] buyback
+- [ ] shadow
+- [ ] cycling
+- [ ] echo
+- [ ] horsemanship
+- [ ] fading
+- [ ] kicker
+- [ ] flashback
+- [ ] madness
+- [ ] fear
+- [ ] morph
+- [ ] amplify
+- [ ] provoke
+- [ ] storm
+- [ ] affinity
+- [ ] entwine
+- [ ] modular
+- [ ] sunburst
+- [ ] bushido
+- [ ] soulshift
+- [ ] splice
+- [ ] offering
+- [ ] ninjutsu
+- [ ] epic
+- [ ] convoke
+- [ ] dredge
+- [ ] transmute
+- [ ] bloodthirst
+- [ ] haunt
+- [ ] replicate
+- [ ] forecast
+- [ ] graft
+- [ ] recover
+- [ ] ripple
+- [ ] split second
+- [ ] suspend
+- [ ] vanishing
+- [ ] absorb
+- [ ] aura swap
+- [ ] delve
+- [ ] fortify
+- [ ] frenzy
+- [ ] gravestorm
+- [ ] poisonous
+- [ ] transfigure
+- [ ] champion
+- [ ] changeling
+- [ ] evoke
+- [ ] hideaway
+- [ ] prowl
+- [ ] reinforce
+- [ ] conspire
+- [ ] persist
+- [ ] wither
+- [ ] retrace
+- [ ] devour
+- [ ] exalted
+- [ ] unearth
+- [ ] cascade
+- [ ] annihilator
+- [ ] level up
+- [ ] rebound
+- [ ] totem armor
+- [ ] infect
+- [ ] battle cry
+- [ ] living weapon
+- [ ] undying
+- [ ] miracle
+- [ ] soulbond
+- [ ] overload
+- [ ] scavenge
+- [ ] unleash
+- [ ] cipher
+- [ ] evolve
+- [ ] extort
+- [ ] fuse
+- [ ] bestow
+- [ ] tribute
+- [ ] dethrone
+- [ ] hidden agenda
+- [ ] outlast
+- [ ] prowess
+- [ ] dash
+- [ ] exploit
+- [ ] renown
+- [ ] awaken
+- [ ] devoid
+- [ ] ingest
+- [ ] myriad
+- [ ] surge
+- [ ] skulk
+- [ ] emerge
+- [ ] escalate
+- [ ] melee
+- [ ] crew
+- [ ] fabricate
+- [ ] partner
+- [ ] undaunted
+- [ ] improvise
+- [ ] aftermath
+- [ ] embalm
+- [ ] eternalize
+- [ ] afflict
+- [ ] ascend
+- [ ] assist
+- [ ] jump-start
+- [ ] mentor
+- [ ] afterlife
+- [ ] riot
+- [ ] spectacle
+- [ ] escape
+- [ ] companion
+- [ ] mutate
+- [ ] encore
+- [ ] boast
+- [ ] foretell
+- [ ] demonstrate
+- [ ] daybound
+- [ ] nightbound
+- [ ] disturb
+- [ ] decayed
+- [ ] cleave
+- [ ] training
+- [ ] compleated
+- [ ] reconfigure
+- [ ] blitz
+- [ ] casualty
+- [ ] enlist
+- [ ] read ahead
+- [ ] ravenous
+- [ ] squad
+- [ ] prototype
+- [ ] living metal
+- [ ] more than meets the eye
+- [ ] for mirrodin!
+- [ ] toxic
+- [ ] backup
+- [ ] bargain
+- [ ] craft
+- [ ] disguise
+- [ ] plot
+- [ ] saddle
+- [ ] offspring
+- [ ] impending
+- [ ] gift
+- [ ] exhaust
+- [ ] harmonize
+- [ ] mobilize
+- [ ] station
+- [ ] warp

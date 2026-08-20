@@ -20,21 +20,21 @@ A checkbox becomes 🟢 Complete only when the work has been implemented **and**
 
 ## Project Status
 
-**Current Phase:** Phase 36 complete
-**Current Checkpoint:** Checkpoint 36 — Manual Override
+**Current Phase:** Comprehensive Plan, Stage 0 complete (Checkpoint 37)
+**Current Checkpoint:** Checkpoint 37 — Foundations (branch `comprehensive-plan`)
 **Overall Status:** 🟡 In Progress
 
 ### Current Objective
 
-Stop. Do not start a full English parser, temporary modifiers, or private alpha invites.
+Comprehensive Plan Stage 1: Arena-model priority — per-seat stops, full control, auto-yield on `hasMeaningfulAction`, APNAP trigger ordering.
 
 ### Last Completed Milestone
 
-Checkpoint 36: seated players can submit a table-agreed override (life, draw, mill, mana, tap/untap, move a public card) without priority. Friends see it in the log.
+Checkpoint 37: structured characteristics on every definition, refreshing oracle cache (v4), `legalActions` enumerator, host-owned shortcut policy, scenario builder, CR 702 coverage checklist, and a state-integrity fuzzer.
 
 ### Next Milestone
 
-Private alpha: invite testers, host a real table, play complete games, track bugs and unsupported cards.
+M2 "Real priority": flash at end step through a stop across two clients; no auto-pass leaks in stops-only mode. Private alpha (M1) can ship from any checkpoint.
 
 ---
 
@@ -544,6 +544,50 @@ Do not mark a checkbox complete simply because code was written.
 ---
 
 # Development Log
+
+## 2026-08-20 — Stage 0 foundations (Comprehensive Plan)
+
+### Objective
+
+Lay the groundwork for full Comprehensive Rules machinery per the Comprehensive Plan: structured characteristics, an oracle cache that refreshes, a legal-action enumerator, host-owned shortcut policy, and test infrastructure (scenario builder, CR 702 coverage checklist, state-integrity fuzzer).
+
+### Work Completed
+
+- `CardDefinition.characteristics` — parsed supertypes/types/subtypes/colors/manaValue (CR 205/203). Type predicates, Army lookup, and basic-land checks read structured data instead of matching `typeLine` strings. Scryfall colors flow through import; old snapshots re-derive on parse.
+- Oracle cache v4 (`mtgcommander.oracle.v4`, migrating v3 in place): per-card fetch stamps, 30-day staleness refresh with offline fallback to the stale copy, `ingestBulk` for Scryfall bulk downloads with `updated_at` recording.
+- `legalActions(state, playerId)` + `hasMeaningfulAction`: advisory enumerator composing the existing validators (casting with timing/tax/targets, land drops, activated abilities, mana taps, combat declarations). Potential mana counts untapped producers with exact bipartite matching, biased to never under-report a payable cost.
+- `ShortcutPolicy` is now an explicit `applyAction` option owned by `GameHost`; `advance_step`/`advance_turn` log as table fast-forwards naming discarded stack objects.
+- Test infrastructure: `engine/src/scenario.ts` builder, CR 702 keyword catalog + generated `docs/KEYWORD_COVERAGE.md` (guarded by test, `UPDATE_COVERAGE=1` regenerates), and a seeded random-game fuzzer asserting zone integrity and serialize round-trips after every action.
+
+### Tests Run
+
+- `npm test` — PASS (387 tests)
+- `npm run typecheck` — PASS
+- `npm run lint` — PASS
+- Extended fuzz burn-in (500 seeded games × up to 400 actions) — PASS
+
+### Decisions Made
+
+- Characteristics are derived at construction/parse, never hand-maintained; explicit colors (back faces, indicators) survive round trips inside stored characteristics.
+- `legalActions` is advisory (auto-yield/UI); `applyAction` remains the only legality authority.
+- The engine keeps digital shortcuts but only as host-supplied policy; Stage 1 stops shrink the skip set.
+- Fuzzer CI scale is 6 seeds × 400 actions; 500-game burn-ins gate milestones.
+
+### Files Changed
+
+- `engine/src/characteristics.ts` (+tests), `engine/src/types.ts`, `engine/src/createGame.ts`, `engine/src/cardTypes.ts`, `engine/src/serialize.ts`, `engine/src/effects.ts`, `engine/src/derived.ts`, `engine/src/visibility.ts`, `engine/src/oracle.ts`, `engine/src/index.ts`
+- `engine/src/legalActions.ts` (+tests), `engine/src/turn.ts`, `engine/src/actions.ts`, `engine/src/shortcutPolicy.test.ts`
+- `engine/src/scenario.ts`, `engine/src/keywordCatalog.ts` (+test), `engine/src/fuzz.test.ts`, `docs/KEYWORD_COVERAGE.md`
+- `server/src/cards.ts`, `server/src/cacheRefresh.test.ts`, `server/src/session.ts`, `server/src/scryfall.ts`, `server/src/index.ts`
+
+### Checkpoint
+
+- PASS (local verification). Tag: `checkpoint-37-foundations` on branch `comprehensive-plan`.
+- Existing tags were not moved or rewritten.
+
+### Next Task
+
+Stage 1 of the Comprehensive Plan: per-seat stops, full control, auto-yield, APNAP trigger ordering.
 
 ## 2026-08-14 — Manual override
 
