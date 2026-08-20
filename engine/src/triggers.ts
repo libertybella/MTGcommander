@@ -247,6 +247,29 @@ function triggerMatchesEvent(
     // "At the beginning of your …": the controller's own step.
     return event.step === step && watcher.controllerId === state.turn.activePlayerId;
   }
+  if (event.kind === "combat_damage_to_player") {
+    if (trigger.event !== "deals_combat_damage_to_player") {
+      return false;
+    }
+    const watch = trigger.watch ?? "self";
+    if (watch === "self" && event.cardId !== watcher.id) {
+      return false;
+    }
+    const dealerController = state.cards[event.cardId]?.controllerId;
+    if (watch === "controlled" && dealerController !== watcher.controllerId) {
+      return false;
+    }
+    if (watch === "opponents" && dealerController === watcher.controllerId) {
+      return false;
+    }
+    if (trigger.excludeSelf && event.cardId === watcher.id) {
+      return false;
+    }
+    return subjectMatchesFilter(state, event.cardId, trigger.subjectFilter, watcher);
+  }
+  if (trigger.event === "deals_combat_damage_to_player") {
+    return false;
+  }
   if (event.kind === "casts") {
     if (trigger.event !== "cast_spell") {
       return false;

@@ -12,6 +12,7 @@ import type {
   CardInstanceId,
   CombatAttack,
   CombatState,
+  EngineEvent,
   GameState,
   PlayerId,
 } from "./types";
@@ -387,6 +388,7 @@ function dealDamageToPlayerInPlace(
   defenderId: PlayerId,
   amount: number,
   sourceId: CardInstanceId,
+  collect?: EngineEvent[],
 ): void {
   if (amount <= 0) {
     return;
@@ -396,6 +398,7 @@ function dealDamageToPlayerInPlace(
     return;
   }
   defender.life -= amount;
+  collect?.push({ kind: "combat_damage_to_player", cardId: sourceId, playerId: defenderId });
   if (isCommander(state, sourceId)) {
     defender.commander.damageReceived[sourceId] =
       (defender.commander.damageReceived[sourceId] ?? 0) + amount;
@@ -443,6 +446,7 @@ export function dealCombatDamageInPlace(
   if (!state.combat) {
     return;
   }
+  const damageEvents: EngineEvent[] = [];
   for (const attack of state.combat.attacks) {
     const attacker = state.cards[attack.attackerId];
     if (!attacker || attacker.zone !== "battlefield") {
@@ -456,7 +460,7 @@ export function dealCombatDamageInPlace(
 
     if (!wasBlocked) {
       if (attackerDeals) {
-        dealDamageToPlayerInPlace(state, attack.defenderId, power, attack.attackerId);
+        dealDamageToPlayerInPlace(state, attack.defenderId, power, attack.attackerId, damageEvents);
       }
       continue;
     }
@@ -464,7 +468,7 @@ export function dealCombatDamageInPlace(
     if (attackerDeals) {
       if (livingBlockers.length === 0) {
         if (hasKeyword(state, attack.attackerId, "trample")) {
-          dealDamageToPlayerInPlace(state, attack.defenderId, power, attack.attackerId);
+          dealDamageToPlayerInPlace(state, attack.defenderId, power, attack.attackerId, damageEvents);
         }
       } else {
         let remaining = power;
@@ -489,7 +493,7 @@ export function dealCombatDamageInPlace(
           remaining -= assigned;
         }
         if (trample && remaining > 0) {
-          dealDamageToPlayerInPlace(state, attack.defenderId, remaining, attack.attackerId);
+          dealDamageToPlayerInPlace(state, attack.defenderId, remaining, attack.attackerId, damageEvents);
         }
       }
     }
@@ -505,6 +509,9 @@ export function dealCombatDamageInPlace(
         blockerId,
       );
     }
+  }
+  if (damageEvents.length > 0) {
+    dispatchEventsInPlace(state, damageEvents);
   }
 }
 

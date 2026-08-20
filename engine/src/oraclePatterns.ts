@@ -564,6 +564,19 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     }
   }
 
+  // "You may draw": auto-taken, declined only when the library is too small
+  // (a documented approximation — see RULES_COVERAGE.md).
+  match = sentence.match(/^you may draw (a|one|two|three) cards?$/i);
+  if (match?.[1]) {
+    const count = parseCount(match[1]);
+    if (count) {
+      return {
+        targetRequirements: [],
+        effects: [{ kind: "draw", playerId: "controller", count, optional: true }],
+      };
+    }
+  }
+
   match = sentence.match(/^scry (\d+)$/i);
   if (match?.[1]) {
     const count = Number(match[1]);
@@ -1201,6 +1214,16 @@ function parseTriggerHead(head: string): TriggerHead | null {
   }
   if (/^Whenever a player casts a spell$/i.test(text)) {
     return { event: "cast_spell", watch: "any" };
+  }
+  if (/^Whenever ~ deals combat damage to a player$/i.test(text)) {
+    return { event: "deals_combat_damage_to_player" };
+  }
+  if (/^Whenever a creature you control deals combat damage to a player$/i.test(text)) {
+    return {
+      event: "deals_combat_damage_to_player",
+      watch: "controlled",
+      subjectFilter: { types: ["creature"] },
+    };
   }
   if (/^Whenever a creature you control of the chosen type enters or attacks$/i.test(text)) {
     return {

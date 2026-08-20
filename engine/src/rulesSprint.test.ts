@@ -11,6 +11,7 @@ import {
   putSpellOnStack,
   resolveTopOfStack,
 } from "./index";
+import { applyCombatDamage } from "./combat";
 import { fillLibraries } from "./testSupport";
 import { advanceSteps } from "./turn";
 import type { GameState, PlayerState } from "./types";
@@ -408,6 +409,81 @@ describe("creature-or-planeswalker removal", () => {
     expect(
       isChosenTargetLegal(game, requirement, { type: "creature", cardId: rock.id }, p1.id),
     ).toBe(false);
+  });
+});
+
+describe("optional draws", () => {
+  it("compiles Bident of Thassa's saboteur draw and guards empty libraries", () => {
+    const compiled = compileOracleCard({
+      oracleId: "bident",
+      name: "Bident of Thassa",
+      manaCost: "{2}{U}{U}",
+      typeLine: "Legendary Enchantment Artifact",
+      oracleText:
+        "Whenever a creature you control deals combat damage to a player, you may draw a card.",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+    });
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.triggers[0]?.effects).toEqual([
+      { kind: "draw", playerId: "controller", count: 1, optional: true },
+    ]);
+
+    const { game, p1 } = twoPlayers();
+    // Empty library: the optional draw declines instead of decking the player.
+    const skipped = applyEffect(game, {
+      kind: "draw",
+      playerId: p1.id,
+      count: 1,
+      optional: true,
+    });
+    expect(skipped.players[0]?.failedToDraw).toBe(false);
+    expect(skipped.players[0]?.lost).toBe(false);
+  });
+});
+
+describe("combat damage triggers", () => {
+  it("compiles the saboteur head and fires on an unblocked hit", () => {
+    const compiled = compileOracleCard({
+      oracleId: "saboteur",
+      name: "Thieving Skydiver",
+      manaCost: "{1}{U}",
+      typeLine: "Creature — Merfolk Rogue",
+      oracleText: "Whenever Thieving Skydiver deals combat damage to a player, draw a card.",
+      power: "2",
+      toughness: "1",
+      printedKeywords: [],
+      imageUrl: "",
+    });
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.triggers[0]).toMatchObject({
+      event: "deals_combat_damage_to_player",
+    });
+
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game);
+    game.definitions[compiled.definition.id] = compiled.definition;
+    const raider = createCardInstance({
+      definitionId: compiled.definition.id,
+      ownerId: p1.id,
+      zone: "battlefield",
+    });
+    game.cards[raider.id] = raider;
+    p1.zones.battlefield.push(raider.id);
+    game.combat = {
+      attacks: [{ attackerId: raider.id, defenderId: p2.id }],
+      blockers: {},
+      attackersDeclared: true,
+      declaredBlockersFor: [p2.id],
+    };
+    const afterDamage = applyCombatDamage(game);
+    expect(afterDamage.players[1]?.life).toBe(38);
+    expect(afterDamage.stack).toHaveLength(1);
+    const resolved = resolveTopOfStack(afterDamage);
+    // The hand starts empty in this synthetic setup; the saboteur draw adds one.
+    expect(resolved.players[0]?.zones.hand).toHaveLength(1);
   });
 });
 

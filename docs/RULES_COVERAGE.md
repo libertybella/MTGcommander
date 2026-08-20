@@ -24,6 +24,8 @@ What the engine implements and what it intentionally does not. Tests are tagged 
 - **Predefined tokens**: Treasure (sacrifice-on-tap any-color mana; never auto-tapped), Clue, and Food carry their printed abilities however they are created.
 - **Once-per-turn triggers** ("triggers only once each turn") latch per turn; cycling compiles to the from-hand discard-and-draw ability (CR 702.29).
 - **"As enters, choose a creature type"** prompts on entry; chosen-type filters work in trigger subjects (Kindred Discovery's enters-or-attacks) and static selectors (Vanquisher's Banner).
+- **Combat-damage triggers**: a `combat_damage_to_player` event fires per strike (Bident of Thassa saboteur heads); Curiosity's any-damage variant is still a gap.
+- **Documented approximation — optional draws**: "you may draw a card" is auto-taken and declined only when the library is too small to survive it.
 
 ## The card pipeline (Stage 6)
 

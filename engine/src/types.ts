@@ -324,7 +324,13 @@ export type GameEffect =
       target: EffectTarget;
       amount: number;
     }
-  | { kind: "draw"; playerId: PlayerId; count: number }
+  | {
+      kind: "draw";
+      playerId: PlayerId;
+      count: number;
+      /** "You may draw": auto-taken, but skipped when the library is too small. */
+      optional?: boolean;
+    }
   | { kind: "scry"; playerId: PlayerId; count: number }
   | { kind: "surveil"; playerId: PlayerId; count: number }
   | {
@@ -486,7 +492,7 @@ export type CardEffect =
       sourceId: CardInstanceId | "self" | null;
       amount: number | "x";
     }
-  | { kind: "draw"; playerId: PlayerSelector; count: number }
+  | { kind: "draw"; playerId: PlayerSelector; count: number; optional?: boolean }
   | { kind: "scry"; playerId: PlayerSelector; count: number }
   | { kind: "surveil"; playerId: PlayerSelector; count: number }
   | {
@@ -588,7 +594,9 @@ export type TriggerEvent =
   | "end_step"
   | "you_gain_life"
   /** A spell was cast (Guttersnipe, Rhystic Study). Subject is the cast card. */
-  | "cast_spell";
+  | "cast_spell"
+  /** Dealt combat damage to a player (Bident of Thassa). Subject is the dealer. */
+  | "deals_combat_damage_to_player";
 
 export type CardTrigger = {
   event: TriggerEvent;
@@ -628,7 +636,8 @@ export type EngineEvent =
   | { kind: "attacks"; cardId: CardInstanceId }
   | { kind: "step_begins"; step: Step }
   | { kind: "gains_life"; playerId: PlayerId }
-  | { kind: "casts"; cardId: CardInstanceId; controllerId: PlayerId };
+  | { kind: "casts"; cardId: CardInstanceId; controllerId: PlayerId }
+  | { kind: "combat_damage_to_player"; cardId: CardInstanceId; playerId: PlayerId };
 
 /** One triggered ability waiting to be put on the stack. */
 export type TriggerCandidate = {

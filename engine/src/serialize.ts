@@ -1094,6 +1094,7 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
         kind,
         playerId: parsePlayerSelector(value.playerId, `${label}.playerId`),
         count: expectNumber(value.count, `${label}.count`),
+        ...(value.optional === true ? { optional: true } : {}),
       };
     case "scry":
     case "surveil":
@@ -1489,7 +1490,8 @@ function parseTriggers(value: unknown, label: string): CardTrigger[] {
       event !== "upkeep" &&
       event !== "end_step" &&
       event !== "you_gain_life" &&
-      event !== "cast_spell"
+      event !== "cast_spell" &&
+      event !== "deals_combat_damage_to_player"
     ) {
       throw new Error(`Invalid ${label}[${index}].event`);
     }
@@ -1920,13 +1922,15 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
     throw new Error(`Invalid ${label}`);
   }
   const kind = expectString(value.kind, `${label}.kind`);
-  if (
-    kind === "draw" ||
-    kind === "scry" ||
-    kind === "surveil" ||
-    kind === "mill" ||
-    kind === "discard"
-  ) {
+  if (kind === "draw") {
+    return {
+      kind,
+      playerId: expectString(value.playerId, `${label}.playerId`),
+      count: expectNumber(value.count, `${label}.count`),
+      ...(value.optional === true ? { optional: true } : {}),
+    };
+  }
+  if (kind === "scry" || kind === "surveil" || kind === "mill" || kind === "discard") {
     return {
       kind,
       playerId: expectString(value.playerId, `${label}.playerId`),

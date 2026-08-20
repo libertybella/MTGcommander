@@ -556,12 +556,21 @@ function applyDealDamage(state: GameState, effect: Extract<GameEffect, { kind: "
   return next;
 }
 
-function applyDraw(state: GameState, playerId: PlayerId, count: number): GameState {
+function applyDraw(
+  state: GameState,
+  playerId: PlayerId,
+  count: number,
+  optional?: boolean,
+): GameState {
   requirePositiveInteger(count, "draw count");
   if (wouldSkipDraw(state, playerId)) {
     return cloneGameState(state);
   }
-  requirePlayer(state, playerId);
+  const player = requirePlayer(state, playerId);
+  // "You may draw": auto-taken, declined only when it would deck the player.
+  if (optional && player.zones.library.length < count) {
+    return cloneGameState(state);
+  }
   let next = cloneGameState(state);
   for (let i = 0; i < count; i += 1) {
     if (wouldSkipDraw(next, playerId)) {
@@ -1150,7 +1159,7 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
         next = applyDealDamage(state, effect);
         break;
       case "draw":
-        next = applyDraw(state, effect.playerId, effect.count);
+        next = applyDraw(state, effect.playerId, effect.count, effect.optional);
         break;
       case "scry":
         next = applyScry(state, effect.playerId, effect.count);
