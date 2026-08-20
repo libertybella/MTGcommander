@@ -5,7 +5,7 @@ import { createId } from "./ids";
 import { wouldSkipDraw } from "./derived";
 import { hasKeyword } from "./keywords";
 import { addMana, tapCard, untapCard } from "./mana";
-import { livingPlayers, nextLivingPlayerId } from "./players";
+import { isLiving, livingPlayers, nextLivingPlayerId } from "./players";
 import { isPromptOpen, legalIdsForChooseSources } from "./prompt";
 import { applyStateBasedActionsInPlace } from "./status";
 import { isChosenTargetLegal, sourceColorsOf } from "./targeting";
@@ -29,6 +29,7 @@ import type {
   PlayerSelector,
   PlayerState,
   StackObjectId,
+  SubjectPlayerRef,
   TargetRequirement,
 } from "./types";
 
@@ -40,6 +41,9 @@ export type BindEffectContext = {
   chosenCardId?: CardInstanceId;
   /** Announced X for {X} spells; effects with amount "x" read it. */
   xValue?: number;
+  /** The trigger event's subject ("that player" / "that creature"). */
+  subjectPlayerId?: PlayerId;
+  subjectCardId?: CardInstanceId;
 };
 
 function nextOpponentId(state: GameState, controllerId: PlayerId): PlayerId {
@@ -59,6 +63,9 @@ function bindPlayerSelector(
       }
       return state.cards[chosen.cardId]?.controllerId ?? null;
     }
+    if (selector.type === "subject_player") {
+      return context.subjectPlayerId ?? null;
+    }
     const chosen = chosenTargetAt(context, selector.index, state);
     if (!chosen || chosen.type !== "player") {
       return null;
@@ -70,7 +77,7 @@ function bindPlayerSelector(
 
 function bindPlayer(
   state: GameState,
-  selector: Exclude<PlayerSelector, ChosenTargetRef | ChosenControllerRef>,
+  selector: Exclude<PlayerSelector, ChosenTargetRef | ChosenControllerRef | SubjectPlayerRef>,
   controllerId: PlayerId,
 ): PlayerId {
   if (selector === "controller") {
@@ -431,6 +438,18 @@ export function bindCardEffect(
     }
     case "destroy_all":
       return { kind: "destroy_all", what: effect.what };
+    case "unless_pays": {
+      const playerId = bindPlayerSelector(state, effect.playerId, context);
+      if (!playerId) {
+        return null;
+      }
+      return {
+        kind: "unless_pays",
+        playerId,
+        cost: effect.cost,
+        effects: bindCardEffects(state, effect.effects, context),
+      };
+    }
     case "copy_token": {
       const ownerId = bindPlayerSelector(state, effect.ownerId, context);
       if (!ownerId) {
@@ -572,9 +591,10 @@ function applyDraw(
     return cloneGameState(state);
   }
   let next = cloneGameState(state);
+  let drawn = 0;
   for (let i = 0; i < count; i += 1) {
     if (wouldSkipDraw(next, playerId)) {
-      return next;
+      break;
     }
     const current = next.players.find((entry) => entry.id === playerId);
     if (!current) {
@@ -583,9 +603,16 @@ function applyDraw(
     const top = current.zones.library[0];
     if (!top) {
       current.failedToDraw = true;
-      return next;
+      break;
     }
     next = moveCard(next, top, "hand");
+    drawn += 1;
+  }
+  if (drawn > 0) {
+    dispatchEventsInPlace(
+      next,
+      Array.from({ length: drawn }, () => ({ kind: "draws" as const, playerId })),
+    );
   }
   return next;
 }
@@ -1246,6 +1273,21 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
       case "destroy_all":
         next = applyDestroyAll(state, effect.what);
         break;
+      case "unless_pays": {
+        next = cloneGameState(state);
+        if (isLiving(next, effect.playerId)) {
+          next.prompts.push({
+            kind: "pay_or_effect",
+            playerId: effect.playerId,
+            cost: effect.cost,
+            thenEffects: effect.effects.map((entry) => ({ ...entry })),
+            sourceId: null,
+          });
+        } else {
+          next = applyEffects(next, effect.effects);
+        }
+        break;
+      }
       case "amass":
         next = applyAmass(state, effect.playerId, effect.amount, effect.subtype);
         break;
@@ -1289,7 +1331,8 @@ export function applyEffects(state: GameState, effects: GameEffect[]): GameState
         prompt.kind === "choose_card" ||
         prompt.kind === "look_and_assign" ||
         prompt.kind === "search_library" ||
-        prompt.kind === "pay_or_counter")
+        prompt.kind === "pay_or_counter" ||
+        prompt.kind === "pay_or_effect")
     ) {
       const remaining = effects.slice(index + 1);
       if (remaining.length > 0) {

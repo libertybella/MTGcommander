@@ -412,6 +412,114 @@ describe("creature-or-planeswalker removal", () => {
   });
 });
 
+describe("pay-or-effect taxes", () => {
+  it("compiles Rhystic Study and taxes the caster", () => {
+    const compiled = compileOracleCard({
+      oracleId: "rhystic",
+      name: "Rhystic Study",
+      manaCost: "{2}{U}",
+      typeLine: "Enchantment",
+      oracleText:
+        "Whenever an opponent casts a spell, you may draw a card unless that player pays {1}.",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+    });
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.triggers[0]).toMatchObject({
+      event: "cast_spell",
+      watch: "opponents",
+    });
+    expect(compiled.definition.triggers[0]?.effects[0]).toMatchObject({
+      kind: "unless_pays",
+      playerId: { type: "subject_player" },
+      cost: "{1}",
+    });
+
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game);
+    game.definitions[compiled.definition.id] = compiled.definition;
+    const study = createCardInstance({
+      definitionId: compiled.definition.id,
+      ownerId: p1.id,
+      zone: "battlefield",
+    });
+    game.cards[study.id] = study;
+    p1.zones.battlefield.push(study.id);
+    const spellDef = createCardDefinition({ name: "Test Sorcery", typeLine: "Sorcery" });
+    game.definitions[spellDef.id] = spellDef;
+    const spell = createCardInstance({ definitionId: spellDef.id, ownerId: p2.id, zone: "hand" });
+    game.cards[spell.id] = spell;
+    p2.zones.hand.push(spell.id);
+
+    // p2 casts: the Rhystic trigger goes on the stack above the spell.
+    const cast = putSpellOnStack(game, spell.id);
+    expect(cast.stack).toHaveLength(2);
+    const resolvedTrigger = resolveTopOfStack(cast);
+    const prompt = resolvedTrigger.prompts[0];
+    expect(prompt?.kind).toBe("pay_or_effect");
+    expect(prompt?.playerId).toBe(p2.id);
+
+    // Declining hands p1 the card.
+    const declined = applyAction(resolvedTrigger, {
+      kind: "resolve_pay",
+      playerId: p2.id,
+      pay: false,
+    });
+    expect(declined.players[0]?.zones.hand).toHaveLength(1);
+
+    // Paying {1} keeps the card off p1's hand.
+    resolvedTrigger.players[1]!.mana.C = 1;
+    const paid = applyAction(resolvedTrigger, { kind: "resolve_pay", playerId: p2.id, pay: true });
+    expect(paid.players[0]?.zones.hand).toHaveLength(0);
+    expect(paid.players[1]?.mana.C).toBe(0);
+  });
+
+  it("compiles Smothering Tithe's opponent-draw Treasure tax", () => {
+    const compiled = compileOracleCard({
+      oracleId: "tithe",
+      name: "Smothering Tithe",
+      manaCost: "{3}{W}",
+      typeLine: "Enchantment",
+      oracleText:
+        "Whenever an opponent draws a card, that player may pay {2}. If they don't, you create a Treasure token.",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+    });
+    expect(compiled.notes).toEqual([]);
+    const trigger = compiled.definition.triggers[0];
+    expect(trigger?.event).toBe("opponent_draws");
+    expect(trigger?.effects[0]).toMatchObject({
+      kind: "unless_pays",
+      cost: "{2}",
+    });
+
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game);
+    game.definitions[compiled.definition.id] = compiled.definition;
+    const tithe = createCardInstance({
+      definitionId: compiled.definition.id,
+      ownerId: p1.id,
+      zone: "battlefield",
+    });
+    game.cards[tithe.id] = tithe;
+    p1.zones.battlefield.push(tithe.id);
+
+    const afterDraw = applyEffect(game, { kind: "draw", playerId: p2.id, count: 1 });
+    expect(afterDraw.stack).toHaveLength(1);
+    const resolved = resolveTopOfStack(afterDraw);
+    expect(resolved.prompts[0]?.kind).toBe("pay_or_effect");
+    const declined = applyAction(resolved, { kind: "resolve_pay", playerId: p2.id, pay: false });
+    const treasure = declined.players[0]!.zones.battlefield
+      .map((id) => declined.definitions[declined.cards[id]!.definitionId]!.name)
+      .filter((name) => name === "Treasure");
+    expect(treasure).toHaveLength(1);
+  });
+});
+
 describe("wave 10: looks, hydras, graveyard lands", () => {
   it("compiles Impulse into a look-and-assign", () => {
     const compiled = compileOracleCard({

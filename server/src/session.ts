@@ -432,7 +432,7 @@ export class GameHost {
           });
           continue;
         }
-        if (prompt.kind === "pay_or_counter") {
+        if (prompt.kind === "pay_or_counter" || prompt.kind === "pay_or_effect") {
           this.apply({ kind: "resolve_pay", playerId: prompt.playerId, pay: false });
           continue;
         }

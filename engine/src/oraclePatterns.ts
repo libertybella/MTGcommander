@@ -566,6 +566,29 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     }
   }
 
+  // Rhystic Study / Mystic Remora: the tax prompt goes to "that player".
+  match = sentence.match(/^(you may )?draw a card unless that player pays ((?:\{[^}]+\})+)$/i);
+  if (match?.[2]) {
+    return {
+      targetRequirements: [],
+      effects: [
+        {
+          kind: "unless_pays",
+          playerId: { type: "subject_player" },
+          cost: match[2],
+          effects: [
+            {
+              kind: "draw",
+              playerId: "controller",
+              count: 1,
+              ...(match[1] ? { optional: true } : {}),
+            },
+          ],
+        },
+      ],
+    };
+  }
+
   // "You may draw": auto-taken, declined only when the library is too small
   // (a documented approximation — see RULES_COVERAGE.md).
   match = sentence.match(/^you may draw (a|one|two|three) cards?$/i);
@@ -1210,6 +1233,9 @@ function parseTriggerHead(head: string): TriggerHead | null {
   }
   if (/^Whenever an opponent casts a spell$/i.test(text)) {
     return { event: "cast_spell", watch: "opponents" };
+  }
+  if (/^Whenever an opponent draws a card$/i.test(text)) {
+    return { event: "opponent_draws" };
   }
   if (/^Whenever an opponent casts a noncreature spell$/i.test(text)) {
     return { event: "cast_spell", watch: "opponents", subjectFilter: { nonTypes: ["creature"] } };
@@ -1921,6 +1947,35 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
       }
       result.leftover.push(sentence);
       continue;
+    }
+
+    // Smothering Tithe: "…, that player may pay {2}." + "If they don't, <clause>."
+    const tithePair = sentence.match(
+      /^(When(?:ever)? [^,]+), that player may pay ((?:\{[^}]+\})+)$/i,
+    );
+    if (tithePair?.[1] && tithePair[2]) {
+      const head = parseTriggerHead(tithePair[1]);
+      const follow = sentences[index + 1]?.match(/^If they don't, (.+)$/i);
+      const inner = follow?.[1]
+        ? compileSimpleClause(follow[1].trim().replace(/^you /i, ""))
+        : null;
+      if (head && inner && !inner.leftover && inner.targetRequirements.length === 0) {
+        const { extraEvents: _unused, ...headRest } = head;
+        result.triggers.push({
+          ...headRest,
+          effects: [
+            {
+              kind: "unless_pays",
+              playerId: { type: "subject_player" },
+              cost: tithePair[2],
+              effects: inner.effects,
+            },
+          ],
+          targetRequirements: [],
+        });
+        index += 1;
+        continue;
+      }
     }
 
     // Beast Within / Stroke of Midnight: destroy + the consolation token.

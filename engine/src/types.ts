@@ -210,6 +210,10 @@ export type StackObject = {
   targets: ChosenTarget[];
   /** Index into the source definition's `triggers` for stacked abilities. */
   triggerIndex?: number;
+  /** The triggering event's subject card ("that creature", "that spell"). */
+  subjectCardId?: CardInstanceId;
+  /** The triggering event's subject player ("that player"). */
+  subjectPlayerId?: PlayerId;
   /** Index into the source definition's `activated` for stacked abilities. */
   activatedIndex?: number;
   /** Chosen mode index for modal spells. */
@@ -400,7 +404,9 @@ export type GameEffect =
       amount: number;
     }
   /** Board wipes: destroy every battlefield permanent of the scope at once. */
-  | { kind: "destroy_all"; what: DestroyAllScope };
+  | { kind: "destroy_all"; what: DestroyAllScope }
+  /** Rhystic Study: the payer chooses to pay or the effects happen. */
+  | { kind: "unless_pays"; playerId: PlayerId; cost: string; effects: GameEffect[] };
 
 /** What a "Destroy all …" wipe hits. */
 export type DestroyAllScope = "creatures" | "artifacts" | "enchantments" | "planeswalkers" | "nonland";
@@ -471,7 +477,14 @@ export type CardIdSelector = CardInstanceId | ChosenTargetRef;
 export type RelativePlayer = "controller" | "next_opponent" | "each_opponent";
 /** The controller of the Nth chosen target (Beast Within). */
 export type ChosenControllerRef = { type: "chosen_controller"; index: number };
-export type PlayerSelector = PlayerId | RelativePlayer | ChosenTargetRef | ChosenControllerRef;
+/** "That player": the trigger event's subject player, or the subject card's controller. */
+export type SubjectPlayerRef = { type: "subject_player" };
+export type PlayerSelector =
+  | PlayerId
+  | RelativePlayer
+  | ChosenTargetRef
+  | ChosenControllerRef
+  | SubjectPlayerRef;
 
 export type CardEffectTarget =
   | { type: "player"; playerId: PlayerSelector }
@@ -565,7 +578,8 @@ export type CardEffect =
       counter: string;
       amount: number;
     }
-  | { kind: "destroy_all"; what: DestroyAllScope };
+  | { kind: "destroy_all"; what: DestroyAllScope }
+  | { kind: "unless_pays"; playerId: PlayerSelector; cost: string; effects: CardEffect[] };
 
 export type Keyword =
   | "flying"
@@ -600,7 +614,9 @@ export type TriggerEvent =
   /** A spell was cast (Guttersnipe, Rhystic Study). Subject is the cast card. */
   | "cast_spell"
   /** Dealt combat damage to a player (Bident of Thassa). Subject is the dealer. */
-  | "deals_combat_damage_to_player";
+  | "deals_combat_damage_to_player"
+  /** An opponent drew a card (Smothering Tithe). Subject is the drawing player. */
+  | "opponent_draws";
 
 export type CardTrigger = {
   event: TriggerEvent;
@@ -641,12 +657,17 @@ export type EngineEvent =
   | { kind: "step_begins"; step: Step }
   | { kind: "gains_life"; playerId: PlayerId }
   | { kind: "casts"; cardId: CardInstanceId; controllerId: PlayerId }
-  | { kind: "combat_damage_to_player"; cardId: CardInstanceId; playerId: PlayerId };
+  | { kind: "combat_damage_to_player"; cardId: CardInstanceId; playerId: PlayerId }
+  | { kind: "draws"; playerId: PlayerId };
 
 /** One triggered ability waiting to be put on the stack. */
 export type TriggerCandidate = {
   cardId: CardInstanceId;
   triggerIndex: number;
+  /** The event subject: the card that entered/died/was cast, if any. */
+  subjectCardId?: CardInstanceId;
+  /** The event subject when it is a player (draws, gains life). */
+  subjectPlayerId?: PlayerId;
 };
 
 /** A required player decision that is not priority (targets, later modes). */
@@ -680,6 +701,15 @@ export type PendingPrompt =
       kind: "choose_creature_type";
       playerId: PlayerId;
       sourceId: CardInstanceId;
+    }
+  | {
+      /** Rhystic Study: pay `cost` or `thenEffects` happen. */
+      kind: "pay_or_effect";
+      playerId: PlayerId;
+      cost: string;
+      thenEffects: GameEffect[];
+      sourceId: CardInstanceId | null;
+      resumeEffects?: GameEffect[];
     }
   | {
       kind: "scry";

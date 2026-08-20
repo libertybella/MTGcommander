@@ -2308,6 +2308,30 @@ export function Battlefield(props: Props) {
                 </button>
               </>
             ) : null}
+            {actorId === prompt.playerId &&
+            (prompt.kind === "pay_or_counter" || prompt.kind === "pay_or_effect") ? (
+              <>
+                <button
+                  type="button"
+                  className="pass-button"
+                  data-testid="pay-cost"
+                  disabled={autoTapPlan(state, actorId, prompt.cost) === null}
+                  onClick={() => {
+                    const plan = autoTapPlan(state, actorId, prompt.cost) ?? [];
+                    send({ kind: "resolve_pay", playerId: actorId, pay: true, taps: plan });
+                  }}
+                >
+                  Pay {prompt.cost}
+                </button>
+                <button
+                  type="button"
+                  data-testid="decline-cost"
+                  onClick={() => send({ kind: "resolve_pay", playerId: actorId, pay: false })}
+                >
+                  {prompt.kind === "pay_or_counter" ? "Decline (countered)" : "Decline"}
+                </button>
+              </>
+            ) : null}
             {actorId === prompt.playerId && prompt.kind === "choose_creature_type" ? (
               <div className="look-row" data-testid="creature-type-picker">
                 {["Sliver", "Elf", "Goblin", "Zombie", "Dragon", "Human", "Merfolk", "Vampire"].map(
@@ -2480,10 +2504,16 @@ export function Battlefield(props: Props) {
                             onClick={() => {
                               setLookAssign((current) => {
                                 const next = { ...current };
-                                for (const [id, used] of Object.entries(next)) {
-                                  if (used === destination) {
-                                    delete next[id];
-                                  }
+                                // Destinations are a multiset (Impulse has several
+                                // bottom slots): only steal when at capacity.
+                                const capacity = prompt.destinations.filter(
+                                  (entry) => entry === destination,
+                                ).length;
+                                const holders = Object.entries(next).filter(
+                                  ([id, used]) => used === destination && id !== cardId,
+                                );
+                                if (holders.length >= capacity) {
+                                  delete next[holders[0]![0]];
                                 }
                                 next[cardId] = destination;
                                 return next;
@@ -2501,11 +2531,25 @@ export function Battlefield(props: Props) {
                   type="button"
                   className="pass-button"
                   data-testid="look-assign-confirm"
-                  disabled={
-                    lookedAtCardIds(state, prompt).some((cardId) => !lookAssign[cardId]) ||
-                    new Set(lookedAtCardIds(state, prompt).map((cardId) => lookAssign[cardId])).size !==
-                      lookedAtCardIds(state, prompt).length
-                  }
+                  disabled={(() => {
+                    const looked = lookedAtCardIds(state, prompt);
+                    if (looked.some((cardId) => !lookAssign[cardId])) {
+                      return true;
+                    }
+                    const capacity = new Map<string, number>();
+                    for (const destination of prompt.destinations) {
+                      capacity.set(destination, (capacity.get(destination) ?? 0) + 1);
+                    }
+                    for (const cardId of looked) {
+                      const destination = lookAssign[cardId]!;
+                      const remaining = capacity.get(destination) ?? 0;
+                      if (remaining <= 0) {
+                        return true;
+                      }
+                      capacity.set(destination, remaining - 1);
+                    }
+                    return false;
+                  })()}
                   onClick={() =>
                     send({
                       kind: "resolve_look_assign",

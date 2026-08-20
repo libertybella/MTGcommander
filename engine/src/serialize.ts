@@ -462,6 +462,12 @@ export function parseGameState(json: string): GameState {
       ...(activatedIndex === undefined
         ? {}
         : { activatedIndex: expectNumber(activatedIndex, `stack[${index}].activatedIndex`) }),
+      ...(entry.subjectCardId === undefined
+        ? {}
+        : { subjectCardId: expectString(entry.subjectCardId, `stack[${index}].subjectCardId`) }),
+      ...(entry.subjectPlayerId === undefined
+        ? {}
+        : { subjectPlayerId: expectString(entry.subjectPlayerId, `stack[${index}].subjectPlayerId`) }),
       ...(entry.modeIndex === undefined
         ? {}
         : { modeIndex: expectNumber(entry.modeIndex, `stack[${index}].modeIndex`) }),
@@ -624,6 +630,23 @@ function parsePrompts(value: unknown, playerIds: Set<string>): PendingPrompt[] {
         ...(resumeEffects && resumeEffects.length > 0 ? { resumeEffects } : {}),
       };
     }
+    if (kind === "pay_or_effect") {
+      const resumeEffects =
+        entry.resumeEffects === undefined
+          ? undefined
+          : parseGameEffects(entry.resumeEffects, `prompts[${index}].resumeEffects`);
+      return {
+        kind,
+        playerId,
+        cost: expectString(entry.cost, `prompts[${index}].cost`),
+        thenEffects: parseGameEffects(entry.thenEffects, `prompts[${index}].thenEffects`),
+        sourceId:
+          entry.sourceId === undefined || entry.sourceId === null
+            ? null
+            : expectString(entry.sourceId, `prompts[${index}].sourceId`),
+        ...(resumeEffects && resumeEffects.length > 0 ? { resumeEffects } : {}),
+      };
+    }
     if (kind === "scry" || kind === "surveil" || kind === "choose_discard") {
       const resumeEffects =
         entry.resumeEffects === undefined
@@ -710,6 +733,14 @@ function parseTriggerCandidates(value: unknown, label: string): TriggerCandidate
     return {
       cardId: expectString(entry.cardId, `${label}[${index}].cardId`),
       triggerIndex: expectNumber(entry.triggerIndex, `${label}[${index}].triggerIndex`),
+      ...(entry.subjectCardId === undefined
+        ? {}
+        : { subjectCardId: expectString(entry.subjectCardId, `${label}[${index}].subjectCardId`) }),
+      ...(entry.subjectPlayerId === undefined
+        ? {}
+        : {
+            subjectPlayerId: expectString(entry.subjectPlayerId, `${label}[${index}].subjectPlayerId`),
+          }),
     };
   });
 }
@@ -1055,6 +1086,9 @@ function parsePlayerSelector(value: unknown, label: string): PlayerSelector {
     throw new Error(`Invalid ${label}`);
   }
   const type = expectString(value.type, `${label}.type`);
+  if (type === "subject_player") {
+    return { type };
+  }
   if (type !== "chosen" && type !== "chosen_controller") {
     throw new Error(`Invalid ${label}.type`);
   }
@@ -1383,6 +1417,13 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
       };
     case "destroy_all":
       return { kind, what: parseDestroyAllScope(value.what, `${label}.what`) };
+    case "unless_pays":
+      return {
+        kind,
+        playerId: parsePlayerSelector(value.playerId, `${label}.playerId`),
+        cost: expectString(value.cost, `${label}.cost`),
+        effects: parseCardEffects(value.effects, `${label}.effects`),
+      };
     default:
       throw new Error(`Unknown effect kind ${kind}`);
   }
@@ -2035,6 +2076,14 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
   }
   if (kind === "destroy_all") {
     return { kind, what: parseDestroyAllScope(value.what, `${label}.what`) };
+  }
+  if (kind === "unless_pays") {
+    return {
+      kind,
+      playerId: expectString(value.playerId, `${label}.playerId`),
+      cost: expectString(value.cost, `${label}.cost`),
+      effects: parseGameEffects(value.effects, `${label}.effects`),
+    };
   }
   throw new Error(`Unsupported resume effect ${kind}`);
 }

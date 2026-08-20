@@ -163,7 +163,8 @@ function nextAction(state: GameState, rng: () => number): GameAction | null {
         }
         return { kind: "resolve_choose_card", playerId, cardId: pick(rng, legal) };
       }
-      case "pay_or_counter": {
+      case "pay_or_counter":
+      case "pay_or_effect": {
         const player = state.players.find((entry) => entry.id === playerId)!;
         const payable = canPayManaCost(player.mana, prompt.cost);
         return { kind: "resolve_pay", playerId, pay: payable && rng() < 0.5 };

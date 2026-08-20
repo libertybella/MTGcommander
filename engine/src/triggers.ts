@@ -41,6 +41,7 @@ export function queueDefinitionTriggerInPlace(
   state: GameState,
   cardId: CardInstanceId,
   index: number,
+  subject?: { cardId?: CardInstanceId; playerId?: PlayerId },
 ): boolean {
   const card = state.cards[cardId];
   const trigger = card ? state.definitions[card.definitionId]?.triggers[index] : undefined;
@@ -84,6 +85,8 @@ export function queueDefinitionTriggerInPlace(
     kind: "ability",
     targets: [],
     triggerIndex: index,
+    ...(subject?.cardId ? { subjectCardId: subject.cardId } : {}),
+    ...(subject?.playerId ? { subjectPlayerId: subject.playerId } : {}),
   });
   return true;
 }
@@ -156,7 +159,10 @@ export function processTriggerGroupsInPlace(state: GameState, groups: TriggerGro
       continue;
     }
     if (entries.length === 1) {
-      queueDefinitionTriggerInPlace(state, entries[0]!.cardId, entries[0]!.triggerIndex);
+      queueDefinitionTriggerInPlace(state, entries[0]!.cardId, entries[0]!.triggerIndex, {
+        cardId: entries[0]!.subjectCardId,
+        playerId: entries[0]!.subjectPlayerId,
+      });
       continue;
     }
     state.prompts.push({
@@ -237,6 +243,12 @@ function triggerMatchesEvent(
     return trigger.event === "you_gain_life" && watcher.controllerId === event.playerId;
   }
   if (trigger.event === "you_gain_life") {
+    return false;
+  }
+  if (event.kind === "draws") {
+    return trigger.event === "opponent_draws" && watcher.controllerId !== event.playerId;
+  }
+  if (trigger.event === "opponent_draws") {
     return false;
   }
   if (event.kind === "step_begins") {
@@ -334,7 +346,21 @@ export function dispatchEventsInPlace(state: GameState, events: EngineEvent[]): 
       // wipe drains Blood Artist once per death, not once total.
       for (const event of events) {
         if (triggerMatchesEvent(state, card, trigger, event)) {
-          candidates.push({ cardId: card.id, triggerIndex: index });
+          const subjectCardId = "cardId" in event ? event.cardId : undefined;
+          const subjectPlayerId =
+            event.kind === "gains_life" || event.kind === "combat_damage_to_player" || event.kind === "draws"
+              ? event.playerId
+              : event.kind === "casts" || event.kind === "dies"
+                ? event.controllerId
+                : subjectCardId
+                  ? state.cards[subjectCardId]?.controllerId
+                  : undefined;
+          candidates.push({
+            cardId: card.id,
+            triggerIndex: index,
+            ...(subjectCardId ? { subjectCardId } : {}),
+            ...(subjectPlayerId ? { subjectPlayerId } : {}),
+          });
         }
       }
     }

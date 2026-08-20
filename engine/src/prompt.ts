@@ -1,5 +1,7 @@
 import { createId } from "./ids";
 import { cloneGameState } from "./clone";
+// Deferred call only (decline path) — the effects/prompt import cycle is benign.
+import { applyEffects } from "./effects";
 import { payManaCost, tapForMana } from "./mana";
 import { manaAbilitiesOf, manaTapOptionsFor } from "./manaOptions";
 import { isLiving, requireLiving } from "./players";
@@ -101,7 +103,10 @@ export function applyResolveOrderTriggers(
   next.prompts.shift();
   for (const index of order) {
     const entry = prompt.entries[index]!;
-    queueDefinitionTriggerInPlace(next, entry.cardId, entry.triggerIndex);
+    queueDefinitionTriggerInPlace(next, entry.cardId, entry.triggerIndex, {
+      cardId: entry.subjectCardId,
+      playerId: entry.subjectPlayerId,
+    });
   }
   processTriggerGroupsInPlace(next, prompt.remaining);
   next.passesSinceAction = 0;
@@ -438,7 +443,7 @@ export function applyResolvePay(
   taps: { cardId: CardInstanceId; color?: ManaColor; manaIndex?: number }[] = [],
 ): GameState {
   const prompt = currentPrompt(state);
-  if (!prompt || prompt.kind !== "pay_or_counter") {
+  if (!prompt || (prompt.kind !== "pay_or_counter" && prompt.kind !== "pay_or_effect")) {
     throw new Error("No payment pending");
   }
   requireLiving(state, playerId);
@@ -448,6 +453,9 @@ export function applyResolvePay(
   let next = cloneGameState(state);
   next.prompts.shift();
   if (!pay) {
+    if (prompt.kind === "pay_or_effect") {
+      return applyEffects(next, prompt.thenEffects);
+    }
     const index = next.stack.findIndex((entry) => entry.id === prompt.stackObjectId);
     if (index !== -1) {
       const [removed] = next.stack.splice(index, 1);
@@ -501,17 +509,23 @@ export function applyResolveLookAssign(
     throw new Error("Assign every looked-at card");
   }
   const lookedSet = new Set(looked);
-  const usedDest = new Set<LookDestination>();
+  // Destinations are a multiset: Impulse offers one hand slot and several
+  // library-bottom slots.
+  const capacity = new Map<LookDestination, number>();
+  for (const destination of prompt.destinations) {
+    capacity.set(destination, (capacity.get(destination) ?? 0) + 1);
+  }
   const usedCard = new Set<CardInstanceId>();
   for (const assignment of assignments) {
     if (!lookedSet.has(assignment.cardId) || usedCard.has(assignment.cardId)) {
       throw new Error("Can only assign each looked-at card once");
     }
-    if (!prompt.destinations.includes(assignment.destination) || usedDest.has(assignment.destination)) {
-      throw new Error("Each destination can be used once");
+    const remaining = capacity.get(assignment.destination) ?? 0;
+    if (remaining <= 0) {
+      throw new Error("Each destination slot can be used once");
     }
+    capacity.set(assignment.destination, remaining - 1);
     usedCard.add(assignment.cardId);
-    usedDest.add(assignment.destination);
   }
   const next = cloneGameState(state);
   next.prompts.shift();

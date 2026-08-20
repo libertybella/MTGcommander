@@ -817,10 +817,18 @@ export function applyAction(
       }
       case "resolve_pay": {
         const prompt = currentPrompt(state);
-        const resume = prompt?.kind === "pay_or_counter" ? prompt.resumeEffects ?? [] : [];
+        const resume =
+          prompt?.kind === "pay_or_counter" || prompt?.kind === "pay_or_effect"
+            ? prompt.resumeEffects ?? []
+            : [];
         next = applyResolvePay(state, action.playerId, action.pay, action.taps ?? []);
-        if (resume.length > 0) {
+        if (resume.length > 0 && !isPromptOpen(next)) {
           next = applyEffects(next, resume);
+        } else if (resume.length > 0) {
+          const open = currentPrompt(next);
+          if (open && "resumeEffects" in open) {
+            open.resumeEffects = [...(open.resumeEffects ?? []), ...resume];
+          }
         }
         break;
       }
