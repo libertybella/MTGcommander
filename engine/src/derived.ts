@@ -53,6 +53,40 @@ export function maxHandSizeOf(state: GameState, playerId: string): number | null
   return unlimited ? null : 7;
 }
 
+/**
+ * CR 601.2f: total generic discount the player's permanents give a spell
+ * with these printed characteristics (medallions, Foundry Inspector).
+ */
+export function castCostReduction(
+  state: GameState,
+  playerId: string,
+  spell: { characteristics: { types: string[]; colors: string[] } },
+): number {
+  let total = 0;
+  for (const card of Object.values(state.cards)) {
+    if (card.zone !== "battlefield" || card.controllerId !== playerId) {
+      continue;
+    }
+    if (abilitiesRemoved(state, card.id)) {
+      continue;
+    }
+    for (const reduction of state.definitions[card.definitionId]?.costReductions ?? []) {
+      const { types, typesAny, colors } = reduction.filter;
+      if (types && !types.every((type) => spell.characteristics.types.includes(type))) {
+        continue;
+      }
+      if (typesAny && !typesAny.some((type) => spell.characteristics.types.includes(type))) {
+        continue;
+      }
+      if (colors && !colors.some((color) => spell.characteristics.colors.includes(color))) {
+        continue;
+      }
+      total += reduction.generic;
+    }
+  }
+  return total;
+}
+
 /** CR 305.2: one land drop plus any extras granted by permanents (Exploration). */
 export function landDropAllowance(state: GameState, playerId: string): number {
   let extra = 0;

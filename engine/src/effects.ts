@@ -9,7 +9,7 @@ import { livingPlayers, nextLivingPlayerId } from "./players";
 import { isPromptOpen, legalIdsForChooseSources } from "./prompt";
 import { applyStateBasedActionsInPlace } from "./status";
 import { isChosenTargetLegal, sourceColorsOf } from "./targeting";
-import { amassArmyTemplate } from "./tokens";
+import { amassArmyTemplate, tokenPresetFor } from "./tokens";
 import { dispatchEventsInPlace, queueEnterBattlefieldTriggersInPlace } from "./triggers";
 import { countCardPlacements, enterOwnerZone, moveCard, moveCardInPlace } from "./zones";
 import type {
@@ -748,11 +748,14 @@ function applyCreateToken(
 ): GameState {
   requirePlayer(state, effect.ownerId);
   const next = cloneGameState(state);
+  const preset = tokenPresetFor(effect.typeLine);
   const definition = createCardDefinition({
     name: effect.name,
     typeLine: effect.typeLine,
     power: effect.power ?? null,
     toughness: effect.toughness ?? null,
+    ...(preset?.manaAbilities ? { manaAbilities: preset.manaAbilities } : {}),
+    ...(preset?.activated ? { activated: preset.activated } : {}),
   });
   const token = createCardInstance({
     definitionId: definition.id,

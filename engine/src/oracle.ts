@@ -195,6 +195,9 @@ function compileOneFace(card: OracleCard, definitionId: string): OracleCompileRe
     ...(compiled.noMaxHandSize ? { noMaxHandSize: true } : {}),
     ...(compiled.extraLandDrops ? { extraLandDrops: compiled.extraLandDrops } : {}),
     ...(compiled.cantBeCountered ? { cantBeCountered: true } : {}),
+    ...(compiled.costReductions && compiled.costReductions.length > 0
+      ? { costReductions: compiled.costReductions }
+      : {}),
     ...(compiled.loyaltyAbilities && compiled.loyaltyAbilities.length > 0
       ? { loyaltyAbilities: compiled.loyaltyAbilities }
       : {}),

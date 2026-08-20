@@ -128,6 +128,12 @@ export type CardDefinition = {
   extraLandDrops?: number;
   /** "This spell can't be countered" (Abrupt Decay). */
   cantBeCountered?: boolean;
+  /**
+   * "Artifact spells you cast cost {1} less to cast" (medallions, Foundry
+   * Inspector). Applies to the controller's spells while on the battlefield;
+   * only the generic portion shrinks, never below zero.
+   */
+  costReductions?: CostReduction[];
   /** Scryfall card image, if known. Empty for synthetic / hidden cards. */
   imageUrl: string;
   /** Linked opposite face for modal DFCs and transforming cards. */
@@ -383,6 +389,13 @@ export type GameEffect =
 /** What a "Destroy all …" wipe hits. */
 export type DestroyAllScope = "creatures" | "artifacts" | "enchantments" | "planeswalkers" | "nonland";
 
+/** A static generic-cost discount on spells the controller casts. */
+export type CostReduction = {
+  generic: number;
+  /** Empty filter means every spell. types all required; typesAny needs one; colors any overlap. */
+  filter: { types?: string[]; typesAny?: string[]; colors?: Color[] };
+};
+
 export type EffectTarget =
   | { type: "player"; playerId: PlayerId }
   | { type: "creature"; cardId: CardInstanceId };
@@ -394,6 +407,10 @@ export type TargetKind =
   | "own_creature"
   | "permanent"
   | "creature_or_planeswalker"
+  | "artifact"
+  | "enchantment"
+  | "artifact_or_enchantment"
+  | "nonland_permanent"
   | "nonartifact_creature"
   | "player_or_creature"
   | "spell"
@@ -563,7 +580,9 @@ export type TriggerEvent =
   | "attacks"
   | "upkeep"
   | "end_step"
-  | "you_gain_life";
+  | "you_gain_life"
+  /** A spell was cast (Guttersnipe, Rhystic Study). Subject is the cast card. */
+  | "cast_spell";
 
 export type CardTrigger = {
   event: TriggerEvent;
@@ -573,11 +592,20 @@ export type CardTrigger = {
    * controller's objects; "any" watches everyone's. upkeep/end_step fire at
    * the beginning of the controller's own step and ignore `watch`.
    */
-  watch?: "self" | "controlled" | "any";
+  watch?: "self" | "controlled" | "opponents" | "any";
   /** "another creature": the event subject may not be the source itself. */
   excludeSelf?: boolean;
-  /** Filter on the event subject's computed characteristics (landfall). */
-  subjectFilter?: { types?: string[]; subtypes?: string[] };
+  /**
+   * Filter on the event subject's printed characteristics (landfall, cast
+   * triggers). `types` must all be present, `typesAny` needs one of them
+   * ("instant or sorcery"), `nonTypes` must all be absent ("noncreature").
+   */
+  subjectFilter?: {
+    types?: string[];
+    subtypes?: string[];
+    typesAny?: string[];
+    nonTypes?: string[];
+  };
   effects: CardEffect[];
   /** Chosen when the trigger is put on the stack. Empty or omitted means untargeted. */
   targetRequirements?: TargetRequirement[];
@@ -589,7 +617,8 @@ export type EngineEvent =
   | { kind: "dies"; cardId: CardInstanceId; controllerId: PlayerId }
   | { kind: "attacks"; cardId: CardInstanceId }
   | { kind: "step_begins"; step: Step }
-  | { kind: "gains_life"; playerId: PlayerId };
+  | { kind: "gains_life"; playerId: PlayerId }
+  | { kind: "casts"; cardId: CardInstanceId; controllerId: PlayerId };
 
 /** One triggered ability waiting to be put on the stack. */
 export type TriggerCandidate = {
@@ -722,6 +751,8 @@ export type ManaAbility = {
   damageToController: number;
   /** Gilded Lotus: how much of the chosen color one tap adds (default 1). */
   count?: number;
+  /** Treasure tokens: tapping for this mana also sacrifices the permanent. */
+  sacrificeSelf?: boolean;
 };
 
 /**

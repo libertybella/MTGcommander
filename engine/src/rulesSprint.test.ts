@@ -8,6 +8,7 @@ import {
   createGameState,
   isChosenTargetLegal,
   moveCard,
+  putSpellOnStack,
   resolveTopOfStack,
 } from "./index";
 import { fillLibraries } from "./testSupport";
@@ -407,6 +408,333 @@ describe("creature-or-planeswalker removal", () => {
     expect(
       isChosenTargetLegal(game, requirement, { type: "creature", cardId: rock.id }, p1.id),
     ).toBe(false);
+  });
+});
+
+describe("cost-reduction statics", () => {
+  it("compiles medallions and artifact discounts", () => {
+    const medallion = compileOracleCard({
+      oracleId: "ruby",
+      name: "Ruby Medallion",
+      manaCost: "{2}",
+      typeLine: "Artifact",
+      oracleText: "Red spells you cast cost {1} less to cast.",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+    });
+    expect(medallion.notes).toEqual([]);
+    expect(medallion.definition.costReductions).toEqual([
+      { generic: 1, filter: { colors: ["R"] } },
+    ]);
+
+    const inspector = compileOracleCard({
+      oracleId: "foundry",
+      name: "Foundry Inspector",
+      manaCost: "{3}",
+      typeLine: "Artifact Creature — Construct",
+      oracleText: "Artifact spells you cast cost {1} less to cast.",
+      power: "3",
+      toughness: "2",
+      printedKeywords: [],
+      imageUrl: "",
+    });
+    expect(inspector.notes).toEqual([]);
+    expect(inspector.definition.costReductions).toEqual([
+      { generic: 1, filter: { types: ["artifact"] } },
+    ]);
+  });
+
+  it("reduces the generic cost when casting a matching spell", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game);
+    const inspector = createCardDefinition({
+      name: "Foundry Inspector",
+      typeLine: "Artifact Creature — Construct",
+      power: 3,
+      toughness: 2,
+      costReductions: [{ generic: 1, filter: { types: ["artifact"] } }],
+    });
+    const rock = createCardDefinition({ name: "Mind Stone", typeLine: "Artifact", manaCost: "{2}" });
+    game.definitions[inspector.id] = inspector;
+    game.definitions[rock.id] = rock;
+    const inspectorCard = createCardInstance({
+      definitionId: inspector.id,
+      ownerId: p1.id,
+      zone: "battlefield",
+    });
+    const rockCard = createCardInstance({ definitionId: rock.id, ownerId: p1.id, zone: "hand" });
+    game.cards[inspectorCard.id] = inspectorCard;
+    game.cards[rockCard.id] = rockCard;
+    p1.zones.battlefield.push(inspectorCard.id);
+    p1.zones.hand.push(rockCard.id);
+
+    const ready = advanceSteps(game, 3);
+    ready.players[0]!.mana.C = 1;
+    // {2} rock costs {1} with the Inspector out: one colorless is enough.
+    const cast = applyAction(ready, {
+      kind: "cast_spell",
+      playerId: p1.id,
+      cardId: rockCard.id,
+      targets: [],
+    });
+    expect(cast.stack).toHaveLength(1);
+    expect(cast.players[0]?.mana.C).toBe(0);
+  });
+});
+
+describe("predefined artifact tokens", () => {
+  it("compiles attack-for-Treasure triggers", () => {
+    const compiled = compileOracleCard({
+      oracleId: "prosperous",
+      name: "Test Innkeeper",
+      manaCost: "{1}{R}",
+      typeLine: "Creature — Goblin Citizen",
+      oracleText: "Whenever Test Innkeeper attacks, create a Treasure token.",
+      power: "1",
+      toughness: "2",
+      printedKeywords: [],
+      imageUrl: "",
+    });
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.triggers[0]?.effects).toEqual([
+      {
+        kind: "create_token",
+        ownerId: "controller",
+        name: "Treasure",
+        typeLine: "Artifact — Treasure Token",
+        power: null,
+        toughness: null,
+      },
+    ]);
+  });
+
+  it("a Treasure taps for any color and sacrifices itself", () => {
+    const { game, p1 } = twoPlayers();
+    const made = applyEffect(game, {
+      kind: "create_token",
+      ownerId: p1.id,
+      name: "Treasure",
+      typeLine: "Artifact — Treasure Token",
+      power: null,
+      toughness: null,
+    });
+    const treasureId = made.players[0]!.zones.battlefield[0]!;
+    made.priorityPlayerId = p1.id;
+    const tapped = applyAction(made, {
+      kind: "tap_for_mana",
+      playerId: p1.id,
+      cardId: treasureId,
+      color: "U",
+    });
+    expect(tapped.players[0]?.mana.U).toBe(1);
+    // Sacrificed, and tokens cease to exist outside the battlefield.
+    expect(tapped.players[0]?.zones.battlefield).toEqual([]);
+  });
+
+  it("a Clue pays two and sacrifices to draw", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game);
+    let next = applyEffect(game, {
+      kind: "create_token",
+      ownerId: p1.id,
+      name: "Clue",
+      typeLine: "Artifact — Clue Token",
+      power: null,
+      toughness: null,
+    });
+    const clueId = next.players[0]!.zones.battlefield[0]!;
+    next.players[0]!.mana.C = 2;
+    next.priorityPlayerId = p1.id;
+    const cracked = applyAction(next, {
+      kind: "activate_ability",
+      playerId: p1.id,
+      cardId: clueId,
+      abilityIndex: 0,
+      targets: [],
+    });
+    // The sacrifice happens on activation; the draw resolves from the stack.
+    expect(cracked.players[0]?.zones.battlefield).toEqual([]);
+  });
+});
+
+describe("cast triggers", () => {
+  it("compiles the cast-trigger heads", () => {
+    const compiled = compileOracleCard({
+      oracleId: "guttersnipe",
+      name: "Guttersnipe",
+      manaCost: "{2}{R}",
+      typeLine: "Creature — Goblin Shaman",
+      oracleText:
+        "Whenever you cast an instant or sorcery spell, Guttersnipe deals 2 damage to each opponent.",
+      power: "2",
+      toughness: "2",
+      printedKeywords: [],
+      imageUrl: "",
+    });
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.triggers[0]).toMatchObject({
+      event: "cast_spell",
+      watch: "controlled",
+      subjectFilter: { typesAny: ["instant", "sorcery"] },
+    });
+  });
+
+  it("Guttersnipe pings opponents when its controller casts an instant", () => {
+    const { game, p1 } = twoPlayers();
+    const snipe = createCardDefinition({
+      name: "Guttersnipe",
+      typeLine: "Creature — Goblin Shaman",
+      power: 2,
+      toughness: 2,
+      triggers: [
+        {
+          event: "cast_spell",
+          watch: "controlled",
+          subjectFilter: { typesAny: ["instant", "sorcery"] },
+          effects: [
+            {
+              kind: "deal_damage",
+              sourceId: "self",
+              target: { type: "player", playerId: "each_opponent" },
+              amount: 2,
+            },
+          ],
+          targetRequirements: [],
+        },
+      ],
+    });
+    const bolt = createCardDefinition({ name: "Test Instant", typeLine: "Instant" });
+    const rock = createCardDefinition({ name: "Test Rock", typeLine: "Artifact" });
+    game.definitions[snipe.id] = snipe;
+    game.definitions[bolt.id] = bolt;
+    game.definitions[rock.id] = rock;
+    const snipeCard = createCardInstance({ definitionId: snipe.id, ownerId: p1.id, zone: "battlefield" });
+    const boltCard = createCardInstance({ definitionId: bolt.id, ownerId: p1.id, zone: "hand" });
+    const rockCard = createCardInstance({ definitionId: rock.id, ownerId: p1.id, zone: "hand" });
+    game.cards[snipeCard.id] = snipeCard;
+    game.cards[boltCard.id] = boltCard;
+    game.cards[rockCard.id] = rockCard;
+    p1.zones.battlefield.push(snipeCard.id);
+    p1.zones.hand.push(boltCard.id, rockCard.id);
+
+    // Casting the artifact does not trip the instant-or-sorcery filter.
+    const castRock = putSpellOnStack(game, rockCard.id);
+    expect(castRock.stack).toHaveLength(1);
+
+    const castBolt = putSpellOnStack(game, boltCard.id);
+    // Spell + the cast trigger above it.
+    expect(castBolt.stack).toHaveLength(2);
+    const resolvedTrigger = resolveTopOfStack(castBolt);
+    expect(resolvedTrigger.players[1]?.life).toBe(38);
+    expect(resolvedTrigger.players[0]?.life).toBe(40);
+  });
+
+  it("opponent-cast triggers ignore the controller's own spells", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const remora = createCardDefinition({
+      name: "Test Remora",
+      typeLine: "Enchantment",
+      triggers: [
+        {
+          event: "cast_spell",
+          watch: "opponents",
+          effects: [{ kind: "draw", playerId: "controller", count: 1 }],
+          targetRequirements: [],
+        },
+      ],
+    });
+    const spell = createCardDefinition({ name: "Test Sorcery", typeLine: "Sorcery" });
+    game.definitions[remora.id] = remora;
+    game.definitions[spell.id] = spell;
+    const remoraCard = createCardInstance({ definitionId: remora.id, ownerId: p1.id, zone: "battlefield" });
+    const mine = createCardInstance({ definitionId: spell.id, ownerId: p1.id, zone: "hand" });
+    const theirs = createCardInstance({ definitionId: spell.id, ownerId: p2.id, zone: "hand" });
+    game.cards[remoraCard.id] = remoraCard;
+    game.cards[mine.id] = mine;
+    game.cards[theirs.id] = theirs;
+    p1.zones.battlefield.push(remoraCard.id);
+    p1.zones.hand.push(mine.id);
+    p2.zones.hand.push(theirs.id);
+
+    expect(putSpellOnStack(game, mine.id).stack).toHaveLength(1);
+    expect(putSpellOnStack(game, theirs.id).stack).toHaveLength(2);
+  });
+});
+
+describe("artifact and enchantment removal targets", () => {
+  it("compiles the destroy variants to the right target kinds", () => {
+    const cases: Array<[string, string]> = [
+      ["Destroy target artifact.", "artifact"],
+      ["Destroy target enchantment.", "enchantment"],
+      ["Destroy target artifact or enchantment.", "artifact_or_enchantment"],
+      ["Destroy target nonland permanent.", "nonland_permanent"],
+    ];
+    for (const [text, kind] of cases) {
+      const compiled = compileOracleCard({
+        oracleId: `removal-${kind}`,
+        name: "Test Removal",
+        manaCost: "{1}{G}",
+        typeLine: "Instant",
+        oracleText: text,
+        power: null,
+        toughness: null,
+        printedKeywords: [],
+        imageUrl: "",
+      });
+      expect(compiled.notes, text).toEqual([]);
+      expect(compiled.definition.targetRequirements, text).toEqual([{ kind }]);
+    }
+  });
+
+  it("artifact_or_enchantment accepts either type and rejects creatures", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const rock = createCardDefinition({ name: "Mind Stone", typeLine: "Artifact" });
+    const pact = createCardDefinition({ name: "Wild Growth", typeLine: "Enchantment — Aura" });
+    const bear = createCardDefinition({
+      name: "Bear",
+      typeLine: "Creature — Bear",
+      power: 2,
+      toughness: 2,
+    });
+    for (const def of [rock, pact, bear]) {
+      game.definitions[def.id] = def;
+    }
+    const cards = [rock, pact, bear].map((def) => {
+      const card = createCardInstance({ definitionId: def.id, ownerId: p2.id, zone: "battlefield" });
+      game.cards[card.id] = card;
+      p2.zones.battlefield.push(card.id);
+      return card;
+    });
+    const requirement = { kind: "artifact_or_enchantment" as const };
+    expect(
+      isChosenTargetLegal(game, requirement, { type: "creature", cardId: cards[0]!.id }, p1.id),
+    ).toBe(true);
+    expect(
+      isChosenTargetLegal(game, requirement, { type: "creature", cardId: cards[1]!.id }, p1.id),
+    ).toBe(true);
+    expect(
+      isChosenTargetLegal(game, requirement, { type: "creature", cardId: cards[2]!.id }, p1.id),
+    ).toBe(false);
+  });
+
+  it("compiles Stroke of Midnight's nonland destroy with the consolation token", () => {
+    const compiled = compileOracleCard({
+      oracleId: "stroke",
+      name: "Stroke of Midnight",
+      manaCost: "{2}{W}",
+      typeLine: "Instant",
+      oracleText:
+        "Destroy target nonland permanent. Its controller creates a 1/1 white Human creature token.",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+    });
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.targetRequirements).toEqual([{ kind: "nonland_permanent" }]);
+    expect(compiled.definition.effects).toHaveLength(2);
   });
 });
 

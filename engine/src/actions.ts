@@ -2,7 +2,7 @@ import { declareAttackers, declareBlockers, lockRemainingBlockers, pendingBlocke
 import { abilitiesRemoved } from "./characteristicsEngine";
 import { isCommander, isCreature, isInstant, isInstantOrSorcery, isLand, isMainPhase } from "./cardTypes";
 import { cloneGameState } from "./clone";
-import { landDropAllowance } from "./derived";
+import { castCostReduction, landDropAllowance } from "./derived";
 import { eliminatePlayerInPlace } from "./elimination";
 import { applyEffects, bindCardEffects } from "./effects";
 import { hasKeyword } from "./keywords";
@@ -128,6 +128,8 @@ function validateCast(
   if (fromCommand) {
     cost.generic += player.commander.tax;
   }
+  // CR 601.2f: increases (tax) first, then static discounts, floor zero.
+  cost.generic = Math.max(0, cost.generic - castCostReduction(state, playerId, definition));
   if (!canPayManaCost(player.mana, cost, player.life)) {
     throw new Error("Cannot pay mana cost");
   }
@@ -434,6 +436,9 @@ function applyTapForMana(
   }
   let next = tapForMana(state, cardId, addition);
   next.priorityPlayerId = playerId;
+  if (ability.sacrificeSelf) {
+    next = applyEffects(next, [{ kind: "sacrifice", cardId }]);
+  }
   if (ability.damageToController > 0) {
     next = applyEffects(next, [
       {

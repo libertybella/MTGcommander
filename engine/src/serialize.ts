@@ -313,6 +313,59 @@ export function parseGameState(json: string): GameState {
         ? {}
         : { extraLandDrops: expectNumber(def.extraLandDrops, `definition.${id}.extraLandDrops`) }),
       ...(def.cantBeCountered === true ? { cantBeCountered: true } : {}),
+      ...(def.costReductions === undefined
+        ? {}
+        : {
+            costReductions: (() => {
+              if (!Array.isArray(def.costReductions)) {
+                throw new Error(`Invalid definition.${id}.costReductions`);
+              }
+              return def.costReductions.map((entry, index) => {
+                if (!isRecord(entry) || !isRecord(entry.filter)) {
+                  throw new Error(`Invalid definition.${id}.costReductions[${index}]`);
+                }
+                const generic = expectNumber(
+                  entry.generic,
+                  `definition.${id}.costReductions[${index}].generic`,
+                );
+                const types = parseStringList(
+                  entry.filter.types,
+                  `definition.${id}.costReductions[${index}].filter.types`,
+                );
+                const typesAny = parseStringList(
+                  entry.filter.typesAny,
+                  `definition.${id}.costReductions[${index}].filter.typesAny`,
+                );
+                const colors = (entry.filter.colors === undefined
+                  ? []
+                  : (() => {
+                      if (!Array.isArray(entry.filter.colors)) {
+                        throw new Error(`Invalid definition.${id}.costReductions[${index}].filter.colors`);
+                      }
+                      return entry.filter.colors.map((color, colorIndex) => {
+                        const value = expectString(
+                          color,
+                          `definition.${id}.costReductions[${index}].filter.colors[${colorIndex}]`,
+                        );
+                        if (!(COLOR_KEYS as readonly string[]).includes(value)) {
+                          throw new Error(
+                            `Invalid definition.${id}.costReductions[${index}].filter.colors[${colorIndex}]`,
+                          );
+                        }
+                        return value as Color;
+                      });
+                    })());
+                return {
+                  generic,
+                  filter: {
+                    ...(types.length > 0 ? { types } : {}),
+                    ...(typesAny.length > 0 ? { typesAny } : {}),
+                    ...(colors.length > 0 ? { colors } : {}),
+                  },
+                };
+              });
+            })(),
+          }),
       ...(def.protectionFrom === undefined
         ? {}
         : {
@@ -918,6 +971,10 @@ function parseTargetRequirement(value: unknown, label: string): TargetRequiremen
     kind !== "own_creature" &&
     kind !== "permanent" &&
     kind !== "creature_or_planeswalker" &&
+    kind !== "artifact" &&
+    kind !== "enchantment" &&
+    kind !== "artifact_or_enchantment" &&
+    kind !== "nonland_permanent" &&
     kind !== "nonartifact_creature" &&
     kind !== "player_or_creature" &&
     kind !== "spell" &&
@@ -1417,12 +1474,20 @@ function parseTriggers(value: unknown, label: string): CardTrigger[] {
       event !== "dies" &&
       event !== "attacks" &&
       event !== "upkeep" &&
-      event !== "end_step"
+      event !== "end_step" &&
+      event !== "you_gain_life" &&
+      event !== "cast_spell"
     ) {
       throw new Error(`Invalid ${label}[${index}].event`);
     }
     const watch = entry.watch;
-    if (watch !== undefined && watch !== "self" && watch !== "controlled" && watch !== "any") {
+    if (
+      watch !== undefined &&
+      watch !== "self" &&
+      watch !== "controlled" &&
+      watch !== "opponents" &&
+      watch !== "any"
+    ) {
       throw new Error(`Invalid ${label}[${index}].watch`);
     }
     const subjectFilter =
@@ -1437,16 +1502,27 @@ function parseTriggers(value: unknown, label: string): CardTrigger[] {
               entry.subjectFilter.subtypes,
               `${label}[${index}].subjectFilter.subtypes`,
             );
+            const typesAny = parseStringList(
+              entry.subjectFilter.typesAny,
+              `${label}[${index}].subjectFilter.typesAny`,
+            );
+            const nonTypes = parseStringList(
+              entry.subjectFilter.nonTypes,
+              `${label}[${index}].subjectFilter.nonTypes`,
+            );
             return {
               ...(types.length > 0 ? { types } : {}),
               ...(subtypes.length > 0 ? { subtypes } : {}),
+              ...(typesAny.length > 0 ? { typesAny } : {}),
+              ...(nonTypes.length > 0 ? { nonTypes } : {}),
             };
           })();
     return {
       event,
       ...(watch === undefined ? {} : { watch }),
       ...(entry.excludeSelf === true ? { excludeSelf: true } : {}),
-      ...(subjectFilter && (subjectFilter.types || subjectFilter.subtypes)
+      ...(subjectFilter &&
+      (subjectFilter.types || subjectFilter.subtypes || subjectFilter.typesAny || subjectFilter.nonTypes)
         ? { subjectFilter }
         : {}),
       effects: parseCardEffects(entry.effects, `${label}[${index}].effects`),
@@ -1724,6 +1800,7 @@ function parseManaAbilities(value: unknown, label: string): ManaAbility[] {
       ...(entry.count === undefined
         ? {}
         : { count: expectNumber(entry.count, `${label}[${index}].count`) }),
+      ...(entry.sacrificeSelf === true ? { sacrificeSelf: true } : {}),
     };
   });
 }

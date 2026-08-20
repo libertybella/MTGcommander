@@ -153,7 +153,13 @@ export function isChosenTargetLegal(
       !isArtifactPermanent(state, target.cardId)
     );
   }
-  if (requirement.kind === "creature_or_planeswalker") {
+  if (
+    requirement.kind === "creature_or_planeswalker" ||
+    requirement.kind === "artifact" ||
+    requirement.kind === "enchantment" ||
+    requirement.kind === "artifact_or_enchantment" ||
+    requirement.kind === "nonland_permanent"
+  ) {
     if (target.type !== "creature") {
       return false;
     }
@@ -164,10 +170,22 @@ export function isChosenTargetLegal(
       casterId,
       sourceColors,
     );
-    return (
-      permanentLegal &&
-      (isCreature(state, target.cardId) || isPlaneswalker(state, target.cardId))
-    );
+    if (!permanentLegal) {
+      return false;
+    }
+    const types = characteristicsOf(state, target.cardId).types;
+    switch (requirement.kind) {
+      case "creature_or_planeswalker":
+        return isCreature(state, target.cardId) || isPlaneswalker(state, target.cardId);
+      case "artifact":
+        return types.includes("artifact");
+      case "enchantment":
+        return types.includes("enchantment");
+      case "artifact_or_enchantment":
+        return types.includes("artifact") || types.includes("enchantment");
+      case "nonland_permanent":
+        return !types.includes("land");
+    }
   }
   if (requirement.kind === "spell") {
     return target.type === "spell" && isLegalSpellTarget(state, target.stackObjectId);
@@ -279,7 +297,14 @@ export function legalChoicesForRequirement(
         choice.type === "creature" && state.cards[choice.cardId]?.controllerId === casterId,
     );
   }
-  if (requirement.kind === "permanent" || requirement.kind === "creature_or_planeswalker") {
+  if (
+    requirement.kind === "permanent" ||
+    requirement.kind === "creature_or_planeswalker" ||
+    requirement.kind === "artifact" ||
+    requirement.kind === "enchantment" ||
+    requirement.kind === "artifact_or_enchantment" ||
+    requirement.kind === "nonland_permanent"
+  ) {
     const choices: ChosenTarget[] = [];
     for (const player of livingPlayers(state)) {
       for (const cardId of player.zones.battlefield) {

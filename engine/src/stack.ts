@@ -6,6 +6,7 @@ import { enterOwnerZone, findCardZone, removeCardFromCurrentZone } from "./zones
 import { applyEffects, bindCardEffects } from "./effects";
 import { isLiving, livingPlayerCount, nextLivingPlayerId } from "./players";
 import { applyStateBasedActionsInPlace, redirectPriorityIfLost } from "./status";
+import { dispatchEventsInPlace } from "./triggers";
 import { hasLegalTargetRemaining, isChosenTargetLegal, sourceColorsOf, validateChosenTargets } from "./targeting";
 import type {
   CardInstanceId,
@@ -130,6 +131,10 @@ export function putSpellOnStack(
   });
   next.passesSinceAction = 0;
   next.priorityPlayerId = moved.controllerId;
+  // Cast triggers (Guttersnipe, Rhystic Study) go on the stack above the spell.
+  dispatchEventsInPlace(next, [
+    { kind: "casts", cardId, controllerId: moved.controllerId },
+  ]);
   queueWardPromptsInPlace(next, stackId, moved.controllerId, targets);
   return next;
 }

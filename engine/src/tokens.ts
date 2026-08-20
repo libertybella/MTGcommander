@@ -1,4 +1,61 @@
-import type { CardDefinition, CardEffect, TokenTemplate } from "./types";
+import type { ActivatedAbility, CardDefinition, CardEffect, ManaAbility, TokenTemplate } from "./types";
+
+/**
+ * Built-in abilities for the evergreen predefined artifact tokens. Data, not
+ * card-specific code: applyCreateToken merges these into any token whose type
+ * line carries the subtype, however it was created.
+ */
+export type TokenPreset = {
+  manaAbilities?: ManaAbility[];
+  activated?: ActivatedAbility[];
+};
+
+export function tokenPresetFor(typeLine: string): TokenPreset | null {
+  const lower = typeLine.toLowerCase();
+  if (lower.includes("treasure")) {
+    return {
+      // "{T}, Sacrifice this artifact: Add one mana of any color."
+      manaAbilities: [
+        {
+          produces: {},
+          producesOptions: [],
+          producesAnyColor: true,
+          damageToController: 0,
+          sacrificeSelf: true,
+        },
+      ],
+    };
+  }
+  if (lower.includes("clue")) {
+    return {
+      // "{2}, Sacrifice this artifact: Draw a card."
+      activated: [
+        {
+          tap: false,
+          manaCost: "{2}",
+          sacrificeSelf: true,
+          effects: [{ kind: "draw", playerId: "controller", count: 1 }],
+          targetRequirements: [],
+        },
+      ],
+    };
+  }
+  if (lower.includes("food")) {
+    return {
+      // "{2}, {T}, Sacrifice this artifact: You gain 3 life."
+      activated: [
+        {
+          tap: true,
+          manaCost: "{2}",
+          sacrificeSelf: true,
+          effects: [{ kind: "gain_life", playerId: "controller", amount: 3 }],
+          targetRequirements: [],
+        },
+      ],
+    };
+  }
+  return null;
+}
 
 function singularizeType(raw: string): string {
   const trimmed = raw.trim();

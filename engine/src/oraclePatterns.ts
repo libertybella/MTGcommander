@@ -6,6 +6,7 @@ import type {
   CardTrigger,
   ChooseCardSource,
   Color,
+  CostReduction,
   DestroyAllScope,
   EnterTappedUnless,
   Keyword,
@@ -17,6 +18,7 @@ import type {
   SearchFilter,
   SpellMode,
   StaticAbility,
+  TargetKind,
   TargetRequirement,
 } from "./types";
 import type { OracleCard } from "./oracle";
@@ -40,6 +42,7 @@ export type CompiledOracleText = {
   noMaxHandSize?: boolean;
   extraLandDrops?: number;
   cantBeCountered?: boolean;
+  costReductions?: CostReduction[];
   leftover: string[];
   notes: string[];
 };
@@ -424,6 +427,21 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     };
   }
 
+  match = sentence.match(/^(?:~|this \w+) deals (\d+) damage to each opponent$/i);
+  if (match?.[1]) {
+    return {
+      targetRequirements: [],
+      effects: [
+        {
+          kind: "deal_damage",
+          sourceId: "self",
+          target: { type: "player", playerId: "each_opponent" },
+          amount: Number(match[1]),
+        },
+      ],
+    };
+  }
+
   if (/^(?:~ )?deals? X damage to any target$/i.test(sentence)) {
     return {
       targetRequirements: [{ kind: "player_or_creature" }],
@@ -736,6 +754,28 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
   }
 
   match = sentence.match(
+    /^Create (a|an|one|two|three|four|five|\d+) (Treasure|Clue|Food) tokens?$/i,
+  );
+  if (match?.[1] && match[2]) {
+    const count = parseCount(match[1]);
+    const name = match[2][0]!.toUpperCase() + match[2].slice(1).toLowerCase();
+    if (count) {
+      const token: CardEffect = {
+        kind: "create_token",
+        ownerId: "controller",
+        name,
+        typeLine: `Artifact — ${name} Token`,
+        power: null,
+        toughness: null,
+      };
+      return {
+        targetRequirements: [],
+        effects: Array.from({ length: count }, () => ({ ...token })),
+      };
+    }
+  }
+
+  match = sentence.match(
     /^Create (a|an|one|two|three|four|five|six|seven|eight|nine|ten|\d+) (\d+)\/(\d+)(?: (white|blue|black|red|green|colorless))? ([\w]+(?: [\w]+)?) creature tokens?$/i,
   );
   if (match?.[1] && match[2] && match[3] && match[5]) {
@@ -820,6 +860,28 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     return {
       targetRequirements: [{ kind: "permanent" }],
       effects: [{ kind: "move_card", cardId: { type: "chosen", index: 0 }, toZone: "graveyard" }],
+    };
+  }
+
+  match = sentence.match(
+    /^(Destroy|Exile) target (artifact|enchantment|artifact or enchantment|nonland permanent)$/i,
+  );
+  if (match?.[1] && match[2]) {
+    const kindOf: Record<string, TargetKind> = {
+      artifact: "artifact",
+      enchantment: "enchantment",
+      "artifact or enchantment": "artifact_or_enchantment",
+      "nonland permanent": "nonland_permanent",
+    };
+    return {
+      targetRequirements: [{ kind: kindOf[match[2].toLowerCase()]! }],
+      effects: [
+        {
+          kind: "move_card",
+          cardId: { type: "chosen", index: 0 },
+          toZone: match[1].toLowerCase() === "exile" ? "exile" : "graveyard",
+        },
+      ],
     };
   }
 
@@ -1063,6 +1125,37 @@ function parseTriggerHead(head: string): TriggerHead | null {
     /^Whenever a creature you control enters$/i.test(text)
   ) {
     return { event: "enter_battlefield", watch: "controlled", subjectFilter: { types: ["creature"] } };
+  }
+  if (/^Whenever you cast a spell$/i.test(text)) {
+    return { event: "cast_spell", watch: "controlled" };
+  }
+  if (/^Whenever you cast a creature spell$/i.test(text)) {
+    return { event: "cast_spell", watch: "controlled", subjectFilter: { types: ["creature"] } };
+  }
+  if (/^Whenever you cast a noncreature spell$/i.test(text)) {
+    return { event: "cast_spell", watch: "controlled", subjectFilter: { nonTypes: ["creature"] } };
+  }
+  if (/^Whenever you cast an instant or sorcery spell$/i.test(text)) {
+    return {
+      event: "cast_spell",
+      watch: "controlled",
+      subjectFilter: { typesAny: ["instant", "sorcery"] },
+    };
+  }
+  if (/^Whenever you cast an artifact spell$/i.test(text)) {
+    return { event: "cast_spell", watch: "controlled", subjectFilter: { types: ["artifact"] } };
+  }
+  if (/^Whenever you cast an enchantment spell$/i.test(text)) {
+    return { event: "cast_spell", watch: "controlled", subjectFilter: { types: ["enchantment"] } };
+  }
+  if (/^Whenever an opponent casts a spell$/i.test(text)) {
+    return { event: "cast_spell", watch: "opponents" };
+  }
+  if (/^Whenever an opponent casts a noncreature spell$/i.test(text)) {
+    return { event: "cast_spell", watch: "opponents", subjectFilter: { nonTypes: ["creature"] } };
+  }
+  if (/^Whenever a player casts a spell$/i.test(text)) {
+    return { event: "cast_spell", watch: "any" };
   }
   return null;
 }
@@ -1570,6 +1663,33 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
       continue;
     }
 
+    const discount = sentence.match(/^(.+?) spells(?: you cast)? cost \{(\d+)\} less to cast$/i);
+    if (discount?.[1] && discount[2]) {
+      const what = discount[1].trim().toLowerCase();
+      const colorOf: Record<string, Color> = {
+        white: "W",
+        blue: "U",
+        black: "B",
+        red: "R",
+        green: "G",
+      };
+      let filter: CostReduction["filter"] | null = null;
+      if (colorOf[what]) {
+        filter = { colors: [colorOf[what]!] };
+      } else if (["artifact", "creature", "enchantment", "instant", "sorcery"].includes(what)) {
+        filter = { types: [what] };
+      } else if (what === "instant and sorcery") {
+        filter = { typesAny: ["instant", "sorcery"] };
+      }
+      if (filter) {
+        result.costReductions = [
+          ...(result.costReductions ?? []),
+          { generic: Number(discount[2]), filter },
+        ];
+        continue;
+      }
+    }
+
     if (/^~ enters tapped$/i.test(sentence)) {
       result.replacements.push({ kind: "enters_tapped" });
       continue;
@@ -1647,8 +1767,9 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
       continue;
     }
 
-    // Beast Within: destroy + the next sentence's consolation token.
-    if (/^Destroy target permanent$/i.test(sentence)) {
+    // Beast Within / Stroke of Midnight: destroy + the consolation token.
+    const wipePair = sentence.match(/^Destroy target (nonland )?permanent$/i);
+    if (wipePair) {
       const tokenClause = sentences[index + 1]?.match(
         /^Its controller creates a (\d+)\/(\d+)(?: (white|blue|black|red|green|colorless))? ([A-Za-z]+) creature token$/i,
       );
@@ -1656,7 +1777,7 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
         const subtype =
           tokenClause[4][0]!.toUpperCase() + tokenClause[4].slice(1).toLowerCase();
         commitClause(result, {
-          targetRequirements: [{ kind: "permanent" }],
+          targetRequirements: [{ kind: wipePair[1] ? "nonland_permanent" : "permanent" }],
           effects: [
             { kind: "move_card", cardId: { type: "chosen", index: 0 }, toZone: "graveyard" },
             {

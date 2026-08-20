@@ -3,7 +3,7 @@ import { abilitiesRemoved } from "./characteristicsEngine";
 import { hasKeyword } from "./keywords";
 import { emptyManaPool } from "./createGame";
 import { pendingBlockerPlayer } from "./combat";
-import { landDropAllowance } from "./derived";
+import { castCostReduction, landDropAllowance } from "./derived";
 import { canPayManaCost, parseManaCost, type ParsedManaCost } from "./mana";
 import { manaAbilitiesOf, manaTapOptionsFor } from "./manaOptions";
 import { isMulliganOpen } from "./mulligan";
@@ -202,6 +202,7 @@ function castableFace(
     return false;
   }
   cost.generic += extraGeneric;
+  cost.generic = Math.max(0, cost.generic - castCostReduction(state, playerId, definition));
   if (!canPayWithPotential(potential, cost)) {
     return false;
   }
@@ -434,6 +435,9 @@ export function autoTapPlan(
     abilities.forEach((ability, manaIndex) => {
       if (manaIndex > 0) {
         return; // one candidate ability per permanent keeps the plan simple
+      }
+      if (ability.sacrificeSelf) {
+        return; // never auto-sacrifice a Treasure — tapping it stays a choice
       }
       producers.push({
         cardId: card.id,

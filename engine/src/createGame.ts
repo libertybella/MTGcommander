@@ -64,6 +64,7 @@ export function createCardDefinition(
         | "noMaxHandSize"
         | "extraLandDrops"
         | "cantBeCountered"
+        | "costReductions"
       >
     > & { colors?: Color[] },
 ): CardDefinition {
@@ -93,6 +94,12 @@ export function createCardDefinition(
                   ...(trigger.subjectFilter.subtypes
                     ? { subtypes: [...trigger.subjectFilter.subtypes] }
                     : {}),
+                  ...(trigger.subjectFilter.typesAny
+                    ? { typesAny: [...trigger.subjectFilter.typesAny] }
+                    : {}),
+                  ...(trigger.subjectFilter.nonTypes
+                    ? { nonTypes: [...trigger.subjectFilter.nonTypes] }
+                    : {}),
                 },
               }
             : {}),
@@ -119,6 +126,7 @@ export function createCardDefinition(
           producesAnyColor: ability.producesAnyColor,
           damageToController: ability.damageToController,
           ...(ability.count && ability.count > 1 ? { count: ability.count } : {}),
+          ...(ability.sacrificeSelf ? { sacrificeSelf: true } : {}),
         }))
       : [],
     activated: input.activated
@@ -164,6 +172,18 @@ export function createCardDefinition(
       ? { extraLandDrops: input.extraLandDrops }
       : {}),
     ...(input.cantBeCountered ? { cantBeCountered: true } : {}),
+    ...(input.costReductions && input.costReductions.length > 0
+      ? {
+          costReductions: input.costReductions.map((entry) => ({
+            generic: entry.generic,
+            filter: {
+              ...(entry.filter.types ? { types: [...entry.filter.types] } : {}),
+              ...(entry.filter.typesAny ? { typesAny: [...entry.filter.typesAny] } : {}),
+              ...(entry.filter.colors ? { colors: [...entry.filter.colors] } : {}),
+            },
+          })),
+        }
+      : {}),
     ...(input.otherFaceId ? { otherFaceId: input.otherFaceId } : {}),
     ...(input.layout && input.layout !== "normal" ? { layout: input.layout } : {}),
   };

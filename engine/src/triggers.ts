@@ -193,6 +193,14 @@ function subjectMatchesFilter(
       return false;
     }
   }
+  if (filter.typesAny && !filter.typesAny.some((type) => traits.types.includes(type))) {
+    return false;
+  }
+  for (const type of filter.nonTypes ?? []) {
+    if (traits.types.includes(type)) {
+      return false;
+    }
+  }
   return true;
 }
 
@@ -216,6 +224,26 @@ function triggerMatchesEvent(
     // "At the beginning of your …": the controller's own step.
     return event.step === step && watcher.controllerId === state.turn.activePlayerId;
   }
+  if (event.kind === "casts") {
+    if (trigger.event !== "cast_spell") {
+      return false;
+    }
+    // "Whenever you cast …" defaults to the watcher's controller.
+    const watch = trigger.watch ?? "controlled";
+    if (watch === "controlled" && event.controllerId !== watcher.controllerId) {
+      return false;
+    }
+    if (watch === "opponents" && event.controllerId === watcher.controllerId) {
+      return false;
+    }
+    if (trigger.excludeSelf && event.cardId === watcher.id) {
+      return false;
+    }
+    return subjectMatchesFilter(state, event.cardId, trigger.subjectFilter);
+  }
+  if (trigger.event === "cast_spell") {
+    return false;
+  }
   if (
     (event.kind === "enters" && trigger.event !== "enter_battlefield") ||
     (event.kind === "dies" && trigger.event !== "dies") ||
@@ -230,12 +258,13 @@ function triggerMatchesEvent(
   if (watch === "self") {
     return event.cardId === watcher.id;
   }
-  if (watch === "controlled") {
-    const subjectController =
-      event.kind === "dies" ? event.controllerId : state.cards[event.cardId]?.controllerId;
-    if (subjectController !== watcher.controllerId) {
-      return false;
-    }
+  const subjectController =
+    event.kind === "dies" ? event.controllerId : state.cards[event.cardId]?.controllerId;
+  if (watch === "controlled" && subjectController !== watcher.controllerId) {
+    return false;
+  }
+  if (watch === "opponents" && subjectController === watcher.controllerId) {
+    return false;
   }
   return subjectMatchesFilter(state, event.cardId, trigger.subjectFilter);
 }
