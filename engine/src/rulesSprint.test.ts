@@ -8,6 +8,7 @@ import {
   createGameState,
   isChosenTargetLegal,
   moveCard,
+  resolveTopOfStack,
 } from "./index";
 import { fillLibraries } from "./testSupport";
 import { advanceSteps } from "./turn";
@@ -53,6 +54,39 @@ function addHandCards(game: GameState, player: PlayerState, count: number): stri
   }
   return ids;
 }
+
+describe("CR 800.4a: caster eliminated mid-resolution", () => {
+  // Fuzz seeds 676/783/801 (offset burns): a draw spell empties its caster's
+  // library, the failed draw eliminates them inside applyEffects, and the
+  // resolving card has already left the game — resolution must not throw
+  // (it livelocked the table before this guard).
+  it("resolves a spell whose own draw eliminates its caster", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const drawDef = createCardDefinition({
+      name: "Final Gambit",
+      typeLine: "Sorcery",
+      effects: [{ kind: "draw", playerId: "controller", count: 1 }],
+    });
+    game.definitions[drawDef.id] = drawDef;
+    const spell = createCardInstance({ definitionId: drawDef.id, ownerId: p1.id, zone: "stack" });
+    game.cards[spell.id] = spell;
+    game.stack.push({
+      id: "stack-gambit",
+      kind: "spell",
+      sourceId: spell.id,
+      controllerId: p1.id,
+      targets: [],
+    });
+    // p1's library is empty: the draw fails and the SBA eliminates p1
+    // while their spell is still resolving.
+    expect(p1.zones.library).toEqual([]);
+    const resolved = resolveTopOfStack(game);
+    expect(resolved.stack).toEqual([]);
+    expect(resolved.players[0]?.lost).toBe(true);
+    expect(resolved.cards[spell.id]?.zone).toBe("removed");
+    expect(resolved.winnerId).toBe(p2.id);
+  });
+});
 
 describe("slow and crowd lands", () => {
   it("compiles 'enters tapped unless you control two or fewer other lands'", () => {

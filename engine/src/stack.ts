@@ -269,7 +269,12 @@ export function resolveTopOfStack(state: GameState): GameState {
       destination = "graveyard";
     }
   }
-  next = enterOwnerZone(next, top.sourceId, destination);
+  // CR 800.4a: if the spell's owner left the game mid-resolution (say, a
+  // failed draw the spell itself caused), the card has already been removed —
+  // only a card still in the stack zone moves on to its destination.
+  if (next.cards[top.sourceId]?.zone === "stack") {
+    next = enterOwnerZone(next, top.sourceId, destination);
+  }
   if (attachTo && next.cards[top.sourceId]?.zone === "battlefield") {
     next.cards[top.sourceId]!.attachedTo = attachTo;
   }

@@ -736,7 +736,7 @@ function applyCounterSpell(state: GameState, stackObjectId: StackObjectId): Game
     return next;
   }
   const [removed] = next.stack.splice(index, 1);
-  if (!removed?.sourceId) {
+  if (!removed?.sourceId || next.cards[removed.sourceId]?.zone !== "stack") {
     return next;
   }
   return enterOwnerZone(next, removed.sourceId, "graveyard");

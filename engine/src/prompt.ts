@@ -423,7 +423,7 @@ export function applyResolvePay(
     const index = next.stack.findIndex((entry) => entry.id === prompt.stackObjectId);
     if (index !== -1) {
       const [removed] = next.stack.splice(index, 1);
-      if (removed?.sourceId) {
+      if (removed?.sourceId && next.cards[removed.sourceId]?.zone === "stack") {
         enterOwnerZoneInPlace(next, removed.sourceId, "graveyard");
       }
     }
