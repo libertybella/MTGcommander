@@ -338,8 +338,11 @@ describe("oracle compile", () => {
       toughness: null,
       printedKeywords: [],
     });
-    expect(lord.definition.staticModifiers).toEqual([
-      { kind: "pt", selector: "controlled_creatures", power: 1, toughness: 1 },
+    expect(lord.definition.staticAbilities).toEqual([
+      {
+        selector: { scope: "controlled", types: ["creature"] },
+        effect: { kind: "modify_pt", power: 1, toughness: 1 },
+      },
     ]);
 
     const terror = compileOracleCard({

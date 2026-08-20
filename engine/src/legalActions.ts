@@ -1,4 +1,5 @@
 import { isClass, isCommander, isCreature, isLand, isMainPhase } from "./cardTypes";
+import { abilitiesRemoved } from "./characteristicsEngine";
 import { hasKeyword } from "./keywords";
 import { emptyManaPool } from "./createGame";
 import { pendingBlockerPlayer } from "./combat";
@@ -50,6 +51,9 @@ const ALL_COLORS: ManaColor[] = ["W", "U", "B", "R", "G"];
 
 function producerUsableNow(state: GameState, card: CardInstance): boolean {
   if (card.zone !== "battlefield" || card.tapped) {
+    return false;
+  }
+  if (abilitiesRemoved(state, card.id)) {
     return false;
   }
   if (isCreature(state, card.id) && card.summoningSick && !hasKeyword(state, card.id, "haste")) {
@@ -215,6 +219,9 @@ function abilityUsable(
 ): boolean {
   const fromZone = ability.zone ?? "battlefield";
   if (card.zone !== fromZone) {
+    return false;
+  }
+  if (fromZone === "battlefield" && abilitiesRemoved(state, card.id)) {
     return false;
   }
   if (ability.timing === "sorcery" && !inSorceryWindow(state, playerId)) {

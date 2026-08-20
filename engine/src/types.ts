@@ -96,7 +96,7 @@ export type CardDefinition = {
   /** ETB and similar definition triggers. Bound on the event, not on spell resolve. */
   triggers: CardTrigger[];
   replacements: ReplacementEffect[];
-  staticModifiers: StaticModifier[];
+  staticAbilities: StaticAbility[];
   /** Mana this permanent adds when tapped for mana. Empty means it cannot. */
   produces: Partial<ManaPool>;
   /** `{T}: Add one mana of any color` (WUBRG). */
@@ -128,6 +128,8 @@ export type CardInstance = {
   counters: Record<string, number>;
   /** 0 means not a Class. Class enchantments enter at 1. */
   classLevel: number;
+  /** CR 613.7 ordering: stamped when this object entered the battlefield. */
+  timestamp: number;
 };
 
 export type CommanderState = {
@@ -217,6 +219,10 @@ export type GameState = {
   prompts: PendingPrompt[];
   /** Hidden-zone cards currently shown to a viewer (hand reveal). */
   reveals: ZoneReveal[];
+  /** Resolved until-end-of-turn effects; swept during cleanup. */
+  activeEffects: ContinuousEffect[];
+  /** Monotonic CR 613.7 timestamp counter (battlefield entries, effects). */
+  nextTimestamp: number;
 };
 
 export type ZoneReveal = {
@@ -297,7 +303,10 @@ export type GameEffect =
   | { kind: "sacrifice"; cardId: CardInstanceId }
   | { kind: "add_counter"; cardId: CardInstanceId; counter: string; amount: number }
   | { kind: "counter_spell"; stackObjectId: StackObjectId }
-  | { kind: "set_class_level"; cardId: CardInstanceId; level: number };
+  | { kind: "set_class_level"; cardId: CardInstanceId; level: number }
+  | { kind: "pt_until_eot"; cardId: CardInstanceId; power: number; toughness: number }
+  | { kind: "keyword_until_eot"; cardId: CardInstanceId; keyword: Keyword }
+  | { kind: "team_pt_until_eot"; playerId: PlayerId; power: number; toughness: number };
 
 export type EffectTarget =
   | { type: "player"; playerId: PlayerId }
@@ -395,7 +404,10 @@ export type CardEffect =
   | { kind: "sacrifice"; cardId: CardIdSelector }
   | { kind: "add_counter"; cardId: CardIdSelector; counter: string; amount: number }
   | { kind: "counter_spell"; target: ChosenTargetRef }
-  | { kind: "set_class_level"; cardId: CardIdSelector; level: number };
+  | { kind: "set_class_level"; cardId: CardIdSelector; level: number }
+  | { kind: "pt_until_eot"; cardId: CardIdSelector; power: number; toughness: number }
+  | { kind: "keyword_until_eot"; cardId: CardIdSelector; keyword: Keyword }
+  | { kind: "team_pt_until_eot"; playerId: PlayerSelector; power: number; toughness: number };
 
 export type Keyword =
   | "flying"
@@ -409,6 +421,7 @@ export type Keyword =
   | "double_strike"
   | "menace"
   | "hexproof"
+  | "shroud"
   | "indestructible"
   | "flash"
   | "defender";
@@ -522,11 +535,45 @@ export type ManaAbility = {
   damageToController: number;
 };
 
-export type StaticModifier = {
-  kind: "pt";
-  selector: "self" | "controlled_creatures";
-  power: number;
-  toughness: number;
+/**
+ * Whom a continuous effect applies to. Matching runs against *computed*
+ * characteristics (an effect that makes everything a Sliver feeds Sliver
+ * lords), and only battlefield objects are ever affected. All listed names
+ * must be present (lowercase).
+ */
+export type EffectSelector = {
+  scope: "self" | "controlled" | "all";
+  types?: string[];
+  subtypes?: string[];
+};
+
+/** What a continuous effect does, in CR 613 layer order (derived from kind). */
+export type ContinuousEffectData =
+  | { kind: "add_types"; types: string[]; subtypes: string[] } // layer 4
+  | { kind: "set_colors"; colors: Color[] } // layer 5
+  | { kind: "grant_keyword"; keyword: Keyword } // layer 6
+  | { kind: "remove_all_abilities" } // layer 6
+  | { kind: "set_pt"; power: number; toughness: number } // layer 7b
+  | { kind: "modify_pt"; power: number; toughness: number }; // layer 7c
+
+/** A static ability printed on a card: applies while its source is on the battlefield. */
+export type StaticAbility = {
+  selector: EffectSelector;
+  effect: ContinuousEffectData;
+};
+
+/**
+ * A continuous effect created by a resolved spell or ability ("until end of
+ * turn"). The affected set locks in when the effect is created (CR 611.2c);
+ * it exists independently of its source from then on.
+ */
+export type ContinuousEffect = {
+  id: string;
+  sourceId: CardInstanceId | null;
+  affected: CardInstanceId[];
+  effect: ContinuousEffectData;
+  duration: "until_end_of_turn";
+  timestamp: number;
 };
 
 export type GameLogEntry =

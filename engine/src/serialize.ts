@@ -4,6 +4,9 @@ import type {
   BoundChooseCardSource,
   CardEffect,
   Color,
+  ContinuousEffect,
+  ContinuousEffectData,
+  EffectSelector,
   CardIdSelector,
   CardInstanceId,
   CardTrigger,
@@ -28,7 +31,7 @@ import type {
   PlayerSelector,
   PlayerState,
   ReplacementEffect,
-  StaticModifier,
+  StaticAbility,
   TargetRequirement,
   TokenTemplate,
   TriggerCandidate,
@@ -48,6 +51,7 @@ const KEYWORDS = new Set<Keyword>([
   "double_strike",
   "menace",
   "hexproof",
+  "shroud",
   "indestructible",
   "flash",
   "defender",
@@ -238,6 +242,8 @@ export function parseGameState(json: string): GameState {
       counters: parseCounters(card.counters, `card.${id}.counters`),
       classLevel:
         card.classLevel === undefined ? 0 : expectNumber(card.classLevel, "card.classLevel"),
+      timestamp:
+        card.timestamp === undefined ? 0 : expectNumber(card.timestamp, "card.timestamp"),
     };
   }
 
@@ -272,9 +278,10 @@ export function parseGameState(json: string): GameState {
       keywords: parseKeywords(def.keywords, `definition.${id}.keywords`),
       triggers: parseTriggers(def.triggers, `definition.${id}.triggers`),
       replacements: parseReplacements(def.replacements, `definition.${id}.replacements`),
-      staticModifiers: parseStaticModifiers(
+      staticAbilities: parseStaticAbilities(
+        def.staticAbilities,
         def.staticModifiers,
-        `definition.${id}.staticModifiers`,
+        `definition.${id}.staticAbilities`,
       ),
       produces: parseProduces(def.produces, `definition.${id}.produces`),
       producesAnyColor: def.producesAnyColor === true,
@@ -358,7 +365,38 @@ export function parseGameState(json: string): GameState {
     firstPlayerId: parseFirstPlayerId(raw.firstPlayerId, players),
     prompts: parsePrompts(raw.prompts, playerIds),
     reveals: parseReveals(raw.reveals, playerIds),
+    activeEffects: parseActiveEffects(raw.activeEffects),
+    nextTimestamp:
+      raw.nextTimestamp === undefined ? 1 : expectNumber(raw.nextTimestamp, "nextTimestamp"),
   };
+}
+
+function parseActiveEffects(value: unknown): ContinuousEffect[] {
+  if (value === undefined || value === null) {
+    return [];
+  }
+  if (!Array.isArray(value)) {
+    throw new Error("Invalid activeEffects");
+  }
+  return value.map((entry, index) => {
+    if (!isRecord(entry)) {
+      throw new Error(`Invalid activeEffects[${index}]`);
+    }
+    if (entry.duration !== "until_end_of_turn") {
+      throw new Error(`Invalid activeEffects[${index}].duration`);
+    }
+    return {
+      id: expectString(entry.id, `activeEffects[${index}].id`),
+      sourceId:
+        entry.sourceId === undefined || entry.sourceId === null
+          ? null
+          : expectString(entry.sourceId, `activeEffects[${index}].sourceId`),
+      affected: expectStringArray(entry.affected, `activeEffects[${index}].affected`),
+      effect: parseContinuousEffectData(entry.effect, `activeEffects[${index}].effect`),
+      duration: "until_end_of_turn",
+      timestamp: expectNumber(entry.timestamp, `activeEffects[${index}].timestamp`),
+    };
+  });
 }
 
 function parseFirstPlayerId(value: unknown, players: GameState["players"]): PlayerId {
@@ -960,6 +998,31 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
         cardId: parseCardIdSelector(value.cardId, `${label}.cardId`),
         level: expectNumber(value.level, `${label}.level`),
       };
+    case "pt_until_eot":
+      return {
+        kind,
+        cardId: parseCardIdSelector(value.cardId, `${label}.cardId`),
+        power: expectNumber(value.power, `${label}.power`),
+        toughness: expectNumber(value.toughness, `${label}.toughness`),
+      };
+    case "keyword_until_eot": {
+      const keyword = expectString(value.keyword, `${label}.keyword`);
+      if (!KEYWORDS.has(keyword as Keyword)) {
+        throw new Error(`Invalid ${label}.keyword`);
+      }
+      return {
+        kind,
+        cardId: parseCardIdSelector(value.cardId, `${label}.cardId`),
+        keyword: keyword as Keyword,
+      };
+    }
+    case "team_pt_until_eot":
+      return {
+        kind,
+        playerId: parsePlayerSelector(value.playerId, `${label}.playerId`),
+        power: expectNumber(value.power, `${label}.power`),
+        toughness: expectNumber(value.toughness, `${label}.toughness`),
+      };
     default:
       throw new Error(`Unknown effect kind ${kind}`);
   }
@@ -1127,29 +1190,124 @@ function parseEnterTappedUnless(value: unknown, label: string): EnterTappedUnles
   throw new Error(`Invalid ${label}.kind`);
 }
 
-function parseStaticModifiers(value: unknown, label: string): StaticModifier[] {
+function parseStringList(value: unknown, label: string): string[] {
   if (value === undefined) {
     return [];
   }
   if (!Array.isArray(value)) {
     throw new Error(`Invalid ${label}`);
   }
-  return value.map((entry, index) => {
-    if (!isRecord(entry)) {
-      throw new Error(`Invalid ${label}[${index}]`);
-    }
-    const kind = expectString(entry.kind, `${label}[${index}].kind`);
-    const selector = expectString(entry.selector, `${label}[${index}].selector`);
-    if (kind !== "pt" || (selector !== "self" && selector !== "controlled_creatures")) {
-      throw new Error(`Invalid ${label}[${index}]`);
+  return value.map((entry, index) => expectString(entry, `${label}[${index}]`).toLowerCase());
+}
+
+function parseEffectSelector(value: unknown, label: string): EffectSelector {
+  if (!isRecord(value)) {
+    throw new Error(`Invalid ${label}`);
+  }
+  const scope = expectString(value.scope, `${label}.scope`);
+  if (scope !== "self" && scope !== "controlled" && scope !== "all") {
+    throw new Error(`Invalid ${label}.scope`);
+  }
+  const types = parseStringList(value.types, `${label}.types`);
+  const subtypes = parseStringList(value.subtypes, `${label}.subtypes`);
+  return {
+    scope,
+    ...(types.length > 0 ? { types } : {}),
+    ...(subtypes.length > 0 ? { subtypes } : {}),
+  };
+}
+
+function parseContinuousEffectData(value: unknown, label: string): ContinuousEffectData {
+  if (!isRecord(value)) {
+    throw new Error(`Invalid ${label}`);
+  }
+  const kind = expectString(value.kind, `${label}.kind`);
+  if (kind === "add_types") {
+    return {
+      kind,
+      types: parseStringList(value.types, `${label}.types`),
+      subtypes: parseStringList(value.subtypes, `${label}.subtypes`),
+    };
+  }
+  if (kind === "set_colors") {
+    if (!Array.isArray(value.colors)) {
+      throw new Error(`Invalid ${label}.colors`);
     }
     return {
       kind,
-      selector,
-      power: expectNumber(entry.power, `${label}[${index}].power`),
-      toughness: expectNumber(entry.toughness, `${label}[${index}].toughness`),
+      colors: value.colors.map((entry, index) => {
+        const color = expectString(entry, `${label}.colors[${index}]`);
+        if (!(COLOR_KEYS as readonly string[]).includes(color)) {
+          throw new Error(`Invalid ${label}.colors[${index}]`);
+        }
+        return color as Color;
+      }),
     };
-  });
+  }
+  if (kind === "grant_keyword") {
+    const keyword = expectString(value.keyword, `${label}.keyword`);
+    if (!KEYWORDS.has(keyword as Keyword)) {
+      throw new Error(`Invalid ${label}.keyword`);
+    }
+    return { kind, keyword: keyword as Keyword };
+  }
+  if (kind === "remove_all_abilities") {
+    return { kind };
+  }
+  if (kind === "set_pt" || kind === "modify_pt") {
+    return {
+      kind,
+      power: expectNumber(value.power, `${label}.power`),
+      toughness: expectNumber(value.toughness, `${label}.toughness`),
+    };
+  }
+  throw new Error(`Invalid ${label}.kind`);
+}
+
+/**
+ * Static abilities: current shape, plus legacy `staticModifiers` entries
+ * ({kind:"pt", selector:"self"|"controlled_creatures"}) from old snapshots.
+ */
+function parseStaticAbilities(
+  value: unknown,
+  legacy: unknown,
+  label: string,
+): StaticAbility[] {
+  const abilities: StaticAbility[] = [];
+  if (value !== undefined) {
+    if (!Array.isArray(value)) {
+      throw new Error(`Invalid ${label}`);
+    }
+    for (const [index, entry] of value.entries()) {
+      if (!isRecord(entry)) {
+        throw new Error(`Invalid ${label}[${index}]`);
+      }
+      abilities.push({
+        selector: parseEffectSelector(entry.selector, `${label}[${index}].selector`),
+        effect: parseContinuousEffectData(entry.effect, `${label}[${index}].effect`),
+      });
+    }
+  }
+  if (legacy !== undefined && Array.isArray(legacy)) {
+    for (const [index, entry] of legacy.entries()) {
+      if (!isRecord(entry) || entry.kind !== "pt") {
+        continue;
+      }
+      const selector = entry.selector;
+      abilities.push({
+        selector:
+          selector === "controlled_creatures"
+            ? { scope: "controlled", types: ["creature"] }
+            : { scope: "self" },
+        effect: {
+          kind: "modify_pt",
+          power: expectNumber(entry.power, `${label}[${index}].power`),
+          toughness: expectNumber(entry.toughness, `${label}[${index}].toughness`),
+        },
+      });
+    }
+  }
+  return abilities;
 }
 
 function parseProduces(value: unknown, label: string): Partial<ManaPool> {
@@ -1313,6 +1471,33 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
       kind,
       playerId: expectString(value.playerId, `${label}.playerId`),
       mana: parsePartialMana(value.mana, `${label}.mana`),
+    };
+  }
+  if (kind === "pt_until_eot") {
+    return {
+      kind,
+      cardId: expectString(value.cardId, `${label}.cardId`),
+      power: expectNumber(value.power, `${label}.power`),
+      toughness: expectNumber(value.toughness, `${label}.toughness`),
+    };
+  }
+  if (kind === "keyword_until_eot") {
+    const keyword = expectString(value.keyword, `${label}.keyword`);
+    if (!KEYWORDS.has(keyword as Keyword)) {
+      throw new Error(`Invalid ${label}.keyword`);
+    }
+    return {
+      kind,
+      cardId: expectString(value.cardId, `${label}.cardId`),
+      keyword: keyword as Keyword,
+    };
+  }
+  if (kind === "team_pt_until_eot") {
+    return {
+      kind,
+      playerId: expectString(value.playerId, `${label}.playerId`),
+      power: expectNumber(value.power, `${label}.power`),
+      toughness: expectNumber(value.toughness, `${label}.toughness`),
     };
   }
   throw new Error(`Unsupported resume effect ${kind}`);

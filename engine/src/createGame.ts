@@ -46,7 +46,7 @@ export function createCardDefinition(
         | "keywords"
         | "triggers"
         | "replacements"
-        | "staticModifiers"
+        | "staticAbilities"
         | "produces"
         | "producesAnyColor"
         | "producesOptions"
@@ -82,7 +82,12 @@ export function createCardDefinition(
         }))
       : [],
     replacements: input.replacements ? input.replacements.map((replacement) => ({ ...replacement })) : [],
-    staticModifiers: input.staticModifiers ? input.staticModifiers.map((modifier) => ({ ...modifier })) : [],
+    staticAbilities: input.staticAbilities
+      ? input.staticAbilities.map((ability) => ({
+          selector: { ...ability.selector },
+          effect: { ...ability.effect },
+        }))
+      : [],
     produces: input.produces ? { ...input.produces } : {},
     producesAnyColor: input.producesAnyColor === true,
     producesOptions: input.producesOptions ? [...input.producesOptions] : [],
@@ -132,6 +137,7 @@ export function createCardInstance(input: {
     summoningSick: input.summoningSick ?? input.zone === "battlefield",
     counters: {},
     classLevel: 0,
+    timestamp: 0,
   };
 }
 
@@ -192,5 +198,7 @@ export function createGameState(options: CreateGameOptions): GameState {
     firstPlayerId: first.id,
     prompts: [],
     reveals: [],
+    activeEffects: [],
+    nextTimestamp: 1,
   };
 }

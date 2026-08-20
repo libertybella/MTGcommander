@@ -1,54 +1,36 @@
 import { characteristicsOf, isBasic, isCreature, isLand, isLegendary } from "./cardTypes";
-import type { CardInstance, CardInstanceId, EnterTappedUnless, GameState, StaticModifier } from "./types";
+import { abilitiesRemoved, computedCard } from "./characteristicsEngine";
+import type { CardInstance, CardInstanceId, EnterTappedUnless, GameState } from "./types";
 
 function plus1Plus1(state: GameState, cardId: CardInstanceId): number {
   return state.cards[cardId]?.counters["p1p1"] ?? 0;
 }
 
-function modifiersFor(state: GameState, cardId: CardInstanceId): StaticModifier[] {
-  const card = state.cards[cardId];
-  if (!card || card.zone !== "battlefield") {
-    return [];
-  }
-  const result: StaticModifier[] = [];
-  for (const other of Object.values(state.cards)) {
-    if (other.zone !== "battlefield") {
-      continue;
-    }
-    const definition = state.definitions[other.definitionId];
-    for (const modifier of definition?.staticModifiers ?? []) {
-      if (modifier.kind !== "pt") {
-        continue;
-      }
-      if (modifier.selector === "self" && other.id === cardId) {
-        result.push(modifier);
-      }
-      if (
-        modifier.selector === "controlled_creatures" &&
-        other.controllerId === card.controllerId
-      ) {
-        result.push(modifier);
-      }
-    }
-  }
-  return result;
-}
-
+/** Final power: the layer engine for battlefield objects, printed elsewhere. */
 export function creaturePower(state: GameState, cardId: CardInstanceId): number {
-  const base = state.definitions[state.cards[cardId]?.definitionId ?? ""]?.power ?? 0;
-  const fromMods = modifiersFor(state, cardId).reduce((sum, modifier) => sum + modifier.power, 0);
-  return Math.max(0, base + plus1Plus1(state, cardId) + fromMods);
+  const card = state.cards[cardId];
+  if (card?.zone === "battlefield") {
+    return computedCard(state, cardId)?.power ?? 0;
+  }
+  const base = state.definitions[card?.definitionId ?? ""]?.power ?? 0;
+  return Math.max(0, base + plus1Plus1(state, cardId));
 }
 
 export function creatureToughness(state: GameState, cardId: CardInstanceId): number {
-  const base = state.definitions[state.cards[cardId]?.definitionId ?? ""]?.toughness ?? 0;
-  const fromMods = modifiersFor(state, cardId).reduce((sum, modifier) => sum + modifier.toughness, 0);
-  return Math.max(0, base + plus1Plus1(state, cardId) + fromMods);
+  const card = state.cards[cardId];
+  if (card?.zone === "battlefield") {
+    return computedCard(state, cardId)?.toughness ?? 0;
+  }
+  const base = state.definitions[card?.definitionId ?? ""]?.toughness ?? 0;
+  return Math.max(0, base + plus1Plus1(state, cardId));
 }
 
 export function wouldSkipDraw(state: GameState, playerId: string): boolean {
   return Object.values(state.cards).some((card) => {
     if (card.zone !== "battlefield" || card.controllerId !== playerId) {
+      return false;
+    }
+    if (abilitiesRemoved(state, card.id)) {
       return false;
     }
     return (state.definitions[card.definitionId]?.replacements ?? []).some(

@@ -1,3 +1,4 @@
+import { abilitiesRemoved } from "./characteristicsEngine";
 import { createId } from "./ids";
 import { hasAnyLegalTargetSet } from "./targeting";
 import type { CardEffect, CardInstanceId, GameState, PlayerId, TriggerCandidate } from "./types";
@@ -72,7 +73,11 @@ export function queueDefinitionTriggerInPlace(
 
 function candidateIsQueueable(state: GameState, candidate: TriggerCandidate): boolean {
   const card = state.cards[candidate.cardId];
-  return Boolean(card && state.definitions[card.definitionId]?.triggers[candidate.triggerIndex]);
+  if (!card || !state.definitions[card.definitionId]?.triggers[candidate.triggerIndex]) {
+    return false;
+  }
+  // A permanent whose abilities were removed (Humility) has no triggers.
+  return !abilitiesRemoved(state, card.id);
 }
 
 function finishTriggerBookkeepingInPlace(state: GameState): void {

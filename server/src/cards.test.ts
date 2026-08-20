@@ -271,7 +271,7 @@ describe("deck import", () => {
       name: "Lightning Bolt",
       manaCost: "{R}",
       typeLine: "Instant",
-      oracleText: "Target creature gets +3/+3 until end of turn.",
+      oracleText: "The Ring tempts you.",
       power: null,
       toughness: null,
       printedKeywords: [],

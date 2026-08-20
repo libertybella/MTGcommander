@@ -53,6 +53,7 @@ export const IMPLEMENTED_KEYWORDS: Record<Keyword, string> = {
   double_strike: "double strike",
   menace: "menace",
   hexproof: "hexproof",
+  shroud: "shroud",
   indestructible: "indestructible",
   flash: "flash",
   defender: "defender",

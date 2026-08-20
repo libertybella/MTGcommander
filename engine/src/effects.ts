@@ -1,6 +1,7 @@
 import { cloneGameState } from "./clone";
 import { createCardDefinition, createCardInstance } from "./createGame";
 import { hasSubtype, isCreature } from "./cardTypes";
+import { createId } from "./ids";
 import { creatureToughness, wouldSkipDraw } from "./derived";
 import { hasKeyword } from "./keywords";
 import { addMana, tapCard, untapCard } from "./mana";
@@ -17,8 +18,10 @@ import type {
   CardInstanceId,
   ChosenTarget,
   ChosenTargetRef,
+  ContinuousEffectData,
   GameEffect,
   GameState,
+  Keyword,
   LookDestination,
   PlayerId,
   PlayerSelector,
@@ -309,6 +312,27 @@ export function bindCardEffect(
       }
       return { kind: "set_class_level", cardId, level: effect.level };
     }
+    case "pt_until_eot": {
+      const cardId = bindCardId(state, effect.cardId, context);
+      if (!cardId) {
+        return null;
+      }
+      return { kind: "pt_until_eot", cardId, power: effect.power, toughness: effect.toughness };
+    }
+    case "keyword_until_eot": {
+      const cardId = bindCardId(state, effect.cardId, context);
+      if (!cardId) {
+        return null;
+      }
+      return { kind: "keyword_until_eot", cardId, keyword: effect.keyword };
+    }
+    case "team_pt_until_eot": {
+      const playerId = bindPlayerSelector(state, effect.playerId, context);
+      if (!playerId) {
+        return null;
+      }
+      return { kind: "team_pt_until_eot", playerId, power: effect.power, toughness: effect.toughness };
+    }
     case "counter_spell": {
       const chosen = chosenTargetAt(context, effect.target.index, state);
       if (!chosen || chosen.type !== "spell") {
@@ -576,6 +600,8 @@ function applyCreateToken(
   });
   next.definitions[definition.id] = definition;
   next.cards[token.id] = token;
+  token.timestamp = next.nextTimestamp;
+  next.nextTimestamp += 1;
   const owner = next.players.find((player) => player.id === effect.ownerId);
   if (!owner) {
     throw new Error(`Unknown player ${effect.ownerId}`);
@@ -637,6 +663,81 @@ function applyDiscardUnlessAttacked(state: GameState, playerId: PlayerId, count:
   const next = cloneGameState(state);
   next.prompts.push({ kind: "choose_discard", playerId, count: available });
   return next;
+}
+
+function pushUntilEotEffect(
+  state: GameState,
+  affected: CardInstanceId[],
+  effect: ContinuousEffectData,
+): GameState {
+  const onBattlefield = affected.filter((cardId) => state.cards[cardId]?.zone === "battlefield");
+  if (onBattlefield.length === 0) {
+    return state;
+  }
+  const next = cloneGameState(state);
+  next.activeEffects.push({
+    id: createId("effect"),
+    sourceId: null,
+    affected: onBattlefield,
+    effect,
+    duration: "until_end_of_turn",
+    timestamp: next.nextTimestamp,
+  });
+  next.nextTimestamp += 1;
+  return next;
+}
+
+function applyPtUntilEot(
+  state: GameState,
+  cardId: CardInstanceId,
+  power: number,
+  toughness: number,
+): GameState {
+  const card = state.cards[cardId];
+  if (!card) {
+    throw new Error(`Unknown card ${cardId}`);
+  }
+  if (card.zone !== "battlefield" || !isCreature(state, cardId)) {
+    throw new Error(`Card ${cardId} is not a creature on the battlefield`);
+  }
+  return pushUntilEotEffect(state, [cardId], { kind: "modify_pt", power, toughness });
+}
+
+function applyKeywordUntilEot(
+  state: GameState,
+  cardId: CardInstanceId,
+  keyword: Keyword,
+): GameState {
+  const card = state.cards[cardId];
+  if (!card) {
+    throw new Error(`Unknown card ${cardId}`);
+  }
+  if (card.zone !== "battlefield") {
+    throw new Error(`Card ${cardId} is not on the battlefield`);
+  }
+  return pushUntilEotEffect(state, [cardId], { kind: "grant_keyword", keyword });
+}
+
+function applyTeamPtUntilEot(
+  state: GameState,
+  playerId: PlayerId,
+  power: number,
+  toughness: number,
+): GameState {
+  requirePlayer(state, playerId);
+  // CR 611.2c: the affected set locks in when the effect is created.
+  const team = Object.values(state.cards)
+    .filter(
+      (card) =>
+        card.zone === "battlefield" &&
+        card.controllerId === playerId &&
+        isCreature(state, card.id),
+    )
+    .map((card) => card.id);
+  if (team.length === 0) {
+    return state;
+  }
+  return pushUntilEotEffect(state, team, { kind: "modify_pt", power, toughness });
 }
 
 function applyRevealZone(
@@ -761,6 +862,15 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
         break;
       case "discard_unless_attacked":
         next = applyDiscardUnlessAttacked(state, effect.playerId, effect.count);
+        break;
+      case "pt_until_eot":
+        next = applyPtUntilEot(state, effect.cardId, effect.power, effect.toughness);
+        break;
+      case "keyword_until_eot":
+        next = applyKeywordUntilEot(state, effect.cardId, effect.keyword);
+        break;
+      case "team_pt_until_eot":
+        next = applyTeamPtUntilEot(state, effect.playerId, effect.power, effect.toughness);
         break;
       case "amass":
         next = applyAmass(state, effect.playerId, effect.amount, effect.subtype);

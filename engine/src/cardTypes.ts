@@ -1,3 +1,4 @@
+import { computedCard } from "./characteristicsEngine";
 import type { CardCharacteristics, CardInstanceId, GameState } from "./types";
 
 export function definitionTypeLine(state: GameState, cardId: CardInstanceId): string {
@@ -17,14 +18,19 @@ const EMPTY_CHARACTERISTICS: CardCharacteristics = {
 };
 
 /**
- * Printed characteristics of a card's current definition. Once continuous
- * effects land (layer system), queries route through the computed
- * characteristics instead of reading these directly.
+ * Current characteristics: the layer engine's output for battlefield
+ * objects, the printed definition elsewhere.
  */
 export function characteristicsOf(state: GameState, cardId: CardInstanceId): CardCharacteristics {
   const card = state.cards[cardId];
   if (!card) {
     throw new Error(`Unknown card ${cardId}`);
+  }
+  if (card.zone === "battlefield") {
+    const computed = computedCard(state, cardId);
+    if (computed) {
+      return computed.characteristics;
+    }
   }
   return state.definitions[card.definitionId]?.characteristics ?? EMPTY_CHARACTERISTICS;
 }

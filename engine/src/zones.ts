@@ -151,8 +151,10 @@ function applyZoneChangeFlags(
     card.summoningSick = true;
     card.damageMarked = 0;
     card.tapped = wouldEnterTapped(state, card.id);
-    const typeLine = state.definitions[card.definitionId]?.typeLine.toLowerCase() ?? "";
-    if (typeLine.includes("class") && card.classLevel < 1) {
+    card.timestamp = state.nextTimestamp;
+    state.nextTimestamp += 1;
+    const subtypes = state.definitions[card.definitionId]?.characteristics.subtypes ?? [];
+    if (subtypes.includes("class") && card.classLevel < 1) {
       card.classLevel = 1;
     }
   } else {

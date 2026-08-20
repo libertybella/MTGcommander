@@ -12,7 +12,7 @@ import type {
   ManaColor,
   ManaPool,
   ReplacementEffect,
-  StaticModifier,
+  StaticAbility,
   TargetRequirement,
 } from "./types";
 import type { OracleCard } from "./oracle";
@@ -23,7 +23,7 @@ export type CompiledOracleText = {
   activated: ActivatedAbility[];
   triggers: CardTrigger[];
   replacements: ReplacementEffect[];
-  staticModifiers: StaticModifier[];
+  staticAbilities: StaticAbility[];
   produces: Partial<ManaPool>;
   producesAnyColor: boolean;
   producesOptions: ManaColor[];
@@ -44,6 +44,7 @@ const KEYWORD_LINE = new Set([
   "double strike",
   "menace",
   "hexproof",
+  "shroud",
   "indestructible",
   "flash",
   "defender",
@@ -55,6 +56,24 @@ const BASIC_TYPE_MANA: Record<string, Color> = {
   swamp: "B",
   mountain: "R",
   forest: "G",
+};
+
+/** Keywords a sentence can grant ("All Slivers have shroud", "gains flying"). */
+const KEYWORD_GRANTS: Record<string, Keyword> = {
+  flying: "flying",
+  reach: "reach",
+  haste: "haste",
+  vigilance: "vigilance",
+  trample: "trample",
+  deathtouch: "deathtouch",
+  lifelink: "lifelink",
+  "first strike": "first_strike",
+  "double strike": "double_strike",
+  menace: "menace",
+  hexproof: "hexproof",
+  indestructible: "indestructible",
+  shroud: "shroud",
+  defender: "defender",
 };
 
 const COUNT_WORDS: Record<string, number> = {
@@ -597,6 +616,66 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     }
   }
 
+  match = sentence.match(/^Target creature gets ([+-]\d+)\/([+-]\d+) until end of turn$/i);
+  if (match?.[1] && match[2]) {
+    return {
+      targetRequirements: [{ kind: "creature" }],
+      effects: [
+        {
+          kind: "pt_until_eot",
+          cardId: { type: "chosen", index: 0 },
+          power: Number(match[1]),
+          toughness: Number(match[2]),
+        },
+      ],
+    };
+  }
+
+  match = sentence.match(
+    /^Target creature (?:gains|gets) ([a-z ]+?) until end of turn$/i,
+  );
+  if (match?.[1]) {
+    const keyword = KEYWORD_GRANTS[match[1].trim().toLowerCase()];
+    if (keyword) {
+      return {
+        targetRequirements: [{ kind: "creature" }],
+        effects: [
+          { kind: "keyword_until_eot", cardId: { type: "chosen", index: 0 }, keyword },
+        ],
+      };
+    }
+  }
+
+  match = sentence.match(/^~ gets ([+-]\d+)\/([+-]\d+) until end of turn$/i);
+  if (match?.[1] && match[2]) {
+    return {
+      targetRequirements: [],
+      effects: [
+        {
+          kind: "pt_until_eot",
+          cardId: "self",
+          power: Number(match[1]),
+          toughness: Number(match[2]),
+        },
+      ],
+    };
+  }
+
+  match = sentence.match(/^Creatures you control get ([+-]\d+)\/([+-]\d+) until end of turn$/i);
+  if (match?.[1] && match[2]) {
+    return {
+      targetRequirements: [],
+      effects: [
+        {
+          kind: "team_pt_until_eot",
+          playerId: "controller",
+          power: Number(match[1]),
+          toughness: Number(match[2]),
+        },
+      ],
+    };
+  }
+
   match = sentence.match(/^Creatures you control get \+(\d+)\/\+(\d+)$/i);
   if (match?.[1] && match[2]) {
     return null;
@@ -605,17 +684,31 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
   return null;
 }
 
-function compileAnthem(sentence: string): StaticModifier | null {
+function compileAnthem(sentence: string): StaticAbility | null {
   const match = sentence.match(/^(?:Other )?Creatures you control get \+(\d+)\/\+(\d+)$/i);
-  if (!match?.[1] || !match[2]) {
-    return null;
+  if (match?.[1] && match[2]) {
+    return {
+      selector: { scope: "controlled", types: ["creature"] },
+      effect: { kind: "modify_pt", power: Number(match[1]), toughness: Number(match[2]) },
+    };
   }
-  return {
-    kind: "pt",
-    selector: "controlled_creatures",
-    power: Number(match[1]),
-    toughness: Number(match[2]),
-  };
+  // "All Slivers have flying" / "Sliver creatures you control have shroud".
+  const tribal = sentence.match(
+    /^(?:All )?([A-Z][a-z]+)(?: creature)?s(?: you control)? have ([a-z ]+)$/,
+  );
+  if (tribal?.[1] && tribal[2]) {
+    const keyword = KEYWORD_GRANTS[tribal[2].trim().toLowerCase()];
+    if (keyword) {
+      return {
+        selector: {
+          scope: /you control/.test(sentence) ? "controlled" : "all",
+          subtypes: [tribal[1].toLowerCase()],
+        },
+        effect: { kind: "grant_keyword", keyword },
+      };
+    }
+  }
+  return null;
 }
 
 function offsetChosenIndexes(clause: SimpleClause, offset: number): SimpleClause {
@@ -793,7 +886,7 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
     activated: [],
     triggers: [],
     replacements: [],
-    staticModifiers: [],
+    staticAbilities: [],
     produces: {},
     producesAnyColor: false,
     producesOptions: [],
@@ -829,7 +922,7 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
 
     const anthem = compileAnthem(sentence);
     if (anthem) {
-      result.staticModifiers.push(anthem);
+      result.staticAbilities.push(anthem);
       continue;
     }
 

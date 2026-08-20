@@ -135,7 +135,12 @@ export function syntheticPool(): CardDefinition[] {
       oracleText: "Creatures you control get +1/+1.",
       power: 2,
       toughness: 2,
-      staticModifiers: [{ kind: "pt", selector: "controlled_creatures", power: 1, toughness: 1 }],
+      staticAbilities: [
+        {
+          selector: { scope: "controlled", types: ["creature"] },
+          effect: { kind: "modify_pt", power: 1, toughness: 1 },
+        },
+      ],
     }),
     createCardDefinition({
       id: POOL_ID.shock,

@@ -1,4 +1,5 @@
 import { declareAttackers, declareBlockers, lockRemainingBlockers, pendingBlockerPlayer, priorityForStep } from "./combat";
+import { abilitiesRemoved } from "./characteristicsEngine";
 import { isCommander, isCreature, isInstant, isInstantOrSorcery, isLand, isMainPhase } from "./cardTypes";
 import { cloneGameState } from "./clone";
 import { eliminatePlayerInPlace } from "./elimination";
@@ -347,7 +348,7 @@ function applyTapForMana(
     throw new Error(`Card ${cardId} has summoning sickness`);
   }
   const definition = state.definitions[card.definitionId];
-  if (!definition || !canTapForMana(definition)) {
+  if (!definition || !canTapForMana(definition) || abilitiesRemoved(state, cardId)) {
     throw new Error(`Card ${cardId} does not produce mana`);
   }
   const abilities = manaAbilitiesOf(definition);
@@ -404,6 +405,9 @@ function applyActivateAbility(
   const ability = definition?.activated[abilityIndex];
   if (!ability) {
     throw new Error(`Unknown activated ability ${abilityIndex}`);
+  }
+  if (card.zone === "battlefield" && abilitiesRemoved(state, cardId)) {
+    throw new Error(`Card ${cardId} has lost its abilities`);
   }
   const fromZone = ability.zone ?? "battlefield";
   if (card.zone !== fromZone) {

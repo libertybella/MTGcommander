@@ -18,6 +18,10 @@ function isLegalCreatureTarget(state: GameState, cardId: string, casterId?: Play
   if (!card || card.zone !== "battlefield" || !isCreature(state, cardId)) {
     return false;
   }
+  // Shroud blocks everyone, including its own controller (CR 702.18).
+  if (hasKeyword(state, cardId, "shroud")) {
+    return false;
+  }
   if (
     casterId &&
     hasKeyword(state, cardId, "hexproof") &&

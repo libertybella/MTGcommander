@@ -114,6 +114,8 @@ export {
 export { redactForViewer, isHiddenFromViewer, HIDDEN_DEFINITION_ID } from "./visibility";
 export { applyChooseTargets, applyChooseEnterReplacement, applyResolveOrderTriggers, applyResolveScry, applyResolveSurveil, applyResolveDiscard, applyResolveChooseCard, applyResolveLookAssign, currentPrompt, isPromptOpen, lookedAtCardIds, legalIdsForChooseSources } from "./prompt";
 export { queueSimultaneousTriggersInPlace } from "./triggers";
+export { abilitiesRemoved, computedCard, computedCards } from "./characteristicsEngine";
+export type { ComputedCard } from "./characteristicsEngine";
 export { isChosenTargetLegal, validateChosenTargets, legalChoicesForRequirement, firstLegalTargetSet, hasAnyLegalTargetSet } from "./targeting";
 export {
   addMana,
@@ -206,7 +208,10 @@ export type {
   ReplacementEffect,
   StackObject,
   StackObjectId,
-  StaticModifier,
+  StaticAbility,
+  ContinuousEffect,
+  ContinuousEffectData,
+  EffectSelector,
   Step,
   TargetKind,
   TargetRequirement,

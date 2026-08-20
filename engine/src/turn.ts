@@ -121,6 +121,10 @@ function onEnterStep(state: GameState): GameState {
   if (state.turn.step === "cleanup") {
     clearDamageInPlace(state);
     clearCombatFlagsInPlace(state);
+    // CR 514.2: "until end of turn" effects end during cleanup.
+    state.activeEffects = state.activeEffects.filter(
+      (effect) => effect.duration !== "until_end_of_turn",
+    );
     return state;
   }
   return state;

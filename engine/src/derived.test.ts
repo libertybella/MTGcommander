@@ -55,14 +55,21 @@ describe("derived characteristics", () => {
       typeLine: "Creature — Soldier",
       power: 2,
       toughness: 2,
-      staticModifiers: [{ kind: "pt", selector: "controlled_creatures", power: 1, toughness: 1 }],
+      staticAbilities: [
+        {
+          selector: { scope: "controlled", types: ["creature"] },
+          effect: { kind: "modify_pt", power: 1, toughness: 1 },
+        },
+      ],
     });
     const selfDef = createCardDefinition({
       name: "Pump",
       typeLine: "Creature — Spirit",
       power: 1,
       toughness: 1,
-      staticModifiers: [{ kind: "pt", selector: "self", power: 2, toughness: 0 }],
+      staticAbilities: [
+        { selector: { scope: "self" }, effect: { kind: "modify_pt", power: 2, toughness: 0 } },
+      ],
     });
     const lord = createCardInstance({
       definitionId: lordDef.id,
