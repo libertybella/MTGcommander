@@ -188,6 +188,7 @@ function applyZoneChangeFlags(
     card.classLevel = 0;
     card.attachedTo = null;
     card.loyaltyActivatedThisTurn = false;
+    card.faceDown = false;
     delete card.counters["loyalty"];
     // Anything attached to this permanent comes loose.
     for (const other of Object.values(state.cards)) {

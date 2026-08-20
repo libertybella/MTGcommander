@@ -6,6 +6,7 @@ import { creaturePower, creatureToughness } from "./derived";
 import { hasKeyword } from "./keywords";
 import { createCardDefinition } from "./createGame";
 import { scenario } from "./scenario";
+import { HIDDEN_DEFINITION_ID, redactForViewer } from "./visibility";
 import type { CardDefinition, GameState, PlayerId } from "./types";
 
 function resolvePasses(state: GameState, a: PlayerId, b: PlayerId): GameState {
@@ -256,5 +257,107 @@ describe("copies and transforms", () => {
     expect(creaturePower(flipped, card)).toBe(5);
     const restored = applyEffect(flipped, { kind: "transform", cardId: card });
     expect(creaturePower(restored, card)).toBe(1);
+  });
+});
+
+describe("[CR 708] manifest and face-down permanents", () => {
+  it("manifests the top card as a hidden 2/2 and turns it face up for its cost", () => {
+    const s = scenario();
+    const [me, opponent] = s.players as [string, string];
+    const giantDef = createCardDefinition({
+      name: "Test Hill Giant",
+      typeLine: "Creature — Giant",
+      manaCost: "{3}{R}",
+      power: 3,
+      toughness: 3,
+      keywords: ["trample"],
+    });
+    const giant = s.add(giantDef, me, "library");
+    let state = applyEffect(s.game, { kind: "manifest", playerId: me, count: 1 });
+    expect(state.cards[giant]?.zone).toBe("battlefield");
+    expect(state.cards[giant]?.faceDown).toBe(true);
+    expect(creaturePower(state, giant)).toBe(2);
+    expect(creatureToughness(state, giant)).toBe(2);
+    expect(hasKeyword(state, giant, "trample")).toBe(false);
+
+    // Opponents cannot see what it is.
+    const theirView = redactForViewer(state, opponent);
+    expect(theirView.cards[giant]?.definitionId).toBe(HIDDEN_DEFINITION_ID);
+    const myView = redactForViewer(state, me);
+    expect(myView.cards[giant]?.definitionId).toBe(giantDef.id);
+
+    // Turn it face up mid-combat by paying its mana cost.
+    state.turn.activePlayerId = me;
+    state.turn.phase = "combat";
+    state.turn.step = "declareBlockers";
+    state.priorityPlayerId = me;
+    state.players[0]!.mana.R = 1;
+    state.players[0]!.mana.C = 3;
+    state = applyAction(state, { kind: "turn_face_up", playerId: me, cardId: giant });
+    expect(state.cards[giant]?.faceDown).toBe(false);
+    expect(creaturePower(state, giant)).toBe(3);
+    expect(hasKeyword(state, giant, "trample")).toBe(true);
+  });
+
+  it("cannot turn a manifested land face up", () => {
+    const s = scenario();
+    const me = s.players[0]!;
+    const land = s.add(
+      createCardDefinition({ name: "Test Island", typeLine: "Basic Land — Island", produces: { U: 1 } }),
+      me,
+      "library",
+    );
+    const state = applyEffect(s.game, { kind: "manifest", playerId: me, count: 1 });
+    state.turn.activePlayerId = me;
+    state.turn.phase = "precombatMain";
+    state.turn.step = "precombatMain";
+    state.priorityPlayerId = me;
+    expect(() =>
+      applyAction(state, { kind: "turn_face_up", playerId: me, cardId: land }),
+    ).toThrow(/creature card/);
+  });
+});
+
+describe("[CR 510] first strike ordering", () => {
+  it("a first-strike deathtouch blocker kills before normal damage lands", () => {
+    const s = scenario();
+    const [me, opponent] = s.players as [string, string];
+    const attacker = s.add(
+      createCardDefinition({ name: "Test Ogre", typeLine: "Creature — Ogre", power: 4, toughness: 4 }),
+      me,
+      "battlefield",
+    );
+    const sentinel = s.add(
+      createCardDefinition({
+        name: "Test Venom Duelist",
+        typeLine: "Creature — Human",
+        power: 1,
+        toughness: 1,
+        keywords: ["first_strike", "deathtouch"],
+      }),
+      opponent,
+      "battlefield",
+    );
+    s.game.turn.activePlayerId = me;
+    s.game.turn.phase = "combat";
+    s.game.turn.step = "declareAttackers";
+    s.game.priorityPlayerId = me;
+    let state = applyAction(s.game, {
+      kind: "declare_attackers",
+      playerId: me,
+      attacks: [{ attackerId: attacker, defenderId: opponent }],
+    });
+    state = resolvePasses(state, me, opponent);
+    expect(state.turn.step).toBe("declareBlockers");
+    state = applyAction(state, {
+      kind: "declare_blockers",
+      playerId: opponent,
+      blocks: [{ blockerId: sentinel, attackerId: attacker }],
+    });
+    state = applyAction(state, { kind: "advance_step", playerId: me });
+    // First-strike deathtouch killed the ogre before it could deal damage.
+    expect(state.cards[attacker]?.zone).toBe("graveyard");
+    expect(state.cards[sentinel]?.zone).toBe("battlefield");
+    expect(state.cards[sentinel]?.damageMarked).toBe(0);
   });
 });

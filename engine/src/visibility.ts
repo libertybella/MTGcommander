@@ -63,6 +63,13 @@ export function redactForViewer(state: GameState, viewerId: PlayerId): GameState
         }
       }
     }
+    // A face-down permanent's printed card is hidden from opponents (CR 708.2).
+    for (const cardId of player.zones.battlefield) {
+      const card = next.cards[cardId];
+      if (card?.faceDown) {
+        card.definitionId = HIDDEN_DEFINITION_ID;
+      }
+    }
   }
   return next;
 }

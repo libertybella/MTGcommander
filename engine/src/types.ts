@@ -153,6 +153,8 @@ export type CardInstance = {
   attachedTo: CardInstanceId | null;
   /** One loyalty ability per turn per planeswalker (CR 606.3-ish V1). */
   loyaltyActivatedThisTurn: boolean;
+  /** Manifested: a face-down 2/2 with no name, types, or abilities (CR 708). */
+  faceDown: boolean;
 };
 
 export type CommanderState = {
@@ -358,7 +360,8 @@ export type GameEffect =
     }
   | { kind: "attach"; cardId: CardInstanceId; toId: CardInstanceId }
   | { kind: "transform"; cardId: CardInstanceId }
-  | { kind: "copy_token"; ownerId: PlayerId; ofCardId: CardInstanceId };
+  | { kind: "copy_token"; ownerId: PlayerId; ofCardId: CardInstanceId }
+  | { kind: "manifest"; playerId: PlayerId; count: number };
 
 export type EffectTarget =
   | { type: "player"; playerId: PlayerId }
@@ -494,7 +497,8 @@ export type CardEffect =
     }
   | { kind: "attach"; cardId: CardIdSelector; toId: ChosenTargetRef | CardInstanceId }
   | { kind: "transform"; cardId: CardIdSelector }
-  | { kind: "copy_token"; ownerId: PlayerSelector; ofCardId: ChosenTargetRef | CardInstanceId };
+  | { kind: "copy_token"; ownerId: PlayerSelector; ofCardId: ChosenTargetRef | CardInstanceId }
+  | { kind: "manifest"; playerId: PlayerSelector; count: number };
 
 export type Keyword =
   | "flying"
@@ -807,6 +811,7 @@ export type GameAction =
   | { kind: "mulligan"; playerId: PlayerId }
   | { kind: "bottom_cards"; playerId: PlayerId; cardIds: CardInstanceId[] }
   | { kind: "manual_override"; playerId: PlayerId; change: ManualOverrideChange }
+  | { kind: "turn_face_up"; playerId: PlayerId; cardId: CardInstanceId }
   | { kind: "undo"; playerId: PlayerId }
   | { kind: "roll_die"; playerId: PlayerId; sides: number }
   | { kind: "opening_roll"; playerId: PlayerId }

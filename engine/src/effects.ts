@@ -11,7 +11,7 @@ import { applyStateBasedActionsInPlace } from "./status";
 import { isChosenTargetLegal, sourceColorsOf } from "./targeting";
 import { amassArmyTemplate } from "./tokens";
 import { queueEnterBattlefieldTriggersInPlace } from "./triggers";
-import { countCardPlacements, enterOwnerZone, moveCard } from "./zones";
+import { countCardPlacements, enterOwnerZone, moveCard, moveCardInPlace } from "./zones";
 import type {
   CardEffect,
   CardIdSelector,
@@ -389,6 +389,13 @@ export function bindCardEffect(
         return null;
       }
       return { kind: "transform", cardId };
+    }
+    case "manifest": {
+      const playerId = bindPlayerSelector(state, effect.playerId, context);
+      if (!playerId) {
+        return null;
+      }
+      return { kind: "manifest", playerId, count: effect.count };
     }
     case "copy_token": {
       const ownerId = bindPlayerSelector(state, effect.ownerId, context);
@@ -919,6 +926,25 @@ function applyCopyToken(
   return next;
 }
 
+function applyManifest(state: GameState, playerId: PlayerId, count: number): GameState {
+  requirePositiveInteger(count, "manifest count");
+  requirePlayer(state, playerId);
+  const next = cloneGameState(state);
+  for (let i = 0; i < count; i += 1) {
+    const player = next.players.find((entry) => entry.id === playerId);
+    const top = player?.zones.library[0];
+    if (!top) {
+      break;
+    }
+    const card = next.cards[top];
+    if (card) {
+      card.faceDown = true;
+    }
+    moveCardInPlace(next, top, "battlefield");
+  }
+  return next;
+}
+
 function applyRevealZone(
   state: GameState,
   fromPlayerId: PlayerId,
@@ -1065,6 +1091,9 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
         break;
       case "copy_token":
         next = applyCopyToken(state, effect.ownerId, effect.ofCardId);
+        break;
+      case "manifest":
+        next = applyManifest(state, effect.playerId, effect.count);
         break;
       case "amass":
         next = applyAmass(state, effect.playerId, effect.amount, effect.subtype);

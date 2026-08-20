@@ -259,6 +259,7 @@ export function parseGameState(json: string): GameState {
           ? null
           : expectString(card.attachedTo, "card.attachedTo"),
       loyaltyActivatedThisTurn: card.loyaltyActivatedThisTurn === true,
+      faceDown: card.faceDown === true,
     };
   }
 
@@ -1231,6 +1232,12 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
                 index: number;
               }),
       };
+    case "manifest":
+      return {
+        kind,
+        playerId: parsePlayerSelector(value.playerId, `${label}.playerId`),
+        count: expectNumber(value.count, `${label}.count`),
+      };
     default:
       throw new Error(`Unknown effect kind ${kind}`);
   }
@@ -1788,6 +1795,13 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
       ofCardId: expectString(value.ofCardId, `${label}.ofCardId`),
     };
   }
+  if (kind === "manifest") {
+    return {
+      kind,
+      playerId: expectString(value.playerId, `${label}.playerId`),
+      count: expectNumber(value.count, `${label}.count`),
+    };
+  }
   throw new Error(`Unsupported resume effect ${kind}`);
 }
 
@@ -2002,6 +2016,13 @@ export function parseGameAction(json: string): GameAction {
     };
   }
   if (kind === "resolve_choose_card") {
+    return {
+      kind,
+      playerId,
+      cardId: expectString(raw.cardId, "action.cardId"),
+    };
+  }
+  if (kind === "turn_face_up") {
     return {
       kind,
       playerId,

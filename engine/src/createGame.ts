@@ -186,6 +186,7 @@ export function createCardInstance(input: {
     deathtouched: false,
     attachedTo: null,
     loyaltyActivatedThisTurn: false,
+    faceDown: false,
   };
 }
 

@@ -534,6 +534,37 @@ export type ApplyActionOptions = {
 };
 
 /**
+ * Turn a manifested creature card face up by paying its mana cost
+ * (CR 708.3). Non-creature cards cannot be turned face up this way.
+ */
+function applyTurnFaceUp(
+  state: GameState,
+  playerId: PlayerId,
+  cardId: CardInstanceId,
+): GameState {
+  requirePlaying(state);
+  requirePriority(state, playerId);
+  const card = state.cards[cardId];
+  if (!card || card.controllerId !== playerId || card.zone !== "battlefield" || !card.faceDown) {
+    throw new Error(`Card ${cardId} is not a face-down permanent you control`);
+  }
+  const definition = state.definitions[card.definitionId];
+  if (!definition?.characteristics.types.includes("creature")) {
+    throw new Error("Only a creature card can be turned face up");
+  }
+  const player = state.players.find((entry) => entry.id === playerId)!;
+  const cost = parseManaCost(definition.manaCost);
+  if (!canPayManaCost(player.mana, cost, player.life)) {
+    throw new Error("Cannot pay mana cost");
+  }
+  let next = payManaCost(state, playerId, cost);
+  next.cards[cardId]!.faceDown = false;
+  next.priorityPlayerId = playerId;
+  next.passesSinceAction = 0;
+  return next;
+}
+
+/**
  * Activate a planeswalker loyalty ability: sorcery speed, once per walker
  * per turn, loyalty adjusts as a cost, and the ability uses the stack.
  */
@@ -658,6 +689,9 @@ export function applyAction(
           action.abilityIndex,
           action.targets,
         );
+        break;
+      case "turn_face_up":
+        next = applyTurnFaceUp(state, action.playerId, action.cardId);
         break;
       case "activate_loyalty":
         next = applyActivateLoyalty(

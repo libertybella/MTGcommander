@@ -54,6 +54,23 @@ const LAYER_OF: Record<ContinuousEffectData["kind"], number> = {
 };
 
 function baseComputed(state: GameState, card: CardInstance): ComputedCard {
+  // A face-down permanent is a 2/2 colorless creature with no name, types,
+  // or abilities (CR 708.2). Its printed card is hidden information.
+  if (card.faceDown && card.zone === "battlefield") {
+    return {
+      characteristics: {
+        supertypes: [],
+        types: ["creature"],
+        subtypes: [],
+        colors: [],
+        manaValue: 0,
+      },
+      keywords: [],
+      abilitiesRemoved: true,
+      power: 2,
+      toughness: 2,
+    };
+  }
   const definition = state.definitions[card.definitionId];
   const printed = definition?.characteristics ?? {
     supertypes: [],
@@ -126,7 +143,7 @@ function matches(
 function collectInstances(state: GameState): EffectInstance[] {
   const instances: EffectInstance[] = [];
   for (const card of Object.values(state.cards)) {
-    if (card.zone !== "battlefield") {
+    if (card.zone !== "battlefield" || card.faceDown) {
       continue;
     }
     const definition = state.definitions[card.definitionId];
