@@ -15,6 +15,7 @@ import type {
   ActivatedAbility,
   CardDefinition,
   CardInstance,
+  AdditionalCastCost,
   CardInstanceId,
   GameState,
   ManaColor,
@@ -184,6 +185,26 @@ function inSorceryWindow(state: GameState, playerId: PlayerId): boolean {
   );
 }
 
+/** Does this battlefield card satisfy an additional-cost sacrifice scope? */
+export function sacrificeScopeMatches(
+  state: GameState,
+  cardId: CardInstanceId,
+  scope: NonNullable<AdditionalCastCost["sacrifice"]>,
+): boolean {
+  const types =
+    state.definitions[state.cards[cardId]?.definitionId ?? ""]?.characteristics.types ?? [];
+  if (scope === "creature") {
+    return types.includes("creature");
+  }
+  if (scope === "artifact") {
+    return types.includes("artifact");
+  }
+  if (scope === "land") {
+    return types.includes("land");
+  }
+  return types.includes("creature") || types.includes("artifact");
+}
+
 function castableFace(
   state: GameState,
   playerId: PlayerId,
@@ -205,6 +226,27 @@ function castableFace(
   cost.generic = Math.max(0, cost.generic - castCostReduction(state, playerId, definition));
   if (!canPayWithPotential(potential, cost)) {
     return false;
+  }
+  const additional = definition.additionalCost;
+  if (additional) {
+    const player = state.players.find((entry) => entry.id === playerId);
+    if (!player) {
+      return false;
+    }
+    if (
+      additional.sacrifice &&
+      !player.zones.battlefield.some((cardId) =>
+        sacrificeScopeMatches(state, cardId, additional.sacrifice!),
+      )
+    ) {
+      return false;
+    }
+    if (additional.discard && player.zones.hand.length <= additional.discard) {
+      return false;
+    }
+    if (additional.life && player.life <= additional.life) {
+      return false;
+    }
   }
   if (definition.modes && definition.modes.length > 0) {
     return definition.modes.some((mode) =>

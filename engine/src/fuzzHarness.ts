@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { applyAction } from "./actions";
 import { isCreature } from "./cardTypes";
 import { hasKeyword } from "./keywords";
-import { legalActions } from "./legalActions";
+import { legalActions, sacrificeScopeMatches } from "./legalActions";
 import { canPayManaCost } from "./mana";
 import { manaAbilitiesOf, manaTapOptionsFor } from "./manaOptions";
 import { isMulliganOpen } from "./mulligan";
@@ -251,6 +251,33 @@ function nextAction(state: GameState, rng: () => number): GameAction | null {
       if (targets === null) {
         return { kind: "pass_priority", playerId };
       }
+      const additional = definition.additionalCost;
+      let costSacrificeId: string | undefined;
+      let costDiscardIds: string[] | undefined;
+      if (additional?.sacrifice) {
+        const player = state.players.find((entry) => entry.id === playerId)!;
+        const options = player.zones.battlefield.filter((id) =>
+          sacrificeScopeMatches(state, id, additional.sacrifice!),
+        );
+        if (options.length === 0) {
+          return { kind: "pass_priority", playerId };
+        }
+        costSacrificeId = pick(rng, options);
+      }
+      if (additional?.discard) {
+        const player = state.players.find((entry) => entry.id === playerId)!;
+        const hand = player.zones.hand.filter((id) => id !== action.cardId);
+        if (hand.length < additional.discard) {
+          return { kind: "pass_priority", playerId };
+        }
+        const chosen: string[] = [];
+        const remaining = [...hand];
+        for (let i = 0; i < additional.discard; i += 1) {
+          const index = Math.floor(rng() * remaining.length);
+          chosen.push(...remaining.splice(index, 1));
+        }
+        costDiscardIds = chosen;
+      }
       return {
         kind: "cast_spell",
         playerId,
@@ -258,6 +285,8 @@ function nextAction(state: GameState, rng: () => number): GameAction | null {
         targets,
         faceIndex: action.faceIndex,
         ...(modeIndex !== undefined ? { modeIndex } : {}),
+        ...(costSacrificeId ? { costSacrificeId } : {}),
+        ...(costDiscardIds ? { costDiscardIds } : {}),
       };
     }
     case "activate_ability": {

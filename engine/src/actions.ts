@@ -6,6 +6,7 @@ import { canPlayLandsFromGraveyard, castCostReduction, landDropAllowance } from 
 import { eliminatePlayerInPlace } from "./elimination";
 import { applyEffects, bindCardEffects } from "./effects";
 import { hasKeyword } from "./keywords";
+import { sacrificeScopeMatches } from "./legalActions";
 import { canPayManaCost, parseManaCost, payManaCost, tapCard, tapForMana } from "./mana";
 import { canTapForMana, manaAbilityAmount, manaAbilitiesOf, manaTapOptionsFor } from "./manaOptions";
 import { createId } from "./ids";
@@ -174,12 +175,49 @@ function applyCastSpell(
   modeIndex: number | undefined,
   xValue: number | undefined,
   division: number[] | undefined,
+  costSacrificeId: CardInstanceId | undefined,
+  costDiscardIds: CardInstanceId[] | undefined,
 ): GameState {
   requirePlaying(state);
   const faced = applyChosenFace(state, cardId, faceIndex);
   const { cost, fromCommand } = validateCast(faced, playerId, cardId);
   const card = faced.cards[cardId];
   const definition = card ? faced.definitions[card.definitionId] : undefined;
+  const additional = definition?.additionalCost;
+  if (additional?.sacrifice) {
+    const sacrifice = costSacrificeId ? faced.cards[costSacrificeId] : undefined;
+    if (
+      !costSacrificeId ||
+      !sacrifice ||
+      sacrifice.zone !== "battlefield" ||
+      sacrifice.controllerId !== playerId ||
+      !sacrificeScopeMatches(faced, costSacrificeId, additional.sacrifice)
+    ) {
+      throw new Error(`Sacrifice a ${additional.sacrifice.replace(/_/g, " ")} to cast this`);
+    }
+  } else if (costSacrificeId !== undefined) {
+    throw new Error("That spell has no sacrifice cost");
+  }
+  if (additional?.discard) {
+    const hand = faced.players.find((entry) => entry.id === playerId)?.zones.hand ?? [];
+    const chosen = costDiscardIds ?? [];
+    const unique = new Set(chosen);
+    if (
+      chosen.length !== additional.discard ||
+      unique.size !== chosen.length ||
+      chosen.some((id) => !hand.includes(id) || id === cardId)
+    ) {
+      throw new Error(`Discard ${additional.discard} card(s) to cast this`);
+    }
+  } else if (costDiscardIds !== undefined && costDiscardIds.length > 0) {
+    throw new Error("That spell has no discard cost");
+  }
+  if (additional?.life) {
+    const player = faced.players.find((entry) => entry.id === playerId);
+    if (!player || player.life <= additional.life) {
+      throw new Error(`Pay ${additional.life} life to cast this`);
+    }
+  }
   if (cost.xCount > 0) {
     if (xValue === undefined || !Number.isInteger(xValue) || xValue < 0) {
       throw new Error("Announce a value for X");
@@ -234,7 +272,20 @@ function applyCastSpell(
       definition?.characteristics.colors,
     );
   }
-  const paid = payManaCost(faced, playerId, cost);
+  let paid = payManaCost(faced, playerId, cost);
+  if (additional?.sacrifice && costSacrificeId) {
+    paid = applyEffects(paid, [{ kind: "sacrifice", cardId: costSacrificeId }]);
+  }
+  for (const discardId of costDiscardIds ?? []) {
+    paid = moveCard(paid, discardId, "graveyard");
+  }
+  if (additional?.life) {
+    const payer = paid.players.find((entry) => entry.id === playerId);
+    if (payer) {
+      payer.life -= additional.life;
+      paid.log.push({ kind: "life_change", playerId, delta: -additional.life });
+    }
+  }
   const stacked = putSpellOnStack(paid, cardId, targets ?? [], modeIndex, xValue, division);
   if (!fromCommand) {
     return stacked;
@@ -672,6 +723,8 @@ export function applyAction(
           action.modeIndex,
           action.xValue,
           action.division,
+          action.costSacrificeId,
+          action.costDiscardIds,
         );
         break;
       case "play_land":

@@ -319,6 +319,44 @@ export function parseGameState(json: string): GameState {
       ...(def.cantBeCountered === true ? { cantBeCountered: true } : {}),
       ...(def.chooseCreatureTypeOnEnter === true ? { chooseCreatureTypeOnEnter: true } : {}),
       ...(def.entersWithXCounters === true ? { entersWithXCounters: true } : {}),
+      ...(def.additionalCost === undefined
+        ? {}
+        : {
+            additionalCost: (() => {
+              if (!isRecord(def.additionalCost)) {
+                throw new Error(`Invalid definition.${id}.additionalCost`);
+              }
+              const sacrifice = def.additionalCost.sacrifice;
+              if (
+                sacrifice !== undefined &&
+                sacrifice !== "creature" &&
+                sacrifice !== "artifact" &&
+                sacrifice !== "creature_or_artifact" &&
+                sacrifice !== "land"
+              ) {
+                throw new Error(`Invalid definition.${id}.additionalCost.sacrifice`);
+              }
+              return {
+                ...(sacrifice === undefined ? {} : { sacrifice }),
+                ...(def.additionalCost.discard === undefined
+                  ? {}
+                  : {
+                      discard: expectNumber(
+                        def.additionalCost.discard,
+                        `definition.${id}.additionalCost.discard`,
+                      ),
+                    }),
+                ...(def.additionalCost.life === undefined
+                  ? {}
+                  : {
+                      life: expectNumber(
+                        def.additionalCost.life,
+                        `definition.${id}.additionalCost.life`,
+                      ),
+                    }),
+              };
+            })(),
+          }),
       ...(def.playLandsFromGraveyard === true ? { playLandsFromGraveyard: true } : {}),
       ...(def.costReductions === undefined
         ? {}
@@ -2188,6 +2226,21 @@ export function parseGameAction(json: string): GameAction {
               }
               return raw.division.map((entry, index) =>
                 expectNumber(entry, `action.division[${index}]`),
+              );
+            })(),
+          }),
+      ...(raw.costSacrificeId === undefined
+        ? {}
+        : { costSacrificeId: expectString(raw.costSacrificeId, "action.costSacrificeId") }),
+      ...(raw.costDiscardIds === undefined
+        ? {}
+        : {
+            costDiscardIds: (() => {
+              if (!Array.isArray(raw.costDiscardIds)) {
+                throw new Error("Invalid action.costDiscardIds");
+              }
+              return raw.costDiscardIds.map((entry, index) =>
+                expectString(entry, `action.costDiscardIds[${index}]`),
               );
             })(),
           }),

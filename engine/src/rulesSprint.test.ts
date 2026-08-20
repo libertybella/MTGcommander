@@ -412,6 +412,95 @@ describe("creature-or-planeswalker removal", () => {
   });
 });
 
+describe("additional casting costs", () => {
+  it("compiles Deadly Dispute and pays the sacrifice at cast", () => {
+    const compiled = compileOracleCard({
+      oracleId: "dispute",
+      name: "Deadly Dispute",
+      manaCost: "{1}{B}",
+      typeLine: "Instant",
+      oracleText:
+        "As an additional cost to cast this spell, sacrifice an artifact or creature.\nDraw two cards and create a Treasure token.",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+    });
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.additionalCost).toEqual({ sacrifice: "creature_or_artifact" });
+    expect(compiled.definition.effects[0]).toMatchObject({ kind: "draw", count: 2 });
+    expect(compiled.definition.effects[1]).toMatchObject({ kind: "create_token", name: "Treasure" });
+
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game);
+    game.definitions[compiled.definition.id] = compiled.definition;
+    const spell = createCardInstance({
+      definitionId: compiled.definition.id,
+      ownerId: p1.id,
+      zone: "hand",
+    });
+    game.cards[spell.id] = spell;
+    p1.zones.hand.push(spell.id);
+    const bear = createCardDefinition({
+      name: "Bear",
+      typeLine: "Creature — Bear",
+      power: 2,
+      toughness: 2,
+    });
+    game.definitions[bear.id] = bear;
+    const fodder = createCardInstance({ definitionId: bear.id, ownerId: p1.id, zone: "battlefield" });
+    game.cards[fodder.id] = fodder;
+    p1.zones.battlefield.push(fodder.id);
+    game.players[0]!.mana.B = 1;
+    game.players[0]!.mana.C = 1;
+    game.priorityPlayerId = p1.id;
+
+    // Without naming the sacrifice, the cast is refused.
+    expect(() =>
+      applyAction(game, { kind: "cast_spell", playerId: p1.id, cardId: spell.id, targets: [] }),
+    ).toThrow(/Sacrifice a/);
+
+    const cast = applyAction(game, {
+      kind: "cast_spell",
+      playerId: p1.id,
+      cardId: spell.id,
+      targets: [],
+      costSacrificeId: fodder.id,
+    });
+    expect(cast.cards[fodder.id]?.zone).toBe("graveyard");
+    expect(cast.stack).toHaveLength(1);
+  });
+
+  it("discard costs consume distinct hand cards", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game);
+    const bigScore = createCardDefinition({
+      name: "Big Score",
+      typeLine: "Instant",
+      manaCost: "{3}{R}",
+      additionalCost: { discard: 1 },
+      effects: [{ kind: "draw", playerId: "controller", count: 2 }],
+    });
+    game.definitions[bigScore.id] = bigScore;
+    const spell = createCardInstance({ definitionId: bigScore.id, ownerId: p1.id, zone: "hand" });
+    game.cards[spell.id] = spell;
+    p1.zones.hand.push(spell.id);
+    const extra = addHandCards(game, p1, 1);
+    game.players[0]!.mana.R = 1;
+    game.players[0]!.mana.C = 3;
+    game.priorityPlayerId = p1.id;
+    const cast = applyAction(game, {
+      kind: "cast_spell",
+      playerId: p1.id,
+      cardId: spell.id,
+      targets: [],
+      costDiscardIds: extra,
+    });
+    expect(cast.cards[extra[0]!]?.zone).toBe("graveyard");
+    expect(cast.stack).toHaveLength(1);
+  });
+});
+
 describe("pay-or-effect taxes", () => {
   it("compiles Rhystic Study and taxes the caster", () => {
     const compiled = compileOracleCard({

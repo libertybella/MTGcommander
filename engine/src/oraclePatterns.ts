@@ -2,6 +2,7 @@ import { parseManaCost } from "./mana";
 import { parseAmassClause } from "./tokens";
 import type {
   ActivatedAbility,
+  AdditionalCastCost,
   CardEffect,
   CardTrigger,
   ChooseCardSource,
@@ -46,6 +47,7 @@ export type CompiledOracleText = {
   chooseCreatureTypeOnEnter?: boolean;
   entersWithXCounters?: boolean;
   playLandsFromGraveyard?: boolean;
+  additionalCost?: AdditionalCastCost;
   leftover: string[];
   notes: string[];
 };
@@ -808,6 +810,31 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
       targetRequirements: [],
       effects: [{ kind: "add_mana", playerId: "controller", mana: ritual.produces }],
     };
+  }
+
+  match = sentence.match(
+    /^Draw (a|one|two|three) cards? and create (a|one|two|three) (Treasure|Clue|Food) tokens?$/i,
+  );
+  if (match?.[1] && match[2] && match[3]) {
+    const drawCount = parseCount(match[1]);
+    const tokenCount = parseCount(match[2]);
+    const name = match[3][0]!.toUpperCase() + match[3].slice(1).toLowerCase();
+    if (drawCount && tokenCount) {
+      return {
+        targetRequirements: [],
+        effects: [
+          { kind: "draw", playerId: "controller", count: drawCount },
+          ...Array.from({ length: tokenCount }, () => ({
+            kind: "create_token" as const,
+            ownerId: "controller" as const,
+            name,
+            typeLine: `Artifact — ${name} Token`,
+            power: null,
+            toughness: null,
+          })),
+        ],
+      };
+    }
   }
 
   match = sentence.match(
@@ -1813,6 +1840,34 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
     if (/^You may play lands from your graveyard$/i.test(sentence)) {
       result.playLandsFromGraveyard = true;
       continue;
+    }
+
+    const addCost = sentence.match(/^As an additional cost to cast this spell, (.+)$/i);
+    if (addCost?.[1]) {
+      const what = addCost[1].trim().toLowerCase();
+      let parsed: AdditionalCastCost | null = null;
+      if (what === "sacrifice a creature") {
+        parsed = { sacrifice: "creature" };
+      } else if (what === "sacrifice an artifact") {
+        parsed = { sacrifice: "artifact" };
+      } else if (what === "sacrifice an artifact or creature" || what === "sacrifice a creature or artifact") {
+        parsed = { sacrifice: "creature_or_artifact" };
+      } else if (what === "sacrifice a land") {
+        parsed = { sacrifice: "land" };
+      } else if (what === "discard a card") {
+        parsed = { discard: 1 };
+      } else if (what === "discard two cards") {
+        parsed = { discard: 2 };
+      } else {
+        const life = what.match(/^pay (\d+) life$/);
+        if (life?.[1]) {
+          parsed = { life: Number(life[1]) };
+        }
+      }
+      if (parsed) {
+        result.additionalCost = { ...(result.additionalCost ?? {}), ...parsed };
+        continue;
+      }
     }
 
     const chosenAnthem = sentence.match(

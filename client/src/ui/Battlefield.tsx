@@ -60,6 +60,8 @@ export type UiMode =
       modeIndex?: number;
     }
   | { type: "spell-mode-pick"; cardId: CardInstanceId }
+  | { type: "cost-sacrifice"; cardId: CardInstanceId }
+  | { type: "cost-discard"; cardId: CardInstanceId; chosen: CardInstanceId[] }
   | { type: "attackers"; attackerIds: CardInstanceId[]; defenderId: PlayerId | null }
   | { type: "block-pick-blocker" }
   | { type: "block-pick-attacker"; blockerId: CardInstanceId }
@@ -1180,7 +1182,7 @@ export function Battlefield(props: Props) {
     if (mode.type === "block-pick-attacker") {
       return mode.blockerId === cardId;
     }
-    if (mode.type === "mana-color" || mode.type === "ability-pick" || mode.type === "hand-choice" || mode.type === "token-create" || mode.type === "spell-mode-pick") {
+    if (mode.type === "mana-color" || mode.type === "ability-pick" || mode.type === "hand-choice" || mode.type === "token-create" || mode.type === "spell-mode-pick" || mode.type === "cost-sacrifice" || mode.type === "cost-discard") {
       return mode.cardId === cardId;
     }
     if (mode.type === "targets") {
@@ -1375,6 +1377,12 @@ export function Battlefield(props: Props) {
     if (prompt) {
       return;
     }
+    if (mode.type === "cost-discard") {
+      if (you?.zones.hand.includes(cardId)) {
+        pickCostDiscard(cardId);
+      }
+      return;
+    }
     if (mode.type === "override") {
       selectOverrideCard(cardId);
       return;
@@ -1402,12 +1410,48 @@ export function Battlefield(props: Props) {
       onMode({ type: "spell-mode-pick", cardId });
       return;
     }
+    if (def?.additionalCost?.sacrifice) {
+      onMode({ type: "cost-sacrifice", cardId });
+      return;
+    }
+    if (def?.additionalCost?.discard) {
+      onMode({ type: "cost-discard", cardId, chosen: [] });
+      return;
+    }
     const requirements = def?.targetRequirements ?? [];
     if (requirements.length === 0) {
       send({ kind: "cast_spell", playerId, cardId });
       return;
     }
     onMode({ type: "targets", cardId, chosen: [], origin: "spell" });
+  }
+
+  function pickCostSacrifice(sacrificeId: CardInstanceId) {
+    if (mode.type !== "cost-sacrifice") {
+      return;
+    }
+    const playerId = controllerOf(mode.cardId) ?? actorId;
+    send({ kind: "cast_spell", playerId, cardId: mode.cardId, costSacrificeId: sacrificeId });
+    onMode({ type: "idle" });
+  }
+
+  function pickCostDiscard(discardId: CardInstanceId) {
+    if (mode.type !== "cost-discard") {
+      return;
+    }
+    const def = definition(state, mode.cardId);
+    const needed = def?.additionalCost?.discard ?? 1;
+    if (discardId === mode.cardId || mode.chosen.includes(discardId)) {
+      return;
+    }
+    const chosen = [...mode.chosen, discardId];
+    if (chosen.length >= needed) {
+      const playerId = controllerOf(mode.cardId) ?? actorId;
+      send({ kind: "cast_spell", playerId, cardId: mode.cardId, costDiscardIds: chosen });
+      onMode({ type: "idle" });
+      return;
+    }
+    onMode({ type: "cost-discard", cardId: mode.cardId, chosen });
   }
 
   function pickSpellMode(cardId: CardInstanceId, modeIndex: number) {
@@ -1527,6 +1571,12 @@ export function Battlefield(props: Props) {
           sendOverride({ type: "set_tapped", cardId, tapped: !card.tapped });
         }
         selectOverrideCard(cardId);
+      }
+      return;
+    }
+    if (mode.type === "cost-sacrifice") {
+      if (controllerOf(cardId) === actorId) {
+        pickCostSacrifice(cardId);
       }
       return;
     }

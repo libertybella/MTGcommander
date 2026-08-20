@@ -138,6 +138,8 @@ export type CardDefinition = {
   chooseCreatureTypeOnEnter?: boolean;
   /** "~ enters with X +1/+1 counters on it" (hydras); X from the announced cost. */
   entersWithXCounters?: boolean;
+  /** "As an additional cost to cast this spell, …" (Deadly Dispute). */
+  additionalCost?: AdditionalCastCost;
   /** "You may play lands from your graveyard" (Crucible of Worlds). */
   playLandsFromGraveyard?: boolean;
   /** Scryfall card image, if known. Empty for synthetic / hidden cards. */
@@ -410,6 +412,16 @@ export type GameEffect =
 
 /** What a "Destroy all …" wipe hits. */
 export type DestroyAllScope = "creatures" | "artifacts" | "enchantments" | "planeswalkers" | "nonland";
+
+/** "As an additional cost to cast this spell, …" — paid at cast time. */
+export type AdditionalCastCost = {
+  /** Sacrifice one permanent of this scope. */
+  sacrifice?: "creature" | "artifact" | "creature_or_artifact" | "land";
+  /** Discard this many cards. */
+  discard?: number;
+  /** Pay this much life. */
+  life?: number;
+};
 
 /** A static generic-cost discount on spells the controller casts. */
 export type CostReduction = {
@@ -928,6 +940,10 @@ export type GameAction =
       xValue?: number;
       /** Damage split for divided-damage spells; aligns with `targets`. */
       division?: number[];
+      /** Permanent sacrificed for an additional cast cost (Deadly Dispute). */
+      costSacrificeId?: CardInstanceId;
+      /** Cards discarded for an additional cast cost. */
+      costDiscardIds?: CardInstanceId[];
     }
   | { kind: "play_land"; playerId: PlayerId; cardId: CardInstanceId; faceIndex?: number }
   | {

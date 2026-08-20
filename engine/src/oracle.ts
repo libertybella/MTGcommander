@@ -201,6 +201,7 @@ function compileOneFace(card: OracleCard, definitionId: string): OracleCompileRe
     ...(compiled.chooseCreatureTypeOnEnter ? { chooseCreatureTypeOnEnter: true } : {}),
     ...(compiled.entersWithXCounters ? { entersWithXCounters: true } : {}),
     ...(compiled.playLandsFromGraveyard ? { playLandsFromGraveyard: true } : {}),
+    ...(compiled.additionalCost ? { additionalCost: compiled.additionalCost } : {}),
     ...(compiled.loyaltyAbilities && compiled.loyaltyAbilities.length > 0
       ? { loyaltyAbilities: compiled.loyaltyAbilities }
       : {}),
