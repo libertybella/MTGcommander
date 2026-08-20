@@ -194,11 +194,18 @@ function subjectMatchesFilter(
   state: GameState,
   subjectId: CardInstanceId,
   filter: CardTrigger["subjectFilter"],
+  watcher?: CardInstance,
 ): boolean {
   if (!filter) {
     return true;
   }
   const traits = characteristicsOf(state, subjectId);
+  if (filter.chosenSubtype) {
+    const chosen = watcher?.chosenCreatureType;
+    if (!chosen || !traits.subtypes.includes(chosen)) {
+      return false;
+    }
+  }
   for (const type of filter.types ?? []) {
     if (!traits.types.includes(type)) {
       return false;
@@ -255,7 +262,7 @@ function triggerMatchesEvent(
     if (trigger.excludeSelf && event.cardId === watcher.id) {
       return false;
     }
-    return subjectMatchesFilter(state, event.cardId, trigger.subjectFilter);
+    return subjectMatchesFilter(state, event.cardId, trigger.subjectFilter, watcher);
   }
   if (trigger.event === "cast_spell") {
     return false;
@@ -282,7 +289,7 @@ function triggerMatchesEvent(
   if (watch === "opponents" && subjectController === watcher.controllerId) {
     return false;
   }
-  return subjectMatchesFilter(state, event.cardId, trigger.subjectFilter);
+  return subjectMatchesFilter(state, event.cardId, trigger.subjectFilter, watcher);
 }
 
 /**

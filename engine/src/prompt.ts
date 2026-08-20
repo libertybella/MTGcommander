@@ -143,6 +143,34 @@ export function applyChooseEnterReplacement(
   return next;
 }
 
+/** Answer an as-enters creature-type choice (Kindred Discovery). */
+export function applyResolveCreatureType(
+  state: GameState,
+  playerId: PlayerId,
+  creatureType: string,
+): GameState {
+  const prompt = currentPrompt(state);
+  if (!prompt || prompt.kind !== "choose_creature_type") {
+    throw new Error("No creature-type choice pending");
+  }
+  requireLiving(state, playerId);
+  if (prompt.playerId !== playerId) {
+    throw new Error("It is not that player's choice");
+  }
+  const chosen = creatureType.trim().toLowerCase();
+  if (!/^[a-z][a-z' -]*$/.test(chosen)) {
+    throw new Error("Choose a creature type");
+  }
+  const next = cloneGameState(state);
+  next.prompts.shift();
+  const card = next.cards[prompt.sourceId];
+  if (card) {
+    card.chosenCreatureType = chosen;
+    next.log.push({ kind: "creature_type_chosen", cardId: card.id, creatureType: chosen });
+  }
+  return next;
+}
+
 export function applyResolveScry(
   state: GameState,
   playerId: PlayerId,

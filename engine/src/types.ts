@@ -134,6 +134,8 @@ export type CardDefinition = {
    * only the generic portion shrinks, never below zero.
    */
   costReductions?: CostReduction[];
+  /** "As ~ enters, choose a creature type." Prompts on battlefield entry. */
+  chooseCreatureTypeOnEnter?: boolean;
   /** Scryfall card image, if known. Empty for synthetic / hidden cards. */
   imageUrl: string;
   /** Linked opposite face for modal DFCs and transforming cards. */
@@ -167,6 +169,8 @@ export type CardInstance = {
   loyaltyActivatedThisTurn: boolean;
   /** Manifested: a face-down 2/2 with no name, types, or abilities (CR 708). */
   faceDown: boolean;
+  /** "As ~ enters, choose a creature type" (Kindred Discovery). Lowercase. */
+  chosenCreatureType: string | null;
 };
 
 export type CommanderState = {
@@ -607,6 +611,8 @@ export type CardTrigger = {
     subtypes?: string[];
     typesAny?: string[];
     nonTypes?: string[];
+    /** The subject must have the watcher's chosen creature type. */
+    chosenSubtype?: boolean;
   };
   effects: CardEffect[];
   /** Chosen when the trigger is put on the stack. Empty or omitted means untargeted. */
@@ -656,6 +662,11 @@ export type PendingPrompt =
       playerId: PlayerId;
       sourceId: CardInstanceId;
       amount: number;
+    }
+  | {
+      kind: "choose_creature_type";
+      playerId: PlayerId;
+      sourceId: CardInstanceId;
     }
   | {
       kind: "scry";
@@ -772,6 +783,8 @@ export type EffectSelector = {
   subtypes?: string[];
   /** Any listed color must be present ("White creatures you control"). */
   colors?: Color[];
+  /** The target must have the source's chosen creature type (Vanquisher's Banner). */
+  chosenSubtype?: boolean;
 };
 
 /** What a continuous effect does, in CR 613 layer order (derived from kind). */
@@ -826,6 +839,11 @@ export type GameLogEntry =
       kind: "override";
       playerId: PlayerId;
       summary: string;
+    }
+  | {
+      kind: "creature_type_chosen";
+      cardId: CardInstanceId;
+      creatureType: string;
     }
   | {
       kind: "die_roll";
@@ -908,6 +926,7 @@ export type GameAction =
   | { kind: "choose_targets"; playerId: PlayerId; targets: ChosenTarget[] }
   | { kind: "resolve_order_triggers"; playerId: PlayerId; order: number[] }
   | { kind: "choose_enter_replacement"; playerId: PlayerId; pay: boolean }
+  | { kind: "resolve_creature_type"; playerId: PlayerId; creatureType: string }
   | { kind: "resolve_scry"; playerId: PlayerId; bottomIds: CardInstanceId[] }
   | { kind: "resolve_surveil"; playerId: PlayerId; graveyardIds: CardInstanceId[] }
   | { kind: "resolve_discard"; playerId: PlayerId; cardIds: CardInstanceId[] }

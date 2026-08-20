@@ -18,6 +18,12 @@ What the engine implements and what it intentionally does not. Tests are tagged 
 - **Keywords implemented**: 20 of the CR 702 list as engine keywords, plus parameterized ward and protection — see `docs/KEYWORD_COVERAGE.md`.
 - **Mana**: pools, hybrid, Phyrexian, {X}, multi-mana any-one-color abilities (Gilded Lotus), pain lands, color pickers, and an Arena-style auto-tapper (`autoTapPlan`) the client uses before casts and activations.
 - **Turn structure extras**: the cleanup step discards down to maximum hand size (CR 514.1), suspended by "no maximum hand size" permanents; land-drop allowance sums "additional land" statics (Exploration); "Activate only as a sorcery" riders and "This spell can't be countered" are honored; Karoo bounce lands prompt for the land to return.
+- **Cast triggers**: a `casts` event fires when a spell hits the stack (Guttersnipe, Rhystic Study) with you/opponent/any scopes and creature / noncreature / instant-or-sorcery / artifact / enchantment filters.
+- **Board wipes and wide removal**: `destroy_all` sweeps with batched simultaneous dies (indestructible respected); artifact / enchantment / either / nonland-permanent / creature-or-planeswalker target kinds.
+- **Cost-reduction statics** (CR 601.2f): medallions and type-filtered discounts shrink the generic portion after commander tax, in both legality checks and payment.
+- **Predefined tokens**: Treasure (sacrifice-on-tap any-color mana; never auto-tapped), Clue, and Food carry their printed abilities however they are created.
+- **Once-per-turn triggers** ("triggers only once each turn") latch per turn; cycling compiles to the from-hand discard-and-draw ability (CR 702.29).
+- **"As enters, choose a creature type"** prompts on entry; chosen-type filters work in trigger subjects (Kindred Discovery's enters-or-attacks) and static selectors (Vanquisher's Banner).
 
 ## The card pipeline (Stage 6)
 

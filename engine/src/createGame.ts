@@ -65,6 +65,7 @@ export function createCardDefinition(
         | "extraLandDrops"
         | "cantBeCountered"
         | "costReductions"
+        | "chooseCreatureTypeOnEnter"
       >
     > & { colors?: Color[] },
 ): CardDefinition {
@@ -101,6 +102,7 @@ export function createCardDefinition(
                   ...(trigger.subjectFilter.nonTypes
                     ? { nonTypes: [...trigger.subjectFilter.nonTypes] }
                     : {}),
+                  ...(trigger.subjectFilter.chosenSubtype ? { chosenSubtype: true } : {}),
                 },
               }
             : {}),
@@ -173,6 +175,7 @@ export function createCardDefinition(
       ? { extraLandDrops: input.extraLandDrops }
       : {}),
     ...(input.cantBeCountered ? { cantBeCountered: true } : {}),
+    ...(input.chooseCreatureTypeOnEnter ? { chooseCreatureTypeOnEnter: true } : {}),
     ...(input.costReductions && input.costReductions.length > 0
       ? {
           costReductions: input.costReductions.map((entry) => ({
@@ -218,6 +221,7 @@ export function createCardInstance(input: {
     attachedTo: null,
     loyaltyActivatedThisTurn: false,
     faceDown: false,
+    chosenCreatureType: null,
   };
 }
 

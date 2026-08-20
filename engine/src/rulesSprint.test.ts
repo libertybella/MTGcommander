@@ -411,6 +411,104 @@ describe("creature-or-planeswalker removal", () => {
   });
 });
 
+describe("choose a creature type", () => {
+  it("compiles Kindred Discovery and Vanquisher's Banner cleanly", () => {
+    const discovery = compileOracleCard({
+      oracleId: "kindred",
+      name: "Kindred Discovery",
+      manaCost: "{3}{U}{U}",
+      typeLine: "Enchantment",
+      oracleText:
+        "As Kindred Discovery enters, choose a creature type.\nWhenever a creature you control of the chosen type enters or attacks, draw a card.",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+    });
+    expect(discovery.notes).toEqual([]);
+    expect(discovery.definition.chooseCreatureTypeOnEnter).toBe(true);
+    expect(discovery.definition.triggers).toHaveLength(2);
+    expect(discovery.definition.triggers.map((trigger) => trigger.event)).toEqual([
+      "enter_battlefield",
+      "attacks",
+    ]);
+
+    const banner = compileOracleCard({
+      oracleId: "banner",
+      name: "Vanquisher's Banner",
+      manaCost: "{5}",
+      typeLine: "Artifact",
+      oracleText:
+        "As Vanquisher's Banner enters, choose a creature type.\nCreature spells you cast cost {1} less to cast.\nCreatures you control of the chosen type get +1/+1.\nWhenever you cast a creature spell of the chosen type, draw a card.",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+    });
+    expect(banner.notes).toEqual([]);
+    expect(banner.definition.costReductions).toHaveLength(1);
+    expect(banner.definition.staticAbilities[0]?.selector.chosenSubtype).toBe(true);
+  });
+
+  it("prompts on entry, records the choice, and gates the tribal trigger", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game);
+    const kindredDef = createCardDefinition({
+      name: "Kindred Idol",
+      typeLine: "Enchantment",
+      chooseCreatureTypeOnEnter: true,
+      triggers: [
+        {
+          event: "enter_battlefield",
+          watch: "controlled",
+          subjectFilter: { types: ["creature"], chosenSubtype: true },
+          effects: [{ kind: "draw", playerId: "controller", count: 1 }],
+          targetRequirements: [],
+        },
+      ],
+    });
+    game.definitions[kindredDef.id] = kindredDef;
+    const idol = createCardInstance({ definitionId: kindredDef.id, ownerId: p1.id, zone: "hand" });
+    game.cards[idol.id] = idol;
+    p1.zones.hand.push(idol.id);
+    const entered = moveCard(game, idol.id, "battlefield");
+    expect(entered.prompts[0]?.kind).toBe("choose_creature_type");
+
+    const chosen = applyAction(entered, {
+      kind: "resolve_creature_type",
+      playerId: p1.id,
+      creatureType: "Sliver",
+    });
+    expect(chosen.cards[idol.id]?.chosenCreatureType).toBe("sliver");
+
+    const sliver = createCardDefinition({
+      name: "Metallic Sliver",
+      typeLine: "Artifact Creature — Sliver",
+      power: 1,
+      toughness: 1,
+    });
+    const bear = createCardDefinition({
+      name: "Bear",
+      typeLine: "Creature — Bear",
+      power: 2,
+      toughness: 2,
+    });
+    chosen.definitions[sliver.id] = sliver;
+    chosen.definitions[bear.id] = bear;
+    const bearCard = createCardInstance({ definitionId: bear.id, ownerId: p1.id, zone: "hand" });
+    chosen.cards[bearCard.id] = bearCard;
+    chosen.players[0]!.zones.hand.push(bearCard.id);
+    const bearEntered = moveCard(chosen, bearCard.id, "battlefield");
+    expect(bearEntered.stack).toHaveLength(0);
+
+    const sliverCard = createCardInstance({ definitionId: sliver.id, ownerId: p1.id, zone: "hand" });
+    bearEntered.cards[sliverCard.id] = sliverCard;
+    bearEntered.players[0]!.zones.hand.push(sliverCard.id);
+    const sliverEntered = moveCard(bearEntered, sliverCard.id, "battlefield");
+    expect(sliverEntered.stack).toHaveLength(1);
+  });
+});
+
 describe("once-per-turn triggers", () => {
   it("compiles Morbid Opportunist and fires only once a turn", () => {
     const compiled = compileOracleCard({

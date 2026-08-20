@@ -427,6 +427,10 @@ function formatLogEntry(state: GameState, entry: GameLogEntry): string {
     const name = player?.displayName ?? entry.playerId;
     return `${name} plays first`;
   }
+  if (entry.kind === "creature_type_chosen") {
+    const chooserName = definition(state, entry.cardId)?.name ?? "Unknown Card";
+    return `${chooserName}: chose ${entry.creatureType}`;
+  }
   const name = definition(state, entry.cardId)?.name ?? "Unknown Card";
   return `${name}: ${entry.from} → ${entry.to}`;
 }
@@ -1790,6 +1794,10 @@ export function Battlefield(props: Props) {
               ? actorId === prompt.playerId
                 ? `Pay ${prompt.amount} life or have ${definition(state, prompt.sourceId)?.name ?? "this land"} enter tapped.`
                 : `Waiting for ${chooser?.displayName ?? "a player"} to pay life or enter tapped.`
+              : prompt.kind === "choose_creature_type"
+              ? actorId === prompt.playerId
+                ? `Choose a creature type for ${definition(state, prompt.sourceId)?.name ?? "this permanent"}.`
+                : `Waiting for ${chooser?.displayName ?? "a player"} to choose a creature type.`
               : prompt.kind === "scry"
                 ? actorId === prompt.playerId
                   ? `Scry ${prompt.count}.`
@@ -2299,6 +2307,43 @@ export function Battlefield(props: Props) {
                   Enter tapped{forActor}
                 </button>
               </>
+            ) : null}
+            {actorId === prompt.playerId && prompt.kind === "choose_creature_type" ? (
+              <div className="look-row" data-testid="creature-type-picker">
+                {["Sliver", "Elf", "Goblin", "Zombie", "Dragon", "Human", "Merfolk", "Vampire"].map(
+                  (option) => (
+                    <button
+                      key={option}
+                      type="button"
+                      onClick={() =>
+                        send({
+                          kind: "resolve_creature_type",
+                          playerId: actorId,
+                          creatureType: option.toLowerCase(),
+                        })
+                      }
+                    >
+                      {option}
+                    </button>
+                  ),
+                )}
+                <button
+                  type="button"
+                  data-testid="creature-type-other"
+                  onClick={() => {
+                    const answer = window.prompt("Creature type:");
+                    if (answer && answer.trim()) {
+                      send({
+                        kind: "resolve_creature_type",
+                        playerId: actorId,
+                        creatureType: answer.trim().toLowerCase(),
+                      });
+                    }
+                  }}
+                >
+                  Other…
+                </button>
+              </div>
             ) : null}
             {actorId === prompt.playerId && prompt.kind === "scry" ? (
               <>

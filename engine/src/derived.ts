@@ -167,19 +167,28 @@ export function wouldEnterTapped(state: GameState, cardId: CardInstanceId): bool
 
 export function queueEnterReplacementChoicesInPlace(state: GameState, cardId: CardInstanceId): void {
   const card = state.cards[cardId];
-  if (!card || card.zone !== "battlefield" || card.tapped) {
+  if (!card || card.zone !== "battlefield") {
     return;
   }
   const definition = state.definitions[card.definitionId];
-  for (const replacement of definition?.replacements ?? []) {
-    if (replacement.kind !== "may_pay_life_or_enter_tapped") {
-      continue;
+  if (!card.tapped) {
+    for (const replacement of definition?.replacements ?? []) {
+      if (replacement.kind !== "may_pay_life_or_enter_tapped") {
+        continue;
+      }
+      state.prompts.push({
+        kind: "may_pay_life_or_enter_tapped",
+        playerId: card.controllerId,
+        sourceId: card.id,
+        amount: replacement.amount,
+      });
     }
+  }
+  if (definition?.chooseCreatureTypeOnEnter && card.chosenCreatureType === null) {
     state.prompts.push({
-      kind: "may_pay_life_or_enter_tapped",
+      kind: "choose_creature_type",
       playerId: card.controllerId,
       sourceId: card.id,
-      amount: replacement.amount,
     });
   }
 }

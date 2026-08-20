@@ -43,6 +43,7 @@ export type CompiledOracleText = {
   extraLandDrops?: number;
   cantBeCountered?: boolean;
   costReductions?: CostReduction[];
+  chooseCreatureTypeOnEnter?: boolean;
   leftover: string[];
   notes: string[];
 };
@@ -1081,7 +1082,10 @@ function parseSearchDescriptor(descriptor: string): SearchFilter | null {
   };
 }
 
-type TriggerHead = Pick<CardTrigger, "event" | "watch" | "excludeSelf" | "subjectFilter">;
+type TriggerHead = Pick<CardTrigger, "event" | "watch" | "excludeSelf" | "subjectFilter"> & {
+  /** "enters or attacks": emit a sibling trigger for each extra event. */
+  extraEvents?: CardTrigger["event"][];
+};
 
 /** "Whenever another creature dies" → dies / any / excludeSelf, and friends. */
 function parseTriggerHead(head: string): TriggerHead | null {
@@ -1197,6 +1201,21 @@ function parseTriggerHead(head: string): TriggerHead | null {
   }
   if (/^Whenever a player casts a spell$/i.test(text)) {
     return { event: "cast_spell", watch: "any" };
+  }
+  if (/^Whenever a creature you control of the chosen type enters or attacks$/i.test(text)) {
+    return {
+      event: "enter_battlefield",
+      watch: "controlled",
+      subjectFilter: { types: ["creature"], chosenSubtype: true },
+      extraEvents: ["attacks"],
+    };
+  }
+  if (/^Whenever you cast a creature spell of the chosen type$/i.test(text)) {
+    return {
+      event: "cast_spell",
+      watch: "controlled",
+      subjectFilter: { types: ["creature"], chosenSubtype: true },
+    };
   }
   return null;
 }
@@ -1704,6 +1723,26 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
       continue;
     }
 
+    if (/^As ~ enters, choose a creature type$/i.test(sentence)) {
+      result.chooseCreatureTypeOnEnter = true;
+      continue;
+    }
+
+    const chosenAnthem = sentence.match(
+      /^Creatures you control of the chosen type get \+(\d+)\/\+(\d+)$/i,
+    );
+    if (chosenAnthem?.[1] && chosenAnthem[2]) {
+      result.staticAbilities.push({
+        selector: { scope: "controlled", types: ["creature"], chosenSubtype: true },
+        effect: {
+          kind: "modify_pt",
+          power: Number(chosenAnthem[1]),
+          toughness: Number(chosenAnthem[2]),
+        },
+      });
+      continue;
+    }
+
     const extraLands = sentence.match(
       /^You may play (an|one|two|three) additional lands? on each of your turns$/i,
     );
@@ -1857,11 +1896,20 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
       if (head) {
         const inner = compileSimpleClause(generalTrigger[2].trim());
         if (inner) {
+          const { extraEvents, ...headRest } = head;
           result.triggers.push({
-            ...head,
+            ...headRest,
             effects: inner.effects,
             targetRequirements: inner.targetRequirements,
           });
+          for (const extra of extraEvents ?? []) {
+            result.triggers.push({
+              ...headRest,
+              event: extra,
+              effects: inner.effects.map((effect) => ({ ...effect })),
+              targetRequirements: inner.targetRequirements.map((req) => ({ ...req })),
+            });
+          }
           if (inner.leftover) {
             result.leftover.push(inner.leftover);
           }

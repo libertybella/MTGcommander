@@ -198,6 +198,7 @@ function compileOneFace(card: OracleCard, definitionId: string): OracleCompileRe
     ...(compiled.costReductions && compiled.costReductions.length > 0
       ? { costReductions: compiled.costReductions }
       : {}),
+    ...(compiled.chooseCreatureTypeOnEnter ? { chooseCreatureTypeOnEnter: true } : {}),
     ...(compiled.loyaltyAbilities && compiled.loyaltyAbilities.length > 0
       ? { loyaltyAbilities: compiled.loyaltyAbilities }
       : {}),

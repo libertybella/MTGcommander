@@ -153,6 +153,13 @@ function matches(
       return false;
     }
   }
+  if (selector.chosenSubtype) {
+    const source = instance.sourceId ? state.cards[instance.sourceId] : undefined;
+    const chosen = source?.chosenCreatureType;
+    if (!chosen || !computed.characteristics.subtypes.includes(chosen)) {
+      return false;
+    }
+  }
   return true;
 }
 

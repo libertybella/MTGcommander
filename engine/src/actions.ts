@@ -24,7 +24,7 @@ import { applyBottomCards, applyKeepHand, applyTakeMulligan, isMulliganOpen, rec
 import { applyRollDie } from "./dice";
 import { applyOpeningRoll, isOpeningRoll } from "./openingRoll";
 import { applyManualOverride } from "./override";
-import { applyChooseEnterReplacement, applyChooseTargets, applyResolveChooseCard, applyResolveDiscard, applyResolveLookAssign, applyResolveOrderTriggers, applyResolvePay, applyResolveScry, applyResolveSearch, applyResolveSurveil, currentPrompt, dropLostPlayerPromptsInPlace, isPromptOpen } from "./prompt";
+import { applyChooseEnterReplacement, applyChooseTargets, applyResolveChooseCard, applyResolveCreatureType, applyResolveDiscard, applyResolveLookAssign, applyResolveOrderTriggers, applyResolvePay, applyResolveScry, applyResolveSearch, applyResolveSurveil, currentPrompt, dropLostPlayerPromptsInPlace, isPromptOpen } from "./prompt";
 import { findCardZone, moveCard } from "./zones";
 import type { CardInstanceId, ChosenTarget, GameAction, GameState, ManaColor, ManaPool, PlayerId } from "./types";
 
@@ -748,6 +748,9 @@ export function applyAction(
         break;
       case "choose_enter_replacement":
         next = applyChooseEnterReplacement(state, action.playerId, action.pay);
+        break;
+      case "resolve_creature_type":
+        next = applyResolveCreatureType(state, action.playerId, action.creatureType);
         break;
       case "resolve_scry": {
         const prompt = currentPrompt(state);

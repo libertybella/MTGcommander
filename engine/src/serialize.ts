@@ -261,6 +261,10 @@ export function parseGameState(json: string): GameState {
           : expectString(card.attachedTo, "card.attachedTo"),
       loyaltyActivatedThisTurn: card.loyaltyActivatedThisTurn === true,
       faceDown: card.faceDown === true,
+      chosenCreatureType:
+        card.chosenCreatureType === undefined || card.chosenCreatureType === null
+          ? null
+          : expectString(card.chosenCreatureType, "card.chosenCreatureType"),
     };
   }
 
@@ -313,6 +317,7 @@ export function parseGameState(json: string): GameState {
         ? {}
         : { extraLandDrops: expectNumber(def.extraLandDrops, `definition.${id}.extraLandDrops`) }),
       ...(def.cantBeCountered === true ? { cantBeCountered: true } : {}),
+      ...(def.chooseCreatureTypeOnEnter === true ? { chooseCreatureTypeOnEnter: true } : {}),
       ...(def.costReductions === undefined
         ? {}
         : {
@@ -582,6 +587,13 @@ function parsePrompts(value: unknown, playerIds: Set<string>): PendingPrompt[] {
         playerId,
         sourceId: expectString(entry.sourceId, `prompts[${index}].sourceId`),
         amount: expectNumber(entry.amount, `prompts[${index}].amount`),
+      };
+    }
+    if (kind === "choose_creature_type") {
+      return {
+        kind,
+        playerId,
+        sourceId: expectString(entry.sourceId, `prompts[${index}].sourceId`),
       };
     }
     if (kind === "order_triggers") {
@@ -1516,6 +1528,7 @@ function parseTriggers(value: unknown, label: string): CardTrigger[] {
               ...(subtypes.length > 0 ? { subtypes } : {}),
               ...(typesAny.length > 0 ? { typesAny } : {}),
               ...(nonTypes.length > 0 ? { nonTypes } : {}),
+              ...(entry.subjectFilter.chosenSubtype === true ? { chosenSubtype: true } : {}),
             };
           })();
     return {
@@ -1524,7 +1537,11 @@ function parseTriggers(value: unknown, label: string): CardTrigger[] {
       ...(entry.excludeSelf === true ? { excludeSelf: true } : {}),
       ...(entry.oncePerTurn === true ? { oncePerTurn: true } : {}),
       ...(subjectFilter &&
-      (subjectFilter.types || subjectFilter.subtypes || subjectFilter.typesAny || subjectFilter.nonTypes)
+      (subjectFilter.types ||
+        subjectFilter.subtypes ||
+        subjectFilter.typesAny ||
+        subjectFilter.nonTypes ||
+        subjectFilter.chosenSubtype)
         ? { subjectFilter }
         : {}),
       effects: parseCardEffects(entry.effects, `${label}[${index}].effects`),
@@ -1626,7 +1643,7 @@ function parseEffectSelector(value: unknown, label: string): EffectSelector {
     throw new Error(`Invalid ${label}`);
   }
   const scope = expectString(value.scope, `${label}.scope`);
-  if (scope !== "self" && scope !== "controlled" && scope !== "all") {
+  if (scope !== "self" && scope !== "controlled" && scope !== "all" && scope !== "attached") {
     throw new Error(`Invalid ${label}.scope`);
   }
   const types = parseStringList(value.types, `${label}.types`);
@@ -1651,6 +1668,7 @@ function parseEffectSelector(value: unknown, label: string): EffectSelector {
     ...(types.length > 0 ? { types } : {}),
     ...(subtypes.length > 0 ? { subtypes } : {}),
     ...(colors.length > 0 ? { colors } : {}),
+    ...(value.chosenSubtype === true ? { chosenSubtype: true } : {}),
   };
 }
 
@@ -1851,6 +1869,13 @@ function parseLog(value: unknown): GameLogEntry[] {
       return {
         kind,
         playerId: expectString(entry.playerId, `log[${index}].playerId`),
+      };
+    }
+    if (kind === "creature_type_chosen") {
+      return {
+        kind,
+        cardId: expectString(entry.cardId, `log[${index}].cardId`),
+        creatureType: expectString(entry.creatureType, `log[${index}].creatureType`),
       };
     }
     if (kind !== "zone_change") {
@@ -2185,6 +2210,13 @@ export function parseGameAction(json: string): GameAction {
       kind,
       playerId,
       pay: raw.pay === true,
+    };
+  }
+  if (kind === "resolve_creature_type") {
+    return {
+      kind,
+      playerId,
+      creatureType: expectString(raw.creatureType, "action.creatureType"),
     };
   }
   if (kind === "resolve_order_triggers") {

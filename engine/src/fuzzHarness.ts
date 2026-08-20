@@ -132,6 +132,12 @@ function nextAction(state: GameState, rng: () => number): GameAction | null {
       }
       case "may_pay_life_or_enter_tapped":
         return { kind: "choose_enter_replacement", playerId, pay: rng() < 0.5 };
+      case "choose_creature_type":
+        return {
+          kind: "resolve_creature_type",
+          playerId,
+          creatureType: pick(rng, ["sliver", "goblin", "elf", "zombie", "dragon"]),
+        };
       case "scry": {
         const looked = lookedAtCardIds(state, prompt);
         return { kind: "resolve_scry", playerId, bottomIds: randomSubset(rng, looked, 0.4) };
