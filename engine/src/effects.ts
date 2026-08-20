@@ -86,8 +86,8 @@ function bindPlayer(
   if (selector === "next_opponent") {
     return nextOpponentId(state, controllerId);
   }
-  if (selector === "each_opponent") {
-    throw new Error("each_opponent must be expanded before binding");
+  if (selector === "each_opponent" || selector === "each_player") {
+    throw new Error("each-player selectors must be expanded before binding");
   }
   return selector;
 }
@@ -103,30 +103,55 @@ function expandEachOpponent(
   effect: CardEffect,
   controllerId: PlayerId,
 ): CardEffect[] {
-  const opponents = opponentIds(state, controllerId);
+  // APNAP-ish: the controller acts first, then opponents in seat order.
+  const eachOf = (selector: unknown): PlayerId[] | null =>
+    selector === "each_opponent"
+      ? opponentIds(state, controllerId)
+      : selector === "each_player"
+        ? [controllerId, ...opponentIds(state, controllerId)]
+        : null;
   if (
-    (effect.kind === "gain_life" ||
-      effect.kind === "lose_life" ||
-      effect.kind === "draw" ||
-      effect.kind === "add_mana" ||
-      effect.kind === "mill" ||
-      effect.kind === "discard") &&
-    effect.playerId === "each_opponent"
+    effect.kind === "gain_life" ||
+    effect.kind === "lose_life" ||
+    effect.kind === "draw" ||
+    effect.kind === "add_mana" ||
+    effect.kind === "mill" ||
+    effect.kind === "discard"
   ) {
-    return opponents.map((playerId) => ({ ...effect, playerId }));
+    const players = eachOf(effect.playerId);
+    if (players) {
+      return players.map((playerId) => ({ ...effect, playerId }));
+    }
   }
-  if (effect.kind === "create_token" && effect.ownerId === "each_opponent") {
-    return opponents.map((ownerId) => ({ ...effect, ownerId }));
+  if (effect.kind === "create_token") {
+    const players = eachOf(effect.ownerId);
+    if (players) {
+      return players.map((ownerId) => ({ ...effect, ownerId }));
+    }
   }
-  if (
-    effect.kind === "deal_damage" &&
-    effect.target.type === "player" &&
-    effect.target.playerId === "each_opponent"
-  ) {
-    return opponents.map((playerId) => ({
-      ...effect,
-      target: { type: "player" as const, playerId },
-    }));
+  if (effect.kind === "choose_card") {
+    const players = eachOf(effect.chooserId);
+    if (players) {
+      return players.map((playerId) => ({
+        ...effect,
+        chooserId: playerId,
+        sources: effect.sources.map((source) => ({
+          ...source,
+          playerId: source.playerId === "each_opponent" || source.playerId === "each_player"
+            ? playerId
+            : source.playerId,
+        })),
+      }));
+    }
+  }
+  if (effect.kind === "deal_damage" && effect.target.type === "player") {
+    const players = eachOf(effect.target.playerId);
+    if (players) {
+      return players.map((playerId) => ({
+        ...effect,
+        target: { type: "player" as const, playerId },
+      }));
+    }
   }
   return [effect];
 }

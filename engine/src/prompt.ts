@@ -267,6 +267,9 @@ function cardMatchesFilter(
   if (filter === "land") {
     return types.includes("land");
   }
+  if (filter === "creature") {
+    return types.includes("creature");
+  }
   return !types.includes("land");
 }
 

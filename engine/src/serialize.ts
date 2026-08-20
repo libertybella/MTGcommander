@@ -891,10 +891,11 @@ function parseDestroyAllScope(value: unknown, label: string): DestroyAllScope {
 function parseCardFilter(
   value: unknown,
   label: string,
-): "any" | "land" | "nonland" | "noncreature_nonland" {
+): "any" | "creature" | "land" | "nonland" | "noncreature_nonland" {
   const filter = expectString(value, label);
   if (
     filter !== "any" &&
+    filter !== "creature" &&
     filter !== "land" &&
     filter !== "nonland" &&
     filter !== "noncreature_nonland"

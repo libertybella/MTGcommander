@@ -1090,6 +1090,47 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     };
   }
 
+  // Edicts: sacrifice choices belong to the affected players.
+  match = sentence.match(
+    /^Each (player|opponent) sacrifices (?:a|one) creature(?: of their choice)?$/i,
+  );
+  if (match?.[1]) {
+    return {
+      targetRequirements: [],
+      effects: [
+        {
+          kind: "choose_card",
+          chooserId: match[1].toLowerCase() === "player" ? "each_player" : "each_opponent",
+          sources: [
+            {
+              playerId: match[1].toLowerCase() === "player" ? "each_player" : "each_opponent",
+              zone: "battlefield",
+              filter: "creature",
+            },
+          ],
+          thenEffects: [{ kind: "sacrifice", cardId: "chosen_card" }],
+        },
+      ],
+    };
+  }
+
+  match = sentence.match(/^Each (player|opponent) (draws|discards) (a|one|two|three) cards?$/i);
+  if (match?.[1] && match[2] && match[3]) {
+    const count = parseCount(match[3]);
+    if (count) {
+      return {
+        targetRequirements: [],
+        effects: [
+          {
+            kind: match[2].toLowerCase() === "draws" ? "draw" : "discard",
+            playerId: match[1].toLowerCase() === "player" ? "each_player" : "each_opponent",
+            count,
+          },
+        ],
+      };
+    }
+  }
+
   if (/^Exile target player's graveyard$/i.test(sentence)) {
     return {
       targetRequirements: [{ kind: "player" }],

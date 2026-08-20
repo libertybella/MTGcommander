@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   applyAction,
   applyEffect,
+  applyEffects,
+  bindCardEffects,
   compileOracleCard,
   createCardDefinition,
   createCardInstance,
@@ -411,6 +413,75 @@ describe("creature-or-planeswalker removal", () => {
     expect(
       isChosenTargetLegal(game, requirement, { type: "creature", cardId: rock.id }, p1.id),
     ).toBe(false);
+  });
+});
+
+describe("edicts and symmetrical effects", () => {
+  it("compiles the Fleshbag edict and walks each player's choice", () => {
+    const compiled = compileOracleCard({
+      oracleId: "fleshbag",
+      name: "Fleshbag Marauder",
+      manaCost: "{2}{B}",
+      typeLine: "Creature — Zombie Warrior",
+      oracleText: "When Fleshbag Marauder enters, each player sacrifices a creature of their choice.",
+      power: "3",
+      toughness: "1",
+      printedKeywords: [],
+      imageUrl: "",
+    });
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.triggers[0]?.effects[0]).toMatchObject({
+      kind: "choose_card",
+      chooserId: "each_player",
+    });
+
+    const { game, p1, p2 } = twoPlayers();
+    const bear = createCardDefinition({
+      name: "Bear",
+      typeLine: "Creature — Bear",
+      power: 2,
+      toughness: 2,
+    });
+    game.definitions[bear.id] = bear;
+    const mine = createCardInstance({ definitionId: bear.id, ownerId: p1.id, zone: "battlefield" });
+    const theirs = createCardInstance({ definitionId: bear.id, ownerId: p2.id, zone: "battlefield" });
+    game.cards[mine.id] = mine;
+    game.cards[theirs.id] = theirs;
+    p1.zones.battlefield.push(mine.id);
+    p2.zones.battlefield.push(theirs.id);
+
+    const bound = bindCardEffects(game, compiled.definition.triggers[0]!.effects, {
+      controllerId: p1.id,
+      sourceId: null,
+    });
+    expect(bound).toHaveLength(2);
+    let next = applyEffects(game, bound);
+    expect(next.prompts[0]?.kind).toBe("choose_card");
+    expect(next.prompts[0]?.playerId).toBe(p1.id);
+    next = applyAction(next, { kind: "resolve_choose_card", playerId: p1.id, cardId: mine.id });
+    expect(next.cards[mine.id]?.zone).toBe("graveyard");
+    // The resume chain hands the second edict choice to the opponent.
+    expect(next.prompts[0]?.playerId).toBe(p2.id);
+    next = applyAction(next, { kind: "resolve_choose_card", playerId: p2.id, cardId: theirs.id });
+    expect(next.cards[theirs.id]?.zone).toBe("graveyard");
+  });
+
+  it("compiles 'Each player draws a card'", () => {
+    const compiled = compileOracleCard({
+      oracleId: "font",
+      name: "Fountain of Youthful Ideas",
+      manaCost: "{2}{U}",
+      typeLine: "Sorcery",
+      oracleText: "Each player draws a card.",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+    });
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.effects).toEqual([
+      { kind: "draw", playerId: "each_player", count: 1 },
+    ]);
   });
 });
 

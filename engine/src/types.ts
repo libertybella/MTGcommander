@@ -308,7 +308,7 @@ export type SearchFilter = {
 
 export type SearchDestination = "hand" | "battlefield" | "graveyard" | "library_top";
 
-export type CardFilter = "any" | "land" | "nonland" | "noncreature_nonland";
+export type CardFilter = "any" | "creature" | "land" | "nonland" | "noncreature_nonland";
 
 export type ChooseCardSource = {
   playerId: PlayerSelector;
@@ -518,7 +518,7 @@ export type CardIdSelector = CardInstanceId | ChosenTargetRef;
  * Relative player used in untargeted CardDefinition effects.
  * Targeted spells use ChosenTargetRef instead of next_opponent.
  */
-export type RelativePlayer = "controller" | "next_opponent" | "each_opponent";
+export type RelativePlayer = "controller" | "next_opponent" | "each_opponent" | "each_player";
 /** The controller of the Nth chosen target (Beast Within). */
 export type ChosenControllerRef = { type: "chosen_controller"; index: number };
 /** "That player": the trigger event's subject player, or the subject card's controller. */
