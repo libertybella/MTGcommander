@@ -1,3 +1,3 @@
 import { registerFuzzShard } from "./fuzzHarness";
 
-registerFuzzShard(0, 8);
+registerFuzzShard(6, 8);
