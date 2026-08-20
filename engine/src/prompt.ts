@@ -1,6 +1,7 @@
 import { createId } from "./ids";
 import { cloneGameState } from "./clone";
 import { isLiving, requireLiving } from "./players";
+import { shuffleInPlace } from "./shuffle";
 import { hasAnyLegalTargetSet, validateChosenTargets } from "./targeting";
 import { processTriggerGroupsInPlace, queueDefinitionTriggerInPlace } from "./triggers";
 import { moveCard } from "./zones";
@@ -13,6 +14,7 @@ import type {
   LookDestination,
   PendingPrompt,
   PlayerId,
+  SearchFilter,
 } from "./types";
 
 export function currentPrompt(state: GameState): PendingPrompt | null {
@@ -300,6 +302,93 @@ export function applyResolveChooseCard(
   next.prompts.shift();
   next.reveals = next.reveals.filter((entry) => entry.viewerId !== playerId);
   return { next, thenEffects: prompt.thenEffects, sourceId: prompt.sourceId, cardId };
+}
+
+export function searchMatches(
+  state: GameState,
+  cardId: CardInstanceId,
+  filter: SearchFilter,
+): boolean {
+  const card = state.cards[cardId];
+  const traits = card ? state.definitions[card.definitionId]?.characteristics : undefined;
+  if (!traits) {
+    return false;
+  }
+  for (const supertype of filter.supertypes ?? []) {
+    if (!traits.supertypes.includes(supertype)) {
+      return false;
+    }
+  }
+  for (const type of filter.types ?? []) {
+    if (!traits.types.includes(type)) {
+      return false;
+    }
+  }
+  for (const subtype of filter.subtypes ?? []) {
+    if (!traits.subtypes.includes(subtype)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/** Library cards a pending search may fetch. */
+export function legalSearchIds(state: GameState, prompt: PendingPrompt): CardInstanceId[] {
+  if (prompt.kind !== "search_library") {
+    return [];
+  }
+  const player = state.players.find((entry) => entry.id === prompt.playerId);
+  return (player?.zones.library ?? []).filter((cardId) =>
+    searchMatches(state, cardId, prompt.filter),
+  );
+}
+
+/**
+ * Finish a library search: chosen cards go to the destination (failing to
+ * find is legal — zero cards), then the library shuffles (CR 701.19).
+ */
+export function applyResolveSearch(
+  state: GameState,
+  playerId: PlayerId,
+  cardIds: CardInstanceId[],
+  random: () => number = Math.random,
+): GameState {
+  const prompt = currentPrompt(state);
+  if (!prompt || prompt.kind !== "search_library") {
+    throw new Error("No search pending");
+  }
+  requireLiving(state, playerId);
+  if (prompt.playerId !== playerId) {
+    throw new Error("It is not that player's choice");
+  }
+  if (cardIds.length > prompt.count) {
+    throw new Error(`Choose at most ${prompt.count} card(s)`);
+  }
+  if (new Set(cardIds).size !== cardIds.length) {
+    throw new Error("Choose each card once");
+  }
+  const legal = new Set(legalSearchIds(state, prompt));
+  for (const cardId of cardIds) {
+    if (!legal.has(cardId)) {
+      throw new Error("That card does not match the search");
+    }
+  }
+  let next = cloneGameState(state);
+  next.prompts.shift();
+  for (const cardId of cardIds) {
+    next = moveCard(next, cardId, prompt.destination);
+    if (prompt.destination === "battlefield" && prompt.entersTapped) {
+      const fetched = next.cards[cardId];
+      if (fetched && fetched.zone === "battlefield") {
+        fetched.tapped = true;
+      }
+    }
+  }
+  const player = next.players.find((entry) => entry.id === playerId);
+  if (player) {
+    shuffleInPlace(player.zones.library, random);
+  }
+  return next;
 }
 
 export function applyResolveLookAssign(

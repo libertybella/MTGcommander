@@ -236,6 +236,15 @@ export type ZoneReveal = {
 
 export type LookDestination = "hand" | "library_bottom" | "exile";
 
+/** What a library search may fetch (all listed names must match, lowercase). */
+export type SearchFilter = {
+  supertypes?: string[];
+  types?: string[];
+  subtypes?: string[];
+};
+
+export type SearchDestination = "hand" | "battlefield" | "graveyard";
+
 export type CardFilter = "any" | "nonland" | "noncreature_nonland";
 
 export type ChooseCardSource = {
@@ -310,7 +319,15 @@ export type GameEffect =
   | { kind: "set_class_level"; cardId: CardInstanceId; level: number }
   | { kind: "pt_until_eot"; cardId: CardInstanceId; power: number; toughness: number }
   | { kind: "keyword_until_eot"; cardId: CardInstanceId; keyword: Keyword }
-  | { kind: "team_pt_until_eot"; playerId: PlayerId; power: number; toughness: number };
+  | { kind: "team_pt_until_eot"; playerId: PlayerId; power: number; toughness: number }
+  | {
+      kind: "search_library";
+      playerId: PlayerId;
+      filter: SearchFilter;
+      destination: SearchDestination;
+      count: number;
+      entersTapped?: boolean;
+    };
 
 export type EffectTarget =
   | { type: "player"; playerId: PlayerId }
@@ -411,7 +428,15 @@ export type CardEffect =
   | { kind: "set_class_level"; cardId: CardIdSelector; level: number }
   | { kind: "pt_until_eot"; cardId: CardIdSelector; power: number; toughness: number }
   | { kind: "keyword_until_eot"; cardId: CardIdSelector; keyword: Keyword }
-  | { kind: "team_pt_until_eot"; playerId: PlayerSelector; power: number; toughness: number };
+  | { kind: "team_pt_until_eot"; playerId: PlayerSelector; power: number; toughness: number }
+  | {
+      kind: "search_library";
+      playerId: PlayerSelector;
+      filter: SearchFilter;
+      destination: SearchDestination;
+      count: number;
+      entersTapped?: boolean;
+    };
 
 export type Keyword =
   | "flying"
@@ -533,6 +558,15 @@ export type PendingPrompt =
       count: number;
       destinations: LookDestination[];
       resumeEffects?: GameEffect[];
+    }
+  | {
+      kind: "search_library";
+      playerId: PlayerId;
+      filter: SearchFilter;
+      destination: SearchDestination;
+      count: number;
+      entersTapped?: boolean;
+      resumeEffects?: GameEffect[];
     };
 
 export type EnterTappedUnless =
@@ -552,6 +586,8 @@ export type ActivatedAbility = {
   zone?: "battlefield" | "hand";
   /** True when the cost includes discarding this card (Channel). */
   discard?: boolean;
+  /** True when the cost includes sacrificing this permanent (fetch lands). */
+  sacrificeSelf?: boolean;
   /** Class level-up is a sorcery-speed class ability. */
   timing?: "any" | "sorcery";
 };
@@ -699,7 +735,8 @@ export type GameAction =
       kind: "resolve_look_assign";
       playerId: PlayerId;
       assignments: { cardId: CardInstanceId; destination: LookDestination }[];
-    };
+    }
+  | { kind: "resolve_search"; playerId: PlayerId; cardIds: CardInstanceId[] };
 
 export type GameEvent =
   | { kind: "game_created"; gameId: GameId }

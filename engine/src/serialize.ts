@@ -31,6 +31,8 @@ import type {
   PlayerSelector,
   PlayerState,
   ReplacementEffect,
+  SearchDestination,
+  SearchFilter,
   StaticAbility,
   TargetRequirement,
   TokenTemplate,
@@ -478,6 +480,21 @@ function parsePrompts(value: unknown, playerIds: Set<string>): PendingPrompt[] {
         ...(resumeEffects && resumeEffects.length > 0 ? { resumeEffects } : {}),
       };
     }
+    if (kind === "search_library") {
+      const resumeEffects =
+        entry.resumeEffects === undefined
+          ? undefined
+          : parseGameEffects(entry.resumeEffects, `prompts[${index}].resumeEffects`);
+      return {
+        kind,
+        playerId,
+        filter: parseSearchFilter(entry.filter, `prompts[${index}].filter`),
+        destination: parseSearchDestination(entry.destination, `prompts[${index}].destination`),
+        count: expectNumber(entry.count, `prompts[${index}].count`),
+        ...(entry.entersTapped === true ? { entersTapped: true } : {}),
+        ...(resumeEffects && resumeEffects.length > 0 ? { resumeEffects } : {}),
+      };
+    }
     if (kind === "choose_card") {
       const resumeEffects =
         entry.resumeEffects === undefined
@@ -552,6 +569,28 @@ function parseTriggerGroups(
       entries: parseTriggerCandidates(entry.entries, `${label}[${index}].entries`),
     };
   });
+}
+
+function parseSearchFilter(value: unknown, label: string): SearchFilter {
+  if (!isRecord(value)) {
+    throw new Error(`Invalid ${label}`);
+  }
+  const supertypes = parseStringList(value.supertypes, `${label}.supertypes`);
+  const types = parseStringList(value.types, `${label}.types`);
+  const subtypes = parseStringList(value.subtypes, `${label}.subtypes`);
+  return {
+    ...(supertypes.length > 0 ? { supertypes } : {}),
+    ...(types.length > 0 ? { types } : {}),
+    ...(subtypes.length > 0 ? { subtypes } : {}),
+  };
+}
+
+function parseSearchDestination(value: unknown, label: string): SearchDestination {
+  const destination = expectString(value, label);
+  if (destination !== "hand" && destination !== "battlefield" && destination !== "graveyard") {
+    throw new Error(`Invalid ${label}`);
+  }
+  return destination;
 }
 
 function parseLookDestinations(value: unknown, label: string): LookDestination[] {
@@ -1030,6 +1069,15 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
         power: expectNumber(value.power, `${label}.power`),
         toughness: expectNumber(value.toughness, `${label}.toughness`),
       };
+    case "search_library":
+      return {
+        kind,
+        playerId: parsePlayerSelector(value.playerId, `${label}.playerId`),
+        filter: parseSearchFilter(value.filter, `${label}.filter`),
+        destination: parseSearchDestination(value.destination, `${label}.destination`),
+        count: expectNumber(value.count, `${label}.count`),
+        ...(value.entersTapped === true ? { entersTapped: true } : {}),
+      };
     default:
       throw new Error(`Unknown effect kind ${kind}`);
   }
@@ -1091,6 +1139,7 @@ function parseActivatedAbilities(value: unknown, label: string): ActivatedAbilit
       ),
       ...(entry.zone === "hand" ? { zone: "hand" as const } : {}),
       ...(entry.discard === true ? { discard: true } : {}),
+      ...(entry.sacrificeSelf === true ? { sacrificeSelf: true } : {}),
       ...(entry.timing === "sorcery" ? { timing: "sorcery" as const } : {}),
     };
   });
@@ -1540,6 +1589,16 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
       toughness: expectNumber(value.toughness, `${label}.toughness`),
     };
   }
+  if (kind === "search_library") {
+    return {
+      kind,
+      playerId: expectString(value.playerId, `${label}.playerId`),
+      filter: parseSearchFilter(value.filter, `${label}.filter`),
+      destination: parseSearchDestination(value.destination, `${label}.destination`),
+      count: expectNumber(value.count, `${label}.count`),
+      ...(value.entersTapped === true ? { entersTapped: true } : {}),
+    };
+  }
   throw new Error(`Unsupported resume effect ${kind}`);
 }
 
@@ -1740,6 +1799,13 @@ export function parseGameAction(json: string): GameAction {
       kind,
       playerId,
       cardId: expectString(raw.cardId, "action.cardId"),
+    };
+  }
+  if (kind === "resolve_search") {
+    return {
+      kind,
+      playerId,
+      cardIds: expectStringArray(raw.cardIds, "action.cardIds") as CardInstanceId[],
     };
   }
   if (kind === "resolve_look_assign") {

@@ -8,7 +8,7 @@ import { isMulliganOpen } from "./mulligan";
 import { isOpeningRoll, openingRollPending } from "./openingRoll";
 import { isLiving, livingPlayerCount } from "./players";
 import { POOL_ID } from "./pool";
-import { currentPrompt, legalIdsForChooseSources, lookedAtCardIds } from "./prompt";
+import { currentPrompt, legalIdsForChooseSources, legalSearchIds, lookedAtCardIds } from "./prompt";
 import { parseGameState, serializeGameState } from "./serialize";
 import { startCatalogGame } from "./setup";
 import { isGameOver } from "./status";
@@ -155,6 +155,11 @@ function nextAction(state: GameState, rng: () => number): GameAction | null {
           return null;
         }
         return { kind: "resolve_choose_card", playerId, cardId: pick(rng, legal) };
+      }
+      case "search_library": {
+        const legal = legalSearchIds(state, prompt);
+        const picked = randomSubset(rng, legal, 0.5).slice(0, prompt.count);
+        return { kind: "resolve_search", playerId, cardIds: picked };
       }
       case "look_and_assign": {
         const looked = lookedAtCardIds(state, prompt);

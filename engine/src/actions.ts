@@ -22,7 +22,7 @@ import { applyBottomCards, applyKeepHand, applyTakeMulligan, isMulliganOpen, rec
 import { applyRollDie } from "./dice";
 import { applyOpeningRoll, isOpeningRoll } from "./openingRoll";
 import { applyManualOverride } from "./override";
-import { applyChooseEnterReplacement, applyChooseTargets, applyResolveChooseCard, applyResolveDiscard, applyResolveLookAssign, applyResolveOrderTriggers, applyResolveScry, applyResolveSurveil, currentPrompt, dropLostPlayerPromptsInPlace, isPromptOpen } from "./prompt";
+import { applyChooseEnterReplacement, applyChooseTargets, applyResolveChooseCard, applyResolveDiscard, applyResolveLookAssign, applyResolveOrderTriggers, applyResolveScry, applyResolveSearch, applyResolveSurveil, currentPrompt, dropLostPlayerPromptsInPlace, isPromptOpen } from "./prompt";
 import { findCardZone, moveCard } from "./zones";
 import type { CardInstanceId, ChosenTarget, GameAction, GameState, ManaColor, ManaPool, PlayerId } from "./types";
 
@@ -459,6 +459,12 @@ function applyActivateAbility(
     next = moveCard(next, cardId, "graveyard");
   }
   next = putActivatedAbilityOnStack(next, cardId, abilityIndex, targets ?? []);
+  if (ability.sacrificeSelf) {
+    // Sacrificing is part of the cost: it happens on activation, and the
+    // ability resolves immediately (fetch lands do not sit in priority).
+    next = moveCard(next, cardId, "graveyard");
+    return resolveTopOfStack(next);
+  }
   if (ability.discard) {
     return resolveTopOfStack(next);
   }
@@ -611,6 +617,15 @@ export function applyAction(
         const prompt = currentPrompt(state);
         const resume = prompt?.kind === "look_and_assign" ? prompt.resumeEffects ?? [] : [];
         next = applyResolveLookAssign(state, action.playerId, action.assignments);
+        if (resume.length > 0) {
+          next = applyEffects(next, resume);
+        }
+        break;
+      }
+      case "resolve_search": {
+        const prompt = currentPrompt(state);
+        const resume = prompt?.kind === "search_library" ? prompt.resumeEffects ?? [] : [];
+        next = applyResolveSearch(state, action.playerId, action.cardIds);
         if (resume.length > 0) {
           next = applyEffects(next, resume);
         }

@@ -10,6 +10,7 @@ import {
   isMulliganOpen,
   isOpeningRoll,
   legalIdsForChooseSources,
+  legalSearchIds,
   lookedAtCardIds,
   openingRollPending,
   redactForViewer,
@@ -406,6 +407,11 @@ export class GameHost {
             playerId: prompt.playerId,
             cardId: pick,
           });
+          continue;
+        }
+        if (prompt.kind === "search_library") {
+          const legal = legalSearchIds(this.state, prompt).slice(0, prompt.count);
+          this.apply({ kind: "resolve_search", playerId: prompt.playerId, cardIds: legal });
           continue;
         }
         if (prompt.kind === "look_and_assign") {

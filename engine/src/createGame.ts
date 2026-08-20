@@ -119,6 +119,7 @@ export function createCardDefinition(
           targetRequirements: ability.targetRequirements.map((requirement) => ({ ...requirement })),
           ...(ability.zone && ability.zone !== "battlefield" ? { zone: ability.zone } : {}),
           ...(ability.discard ? { discard: true } : {}),
+          ...(ability.sacrificeSelf ? { sacrificeSelf: true } : {}),
           ...(ability.timing === "sorcery" ? { timing: "sorcery" as const } : {}),
         }))
       : [],

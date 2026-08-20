@@ -12,6 +12,7 @@ import type {
   ManaColor,
   ManaPool,
   ReplacementEffect,
+  SearchFilter,
   StaticAbility,
   TargetRequirement,
 } from "./types";
@@ -142,17 +143,24 @@ function isKeywordLine(sentence: string): boolean {
   return parts.length > 0 && parts.every((part) => KEYWORD_LINE.has(part));
 }
 
+const SACRIFICE_COST = /Sacrifice (?:~|this land|this creature|this artifact|this permanent)/i;
+
 function splitAbility(sentence: string): { costText: string; rest: string } | null {
-  const match = sentence.match(/^((?:\{[^}]+\}(?:,\s*)?)+):\s*(.+)$/i);
+  const match = sentence.match(
+    /^((?:(?:\{[^}]+\})+|Sacrifice (?:~|this land|this creature|this artifact|this permanent))(?:,\s*(?:(?:\{[^}]+\})+|Sacrifice (?:~|this land|this creature|this artifact|this permanent)))*):\s*(.+)$/i,
+  );
   if (!match?.[1] || !match[2]) {
     return null;
   }
   return { costText: match[1], rest: match[2].trim() };
 }
 
-function parseAbilityCost(costText: string): { tap: boolean; manaCost: string } | null {
+function parseAbilityCost(
+  costText: string,
+): { tap: boolean; manaCost: string; sacrificeSelf: boolean } | null {
+  const sacrificeSelf = SACRIFICE_COST.test(costText);
   const symbols = [...costText.matchAll(/\{([^}]+)\}/g)].map((match) => match[1] ?? "");
-  if (symbols.length === 0) {
+  if (symbols.length === 0 && !sacrificeSelf) {
     return null;
   }
   let tap = false;
@@ -173,7 +181,7 @@ function parseAbilityCost(costText: string): { tap: boolean; manaCost: string } 
   } catch {
     return null;
   }
-  return { tap, manaCost };
+  return { tap, manaCost, sacrificeSelf };
 }
 
 function parseControlledTypes(text: string): string[] | null {
@@ -626,6 +634,34 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     }
   }
 
+  match = sentence.match(
+    /^Search your library for (?:up to (one|two|three|\d+) )?(?:an? )?(.+?) cards?(?: and)?, (?:and )?put (?:it|them|that card|those cards) (onto the battlefield(?: tapped)?|into your hand|into your graveyard), then shuffle(?: your library)?$/i,
+  );
+  if (match?.[2] && match[3]) {
+    const filter = parseSearchDescriptor(match[2]);
+    const count = match[1] ? parseCount(match[1]) : 1;
+    if (filter && count) {
+      const where = match[3].toLowerCase();
+      return {
+        targetRequirements: [],
+        effects: [
+          {
+            kind: "search_library",
+            playerId: "controller",
+            filter,
+            destination: where.startsWith("onto the battlefield")
+              ? "battlefield"
+              : where === "into your hand"
+                ? "hand"
+                : "graveyard",
+            count,
+            ...(where.includes("tapped") ? { entersTapped: true } : {}),
+          },
+        ],
+      };
+    }
+  }
+
   match = sentence.match(/^Target player loses (\d+) life and you gain (\d+) life$/i);
   if (match?.[1] && match[2]) {
     return {
@@ -703,6 +739,46 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
   }
 
   return null;
+}
+
+const SEARCH_CARD_TYPES = new Set([
+  "artifact",
+  "creature",
+  "enchantment",
+  "instant",
+  "land",
+  "planeswalker",
+  "sorcery",
+]);
+const SEARCH_SUPERTYPES = new Set(["basic", "legendary", "snow"]);
+
+/**
+ * "basic land" → {supertypes:[basic], types:[land]}; "Forest" → {subtypes:
+ * [forest]}; "card" alone → match anything. Unknown words fail the parse so
+ * unsupported searches stay compile notes.
+ */
+function parseSearchDescriptor(descriptor: string): SearchFilter | null {
+  const filter: Required<SearchFilter> = { supertypes: [], types: [], subtypes: [] };
+  const words = descriptor.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  for (const word of words) {
+    if (word === "card" || word === "cards" || word === "a" || word === "an") {
+      continue;
+    }
+    if (SEARCH_SUPERTYPES.has(word)) {
+      filter.supertypes.push(word);
+    } else if (SEARCH_CARD_TYPES.has(word)) {
+      filter.types.push(word);
+    } else if (/^[a-z]+$/.test(word)) {
+      filter.subtypes.push(word);
+    } else {
+      return null;
+    }
+  }
+  return {
+    ...(filter.supertypes.length > 0 ? { supertypes: filter.supertypes } : {}),
+    ...(filter.types.length > 0 ? { types: filter.types } : {}),
+    ...(filter.subtypes.length > 0 ? { subtypes: filter.subtypes } : {}),
+  };
 }
 
 type TriggerHead = Pick<CardTrigger, "event" | "watch" | "excludeSelf" | "subjectFilter">;
@@ -1165,6 +1241,7 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
         manaCost: cost.manaCost,
         effects: clause.effects,
         targetRequirements: clause.targetRequirements,
+        ...(cost.sacrificeSelf ? { sacrificeSelf: true } : {}),
       });
       if (clause.leftover) {
         result.leftover.push(clause.leftover);

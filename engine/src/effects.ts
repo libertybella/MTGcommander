@@ -333,6 +333,20 @@ export function bindCardEffect(
       }
       return { kind: "team_pt_until_eot", playerId, power: effect.power, toughness: effect.toughness };
     }
+    case "search_library": {
+      const playerId = bindPlayerSelector(state, effect.playerId, context);
+      if (!playerId) {
+        return null;
+      }
+      return {
+        kind: "search_library",
+        playerId,
+        filter: { ...effect.filter },
+        destination: effect.destination,
+        count: effect.count,
+        ...(effect.entersTapped ? { entersTapped: true } : {}),
+      };
+    }
     case "counter_spell": {
       const chosen = chosenTargetAt(context, effect.target.index, state);
       if (!chosen || chosen.type !== "spell") {
@@ -735,6 +749,27 @@ function applyTeamPtUntilEot(
   return pushUntilEotEffect(state, team, { kind: "modify_pt", power, toughness });
 }
 
+function applySearchLibrary(
+  state: GameState,
+  effect: Extract<GameEffect, { kind: "search_library" }>,
+): GameState {
+  requirePositiveInteger(effect.count, "search count");
+  const player = requirePlayer(state, effect.playerId);
+  if (player.zones.library.length === 0) {
+    return state;
+  }
+  const next = cloneGameState(state);
+  next.prompts.push({
+    kind: "search_library",
+    playerId: effect.playerId,
+    filter: { ...effect.filter },
+    destination: effect.destination,
+    count: effect.count,
+    ...(effect.entersTapped ? { entersTapped: true } : {}),
+  });
+  return next;
+}
+
 function applyRevealZone(
   state: GameState,
   fromPlayerId: PlayerId,
@@ -867,6 +902,9 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
       case "team_pt_until_eot":
         next = applyTeamPtUntilEot(state, effect.playerId, effect.power, effect.toughness);
         break;
+      case "search_library":
+        next = applySearchLibrary(state, effect);
+        break;
       case "amass":
         next = applyAmass(state, effect.playerId, effect.amount, effect.subtype);
         break;
@@ -908,7 +946,8 @@ export function applyEffects(state: GameState, effects: GameEffect[]): GameState
         prompt.kind === "surveil" ||
         prompt.kind === "choose_discard" ||
         prompt.kind === "choose_card" ||
-        prompt.kind === "look_and_assign")
+        prompt.kind === "look_and_assign" ||
+        prompt.kind === "search_library")
     ) {
       const remaining = effects.slice(index + 1);
       if (remaining.length > 0) {
