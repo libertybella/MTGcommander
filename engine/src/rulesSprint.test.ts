@@ -11,6 +11,7 @@ import {
   putSpellOnStack,
   resolveTopOfStack,
 } from "./index";
+import { computedCard } from "./characteristicsEngine";
 import { applyCombatDamage } from "./combat";
 import { fillLibraries } from "./testSupport";
 import { advanceSteps } from "./turn";
@@ -409,6 +410,40 @@ describe("creature-or-planeswalker removal", () => {
     expect(
       isChosenTargetLegal(game, requirement, { type: "creature", cardId: rock.id }, p1.id),
     ).toBe(false);
+  });
+});
+
+describe("star power and toughness", () => {
+  it("compiles Psychosis Crawler's CDA and tracks the hand", () => {
+    const compiled = compileOracleCard({
+      oracleId: "crawler",
+      name: "Psychosis Crawler",
+      manaCost: "{5}",
+      typeLine: "Artifact Creature — Phyrexian Horror",
+      oracleText:
+        "Psychosis Crawler's power and toughness are each equal to the number of cards in your hand.\nWhenever you draw a card, each opponent loses 1 life.",
+      power: "*",
+      toughness: "*",
+      printedKeywords: [],
+      imageUrl: "",
+    });
+    expect(compiled.definition.dynamicPt).toEqual({ count: "cards_in_your_hand" });
+    expect(
+      compiled.notes.filter((note) => /not a simple number/.test(note)),
+    ).toEqual([]);
+
+    const { game, p1 } = twoPlayers();
+    game.definitions[compiled.definition.id] = compiled.definition;
+    const crawler = createCardInstance({
+      definitionId: compiled.definition.id,
+      ownerId: p1.id,
+      zone: "battlefield",
+    });
+    game.cards[crawler.id] = crawler;
+    p1.zones.battlefield.push(crawler.id);
+    addHandCards(game, p1, 3);
+    expect(computedCard(game, crawler.id)?.power).toBe(3);
+    expect(computedCard(game, crawler.id)?.toughness).toBe(3);
   });
 });
 

@@ -9,6 +9,7 @@ import type {
   Color,
   CostReduction,
   DestroyAllScope,
+  DynamicCount,
   EnterTappedUnless,
   Keyword,
   LoyaltyAbility,
@@ -48,6 +49,7 @@ export type CompiledOracleText = {
   entersWithXCounters?: boolean;
   playLandsFromGraveyard?: boolean;
   additionalCost?: AdditionalCastCost;
+  dynamicPt?: { count: DynamicCount };
   leftover: string[];
   notes: string[];
 };
@@ -1963,6 +1965,21 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
 
     if (/^You may play lands from your graveyard$/i.test(sentence)) {
       result.playLandsFromGraveyard = true;
+      continue;
+    }
+
+    const starPt = sentence.match(
+      /^~'s power and toughness are each equal to the number of (lands you control|creatures you control|artifacts you control|cards in your hand|cards in your graveyard)$/i,
+    );
+    if (starPt?.[1]) {
+      const countOf: Record<string, DynamicCount> = {
+        "lands you control": "lands_you_control",
+        "creatures you control": "creatures_you_control",
+        "artifacts you control": "artifacts_you_control",
+        "cards in your hand": "cards_in_your_hand",
+        "cards in your graveyard": "cards_in_your_graveyard",
+      };
+      result.dynamicPt = { count: countOf[starPt[1].toLowerCase()]! };
       continue;
     }
 

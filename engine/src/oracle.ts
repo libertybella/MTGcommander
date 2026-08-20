@@ -162,7 +162,11 @@ function compileOneFace(card: OracleCard, definitionId: string): OracleCompileRe
     notes.push(`Some oracle text is not compiled: ${compiled.leftover.join("; ")}.`);
   }
 
-  if (typeLine.includes("creature") && (power === null || toughness === null)) {
+  if (
+    typeLine.includes("creature") &&
+    (power === null || toughness === null) &&
+    !compiled.dynamicPt
+  ) {
     notes.push("Printed power/toughness is not a simple number; combat uses 0.");
   }
 
@@ -202,6 +206,7 @@ function compileOneFace(card: OracleCard, definitionId: string): OracleCompileRe
     ...(compiled.entersWithXCounters ? { entersWithXCounters: true } : {}),
     ...(compiled.playLandsFromGraveyard ? { playLandsFromGraveyard: true } : {}),
     ...(compiled.additionalCost ? { additionalCost: compiled.additionalCost } : {}),
+    ...(compiled.dynamicPt ? { dynamicPt: compiled.dynamicPt } : {}),
     ...(compiled.loyaltyAbilities && compiled.loyaltyAbilities.length > 0
       ? { loyaltyAbilities: compiled.loyaltyAbilities }
       : {}),

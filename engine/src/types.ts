@@ -142,6 +142,8 @@ export type CardDefinition = {
   additionalCost?: AdditionalCastCost;
   /** "You may play lands from your graveyard" (Crucible of Worlds). */
   playLandsFromGraveyard?: boolean;
+  /** Star P/T: base power and toughness are each this count (CR 613.3a). */
+  dynamicPt?: { count: DynamicCount };
   /** Scryfall card image, if known. Empty for synthetic / hidden cards. */
   imageUrl: string;
   /** Linked opposite face for modal DFCs and transforming cards. */
@@ -423,6 +425,14 @@ export type GameEffect =
 
 /** What a "Destroy all …" wipe hits. */
 export type DestroyAllScope = "creatures" | "artifacts" | "enchantments" | "planeswalkers" | "nonland";
+
+/** What a characteristic-defining P/T counts, relative to the controller. */
+export type DynamicCount =
+  | "lands_you_control"
+  | "creatures_you_control"
+  | "artifacts_you_control"
+  | "cards_in_your_hand"
+  | "cards_in_your_graveyard";
 
 /** "As an additional cost to cast this spell, …" — paid at cast time. */
 export type AdditionalCastCost = {

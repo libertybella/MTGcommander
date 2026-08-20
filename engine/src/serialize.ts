@@ -358,6 +358,26 @@ export function parseGameState(json: string): GameState {
             })(),
           }),
       ...(def.playLandsFromGraveyard === true ? { playLandsFromGraveyard: true } : {}),
+      ...(def.dynamicPt === undefined
+        ? {}
+        : {
+            dynamicPt: (() => {
+              if (!isRecord(def.dynamicPt)) {
+                throw new Error(`Invalid definition.${id}.dynamicPt`);
+              }
+              const count = expectString(def.dynamicPt.count, `definition.${id}.dynamicPt.count`);
+              if (
+                count !== "lands_you_control" &&
+                count !== "creatures_you_control" &&
+                count !== "artifacts_you_control" &&
+                count !== "cards_in_your_hand" &&
+                count !== "cards_in_your_graveyard"
+              ) {
+                throw new Error(`Invalid definition.${id}.dynamicPt.count`);
+              }
+              return { count };
+            })(),
+          }),
       ...(def.costReductions === undefined
         ? {}
         : {

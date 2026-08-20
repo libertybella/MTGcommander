@@ -3,6 +3,7 @@ import type {
   CardInstance,
   CardInstanceId,
   ContinuousEffectData,
+  DynamicCount,
   EffectSelector,
   GameState,
   Keyword,
@@ -87,6 +88,10 @@ function baseComputed(state: GameState, card: CardInstance): ComputedCard {
     colors: [],
     manaValue: 0,
   };
+  // CR 613.3a: a characteristic-defining star P/T applies before every layer.
+  const dynamic = definition?.dynamicPt
+    ? dynamicCountOf(state, card.controllerId, definition.dynamicPt.count)
+    : null;
   return {
     characteristics: {
       supertypes: [...printed.supertypes],
@@ -97,12 +102,38 @@ function baseComputed(state: GameState, card: CardInstance): ComputedCard {
     },
     keywords: [...(definition?.keywords ?? [])],
     abilitiesRemoved: false,
-    power: definition?.power ?? 0,
-    toughness: definition?.toughness ?? 0,
+    power: dynamic ?? definition?.power ?? 0,
+    toughness: dynamic ?? definition?.toughness ?? 0,
     cantAttack: false,
     cantBlock: false,
     cantBeBlocked: false,
   };
+}
+
+function dynamicCountOf(state: GameState, controllerId: string, count: DynamicCount): number {
+  const player = state.players.find((entry) => entry.id === controllerId);
+  if (!player) {
+    return 0;
+  }
+  if (count === "cards_in_your_hand") {
+    return player.zones.hand.length;
+  }
+  if (count === "cards_in_your_graveyard") {
+    return player.zones.graveyard.length;
+  }
+  const wanted =
+    count === "lands_you_control" ? "land" : count === "creatures_you_control" ? "creature" : "artifact";
+  let total = 0;
+  for (const card of Object.values(state.cards)) {
+    if (card.zone !== "battlefield" || card.controllerId !== controllerId) {
+      continue;
+    }
+    const types = state.definitions[card.definitionId]?.characteristics.types ?? [];
+    if (types.includes(wanted)) {
+      total += 1;
+    }
+  }
+  return total;
 }
 
 function matches(
