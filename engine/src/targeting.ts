@@ -191,6 +191,8 @@ export function isChosenTargetLegal(
     requirement.kind === "artifact" ||
     requirement.kind === "enchantment" ||
     requirement.kind === "artifact_or_enchantment" ||
+    requirement.kind === "creature_or_artifact" ||
+    requirement.kind === "creature_or_enchantment" ||
     requirement.kind === "nonland_permanent"
   ) {
     if (target.type !== "creature") {
@@ -219,6 +221,10 @@ export function isChosenTargetLegal(
         return types.includes("enchantment");
       case "artifact_or_enchantment":
         return types.includes("artifact") || types.includes("enchantment");
+      case "creature_or_artifact":
+        return isCreature(state, target.cardId) || types.includes("artifact");
+      case "creature_or_enchantment":
+        return isCreature(state, target.cardId) || types.includes("enchantment");
       case "nonland_permanent":
         return !types.includes("land");
     }
@@ -348,6 +354,8 @@ export function legalChoicesForRequirement(
     requirement.kind === "artifact" ||
     requirement.kind === "enchantment" ||
     requirement.kind === "artifact_or_enchantment" ||
+    requirement.kind === "creature_or_artifact" ||
+    requirement.kind === "creature_or_enchantment" ||
     requirement.kind === "nonland_permanent"
   ) {
     const choices: ChosenTarget[] = [];

@@ -413,6 +413,73 @@ describe("creature-or-planeswalker removal", () => {
   });
 });
 
+describe("wave 18: mixed removal and graveyard exile", () => {
+  it("compiles Putrefy, Abrade, and Bojuka Bog cleanly", () => {
+    const putrefy = compileOracleCard({
+      oracleId: "putrefy",
+      name: "Putrefy",
+      manaCost: "{1}{B}{G}",
+      typeLine: "Instant",
+      oracleText: "Destroy target artifact or creature. It can't be regenerated.",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+    });
+    expect(putrefy.notes).toEqual([]);
+    expect(putrefy.definition.targetRequirements).toEqual([{ kind: "creature_or_artifact" }]);
+
+    const abrade = compileOracleCard({
+      oracleId: "abrade",
+      name: "Abrade",
+      manaCost: "{1}{R}",
+      typeLine: "Instant",
+      oracleText: "Choose one —\n• Abrade deals 3 damage to target creature.\n• Destroy target artifact.",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+    });
+    expect(abrade.notes).toEqual([]);
+    expect(abrade.definition.modes).toHaveLength(2);
+
+    const bog = compileOracleCard({
+      oracleId: "bog",
+      name: "Bojuka Bog",
+      manaCost: "",
+      typeLine: "Land",
+      oracleText:
+        "Bojuka Bog enters tapped.\nWhen Bojuka Bog enters, exile target player's graveyard.\n{T}: Add {B}.",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+    });
+    expect(bog.notes).toEqual([]);
+    expect(bog.definition.triggers[0]?.effects[0]).toMatchObject({ kind: "exile_graveyard" });
+  });
+
+  it("exile_graveyard empties the chosen player's graveyard", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const bear = createCardDefinition({
+      name: "Bear",
+      typeLine: "Creature — Bear",
+      power: 2,
+      toughness: 2,
+    });
+    game.definitions[bear.id] = bear;
+    for (let i = 0; i < 3; i += 1) {
+      const card = createCardInstance({ definitionId: bear.id, ownerId: p2.id, zone: "graveyard" });
+      game.cards[card.id] = card;
+      p2.zones.graveyard.push(card.id);
+    }
+    const exiled = applyEffect(game, { kind: "exile_graveyard", playerId: p2.id });
+    expect(exiled.players[1]?.zones.graveyard).toEqual([]);
+    expect(exiled.players[1]?.zones.exile).toHaveLength(3);
+    expect(p1.zones.exile).toEqual([]);
+  });
+});
+
 describe("star power and toughness", () => {
   it("compiles Psychosis Crawler's CDA and tracks the hand", () => {
     const compiled = compileOracleCard({

@@ -464,6 +464,13 @@ export function bindCardEffect(
       }
       return { kind: "flicker", cardId };
     }
+    case "exile_graveyard": {
+      const playerId = bindPlayerSelector(state, effect.playerId, context);
+      if (!playerId) {
+        return null;
+      }
+      return { kind: "exile_graveyard", playerId };
+    }
     case "copy_token": {
       const ownerId = bindPlayerSelector(state, effect.ownerId, context);
       if (!ownerId) {
@@ -1333,6 +1340,14 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
         next = moveCard(state, effect.cardId, "exile");
         if (next.cards[effect.cardId]?.zone === "exile") {
           next = moveCard(next, effect.cardId, "battlefield");
+        }
+        break;
+      }
+      case "exile_graveyard": {
+        next = cloneGameState(state);
+        const player = next.players.find((entry) => entry.id === effect.playerId);
+        for (const cardId of [...(player?.zones.graveyard ?? [])]) {
+          next = moveCard(next, cardId, "exile");
         }
         break;
       }

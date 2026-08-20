@@ -1085,6 +1085,8 @@ function parseTargetRequirement(value: unknown, label: string): TargetRequiremen
     kind !== "artifact" &&
     kind !== "enchantment" &&
     kind !== "artifact_or_enchantment" &&
+    kind !== "creature_or_artifact" &&
+    kind !== "creature_or_enchantment" &&
     kind !== "nonland_permanent" &&
     kind !== "own_graveyard_card" &&
     kind !== "own_graveyard_creature_card" &&
@@ -1510,6 +1512,8 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
       };
     case "flicker":
       return { kind, cardId: parseCardIdSelector(value.cardId, `${label}.cardId`) };
+    case "exile_graveyard":
+      return { kind, playerId: parsePlayerSelector(value.playerId, `${label}.playerId`) };
     default:
       throw new Error(`Unknown effect kind ${kind}`);
   }
@@ -2181,6 +2185,9 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
   }
   if (kind === "flicker") {
     return { kind, cardId: expectString(value.cardId, `${label}.cardId`) };
+  }
+  if (kind === "exile_graveyard") {
+    return { kind, playerId: expectString(value.playerId, `${label}.playerId`) };
   }
   throw new Error(`Unsupported resume effect ${kind}`);
 }

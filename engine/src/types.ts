@@ -421,7 +421,9 @@ export type GameEffect =
       includePlayers?: boolean;
     }
   /** Ephemerate: exile a permanent and return it immediately (re-enters fresh). */
-  | { kind: "flicker"; cardId: CardInstanceId };
+  | { kind: "flicker"; cardId: CardInstanceId }
+  /** Bojuka Bog: every card in the player's graveyard is exiled. */
+  | { kind: "exile_graveyard"; playerId: PlayerId };
 
 /** What a "Destroy all …" wipe hits. */
 export type DestroyAllScope = "creatures" | "artifacts" | "enchantments" | "planeswalkers" | "nonland";
@@ -465,6 +467,8 @@ export type TargetKind =
   | "artifact"
   | "enchantment"
   | "artifact_or_enchantment"
+  | "creature_or_artifact"
+  | "creature_or_enchantment"
   | "nonland_permanent"
   /** A card in the caster's own graveyard (Regrowth / Zombify recursion). */
   | "own_graveyard_card"
@@ -624,7 +628,8 @@ export type CardEffect =
       amount: number | "x";
       includePlayers?: boolean;
     }
-  | { kind: "flicker"; cardId: CardIdSelector };
+  | { kind: "flicker"; cardId: CardIdSelector }
+  | { kind: "exile_graveyard"; playerId: PlayerSelector };
 
 export type Keyword =
   | "flying"

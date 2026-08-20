@@ -1058,17 +1058,25 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
   }
 
   match = sentence.match(
-    /^(Destroy|Exile) target (artifact|enchantment|artifact or enchantment|nonland permanent)$/i,
+    /^(Destroy|Exile) target (artifact|enchantment|artifact or enchantment|artifact or creature|creature or artifact|creature or enchantment|nonland permanent)( you don't control| an opponent controls)?$/i,
   );
   if (match?.[1] && match[2]) {
     const kindOf: Record<string, TargetKind> = {
       artifact: "artifact",
       enchantment: "enchantment",
       "artifact or enchantment": "artifact_or_enchantment",
+      "artifact or creature": "creature_or_artifact",
+      "creature or artifact": "creature_or_artifact",
+      "creature or enchantment": "creature_or_enchantment",
       "nonland permanent": "nonland_permanent",
     };
     return {
-      targetRequirements: [{ kind: kindOf[match[2].toLowerCase()]! }],
+      targetRequirements: [
+        {
+          kind: kindOf[match[2].toLowerCase()]!,
+          ...(match[3] ? { control: "not_own" as const } : {}),
+        },
+      ],
       effects: [
         {
           kind: "move_card",
@@ -1076,6 +1084,13 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
           toZone: match[1].toLowerCase() === "exile" ? "exile" : "graveyard",
         },
       ],
+    };
+  }
+
+  if (/^Exile target player's graveyard$/i.test(sentence)) {
+    return {
+      targetRequirements: [{ kind: "player" }],
+      effects: [{ kind: "exile_graveyard", playerId: { type: "chosen", index: 0 } }],
     };
   }
 
@@ -1545,6 +1560,7 @@ function shiftChosen(effect: CardEffect, offset: number): CardEffect {
     case "discard_unless_attacked":
     case "amass":
     case "look_and_assign":
+    case "exile_graveyard":
       return { ...effect, playerId: bumpChosen(effect.playerId) };
     case "reveal_zone":
       return {
