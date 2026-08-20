@@ -410,7 +410,14 @@ export type GameEffect =
   /** Board wipes: destroy every battlefield permanent of the scope at once. */
   | { kind: "destroy_all"; what: DestroyAllScope }
   /** Rhystic Study: the payer chooses to pay or the effects happen. */
-  | { kind: "unless_pays"; playerId: PlayerId; cost: string; effects: GameEffect[] };
+  | { kind: "unless_pays"; playerId: PlayerId; cost: string; effects: GameEffect[] }
+  /** Blasphemous Act: damage every creature (and optionally player) at once. */
+  | {
+      kind: "damage_all";
+      sourceId: CardInstanceId | null;
+      amount: number;
+      includePlayers?: boolean;
+    };
 
 /** What a "Destroy all …" wipe hits. */
 export type DestroyAllScope = "creatures" | "artifacts" | "enchantments" | "planeswalkers" | "nonland";
@@ -596,7 +603,13 @@ export type CardEffect =
       amount: number;
     }
   | { kind: "destroy_all"; what: DestroyAllScope }
-  | { kind: "unless_pays"; playerId: PlayerSelector; cost: string; effects: CardEffect[] };
+  | { kind: "unless_pays"; playerId: PlayerSelector; cost: string; effects: CardEffect[] }
+  | {
+      kind: "damage_all";
+      sourceId: CardInstanceId | "self" | null;
+      amount: number | "x";
+      includePlayers?: boolean;
+    };
 
 export type Keyword =
   | "flying"

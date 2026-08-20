@@ -458,6 +458,27 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     };
   }
 
+  match = sentence.match(
+    /^(?:~|this \w+) deals (\d+|X) damage to each creature( and each player| and each planeswalker)?$/i,
+  );
+  if (match?.[1]) {
+    const amount = match[1].toUpperCase() === "X" ? ("x" as const) : Number(match[1]);
+    const includePlayers = (match[2] ?? "").toLowerCase().includes("player");
+    if (!(match[2] ?? "").toLowerCase().includes("planeswalker")) {
+      return {
+        targetRequirements: [],
+        effects: [
+          {
+            kind: "damage_all",
+            sourceId: "self",
+            amount,
+            ...(includePlayers ? { includePlayers: true } : {}),
+          },
+        ],
+      };
+    }
+  }
+
   match = sentence.match(/^(?:~|this \w+) deals (\d+) damage to each opponent$/i);
   if (match?.[1]) {
     return {

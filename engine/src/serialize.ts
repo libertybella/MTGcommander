@@ -1471,6 +1471,18 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
         cost: expectString(value.cost, `${label}.cost`),
         effects: parseCardEffects(value.effects, `${label}.effects`),
       };
+    case "damage_all":
+      return {
+        kind,
+        sourceId:
+          value.sourceId === null
+            ? null
+            : value.sourceId === "self"
+              ? "self"
+              : expectString(value.sourceId, `${label}.sourceId`),
+        amount: value.amount === "x" ? "x" : expectNumber(value.amount, `${label}.amount`),
+        ...(value.includePlayers === true ? { includePlayers: true } : {}),
+      };
     default:
       throw new Error(`Unknown effect kind ${kind}`);
   }
@@ -2130,6 +2142,14 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
       playerId: expectString(value.playerId, `${label}.playerId`),
       cost: expectString(value.cost, `${label}.cost`),
       effects: parseGameEffects(value.effects, `${label}.effects`),
+    };
+  }
+  if (kind === "damage_all") {
+    return {
+      kind,
+      sourceId: value.sourceId === null ? null : expectString(value.sourceId, `${label}.sourceId`),
+      amount: expectNumber(value.amount, `${label}.amount`),
+      ...(value.includePlayers === true ? { includePlayers: true } : {}),
     };
   }
   throw new Error(`Unsupported resume effect ${kind}`);

@@ -412,6 +412,52 @@ describe("creature-or-planeswalker removal", () => {
   });
 });
 
+describe("mass damage", () => {
+  it("compiles Pyroclasm-style sweeps and kills as one batch", () => {
+    const compiled = compileOracleCard({
+      oracleId: "pyro",
+      name: "Pyroclasm",
+      manaCost: "{1}{R}",
+      typeLine: "Sorcery",
+      oracleText: "Pyroclasm deals 2 damage to each creature.",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+    });
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.effects).toEqual([
+      { kind: "damage_all", sourceId: "self", amount: 2 },
+    ]);
+
+    const { game, p1, p2 } = twoPlayers();
+    const bear = createCardDefinition({
+      name: "Bear",
+      typeLine: "Creature — Bear",
+      power: 2,
+      toughness: 2,
+    });
+    const ox = createCardDefinition({
+      name: "Sturdy Ox",
+      typeLine: "Creature — Ox",
+      power: 2,
+      toughness: 4,
+    });
+    game.definitions[bear.id] = bear;
+    game.definitions[ox.id] = ox;
+    const small = createCardInstance({ definitionId: bear.id, ownerId: p1.id, zone: "battlefield" });
+    const big = createCardInstance({ definitionId: ox.id, ownerId: p2.id, zone: "battlefield" });
+    game.cards[small.id] = small;
+    game.cards[big.id] = big;
+    p1.zones.battlefield.push(small.id);
+    p2.zones.battlefield.push(big.id);
+    const swept = applyEffect(game, { kind: "damage_all", sourceId: null, amount: 2 });
+    expect(swept.cards[small.id]?.zone).toBe("graveyard");
+    expect(swept.cards[big.id]?.zone).toBe("battlefield");
+    expect(swept.cards[big.id]?.damageMarked).toBe(2);
+  });
+});
+
 describe("own-graveyard recursion", () => {
   it("compiles Regrowth and Zombify shapes and resolves the return", () => {
     const regrowth = compileOracleCard({

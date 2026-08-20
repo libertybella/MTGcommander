@@ -450,6 +450,13 @@ export function bindCardEffect(
         effects: bindCardEffects(state, effect.effects, context),
       };
     }
+    case "damage_all":
+      return {
+        kind: "damage_all",
+        sourceId: bindSourceId(effect.sourceId, context),
+        amount: effect.amount === "x" ? context.xValue ?? 0 : effect.amount,
+        ...(effect.includePlayers ? { includePlayers: true } : {}),
+      };
     case "copy_token": {
       const ownerId = bindPlayerSelector(state, effect.ownerId, context);
       if (!ownerId) {
@@ -572,6 +579,40 @@ function applyDealDamage(state: GameState, effect: Extract<GameEffect, { kind: "
     damaged.deathtouched = true;
   }
   // Destruction is a state-based action (CR 704.5g/h); applyEffect sweeps.
+  return next;
+}
+
+/** Blasphemous Act: mark every creature's damage in one pass, sweep once. */
+function applyDamageAll(
+  state: GameState,
+  effect: Extract<GameEffect, { kind: "damage_all" }>,
+): GameState {
+  requirePositiveInteger(effect.amount, "damage");
+  const next = cloneGameState(state);
+  const sourceColors = sourceColorsOf(next, effect.sourceId ?? null);
+  const deathtouch = effect.sourceId ? hasKeyword(next, effect.sourceId, "deathtouch") : false;
+  for (const card of Object.values(next.cards)) {
+    if (card.zone !== "battlefield" || !isCreature(next, card.id)) {
+      continue;
+    }
+    const protection = next.definitions[card.definitionId]?.protectionFrom ?? [];
+    if (protection.length > 0 && protection.some((color) => sourceColors.includes(color))) {
+      continue;
+    }
+    card.damageMarked += effect.amount;
+    if (deathtouch) {
+      card.deathtouched = true;
+    }
+  }
+  if (effect.includePlayers) {
+    for (const player of next.players) {
+      if (!player.lost) {
+        player.life -= effect.amount;
+        next.log.push({ kind: "life_change", playerId: player.id, delta: -effect.amount });
+      }
+    }
+  }
+  // Destruction is a state-based action; applyEffect sweeps the batch at once.
   return next;
 }
 
@@ -1272,6 +1313,9 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
         break;
       case "destroy_all":
         next = applyDestroyAll(state, effect.what);
+        break;
+      case "damage_all":
+        next = applyDamageAll(state, effect);
         break;
       case "unless_pays": {
         next = cloneGameState(state);
