@@ -81,6 +81,13 @@ export {
   manaValueOf,
   parseTypeLine,
 } from "./characteristics";
+export {
+  canPayWithPotential,
+  hasMeaningfulAction,
+  legalActions,
+  potentialMana,
+} from "./legalActions";
+export type { LegalAction, PotentialMana } from "./legalActions";
 export type { MoveCardOptions } from "./zones";
 export { TURN_SEQUENCE, advanceStep, advanceSteps, skipPriorityShortcuts } from "./turn";
 export type { TurnSlot } from "./turn";
