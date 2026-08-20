@@ -411,6 +411,47 @@ describe("creature-or-planeswalker removal", () => {
   });
 });
 
+describe("cycling and small statics", () => {
+  it("compiles Cycling into a from-hand discard ability", () => {
+    const compiled = compileOracleCard({
+      oracleId: "triome",
+      name: "Zagoth Triome",
+      manaCost: "",
+      typeLine: "Land — Swamp Forest Island",
+      oracleText: "Zagoth Triome enters tapped.\nCycling {3}",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+    });
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.activated[0]).toMatchObject({
+      zone: "hand",
+      discard: true,
+      manaCost: "{3}",
+      effects: [{ kind: "draw", playerId: "controller", count: 1 }],
+    });
+  });
+
+  it("compiles '~ can't block' as a self restriction", () => {
+    const compiled = compileOracleCard({
+      oracleId: "juggernaut-ish",
+      name: "Test Bruiser",
+      manaCost: "{3}{R}",
+      typeLine: "Creature — Ogre",
+      oracleText: "Test Bruiser can't block.",
+      power: "5",
+      toughness: "3",
+      printedKeywords: [],
+      imageUrl: "",
+    });
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.staticAbilities).toEqual([
+      { selector: { scope: "self" }, effect: { kind: "restrict", cantBlock: true } },
+    ]);
+  });
+});
+
 describe("cost-reduction statics", () => {
   it("compiles medallions and artifact discounts", () => {
     const medallion = compileOracleCard({

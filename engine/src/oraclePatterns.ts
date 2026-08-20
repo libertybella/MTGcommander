@@ -396,6 +396,13 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     };
   }
 
+  if (/^Exile ~$/i.test(sentence)) {
+    return {
+      targetRequirements: [],
+      effects: [{ kind: "move_card", cardId: "self", toZone: "exile" }],
+    };
+  }
+
   if (/^return a land you control to its owner's hand$/i.test(sentence)) {
     return {
       targetRequirements: [],
@@ -1531,6 +1538,21 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
       continue;
     }
 
+    const selfRestrict = sentence.match(/^~ can't (attack or block|be blocked|attack|block)$/i);
+    if (selfRestrict?.[1]) {
+      const what = selfRestrict[1].toLowerCase();
+      result.staticAbilities.push({
+        selector: { scope: "self" },
+        effect: {
+          kind: "restrict",
+          ...(what.includes("attack") ? { cantAttack: true } : {}),
+          ...(what === "attack or block" || what === "block" ? { cantBlock: true } : {}),
+          ...(what === "be blocked" ? { cantBeBlocked: true } : {}),
+        },
+      });
+      continue;
+    }
+
     const attachedRestrict = sentence.match(
       /^(?:Enchanted|Equipped) creature can't (attack or block|be blocked|attack|block)(?: and has ([a-z ]+))?$/i,
     );
@@ -1812,6 +1834,28 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
           continue;
         }
         result.leftover.push(sentence);
+        continue;
+      }
+    }
+
+    // Cycling {cost}: "{cost}, Discard this card: Draw a card." (CR 702.29).
+    const cycling = sentence.match(/^Cycling ((?:\{[^}]+\})+)$/i);
+    if (cycling?.[1]) {
+      let cyclingCostOk = true;
+      try {
+        parseManaCost(cycling[1]);
+      } catch {
+        cyclingCostOk = false;
+      }
+      if (cyclingCostOk) {
+        result.activated.push({
+          tap: false,
+          manaCost: cycling[1],
+          effects: [{ kind: "draw", playerId: "controller", count: 1 }],
+          targetRequirements: [],
+          zone: "hand",
+          discard: true,
+        });
         continue;
       }
     }
