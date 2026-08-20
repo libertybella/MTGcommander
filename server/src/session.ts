@@ -1,9 +1,11 @@
 import {
   DEFAULT_SHORTCUT_POLICY,
+  TURN_SEQUENCE,
   applyAction,
   cloneGameState,
   currentPrompt,
   firstLegalTargetSet,
+  hasMeaningfulAction,
   isGameOver,
   isMulliganOpen,
   isOpeningRoll,
@@ -16,11 +18,79 @@ import {
   type GameState,
   type PlayerId,
   type ShortcutPolicy,
+  type Step,
 } from "@mtgcommander/engine";
 
 export type SubmitResult =
   | { ok: true }
   | { ok: false; error: string };
+
+/**
+ * How a seat wants priority handled (the MTGO/Arena model).
+ * - `stops` are steps the player always pauses at, split by whose turn it is.
+ * - `fullControl` suspends every shortcut: the player sees every window.
+ * - `yield` decides non-stop windows: `stops-only` still pauses whenever the
+ *   stack is non-empty (MTGO-style, leaks nothing); `smart` pauses only when
+ *   `hasMeaningfulAction` says the player could act (Arena-style — faster,
+ *   but not pausing reveals an empty hand).
+ */
+export type SeatPreferences = {
+  stops: { myTurn: Set<Step>; theirTurn: Set<Step> };
+  fullControl: boolean;
+  yield: "stops-only" | "smart";
+};
+
+/** Serializable form for the WebSocket protocol and UI. */
+export type SeatPreferencesInput = {
+  stops?: { myTurn?: Step[]; theirTurn?: Step[] };
+  fullControl?: boolean;
+  yield?: "stops-only" | "smart";
+};
+
+const STEP_NAMES = new Set<Step>(TURN_SEQUENCE.map((slot) => slot.step));
+
+/**
+ * Defaults preserve the table's historical behavior exactly: hold every
+ * non-skipped step of your own turn, auto-pass on opponents' turns with an
+ * empty stack, and always hold while the stack is populated.
+ */
+export function defaultSeatPreferences(): SeatPreferences {
+  const myTurn = new Set<Step>(
+    TURN_SEQUENCE.map((slot) => slot.step).filter(
+      (step) => !DEFAULT_SHORTCUT_POLICY.skippableSteps.has(step),
+    ),
+  );
+  return {
+    stops: { myTurn, theirTurn: new Set<Step>() },
+    fullControl: false,
+    yield: "stops-only",
+  };
+}
+
+export function normalizeSeatPreferences(input: SeatPreferencesInput): SeatPreferences {
+  const base = defaultSeatPreferences();
+  const parseSteps = (steps: Step[] | undefined, fallback: Set<Step>): Set<Step> => {
+    if (steps === undefined) {
+      return fallback;
+    }
+    const parsed = new Set<Step>();
+    for (const step of steps) {
+      if (!STEP_NAMES.has(step)) {
+        throw new Error(`Unknown step ${String(step)}`);
+      }
+      parsed.add(step);
+    }
+    return parsed;
+  };
+  return {
+    stops: {
+      myTurn: parseSteps(input.stops?.myTurn, base.stops.myTurn),
+      theirTurn: parseSteps(input.stops?.theirTurn, base.stops.theirTurn),
+    },
+    fullControl: input.fullControl === true,
+    yield: input.yield === "smart" ? "smart" : "stops-only",
+  };
+}
 
 /**
  * Authoritative in-process host. Clients may only submit GameActions as
@@ -29,8 +99,8 @@ export type SubmitResult =
  * No WebSockets.
  */
 export class GameHost {
-  /** Host-owned digital-shortcut policy; seat stops shrink it (Stage 1). */
-  private shortcuts: ShortcutPolicy = DEFAULT_SHORTCUT_POLICY;
+  /** Per-seat priority preferences. Seats without an entry use defaults. */
+  private readonly preferences = new Map<PlayerId, SeatPreferences>();
 
   private constructor(
     private state: GameState,
@@ -42,8 +112,69 @@ export class GameHost {
     this.flushUnseated();
   }
 
+  preferencesFor(playerId: PlayerId): SeatPreferences {
+    return this.preferences.get(playerId) ?? defaultSeatPreferences();
+  }
+
+  /** Set a seated player's stops / yield / full control. Reflows priority. */
+  setPreferences(playerId: PlayerId, input: SeatPreferencesInput): void {
+    if (!this.seatedPlayerIds.has(playerId)) {
+      throw new Error("That player is not seated at this client");
+    }
+    this.preferences.set(playerId, normalizeSeatPreferences(input));
+    this.flushUnseated();
+    this.notify();
+  }
+
+  /**
+   * The digital-shortcut skip set, shrunk by seated players' stops: the
+   * active seat's own-turn stops and every other seated player's their-turn
+   * stops keep those steps from being fast-forwarded past.
+   */
+  private effectiveShortcuts(): ShortcutPolicy {
+    const skippable = new Set<Step>(DEFAULT_SHORTCUT_POLICY.skippableSteps);
+    const activeId = this.state.turn.activePlayerId;
+    for (const playerId of this.seatedPlayerIds) {
+      const prefs = this.preferencesFor(playerId);
+      if (prefs.fullControl) {
+        return { skippableSteps: new Set<Step>() };
+      }
+      const stops = playerId === activeId ? prefs.stops.myTurn : prefs.stops.theirTurn;
+      for (const step of stops) {
+        skippable.delete(step);
+      }
+    }
+    return { skippableSteps: skippable };
+  }
+
   private apply(action: GameAction): void {
-    this.state = applyAction(this.state, action, { shortcuts: this.shortcuts });
+    this.state = applyAction(this.state, action, { shortcuts: this.effectiveShortcuts() });
+  }
+
+  /**
+   * Should the host wait for this seated player's input at priority, or pass
+   * for them? Full control always waits. A stop on the current step always
+   * waits. Otherwise: with a populated stack, `stops-only` waits and `smart`
+   * waits only when the player could meaningfully act; with an empty stack,
+   * `smart` also pauses an opponent's turn when the player has an action.
+   */
+  private shouldHoldPriority(playerId: PlayerId): boolean {
+    const prefs = this.preferencesFor(playerId);
+    if (prefs.fullControl) {
+      return true;
+    }
+    const isActive = playerId === this.state.turn.activePlayerId;
+    const stops = isActive ? prefs.stops.myTurn : prefs.stops.theirTurn;
+    if (this.state.stack.length > 0) {
+      return prefs.yield === "stops-only" ? true : hasMeaningfulAction(this.state, playerId);
+    }
+    if (stops.has(this.state.turn.step)) {
+      return true;
+    }
+    if (!isActive && prefs.yield === "smart") {
+      return hasMeaningfulAction(this.state, playerId);
+    }
+    return false;
   }
 
   static start(
@@ -129,7 +260,7 @@ export class GameHost {
     const previous = cloneGameState(this.state);
     const before = serializeGameState(this.state);
     try {
-      this.state = applyAction(this.state, action, { shortcuts: this.shortcuts });
+      this.state = applyAction(this.state, action, { shortcuts: this.effectiveShortcuts() });
       this.history.push({ actorId, state: previous });
       if (this.history.length > 100) {
         this.history.shift();
@@ -304,10 +435,11 @@ export class GameHost {
       const priorityId = this.state.priorityPlayerId;
       const seatedPriority = this.seatedPlayerIds.has(priorityId);
       const activePriority = priorityId === this.state.turn.activePlayerId;
-      if (seatedPriority && (activePriority || this.state.stack.length > 0)) {
+      if (seatedPriority && this.shouldHoldPriority(priorityId)) {
         return;
       }
       if (!seatedPriority && activePriority) {
+        // An unseated active player's turn waits for the host to skip.
         return;
       }
       this.apply({
@@ -315,6 +447,7 @@ export class GameHost {
         playerId: priorityId,
       });
     }
-    throw new Error("Unseated priority flush did not settle");
+    // A table where every seat yields indefinitely (e.g. all stops removed)
+    // parks here instead of crashing; the next human input resumes the flush.
   }
 }

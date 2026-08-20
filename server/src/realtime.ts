@@ -6,7 +6,7 @@ import {
   type GameState,
   type PlayerId,
 } from "@mtgcommander/engine";
-import { GameHost } from "./session";
+import { GameHost, type SeatPreferencesInput } from "./session";
 
 export const DEFAULT_WS_PORT = 8787;
 
@@ -24,7 +24,8 @@ export type HostListenInfo = {
 
 type ClientMessage =
   | { type: "join"; roomCode: string; displayName: string; playerId?: PlayerId }
-  | { type: "submit"; action: GameAction };
+  | { type: "submit"; action: GameAction }
+  | { type: "preferences"; preferences: SeatPreferencesInput };
 
 const ROOM_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 
@@ -73,6 +74,15 @@ function parseClientMessage(raw: string): ClientMessage {
     return {
       type: "submit",
       action: parseGameAction(JSON.stringify(value.action)),
+    };
+  }
+  if (value.type === "preferences") {
+    if (!isRecord(value.preferences)) {
+      throw new Error("Preferences need a preferences object");
+    }
+    return {
+      type: "preferences",
+      preferences: value.preferences as SeatPreferencesInput,
     };
   }
   throw new Error("Unknown message");
@@ -186,6 +196,10 @@ export class GameServer {
         this.handleJoin(socket, message);
         return;
       }
+      if (message.type === "preferences") {
+        this.handlePreferences(socket, message.preferences);
+        return;
+      }
       this.handleSubmit(socket, message.action);
     } catch (error) {
       send(socket, {
@@ -244,6 +258,14 @@ export class GameServer {
       seats: this.seats(),
     });
     this.broadcast();
+  }
+
+  private handlePreferences(socket: WebSocket, preferences: SeatPreferencesInput): void {
+    const playerId = this.sockets.get(socket);
+    if (!playerId || !this.host) {
+      throw new Error("Join the table first");
+    }
+    this.host.setPreferences(playerId, preferences);
   }
 
   private handleSubmit(socket: WebSocket, action: GameAction): void {

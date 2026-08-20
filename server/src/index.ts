@@ -19,7 +19,14 @@ export function getServerInfo(): ServerInfo {
   };
 }
 
-export { GameHost, type SubmitResult } from "./session";
+export {
+  GameHost,
+  defaultSeatPreferences,
+  normalizeSeatPreferences,
+  type SeatPreferences,
+  type SeatPreferencesInput,
+  type SubmitResult,
+} from "./session";
 export {
   TABLE_STORAGE_KEY,
   TABLE_SNAPSHOT_VERSION,
