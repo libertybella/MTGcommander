@@ -279,6 +279,15 @@ export function resolveTopOfStack(state: GameState): GameState {
   // only a card still in the stack zone moves on to its destination.
   if (next.cards[top.sourceId]?.zone === "stack") {
     next = enterOwnerZone(next, top.sourceId, destination);
+    if (
+      destination === "battlefield" &&
+      definition?.entersWithXCounters &&
+      (top.xValue ?? 0) > 0 &&
+      next.cards[top.sourceId]?.zone === "battlefield"
+    ) {
+      const entered = next.cards[top.sourceId]!;
+      entered.counters["p1p1"] = (entered.counters["p1p1"] ?? 0) + (top.xValue ?? 0);
+    }
   }
   if (attachTo && next.cards[top.sourceId]?.zone === "battlefield") {
     next.cards[top.sourceId]!.attachedTo = attachTo;

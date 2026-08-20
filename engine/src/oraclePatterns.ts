@@ -44,6 +44,8 @@ export type CompiledOracleText = {
   cantBeCountered?: boolean;
   costReductions?: CostReduction[];
   chooseCreatureTypeOnEnter?: boolean;
+  entersWithXCounters?: boolean;
+  playLandsFromGraveyard?: boolean;
   leftover: string[];
   notes: string[];
 };
@@ -1399,31 +1401,57 @@ function compileLookAndAssignPair(sentences: string[], index: number): SimpleCla
     /^Look at the top (a|an|one|two|three|four|five|six|seven|eight|nine|ten|\d+) cards? of your library$/i,
   );
   const assign = sentences[index + 1];
-  if (
-    !look?.[1] ||
-    !assign ||
-    !/^Put one of them into your hand, put one of them on the bottom of your library, and exile one of them$/i.test(
-      assign,
-    )
-  ) {
+  if (!look?.[1] || !assign) {
     return null;
   }
   const count = parseCount(look[1]);
   if (!count) {
     return null;
   }
-  return {
-    targetRequirements: [],
-    effects: [
-      {
-        kind: "look_and_assign",
-        playerId: "controller",
-        count,
-        destinations: ["hand", "library_bottom", "exile"],
-      },
-    ],
-    consumed: 2,
-  };
+  if (
+    /^Put one of them into your hand, put one of them on the bottom of your library, and exile one of them$/i.test(
+      assign,
+    )
+  ) {
+    return {
+      targetRequirements: [],
+      effects: [
+        {
+          kind: "look_and_assign",
+          playerId: "controller",
+          count,
+          destinations: ["hand", "library_bottom", "exile"],
+        },
+      ],
+      consumed: 2,
+    };
+  }
+  // Impulse / Anticipate: one to hand, the rest to the bottom.
+  if (
+    /^Put one of them into your hand and (?:the rest|put the rest) on the bottom of your library in (?:any|a random) order$/i.test(
+      assign,
+    ) ||
+    /^Put one of them into your hand, then put the rest on the bottom of your library in (?:any|a random) order$/i.test(
+      assign,
+    )
+  ) {
+    return {
+      targetRequirements: [],
+      effects: [
+        {
+          kind: "look_and_assign",
+          playerId: "controller",
+          count,
+          destinations: [
+            "hand",
+            ...Array.from({ length: count - 1 }, () => "library_bottom" as const),
+          ],
+        },
+      ],
+      consumed: 2,
+    };
+  }
+  return null;
 }
 
 function compileRevealAndChoose(sentences: string[], index: number): SimpleClause & { consumed: number } | null {
@@ -1748,6 +1776,16 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
 
     if (/^As ~ enters, choose a creature type$/i.test(sentence)) {
       result.chooseCreatureTypeOnEnter = true;
+      continue;
+    }
+
+    if (/^~ enters with X \+1\/\+1 counters on it$/i.test(sentence)) {
+      result.entersWithXCounters = true;
+      continue;
+    }
+
+    if (/^You may play lands from your graveyard$/i.test(sentence)) {
+      result.playLandsFromGraveyard = true;
       continue;
     }
 

@@ -3,7 +3,7 @@ import { abilitiesRemoved } from "./characteristicsEngine";
 import { hasKeyword } from "./keywords";
 import { emptyManaPool } from "./createGame";
 import { pendingBlockerPlayer } from "./combat";
-import { castCostReduction, landDropAllowance } from "./derived";
+import { canPlayLandsFromGraveyard, castCostReduction, landDropAllowance } from "./derived";
 import { canPayManaCost, parseManaCost, type ParsedManaCost } from "./mana";
 import { manaAbilitiesOf, manaTapOptionsFor } from "./manaOptions";
 import { isMulliganOpen } from "./mulligan";
@@ -302,12 +302,21 @@ export function legalActions(state: GameState, playerId: PlayerId): LegalAction[
   const potential = potentialMana(state, playerId);
   const actions: LegalAction[] = [];
 
-  for (const cardId of player.zones.hand) {
+  const graveyardLandIds = canPlayLandsFromGraveyard(state, playerId)
+    ? player.zones.graveyard.filter((cardId) => {
+        const definition = state.cards[cardId]
+          ? state.definitions[state.cards[cardId]!.definitionId]
+          : undefined;
+        return definition?.characteristics.types.includes("land") === true;
+      })
+    : [];
+  for (const cardId of [...player.zones.hand, ...graveyardLandIds]) {
     const card = state.cards[cardId];
     const definition = card ? state.definitions[card.definitionId] : undefined;
     if (!card || !definition) {
       continue;
     }
+    const inGraveyard = card.zone === "graveyard";
     for (const face of faceDefinitions(state, definition)) {
       const faceIsLand = face.definition.characteristics.types.includes("land");
       if (faceIsLand) {
@@ -317,6 +326,9 @@ export function legalActions(state: GameState, playerId: PlayerId): LegalAction[
         ) {
           actions.push({ kind: "play_land", cardId, faceIndex: face.faceIndex });
         }
+        continue;
+      }
+      if (inGraveyard) {
         continue;
       }
       if (castableFace(state, playerId, face.definition, potential, 0)) {

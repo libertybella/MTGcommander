@@ -412,6 +412,94 @@ describe("creature-or-planeswalker removal", () => {
   });
 });
 
+describe("wave 10: looks, hydras, graveyard lands", () => {
+  it("compiles Impulse into a look-and-assign", () => {
+    const compiled = compileOracleCard({
+      oracleId: "impulse",
+      name: "Impulse",
+      manaCost: "{1}{U}",
+      typeLine: "Instant",
+      oracleText:
+        "Look at the top four cards of your library. Put one of them into your hand and the rest on the bottom of your library in any order.",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+    });
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.effects).toEqual([
+      {
+        kind: "look_and_assign",
+        playerId: "controller",
+        count: 4,
+        destinations: ["hand", "library_bottom", "library_bottom", "library_bottom"],
+      },
+    ]);
+  });
+
+  it("an X hydra enters with X +1/+1 counters", () => {
+    const compiled = compileOracleCard({
+      oracleId: "hydra",
+      name: "Hydra Broodmaster Jr",
+      manaCost: "{X}{G}",
+      typeLine: "Creature — Hydra",
+      oracleText: "Hydra Broodmaster Jr enters with X +1/+1 counters on it.",
+      power: "0",
+      toughness: "0",
+      printedKeywords: [],
+      imageUrl: "",
+    });
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.entersWithXCounters).toBe(true);
+
+    const { game, p1 } = twoPlayers();
+    game.definitions[compiled.definition.id] = compiled.definition;
+    const hydra = createCardInstance({
+      definitionId: compiled.definition.id,
+      ownerId: p1.id,
+      zone: "stack",
+    });
+    game.cards[hydra.id] = hydra;
+    game.stack.push({
+      id: "stack-hydra",
+      kind: "spell",
+      sourceId: hydra.id,
+      controllerId: p1.id,
+      targets: [],
+      xValue: 3,
+    });
+    const resolved = resolveTopOfStack(game);
+    expect(resolved.cards[hydra.id]?.zone).toBe("battlefield");
+    expect(resolved.cards[hydra.id]?.counters["p1p1"]).toBe(3);
+  });
+
+  it("Crucible of Worlds allows land plays from the graveyard", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game);
+    const crucible = createCardDefinition({
+      name: "Crucible of Worlds",
+      typeLine: "Artifact",
+      playLandsFromGraveyard: true,
+    });
+    const forest = createCardDefinition({ name: "Forest", typeLine: "Basic Land — Forest" });
+    game.definitions[crucible.id] = crucible;
+    game.definitions[forest.id] = forest;
+    const crucibleCard = createCardInstance({
+      definitionId: crucible.id,
+      ownerId: p1.id,
+      zone: "battlefield",
+    });
+    const deadLand = createCardInstance({ definitionId: forest.id, ownerId: p1.id, zone: "graveyard" });
+    game.cards[crucibleCard.id] = crucibleCard;
+    game.cards[deadLand.id] = deadLand;
+    p1.zones.battlefield.push(crucibleCard.id);
+    p1.zones.graveyard.push(deadLand.id);
+    const ready = advanceSteps(game, 3);
+    const played = applyAction(ready, { kind: "play_land", playerId: p1.id, cardId: deadLand.id });
+    expect(played.cards[deadLand.id]?.zone).toBe("battlefield");
+  });
+});
+
 describe("optional draws", () => {
   it("compiles Bident of Thassa's saboteur draw and guards empty libraries", () => {
     const compiled = compileOracleCard({

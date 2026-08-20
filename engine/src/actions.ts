@@ -2,7 +2,7 @@ import { declareAttackers, declareBlockers, lockRemainingBlockers, pendingBlocke
 import { abilitiesRemoved } from "./characteristicsEngine";
 import { isCommander, isCreature, isInstant, isInstantOrSorcery, isLand, isMainPhase } from "./cardTypes";
 import { cloneGameState } from "./clone";
-import { castCostReduction, landDropAllowance } from "./derived";
+import { canPlayLandsFromGraveyard, castCostReduction, landDropAllowance } from "./derived";
 import { eliminatePlayerInPlace } from "./elimination";
 import { applyEffects, bindCardEffects } from "./effects";
 import { hasKeyword } from "./keywords";
@@ -275,7 +275,11 @@ function applyPlayLand(
   }
 
   const located = findCardZone(faced, cardId);
-  if (!located || located.zone !== "hand" || located.playerId !== playerId) {
+  const fromGraveyard =
+    located?.zone === "graveyard" &&
+    located.playerId === playerId &&
+    canPlayLandsFromGraveyard(faced, playerId);
+  if (!located || (located.zone !== "hand" && !fromGraveyard) || located.playerId !== playerId) {
     throw new Error(`Card ${cardId} must be in the player's hand`);
   }
 

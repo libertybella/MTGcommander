@@ -136,6 +136,10 @@ export type CardDefinition = {
   costReductions?: CostReduction[];
   /** "As ~ enters, choose a creature type." Prompts on battlefield entry. */
   chooseCreatureTypeOnEnter?: boolean;
+  /** "~ enters with X +1/+1 counters on it" (hydras); X from the announced cost. */
+  entersWithXCounters?: boolean;
+  /** "You may play lands from your graveyard" (Crucible of Worlds). */
+  playLandsFromGraveyard?: boolean;
   /** Scryfall card image, if known. Empty for synthetic / hidden cards. */
   imageUrl: string;
   /** Linked opposite face for modal DFCs and transforming cards. */

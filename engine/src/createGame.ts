@@ -66,6 +66,8 @@ export function createCardDefinition(
         | "cantBeCountered"
         | "costReductions"
         | "chooseCreatureTypeOnEnter"
+        | "entersWithXCounters"
+        | "playLandsFromGraveyard"
       >
     > & { colors?: Color[] },
 ): CardDefinition {
@@ -176,6 +178,8 @@ export function createCardDefinition(
       : {}),
     ...(input.cantBeCountered ? { cantBeCountered: true } : {}),
     ...(input.chooseCreatureTypeOnEnter ? { chooseCreatureTypeOnEnter: true } : {}),
+    ...(input.entersWithXCounters ? { entersWithXCounters: true } : {}),
+    ...(input.playLandsFromGraveyard ? { playLandsFromGraveyard: true } : {}),
     ...(input.costReductions && input.costReductions.length > 0
       ? {
           costReductions: input.costReductions.map((entry) => ({

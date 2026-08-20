@@ -87,6 +87,19 @@ export function castCostReduction(
   return total;
 }
 
+/** "You may play lands from your graveyard" (Crucible of Worlds). */
+export function canPlayLandsFromGraveyard(state: GameState, playerId: string): boolean {
+  return Object.values(state.cards).some((card) => {
+    if (card.zone !== "battlefield" || card.controllerId !== playerId) {
+      return false;
+    }
+    if (abilitiesRemoved(state, card.id)) {
+      return false;
+    }
+    return state.definitions[card.definitionId]?.playLandsFromGraveyard === true;
+  });
+}
+
 /** CR 305.2: one land drop plus any extras granted by permanents (Exploration). */
 export function landDropAllowance(state: GameState, playerId: string): number {
   let extra = 0;

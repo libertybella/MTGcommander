@@ -318,6 +318,8 @@ export function parseGameState(json: string): GameState {
         : { extraLandDrops: expectNumber(def.extraLandDrops, `definition.${id}.extraLandDrops`) }),
       ...(def.cantBeCountered === true ? { cantBeCountered: true } : {}),
       ...(def.chooseCreatureTypeOnEnter === true ? { chooseCreatureTypeOnEnter: true } : {}),
+      ...(def.entersWithXCounters === true ? { entersWithXCounters: true } : {}),
+      ...(def.playLandsFromGraveyard === true ? { playLandsFromGraveyard: true } : {}),
       ...(def.costReductions === undefined
         ? {}
         : {
