@@ -251,21 +251,16 @@ export function dispatchEventsInPlace(state: GameState, events: EngineEvent[]): 
     return;
   }
   const candidates: TriggerCandidate[] = [];
-  const seen = new Set<string>();
   const consider = (card: CardInstance) => {
     const triggers = state.definitions[card.definitionId]?.triggers ?? [];
     for (let index = 0; index < triggers.length; index += 1) {
       const trigger = triggers[index]!;
+      // A trigger fires once for EACH matching event in the batch — a board
+      // wipe drains Blood Artist once per death, not once total.
       for (const event of events) {
-        if (!triggerMatchesEvent(state, card, trigger, event)) {
-          continue;
-        }
-        const key = `${card.id}:${index}`;
-        if (!seen.has(key)) {
-          seen.add(key);
+        if (triggerMatchesEvent(state, card, trigger, event)) {
           candidates.push({ cardId: card.id, triggerIndex: index });
         }
-        break;
       }
     }
   };
@@ -274,10 +269,12 @@ export function dispatchEventsInPlace(state: GameState, events: EngineEvent[]): 
       consider(card);
     }
   }
+  const deadConsidered = new Set<CardInstanceId>();
   for (const event of events) {
-    if (event.kind !== "dies") {
+    if (event.kind !== "dies" || deadConsidered.has(event.cardId)) {
       continue;
     }
+    deadConsidered.add(event.cardId);
     const dead = state.cards[event.cardId];
     if (dead && dead.zone !== "battlefield") {
       consider(dead);

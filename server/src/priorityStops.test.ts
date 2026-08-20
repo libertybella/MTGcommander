@@ -183,3 +183,24 @@ describe("Stage 1: stops, yield, and full control", () => {
     ).toThrow(/Unknown step/);
   });
 });
+
+describe("Stage 6: override telemetry", () => {
+  it("counts overrides by change type", () => {
+    const { host, p1 } = endStepTable();
+    expect(host.getOverrideStats().total).toBe(0);
+    host.submit(p1, {
+      kind: "manual_override",
+      playerId: p1,
+      change: { type: "adjust_life", targetPlayerId: p1, delta: -1 },
+    });
+    host.submit(p1, {
+      kind: "manual_override",
+      playerId: p1,
+      change: { type: "draw", targetPlayerId: p1, count: 1 },
+    });
+    const stats = host.getOverrideStats();
+    expect(stats.total).toBe(2);
+    expect(stats.byChange["adjust_life"]).toBe(1);
+    expect(stats.byChange["draw"]).toBe(1);
+  });
+});

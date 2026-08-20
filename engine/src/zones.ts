@@ -3,7 +3,15 @@ import { isCommander } from "./cardTypes";
 import { abilitiesRemoved } from "./characteristicsEngine";
 import { queueEnterReplacementChoicesInPlace, wouldEnterTapped } from "./derived";
 import { dispatchEventsInPlace, queueEnterBattlefieldTriggersInPlace } from "./triggers";
-import type { CardInstance, CardInstanceId, GameState, PlayerState, PlayerZones, ZoneName } from "./types";
+import type {
+  CardInstance,
+  CardInstanceId,
+  EngineEvent,
+  GameState,
+  PlayerState,
+  PlayerZones,
+  ZoneName,
+} from "./types";
 
 export const PLAYER_ZONES: (keyof PlayerZones)[] = [
   "library",
@@ -49,6 +57,12 @@ function graveyardReplacedByExile(state: GameState): boolean {
 export type MoveCardOptions = {
   /** Library only: index 0 is the top. Defaults to top when moving onto the library. */
   libraryPosition?: "top" | "bottom";
+  /**
+   * Collect dies events here instead of dispatching them immediately.
+   * State-based sweeps use this so simultaneous deaths reach watchers as
+   * one batch (CR 603.10a look-back — the Blood Artist ruling).
+   */
+  collectDies?: EngineEvent[];
 };
 
 function playerHasCard(player: PlayerState, cardId: CardInstanceId): keyof PlayerZones | null {
@@ -157,7 +171,12 @@ export function enterOwnerZoneInPlace(
     queueEnterBattlefieldTriggersInPlace(state, cardId);
   }
   if (fromZone === "battlefield" && destination === "graveyard") {
-    dispatchEventsInPlace(state, [{ kind: "dies", cardId, controllerId: diedControllerId }]);
+    const event: EngineEvent = { kind: "dies", cardId, controllerId: diedControllerId };
+    if (options.collectDies) {
+      options.collectDies.push(event);
+    } else {
+      dispatchEventsInPlace(state, [event]);
+    }
   }
 }
 
@@ -286,7 +305,12 @@ export function moveCardInPlace(
     queueEnterBattlefieldTriggersInPlace(state, cardId);
   }
   if (located.zone === "battlefield" && destination === "graveyard") {
-    dispatchEventsInPlace(state, [{ kind: "dies", cardId, controllerId: diedControllerId }]);
+    const event: EngineEvent = { kind: "dies", cardId, controllerId: diedControllerId };
+    if (options.collectDies) {
+      options.collectDies.push(event);
+    } else {
+      dispatchEventsInPlace(state, [event]);
+    }
   }
 
   if (countCardPlacements(state, cardId) !== 1) {

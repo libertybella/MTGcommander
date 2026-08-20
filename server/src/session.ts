@@ -103,6 +103,23 @@ export class GameHost {
   /** Per-seat priority preferences. Seats without an entry use defaults. */
   private readonly preferences = new Map<PlayerId, SeatPreferences>();
 
+  /**
+   * Stage 6 telemetry: overrides used this game, by change type. The
+   * weekly "most-overridden" list is the compiler's sprint queue; the
+   * coverage goal is a median of zero per game.
+   */
+  private readonly overrideCounts = new Map<string, number>();
+
+  getOverrideStats(): { total: number; byChange: Record<string, number> } {
+    const byChange: Record<string, number> = {};
+    let total = 0;
+    for (const [change, count] of this.overrideCounts) {
+      byChange[change] = count;
+      total += count;
+    }
+    return { total, byChange };
+  }
+
   private constructor(
     private state: GameState,
     private viewerId: PlayerId,
@@ -262,6 +279,12 @@ export class GameHost {
     const before = serializeGameState(this.state);
     try {
       this.state = applyAction(this.state, action, { shortcuts: this.effectiveShortcuts() });
+      if (action.kind === "manual_override") {
+        this.overrideCounts.set(
+          action.change.type,
+          (this.overrideCounts.get(action.change.type) ?? 0) + 1,
+        );
+      }
       this.history.push({ actorId, state: previous });
       if (this.history.length > 100) {
         this.history.shift();

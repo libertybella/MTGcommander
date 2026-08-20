@@ -4,8 +4,9 @@ import { creatureToughness } from "./derived";
 import { hasKeyword } from "./keywords";
 import { eliminatePlayerInPlace } from "./elimination";
 import { isLiving, livingPlayerCount, nextLivingPlayerId, winnerId } from "./players";
+import { dispatchEventsInPlace } from "./triggers";
 import { moveCardInPlace } from "./zones";
-import type { GameState } from "./types";
+import type { EngineEvent, GameState } from "./types";
 
 function shouldLose(player: GameState["players"][number]): boolean {
   if (player.failedToDraw) {
@@ -19,7 +20,7 @@ function shouldLose(player: GameState["players"][number]): boolean {
   );
 }
 
-function destroyZeroToughnessInPlace(state: GameState): boolean {
+function destroyZeroToughnessInPlace(state: GameState, collectDies: EngineEvent[]): boolean {
   let changed = false;
   for (const card of Object.values(state.cards)) {
     if (card.zone !== "battlefield" || !isCreature(state, card.id)) {
@@ -32,14 +33,14 @@ function destroyZeroToughnessInPlace(state: GameState): boolean {
     if (creatureToughness(state, card.id) > 0) {
       continue;
     }
-    moveCardInPlace(state, card.id, "graveyard");
+    moveCardInPlace(state, card.id, "graveyard", { collectDies });
     changed = true;
   }
   return changed;
 }
 
 /** CR 704.5g/h: lethal marked damage, or any deathtouch damage, destroys. */
-function destroyLethalDamageInPlace(state: GameState): boolean {
+function destroyLethalDamageInPlace(state: GameState, collectDies: EngineEvent[]): boolean {
   let changed = false;
   for (const card of Object.values(state.cards)) {
     if (card.zone !== "battlefield" || !isCreature(state, card.id)) {
@@ -55,7 +56,7 @@ function destroyLethalDamageInPlace(state: GameState): boolean {
     if (!lethal) {
       continue;
     }
-    moveCardInPlace(state, card.id, "graveyard");
+    moveCardInPlace(state, card.id, "graveyard", { collectDies });
     changed = true;
   }
   return changed;
@@ -67,7 +68,7 @@ function destroyLethalDamageInPlace(state: GameState): boolean {
  * lets the controller choose; the auto-pick is logged via zone changes and
  * a choice prompt arrives with the Stage 4 decision framework.)
  */
-function legendRuleInPlace(state: GameState): boolean {
+function legendRuleInPlace(state: GameState, collectDies: EngineEvent[]): boolean {
   const groups = new Map<string, string[]>();
   for (const card of Object.values(state.cards)) {
     if (card.zone !== "battlefield") {
@@ -90,7 +91,7 @@ function legendRuleInPlace(state: GameState): boolean {
     );
     for (const cardId of cardIds) {
       if (cardId !== keep && state.cards[cardId]?.zone === "battlefield") {
-        moveCardInPlace(state, cardId, "graveyard");
+        moveCardInPlace(state, cardId, "graveyard", { collectDies });
         changed = true;
       }
     }
@@ -99,7 +100,7 @@ function legendRuleInPlace(state: GameState): boolean {
 }
 
 /** CR 704.5m/n: a loose or illegally attached Aura dies; Equipment detaches. */
-function attachmentLegalityInPlace(state: GameState): boolean {
+function attachmentLegalityInPlace(state: GameState, collectDies: EngineEvent[]): boolean {
   let changed = false;
   for (const card of Object.values(state.cards)) {
     if (card.zone !== "battlefield") {
@@ -119,7 +120,7 @@ function attachmentLegalityInPlace(state: GameState): boolean {
       continue;
     }
     if (isAura) {
-      moveCardInPlace(state, card.id, "graveyard");
+      moveCardInPlace(state, card.id, "graveyard", { collectDies });
       changed = true;
     } else if (card.attachedTo) {
       card.attachedTo = null;
@@ -130,7 +131,7 @@ function attachmentLegalityInPlace(state: GameState): boolean {
 }
 
 /** CR 704.5i: a planeswalker with zero loyalty goes to the graveyard. */
-function planeswalkerLoyaltyInPlace(state: GameState): boolean {
+function planeswalkerLoyaltyInPlace(state: GameState, collectDies: EngineEvent[]): boolean {
   let changed = false;
   for (const card of Object.values(state.cards)) {
     if (card.zone !== "battlefield") {
@@ -141,7 +142,7 @@ function planeswalkerLoyaltyInPlace(state: GameState): boolean {
       continue;
     }
     if ((card.counters["loyalty"] ?? 0) <= 0) {
-      moveCardInPlace(state, card.id, "graveyard");
+      moveCardInPlace(state, card.id, "graveyard", { collectDies });
       changed = true;
     }
   }
@@ -179,23 +180,29 @@ export function applyStateBasedActionsInPlace(state: GameState): void {
       eliminatePlayerInPlace(state, playerId);
       changed = true;
     }
-    if (destroyZeroToughnessInPlace(state)) {
+    // Simultaneous deaths within one sweep dispatch as one batch so dies-
+    // watchers that died together still see each other (CR 603.10a).
+    const collectDies: EngineEvent[] = [];
+    if (destroyZeroToughnessInPlace(state, collectDies)) {
       changed = true;
     }
-    if (destroyLethalDamageInPlace(state)) {
+    if (destroyLethalDamageInPlace(state, collectDies)) {
       changed = true;
     }
-    if (legendRuleInPlace(state)) {
+    if (legendRuleInPlace(state, collectDies)) {
       changed = true;
     }
-    if (attachmentLegalityInPlace(state)) {
+    if (attachmentLegalityInPlace(state, collectDies)) {
       changed = true;
     }
-    if (planeswalkerLoyaltyInPlace(state)) {
+    if (planeswalkerLoyaltyInPlace(state, collectDies)) {
       changed = true;
     }
     if (tokenCessationInPlace(state)) {
       changed = true;
+    }
+    if (collectDies.length > 0) {
+      dispatchEventsInPlace(state, collectDies);
     }
   }
   state.winnerId = winnerId(state);
