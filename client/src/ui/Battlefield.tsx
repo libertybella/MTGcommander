@@ -2,8 +2,11 @@ import { useEffect, useLayoutEffect, useRef, useState, type PointerEvent as Reac
 import { createPortal } from "react-dom";
 import {
   MANA_COLORS,
+  autoTapPlan,
+  canPayManaCost,
   countedMulligans,
   currentPrompt,
+  parseManaCost,
   isClass,
   isCreature,
   isGameOver,
@@ -1199,6 +1202,40 @@ export function Battlefield(props: Props) {
 
   function send(action: GameAction) {
     onMode({ type: "idle" });
+    // Arena-style auto-tap: cover a castable cost from untapped producers
+    // before the spell or ability is submitted. The engine still validates.
+    if (action.kind === "cast_spell" || action.kind === "activate_ability") {
+      const card = state.cards[action.cardId];
+      const def = card ? state.definitions[card.definitionId] : undefined;
+      const costText =
+        action.kind === "activate_ability"
+          ? def?.activated[action.abilityIndex]?.manaCost ?? ""
+          : def?.manaCost ?? "";
+      try {
+        const cost = parseManaCost(costText);
+        const player = state.players.find((entry) => entry.id === action.playerId);
+        if (player?.zones.command.includes(action.cardId)) {
+          cost.generic += player.commander.tax;
+        }
+        if (action.kind === "cast_spell" && action.xValue !== undefined) {
+          cost.generic += action.xValue * cost.xCount;
+        }
+        if (player && !canPayManaCost(player.mana, cost, player.life)) {
+          const plan = autoTapPlan(state, action.playerId, cost);
+          for (const tap of plan ?? []) {
+            onAction({
+              kind: "tap_for_mana",
+              playerId: action.playerId,
+              cardId: tap.cardId,
+              ...(tap.color ? { color: tap.color } : {}),
+              ...(tap.manaIndex !== undefined ? { manaIndex: tap.manaIndex } : {}),
+            });
+          }
+        }
+      } catch {
+        // Unparseable cost: submit as-is and let the engine explain.
+      }
+    }
     onAction(action);
   }
 

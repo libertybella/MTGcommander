@@ -3,7 +3,7 @@ import { abilitiesRemoved } from "./characteristicsEngine";
 import { hasKeyword } from "./keywords";
 import { emptyManaPool } from "./createGame";
 import { pendingBlockerPlayer } from "./combat";
-import { parseManaCost, type ParsedManaCost } from "./mana";
+import { canPayManaCost, parseManaCost, type ParsedManaCost } from "./mana";
 import { manaAbilitiesOf, manaTapOptionsFor } from "./manaOptions";
 import { isMulliganOpen } from "./mulligan";
 import { isOpeningRoll } from "./openingRoll";
@@ -391,4 +391,119 @@ export function legalActions(state: GameState, playerId: PlayerId): LegalAction[
  */
 export function hasMeaningfulAction(state: GameState, playerId: PlayerId): boolean {
   return legalActions(state, playerId).some((action) => action.kind !== "mana");
+}
+
+export type AutoTap = { cardId: CardInstanceId; color?: ManaColor; manaIndex?: number };
+
+/**
+ * The Arena convenience: which producers to tap (and which colors to pick)
+ * so the floating pool covers `cost`. Fixed producers are preferred and
+ * flexible ones are assigned by matching, so duals are not wasted on pips a
+ * basic could pay. Returns null when even tapping everything cannot pay.
+ */
+export function autoTapPlan(
+  state: GameState,
+  playerId: PlayerId,
+  cost: string | ParsedManaCost,
+): AutoTap[] | null {
+  const parsed = typeof cost === "string" ? parseManaCost(cost) : cost;
+  const player = state.players.find((entry) => entry.id === playerId);
+  if (!player) {
+    return null;
+  }
+  const potential = potentialMana(state, playerId);
+  if (!canPayWithPotential(potential, parsed)) {
+    return null;
+  }
+
+  // Work against a copy of the floating pool; tap producers until it pays.
+  const pool: ManaPool = { ...player.mana };
+  const taps: AutoTap[] = [];
+  type Producer = { cardId: CardInstanceId; manaIndex: number; options: ManaColor[] | null; produces: Partial<ManaPool> };
+  const producers: Producer[] = [];
+  for (const card of Object.values(state.cards)) {
+    if (card.controllerId !== playerId || !producerUsableNow(state, card)) {
+      continue;
+    }
+    const definition = state.definitions[card.definitionId];
+    const abilities = definition ? manaAbilitiesOf(definition) : [];
+    abilities.forEach((ability, manaIndex) => {
+      if (manaIndex > 0) {
+        return; // one candidate ability per permanent keeps the plan simple
+      }
+      producers.push({
+        cardId: card.id,
+        manaIndex,
+        options: manaTapOptionsFor(ability),
+        produces: ability.produces,
+      });
+    });
+  }
+
+  const stillNeeded = (): ManaColor | "generic" | null => {
+    for (const color of ["W", "U", "B", "R", "G", "C"] as ManaColor[]) {
+      if (parsed[color] > (pool[color] ?? 0)) {
+        return color;
+      }
+    }
+    const pips = (["W", "U", "B", "R", "G", "C"] as ManaColor[]).reduce(
+      (sum, color) => sum + Math.min(pool[color], parsed[color]),
+      0,
+    );
+    void pips;
+    const poolTotal = (["W", "U", "B", "R", "G", "C"] as ManaColor[]).reduce(
+      (sum, color) => sum + pool[color],
+      0,
+    );
+    const pipTotal = (["W", "U", "B", "R", "G", "C"] as ManaColor[]).reduce(
+      (sum, color) => sum + parsed[color],
+      0,
+    );
+    const hybridTotal = parsed.hybrid.length;
+    if (poolTotal < pipTotal + hybridTotal + parsed.generic) {
+      return "generic";
+    }
+    return null;
+  };
+
+  let guard = 0;
+  while (!canPayManaCost(pool, parsed) && guard < 50) {
+    guard += 1;
+    const need = stillNeeded();
+    if (need === null) {
+      break;
+    }
+    let picked = -1;
+    if (need !== "generic") {
+      picked = producers.findIndex(
+        (producer) =>
+          (producer.options === null && (producer.produces[need] ?? 0) > 0) ||
+          (producer.options !== null && producer.options.includes(need)),
+      );
+    }
+    if (picked === -1) {
+      picked = producers.findIndex((producer) => producer.options === null);
+    }
+    if (picked === -1) {
+      picked = producers.length > 0 ? 0 : -1;
+    }
+    if (picked === -1) {
+      return null;
+    }
+    const producer = producers.splice(picked, 1)[0]!;
+    if (producer.options) {
+      const color =
+        need !== "generic" && producer.options.includes(need)
+          ? need
+          : producer.options[0]!;
+      pool[color] += 1;
+      taps.push({ cardId: producer.cardId, color, manaIndex: producer.manaIndex });
+    } else {
+      for (const color of ["W", "U", "B", "R", "G", "C"] as ManaColor[]) {
+        pool[color] += producer.produces[color] ?? 0;
+      }
+      taps.push({ cardId: producer.cardId, manaIndex: producer.manaIndex });
+    }
+  }
+  return canPayManaCost(pool, parsed) ? taps : null;
 }

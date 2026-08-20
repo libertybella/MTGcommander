@@ -83,12 +83,13 @@ export {
   parseTypeLine,
 } from "./characteristics";
 export {
+  autoTapPlan,
   canPayWithPotential,
   hasMeaningfulAction,
   legalActions,
   potentialMana,
 } from "./legalActions";
-export type { LegalAction, PotentialMana } from "./legalActions";
+export type { AutoTap, LegalAction, PotentialMana } from "./legalActions";
 export type { MoveCardOptions } from "./zones";
 export {
   DEFAULT_SHORTCUT_POLICY,

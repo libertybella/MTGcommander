@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createCardDefinition, createCardInstance, createGameState } from "./createGame";
 import {
+  autoTapPlan,
   canPayWithPotential,
   hasMeaningfulAction,
   legalActions,
@@ -289,5 +290,35 @@ describe("potentialMana", () => {
     expect(potential.fixed.R).toBe(1);
     expect(potential.fixed.U).toBe(1);
     expect(potential.optionSets).toEqual([["G", "W"]]);
+  });
+});
+
+describe("autoTapPlan", () => {
+  it("plans taps that cover a colored cost, saving duals for their pips", () => {
+    const { game, me } = twoPlayers();
+    mainPhase(game, me);
+    addCard(game, island(), me, "battlefield");
+    const dual = createCardDefinition({
+      name: "Test Dual",
+      typeLine: "Land",
+      producesOptions: ["G", "W"],
+    });
+    addCard(game, dual, me, "battlefield");
+    const plan = autoTapPlan(game, me, "{U}{W}");
+    expect(plan).toHaveLength(2);
+    const colors = plan!.filter((tap) => tap.color).map((tap) => tap.color);
+    expect(colors).toEqual(["W"]);
+  });
+
+  it("returns an empty plan when the pool already pays", () => {
+    const { game, me } = twoPlayers();
+    game.players[0]!.mana.U = 1;
+    expect(autoTapPlan(game, me, "{U}")).toEqual([]);
+  });
+
+  it("returns null when even tapping everything cannot pay", () => {
+    const { game, me } = twoPlayers();
+    addCard(game, island(), me, "battlefield");
+    expect(autoTapPlan(game, me, "{U}{U}")).toBeNull();
   });
 });
