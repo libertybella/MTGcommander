@@ -128,7 +128,17 @@ describe("Stage 6: compile-rate metric", () => {
         `${rate.partial.length} partial, ${rate.none.length} none`,
     );
     if (listPath && rate.none.length > 0) {
-      console.log(`[compile-rate] top misses: ${rate.none.slice(0, 40).join(" | ")}`);
+      // Report misses in the list's own order (EDHREC rank), most-played first.
+      const rank = new Map(
+        (JSON.parse(readFileSync(listPath, "utf8")) as string[]).map((name, index) => [
+          name.toLowerCase(),
+          index,
+        ]),
+      );
+      const ranked = [...rate.none].sort(
+        (a, b) => (rank.get(a.toLowerCase()) ?? 9999) - (rank.get(b.toLowerCase()) ?? 9999),
+      );
+      console.log(`[compile-rate] top misses: ${ranked.slice(0, 60).join(" | ")}`);
     }
     // COMPILE_ANALYZE=1 clusters compile notes across the swept cards so
     // pattern sprints can target the biggest wins first.

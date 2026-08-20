@@ -51,6 +51,195 @@ const OVERRIDES = new Map<string, OverrideBuilder>([
         ],
       }),
   ],
+  [
+    // ETB: fetch a basic land tapped (fail-to-find covers the "may");
+    // dies: draw a card (the "may" is auto-taken — declining is a corner case).
+    normalizeCardName("Solemn Simulacrum"),
+    (card) =>
+      createCardDefinition({
+        id: definitionIdForOracle(card),
+        name: card.name,
+        manaCost: card.manaCost,
+        typeLine: card.typeLine,
+        oracleText: card.oracleText,
+        imageUrl: card.imageUrl ?? "",
+        power: 2,
+        toughness: 2,
+        triggers: [
+          {
+            event: "enter_battlefield",
+            effects: [
+              {
+                kind: "search_library",
+                playerId: "controller",
+                filter: { supertypes: ["basic"], types: ["land"] },
+                destination: "battlefield",
+                count: 1,
+                entersTapped: true,
+              },
+            ],
+            targetRequirements: [],
+          },
+          {
+            event: "dies",
+            effects: [{ kind: "draw", playerId: "controller", count: 1 }],
+            targetRequirements: [],
+          },
+        ],
+      }),
+  ],
+  [
+    normalizeCardName("Phyrexian Arena"),
+    (card) =>
+      createCardDefinition({
+        id: definitionIdForOracle(card),
+        name: card.name,
+        manaCost: card.manaCost,
+        typeLine: card.typeLine,
+        oracleText: card.oracleText,
+        imageUrl: card.imageUrl ?? "",
+        triggers: [
+          {
+            event: "upkeep",
+            effects: [
+              { kind: "draw", playerId: "controller", count: 1 },
+              { kind: "lose_life", playerId: "controller", amount: 1 },
+            ],
+            targetRequirements: [],
+          },
+        ],
+      }),
+  ],
+  [
+    // "this creature or another creature you control dies" — watch controlled,
+    // self included.
+    normalizeCardName("Zulaport Cutthroat"),
+    (card) =>
+      createCardDefinition({
+        id: definitionIdForOracle(card),
+        name: card.name,
+        manaCost: card.manaCost,
+        typeLine: card.typeLine,
+        oracleText: card.oracleText,
+        imageUrl: card.imageUrl ?? "",
+        power: 1,
+        toughness: 1,
+        triggers: [
+          {
+            event: "dies",
+            watch: "controlled",
+            subjectFilter: { types: ["creature"] },
+            effects: [
+              { kind: "lose_life", playerId: "each_opponent", amount: 1 },
+              { kind: "gain_life", playerId: "controller", amount: 1 },
+            ],
+            targetRequirements: [],
+          },
+        ],
+      }),
+  ],
+  [
+    // ETB: pick any card from your graveyard back to hand ("target" becomes
+    // a resolution-time choice in this schema).
+    normalizeCardName("Eternal Witness"),
+    (card) =>
+      createCardDefinition({
+        id: definitionIdForOracle(card),
+        name: card.name,
+        manaCost: card.manaCost,
+        typeLine: card.typeLine,
+        oracleText: card.oracleText,
+        imageUrl: card.imageUrl ?? "",
+        power: 2,
+        toughness: 1,
+        triggers: [
+          {
+            event: "enter_battlefield",
+            effects: [
+              {
+                kind: "choose_card",
+                chooserId: "controller",
+                sources: [{ playerId: "controller", zone: "graveyard", filter: "any" }],
+                thenEffects: [{ kind: "move_card", cardId: "chosen_card", toZone: "hand" }],
+              },
+            ],
+            targetRequirements: [],
+          },
+        ],
+      }),
+  ],
+  [
+    // Draw three, then two sequential hand picks go back on top ("any order"
+    // is the order you pick them).
+    normalizeCardName("Brainstorm"),
+    (card) =>
+      createCardDefinition({
+        id: definitionIdForOracle(card),
+        name: card.name,
+        manaCost: card.manaCost,
+        typeLine: card.typeLine,
+        oracleText: card.oracleText,
+        imageUrl: card.imageUrl ?? "",
+        effects: [
+          { kind: "draw", playerId: "controller", count: 3 },
+          {
+            kind: "choose_card",
+            chooserId: "controller",
+            sources: [{ playerId: "controller", zone: "hand", filter: "any" }],
+            thenEffects: [
+              {
+                kind: "move_card",
+                cardId: "chosen_card",
+                toZone: "library",
+                libraryPosition: "top",
+              },
+            ],
+          },
+          {
+            kind: "choose_card",
+            chooserId: "controller",
+            sources: [{ playerId: "controller", zone: "hand", filter: "any" }],
+            thenEffects: [
+              {
+                kind: "move_card",
+                cardId: "chosen_card",
+                toZone: "library",
+                libraryPosition: "top",
+              },
+            ],
+          },
+        ],
+      }),
+  ],
+  [
+    // Documented approximation: taps for any color instead of "any color a
+    // land an opponent controls could produce" (strictly more permissive).
+    normalizeCardName("Fellwar Stone"),
+    (card) =>
+      createCardDefinition({
+        id: definitionIdForOracle(card),
+        name: card.name,
+        manaCost: card.manaCost,
+        typeLine: card.typeLine,
+        oracleText: card.oracleText,
+        imageUrl: card.imageUrl ?? "",
+        producesAnyColor: true,
+      }),
+  ],
+  [
+    // Same approximation as Fellwar Stone.
+    normalizeCardName("Exotic Orchard"),
+    (card) =>
+      createCardDefinition({
+        id: definitionIdForOracle(card),
+        name: card.name,
+        manaCost: card.manaCost,
+        typeLine: card.typeLine,
+        oracleText: card.oracleText,
+        imageUrl: card.imageUrl ?? "",
+        producesAnyColor: true,
+      }),
+  ],
 ]);
 
 /** The hand-authored definition for this card, if one exists. */
