@@ -112,7 +112,8 @@ export {
   isMulliganOpen,
 } from "./mulligan";
 export { redactForViewer, isHiddenFromViewer, HIDDEN_DEFINITION_ID } from "./visibility";
-export { applyChooseTargets, applyChooseEnterReplacement, applyResolveScry, applyResolveSurveil, applyResolveDiscard, applyResolveChooseCard, applyResolveLookAssign, currentPrompt, isPromptOpen, lookedAtCardIds, legalIdsForChooseSources } from "./prompt";
+export { applyChooseTargets, applyChooseEnterReplacement, applyResolveOrderTriggers, applyResolveScry, applyResolveSurveil, applyResolveDiscard, applyResolveChooseCard, applyResolveLookAssign, currentPrompt, isPromptOpen, lookedAtCardIds, legalIdsForChooseSources } from "./prompt";
+export { queueSimultaneousTriggersInPlace } from "./triggers";
 export { isChosenTargetLegal, validateChosenTargets, legalChoicesForRequirement, firstLegalTargetSet, hasAnyLegalTargetSet } from "./targeting";
 export {
   addMana,
@@ -210,6 +211,7 @@ export type {
   TargetKind,
   TargetRequirement,
   TokenTemplate,
+  TriggerCandidate,
   TurnState,
   ZoneName,
   ZoneReveal,

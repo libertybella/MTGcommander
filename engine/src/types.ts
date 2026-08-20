@@ -420,8 +420,25 @@ export type CardTrigger = {
   targetRequirements?: TargetRequirement[];
 };
 
+/** One triggered ability waiting to be put on the stack. */
+export type TriggerCandidate = {
+  cardId: CardInstanceId;
+  triggerIndex: number;
+};
+
 /** A required player decision that is not priority (targets, later modes). */
 export type PendingPrompt =
+  | {
+      /**
+       * APNAP simultaneous-trigger ordering (CR 101.4, 603.3b): the player
+       * orders their own triggers; `remaining` holds later players' groups,
+       * processed after this choice resolves.
+       */
+      kind: "order_triggers";
+      playerId: PlayerId;
+      entries: TriggerCandidate[];
+      remaining: { playerId: PlayerId; entries: TriggerCandidate[] }[];
+    }
   | {
       kind: "choose_targets";
       playerId: PlayerId;
@@ -588,6 +605,7 @@ export type GameAction =
   | { kind: "advance_step"; playerId: PlayerId }
   | { kind: "advance_turn"; playerId: PlayerId }
   | { kind: "choose_targets"; playerId: PlayerId; targets: ChosenTarget[] }
+  | { kind: "resolve_order_triggers"; playerId: PlayerId; order: number[] }
   | { kind: "choose_enter_replacement"; playerId: PlayerId; pay: boolean }
   | { kind: "resolve_scry"; playerId: PlayerId; bottomIds: CardInstanceId[] }
   | { kind: "resolve_surveil"; playerId: PlayerId; graveyardIds: CardInstanceId[] }

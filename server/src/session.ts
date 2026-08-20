@@ -224,6 +224,14 @@ export class GameHost {
         if (this.seatedPlayerIds.has(prompt.playerId)) {
           return;
         }
+        if (prompt.kind === "order_triggers") {
+          this.apply({
+            kind: "resolve_order_triggers",
+            playerId: prompt.playerId,
+            order: prompt.entries.map((_, index) => index),
+          });
+          continue;
+        }
         if (prompt.kind === "may_pay_life_or_enter_tapped") {
           this.apply({
             kind: "choose_enter_replacement",

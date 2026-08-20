@@ -31,6 +31,7 @@ import type {
   StaticModifier,
   TargetRequirement,
   TokenTemplate,
+  TriggerCandidate,
   ZoneName,
   ZoneReveal,
 } from "./types";
@@ -399,6 +400,14 @@ function parsePrompts(value: unknown, playerIds: Set<string>): PendingPrompt[] {
         amount: expectNumber(entry.amount, `prompts[${index}].amount`),
       };
     }
+    if (kind === "order_triggers") {
+      return {
+        kind,
+        playerId,
+        entries: parseTriggerCandidates(entry.entries, `prompts[${index}].entries`),
+        remaining: parseTriggerGroups(entry.remaining, `prompts[${index}].remaining`, playerIds),
+      };
+    }
     if (kind === "scry" || kind === "surveil" || kind === "choose_discard") {
       const resumeEffects =
         entry.resumeEffects === undefined
@@ -455,6 +464,47 @@ function parsePrompts(value: unknown, playerIds: Set<string>): PendingPrompt[] {
       origin,
       triggerIndex: expectNumber(entry.triggerIndex, `prompts[${index}].triggerIndex`),
       requirements: parseTargetRequirements(entry.requirements, `prompts[${index}].requirements`),
+    };
+  });
+}
+
+function parseTriggerCandidates(value: unknown, label: string): TriggerCandidate[] {
+  if (!Array.isArray(value) || value.length === 0) {
+    throw new Error(`Invalid ${label}`);
+  }
+  return value.map((entry, index) => {
+    if (!isRecord(entry)) {
+      throw new Error(`Invalid ${label}[${index}]`);
+    }
+    return {
+      cardId: expectString(entry.cardId, `${label}[${index}].cardId`),
+      triggerIndex: expectNumber(entry.triggerIndex, `${label}[${index}].triggerIndex`),
+    };
+  });
+}
+
+function parseTriggerGroups(
+  value: unknown,
+  label: string,
+  playerIds: Set<string>,
+): { playerId: PlayerId; entries: TriggerCandidate[] }[] {
+  if (value === undefined || value === null) {
+    return [];
+  }
+  if (!Array.isArray(value)) {
+    throw new Error(`Invalid ${label}`);
+  }
+  return value.map((entry, index) => {
+    if (!isRecord(entry)) {
+      throw new Error(`Invalid ${label}[${index}]`);
+    }
+    const playerId = expectString(entry.playerId, `${label}[${index}].playerId`);
+    if (!playerIds.has(playerId)) {
+      throw new Error(`${label}[${index}].playerId must be a player`);
+    }
+    return {
+      playerId,
+      entries: parseTriggerCandidates(entry.entries, `${label}[${index}].entries`),
     };
   });
 }
@@ -1427,6 +1477,16 @@ export function parseGameAction(json: string): GameAction {
       kind,
       playerId,
       pay: raw.pay === true,
+    };
+  }
+  if (kind === "resolve_order_triggers") {
+    if (!Array.isArray(raw.order)) {
+      throw new Error("Invalid action.order");
+    }
+    return {
+      kind,
+      playerId,
+      order: raw.order.map((entry, index) => expectNumber(entry, `action.order[${index}]`)),
     };
   }
   if (kind === "resolve_scry") {

@@ -2,6 +2,7 @@ import { createId } from "./ids";
 import { cloneGameState } from "./clone";
 import { isLiving, requireLiving } from "./players";
 import { hasAnyLegalTargetSet, validateChosenTargets } from "./targeting";
+import { processTriggerGroupsInPlace, queueDefinitionTriggerInPlace } from "./triggers";
 import { moveCard } from "./zones";
 import type {
   BoundChooseCardSource,
@@ -62,6 +63,45 @@ export function applyChooseTargets(
   });
   next.passesSinceAction = 0;
   next.priorityPlayerId = next.turn.activePlayerId;
+  return next;
+}
+
+/**
+ * Finish an APNAP trigger-ordering pause (CR 603.3b): the chooser's triggers
+ * go on the stack in the chosen order, then later players' groups continue.
+ */
+export function applyResolveOrderTriggers(
+  state: GameState,
+  playerId: PlayerId,
+  order: number[],
+): GameState {
+  const prompt = currentPrompt(state);
+  if (!prompt || prompt.kind !== "order_triggers") {
+    throw new Error("No trigger ordering pending");
+  }
+  requireLiving(state, playerId);
+  if (prompt.playerId !== playerId) {
+    throw new Error("It is not that player's choice");
+  }
+  const expected = prompt.entries.map((_, index) => index);
+  if (
+    order.length !== expected.length ||
+    [...order].sort((a, b) => a - b).some((value, index) => value !== index)
+  ) {
+    throw new Error("Order every waiting trigger exactly once");
+  }
+
+  const next = cloneGameState(state);
+  next.prompts.shift();
+  for (const index of order) {
+    const entry = prompt.entries[index]!;
+    queueDefinitionTriggerInPlace(next, entry.cardId, entry.triggerIndex);
+  }
+  processTriggerGroupsInPlace(next, prompt.remaining);
+  next.passesSinceAction = 0;
+  if (next.prompts.length === 0) {
+    next.priorityPlayerId = next.turn.activePlayerId;
+  }
   return next;
 }
 
@@ -181,11 +221,11 @@ function cardMatchesFilter(
     return true;
   }
   const card = state.cards[cardId];
-  const typeLine = card ? state.definitions[card.definitionId]?.typeLine.toLowerCase() ?? "" : "";
+  const types = card ? state.definitions[card.definitionId]?.characteristics.types ?? [] : [];
   if (filter === "noncreature_nonland") {
-    return !/\bland\b/.test(typeLine) && !/\bcreature\b/.test(typeLine);
+    return !types.includes("land") && !types.includes("creature");
   }
-  return !/\bland\b/.test(typeLine);
+  return !types.includes("land");
 }
 
 export function legalIdsForChooseSources(

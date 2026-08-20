@@ -117,6 +117,14 @@ function nextAction(state: GameState, rng: () => number): GameAction | null {
   if (prompt) {
     const playerId = prompt.playerId;
     switch (prompt.kind) {
+      case "order_triggers": {
+        const order = prompt.entries.map((_, index) => index);
+        for (let i = order.length - 1; i > 0; i -= 1) {
+          const j = Math.floor(rng() * (i + 1));
+          [order[i], order[j]] = [order[j]!, order[i]!];
+        }
+        return { kind: "resolve_order_triggers", playerId, order };
+      }
       case "choose_targets": {
         const targets = randomTargets(state, prompt.requirements, playerId, rng);
         return { kind: "choose_targets", playerId, targets: targets ?? [] };
