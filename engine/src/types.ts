@@ -107,6 +107,8 @@ export type CardDefinition = {
   manaAbilities: ManaAbility[];
   /** Non-mana activated abilities. Mana tapping still uses `produces` / `manaAbilities`. */
   activated: ActivatedAbility[];
+  /** Ward {N}: opponents targeting this pay N generic or the spell is countered. */
+  ward?: number;
   /** Scryfall card image, if known. Empty for synthetic / hidden cards. */
   imageUrl: string;
   /** Linked opposite face for modal DFCs and transforming cards. */
@@ -316,6 +318,7 @@ export type GameEffect =
   | { kind: "sacrifice"; cardId: CardInstanceId }
   | { kind: "add_counter"; cardId: CardInstanceId; counter: string; amount: number }
   | { kind: "counter_spell"; stackObjectId: StackObjectId }
+  | { kind: "counter_unless_pays"; stackObjectId: StackObjectId; cost: string }
   | { kind: "set_class_level"; cardId: CardInstanceId; level: number }
   | { kind: "pt_until_eot"; cardId: CardInstanceId; power: number; toughness: number }
   | { kind: "keyword_until_eot"; cardId: CardInstanceId; keyword: Keyword }
@@ -425,6 +428,7 @@ export type CardEffect =
   | { kind: "sacrifice"; cardId: CardIdSelector }
   | { kind: "add_counter"; cardId: CardIdSelector; counter: string; amount: number }
   | { kind: "counter_spell"; target: ChosenTargetRef }
+  | { kind: "counter_unless_pays"; target: ChosenTargetRef; cost: string }
   | { kind: "set_class_level"; cardId: CardIdSelector; level: number }
   | { kind: "pt_until_eot"; cardId: CardIdSelector; power: number; toughness: number }
   | { kind: "keyword_until_eot"; cardId: CardIdSelector; keyword: Keyword }
@@ -566,6 +570,16 @@ export type PendingPrompt =
       destination: SearchDestination;
       count: number;
       entersTapped?: boolean;
+      resumeEffects?: GameEffect[];
+    }
+  | {
+      /** Pay `cost` or `stackObjectId` is countered (Spell Pierce, ward). */
+      kind: "pay_or_counter";
+      playerId: PlayerId;
+      cost: string;
+      stackObjectId: StackObjectId;
+      /** Why the payment is due — shown in the UI. */
+      reason: "unless_pays" | "ward";
       resumeEffects?: GameEffect[];
     };
 
@@ -736,7 +750,14 @@ export type GameAction =
       playerId: PlayerId;
       assignments: { cardId: CardInstanceId; destination: LookDestination }[];
     }
-  | { kind: "resolve_search"; playerId: PlayerId; cardIds: CardInstanceId[] };
+  | { kind: "resolve_search"; playerId: PlayerId; cardIds: CardInstanceId[] }
+  | {
+      kind: "resolve_pay";
+      playerId: PlayerId;
+      pay: boolean;
+      /** Mana producers to tap first, in order, with color choices. */
+      taps?: { cardId: CardInstanceId; color?: ManaColor; manaIndex?: number }[];
+    };
 
 export type GameEvent =
   | { kind: "game_created"; gameId: GameId }

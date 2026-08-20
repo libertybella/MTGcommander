@@ -22,7 +22,7 @@ import { applyBottomCards, applyKeepHand, applyTakeMulligan, isMulliganOpen, rec
 import { applyRollDie } from "./dice";
 import { applyOpeningRoll, isOpeningRoll } from "./openingRoll";
 import { applyManualOverride } from "./override";
-import { applyChooseEnterReplacement, applyChooseTargets, applyResolveChooseCard, applyResolveDiscard, applyResolveLookAssign, applyResolveOrderTriggers, applyResolveScry, applyResolveSearch, applyResolveSurveil, currentPrompt, dropLostPlayerPromptsInPlace, isPromptOpen } from "./prompt";
+import { applyChooseEnterReplacement, applyChooseTargets, applyResolveChooseCard, applyResolveDiscard, applyResolveLookAssign, applyResolveOrderTriggers, applyResolvePay, applyResolveScry, applyResolveSearch, applyResolveSurveil, currentPrompt, dropLostPlayerPromptsInPlace, isPromptOpen } from "./prompt";
 import { findCardZone, moveCard } from "./zones";
 import type { CardInstanceId, ChosenTarget, GameAction, GameState, ManaColor, ManaPool, PlayerId } from "./types";
 
@@ -617,6 +617,15 @@ export function applyAction(
         const prompt = currentPrompt(state);
         const resume = prompt?.kind === "look_and_assign" ? prompt.resumeEffects ?? [] : [];
         next = applyResolveLookAssign(state, action.playerId, action.assignments);
+        if (resume.length > 0) {
+          next = applyEffects(next, resume);
+        }
+        break;
+      }
+      case "resolve_pay": {
+        const prompt = currentPrompt(state);
+        const resume = prompt?.kind === "pay_or_counter" ? prompt.resumeEffects ?? [] : [];
+        next = applyResolvePay(state, action.playerId, action.pay, action.taps ?? []);
         if (resume.length > 0) {
           next = applyEffects(next, resume);
         }

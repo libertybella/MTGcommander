@@ -1,12 +1,53 @@
 import { createId } from "./ids";
 import { cloneGameState } from "./clone";
 import { isCommander, isInstantOrSorcery } from "./cardTypes";
+import { abilitiesRemoved } from "./characteristicsEngine";
 import { enterOwnerZone, findCardZone, removeCardFromCurrentZone } from "./zones";
 import { applyEffects, bindCardEffects } from "./effects";
 import { isLiving, livingPlayerCount, nextLivingPlayerId } from "./players";
 import { applyStateBasedActionsInPlace, redirectPriorityIfLost } from "./status";
 import { hasLegalTargetRemaining, validateChosenTargets } from "./targeting";
-import type { CardInstanceId, ChosenTarget, GameState, PlayerId, ZoneName } from "./types";
+import type {
+  CardInstanceId,
+  ChosenTarget,
+  GameState,
+  PlayerId,
+  StackObjectId,
+  ZoneName,
+} from "./types";
+
+/**
+ * Ward (CR 702.21 as of its modern form): targeting an opponent's warded
+ * permanent taxes the caster — pay or the spell/ability is countered.
+ * Simplified as an immediate payment pause rather than a stacked trigger.
+ */
+function queueWardPromptsInPlace(
+  state: GameState,
+  stackObjectId: StackObjectId,
+  casterId: PlayerId,
+  targets: ChosenTarget[],
+): void {
+  for (const target of targets) {
+    if (target.type !== "creature") {
+      continue;
+    }
+    const card = state.cards[target.cardId];
+    const ward = card ? state.definitions[card.definitionId]?.ward : undefined;
+    if (!card || !ward || ward <= 0 || card.controllerId === casterId) {
+      continue;
+    }
+    if (abilitiesRemoved(state, card.id)) {
+      continue;
+    }
+    state.prompts.push({
+      kind: "pay_or_counter",
+      playerId: casterId,
+      cost: `{${ward}}`,
+      stackObjectId,
+      reason: "ward",
+    });
+  }
+}
 
 export function putActivatedAbilityOnStack(
   state: GameState,
@@ -29,8 +70,9 @@ export function putActivatedAbilityOnStack(
   validateChosenTargets(state, ability.targetRequirements, targets, card.controllerId);
 
   const next = cloneGameState(state);
+  const stackId = createId("stack");
   next.stack.push({
-    id: createId("stack"),
+    id: stackId,
     controllerId: card.controllerId,
     sourceId: cardId,
     kind: "ability",
@@ -39,6 +81,7 @@ export function putActivatedAbilityOnStack(
   });
   next.passesSinceAction = 0;
   next.priorityPlayerId = card.controllerId;
+  queueWardPromptsInPlace(next, stackId, card.controllerId, targets);
   return next;
 }
 
@@ -66,8 +109,9 @@ export function putSpellOnStack(
     throw new Error(`Card ${cardId} missing after leaving hand`);
   }
   moved.zone = "stack";
+  const stackId = createId("stack");
   next.stack.push({
-    id: createId("stack"),
+    id: stackId,
     controllerId: moved.controllerId,
     sourceId: cardId,
     kind: "spell",
@@ -75,6 +119,7 @@ export function putSpellOnStack(
   });
   next.passesSinceAction = 0;
   next.priorityPlayerId = moved.controllerId;
+  queueWardPromptsInPlace(next, stackId, moved.controllerId, targets);
   return next;
 }
 

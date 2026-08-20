@@ -1,10 +1,12 @@
 import { createId } from "./ids";
 import { cloneGameState } from "./clone";
+import { payManaCost, tapForMana } from "./mana";
+import { manaAbilitiesOf, manaTapOptionsFor } from "./manaOptions";
 import { isLiving, requireLiving } from "./players";
 import { shuffleInPlace } from "./shuffle";
 import { hasAnyLegalTargetSet, validateChosenTargets } from "./targeting";
 import { processTriggerGroupsInPlace, queueDefinitionTriggerInPlace } from "./triggers";
-import { moveCard } from "./zones";
+import { enterOwnerZoneInPlace, moveCard } from "./zones";
 import type {
   BoundChooseCardSource,
   CardEffect,
@@ -12,6 +14,8 @@ import type {
   ChosenTarget,
   GameState,
   LookDestination,
+  ManaColor,
+  ManaPool,
   PendingPrompt,
   PlayerId,
   SearchFilter,
@@ -389,6 +393,63 @@ export function applyResolveSearch(
     shuffleInPlace(player.zones.library, random);
   }
   return next;
+}
+
+/**
+ * Answer a pay-or-be-countered prompt (Spell Pierce, ward). Paying may tap
+ * listed mana producers first — activating mana abilities is legal while a
+ * payment is due (CR 601.2g). Declining counters the spell.
+ */
+export function applyResolvePay(
+  state: GameState,
+  playerId: PlayerId,
+  pay: boolean,
+  taps: { cardId: CardInstanceId; color?: ManaColor; manaIndex?: number }[] = [],
+): GameState {
+  const prompt = currentPrompt(state);
+  if (!prompt || prompt.kind !== "pay_or_counter") {
+    throw new Error("No payment pending");
+  }
+  requireLiving(state, playerId);
+  if (prompt.playerId !== playerId) {
+    throw new Error("It is not that player's choice");
+  }
+  let next = cloneGameState(state);
+  next.prompts.shift();
+  if (!pay) {
+    const index = next.stack.findIndex((entry) => entry.id === prompt.stackObjectId);
+    if (index !== -1) {
+      const [removed] = next.stack.splice(index, 1);
+      if (removed?.sourceId) {
+        enterOwnerZoneInPlace(next, removed.sourceId, "graveyard");
+      }
+    }
+    return next;
+  }
+  for (const tap of taps) {
+    const card = next.cards[tap.cardId];
+    if (!card || card.controllerId !== playerId || card.zone !== "battlefield" || card.tapped) {
+      throw new Error("Cannot tap that permanent for mana");
+    }
+    const definition = next.definitions[card.definitionId];
+    const abilities = definition ? manaAbilitiesOf(definition) : [];
+    const ability = abilities[tap.manaIndex ?? 0];
+    if (!ability) {
+      throw new Error("That permanent does not produce mana");
+    }
+    const options = manaTapOptionsFor(ability);
+    let addition: Partial<ManaPool>;
+    if (options) {
+      if (!tap.color || !options.includes(tap.color)) {
+        throw new Error("Choose a mana color");
+      }
+      addition = { [tap.color]: 1 };
+    } else {
+      addition = ability.produces;
+    }
+    next = tapForMana(next, tap.cardId, addition);
+  }
+  return payManaCost(next, playerId, prompt.cost);
 }
 
 export function applyResolveLookAssign(

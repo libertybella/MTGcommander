@@ -409,6 +409,10 @@ export class GameHost {
           });
           continue;
         }
+        if (prompt.kind === "pay_or_counter") {
+          this.apply({ kind: "resolve_pay", playerId: prompt.playerId, pay: false });
+          continue;
+        }
         if (prompt.kind === "search_library") {
           const legal = legalSearchIds(this.state, prompt).slice(0, prompt.count);
           this.apply({ kind: "resolve_search", playerId: prompt.playerId, cardIds: legal });

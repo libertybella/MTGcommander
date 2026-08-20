@@ -354,6 +354,13 @@ export function bindCardEffect(
       }
       return { kind: "counter_spell", stackObjectId: chosen.stackObjectId };
     }
+    case "counter_unless_pays": {
+      const chosen = chosenTargetAt(context, effect.target.index, state);
+      if (!chosen || chosen.type !== "spell") {
+        return null;
+      }
+      return { kind: "counter_unless_pays", stackObjectId: chosen.stackObjectId, cost: effect.cost };
+    }
     default: {
       const exhaustive: never = effect;
       throw new Error(`Unknown card effect ${(exhaustive as CardEffect).kind}`);
@@ -573,6 +580,26 @@ function applySetClassLevel(state: GameState, cardId: CardInstanceId, level: num
     throw new Error("Class levels must be gained in order");
   }
   card.classLevel = level;
+  return next;
+}
+
+function applyCounterUnlessPays(
+  state: GameState,
+  stackObjectId: StackObjectId,
+  cost: string,
+): GameState {
+  const entry = state.stack.find((object) => object.id === stackObjectId);
+  if (!entry) {
+    return state;
+  }
+  const next = cloneGameState(state);
+  next.prompts.push({
+    kind: "pay_or_counter",
+    playerId: entry.controllerId,
+    cost,
+    stackObjectId,
+    reason: "unless_pays",
+  });
   return next;
 }
 
@@ -887,6 +914,9 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
       case "counter_spell":
         next = applyCounterSpell(state, effect.stackObjectId);
         break;
+      case "counter_unless_pays":
+        next = applyCounterUnlessPays(state, effect.stackObjectId, effect.cost);
+        break;
       case "set_class_level":
         next = applySetClassLevel(state, effect.cardId, effect.level);
         break;
@@ -947,7 +977,8 @@ export function applyEffects(state: GameState, effects: GameEffect[]): GameState
         prompt.kind === "choose_discard" ||
         prompt.kind === "choose_card" ||
         prompt.kind === "look_and_assign" ||
-        prompt.kind === "search_library")
+        prompt.kind === "search_library" ||
+        prompt.kind === "pay_or_counter")
     ) {
       const remaining = effects.slice(index + 1);
       if (remaining.length > 0) {

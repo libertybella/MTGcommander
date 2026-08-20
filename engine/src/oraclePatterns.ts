@@ -29,6 +29,7 @@ export type CompiledOracleText = {
   producesAnyColor: boolean;
   producesOptions: ManaColor[];
   manaAbilities: ManaAbility[];
+  ward?: number;
   leftover: string[];
   notes: string[];
 };
@@ -581,6 +582,32 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     };
   }
 
+  match = sentence.match(
+    /^Counter target (spell|noncreature spell|creature spell) unless its controller pays \{(\d+)\}$/i,
+  );
+  if (match?.[1] && match[2]) {
+    const what = match[1].toLowerCase();
+    return {
+      targetRequirements: [
+        {
+          kind:
+            what === "noncreature spell"
+              ? "noncreature_spell"
+              : what === "creature spell"
+                ? "creature_spell"
+                : "spell",
+        },
+      ],
+      effects: [
+        {
+          kind: "counter_unless_pays",
+          target: { type: "chosen", index: 0 },
+          cost: `{${match[2]}}`,
+        },
+      ],
+    };
+  }
+
   if (/^counter target noncreature spell$/i.test(sentence)) {
     return {
       targetRequirements: [{ kind: "noncreature_spell" }],
@@ -1060,6 +1087,12 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
       continue;
     }
     if (isKeywordLine(sentence)) {
+      continue;
+    }
+
+    const wardLine = sentence.match(/^Ward \{(\d+)\}$/i);
+    if (wardLine?.[1]) {
+      result.ward = Number(wardLine[1]);
       continue;
     }
 

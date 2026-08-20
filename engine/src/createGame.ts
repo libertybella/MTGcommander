@@ -55,6 +55,7 @@ export function createCardDefinition(
         | "imageUrl"
         | "otherFaceId"
         | "layout"
+        | "ward"
       >
     > & { colors?: Color[] },
 ): CardDefinition {
@@ -124,6 +125,7 @@ export function createCardDefinition(
         }))
       : [],
     imageUrl: input.imageUrl ?? "",
+    ...(input.ward && input.ward > 0 ? { ward: input.ward } : {}),
     ...(input.otherFaceId ? { otherFaceId: input.otherFaceId } : {}),
     ...(input.layout && input.layout !== "normal" ? { layout: input.layout } : {}),
   };

@@ -299,6 +299,7 @@ export function parseGameState(json: string): GameState {
       activated: parseActivatedAbilities(def.activated, `definition.${id}.activated`),
       imageUrl:
         def.imageUrl === undefined ? "" : expectString(def.imageUrl, "definition.imageUrl", true),
+      ...(def.ward === undefined ? {} : { ward: expectNumber(def.ward, "definition.ward") }),
       ...(def.otherFaceId === undefined
         ? {}
         : { otherFaceId: expectString(def.otherFaceId, "definition.otherFaceId") }),
@@ -453,6 +454,24 @@ function parsePrompts(value: unknown, playerIds: Set<string>): PendingPrompt[] {
         playerId,
         entries: parseTriggerCandidates(entry.entries, `prompts[${index}].entries`),
         remaining: parseTriggerGroups(entry.remaining, `prompts[${index}].remaining`, playerIds),
+      };
+    }
+    if (kind === "pay_or_counter") {
+      const reason = expectString(entry.reason, `prompts[${index}].reason`);
+      if (reason !== "unless_pays" && reason !== "ward") {
+        throw new Error(`Invalid prompts[${index}].reason`);
+      }
+      const resumeEffects =
+        entry.resumeEffects === undefined
+          ? undefined
+          : parseGameEffects(entry.resumeEffects, `prompts[${index}].resumeEffects`);
+      return {
+        kind,
+        playerId,
+        cost: expectString(entry.cost, `prompts[${index}].cost`),
+        stackObjectId: expectString(entry.stackObjectId, `prompts[${index}].stackObjectId`),
+        reason,
+        ...(resumeEffects && resumeEffects.length > 0 ? { resumeEffects } : {}),
       };
     }
     if (kind === "scry" || kind === "surveil" || kind === "choose_discard") {
@@ -1037,6 +1056,24 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
         throw new Error(`Invalid ${label}.target.index`);
       }
       return { kind, target: { type: "chosen", index } };
+    }
+    case "counter_unless_pays": {
+      if (!isRecord(value.target)) {
+        throw new Error(`Invalid ${label}.target`);
+      }
+      const targetType = expectString(value.target.type, `${label}.target.type`);
+      if (targetType !== "chosen") {
+        throw new Error(`Invalid ${label}.target.type`);
+      }
+      const index = expectNumber(value.target.index, `${label}.target.index`);
+      if (!Number.isInteger(index) || index < 0) {
+        throw new Error(`Invalid ${label}.target.index`);
+      }
+      return {
+        kind,
+        target: { type: "chosen", index },
+        cost: expectString(value.cost, `${label}.cost`),
+      };
     }
     case "set_class_level":
       return {
@@ -1806,6 +1843,36 @@ export function parseGameAction(json: string): GameAction {
       kind,
       playerId,
       cardIds: expectStringArray(raw.cardIds, "action.cardIds") as CardInstanceId[],
+    };
+  }
+  if (kind === "resolve_pay") {
+    const taps =
+      raw.taps === undefined
+        ? undefined
+        : (() => {
+            if (!Array.isArray(raw.taps)) {
+              throw new Error("Invalid action.taps");
+            }
+            return raw.taps.map((entry, index) => {
+              if (!isRecord(entry)) {
+                throw new Error(`Invalid action.taps[${index}]`);
+              }
+              return {
+                cardId: expectString(entry.cardId, `action.taps[${index}].cardId`),
+                ...(entry.color === undefined
+                  ? {}
+                  : { color: parseManaColor(entry.color, `action.taps[${index}].color`) }),
+                ...(entry.manaIndex === undefined
+                  ? {}
+                  : { manaIndex: expectNumber(entry.manaIndex, `action.taps[${index}].manaIndex`) }),
+              };
+            });
+          })();
+    return {
+      kind,
+      playerId,
+      pay: raw.pay === true,
+      ...(taps ? { taps } : {}),
     };
   }
   if (kind === "resolve_look_assign") {

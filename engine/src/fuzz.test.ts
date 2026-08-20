@@ -3,6 +3,7 @@ import { applyAction } from "./actions";
 import { isCreature } from "./cardTypes";
 import { hasKeyword } from "./keywords";
 import { legalActions } from "./legalActions";
+import { canPayManaCost } from "./mana";
 import { manaAbilitiesOf, manaTapOptionsFor } from "./manaOptions";
 import { isMulliganOpen } from "./mulligan";
 import { isOpeningRoll, openingRollPending } from "./openingRoll";
@@ -155,6 +156,11 @@ function nextAction(state: GameState, rng: () => number): GameAction | null {
           return null;
         }
         return { kind: "resolve_choose_card", playerId, cardId: pick(rng, legal) };
+      }
+      case "pay_or_counter": {
+        const player = state.players.find((entry) => entry.id === playerId)!;
+        const payable = canPayManaCost(player.mana, prompt.cost);
+        return { kind: "resolve_pay", playerId, pay: payable && rng() < 0.5 };
       }
       case "search_library": {
         const legal = legalSearchIds(state, prompt);
