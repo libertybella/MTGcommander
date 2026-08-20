@@ -1,7 +1,10 @@
+import { randomBytes } from "node:crypto";
 import { networkInterfaces } from "node:os";
 import { WebSocketServer, type WebSocket } from "ws";
 import {
+  getEngineInfo,
   parseGameAction,
+  redactForSpectator,
   type GameAction,
   type GameState,
   type PlayerId,
@@ -23,7 +26,18 @@ export type HostListenInfo = {
 };
 
 type ClientMessage =
-  | { type: "join"; roomCode: string; displayName: string; playerId?: PlayerId }
+  | {
+      type: "join";
+      roomCode: string;
+      displayName: string;
+      playerId?: PlayerId;
+      /** Required to rejoin a seat someone already claimed. */
+      token?: string;
+      /** Watch without a seat: public information only. */
+      spectate?: boolean;
+      /** Client engine version; a mismatch refuses cleanly. */
+      engine?: string;
+    }
   | { type: "submit"; action: GameAction }
   | { type: "preferences"; preferences: SeatPreferencesInput };
 
@@ -68,6 +82,9 @@ function parseClientMessage(raw: string): ClientMessage {
       roomCode: value.roomCode,
       displayName: value.displayName,
       ...(typeof value.playerId === "string" ? { playerId: value.playerId } : {}),
+      ...(typeof value.token === "string" ? { token: value.token } : {}),
+      ...(value.spectate === true ? { spectate: true } : {}),
+      ...(typeof value.engine === "string" ? { engine: value.engine } : {}),
     };
   }
   if (value.type === "submit") {
@@ -98,7 +115,10 @@ export class GameServer {
   private wss: WebSocketServer | null = null;
   private host: GameHost | null = null;
   private roomCode = "";
-  private readonly sockets = new Map<WebSocket, PlayerId>();
+  /** Socket → seat; null marks a spectator. */
+  private readonly sockets = new Map<WebSocket, PlayerId | null>();
+  /** First claim of a seat issues a token; rejoining that seat requires it. */
+  private readonly seatTokens = new Map<PlayerId, string>();
   private unsubscribe: (() => void) | null = null;
 
   attach(host: GameHost, roomCode = createRoomCode()): string {
@@ -219,10 +239,28 @@ export class GameServer {
     if (message.roomCode.trim().toUpperCase() !== this.roomCode) {
       throw new Error("Wrong room code");
     }
+    if (message.engine !== undefined && message.engine !== getEngineInfo().version) {
+      throw new Error(
+        `Version mismatch: table runs engine ${getEngineInfo().version}, you have ${message.engine}`,
+      );
+    }
+    if (message.spectate) {
+      this.sockets.set(socket, null);
+      send(socket, {
+        type: "joined",
+        roomCode: this.roomCode,
+        playerId: null,
+        spectator: true,
+        view: redactForSpectator(this.host.viewFor(this.host.getViewerId(), { revealHidden: true })),
+        seats: this.seats(),
+      });
+      this.broadcast();
+      return;
+    }
     const players = this.players();
     const taken = new Set<PlayerId>();
     for (const [existing, id] of this.sockets) {
-      if (existing !== socket) {
+      if (existing !== socket && id !== null) {
         taken.add(id);
       }
     }
@@ -231,12 +269,25 @@ export class GameServer {
       if (!players.some((player) => player.id === playerId)) {
         throw new Error("Unknown player");
       }
+      const requiredToken = this.seatTokens.get(playerId);
+      if (requiredToken && requiredToken !== message.token) {
+        throw new Error("That seat is claimed; rejoin with its seat token");
+      }
     } else {
-      const free = players.find((player) => !taken.has(player.id));
+      // Auto-assign only never-claimed seats: a disconnected friend's seat
+      // waits for their token instead of being handed to a stranger.
+      const free = players.find(
+        (player) => !taken.has(player.id) && !this.seatTokens.has(player.id),
+      );
       if (!free) {
         throw new Error("Table is full");
       }
       playerId = free.id;
+    }
+    let token = this.seatTokens.get(playerId);
+    if (!token) {
+      token = randomBytes(12).toString("hex");
+      this.seatTokens.set(playerId, token);
     }
     for (const [existing, id] of this.sockets) {
       if (id === playerId && existing !== socket) {
@@ -254,6 +305,7 @@ export class GameServer {
       type: "joined",
       roomCode: this.roomCode,
       playerId,
+      token,
       view: this.host.viewFor(playerId),
       seats: this.seats(),
     });
@@ -263,15 +315,18 @@ export class GameServer {
   private handlePreferences(socket: WebSocket, preferences: SeatPreferencesInput): void {
     const playerId = this.sockets.get(socket);
     if (!playerId || !this.host) {
-      throw new Error("Join the table first");
+      throw new Error("Join the table first (spectators have no seat)");
     }
     this.host.setPreferences(playerId, preferences);
   }
 
   private handleSubmit(socket: WebSocket, action: GameAction): void {
     const playerId = this.sockets.get(socket);
-    if (!playerId || !this.host) {
+    if (playerId === undefined || !this.host) {
       throw new Error("Join the table first");
+    }
+    if (playerId === null) {
+      throw new Error("Spectators cannot act");
     }
     const result = this.host.submit(playerId, action);
     if (!result.ok) {
@@ -286,7 +341,12 @@ export class GameServer {
     for (const [socket, playerId] of this.sockets) {
       send(socket, {
         type: "state",
-        view: this.host.viewFor(playerId),
+        view:
+          playerId === null
+            ? redactForSpectator(
+                this.host.viewFor(this.host.getViewerId(), { revealHidden: true }),
+              )
+            : this.host.viewFor(playerId),
         seats: this.seats(),
       });
     }

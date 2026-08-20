@@ -258,3 +258,92 @@ describe("websocket game server", () => {
     expect(view.stack[0]?.sourceId).toBe(trickCard.id);
   });
 });
+
+describe("Stage 7: session hardening", () => {
+  let server2: GameServer | null = null;
+  const sockets2: WebSocket[] = [];
+
+  afterEach(async () => {
+    for (const socket of sockets2) {
+      socket.close();
+    }
+    sockets2.length = 0;
+    if (server2) {
+      await server2.stop();
+      server2 = null;
+    }
+  });
+
+  it("issues seat tokens and refuses a claimed seat without one", async () => {
+    const { host, you } = catalogTable();
+    server2 = new GameServer();
+    server2.attach(host, "ROOM04");
+    const info = await server2.listen(0);
+    const first = await openSocket(`ws://127.0.0.1:${info.port}`);
+    sockets2.push(first);
+    const joined = waitFor(first, "joined");
+    first.send(JSON.stringify({ type: "join", roomCode: "ROOM04", displayName: "You", playerId: you }));
+    const hello = await joined;
+    expect(typeof hello.token).toBe("string");
+
+    const intruder = await openSocket(`ws://127.0.0.1:${info.port}`);
+    sockets2.push(intruder);
+    const refused = waitFor(intruder, "error");
+    intruder.send(
+      JSON.stringify({ type: "join", roomCode: "ROOM04", displayName: "Sneak", playerId: you }),
+    );
+    const error = await refused;
+    expect(String(error.message)).toMatch(/seat token/);
+
+    // Rejoining with the token succeeds (and bumps the old socket).
+    const rejoin = await openSocket(`ws://127.0.0.1:${info.port}`);
+    sockets2.push(rejoin);
+    const rejoined = waitFor(rejoin, "joined");
+    rejoin.send(
+      JSON.stringify({
+        type: "join",
+        roomCode: "ROOM04",
+        displayName: "You again",
+        playerId: you,
+        token: hello.token,
+      }),
+    );
+    expect((await rejoined).playerId).toBe(you);
+  });
+
+  it("seats spectators with fully hidden hands and refuses their actions", async () => {
+    const { host, you } = catalogTable();
+    server2 = new GameServer();
+    server2.attach(host, "ROOM05");
+    const info = await server2.listen(0);
+    const watcher = await openSocket(`ws://127.0.0.1:${info.port}`);
+    sockets2.push(watcher);
+    const joined = waitFor(watcher, "joined");
+    watcher.send(JSON.stringify({ type: "join", roomCode: "ROOM05", displayName: "Railbird", spectate: true }));
+    const hello = await joined;
+    expect(hello.spectator).toBe(true);
+    const view = hello.view as GameState;
+    const anyHand = view.players[0]!.zones.hand[0]!;
+    expect(view.cards[anyHand]?.definitionId).toBe("def-hidden");
+
+    const refused = waitFor(watcher, "error");
+    watcher.send(
+      JSON.stringify({ type: "submit", action: { kind: "pass_priority", playerId: you } }),
+    );
+    expect(String((await refused).message)).toMatch(/Spectators/);
+  });
+
+  it("refuses a client with a mismatched engine version", async () => {
+    const { host } = catalogTable();
+    server2 = new GameServer();
+    server2.attach(host, "ROOM06");
+    const info = await server2.listen(0);
+    const outdated = await openSocket(`ws://127.0.0.1:${info.port}`);
+    sockets2.push(outdated);
+    const refused = waitFor(outdated, "error");
+    outdated.send(
+      JSON.stringify({ type: "join", roomCode: "ROOM06", displayName: "Old", engine: "0.0.0-old" }),
+    );
+    expect(String((await refused).message)).toMatch(/Version mismatch/);
+  });
+});

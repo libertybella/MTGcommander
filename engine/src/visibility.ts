@@ -35,6 +35,33 @@ function hiddenDefinition(): CardDefinition {
 }
 
 /**
+ * Spectator projection: every hand, library, and face-down permanent is
+ * hidden. Spectators own no seat, so nothing is "theirs" to reveal.
+ */
+export function redactForSpectator(state: GameState): GameState {
+  const next = cloneGameState(state);
+  next.definitions[HIDDEN_DEFINITION_ID] = hiddenDefinition();
+  for (const player of next.players) {
+    for (const zone of HIDDEN_ZONES) {
+      for (const cardId of player.zones[zone]) {
+        const card = next.cards[cardId];
+        if (card) {
+          card.definitionId = HIDDEN_DEFINITION_ID;
+        }
+      }
+    }
+    for (const cardId of player.zones.battlefield) {
+      const card = next.cards[cardId];
+      if (card?.faceDown) {
+        card.definitionId = HIDDEN_DEFINITION_ID;
+      }
+    }
+  }
+  next.reveals = [];
+  return next;
+}
+
+/**
  * Public projection for a viewer. Opponent hands and libraries keep their
  * counts and instance IDs but hide card identity. Battlefield, graveyard,
  * exile, command, stack, life, and commander damage stay public.

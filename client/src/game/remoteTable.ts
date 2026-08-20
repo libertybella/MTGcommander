@@ -1,4 +1,4 @@
-import type { GameAction, GameState, PlayerId } from "@mtgcommander/engine";
+import { getEngineInfo, type GameAction, type GameState, type PlayerId } from "@mtgcommander/engine";
 import type { SeatPreferencesInput } from "@mtgcommander/server";
 
 export type SeatInfo = {
@@ -8,7 +8,14 @@ export type SeatInfo = {
 };
 
 export type RemoteHandlers = {
-  onJoined: (info: { playerId: PlayerId; roomCode: string; view: GameState; seats: SeatInfo[] }) => void;
+  onJoined: (info: {
+    playerId: PlayerId;
+    roomCode: string;
+    view: GameState;
+    seats: SeatInfo[];
+    /** Keep this: rejoining the same seat later requires it. */
+    token?: string;
+  }) => void;
   onState: (view: GameState, seats: SeatInfo[]) => void;
   onError: (message: string) => void;
   onClose: () => void;
@@ -22,12 +29,12 @@ export type RemoteTable = {
 
 export function openRemoteTable(
   url: string,
-  join: { roomCode: string; displayName: string; playerId?: PlayerId },
+  join: { roomCode: string; displayName: string; playerId?: PlayerId; token?: string },
   handlers: RemoteHandlers,
 ): RemoteTable {
   const socket = new WebSocket(url);
   socket.addEventListener("open", () => {
-    socket.send(JSON.stringify({ type: "join", ...join }));
+    socket.send(JSON.stringify({ type: "join", engine: getEngineInfo().version, ...join }));
   });
   socket.addEventListener("message", (event) => {
     const parsed: unknown = JSON.parse(String(event.data));
@@ -41,6 +48,7 @@ export function openRemoteTable(
       view?: GameState;
       seats?: SeatInfo[];
       message?: string;
+      token?: string;
     };
     if (message.type === "error") {
       handlers.onError(message.message ?? "Table error");
@@ -52,6 +60,7 @@ export function openRemoteTable(
         roomCode: message.roomCode,
         view: message.view,
         seats: message.seats ?? [],
+        ...(message.token ? { token: message.token } : {}),
       });
       return;
     }

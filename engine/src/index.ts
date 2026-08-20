@@ -112,7 +112,7 @@ export {
   freeMulliganCount,
   isMulliganOpen,
 } from "./mulligan";
-export { redactForViewer, isHiddenFromViewer, HIDDEN_DEFINITION_ID } from "./visibility";
+export { redactForSpectator, redactForViewer, isHiddenFromViewer, HIDDEN_DEFINITION_ID } from "./visibility";
 export { applyChooseTargets, applyChooseEnterReplacement, applyResolveOrderTriggers, applyResolvePay, applyResolveScry, applyResolveSearch, applyResolveSurveil, applyResolveDiscard, applyResolveChooseCard, applyResolveLookAssign, currentPrompt, isPromptOpen, legalSearchIds, lookedAtCardIds, legalIdsForChooseSources, searchMatches } from "./prompt";
 export { queueSimultaneousTriggersInPlace } from "./triggers";
 export { abilitiesRemoved, computedCard, computedCards } from "./characteristicsEngine";
