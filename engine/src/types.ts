@@ -268,6 +268,8 @@ export type GameState = {
   activeEffects: ContinuousEffect[];
   /** Monotonic CR 613.7 timestamp counter (battlefield entries, effects). */
   nextTimestamp: number;
+  /** `${cardId}:${triggerIndex}` keys for once-per-turn triggers already fired. */
+  oncePerTurnFired: string[];
 };
 
 export type ZoneReveal = {
@@ -609,6 +611,8 @@ export type CardTrigger = {
   effects: CardEffect[];
   /** Chosen when the trigger is put on the stack. Empty or omitted means untargeted. */
   targetRequirements?: TargetRequirement[];
+  /** "This ability triggers only once each turn" (Morbid Opportunist). */
+  oncePerTurn?: boolean;
 };
 
 /** A change the trigger system reacts to. Dispatched synchronously in batches. */

@@ -411,6 +411,73 @@ describe("creature-or-planeswalker removal", () => {
   });
 });
 
+describe("once-per-turn triggers", () => {
+  it("compiles Morbid Opportunist and fires only once a turn", () => {
+    const compiled = compileOracleCard({
+      oracleId: "morbid",
+      name: "Morbid Opportunist",
+      manaCost: "{2}{B}",
+      typeLine: "Creature — Human Rogue",
+      oracleText:
+        "Whenever one or more creatures die, draw a card. This ability triggers only once each turn.",
+      power: "1",
+      toughness: "3",
+      printedKeywords: [],
+      imageUrl: "",
+    });
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.triggers[0]).toMatchObject({
+      event: "dies",
+      watch: "any",
+      oncePerTurn: true,
+    });
+
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game);
+    const watcherDef = createCardDefinition({
+      name: "Opportunist Idol",
+      typeLine: "Enchantment",
+      triggers: [
+        {
+          event: "dies",
+          watch: "any",
+          subjectFilter: { types: ["creature"] },
+          oncePerTurn: true,
+          effects: [{ kind: "draw", playerId: "controller", count: 1 }],
+          targetRequirements: [],
+        },
+      ],
+    });
+    game.definitions[watcherDef.id] = watcherDef;
+    const watcher = createCardInstance({
+      definitionId: watcherDef.id,
+      ownerId: p1.id,
+      zone: "battlefield",
+    });
+    game.cards[watcher.id] = watcher;
+    p1.zones.battlefield.push(watcher.id);
+    const bear = createCardDefinition({
+      name: "Bear",
+      typeLine: "Creature — Bear",
+      power: 2,
+      toughness: 2,
+    });
+    game.definitions[bear.id] = bear;
+    const addBear = (target: GameState) => {
+      const card = createCardInstance({ definitionId: bear.id, ownerId: p2.id, zone: "battlefield" });
+      target.cards[card.id] = card;
+      target.players[1]!.zones.battlefield.push(card.id);
+    };
+    addBear(game);
+    const swept = applyEffect(game, { kind: "destroy_all", what: "creatures" });
+    expect(swept.stack).toHaveLength(1);
+    // A second creature death the same turn does not queue another copy.
+    addBear(swept);
+    const secondSweep = applyEffect(swept, { kind: "destroy_all", what: "creatures" });
+    expect(secondSweep.stack).toHaveLength(1);
+  });
+});
+
 describe("cycling and small statics", () => {
   it("compiles Cycling into a from-hand discard ability", () => {
     const compiled = compileOracleCard({

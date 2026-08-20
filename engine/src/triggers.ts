@@ -47,6 +47,13 @@ export function queueDefinitionTriggerInPlace(
   if (!card || !trigger) {
     return false;
   }
+  if (trigger.oncePerTurn) {
+    const key = `${cardId}:${index}`;
+    if (state.oncePerTurnFired.includes(key)) {
+      return false;
+    }
+    state.oncePerTurnFired.push(key);
+  }
   const requirements = trigger.targetRequirements ?? [];
   if (requirements.length > 0) {
     if (!hasAnyLegalTargetSet(state, requirements, card.controllerId)) {
@@ -83,7 +90,16 @@ export function queueDefinitionTriggerInPlace(
 
 function candidateIsQueueable(state: GameState, candidate: TriggerCandidate): boolean {
   const card = state.cards[candidate.cardId];
-  if (!card || !state.definitions[card.definitionId]?.triggers[candidate.triggerIndex]) {
+  const trigger = card
+    ? state.definitions[card.definitionId]?.triggers[candidate.triggerIndex]
+    : undefined;
+  if (!card || !trigger) {
+    return false;
+  }
+  if (
+    trigger.oncePerTurn &&
+    state.oncePerTurnFired.includes(`${candidate.cardId}:${candidate.triggerIndex}`)
+  ) {
     return false;
   }
   // A permanent whose abilities were removed (Humility) has no triggers.

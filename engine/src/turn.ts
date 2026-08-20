@@ -88,6 +88,8 @@ function onEnterStep(state: GameState): GameState {
       active.landsPlayedThisTurn = 0;
       active.attackedThisTurn = false;
     }
+    // "Only once each turn" abilities reset when a new turn begins.
+    state.oncePerTurnFired = [];
     for (const card of Object.values(state.cards)) {
       if (card.zone === "battlefield" && card.controllerId === activeId) {
         card.tapped = false;

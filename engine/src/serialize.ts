@@ -513,6 +513,7 @@ export function parseGameState(json: string): GameState {
     activeEffects: parseActiveEffects(raw.activeEffects),
     nextTimestamp:
       raw.nextTimestamp === undefined ? 1 : expectNumber(raw.nextTimestamp, "nextTimestamp"),
+    oncePerTurnFired: parseStringList(raw.oncePerTurnFired, "oncePerTurnFired"),
   };
 }
 
@@ -1521,6 +1522,7 @@ function parseTriggers(value: unknown, label: string): CardTrigger[] {
       event,
       ...(watch === undefined ? {} : { watch }),
       ...(entry.excludeSelf === true ? { excludeSelf: true } : {}),
+      ...(entry.oncePerTurn === true ? { oncePerTurn: true } : {}),
       ...(subjectFilter &&
       (subjectFilter.types || subjectFilter.subtypes || subjectFilter.typesAny || subjectFilter.nonTypes)
         ? { subjectFilter }

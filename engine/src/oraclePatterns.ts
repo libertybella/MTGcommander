@@ -396,6 +396,17 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     };
   }
 
+  const drainAll = sentence.match(/^each opponent loses (\d+) life and you gain (\d+) life$/i);
+  if (drainAll?.[1] && drainAll[2]) {
+    return {
+      targetRequirements: [],
+      effects: [
+        { kind: "lose_life", playerId: "each_opponent", amount: Number(drainAll[1]) },
+        { kind: "gain_life", playerId: "controller", amount: Number(drainAll[2]) },
+      ],
+    };
+  }
+
   if (/^Exile ~$/i.test(sentence)) {
     return {
       targetRequirements: [],
@@ -1092,6 +1103,29 @@ function parseTriggerHead(head: string): TriggerHead | null {
   }
   if (/^Whenever a creature dies$/i.test(text)) {
     return { event: "dies", watch: "any", subjectFilter: { types: ["creature"] } };
+  }
+  // "One or more" heads almost always carry the once-each-turn rider, which
+  // restores the per-batch semantics a per-event bus would otherwise multiply.
+  if (/^Whenever one or more (other )?creatures die$/i.test(text)) {
+    const other = /other/i.test(text);
+    return {
+      event: "dies",
+      watch: "any",
+      ...(other ? { excludeSelf: true } : {}),
+      subjectFilter: { types: ["creature"] },
+    };
+  }
+  if (/^Whenever one or more (other )?creatures you control die$/i.test(text)) {
+    const other = /other/i.test(text);
+    return {
+      event: "dies",
+      watch: "controlled",
+      ...(other ? { excludeSelf: true } : {}),
+      subjectFilter: { types: ["creature"] },
+    };
+  }
+  if (/^Whenever this creature or another creature you control dies$/i.test(text)) {
+    return { event: "dies", watch: "controlled", subjectFilter: { types: ["creature"] } };
   }
   if (/^At the beginning of your upkeep$/i.test(text)) {
     return { event: "upkeep" };
@@ -1933,6 +1967,17 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
       const last = result.activated[result.activated.length - 1];
       if (last && !last.timing) {
         last.timing = "sorcery";
+        continue;
+      }
+    }
+
+    if (
+      /^This ability triggers only once each turn$/i.test(sentence) &&
+      result.triggers.length > 0
+    ) {
+      const last = result.triggers[result.triggers.length - 1];
+      if (last && !last.oncePerTurn) {
+        last.oncePerTurn = true;
         continue;
       }
     }

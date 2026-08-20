@@ -87,6 +87,7 @@ export function createCardDefinition(
           event: trigger.event,
           ...(trigger.watch ? { watch: trigger.watch } : {}),
           ...(trigger.excludeSelf ? { excludeSelf: true } : {}),
+          ...(trigger.oncePerTurn ? { oncePerTurn: true } : {}),
           ...(trigger.subjectFilter
             ? {
                 subjectFilter: {
@@ -279,5 +280,6 @@ export function createGameState(options: CreateGameOptions): GameState {
     reveals: [],
     activeEffects: [],
     nextTimestamp: 1,
+    oncePerTurnFired: [],
   };
 }
