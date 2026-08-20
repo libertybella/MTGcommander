@@ -114,6 +114,12 @@ export type CardDefinition = {
    * or blocked by sources of the listed colors.
    */
   protectionFrom?: Color[];
+  /** Aura: cast targeting a creature; enters attached (CR 303.4). */
+  enchant?: "creature";
+  /** Planeswalker printed starting loyalty. */
+  loyalty?: number;
+  /** Planeswalker loyalty abilities: cost may be negative. */
+  loyaltyAbilities?: LoyaltyAbility[];
   /** "Choose one —" spells: cast picks exactly one mode (CR 700.2). */
   modes?: SpellMode[];
   /** Scryfall card image, if known. Empty for synthetic / hidden cards. */
@@ -143,6 +149,10 @@ export type CardInstance = {
   isToken: boolean;
   /** Damaged by a deathtouch source this turn (CR 704.5h). */
   deathtouched: boolean;
+  /** Auras and Equipment: what this permanent is attached to. */
+  attachedTo: CardInstanceId | null;
+  /** One loyalty ability per turn per planeswalker (CR 606.3-ish V1). */
+  loyaltyActivatedThisTurn: boolean;
 };
 
 export type CommanderState = {
@@ -182,6 +192,8 @@ export type StackObject = {
   activatedIndex?: number;
   /** Chosen mode index for modal spells. */
   modeIndex?: number;
+  /** Index into the source definition's `loyaltyAbilities`. */
+  loyaltyIndex?: number;
   /** Announced X for {X} costs. */
   xValue?: number;
   /** Damage split for divided-damage spells; aligns with `targets`. */
@@ -343,7 +355,10 @@ export type GameEffect =
       destination: SearchDestination;
       count: number;
       entersTapped?: boolean;
-    };
+    }
+  | { kind: "attach"; cardId: CardInstanceId; toId: CardInstanceId }
+  | { kind: "transform"; cardId: CardInstanceId }
+  | { kind: "copy_token"; ownerId: PlayerId; ofCardId: CardInstanceId };
 
 export type EffectTarget =
   | { type: "player"; playerId: PlayerId }
@@ -353,6 +368,7 @@ export type TargetKind =
   | "player"
   | "opponent"
   | "creature"
+  | "own_creature"
   | "nonartifact_creature"
   | "player_or_creature"
   | "spell"
@@ -368,6 +384,13 @@ export type TargetRequirement = {
 /** One bullet of a modal spell. Targets are chosen for the picked mode only. */
 export type SpellMode = {
   label: string;
+  effects: CardEffect[];
+  targetRequirements: TargetRequirement[];
+};
+
+/** A planeswalker loyalty ability ("+1:", "-3:"). */
+export type LoyaltyAbility = {
+  cost: number;
   effects: CardEffect[];
   targetRequirements: TargetRequirement[];
 };
@@ -468,7 +491,10 @@ export type CardEffect =
       destination: SearchDestination;
       count: number;
       entersTapped?: boolean;
-    };
+    }
+  | { kind: "attach"; cardId: CardIdSelector; toId: ChosenTargetRef | CardInstanceId }
+  | { kind: "transform"; cardId: CardIdSelector }
+  | { kind: "copy_token"; ownerId: PlayerSelector; ofCardId: ChosenTargetRef | CardInstanceId };
 
 export type Keyword =
   | "flying"
@@ -657,7 +683,8 @@ export type ManaAbility = {
  * must be present (lowercase).
  */
 export type EffectSelector = {
-  scope: "self" | "controlled" | "all";
+  /** "attached": the permanent this source is attached to (auras, equipment). */
+  scope: "self" | "controlled" | "all" | "attached";
   types?: string[];
   subtypes?: string[];
 };
@@ -764,6 +791,13 @@ export type GameAction =
   | { kind: "tap_for_mana"; playerId: PlayerId; cardId: CardInstanceId; color?: ManaColor; manaIndex?: number }
   | {
       kind: "activate_ability";
+      playerId: PlayerId;
+      cardId: CardInstanceId;
+      abilityIndex: number;
+      targets?: ChosenTarget[];
+    }
+  | {
+      kind: "activate_loyalty";
       playerId: PlayerId;
       cardId: CardInstanceId;
       abilityIndex: number;

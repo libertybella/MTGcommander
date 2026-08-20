@@ -92,6 +92,7 @@ function onEnterStep(state: GameState): GameState {
       if (card.zone === "battlefield" && card.controllerId === activeId) {
         card.tapped = false;
         card.summoningSick = false;
+        card.loyaltyActivatedThisTurn = false;
       }
     }
     return state;

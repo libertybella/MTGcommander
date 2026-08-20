@@ -58,6 +58,9 @@ export function createCardDefinition(
         | "ward"
         | "modes"
         | "protectionFrom"
+        | "enchant"
+        | "loyalty"
+        | "loyaltyAbilities"
       >
     > & { colors?: Color[] },
 ): CardDefinition {
@@ -131,6 +134,17 @@ export function createCardDefinition(
     ...(input.protectionFrom && input.protectionFrom.length > 0
       ? { protectionFrom: [...input.protectionFrom] }
       : {}),
+    ...(input.enchant ? { enchant: input.enchant } : {}),
+    ...(input.loyalty && input.loyalty > 0 ? { loyalty: input.loyalty } : {}),
+    ...(input.loyaltyAbilities && input.loyaltyAbilities.length > 0
+      ? {
+          loyaltyAbilities: input.loyaltyAbilities.map((ability) => ({
+            cost: ability.cost,
+            effects: ability.effects.map((effect) => ({ ...effect })),
+            targetRequirements: ability.targetRequirements.map((requirement) => ({ ...requirement })),
+          })),
+        }
+      : {}),
     ...(input.modes && input.modes.length > 0
       ? {
           modes: input.modes.map((mode) => ({
@@ -170,6 +184,8 @@ export function createCardInstance(input: {
     timestamp: 0,
     isToken: input.isToken === true,
     deathtouched: false,
+    attachedTo: null,
+    loyaltyActivatedThisTurn: false,
   };
 }
 

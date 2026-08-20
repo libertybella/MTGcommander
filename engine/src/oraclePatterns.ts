@@ -8,6 +8,7 @@ import type {
   Color,
   EnterTappedUnless,
   Keyword,
+  LoyaltyAbility,
   ManaAbility,
   ManaColor,
   ManaPool,
@@ -33,6 +34,8 @@ export type CompiledOracleText = {
   ward?: number;
   modes?: SpellMode[];
   protectionFrom?: Color[];
+  enchant?: "creature";
+  loyaltyAbilities?: LoyaltyAbility[];
   leftover: string[];
   notes: string[];
 };
@@ -1173,6 +1176,81 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
     const wardLine = sentence.match(/^Ward \{(\d+)\}$/i);
     if (wardLine?.[1]) {
       result.ward = Number(wardLine[1]);
+      continue;
+    }
+
+    if (/^Enchant creature$/i.test(sentence)) {
+      result.enchant = "creature";
+      if (!result.targetRequirements.some((requirement) => requirement.kind === "creature")) {
+        result.targetRequirements.push({ kind: "creature" });
+      }
+      continue;
+    }
+
+    const attachedBuff = sentence.match(
+      /^(?:Enchanted|Equipped) creature gets ([+-]\d+)\/([+-]\d+)(?: and has ([a-z ]+))?$/i,
+    );
+    if (attachedBuff?.[1] && attachedBuff[2]) {
+      result.staticAbilities.push({
+        selector: { scope: "attached" },
+        effect: {
+          kind: "modify_pt",
+          power: Number(attachedBuff[1]),
+          toughness: Number(attachedBuff[2]),
+        },
+      });
+      if (attachedBuff[3]) {
+        const keyword = KEYWORD_GRANTS[attachedBuff[3].trim().toLowerCase()];
+        if (keyword) {
+          result.staticAbilities.push({
+            selector: { scope: "attached" },
+            effect: { kind: "grant_keyword", keyword },
+          });
+        } else {
+          result.leftover.push(sentence);
+        }
+      }
+      continue;
+    }
+
+    const attachedGrant = sentence.match(/^(?:Enchanted|Equipped) creature has ([a-z ]+)$/i);
+    if (attachedGrant?.[1]) {
+      const keyword = KEYWORD_GRANTS[attachedGrant[1].trim().toLowerCase()];
+      if (keyword) {
+        result.staticAbilities.push({
+          selector: { scope: "attached" },
+          effect: { kind: "grant_keyword", keyword },
+        });
+        continue;
+      }
+    }
+
+    const equip = sentence.match(/^Equip (?:\{(\d+)\}|(\d+))$/i);
+    if (equip) {
+      const amount = equip[1] ?? equip[2] ?? "0";
+      result.activated.push({
+        tap: false,
+        manaCost: `{${amount}}`,
+        effects: [{ kind: "attach", cardId: "self", toId: { type: "chosen", index: 0 } }],
+        targetRequirements: [{ kind: "own_creature" }],
+        timing: "sorcery",
+      });
+      continue;
+    }
+
+    const loyaltyAbility = sentence.match(/^([+−-]\d+|0): (.+)$/);
+    if (loyaltyAbility?.[1] && loyaltyAbility[2]) {
+      const clause = compileSimpleClause(loyaltyAbility[2].trim());
+      if (clause && !clause.leftover) {
+        result.loyaltyAbilities = result.loyaltyAbilities ?? [];
+        result.loyaltyAbilities.push({
+          cost: Number(loyaltyAbility[1].replace("−", "-")),
+          effects: clause.effects,
+          targetRequirements: clause.targetRequirements,
+        });
+        continue;
+      }
+      result.leftover.push(sentence);
       continue;
     }
 

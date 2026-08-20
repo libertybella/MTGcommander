@@ -98,6 +98,56 @@ function legendRuleInPlace(state: GameState): boolean {
   return changed;
 }
 
+/** CR 704.5m/n: a loose or illegally attached Aura dies; Equipment detaches. */
+function attachmentLegalityInPlace(state: GameState): boolean {
+  let changed = false;
+  for (const card of Object.values(state.cards)) {
+    if (card.zone !== "battlefield") {
+      continue;
+    }
+    const definition = state.definitions[card.definitionId];
+    const isAura = Boolean(definition?.enchant);
+    const isEquipment = definition?.characteristics.subtypes.includes("equipment") ?? false;
+    if (!isAura && !isEquipment) {
+      continue;
+    }
+    const host = card.attachedTo ? state.cards[card.attachedTo] : undefined;
+    const hostLegal = Boolean(
+      host && host.zone === "battlefield" && isCreature(state, host.id),
+    );
+    if (hostLegal) {
+      continue;
+    }
+    if (isAura) {
+      moveCardInPlace(state, card.id, "graveyard");
+      changed = true;
+    } else if (card.attachedTo) {
+      card.attachedTo = null;
+      changed = true;
+    }
+  }
+  return changed;
+}
+
+/** CR 704.5i: a planeswalker with zero loyalty goes to the graveyard. */
+function planeswalkerLoyaltyInPlace(state: GameState): boolean {
+  let changed = false;
+  for (const card of Object.values(state.cards)) {
+    if (card.zone !== "battlefield") {
+      continue;
+    }
+    const definition = state.definitions[card.definitionId];
+    if (!definition?.characteristics.types.includes("planeswalker")) {
+      continue;
+    }
+    if ((card.counters["loyalty"] ?? 0) <= 0) {
+      moveCardInPlace(state, card.id, "graveyard");
+      changed = true;
+    }
+  }
+  return changed;
+}
+
 /** CR 704.5d: a token anywhere but the battlefield ceases to exist. */
 function tokenCessationInPlace(state: GameState): boolean {
   let changed = false;
@@ -136,6 +186,12 @@ export function applyStateBasedActionsInPlace(state: GameState): void {
       changed = true;
     }
     if (legendRuleInPlace(state)) {
+      changed = true;
+    }
+    if (attachmentLegalityInPlace(state)) {
+      changed = true;
+    }
+    if (planeswalkerLoyaltyInPlace(state)) {
       changed = true;
     }
     if (tokenCessationInPlace(state)) {

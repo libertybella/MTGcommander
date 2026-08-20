@@ -215,6 +215,7 @@ export type {
   SearchDestination,
   SearchFilter,
   SpellMode,
+  LoyaltyAbility,
   Step,
   TargetKind,
   TargetRequirement,

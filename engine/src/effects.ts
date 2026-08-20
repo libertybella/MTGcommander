@@ -366,6 +366,47 @@ export function bindCardEffect(
         ...(effect.entersTapped ? { entersTapped: true } : {}),
       };
     }
+    case "attach": {
+      const cardId = bindCardId(state, effect.cardId, context);
+      if (!cardId) {
+        return null;
+      }
+      let toId: CardInstanceId | null;
+      if (typeof effect.toId === "string") {
+        toId = effect.toId;
+      } else {
+        const chosen = chosenTargetAt(context, effect.toId.index, state);
+        toId = chosen?.type === "creature" ? chosen.cardId : null;
+      }
+      if (!toId) {
+        return null;
+      }
+      return { kind: "attach", cardId, toId };
+    }
+    case "transform": {
+      const cardId = bindCardId(state, effect.cardId, context);
+      if (!cardId) {
+        return null;
+      }
+      return { kind: "transform", cardId };
+    }
+    case "copy_token": {
+      const ownerId = bindPlayerSelector(state, effect.ownerId, context);
+      if (!ownerId) {
+        return null;
+      }
+      let ofCardId: CardInstanceId | null;
+      if (typeof effect.ofCardId === "string") {
+        ofCardId = effect.ofCardId;
+      } else {
+        const chosen = chosenTargetAt(context, effect.ofCardId.index, state);
+        ofCardId = chosen?.type === "creature" ? chosen.cardId : null;
+      }
+      if (!ofCardId) {
+        return null;
+      }
+      return { kind: "copy_token", ownerId, ofCardId };
+    }
     case "counter_spell": {
       const chosen = chosenTargetAt(context, effect.target.index, state);
       if (!chosen || chosen.type !== "spell") {
@@ -824,6 +865,60 @@ function applySearchLibrary(
   return next;
 }
 
+function applyAttach(state: GameState, cardId: CardInstanceId, toId: CardInstanceId): GameState {
+  const attachment = state.cards[cardId];
+  const host = state.cards[toId];
+  if (!attachment || attachment.zone !== "battlefield") {
+    throw new Error(`Card ${cardId} is not on the battlefield`);
+  }
+  if (!host || host.zone !== "battlefield" || !isCreature(state, toId)) {
+    throw new Error(`Card ${toId} is not a creature on the battlefield`);
+  }
+  const next = cloneGameState(state);
+  next.cards[cardId]!.attachedTo = toId;
+  return next;
+}
+
+function applyTransform(state: GameState, cardId: CardInstanceId): GameState {
+  const card = state.cards[cardId];
+  const definition = card ? state.definitions[card.definitionId] : undefined;
+  if (!card || !definition?.otherFaceId || !state.definitions[definition.otherFaceId]) {
+    throw new Error(`Card ${cardId} has no other face`);
+  }
+  const next = cloneGameState(state);
+  next.cards[cardId]!.definitionId = definition.otherFaceId;
+  return next;
+}
+
+function applyCopyToken(
+  state: GameState,
+  ownerId: PlayerId,
+  ofCardId: CardInstanceId,
+): GameState {
+  requirePlayer(state, ownerId);
+  const original = state.cards[ofCardId];
+  if (!original || original.zone !== "battlefield") {
+    throw new Error(`Card ${ofCardId} is not on the battlefield`);
+  }
+  const next = cloneGameState(state);
+  const token = createCardInstance({
+    definitionId: original.definitionId,
+    ownerId,
+    zone: "battlefield",
+    isToken: true,
+  });
+  token.timestamp = next.nextTimestamp;
+  next.nextTimestamp += 1;
+  next.cards[token.id] = token;
+  const owner = next.players.find((player) => player.id === ownerId);
+  if (!owner) {
+    throw new Error(`Unknown player ${ownerId}`);
+  }
+  owner.zones.battlefield.push(token.id);
+  queueEnterBattlefieldTriggersInPlace(next, token.id);
+  return next;
+}
+
 function applyRevealZone(
   state: GameState,
   fromPlayerId: PlayerId,
@@ -961,6 +1056,15 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
         break;
       case "search_library":
         next = applySearchLibrary(state, effect);
+        break;
+      case "attach":
+        next = applyAttach(state, effect.cardId, effect.toId);
+        break;
+      case "transform":
+        next = applyTransform(state, effect.cardId);
+        break;
+      case "copy_token":
+        next = applyCopyToken(state, effect.ownerId, effect.ofCardId);
         break;
       case "amass":
         next = applyAmass(state, effect.playerId, effect.amount, effect.subtype);

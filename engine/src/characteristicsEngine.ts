@@ -96,6 +96,10 @@ function matches(
   if (selector.scope === "self") {
     return card.id === instance.sourceId;
   }
+  if (selector.scope === "attached") {
+    const source = instance.sourceId ? state.cards[instance.sourceId] : undefined;
+    return Boolean(source?.attachedTo && source.attachedTo === card.id);
+  }
   if (selector.scope === "controlled") {
     const source = instance.sourceId ? state.cards[instance.sourceId] : undefined;
     if (!source || card.controllerId !== source.controllerId) {

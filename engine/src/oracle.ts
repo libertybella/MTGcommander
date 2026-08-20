@@ -40,6 +40,8 @@ export type OracleCard = {
   imageUrl?: string;
   /** Scryfall card colors (color indicator aware), e.g. ["W", "U"]. */
   colors?: string[];
+  /** Planeswalker starting loyalty ("3"). */
+  loyalty?: string | null;
   layout?: string;
   faces?: OracleFace[];
 };
@@ -189,6 +191,11 @@ function compileOneFace(card: OracleCard, definitionId: string): OracleCompileRe
     ...(compiled.protectionFrom && compiled.protectionFrom.length > 0
       ? { protectionFrom: compiled.protectionFrom }
       : {}),
+    ...(compiled.enchant ? { enchant: compiled.enchant } : {}),
+    ...(compiled.loyaltyAbilities && compiled.loyaltyAbilities.length > 0
+      ? { loyaltyAbilities: compiled.loyaltyAbilities }
+      : {}),
+    ...(parseStat(card.loyalty ?? null) ? { loyalty: parseStat(card.loyalty ?? null) ?? 0 } : {}),
     imageUrl: card.imageUrl ?? "",
     layout: cardLayout(card.layout),
   });

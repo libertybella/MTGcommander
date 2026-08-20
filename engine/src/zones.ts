@@ -174,14 +174,27 @@ function applyZoneChangeFlags(
     card.tapped = wouldEnterTapped(state, card.id);
     card.timestamp = state.nextTimestamp;
     state.nextTimestamp += 1;
-    const subtypes = state.definitions[card.definitionId]?.characteristics.subtypes ?? [];
+    const definition = state.definitions[card.definitionId];
+    const subtypes = definition?.characteristics.subtypes ?? [];
     if (subtypes.includes("class") && card.classLevel < 1) {
       card.classLevel = 1;
+    }
+    if (definition?.loyalty && definition.loyalty > 0 && !card.counters["loyalty"]) {
+      card.counters["loyalty"] = definition.loyalty;
     }
   } else {
     card.damageMarked = 0;
     card.tapped = false;
     card.classLevel = 0;
+    card.attachedTo = null;
+    card.loyaltyActivatedThisTurn = false;
+    delete card.counters["loyalty"];
+    // Anything attached to this permanent comes loose.
+    for (const other of Object.values(state.cards)) {
+      if (other.attachedTo === card.id) {
+        other.attachedTo = null;
+      }
+    }
   }
 }
 

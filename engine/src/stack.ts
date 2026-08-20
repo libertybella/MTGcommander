@@ -170,6 +170,21 @@ export function resolveTopOfStack(state: GameState): GameState {
         });
         next = applyEffects(next, bound);
       }
+    } else if (top.loyaltyIndex !== undefined) {
+      const ability = definition?.loyaltyAbilities?.[top.loyaltyIndex];
+      const requirements = ability?.targetRequirements ?? [];
+      if (
+        ability &&
+        hasLegalTargetRemaining(next, requirements, top.targets, top.controllerId, sourceColorsOf(next, top.sourceId))
+      ) {
+        const bound = bindCardEffects(next, ability.effects, {
+          controllerId: top.controllerId,
+          sourceId: top.sourceId,
+          targets: top.targets,
+          targetRequirements: requirements,
+        });
+        next = applyEffects(next, bound);
+      }
     } else {
       const trigger = definition?.triggers[top.triggerIndex ?? 0];
       const requirements = trigger?.targetRequirements ?? [];
@@ -237,10 +252,27 @@ export function resolveTopOfStack(state: GameState): GameState {
     }
   }
 
-  const destination: ZoneName = isInstantOrSorcery(next, top.sourceId)
+  let destination: ZoneName = isInstantOrSorcery(next, top.sourceId)
     ? "graveyard"
     : "battlefield";
+  let attachTo: CardInstanceId | null = null;
+  if (definition?.enchant && destination === "battlefield") {
+    // An Aura enters attached to its target; with no legal target left, the
+    // spell fizzled and the card goes to the graveyard instead (CR 303.4).
+    const target = top.targets[0];
+    if (
+      target?.type === "creature" &&
+      hasLegalTargetRemaining(next, requirements, top.targets, top.controllerId, sourceColorsOf(next, top.sourceId))
+    ) {
+      attachTo = target.cardId;
+    } else {
+      destination = "graveyard";
+    }
+  }
   next = enterOwnerZone(next, top.sourceId, destination);
+  if (attachTo && next.cards[top.sourceId]?.zone === "battlefield") {
+    next.cards[top.sourceId]!.attachedTo = attachTo;
+  }
   applyStateBasedActionsInPlace(next);
   redirectPriorityIfLost(next);
   return next;

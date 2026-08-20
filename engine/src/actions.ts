@@ -7,6 +7,7 @@ import { applyEffects, bindCardEffects } from "./effects";
 import { hasKeyword } from "./keywords";
 import { canPayManaCost, parseManaCost, payManaCost, tapCard, tapForMana } from "./mana";
 import { canTapForMana, manaAbilitiesOf, manaTapOptionsFor } from "./manaOptions";
+import { createId } from "./ids";
 import { isLiving, livingPlayerCount, requireLiving } from "./players";
 import { passPriority, putActivatedAbilityOnStack, putSpellOnStack, resolveTopOfStack } from "./stack";
 import { applyStateBasedActionsInPlace, redirectPriorityIfLost } from "./status";
@@ -533,6 +534,69 @@ export type ApplyActionOptions = {
 };
 
 /**
+ * Activate a planeswalker loyalty ability: sorcery speed, once per walker
+ * per turn, loyalty adjusts as a cost, and the ability uses the stack.
+ */
+function applyActivateLoyalty(
+  state: GameState,
+  playerId: PlayerId,
+  cardId: CardInstanceId,
+  abilityIndex: number,
+  targets: ChosenTarget[] | undefined,
+): GameState {
+  requirePlaying(state);
+  requirePriority(state, playerId);
+  const card = state.cards[cardId];
+  if (!card || card.controllerId !== playerId || card.zone !== "battlefield") {
+    throw new Error(`Card ${cardId} is not a battlefield permanent you control`);
+  }
+  const definition = state.definitions[card.definitionId];
+  const ability = definition?.loyaltyAbilities?.[abilityIndex];
+  if (!ability) {
+    throw new Error(`Unknown loyalty ability ${abilityIndex}`);
+  }
+  if (abilitiesRemoved(state, cardId)) {
+    throw new Error(`Card ${cardId} has lost its abilities`);
+  }
+  if (playerId !== state.turn.activePlayerId || !isMainPhase(state) || state.stack.length > 0) {
+    throw new Error("Loyalty abilities are sorcery-speed");
+  }
+  if (card.loyaltyActivatedThisTurn) {
+    throw new Error("That planeswalker already used a loyalty ability this turn");
+  }
+  const loyalty = card.counters["loyalty"] ?? 0;
+  if (ability.cost < 0 && loyalty + ability.cost < 0) {
+    throw new Error("Not enough loyalty");
+  }
+  validateChosenTargets(
+    state,
+    ability.targetRequirements,
+    targets ?? [],
+    playerId,
+    definition?.characteristics.colors,
+  );
+  let next = cloneGameState(state);
+  const walker = next.cards[cardId]!;
+  walker.counters["loyalty"] = loyalty + ability.cost;
+  if (walker.counters["loyalty"] === 0) {
+    delete walker.counters["loyalty"];
+    walker.counters["loyalty"] = 0;
+  }
+  walker.loyaltyActivatedThisTurn = true;
+  next.stack.push({
+    id: createId("stack"),
+    controllerId: playerId,
+    sourceId: cardId,
+    kind: "ability",
+    targets: (targets ?? []).map((target) => ({ ...target })),
+    loyaltyIndex: abilityIndex,
+  });
+  next.passesSinceAction = 0;
+  next.priorityPlayerId = playerId;
+  return next;
+}
+
+/**
  * Authoritative entry point for player actions. Illegal actions throw and leave
  * the original GameState unchanged.
  */
@@ -588,6 +652,15 @@ export function applyAction(
         break;
       case "activate_ability":
         next = applyActivateAbility(
+          state,
+          action.playerId,
+          action.cardId,
+          action.abilityIndex,
+          action.targets,
+        );
+        break;
+      case "activate_loyalty":
+        next = applyActivateLoyalty(
           state,
           action.playerId,
           action.cardId,

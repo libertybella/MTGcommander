@@ -100,6 +100,13 @@ export function isChosenTargetLegal(
       isLegalCreatureTarget(state, target.cardId, casterId, sourceColors)
     );
   }
+  if (requirement.kind === "own_creature") {
+    return (
+      target.type === "creature" &&
+      isLegalCreatureTarget(state, target.cardId, casterId, sourceColors) &&
+      state.cards[target.cardId]?.controllerId === casterId
+    );
+  }
   if (requirement.kind === "nonartifact_creature") {
     return (
       target.type === "creature" &&
@@ -210,6 +217,12 @@ export function legalChoicesForRequirement(
   }
   if (requirement.kind === "creature") {
     return legalCreatureTargets(state, casterId);
+  }
+  if (requirement.kind === "own_creature") {
+    return legalCreatureTargets(state, casterId).filter(
+      (choice) =>
+        choice.type === "creature" && state.cards[choice.cardId]?.controllerId === casterId,
+    );
   }
   if (requirement.kind === "nonartifact_creature") {
     return legalCreatureTargets(state, casterId).filter(

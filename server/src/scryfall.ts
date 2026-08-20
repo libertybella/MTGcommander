@@ -71,6 +71,9 @@ export function oracleCardFromScryfall(raw: unknown): OracleCard {
     power: face?.power ?? card.power ?? null,
     toughness: face?.toughness ?? card.toughness ?? null,
     printedKeywords: Array.isArray(card.keywords) ? card.keywords.map(String) : [],
+    ...(typeof (card as { loyalty?: unknown }).loyalty === "string"
+      ? { loyalty: String((card as { loyalty?: unknown }).loyalty) }
+      : {}),
     ...(Array.isArray(card.colors)
       ? { colors: card.colors.map(String) }
       : Array.isArray(face?.colors)

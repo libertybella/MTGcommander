@@ -254,6 +254,11 @@ export function parseGameState(json: string): GameState {
         card.timestamp === undefined ? 0 : expectNumber(card.timestamp, "card.timestamp"),
       isToken: card.isToken === true,
       deathtouched: card.deathtouched === true,
+      attachedTo:
+        card.attachedTo === undefined || card.attachedTo === null
+          ? null
+          : expectString(card.attachedTo, "card.attachedTo"),
+      loyaltyActivatedThisTurn: card.loyaltyActivatedThisTurn === true,
     };
   }
 
@@ -320,6 +325,35 @@ export function parseGameState(json: string): GameState {
       ...(def.modes === undefined
         ? {}
         : { modes: parseSpellModes(def.modes, `definition.${id}.modes`) }),
+      ...(def.enchant === "creature" ? { enchant: "creature" as const } : {}),
+      ...(def.loyalty === undefined
+        ? {}
+        : { loyalty: expectNumber(def.loyalty, `definition.${id}.loyalty`) }),
+      ...(def.loyaltyAbilities === undefined
+        ? {}
+        : {
+            loyaltyAbilities: (() => {
+              if (!Array.isArray(def.loyaltyAbilities)) {
+                throw new Error(`Invalid definition.${id}.loyaltyAbilities`);
+              }
+              return def.loyaltyAbilities.map((entry, index) => {
+                if (!isRecord(entry)) {
+                  throw new Error(`Invalid definition.${id}.loyaltyAbilities[${index}]`);
+                }
+                return {
+                  cost: expectNumber(entry.cost, `definition.${id}.loyaltyAbilities[${index}].cost`),
+                  effects: parseCardEffects(
+                    entry.effects,
+                    `definition.${id}.loyaltyAbilities[${index}].effects`,
+                  ),
+                  targetRequirements: parseTargetRequirements(
+                    entry.targetRequirements,
+                    `definition.${id}.loyaltyAbilities[${index}].targetRequirements`,
+                  ),
+                };
+              });
+            })(),
+          }),
       ...(def.otherFaceId === undefined
         ? {}
         : { otherFaceId: expectString(def.otherFaceId, "definition.otherFaceId") }),
@@ -364,6 +398,9 @@ export function parseGameState(json: string): GameState {
       ...(entry.modeIndex === undefined
         ? {}
         : { modeIndex: expectNumber(entry.modeIndex, `stack[${index}].modeIndex`) }),
+      ...(entry.loyaltyIndex === undefined
+        ? {}
+        : { loyaltyIndex: expectNumber(entry.loyaltyIndex, `stack[${index}].loyaltyIndex`) }),
       ...(entry.xValue === undefined
         ? {}
         : { xValue: expectNumber(entry.xValue, `stack[${index}].xValue`) }),
@@ -847,6 +884,7 @@ function parseTargetRequirement(value: unknown, label: string): TargetRequiremen
     kind !== "player" &&
     kind !== "opponent" &&
     kind !== "creature" &&
+    kind !== "own_creature" &&
     kind !== "nonartifact_creature" &&
     kind !== "player_or_creature" &&
     kind !== "spell" &&
@@ -1166,6 +1204,32 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
         destination: parseSearchDestination(value.destination, `${label}.destination`),
         count: expectNumber(value.count, `${label}.count`),
         ...(value.entersTapped === true ? { entersTapped: true } : {}),
+      };
+    case "attach":
+      return {
+        kind,
+        cardId: parseCardIdSelector(value.cardId, `${label}.cardId`),
+        toId:
+          typeof value.toId === "string"
+            ? value.toId
+            : (parseCardIdSelector(value.toId, `${label}.toId`) as { type: "chosen"; index: number }),
+      };
+    case "transform":
+      return {
+        kind,
+        cardId: parseCardIdSelector(value.cardId, `${label}.cardId`),
+      };
+    case "copy_token":
+      return {
+        kind,
+        ownerId: parsePlayerSelector(value.ownerId, `${label}.ownerId`),
+        ofCardId:
+          typeof value.ofCardId === "string"
+            ? value.ofCardId
+            : (parseCardIdSelector(value.ofCardId, `${label}.ofCardId`) as {
+                type: "chosen";
+                index: number;
+              }),
       };
     default:
       throw new Error(`Unknown effect kind ${kind}`);
@@ -1707,6 +1771,23 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
       ...(value.entersTapped === true ? { entersTapped: true } : {}),
     };
   }
+  if (kind === "attach") {
+    return {
+      kind,
+      cardId: expectString(value.cardId, `${label}.cardId`),
+      toId: expectString(value.toId, `${label}.toId`),
+    };
+  }
+  if (kind === "transform") {
+    return { kind, cardId: expectString(value.cardId, `${label}.cardId`) };
+  }
+  if (kind === "copy_token") {
+    return {
+      kind,
+      ownerId: expectString(value.ownerId, `${label}.ownerId`),
+      ofCardId: expectString(value.ofCardId, `${label}.ofCardId`),
+    };
+  }
   throw new Error(`Unsupported resume effect ${kind}`);
 }
 
@@ -1864,7 +1945,7 @@ export function parseGameAction(json: string): GameAction {
         : { manaIndex: expectNumber(raw.manaIndex, "action.manaIndex") }),
     };
   }
-  if (kind === "activate_ability") {
+  if (kind === "activate_ability" || kind === "activate_loyalty") {
     return {
       kind,
       playerId,
