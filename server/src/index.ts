@@ -31,7 +31,13 @@ export {
   type SnapshotStore,
   type TableSnapshot,
 } from "./persist";
-export { CardDatabase, ORACLE_CACHE_KEY } from "./cards";
+export {
+  CardDatabase,
+  DEFAULT_MAX_AGE_DAYS,
+  LEGACY_ORACLE_CACHE_KEY,
+  ORACLE_CACHE_KEY,
+  type CardDatabaseOptions,
+} from "./cards";
 export type { HttpFetch, HttpRequestInit, HttpResponse } from "./http";
 export { fetchMoxfieldDeck, parseMoxfieldDeckJson } from "./moxfield";
 export {
