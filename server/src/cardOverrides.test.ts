@@ -103,6 +103,26 @@ describe("hand-authored registry", () => {
     expect(trigger?.effects).toEqual([{ kind: "gain_life", playerId: "controller", amount: 1 }]);
   });
 
+  it("Expedition Map sacrifices to fetch any land to hand", () => {
+    const definition = cardOverrideFor(oracle("Expedition Map", "Artifact"));
+    const ability = definition?.activated[0];
+    expect(ability).toMatchObject({ tap: true, manaCost: "{2}", sacrificeSelf: true });
+    expect(ability?.effects[0]).toMatchObject({
+      kind: "search_library",
+      filter: { types: ["land"] },
+      destination: "hand",
+    });
+  });
+
+  it("Fabricate tutors an artifact to hand", () => {
+    const definition = cardOverrideFor(oracle("Fabricate", "Sorcery"));
+    expect(definition?.effects[0]).toMatchObject({
+      kind: "search_library",
+      filter: { types: ["artifact"] },
+      destination: "hand",
+    });
+  });
+
   it("Fellwar Stone and Exotic Orchard tap for any color (documented approximation)", () => {
     for (const name of ["Fellwar Stone", "Exotic Orchard"]) {
       const definition = cardOverrideFor(oracle(name, name.includes("Stone") ? "Artifact" : "Land"));

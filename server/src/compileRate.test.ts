@@ -138,7 +138,8 @@ describe("Stage 6: compile-rate metric", () => {
       const ranked = [...rate.none].sort(
         (a, b) => (rank.get(a.toLowerCase()) ?? 9999) - (rank.get(b.toLowerCase()) ?? 9999),
       );
-      console.log(`[compile-rate] top misses: ${ranked.slice(0, 60).join(" | ")}`);
+      const missLimit = Number(process.env.COMPILE_MISS_LIMIT ?? 60);
+      console.log(`[compile-rate] top misses: ${ranked.slice(0, missLimit).join(" | ")}`);
     }
     // COMPILE_ANALYZE=1 clusters compile notes across the swept cards so
     // pattern sprints can target the biggest wins first.

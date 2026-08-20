@@ -268,6 +268,60 @@ const OVERRIDES = new Map<string, OverrideBuilder>([
       }),
   ],
   [
+    // "{2}, {T}, Sacrifice this artifact: Search your library for a land
+    // card, put it into your hand, then shuffle."
+    normalizeCardName("Expedition Map"),
+    (card) =>
+      createCardDefinition({
+        id: definitionIdForOracle(card),
+        name: card.name,
+        manaCost: card.manaCost,
+        typeLine: card.typeLine,
+        oracleText: card.oracleText,
+        imageUrl: card.imageUrl ?? "",
+        activated: [
+          {
+            tap: true,
+            manaCost: "{2}",
+            sacrificeSelf: true,
+            effects: [
+              {
+                kind: "search_library",
+                playerId: "controller",
+                filter: { types: ["land"] },
+                destination: "hand",
+                count: 1,
+              },
+            ],
+            targetRequirements: [],
+          },
+        ],
+      }),
+  ],
+  [
+    // Search an artifact to hand (the reveal is public-information dressing
+    // the fetch-to-hand flow does not need).
+    normalizeCardName("Fabricate"),
+    (card) =>
+      createCardDefinition({
+        id: definitionIdForOracle(card),
+        name: card.name,
+        manaCost: card.manaCost,
+        typeLine: card.typeLine,
+        oracleText: card.oracleText,
+        imageUrl: card.imageUrl ?? "",
+        effects: [
+          {
+            kind: "search_library",
+            playerId: "controller",
+            filter: { types: ["artifact"] },
+            destination: "hand",
+            count: 1,
+          },
+        ],
+      }),
+  ],
+  [
     // Documented approximation: taps for any color instead of "any color a
     // land an opponent controls could produce" (strictly more permissive).
     normalizeCardName("Fellwar Stone"),
