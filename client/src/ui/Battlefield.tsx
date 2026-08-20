@@ -16,6 +16,7 @@ import {
   isOpeningRoll,
   openingRollPending,
   lookedAtCardIds,
+  legalChoicesForRequirement,
   legalIdsForChooseSources,
   manaAbilitiesOf,
   manaTapOptionsFor,
@@ -2757,6 +2758,39 @@ export function Battlefield(props: Props) {
             beginActivate(mode.cardId, playerId, abilityIndex);
           }}
         />
+      ) : null}
+      {mode.type === "targets" &&
+      (nextRequirement?.kind === "own_graveyard_card" ||
+        nextRequirement?.kind === "own_graveyard_creature_card") ? (
+        <div
+          className="mana-choice-pop"
+          data-testid="graveyard-target-pop"
+          style={{
+            position: "fixed",
+            left: "50%",
+            bottom: 140,
+            transform: "translateX(-50%)",
+            zIndex: 40,
+          }}
+        >
+          <p>Choose a card from your graveyard.</p>
+          <div className="look-row">
+            {legalChoicesForRequirement(state, nextRequirement, actorId).map((choice) =>
+              choice.type === "creature" ? (
+                <CardTile
+                  key={choice.cardId}
+                  state={state}
+                  cardId={choice.cardId}
+                  size="hand"
+                  previewable
+                  onClick={() => addTarget({ type: "creature", cardId: choice.cardId })}
+                  onPreviewEnter={onPreviewEnter}
+                  onPreviewLeave={onPreviewLeave}
+                />
+              ) : null,
+            )}
+          </div>
+        </div>
       ) : null}
       {mode.type === "mana-color" ? (
         <ManaChoicePop

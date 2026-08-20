@@ -1066,6 +1066,8 @@ function parseTargetRequirement(value: unknown, label: string): TargetRequiremen
     kind !== "enchantment" &&
     kind !== "artifact_or_enchantment" &&
     kind !== "nonland_permanent" &&
+    kind !== "own_graveyard_card" &&
+    kind !== "own_graveyard_creature_card" &&
     kind !== "nonartifact_creature" &&
     kind !== "player_or_creature" &&
     kind !== "spell" &&

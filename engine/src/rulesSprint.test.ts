@@ -412,6 +412,76 @@ describe("creature-or-planeswalker removal", () => {
   });
 });
 
+describe("own-graveyard recursion", () => {
+  it("compiles Regrowth and Zombify shapes and resolves the return", () => {
+    const regrowth = compileOracleCard({
+      oracleId: "regrowth",
+      name: "Regrowth",
+      manaCost: "{1}{G}",
+      typeLine: "Sorcery",
+      oracleText: "Return target card from your graveyard to your hand.",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+    });
+    expect(regrowth.notes).toEqual([]);
+    expect(regrowth.definition.targetRequirements).toEqual([{ kind: "own_graveyard_card" }]);
+
+    const zombify = compileOracleCard({
+      oracleId: "zombify",
+      name: "Zombify",
+      manaCost: "{3}{B}",
+      typeLine: "Sorcery",
+      oracleText: "Return target creature card from your graveyard to the battlefield.",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+    });
+    expect(zombify.notes).toEqual([]);
+    expect(zombify.definition.targetRequirements).toEqual([
+      { kind: "own_graveyard_creature_card" },
+    ]);
+
+    const { game, p1 } = twoPlayers();
+    const bear = createCardDefinition({
+      name: "Bear",
+      typeLine: "Creature — Bear",
+      power: 2,
+      toughness: 2,
+    });
+    const sorcery = createCardDefinition({ name: "Dead Spell", typeLine: "Sorcery" });
+    game.definitions[bear.id] = bear;
+    game.definitions[sorcery.id] = sorcery;
+    const deadBear = createCardInstance({ definitionId: bear.id, ownerId: p1.id, zone: "graveyard" });
+    const deadSpell = createCardInstance({
+      definitionId: sorcery.id,
+      ownerId: p1.id,
+      zone: "graveyard",
+    });
+    game.cards[deadBear.id] = deadBear;
+    game.cards[deadSpell.id] = deadSpell;
+    p1.zones.graveyard.push(deadBear.id, deadSpell.id);
+
+    const requirement = { kind: "own_graveyard_creature_card" as const };
+    expect(
+      isChosenTargetLegal(game, requirement, { type: "creature", cardId: deadBear.id }, p1.id),
+    ).toBe(true);
+    expect(
+      isChosenTargetLegal(game, requirement, { type: "creature", cardId: deadSpell.id }, p1.id),
+    ).toBe(false);
+
+    const returned = applyEffect(game, {
+      kind: "move_card",
+      cardId: deadBear.id,
+      toZone: "battlefield",
+    });
+    expect(returned.cards[deadBear.id]?.zone).toBe("battlefield");
+    expect(returned.cards[deadBear.id]?.summoningSick).toBe(true);
+  });
+});
+
 describe("library-top tutors", () => {
   it("compiles Mystical and Vampiric Tutor and stacks the pick on top", () => {
     const mystical = compileOracleCard({

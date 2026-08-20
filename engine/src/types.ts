@@ -447,6 +447,9 @@ export type TargetKind =
   | "enchantment"
   | "artifact_or_enchantment"
   | "nonland_permanent"
+  /** A card in the caster's own graveyard (Regrowth / Zombify recursion). */
+  | "own_graveyard_card"
+  | "own_graveyard_creature_card"
   | "nonartifact_creature"
   | "player_or_creature"
   | "spell"

@@ -947,6 +947,28 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     }
   }
 
+  match = sentence.match(
+    /^Return target (creature )?card from your graveyard to (your hand|the battlefield)$/i,
+  );
+  if (match?.[2]) {
+    const creatureOnly = Boolean(match[1]);
+    const toHand = match[2].toLowerCase() === "your hand";
+    if (toHand || creatureOnly) {
+      return {
+        targetRequirements: [
+          { kind: creatureOnly ? "own_graveyard_creature_card" : "own_graveyard_card" },
+        ],
+        effects: [
+          {
+            kind: "move_card",
+            cardId: { type: "chosen", index: 0 },
+            toZone: toHand ? "hand" : "battlefield",
+          },
+        ],
+      };
+    }
+  }
+
   // Vampiric / Mystical / Worldly / Enlightened Tutor: fetch to the top.
   match = sentence.match(
     /^Search your library for (?:an? )?(.*?)card, (?:reveal it, )?then shuffle(?: your library)? and put (?:that|the) card on top(?: of it| of your library)?$/i,
