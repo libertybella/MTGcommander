@@ -1,0 +1,19 @@
+appId: com.bizzymtg.commander
+productName: BizzyMTG Commander
+directories:
+  output: release
+files:
+  - dist/**
+  - dist-electron/**
+  - package.json
+  # The vite build bundles the engine/server/client workspaces into
+  # dist-electron and dist; only `ws` stays external at runtime.
+  - node_modules/ws/**
+npmRebuild: false
+win:
+  target:
+    - nsis
+nsis:
+  oneClick: true
+  perMachine: false
+  deleteAppDataOnUninstall: false

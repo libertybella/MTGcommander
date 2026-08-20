@@ -3,6 +3,7 @@
   "private": true,
   "version": "0.1.0",
   "description": "BizzyMTG Commander — unofficial PC-hosted multiplayer Commander client",
+  "author": "Liberty Bella <liberty.j.bella@gmail.com>",
   "type": "module",
   "main": "dist-electron/main.js",
   "workspaces": [
@@ -13,6 +14,7 @@
   "scripts": {
     "dev": "npm run dev -w @mtgcommander/client",
     "build": "npm run build -w @mtgcommander/client",
+    "dist": "npm run build && electron-builder --win nsis",
     "test": "vitest run",
     "typecheck": "tsc -p engine/tsconfig.json --noEmit && tsc -p server/tsconfig.json --noEmit && tsc -p client/tsconfig.json --noEmit && tsc -p client/tsconfig.node.json --noEmit && tsc -p electron/tsconfig.json --noEmit",
     "lint": "oxlint engine server client electron vitest.config.ts"
@@ -24,6 +26,7 @@
     "@types/node": "^24.3.0",
     "@types/ws": "^8.18.1",
     "electron": "^37.2.6",
+    "electron-builder": "^26.15.3",
     "oxlint": "^1.75.0",
     "typescript": "~5.8.3",
     "vitest": "^3.2.4"
