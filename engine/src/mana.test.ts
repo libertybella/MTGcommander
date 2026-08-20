@@ -143,6 +143,7 @@ describe("mana costs", () => {
       G: 0,
       C: 0,
       hybrid: [],
+      xCount: 0,
     });
     expect(parseManaCost("{1}{C}")).toEqual({
       generic: 1,
@@ -153,6 +154,7 @@ describe("mana costs", () => {
       G: 0,
       C: 1,
       hybrid: [],
+      xCount: 0,
     });
     expect(parseManaCost("")).toEqual({
       generic: 0,
@@ -163,11 +165,13 @@ describe("mana costs", () => {
       G: 0,
       C: 0,
       hybrid: [],
+      xCount: 0,
     });
   });
 
-  it("rejects unsupported mana symbols", () => {
-    expect(() => parseManaCost("{X}")).toThrow(/Unsupported/);
+  it("parses X symbols and rejects Phyrexian pips", () => {
+    expect(parseManaCost("{X}{R}").xCount).toBe(1);
+    expect(parseManaCost("{X}{X}").xCount).toBe(2);
     expect(() => parseManaCost("{B/P}")).toThrow(/Unsupported/);
   });
 
@@ -182,6 +186,7 @@ describe("mana costs", () => {
       G: 0,
       C: 0,
       hybrid: [{ a: "R", b: "W" }],
+      xCount: 0,
     });
     const withRed = addMana(game, p1.id, { R: 1 });
     expect(canPayManaCost(withRed.players[0]!.mana, "{R/W}")).toBe(true);
