@@ -300,9 +300,11 @@ export type SearchFilter = {
   subtypes?: string[];
   /** "a Plains, Island, Swamp, or Mountain card": any listed subtype matches. */
   subtypesAny?: string[];
+  /** "an instant or sorcery card": any listed type matches. */
+  typesAny?: string[];
 };
 
-export type SearchDestination = "hand" | "battlefield" | "graveyard";
+export type SearchDestination = "hand" | "battlefield" | "graveyard" | "library_top";
 
 export type CardFilter = "any" | "land" | "nonland" | "noncreature_nonland";
 

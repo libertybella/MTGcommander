@@ -369,6 +369,20 @@ export function searchMatches(
       return false;
     }
   }
+  if (
+    filter.subtypesAny &&
+    filter.subtypesAny.length > 0 &&
+    !filter.subtypesAny.some((subtype) => traits.subtypes.includes(subtype))
+  ) {
+    return false;
+  }
+  if (
+    filter.typesAny &&
+    filter.typesAny.length > 0 &&
+    !filter.typesAny.some((type) => traits.types.includes(type))
+  ) {
+    return false;
+  }
   return true;
 }
 
@@ -415,6 +429,16 @@ export function applyResolveSearch(
   }
   let next = cloneGameState(state);
   next.prompts.shift();
+  if (prompt.destination === "library_top") {
+    // Vampiric Tutor: shuffle the rest, then the chosen card goes on top.
+    const player = next.players.find((entry) => entry.id === playerId);
+    if (player) {
+      player.zones.library = player.zones.library.filter((id) => !cardIds.includes(id));
+      shuffleInPlace(player.zones.library, random);
+      player.zones.library = [...cardIds, ...player.zones.library];
+    }
+    return next;
+  }
   for (const cardId of cardIds) {
     next = moveCard(next, cardId, prompt.destination);
     if (prompt.destination === "battlefield" && prompt.entersTapped) {

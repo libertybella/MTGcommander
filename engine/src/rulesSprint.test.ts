@@ -412,6 +412,91 @@ describe("creature-or-planeswalker removal", () => {
   });
 });
 
+describe("library-top tutors", () => {
+  it("compiles Mystical and Vampiric Tutor and stacks the pick on top", () => {
+    const mystical = compileOracleCard({
+      oracleId: "mystical",
+      name: "Mystical Tutor",
+      manaCost: "{U}",
+      typeLine: "Instant",
+      oracleText:
+        "Search your library for an instant or sorcery card, reveal it, then shuffle and put the card on top of your library.",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+    });
+    expect(mystical.notes).toEqual([]);
+    expect(mystical.definition.effects[0]).toMatchObject({
+      kind: "search_library",
+      destination: "library_top",
+      filter: { typesAny: ["instant", "sorcery"] },
+    });
+
+    const vampiric = compileOracleCard({
+      oracleId: "vampiric",
+      name: "Vampiric Tutor",
+      manaCost: "{B}",
+      typeLine: "Instant",
+      oracleText:
+        "Search your library for a card, then shuffle and put that card on top of your library. You lose 2 life.",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+    });
+    expect(vampiric.notes).toEqual([]);
+    expect(vampiric.definition.effects).toHaveLength(2);
+
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 5);
+    const targetId = p1.zones.library[3]!;
+    const prompted = applyEffect(game, {
+      kind: "search_library",
+      playerId: p1.id,
+      filter: {},
+      destination: "library_top",
+      count: 1,
+    });
+    const resolved = applyAction(prompted, {
+      kind: "resolve_search",
+      playerId: p1.id,
+      cardIds: [targetId],
+    });
+    expect(resolved.players[0]?.zones.library[0]).toBe(targetId);
+    expect(resolved.players[0]?.zones.library).toHaveLength(5);
+  });
+
+  it("any-of search filters distinguish types from subtypes", () => {
+    const { game, p1 } = twoPlayers();
+    const island = createCardDefinition({ name: "Island", typeLine: "Basic Land — Island" });
+    const bolt = createCardDefinition({ name: "Bolt", typeLine: "Instant", manaCost: "{R}" });
+    game.definitions[island.id] = island;
+    game.definitions[bolt.id] = bolt;
+    const landCard = createCardInstance({ definitionId: island.id, ownerId: p1.id, zone: "library" });
+    const boltCard = createCardInstance({ definitionId: bolt.id, ownerId: p1.id, zone: "library" });
+    game.cards[landCard.id] = landCard;
+    game.cards[boltCard.id] = boltCard;
+    p1.zones.library.push(landCard.id, boltCard.id);
+    const prompted = applyEffect(game, {
+      kind: "search_library",
+      playerId: p1.id,
+      filter: { typesAny: ["instant", "sorcery"] },
+      destination: "hand",
+      count: 1,
+    });
+    expect(() =>
+      applyAction(prompted, { kind: "resolve_search", playerId: p1.id, cardIds: [landCard.id] }),
+    ).toThrow(/does not match/);
+    const found = applyAction(prompted, {
+      kind: "resolve_search",
+      playerId: p1.id,
+      cardIds: [boltCard.id],
+    });
+    expect(found.players[0]?.zones.hand).toContain(boltCard.id);
+  });
+});
+
 describe("additional casting costs", () => {
   it("compiles Deadly Dispute and pays the sacrifice at cast", () => {
     const compiled = compileOracleCard({

@@ -817,17 +817,24 @@ function parseSearchFilter(value: unknown, label: string): SearchFilter {
   const types = parseStringList(value.types, `${label}.types`);
   const subtypes = parseStringList(value.subtypes, `${label}.subtypes`);
   const subtypesAny = parseStringList(value.subtypesAny, `${label}.subtypesAny`);
+  const typesAny = parseStringList(value.typesAny, `${label}.typesAny`);
   return {
     ...(supertypes.length > 0 ? { supertypes } : {}),
     ...(types.length > 0 ? { types } : {}),
     ...(subtypes.length > 0 ? { subtypes } : {}),
     ...(subtypesAny.length > 0 ? { subtypesAny } : {}),
+    ...(typesAny.length > 0 ? { typesAny } : {}),
   };
 }
 
 function parseSearchDestination(value: unknown, label: string): SearchDestination {
   const destination = expectString(value, label);
-  if (destination !== "hand" && destination !== "battlefield" && destination !== "graveyard") {
+  if (
+    destination !== "hand" &&
+    destination !== "battlefield" &&
+    destination !== "graveyard" &&
+    destination !== "library_top"
+  ) {
     throw new Error(`Invalid ${label}`);
   }
   return destination;

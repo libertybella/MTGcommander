@@ -401,6 +401,14 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     };
   }
 
+  const loseLife = sentence.match(/^You lose (\d+) life$/i);
+  if (loseLife?.[1]) {
+    return {
+      targetRequirements: [],
+      effects: [{ kind: "lose_life", playerId: "controller", amount: Number(loseLife[1]) }],
+    };
+  }
+
   const drainAll = sentence.match(/^each opponent loses (\d+) life and you gain (\d+) life$/i);
   if (drainAll?.[1] && drainAll[2]) {
     return {
@@ -939,6 +947,29 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     }
   }
 
+  // Vampiric / Mystical / Worldly / Enlightened Tutor: fetch to the top.
+  match = sentence.match(
+    /^Search your library for (?:an? )?(.*?)card, (?:reveal it, )?then shuffle(?: your library)? and put (?:that|the) card on top(?: of it| of your library)?$/i,
+  );
+  if (match) {
+    const descriptor = (match[1] ?? "").trim();
+    const filter = descriptor ? parseSearchDescriptor(descriptor) : {};
+    if (filter) {
+      return {
+        targetRequirements: [],
+        effects: [
+          {
+            kind: "search_library",
+            playerId: "controller",
+            filter,
+            destination: "library_top",
+            count: 1,
+          },
+        ],
+      };
+    }
+  }
+
   // Beast Within (single sentence: destroy; the token clause is a pair).
   if (/^Destroy target permanent$/i.test(sentence)) {
     return {
@@ -1116,11 +1147,19 @@ function parseSearchDescriptor(descriptor: string): SearchFilter | null {
       .map((word) => word.trim().toLowerCase().replace(/\s*cards?$/, ""))
       .filter(Boolean);
     if (options.length >= 2 && options.every((word) => /^[a-z]+$/.test(word))) {
-      return { subtypesAny: options };
+      // "instant or sorcery" is an any-of over card TYPES (Mystical Tutor);
+      // "Plains, Island, or Swamp" is an any-of over subtypes (Farseek).
+      if (options.every((word) => SEARCH_CARD_TYPES.has(word))) {
+        return { typesAny: options };
+      }
+      if (options.every((word) => !SEARCH_CARD_TYPES.has(word))) {
+        return { subtypesAny: options };
+      }
+      return null;
     }
     return null;
   }
-  const filter: Required<Omit<SearchFilter, "subtypesAny">> = {
+  const filter: Required<Omit<SearchFilter, "subtypesAny" | "typesAny">> = {
     supertypes: [],
     types: [],
     subtypes: [],
