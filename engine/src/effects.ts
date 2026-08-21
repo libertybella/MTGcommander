@@ -927,6 +927,17 @@ export function bindCardEffect(
       }
       return { kind: "exile_graveyard", playerId };
     }
+    case "grant_protection_choice": {
+      const chosen = chosenTargetAt(context, effect.target.index, state);
+      if (!chosen || chosen.type !== "creature") {
+        return null;
+      }
+      return {
+        kind: "grant_protection_choice",
+        cardId: chosen.cardId,
+        playerId: context.controllerId,
+      };
+    }
     case "copy_token": {
       const ownerId = bindPlayerSelector(state, effect.ownerId, context);
       if (!ownerId) {
@@ -1809,6 +1820,15 @@ function applyDiscardUnlessAttacked(state: GameState, playerId: PlayerId, count:
   return next;
 }
 
+/** Mother of Runes: applied from the choose_color prompt's answer. */
+export function grantProtectionUntilEot(
+  state: GameState,
+  cardId: CardInstanceId,
+  color: Color,
+): GameState {
+  return pushUntilEotEffect(state, [cardId], { kind: "grant_protection", colors: [color] });
+}
+
 function pushUntilEotEffect(
   state: GameState,
   affected: CardInstanceId[],
@@ -2410,6 +2430,20 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
         next = cloneGameState(state);
         const granted = next.players.find((entry) => entry.id === effect.playerId)!;
         granted.extraLandDropsThisTurn = (granted.extraLandDropsThisTurn ?? 0) + 1;
+        break;
+      }
+      case "grant_protection_choice": {
+        // Mother of Runes: the color is chosen when the ability resolves.
+        const shielded = state.cards[effect.cardId];
+        next = cloneGameState(state);
+        if (shielded && shielded.zone === "battlefield") {
+          next.prompts.push({
+            kind: "choose_color",
+            playerId: effect.playerId,
+            sourceId: effect.cardId,
+            grantProtectionTo: effect.cardId,
+          });
+        }
         break;
       }
       case "opponents_lose_keywords_until_eot": {

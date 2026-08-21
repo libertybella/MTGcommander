@@ -381,13 +381,17 @@ function triggerMatchesEvent(
     return false;
   }
   if (event.kind === "sacrifices") {
+    // Mayhem Devil: any player's sacrifice of any permanent.
+    if (trigger.event === "player_sacrifices") {
+      return true;
+    }
     return (
       trigger.event === "you_sacrifice_token" &&
       event.wasToken &&
       watcher.controllerId === event.controllerId
     );
   }
-  if (trigger.event === "you_sacrifice_token") {
+  if (trigger.event === "you_sacrifice_token" || trigger.event === "player_sacrifices") {
     return false;
   }
   if (event.kind === "untapped") {

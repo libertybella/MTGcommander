@@ -2626,9 +2626,55 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     };
   }
 
+  // Mother of Runes: the protection color is chosen when this resolves.
+  if (
+    /^Target creature you control gains protection from the color of your choice until end of turn$/i.test(
+      sentence,
+    )
+  ) {
+    return {
+      targetRequirements: [{ kind: "own_creature" }],
+      effects: [{ kind: "grant_protection_choice", target: { type: "chosen", index: 0 } }],
+    };
+  }
+
+  // Sensei's Divining Top: reorder without revealing.
+  match = sentence.match(
+    /^Look at the top (two|three|four|five) cards of your library, then put them back in any order$/i,
+  );
+  if (match?.[1]) {
+    const count = parseCount(match[1]);
+    if (count) {
+      return {
+        targetRequirements: [],
+        effects: [
+          {
+            kind: "look_and_assign",
+            playerId: "controller",
+            count,
+            destinations: Array.from({ length: count }, () => "library_top" as const),
+          },
+        ],
+      };
+    }
+  }
+
+  // Sensei's Divining Top: the draw spins the top back onto the library.
+  if (
+    /^Draw a card, then put (?:~|this artifact) on top of its owner's library$/i.test(sentence)
+  ) {
+    return {
+      targetRequirements: [],
+      effects: [
+        { kind: "draw", playerId: "controller", count: 1 },
+        { kind: "move_card", cardId: "self", toZone: "library", libraryPosition: "top" },
+      ],
+    };
+  }
+
   // Edicts: sacrifice choices belong to the affected players.
   match = sentence.match(
-    /^Each (player|opponent) sacrifices (?:a|one) (nontoken )?creature(?: of their choice)?$/i,
+    /^Each (player|opponent|other player) sacrifices (?:a|one) (nontoken )?creature(?: of their choice)?$/i,
   );
   if (match?.[1]) {
     return {
@@ -3282,6 +3328,10 @@ function parseTriggerHead(head: string): TriggerHead | null {
   }
   if (/^Whenever a creature you control dies$/i.test(text)) {
     return { event: "dies", watch: "controlled", subjectFilter: { types: ["creature"] } };
+  }
+  // Mayhem Devil: every player's sacrifices, including your own.
+  if (/^Whenever a player sacrifices a permanent$/i.test(text)) {
+    return { event: "player_sacrifices" };
   }
   if (/^Whenever a creature an opponent controls dies$/i.test(text)) {
     return { event: "dies", watch: "opponents", subjectFilter: { types: ["creature"] } };

@@ -451,7 +451,7 @@ export type ZoneReveal = {
   cardIds: CardInstanceId[];
 };
 
-export type LookDestination = "hand" | "library_bottom" | "exile";
+export type LookDestination = "hand" | "library_bottom" | "library_top" | "exile";
 
 /** What a library search may fetch (all listed names must match, lowercase). */
 export type SearchFilter = {
@@ -709,7 +709,9 @@ export type GameEffect =
   /** Ephemerate: exile a permanent and return it immediately (re-enters fresh). */
   | { kind: "flicker"; cardId: CardInstanceId }
   /** Bojuka Bog: every card in the player's graveyard is exiled. */
-  | { kind: "exile_graveyard"; playerId: PlayerId };
+  | { kind: "exile_graveyard"; playerId: PlayerId }
+  /** Mother of Runes: the chooser picks a protection color at resolution. */
+  | { kind: "grant_protection_choice"; cardId: CardInstanceId; playerId: PlayerId };
 
 /** What a "Destroy all …" wipe hits. */
 export type DestroyAllScope = "creatures" | "artifacts" | "enchantments" | "planeswalkers" | "nonland";
@@ -1150,7 +1152,9 @@ export type CardEffect =
       includePlayers?: boolean;
     }
   | { kind: "flicker"; cardId: CardIdSelector }
-  | { kind: "exile_graveyard"; playerId: PlayerSelector };
+  | { kind: "exile_graveyard"; playerId: PlayerSelector }
+  /** Mother of Runes: protection from a color of your choice until EOT. */
+  | { kind: "grant_protection_choice"; target: ChosenTargetRef };
 
 export type Keyword =
   | "flying"
@@ -1202,6 +1206,8 @@ export type TriggerEvent =
   | "becomes_tapped"
   /** An opponent drew their second card this turn (Faerie Mastermind). */
   | "opponent_draws_second"
+  /** Any player sacrificed a permanent (Mayhem Devil). */
+  | "player_sacrifices"
   /** An opponent searched their library (Archivist of Oghma). */
   | "opponent_searches"
   /** Any player cast their second spell this turn (Lotho). */
@@ -1375,6 +1381,9 @@ export type PendingPrompt =
       kind: "choose_color";
       playerId: PlayerId;
       sourceId: CardInstanceId;
+      /** Mother of Runes: the chosen color becomes an until-EOT protection
+       * grant on this creature instead of a stored chosenColor. */
+      grantProtectionTo?: CardInstanceId;
     }
   | {
       /**

@@ -10699,3 +10699,237 @@ describe("wave 109: elves, drums, tenders, ambers", () => {
     expect(next.players[0]?.mana.U).toBe(0);
   });
 });
+
+describe("wave 110: pacts, tops, mothers, devils", () => {
+  it("compiles the quartet fully", () => {
+    const pact = compileOracleCard({
+      oracleId: "pact",
+      name: "Grave Pact",
+      manaCost: "{1}{B}{B}{B}",
+      typeLine: "Enchantment",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "Whenever a creature you control dies, each other player sacrifices a creature of their choice.",
+    });
+    expect(pact.notes).toEqual([]);
+    expect(pact.definition.triggers[0]?.event).toBe("dies");
+    expect(pact.definition.triggers[0]?.effects[0]).toMatchObject({
+      kind: "choose_card",
+      chooserId: "each_opponent",
+    });
+
+    const top = compileOracleCard({
+      oracleId: "top",
+      name: "Sensei's Divining Top",
+      manaCost: "{1}",
+      typeLine: "Artifact",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "{1}: Look at the top three cards of your library, then put them back in any order.\n{T}: Draw a card, then put this artifact on top of its owner's library.",
+    });
+    expect(top.notes).toEqual([]);
+    expect(top.definition.activated[0]?.effects[0]).toMatchObject({
+      kind: "look_and_assign",
+      count: 3,
+      destinations: ["library_top", "library_top", "library_top"],
+    });
+    expect(top.definition.activated[1]?.effects).toEqual([
+      { kind: "draw", playerId: "controller", count: 1 },
+      { kind: "move_card", cardId: "self", toZone: "library", libraryPosition: "top" },
+    ]);
+
+    const mother = compileOracleCard({
+      oracleId: "mother",
+      name: "Mother of Runes",
+      manaCost: "{W}",
+      typeLine: "Creature — Human Cleric",
+      power: "1",
+      toughness: "1",
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "{T}: Target creature you control gains protection from the color of your choice until end of turn.",
+    });
+    expect(mother.notes).toEqual([]);
+    expect(mother.definition.activated[0]?.effects[0]).toMatchObject({
+      kind: "grant_protection_choice",
+    });
+
+    const devil = compileOracleCard({
+      oracleId: "devil",
+      name: "Mayhem Devil",
+      manaCost: "{B}{R}",
+      typeLine: "Creature — Devil",
+      power: "3",
+      toughness: "3",
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText: "Whenever a player sacrifices a permanent, this creature deals 1 damage to any target.",
+    });
+    expect(devil.notes).toEqual([]);
+    expect(devil.definition.triggers[0]?.event).toBe("player_sacrifices");
+  });
+
+  it("reorders the top of the library and spins itself back on top", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 10);
+    const topDef = createCardDefinition({
+      name: "Top",
+      typeLine: "Artifact",
+      activated: [
+        {
+          tap: false,
+          manaCost: "{1}",
+          effects: [
+            {
+              kind: "look_and_assign",
+              playerId: "controller",
+              count: 3,
+              destinations: ["library_top", "library_top", "library_top"],
+            },
+          ],
+          targetRequirements: [],
+        },
+        {
+          tap: true,
+          manaCost: "",
+          effects: [
+            { kind: "draw", playerId: "controller", count: 1 },
+            { kind: "move_card", cardId: "self", toZone: "library", libraryPosition: "top" },
+          ],
+          targetRequirements: [],
+        },
+      ],
+    });
+    game.definitions[topDef.id] = topDef;
+    const top = createCardInstance({ definitionId: topDef.id, ownerId: p1.id, zone: "battlefield" });
+    game.cards[top.id] = top;
+    p1.zones.battlefield.push(top.id);
+    game.priorityPlayerId = p1.id;
+    game.players[0]!.mana.C = 1;
+
+    let next = applyAction(game, {
+      kind: "activate_ability",
+      playerId: p1.id,
+      cardId: top.id,
+      abilityIndex: 0,
+      targets: [],
+    });
+    while (next.stack.length > 0) {
+      next = resolveTopOfStack(next);
+    }
+    expect(next.prompts[0]?.kind).toBe("look_and_assign");
+    const looked = next.players[0]!.zones.library.slice(0, 3);
+    next = applyAction(next, {
+      kind: "resolve_look_assign",
+      playerId: p1.id,
+      assignments: looked.map((cardId) => ({ cardId, destination: "library_top" as const })),
+    });
+    // Later top placements land above earlier ones: the order reverses.
+    expect(next.players[0]!.zones.library.slice(0, 3)).toEqual([...looked].reverse());
+
+    // The tap ability draws and perches the Top back on the library.
+    const handBefore = next.players[0]!.zones.hand.length;
+    next.priorityPlayerId = p1.id;
+    let spun = applyAction(next, {
+      kind: "activate_ability",
+      playerId: p1.id,
+      cardId: top.id,
+      abilityIndex: 1,
+      targets: [],
+    });
+    while (spun.stack.length > 0) {
+      spun = resolveTopOfStack(spun);
+    }
+    expect(spun.players[0]!.zones.hand.length).toBe(handBefore + 1);
+    expect(spun.players[0]!.zones.library[0]).toBe(top.id);
+    expect(spun.cards[top.id]?.zone).toBe("library");
+  });
+
+  it("grants chosen-color protection until end of turn", () => {
+    const { game, p1 } = twoPlayers();
+    const motherDef = createCardDefinition({
+      name: "Mother",
+      typeLine: "Creature — Human Cleric",
+      power: 1,
+      toughness: 1,
+      activated: [
+        {
+          tap: true,
+          manaCost: "",
+          effects: [{ kind: "grant_protection_choice", target: { type: "chosen", index: 0 } }],
+          targetRequirements: [{ kind: "own_creature" }],
+        },
+      ],
+    });
+    const bearDef = createCardDefinition({ name: "Bear", typeLine: "Creature — Bear", power: 2, toughness: 2 });
+    game.definitions[motherDef.id] = motherDef;
+    game.definitions[bearDef.id] = bearDef;
+    const mother = createCardInstance({ definitionId: motherDef.id, ownerId: p1.id, zone: "battlefield" });
+    const bear = createCardInstance({ definitionId: bearDef.id, ownerId: p1.id, zone: "battlefield" });
+    mother.summoningSick = false;
+    game.cards[mother.id] = mother;
+    game.cards[bear.id] = bear;
+    p1.zones.battlefield.push(mother.id, bear.id);
+    game.priorityPlayerId = p1.id;
+
+    let next = applyAction(game, {
+      kind: "activate_ability",
+      playerId: p1.id,
+      cardId: mother.id,
+      abilityIndex: 0,
+      targets: [{ type: "creature", cardId: bear.id }],
+    });
+    while (next.stack.length > 0) {
+      next = resolveTopOfStack(next);
+    }
+    expect(next.prompts[0]?.kind).toBe("choose_color");
+    next = applyAction(next, { kind: "resolve_color", playerId: p1.id, color: "R" });
+    expect(computedCard(next, bear.id)?.protectionFrom).toContain("R");
+  });
+
+  it("pings off every sacrifice at the table", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const devilDef = createCardDefinition({
+      name: "Devil",
+      typeLine: "Creature — Devil",
+      power: 3,
+      toughness: 3,
+      triggers: [
+        {
+          event: "player_sacrifices",
+          effects: [
+            {
+              kind: "deal_damage",
+              sourceId: "self",
+              target: { type: "chosen", index: 0 },
+              amount: 1,
+            },
+          ],
+          targetRequirements: [{ kind: "player_or_creature" }],
+        },
+      ],
+    });
+    const foodDef = createCardDefinition({ name: "Food", typeLine: "Artifact — Food" });
+    game.definitions[devilDef.id] = devilDef;
+    game.definitions[foodDef.id] = foodDef;
+    const devil = createCardInstance({ definitionId: devilDef.id, ownerId: p1.id, zone: "battlefield" });
+    const food = createCardInstance({ definitionId: foodDef.id, ownerId: p2.id, zone: "battlefield" });
+    game.cards[devil.id] = devil;
+    game.cards[food.id] = food;
+    p1.zones.battlefield.push(devil.id);
+    p2.zones.battlefield.push(food.id);
+
+    // An OPPONENT's sacrifice still feeds the devil.
+    const next = applyEffect(game, { kind: "sacrifice", cardId: food.id });
+    expect(next.cards[food.id]?.zone).toBe("graveyard");
+    const sawTrigger = next.prompts.length > 0 || next.stack.length > 0;
+    expect(sawTrigger).toBe(true);
+  });
+});

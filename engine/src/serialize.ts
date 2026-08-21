@@ -40,6 +40,7 @@ import type {
   TargetRequirement,
   TokenTemplate,
   TriggerCandidate,
+  TriggerEvent,
   ZoneName,
   ZoneReveal,
 } from "./types";
@@ -1027,6 +1028,14 @@ function parsePrompts(value: unknown, playerIds: Set<string>): PendingPrompt[] {
         kind,
         playerId,
         sourceId: expectString(entry.sourceId, `prompts[${index}].sourceId`),
+        ...(entry.grantProtectionTo === undefined
+          ? {}
+          : {
+              grantProtectionTo: expectString(
+                entry.grantProtectionTo,
+                `prompts[${index}].grantProtectionTo`,
+              ),
+            }),
       };
     }
     if (kind === "order_triggers") {
@@ -1270,7 +1279,12 @@ function parseLookDestinations(value: unknown, label: string): LookDestination[]
   }
   return value.map((entry, index) => {
     const destination = expectString(entry, `${label}[${index}]`);
-    if (destination !== "hand" && destination !== "library_bottom" && destination !== "exile") {
+    if (
+      destination !== "hand" &&
+      destination !== "library_bottom" &&
+      destination !== "library_top" &&
+      destination !== "exile"
+    ) {
       throw new Error(`Invalid ${label}[${index}]`);
     }
     return destination;
@@ -1970,6 +1984,7 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
         ...(value.cantBlock === true ? { cantBlock: true } : {}),
         ...(value.cantBeBlocked === true ? { cantBeBlocked: true } : {}),
       };
+    case "grant_protection_choice":
     case "counter_spell":
     case "copy_spell": {
       if (!isRecord(value.target)) {
@@ -2398,6 +2413,36 @@ function parseSpellModes(value: unknown, label: string): SpellMode[] {
   });
 }
 
+/** Every TriggerEvent name — keep in lockstep with the union in types.ts.
+ * (The old hand-written comparison chain silently fell behind: it rejected
+ * becomes_tapped and opponent_draws_second definitions on reload.) */
+const TRIGGER_EVENT_NAMES: ReadonlySet<string> = new Set([
+  "enter_battlefield",
+  "begin_combat",
+  "dies",
+  "attacks",
+  "upkeep",
+  "end_step",
+  "you_gain_life",
+  "opponent_loses_life",
+  "cast_spell",
+  "deals_combat_damage_to_player",
+  "deals_damage_to_player",
+  "opponent_draws",
+  "you_create_token",
+  "you_sacrifice_token",
+  "becomes_untapped",
+  "becomes_tapped",
+  "opponent_draws_second",
+  "player_sacrifices",
+  "opponent_searches",
+  "casts_second_spell",
+  "opponent_casts_first_noncreature_spell",
+  "graveyard_from_elsewhere",
+  "leaves_your_graveyard",
+  "you_draw",
+] satisfies TriggerEvent[]);
+
 function parseTriggers(value: unknown, label: string): CardTrigger[] {
   if (value === undefined) {
     return [];
@@ -2409,32 +2454,11 @@ function parseTriggers(value: unknown, label: string): CardTrigger[] {
     if (!isRecord(entry)) {
       throw new Error(`Invalid ${label}[${index}]`);
     }
-    const event = expectString(entry.event, `${label}[${index}].event`);
-    if (
-      event !== "enter_battlefield" &&
-      event !== "begin_combat" &&
-      event !== "dies" &&
-      event !== "attacks" &&
-      event !== "upkeep" &&
-      event !== "end_step" &&
-      event !== "you_gain_life" &&
-      event !== "opponent_loses_life" &&
-      event !== "opponent_draws" &&
-      event !== "you_create_token" &&
-      event !== "you_sacrifice_token" &&
-      event !== "becomes_untapped" &&
-      event !== "opponent_searches" &&
-      event !== "casts_second_spell" &&
-      event !== "opponent_casts_first_noncreature_spell" &&
-      event !== "graveyard_from_elsewhere" &&
-      event !== "leaves_your_graveyard" &&
-      event !== "you_draw" &&
-      event !== "cast_spell" &&
-      event !== "deals_combat_damage_to_player" &&
-      event !== "deals_damage_to_player"
-    ) {
+    const eventName = expectString(entry.event, `${label}[${index}].event`);
+    if (!TRIGGER_EVENT_NAMES.has(eventName)) {
       throw new Error(`Invalid ${label}[${index}].event`);
     }
+    const event = eventName as TriggerEvent;
     const watch = entry.watch;
     if (
       watch !== undefined &&
@@ -3340,6 +3364,13 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
   }
   if (kind === "commander_to_hand") {
     return { kind, playerId: expectString(value.playerId, `${label}.playerId`) };
+  }
+  if (kind === "grant_protection_choice") {
+    return {
+      kind,
+      cardId: expectString(value.cardId, `${label}.cardId`),
+      playerId: expectString(value.playerId, `${label}.playerId`),
+    };
   }
   if (kind === "opponents_lose_keywords_until_eot") {
     return {

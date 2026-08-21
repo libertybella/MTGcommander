@@ -3,7 +3,7 @@ import { cloneGameState } from "./clone";
 // Deferred call only (decline path) — the effects/prompt import cycle is benign.
 import { cardMatchesSubtype } from "./characteristicsEngine";
 import { isLand as cardIsLand } from "./cardTypes";
-import { applyEffects } from "./effects";
+import { applyEffects, grantProtectionUntilEot } from "./effects";
 import { payManaCost, tapForMana } from "./mana";
 import { manaAbilitiesFor, manaTapOptionsFor } from "./manaOptions";
 import { isLiving, requireLiving } from "./players";
@@ -213,6 +213,12 @@ export function applyResolveColor(
   }
   const next = cloneGameState(state);
   next.prompts.shift();
+  // Mother of Runes: the answer becomes an until-EOT protection grant.
+  if (prompt.grantProtectionTo) {
+    return next.cards[prompt.grantProtectionTo]?.zone === "battlefield"
+      ? grantProtectionUntilEot(next, prompt.grantProtectionTo, color)
+      : next;
+  }
   const card = next.cards[prompt.sourceId];
   if (card) {
     card.chosenColor = color;
@@ -646,6 +652,9 @@ export function applyResolveLookAssign(
       moved = moveCard(moved, assignment.cardId, "hand");
     } else if (assignment.destination === "library_bottom") {
       moved = moveCard(moved, assignment.cardId, "library", { libraryPosition: "bottom" });
+    } else if (assignment.destination === "library_top") {
+      // Sensei's Top reorder: later assignments land above earlier ones.
+      moved = moveCard(moved, assignment.cardId, "library", { libraryPosition: "top" });
     } else {
       moved = moveCard(moved, assignment.cardId, "exile");
     }

@@ -821,6 +821,9 @@ function lookDestLabel(destination: LookDestination): string {
   if (destination === "library_bottom") {
     return "Bottom";
   }
+  if (destination === "library_top") {
+    return "Top";
+  }
   return "Exile";
 }
 
