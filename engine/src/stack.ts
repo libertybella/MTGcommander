@@ -94,6 +94,7 @@ export function putSpellOnStack(
   modeIndex?: number,
   xValue?: number,
   division?: number[],
+  modeIndexes?: number[],
 ): GameState {
   const card = state.cards[cardId];
   if (!card) {
@@ -106,9 +107,11 @@ export function putSpellOnStack(
   }
   const definition = state.definitions[card.definitionId];
   const requirements =
-    modeIndex !== undefined && definition?.modes?.[modeIndex]
-      ? definition.modes[modeIndex]!.targetRequirements
-      : definition?.targetRequirements ?? [];
+    modeIndexes && modeIndexes.length > 0 && definition?.modes
+      ? modeIndexes.flatMap((index) => definition.modes![index]?.targetRequirements ?? [])
+      : modeIndex !== undefined && definition?.modes?.[modeIndex]
+        ? definition.modes[modeIndex]!.targetRequirements
+        : definition?.targetRequirements ?? [];
   validateChosenTargets(state, requirements, targets, card.controllerId, sourceColorsOf(state, cardId));
 
   let next = cloneGameState(state);
@@ -126,6 +129,7 @@ export function putSpellOnStack(
     kind: "spell",
     targets: targets.map((target) => ({ ...target })),
     ...(modeIndex !== undefined ? { modeIndex } : {}),
+    ...(modeIndexes && modeIndexes.length > 0 ? { modeIndexes: [...modeIndexes] } : {}),
     ...(xValue !== undefined ? { xValue } : {}),
     ...(division !== undefined ? { division: [...division] } : {}),
   });
@@ -215,6 +219,43 @@ export function resolveTopOfStack(state: GameState): GameState {
 
   const source = next.cards[top.sourceId];
   const definition = source ? next.definitions[source.definitionId] : undefined;
+  // Multi-mode spells resolve each chosen bullet in order, each with its own
+  // slice of the chosen targets; an illegal slice fizzles just that mode.
+  if (top.modeIndexes && top.modeIndexes.length > 0 && definition?.modes) {
+    let offset = 0;
+    for (const index of top.modeIndexes) {
+      const chosenMode = definition.modes[index];
+      if (!chosenMode) {
+        continue;
+      }
+      const slice = top.targets.slice(offset, offset + chosenMode.targetRequirements.length);
+      offset += chosenMode.targetRequirements.length;
+      if (
+        chosenMode.effects.length === 0 ||
+        !hasLegalTargetRemaining(next, chosenMode.targetRequirements, slice, top.controllerId, sourceColorsOf(next, top.sourceId))
+      ) {
+        continue;
+      }
+      const bound = bindCardEffects(next, chosenMode.effects, {
+        controllerId: top.controllerId,
+        sourceId: top.sourceId,
+        targets: slice,
+        targetRequirements: chosenMode.targetRequirements,
+        xValue: top.xValue,
+      });
+      next = applyEffects(next, bound);
+    }
+    if (next.cards[top.sourceId]?.zone === "stack") {
+      next = enterOwnerZone(
+        next,
+        top.sourceId,
+        isInstantOrSorcery(next, top.sourceId) ? "graveyard" : "battlefield",
+      );
+    }
+    applyStateBasedActionsInPlace(next);
+    redirectPriorityIfLost(next);
+    return next;
+  }
   const mode =
     top.modeIndex !== undefined ? definition?.modes?.[top.modeIndex] : undefined;
   const requirements = mode ? mode.targetRequirements : definition?.targetRequirements ?? [];

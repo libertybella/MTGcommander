@@ -231,6 +231,7 @@ function nextAction(state: GameState, rng: () => number): GameAction | null {
         definition = state.definitions[definition.otherFaceId]!;
       }
       let modeIndex: number | undefined;
+      let modeIndexes: number[] | undefined;
       let requirements = definition.targetRequirements;
       if (definition.modes && definition.modes.length > 0) {
         const castable = definition.modes
@@ -240,12 +241,31 @@ function nextAction(state: GameState, rng: () => number): GameAction | null {
               mode.targetRequirements.length === 0 ||
               randomTargets(state, mode.targetRequirements, playerId, rng) !== null,
           );
-        if (castable.length === 0) {
-          return { kind: "pass_priority", playerId };
+        if (definition.modeChoice) {
+          const { min, max } = definition.modeChoice;
+          if (castable.length < min) {
+            return { kind: "pass_priority", playerId };
+          }
+          const wanted = Math.min(
+            castable.length,
+            min + Math.floor(rng() * (Math.min(max, castable.length) - min + 1)),
+          );
+          const pool = [...castable];
+          const chosen: typeof castable = [];
+          for (let i = 0; i < wanted; i += 1) {
+            chosen.push(...pool.splice(Math.floor(rng() * pool.length), 1));
+          }
+          chosen.sort((a, b) => a.index - b.index);
+          modeIndexes = chosen.map((entry) => entry.index);
+          requirements = chosen.flatMap((entry) => entry.mode.targetRequirements);
+        } else {
+          if (castable.length === 0) {
+            return { kind: "pass_priority", playerId };
+          }
+          const picked = pick(rng, castable);
+          modeIndex = picked.index;
+          requirements = picked.mode.targetRequirements;
         }
-        const picked = pick(rng, castable);
-        modeIndex = picked.index;
-        requirements = picked.mode.targetRequirements;
       }
       const targets = randomTargets(state, requirements, playerId, rng);
       if (targets === null) {
@@ -285,6 +305,7 @@ function nextAction(state: GameState, rng: () => number): GameAction | null {
         targets,
         faceIndex: action.faceIndex,
         ...(modeIndex !== undefined ? { modeIndex } : {}),
+        ...(modeIndexes ? { modeIndexes } : {}),
         ...(costSacrificeId ? { costSacrificeId } : {}),
         ...(costDiscardIds ? { costDiscardIds } : {}),
       };

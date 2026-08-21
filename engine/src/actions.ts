@@ -173,6 +173,7 @@ function applyCastSpell(
   targets: ChosenTarget[] | undefined,
   faceIndex: number | undefined,
   modeIndex: number | undefined,
+  modeIndexes: number[] | undefined,
   xValue: number | undefined,
   division: number[] | undefined,
   costSacrificeId: CardInstanceId | undefined,
@@ -245,7 +246,20 @@ function applyCastSpell(
   } else if (division !== undefined) {
     throw new Error("That spell does not divide damage");
   }
-  if (definition?.modes && definition.modes.length > 0) {
+  if (definition?.modes && definition.modes.length > 0 && definition.modeChoice) {
+    const { min, max } = definition.modeChoice;
+    const chosen = modeIndexes ?? (modeIndex !== undefined ? [modeIndex] : []);
+    if (
+      chosen.length < min ||
+      chosen.length > max ||
+      new Set(chosen).size !== chosen.length ||
+      chosen.some((index) => !Number.isInteger(index) || !definition.modes![index])
+    ) {
+      throw new Error(`Choose ${min === max ? min : `${min}-${max}`} mode(s)`);
+    }
+    const combined = chosen.flatMap((index) => definition.modes![index]!.targetRequirements);
+    validateChosenTargets(faced, combined, targets ?? [], playerId, definition.characteristics.colors);
+  } else if (definition?.modes && definition.modes.length > 0) {
     if (
       modeIndex === undefined ||
       !Number.isInteger(modeIndex) ||
@@ -286,7 +300,7 @@ function applyCastSpell(
       paid.log.push({ kind: "life_change", playerId, delta: -additional.life });
     }
   }
-  const stacked = putSpellOnStack(paid, cardId, targets ?? [], modeIndex, xValue, division);
+  const stacked = putSpellOnStack(paid, cardId, targets ?? [], modeIndex, xValue, division, modeIndexes);
   if (!fromCommand) {
     return stacked;
   }
@@ -720,6 +734,7 @@ export function applyAction(
           action.targets,
           action.faceIndex,
           action.modeIndex,
+          action.modeIndexes,
           action.xValue,
           action.division,
           action.costSacrificeId,

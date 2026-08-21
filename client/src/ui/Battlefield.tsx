@@ -60,8 +60,9 @@ export type UiMode =
       abilityIndex?: number;
       faceIndex?: number;
       modeIndex?: number;
+      modeIndexes?: number[];
     }
-  | { type: "spell-mode-pick"; cardId: CardInstanceId }
+  | { type: "spell-mode-pick"; cardId: CardInstanceId; chosen?: number[] }
   | { type: "cost-sacrifice"; cardId: CardInstanceId }
   | { type: "cost-discard"; cardId: CardInstanceId; chosen: CardInstanceId[] }
   | { type: "attackers"; attackerIds: CardInstanceId[]; defenderId: PlayerId | null }
@@ -188,6 +189,9 @@ function modeRequirements(state: GameState, mode: UiMode): TargetRequirement[] {
     return prompt?.kind === "choose_targets" ? prompt.requirements : [];
   }
   const def = definition(state, mode.cardId);
+  if (mode.modeIndexes && mode.modeIndexes.length > 0 && def?.modes) {
+    return mode.modeIndexes.flatMap((index) => def.modes![index]?.targetRequirements ?? []);
+  }
   if (mode.modeIndex !== undefined && def?.modes?.[mode.modeIndex]) {
     return def.modes[mode.modeIndex]!.targetRequirements;
   }
@@ -1459,6 +1463,14 @@ export function Battlefield(props: Props) {
   function pickSpellMode(cardId: CardInstanceId, modeIndex: number) {
     const playerId = controllerOf(cardId) ?? actorId;
     const def = definition(state, cardId);
+    if (def?.modeChoice) {
+      const current = mode.type === "spell-mode-pick" ? mode.chosen ?? [] : [];
+      const toggled = current.includes(modeIndex)
+        ? current.filter((index) => index !== modeIndex)
+        : [...current, modeIndex].sort((a, b) => a - b);
+      onMode({ type: "spell-mode-pick", cardId, chosen: toggled });
+      return;
+    }
     const spellMode = def?.modes?.[modeIndex];
     if (!spellMode) {
       onMode({ type: "idle" });
@@ -1470,6 +1482,20 @@ export function Battlefield(props: Props) {
       return;
     }
     onMode({ type: "targets", cardId, chosen: [], origin: "spell", modeIndex });
+  }
+
+  function confirmSpellModes(cardId: CardInstanceId, chosen: number[]) {
+    const playerId = controllerOf(cardId) ?? actorId;
+    const def = definition(state, cardId);
+    const requirements = def?.modes
+      ? chosen.flatMap((index) => def.modes![index]?.targetRequirements ?? [])
+      : [];
+    if (requirements.length === 0) {
+      send({ kind: "cast_spell", playerId, cardId, modeIndexes: chosen });
+      onMode({ type: "idle" });
+      return;
+    }
+    onMode({ type: "targets", cardId, chosen: [], origin: "spell", modeIndexes: chosen });
   }
 
   function pickHandChoice(cardId: CardInstanceId, optionId: string) {
@@ -1698,6 +1724,7 @@ export function Battlefield(props: Props) {
         targets: chosen,
         ...(mode.faceIndex !== undefined ? { faceIndex: mode.faceIndex } : {}),
         ...(mode.modeIndex !== undefined ? { modeIndex: mode.modeIndex } : {}),
+        ...(mode.modeIndexes ? { modeIndexes: mode.modeIndexes } : {}),
       });
       return;
     }
@@ -1708,6 +1735,8 @@ export function Battlefield(props: Props) {
       origin: mode.origin,
       abilityIndex: mode.abilityIndex,
       faceIndex: mode.faceIndex,
+      modeIndex: mode.modeIndex,
+      modeIndexes: mode.modeIndexes,
     });
   }
 
@@ -2732,11 +2761,29 @@ export function Battlefield(props: Props) {
       {mode.type === "spell-mode-pick" ? (
         <HandChoicePop
           cardId={mode.cardId}
-          options={(definition(state, mode.cardId)?.modes ?? []).map((spellMode, index) => ({
-            id: `mode-${index}`,
-            label: spellMode.label,
-          }))}
+          options={(() => {
+            const def = definition(state, mode.cardId);
+            const chosen = mode.chosen ?? [];
+            const options = (def?.modes ?? []).map((spellMode, index) => ({
+              id: `mode-${index}`,
+              label: `${chosen.includes(index) ? "✓ " : ""}${spellMode.label}`,
+            }));
+            if (
+              def?.modeChoice &&
+              chosen.length >= def.modeChoice.min &&
+              chosen.length <= def.modeChoice.max
+            ) {
+              options.push({ id: "confirm", label: `Cast with ${chosen.length} mode(s)` });
+            }
+            return options;
+          })()}
           onPick={(optionId) => {
+            if (optionId === "confirm") {
+              if (mode.type === "spell-mode-pick") {
+                confirmSpellModes(mode.cardId, mode.chosen ?? []);
+              }
+              return;
+            }
             const modeIndex = Number(optionId.replace("mode-", ""));
             pickSpellMode(mode.cardId, modeIndex);
           }}

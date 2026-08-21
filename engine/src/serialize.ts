@@ -450,6 +450,19 @@ export function parseGameState(json: string): GameState {
       ...(def.modes === undefined
         ? {}
         : { modes: parseSpellModes(def.modes, `definition.${id}.modes`) }),
+      ...(def.modeChoice === undefined
+        ? {}
+        : {
+            modeChoice: (() => {
+              if (!isRecord(def.modeChoice)) {
+                throw new Error(`Invalid definition.${id}.modeChoice`);
+              }
+              return {
+                min: expectNumber(def.modeChoice.min, `definition.${id}.modeChoice.min`),
+                max: expectNumber(def.modeChoice.max, `definition.${id}.modeChoice.max`),
+              };
+            })(),
+          }),
       ...(def.enchant === "creature" ? { enchant: "creature" as const } : {}),
       ...(def.loyalty === undefined
         ? {}
@@ -529,6 +542,18 @@ export function parseGameState(json: string): GameState {
       ...(entry.modeIndex === undefined
         ? {}
         : { modeIndex: expectNumber(entry.modeIndex, `stack[${index}].modeIndex`) }),
+      ...(entry.modeIndexes === undefined
+        ? {}
+        : {
+            modeIndexes: (() => {
+              if (!Array.isArray(entry.modeIndexes)) {
+                throw new Error(`Invalid stack[${index}].modeIndexes`);
+              }
+              return entry.modeIndexes.map((value, i) =>
+                expectNumber(value, `stack[${index}].modeIndexes[${i}]`),
+              );
+            })(),
+          }),
       ...(entry.loyaltyIndex === undefined
         ? {}
         : { loyaltyIndex: expectNumber(entry.loyaltyIndex, `stack[${index}].loyaltyIndex`) }),
@@ -2290,6 +2315,18 @@ export function parseGameAction(json: string): GameAction {
       ...(raw.modeIndex === undefined
         ? {}
         : { modeIndex: expectNumber(raw.modeIndex, "action.modeIndex") }),
+      ...(raw.modeIndexes === undefined
+        ? {}
+        : {
+            modeIndexes: (() => {
+              if (!Array.isArray(raw.modeIndexes)) {
+                throw new Error("Invalid action.modeIndexes");
+              }
+              return raw.modeIndexes.map((value, i) =>
+                expectNumber(value, `action.modeIndexes[${i}]`),
+              );
+            })(),
+          }),
       ...(raw.xValue === undefined
         ? {}
         : { xValue: expectNumber(raw.xValue, "action.xValue") }),

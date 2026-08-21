@@ -416,6 +416,66 @@ describe("creature-or-planeswalker removal", () => {
   });
 });
 
+describe("multi-mode spells", () => {
+  it("compiles a Choose-two command and resolves both chosen modes", () => {
+    const compiled = compileOracleCard({
+      oracleId: "command",
+      name: "Practical Command",
+      manaCost: "{3}{G}{W}",
+      typeLine: "Sorcery",
+      oracleText:
+        "Choose two —\n• Destroy target artifact.\n• Destroy target enchantment.\n• You gain 4 life.\n• Draw a card.",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+    });
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.modes).toHaveLength(4);
+    expect(compiled.definition.modeChoice).toEqual({ min: 2, max: 2 });
+
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game);
+    game.definitions[compiled.definition.id] = compiled.definition;
+    const spell = createCardInstance({
+      definitionId: compiled.definition.id,
+      ownerId: p1.id,
+      zone: "hand",
+    });
+    game.cards[spell.id] = spell;
+    p1.zones.hand.push(spell.id);
+    const ready = advanceSteps(game, 3);
+    ready.players[0]!.mana.G = 1;
+    ready.players[0]!.mana.W = 1;
+    ready.players[0]!.mana.C = 3;
+    ready.priorityPlayerId = p1.id;
+
+    // One mode is refused.
+    expect(() =>
+      applyAction(ready, {
+        kind: "cast_spell",
+        playerId: p1.id,
+        cardId: spell.id,
+        targets: [],
+        modeIndexes: [2],
+      }),
+    ).toThrow(/Choose 2/);
+
+    const cast = applyAction(ready, {
+      kind: "cast_spell",
+      playerId: p1.id,
+      cardId: spell.id,
+      targets: [],
+      modeIndexes: [2, 3],
+    });
+    const handBefore = cast.players[0]!.zones.hand.length;
+    const resolved = resolveTopOfStack(cast);
+    expect(resolved.players[0]?.life).toBe(44);
+    expect(resolved.players[0]?.zones.hand).toHaveLength(handBefore + 1);
+    expect(resolved.cards[spell.id]?.zone).toBe("graveyard");
+  });
+});
+
 describe("edicts and symmetrical effects", () => {
   it("compiles the Fleshbag edict and walks each player's choice", () => {
     const compiled = compileOracleCard({

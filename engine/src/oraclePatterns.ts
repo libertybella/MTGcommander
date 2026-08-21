@@ -50,6 +50,7 @@ export type CompiledOracleText = {
   playLandsFromGraveyard?: boolean;
   additionalCost?: AdditionalCastCost;
   dynamicPt?: { count: DynamicCount };
+  modeChoice?: { min: number; max: number };
   leftover: string[];
   notes: string[];
 };
@@ -1756,6 +1757,7 @@ type ModalExtraction = {
   remainingText: string;
   modes: SpellMode[] | null;
   raw: string;
+  choice?: { min: number; max: number };
 };
 
 /**
@@ -1765,10 +1767,16 @@ type ModalExtraction = {
  */
 function extractModalModes(card: OracleCard): ModalExtraction | null {
   const lines = stripReminderText(card.oracleText).replace(/\r/g, "").split("\n");
-  const headIndex = lines.findIndex((line) => /^Choose one\s*[—-]\s*$/i.test(line.trim()));
+  const headIndex = lines.findIndex((line) =>
+    /^Choose (one|two|three|one or more|one or both|up to one|up to two)\s*[—-]\s*$/i.test(
+      line.trim(),
+    ),
+  );
   if (headIndex === -1) {
     return null;
   }
+  const headWord =
+    lines[headIndex]!.trim().match(/^Choose (.+?)\s*[—-]\s*$/i)?.[1]?.toLowerCase() ?? "one";
   const bullets: string[] = [];
   let end = headIndex + 1;
   while (end < lines.length && lines[end]!.trim().startsWith("•")) {
@@ -1796,7 +1804,21 @@ function extractModalModes(card: OracleCard): ModalExtraction | null {
       targetRequirements: clause.targetRequirements,
     });
   }
-  return { remainingText, modes, raw };
+  const choice =
+    headWord === "two"
+      ? { min: 2, max: 2 }
+      : headWord === "three"
+        ? { min: 3, max: 3 }
+        : headWord === "one or more"
+          ? { min: 1, max: modes.length }
+          : headWord === "one or both"
+            ? { min: 1, max: 2 }
+            : headWord === "up to one"
+              ? { min: 0, max: 1 }
+              : headWord === "up to two"
+                ? { min: 0, max: 2 }
+                : undefined;
+  return { remainingText, modes, raw, ...(choice ? { choice } : {}) };
 }
 
 export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): CompiledOracleText {
@@ -1820,6 +1842,9 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
   if (modal) {
     if (modal.modes) {
       result.modes = modal.modes;
+      if (modal.choice) {
+        result.modeChoice = modal.choice;
+      }
     } else {
       result.leftover.push(modal.raw);
     }

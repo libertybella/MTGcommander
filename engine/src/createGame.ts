@@ -70,6 +70,7 @@ export function createCardDefinition(
         | "playLandsFromGraveyard"
         | "additionalCost"
         | "dynamicPt"
+        | "modeChoice"
       >
     > & { colors?: Color[] },
 ): CardDefinition {
@@ -184,6 +185,7 @@ export function createCardDefinition(
     ...(input.playLandsFromGraveyard ? { playLandsFromGraveyard: true } : {}),
     ...(input.additionalCost ? { additionalCost: { ...input.additionalCost } } : {}),
     ...(input.dynamicPt ? { dynamicPt: { count: input.dynamicPt.count } } : {}),
+    ...(input.modeChoice ? { modeChoice: { ...input.modeChoice } } : {}),
     ...(input.costReductions && input.costReductions.length > 0
       ? {
           costReductions: input.costReductions.map((entry) => ({

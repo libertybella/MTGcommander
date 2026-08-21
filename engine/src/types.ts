@@ -122,6 +122,8 @@ export type CardDefinition = {
   loyaltyAbilities?: LoyaltyAbility[];
   /** "Choose one —" spells: cast picks exactly one mode (CR 700.2). */
   modes?: SpellMode[];
+  /** "Choose two —" / "Choose one or more —": how many modes the cast picks. */
+  modeChoice?: { min: number; max: number };
   /** "You have no maximum hand size" while this permanent is on the battlefield. */
   noMaxHandSize?: boolean;
   /** Additional land drops granted each of the controller's turns (Exploration). */
@@ -222,6 +224,8 @@ export type StackObject = {
   activatedIndex?: number;
   /** Chosen mode index for modal spells. */
   modeIndex?: number;
+  /** Multi-mode spells ("Choose two —"): chosen modes in resolution order. */
+  modeIndexes?: number[];
   /** Index into the source definition's `loyaltyAbilities`. */
   loyaltyIndex?: number;
   /** Announced X for {X} costs. */
@@ -983,6 +987,8 @@ export type GameAction =
       faceIndex?: number;
       /** Required for modal spells: which bullet was chosen. */
       modeIndex?: number;
+      /** Multi-mode spells: the chosen bullets in order. */
+      modeIndexes?: number[];
       /** Announced X for {X} costs (CR 601.2b). */
       xValue?: number;
       /** Damage split for divided-damage spells; aligns with `targets`. */
