@@ -2,6 +2,7 @@ import { createId } from "./ids";
 import { cloneGameState } from "./clone";
 // Deferred call only (decline path) — the effects/prompt import cycle is benign.
 import { cardMatchesSubtype } from "./characteristicsEngine";
+import { isLand as cardIsLand } from "./cardTypes";
 import { applyEffects } from "./effects";
 import { payManaCost, tapForMana } from "./mana";
 import { manaAbilitiesFor, manaTapOptionsFor } from "./manaOptions";
@@ -472,6 +473,18 @@ export function applyResolveSearch(
       const fetched = next.cards[cardId];
       if (fetched && fetched.zone === "battlefield") {
         fetched.tapped = true;
+        // Fabled Passage: the fetched land untaps at the land threshold.
+        if (prompt.untapIfLands !== undefined) {
+          const lands = Object.values(next.cards).filter(
+            (card) =>
+              card.zone === "battlefield" &&
+              card.controllerId === playerId &&
+              cardIsLand(next, card.id),
+          ).length;
+          if (lands >= prompt.untapIfLands) {
+            fetched.tapped = false;
+          }
+        }
       }
     }
   }

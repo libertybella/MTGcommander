@@ -515,6 +515,7 @@ export function bindCardEffect(
         destination: effect.destination,
         count: effect.count,
         ...(effect.entersTapped ? { entersTapped: true } : {}),
+        ...(effect.untapIfLands !== undefined ? { untapIfLands: effect.untapIfLands } : {}),
       };
     }
     case "attach": {
@@ -1473,6 +1474,7 @@ function applySearchLibrary(
     destination: effect.destination,
     count: effect.count,
     ...(effect.entersTapped ? { entersTapped: true } : {}),
+    ...(effect.untapIfLands !== undefined ? { untapIfLands: effect.untapIfLands } : {}),
   });
   return next;
 }

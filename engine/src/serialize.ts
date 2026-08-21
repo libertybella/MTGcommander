@@ -976,6 +976,9 @@ function parsePrompts(value: unknown, playerIds: Set<string>): PendingPrompt[] {
         destination: parseSearchDestination(entry.destination, `prompts[${index}].destination`),
         count: expectNumber(entry.count, `prompts[${index}].count`),
         ...(entry.entersTapped === true ? { entersTapped: true } : {}),
+        ...(entry.untapIfLands === undefined
+          ? {}
+          : { untapIfLands: expectNumber(entry.untapIfLands, `prompts[${index}].untapIfLands`) }),
         ...(resumeEffects && resumeEffects.length > 0 ? { resumeEffects } : {}),
       };
     }
@@ -1836,6 +1839,9 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
         destination: parseSearchDestination(value.destination, `${label}.destination`),
         count: expectNumber(value.count, `${label}.count`),
         ...(value.entersTapped === true ? { entersTapped: true } : {}),
+        ...(value.untapIfLands === undefined
+          ? {}
+          : { untapIfLands: expectNumber(value.untapIfLands, `${label}.untapIfLands`) }),
       };
     case "attach":
       return {
@@ -2723,6 +2729,9 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
       destination: parseSearchDestination(value.destination, `${label}.destination`),
       count: expectNumber(value.count, `${label}.count`),
       ...(value.entersTapped === true ? { entersTapped: true } : {}),
+      ...(value.untapIfLands === undefined
+        ? {}
+        : { untapIfLands: expectNumber(value.untapIfLands, `${label}.untapIfLands`) }),
     };
   }
   if (kind === "attach") {

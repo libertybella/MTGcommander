@@ -7072,3 +7072,56 @@ describe("wave 80: free multi-player impulses", () => {
     expect(next.cards[bomb.id]?.zone).toBe("graveyard");
   });
 });
+
+describe("wave 81: fabled passage and staff of compleation", () => {
+  const base = { power: null, toughness: null, printedKeywords: [], imageUrl: "" };
+
+  it("compiles both fully", () => {
+    const passage = compileOracleCard({
+      ...base,
+      oracleId: "passage",
+      name: "Fabled Passage",
+      manaCost: "",
+      typeLine: "Land",
+      oracleText:
+        "{T}, Sacrifice this land: Search your library for a basic land card, put it onto the battlefield tapped, then shuffle. Then if you control four or more lands, untap that land.",
+    });
+    expect(passage.notes).toEqual([]);
+    const search = passage.definition.activated[0]?.effects[0];
+    expect(search?.kind === "search_library" && search.untapIfLands).toBe(4);
+
+    const staff = compileOracleCard({
+      ...base,
+      oracleId: "staff",
+      name: "Staff of Compleation",
+      manaCost: "{3}",
+      typeLine: "Artifact",
+      oracleText:
+        "{T}, Pay 1 life: Destroy target permanent you own.\n{T}, Pay 2 life: Add one mana of any color.\n{T}, Pay 3 life: Proliferate.\n{T}, Pay 4 life: Draw a card.\n{5}: Untap this artifact.",
+    });
+    expect(staff.notes).toEqual([]);
+  });
+
+  it("untaps the fetched land at the threshold", () => {
+    const { game, p1 } = twoPlayers();
+    addLandsInPlay(game, p1, 3);
+    const basicDef = createCardDefinition({ name: "Swamp", typeLine: "Basic Land — Swamp" });
+    game.definitions[basicDef.id] = basicDef;
+    const target = createCardInstance({ definitionId: basicDef.id, ownerId: p1.id, zone: "library" });
+    game.cards[target.id] = target;
+    p1.zones.library.push(target.id);
+    game.prompts.push({
+      kind: "search_library",
+      playerId: p1.id,
+      filter: { supertypes: ["basic"], types: ["land"] },
+      destination: "battlefield",
+      count: 1,
+      entersTapped: true,
+      untapIfLands: 4,
+    });
+    // Fetching the fourth land clears its tap.
+    const next = applyAction(game, { kind: "resolve_search", playerId: p1.id, cardIds: [target.id] });
+    expect(next.cards[target.id]?.zone).toBe("battlefield");
+    expect(next.cards[target.id]?.tapped).toBe(false);
+  });
+});

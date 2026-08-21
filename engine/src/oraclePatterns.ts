@@ -1897,6 +1897,19 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     };
   }
 
+  // Staff of Compleation. Approximation: "you own" is checked as "you
+  // control" (ownership and control only diverge under theft effects).
+  if (/^Destroy target permanent you own$/i.test(sentence)) {
+    return {
+      targetRequirements: [{ kind: "permanent", control: "own" }],
+      effects: [{ kind: "move_card", cardId: { type: "chosen", index: 0 }, toZone: "graveyard" }],
+    };
+  }
+
+  if (/^Untap ~$/i.test(sentence)) {
+    return { targetRequirements: [], effects: [{ kind: "untap", cardId: "self" }] };
+  }
+
   if (/^Destroy target permanent$/i.test(sentence)) {
     return {
       targetRequirements: [{ kind: "permanent" }],
@@ -4327,6 +4340,21 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
           pushed.effects.push(searchRider);
           index += 1;
           continue;
+        }
+        // Fabled Passage: the fetched land untaps at the land threshold.
+        const untapRider = follow.match(
+          /^Then if you control (two|three|four|five|\d+) or more lands, untap (?:that land|it)$/i,
+        );
+        if (untapRider?.[1]) {
+          const threshold = parseCount(untapRider[1]);
+          const lastSearch = [...pushed.effects]
+            .reverse()
+            .find((entry) => entry.kind === "search_library");
+          if (threshold && lastSearch?.kind === "search_library") {
+            lastSearch.untapIfLands = threshold;
+            index += 1;
+            continue;
+          }
         }
         const followClause = compileSimpleClause(follow);
         if (!followClause || followClause.leftover) {

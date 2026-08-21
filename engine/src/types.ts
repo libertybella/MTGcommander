@@ -574,6 +574,7 @@ export type GameEffect =
       destination: SearchDestination;
       count: number;
       entersTapped?: boolean;
+      untapIfLands?: number;
     }
   | { kind: "attach"; cardId: CardInstanceId; toId: CardInstanceId }
   | { kind: "transform"; cardId: CardInstanceId }
@@ -887,6 +888,8 @@ export type CardEffect =
       destination: SearchDestination;
       count: number;
       entersTapped?: boolean;
+      /** Fabled Passage: untap the fetched land when controlling this many. */
+      untapIfLands?: number;
     }
   | { kind: "attach"; cardId: CardIdSelector; toId: ChosenTargetRef | CardInstanceId }
   | { kind: "transform"; cardId: CardIdSelector }
@@ -1152,6 +1155,7 @@ export type PendingPrompt =
       destination: SearchDestination;
       count: number;
       entersTapped?: boolean;
+      untapIfLands?: number;
       resumeEffects?: GameEffect[];
     }
   | {
