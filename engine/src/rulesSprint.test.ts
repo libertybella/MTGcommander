@@ -3362,3 +3362,50 @@ describe("wave 36: multi-sentence ability bodies and delayed end-step riders", (
     expect(atEnd.delayedEndStep).toEqual([]);
   });
 });
+
+describe("wave 37: fetch-sac lands and deckbuilding markers", () => {
+  it("compiles Brokers Hideout fully", () => {
+    const compiled = compileOracleCard({
+      oracleId: "brokers-hideout",
+      name: "Brokers Hideout",
+      manaCost: "",
+      typeLine: "Land",
+      oracleText:
+        "When this land enters, sacrifice it. When you do, search your library for a basic Forest, Plains, or Island card, put it onto the battlefield tapped, then shuffle and you gain 1 life.",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+    });
+    expect(compiled.notes).toEqual([]);
+    const trigger = compiled.definition.triggers[0];
+    expect(trigger?.event).toBe("enter_battlefield");
+    expect(trigger?.effects).toEqual([
+      { kind: "sacrifice", cardId: "self" },
+      {
+        kind: "search_library",
+        playerId: "controller",
+        filter: { supertypes: ["basic"], subtypesAny: ["forest", "plains", "island"] },
+        destination: "battlefield",
+        count: 1,
+        entersTapped: true,
+      },
+      { kind: "gain_life", playerId: "controller", amount: 1 },
+    ]);
+  });
+
+  it("compiles Kediss with Partner as a deckbuilding no-op", () => {
+    const compiled = compileOracleCard({
+      oracleId: "kediss",
+      name: "Kediss, Emberclaw Familiar",
+      manaCost: "{1}{R}",
+      typeLine: "Legendary Creature - Elemental Lizard",
+      oracleText: "Partner (You can have two commanders if both have partner.)",
+      power: "1",
+      toughness: "1",
+      printedKeywords: ["Partner"],
+      imageUrl: "",
+    });
+    expect(compiled.notes).toEqual([]);
+  });
+});

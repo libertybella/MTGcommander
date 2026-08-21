@@ -2328,6 +2328,48 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
       continue;
     }
 
+    // Deckbuilding markers with no in-game effect at this table: commander
+    // pairing is decided at import.
+    if (/^(?:Partner|Choose a Background)$/i.test(sentence)) {
+      continue;
+    }
+
+    // New Capenna fetch lands: "When ~ enters, sacrifice it." + "When you
+    // do, search … basic A, B, or C … tapped, then shuffle and you gain 1
+    // life." The reflexive trigger always fires, so it flattens to sequence.
+    if (/^When ~ enters, sacrifice it$/i.test(sentence)) {
+      const follow = sentences[index + 1]?.match(
+        /^When you do, search your library for a basic ([A-Za-z]+), ([A-Za-z]+), or ([A-Za-z]+) card, put it onto the battlefield tapped, then shuffle and you gain (\d+) life$/i,
+      );
+      if (follow?.[1] && follow[2] && follow[3] && follow[4]) {
+        result.triggers.push({
+          event: "enter_battlefield",
+          effects: [
+            { kind: "sacrifice", cardId: "self" },
+            {
+              kind: "search_library",
+              playerId: "controller",
+              filter: {
+                supertypes: ["basic"],
+                subtypesAny: [
+                  follow[1].toLowerCase(),
+                  follow[2].toLowerCase(),
+                  follow[3].toLowerCase(),
+                ],
+              },
+              destination: "battlefield",
+              count: 1,
+              entersTapped: true,
+            },
+            { kind: "gain_life", playerId: "controller", amount: Number(follow[4]) },
+          ],
+          targetRequirements: [],
+        });
+        index += 1;
+        continue;
+      }
+    }
+
     // The copy keeps the original's targets — declining the "may" is always a
     // legal choice (CR 707.10c note). Only accepted when a copy effect
     // actually compiled from an earlier sentence of this card.
