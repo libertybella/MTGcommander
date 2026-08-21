@@ -320,6 +320,16 @@ export function resolveTopOfStack(state: GameState): GameState {
             : "graveyard"
           : "battlefield",
       );
+      // Dash (CR 702.109): the permanent enters hasty and bounces at the
+      // beginning of the next end step.
+      const dashed = (top.modeIndexes ?? (top.modeIndex !== undefined ? [top.modeIndex] : [])).some(
+        (index) => definition?.modes?.[index]?.dash,
+      );
+      const entered = next.cards[top.sourceId];
+      if (dashed && entered && entered.zone === "battlefield") {
+        entered.summoningSick = false;
+        next.delayedEndStep.push({ cardId: top.sourceId, action: "hand" });
+      }
     }
     applyStateBasedActionsInPlace(next);
     redirectPriorityIfLost(next);
@@ -406,6 +416,14 @@ export function resolveTopOfStack(state: GameState): GameState {
     ) {
       const entered = next.cards[top.sourceId]!;
       entered.counters["p1p1"] = (entered.counters["p1p1"] ?? 0) + (top.xValue ?? 0);
+    }
+    // Dash (CR 702.109): hasty, and home again at the next end step.
+    const dashed =
+      top.modeIndex !== undefined && definition?.modes?.[top.modeIndex]?.dash === true;
+    const dashedCard = next.cards[top.sourceId];
+    if (dashed && dashedCard && dashedCard.zone === "battlefield") {
+      dashedCard.summoningSick = false;
+      next.delayedEndStep.push({ cardId: top.sourceId, action: "hand" });
     }
   }
   if (attachTo && next.cards[top.sourceId]?.zone === "battlefield") {

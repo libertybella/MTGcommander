@@ -6853,3 +6853,67 @@ describe("wave 76: impulse exiles", () => {
     expect(next.exilePlayable ?? []).toHaveLength(0);
   });
 });
+
+describe("wave 77: dash", () => {
+  it("compiles Ragavan fully", () => {
+    const ragavan = compileOracleCard({
+      oracleId: "ragavan",
+      name: "Ragavan, Nimble Pilferer",
+      manaCost: "{R}",
+      typeLine: "Legendary Creature — Monkey Pirate",
+      power: "2",
+      toughness: "1",
+      printedKeywords: ["Dash"],
+      imageUrl: "",
+      oracleText:
+        "Whenever Ragavan deals combat damage to a player, create a Treasure token and exile the top card of that player's library. Until end of turn, you may cast that card.\nDash {1}{R} (You may cast this spell for its dash cost. If you do, it gains haste, and it's returned from the battlefield to its owner's hand at the beginning of the next end step.)",
+    });
+    expect(ragavan.notes).toEqual([]);
+    expect(ragavan.definition.modes).toHaveLength(2);
+    expect(ragavan.definition.modes?.[1]?.dash).toBe(true);
+    expect(ragavan.definition.modes?.[1]?.extraCost).toBe("{1}");
+  });
+
+  it("a dashed creature enters hasty and bounces at the next end step", () => {
+    const { game, p1 } = twoPlayers();
+    const raiderDef = createCardDefinition({
+      name: "Raider",
+      manaCost: "",
+      typeLine: "Creature — Human Warrior",
+      power: 3,
+      toughness: 2,
+      modes: [
+        { label: "Cast normally", effects: [], targetRequirements: [] },
+        { label: "Dash", dash: true, effects: [], targetRequirements: [] },
+      ],
+    });
+    game.definitions[raiderDef.id] = raiderDef;
+    const raider = createCardInstance({ definitionId: raiderDef.id, ownerId: p1.id, zone: "hand" });
+    game.cards[raider.id] = raider;
+    p1.zones.hand.push(raider.id);
+    game.turn.activePlayerId = p1.id;
+    game.turn.phase = "precombatMain";
+    game.turn.step = "precombatMain";
+    game.priorityPlayerId = p1.id;
+
+    let next = applyAction(game, {
+      kind: "cast_spell",
+      playerId: p1.id,
+      cardId: raider.id,
+      modeIndex: 1,
+    });
+    next = resolveTopOfStack(next);
+    expect(next.cards[raider.id]?.zone).toBe("battlefield");
+    expect(next.cards[raider.id]?.summoningSick).toBe(false);
+    expect(next.delayedEndStep).toEqual([{ cardId: raider.id, action: "hand" }]);
+
+    next.turn.phase = "ending";
+    next.turn.step = "beginCombat";
+    next.turn.phase = "combat";
+    // Advance into the end step: the raider bounces home.
+    next.turn.phase = "postcombatMain";
+    next.turn.step = "postcombatMain";
+    next = advanceSteps(next, 1);
+    expect(next.cards[raider.id]?.zone).toBe("hand");
+  });
+});

@@ -787,7 +787,7 @@ export function parseGameState(json: string): GameState {
                 throw new Error(`Invalid delayedEndStep[${index}]`);
               }
               const action = expectString(entry.action, `delayedEndStep[${index}].action`);
-              if (action !== "sacrifice" && action !== "exile") {
+              if (action !== "sacrifice" && action !== "exile" && action !== "hand") {
                 throw new Error(`Invalid delayedEndStep[${index}].action`);
               }
               return {
@@ -2051,6 +2051,7 @@ function parseSpellModes(value: unknown, label: string): SpellMode[] {
       ...(entry.extraCost === undefined
         ? {}
         : { extraCost: expectString(entry.extraCost, `${label}[${index}].extraCost`) }),
+      ...(entry.dash === true ? { dash: true } : {}),
       effects: parseCardEffects(entry.effects, `${label}[${index}].effects`),
       targetRequirements: parseTargetRequirements(
         entry.targetRequirements,

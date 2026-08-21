@@ -161,7 +161,9 @@ function onEnterStep(state: GameState): GameState {
         current =
           entry.action === "sacrifice"
             ? applyEffect(current, { kind: "sacrifice", cardId: entry.cardId })
-            : applyEffect(current, { kind: "move_card", cardId: entry.cardId, toZone: "exile" });
+            : entry.action === "hand"
+              ? applyEffect(current, { kind: "move_card", cardId: entry.cardId, toZone: "hand" })
+              : applyEffect(current, { kind: "move_card", cardId: entry.cardId, toZone: "exile" });
       }
     }
     dispatchEventsInPlace(current, [{ kind: "step_begins", step: "end" }]);

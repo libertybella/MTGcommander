@@ -2978,6 +2978,7 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
   void keywords;
   let overloadCost: string | null = null;
   let offspringCost: string | null = null;
+  let dashCost: string | null = null;
 
   const modal = extractModalModes(card);
   if (modal) {
@@ -3668,6 +3669,12 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
     const offspringLine = sentence.match(/^Offspring ((?:\{[^}]+\})+)$/i);
     if (offspringLine?.[1]) {
       offspringCost = offspringLine[1];
+      continue;
+    }
+
+    const dashLine = sentence.match(/^Dash ((?:\{[^}]+\})+)$/i);
+    if (dashLine?.[1]) {
+      dashCost = dashLine[1];
       continue;
     }
 
@@ -4483,6 +4490,46 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
     }
     if (!built) {
       result.leftover.push(`Overload ${overloadCost}`);
+    }
+  }
+
+  // Dash (CR 702.109), modeled like kicker when the dash cost is the printed
+  // cost plus generic: the dashed mode enters hasty and bounces at end step.
+  if (dashCost) {
+    let built = false;
+    if (!result.modes) {
+      try {
+        const printed = parseManaCost(card.manaCost);
+        const dash = parseManaCost(dashCost);
+        const coloredMatch = (["W", "U", "B", "R", "G", "C"] as const).every(
+          (pip) => printed[pip] === dash[pip],
+        );
+        const extra = dash.generic - printed.generic;
+        if (coloredMatch && extra >= 0 && dash.hybrid.length === 0 && dash.xCount === 0) {
+          result.modes = [
+            {
+              label: "Cast normally",
+              effects: result.effects,
+              targetRequirements: result.targetRequirements,
+            },
+            {
+              label: `Dash ${dashCost}`,
+              ...(extra > 0 ? { extraCost: `{${extra}}` } : {}),
+              dash: true,
+              effects: result.effects.map((entry) => ({ ...entry })),
+              targetRequirements: result.targetRequirements.map((entry) => ({ ...entry })),
+            },
+          ];
+          result.effects = [];
+          result.targetRequirements = [];
+          built = true;
+        }
+      } catch {
+        // fall through to leftover
+      }
+    }
+    if (!built) {
+      result.leftover.push(`Dash ${dashCost}`);
     }
   }
 

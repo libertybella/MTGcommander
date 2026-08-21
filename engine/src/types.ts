@@ -374,7 +374,7 @@ export type GameState = {
    * next end step" (temporary tokens and reanimation shells). Processed as
    * the end step begins; entries whose card already left are dropped.
    */
-  delayedEndStep: Array<{ cardId: CardInstanceId; action: "sacrifice" | "exile" }>;
+  delayedEndStep: Array<{ cardId: CardInstanceId; action: "sacrifice" | "exile" | "hand" }>;
   /** Spells cast by anyone this turn — Storm's copy count (CR 702.40). */
   spellsCastThisTurn: number;
   /** Per-player casts this turn (Lotho's second-spell watch). */
@@ -698,6 +698,8 @@ export type SpellMode = {
   label: string;
   /** Kicker-style modes: extra mana paid when this mode is chosen. */
   extraCost?: string;
+  /** Dash: the permanent enters hasty and bounces at the next end step. */
+  dash?: boolean;
   effects: CardEffect[];
   targetRequirements: TargetRequirement[];
 };
