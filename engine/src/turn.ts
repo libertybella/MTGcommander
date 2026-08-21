@@ -96,6 +96,7 @@ function onEnterStep(state: GameState): GameState {
     state.pendingExtraCombats = 0;
     state.spellsCastThisTurn = 0;
     state.spellsCastByPlayerThisTurn = {};
+    state.noncreatureSpellsCastByPlayerThisTurn = {};
     state.creaturesDiedThisTurn = 0;
     const untappedEvents: EngineEvent[] = [];
     const untapInPlace = (card: (typeof state.cards)[string]) => {

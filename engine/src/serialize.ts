@@ -831,6 +831,22 @@ export function parseGameState(json: string): GameState {
             return counts;
           })(),
         }),
+    ...(raw.noncreatureSpellsCastByPlayerThisTurn === undefined
+      ? {}
+      : {
+          noncreatureSpellsCastByPlayerThisTurn: (() => {
+            if (!isRecord(raw.noncreatureSpellsCastByPlayerThisTurn)) {
+              throw new Error("Invalid noncreatureSpellsCastByPlayerThisTurn");
+            }
+            const counts: Record<string, number> = {};
+            for (const [key, entry] of Object.entries(
+              raw.noncreatureSpellsCastByPlayerThisTurn,
+            )) {
+              counts[key] = expectNumber(entry, `noncreatureSpellsCastByPlayerThisTurn.${key}`);
+            }
+            return counts;
+          })(),
+        }),
     ...(raw.creaturesDiedThisTurn === undefined
       ? {}
       : { creaturesDiedThisTurn: expectNumber(raw.creaturesDiedThisTurn, "creaturesDiedThisTurn") }),
@@ -2133,6 +2149,13 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
           : { minManaValue: expectNumber(value.minManaValue, `${label}.minManaValue`) }),
       };
     case "unless_pays":
+      return {
+        kind,
+        playerId: parsePlayerSelector(value.playerId, `${label}.playerId`),
+        cost: expectString(value.cost, `${label}.cost`),
+        ...(value.costFromPower === true ? { costFromPower: true } : {}),
+        effects: parseCardEffects(value.effects, `${label}.effects`),
+      };
     case "may_pay":
       return {
         kind,
@@ -2310,6 +2333,7 @@ function parseTriggers(value: unknown, label: string): CardTrigger[] {
       event !== "becomes_untapped" &&
       event !== "opponent_searches" &&
       event !== "casts_second_spell" &&
+      event !== "opponent_casts_first_noncreature_spell" &&
       event !== "graveyard_from_elsewhere" &&
       event !== "leaves_your_graveyard" &&
       event !== "you_draw" &&
@@ -2786,6 +2810,26 @@ function parseManaAbilities(value: unknown, label: string): ManaAbility[] {
         : {}),
       ...(entry.noTap === true ? { noTap: true } : {}),
       ...(entry.countFromPower === true ? { countFromPower: true } : {}),
+      ...(isRecord(entry.requiresCount)
+        ? {
+            requiresCount: (() => {
+              const what = expectString(
+                entry.requiresCount.what,
+                `${label}[${index}].requiresCount.what`,
+              );
+              if (what !== "artifact" && what !== "creature" && what !== "land") {
+                throw new Error(`Invalid ${label}[${index}].requiresCount.what`);
+              }
+              return {
+                what,
+                atLeast: expectNumber(
+                  entry.requiresCount.atLeast,
+                  `${label}[${index}].requiresCount.atLeast`,
+                ),
+              };
+            })(),
+          }
+        : {}),
       ...(entry.requiresControlled === undefined
         ? {}
         : {

@@ -405,6 +405,8 @@ export type GameState = {
   spellsCastThisTurn: number;
   /** Per-player casts this turn (Lotho's second-spell watch). */
   spellsCastByPlayerThisTurn?: Record<PlayerId, number>;
+  /** Esper Sentinel: per-player noncreature casts this turn. */
+  noncreatureSpellsCastByPlayerThisTurn?: Record<PlayerId, number>;
   /** Creatures that died this turn (Mahadi's Treasure count). */
   creaturesDiedThisTurn?: number;
   /** Silence: everyone but this player is locked out of casting until end of
@@ -1085,7 +1087,14 @@ export type CardEffect =
       controlledOnly?: boolean;
     }
   | { kind: "destroy_all"; what: DestroyAllScope; maxManaValue?: number; minManaValue?: number }
-  | { kind: "unless_pays"; playerId: PlayerSelector; cost: string; effects: CardEffect[] }
+  | {
+      kind: "unless_pays";
+      playerId: PlayerSelector;
+      cost: string;
+      /** Esper Sentinel: the cost is {X}, X = the source's power at bind. */
+      costFromPower?: boolean;
+      effects: CardEffect[];
+    }
   | { kind: "may_pay"; playerId: PlayerSelector; cost: string; effects: CardEffect[] }
   | {
       kind: "damage_all";
@@ -1147,6 +1156,8 @@ export type TriggerEvent =
   | "opponent_searches"
   /** Any player cast their second spell this turn (Lotho). */
   | "casts_second_spell"
+  /** An opponent cast their first noncreature spell this turn (Esper Sentinel). */
+  | "opponent_casts_first_noncreature_spell"
   /** A card went to a graveyard from anywhere but the battlefield (Syr Konrad). */
   | "graveyard_from_elsewhere"
   /** A card left the watcher's controller's graveyard (Syr Konrad). */
@@ -1466,6 +1477,8 @@ export type ManaAbility = {
   countFromPower?: boolean;
   /** "Activate only if you control a Swamp" on a mana ability. */
   requiresControlled?: { types?: string[]; subtypes?: string[] };
+  /** Mox Opal: "Activate only if you control three or more artifacts." */
+  requiresCount?: { what: "artifact" | "creature" | "land"; atLeast: number };
 };
 
 /**

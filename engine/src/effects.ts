@@ -777,10 +777,15 @@ export function bindCardEffect(
       if (!playerId) {
         return null;
       }
+      // Esper Sentinel: "{X}, where X is this creature's power", read at bind.
+      const cost =
+        effect.costFromPower && context.sourceId
+          ? `{${Math.max(0, creaturePower(state, context.sourceId))}}`
+          : effect.cost;
       return {
         kind: "unless_pays",
         playerId,
-        cost: effect.cost,
+        cost,
         effects: bindCardEffects(state, effect.effects, context),
       };
     }

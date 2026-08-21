@@ -183,6 +183,12 @@ export function putSpellOnStack(
   const byPlayer = next.spellsCastByPlayerThisTurn ?? {};
   byPlayer[moved.controllerId] = (byPlayer[moved.controllerId] ?? 0) + 1;
   next.spellsCastByPlayerThisTurn = byPlayer;
+  // Esper Sentinel: per-player noncreature-cast tally for first-spell heads.
+  if (!definition?.characteristics.types.includes("creature")) {
+    const noncreature = next.noncreatureSpellsCastByPlayerThisTurn ?? {};
+    noncreature[moved.controllerId] = (noncreature[moved.controllerId] ?? 0) + 1;
+    next.noncreatureSpellsCastByPlayerThisTurn = noncreature;
+  }
   if (definition?.storm && stormCount > 0) {
     for (let copyIndex = 0; copyIndex < stormCount; copyIndex += 1) {
       next.stack.push({

@@ -9183,3 +9183,129 @@ describe("wave 98: marauders, ignitions, obedience", () => {
   });
 });
 
+describe("wave 99: sentinels and moxen", () => {
+  it("compiles Esper Sentinel and Mox Opal fully", () => {
+    const sentinel = compileOracleCard({
+      oracleId: "sentinel",
+      name: "Esper Sentinel",
+      manaCost: "{W}",
+      typeLine: "Artifact Creature — Human Soldier",
+      power: "1",
+      toughness: "1",
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "Whenever an opponent casts their first noncreature spell each turn, draw a card unless that player pays {X}, where X is this creature's power.",
+    });
+    expect(sentinel.notes).toEqual([]);
+    expect(sentinel.definition.triggers[0]?.event).toBe(
+      "opponent_casts_first_noncreature_spell",
+    );
+    const tax = sentinel.definition.triggers[0]?.effects[0];
+    expect(tax?.kind === "unless_pays" && tax.costFromPower).toBe(true);
+
+    const opal = compileOracleCard({
+      oracleId: "opal",
+      name: "Mox Opal",
+      manaCost: "{0}",
+      typeLine: "Legendary Artifact",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "Metalcraft — {T}: Add one mana of any color. Activate only if you control three or more artifacts.",
+    });
+    expect(opal.notes).toEqual([]);
+    expect(opal.definition.manaAbilities[0]?.requiresCount).toEqual({
+      what: "artifact",
+      atLeast: 3,
+    });
+  });
+
+  it("taxes the first noncreature cast by the sentinel's power", () => {
+    const { game, p1, p2 } = twoPlayers();
+    game.turn.phase = "precombatMain";
+    game.turn.step = "precombatMain";
+    game.turn.activePlayerId = p2.id;
+    const sentinelDef = createCardDefinition({
+      name: "Sentinel",
+      typeLine: "Artifact Creature — Human Soldier",
+      power: 1,
+      toughness: 1,
+      triggers: [
+        {
+          event: "opponent_casts_first_noncreature_spell",
+          effects: [
+            {
+              kind: "unless_pays",
+              playerId: { type: "subject_player" },
+              cost: "{1}",
+              costFromPower: true,
+              effects: [{ kind: "draw", playerId: "controller", count: 1 }],
+            },
+          ],
+        },
+      ],
+    });
+    const boltDef = createCardDefinition({
+      name: "Bolt",
+      manaCost: "",
+      typeLine: "Instant",
+      effects: [{ kind: "gain_life", playerId: "controller", amount: 1 }],
+    });
+    game.definitions[sentinelDef.id] = sentinelDef;
+    game.definitions[boltDef.id] = boltDef;
+    const sentinel = createCardInstance({ definitionId: sentinelDef.id, ownerId: p1.id, zone: "battlefield" });
+    sentinel.counters["p1p1"] = 2;
+    const bolt = createCardInstance({ definitionId: boltDef.id, ownerId: p2.id, zone: "hand" });
+    game.cards[sentinel.id] = sentinel;
+    game.cards[bolt.id] = bolt;
+    p1.zones.battlefield.push(sentinel.id);
+    p2.zones.hand.push(bolt.id);
+    fillLibraries(game, 5);
+
+    game.priorityPlayerId = p2.id;
+    let next = applyAction(game, { kind: "cast_spell", playerId: p2.id, cardId: bolt.id, targets: [] });
+    while (next.stack.length > 0 && next.prompts.length === 0) {
+      next = resolveTopOfStack(next);
+    }
+    // The tax prompt reads power 3 (1 base + 2 counters).
+    const prompt = next.prompts[0];
+    expect(prompt?.kind).toBe("pay_or_effect");
+    expect(prompt?.kind === "pay_or_effect" && prompt.cost).toBe("{3}");
+  });
+
+  it("gates Mox Opal's mana on metalcraft", () => {
+    const { game, p1 } = twoPlayers();
+    const opalDef = createCardDefinition({
+      name: "Opal",
+      typeLine: "Legendary Artifact",
+      manaAbilities: [
+        {
+          produces: {},
+          producesOptions: [],
+          producesAnyColor: true,
+          damageToController: 0,
+          requiresCount: { what: "artifact", atLeast: 3 },
+        },
+      ],
+    });
+    const rockDef = createCardDefinition({ name: "Rock", typeLine: "Artifact" });
+    game.definitions[opalDef.id] = opalDef;
+    game.definitions[rockDef.id] = rockDef;
+    const opal = createCardInstance({ definitionId: opalDef.id, ownerId: p1.id, zone: "battlefield" });
+    game.cards[opal.id] = opal;
+    p1.zones.battlefield.push(opal.id);
+
+    expect(manaAbilitiesFor(game, opal.id)).toHaveLength(0);
+    for (let index = 0; index < 2; index += 1) {
+      const rock = createCardInstance({ definitionId: rockDef.id, ownerId: p1.id, zone: "battlefield" });
+      game.cards[rock.id] = rock;
+      p1.zones.battlefield.push(rock.id);
+    }
+    // Opal + two rocks = three artifacts: the gate opens.
+    expect(manaAbilitiesFor(game, opal.id)).toHaveLength(1);
+  });
+});
+

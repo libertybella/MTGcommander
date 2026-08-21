@@ -218,7 +218,12 @@ const COST_UNIT =
   "(?:\\{[^}]+\\})+|Sacrifice (?:~|this land|this creature|this artifact|this permanent)|Sacrifice an? (?:creature|artifact|land|Treasure)|Pay \\d+ life";
 
 function splitAbility(sentence: string): { costText: string; rest: string } | null {
-  const match = sentence.match(
+  // "Metalcraft — {T}: …" — the ability word is flavor (Mox Opal).
+  const stripped = sentence.replace(
+    /^(?:Metalcraft|Landfall|Threshold|Delirium|Hellbent)\s*[—-]\s*(?=\{)/i,
+    "",
+  );
+  const match = stripped.match(
     new RegExp(`^((?:${COST_UNIT})(?:,\\s*(?:${COST_UNIT}))*):\\s*(.+)$`, "i"),
   );
   if (!match?.[1] || !match[2]) {
@@ -1029,6 +1034,22 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
   }
 
   // Rhystic Study / Mystic Remora: the tax prompt goes to "that player".
+  // Esper Sentinel: the tax scales with the watcher's power at trigger time.
+  if (/^draw a card unless that player pays \{X\}, where X is ~'s power$/i.test(sentence)) {
+    return {
+      targetRequirements: [],
+      effects: [
+        {
+          kind: "unless_pays",
+          playerId: { type: "subject_player" },
+          cost: "{1}",
+          costFromPower: true,
+          effects: [{ kind: "draw", playerId: "controller", count: 1 }],
+        },
+      ],
+    };
+  }
+
   match = sentence.match(/^(you may )?draw a card unless that player pays ((?:\{[^}]+\})+)$/i);
   if (match?.[2]) {
     return {
@@ -2852,6 +2873,9 @@ function parseTriggerHead(head: string): TriggerHead | null {
   }
   if (/^Whenever you draw a card$/i.test(text)) {
     return { event: "you_draw" };
+  }
+  if (/^Whenever an opponent casts their first noncreature spell each turn$/i.test(text)) {
+    return { event: "opponent_casts_first_noncreature_spell" };
   }
   if (/^When(?:ever)? ~ dies$/i.test(text)) {
     return { event: "dies" };
@@ -5174,6 +5198,22 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
       const last = result.activated[result.activated.length - 1];
       if (last && !last.legendaryDiscount) {
         last.legendaryDiscount = true;
+        continue;
+      }
+    }
+
+    // Mox Opal: a count gate riding the previous mana ability.
+    const countGate = sentence.match(
+      /^Activate only if you control (two|three|four|five|\d+) or more (artifacts|creatures|lands)$/i,
+    );
+    if (countGate?.[1] && countGate[2]) {
+      const atLeast = parseCount(countGate[1]);
+      const lastMana = result.manaAbilities[result.manaAbilities.length - 1];
+      if (atLeast && lastMana && !lastMana.requiresCount) {
+        lastMana.requiresCount = {
+          what: countGate[2].toLowerCase().replace(/s$/, "") as "artifact" | "creature" | "land",
+          atLeast,
+        };
         continue;
       }
     }

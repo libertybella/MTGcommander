@@ -484,6 +484,17 @@ function triggerMatchesEvent(
   if (trigger.event === "casts_second_spell") {
     return false;
   }
+  if (event.kind === "casts" && trigger.event === "opponent_casts_first_noncreature_spell") {
+    // Esper Sentinel: an opponent's first noncreature cast of the turn.
+    return (
+      event.controllerId !== watcher.controllerId &&
+      !characteristicsOf(state, event.cardId).types.includes("creature") &&
+      (state.noncreatureSpellsCastByPlayerThisTurn?.[event.controllerId] ?? 0) === 1
+    );
+  }
+  if (trigger.event === "opponent_casts_first_noncreature_spell") {
+    return false;
+  }
   if (event.kind === "casts") {
     if (trigger.event !== "cast_spell") {
       return false;

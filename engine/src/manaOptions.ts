@@ -18,6 +18,19 @@ const BASIC_SUBTYPE_COLOR: Record<string, ManaColor> = {
  */
 /** "Activate only if you control a Swamp" on a mana ability (Cabal-class). */
 function manaGateSatisfied(state: GameState, controllerId: string, ability: ManaAbility): boolean {
+  // Mox Opal: "Activate only if you control three or more artifacts."
+  if (ability.requiresCount) {
+    const { what, atLeast } = ability.requiresCount;
+    const count = Object.values(state.cards).filter(
+      (card) =>
+        card.zone === "battlefield" &&
+        card.controllerId === controllerId &&
+        (state.definitions[card.definitionId]?.characteristics.types ?? []).includes(what),
+    ).length;
+    if (count < atLeast) {
+      return false;
+    }
+  }
   const gate = ability.requiresControlled;
   if (!gate) {
     return true;
