@@ -1612,6 +1612,9 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
                 type: "chosen";
                 index: number;
               }),
+        ...(value.count === undefined
+          ? {}
+          : { count: expectNumber(value.count, `${label}.count`) }),
         ...(value.gainsHaste === true ? { gainsHaste: true } : {}),
         ...(value.atEndStep === "sacrifice" || value.atEndStep === "exile"
           ? { atEndStep: value.atEndStep }
@@ -1757,6 +1760,9 @@ function parseSpellModes(value: unknown, label: string): SpellMode[] {
     }
     return {
       label: expectString(entry.label, `${label}[${index}].label`),
+      ...(entry.extraCost === undefined
+        ? {}
+        : { extraCost: expectString(entry.extraCost, `${label}[${index}].extraCost`) }),
       effects: parseCardEffects(entry.effects, `${label}[${index}].effects`),
       targetRequirements: parseTargetRequirements(
         entry.targetRequirements,
@@ -2329,6 +2335,9 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
       kind,
       ownerId: expectString(value.ownerId, `${label}.ownerId`),
       ofCardId: expectString(value.ofCardId, `${label}.ofCardId`),
+      ...(value.count === undefined
+        ? {}
+        : { count: expectNumber(value.count, `${label}.count`) }),
       ...(value.gainsHaste === true ? { gainsHaste: true } : {}),
       ...(value.atEndStep === "sacrifice" || value.atEndStep === "exile"
         ? { atEndStep: value.atEndStep }

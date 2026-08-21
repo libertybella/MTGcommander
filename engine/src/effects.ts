@@ -548,6 +548,7 @@ export function bindCardEffect(
         kind: "copy_token",
         ownerId,
         ofCardId,
+        ...(effect.count && effect.count > 1 ? { count: effect.count } : {}),
         ...(effect.gainsHaste ? { gainsHaste: true } : {}),
         ...(effect.atEndStep ? { atEndStep: effect.atEndStep } : {}),
       };
@@ -1277,7 +1278,7 @@ function applyCopyToken(
   state: GameState,
   ownerId: PlayerId,
   ofCardId: CardInstanceId,
-  opts?: { gainsHaste?: boolean; atEndStep?: "sacrifice" | "exile" },
+  opts?: { count?: number; gainsHaste?: boolean; atEndStep?: "sacrifice" | "exile" },
 ): GameState {
   requirePlayer(state, ownerId);
   const original = state.cards[ofCardId];
@@ -1290,7 +1291,7 @@ function applyCopyToken(
     throw new Error(`Unknown player ${ownerId}`);
   }
   // Token copies are created tokens too — doublers apply (CR 614.1c).
-  const copies = tokenDoublingFactor(next, ownerId);
+  const copies = (opts?.count ?? 1) * tokenDoublingFactor(next, ownerId);
   for (let index = 0; index < copies; index += 1) {
     const token = createCardInstance({
       definitionId: original.definitionId,

@@ -469,6 +469,7 @@ export type GameEffect =
       kind: "copy_token";
       ownerId: PlayerId;
       ofCardId: CardInstanceId;
+      count?: number;
       gainsHaste?: boolean;
       atEndStep?: "sacrifice" | "exile";
     }
@@ -571,6 +572,8 @@ export type TargetRequirement = {
 /** One bullet of a modal spell. Targets are chosen for the picked mode only. */
 export type SpellMode = {
   label: string;
+  /** Kicker-style modes: extra mana paid when this mode is chosen. */
+  extraCost?: string;
   effects: CardEffect[];
   targetRequirements: TargetRequirement[];
 };
@@ -716,6 +719,8 @@ export type CardEffect =
       kind: "copy_token";
       ownerId: PlayerSelector;
       ofCardId: ChosenTargetRef | CardInstanceId;
+      /** "create five of those tokens" (kicked Rite of Replication). */
+      count?: number;
       /** "It gains haste" / delayed end-step riders (Jaxis-class shells). */
       gainsHaste?: boolean;
       atEndStep?: "sacrifice" | "exile";

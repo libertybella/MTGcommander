@@ -3493,3 +3493,121 @@ describe("wave 38: unblockable-until-EOT, self-shuffle, dies-return counters", (
     ]);
   });
 });
+
+describe("wave 39: kicker as an extra-cost mode (CR 702.33)", () => {
+  it("compiles Tear Asunder and Rite of Replication fully", () => {
+    const tear = compileOracleCard({
+      oracleId: "tear-asunder",
+      name: "Tear Asunder",
+      manaCost: "{1}{G}",
+      typeLine: "Instant",
+      oracleText:
+        "Kicker {1}{B} (You may pay an additional {1}{B} as you cast this spell.)\nExile target artifact or enchantment. If this spell was kicked, exile target nonland permanent instead.",
+      power: null,
+      toughness: null,
+      printedKeywords: ["Kicker"],
+      imageUrl: "",
+    });
+    expect(tear.notes).toEqual([]);
+    expect(tear.definition.modes).toHaveLength(2);
+    expect(tear.definition.modes?.[0]?.targetRequirements).toEqual([
+      { kind: "artifact_or_enchantment" },
+    ]);
+    expect(tear.definition.modes?.[1]?.extraCost).toBe("{1}{B}");
+    expect(tear.definition.modes?.[1]?.targetRequirements).toEqual([{ kind: "nonland_permanent" }]);
+
+    const rite = compileOracleCard({
+      oracleId: "rite-of-replication",
+      name: "Rite of Replication",
+      manaCost: "{2}{U}{U}",
+      typeLine: "Sorcery",
+      oracleText:
+        "Kicker {5} (You may pay an additional {5} as you cast this spell.)\nCreate a token that's a copy of target creature. If this spell was kicked, create five of those tokens instead.",
+      power: null,
+      toughness: null,
+      printedKeywords: ["Kicker"],
+      imageUrl: "",
+    });
+    expect(rite.notes).toEqual([]);
+    expect(rite.definition.modes?.[1]?.effects).toEqual([
+      { kind: "copy_token", ownerId: "controller", ofCardId: { type: "chosen", index: 0 }, count: 5 },
+    ]);
+  });
+
+  it("charges the kicked cost and refuses it unpaid", () => {
+    const { game, p1, p2 } = twoPlayers();
+    game.turn.phase = "precombatMain";
+    game.turn.step = "precombatMain";
+    const bear = createCardDefinition({
+      name: "Runeclaw Bear",
+      typeLine: "Creature - Bear",
+      power: 2,
+      toughness: 2,
+    });
+    game.definitions[bear.id] = bear;
+    const target = createCardInstance({ definitionId: bear.id, ownerId: p2.id, zone: "battlefield" });
+    game.cards[target.id] = target;
+    p2.zones.battlefield.push(target.id);
+
+    const riteDef = createCardDefinition({
+      name: "Rite of Replication",
+      manaCost: "{2}{U}{U}",
+      typeLine: "Sorcery",
+      modes: [
+        {
+          label: "Unkicked",
+          effects: [
+            { kind: "copy_token", ownerId: "controller", ofCardId: { type: "chosen", index: 0 } },
+          ],
+          targetRequirements: [{ kind: "creature" }],
+        },
+        {
+          label: "Kicked {5}",
+          extraCost: "{5}",
+          effects: [
+            {
+              kind: "copy_token",
+              ownerId: "controller",
+              ofCardId: { type: "chosen", index: 0 },
+              count: 5,
+            },
+          ],
+          targetRequirements: [{ kind: "creature" }],
+        },
+      ],
+    });
+    game.definitions[riteDef.id] = riteDef;
+    const spell = createCardInstance({ definitionId: riteDef.id, ownerId: p1.id, zone: "hand" });
+    game.cards[spell.id] = spell;
+    p1.zones.hand.push(spell.id);
+    p1.mana.U = 2;
+    p1.mana.C = 2;
+
+    // Base mana only: the kicked mode is refused.
+    expect(() =>
+      applyAction(game, {
+        kind: "cast_spell",
+        playerId: p1.id,
+        cardId: spell.id,
+        targets: [{ type: "creature", cardId: target.id }],
+        modeIndex: 1,
+      }),
+    ).toThrow();
+
+    // With five more: the kicked cast resolves into five copies.
+    const rich = structuredClone(game);
+    rich.players[0]!.mana.C = 7;
+    const cast = applyAction(rich, {
+      kind: "cast_spell",
+      playerId: rich.players[0]!.id,
+      cardId: spell.id,
+      targets: [{ type: "creature", cardId: target.id }],
+      modeIndex: 1,
+    });
+    const resolved = resolveTopOfStack(cast);
+    const tokens = resolved.players[0]!.zones.battlefield.filter(
+      (id) => resolved.cards[id]?.isToken,
+    );
+    expect(tokens).toHaveLength(5);
+  });
+});

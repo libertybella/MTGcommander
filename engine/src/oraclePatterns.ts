@@ -887,6 +887,26 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     };
   }
 
+  const exilePermanent = sentence.match(
+    /^exile target (artifact or enchantment|artifact|enchantment|nonland permanent)$/i,
+  );
+  if (exilePermanent?.[1]) {
+    const what = exilePermanent[1].toLowerCase();
+    return {
+      targetRequirements: [
+        {
+          kind:
+            what === "artifact or enchantment"
+              ? "artifact_or_enchantment"
+              : what === "nonland permanent"
+                ? "nonland_permanent"
+                : (what as "artifact" | "enchantment"),
+        },
+      ],
+      effects: [{ kind: "move_card", cardId: { type: "chosen", index: 0 }, toZone: "exile" }],
+    };
+  }
+
   if (/^return target creature to (?:its|their) owner's hand$/i.test(sentence)) {
     return {
       targetRequirements: [{ kind: "creature" }],
@@ -2159,6 +2179,7 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
   );
   const sentences: string[] = [];
   const lineStart: boolean[] = [];
+  let kickerCost: string | null = null;
   for (const line of lines) {
     line.forEach((part, position) => {
       sentences.push(part);
@@ -2363,6 +2384,53 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
     // Deckbuilding markers with no in-game effect at this table: commander
     // pairing is decided at import.
     if (/^(?:Partner|Choose a Background)$/i.test(sentence)) {
+      continue;
+    }
+
+    // Kicker (CR 702.33), modeled as two modes: the kicked mode carries the
+    // extra cost. Multikicker stays uncompiled.
+    const kicker = sentence.match(/^Kicker ((?:\{[^}]+\})+)$/i);
+    if (kicker?.[1]) {
+      kickerCost = kicker[1];
+      continue;
+    }
+    const kicked = sentence.match(/^If this spell was kicked, (.+?)(?: instead)?$/i);
+    if (kicked?.[1] && kickerCost && !result.modes) {
+      const base = {
+        effects: result.effects,
+        targetRequirements: result.targetRequirements,
+      };
+      let upgraded = compileSimpleClause(kicked[1].trim());
+      if (!upgraded || upgraded.leftover) {
+        // "create five of those tokens": the base copy effect, multiplied.
+        const thoseTokens = kicked[1].match(/^create (two|three|four|five) of those tokens$/i);
+        const baseCopy = base.effects[0];
+        if (thoseTokens?.[1] && baseCopy?.kind === "copy_token" && base.effects.length === 1) {
+          upgraded = {
+            effects: [{ ...baseCopy, count: parseCount(thoseTokens[1]) ?? 1 }],
+            targetRequirements: base.targetRequirements.map((req) => ({ ...req })),
+          };
+        }
+      }
+      if (base.effects.length > 0 && upgraded && !upgraded.leftover) {
+        result.modes = [
+          {
+            label: "Unkicked",
+            effects: base.effects,
+            targetRequirements: base.targetRequirements,
+          },
+          {
+            label: `Kicked ${kickerCost}`,
+            extraCost: kickerCost,
+            effects: upgraded.effects,
+            targetRequirements: upgraded.targetRequirements,
+          },
+        ];
+        result.effects = [];
+        result.targetRequirements = [];
+        continue;
+      }
+      result.leftover.push(sentence);
       continue;
     }
 

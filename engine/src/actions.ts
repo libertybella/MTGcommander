@@ -271,6 +271,25 @@ function applyCastSpell(
   } else if (division !== undefined) {
     throw new Error("That spell does not divide damage");
   }
+  // Kicker-style modes: the chosen mode may carry an extra mana cost.
+  const chosenModeIndexes =
+    modeIndexes ?? (modeIndex !== undefined ? [modeIndex] : []);
+  for (const chosen of chosenModeIndexes) {
+    const extra = definition?.modes?.[chosen]?.extraCost;
+    if (!extra) {
+      continue;
+    }
+    const extraCost = parseManaCost(extra);
+    cost.generic += extraCost.generic;
+    for (const color of ["W", "U", "B", "R", "G", "C"] as const) {
+      cost[color] += extraCost[color];
+    }
+    cost.hybrid.push(...extraCost.hybrid);
+    const payer = faced.players.find((entry) => entry.id === playerId);
+    if (!payer || !canPayManaCost(payer.mana, cost, payer.life)) {
+      throw new Error("Cannot pay the kicked cost");
+    }
+  }
   if (definition?.modes && definition.modes.length > 0 && definition.modeChoice) {
     const { min, max } = definition.modeChoice;
     const chosen = modeIndexes ?? (modeIndex !== undefined ? [modeIndex] : []);
