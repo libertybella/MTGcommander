@@ -1918,6 +1918,40 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     }
   }
 
+  // Reanimate: steal from ANY graveyard; the life clause follows separately.
+  if (
+    /^Put target creature card from a graveyard onto the battlefield under your control$/i.test(
+      sentence,
+    )
+  ) {
+    return {
+      targetRequirements: [{ kind: "graveyard_creature_card" }],
+      effects: [
+        {
+          kind: "move_card",
+          cardId: { type: "chosen", index: 0 },
+          toZone: "battlefield",
+          underControlOf: "controller",
+        },
+      ],
+    };
+  }
+
+  if (/^You lose life equal to that card's mana value$/i.test(sentence)) {
+    return {
+      targetRequirements: [],
+      effects: [{ kind: "lose_life", playerId: "controller", amount: "target_mana_value" }],
+    };
+  }
+
+  // Toxic Deluge: X was announced as the life paid.
+  if (/^All creatures get -X\/-X until end of turn$/i.test(sentence)) {
+    return {
+      targetRequirements: [],
+      effects: [{ kind: "all_pt_until_eot", power: "-x", toughness: "-x" }],
+    };
+  }
+
   // Vampiric / Mystical / Worldly / Enlightened Tutor: fetch to the top.
   match = sentence.match(
     /^Search your library for (?:an? )?(.*?)card, (?:reveal it, )?then shuffle(?: your library)? and put (?:that|the) card on top(?: of it| of your library)?$/i,
@@ -3639,6 +3673,8 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
         parsed = { discard: 1 };
       } else if (what === "discard two cards") {
         parsed = { discard: 2 };
+      } else if (what === "pay x life") {
+        parsed = { lifeX: true };
       } else {
         const life = what.match(/^pay (\d+) life$/);
         if (life?.[1]) {

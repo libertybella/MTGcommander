@@ -317,6 +317,11 @@ function nextAction(state: GameState, rng: () => number): GameAction | null {
         }
         costDiscardIds = chosen;
       }
+      let lifeXValue: number | undefined;
+      if (additional?.lifeX) {
+        const player = state.players.find((entry) => entry.id === playerId)!;
+        lifeXValue = Math.floor(rng() * Math.max(1, Math.min(6, player.life)));
+      }
       return {
         kind: "cast_spell",
         playerId,
@@ -327,6 +332,7 @@ function nextAction(state: GameState, rng: () => number): GameAction | null {
         ...(modeIndexes ? { modeIndexes } : {}),
         ...(costSacrificeId ? { costSacrificeId } : {}),
         ...(costDiscardIds ? { costDiscardIds } : {}),
+        ...(lifeXValue !== undefined ? { xValue: lifeXValue } : {}),
       };
     }
     case "activate_ability": {

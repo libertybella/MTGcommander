@@ -9,6 +9,7 @@ import {
   createCardInstance,
   createGameState,
   isChosenTargetLegal,
+  legalChoicesForRequirement,
   moveCard,
   validateChosenTargets,
   putSpellOnStack,
@@ -7586,6 +7587,152 @@ describe("wave 85: commander wills", () => {
     );
     const next = applyEffects(game, bound);
     expect(next.players.find((player) => player.id === p1.id)?.mana.R).toBe(3);
+  });
+});
+
+describe("wave 86: reanimation and deluges", () => {
+  it("compiles Reanimate fully", () => {
+    const reanimate = compileOracleCard({
+      oracleId: "reanimate",
+      name: "Reanimate",
+      manaCost: "{B}",
+      typeLine: "Sorcery",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "Put target creature card from a graveyard onto the battlefield under your control. You lose life equal to that card's mana value.",
+    });
+    expect(reanimate.notes).toEqual([]);
+    expect(reanimate.definition.targetRequirements).toEqual([{ kind: "graveyard_creature_card" }]);
+    const steal = reanimate.definition.effects[0];
+    expect(steal?.kind === "move_card" && steal.underControlOf).toBe("controller");
+    const drain = reanimate.definition.effects[1];
+    expect(drain?.kind === "lose_life" && drain.amount).toBe("target_mana_value");
+  });
+
+  it("compiles Toxic Deluge fully", () => {
+    const deluge = compileOracleCard({
+      oracleId: "deluge",
+      name: "Toxic Deluge",
+      manaCost: "{2}{B}",
+      typeLine: "Sorcery",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "As an additional cost to cast this spell, pay X life.\nAll creatures get -X/-X until end of turn.",
+    });
+    expect(deluge.notes).toEqual([]);
+    expect(deluge.definition.additionalCost?.lifeX).toBe(true);
+    const sweep = deluge.definition.effects[0];
+    expect(sweep?.kind === "all_pt_until_eot" && sweep.power).toBe("-x");
+  });
+
+  it("steals a creature from an opponent's graveyard and drains its mana value", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const dragonDef = createCardDefinition({
+      name: "Dragon",
+      manaCost: "{3}{G}",
+      typeLine: "Creature — Dragon",
+      power: 5,
+      toughness: 5,
+    });
+    game.definitions[dragonDef.id] = dragonDef;
+    const dragon = createCardInstance({ definitionId: dragonDef.id, ownerId: p2.id, zone: "graveyard" });
+    game.cards[dragon.id] = dragon;
+    p2.zones.graveyard.push(dragon.id);
+
+    const bound = bindCardEffects(
+      game,
+      [
+        {
+          kind: "move_card",
+          cardId: { type: "chosen", index: 0 },
+          toZone: "battlefield",
+          underControlOf: "controller",
+        },
+        { kind: "lose_life", playerId: "controller", amount: "target_mana_value" },
+      ],
+      {
+        controllerId: p1.id,
+        sourceId: null,
+        targets: [{ type: "creature", cardId: dragon.id }],
+        targetRequirements: [{ kind: "graveyard_creature_card" }],
+      },
+    );
+    const next = applyEffects(game, bound);
+    expect(next.cards[dragon.id]?.zone).toBe("battlefield");
+    expect(next.cards[dragon.id]?.controllerId).toBe(p1.id);
+    expect(next.players.find((player) => player.id === p1.id)?.life).toBe(36);
+  });
+
+  it("pays X life for Toxic Deluge and sweeps by -X/-X", () => {
+    const { game, p1, p2 } = twoPlayers();
+    game.turn.phase = "precombatMain";
+    game.turn.step = "precombatMain";
+    const delugeDef = createCardDefinition({
+      name: "Test Deluge",
+      manaCost: "",
+      typeLine: "Sorcery",
+      additionalCost: { lifeX: true },
+      effects: [{ kind: "all_pt_until_eot", power: "-x", toughness: "-x" }],
+    });
+    const smallDef = createCardDefinition({ name: "Small", typeLine: "Creature — Goblin", power: 2, toughness: 2 });
+    const bigDef = createCardDefinition({ name: "Big", typeLine: "Creature — Beast", power: 3, toughness: 3 });
+    game.definitions[delugeDef.id] = delugeDef;
+    game.definitions[smallDef.id] = smallDef;
+    game.definitions[bigDef.id] = bigDef;
+    const spell = createCardInstance({ definitionId: delugeDef.id, ownerId: p1.id, zone: "hand" });
+    const small = createCardInstance({ definitionId: smallDef.id, ownerId: p2.id, zone: "battlefield" });
+    const big = createCardInstance({ definitionId: bigDef.id, ownerId: p1.id, zone: "battlefield" });
+    game.cards[spell.id] = spell;
+    game.cards[small.id] = small;
+    game.cards[big.id] = big;
+    p1.zones.hand.push(spell.id);
+    p2.zones.battlefield.push(small.id);
+    p1.zones.battlefield.push(big.id);
+
+    // No X announced → refused.
+    expect(() =>
+      applyAction(game, { kind: "cast_spell", playerId: p1.id, cardId: spell.id, targets: [] }),
+    ).toThrow();
+
+    const cast = applyAction(game, {
+      kind: "cast_spell",
+      playerId: p1.id,
+      cardId: spell.id,
+      targets: [],
+      xValue: 2,
+    });
+    expect(cast.players[0]?.life).toBe(38);
+    const resolved = resolveTopOfStack(cast);
+    // The 2/2 dies to the -2/-2; the 3/3 survives at 1 toughness.
+    expect(resolved.cards[small.id]?.zone).toBe("graveyard");
+    expect(resolved.cards[big.id]?.zone).toBe("battlefield");
+    expect(computedCard(resolved, big.id)?.toughness).toBe(1);
+  });
+
+  it("enumerates creature cards in every graveyard", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const bearDef = createCardDefinition({ name: "Bear", typeLine: "Creature — Bear", power: 2, toughness: 2 });
+    const rockDef = createCardDefinition({ name: "Rock", typeLine: "Artifact" });
+    game.definitions[bearDef.id] = bearDef;
+    game.definitions[rockDef.id] = rockDef;
+    const own = createCardInstance({ definitionId: bearDef.id, ownerId: p1.id, zone: "graveyard" });
+    const theirs = createCardInstance({ definitionId: bearDef.id, ownerId: p2.id, zone: "graveyard" });
+    const rock = createCardInstance({ definitionId: rockDef.id, ownerId: p2.id, zone: "graveyard" });
+    game.cards[own.id] = own;
+    game.cards[theirs.id] = theirs;
+    game.cards[rock.id] = rock;
+    p1.zones.graveyard.push(own.id);
+    p2.zones.graveyard.push(theirs.id, rock.id);
+
+    const choices = legalChoicesForRequirement(game, { kind: "graveyard_creature_card" }, p1.id);
+    const ids = choices.flatMap((choice) => (choice.type === "creature" ? [choice.cardId] : []));
+    expect(ids.sort()).toEqual([own.id, theirs.id].sort());
   });
 });
 

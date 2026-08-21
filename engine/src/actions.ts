@@ -276,6 +276,17 @@ function applyCastSpell(
       throw new Error(`Pay ${additional.life} life to cast this`);
     }
   }
+  if (additional?.lifeX) {
+    // "As an additional cost…, pay X life" — the announced X is the life paid
+    // and feeds the spell's "x" amounts (Toxic Deluge).
+    const player = faced.players.find((entry) => entry.id === playerId);
+    if (xValue === undefined || !Number.isInteger(xValue) || xValue < 0) {
+      throw new Error("Announce a value for X");
+    }
+    if (!player || player.life <= xValue) {
+      throw new Error(`Pay ${xValue} life to cast this`);
+    }
+  }
   if (cost.xCount > 0) {
     if (xValue === undefined || !Number.isInteger(xValue) || xValue < 0) {
       throw new Error("Announce a value for X");
@@ -285,7 +296,7 @@ function applyCastSpell(
     if (!player || !canPayManaCost(player.mana, cost)) {
       throw new Error("Cannot pay mana cost");
     }
-  } else if (xValue !== undefined) {
+  } else if (xValue !== undefined && !additional?.lifeX) {
     throw new Error("That spell has no X in its cost");
   }
   const dividedEffect = definition?.effects.find((effect) => effect.kind === "divided_damage");
@@ -382,6 +393,13 @@ function applyCastSpell(
     if (payer) {
       payer.life -= additional.life;
       paid.log.push({ kind: "life_change", playerId, delta: -additional.life });
+    }
+  }
+  if (additional?.lifeX && xValue !== undefined && xValue > 0) {
+    const payer = paid.players.find((entry) => entry.id === playerId);
+    if (payer) {
+      payer.life -= xValue;
+      paid.log.push({ kind: "life_change", playerId, delta: -xValue });
     }
   }
   if (flashbackLife > 0) {

@@ -222,6 +222,17 @@ export function isChosenTargetLegal(
       !isArtifactPermanent(state, target.cardId)
     );
   }
+  if (requirement.kind === "graveyard_creature_card") {
+    if (target.type !== "creature") {
+      return false;
+    }
+    const card = state.cards[target.cardId];
+    return Boolean(
+      card &&
+        card.zone === "graveyard" &&
+        characteristicsOf(state, target.cardId).types.includes("creature"),
+    );
+  }
   if (
     requirement.kind === "own_graveyard_card" ||
     requirement.kind === "own_graveyard_creature_card" ||
@@ -473,6 +484,12 @@ export function legalChoicesForRequirement(
   ) {
     const caster = state.players.find((entry) => entry.id === casterId);
     return (caster?.zones.graveyard ?? [])
+      .map((cardId) => ({ type: "creature" as const, cardId }))
+      .filter((choice) => isChosenTargetLegal(state, requirement, choice, casterId));
+  }
+  if (requirement.kind === "graveyard_creature_card") {
+    return livingPlayers(state)
+      .flatMap((player) => player.zones.graveyard)
       .map((cardId) => ({ type: "creature" as const, cardId }))
       .filter((choice) => isChosenTargetLegal(state, requirement, choice, casterId));
   }

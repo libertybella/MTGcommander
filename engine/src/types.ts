@@ -492,6 +492,8 @@ export type GameEffect =
       entersTapped?: boolean;
       gainsHaste?: boolean;
       atEndStep?: "sacrifice" | "exile";
+      /** Battlefield arrivals: the arriving card is controlled by this player. */
+      controllerId?: PlayerId;
     }
   | { kind: "tap"; cardId: CardInstanceId }
   | { kind: "untap"; cardId: CardInstanceId }
@@ -591,6 +593,7 @@ export type GameEffect =
       nonSubtypes?: string[];
     }
   | { kind: "team_protection_until_eot"; playerId: PlayerId; colors: Color[] }
+  | { kind: "all_pt_until_eot"; power: number; toughness: number }
   | {
       kind: "search_library";
       playerId: PlayerId;
@@ -663,6 +666,8 @@ export type AdditionalCastCost = {
   discard?: number;
   /** Pay this much life. */
   life?: number;
+  /** "Pay X life" — the announced X feeds the spell's "x" amounts (Toxic Deluge). */
+  lifeX?: boolean;
 };
 
 /** A static generic-cost discount on spells the controller casts. */
@@ -695,6 +700,8 @@ export type TargetKind =
   | "own_graveyard_creature_card"
   | "own_graveyard_permanent_card"
   | "own_graveyard_artifact_card"
+  /** A creature card in ANY graveyard (Reanimate). */
+  | "graveyard_creature_card"
   | "nonartifact_creature"
   | "land"
   /** Boseiju, Who Endures. */
@@ -793,7 +800,12 @@ export type CardEffect =
       playerId: PlayerSelector;
       amount: number | "subject_amount" | "subject_toughness";
     }
-  | { kind: "lose_life"; playerId: PlayerSelector; amount: number | "subject_amount" }
+  | {
+      kind: "lose_life";
+      playerId: PlayerSelector;
+      /** target_mana_value: the first chosen target's mana value (Reanimate). */
+      amount: number | "subject_amount" | "target_mana_value";
+    }
   | {
       kind: "deal_damage";
       sourceId: CardInstanceId | "self" | null;
@@ -832,6 +844,8 @@ export type CardEffect =
       gainsHaste?: boolean;
       /** "Sacrifice/Exile it at the beginning of the next end step." */
       atEndStep?: "sacrifice" | "exile";
+      /** "onto the battlefield under your control" (Reanimate). */
+      underControlOf?: "controller";
     }
   | { kind: "tap"; cardId: CardIdSelector }
   | { kind: "untap"; cardId: CardIdSelector }
@@ -949,6 +963,8 @@ export type CardEffect =
     }
   /** "Creatures you control gain protection from each color" (Akroma's Will). */
   | { kind: "team_protection_until_eot"; playerId: PlayerSelector; colors: Color[] }
+  /** "All creatures get -X/-X until end of turn" (Toxic Deluge). */
+  | { kind: "all_pt_until_eot"; power: number | "-x"; toughness: number | "-x" }
   | {
       kind: "search_library";
       playerId: PlayerSelector;

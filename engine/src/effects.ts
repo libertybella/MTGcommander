@@ -250,7 +250,15 @@ export function bindCardEffect(
             ? context.subjectCardId
               ? creatureToughness(state, context.subjectCardId)
               : 0
-            : effect.amount;
+            : effect.amount === "target_mana_value"
+              ? (() => {
+                  // Reanimate: "life equal to that card's mana value".
+                  const chosen = chosenTargetAt(context, 0, state);
+                  return chosen?.type === "creature"
+                    ? characteristicsOf(state, chosen.cardId).manaValue
+                    : 0;
+                })()
+              : effect.amount;
       if (amount <= 0) {
         return null;
       }
@@ -473,6 +481,9 @@ export function bindCardEffect(
         ...(effect.entersTapped ? { entersTapped: true } : {}),
         ...(effect.gainsHaste ? { gainsHaste: true } : {}),
         ...(effect.atEndStep ? { atEndStep: effect.atEndStep } : {}),
+        ...(effect.underControlOf === "controller"
+          ? { controllerId: context.controllerId }
+          : {}),
       };
     }
     case "tap":
@@ -575,6 +586,14 @@ export function bindCardEffect(
         return null;
       }
       return { kind: "team_protection_until_eot", playerId, colors: [...effect.colors] };
+    }
+    case "all_pt_until_eot": {
+      const power = effect.power === "-x" ? -(context.xValue ?? 0) : effect.power;
+      const toughness = effect.toughness === "-x" ? -(context.xValue ?? 0) : effect.toughness;
+      if (power === 0 && toughness === 0) {
+        return null;
+      }
+      return { kind: "all_pt_until_eot", power, toughness };
     }
     case "search_library": {
       const playerId = bindPlayerSelector(state, effect.playerId, context);
@@ -1877,6 +1896,11 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
           if (effect.atEndStep) {
             next.delayedEndStep.push({ cardId: effect.cardId, action: effect.atEndStep });
           }
+          // Reanimate: "onto the battlefield under your control" — the card
+          // sits in its owner's zone list, but the caster controls it.
+          if (effect.controllerId && next.players.some((p) => p.id === effect.controllerId)) {
+            arrived.controllerId = effect.controllerId;
+          }
         }
         break;
       }
@@ -2195,6 +2219,21 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
             : pushUntilEotEffect(state, team, {
                 kind: "grant_protection",
                 colors: [...effect.colors],
+              });
+        break;
+      }
+      case "all_pt_until_eot": {
+        // CR 611.2c: every creature on the battlefield, all players.
+        const everyone = Object.values(state.cards)
+          .filter((card) => card.zone === "battlefield" && isCreature(state, card.id))
+          .map((card) => card.id);
+        next =
+          everyone.length === 0
+            ? state
+            : pushUntilEotEffect(state, everyone, {
+                kind: "modify_pt",
+                power: effect.power,
+                toughness: effect.toughness,
               });
         break;
       }

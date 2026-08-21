@@ -408,6 +408,7 @@ export function parseGameState(json: string): GameState {
                         `definition.${id}.additionalCost.life`,
                       ),
                     }),
+                ...(def.additionalCost.lifeX === true ? { lifeX: true } : {}),
               };
             })(),
           }),
@@ -1367,6 +1368,7 @@ function parseTargetRequirement(value: unknown, label: string): TargetRequiremen
     kind !== "own_graveyard_creature_card" &&
     kind !== "own_graveyard_permanent_card" &&
     kind !== "own_graveyard_artifact_card" &&
+    kind !== "graveyard_creature_card" &&
     kind !== "nonartifact_creature" &&
     kind !== "player_or_creature" &&
     kind !== "player_or_planeswalker" &&
@@ -1502,8 +1504,8 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
         kind,
         playerId: parsePlayerSelector(value.playerId, `${label}.playerId`),
         amount:
-          value.amount === "subject_amount"
-            ? "subject_amount"
+          value.amount === "subject_amount" || value.amount === "target_mana_value"
+            ? value.amount
             : expectNumber(value.amount, `${label}.amount`),
       };
     case "draw":
@@ -1688,6 +1690,7 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
         ...(value.atEndStep === "sacrifice" || value.atEndStep === "exile"
           ? { atEndStep: value.atEndStep }
           : {}),
+        ...(value.underControlOf === "controller" ? { underControlOf: "controller" } : {}),
       };
     }
     case "tap":
@@ -1892,6 +1895,13 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
         }),
       };
     }
+    case "all_pt_until_eot":
+      return {
+        kind,
+        power: value.power === "-x" ? "-x" : expectNumber(value.power, `${label}.power`),
+        toughness:
+          value.toughness === "-x" ? "-x" : expectNumber(value.toughness, `${label}.toughness`),
+      };
     case "search_library":
       return {
         kind,
@@ -2826,6 +2836,13 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
       }),
     };
   }
+  if (kind === "all_pt_until_eot") {
+    return {
+      kind,
+      power: expectNumber(value.power, `${label}.power`),
+      toughness: expectNumber(value.toughness, `${label}.toughness`),
+    };
+  }
   if (kind === "search_library") {
     return {
       kind,
@@ -2956,6 +2973,9 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
       ...(value.atEndStep === "sacrifice" || value.atEndStep === "exile"
         ? { atEndStep: value.atEndStep }
         : {}),
+      ...(value.controllerId === undefined
+        ? {}
+        : { controllerId: expectString(value.controllerId, `${label}.controllerId`) }),
     };
   }
   if (kind === "tap" || kind === "untap" || kind === "sacrifice") {
