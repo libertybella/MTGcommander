@@ -1916,6 +1916,25 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     };
   }
 
+  // Maze of Ith.
+  if (/^Untap target attacking creature$/i.test(sentence)) {
+    return {
+      targetRequirements: [{ kind: "creature", attackingOnly: true }],
+      effects: [{ kind: "untap", cardId: { type: "chosen", index: 0 } }],
+    };
+  }
+
+  if (
+    /^Prevent all combat damage that would be dealt to and dealt by that creature this turn$/i.test(
+      sentence,
+    )
+  ) {
+    return {
+      targetRequirements: [],
+      effects: [{ kind: "prevent_combat_for", cardId: { type: "chosen", index: 0 } }],
+    };
+  }
+
   // Rise of the Dark Realms.
   if (
     /^Put all creature cards from all graveyards onto the battlefield under your control$/i.test(
@@ -4763,6 +4782,16 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
       )
     ) {
       result.replacements.push({ kind: "double_counters" });
+      continue;
+    }
+
+    // Laboratory Maniac.
+    if (
+      /^If you would draw a card while your library has no cards in it, you win the game instead$/i.test(
+        sentence,
+      )
+    ) {
+      result.replacements.push({ kind: "empty_draw_wins" });
       continue;
     }
 

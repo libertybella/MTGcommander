@@ -876,6 +876,9 @@ export function parseGameState(json: string): GameState {
           })(),
         }),
     preventCombatDamage: raw.preventCombatDamage === true,
+    ...(raw.preventCombatFor === undefined
+      ? {}
+      : { preventCombatFor: expectStringArray(raw.preventCombatFor, "preventCombatFor") }),
     delayedEndStep:
       raw.delayedEndStep === undefined
         ? []
@@ -1519,6 +1522,7 @@ function parseTargetRequirement(value: unknown, label: string): TargetRequiremen
       : { maxPower: expectNumber(value.maxPower, `${label}.maxPower`) }),
     ...(value.legendaryOnly === true ? { legendaryOnly: true } : {}),
     ...(value.nonbasicOnly === true ? { nonbasicOnly: true } : {}),
+    ...(value.attackingOnly === true ? { attackingOnly: true } : {}),
     ...(() => {
       const requiredSubtypes = parseStringList(value.requiredSubtypes, `${label}.requiredSubtypes`);
       return requiredSubtypes.length > 0 ? { requiredSubtypes } : {};
@@ -2166,6 +2170,8 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
       return { kind, target: parseChosenTargetRef(value.target, `${label}.target`) };
     case "mass_reanimate":
       return { kind, playerId: parsePlayerSelector(value.playerId, `${label}.playerId`) };
+    case "prevent_combat_for":
+      return { kind, cardId: parseChosenTargetRef(value.cardId, `${label}.cardId`) };
     case "overload_each":
       return {
         kind,
@@ -2526,6 +2532,7 @@ function parseReplacements(value: unknown, label: string): ReplacementEffect[] {
     if (
       kind === "enters_tapped" ||
       kind === "graveyard_to_exile" ||
+      kind === "empty_draw_wins" ||
       kind === "double_tokens" ||
       kind === "double_life_gain" ||
       kind === "double_draws_except_first"
@@ -3213,6 +3220,9 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
   }
   if (kind === "mass_reanimate") {
     return { kind, playerId: expectString(value.playerId, `${label}.playerId`) };
+  }
+  if (kind === "prevent_combat_for") {
+    return { kind, cardId: expectString(value.cardId, `${label}.cardId`) };
   }
   if (kind === "overload_each") {
     return {

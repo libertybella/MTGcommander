@@ -422,6 +422,9 @@ export type GameState = {
   exilePlayable?: Array<{ cardId: CardInstanceId; casterId: PlayerId; freeCast?: boolean }>;
   /** Fog: no combat damage is dealt for the rest of this turn. */
   preventCombatDamage: boolean;
+  /** Maze of Ith: creatures whose combat damage (dealt and received) is
+   * prevented this turn. Cleared at cleanup. */
+  preventCombatFor?: CardInstanceId[];
   /**
    * Feign Death-class until-EOT grants: if the listed creature dies this
    * turn, it returns to the battlefield tapped (optionally with a +1/+1
@@ -635,6 +638,7 @@ export type GameEffect =
   | { kind: "power_nova"; sourceId: CardInstanceId; amount: number }
   | { kind: "retarget"; stackObjectId: StackObjectId; controllerId: PlayerId }
   | { kind: "mass_reanimate"; playerId: PlayerId }
+  | { kind: "prevent_combat_for"; cardId: CardInstanceId }
   | {
       kind: "search_library";
       playerId: PlayerId;
@@ -800,6 +804,8 @@ export type TargetRequirement = {
   requiredSubtypes?: string[];
   /** "target blue spell" / "target blue permanent" (Red Elemental Blast). */
   requiredColors?: Color[];
+  /** "target attacking creature" (Maze of Ith). */
+  attackingOnly?: boolean;
   /** "another target …": the effect's own source is not a legal target. */
   excludeSource?: boolean;
 };
@@ -1059,6 +1065,8 @@ export type CardEffect =
   | { kind: "retarget"; target: ChosenTargetRef }
   /** Rise of the Dark Realms: every graveyard creature card, under you. */
   | { kind: "mass_reanimate"; playerId: PlayerSelector }
+  /** Maze of Ith: shield the chosen creature from combat damage this turn. */
+  | { kind: "prevent_combat_for"; cardId: ChosenTargetRef }
   | {
       kind: "search_library";
       playerId: PlayerSelector;
@@ -1464,6 +1472,8 @@ export type ReplacementEffect =
   | { kind: "may_pay_life_or_enter_tapped"; amount: number }
   /** Rest in Peace: cards and tokens headed to a graveyard are exiled instead. */
   | { kind: "graveyard_to_exile" }
+  /** Laboratory Maniac: the empty-library draw wins instead of losing. */
+  | { kind: "empty_draw_wins" }
   /** Anointed Procession / Doubling Season: tokens created under the
    * controller's control are doubled. */
   | { kind: "double_tokens" }

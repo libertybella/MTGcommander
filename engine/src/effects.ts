@@ -2,6 +2,7 @@ import { abilitiesRemoved, cardMatchesSubtype, computedCard } from "./characteri
 import { cloneGameState } from "./clone";
 import { createCardDefinition, createCardInstance } from "./createGame";
 import { characteristicsOf, hasSubtype, isCreature, isInstantOrSorcery, isLand, isPlaneswalker } from "./cardTypes";
+import { eliminatePlayerInPlace } from "./elimination";
 import { createId } from "./ids";
 import { allBattlefieldCreatureCount, creaturePower, creatureToughness, wouldSkipDraw } from "./derived";
 import { hasKeyword, protectionColorsOf } from "./keywords";
@@ -706,6 +707,13 @@ export function bindCardEffect(
       }
       return { kind: "mass_reanimate", playerId };
     }
+    case "prevent_combat_for": {
+      const chosen = chosenTargetAt(context, effect.cardId.index, state);
+      if (!chosen || chosen.type !== "creature") {
+        return null;
+      }
+      return { kind: "prevent_combat_for", cardId: chosen.cardId };
+    }
     case "drain_opponents": {
       const playerId = bindPlayerSelector(state, effect.playerId, context);
       if (!playerId) {
@@ -1258,6 +1266,25 @@ function applyDraw(
     }
     const top = current.zones.library[0];
     if (!top) {
+      // Laboratory Maniac: the empty draw becomes a win instead of a loss.
+      const maniac = Object.values(next.cards).some(
+        (card) =>
+          card.zone === "battlefield" &&
+          card.controllerId === playerId &&
+          (next.definitions[card.definitionId]?.replacements ?? []).some(
+            (replacement) => replacement.kind === "empty_draw_wins",
+          ) &&
+          !abilitiesRemoved(next, card.id),
+      );
+      if (maniac) {
+        // "You win the game": every other player loses (CR 104.2a).
+        for (const other of next.players) {
+          if (other.id !== playerId && !other.lost) {
+            eliminatePlayerInPlace(next, other.id);
+          }
+        }
+        break;
+      }
       current.failedToDraw = true;
       break;
     }
@@ -2289,6 +2316,15 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
             (card.counters[effect.counter] ?? 0) +
             counterBatchAmount(next, card.id, effect.counter, effect.amount);
         }
+        break;
+      }
+      case "prevent_combat_for": {
+        next = cloneGameState(state);
+        const shieldedIds = next.preventCombatFor ?? [];
+        if (!shieldedIds.includes(effect.cardId)) {
+          shieldedIds.push(effect.cardId);
+        }
+        next.preventCombatFor = shieldedIds;
         break;
       }
       case "mass_reanimate": {

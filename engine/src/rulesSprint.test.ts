@@ -9769,3 +9769,88 @@ describe("wave 103: mobilize and soultraders", () => {
   });
 });
 
+describe("wave 104: maniacs and mazes", () => {
+  it("compiles Laboratory Maniac and Maze of Ith fully", () => {
+    const maniac = compileOracleCard({
+      oracleId: "maniac",
+      name: "Laboratory Maniac",
+      manaCost: "{2}{U}",
+      typeLine: "Creature — Human Wizard",
+      power: "2",
+      toughness: "2",
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "If you would draw a card while your library has no cards in it, you win the game instead.",
+    });
+    expect(maniac.notes).toEqual([]);
+    expect(maniac.definition.replacements[0]).toEqual({ kind: "empty_draw_wins" });
+
+    const maze = compileOracleCard({
+      oracleId: "maze",
+      name: "Maze of Ith",
+      manaCost: "",
+      typeLine: "Land",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "{T}: Untap target attacking creature. Prevent all combat damage that would be dealt to and dealt by that creature this turn.",
+    });
+    expect(maze.notes).toEqual([]);
+    expect(maze.definition.activated[0]?.targetRequirements).toEqual([
+      { kind: "creature", attackingOnly: true },
+    ]);
+    expect(maze.definition.activated[0]?.effects).toHaveLength(2);
+  });
+
+  it("wins on the empty draw with the maniac out", () => {
+    const { game, p1 } = twoPlayers();
+    const maniacDef = createCardDefinition({
+      name: "Maniac",
+      typeLine: "Creature — Human Wizard",
+      power: 2,
+      toughness: 2,
+      replacements: [{ kind: "empty_draw_wins" }],
+    });
+    game.definitions[maniacDef.id] = maniacDef;
+    const maniac = createCardInstance({ definitionId: maniacDef.id, ownerId: p1.id, zone: "battlefield" });
+    game.cards[maniac.id] = maniac;
+    p1.zones.battlefield.push(maniac.id);
+    // Empty library: the draw becomes a win.
+    const drawn = applyEffect(game, { kind: "draw", playerId: p1.id, count: 1 });
+    expect(drawn.winnerId).toBe(p1.id);
+  });
+
+  it("shields a mazed attacker from dealing and taking combat damage", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const bigDef = createCardDefinition({ name: "Big", typeLine: "Creature — Beast", power: 4, toughness: 4 });
+    const bearDef = createCardDefinition({ name: "Bear", typeLine: "Creature — Bear", power: 2, toughness: 2 });
+    game.definitions[bigDef.id] = bigDef;
+    game.definitions[bearDef.id] = bearDef;
+    const attacker = createCardInstance({ definitionId: bigDef.id, ownerId: p2.id, zone: "battlefield" });
+    const blocker = createCardInstance({ definitionId: bearDef.id, ownerId: p1.id, zone: "battlefield" });
+    attacker.attacking = true;
+    game.cards[attacker.id] = attacker;
+    game.cards[blocker.id] = blocker;
+    p2.zones.battlefield.push(attacker.id);
+    p1.zones.battlefield.push(blocker.id);
+    game.combat = {
+      attacks: [{ attackerId: attacker.id, defenderId: p1.id }],
+      blockers: { [attacker.id]: [blocker.id] },
+      attackersDeclared: true,
+      declaredBlockersFor: [],
+    };
+
+    const shieldedState = applyEffects(game, [
+      { kind: "prevent_combat_for", cardId: attacker.id },
+    ]);
+    const fought = applyCombatDamage(shieldedState);
+    // Neither side takes damage: the 4/4 was shielded both ways.
+    expect(fought.cards[blocker.id]?.zone).toBe("battlefield");
+    expect(fought.cards[blocker.id]?.damageMarked ?? 0).toBe(0);
+    expect(fought.cards[attacker.id]?.damageMarked ?? 0).toBe(0);
+  });
+});
+

@@ -490,6 +490,10 @@ function markCreatureDamageInPlace(
   if (!target) {
     return;
   }
+  // Maze of Ith: damage TO a shielded creature is prevented.
+  if (state.preventCombatFor?.includes(targetId)) {
+    return;
+  }
   const protection = protectionColorsOf(state, targetId);
   if (protection.length > 0) {
     const colors = characteristicsOf(state, sourceId).colors;
@@ -524,7 +528,11 @@ export function dealCombatDamageInPlace(
     const blockerIds = state.combat.blockers[attack.attackerId] ?? [];
     const wasBlocked = blockerIds.length > 0;
     const livingBlockers = blockerIds.filter((id) => state.cards[id]?.zone === "battlefield");
-    const attackerDeals = dealsInStrike(state, attack.attackerId, strike);
+    // Maze of Ith: a shielded creature neither deals nor takes combat damage.
+    const shielded = (id: CardInstanceId): boolean =>
+      state.preventCombatFor?.includes(id) === true;
+    const attackerDeals =
+      dealsInStrike(state, attack.attackerId, strike) && !shielded(attack.attackerId);
 
     if (!wasBlocked) {
       if (attackerDeals) {
@@ -567,7 +575,7 @@ export function dealCombatDamageInPlace(
     }
 
     for (const blockerId of livingBlockers) {
-      if (!dealsInStrike(state, blockerId, strike)) {
+      if (!dealsInStrike(state, blockerId, strike) || shielded(blockerId)) {
         continue;
       }
       markCreatureDamageInPlace(

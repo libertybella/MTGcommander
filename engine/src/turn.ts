@@ -236,6 +236,9 @@ function onEnterStep(state: GameState): GameState {
       (effect) => effect.duration !== "until_end_of_turn",
     );
     state.preventCombatDamage = false;
+    if (state.preventCombatFor && state.preventCombatFor.length > 0) {
+      state.preventCombatFor = [];
+    }
     if (state.diesReturnUntilEot && state.diesReturnUntilEot.length > 0) {
       state.diesReturnUntilEot = [];
     }

@@ -82,6 +82,9 @@ function violatesCharacteristicFilter(
   if (requirement.legendaryOnly && !characteristicsOf(state, cardId).supertypes.includes("legendary")) {
     return true;
   }
+  if (requirement.attackingOnly && state.cards[cardId]?.attacking !== true) {
+    return true;
+  }
   if (violatesRequiredColors(state, cardId, requirement)) {
     return true;
   }
