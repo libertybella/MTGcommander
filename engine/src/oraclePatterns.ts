@@ -1430,6 +1430,40 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     };
   }
 
+  // Red Elemental Blast / Pyroblast ("if it's blue" compiles as a color-
+  // restricted target — a documented approximation of the may-target-anything
+  // wording; the outcomes match in practice).
+  match =
+    sentence.match(/^Counter target (white|blue|black|red|green) spell$/i) ??
+    sentence.match(/^Counter target spell if it's (white|blue|black|red|green)$/i);
+  if (match?.[1]) {
+    return {
+      targetRequirements: [
+        { kind: "spell", requiredColors: [COLOR_WORDS[match[1].toLowerCase()]!] },
+      ],
+      effects: [{ kind: "counter_spell", target: { type: "chosen", index: 0 } }],
+    };
+  }
+
+  match =
+    sentence.match(/^Destroy target (white|blue|black|red|green) permanent$/i) ??
+    sentence.match(/^Destroy target permanent if it's (white|blue|black|red|green)$/i);
+  if (match?.[1]) {
+    return {
+      targetRequirements: [
+        { kind: "permanent", requiredColors: [COLOR_WORDS[match[1].toLowerCase()]!] },
+      ],
+      effects: [{ kind: "move_card", cardId: { type: "chosen", index: 0 }, toZone: "graveyard" }],
+    };
+  }
+
+  if (/^Your opponents can't cast spells this turn$/i.test(sentence)) {
+    return {
+      targetRequirements: [],
+      effects: [{ kind: "silence", playerId: "controller" }],
+    };
+  }
+
   if (/^counter target spell$/i.test(sentence)) {
     return {
       targetRequirements: [{ kind: "spell" }],

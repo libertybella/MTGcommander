@@ -237,6 +237,9 @@ function onEnterStep(state: GameState): GameState {
     if (state.exilePlayable && state.exilePlayable.length > 0) {
       state.exilePlayable = [];
     }
+    if (state.castLockUntilEot) {
+      delete state.castLockUntilEot;
+    }
     return state;
   }
   return state;

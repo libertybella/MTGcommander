@@ -8773,3 +8773,104 @@ describe("wave 94: magecraft and crawlers", () => {
   });
 });
 
+describe("wave 95: silence and blasts", () => {
+  it("compiles Silence, Red Elemental Blast, and Pyroblast fully", () => {
+    const silence = compileOracleCard({
+      oracleId: "silence",
+      name: "Silence",
+      manaCost: "{W}",
+      typeLine: "Instant",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText: "Your opponents can't cast spells this turn.",
+    });
+    expect(silence.notes).toEqual([]);
+    expect(silence.definition.effects[0]).toEqual({ kind: "silence", playerId: "controller" });
+
+    const blast = compileOracleCard({
+      oracleId: "reb",
+      name: "Red Elemental Blast",
+      manaCost: "{R}",
+      typeLine: "Instant",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText: "Choose one —\n• Counter target blue spell.\n• Destroy target blue permanent.",
+    });
+    expect(blast.notes).toEqual([]);
+    expect(blast.definition.modes?.[0]?.targetRequirements).toEqual([
+      { kind: "spell", requiredColors: ["U"] },
+    ]);
+    expect(blast.definition.modes?.[1]?.targetRequirements).toEqual([
+      { kind: "permanent", requiredColors: ["U"] },
+    ]);
+
+    const pyroblast = compileOracleCard({
+      oracleId: "pyroblast",
+      name: "Pyroblast",
+      manaCost: "{R}",
+      typeLine: "Instant",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "Choose one —\n• Counter target spell if it's blue.\n• Destroy target permanent if it's blue.",
+    });
+    expect(pyroblast.notes).toEqual([]);
+  });
+
+  it("locks casting for opponents until cleanup after a Silence", () => {
+    const { game, p1, p2 } = twoPlayers();
+    game.turn.phase = "precombatMain";
+    game.turn.step = "precombatMain";
+    const boltDef = createCardDefinition({
+      name: "Bolt",
+      manaCost: "",
+      typeLine: "Instant",
+      effects: [{ kind: "gain_life", playerId: "controller", amount: 1 }],
+    });
+    game.definitions[boltDef.id] = boltDef;
+    const bolt = createCardInstance({ definitionId: boltDef.id, ownerId: p2.id, zone: "hand" });
+    game.cards[bolt.id] = bolt;
+    p2.zones.hand.push(bolt.id);
+
+    let next = applyEffect(game, { kind: "silence", playerId: p1.id });
+    expect(next.castLockUntilEot).toBe(p1.id);
+    next.priorityPlayerId = p2.id;
+    expect(() =>
+      applyAction(next, { kind: "cast_spell", playerId: p2.id, cardId: bolt.id, targets: [] }),
+    ).toThrow(/can't cast spells this turn/);
+
+    // The lock clears at cleanup.
+    next.turn.phase = "ending";
+    next.turn.step = "end";
+    const swept = advanceSteps(next, 1);
+    expect(swept.castLockUntilEot).toBeUndefined();
+  });
+
+  it("only lets blue targets through required-color filters", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const blueDef = createCardDefinition({ name: "Blue Bear", manaCost: "{U}", typeLine: "Creature — Bear", power: 2, toughness: 2 });
+    const redDef = createCardDefinition({ name: "Red Bear", manaCost: "{R}", typeLine: "Creature — Bear", power: 2, toughness: 2 });
+    game.definitions[blueDef.id] = blueDef;
+    game.definitions[redDef.id] = redDef;
+    const blue = createCardInstance({ definitionId: blueDef.id, ownerId: p2.id, zone: "battlefield" });
+    const red = createCardInstance({ definitionId: redDef.id, ownerId: p2.id, zone: "battlefield" });
+    game.cards[blue.id] = blue;
+    game.cards[red.id] = red;
+    p2.zones.battlefield.push(blue.id, red.id);
+
+    const requirement = { kind: "permanent" as const, requiredColors: ["U" as const] };
+    expect(
+      isChosenTargetLegal(game, requirement, { type: "creature", cardId: blue.id }, p1.id),
+    ).toBe(true);
+    expect(
+      isChosenTargetLegal(game, requirement, { type: "creature", cardId: red.id }, p1.id),
+    ).toBe(false);
+  });
+});
+

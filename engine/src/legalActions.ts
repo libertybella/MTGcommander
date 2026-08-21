@@ -420,7 +420,10 @@ export function legalActions(state: GameState, playerId: PlayerId): LegalAction[
   // legalActions call instead of once per castable card.
   const flashGrant = hasFlashGrant(state, playerId);
   // Grand Abolisher: no casts, no battlefield a/c/e activations, this turn.
-  const abolished = lockedByAbolisher(state, playerId);
+  // Silence adds a cast-only lock for everyone but its caster.
+  const silenced = Boolean(state.castLockUntilEot && state.castLockUntilEot !== playerId);
+  const abolisherLocked = lockedByAbolisher(state, playerId);
+  const abolished = abolisherLocked || silenced;
   const actions: LegalAction[] = [];
 
   const graveyardLandIds = canPlayLandsFromGraveyard(state, playerId)
@@ -573,7 +576,7 @@ export function legalActions(state: GameState, playerId: PlayerId): LegalAction[
     if (producerUsableNow(state, card) && manaAbilitiesFor(state, card.id).length > 0) {
       actions.push({ kind: "mana", cardId: card.id });
     }
-    if (abolished) {
+    if (abolisherLocked) {
       const types = characteristicsOf(state, card.id).types;
       if (
         types.includes("artifact") ||

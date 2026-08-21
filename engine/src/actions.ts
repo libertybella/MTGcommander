@@ -95,6 +95,10 @@ function validateCast(
   if (lockedByAbolisher(state, playerId)) {
     throw new Error("An opponent's permanent stops you from casting spells this turn");
   }
+  // Silence: everyone but the caster of the lock is shut out this turn.
+  if (state.castLockUntilEot && state.castLockUntilEot !== playerId) {
+    throw new Error("You can't cast spells this turn");
+  }
 
   const card = state.cards[cardId];
   if (!card) {

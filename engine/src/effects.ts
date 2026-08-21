@@ -660,6 +660,13 @@ export function bindCardEffect(
       }
       return { kind: "reveal_top_put_permanent", playerId };
     }
+    case "silence": {
+      const playerId = bindPlayerSelector(state, effect.playerId, context);
+      if (!playerId) {
+        return null;
+      }
+      return { kind: "silence", playerId };
+    }
     case "drain_opponents": {
       const playerId = bindPlayerSelector(state, effect.playerId, context);
       if (!playerId) {
@@ -2394,6 +2401,12 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
         if (!types.includes("instant") && !types.includes("sorcery")) {
           moveCardInPlace(next, topId, "battlefield");
         }
+        break;
+      }
+      case "silence": {
+        requirePlayer(state, effect.playerId);
+        next = cloneGameState(state);
+        next.castLockUntilEot = effect.playerId;
         break;
       }
       case "drain_opponents": {

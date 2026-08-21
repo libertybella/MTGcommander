@@ -82,7 +82,23 @@ function violatesCharacteristicFilter(
   if (requirement.legendaryOnly && !characteristicsOf(state, cardId).supertypes.includes("legendary")) {
     return true;
   }
+  if (violatesRequiredColors(state, cardId, requirement)) {
+    return true;
+  }
   return requirement.maxPower !== undefined && creaturePower(state, cardId) > requirement.maxPower;
+}
+
+/** "target blue permanent": every listed color must be present. */
+function violatesRequiredColors(
+  state: GameState,
+  cardId: CardInstanceId,
+  requirement: TargetRequirement,
+): boolean {
+  if (!requirement.requiredColors || requirement.requiredColors.length === 0) {
+    return false;
+  }
+  const colors = characteristicsOf(state, cardId).colors;
+  return !requirement.requiredColors.every((color) => colors.includes(color));
 }
 
 function violatesControlFilter(
@@ -198,6 +214,9 @@ export function isChosenTargetLegal(
     if (violatesManaValueFilter(state, target.cardId, requirement)) {
       return false;
     }
+    if (violatesRequiredColors(state, target.cardId, requirement)) {
+      return false;
+    }
     if (hasKeyword(state, target.cardId, "shroud")) {
       return false;
     }
@@ -291,6 +310,9 @@ export function isChosenTargetLegal(
     if (violatesManaValueFilter(state, target.cardId, requirement)) {
       return false;
     }
+    if (violatesRequiredColors(state, target.cardId, requirement)) {
+      return false;
+    }
     const types = characteristicsOf(state, target.cardId).types;
     switch (requirement.kind) {
       case "creature_or_planeswalker":
@@ -330,7 +352,19 @@ export function isChosenTargetLegal(
     }
   }
   if (requirement.kind === "spell") {
-    return target.type === "spell" && isLegalSpellTarget(state, target.stackObjectId);
+    if (target.type !== "spell" || !isLegalSpellTarget(state, target.stackObjectId)) {
+      return false;
+    }
+    if (requirement.requiredColors && requirement.requiredColors.length > 0) {
+      // "target blue spell" (Red Elemental Blast).
+      const entry = state.stack.find((object) => object.id === target.stackObjectId);
+      const card = entry?.sourceId ? state.cards[entry.sourceId] : undefined;
+      const colors = card
+        ? state.definitions[card.definitionId]?.characteristics.colors ?? []
+        : [];
+      return requirement.requiredColors.every((color) => colors.includes(color));
+    }
+    return true;
   }
   if (requirement.kind === "spell_or_permanent") {
     if (target.type === "spell") {

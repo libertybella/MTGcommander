@@ -405,6 +405,9 @@ export type GameState = {
   spellsCastByPlayerThisTurn?: Record<PlayerId, number>;
   /** Creatures that died this turn (Mahadi's Treasure count). */
   creaturesDiedThisTurn?: number;
+  /** Silence: everyone but this player is locked out of casting until end of
+   * turn. Cleared at cleanup. */
+  castLockUntilEot?: PlayerId;
   /**
    * Impulse exiles (Ragavan, Professional Face-Breaker): cards in exile that
    * the listed player may cast or play this turn, paying costs as normal.
@@ -612,6 +615,7 @@ export type GameEffect =
   | { kind: "all_pt_until_eot"; power: number; toughness: number }
   | { kind: "reveal_top_put_permanent"; playerId: PlayerId }
   | { kind: "drain_opponents"; playerId: PlayerId; amount: number }
+  | { kind: "silence"; playerId: PlayerId }
   | {
       kind: "search_library";
       playerId: PlayerId;
@@ -759,6 +763,8 @@ export type TargetRequirement = {
   legendaryOnly?: boolean;
   /** "Enchant Forest": the target must have every listed subtype. */
   requiredSubtypes?: string[];
+  /** "target blue spell" / "target blue permanent" (Red Elemental Blast). */
+  requiredColors?: Color[];
   /** "another target …": the effect's own source is not a legal target. */
   excludeSource?: boolean;
 };
@@ -1003,6 +1009,8 @@ export type CardEffect =
       playerId: PlayerSelector;
       amount: number | "x" | { devotion: Color };
     }
+  /** Silence: opponents of this player can't cast spells this turn. */
+  | { kind: "silence"; playerId: PlayerSelector }
   | {
       kind: "search_library";
       playerId: PlayerSelector;

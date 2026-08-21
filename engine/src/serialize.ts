@@ -831,6 +831,9 @@ export function parseGameState(json: string): GameState {
     ...(raw.creaturesDiedThisTurn === undefined
       ? {}
       : { creaturesDiedThisTurn: expectNumber(raw.creaturesDiedThisTurn, "creaturesDiedThisTurn") }),
+    ...(raw.castLockUntilEot === undefined
+      ? {}
+      : { castLockUntilEot: expectString(raw.castLockUntilEot, "castLockUntilEot") }),
     ...(raw.exilePlayable === undefined
       ? {}
       : {
@@ -1487,6 +1490,22 @@ function parseTargetRequirement(value: unknown, label: string): TargetRequiremen
       const requiredSubtypes = parseStringList(value.requiredSubtypes, `${label}.requiredSubtypes`);
       return requiredSubtypes.length > 0 ? { requiredSubtypes } : {};
     })(),
+    ...(() => {
+      if (value.requiredColors === undefined) {
+        return {};
+      }
+      if (!Array.isArray(value.requiredColors)) {
+        throw new Error(`Invalid ${label}.requiredColors`);
+      }
+      const requiredColors = value.requiredColors.map((entry, index) => {
+        const color = expectString(entry, `${label}.requiredColors[${index}]`);
+        if (!(COLOR_KEYS as readonly string[]).includes(color)) {
+          throw new Error(`Invalid ${label}.requiredColors[${index}]`);
+        }
+        return color as Color;
+      });
+      return requiredColors.length > 0 ? { requiredColors } : {};
+    })(),
     ...(value.excludeSource === true ? { excludeSource: true } : {}),
   };
 }
@@ -1987,6 +2006,11 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
           value.toughness === "-x" ? "-x" : expectNumber(value.toughness, `${label}.toughness`),
       };
     case "reveal_top_put_permanent":
+      return {
+        kind,
+        playerId: parsePlayerSelector(value.playerId, `${label}.playerId`),
+      };
+    case "silence":
       return {
         kind,
         playerId: parsePlayerSelector(value.playerId, `${label}.playerId`),
@@ -2961,6 +2985,9 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
     };
   }
   if (kind === "reveal_top_put_permanent") {
+    return { kind, playerId: expectString(value.playerId, `${label}.playerId`) };
+  }
+  if (kind === "silence") {
     return { kind, playerId: expectString(value.playerId, `${label}.playerId`) };
   }
   if (kind === "drain_opponents") {
