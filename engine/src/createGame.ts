@@ -127,6 +127,9 @@ export function createCardDefinition(
                   ...(trigger.subjectFilter.subtypes
                     ? { subtypes: [...trigger.subjectFilter.subtypes] }
                     : {}),
+                  ...(trigger.subjectFilter.subtypesAny
+                    ? { subtypesAny: [...trigger.subjectFilter.subtypesAny] }
+                    : {}),
                   ...(trigger.subjectFilter.typesAny
                     ? { typesAny: [...trigger.subjectFilter.typesAny] }
                     : {}),

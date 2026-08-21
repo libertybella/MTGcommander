@@ -289,6 +289,7 @@ export function isChosenTargetLegal(
     requirement.kind === "noncreature_nonland_permanent" ||
     requirement.kind === "land" ||
     requirement.kind === "artifact_enchantment_or_nonbasic_land" ||
+    requirement.kind === "artifact_creature_or_planeswalker" ||
     requirement.kind === "commander"
   ) {
     if (target.type !== "creature") {
@@ -346,6 +347,12 @@ export function isChosenTargetLegal(
           types.includes("enchantment") ||
           (types.includes("land") &&
             !characteristicsOf(state, target.cardId).supertypes.includes("basic"))
+        );
+      case "artifact_creature_or_planeswalker":
+        return (
+          types.includes("artifact") ||
+          isCreature(state, target.cardId) ||
+          isPlaneswalker(state, target.cardId)
         );
       case "commander":
         return isCommander(state, target.cardId);
@@ -543,6 +550,7 @@ export function legalChoicesForRequirement(
     requirement.kind === "noncreature_nonland_permanent" ||
     requirement.kind === "land" ||
     requirement.kind === "artifact_enchantment_or_nonbasic_land" ||
+    requirement.kind === "artifact_creature_or_planeswalker" ||
     requirement.kind === "commander"
   ) {
     const choices: ChosenTarget[] = [];

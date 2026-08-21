@@ -1830,6 +1830,64 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     }
   }
 
+  // Avenger of Zendikar: one token per controlled permanent of the type.
+  match = sentence.match(
+    /^create a (\d+)\/(\d+)(?: (?:white|blue|black|red|green|colorless))? ([\w]+) creature token for each (land|creature|artifact) you control$/i,
+  );
+  if (match?.[1] && match[2] && match[3] && match[4]) {
+    const subtype = match[3].replace(/\b\w/g, (letter) => letter.toUpperCase());
+    return {
+      targetRequirements: [],
+      effects: [
+        {
+          kind: "create_token",
+          ownerId: "controller",
+          name: subtype,
+          typeLine: `Creature — ${subtype} Token`,
+          power: Number(match[1]),
+          toughness: Number(match[2]),
+          perControlled: match[4].toLowerCase() as "land" | "creature" | "artifact",
+        },
+      ],
+    };
+  }
+
+  // Avenger's landfall half ("you may" is auto-taken).
+  match = sentence.match(
+    /^(?:you may )?put a \+1\/\+1 counter on each ([\w]+) creature you control$/i,
+  );
+  if (match?.[1]) {
+    return {
+      targetRequirements: [],
+      effects: [
+        {
+          kind: "counter_on_each_creature",
+          counter: "p1p1",
+          amount: 1,
+          subtype: match[1].toLowerCase(),
+          controlledOnly: true,
+        },
+      ],
+    };
+  }
+
+  // Bedevil.
+  if (/^Destroy target artifact, creature, or planeswalker$/i.test(sentence)) {
+    return {
+      targetRequirements: [{ kind: "artifact_creature_or_planeswalker" }],
+      effects: [{ kind: "move_card", cardId: { type: "chosen", index: 0 }, toZone: "graveyard" }],
+    };
+  }
+
+  // Rakdos Charm's third mode.
+  match = sentence.match(/^Each creature deals (\d+) damage to its controller$/i);
+  if (match?.[1]) {
+    return {
+      targetRequirements: [],
+      effects: [{ kind: "each_creature_damages_controller", amount: Number(match[1]) }],
+    };
+  }
+
   // Land Tax: up to three basics to hand ("you may" is auto-taken; the
   // search prompt already allows taking fewer).
   match = sentence.match(
@@ -2741,6 +2799,30 @@ function parseTriggerHead(head: string): TriggerHead | null {
       watch: "controlled",
       subjectFilter: { typesAny: ["instant", "sorcery"] },
       alsoOnCopy: true,
+    };
+  }
+  // Sram: any-of subtype cast heads.
+  const subtypeCastList = text.match(
+    /^Whenever you cast an? ([A-Z][\w]*), ([A-Z][\w]*), or ([A-Z][\w]*) spell$/,
+  );
+  if (
+    subtypeCastList?.[1] &&
+    subtypeCastList[2] &&
+    subtypeCastList[3] &&
+    !SEARCH_CARD_TYPES.has(subtypeCastList[1].toLowerCase()) &&
+    !SEARCH_CARD_TYPES.has(subtypeCastList[2].toLowerCase()) &&
+    !SEARCH_CARD_TYPES.has(subtypeCastList[3].toLowerCase())
+  ) {
+    return {
+      event: "cast_spell",
+      watch: "controlled",
+      subjectFilter: {
+        subtypesAny: [
+          subtypeCastList[1].toLowerCase(),
+          subtypeCastList[2].toLowerCase(),
+          subtypeCastList[3].toLowerCase(),
+        ],
+      },
     };
   }
   if (/^Whenever you draw a card$/i.test(text)) {
@@ -4654,6 +4736,37 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
       }
       result.leftover.push(sentence);
       continue;
+    }
+
+    // Sram: a comma-carrying any-of subtype cast head.
+    const sramHead = sentence.match(
+      /^Whenever you cast an? ([A-Z][\w]*), ([A-Z][\w]*), or ([A-Z][\w]*) spell, (.+)$/,
+    );
+    if (
+      sramHead?.[1] &&
+      sramHead[2] &&
+      sramHead[3] &&
+      sramHead[4] &&
+      !SEARCH_CARD_TYPES.has(sramHead[1].toLowerCase()) &&
+      !SEARCH_CARD_TYPES.has(sramHead[2].toLowerCase()) &&
+      !SEARCH_CARD_TYPES.has(sramHead[3].toLowerCase())
+    ) {
+      const inner = compileSimpleClause(sramHead[4].trim());
+      if (inner && !inner.leftover && inner.targetRequirements.length === 0) {
+        result.triggers.push({
+          event: "cast_spell",
+          watch: "controlled",
+          subjectFilter: {
+            subtypesAny: [
+              sramHead[1].toLowerCase(),
+              sramHead[2].toLowerCase(),
+              sramHead[3].toLowerCase(),
+            ],
+          },
+          effects: inner.effects,
+        });
+        continue;
+      }
     }
 
     // Syr Konrad's triple head: one body, three sibling triggers.

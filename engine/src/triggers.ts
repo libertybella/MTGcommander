@@ -325,6 +325,12 @@ function subjectMatchesFilter(
       return false;
     }
   }
+  if (
+    filter.subtypesAny &&
+    !filter.subtypesAny.some((subtype) => cardMatchesSubtype(state, subjectId, subtype))
+  ) {
+    return false;
+  }
   if (filter.typesAny && !filter.typesAny.some((type) => traits.types.includes(type))) {
     return false;
   }

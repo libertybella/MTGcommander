@@ -667,6 +667,8 @@ export function bindCardEffect(
       }
       return { kind: "silence", playerId };
     }
+    case "each_creature_damages_controller":
+      return { kind: "each_creature_damages_controller", amount: effect.amount };
     case "drain_opponents": {
       const playerId = bindPlayerSelector(state, effect.playerId, context);
       if (!playerId) {
@@ -901,7 +903,13 @@ export function bindCardEffect(
       if (amount <= 0) {
         return null;
       }
-      return { kind: "counter_on_each_creature", counter: effect.counter, amount };
+      return {
+        kind: "counter_on_each_creature",
+        counter: effect.counter,
+        amount,
+        ...(effect.subtype ? { subtype: effect.subtype } : {}),
+        ...(effect.controlledOnly ? { controllerId: context.controllerId } : {}),
+      };
     }
     case "overload_each":
       return {
@@ -2222,10 +2230,36 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
       case "counter_on_each_creature": {
         next = cloneGameState(state);
         for (const card of Object.values(next.cards)) {
-          if (card.zone === "battlefield" && isCreature(next, card.id)) {
-            card.counters[effect.counter] =
-              (card.counters[effect.counter] ?? 0) +
-              counterBatchAmount(next, card.id, effect.counter, effect.amount);
+          if (card.zone !== "battlefield" || !isCreature(next, card.id)) {
+            continue;
+          }
+          if (effect.controllerId && card.controllerId !== effect.controllerId) {
+            continue;
+          }
+          if (effect.subtype && !cardMatchesSubtype(next, card.id, effect.subtype)) {
+            continue;
+          }
+          card.counters[effect.counter] =
+            (card.counters[effect.counter] ?? 0) +
+            counterBatchAmount(next, card.id, effect.counter, effect.amount);
+        }
+        break;
+      }
+      case "each_creature_damages_controller": {
+        requirePositiveInteger(effect.amount, "damage");
+        next = cloneGameState(state);
+        for (const card of Object.values(next.cards)) {
+          if (card.zone !== "battlefield" || !isCreature(next, card.id)) {
+            continue;
+          }
+          const controller = next.players.find((entry) => entry.id === card.controllerId);
+          if (controller && !controller.lost) {
+            controller.life -= effect.amount;
+            next.log.push({
+              kind: "life_change",
+              playerId: controller.id,
+              delta: -effect.amount,
+            });
           }
         }
         break;

@@ -1446,6 +1446,7 @@ function parseTargetRequirement(value: unknown, label: string): TargetRequiremen
     kind !== "spell_or_permanent" &&
     kind !== "land" &&
     kind !== "artifact_enchantment_or_nonbasic_land" &&
+    kind !== "artifact_creature_or_planeswalker" &&
     kind !== "commander"
   ) {
     throw new Error(`Invalid ${label}.kind`);
@@ -2104,7 +2105,13 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
         counter: expectString(value.counter, `${label}.counter`),
         amount:
           value.amount === "x" ? ("x" as const) : expectNumber(value.amount, `${label}.amount`),
+        ...(value.subtype === undefined
+          ? {}
+          : { subtype: expectString(value.subtype, `${label}.subtype`) }),
+        ...(value.controlledOnly === true ? { controlledOnly: true } : {}),
       };
+    case "each_creature_damages_controller":
+      return { kind, amount: expectNumber(value.amount, `${label}.amount`) };
     case "overload_each":
       return {
         kind,
@@ -2345,6 +2352,13 @@ function parseTriggers(value: unknown, label: string): CardTrigger[] {
               ...(subtypes.length > 0 ? { subtypes } : {}),
               ...(typesAny.length > 0 ? { typesAny } : {}),
               ...(nonTypes.length > 0 ? { nonTypes } : {}),
+              ...(() => {
+                const subtypesAny = parseStringList(
+                  entry.subjectFilter.subtypesAny,
+                  `${label}[${index}].subjectFilter.subtypesAny`,
+                );
+                return subtypesAny.length > 0 ? { subtypesAny } : {};
+              })(),
               ...(entry.subjectFilter.chosenSubtype === true ? { chosenSubtype: true } : {}),
               ...(entry.subjectFilter.nonToken === true ? { nonToken: true } : {}),
               ...(entry.subjectFilter.tokenOnly === true ? { tokenOnly: true } : {}),
@@ -2407,6 +2421,7 @@ function parseTriggers(value: unknown, label: string): CardTrigger[] {
       ...(subjectFilter &&
       (subjectFilter.types ||
         subjectFilter.subtypes ||
+        subjectFilter.subtypesAny ||
         subjectFilter.typesAny ||
         subjectFilter.nonTypes ||
         subjectFilter.chosenSubtype ||
@@ -3062,7 +3077,16 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
       kind,
       counter: expectString(value.counter, `${label}.counter`),
       amount: expectNumber(value.amount, `${label}.amount`),
+      ...(value.subtype === undefined
+        ? {}
+        : { subtype: expectString(value.subtype, `${label}.subtype`) }),
+      ...(value.controllerId === undefined
+        ? {}
+        : { controllerId: expectString(value.controllerId, `${label}.controllerId`) }),
     };
+  }
+  if (kind === "each_creature_damages_controller") {
+    return { kind, amount: expectNumber(value.amount, `${label}.amount`) };
   }
   if (kind === "overload_each") {
     return {

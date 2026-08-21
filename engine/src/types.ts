@@ -616,6 +616,7 @@ export type GameEffect =
   | { kind: "reveal_top_put_permanent"; playerId: PlayerId }
   | { kind: "drain_opponents"; playerId: PlayerId; amount: number }
   | { kind: "silence"; playerId: PlayerId }
+  | { kind: "each_creature_damages_controller"; amount: number }
   | {
       kind: "search_library";
       playerId: PlayerId;
@@ -643,7 +644,14 @@ export type GameEffect =
       counter: string;
       amount: number;
     }
-  | { kind: "counter_on_each_creature"; counter: string; amount: number }
+  | {
+      kind: "counter_on_each_creature";
+      counter: string;
+      amount: number;
+      /** Avenger of Zendikar: only the listed subtype under this controller. */
+      subtype?: string;
+      controllerId?: PlayerId;
+    }
   | {
       kind: "overload_each";
       controllerId: PlayerId;
@@ -728,6 +736,8 @@ export type TargetKind =
   | "land"
   /** Boseiju, Who Endures. */
   | "artifact_enchantment_or_nonbasic_land"
+  /** Bedevil. */
+  | "artifact_creature_or_planeswalker"
   /** A commander creature on the battlefield (Witch's Clinic). */
   | "commander"
   | "player_or_creature"
@@ -1011,6 +1021,8 @@ export type CardEffect =
     }
   /** Silence: opponents of this player can't cast spells this turn. */
   | { kind: "silence"; playerId: PlayerSelector }
+  /** Rakdos Charm: each creature pings its own controller. */
+  | { kind: "each_creature_damages_controller"; amount: number }
   | {
       kind: "search_library";
       playerId: PlayerSelector;
@@ -1043,7 +1055,13 @@ export type CardEffect =
       amount: number;
     }
   /** Black Sun's Zenith: counters on every battlefield creature. */
-  | { kind: "counter_on_each_creature"; counter: string; amount: number | "x" }
+  | {
+      kind: "counter_on_each_creature";
+      counter: string;
+      amount: number | "x";
+      subtype?: string;
+      controlledOnly?: boolean;
+    }
   | { kind: "destroy_all"; what: DestroyAllScope; maxManaValue?: number; minManaValue?: number }
   | { kind: "unless_pays"; playerId: PlayerSelector; cost: string; effects: CardEffect[] }
   | { kind: "may_pay"; playerId: PlayerSelector; cost: string; effects: CardEffect[] }
@@ -1154,6 +1172,8 @@ export type CardTrigger = {
   subjectFilter?: {
     types?: string[];
     subtypes?: string[];
+    /** "an Aura, Equipment, or Vehicle spell": any listed subtype (Sram). */
+    subtypesAny?: string[];
     typesAny?: string[];
     nonTypes?: string[];
     /** The subject must have the watcher's chosen creature type. */

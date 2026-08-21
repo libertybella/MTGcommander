@@ -8874,3 +8874,116 @@ describe("wave 95: silence and blasts", () => {
   });
 });
 
+describe("wave 96: bedevils and avengers", () => {
+  it("compiles Bedevil, Rakdos Charm, Avenger of Zendikar, and Sram fully", () => {
+    const bedevil = compileOracleCard({
+      oracleId: "bedevil",
+      name: "Bedevil",
+      manaCost: "{B}{B}{R}",
+      typeLine: "Instant",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText: "Destroy target artifact, creature, or planeswalker.",
+    });
+    expect(bedevil.notes).toEqual([]);
+    expect(bedevil.definition.targetRequirements).toEqual([
+      { kind: "artifact_creature_or_planeswalker" },
+    ]);
+
+    const charm = compileOracleCard({
+      oracleId: "rakdos-charm",
+      name: "Rakdos Charm",
+      manaCost: "{B}{R}",
+      typeLine: "Instant",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "Choose one —\n• Exile target player's graveyard.\n• Destroy target artifact.\n• Each creature deals 1 damage to its controller.",
+    });
+    expect(charm.notes).toEqual([]);
+    expect(charm.definition.modes?.[2]?.effects[0]).toEqual({
+      kind: "each_creature_damages_controller",
+      amount: 1,
+    });
+
+    const avenger = compileOracleCard({
+      oracleId: "avenger",
+      name: "Avenger of Zendikar",
+      manaCost: "{5}{G}{G}",
+      typeLine: "Creature — Elemental",
+      power: "5",
+      toughness: "5",
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "When this creature enters, create a 0/1 green Plant creature token for each land you control.\nLandfall — Whenever a land you control enters, you may put a +1/+1 counter on each Plant creature you control.",
+    });
+    expect(avenger.notes).toEqual([]);
+    const plants = avenger.definition.triggers[0]?.effects[0];
+    expect(plants?.kind === "create_token" && plants.perControlled).toBe("land");
+    const landfall = avenger.definition.triggers[1]?.effects[0];
+    expect(landfall?.kind === "counter_on_each_creature" && landfall.subtype).toBe("plant");
+
+    const sram = compileOracleCard({
+      oracleId: "sram",
+      name: "Sram, Senior Edificer",
+      manaCost: "{1}{W}",
+      typeLine: "Legendary Creature — Dwarf Advisor",
+      power: "2",
+      toughness: "2",
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText: "Whenever you cast an Aura, Equipment, or Vehicle spell, draw a card.",
+    });
+    expect(sram.notes).toEqual([]);
+    expect(sram.definition.triggers[0]?.subjectFilter?.subtypesAny).toEqual([
+      "aura",
+      "equipment",
+      "vehicle",
+    ]);
+  });
+
+  it("pings controllers and buffs only the tribe under one player", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const plantDef = createCardDefinition({ name: "Plant", typeLine: "Creature — Plant", power: 0, toughness: 1 });
+    const bearDef = createCardDefinition({ name: "Bear", typeLine: "Creature — Bear", power: 2, toughness: 2 });
+    game.definitions[plantDef.id] = plantDef;
+    game.definitions[bearDef.id] = bearDef;
+    const myPlant = createCardInstance({ definitionId: plantDef.id, ownerId: p1.id, zone: "battlefield" });
+    const theirPlant = createCardInstance({ definitionId: plantDef.id, ownerId: p2.id, zone: "battlefield" });
+    const bear = createCardInstance({ definitionId: bearDef.id, ownerId: p1.id, zone: "battlefield" });
+    game.cards[myPlant.id] = myPlant;
+    game.cards[theirPlant.id] = theirPlant;
+    game.cards[bear.id] = bear;
+    p1.zones.battlefield.push(myPlant.id, bear.id);
+    p2.zones.battlefield.push(theirPlant.id);
+
+    const bound = bindCardEffects(
+      game,
+      [
+        {
+          kind: "counter_on_each_creature",
+          counter: "p1p1",
+          amount: 1,
+          subtype: "plant",
+          controlledOnly: true,
+        },
+      ],
+      { controllerId: p1.id, sourceId: null },
+    );
+    const buffed = applyEffects(game, bound);
+    expect(buffed.cards[myPlant.id]?.counters["p1p1"]).toBe(1);
+    expect(buffed.cards[theirPlant.id]?.counters["p1p1"]).toBeUndefined();
+    expect(buffed.cards[bear.id]?.counters["p1p1"]).toBeUndefined();
+
+    const pinged = applyEffect(game, { kind: "each_creature_damages_controller", amount: 1 });
+    // p1 controls two creatures, p2 controls one.
+    expect(pinged.players[0]?.life).toBe(38);
+    expect(pinged.players[1]?.life).toBe(39);
+  });
+});
+
