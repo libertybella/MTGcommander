@@ -2632,6 +2632,75 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     };
   }
 
+  // Ram Through: a one-way bite — the bound creature's power at bind.
+  if (
+    /^Target creature you control deals damage equal to its power to target creature you don't control$/i.test(
+      sentence,
+    )
+  ) {
+    return {
+      targetRequirements: [
+        { kind: "creature", control: "own" },
+        { kind: "creature", control: "not_own" },
+      ],
+      effects: [
+        {
+          kind: "deal_damage",
+          sourceId: { type: "chosen", index: 0 },
+          target: { type: "chosen", index: 1 },
+          amount: "chosen_power",
+        },
+      ],
+    };
+  }
+
+  // Ram Through's trample rider is not implemented: excess damage stays on
+  // the bitten creature — a documented approximation.
+  if (
+    /^If the creature you control has trample, excess damage is dealt to that creature's controller instead$/i.test(
+      sentence,
+    )
+  ) {
+    return { targetRequirements: [], effects: [] };
+  }
+
+  // Epic Confrontation (fused): buff the biter, then fight.
+  match = sentence.match(
+    /^Target creature you control gets ([+-]\d+)\/([+-]\d+) until end of turn, then fights target creature you don't control$/i,
+  );
+  if (match?.[1] && match[2]) {
+    return {
+      targetRequirements: [
+        { kind: "creature", control: "own" },
+        { kind: "creature", control: "not_own" },
+      ],
+      effects: [
+        {
+          kind: "pt_until_eot",
+          cardId: { type: "chosen", index: 0 },
+          power: Number(match[1]),
+          toughness: Number(match[2]),
+        },
+        {
+          kind: "fight",
+          cardId: { type: "chosen", index: 0 },
+          withTarget: { type: "chosen", index: 1 },
+        },
+      ],
+    };
+  }
+
+  // Freed from the Real: the aura taps and untaps its host.
+  match = sentence.match(/^(Tap|Untap) enchanted creature$/i);
+  if (match?.[1]) {
+    return {
+      targetRequirements: [],
+      effects: [
+        { kind: match[1].toLowerCase() === "tap" ? "tap" : "untap", cardId: "host" },
+      ],
+    };
+  }
+
   // Kogla / Apex Altisaur: the fight is optional — an unfilled slot skips.
   if (/^(?:it|~|this creature) fights up to one target creature you don't control$/i.test(sentence)) {
     return {
@@ -3305,6 +3374,27 @@ function fuseDrainPairInPlace(sentences: string[], lineStart: boolean[]): void {
   }
 }
 
+/** Epic Confrontation: "Target creature you control gets +1/+2 until end of
+ * turn." + "It fights target creature you don't control." — one clause. */
+function fuseBiteInPlace(sentences: string[], lineStart: boolean[]): void {
+  for (let index = 0; index + 1 < sentences.length; index += 1) {
+    if (lineStart[index + 1]) {
+      continue;
+    }
+    const buff = sentences[index]!.match(
+      /^(.*)Target creature you control gets ([+-]\d+)\/([+-]\d+) until end of turn$/i,
+    );
+    if (buff && /^It fights target creature you don't control$/i.test(sentences[index + 1]!)) {
+      sentences.splice(
+        index,
+        2,
+        `${buff[1] ?? ""}Target creature you control gets ${buff[2]}/${buff[3]} until end of turn, then fights target creature you don't control`,
+      );
+      lineStart.splice(index + 1, 1);
+    }
+  }
+}
+
 function fuseExilePlayInPlace(sentences: string[], lineStart: boolean[]): void {
   for (let index = 0; index + 1 < sentences.length; index += 1) {
     if (lineStart[index + 1]) {
@@ -3313,7 +3403,7 @@ function fuseExilePlayInPlace(sentences: string[], lineStart: boolean[]): void {
     const own = sentences[index]!.match(
       /^(.*)Exile the top (card|two cards|three cards|four cards|five cards) of your library$/i,
     );
-    if (own && /^You may play (?:it|that card|them) this turn$/i.test(sentences[index + 1]!)) {
+    if (own && /^You may play (?:it|that card|them|those cards) this turn$/i.test(sentences[index + 1]!)) {
       const count = own[2]!.toLowerCase() === "card" ? 1 : parseCount(own[2]!.split(" ")[0]!) ?? 1;
       const suffix = count === 1 ? "" : ` ${count}`;
       sentences.splice(index, 2, `${own[1] ?? ""}impulse${suffix} from your library`);
@@ -4228,6 +4318,7 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
   fuseDigSentencesInPlace(sentences, lineStart);
   fuseExilePlayInPlace(sentences, lineStart);
   fuseDrainPairInPlace(sentences, lineStart);
+  fuseBiteInPlace(sentences, lineStart);
   for (let index = 0; index < sentences.length; index += 1) {
     const sentence = sentences[index];
     if (!sentence) {

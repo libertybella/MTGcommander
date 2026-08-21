@@ -264,6 +264,11 @@ function bindCardId(
     if (selector === "chosen_card") {
       return context.chosenCardId ?? null;
     }
+    // Freed from the Real: the aura's host ("enchanted creature").
+    if (selector === "host") {
+      const source = context.sourceId ? state.cards[context.sourceId] : undefined;
+      return source?.attachedTo ?? null;
+    }
     return selector;
   }
   const chosen = chosenTargetAt(context, selector.index, state);
@@ -473,14 +478,32 @@ export function bindCardEffect(
       };
     }
     case "deal_damage": {
+      // Ram Through: a chosen creature is the source and its power the amount.
+      const chosenSource =
+        effect.sourceId !== null && typeof effect.sourceId === "object"
+          ? chosenTargetAt(context, effect.sourceId.index, state)
+          : null;
+      if (effect.sourceId !== null && typeof effect.sourceId === "object") {
+        if (!chosenSource || chosenSource.type !== "creature") {
+          return null;
+        }
+      }
+      const boundSourceId =
+        chosenSource?.type === "creature"
+          ? chosenSource.cardId
+          : bindSourceId(effect.sourceId as CardInstanceId | "self" | null, context);
       const amount =
         effect.amount === "x"
           ? context.xValue ?? 0
           : effect.amount === "sacrificed_power"
             ? context.sacrificedPower ?? 0
-            : typeof effect.amount === "object"
-              ? countControlledSubtype(state, context.controllerId, effect.amount.subtypeCount)
-              : effect.amount;
+            : effect.amount === "chosen_power"
+              ? boundSourceId
+                ? Math.max(0, creaturePower(state, boundSourceId))
+                : 0
+              : typeof effect.amount === "object"
+                ? countControlledSubtype(state, context.controllerId, effect.amount.subtypeCount)
+                : effect.amount;
       if (amount <= 0) {
         return null;
       }
@@ -492,7 +515,7 @@ export function bindCardEffect(
         return {
           kind: "deal_damage",
           amount,
-          sourceId: bindSourceId(effect.sourceId, context),
+          sourceId: boundSourceId,
           target: chosen,
           ...(effect.gainLife ? { gainLife: true } : {}),
         };
@@ -505,7 +528,7 @@ export function bindCardEffect(
         return {
           kind: "deal_damage",
           amount,
-          sourceId: bindSourceId(effect.sourceId, context),
+          sourceId: boundSourceId,
           target: { type: "player", playerId },
           ...(effect.gainLife ? { gainLife: true } : {}),
         };
@@ -513,7 +536,7 @@ export function bindCardEffect(
       return {
         kind: "deal_damage",
         amount,
-        sourceId: bindSourceId(effect.sourceId, context),
+        sourceId: boundSourceId,
         target: effect.target,
         ...(effect.gainLife ? { gainLife: true } : {}),
       };

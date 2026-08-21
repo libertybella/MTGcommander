@@ -1776,8 +1776,17 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
         throw new Error(`Invalid ${label}.target`);
       }
       const targetType = expectString(value.target.type, `${label}.target.type`);
-      const sourceId = value.sourceId;
-      if (sourceId !== null && sourceId !== "self" && typeof sourceId !== "string") {
+      const rawSource = value.sourceId;
+      // Ram Through: the source may itself be a chosen target ref.
+      let sourceId: string | null | { type: "chosen"; index: number };
+      if (rawSource === null || typeof rawSource === "string") {
+        sourceId = rawSource;
+      } else if (isRecord(rawSource) && rawSource.type === "chosen") {
+        sourceId = {
+          type: "chosen",
+          index: expectNumber(rawSource.index, `${label}.sourceId.index`),
+        };
+      } else {
         throw new Error(`Invalid ${label}.sourceId`);
       }
       const amount =
@@ -1785,9 +1794,11 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
           ? ("x" as const)
           : value.amount === "sacrificed_power"
             ? ("sacrificed_power" as const)
-            : isRecord(value.amount) && typeof value.amount.subtypeCount === "string"
-              ? { subtypeCount: value.amount.subtypeCount }
-              : expectNumber(value.amount, `${label}.amount`);
+            : value.amount === "chosen_power"
+              ? ("chosen_power" as const)
+              : isRecord(value.amount) && typeof value.amount.subtypeCount === "string"
+                ? { subtypeCount: value.amount.subtypeCount }
+                : expectNumber(value.amount, `${label}.amount`);
       const gainLife = value.gainLife === true ? { gainLife: true as const } : {};
       if (targetType === "player") {
         return {

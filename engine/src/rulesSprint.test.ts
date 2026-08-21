@@ -11700,3 +11700,179 @@ describe("wave 115: apes, altisaurs, and fights", () => {
     expect(next.players[0]?.zones.hand).toHaveLength(handBefore + 1);
   });
 });
+
+describe("wave 116: bites, confrontations, freed hosts", () => {
+  it("compiles the batch fully", () => {
+    const ram = compileOracleCard({
+      oracleId: "ram",
+      name: "Ram Through",
+      manaCost: "{1}{G}",
+      typeLine: "Instant",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "Target creature you control deals damage equal to its power to target creature you don't control. If the creature you control has trample, excess damage is dealt to that creature's controller instead.",
+    });
+    expect(ram.notes).toEqual([]);
+    expect(ram.definition.effects[0]).toEqual({
+      kind: "deal_damage",
+      sourceId: { type: "chosen", index: 0 },
+      target: { type: "chosen", index: 1 },
+      amount: "chosen_power",
+    });
+
+    const epic = compileOracleCard({
+      oracleId: "epic",
+      name: "Epic Confrontation",
+      manaCost: "{1}{G}",
+      typeLine: "Sorcery",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "Target creature you control gets +1/+2 until end of turn. It fights target creature you don't control. (Each deals damage equal to its power to the other.)",
+    });
+    expect(epic.notes).toEqual([]);
+    expect(epic.definition.effects).toEqual([
+      { kind: "pt_until_eot", cardId: { type: "chosen", index: 0 }, power: 1, toughness: 2 },
+      {
+        kind: "fight",
+        cardId: { type: "chosen", index: 0 },
+        withTarget: { type: "chosen", index: 1 },
+      },
+    ]);
+
+    const freed = compileOracleCard({
+      oracleId: "freed",
+      name: "Freed from the Real",
+      manaCost: "{2}{U}",
+      typeLine: "Enchantment — Aura",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText: "Enchant creature\n{U}: Tap enchanted creature.\n{U}: Untap enchanted creature.",
+    });
+    expect(freed.notes).toEqual([]);
+    expect(freed.definition.activated[0]?.effects).toEqual([{ kind: "tap", cardId: "host" }]);
+    expect(freed.definition.activated[1]?.effects).toEqual([{ kind: "untap", cardId: "host" }]);
+
+    const forge = compileOracleCard({
+      oracleId: "forge",
+      name: "Sword of Forge and Frontier",
+      manaCost: "{3}",
+      typeLine: "Artifact — Equipment",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "Equipped creature gets +2/+2 and has protection from red and from green.\nWhenever equipped creature deals combat damage to a player, exile the top two cards of your library. You may play those cards this turn. You may play an additional land this turn.\nEquip {2}",
+    });
+    expect(forge.notes).toEqual([]);
+    expect(forge.definition.triggers[0]?.event).toBe("deals_combat_damage_to_player");
+  });
+
+  it("bites with the biter's power, one way only", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const bigDef = createCardDefinition({ name: "Big", typeLine: "Creature — Beast", power: 4, toughness: 5 });
+    const smallDef = createCardDefinition({ name: "Small", typeLine: "Creature — Goblin", power: 2, toughness: 3 });
+    game.definitions[bigDef.id] = bigDef;
+    game.definitions[smallDef.id] = smallDef;
+    const big = createCardInstance({ definitionId: bigDef.id, ownerId: p1.id, zone: "battlefield" });
+    const small = createCardInstance({ definitionId: smallDef.id, ownerId: p2.id, zone: "battlefield" });
+    game.cards[big.id] = big;
+    game.cards[small.id] = small;
+    p1.zones.battlefield.push(big.id);
+    p2.zones.battlefield.push(small.id);
+
+    const bound = bindCardEffects(
+      game,
+      [
+        {
+          kind: "deal_damage",
+          sourceId: { type: "chosen", index: 0 },
+          target: { type: "chosen", index: 1 },
+          amount: "chosen_power",
+        },
+      ],
+      {
+        controllerId: p1.id,
+        sourceId: null,
+        targets: [
+          { type: "creature", cardId: big.id },
+          { type: "creature", cardId: small.id },
+        ],
+        targetRequirements: [
+          { kind: "creature", control: "own" },
+          { kind: "creature", control: "not_own" },
+        ],
+      },
+    );
+    const next = applyEffects(game, bound);
+    // 4 damage kills the 2/3; the biter takes nothing back.
+    expect(next.cards[small.id]?.zone).toBe("graveyard");
+    expect(next.cards[big.id]?.damageMarked).toBe(0);
+  });
+
+  it("taps and untaps the aura's host", () => {
+    const { game, p1 } = twoPlayers();
+    const auraDef = createCardDefinition({
+      name: "Aura",
+      typeLine: "Enchantment — Aura",
+      activated: [
+        {
+          tap: false,
+          manaCost: "{U}",
+          effects: [{ kind: "tap", cardId: "host" }],
+          targetRequirements: [],
+        },
+        {
+          tap: false,
+          manaCost: "{U}",
+          effects: [{ kind: "untap", cardId: "host" }],
+          targetRequirements: [],
+        },
+      ],
+    });
+    const bearDef = createCardDefinition({ name: "Bear", typeLine: "Creature — Bear", power: 2, toughness: 2 });
+    game.definitions[auraDef.id] = auraDef;
+    game.definitions[bearDef.id] = bearDef;
+    const aura = createCardInstance({ definitionId: auraDef.id, ownerId: p1.id, zone: "battlefield" });
+    const bear = createCardInstance({ definitionId: bearDef.id, ownerId: p1.id, zone: "battlefield" });
+    aura.attachedTo = bear.id;
+    game.cards[aura.id] = aura;
+    game.cards[bear.id] = bear;
+    p1.zones.battlefield.push(aura.id, bear.id);
+    game.priorityPlayerId = p1.id;
+    game.players[0]!.mana.U = 2;
+
+    let next = applyAction(game, {
+      kind: "activate_ability",
+      playerId: p1.id,
+      cardId: aura.id,
+      abilityIndex: 0,
+      targets: [],
+    });
+    while (next.stack.length > 0) {
+      next = resolveTopOfStack(next);
+    }
+    expect(next.cards[bear.id]?.tapped).toBe(true);
+
+    next.priorityPlayerId = p1.id;
+    let after = applyAction(next, {
+      kind: "activate_ability",
+      playerId: p1.id,
+      cardId: aura.id,
+      abilityIndex: 1,
+      targets: [],
+    });
+    while (after.stack.length > 0) {
+      after = resolveTopOfStack(after);
+    }
+    expect(after.cards[bear.id]?.tapped).toBe(false);
+  });
+});

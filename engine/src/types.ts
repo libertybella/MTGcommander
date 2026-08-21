@@ -903,11 +903,14 @@ export type CardEffect =
     }
   | {
       kind: "deal_damage";
-      sourceId: CardInstanceId | "self" | null;
+      /** A chosen ref makes the targeted creature itself the source
+       * (Ram Through's bite). */
+      sourceId: CardInstanceId | "self" | null | ChosenTargetRef;
       target: CardEffectTarget;
       /** subtypeCount: X = the controller's battlefield permanents with the
-       * subtype (Scourge of Valkas). */
-      amount: number | "x" | "sacrificed_power" | { subtypeCount: string };
+       * subtype (Scourge of Valkas). chosen_power: the bound source
+       * creature's power, read at bind (Ram Through). */
+      amount: number | "x" | "sacrificed_power" | "chosen_power" | { subtypeCount: string };
       /** "You gain life equal to the damage dealt this way." */
       gainLife?: boolean;
     }
