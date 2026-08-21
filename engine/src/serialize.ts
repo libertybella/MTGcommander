@@ -1753,6 +1753,14 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
         ...(value.atEndStep === "sacrifice" || value.atEndStep === "exile"
           ? { atEndStep: value.atEndStep }
           : {}),
+        ...(isRecord(value.setPt)
+          ? {
+              setPt: {
+                power: expectNumber(value.setPt.power, `${label}.setPt.power`),
+                toughness: expectNumber(value.setPt.toughness, `${label}.setPt.toughness`),
+              },
+            }
+          : {}),
       };
     case "manifest":
       return {
@@ -2544,6 +2552,14 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
       ...(value.gainsHaste === true ? { gainsHaste: true } : {}),
       ...(value.atEndStep === "sacrifice" || value.atEndStep === "exile"
         ? { atEndStep: value.atEndStep }
+        : {}),
+      ...(isRecord(value.setPt)
+        ? {
+            setPt: {
+              power: expectNumber(value.setPt.power, `${label}.setPt.power`),
+              toughness: expectNumber(value.setPt.toughness, `${label}.setPt.toughness`),
+            },
+          }
         : {}),
     };
   }

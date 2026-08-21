@@ -2574,6 +2574,7 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
   };
   void keywords;
   let overloadCost: string | null = null;
+  let offspringCost: string | null = null;
 
   const modal = extractModalModes(card);
   if (modal) {
@@ -3173,6 +3174,12 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
     const overloadLine = sentence.match(/^Overload ((?:\{[^}]+\})+)$/i);
     if (overloadLine?.[1]) {
       overloadCost = overloadLine[1];
+      continue;
+    }
+
+    const offspringLine = sentence.match(/^Offspring ((?:\{[^}]+\})+)$/i);
+    if (offspringLine?.[1]) {
+      offspringCost = offspringLine[1];
       continue;
     }
 
@@ -3894,6 +3901,38 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
     }
     if (!built) {
       result.leftover.push(`Overload ${overloadCost}`);
+    }
+  }
+
+  // Offspring (CR 702.176), modeled like kicker: paying the extra cost adds a
+  // 1/1 token copy of the entering creature.
+  if (offspringCost) {
+    if (!result.modes) {
+      result.modes = [
+        {
+          label: "Cast normally",
+          effects: result.effects,
+          targetRequirements: result.targetRequirements,
+        },
+        {
+          label: `Offspring ${offspringCost}`,
+          extraCost: offspringCost,
+          effects: [
+            ...result.effects.map((entry) => ({ ...entry })),
+            {
+              kind: "copy_token" as const,
+              ownerId: "controller" as const,
+              ofCardId: "self" as const,
+              setPt: { power: 1, toughness: 1 },
+            },
+          ],
+          targetRequirements: result.targetRequirements.map((entry) => ({ ...entry })),
+        },
+      ];
+      result.effects = [];
+      result.targetRequirements = [];
+    } else {
+      result.leftover.push(`Offspring ${offspringCost}`);
     }
   }
 

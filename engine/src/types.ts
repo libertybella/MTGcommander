@@ -533,6 +533,7 @@ export type GameEffect =
       count?: number;
       gainsHaste?: boolean;
       atEndStep?: "sacrifice" | "exile";
+      setPt?: { power: number; toughness: number };
     }
   | { kind: "manifest"; playerId: PlayerId; count: number }
   | {
@@ -815,12 +816,14 @@ export type CardEffect =
   | {
       kind: "copy_token";
       ownerId: PlayerSelector;
-      ofCardId: ChosenTargetRef | CardInstanceId;
+      ofCardId: ChosenTargetRef | CardInstanceId | "self";
       /** "create five of those tokens" (kicked Rite of Replication). */
       count?: number;
       /** "It gains haste" / delayed end-step riders (Jaxis-class shells). */
       gainsHaste?: boolean;
       atEndStep?: "sacrifice" | "exile";
+      /** Offspring: the copy's base power and toughness are overridden (1/1). */
+      setPt?: { power: number; toughness: number };
     }
   | { kind: "manifest"; playerId: PlayerSelector; count: number }
   | {

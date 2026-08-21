@@ -586,7 +586,9 @@ export function bindCardEffect(
         return null;
       }
       let ofCardId: CardInstanceId | null;
-      if (typeof effect.ofCardId === "string") {
+      if (effect.ofCardId === "self") {
+        ofCardId = context.sourceId;
+      } else if (typeof effect.ofCardId === "string") {
         ofCardId = effect.ofCardId;
       } else {
         const chosen = chosenTargetAt(context, effect.ofCardId.index, state);
@@ -602,6 +604,7 @@ export function bindCardEffect(
         ...(effect.count && effect.count > 1 ? { count: effect.count } : {}),
         ...(effect.gainsHaste ? { gainsHaste: true } : {}),
         ...(effect.atEndStep ? { atEndStep: effect.atEndStep } : {}),
+        ...(effect.setPt ? { setPt: { ...effect.setPt } } : {}),
       };
     }
     case "counter_spell": {
@@ -1414,14 +1417,35 @@ function applyCopyToken(
   state: GameState,
   ownerId: PlayerId,
   ofCardId: CardInstanceId,
-  opts?: { count?: number; gainsHaste?: boolean; atEndStep?: "sacrifice" | "exile" },
+  opts?: {
+    count?: number;
+    gainsHaste?: boolean;
+    atEndStep?: "sacrifice" | "exile";
+    setPt?: { power: number; toughness: number };
+  },
 ): GameState {
   requirePlayer(state, ownerId);
   const original = state.cards[ofCardId];
-  if (!original || original.zone !== "battlefield") {
+  // "stack" is allowed for Offspring: the copy is made as the spell resolves,
+  // just before the original itself enters the battlefield.
+  if (!original || (original.zone !== "battlefield" && original.zone !== "stack")) {
     throw new Error(`Card ${ofCardId} is not on the battlefield`);
   }
   const next = cloneGameState(state);
+  let copyDefinitionId = original.definitionId;
+  if (opts?.setPt) {
+    // Offspring: the copy is 1/1 — a cloned definition with overridden base
+    // power and toughness.
+    const sourceDefinition = next.definitions[original.definitionId];
+    if (sourceDefinition) {
+      const overridden = JSON.parse(JSON.stringify(sourceDefinition)) as typeof sourceDefinition;
+      overridden.id = createId("definition");
+      overridden.power = opts.setPt.power;
+      overridden.toughness = opts.setPt.toughness;
+      next.definitions[overridden.id] = overridden;
+      copyDefinitionId = overridden.id;
+    }
+  }
   const owner = next.players.find((player) => player.id === ownerId);
   if (!owner) {
     throw new Error(`Unknown player ${ownerId}`);
@@ -1430,7 +1454,7 @@ function applyCopyToken(
   const copies = (opts?.count ?? 1) * tokenDoublingFactor(next, ownerId);
   for (let index = 0; index < copies; index += 1) {
     const token = createCardInstance({
-      definitionId: original.definitionId,
+      definitionId: copyDefinitionId,
       ownerId,
       zone: "battlefield",
       isToken: true,

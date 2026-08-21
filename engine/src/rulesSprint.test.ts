@@ -5557,3 +5557,55 @@ describe("wave 58: untap watchers and creature-count damage", () => {
     expect(Object.values(next.cards).every((card) => card.zone === "graveyard")).toBe(true);
   });
 });
+
+describe("wave 59: offspring", () => {
+  it("compiles Starscape Cleric fully as two modes", () => {
+    const cleric = compileOracleCard({
+      oracleId: "cleric",
+      name: "Starscape Cleric",
+      manaCost: "{1}{B}",
+      typeLine: "Creature — Elf Cleric",
+      power: "2",
+      toughness: "1",
+      printedKeywords: ["Flying"],
+      imageUrl: "",
+      oracleText:
+        "Offspring {2}{B} (You may pay an additional {2}{B} as you cast this spell. If you do, when this creature enters, create a 1/1 token copy of it.)\nFlying\nThis creature can't block.\nWhenever you gain life, each opponent loses 1 life.",
+    });
+    expect(cleric.notes).toEqual([]);
+    expect(cleric.definition.modes).toHaveLength(2);
+    expect(cleric.definition.modes?.[1]?.extraCost).toBe("{2}{B}");
+    const copy = cleric.definition.modes?.[1]?.effects.at(-1);
+    expect(copy?.kind === "copy_token" && copy.ofCardId).toBe("self");
+    expect(copy?.kind === "copy_token" && copy.setPt).toEqual({ power: 1, toughness: 1 });
+  });
+
+  it("creates a 1/1 copy of the entering creature", () => {
+    const { game, p1 } = twoPlayers();
+    const oxDef = createCardDefinition({
+      name: "Ox",
+      typeLine: "Creature — Ox",
+      power: 4,
+      toughness: 4,
+    });
+    game.definitions[oxDef.id] = oxDef;
+    const ox = createCardInstance({ definitionId: oxDef.id, ownerId: p1.id, zone: "battlefield" });
+    game.cards[ox.id] = ox;
+    p1.zones.battlefield.push(ox.id);
+
+    const next = applyEffect(game, {
+      kind: "copy_token",
+      ownerId: p1.id,
+      ofCardId: ox.id,
+      setPt: { power: 1, toughness: 1 },
+    });
+    const token = Object.values(next.cards).find((card) => card.isToken)!;
+    expect(token).toBeDefined();
+    const tokenDef = next.definitions[token.definitionId]!;
+    expect(tokenDef.name).toBe("Ox");
+    expect(tokenDef.power).toBe(1);
+    expect(tokenDef.toughness).toBe(1);
+    // The original keeps its printed stats.
+    expect(next.definitions[ox.definitionId]?.power).toBe(4);
+  });
+});
