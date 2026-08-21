@@ -16,8 +16,8 @@ This is **not** Wizards of the Coast software. It is also **not** the sibling Bi
 | --- | --- |
 | **Phase** | Comprehensive Rules machinery (layers, events, choices, permanents) + coverage flywheel |
 | **Next** | Private alpha (invite friends, play complete games) |
-| **Tests** | 865 passing; a 10,000-game random-action fuzz marathon gates checkpoint-45, 200-game burns gate every wave and 800+ burns gate every checkpoint tag |
-| **Compile rate** | 93% of a 60-card real-staple sample compiles fully (CI floor 85%); 46.9% of the EDHREC top-2,000 (up from 15.6% at the start of the 2026-08-20 flywheel run) |
+| **Tests** | 875 passing; a 10,000-game random-action fuzz marathon gates checkpoint-45, 200-game burns gate every wave and 800+ burns gate every checkpoint tag |
+| **Compile rate** | 93% of a 60-card real-staple sample compiles fully (CI floor 85%); 48.2% of the EDHREC top-2,000 (up from 15.6% at the start of the 2026-08-20 flywheel run) |
 | **Installer** | `npm run dist` builds a one-click Windows installer (`release/BizzyMTG Commander Setup 0.1.0.exe`). |
 
 ---
@@ -181,5 +181,6 @@ Git tags on `main`. Do not move old tags.
 | `checkpoint-69-rebounds` | Trigger doubling (Panharmonicon, Teysa), Enduring cycle returns, Caged Sun, Mirari's Wake, Elenda, Elspeth emblems, d20 Treasures, transmute, living weapon, rebound — plus the parallel-work layer (AGENTS.md, claims board, CI), 45.0% |
 | `checkpoint-70-choices` | Modal triggers (Aether Channeler, Felidar Retreat, Atsushi, Junji, Charming Prince), self-discounts (Great Henge, Excalibur), evolve (Fathom Mage), discard watchers (Waste Not, Bone Miser), 45.7% |
 | `checkpoint-71-gifts` | Modal activated abilities (Insidious Fungus, Eerie Interlude), dethrone + delirium + first-combat gates (Scourge of the Throne, Karlach), gated tutors + adapt (Weathered Wayfarer, Evolution Witness), the gift mechanic as promise/decline modes (Parting Gust, Into the Flood Maw), dual enters-or-dies triggers (Stitcher's Supplier), Lotus Cobra, Gamble, Ghostly Flicker, 46.9% |
+| `checkpoint-72-ozolith` | Wheels and cheap edicts (Wheel of Fortune, Blasphemous Edict), every-type statics (Maskwood Nexus, Dryad of the Ilysian Grove, Mystic Forge, Realmwalker), fodder-powered mills (Altar of Dementia, Victimize, Culling Ritual, Plaguecrafter), board swaps and stack taxes (Living Death, Necropotence, Bolt Bend), surviving counters (The Ozolith, Banner of Kinship, Cloud Key, Puresteel Paladin), 48.2% |
 
 These live on the `comprehensive-plan` branch (see docs/DEVELOPMENT_PROGRESS.md); merge to `main` at will — every checkpoint is a playable table. Next: **Private Alpha**, then productization.

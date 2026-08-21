@@ -126,6 +126,11 @@ field just silently drops).
 - Random choices (`roll_die_treasures`, `discard_random`) use
   `Math.random`; tests swap it out (`const o = Math.random;
   Math.random = () => 0.99; try { … } finally { Math.random = o; }`).
+- When a test compiles a card whose oracle text names the card ("put
+  those counters on The Ozolith"), the `name` passed to
+  compileOracleCard must match exactly — otherwise the `~`
+  normalization fails and triggers silently don't compile (the compile
+  succeeds with notes; runtime just has no triggers).
 - Auto-picks are the standard approximation for free choices the bot
   can't reason about (chosen creature type = most common controlled;
   "any color" = first commander-identity color else G; gift recipient
