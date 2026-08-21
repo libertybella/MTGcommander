@@ -104,6 +104,8 @@ function onEnterStep(state: GameState): GameState {
     state.spellsCastByPlayerThisTurn = {};
     state.noncreatureSpellsCastByPlayerThisTurn = {};
     state.creaturesDiedThisTurn = 0;
+    state.createdTokenThisTurn = [];
+    state.drawsByPlayerThisTurn = {};
     const untappedEvents: EngineEvent[] = [];
     const untapInPlace = (card: (typeof state.cards)[string]) => {
       if (card.tapped) {

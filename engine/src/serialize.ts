@@ -862,6 +862,23 @@ export function parseGameState(json: string): GameState {
     ...(raw.creaturesDiedThisTurn === undefined
       ? {}
       : { creaturesDiedThisTurn: expectNumber(raw.creaturesDiedThisTurn, "creaturesDiedThisTurn") }),
+    ...(raw.createdTokenThisTurn === undefined
+      ? {}
+      : { createdTokenThisTurn: expectStringArray(raw.createdTokenThisTurn, "createdTokenThisTurn") }),
+    ...(raw.drawsByPlayerThisTurn === undefined
+      ? {}
+      : {
+          drawsByPlayerThisTurn: (() => {
+            if (!isRecord(raw.drawsByPlayerThisTurn)) {
+              throw new Error("Invalid drawsByPlayerThisTurn");
+            }
+            const counts: Record<string, number> = {};
+            for (const [key, entry] of Object.entries(raw.drawsByPlayerThisTurn)) {
+              counts[key] = expectNumber(entry, `drawsByPlayerThisTurn.${key}`);
+            }
+            return counts;
+          })(),
+        }),
     ...(raw.castLockUntilEot === undefined
       ? {}
       : { castLockUntilEot: expectString(raw.castLockUntilEot, "castLockUntilEot") }),
@@ -1835,6 +1852,14 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
         ...(value.atEndStep === "sacrifice" || value.atEndStep === "exile"
           ? { atEndStep: value.atEndStep }
           : {}),
+        ...(value.copySelfIfLandsAtLeast === undefined
+          ? {}
+          : {
+              copySelfIfLandsAtLeast: expectNumber(
+                value.copySelfIfLandsAtLeast,
+                `${label}.copySelfIfLandsAtLeast`,
+              ),
+            }),
       };
     case "move_card": {
       const toZone = expectString(value.toZone, `${label}.toZone`);
@@ -2240,6 +2265,10 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
       return { kind, cardId: parseCardIdSelector(value.cardId, `${label}.cardId`) };
     case "exile_graveyard":
       return { kind, playerId: parsePlayerSelector(value.playerId, `${label}.playerId`) };
+    case "commander_to_hand":
+      return { kind, playerId: parsePlayerSelector(value.playerId, `${label}.playerId`) };
+    case "opponents_lose_keywords_until_eot":
+      return { kind, keywords: parseKeywords(value.keywords, `${label}.keywords`) };
     default:
       throw new Error(`Unknown effect kind ${kind}`);
   }
@@ -2341,6 +2370,7 @@ function parseActivatedAbilities(value: unknown, label: string): ActivatedAbilit
               };
             })(),
           }),
+      ...(entry.requiresCreatedToken === true ? { requiresCreatedToken: true } : {}),
     };
   });
 }
@@ -2743,6 +2773,9 @@ function parseContinuousEffectData(value: unknown, label: string): ContinuousEff
   }
   if (kind === "remove_all_abilities") {
     return { kind };
+  }
+  if (kind === "remove_keywords") {
+    return { kind, keywords: parseKeywords(value.keywords, `${label}.keywords`) };
   }
   if (kind === "restrict") {
     return {
@@ -3299,6 +3332,16 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
   }
   if (kind === "exile_graveyard") {
     return { kind, playerId: expectString(value.playerId, `${label}.playerId`) };
+  }
+  if (kind === "commander_to_hand") {
+    return { kind, playerId: expectString(value.playerId, `${label}.playerId`) };
+  }
+  if (kind === "opponents_lose_keywords_until_eot") {
+    return {
+      kind,
+      playerId: expectString(value.playerId, `${label}.playerId`),
+      keywords: parseKeywords(value.keywords, `${label}.keywords`),
+    };
   }
   if (kind === "move_card") {
     const toZone = expectString(value.toZone, `${label}.toZone`);

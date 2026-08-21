@@ -414,6 +414,10 @@ export type GameState = {
   spellsCastByPlayerThisTurn?: Record<PlayerId, number>;
   /** Esper Sentinel: per-player noncreature casts this turn. */
   noncreatureSpellsCastByPlayerThisTurn?: Record<PlayerId, number>;
+  /** Idol of Oblivion: players who created a token this turn. */
+  createdTokenThisTurn?: PlayerId[];
+  /** Faerie Mastermind: per-player draws this turn. */
+  drawsByPlayerThisTurn?: Record<PlayerId, number>;
   /** Creatures that died this turn (Mahadi's Treasure count). */
   creaturesDiedThisTurn?: number;
   /** Silence: everyone but this player is locked out of casting until end of
@@ -646,6 +650,7 @@ export type GameEffect =
   | { kind: "prevent_combat_for"; cardId: CardInstanceId }
   | { kind: "extra_land_drop"; playerId: PlayerId }
   | { kind: "commander_to_hand"; playerId: PlayerId }
+  | { kind: "opponents_lose_keywords_until_eot"; playerId: PlayerId; keywords: Keyword[] }
   | {
       kind: "search_library";
       playerId: PlayerId;
@@ -963,6 +968,9 @@ export type CardEffect =
       entersTappedAttacking?: boolean;
       /** Mobilize: "Sacrifice them at the beginning of the next end step." */
       atEndStep?: "sacrifice" | "exile";
+      /** Scute Swarm: with this many lands, the token is a copy of the
+       * source instead of the printed token. */
+      copySelfIfLandsAtLeast?: number;
     }
   | { kind: "mill"; playerId: PlayerSelector; count: number }
   | { kind: "discard"; playerId: PlayerSelector; count: number }
@@ -1083,6 +1091,8 @@ export type CardEffect =
   | { kind: "extra_land_drop"; playerId: PlayerSelector }
   /** Command Beacon: the commander moves from the command zone to hand. */
   | { kind: "commander_to_hand"; playerId: PlayerSelector }
+  /** Shadowspear: opponents' permanents drop the listed keywords this turn. */
+  | { kind: "opponents_lose_keywords_until_eot"; keywords: Keyword[] }
   | {
       kind: "search_library";
       playerId: PlayerSelector;
@@ -1190,6 +1200,8 @@ export type TriggerEvent =
   | "becomes_untapped"
   /** Any permanent tapped (City of Brass, Magda). Subject is the permanent. */
   | "becomes_tapped"
+  /** An opponent drew their second card this turn (Faerie Mastermind). */
+  | "opponent_draws_second"
   /** An opponent searched their library (Archivist of Oghma). */
   | "opponent_searches"
   /** Any player cast their second spell this turn (Lotho). */
@@ -1488,6 +1500,8 @@ export type ActivatedAbility = {
   timing?: "any" | "sorcery";
   /** "Activate only if you control a Swamp" — a controlled type/subtype gate. */
   requiresControlled?: { types?: string[]; subtypes?: string[] };
+  /** Idol of Oblivion: "Activate only if you created a token this turn." */
+  requiresCreatedToken?: boolean;
   /** Kamigawa channel lands: {1} less per legendary creature you control. */
   legendaryDiscount?: boolean;
 };
@@ -1575,6 +1589,8 @@ export type ContinuousEffectData =
   /** layer 6: Cryptolith Rite grants a mana ability to matching permanents. */
   | { kind: "grant_mana_ability"; ability: ManaAbility }
   | { kind: "remove_all_abilities" } // layer 6
+  /** layer 6: Shadowspear strips the listed keywords. */
+  | { kind: "remove_keywords"; keywords: Keyword[] }
   | {
       // layer 6: combat restrictions (Pacifism, Whispersilk Cloak).
       kind: "restrict";

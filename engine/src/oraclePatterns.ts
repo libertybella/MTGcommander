@@ -970,6 +970,18 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     };
   }
 
+  // Faerie Mastermind: symmetric group draw.
+  const eachDraw = sentence.match(/^each player draws (a|an|one|two|three|\d+) cards?$/i);
+  if (eachDraw?.[1]) {
+    const count = parseCount(eachDraw[1]);
+    if (count) {
+      return {
+        targetRequirements: [],
+        effects: [{ kind: "draw", playerId: "each_player", count }],
+      };
+    }
+  }
+
   // Stormfist Crusader: symmetric draw-and-drain upkeep.
   const eachDrawLose = sentence.match(
     /^each player draws (a|an|one|two|\d+) cards? and loses (\d+|one|two) life$/i,
@@ -1932,6 +1944,24 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
       effects: [{ kind: "move_card", cardId: { type: "chosen", index: 0 }, toZone: "graveyard" }],
     };
   }
+
+  // Shadowspear.
+  match = sentence.match(
+    /^Permanents your opponents control lose ([a-z ]+?) and ([a-z ]+?) until end of turn$/i,
+  );
+  if (match?.[1] && match[2]) {
+    const keywords = [match[1], match[2]].map(
+      (name) => KEYWORD_GRANTS[name.trim().toLowerCase()],
+    );
+    if (keywords.every((keyword): keyword is Keyword => Boolean(keyword))) {
+      return {
+        targetRequirements: [],
+        effects: [{ kind: "opponents_lose_keywords_until_eot", keywords }],
+      };
+    }
+  }
+
+  // Scute Swarm's landfall body handles its own conditional copy.
 
   // Command Beacon.
   if (/^Put your commander into your hand from the command zone$/i.test(sentence)) {
@@ -3103,6 +3133,10 @@ function parseTriggerHead(head: string): TriggerHead | null {
   }
   if (/^Whenever an opponent casts their first noncreature spell each turn$/i.test(text)) {
     return { event: "opponent_casts_first_noncreature_spell" };
+  }
+  // Faerie Mastermind.
+  if (/^Whenever an opponent draws their second card each turn$/i.test(text)) {
+    return { event: "opponent_draws_second" };
   }
   if (/^When(?:ever)? ~ dies$/i.test(text)) {
     return { event: "dies" };
@@ -5381,6 +5415,20 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
           continue;
         }
         if (inner) {
+          // Scute Swarm: the next sentence upgrades the token to a copy.
+          const nextSentence = sentences[index + 1];
+          const copyInstead =
+            nextSentence && !lineStart[index + 1]
+              ? nextSentence.match(
+                  /^If you control (\w+) or more lands, create a token that's a copy of (?:~|this creature) instead$/i,
+                )
+              : null;
+          const copyAt = copyInstead?.[1] ? parseCount(copyInstead[1]) : null;
+          const lastEffect = inner.effects[inner.effects.length - 1];
+          if (copyAt && lastEffect?.kind === "create_token") {
+            lastEffect.copySelfIfLandsAtLeast = copyAt;
+            sentences[index + 1] = "";
+          }
           const { extraEvents, ...headRest } = head;
           result.triggers.push({
             ...headRest,
@@ -5642,6 +5690,15 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
           what: countGate[2].toLowerCase().replace(/s$/, "") as "artifact" | "creature" | "land",
           atLeast,
         };
+        continue;
+      }
+    }
+
+    // Idol of Oblivion.
+    if (/^Activate only if you created a token this turn$/i.test(sentence)) {
+      const lastActivated = result.activated[result.activated.length - 1];
+      if (lastActivated && !lastActivated.requiresCreatedToken) {
+        lastActivated.requiresCreatedToken = true;
         continue;
       }
     }

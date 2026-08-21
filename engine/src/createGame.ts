@@ -224,6 +224,7 @@ export function createCardDefinition(
           ...(ability.legendaryDiscount ? { legendaryDiscount: true } : {}),
           ...(ability.lifeCost && ability.lifeCost > 0 ? { lifeCost: ability.lifeCost } : {}),
           ...(ability.timing === "sorcery" ? { timing: "sorcery" as const } : {}),
+          ...(ability.requiresCreatedToken ? { requiresCreatedToken: true } : {}),
           ...(ability.requiresControlled
             ? {
                 requiresControlled: {

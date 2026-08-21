@@ -448,9 +448,20 @@ function triggerMatchesEvent(
     if (trigger.event === "opponent_draws") {
       return watcher.controllerId !== event.playerId;
     }
+    if (trigger.event === "opponent_draws_second") {
+      // Faerie Mastermind: exactly the opponent's second draw of the turn.
+      return (
+        watcher.controllerId !== event.playerId &&
+        (state.drawsByPlayerThisTurn?.[event.playerId] ?? 0) === 2
+      );
+    }
     return trigger.event === "you_draw" && watcher.controllerId === event.playerId;
   }
-  if (trigger.event === "opponent_draws" || trigger.event === "you_draw") {
+  if (
+    trigger.event === "opponent_draws" ||
+    trigger.event === "you_draw" ||
+    trigger.event === "opponent_draws_second"
+  ) {
     return false;
   }
   if (event.kind === "step_begins") {

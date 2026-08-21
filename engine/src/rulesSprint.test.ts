@@ -10245,3 +10245,257 @@ describe("wave 107: titans and reservoirs", () => {
   });
 });
 
+
+describe("wave 108: idols, spears, swarms, masterminds", () => {
+  it("compiles the quartet fully", () => {
+    const idol = compileOracleCard({
+      oracleId: "idol",
+      name: "Idol of Oblivion",
+      manaCost: "{2}",
+      typeLine: "Artifact",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "{T}: Draw a card. Activate only if you created a token this turn.\n{8}, {T}, Sacrifice this artifact: Create a 10/10 colorless Eldrazi creature token.",
+    });
+    expect(idol.notes).toEqual([]);
+    expect(idol.definition.activated[0]?.requiresCreatedToken).toBe(true);
+    expect(idol.definition.activated[1]?.sacrificeSelf).toBe(true);
+
+    const spear = compileOracleCard({
+      oracleId: "spear",
+      name: "Shadowspear",
+      manaCost: "{1}",
+      typeLine: "Legendary Artifact — Equipment",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "Equipped creature gets +1/+1 and has trample and lifelink.\n{1}: Permanents your opponents control lose hexproof and indestructible until end of turn.\nEquip {2}",
+    });
+    expect(spear.notes).toEqual([]);
+    expect(spear.definition.activated[0]?.effects).toEqual([
+      { kind: "opponents_lose_keywords_until_eot", keywords: ["hexproof", "indestructible"] },
+    ]);
+
+    const swarm = compileOracleCard({
+      oracleId: "swarm",
+      name: "Scute Swarm",
+      manaCost: "{2}{G}",
+      typeLine: "Creature — Insect",
+      power: "1",
+      toughness: "1",
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "Landfall — Whenever a land you control enters, create a 1/1 green Insect creature token. If you control six or more lands, create a token that's a copy of this creature instead.",
+    });
+    expect(swarm.notes).toEqual([]);
+    expect(swarm.definition.triggers[0]?.event).toBe("enter_battlefield");
+    expect(swarm.definition.triggers[0]?.effects[0]).toMatchObject({
+      kind: "create_token",
+      name: "Insect",
+      copySelfIfLandsAtLeast: 6,
+    });
+
+    const mastermind = compileOracleCard({
+      oracleId: "mastermind",
+      name: "Faerie Mastermind",
+      manaCost: "{1}{U}",
+      typeLine: "Legendary Creature — Faerie Rogue",
+      power: "2",
+      toughness: "1",
+      printedKeywords: ["Flash", "Flying"],
+      imageUrl: "",
+      oracleText:
+        "Flash\nFlying\nWhenever an opponent draws their second card each turn, you draw a card.\n{3}{U}: Each player draws a card.",
+    });
+    expect(mastermind.notes).toEqual([]);
+    expect(mastermind.definition.triggers[0]?.event).toBe("opponent_draws_second");
+    expect(mastermind.definition.activated[0]?.effects).toEqual([
+      { kind: "draw", playerId: "each_player", count: 1 },
+    ]);
+  });
+
+  it("gates the idol on this turn's token creation", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 10);
+    const idolDef = createCardDefinition({
+      name: "Idol",
+      typeLine: "Artifact",
+      activated: [
+        {
+          tap: true,
+          manaCost: "",
+          effects: [{ kind: "draw", playerId: "controller", count: 1 }],
+          targetRequirements: [],
+          requiresCreatedToken: true,
+        },
+      ],
+    });
+    game.definitions[idolDef.id] = idolDef;
+    const idol = createCardInstance({ definitionId: idolDef.id, ownerId: p1.id, zone: "battlefield" });
+    game.cards[idol.id] = idol;
+    p1.zones.battlefield.push(idol.id);
+    game.priorityPlayerId = p1.id;
+
+    expect(() =>
+      applyAction(game, {
+        kind: "activate_ability",
+        playerId: p1.id,
+        cardId: idol.id,
+        abilityIndex: 0,
+        targets: [],
+      }),
+    ).toThrow(/created a token/);
+
+    const withToken = applyEffect(game, {
+      kind: "create_token",
+      ownerId: p1.id,
+      name: "Servo",
+      typeLine: "Artifact Creature — Servo Token",
+      power: 1,
+      toughness: 1,
+    });
+    withToken.priorityPlayerId = p1.id;
+    const activated = applyAction(withToken, {
+      kind: "activate_ability",
+      playerId: p1.id,
+      cardId: idol.id,
+      abilityIndex: 0,
+      targets: [],
+    });
+    expect(activated.stack).toHaveLength(1);
+  });
+
+  it("strips only opponents' keywords until end of turn", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const hexDef = createCardDefinition({
+      name: "Hexbear",
+      typeLine: "Creature — Bear",
+      power: 2,
+      toughness: 2,
+      keywords: ["hexproof", "indestructible"],
+    });
+    game.definitions[hexDef.id] = hexDef;
+    const mine = createCardInstance({ definitionId: hexDef.id, ownerId: p1.id, zone: "battlefield" });
+    const theirs = createCardInstance({ definitionId: hexDef.id, ownerId: p2.id, zone: "battlefield" });
+    game.cards[mine.id] = mine;
+    game.cards[theirs.id] = theirs;
+    p1.zones.battlefield.push(mine.id);
+    p2.zones.battlefield.push(theirs.id);
+
+    const next = applyEffect(game, {
+      kind: "opponents_lose_keywords_until_eot",
+      playerId: p1.id,
+      keywords: ["hexproof", "indestructible"],
+    });
+    expect(computedCard(next, theirs.id)?.keywords).toEqual([]);
+    expect(computedCard(next, mine.id)?.keywords).toEqual(["hexproof", "indestructible"]);
+  });
+
+  it("upgrades the swarm token to a copy at six lands", () => {
+    const { game, p1 } = twoPlayers();
+    const swarmDef = createCardDefinition({
+      name: "Scute Swarm",
+      typeLine: "Creature — Insect",
+      power: 1,
+      toughness: 1,
+      triggers: [
+        {
+          event: "enter_battlefield",
+          watch: "controlled",
+          subjectFilter: { types: ["land"] },
+          effects: [
+            {
+              kind: "create_token",
+              ownerId: "controller",
+              name: "Insect",
+              typeLine: "Creature — Insect Token",
+              power: 1,
+              toughness: 1,
+              copySelfIfLandsAtLeast: 6,
+            },
+          ],
+          targetRequirements: [],
+        },
+      ],
+    });
+    const landDef = createCardDefinition({ name: "Forest", typeLine: "Basic Land — Forest" });
+    game.definitions[swarmDef.id] = swarmDef;
+    game.definitions[landDef.id] = landDef;
+    const swarm = createCardInstance({ definitionId: swarmDef.id, ownerId: p1.id, zone: "battlefield" });
+    game.cards[swarm.id] = swarm;
+    p1.zones.battlefield.push(swarm.id);
+    addLandsInPlay(game, p1, 4);
+
+    // Fifth land: still shy of the threshold, so a plain Insect arrives.
+    const fifth = createCardInstance({ definitionId: landDef.id, ownerId: p1.id, zone: "hand" });
+    game.cards[fifth.id] = fifth;
+    p1.zones.hand.push(fifth.id);
+    let next = moveCard(game, fifth.id, "battlefield");
+    while (next.stack.length > 0) {
+      next = resolveTopOfStack(next);
+    }
+    const insects = Object.values(next.cards).filter(
+      (card) => card.isToken && next.definitions[card.definitionId]?.name === "Insect",
+    );
+    expect(insects).toHaveLength(1);
+
+    // Sixth land: the token is a copy of Scute Swarm instead.
+    const sixth = createCardInstance({ definitionId: landDef.id, ownerId: p1.id, zone: "hand" });
+    next.cards[sixth.id] = sixth;
+    next.players[0]!.zones.hand.push(sixth.id);
+    let after = moveCard(next, sixth.id, "battlefield");
+    while (after.stack.length > 0) {
+      after = resolveTopOfStack(after);
+    }
+    const copies = Object.values(after.cards).filter(
+      (card) =>
+        card.isToken && after.definitions[card.definitionId]?.name === "Scute Swarm",
+    );
+    expect(copies).toHaveLength(1);
+  });
+
+  it("rewards the mastermind when an opponent draws their second card", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 10);
+    const mastermindDef = createCardDefinition({
+      name: "Mastermind",
+      typeLine: "Creature — Faerie Rogue",
+      power: 2,
+      toughness: 1,
+      triggers: [
+        {
+          event: "opponent_draws_second",
+          effects: [{ kind: "draw", playerId: "controller", count: 1 }],
+          targetRequirements: [],
+        },
+      ],
+    });
+    game.definitions[mastermindDef.id] = mastermindDef;
+    const mastermind = createCardInstance({
+      definitionId: mastermindDef.id,
+      ownerId: p1.id,
+      zone: "battlefield",
+    });
+    game.cards[mastermind.id] = mastermind;
+    p1.zones.battlefield.push(mastermind.id);
+    const myHand = p1.zones.hand.length;
+
+    // The opponent's first draw stays quiet.
+    let next = applyEffect(game, { kind: "draw", playerId: p2.id, count: 1 });
+    expect(next.stack).toHaveLength(0);
+    expect(next.players[0]?.zones.hand).toHaveLength(myHand);
+
+    // Their second draw this turn feeds the faerie.
+    next = applyEffect(next, { kind: "draw", playerId: p2.id, count: 1 });
+    while (next.stack.length > 0) {
+      next = resolveTopOfStack(next);
+    }
+    expect(next.players[0]?.zones.hand).toHaveLength(myHand + 1);
+  });
+});

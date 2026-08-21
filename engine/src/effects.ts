@@ -525,7 +525,20 @@ export function bindCardEffect(
       if (!ownerId) {
         return null;
       }
-      const { perControlled, perDiedCreatures, perSourceCounters, ...tokenRest } = effect;
+      const { perControlled, perDiedCreatures, perSourceCounters, copySelfIfLandsAtLeast, ...tokenRest } =
+        effect;
+      // Scute Swarm: at six lands the token becomes a copy of the source.
+      if (copySelfIfLandsAtLeast && context.sourceId) {
+        const lands = Object.values(state.cards).filter(
+          (card) =>
+            card.zone === "battlefield" &&
+            card.controllerId === context.controllerId &&
+            characteristicsOf(state, card.id).types.includes("land"),
+        ).length;
+        if (lands >= copySelfIfLandsAtLeast) {
+          return { kind: "copy_token", ownerId, ofCardId: context.sourceId };
+        }
+      }
       let count: number | undefined;
       if (perControlled) {
         count = Object.values(state.cards).filter(
@@ -763,6 +776,12 @@ export function bindCardEffect(
       }
       return { kind: "commander_to_hand", playerId };
     }
+    case "opponents_lose_keywords_until_eot":
+      return {
+        kind: "opponents_lose_keywords_until_eot",
+        playerId: context.controllerId,
+        keywords: [...effect.keywords],
+      };
     case "drain_opponents": {
       const playerId = bindPlayerSelector(state, effect.playerId, context);
       if (!playerId) {
@@ -1341,10 +1360,14 @@ function applyDraw(
     drawn += 1;
   }
   if (drawn > 0) {
-    dispatchEventsInPlace(
-      next,
-      Array.from({ length: drawn }, () => ({ kind: "draws" as const, playerId })),
-    );
+    // Faerie Mastermind: tally per-player draws for second-draw heads; each
+    // draw dispatches with its tally already bumped.
+    const tally = next.drawsByPlayerThisTurn ?? {};
+    for (let i = 0; i < drawn; i += 1) {
+      tally[playerId] = (tally[playerId] ?? 0) + 1;
+      next.drawsByPlayerThisTurn = tally;
+      dispatchEventsInPlace(next, [{ kind: "draws", playerId }]);
+    }
   }
   return next;
 }
@@ -1724,6 +1747,12 @@ function applyCreateToken(
       next.delayedEndStep.push({ cardId: token.id, action: effect.atEndStep });
     }
     queueEnterBattlefieldTriggersInPlace(next, token.id);
+    // Idol of Oblivion: remember who made a token this turn.
+    const creators = next.createdTokenThisTurn ?? [];
+    if (!creators.includes(effect.ownerId)) {
+      creators.push(effect.ownerId);
+    }
+    next.createdTokenThisTurn = creators;
     dispatchEventsInPlace(next, [{ kind: "creates_token", playerId: effect.ownerId }]);
   }
   return next;
@@ -2381,6 +2410,24 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
         next = cloneGameState(state);
         const granted = next.players.find((entry) => entry.id === effect.playerId)!;
         granted.extraLandDropsThisTurn = (granted.extraLandDropsThisTurn ?? 0) + 1;
+        break;
+      }
+      case "opponents_lose_keywords_until_eot": {
+        // Shadowspear: every permanent under every opponent, locked in now.
+        requirePlayer(state, effect.playerId);
+        const struck = Object.values(state.cards)
+          .filter(
+            (card) =>
+              card.zone === "battlefield" && card.controllerId !== effect.playerId,
+          )
+          .map((card) => card.id);
+        next =
+          struck.length === 0
+            ? cloneGameState(state)
+            : pushUntilEotEffect(state, struck, {
+                kind: "remove_keywords",
+                keywords: [...effect.keywords],
+              });
         break;
       }
       case "commander_to_hand": {

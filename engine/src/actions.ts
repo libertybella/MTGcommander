@@ -768,6 +768,10 @@ function applyActivateAbility(
   ) {
     throw new Error("The activation condition is not met");
   }
+  // Idol of Oblivion: gated on this turn's token creation.
+  if (ability.requiresCreatedToken && !(state.createdTokenThisTurn ?? []).includes(playerId)) {
+    throw new Error("Activate only if you created a token this turn");
+  }
   const levelUp = ability.effects.find((effect) => effect.kind === "set_class_level");
   if (levelUp?.kind === "set_class_level" && levelUp.level !== card.classLevel + 1) {
     throw new Error("Class levels must be gained in order");

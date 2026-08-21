@@ -63,6 +63,7 @@ const LAYER_OF: Record<ContinuousEffectData["kind"], number> = {
   set_colors: 5,
   grant_keyword: 6,
   grant_protection: 6,
+  remove_keywords: 6,
   grant_mana_ability: 6,
   remove_all_abilities: 6,
   restrict: 6,
@@ -384,6 +385,13 @@ function applyInstance(
             computed.protectionFrom.push(color);
           }
         }
+        break;
+      case "remove_keywords":
+        // Shadowspear: strip the listed keywords (later grants can re-add
+        // by timestamp, matching CR 613.7).
+        computed.keywords = computed.keywords.filter(
+          (keyword) => !effect.keywords.includes(keyword),
+        );
         break;
       case "grant_mana_ability":
         computed.grantedMana.push({ ...effect.ability });

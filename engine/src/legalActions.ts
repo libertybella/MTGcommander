@@ -331,6 +331,9 @@ function abilityUsable(
   ) {
     return false;
   }
+  if (ability.requiresCreatedToken && !(state.createdTokenThisTurn ?? []).includes(playerId)) {
+    return false;
+  }
   if (ability.tap) {
     if (card.tapped) {
       return false;
