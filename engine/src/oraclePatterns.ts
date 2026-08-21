@@ -2313,6 +2313,32 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
       continue;
     }
 
+    // SOI/STX reveal lands: "As ~ enters, you may reveal a Plains or Island
+    // card from your hand." + "If you don't, ~ enters tapped."
+    const revealLand = sentence.match(
+      /^As ~ enters, you may reveal an? ([A-Za-z]+) or (?:an? )?([A-Za-z]+) card from your hand$/i,
+    );
+    if (revealLand?.[1] && revealLand[2]) {
+      result.replacements.push({
+        kind: "enters_tapped_unless",
+        unless: {
+          kind: "hand_reveals_types",
+          types: [revealLand[1].toLowerCase(), revealLand[2].toLowerCase()],
+        },
+      });
+      continue;
+    }
+    if (
+      /^If you don't, ~ enters tapped$/i.test(sentence) &&
+      result.replacements.some(
+        (replacement) =>
+          replacement.kind === "enters_tapped_unless" &&
+          replacement.unless.kind === "hand_reveals_types",
+      )
+    ) {
+      continue;
+    }
+
     const shock = sentence.match(/^As ~ enters, you may pay (\d+) life$/i);
     if (shock?.[1]) {
       result.replacements.push({

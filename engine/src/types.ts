@@ -854,7 +854,13 @@ export type EnterTappedUnless =
   | { kind: "controlled_types"; types: string[] }
   | { kind: "basic_lands"; count: number }
   /** "unless you have N or more opponents" (Battlebond crowd lands). */
-  | { kind: "opponents"; count: number };
+  | { kind: "opponents"; count: number }
+  /**
+   * "you may reveal a Plains or Island card from your hand. If you don't, ~
+   * enters tapped" (SOI/STX reveal lands). Documented approximation: the
+   * reveal "may" is auto-taken whenever the hand holds a matching card.
+   */
+  | { kind: "hand_reveals_types"; types: string[] };
 
 export type ActivatedAbility = {
   /** True when the cost includes {T}. */

@@ -2459,3 +2459,66 @@ describe("wave 25b: subject-spell copy and counter triggers", () => {
     expect(compiled.notes).toEqual([]);
   });
 });
+
+describe("wave 26: reveal lands (SOI/STX shape)", () => {
+  it("compiles Port Town fully", () => {
+    const compiled = compileOracleCard({
+      oracleId: "port-town",
+      name: "Port Town",
+      manaCost: "",
+      typeLine: "Land",
+      oracleText:
+        "As this land enters, you may reveal a Plains or Island card from your hand. If you don't, this land enters tapped.\n{T}: Add {W} or {U}.",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+    });
+    expect(compiled.definition.replacements).toEqual([
+      {
+        kind: "enters_tapped_unless",
+        unless: { kind: "hand_reveals_types", types: ["plains", "island"] },
+      },
+    ]);
+    expect(compiled.notes).toEqual([]);
+  });
+
+  it("enters untapped with a matching card in hand, tapped without", () => {
+    const { game, p1 } = twoPlayers();
+    const port = createCardDefinition({
+      name: "Port Town",
+      typeLine: "Land",
+      producesOptions: ["W", "U"],
+      replacements: [
+        {
+          kind: "enters_tapped_unless",
+          unless: { kind: "hand_reveals_types", types: ["plains", "island"] },
+        },
+      ],
+    });
+    game.definitions[port.id] = port;
+
+    // Empty hand beyond the land itself: no reveal, so it enters tapped.
+    const first = createCardInstance({ definitionId: port.id, ownerId: p1.id, zone: "hand" });
+    game.cards[first.id] = first;
+    p1.zones.hand.push(first.id);
+    const tapped = moveCard(game, first.id, "battlefield");
+    expect(tapped.cards[first.id]?.tapped).toBe(true);
+
+    // An Island-subtype card in hand (a nonbasic dual counts): enters untapped.
+    const dual = createCardDefinition({
+      name: "Hallowed Fountain",
+      typeLine: "Land - Plains Island",
+      producesOptions: ["W", "U"],
+    });
+    game.definitions[dual.id] = dual;
+    const revealCard = createCardInstance({ definitionId: dual.id, ownerId: p1.id, zone: "hand" });
+    game.cards[revealCard.id] = revealCard;
+    p1.zones.hand.push(revealCard.id);
+    const second = createCardInstance({ definitionId: port.id, ownerId: p1.id, zone: "hand" });
+    game.cards[second.id] = second;
+    p1.zones.hand.push(second.id);
+    const untapped = moveCard(game, second.id, "battlefield");
+    expect(untapped.cards[second.id]?.tapped).toBe(false);
+  });
+});

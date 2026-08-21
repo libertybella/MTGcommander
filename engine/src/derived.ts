@@ -150,6 +150,17 @@ function unlessSatisfied(
     );
     return basics.length >= unless.count;
   }
+  if (unless.kind === "hand_reveals_types") {
+    // Documented approximation: the reveal "may" is auto-taken — any matching
+    // card in hand means the land enters untapped.
+    const player = state.players.find((entry) => entry.id === card.controllerId);
+    return (player?.zones.hand ?? []).some((id) => {
+      const printed = characteristicsOf(state, id);
+      return unless.types.some(
+        (type) => printed.subtypes.includes(type) || printed.types.includes(type),
+      );
+    });
+  }
   return controlled.some((entry) => {
     const printed = characteristicsOf(state, entry.id);
     return unless.types.some(

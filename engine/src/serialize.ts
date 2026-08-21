@@ -1814,7 +1814,7 @@ function parseEnterTappedUnless(value: unknown, label: string): EnterTappedUnles
   if (kind === "legendary_creature") {
     return { kind };
   }
-  if (kind === "controlled_types") {
+  if (kind === "controlled_types" || kind === "hand_reveals_types") {
     if (!Array.isArray(value.types) || value.types.length === 0) {
       throw new Error(`Invalid ${label}.types`);
     }
