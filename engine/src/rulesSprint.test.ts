@@ -3182,3 +3182,96 @@ describe("wave 34: proliferate, self-untap, and tribal cast heads", () => {
     expect(compiled.notes).toEqual([]);
   });
 });
+
+describe("wave 35: any-damage triggers and aura host watching (Curiosity)", () => {
+  it("compiles Curiosity fully", () => {
+    const compiled = compileOracleCard({
+      oracleId: "curiosity",
+      name: "Curiosity",
+      manaCost: "{U}",
+      typeLine: "Enchantment - Aura",
+      oracleText:
+        "Enchant creature\nWhenever enchanted creature deals damage to an opponent, you may draw a card.",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+    });
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.enchant).toBe("creature");
+    const trigger = compiled.definition.triggers[0];
+    expect(trigger?.event).toBe("deals_damage_to_player");
+    expect(trigger?.watch).toBe("attached");
+    expect(trigger?.subjectPlayerOpponent).toBe(true);
+  });
+
+  it("fires on noncombat damage from the host, not on damage to its controller", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 5);
+    const hostDef = createCardDefinition({
+      name: "Sparker",
+      typeLine: "Creature - Elemental",
+      power: 1,
+      toughness: 1,
+    });
+    const auraDef = createCardDefinition({
+      name: "Curiosity",
+      typeLine: "Enchantment - Aura",
+      enchant: "creature",
+      triggers: [
+        {
+          event: "deals_damage_to_player",
+          watch: "attached",
+          subjectPlayerOpponent: true,
+          effects: [{ kind: "draw", playerId: "controller", count: 1 }],
+          targetRequirements: [],
+        },
+      ],
+    });
+    game.definitions[hostDef.id] = hostDef;
+    game.definitions[auraDef.id] = auraDef;
+    const host = createCardInstance({ definitionId: hostDef.id, ownerId: p1.id, zone: "battlefield" });
+    const aura = createCardInstance({ definitionId: auraDef.id, ownerId: p1.id, zone: "battlefield" });
+    aura.attachedTo = host.id;
+    game.cards[host.id] = host;
+    game.cards[aura.id] = aura;
+    p1.zones.battlefield.push(host.id, aura.id);
+
+    // Noncombat damage to the opponent: the trigger goes on the stack.
+    const zapped = applyEffects(game, [
+      {
+        kind: "deal_damage",
+        sourceId: host.id,
+        amount: 1,
+        target: { type: "player", playerId: p2.id },
+      },
+    ]);
+    expect(zapped.stack).toHaveLength(1);
+
+    // Damage to the aura controller's own face: no trigger.
+    const selfHit = applyEffects(game, [
+      {
+        kind: "deal_damage",
+        sourceId: host.id,
+        amount: 1,
+        target: { type: "player", playerId: p1.id },
+      },
+    ]);
+    expect(selfHit.stack).toHaveLength(0);
+
+    // Damage from a different creature: the aura is not watching it.
+    const other = createCardInstance({ definitionId: hostDef.id, ownerId: p1.id, zone: "battlefield" });
+    const withOther = structuredClone(game);
+    withOther.cards[other.id] = other;
+    withOther.players[0]!.zones.battlefield.push(other.id);
+    const otherHit = applyEffects(withOther, [
+      {
+        kind: "deal_damage",
+        sourceId: other.id,
+        amount: 1,
+        target: { type: "player", playerId: p2.id },
+      },
+    ]);
+    expect(otherHit.stack).toHaveLength(0);
+  });
+});

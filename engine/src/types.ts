@@ -734,6 +734,8 @@ export type TriggerEvent =
   | "cast_spell"
   /** Dealt combat damage to a player (Bident of Thassa). Subject is the dealer. */
   | "deals_combat_damage_to_player"
+  /** Dealt any damage to a player (Curiosity). Subject is the dealer. */
+  | "deals_damage_to_player"
   /** An opponent drew a card (Smothering Tithe). Subject is the drawing player. */
   | "opponent_draws";
 
@@ -745,9 +747,12 @@ export type CardTrigger = {
    * controller's objects; "any" watches everyone's. upkeep/end_step fire at
    * the beginning of the controller's own step and ignore `watch`.
    */
-  watch?: "self" | "controlled" | "opponents" | "any";
+  watch?: "self" | "controlled" | "opponents" | "any" | "attached";
   /** "another creature": the event subject may not be the source itself. */
   excludeSelf?: boolean;
+  /** "deals damage to an opponent": the damaged player must not be the
+   * watcher's controller (Curiosity). */
+  subjectPlayerOpponent?: boolean;
   /**
    * Filter on the event subject's printed characteristics (landfall, cast
    * triggers). `types` must all be present, `typesAny` needs one of them
@@ -777,6 +782,8 @@ export type EngineEvent =
   | { kind: "gains_life"; playerId: PlayerId }
   | { kind: "casts"; cardId: CardInstanceId; controllerId: PlayerId }
   | { kind: "combat_damage_to_player"; cardId: CardInstanceId; playerId: PlayerId }
+  /** Any damage (combat or not) a permanent deals to a player. */
+  | { kind: "deals_damage_to_player"; cardId: CardInstanceId; playerId: PlayerId }
   | { kind: "draws"; playerId: PlayerId };
 
 /** One triggered ability waiting to be put on the stack. */

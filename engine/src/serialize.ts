@@ -1750,7 +1750,8 @@ function parseTriggers(value: unknown, label: string): CardTrigger[] {
       event !== "end_step" &&
       event !== "you_gain_life" &&
       event !== "cast_spell" &&
-      event !== "deals_combat_damage_to_player"
+      event !== "deals_combat_damage_to_player" &&
+      event !== "deals_damage_to_player"
     ) {
       throw new Error(`Invalid ${label}[${index}].event`);
     }
@@ -1760,7 +1761,8 @@ function parseTriggers(value: unknown, label: string): CardTrigger[] {
       watch !== "self" &&
       watch !== "controlled" &&
       watch !== "opponents" &&
-      watch !== "any"
+      watch !== "any" &&
+      watch !== "attached"
     ) {
       throw new Error(`Invalid ${label}[${index}].watch`);
     }
@@ -1797,6 +1799,7 @@ function parseTriggers(value: unknown, label: string): CardTrigger[] {
       ...(watch === undefined ? {} : { watch }),
       ...(entry.excludeSelf === true ? { excludeSelf: true } : {}),
       ...(entry.oncePerTurn === true ? { oncePerTurn: true } : {}),
+      ...(entry.subjectPlayerOpponent === true ? { subjectPlayerOpponent: true } : {}),
       ...(subjectFilter &&
       (subjectFilter.types ||
         subjectFilter.subtypes ||

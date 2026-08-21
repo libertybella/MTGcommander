@@ -652,7 +652,13 @@ function applyDealDamage(state: GameState, effect: Extract<GameEffect, { kind: "
   }
 
   if (effect.target.type === "player") {
-    return applyLoseLife(state, effect.target.playerId, effect.amount);
+    const next = applyLoseLife(state, effect.target.playerId, effect.amount);
+    if (effect.sourceId && next.cards[effect.sourceId]) {
+      dispatchEventsInPlace(next, [
+        { kind: "deals_damage_to_player", cardId: effect.sourceId, playerId: effect.target.playerId },
+      ]);
+    }
+    return next;
   }
 
   const card = state.cards[effect.target.cardId];

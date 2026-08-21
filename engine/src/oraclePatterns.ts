@@ -1455,7 +1455,10 @@ function parseSearchDescriptor(descriptor: string): SearchFilter | null {
   };
 }
 
-type TriggerHead = Pick<CardTrigger, "event" | "watch" | "excludeSelf" | "subjectFilter"> & {
+type TriggerHead = Pick<
+  CardTrigger,
+  "event" | "watch" | "excludeSelf" | "subjectFilter" | "subjectPlayerOpponent"
+> & {
   /** "enters or attacks": emit a sibling trigger for each extra event. */
   extraEvents?: CardTrigger["event"][];
 };
@@ -1586,6 +1589,19 @@ function parseTriggerHead(head: string): TriggerHead | null {
   }
   if (/^Whenever you cast an enchantment spell$/i.test(text)) {
     return { event: "cast_spell", watch: "controlled", subjectFilter: { types: ["enchantment"] } };
+  }
+  if (/^Whenever enchanted creature deals damage to an opponent$/i.test(text)) {
+    return {
+      event: "deals_damage_to_player",
+      watch: "attached",
+      subjectPlayerOpponent: true,
+    };
+  }
+  if (/^Whenever ~ deals damage to an opponent$/i.test(text)) {
+    return { event: "deals_damage_to_player", subjectPlayerOpponent: true };
+  }
+  if (/^Whenever ~ deals damage to a player$/i.test(text)) {
+    return { event: "deals_damage_to_player" };
   }
   // Tribal cast triggers ("Whenever you cast an Elf spell") — changelings
   // match through the shared subtype matcher.
