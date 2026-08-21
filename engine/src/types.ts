@@ -717,6 +717,8 @@ export type GameEffect =
     }
   /** Charming Prince: exile now, return at the next end step. */
   | { kind: "exile_return_end_step"; cardId: CardInstanceId; controllerId: PlayerId }
+  /** Eerie Interlude: each card returns under its owner's control. */
+  | { kind: "exile_return_end_step_all"; cardIds: CardInstanceId[] }
   | { kind: "populate"; playerId: PlayerId }
   | { kind: "proliferate"; playerId: PlayerId }
   | {
@@ -1195,6 +1197,9 @@ export type CardEffect =
   /** Charming Prince: exile the target; it returns to the battlefield under
    * the effect controller's control at the beginning of the next end step. */
   | { kind: "exile_return_end_step"; target: ChosenTargetRef }
+  /** Eerie Interlude: every chosen creature blinks out and returns to its
+   * OWNER's battlefield at the next end step. */
+  | { kind: "exile_return_end_step_all" }
   | { kind: "populate"; playerId: PlayerSelector }
   | { kind: "proliferate"; playerId: PlayerSelector }
   | {
@@ -1777,6 +1782,9 @@ export type ActivatedAbility = {
   requiresCreatedToken?: boolean;
   /** Kamigawa channel lands: {1} less per legendary creature you control. */
   legendaryDiscount?: boolean;
+  /** "…: Choose one —" activations (Cankerbloom): the activation picks a
+   * mode; its effects and targets replace the (empty) top-level ones. */
+  modes?: SpellMode[];
 };
 
 export type ReplacementEffect =
@@ -2023,6 +2031,8 @@ export type GameAction =
       cardId: CardInstanceId;
       abilityIndex: number;
       targets?: ChosenTarget[];
+      /** Modal activations: which "Choose one —" bullet. */
+      modeIndex?: number;
       /** The permanent sacrificed to a sacrificeCost ability. */
       costSacrificeId?: CardInstanceId;
     }

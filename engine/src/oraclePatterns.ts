@@ -1534,6 +1534,14 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     };
   }
 
+  // Eerie Interlude, fused: every chosen creature blinks home at end step.
+  if (/^flicker-delay-mass your creatures$/i.test(sentence)) {
+    return {
+      targetRequirements: [{ kind: "creature", control: "own", variable: true }],
+      effects: [{ kind: "exile_return_end_step_all" }],
+    };
+  }
+
   // Junji's reanimation mode.
   const nonSubReanimate = sentence.match(
     /^Put target non-([A-Za-z]+) creature card from a graveyard onto the battlefield under your control$/i,
@@ -3812,6 +3820,20 @@ function fuseExileReturnEndStepInPlace(sentences: string[], lineStart: boolean[]
         `${exile[1] ?? ""}flicker-delay ${exile[2] ? "another " : ""}target creature you own`,
       );
       lineStart.splice(index + 1, 1);
+      continue;
+    }
+    // Eerie Interlude: the mass blink, home to each owner.
+    const mass = sentences[index]!.match(
+      /^(.*)Exile any number of target creatures you control$/i,
+    );
+    if (
+      mass &&
+      /^Return those cards to the battlefield under their owner's control at the beginning of the next end step$/i.test(
+        sentences[index + 1]!,
+      )
+    ) {
+      sentences.splice(index, 2, `${mass[1] ?? ""}flicker-delay-mass your creatures`);
+      lineStart.splice(index + 1, 1);
     }
   }
 }
@@ -4879,6 +4901,94 @@ function extractTriggerModalModes(card: OracleCard): TriggerModalExtraction | nu
   };
 }
 
+type ActivatedModalExtraction = {
+  remainingText: string;
+  ability: ActivatedAbility | null;
+  raw: string;
+};
+
+/**
+ * "{2}, Sacrifice ~: Choose one —" activation blocks (Insidious Fungus,
+ * Cankerbloom): the cost keeps its activation shape, the bullets become
+ * modes chosen when the ability is activated.
+ */
+function extractActivatedModalModes(card: OracleCard): ActivatedModalExtraction | null {
+  const lines = stripReminderText(card.oracleText).replace(/\r/g, "").split("\n");
+  const headIndex = lines.findIndex((line) =>
+    /^.+: Choose one\s*[—-]\s*$/i.test(line.trim()),
+  );
+  if (headIndex === -1) {
+    return null;
+  }
+  const bullets: string[] = [];
+  let end = headIndex + 1;
+  while (end < lines.length && lines[end]!.trim().startsWith("•")) {
+    bullets.push(lines[end]!.trim().replace(/^•\s*/, ""));
+    end += 1;
+  }
+  if (bullets.length < 2) {
+    return null;
+  }
+  const remainingText = [...lines.slice(0, headIndex), ...lines.slice(end)].join("\n");
+  const raw = lines.slice(headIndex, end).join(" ");
+  const costText = lines[headIndex]!
+    .trim()
+    .replace(/: Choose one\s*[—-]\s*$/i, "")
+    .replace(/\bthis creature\b/gi, "~")
+    .replace(/\bthis artifact\b/gi, "~")
+    .replace(/\bthis enchantment\b/gi, "~");
+  const cost = parseAbilityCost(costText);
+  if (!cost) {
+    return { remainingText, ability: null, raw };
+  }
+  const modes: SpellMode[] = [];
+  for (const bullet of bullets) {
+    const bulletSentences = splitOracleSentences({ ...card, oracleText: bullet });
+    const effects: CardEffect[] = [];
+    let requirements: TargetRequirement[] = [];
+    let failed = bulletSentences.length === 0;
+    for (const rawSentence of bulletSentences) {
+      // "Then you may put a land card…" riders keep their clause shape.
+      const sentence = rawSentence.replace(/^Then /i, "");
+      const clause = compileSimpleClause(sentence);
+      if (
+        !clause ||
+        clause.leftover ||
+        (clause.targetRequirements.length > 0 && (requirements.length > 0 || effects.length > 0))
+      ) {
+        failed = true;
+        break;
+      }
+      if (clause.targetRequirements.length > 0) {
+        requirements = clause.targetRequirements;
+      }
+      effects.push(...clause.effects);
+    }
+    if (failed || effects.length === 0) {
+      return { remainingText, ability: null, raw };
+    }
+    modes.push({
+      label: bullet.replace(/\.$/, ""),
+      effects,
+      targetRequirements: requirements,
+    });
+  }
+  return {
+    remainingText,
+    raw,
+    ability: {
+      tap: cost.tap,
+      manaCost: cost.manaCost,
+      ...(cost.sacrificeSelf ? { sacrificeSelf: true } : {}),
+      ...(cost.sacrificeCost ? { sacrificeCost: cost.sacrificeCost } : {}),
+      ...(cost.lifeCost ? { lifeCost: cost.lifeCost } : {}),
+      modes,
+      effects: [],
+      targetRequirements: [],
+    },
+  };
+}
+
 const CLONE_SCOPE_BY_PHRASE: Record<string, EnterAsCopyScope> = {
   "any creature on the battlefield": "any_creature",
   "a creature you control": "your_creature",
@@ -4976,7 +5086,7 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
       result.leftover.push(triggerModal.raw);
     }
   }
-  const sourceCard = triggerModal
+  const afterTriggerModal = triggerModal
     ? {
         ...card,
         oracleText: triggerModal.remainingText,
@@ -4984,6 +5094,18 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
     : modal
       ? { ...card, oracleText: modal.remainingText }
       : card;
+  // "{2}, Sacrifice ~: Choose one —" activation blocks.
+  const activatedModal = extractActivatedModalModes(afterTriggerModal);
+  if (activatedModal) {
+    if (activatedModal.ability) {
+      result.activated.push(activatedModal.ability);
+    } else {
+      result.leftover.push(activatedModal.raw);
+    }
+  }
+  const sourceCard = activatedModal
+    ? { ...afterTriggerModal, oracleText: activatedModal.remainingText }
+    : afterTriggerModal;
   const lines = splitOracleSentencesByLine(sourceCard);
   const sentences: string[] = [];
   const lineStart: boolean[] = [];

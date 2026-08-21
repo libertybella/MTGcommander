@@ -1271,6 +1271,16 @@ export function bindCardEffect(
         controllerId: context.controllerId,
       };
     }
+    case "exile_return_end_step_all": {
+      // Eerie Interlude: every chosen creature target.
+      const cardIds = (context.targets ?? [])
+        .filter((target): target is Extract<ChosenTarget, { type: "creature" }> => target.type === "creature")
+        .map((target) => target.cardId);
+      if (cardIds.length === 0) {
+        return null;
+      }
+      return { kind: "exile_return_end_step_all", cardIds };
+    }
     case "proliferate": {
       const playerId = bindPlayerSelector(state, effect.playerId, context);
       if (!playerId) {
@@ -3170,6 +3180,25 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
             action: "battlefield",
             controllerId: effect.controllerId,
           });
+        }
+        break;
+      }
+      case "exile_return_end_step_all": {
+        next = cloneGameState(state);
+        for (const flickerId of effect.cardIds) {
+          const blinked = next.cards[flickerId];
+          if (!blinked || blinked.zone !== "battlefield") {
+            continue;
+          }
+          next = moveCard(next, flickerId, "exile");
+          if (next.cards[flickerId]?.zone === "exile") {
+            next.delayedEndStep.push({
+              cardId: flickerId,
+              action: "battlefield",
+              // Eerie Interlude: home to the owner, not the caster.
+              controllerId: next.cards[flickerId]!.ownerId,
+            });
+          }
         }
         break;
       }

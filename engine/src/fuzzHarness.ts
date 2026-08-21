@@ -362,7 +362,14 @@ function nextAction(state: GameState, rng: () => number): GameAction | null {
     case "activate_ability": {
       const card = state.cards[action.cardId]!;
       const ability = state.definitions[card.definitionId]!.activated[action.abilityIndex]!;
-      const targets = randomTargets(state, ability.targetRequirements, playerId, rng);
+      // Sac-modal activations: pick a mode, then that mode's targets.
+      let modeIndex: number | undefined;
+      let requirements = ability.targetRequirements;
+      if (ability.modes && ability.modes.length > 0) {
+        modeIndex = Math.floor(rng() * ability.modes.length);
+        requirements = ability.modes[modeIndex]!.targetRequirements ?? [];
+      }
+      const targets = randomTargets(state, requirements, playerId, rng);
       if (targets === null) {
         return { kind: "pass_priority", playerId };
       }
@@ -383,6 +390,7 @@ function nextAction(state: GameState, rng: () => number): GameAction | null {
         cardId: action.cardId,
         abilityIndex: action.abilityIndex,
         targets,
+        ...(modeIndex !== undefined ? { modeIndex } : {}),
         ...(costSacrificeId ? { costSacrificeId } : {}),
       };
     }

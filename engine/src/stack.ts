@@ -59,6 +59,7 @@ export function putActivatedAbilityOnStack(
   cardId: CardInstanceId,
   abilityIndex: number,
   targets: ChosenTarget[] = [],
+  modeIndex?: number,
 ): GameState {
   const card = state.cards[cardId];
   if (!card) {
@@ -72,7 +73,18 @@ export function putActivatedAbilityOnStack(
   if (!ability) {
     throw new Error(`Unknown activated ability ${abilityIndex}`);
   }
-  validateChosenTargets(state, ability.targetRequirements, targets, card.controllerId, sourceColorsOf(state, cardId), cardId);
+  // Modal activations: the mode's targets replace the top-level ones.
+  const abilityMode = modeIndex !== undefined ? ability.modes?.[modeIndex] : undefined;
+  if (ability.modes && ability.modes.length > 0 && !abilityMode) {
+    throw new Error("Choose one of the ability's modes");
+  }
+  if (modeIndex !== undefined && !abilityMode) {
+    throw new Error("That ability has no modes");
+  }
+  const requirements = abilityMode
+    ? abilityMode.targetRequirements ?? []
+    : ability.targetRequirements;
+  validateChosenTargets(state, requirements, targets, card.controllerId, sourceColorsOf(state, cardId), cardId);
 
   const next = cloneGameState(state);
   const stackId = createId("stack");
@@ -83,6 +95,7 @@ export function putActivatedAbilityOnStack(
     kind: "ability",
     targets: targets.map((target) => ({ ...target })),
     activatedIndex: abilityIndex,
+    ...(modeIndex !== undefined ? { modeIndex } : {}),
   });
   next.passesSinceAction = 0;
   next.priorityPlayerId = card.controllerId;
@@ -237,12 +250,18 @@ export function resolveTopOfStack(state: GameState): GameState {
     const definition = source ? next.definitions[source.definitionId] : undefined;
     if (top.activatedIndex !== undefined) {
       const ability = definition?.activated[top.activatedIndex];
-      const requirements = ability?.targetRequirements ?? [];
+      // Sac-modal activations (Cankerbloom): the chosen mode's effects and
+      // targets replace the (empty) top-level ones.
+      const abilityMode =
+        top.modeIndex !== undefined ? ability?.modes?.[top.modeIndex] : undefined;
+      const requirements = abilityMode
+        ? abilityMode.targetRequirements ?? []
+        : ability?.targetRequirements ?? [];
       if (
         ability &&
         hasLegalTargetRemaining(next, requirements, top.targets, top.controllerId, sourceColorsOf(next, top.sourceId), top.sourceId)
       ) {
-        const bound = bindCardEffects(next, ability.effects, {
+        const bound = bindCardEffects(next, abilityMode ? abilityMode.effects : ability.effects, {
           controllerId: top.controllerId,
           sourceId: top.sourceId,
           targets: top.targets,

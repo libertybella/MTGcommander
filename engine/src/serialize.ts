@@ -2248,6 +2248,8 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
         kind,
         target: parseChosenTargetRef(value.target, `${label}.target`),
       };
+    case "exile_return_end_step_all":
+      return { kind };
     case "untap_lands_up_to":
       return {
         kind,
@@ -2683,6 +2685,9 @@ function parseActivatedAbilities(value: unknown, label: string): ActivatedAbilit
           }),
       ...(entry.exileSelf === true ? { exileSelf: true } : {}),
       ...(entry.legendaryDiscount === true ? { legendaryDiscount: true } : {}),
+      ...(entry.modes === undefined
+        ? {}
+        : { modes: parseSpellModes(entry.modes, `${label}[${index}].modes`) }),
       ...(entry.lifeCost === undefined
         ? {}
         : { lifeCost: expectNumber(entry.lifeCost, `${label}[${index}].lifeCost`) }),
@@ -3922,6 +3927,9 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
       controllerId: expectString(value.controllerId, `${label}.controllerId`),
     };
   }
+  if (kind === "exile_return_end_step_all") {
+    return { kind, cardIds: expectStringArray(value.cardIds, `${label}.cardIds`) };
+  }
   if (kind === "untap_lands_up_to") {
     return {
       kind,
@@ -4265,6 +4273,9 @@ export function parseGameAction(json: string): GameAction {
       ...(raw.targets === undefined
         ? {}
         : { targets: parseChosenTargets(raw.targets, "action.targets") }),
+      ...(kind === "activate_ability" && raw.modeIndex !== undefined
+        ? { modeIndex: expectNumber(raw.modeIndex, "action.modeIndex") }
+        : {}),
       ...(raw.costSacrificeId === undefined
         ? {}
         : { costSacrificeId: expectString(raw.costSacrificeId, "action.costSacrificeId") }),

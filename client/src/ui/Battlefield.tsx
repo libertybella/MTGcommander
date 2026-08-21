@@ -66,6 +66,7 @@ export type UiMode =
       modeIndexes?: number[];
     }
   | { type: "spell-mode-pick"; cardId: CardInstanceId; chosen?: number[] }
+  | { type: "ability-mode"; cardId: CardInstanceId; abilityIndex: number }
   | { type: "cost-sacrifice"; cardId: CardInstanceId; abilityIndex?: number }
   | { type: "cost-discard"; cardId: CardInstanceId; chosen: CardInstanceId[] }
   | { type: "attackers"; attackerIds: CardInstanceId[]; defenderId: PlayerId | null }
@@ -192,7 +193,11 @@ function modeRequirements(state: GameState, mode: UiMode): TargetRequirement[] {
     return [];
   }
   if (mode.origin === "ability") {
-    return activatedAbility(state, mode.cardId, mode.abilityIndex)?.targetRequirements ?? [];
+    const ability = activatedAbility(state, mode.cardId, mode.abilityIndex);
+    if (mode.modeIndex !== undefined && ability?.modes?.[mode.modeIndex]) {
+      return ability.modes[mode.modeIndex]!.targetRequirements ?? [];
+    }
+    return ability?.targetRequirements ?? [];
   }
   if (mode.origin === "trigger") {
     const prompt = currentPrompt(state);
@@ -1202,7 +1207,7 @@ export function Battlefield(props: Props) {
     if (mode.type === "block-pick-attacker") {
       return mode.blockerId === cardId;
     }
-    if (mode.type === "mana-color" || mode.type === "mana-tap-creature" || mode.type === "ability-pick" || mode.type === "hand-choice" || mode.type === "token-create" || mode.type === "spell-mode-pick" || mode.type === "cost-sacrifice" || mode.type === "cost-discard") {
+    if (mode.type === "mana-color" || mode.type === "mana-tap-creature" || mode.type === "ability-pick" || mode.type === "ability-mode" || mode.type === "hand-choice" || mode.type === "token-create" || mode.type === "spell-mode-pick" || mode.type === "cost-sacrifice" || mode.type === "cost-discard") {
       return mode.cardId === cardId;
     }
     if (mode.type === "targets") {
@@ -1757,6 +1762,10 @@ export function Battlefield(props: Props) {
     if (!ability || mulliganOpen) {
       return;
     }
+    if (ability.modes && ability.modes.length > 0) {
+      onMode({ type: "ability-mode", cardId, abilityIndex });
+      return;
+    }
     if (ability.sacrificeCost) {
       onMode({ type: "cost-sacrifice", cardId, abilityIndex });
       return;
@@ -1771,6 +1780,37 @@ export function Battlefield(props: Props) {
       return;
     }
     onMode({ type: "targets", cardId, chosen: [], origin: "ability", abilityIndex });
+  }
+
+  function pickAbilityMode(modeIndex: number) {
+    if (mode.type !== "ability-mode") {
+      return;
+    }
+    const ability = activatedAbility(state, mode.cardId, mode.abilityIndex);
+    const abilityMode = ability?.modes?.[modeIndex];
+    const playerId = controllerOf(mode.cardId) ?? actorId;
+    if (!abilityMode) {
+      onMode({ type: "idle" });
+      return;
+    }
+    if ((abilityMode.targetRequirements ?? []).length === 0) {
+      send({
+        kind: "activate_ability",
+        playerId,
+        cardId: mode.cardId,
+        abilityIndex: mode.abilityIndex,
+        modeIndex,
+      });
+      return;
+    }
+    onMode({
+      type: "targets",
+      cardId: mode.cardId,
+      chosen: [],
+      origin: "ability",
+      abilityIndex: mode.abilityIndex,
+      modeIndex,
+    });
   }
 
   function addTarget(target: ChosenTarget) {
@@ -1804,6 +1844,7 @@ export function Battlefield(props: Props) {
           cardId: mode.cardId,
           abilityIndex: mode.abilityIndex ?? 0,
           targets: chosen,
+          ...(mode.modeIndex !== undefined ? { modeIndex: mode.modeIndex } : {}),
         });
         return;
       }
@@ -2992,6 +3033,18 @@ export function Battlefield(props: Props) {
             const modeIndex = Number(optionId.replace("mode-", ""));
             pickSpellMode(mode.cardId, modeIndex);
           }}
+        />
+      ) : null}
+      {mode.type === "ability-mode" ? (
+        <HandChoicePop
+          cardId={mode.cardId}
+          options={(
+            activatedAbility(state, mode.cardId, mode.abilityIndex)?.modes ?? []
+          ).map((abilityMode, index) => ({
+            id: `mode-${index}`,
+            label: abilityMode.label,
+          }))}
+          onPick={(optionId) => pickAbilityMode(Number(optionId.replace("mode-", "")))}
         />
       ) : null}
       {mode.type === "ability-pick" ? (

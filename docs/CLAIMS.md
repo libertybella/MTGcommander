@@ -46,7 +46,7 @@ Statuses: `open` · `claimed` · `in-progress` · `done` · `blocked`
 | Small keywords (dethrone, split second, compleated, delirium, cascade ×2) | A | open | | | | One card each |
 | Station cycle | A | open | | | | Fringe cards; lowest priority |
 | Modal trigger prompt + modal dies/enters cards | B | done | claude/2daf8b18 | comprehensive-plan | 2026-08-21 | Waves 126–127 merged: choose_trigger_mode machinery + 6 flips (Aether Channeler, Felidar Retreat, Retreat to Coralhelm, Atsushi, Junji, Charming Prince) — 911/2,009 (45.3%). Insidious Fungus/Cankerbloom (sac-modal ACTIVATED abilities) remain open under stream B |
-| Sac-modal activated abilities + Eerie Interlude | B/D | in-progress | claude/2daf8b18 | comprehensive-plan | 2026-08-21 | Wave 131: ActivatedAbility.modes (Insidious Fungus, Cankerbloom) + mass flicker via the new delayed battlefield return |
+| Sac-modal activated abilities + Eerie Interlude | B/D | done | claude/2daf8b18 | comprehensive-plan | 2026-08-21 | Wave 131 merged: ActivatedAbility.modes + mass delayed blink, 3 flips (Insidious Fungus, Cankerbloom, Eerie Interlude) — 921/2,009 (45.8%) |
 | Confluences (choose-with-repeats) | B | open | | | | |
 | Opponent-chooses (Fact or Fiction) | B | open | | | | |
 | Gift mechanic | B | open | | | | 4 cards |

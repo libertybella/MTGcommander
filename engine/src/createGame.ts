@@ -261,6 +261,17 @@ export function createCardDefinition(
           ...(ability.sacrificeCost ? { sacrificeCost: ability.sacrificeCost } : {}),
           ...(ability.exileSelf ? { exileSelf: true } : {}),
           ...(ability.legendaryDiscount ? { legendaryDiscount: true } : {}),
+          ...(ability.modes
+            ? {
+                modes: ability.modes.map((mode) => ({
+                  label: mode.label,
+                  effects: mode.effects.map((effect) => ({ ...effect })),
+                  targetRequirements: (mode.targetRequirements ?? []).map((requirement) => ({
+                    ...requirement,
+                  })),
+                })),
+              }
+            : {}),
           ...(ability.lifeCost && ability.lifeCost > 0 ? { lifeCost: ability.lifeCost } : {}),
           ...(ability.timing === "sorcery" ? { timing: "sorcery" as const } : {}),
           ...(ability.requiresCreatedToken ? { requiresCreatedToken: true } : {}),

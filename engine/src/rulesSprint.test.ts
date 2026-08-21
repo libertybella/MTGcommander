@@ -14150,3 +14150,163 @@ describe("wave 130: nothing goes to waste", () => {
     expect(own.stack).toHaveLength(0);
   });
 });
+
+describe("wave 131: abilities learn to choose too", () => {
+  it("compiles the sac-modal and mass-blink batch fully", () => {
+    const cankerbloom = compileOracleCard({
+      oracleId: "cankerbloom",
+      name: "Cankerbloom",
+      manaCost: "{1}{G}",
+      typeLine: "Creature — Phyrexian Fungus",
+      power: "3",
+      toughness: "2",
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "{1}, Sacrifice this creature: Choose one —\n• Destroy target artifact.\n• Destroy target enchantment.\n• Proliferate. (Choose any number of permanents and/or players, then give each another counter of each kind already there.)",
+    });
+    expect(cankerbloom.notes).toEqual([]);
+    const sacModal = cankerbloom.definition.activated.find((ability) => ability.modes);
+    expect(sacModal).toMatchObject({ manaCost: "{1}", sacrificeSelf: true });
+    expect(sacModal?.modes).toHaveLength(3);
+    expect(sacModal?.modes?.[1]?.targetRequirements).toEqual([{ kind: "enchantment" }]);
+
+    const fungus = compileOracleCard({
+      oracleId: "fungus",
+      name: "Insidious Fungus",
+      manaCost: "{G}",
+      typeLine: "Creature — Fungus",
+      power: "1",
+      toughness: "1",
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "{2}, Sacrifice this creature: Choose one —\n• Destroy target artifact.\n• Destroy target enchantment.\n• Draw a card. Then you may put a land card from your hand onto the battlefield tapped.",
+    });
+    expect(fungus.notes).toEqual([]);
+    const fungusModal = fungus.definition.activated.find((ability) => ability.modes);
+    expect(fungusModal?.modes?.[2]?.effects).toHaveLength(2);
+
+    const interlude = compileOracleCard({
+      oracleId: "interlude",
+      name: "Eerie Interlude",
+      manaCost: "{2}{W}",
+      typeLine: "Instant",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "Exile any number of target creatures you control. Return those cards to the battlefield under their owner's control at the beginning of the next end step.",
+    });
+    expect(interlude.notes).toEqual([]);
+    expect(interlude.definition.targetRequirements).toEqual([
+      { kind: "creature", control: "own", variable: true },
+    ]);
+    expect(interlude.definition.effects).toEqual([{ kind: "exile_return_end_step_all" }]);
+  });
+
+  it("activates the chosen mode and pays the sacrifice", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 10);
+    const bloomDef = createCardDefinition({
+      name: "Bloom",
+      typeLine: "Creature — Fungus",
+      power: 3,
+      toughness: 2,
+      activated: [
+        {
+          tap: false,
+          manaCost: "{1}",
+          sacrificeSelf: true,
+          effects: [],
+          targetRequirements: [],
+          modes: [
+            {
+              label: "Destroy target artifact",
+              effects: [
+                { kind: "move_card", cardId: { type: "chosen", index: 0 }, toZone: "graveyard" },
+              ],
+              targetRequirements: [{ kind: "artifact" }],
+            },
+            {
+              label: "Proliferate",
+              effects: [{ kind: "proliferate", playerId: "controller" }],
+              targetRequirements: [],
+            },
+          ],
+        },
+      ],
+    });
+    const relicDef = createCardDefinition({
+      name: "Relic",
+      typeLine: "Artifact",
+    });
+    game.definitions[bloomDef.id] = bloomDef;
+    game.definitions[relicDef.id] = relicDef;
+    const bloom = createCardInstance({ definitionId: bloomDef.id, ownerId: p1.id, zone: "battlefield" });
+    bloom.summoningSick = false;
+    const relic = createCardInstance({ definitionId: relicDef.id, ownerId: p2.id, zone: "battlefield" });
+    game.cards[bloom.id] = bloom;
+    game.cards[relic.id] = relic;
+    p1.zones.battlefield.push(bloom.id);
+    p2.zones.battlefield.push(relic.id);
+    game.priorityPlayerId = p1.id;
+    p1.mana.C = 1;
+
+    let next = applyAction(game, {
+      kind: "activate_ability",
+      playerId: p1.id,
+      cardId: bloom.id,
+      abilityIndex: 0,
+      modeIndex: 0,
+      targets: [{ type: "creature", cardId: relic.id }],
+    });
+    // Sacrifice-self activations resolve immediately (the fetch-land path):
+    // the cost is paid and the chosen mode has already happened.
+    expect(next.cards[bloom.id]?.zone).toBe("graveyard");
+    expect(next.cards[relic.id]?.zone).toBe("graveyard");
+  });
+
+  it("blinks the chosen team out and home to their owners", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 30);
+    const bearDef = createCardDefinition({
+      name: "Bear",
+      typeLine: "Creature — Bear",
+      power: 2,
+      toughness: 2,
+    });
+    game.definitions[bearDef.id] = bearDef;
+    const one = createCardInstance({ definitionId: bearDef.id, ownerId: p1.id, zone: "battlefield" });
+    const two = createCardInstance({ definitionId: bearDef.id, ownerId: p1.id, zone: "battlefield" });
+    game.cards[one.id] = one;
+    game.cards[two.id] = two;
+    p1.zones.battlefield.push(one.id, two.id);
+
+    let next = applyEffects(
+      game,
+      bindCardEffects(game, [{ kind: "exile_return_end_step_all" }], {
+        controllerId: p1.id,
+        sourceId: null,
+        targets: [
+          { type: "creature", cardId: one.id },
+          { type: "creature", cardId: two.id },
+        ],
+        targetRequirements: [{ kind: "creature", control: "own", variable: true }],
+      }),
+    );
+    expect(next.cards[one.id]?.zone).toBe("exile");
+    expect(next.cards[two.id]?.zone).toBe("exile");
+    expect(next.delayedEndStep).toHaveLength(2);
+
+    for (let guard = 0; guard < 30; guard += 1) {
+      next = advanceSteps(next, 1);
+      if (next.cards[one.id]?.zone === "battlefield") {
+        break;
+      }
+    }
+    expect(next.cards[one.id]?.zone).toBe("battlefield");
+    expect(next.cards[two.id]?.zone).toBe("battlefield");
+  });
+});

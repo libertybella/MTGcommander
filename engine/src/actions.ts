@@ -815,6 +815,7 @@ function applyActivateAbility(
   abilityIndex: number,
   targets: ChosenTarget[] | undefined,
   costSacrificeId: CardInstanceId | undefined,
+  modeIndex: number | undefined,
 ): GameState {
   requirePlaying(state);
   requirePriority(state, playerId);
@@ -937,11 +938,11 @@ function applyActivateAbility(
   }
   if (ability.exileSelf) {
     // Spirit Guides: exiling from hand is the cost; resolve immediately.
-    next = putActivatedAbilityOnStack(next, cardId, abilityIndex, targets ?? []);
+    next = putActivatedAbilityOnStack(next, cardId, abilityIndex, targets ?? [], modeIndex);
     next = moveCard(next, cardId, "exile");
     return resolveTopOfStack(next);
   }
-  next = putActivatedAbilityOnStack(next, cardId, abilityIndex, targets ?? []);
+  next = putActivatedAbilityOnStack(next, cardId, abilityIndex, targets ?? [], modeIndex);
   if (ability.sacrificeCost && costSacrificeId) {
     // Sacrificing is part of the cost (paid on activation); the ability
     // itself waits on the stack normally.
@@ -1125,6 +1126,7 @@ export function applyAction(
           action.abilityIndex,
           action.targets,
           action.costSacrificeId,
+          action.modeIndex,
         );
         break;
       case "turn_face_up":
