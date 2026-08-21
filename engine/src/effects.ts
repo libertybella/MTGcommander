@@ -605,8 +605,14 @@ export function bindCardEffect(
       if (!ownerId) {
         return null;
       }
-      const { perControlled, perDiedCreatures, perSourceCounters, copySelfIfLandsAtLeast, ...tokenRest } =
-        effect;
+      const {
+        perControlled,
+        perDiedCreatures,
+        perSourceCounters,
+        copySelfIfLandsAtLeast,
+        countFromSubjectAmount,
+        ...tokenRest
+      } = effect;
       // Scute Swarm: at six lands the token becomes a copy of the source.
       if (copySelfIfLandsAtLeast && context.sourceId) {
         const lands = Object.values(state.cards).filter(
@@ -633,6 +639,13 @@ export function bindCardEffect(
       }
       if (perDiedCreatures) {
         count = state.creaturesDiedThisTurn ?? 0;
+        if (count === 0) {
+          return null;
+        }
+      }
+      if (countFromSubjectAmount) {
+        // Elenda: "X is its power", carried on the dies event.
+        count = Math.max(0, context.subjectAmount ?? 0);
         if (count === 0) {
           return null;
         }
@@ -1167,6 +1180,7 @@ export function bindCardEffect(
         count: effect.count,
         filter: { ...effect.filter },
         destination: effect.destination,
+        ...(effect.restTo ? { restTo: effect.restTo } : {}),
       };
     }
     case "counter_on_each_creature": {
@@ -2522,6 +2536,13 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
           }
         }
         const rest = looked.filter((cardId) => cardId !== pickedId);
+        if (effect.restTo === "graveyard") {
+          // Grisly Salvage: "Put the rest into your graveyard."
+          for (const cardId of rest) {
+            moveCardInPlace(next, cardId, "graveyard");
+          }
+          break;
+        }
         for (const cardId of rest) {
           moveCardInPlace(next, cardId, "library", { libraryPosition: "bottom" });
         }

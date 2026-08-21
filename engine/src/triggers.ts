@@ -752,7 +752,9 @@ export function dispatchEventsInPlace(state: GameState, events: EngineEvent[]): 
           const subjectAmount =
             event.kind === "gains_life" || event.kind === "loses_life"
               ? event.amount
-              : undefined;
+              : event.kind === "dies"
+                ? event.powerAtDeath
+                : undefined;
           const causeKind =
             event.kind === "enters" || event.kind === "dies" || event.kind === "attacks"
               ? event.kind

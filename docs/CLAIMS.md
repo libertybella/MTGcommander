@@ -35,7 +35,7 @@ Statuses: `open` · `claimed` · `in-progress` · `done` · `blocked`
 
 | Cluster | Stream | Status | Owner | Branch | Updated | Notes |
 | --- | --- | --- | --- | --- | --- | --- |
-| Land-tap echo + Elenda + Grisly Salvage (Mirari's Wake, Vorinclex, Elenda ×2, Grisly Salvage) | E/F | in-progress | claude/2daf8b18 | comprehensive-plan | 2026-08-21 | Wave 123, scoped in memory; ~5 flips |
+| Land-tap echo + Elenda + Grisly Salvage (Mirari's Wake, Vorinclex, Elenda ×2, Grisly Salvage) | E/F | done | claude/2daf8b18 | comprehensive-plan | 2026-08-21 | Wave 123 merged: 5 flips, 894/2,009 (44.5%), 836 tests |
 | Convoke + improvise | A | open | | | | Shared tap-to-pay machinery; see WORKSTREAMS caveats |
 | Spree mode bodies | A | open | | | | |
 | Hideaway trio | A | open | | | | Needs 3 per-turn tallies |

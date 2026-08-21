@@ -207,6 +207,12 @@ export type CardDefinition = {
   selfIsChosenType?: boolean;
   /** Caged Sun: a land tap that adds the chosen color adds one more of it. */
   landChosenColorBonus?: boolean;
+  /** Mirari's Wake / Vorinclex: the controller's land taps add one more
+   * mana of a type the land produced (auto-picked — documented). */
+  landTapEcho?: boolean;
+  /** Vorinclex, Voice of Hunger: a land an opponent taps for mana skips
+   * its controller's next untap step. */
+  opponentLandTapsSkipUntap?: boolean;
   /**
    * "…that ability triggers an additional time" (CR 614.1c-adjacent trigger
    * doubling). Each matching doubler on the battlefield adds one extra copy
@@ -310,6 +316,9 @@ export type CardInstance = {
   chosenCreatureType: string | null;
   /** "As this Aura enters, choose a color" (Utopia Sprawl). */
   chosenColor: Color | null;
+  /** Vorinclex, Voice of Hunger froze this permanent: it skips its
+   * controller's next untap step, then the flag clears. */
+  skipNextUntap?: boolean;
 };
 
 export type CommanderState = {
@@ -665,6 +674,8 @@ export type GameEffect =
       count: number;
       filter: SearchFilter;
       destination: "hand" | "battlefield" | "battlefield_tapped";
+      /** Where the unpicked cards go (default: library bottom). */
+      restTo?: "bottom" | "graveyard";
     }
   /** Populate: copy the controller's best creature token (auto-picked). */
   | {
@@ -1053,6 +1064,9 @@ export type CardEffect =
       perControlled?: "land" | "creature" | "artifact";
       /** Mahadi: one token per creature that died this turn. */
       perDiedCreatures?: boolean;
+      /** Elenda: X tokens where X is the dying subject's power, carried on
+       * the dies event and bound from the trigger context. */
+      countFromSubjectAmount?: boolean;
       /** Anim Pakal: one token per named counter on the source, counted when
        * the effect applies (after earlier effects in the same batch). */
       perSourceCounters?: string;
@@ -1117,6 +1131,8 @@ export type CardEffect =
       count: number;
       filter: SearchFilter;
       destination: "hand" | "battlefield" | "battlefield_tapped";
+      /** Grisly Salvage: "Put the rest into your graveyard." */
+      restTo?: "bottom" | "graveyard";
     }
   /** Impulse: exile the top of the player's library; the effect's controller
    * may cast or play those cards this turn (free when freeCast — Etali). */
@@ -1422,6 +1438,8 @@ export type EngineEvent =
       controllerId: PlayerId;
       /** Equipment/auras attached before death (Skullclamp watches these). */
       wasAttachedIds?: CardInstanceId[];
+      /** Computed power the moment before death (Elenda's token count). */
+      powerAtDeath?: number;
     }
   | { kind: "attacks"; cardId: CardInstanceId }
   | { kind: "step_begins"; step: Step }

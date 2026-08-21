@@ -119,7 +119,10 @@ function onEnterStep(state: GameState): GameState {
         const staysTapped =
           state.definitions[card.definitionId]?.doesntUntap === true &&
           !abilitiesRemoved(state, card.id);
-        if (!staysTapped) {
+        // Vorinclex froze it: skip this one untap step, then clear.
+        if (card.skipNextUntap) {
+          card.skipNextUntap = false;
+        } else if (!staysTapped) {
           untapInPlace(card);
         }
         card.summoningSick = false;

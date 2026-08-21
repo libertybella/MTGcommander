@@ -753,6 +753,34 @@ function applyTapForMana(
         next = addMana(next, playerId, { [chosen]: 1 });
       }
     }
+    // Mirari's Wake / Vorinclex: "add one mana of any type that land
+    // produced" — auto-picked as the addition's biggest type (documented).
+    for (const echo of Object.values(next.cards)) {
+      if (
+        echo.zone !== "battlefield" ||
+        echo.controllerId !== playerId ||
+        !next.definitions[echo.definitionId]?.landTapEcho
+      ) {
+        continue;
+      }
+      const best = (Object.entries(addition) as [ManaColor, number][])
+        .filter(([, amount]) => amount > 0)
+        .sort((a, b) => b[1] - a[1])[0]?.[0];
+      if (best) {
+        next = addMana(next, playerId, { [best]: 1 });
+      }
+    }
+    // Vorinclex's other half: an opponent's land tap freezes that land
+    // through its controller's next untap step.
+    const frozen = Object.values(next.cards).some(
+      (praetor) =>
+        praetor.zone === "battlefield" &&
+        praetor.controllerId !== playerId &&
+        next.definitions[praetor.definitionId]?.opponentLandTapsSkipUntap === true,
+    );
+    if (frozen) {
+      next.cards[cardId]!.skipNextUntap = true;
+    }
   }
   if (ability.costSacrifice && costSacrificeId) {
     next = applyEffects(next, [{ kind: "sacrifice", cardId: costSacrificeId }]);

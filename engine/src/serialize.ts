@@ -271,6 +271,7 @@ export function parseGameState(json: string): GameState {
           ? null
           : expectString(card.attachedTo, "card.attachedTo"),
       loyaltyActivatedThisTurn: card.loyaltyActivatedThisTurn === true,
+      ...(card.skipNextUntap === true ? { skipNextUntap: true } : {}),
       faceDown: card.faceDown === true,
       chosenCreatureType:
         card.chosenCreatureType === undefined || card.chosenCreatureType === null
@@ -424,6 +425,8 @@ export function parseGameState(json: string): GameState {
       ...(def.chooseCreatureTypeOnEnter === true ? { chooseCreatureTypeOnEnter: true } : {}),
       ...(def.selfIsChosenType === true ? { selfIsChosenType: true } : {}),
       ...(def.landChosenColorBonus === true ? { landChosenColorBonus: true } : {}),
+      ...(def.landTapEcho === true ? { landTapEcho: true } : {}),
+      ...(def.opponentLandTapsSkipUntap === true ? { opponentLandTapsSkipUntap: true } : {}),
       ...(def.triggerDoubling === undefined
         ? {}
         : {
@@ -2026,6 +2029,7 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
           ? { perControlled: value.perControlled }
           : {}),
         ...(value.perDiedCreatures === true ? { perDiedCreatures: true } : {}),
+        ...(value.countFromSubjectAmount === true ? { countFromSubjectAmount: true } : {}),
         ...(value.perSourceCounters === undefined
           ? {}
           : { perSourceCounters: expectString(value.perSourceCounters, `${label}.perSourceCounters`) }),
@@ -2122,6 +2126,9 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
         count: expectNumber(value.count, `${label}.count`),
         filter: parseSearchFilter(value.filter, `${label}.filter`),
         destination: digDestination,
+        ...(value.restTo === "graveyard" || value.restTo === "bottom"
+          ? { restTo: value.restTo }
+          : {}),
       };
     }
     case "untap_all": {
@@ -3710,6 +3717,9 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
       count: expectNumber(value.count, `${label}.count`),
       filter: parseSearchFilter(value.filter, `${label}.filter`),
       destination: digDestination,
+      ...(value.restTo === "graveyard" || value.restTo === "bottom"
+        ? { restTo: value.restTo }
+        : {}),
     };
   }
   if (kind === "untap_all") {

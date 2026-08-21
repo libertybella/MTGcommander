@@ -13040,3 +13040,178 @@ describe("wave 122: glimmers and banners", () => {
     expect(next.players[0]?.mana.R).toBe(3);
   });
 });
+
+describe("wave 123: echoes, freezes, and last rites", () => {
+  it("compiles the mana-echo and dies-power batch fully", () => {
+    const wake = compileOracleCard({
+      oracleId: "wake",
+      name: "Mirari's Wake",
+      manaCost: "{3}{G}{W}",
+      typeLine: "Enchantment",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "Creatures you control get +1/+1.\nWhenever you tap a land for mana, add one mana of any type that land produced.",
+    });
+    expect(wake.notes).toEqual([]);
+    expect(wake.definition.landTapEcho).toBe(true);
+
+    const vorinclex = compileOracleCard({
+      oracleId: "vorinclex",
+      name: "Vorinclex, Voice of Hunger",
+      manaCost: "{6}{G}{G}",
+      typeLine: "Legendary Creature — Phyrexian Praetor",
+      power: "7",
+      toughness: "6",
+      printedKeywords: ["Trample"],
+      imageUrl: "",
+      oracleText:
+        "Trample\nWhenever you tap a land for mana, add one mana of any type that land produced.\nWhenever an opponent taps a land for mana, that land doesn't untap during its controller's next untap step.",
+    });
+    expect(vorinclex.notes).toEqual([]);
+    expect(vorinclex.definition.landTapEcho).toBe(true);
+    expect(vorinclex.definition.opponentLandTapsSkipUntap).toBe(true);
+
+    const salvage = compileOracleCard({
+      oracleId: "salvage",
+      name: "Grisly Salvage",
+      manaCost: "{B}{G}",
+      typeLine: "Instant",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "Reveal the top five cards of your library. You may put a creature or land card from among them into your hand. Put the rest into your graveyard.",
+    });
+    expect(salvage.notes).toEqual([]);
+    expect(salvage.definition.effects[0]).toMatchObject({
+      kind: "dig_top",
+      count: 5,
+      destination: "hand",
+      restTo: "graveyard",
+    });
+
+    const elenda = compileOracleCard({
+      oracleId: "elenda",
+      name: "Elenda, the Dusk Rose",
+      manaCost: "{2}{W}{B}",
+      typeLine: "Legendary Creature — Vampire Knight",
+      power: "1",
+      toughness: "1",
+      printedKeywords: ["Lifelink"],
+      imageUrl: "",
+      oracleText:
+        "Lifelink\nWhenever another creature dies, put a +1/+1 counter on Elenda.\nWhen Elenda dies, create X 1/1 white Vampire creature tokens with lifelink, where X is Elenda's power.",
+    });
+    expect(elenda.notes).toEqual([]);
+    const diesTrigger = elenda.definition.triggers.find(
+      (trigger) =>
+        trigger.event === "dies" && trigger.effects[0]?.kind === "create_token",
+    );
+    expect(diesTrigger?.effects[0]).toMatchObject({
+      kind: "create_token",
+      name: "Vampire",
+      countFromSubjectAmount: true,
+      keywords: ["lifelink"],
+    });
+  });
+
+  it("echoes land mana and freezes opponents' tapped lands", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 30);
+    const wakeDef = createCardDefinition({
+      name: "Wake",
+      typeLine: "Enchantment",
+      landTapEcho: true,
+    });
+    const praetorDef = createCardDefinition({
+      name: "Praetor",
+      typeLine: "Legendary Creature — Phyrexian Praetor",
+      power: 7,
+      toughness: 6,
+      opponentLandTapsSkipUntap: true,
+    });
+    const mountainDef = createCardDefinition({
+      name: "Mountain",
+      typeLine: "Basic Land — Mountain",
+      produces: { R: 1 },
+    });
+    game.definitions[wakeDef.id] = wakeDef;
+    game.definitions[praetorDef.id] = praetorDef;
+    game.definitions[mountainDef.id] = mountainDef;
+    const wake = createCardInstance({ definitionId: wakeDef.id, ownerId: p1.id, zone: "battlefield" });
+    const praetor = createCardInstance({ definitionId: praetorDef.id, ownerId: p2.id, zone: "battlefield" });
+    const mountain = createCardInstance({ definitionId: mountainDef.id, ownerId: p1.id, zone: "battlefield" });
+    game.cards[wake.id] = wake;
+    game.cards[praetor.id] = praetor;
+    game.cards[mountain.id] = mountain;
+    p1.zones.battlefield.push(wake.id, mountain.id);
+    p2.zones.battlefield.push(praetor.id);
+    game.priorityPlayerId = p1.id;
+
+    // The Wake echoes the tap; the opposing praetor freezes the land.
+    const next = applyAction(game, { kind: "tap_for_mana", playerId: p1.id, cardId: mountain.id });
+    expect(next.players[0]?.mana.R).toBe(2);
+    expect(next.cards[mountain.id]?.skipNextUntap).toBe(true);
+    expect(next.cards[mountain.id]?.tapped).toBe(true);
+
+    // The frozen land sits out exactly one of its controller's untap steps.
+    let walked = next;
+    for (let guard = 0; guard < 40; guard += 1) {
+      walked = advanceSteps(walked, 1);
+      if (walked.turn.activePlayerId === p1.id && walked.turn.step === "untap") {
+        break;
+      }
+    }
+    expect(walked.turn.activePlayerId).toBe(p1.id);
+    expect(walked.cards[mountain.id]?.tapped).toBe(true);
+    expect(walked.cards[mountain.id]?.skipNextUntap).toBeFalsy();
+  });
+
+  it("counts Elenda's tokens from her power at death", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 10);
+    const elendaDef = createCardDefinition({
+      name: "Elenda",
+      typeLine: "Legendary Creature — Vampire Knight",
+      power: 1,
+      toughness: 1,
+      triggers: [
+        {
+          event: "dies",
+          effects: [
+            {
+              kind: "create_token",
+              ownerId: "controller",
+              name: "Vampire",
+              typeLine: "Creature — Vampire Token",
+              power: 1,
+              toughness: 1,
+              keywords: ["lifelink"],
+              countFromSubjectAmount: true,
+            },
+          ],
+          targetRequirements: [],
+        },
+      ],
+    });
+    game.definitions[elendaDef.id] = elendaDef;
+    const elenda = createCardInstance({ definitionId: elendaDef.id, ownerId: p1.id, zone: "battlefield" });
+    elenda.counters["p1p1"] = 2;
+    game.cards[elenda.id] = elenda;
+    p1.zones.battlefield.push(elenda.id);
+
+    let next = applyEffect(game, { kind: "sacrifice", cardId: elenda.id });
+    while (next.stack.length > 0) {
+      next = resolveTopOfStack(next);
+    }
+    const vampires = Object.values(next.cards).filter(
+      (card) => card.zone === "battlefield" && card.isToken,
+    );
+    // Power 1 plus two counters: three tokens.
+    expect(vampires).toHaveLength(3);
+  });
+});

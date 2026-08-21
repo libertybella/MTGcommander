@@ -77,6 +77,8 @@ export type CompiledOracleText = {
   selfIsChosenType?: boolean;
   triggerDoubling?: CardDefinition["triggerDoubling"];
   landChosenColorBonus?: boolean;
+  landTapEcho?: boolean;
+  opponentLandTapsSkipUntap?: boolean;
   entersWithXCounters?: boolean;
   enterAsCopy?: { scope: EnterAsCopyScope; extraCounters?: number; maxManaValueBySpent?: boolean };
   playLandsFromGraveyard?: boolean;
@@ -1047,7 +1049,9 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
 
   // The synthetic impulse-dig sentence from fuseDigSentencesInPlace. The
   // pick is auto-taken (first match) — a documented approximation.
-  const digTop = sentence.match(/^Dig (\d+) for (.+?) to (hand|battlefield|battlefield_tapped)$/);
+  const digTop = sentence.match(
+    /^Dig (\d+) for (.+?) to (hand|battlefield|battlefield_tapped)( rest graveyard)?$/,
+  );
   if (digTop?.[1] && digTop[2] && digTop[3]) {
     const filter = parseDigDescriptor(digTop[2]);
     if (filter) {
@@ -1060,6 +1064,7 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
             count: Number(digTop[1]),
             filter,
             destination: digTop[3] as "hand" | "battlefield" | "battlefield_tapped",
+            ...(digTop[4] ? { restTo: "graveyard" as const } : {}),
           },
         ],
       };
@@ -3483,27 +3488,39 @@ function fuseDigSentencesInPlace(sentences: string[], lineStart: boolean[]): voi
       continue;
     }
     const look = sentences[index]!.match(
-      /^(.*: )?Look at the top (two|three|four|five|six|seven|eight|\d+) cards of your library$/i,
+      /^(.*: )?(Look at|Reveal) the top (two|three|four|five|six|seven|eight|\d+) cards of your library$/i,
     );
-    if (!look?.[2]) {
+    if (!look?.[3]) {
       continue;
     }
-    const count = parseCount(look[2]);
+    const count = parseCount(look[3]);
     if (!count) {
       continue;
     }
-    if (!/^Put the rest on the bottom of your library in a random order$/i.test(sentences[index + 2]!)) {
+    const restBottom = /^Put the rest on the bottom of your library in a random order$/i.test(
+      sentences[index + 2]!,
+    );
+    // Grisly Salvage: the unpicked reveals go to the graveyard instead.
+    const restGraveyard = /^Put the rest into your graveyard$/i.test(sentences[index + 2]!);
+    if (!restBottom && !restGraveyard) {
       continue;
     }
     const mid = sentences[index + 1]!;
-    const toHand = mid.match(/^You may reveal an? (.+?) card from among them and put it into your hand$/i);
+    const toHand = mid.match(
+      /^You may (?:reveal|put) an? (.+?) card from among them (?:and put it )?into your hand$/i,
+    );
     const toField = mid.match(/^You may put an? (.+?) card from among them onto the battlefield( tapped)?$/i);
     const descriptor = toHand?.[1] ?? toField?.[1];
     if (!descriptor) {
       continue;
     }
     const destination = toHand ? "hand" : toField?.[2] ? "battlefield_tapped" : "battlefield";
-    sentences.splice(index, 3, `${look[1] ?? ""}Dig ${count} for ${descriptor} to ${destination}`);
+    const restSuffix = restGraveyard ? " rest graveyard" : "";
+    sentences.splice(
+      index,
+      3,
+      `${look[1] ?? ""}Dig ${count} for ${descriptor} to ${destination}${restSuffix}`,
+    );
     lineStart.splice(index + 1, 2);
   }
 }
@@ -5155,6 +5172,54 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
     ) {
       result.landChosenColorBonus = true;
       continue;
+    }
+
+    // Mirari's Wake / Vorinclex: the controller's land taps echo one mana.
+    if (
+      /^Whenever you tap a land for mana, add one mana of any type that land produced$/i.test(
+        sentence,
+      )
+    ) {
+      result.landTapEcho = true;
+      continue;
+    }
+
+    // Vorinclex's other half: opponents' tapped lands stay frozen.
+    if (
+      /^Whenever an opponent taps a land for mana, that land doesn't untap during its controller's next untap step$/i.test(
+        sentence,
+      )
+    ) {
+      result.opponentLandTapsSkipUntap = true;
+      continue;
+    }
+
+    // Elenda: dies-tokens equal to the dying creature's power.
+    const elenda = sentence.match(
+      /^When ~ dies, create X (\d+)\/(\d+) (white|blue|black|red|green|colorless) ([A-Z][a-z]+) creature tokens with ([a-z]+), where X is (?:its|~'s) power$/i,
+    );
+    if (elenda?.[1] && elenda[2] && elenda[4] && elenda[5]) {
+      const keyword = KEYWORD_GRANTS[elenda[5].toLowerCase()];
+      if (keyword) {
+        const subtype = elenda[4][0]!.toUpperCase() + elenda[4].slice(1).toLowerCase();
+        result.triggers.push({
+          event: "dies",
+          effects: [
+            {
+              kind: "create_token",
+              ownerId: "controller",
+              name: subtype,
+              typeLine: `Creature — ${subtype} Token`,
+              power: Number(elenda[1]),
+              toughness: Number(elenda[2]),
+              keywords: [keyword],
+              countFromSubjectAmount: true,
+            },
+          ],
+          targetRequirements: [],
+        });
+        continue;
+      }
     }
 
     // Prowess (CR 702.108) lowers to its full rules text.

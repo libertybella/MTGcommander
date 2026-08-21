@@ -84,6 +84,8 @@ export function createCardDefinition(
         | "selfIsChosenType"
         | "triggerDoubling"
         | "landChosenColorBonus"
+        | "landTapEcho"
+        | "opponentLandTapsSkipUntap"
         | "chooseColorOnEnter"
         | "enchantedTappedBonus"
         | "entersWithXCounters"
@@ -324,6 +326,8 @@ export function createCardDefinition(
     ...(input.chooseCreatureTypeOnEnter ? { chooseCreatureTypeOnEnter: true } : {}),
     ...(input.selfIsChosenType ? { selfIsChosenType: true } : {}),
     ...(input.landChosenColorBonus ? { landChosenColorBonus: true } : {}),
+    ...(input.landTapEcho ? { landTapEcho: true } : {}),
+    ...(input.opponentLandTapsSkipUntap ? { opponentLandTapsSkipUntap: true } : {}),
     ...(input.triggerDoubling
       ? {
           triggerDoubling: {

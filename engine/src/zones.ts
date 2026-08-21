@@ -1,9 +1,9 @@
 import { cloneGameState } from "./clone";
 import { shuffleInPlace } from "./shuffle";
-import { isCommander } from "./cardTypes";
+import { isCommander, isCreature } from "./cardTypes";
 import { abilitiesRemoved } from "./characteristicsEngine";
 import { createCardDefinition, createCardInstance } from "./createGame";
-import { queueEnterReplacementChoicesInPlace, wouldEnterTapped } from "./derived";
+import { creaturePower, queueEnterReplacementChoicesInPlace, wouldEnterTapped } from "./derived";
 import { tokenPresetFor } from "./tokens";
 import { dispatchEventsInPlace, queueEnterBattlefieldTriggersInPlace } from "./triggers";
 import type {
@@ -166,6 +166,12 @@ export function enterOwnerZoneInPlace(
   }
   const fromZone = card.zone;
   const diedControllerId = card.controllerId;
+  // Elenda: "X is its power" reads the computed power the moment before
+  // death — captured here while the object is still on the battlefield.
+  const diedPower =
+    fromZone === "battlefield" && isCreature(state, cardId)
+      ? creaturePower(state, cardId)
+      : undefined;
   insertIntoZone(owner, destination, cardId, options.libraryPosition ?? "top");
   card.zone = destination;
   applyZoneChangeFlags(state, card, destination);
@@ -175,7 +181,12 @@ export function enterOwnerZoneInPlace(
     queueEnterBattlefieldTriggersInPlace(state, cardId);
   }
   if (fromZone === "battlefield" && destination === "graveyard") {
-    const event: EngineEvent = { kind: "dies", cardId, controllerId: diedControllerId };
+    const event: EngineEvent = {
+      kind: "dies",
+      cardId,
+      controllerId: diedControllerId,
+      ...(diedPower !== undefined ? { powerAtDeath: diedPower } : {}),
+    };
     if (options.collectDies) {
       options.collectDies.push(event);
     } else {
@@ -372,6 +383,11 @@ export function moveCardInPlace(
           .filter((other) => other.attachedTo === cardId)
           .map((other) => other.id)
       : [];
+  // Elenda: computed power the moment before death.
+  const diedPower =
+    located.zone === "battlefield" && isCreature(state, cardId)
+      ? creaturePower(state, cardId)
+      : undefined;
   removeFromZone(occupant, located.zone, cardId);
   insertIntoZone(owner, destination, cardId, options.libraryPosition ?? "top");
   card.zone = destination;
@@ -387,6 +403,7 @@ export function moveCardInPlace(
       cardId,
       controllerId: diedControllerId,
       ...(wasAttachedIds.length > 0 ? { wasAttachedIds } : {}),
+      ...(diedPower !== undefined ? { powerAtDeath: diedPower } : {}),
     };
     if (options.collectDies) {
       options.collectDies.push(event);
