@@ -2,7 +2,7 @@ import { declareAttackers, declareBlockers, lockRemainingBlockers, pendingBlocke
 import { abilitiesRemoved } from "./characteristicsEngine";
 import { isCommander, isCreature, isInstant, isInstantOrSorcery, isLand, isMainPhase } from "./cardTypes";
 import { cloneGameState } from "./clone";
-import { canPlayLandFromTop, canPlayLandsFromGraveyard, castCostReduction, castableFromTop, controlsCommander, landDropAllowance } from "./derived";
+import { affinityArtifactDiscount, canPlayLandFromTop, canPlayLandsFromGraveyard, castCostReduction, castableFromTop, controlsCommander, hasFlashGrant, landDropAllowance } from "./derived";
 import { eliminatePlayerInPlace } from "./elimination";
 import { applyEffects, bindCardEffects } from "./effects";
 import { hasKeyword } from "./keywords";
@@ -130,7 +130,12 @@ function validateCast(
     throw new Error(`Card ${cardId} is a land and cannot be cast as a spell`);
   }
 
-  if (!isInstant(state, cardId) && !hasKeyword(state, cardId, "flash") && !canCastNonInstantNow(state, playerId)) {
+  if (
+    !isInstant(state, cardId) &&
+    !hasKeyword(state, cardId, "flash") &&
+    !hasFlashGrant(state, playerId) &&
+    !canCastNonInstantNow(state, playerId)
+  ) {
     throw new Error("That spell cannot be cast at this time");
   }
 
@@ -148,6 +153,9 @@ function validateCast(
   }
   // CR 601.2f: increases (tax) first, then static discounts, floor zero.
   cost.generic = Math.max(0, cost.generic - castCostReduction(state, playerId, definition));
+  if (definition.affinityArtifacts) {
+    cost.generic = Math.max(0, cost.generic - affinityArtifactDiscount(state, playerId));
+  }
   // Free-spell cycle: the alternative cost is auto-taken (documented
   // approximation) — the whole mana cost is skipped.
   if (definition.freeIfCommander && controlsCommander(state, playerId)) {

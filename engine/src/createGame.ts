@@ -68,6 +68,9 @@ export function createCardDefinition(
         | "changeling"
         | "storm"
         | "doesntUntap"
+        | "grantsFlash"
+        | "extraDrawStepDraws"
+        | "affinityArtifacts"
         | "topOfLibrary"
         | "flashback"
         | "costReductions"
@@ -101,6 +104,7 @@ export function createCardDefinition(
           ...(trigger.excludeSelf ? { excludeSelf: true } : {}),
           ...(trigger.oncePerTurn ? { oncePerTurn: true } : {}),
           ...(trigger.subjectPlayerOpponent ? { subjectPlayerOpponent: true } : {}),
+          ...(trigger.attacksAlone ? { attacksAlone: true } : {}),
           ...(trigger.subjectFilter
             ? {
                 subjectFilter: {
@@ -204,6 +208,9 @@ export function createCardDefinition(
     ...(input.changeling ? { changeling: true } : {}),
     ...(input.storm ? { storm: true } : {}),
     ...(input.doesntUntap ? { doesntUntap: true } : {}),
+    ...(input.grantsFlash ? { grantsFlash: true } : {}),
+    ...(input.extraDrawStepDraws ? { extraDrawStepDraws: true } : {}),
+    ...(input.affinityArtifacts ? { affinityArtifacts: true } : {}),
     ...(input.flashback
       ? {
           flashback: {

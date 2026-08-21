@@ -161,6 +161,12 @@ export type CardDefinition = {
   storm?: boolean;
   /** "~ doesn't untap during your untap step." */
   doesntUntap?: boolean;
+  /** "You may cast spells as though they had flash" (Vedalken Orrery). */
+  grantsFlash?: boolean;
+  /** Howling Mine: each player draws an extra card in their draw step. */
+  extraDrawStepDraws?: boolean;
+  /** Affinity for artifacts: generic cost shrinks per artifact you control. */
+  affinityArtifacts?: boolean;
   /**
    * "Artifact spells you cast cost {1} less to cast" (medallions, Foundry
    * Inspector). Applies to the controller's spells while on the battlefield;
@@ -452,6 +458,7 @@ export type GameEffect =
   | { kind: "copy_spell"; stackObjectId: StackObjectId; controllerId: PlayerId }
   | { kind: "extra_combat" }
   | { kind: "untap_all"; playerId: PlayerId; what: "creature" | "land" }
+  | { kind: "untap_lands_up_to"; playerId: PlayerId; count: number }
   | { kind: "proliferate"; playerId: PlayerId }
   | {
       kind: "restrict_until_eot";
@@ -698,6 +705,7 @@ export type CardEffect =
   | { kind: "copy_spell"; target: ChosenTargetRef }
   | { kind: "extra_combat" }
   | { kind: "untap_all"; playerId: PlayerSelector; what: "creature" | "land" }
+  | { kind: "untap_lands_up_to"; playerId: PlayerSelector; count: number }
   | { kind: "proliferate"; playerId: PlayerSelector }
   | {
       kind: "restrict_until_eot";
@@ -807,6 +815,8 @@ export type CardTrigger = {
   /** "deals damage to an opponent": the damaged player must not be the
    * watcher's controller (Curiosity). */
   subjectPlayerOpponent?: boolean;
+  /** Exalted: only when exactly one creature is attacking. */
+  attacksAlone?: boolean;
   /**
    * Filter on the event subject's printed characteristics (landfall, cast
    * triggers). `types` must all be present, `typesAny` needs one of them

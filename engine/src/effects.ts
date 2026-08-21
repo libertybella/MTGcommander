@@ -199,6 +199,9 @@ function bindCardId(
     if (selector === "self") {
       return context.sourceId;
     }
+    if (selector === "subject_card") {
+      return context.subjectCardId ?? null;
+    }
     if (selector === "chosen_card") {
       return context.chosenCardId ?? null;
     }
@@ -589,6 +592,13 @@ export function bindCardEffect(
         return null;
       }
       return { kind: "untap_all", playerId, what: effect.what };
+    }
+    case "untap_lands_up_to": {
+      const playerId = bindPlayerSelector(state, effect.playerId, context);
+      if (!playerId) {
+        return null;
+      }
+      return { kind: "untap_lands_up_to", playerId, count: effect.count };
     }
     case "copy_subject_spell":
     case "counter_subject_spell": {
@@ -1583,6 +1593,26 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
             (effect.what === "creature" ? isCreature(next, card.id) : isLand(next, card.id))
           ) {
             card.tapped = false;
+          }
+        }
+        break;
+      }
+      case "untap_lands_up_to": {
+        // Documented auto-choice: untap the first N tapped lands you control.
+        next = cloneGameState(state);
+        let remaining = effect.count;
+        for (const card of Object.values(next.cards)) {
+          if (remaining <= 0) {
+            break;
+          }
+          if (
+            card.zone === "battlefield" &&
+            card.controllerId === effect.playerId &&
+            card.tapped &&
+            isLand(next, card.id)
+          ) {
+            card.tapped = false;
+            remaining -= 1;
           }
         }
         break;

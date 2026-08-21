@@ -321,6 +321,9 @@ export function parseGameState(json: string): GameState {
       ...(def.changeling === true ? { changeling: true } : {}),
       ...(def.storm === true ? { storm: true } : {}),
       ...(def.doesntUntap === true ? { doesntUntap: true } : {}),
+      ...(def.grantsFlash === true ? { grantsFlash: true } : {}),
+      ...(def.extraDrawStepDraws === true ? { extraDrawStepDraws: true } : {}),
+      ...(def.affinityArtifacts === true ? { affinityArtifacts: true } : {}),
       ...(def.flashback === undefined
         ? {}
         : {
@@ -1506,6 +1509,12 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
     }
     case "proliferate":
       return { kind, playerId: parsePlayerSelector(value.playerId, `${label}.playerId`) };
+    case "untap_lands_up_to":
+      return {
+        kind,
+        playerId: parsePlayerSelector(value.playerId, `${label}.playerId`),
+        count: expectNumber(value.count, `${label}.count`),
+      };
     case "restrict_until_eot":
       return {
         kind,
@@ -1854,6 +1863,7 @@ function parseTriggers(value: unknown, label: string): CardTrigger[] {
       ...(entry.excludeSelf === true ? { excludeSelf: true } : {}),
       ...(entry.oncePerTurn === true ? { oncePerTurn: true } : {}),
       ...(entry.subjectPlayerOpponent === true ? { subjectPlayerOpponent: true } : {}),
+      ...(entry.attacksAlone === true ? { attacksAlone: true } : {}),
       ...(subjectFilter &&
       (subjectFilter.types ||
         subjectFilter.subtypes ||
@@ -2469,6 +2479,13 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
   }
   if (kind === "proliferate") {
     return { kind, playerId: expectString(value.playerId, `${label}.playerId`) };
+  }
+  if (kind === "untap_lands_up_to") {
+    return {
+      kind,
+      playerId: expectString(value.playerId, `${label}.playerId`),
+      count: expectNumber(value.count, `${label}.count`),
+    };
   }
   if (kind === "restrict_until_eot") {
     return {

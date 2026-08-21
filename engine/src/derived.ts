@@ -178,6 +178,34 @@ export function canPlayLandFromTop(state: GameState, playerId: string, cardId: s
   return topOfLibraryGrant(state, playerId)?.playLands === true;
 }
 
+/** Vedalken Orrery-class: the player may cast any spell at instant speed. */
+export function hasFlashGrant(state: GameState, playerId: string): boolean {
+  return Object.values(state.cards).some((card) => {
+    if (card.zone !== "battlefield" || card.controllerId !== playerId) {
+      return false;
+    }
+    if (state.definitions[card.definitionId]?.grantsFlash !== true) {
+      return false;
+    }
+    return !abilitiesRemoved(state, card.id);
+  });
+}
+
+/** Affinity for artifacts: one generic less per artifact the caster controls. */
+export function affinityArtifactDiscount(state: GameState, playerId: string): number {
+  let count = 0;
+  for (const card of Object.values(state.cards)) {
+    if (
+      card.zone === "battlefield" &&
+      card.controllerId === playerId &&
+      characteristicsOf(state, card.id).types.includes("artifact")
+    ) {
+      count += 1;
+    }
+  }
+  return count;
+}
+
 /** "If you control a commander" (the free-spell cycle): any commander on the
  * battlefield under this player's control, their own or a stolen one. */
 export function controlsCommander(state: GameState, playerId: string): boolean {

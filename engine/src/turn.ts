@@ -137,7 +137,19 @@ function onEnterStep(state: GameState): GameState {
   if (state.turn.step === "draw") {
     const active = state.players.find((player) => player.id === state.turn.activePlayerId);
     if (active && !active.lost && !wouldSkipDraw(state, active.id)) {
-      return applyEffect(state, { kind: "draw", playerId: active.id, count: 1 });
+      // Howling Mine-class: every extra-draw permanent on the battlefield
+      // (anyone's, abilities intact) adds a card to each draw step.
+      let extra = 0;
+      for (const card of Object.values(state.cards)) {
+        if (
+          card.zone === "battlefield" &&
+          state.definitions[card.definitionId]?.extraDrawStepDraws === true &&
+          !abilitiesRemoved(state, card.id)
+        ) {
+          extra += 1;
+        }
+      }
+      return applyEffect(state, { kind: "draw", playerId: active.id, count: 1 + extra });
     }
     return state;
   }

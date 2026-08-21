@@ -49,6 +49,9 @@ export type CompiledOracleText = {
   changeling?: boolean;
   storm?: boolean;
   doesntUntap?: boolean;
+  grantsFlash?: boolean;
+  extraDrawStepDraws?: boolean;
+  affinityArtifacts?: boolean;
   topOfLibrary?: TopOfLibraryGrant;
   flashback?: { manaCost: string; life?: number };
   costReductions?: CostReduction[];
@@ -1002,6 +1005,35 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     return {
       targetRequirements: [],
       effects: [{ kind: "untap", cardId: "self" }],
+    };
+  }
+
+  const untapUpTo = sentence.match(/^untap up to (one|two|three|four|five) lands$/i);
+  if (untapUpTo?.[1]) {
+    return {
+      targetRequirements: [],
+      effects: [
+        {
+          kind: "untap_lands_up_to",
+          playerId: "controller",
+          count: parseCount(untapUpTo[1]) ?? 1,
+        },
+      ],
+    };
+  }
+
+  const painThatPlayer = sentence.match(/^~ deals (\d+) damage to that player$/i);
+  if (painThatPlayer?.[1]) {
+    return {
+      targetRequirements: [],
+      effects: [
+        {
+          kind: "deal_damage",
+          sourceId: "self",
+          amount: Number(painThatPlayer[1]),
+          target: { type: "player", playerId: { type: "subject_player" } },
+        },
+      ],
     };
   }
 
@@ -1978,6 +2010,7 @@ function shiftChosen(effect: CardEffect, offset: number): CardEffect {
     case "extra_combat":
       return effect;
     case "untap_all":
+    case "untap_lands_up_to":
     case "proliferate":
       return { ...effect, playerId: bumpChosen(effect.playerId) };
     case "move_card":
@@ -2764,6 +2797,38 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
 
     if (/^~ doesn't untap during your untap step$/i.test(sentence)) {
       result.doesntUntap = true;
+      continue;
+    }
+
+    if (/^You may cast spells as though they had flash$/i.test(sentence)) {
+      result.grantsFlash = true;
+      continue;
+    }
+
+    if (
+      /^At the beginning of each player's draw step, that player draws an additional card$/i.test(
+        sentence,
+      )
+    ) {
+      result.extraDrawStepDraws = true;
+      continue;
+    }
+
+    if (/^Affinity for artifacts$/i.test(sentence)) {
+      result.affinityArtifacts = true;
+      continue;
+    }
+
+    // Exalted (CR 702.83): +1/+1 until end of turn when one of your
+    // creatures attacks alone.
+    if (/^Exalted$/i.test(sentence)) {
+      result.triggers.push({
+        event: "attacks",
+        watch: "controlled",
+        attacksAlone: true,
+        effects: [{ kind: "pt_until_eot", cardId: "subject_card", power: 1, toughness: 1 }],
+        targetRequirements: [],
+      });
       continue;
     }
 

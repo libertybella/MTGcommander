@@ -3,7 +3,7 @@ import { abilitiesRemoved, cardMatchesSubtype } from "./characteristicsEngine";
 import { hasKeyword } from "./keywords";
 import { emptyManaPool } from "./createGame";
 import { pendingBlockerPlayer } from "./combat";
-import { canPlayLandsFromGraveyard, castCostReduction, controlsCommander, landDropAllowance, topOfLibraryGrant } from "./derived";
+import { affinityArtifactDiscount, canPlayLandsFromGraveyard, castCostReduction, controlsCommander, hasFlashGrant, landDropAllowance, topOfLibraryGrant } from "./derived";
 import { canPayManaCost, parseManaCost, type ParsedManaCost } from "./mana";
 import { manaAbilitiesFor, manaTapOptionsFor } from "./manaOptions";
 import { isMulliganOpen } from "./mulligan";
@@ -236,7 +236,8 @@ function castableFace(
 ): boolean {
   const isInstantSpeed =
     definition.characteristics.types.includes("instant") ||
-    definition.keywords.includes("flash");
+    definition.keywords.includes("flash") ||
+    hasFlashGrant(state, playerId);
   if (!isInstantSpeed && !inSorceryWindow(state, playerId)) {
     return false;
   }
@@ -246,6 +247,9 @@ function castableFace(
   }
   cost.generic += extraGeneric;
   cost.generic = Math.max(0, cost.generic - castCostReduction(state, playerId, definition));
+  if (definition.affinityArtifacts) {
+    cost.generic = Math.max(0, cost.generic - affinityArtifactDiscount(state, playerId));
+  }
   const castsFree = definition.freeIfCommander === true && controlsCommander(state, playerId);
   if (!castsFree && !canPayWithPotential(potential, cost)) {
     return false;

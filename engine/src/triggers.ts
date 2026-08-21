@@ -336,6 +336,12 @@ function triggerMatchesEvent(
   ) {
     return false;
   }
+  // Exalted: only when exactly one creature attacks.
+  if (trigger.attacksAlone && event.kind === "attacks") {
+    if ((state.combat?.attacks.length ?? 0) !== 1) {
+      return false;
+    }
+  }
   const watch = trigger.watch ?? "self";
   if (trigger.excludeSelf && event.cardId === watcher.id) {
     return false;

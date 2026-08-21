@@ -205,6 +205,9 @@ function compileOneFace(card: OracleCard, definitionId: string): OracleCompileRe
     ...(compiled.flashback ? { flashback: { ...compiled.flashback } } : {}),
     ...(compiled.storm ? { storm: true } : {}),
     ...(compiled.doesntUntap ? { doesntUntap: true } : {}),
+    ...(compiled.grantsFlash ? { grantsFlash: true } : {}),
+    ...(compiled.extraDrawStepDraws ? { extraDrawStepDraws: true } : {}),
+    ...(compiled.affinityArtifacts ? { affinityArtifacts: true } : {}),
     ...(compiled.costReductions && compiled.costReductions.length > 0
       ? { costReductions: compiled.costReductions }
       : {}),

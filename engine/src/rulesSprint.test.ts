@@ -3923,3 +3923,98 @@ describe("wave 42: one-away batch", () => {
     expect(nextTurn.cards[relic.id]?.tapped).toBe(true);
   });
 });
+
+describe("wave 43: one-away batch two", () => {
+  it("compiles the five new shapes fully", () => {
+    const orrery = compileOracleCard({
+      oracleId: "orrery", name: "Vedalken Orrery", manaCost: "{4}", typeLine: "Artifact",
+      oracleText: "You may cast spells as though they had flash.",
+      power: null, toughness: null, printedKeywords: [], imageUrl: "",
+    });
+    expect(orrery.definition.grantsFlash).toBe(true);
+    expect(orrery.notes).toEqual([]);
+
+    const mine = compileOracleCard({
+      oracleId: "howling-mine", name: "Howling Mine", manaCost: "{2}", typeLine: "Artifact",
+      oracleText: "At the beginning of each player's draw step, that player draws an additional card.",
+      power: null, toughness: null, printedKeywords: [], imageUrl: "",
+    });
+    expect(mine.definition.extraDrawStepDraws).toBe(true);
+    expect(mine.notes).toEqual([]);
+
+    const frogmite = compileOracleCard({
+      oracleId: "frogmite", name: "Frogmite", manaCost: "{4}", typeLine: "Artifact Creature - Frog",
+      oracleText: "Affinity for artifacts (This spell costs {1} less to cast for each artifact you control.)",
+      power: "2", toughness: "2", printedKeywords: ["Affinity for artifacts"], imageUrl: "",
+    });
+    expect(frogmite.definition.affinityArtifacts).toBe(true);
+    expect(frogmite.notes).toEqual([]);
+
+    const exalted = compileOracleCard({
+      oracleId: "exalted-one", name: "Sublime Guard", manaCost: "{1}{W}", typeLine: "Creature - Human Cleric",
+      oracleText: "Exalted (Whenever a creature you control attacks alone, that creature gets +1/+1 until end of turn.)",
+      power: "2", toughness: "2", printedKeywords: ["Exalted"], imageUrl: "",
+    });
+    expect(exalted.definition.triggers[0]).toMatchObject({
+      event: "attacks", watch: "controlled", attacksAlone: true,
+    });
+    expect(exalted.notes).toEqual([]);
+
+    const rekindle = compileOracleCard({
+      oracleId: "draw-pain", name: "Sting Mage", manaCost: "{1}{R}", typeLine: "Creature - Human Wizard",
+      oracleText: "Whenever an opponent draws a card, Sting Mage deals 1 damage to that player.",
+      power: "1", toughness: "1", printedKeywords: [], imageUrl: "",
+    });
+    expect(rekindle.notes).toEqual([]);
+    expect(rekindle.definition.triggers[0]?.effects[0]).toMatchObject({
+      kind: "deal_damage",
+      target: { type: "player", playerId: { type: "subject_player" } },
+    });
+  });
+
+  it("affinity and flash grants change castability; untap-up-to frees lands", () => {
+    const { game, p1 } = twoPlayers();
+    game.turn.phase = "precombatMain";
+    game.turn.step = "precombatMain";
+    const trinket = createCardDefinition({ name: "Trinket", typeLine: "Artifact" });
+    game.definitions[trinket.id] = trinket;
+    for (let i = 0; i < 3; i += 1) {
+      const piece = createCardInstance({ definitionId: trinket.id, ownerId: p1.id, zone: "battlefield" });
+      game.cards[piece.id] = piece;
+      p1.zones.battlefield.push(piece.id);
+    }
+    const frog = createCardDefinition({
+      name: "Frogmite",
+      manaCost: "{4}",
+      typeLine: "Artifact Creature - Frog",
+      power: 2,
+      toughness: 2,
+      affinityArtifacts: true,
+    });
+    game.definitions[frog.id] = frog;
+    const card = createCardInstance({ definitionId: frog.id, ownerId: p1.id, zone: "hand" });
+    game.cards[card.id] = card;
+    p1.zones.hand.push(card.id);
+    p1.mana.C = 1; // {4} minus three artifacts = {1}
+    const cast = applyAction(game, { kind: "cast_spell", playerId: p1.id, cardId: card.id, targets: [] });
+    expect(cast.stack).toHaveLength(1);
+
+    const tapped = structuredClone(game);
+    const landDef = createCardDefinition({ name: "Forest", typeLine: "Basic Land - Forest" });
+    tapped.definitions[landDef.id] = landDef;
+    const lands = [0, 1, 2, 3].map(() => {
+      const land = createCardInstance({ definitionId: landDef.id, ownerId: tapped.players[0]!.id, zone: "battlefield" });
+      land.tapped = true;
+      tapped.cards[land.id] = land;
+      tapped.players[0]!.zones.battlefield.push(land.id);
+      return land.id;
+    });
+    const untapped = applyEffect(tapped, {
+      kind: "untap_lands_up_to",
+      playerId: tapped.players[0]!.id,
+      count: 3,
+    });
+    const freed = lands.filter((id) => untapped.cards[id]?.tapped === false);
+    expect(freed).toHaveLength(3);
+  });
+});
