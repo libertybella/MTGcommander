@@ -543,6 +543,7 @@ export function bindCardEffect(
         kind: "destroy_all",
         what: effect.what,
         ...(effect.maxManaValue !== undefined ? { maxManaValue: effect.maxManaValue } : {}),
+        ...(effect.minManaValue !== undefined ? { minManaValue: effect.minManaValue } : {}),
       };
     case "unless_pays": {
       const playerId = bindPlayerSelector(state, effect.playerId, context);
@@ -1594,11 +1595,13 @@ function applyDestroyAll(
   };
   const doomed = Object.values(next.cards)
     .filter((card) => card.zone === "battlefield" && matches(card.id))
-    .filter(
-      (card) =>
-        effect.maxManaValue === undefined ||
-        characteristicsOf(next, card.id).manaValue <= effect.maxManaValue,
-    )
+    .filter((card) => {
+      const manaValue = characteristicsOf(next, card.id).manaValue;
+      return (
+        (effect.maxManaValue === undefined || manaValue <= effect.maxManaValue) &&
+        (effect.minManaValue === undefined || manaValue >= effect.minManaValue)
+      );
+    })
     .filter((card) => !hasKeyword(next, card.id, "indestructible"))
     .map((card) => card.id);
   const collectDies: EngineEvent[] = [];

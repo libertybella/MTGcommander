@@ -564,7 +564,7 @@ export type GameEffect =
       effects: CardEffect[];
     }
   /** Board wipes: destroy every battlefield permanent of the scope at once. */
-  | { kind: "destroy_all"; what: DestroyAllScope; maxManaValue?: number }
+  | { kind: "destroy_all"; what: DestroyAllScope; maxManaValue?: number; minManaValue?: number }
   /** Rhystic Study: the payer chooses to pay or the effects happen. */
   | { kind: "unless_pays"; playerId: PlayerId; cost: string; effects: GameEffect[] }
   /** "You may pay {N}. If you do, …" — paying causes the effects. */
@@ -855,7 +855,7 @@ export type CardEffect =
     }
   /** Black Sun's Zenith: counters on every battlefield creature. */
   | { kind: "counter_on_each_creature"; counter: string; amount: number | "x" }
-  | { kind: "destroy_all"; what: DestroyAllScope; maxManaValue?: number }
+  | { kind: "destroy_all"; what: DestroyAllScope; maxManaValue?: number; minManaValue?: number }
   | { kind: "unless_pays"; playerId: PlayerSelector; cost: string; effects: CardEffect[] }
   | { kind: "may_pay"; playerId: PlayerSelector; cost: string; effects: CardEffect[] }
   | {

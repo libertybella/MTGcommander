@@ -475,7 +475,7 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
   }
 
   const wipe = sentence.match(
-    /^Destroy all (creatures|artifacts|enchantments|planeswalkers|nonland permanents|artifacts and enchantments)(?: with mana value (\d+) or less)?$/i,
+    /^Destroy all (creatures|artifacts|enchantments|planeswalkers|nonland permanents|artifacts and enchantments)(?: with mana value (\d+) or (less|greater))?$/i,
   );
   if (wipe?.[1]) {
     const named = wipe[1].toLowerCase();
@@ -485,13 +485,17 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
         : named === "nonland permanents"
           ? ["nonland"]
           : [named as DestroyAllScope];
-    const maxManaValue = wipe[2] ? Number(wipe[2]) : undefined;
+    const maxManaValue =
+      wipe[2] && wipe[3]?.toLowerCase() === "less" ? Number(wipe[2]) : undefined;
+    const minManaValue =
+      wipe[2] && wipe[3]?.toLowerCase() === "greater" ? Number(wipe[2]) : undefined;
     return {
       targetRequirements: [],
       effects: scopes.map((what) => ({
         kind: "destroy_all",
         what,
         ...(maxManaValue !== undefined ? { maxManaValue } : {}),
+        ...(minManaValue !== undefined ? { minManaValue } : {}),
       })),
     };
   }

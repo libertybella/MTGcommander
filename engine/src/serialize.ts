@@ -1838,6 +1838,9 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
         ...(value.maxManaValue === undefined
           ? {}
           : { maxManaValue: expectNumber(value.maxManaValue, `${label}.maxManaValue`) }),
+        ...(value.minManaValue === undefined
+          ? {}
+          : { minManaValue: expectNumber(value.minManaValue, `${label}.minManaValue`) }),
       };
     case "unless_pays":
     case "may_pay":
@@ -2714,6 +2717,9 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
       ...(value.maxManaValue === undefined
         ? {}
         : { maxManaValue: expectNumber(value.maxManaValue, `${label}.maxManaValue`) }),
+      ...(value.minManaValue === undefined
+        ? {}
+        : { minManaValue: expectNumber(value.minManaValue, `${label}.minManaValue`) }),
     };
   }
   if (kind === "unless_pays" || kind === "may_pay") {

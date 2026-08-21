@@ -6363,3 +6363,42 @@ describe("wave 69: intervening-if trigger conditions", () => {
     expect(next.stack).toHaveLength(1);
   });
 });
+
+describe("wave 70: choose-two wipes", () => {
+  it("compiles Austere Command fully with a choose-two mode set", () => {
+    const command = compileOracleCard({
+      oracleId: "austere",
+      name: "Austere Command",
+      manaCost: "{4}{W}{W}",
+      typeLine: "Sorcery",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "Choose two —\n• Destroy all artifacts.\n• Destroy all enchantments.\n• Destroy all creatures with mana value 3 or less.\n• Destroy all creatures with mana value 4 or greater.",
+    });
+    expect(command.notes).toEqual([]);
+    expect(command.definition.modes).toHaveLength(4);
+    expect(command.definition.modeChoice).toEqual({ min: 2, max: 2 });
+    const bigWipe = command.definition.modes?.[3]?.effects[0];
+    expect(bigWipe?.kind === "destroy_all" && bigWipe.minManaValue).toBe(4);
+  });
+
+  it("min-mana-value wipes spare the small creatures", () => {
+    const { game, p1 } = twoPlayers();
+    const smallDef = createCardDefinition({ name: "Small", manaCost: "{1}", typeLine: "Creature — Rat", power: 1, toughness: 1 });
+    const bigDef = createCardDefinition({ name: "Big", manaCost: "{5}", typeLine: "Creature — Giant", power: 5, toughness: 5 });
+    game.definitions[smallDef.id] = smallDef;
+    game.definitions[bigDef.id] = bigDef;
+    const small = createCardInstance({ definitionId: smallDef.id, ownerId: p1.id, zone: "battlefield" });
+    const big = createCardInstance({ definitionId: bigDef.id, ownerId: p1.id, zone: "battlefield" });
+    game.cards[small.id] = small;
+    game.cards[big.id] = big;
+    p1.zones.battlefield.push(small.id, big.id);
+
+    const next = applyEffect(game, { kind: "destroy_all", what: "creatures", minManaValue: 4 });
+    expect(next.cards[small.id]?.zone).toBe("battlefield");
+    expect(next.cards[big.id]?.zone).toBe("graveyard");
+  });
+});
