@@ -16,6 +16,7 @@ import {
 import { cardMatchesSubtype, computedCard } from "./characteristicsEngine";
 import { applyCombatDamage } from "./combat";
 import { manaAbilitiesFor } from "./manaOptions";
+import { legalActions } from "./legalActions";
 import { searchMatches } from "./prompt";
 import { fillLibraries } from "./testSupport";
 import { advanceSteps } from "./turn";
@@ -2696,5 +2697,126 @@ describe("wave 29: changeling (CR 702.73)", () => {
     const after = moveCard(game, entering.id, "battlefield");
     // The changeling counts as a Sliver: the trigger is on the stack.
     expect(after.stack).toHaveLength(1);
+  });
+});
+
+describe("wave 30: top-of-library grants (Oracle of Mul Daya shape)", () => {
+  it("compiles Oracle of Mul Daya fully", () => {
+    const compiled = compileOracleCard({
+      oracleId: "oracle-of-mul-daya",
+      name: "Oracle of Mul Daya",
+      manaCost: "{3}{G}",
+      typeLine: "Creature - Elf Shaman",
+      oracleText:
+        "You may play an additional land on each of your turns.\nYou may look at the top card of your library any time.\nYou may play lands from the top of your library.",
+      power: "2",
+      toughness: "2",
+      printedKeywords: [],
+      imageUrl: "",
+    });
+    expect(compiled.definition.extraLandDrops).toBe(1);
+    expect(compiled.definition.topOfLibrary).toEqual({ look: true, playLands: true });
+    expect(compiled.notes).toEqual([]);
+  });
+
+  it("compiles Elven Chorus fully", () => {
+    const compiled = compileOracleCard({
+      oracleId: "elven-chorus",
+      name: "Elven Chorus",
+      manaCost: "{3}{G}",
+      typeLine: "Enchantment",
+      oracleText:
+        'You may look at the top card of your library any time.\nYou may cast creature spells from the top of your library.\nCreatures you control have "{T}: Add one mana of any color."',
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+    });
+    expect(compiled.definition.topOfLibrary).toEqual({
+      look: true,
+      castTypesAny: ["creature"],
+    });
+    expect(compiled.notes).toEqual([]);
+  });
+
+  it("plays a land and casts a creature from the top of the library", () => {
+    const { game, p1 } = twoPlayers();
+    game.turn.phase = "precombatMain";
+    game.turn.step = "precombatMain";
+    const granter = createCardDefinition({
+      name: "Seer of the Top",
+      typeLine: "Enchantment",
+      topOfLibrary: { look: true, playLands: true, castTypesAny: ["creature"] },
+    });
+    game.definitions[granter.id] = granter;
+    const seer = createCardInstance({ definitionId: granter.id, ownerId: p1.id, zone: "battlefield" });
+    game.cards[seer.id] = seer;
+    p1.zones.battlefield.push(seer.id);
+
+    // A land on top: playable from the library.
+    const forest = createCardDefinition({ name: "Forest", typeLine: "Basic Land - Forest" });
+    game.definitions[forest.id] = forest;
+    const topLand = createCardInstance({ definitionId: forest.id, ownerId: p1.id, zone: "library" });
+    game.cards[topLand.id] = topLand;
+    p1.zones.library.unshift(topLand.id);
+    const landActions = legalActions(game, p1.id);
+    expect(landActions).toContainEqual({ kind: "play_land", cardId: topLand.id, faceIndex: 0 });
+    const played = applyAction(game, { kind: "play_land", playerId: p1.id, cardId: topLand.id });
+    expect(played.cards[topLand.id]?.zone).toBe("battlefield");
+
+    // A creature now on top: castable from the library with mana available.
+    const bear = createCardDefinition({
+      name: "Runeclaw Bear",
+      manaCost: "{G}",
+      typeLine: "Creature - Bear",
+      power: 2,
+      toughness: 2,
+    });
+    const next = structuredClone(played);
+    next.definitions[bear.id] = bear;
+    const p1After = next.players[0]!;
+    const topBear = createCardInstance({ definitionId: bear.id, ownerId: p1After.id, zone: "library" });
+    next.cards[topBear.id] = topBear;
+    p1After.zones.library.unshift(topBear.id);
+    p1After.mana.G = 1;
+    const castActions = legalActions(next, p1After.id);
+    expect(castActions).toContainEqual({
+      kind: "cast_spell",
+      cardId: topBear.id,
+      faceIndex: 0,
+      fromCommand: false,
+    });
+    const cast = applyAction(next, {
+      kind: "cast_spell",
+      playerId: p1After.id,
+      cardId: topBear.id,
+      targets: [],
+    });
+    expect(cast.stack).toHaveLength(1);
+    const resolved = resolveTopOfStack(cast);
+    expect(resolved.cards[topBear.id]?.zone).toBe("battlefield");
+
+    // A sorcery on top is not castable under a creature-only grant.
+    const bolt = createCardDefinition({
+      name: "Simple Sorcery",
+      manaCost: "{G}",
+      typeLine: "Sorcery",
+      effects: [{ kind: "gain_life", playerId: "controller", amount: 1 }],
+    });
+    const blocked = structuredClone(resolved);
+    blocked.definitions[bolt.id] = bolt;
+    const p1Blocked = blocked.players[0]!;
+    const topBolt = createCardInstance({ definitionId: bolt.id, ownerId: p1Blocked.id, zone: "library" });
+    blocked.cards[topBolt.id] = topBolt;
+    p1Blocked.zones.library.unshift(topBolt.id);
+    p1Blocked.mana.G = 1;
+    expect(() =>
+      applyAction(blocked, {
+        kind: "cast_spell",
+        playerId: p1Blocked.id,
+        cardId: topBolt.id,
+        targets: [],
+      }),
+    ).toThrow();
   });
 });

@@ -16,8 +16,8 @@ This is **not** Wizards of the Coast software. It is also **not** the sibling Bi
 | --- | --- |
 | **Phase** | Comprehensive Rules machinery (layers, events, choices, permanents) + coverage flywheel |
 | **Next** | Private alpha (invite friends, play complete games) |
-| **Tests** | 572 passing; a 10,000-game random-action fuzz marathon gates checkpoint-45, sharded 800–2,000-game burns gate every wave since |
-| **Compile rate** | 85% of a 60-card real-staple sample compiles fully (CI floor 82%); 24.5% of the EDHREC top-2,000 (measured 2026-08-20 — climbing from 15.6% the same day as the flywheel grinds) |
+| **Tests** | 583 passing; a 10,000-game random-action fuzz marathon gates checkpoint-45, 200-game burns gate every wave and 800+ burns gate every checkpoint tag |
+| **Compile rate** | 85% of a 60-card real-staple sample compiles fully (CI floor 82%); 25.7% of the EDHREC top-2,000 (measured 2026-08-20 — climbing from 15.6% the same day as the flywheel grinds) |
 | **Installer** | `npm run dist` builds a one-click Windows installer (`release/BizzyMTG Commander Setup 0.1.0.exe`). |
 
 ---
@@ -159,5 +159,6 @@ Git tags on `main`. Do not move old tags.
 | `checkpoint-47-tax-and-recursion` | Rhystic-style taxes, additional cast costs, top-tutors, graveyard recursion, mass damage |
 | `checkpoint-48-computed-mana` | Granted mana abilities, Urborg land types, star P/T, flicker, may-pay effects |
 | `checkpoint-49-spell-copies` | Spell copies on the stack (CR 707.10), subject-spell copy/counter cast triggers |
+| `checkpoint-50-top-of-library` | Play/cast from the library top (Oracle of Mul Daya), changeling, free-spell cycle, reveal lands, filter lands |
 
 These live on the `comprehensive-plan` branch (see docs/DEVELOPMENT_PROGRESS.md); merge to `main` at will — every checkpoint is a playable table. Next: **Private Alpha**, then productization.

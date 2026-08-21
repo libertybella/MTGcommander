@@ -100,6 +100,72 @@ export function canPlayLandsFromGraveyard(state: GameState, playerId: string): b
   });
 }
 
+/**
+ * Merged top-of-library permissions from the player's battlefield permanents
+ * (Oracle of Mul Daya, Elven Chorus). Null when nothing grants any.
+ */
+export function topOfLibraryGrant(
+  state: GameState,
+  playerId: string,
+): { look: boolean; playLands: boolean; castAll: boolean; castTypesAny: string[] } | null {
+  let look = false;
+  let playLands = false;
+  let castAll = false;
+  const castTypes = new Set<string>();
+  for (const card of Object.values(state.cards)) {
+    if (card.zone !== "battlefield" || card.controllerId !== playerId) {
+      continue;
+    }
+    if (abilitiesRemoved(state, card.id)) {
+      continue;
+    }
+    const grant = state.definitions[card.definitionId]?.topOfLibrary;
+    if (!grant) {
+      continue;
+    }
+    look = look || grant.look === true;
+    playLands = playLands || grant.playLands === true;
+    castAll = castAll || grant.castAll === true;
+    for (const type of grant.castTypesAny ?? []) {
+      castTypes.add(type);
+    }
+  }
+  if (!look && !playLands && !castAll && castTypes.size === 0) {
+    return null;
+  }
+  return { look, playLands, castAll, castTypesAny: [...castTypes] };
+}
+
+/** May this exact card be cast right now from the top of its owner's library? */
+export function castableFromTop(state: GameState, playerId: string, cardId: string): boolean {
+  const player = state.players.find((entry) => entry.id === playerId);
+  if (!player || player.zones.library[0] !== cardId) {
+    return false;
+  }
+  const card = state.cards[cardId];
+  const definition = card ? state.definitions[card.definitionId] : undefined;
+  if (!definition || definition.characteristics.types.includes("land")) {
+    return false;
+  }
+  const grant = topOfLibraryGrant(state, playerId);
+  if (!grant) {
+    return false;
+  }
+  return (
+    grant.castAll ||
+    grant.castTypesAny.some((type) => definition.characteristics.types.includes(type))
+  );
+}
+
+/** May this exact card be played as a land from the top of its owner's library? */
+export function canPlayLandFromTop(state: GameState, playerId: string, cardId: string): boolean {
+  const player = state.players.find((entry) => entry.id === playerId);
+  if (!player || player.zones.library[0] !== cardId) {
+    return false;
+  }
+  return topOfLibraryGrant(state, playerId)?.playLands === true;
+}
+
 /** "If you control a commander" (the free-spell cycle): any commander on the
  * battlefield under this player's control, their own or a stolen one. */
 export function controlsCommander(state: GameState, playerId: string): boolean {

@@ -66,6 +66,7 @@ export function createCardDefinition(
         | "cantBeCountered"
         | "freeIfCommander"
         | "changeling"
+        | "topOfLibrary"
         | "costReductions"
         | "chooseCreatureTypeOnEnter"
         | "entersWithXCounters"
@@ -196,6 +197,18 @@ export function createCardDefinition(
     ...(input.cantBeCountered ? { cantBeCountered: true } : {}),
     ...(input.freeIfCommander ? { freeIfCommander: true } : {}),
     ...(input.changeling ? { changeling: true } : {}),
+    ...(input.topOfLibrary
+      ? {
+          topOfLibrary: {
+            ...(input.topOfLibrary.look ? { look: true } : {}),
+            ...(input.topOfLibrary.playLands ? { playLands: true } : {}),
+            ...(input.topOfLibrary.castAll ? { castAll: true } : {}),
+            ...(input.topOfLibrary.castTypesAny
+              ? { castTypesAny: [...input.topOfLibrary.castTypesAny] }
+              : {}),
+          },
+        }
+      : {}),
     ...(input.chooseCreatureTypeOnEnter ? { chooseCreatureTypeOnEnter: true } : {}),
     ...(input.entersWithXCounters ? { entersWithXCounters: true } : {}),
     ...(input.playLandsFromGraveyard ? { playLandsFromGraveyard: true } : {}),

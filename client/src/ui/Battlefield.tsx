@@ -22,6 +22,7 @@ import {
   manaAbilitiesOf,
   manaTapOptionsFor,
   tokenTemplatesOf,
+  topOfLibraryGrant,
   type ActivatedAbility,
   type CardDefinition,
   type CardInstanceId,
@@ -2205,17 +2206,44 @@ export function Battlefield(props: Props) {
               onPreviewEnter={onPreviewEnter}
               onPreviewLeave={onPreviewLeave}
               extra={
-                targeting &&
-                nextRequirement &&
-                (nextRequirement.kind === "player" || nextRequirement.kind === "player_or_creature") ? (
-                  <button
-                    type="button"
-                    data-testid="target-you"
-                    onClick={() => addTarget({ type: "player", playerId: you.id })}
-                  >
-                    Target {you.displayName}
-                  </button>
-                ) : null
+                <>
+                  {targeting &&
+                  nextRequirement &&
+                  (nextRequirement.kind === "player" ||
+                    nextRequirement.kind === "player_or_creature") ? (
+                    <button
+                      type="button"
+                      data-testid="target-you"
+                      onClick={() => addTarget({ type: "player", playerId: you.id })}
+                    >
+                      Target {you.displayName}
+                    </button>
+                  ) : null}
+                  {(() => {
+                    // Oracle of Mul Daya-class grants: show the viewer their
+                    // library's top card, playable like a hand card.
+                    const grant = topOfLibraryGrant(state, you.id);
+                    const topId = grant?.look ? you.zones.library[0] : undefined;
+                    if (!topId) {
+                      return null;
+                    }
+                    return (
+                      <span className="top-of-library" data-testid="top-of-library">
+                        <CardTile
+                          state={state}
+                          cardId={topId}
+                          size="hand"
+                          previewable
+                          onClick={
+                            !over && !mulliganOpen ? () => clickHandCard(topId) : undefined
+                          }
+                          onPreviewEnter={onPreviewEnter}
+                          onPreviewLeave={onPreviewLeave}
+                        />
+                      </span>
+                    );
+                  })()}
+                </>
               }
             />
             <HandZone

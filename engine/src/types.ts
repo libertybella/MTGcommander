@@ -142,6 +142,12 @@ export type CardDefinition = {
    */
   changeling?: boolean;
   /**
+   * "You may look at the top card of your library any time" and friends
+   * (Oracle of Mul Daya, Elven Chorus). Grants apply to the controller while
+   * this permanent is on the battlefield with its abilities intact.
+   */
+  topOfLibrary?: TopOfLibraryGrant;
+  /**
    * "Artifact spells you cast cost {1} less to cast" (medallions, Foundry
    * Inspector). Applies to the controller's spells while on the battlefield;
    * only the generic portion shrinks, never below zero.
@@ -856,6 +862,17 @@ export type PendingPrompt =
       reason: "unless_pays" | "ward";
       resumeEffects?: GameEffect[];
     };
+
+export type TopOfLibraryGrant = {
+  /** The controller may see the top card of their library at any time. */
+  look?: boolean;
+  /** "You may play lands from the top of your library." */
+  playLands?: boolean;
+  /** "You may … cast spells from the top of your library" (no type filter). */
+  castAll?: boolean;
+  /** "You may cast <type> spells from the top of your library." */
+  castTypesAny?: string[];
+};
 
 export type EnterTappedUnless =
   | { kind: "other_lands"; count: number }

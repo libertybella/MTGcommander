@@ -319,6 +319,33 @@ export function parseGameState(json: string): GameState {
       ...(def.cantBeCountered === true ? { cantBeCountered: true } : {}),
       ...(def.freeIfCommander === true ? { freeIfCommander: true } : {}),
       ...(def.changeling === true ? { changeling: true } : {}),
+      ...(def.topOfLibrary === undefined
+        ? {}
+        : {
+            topOfLibrary: (() => {
+              if (!isRecord(def.topOfLibrary)) {
+                throw new Error(`Invalid definition.${id}.topOfLibrary`);
+              }
+              const grant = def.topOfLibrary;
+              return {
+                ...(grant.look === true ? { look: true } : {}),
+                ...(grant.playLands === true ? { playLands: true } : {}),
+                ...(grant.castAll === true ? { castAll: true } : {}),
+                ...(grant.castTypesAny === undefined
+                  ? {}
+                  : {
+                      castTypesAny: (() => {
+                        if (!Array.isArray(grant.castTypesAny)) {
+                          throw new Error(`Invalid definition.${id}.topOfLibrary.castTypesAny`);
+                        }
+                        return grant.castTypesAny.map((entry, index) =>
+                          expectString(entry, `definition.${id}.topOfLibrary.castTypesAny[${index}]`),
+                        );
+                      })(),
+                    }),
+              };
+            })(),
+          }),
       ...(def.chooseCreatureTypeOnEnter === true ? { chooseCreatureTypeOnEnter: true } : {}),
       ...(def.entersWithXCounters === true ? { entersWithXCounters: true } : {}),
       ...(def.additionalCost === undefined

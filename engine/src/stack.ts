@@ -2,6 +2,7 @@ import { createId } from "./ids";
 import { cloneGameState } from "./clone";
 import { isCommander, isInstantOrSorcery } from "./cardTypes";
 import { abilitiesRemoved } from "./characteristicsEngine";
+import { castableFromTop } from "./derived";
 import { enterOwnerZone, findCardZone, removeCardFromCurrentZone } from "./zones";
 import { applyEffects, bindCardEffects } from "./effects";
 import { isLiving, livingPlayerCount, nextLivingPlayerId } from "./players";
@@ -102,7 +103,12 @@ export function putSpellOnStack(
   }
   const located = findCardZone(state, cardId);
   const fromCommand = located?.zone === "command" && isCommander(state, cardId);
-  if (!located || (located.zone !== "hand" && !fromCommand)) {
+  // Oracle of Mul Daya-style grants: the top card of the caster's library is
+  // castable as though it were in hand.
+  const fromLibraryTop =
+    located?.zone === "library" &&
+    castableFromTop(state, state.cards[cardId]?.controllerId ?? "", cardId);
+  if (!located || (located.zone !== "hand" && !fromCommand && !fromLibraryTop)) {
     throw new Error(`Card ${cardId} must be in hand to put on the stack`);
   }
   const definition = state.definitions[card.definitionId];

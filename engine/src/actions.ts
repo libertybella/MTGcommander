@@ -2,7 +2,7 @@ import { declareAttackers, declareBlockers, lockRemainingBlockers, pendingBlocke
 import { abilitiesRemoved } from "./characteristicsEngine";
 import { isCommander, isCreature, isInstant, isInstantOrSorcery, isLand, isMainPhase } from "./cardTypes";
 import { cloneGameState } from "./clone";
-import { canPlayLandsFromGraveyard, castCostReduction, controlsCommander, landDropAllowance } from "./derived";
+import { canPlayLandFromTop, canPlayLandsFromGraveyard, castCostReduction, castableFromTop, controlsCommander, landDropAllowance } from "./derived";
 import { eliminatePlayerInPlace } from "./elimination";
 import { applyEffects, bindCardEffects } from "./effects";
 import { hasKeyword } from "./keywords";
@@ -109,7 +109,13 @@ function validateCast(
       located.playerId === playerId &&
       isCommander(state, cardId),
   );
-  if (!fromHand && !fromCommand) {
+  const fromLibraryTop = Boolean(
+    located &&
+      located.zone === "library" &&
+      located.playerId === playerId &&
+      castableFromTop(state, playerId, cardId),
+  );
+  if (!fromHand && !fromCommand && !fromLibraryTop) {
     throw new Error(`Card ${cardId} must be in the player's hand`);
   }
 
@@ -349,7 +355,15 @@ function applyPlayLand(
     located?.zone === "graveyard" &&
     located.playerId === playerId &&
     canPlayLandsFromGraveyard(faced, playerId);
-  if (!located || (located.zone !== "hand" && !fromGraveyard) || located.playerId !== playerId) {
+  const fromLibraryTop =
+    located?.zone === "library" &&
+    located.playerId === playerId &&
+    canPlayLandFromTop(faced, playerId, cardId);
+  if (
+    !located ||
+    (located.zone !== "hand" && !fromGraveyard && !fromLibraryTop) ||
+    located.playerId !== playerId
+  ) {
     throw new Error(`Card ${cardId} must be in the player's hand`);
   }
 

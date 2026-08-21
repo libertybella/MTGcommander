@@ -3,7 +3,7 @@ import { abilitiesRemoved, cardMatchesSubtype } from "./characteristicsEngine";
 import { hasKeyword } from "./keywords";
 import { emptyManaPool } from "./createGame";
 import { pendingBlockerPlayer } from "./combat";
-import { canPlayLandsFromGraveyard, castCostReduction, controlsCommander, landDropAllowance } from "./derived";
+import { canPlayLandsFromGraveyard, castCostReduction, controlsCommander, landDropAllowance, topOfLibraryGrant } from "./derived";
 import { canPayManaCost, parseManaCost, type ParsedManaCost } from "./mana";
 import { manaAbilitiesFor, manaTapOptionsFor } from "./manaOptions";
 import { isMulliganOpen } from "./mulligan";
@@ -411,6 +411,36 @@ export function legalActions(state: GameState, playerId: PlayerId): LegalAction[
       }
       if (abilityUsable(state, playerId, card, ability, potential)) {
         actions.push({ kind: "activate_ability", cardId, abilityIndex });
+      }
+    }
+  }
+
+  // Top-of-library grants (Oracle of Mul Daya, Elven Chorus): the library's
+  // top card joins the playable set when a battlefield permanent allows it.
+  const topGrant = topOfLibraryGrant(state, playerId);
+  const topCardId = topGrant ? player.zones.library[0] : undefined;
+  if (topGrant && topCardId) {
+    const topCard = state.cards[topCardId];
+    const topDefinition = topCard ? state.definitions[topCard.definitionId] : undefined;
+    if (topDefinition) {
+      const topIsLand = topDefinition.characteristics.types.includes("land");
+      if (
+        topIsLand &&
+        topGrant.playLands &&
+        inSorceryWindow(state, playerId) &&
+        player.landsPlayedThisTurn < landDropAllowance(state, playerId)
+      ) {
+        actions.push({ kind: "play_land", cardId: topCardId, faceIndex: 0 });
+      }
+      if (
+        !topIsLand &&
+        (topGrant.castAll ||
+          topGrant.castTypesAny.some((type) =>
+            topDefinition.characteristics.types.includes(type),
+          )) &&
+        castableFace(state, playerId, topDefinition, potential, 0)
+      ) {
+        actions.push({ kind: "cast_spell", cardId: topCardId, faceIndex: 0, fromCommand: false });
       }
     }
   }

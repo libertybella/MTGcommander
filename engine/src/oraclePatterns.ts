@@ -3,6 +3,7 @@ import { parseAmassClause } from "./tokens";
 import type {
   ActivatedAbility,
   AdditionalCastCost,
+  TopOfLibraryGrant,
   CardEffect,
   CardTrigger,
   ChooseCardSource,
@@ -46,6 +47,7 @@ export type CompiledOracleText = {
   cantBeCountered?: boolean;
   freeIfCommander?: boolean;
   changeling?: boolean;
+  topOfLibrary?: TopOfLibraryGrant;
   costReductions?: CostReduction[];
   chooseCreatureTypeOnEnter?: boolean;
   entersWithXCounters?: boolean;
@@ -2272,6 +2274,33 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
 
     if (/^Changeling$/i.test(sentence)) {
       result.changeling = true;
+      continue;
+    }
+
+    if (/^You may look at the top card of your library any time$/i.test(sentence)) {
+      result.topOfLibrary = { ...(result.topOfLibrary ?? {}), look: true };
+      continue;
+    }
+
+    if (/^You may play lands and cast spells from the top of your library$/i.test(sentence)) {
+      result.topOfLibrary = { ...(result.topOfLibrary ?? {}), playLands: true, castAll: true };
+      continue;
+    }
+
+    if (/^You may play lands from the top of your library$/i.test(sentence)) {
+      result.topOfLibrary = { ...(result.topOfLibrary ?? {}), playLands: true };
+      continue;
+    }
+
+    const topCast = sentence.match(
+      /^You may cast (artifact|creature|enchantment|instant|sorcery) spells from the top of your library$/i,
+    );
+    if (topCast?.[1]) {
+      const prior = result.topOfLibrary ?? {};
+      result.topOfLibrary = {
+        ...prior,
+        castTypesAny: [...new Set([...(prior.castTypesAny ?? []), topCast[1].toLowerCase()])],
+      };
       continue;
     }
 
