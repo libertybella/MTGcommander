@@ -874,6 +874,7 @@ export function bindCardEffect(
       return {
         kind: "bounce_each_creature",
         ...(effect.unlessCounter ? { unlessCounter: effect.unlessCounter } : {}),
+        ...(effect.onlyAttacking ? { onlyAttacking: true } : {}),
       };
     case "dig_top": {
       const playerId = bindPlayerSelector(state, effect.playerId, context);
@@ -1520,6 +1521,12 @@ function applyCopySpell(
     ...(entry.division ? { division: [...entry.division] } : {}),
     isCopy: true,
   });
+  // Magecraft: "cast or copy" triggers see the copy too.
+  if (entry.sourceId) {
+    dispatchEventsInPlace(next, [
+      { kind: "copies_spell", cardId: entry.sourceId, controllerId },
+    ]);
+  }
   return next;
 }
 
@@ -2196,6 +2203,7 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
             (card) =>
               card.zone === "battlefield" &&
               isCreature(next, card.id) &&
+              (!effect.onlyAttacking || card.attacking) &&
               (!effect.unlessCounter || (card.counters[effect.unlessCounter] ?? 0) === 0),
           )
           .map((card) => card.id);

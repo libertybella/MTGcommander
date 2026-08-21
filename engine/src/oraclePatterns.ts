@@ -72,6 +72,7 @@ export type CompiledOracleText = {
   playLandsFromGraveyard?: boolean;
   additionalCost?: AdditionalCastCost;
   dynamicPt?: { count: DynamicCount };
+  bonusPt?: { power: number; toughness: number; per: DynamicCount };
   modeChoice?: { min: number; max: number; maxIfCommander?: number };
   leftover: string[];
   notes: string[];
@@ -773,6 +774,14 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
 
   if (/^Return each creature to its owner's hand$/i.test(sentence)) {
     return { targetRequirements: [], effects: [{ kind: "bounce_each_creature" }] };
+  }
+
+  // Aetherize.
+  if (/^Return all attacking creatures to their owner(?:'s|s') hands?$/i.test(sentence)) {
+    return {
+      targetRequirements: [],
+      effects: [{ kind: "bounce_each_creature", onlyAttacking: true }],
+    };
   }
 
   if (/^(?:then )?populate$/i.test(sentence)) {
@@ -2683,6 +2692,7 @@ type TriggerHead = Pick<
   | "subjectPlayerOpponent"
   | "oncePerTurn"
   | "oncePerBatch"
+  | "alsoOnCopy"
 > & {
   /** "enters or attacks": emit a sibling trigger for each extra event. */
   extraEvents?: CardTrigger["event"][];
@@ -2690,7 +2700,18 @@ type TriggerHead = Pick<
 
 /** "Whenever another creature dies" → dies / any / excludeSelf, and friends. */
 function parseTriggerHead(head: string): TriggerHead | null {
-  const text = head.replace(/^Landfall\s*[—-]\s*/i, "").trim();
+  const text = head.replace(/^(?:Landfall|Magecraft)\s*[—-]\s*/i, "").trim();
+  if (/^Whenever you cast or copy an instant or sorcery spell$/i.test(text)) {
+    return {
+      event: "cast_spell",
+      watch: "controlled",
+      subjectFilter: { typesAny: ["instant", "sorcery"] },
+      alsoOnCopy: true,
+    };
+  }
+  if (/^Whenever you draw a card$/i.test(text)) {
+    return { event: "you_draw" };
+  }
   if (/^When(?:ever)? ~ dies$/i.test(text)) {
     return { event: "dies" };
   }
@@ -3885,6 +3906,24 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
         "cards in your graveyard": "cards_in_your_graveyard",
       };
       result.dynamicPt = { count: countOf[starPt[1].toLowerCase()]! };
+      continue;
+    }
+
+    // Storm-Kiln Artist: an asymmetric per-count self-buff.
+    const bonusPt = sentence.match(
+      /^~ gets \+(\d+)\/\+(\d+) for each (artifact|creature|land) you control$/i,
+    );
+    if (bonusPt?.[1] && bonusPt[2] && bonusPt[3]) {
+      const perOf: Record<string, DynamicCount> = {
+        artifact: "artifacts_you_control",
+        creature: "creatures_you_control",
+        land: "lands_you_control",
+      };
+      result.bonusPt = {
+        power: Number(bonusPt[1]),
+        toughness: Number(bonusPt[2]),
+        per: perOf[bonusPt[3].toLowerCase()]!,
+      };
       continue;
     }
 

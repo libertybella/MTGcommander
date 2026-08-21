@@ -405,9 +405,12 @@ function triggerMatchesEvent(
     return false;
   }
   if (event.kind === "draws") {
-    return trigger.event === "opponent_draws" && watcher.controllerId !== event.playerId;
+    if (trigger.event === "opponent_draws") {
+      return watcher.controllerId !== event.playerId;
+    }
+    return trigger.event === "you_draw" && watcher.controllerId === event.playerId;
   }
-  if (trigger.event === "opponent_draws") {
+  if (trigger.event === "opponent_draws" || trigger.event === "you_draw") {
     return false;
   }
   if (event.kind === "step_begins") {
@@ -488,6 +491,20 @@ function triggerMatchesEvent(
       return false;
     }
     if (trigger.excludeSelf && event.cardId === watcher.id) {
+      return false;
+    }
+    return subjectMatchesFilter(state, event.cardId, trigger.subjectFilter, watcher);
+  }
+  if (event.kind === "copies_spell") {
+    // Magecraft: only "cast or copy" triggers see spell copies.
+    if (trigger.event !== "cast_spell" || !trigger.alsoOnCopy) {
+      return false;
+    }
+    const watch = trigger.watch ?? "controlled";
+    if (watch === "controlled" && event.controllerId !== watcher.controllerId) {
+      return false;
+    }
+    if (watch === "opponents" && event.controllerId === watcher.controllerId) {
       return false;
     }
     return subjectMatchesFilter(state, event.cardId, trigger.subjectFilter, watcher);

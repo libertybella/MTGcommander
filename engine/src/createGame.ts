@@ -90,6 +90,7 @@ export function createCardDefinition(
         | "additionalCost"
         | "attackTax"
         | "dynamicPt"
+        | "bonusPt"
         | "modeChoice"
       >
     > & { colors?: Color[] },
@@ -115,6 +116,7 @@ export function createCardDefinition(
           ...(trigger.excludeSelf ? { excludeSelf: true } : {}),
           ...(trigger.oncePerTurn ? { oncePerTurn: true } : {}),
           ...(trigger.oncePerBatch ? { oncePerBatch: true } : {}),
+          ...(trigger.alsoOnCopy ? { alsoOnCopy: true } : {}),
           ...(trigger.condition ? { condition: { ...trigger.condition } } : {}),
           ...(trigger.subjectPlayerOpponent ? { subjectPlayerOpponent: true } : {}),
           ...(trigger.attacksAlone ? { attacksAlone: true } : {}),
@@ -311,6 +313,7 @@ export function createCardDefinition(
     ...(input.additionalCost ? { additionalCost: { ...input.additionalCost } } : {}),
     ...(input.attackTax ? { attackTax: { ...input.attackTax } } : {}),
     ...(input.dynamicPt ? { dynamicPt: { count: input.dynamicPt.count } } : {}),
+    ...(input.bonusPt ? { bonusPt: { ...input.bonusPt } } : {}),
     ...(input.modeChoice ? { modeChoice: { ...input.modeChoice } } : {}),
     ...(input.costReductions && input.costReductions.length > 0
       ? {

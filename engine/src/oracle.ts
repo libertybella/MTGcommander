@@ -231,6 +231,7 @@ function compileOneFace(card: OracleCard, definitionId: string): OracleCompileRe
     ...(compiled.playLandsFromGraveyard ? { playLandsFromGraveyard: true } : {}),
     ...(compiled.additionalCost ? { additionalCost: compiled.additionalCost } : {}),
     ...(compiled.dynamicPt ? { dynamicPt: compiled.dynamicPt } : {}),
+    ...(compiled.bonusPt ? { bonusPt: compiled.bonusPt } : {}),
     ...(compiled.modeChoice ? { modeChoice: compiled.modeChoice } : {}),
     ...(compiled.loyaltyAbilities && compiled.loyaltyAbilities.length > 0
       ? { loyaltyAbilities: compiled.loyaltyAbilities }

@@ -106,6 +106,13 @@ function baseComputed(state: GameState, card: CardInstance): ComputedCard {
   const dynamic = definition?.dynamicPt
     ? dynamicCountOf(state, card.controllerId, definition.dynamicPt.count)
     : null;
+  // Storm-Kiln Artist: "+1/+0 for each artifact you control" self-buff.
+  const bonusCount =
+    definition?.bonusPt && card.zone === "battlefield"
+      ? dynamicCountOf(state, card.controllerId, definition.bonusPt.per)
+      : 0;
+  const bonusPower = (definition?.bonusPt?.power ?? 0) * bonusCount;
+  const bonusToughness = (definition?.bonusPt?.toughness ?? 0) * bonusCount;
   return {
     characteristics: {
       supertypes: [...printed.supertypes],
@@ -116,8 +123,8 @@ function baseComputed(state: GameState, card: CardInstance): ComputedCard {
     },
     keywords: [...(definition?.keywords ?? [])],
     abilitiesRemoved: false,
-    power: dynamic ?? definition?.power ?? 0,
-    toughness: dynamic ?? definition?.toughness ?? 0,
+    power: (dynamic ?? definition?.power ?? 0) + bonusPower,
+    toughness: (dynamic ?? definition?.toughness ?? 0) + bonusToughness,
     grantedMana: [],
     allCreatureTypes: definition?.changeling === true,
     cantAttack: false,

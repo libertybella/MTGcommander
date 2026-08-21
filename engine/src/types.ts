@@ -221,6 +221,8 @@ export type CardDefinition = {
   ascend?: boolean;
   /** Star P/T: base power and toughness are each this count (CR 613.3a). */
   dynamicPt?: { count: DynamicCount };
+  /** Storm-Kiln Artist: "+1/+0 for each artifact you control". */
+  bonusPt?: { power: number; toughness: number; per: DynamicCount };
   /** Scryfall card image, if known. Empty for synthetic / hidden cards. */
   imageUrl: string;
   /** Linked opposite face for modal DFCs and transforming cards. */
@@ -561,7 +563,7 @@ export type GameEffect =
   | { kind: "fog" }
   | { kind: "windfall" }
   /** Wave Goodbye: bounce every creature missing the listed counter. */
-  | { kind: "bounce_each_creature"; unlessCounter?: string }
+  | { kind: "bounce_each_creature"; unlessCounter?: string; onlyAttacking?: boolean }
   /** Impulse digs: look at the top N, auto-take the first filter match to the
    * destination, rest to the bottom in random order. */
   | {
@@ -939,7 +941,7 @@ export type CardEffect =
   | { kind: "fog" }
   /** Windfall: each player discards their hand, then draws the greatest count. */
   | { kind: "windfall" }
-  | { kind: "bounce_each_creature"; unlessCounter?: string }
+  | { kind: "bounce_each_creature"; unlessCounter?: string; onlyAttacking?: boolean }
   | {
       kind: "dig_top";
       playerId: PlayerSelector;
@@ -1100,7 +1102,9 @@ export type TriggerEvent =
   /** A card went to a graveyard from anywhere but the battlefield (Syr Konrad). */
   | "graveyard_from_elsewhere"
   /** A card left the watcher's controller's graveyard (Syr Konrad). */
-  | "leaves_your_graveyard";
+  | "leaves_your_graveyard"
+  /** The controller drew a card (Psychosis Crawler). */
+  | "you_draw";
 
 /** An intervening-if condition, checked when the trigger would be queued.
  * Approximation: CR 603.4 also re-checks on resolution; this table checks
@@ -1156,6 +1160,8 @@ export type CardTrigger = {
   effects: CardEffect[];
   /** Chosen when the trigger is put on the stack. Empty or omitted means untargeted. */
   targetRequirements?: TargetRequirement[];
+  /** Magecraft: a cast_spell trigger that also fires on spell copies. */
+  alsoOnCopy?: boolean;
   /** "This ability triggers only once each turn" (Morbid Opportunist). */
   oncePerTurn?: boolean;
   /** "Whenever one or more …": fire once per simultaneous event batch. */
@@ -1187,7 +1193,9 @@ export type EngineEvent =
   /** A card arrived in a graveyard from a zone other than the battlefield. */
   | { kind: "put_in_graveyard_from_elsewhere"; cardId: CardInstanceId }
   /** A card left a graveyard; ownerId names whose graveyard it was. */
-  | { kind: "leaves_graveyard"; cardId: CardInstanceId; ownerId: PlayerId };
+  | { kind: "leaves_graveyard"; cardId: CardInstanceId; ownerId: PlayerId }
+  /** A spell copy hit the stack (Magecraft's "or copy" half). */
+  | { kind: "copies_spell"; cardId: CardInstanceId; controllerId: PlayerId };
 
 /** One triggered ability waiting to be put on the stack. */
 export type TriggerCandidate = {

@@ -504,6 +504,30 @@ export function parseGameState(json: string): GameState {
               return { count };
             })(),
           }),
+      ...(def.bonusPt === undefined
+        ? {}
+        : {
+            bonusPt: (() => {
+              if (!isRecord(def.bonusPt)) {
+                throw new Error(`Invalid definition.${id}.bonusPt`);
+              }
+              const per = expectString(def.bonusPt.per, `definition.${id}.bonusPt.per`);
+              if (
+                per !== "lands_you_control" &&
+                per !== "creatures_you_control" &&
+                per !== "artifacts_you_control" &&
+                per !== "cards_in_your_hand" &&
+                per !== "cards_in_your_graveyard"
+              ) {
+                throw new Error(`Invalid definition.${id}.bonusPt.per`);
+              }
+              return {
+                power: expectNumber(def.bonusPt.power, `definition.${id}.bonusPt.power`),
+                toughness: expectNumber(def.bonusPt.toughness, `definition.${id}.bonusPt.toughness`),
+                per,
+              };
+            })(),
+          }),
       ...(def.costReductions === undefined
         ? {}
         : {
@@ -1789,6 +1813,7 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
         ...(value.unlessCounter === undefined
           ? {}
           : { unlessCounter: expectString(value.unlessCounter, `${label}.unlessCounter`) }),
+        ...(value.onlyAttacking === true ? { onlyAttacking: true } : {}),
       };
     case "dig_top": {
       const digDestination = expectString(value.destination, `${label}.destination`);
@@ -2253,6 +2278,7 @@ function parseTriggers(value: unknown, label: string): CardTrigger[] {
       event !== "casts_second_spell" &&
       event !== "graveyard_from_elsewhere" &&
       event !== "leaves_your_graveyard" &&
+      event !== "you_draw" &&
       event !== "cast_spell" &&
       event !== "deals_combat_damage_to_player" &&
       event !== "deals_damage_to_player"
@@ -2313,6 +2339,7 @@ function parseTriggers(value: unknown, label: string): CardTrigger[] {
       ...(entry.excludeSelf === true ? { excludeSelf: true } : {}),
       ...(entry.oncePerTurn === true ? { oncePerTurn: true } : {}),
       ...(entry.oncePerBatch === true ? { oncePerBatch: true } : {}),
+      ...(entry.alsoOnCopy === true ? { alsoOnCopy: true } : {}),
       ...(entry.condition === undefined
         ? {}
         : {
@@ -3141,6 +3168,7 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
       ...(value.unlessCounter === undefined
         ? {}
         : { unlessCounter: expectString(value.unlessCounter, `${label}.unlessCounter`) }),
+      ...(value.onlyAttacking === true ? { onlyAttacking: true } : {}),
     };
   }
   if (kind === "dig_top") {

@@ -8597,3 +8597,179 @@ describe("wave 93: abolishers and rhythms", () => {
   });
 });
 
+describe("wave 94: magecraft and crawlers", () => {
+  it("compiles the magecraft pair, Psychosis Crawler, and Aetherize fully", () => {
+    const archmage = compileOracleCard({
+      oracleId: "archmage",
+      name: "Archmage Emeritus",
+      manaCost: "{2}{U}{U}",
+      typeLine: "Creature — Human Wizard",
+      power: "2",
+      toughness: "2",
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText: "Magecraft — Whenever you cast or copy an instant or sorcery spell, draw a card.",
+    });
+    expect(archmage.notes).toEqual([]);
+    expect(archmage.definition.triggers[0]?.alsoOnCopy).toBe(true);
+    expect(archmage.definition.triggers[0]?.subjectFilter?.typesAny).toEqual([
+      "instant",
+      "sorcery",
+    ]);
+
+    const artist = compileOracleCard({
+      oracleId: "artist",
+      name: "Storm-Kiln Artist",
+      manaCost: "{3}{R}",
+      typeLine: "Creature — Dwarf Shaman",
+      power: "2",
+      toughness: "2",
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "This creature gets +1/+0 for each artifact you control.\nMagecraft — Whenever you cast or copy an instant or sorcery spell, create a Treasure token. (It's an artifact with \"{T}, Sacrifice this token: Add one mana of any color.\")",
+    });
+    expect(artist.notes).toEqual([]);
+    expect(artist.definition.bonusPt).toEqual({
+      power: 1,
+      toughness: 0,
+      per: "artifacts_you_control",
+    });
+
+    const crawler = compileOracleCard({
+      oracleId: "crawler",
+      name: "Psychosis Crawler",
+      manaCost: "{5}",
+      typeLine: "Artifact Creature — Phyrexian Horror",
+      power: "*",
+      toughness: "*",
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "Psychosis Crawler's power and toughness are each equal to the number of cards in your hand.\nWhenever you draw a card, each opponent loses 1 life.",
+    });
+    expect(crawler.notes).toEqual([]);
+    expect(crawler.definition.triggers[0]?.event).toBe("you_draw");
+
+    const aetherize = compileOracleCard({
+      oracleId: "aetherize",
+      name: "Aetherize",
+      manaCost: "{3}{U}",
+      typeLine: "Instant",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText: "Return all attacking creatures to their owner's hand.",
+    });
+    expect(aetherize.notes).toEqual([]);
+    expect(aetherize.definition.effects[0]).toEqual({
+      kind: "bounce_each_creature",
+      onlyAttacking: true,
+    });
+  });
+
+  it("fires magecraft on spell copies and scales the artist's power", () => {
+    const { game, p1 } = twoPlayers();
+    const artistDef = createCardDefinition({
+      name: "Artist",
+      typeLine: "Creature — Dwarf Shaman",
+      power: 2,
+      toughness: 2,
+      bonusPt: { power: 1, toughness: 0, per: "artifacts_you_control" },
+      triggers: [
+        {
+          event: "cast_spell",
+          watch: "controlled",
+          alsoOnCopy: true,
+          subjectFilter: { typesAny: ["instant", "sorcery"] },
+          effects: [
+            {
+              kind: "create_token",
+              ownerId: "controller",
+              name: "Treasure",
+              typeLine: "Artifact — Treasure Token",
+              power: null,
+              toughness: null,
+            },
+          ],
+        },
+      ],
+    });
+    const boltDef = createCardDefinition({
+      name: "Bolt",
+      manaCost: "",
+      typeLine: "Instant",
+      effects: [{ kind: "gain_life", playerId: "controller", amount: 1 }],
+    });
+    game.definitions[artistDef.id] = artistDef;
+    game.definitions[boltDef.id] = boltDef;
+    const artist = createCardInstance({ definitionId: artistDef.id, ownerId: p1.id, zone: "battlefield" });
+    const bolt = createCardInstance({ definitionId: boltDef.id, ownerId: p1.id, zone: "hand" });
+    game.cards[artist.id] = artist;
+    game.cards[bolt.id] = bolt;
+    p1.zones.battlefield.push(artist.id);
+    p1.zones.hand.push(bolt.id);
+    game.turn.phase = "precombatMain";
+    game.turn.step = "precombatMain";
+    game.priorityPlayerId = p1.id;
+
+    let next = applyAction(game, { kind: "cast_spell", playerId: p1.id, cardId: bolt.id, targets: [] });
+    const spellId = next.stack[next.stack.length - 1]!.kind === "spell" ? next.stack[next.stack.length - 1]!.id : next.stack[0]!.id;
+    // Copying the spell fires the "or copy" half.
+    next = applyEffect(next, { kind: "copy_spell", stackObjectId: spellId, controllerId: p1.id });
+    while (next.stack.length > 0) {
+      next = resolveTopOfStack(next);
+    }
+    const treasures = Object.values(next.cards).filter(
+      (card) => card.isToken && next.definitions[card.definitionId]?.name === "Treasure",
+    );
+    // One for the cast, one for the copy.
+    expect(treasures).toHaveLength(2);
+    // +1/+0 per artifact: two Treasures on the battlefield.
+    expect(computedCard(next, artist.id)?.power).toBe(4);
+    expect(computedCard(next, artist.id)?.toughness).toBe(2);
+  });
+
+  it("bounces only attackers and drains on draws", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const bearDef = createCardDefinition({ name: "Bear", typeLine: "Creature — Bear", power: 2, toughness: 2 });
+    game.definitions[bearDef.id] = bearDef;
+    const attacker = createCardInstance({ definitionId: bearDef.id, ownerId: p2.id, zone: "battlefield" });
+    const bystander = createCardInstance({ definitionId: bearDef.id, ownerId: p2.id, zone: "battlefield" });
+    attacker.attacking = true;
+    game.cards[attacker.id] = attacker;
+    game.cards[bystander.id] = bystander;
+    p2.zones.battlefield.push(attacker.id, bystander.id);
+
+    const bounced = applyEffect(game, { kind: "bounce_each_creature", onlyAttacking: true });
+    expect(bounced.cards[attacker.id]?.zone).toBe("hand");
+    expect(bounced.cards[bystander.id]?.zone).toBe("battlefield");
+
+    // Psychosis Crawler: the controller's own draw drains each opponent.
+    const crawlerDef = createCardDefinition({
+      name: "Crawler",
+      typeLine: "Artifact Creature — Horror",
+      power: 1,
+      toughness: 1,
+      triggers: [
+        {
+          event: "you_draw",
+          effects: [{ kind: "lose_life", playerId: "each_opponent", amount: 1 }],
+        },
+      ],
+    });
+    game.definitions[crawlerDef.id] = crawlerDef;
+    const crawler = createCardInstance({ definitionId: crawlerDef.id, ownerId: p1.id, zone: "battlefield" });
+    game.cards[crawler.id] = crawler;
+    p1.zones.battlefield.push(crawler.id);
+    fillLibraries(game, 5);
+
+    let drawn = applyEffect(game, { kind: "draw", playerId: p1.id, count: 1 });
+    while (drawn.stack.length > 0) {
+      drawn = resolveTopOfStack(drawn);
+    }
+    expect(drawn.players[1]?.life).toBe(39);
+  });
+});
+
