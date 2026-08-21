@@ -657,12 +657,18 @@ export function queueBeginCombatTriggersInPlace(state: GameState): void {
   for (const player of state.players) {
     for (const cardId of player.zones.battlefield) {
       const card = state.cards[cardId];
-      if (!card || card.controllerId !== activeId) {
+      if (!card) {
         continue;
       }
       const triggers = state.definitions[card.definitionId]?.triggers ?? [];
       for (let index = 0; index < triggers.length; index += 1) {
-        if (triggers[index]?.event === "begin_combat") {
+        const trigger = triggers[index];
+        if (trigger?.event !== "begin_combat") {
+          continue;
+        }
+        // "on your turn" (the default) fires only for the active player's
+        // permanents; "each combat" (watch: any) fires for everyone's.
+        if (card.controllerId === activeId || trigger.watch === "any") {
           candidates.push({ cardId, triggerIndex: index });
         }
       }

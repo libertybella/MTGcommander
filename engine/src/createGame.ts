@@ -327,6 +327,7 @@ export function createCardDefinition(
               ...(entry.filter.typesAny ? { typesAny: [...entry.filter.typesAny] } : {}),
               ...(entry.filter.subtypesAny ? { subtypesAny: [...entry.filter.subtypesAny] } : {}),
               ...(entry.filter.colors ? { colors: [...entry.filter.colors] } : {}),
+              ...(entry.filter.chosenSubtype ? { chosenSubtype: true } : {}),
             },
           })),
         }

@@ -581,6 +581,7 @@ export function parseGameState(json: string): GameState {
                     ...(typesAny.length > 0 ? { typesAny } : {}),
                     ...(subtypesAny.length > 0 ? { subtypesAny } : {}),
                     ...(colors.length > 0 ? { colors } : {}),
+                    ...(entry.filter.chosenSubtype === true ? { chosenSubtype: true } : {}),
                   },
                 };
               });
@@ -2112,6 +2113,8 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
       };
     case "each_creature_damages_controller":
       return { kind, amount: expectNumber(value.amount, `${label}.amount`) };
+    case "double_team_pt_until_eot":
+      return { kind, playerId: parsePlayerSelector(value.playerId, `${label}.playerId`) };
     case "overload_each":
       return {
         kind,
@@ -3087,6 +3090,9 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
   }
   if (kind === "each_creature_damages_controller") {
     return { kind, amount: expectNumber(value.amount, `${label}.amount`) };
+  }
+  if (kind === "double_team_pt_until_eot") {
+    return { kind, playerId: expectString(value.playerId, `${label}.playerId`) };
   }
   if (kind === "overload_each") {
     return {

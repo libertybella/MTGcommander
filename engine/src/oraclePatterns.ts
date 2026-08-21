@@ -1879,6 +1879,18 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     };
   }
 
+  // Unnatural Growth.
+  if (
+    /^double the power and toughness of each creature you control until end of turn$/i.test(
+      sentence,
+    )
+  ) {
+    return {
+      targetRequirements: [],
+      effects: [{ kind: "double_team_pt_until_eot", playerId: "controller" }],
+    };
+  }
+
   // Rakdos Charm's third mode.
   match = sentence.match(/^Each creature deals (\d+) damage to its controller$/i);
   if (match?.[1]) {
@@ -1992,7 +2004,7 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
 
   // Ephemerate / Conjurer's Closet flicker.
   match = sentence.match(
-    /^(?:you may )?Exile target creature( you control)?, then return (?:it|that card) to the battlefield(?: under its owner's control)?$/i,
+    /^(?:you may )?Exile target creature( you control)?, then return (?:it|that card) to the battlefield(?: under (?:its owner's|your) control)?$/i,
   );
   if (match) {
     return {
@@ -4408,6 +4420,23 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
       continue;
     }
 
+    // Urza's Incubator / Herald's Horn: the discount reads the chosen type.
+    // Incubator omits "you cast"; the reduction still only applies to the
+    // controller's own spells — a documented approximation.
+    const chosenDiscount = sentence.match(
+      /^Creature spells(?: you cast)? of the chosen type cost \{(\d+)\} less to cast$/i,
+    );
+    if (chosenDiscount?.[1]) {
+      result.costReductions = [
+        ...(result.costReductions ?? []),
+        {
+          generic: Number(chosenDiscount[1]),
+          filter: { types: ["creature"], chosenSubtype: true },
+        },
+      ];
+      continue;
+    }
+
     const discount = sentence.match(/^(.+?) spells(?: you cast)? cost \{(\d+)\} less to cast$/i);
     if (discount?.[1] && discount[2]) {
       const what = discount[1].trim().toLowerCase();
@@ -4617,12 +4646,16 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
       continue;
     }
 
-    const beginCombat = sentence.match(/^At the beginning of combat on your turn, (.+)$/i);
+    const beginCombat = sentence.match(
+      /^At the beginning of (?:combat on your turn|each combat), (.+)$/i,
+    );
     if (beginCombat?.[1]) {
+      const everyCombat = /each combat/i.test(sentence);
       const inner = compileSimpleClause(beginCombat[1].trim());
       if (inner) {
         result.triggers.push({
           event: "begin_combat",
+          ...(everyCombat ? { watch: "any" as const } : {}),
           effects: inner.effects,
           targetRequirements: inner.targetRequirements,
         });

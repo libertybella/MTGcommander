@@ -74,9 +74,20 @@ export function castCostReduction(
       continue;
     }
     for (const reduction of state.definitions[card.definitionId]?.costReductions ?? []) {
-      const { types, typesAny, subtypesAny, colors } = reduction.filter;
+      const { types, typesAny, subtypesAny, colors, chosenSubtype } = reduction.filter;
       if (types && !types.every((type) => spell.characteristics.types.includes(type))) {
         continue;
+      }
+      // Urza's Incubator / Herald's Horn: the discount reads the source's
+      // as-enters chosen creature type.
+      if (chosenSubtype) {
+        const chosen = card.chosenCreatureType;
+        if (
+          !chosen ||
+          (!spell.changeling && !(spell.characteristics.subtypes ?? []).includes(chosen))
+        ) {
+          continue;
+        }
       }
       if (typesAny && !typesAny.some((type) => spell.characteristics.types.includes(type))) {
         continue;

@@ -16,6 +16,7 @@ import {
   resolveTopOfStack,
 } from "./index";
 import { cardMatchesSubtype, computedCard } from "./characteristicsEngine";
+import { castCostReduction } from "./derived";
 import { hasKeyword } from "./keywords";
 import { dispatchEventsInPlace } from "./triggers";
 import { applyCombatDamage } from "./combat";
@@ -8984,6 +8985,99 @@ describe("wave 96: bedevils and avengers", () => {
     // p1 controls two creatures, p2 controls one.
     expect(pinged.players[0]?.life).toBe(38);
     expect(pinged.players[1]?.life).toBe(39);
+  });
+});
+
+describe("wave 97: incubators and growth", () => {
+  it("compiles Urza's Incubator, Conjurer's Closet, and Unnatural Growth fully", () => {
+    const incubator = compileOracleCard({
+      oracleId: "incubator",
+      name: "Urza's Incubator",
+      manaCost: "{3}",
+      typeLine: "Artifact",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "As this artifact enters, choose a creature type.\nCreature spells of the chosen type cost {2} less to cast.",
+    });
+    expect(incubator.notes).toEqual([]);
+    expect(incubator.definition.chooseCreatureTypeOnEnter).toBe(true);
+    expect(incubator.definition.costReductions?.[0]).toEqual({
+      generic: 2,
+      filter: { types: ["creature"], chosenSubtype: true },
+    });
+
+    const closet = compileOracleCard({
+      oracleId: "closet",
+      name: "Conjurer's Closet",
+      manaCost: "{5}",
+      typeLine: "Artifact",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "At the beginning of your end step, you may exile target creature you control, then return that card to the battlefield under your control.",
+    });
+    expect(closet.notes).toEqual([]);
+    expect(closet.definition.triggers[0]?.event).toBe("end_step");
+
+    const growth = compileOracleCard({
+      oracleId: "growth-x",
+      name: "Unnatural Growth",
+      manaCost: "{1}{G}{G}{G}{G}",
+      typeLine: "Enchantment",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "At the beginning of each combat, double the power and toughness of each creature you control until end of turn.",
+    });
+    expect(growth.notes).toEqual([]);
+    expect(growth.definition.triggers[0]?.watch).toBe("any");
+    expect(growth.definition.triggers[0]?.effects[0]).toEqual({
+      kind: "double_team_pt_until_eot",
+      playerId: "controller",
+    });
+  });
+
+  it("discounts chosen-type creature spells and doubles team stats", () => {
+    const { game, p1 } = twoPlayers();
+    const incubatorDef = createCardDefinition({
+      name: "Incubator",
+      typeLine: "Artifact",
+      chooseCreatureTypeOnEnter: true,
+      costReductions: [{ generic: 2, filter: { types: ["creature"], chosenSubtype: true } }],
+    });
+    game.definitions[incubatorDef.id] = incubatorDef;
+    const incubator = createCardInstance({ definitionId: incubatorDef.id, ownerId: p1.id, zone: "battlefield" });
+    incubator.chosenCreatureType = "goblin";
+    game.cards[incubator.id] = incubator;
+    p1.zones.battlefield.push(incubator.id);
+
+    const goblinSpell = {
+      characteristics: { types: ["creature"], subtypes: ["goblin"], colors: ["R"] },
+    };
+    const elfSpell = {
+      characteristics: { types: ["creature"], subtypes: ["elf"], colors: ["G"] },
+    };
+    expect(castCostReduction(game, p1.id, goblinSpell)).toBe(2);
+    expect(castCostReduction(game, p1.id, elfSpell)).toBe(0);
+
+    const bigDef = createCardDefinition({ name: "Big", typeLine: "Creature — Beast", power: 3, toughness: 4 });
+    game.definitions[bigDef.id] = bigDef;
+    const big = createCardInstance({ definitionId: bigDef.id, ownerId: p1.id, zone: "battlefield" });
+    big.counters["p1p1"] = 1;
+    game.cards[big.id] = big;
+    p1.zones.battlefield.push(big.id);
+
+    const doubled = applyEffect(game, { kind: "double_team_pt_until_eot", playerId: p1.id });
+    // 3+1 counters = 4 power computed, doubled to 8; 4+1 = 5 toughness → 10.
+    expect(computedCard(doubled, big.id)?.power).toBe(8);
+    expect(computedCard(doubled, big.id)?.toughness).toBe(10);
   });
 });
 

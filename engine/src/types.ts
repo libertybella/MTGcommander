@@ -617,6 +617,7 @@ export type GameEffect =
   | { kind: "drain_opponents"; playerId: PlayerId; amount: number }
   | { kind: "silence"; playerId: PlayerId }
   | { kind: "each_creature_damages_controller"; amount: number }
+  | { kind: "double_team_pt_until_eot"; playerId: PlayerId }
   | {
       kind: "search_library";
       playerId: PlayerId;
@@ -703,8 +704,15 @@ export type AdditionalCastCost = {
 /** A static generic-cost discount on spells the controller casts. */
 export type CostReduction = {
   generic: number;
-  /** Empty filter means every spell. types all required; typesAny needs one; colors any overlap. */
-  filter: { types?: string[]; typesAny?: string[]; subtypesAny?: string[]; colors?: Color[] };
+  /** Empty filter means every spell. types all required; typesAny needs one; colors any overlap.
+   * chosenSubtype: the spell must have the source's chosen creature type. */
+  filter: {
+    types?: string[];
+    typesAny?: string[];
+    subtypesAny?: string[];
+    colors?: Color[];
+    chosenSubtype?: boolean;
+  };
 };
 
 export type EffectTarget =
@@ -1023,6 +1031,8 @@ export type CardEffect =
   | { kind: "silence"; playerId: PlayerSelector }
   /** Rakdos Charm: each creature pings its own controller. */
   | { kind: "each_creature_damages_controller"; amount: number }
+  /** Unnatural Growth: double each controlled creature's P/T until EOT. */
+  | { kind: "double_team_pt_until_eot"; playerId: PlayerSelector }
   | {
       kind: "search_library";
       playerId: PlayerSelector;

@@ -1,4 +1,4 @@
-import { abilitiesRemoved, cardMatchesSubtype } from "./characteristicsEngine";
+import { abilitiesRemoved, cardMatchesSubtype, computedCard } from "./characteristicsEngine";
 import { cloneGameState } from "./clone";
 import { createCardDefinition, createCardInstance } from "./createGame";
 import { characteristicsOf, hasSubtype, isCreature, isInstantOrSorcery, isLand, isPlaneswalker } from "./cardTypes";
@@ -669,6 +669,13 @@ export function bindCardEffect(
     }
     case "each_creature_damages_controller":
       return { kind: "each_creature_damages_controller", amount: effect.amount };
+    case "double_team_pt_until_eot": {
+      const playerId = bindPlayerSelector(state, effect.playerId, context);
+      if (!playerId) {
+        return null;
+      }
+      return { kind: "double_team_pt_until_eot", playerId };
+    }
     case "drain_opponents": {
       const playerId = bindPlayerSelector(state, effect.playerId, context);
       if (!playerId) {
@@ -2242,6 +2249,35 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
           card.counters[effect.counter] =
             (card.counters[effect.counter] ?? 0) +
             counterBatchAmount(next, card.id, effect.counter, effect.amount);
+        }
+        break;
+      }
+      case "double_team_pt_until_eot": {
+        requirePlayer(state, effect.playerId);
+        // Doubling is additive: +current power/+current toughness until EOT,
+        // read per creature when the effect resolves (CR 611.2c lock-in).
+        next = state;
+        const doubled = Object.values(state.cards).filter(
+          (card) =>
+            card.zone === "battlefield" &&
+            card.controllerId === effect.playerId &&
+            isCreature(state, card.id),
+        );
+        for (const card of doubled) {
+          const computed = computedCard(next, card.id);
+          const power = computed?.power ?? 0;
+          const toughness = computed?.toughness ?? 0;
+          if (power === 0 && toughness === 0) {
+            continue;
+          }
+          next = pushUntilEotEffect(next, [card.id], {
+            kind: "modify_pt",
+            power,
+            toughness,
+          });
+        }
+        if (next === state) {
+          next = cloneGameState(state);
         }
         break;
       }
