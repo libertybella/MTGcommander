@@ -661,6 +661,8 @@ export type GameEffect =
     }
   | { kind: "mill"; playerId: PlayerId; count: number }
   | { kind: "discard"; playerId: PlayerId; count: number }
+  /** Gamble: "discard a card at random". */
+  | { kind: "discard_random"; playerId: PlayerId; count: number }
   | { kind: "discard_unless_attacked"; playerId: PlayerId; count: number }
   | { kind: "amass"; playerId: PlayerId; amount: number; subtype?: string }
   | { kind: "reveal_zone"; fromPlayerId: PlayerId; toPlayerId: PlayerId; zone: "hand" }
@@ -930,6 +932,10 @@ export type TargetKind =
   | "own_graveyard_instant_or_sorcery_card"
   /** A creature card in ANY graveyard (Reanimate). */
   | "graveyard_creature_card"
+  /** Any card in ANY graveyard (Noxious Revival). */
+  | "graveyard_card"
+  /** "two target artifacts, creatures, and/or lands" (Ghostly Flicker). */
+  | "artifact_creature_or_land"
   | "nonartifact_creature"
   | "land"
   /** Boseiju, Who Endures. */
@@ -1118,6 +1124,10 @@ export type CardEffect =
       mana: Partial<ManaPool>;
       /** Jeska's Will: multiply the mana by the chosen player's hand size. */
       perChosenPlayerHand?: boolean;
+      /** Lotus Cobra: "add one mana of any color" — auto-picked at bind
+       * (first commander-identity color, else {G}), a documented
+       * approximation of the free choice. */
+      anyColor?: number;
     }
   | {
       kind: "create_token";
@@ -1151,6 +1161,8 @@ export type CardEffect =
     }
   | { kind: "mill"; playerId: PlayerSelector; count: number }
   | { kind: "discard"; playerId: PlayerSelector; count: number }
+  /** Gamble: "discard a card at random". */
+  | { kind: "discard_random"; playerId: PlayerSelector; count: number }
   | { kind: "discard_unless_attacked"; playerId: PlayerSelector; count: number }
   | { kind: "amass"; playerId: PlayerSelector; amount: number; subtype?: string }
   | {

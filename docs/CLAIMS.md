@@ -61,7 +61,7 @@ Statuses: `open` · `claimed` · `in-progress` · `done` · `blocked`
 | Dynamic self-discounts (Colossus/Henge quartet) | E | done | claude/2daf8b18 | comprehensive-plan | 2026-08-21 | Wave 128 merged: all four discounts compile; Great Henge + Excalibur flip (914/2,009 = 45.5%). Colossus still needs a graveyard sac-2 activation, Skullspore a dies-batch-total token — both rows below |
 | Phyrexian mana payment | E | open | | | | Unblocks Drivnod's activated ability |
 | Bolas's Citadel | E | open | | | | |
-| One-away grinding (rotating buckets) | F | in-progress | claude/2daf8b18 | comprehensive-plan | 2026-08-21 | Wave 135 bucket: probing Victimize, Plaguecrafter, Stitcher's Supplier, Noxious Revival, Second Harvest, Ghostly Flicker, Gamble. Wave 133 bucket done (5 flips — 934/2,009 = 46.5%) |
+| One-away grinding (rotating buckets) | F | open | | | 2026-08-21 | Wave 135 bucket done (5 flips: Stitcher's Supplier, Lotus Cobra, Noxious Revival, Gamble, Ghostly Flicker — 943/2,009 = 46.9%). Probed but deferred: Victimize (resolution-cost sac), Plaguecrafter (each-player sac choice), Second Harvest (per-token copies), Forgotten Ancient (counter redistribution) |
 
 ## Done
 

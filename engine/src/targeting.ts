@@ -284,6 +284,13 @@ export function isChosenTargetLegal(
         ),
     );
   }
+  // "target card from a graveyard" (Noxious Revival).
+  if (requirement.kind === "graveyard_card") {
+    if (target.type !== "creature") {
+      return false;
+    }
+    return state.cards[target.cardId]?.zone === "graveyard";
+  }
   if (
     requirement.kind === "own_graveyard_card" ||
     requirement.kind === "own_graveyard_creature_card" ||
@@ -330,6 +337,7 @@ export function isChosenTargetLegal(
     requirement.kind === "land" ||
     requirement.kind === "artifact_enchantment_or_nonbasic_land" ||
     requirement.kind === "artifact_creature_or_planeswalker" ||
+    requirement.kind === "artifact_creature_or_land" ||
     requirement.kind === "planeswalker" ||
     requirement.kind === "commander"
   ) {
@@ -394,6 +402,11 @@ export function isChosenTargetLegal(
           types.includes("artifact") ||
           isCreature(state, target.cardId) ||
           isPlaneswalker(state, target.cardId)
+        );
+      // "two target artifacts, creatures, and/or lands" (Ghostly Flicker).
+      case "artifact_creature_or_land":
+        return (
+          types.includes("artifact") || isCreature(state, target.cardId) || types.includes("land")
         );
       case "planeswalker":
         return isPlaneswalker(state, target.cardId);
@@ -576,7 +589,7 @@ export function legalChoicesForRequirement(
       .map((cardId) => ({ type: "creature" as const, cardId }))
       .filter((choice) => isChosenTargetLegal(state, requirement, choice, casterId));
   }
-  if (requirement.kind === "graveyard_creature_card") {
+  if (requirement.kind === "graveyard_creature_card" || requirement.kind === "graveyard_card") {
     return livingPlayers(state)
       .flatMap((player) => player.zones.graveyard)
       .map((cardId) => ({ type: "creature" as const, cardId }))
@@ -595,6 +608,7 @@ export function legalChoicesForRequirement(
     requirement.kind === "land" ||
     requirement.kind === "artifact_enchantment_or_nonbasic_land" ||
     requirement.kind === "artifact_creature_or_planeswalker" ||
+    requirement.kind === "artifact_creature_or_land" ||
     requirement.kind === "planeswalker" ||
     requirement.kind === "commander"
   ) {

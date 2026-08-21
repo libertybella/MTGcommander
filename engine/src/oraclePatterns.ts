@@ -2270,6 +2270,67 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
       effects: [{ kind: "add_mana", playerId: "controller", mana: ritual.produces }],
     };
   }
+  // Lotus Cobra: "add one mana of any color" as a resolved effect — the
+  // color is auto-picked at bind (documented approximation).
+  if (ritual?.kind === "any_color" && !ritual.countFromPower) {
+    return {
+      targetRequirements: [],
+      effects: [
+        { kind: "add_mana", playerId: "controller", mana: {}, anyColor: ritual.count ?? 1 },
+      ],
+    };
+  }
+
+  // Noxious Revival.
+  if (/^Put target card from a graveyard on top of its owner's library$/i.test(sentence)) {
+    return {
+      targetRequirements: [{ kind: "graveyard_card" }],
+      effects: [
+        {
+          kind: "move_card",
+          cardId: { type: "chosen", index: 0 },
+          toZone: "library",
+          libraryPosition: "top",
+        },
+      ],
+    };
+  }
+
+  // Gamble. The random discard applies at resolution, before the search
+  // prompt completes — the tutored card can't be the one discarded, a
+  // documented approximation of Gamble's famous risk.
+  if (
+    /^Search your library for a card, put (?:it|that card) into your hand, discard a card at random, then shuffle$/i.test(
+      sentence,
+    )
+  ) {
+    return {
+      targetRequirements: [],
+      effects: [
+        { kind: "search_library", playerId: "controller", filter: {}, destination: "hand", count: 1 },
+        { kind: "discard_random", playerId: "controller", count: 1 },
+      ],
+    };
+  }
+
+  // Ghostly Flicker: an immediate double blink; "under your control" reads
+  // as a return to the owner-controller (they match for controlled targets).
+  if (
+    /^Exile two target artifacts, creatures, and\/or lands you control, then return those cards to the battlefield under your control$/i.test(
+      sentence,
+    )
+  ) {
+    return {
+      targetRequirements: [
+        { kind: "artifact_creature_or_land", control: "own" },
+        { kind: "artifact_creature_or_land", control: "own" },
+      ],
+      effects: [
+        { kind: "flicker", cardId: { type: "chosen", index: 0 } },
+        { kind: "flicker", cardId: { type: "chosen", index: 1 } },
+      ],
+    };
+  }
 
   match = sentence.match(
     /^Draw (a|one|two|three) cards? and create (a|one|two|three) (Treasure|Clue|Food) tokens?$/i,
@@ -3898,6 +3959,21 @@ function fuseDrainPairInPlace(sentences: string[], lineStart: boolean[]): void {
 }
 
 /** Traverse the Outlands: the greatest-power basic fetch, fused. */
+function expandEntersOrDiesInPlace(sentences: string[], lineStart: boolean[]): void {
+  // Stitcher's Supplier: "When ~ enters or dies, X" expands to one enter
+  // trigger and one dies trigger carrying the same clause.
+  for (let index = 0; index < sentences.length; index += 1) {
+    const match = sentences[index]?.match(/^When(?:ever)? ~ enters or dies, (.+)$/i);
+    if (!match?.[1]) {
+      continue;
+    }
+    sentences[index] = `When ~ enters, ${match[1]}`;
+    sentences.splice(index + 1, 0, `When ~ dies, ${match[1]}`);
+    lineStart.splice(index + 1, 0, true);
+    index += 1;
+  }
+}
+
 function fuseTraverseInPlace(sentences: string[], lineStart: boolean[]): void {
   for (let index = 0; index + 1 < sentences.length; index += 1) {
     if (lineStart[index + 1]) {
@@ -5404,6 +5480,7 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
   fuseD20TreasuresInPlace(sentences, lineStart);
   fuseExileReturnEndStepInPlace(sentences, lineStart);
   fuseTraverseInPlace(sentences, lineStart);
+  expandEntersOrDiesInPlace(sentences, lineStart);
   for (let index = 0; index < sentences.length; index += 1) {
     const sentence = sentences[index];
     if (!sentence) {

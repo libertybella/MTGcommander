@@ -1765,6 +1765,8 @@ function parseTargetRequirement(value: unknown, label: string): TargetRequiremen
     kind !== "own_graveyard_artifact_card" &&
     kind !== "own_graveyard_instant_or_sorcery_card" &&
     kind !== "graveyard_creature_card" &&
+    kind !== "graveyard_card" &&
+    kind !== "artifact_creature_or_land" &&
     kind !== "nonartifact_creature" &&
     kind !== "player_or_creature" &&
     kind !== "player_or_planeswalker" &&
@@ -2033,6 +2035,9 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
         playerId: parsePlayerSelector(value.playerId, `${label}.playerId`),
         mana: parsePartialMana(value.mana, `${label}.mana`),
         ...(value.perChosenPlayerHand === true ? { perChosenPlayerHand: true } : {}),
+        ...(value.anyColor === undefined
+          ? {}
+          : { anyColor: expectNumber(value.anyColor, `${label}.anyColor`) }),
       };
     case "deal_damage": {
       if (!isRecord(value.target)) {
@@ -2183,6 +2188,7 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
       };
     case "mill":
     case "discard":
+    case "discard_random":
       return {
         kind,
         playerId: parsePlayerSelector(value.playerId, `${label}.playerId`),
@@ -3524,7 +3530,13 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
       ...(value.turnDraw === true ? { turnDraw: true } : {}),
     };
   }
-  if (kind === "scry" || kind === "surveil" || kind === "mill" || kind === "discard") {
+  if (
+    kind === "scry" ||
+    kind === "surveil" ||
+    kind === "mill" ||
+    kind === "discard" ||
+    kind === "discard_random"
+  ) {
     return {
       kind,
       playerId: expectString(value.playerId, `${label}.playerId`),

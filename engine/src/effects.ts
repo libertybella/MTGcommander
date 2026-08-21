@@ -7,6 +7,7 @@ import { createId } from "./ids";
 import { allBattlefieldCreatureCount, creaturePower, creatureToughness, wouldSkipDraw } from "./derived";
 import { hasKeyword, protectionColorsOf } from "./keywords";
 import { addMana, tapCard, untapCard } from "./mana";
+import { commanderIdentityColors } from "./manaOptions";
 import { isLiving, livingPlayers, nextLivingPlayerId } from "./players";
 import { isPromptOpen, legalIdsForChooseSources, searchMatches } from "./prompt";
 import { shuffleInPlace } from "./shuffle";
@@ -445,7 +446,13 @@ export function bindCardEffect(
       if (!playerId) {
         return null;
       }
-      const { perChosenPlayerHand, ...manaRest } = effect;
+      const { perChosenPlayerHand, anyColor, ...manaRest } = effect;
+      // "Add one mana of any color": auto-pick the first commander-identity
+      // color, else {G} — a documented approximation of the free choice.
+      if (anyColor) {
+        const color = commanderIdentityColors(state, playerId)[0] ?? "G";
+        return { ...manaRest, playerId, mana: { [color]: anyColor } };
+      }
       if (!perChosenPlayerHand) {
         return { ...manaRest, playerId };
       }
@@ -469,6 +476,7 @@ export function bindCardEffect(
     }
     case "mill":
     case "discard":
+    case "discard_random":
     case "scry":
     case "surveil":
     case "discard_unless_attacked": {
@@ -1690,6 +1698,23 @@ function applyDiscard(state: GameState, playerId: PlayerId, count: number): Game
   return next;
 }
 
+/** Gamble: "discard a card at random" (tests mock Math.random). */
+function applyDiscardRandom(state: GameState, playerId: PlayerId, count: number): GameState {
+  requirePositiveInteger(count, "discard count");
+  requirePlayer(state, playerId);
+  let next = state;
+  for (let i = 0; i < count; i += 1) {
+    const hand = next.players.find((entry) => entry.id === playerId)?.zones.hand ?? [];
+    const picked = hand[Math.floor(Math.random() * hand.length)];
+    if (!picked) {
+      return next === state ? cloneGameState(state) : next;
+    }
+    next = moveCard(next, picked, "graveyard");
+    dispatchEventsInPlace(next, [{ kind: "discards", cardId: picked, playerId }]);
+  }
+  return next;
+}
+
 function applySacrifice(state: GameState, cardId: CardInstanceId): GameState {
   const card = state.cards[cardId];
   if (!card) {
@@ -2532,6 +2557,9 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
         break;
       case "discard":
         next = applyDiscard(state, effect.playerId, effect.count);
+        break;
+      case "discard_random":
+        next = applyDiscardRandom(state, effect.playerId, effect.count);
         break;
       case "sacrifice":
         next = applySacrifice(state, effect.cardId);

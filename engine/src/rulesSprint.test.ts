@@ -14815,3 +14815,197 @@ describe("wave 134: the gift batch", () => {
   });
 });
 
+
+describe("wave 135: supply lines", () => {
+  it("compiles the five-card bucket fully", () => {
+    const supplier = compileOracleCard({
+      oracleId: "supplier",
+      name: "Stitcher's Supplier",
+      manaCost: "{B}",
+      typeLine: "Creature — Zombie",
+      power: "1",
+      toughness: "1",
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "When this creature enters or dies, mill three cards. (Put the top three cards of your library into your graveyard.)",
+    });
+    expect(supplier.notes).toEqual([]);
+    expect(supplier.definition.triggers.map((trigger) => trigger.event)).toEqual([
+      "enter_battlefield",
+      "dies",
+    ]);
+    expect(supplier.definition.triggers[1]?.effects).toEqual([
+      { kind: "mill", playerId: "controller", count: 3 },
+    ]);
+
+    const cobra = compileOracleCard({
+      oracleId: "cobra",
+      name: "Lotus Cobra",
+      manaCost: "{1}{G}",
+      typeLine: "Creature — Snake",
+      power: "2",
+      toughness: "1",
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText: "Landfall — Whenever a land you control enters, add one mana of any color.",
+    });
+    expect(cobra.notes).toEqual([]);
+    expect(cobra.definition.triggers[0]?.effects).toEqual([
+      { kind: "add_mana", playerId: "controller", mana: {}, anyColor: 1 },
+    ]);
+
+    const revival = compileOracleCard({
+      oracleId: "revival",
+      name: "Noxious Revival",
+      manaCost: "{G/P}",
+      typeLine: "Instant",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "({G/P} can be paid with either {G} or 2 life.)\nPut target card from a graveyard on top of its owner's library.",
+    });
+    expect(revival.notes).toEqual([]);
+    expect(revival.definition.targetRequirements).toEqual([{ kind: "graveyard_card" }]);
+    expect(revival.definition.effects).toEqual([
+      {
+        kind: "move_card",
+        cardId: { type: "chosen", index: 0 },
+        toZone: "library",
+        libraryPosition: "top",
+      },
+    ]);
+
+    const gamble = compileOracleCard({
+      oracleId: "gamble",
+      name: "Gamble",
+      manaCost: "{R}",
+      typeLine: "Sorcery",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "Search your library for a card, put that card into your hand, discard a card at random, then shuffle.",
+    });
+    expect(gamble.notes).toEqual([]);
+    expect(gamble.definition.effects).toEqual([
+      { kind: "search_library", playerId: "controller", filter: {}, destination: "hand", count: 1 },
+      { kind: "discard_random", playerId: "controller", count: 1 },
+    ]);
+
+    const flicker = compileOracleCard({
+      oracleId: "flicker",
+      name: "Ghostly Flicker",
+      manaCost: "{2}{U}",
+      typeLine: "Instant",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "Exile two target artifacts, creatures, and/or lands you control, then return those cards to the battlefield under your control.",
+    });
+    expect(flicker.notes).toEqual([]);
+    expect(flicker.definition.targetRequirements).toEqual([
+      { kind: "artifact_creature_or_land", control: "own" },
+      { kind: "artifact_creature_or_land", control: "own" },
+    ]);
+    expect(flicker.definition.effects).toEqual([
+      { kind: "flicker", cardId: { type: "chosen", index: 0 } },
+      { kind: "flicker", cardId: { type: "chosen", index: 1 } },
+    ]);
+  });
+
+  it("auto-picks mana, discards at random, revives to the top, and double-blinks", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 30);
+
+    // Register a compiled definition carrying the new fields so the
+    // serializer round-trip below covers them.
+    const gambleDef = compileOracleCard({
+      oracleId: "gamble-rt",
+      name: "Gamble",
+      manaCost: "{R}",
+      typeLine: "Sorcery",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "Search your library for a card, put that card into your hand, discard a card at random, then shuffle.",
+    }).definition;
+    game.definitions[gambleDef.id] = gambleDef;
+
+    // With no commander in play, "any color" falls back to {G}.
+    let next = applyEffects(
+      game,
+      bindCardEffects(game, [{ kind: "add_mana", playerId: "controller", mana: {}, anyColor: 1 }], {
+        controllerId: p1.id,
+        sourceId: null,
+        targets: [],
+        targetRequirements: [],
+      }),
+    );
+    expect(next.players.find((entry) => entry.id === p1.id)?.mana.G).toBe(1);
+
+    // The random discard takes the rolled hand card to the graveyard.
+    const me = next.players.find((entry) => entry.id === p1.id)!;
+    const handIds = addHandCards(next, me, 3);
+    const original = Math.random;
+    Math.random = () => 0.99;
+    try {
+      next = applyEffects(next, [{ kind: "discard_random", playerId: p1.id, count: 1 }]);
+    } finally {
+      Math.random = original;
+    }
+    expect(next.players.find((entry) => entry.id === p1.id)?.zones.hand).toHaveLength(2);
+    expect(next.players.find((entry) => entry.id === p1.id)?.zones.graveyard).toContain(handIds[2]);
+
+    // Noxious Revival: a graveyard card (anyone's) goes to its owner's top.
+    const theirTop = next.players.find((entry) => entry.id === p2.id)!.zones.library[0]!;
+    next = moveCard(next, theirTop, "graveyard");
+    expect(
+      isChosenTargetLegal(next, { kind: "graveyard_card" }, { type: "creature", cardId: theirTop }, p1.id),
+    ).toBe(true);
+    next = applyEffects(next, [
+      { kind: "move_card", cardId: theirTop, toZone: "library", libraryPosition: "top" },
+    ]);
+    expect(next.players.find((entry) => entry.id === p2.id)?.zones.library[0]).toBe(theirTop);
+
+    // Ghostly Flicker's target kind takes creatures and lands, not enchantments.
+    const bearDef = createCardDefinition({ name: "Bear", typeLine: "Creature — Bear", power: 2, toughness: 2 });
+    const forestDef = createCardDefinition({ name: "Forest", typeLine: "Basic Land — Forest" });
+    const auraDef = createCardDefinition({ name: "Glow", typeLine: "Enchantment" });
+    next.definitions[bearDef.id] = bearDef;
+    next.definitions[forestDef.id] = forestDef;
+    next.definitions[auraDef.id] = auraDef;
+    const mine = next.players.find((entry) => entry.id === p1.id)!;
+    const bear = createCardInstance({ definitionId: bearDef.id, ownerId: p1.id, zone: "battlefield" });
+    const forest = createCardInstance({ definitionId: forestDef.id, ownerId: p1.id, zone: "battlefield" });
+    const aura = createCardInstance({ definitionId: auraDef.id, ownerId: p1.id, zone: "battlefield" });
+    next.cards[bear.id] = bear;
+    next.cards[forest.id] = forest;
+    next.cards[aura.id] = aura;
+    mine.zones.battlefield.push(bear.id, forest.id, aura.id);
+    const requirement = { kind: "artifact_creature_or_land" as const, control: "own" as const };
+    expect(isChosenTargetLegal(next, requirement, { type: "creature", cardId: bear.id }, p1.id)).toBe(true);
+    expect(isChosenTargetLegal(next, requirement, { type: "creature", cardId: forest.id }, p1.id)).toBe(true);
+    expect(isChosenTargetLegal(next, requirement, { type: "creature", cardId: aura.id }, p1.id)).toBe(false);
+
+    // The blink is immediate: the card leaves and re-enters untapped and
+    // summoning-sick.
+    next.cards[bear.id]!.tapped = true;
+    next.cards[bear.id]!.summoningSick = false;
+    next = applyEffects(next, [{ kind: "flicker", cardId: bear.id }]);
+    expect(next.cards[bear.id]?.zone).toBe("battlefield");
+    expect(next.cards[bear.id]?.tapped).toBe(false);
+    expect(next.cards[bear.id]?.summoningSick).toBe(true);
+
+    // The serializer knows every new field.
+    expect(() => parseGameState(serializeGameState(next))).not.toThrow();
+  });
+});
+
