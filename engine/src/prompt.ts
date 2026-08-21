@@ -440,6 +440,7 @@ export function applyResolveDiscard(
   let moved = next;
   for (const cardId of cardIds) {
     moved = moveCard(moved, cardId, "graveyard");
+    dispatchEventsInPlace(moved, [{ kind: "discards", cardId, playerId }]);
   }
   return moved;
 }

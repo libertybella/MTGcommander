@@ -1648,6 +1648,7 @@ function applyDiscard(state: GameState, playerId: PlayerId, count: number): Game
       return next === state ? cloneGameState(state) : next;
     }
     next = moveCard(next, first, "graveyard");
+    dispatchEventsInPlace(next, [{ kind: "discards", cardId: first, playerId }]);
   }
   return next;
 }
@@ -2915,6 +2916,8 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
           greatest = Math.max(greatest, hand.length);
           for (const cardId of hand) {
             moveCardInPlace(next, cardId, "graveyard");
+            // Waste Not rides the wheel.
+            dispatchEventsInPlace(next, [{ kind: "discards", cardId, playerId: player.id }]);
           }
         }
         if (greatest > 0) {

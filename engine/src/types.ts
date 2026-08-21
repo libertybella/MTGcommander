@@ -1419,6 +1419,8 @@ export type TriggerEvent =
   | "player_sacrifices"
   /** A counter was put on this creature (Fathom Mage). */
   | "counter_added"
+  /** A player discarded a card (Waste Not, Bone Miser). Subject is the card. */
+  | "discards"
   /** This creature was dealt damage (Enrage — Apex Altisaur). */
   | "is_dealt_damage"
   /** An opponent searched their library (Archivist of Oghma). */
@@ -1558,7 +1560,9 @@ export type EngineEvent =
   /** A creature was dealt damage (Enrage — Apex Altisaur). */
   | { kind: "damaged"; cardId: CardInstanceId }
   /** A counter landed on a battlefield card (Fathom Mage). */
-  | { kind: "counter_added"; cardId: CardInstanceId; counter: string };
+  | { kind: "counter_added"; cardId: CardInstanceId; counter: string }
+  /** A player discarded a card (Waste Not). Subject is the discarded card. */
+  | { kind: "discards"; cardId: CardInstanceId; playerId: PlayerId };
 
 /** One triggered ability waiting to be put on the stack. */
 export type TriggerCandidate = {

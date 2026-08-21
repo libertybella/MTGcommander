@@ -626,6 +626,23 @@ function triggerMatchesEvent(
   if (trigger.event === "counter_added") {
     return false;
   }
+  if (event.kind === "discards") {
+    // Waste Not / Bone Miser: who discarded, and what kind of card.
+    if (trigger.event !== "discards") {
+      return false;
+    }
+    const watch = trigger.watch ?? "controlled";
+    if (watch === "controlled" && event.playerId !== watcher.controllerId) {
+      return false;
+    }
+    if (watch === "opponents" && event.playerId === watcher.controllerId) {
+      return false;
+    }
+    return subjectMatchesFilter(state, event.cardId, trigger.subjectFilter, watcher);
+  }
+  if (trigger.event === "discards") {
+    return false;
+  }
   if (event.kind === "deals_damage_to_player") {
     if (trigger.event !== "deals_damage_to_player") {
       return false;

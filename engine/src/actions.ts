@@ -410,6 +410,7 @@ function applyCastSpell(
   }
   for (const discardId of costDiscardIds ?? []) {
     paid = moveCard(paid, discardId, "graveyard");
+    dispatchEventsInPlace(paid, [{ kind: "discards", cardId: discardId, playerId }]);
   }
   if (additional?.life) {
     const payer = paid.players.find((entry) => entry.id === playerId);
@@ -932,6 +933,7 @@ function applyActivateAbility(
   }
   if (ability.discard) {
     next = moveCard(next, cardId, "graveyard");
+    dispatchEventsInPlace(next, [{ kind: "discards", cardId, playerId }]);
   }
   if (ability.exileSelf) {
     // Spirit Guides: exiling from hand is the cost; resolve immediately.

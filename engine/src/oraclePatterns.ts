@@ -4302,6 +4302,21 @@ function parseTriggerHead(head: string): TriggerHead | null {
   if (/^Whenever a \+1\/\+1 counter is put on ~$/i.test(text)) {
     return { event: "counter_added", subjectFilter: { counterName: "p1p1" } };
   }
+  // Waste Not / Bone Miser.
+  const discardWatch = text.match(
+    /^Whenever (an opponent|you) discards? a (creature|land|noncreature, nonland) card$/i,
+  );
+  if (discardWatch?.[1] && discardWatch[2]) {
+    const what = discardWatch[2].toLowerCase();
+    return {
+      event: "discards",
+      watch: discardWatch[1].toLowerCase() === "you" ? "controlled" : "opponents",
+      subjectFilter:
+        what === "noncreature, nonland"
+          ? { nonTypes: ["creature", "land"] }
+          : { types: [what] },
+    };
+  }
   // Pollywog Prodigy: the cap reads the watcher's power live.
   if (
     /^Whenever an opponent casts a noncreature spell with mana value less than ~'s power$/i.test(
@@ -6718,6 +6733,25 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
       }
       result.leftover.push(sentence);
       continue;
+    }
+
+    // Waste Not / Bone Miser: the "noncreature, nonland" head carries a comma
+    // that would confuse the general head/body split.
+    const nonNonDiscard = sentence.match(
+      /^Whenever (an opponent|you) discards? a noncreature, nonland card, (.+)$/i,
+    );
+    if (nonNonDiscard?.[1] && nonNonDiscard[2]) {
+      const inner = compileSimpleClause(nonNonDiscard[2].trim());
+      if (inner && !inner.leftover && inner.targetRequirements.length === 0) {
+        result.triggers.push({
+          event: "discards",
+          watch: nonNonDiscard[1].toLowerCase() === "you" ? "controlled" : "opponents",
+          subjectFilter: { nonTypes: ["creature", "land"] },
+          effects: inner.effects,
+          targetRequirements: [],
+        });
+        continue;
+      }
     }
 
     // Sram: a comma-carrying any-of subtype cast head.

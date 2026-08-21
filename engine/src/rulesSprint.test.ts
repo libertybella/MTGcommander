@@ -14046,3 +14046,107 @@ describe("wave 129: evolution notices its betters", () => {
     expect(next.players[0]?.zones.hand).toHaveLength(1);
   });
 });
+
+describe("wave 130: nothing goes to waste", () => {
+  it("compiles the discard-watcher pair fully", () => {
+    const wasteNot = compileOracleCard({
+      oracleId: "wastenot",
+      name: "Waste Not",
+      manaCost: "{1}{B}",
+      typeLine: "Enchantment",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "Whenever an opponent discards a creature card, create a 2/2 black Zombie creature token.\nWhenever an opponent discards a land card, add {B}{B}.\nWhenever an opponent discards a noncreature, nonland card, draw a card.",
+    });
+    expect(wasteNot.notes).toEqual([]);
+    expect(wasteNot.definition.triggers).toHaveLength(3);
+    expect(wasteNot.definition.triggers[0]).toMatchObject({
+      event: "discards",
+      watch: "opponents",
+      subjectFilter: { types: ["creature"] },
+    });
+    const nonNon = wasteNot.definition.triggers.find(
+      (trigger) => trigger.subjectFilter?.nonTypes?.length === 2,
+    );
+    expect(nonNon?.effects).toEqual([{ kind: "draw", playerId: "controller", count: 1 }]);
+
+    const boneMiser = compileOracleCard({
+      oracleId: "boneminer",
+      name: "Bone Miser",
+      manaCost: "{3}{B}",
+      typeLine: "Creature — Zombie Wizard",
+      power: "1",
+      toughness: "3",
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "Whenever you discard a creature card, create a 2/2 black Zombie creature token.\nWhenever you discard a land card, add {B}{B}.\nWhenever you discard a noncreature, nonland card, draw a card.",
+    });
+    expect(boneMiser.notes).toEqual([]);
+    expect(boneMiser.definition.triggers[0]).toMatchObject({
+      event: "discards",
+      watch: "controlled",
+    });
+  });
+
+  it("rewards the right discards from the right players", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 10);
+    const wasteDef = createCardDefinition({
+      name: "Waste",
+      typeLine: "Enchantment",
+      triggers: [
+        {
+          event: "discards",
+          watch: "opponents",
+          subjectFilter: { types: ["creature"] },
+          effects: [
+            {
+              kind: "create_token",
+              ownerId: "controller",
+              name: "Zombie",
+              typeLine: "Creature — Zombie Token",
+              power: 2,
+              toughness: 2,
+            },
+          ],
+          targetRequirements: [],
+        },
+      ],
+    });
+    const bearDef = createCardDefinition({
+      name: "Bear",
+      typeLine: "Creature — Bear",
+      power: 2,
+      toughness: 2,
+    });
+    game.definitions[wasteDef.id] = wasteDef;
+    game.definitions[bearDef.id] = bearDef;
+    const waste = createCardInstance({ definitionId: wasteDef.id, ownerId: p1.id, zone: "battlefield" });
+    game.cards[waste.id] = waste;
+    p1.zones.battlefield.push(waste.id);
+    const theirBear = createCardInstance({ definitionId: bearDef.id, ownerId: p2.id, zone: "hand" });
+    game.cards[theirBear.id] = theirBear;
+    p2.zones.hand.push(theirBear.id);
+    const myBear = createCardInstance({ definitionId: bearDef.id, ownerId: p1.id, zone: "hand" });
+    game.cards[myBear.id] = myBear;
+    p1.zones.hand.push(myBear.id);
+
+    // The opponent's creature discard mints a Zombie.
+    let next = applyEffects(game, [{ kind: "discard", playerId: p2.id, count: 1 }]);
+    while (next.stack.length > 0) {
+      next = resolveTopOfStack(next);
+    }
+    const zombies = Object.values(next.cards).filter(
+      (card) => card.zone === "battlefield" && card.isToken,
+    );
+    expect(zombies).toHaveLength(1);
+
+    // The controller's own discard is silent for an opponents-watch.
+    let own = applyEffects(next, [{ kind: "discard", playerId: p1.id, count: 1 }]);
+    expect(own.stack).toHaveLength(0);
+  });
+});

@@ -2760,6 +2760,7 @@ const TRIGGER_EVENT_NAMES: ReadonlySet<string> = new Set([
   "you_draw",
   "is_dealt_damage",
   "counter_added",
+  "discards",
 ] satisfies TriggerEvent[]);
 
 function parseTriggers(value: unknown, label: string): CardTrigger[] {
