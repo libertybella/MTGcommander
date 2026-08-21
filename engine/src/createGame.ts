@@ -335,5 +335,6 @@ export function createGameState(options: CreateGameOptions): GameState {
     nextTimestamp: 1,
     oncePerTurnFired: [],
     pendingExtraCombats: 0,
+    delayedEndStep: [],
   };
 }

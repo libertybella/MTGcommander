@@ -3275,3 +3275,90 @@ describe("wave 35: any-damage triggers and aura host watching (Curiosity)", () =
     expect(otherHit.stack).toHaveLength(0);
   });
 });
+
+describe("wave 36: multi-sentence ability bodies and delayed end-step riders", () => {
+  it("compiles Ozolith, the Shattered Spire's counter ability fully", () => {
+    const compiled = compileOracleCard({
+      oracleId: "ozolith-spire",
+      name: "Ozolith, the Shattered Spire",
+      manaCost: "{1}{G}",
+      typeLine: "Legendary Artifact",
+      oracleText:
+        "{1}{G}, {T}: Put a +1/+1 counter on target artifact or creature you control. Activate only as a sorcery.",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+    });
+    expect(compiled.notes).toEqual([]);
+    const ability = compiled.definition.activated[0];
+    expect(ability?.timing).toBe("sorcery");
+    expect(ability?.targetRequirements).toEqual([{ kind: "creature_or_artifact", control: "own" }]);
+    expect(ability?.effects).toEqual([
+      { kind: "add_counter", cardId: { type: "chosen", index: 0 }, counter: "p1p1", amount: 1 },
+    ]);
+  });
+
+  it("compiles a Jaxis-lite temporary-copy ability as one multi-sentence body", () => {
+    const compiled = compileOracleCard({
+      oracleId: "copy-forge",
+      name: "Copy Forge",
+      manaCost: "{3}",
+      typeLine: "Artifact",
+      oracleText:
+        "{2}, {T}: Create a token that's a copy of target creature you control. It gains haste. Sacrifice it at the beginning of the next end step. Activate only as a sorcery.",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+    });
+    expect(compiled.notes).toEqual([]);
+    const ability = compiled.definition.activated[0];
+    expect(ability?.timing).toBe("sorcery");
+    expect(ability?.effects).toEqual([
+      {
+        kind: "copy_token",
+        ownerId: "controller",
+        ofCardId: { type: "chosen", index: 0 },
+        gainsHaste: true,
+        atEndStep: "sacrifice",
+      },
+    ]);
+  });
+
+  it("temporary copies get haste and die at the beginning of the end step", () => {
+    const { game, p1 } = twoPlayers();
+    const bear = createCardDefinition({
+      name: "Runeclaw Bear",
+      typeLine: "Creature - Bear",
+      power: 2,
+      toughness: 2,
+    });
+    game.definitions[bear.id] = bear;
+    const original = createCardInstance({ definitionId: bear.id, ownerId: p1.id, zone: "battlefield" });
+    game.cards[original.id] = original;
+    p1.zones.battlefield.push(original.id);
+
+    const copied = applyEffect(game, {
+      kind: "copy_token",
+      ownerId: p1.id,
+      ofCardId: original.id,
+      gainsHaste: true,
+      atEndStep: "sacrifice",
+    });
+    const tokenId = copied.players[0]!.zones.battlefield.find(
+      (id) => id !== original.id && copied.cards[id]?.isToken,
+    )!;
+    expect(copied.cards[tokenId]?.summoningSick).toBe(false);
+    expect(copied.delayedEndStep).toEqual([{ cardId: tokenId, action: "sacrifice" }]);
+
+    // Walk to the end step: the token is sacrificed, the original survives.
+    copied.turn.phase = "postcombatMain";
+    copied.turn.step = "postcombatMain";
+    const atEnd = advanceSteps(copied, 1);
+    expect(atEnd.turn.step).toBe("end");
+    expect(atEnd.cards[tokenId]?.zone).not.toBe("battlefield");
+    expect(atEnd.cards[original.id]?.zone).toBe("battlefield");
+    expect(atEnd.delayedEndStep).toEqual([]);
+  });
+});

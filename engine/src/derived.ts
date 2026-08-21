@@ -116,11 +116,13 @@ export function topOfLibraryGrant(
     if (card.zone !== "battlefield" || card.controllerId !== playerId) {
       continue;
     }
-    if (abilitiesRemoved(state, card.id)) {
-      continue;
-    }
+    // Cheap grant check before abilitiesRemoved (a layer pass) — this runs
+    // inside every legalActions call.
     const grant = state.definitions[card.definitionId]?.topOfLibrary;
     if (!grant) {
+      continue;
+    }
+    if (abilitiesRemoved(state, card.id)) {
       continue;
     }
     look = look || grant.look === true;

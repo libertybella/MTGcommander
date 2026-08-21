@@ -106,8 +106,25 @@ function onEnterStep(state: GameState): GameState {
     return state;
   }
   if (state.turn.step === "end") {
-    dispatchEventsInPlace(state, [{ kind: "step_begins", step: "end" }]);
-    return state;
+    // "At the beginning of the next end step" one-shots (temporary tokens,
+    // reanimation shells) fire before the step's other triggers.
+    let current = state;
+    const pending = [...current.delayedEndStep];
+    if (pending.length > 0) {
+      current.delayedEndStep = [];
+      for (const entry of pending) {
+        const card = current.cards[entry.cardId];
+        if (!card || card.zone !== "battlefield") {
+          continue;
+        }
+        current =
+          entry.action === "sacrifice"
+            ? applyEffect(current, { kind: "sacrifice", cardId: entry.cardId })
+            : applyEffect(current, { kind: "move_card", cardId: entry.cardId, toZone: "exile" });
+      }
+    }
+    dispatchEventsInPlace(current, [{ kind: "step_begins", step: "end" }]);
+    return current;
   }
   if (state.turn.step === "draw") {
     const active = state.players.find((player) => player.id === state.turn.activePlayerId);

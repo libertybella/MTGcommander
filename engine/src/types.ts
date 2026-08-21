@@ -330,6 +330,12 @@ export type GameState = {
    * which naturally flows into another main phase.
    */
   pendingExtraCombats: number;
+  /**
+   * One-shot delayed actions: "Sacrifice/Exile it at the beginning of the
+   * next end step" (temporary tokens and reanimation shells). Processed as
+   * the end step begins; entries whose card already left are dropped.
+   */
+  delayedEndStep: Array<{ cardId: CardInstanceId; action: "sacrifice" | "exile" }>;
 };
 
 export type ZoneReveal = {
@@ -397,6 +403,8 @@ export type GameEffect =
       toZone: Exclude<ZoneName, "stack">;
       libraryPosition?: "top" | "bottom";
       entersTapped?: boolean;
+      gainsHaste?: boolean;
+      atEndStep?: "sacrifice" | "exile";
     }
   | { kind: "tap"; cardId: CardInstanceId }
   | { kind: "untap"; cardId: CardInstanceId }
@@ -450,7 +458,13 @@ export type GameEffect =
     }
   | { kind: "attach"; cardId: CardInstanceId; toId: CardInstanceId }
   | { kind: "transform"; cardId: CardInstanceId }
-  | { kind: "copy_token"; ownerId: PlayerId; ofCardId: CardInstanceId }
+  | {
+      kind: "copy_token";
+      ownerId: PlayerId;
+      ofCardId: CardInstanceId;
+      gainsHaste?: boolean;
+      atEndStep?: "sacrifice" | "exile";
+    }
   | { kind: "manifest"; playerId: PlayerId; count: number }
   | {
       kind: "counter_on_controlled_creatures";
@@ -619,6 +633,10 @@ export type CardEffect =
       libraryPosition?: "top" | "bottom";
       /** Battlefield arrivals only: the card enters tapped. */
       entersTapped?: boolean;
+      /** Battlefield arrivals: "It gains haste" riders. */
+      gainsHaste?: boolean;
+      /** "Sacrifice/Exile it at the beginning of the next end step." */
+      atEndStep?: "sacrifice" | "exile";
     }
   | { kind: "tap"; cardId: CardIdSelector }
   | { kind: "untap"; cardId: CardIdSelector }
@@ -680,7 +698,14 @@ export type CardEffect =
     }
   | { kind: "attach"; cardId: CardIdSelector; toId: ChosenTargetRef | CardInstanceId }
   | { kind: "transform"; cardId: CardIdSelector }
-  | { kind: "copy_token"; ownerId: PlayerSelector; ofCardId: ChosenTargetRef | CardInstanceId }
+  | {
+      kind: "copy_token";
+      ownerId: PlayerSelector;
+      ofCardId: ChosenTargetRef | CardInstanceId;
+      /** "It gains haste" / delayed end-step riders (Jaxis-class shells). */
+      gainsHaste?: boolean;
+      atEndStep?: "sacrifice" | "exile";
+    }
   | { kind: "manifest"; playerId: PlayerSelector; count: number }
   | {
       kind: "counter_on_controlled_creatures";

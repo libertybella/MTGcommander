@@ -663,6 +663,27 @@ export function parseGameState(json: string): GameState {
       raw.pendingExtraCombats === undefined
         ? 0
         : expectNumber(raw.pendingExtraCombats, "pendingExtraCombats"),
+    delayedEndStep:
+      raw.delayedEndStep === undefined
+        ? []
+        : (() => {
+            if (!Array.isArray(raw.delayedEndStep)) {
+              throw new Error("Invalid delayedEndStep");
+            }
+            return raw.delayedEndStep.map((entry, index) => {
+              if (!isRecord(entry)) {
+                throw new Error(`Invalid delayedEndStep[${index}]`);
+              }
+              const action = expectString(entry.action, `delayedEndStep[${index}].action`);
+              if (action !== "sacrifice" && action !== "exile") {
+                throw new Error(`Invalid delayedEndStep[${index}].action`);
+              }
+              return {
+                cardId: expectString(entry.cardId, `delayedEndStep[${index}].cardId`),
+                action,
+              };
+            });
+          })(),
   };
 }
 
@@ -1430,6 +1451,10 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
         toZone: toZone as Exclude<ZoneName, "stack">,
         libraryPosition,
         ...(value.entersTapped === true ? { entersTapped: true } : {}),
+        ...(value.gainsHaste === true ? { gainsHaste: true } : {}),
+        ...(value.atEndStep === "sacrifice" || value.atEndStep === "exile"
+          ? { atEndStep: value.atEndStep }
+          : {}),
       };
     }
     case "tap":
@@ -1579,6 +1604,10 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
                 type: "chosen";
                 index: number;
               }),
+        ...(value.gainsHaste === true ? { gainsHaste: true } : {}),
+        ...(value.atEndStep === "sacrifice" || value.atEndStep === "exile"
+          ? { atEndStep: value.atEndStep }
+          : {}),
       };
     case "manifest":
       return {
@@ -2292,6 +2321,10 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
       kind,
       ownerId: expectString(value.ownerId, `${label}.ownerId`),
       ofCardId: expectString(value.ofCardId, `${label}.ofCardId`),
+      ...(value.gainsHaste === true ? { gainsHaste: true } : {}),
+      ...(value.atEndStep === "sacrifice" || value.atEndStep === "exile"
+        ? { atEndStep: value.atEndStep }
+        : {}),
     };
   }
   if (kind === "manifest") {
@@ -2355,6 +2388,10 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
       toZone: toZone as Exclude<ZoneName, "stack">,
       ...(libraryPosition === undefined ? {} : { libraryPosition }),
       ...(value.entersTapped === true ? { entersTapped: true } : {}),
+      ...(value.gainsHaste === true ? { gainsHaste: true } : {}),
+      ...(value.atEndStep === "sacrifice" || value.atEndStep === "exile"
+        ? { atEndStep: value.atEndStep }
+        : {}),
     };
   }
   if (kind === "tap" || kind === "untap" || kind === "sacrifice") {

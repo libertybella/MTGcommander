@@ -347,6 +347,8 @@ export function bindCardEffect(
         toZone: effect.toZone,
         libraryPosition: effect.libraryPosition,
         ...(effect.entersTapped ? { entersTapped: true } : {}),
+        ...(effect.gainsHaste ? { gainsHaste: true } : {}),
+        ...(effect.atEndStep ? { atEndStep: effect.atEndStep } : {}),
       };
     }
     case "tap":
@@ -529,7 +531,13 @@ export function bindCardEffect(
       if (!ofCardId) {
         return null;
       }
-      return { kind: "copy_token", ownerId, ofCardId };
+      return {
+        kind: "copy_token",
+        ownerId,
+        ofCardId,
+        ...(effect.gainsHaste ? { gainsHaste: true } : {}),
+        ...(effect.atEndStep ? { atEndStep: effect.atEndStep } : {}),
+      };
     }
     case "counter_spell": {
       const chosen = chosenTargetAt(context, effect.target.index, state);
@@ -846,14 +854,15 @@ export function tokenDoublingFactor(state: GameState, ownerId: PlayerId): number
     if (card.zone !== "battlefield" || card.controllerId !== ownerId) {
       continue;
     }
-    if (abilitiesRemoved(state, card.id)) {
+    // Cheap definition check first — abilitiesRemoved runs a layer pass, so
+    // only pay for it on actual doublers (burn-time hot path).
+    const doubles = (state.definitions[card.definitionId]?.replacements ?? []).filter(
+      (replacement) => replacement.kind === "double_tokens",
+    ).length;
+    if (doubles === 0 || abilitiesRemoved(state, card.id)) {
       continue;
     }
-    for (const replacement of state.definitions[card.definitionId]?.replacements ?? []) {
-      if (replacement.kind === "double_tokens") {
-        factor *= 2;
-      }
-    }
+    factor *= 2 ** doubles;
   }
   return factor;
 }
@@ -873,21 +882,18 @@ export function counterDoublingFactor(
     if (source.zone !== "battlefield" || source.controllerId !== card.controllerId) {
       continue;
     }
-    if (abilitiesRemoved(state, source.id)) {
+    // Cheap definition filter first; abilitiesRemoved (a layer pass) only
+    // runs for actual doubler sources.
+    const matching = (state.definitions[source.definitionId]?.replacements ?? []).filter(
+      (replacement) =>
+        replacement.kind === "double_counters" &&
+        (!replacement.counter || replacement.counter === counter) &&
+        (!replacement.creaturesOnly || isCreature(state, cardId)),
+    ).length;
+    if (matching === 0 || abilitiesRemoved(state, source.id)) {
       continue;
     }
-    for (const replacement of state.definitions[source.definitionId]?.replacements ?? []) {
-      if (replacement.kind !== "double_counters") {
-        continue;
-      }
-      if (replacement.counter && replacement.counter !== counter) {
-        continue;
-      }
-      if (replacement.creaturesOnly && !isCreature(state, cardId)) {
-        continue;
-      }
-      factor *= 2;
-    }
+    factor *= 2 ** matching;
   }
   return factor;
 }
@@ -1258,6 +1264,7 @@ function applyCopyToken(
   state: GameState,
   ownerId: PlayerId,
   ofCardId: CardInstanceId,
+  opts?: { gainsHaste?: boolean; atEndStep?: "sacrifice" | "exile" },
 ): GameState {
   requirePlayer(state, ownerId);
   const original = state.cards[ofCardId];
@@ -1281,6 +1288,12 @@ function applyCopyToken(
     token.timestamp = next.nextTimestamp;
     next.nextTimestamp += 1;
     next.cards[token.id] = token;
+    if (opts?.gainsHaste) {
+      token.summoningSick = false;
+    }
+    if (opts?.atEndStep) {
+      next.delayedEndStep.push({ cardId: token.id, action: opts.atEndStep });
+    }
     owner.zones.battlefield.push(token.id);
     queueEnterBattlefieldTriggersInPlace(next, token.id);
   }
@@ -1455,8 +1468,18 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
         next = moveCard(state, effect.cardId, effect.toZone, {
           libraryPosition: effect.libraryPosition,
         });
-        if (effect.entersTapped && next.cards[effect.cardId]?.zone === "battlefield") {
-          next.cards[effect.cardId]!.tapped = true;
+        const arrived = next.cards[effect.cardId];
+        if (arrived?.zone === "battlefield") {
+          if (effect.entersTapped) {
+            arrived.tapped = true;
+          }
+          // "It gains haste": mechanically, no summoning sickness this turn.
+          if (effect.gainsHaste) {
+            arrived.summoningSick = false;
+          }
+          if (effect.atEndStep) {
+            next.delayedEndStep.push({ cardId: effect.cardId, action: effect.atEndStep });
+          }
         }
         break;
       }
@@ -1559,7 +1582,7 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
         next = applyTransform(state, effect.cardId);
         break;
       case "copy_token":
-        next = applyCopyToken(state, effect.ownerId, effect.ofCardId);
+        next = applyCopyToken(state, effect.ownerId, effect.ofCardId, effect);
         break;
       case "manifest":
         next = applyManifest(state, effect.playerId, effect.count);

@@ -146,7 +146,7 @@ function parseCount(raw: string): number | null {
   return COUNT_WORDS[text] ?? null;
 }
 
-export function splitOracleSentences(card: OracleCard): string[] {
+function normalizeOracleText(card: OracleCard): string {
   const printedName = card.name.includes(" // ") ? (card.name.split(" // ")[0] ?? card.name) : card.name;
   let text = stripReminderText(card.oracleText).replace(/\r/g, "");
   text = text.replace(new RegExp(escapeRegex(printedName), "gi"), "~");
@@ -159,12 +159,31 @@ export function splitOracleSentences(card: OracleCard): string[] {
   // Periods inside quoted granted abilities ('… have "{T}: Add {C}."') must
   // not split the sentence; shield them, split, then restore.
   text = text.replace(/"[^"]*"/g, (quoted) => quoted.replace(/\./g, ""));
-  return text
+  return text;
+}
+
+function restoreSentence(part: string): string {
+  return part.replace(//g, ".").replace(/\s+/g, " ").trim();
+}
+
+export function splitOracleSentences(card: OracleCard): string[] {
+  return normalizeOracleText(card)
     .split(/[.\n]+/)
-    .map((part) => part.replace(//g, ".").replace(/\s+/g, " ").trim())
+    .map(restoreSentence)
     .filter(Boolean);
 }
 
+/**
+ * Sentences grouped by printed line. Oracle text separates whole abilities
+ * with newlines; sentences within one line belong to the same ability
+ * (multi-sentence activated bodies and their riders).
+ */
+export function splitOracleSentencesByLine(card: OracleCard): string[][] {
+  return normalizeOracleText(card)
+    .split(/\n+/)
+    .map((line) => line.split(/\.+/).map(restoreSentence).filter(Boolean))
+    .filter((line) => line.length > 0);
+}
 function isKeywordLine(sentence: string): boolean {
   const parts = sentence
     .split(",")
@@ -370,6 +389,36 @@ type SimpleClause = {
   targetRequirements: TargetRequirement[];
   leftover?: string;
 };
+
+/**
+ * Fold a subject rider ("It gains haste", "Sacrifice it at the beginning of
+ * the next end step") into the previous effect when it created or moved a
+ * permanent onto the battlefield. Returns true when consumed.
+ */
+function foldSubjectRider(effects: CardEffect[], sentence: string): boolean {
+  const last = effects[effects.length - 1];
+  if (!last) {
+    return false;
+  }
+  const supports =
+    last.kind === "copy_token" ||
+    (last.kind === "move_card" && last.toZone === "battlefield");
+  if (!supports) {
+    return false;
+  }
+  if (/^(?:It|They|That token|That creature) gains? haste$/i.test(sentence)) {
+    last.gainsHaste = true;
+    return true;
+  }
+  const delayed = sentence.match(
+    /^(Sacrifice|Exile) (?:it|them|that token|that creature) at the beginning of the next end step$/i,
+  );
+  if (delayed?.[1]) {
+    last.atEndStep = delayed[1].toLowerCase() === "sacrifice" ? "sacrifice" : "exile";
+    return true;
+  }
+  return false;
+}
 
 function compileSimpleClause(sentence: string): SimpleClause | null {
   const amass = parseAmassClause(sentence);
@@ -811,6 +860,46 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     return {
       targetRequirements: [{ kind: "creature" }],
       effects: [{ kind: "move_card", cardId: { type: "chosen", index: 0 }, toZone: "hand" }],
+    };
+  }
+
+  const targetCounter = sentence.match(
+    /^put (a|one|two|three|four) \+1\/\+1 counters? on (target creature you control|target artifact or creature you control|target creature|~)$/i,
+  );
+  if (targetCounter?.[1] && targetCounter[2]) {
+    const amount = parseCount(targetCounter[1]) ?? 1;
+    const what = targetCounter[2].toLowerCase();
+    if (what === "~") {
+      return {
+        targetRequirements: [],
+        effects: [{ kind: "add_counter", cardId: "self", counter: "p1p1", amount }],
+      };
+    }
+    return {
+      targetRequirements: [
+        what === "target creature"
+          ? { kind: "creature" }
+          : what === "target creature you control"
+            ? { kind: "creature", control: "own" }
+            : { kind: "creature_or_artifact", control: "own" },
+      ],
+      effects: [
+        { kind: "add_counter", cardId: { type: "chosen", index: 0 }, counter: "p1p1", amount },
+      ],
+    };
+  }
+
+  const tokenCopy = sentence.match(
+    /^create a token that's a copy of (another )?target creature( you control)?$/i,
+  );
+  if (tokenCopy) {
+    return {
+      targetRequirements: [
+        { kind: "creature", ...(tokenCopy[2] ? { control: "own" as const } : {}) },
+      ],
+      effects: [
+        { kind: "copy_token", ownerId: "controller", ofCardId: { type: "chosen", index: 0 } },
+      ],
     };
   }
 
@@ -2033,9 +2122,17 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
       result.leftover.push(modal.raw);
     }
   }
-  const sentences = splitOracleSentences(
+  const lines = splitOracleSentencesByLine(
     modal ? { ...card, oracleText: modal.remainingText } : card,
   );
+  const sentences: string[] = [];
+  const lineStart: boolean[] = [];
+  for (const line of lines) {
+    line.forEach((part, position) => {
+      sentences.push(part);
+      lineStart.push(position === 0);
+    });
+  }
   for (let index = 0; index < sentences.length; index += 1) {
     const sentence = sentences[index];
     if (!sentence) {
@@ -2827,16 +2924,37 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
         result.leftover.push(sentence);
         continue;
       }
-      result.activated.push({
+      const pushed: ActivatedAbility = {
         tap: cost.tap,
         manaCost: cost.manaCost,
         effects: clause.effects,
         targetRequirements: clause.targetRequirements,
         ...(cost.sacrificeSelf ? { sacrificeSelf: true } : {}),
         ...(cost.lifeCost ? { lifeCost: cost.lifeCost } : {}),
-      });
+      };
+      result.activated.push(pushed);
       if (clause.leftover) {
         result.leftover.push(clause.leftover);
+      }
+      // Multi-sentence ability bodies: sentences on the SAME printed line
+      // extend this ability ("…: Do A. Do B. Sacrifice it at the beginning
+      // of the next end step."). Riders like "Activate only as a sorcery"
+      // don't compile as clauses, so they fall through to the rider handlers
+      // below, which attach to this same (last) ability.
+      while (index + 1 < sentences.length && !lineStart[index + 1]) {
+        const follow = sentences[index + 1]!;
+        if (foldSubjectRider(pushed.effects, follow)) {
+          index += 1;
+          continue;
+        }
+        const followClause = compileSimpleClause(follow);
+        if (!followClause || followClause.leftover) {
+          break;
+        }
+        const offset = pushed.targetRequirements.length;
+        pushed.effects.push(...followClause.effects.map((effect) => shiftChosen(effect, offset)));
+        pushed.targetRequirements.push(...followClause.targetRequirements);
+        index += 1;
       }
       continue;
     }
