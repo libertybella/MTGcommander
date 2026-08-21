@@ -3,7 +3,7 @@ import { cloneGameState } from "./clone";
 import { createCardDefinition, createCardInstance } from "./createGame";
 import { characteristicsOf, hasSubtype, isCreature, isInstantOrSorcery, isLand } from "./cardTypes";
 import { createId } from "./ids";
-import { wouldSkipDraw } from "./derived";
+import { creaturePower, wouldSkipDraw } from "./derived";
 import { hasKeyword } from "./keywords";
 import { addMana, tapCard, untapCard } from "./mana";
 import { isLiving, livingPlayers, nextLivingPlayerId } from "./players";
@@ -615,6 +615,13 @@ export function bindCardEffect(
       return { kind: "fog" };
     case "windfall":
       return { kind: "windfall" };
+    case "populate": {
+      const playerId = bindPlayerSelector(state, effect.playerId, context);
+      if (!playerId) {
+        return null;
+      }
+      return { kind: "populate", playerId };
+    }
     case "proliferate": {
       const playerId = bindPlayerSelector(state, effect.playerId, context);
       if (!playerId) {
@@ -1143,6 +1150,7 @@ function applyCreateToken(
     typeLine: effect.typeLine,
     power: effect.power ?? null,
     toughness: effect.toughness ?? null,
+    ...(effect.keywords && effect.keywords.length > 0 ? { keywords: effect.keywords } : {}),
     ...(preset?.manaAbilities ? { manaAbilities: preset.manaAbilities } : {}),
     ...(preset?.activated ? { activated: preset.activated } : {}),
   });
@@ -1756,6 +1764,29 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
       case "copy_token":
         next = applyCopyToken(state, effect.ownerId, effect.ofCardId, effect);
         break;
+      case "populate": {
+        // CR 701.35 is "choose a token you control" — auto-pick the highest
+        // power creature token, a documented approximation like proliferate.
+        const player = state.players.find((entry) => entry.id === effect.playerId);
+        const tokens = (player?.zones.battlefield ?? []).filter((cardId) => {
+          const card = state.cards[cardId];
+          return (
+            card &&
+            card.isToken &&
+            card.controllerId === effect.playerId &&
+            isCreature(state, cardId)
+          );
+        });
+        if (tokens.length === 0) {
+          next = cloneGameState(state);
+          break;
+        }
+        const best = tokens.reduce((leader, cardId) =>
+          creaturePower(state, cardId) > creaturePower(state, leader) ? cardId : leader,
+        );
+        next = applyCopyToken(state, effect.playerId, best, {});
+        break;
+      }
       case "manifest":
         next = applyManifest(state, effect.playerId, effect.count);
         break;

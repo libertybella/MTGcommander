@@ -689,6 +689,10 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     };
   }
 
+  if (/^(?:then )?populate$/i.test(sentence)) {
+    return { targetRequirements: [], effects: [{ kind: "populate", playerId: "controller" }] };
+  }
+
   // Windfall / wheel refills keyed to the biggest discarded hand.
   if (
     /^Each player discards their hand, then draws cards equal to the greatest number of cards a player discarded this way$/i.test(
@@ -1403,14 +1407,18 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
   }
 
   match = sentence.match(
-    /^Create (a|an|one|two|three|four|five|six|seven|eight|nine|ten|\d+) (\d+)\/(\d+)(?: (white|blue|black|red|green|colorless))? ([\w]+(?: [\w]+)?) creature tokens?$/i,
+    /^Create (a|an|one|two|three|four|five|six|seven|eight|nine|ten|\d+) (\d+)\/(\d+)(?: (white|blue|black|red|green|colorless))? ([\w]+(?: [\w]+)?) creature tokens?( with [a-z ]+)?$/i,
   );
   if (match?.[1] && match[2] && match[3] && match[5]) {
     const count = parseCount(match[1]);
     const power = Number(match[2]);
     const toughness = Number(match[3]);
     const subtype = match[5].replace(/\b\w/g, (letter) => letter.toUpperCase());
-    if (count) {
+    const keywordText = match[6]?.replace(/^ with /i, "");
+    const keywords = keywordText
+      ? keywordText.split(/ and |, /i).map((word) => KEYWORD_GRANTS[word.trim().toLowerCase()])
+      : [];
+    if (count && keywords.every((keyword): keyword is Keyword => Boolean(keyword))) {
       const token: CardEffect = {
         kind: "create_token",
         ownerId: "controller",
@@ -1418,6 +1426,7 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
         typeLine: `Creature — ${subtype} Token`,
         power,
         toughness,
+        ...(keywords.length > 0 ? { keywords } : {}),
       };
       return {
         targetRequirements: [],
@@ -1913,6 +1922,16 @@ function parseTriggerHead(head: string): TriggerHead | null {
   }
   if (/^Whenever ~ attacks$/i.test(text)) {
     return { event: "attacks" };
+  }
+  // Tribal attack heads: "Whenever a Dragon you control attacks" (Utvara).
+  const tribalAttack = text.match(/^Whenever an? ([A-Za-z]+) you control attacks$/i);
+  if (tribalAttack?.[1]) {
+    const word = tribalAttack[1].toLowerCase();
+    return {
+      event: "attacks",
+      watch: "controlled",
+      subjectFilter: SEARCH_CARD_TYPES.has(word) ? { types: [word] } : { subtypes: [word] },
+    };
   }
   if (
     /^Whenever a land you control enters$/i.test(text) ||

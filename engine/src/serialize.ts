@@ -1535,6 +1535,9 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
           value.toughness === undefined || value.toughness === null
             ? null
             : expectNumber(value.toughness, `${label}.toughness`),
+        ...(value.keywords === undefined
+          ? {}
+          : { keywords: parseKeywords(value.keywords, `${label}.keywords`) }),
       };
     case "move_card": {
       const toZone = expectString(value.toZone, `${label}.toZone`);
@@ -1596,6 +1599,7 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
       return { kind, playerId: parsePlayerSelector(value.playerId, `${label}.playerId`), what };
     }
     case "proliferate":
+    case "populate":
       return { kind, playerId: parsePlayerSelector(value.playerId, `${label}.playerId`) };
     case "untap_lands_up_to":
       return {
@@ -2625,7 +2629,7 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
     }
     return { kind, playerId: expectString(value.playerId, `${label}.playerId`), what };
   }
-  if (kind === "proliferate") {
+  if (kind === "proliferate" || kind === "populate") {
     return { kind, playerId: expectString(value.playerId, `${label}.playerId`) };
   }
   if (kind === "untap_lands_up_to") {
@@ -2682,6 +2686,9 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
         value.toughness === undefined || value.toughness === null
           ? null
           : expectNumber(value.toughness, `${label}.toughness`),
+      ...(value.keywords === undefined
+        ? {}
+        : { keywords: parseKeywords(value.keywords, `${label}.keywords`) }),
     };
   }
   if (kind === "deal_damage") {

@@ -4996,3 +4996,74 @@ describe("wave 51: windfall, landfall value, filtered targets", () => {
     expect(isChosenTargetLegal(game, legendary, { type: "creature", cardId: small.id }, p1.id)).toBe(true);
   });
 });
+
+describe("wave 52: token keywords, tribal attacks, populate", () => {
+  it("compiles Utvara Hellkite and Rootborn Defenses fully", () => {
+    const utvara = compileOracleCard({
+      oracleId: "utvara",
+      name: "Utvara Hellkite",
+      manaCost: "{6}{R}{R}",
+      typeLine: "Creature — Dragon",
+      power: "6",
+      toughness: "6",
+      printedKeywords: ["Flying"],
+      imageUrl: "",
+      oracleText:
+        "Flying\nWhenever a Dragon you control attacks, create a 6/6 red Dragon creature token with flying.",
+    });
+    expect(utvara.notes).toEqual([]);
+    const trigger = utvara.definition.triggers[0];
+    expect(trigger?.event).toBe("attacks");
+    expect(trigger?.watch).toBe("controlled");
+    expect(trigger?.subjectFilter).toEqual({ subtypes: ["dragon"] });
+    const token = trigger?.effects[0];
+    expect(token?.kind === "create_token" && token.keywords).toEqual(["flying"]);
+
+    const rootborn = compileOracleCard({
+      oracleId: "rootborn",
+      name: "Rootborn Defenses",
+      manaCost: "{2}{W}",
+      typeLine: "Instant",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "Populate. Creatures you control gain indestructible until end of turn. (To populate, create a token that's a copy of a creature token you control.)",
+    });
+    expect(rootborn.notes).toEqual([]);
+    expect(rootborn.definition.effects[0]).toEqual({ kind: "populate", playerId: "controller" });
+  });
+
+  it("populate copies the biggest creature token you control", () => {
+    const { game, p1 } = twoPlayers();
+    const next = applyEffect(game, {
+      kind: "create_token",
+      ownerId: p1.id,
+      name: "Beast",
+      typeLine: "Creature — Beast Token",
+      power: 3,
+      toughness: 3,
+    });
+    const afterSmall = applyEffect(next, {
+      kind: "create_token",
+      ownerId: p1.id,
+      name: "Bird",
+      typeLine: "Creature — Bird Token",
+      power: 1,
+      toughness: 1,
+      keywords: ["flying"],
+    });
+    const populated = applyEffect(afterSmall, { kind: "populate", playerId: p1.id });
+    const tokens = Object.values(populated.cards).filter((card) => card.isToken);
+    expect(tokens).toHaveLength(3);
+    const beasts = tokens.filter(
+      (card) => populated.definitions[card.definitionId]?.name === "Beast",
+    );
+    expect(beasts).toHaveLength(2);
+
+    // The keyworded token really has flying.
+    const bird = tokens.find((card) => populated.definitions[card.definitionId]?.name === "Bird");
+    expect(bird && populated.definitions[bird.definitionId]?.keywords).toEqual(["flying"]);
+  });
+});

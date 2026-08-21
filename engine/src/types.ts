@@ -462,6 +462,7 @@ export type GameEffect =
       typeLine: string;
       power?: number | null;
       toughness?: number | null;
+      keywords?: Keyword[];
     }
   | { kind: "mill"; playerId: PlayerId; count: number }
   | { kind: "discard"; playerId: PlayerId; count: number }
@@ -491,6 +492,8 @@ export type GameEffect =
   | { kind: "untap_lands_up_to"; playerId: PlayerId; count: number }
   | { kind: "fog" }
   | { kind: "windfall" }
+  /** Populate: copy the controller's best creature token (auto-picked). */
+  | { kind: "populate"; playerId: PlayerId }
   | { kind: "proliferate"; playerId: PlayerId }
   | {
       kind: "restrict_until_eot";
@@ -715,6 +718,8 @@ export type CardEffect =
       typeLine: string;
       power?: number | null;
       toughness?: number | null;
+      /** "…creature token with flying" (Utvara Hellkite). */
+      keywords?: Keyword[];
     }
   | { kind: "mill"; playerId: PlayerSelector; count: number }
   | { kind: "discard"; playerId: PlayerSelector; count: number }
@@ -749,6 +754,7 @@ export type CardEffect =
   | { kind: "fog" }
   /** Windfall: each player discards their hand, then draws the greatest count. */
   | { kind: "windfall" }
+  | { kind: "populate"; playerId: PlayerSelector }
   | { kind: "proliferate"; playerId: PlayerSelector }
   | {
       kind: "restrict_until_eot";
