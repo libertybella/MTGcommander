@@ -101,6 +101,12 @@ Plain `effects`/`targetRequirements` arrays pass through createGame
 wholesale — only fields inside the explicitly-mapped objects need
 layer 1.
 
+Two more explicit lists in the same family: `LAYER_OF` in
+`characteristicsEngine.ts` must name every `ContinuousEffectData`
+kind (tsc catches this one), and createGame's `topOfLibrary` mapper
+is another explicit-field list (tsc does NOT catch that one — the
+field just silently drops).
+
 ## Engine conventions worth knowing
 
 - Effects come in UNBOUND (definition, selectors) and BOUND (concrete
