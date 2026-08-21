@@ -350,6 +350,7 @@ function manaAbilityFromAdd(add: AddManaResult): ManaAbility {
       producesOptions: [],
       producesAnyColor: true,
       damageToController: 0,
+      ...(add.countFromPower ? { countFromPower: true } : {}),
       ...(add.count && add.count > 1 ? { count: add.count } : {}),
     };
   }
@@ -373,7 +374,7 @@ function copyFirstManaAbility(result: CompiledOracleText): void {
 
 type AddManaResult =
   | { kind: "fixed"; produces: Partial<ManaPool> }
-  | { kind: "any_color"; identityRestricted: boolean; count?: number }
+  | { kind: "any_color"; identityRestricted: boolean; count?: number; countFromPower?: boolean }
   | { kind: "or"; colors: ManaColor[] };
 
 function parseAddMana(rest: string): AddManaResult | null {
@@ -385,6 +386,10 @@ function parseAddMana(rest: string): AddManaResult | null {
   const big = text.match(/^Add (two|three|four|five) mana of any one color$/i);
   if (big?.[1]) {
     return { kind: "any_color", identityRestricted: false, count: parseCount(big[1]) ?? 1 };
+  }
+  // Kami of Whispered Hopes: the amount reads the creature's power at tap.
+  if (/^Add X mana of any one color, where X is (?:this creature|~)'s power$/i.test(text)) {
+    return { kind: "any_color", identityRestricted: false, countFromPower: true };
   }
   if (!/^Add /i.test(text)) {
     return null;
@@ -4170,6 +4175,19 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
       )
     ) {
       result.replacements.push({ kind: "double_counters", counter: "p1p1", creaturesOnly: true });
+      continue;
+    }
+
+    // Hardened Scales / Kami of Whispered Hopes: "that many plus one".
+    const bonusCounters = sentence.match(
+      /^If one or more \+1\/\+1 counters would be put on a (creature|permanent) you control, that many plus one \+1\/\+1 counters are put on (?:it|that creature|that permanent) instead$/i,
+    );
+    if (bonusCounters?.[1]) {
+      result.replacements.push({
+        kind: "bonus_counters",
+        counter: "p1p1",
+        ...(bonusCounters[1].toLowerCase() === "creature" ? { creaturesOnly: true } : {}),
+      });
       continue;
     }
 

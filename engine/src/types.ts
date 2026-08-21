@@ -1340,6 +1340,9 @@ export type ReplacementEffect =
   /** Doubling Season / Branching Evolution: counters put on permanents the
    * controller controls are doubled; optional counter/creature restriction. */
   | { kind: "double_counters"; counter?: string; creaturesOnly?: boolean }
+  /** Hardened Scales-family: "that many plus one" (additive, applied before
+   * doublers — the controller's optimal CR 616.1 ordering). */
+  | { kind: "bonus_counters"; counter?: string; creaturesOnly?: boolean }
   /** Rhox Faithmender / Boon Reflection: life gained is doubled. */
   | { kind: "double_life_gain" }
   /** Teferi's Ageless Insight: draws are doubled, except the turn-based
@@ -1363,6 +1366,8 @@ export type ManaAbility = {
   costSacrifice?: "creature" | "artifact" | "creature_or_artifact" | "land" | "treasure";
   /** The ability has no {T} in its cost (usable while tapped, repeatable). */
   noTap?: boolean;
+  /** Kami of Whispered Hopes: the amount is the creature's power at tap. */
+  countFromPower?: boolean;
   /** "Activate only if you control a Swamp" on a mana ability. */
   requiresControlled?: { types?: string[]; subtypes?: string[] };
 };

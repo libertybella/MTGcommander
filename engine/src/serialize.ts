@@ -2345,7 +2345,7 @@ function parseReplacements(value: unknown, label: string): ReplacementEffect[] {
     ) {
       return { kind };
     }
-    if (kind === "double_counters") {
+    if (kind === "double_counters" || kind === "bonus_counters") {
       return {
         kind,
         ...(entry.counter === undefined
@@ -2661,10 +2661,12 @@ function parseManaAbilities(value: unknown, label: string): ManaAbility[] {
       ...(entry.costSacrifice === "creature" ||
       entry.costSacrifice === "artifact" ||
       entry.costSacrifice === "creature_or_artifact" ||
-      entry.costSacrifice === "land"
+      entry.costSacrifice === "land" ||
+      entry.costSacrifice === "treasure"
         ? { costSacrifice: entry.costSacrifice }
         : {}),
       ...(entry.noTap === true ? { noTap: true } : {}),
+      ...(entry.countFromPower === true ? { countFromPower: true } : {}),
       ...(entry.requiresControlled === undefined
         ? {}
         : {

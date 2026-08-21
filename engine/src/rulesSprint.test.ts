@@ -7972,3 +7972,110 @@ describe("wave 88: land auras", () => {
   });
 });
 
+describe("wave 89: hardened scales", () => {
+  it("compiles Hardened Scales and Kami of Whispered Hopes fully", () => {
+    const scales = compileOracleCard({
+      oracleId: "scales",
+      name: "Hardened Scales",
+      manaCost: "{G}",
+      typeLine: "Enchantment",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "If one or more +1/+1 counters would be put on a creature you control, that many plus one +1/+1 counters are put on it instead.",
+    });
+    expect(scales.notes).toEqual([]);
+    expect(scales.definition.replacements[0]).toEqual({
+      kind: "bonus_counters",
+      counter: "p1p1",
+      creaturesOnly: true,
+    });
+
+    const kami = compileOracleCard({
+      oracleId: "kami",
+      name: "Kami of Whispered Hopes",
+      manaCost: "{2}{G}",
+      typeLine: "Creature — Spirit",
+      power: "2",
+      toughness: "2",
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "If one or more +1/+1 counters would be put on a permanent you control, that many plus one +1/+1 counters are put on that permanent instead.\n{T}: Add X mana of any one color, where X is this creature's power.",
+    });
+    expect(kami.notes).toEqual([]);
+    expect(kami.definition.replacements[0]).toEqual({ kind: "bonus_counters", counter: "p1p1" });
+    expect(kami.definition.manaAbilities[0]?.countFromPower).toBe(true);
+    expect(kami.definition.manaAbilities[0]?.producesAnyColor).toBe(true);
+  });
+
+  it("adds a bonus counter per Scales, before doublers", () => {
+    const { game, p1 } = twoPlayers();
+    const scalesDef = createCardDefinition({
+      name: "Scales",
+      typeLine: "Enchantment",
+      replacements: [{ kind: "bonus_counters", counter: "p1p1", creaturesOnly: true }],
+    });
+    const doublerDef = createCardDefinition({
+      name: "Evolution",
+      typeLine: "Enchantment",
+      replacements: [{ kind: "double_counters", counter: "p1p1", creaturesOnly: true }],
+    });
+    const bearDef = createCardDefinition({ name: "Bear", typeLine: "Creature — Bear", power: 2, toughness: 2 });
+    game.definitions[scalesDef.id] = scalesDef;
+    game.definitions[doublerDef.id] = doublerDef;
+    game.definitions[bearDef.id] = bearDef;
+    const scales = createCardInstance({ definitionId: scalesDef.id, ownerId: p1.id, zone: "battlefield" });
+    const bear = createCardInstance({ definitionId: bearDef.id, ownerId: p1.id, zone: "battlefield" });
+    game.cards[scales.id] = scales;
+    game.cards[bear.id] = bear;
+    p1.zones.battlefield.push(scales.id, bear.id);
+
+    const bumped = applyEffect(game, { kind: "add_counter", cardId: bear.id, counter: "p1p1", amount: 2 });
+    expect(bumped.cards[bear.id]?.counters["p1p1"]).toBe(3);
+
+    const doubler = createCardInstance({ definitionId: doublerDef.id, ownerId: p1.id, zone: "battlefield" });
+    game.cards[doubler.id] = doubler;
+    p1.zones.battlefield.push(doubler.id);
+    const both = applyEffect(game, { kind: "add_counter", cardId: bear.id, counter: "p1p1", amount: 2 });
+    // (2 + 1) × 2 — the controller's optimal CR 616.1 ordering.
+    expect(both.cards[bear.id]?.counters["p1p1"]).toBe(6);
+  });
+
+  it("taps Kami for mana equal to its power", () => {
+    const { game, p1 } = twoPlayers();
+    const kamiDef = createCardDefinition({
+      name: "Kami",
+      typeLine: "Creature — Spirit",
+      power: 2,
+      toughness: 2,
+      manaAbilities: [
+        {
+          produces: {},
+          producesOptions: [],
+          producesAnyColor: true,
+          damageToController: 0,
+          countFromPower: true,
+        },
+      ],
+    });
+    game.definitions[kamiDef.id] = kamiDef;
+    const kami = createCardInstance({ definitionId: kamiDef.id, ownerId: p1.id, zone: "battlefield" });
+    kami.summoningSick = false;
+    kami.counters["p1p1"] = 1;
+    game.cards[kami.id] = kami;
+    p1.zones.battlefield.push(kami.id);
+
+    game.priorityPlayerId = p1.id;
+    const tapped = applyAction(game, {
+      kind: "tap_for_mana",
+      playerId: p1.id,
+      cardId: kami.id,
+      color: "U",
+    });
+    expect(tapped.players[0]?.mana.U).toBe(3);
+  });
+});
+

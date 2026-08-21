@@ -616,12 +616,16 @@ function applyTapForMana(
   }
   const ability = abilities[index]!;
   const options = manaTapOptionsFor(ability);
+  // Kami of Whispered Hopes: the amount reads the creature's power at tap.
+  const amount = ability.countFromPower
+    ? Math.max(0, creaturePower(state, cardId))
+    : manaAbilityAmount(ability);
   let addition: Partial<ManaPool>;
   if (options) {
     if (!color || !options.includes(color)) {
       throw new Error("Choose a mana color");
     }
-    addition = { [color]: manaAbilityAmount(ability) };
+    addition = { [color]: amount };
   } else {
     addition = ability.produces;
   }

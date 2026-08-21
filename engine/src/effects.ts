@@ -1262,6 +1262,45 @@ export function counterDoublingFactor(
   return factor;
 }
 
+/** Hardened Scales-family: flat +N added to each counter batch. */
+function counterBonusAmount(state: GameState, cardId: CardInstanceId, counter: string): number {
+  const card = state.cards[cardId];
+  if (!card || card.zone !== "battlefield") {
+    return 0;
+  }
+  let bonus = 0;
+  for (const source of Object.values(state.cards)) {
+    if (source.zone !== "battlefield" || source.controllerId !== card.controllerId) {
+      continue;
+    }
+    const matching = (state.definitions[source.definitionId]?.replacements ?? []).filter(
+      (replacement) =>
+        replacement.kind === "bonus_counters" &&
+        (!replacement.counter || replacement.counter === counter) &&
+        (!replacement.creaturesOnly || isCreature(state, cardId)),
+    ).length;
+    if (matching === 0 || abilitiesRemoved(state, source.id)) {
+      continue;
+    }
+    bonus += matching;
+  }
+  return bonus;
+}
+
+/** One counter batch: (amount + bonuses) × doublers — the controller's
+ * optimal CR 616.1 ordering. */
+export function counterBatchAmount(
+  state: GameState,
+  cardId: CardInstanceId,
+  counter: string,
+  amount: number,
+): number {
+  return (
+    (amount + counterBonusAmount(state, cardId, counter)) *
+    counterDoublingFactor(state, cardId, counter)
+  );
+}
+
 function applyAddCounter(
   state: GameState,
   cardId: CardInstanceId,
@@ -1278,7 +1317,7 @@ function applyAddCounter(
     throw new Error(`Unknown card ${cardId}`);
   }
   card.counters[counter] =
-    (card.counters[counter] ?? 0) + amount * counterDoublingFactor(next, cardId, counter);
+    (card.counters[counter] ?? 0) + counterBatchAmount(next, cardId, counter, amount);
   return next;
 }
 
@@ -1725,7 +1764,7 @@ function applyCounterOnControlledCreatures(
   for (const card of Object.values(next.cards)) {
     if (card.zone === "battlefield" && card.controllerId === playerId && isCreature(next, card.id)) {
       card.counters[counter] =
-        (card.counters[counter] ?? 0) + amount * counterDoublingFactor(next, card.id, counter);
+        (card.counters[counter] ?? 0) + counterBatchAmount(next, card.id, counter, amount);
     }
   }
   return next;
@@ -2076,7 +2115,7 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
           if (card.zone === "battlefield" && isCreature(next, card.id)) {
             card.counters[effect.counter] =
               (card.counters[effect.counter] ?? 0) +
-              effect.amount * counterDoublingFactor(next, card.id, effect.counter);
+              counterBatchAmount(next, card.id, effect.counter, effect.amount);
           }
         }
         break;
@@ -2115,7 +2154,7 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
               continue;
             }
             card.counters[counter] =
-              (card.counters[counter] ?? 0) + counterDoublingFactor(next, card.id, counter);
+              (card.counters[counter] ?? 0) + counterBatchAmount(next, card.id, counter, 1);
           }
         }
         break;
