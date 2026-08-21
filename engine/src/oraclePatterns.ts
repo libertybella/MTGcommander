@@ -814,6 +814,20 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     };
   }
 
+  if (/^proliferate$/i.test(sentence)) {
+    return {
+      targetRequirements: [],
+      effects: [{ kind: "proliferate", playerId: "controller" }],
+    };
+  }
+
+  if (/^untap ~$/i.test(sentence)) {
+    return {
+      targetRequirements: [],
+      effects: [{ kind: "untap", cardId: "self" }],
+    };
+  }
+
   const untapAll = sentence.match(/^untap all (creatures|lands) you control$/i);
   if (untapAll?.[1]) {
     return {
@@ -1108,15 +1122,23 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
   }
 
   match = sentence.match(
-    /^Return target (creature )?card from your graveyard to (your hand|the battlefield)$/i,
+    /^Return target (creature |permanent )?card from your graveyard to (your hand|the battlefield)$/i,
   );
   if (match?.[2]) {
-    const creatureOnly = Boolean(match[1]);
+    const filterWord = match[1]?.trim().toLowerCase();
+    const creatureOnly = filterWord === "creature";
+    const permanentOnly = filterWord === "permanent";
     const toHand = match[2].toLowerCase() === "your hand";
     if (toHand || creatureOnly) {
       return {
         targetRequirements: [
-          { kind: creatureOnly ? "own_graveyard_creature_card" : "own_graveyard_card" },
+          {
+            kind: creatureOnly
+              ? "own_graveyard_creature_card"
+              : permanentOnly
+                ? "own_graveyard_permanent_card"
+                : "own_graveyard_card",
+          },
         ],
         effects: [
           {
@@ -1565,6 +1587,16 @@ function parseTriggerHead(head: string): TriggerHead | null {
   if (/^Whenever you cast an enchantment spell$/i.test(text)) {
     return { event: "cast_spell", watch: "controlled", subjectFilter: { types: ["enchantment"] } };
   }
+  // Tribal cast triggers ("Whenever you cast an Elf spell") — changelings
+  // match through the shared subtype matcher.
+  const tribalCast = text.match(/^Whenever you cast an? ([A-Z][a-z]+) spell$/);
+  if (tribalCast?.[1] && !/^(creature|artifact|enchantment|instant|sorcery|noncreature)$/i.test(tribalCast[1])) {
+    return {
+      event: "cast_spell",
+      watch: "controlled",
+      subjectFilter: { subtypes: [tribalCast[1].toLowerCase()] },
+    };
+  }
   if (/^Whenever an opponent casts a spell$/i.test(text)) {
     return { event: "cast_spell", watch: "opponents" };
   }
@@ -1717,6 +1749,7 @@ function shiftChosen(effect: CardEffect, offset: number): CardEffect {
     case "extra_combat":
       return effect;
     case "untap_all":
+    case "proliferate":
       return { ...effect, playerId: bumpChosen(effect.playerId) };
     case "move_card":
     case "tap":

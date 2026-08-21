@@ -2860,7 +2860,8 @@ export function Battlefield(props: Props) {
       ) : null}
       {mode.type === "targets" &&
       (nextRequirement?.kind === "own_graveyard_card" ||
-        nextRequirement?.kind === "own_graveyard_creature_card") ? (
+        nextRequirement?.kind === "own_graveyard_creature_card" ||
+        nextRequirement?.kind === "own_graveyard_permanent_card") ? (
         <div
           className="mana-choice-pop"
           data-testid="graveyard-target-pop"

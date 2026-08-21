@@ -434,6 +434,7 @@ export type GameEffect =
   | { kind: "copy_spell"; stackObjectId: StackObjectId; controllerId: PlayerId }
   | { kind: "extra_combat" }
   | { kind: "untap_all"; playerId: PlayerId; what: "creature" | "land" }
+  | { kind: "proliferate"; playerId: PlayerId }
   | { kind: "set_class_level"; cardId: CardInstanceId; level: number }
   | { kind: "pt_until_eot"; cardId: CardInstanceId; power: number; toughness: number }
   | { kind: "keyword_until_eot"; cardId: CardInstanceId; keyword: Keyword }
@@ -524,6 +525,7 @@ export type TargetKind =
   /** A card in the caster's own graveyard (Regrowth / Zombify recursion). */
   | "own_graveyard_card"
   | "own_graveyard_creature_card"
+  | "own_graveyard_permanent_card"
   | "nonartifact_creature"
   | "player_or_creature"
   | "spell"
@@ -658,6 +660,7 @@ export type CardEffect =
   | { kind: "copy_spell"; target: ChosenTargetRef }
   | { kind: "extra_combat" }
   | { kind: "untap_all"; playerId: PlayerSelector; what: "creature" | "land" }
+  | { kind: "proliferate"; playerId: PlayerSelector }
   /** "copy that spell" in a cast trigger — the subject spell, not a target. */
   | { kind: "copy_subject_spell" }
   /** "counter that spell" in a cast trigger — the subject spell, not a target. */

@@ -201,7 +201,8 @@ export function isChosenTargetLegal(
   }
   if (
     requirement.kind === "own_graveyard_card" ||
-    requirement.kind === "own_graveyard_creature_card"
+    requirement.kind === "own_graveyard_creature_card" ||
+    requirement.kind === "own_graveyard_permanent_card"
   ) {
     if (target.type !== "creature" || !casterId) {
       return false;
@@ -212,6 +213,10 @@ export function isChosenTargetLegal(
     }
     if (requirement.kind === "own_graveyard_creature_card") {
       return characteristicsOf(state, target.cardId).types.includes("creature");
+    }
+    if (requirement.kind === "own_graveyard_permanent_card") {
+      const types = characteristicsOf(state, target.cardId).types;
+      return !types.includes("instant") && !types.includes("sorcery");
     }
     return true;
   }
@@ -383,7 +388,8 @@ export function legalChoicesForRequirement(
   }
   if (
     requirement.kind === "own_graveyard_card" ||
-    requirement.kind === "own_graveyard_creature_card"
+    requirement.kind === "own_graveyard_creature_card" ||
+    requirement.kind === "own_graveyard_permanent_card"
   ) {
     const caster = state.players.find((entry) => entry.id === casterId);
     return (caster?.zones.graveyard ?? [])

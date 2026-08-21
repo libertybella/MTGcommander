@@ -1171,6 +1171,7 @@ function parseTargetRequirement(value: unknown, label: string): TargetRequiremen
     kind !== "noncreature_nonland_permanent" &&
     kind !== "own_graveyard_card" &&
     kind !== "own_graveyard_creature_card" &&
+    kind !== "own_graveyard_permanent_card" &&
     kind !== "nonartifact_creature" &&
     kind !== "player_or_creature" &&
     kind !== "spell" &&
@@ -1467,6 +1468,8 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
       }
       return { kind, playerId: parsePlayerSelector(value.playerId, `${label}.playerId`), what };
     }
+    case "proliferate":
+      return { kind, playerId: parsePlayerSelector(value.playerId, `${label}.playerId`) };
     case "counter_spell":
     case "copy_spell": {
       if (!isRecord(value.target)) {
@@ -2388,6 +2391,9 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
       throw new Error(`Invalid ${label}.what`);
     }
     return { kind, playerId: expectString(value.playerId, `${label}.playerId`), what };
+  }
+  if (kind === "proliferate") {
+    return { kind, playerId: expectString(value.playerId, `${label}.playerId`) };
   }
   if (kind === "counter_unless_pays") {
     return {

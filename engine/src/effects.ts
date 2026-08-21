@@ -554,6 +554,13 @@ export function bindCardEffect(
     }
     case "extra_combat":
       return { kind: "extra_combat" };
+    case "proliferate": {
+      const playerId = bindPlayerSelector(state, effect.playerId, context);
+      if (!playerId) {
+        return null;
+      }
+      return { kind: "proliferate", playerId };
+    }
     case "untap_all": {
       const playerId = bindPlayerSelector(state, effect.playerId, context);
       if (!playerId) {
@@ -1483,6 +1490,26 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
       case "extra_combat": {
         next = cloneGameState(state);
         next.pendingExtraCombats += 1;
+        break;
+      }
+      case "proliferate": {
+        // Documented approximation (CR 702.24 is "choose any number"): the
+        // proliferating player auto-picks every permanent they control that
+        // has counters, skipping -1/-1 counters, opponents' permanents, and
+        // players. Doublers apply per counter kind.
+        next = cloneGameState(state);
+        for (const card of Object.values(next.cards)) {
+          if (card.zone !== "battlefield" || card.controllerId !== effect.playerId) {
+            continue;
+          }
+          for (const counter of Object.keys(card.counters)) {
+            if (counter === "m1m1" || (card.counters[counter] ?? 0) <= 0) {
+              continue;
+            }
+            card.counters[counter] =
+              (card.counters[counter] ?? 0) + counterDoublingFactor(next, card.id, counter);
+          }
+        }
         break;
       }
       case "untap_all": {

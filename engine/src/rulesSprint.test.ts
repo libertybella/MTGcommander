@@ -3102,3 +3102,83 @@ describe("wave 33: extra combat phases", () => {
     expect(ending.turn.phase).toBe("ending");
   });
 });
+
+describe("wave 34: proliferate, self-untap, and tribal cast heads", () => {
+  it("compiles Unnatural Restoration and Leaf-Crowned Visionary shapes", () => {
+    const restoration = compileOracleCard({
+      oracleId: "unnatural-restoration",
+      name: "Unnatural Restoration",
+      manaCost: "{1}{G}",
+      typeLine: "Sorcery",
+      oracleText:
+        "Return target permanent card from your graveyard to your hand. Proliferate. (Choose any number of permanents and/or players, then give each another counter of each kind already there.)",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+    });
+    expect(restoration.definition.effects.some((e) => e.kind === "proliferate")).toBe(true);
+    expect(restoration.notes).toEqual([]);
+
+    const visionary = compileOracleCard({
+      oracleId: "leaf-crowned-visionary",
+      name: "Leaf-Crowned Visionary",
+      manaCost: "{G}{G}",
+      typeLine: "Creature - Elf Druid",
+      oracleText:
+        "Other Elves you control get +1/+1.\nWhenever you cast an Elf spell, you may pay {G}. If you do, draw a card.",
+      power: "2",
+      toughness: "2",
+      printedKeywords: [],
+      imageUrl: "",
+    });
+    const cast = visionary.definition.triggers.find((t) => t.event === "cast_spell");
+    expect(cast?.subjectFilter).toEqual({ subtypes: ["elf"] });
+    expect(cast?.effects[0]?.kind).toBe("may_pay");
+  });
+
+  it("proliferate adds one of each counter kind to own permanents only", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const bear = createCardDefinition({
+      name: "Runeclaw Bear",
+      typeLine: "Creature - Bear",
+      power: 2,
+      toughness: 2,
+    });
+    game.definitions[bear.id] = bear;
+    const mine = createCardInstance({ definitionId: bear.id, ownerId: p1.id, zone: "battlefield" });
+    mine.counters["p1p1"] = 2;
+    mine.counters["m1m1"] = 1;
+    const bare = createCardInstance({ definitionId: bear.id, ownerId: p1.id, zone: "battlefield" });
+    const theirs = createCardInstance({ definitionId: bear.id, ownerId: p2.id, zone: "battlefield" });
+    theirs.counters["p1p1"] = 1;
+    game.cards[mine.id] = mine;
+    game.cards[bare.id] = bare;
+    game.cards[theirs.id] = theirs;
+    p1.zones.battlefield.push(mine.id, bare.id);
+    p2.zones.battlefield.push(theirs.id);
+
+    const after = applyEffect(game, { kind: "proliferate", playerId: p1.id });
+    expect(after.cards[mine.id]?.counters["p1p1"]).toBe(3);
+    expect(after.cards[mine.id]?.counters["m1m1"]).toBe(1); // skipped
+    expect(after.cards[bare.id]?.counters["p1p1"]).toBeUndefined(); // no counters, none added
+    expect(after.cards[theirs.id]?.counters["p1p1"]).toBe(1); // opponents untouched
+  });
+
+  it("compiles and applies '{5}: Untap ~'", () => {
+    const compiled = compileOracleCard({
+      oracleId: "untapper",
+      name: "Basalt Monolith",
+      manaCost: "{3}",
+      typeLine: "Artifact",
+      oracleText: "{T}: Add {C}{C}{C}.\n{3}: Untap Basalt Monolith.",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+    });
+    expect(compiled.definition.activated).toHaveLength(1);
+    expect(compiled.definition.activated[0]?.effects).toEqual([{ kind: "untap", cardId: "self" }]);
+    expect(compiled.notes).toEqual([]);
+  });
+});
