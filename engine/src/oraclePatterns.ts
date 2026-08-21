@@ -994,6 +994,17 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     };
   }
 
+  if (/^prevent all combat damage that would be dealt this turn$/i.test(sentence)) {
+    return { targetRequirements: [], effects: [{ kind: "fog" }] };
+  }
+
+  // Documented auto-take: "you may destroy/exile target X" compiles as the
+  // mandatory form — trigger targeting already skips with no legal target.
+  const mayTargeted = sentence.match(/^you may (destroy|exile) target (.+)$/i);
+  if (mayTargeted?.[1] && mayTargeted[2]) {
+    return compileSimpleClause(`${mayTargeted[1]} target ${mayTargeted[2]}`);
+  }
+
   if (/^proliferate$/i.test(sentence)) {
     return {
       targetRequirements: [],
@@ -2008,6 +2019,7 @@ function shiftChosen(effect: CardEffect, offset: number): CardEffect {
     case "copy_subject_spell":
     case "counter_subject_spell":
     case "extra_combat":
+    case "fog":
       return effect;
     case "untap_all":
     case "untap_lands_up_to":
@@ -3196,6 +3208,25 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
       }
     }
 
+    // Spirit Guides: "Exile this card from your hand: Add {G}."
+    const spiritGuide = sentence.match(/^Exile this card from your hand: Add ((?:\{[WUBRGC]\})+)$/i);
+    if (spiritGuide?.[1]) {
+      const mana: Partial<Record<"W" | "U" | "B" | "R" | "G" | "C", number>> = {};
+      for (const pip of spiritGuide[1].match(/\{[WUBRGC]\}/g) ?? []) {
+        const color = pip[1] as "W" | "U" | "B" | "R" | "G" | "C";
+        mana[color] = (mana[color] ?? 0) + 1;
+      }
+      result.activated.push({
+        tap: false,
+        manaCost: "",
+        zone: "hand",
+        exileSelf: true,
+        effects: [{ kind: "add_mana", playerId: "controller", mana }],
+        targetRequirements: [],
+      });
+      continue;
+    }
+
     // Cycling {cost}: "{cost}, Discard this card: Draw a card." (CR 702.29).
     const cycling = sentence.match(/^Cycling ((?:\{[^}]+\})+)$/i);
     if (cycling?.[1]) {
@@ -3252,6 +3283,14 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
       const add = parseAddMana(ability.rest);
       if (add && cost.tap && cost.manaCost === "") {
         result.manaAbilities.push(manaAbilityFromAdd(add));
+        if (add.kind === "any_color" && add.identityRestricted) {
+          result.notes.push("Commander's color identity is not enforced; any color may be added.");
+        }
+        continue;
+      }
+      // Springleaf Drum-class: a tap mana ability with a mana activation cost.
+      if (add && cost.tap && cost.manaCost !== "" && !cost.sacrificeSelf && !cost.lifeCost) {
+        result.manaAbilities.push({ ...manaAbilityFromAdd(add), costMana: cost.manaCost });
         if (add.kind === "any_color" && add.identityRestricted) {
           result.notes.push("Commander's color identity is not enforced; any color may be added.");
         }
@@ -3333,13 +3372,20 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
     }
 
     const activateGate = sentence.match(/^Activate only if you control (an? )?([A-Za-z]+)$/i);
-    if (activateGate?.[2] && result.activated.length > 0) {
-      const last = result.activated[result.activated.length - 1];
-      if (last && !last.requiresControlled) {
-        const name = activateGate[2].toLowerCase();
-        last.requiresControlled = SEARCH_CARD_TYPES.has(name)
-          ? { types: [name] }
-          : { subtypes: [name] };
+    if (activateGate?.[2]) {
+      const name = activateGate[2].toLowerCase();
+      const gate = SEARCH_CARD_TYPES.has(name)
+        ? { types: [name] }
+        : { subtypes: [name] };
+      const lastActivated = result.activated[result.activated.length - 1];
+      if (lastActivated && !lastActivated.requiresControlled) {
+        lastActivated.requiresControlled = gate;
+        continue;
+      }
+      // The gate can also ride a mana ability (Cabal Stronghold-class).
+      const lastMana = result.manaAbilities[result.manaAbilities.length - 1];
+      if (lastMana && !lastMana.requiresControlled) {
+        lastMana.requiresControlled = gate;
         continue;
       }
     }

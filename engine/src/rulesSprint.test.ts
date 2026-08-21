@@ -4018,3 +4018,133 @@ describe("wave 43: one-away batch two", () => {
     expect(freed).toHaveLength(3);
   });
 });
+
+describe("wave 44: gated mana, costed mana, spirit guides, fog", () => {
+  it("compiles Cabal Stronghold-class gate, Springleaf Drum, Simian Spirit Guide, and Fog", () => {
+    const gated = compileOracleCard({
+      oracleId: "gated-land",
+      name: "Crypt of Agadeem",
+      manaCost: "",
+      typeLine: "Land",
+      oracleText: "{T}: Add {B}. Activate only if you control a Swamp.",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+    });
+    expect(gated.notes).toEqual([]);
+    expect(gated.definition.manaAbilities[0]?.requiresControlled).toEqual({ subtypes: ["swamp"] });
+
+    const drum = compileOracleCard({
+      oracleId: "springleaf",
+      name: "Springleaf Drum",
+      manaCost: "{1}",
+      typeLine: "Artifact",
+      oracleText: "{1}, {T}: Add one mana of any color.",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+    });
+    expect(drum.notes).toEqual([]);
+    expect(drum.definition.manaAbilities[0]?.costMana).toBe("{1}");
+    expect(drum.definition.manaAbilities[0]?.producesAnyColor).toBe(true);
+
+    const guide = compileOracleCard({
+      oracleId: "simian",
+      name: "Simian Spirit Guide",
+      manaCost: "{2}{R}",
+      typeLine: "Creature - Ape Spirit",
+      oracleText: "Exile this card from your hand: Add {R}.",
+      power: "2",
+      toughness: "2",
+      printedKeywords: [],
+      imageUrl: "",
+    });
+    expect(guide.notes).toEqual([]);
+    expect(guide.definition.activated[0]).toMatchObject({
+      zone: "hand",
+      exileSelf: true,
+      effects: [{ kind: "add_mana", playerId: "controller", mana: { R: 1 } }],
+    });
+
+    const fog = compileOracleCard({
+      oracleId: "fog",
+      name: "Fog",
+      manaCost: "{G}",
+      typeLine: "Instant",
+      oracleText: "Prevent all combat damage that would be dealt this turn.",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+    });
+    expect(fog.notes).toEqual([]);
+    expect(fog.definition.effects).toEqual([{ kind: "fog" }]);
+  });
+
+  it("gated mana needs the Swamp; costed mana pays from the pool; fog stops combat damage", () => {
+    const { game, p1 } = twoPlayers();
+    const gatedDef = createCardDefinition({
+      name: "Crypt",
+      typeLine: "Land",
+      manaAbilities: [
+        {
+          produces: { B: 1 },
+          producesOptions: [],
+          producesAnyColor: false,
+          damageToController: 0,
+          requiresControlled: { subtypes: ["swamp"] },
+        },
+      ],
+    });
+    game.definitions[gatedDef.id] = gatedDef;
+    const crypt = createCardInstance({ definitionId: gatedDef.id, ownerId: p1.id, zone: "battlefield" });
+    game.cards[crypt.id] = crypt;
+    p1.zones.battlefield.push(crypt.id);
+    expect(manaAbilitiesFor(game, crypt.id)).toHaveLength(0);
+
+    const swampDef = createCardDefinition({ name: "Swamp", typeLine: "Basic Land - Swamp" });
+    game.definitions[swampDef.id] = swampDef;
+    const swamp = createCardInstance({ definitionId: swampDef.id, ownerId: p1.id, zone: "battlefield" });
+    game.cards[swamp.id] = swamp;
+    p1.zones.battlefield.push(swamp.id);
+    expect(manaAbilitiesFor(game, crypt.id).length).toBeGreaterThan(0);
+
+    // Costed mana: {1}, {T}: Add any color — pays 1 from the pool.
+    const drumDef = createCardDefinition({
+      name: "Springleaf Drum",
+      typeLine: "Artifact",
+      manaAbilities: [
+        {
+          produces: {},
+          producesOptions: [],
+          producesAnyColor: true,
+          damageToController: 0,
+          costMana: "{1}",
+        },
+      ],
+    });
+    game.definitions[drumDef.id] = drumDef;
+    const drum = createCardInstance({ definitionId: drumDef.id, ownerId: p1.id, zone: "battlefield" });
+    game.cards[drum.id] = drum;
+    p1.zones.battlefield.push(drum.id);
+    expect(() =>
+      applyAction(game, { kind: "tap_for_mana", playerId: p1.id, cardId: drum.id, color: "U" }),
+    ).toThrow();
+    const funded = structuredClone(game);
+    funded.players[0]!.mana.C = 1;
+    const tapped = applyAction(funded, {
+      kind: "tap_for_mana",
+      playerId: funded.players[0]!.id,
+      cardId: drum.id,
+      color: "U",
+    });
+    expect(tapped.players[0]?.mana.U).toBe(1);
+    expect(tapped.players[0]?.mana.C).toBe(0);
+
+    // Fog: combat damage step deals nothing.
+    const fogged = applyEffect(game, { kind: "fog" });
+    expect(fogged.preventCombatDamage).toBe(true);
+  });
+});

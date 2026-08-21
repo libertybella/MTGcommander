@@ -569,7 +569,17 @@ function applyTapForMana(
   } else {
     addition = ability.produces;
   }
-  let next = tapForMana(state, cardId, addition);
+  // Springleaf Drum-class: the activation's mana cost is paid from the pool.
+  let base = state;
+  if (ability.costMana) {
+    const activation = parseManaCost(ability.costMana);
+    const payer = state.players.find((entry) => entry.id === playerId);
+    if (!payer || !canPayManaCost(payer.mana, activation, payer.life)) {
+      throw new Error("Cannot pay that mana ability's cost");
+    }
+    base = payManaCost(state, playerId, activation);
+  }
+  let next = tapForMana(base, cardId, addition);
   next.priorityPlayerId = playerId;
   if (ability.sacrificeSelf) {
     next = applyEffects(next, [{ kind: "sacrifice", cardId }]);
@@ -669,6 +679,12 @@ function applyActivateAbility(
   }
   if (ability.discard) {
     next = moveCard(next, cardId, "graveyard");
+  }
+  if (ability.exileSelf) {
+    // Spirit Guides: exiling from hand is the cost; resolve immediately.
+    next = putActivatedAbilityOnStack(next, cardId, abilityIndex, targets ?? []);
+    next = moveCard(next, cardId, "exile");
+    return resolveTopOfStack(next);
   }
   next = putActivatedAbilityOnStack(next, cardId, abilityIndex, targets ?? []);
   if (ability.sacrificeSelf) {

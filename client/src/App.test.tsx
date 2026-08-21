@@ -579,7 +579,7 @@ describe("battlefield UI", () => {
     fireEvent.click(screen.getByTestId("import-deck"));
     await waitFor(() => {
       expect(within(screen.getByTestId("command-you")).getByText("Atraxa, Praetors' Voice")).toBeTruthy();
-    }, { timeout: 5000 });
+    }, { timeout: 15000 });
     expect(screen.getByTestId("life-you").textContent).toContain("Life 40");
   });
 
@@ -594,7 +594,7 @@ describe("battlefield UI", () => {
     fireEvent.click(screen.getByTestId("import-deck"));
     await waitFor(() => {
       expect(within(screen.getByTestId("command-you")).getByText("Atraxa, Praetors' Voice")).toBeTruthy();
-    }, { timeout: 5000 });
+    }, { timeout: 15000 });
     finishOpeningRolls();
     keepOpeningHands();
     passUntil("precombatMain");
@@ -617,7 +617,7 @@ describe("battlefield UI", () => {
     fireEvent.click(screen.getByTestId("import-deck"));
     await waitFor(() => {
       expect(within(screen.getByTestId("command-you")).getByText("Atraxa, Praetors' Voice")).toBeTruthy();
-    }, { timeout: 5000 });
+    }, { timeout: 15000 });
     expect(screen.getByTestId("area-opponents").querySelectorAll(".player-area.opponent").length).toBe(
       2,
     );

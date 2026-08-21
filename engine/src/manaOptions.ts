@@ -1,4 +1,4 @@
-import { computedCard } from "./characteristicsEngine";
+import { cardMatchesSubtype, computedCard } from "./characteristicsEngine";
 import { COLOR_PIPS, MANA_COLORS } from "./mana";
 import type { CardDefinition, CardInstanceId, GameState, ManaAbility, ManaColor } from "./types";
 
@@ -16,6 +16,27 @@ const BASIC_SUBTYPE_COLOR: Record<string, ManaColor> = {
  * basic land subtypes the permanent has GAINED (Urborg — CR 305.6). Printed
  * basics already carry their color in `produces`, so only extra subtypes add.
  */
+/** "Activate only if you control a Swamp" on a mana ability (Cabal-class). */
+function manaGateSatisfied(state: GameState, controllerId: string, ability: ManaAbility): boolean {
+  const gate = ability.requiresControlled;
+  if (!gate) {
+    return true;
+  }
+  return Object.values(state.cards).some((card) => {
+    if (card.zone !== "battlefield" || card.controllerId !== controllerId) {
+      return false;
+    }
+    const traits = state.definitions[card.definitionId]?.characteristics;
+    if (!traits) {
+      return false;
+    }
+    return (
+      (gate.types ?? []).every((type) => traits.types.includes(type)) &&
+      (gate.subtypes ?? []).every((subtype) => cardMatchesSubtype(state, card.id, subtype))
+    );
+  });
+}
+
 export function manaAbilitiesFor(state: GameState, cardId: CardInstanceId): ManaAbility[] {
   const card = state.cards[cardId];
   const definition = card ? state.definitions[card.definitionId] : undefined;
@@ -60,7 +81,7 @@ export function manaAbilitiesFor(state: GameState, cardId: CardInstanceId): Mana
       }
     }
   }
-  return abilities;
+  return abilities.filter((ability) => manaGateSatisfied(state, card.controllerId, ability));
 }
 
 export function manaAbilitiesOf(definition: CardDefinition): ManaAbility[] {

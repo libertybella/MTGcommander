@@ -80,7 +80,12 @@ export function potentialMana(state: GameState, playerId: PlayerId): PotentialMa
     if (abilities.length === 0) {
       continue;
     }
-    if (abilities.length === 1 && !abilities[0]!.producesAnyColor && abilities[0]!.producesOptions.length === 0) {
+    if (
+      abilities.length === 1 &&
+      !abilities[0]!.producesAnyColor &&
+      abilities[0]!.producesOptions.length === 0 &&
+      !abilities[0]!.costMana
+    ) {
       for (const color of Object.keys(abilities[0]!.produces) as ManaColor[]) {
         fixed[color] += abilities[0]!.produces[color] ?? 0;
       }
@@ -88,6 +93,9 @@ export function potentialMana(state: GameState, playerId: PlayerId): PotentialMa
     }
     const union = new Set<ManaColor>();
     for (const ability of abilities) {
+      if (ability.costMana) {
+        continue; // net-neutral converters add nothing to potential mana
+      }
       if (ability.producesAnyColor) {
         for (const color of ALL_COLORS) {
           union.add(color);
@@ -233,11 +241,12 @@ function castableFace(
   potential: PotentialMana,
   extraGeneric: number,
   costOverride?: string,
+  flashGrant?: boolean,
 ): boolean {
   const isInstantSpeed =
     definition.characteristics.types.includes("instant") ||
     definition.keywords.includes("flash") ||
-    hasFlashGrant(state, playerId);
+    (flashGrant ?? hasFlashGrant(state, playerId));
   if (!isInstantSpeed && !inSorceryWindow(state, playerId)) {
     return false;
   }
@@ -375,6 +384,9 @@ export function legalActions(state: GameState, playerId: PlayerId): LegalAction[
     return [];
   }
   const potential = potentialMana(state, playerId);
+  // Hoisted: hasFlashGrant scans the battlefield, so compute it once per
+  // legalActions call instead of once per castable card.
+  const flashGrant = hasFlashGrant(state, playerId);
   const actions: LegalAction[] = [];
 
   const graveyardLandIds = canPlayLandsFromGraveyard(state, playerId)
@@ -421,7 +433,7 @@ export function legalActions(state: GameState, playerId: PlayerId): LegalAction[
           flashback &&
           (face.definition.characteristics.types.includes("instant") ||
             face.definition.characteristics.types.includes("sorcery")) &&
-          castableFace(state, playerId, face.definition, potential, 0, flashback.manaCost)
+          castableFace(state, playerId, face.definition, potential, 0, flashback.manaCost, flashGrant)
         ) {
           actions.push({
             kind: "cast_spell",
@@ -432,7 +444,7 @@ export function legalActions(state: GameState, playerId: PlayerId): LegalAction[
         }
         continue;
       }
-      if (castableFace(state, playerId, face.definition, potential, 0)) {
+      if (castableFace(state, playerId, face.definition, potential, 0, undefined, flashGrant)) {
         actions.push({ kind: "cast_spell", cardId, faceIndex: face.faceIndex, fromCommand: false });
       }
     }
@@ -469,7 +481,7 @@ export function legalActions(state: GameState, playerId: PlayerId): LegalAction[
           topGrant.castTypesAny.some((type) =>
             topDefinition.characteristics.types.includes(type),
           )) &&
-        castableFace(state, playerId, topDefinition, potential, 0)
+        castableFace(state, playerId, topDefinition, potential, 0, undefined, flashGrant)
       ) {
         actions.push({ kind: "cast_spell", cardId: topCardId, faceIndex: 0, fromCommand: false });
       }
@@ -482,7 +494,7 @@ export function legalActions(state: GameState, playerId: PlayerId): LegalAction[
     if (!card || !definition || !isCommander(state, cardId) || isLand(state, cardId)) {
       continue;
     }
-    if (castableFace(state, playerId, definition, potential, player.commander.tax)) {
+    if (castableFace(state, playerId, definition, potential, player.commander.tax, undefined, flashGrant)) {
       actions.push({ kind: "cast_spell", cardId, faceIndex: 0, fromCommand: true });
     }
   }
@@ -580,6 +592,9 @@ export function autoTapPlan(
       }
       if (ability.sacrificeSelf) {
         return; // never auto-sacrifice a Treasure — tapping it stays a choice
+      }
+      if (ability.costMana) {
+        return; // costed mana abilities are never auto-tapped
       }
       producers.push({
         cardId: card.id,

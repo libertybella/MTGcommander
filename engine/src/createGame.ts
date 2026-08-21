@@ -146,6 +146,19 @@ export function createCardDefinition(
           damageToController: ability.damageToController,
           ...(ability.count && ability.count > 1 ? { count: ability.count } : {}),
           ...(ability.sacrificeSelf ? { sacrificeSelf: true } : {}),
+          ...(ability.costMana ? { costMana: ability.costMana } : {}),
+          ...(ability.requiresControlled
+            ? {
+                requiresControlled: {
+                  ...(ability.requiresControlled.types
+                    ? { types: [...ability.requiresControlled.types] }
+                    : {}),
+                  ...(ability.requiresControlled.subtypes
+                    ? { subtypes: [...ability.requiresControlled.subtypes] }
+                    : {}),
+                },
+              }
+            : {}),
         }))
       : [],
     activated: input.activated
@@ -157,6 +170,7 @@ export function createCardDefinition(
           ...(ability.zone && ability.zone !== "battlefield" ? { zone: ability.zone } : {}),
           ...(ability.discard ? { discard: true } : {}),
           ...(ability.sacrificeSelf ? { sacrificeSelf: true } : {}),
+          ...(ability.exileSelf ? { exileSelf: true } : {}),
           ...(ability.lifeCost && ability.lifeCost > 0 ? { lifeCost: ability.lifeCost } : {}),
           ...(ability.timing === "sorcery" ? { timing: "sorcery" as const } : {}),
           ...(ability.requiresControlled
@@ -350,5 +364,6 @@ export function createGameState(options: CreateGameOptions): GameState {
     pendingExtraCombats: 0,
     delayedEndStep: [],
     spellsCastThisTurn: 0,
+    preventCombatDamage: false,
   };
 }

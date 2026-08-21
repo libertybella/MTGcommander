@@ -352,6 +352,8 @@ export type GameState = {
   delayedEndStep: Array<{ cardId: CardInstanceId; action: "sacrifice" | "exile" }>;
   /** Spells cast by anyone this turn — Storm's copy count (CR 702.40). */
   spellsCastThisTurn: number;
+  /** Fog: no combat damage is dealt for the rest of this turn. */
+  preventCombatDamage: boolean;
 };
 
 export type ZoneReveal = {
@@ -459,6 +461,7 @@ export type GameEffect =
   | { kind: "extra_combat" }
   | { kind: "untap_all"; playerId: PlayerId; what: "creature" | "land" }
   | { kind: "untap_lands_up_to"; playerId: PlayerId; count: number }
+  | { kind: "fog" }
   | { kind: "proliferate"; playerId: PlayerId }
   | {
       kind: "restrict_until_eot";
@@ -706,6 +709,7 @@ export type CardEffect =
   | { kind: "extra_combat" }
   | { kind: "untap_all"; playerId: PlayerSelector; what: "creature" | "land" }
   | { kind: "untap_lands_up_to"; playerId: PlayerSelector; count: number }
+  | { kind: "fog" }
   | { kind: "proliferate"; playerId: PlayerSelector }
   | {
       kind: "restrict_until_eot";
@@ -998,6 +1002,8 @@ export type ActivatedAbility = {
   discard?: boolean;
   /** True when the cost includes sacrificing this permanent (fetch lands). */
   sacrificeSelf?: boolean;
+  /** Spirit Guides: exiling this card (from hand) is part of the cost. */
+  exileSelf?: boolean;
   /** Life paid as part of the cost (Doom Whisperer). */
   lifeCost?: number;
   /** Class level-up is a sorcery-speed class ability. */
@@ -1032,6 +1038,11 @@ export type ManaAbility = {
   count?: number;
   /** Treasure tokens: tapping for this mana also sacrifices the permanent. */
   sacrificeSelf?: boolean;
+  /** Springleaf Drum-class: mana paid from the pool to activate. Costed
+   * abilities are never auto-tapped and add nothing to potential mana. */
+  costMana?: string;
+  /** "Activate only if you control a Swamp" on a mana ability. */
+  requiresControlled?: { types?: string[]; subtypes?: string[] };
 };
 
 /**

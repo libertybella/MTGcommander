@@ -190,6 +190,7 @@ function onEnterStep(state: GameState): GameState {
     state.activeEffects = state.activeEffects.filter(
       (effect) => effect.duration !== "until_end_of_turn",
     );
+    state.preventCombatDamage = false;
     return state;
   }
   return state;

@@ -78,6 +78,10 @@ export function ensureCombatInPlace(state: GameState): void {
   }
 }
 
+export function combatDamagePrevented(state: GameState): boolean {
+  return state.preventCombatDamage === true;
+}
+
 export function clearCombatFlagsInPlace(state: GameState): void {
   for (const card of Object.values(state.cards)) {
     card.attacking = false;
@@ -517,6 +521,10 @@ export function dealCombatDamageInPlace(
 }
 
 export function applyCombatDamage(state: GameState): GameState {
+  // Fog: all combat damage this turn is prevented.
+  if (combatDamagePrevented(state)) {
+    return state;
+  }
   let next = cloneGameState(state);
   dealCombatDamageInPlace(next, "first");
   applyStateBasedActionsInPlace(next);

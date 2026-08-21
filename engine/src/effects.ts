@@ -579,6 +579,8 @@ export function bindCardEffect(
     }
     case "extra_combat":
       return { kind: "extra_combat" };
+    case "fog":
+      return { kind: "fog" };
     case "proliferate": {
       const playerId = bindPlayerSelector(state, effect.playerId, context);
       if (!playerId) {
@@ -1562,6 +1564,11 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
       case "extra_combat": {
         next = cloneGameState(state);
         next.pendingExtraCombats += 1;
+        break;
+      }
+      case "fog": {
+        next = cloneGameState(state);
+        next.preventCombatDamage = true;
         break;
       }
       case "proliferate": {

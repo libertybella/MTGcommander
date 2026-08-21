@@ -677,6 +677,7 @@ export function parseGameState(json: string): GameState {
       raw.spellsCastThisTurn === undefined
         ? 0
         : expectNumber(raw.spellsCastThisTurn, "spellsCastThisTurn"),
+    preventCombatDamage: raw.preventCombatDamage === true,
     delayedEndStep:
       raw.delayedEndStep === undefined
         ? []
@@ -1499,6 +1500,7 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
     case "copy_subject_spell":
     case "counter_subject_spell":
     case "extra_combat":
+    case "fog":
       return { kind };
     case "untap_all": {
       const what = expectString(value.what, `${label}.what`);
@@ -1747,6 +1749,7 @@ function parseActivatedAbilities(value: unknown, label: string): ActivatedAbilit
       ...(entry.zone === "hand" ? { zone: "hand" as const } : {}),
       ...(entry.discard === true ? { discard: true } : {}),
       ...(entry.sacrificeSelf === true ? { sacrificeSelf: true } : {}),
+      ...(entry.exileSelf === true ? { exileSelf: true } : {}),
       ...(entry.lifeCost === undefined
         ? {}
         : { lifeCost: expectNumber(entry.lifeCost, `${label}[${index}].lifeCost`) }),
@@ -2172,6 +2175,30 @@ function parseManaAbilities(value: unknown, label: string): ManaAbility[] {
         ? {}
         : { count: expectNumber(entry.count, `${label}[${index}].count`) }),
       ...(entry.sacrificeSelf === true ? { sacrificeSelf: true } : {}),
+      ...(entry.costMana === undefined
+        ? {}
+        : { costMana: expectString(entry.costMana, `${label}[${index}].costMana`) }),
+      ...(entry.requiresControlled === undefined
+        ? {}
+        : {
+            requiresControlled: (() => {
+              if (!isRecord(entry.requiresControlled)) {
+                throw new Error(`Invalid ${label}[${index}].requiresControlled`);
+              }
+              const types = parseStringList(
+                entry.requiresControlled.types,
+                `${label}[${index}].requiresControlled.types`,
+              );
+              const subtypes = parseStringList(
+                entry.requiresControlled.subtypes,
+                `${label}[${index}].requiresControlled.subtypes`,
+              );
+              return {
+                ...(types.length > 0 ? { types } : {}),
+                ...(subtypes.length > 0 ? { subtypes } : {}),
+              };
+            })(),
+          }),
     };
   });
 }
@@ -2467,7 +2494,7 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
       controllerId: expectString(value.controllerId, `${label}.controllerId`),
     };
   }
-  if (kind === "extra_combat") {
+  if (kind === "extra_combat" || kind === "fog") {
     return { kind };
   }
   if (kind === "untap_all") {
