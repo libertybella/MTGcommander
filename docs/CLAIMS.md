@@ -45,7 +45,7 @@ Statuses: `open` · `claimed` · `in-progress` · `done` · `blocked`
 | Living weapon | A | done | claude/2daf8b18 | comprehensive-plan | 2026-08-21 | Wave 125 merged with rebound + tapped-unless-basic: 3 flips (Nettlecyst, Ephemerate, Quantum Misalignment), 905/2,009 (45.0%). Kaldra needs granted-trigger statics |
 | Small keywords (dethrone, split second, compleated, delirium, cascade ×2) | A | open | | | | One card each |
 | Station cycle | A | open | | | | Fringe cards; lowest priority |
-| Modal trigger prompt + modal dies/enters cards | B | open | | | | Unblocks Atsushi, Junji, Charming Prince, Aether Channeler, Felidar Retreat, Retreat to Coralhelm, Insidious Fungus, Cankerbloom |
+| Modal trigger prompt + modal dies/enters cards | B | in-progress | claude/2daf8b18 | comprehensive-plan | 2026-08-21 | Wave 126: core prompt machinery + the no-new-submachinery cards (Aether Channeler, Felidar Retreat, Retreat to Coralhelm). Atsushi/Junji/Charming Prince sub-effects follow in wave 127 |
 | Confluences (choose-with-repeats) | B | open | | | | |
 | Opponent-chooses (Fact or Fiction) | B | open | | | | |
 | Gift mechanic | B | open | | | | 4 cards |
