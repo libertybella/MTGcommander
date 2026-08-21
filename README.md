@@ -16,8 +16,8 @@ This is **not** Wizards of the Coast software. It is also **not** the sibling Bi
 | --- | --- |
 | **Phase** | Comprehensive Rules machinery (layers, events, choices, permanents) + coverage flywheel |
 | **Next** | Private alpha (invite friends, play complete games) |
-| **Tests** | 745 passing; a 10,000-game random-action fuzz marathon gates checkpoint-45, 200-game burns gate every wave and 800+ burns gate every checkpoint tag |
-| **Compile rate** | 88% of a 60-card real-staple sample compiles fully (CI floor 85%); 37.4% of the EDHREC top-2,000 (up from 15.6% at the start of the 2026-08-20 flywheel run) |
+| **Tests** | 756 passing; a 10,000-game random-action fuzz marathon gates checkpoint-45, 200-game burns gate every wave and 800+ burns gate every checkpoint tag |
+| **Compile rate** | 88% of a 60-card real-staple sample compiles fully (CI floor 85%); 38.3% of the EDHREC top-2,000 (up from 15.6% at the start of the 2026-08-20 flywheel run) |
 | **Installer** | `npm run dist` builds a one-click Windows installer (`release/BizzyMTG Commander Setup 0.1.0.exe`). |
 
 ---
@@ -173,5 +173,6 @@ Git tags on `main`. Do not move old tags.
 | `checkpoint-61-wills` | Anim Pakal, Boros Charm, Return of the Wildspeaker, Jeska's/Akroma's Will choose-both, planeswalker damage, protection grants, 36% |
 | `checkpoint-62-taxes` | Reanimate, Toxic Deluge, Authority of the Consuls, land auras (Wild Growth/Utopia Sprawl), Hardened Scales, Chaos Warp, Exsanguinate, Land Tax |
 | `checkpoint-63-magecraft` | Gray Merchant devotion, Syr Konrad, Guardian Project, Grand Abolisher, Rhythm of the Wild, Magecraft (Archmage/Storm-Kiln), Silence, REB/Pyroblast, 37.4% |
+| `checkpoint-64-swat` | Bedevil, Rakdos Charm, Avenger of Zendikar, Sram, Urza's Incubator, Extort, Esper Sentinel, Mox Opal, Deflecting Swat retargeting, 38.3% |
 
 These live on the `comprehensive-plan` branch (see docs/DEVELOPMENT_PROGRESS.md); merge to `main` at will — every checkpoint is a playable table. Next: **Private Alpha**, then productization.
