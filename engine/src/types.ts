@@ -166,6 +166,8 @@ export type CardDefinition = {
   /** Drumbellower / Seedborn Muse: the controller's creatures (or all their
    * permanents) also untap during each other player's untap step. */
   untapDuringEachUntap?: "creatures" | "permanents";
+  /** Authority of the Consuls: opponents' creatures enter tapped. */
+  opponentCreaturesEnterTapped?: boolean;
   /** "You may cast spells as though they had flash" (Vedalken Orrery). */
   grantsFlash?: boolean;
   /** Howling Mine: each player draws an extra card in their draw step. */

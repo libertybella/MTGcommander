@@ -82,6 +82,7 @@ export function createCardDefinition(
         | "castFromGraveyard"
         | "ascend"
         | "untapDuringEachUntap"
+        | "opponentCreaturesEnterTapped"
         | "additionalCost"
         | "attackTax"
         | "dynamicPt"
@@ -294,6 +295,7 @@ export function createCardDefinition(
     ...(input.untapDuringEachUntap
       ? { untapDuringEachUntap: input.untapDuringEachUntap }
       : {}),
+    ...(input.opponentCreaturesEnterTapped ? { opponentCreaturesEnterTapped: true } : {}),
     ...(input.ascend ? { ascend: true } : {}),
     ...(input.additionalCost ? { additionalCost: { ...input.additionalCost } } : {}),
     ...(input.attackTax ? { attackTax: { ...input.attackTax } } : {}),

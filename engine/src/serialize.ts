@@ -467,6 +467,7 @@ export function parseGameState(json: string): GameState {
       ...(def.untapDuringEachUntap === "creatures" || def.untapDuringEachUntap === "permanents"
         ? { untapDuringEachUntap: def.untapDuringEachUntap }
         : {}),
+      ...(def.opponentCreaturesEnterTapped === true ? { opponentCreaturesEnterTapped: true } : {}),
       ...(def.dynamicPt === undefined
         ? {}
         : {

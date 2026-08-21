@@ -56,6 +56,7 @@ export type CompiledOracleText = {
   castFromGraveyard?: { types?: string[]; subtypes?: string[] };
   ascend?: boolean;
   untapDuringEachUntap?: "creatures" | "permanents";
+  opponentCreaturesEnterTapped?: boolean;
   extraDrawStepDraws?: boolean;
   affinityArtifacts?: boolean;
   affinityAllCreatures?: boolean;
@@ -1694,6 +1695,24 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     };
   }
 
+  // Tireless Provisioner: "a Food token or a Treasure token" — auto-picks the
+  // Treasure (mana is the flexible half), a documented approximation.
+  if (/^Create a Food token or a Treasure token$/i.test(sentence)) {
+    return {
+      targetRequirements: [],
+      effects: [
+        {
+          kind: "create_token",
+          ownerId: "controller",
+          name: "Treasure",
+          typeLine: "Artifact — Treasure Token",
+          power: null,
+          toughness: null,
+        },
+      ],
+    };
+  }
+
   match = sentence.match(
     /^Create (a|an|one|two|three|four|five|\d+) (Treasure|Clue|Food) tokens?$/i,
   );
@@ -2590,6 +2609,14 @@ function parseTriggerHead(head: string): TriggerHead | null {
   if (/^Whenever a creature you control dies$/i.test(text)) {
     return { event: "dies", watch: "controlled", subjectFilter: { types: ["creature"] } };
   }
+  if (/^Whenever another creature you control dies$/i.test(text)) {
+    return {
+      event: "dies",
+      watch: "controlled",
+      excludeSelf: true,
+      subjectFilter: { types: ["creature"] },
+    };
+  }
   if (/^Whenever a creature dies$/i.test(text)) {
     return { event: "dies", watch: "any", subjectFilter: { types: ["creature"] } };
   }
@@ -2678,6 +2705,12 @@ function parseTriggerHead(head: string): TriggerHead | null {
     /^Whenever a creature you control enters$/i.test(text)
   ) {
     return { event: "enter_battlefield", watch: "controlled", subjectFilter: { types: ["creature"] } };
+  }
+  if (
+    /^Whenever a creature an opponent controls enters$/i.test(text) ||
+    /^Whenever a creature enters under an opponent's control$/i.test(text)
+  ) {
+    return { event: "enter_battlefield", watch: "opponents", subjectFilter: { types: ["creature"] } };
   }
   if (/^Whenever you cast a spell$/i.test(text)) {
     return { event: "cast_spell", watch: "controlled" };
@@ -3808,6 +3841,12 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
     if (untapOthers?.[1]) {
       result.untapDuringEachUntap =
         untapOthers[1].toLowerCase() === "permanents" ? "permanents" : "creatures";
+      continue;
+    }
+
+    // Authority of the Consuls.
+    if (/^Creatures your opponents control enter (?:the battlefield )?tapped$/i.test(sentence)) {
+      result.opponentCreaturesEnterTapped = true;
       continue;
     }
 

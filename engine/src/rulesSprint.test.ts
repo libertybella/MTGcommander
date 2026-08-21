@@ -7736,3 +7736,126 @@ describe("wave 86: reanimation and deluges", () => {
   });
 });
 
+describe("wave 87: consuls, plunderers, provisioners", () => {
+  it("compiles the trio fully", () => {
+    const authority = compileOracleCard({
+      oracleId: "authority",
+      name: "Authority of the Consuls",
+      manaCost: "{W}",
+      typeLine: "Enchantment",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "Creatures your opponents control enter tapped.\nWhenever a creature an opponent controls enters, you gain 1 life.",
+    });
+    expect(authority.notes).toEqual([]);
+    expect(authority.definition.opponentCreaturesEnterTapped).toBe(true);
+    expect(authority.definition.triggers[0]?.watch).toBe("opponents");
+
+    const plunderer = compileOracleCard({
+      oracleId: "plunderer",
+      name: "Pitiless Plunderer",
+      manaCost: "{3}{B}",
+      typeLine: "Creature — Human Pirate",
+      power: "1",
+      toughness: "4",
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText: "Whenever another creature you control dies, create a Treasure token.",
+    });
+    expect(plunderer.notes).toEqual([]);
+    expect(plunderer.definition.triggers[0]?.excludeSelf).toBe(true);
+    expect(plunderer.definition.triggers[0]?.watch).toBe("controlled");
+
+    const provisioner = compileOracleCard({
+      oracleId: "provisioner",
+      name: "Tireless Provisioner",
+      manaCost: "{2}{G}",
+      typeLine: "Creature — Elf Scout",
+      power: "3",
+      toughness: "2",
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "Landfall — Whenever a land you control enters, create a Food token or a Treasure token. (Food is an artifact with \"{2}, {T}, Sacrifice this token: You gain 3 life.\" Treasure is an artifact with \"{T}, Sacrifice this token: Add one mana of any color.\")",
+    });
+    expect(provisioner.notes).toEqual([]);
+    const body = provisioner.definition.triggers[0]?.effects[0];
+    expect(body?.kind === "create_token" && body.name).toBe("Treasure");
+  });
+
+  it("taps arriving creatures for opponents of the Authority controller only", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const authorityDef = createCardDefinition({
+      name: "Authority",
+      typeLine: "Enchantment",
+      opponentCreaturesEnterTapped: true,
+    });
+    const bearDef = createCardDefinition({ name: "Bear", typeLine: "Creature — Bear", power: 2, toughness: 2 });
+    game.definitions[authorityDef.id] = authorityDef;
+    game.definitions[bearDef.id] = bearDef;
+    const authority = createCardInstance({ definitionId: authorityDef.id, ownerId: p1.id, zone: "battlefield" });
+    game.cards[authority.id] = authority;
+    p1.zones.battlefield.push(authority.id);
+
+    const theirBear = createCardInstance({ definitionId: bearDef.id, ownerId: p2.id, zone: "hand" });
+    game.cards[theirBear.id] = theirBear;
+    p2.zones.hand.push(theirBear.id);
+    const arrived = moveCard(game, theirBear.id, "battlefield");
+    expect(arrived.cards[theirBear.id]?.tapped).toBe(true);
+
+    const ownBear = createCardInstance({ definitionId: bearDef.id, ownerId: p1.id, zone: "hand" });
+    game.cards[ownBear.id] = ownBear;
+    p1.zones.hand.push(ownBear.id);
+    const ownArrived = moveCard(game, ownBear.id, "battlefield");
+    expect(ownArrived.cards[ownBear.id]?.tapped).toBe(false);
+  });
+
+  it("plunders a Treasure when another controlled creature dies, but not itself", () => {
+    const { game, p1 } = twoPlayers();
+    const plundererDef = createCardDefinition({
+      name: "Plunderer",
+      typeLine: "Creature — Human Pirate",
+      power: 1,
+      toughness: 4,
+      triggers: [
+        {
+          event: "dies",
+          watch: "controlled",
+          excludeSelf: true,
+          subjectFilter: { types: ["creature"] },
+          effects: [
+            {
+              kind: "create_token",
+              ownerId: "controller",
+              name: "Treasure",
+              typeLine: "Artifact — Treasure Token",
+              power: null,
+              toughness: null,
+            },
+          ],
+        },
+      ],
+    });
+    const bearDef = createCardDefinition({ name: "Bear", typeLine: "Creature — Bear", power: 2, toughness: 2 });
+    game.definitions[plundererDef.id] = plundererDef;
+    game.definitions[bearDef.id] = bearDef;
+    const plunderer = createCardInstance({ definitionId: plundererDef.id, ownerId: p1.id, zone: "battlefield" });
+    const bear = createCardInstance({ definitionId: bearDef.id, ownerId: p1.id, zone: "battlefield" });
+    game.cards[plunderer.id] = plunderer;
+    game.cards[bear.id] = bear;
+    p1.zones.battlefield.push(plunderer.id, bear.id);
+
+    let next = moveCard(game, bear.id, "graveyard");
+    while (next.stack.length > 0) {
+      next = resolveTopOfStack(next);
+    }
+    const treasures = Object.values(next.cards).filter(
+      (card) => card.isToken && next.definitions[card.definitionId]?.name === "Treasure",
+    );
+    expect(treasures).toHaveLength(1);
+  });
+});
+
