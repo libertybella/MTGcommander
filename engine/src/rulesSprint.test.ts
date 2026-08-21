@@ -14310,3 +14310,169 @@ describe("wave 131: abilities learn to choose too", () => {
     expect(next.cards[two.id]?.zone).toBe("battlefield");
   });
 });
+
+describe("wave 132: thrones, rage, and second winds", () => {
+  it("compiles the combat-condition batch fully", () => {
+    const scourge = compileOracleCard({
+      oracleId: "scourge",
+      name: "Scourge of the Throne",
+      manaCost: "{4}{R}{R}",
+      typeLine: "Creature — Dragon",
+      power: "5",
+      toughness: "5",
+      printedKeywords: ["Flying"],
+      imageUrl: "",
+      oracleText:
+        "Flying\nDethrone (Whenever this creature attacks the player with the most life or tied for most life, put a +1/+1 counter on it.)\nWhenever this creature attacks for the first time each turn, if it's attacking the player with the most life or tied for most life, untap all attacking creatures. After this phase, there is an additional combat phase.",
+    });
+    expect(scourge.notes).toEqual([]);
+    const dethrone = scourge.definition.triggers.find(
+      (trigger) => trigger.condition?.kind === "attacking_most_life" && !trigger.oncePerTurn,
+    );
+    expect(dethrone?.effects).toEqual([
+      { kind: "add_counter", cardId: "self", counter: "p1p1", amount: 1 },
+    ]);
+
+    const karlach = compileOracleCard({
+      oracleId: "karlach",
+      name: "Karlach, Fury of Avernus",
+      manaCost: "{2}{R}{R}",
+      typeLine: "Legendary Creature — Tiefling Barbarian",
+      power: "5",
+      toughness: "4",
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "Whenever you attack, if it's the first combat phase of the turn, untap all attacking creatures. They gain first strike until end of turn. After this phase, there is an additional combat phase.\nChoose a Background (You can have a Background as a second commander.)",
+    });
+    expect(karlach.notes).toEqual([]);
+    const rally = karlach.definition.triggers[0];
+    expect(rally?.condition).toEqual({ kind: "first_combat_this_turn" });
+    expect(rally?.effects).toEqual([
+      { kind: "untap_all", playerId: "controller", what: "attacking" },
+      { kind: "attackers_gain_keyword_until_eot", keyword: "first_strike" },
+      { kind: "extra_combat" },
+    ]);
+
+    const channeler = compileOracleCard({
+      oracleId: "channeler",
+      name: "Dragon's Rage Channeler",
+      manaCost: "{R}",
+      typeLine: "Creature — Human Shaman",
+      power: "1",
+      toughness: "1",
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "Whenever you cast a noncreature spell, surveil 1. (Look at the top card of your library. You may put that card into your graveyard.)\nDelirium — As long as there are four or more card types among cards in your graveyard, this creature gets +2/+2, has flying, and attacks each combat if able.",
+    });
+    expect(channeler.notes).toEqual([]);
+    expect(channeler.definition.staticAbilities).toHaveLength(2);
+    expect(channeler.definition.staticAbilities[0]?.requiresDelirium).toBe(true);
+
+    const invasion = compileOracleCard({
+      oracleId: "invasion",
+      name: "Dreadhorde Invasion",
+      manaCost: "{1}{B}",
+      typeLine: "Enchantment",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "At the beginning of your upkeep, you lose 1 life and amass Zombies 1. (Put a +1/+1 counter on an Army you control. It's also a Zombie. If you don't control an Army, create a 0/0 black Zombie Army creature token first.)\nWhenever a Zombie token you control with power 6 or greater attacks, it gains lifelink until end of turn.",
+    });
+    expect(invasion.notes).toEqual([]);
+    expect(invasion.definition.triggers[1]?.subjectFilter).toMatchObject({
+      subtypes: ["zombie"],
+      tokenOnly: true,
+      minPower: 6,
+    });
+  });
+
+  it("dethrone reads the defender's life; delirium reads the graveyard", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 10);
+    const dragonDef = createCardDefinition({
+      name: "Dragon",
+      typeLine: "Creature — Dragon",
+      power: 5,
+      toughness: 5,
+      triggers: [
+        {
+          event: "attacks",
+          condition: { kind: "attacking_most_life" },
+          effects: [{ kind: "add_counter", cardId: "self", counter: "p1p1", amount: 1 }],
+          targetRequirements: [],
+        },
+      ],
+    });
+    game.definitions[dragonDef.id] = dragonDef;
+    const dragon = createCardInstance({ definitionId: dragonDef.id, ownerId: p1.id, zone: "battlefield" });
+    game.cards[dragon.id] = dragon;
+    p1.zones.battlefield.push(dragon.id);
+
+    // Attacking the (tied-for) most-life opponent fires dethrone.
+    game.combat = {
+      attacks: [{ attackerId: dragon.id, defenderId: p2.id }],
+      blockers: {},
+      attackersDeclared: true,
+      declaredBlockersFor: [],
+    };
+    dispatchEventsInPlace(game, [{ kind: "attacks", cardId: dragon.id }]);
+    let next = game;
+    while (next.stack.length > 0) {
+      next = resolveTopOfStack(next);
+    }
+    expect(next.cards[dragon.id]?.counters["p1p1"]).toBe(1);
+
+    // Behind on life, the same attack is silent.
+    const behind = parseGameState(serializeGameState(next));
+    behind.players[1]!.life = 10;
+    behind.cards[dragon.id]!.counters["p1p1"] = 0;
+    dispatchEventsInPlace(behind, [{ kind: "attacks", cardId: dragon.id }]);
+    expect(behind.stack).toHaveLength(0);
+
+    // Delirium: three card types stay quiet, a fourth wakes the statics.
+    const channelerDef = createCardDefinition({
+      name: "Channeler",
+      typeLine: "Creature — Human Shaman",
+      power: 1,
+      toughness: 1,
+      staticAbilities: [
+        {
+          selector: { scope: "self" },
+          effect: { kind: "modify_pt", power: 2, toughness: 2 },
+          requiresDelirium: true,
+        },
+      ],
+    });
+    game.definitions[channelerDef.id] = channelerDef;
+    const channeler = createCardInstance({
+      definitionId: channelerDef.id,
+      ownerId: p1.id,
+      zone: "battlefield",
+    });
+    game.cards[channeler.id] = channeler;
+    p1.zones.battlefield.push(channeler.id);
+    const graveTypes = [
+      { name: "DeadC", typeLine: "Creature — Bear" },
+      { name: "DeadI", typeLine: "Instant" },
+      { name: "DeadS", typeLine: "Sorcery" },
+    ];
+    for (const spec of graveTypes) {
+      const deadDef = createCardDefinition(spec);
+      game.definitions[deadDef.id] = deadDef;
+      const dead = createCardInstance({ definitionId: deadDef.id, ownerId: p1.id, zone: "graveyard" });
+      game.cards[dead.id] = dead;
+      p1.zones.graveyard.push(dead.id);
+    }
+    expect(computedCard(game, channeler.id)?.power).toBe(1);
+    const fourthDef = createCardDefinition({ name: "DeadA", typeLine: "Artifact" });
+    game.definitions[fourthDef.id] = fourthDef;
+    const fourth = createCardInstance({ definitionId: fourthDef.id, ownerId: p1.id, zone: "graveyard" });
+    game.cards[fourth.id] = fourth;
+    p1.zones.graveyard.push(fourth.id);
+    expect(computedCard(game, channeler.id)?.power).toBe(3);
+  });
+});

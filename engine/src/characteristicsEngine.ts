@@ -376,6 +376,22 @@ function collectInstances(state: GameState): EffectInstance[] {
       ) {
         continue;
       }
+      // Delirium (CR 702.130-adjacent): four or more card types among the
+      // controller's graveyard, counted from printed types.
+      if (ability.requiresDelirium) {
+        const owner = state.players.find((entry) => entry.id === card.controllerId);
+        const types = new Set<string>();
+        for (const gravestoneId of owner?.zones.graveyard ?? []) {
+          const dead = state.cards[gravestoneId];
+          for (const type of state.definitions[dead?.definitionId ?? ""]?.characteristics.types ??
+            []) {
+            types.add(type);
+          }
+        }
+        if (types.size < 4) {
+          continue;
+        }
+      }
       instances.push({
         sourceId: card.id,
         selector: ability.selector,

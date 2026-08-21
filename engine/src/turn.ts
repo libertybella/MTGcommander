@@ -106,6 +106,7 @@ function onEnterStep(state: GameState): GameState {
     state.creaturesDiedThisTurn = 0;
     state.createdTokenThisTurn = [];
     state.drawsByPlayerThisTurn = {};
+    state.combatPhasesThisTurn = 0;
     const untappedEvents: EngineEvent[] = [];
     const untapInPlace = (card: (typeof state.cards)[string]) => {
       if (card.tapped) {
@@ -245,6 +246,8 @@ function onEnterStep(state: GameState): GameState {
     return state;
   }
   if (state.turn.step === "beginCombat") {
+    // Karlach's "first combat phase of the turn" condition counts these.
+    state.combatPhasesThisTurn = (state.combatPhasesThisTurn ?? 0) + 1;
     queueBeginCombatTriggersInPlace(state);
     return state;
   }

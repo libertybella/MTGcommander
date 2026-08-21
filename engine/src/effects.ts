@@ -1302,6 +1302,8 @@ export function bindCardEffect(
       }
       return { kind: "untap_lands_up_to", playerId, count: effect.count };
     }
+    case "attackers_gain_keyword_until_eot":
+      return { kind: "attackers_gain_keyword_until_eot", keyword: effect.keyword };
     case "copy_subject_spell":
     case "counter_subject_spell": {
       const subject = context.subjectCardId;
@@ -2958,14 +2960,33 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
         }
         break;
       }
+      case "attackers_gain_keyword_until_eot": {
+        // Karlach: "They gain first strike until end of turn."
+        const attackerIds = (state.combat?.attacks ?? []).map((attack) => attack.attackerId);
+        next =
+          attackerIds.length === 0
+            ? cloneGameState(state)
+            : pushUntilEotEffect(state, attackerIds, {
+                kind: "grant_keyword",
+                keyword: effect.keyword,
+              });
+        break;
+      }
       case "untap_all": {
         next = cloneGameState(state);
         const untapped: EngineEvent[] = [];
+        // Karlach: "untap all attacking creatures" — anyone's attackers.
+        const attackingIds =
+          effect.what === "attacking"
+            ? new Set((next.combat?.attacks ?? []).map((attack) => attack.attackerId))
+            : null;
         for (const card of Object.values(next.cards)) {
           if (
             card.zone === "battlefield" &&
-            card.controllerId === effect.playerId &&
-            (effect.what === "creature" ? isCreature(next, card.id) : isLand(next, card.id))
+            (attackingIds
+              ? attackingIds.has(card.id)
+              : card.controllerId === effect.playerId &&
+                (effect.what === "creature" ? isCreature(next, card.id) : isLand(next, card.id)))
           ) {
             if (card.tapped) {
               untapped.push({ kind: "untapped", cardId: card.id });

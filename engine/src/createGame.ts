@@ -210,6 +210,7 @@ export function createCardDefinition(
           ...(ability.requiresCounters
             ? { requiresCounters: { ...ability.requiresCounters } }
             : {}),
+          ...(ability.requiresDelirium ? { requiresDelirium: true } : {}),
         }))
       : [],
     produces: input.produces ? { ...input.produces } : {},

@@ -85,6 +85,25 @@ function triggerConditionHolds(
     }
     return count >= condition.atLeast;
   }
+  if (condition.kind === "first_combat_this_turn") {
+    // Karlach: only the turn's first combat phase qualifies.
+    return (state.combatPhasesThisTurn ?? 0) <= 1;
+  }
+  if (condition.kind === "attacking_most_life") {
+    // Dethrone: the subject attacker's defender has (or ties for) most life.
+    const attackerId = subjectCardId;
+    const defenderId = state.combat?.attacks.find(
+      (attack) => attack.attackerId === attackerId,
+    )?.defenderId;
+    const defender = state.players.find((entry) => entry.id === defenderId);
+    if (!defender) {
+      return false;
+    }
+    const most = Math.max(
+      ...state.players.filter((player) => !player.lost).map((player) => player.life),
+    );
+    return defender.life >= most;
+  }
   if (condition.kind === "controls_power_at_least") {
     // Garruk's Uprising: any controlled creature at or above the power bar.
     return Object.values(state.cards).some(

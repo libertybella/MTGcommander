@@ -509,6 +509,8 @@ export type GameState = {
   /** Rebound: cards waiting in exile to be offered free at the caster's
    * next upkeep. */
   pendingRebounds?: Array<{ cardId: CardInstanceId; casterId: PlayerId }>;
+  /** Combat phases begun this turn (Karlach's first-combat condition). */
+  combatPhasesThisTurn?: number;
   /** Fog: no combat damage is dealt for the rest of this turn. */
   preventCombatDamage: boolean;
   /** Maze of Ith: creatures whose combat damage (dealt and received) is
@@ -683,7 +685,9 @@ export type GameEffect =
   | { kind: "counter_unless_pays"; stackObjectId: StackObjectId; cost: string }
   | { kind: "copy_spell"; stackObjectId: StackObjectId; controllerId: PlayerId }
   | { kind: "extra_combat" }
-  | { kind: "untap_all"; playerId: PlayerId; what: "creature" | "land" }
+  | { kind: "untap_all"; playerId: PlayerId; what: "creature" | "land" | "attacking" }
+  /** Karlach: "They gain first strike until end of turn" on all attackers. */
+  | { kind: "attackers_gain_keyword_until_eot"; keyword: Keyword }
   | { kind: "untap_lands_up_to"; playerId: PlayerId; count: number }
   | { kind: "fog" }
   | { kind: "windfall" }
@@ -1163,7 +1167,8 @@ export type CardEffect =
   | { kind: "exchange_life_toughness"; playerId: PlayerSelector }
   | { kind: "copy_spell"; target: ChosenTargetRef }
   | { kind: "extra_combat" }
-  | { kind: "untap_all"; playerId: PlayerSelector; what: "creature" | "land" }
+  | { kind: "untap_all"; playerId: PlayerSelector; what: "creature" | "land" | "attacking" }
+  | { kind: "attackers_gain_keyword_until_eot"; keyword: Keyword }
   | { kind: "untap_lands_up_to"; playerId: PlayerSelector; count: number }
   | { kind: "fog" }
   /** Windfall: each player discards their hand, then draws the greatest count. */
@@ -1455,7 +1460,12 @@ export type TriggerCondition =
    * creature and no creature card in the controller's graveyard. */
   | { kind: "subject_name_unique" }
   /** Garruk's Uprising: "if you control a creature with power N or greater". */
-  | { kind: "controls_power_at_least"; power: number };
+  | { kind: "controls_power_at_least"; power: number }
+  /** Karlach: "if it's the first combat phase of the turn". */
+  | { kind: "first_combat_this_turn" }
+  /** Dethrone / Scourge: the subject attacker's defender has the most life
+   * (or is tied for most). */
+  | { kind: "attacking_most_life" };
 
 export type CardTrigger = {
   event: TriggerEvent;
@@ -1917,6 +1927,9 @@ export type StaticAbility = {
   /** Beastmaster Ascension: the ability is live only while the source
    * carries at least this many of the named counter. */
   requiresCounters?: { counter: string; atLeast: number };
+  /** Delirium (Dragon's Rage Channeler): live only with four or more card
+   * types among the controller's graveyard. */
+  requiresDelirium?: boolean;
 };
 
 /**

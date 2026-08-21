@@ -1562,6 +1562,43 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     };
   }
 
+  // Karlach: everyone's attackers untap and swing again.
+  if (/^untap all attacking creatures$/i.test(sentence)) {
+    return {
+      targetRequirements: [],
+      effects: [{ kind: "untap_all", playerId: "controller", what: "attacking" }],
+    };
+  }
+
+  // Dreadhorde Invasion's trigger body: the attacker rewards itself.
+  const subjectGains = sentence.match(/^it gains ([a-z ]+) until end of turn$/i);
+  if (subjectGains?.[1]) {
+    const granted = KEYWORD_GRANTS[subjectGains[1].trim().toLowerCase()];
+    if (granted) {
+      return {
+        targetRequirements: [],
+        effects: [{ kind: "keyword_until_eot", cardId: "subject_card", keyword: granted }],
+      };
+    }
+  }
+
+  // Dreadhorde Invasion's upkeep body.
+  const loseAmass = sentence.match(/^you lose (\d+) life and amass ([A-Za-z]+) (\d+)$/i);
+  if (loseAmass?.[1] && loseAmass[2] && loseAmass[3]) {
+    return {
+      targetRequirements: [],
+      effects: [
+        { kind: "lose_life", playerId: "controller", amount: Number(loseAmass[1]) },
+        {
+          kind: "amass",
+          playerId: "controller",
+          amount: Number(loseAmass[3]),
+          subtype: loseAmass[2],
+        },
+      ],
+    };
+  }
+
   // The Great Henge's trigger body: the counter lands on the entering subject.
   if (/^put a \+1\/\+1 counter on it and draw a card$/i.test(sentence)) {
     return {
@@ -4181,6 +4218,25 @@ function parseTriggerHead(head: string): TriggerHead | null {
   if (/^Whenever ~ attacks for the first time each turn$/i.test(text)) {
     return { event: "attacks", oncePerTurn: true };
   }
+  // Karlach: one firing per attack declaration.
+  if (/^Whenever you attack$/i.test(text)) {
+    return { event: "attacks", watch: "controlled", oncePerBatch: true };
+  }
+  // Dreadhorde Invasion's second line.
+  const tokenTribalAttack = text.match(
+    /^Whenever an? ([A-Za-z]+) token you control with power (\d+) or greater attacks$/i,
+  );
+  if (tokenTribalAttack?.[1] && tokenTribalAttack[2]) {
+    return {
+      event: "attacks",
+      watch: "controlled",
+      subjectFilter: {
+        subtypes: [tokenTribalAttack[1].toLowerCase()],
+        tokenOnly: true,
+        minPower: Number(tokenTribalAttack[2]),
+      },
+    };
+  }
   // Tribal attack heads: "Whenever a Dragon you control attacks" (Utvara).
   const tribalAttack = text.match(/^Whenever an? ([A-Za-z]+) you control attacks$/i);
   if (tribalAttack?.[1]) {
@@ -5867,6 +5923,46 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
       continue;
     }
 
+    // Dethrone (CR 702.104) lowers to its full rules text.
+    if (/^Dethrone$/i.test(sentence)) {
+      result.triggers.push({
+        event: "attacks",
+        condition: { kind: "attacking_most_life" },
+        effects: [{ kind: "add_counter", cardId: "self", counter: "p1p1", amount: 1 }],
+        targetRequirements: [],
+      });
+      continue;
+    }
+
+    // Dragon's Rage Channeler. The "attacks each combat if able" half is
+    // dropped — a documented approximation (the drawback is unrepresentable
+    // as a gated static today).
+    const delirium = sentence.match(
+      /^Delirium — As long as there are four or more card types among cards in your graveyard, ~ gets \+(\d+)\/\+(\d+), has ([a-z]+), and attacks each combat if able$/i,
+    );
+    if (delirium?.[1] && delirium[2] && delirium[3]) {
+      const granted = KEYWORD_GRANTS[delirium[3].toLowerCase()];
+      if (granted) {
+        result.staticAbilities.push(
+          {
+            selector: { scope: "self" },
+            effect: {
+              kind: "modify_pt",
+              power: Number(delirium[1]),
+              toughness: Number(delirium[2]),
+            },
+            requiresDelirium: true,
+          },
+          {
+            selector: { scope: "self" },
+            effect: { kind: "grant_keyword", keyword: granted },
+            requiresDelirium: true,
+          },
+        );
+        continue;
+      }
+    }
+
     // Evolve (CR 702.100) lowers to its full rules text.
     if (/^Evolve$/i.test(sentence)) {
       result.triggers.push({
@@ -6973,6 +7069,16 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
             const power = Number(phrase.match(/power (\d+)/i)![1]);
             condition = { kind: "controls_power_at_least", power };
             rest = interveningIf[2].trim();
+          } else if (/^it's the first combat phase of the turn$/i.test(phrase)) {
+            // Karlach.
+            condition = { kind: "first_combat_this_turn" };
+            rest = interveningIf[2].trim();
+          } else if (
+            /^it's attacking the player with the most life or tied for most life$/i.test(phrase)
+          ) {
+            // Scourge of the Throne.
+            condition = { kind: "attacking_most_life" };
+            rest = interveningIf[2].trim();
           } else {
             const controls = phrase.match(
               /^you control (two|three|four|five|six|\d+) or more (lands|creatures|artifacts)$/i,
@@ -7256,6 +7362,21 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
         index += 1;
       }
       continue;
+    }
+
+    // Karlach: "They gain first strike until end of turn" after an attack
+    // trigger extends that trigger — the attackers get the grant.
+    const theyGain = sentence.match(/^They gain ([a-z ]+) until end of turn$/i);
+    if (theyGain?.[1] && result.triggers.length > 0) {
+      const grantedKeyword = KEYWORD_GRANTS[theyGain[1].trim().toLowerCase()];
+      const lastAttackTrigger = result.triggers[result.triggers.length - 1];
+      if (grantedKeyword && lastAttackTrigger) {
+        lastAttackTrigger.effects.push({
+          kind: "attackers_gain_keyword_until_eot",
+          keyword: grantedKeyword,
+        });
+        continue;
+      }
     }
 
     // "After this main phase, there is an additional combat phase…" as its

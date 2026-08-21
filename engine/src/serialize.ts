@@ -999,6 +999,9 @@ export function parseGameState(json: string): GameState {
     ...(raw.creaturesDiedThisTurn === undefined
       ? {}
       : { creaturesDiedThisTurn: expectNumber(raw.creaturesDiedThisTurn, "creaturesDiedThisTurn") }),
+    ...(raw.combatPhasesThisTurn === undefined
+      ? {}
+      : { combatPhasesThisTurn: expectNumber(raw.combatPhasesThisTurn, "combatPhasesThisTurn") }),
     ...(raw.createdTokenThisTurn === undefined
       ? {}
       : { createdTokenThisTurn: expectStringArray(raw.createdTokenThisTurn, "createdTokenThisTurn") }),
@@ -2227,10 +2230,17 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
     }
     case "untap_all": {
       const what = expectString(value.what, `${label}.what`);
-      if (what !== "creature" && what !== "land") {
+      if (what !== "creature" && what !== "land" && what !== "attacking") {
         throw new Error(`Invalid ${label}.what`);
       }
       return { kind, playerId: parsePlayerSelector(value.playerId, `${label}.playerId`), what };
+    }
+    case "attackers_gain_keyword_until_eot": {
+      const attackersKeyword = expectString(value.keyword, `${label}.keyword`);
+      if (!KEYWORDS.has(attackersKeyword as Keyword)) {
+        throw new Error(`Invalid ${label}.keyword`);
+      }
+      return { kind, keyword: attackersKeyword as Keyword };
     }
     case "proliferate":
     case "populate":
@@ -2893,7 +2903,9 @@ function parseTriggers(value: unknown, label: string): CardTrigger[] {
               if (
                 conditionKind === "greatest_artifact_mana_value" ||
                 conditionKind === "opponent_controls_more_lands" ||
-                conditionKind === "subject_name_unique"
+                conditionKind === "subject_name_unique" ||
+                conditionKind === "first_combat_this_turn" ||
+                conditionKind === "attacking_most_life"
               ) {
                 return { kind: conditionKind };
               }
@@ -3242,6 +3254,7 @@ function parseStaticAbilities(
               },
             }
           : {}),
+        ...(entry.requiresDelirium === true ? { requiresDelirium: true } : {}),
       });
     }
   }
@@ -3516,6 +3529,13 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
       power: expectNumber(value.power, `${label}.power`),
       toughness: expectNumber(value.toughness, `${label}.toughness`),
     };
+  }
+  if (kind === "attackers_gain_keyword_until_eot") {
+    const attackersKeyword = expectString(value.keyword, `${label}.keyword`);
+    if (!KEYWORDS.has(attackersKeyword as Keyword)) {
+      throw new Error(`Invalid ${label}.keyword`);
+    }
+    return { kind, keyword: attackersKeyword as Keyword };
   }
   if (kind === "keyword_until_eot") {
     const keyword = expectString(value.keyword, `${label}.keyword`);
