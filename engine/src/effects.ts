@@ -1,3 +1,4 @@
+import { abilitiesRemoved } from "./characteristicsEngine";
 import { cloneGameState } from "./clone";
 import { createCardDefinition, createCardInstance } from "./createGame";
 import { characteristicsOf, hasSubtype, isCreature, isInstantOrSorcery, isLand } from "./cardTypes";
@@ -816,6 +817,59 @@ function applySacrifice(state: GameState, cardId: CardInstanceId): GameState {
   return moveCard(state, cardId, "graveyard");
 }
 
+/** Anointed Procession / Doubling Season: 2^n for n token doublers. */
+export function tokenDoublingFactor(state: GameState, ownerId: PlayerId): number {
+  let factor = 1;
+  for (const card of Object.values(state.cards)) {
+    if (card.zone !== "battlefield" || card.controllerId !== ownerId) {
+      continue;
+    }
+    if (abilitiesRemoved(state, card.id)) {
+      continue;
+    }
+    for (const replacement of state.definitions[card.definitionId]?.replacements ?? []) {
+      if (replacement.kind === "double_tokens") {
+        factor *= 2;
+      }
+    }
+  }
+  return factor;
+}
+
+/** Doubling Season / Branching Evolution: 2^n for matching counter doublers. */
+export function counterDoublingFactor(
+  state: GameState,
+  cardId: CardInstanceId,
+  counter: string,
+): number {
+  const card = state.cards[cardId];
+  if (!card || card.zone !== "battlefield") {
+    return 1;
+  }
+  let factor = 1;
+  for (const source of Object.values(state.cards)) {
+    if (source.zone !== "battlefield" || source.controllerId !== card.controllerId) {
+      continue;
+    }
+    if (abilitiesRemoved(state, source.id)) {
+      continue;
+    }
+    for (const replacement of state.definitions[source.definitionId]?.replacements ?? []) {
+      if (replacement.kind !== "double_counters") {
+        continue;
+      }
+      if (replacement.counter && replacement.counter !== counter) {
+        continue;
+      }
+      if (replacement.creaturesOnly && !isCreature(state, cardId)) {
+        continue;
+      }
+      factor *= 2;
+    }
+  }
+  return factor;
+}
+
 function applyAddCounter(
   state: GameState,
   cardId: CardInstanceId,
@@ -831,7 +885,8 @@ function applyAddCounter(
   if (!card) {
     throw new Error(`Unknown card ${cardId}`);
   }
-  card.counters[counter] = (card.counters[counter] ?? 0) + amount;
+  card.counters[counter] =
+    (card.counters[counter] ?? 0) + amount * counterDoublingFactor(next, cardId, counter);
   return next;
 }
 
@@ -957,25 +1012,30 @@ function applyCreateToken(
     ...(preset?.manaAbilities ? { manaAbilities: preset.manaAbilities } : {}),
     ...(preset?.activated ? { activated: preset.activated } : {}),
   });
-  const token = createCardInstance({
-    definitionId: definition.id,
-    ownerId: effect.ownerId,
-    zone: "battlefield",
-    isToken: true,
-  });
   next.definitions[definition.id] = definition;
-  next.cards[token.id] = token;
-  token.timestamp = next.nextTimestamp;
-  next.nextTimestamp += 1;
   const owner = next.players.find((player) => player.id === effect.ownerId);
   if (!owner) {
     throw new Error(`Unknown player ${effect.ownerId}`);
   }
-  owner.zones.battlefield.push(token.id);
-  if (countCardPlacements(next, token.id) !== 1) {
-    throw new Error(`Token zone integrity failed for ${token.id}`);
+  // Anointed Procession / Doubling Season (CR 614.1c): each doubler the
+  // token's controller controls doubles the batch.
+  const copies = tokenDoublingFactor(next, effect.ownerId);
+  for (let index = 0; index < copies; index += 1) {
+    const token = createCardInstance({
+      definitionId: definition.id,
+      ownerId: effect.ownerId,
+      zone: "battlefield",
+      isToken: true,
+    });
+    next.cards[token.id] = token;
+    token.timestamp = next.nextTimestamp;
+    next.nextTimestamp += 1;
+    owner.zones.battlefield.push(token.id);
+    if (countCardPlacements(next, token.id) !== 1) {
+      throw new Error(`Token zone integrity failed for ${token.id}`);
+    }
+    queueEnterBattlefieldTriggersInPlace(next, token.id);
   }
-  queueEnterBattlefieldTriggersInPlace(next, token.id);
   return next;
 }
 
@@ -1183,21 +1243,25 @@ function applyCopyToken(
     throw new Error(`Card ${ofCardId} is not on the battlefield`);
   }
   const next = cloneGameState(state);
-  const token = createCardInstance({
-    definitionId: original.definitionId,
-    ownerId,
-    zone: "battlefield",
-    isToken: true,
-  });
-  token.timestamp = next.nextTimestamp;
-  next.nextTimestamp += 1;
-  next.cards[token.id] = token;
   const owner = next.players.find((player) => player.id === ownerId);
   if (!owner) {
     throw new Error(`Unknown player ${ownerId}`);
   }
-  owner.zones.battlefield.push(token.id);
-  queueEnterBattlefieldTriggersInPlace(next, token.id);
+  // Token copies are created tokens too — doublers apply (CR 614.1c).
+  const copies = tokenDoublingFactor(next, ownerId);
+  for (let index = 0; index < copies; index += 1) {
+    const token = createCardInstance({
+      definitionId: original.definitionId,
+      ownerId,
+      zone: "battlefield",
+      isToken: true,
+    });
+    token.timestamp = next.nextTimestamp;
+    next.nextTimestamp += 1;
+    next.cards[token.id] = token;
+    owner.zones.battlefield.push(token.id);
+    queueEnterBattlefieldTriggersInPlace(next, token.id);
+  }
   return next;
 }
 
@@ -1212,7 +1276,8 @@ function applyCounterOnControlledCreatures(
   const next = cloneGameState(state);
   for (const card of Object.values(next.cards)) {
     if (card.zone === "battlefield" && card.controllerId === playerId && isCreature(next, card.id)) {
-      card.counters[counter] = (card.counters[counter] ?? 0) + amount;
+      card.counters[counter] =
+        (card.counters[counter] ?? 0) + amount * counterDoublingFactor(next, card.id, counter);
     }
   }
   return next;

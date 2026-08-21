@@ -2918,3 +2918,123 @@ describe("wave 31: flashback (CR 702.34)", () => {
     expect(countered.cards[spell.id]?.zone).toBe("exile");
   });
 });
+
+describe("wave 32: token and counter doubling (CR 614.1c)", () => {
+  it("compiles Anointed Procession, Doubling Season, and Branching Evolution fully", () => {
+    const procession = compileOracleCard({
+      oracleId: "anointed-procession",
+      name: "Anointed Procession",
+      manaCost: "{3}{W}",
+      typeLine: "Enchantment",
+      oracleText:
+        "If one or more tokens would be created under your control, twice that many of those tokens are created instead.",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+    });
+    expect(procession.definition.replacements).toEqual([{ kind: "double_tokens" }]);
+    expect(procession.notes).toEqual([]);
+
+    const season = compileOracleCard({
+      oracleId: "doubling-season",
+      name: "Doubling Season",
+      manaCost: "{4}{G}",
+      typeLine: "Enchantment",
+      oracleText:
+        "If an effect would create one or more tokens under your control, it creates twice that many of those tokens instead.\nIf an effect would put one or more counters on a permanent you control, it puts twice that many of those counters on it instead.",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+    });
+    expect(season.definition.replacements).toEqual([
+      { kind: "double_tokens" },
+      { kind: "double_counters" },
+    ]);
+    expect(season.notes).toEqual([]);
+
+    const evolution = compileOracleCard({
+      oracleId: "branching-evolution",
+      name: "Branching Evolution",
+      manaCost: "{2}{G}",
+      typeLine: "Enchantment",
+      oracleText:
+        "If one or more +1/+1 counters would be put on a creature you control, twice that many +1/+1 counters are put on that creature instead.",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+    });
+    expect(evolution.definition.replacements).toEqual([
+      { kind: "double_counters", counter: "p1p1", creaturesOnly: true },
+    ]);
+    expect(evolution.notes).toEqual([]);
+  });
+
+  it("doubles created tokens and added counters, stacking multiplicatively", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const doubler = createCardDefinition({
+      name: "Anointed Procession",
+      typeLine: "Enchantment",
+      replacements: [{ kind: "double_tokens" }, { kind: "double_counters" }],
+    });
+    game.definitions[doubler.id] = doubler;
+    const one = createCardInstance({ definitionId: doubler.id, ownerId: p1.id, zone: "battlefield" });
+    game.cards[one.id] = one;
+    p1.zones.battlefield.push(one.id);
+
+    let state = applyEffects(game, [
+      {
+        kind: "create_token",
+        ownerId: p1.id,
+        name: "Treasure",
+        typeLine: "Token Artifact - Treasure",
+      },
+    ]);
+    const treasures = state.players[0]!.zones.battlefield.filter(
+      (id) => state.definitions[state.cards[id]!.definitionId]?.name === "Treasure",
+    );
+    expect(treasures).toHaveLength(2);
+
+    // A second doubler stacks: 1 -> 4.
+    const two = createCardInstance({ definitionId: doubler.id, ownerId: p1.id, zone: "battlefield" });
+    state = structuredClone(state);
+    state.cards[two.id] = two;
+    state.players[0]!.zones.battlefield.push(two.id);
+    const redoubled = applyEffects(state, [
+      {
+        kind: "create_token",
+        ownerId: state.players[0]!.id,
+        name: "Clue",
+        typeLine: "Token Artifact - Clue",
+      },
+    ]);
+    const clues = redoubled.players[0]!.zones.battlefield.filter(
+      (id) => redoubled.definitions[redoubled.cards[id]!.definitionId]?.name === "Clue",
+    );
+    expect(clues).toHaveLength(4);
+
+    // Counters double for the doubler's controller, not for opponents.
+    const bear = createCardDefinition({
+      name: "Runeclaw Bear",
+      typeLine: "Creature - Bear",
+      power: 2,
+      toughness: 2,
+    });
+    const withBears = structuredClone(redoubled);
+    withBears.definitions[bear.id] = bear;
+    const mine = createCardInstance({ definitionId: bear.id, ownerId: withBears.players[0]!.id, zone: "battlefield" });
+    const theirs = createCardInstance({ definitionId: bear.id, ownerId: p2.id, zone: "battlefield" });
+    withBears.cards[mine.id] = mine;
+    withBears.cards[theirs.id] = theirs;
+    withBears.players[0]!.zones.battlefield.push(mine.id);
+    withBears.players[1]!.zones.battlefield.push(theirs.id);
+    const counted = applyEffects(withBears, [
+      { kind: "add_counter", cardId: mine.id, counter: "p1p1", amount: 1 },
+      { kind: "add_counter", cardId: theirs.id, counter: "p1p1", amount: 1 },
+    ]);
+    expect(counted.cards[mine.id]?.counters["p1p1"]).toBe(4); // two doublers
+    expect(counted.cards[theirs.id]?.counters["p1p1"]).toBe(1);
+  });
+});

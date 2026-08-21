@@ -929,7 +929,13 @@ export type ReplacementEffect =
   | { kind: "enters_tapped_if"; if: EnterTappedUnless }
   | { kind: "may_pay_life_or_enter_tapped"; amount: number }
   /** Rest in Peace: cards and tokens headed to a graveyard are exiled instead. */
-  | { kind: "graveyard_to_exile" };
+  | { kind: "graveyard_to_exile" }
+  /** Anointed Procession / Doubling Season: tokens created under the
+   * controller's control are doubled. */
+  | { kind: "double_tokens" }
+  /** Doubling Season / Branching Evolution: counters put on permanents the
+   * controller controls are doubled; optional counter/creature restriction. */
+  | { kind: "double_counters"; counter?: string; creaturesOnly?: boolean };
 
 export type ManaAbility = {
   produces: Partial<ManaPool>;

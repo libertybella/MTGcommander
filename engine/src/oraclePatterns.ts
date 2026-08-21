@@ -2400,6 +2400,36 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
       continue;
     }
 
+    // Anointed Procession / Doubling Season: token doubling.
+    if (
+      /^If (?:one or more tokens would be created under your control|an effect would create one or more tokens under your control), (?:twice that many of those tokens are created|it creates twice that many of those tokens) instead$/i.test(
+        sentence,
+      )
+    ) {
+      result.replacements.push({ kind: "double_tokens" });
+      continue;
+    }
+
+    // Doubling Season's counter half: all counters on your permanents.
+    if (
+      /^If an effect would put one or more counters on a permanent you control, it puts twice that many of those counters on (?:it|that permanent) instead$/i.test(
+        sentence,
+      )
+    ) {
+      result.replacements.push({ kind: "double_counters" });
+      continue;
+    }
+
+    // Branching Evolution: +1/+1 counters on your creatures.
+    if (
+      /^If one or more \+1\/\+1 counters would be put on a creature you control, twice that many \+1\/\+1 counters are put on (?:it|that creature) instead$/i.test(
+        sentence,
+      )
+    ) {
+      result.replacements.push({ kind: "double_counters", counter: "p1p1", creaturesOnly: true });
+      continue;
+    }
+
     // SOI/STX reveal lands: "As ~ enters, you may reveal a Plains or Island
     // card from your hand." + "If you don't, ~ enters tapped."
     const revealLand = sentence.match(

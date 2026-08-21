@@ -1811,8 +1811,17 @@ function parseReplacements(value: unknown, label: string): ReplacementEffect[] {
       throw new Error(`Invalid ${label}[${index}]`);
     }
     const kind = expectString(entry.kind, `${label}[${index}].kind`);
-    if (kind === "enters_tapped" || kind === "graveyard_to_exile") {
+    if (kind === "enters_tapped" || kind === "graveyard_to_exile" || kind === "double_tokens") {
       return { kind };
+    }
+    if (kind === "double_counters") {
+      return {
+        kind,
+        ...(entry.counter === undefined
+          ? {}
+          : { counter: expectString(entry.counter, `${label}[${index}].counter`) }),
+        ...(entry.creaturesOnly === true ? { creaturesOnly: true } : {}),
+      };
     }
     if (kind === "may_pay_life_or_enter_tapped") {
       return {
