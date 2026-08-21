@@ -202,6 +202,9 @@ export type CardDefinition = {
   /** Gravecrawler: castable from the graveyard while the controller controls
    * a matching permanent. Resolves normally (a creature enters play). */
   castFromGraveyard?: { types?: string[]; subtypes?: string[] };
+  /** Ascend: while this is on the battlefield, controlling ten or more
+   * permanents grants the city's blessing (checked in the SBA sweep). */
+  ascend?: boolean;
   /** Star P/T: base power and toughness are each this count (CR 613.3a). */
   dynamicPt?: { count: DynamicCount };
   /** Scryfall card image, if known. Empty for synthetic / hidden cards. */
@@ -263,6 +266,9 @@ export type PlayerState = {
   attackedThisTurn: boolean;
   /** Set when a draw is attempted from an empty library. SBA then eliminates. */
   failedToDraw: boolean;
+  /** Ascend (CR 702.131): once ten or more permanents are controlled while an
+   * Ascend source is on the battlefield, the blessing is kept for the game. */
+  cityBlessing?: boolean;
 };
 
 export type StackObject = {
@@ -1282,6 +1288,9 @@ export type ContinuousEffectData =
       cantAttack?: boolean;
       cantBlock?: boolean;
       cantBeBlocked?: boolean;
+      /** Wayward Swordtooth: the restriction lifts once the source's
+       * controller has the city's blessing. */
+      unlessCityBlessing?: boolean;
     }
   | { kind: "set_pt"; power: number; toughness: number } // layer 7b
   | { kind: "modify_pt"; power: number; toughness: number }; // layer 7c

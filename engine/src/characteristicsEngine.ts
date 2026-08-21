@@ -363,11 +363,20 @@ function applyInstance(
         computed.grantedMana = [];
         computed.allCreatureTypes = false;
         break;
-      case "restrict":
+      case "restrict": {
+        // Wayward Swordtooth: the restriction lifts with the city's blessing.
+        if (effect.unlessCityBlessing) {
+          const source = instance.sourceId ? state.cards[instance.sourceId] : undefined;
+          const controller = state.players.find((entry) => entry.id === source?.controllerId);
+          if (controller?.cityBlessing) {
+            break;
+          }
+        }
         computed.cantAttack = computed.cantAttack || effect.cantAttack === true;
         computed.cantBlock = computed.cantBlock || effect.cantBlock === true;
         computed.cantBeBlocked = computed.cantBeBlocked || effect.cantBeBlocked === true;
         break;
+      }
       case "set_pt":
         computed.power = effect.power;
         computed.toughness = effect.toughness;

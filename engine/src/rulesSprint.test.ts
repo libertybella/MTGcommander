@@ -6917,3 +6917,57 @@ describe("wave 77: dash", () => {
     expect(next.cards[raider.id]?.zone).toBe("hand");
   });
 });
+
+describe("wave 78: ascend and the city's blessing", () => {
+  it("compiles Wayward Swordtooth fully", () => {
+    const swordtooth = compileOracleCard({
+      oracleId: "swordtooth",
+      name: "Wayward Swordtooth",
+      manaCost: "{2}{G}",
+      typeLine: "Creature — Dinosaur",
+      power: "5",
+      toughness: "5",
+      printedKeywords: ["Ascend"],
+      imageUrl: "",
+      oracleText:
+        "Ascend (If you control ten or more permanents, you get the city's blessing for the rest of the game.)\nYou may play an additional land on each of your turns.\nThis creature can't attack or block unless you have the city's blessing.",
+    });
+    expect(swordtooth.notes).toEqual([]);
+    expect(swordtooth.definition.ascend).toBe(true);
+    const restrict = swordtooth.definition.staticAbilities[0];
+    expect(restrict?.effect.kind === "restrict" && restrict.effect.unlessCityBlessing).toBe(true);
+  });
+
+  it("grants the blessing at ten permanents and lifts the restriction", () => {
+    const { game, p1 } = twoPlayers();
+    const toothDef = createCardDefinition({
+      name: "Tooth",
+      typeLine: "Creature — Dinosaur",
+      power: 5,
+      toughness: 5,
+      ascend: true,
+      staticAbilities: [
+        {
+          selector: { scope: "self" },
+          effect: { kind: "restrict", cantAttack: true, cantBlock: true, unlessCityBlessing: true },
+        },
+      ],
+    });
+    game.definitions[toothDef.id] = toothDef;
+    const tooth = createCardInstance({ definitionId: toothDef.id, ownerId: p1.id, zone: "battlefield" });
+    game.cards[tooth.id] = tooth;
+    p1.zones.battlefield.push(tooth.id);
+    addLandsInPlay(game, p1, 5);
+
+    // Six permanents: no blessing, restriction holds.
+    let next = applyEffect(game, { kind: "gain_life", playerId: p1.id, amount: 1 });
+    expect(next.players.find((p) => p.id === p1.id)!.cityBlessing).toBeUndefined();
+    expect(computedCard(next, tooth.id)?.cantAttack).toBe(true);
+
+    // Four more permanents: the SBA sweep grants the blessing permanently.
+    addLandsInPlay(next, next.players.find((p) => p.id === p1.id)!, 4);
+    next = applyEffect(next, { kind: "gain_life", playerId: p1.id, amount: 1 });
+    expect(next.players.find((p) => p.id === p1.id)!.cityBlessing).toBe(true);
+    expect(computedCard(next, tooth.id)?.cantAttack).toBe(false);
+  });
+});

@@ -54,6 +54,7 @@ export type CompiledOracleText = {
   attackTax?: { generic?: number; perEnchantment?: boolean; lifePer?: number };
   leyline?: boolean;
   castFromGraveyard?: { types?: string[]; subtypes?: string[] };
+  ascend?: boolean;
   untapDuringEachUntap?: "creatures" | "permanents";
   extraDrawStepDraws?: boolean;
   affinityArtifacts?: boolean;
@@ -3657,6 +3658,29 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
 
     if (/^Affinity for artifacts$/i.test(sentence)) {
       result.affinityArtifacts = true;
+      continue;
+    }
+
+    if (/^Ascend$/i.test(sentence)) {
+      result.ascend = true;
+      continue;
+    }
+
+    // Wayward Swordtooth: a blessing-gated combat restriction.
+    const blessedRestrict = sentence.match(
+      /^~ can't (attack or block|attack|block) unless you have the city's blessing$/i,
+    );
+    if (blessedRestrict?.[1]) {
+      const what = blessedRestrict[1].toLowerCase();
+      result.staticAbilities.push({
+        selector: { scope: "self" },
+        effect: {
+          kind: "restrict",
+          ...(what.includes("attack") ? { cantAttack: true } : {}),
+          ...(what.includes("block") ? { cantBlock: true } : {}),
+          unlessCityBlessing: true,
+        },
+      });
       continue;
     }
 

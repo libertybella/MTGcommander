@@ -192,6 +192,7 @@ function parsePlayer(value: unknown): PlayerState {
         : expectNumber(value.landsPlayedThisTurn, "player.landsPlayedThisTurn"),
     attackedThisTurn: value.attackedThisTurn === true,
     failedToDraw: value.failedToDraw === true,
+    ...(value.cityBlessing === true ? { cityBlessing: true } : {}),
   };
 }
 
@@ -440,6 +441,7 @@ export function parseGameState(json: string): GameState {
           }),
       ...(def.playLandsFromGraveyard === true ? { playLandsFromGraveyard: true } : {}),
       ...(def.leyline === true ? { leyline: true } : {}),
+      ...(def.ascend === true ? { ascend: true } : {}),
       ...(def.castFromGraveyard === undefined
         ? {}
         : {
@@ -2383,6 +2385,7 @@ function parseContinuousEffectData(value: unknown, label: string): ContinuousEff
       ...(value.cantAttack === true ? { cantAttack: true } : {}),
       ...(value.cantBlock === true ? { cantBlock: true } : {}),
       ...(value.cantBeBlocked === true ? { cantBeBlocked: true } : {}),
+      ...(value.unlessCityBlessing === true ? { unlessCityBlessing: true } : {}),
     };
   }
   if (kind === "set_pt" || kind === "modify_pt") {

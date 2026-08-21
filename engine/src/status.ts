@@ -206,6 +206,25 @@ export function applyStateBasedActionsInPlace(state: GameState): void {
       processDiesReturnsInPlace(state, collectDies);
     }
   }
+  // Ascend (CR 702.131): controlling ten or more permanents while an Ascend
+  // source is on the battlefield grants the city's blessing for the game.
+  for (const player of state.players) {
+    if (player.lost || player.cityBlessing) {
+      continue;
+    }
+    const permanents = player.zones.battlefield.filter(
+      (cardId) => state.cards[cardId]?.controllerId === player.id,
+    );
+    if (permanents.length < 10) {
+      continue;
+    }
+    const hasAscendSource = permanents.some(
+      (cardId) => state.definitions[state.cards[cardId]?.definitionId ?? ""]?.ascend === true,
+    );
+    if (hasAscendSource) {
+      player.cityBlessing = true;
+    }
+  }
   state.winnerId = winnerId(state);
 }
 

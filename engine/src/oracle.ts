@@ -209,6 +209,7 @@ function compileOneFace(card: OracleCard, definitionId: string): OracleCompileRe
     ...(compiled.attackTax ? { attackTax: { ...compiled.attackTax } } : {}),
     ...(compiled.leyline ? { leyline: true } : {}),
     ...(compiled.castFromGraveyard ? { castFromGraveyard: { ...compiled.castFromGraveyard } } : {}),
+    ...(compiled.ascend ? { ascend: true } : {}),
     ...(compiled.untapDuringEachUntap
       ? { untapDuringEachUntap: compiled.untapDuringEachUntap }
       : {}),

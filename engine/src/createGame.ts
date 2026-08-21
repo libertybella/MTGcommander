@@ -80,6 +80,7 @@ export function createCardDefinition(
         | "playLandsFromGraveyard"
         | "leyline"
         | "castFromGraveyard"
+        | "ascend"
         | "untapDuringEachUntap"
         | "additionalCost"
         | "attackTax"
@@ -290,6 +291,7 @@ export function createCardDefinition(
     ...(input.untapDuringEachUntap
       ? { untapDuringEachUntap: input.untapDuringEachUntap }
       : {}),
+    ...(input.ascend ? { ascend: true } : {}),
     ...(input.additionalCost ? { additionalCost: { ...input.additionalCost } } : {}),
     ...(input.attackTax ? { attackTax: { ...input.attackTax } } : {}),
     ...(input.dynamicPt ? { dynamicPt: { count: input.dynamicPt.count } } : {}),
