@@ -715,6 +715,18 @@ export function bindCardEffect(
       }
       return { kind: "populate", playerId };
     }
+    case "exile_top_play": {
+      const playerId = bindPlayerSelector(state, effect.playerId, context);
+      if (!playerId) {
+        return null;
+      }
+      return {
+        kind: "exile_top_play",
+        playerId,
+        casterId: context.controllerId,
+        count: effect.count,
+      };
+    }
     case "proliferate": {
       const playerId = bindPlayerSelector(state, effect.playerId, context);
       if (!playerId) {
@@ -1989,6 +2001,23 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
       case "copy_token":
         next = applyCopyToken(state, effect.ownerId, effect.ofCardId, effect);
         break;
+      case "exile_top_play": {
+        // Impulse: the exiled cards stay castable/playable by the effect's
+        // controller for the rest of the turn (costs paid as normal).
+        next = cloneGameState(state);
+        const impulsed = next.players.find((entry) => entry.id === effect.playerId);
+        if (!impulsed) {
+          throw new Error(`Unknown player ${effect.playerId}`);
+        }
+        const tops = impulsed.zones.library.slice(0, effect.count);
+        for (const cardId of tops) {
+          moveCardInPlace(next, cardId, "exile");
+          const grants = next.exilePlayable ?? [];
+          grants.push({ cardId, casterId: effect.casterId });
+          next.exilePlayable = grants;
+        }
+        break;
+      }
       case "populate": {
         // CR 701.35 is "choose a token you control" — auto-pick the highest
         // power creature token, a documented approximation like proliferate.

@@ -232,6 +232,9 @@ function onEnterStep(state: GameState): GameState {
     if (state.diesReturnUntilEot && state.diesReturnUntilEot.length > 0) {
       state.diesReturnUntilEot = [];
     }
+    if (state.exilePlayable && state.exilePlayable.length > 0) {
+      state.exilePlayable = [];
+    }
     return state;
   }
   return state;

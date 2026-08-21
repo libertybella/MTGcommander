@@ -6779,3 +6779,77 @@ describe("wave 75: died-this-turn treasures and second-spell taxes", () => {
     expect(next.stack).toHaveLength(2);
   });
 });
+
+describe("wave 76: impulse exiles", () => {
+  const base = { power: null, toughness: null, printedKeywords: [], imageUrl: "" };
+
+  it("compiles Professional Face-Breaker fully", () => {
+    const breaker = compileOracleCard({
+      ...base,
+      oracleId: "breaker2",
+      name: "Professional Face-Breaker",
+      manaCost: "{2}{R}",
+      typeLine: "Creature — Human Warrior",
+      power: "3",
+      toughness: "2",
+      printedKeywords: ["Menace"],
+      oracleText:
+        "Menace\nWhenever one or more creatures you control deal combat damage to a player, create a Treasure token.\nSacrifice a Treasure: Exile the top card of your library. You may play that card this turn.",
+    });
+    expect(breaker.notes).toEqual([]);
+    const ability = breaker.definition.activated[0];
+    expect(ability?.sacrificeCost).toBe("treasure");
+    expect(ability?.effects[0]).toEqual({
+      kind: "exile_top_play",
+      playerId: "controller",
+      count: 1,
+    });
+  });
+
+  it("exiles the top card and lets its controller cast it this turn", () => {
+    const { game, p1 } = twoPlayers();
+    const boltDef = createCardDefinition({ name: "Bolt", manaCost: "", typeLine: "Instant" });
+    game.definitions[boltDef.id] = boltDef;
+    const bolt = createCardInstance({ definitionId: boltDef.id, ownerId: p1.id, zone: "library" });
+    game.cards[bolt.id] = bolt;
+    p1.zones.library.unshift(bolt.id);
+    game.turn.activePlayerId = p1.id;
+    game.turn.phase = "precombatMain";
+    game.turn.step = "precombatMain";
+    game.priorityPlayerId = p1.id;
+
+    let next = applyEffect(game, {
+      kind: "exile_top_play",
+      playerId: p1.id,
+      casterId: p1.id,
+      count: 1,
+    });
+    expect(next.cards[bolt.id]?.zone).toBe("exile");
+    expect(next.exilePlayable).toEqual([{ cardId: bolt.id, casterId: p1.id }]);
+
+    next = applyAction(next, { kind: "cast_spell", playerId: p1.id, cardId: bolt.id });
+    expect(next.stack).toHaveLength(1);
+    next = resolveTopOfStack(next);
+    expect(next.cards[bolt.id]?.zone).toBe("graveyard");
+  });
+
+  it("the permission expires at cleanup", () => {
+    const { game, p1 } = twoPlayers();
+    const boltDef = createCardDefinition({ name: "Bolt", manaCost: "", typeLine: "Instant" });
+    game.definitions[boltDef.id] = boltDef;
+    const bolt = createCardInstance({ definitionId: boltDef.id, ownerId: p1.id, zone: "library" });
+    game.cards[bolt.id] = bolt;
+    p1.zones.library.unshift(bolt.id);
+    let next = applyEffect(game, {
+      kind: "exile_top_play",
+      playerId: p1.id,
+      casterId: p1.id,
+      count: 1,
+    });
+    next.turn.activePlayerId = p1.id;
+    next.turn.phase = "ending";
+    next.turn.step = "end";
+    next = advanceSteps(next, 1);
+    expect(next.exilePlayable ?? []).toHaveLength(0);
+  });
+});

@@ -122,9 +122,22 @@ export function putSpellOnStack(
     located?.zone === "graveyard" &&
     Boolean(graveyardGate) &&
     controlsMatching(state, state.cards[cardId]?.controllerId ?? "", graveyardGate!);
+  // Impulse exiles: listed cards may be cast from exile this turn.
+  const fromExilePlay =
+    located?.zone === "exile" &&
+    Boolean(
+      state.exilePlayable?.some(
+        (entry) => entry.cardId === cardId && entry.casterId === card.controllerId,
+      ),
+    );
   if (
     !located ||
-    (located.zone !== "hand" && !fromCommand && !fromLibraryTop && !fromFlashback && !fromGraveyardGate)
+    (located.zone !== "hand" &&
+      !fromCommand &&
+      !fromLibraryTop &&
+      !fromFlashback &&
+      !fromGraveyardGate &&
+      !fromExilePlay)
   ) {
     throw new Error(`Card ${cardId} must be in hand to put on the stack`);
   }

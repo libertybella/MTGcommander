@@ -219,10 +219,10 @@ export function controlsMatching(
 export function sacrificeScopeMatches(
   state: GameState,
   cardId: CardInstanceId,
-  scope: NonNullable<AdditionalCastCost["sacrifice"]>,
+  scope: NonNullable<AdditionalCastCost["sacrifice"]> | "treasure",
 ): boolean {
-  const types =
-    state.definitions[state.cards[cardId]?.definitionId ?? ""]?.characteristics.types ?? [];
+  const traits = state.definitions[state.cards[cardId]?.definitionId ?? ""]?.characteristics;
+  const types = traits?.types ?? [];
   if (scope === "creature") {
     return types.includes("creature");
   }
@@ -231,6 +231,9 @@ export function sacrificeScopeMatches(
   }
   if (scope === "land") {
     return types.includes("land");
+  }
+  if (scope === "treasure") {
+    return (traits?.subtypes ?? []).includes("treasure");
   }
   return types.includes("creature") || types.includes("artifact");
 }
@@ -436,10 +439,14 @@ export function legalActions(state: GameState, playerId: PlayerId): LegalAction[
           controlsMatching(state, playerId, definition.castFromGraveyard)),
     );
   });
+  const exilePlayableIds = (state.exilePlayable ?? [])
+    .filter((entry) => entry.casterId === playerId && state.cards[entry.cardId]?.zone === "exile")
+    .map((entry) => entry.cardId);
   for (const cardId of [
     ...player.zones.hand,
     ...graveyardLandIds,
     ...flashbackIds.filter((id) => !graveyardLandIds.includes(id)),
+    ...exilePlayableIds,
   ]) {
     const card = state.cards[cardId];
     const definition = card ? state.definitions[card.definitionId] : undefined;

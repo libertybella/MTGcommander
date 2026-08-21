@@ -204,10 +204,10 @@ function isKeywordLine(sentence: string): boolean {
 }
 
 const SACRIFICE_COST = /Sacrifice (?:~|this land|this creature|this artifact|this permanent)/i;
-const SACRIFICE_TYPE_COST = /Sacrifice an? (creature|artifact|land)\b/i;
+const SACRIFICE_TYPE_COST = /Sacrifice an? (creature|artifact|land|Treasure)\b/i;
 const LIFE_COST = /Pay (\d+) life/i;
 const COST_UNIT =
-  "(?:\\{[^}]+\\})+|Sacrifice (?:~|this land|this creature|this artifact|this permanent)|Sacrifice an? (?:creature|artifact|land)|Pay \\d+ life";
+  "(?:\\{[^}]+\\})+|Sacrifice (?:~|this land|this creature|this artifact|this permanent)|Sacrifice an? (?:creature|artifact|land|Treasure)|Pay \\d+ life";
 
 function splitAbility(sentence: string): { costText: string; rest: string } | null {
   const match = sentence.match(
@@ -226,14 +226,14 @@ function parseAbilityCost(
   manaCost: string;
   sacrificeSelf: boolean;
   lifeCost?: number;
-  sacrificeCost?: "creature" | "artifact" | "land";
+  sacrificeCost?: "creature" | "artifact" | "land" | "treasure";
 } | null {
   const sacrificeSelf = SACRIFICE_COST.test(costText);
   const sacrificeTypeMatch = SACRIFICE_COST.test(costText)
     ? null
     : costText.match(SACRIFICE_TYPE_COST);
   const sacrificeCost = sacrificeTypeMatch?.[1]
-    ? (sacrificeTypeMatch[1].toLowerCase() as "creature" | "artifact" | "land")
+    ? (sacrificeTypeMatch[1].toLowerCase() as "creature" | "artifact" | "land" | "treasure")
     : undefined;
   const lifeMatch = costText.match(LIFE_COST);
   const lifeCost = lifeMatch?.[1] ? Number(lifeMatch[1]) : undefined;
@@ -1533,6 +1533,33 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     }
   }
 
+  // Impulse exiles (fused by fuseExilePlayInPlace): cast/play this turn,
+  // paying costs as normal.
+  if (/^impulse from your library$/i.test(sentence)) {
+    return {
+      targetRequirements: [],
+      effects: [{ kind: "exile_top_play", playerId: "controller", count: 1 }],
+    };
+  }
+
+  // Ragavan's compound body: the Treasure plus the damaged player's impulse.
+  if (/^create a Treasure token and impulse from that player's library$/i.test(sentence)) {
+    return {
+      targetRequirements: [],
+      effects: [
+        {
+          kind: "create_token",
+          ownerId: "controller",
+          name: "Treasure",
+          typeLine: "Artifact — Treasure Token",
+          power: null,
+          toughness: null,
+        },
+        { kind: "exile_top_play", playerId: { type: "subject_player" }, count: 1 },
+      ],
+    };
+  }
+
   // Mahadi: tokens keyed to the turn's creature deaths.
   const perDied = sentence.match(
     /^create a (Treasure|Clue|Food) token for each creature that died this turn$/i,
@@ -2236,6 +2263,32 @@ function fuseDigSentencesInPlace(sentences: string[], lineStart: boolean[]): voi
     const destination = toHand ? "hand" : toField?.[2] ? "battlefield_tapped" : "battlefield";
     sentences.splice(index, 3, `${look[1] ?? ""}Dig ${count} for ${descriptor} to ${destination}`);
     lineStart.splice(index + 1, 2);
+  }
+}
+
+/**
+ * Fuse impulse-exile pairs into one synthetic sentence:
+ * "…Exile the top card of your library." + "You may play it this turn." and
+ * "…exile the top card of that player's library." + "Until end of turn, you
+ * may cast that card." both become "…impulse from <whose> library".
+ */
+function fuseExilePlayInPlace(sentences: string[], lineStart: boolean[]): void {
+  for (let index = 0; index + 1 < sentences.length; index += 1) {
+    if (lineStart[index + 1]) {
+      continue;
+    }
+    const own = sentences[index]!.match(/^(.*)Exile the top card of your library$/i);
+    if (own && /^You may play (?:it|that card) this turn$/i.test(sentences[index + 1]!)) {
+      sentences.splice(index, 2, `${own[1] ?? ""}impulse from your library`);
+      lineStart.splice(index + 1, 1);
+      continue;
+    }
+    const theirs = sentences[index]!.match(/^(.*)exile the top card of that player's library$/i);
+    if (theirs && /^Until end of turn, you may cast (?:that card|it)$/i.test(sentences[index + 1]!)) {
+      sentences.splice(index, 2, `${theirs[1] ?? ""}impulse from that player's library`);
+      lineStart.splice(index + 1, 1);
+      continue;
+    }
   }
 }
 
@@ -2950,6 +3003,7 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
     });
   }
   fuseDigSentencesInPlace(sentences, lineStart);
+  fuseExilePlayInPlace(sentences, lineStart);
   for (let index = 0; index < sentences.length; index += 1) {
     const sentence = sentences[index];
     if (!sentence) {

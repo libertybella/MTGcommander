@@ -756,6 +756,24 @@ export function parseGameState(json: string): GameState {
     ...(raw.creaturesDiedThisTurn === undefined
       ? {}
       : { creaturesDiedThisTurn: expectNumber(raw.creaturesDiedThisTurn, "creaturesDiedThisTurn") }),
+    ...(raw.exilePlayable === undefined
+      ? {}
+      : {
+          exilePlayable: (() => {
+            if (!Array.isArray(raw.exilePlayable)) {
+              throw new Error("Invalid exilePlayable");
+            }
+            return raw.exilePlayable.map((entry, index) => {
+              if (!isRecord(entry)) {
+                throw new Error(`Invalid exilePlayable[${index}]`);
+              }
+              return {
+                cardId: expectString(entry.cardId, `exilePlayable[${index}].cardId`),
+                casterId: expectString(entry.casterId, `exilePlayable[${index}].casterId`),
+              };
+            });
+          })(),
+        }),
     preventCombatDamage: raw.preventCombatDamage === true,
     delayedEndStep:
       raw.delayedEndStep === undefined
@@ -1703,6 +1721,12 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
     case "proliferate":
     case "populate":
       return { kind, playerId: parsePlayerSelector(value.playerId, `${label}.playerId`) };
+    case "exile_top_play":
+      return {
+        kind,
+        playerId: parsePlayerSelector(value.playerId, `${label}.playerId`),
+        count: expectNumber(value.count, `${label}.count`),
+      };
     case "untap_lands_up_to":
       return {
         kind,
@@ -1981,7 +2005,8 @@ function parseActivatedAbilities(value: unknown, label: string): ActivatedAbilit
                 scope !== "creature" &&
                 scope !== "artifact" &&
                 scope !== "creature_or_artifact" &&
-                scope !== "land"
+                scope !== "land" &&
+                scope !== "treasure"
               ) {
                 throw new Error(`Invalid ${label}[${index}].sacrificeCost`);
               }
@@ -2885,6 +2910,14 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
   }
   if (kind === "proliferate" || kind === "populate") {
     return { kind, playerId: expectString(value.playerId, `${label}.playerId`) };
+  }
+  if (kind === "exile_top_play") {
+    return {
+      kind,
+      playerId: expectString(value.playerId, `${label}.playerId`),
+      casterId: expectString(value.casterId, `${label}.casterId`),
+      count: expectNumber(value.count, `${label}.count`),
+    };
   }
   if (kind === "untap_lands_up_to") {
     return {

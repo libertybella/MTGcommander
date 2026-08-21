@@ -381,6 +381,12 @@ export type GameState = {
   spellsCastByPlayerThisTurn?: Record<PlayerId, number>;
   /** Creatures that died this turn (Mahadi's Treasure count). */
   creaturesDiedThisTurn?: number;
+  /**
+   * Impulse exiles (Ragavan, Professional Face-Breaker): cards in exile that
+   * the listed player may cast or play this turn, paying costs as normal.
+   * Cleared at cleanup.
+   */
+  exilePlayable?: Array<{ cardId: CardInstanceId; casterId: PlayerId }>;
   /** Fog: no combat damage is dealt for the rest of this turn. */
   preventCombatDamage: boolean;
   /**
@@ -533,6 +539,7 @@ export type GameEffect =
       destination: "hand" | "battlefield" | "battlefield_tapped";
     }
   /** Populate: copy the controller's best creature token (auto-picked). */
+  | { kind: "exile_top_play"; playerId: PlayerId; casterId: PlayerId; count: number }
   | { kind: "populate"; playerId: PlayerId }
   | { kind: "proliferate"; playerId: PlayerId }
   | {
@@ -831,6 +838,9 @@ export type CardEffect =
       filter: SearchFilter;
       destination: "hand" | "battlefield" | "battlefield_tapped";
     }
+  /** Impulse: exile the top of the player's library; the effect's controller
+   * may cast or play those cards this turn. */
+  | { kind: "exile_top_play"; playerId: PlayerSelector; count: number }
   | { kind: "populate"; playerId: PlayerSelector }
   | { kind: "proliferate"; playerId: PlayerSelector }
   | {
@@ -1180,8 +1190,8 @@ export type ActivatedAbility = {
   /** True when the cost includes sacrificing this permanent (fetch lands). */
   sacrificeSelf?: boolean;
   /** "Sacrifice a creature:" — the activation sacrifices a chosen controlled
-   * permanent of this scope (Viscera Seer, Zuran Orb). */
-  sacrificeCost?: "creature" | "artifact" | "creature_or_artifact" | "land";
+   * permanent of this scope (Viscera Seer, Zuran Orb, Face-Breaker). */
+  sacrificeCost?: "creature" | "artifact" | "creature_or_artifact" | "land" | "treasure";
   /** Spirit Guides: exiling this card (from hand) is part of the cost. */
   exileSelf?: boolean;
   /** Life paid as part of the cost (Doom Whisperer). */
@@ -1228,7 +1238,7 @@ export type ManaAbility = {
   costMana?: string;
   /** Phyrexian Altar: sacrificing a chosen controlled permanent is the cost.
    * Never auto-tapped; adds nothing to potential mana. */
-  costSacrifice?: "creature" | "artifact" | "creature_or_artifact" | "land";
+  costSacrifice?: "creature" | "artifact" | "creature_or_artifact" | "land" | "treasure";
   /** The ability has no {T} in its cost (usable while tapped, repeatable). */
   noTap?: boolean;
   /** "Activate only if you control a Swamp" on a mana ability. */

@@ -131,7 +131,13 @@ function validateCast(
       controlsMatching(state, playerId, definition.castFromGraveyard),
   );
   const fromGraveyard = viaFlashback || viaGraveyardGate;
-  if (!fromHand && !fromCommand && !fromLibraryTop && !fromGraveyard) {
+  // Impulse exiles: listed cards may be cast from exile this turn.
+  const fromExile = Boolean(
+    located &&
+      located.zone === "exile" &&
+      state.exilePlayable?.some((entry) => entry.cardId === cardId && entry.casterId === playerId),
+  );
+  if (!fromHand && !fromCommand && !fromLibraryTop && !fromGraveyard && !fromExile) {
     throw new Error(`Card ${cardId} must be in the player's hand`);
   }
 
@@ -422,9 +428,14 @@ function applyPlayLand(
     located?.zone === "library" &&
     located.playerId === playerId &&
     canPlayLandFromTop(faced, playerId, cardId);
+  const fromExilePlay =
+    located?.zone === "exile" &&
+    Boolean(
+      faced.exilePlayable?.some((entry) => entry.cardId === cardId && entry.casterId === playerId),
+    );
   if (
     !located ||
-    (located.zone !== "hand" && !fromGraveyard && !fromLibraryTop) ||
+    (located.zone !== "hand" && !fromGraveyard && !fromLibraryTop && !fromExilePlay) ||
     located.playerId !== playerId
   ) {
     throw new Error(`Card ${cardId} must be in the player's hand`);
