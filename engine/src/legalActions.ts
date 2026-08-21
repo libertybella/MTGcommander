@@ -185,6 +185,27 @@ function inSorceryWindow(state: GameState, playerId: PlayerId): boolean {
   );
 }
 
+/** "Activate only if you control a Swamp": any controlled match satisfies. */
+export function controlsMatching(
+  state: GameState,
+  playerId: PlayerId,
+  wanted: { types?: string[]; subtypes?: string[] },
+): boolean {
+  return Object.values(state.cards).some((card) => {
+    if (card.zone !== "battlefield" || card.controllerId !== playerId) {
+      return false;
+    }
+    const traits = state.definitions[card.definitionId]?.characteristics;
+    if (!traits) {
+      return false;
+    }
+    return (
+      (wanted.types ?? []).every((type) => traits.types.includes(type)) &&
+      (wanted.subtypes ?? []).every((subtype) => traits.subtypes.includes(subtype))
+    );
+  });
+}
+
 /** Does this battlefield card satisfy an additional-cost sacrifice scope? */
 export function sacrificeScopeMatches(
   state: GameState,
@@ -276,6 +297,12 @@ function abilityUsable(
     return false;
   }
   if (ability.timing === "sorcery" && !inSorceryWindow(state, playerId)) {
+    return false;
+  }
+  if (
+    ability.requiresControlled &&
+    !controlsMatching(state, playerId, ability.requiresControlled)
+  ) {
     return false;
   }
   if (ability.tap) {

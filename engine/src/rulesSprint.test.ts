@@ -416,6 +416,82 @@ describe("creature-or-planeswalker removal", () => {
   });
 });
 
+describe("activation gates and dies-return", () => {
+  it("compiles a Swamp-gated ability and enforces the condition", () => {
+    const compiled = compileOracleCard({
+      oracleId: "lake",
+      name: "Test Lake of the Dead",
+      manaCost: "",
+      typeLine: "Land",
+      oracleText: "{T}: Add {B}.\n{1}, {T}: Draw a card. Activate only if you control a Swamp.",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+    });
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.activated[0]?.requiresControlled).toEqual({ subtypes: ["swamp"] });
+
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game);
+    game.definitions[compiled.definition.id] = compiled.definition;
+    const lake = createCardInstance({
+      definitionId: compiled.definition.id,
+      ownerId: p1.id,
+      zone: "battlefield",
+    });
+    game.cards[lake.id] = lake;
+    p1.zones.battlefield.push(lake.id);
+    game.players[0]!.mana.C = 1;
+    game.priorityPlayerId = p1.id;
+    expect(() =>
+      applyAction(game, {
+        kind: "activate_ability",
+        playerId: p1.id,
+        cardId: lake.id,
+        abilityIndex: 0,
+        targets: [],
+      }),
+    ).toThrow(/activation condition/);
+
+    const swamp = createCardDefinition({ name: "Swamp", typeLine: "Basic Land — Swamp" });
+    game.definitions[swamp.id] = swamp;
+    const swampCard = createCardInstance({ definitionId: swamp.id, ownerId: p1.id, zone: "battlefield" });
+    game.cards[swampCard.id] = swampCard;
+    p1.zones.battlefield.push(swampCard.id);
+    const activated = applyAction(game, {
+      kind: "activate_ability",
+      playerId: p1.id,
+      cardId: lake.id,
+      abilityIndex: 0,
+      targets: [],
+    });
+    expect(activated.stack).toHaveLength(1);
+  });
+
+  it("compiles dies-return-tapped and re-enters the battlefield", () => {
+    const compiled = compileOracleCard({
+      oracleId: "returner",
+      name: "Stubborn Sentry",
+      manaCost: "{2}{W}",
+      typeLine: "Creature — Spirit",
+      oracleText:
+        "When Stubborn Sentry dies, return it to the battlefield tapped under its owner's control.",
+      power: "2",
+      toughness: "2",
+      printedKeywords: [],
+      imageUrl: "",
+    });
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.triggers[0]?.effects[0]).toEqual({
+      kind: "move_card",
+      cardId: "self",
+      toZone: "battlefield",
+      entersTapped: true,
+    });
+  });
+});
+
 describe("mana-value filters", () => {
   it("compiles Abrupt Decay's body and Despark, and enforces the bounds", () => {
     const decay = compileOracleCard({

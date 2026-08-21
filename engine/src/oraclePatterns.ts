@@ -438,6 +438,24 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     };
   }
 
+  // "When ~ dies, return it to the battlefield tapped under its owner's control."
+  const selfReturn = sentence.match(
+    /^return (?:it|~) to the battlefield( tapped)?(?: under its owner's control)?$/i,
+  );
+  if (selfReturn) {
+    return {
+      targetRequirements: [],
+      effects: [
+        {
+          kind: "move_card",
+          cardId: "self",
+          toZone: "battlefield",
+          ...(selfReturn[1] ? { entersTapped: true } : {}),
+        },
+      ],
+    };
+  }
+
   if (/^return a land you control to its owner's hand$/i.test(sentence)) {
     return {
       targetRequirements: [],
@@ -2515,6 +2533,18 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
       const last = result.activated[result.activated.length - 1];
       if (last && !last.timing) {
         last.timing = "sorcery";
+        continue;
+      }
+    }
+
+    const activateGate = sentence.match(/^Activate only if you control (an? )?([A-Za-z]+)$/i);
+    if (activateGate?.[2] && result.activated.length > 0) {
+      const last = result.activated[result.activated.length - 1];
+      if (last && !last.requiresControlled) {
+        const name = activateGate[2].toLowerCase();
+        last.requiresControlled = SEARCH_CARD_TYPES.has(name)
+          ? { types: [name] }
+          : { subtypes: [name] };
         continue;
       }
     }

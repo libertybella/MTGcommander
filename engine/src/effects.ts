@@ -345,6 +345,7 @@ export function bindCardEffect(
         cardId,
         toZone: effect.toZone,
         libraryPosition: effect.libraryPosition,
+        ...(effect.entersTapped ? { entersTapped: true } : {}),
       };
     }
     case "tap":
@@ -1296,11 +1297,15 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
       case "surveil":
         next = applySurveil(state, effect.playerId, effect.count);
         break;
-      case "move_card":
+      case "move_card": {
         next = moveCard(state, effect.cardId, effect.toZone, {
           libraryPosition: effect.libraryPosition,
         });
+        if (effect.entersTapped && next.cards[effect.cardId]?.zone === "battlefield") {
+          next.cards[effect.cardId]!.tapped = true;
+        }
         break;
+      }
       case "tap":
         next = tapCard(state, effect.cardId);
         break;

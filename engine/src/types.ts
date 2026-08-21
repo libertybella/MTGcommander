@@ -356,6 +356,7 @@ export type GameEffect =
       cardId: CardInstanceId;
       toZone: Exclude<ZoneName, "stack">;
       libraryPosition?: "top" | "bottom";
+      entersTapped?: boolean;
     }
   | { kind: "tap"; cardId: CardInstanceId }
   | { kind: "untap"; cardId: CardInstanceId }
@@ -570,6 +571,8 @@ export type CardEffect =
       cardId: CardIdSelector;
       toZone: Exclude<ZoneName, "stack">;
       libraryPosition?: "top" | "bottom";
+      /** Battlefield arrivals only: the card enters tapped. */
+      entersTapped?: boolean;
     }
   | { kind: "tap"; cardId: CardIdSelector }
   | { kind: "untap"; cardId: CardIdSelector }
@@ -857,6 +860,8 @@ export type ActivatedAbility = {
   lifeCost?: number;
   /** Class level-up is a sorcery-speed class ability. */
   timing?: "any" | "sorcery";
+  /** "Activate only if you control a Swamp" — a controlled type/subtype gate. */
+  requiresControlled?: { types?: string[]; subtypes?: string[] };
 };
 
 export type ReplacementEffect =

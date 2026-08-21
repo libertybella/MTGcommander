@@ -6,7 +6,7 @@ import { canPlayLandsFromGraveyard, castCostReduction, landDropAllowance } from 
 import { eliminatePlayerInPlace } from "./elimination";
 import { applyEffects, bindCardEffects } from "./effects";
 import { hasKeyword } from "./keywords";
-import { sacrificeScopeMatches } from "./legalActions";
+import { controlsMatching, sacrificeScopeMatches } from "./legalActions";
 import { canPayManaCost, parseManaCost, payManaCost, tapCard, tapForMana } from "./mana";
 import { manaAbilityAmount, manaAbilitiesFor, manaTapOptionsFor } from "./manaOptions";
 import { createId } from "./ids";
@@ -558,6 +558,12 @@ function applyActivateAbility(
     if (!isMainPhase(state) || state.stack.length > 0) {
       throw new Error("That ability can only be activated as a sorcery");
     }
+  }
+  if (
+    ability.requiresControlled &&
+    !controlsMatching(state, playerId, ability.requiresControlled)
+  ) {
+    throw new Error("The activation condition is not met");
   }
   const levelUp = ability.effects.find((effect) => effect.kind === "set_class_level");
   if (levelUp?.kind === "set_class_level" && levelUp.level !== card.classLevel + 1) {

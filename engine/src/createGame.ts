@@ -148,6 +148,18 @@ export function createCardDefinition(
           ...(ability.sacrificeSelf ? { sacrificeSelf: true } : {}),
           ...(ability.lifeCost && ability.lifeCost > 0 ? { lifeCost: ability.lifeCost } : {}),
           ...(ability.timing === "sorcery" ? { timing: "sorcery" as const } : {}),
+          ...(ability.requiresControlled
+            ? {
+                requiresControlled: {
+                  ...(ability.requiresControlled.types
+                    ? { types: [...ability.requiresControlled.types] }
+                    : {}),
+                  ...(ability.requiresControlled.subtypes
+                    ? { subtypes: [...ability.requiresControlled.subtypes] }
+                    : {}),
+                },
+              }
+            : {}),
         }))
       : [],
     imageUrl: input.imageUrl ?? "",
