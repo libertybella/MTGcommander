@@ -942,15 +942,50 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
   }
 
   const tokenCopy = sentence.match(
-    /^create a token that's a copy of (another )?target creature( you control)?$/i,
+    /^create a token that's a copy of (another )?target (artifact or creature|creature)( you control)?$/i,
   );
-  if (tokenCopy) {
+  if (tokenCopy?.[2]) {
     return {
       targetRequirements: [
-        { kind: "creature", ...(tokenCopy[2] ? { control: "own" as const } : {}) },
+        {
+          kind:
+            tokenCopy[2].toLowerCase() === "artifact or creature"
+              ? "creature_or_artifact"
+              : "creature",
+          ...(tokenCopy[3] ? { control: "own" as const } : {}),
+        },
       ],
       effects: [
         { kind: "copy_token", ownerId: "controller", ofCardId: { type: "chosen", index: 0 } },
+      ],
+    };
+  }
+
+  if (/^put a \+1\/\+1 counter on each creature target player controls$/i.test(sentence)) {
+    return {
+      targetRequirements: [{ kind: "player" }],
+      effects: [
+        {
+          kind: "counter_on_controlled_creatures",
+          playerId: { type: "chosen", index: 0 },
+          counter: "p1p1",
+          amount: 1,
+        },
+      ],
+    };
+  }
+
+  if (/^search your library for a card, then shuffle and put that card on top$/i.test(sentence)) {
+    return {
+      targetRequirements: [],
+      effects: [
+        {
+          kind: "search_library",
+          playerId: "controller",
+          filter: {},
+          destination: "library_top",
+          count: 1,
+        },
       ],
     };
   }
@@ -2392,6 +2427,47 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
 
     if (/^Storm$/i.test(sentence)) {
       result.storm = true;
+      continue;
+    }
+
+    // Spree (CR 702.169): "Choose one or more additional costs" — each
+    // "+ {cost} — effect" line becomes a mode carrying its extraCost. All
+    // modes must compile or the whole card stays uncompiled (a partially
+    // castable Spree would silently hide options).
+    if (/^Spree$/i.test(sentence) && !result.modes) {
+      const spreeModes: SpellMode[] = [];
+      let cursor = index + 1;
+      let failed = false;
+      while (cursor < sentences.length && lineStart[cursor]) {
+        const bullet = sentences[cursor]?.match(/^\+ ?((?:\{[^}]+\})+) ?[—–-] ?(.+)$/);
+        if (!bullet?.[1] || !bullet[2]) {
+          break;
+        }
+        // Multi-sentence bullets (riders on the same line) are not supported.
+        if (cursor + 1 < sentences.length && !lineStart[cursor + 1]) {
+          failed = true;
+          break;
+        }
+        const clause = compileSimpleClause(bullet[2].trim());
+        if (!clause || clause.leftover) {
+          failed = true;
+          break;
+        }
+        spreeModes.push({
+          label: `+ ${bullet[1]} — ${bullet[2].trim()}`,
+          extraCost: bullet[1],
+          effects: clause.effects,
+          targetRequirements: clause.targetRequirements,
+        });
+        cursor += 1;
+      }
+      if (!failed && spreeModes.length >= 2) {
+        result.modes = spreeModes;
+        result.modeChoice = { min: 1, max: spreeModes.length };
+        index = cursor - 1;
+        continue;
+      }
+      result.leftover.push(sentence);
       continue;
     }
 

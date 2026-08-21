@@ -3693,3 +3693,97 @@ describe("wave 40: storm (CR 702.40)", () => {
     expect(state.stack).toEqual([]);
   });
 });
+
+describe("wave 41: spree (CR 702.169)", () => {
+  it("compiles Requisition Raid and Three Steps Ahead fully", () => {
+    const raid = compileOracleCard({
+      oracleId: "requisition-raid",
+      name: "Requisition Raid",
+      manaCost: "{W}",
+      typeLine: "Sorcery",
+      oracleText:
+        "Spree (Choose one or more additional costs.)\n+ {1} — Destroy target artifact.\n+ {1} — Destroy target enchantment.\n+ {1} — Put a +1/+1 counter on each creature target player controls.",
+      power: null,
+      toughness: null,
+      printedKeywords: ["Spree"],
+      imageUrl: "",
+    });
+    expect(raid.notes).toEqual([]);
+    expect(raid.definition.modes).toHaveLength(3);
+    expect(raid.definition.modeChoice).toEqual({ min: 1, max: 3 });
+    expect(raid.definition.modes?.every((mode) => mode.extraCost === "{1}")).toBe(true);
+
+    const steps = compileOracleCard({
+      oracleId: "three-steps-ahead",
+      name: "Three Steps Ahead",
+      manaCost: "{U}",
+      typeLine: "Instant",
+      oracleText:
+        "Spree (Choose one or more additional costs.)\n+ {1}{U} — Counter target spell.\n+ {3} — Create a token that's a copy of target artifact or creature you control.\n+ {2} — Draw two cards, then discard a card.",
+      power: null,
+      toughness: null,
+      printedKeywords: ["Spree"],
+      imageUrl: "",
+    });
+    expect(steps.notes).toEqual([]);
+    expect(steps.definition.modes).toHaveLength(3);
+    expect(steps.definition.modes?.[1]?.targetRequirements).toEqual([
+      { kind: "creature_or_artifact", control: "own" },
+    ]);
+  });
+
+  it("charges every chosen spree mode's extra cost", () => {
+    const { game, p1 } = twoPlayers();
+    game.turn.phase = "precombatMain";
+    game.turn.step = "precombatMain";
+    const spree = createCardDefinition({
+      name: "Twin Errands",
+      manaCost: "{W}",
+      typeLine: "Sorcery",
+      modeChoice: { min: 1, max: 2 },
+      modes: [
+        {
+          label: "+ {1} — gain 2",
+          extraCost: "{1}",
+          effects: [{ kind: "gain_life", playerId: "controller", amount: 2 }],
+          targetRequirements: [],
+        },
+        {
+          label: "+ {2} — gain 5",
+          extraCost: "{2}",
+          effects: [{ kind: "gain_life", playerId: "controller", amount: 5 }],
+          targetRequirements: [],
+        },
+      ],
+    });
+    game.definitions[spree.id] = spree;
+    const card = createCardInstance({ definitionId: spree.id, ownerId: p1.id, zone: "hand" });
+    game.cards[card.id] = card;
+    p1.zones.hand.push(card.id);
+
+    // {W} + {1} + {2} = both modes need 4 mana; 3 is refused.
+    p1.mana.W = 1;
+    p1.mana.C = 2;
+    expect(() =>
+      applyAction(game, {
+        kind: "cast_spell",
+        playerId: p1.id,
+        cardId: card.id,
+        targets: [],
+        modeIndexes: [0, 1],
+      }),
+    ).toThrow();
+
+    const rich = structuredClone(game);
+    rich.players[0]!.mana.C = 3;
+    const cast = applyAction(rich, {
+      kind: "cast_spell",
+      playerId: rich.players[0]!.id,
+      cardId: card.id,
+      targets: [],
+      modeIndexes: [0, 1],
+    });
+    const resolved = resolveTopOfStack(cast);
+    expect(resolved.players[0]?.life).toBe(47);
+  });
+});
