@@ -146,6 +146,9 @@ export type CardDefinition = {
   opponentsCantCastDuringYourTurn?: boolean;
   /** Toski: this creature attacks each combat if able. */
   mustAttack?: boolean;
+  /** Theros gods: not a creature while devotion to the color is below the
+   * threshold (applied before the layer passes — a documented simplification). */
+  notCreatureBelowDevotion?: { color: Color; threshold: number };
   /**
    * "If you control a commander, you may cast this spell without paying its
    * mana cost" (the free-spell cycle). Documented approximation: the free
@@ -423,6 +426,9 @@ export type GameState = {
   /** Silence: everyone but this player is locked out of casting until end of
    * turn. Cleared at cleanup. */
   castLockUntilEot?: PlayerId;
+  /** Ranger-Captain of Eos: everyone but this player is locked out of
+   * casting NONCREATURE spells until end of turn. Cleared at cleanup. */
+  noncreatureCastLockUntilEot?: PlayerId;
   /**
    * Impulse exiles (Ragavan, Professional Face-Breaker): cards in exile that
    * the listed player may cast or play this turn, paying costs as normal.
@@ -473,6 +479,8 @@ export type SearchFilter = {
   /** "with mana value X or less": resolved to maxManaValue from the announced
    * X when the effect binds (Green Sun's Zenith). */
   maxManaValueX?: boolean;
+  /** "with toughness 2 or less" (Recruiter of the Guard). Printed toughness. */
+  maxToughness?: number;
 };
 
 export type SearchDestination = "hand" | "battlefield" | "graveyard" | "library_top";
@@ -642,6 +650,7 @@ export type GameEffect =
   | { kind: "reveal_top_put_permanent"; playerId: PlayerId }
   | { kind: "drain_opponents"; playerId: PlayerId; amount: number }
   | { kind: "silence"; playerId: PlayerId }
+  | { kind: "silence_noncreature"; playerId: PlayerId }
   | { kind: "each_creature_damages_controller"; amount: number }
   | { kind: "double_team_pt_until_eot"; playerId: PlayerId }
   | { kind: "power_nova"; sourceId: CardInstanceId; amount: number }
@@ -1004,7 +1013,9 @@ export type CardEffect =
       destinations: LookDestination[];
     }
   | { kind: "sacrifice"; cardId: CardIdSelector }
-  | { kind: "add_counter"; cardId: CardIdSelector; counter: string; amount: number }
+  /** amount "source_power": the source creature's power, read at bind
+   * (Halana and Alena). */
+  | { kind: "add_counter"; cardId: CardIdSelector; counter: string; amount: number | "source_power" }
   | { kind: "counter_spell"; target: ChosenTargetRef }
   | { kind: "counter_unless_pays"; target: ChosenTargetRef; cost: string }
   /** Venser: bounce a spell (off the stack) or a permanent to its owner's hand. */
@@ -1083,6 +1094,8 @@ export type CardEffect =
     }
   /** Silence: opponents of this player can't cast spells this turn. */
   | { kind: "silence"; playerId: PlayerSelector }
+  /** Ranger-Captain of Eos: the noncreature-only variant. */
+  | { kind: "silence_noncreature"; playerId: PlayerSelector }
   /** Rakdos Charm: each creature pings its own controller. */
   | { kind: "each_creature_damages_controller"; amount: number }
   /** Unnatural Growth: double each controlled creature's P/T until EOT. */
@@ -1131,7 +1144,8 @@ export type CardEffect =
       kind: "counter_on_controlled_creatures";
       playerId: PlayerSelector;
       counter: string;
-      amount: number;
+      /** "source_power": the source creature's power at bind (Ouroboroid). */
+      amount: number | "source_power";
     }
   /** Black Sun's Zenith: counters on every battlefield creature. */
   | {

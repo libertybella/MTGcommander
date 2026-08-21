@@ -68,6 +68,7 @@ export function createCardDefinition(
         | "opponentsLockedDuringYourTurn"
         | "opponentsCantCastDuringYourTurn"
         | "mustAttack"
+        | "notCreatureBelowDevotion"
         | "freeIfCommander"
         | "changeling"
         | "storm"
@@ -284,6 +285,9 @@ export function createCardDefinition(
     ...(input.opponentsLockedDuringYourTurn ? { opponentsLockedDuringYourTurn: true } : {}),
     ...(input.opponentsCantCastDuringYourTurn ? { opponentsCantCastDuringYourTurn: true } : {}),
     ...(input.mustAttack ? { mustAttack: true } : {}),
+    ...(input.notCreatureBelowDevotion
+      ? { notCreatureBelowDevotion: { ...input.notCreatureBelowDevotion } }
+      : {}),
     ...(input.freeIfCommander ? { freeIfCommander: true } : {}),
     ...(input.changeling ? { changeling: true } : {}),
     ...(input.storm ? { storm: true } : {}),

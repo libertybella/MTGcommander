@@ -114,10 +114,20 @@ function baseComputed(state: GameState, card: CardInstance): ComputedCard {
       : 0;
   const bonusPower = (definition?.bonusPt?.power ?? 0) * bonusCount;
   const bonusToughness = (definition?.bonusPt?.toughness ?? 0) * bonusCount;
+  // Theros gods: below the devotion threshold the god isn't a creature.
+  // Applied to the battlefield object before the layer passes — a
+  // documented simplification (rulings apply it in all zones).
+  const gate = definition?.notCreatureBelowDevotion;
+  const gateHolds =
+    gate &&
+    card.zone === "battlefield" &&
+    devotionPips(state, card.controllerId, gate.color) < gate.threshold;
   return {
     characteristics: {
       supertypes: [...printed.supertypes],
-      types: [...printed.types],
+      types: gateHolds
+        ? printed.types.filter((type) => type !== "creature")
+        : [...printed.types],
       subtypes: [...printed.subtypes],
       colors: [...printed.colors],
       manaValue: printed.manaValue,
@@ -133,6 +143,24 @@ function baseComputed(state: GameState, card: CardInstance): ComputedCard {
     cantBeBlocked: false,
     protectionFrom: [...(definition?.protectionFrom ?? [])],
   };
+}
+
+/** CR 700.5 pips of one color across a player's permanents' mana costs.
+ * Reads printed definitions directly — no computed pass, no import cycle. */
+function devotionPips(state: GameState, controllerId: string, color: Color): number {
+  let pips = 0;
+  for (const card of Object.values(state.cards)) {
+    if (card.zone !== "battlefield" || card.controllerId !== controllerId) {
+      continue;
+    }
+    const manaCost = state.definitions[card.definitionId]?.manaCost ?? "";
+    for (const symbol of manaCost.matchAll(/\{([^}]+)\}/g)) {
+      if (symbol[1]!.toUpperCase().split("/").includes(color)) {
+        pips += 1;
+      }
+    }
+  }
+  return pips;
 }
 
 function dynamicCountOf(state: GameState, controllerId: string, count: DynamicCount): number {

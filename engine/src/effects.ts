@@ -641,7 +641,17 @@ export function bindCardEffect(
       if (!cardId) {
         return null;
       }
-      return { kind: "add_counter", cardId, counter: effect.counter, amount: effect.amount };
+      // Halana and Alena: X reads the source's power at bind.
+      const amount =
+        effect.amount === "source_power"
+          ? context.sourceId
+            ? Math.max(0, creaturePower(state, context.sourceId))
+            : 0
+          : effect.amount;
+      if (amount <= 0) {
+        return null;
+      }
+      return { kind: "add_counter", cardId, counter: effect.counter, amount };
     }
     case "set_class_level": {
       const cardId = bindCardId(state, effect.cardId, context);
@@ -740,6 +750,13 @@ export function bindCardEffect(
         return null;
       }
       return { kind: "silence", playerId };
+    }
+    case "silence_noncreature": {
+      const playerId = bindPlayerSelector(state, effect.playerId, context);
+      if (!playerId) {
+        return null;
+      }
+      return { kind: "silence_noncreature", playerId };
     }
     case "each_creature_damages_controller":
       return { kind: "each_creature_damages_controller", amount: effect.amount };
@@ -877,11 +894,21 @@ export function bindCardEffect(
       if (!playerId) {
         return null;
       }
+      // Ouroboroid: X reads the source's power at bind.
+      const amount =
+        effect.amount === "source_power"
+          ? context.sourceId
+            ? Math.max(0, creaturePower(state, context.sourceId))
+            : 0
+          : effect.amount;
+      if (amount <= 0) {
+        return null;
+      }
       return {
         kind: "counter_on_controlled_creatures",
         playerId,
         counter: effect.counter,
-        amount: effect.amount,
+        amount,
       };
     }
     case "destroy_all":
@@ -2873,6 +2900,12 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
         requirePlayer(state, effect.playerId);
         next = cloneGameState(state);
         next.castLockUntilEot = effect.playerId;
+        break;
+      }
+      case "silence_noncreature": {
+        requirePlayer(state, effect.playerId);
+        next = cloneGameState(state);
+        next.noncreatureCastLockUntilEot = effect.playerId;
         break;
       }
       case "drain_opponents": {

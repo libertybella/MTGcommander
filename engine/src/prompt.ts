@@ -450,6 +450,13 @@ export function searchMatches(
   if (filter.maxManaValue !== undefined && traits.manaValue > filter.maxManaValue) {
     return false;
   }
+  // Recruiter of the Guard: printed toughness cap.
+  if (filter.maxToughness !== undefined) {
+    const toughness = state.definitions[state.cards[cardId]?.definitionId ?? ""]?.toughness ?? 0;
+    if ((toughness ?? 0) > filter.maxToughness) {
+      return false;
+    }
+  }
   if (
     filter.typesAny &&
     filter.typesAny.length > 0 &&

@@ -501,6 +501,14 @@ export function legalActions(state: GameState, playerId: PlayerId): LegalAction[
       if (abolished) {
         continue;
       }
+      // Ranger-Captain of Eos: only noncreature spells are locked.
+      if (
+        state.noncreatureCastLockUntilEot &&
+        state.noncreatureCastLockUntilEot !== playerId &&
+        !face.definition.characteristics.types.includes("creature")
+      ) {
+        continue;
+      }
       if (inGraveyard) {
         // Flashback (CR 702.34): castable from the graveyard for its
         // flashback cost; life portions are validated at cast time.

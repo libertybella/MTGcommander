@@ -256,6 +256,9 @@ function onEnterStep(state: GameState): GameState {
     if (state.castLockUntilEot) {
       delete state.castLockUntilEot;
     }
+    if (state.noncreatureCastLockUntilEot) {
+      delete state.noncreatureCastLockUntilEot;
+    }
     return state;
   }
   return state;

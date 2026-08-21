@@ -348,6 +348,26 @@ export function parseGameState(json: string): GameState {
         ? { opponentsCantCastDuringYourTurn: true }
         : {}),
       ...(def.mustAttack === true ? { mustAttack: true } : {}),
+      ...(isRecord(def.notCreatureBelowDevotion)
+        ? {
+            notCreatureBelowDevotion: (() => {
+              const color = expectString(
+                def.notCreatureBelowDevotion.color,
+                `definition.${id}.notCreatureBelowDevotion.color`,
+              );
+              if (!(COLOR_KEYS as readonly string[]).includes(color)) {
+                throw new Error(`Invalid definition.${id}.notCreatureBelowDevotion.color`);
+              }
+              return {
+                color: color as Color,
+                threshold: expectNumber(
+                  def.notCreatureBelowDevotion.threshold,
+                  `definition.${id}.notCreatureBelowDevotion.threshold`,
+                ),
+              };
+            })(),
+          }
+        : {}),
       ...(def.freeIfCommander === true ? { freeIfCommander: true } : {}),
       ...(def.changeling === true ? { changeling: true } : {}),
       ...(def.storm === true ? { storm: true } : {}),
@@ -883,6 +903,14 @@ export function parseGameState(json: string): GameState {
     ...(raw.castLockUntilEot === undefined
       ? {}
       : { castLockUntilEot: expectString(raw.castLockUntilEot, "castLockUntilEot") }),
+    ...(raw.noncreatureCastLockUntilEot === undefined
+      ? {}
+      : {
+          noncreatureCastLockUntilEot: expectString(
+            raw.noncreatureCastLockUntilEot,
+            "noncreatureCastLockUntilEot",
+          ),
+        }),
     ...(raw.exilePlayable === undefined
       ? {}
       : {
@@ -1257,6 +1285,9 @@ function parseSearchFilter(value: unknown, label: string): SearchFilter {
       ? {}
       : { maxManaValue: expectNumber(value.maxManaValue, `${label}.maxManaValue`) }),
     ...(value.maxManaValueX === true ? { maxManaValueX: true } : {}),
+    ...(value.maxToughness === undefined
+      ? {}
+      : { maxToughness: expectNumber(value.maxToughness, `${label}.maxToughness`) }),
   };
 }
 
@@ -1932,7 +1963,10 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
         kind,
         cardId: parseCardIdSelector(value.cardId, `${label}.cardId`),
         counter: expectString(value.counter, `${label}.counter`),
-        amount: expectNumber(value.amount, `${label}.amount`),
+        amount:
+          value.amount === "source_power"
+            ? ("source_power" as const)
+            : expectNumber(value.amount, `${label}.amount`),
       };
     case "copy_subject_spell":
     case "counter_subject_spell":
@@ -2132,6 +2166,7 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
         playerId: parsePlayerSelector(value.playerId, `${label}.playerId`),
       };
     case "silence":
+    case "silence_noncreature":
       return {
         kind,
         playerId: parsePlayerSelector(value.playerId, `${label}.playerId`),
@@ -2217,7 +2252,10 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
         kind,
         playerId: parsePlayerSelector(value.playerId, `${label}.playerId`),
         counter: expectString(value.counter, `${label}.counter`),
-        amount: expectNumber(value.amount, `${label}.amount`),
+        amount:
+          value.amount === "source_power"
+            ? ("source_power" as const)
+            : expectNumber(value.amount, `${label}.amount`),
       };
     case "counter_on_each_creature":
       return {
@@ -3243,7 +3281,7 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
   if (kind === "reveal_top_put_permanent") {
     return { kind, playerId: expectString(value.playerId, `${label}.playerId`) };
   }
-  if (kind === "silence") {
+  if (kind === "silence" || kind === "silence_noncreature") {
     return { kind, playerId: expectString(value.playerId, `${label}.playerId`) };
   }
   if (kind === "drain_opponents") {

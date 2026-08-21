@@ -11876,3 +11876,144 @@ describe("wave 116: bites, confrontations, freed hosts", () => {
     expect(after.cards[bear.id]?.tapped).toBe(false);
   });
 });
+
+describe("wave 117: gods, recruiters, ouroboroids", () => {
+  it("compiles the batch fully", () => {
+    const thassa = compileOracleCard({
+      oracleId: "thassa",
+      name: "Thassa, God of the Sea",
+      manaCost: "{2}{U}",
+      typeLine: "Legendary Enchantment Creature — God",
+      power: "5",
+      toughness: "5",
+      printedKeywords: ["Indestructible"],
+      imageUrl: "",
+      oracleText:
+        "Indestructible\nAs long as your devotion to blue is less than five, Thassa isn't a creature.\nAt the beginning of your upkeep, scry 1.\n{1}{U}: Target creature you control can't be blocked this turn.",
+    });
+    expect(thassa.notes).toEqual([]);
+    expect(thassa.definition.notCreatureBelowDevotion).toEqual({ color: "U", threshold: 5 });
+
+    const recruiter = compileOracleCard({
+      oracleId: "recruiter",
+      name: "Recruiter of the Guard",
+      manaCost: "{2}{W}",
+      typeLine: "Creature — Human Soldier",
+      power: "1",
+      toughness: "1",
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "When this creature enters, you may search your library for a creature card with toughness 2 or less, reveal it, put it into your hand, then shuffle.",
+    });
+    expect(recruiter.notes).toEqual([]);
+    expect(recruiter.definition.triggers[0]?.effects[0]).toMatchObject({
+      kind: "search_library",
+      filter: { types: ["creature"], maxToughness: 2 },
+      destination: "hand",
+    });
+
+    const ranger = compileOracleCard({
+      oracleId: "ranger",
+      name: "Ranger-Captain of Eos",
+      manaCost: "{1}{W}{W}",
+      typeLine: "Creature — Human Soldier Knight",
+      power: "3",
+      toughness: "3",
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "When this creature enters, you may search your library for a creature card with mana value 1 or less, reveal it, put it into your hand, then shuffle.\nSacrifice this creature: Your opponents can't cast noncreature spells this turn.",
+    });
+    expect(ranger.notes).toEqual([]);
+    expect(ranger.definition.activated[0]?.effects).toEqual([
+      { kind: "silence_noncreature", playerId: "controller" },
+    ]);
+
+    const halana = compileOracleCard({
+      oracleId: "halana",
+      name: "Halana and Alena, Partners",
+      manaCost: "{2}{R}{G}",
+      typeLine: "Legendary Creature — Human Ranger",
+      power: "2",
+      toughness: "3",
+      printedKeywords: ["Reach", "First strike"],
+      imageUrl: "",
+      oracleText:
+        "Reach\nFirst strike\nAt the beginning of combat on your turn, put X +1/+1 counters on another target creature you control, where X is Halana and Alena's power. That creature gains haste until end of turn.",
+    });
+    expect(halana.notes).toEqual([]);
+    expect(halana.definition.triggers[0]?.effects).toEqual([
+      {
+        kind: "add_counter",
+        cardId: { type: "chosen", index: 0 },
+        counter: "+1/+1",
+        amount: "source_power",
+      },
+      { kind: "keyword_until_eot", cardId: { type: "chosen", index: 0 }, keyword: "haste" },
+    ]);
+  });
+
+  it("wakes the god only at five devotion", () => {
+    const { game, p1 } = twoPlayers();
+    const godDef = createCardDefinition({
+      name: "God",
+      manaCost: "{2}{U}",
+      typeLine: "Legendary Enchantment Creature — God",
+      power: 5,
+      toughness: 5,
+      notCreatureBelowDevotion: { color: "U", threshold: 5 },
+    });
+    const pipDef = createCardDefinition({
+      name: "Pips",
+      manaCost: "{U}{U}",
+      typeLine: "Enchantment",
+    });
+    game.definitions[godDef.id] = godDef;
+    game.definitions[pipDef.id] = pipDef;
+    const god = createCardInstance({ definitionId: godDef.id, ownerId: p1.id, zone: "battlefield" });
+    game.cards[god.id] = god;
+    p1.zones.battlefield.push(god.id);
+
+    // One blue pip from the god itself: 1 < 5 — an enchantment only.
+    expect(computedCard(game, god.id)?.characteristics.types).toEqual([
+      "enchantment",
+    ]);
+
+    // Two more permanents with {U}{U} each: devotion 5 — the god wakes.
+    for (let i = 0; i < 2; i += 1) {
+      const pips = createCardInstance({ definitionId: pipDef.id, ownerId: p1.id, zone: "battlefield" });
+      game.cards[pips.id] = pips;
+      p1.zones.battlefield.push(pips.id);
+    }
+    expect(computedCard(game, god.id)?.characteristics.types).toContain("creature");
+  });
+
+  it("locks only noncreature spells for opponents", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const next = applyEffect(game, { kind: "silence_noncreature", playerId: p1.id });
+    expect(next.noncreatureCastLockUntilEot).toBe(p1.id);
+
+    const bearDef = createCardDefinition({ name: "Bear", manaCost: "{1}{G}", typeLine: "Creature — Bear", power: 2, toughness: 2 });
+    const boltDef = createCardDefinition({ name: "Bolt", manaCost: "{R}", typeLine: "Instant" });
+    next.definitions[bearDef.id] = bearDef;
+    next.definitions[boltDef.id] = boltDef;
+    const bear = createCardInstance({ definitionId: bearDef.id, ownerId: p2.id, zone: "hand" });
+    const bolt = createCardInstance({ definitionId: boltDef.id, ownerId: p2.id, zone: "hand" });
+    next.cards[bear.id] = bear;
+    next.cards[bolt.id] = bolt;
+    next.players[1]!.zones.hand.push(bear.id, bolt.id);
+    next.players[1]!.mana.G = 1;
+    next.players[1]!.mana.R = 1;
+    next.players[1]!.mana.C = 1;
+    next.priorityPlayerId = p2.id;
+    next.turn.activePlayerId = p2.id;
+    next.turn.phase = "precombatMain";
+
+    expect(() =>
+      applyAction(next, { kind: "cast_spell", playerId: p2.id, cardId: bolt.id }),
+    ).toThrow(/noncreature/);
+    const cast = applyAction(next, { kind: "cast_spell", playerId: p2.id, cardId: bear.id });
+    expect(cast.stack).toHaveLength(1);
+  });
+});

@@ -52,6 +52,7 @@ export type CompiledOracleText = {
   opponentsLockedDuringYourTurn?: boolean;
   opponentsCantCastDuringYourTurn?: boolean;
   mustAttack?: boolean;
+  notCreatureBelowDevotion?: { color: Color; threshold: number };
   freeIfCommander?: boolean;
   changeling?: boolean;
   storm?: boolean;
@@ -616,7 +617,7 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
   }
 
   const unblockable = sentence.match(
-    /^(target creature|~)(?: with power (\d+) or less)? can't be blocked this turn$/i,
+    /^(target creature( you control)?|~)(?: with power (\d+) or less)? can't be blocked this turn$/i,
   );
   if (unblockable?.[1]) {
     if (unblockable[1].toLowerCase() === "~") {
@@ -629,7 +630,8 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
       targetRequirements: [
         {
           kind: "creature",
-          ...(unblockable[2] ? { maxPower: Number(unblockable[2]) } : {}),
+          ...(unblockable[2] ? { control: "own" as const } : {}),
+          ...(unblockable[3] ? { maxPower: Number(unblockable[3]) } : {}),
         },
       ],
       effects: [
@@ -637,6 +639,87 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
       ],
     };
   }
+
+  // Thassa, Deep-Dwelling: "{3}{U}: Tap another target creature."
+  const tapTarget = sentence.match(/^Tap (another )?target creature$/i);
+  if (tapTarget) {
+    return {
+      targetRequirements: [{ kind: "creature", ...(tapTarget[1] ? { excludeSource: true } : {}) }],
+      effects: [{ kind: "tap", cardId: { type: "chosen", index: 0 } }],
+    };
+  }
+
+  // Ranger-Captain of Eos.
+  if (/^Your opponents can't cast noncreature spells this turn$/i.test(sentence)) {
+    return {
+      targetRequirements: [],
+      effects: [{ kind: "silence_noncreature", playerId: "controller" }],
+    };
+  }
+
+  // Recruiter of the Guard / Ranger-Captain of Eos: capped creature tutors.
+  const cappedTutor = sentence.match(
+    /^(?:you may )?search your library for a creature card with (toughness|mana value) (\d+) or less, reveal it, put it into your hand, then shuffle$/i,
+  );
+  if (cappedTutor?.[1] && cappedTutor[2]) {
+    const cap = Number(cappedTutor[2]);
+    return {
+      targetRequirements: [],
+      effects: [
+        {
+          kind: "search_library",
+          playerId: "controller",
+          filter: {
+            types: ["creature"],
+            ...(cappedTutor[1].toLowerCase() === "toughness"
+              ? { maxToughness: cap }
+              : { maxManaValue: cap }),
+          },
+          destination: "hand",
+          count: 1,
+        },
+      ],
+    };
+  }
+
+  // Ouroboroid: team counters scaled to its own power at bind.
+  if (
+    /^put X \+1\/\+1 counters on each creature you control, where X is (?:~|this creature)'s power$/i.test(
+      sentence,
+    )
+  ) {
+    return {
+      targetRequirements: [],
+      effects: [
+        {
+          kind: "counter_on_controlled_creatures",
+          playerId: "controller",
+          counter: "+1/+1",
+          amount: "source_power",
+        },
+      ],
+    };
+  }
+
+  // Halana and Alena: targeted counters scaled to the source's power.
+  if (
+    /^put X \+1\/\+1 counters on another target creature you control, where X is (?:~|this creature)'s power$/i.test(
+      sentence,
+    )
+  ) {
+    return {
+      targetRequirements: [{ kind: "creature", control: "own", excludeSource: true }],
+      effects: [
+        {
+          kind: "add_counter",
+          cardId: { type: "chosen", index: 0 },
+          counter: "+1/+1",
+          amount: "source_power",
+        },
+      ],
+    };
+  }
+
 
   if (/^shuffle ~ into its owner's library$/i.test(sentence)) {
     return {
@@ -2267,13 +2350,20 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     }
   }
 
-  // Ephemerate / Conjurer's Closet flicker.
+  // Ephemerate / Conjurer's Closet / Thassa, Deep-Dwelling flicker.
   match = sentence.match(
-    /^(?:you may )?Exile target creature( you control)?, then return (?:it|that card) to the battlefield(?: under (?:its owner's|your) control)?$/i,
+    /^(?:you may )?Exile (up to one )?(?:an)?(other )?target creature( you control)?, then return (?:it|that card) to the battlefield(?: under (?:its owner's|your) control)?$/i,
   );
   if (match) {
     return {
-      targetRequirements: [{ kind: "creature", ...(match[1] ? { control: "own" as const } : {}) }],
+      targetRequirements: [
+        {
+          kind: "creature",
+          ...(match[3] ? { control: "own" as const } : {}),
+          ...(match[1] ? { optional: true } : {}),
+          ...(match[2] ? { excludeSource: true } : {}),
+        },
+      ],
       effects: [{ kind: "flicker", cardId: { type: "chosen", index: 0 } }],
     };
   }
@@ -5036,6 +5126,19 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
       continue;
     }
 
+    // Theros gods: the devotion type gate.
+    const devotionGate = sentence.match(
+      /^As long as your devotion to (white|blue|black|red|green) is less than (\w+), ~ isn't a creature$/i,
+    );
+    if (devotionGate?.[1] && devotionGate[2]) {
+      const threshold = parseCount(devotionGate[2]);
+      const color = COLOR_WORDS[devotionGate[1].toLowerCase()];
+      if (threshold && color) {
+        result.notCreatureBelowDevotion = { color, threshold };
+        continue;
+      }
+    }
+
     // Drumbellower / Seedborn Muse / Unwinding Clock.
     const untapOthers = sentence.match(
       /^Untap all (creatures|permanents|artifacts) you control during each other player's untap step$/i,
@@ -5576,6 +5679,28 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
     if (beginCombat?.[1]) {
       const everyCombat = /each combat/i.test(sentence);
       const inner = compileSimpleClause(beginCombat[1].trim());
+      // Halana and Alena: "That creature gains haste until end of turn."
+      // rides the previous sentence's single target.
+      const hasteRider = sentences[index + 1]?.match(
+        /^That creature gains ([a-z ]+) until end of turn$/i,
+      );
+      const riderKeyword = hasteRider?.[1]
+        ? KEYWORD_GRANTS[hasteRider[1].trim().toLowerCase()]
+        : undefined;
+      if (
+        inner &&
+        !inner.leftover &&
+        riderKeyword &&
+        !lineStart[index + 1] &&
+        inner.targetRequirements.length === 1
+      ) {
+        inner.effects.push({
+          kind: "keyword_until_eot",
+          cardId: { type: "chosen", index: 0 },
+          keyword: riderKeyword,
+        });
+        sentences[index + 1] = "";
+      }
       if (inner) {
         result.triggers.push({
           event: "begin_combat",

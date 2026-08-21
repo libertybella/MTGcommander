@@ -109,6 +109,14 @@ function validateCast(
   if (!definition) {
     throw new Error(`Unknown card definition for ${cardId}`);
   }
+  // Ranger-Captain of Eos: only noncreature spells are locked.
+  if (
+    state.noncreatureCastLockUntilEot &&
+    state.noncreatureCastLockUntilEot !== playerId &&
+    !definition.characteristics.types.includes("creature")
+  ) {
+    throw new Error("You can't cast noncreature spells this turn");
+  }
 
   const located = findCardZone(state, cardId);
   const fromHand = Boolean(located && located.zone === "hand" && located.playerId === playerId);
