@@ -42,7 +42,7 @@ Statuses: `open` · `claimed` · `in-progress` · `done` · `blocked`
 | Multikicker | A | open | | | | |
 | Rebound | A | open | | | | |
 | Evolve (+ second lines) | A | open | | | | Counter-added event; power-capped cast head |
-| Living weapon | A | open | | | | |
+| Living weapon | A | in-progress | claude/2daf8b18 | comprehensive-plan | 2026-08-21 | Wave 125, bundled with enters-tapped-unless-basic pair |
 | Small keywords (dethrone, split second, compleated, delirium, cascade ×2) | A | open | | | | One card each |
 | Station cycle | A | open | | | | Fringe cards; lowest priority |
 | Modal trigger prompt + modal dies/enters cards | B | open | | | | Unblocks Atsushi, Junji, Charming Prince, Aether Channeler, Felidar Retreat, Retreat to Coralhelm, Insidious Fungus, Cankerbloom |
