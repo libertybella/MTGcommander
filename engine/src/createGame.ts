@@ -64,6 +64,8 @@ export function createCardDefinition(
         | "noMaxHandSize"
         | "extraLandDrops"
         | "cantBeCountered"
+        | "creatureSpellsCantBeCountered"
+        | "opponentsLockedDuringYourTurn"
         | "freeIfCommander"
         | "changeling"
         | "storm"
@@ -253,6 +255,8 @@ export function createCardDefinition(
       ? { extraLandDrops: input.extraLandDrops }
       : {}),
     ...(input.cantBeCountered ? { cantBeCountered: true } : {}),
+    ...(input.creatureSpellsCantBeCountered ? { creatureSpellsCantBeCountered: true } : {}),
+    ...(input.opponentsLockedDuringYourTurn ? { opponentsLockedDuringYourTurn: true } : {}),
     ...(input.freeIfCommander ? { freeIfCommander: true } : {}),
     ...(input.changeling ? { changeling: true } : {}),
     ...(input.storm ? { storm: true } : {}),

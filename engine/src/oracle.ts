@@ -199,6 +199,8 @@ function compileOneFace(card: OracleCard, definitionId: string): OracleCompileRe
     ...(compiled.noMaxHandSize ? { noMaxHandSize: true } : {}),
     ...(compiled.extraLandDrops ? { extraLandDrops: compiled.extraLandDrops } : {}),
     ...(compiled.cantBeCountered ? { cantBeCountered: true } : {}),
+    ...(compiled.creatureSpellsCantBeCountered ? { creatureSpellsCantBeCountered: true } : {}),
+    ...(compiled.opponentsLockedDuringYourTurn ? { opponentsLockedDuringYourTurn: true } : {}),
     ...(compiled.freeIfCommander ? { freeIfCommander: true } : {}),
     ...(compiled.changeling ? { changeling: true } : {}),
     ...(compiled.topOfLibrary ? { topOfLibrary: { ...compiled.topOfLibrary } } : {}),

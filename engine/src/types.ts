@@ -137,6 +137,11 @@ export type CardDefinition = {
   extraLandDrops?: number;
   /** "This spell can't be countered" (Abrupt Decay). */
   cantBeCountered?: boolean;
+  /** Rhythm of the Wild: the controller's creature spells can't be countered. */
+  creatureSpellsCantBeCountered?: boolean;
+  /** Grand Abolisher: on this permanent's controller's turn, opponents can't
+   * cast spells or activate artifact/creature/enchantment abilities. */
+  opponentsLockedDuringYourTurn?: boolean;
   /**
    * "If you control a commander, you may cast this spell without paying its
    * mana cost" (the free-spell cycle). Documented approximation: the free
@@ -1418,6 +1423,8 @@ export type EffectSelector = {
   subtypes?: string[];
   /** "Tokens you control" (Jaheira). */
   tokenOnly?: boolean;
+  /** "Nontoken creatures you control" (Rhythm of the Wild). */
+  nonToken?: boolean;
   /** Any listed color must be present ("White creatures you control"). */
   colors?: Color[];
   /** The target must have the source's chosen creature type (Vanquisher's Banner). */

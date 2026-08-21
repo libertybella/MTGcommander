@@ -48,6 +48,8 @@ export type CompiledOracleText = {
   noMaxHandSize?: boolean;
   extraLandDrops?: number;
   cantBeCountered?: boolean;
+  creatureSpellsCantBeCountered?: boolean;
+  opponentsLockedDuringYourTurn?: boolean;
   freeIfCommander?: boolean;
   changeling?: boolean;
   storm?: boolean;
@@ -3992,6 +3994,32 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
 
     if (/^This spell can't be countered$/i.test(sentence)) {
       result.cantBeCountered = true;
+      continue;
+    }
+
+    // Rhythm of the Wild's first half.
+    if (/^Creature spells you control can't be countered$/i.test(sentence)) {
+      result.creatureSpellsCantBeCountered = true;
+      continue;
+    }
+
+    // Riot approximated as haste: the aggressive half of the choice, always
+    // taken — a documented approximation (Rhythm of the Wild).
+    if (/^Nontoken creatures you control have riot$/i.test(sentence)) {
+      result.staticAbilities.push({
+        selector: { scope: "controlled", types: ["creature"], nonToken: true },
+        effect: { kind: "grant_keyword", keyword: "haste" },
+      });
+      continue;
+    }
+
+    // Grand Abolisher.
+    if (
+      /^During your turn, your opponents can't cast spells or activate abilities of artifacts, creatures, or enchantments$/i.test(
+        sentence,
+      )
+    ) {
+      result.opponentsLockedDuringYourTurn = true;
       continue;
     }
 

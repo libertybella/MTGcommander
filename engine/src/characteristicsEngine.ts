@@ -192,6 +192,9 @@ function matches(
   if (selector.tokenOnly && !card.isToken) {
     return false;
   }
+  if (selector.nonToken && card.isToken) {
+    return false;
+  }
   for (const type of selector.types ?? []) {
     if (!computed.characteristics.types.includes(type)) {
       return false;

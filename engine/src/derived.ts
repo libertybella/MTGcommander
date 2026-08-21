@@ -219,6 +219,21 @@ export function allBattlefieldCreatureCount(state: GameState): number {
 
 /** "If you control a commander" (the free-spell cycle): any commander on the
  * battlefield under this player's control, their own or a stolen one. */
+/** Grand Abolisher: the active player controls a lock and it isn't you. */
+export function lockedByAbolisher(state: GameState, playerId: string): boolean {
+  const activeId = state.turn.activePlayerId;
+  if (activeId === playerId) {
+    return false;
+  }
+  return Object.values(state.cards).some(
+    (card) =>
+      card.zone === "battlefield" &&
+      card.controllerId === activeId &&
+      state.definitions[card.definitionId]?.opponentsLockedDuringYourTurn === true &&
+      !abilitiesRemoved(state, card.id),
+  );
+}
+
 export function controlsCommander(state: GameState, playerId: string): boolean {
   return Object.values(state.cards).some(
     (card) =>

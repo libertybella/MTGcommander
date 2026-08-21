@@ -8473,3 +8473,127 @@ describe("wave 92: konrad and guardians", () => {
   });
 });
 
+describe("wave 93: abolishers and rhythms", () => {
+  it("compiles Grand Abolisher and Rhythm of the Wild fully", () => {
+    const abolisher = compileOracleCard({
+      oracleId: "abolisher",
+      name: "Grand Abolisher",
+      manaCost: "{W}{W}",
+      typeLine: "Creature — Human Cleric",
+      power: "2",
+      toughness: "2",
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "During your turn, your opponents can't cast spells or activate abilities of artifacts, creatures, or enchantments.",
+    });
+    expect(abolisher.notes).toEqual([]);
+    expect(abolisher.definition.opponentsLockedDuringYourTurn).toBe(true);
+
+    const rhythm = compileOracleCard({
+      oracleId: "rhythm",
+      name: "Rhythm of the Wild",
+      manaCost: "{1}{R}{G}",
+      typeLine: "Enchantment",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "Creature spells you control can't be countered.\nNontoken creatures you control have riot. (They can enter with a +1/+1 counter or with haste.)",
+    });
+    expect(rhythm.notes).toEqual([]);
+    expect(rhythm.definition.creatureSpellsCantBeCountered).toBe(true);
+    expect(rhythm.definition.staticAbilities[0]?.selector.nonToken).toBe(true);
+  });
+
+  it("locks opponents out of casting on the abolisher controller's turn", () => {
+    const { game, p1, p2 } = twoPlayers();
+    game.turn.phase = "precombatMain";
+    game.turn.step = "precombatMain";
+    const abolisherDef = createCardDefinition({
+      name: "Abolisher",
+      typeLine: "Creature — Human Cleric",
+      power: 2,
+      toughness: 2,
+      opponentsLockedDuringYourTurn: true,
+    });
+    const boltDef = createCardDefinition({
+      name: "Bolt",
+      manaCost: "",
+      typeLine: "Instant",
+      effects: [{ kind: "gain_life", playerId: "controller", amount: 1 }],
+    });
+    game.definitions[abolisherDef.id] = abolisherDef;
+    game.definitions[boltDef.id] = boltDef;
+    const abolisher = createCardInstance({ definitionId: abolisherDef.id, ownerId: p1.id, zone: "battlefield" });
+    const bolt = createCardInstance({ definitionId: boltDef.id, ownerId: p2.id, zone: "hand" });
+    game.cards[abolisher.id] = abolisher;
+    game.cards[bolt.id] = bolt;
+    p1.zones.battlefield.push(abolisher.id);
+    p2.zones.hand.push(bolt.id);
+
+    // p1 is active; the opponent can't cast even with priority.
+    game.priorityPlayerId = p2.id;
+    expect(() =>
+      applyAction(game, { kind: "cast_spell", playerId: p2.id, cardId: bolt.id, targets: [] }),
+    ).toThrow(/stops you from casting/);
+    expect(
+      legalActions(game, p2.id).some((action) => action.kind === "cast_spell"),
+    ).toBe(false);
+
+    // On the opponent's own turn the lock is silent.
+    game.turn.activePlayerId = p2.id;
+    const cast = applyAction(game, {
+      kind: "cast_spell",
+      playerId: p2.id,
+      cardId: bolt.id,
+      targets: [],
+    });
+    expect(cast.stack).toHaveLength(1);
+  });
+
+  it("makes controlled creature spells uncounterable and grants riot haste", () => {
+    const { game, p1, p2 } = twoPlayers();
+    game.turn.phase = "precombatMain";
+    game.turn.step = "precombatMain";
+    const rhythmDef = createCardDefinition({
+      name: "Rhythm",
+      typeLine: "Enchantment",
+      creatureSpellsCantBeCountered: true,
+      staticAbilities: [
+        {
+          selector: { scope: "controlled", types: ["creature"], nonToken: true },
+          effect: { kind: "grant_keyword", keyword: "haste" },
+        },
+      ],
+    });
+    const bearDef = createCardDefinition({ name: "Bear", manaCost: "", typeLine: "Creature — Bear", power: 2, toughness: 2 });
+    game.definitions[rhythmDef.id] = rhythmDef;
+    game.definitions[bearDef.id] = bearDef;
+    const rhythm = createCardInstance({ definitionId: rhythmDef.id, ownerId: p1.id, zone: "battlefield" });
+    const bear = createCardInstance({ definitionId: bearDef.id, ownerId: p1.id, zone: "hand" });
+    game.cards[rhythm.id] = rhythm;
+    game.cards[bear.id] = bear;
+    p1.zones.battlefield.push(rhythm.id);
+    p1.zones.hand.push(bear.id);
+
+    game.priorityPlayerId = p1.id;
+    const cast = applyAction(game, {
+      kind: "cast_spell",
+      playerId: p1.id,
+      cardId: bear.id,
+      targets: [],
+    });
+    const spellId = cast.stack[0]!.id;
+    const countered = applyEffect(cast, { kind: "counter_spell", stackObjectId: spellId });
+    // The counter fizzles: the spell is still on the stack.
+    expect(countered.stack).toHaveLength(1);
+
+    let resolved = resolveTopOfStack(countered);
+    expect(resolved.cards[bear.id]?.zone).toBe("battlefield");
+    expect(hasKeyword(resolved, bear.id, "haste")).toBe(true);
+    expect(p2.id).toBeTruthy();
+  });
+});
+

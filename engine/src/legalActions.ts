@@ -1,9 +1,9 @@
-import { isClass, isCommander, isCreature, isLand, isLegendary, isMainPhase } from "./cardTypes";
+import { characteristicsOf, isClass, isCommander, isCreature, isLand, isLegendary, isMainPhase } from "./cardTypes";
 import { abilitiesRemoved, cardMatchesSubtype } from "./characteristicsEngine";
 import { hasKeyword } from "./keywords";
 import { emptyManaPool } from "./createGame";
 import { pendingBlockerPlayer } from "./combat";
-import { affinityArtifactDiscount, allBattlefieldCreatureCount, canPlayLandsFromGraveyard, castCostReduction, controlsCommander, hasFlashGrant, landDropAllowance, topOfLibraryGrant } from "./derived";
+import { affinityArtifactDiscount, allBattlefieldCreatureCount, canPlayLandsFromGraveyard, castCostReduction, controlsCommander, hasFlashGrant, landDropAllowance, lockedByAbolisher, topOfLibraryGrant } from "./derived";
 import { canPayManaCost, parseManaCost, type ParsedManaCost } from "./mana";
 import { manaAbilitiesFor, manaTapOptionsFor } from "./manaOptions";
 import { isMulliganOpen } from "./mulligan";
@@ -419,6 +419,8 @@ export function legalActions(state: GameState, playerId: PlayerId): LegalAction[
   // Hoisted: hasFlashGrant scans the battlefield, so compute it once per
   // legalActions call instead of once per castable card.
   const flashGrant = hasFlashGrant(state, playerId);
+  // Grand Abolisher: no casts, no battlefield a/c/e activations, this turn.
+  const abolished = lockedByAbolisher(state, playerId);
   const actions: LegalAction[] = [];
 
   const graveyardLandIds = canPlayLandsFromGraveyard(state, playerId)
@@ -463,6 +465,9 @@ export function legalActions(state: GameState, playerId: PlayerId): LegalAction[
         ) {
           actions.push({ kind: "play_land", cardId, faceIndex: face.faceIndex });
         }
+        continue;
+      }
+      if (abolished) {
         continue;
       }
       if (inGraveyard) {
@@ -531,6 +536,7 @@ export function legalActions(state: GameState, playerId: PlayerId): LegalAction[
       }
       if (
         !topIsLand &&
+        !abolished &&
         (topGrant.castAll ||
           topGrant.castTypesAny.some((type) =>
             topDefinition.characteristics.types.includes(type),
@@ -548,7 +554,10 @@ export function legalActions(state: GameState, playerId: PlayerId): LegalAction[
     if (!card || !definition || !isCommander(state, cardId) || isLand(state, cardId)) {
       continue;
     }
-    if (castableFace(state, playerId, definition, potential, player.commander.tax, undefined, flashGrant)) {
+    if (
+      !abolished &&
+      castableFace(state, playerId, definition, potential, player.commander.tax, undefined, flashGrant)
+    ) {
       actions.push({ kind: "cast_spell", cardId, faceIndex: 0, fromCommand: true });
     }
   }
@@ -563,6 +572,16 @@ export function legalActions(state: GameState, playerId: PlayerId): LegalAction[
     }
     if (producerUsableNow(state, card) && manaAbilitiesFor(state, card.id).length > 0) {
       actions.push({ kind: "mana", cardId: card.id });
+    }
+    if (abolished) {
+      const types = characteristicsOf(state, card.id).types;
+      if (
+        types.includes("artifact") ||
+        types.includes("creature") ||
+        types.includes("enchantment")
+      ) {
+        continue;
+      }
     }
     for (const [abilityIndex, ability] of definition.activated.entries()) {
       if ((ability.zone ?? "battlefield") !== "battlefield") {

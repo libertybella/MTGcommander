@@ -1,8 +1,8 @@
 import { declareAttackers, declareBlockers, lockRemainingBlockers, pendingBlockerPlayer, priorityForStep } from "./combat";
 import { abilitiesRemoved } from "./characteristicsEngine";
-import { isCommander, isCreature, isInstant, isInstantOrSorcery, isLand, isLegendary, isMainPhase } from "./cardTypes";
+import { characteristicsOf, isCommander, isCreature, isInstant, isInstantOrSorcery, isLand, isLegendary, isMainPhase } from "./cardTypes";
 import { cloneGameState } from "./clone";
-import { affinityArtifactDiscount, allBattlefieldCreatureCount, canPlayLandFromTop, canPlayLandsFromGraveyard, castCostReduction, castableFromTop, controlsCommander, creaturePower, hasFlashGrant, landDropAllowance } from "./derived";
+import { affinityArtifactDiscount, allBattlefieldCreatureCount, canPlayLandFromTop, canPlayLandsFromGraveyard, castCostReduction, castableFromTop, controlsCommander, creaturePower, hasFlashGrant, landDropAllowance, lockedByAbolisher } from "./derived";
 import { eliminatePlayerInPlace } from "./elimination";
 import { applyEffects, bindCardEffects } from "./effects";
 import { hasKeyword } from "./keywords";
@@ -91,6 +91,10 @@ function validateCast(
   cardId: CardInstanceId,
 ): { cost: ReturnType<typeof parseManaCost>; fromCommand: boolean; flashbackLife: number } {
   requirePriority(state, playerId);
+  // Grand Abolisher: opponents can't cast on the lock controller's turn.
+  if (lockedByAbolisher(state, playerId)) {
+    throw new Error("An opponent's permanent stops you from casting spells this turn");
+  }
 
   const card = state.cards[cardId];
   if (!card) {
@@ -724,6 +728,18 @@ function applyActivateAbility(
   }
   if (card.zone === "battlefield" && abilitiesRemoved(state, cardId)) {
     throw new Error(`Card ${cardId} has lost its abilities`);
+  }
+  // Grand Abolisher: battlefield artifact/creature/enchantment activations
+  // are locked on the lock controller's turn (hand channels are not).
+  if (card.zone === "battlefield" && lockedByAbolisher(state, playerId)) {
+    const types = characteristicsOf(state, cardId).types;
+    if (
+      types.includes("artifact") ||
+      types.includes("creature") ||
+      types.includes("enchantment")
+    ) {
+      throw new Error("An opponent's permanent stops that activation this turn");
+    }
   }
   const fromZone = ability.zone ?? "battlefield";
   if (card.zone !== fromZone) {

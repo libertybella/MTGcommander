@@ -328,6 +328,12 @@ export function parseGameState(json: string): GameState {
         ? {}
         : { extraLandDrops: expectNumber(def.extraLandDrops, `definition.${id}.extraLandDrops`) }),
       ...(def.cantBeCountered === true ? { cantBeCountered: true } : {}),
+      ...(def.creatureSpellsCantBeCountered === true
+        ? { creatureSpellsCantBeCountered: true }
+        : {}),
+      ...(def.opponentsLockedDuringYourTurn === true
+        ? { opponentsLockedDuringYourTurn: true }
+        : {}),
       ...(def.freeIfCommander === true ? { freeIfCommander: true } : {}),
       ...(def.changeling === true ? { changeling: true } : {}),
       ...(def.storm === true ? { storm: true } : {}),
@@ -2500,6 +2506,7 @@ function parseEffectSelector(value: unknown, label: string): EffectSelector {
     ...(colors.length > 0 ? { colors } : {}),
     ...(value.chosenSubtype === true ? { chosenSubtype: true } : {}),
     ...(value.tokenOnly === true ? { tokenOnly: true } : {}),
+    ...(value.nonToken === true ? { nonToken: true } : {}),
     ...(excludeSelf ? { excludeSelf: true } : {}),
   };
 }

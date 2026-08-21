@@ -1429,7 +1429,21 @@ function cantBeCountered(state: GameState, stackObjectId: StackObjectId): boolea
     return false;
   }
   const card = state.cards[entry.sourceId];
-  return Boolean(card && state.definitions[card.definitionId]?.cantBeCountered);
+  if (card && state.definitions[card.definitionId]?.cantBeCountered) {
+    return true;
+  }
+  // Rhythm of the Wild: the spell's controller has a "creature spells you
+  // control can't be countered" permanent.
+  if (card && characteristicsOf(state, card.id).types.includes("creature")) {
+    return Object.values(state.cards).some(
+      (source) =>
+        source.zone === "battlefield" &&
+        source.controllerId === entry.controllerId &&
+        state.definitions[source.definitionId]?.creatureSpellsCantBeCountered === true &&
+        !abilitiesRemoved(state, source.id),
+    );
+  }
+  return false;
 }
 
 function applyCounterUnlessPays(
