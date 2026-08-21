@@ -603,6 +603,8 @@ export type GameEffect =
     }
   | { kind: "team_protection_until_eot"; playerId: PlayerId; colors: Color[] }
   | { kind: "all_pt_until_eot"; power: number; toughness: number }
+  | { kind: "reveal_top_put_permanent"; playerId: PlayerId }
+  | { kind: "drain_opponents"; playerId: PlayerId; amount: number }
   | {
       kind: "search_library";
       playerId: PlayerId;
@@ -788,6 +790,8 @@ export type CardIdSelector = CardInstanceId | ChosenTargetRef;
 export type RelativePlayer = "controller" | "next_opponent" | "each_opponent" | "each_player";
 /** The controller of the Nth chosen target (Beast Within). */
 export type ChosenControllerRef = { type: "chosen_controller"; index: number };
+/** The owner of the Nth chosen target (Chaos Warp). */
+export type ChosenOwnerRef = { type: "chosen_owner"; index: number };
 /** "That player": the trigger event's subject player, or the subject card's controller. */
 export type SubjectPlayerRef = { type: "subject_player" };
 export type PlayerSelector =
@@ -795,6 +799,7 @@ export type PlayerSelector =
   | RelativePlayer
   | ChosenTargetRef
   | ChosenControllerRef
+  | ChosenOwnerRef
   | SubjectPlayerRef;
 
 export type CardEffectTarget =
@@ -976,6 +981,10 @@ export type CardEffect =
   | { kind: "team_protection_until_eot"; playerId: PlayerSelector; colors: Color[] }
   /** "All creatures get -X/-X until end of turn" (Toxic Deluge). */
   | { kind: "all_pt_until_eot"; power: number | "-x"; toughness: number | "-x" }
+  /** Chaos Warp's back half: reveal the top card; a permanent card lands. */
+  | { kind: "reveal_top_put_permanent"; playerId: PlayerSelector }
+  /** Exsanguinate: each opponent loses N; you gain the total lost. */
+  | { kind: "drain_opponents"; playerId: PlayerSelector; amount: number | "x" }
   | {
       kind: "search_library";
       playerId: PlayerSelector;
@@ -1080,7 +1089,9 @@ export type TriggerCondition =
   /** Padeem: the controller has an artifact tied for the greatest mana value. */
   | { kind: "greatest_artifact_mana_value" }
   /** "if you control four or more lands". */
-  | { kind: "controls_count"; what: "land" | "creature" | "artifact"; atLeast: number };
+  | { kind: "controls_count"; what: "land" | "creature" | "artifact"; atLeast: number }
+  /** Land Tax: "if an opponent controls more lands than you". */
+  | { kind: "opponent_controls_more_lands" };
 
 export type CardTrigger = {
   event: TriggerEvent;

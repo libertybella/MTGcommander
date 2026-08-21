@@ -19,6 +19,7 @@ import type {
   CardIdSelector,
   CardInstanceId,
   ChosenControllerRef,
+  ChosenOwnerRef,
   ChosenTarget,
   ChosenTargetRef,
   ContinuousEffectData,
@@ -70,6 +71,13 @@ function bindPlayerSelector(
       }
       return state.cards[chosen.cardId]?.controllerId ?? null;
     }
+    if (selector.type === "chosen_owner") {
+      const chosen = chosenTargetAt(context, selector.index, state);
+      if (!chosen || chosen.type !== "creature") {
+        return null;
+      }
+      return state.cards[chosen.cardId]?.ownerId ?? null;
+    }
     if (selector.type === "subject_player") {
       return context.subjectPlayerId ?? null;
     }
@@ -84,7 +92,10 @@ function bindPlayerSelector(
 
 function bindPlayer(
   state: GameState,
-  selector: Exclude<PlayerSelector, ChosenTargetRef | ChosenControllerRef | SubjectPlayerRef>,
+  selector: Exclude<
+    PlayerSelector,
+    ChosenTargetRef | ChosenControllerRef | ChosenOwnerRef | SubjectPlayerRef
+  >,
   controllerId: PlayerId,
 ): PlayerId {
   if (selector === "controller") {
@@ -594,6 +605,24 @@ export function bindCardEffect(
         return null;
       }
       return { kind: "all_pt_until_eot", power, toughness };
+    }
+    case "reveal_top_put_permanent": {
+      const playerId = bindPlayerSelector(state, effect.playerId, context);
+      if (!playerId) {
+        return null;
+      }
+      return { kind: "reveal_top_put_permanent", playerId };
+    }
+    case "drain_opponents": {
+      const playerId = bindPlayerSelector(state, effect.playerId, context);
+      if (!playerId) {
+        return null;
+      }
+      const amount = effect.amount === "x" ? context.xValue ?? 0 : effect.amount;
+      if (amount <= 0) {
+        return null;
+      }
+      return { kind: "drain_opponents", playerId, amount };
     }
     case "search_library": {
       const playerId = bindPlayerSelector(state, effect.playerId, context);
@@ -2274,6 +2303,41 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
                 power: effect.power,
                 toughness: effect.toughness,
               });
+        break;
+      }
+      case "reveal_top_put_permanent": {
+        // Chaos Warp's back half: a revealed permanent card lands; anything
+        // else stays on top, revealed.
+        const revealer = requirePlayer(state, effect.playerId);
+        const topId = revealer.zones.library[0];
+        if (!topId) {
+          next = state;
+          break;
+        }
+        next = cloneGameState(state);
+        next.log.push({ kind: "zone_change", cardId: topId, from: "library", to: "library" });
+        const types = characteristicsOf(next, topId).types;
+        if (!types.includes("instant") && !types.includes("sorcery")) {
+          moveCardInPlace(next, topId, "battlefield");
+        }
+        break;
+      }
+      case "drain_opponents": {
+        requirePlayer(state, effect.playerId);
+        next = state;
+        let drained = 0;
+        for (const player of state.players) {
+          if (player.id === effect.playerId || player.lost) {
+            continue;
+          }
+          next = applyLoseLife(next, player.id, effect.amount);
+          drained += effect.amount;
+        }
+        if (drained > 0) {
+          next = applyGainLife(next, effect.playerId, drained);
+        } else if (next === state) {
+          next = cloneGameState(state);
+        }
         break;
       }
       case "search_library":

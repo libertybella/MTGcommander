@@ -8079,3 +8079,147 @@ describe("wave 89: hardened scales", () => {
   });
 });
 
+describe("wave 90: warps, drains, taxes", () => {
+  it("compiles Chaos Warp, Exsanguinate, and Land Tax fully", () => {
+    const warp = compileOracleCard({
+      oracleId: "warp",
+      name: "Chaos Warp",
+      manaCost: "{2}{R}",
+      typeLine: "Instant",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "The owner of target permanent shuffles it into their library, then reveals the top card of their library. If it's a permanent card, they put it onto the battlefield.",
+    });
+    expect(warp.notes).toEqual([]);
+    expect(warp.definition.targetRequirements).toEqual([{ kind: "permanent" }]);
+    expect(warp.definition.effects[1]).toEqual({
+      kind: "reveal_top_put_permanent",
+      playerId: { type: "chosen_owner", index: 0 },
+    });
+
+    const drain = compileOracleCard({
+      oracleId: "drain",
+      name: "Exsanguinate",
+      manaCost: "{X}{B}{B}",
+      typeLine: "Sorcery",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText: "Each opponent loses X life. You gain life equal to the life lost this way.",
+    });
+    expect(drain.notes).toEqual([]);
+    expect(drain.definition.effects[0]).toEqual({
+      kind: "drain_opponents",
+      playerId: "controller",
+      amount: "x",
+    });
+
+    const tax = compileOracleCard({
+      oracleId: "tax",
+      name: "Land Tax",
+      manaCost: "{W}",
+      typeLine: "Enchantment",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "At the beginning of your upkeep, if an opponent controls more lands than you, you may search your library for up to three basic land cards, reveal them, put them into your hand, then shuffle.",
+    });
+    expect(tax.notes).toEqual([]);
+    expect(tax.definition.triggers[0]?.condition).toEqual({
+      kind: "opponent_controls_more_lands",
+    });
+  });
+
+  it("shuffles the target away and puts a revealed permanent onto the battlefield", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const bearDef = createCardDefinition({ name: "Bear", typeLine: "Creature — Bear", power: 2, toughness: 2 });
+    const boltDef = createCardDefinition({ name: "Bolt", typeLine: "Instant" });
+    game.definitions[bearDef.id] = bearDef;
+    game.definitions[boltDef.id] = boltDef;
+    const victim = createCardInstance({ definitionId: bearDef.id, ownerId: p2.id, zone: "battlefield" });
+    const replacement = createCardInstance({ definitionId: bearDef.id, ownerId: p2.id, zone: "library" });
+    game.cards[victim.id] = victim;
+    game.cards[replacement.id] = replacement;
+    p2.zones.battlefield.push(victim.id);
+    p2.zones.library.push(replacement.id);
+
+    const bound = bindCardEffects(
+      game,
+      [
+        {
+          kind: "move_card",
+          cardId: { type: "chosen", index: 0 },
+          toZone: "library",
+          libraryPosition: "shuffled",
+        },
+        { kind: "reveal_top_put_permanent", playerId: { type: "chosen_owner", index: 0 } },
+      ],
+      {
+        controllerId: p1.id,
+        sourceId: null,
+        targets: [{ type: "creature", cardId: victim.id }],
+        targetRequirements: [{ kind: "permanent" }],
+      },
+    );
+    const next = applyEffects(game, bound);
+    // The shuffle is genuinely random: the revealed top is one of the two
+    // bears (both permanent cards), so exactly one lands and one stays.
+    const after = next.players.find((player) => player.id === p2.id)!;
+    expect(after.zones.battlefield).toHaveLength(1);
+    expect(after.zones.library).toHaveLength(1);
+    expect(next.definitions[next.cards[after.zones.battlefield[0]!]!.definitionId]?.name).toBe(
+      "Bear",
+    );
+  });
+
+  it("drains each opponent and gains the total", () => {
+    const { game, p1 } = twoPlayers();
+    const bound = bindCardEffects(
+      game,
+      [{ kind: "drain_opponents", playerId: "controller", amount: "x" }],
+      { controllerId: p1.id, sourceId: null, xValue: 5 },
+    );
+    const next = applyEffects(game, bound);
+    expect(next.players[1]?.life).toBe(35);
+    expect(next.players[0]?.life).toBe(45);
+  });
+
+  it("holds the Land Tax condition only while an opponent has more lands", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const taxDef = createCardDefinition({
+      name: "Tax",
+      typeLine: "Enchantment",
+      triggers: [
+        {
+          event: "upkeep",
+          condition: { kind: "opponent_controls_more_lands" },
+          effects: [{ kind: "draw", playerId: "controller", count: 1 }],
+        },
+      ],
+    });
+    game.definitions[taxDef.id] = taxDef;
+    const tax = createCardInstance({ definitionId: taxDef.id, ownerId: p1.id, zone: "battlefield" });
+    game.cards[tax.id] = tax;
+    p1.zones.battlefield.push(tax.id);
+    fillLibraries(game, 10);
+
+    // Equal lands (zero each): the trigger is skipped.
+    expect(queueTrigger(game)).toBe(false);
+    addLandsInPlay(game, p2, 2);
+    expect(queueTrigger(game)).toBe(true);
+
+    function queueTrigger(state: GameState): boolean {
+      const cloned = structuredClone(state);
+      const before = cloned.stack.length;
+      dispatchEventsInPlace(cloned, [{ kind: "step_begins", step: "upkeep" }]);
+      return cloned.stack.length > before || cloned.prompts.length > 0;
+    }
+  });
+});
+

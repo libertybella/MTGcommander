@@ -1499,7 +1499,7 @@ function parsePlayerSelector(value: unknown, label: string): PlayerSelector {
   if (type === "subject_player") {
     return { type };
   }
-  if (type !== "chosen" && type !== "chosen_controller") {
+  if (type !== "chosen" && type !== "chosen_controller" && type !== "chosen_owner") {
     throw new Error(`Invalid ${label}.type`);
   }
   const index = expectNumber(value.index, `${label}.index`);
@@ -1940,6 +1940,17 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
         toughness:
           value.toughness === "-x" ? "-x" : expectNumber(value.toughness, `${label}.toughness`),
       };
+    case "reveal_top_put_permanent":
+      return {
+        kind,
+        playerId: parsePlayerSelector(value.playerId, `${label}.playerId`),
+      };
+    case "drain_opponents":
+      return {
+        kind,
+        playerId: parsePlayerSelector(value.playerId, `${label}.playerId`),
+        amount: value.amount === "x" ? "x" : expectNumber(value.amount, `${label}.amount`),
+      };
     case "search_library":
       return {
         kind,
@@ -2279,7 +2290,10 @@ function parseTriggers(value: unknown, label: string): CardTrigger[] {
                 entry.condition.kind,
                 `${label}[${index}].condition.kind`,
               );
-              if (conditionKind === "greatest_artifact_mana_value") {
+              if (
+                conditionKind === "greatest_artifact_mana_value" ||
+                conditionKind === "opponent_controls_more_lands"
+              ) {
                 return { kind: conditionKind };
               }
               if (conditionKind === "controls_count") {
@@ -2881,6 +2895,16 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
       kind,
       power: expectNumber(value.power, `${label}.power`),
       toughness: expectNumber(value.toughness, `${label}.toughness`),
+    };
+  }
+  if (kind === "reveal_top_put_permanent") {
+    return { kind, playerId: expectString(value.playerId, `${label}.playerId`) };
+  }
+  if (kind === "drain_opponents") {
+    return {
+      kind,
+      playerId: expectString(value.playerId, `${label}.playerId`),
+      amount: expectNumber(value.amount, `${label}.amount`),
     };
   }
   if (kind === "search_library") {

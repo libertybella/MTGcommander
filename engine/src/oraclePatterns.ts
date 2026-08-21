@@ -1773,6 +1773,29 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     }
   }
 
+  // Land Tax: up to three basics to hand ("you may" is auto-taken; the
+  // search prompt already allows taking fewer).
+  match = sentence.match(
+    /^(?:you may )?search your library for up to (two|three|four) basic land cards, reveal them, put them into your hand, then shuffle(?: your library)?$/i,
+  );
+  if (match?.[1]) {
+    const count = parseCount(match[1]);
+    if (count) {
+      return {
+        targetRequirements: [],
+        effects: [
+          {
+            kind: "search_library",
+            playerId: "controller",
+            filter: { supertypes: ["basic"], types: ["land"] },
+            destination: "hand",
+            count,
+          },
+        ],
+      };
+    }
+  }
+
   // Cultivate / Kodama's Reach: two basics, split destinations.
   if (
     /^Search your library for up to two basic land cards, reveal (?:those cards|them), put one onto the battlefield tapped and the other into your hand, then shuffle(?: your library)?$/i.test(
@@ -1942,6 +1965,47 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
         ],
       };
     }
+  }
+
+  // Chaos Warp: the shuffle-in, then the conditional reveal-put back half.
+  if (
+    /^The owner of target permanent shuffles it into their library, then reveals the top card of their library$/i.test(
+      sentence,
+    )
+  ) {
+    return {
+      targetRequirements: [{ kind: "permanent" }],
+      effects: [
+        {
+          kind: "move_card",
+          cardId: { type: "chosen", index: 0 },
+          toZone: "library",
+          libraryPosition: "shuffled",
+        },
+      ],
+    };
+  }
+
+  if (/^If it's a permanent card, they put it onto the battlefield$/i.test(sentence)) {
+    return {
+      targetRequirements: [],
+      effects: [{ kind: "reveal_top_put_permanent", playerId: { type: "chosen_owner", index: 0 } }],
+    };
+  }
+
+  // Exsanguinate (fused): each opponent loses N; the caster gains the total.
+  match = sentence.match(/^drain (X|\d+) from each opponent$/i);
+  if (match?.[1]) {
+    return {
+      targetRequirements: [],
+      effects: [
+        {
+          kind: "drain_opponents",
+          playerId: "controller",
+          amount: match[1].toUpperCase() === "X" ? "x" : Number(match[1]),
+        },
+      ],
+    };
   }
 
   // Reanimate: steal from ANY graveyard; the life clause follows separately.
@@ -2498,6 +2562,23 @@ function fuseDigSentencesInPlace(sentences: string[], lineStart: boolean[]): voi
  * "…exile the top card of that player's library." + "Until end of turn, you
  * may cast that card." both become "…impulse from <whose> library".
  */
+/**
+ * Fuse "Each opponent loses X life." + "You gain life equal to the life lost
+ * this way." into one synthetic drain sentence (Exsanguinate).
+ */
+function fuseDrainPairInPlace(sentences: string[], lineStart: boolean[]): void {
+  for (let index = 0; index + 1 < sentences.length; index += 1) {
+    if (lineStart[index + 1]) {
+      continue;
+    }
+    const drain = sentences[index]!.match(/^(.*)Each opponent loses (X|\d+) life$/i);
+    if (drain && /^You gain life equal to the life lost this way$/i.test(sentences[index + 1]!)) {
+      sentences.splice(index, 2, `${drain[1] ?? ""}drain ${drain[2]} from each opponent`);
+      lineStart.splice(index + 1, 1);
+    }
+  }
+}
+
 function fuseExilePlayInPlace(sentences: string[], lineStart: boolean[]): void {
   for (let index = 0; index + 1 < sentences.length; index += 1) {
     if (lineStart[index + 1]) {
@@ -3279,6 +3360,7 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
   }
   fuseDigSentencesInPlace(sentences, lineStart);
   fuseExilePlayInPlace(sentences, lineStart);
+  fuseDrainPairInPlace(sentences, lineStart);
   for (let index = 0; index < sentences.length; index += 1) {
     const sentence = sentences[index];
     if (!sentence) {
@@ -4413,6 +4495,10 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
             )
           ) {
             condition = { kind: "greatest_artifact_mana_value" };
+            rest = interveningIf[2].trim();
+          } else if (/^an opponent controls more lands than you$/i.test(phrase)) {
+            // Land Tax.
+            condition = { kind: "opponent_controls_more_lands" };
             rest = interveningIf[2].trim();
           } else {
             const controls = phrase.match(

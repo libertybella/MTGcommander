@@ -59,6 +59,20 @@ function triggerConditionHolds(
     }
     return count >= condition.atLeast;
   }
+  if (condition.kind === "opponent_controls_more_lands") {
+    // Land Tax: any opponent with strictly more lands than the controller.
+    const landsOf = (playerId: string): number =>
+      Object.values(state.cards).filter(
+        (card) =>
+          card.zone === "battlefield" &&
+          card.controllerId === playerId &&
+          characteristicsOf(state, card.id).types.includes("land"),
+      ).length;
+    const own = landsOf(controllerId);
+    return state.players.some(
+      (player) => player.id !== controllerId && !player.lost && landsOf(player.id) > own,
+    );
+  }
   // greatest_artifact_mana_value (Padeem): the controller has an artifact
   // tied for the battlefield's greatest artifact mana value.
   let greatest = -1;
