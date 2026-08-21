@@ -1784,6 +1784,22 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     };
   }
 
+  // Venser, Shaper Savant.
+  if (/^return target spell or permanent to its owner's hand$/i.test(sentence)) {
+    return {
+      targetRequirements: [{ kind: "spell_or_permanent" }],
+      effects: [{ kind: "bounce_spell_or_permanent", target: { type: "chosen", index: 0 } }],
+    };
+  }
+
+  // Tree of Perdition.
+  if (/^Exchange target opponent's life total with ~'s toughness$/i.test(sentence)) {
+    return {
+      targetRequirements: [{ kind: "opponent" }],
+      effects: [{ kind: "exchange_life_toughness", playerId: { type: "chosen", index: 0 } }],
+    };
+  }
+
   // Otawara: the four-type list is exactly "nonland permanent".
   if (
     /^Return target artifact, creature, enchantment, or planeswalker to its owner's hand$/i.test(
@@ -2781,7 +2797,10 @@ function shiftChosen(effect: CardEffect, offset: number): CardEffect {
       return { ...effect, cardId: bumpChosen(effect.cardId) };
     case "counter_spell":
     case "copy_spell":
+    case "bounce_spell_or_permanent":
       return { ...effect, target: bumpChosen(effect.target) };
+    case "exchange_life_toughness":
+      return { ...effect, playerId: bumpChosen(effect.playerId) };
     case "gain_life":
     case "lose_life":
     case "draw":

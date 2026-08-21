@@ -657,6 +657,22 @@ export function bindCardEffect(
       }
       return { kind: "counter_spell", stackObjectId: chosen.stackObjectId };
     }
+    case "bounce_spell_or_permanent": {
+      const chosen = chosenTargetAt(context, effect.target.index, state);
+      if (!chosen || chosen.type === "player") {
+        return null;
+      }
+      return chosen.type === "spell"
+        ? { kind: "bounce_spell_or_permanent", stackObjectId: chosen.stackObjectId }
+        : { kind: "bounce_spell_or_permanent", cardId: chosen.cardId };
+    }
+    case "exchange_life_toughness": {
+      const playerId = bindPlayerSelector(state, effect.playerId, context);
+      if (!playerId || !context.sourceId) {
+        return null;
+      }
+      return { kind: "exchange_life_toughness", playerId, sourceId: context.sourceId };
+    }
     case "counter_unless_pays": {
       const chosen = chosenTargetAt(context, effect.target.index, state);
       if (!chosen || chosen.type !== "spell") {
@@ -1784,6 +1800,61 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
       case "counter_spell":
         next = applyCounterSpell(state, effect.stackObjectId);
         break;
+      case "bounce_spell_or_permanent": {
+        if (effect.cardId) {
+          const bounced = state.cards[effect.cardId];
+          next =
+            bounced && bounced.zone === "battlefield"
+              ? moveCard(state, effect.cardId, "hand")
+              : cloneGameState(state);
+          break;
+        }
+        // A spell leaves the stack for its owner's hand instead of resolving.
+        next = cloneGameState(state);
+        const index = next.stack.findIndex((entry) => entry.id === effect.stackObjectId);
+        if (index === -1) {
+          break;
+        }
+        const [removed] = next.stack.splice(index, 1);
+        if (removed?.isCopy || !removed?.sourceId) {
+          break;
+        }
+        if (next.cards[removed.sourceId]?.zone === "stack") {
+          next = enterOwnerZone(next, removed.sourceId, "hand");
+        }
+        break;
+      }
+      case "exchange_life_toughness": {
+        // Tree of Perdition: the swap is a real gain/loss on the player's
+        // side, and the source's base toughness becomes the old life total
+        // via a cloned definition (the Offspring pattern).
+        const player = state.players.find((entry) => entry.id === effect.playerId);
+        const source = state.cards[effect.sourceId];
+        if (!player || !source || source.zone !== "battlefield") {
+          next = cloneGameState(state);
+          break;
+        }
+        const toughness = creatureToughness(state, effect.sourceId);
+        const oldLife = player.life;
+        next = state;
+        if (toughness > oldLife) {
+          next = applyGainLife(next, effect.playerId, toughness - oldLife);
+        } else if (toughness < oldLife) {
+          next = applyLoseLife(next, effect.playerId, oldLife - toughness);
+        } else {
+          next = cloneGameState(next);
+        }
+        const treeCard = next.cards[effect.sourceId];
+        const sourceDefinition = treeCard ? next.definitions[treeCard.definitionId] : undefined;
+        if (treeCard && sourceDefinition) {
+          const overridden = JSON.parse(JSON.stringify(sourceDefinition)) as typeof sourceDefinition;
+          overridden.id = createId("definition");
+          overridden.toughness = oldLife;
+          next.definitions[overridden.id] = overridden;
+          treeCard.definitionId = overridden.id;
+        }
+        break;
+      }
       case "counter_unless_pays":
         next = applyCounterUnlessPays(state, effect.stackObjectId, effect.cost);
         break;

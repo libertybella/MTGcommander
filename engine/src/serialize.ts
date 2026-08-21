@@ -1365,6 +1365,7 @@ function parseTargetRequirement(value: unknown, label: string): TargetRequiremen
     kind !== "creature_spell" &&
     kind !== "noncreature_spell" &&
     kind !== "instant_or_sorcery_spell" &&
+    kind !== "spell_or_permanent" &&
     kind !== "land" &&
     kind !== "artifact_enchantment_or_nonbasic_land" &&
     kind !== "commander"
@@ -1795,6 +1796,18 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
         ...(value.counter === true ? { counter: true } : {}),
         ...(value.treasure === true ? { treasure: true } : {}),
       };
+    case "bounce_spell_or_permanent": {
+      const target = value.target;
+      if (!isRecord(target) || target.type !== "chosen") {
+        throw new Error(`Invalid ${label}.target`);
+      }
+      return {
+        kind,
+        target: { type: "chosen", index: expectNumber(target.index, `${label}.target.index`) },
+      };
+    }
+    case "exchange_life_toughness":
+      return { kind, playerId: parsePlayerSelector(value.playerId, `${label}.playerId`) };
     case "pt_until_eot":
       return {
         kind,
@@ -2881,6 +2894,24 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
   }
   if (kind === "counter_spell") {
     return { kind, stackObjectId: expectString(value.stackObjectId, `${label}.stackObjectId`) };
+  }
+  if (kind === "bounce_spell_or_permanent") {
+    return {
+      kind,
+      ...(value.cardId === undefined
+        ? {}
+        : { cardId: expectString(value.cardId, `${label}.cardId`) }),
+      ...(value.stackObjectId === undefined
+        ? {}
+        : { stackObjectId: expectString(value.stackObjectId, `${label}.stackObjectId`) }),
+    };
+  }
+  if (kind === "exchange_life_toughness") {
+    return {
+      kind,
+      playerId: expectString(value.playerId, `${label}.playerId`),
+      sourceId: expectString(value.sourceId, `${label}.sourceId`),
+    };
   }
   if (kind === "copy_spell") {
     return {

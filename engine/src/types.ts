@@ -526,6 +526,12 @@ export type GameEffect =
   | { kind: "sacrifice"; cardId: CardInstanceId }
   | { kind: "add_counter"; cardId: CardInstanceId; counter: string; amount: number }
   | { kind: "counter_spell"; stackObjectId: StackObjectId }
+  | {
+      kind: "bounce_spell_or_permanent";
+      cardId?: CardInstanceId;
+      stackObjectId?: StackObjectId;
+    }
+  | { kind: "exchange_life_toughness"; playerId: PlayerId; sourceId: CardInstanceId }
   | { kind: "counter_unless_pays"; stackObjectId: StackObjectId; cost: string }
   | { kind: "copy_spell"; stackObjectId: StackObjectId; controllerId: PlayerId }
   | { kind: "extra_combat" }
@@ -681,7 +687,9 @@ export type TargetKind =
   | "spell"
   | "creature_spell"
   | "noncreature_spell"
-  | "instant_or_sorcery_spell";
+  | "instant_or_sorcery_spell"
+  /** Venser, Shaper Savant. */
+  | "spell_or_permanent";
 
 export type TargetRequirement = {
   kind: TargetKind;
@@ -840,6 +848,10 @@ export type CardEffect =
   | { kind: "add_counter"; cardId: CardIdSelector; counter: string; amount: number }
   | { kind: "counter_spell"; target: ChosenTargetRef }
   | { kind: "counter_unless_pays"; target: ChosenTargetRef; cost: string }
+  /** Venser: bounce a spell (off the stack) or a permanent to its owner's hand. */
+  | { kind: "bounce_spell_or_permanent"; target: ChosenTargetRef }
+  /** Tree of Perdition: swap the target's life with the source's toughness. */
+  | { kind: "exchange_life_toughness"; playerId: PlayerSelector }
   | { kind: "copy_spell"; target: ChosenTargetRef }
   | { kind: "extra_combat" }
   | { kind: "untap_all"; playerId: PlayerSelector; what: "creature" | "land" }

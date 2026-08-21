@@ -7125,3 +7125,77 @@ describe("wave 81: fabled passage and staff of compleation", () => {
     expect(next.cards[target.id]?.tapped).toBe(false);
   });
 });
+
+describe("wave 82: venser bounce and life exchange", () => {
+  const base = { power: null, toughness: null, printedKeywords: [], imageUrl: "" };
+
+  it("compiles Venser and Tree of Perdition fully", () => {
+    const venser = compileOracleCard({
+      ...base,
+      oracleId: "venser",
+      name: "Venser, Shaper Savant",
+      manaCost: "{2}{U}{U}",
+      typeLine: "Legendary Creature — Human Wizard",
+      power: "2",
+      toughness: "2",
+      printedKeywords: ["Flash"],
+      oracleText:
+        "Flash (You may cast this spell any time you could cast an instant.)\nWhen Venser enters, return target spell or permanent to its owner's hand.",
+    });
+    expect(venser.notes).toEqual([]);
+    expect(venser.definition.triggers[0]?.targetRequirements).toEqual([
+      { kind: "spell_or_permanent" },
+    ]);
+
+    const tree = compileOracleCard({
+      ...base,
+      oracleId: "tree",
+      name: "Tree of Perdition",
+      manaCost: "{3}{B}",
+      typeLine: "Creature — Plant",
+      power: "0",
+      toughness: "13",
+      printedKeywords: ["Defender"],
+      oracleText: "Defender\n{T}: Exchange target opponent's life total with this creature's toughness.",
+    });
+    expect(tree.notes).toEqual([]);
+    expect(tree.definition.activated[0]?.effects[0]?.kind).toBe("exchange_life_toughness");
+  });
+
+  it("bounces a spell off the stack to its owner's hand", () => {
+    const { game, p2 } = twoPlayers();
+    const boltDef = createCardDefinition({ name: "Bolt", manaCost: "", typeLine: "Instant" });
+    game.definitions[boltDef.id] = boltDef;
+    const bolt = createCardInstance({ definitionId: boltDef.id, ownerId: p2.id, zone: "hand" });
+    game.cards[bolt.id] = bolt;
+    p2.zones.hand.push(bolt.id);
+    let next = putSpellOnStack(game, bolt.id);
+    const stackId = next.stack[0]!.id;
+    next = applyEffects(next, [{ kind: "bounce_spell_or_permanent", stackObjectId: stackId }]);
+    expect(next.stack).toHaveLength(0);
+    expect(next.cards[bolt.id]?.zone).toBe("hand");
+  });
+
+  it("swaps life with toughness both directions", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const treeDef = createCardDefinition({
+      name: "Tree",
+      typeLine: "Creature — Plant",
+      power: 0,
+      toughness: 13,
+    });
+    game.definitions[treeDef.id] = treeDef;
+    const tree = createCardInstance({ definitionId: treeDef.id, ownerId: p1.id, zone: "battlefield" });
+    game.cards[tree.id] = tree;
+    p1.zones.battlefield.push(tree.id);
+
+    const next = applyEffect(game, {
+      kind: "exchange_life_toughness",
+      playerId: p2.id,
+      sourceId: tree.id,
+    });
+    expect(next.players.find((p) => p.id === p2.id)!.life).toBe(13);
+    const newTree = next.cards[tree.id]!;
+    expect(next.definitions[newTree.definitionId]?.toughness).toBe(40);
+  });
+});
