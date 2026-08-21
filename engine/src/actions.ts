@@ -2,7 +2,7 @@ import { declareAttackers, declareBlockers, lockRemainingBlockers, pendingBlocke
 import { abilitiesRemoved } from "./characteristicsEngine";
 import { characteristicsOf, isCommander, isCreature, isInstant, isInstantOrSorcery, isLand, isLegendary, isMainPhase } from "./cardTypes";
 import { cloneGameState } from "./clone";
-import { affinityArtifactDiscount, allBattlefieldCreatureCount, canPlayLandFromTop, canPlayLandsFromGraveyard, castCostReduction, castableFromTop, controlsCommander, creaturePower, hasFlashGrant, landDropAllowance, lockedByAbolisher } from "./derived";
+import { affinityArtifactDiscount, allBattlefieldCreatureCount, canPlayLandFromTop, canPlayLandsFromGraveyard, castCostReduction, castableFromTop, controlsCommander, creaturePower, hasFlashGrant, landDropAllowance, lockedByAbolisher, lockedFromCasting } from "./derived";
 import { eliminatePlayerInPlace } from "./elimination";
 import { applyEffects, bindCardEffects } from "./effects";
 import { hasKeyword } from "./keywords";
@@ -91,8 +91,8 @@ function validateCast(
   cardId: CardInstanceId,
 ): { cost: ReturnType<typeof parseManaCost>; fromCommand: boolean; flashbackLife: number } {
   requirePriority(state, playerId);
-  // Grand Abolisher: opponents can't cast on the lock controller's turn.
-  if (lockedByAbolisher(state, playerId)) {
+  // Grand Abolisher / Voice of Victory: no casting on the lock's turn.
+  if (lockedFromCasting(state, playerId)) {
     throw new Error("An opponent's permanent stops you from casting spells this turn");
   }
   // Silence: everyone but the caster of the lock is shut out this turn.
@@ -807,7 +807,7 @@ function applyActivateAbility(
       !sacrifice ||
       sacrifice.zone !== "battlefield" ||
       sacrifice.controllerId !== playerId ||
-      !sacrificeScopeMatches(state, costSacrificeId, ability.sacrificeCost)
+      !sacrificeScopeMatches(state, costSacrificeId, ability.sacrificeCost, cardId)
     ) {
       throw new Error(`Sacrifice a ${ability.sacrificeCost.replace(/_/g, " ")} to activate this`);
     }

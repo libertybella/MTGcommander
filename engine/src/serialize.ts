@@ -335,6 +335,9 @@ export function parseGameState(json: string): GameState {
       ...(def.opponentsLockedDuringYourTurn === true
         ? { opponentsLockedDuringYourTurn: true }
         : {}),
+      ...(def.opponentsCantCastDuringYourTurn === true
+        ? { opponentsCantCastDuringYourTurn: true }
+        : {}),
       ...(def.freeIfCommander === true ? { freeIfCommander: true } : {}),
       ...(def.changeling === true ? { changeling: true } : {}),
       ...(def.storm === true ? { storm: true } : {}),
@@ -1813,6 +1816,9 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
           ? {}
           : { perSourceCounters: expectString(value.perSourceCounters, `${label}.perSourceCounters`) }),
         ...(value.entersTappedAttacking === true ? { entersTappedAttacking: true } : {}),
+        ...(value.atEndStep === "sacrifice" || value.atEndStep === "exile"
+          ? { atEndStep: value.atEndStep }
+          : {}),
       };
     case "move_card": {
       const toZone = expectString(value.toZone, `${label}.toZone`);
@@ -2277,6 +2283,7 @@ function parseActivatedAbilities(value: unknown, label: string): ActivatedAbilit
               const scope = expectString(entry.sacrificeCost, `${label}[${index}].sacrificeCost`);
               if (
                 scope !== "creature" &&
+                scope !== "another_creature" &&
                 scope !== "artifact" &&
                 scope !== "creature_or_artifact" &&
                 scope !== "land" &&
@@ -3449,6 +3456,9 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
           }
         : {}),
       ...(value.entersTappedAttacking === true ? { entersTappedAttacking: true } : {}),
+      ...(value.atEndStep === "sacrifice" || value.atEndStep === "exile"
+        ? { atEndStep: value.atEndStep }
+        : {}),
     };
   }
   if (kind === "deal_damage") {

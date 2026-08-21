@@ -142,6 +142,8 @@ export type CardDefinition = {
   /** Grand Abolisher: on this permanent's controller's turn, opponents can't
    * cast spells or activate artifact/creature/enchantment abilities. */
   opponentsLockedDuringYourTurn?: boolean;
+  /** Voice of Victory / Kutzil: the cast-only half of the Abolisher lock. */
+  opponentsCantCastDuringYourTurn?: boolean;
   /**
    * "If you control a commander, you may cast this spell without paying its
    * mana cost" (the free-spell cycle). Documented approximation: the free
@@ -537,6 +539,8 @@ export type GameEffect =
       keywords?: Keyword[];
       /** Bound from perControlled; total tokens before doubling. */
       count?: number;
+      /** Mobilize: end-step cleanup for the created tokens. */
+      atEndStep?: "sacrifice" | "exile";
       /** Anim Pakal: count the source's counters when the effect applies. */
       countFromCounters?: { cardId: CardInstanceId; counter: string };
       entersTappedAttacking?: boolean;
@@ -940,6 +944,8 @@ export type CardEffect =
       /** "tapped and attacking": joins the current combat against the first
        * declared defender (a documented approximation). */
       entersTappedAttacking?: boolean;
+      /** Mobilize: "Sacrifice them at the beginning of the next end step." */
+      atEndStep?: "sacrifice" | "exile";
     }
   | { kind: "mill"; playerId: PlayerSelector; count: number }
   | { kind: "discard"; playerId: PlayerSelector; count: number }
@@ -1431,7 +1437,13 @@ export type ActivatedAbility = {
   sacrificeSelf?: boolean;
   /** "Sacrifice a creature:" — the activation sacrifices a chosen controlled
    * permanent of this scope (Viscera Seer, Zuran Orb, Face-Breaker). */
-  sacrificeCost?: "creature" | "artifact" | "creature_or_artifact" | "land" | "treasure";
+  sacrificeCost?:
+    | "creature"
+    | "another_creature"
+    | "artifact"
+    | "creature_or_artifact"
+    | "land"
+    | "treasure";
   /** Spirit Guides: exiling this card (from hand) is part of the cost. */
   exileSelf?: boolean;
   /** Life paid as part of the cost (Doom Whisperer). */

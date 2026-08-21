@@ -352,7 +352,7 @@ function nextAction(state: GameState, rng: () => number): GameAction | null {
       if (ability.sacrificeCost) {
         const player = state.players.find((entry) => entry.id === playerId)!;
         const options = player.zones.battlefield.filter((id) =>
-          sacrificeScopeMatches(state, id, ability.sacrificeCost!),
+          sacrificeScopeMatches(state, id, ability.sacrificeCost!, action.cardId),
         );
         if (options.length === 0) {
           return { kind: "pass_priority", playerId };

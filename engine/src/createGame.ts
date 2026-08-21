@@ -66,6 +66,7 @@ export function createCardDefinition(
         | "cantBeCountered"
         | "creatureSpellsCantBeCountered"
         | "opponentsLockedDuringYourTurn"
+        | "opponentsCantCastDuringYourTurn"
         | "freeIfCommander"
         | "changeling"
         | "storm"
@@ -270,6 +271,7 @@ export function createCardDefinition(
     ...(input.cantBeCountered ? { cantBeCountered: true } : {}),
     ...(input.creatureSpellsCantBeCountered ? { creatureSpellsCantBeCountered: true } : {}),
     ...(input.opponentsLockedDuringYourTurn ? { opponentsLockedDuringYourTurn: true } : {}),
+    ...(input.opponentsCantCastDuringYourTurn ? { opponentsCantCastDuringYourTurn: true } : {}),
     ...(input.freeIfCommander ? { freeIfCommander: true } : {}),
     ...(input.changeling ? { changeling: true } : {}),
     ...(input.storm ? { storm: true } : {}),

@@ -201,6 +201,7 @@ function compileOneFace(card: OracleCard, definitionId: string): OracleCompileRe
     ...(compiled.cantBeCountered ? { cantBeCountered: true } : {}),
     ...(compiled.creatureSpellsCantBeCountered ? { creatureSpellsCantBeCountered: true } : {}),
     ...(compiled.opponentsLockedDuringYourTurn ? { opponentsLockedDuringYourTurn: true } : {}),
+    ...(compiled.opponentsCantCastDuringYourTurn ? { opponentsCantCastDuringYourTurn: true } : {}),
     ...(compiled.freeIfCommander ? { freeIfCommander: true } : {}),
     ...(compiled.changeling ? { changeling: true } : {}),
     ...(compiled.topOfLibrary ? { topOfLibrary: { ...compiled.topOfLibrary } } : {}),

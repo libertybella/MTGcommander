@@ -3,7 +3,7 @@ import { abilitiesRemoved, cardMatchesSubtype } from "./characteristicsEngine";
 import { hasKeyword } from "./keywords";
 import { emptyManaPool } from "./createGame";
 import { pendingBlockerPlayer } from "./combat";
-import { affinityArtifactDiscount, allBattlefieldCreatureCount, canPlayLandsFromGraveyard, castCostReduction, controlsCommander, hasFlashGrant, landDropAllowance, lockedByAbolisher, topOfLibraryGrant } from "./derived";
+import { affinityArtifactDiscount, allBattlefieldCreatureCount, canPlayLandsFromGraveyard, castCostReduction, controlsCommander, hasFlashGrant, landDropAllowance, lockedByAbolisher, lockedFromCasting, topOfLibraryGrant } from "./derived";
 import { canPayManaCost, parseManaCost, type ParsedManaCost } from "./mana";
 import { manaAbilitiesFor, manaTapOptionsFor } from "./manaOptions";
 import { isMulliganOpen } from "./mulligan";
@@ -219,12 +219,16 @@ export function controlsMatching(
 export function sacrificeScopeMatches(
   state: GameState,
   cardId: CardInstanceId,
-  scope: NonNullable<AdditionalCastCost["sacrifice"]> | "treasure",
+  scope: NonNullable<AdditionalCastCost["sacrifice"]> | "treasure" | "another_creature",
+  sourceId?: CardInstanceId,
 ): boolean {
   const traits = state.definitions[state.cards[cardId]?.definitionId ?? ""]?.characteristics;
   const types = traits?.types ?? [];
   if (scope === "creature") {
     return types.includes("creature");
+  }
+  if (scope === "another_creature") {
+    return types.includes("creature") && cardId !== sourceId;
   }
   if (scope === "artifact") {
     return types.includes("artifact");
@@ -364,7 +368,7 @@ function abilityUsable(
     const hasFodder = (player?.zones.battlefield ?? []).some(
       (fodderId) =>
         state.cards[fodderId]?.controllerId === playerId &&
-        sacrificeScopeMatches(state, fodderId, scope),
+        sacrificeScopeMatches(state, fodderId, scope, card.id),
     );
     if (!hasFodder) {
       return false;
@@ -423,7 +427,7 @@ export function legalActions(state: GameState, playerId: PlayerId): LegalAction[
   // Silence adds a cast-only lock for everyone but its caster.
   const silenced = Boolean(state.castLockUntilEot && state.castLockUntilEot !== playerId);
   const abolisherLocked = lockedByAbolisher(state, playerId);
-  const abolished = abolisherLocked || silenced;
+  const abolished = lockedFromCasting(state, playerId) || silenced;
   const actions: LegalAction[] = [];
 
   const graveyardLandIds = canPlayLandsFromGraveyard(state, playerId)

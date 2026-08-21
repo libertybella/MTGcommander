@@ -9624,3 +9624,148 @@ describe("wave 102: clocks, anarchists, ascensions", () => {
   });
 });
 
+describe("wave 103: mobilize and soultraders", () => {
+  it("compiles Voice of Victory and Warren Soultrader fully", () => {
+    const voice = compileOracleCard({
+      oracleId: "voice",
+      name: "Voice of Victory",
+      manaCost: "{1}{W}",
+      typeLine: "Creature — Human Bard",
+      power: "2",
+      toughness: "2",
+      printedKeywords: ["Mobilize 2"],
+      imageUrl: "",
+      oracleText:
+        "Mobilize 2 (Whenever this creature attacks, create two tapped and attacking 1/1 red Warrior creature tokens. Sacrifice them at the beginning of the next end step.)\nYour opponents can't cast spells during your turn.",
+    });
+    expect(voice.notes).toEqual([]);
+    expect(voice.definition.opponentsCantCastDuringYourTurn).toBe(true);
+    expect(voice.definition.triggers[0]?.event).toBe("attacks");
+    expect(voice.definition.triggers[0]?.effects).toHaveLength(2);
+    const warrior = voice.definition.triggers[0]?.effects[0];
+    expect(warrior?.kind === "create_token" && warrior.atEndStep).toBe("sacrifice");
+
+    const soultrader = compileOracleCard({
+      oracleId: "soultrader",
+      name: "Warren Soultrader",
+      manaCost: "{2}{B}",
+      typeLine: "Creature — Goblin Zombie",
+      power: "3",
+      toughness: "2",
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "Pay 1 life, Sacrifice another creature: Create a Treasure token. (It's an artifact with \"{T}, Sacrifice this token: Add one mana of any color.\")",
+    });
+    expect(soultrader.notes).toEqual([]);
+    expect(soultrader.definition.activated[0]?.sacrificeCost).toBe("another_creature");
+    expect(soultrader.definition.activated[0]?.lifeCost).toBe(1);
+  });
+
+  it("locks opponents out of casting only, and mobilize tokens sac at end step", () => {
+    const { game, p1, p2 } = twoPlayers();
+    game.turn.phase = "precombatMain";
+    game.turn.step = "precombatMain";
+    const voiceDef = createCardDefinition({
+      name: "Voice",
+      typeLine: "Creature — Human Bard",
+      power: 2,
+      toughness: 2,
+      opponentsCantCastDuringYourTurn: true,
+    });
+    const boltDef = createCardDefinition({
+      name: "Bolt",
+      manaCost: "",
+      typeLine: "Instant",
+      effects: [{ kind: "gain_life", playerId: "controller", amount: 1 }],
+    });
+    game.definitions[voiceDef.id] = voiceDef;
+    game.definitions[boltDef.id] = boltDef;
+    const voice = createCardInstance({ definitionId: voiceDef.id, ownerId: p1.id, zone: "battlefield" });
+    const bolt = createCardInstance({ definitionId: boltDef.id, ownerId: p2.id, zone: "hand" });
+    game.cards[voice.id] = voice;
+    game.cards[bolt.id] = bolt;
+    p1.zones.battlefield.push(voice.id);
+    p2.zones.hand.push(bolt.id);
+
+    game.priorityPlayerId = p2.id;
+    expect(() =>
+      applyAction(game, { kind: "cast_spell", playerId: p2.id, cardId: bolt.id, targets: [] }),
+    ).toThrow(/stops you from casting/);
+
+    // Mobilize: a token with end-step cleanup queued.
+    const made = applyEffect(game, {
+      kind: "create_token",
+      ownerId: p1.id,
+      name: "Warrior",
+      typeLine: "Creature — Warrior Token",
+      power: 1,
+      toughness: 1,
+      atEndStep: "sacrifice",
+    });
+    const tokenId = made.players[0]!.zones.battlefield.find(
+      (id) => made.cards[id]?.isToken,
+    );
+    expect(tokenId).toBeTruthy();
+    expect(made.delayedEndStep.some((entry) => entry.cardId === tokenId)).toBe(true);
+  });
+
+  it("refuses the soultrader's own body as its sacrifice fodder", () => {
+    const { game, p1 } = twoPlayers();
+    const traderDef = createCardDefinition({
+      name: "Trader",
+      typeLine: "Creature — Goblin Zombie",
+      power: 3,
+      toughness: 2,
+      activated: [
+        {
+          tap: false,
+          manaCost: "",
+          lifeCost: 1,
+          sacrificeCost: "another_creature",
+          effects: [
+            {
+              kind: "create_token",
+              ownerId: "controller",
+              name: "Treasure",
+              typeLine: "Artifact — Treasure Token",
+              power: null,
+              toughness: null,
+            },
+          ],
+          targetRequirements: [],
+        },
+      ],
+    });
+    const bearDef = createCardDefinition({ name: "Bear", typeLine: "Creature — Bear", power: 2, toughness: 2 });
+    game.definitions[traderDef.id] = traderDef;
+    game.definitions[bearDef.id] = bearDef;
+    const trader = createCardInstance({ definitionId: traderDef.id, ownerId: p1.id, zone: "battlefield" });
+    const bear = createCardInstance({ definitionId: bearDef.id, ownerId: p1.id, zone: "battlefield" });
+    game.cards[trader.id] = trader;
+    game.cards[bear.id] = bear;
+    p1.zones.battlefield.push(trader.id, bear.id);
+    game.priorityPlayerId = p1.id;
+
+    expect(() =>
+      applyAction(game, {
+        kind: "activate_ability",
+        playerId: p1.id,
+        cardId: trader.id,
+        abilityIndex: 0,
+        costSacrificeId: trader.id,
+      }),
+    ).toThrow(/another creature/);
+
+    const activated = applyAction(game, {
+      kind: "activate_ability",
+      playerId: p1.id,
+      cardId: trader.id,
+      abilityIndex: 0,
+      costSacrificeId: bear.id,
+    });
+    expect(activated.cards[bear.id]?.zone).toBe("graveyard");
+    expect(activated.players[0]?.life).toBe(39);
+  });
+});
+

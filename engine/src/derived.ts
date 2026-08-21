@@ -245,6 +245,25 @@ export function lockedByAbolisher(state: GameState, playerId: string): boolean {
   );
 }
 
+/** Casting lock: the Abolisher lock, or a cast-only "opponents can't cast
+ * spells during your turn" (Voice of Victory, Kutzil). */
+export function lockedFromCasting(state: GameState, playerId: string): boolean {
+  if (lockedByAbolisher(state, playerId)) {
+    return true;
+  }
+  const activeId = state.turn.activePlayerId;
+  if (activeId === playerId) {
+    return false;
+  }
+  return Object.values(state.cards).some(
+    (card) =>
+      card.zone === "battlefield" &&
+      card.controllerId === activeId &&
+      state.definitions[card.definitionId]?.opponentsCantCastDuringYourTurn === true &&
+      !abilitiesRemoved(state, card.id),
+  );
+}
+
 export function controlsCommander(state: GameState, playerId: string): boolean {
   return Object.values(state.cards).some(
     (card) =>

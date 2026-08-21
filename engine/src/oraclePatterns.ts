@@ -50,6 +50,7 @@ export type CompiledOracleText = {
   cantBeCountered?: boolean;
   creatureSpellsCantBeCountered?: boolean;
   opponentsLockedDuringYourTurn?: boolean;
+  opponentsCantCastDuringYourTurn?: boolean;
   freeIfCommander?: boolean;
   changeling?: boolean;
   storm?: boolean;
@@ -212,10 +213,10 @@ function isKeywordLine(sentence: string): boolean {
 }
 
 const SACRIFICE_COST = /Sacrifice (?:~|this land|this creature|this artifact|this permanent)/i;
-const SACRIFICE_TYPE_COST = /Sacrifice an? (creature|artifact|land|Treasure)\b/i;
+const SACRIFICE_TYPE_COST = /Sacrifice (?:an? |another )(creature|artifact|land|Treasure)\b/i;
 const LIFE_COST = /Pay (\d+) life/i;
 const COST_UNIT =
-  "(?:\\{[^}]+\\})+|Sacrifice (?:~|this land|this creature|this artifact|this permanent)|Sacrifice an? (?:creature|artifact|land|Treasure)|Pay \\d+ life";
+  "(?:\\{[^}]+\\})+|Sacrifice (?:~|this land|this creature|this artifact|this permanent)|Sacrifice (?:an? |another )(?:creature|artifact|land|Treasure)|Pay \\d+ life";
 
 function splitAbility(sentence: string): { costText: string; rest: string } | null {
   // "Metalcraft — {T}: …" — the ability word is flavor (Mox Opal).
@@ -239,14 +240,17 @@ function parseAbilityCost(
   manaCost: string;
   sacrificeSelf: boolean;
   lifeCost?: number;
-  sacrificeCost?: "creature" | "artifact" | "land" | "treasure";
+  sacrificeCost?: "creature" | "another_creature" | "artifact" | "land" | "treasure";
 } | null {
   const sacrificeSelf = SACRIFICE_COST.test(costText);
   const sacrificeTypeMatch = SACRIFICE_COST.test(costText)
     ? null
     : costText.match(SACRIFICE_TYPE_COST);
+  const another = /Sacrifice another /i.test(costText);
   const sacrificeCost = sacrificeTypeMatch?.[1]
-    ? (sacrificeTypeMatch[1].toLowerCase() as "creature" | "artifact" | "land" | "treasure")
+    ? another && sacrificeTypeMatch[1].toLowerCase() === "creature"
+      ? ("another_creature" as const)
+      : (sacrificeTypeMatch[1].toLowerCase() as "creature" | "artifact" | "land" | "treasure")
     : undefined;
   const lifeMatch = costText.match(LIFE_COST);
   const lifeCost = lifeMatch?.[1] ? Number(lifeMatch[1]) : undefined;
@@ -4318,6 +4322,33 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
       continue;
     }
 
+    // Voice of Victory / Kutzil: the cast-only lock.
+    if (/^Your opponents can't cast spells during your turn$/i.test(sentence)) {
+      result.opponentsCantCastDuringYourTurn = true;
+      continue;
+    }
+
+    // Mobilize N (CR 702.181): tapped-and-attacking Warriors, sacrificed at
+    // the next end step.
+    const mobilize = sentence.match(/^Mobilize (\d+)$/i);
+    if (mobilize?.[1]) {
+      const count = Number(mobilize[1]);
+      result.triggers.push({
+        event: "attacks",
+        effects: Array.from({ length: count }, () => ({
+          kind: "create_token" as const,
+          ownerId: "controller" as const,
+          name: "Warrior",
+          typeLine: "Creature — Warrior Token",
+          power: 1,
+          toughness: 1,
+          entersTappedAttacking: true,
+          atEndStep: "sacrifice" as const,
+        })),
+      });
+      continue;
+    }
+
     if (/^Changeling$/i.test(sentence)) {
       result.changeling = true;
       continue;
@@ -5224,7 +5255,14 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
         continue;
       }
       // Phyrexian Altar-class: a tapless mana ability paid by sacrificing.
-      if (add && !cost.tap && cost.manaCost === "" && cost.sacrificeCost && !cost.lifeCost) {
+      if (
+        add &&
+        !cost.tap &&
+        cost.manaCost === "" &&
+        cost.sacrificeCost &&
+        cost.sacrificeCost !== "another_creature" &&
+        !cost.lifeCost
+      ) {
         result.manaAbilities.push({
           ...manaAbilityFromAdd(add),
           costSacrifice: cost.sacrificeCost,

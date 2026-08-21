@@ -1643,6 +1643,10 @@ function applyCreateToken(
         next.combat.attacks.push({ attackerId: token.id, defenderId });
       }
     }
+    // Mobilize: the tokens clean themselves up at the next end step.
+    if (effect.atEndStep) {
+      next.delayedEndStep.push({ cardId: token.id, action: effect.atEndStep });
+    }
     queueEnterBattlefieldTriggersInPlace(next, token.id);
     dispatchEventsInPlace(next, [{ kind: "creates_token", playerId: effect.ownerId }]);
   }
