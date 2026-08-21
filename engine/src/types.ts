@@ -358,6 +358,16 @@ export type GameState = {
   spellsCastThisTurn: number;
   /** Fog: no combat damage is dealt for the rest of this turn. */
   preventCombatDamage: boolean;
+  /**
+   * Feign Death-class until-EOT grants: if the listed creature dies this
+   * turn, it returns to the battlefield tapped (optionally with a +1/+1
+   * counter or a Treasure for its controller). Cleared at cleanup.
+   */
+  diesReturnUntilEot?: Array<{
+    cardId: CardInstanceId;
+    counter?: boolean;
+    treasure?: boolean;
+  }>;
 };
 
 export type ZoneReveal = {
@@ -478,6 +488,7 @@ export type GameEffect =
       cantBlock?: boolean;
       cantBeBlocked?: boolean;
     }
+  | { kind: "grant_dies_return"; cardId: CardInstanceId; counter?: boolean; treasure?: boolean }
   | { kind: "set_class_level"; cardId: CardInstanceId; level: number }
   | { kind: "pt_until_eot"; cardId: CardInstanceId; power: number; toughness: number }
   | { kind: "keyword_until_eot"; cardId: CardInstanceId; keyword: Keyword }
@@ -733,6 +744,8 @@ export type CardEffect =
   | { kind: "copy_subject_spell" }
   /** "counter that spell" in a cast trigger — the subject spell, not a target. */
   | { kind: "counter_subject_spell" }
+  /** Feign Death: until end of turn, "when it dies, return it tapped". */
+  | { kind: "grant_dies_return"; cardId: CardIdSelector; counter?: boolean; treasure?: boolean }
   | { kind: "set_class_level"; cardId: CardIdSelector; level: number }
   | { kind: "pt_until_eot"; cardId: CardIdSelector; power: number; toughness: number }
   | { kind: "keyword_until_eot"; cardId: CardIdSelector; keyword: Keyword }

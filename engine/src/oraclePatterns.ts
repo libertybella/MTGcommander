@@ -1233,6 +1233,36 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     return { targetRequirements: [], effects: [] };
   }
 
+  // Feign Death family: an until-EOT "when it dies, return it tapped" grant,
+  // optionally with +2/+0, a +1/+1 counter, or a Treasure rider.
+  const diesReturn = sentence.match(
+    /^Until end of turn, target creature (?:gets \+2\/\+0 and )?gains "When (?:~|this creature) dies, return it to the battlefield tapped under its owner's control(?:( with a \+1\/\+1 counter on it)|( and you create a Treasure token))?\."$/i,
+  );
+  if (diesReturn) {
+    const pump = /gets \+2\/\+0/i.test(sentence);
+    return {
+      targetRequirements: [{ kind: "creature" }],
+      effects: [
+        ...(pump
+          ? [
+              {
+                kind: "pt_until_eot" as const,
+                cardId: { type: "chosen" as const, index: 0 },
+                power: 2,
+                toughness: 0,
+              },
+            ]
+          : []),
+        {
+          kind: "grant_dies_return",
+          cardId: { type: "chosen", index: 0 },
+          ...(diesReturn[1] ? { counter: true } : {}),
+          ...(diesReturn[2] ? { treasure: true } : {}),
+        },
+      ],
+    };
+  }
+
   if (/^destroy target nonartifact creature$/i.test(sentence)) {
     return {
       targetRequirements: [{ kind: "nonartifact_creature" }],
@@ -2111,6 +2141,7 @@ function shiftChosen(effect: CardEffect, offset: number): CardEffect {
     case "add_counter":
       return { ...effect, cardId: bumpChosen(effect.cardId) };
     case "set_class_level":
+    case "grant_dies_return":
       return { ...effect, cardId: bumpChosen(effect.cardId) };
     case "counter_spell":
     case "copy_spell":

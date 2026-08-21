@@ -2,7 +2,9 @@ import { cloneGameState } from "./clone";
 import { shuffleInPlace } from "./shuffle";
 import { isCommander } from "./cardTypes";
 import { abilitiesRemoved } from "./characteristicsEngine";
+import { createCardDefinition, createCardInstance } from "./createGame";
 import { queueEnterReplacementChoicesInPlace, wouldEnterTapped } from "./derived";
+import { tokenPresetFor } from "./tokens";
 import { dispatchEventsInPlace, queueEnterBattlefieldTriggersInPlace } from "./triggers";
 import type {
   CardInstance,
@@ -178,6 +180,68 @@ export function enterOwnerZoneInPlace(
       options.collectDies.push(event);
     } else {
       dispatchEventsInPlace(state, [event]);
+      processDiesReturnsInPlace(state, [event]);
+    }
+  }
+}
+
+/**
+ * Feign Death-class until-EOT grants: a listed creature that just died
+ * returns to the battlefield tapped, with its optional +1/+1 counter or
+ * Treasure rider. Called after the dies events dispatch, so Blood
+ * Artist-class watchers and the card's own dies triggers still fire.
+ * The return skips the stack — a documented silent approximation.
+ */
+export function processDiesReturnsInPlace(state: GameState, died: EngineEvent[]): void {
+  const grants = state.diesReturnUntilEot;
+  if (!grants || grants.length === 0) {
+    return;
+  }
+  for (const event of died) {
+    if (event.kind !== "dies") {
+      continue;
+    }
+    const index = grants.findIndex((grant) => grant.cardId === event.cardId);
+    if (index < 0) {
+      continue;
+    }
+    const [grant] = grants.splice(index, 1);
+    const card = state.cards[event.cardId];
+    // "Return it" tracks the object into the graveyard only (CR 400.7):
+    // if a replacement exiled it or it moved on, there is nothing to return.
+    if (!grant || !card || card.zone !== "graveyard") {
+      continue;
+    }
+    moveCardInPlace(state, event.cardId, "battlefield");
+    card.tapped = true;
+    if (grant.counter) {
+      card.counters["p1p1"] = (card.counters["p1p1"] ?? 0) + 1;
+    }
+    if (grant.treasure) {
+      const preset = tokenPresetFor("Artifact — Treasure Token");
+      const definition = createCardDefinition({
+        name: "Treasure",
+        typeLine: "Artifact — Treasure Token",
+        power: null,
+        toughness: null,
+        ...(preset?.manaAbilities ? { manaAbilities: preset.manaAbilities } : {}),
+        ...(preset?.activated ? { activated: preset.activated } : {}),
+      });
+      state.definitions[definition.id] = definition;
+      const owner = state.players.find((player) => player.id === card.controllerId);
+      if (owner) {
+        const token = createCardInstance({
+          definitionId: definition.id,
+          ownerId: owner.id,
+          zone: "battlefield",
+          isToken: true,
+        });
+        state.cards[token.id] = token;
+        token.timestamp = state.nextTimestamp;
+        state.nextTimestamp += 1;
+        owner.zones.battlefield.push(token.id);
+        queueEnterBattlefieldTriggersInPlace(state, token.id);
+      }
     }
   }
 }
@@ -315,6 +379,7 @@ export function moveCardInPlace(
       options.collectDies.push(event);
     } else {
       dispatchEventsInPlace(state, [event]);
+      processDiesReturnsInPlace(state, [event]);
     }
   }
 

@@ -12,7 +12,7 @@ import { applyStateBasedActionsInPlace } from "./status";
 import { isChosenTargetLegal, sourceColorsOf } from "./targeting";
 import { amassArmyTemplate, tokenPresetFor } from "./tokens";
 import { dispatchEventsInPlace, queueEnterBattlefieldTriggersInPlace } from "./triggers";
-import { countCardPlacements, enterOwnerZone, moveCard, moveCardInPlace } from "./zones";
+import { countCardPlacements, enterOwnerZone, moveCard, moveCardInPlace, processDiesReturnsInPlace } from "./zones";
 import type {
   CardEffect,
   CardIdSelector,
@@ -408,6 +408,18 @@ export function bindCardEffect(
         return null;
       }
       return { kind: "set_class_level", cardId, level: effect.level };
+    }
+    case "grant_dies_return": {
+      const cardId = bindCardId(state, effect.cardId, context);
+      if (!cardId) {
+        return null;
+      }
+      return {
+        kind: "grant_dies_return",
+        cardId,
+        ...(effect.counter ? { counter: true } : {}),
+        ...(effect.treasure ? { treasure: true } : {}),
+      };
     }
     case "pt_until_eot": {
       const cardId = bindCardId(state, effect.cardId, context);
@@ -1477,6 +1489,7 @@ function applyDestroyAll(
   }
   if (collectDies.length > 0) {
     dispatchEventsInPlace(next, collectDies);
+    processDiesReturnsInPlace(next, collectDies);
   }
   return next;
 }
@@ -1667,6 +1680,19 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
       case "set_class_level":
         next = applySetClassLevel(state, effect.cardId, effect.level);
         break;
+      case "grant_dies_return": {
+        next = cloneGameState(state);
+        if (next.cards[effect.cardId]?.zone === "battlefield") {
+          const grants = next.diesReturnUntilEot ?? [];
+          grants.push({
+            cardId: effect.cardId,
+            ...(effect.counter ? { counter: true } : {}),
+            ...(effect.treasure ? { treasure: true } : {}),
+          });
+          next.diesReturnUntilEot = grants;
+        }
+        break;
+      }
       case "discard_unless_attacked":
         next = applyDiscardUnlessAttacked(state, effect.playerId, effect.count);
         break;

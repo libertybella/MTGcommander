@@ -4504,3 +4504,104 @@ describe("wave 47: token riders and draw doubling", () => {
     expect(archive.definition.replacements).toHaveLength(2);
   });
 });
+
+describe("wave 48: until-EOT dies-return grants", () => {
+  const oracleBase = {
+    manaCost: "{B}",
+    typeLine: "Instant",
+    power: null,
+    toughness: null,
+    printedKeywords: [],
+    imageUrl: "",
+  };
+
+  it("compiles the Feign Death family fully", () => {
+    const feign = compileOracleCard({
+      ...oracleBase,
+      oracleId: "feign",
+      name: "Feign Death",
+      oracleText:
+        "Until end of turn, target creature gains \"When this creature dies, return it to the battlefield tapped under its owner's control with a +1/+1 counter on it.\"",
+    });
+    expect(feign.notes).toEqual([]);
+    expect(feign.definition.effects).toEqual([
+      { kind: "grant_dies_return", cardId: { type: "chosen", index: 0 }, counter: true },
+    ]);
+
+    const stamina = compileOracleCard({
+      ...oracleBase,
+      oracleId: "stamina",
+      name: "Supernatural Stamina",
+      oracleText:
+        "Until end of turn, target creature gets +2/+0 and gains \"When this creature dies, return it to the battlefield tapped under its owner's control.\"",
+    });
+    expect(stamina.notes).toEqual([]);
+    expect(stamina.definition.effects).toHaveLength(2);
+    expect(stamina.definition.effects[0]?.kind).toBe("pt_until_eot");
+
+    const fake = compileOracleCard({
+      ...oracleBase,
+      oracleId: "fake",
+      name: "Fake Your Own Death",
+      oracleText:
+        "Until end of turn, target creature gets +2/+0 and gains \"When this creature dies, return it to the battlefield tapped under its owner's control and you create a Treasure token.\" (It's an artifact with \"{T}, Sacrifice this token: Add one mana of any color.\")",
+    });
+    expect(fake.notes).toEqual([]);
+    const grant = fake.definition.effects[1];
+    expect(grant?.kind === "grant_dies_return" && grant.treasure).toBe(true);
+  });
+
+  it("returns the granted creature tapped with its counter, once", () => {
+    const { game, p1 } = twoPlayers();
+    const preyDef = createCardDefinition({
+      name: "Prey",
+      typeLine: "Creature — Beast",
+      power: 2,
+      toughness: 2,
+    });
+    game.definitions[preyDef.id] = preyDef;
+    const prey = createCardInstance({ definitionId: preyDef.id, ownerId: p1.id, zone: "battlefield" });
+    game.cards[prey.id] = prey;
+    p1.zones.battlefield.push(prey.id);
+
+    let next = applyEffect(game, {
+      kind: "grant_dies_return",
+      cardId: prey.id,
+      counter: true,
+    });
+    next = applyEffect(next, { kind: "move_card", cardId: prey.id, toZone: "graveyard" });
+    expect(next.cards[prey.id]?.zone).toBe("battlefield");
+    expect(next.cards[prey.id]?.tapped).toBe(true);
+    expect(next.cards[prey.id]?.counters["p1p1"]).toBe(1);
+    expect(next.diesReturnUntilEot ?? []).toHaveLength(0);
+
+    // The grant was consumed: a second death sticks.
+    next = applyEffect(next, { kind: "move_card", cardId: prey.id, toZone: "graveyard" });
+    expect(next.cards[prey.id]?.zone).toBe("graveyard");
+  });
+
+  it("creates the Treasure for the creature's controller", () => {
+    const { game, p1 } = twoPlayers();
+    const preyDef = createCardDefinition({
+      name: "Prey",
+      typeLine: "Creature — Beast",
+      power: 2,
+      toughness: 2,
+    });
+    game.definitions[preyDef.id] = preyDef;
+    const prey = createCardInstance({ definitionId: preyDef.id, ownerId: p1.id, zone: "battlefield" });
+    game.cards[prey.id] = prey;
+    p1.zones.battlefield.push(prey.id);
+
+    let next = applyEffect(game, {
+      kind: "grant_dies_return",
+      cardId: prey.id,
+      treasure: true,
+    });
+    next = applyEffect(next, { kind: "move_card", cardId: prey.id, toZone: "graveyard" });
+    expect(next.cards[prey.id]?.zone).toBe("battlefield");
+    const treasure = Object.values(next.cards).find((card) => card.isToken);
+    expect(treasure).toBeDefined();
+    expect(treasure?.controllerId).toBe(p1.id);
+  });
+});

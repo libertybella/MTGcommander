@@ -5,7 +5,7 @@ import { hasKeyword } from "./keywords";
 import { eliminatePlayerInPlace } from "./elimination";
 import { isLiving, livingPlayerCount, nextLivingPlayerId, winnerId } from "./players";
 import { dispatchEventsInPlace } from "./triggers";
-import { moveCardInPlace } from "./zones";
+import { moveCardInPlace, processDiesReturnsInPlace } from "./zones";
 import type { EngineEvent, GameState } from "./types";
 
 function shouldLose(player: GameState["players"][number]): boolean {
@@ -203,6 +203,7 @@ export function applyStateBasedActionsInPlace(state: GameState): void {
     }
     if (collectDies.length > 0) {
       dispatchEventsInPlace(state, collectDies);
+      processDiesReturnsInPlace(state, collectDies);
     }
   }
   state.winnerId = winnerId(state);

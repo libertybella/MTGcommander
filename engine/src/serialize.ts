@@ -703,6 +703,25 @@ export function parseGameState(json: string): GameState {
               };
             });
           })(),
+    ...(raw.diesReturnUntilEot === undefined
+      ? {}
+      : {
+          diesReturnUntilEot: (() => {
+            if (!Array.isArray(raw.diesReturnUntilEot)) {
+              throw new Error("Invalid diesReturnUntilEot");
+            }
+            return raw.diesReturnUntilEot.map((entry, index) => {
+              if (!isRecord(entry)) {
+                throw new Error(`Invalid diesReturnUntilEot[${index}]`);
+              }
+              return {
+                cardId: expectString(entry.cardId, `diesReturnUntilEot[${index}].cardId`),
+                ...(entry.counter === true ? { counter: true } : {}),
+                ...(entry.treasure === true ? { treasure: true } : {}),
+              };
+            });
+          })(),
+        }),
   };
 }
 
@@ -1588,6 +1607,13 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
         kind,
         cardId: parseCardIdSelector(value.cardId, `${label}.cardId`),
         level: expectNumber(value.level, `${label}.level`),
+      };
+    case "grant_dies_return":
+      return {
+        kind,
+        cardId: parseCardIdSelector(value.cardId, `${label}.cardId`),
+        ...(value.counter === true ? { counter: true } : {}),
+        ...(value.treasure === true ? { treasure: true } : {}),
       };
     case "pt_until_eot":
       return {
@@ -2511,6 +2537,14 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
       kind,
       cardId: expectString(value.cardId, `${label}.cardId`),
       level: expectNumber(value.level, `${label}.level`),
+    };
+  }
+  if (kind === "grant_dies_return") {
+    return {
+      kind,
+      cardId: expectString(value.cardId, `${label}.cardId`),
+      ...(value.counter === true ? { counter: true } : {}),
+      ...(value.treasure === true ? { treasure: true } : {}),
     };
   }
   if (kind === "counter_spell") {
