@@ -703,6 +703,8 @@ export type GameEffect =
   | { kind: "attackers_gain_keyword_until_eot"; keyword: Keyword }
   | { kind: "untap_lands_up_to"; playerId: PlayerId; count: number }
   | { kind: "fog" }
+  /** Mystic Forge: exile the top card(s) of the player's library. */
+  | { kind: "exile_top"; playerId: PlayerId; count: number }
   | { kind: "windfall"; drawCount?: number }
   /** Second Harvest: one copy of every token the player controls. */
   | { kind: "copy_each_token"; playerId: PlayerId }
@@ -1208,6 +1210,8 @@ export type CardEffect =
   | { kind: "attackers_gain_keyword_until_eot"; keyword: Keyword }
   | { kind: "untap_lands_up_to"; playerId: PlayerSelector; count: number }
   | { kind: "fog" }
+  /** Mystic Forge: exile the top card(s) of the player's library. */
+  | { kind: "exile_top"; playerId: PlayerSelector; count: number }
   /** Windfall: each player discards their hand, then draws the greatest
    * count — or a fixed count when drawCount is set (Wheel of Fortune). */
   | { kind: "windfall"; drawCount?: number }
@@ -1576,6 +1580,8 @@ export type CardTrigger = {
     /** "a colorless spell" / "another colorless creature" (Glaring
      * Fleshraker): the subject must have no colors. */
     colorless?: boolean;
+    /** Kutzil: computed power above the printed base power. */
+    powerAboveBase?: boolean;
   };
   effects: CardEffect[];
   /** Chosen when the trigger is put on the stack. Empty or omitted means untargeted. */
@@ -1794,6 +1800,11 @@ export type TopOfLibraryGrant = {
   castAll?: boolean;
   /** "You may cast <type> spells from the top of your library." */
   castTypesAny?: string[];
+  /** Mystic Forge: "…and colorless spells". */
+  castColorless?: boolean;
+  /** Realmwalker: "creature spells of the chosen type", read from the
+   * granting card's chosen creature type. */
+  castChosenType?: boolean;
 };
 
 export type EnterTappedUnless =
@@ -1948,6 +1959,8 @@ export type EffectSelector = {
 /** What a continuous effect does, in CR 613 layer order (derived from kind). */
 export type ContinuousEffectData =
   | { kind: "add_types"; types: string[]; subtypes: string[] } // layer 4
+  /** layer 4: Maskwood Nexus — the affected are every creature type. */
+  | { kind: "all_creature_types" }
   | { kind: "set_colors"; colors: Color[] } // layer 5
   | { kind: "grant_keyword"; keyword: Keyword } // layer 6
   /** layer 6: "gain protection from each color" (Akroma's Will). */

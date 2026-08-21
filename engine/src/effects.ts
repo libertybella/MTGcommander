@@ -1214,6 +1214,13 @@ export function bindCardEffect(
       return { kind: "fog" };
     case "windfall":
       return { kind: "windfall", ...(effect.drawCount ? { drawCount: effect.drawCount } : {}) };
+    case "exile_top": {
+      const playerId = bindPlayerSelector(state, effect.playerId, context);
+      if (!playerId) {
+        return null;
+      }
+      return { kind: "exile_top", playerId, count: effect.count };
+    }
     case "copy_each_token": {
       const playerId = bindPlayerSelector(state, effect.playerId, context);
       if (!playerId) {
@@ -1995,6 +2002,7 @@ function applyCreateToken(
     ...(effect.keywords && effect.keywords.length > 0 ? { keywords: effect.keywords } : {}),
     ...(preset?.manaAbilities ? { manaAbilities: preset.manaAbilities } : {}),
     ...(preset?.activated ? { activated: preset.activated } : {}),
+    ...(preset?.changeling ? { changeling: true } : {}),
   });
   next.definitions[definition.id] = definition;
   const owner = next.players.find((player) => player.id === effect.ownerId);
@@ -3003,6 +3011,17 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
           for (const drawerId of drawerIds) {
             next = applyDraw(next, drawerId, refill);
           }
+        }
+        break;
+      }
+      case "exile_top": {
+        next = cloneGameState(state);
+        for (let i = 0; i < effect.count; i += 1) {
+          const top = next.players.find((entry) => entry.id === effect.playerId)?.zones.library[0];
+          if (!top) {
+            break;
+          }
+          next = moveCard(next, top, "exile");
         }
         break;
       }

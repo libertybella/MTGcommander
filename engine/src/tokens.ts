@@ -8,6 +8,8 @@ import type { ActivatedAbility, CardDefinition, CardEffect, ManaAbility, TokenTe
 export type TokenPreset = {
   manaAbilities?: ManaAbility[];
   activated?: ActivatedAbility[];
+  /** Shapeshifter tokens (Maskwood Nexus): changeling. */
+  changeling?: boolean;
 };
 
 export function tokenPresetFor(typeLine: string): TokenPreset | null {
@@ -39,6 +41,10 @@ export function tokenPresetFor(typeLine: string): TokenPreset | null {
         },
       ],
     };
+  }
+  if (lower.includes("shapeshifter")) {
+    // "with changeling" — the token is every creature type.
+    return { changeling: true };
   }
   if (lower.includes("spawn")) {
     return {

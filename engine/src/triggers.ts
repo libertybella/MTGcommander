@@ -481,6 +481,14 @@ function subjectMatchesFilter(
   if (filter.colorless && traits.colors.length > 0) {
     return false;
   }
+  // Kutzil: the subject's computed power must beat its printed base power.
+  if (filter.powerAboveBase) {
+    const subject = state.cards[subjectId];
+    const printed = subject ? state.definitions[subject.definitionId]?.power ?? 0 : 0;
+    if (!subject || creaturePower(state, subjectId) <= (printed ?? 0)) {
+      return false;
+    }
+  }
   return true;
 }
 

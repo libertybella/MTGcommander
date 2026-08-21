@@ -1,5 +1,5 @@
 import { characteristicsOf, isBasic, isCommander, isCreature, isLand, isLegendary } from "./cardTypes";
-import { abilitiesRemoved, computedCard } from "./characteristicsEngine";
+import { abilitiesRemoved, cardMatchesSubtype, computedCard } from "./characteristicsEngine";
 import type { CardInstance, CardInstanceId, EnterTappedUnless, GameState } from "./types";
 
 function plus1Plus1(state: GameState, cardId: CardInstanceId): number {
@@ -128,11 +128,20 @@ export function canPlayLandsFromGraveyard(state: GameState, playerId: string): b
 export function topOfLibraryGrant(
   state: GameState,
   playerId: string,
-): { look: boolean; playLands: boolean; castAll: boolean; castTypesAny: string[] } | null {
+): {
+  look: boolean;
+  playLands: boolean;
+  castAll: boolean;
+  castColorless: boolean;
+  castTypesAny: string[];
+  castSubtypesAny: string[];
+} | null {
   let look = false;
   let playLands = false;
   let castAll = false;
+  let castColorless = false;
   const castTypes = new Set<string>();
+  const castSubtypes = new Set<string>();
   for (const card of Object.values(state.cards)) {
     if (card.zone !== "battlefield" || card.controllerId !== playerId) {
       continue;
@@ -149,14 +158,27 @@ export function topOfLibraryGrant(
     look = look || grant.look === true;
     playLands = playLands || grant.playLands === true;
     castAll = castAll || grant.castAll === true;
+    castColorless = castColorless || grant.castColorless === true;
     for (const type of grant.castTypesAny ?? []) {
       castTypes.add(type);
     }
+    // Realmwalker: "creature spells of the chosen type", read live from the
+    // granting card's own chosen creature type.
+    if (grant.castChosenType && card.chosenCreatureType) {
+      castSubtypes.add(card.chosenCreatureType);
+    }
   }
-  if (!look && !playLands && !castAll && castTypes.size === 0) {
+  if (!look && !playLands && !castAll && !castColorless && castTypes.size === 0 && castSubtypes.size === 0) {
     return null;
   }
-  return { look, playLands, castAll, castTypesAny: [...castTypes] };
+  return {
+    look,
+    playLands,
+    castAll,
+    castColorless,
+    castTypesAny: [...castTypes],
+    castSubtypesAny: [...castSubtypes],
+  };
 }
 
 /** May this exact card be cast right now from the top of its owner's library? */
@@ -176,7 +198,14 @@ export function castableFromTop(state: GameState, playerId: string, cardId: stri
   }
   return (
     grant.castAll ||
-    grant.castTypesAny.some((type) => definition.characteristics.types.includes(type))
+    grant.castTypesAny.some((type) => definition.characteristics.types.includes(type)) ||
+    // Mystic Forge's colorless half: no colors among the printed characteristics.
+    (grant.castColorless && definition.characteristics.colors.length === 0) ||
+    // Realmwalker: creature spells of the granting card's chosen type
+    // (changelings count via cardMatchesSubtype).
+    (grant.castSubtypesAny.length > 0 &&
+      definition.characteristics.types.includes("creature") &&
+      grant.castSubtypesAny.some((subtype) => cardMatchesSubtype(state, cardId, subtype)))
   );
 }
 

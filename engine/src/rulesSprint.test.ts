@@ -17,7 +17,7 @@ import {
 } from "./index";
 import { cardMatchesSubtype, computedCard } from "./characteristicsEngine";
 import { mostCommonControlledCreatureType } from "./effects";
-import { castCostReduction, landDropAllowance } from "./derived";
+import { castCostReduction, castableFromTop, landDropAllowance } from "./derived";
 import { hasKeyword } from "./keywords";
 import { dispatchEventsInPlace } from "./triggers";
 import { applyCombatDamage, declareAttackers } from "./combat";
@@ -15164,6 +15164,252 @@ describe("wave 136: wheels and edicts", () => {
     // Five creatures on the battlefield >= 2: the {B} alternative is taken.
     next = applyAction(next, { kind: "cast_spell", playerId: p1.id, cardId: inHand.id, targets: [] });
     expect(next.stack.some((entry) => entry.sourceId === inHand.id)).toBe(true);
+  });
+});
+
+
+describe("wave 137: nexus of types", () => {
+  it("compiles the five-card bucket fully", () => {
+    const dryad = compileOracleCard({
+      oracleId: "dryad",
+      name: "Dryad of the Ilysian Grove",
+      manaCost: "{2}{G}",
+      typeLine: "Enchantment Creature — Nymph Dryad",
+      power: "2",
+      toughness: "4",
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "You may play an additional land on each of your turns.\nLands you control are every basic land type in addition to their other types.",
+    });
+    expect(dryad.notes).toEqual([]);
+    expect(dryad.definition.staticAbilities.at(-1)).toEqual({
+      selector: { scope: "controlled", types: ["land"] },
+      effect: {
+        kind: "add_types",
+        types: [],
+        subtypes: ["plains", "island", "swamp", "mountain", "forest"],
+      },
+    });
+
+    const forge = compileOracleCard({
+      oracleId: "forge",
+      name: "Mystic Forge",
+      manaCost: "{4}",
+      typeLine: "Artifact",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "You may look at the top card of your library any time.\nYou may cast artifact spells and colorless spells from the top of your library.\n{T}, Pay 1 life: Exile the top card of your library.",
+    });
+    expect(forge.notes).toEqual([]);
+    expect(forge.definition.topOfLibrary).toMatchObject({
+      look: true,
+      castTypesAny: ["artifact"],
+      castColorless: true,
+    });
+    expect(forge.definition.activated[0]?.effects).toEqual([
+      { kind: "exile_top", playerId: "controller", count: 1 },
+    ]);
+
+    const realmwalker = compileOracleCard({
+      oracleId: "realmwalker",
+      name: "Realmwalker",
+      manaCost: "{2}{G}",
+      typeLine: "Creature — Shapeshifter",
+      power: "2",
+      toughness: "3",
+      printedKeywords: ["Changeling"],
+      imageUrl: "",
+      oracleText:
+        "Changeling (This card is every creature type.)\nAs this creature enters, choose a creature type.\nYou may look at the top card of your library any time.\nYou may cast creature spells of the chosen type from the top of your library.",
+    });
+    expect(realmwalker.notes).toEqual([]);
+    expect(realmwalker.definition.topOfLibrary).toMatchObject({ castChosenType: true });
+
+    const nexus = compileOracleCard({
+      oracleId: "nexus",
+      name: "Maskwood Nexus",
+      manaCost: "{4}",
+      typeLine: "Artifact",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "Creatures you control are every creature type. The same is true for creature spells you control and creature cards you own that aren't on the battlefield.\n{3}, {T}: Create a 2/2 blue Shapeshifter creature token with changeling. (It is every creature type.)",
+    });
+    expect(nexus.notes).toEqual([]);
+    expect(nexus.definition.staticAbilities[0]).toEqual({
+      selector: { scope: "controlled", types: ["creature"] },
+      effect: { kind: "all_creature_types" },
+    });
+    expect(nexus.definition.activated[0]?.effects[0]).toMatchObject({
+      kind: "create_token",
+      name: "Shapeshifter",
+    });
+
+    const kutzil = compileOracleCard({
+      oracleId: "kutzil",
+      name: "Kutzil, Malamet Exemplar",
+      manaCost: "{1}{G}{W}",
+      typeLine: "Legendary Creature — Cat Warrior",
+      power: "3",
+      toughness: "3",
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "Your opponents can't cast spells during your turn.\nWhenever one or more creatures you control each with power greater than its base power deals combat damage to a player, draw a card.",
+    });
+    expect(kutzil.notes).toEqual([]);
+    expect(kutzil.definition.triggers[0]?.subjectFilter?.powerAboveBase).toBe(true);
+    expect(kutzil.definition.triggers[0]?.oncePerBatch).toBe(true);
+  });
+
+  it("grants types, casts from the top, and notices pumped attackers", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+
+    // Maskwood Nexus: a plain Bear counts as any creature type.
+    const nexusDef = createCardDefinition({
+      name: "Nexus",
+      typeLine: "Artifact",
+      staticAbilities: [
+        {
+          selector: { scope: "controlled", types: ["creature"] },
+          effect: { kind: "all_creature_types" },
+        },
+      ],
+    });
+    const bearDef = createCardDefinition({ name: "Bear", typeLine: "Creature — Bear", power: 2, toughness: 2 });
+    game.definitions[nexusDef.id] = nexusDef;
+    game.definitions[bearDef.id] = bearDef;
+    const nexus = createCardInstance({ definitionId: nexusDef.id, ownerId: p1.id, zone: "battlefield" });
+    const bear = createCardInstance({ definitionId: bearDef.id, ownerId: p1.id, zone: "battlefield" });
+    game.cards[nexus.id] = nexus;
+    game.cards[bear.id] = bear;
+    p1.zones.battlefield.push(nexus.id, bear.id);
+    expect(cardMatchesSubtype(game, bear.id, "elf")).toBe(true);
+    expect(cardMatchesSubtype(game, bear.id, "aura")).toBe(false);
+
+    // Dryad: the Bear's controller's Mountain is also every basic type.
+    const mountainDef = createCardDefinition({ name: "Mountain", typeLine: "Basic Land — Mountain" });
+    const dryadDef = createCardDefinition({
+      name: "Dryad",
+      typeLine: "Enchantment Creature — Nymph",
+      power: 2,
+      toughness: 4,
+      staticAbilities: [
+        {
+          selector: { scope: "controlled", types: ["land"] },
+          effect: {
+            kind: "add_types",
+            types: [],
+            subtypes: ["plains", "island", "swamp", "mountain", "forest"],
+          },
+        },
+      ],
+    });
+    game.definitions[mountainDef.id] = mountainDef;
+    game.definitions[dryadDef.id] = dryadDef;
+    const mountain = createCardInstance({ definitionId: mountainDef.id, ownerId: p1.id, zone: "battlefield" });
+    const dryad = createCardInstance({ definitionId: dryadDef.id, ownerId: p1.id, zone: "battlefield" });
+    game.cards[mountain.id] = mountain;
+    game.cards[dryad.id] = dryad;
+    p1.zones.battlefield.push(mountain.id, dryad.id);
+    expect(cardMatchesSubtype(game, mountain.id, "island")).toBe(true);
+
+    // Mystic Forge: the colorless top card is castable, a green one is not.
+    const forgeDef = createCardDefinition({
+      name: "Forge",
+      typeLine: "Artifact",
+      topOfLibrary: { look: true, castTypesAny: ["artifact"], castColorless: true },
+    });
+    game.definitions[forgeDef.id] = forgeDef;
+    const forge = createCardInstance({ definitionId: forgeDef.id, ownerId: p1.id, zone: "battlefield" });
+    game.cards[forge.id] = forge;
+    p1.zones.battlefield.push(forge.id);
+    const colorlessDef = createCardDefinition({ name: "Golem", typeLine: "Artifact Creature — Golem", manaCost: "{3}", power: 3, toughness: 3 });
+    game.definitions[colorlessDef.id] = colorlessDef;
+    const golem = createCardInstance({ definitionId: colorlessDef.id, ownerId: p1.id, zone: "library" });
+    game.cards[golem.id] = golem;
+    p1.zones.library.unshift(golem.id);
+    expect(castableFromTop(game, p1.id, golem.id)).toBe(true);
+    const greenDef = createCardDefinition({ name: "Elf", typeLine: "Creature — Elf", manaCost: "{G}", colors: ["G"], power: 1, toughness: 1 });
+    game.definitions[greenDef.id] = greenDef;
+    const elf = createCardInstance({ definitionId: greenDef.id, ownerId: p1.id, zone: "library" });
+    game.cards[elf.id] = elf;
+    p1.zones.library.unshift(elf.id);
+    expect(castableFromTop(game, p1.id, elf.id)).toBe(false);
+
+    // Realmwalker: with the chosen type set, that type IS castable from top.
+    const walkerDef = createCardDefinition({
+      name: "Walker",
+      typeLine: "Creature — Shapeshifter",
+      power: 2,
+      toughness: 3,
+      topOfLibrary: { castChosenType: true },
+    });
+    game.definitions[walkerDef.id] = walkerDef;
+    const walker = createCardInstance({ definitionId: walkerDef.id, ownerId: p1.id, zone: "battlefield" });
+    walker.chosenCreatureType = "elf";
+    game.cards[walker.id] = walker;
+    p1.zones.battlefield.push(walker.id);
+    expect(castableFromTop(game, p1.id, elf.id)).toBe(true);
+
+    // exile_top sends the top card away.
+    const beforeTop = p1.zones.library[0]!;
+    let next = applyEffects(game, [{ kind: "exile_top", playerId: p1.id, count: 1 }]);
+    expect(next.cards[beforeTop]?.zone).toBe("exile");
+
+    // Kutzil: only a pumped attacker's combat damage draws the card.
+    const kutzilDef = createCardDefinition({
+      name: "Kutzil",
+      typeLine: "Legendary Creature — Cat Warrior",
+      power: 3,
+      toughness: 3,
+      triggers: [
+        {
+          event: "deals_combat_damage_to_player",
+          watch: "controlled",
+          subjectFilter: { types: ["creature"], powerAboveBase: true },
+          oncePerBatch: true,
+          effects: [{ kind: "draw", playerId: "controller", count: 1 }],
+        },
+      ],
+    });
+    next.definitions[kutzilDef.id] = kutzilDef;
+    const kutzil = createCardInstance({ definitionId: kutzilDef.id, ownerId: p1.id, zone: "battlefield" });
+    next.cards[kutzil.id] = kutzil;
+    next.players.find((entry) => entry.id === p1.id)!.zones.battlefield.push(kutzil.id);
+
+    // Unpumped: the bear's damage does not fire the watcher.
+    next.combat = {
+      attacks: [{ attackerId: bear.id, defenderId: p2.id }],
+      blockers: {},
+      attackersDeclared: true,
+      declaredBlockersFor: [p2.id],
+    };
+    let afterDamage = applyCombatDamage(next);
+    expect(afterDamage.stack).toHaveLength(0);
+
+    // Pumped above base power: it fires.
+    next = applyEffect(next, {
+      kind: "pt_until_eot",
+      cardId: bear.id,
+      power: 1,
+      toughness: 0,
+    });
+    next.combat = {
+      attacks: [{ attackerId: bear.id, defenderId: p2.id }],
+      blockers: {},
+      attackersDeclared: true,
+      declaredBlockersFor: [p2.id],
+    };
+    afterDamage = applyCombatDamage(next);
+    expect(afterDamage.stack).toHaveLength(1);
   });
 });
 

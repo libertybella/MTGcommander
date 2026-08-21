@@ -60,6 +60,7 @@ type EffectInstance = {
 
 const LAYER_OF: Record<ContinuousEffectData["kind"], number> = {
   add_types: 4,
+  all_creature_types: 4,
   set_colors: 5,
   grant_keyword: 6,
   grant_protection: 6,
@@ -429,6 +430,10 @@ function applyInstance(
     const computed = computedById[card.id]!;
     const effect = instance.effect;
     switch (effect.kind) {
+      case "all_creature_types":
+        // Maskwood Nexus (layer 4): the affected are every creature type.
+        computed.allCreatureTypes = true;
+        break;
       case "add_types": {
         for (const type of effect.types) {
           if (!computed.characteristics.types.includes(type)) {

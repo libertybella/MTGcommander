@@ -1108,6 +1108,22 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     return { targetRequirements: [], effects: [{ kind: "windfall" }] };
   }
 
+  // Mystic Forge's exile activation.
+  const exileTop = sentence.match(/^Exile the top (card|two cards|three cards) of your library$/i);
+  if (exileTop?.[1]) {
+    const word = exileTop[1].toLowerCase();
+    return {
+      targetRequirements: [],
+      effects: [
+        {
+          kind: "exile_top",
+          playerId: "controller",
+          count: word === "card" ? 1 : word.startsWith("two") ? 2 : 3,
+        },
+      ],
+    };
+  }
+
   // Mentor of the Meek: the fused "you may pay {1} to do: draw a card".
   const mayPayDo = sentence.match(/^you may pay ((?:\{[^}]+\})+) to do: (.+)$/i);
   if (mayPayDo?.[1] && mayPayDo[2]) {
@@ -2565,7 +2581,7 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
         ? keywordText
             .split(/ and |, /i)
             .map((word) => word.trim().toLowerCase())
-            .filter((word) => word !== "prowess")
+            .filter((word) => word !== "prowess" && word !== "changeling")
             .map((word) => KEYWORD_GRANTS[word])
         : [];
     if (count && keywords.every((keyword): keyword is Keyword => Boolean(keyword))) {
@@ -4305,6 +4321,19 @@ function parseTriggerHead(head: string): TriggerHead | null {
       event: "deals_combat_damage_to_player",
       watch: "controlled",
       subjectFilter: { types: ["creature"] },
+      oncePerBatch: true,
+    };
+  }
+  // Kutzil: the batch must contain a pumped creature (computed > printed).
+  if (
+    /^Whenever one or more creatures you control each with power greater than its base power deals? combat damage to a player$/i.test(
+      text,
+    )
+  ) {
+    return {
+      event: "deals_combat_damage_to_player",
+      watch: "controlled",
+      subjectFilter: { types: ["creature"], powerAboveBase: true },
       oncePerBatch: true,
     };
   }
@@ -6905,6 +6934,23 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
       continue;
     }
 
+    // Mystic Forge: artifact spells plus anything colorless.
+    if (/^You may cast artifact spells and colorless spells from the top of your library$/i.test(sentence)) {
+      const prior = result.topOfLibrary ?? {};
+      result.topOfLibrary = {
+        ...prior,
+        castTypesAny: [...new Set([...(prior.castTypesAny ?? []), "artifact"])],
+        castColorless: true,
+      };
+      continue;
+    }
+
+    // Realmwalker: creature spells of the card's own chosen type.
+    if (/^You may cast creature spells of the chosen type from the top of your library$/i.test(sentence)) {
+      result.topOfLibrary = { ...(result.topOfLibrary ?? {}), castChosenType: true };
+      continue;
+    }
+
     if (
       /^If you control a commander, you may cast this spell without paying its mana cost$/i.test(
         sentence,
@@ -6913,6 +6959,43 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
       // Documented approximation (RULES_COVERAGE.md): the free alternative
       // cost is auto-taken whenever a commander is controlled.
       result.freeIfCommander = true;
+      continue;
+    }
+
+    // Dryad of the Ilysian Grove: controlled lands gain every basic type
+    // (layer 4); their intrinsic mana follows via the Urborg machinery.
+    if (
+      /^Lands you control are every basic land type(?: in addition to their other types)?$/i.test(
+        sentence,
+      )
+    ) {
+      result.staticAbilities.push({
+        selector: { scope: "controlled", types: ["land"] },
+        effect: {
+          kind: "add_types",
+          types: [],
+          subtypes: ["plains", "island", "swamp", "mountain", "forest"],
+        },
+      });
+      continue;
+    }
+
+    // Maskwood Nexus. The off-battlefield half of the sentence pair is
+    // consumed as covered by the battlefield static — spells and cards off
+    // the battlefield keep only their printed types, a documented
+    // approximation.
+    if (/^Creatures you control are every creature type$/i.test(sentence)) {
+      result.staticAbilities.push({
+        selector: { scope: "controlled", types: ["creature"] },
+        effect: { kind: "all_creature_types" },
+      });
+      if (
+        /^The same is true for creature spells you control and creature cards you own that aren't on the battlefield$/i.test(
+          sentences[index + 1] ?? "",
+        )
+      ) {
+        sentences[index + 1] = "";
+      }
       continue;
     }
 

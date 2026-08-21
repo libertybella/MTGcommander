@@ -171,6 +171,7 @@ export function createCardDefinition(
                     ? { counterName: trigger.subjectFilter.counterName }
                     : {}),
                   ...(trigger.subjectFilter.colorless ? { colorless: true } : {}),
+                  ...(trigger.subjectFilter.powerAboveBase ? { powerAboveBase: true } : {}),
                 },
               }
             : {}),
@@ -356,6 +357,8 @@ export function createCardDefinition(
             ...(input.topOfLibrary.look ? { look: true } : {}),
             ...(input.topOfLibrary.playLands ? { playLands: true } : {}),
             ...(input.topOfLibrary.castAll ? { castAll: true } : {}),
+            ...(input.topOfLibrary.castColorless ? { castColorless: true } : {}),
+            ...(input.topOfLibrary.castChosenType ? { castChosenType: true } : {}),
             ...(input.topOfLibrary.castTypesAny
               ? { castTypesAny: [...input.topOfLibrary.castTypesAny] }
               : {}),

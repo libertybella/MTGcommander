@@ -440,6 +440,8 @@ export function parseGameState(json: string): GameState {
                 ...(grant.look === true ? { look: true } : {}),
                 ...(grant.playLands === true ? { playLands: true } : {}),
                 ...(grant.castAll === true ? { castAll: true } : {}),
+                ...(grant.castColorless === true ? { castColorless: true } : {}),
+                ...(grant.castChosenType === true ? { castChosenType: true } : {}),
                 ...(grant.castTypesAny === undefined
                   ? {}
                   : {
@@ -2203,6 +2205,7 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
     case "mill":
     case "discard":
     case "discard_random":
+    case "exile_top":
       return {
         kind,
         playerId: parsePlayerSelector(value.playerId, `${label}.playerId`),
@@ -2908,6 +2911,7 @@ function parseTriggers(value: unknown, label: string): CardTrigger[] {
                     ),
                   }),
               ...(entry.subjectFilter.colorless === true ? { colorless: true } : {}),
+              ...(entry.subjectFilter.powerAboveBase === true ? { powerAboveBase: true } : {}),
               ...(() => {
                 const nonSubtypes = parseStringList(
                   entry.subjectFilter.nonSubtypes,
@@ -3167,6 +3171,9 @@ function parseContinuousEffectData(value: unknown, label: string): ContinuousEff
       types: parseStringList(value.types, `${label}.types`),
       subtypes: parseStringList(value.subtypes, `${label}.subtypes`),
     };
+  }
+  if (kind === "all_creature_types") {
+    return { kind };
   }
   if (kind === "set_colors") {
     if (!Array.isArray(value.colors)) {
@@ -3560,7 +3567,8 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
     kind === "surveil" ||
     kind === "mill" ||
     kind === "discard" ||
-    kind === "discard_random"
+    kind === "discard_random" ||
+    kind === "exile_top"
   ) {
     return {
       kind,
