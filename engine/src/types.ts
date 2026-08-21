@@ -711,7 +711,9 @@ export type GameEffect =
   /** Bojuka Bog: every card in the player's graveyard is exiled. */
   | { kind: "exile_graveyard"; playerId: PlayerId }
   /** Mother of Runes: the chooser picks a protection color at resolution. */
-  | { kind: "grant_protection_choice"; cardId: CardInstanceId; playerId: PlayerId };
+  | { kind: "grant_protection_choice"; cardId: CardInstanceId; playerId: PlayerId }
+  /** CR 701.12: each deals damage equal to its power to the other. */
+  | { kind: "fight"; cardId: CardInstanceId; otherId: CardInstanceId };
 
 /** What a "Destroy all …" wipe hits. */
 export type DestroyAllScope = "creatures" | "artifacts" | "enchantments" | "planeswalkers" | "nonland";
@@ -1156,7 +1158,9 @@ export type CardEffect =
   | { kind: "flicker"; cardId: CardIdSelector }
   | { kind: "exile_graveyard"; playerId: PlayerSelector }
   /** Mother of Runes: protection from a color of your choice until EOT. */
-  | { kind: "grant_protection_choice"; target: ChosenTargetRef };
+  | { kind: "grant_protection_choice"; target: ChosenTargetRef }
+  /** "it fights up to one target creature you don't control" (Kogla). */
+  | { kind: "fight"; cardId: CardIdSelector; withTarget: ChosenTargetRef };
 
 export type Keyword =
   | "flying"
@@ -1210,6 +1214,8 @@ export type TriggerEvent =
   | "opponent_draws_second"
   /** Any player sacrificed a permanent (Mayhem Devil). */
   | "player_sacrifices"
+  /** This creature was dealt damage (Enrage — Apex Altisaur). */
+  | "is_dealt_damage"
   /** An opponent searched their library (Archivist of Oghma). */
   | "opponent_searches"
   /** Any player cast their second spell this turn (Lotho). */
@@ -1328,7 +1334,9 @@ export type EngineEvent =
   /** A card left a graveyard; ownerId names whose graveyard it was. */
   | { kind: "leaves_graveyard"; cardId: CardInstanceId; ownerId: PlayerId }
   /** A spell copy hit the stack (Magecraft's "or copy" half). */
-  | { kind: "copies_spell"; cardId: CardInstanceId; controllerId: PlayerId };
+  | { kind: "copies_spell"; cardId: CardInstanceId; controllerId: PlayerId }
+  /** A creature was dealt damage (Enrage — Apex Altisaur). */
+  | { kind: "damaged"; cardId: CardInstanceId };
 
 /** One triggered ability waiting to be put on the stack. */
 export type TriggerCandidate = {

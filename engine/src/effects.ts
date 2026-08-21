@@ -939,6 +939,14 @@ export function bindCardEffect(
         playerId: context.controllerId,
       };
     }
+    case "fight": {
+      const cardId = bindCardId(state, effect.cardId, context);
+      const chosen = chosenTargetAt(context, effect.withTarget.index, state);
+      if (!cardId || !chosen || chosen.type !== "creature") {
+        return null;
+      }
+      return { kind: "fight", cardId, otherId: chosen.cardId };
+    }
     case "copy_token": {
       const ownerId = bindPlayerSelector(state, effect.ownerId, context);
       if (!ownerId) {
@@ -1239,6 +1247,10 @@ function applyDealDamage(state: GameState, effect: Extract<GameEffect, { kind: "
   damaged.damageMarked += effect.amount;
   if (effect.sourceId && hasKeyword(next, effect.sourceId, "deathtouch")) {
     damaged.deathtouched = true;
+  }
+  // Enrage (Apex Altisaur) hears every marked point of noncombat damage.
+  if (effect.amount > 0) {
+    dispatchEventsInPlace(next, [{ kind: "damaged", cardId: damaged.id }]);
   }
   // Destruction is a state-based action (CR 704.5g/h); applyEffect sweeps.
   return applyDamageLifegainRider(next, effect);
@@ -2431,6 +2443,52 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
         next = cloneGameState(state);
         const granted = next.players.find((entry) => entry.id === effect.playerId)!;
         granted.extraLandDropsThisTurn = (granted.extraLandDropsThisTurn ?? 0) + 1;
+        break;
+      }
+      case "fight": {
+        // CR 701.12: both powers read first, both damages marked at once.
+        const a = state.cards[effect.cardId];
+        const b = state.cards[effect.otherId];
+        next = cloneGameState(state);
+        if (
+          a &&
+          b &&
+          a.zone === "battlefield" &&
+          b.zone === "battlefield" &&
+          isCreature(state, a.id) &&
+          isCreature(state, b.id)
+        ) {
+          const powerA = Math.max(0, creaturePower(state, a.id));
+          const powerB = Math.max(0, creaturePower(state, b.id));
+          const colorsA = sourceColorsOf(state, a.id);
+          const colorsB = sourceColorsOf(state, b.id);
+          const shieldedA = protectionColorsOf(state, a.id).some((color) =>
+            colorsB.includes(color),
+          );
+          const shieldedB = protectionColorsOf(state, b.id).some((color) =>
+            colorsA.includes(color),
+          );
+          const fighterA = next.cards[a.id]!;
+          const fighterB = next.cards[b.id]!;
+          const events: EngineEvent[] = [];
+          if (!shieldedB && powerA > 0) {
+            fighterB.damageMarked += powerA;
+            if (hasKeyword(next, a.id, "deathtouch")) {
+              fighterB.deathtouched = true;
+            }
+            events.push({ kind: "damaged", cardId: b.id });
+          }
+          if (!shieldedA && powerB > 0) {
+            fighterA.damageMarked += powerB;
+            if (hasKeyword(next, b.id, "deathtouch")) {
+              fighterA.deathtouched = true;
+            }
+            events.push({ kind: "damaged", cardId: a.id });
+          }
+          if (events.length > 0) {
+            dispatchEventsInPlace(next, events);
+          }
+        }
         break;
       }
       case "grant_protection_choice": {

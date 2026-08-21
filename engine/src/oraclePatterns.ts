@@ -2632,6 +2632,50 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     };
   }
 
+  // Kogla / Apex Altisaur: the fight is optional — an unfilled slot skips.
+  if (/^(?:it|~|this creature) fights up to one target creature you don't control$/i.test(sentence)) {
+    return {
+      targetRequirements: [{ kind: "creature", control: "not_own", optional: true }],
+      effects: [{ kind: "fight", cardId: "self", withTarget: { type: "chosen", index: 0 } }],
+    };
+  }
+
+  // Prey Upon-class: a straight two-party fight.
+  if (/^Target creature you control fights target creature you don't control$/i.test(sentence)) {
+    return {
+      targetRequirements: [
+        { kind: "creature", control: "own" },
+        { kind: "creature", control: "not_own" },
+      ],
+      effects: [
+        { kind: "fight", cardId: { type: "chosen", index: 0 }, withTarget: { type: "chosen", index: 1 } },
+      ],
+    };
+  }
+
+  // Kogla's self-shield rider.
+  match = sentence.match(/^(?:~|this creature) gains ([a-z ]+) until end of turn$/i);
+  if (match?.[1]) {
+    const keyword = KEYWORD_GRANTS[match[1].trim().toLowerCase()];
+    if (keyword) {
+      return {
+        targetRequirements: [],
+        effects: [{ kind: "keyword_until_eot", cardId: "self", keyword }],
+      };
+    }
+  }
+
+  // Kogla: "Return target Human you control to its owner's hand".
+  match = sentence.match(/^Return target ([A-Z][a-z]+) you control to its owner's hand$/);
+  if (match?.[1] && !SEARCH_CARD_TYPES.has(match[1].toLowerCase())) {
+    return {
+      targetRequirements: [
+        { kind: "creature", control: "own", requiredSubtypes: [match[1].toLowerCase()] },
+      ],
+      effects: [{ kind: "move_card", cardId: { type: "chosen", index: 0 }, toZone: "hand" }],
+    };
+  }
+
   // Casualties of War's fifth bullet.
   if (/^Destroy target planeswalker$/i.test(sentence)) {
     return {
@@ -2681,7 +2725,7 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
   }
 
   match = sentence.match(
-    /^(Destroy|Exile) target (artifact|enchantment|artifact or enchantment|artifact or creature|creature or artifact|creature or enchantment|nonland permanent|noncreature, nonland permanent|permanent)( you don't control| an opponent controls)?(?: with mana value (\d+) or (less|greater))?$/i,
+    /^(Destroy|Exile) target (artifact|enchantment|artifact or enchantment|artifact or creature|creature or artifact|creature or enchantment|nonland permanent|noncreature, nonland permanent|permanent)( you don't control| an opponent controls| defending player controls)?(?: with mana value (\d+) or (less|greater))?$/i,
   );
   if (match?.[1] && match[2] && (match[2].toLowerCase() !== "permanent" || match[3] || match[4])) {
     const kindOf: Record<string, TargetKind> = {
@@ -2696,6 +2740,8 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
       permanent: "permanent",
     };
     const bound = match[4] ? Number(match[4]) : undefined;
+    // "defending player controls" (Kogla) widens to any opponent's — a
+    // documented approximation of the defender restriction.
     return {
       targetRequirements: [
         {
@@ -3300,7 +3346,7 @@ type TriggerHead = Pick<
 
 /** "Whenever another creature dies" → dies / any / excludeSelf, and friends. */
 function parseTriggerHead(head: string): TriggerHead | null {
-  const text = head.replace(/^(?:Landfall|Magecraft|Constellation)\s*[—-]\s*/i, "").trim();
+  const text = head.replace(/^(?:Landfall|Magecraft|Constellation|Enrage)\s*[—-]\s*/i, "").trim();
   if (/^Whenever you cast or copy an instant or sorcery spell$/i.test(text)) {
     return {
       event: "cast_spell",
@@ -3457,6 +3503,10 @@ function parseTriggerHead(head: string): TriggerHead | null {
   // Sword of the Animist.
   if (/^Whenever equipped creature attacks$/i.test(text)) {
     return { event: "attacks", watch: "attached" };
+  }
+  // Enrage (Apex Altisaur).
+  if (/^Whenever (?:~|this creature) is dealt damage$/i.test(text)) {
+    return { event: "is_dealt_damage" };
   }
   // The Swords, Mask of Memory: the Equipment watches its host's strikes.
   if (/^Whenever equipped creature deals combat damage to a player$/i.test(text)) {

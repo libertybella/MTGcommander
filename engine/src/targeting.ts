@@ -88,6 +88,14 @@ function violatesCharacteristicFilter(
   if (violatesRequiredColors(state, cardId, requirement)) {
     return true;
   }
+  // "Return target Human you control" (Kogla).
+  if (
+    (requirement.requiredSubtypes ?? []).some(
+      (subtype) => !cardMatchesSubtype(state, cardId, subtype),
+    )
+  ) {
+    return true;
+  }
   return requirement.maxPower !== undefined && creaturePower(state, cardId) > requirement.maxPower;
 }
 

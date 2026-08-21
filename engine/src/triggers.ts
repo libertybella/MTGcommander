@@ -506,6 +506,13 @@ function triggerMatchesEvent(
   if (trigger.event === "deals_combat_damage_to_player") {
     return false;
   }
+  if (event.kind === "damaged") {
+    // Enrage: the watcher itself was dealt damage.
+    return trigger.event === "is_dealt_damage" && event.cardId === watcher.id;
+  }
+  if (trigger.event === "is_dealt_damage") {
+    return false;
+  }
   if (event.kind === "deals_damage_to_player") {
     if (trigger.event !== "deals_damage_to_player") {
       return false;

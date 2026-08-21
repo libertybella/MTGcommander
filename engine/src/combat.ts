@@ -535,6 +535,8 @@ function markCreatureDamageInPlace(
   if (hasKeyword(state, sourceId, "deathtouch")) {
     target.deathtouched = true;
   }
+  // Enrage (Apex Altisaur): combat damage counts too.
+  dispatchEventsInPlace(state, [{ kind: "damaged", cardId: targetId }]);
   const source = state.cards[sourceId];
   if (source && hasKeyword(state, sourceId, "lifelink")) {
     gainLifeInPlace(state, source.controllerId, amount);

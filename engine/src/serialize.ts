@@ -2283,6 +2283,17 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
       return { kind, playerId: parsePlayerSelector(value.playerId, `${label}.playerId`) };
     case "commander_to_hand":
       return { kind, playerId: parsePlayerSelector(value.playerId, `${label}.playerId`) };
+    case "fight": {
+      if (!isRecord(value.withTarget)) {
+        throw new Error(`Invalid ${label}.withTarget`);
+      }
+      const targetIndex = expectNumber(value.withTarget.index, `${label}.withTarget.index`);
+      return {
+        kind,
+        cardId: parseCardIdSelector(value.cardId, `${label}.cardId`),
+        withTarget: { type: "chosen", index: targetIndex },
+      };
+    }
     case "opponents_lose_keywords_until_eot":
       return { kind, keywords: parseKeywords(value.keywords, `${label}.keywords`) };
     default:
@@ -2442,6 +2453,7 @@ const TRIGGER_EVENT_NAMES: ReadonlySet<string> = new Set([
   "graveyard_from_elsewhere",
   "leaves_your_graveyard",
   "you_draw",
+  "is_dealt_damage",
 ] satisfies TriggerEvent[]);
 
 function parseTriggers(value: unknown, label: string): CardTrigger[] {
@@ -3378,6 +3390,13 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
   }
   if (kind === "commander_to_hand") {
     return { kind, playerId: expectString(value.playerId, `${label}.playerId`) };
+  }
+  if (kind === "fight") {
+    return {
+      kind,
+      cardId: expectString(value.cardId, `${label}.cardId`),
+      otherId: expectString(value.otherId, `${label}.otherId`),
+    };
   }
   if (kind === "grant_protection_choice") {
     return {

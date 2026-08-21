@@ -11583,3 +11583,120 @@ describe("wave 114: shrines, casualties, ruined fields", () => {
     ).toBe(false);
   });
 });
+
+describe("wave 115: apes, altisaurs, and fights", () => {
+  it("compiles the fight batch fully", () => {
+    const kogla = compileOracleCard({
+      oracleId: "kogla",
+      name: "Kogla, the Titan Ape",
+      manaCost: "{2}{G}{G}{G}",
+      typeLine: "Legendary Creature — Ape",
+      power: "7",
+      toughness: "6",
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "When Kogla enters, it fights up to one target creature you don't control.\nWhenever Kogla attacks, destroy target artifact or enchantment defending player controls.\n{1}{G}: Return target Human you control to its owner's hand. Kogla gains indestructible until end of turn.",
+    });
+    expect(kogla.notes).toEqual([]);
+    expect(kogla.definition.triggers[0]?.targetRequirements).toEqual([
+      { kind: "creature", control: "not_own", optional: true },
+    ]);
+    expect(kogla.definition.triggers[0]?.effects[0]).toMatchObject({ kind: "fight", cardId: "self" });
+    expect(kogla.definition.activated[0]?.targetRequirements).toEqual([
+      { kind: "creature", control: "own", requiredSubtypes: ["human"] },
+    ]);
+    expect(kogla.definition.activated[0]?.effects[1]).toEqual({
+      kind: "keyword_until_eot",
+      cardId: "self",
+      keyword: "indestructible",
+    });
+
+    const apex = compileOracleCard({
+      oracleId: "apex",
+      name: "Apex Altisaur",
+      manaCost: "{8}{G}{G}",
+      typeLine: "Creature — Dinosaur",
+      power: "10",
+      toughness: "10",
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "When this creature enters, it fights up to one target creature you don't control.\nEnrage — Whenever this creature is dealt damage, it fights up to one target creature you don't control.",
+    });
+    expect(apex.notes).toEqual([]);
+    expect(apex.definition.triggers[1]?.event).toBe("is_dealt_damage");
+
+    const prey = compileOracleCard({
+      oracleId: "prey",
+      name: "Prey Upon",
+      manaCost: "{G}",
+      typeLine: "Sorcery",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "Target creature you control fights target creature you don't control. (Each deals damage equal to its power to the other.)",
+    });
+    expect(prey.notes).toEqual([]);
+    expect(prey.definition.targetRequirements).toEqual([
+      { kind: "creature", control: "own" },
+      { kind: "creature", control: "not_own" },
+    ]);
+  });
+
+  it("marks both fighters' damage from pre-fight powers", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const bigDef = createCardDefinition({ name: "Big", typeLine: "Creature — Beast", power: 4, toughness: 5 });
+    const smallDef = createCardDefinition({ name: "Small", typeLine: "Creature — Goblin", power: 2, toughness: 2 });
+    game.definitions[bigDef.id] = bigDef;
+    game.definitions[smallDef.id] = smallDef;
+    const big = createCardInstance({ definitionId: bigDef.id, ownerId: p1.id, zone: "battlefield" });
+    const small = createCardInstance({ definitionId: smallDef.id, ownerId: p2.id, zone: "battlefield" });
+    game.cards[big.id] = big;
+    game.cards[small.id] = small;
+    p1.zones.battlefield.push(big.id);
+    p2.zones.battlefield.push(small.id);
+
+    const next = applyEffect(game, { kind: "fight", cardId: big.id, otherId: small.id });
+    // The 2/2 dies to 4 damage; the 4/5 survives with 2 marked.
+    expect(next.cards[small.id]?.zone).toBe("graveyard");
+    expect(next.cards[big.id]?.zone).toBe("battlefield");
+    expect(next.cards[big.id]?.damageMarked).toBe(2);
+  });
+
+  it("enrages when dealt noncombat damage", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 10);
+    const enragedDef = createCardDefinition({
+      name: "Enraged",
+      typeLine: "Creature — Dinosaur",
+      power: 10,
+      toughness: 10,
+      triggers: [
+        {
+          event: "is_dealt_damage",
+          effects: [{ kind: "draw", playerId: "controller", count: 1 }],
+          targetRequirements: [],
+        },
+      ],
+    });
+    game.definitions[enragedDef.id] = enragedDef;
+    const dino = createCardInstance({ definitionId: enragedDef.id, ownerId: p1.id, zone: "battlefield" });
+    game.cards[dino.id] = dino;
+    p1.zones.battlefield.push(dino.id);
+    const handBefore = p1.zones.hand.length;
+
+    let next = applyEffect(game, {
+      kind: "deal_damage",
+      sourceId: null,
+      target: { type: "creature", cardId: dino.id },
+      amount: 3,
+    });
+    while (next.stack.length > 0) {
+      next = resolveTopOfStack(next);
+    }
+    expect(next.players[0]?.zones.hand).toHaveLength(handBefore + 1);
+  });
+});
