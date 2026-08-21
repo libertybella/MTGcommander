@@ -78,6 +78,7 @@ export function createCardDefinition(
         | "chooseCreatureTypeOnEnter"
         | "entersWithXCounters"
         | "playLandsFromGraveyard"
+        | "leyline"
         | "additionalCost"
         | "attackTax"
         | "dynamicPt"
@@ -252,6 +253,7 @@ export function createCardDefinition(
     ...(input.chooseCreatureTypeOnEnter ? { chooseCreatureTypeOnEnter: true } : {}),
     ...(input.entersWithXCounters ? { entersWithXCounters: true } : {}),
     ...(input.playLandsFromGraveyard ? { playLandsFromGraveyard: true } : {}),
+    ...(input.leyline ? { leyline: true } : {}),
     ...(input.additionalCost ? { additionalCost: { ...input.additionalCost } } : {}),
     ...(input.attackTax ? { attackTax: { ...input.attackTax } } : {}),
     ...(input.dynamicPt ? { dynamicPt: { count: input.dynamicPt.count } } : {}),

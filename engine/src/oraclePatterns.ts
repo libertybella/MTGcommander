@@ -51,6 +51,7 @@ export type CompiledOracleText = {
   doesntUntap?: boolean;
   grantsFlash?: boolean;
   attackTax?: { generic?: number; perEnchantment?: boolean; lifePer?: number };
+  leyline?: boolean;
   extraDrawStepDraws?: boolean;
   affinityArtifacts?: boolean;
   affinityAllCreatures?: boolean;
@@ -1880,6 +1881,28 @@ function parseSearchDescriptor(descriptor: string): SearchFilter | null {
   };
 }
 
+/**
+ * Ghost Quarter / Assassin's Trophy: "Its controller may search their library
+ * for a basic land card, put it onto the battlefield, then shuffle." Rides the
+ * previous sentence's permanent target, so the caller supplies the index.
+ */
+function controllerBasicSearchRider(sentence: string, lastIndex: number): CardEffect | null {
+  if (
+    !/^(?:Its|That (?:land|permanent|creature)'s) controller may search their library for a basic land card, put it onto the battlefield, then shuffle$/i.test(
+      sentence,
+    )
+  ) {
+    return null;
+  }
+  return {
+    kind: "search_library",
+    playerId: { type: "chosen_controller", index: lastIndex },
+    filter: { supertypes: ["basic"], types: ["land"] },
+    destination: "battlefield",
+    count: 1,
+  };
+}
+
 type TriggerHead = Pick<
   CardTrigger,
   "event" | "watch" | "excludeSelf" | "subjectFilter" | "subjectPlayerOpponent"
@@ -3043,6 +3066,15 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
       continue;
     }
 
+    if (
+      /^If this card is in your opening hand, you may begin the game with it on the battlefield$/i.test(
+        sentence,
+      )
+    ) {
+      result.leyline = true;
+      continue;
+    }
+
     // Pillow forts. Norn's Annex's {W/P} is approximated as its life half.
     const propaganda = sentence.match(
       /^Creatures can't attack you unless their controller pays \{(\d+)\} for each creature they control that's attacking you$/i,
@@ -3605,6 +3637,15 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
           index += 1;
           continue;
         }
+        const searchRider = controllerBasicSearchRider(
+          follow,
+          pushed.targetRequirements.length - 1,
+        );
+        if (searchRider && pushed.targetRequirements.length > 0) {
+          pushed.effects.push(searchRider);
+          index += 1;
+          continue;
+        }
         const followClause = compileSimpleClause(follow);
         if (!followClause || followClause.leftover) {
           break;
@@ -3678,6 +3719,15 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
         last.damageToController = Number(pain[1]);
         continue;
       }
+    }
+
+    const basicSearchRider = controllerBasicSearchRider(
+      sentence,
+      result.targetRequirements.length - 1,
+    );
+    if (basicSearchRider && result.targetRequirements.length > 0) {
+      result.effects.push(basicSearchRider);
+      continue;
     }
 
     // Pongify / Rapid Hybridization: the token goes to the destroyed

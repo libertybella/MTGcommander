@@ -5246,3 +5246,78 @@ describe("wave 54: token create/sacrifice events", () => {
     expect(after.stack).toHaveLength(0);
   });
 });
+
+describe("wave 55: basic-land search riders and leylines", () => {
+  const base = { power: null, toughness: null, printedKeywords: [], imageUrl: "" };
+
+  it("compiles Ghost Quarter, Assassin's Trophy, and Leyline of Anticipation fully", () => {
+    const quarter = compileOracleCard({
+      ...base,
+      oracleId: "quarter",
+      name: "Ghost Quarter",
+      manaCost: "",
+      typeLine: "Land",
+      oracleText:
+        "{T}: Add {C}.\n{T}, Sacrifice this land: Destroy target land. Its controller may search their library for a basic land card, put it onto the battlefield, then shuffle.",
+    });
+    expect(quarter.notes).toEqual([]);
+    const ability = quarter.definition.activated[0];
+    expect(ability?.effects[1]).toEqual({
+      kind: "search_library",
+      playerId: { type: "chosen_controller", index: 0 },
+      filter: { supertypes: ["basic"], types: ["land"] },
+      destination: "battlefield",
+      count: 1,
+    });
+
+    const trophy = compileOracleCard({
+      ...base,
+      oracleId: "trophy",
+      name: "Assassin's Trophy",
+      manaCost: "{B}{G}",
+      typeLine: "Instant",
+      oracleText:
+        "Destroy target permanent an opponent controls. Its controller may search their library for a basic land card, put it onto the battlefield, then shuffle.",
+    });
+    expect(trophy.notes).toEqual([]);
+    expect(trophy.definition.effects).toHaveLength(2);
+
+    const leyline = compileOracleCard({
+      ...base,
+      oracleId: "leyline",
+      name: "Leyline of Anticipation",
+      manaCost: "{2}{U}{U}",
+      typeLine: "Enchantment",
+      oracleText:
+        "If this card is in your opening hand, you may begin the game with it on the battlefield.\nYou may cast spells as though they had flash.",
+    });
+    expect(leyline.notes).toEqual([]);
+    expect(leyline.definition.leyline).toBe(true);
+    expect(leyline.definition.grantsFlash).toBe(true);
+  });
+
+  it("deploys leylines from opening hands when mulligans finish", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const leylineDef = createCardDefinition({
+      name: "Leyline Lite",
+      typeLine: "Enchantment",
+      leyline: true,
+    });
+    game.definitions[leylineDef.id] = leylineDef;
+    const ley = createCardInstance({ definitionId: leylineDef.id, ownerId: p1.id, zone: "hand" });
+    game.cards[ley.id] = ley;
+    p1.zones.hand.push(ley.id);
+    game.mulligan = {
+      decidingPlayerId: p1.id,
+      taken: {},
+      kept: {},
+      pendingBottom: 0,
+      startingHandSize: 7,
+    };
+
+    let next = applyAction(game, { kind: "keep_hand", playerId: p1.id });
+    expect(next.cards[ley.id]?.zone).toBe("hand");
+    next = applyAction(next, { kind: "keep_hand", playerId: p2.id });
+    expect(next.cards[ley.id]?.zone).toBe("battlefield");
+  });
+});

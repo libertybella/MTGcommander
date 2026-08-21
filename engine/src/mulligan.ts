@@ -3,7 +3,7 @@ import { isLiving, livingPlayerCount } from "./players";
 import { shuffleInPlace } from "./shuffle";
 import { isGameOver } from "./status";
 import { advanceStep } from "./turn";
-import { moveCard } from "./zones";
+import { moveCard, moveCardInPlace } from "./zones";
 import type { CardInstanceId, GameState, MulliganState, PlayerId } from "./types";
 
 export const DEFAULT_STARTING_HAND_SIZE = 7;
@@ -136,9 +136,26 @@ export function applyKeepHand(state: GameState, playerId: PlayerId): GameState {
   next.mulligan.kept[playerId] = true;
   advanceDeciderInPlace(next);
   if (!next.mulligan) {
+    deployLeylinesInPlace(next);
     return skipFirstTurnUntap(next);
   }
   return next;
+}
+
+/**
+ * Leylines: opening-hand copies begin the game on the battlefield once every
+ * player has kept. The "may" is auto-taken — a documented approximation.
+ */
+function deployLeylinesInPlace(state: GameState): void {
+  for (const player of state.players) {
+    const leylines = player.zones.hand.filter(
+      (cardId) =>
+        state.definitions[state.cards[cardId]?.definitionId ?? ""]?.leyline === true,
+    );
+    for (const cardId of leylines) {
+      moveCardInPlace(state, cardId, "battlefield");
+    }
+  }
 }
 
 export function applyTakeMulligan(

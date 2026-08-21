@@ -439,6 +439,7 @@ export function parseGameState(json: string): GameState {
             })(),
           }),
       ...(def.playLandsFromGraveyard === true ? { playLandsFromGraveyard: true } : {}),
+      ...(def.leyline === true ? { leyline: true } : {}),
       ...(def.dynamicPt === undefined
         ? {}
         : {

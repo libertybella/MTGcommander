@@ -191,6 +191,11 @@ export type CardDefinition = {
   attackTax?: { generic?: number; perEnchantment?: boolean; lifePer?: number };
   /** "You may play lands from your graveyard" (Crucible of Worlds). */
   playLandsFromGraveyard?: boolean;
+  /**
+   * Leylines: if in the opening hand, begins the game on the battlefield.
+   * Deployed automatically when mulligans finish (the "may" is auto-taken).
+   */
+  leyline?: boolean;
   /** Star P/T: base power and toughness are each this count (CR 613.3a). */
   dynamicPt?: { count: DynamicCount };
   /** Scryfall card image, if known. Empty for synthetic / hidden cards. */
