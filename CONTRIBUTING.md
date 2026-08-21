@@ -84,10 +84,58 @@ npx vitest run server/src/compileRate.test.ts
 ```
 
 Read the `[compile-rate] list:` line. The one-away report (highest-ROI
-wave picker) is a scratch test that compiles the whole list and buckets
-cards with exactly one note by the note's first snippet — copy the pattern
-from git history (`tmpOneAway` in any recent wave's transcript) and
-**delete it before committing**.
+wave picker) buckets cards with exactly one note by the note's first
+snippet. Create it as scratch `server/src/tmpOneAway.test.ts` from the
+template below, run it with vitest, and **delete it before committing**
+(it is a real test file and will run in the suite):
+
+```ts
+import { readFileSync } from "node:fs";
+import { describe, it } from "vitest";
+import { compileOracleCard } from "../../engine/src/oracle";
+import { oracleCardFromScryfall } from "./scryfall";
+
+describe("one-away", () => {
+  it("ranks single-note misses", () => {
+    const list = JSON.parse(
+      readFileSync(process.env.COMPILE_LIST ?? "", "utf8"),
+    ) as string[];
+    const wanted = new Set(list.map((name) => name.toLowerCase()));
+    const lines = readFileSync(process.env.COMPILE_BULK ?? "", "utf8")
+      .split("\n")
+      .filter(Boolean);
+    const oneAway: { name: string; note: string }[] = [];
+    for (const line of lines) {
+      const raw = JSON.parse(line);
+      const name = String(raw.name ?? "").toLowerCase();
+      if (!wanted.has(name)) continue;
+      wanted.delete(name);
+      try {
+        const compiled = compileOracleCard(oracleCardFromScryfall(raw));
+        if (compiled.notes.length === 1) {
+          oneAway.push({ name: raw.name, note: compiled.notes[0] ?? "" });
+        }
+      } catch { /* skip unparseable */ }
+    }
+    console.log("one-away count:", oneAway.length);
+    const bySnippet = new Map<string, string[]>();
+    for (const entry of oneAway) {
+      const m = entry.note.match(/not compiled: ([^;]{0,80})/);
+      const key = (m?.[1] ?? entry.note.slice(0, 80))
+        .replace(/\d+/g, "N").toLowerCase().slice(0, 70);
+      bySnippet.set(key, [...(bySnippet.get(key) ?? []), entry.name]);
+    }
+    for (const [key, names] of
+      [...bySnippet.entries()].sort((a, b) => b[1].length - a[1].length).slice(0, 50)) {
+      console.log(`[${names.length}] ${key} :: ${names.slice(0, 8).join(" | ")}`);
+    }
+  });
+});
+```
+
+The same pattern with a `NAMES` list and per-card note printing is the
+per-cluster probe (`tmpProbe.test.ts`) — remember a card's single note
+joins all leftover sentences with "; ".
 
 ## Conventions and traps
 
