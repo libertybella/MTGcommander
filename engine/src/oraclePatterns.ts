@@ -41,7 +41,9 @@ export type CompiledOracleText = {
   ward?: number;
   modes?: SpellMode[];
   protectionFrom?: Color[];
-  enchant?: "creature";
+  enchant?: "creature" | "land";
+  chooseColorOnEnter?: boolean;
+  enchantedTappedBonus?: { color: Color | "chosen"; amount: number };
   loyaltyAbilities?: LoyaltyAbility[];
   noMaxHandSize?: boolean;
   extraLandDrops?: number;
@@ -3292,6 +3294,37 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
       if (!result.targetRequirements.some((requirement) => requirement.kind === "creature")) {
         result.targetRequirements.push({ kind: "creature" });
       }
+      continue;
+    }
+
+    // Wild Growth ("Enchant land") / Utopia Sprawl ("Enchant Forest").
+    const enchantLand = sentence.match(/^Enchant (land|Plains|Island|Swamp|Mountain|Forest)$/i);
+    if (enchantLand?.[1]) {
+      result.enchant = "land";
+      const word = enchantLand[1].toLowerCase();
+      if (!result.targetRequirements.some((requirement) => requirement.kind === "land")) {
+        result.targetRequirements.push({
+          kind: "land",
+          ...(word === "land" ? {} : { requiredSubtypes: [word] }),
+        });
+      }
+      continue;
+    }
+
+    if (/^As (?:~|this Aura|this enchantment) enters, choose a color$/i.test(sentence)) {
+      result.chooseColorOnEnter = true;
+      continue;
+    }
+
+    // "Whenever enchanted land is tapped for mana, its controller adds an
+    // additional {G}" — a triggered mana ability handled in the mana flow.
+    const tappedBonus = sentence.match(
+      /^Whenever enchanted (?:land|Plains|Island|Swamp|Mountain|Forest) is tapped for mana, its controller adds an additional (?:\{([WUBRG])\}|one mana of the chosen color)$/i,
+    );
+    if (tappedBonus) {
+      result.enchantedTappedBonus = tappedBonus[1]
+        ? { color: tappedBonus[1].toUpperCase() as Color, amount: 1 }
+        : { color: "chosen", amount: 1 };
       continue;
     }
 

@@ -1,4 +1,4 @@
-import { isCreature } from "./cardTypes";
+import { isCreature, isLand } from "./cardTypes";
 import { COMMANDER_DAMAGE_TO_LOSE } from "./cardTypes";
 import { creatureToughness } from "./derived";
 import { hasKeyword } from "./keywords";
@@ -114,7 +114,9 @@ function attachmentLegalityInPlace(state: GameState, collectDies: EngineEvent[])
     }
     const host = card.attachedTo ? state.cards[card.attachedTo] : undefined;
     const hostLegal = Boolean(
-      host && host.zone === "battlefield" && isCreature(state, host.id),
+      host &&
+        host.zone === "battlefield" &&
+        (definition?.enchant === "land" ? isLand(state, host.id) : isCreature(state, host.id)),
     );
     if (hostLegal) {
       continue;

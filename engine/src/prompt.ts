@@ -16,6 +16,7 @@ import type {
   CardEffect,
   CardInstanceId,
   ChosenTarget,
+  Color,
   GameState,
   LookDestination,
   ManaColor,
@@ -178,6 +179,32 @@ export function applyResolveCreatureType(
   if (card) {
     card.chosenCreatureType = chosen;
     next.log.push({ kind: "creature_type_chosen", cardId: card.id, creatureType: chosen });
+  }
+  return next;
+}
+
+/** Answer an as-enters color choice (Utopia Sprawl). */
+export function applyResolveColor(
+  state: GameState,
+  playerId: PlayerId,
+  color: Color,
+): GameState {
+  const prompt = currentPrompt(state);
+  if (!prompt || prompt.kind !== "choose_color") {
+    throw new Error("No color choice pending");
+  }
+  requireLiving(state, playerId);
+  if (prompt.playerId !== playerId) {
+    throw new Error("It is not that player's choice");
+  }
+  if (!["W", "U", "B", "R", "G"].includes(color)) {
+    throw new Error("Choose a color");
+  }
+  const next = cloneGameState(state);
+  next.prompts.shift();
+  const card = next.cards[prompt.sourceId];
+  if (card) {
+    card.chosenColor = color;
   }
   return next;
 }

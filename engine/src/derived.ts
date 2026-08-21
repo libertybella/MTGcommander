@@ -355,4 +355,11 @@ export function queueEnterReplacementChoicesInPlace(state: GameState, cardId: Ca
       sourceId: card.id,
     });
   }
+  if (definition?.chooseColorOnEnter && card.chosenColor === null) {
+    state.prompts.push({
+      kind: "choose_color",
+      playerId: card.controllerId,
+      sourceId: card.id,
+    });
+  }
 }

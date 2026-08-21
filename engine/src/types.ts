@@ -115,7 +115,12 @@ export type CardDefinition = {
    */
   protectionFrom?: Color[];
   /** Aura: cast targeting a creature; enters attached (CR 303.4). */
-  enchant?: "creature";
+  enchant?: "creature" | "land";
+  /** "As this Aura enters, choose a color" (Utopia Sprawl). */
+  chooseColorOnEnter?: boolean;
+  /** Wild Growth / Utopia Sprawl: when the enchanted land taps for mana, its
+   * controller adds this much extra ("chosen" reads the aura's chosenColor). */
+  enchantedTappedBonus?: { color: Color | "chosen"; amount: number };
   /** Planeswalker printed starting loyalty. */
   loyalty?: number;
   /** Planeswalker loyalty abilities: cost may be negative. */
@@ -246,6 +251,8 @@ export type CardInstance = {
   faceDown: boolean;
   /** "As ~ enters, choose a creature type" (Kindred Discovery). Lowercase. */
   chosenCreatureType: string | null;
+  /** "As this Aura enters, choose a color" (Utopia Sprawl). */
+  chosenColor: Color | null;
 };
 
 export type CommanderState = {
@@ -741,6 +748,8 @@ export type TargetRequirement = {
   nonbasicOnly?: boolean;
   /** "target legendary creature" (Shizo). */
   legendaryOnly?: boolean;
+  /** "Enchant Forest": the target must have every listed subtype. */
+  requiredSubtypes?: string[];
   /** "another target …": the effect's own source is not a legal target. */
   excludeSource?: boolean;
 };
@@ -1191,6 +1200,11 @@ export type PendingPrompt =
       sourceId: CardInstanceId;
     }
   | {
+      kind: "choose_color";
+      playerId: PlayerId;
+      sourceId: CardInstanceId;
+    }
+  | {
       /**
        * Rhystic Study: pay `cost` or `thenEffects` happen. With `whenPaid`,
        * the polarity flips: paying causes the effects ("If you do, …").
@@ -1542,6 +1556,7 @@ export type GameAction =
   | { kind: "resolve_order_triggers"; playerId: PlayerId; order: number[] }
   | { kind: "choose_enter_replacement"; playerId: PlayerId; pay: boolean }
   | { kind: "resolve_creature_type"; playerId: PlayerId; creatureType: string }
+  | { kind: "resolve_color"; playerId: PlayerId; color: Color }
   | { kind: "resolve_scry"; playerId: PlayerId; bottomIds: CardInstanceId[] }
   | { kind: "resolve_surveil"; playerId: PlayerId; graveyardIds: CardInstanceId[] }
   | { kind: "resolve_discard"; playerId: PlayerId; cardIds: CardInstanceId[] }

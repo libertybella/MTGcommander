@@ -153,6 +153,12 @@ function nextAction(state: GameState, rng: () => number): GameAction | null {
           playerId,
           creatureType: pick(rng, ["sliver", "goblin", "elf", "zombie", "dragon"]),
         };
+      case "choose_color":
+        return {
+          kind: "resolve_color",
+          playerId,
+          color: pick(rng, ["W", "U", "B", "R", "G"] as const),
+        };
       case "scry": {
         const looked = lookedAtCardIds(state, prompt);
         return { kind: "resolve_scry", playerId, bottomIds: randomSubset(rng, looked, 0.4) };

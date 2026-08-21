@@ -266,6 +266,16 @@ export function parseGameState(json: string): GameState {
         card.chosenCreatureType === undefined || card.chosenCreatureType === null
           ? null
           : expectString(card.chosenCreatureType, "card.chosenCreatureType"),
+      chosenColor:
+        card.chosenColor === undefined || card.chosenColor === null
+          ? null
+          : (() => {
+              const color = expectString(card.chosenColor, "card.chosenColor");
+              if (!(COLOR_KEYS as readonly string[]).includes(color)) {
+                throw new Error("Invalid card.chosenColor");
+              }
+              return color as Color;
+            })(),
     };
   }
 
@@ -586,7 +596,30 @@ export function parseGameState(json: string): GameState {
               };
             })(),
           }),
-      ...(def.enchant === "creature" ? { enchant: "creature" as const } : {}),
+      ...(def.enchant === "creature" || def.enchant === "land"
+        ? { enchant: def.enchant }
+        : {}),
+      ...(def.chooseColorOnEnter === true ? { chooseColorOnEnter: true } : {}),
+      ...(def.enchantedTappedBonus === undefined
+        ? {}
+        : {
+            enchantedTappedBonus: (() => {
+              if (!isRecord(def.enchantedTappedBonus)) {
+                throw new Error(`Invalid definition.${id}.enchantedTappedBonus`);
+              }
+              const color = def.enchantedTappedBonus.color;
+              if (color !== "chosen" && !(COLOR_KEYS as readonly string[]).includes(color as string)) {
+                throw new Error(`Invalid definition.${id}.enchantedTappedBonus.color`);
+              }
+              return {
+                color: color as Color | "chosen",
+                amount: expectNumber(
+                  def.enchantedTappedBonus.amount,
+                  `definition.${id}.enchantedTappedBonus.amount`,
+                ),
+              };
+            })(),
+          }),
       ...(def.loyalty === undefined
         ? {}
         : { loyalty: expectNumber(def.loyalty, `definition.${id}.loyalty`) }),
@@ -898,7 +931,7 @@ function parsePrompts(value: unknown, playerIds: Set<string>): PendingPrompt[] {
         amount: expectNumber(entry.amount, `prompts[${index}].amount`),
       };
     }
-    if (kind === "choose_creature_type") {
+    if (kind === "choose_creature_type" || kind === "choose_color") {
       return {
         kind,
         playerId,
@@ -1420,6 +1453,10 @@ function parseTargetRequirement(value: unknown, label: string): TargetRequiremen
       : { maxPower: expectNumber(value.maxPower, `${label}.maxPower`) }),
     ...(value.legendaryOnly === true ? { legendaryOnly: true } : {}),
     ...(value.nonbasicOnly === true ? { nonbasicOnly: true } : {}),
+    ...(() => {
+      const requiredSubtypes = parseStringList(value.requiredSubtypes, `${label}.requiredSubtypes`);
+      return requiredSubtypes.length > 0 ? { requiredSubtypes } : {};
+    })(),
     ...(value.excludeSource === true ? { excludeSource: true } : {}),
   };
 }
@@ -3445,6 +3482,13 @@ export function parseGameAction(json: string): GameAction {
       playerId,
       creatureType: expectString(raw.creatureType, "action.creatureType"),
     };
+  }
+  if (kind === "resolve_color") {
+    const color = expectString(raw.color, "action.color");
+    if (!(COLOR_KEYS as readonly string[]).includes(color)) {
+      throw new Error("Invalid action.color");
+    }
+    return { kind, playerId, color: color as Color };
   }
   if (kind === "resolve_order_triggers") {
     if (!Array.isArray(raw.order)) {

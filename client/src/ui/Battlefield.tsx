@@ -1904,6 +1904,10 @@ export function Battlefield(props: Props) {
               ? actorId === prompt.playerId
                 ? `Choose a creature type for ${definition(state, prompt.sourceId)?.name ?? "this permanent"}.`
                 : `Waiting for ${chooser?.displayName ?? "a player"} to choose a creature type.`
+              : prompt.kind === "choose_color"
+              ? actorId === prompt.playerId
+                ? `Choose a color for ${definition(state, prompt.sourceId)?.name ?? "this permanent"}.`
+                : `Waiting for ${chooser?.displayName ?? "a player"} to choose a color.`
               : prompt.kind === "scry"
                 ? actorId === prompt.playerId
                   ? `Scry ${prompt.count}.`
@@ -2522,6 +2526,27 @@ export function Battlefield(props: Props) {
                 >
                   Other…
                 </button>
+              </div>
+            ) : null}
+            {actorId === prompt.playerId && prompt.kind === "choose_color" ? (
+              <div className="look-row" data-testid="color-picker">
+                {(
+                  [
+                    ["W", "White"],
+                    ["U", "Blue"],
+                    ["B", "Black"],
+                    ["R", "Red"],
+                    ["G", "Green"],
+                  ] as const
+                ).map(([code, label]) => (
+                  <button
+                    key={code}
+                    type="button"
+                    onClick={() => send({ kind: "resolve_color", playerId: actorId, color: code })}
+                  >
+                    {label}
+                  </button>
+                ))}
               </div>
             ) : null}
             {actorId === prompt.playerId && prompt.kind === "scry" ? (

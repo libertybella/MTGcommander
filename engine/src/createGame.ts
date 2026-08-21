@@ -76,6 +76,8 @@ export function createCardDefinition(
         | "flashback"
         | "costReductions"
         | "chooseCreatureTypeOnEnter"
+        | "chooseColorOnEnter"
+        | "enchantedTappedBonus"
         | "entersWithXCounters"
         | "playLandsFromGraveyard"
         | "leyline"
@@ -279,6 +281,10 @@ export function createCardDefinition(
         }
       : {}),
     ...(input.chooseCreatureTypeOnEnter ? { chooseCreatureTypeOnEnter: true } : {}),
+    ...(input.chooseColorOnEnter ? { chooseColorOnEnter: true } : {}),
+    ...(input.enchantedTappedBonus
+      ? { enchantedTappedBonus: { ...input.enchantedTappedBonus } }
+      : {}),
     ...(input.entersWithXCounters ? { entersWithXCounters: true } : {}),
     ...(input.playLandsFromGraveyard ? { playLandsFromGraveyard: true } : {}),
     ...(input.leyline ? { leyline: true } : {}),
@@ -348,6 +354,7 @@ export function createCardInstance(input: {
     loyaltyActivatedThisTurn: false,
     faceDown: false,
     chosenCreatureType: null,
+    chosenColor: null,
   };
 }
 

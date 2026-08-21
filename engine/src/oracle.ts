@@ -221,6 +221,10 @@ function compileOneFace(card: OracleCard, definitionId: string): OracleCompileRe
       ? { costReductions: compiled.costReductions }
       : {}),
     ...(compiled.chooseCreatureTypeOnEnter ? { chooseCreatureTypeOnEnter: true } : {}),
+    ...(compiled.chooseColorOnEnter ? { chooseColorOnEnter: true } : {}),
+    ...(compiled.enchantedTappedBonus
+      ? { enchantedTappedBonus: compiled.enchantedTappedBonus }
+      : {}),
     ...(compiled.entersWithXCounters ? { entersWithXCounters: true } : {}),
     ...(compiled.playLandsFromGraveyard ? { playLandsFromGraveyard: true } : {}),
     ...(compiled.additionalCost ? { additionalCost: compiled.additionalCost } : {}),

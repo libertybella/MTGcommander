@@ -1,4 +1,5 @@
 import { characteristicsOf, isCommander, isCreature, isPlaneswalker } from "./cardTypes";
+import { cardMatchesSubtype } from "./characteristicsEngine";
 import { creaturePower } from "./derived";
 import { hasKeyword, protectionColorsOf } from "./keywords";
 import { isLiving, livingPlayers } from "./players";
@@ -312,7 +313,10 @@ export function isChosenTargetLegal(
         return (
           types.includes("land") &&
           (!requirement.nonbasicOnly ||
-            !characteristicsOf(state, target.cardId).supertypes.includes("basic"))
+            !characteristicsOf(state, target.cardId).supertypes.includes("basic")) &&
+          (requirement.requiredSubtypes ?? []).every((subtype) =>
+            cardMatchesSubtype(state, target.cardId, subtype),
+          )
         );
       case "artifact_enchantment_or_nonbasic_land":
         return (

@@ -7859,3 +7859,116 @@ describe("wave 87: consuls, plunderers, provisioners", () => {
   });
 });
 
+describe("wave 88: land auras", () => {
+  it("compiles Wild Growth and Utopia Sprawl fully", () => {
+    const growth = compileOracleCard({
+      oracleId: "growth",
+      name: "Wild Growth",
+      manaCost: "{G}",
+      typeLine: "Enchantment — Aura",
+      power: null,
+      toughness: null,
+      printedKeywords: ["Enchant land"],
+      imageUrl: "",
+      oracleText:
+        "Enchant land\nWhenever enchanted land is tapped for mana, its controller adds an additional {G}.",
+    });
+    expect(growth.notes).toEqual([]);
+    expect(growth.definition.enchant).toBe("land");
+    expect(growth.definition.enchantedTappedBonus).toEqual({ color: "G", amount: 1 });
+    expect(growth.definition.targetRequirements).toEqual([{ kind: "land" }]);
+
+    const sprawl = compileOracleCard({
+      oracleId: "sprawl",
+      name: "Utopia Sprawl",
+      manaCost: "{G}",
+      typeLine: "Enchantment — Aura",
+      power: null,
+      toughness: null,
+      printedKeywords: ["Enchant Forest"],
+      imageUrl: "",
+      oracleText:
+        "Enchant Forest\nAs this Aura enters, choose a color.\nWhenever enchanted Forest is tapped for mana, its controller adds an additional one mana of the chosen color.",
+    });
+    expect(sprawl.notes).toEqual([]);
+    expect(sprawl.definition.enchant).toBe("land");
+    expect(sprawl.definition.chooseColorOnEnter).toBe(true);
+    expect(sprawl.definition.enchantedTappedBonus).toEqual({ color: "chosen", amount: 1 });
+    expect(sprawl.definition.targetRequirements).toEqual([
+      { kind: "land", requiredSubtypes: ["forest"] },
+    ]);
+  });
+
+  it("adds bonus mana when the enchanted land taps", () => {
+    const { game, p1 } = twoPlayers();
+    const forestDef = createCardDefinition({
+      name: "Forest",
+      typeLine: "Basic Land — Forest",
+      produces: { G: 1 },
+    });
+    const growthDef = createCardDefinition({
+      name: "Wild Growth",
+      typeLine: "Enchantment — Aura",
+      enchant: "land",
+      enchantedTappedBonus: { color: "G", amount: 1 },
+    });
+    const sprawlDef = createCardDefinition({
+      name: "Utopia Sprawl",
+      typeLine: "Enchantment — Aura",
+      enchant: "land",
+      chooseColorOnEnter: true,
+      enchantedTappedBonus: { color: "chosen", amount: 1 },
+    });
+    game.definitions[forestDef.id] = forestDef;
+    game.definitions[growthDef.id] = growthDef;
+    game.definitions[sprawlDef.id] = sprawlDef;
+    const forest = createCardInstance({ definitionId: forestDef.id, ownerId: p1.id, zone: "battlefield" });
+    const growth = createCardInstance({ definitionId: growthDef.id, ownerId: p1.id, zone: "battlefield" });
+    const sprawl = createCardInstance({ definitionId: sprawlDef.id, ownerId: p1.id, zone: "battlefield" });
+    growth.attachedTo = forest.id;
+    sprawl.attachedTo = forest.id;
+    sprawl.chosenColor = "R";
+    game.cards[forest.id] = forest;
+    game.cards[growth.id] = growth;
+    game.cards[sprawl.id] = sprawl;
+    p1.zones.battlefield.push(forest.id, growth.id, sprawl.id);
+
+    game.priorityPlayerId = p1.id;
+    const tapped = applyAction(game, {
+      kind: "tap_for_mana",
+      playerId: p1.id,
+      cardId: forest.id,
+    });
+    expect(tapped.players[0]?.mana.G).toBe(2);
+    expect(tapped.players[0]?.mana.R).toBe(1);
+  });
+
+  it("prompts for a color on entry and stores the choice", () => {
+    const { game, p1 } = twoPlayers();
+    const sprawlDef = createCardDefinition({
+      name: "Utopia Sprawl",
+      typeLine: "Enchantment — Aura",
+      enchant: "land",
+      chooseColorOnEnter: true,
+      enchantedTappedBonus: { color: "chosen", amount: 1 },
+    });
+    const forestDef = createCardDefinition({ name: "Forest", typeLine: "Basic Land — Forest" });
+    game.definitions[sprawlDef.id] = sprawlDef;
+    game.definitions[forestDef.id] = forestDef;
+    const forest = createCardInstance({ definitionId: forestDef.id, ownerId: p1.id, zone: "battlefield" });
+    game.cards[forest.id] = forest;
+    p1.zones.battlefield.push(forest.id);
+    const sprawl = createCardInstance({ definitionId: sprawlDef.id, ownerId: p1.id, zone: "hand" });
+    game.cards[sprawl.id] = sprawl;
+    p1.zones.hand.push(sprawl.id);
+
+    let next = moveCard(game, sprawl.id, "battlefield");
+    next.cards[sprawl.id]!.attachedTo = forest.id;
+    expect(next.prompts[0]?.kind).toBe("choose_color");
+    next = applyAction(next, { kind: "resolve_color", playerId: p1.id, color: "U" });
+    expect(next.cards[sprawl.id]?.chosenColor).toBe("U");
+    // A land host keeps the aura through the SBA sweep.
+    expect(next.cards[sprawl.id]?.zone).toBe("battlefield");
+  });
+});
+

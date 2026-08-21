@@ -25,7 +25,7 @@ import { applyBottomCards, applyKeepHand, applyTakeMulligan, isMulliganOpen, rec
 import { applyRollDie } from "./dice";
 import { applyOpeningRoll, isOpeningRoll } from "./openingRoll";
 import { applyManualOverride } from "./override";
-import { applyChooseEnterReplacement, applyChooseTargets, applyResolveChooseCard, applyResolveCreatureType, applyResolveDiscard, applyResolveLookAssign, applyResolveOrderTriggers, applyResolvePay, applyResolveScry, applyResolveSearch, applyResolveSurveil, currentPrompt, dropLostPlayerPromptsInPlace, isPromptOpen } from "./prompt";
+import { applyChooseEnterReplacement, applyChooseTargets, applyResolveChooseCard, applyResolveColor, applyResolveCreatureType, applyResolveDiscard, applyResolveLookAssign, applyResolveOrderTriggers, applyResolvePay, applyResolveScry, applyResolveSearch, applyResolveSurveil, currentPrompt, dropLostPlayerPromptsInPlace, isPromptOpen } from "./prompt";
 import { findCardZone, moveCard } from "./zones";
 import type { CardInstanceId, ChosenTarget, GameAction, GameState, ManaColor, ManaPool, PlayerId } from "./types";
 
@@ -656,6 +656,24 @@ function applyTapForMana(
     ? addMana(base, playerId, addition)
     : tapForMana(base, cardId, addition);
   next.priorityPlayerId = playerId;
+  // Wild Growth / Utopia Sprawl: auras on the tapped land pay a bonus to the
+  // land's controller (a triggered mana ability — no stack, CR 605.1b).
+  if (!ability.noTap && isLand(next, cardId)) {
+    for (const aura of Object.values(next.cards)) {
+      if (aura.attachedTo !== cardId || aura.zone !== "battlefield") {
+        continue;
+      }
+      const bonus = next.definitions[aura.definitionId]?.enchantedTappedBonus;
+      if (!bonus) {
+        continue;
+      }
+      const color = bonus.color === "chosen" ? aura.chosenColor : bonus.color;
+      if (!color) {
+        continue;
+      }
+      next = addMana(next, playerId, { [color]: bonus.amount });
+    }
+  }
   if (ability.costSacrifice && costSacrificeId) {
     next = applyEffects(next, [{ kind: "sacrifice", cardId: costSacrificeId }]);
   }
@@ -1022,6 +1040,9 @@ export function applyAction(
         break;
       case "resolve_creature_type":
         next = applyResolveCreatureType(state, action.playerId, action.creatureType);
+        break;
+      case "resolve_color":
+        next = applyResolveColor(state, action.playerId, action.color);
         break;
       case "resolve_scry": {
         const prompt = currentPrompt(state);

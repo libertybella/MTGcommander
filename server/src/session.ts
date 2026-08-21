@@ -444,6 +444,10 @@ export class GameHost {
           });
           continue;
         }
+        if (prompt.kind === "choose_color") {
+          this.apply({ kind: "resolve_color", playerId: prompt.playerId, color: "G" });
+          continue;
+        }
         if (prompt.kind === "search_library") {
           const legal = legalSearchIds(this.state, prompt).slice(0, prompt.count);
           this.apply({ kind: "resolve_search", playerId: prompt.playerId, cardIds: legal });
