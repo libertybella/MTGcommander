@@ -5172,3 +5172,77 @@ describe("wave 53: land targets, commander targets, toughness gains", () => {
     expect(next.players.find((p) => p.id === p1.id)!.life).toBe(before + 6);
   });
 });
+
+describe("wave 54: token create/sacrifice events", () => {
+  it("compiles Mirkwood Bats fully with sibling triggers", () => {
+    const bats = compileOracleCard({
+      oracleId: "bats",
+      name: "Mirkwood Bats",
+      manaCost: "{3}{B}",
+      typeLine: "Creature — Bat",
+      power: "2",
+      toughness: "2",
+      printedKeywords: ["Flying"],
+      imageUrl: "",
+      oracleText: "Flying\nWhenever you create or sacrifice a token, each opponent loses 1 life.",
+    });
+    expect(bats.notes).toEqual([]);
+    expect(bats.definition.triggers.map((t) => t.event)).toEqual([
+      "you_create_token",
+      "you_sacrifice_token",
+    ]);
+  });
+
+  it("fires on token creation and on token sacrifice", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const batsDef = createCardDefinition({
+      name: "Bats Lite",
+      typeLine: "Creature — Bat",
+      power: 2,
+      toughness: 2,
+      triggers: [
+        {
+          event: "you_create_token",
+          effects: [{ kind: "lose_life", playerId: "each_opponent", amount: 1 }],
+        },
+        {
+          event: "you_sacrifice_token",
+          effects: [{ kind: "lose_life", playerId: "each_opponent", amount: 1 }],
+        },
+      ],
+    });
+    game.definitions[batsDef.id] = batsDef;
+    const bats = createCardInstance({ definitionId: batsDef.id, ownerId: p1.id, zone: "battlefield" });
+    game.cards[bats.id] = bats;
+    p1.zones.battlefield.push(bats.id);
+
+    let next = applyEffect(game, {
+      kind: "create_token",
+      ownerId: p1.id,
+      name: "Treasure",
+      typeLine: "Artifact — Treasure Token",
+      power: null,
+      toughness: null,
+    });
+    expect(next.stack).toHaveLength(1);
+    const before = next.players.find((p) => p.id === p2.id)!.life;
+    next = resolveTopOfStack(next);
+    expect(next.players.find((p) => p.id === p2.id)!.life).toBe(before - 1);
+
+    const token = Object.values(next.cards).find((card) => card.isToken)!;
+    next = applyEffect(next, { kind: "sacrifice", cardId: token.id });
+    expect(next.stack).toHaveLength(1);
+    next = resolveTopOfStack(next);
+    expect(next.players.find((p) => p.id === p2.id)!.life).toBe(before - 2);
+
+    // Sacrificing a nontoken permanent does not fire the token watcher.
+    const oxDef = createCardDefinition({ name: "Ox", typeLine: "Creature — Ox", power: 1, toughness: 1 });
+    next = { ...next };
+    next.definitions = { ...next.definitions, [oxDef.id]: oxDef };
+    const ox = createCardInstance({ definitionId: oxDef.id, ownerId: p1.id, zone: "battlefield" });
+    next.cards = { ...next.cards, [ox.id]: ox };
+    next.players.find((p) => p.id === p1.id)!.zones.battlefield.push(ox.id);
+    const after = applyEffect(next, { kind: "sacrifice", cardId: ox.id });
+    expect(after.stack).toHaveLength(0);
+  });
+});

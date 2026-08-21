@@ -241,6 +241,7 @@ export function processDiesReturnsInPlace(state: GameState, died: EngineEvent[])
         state.nextTimestamp += 1;
         owner.zones.battlefield.push(token.id);
         queueEnterBattlefieldTriggersInPlace(state, token.id);
+        dispatchEventsInPlace(state, [{ kind: "creates_token", playerId: owner.id }]);
       }
     }
   }

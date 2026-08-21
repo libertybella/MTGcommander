@@ -1897,6 +1897,15 @@ function parseTriggerHead(head: string): TriggerHead | null {
   if (/^Whenever you gain life$/i.test(text)) {
     return { event: "you_gain_life" };
   }
+  if (/^Whenever you create or sacrifice a token$/i.test(text)) {
+    return { event: "you_create_token", extraEvents: ["you_sacrifice_token"] };
+  }
+  if (/^Whenever you create a token$/i.test(text)) {
+    return { event: "you_create_token" };
+  }
+  if (/^Whenever you sacrifice a token$/i.test(text)) {
+    return { event: "you_sacrifice_token" };
+  }
   if (/^Whenever an opponent loses life$/i.test(text)) {
     return { event: "opponent_loses_life" };
   }

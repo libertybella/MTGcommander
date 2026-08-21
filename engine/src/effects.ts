@@ -963,7 +963,11 @@ function applySacrifice(state: GameState, cardId: CardInstanceId): GameState {
   if (card.zone !== "battlefield") {
     throw new Error(`Card ${cardId} is not on the battlefield`);
   }
-  return moveCard(state, cardId, "graveyard");
+  const controllerId = card.controllerId;
+  const wasToken = Boolean(card.isToken);
+  const next = moveCard(state, cardId, "graveyard");
+  dispatchEventsInPlace(next, [{ kind: "sacrifices", cardId, controllerId, wasToken }]);
+  return next;
 }
 
 /** Anointed Procession / Doubling Season: 2^n for n token doublers. */
@@ -1183,6 +1187,7 @@ function applyCreateToken(
       throw new Error(`Token zone integrity failed for ${token.id}`);
     }
     queueEnterBattlefieldTriggersInPlace(next, token.id);
+    dispatchEventsInPlace(next, [{ kind: "creates_token", playerId: effect.ownerId }]);
   }
   return next;
 }
@@ -1416,6 +1421,7 @@ function applyCopyToken(
     }
     owner.zones.battlefield.push(token.id);
     queueEnterBattlefieldTriggersInPlace(next, token.id);
+    dispatchEventsInPlace(next, [{ kind: "creates_token", playerId: ownerId }]);
   }
   return next;
 }

@@ -1941,6 +1941,8 @@ function parseTriggers(value: unknown, label: string): CardTrigger[] {
       event !== "you_gain_life" &&
       event !== "opponent_loses_life" &&
       event !== "opponent_draws" &&
+      event !== "you_create_token" &&
+      event !== "you_sacrifice_token" &&
       event !== "cast_spell" &&
       event !== "deals_combat_damage_to_player" &&
       event !== "deals_damage_to_player"

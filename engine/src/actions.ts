@@ -716,7 +716,7 @@ function applyActivateAbility(
   if (ability.sacrificeSelf) {
     // Sacrificing is part of the cost: it happens on activation, and the
     // ability resolves immediately (fetch lands do not sit in priority).
-    next = moveCard(next, cardId, "graveyard");
+    next = applyEffects(next, [{ kind: "sacrifice", cardId }]);
     return resolveTopOfStack(next);
   }
   if (ability.discard) {

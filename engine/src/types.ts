@@ -861,7 +861,11 @@ export type TriggerEvent =
   /** Dealt any damage to a player (Curiosity). Subject is the dealer. */
   | "deals_damage_to_player"
   /** An opponent drew a card (Smothering Tithe). Subject is the drawing player. */
-  | "opponent_draws";
+  | "opponent_draws"
+  /** The controller created a token (Mirkwood Bats). */
+  | "you_create_token"
+  /** The controller sacrificed a token (Mirkwood Bats). */
+  | "you_sacrifice_token";
 
 export type CardTrigger = {
   event: TriggerEvent;
@@ -912,7 +916,11 @@ export type EngineEvent =
   | { kind: "combat_damage_to_player"; cardId: CardInstanceId; playerId: PlayerId }
   /** Any damage (combat or not) a permanent deals to a player. */
   | { kind: "deals_damage_to_player"; cardId: CardInstanceId; playerId: PlayerId }
-  | { kind: "draws"; playerId: PlayerId };
+  | { kind: "draws"; playerId: PlayerId }
+  /** A token was created under this player's control. One event per token. */
+  | { kind: "creates_token"; playerId: PlayerId }
+  /** A permanent was sacrificed (cost or effect). */
+  | { kind: "sacrifices"; cardId: CardInstanceId; controllerId: PlayerId; wasToken: boolean };
 
 /** One triggered ability waiting to be put on the stack. */
 export type TriggerCandidate = {

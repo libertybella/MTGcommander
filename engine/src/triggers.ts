@@ -256,6 +256,22 @@ function triggerMatchesEvent(
   if (trigger.event === "opponent_loses_life") {
     return false;
   }
+  if (event.kind === "creates_token") {
+    return trigger.event === "you_create_token" && watcher.controllerId === event.playerId;
+  }
+  if (trigger.event === "you_create_token") {
+    return false;
+  }
+  if (event.kind === "sacrifices") {
+    return (
+      trigger.event === "you_sacrifice_token" &&
+      event.wasToken &&
+      watcher.controllerId === event.controllerId
+    );
+  }
+  if (trigger.event === "you_sacrifice_token") {
+    return false;
+  }
   if (event.kind === "draws") {
     return trigger.event === "opponent_draws" && watcher.controllerId !== event.playerId;
   }
@@ -402,9 +418,10 @@ export function dispatchEventsInPlace(state: GameState, events: EngineEvent[]): 
             event.kind === "loses_life" ||
             event.kind === "combat_damage_to_player" ||
             event.kind === "deals_damage_to_player" ||
-            event.kind === "draws"
+            event.kind === "draws" ||
+            event.kind === "creates_token"
               ? event.playerId
-              : event.kind === "casts" || event.kind === "dies"
+              : event.kind === "casts" || event.kind === "dies" || event.kind === "sacrifices"
                 ? event.controllerId
                 : subjectCardId
                   ? state.cards[subjectCardId]?.controllerId
