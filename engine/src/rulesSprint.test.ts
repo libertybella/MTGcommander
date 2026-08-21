@@ -9081,3 +9081,105 @@ describe("wave 97: incubators and growth", () => {
   });
 });
 
+describe("wave 98: marauders, ignitions, obedience", () => {
+  it("compiles Accursed Marauder, Chandra's Ignition, and Blind Obedience fully", () => {
+    const marauder = compileOracleCard({
+      oracleId: "marauder",
+      name: "Accursed Marauder",
+      manaCost: "{1}{B}",
+      typeLine: "Creature — Zombie Warrior",
+      power: "2",
+      toughness: "1",
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText: "When this creature enters, each player sacrifices a nontoken creature of their choice.",
+    });
+    expect(marauder.notes).toEqual([]);
+    const edict = marauder.definition.triggers[0]?.effects[0];
+    expect(edict?.kind === "choose_card" && edict.sources[0]?.filter).toBe("nontoken_creature");
+
+    const ignition = compileOracleCard({
+      oracleId: "ignition",
+      name: "Chandra's Ignition",
+      manaCost: "{3}{R}{R}",
+      typeLine: "Sorcery",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "Target creature you control deals damage equal to its power to each other creature and each opponent.",
+    });
+    expect(ignition.notes).toEqual([]);
+    expect(ignition.definition.targetRequirements).toEqual([{ kind: "creature", control: "own" }]);
+
+    const obedience = compileOracleCard({
+      oracleId: "obedience",
+      name: "Blind Obedience",
+      manaCost: "{1}{W}",
+      typeLine: "Enchantment",
+      power: null,
+      toughness: null,
+      printedKeywords: ["Extort"],
+      imageUrl: "",
+      oracleText:
+        "Extort (Whenever you cast a spell, you may pay {W/B}. If you do, each opponent loses 1 life and you gain that much life.)\nArtifacts and creatures your opponents control enter tapped.",
+    });
+    expect(obedience.notes).toEqual([]);
+    expect(obedience.definition.opponentArtifactsEnterTapped).toBe(true);
+    expect(obedience.definition.triggers[0]?.event).toBe("cast_spell");
+  });
+
+  it("novas everything but the source and taps arriving opponent artifacts", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const dragonDef = createCardDefinition({ name: "Dragon", typeLine: "Creature — Dragon", power: 4, toughness: 4 });
+    const bearDef = createCardDefinition({ name: "Bear", typeLine: "Creature — Bear", power: 2, toughness: 2 });
+    game.definitions[dragonDef.id] = dragonDef;
+    game.definitions[bearDef.id] = bearDef;
+    const dragon = createCardInstance({ definitionId: dragonDef.id, ownerId: p1.id, zone: "battlefield" });
+    const myBear = createCardInstance({ definitionId: bearDef.id, ownerId: p1.id, zone: "battlefield" });
+    const theirBear = createCardInstance({ definitionId: bearDef.id, ownerId: p2.id, zone: "battlefield" });
+    game.cards[dragon.id] = dragon;
+    game.cards[myBear.id] = myBear;
+    game.cards[theirBear.id] = theirBear;
+    p1.zones.battlefield.push(dragon.id, myBear.id);
+    p2.zones.battlefield.push(theirBear.id);
+
+    const bound = bindCardEffects(
+      game,
+      [{ kind: "power_nova", cardId: { type: "chosen", index: 0 } }],
+      {
+        controllerId: p1.id,
+        sourceId: null,
+        targets: [{ type: "creature", cardId: dragon.id }],
+        targetRequirements: [{ kind: "creature", control: "own" }],
+      },
+    );
+    const nova = applyEffects(game, bound);
+    // Both bears die to 4 damage; the dragon is untouched; p2 takes 4.
+    expect(nova.cards[dragon.id]?.zone).toBe("battlefield");
+    expect(nova.cards[myBear.id]?.zone).toBe("graveyard");
+    expect(nova.cards[theirBear.id]?.zone).toBe("graveyard");
+    expect(nova.players[1]?.life).toBe(36);
+    expect(nova.players[0]?.life).toBe(40);
+
+    // Blind Obedience taps an opponent's arriving artifact.
+    const obedienceDef = createCardDefinition({
+      name: "Obedience",
+      typeLine: "Enchantment",
+      opponentArtifactsEnterTapped: true,
+    });
+    const rockDef = createCardDefinition({ name: "Rock", typeLine: "Artifact" });
+    game.definitions[obedienceDef.id] = obedienceDef;
+    game.definitions[rockDef.id] = rockDef;
+    const obedience = createCardInstance({ definitionId: obedienceDef.id, ownerId: p1.id, zone: "battlefield" });
+    game.cards[obedience.id] = obedience;
+    p1.zones.battlefield.push(obedience.id);
+    const rock = createCardInstance({ definitionId: rockDef.id, ownerId: p2.id, zone: "hand" });
+    game.cards[rock.id] = rock;
+    p2.zones.hand.push(rock.id);
+    const arrived = moveCard(game, rock.id, "battlefield");
+    expect(arrived.cards[rock.id]?.tapped).toBe(true);
+  });
+});
+

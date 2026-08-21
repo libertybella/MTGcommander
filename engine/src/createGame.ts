@@ -87,6 +87,7 @@ export function createCardDefinition(
         | "ascend"
         | "untapDuringEachUntap"
         | "opponentCreaturesEnterTapped"
+        | "opponentArtifactsEnterTapped"
         | "additionalCost"
         | "attackTax"
         | "dynamicPt"
@@ -312,6 +313,7 @@ export function createCardDefinition(
       ? { untapDuringEachUntap: input.untapDuringEachUntap }
       : {}),
     ...(input.opponentCreaturesEnterTapped ? { opponentCreaturesEnterTapped: true } : {}),
+    ...(input.opponentArtifactsEnterTapped ? { opponentArtifactsEnterTapped: true } : {}),
     ...(input.ascend ? { ascend: true } : {}),
     ...(input.additionalCost ? { additionalCost: { ...input.additionalCost } } : {}),
     ...(input.attackTax ? { attackTax: { ...input.attackTax } } : {}),

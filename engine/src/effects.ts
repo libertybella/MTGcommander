@@ -676,6 +676,17 @@ export function bindCardEffect(
       }
       return { kind: "double_team_pt_until_eot", playerId };
     }
+    case "power_nova": {
+      const chosen = chosenTargetAt(context, effect.cardId.index, state);
+      if (!chosen || chosen.type !== "creature") {
+        return null;
+      }
+      const amount = creaturePower(state, chosen.cardId);
+      if (amount <= 0) {
+        return null;
+      }
+      return { kind: "power_nova", sourceId: chosen.cardId, amount };
+    }
     case "drain_opponents": {
       const playerId = bindPlayerSelector(state, effect.playerId, context);
       if (!playerId) {
@@ -2249,6 +2260,43 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
           card.counters[effect.counter] =
             (card.counters[effect.counter] ?? 0) +
             counterBatchAmount(next, card.id, effect.counter, effect.amount);
+        }
+        break;
+      }
+      case "power_nova": {
+        // Chandra's Ignition: the source hits every OTHER creature and each
+        // opponent of its controller for its power (protection applies).
+        requirePositiveInteger(effect.amount, "damage");
+        next = cloneGameState(state);
+        const novaSource = next.cards[effect.sourceId];
+        const novaColors = sourceColorsOf(next, effect.sourceId);
+        const novaDeathtouch = hasKeyword(next, effect.sourceId, "deathtouch");
+        for (const card of Object.values(next.cards)) {
+          if (
+            card.id === effect.sourceId ||
+            card.zone !== "battlefield" ||
+            !isCreature(next, card.id)
+          ) {
+            continue;
+          }
+          const protection = protectionColorsOf(next, card.id);
+          if (protection.some((color) => novaColors.includes(color))) {
+            continue;
+          }
+          card.damageMarked += effect.amount;
+          if (novaDeathtouch) {
+            card.deathtouched = true;
+          }
+        }
+        for (const player of next.players) {
+          if (player.lost || player.id === novaSource?.controllerId) {
+            continue;
+          }
+          player.life -= effect.amount;
+          next.log.push({ kind: "life_change", playerId: player.id, delta: -effect.amount });
+          dispatchEventsInPlace(next, [
+            { kind: "deals_damage_to_player", cardId: effect.sourceId, playerId: player.id },
+          ]);
         }
         break;
       }

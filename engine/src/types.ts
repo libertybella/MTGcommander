@@ -178,6 +178,8 @@ export type CardDefinition = {
   untapDuringEachUntap?: "creatures" | "permanents";
   /** Authority of the Consuls: opponents' creatures enter tapped. */
   opponentCreaturesEnterTapped?: boolean;
+  /** Blind Obedience: opponents' artifacts enter tapped too. */
+  opponentArtifactsEnterTapped?: boolean;
   /** "You may cast spells as though they had flash" (Vedalken Orrery). */
   grantsFlash?: boolean;
   /** Howling Mine: each player draws an extra card in their draw step. */
@@ -459,7 +461,13 @@ export type SearchFilter = {
 
 export type SearchDestination = "hand" | "battlefield" | "graveyard" | "library_top";
 
-export type CardFilter = "any" | "creature" | "land" | "nonland" | "noncreature_nonland";
+export type CardFilter =
+  | "any"
+  | "creature"
+  | "nontoken_creature"
+  | "land"
+  | "nonland"
+  | "noncreature_nonland";
 
 export type ChooseCardSource = {
   playerId: PlayerSelector;
@@ -618,6 +626,7 @@ export type GameEffect =
   | { kind: "silence"; playerId: PlayerId }
   | { kind: "each_creature_damages_controller"; amount: number }
   | { kind: "double_team_pt_until_eot"; playerId: PlayerId }
+  | { kind: "power_nova"; sourceId: CardInstanceId; amount: number }
   | {
       kind: "search_library";
       playerId: PlayerId;
@@ -1033,6 +1042,9 @@ export type CardEffect =
   | { kind: "each_creature_damages_controller"; amount: number }
   /** Unnatural Growth: double each controlled creature's P/T until EOT. */
   | { kind: "double_team_pt_until_eot"; playerId: PlayerSelector }
+  /** Chandra's Ignition: the chosen creature hits every other creature and
+   * each opponent for its power. */
+  | { kind: "power_nova"; cardId: ChosenTargetRef }
   | {
       kind: "search_library";
       playerId: PlayerSelector;

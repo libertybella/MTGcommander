@@ -3,6 +3,7 @@ import type {
   ActivatedAbility,
   BoundChooseCardSource,
   CardEffect,
+  CardFilter,
   Color,
   ContinuousEffect,
   ContinuousEffectData,
@@ -484,6 +485,7 @@ export function parseGameState(json: string): GameState {
         ? { untapDuringEachUntap: def.untapDuringEachUntap }
         : {}),
       ...(def.opponentCreaturesEnterTapped === true ? { opponentCreaturesEnterTapped: true } : {}),
+      ...(def.opponentArtifactsEnterTapped === true ? { opponentArtifactsEnterTapped: true } : {}),
       ...(def.dynamicPt === undefined
         ? {}
         : {
@@ -1229,14 +1231,12 @@ function parseDestroyAllScope(value: unknown, label: string): DestroyAllScope {
   return scope;
 }
 
-function parseCardFilter(
-  value: unknown,
-  label: string,
-): "any" | "creature" | "land" | "nonland" | "noncreature_nonland" {
+function parseCardFilter(value: unknown, label: string): CardFilter {
   const filter = expectString(value, label);
   if (
     filter !== "any" &&
     filter !== "creature" &&
+    filter !== "nontoken_creature" &&
     filter !== "land" &&
     filter !== "nonland" &&
     filter !== "noncreature_nonland"

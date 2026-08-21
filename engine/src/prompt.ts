@@ -303,6 +303,9 @@ function cardMatchesFilter(
   if (filter === "creature") {
     return types.includes("creature");
   }
+  if (filter === "nontoken_creature") {
+    return types.includes("creature") && !card?.isToken;
+  }
   return !types.includes("land");
 }
 

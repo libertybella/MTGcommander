@@ -61,6 +61,7 @@ export type CompiledOracleText = {
   ascend?: boolean;
   untapDuringEachUntap?: "creatures" | "permanents";
   opponentCreaturesEnterTapped?: boolean;
+  opponentArtifactsEnterTapped?: boolean;
   extraDrawStepDraws?: boolean;
   affinityArtifacts?: boolean;
   affinityAllCreatures?: boolean;
@@ -1879,6 +1880,18 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     };
   }
 
+  // Chandra's Ignition.
+  if (
+    /^Target creature you control deals damage equal to its power to each other creature and each opponent$/i.test(
+      sentence,
+    )
+  ) {
+    return {
+      targetRequirements: [{ kind: "creature", control: "own" }],
+      effects: [{ kind: "power_nova", cardId: { type: "chosen", index: 0 } }],
+    };
+  }
+
   // Unnatural Growth.
   if (
     /^double the power and toughness of each creature you control until end of turn$/i.test(
@@ -2319,7 +2332,7 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
 
   // Edicts: sacrifice choices belong to the affected players.
   match = sentence.match(
-    /^Each (player|opponent) sacrifices (?:a|one) creature(?: of their choice)?$/i,
+    /^Each (player|opponent) sacrifices (?:a|one) (nontoken )?creature(?: of their choice)?$/i,
   );
   if (match?.[1]) {
     return {
@@ -2332,7 +2345,7 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
             {
               playerId: match[1].toLowerCase() === "player" ? "each_player" : "each_opponent",
               zone: "battlefield",
-              filter: "creature",
+              filter: match[2] ? "nontoken_creature" : "creature",
             },
           ],
           thenEffects: [{ kind: "sacrifice", cardId: "chosen_card" }],
@@ -4238,6 +4251,34 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
     // Authority of the Consuls.
     if (/^Creatures your opponents control enter (?:the battlefield )?tapped$/i.test(sentence)) {
       result.opponentCreaturesEnterTapped = true;
+      continue;
+    }
+
+    // Blind Obedience.
+    if (
+      /^Artifacts and creatures your opponents control enter (?:the battlefield )?tapped$/i.test(
+        sentence,
+      )
+    ) {
+      result.opponentCreaturesEnterTapped = true;
+      result.opponentArtifactsEnterTapped = true;
+      continue;
+    }
+
+    // Extort (CR 702.100): a cast trigger with an optional {W/B} drain.
+    if (/^Extort$/i.test(sentence)) {
+      result.triggers.push({
+        event: "cast_spell",
+        watch: "controlled",
+        effects: [
+          {
+            kind: "may_pay",
+            playerId: "controller",
+            cost: "{W/B}",
+            effects: [{ kind: "drain_opponents", playerId: "controller", amount: 1 }],
+          },
+        ],
+      });
       continue;
     }
 

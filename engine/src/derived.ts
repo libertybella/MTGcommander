@@ -329,15 +329,20 @@ export function wouldEnterTapped(state: GameState, cardId: CardInstanceId): bool
   if (!card) {
     return false;
   }
-  // Authority of the Consuls: an opponent's static taps arriving creatures.
+  // Authority of the Consuls / Blind Obedience: an opponent's static taps
+  // arriving creatures (and artifacts, when the flag says so).
+  const arrivingTypes = characteristicsOf(state, cardId).types;
   if (
-    characteristicsOf(state, cardId).types.includes("creature") &&
-    Object.values(state.cards).some(
-      (other) =>
-        other.zone === "battlefield" &&
-        other.controllerId !== card.controllerId &&
-        state.definitions[other.definitionId]?.opponentCreaturesEnterTapped === true,
-    )
+    Object.values(state.cards).some((other) => {
+      if (other.zone !== "battlefield" || other.controllerId === card.controllerId) {
+        return false;
+      }
+      const flags = state.definitions[other.definitionId];
+      return (
+        (flags?.opponentCreaturesEnterTapped === true && arrivingTypes.includes("creature")) ||
+        (flags?.opponentArtifactsEnterTapped === true && arrivingTypes.includes("artifact"))
+      );
+    })
   ) {
     return true;
   }

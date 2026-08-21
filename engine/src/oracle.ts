@@ -216,6 +216,7 @@ function compileOneFace(card: OracleCard, definitionId: string): OracleCompileRe
       ? { untapDuringEachUntap: compiled.untapDuringEachUntap }
       : {}),
     ...(compiled.opponentCreaturesEnterTapped ? { opponentCreaturesEnterTapped: true } : {}),
+    ...(compiled.opponentArtifactsEnterTapped ? { opponentArtifactsEnterTapped: true } : {}),
     ...(compiled.extraDrawStepDraws ? { extraDrawStepDraws: true } : {}),
     ...(compiled.affinityArtifacts ? { affinityArtifacts: true } : {}),
     ...(compiled.affinityAllCreatures ? { affinityAllCreatures: true } : {}),
