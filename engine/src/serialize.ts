@@ -1593,6 +1593,11 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
         ...(value.keywords === undefined
           ? {}
           : { keywords: parseKeywords(value.keywords, `${label}.keywords`) }),
+        ...(value.perControlled === "land" ||
+        value.perControlled === "creature" ||
+        value.perControlled === "artifact"
+          ? { perControlled: value.perControlled }
+          : {}),
       };
     case "move_card": {
       const toZone = expectString(value.toZone, `${label}.toZone`);
@@ -2919,6 +2924,9 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
       ...(value.keywords === undefined
         ? {}
         : { keywords: parseKeywords(value.keywords, `${label}.keywords`) }),
+      ...(value.count === undefined
+        ? {}
+        : { count: expectNumber(value.count, `${label}.count`) }),
     };
   }
   if (kind === "deal_damage") {

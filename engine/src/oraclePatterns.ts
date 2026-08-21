@@ -1533,6 +1533,29 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     }
   }
 
+  // Brass's Bounty: one predefined artifact token per controlled type.
+  const perControlledToken = sentence.match(
+    /^For each (land|creature|artifact) you control, create a (Treasure|Clue|Food) token$/i,
+  );
+  if (perControlledToken?.[1] && perControlledToken[2]) {
+    const name =
+      perControlledToken[2][0]!.toUpperCase() + perControlledToken[2].slice(1).toLowerCase();
+    return {
+      targetRequirements: [],
+      effects: [
+        {
+          kind: "create_token",
+          ownerId: "controller",
+          name,
+          typeLine: `Artifact — ${name} Token`,
+          power: null,
+          toughness: null,
+          perControlled: perControlledToken[1].toLowerCase() as "land" | "creature" | "artifact",
+        },
+      ],
+    };
+  }
+
   match = sentence.match(
     /^Create (a|an|one|two|three|four|five|\d+) (Treasure|Clue|Food) tokens?$/i,
   );
@@ -3844,7 +3867,7 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
     );
     if (tithePair?.[1] && tithePair[2]) {
       const head = parseTriggerHead(tithePair[1]);
-      const follow = sentences[index + 1]?.match(/^If they don't, (.+)$/i);
+      const follow = sentences[index + 1]?.match(/^If (?:they don't|the player doesn't), (.+)$/i);
       const inner = follow?.[1]
         ? compileSimpleClause(follow[1].trim().replace(/^you /i, ""))
         : null;

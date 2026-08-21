@@ -486,6 +486,8 @@ export type GameEffect =
       power?: number | null;
       toughness?: number | null;
       keywords?: Keyword[];
+      /** Bound from perControlled; total tokens before doubling. */
+      count?: number;
     }
   | { kind: "mill"; playerId: PlayerId; count: number }
   | { kind: "discard"; playerId: PlayerId; count: number }
@@ -779,6 +781,8 @@ export type CardEffect =
       toughness?: number | null;
       /** "…creature token with flying" (Utvara Hellkite). */
       keywords?: Keyword[];
+      /** Brass's Bounty: one token per controlled permanent of this type. */
+      perControlled?: "land" | "creature" | "artifact";
     }
   | { kind: "mill"; playerId: PlayerSelector; count: number }
   | { kind: "discard"; playerId: PlayerSelector; count: number }

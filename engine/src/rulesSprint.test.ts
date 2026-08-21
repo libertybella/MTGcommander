@@ -6617,3 +6617,59 @@ describe("wave 73: once-per-batch combat triggers", () => {
     expect(game.stack).toHaveLength(1);
   });
 });
+
+describe("wave 74: smothering tithe and per-controlled tokens", () => {
+  const base = { power: null, toughness: null, printedKeywords: [], imageUrl: "" };
+
+  it("compiles Smothering Tithe and Brass's Bounty fully", () => {
+    const tithe = compileOracleCard({
+      ...base,
+      oracleId: "tithe",
+      name: "Smothering Tithe",
+      manaCost: "{3}{W}",
+      typeLine: "Enchantment",
+      oracleText:
+        "Whenever an opponent draws a card, that player may pay {2}. If the player doesn't, you create a Treasure token. (It's an artifact with \"{T}, Sacrifice this token: Add one mana of any color.\")",
+    });
+    expect(tithe.notes).toEqual([]);
+    const effect = tithe.definition.triggers[0]?.effects[0];
+    expect(effect?.kind).toBe("unless_pays");
+    expect(effect?.kind === "unless_pays" && effect.effects[0]?.kind).toBe("create_token");
+
+    const bounty = compileOracleCard({
+      ...base,
+      oracleId: "bounty",
+      name: "Brass's Bounty",
+      manaCost: "{6}{R}",
+      typeLine: "Sorcery",
+      oracleText:
+        "For each land you control, create a Treasure token. (It's an artifact with \"{T}, Sacrifice this token: Add one mana of any color.\")",
+    });
+    expect(bounty.notes).toEqual([]);
+    const token = bounty.definition.effects[0];
+    expect(token?.kind === "create_token" && token.perControlled).toBe("land");
+  });
+
+  it("creates one token per controlled land", () => {
+    const { game, p1 } = twoPlayers();
+    addLandsInPlay(game, p1, 4);
+    const bound = bindCardEffects(
+      game,
+      [
+        {
+          kind: "create_token",
+          ownerId: "controller",
+          name: "Treasure",
+          typeLine: "Artifact — Treasure Token",
+          power: null,
+          toughness: null,
+          perControlled: "land",
+        },
+      ],
+      { controllerId: p1.id, sourceId: null },
+    );
+    expect(bound[0]?.kind === "create_token" && bound[0].count).toBe(4);
+    const next = applyEffects(game, bound);
+    expect(Object.values(next.cards).filter((card) => card.isToken)).toHaveLength(4);
+  });
+});

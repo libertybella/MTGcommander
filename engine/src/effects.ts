@@ -376,9 +376,23 @@ export function bindCardEffect(
       if (!ownerId) {
         return null;
       }
+      const { perControlled, ...tokenRest } = effect;
+      let count: number | undefined;
+      if (perControlled) {
+        count = Object.values(state.cards).filter(
+          (card) =>
+            card.zone === "battlefield" &&
+            card.controllerId === context.controllerId &&
+            characteristicsOf(state, card.id).types.includes(perControlled),
+        ).length;
+        if (count === 0) {
+          return null;
+        }
+      }
       return {
-        ...effect,
+        ...tokenRest,
         ownerId,
+        ...(count !== undefined ? { count } : {}),
       };
     }
     case "move_card": {
@@ -1254,7 +1268,7 @@ function applyCreateToken(
   }
   // Anointed Procession / Doubling Season (CR 614.1c): each doubler the
   // token's controller controls doubles the batch.
-  const copies = tokenDoublingFactor(next, effect.ownerId);
+  const copies = (effect.count ?? 1) * tokenDoublingFactor(next, effect.ownerId);
   for (let index = 0; index < copies; index += 1) {
     const token = createCardInstance({
       definitionId: definition.id,
