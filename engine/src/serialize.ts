@@ -2065,6 +2065,40 @@ function parseTriggers(value: unknown, label: string): CardTrigger[] {
       ...(watch === undefined ? {} : { watch }),
       ...(entry.excludeSelf === true ? { excludeSelf: true } : {}),
       ...(entry.oncePerTurn === true ? { oncePerTurn: true } : {}),
+      ...(entry.condition === undefined
+        ? {}
+        : {
+            condition: (() => {
+              if (!isRecord(entry.condition)) {
+                throw new Error(`Invalid ${label}[${index}].condition`);
+              }
+              const conditionKind = expectString(
+                entry.condition.kind,
+                `${label}[${index}].condition.kind`,
+              );
+              if (conditionKind === "greatest_artifact_mana_value") {
+                return { kind: conditionKind };
+              }
+              if (conditionKind === "controls_count") {
+                const what = expectString(
+                  entry.condition.what,
+                  `${label}[${index}].condition.what`,
+                );
+                if (what !== "land" && what !== "creature" && what !== "artifact") {
+                  throw new Error(`Invalid ${label}[${index}].condition.what`);
+                }
+                return {
+                  kind: conditionKind,
+                  what,
+                  atLeast: expectNumber(
+                    entry.condition.atLeast,
+                    `${label}[${index}].condition.atLeast`,
+                  ),
+                };
+              }
+              throw new Error(`Invalid ${label}[${index}].condition.kind`);
+            })(),
+          }),
       ...(entry.subjectPlayerOpponent === true ? { subjectPlayerOpponent: true } : {}),
       ...(entry.attacksAlone === true ? { attacksAlone: true } : {}),
       ...(subjectFilter &&

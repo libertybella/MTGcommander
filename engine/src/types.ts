@@ -917,8 +917,19 @@ export type TriggerEvent =
   /** An opponent searched their library (Archivist of Oghma). */
   | "opponent_searches";
 
+/** An intervening-if condition, checked when the trigger would be queued.
+ * Approximation: CR 603.4 also re-checks on resolution; this table checks
+ * once at trigger time. */
+export type TriggerCondition =
+  /** Padeem: the controller has an artifact tied for the greatest mana value. */
+  | { kind: "greatest_artifact_mana_value" }
+  /** "if you control four or more lands". */
+  | { kind: "controls_count"; what: "land" | "creature" | "artifact"; atLeast: number };
+
 export type CardTrigger = {
   event: TriggerEvent;
+  /** Intervening "if" clause; the trigger is skipped while it fails. */
+  condition?: TriggerCondition;
   /**
    * Which objects' events fire this trigger (enter_battlefield, dies,
    * attacks). Default "self". "controlled" watches the trigger source's

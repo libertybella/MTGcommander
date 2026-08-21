@@ -37,6 +37,48 @@ function queueLookActionInPlace(
   state.prompts.push({ kind, playerId, count: looked });
 }
 
+/** Intervening "if" (CR 603.4), checked when the trigger would be queued. */
+function triggerConditionHolds(
+  state: GameState,
+  controllerId: PlayerId,
+  condition: CardTrigger["condition"],
+): boolean {
+  if (!condition) {
+    return true;
+  }
+  if (condition.kind === "controls_count") {
+    let count = 0;
+    for (const card of Object.values(state.cards)) {
+      if (
+        card.zone === "battlefield" &&
+        card.controllerId === controllerId &&
+        characteristicsOf(state, card.id).types.includes(condition.what)
+      ) {
+        count += 1;
+      }
+    }
+    return count >= condition.atLeast;
+  }
+  // greatest_artifact_mana_value (Padeem): the controller has an artifact
+  // tied for the battlefield's greatest artifact mana value.
+  let greatest = -1;
+  let controllerGreatest = -1;
+  for (const card of Object.values(state.cards)) {
+    if (card.zone !== "battlefield") {
+      continue;
+    }
+    const traits = characteristicsOf(state, card.id);
+    if (!traits.types.includes("artifact")) {
+      continue;
+    }
+    greatest = Math.max(greatest, traits.manaValue);
+    if (card.controllerId === controllerId) {
+      controllerGreatest = Math.max(controllerGreatest, traits.manaValue);
+    }
+  }
+  return controllerGreatest >= 0 && controllerGreatest >= greatest;
+}
+
 export function queueDefinitionTriggerInPlace(
   state: GameState,
   cardId: CardInstanceId,
@@ -46,6 +88,9 @@ export function queueDefinitionTriggerInPlace(
   const card = state.cards[cardId];
   const trigger = card ? state.definitions[card.definitionId]?.triggers[index] : undefined;
   if (!card || !trigger) {
+    return false;
+  }
+  if (!triggerConditionHolds(state, card.controllerId, trigger.condition)) {
     return false;
   }
   if (trigger.oncePerTurn) {
@@ -107,6 +152,9 @@ function candidateIsQueueable(state: GameState, candidate: TriggerCandidate): bo
     trigger.oncePerTurn &&
     state.oncePerTurnFired.includes(`${candidate.cardId}:${candidate.triggerIndex}`)
   ) {
+    return false;
+  }
+  if (!triggerConditionHolds(state, card.controllerId, trigger.condition)) {
     return false;
   }
   // A permanent whose abilities were removed (Humility) has no triggers.

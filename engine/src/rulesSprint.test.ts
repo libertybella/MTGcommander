@@ -6294,3 +6294,72 @@ describe("wave 68: color and X-capped tutors", () => {
     expect(searchMatches(next, ids[2]!, prompt.filter)).toBe(false);
   });
 });
+
+describe("wave 69: intervening-if trigger conditions", () => {
+  it("compiles Padeem fully", () => {
+    const padeem = compileOracleCard({
+      oracleId: "padeem",
+      name: "Padeem, Consul of Innovation",
+      manaCost: "{3}{U}",
+      typeLine: "Legendary Creature — Vedalken Artificer",
+      power: "1",
+      toughness: "4",
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "Artifacts you control have hexproof. (They can't be the targets of spells or abilities your opponents control.)\nAt the beginning of your upkeep, if you control the artifact with the greatest mana value or tied for the greatest mana value, draw a card.",
+    });
+    expect(padeem.notes).toEqual([]);
+    const trigger = padeem.definition.triggers[0];
+    expect(trigger?.condition).toEqual({ kind: "greatest_artifact_mana_value" });
+    expect(trigger?.effects).toEqual([{ kind: "draw", playerId: "controller", count: 1 }]);
+  });
+
+  it("skips the trigger while the condition fails", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 10);
+    const padeemDef = createCardDefinition({
+      name: "Padeem Lite",
+      manaCost: "{3}{U}",
+      typeLine: "Creature — Artificer",
+      power: 1,
+      toughness: 4,
+      triggers: [
+        {
+          event: "upkeep",
+          condition: { kind: "greatest_artifact_mana_value" },
+          effects: [{ kind: "draw", playerId: "controller", count: 1 }],
+        },
+      ],
+    });
+    const trinketDef = createCardDefinition({ name: "Trinket", manaCost: "{1}", typeLine: "Artifact" });
+    const monumentDef = createCardDefinition({ name: "Monument", manaCost: "{5}", typeLine: "Artifact" });
+    game.definitions[padeemDef.id] = padeemDef;
+    game.definitions[trinketDef.id] = trinketDef;
+    game.definitions[monumentDef.id] = monumentDef;
+    const padeem = createCardInstance({ definitionId: padeemDef.id, ownerId: p1.id, zone: "battlefield" });
+    const trinket = createCardInstance({ definitionId: trinketDef.id, ownerId: p1.id, zone: "battlefield" });
+    const monument = createCardInstance({ definitionId: monumentDef.id, ownerId: p2.id, zone: "battlefield" });
+    game.cards[padeem.id] = padeem;
+    game.cards[trinket.id] = trinket;
+    game.cards[monument.id] = monument;
+    p1.zones.battlefield.push(padeem.id, trinket.id);
+    p2.zones.battlefield.push(monument.id);
+    game.turn.activePlayerId = p1.id;
+    game.turn.phase = "beginning";
+    game.turn.step = "untap";
+
+    // Opponent holds the biggest artifact: no trigger at upkeep.
+    let next = advanceSteps(game, 1);
+    expect(next.stack).toHaveLength(0);
+
+    // Give p1 the biggest artifact and try the next upkeep.
+    const relic = createCardInstance({ definitionId: monumentDef.id, ownerId: p1.id, zone: "battlefield" });
+    next.cards[relic.id] = relic;
+    next.players.find((p) => p.id === p1.id)!.zones.battlefield.push(relic.id);
+    next.turn.phase = "beginning";
+    next.turn.step = "untap";
+    next = advanceSteps(next, 1);
+    expect(next.stack).toHaveLength(1);
+  });
+});

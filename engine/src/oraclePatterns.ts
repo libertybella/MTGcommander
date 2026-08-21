@@ -23,6 +23,7 @@ import type {
   StaticAbility,
   TargetKind,
   TargetRequirement,
+  TriggerCondition,
 } from "./types";
 import type { OracleCard } from "./oracle";
 
@@ -3796,7 +3797,52 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
     if (generalTrigger?.[1] && generalTrigger[2]) {
       const head = parseTriggerHead(generalTrigger[1]);
       if (head) {
-        const inner = compileSimpleClause(generalTrigger[2].trim());
+        // Intervening "if" (CR 603.4): peel the condition off the body.
+        let rest = generalTrigger[2].trim();
+        let condition: TriggerCondition | undefined;
+        const interveningIf = rest.match(/^if (.+?), (?:then )?(.+)$/i);
+        if (interveningIf?.[1] && interveningIf[2]) {
+          const phrase = interveningIf[1].trim();
+          if (
+            /^you control the artifact with the greatest mana value or tied for the greatest mana value$/i.test(
+              phrase,
+            )
+          ) {
+            condition = { kind: "greatest_artifact_mana_value" };
+            rest = interveningIf[2].trim();
+          } else {
+            const controls = phrase.match(
+              /^you control (two|three|four|five|six|\d+) or more (lands|creatures|artifacts)$/i,
+            );
+            const atLeast = controls?.[1] ? parseCount(controls[1]) : null;
+            if (controls?.[2] && atLeast) {
+              condition = {
+                kind: "controls_count",
+                what: controls[2].toLowerCase().replace(/s$/, "") as
+                  | "land"
+                  | "creature"
+                  | "artifact",
+                atLeast,
+              };
+              rest = interveningIf[2].trim();
+            }
+          }
+        }
+        const inner = compileSimpleClause(rest);
+        if (inner && condition) {
+          if (!inner.leftover) {
+            const { extraEvents: _conditionSkip, ...headRest } = head;
+            result.triggers.push({
+              ...headRest,
+              condition,
+              effects: inner.effects,
+              targetRequirements: inner.targetRequirements,
+            });
+            continue;
+          }
+          result.leftover.push(sentence);
+          continue;
+        }
         if (inner) {
           const { extraEvents, ...headRest } = head;
           result.triggers.push({
