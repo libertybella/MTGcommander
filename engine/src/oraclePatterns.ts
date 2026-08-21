@@ -11,6 +11,7 @@ import type {
   CostReduction,
   DestroyAllScope,
   DynamicCount,
+  EnterAsCopyScope,
   EnterTappedUnless,
   Keyword,
   LoyaltyAbility,
@@ -73,6 +74,7 @@ export type CompiledOracleText = {
   costReductions?: CostReduction[];
   chooseCreatureTypeOnEnter?: boolean;
   entersWithXCounters?: boolean;
+  enterAsCopy?: { scope: EnterAsCopyScope; extraCounters?: number; maxManaValueBySpent?: boolean };
   playLandsFromGraveyard?: boolean;
   additionalCost?: AdditionalCastCost;
   dynamicPt?: { count: DynamicCount };
@@ -1444,9 +1446,9 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
   }
 
   const tokenCopy = sentence.match(
-    /^create a token that's a copy of (another )?target (artifact or creature|creature)( you control)?$/i,
+    /^create a token that's a copy of (another )?target (artifact or creature|creature)( you control)?(?:, except (.+))?$/i,
   );
-  if (tokenCopy?.[2]) {
+  if (tokenCopy?.[2] && (tokenCopy[4] === undefined || parseCopyExceptRiders(tokenCopy[4]))) {
     return {
       targetRequirements: [
         {
@@ -4362,6 +4364,60 @@ function extractModalModes(card: OracleCard): ModalExtraction | null {
   return { remainingText, modes, raw, ...(choice ? { choice } : {}) };
 }
 
+const CLONE_SCOPE_BY_PHRASE: Record<string, EnterAsCopyScope> = {
+  "any creature on the battlefield": "any_creature",
+  "a creature you control": "your_creature",
+  "another creature you control": "another_your_creature",
+  "a creature or planeswalker you control": "your_creature_or_planeswalker",
+  "any nonland permanent on the battlefield": "any_nonland_permanent",
+  "any artifact or creature on the battlefield": "any_artifact_or_creature",
+};
+
+/**
+ * Clone "except" riders that are safe to consume: either carried into
+ * enterAsCopy fields or documented cosmetic no-ops (added types, granted
+ * keywords and quoted abilities, name changes, myriad, Sakashima's kept
+ * abilities). Returns null when any rider is unrecognized, so exotic riders
+ * keep the sentence uncompiled instead of silently vanishing.
+ */
+function parseCopyExceptRiders(tail: string): { extraCounters?: number } | null {
+  const result: { extraCounters?: number } = {};
+  // Quoted ability grants may hold commas and periods — strip them whole
+  // before splitting the rest into rider atoms.
+  let rest = tail.replace(/(?:and )?(?:it|the token) has "[^"]*"/gi, "").trim();
+  rest = rest.replace(/^[,;]+|[,;]+$/g, "").trim();
+  if (rest === "") {
+    return result;
+  }
+  const atoms = rest
+    .split(/, and |, | and /i)
+    .map((atom) => atom.trim())
+    .filter(Boolean);
+  for (const atom of atoms) {
+    if (/^it enters with an additional \+1\/\+1 counter on it if it's a creature$/i.test(atom)) {
+      result.extraCounters = 1;
+      continue;
+    }
+    if (/^it enters with an additional loyalty counter on it if it's a planeswalker$/i.test(atom)) {
+      continue;
+    }
+    if (/^(?:it|the token) (?:isn't|is not) legendary$/i.test(atom)) {
+      continue;
+    }
+    if (/^(?:it's|it is|is) (?:an? )?[\w' -]+ in addition to its other types$/i.test(atom)) {
+      continue;
+    }
+    if (/^(?:it |the token )?has (?:flying|myriad)$/i.test(atom)) {
+      continue;
+    }
+    if (/^it has [\w' -]+'s other abilities$/i.test(atom)) {
+      continue;
+    }
+    return null;
+  }
+  return result;
+}
+
 export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): CompiledOracleText {
   const result: CompiledOracleText = {
     effects: [],
@@ -4882,6 +4938,30 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
 
     if (/^~ enters with X \+1\/\+1 counters on it$/i.test(sentence)) {
       result.entersWithXCounters = true;
+      continue;
+    }
+
+    // Clone family. The leading name is "~" for most cards but stays a short
+    // legend name when oracle text uses it (Sakashima).
+    const cloneEnter = sentence.match(
+      /^You may have (?:~|[\w' -]+?) enter(?: the battlefield)? as a copy of (any creature on the battlefield|a creature you control|another creature you control|a creature or planeswalker you control|any nonland permanent on the battlefield|any artifact or creature on the battlefield)( with mana value less than or equal to the amount of mana spent to cast ~)?(?:, except (.+))?$/i,
+    );
+    if (cloneEnter?.[1]) {
+      const riders = cloneEnter[3] === undefined ? {} : parseCopyExceptRiders(cloneEnter[3]);
+      const scope = CLONE_SCOPE_BY_PHRASE[cloneEnter[1].toLowerCase()];
+      if (riders && scope) {
+        result.enterAsCopy = {
+          scope,
+          ...(riders.extraCounters ? { extraCounters: riders.extraCounters } : {}),
+          ...(cloneEnter[2] ? { maxManaValueBySpent: true } : {}),
+        };
+        continue;
+      }
+    }
+
+    if (/^The "legend rule" doesn't apply to permanents you control$/i.test(sentence)) {
+      // The engine never applies CR 704.5j, so Sakashima's exemption already
+      // matches the table's behavior — an accurate no-op, not an approximation.
       continue;
     }
 

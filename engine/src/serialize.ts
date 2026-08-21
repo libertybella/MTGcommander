@@ -423,6 +423,40 @@ export function parseGameState(json: string): GameState {
           }),
       ...(def.chooseCreatureTypeOnEnter === true ? { chooseCreatureTypeOnEnter: true } : {}),
       ...(def.entersWithXCounters === true ? { entersWithXCounters: true } : {}),
+      ...(def.enterAsCopy === undefined
+        ? {}
+        : {
+            enterAsCopy: (() => {
+              if (!isRecord(def.enterAsCopy)) {
+                throw new Error(`Invalid definition.${id}.enterAsCopy`);
+              }
+              const scope = def.enterAsCopy.scope;
+              if (
+                scope !== "any_creature" &&
+                scope !== "your_creature" &&
+                scope !== "another_your_creature" &&
+                scope !== "your_creature_or_planeswalker" &&
+                scope !== "any_nonland_permanent" &&
+                scope !== "any_artifact_or_creature"
+              ) {
+                throw new Error(`Invalid definition.${id}.enterAsCopy.scope`);
+              }
+              return {
+                scope,
+                ...(def.enterAsCopy.extraCounters === undefined
+                  ? {}
+                  : {
+                      extraCounters: expectNumber(
+                        def.enterAsCopy.extraCounters,
+                        `definition.${id}.enterAsCopy.extraCounters`,
+                      ),
+                    }),
+                ...(def.enterAsCopy.maxManaValueBySpent === true
+                  ? { maxManaValueBySpent: true }
+                  : {}),
+              };
+            })(),
+          }),
       ...(def.additionalCost === undefined
         ? {}
         : {
@@ -1064,6 +1098,31 @@ function parsePrompts(value: unknown, playerIds: Set<string>): PendingPrompt[] {
                 `prompts[${index}].grantProtectionTo`,
               ),
             }),
+      };
+    }
+    if (kind === "enter_as_copy") {
+      const scope = entry.scope;
+      if (
+        scope !== "any_creature" &&
+        scope !== "your_creature" &&
+        scope !== "another_your_creature" &&
+        scope !== "your_creature_or_planeswalker" &&
+        scope !== "any_nonland_permanent" &&
+        scope !== "any_artifact_or_creature"
+      ) {
+        throw new Error(`Invalid prompts[${index}].scope`);
+      }
+      return {
+        kind,
+        playerId,
+        sourceId: expectString(entry.sourceId, `prompts[${index}].sourceId`),
+        scope,
+        ...(entry.extraCounters === undefined
+          ? {}
+          : { extraCounters: expectNumber(entry.extraCounters, `prompts[${index}].extraCounters`) }),
+        ...(entry.maxManaValue === undefined
+          ? {}
+          : { maxManaValue: expectNumber(entry.maxManaValue, `prompts[${index}].maxManaValue`) }),
       };
     }
     if (kind === "order_triggers") {
@@ -3999,6 +4058,13 @@ export function parseGameAction(json: string): GameAction {
       kind,
       playerId,
       cardId: expectString(raw.cardId, "action.cardId"),
+    };
+  }
+  if (kind === "resolve_enter_copy") {
+    return {
+      kind,
+      playerId,
+      cardId: raw.cardId === null ? null : expectString(raw.cardId, "action.cardId"),
     };
   }
   if (kind === "turn_face_up") {

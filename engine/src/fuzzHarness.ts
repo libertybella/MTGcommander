@@ -10,7 +10,7 @@ import { isMulliganOpen } from "./mulligan";
 import { isOpeningRoll, openingRollPending } from "./openingRoll";
 import { isLiving, livingPlayerCount } from "./players";
 import { POOL_ID } from "./pool";
-import { currentPrompt, legalIdsForChooseSources, legalSearchIds, lookedAtCardIds } from "./prompt";
+import { currentPrompt, legalEnterCopyIds, legalIdsForChooseSources, legalSearchIds, lookedAtCardIds } from "./prompt";
 import { parseGameState, serializeGameState } from "./serialize";
 import { startCatalogGame } from "./setup";
 import { isGameOver } from "./status";
@@ -183,6 +183,13 @@ function nextAction(state: GameState, rng: () => number): GameAction | null {
           return null;
         }
         return { kind: "resolve_choose_card", playerId, cardId: pick(rng, legal) };
+      }
+      case "enter_as_copy": {
+        const legal = legalEnterCopyIds(state, prompt);
+        if (legal.length === 0 || rng() < 0.2) {
+          return { kind: "resolve_enter_copy", playerId, cardId: null };
+        }
+        return { kind: "resolve_enter_copy", playerId, cardId: pick(rng, legal) };
       }
       case "pay_or_counter":
       case "pay_or_effect": {

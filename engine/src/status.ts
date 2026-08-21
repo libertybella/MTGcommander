@@ -33,6 +33,16 @@ function destroyZeroToughnessInPlace(state: GameState, collectDies: EngineEvent[
     if (creatureToughness(state, card.id) > 0) {
       continue;
     }
+    // A 0/0 clone with its enter-as-copy choice still pending is mid-entry:
+    // the real card would enter as the copy and never exist at 0 toughness,
+    // so the sweep waits for the prompt to resolve.
+    if (
+      state.prompts.some(
+        (prompt) => prompt.kind === "enter_as_copy" && prompt.sourceId === card.id,
+      )
+    ) {
+      continue;
+    }
     moveCardInPlace(state, card.id, "graveyard", { collectDies });
     changed = true;
   }

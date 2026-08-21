@@ -205,6 +205,21 @@ export type CardDefinition = {
   chooseCreatureTypeOnEnter?: boolean;
   /** "~ enters with X +1/+1 counters on it" (hydras); X from the announced cost. */
   entersWithXCounters?: boolean;
+  /**
+   * Clone family: "You may have ~ enter as a copy of …". Documented
+   * approximation: the choice is prompted just after entry (not applied as a
+   * CR 614.13 replacement), and cosmetic "except" riders (added types,
+   * granted keywords, name changes) are dropped. The copied definition's
+   * enter-the-battlefield triggers fire when the copy is chosen.
+   */
+  enterAsCopy?: {
+    scope: EnterAsCopyScope;
+    /** Spark Double: the copy enters with this many extra +1/+1 counters. */
+    extraCounters?: number;
+    /** Mockingbird: only copy creatures with mana value ≤ the mana spent to
+     * cast this (bound to the announced X + printed pips at resolution). */
+    maxManaValueBySpent?: boolean;
+  };
   /** "As an additional cost to cast this spell, …" (Deadly Dispute). */
   additionalCost?: AdditionalCastCost;
   /**
@@ -492,6 +507,15 @@ export type CardFilter =
   | "land"
   | "nonland"
   | "noncreature_nonland";
+
+/** What a Clone-style permanent may enter as a copy of. */
+export type EnterAsCopyScope =
+  | "any_creature"
+  | "your_creature"
+  | "another_your_creature"
+  | "your_creature_or_planeswalker"
+  | "any_nonland_permanent"
+  | "any_artifact_or_creature";
 
 export type ChooseCardSource = {
   playerId: PlayerSelector;
@@ -1415,6 +1439,17 @@ export type PendingPrompt =
       grantProtectionTo?: CardInstanceId;
     }
   | {
+      /** Clone family: pick a permanent for the just-entered card to copy,
+       * or decline and keep it as itself. */
+      kind: "enter_as_copy";
+      playerId: PlayerId;
+      sourceId: CardInstanceId;
+      scope: EnterAsCopyScope;
+      extraCounters?: number;
+      /** Mockingbird: only cards with mana value at most this are legal. */
+      maxManaValue?: number;
+    }
+  | {
       /**
        * Rhystic Study: pay `cost` or `thenEffects` happen. With `whenPaid`,
        * the polarity flips: paying causes the effects ("If you do, …").
@@ -1810,6 +1845,7 @@ export type GameAction =
   | { kind: "resolve_surveil"; playerId: PlayerId; graveyardIds: CardInstanceId[] }
   | { kind: "resolve_discard"; playerId: PlayerId; cardIds: CardInstanceId[] }
   | { kind: "resolve_choose_card"; playerId: PlayerId; cardId: CardInstanceId }
+  | { kind: "resolve_enter_copy"; playerId: PlayerId; cardId: CardInstanceId | null }
   | {
       kind: "resolve_look_assign";
       playerId: PlayerId;

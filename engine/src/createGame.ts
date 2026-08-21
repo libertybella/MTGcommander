@@ -84,6 +84,7 @@ export function createCardDefinition(
         | "chooseColorOnEnter"
         | "enchantedTappedBonus"
         | "entersWithXCounters"
+        | "enterAsCopy"
         | "playLandsFromGraveyard"
         | "leyline"
         | "castFromGraveyard"
@@ -322,6 +323,7 @@ export function createCardDefinition(
       ? { enchantedTappedBonus: { ...input.enchantedTappedBonus } }
       : {}),
     ...(input.entersWithXCounters ? { entersWithXCounters: true } : {}),
+    ...(input.enterAsCopy ? { enterAsCopy: { ...input.enterAsCopy } } : {}),
     ...(input.playLandsFromGraveyard ? { playLandsFromGraveyard: true } : {}),
     ...(input.leyline ? { leyline: true } : {}),
     ...(input.castFromGraveyard

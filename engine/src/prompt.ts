@@ -2,7 +2,7 @@ import { createId } from "./ids";
 import { cloneGameState } from "./clone";
 // Deferred call only (decline path) — the effects/prompt import cycle is benign.
 import { cardMatchesSubtype } from "./characteristicsEngine";
-import { isLand as cardIsLand } from "./cardTypes";
+import { characteristicsOf, isCreature, isLand as cardIsLand, isPlaneswalker } from "./cardTypes";
 import { applyEffects, grantProtectionUntilEot } from "./effects";
 import { payManaCost, tapForMana } from "./mana";
 import { manaAbilitiesFor, manaTapOptionsFor } from "./manaOptions";
@@ -398,6 +398,109 @@ export function applyResolveChooseCard(
   next.prompts.shift();
   next.reveals = next.reveals.filter((entry) => entry.viewerId !== playerId);
   return { next, thenEffects: prompt.thenEffects, sourceId: prompt.sourceId, cardId };
+}
+
+/** Battlefield cards a pending enter_as_copy prompt may legally copy. */
+export function legalEnterCopyIds(
+  state: GameState,
+  prompt: Extract<PendingPrompt, { kind: "enter_as_copy" }>,
+): CardInstanceId[] {
+  const ids: CardInstanceId[] = [];
+  for (const card of Object.values(state.cards)) {
+    if (card.zone !== "battlefield" || card.id === prompt.sourceId) {
+      continue;
+    }
+    if (
+      prompt.maxManaValue !== undefined &&
+      (state.definitions[card.definitionId]?.characteristics.manaValue ?? 0) > prompt.maxManaValue
+    ) {
+      continue;
+    }
+    const mine = card.controllerId === prompt.playerId;
+    switch (prompt.scope) {
+      case "any_creature":
+        if (isCreature(state, card.id)) {
+          ids.push(card.id);
+        }
+        break;
+      case "your_creature":
+      case "another_your_creature":
+        // "another" only excludes the entering card itself, filtered above.
+        if (mine && isCreature(state, card.id)) {
+          ids.push(card.id);
+        }
+        break;
+      case "your_creature_or_planeswalker":
+        if (mine && (isCreature(state, card.id) || isPlaneswalker(state, card.id))) {
+          ids.push(card.id);
+        }
+        break;
+      case "any_nonland_permanent":
+        if (!cardIsLand(state, card.id)) {
+          ids.push(card.id);
+        }
+        break;
+      case "any_artifact_or_creature":
+        if (
+          isCreature(state, card.id) ||
+          characteristicsOf(state, card.id).types.includes("artifact")
+        ) {
+          ids.push(card.id);
+        }
+        break;
+    }
+  }
+  return ids;
+}
+
+/**
+ * Resolve a Clone-style enter prompt: point the entered card at the chosen
+ * permanent's current definition (copiable values ≈ the definition — a
+ * documented approximation), or decline with null to keep it as itself.
+ * The copied definition's enter-the-battlefield triggers fire on copy.
+ */
+export function applyResolveEnterCopy(
+  state: GameState,
+  playerId: PlayerId,
+  cardId: CardInstanceId | null,
+): GameState {
+  const prompt = currentPrompt(state);
+  if (!prompt || prompt.kind !== "enter_as_copy") {
+    throw new Error("No copy choice pending");
+  }
+  requireLiving(state, playerId);
+  if (prompt.playerId !== playerId) {
+    throw new Error("It is not that player's choice");
+  }
+  const next = cloneGameState(state);
+  next.prompts.shift();
+  if (cardId === null) {
+    return next;
+  }
+  if (!legalEnterCopyIds(state, prompt).includes(cardId)) {
+    throw new Error("That permanent is not a legal copy choice");
+  }
+  const entered = next.cards[prompt.sourceId];
+  const original = next.cards[cardId];
+  if (!entered || entered.zone !== "battlefield" || !original) {
+    return next;
+  }
+  entered.definitionId = original.definitionId;
+  if (prompt.extraCounters && isCreature(next, entered.id)) {
+    entered.counters["p1p1"] = (entered.counters["p1p1"] ?? 0) + prompt.extraCounters;
+  }
+  // The copy "enters as" the chosen card, so its own enter-the-battlefield
+  // triggers fire — but only its own: the permanent already dispatched a
+  // global "enters" event when it hit the battlefield as itself, so firing
+  // watchers (Soul Warden and friends) again would double-count it.
+  const copiedTriggers = next.definitions[entered.definitionId]?.triggers ?? [];
+  for (let index = 0; index < copiedTriggers.length; index += 1) {
+    const trigger = copiedTriggers[index];
+    if (trigger?.event === "enter_battlefield" && (trigger.watch ?? "self") === "self") {
+      queueDefinitionTriggerInPlace(next, entered.id, index, { cardId: entered.id });
+    }
+  }
+  return next;
 }
 
 export function searchMatches(

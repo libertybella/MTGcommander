@@ -414,4 +414,19 @@ export function queueEnterReplacementChoicesInPlace(state: GameState, cardId: Ca
       sourceId: card.id,
     });
   }
+  if (definition?.enterAsCopy) {
+    // maxManaValue starts at 0 for spent-mana-capped clones (CR 707.12a: a
+    // copy that wasn't cast spent no mana); stack resolution raises it to the
+    // announced amount when the card enters from a cast.
+    state.prompts.push({
+      kind: "enter_as_copy",
+      playerId: card.controllerId,
+      sourceId: card.id,
+      scope: definition.enterAsCopy.scope,
+      ...(definition.enterAsCopy.extraCounters
+        ? { extraCounters: definition.enterAsCopy.extraCounters }
+        : {}),
+      ...(definition.enterAsCopy.maxManaValueBySpent ? { maxManaValue: 0 } : {}),
+    });
+  }
 }

@@ -9,6 +9,7 @@ import {
   isGameOver,
   isMulliganOpen,
   isOpeningRoll,
+  legalEnterCopyIds,
   legalIdsForChooseSources,
   legalSearchIds,
   lookedAtCardIds,
@@ -418,6 +419,11 @@ export class GameHost {
             playerId: prompt.playerId,
             cardIds: player?.zones.hand.slice(0, prompt.count) ?? [],
           });
+          continue;
+        }
+        if (prompt.kind === "enter_as_copy") {
+          const pick = legalEnterCopyIds(this.state, prompt)[0] ?? null;
+          this.apply({ kind: "resolve_enter_copy", playerId: prompt.playerId, cardId: pick });
           continue;
         }
         if (prompt.kind === "choose_card") {

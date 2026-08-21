@@ -22,7 +22,8 @@ import { dispatchEventsInPlace } from "./triggers";
 import { applyCombatDamage, declareAttackers } from "./combat";
 import { manaAbilitiesFor } from "./manaOptions";
 import { legalActions } from "./legalActions";
-import { searchMatches } from "./prompt";
+import { legalEnterCopyIds, searchMatches } from "./prompt";
+import { parseGameState, serializeGameState } from "./serialize";
 import { fillLibraries } from "./testSupport";
 import { advanceSteps } from "./turn";
 import type { GameState, PlayerState } from "./types";
@@ -12015,5 +12016,225 @@ describe("wave 117: gods, recruiters, ouroboroids", () => {
     ).toThrow(/noncreature/);
     const cast = applyAction(next, { kind: "cast_spell", playerId: p2.id, cardId: bear.id });
     expect(cast.stack).toHaveLength(1);
+  });
+});
+
+describe("wave 118: shapeshifters walk in as someone else", () => {
+  it("compiles the clone batch fully", () => {
+    const spark = compileOracleCard({
+      oracleId: "spark",
+      name: "Spark Double",
+      manaCost: "{3}{U}",
+      typeLine: "Creature — Illusion",
+      power: "0",
+      toughness: "0",
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "You may have this creature enter as a copy of a creature or planeswalker you control, except it enters with an additional +1/+1 counter on it if it's a creature, it enters with an additional loyalty counter on it if it's a planeswalker, and it isn't legendary.",
+    });
+    expect(spark.notes).toEqual([]);
+    expect(spark.definition.enterAsCopy).toEqual({
+      scope: "your_creature_or_planeswalker",
+      extraCounters: 1,
+    });
+
+    const mockingbird = compileOracleCard({
+      oracleId: "mockingbird",
+      name: "Mockingbird",
+      manaCost: "{X}{U}",
+      typeLine: "Creature — Bird Bard",
+      power: "1",
+      toughness: "1",
+      printedKeywords: ["Flying"],
+      imageUrl: "",
+      oracleText:
+        "Flying\nYou may have this creature enter as a copy of any creature on the battlefield with mana value less than or equal to the amount of mana spent to cast this creature, except it's a Bird in addition to its other types and it has flying.",
+    });
+    expect(mockingbird.notes).toEqual([]);
+    expect(mockingbird.definition.enterAsCopy).toEqual({
+      scope: "any_creature",
+      maxManaValueBySpent: true,
+    });
+
+    const impersonator = compileOracleCard({
+      oracleId: "impersonator",
+      name: "Clever Impersonator",
+      manaCost: "{2}{U}{U}",
+      typeLine: "Creature — Shapeshifter",
+      power: "0",
+      toughness: "0",
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "You may have this creature enter as a copy of any nonland permanent on the battlefield.",
+    });
+    expect(impersonator.notes).toEqual([]);
+    expect(impersonator.definition.enterAsCopy).toEqual({ scope: "any_nonland_permanent" });
+
+    // The engine never applies the legend rule, so Sakashima's exemption line
+    // compiles as an accurate no-op rather than a leftover.
+    const sakashima = compileOracleCard({
+      oracleId: "sakashima",
+      name: "Sakashima of a Thousand Faces",
+      manaCost: "{3}{U}",
+      typeLine: "Legendary Creature — Human Rogue",
+      power: "3",
+      toughness: "1",
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        'You may have Sakashima enter as a copy of another creature you control, except it has Sakashima\'s other abilities.\nThe "legend rule" doesn\'t apply to permanents you control.',
+    });
+    expect(sakashima.notes).toEqual([]);
+    expect(sakashima.definition.enterAsCopy).toEqual({ scope: "another_your_creature" });
+
+    const duplication = compileOracleCard({
+      oracleId: "duplication",
+      name: "Irenicus's Vile Duplication",
+      manaCost: "{3}{U}",
+      typeLine: "Sorcery",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "Create a token that's a copy of target creature you control, except the token has flying and it isn't legendary.",
+    });
+    expect(duplication.notes).toEqual([]);
+    expect(duplication.definition.effects[0]).toMatchObject({ kind: "copy_token" });
+  });
+
+  it("enters as a copy of the chosen creature and takes its bonus counter", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 10);
+    const cloneDef = createCardDefinition({
+      name: "Doubler",
+      manaCost: "{3}{U}",
+      typeLine: "Creature — Illusion",
+      power: 0,
+      toughness: 0,
+      enterAsCopy: { scope: "any_creature", extraCounters: 1 },
+    });
+    const dragonDef = createCardDefinition({
+      name: "Dragon",
+      typeLine: "Creature — Dragon",
+      power: 5,
+      toughness: 5,
+    });
+    game.definitions[cloneDef.id] = cloneDef;
+    game.definitions[dragonDef.id] = dragonDef;
+    const clone = createCardInstance({ definitionId: cloneDef.id, ownerId: p1.id, zone: "hand" });
+    const dragon = createCardInstance({
+      definitionId: dragonDef.id,
+      ownerId: p2.id,
+      zone: "battlefield",
+    });
+    game.cards[clone.id] = clone;
+    game.cards[dragon.id] = dragon;
+    p1.zones.hand.push(clone.id);
+    p2.zones.battlefield.push(dragon.id);
+    game.turn.phase = "precombatMain";
+    game.turn.activePlayerId = p1.id;
+    game.priorityPlayerId = p1.id;
+    p1.mana.U = 1;
+    p1.mana.C = 3;
+
+    let next = applyAction(game, {
+      kind: "cast_spell",
+      playerId: p1.id,
+      cardId: clone.id,
+      targets: [],
+    });
+    next = resolveTopOfStack(next);
+    expect(next.prompts[0]?.kind).toBe("enter_as_copy");
+
+    // The pending prompt and the definition survive a save/load round trip.
+    const reloaded = parseGameState(serializeGameState(next));
+    expect(reloaded.prompts[0]).toEqual(next.prompts[0]);
+    expect(reloaded.definitions[cloneDef.id]?.enterAsCopy).toEqual({
+      scope: "any_creature",
+      extraCounters: 1,
+    });
+
+    next = applyAction(next, { kind: "resolve_enter_copy", playerId: p1.id, cardId: dragon.id });
+    expect(next.cards[clone.id]?.definitionId).toBe(dragonDef.id);
+    expect(next.cards[clone.id]?.counters["p1p1"]).toBe(1);
+    expect(computedCard(next, clone.id)?.power).toBe(6);
+  });
+
+  it("may decline, and the spent-mana cap gates what it may copy", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 10);
+    const birdDef = createCardDefinition({
+      name: "Mimic Bird",
+      manaCost: "{X}{U}",
+      typeLine: "Creature — Bird",
+      power: 1,
+      toughness: 1,
+      enterAsCopy: { scope: "any_creature", maxManaValueBySpent: true },
+    });
+    const dragonDef = createCardDefinition({
+      name: "Big Dragon",
+      manaCost: "{4}{R}",
+      typeLine: "Creature — Dragon",
+      power: 5,
+      toughness: 5,
+    });
+    const bearDef = createCardDefinition({
+      name: "Cheap Bear",
+      manaCost: "{1}{G}",
+      typeLine: "Creature — Bear",
+      power: 2,
+      toughness: 2,
+    });
+    game.definitions[birdDef.id] = birdDef;
+    game.definitions[dragonDef.id] = dragonDef;
+    game.definitions[bearDef.id] = bearDef;
+    const bird = createCardInstance({ definitionId: birdDef.id, ownerId: p1.id, zone: "hand" });
+    const dragon = createCardInstance({
+      definitionId: dragonDef.id,
+      ownerId: p2.id,
+      zone: "battlefield",
+    });
+    const bear = createCardInstance({
+      definitionId: bearDef.id,
+      ownerId: p2.id,
+      zone: "battlefield",
+    });
+    game.cards[bird.id] = bird;
+    game.cards[dragon.id] = dragon;
+    game.cards[bear.id] = bear;
+    p1.zones.hand.push(bird.id);
+    p2.zones.battlefield.push(dragon.id, bear.id);
+    game.turn.phase = "precombatMain";
+    game.turn.activePlayerId = p1.id;
+    game.priorityPlayerId = p1.id;
+    p1.mana.U = 1;
+    p1.mana.C = 1;
+
+    let next = applyAction(game, {
+      kind: "cast_spell",
+      playerId: p1.id,
+      cardId: bird.id,
+      targets: [],
+      xValue: 1,
+    });
+    next = resolveTopOfStack(next);
+    const prompt = next.prompts[0];
+    expect(prompt?.kind).toBe("enter_as_copy");
+    if (prompt?.kind !== "enter_as_copy") {
+      throw new Error("expected enter_as_copy prompt");
+    }
+    // X=1 plus the printed {U}: mana value 2 and under is copyable.
+    expect(prompt.maxManaValue).toBe(2);
+    const legal = legalEnterCopyIds(next, prompt);
+    expect(legal).toContain(bear.id);
+    expect(legal).not.toContain(dragon.id);
+
+    // Declining keeps the bird a bird and clears the prompt.
+    next = applyAction(next, { kind: "resolve_enter_copy", playerId: p1.id, cardId: null });
+    expect(next.prompts).toHaveLength(0);
+    expect(next.cards[bird.id]?.definitionId).toBe(birdDef.id);
   });
 });

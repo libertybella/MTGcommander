@@ -1,6 +1,7 @@
 import { createId } from "./ids";
 import { cloneGameState } from "./clone";
 import { isCommander, isInstantOrSorcery } from "./cardTypes";
+import { manaValueOf } from "./characteristics";
 import { abilitiesRemoved } from "./characteristicsEngine";
 import { castableFromTop } from "./derived";
 import { controlsMatching } from "./legalActions";
@@ -424,6 +425,16 @@ export function resolveTopOfStack(state: GameState): GameState {
     ) {
       const entered = next.cards[top.sourceId]!;
       entered.counters["p1p1"] = (entered.counters["p1p1"] ?? 0) + (top.xValue ?? 0);
+    }
+    if (destination === "battlefield" && definition?.enterAsCopy?.maxManaValueBySpent) {
+      // Mockingbird: the copy cap is the mana spent to cast — the announced X
+      // plus the printed pips. The enter prompt was pushed with cap 0.
+      const spent = (top.xValue ?? 0) + manaValueOf(definition.manaCost);
+      for (const pending of next.prompts) {
+        if (pending.kind === "enter_as_copy" && pending.sourceId === top.sourceId) {
+          pending.maxManaValue = spent;
+        }
+      }
     }
     // Dash (CR 702.109): hasty, and home again at the next end step.
     const dashed =

@@ -18,6 +18,7 @@ import {
   openingRollPending,
   lookedAtCardIds,
   legalChoicesForRequirement,
+  legalEnterCopyIds,
   legalIdsForChooseSources,
   manaAbilitiesFor,
   manaAbilitiesOf,
@@ -1393,6 +1394,12 @@ export function Battlefield(props: Props) {
         return;
       }
     }
+    if (prompt?.kind === "enter_as_copy" && actorId === prompt.playerId) {
+      if (legalEnterCopyIds(state, prompt).includes(cardId)) {
+        send({ kind: "resolve_enter_copy", playerId: actorId, cardId });
+        return;
+      }
+    }
     if (prompt) {
       return;
     }
@@ -1612,6 +1619,12 @@ export function Battlefield(props: Props) {
       const legal = legalIdsForChooseSources(state, prompt.sources);
       if (legal.includes(cardId)) {
         send({ kind: "resolve_choose_card", playerId: actorId, cardId });
+        return;
+      }
+    }
+    if (prompt?.kind === "enter_as_copy" && actorId === prompt.playerId) {
+      if (legalEnterCopyIds(state, prompt).includes(cardId)) {
+        send({ kind: "resolve_enter_copy", playerId: actorId, cardId });
         return;
       }
     }
@@ -2709,6 +2722,21 @@ export function Battlefield(props: Props) {
                 </div>
                 <button type="button" className="pass-button" data-testid="choose-card" disabled>
                   Choose a card
+                </button>
+              </>
+            ) : null}
+            {actorId === prompt.playerId && prompt.kind === "enter_as_copy" ? (
+              <>
+                <button type="button" className="pass-button" data-testid="enter-as-copy" disabled>
+                  Copy a permanent — click it on the battlefield
+                </button>
+                <button
+                  type="button"
+                  className="pass-button"
+                  data-testid="enter-as-copy-decline"
+                  onClick={() => send({ kind: "resolve_enter_copy", playerId: actorId, cardId: null })}
+                >
+                  Keep as itself
                 </button>
               </>
             ) : null}
