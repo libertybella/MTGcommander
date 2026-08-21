@@ -143,6 +143,9 @@ export function createCardDefinition(
                   ...(trigger.subjectFilter.nonSubtypes
                     ? { nonSubtypes: [...trigger.subjectFilter.nonSubtypes] }
                     : {}),
+                  ...(trigger.subjectFilter.minPower !== undefined
+                    ? { minPower: trigger.subjectFilter.minPower }
+                    : {}),
                 },
               }
             : {}),

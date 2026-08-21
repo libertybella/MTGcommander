@@ -154,6 +154,7 @@ function expandEachOpponent(
     effect.kind === "add_mana" ||
     effect.kind === "mill" ||
     effect.kind === "discard" ||
+    effect.kind === "team_pt_until_eot" ||
     effect.kind === "exile_top_play"
   ) {
     const players = eachOf(effect.playerId);
@@ -697,6 +698,13 @@ export function bindCardEffect(
         stackObjectId: chosen.stackObjectId,
         controllerId: context.controllerId,
       };
+    }
+    case "mass_reanimate": {
+      const playerId = bindPlayerSelector(state, effect.playerId, context);
+      if (!playerId) {
+        return null;
+      }
+      return { kind: "mass_reanimate", playerId };
     }
     case "drain_opponents": {
       const playerId = bindPlayerSelector(state, effect.playerId, context);
@@ -2276,6 +2284,25 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
           card.counters[effect.counter] =
             (card.counters[effect.counter] ?? 0) +
             counterBatchAmount(next, card.id, effect.counter, effect.amount);
+        }
+        break;
+      }
+      case "mass_reanimate": {
+        // Rise of the Dark Realms: every creature card in every graveyard
+        // arrives under the effect's controller.
+        requirePlayer(state, effect.playerId);
+        next = cloneGameState(state);
+        for (const player of next.players) {
+          for (const cardId of [...player.zones.graveyard]) {
+            if (!characteristicsOf(next, cardId).types.includes("creature")) {
+              continue;
+            }
+            moveCardInPlace(next, cardId, "battlefield");
+            const arrived = next.cards[cardId];
+            if (arrived?.zone === "battlefield") {
+              arrived.controllerId = effect.playerId;
+            }
+          }
         }
         break;
       }

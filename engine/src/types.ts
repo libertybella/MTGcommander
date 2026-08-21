@@ -630,6 +630,7 @@ export type GameEffect =
   | { kind: "double_team_pt_until_eot"; playerId: PlayerId }
   | { kind: "power_nova"; sourceId: CardInstanceId; amount: number }
   | { kind: "retarget"; stackObjectId: StackObjectId; controllerId: PlayerId }
+  | { kind: "mass_reanimate"; playerId: PlayerId }
   | {
       kind: "search_library";
       playerId: PlayerId;
@@ -1050,6 +1051,8 @@ export type CardEffect =
   | { kind: "power_nova"; cardId: ChosenTargetRef }
   /** Deflecting Swat: the caster picks new targets for the chosen spell. */
   | { kind: "retarget"; target: ChosenTargetRef }
+  /** Rise of the Dark Realms: every graveyard creature card, under you. */
+  | { kind: "mass_reanimate"; playerId: PlayerSelector }
   | {
       kind: "search_library";
       playerId: PlayerSelector;
@@ -1220,6 +1223,8 @@ export type CardTrigger = {
     tokenOnly?: boolean;
     /** "non-Gnome creatures" (Anim Pakal). */
     nonSubtypes?: string[];
+    /** "with power 3 or greater" (Elemental Bond). Computed power. */
+    minPower?: number;
   };
   effects: CardEffect[];
   /** Chosen when the trigger is put on the stack. Empty or omitted means untargeted. */

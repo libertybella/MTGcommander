@@ -909,6 +909,17 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     }
   }
 
+  // Massacre Wurm: "that player" is the trigger subject's controller.
+  match = sentence.match(/^that player loses (\d+) life$/i);
+  if (match?.[1]) {
+    return {
+      targetRequirements: [],
+      effects: [
+        { kind: "lose_life", playerId: { type: "subject_player" }, amount: Number(match[1]) },
+      ],
+    };
+  }
+
   match = sentence.match(/^target player loses (\d+|a|an|one|two|three|four|five|six|seven|eight|nine|ten) life$/i);
   if (match?.[1]) {
     const amount = parseCount(match[1]);
@@ -1901,6 +1912,18 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     };
   }
 
+  // Rise of the Dark Realms.
+  if (
+    /^Put all creature cards from all graveyards onto the battlefield under your control$/i.test(
+      sentence,
+    )
+  ) {
+    return {
+      targetRequirements: [],
+      effects: [{ kind: "mass_reanimate", playerId: "controller" }],
+    };
+  }
+
   // Deflecting Swat: retargeting. Abilities on the stack can't be targeted —
   // "spell or ability" compiles to spells only, a documented approximation.
   if (/^You may choose new targets for target spell or ability$/i.test(sentence)) {
@@ -2534,6 +2557,24 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     };
   }
 
+  // Massacre Wurm: an until-EOT debuff on each opponent's creatures.
+  match = sentence.match(
+    /^Creatures your opponents control get ([+-]\d+)\/([+-]\d+) until end of turn$/i,
+  );
+  if (match?.[1] && match[2]) {
+    return {
+      targetRequirements: [],
+      effects: [
+        {
+          kind: "team_pt_until_eot",
+          playerId: "each_opponent",
+          power: Number(match[1]),
+          toughness: Number(match[2]),
+        },
+      ],
+    };
+  }
+
   match = sentence.match(
     /^(?:Non-([A-Za-z]+) )?[Cc]reatures you control get ([+-]\d+)\/([+-]\d+) until end of turn$/,
   );
@@ -2970,6 +3011,9 @@ function parseTriggerHead(head: string): TriggerHead | null {
   if (/^Whenever a creature you control dies$/i.test(text)) {
     return { event: "dies", watch: "controlled", subjectFilter: { types: ["creature"] } };
   }
+  if (/^Whenever a creature an opponent controls dies$/i.test(text)) {
+    return { event: "dies", watch: "opponents", subjectFilter: { types: ["creature"] } };
+  }
   if (/^Whenever another creature you control dies$/i.test(text)) {
     return {
       event: "dies",
@@ -3066,6 +3110,17 @@ function parseTriggerHead(head: string): TriggerHead | null {
     /^Whenever a creature you control enters$/i.test(text)
   ) {
     return { event: "enter_battlefield", watch: "controlled", subjectFilter: { types: ["creature"] } };
+  }
+  // Elemental Bond.
+  const bigEnter = text.match(
+    /^Whenever a creature you control with power (\d+) or greater enters$/i,
+  );
+  if (bigEnter?.[1]) {
+    return {
+      event: "enter_battlefield",
+      watch: "controlled",
+      subjectFilter: { types: ["creature"], minPower: Number(bigEnter[1]) },
+    };
   }
   if (
     /^Whenever a creature an opponent controls enters$/i.test(text) ||

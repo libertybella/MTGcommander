@@ -1,5 +1,6 @@
 import { characteristicsOf } from "./cardTypes";
 import { abilitiesRemoved, cardMatchesSubtype } from "./characteristicsEngine";
+import { creaturePower } from "./derived";
 import { createId } from "./ids";
 import { hasAnyLegalTargetSet } from "./targeting";
 import type {
@@ -314,6 +315,9 @@ function subjectMatchesFilter(
     if (cardMatchesSubtype(state, subjectId, subtype)) {
       return false;
     }
+  }
+  if (filter.minPower !== undefined && creaturePower(state, subjectId) < filter.minPower) {
+    return false;
   }
   for (const type of filter.types ?? []) {
     if (!traits.types.includes(type)) {

@@ -2158,6 +2158,8 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
       return { kind, cardId: parseChosenTargetRef(value.cardId, `${label}.cardId`) };
     case "retarget":
       return { kind, target: parseChosenTargetRef(value.target, `${label}.target`) };
+    case "mass_reanimate":
+      return { kind, playerId: parsePlayerSelector(value.playerId, `${label}.playerId`) };
     case "overload_each":
       return {
         kind,
@@ -2423,6 +2425,14 @@ function parseTriggers(value: unknown, label: string): CardTrigger[] {
                 );
                 return nonSubtypes.length > 0 ? { nonSubtypes } : {};
               })(),
+              ...(entry.subjectFilter.minPower === undefined
+                ? {}
+                : {
+                    minPower: expectNumber(
+                      entry.subjectFilter.minPower,
+                      `${label}[${index}].subjectFilter.minPower`,
+                    ),
+                  }),
             };
           })();
     return {
@@ -2481,7 +2491,8 @@ function parseTriggers(value: unknown, label: string): CardTrigger[] {
         subjectFilter.chosenSubtype ||
         subjectFilter.nonToken ||
         subjectFilter.tokenOnly ||
-        subjectFilter.nonSubtypes)
+        subjectFilter.nonSubtypes ||
+        subjectFilter.minPower !== undefined)
         ? { subjectFilter }
         : {}),
       effects: parseCardEffects(entry.effects, `${label}[${index}].effects`),
@@ -3178,6 +3189,9 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
       stackObjectId: expectString(value.stackObjectId, `${label}.stackObjectId`),
       controllerId: expectString(value.controllerId, `${label}.controllerId`),
     };
+  }
+  if (kind === "mass_reanimate") {
+    return { kind, playerId: expectString(value.playerId, `${label}.playerId`) };
   }
   if (kind === "overload_each") {
     return {

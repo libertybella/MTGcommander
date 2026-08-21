@@ -9388,3 +9388,136 @@ describe("wave 100: deflecting swat", () => {
   });
 });
 
+describe("wave 101: wurms, bonds, dark realms", () => {
+  it("compiles Massacre Wurm, Elemental Bond, and Rise of the Dark Realms fully", () => {
+    const wurm = compileOracleCard({
+      oracleId: "wurm",
+      name: "Massacre Wurm",
+      manaCost: "{3}{B}{B}{B}",
+      typeLine: "Creature — Phyrexian Wurm",
+      power: "6",
+      toughness: "5",
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "When this creature enters, creatures your opponents control get -2/-2 until end of turn.\nWhenever a creature an opponent controls dies, that player loses 2 life.",
+    });
+    expect(wurm.notes).toEqual([]);
+    expect(wurm.definition.triggers[0]?.effects[0]).toEqual({
+      kind: "team_pt_until_eot",
+      playerId: "each_opponent",
+      power: -2,
+      toughness: -2,
+    });
+    expect(wurm.definition.triggers[1]?.watch).toBe("opponents");
+
+    const bond = compileOracleCard({
+      oracleId: "bond",
+      name: "Elemental Bond",
+      manaCost: "{2}{G}",
+      typeLine: "Enchantment",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText: "Whenever a creature you control with power 3 or greater enters, draw a card.",
+    });
+    expect(bond.notes).toEqual([]);
+    expect(bond.definition.triggers[0]?.subjectFilter?.minPower).toBe(3);
+
+    const rise = compileOracleCard({
+      oracleId: "rise",
+      name: "Rise of the Dark Realms",
+      manaCost: "{7}{B}{B}",
+      typeLine: "Sorcery",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText: "Put all creature cards from all graveyards onto the battlefield under your control.",
+    });
+    expect(rise.notes).toEqual([]);
+    expect(rise.definition.effects[0]).toEqual({ kind: "mass_reanimate", playerId: "controller" });
+  });
+
+  it("debuffs only opponents' creatures and mass-reanimates under the caster", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const bearDef = createCardDefinition({ name: "Bear", typeLine: "Creature — Bear", power: 2, toughness: 2 });
+    game.definitions[bearDef.id] = bearDef;
+    const myBear = createCardInstance({ definitionId: bearDef.id, ownerId: p1.id, zone: "battlefield" });
+    const theirBear = createCardInstance({ definitionId: bearDef.id, ownerId: p2.id, zone: "battlefield" });
+    game.cards[myBear.id] = myBear;
+    game.cards[theirBear.id] = theirBear;
+    p1.zones.battlefield.push(myBear.id);
+    p2.zones.battlefield.push(theirBear.id);
+
+    const bound = bindCardEffects(
+      game,
+      [{ kind: "team_pt_until_eot", playerId: "each_opponent", power: -2, toughness: -2 }],
+      { controllerId: p1.id, sourceId: null },
+    );
+    const swept = applyEffects(game, bound);
+    // The opponent's 2/2 dies to -2/-2; the caster's survives untouched.
+    expect(swept.cards[theirBear.id]?.zone).toBe("graveyard");
+    expect(swept.cards[myBear.id]?.zone).toBe("battlefield");
+    expect(computedCard(swept, myBear.id)?.power).toBe(2);
+
+    // Rise: both graveyard creatures arrive under p1.
+    const mine = createCardInstance({ definitionId: bearDef.id, ownerId: p1.id, zone: "graveyard" });
+    game.cards[mine.id] = mine;
+    p1.zones.graveyard.push(mine.id);
+    const theirs = createCardInstance({ definitionId: bearDef.id, ownerId: p2.id, zone: "graveyard" });
+    game.cards[theirs.id] = theirs;
+    p2.zones.graveyard.push(theirs.id);
+    const risen = applyEffect(game, { kind: "mass_reanimate", playerId: p1.id });
+    expect(risen.cards[mine.id]?.zone).toBe("battlefield");
+    expect(risen.cards[theirs.id]?.zone).toBe("battlefield");
+    expect(risen.cards[theirs.id]?.controllerId).toBe(p1.id);
+  });
+
+  it("only fires the bond for big arrivals", () => {
+    const { game, p1 } = twoPlayers();
+    const bondDef = createCardDefinition({
+      name: "Bond",
+      typeLine: "Enchantment",
+      triggers: [
+        {
+          event: "enter_battlefield",
+          watch: "controlled",
+          subjectFilter: { types: ["creature"], minPower: 3 },
+          effects: [{ kind: "draw", playerId: "controller", count: 1 }],
+        },
+      ],
+    });
+    const smallDef = createCardDefinition({ name: "Small", typeLine: "Creature — Goblin", power: 2, toughness: 2 });
+    const bigDef = createCardDefinition({ name: "Big", typeLine: "Creature — Beast", power: 4, toughness: 4 });
+    game.definitions[bondDef.id] = bondDef;
+    game.definitions[smallDef.id] = smallDef;
+    game.definitions[bigDef.id] = bigDef;
+    const bond = createCardInstance({ definitionId: bondDef.id, ownerId: p1.id, zone: "battlefield" });
+    game.cards[bond.id] = bond;
+    p1.zones.battlefield.push(bond.id);
+    fillLibraries(game, 10);
+
+    const small = createCardInstance({ definitionId: smallDef.id, ownerId: p1.id, zone: "hand" });
+    game.cards[small.id] = small;
+    p1.zones.hand.push(small.id);
+    const handBefore = p1.zones.hand.length - 1;
+    let next = moveCard(game, small.id, "battlefield");
+    while (next.stack.length > 0) {
+      next = resolveTopOfStack(next);
+    }
+    expect(next.players[0]?.zones.hand).toHaveLength(handBefore);
+
+    const big = createCardInstance({ definitionId: bigDef.id, ownerId: p1.id, zone: "hand" });
+    next.cards[big.id] = big;
+    next.players[0]!.zones.hand.push(big.id);
+    const handMid = next.players[0]!.zones.hand.length - 1;
+    let after = moveCard(next, big.id, "battlefield");
+    while (after.stack.length > 0) {
+      after = resolveTopOfStack(after);
+    }
+    expect(after.players[0]?.zones.hand).toHaveLength(handMid + 1);
+  });
+});
+
