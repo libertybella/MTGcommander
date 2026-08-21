@@ -1774,6 +1774,12 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
         amount:
           value.amount === "x" ? ("x" as const) : expectNumber(value.amount, `${label}.amount`),
       };
+    case "overload_each":
+      return {
+        kind,
+        requirement: parseTargetRequirement(value.requirement, `${label}.requirement`),
+        effects: parseCardEffects(value.effects, `${label}.effects`),
+      };
     case "destroy_all":
       return {
         kind,
@@ -2560,6 +2566,16 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
       kind,
       counter: expectString(value.counter, `${label}.counter`),
       amount: expectNumber(value.amount, `${label}.amount`),
+    };
+  }
+  if (kind === "overload_each") {
+    return {
+      kind,
+      controllerId: expectString(value.controllerId, `${label}.controllerId`),
+      sourceId:
+        value.sourceId === null ? null : expectString(value.sourceId, `${label}.sourceId`),
+      requirement: parseTargetRequirement(value.requirement, `${label}.requirement`),
+      effects: parseCardEffects(value.effects, `${label}.effects`),
     };
   }
   if (kind === "destroy_all") {

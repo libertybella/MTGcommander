@@ -9,7 +9,7 @@ import { addMana, tapCard, untapCard } from "./mana";
 import { isLiving, livingPlayers, nextLivingPlayerId } from "./players";
 import { isPromptOpen, legalIdsForChooseSources } from "./prompt";
 import { applyStateBasedActionsInPlace } from "./status";
-import { isChosenTargetLegal, sourceColorsOf } from "./targeting";
+import { isChosenTargetLegal, legalChoicesForRequirement, sourceColorsOf } from "./targeting";
 import { amassArmyTemplate, tokenPresetFor } from "./tokens";
 import { dispatchEventsInPlace, queueEnterBattlefieldTriggersInPlace } from "./triggers";
 import { countCardPlacements, enterOwnerZone, moveCard, moveCardInPlace, processDiesReturnsInPlace } from "./zones";
@@ -628,6 +628,14 @@ export function bindCardEffect(
       }
       return { kind: "counter_on_each_creature", counter: effect.counter, amount };
     }
+    case "overload_each":
+      return {
+        kind: "overload_each",
+        controllerId: context.controllerId,
+        sourceId: context.sourceId,
+        requirement: { ...effect.requirement },
+        effects: effect.effects.map((entry) => ({ ...entry })),
+      };
     case "populate": {
       const playerId = bindPlayerSelector(state, effect.playerId, context);
       if (!playerId) {
@@ -1658,6 +1666,23 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
       case "fog": {
         next = cloneGameState(state);
         next.preventCombatDamage = true;
+        break;
+      }
+      case "overload_each": {
+        // Enumerate what the normal mode could have targeted, then run the
+        // effects once per object; anything that left the battlefield mid-
+        // sweep simply fails its per-object bind and is skipped.
+        next = cloneGameState(state);
+        const choices = legalChoicesForRequirement(next, effect.requirement, effect.controllerId);
+        for (const choice of choices) {
+          const bound = bindCardEffects(next, effect.effects, {
+            controllerId: effect.controllerId,
+            sourceId: effect.sourceId,
+            targets: [choice],
+            targetRequirements: [effect.requirement],
+          });
+          next = applyEffects(next, bound);
+        }
         break;
       }
       case "counter_on_each_creature": {

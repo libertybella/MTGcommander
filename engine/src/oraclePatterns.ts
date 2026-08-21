@@ -2544,6 +2544,7 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
     notes: [],
   };
   void keywords;
+  let overloadCost: string | null = null;
 
   const modal = extractModalModes(card);
   if (modal) {
@@ -3137,6 +3138,12 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
 
     if (/^Affinity for artifacts$/i.test(sentence)) {
       result.affinityArtifacts = true;
+      continue;
+    }
+
+    const overloadLine = sentence.match(/^Overload ((?:\{[^}]+\})+)$/i);
+    if (overloadLine?.[1]) {
+      overloadCost = overloadLine[1];
       continue;
     }
 
@@ -3812,6 +3819,54 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
     }
   }
   copyFirstManaAbility(result);
+
+  // Overload (CR 702.96): rebuild the compiled single-target spell as two
+  // modes — the normal cast, and an untargeted sweep over every object the
+  // normal mode could target. The extra cost is the generic difference
+  // between the overload cost and the printed cost.
+  if (overloadCost) {
+    let built = false;
+    if (result.targetRequirements.length === 1 && result.effects.length > 0 && !result.modes) {
+      try {
+        const base = parseManaCost(card.manaCost);
+        const over = parseManaCost(overloadCost);
+        const coloredMatch = (["W", "U", "B", "R", "G", "C"] as const).every(
+          (pip) => base[pip] === over[pip],
+        );
+        const extra = over.generic - base.generic;
+        if (coloredMatch && extra > 0 && over.hybrid.length === 0 && over.xCount === 0) {
+          const requirement = result.targetRequirements[0]!;
+          result.modes = [
+            {
+              label: "Cast normally",
+              effects: result.effects,
+              targetRequirements: result.targetRequirements,
+            },
+            {
+              label: `Overload ${overloadCost}`,
+              extraCost: `{${extra}}`,
+              effects: [
+                {
+                  kind: "overload_each",
+                  requirement,
+                  effects: result.effects.map((entry) => ({ ...entry })),
+                },
+              ],
+              targetRequirements: [],
+            },
+          ];
+          result.effects = [];
+          result.targetRequirements = [];
+          built = true;
+        }
+      } catch {
+        // fall through to leftover
+      }
+    }
+    if (!built) {
+      result.leftover.push(`Overload ${overloadCost}`);
+    }
+  }
 
   return result;
 }

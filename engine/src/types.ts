@@ -542,6 +542,13 @@ export type GameEffect =
       amount: number;
     }
   | { kind: "counter_on_each_creature"; counter: string; amount: number }
+  | {
+      kind: "overload_each";
+      controllerId: PlayerId;
+      sourceId: CardInstanceId | null;
+      requirement: TargetRequirement;
+      effects: CardEffect[];
+    }
   /** Board wipes: destroy every battlefield permanent of the scope at once. */
   | { kind: "destroy_all"; what: DestroyAllScope; maxManaValue?: number }
   /** Rhystic Study: the payer chooses to pay or the effects happen. */
@@ -781,6 +788,9 @@ export type CardEffect =
       cantBlock?: boolean;
       cantBeBlocked?: boolean;
     }
+  /** Overload (CR 702.96): apply the effects to each object the normal mode
+   * could have targeted, enumerated when the spell resolves. */
+  | { kind: "overload_each"; requirement: TargetRequirement; effects: CardEffect[] }
   /** "copy that spell" in a cast trigger — the subject spell, not a target. */
   | { kind: "copy_subject_spell" }
   /** "counter that spell" in a cast trigger — the subject spell, not a target. */

@@ -5411,3 +5411,60 @@ describe("wave 56: color discounts, mass counters, untap statics", () => {
     expect(next.cards[drum.id]?.tapped).toBe(false);
   });
 });
+
+describe("wave 57: overload", () => {
+  const base = { power: null, toughness: null, printedKeywords: [], imageUrl: "" };
+
+  it("compiles Vandalblast and Cyclonic Rift fully as two modes", () => {
+    const vandal = compileOracleCard({
+      ...base,
+      oracleId: "vandal",
+      name: "Vandalblast",
+      manaCost: "{R}",
+      typeLine: "Sorcery",
+      oracleText:
+        "Destroy target artifact you don't control.\nOverload {4}{R} (You may cast this spell for its overload cost. If you do, change its text by replacing all instances of \"target\" with \"each.\")",
+    });
+    expect(vandal.notes).toEqual([]);
+    expect(vandal.definition.modes).toHaveLength(2);
+    expect(vandal.definition.modes?.[1]?.extraCost).toBe("{4}");
+    expect(vandal.definition.modes?.[1]?.effects[0]?.kind).toBe("overload_each");
+
+    const rift = compileOracleCard({
+      ...base,
+      oracleId: "rift",
+      name: "Cyclonic Rift",
+      manaCost: "{1}{U}",
+      typeLine: "Instant",
+      oracleText:
+        "Return target nonland permanent you don't control to its owner's hand.\nOverload {6}{U} (You may cast this spell for its overload cost. If you do, change its text by replacing all instances of \"target\" with \"each.\")",
+    });
+    expect(rift.notes).toEqual([]);
+    expect(rift.definition.modes?.[1]?.extraCost).toBe("{5}");
+  });
+
+  it("overload sweeps every object the normal mode could target", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const relicDef = createCardDefinition({ name: "Relic", typeLine: "Artifact" });
+    game.definitions[relicDef.id] = relicDef;
+    const mine = createCardInstance({ definitionId: relicDef.id, ownerId: p1.id, zone: "battlefield" });
+    const theirs1 = createCardInstance({ definitionId: relicDef.id, ownerId: p2.id, zone: "battlefield" });
+    const theirs2 = createCardInstance({ definitionId: relicDef.id, ownerId: p2.id, zone: "battlefield" });
+    game.cards[mine.id] = mine;
+    game.cards[theirs1.id] = theirs1;
+    game.cards[theirs2.id] = theirs2;
+    p1.zones.battlefield.push(mine.id);
+    p2.zones.battlefield.push(theirs1.id, theirs2.id);
+
+    const next = applyEffect(game, {
+      kind: "overload_each",
+      controllerId: p1.id,
+      sourceId: null,
+      requirement: { kind: "artifact", control: "not_own" },
+      effects: [{ kind: "move_card", cardId: { type: "chosen", index: 0 }, toZone: "graveyard" }],
+    });
+    expect(next.cards[mine.id]?.zone).toBe("battlefield");
+    expect(next.cards[theirs1.id]?.zone).toBe("graveyard");
+    expect(next.cards[theirs2.id]?.zone).toBe("graveyard");
+  });
+});
