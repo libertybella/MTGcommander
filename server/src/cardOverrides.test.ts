@@ -129,4 +129,17 @@ describe("hand-authored registry", () => {
       expect(definition?.producesAnyColor).toBe(true);
     }
   });
+
+  it("filter lands tap for colorless or either color (documented approximation)", () => {
+    const gate = cardOverrideFor(oracle("Mystic Gate", "Land"));
+    expect(gate?.producesOptions).toEqual(["C", "W", "U"]);
+    const mire = cardOverrideFor(oracle("Twilight Mire", "Land"));
+    expect(mire?.producesOptions).toEqual(["C", "B", "G"]);
+    for (const name of [
+      "Mystic Gate", "Sunken Ruins", "Graven Cairns", "Fire-Lit Thicket", "Rugged Prairie",
+      "Fetid Heath", "Cascade Bluffs", "Twilight Mire", "Flooded Grove",
+    ]) {
+      expect(cardOverrideFor(oracle(name, "Land"))).not.toBeNull();
+    }
+  });
 });

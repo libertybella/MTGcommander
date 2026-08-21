@@ -19,6 +19,24 @@ import {
  */
 type OverrideBuilder = (card: OracleCard) => CardDefinition;
 
+function filterLandOverrides(
+  entries: Array<[name: string, a: "W" | "U" | "B" | "R" | "G", b: "W" | "U" | "B" | "R" | "G"]>,
+): Array<[string, OverrideBuilder]> {
+  return entries.map(([name, a, b]) => [
+    normalizeCardName(name),
+    (card: OracleCard) =>
+      createCardDefinition({
+        id: definitionIdForOracle(card),
+        name: card.name,
+        manaCost: card.manaCost,
+        typeLine: card.typeLine,
+        oracleText: card.oracleText,
+        imageUrl: card.imageUrl ?? "",
+        producesOptions: ["C", a, b],
+      }),
+  ]);
+}
+
 const OVERRIDES = new Map<string, OverrideBuilder>([
   [
     // "Target player draws two cards and loses 2 life" compiles, but the
@@ -350,6 +368,21 @@ const OVERRIDES = new Map<string, OverrideBuilder>([
         producesAnyColor: true,
       }),
   ],
+  // Shadowmoor/Eventide filter lands. Documented approximation: the real
+  // ability filters mana ({W/B}, {T}: pay one, get two) for a net of one; the
+  // override taps for one of {C} or either color directly, skipping the
+  // hybrid activation cost the mana system cannot yet express.
+  ...filterLandOverrides([
+    ["Mystic Gate", "W", "U"],
+    ["Sunken Ruins", "U", "B"],
+    ["Graven Cairns", "B", "R"],
+    ["Fire-Lit Thicket", "R", "G"],
+    ["Rugged Prairie", "R", "W"],
+    ["Fetid Heath", "W", "B"],
+    ["Cascade Bluffs", "U", "R"],
+    ["Twilight Mire", "B", "G"],
+    ["Flooded Grove", "G", "U"],
+  ]),
 ]);
 
 /** The hand-authored definition for this card, if one exists. */
