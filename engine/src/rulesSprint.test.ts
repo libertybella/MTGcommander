@@ -11123,3 +11123,144 @@ describe("wave 111: orchards, pools, cutthroats, orchids", () => {
     expect(next.players[0]?.life).toBe(41);
   });
 });
+
+describe("wave 112: masks, axes, and swords", () => {
+  it("compiles the equipment batch fully", () => {
+    const mask = compileOracleCard({
+      oracleId: "mask",
+      name: "Mask of Memory",
+      manaCost: "{1}",
+      typeLine: "Artifact — Equipment",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "Whenever equipped creature deals combat damage to a player, you may draw two cards. If you do, discard a card.\nEquip {1}",
+    });
+    expect(mask.notes).toEqual([]);
+    expect(mask.definition.triggers[0]).toMatchObject({
+      event: "deals_combat_damage_to_player",
+      watch: "attached",
+    });
+    expect(mask.definition.triggers[0]?.effects).toEqual([
+      { kind: "draw", playerId: "controller", count: 2 },
+      { kind: "discard", playerId: "controller", count: 1 },
+    ]);
+
+    const axe = compileOracleCard({
+      oracleId: "axe",
+      name: "Bloodforged Battle-Axe",
+      manaCost: "{1}{R}",
+      typeLine: "Artifact — Equipment",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "Equipped creature gets +2/+0.\nWhenever equipped creature deals combat damage to a player, create a token that's a copy of this Equipment.\nEquip {2}",
+    });
+    expect(axe.notes).toEqual([]);
+    expect(axe.definition.triggers[0]?.effects[0]).toMatchObject({
+      kind: "copy_token",
+      ofCardId: "self",
+    });
+
+    const fireIce = compileOracleCard({
+      oracleId: "fireice",
+      name: "Sword of Fire and Ice",
+      manaCost: "{3}",
+      typeLine: "Artifact — Equipment",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "Equipped creature gets +2/+2 and has protection from red and from blue.\nWhenever equipped creature deals combat damage to a player, this Equipment deals 2 damage to any target and you draw a card.\nEquip {2}",
+    });
+    expect(fireIce.notes).toEqual([]);
+    expect(fireIce.definition.staticAbilities).toEqual([
+      {
+        selector: { scope: "attached" },
+        effect: { kind: "modify_pt", power: 2, toughness: 2 },
+      },
+      {
+        selector: { scope: "attached" },
+        effect: { kind: "grant_protection", colors: ["R", "U"] },
+      },
+    ]);
+
+    const feastFamine = compileOracleCard({
+      oracleId: "feastfamine",
+      name: "Sword of Feast and Famine",
+      manaCost: "{3}",
+      typeLine: "Artifact — Equipment",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "Equipped creature gets +2/+2 and has protection from black and from green.\nWhenever equipped creature deals combat damage to a player, that player discards a card and you untap all lands you control.\nEquip {2}",
+    });
+    expect(feastFamine.notes).toEqual([]);
+    expect(feastFamine.definition.triggers[0]?.effects).toEqual([
+      { kind: "discard", playerId: { type: "subject_player" }, count: 1 },
+      { kind: "untap_all", playerId: "controller", what: "land" },
+    ]);
+  });
+
+  it("fires only for the host's strikes and shields it in layer six", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 10);
+    const swordDef = createCardDefinition({
+      name: "Sword",
+      typeLine: "Artifact — Equipment",
+      staticAbilities: [
+        {
+          selector: { scope: "attached" },
+          effect: { kind: "modify_pt", power: 2, toughness: 2 },
+        },
+        {
+          selector: { scope: "attached" },
+          effect: { kind: "grant_protection", colors: ["R", "U"] },
+        },
+      ],
+      triggers: [
+        {
+          event: "deals_combat_damage_to_player",
+          watch: "attached",
+          effects: [{ kind: "draw", playerId: "controller", count: 1 }],
+          targetRequirements: [],
+        },
+      ],
+    });
+    const bearDef = createCardDefinition({ name: "Bear", typeLine: "Creature — Bear", power: 2, toughness: 2 });
+    game.definitions[swordDef.id] = swordDef;
+    game.definitions[bearDef.id] = bearDef;
+    const sword = createCardInstance({ definitionId: swordDef.id, ownerId: p1.id, zone: "battlefield" });
+    const host = createCardInstance({ definitionId: bearDef.id, ownerId: p1.id, zone: "battlefield" });
+    const other = createCardInstance({ definitionId: bearDef.id, ownerId: p1.id, zone: "battlefield" });
+    sword.attachedTo = host.id;
+    game.cards[sword.id] = sword;
+    game.cards[host.id] = host;
+    game.cards[other.id] = other;
+    p1.zones.battlefield.push(sword.id, host.id, other.id);
+
+    // The host reads 4/4 with protection; the bystander stays a plain bear.
+    expect(computedCard(game, host.id)?.power).toBe(4);
+    expect(computedCard(game, host.id)?.protectionFrom).toEqual(["R", "U"]);
+    expect(computedCard(game, other.id)?.protectionFrom).toEqual([]);
+
+    // A bystander's strike is silent...
+    dispatchEventsInPlace(game, [
+      { kind: "combat_damage_to_player", cardId: other.id, playerId: p2.id },
+    ]);
+    expect(game.stack).toHaveLength(0);
+
+    // ...the host's strike feeds the sword.
+    dispatchEventsInPlace(game, [
+      { kind: "combat_damage_to_player", cardId: host.id, playerId: p2.id },
+    ]);
+    expect(game.stack).toHaveLength(1);
+  });
+});

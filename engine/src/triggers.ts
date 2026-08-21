@@ -484,6 +484,10 @@ function triggerMatchesEvent(
     if (watch === "self" && event.cardId !== watcher.id) {
       return false;
     }
+    // Equipment watching its host ("equipped creature") — the Swords.
+    if (watch === "attached" && watcher.attachedTo !== event.cardId) {
+      return false;
+    }
     const dealerController = state.cards[event.cardId]?.controllerId;
     if (watch === "controlled" && dealerController !== watcher.controllerId) {
       return false;

@@ -1463,6 +1463,44 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     };
   }
 
+  // Sword of Feast and Famine's saboteur body.
+  if (/^that player discards a card and you untap all lands you control$/i.test(sentence)) {
+    return {
+      targetRequirements: [],
+      effects: [
+        { kind: "discard", playerId: { type: "subject_player" }, count: 1 },
+        { kind: "untap_all", playerId: "controller", what: "land" },
+      ],
+    };
+  }
+
+  // Sword of Fire and Ice's saboteur body.
+  match = sentence.match(
+    /^(?:~|this Equipment) deals (\d+) damage to any target and you draw a card$/i,
+  );
+  if (match?.[1]) {
+    return {
+      targetRequirements: [{ kind: "player_or_creature" }],
+      effects: [
+        {
+          kind: "deal_damage",
+          sourceId: "self",
+          target: { type: "chosen", index: 0 },
+          amount: Number(match[1]),
+        },
+        { kind: "draw", playerId: "controller", count: 1 },
+      ],
+    };
+  }
+
+  // Bloodforged Battle-Axe multiplies itself.
+  if (/^create a token that's a copy of (?:~|this Equipment)$/i.test(sentence)) {
+    return {
+      targetRequirements: [],
+      effects: [{ kind: "copy_token", ownerId: "controller", ofCardId: "self" }],
+    };
+  }
+
   const untapAll = sentence.match(/^untap all (creatures|lands) you control$/i);
   if (untapAll?.[1]) {
     return {
@@ -3373,6 +3411,10 @@ function parseTriggerHead(head: string): TriggerHead | null {
   if (/^Whenever equipped creature attacks$/i.test(text)) {
     return { event: "attacks", watch: "attached" };
   }
+  // The Swords, Mask of Memory: the Equipment watches its host's strikes.
+  if (/^Whenever equipped creature deals combat damage to a player$/i.test(text)) {
+    return { event: "deals_combat_damage_to_player", watch: "attached" };
+  }
   // Marionette Apprentice.
   if (
     /^Whenever another creature or artifact you control is put into a graveyard from the battlefield$/i.test(
@@ -4135,6 +4177,33 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
             effect: { kind: "grant_keyword", keyword },
           });
         }
+        continue;
+      }
+    }
+
+    // The Swords: "+2/+2 and has protection from red and from blue".
+    const attachedProtection = sentence.match(
+      /^(?:Enchanted|Equipped) creature gets ([+-]\d+)\/([+-]\d+) and has protection from ([a-z]+) and from ([a-z]+)$/i,
+    );
+    if (attachedProtection?.[1] && attachedProtection[2] && attachedProtection[3] && attachedProtection[4]) {
+      const colors = [attachedProtection[3], attachedProtection[4]].map(
+        (word) => COLOR_WORDS[word.toLowerCase()],
+      );
+      if (colors.every((color): color is Color => Boolean(color))) {
+        result.staticAbilities.push(
+          {
+            selector: { scope: "attached" },
+            effect: {
+              kind: "modify_pt",
+              power: Number(attachedProtection[1]),
+              toughness: Number(attachedProtection[2]),
+            },
+          },
+          {
+            selector: { scope: "attached" },
+            effect: { kind: "grant_protection", colors },
+          },
+        );
         continue;
       }
     }
@@ -5528,6 +5597,20 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
               rest = interveningIf[2].trim();
             }
           }
+        }
+        // Mask of Memory: "you may draw two cards. If you do, discard a
+        // card." fuses to a loot — the draw is taken unconditionally, a
+        // documented approximation of the "may".
+        const mayDraw = rest.match(/^you may draw (two|three|\d+) cards$/i);
+        const followDiscard = sentences[index + 1];
+        if (
+          mayDraw?.[1] &&
+          followDiscard &&
+          !lineStart[index + 1] &&
+          /^If you do, discard a card$/i.test(followDiscard)
+        ) {
+          rest = `draw ${mayDraw[1]} cards, then discard a card`;
+          sentences[index + 1] = "";
         }
         const inner = compileSimpleClause(rest);
         if (inner && condition) {
