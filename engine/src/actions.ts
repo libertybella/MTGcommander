@@ -115,13 +115,22 @@ function validateCast(
       located.playerId === playerId &&
       castableFromTop(state, playerId, cardId),
   );
-  const fromGraveyard = Boolean(
+  const viaFlashback = Boolean(
     located &&
       located.zone === "graveyard" &&
       located.playerId === playerId &&
       definition.flashback &&
       isInstantOrSorcery(state, cardId),
   );
+  // Gravecrawler: a normal cast from the graveyard behind a controlled gate.
+  const viaGraveyardGate = Boolean(
+    located &&
+      located.zone === "graveyard" &&
+      located.playerId === playerId &&
+      definition.castFromGraveyard &&
+      controlsMatching(state, playerId, definition.castFromGraveyard),
+  );
+  const fromGraveyard = viaFlashback || viaGraveyardGate;
   if (!fromHand && !fromCommand && !fromLibraryTop && !fromGraveyard) {
     throw new Error(`Card ${cardId} must be in the player's hand`);
   }
@@ -144,9 +153,9 @@ function validateCast(
     throw new Error(`Unknown player ${playerId}`);
   }
   // Flashback replaces the printed mana cost (CR 702.34a).
-  const flashbackLife = fromGraveyard ? definition.flashback?.life ?? 0 : 0;
+  const flashbackLife = viaFlashback ? definition.flashback?.life ?? 0 : 0;
   const cost = parseManaCost(
-    fromGraveyard ? definition.flashback?.manaCost ?? "" : definition.manaCost,
+    viaFlashback ? definition.flashback?.manaCost ?? "" : definition.manaCost,
   );
   if (fromCommand) {
     cost.generic += player.commander.tax;

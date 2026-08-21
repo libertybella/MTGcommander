@@ -182,6 +182,9 @@ function matches(
   if (selector.excludeSelf && card.id === instance.sourceId) {
     return false;
   }
+  if (selector.tokenOnly && !card.isToken) {
+    return false;
+  }
   for (const type of selector.types ?? []) {
     if (!computed.characteristics.types.includes(type)) {
       return false;

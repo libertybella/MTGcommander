@@ -199,6 +199,9 @@ export type CardDefinition = {
    * Deployed automatically when mulligans finish (the "may" is auto-taken).
    */
   leyline?: boolean;
+  /** Gravecrawler: castable from the graveyard while the controller controls
+   * a matching permanent. Resolves normally (a creature enters play). */
+  castFromGraveyard?: { types?: string[]; subtypes?: string[] };
   /** Star P/T: base power and toughness are each this count (CR 613.3a). */
   dynamicPt?: { count: DynamicCount };
   /** Scryfall card image, if known. Empty for synthetic / hidden cards. */
@@ -1178,6 +1181,8 @@ export type EffectSelector = {
   scope: "self" | "controlled" | "all" | "attached";
   types?: string[];
   subtypes?: string[];
+  /** "Tokens you control" (Jaheira). */
+  tokenOnly?: boolean;
   /** Any listed color must be present ("White creatures you control"). */
   colors?: Color[];
   /** The target must have the source's chosen creature type (Vanquisher's Banner). */

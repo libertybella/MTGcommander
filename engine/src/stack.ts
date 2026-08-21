@@ -3,6 +3,7 @@ import { cloneGameState } from "./clone";
 import { isCommander, isInstantOrSorcery } from "./cardTypes";
 import { abilitiesRemoved } from "./characteristicsEngine";
 import { castableFromTop } from "./derived";
+import { controlsMatching } from "./legalActions";
 import { enterOwnerZone, findCardZone, removeCardFromCurrentZone } from "./zones";
 import { applyEffects, bindCardEffects } from "./effects";
 import { isLiving, livingPlayerCount, nextLivingPlayerId } from "./players";
@@ -115,7 +116,16 @@ export function putSpellOnStack(
     located?.zone === "graveyard" &&
     Boolean(state.definitions[state.cards[cardId]?.definitionId ?? ""]?.flashback) &&
     isInstantOrSorcery(state, cardId);
-  if (!located || (located.zone !== "hand" && !fromCommand && !fromLibraryTop && !fromFlashback)) {
+  // Gravecrawler: a gated normal cast from the graveyard (no exile rider).
+  const graveyardGate = state.definitions[state.cards[cardId]?.definitionId ?? ""]?.castFromGraveyard;
+  const fromGraveyardGate =
+    located?.zone === "graveyard" &&
+    Boolean(graveyardGate) &&
+    controlsMatching(state, state.cards[cardId]?.controllerId ?? "", graveyardGate!);
+  if (
+    !located ||
+    (located.zone !== "hand" && !fromCommand && !fromLibraryTop && !fromFlashback && !fromGraveyardGate)
+  ) {
     throw new Error(`Card ${cardId} must be in hand to put on the stack`);
   }
   const definition = state.definitions[card.definitionId];

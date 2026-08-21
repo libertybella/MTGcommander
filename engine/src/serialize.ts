@@ -440,6 +440,27 @@ export function parseGameState(json: string): GameState {
           }),
       ...(def.playLandsFromGraveyard === true ? { playLandsFromGraveyard: true } : {}),
       ...(def.leyline === true ? { leyline: true } : {}),
+      ...(def.castFromGraveyard === undefined
+        ? {}
+        : {
+            castFromGraveyard: (() => {
+              if (!isRecord(def.castFromGraveyard)) {
+                throw new Error(`Invalid definition.${id}.castFromGraveyard`);
+              }
+              const types = parseStringList(
+                def.castFromGraveyard.types,
+                `definition.${id}.castFromGraveyard.types`,
+              );
+              const subtypes = parseStringList(
+                def.castFromGraveyard.subtypes,
+                `definition.${id}.castFromGraveyard.subtypes`,
+              );
+              return {
+                ...(types.length > 0 ? { types } : {}),
+                ...(subtypes.length > 0 ? { subtypes } : {}),
+              };
+            })(),
+          }),
       ...(def.untapDuringEachUntap === "creatures" || def.untapDuringEachUntap === "permanents"
         ? { untapDuringEachUntap: def.untapDuringEachUntap }
         : {}),
@@ -2175,6 +2196,7 @@ function parseEffectSelector(value: unknown, label: string): EffectSelector {
     ...(subtypes.length > 0 ? { subtypes } : {}),
     ...(colors.length > 0 ? { colors } : {}),
     ...(value.chosenSubtype === true ? { chosenSubtype: true } : {}),
+    ...(value.tokenOnly === true ? { tokenOnly: true } : {}),
     ...(excludeSelf ? { excludeSelf: true } : {}),
   };
 }

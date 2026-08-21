@@ -417,7 +417,11 @@ export function legalActions(state: GameState, playerId: PlayerId): LegalAction[
     const definition = state.cards[cardId]
       ? state.definitions[state.cards[cardId]!.definitionId]
       : undefined;
-    return Boolean(definition?.flashback);
+    return Boolean(
+      definition?.flashback ||
+        (definition?.castFromGraveyard &&
+          controlsMatching(state, playerId, definition.castFromGraveyard)),
+    );
   });
   for (const cardId of [
     ...player.zones.hand,
@@ -450,6 +454,20 @@ export function legalActions(state: GameState, playerId: PlayerId): LegalAction[
           (face.definition.characteristics.types.includes("instant") ||
             face.definition.characteristics.types.includes("sorcery")) &&
           castableFace(state, playerId, face.definition, potential, 0, flashback.manaCost, flashGrant)
+        ) {
+          actions.push({
+            kind: "cast_spell",
+            cardId,
+            faceIndex: face.faceIndex,
+            fromCommand: false,
+          });
+        }
+        // Gravecrawler: a gated normal cast for the printed cost.
+        if (
+          !flashback &&
+          face.definition.castFromGraveyard &&
+          controlsMatching(state, playerId, face.definition.castFromGraveyard) &&
+          castableFace(state, playerId, face.definition, potential, 0, undefined, flashGrant)
         ) {
           actions.push({
             kind: "cast_spell",

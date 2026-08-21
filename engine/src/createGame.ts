@@ -79,6 +79,7 @@ export function createCardDefinition(
         | "entersWithXCounters"
         | "playLandsFromGraveyard"
         | "leyline"
+        | "castFromGraveyard"
         | "untapDuringEachUntap"
         | "additionalCost"
         | "attackTax"
@@ -259,6 +260,16 @@ export function createCardDefinition(
     ...(input.entersWithXCounters ? { entersWithXCounters: true } : {}),
     ...(input.playLandsFromGraveyard ? { playLandsFromGraveyard: true } : {}),
     ...(input.leyline ? { leyline: true } : {}),
+    ...(input.castFromGraveyard
+      ? {
+          castFromGraveyard: {
+            ...(input.castFromGraveyard.types ? { types: [...input.castFromGraveyard.types] } : {}),
+            ...(input.castFromGraveyard.subtypes
+              ? { subtypes: [...input.castFromGraveyard.subtypes] }
+              : {}),
+          },
+        }
+      : {}),
     ...(input.untapDuringEachUntap
       ? { untapDuringEachUntap: input.untapDuringEachUntap }
       : {}),

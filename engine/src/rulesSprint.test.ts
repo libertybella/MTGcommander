@@ -5781,3 +5781,114 @@ describe("wave 61: token filters and search watchers", () => {
     expect(own.stack).toHaveLength(0);
   });
 });
+
+describe("wave 62: token mana grants and gated graveyard casts", () => {
+  const base = { power: null, toughness: null, printedKeywords: [], imageUrl: "" };
+
+  it("compiles Jaheira and Gravecrawler fully", () => {
+    const jaheira = compileOracleCard({
+      ...base,
+      oracleId: "jaheira",
+      name: "Jaheira, Friend of the Forest",
+      manaCost: "{1}{G}",
+      typeLine: "Legendary Creature — Human Druid",
+      power: "1",
+      toughness: "3",
+      oracleText: "Tokens you control have \"{T}: Add {G}.\"",
+    });
+    expect(jaheira.notes).toEqual([]);
+    const grant = jaheira.definition.staticAbilities[0];
+    expect(grant?.selector.tokenOnly).toBe(true);
+    expect(grant?.effect.kind === "grant_mana_ability" && grant.effect.ability.produces.G).toBe(1);
+
+    const crawler = compileOracleCard({
+      ...base,
+      oracleId: "crawler",
+      name: "Gravecrawler",
+      manaCost: "{B}",
+      typeLine: "Creature — Zombie",
+      power: "2",
+      toughness: "1",
+      oracleText:
+        "Gravecrawler can't block.\nYou may cast Gravecrawler from your graveyard as long as you control a Zombie.",
+    });
+    expect(crawler.notes).toEqual([]);
+    expect(crawler.definition.castFromGraveyard).toEqual({ subtypes: ["zombie"] });
+  });
+
+  it("lets the token tap for the granted mana", () => {
+    const { game, p1 } = twoPlayers();
+    const jaheiraDef = createCardDefinition({
+      name: "Jaheira Lite",
+      typeLine: "Creature — Druid",
+      power: 1,
+      toughness: 3,
+      staticAbilities: [
+        {
+          selector: { scope: "controlled", tokenOnly: true },
+          effect: {
+            kind: "grant_mana_ability",
+            ability: { produces: { G: 1 }, producesOptions: [], producesAnyColor: false, damageToController: 0 },
+          },
+        },
+      ],
+    });
+    game.definitions[jaheiraDef.id] = jaheiraDef;
+    const jaheira = createCardInstance({ definitionId: jaheiraDef.id, ownerId: p1.id, zone: "battlefield" });
+    game.cards[jaheira.id] = jaheira;
+    p1.zones.battlefield.push(jaheira.id);
+
+    let next = applyEffect(game, {
+      kind: "create_token",
+      ownerId: p1.id,
+      name: "Saproling",
+      typeLine: "Creature — Saproling Token",
+      power: 1,
+      toughness: 1,
+    });
+    const token = Object.values(next.cards).find((card) => card.isToken)!;
+    expect(manaAbilitiesFor(next, token.id)).toHaveLength(1);
+    // The nontoken Jaheira herself gets nothing.
+    expect(manaAbilitiesFor(next, jaheira.id)).toHaveLength(0);
+  });
+
+  it("casts from the graveyard only while the gate is satisfied", () => {
+    const { game, p1 } = twoPlayers();
+    const crawlerDef = createCardDefinition({
+      name: "Crawler Lite",
+      manaCost: "",
+      typeLine: "Creature — Zombie",
+      power: 2,
+      toughness: 1,
+      castFromGraveyard: { subtypes: ["zombie"] },
+    });
+    const zombieDef = createCardDefinition({
+      name: "Walker",
+      typeLine: "Creature — Zombie",
+      power: 2,
+      toughness: 2,
+    });
+    game.definitions[crawlerDef.id] = crawlerDef;
+    game.definitions[zombieDef.id] = zombieDef;
+    const crawler = createCardInstance({ definitionId: crawlerDef.id, ownerId: p1.id, zone: "graveyard" });
+    game.cards[crawler.id] = crawler;
+    p1.zones.graveyard.push(crawler.id);
+    game.turn.activePlayerId = p1.id;
+    game.turn.phase = "precombatMain";
+    game.turn.step = "precombatMain";
+    game.priorityPlayerId = p1.id;
+
+    // No Zombie controlled: the cast is rejected.
+    expect(() =>
+      applyAction(game, { kind: "cast_spell", playerId: p1.id, cardId: crawler.id }),
+    ).toThrow();
+
+    const zombie = createCardInstance({ definitionId: zombieDef.id, ownerId: p1.id, zone: "battlefield" });
+    game.cards[zombie.id] = zombie;
+    p1.zones.battlefield.push(zombie.id);
+    let next = applyAction(game, { kind: "cast_spell", playerId: p1.id, cardId: crawler.id });
+    expect(next.stack).toHaveLength(1);
+    next = resolveTopOfStack(next);
+    expect(next.cards[crawler.id]?.zone).toBe("battlefield");
+  });
+});

@@ -52,6 +52,7 @@ export type CompiledOracleText = {
   grantsFlash?: boolean;
   attackTax?: { generic?: number; perEnchantment?: boolean; lifePer?: number };
   leyline?: boolean;
+  castFromGraveyard?: { types?: string[]; subtypes?: string[] };
   untapDuringEachUntap?: "creatures" | "permanents";
   extraDrawStepDraws?: boolean;
   affinityArtifacts?: boolean;
@@ -3046,24 +3047,36 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
       continue;
     }
 
-    // Cryptolith Rite: creatures gain "{T}: Add one mana of any color."
+    // Cryptolith Rite / Jaheira: permanents gain a tap mana ability.
     const grantAnyMana = sentence.match(
-      /^(Creatures|Lands|Artifacts) you control have "\{T\}: Add one mana of any color\.?"$/i,
+      /^(Creatures|Lands|Artifacts|Tokens) you control have "\{T\}: Add (one mana of any color|(?:\{[WUBRGC]\})+)\.?"$/i,
     );
-    if (grantAnyMana?.[1]) {
+    if (grantAnyMana?.[1] && grantAnyMana[2]) {
       const typeOf: Record<string, string> = {
         creatures: "creature",
         lands: "land",
         artifacts: "artifact",
       };
+      const what = grantAnyMana[1].toLowerCase();
+      const anyColor = /any color/i.test(grantAnyMana[2]);
+      const produces: Partial<Record<"W" | "U" | "B" | "R" | "G" | "C", number>> = {};
+      if (!anyColor) {
+        for (const pip of grantAnyMana[2].match(/\{[WUBRGC]\}/g) ?? []) {
+          const color = pip[1] as "W" | "U" | "B" | "R" | "G" | "C";
+          produces[color] = (produces[color] ?? 0) + 1;
+        }
+      }
       result.staticAbilities.push({
-        selector: { scope: "controlled", types: [typeOf[grantAnyMana[1].toLowerCase()]!] },
+        selector:
+          what === "tokens"
+            ? { scope: "controlled", tokenOnly: true }
+            : { scope: "controlled", types: [typeOf[what]!] },
         effect: {
           kind: "grant_mana_ability",
           ability: {
-            produces: {},
+            produces: anyColor ? {} : produces,
             producesOptions: [],
-            producesAnyColor: true,
+            producesAnyColor: anyColor,
             damageToController: 0,
           },
         },
@@ -3157,6 +3170,18 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
       )
     ) {
       result.leyline = true;
+      continue;
+    }
+
+    // Gravecrawler: a gated recast from the graveyard.
+    const graveCast = sentence.match(
+      /^You may cast (?:~|this card) from your graveyard as long as you control an? ([A-Za-z]+)$/i,
+    );
+    if (graveCast?.[1]) {
+      const word = graveCast[1].toLowerCase();
+      result.castFromGraveyard = SEARCH_CARD_TYPES.has(word)
+        ? { types: [word] }
+        : { subtypes: [word] };
       continue;
     }
 
