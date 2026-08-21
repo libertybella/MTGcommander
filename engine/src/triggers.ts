@@ -1,5 +1,5 @@
 import { characteristicsOf } from "./cardTypes";
-import { abilitiesRemoved } from "./characteristicsEngine";
+import { abilitiesRemoved, cardMatchesSubtype } from "./characteristicsEngine";
 import { createId } from "./ids";
 import { hasAnyLegalTargetSet } from "./targeting";
 import type {
@@ -208,7 +208,7 @@ function subjectMatchesFilter(
   const traits = characteristicsOf(state, subjectId);
   if (filter.chosenSubtype) {
     const chosen = watcher?.chosenCreatureType;
-    if (!chosen || !traits.subtypes.includes(chosen)) {
+    if (!chosen || !cardMatchesSubtype(state, subjectId, chosen)) {
       return false;
     }
   }
@@ -218,7 +218,7 @@ function subjectMatchesFilter(
     }
   }
   for (const subtype of filter.subtypes ?? []) {
-    if (!traits.subtypes.includes(subtype)) {
+    if (!cardMatchesSubtype(state, subjectId, subtype)) {
       return false;
     }
   }

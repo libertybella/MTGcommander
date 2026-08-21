@@ -45,6 +45,7 @@ export type CompiledOracleText = {
   extraLandDrops?: number;
   cantBeCountered?: boolean;
   freeIfCommander?: boolean;
+  changeling?: boolean;
   costReductions?: CostReduction[];
   chooseCreatureTypeOnEnter?: boolean;
   entersWithXCounters?: boolean;
@@ -1985,16 +1986,24 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
       continue;
     }
 
-    const selfRestrict = sentence.match(/^~ can't (attack or block|be blocked|attack|block)$/i);
+    const selfRestrict = sentence.match(
+      /^~ can't (attack or block|be blocked|attack|block)(?: and can't (be blocked|block|attack))?$/i,
+    );
     if (selfRestrict?.[1]) {
-      const what = selfRestrict[1].toLowerCase();
+      const parts = [selfRestrict[1], selfRestrict[2]]
+        .filter((part): part is string => Boolean(part))
+        .map((part) => part.toLowerCase());
       result.staticAbilities.push({
         selector: { scope: "self" },
         effect: {
           kind: "restrict",
-          ...(what.includes("attack") ? { cantAttack: true } : {}),
-          ...(what === "attack or block" || what === "block" ? { cantBlock: true } : {}),
-          ...(what === "be blocked" ? { cantBeBlocked: true } : {}),
+          ...(parts.some((part) => part === "attack" || part === "attack or block")
+            ? { cantAttack: true }
+            : {}),
+          ...(parts.some((part) => part === "attack or block" || part === "block")
+            ? { cantBlock: true }
+            : {}),
+          ...(parts.some((part) => part === "be blocked") ? { cantBeBlocked: true } : {}),
         },
       });
       continue;
@@ -2258,6 +2267,11 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
 
     if (/^This spell can't be countered$/i.test(sentence)) {
       result.cantBeCountered = true;
+      continue;
+    }
+
+    if (/^Changeling$/i.test(sentence)) {
+      result.changeling = true;
       continue;
     }
 

@@ -200,6 +200,7 @@ function compileOneFace(card: OracleCard, definitionId: string): OracleCompileRe
     ...(compiled.extraLandDrops ? { extraLandDrops: compiled.extraLandDrops } : {}),
     ...(compiled.cantBeCountered ? { cantBeCountered: true } : {}),
     ...(compiled.freeIfCommander ? { freeIfCommander: true } : {}),
+    ...(compiled.changeling ? { changeling: true } : {}),
     ...(compiled.costReductions && compiled.costReductions.length > 0
       ? { costReductions: compiled.costReductions }
       : {}),

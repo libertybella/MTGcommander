@@ -13,9 +13,10 @@ import {
   putSpellOnStack,
   resolveTopOfStack,
 } from "./index";
-import { computedCard } from "./characteristicsEngine";
+import { cardMatchesSubtype, computedCard } from "./characteristicsEngine";
 import { applyCombatDamage } from "./combat";
 import { manaAbilitiesFor } from "./manaOptions";
+import { searchMatches } from "./prompt";
 import { fillLibraries } from "./testSupport";
 import { advanceSteps } from "./turn";
 import type { GameState, PlayerState } from "./types";
@@ -2590,5 +2591,110 @@ describe("wave 27: free-spell cycle (cast free with a commander)", () => {
     expect(cast.stack).toHaveLength(1);
     const resolved = resolveTopOfStack(cast);
     expect(resolved.players[0]?.life).toBe(42);
+  });
+});
+
+describe("wave 29: changeling (CR 702.73)", () => {
+  it("compiles Changeling Outcast fully", () => {
+    const compiled = compileOracleCard({
+      oracleId: "changeling-outcast",
+      name: "Changeling Outcast",
+      manaCost: "{B}",
+      typeLine: "Creature - Shapeshifter",
+      oracleText: "Changeling\nThis creature can't block and can't be blocked.",
+      power: "1",
+      toughness: "1",
+      printedKeywords: ["Changeling"],
+      imageUrl: "",
+    });
+    expect(compiled.definition.changeling).toBe(true);
+    expect(compiled.definition.staticAbilities).toEqual([
+      {
+        selector: { scope: "self" },
+        effect: { kind: "restrict", cantBlock: true, cantBeBlocked: true },
+      },
+    ]);
+    expect(compiled.notes).toEqual([]);
+  });
+
+  it("matches every creature type in any zone, but never land subtypes", () => {
+    const { game, p1 } = twoPlayers();
+    const shifter = createCardDefinition({
+      name: "Woodland Changeling",
+      typeLine: "Creature - Shapeshifter",
+      power: 2,
+      toughness: 2,
+      changeling: true,
+    });
+    game.definitions[shifter.id] = shifter;
+    const onField = createCardInstance({
+      definitionId: shifter.id,
+      ownerId: p1.id,
+      zone: "battlefield",
+    });
+    game.cards[onField.id] = onField;
+    p1.zones.battlefield.push(onField.id);
+    expect(cardMatchesSubtype(game, onField.id, "sliver")).toBe(true);
+    expect(cardMatchesSubtype(game, onField.id, "elf")).toBe(true);
+    expect(cardMatchesSubtype(game, onField.id, "plains")).toBe(false);
+    expect(cardMatchesSubtype(game, onField.id, "equipment")).toBe(false);
+
+    const inLibrary = createCardInstance({
+      definitionId: shifter.id,
+      ownerId: p1.id,
+      zone: "library",
+    });
+    game.cards[inLibrary.id] = inLibrary;
+    p1.zones.library.push(inLibrary.id);
+    expect(cardMatchesSubtype(game, inLibrary.id, "goblin")).toBe(true);
+    expect(
+      searchMatches(game, inLibrary.id, { types: ["creature"], subtypesAny: ["elf"] }),
+    ).toBe(true);
+  });
+
+  it("a changeling triggers chosen-type watchers (Kindred Discovery shape)", () => {
+    const { game, p1 } = twoPlayers();
+    const watcherDef = createCardDefinition({
+      name: "Kindred Watcher",
+      typeLine: "Enchantment",
+      triggers: [
+        {
+          event: "enter_battlefield",
+          watch: "controlled",
+          subjectFilter: { types: ["creature"], chosenSubtype: true },
+          effects: [{ kind: "draw", playerId: "controller", count: 1 }],
+          targetRequirements: [],
+        },
+      ],
+    });
+    game.definitions[watcherDef.id] = watcherDef;
+    const watcher = createCardInstance({
+      definitionId: watcherDef.id,
+      ownerId: p1.id,
+      zone: "battlefield",
+    });
+    watcher.chosenCreatureType = "sliver";
+    game.cards[watcher.id] = watcher;
+    p1.zones.battlefield.push(watcher.id);
+    fillLibraries(game, 5);
+
+    const shifter = createCardDefinition({
+      name: "Woodland Changeling",
+      typeLine: "Creature - Shapeshifter",
+      power: 2,
+      toughness: 2,
+      changeling: true,
+    });
+    game.definitions[shifter.id] = shifter;
+    const entering = createCardInstance({
+      definitionId: shifter.id,
+      ownerId: p1.id,
+      zone: "hand",
+    });
+    game.cards[entering.id] = entering;
+    p1.zones.hand.push(entering.id);
+    const after = moveCard(game, entering.id, "battlefield");
+    // The changeling counts as a Sliver: the trigger is on the stack.
+    expect(after.stack).toHaveLength(1);
   });
 });

@@ -137,6 +137,11 @@ export type CardDefinition = {
    */
   freeIfCommander?: boolean;
   /**
+   * Changeling (CR 702.73): this card is every creature type, in every zone.
+   * Honored via cardMatchesSubtype; removed with other abilities (Humility).
+   */
+  changeling?: boolean;
+  /**
    * "Artifact spells you cast cost {1} less to cast" (medallions, Foundry
    * Inspector). Applies to the controller's spells while on the battlefield;
    * only the generic portion shrinks, never below zero.

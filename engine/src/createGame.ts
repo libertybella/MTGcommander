@@ -65,6 +65,7 @@ export function createCardDefinition(
         | "extraLandDrops"
         | "cantBeCountered"
         | "freeIfCommander"
+        | "changeling"
         | "costReductions"
         | "chooseCreatureTypeOnEnter"
         | "entersWithXCounters"
@@ -194,6 +195,7 @@ export function createCardDefinition(
       : {}),
     ...(input.cantBeCountered ? { cantBeCountered: true } : {}),
     ...(input.freeIfCommander ? { freeIfCommander: true } : {}),
+    ...(input.changeling ? { changeling: true } : {}),
     ...(input.chooseCreatureTypeOnEnter ? { chooseCreatureTypeOnEnter: true } : {}),
     ...(input.entersWithXCounters ? { entersWithXCounters: true } : {}),
     ...(input.playLandsFromGraveyard ? { playLandsFromGraveyard: true } : {}),

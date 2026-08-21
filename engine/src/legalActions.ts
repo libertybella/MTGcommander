@@ -1,5 +1,5 @@
 import { isClass, isCommander, isCreature, isLand, isMainPhase } from "./cardTypes";
-import { abilitiesRemoved } from "./characteristicsEngine";
+import { abilitiesRemoved, cardMatchesSubtype } from "./characteristicsEngine";
 import { hasKeyword } from "./keywords";
 import { emptyManaPool } from "./createGame";
 import { pendingBlockerPlayer } from "./combat";
@@ -201,7 +201,7 @@ export function controlsMatching(
     }
     return (
       (wanted.types ?? []).every((type) => traits.types.includes(type)) &&
-      (wanted.subtypes ?? []).every((subtype) => traits.subtypes.includes(subtype))
+      (wanted.subtypes ?? []).every((subtype) => cardMatchesSubtype(state, card.id, subtype))
     );
   });
 }

@@ -1,6 +1,7 @@
 import { createId } from "./ids";
 import { cloneGameState } from "./clone";
 // Deferred call only (decline path) — the effects/prompt import cycle is benign.
+import { cardMatchesSubtype } from "./characteristicsEngine";
 import { applyEffects } from "./effects";
 import { payManaCost, tapForMana } from "./mana";
 import { manaAbilitiesFor, manaTapOptionsFor } from "./manaOptions";
@@ -368,14 +369,14 @@ export function searchMatches(
     }
   }
   for (const subtype of filter.subtypes ?? []) {
-    if (!traits.subtypes.includes(subtype)) {
+    if (!cardMatchesSubtype(state, cardId, subtype)) {
       return false;
     }
   }
   if (
     filter.subtypesAny &&
     filter.subtypesAny.length > 0 &&
-    !filter.subtypesAny.some((subtype) => traits.subtypes.includes(subtype))
+    !filter.subtypesAny.some((subtype) => cardMatchesSubtype(state, cardId, subtype))
   ) {
     return false;
   }

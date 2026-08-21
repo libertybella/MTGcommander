@@ -36,6 +36,8 @@ export type ComputedCard = {
   toughness: number;
   /** Mana abilities granted by statics (Cryptolith Rite). */
   grantedMana: ManaAbility[];
+  /** Changeling: matches every creature type (cleared with abilities). */
+  allCreatureTypes: boolean;
   /** Combat restrictions from layer-6 effects (Pacifism). */
   cantAttack: boolean;
   cantBlock: boolean;
@@ -80,6 +82,7 @@ function baseComputed(state: GameState, card: CardInstance): ComputedCard {
       power: 2,
       toughness: 2,
       grantedMana: [],
+      allCreatureTypes: false,
       cantAttack: false,
       cantBlock: false,
       cantBeBlocked: false,
@@ -110,6 +113,7 @@ function baseComputed(state: GameState, card: CardInstance): ComputedCard {
     power: dynamic ?? definition?.power ?? 0,
     toughness: dynamic ?? definition?.toughness ?? 0,
     grantedMana: [],
+    allCreatureTypes: definition?.changeling === true,
     cantAttack: false,
     cantBlock: false,
     cantBeBlocked: false,
@@ -181,7 +185,7 @@ function matches(
     }
   }
   for (const subtype of selector.subtypes ?? []) {
-    if (!computed.characteristics.subtypes.includes(subtype)) {
+    if (!computedSubtypeMatches(computed, subtype)) {
       return false;
     }
   }
@@ -193,11 +197,56 @@ function matches(
   if (selector.chosenSubtype) {
     const source = instance.sourceId ? state.cards[instance.sourceId] : undefined;
     const chosen = source?.chosenCreatureType;
-    if (!chosen || !computed.characteristics.subtypes.includes(chosen)) {
+    if (!chosen || !computedSubtypeMatches(computed, chosen)) {
       return false;
     }
   }
   return true;
+}
+
+/**
+ * Subtypes changeling can never grant: it is every CREATURE type only
+ * (CR 702.73a). Queries for these land/artifact/enchantment subtypes must
+ * not match a changeling.
+ */
+const NONCREATURE_SUBTYPES = new Set([
+  "plains", "island", "swamp", "mountain", "forest", "desert", "gate", "cave",
+  "lair", "locus", "sphere", "urza's", "mine", "power-plant", "tower",
+  "equipment", "vehicle", "fortification", "treasure", "clue", "food", "blood",
+  "gold", "incubator", "junk", "map", "powerstone", "aura", "curse", "shrine",
+  "saga", "class", "background", "role", "case", "attraction", "contraption",
+]);
+
+function computedSubtypeMatches(computed: ComputedCard, subtype: string): boolean {
+  return (
+    computed.characteristics.subtypes.includes(subtype) ||
+    (computed.allCreatureTypes && !NONCREATURE_SUBTYPES.has(subtype.toLowerCase()))
+  );
+}
+
+/**
+ * Does this card count as the given subtype, changeling included? The one
+ * subtype query most callers should use. Works in every zone (CR 702.73:
+ * changeling functions everywhere); on the battlefield, ability removal
+ * (Humility) cancels it via the computed pass.
+ */
+export function cardMatchesSubtype(
+  state: GameState,
+  cardId: CardInstanceId,
+  subtype: string,
+): boolean {
+  const card = state.cards[cardId];
+  if (card?.zone === "battlefield") {
+    const computed = computedCard(state, cardId);
+    if (computed) {
+      return computedSubtypeMatches(computed, subtype);
+    }
+  }
+  const definition = card ? state.definitions[card.definitionId] : undefined;
+  return (
+    (definition?.characteristics.subtypes ?? []).includes(subtype) ||
+    (definition?.changeling === true && !NONCREATURE_SUBTYPES.has(subtype.toLowerCase()))
+  );
 }
 
 function collectInstances(state: GameState): EffectInstance[] {
@@ -273,6 +322,7 @@ function applyInstance(
         computed.keywords = [];
         computed.abilitiesRemoved = true;
         computed.grantedMana = [];
+        computed.allCreatureTypes = false;
         break;
       case "restrict":
         computed.cantAttack = computed.cantAttack || effect.cantAttack === true;
