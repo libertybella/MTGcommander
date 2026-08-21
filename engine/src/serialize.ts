@@ -1536,6 +1536,20 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
           value.amount === "subject_amount" || value.amount === "subject_toughness"
             ? value.amount
             : expectNumber(value.amount, `${label}.amount`),
+        ...(isRecord(value.perControlledCreature)
+          ? {
+              perControlledCreature: {
+                ...(value.perControlledCreature.minPower === undefined
+                  ? {}
+                  : {
+                      minPower: expectNumber(
+                        value.perControlledCreature.minPower,
+                        `${label}.perControlledCreature.minPower`,
+                      ),
+                    }),
+              },
+            }
+          : {}),
       };
     case "lose_life":
       return {
@@ -1564,6 +1578,7 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
             countFromGreatestPower: nonSubtypes.length > 0 ? { nonSubtypes } : {},
           };
         })(),
+        ...(value.countPerControlled === "creature" ? { countPerControlled: "creature" } : {}),
       };
     case "scry":
     case "surveil":
@@ -1949,7 +1964,18 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
       return {
         kind,
         playerId: parsePlayerSelector(value.playerId, `${label}.playerId`),
-        amount: value.amount === "x" ? "x" : expectNumber(value.amount, `${label}.amount`),
+        amount:
+          value.amount === "x"
+            ? "x"
+            : isRecord(value.amount)
+              ? (() => {
+                  const devotion = expectString(value.amount.devotion, `${label}.amount.devotion`);
+                  if (!(COLOR_KEYS as readonly string[]).includes(devotion)) {
+                    throw new Error(`Invalid ${label}.amount.devotion`);
+                  }
+                  return { devotion: devotion as Color };
+                })()
+              : expectNumber(value.amount, `${label}.amount`),
       };
     case "search_library":
       return {

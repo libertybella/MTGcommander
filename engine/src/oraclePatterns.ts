@@ -2008,6 +2008,47 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     };
   }
 
+  // Gray Merchant of Asphodel (fused): X = the caster's devotion.
+  match = sentence.match(/^drain devotion (white|blue|black|red|green) from each opponent$/i);
+  if (match?.[1]) {
+    return {
+      targetRequirements: [],
+      effects: [
+        {
+          kind: "drain_opponents",
+          playerId: "controller",
+          amount: { devotion: COLOR_WORDS[match[1].toLowerCase()]! },
+        },
+      ],
+    };
+  }
+
+  match = sentence.match(/^Draw a card for each creature you control$/i);
+  if (match) {
+    return {
+      targetRequirements: [],
+      effects: [{ kind: "draw", playerId: "controller", count: 0, countPerControlled: "creature" }],
+    };
+  }
+
+  // Shamanic Revelation's ferocious half (the ability word is flavor).
+  match = sentence.match(
+    /^(?:Ferocious\s*[—-]\s*)?You gain (\d+) life for each creature you control with power (\d+) or greater$/i,
+  );
+  if (match?.[1] && match[2]) {
+    return {
+      targetRequirements: [],
+      effects: [
+        {
+          kind: "gain_life",
+          playerId: "controller",
+          amount: Number(match[1]),
+          perControlledCreature: { minPower: Number(match[2]) },
+        },
+      ],
+    };
+  }
+
   // Reanimate: steal from ANY graveyard; the life clause follows separately.
   if (
     /^Put target creature card from a graveyard onto the battlefield under your control$/i.test(
@@ -2574,6 +2615,22 @@ function fuseDrainPairInPlace(sentences: string[], lineStart: boolean[]): void {
     const drain = sentences[index]!.match(/^(.*)Each opponent loses (X|\d+) life$/i);
     if (drain && /^You gain life equal to the life lost this way$/i.test(sentences[index + 1]!)) {
       sentences.splice(index, 2, `${drain[1] ?? ""}drain ${drain[2]} from each opponent`);
+      lineStart.splice(index + 1, 1);
+      continue;
+    }
+    // Gray Merchant of Asphodel: the X is the caster's devotion.
+    const devotion = sentences[index]!.match(
+      /^(.*)each opponent loses X life, where X is your devotion to (white|blue|black|red|green)$/i,
+    );
+    if (
+      devotion &&
+      /^You gain life equal to the life lost this way$/i.test(sentences[index + 1]!)
+    ) {
+      sentences.splice(
+        index,
+        2,
+        `${devotion[1] ?? ""}drain devotion ${devotion[2]!.toLowerCase()} from each opponent`,
+      );
       lineStart.splice(index + 1, 1);
     }
   }

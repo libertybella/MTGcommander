@@ -22,6 +22,7 @@ import type {
   ChosenOwnerRef,
   ChosenTarget,
   ChosenTargetRef,
+  Color,
   ContinuousEffectData,
   EngineEvent,
   GameEffect,
@@ -108,6 +109,24 @@ function bindPlayer(
     throw new Error("each-player selectors must be expanded before binding");
   }
   return selector;
+}
+
+/** CR 700.5: colored pips of the color among the player's permanents' mana
+ * costs (a hybrid symbol counts toward each of its colors once). */
+function devotionTo(state: GameState, playerId: PlayerId, color: Color): number {
+  let pips = 0;
+  for (const card of Object.values(state.cards)) {
+    if (card.zone !== "battlefield" || card.controllerId !== playerId) {
+      continue;
+    }
+    const manaCost = state.definitions[card.definitionId]?.manaCost ?? "";
+    for (const symbol of manaCost.matchAll(/\{([^}]+)\}/g)) {
+      if (symbol[1]!.toUpperCase().split("/").includes(color)) {
+        pips += 1;
+      }
+    }
+  }
+  return pips;
 }
 
 function opponentIds(state: GameState, controllerId: PlayerId): PlayerId[] {
@@ -273,6 +292,21 @@ export function bindCardEffect(
       if (amount <= 0) {
         return null;
       }
+      // Shamanic Revelation's ferocious rider: scale by matching creatures.
+      if (effect.kind === "gain_life" && effect.perControlledCreature) {
+        const minPower = effect.perControlledCreature.minPower ?? 0;
+        const matching = Object.values(state.cards).filter(
+          (card) =>
+            card.zone === "battlefield" &&
+            card.controllerId === context.controllerId &&
+            isCreature(state, card.id) &&
+            creaturePower(state, card.id) >= minPower,
+        ).length;
+        if (matching === 0) {
+          return null;
+        }
+        return { kind: effect.kind, playerId, amount: amount * matching };
+      }
       return { kind: effect.kind, playerId, amount };
     }
     case "draw": {
@@ -280,7 +314,20 @@ export function bindCardEffect(
       if (!playerId) {
         return null;
       }
-      const { countFromGreatestPower, ...drawRest } = effect;
+      const { countFromGreatestPower, countPerControlled, ...drawRest } = effect;
+      if (countPerControlled) {
+        // Shamanic Revelation: one card per controlled creature at bind.
+        const count = Object.values(state.cards).filter(
+          (card) =>
+            card.zone === "battlefield" &&
+            card.controllerId === context.controllerId &&
+            isCreature(state, card.id),
+        ).length;
+        if (count === 0) {
+          return null;
+        }
+        return { ...drawRest, playerId, count };
+      }
       if (!countFromGreatestPower) {
         return { ...drawRest, playerId };
       }
@@ -618,7 +665,12 @@ export function bindCardEffect(
       if (!playerId) {
         return null;
       }
-      const amount = effect.amount === "x" ? context.xValue ?? 0 : effect.amount;
+      const amount =
+        effect.amount === "x"
+          ? context.xValue ?? 0
+          : typeof effect.amount === "object"
+            ? devotionTo(state, context.controllerId, effect.amount.devotion)
+            : effect.amount;
       if (amount <= 0) {
         return null;
       }

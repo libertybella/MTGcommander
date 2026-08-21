@@ -8223,3 +8223,108 @@ describe("wave 90: warps, drains, taxes", () => {
   });
 });
 
+describe("wave 91: devotion and revelations", () => {
+  it("compiles Gray Merchant and Shamanic Revelation fully", () => {
+    const merchant = compileOracleCard({
+      oracleId: "gary",
+      name: "Gray Merchant of Asphodel",
+      manaCost: "{3}{B}{B}",
+      typeLine: "Creature — Zombie",
+      power: "2",
+      toughness: "4",
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "When this creature enters, each opponent loses X life, where X is your devotion to black. You gain life equal to the life lost this way. (Each {B} in the mana costs of permanents you control counts toward your devotion to black.)",
+    });
+    expect(merchant.notes).toEqual([]);
+    expect(merchant.definition.triggers[0]?.effects[0]).toEqual({
+      kind: "drain_opponents",
+      playerId: "controller",
+      amount: { devotion: "B" },
+    });
+
+    const revelation = compileOracleCard({
+      oracleId: "revelation",
+      name: "Shamanic Revelation",
+      manaCost: "{3}{G}{G}",
+      typeLine: "Sorcery",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "Draw a card for each creature you control.\nFerocious — You gain 4 life for each creature you control with power 4 or greater.",
+    });
+    expect(revelation.notes).toEqual([]);
+    const draw = revelation.definition.effects[0];
+    expect(draw?.kind === "draw" && draw.countPerControlled).toBe("creature");
+    const ferocious = revelation.definition.effects[1];
+    expect(ferocious?.kind === "gain_life" && ferocious.perControlledCreature).toEqual({
+      minPower: 4,
+    });
+  });
+
+  it("drains devotion pips from each opponent", () => {
+    const { game, p1 } = twoPlayers();
+    const garyDef = createCardDefinition({
+      name: "Gary",
+      manaCost: "{3}{B}{B}",
+      typeLine: "Creature — Zombie",
+      power: 2,
+      toughness: 4,
+    });
+    const ritesDef = createCardDefinition({ name: "Rites", manaCost: "{B}", typeLine: "Enchantment" });
+    game.definitions[garyDef.id] = garyDef;
+    game.definitions[ritesDef.id] = ritesDef;
+    const gary = createCardInstance({ definitionId: garyDef.id, ownerId: p1.id, zone: "battlefield" });
+    const rites = createCardInstance({ definitionId: ritesDef.id, ownerId: p1.id, zone: "battlefield" });
+    game.cards[gary.id] = gary;
+    game.cards[rites.id] = rites;
+    p1.zones.battlefield.push(gary.id, rites.id);
+
+    const bound = bindCardEffects(
+      game,
+      [{ kind: "drain_opponents", playerId: "controller", amount: { devotion: "B" } }],
+      { controllerId: p1.id, sourceId: gary.id },
+    );
+    const next = applyEffects(game, bound);
+    // Devotion 3: {B}{B} on Gary plus {B} on the enchantment.
+    expect(next.players[1]?.life).toBe(37);
+    expect(next.players[0]?.life).toBe(43);
+  });
+
+  it("scales revelation draws and ferocious life by the board", () => {
+    const { game, p1 } = twoPlayers();
+    const bigDef = createCardDefinition({ name: "Big", typeLine: "Creature — Beast", power: 5, toughness: 5 });
+    const smallDef = createCardDefinition({ name: "Small", typeLine: "Creature — Goblin", power: 2, toughness: 2 });
+    game.definitions[bigDef.id] = bigDef;
+    game.definitions[smallDef.id] = smallDef;
+    const big = createCardInstance({ definitionId: bigDef.id, ownerId: p1.id, zone: "battlefield" });
+    const small = createCardInstance({ definitionId: smallDef.id, ownerId: p1.id, zone: "battlefield" });
+    game.cards[big.id] = big;
+    game.cards[small.id] = small;
+    p1.zones.battlefield.push(big.id, small.id);
+    fillLibraries(game, 10);
+
+    const bound = bindCardEffects(
+      game,
+      [
+        { kind: "draw", playerId: "controller", count: 0, countPerControlled: "creature" },
+        {
+          kind: "gain_life",
+          playerId: "controller",
+          amount: 4,
+          perControlledCreature: { minPower: 4 },
+        },
+      ],
+      { controllerId: p1.id, sourceId: null },
+    );
+    const handBefore = p1.zones.hand.length;
+    const next = applyEffects(game, bound);
+    expect(next.players[0]?.zones.hand).toHaveLength(handBefore + 2);
+    // Only the 5-power beast meets ferocious.
+    expect(next.players[0]?.life).toBe(44);
+  });
+});
+

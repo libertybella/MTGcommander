@@ -815,6 +815,9 @@ export type CardEffect =
       kind: "gain_life";
       playerId: PlayerSelector;
       amount: number | "subject_amount" | "subject_toughness";
+      /** Shamanic Revelation's ferocious half: multiply the amount by the
+       * controller's creatures matching the filter, at bind. */
+      perControlledCreature?: { minPower?: number };
     }
   | {
       kind: "lose_life";
@@ -846,6 +849,8 @@ export type CardEffect =
       /** Return of the Wildspeaker: draw the greatest power among the
        * controller's creatures instead, computed when the effect binds. */
       countFromGreatestPower?: { nonSubtypes?: string[] };
+      /** Shamanic Revelation: one card per controlled creature at bind. */
+      countPerControlled?: "creature";
     }
   | { kind: "scry"; playerId: PlayerSelector; count: number }
   | { kind: "surveil"; playerId: PlayerSelector; count: number }
@@ -983,8 +988,14 @@ export type CardEffect =
   | { kind: "all_pt_until_eot"; power: number | "-x"; toughness: number | "-x" }
   /** Chaos Warp's back half: reveal the top card; a permanent card lands. */
   | { kind: "reveal_top_put_permanent"; playerId: PlayerSelector }
-  /** Exsanguinate: each opponent loses N; you gain the total lost. */
-  | { kind: "drain_opponents"; playerId: PlayerSelector; amount: number | "x" }
+  /** Exsanguinate: each opponent loses N; you gain the total lost.
+   * devotion: X = colored pips of that color among the controller's
+   * permanents' mana costs (Gray Merchant of Asphodel, CR 700.5). */
+  | {
+      kind: "drain_opponents";
+      playerId: PlayerSelector;
+      amount: number | "x" | { devotion: Color };
+    }
   | {
       kind: "search_library";
       playerId: PlayerSelector;
