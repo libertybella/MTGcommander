@@ -1927,7 +1927,8 @@ function parseReplacements(value: unknown, label: string): ReplacementEffect[] {
       kind === "enters_tapped" ||
       kind === "graveyard_to_exile" ||
       kind === "double_tokens" ||
-      kind === "double_life_gain"
+      kind === "double_life_gain" ||
+      kind === "double_draws_except_first"
     ) {
       return { kind };
     }
@@ -2331,6 +2332,7 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
       playerId: expectString(value.playerId, `${label}.playerId`),
       count: expectNumber(value.count, `${label}.count`),
       ...(value.optional === true ? { optional: true } : {}),
+      ...(value.turnDraw === true ? { turnDraw: true } : {}),
     };
   }
   if (kind === "scry" || kind === "surveil" || kind === "mill" || kind === "discard") {

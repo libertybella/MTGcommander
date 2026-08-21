@@ -794,11 +794,30 @@ function applyDamageAll(
   return next;
 }
 
+/** Teferi's Ageless Insight: 2^n for n draw-doublers the player controls. */
+function drawFactor(state: GameState, playerId: PlayerId): number {
+  let factor = 1;
+  for (const card of Object.values(state.cards)) {
+    if (card.zone !== "battlefield" || card.controllerId !== playerId) {
+      continue;
+    }
+    const doubles = (state.definitions[card.definitionId]?.replacements ?? []).filter(
+      (replacement) => replacement.kind === "double_draws_except_first",
+    ).length;
+    if (doubles === 0 || abilitiesRemoved(state, card.id)) {
+      continue;
+    }
+    factor *= 2 ** doubles;
+  }
+  return factor;
+}
+
 function applyDraw(
   state: GameState,
   playerId: PlayerId,
   count: number,
   optional?: boolean,
+  turnDraw?: boolean,
 ): GameState {
   requirePositiveInteger(count, "draw count");
   if (wouldSkipDraw(state, playerId)) {
@@ -809,9 +828,13 @@ function applyDraw(
   if (optional && player.zones.library.length < count) {
     return cloneGameState(state);
   }
+  // Draw doubling replaces each draw with two; the turn-based first draw
+  // of the controller's own draw step is exempt.
+  const factor = drawFactor(state, playerId);
+  const total = turnDraw ? 1 + (count - 1) * factor : count * factor;
   let next = cloneGameState(state);
   let drawn = 0;
-  for (let i = 0; i < count; i += 1) {
+  for (let i = 0; i < total; i += 1) {
     if (wouldSkipDraw(next, playerId)) {
       break;
     }
@@ -1518,7 +1541,7 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
         next = applyDealDamage(state, effect);
         break;
       case "draw":
-        next = applyDraw(state, effect.playerId, effect.count, effect.optional);
+        next = applyDraw(state, effect.playerId, effect.count, effect.optional, effect.turnDraw);
         break;
       case "scry":
         next = applyScry(state, effect.playerId, effect.count);

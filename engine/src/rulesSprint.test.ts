@@ -4355,3 +4355,152 @@ describe("wave 46: that-much life triggers", () => {
     expect(own.stack).toHaveLength(0);
   });
 });
+
+describe("wave 47: token riders and draw doubling", () => {
+  it("compiles Pongify and Rapid Hybridization fully", () => {
+    const pongify = compileOracleCard({
+      oracleId: "pongify",
+      name: "Pongify",
+      manaCost: "{U}",
+      typeLine: "Instant",
+      oracleText:
+        "Destroy target creature. It can't be regenerated. Its controller creates a 3/3 green Ape creature token.",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+    });
+    expect(pongify.notes).toEqual([]);
+    expect(pongify.definition.targetRequirements).toEqual([{ kind: "creature" }]);
+    expect(pongify.definition.effects).toEqual([
+      { kind: "move_card", cardId: { type: "chosen", index: 0 }, toZone: "graveyard" },
+      {
+        kind: "create_token",
+        ownerId: { type: "chosen_controller", index: 0 },
+        name: "Ape",
+        typeLine: "Creature — Ape Token",
+        power: 3,
+        toughness: 3,
+      },
+    ]);
+
+    const hybrid = compileOracleCard({
+      oracleId: "hybrid",
+      name: "Rapid Hybridization",
+      manaCost: "{U}",
+      typeLine: "Instant",
+      oracleText:
+        "Destroy target creature. It can't be regenerated. That creature's controller creates a 3/3 green Frog Lizard creature token.",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+    });
+    expect(hybrid.notes).toEqual([]);
+    const token = hybrid.definition.effects[1];
+    expect(token?.kind === "create_token" && token.name).toBe("Frog Lizard");
+  });
+
+  it("gives the token to the destroyed creature's controller", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const preyDef = createCardDefinition({
+      name: "Prey",
+      typeLine: "Creature — Beast",
+      power: 4,
+      toughness: 4,
+    });
+    const spellDef = createCardDefinition({
+      name: "Pongify Lite",
+      manaCost: "{U}",
+      typeLine: "Instant",
+      targetRequirements: [{ kind: "creature" }],
+      effects: [
+        { kind: "move_card", cardId: { type: "chosen", index: 0 }, toZone: "graveyard" },
+        {
+          kind: "create_token",
+          ownerId: { type: "chosen_controller", index: 0 },
+          name: "Ape",
+          typeLine: "Creature — Ape Token",
+          power: 3,
+          toughness: 3,
+        },
+      ],
+    });
+    game.definitions[preyDef.id] = preyDef;
+    game.definitions[spellDef.id] = spellDef;
+    const prey = createCardInstance({ definitionId: preyDef.id, ownerId: p2.id, zone: "battlefield" });
+    const spell = createCardInstance({ definitionId: spellDef.id, ownerId: p1.id, zone: "hand" });
+    game.cards[prey.id] = prey;
+    game.cards[spell.id] = spell;
+    p2.zones.battlefield.push(prey.id);
+    p1.zones.hand.push(spell.id);
+
+    let next = putSpellOnStack(game, spell.id, [{ type: "creature", cardId: prey.id }]);
+    next = resolveTopOfStack(next);
+    expect(next.cards[prey.id]?.zone).toBe("graveyard");
+    const ape = Object.values(next.cards).find((card) => card.isToken);
+    expect(ape).toBeDefined();
+    expect(ape?.controllerId).toBe(p2.id);
+  });
+
+  it("doubles draws except the first draw-step card", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const archiveDef = createCardDefinition({
+      name: "Archive Lite",
+      typeLine: "Artifact",
+      replacements: [{ kind: "double_draws_except_first" }],
+    });
+    game.definitions[archiveDef.id] = archiveDef;
+    const archive = createCardInstance({ definitionId: archiveDef.id, ownerId: p1.id, zone: "battlefield" });
+    game.cards[archive.id] = archive;
+    p1.zones.battlefield.push(archive.id);
+
+    const spellDraw = applyEffect(game, { kind: "draw", playerId: p1.id, count: 1 });
+    expect(spellDraw.players.find((p) => p.id === p1.id)!.zones.hand).toHaveLength(
+      p1.zones.hand.length + 2,
+    );
+
+    const turnDraw = applyEffect(game, { kind: "draw", playerId: p1.id, count: 1, turnDraw: true });
+    expect(turnDraw.players.find((p) => p.id === p1.id)!.zones.hand).toHaveLength(
+      p1.zones.hand.length + 1,
+    );
+
+    const withMine = applyEffect(game, { kind: "draw", playerId: p1.id, count: 2, turnDraw: true });
+    expect(withMine.players.find((p) => p.id === p1.id)!.zones.hand).toHaveLength(
+      p1.zones.hand.length + 3,
+    );
+  });
+
+  it("compiles the two draw-doubling staples fully", () => {
+    const insight = compileOracleCard({
+      oracleId: "insight",
+      name: "Teferi's Ageless Insight",
+      manaCost: "{2}{U}{U}",
+      typeLine: "Legendary Enchantment",
+      oracleText:
+        "If you would draw a card except the first one you draw in each of your draw steps, draw two cards instead.",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+    });
+    expect(insight.notes).toEqual([]);
+    expect(insight.definition.replacements).toEqual([{ kind: "double_draws_except_first" }]);
+
+    const archive = compileOracleCard({
+      oracleId: "archive",
+      name: "Alhammarret's Archive",
+      manaCost: "{5}",
+      typeLine: "Legendary Artifact",
+      oracleText:
+        "If you would gain life, you gain twice that much life instead.\nIf you would draw a card except the first one you draw in each of your draw steps, draw two cards instead.",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+    });
+    expect(archive.notes).toEqual([]);
+    expect(archive.definition.replacements).toHaveLength(2);
+  });
+});

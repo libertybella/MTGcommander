@@ -149,7 +149,12 @@ function onEnterStep(state: GameState): GameState {
           extra += 1;
         }
       }
-      return applyEffect(state, { kind: "draw", playerId: active.id, count: 1 + extra });
+      return applyEffect(state, {
+        kind: "draw",
+        playerId: active.id,
+        count: 1 + extra,
+        turnDraw: true,
+      });
     }
     return state;
   }

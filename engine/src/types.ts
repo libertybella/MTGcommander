@@ -416,6 +416,10 @@ export type GameEffect =
       count: number;
       /** "You may draw": auto-taken, but skipped when the library is too small. */
       optional?: boolean;
+      /** The turn-based draw-step batch: its first card is exempt from
+       * draw doubling ("except the first one you draw in each of your
+       * draw steps"). */
+      turnDraw?: boolean;
     }
   | { kind: "scry"; playerId: PlayerId; count: number }
   | { kind: "surveil"; playerId: PlayerId; count: number }
@@ -1044,7 +1048,10 @@ export type ReplacementEffect =
    * controller controls are doubled; optional counter/creature restriction. */
   | { kind: "double_counters"; counter?: string; creaturesOnly?: boolean }
   /** Rhox Faithmender / Boon Reflection: life gained is doubled. */
-  | { kind: "double_life_gain" };
+  | { kind: "double_life_gain" }
+  /** Teferi's Ageless Insight: draws are doubled, except the turn-based
+   * first draw of the controller's own draw step. */
+  | { kind: "double_draws_except_first" };
 
 export type ManaAbility = {
   produces: Partial<ManaPool>;

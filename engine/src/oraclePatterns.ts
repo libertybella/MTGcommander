@@ -1228,6 +1228,11 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     };
   }
 
+  // The engine has no regeneration, so the denial is truthfully a no-op.
+  if (/^it can't be regenerated$/i.test(sentence)) {
+    return { targetRequirements: [], effects: [] };
+  }
+
   if (/^destroy target nonartifact creature$/i.test(sentence)) {
     return {
       targetRequirements: [{ kind: "nonartifact_creature" }],
@@ -3043,6 +3048,17 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
       continue;
     }
 
+    // Teferi's Ageless Insight / Alhammarret's Archive: draw doubling with
+    // the draw-step first-card exemption.
+    if (
+      /^If you would draw a card except the first one you draw in each of your draw steps, draw two cards instead$/i.test(
+        sentence,
+      )
+    ) {
+      result.replacements.push({ kind: "double_draws_except_first" });
+      continue;
+    }
+
     // Branching Evolution: +1/+1 counters on your creatures.
     if (
       /^If one or more \+1\/\+1 counters would be put on a creature you control, twice that many \+1\/\+1 counters are put on (?:it|that creature) instead$/i.test(
@@ -3487,6 +3503,29 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
       const last = result.manaAbilities[result.manaAbilities.length - 1];
       if (last) {
         last.damageToController = Number(pain[1]);
+        continue;
+      }
+    }
+
+    // Pongify / Rapid Hybridization: the token goes to the destroyed
+    // creature's controller. Rides the previous sentence's creature target,
+    // so the chosen index is referenced directly (no shifting).
+    const controllerToken = sentence.match(
+      /^(?:its|that creature's) controller creates an? (\d+)\/(\d+)(?: (white|blue|black|red|green|colorless))? ([\w]+(?: [\w]+)?) creature token$/i,
+    );
+    if (controllerToken?.[1] && controllerToken[2] && controllerToken[4]) {
+      const lastIndex = result.targetRequirements.length - 1;
+      const last = result.targetRequirements[lastIndex];
+      if (last && last.kind.includes("creature")) {
+        const subtype = controllerToken[4].replace(/\b\w/g, (letter) => letter.toUpperCase());
+        result.effects.push({
+          kind: "create_token",
+          ownerId: { type: "chosen_controller", index: lastIndex },
+          name: subtype,
+          typeLine: `Creature — ${subtype} Token`,
+          power: Number(controllerToken[1]),
+          toughness: Number(controllerToken[2]),
+        });
         continue;
       }
     }
