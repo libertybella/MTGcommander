@@ -297,6 +297,14 @@ function castableFace(
       cost.generic - selfDiscountAmount(state, playerId, definition.selfDiscount.per),
     );
   }
+  // Blasphemous Edict: the cheap alternative cost is auto-taken whenever
+  // the creature count holds (documented approximation).
+  if (
+    definition.altCostIfCreatures &&
+    allBattlefieldCreatureCount(state) >= definition.altCostIfCreatures.count
+  ) {
+    Object.assign(cost, parseManaCost(definition.altCostIfCreatures.cost));
+  }
   const castsFree = definition.freeIfCommander === true && controlsCommander(state, playerId);
   if (!castsFree && !canPayWithPotential(potential, cost)) {
     return false;

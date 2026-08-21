@@ -208,6 +208,14 @@ function validateCast(
   if (definition.freeIfCommander && controlsCommander(state, playerId)) {
     return { cost: parseManaCost(""), fromCommand, flashbackLife: 0 };
   }
+  // Blasphemous Edict: the cheap alternative cost is auto-taken whenever
+  // the creature count holds (documented approximation).
+  if (
+    definition.altCostIfCreatures &&
+    allBattlefieldCreatureCount(state) >= definition.altCostIfCreatures.count
+  ) {
+    Object.assign(cost, parseManaCost(definition.altCostIfCreatures.cost));
+  }
   if (flashbackLife > 0 && player.life <= flashbackLife) {
     throw new Error(`Pay ${flashbackLife} life to cast this`);
   }

@@ -70,6 +70,7 @@ export function createCardDefinition(
         | "mustAttack"
         | "notCreatureBelowDevotion"
         | "freeIfCommander"
+        | "altCostIfCreatures"
         | "changeling"
         | "storm"
         | "doesntUntap"
@@ -332,6 +333,7 @@ export function createCardDefinition(
       ? { notCreatureBelowDevotion: { ...input.notCreatureBelowDevotion } }
       : {}),
     ...(input.freeIfCommander ? { freeIfCommander: true } : {}),
+    ...(input.altCostIfCreatures ? { altCostIfCreatures: { ...input.altCostIfCreatures } } : {}),
     ...(input.changeling ? { changeling: true } : {}),
     ...(input.storm ? { storm: true } : {}),
     ...(input.doesntUntap ? { doesntUntap: true } : {}),

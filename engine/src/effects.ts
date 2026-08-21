@@ -1213,7 +1213,14 @@ export function bindCardEffect(
     case "fog":
       return { kind: "fog" };
     case "windfall":
-      return { kind: "windfall" };
+      return { kind: "windfall", ...(effect.drawCount ? { drawCount: effect.drawCount } : {}) };
+    case "copy_each_token": {
+      const playerId = bindPlayerSelector(state, effect.playerId, context);
+      if (!playerId) {
+        return null;
+      }
+      return { kind: "copy_each_token", playerId };
+    }
     case "bounce_each_creature": {
       const spared = effect.exceptChosenType
         ? mostCommonControlledCreatureType(state, context.controllerId)
@@ -2977,7 +2984,8 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
         break;
       }
       case "windfall": {
-        // Each player discards their hand, then draws the greatest count.
+        // Each player discards their hand, then draws the greatest count —
+        // or the fixed drawCount (Wheel of Fortune's seven).
         next = cloneGameState(state);
         let greatest = 0;
         for (const player of livingPlayers(next)) {
@@ -2989,11 +2997,24 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
             dispatchEventsInPlace(next, [{ kind: "discards", cardId, playerId: player.id }]);
           }
         }
-        if (greatest > 0) {
+        const refill = effect.drawCount ?? greatest;
+        if (refill > 0) {
           const drawerIds = livingPlayers(next).map((player) => player.id);
           for (const drawerId of drawerIds) {
-            next = applyDraw(next, drawerId, greatest);
+            next = applyDraw(next, drawerId, refill);
           }
+        }
+        break;
+      }
+      case "copy_each_token": {
+        // Second Harvest: snapshot first — the copies must not copy copies.
+        const tokens = Object.values(state.cards).filter(
+          (card) =>
+            card.zone === "battlefield" && card.controllerId === effect.playerId && card.isToken,
+        );
+        next = cloneGameState(state);
+        for (const token of tokens) {
+          next = applyCopyToken(next, effect.playerId, token.id);
         }
         break;
       }

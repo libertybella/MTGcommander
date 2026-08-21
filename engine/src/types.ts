@@ -156,6 +156,13 @@ export type CardDefinition = {
    */
   freeIfCommander?: boolean;
   /**
+   * Blasphemous Edict: "You may pay {B} rather than pay this spell's mana
+   * cost if there are thirteen or more creatures on the battlefield."
+   * Auto-taken whenever the count holds (documented approximation, like
+   * freeIfCommander).
+   */
+  altCostIfCreatures?: { cost: string; count: number };
+  /**
    * Changeling (CR 702.73): this card is every creature type, in every zone.
    * Honored via cardMatchesSubtype; removed with other abilities (Humility).
    */
@@ -696,7 +703,9 @@ export type GameEffect =
   | { kind: "attackers_gain_keyword_until_eot"; keyword: Keyword }
   | { kind: "untap_lands_up_to"; playerId: PlayerId; count: number }
   | { kind: "fog" }
-  | { kind: "windfall" }
+  | { kind: "windfall"; drawCount?: number }
+  /** Second Harvest: one copy of every token the player controls. */
+  | { kind: "copy_each_token"; playerId: PlayerId }
   /** Wave Goodbye: bounce every creature missing the listed counter. */
   | {
       kind: "bounce_each_creature";
@@ -1199,8 +1208,11 @@ export type CardEffect =
   | { kind: "attackers_gain_keyword_until_eot"; keyword: Keyword }
   | { kind: "untap_lands_up_to"; playerId: PlayerSelector; count: number }
   | { kind: "fog" }
-  /** Windfall: each player discards their hand, then draws the greatest count. */
-  | { kind: "windfall" }
+  /** Windfall: each player discards their hand, then draws the greatest
+   * count — or a fixed count when drawCount is set (Wheel of Fortune). */
+  | { kind: "windfall"; drawCount?: number }
+  /** Second Harvest: one copy of every token the player controls. */
+  | { kind: "copy_each_token"; playerId: PlayerSelector }
   | {
       kind: "bounce_each_creature";
       unlessCounter?: string;

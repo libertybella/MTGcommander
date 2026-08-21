@@ -15009,3 +15009,161 @@ describe("wave 135: supply lines", () => {
   });
 });
 
+
+describe("wave 136: wheels and edicts", () => {
+  it("compiles the five-card bucket fully", () => {
+    const wheel = compileOracleCard({
+      oracleId: "wheel",
+      name: "Wheel of Fortune",
+      manaCost: "{2}{R}",
+      typeLine: "Sorcery",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText: "Each player discards their hand, then draws seven cards.",
+    });
+    expect(wheel.notes).toEqual([]);
+    expect(wheel.definition.effects).toEqual([{ kind: "windfall", drawCount: 7 }]);
+
+    const glitters = compileOracleCard({
+      oracleId: "glitters",
+      name: "All That Glitters",
+      manaCost: "{1}{W}",
+      typeLine: "Enchantment — Aura",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "Enchant creature\nEnchanted creature gets +1/+1 for each artifact and/or enchantment you control.",
+    });
+    expect(glitters.notes).toEqual([]);
+    expect(glitters.definition.staticAbilities[0]).toEqual({
+      selector: { scope: "attached" },
+      effect: {
+        kind: "modify_pt",
+        power: 1,
+        toughness: 1,
+        per: "artifacts_and_enchantments_you_control",
+      },
+    });
+
+    const mentor = compileOracleCard({
+      oracleId: "mentor",
+      name: "Mentor of the Meek",
+      manaCost: "{2}{W}",
+      typeLine: "Creature — Human Soldier",
+      power: "2",
+      toughness: "2",
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "Whenever another creature you control with power 2 or less enters, you may pay {1}. If you do, draw a card.",
+    });
+    expect(mentor.notes).toEqual([]);
+    expect(mentor.definition.triggers[0]?.subjectFilter?.maxPower).toBe(2);
+    expect(mentor.definition.triggers[0]?.effects).toEqual([
+      {
+        kind: "may_pay",
+        playerId: "controller",
+        cost: "{1}",
+        effects: [{ kind: "draw", playerId: "controller", count: 1 }],
+      },
+    ]);
+
+    const harvest = compileOracleCard({
+      oracleId: "harvest",
+      name: "Second Harvest",
+      manaCost: "{2}{G}{G}",
+      typeLine: "Instant",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText: "For each token you control, create a token that's a copy of that permanent.",
+    });
+    expect(harvest.notes).toEqual([]);
+    expect(harvest.definition.effects).toEqual([
+      { kind: "copy_each_token", playerId: "controller" },
+    ]);
+
+    const edict = compileOracleCard({
+      oracleId: "edict13",
+      name: "Blasphemous Edict",
+      manaCost: "{3}{B}{B}",
+      typeLine: "Sorcery",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "You may pay {B} rather than pay this spell's mana cost if there are thirteen or more creatures on the battlefield.\nEach player sacrifices thirteen creatures of their choice.",
+    });
+    expect(edict.notes).toEqual([]);
+    expect(edict.definition.altCostIfCreatures).toEqual({ cost: "{B}", count: 13 });
+    expect(edict.definition.effects).toHaveLength(13);
+    expect(edict.definition.effects[12]).toMatchObject({
+      kind: "choose_card",
+      chooserId: "each_player",
+    });
+  });
+
+  it("wheels to seven, copies every token, and pays the cheap edict", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 30);
+
+    // Wheel of Fortune: unequal hands both refill to exactly seven.
+    addHandCards(game, p1, 2);
+    let next = applyEffects(game, [{ kind: "windfall", drawCount: 7 }]);
+    expect(next.players.find((entry) => entry.id === p1.id)?.zones.hand).toHaveLength(7);
+    expect(next.players.find((entry) => entry.id === p2.id)?.zones.hand).toHaveLength(7);
+
+    // Second Harvest: tokens are copied, nontokens are not, copies don't
+    // copy copies.
+    const bearDef = createCardDefinition({ name: "Bear", typeLine: "Creature — Bear", power: 2, toughness: 2 });
+    next.definitions[bearDef.id] = bearDef;
+    const mine = next.players.find((entry) => entry.id === p1.id)!;
+    const nontoken = createCardInstance({ definitionId: bearDef.id, ownerId: p1.id, zone: "battlefield" });
+    next.cards[nontoken.id] = nontoken;
+    mine.zones.battlefield.push(nontoken.id);
+    for (let i = 0; i < 2; i += 1) {
+      const token = createCardInstance({
+        definitionId: bearDef.id,
+        ownerId: p1.id,
+        zone: "battlefield",
+        isToken: true,
+      });
+      next.cards[token.id] = token;
+      mine.zones.battlefield.push(token.id);
+    }
+    next = applyEffects(next, [{ kind: "copy_each_token", playerId: p1.id }]);
+    const myCreatures = next.players
+      .find((entry) => entry.id === p1.id)!
+      .zones.battlefield.filter((id) => next.definitions[next.cards[id]!.definitionId]?.name === "Bear");
+    expect(myCreatures).toHaveLength(5); // 1 nontoken + 2 tokens + 2 copies
+    expect(myCreatures.filter((id) => next.cards[id]?.isToken)).toHaveLength(4);
+
+    // Blasphemous Edict's alternative cost: with the count met, {B} casts it.
+    const edictDef = createCardDefinition({
+      name: "Cheap Edict",
+      typeLine: "Sorcery",
+      manaCost: "{3}{B}{B}",
+      altCostIfCreatures: { cost: "{B}", count: 2 },
+      effects: [{ kind: "draw", playerId: "controller", count: 1 }],
+    });
+    next.definitions[edictDef.id] = edictDef;
+    const inHand = createCardInstance({ definitionId: edictDef.id, ownerId: p1.id, zone: "hand" });
+    next.cards[inHand.id] = inHand;
+    next.players.find((entry) => entry.id === p1.id)!.zones.hand.push(inHand.id);
+    next.priorityPlayerId = p1.id;
+    next.turn.activePlayerId = p1.id;
+    next.turn.phase = "precombatMain";
+    next.turn.step = "precombatMain";
+    next.players.find((entry) => entry.id === p1.id)!.mana.B = 1;
+    // Five creatures on the battlefield >= 2: the {B} alternative is taken.
+    next = applyAction(next, { kind: "cast_spell", playerId: p1.id, cardId: inHand.id, targets: [] });
+    expect(next.stack.some((entry) => entry.sourceId === inHand.id)).toBe(true);
+  });
+});
+

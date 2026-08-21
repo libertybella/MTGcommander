@@ -57,6 +57,7 @@ export type CompiledOracleText = {
   mustAttack?: boolean;
   notCreatureBelowDevotion?: { color: Color; threshold: number };
   freeIfCommander?: boolean;
+  altCostIfCreatures?: { cost: string; count: number };
   changeling?: boolean;
   storm?: boolean;
   doesntUntap?: boolean;
@@ -1105,6 +1106,37 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     )
   ) {
     return { targetRequirements: [], effects: [{ kind: "windfall" }] };
+  }
+
+  // Mentor of the Meek: the fused "you may pay {1} to do: draw a card".
+  const mayPayDo = sentence.match(/^you may pay ((?:\{[^}]+\})+) to do: (.+)$/i);
+  if (mayPayDo?.[1] && mayPayDo[2]) {
+    const inner = compileSimpleClause(
+      mayPayDo[2].charAt(0).toUpperCase() + mayPayDo[2].slice(1),
+    );
+    if (inner && !inner.leftover && inner.targetRequirements.length === 0) {
+      return {
+        targetRequirements: [],
+        effects: [
+          { kind: "may_pay", playerId: "controller", cost: mayPayDo[1], effects: inner.effects },
+        ],
+      };
+    }
+  }
+
+  // Wheel of Fortune: the refill is a fixed seven.
+  const wheel = sentence.match(/^Each player discards their hand, then draws (seven|\d+) cards$/i);
+  if (wheel?.[1]) {
+    const refill = wheel[1].toLowerCase() === "seven" ? 7 : Number(wheel[1]);
+    return { targetRequirements: [], effects: [{ kind: "windfall", drawCount: refill }] };
+  }
+
+  // Second Harvest.
+  if (/^For each token you control, create a token that's a copy of that permanent$/i.test(sentence)) {
+    return {
+      targetRequirements: [],
+      effects: [{ kind: "copy_each_token", playerId: "controller" }],
+    };
   }
 
   // Trostani: the entering creature's toughness feeds the gain.
@@ -3452,28 +3484,42 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     };
   }
 
-  // Edicts: sacrifice choices belong to the affected players.
+  // Edicts: sacrifice choices belong to the affected players. Multi-count
+  // edicts (Blasphemous Edict's thirteen) repeat the choice sequentially —
+  // a documented approximation of the simultaneous pick.
   match = sentence.match(
-    /^Each (player|opponent|other player) sacrifices (?:a|one) (nontoken )?creature(?: of their choice)?$/i,
+    /^Each (player|opponent|other player) sacrifices (a|one|two|three|thirteen|\d+) (nontoken )?creatures?(?: of their choice)?$/i,
   );
-  if (match?.[1]) {
-    return {
-      targetRequirements: [],
-      effects: [
-        {
-          kind: "choose_card",
-          chooserId: match[1].toLowerCase() === "player" ? "each_player" : "each_opponent",
-          sources: [
-            {
-              playerId: match[1].toLowerCase() === "player" ? "each_player" : "each_opponent",
-              zone: "battlefield",
-              filter: match[2] ? "nontoken_creature" : "creature",
-            },
-          ],
-          thenEffects: [{ kind: "sacrifice", cardId: "chosen_card" }],
-        },
-      ],
-    };
+  if (match?.[1] && match[2]) {
+    const edictWord = match[2].toLowerCase();
+    const edictCount =
+      edictWord === "a" || edictWord === "one"
+        ? 1
+        : edictWord === "two"
+          ? 2
+          : edictWord === "three"
+            ? 3
+            : edictWord === "thirteen"
+              ? 13
+              : Number(edictWord);
+    if (Number.isFinite(edictCount) && edictCount >= 1) {
+      const edict: CardEffect = {
+        kind: "choose_card",
+        chooserId: match[1].toLowerCase() === "player" ? "each_player" : "each_opponent",
+        sources: [
+          {
+            playerId: match[1].toLowerCase() === "player" ? "each_player" : "each_opponent",
+            zone: "battlefield",
+            filter: match[3] ? "nontoken_creature" : "creature",
+          },
+        ],
+        thenEffects: [{ kind: "sacrifice", cardId: "chosen_card" }],
+      };
+      return {
+        targetRequirements: [],
+        effects: Array.from({ length: edictCount }, () => ({ ...edict })),
+      };
+    }
   }
 
   // Zulaport Cutthroat: a flat drain — the gain does not scale per opponent.
@@ -3959,6 +4005,24 @@ function fuseDrainPairInPlace(sentences: string[], lineStart: boolean[]): void {
 }
 
 /** Traverse the Outlands: the greatest-power basic fetch, fused. */
+function fuseMayPayInPlace(sentences: string[], lineStart: boolean[]): void {
+  // Mentor of the Meek: "…, you may pay {1}. If you do, draw a card." fuses
+  // into one synthetic clause the may_pay parser reads.
+  for (let index = 0; index + 1 < sentences.length; index += 1) {
+    if (lineStart[index + 1]) {
+      continue;
+    }
+    const head = sentences[index]?.match(/^(.+, you may pay (?:\{[^}]+\})+)$/i);
+    const rider = sentences[index + 1]?.match(/^If you do, (.+)$/i);
+    if (!head?.[1] || !rider?.[1]) {
+      continue;
+    }
+    sentences[index] = `${head[1]} to do: ${rider[1]}`;
+    sentences.splice(index + 1, 1);
+    lineStart.splice(index + 1, 1);
+  }
+}
+
 function expandEntersOrDiesInPlace(sentences: string[], lineStart: boolean[]): void {
   // Stitcher's Supplier: "When ~ enters or dies, X" expands to one enter
   // trigger and one dies trigger carrying the same clause.
@@ -4345,6 +4409,18 @@ function parseTriggerHead(head: string): TriggerHead | null {
       event: "enter_battlefield",
       watch: "controlled",
       subjectFilter: { types: ["enchantment"] },
+    };
+  }
+  // Mentor of the Meek: the singular little-creature watch (per creature).
+  const singleEnter = text.match(
+    /^Whenever another creature you control with power (\d+) or less enters$/i,
+  );
+  if (singleEnter?.[1]) {
+    return {
+      event: "enter_battlefield",
+      watch: "controlled",
+      excludeSelf: true,
+      subjectFilter: { types: ["creature"], maxPower: Number(singleEnter[1]) },
     };
   }
   // Welcoming Vampire / Enduring Innocence: a batched little-creature watch.
@@ -5481,6 +5557,7 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
   fuseExileReturnEndStepInPlace(sentences, lineStart);
   fuseTraverseInPlace(sentences, lineStart);
   expandEntersOrDiesInPlace(sentences, lineStart);
+  fuseMayPayInPlace(sentences, lineStart);
   for (let index = 0; index < sentences.length; index += 1) {
     const sentence = sentences[index];
     if (!sentence) {
@@ -6210,8 +6287,9 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
     }
 
     // Nettlecyst: a live-count attached buff.
+    // Nettlecyst (equipped) and All That Glitters (enchanted) share the shape.
     const perBuff = sentence.match(
-      /^Equipped creature gets \+(\d+)\/\+(\d+) for each artifact and\/or enchantment you control$/i,
+      /^(?:Equipped|Enchanted) creature gets \+(\d+)\/\+(\d+) for each artifact and\/or enchantment you control$/i,
     );
     if (perBuff?.[1] && perBuff[2]) {
       result.staticAbilities.push({
@@ -6835,6 +6913,17 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
       // Documented approximation (RULES_COVERAGE.md): the free alternative
       // cost is auto-taken whenever a commander is controlled.
       result.freeIfCommander = true;
+      continue;
+    }
+
+    // Blasphemous Edict: the cheap alternative cost, auto-taken whenever
+    // the creature count holds (documented approximation).
+    const altCost = sentence.match(
+      /^You may pay ((?:\{[^}]+\})+) rather than pay this spell's mana cost if there are (thirteen|\d+) or more creatures on the battlefield$/i,
+    );
+    if (altCost?.[1] && altCost[2]) {
+      const threshold = altCost[2].toLowerCase() === "thirteen" ? 13 : Number(altCost[2]);
+      result.altCostIfCreatures = { cost: altCost[1], count: threshold };
       continue;
     }
 

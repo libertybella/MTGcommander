@@ -207,6 +207,9 @@ function compileOneFace(card: OracleCard, definitionId: string): OracleCompileRe
       ? { notCreatureBelowDevotion: { ...compiled.notCreatureBelowDevotion } }
       : {}),
     ...(compiled.freeIfCommander ? { freeIfCommander: true } : {}),
+    ...(compiled.altCostIfCreatures
+      ? { altCostIfCreatures: { ...compiled.altCostIfCreatures } }
+      : {}),
     ...(compiled.changeling ? { changeling: true } : {}),
     ...(compiled.topOfLibrary ? { topOfLibrary: { ...compiled.topOfLibrary } } : {}),
     ...(compiled.flashback ? { flashback: { ...compiled.flashback } } : {}),

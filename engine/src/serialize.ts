@@ -371,6 +371,20 @@ export function parseGameState(json: string): GameState {
           }
         : {}),
       ...(def.freeIfCommander === true ? { freeIfCommander: true } : {}),
+      ...(isRecord(def.altCostIfCreatures)
+        ? {
+            altCostIfCreatures: {
+              cost: expectString(
+                def.altCostIfCreatures.cost,
+                `definition.${id}.altCostIfCreatures.cost`,
+              ),
+              count: expectNumber(
+                def.altCostIfCreatures.count,
+                `definition.${id}.altCostIfCreatures.count`,
+              ),
+            },
+          }
+        : {}),
       ...(def.changeling === true ? { changeling: true } : {}),
       ...(def.storm === true ? { storm: true } : {}),
       ...(def.doesntUntap === true ? { doesntUntap: true } : {}),
@@ -2213,8 +2227,19 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
     case "counter_subject_spell":
     case "extra_combat":
     case "fog":
-    case "windfall":
       return { kind };
+    case "windfall":
+      return {
+        kind,
+        ...(value.drawCount === undefined
+          ? {}
+          : { drawCount: expectNumber(value.drawCount, `${label}.drawCount`) }),
+      };
+    case "copy_each_token":
+      return {
+        kind,
+        playerId: parsePlayerSelector(value.playerId, `${label}.playerId`),
+      };
     case "bounce_each_creature":
       return {
         kind,
@@ -3920,8 +3945,19 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
       controllerId: expectString(value.controllerId, `${label}.controllerId`),
     };
   }
-  if (kind === "extra_combat" || kind === "fog" || kind === "windfall") {
+  if (kind === "extra_combat" || kind === "fog") {
     return { kind };
+  }
+  if (kind === "windfall") {
+    return {
+      kind,
+      ...(value.drawCount === undefined
+        ? {}
+        : { drawCount: expectNumber(value.drawCount, `${label}.drawCount`) }),
+    };
+  }
+  if (kind === "copy_each_token") {
+    return { kind, playerId: expectString(value.playerId, `${label}.playerId`) };
   }
   if (kind === "bounce_each_creature") {
     return {
