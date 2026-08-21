@@ -401,7 +401,7 @@ export type GameEffect =
       kind: "move_card";
       cardId: CardInstanceId;
       toZone: Exclude<ZoneName, "stack">;
-      libraryPosition?: "top" | "bottom";
+      libraryPosition?: "top" | "bottom" | "shuffled";
       entersTapped?: boolean;
       gainsHaste?: boolean;
       atEndStep?: "sacrifice" | "exile";
@@ -443,6 +443,13 @@ export type GameEffect =
   | { kind: "extra_combat" }
   | { kind: "untap_all"; playerId: PlayerId; what: "creature" | "land" }
   | { kind: "proliferate"; playerId: PlayerId }
+  | {
+      kind: "restrict_until_eot";
+      cardId: CardInstanceId;
+      cantAttack?: boolean;
+      cantBlock?: boolean;
+      cantBeBlocked?: boolean;
+    }
   | { kind: "set_class_level"; cardId: CardInstanceId; level: number }
   | { kind: "pt_until_eot"; cardId: CardInstanceId; power: number; toughness: number }
   | { kind: "keyword_until_eot"; cardId: CardInstanceId; keyword: Keyword }
@@ -630,7 +637,7 @@ export type CardEffect =
       kind: "move_card";
       cardId: CardIdSelector;
       toZone: Exclude<ZoneName, "stack">;
-      libraryPosition?: "top" | "bottom";
+      libraryPosition?: "top" | "bottom" | "shuffled";
       /** Battlefield arrivals only: the card enters tapped. */
       entersTapped?: boolean;
       /** Battlefield arrivals: "It gains haste" riders. */
@@ -679,6 +686,13 @@ export type CardEffect =
   | { kind: "extra_combat" }
   | { kind: "untap_all"; playerId: PlayerSelector; what: "creature" | "land" }
   | { kind: "proliferate"; playerId: PlayerSelector }
+  | {
+      kind: "restrict_until_eot";
+      cardId: CardIdSelector;
+      cantAttack?: boolean;
+      cantBlock?: boolean;
+      cantBeBlocked?: boolean;
+    }
   /** "copy that spell" in a cast trigger — the subject spell, not a target. */
   | { kind: "copy_subject_spell" }
   /** "counter that spell" in a cast trigger — the subject spell, not a target. */

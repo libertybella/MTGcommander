@@ -3409,3 +3409,87 @@ describe("wave 37: fetch-sac lands and deckbuilding markers", () => {
     expect(compiled.notes).toEqual([]);
   });
 });
+
+describe("wave 38: unblockable-until-EOT, self-shuffle, dies-return counters", () => {
+  it("compiles Rogue's Passage fully", () => {
+    const compiled = compileOracleCard({
+      oracleId: "rogues-passage",
+      name: "Rogue's Passage",
+      manaCost: "",
+      typeLine: "Land",
+      oracleText: "{T}: Add {C}.\n{4}, {T}: Target creature can't be blocked this turn.",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+    });
+    expect(compiled.notes).toEqual([]);
+    const ability = compiled.definition.activated[0];
+    expect(ability?.targetRequirements).toEqual([{ kind: "creature" }]);
+    expect(ability?.effects).toEqual([
+      { kind: "restrict_until_eot", cardId: { type: "chosen", index: 0 }, cantBeBlocked: true },
+    ]);
+  });
+
+  it("unblockable wears off during cleanup", () => {
+    const { game, p1 } = twoPlayers();
+    const bear = createCardDefinition({
+      name: "Runeclaw Bear",
+      typeLine: "Creature - Bear",
+      power: 2,
+      toughness: 2,
+    });
+    game.definitions[bear.id] = bear;
+    const runner = createCardInstance({ definitionId: bear.id, ownerId: p1.id, zone: "battlefield" });
+    game.cards[runner.id] = runner;
+    p1.zones.battlefield.push(runner.id);
+
+    const boosted = applyEffect(game, {
+      kind: "restrict_until_eot",
+      cardId: runner.id,
+      cantBeBlocked: true,
+    });
+    expect(computedCard(boosted, runner.id)?.cantBeBlocked).toBe(true);
+    boosted.turn.phase = "ending";
+    boosted.turn.step = "end";
+    const cleaned = advanceSteps(boosted, 1);
+    expect(cleaned.turn.step).toBe("cleanup");
+    expect(computedCard(cleaned, runner.id)?.cantBeBlocked).toBe(false);
+  });
+
+  it("shuffles itself into its owner's library and returns with a counter", () => {
+    const selfShuffle = compileOracleCard({
+      oracleId: "self-shuffler",
+      name: "Beacon of Unrest",
+      manaCost: "{4}{B}",
+      typeLine: "Sorcery",
+      oracleText: "Shuffle Beacon of Unrest into its owner's library.",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+    });
+    expect(selfShuffle.definition.effects).toEqual([
+      { kind: "move_card", cardId: "self", toZone: "library", libraryPosition: "shuffled" },
+    ]);
+
+    const diesReturn = compileOracleCard({
+      oracleId: "counter-returner",
+      name: "Mishra's Bauble Bearer",
+      manaCost: "{2}",
+      typeLine: "Artifact Creature - Construct",
+      oracleText:
+        "When this creature dies, return it to the battlefield tapped under its owner's control with a +1/+1 counter on it.",
+      power: "1",
+      toughness: "1",
+      printedKeywords: [],
+      imageUrl: "",
+    });
+    const trigger = diesReturn.definition.triggers[0];
+    expect(trigger?.event).toBe("dies");
+    expect(trigger?.effects).toEqual([
+      { kind: "move_card", cardId: "self", toZone: "battlefield", entersTapped: true },
+      { kind: "add_counter", cardId: "self", counter: "p1p1", amount: 1 },
+    ]);
+  });
+});

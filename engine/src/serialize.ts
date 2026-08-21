@@ -1442,7 +1442,7 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
         throw new Error(`Invalid ${label}.toZone`);
       }
       const libraryPosition = value.libraryPosition;
-      if (libraryPosition !== undefined && libraryPosition !== "top" && libraryPosition !== "bottom") {
+      if (libraryPosition !== undefined && libraryPosition !== "top" && libraryPosition !== "bottom" && libraryPosition !== "shuffled") {
         throw new Error(`Invalid ${label}.libraryPosition`);
       }
       return {
@@ -1495,6 +1495,14 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
     }
     case "proliferate":
       return { kind, playerId: parsePlayerSelector(value.playerId, `${label}.playerId`) };
+    case "restrict_until_eot":
+      return {
+        kind,
+        cardId: parseCardIdSelector(value.cardId, `${label}.cardId`),
+        ...(value.cantAttack === true ? { cantAttack: true } : {}),
+        ...(value.cantBlock === true ? { cantBlock: true } : {}),
+        ...(value.cantBeBlocked === true ? { cantBeBlocked: true } : {}),
+      };
     case "counter_spell":
     case "copy_spell": {
       if (!isRecord(value.target)) {
@@ -2379,7 +2387,7 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
       throw new Error(`Invalid ${label}.toZone`);
     }
     const libraryPosition = value.libraryPosition;
-    if (libraryPosition !== undefined && libraryPosition !== "top" && libraryPosition !== "bottom") {
+    if (libraryPosition !== undefined && libraryPosition !== "top" && libraryPosition !== "bottom" && libraryPosition !== "shuffled") {
       throw new Error(`Invalid ${label}.libraryPosition`);
     }
     return {
@@ -2434,6 +2442,15 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
   }
   if (kind === "proliferate") {
     return { kind, playerId: expectString(value.playerId, `${label}.playerId`) };
+  }
+  if (kind === "restrict_until_eot") {
+    return {
+      kind,
+      cardId: expectString(value.cardId, `${label}.cardId`),
+      ...(value.cantAttack === true ? { cantAttack: true } : {}),
+      ...(value.cantBlock === true ? { cantBlock: true } : {}),
+      ...(value.cantBeBlocked === true ? { cantBeBlocked: true } : {}),
+    };
   }
   if (kind === "counter_unless_pays") {
     return {

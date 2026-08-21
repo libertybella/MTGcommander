@@ -359,6 +359,19 @@ export function bindCardEffect(
       }
       return { kind: effect.kind, cardId };
     }
+    case "restrict_until_eot": {
+      const cardId = bindCardId(state, effect.cardId, context);
+      if (!cardId) {
+        return null;
+      }
+      return {
+        kind: "restrict_until_eot",
+        cardId,
+        ...(effect.cantAttack ? { cantAttack: true } : {}),
+        ...(effect.cantBlock ? { cantBlock: true } : {}),
+        ...(effect.cantBeBlocked ? { cantBeBlocked: true } : {}),
+      };
+    }
     case "sacrifice": {
       const cardId = bindCardId(state, effect.cardId, context);
       if (!cardId) {
@@ -1565,6 +1578,14 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
         break;
       case "keyword_until_eot":
         next = applyKeywordUntilEot(state, effect.cardId, effect.keyword);
+        break;
+      case "restrict_until_eot":
+        next = pushUntilEotEffect(state, [effect.cardId], {
+          kind: "restrict",
+          ...(effect.cantAttack ? { cantAttack: true } : {}),
+          ...(effect.cantBlock ? { cantBlock: true } : {}),
+          ...(effect.cantBeBlocked ? { cantBeBlocked: true } : {}),
+        });
         break;
       case "team_pt_until_eot":
         next = applyTeamPtUntilEot(state, effect.playerId, effect.power, effect.toughness);

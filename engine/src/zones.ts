@@ -1,4 +1,5 @@
 import { cloneGameState } from "./clone";
+import { shuffleInPlace } from "./shuffle";
 import { isCommander } from "./cardTypes";
 import { abilitiesRemoved } from "./characteristicsEngine";
 import { queueEnterReplacementChoicesInPlace, wouldEnterTapped } from "./derived";
@@ -55,8 +56,9 @@ function graveyardReplacedByExile(state: GameState): boolean {
 }
 
 export type MoveCardOptions = {
-  /** Library only: index 0 is the top. Defaults to top when moving onto the library. */
-  libraryPosition?: "top" | "bottom";
+  /** Library only: index 0 is the top. Defaults to top when moving onto the
+   * library; "shuffled" shuffles the whole library after inserting. */
+  libraryPosition?: "top" | "bottom" | "shuffled";
   /**
    * Collect dies events here instead of dispatching them immediately.
    * State-based sweeps use this so simultaneous deaths reach watchers as
@@ -222,13 +224,16 @@ function insertIntoZone(
   player: PlayerState,
   zone: keyof PlayerZones,
   cardId: CardInstanceId,
-  libraryPosition: "top" | "bottom",
+  libraryPosition: "top" | "bottom" | "shuffled",
 ): void {
   if (zone === "library") {
-    if (libraryPosition === "top") {
-      player.zones.library.unshift(cardId);
-    } else {
+    if (libraryPosition === "bottom") {
       player.zones.library.push(cardId);
+    } else {
+      player.zones.library.unshift(cardId);
+    }
+    if (libraryPosition === "shuffled") {
+      shuffleInPlace(player.zones.library);
     }
     return;
   }

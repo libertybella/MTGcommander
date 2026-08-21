@@ -492,9 +492,10 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     };
   }
 
-  // "When ~ dies, return it to the battlefield tapped under its owner's control."
+  // "When ~ dies, return it to the battlefield tapped under its owner's
+  // control [with a +1/+1 counter on it]."
   const selfReturn = sentence.match(
-    /^return (?:it|~) to the battlefield( tapped)?(?: under its owner's control)?$/i,
+    /^return (?:it|~) to the battlefield( tapped)?(?: under its owner's control)?( with a \+1\/\+1 counter on it)?$/i,
   );
   if (selfReturn) {
     return {
@@ -506,6 +507,36 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
           toZone: "battlefield",
           ...(selfReturn[1] ? { entersTapped: true } : {}),
         },
+        ...(selfReturn[2]
+          ? [{ kind: "add_counter" as const, cardId: "self", counter: "p1p1", amount: 1 }]
+          : []),
+      ],
+    };
+  }
+
+  const unblockable = sentence.match(
+    /^(target creature|~) can't be blocked this turn$/i,
+  );
+  if (unblockable?.[1]) {
+    if (unblockable[1].toLowerCase() === "~") {
+      return {
+        targetRequirements: [],
+        effects: [{ kind: "restrict_until_eot", cardId: "self", cantBeBlocked: true }],
+      };
+    }
+    return {
+      targetRequirements: [{ kind: "creature" }],
+      effects: [
+        { kind: "restrict_until_eot", cardId: { type: "chosen", index: 0 }, cantBeBlocked: true },
+      ],
+    };
+  }
+
+  if (/^shuffle ~ into its owner's library$/i.test(sentence)) {
+    return {
+      targetRequirements: [],
+      effects: [
+        { kind: "move_card", cardId: "self", toZone: "library", libraryPosition: "shuffled" },
       ],
     };
   }
@@ -1840,6 +1871,7 @@ function shiftChosen(effect: CardEffect, offset: number): CardEffect {
       return { ...effect, playerId: bumpChosen(effect.playerId) };
     case "pt_until_eot":
     case "keyword_until_eot":
+    case "restrict_until_eot":
     case "transform":
       return { ...effect, cardId: bumpChosen(effect.cardId) };
     case "attach":
