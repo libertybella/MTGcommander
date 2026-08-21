@@ -541,7 +541,7 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
   }
 
   const unblockable = sentence.match(
-    /^(target creature|~) can't be blocked this turn$/i,
+    /^(target creature|~)(?: with power (\d+) or less)? can't be blocked this turn$/i,
   );
   if (unblockable?.[1]) {
     if (unblockable[1].toLowerCase() === "~") {
@@ -551,7 +551,12 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
       };
     }
     return {
-      targetRequirements: [{ kind: "creature" }],
+      targetRequirements: [
+        {
+          kind: "creature",
+          ...(unblockable[2] ? { maxPower: Number(unblockable[2]) } : {}),
+        },
+      ],
       effects: [
         { kind: "restrict_until_eot", cardId: { type: "chosen", index: 0 }, cantBeBlocked: true },
       ],
@@ -682,6 +687,33 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
         },
       ],
     };
+  }
+
+  // Windfall / wheel refills keyed to the biggest discarded hand.
+  if (
+    /^Each player discards their hand, then draws cards equal to the greatest number of cards a player discarded this way$/i.test(
+      sentence,
+    )
+  ) {
+    return { targetRequirements: [], effects: [{ kind: "windfall" }] };
+  }
+
+  // Tatyova-class compound: "you gain 1 life and draw a card".
+  const gainDraw = sentence.match(
+    /^you gain (\d+|a|an|one|two|three|four|five) life and draw (a|an|one|two|three|\d+) cards?$/i,
+  );
+  if (gainDraw?.[1] && gainDraw[2]) {
+    const life = parseCount(gainDraw[1]);
+    const cards = parseCount(gainDraw[2]);
+    if (life && cards) {
+      return {
+        targetRequirements: [],
+        effects: [
+          { kind: "gain_life", playerId: "controller", amount: life },
+          { kind: "draw", playerId: "controller", count: cards },
+        ],
+      };
+    }
   }
 
   match = sentence.match(/^(?:you )?gain (\d+|a|an|one|two|three|four|five|six|seven|eight|nine|ten) life$/i);
@@ -1677,13 +1709,13 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
   }
 
   match = sentence.match(
-    /^Target creature (?:gains|gets) ([a-z ]+?) until end of turn$/i,
+    /^Target (legendary )?creature (?:gains|gets) ([a-z ]+?) until end of turn$/i,
   );
-  if (match?.[1]) {
-    const keyword = KEYWORD_GRANTS[match[1].trim().toLowerCase()];
+  if (match?.[2]) {
+    const keyword = KEYWORD_GRANTS[match[2].trim().toLowerCase()];
     if (keyword) {
       return {
-        targetRequirements: [{ kind: "creature" }],
+        targetRequirements: [{ kind: "creature", ...(match[1] ? { legendaryOnly: true } : {}) }],
         effects: [
           { kind: "keyword_until_eot", cardId: { type: "chosen", index: 0 }, keyword },
         ],

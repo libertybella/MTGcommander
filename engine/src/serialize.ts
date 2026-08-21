@@ -1320,6 +1320,10 @@ function parseTargetRequirement(value: unknown, label: string): TargetRequiremen
     ...(value.minManaValue === undefined
       ? {}
       : { minManaValue: expectNumber(value.minManaValue, `${label}.minManaValue`) }),
+    ...(value.maxPower === undefined
+      ? {}
+      : { maxPower: expectNumber(value.maxPower, `${label}.maxPower`) }),
+    ...(value.legendaryOnly === true ? { legendaryOnly: true } : {}),
     ...(value.excludeSource === true ? { excludeSource: true } : {}),
   };
 }
@@ -1582,6 +1586,7 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
     case "counter_subject_spell":
     case "extra_combat":
     case "fog":
+    case "windfall":
       return { kind };
     case "untap_all": {
       const what = expectString(value.what, `${label}.what`);
@@ -2610,7 +2615,7 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
       controllerId: expectString(value.controllerId, `${label}.controllerId`),
     };
   }
-  if (kind === "extra_combat" || kind === "fog") {
+  if (kind === "extra_combat" || kind === "fog" || kind === "windfall") {
     return { kind };
   }
   if (kind === "untap_all") {

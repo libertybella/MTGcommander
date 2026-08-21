@@ -490,6 +490,7 @@ export type GameEffect =
   | { kind: "untap_all"; playerId: PlayerId; what: "creature" | "land" }
   | { kind: "untap_lands_up_to"; playerId: PlayerId; count: number }
   | { kind: "fog" }
+  | { kind: "windfall" }
   | { kind: "proliferate"; playerId: PlayerId }
   | {
       kind: "restrict_until_eot";
@@ -617,6 +618,10 @@ export type TargetRequirement = {
   maxManaValue?: number;
   /** "with mana value N or greater" (Despark). */
   minManaValue?: number;
+  /** "with power N or less" (Escape Tunnel). */
+  maxPower?: number;
+  /** "target legendary creature" (Shizo). */
+  legendaryOnly?: boolean;
   /** "another target …": the effect's own source is not a legal target. */
   excludeSource?: boolean;
 };
@@ -742,6 +747,8 @@ export type CardEffect =
   | { kind: "untap_all"; playerId: PlayerSelector; what: "creature" | "land" }
   | { kind: "untap_lands_up_to"; playerId: PlayerSelector; count: number }
   | { kind: "fog" }
+  /** Windfall: each player discards their hand, then draws the greatest count. */
+  | { kind: "windfall" }
   | { kind: "proliferate"; playerId: PlayerSelector }
   | {
       kind: "restrict_until_eot";

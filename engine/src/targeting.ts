@@ -1,4 +1,5 @@
 import { characteristicsOf, isCreature, isPlaneswalker } from "./cardTypes";
+import { creaturePower } from "./derived";
 import { hasKeyword } from "./keywords";
 import { isLiving, livingPlayers } from "./players";
 import type {
@@ -70,6 +71,17 @@ function violatesManaValueFilter(
     return true;
   }
   return requirement.minManaValue !== undefined && manaValue < requirement.minManaValue;
+}
+
+function violatesCharacteristicFilter(
+  state: GameState,
+  cardId: CardInstanceId,
+  requirement: TargetRequirement,
+): boolean {
+  if (requirement.legendaryOnly && !characteristicsOf(state, cardId).supertypes.includes("legendary")) {
+    return true;
+  }
+  return requirement.maxPower !== undefined && creaturePower(state, cardId) > requirement.maxPower;
 }
 
 function violatesControlFilter(
@@ -160,7 +172,8 @@ export function isChosenTargetLegal(
       isLegalCreatureTarget(state, target.cardId, casterId, sourceColors) &&
       !violatesColorExclusion(state, target.cardId, requirement) &&
       !violatesControlFilter(state, target.cardId, requirement, casterId) &&
-      !violatesManaValueFilter(state, target.cardId, requirement)
+      !violatesManaValueFilter(state, target.cardId, requirement) &&
+      !violatesCharacteristicFilter(state, target.cardId, requirement)
     );
   }
   if (requirement.kind === "own_creature") {

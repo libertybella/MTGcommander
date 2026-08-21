@@ -613,6 +613,8 @@ export function bindCardEffect(
       return { kind: "extra_combat" };
     case "fog":
       return { kind: "fog" };
+    case "windfall":
+      return { kind: "windfall" };
     case "proliferate": {
       const playerId = bindPlayerSelector(state, effect.playerId, context);
       if (!playerId) {
@@ -1629,6 +1631,25 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
       case "fog": {
         next = cloneGameState(state);
         next.preventCombatDamage = true;
+        break;
+      }
+      case "windfall": {
+        // Each player discards their hand, then draws the greatest count.
+        next = cloneGameState(state);
+        let greatest = 0;
+        for (const player of livingPlayers(next)) {
+          const hand = [...player.zones.hand];
+          greatest = Math.max(greatest, hand.length);
+          for (const cardId of hand) {
+            moveCardInPlace(next, cardId, "graveyard");
+          }
+        }
+        if (greatest > 0) {
+          const drawerIds = livingPlayers(next).map((player) => player.id);
+          for (const drawerId of drawerIds) {
+            next = applyDraw(next, drawerId, greatest);
+          }
+        }
         break;
       }
       case "proliferate": {

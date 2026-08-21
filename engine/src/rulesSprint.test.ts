@@ -4889,3 +4889,110 @@ describe("wave 50: pillow-fort attack taxes", () => {
     expect(next.players.find((p) => p.id === p1.id)!.life).toBe(before - 2);
   });
 });
+
+describe("wave 51: windfall, landfall value, filtered targets", () => {
+  const spellBase = {
+    power: null,
+    toughness: null,
+    printedKeywords: [],
+    imageUrl: "",
+  };
+
+  it("compiles Windfall, Tatyova, Escape Tunnel, and Shizo fully", () => {
+    const windfall = compileOracleCard({
+      ...spellBase,
+      oracleId: "windfall",
+      name: "Windfall",
+      manaCost: "{2}{U}",
+      typeLine: "Sorcery",
+      oracleText:
+        "Each player discards their hand, then draws cards equal to the greatest number of cards a player discarded this way.",
+    });
+    expect(windfall.notes).toEqual([]);
+    expect(windfall.definition.effects).toEqual([{ kind: "windfall" }]);
+
+    const tatyova = compileOracleCard({
+      ...spellBase,
+      oracleId: "tatyova",
+      name: "Tatyova, Benthic Druid",
+      manaCost: "{3}{G}{U}",
+      typeLine: "Legendary Creature — Merfolk Druid",
+      power: "3",
+      toughness: "3",
+      oracleText: "Landfall — Whenever a land you control enters, you gain 1 life and draw a card.",
+    });
+    expect(tatyova.notes).toEqual([]);
+    expect(tatyova.definition.triggers[0]?.effects).toHaveLength(2);
+
+    const tunnel = compileOracleCard({
+      ...spellBase,
+      oracleId: "tunnel",
+      name: "Escape Tunnel",
+      manaCost: "",
+      typeLine: "Land",
+      oracleText:
+        "{T}: Add {C}.\n{T}, Sacrifice this land: Target creature with power 2 or less can't be blocked this turn.",
+    });
+    expect(tunnel.notes).toEqual([]);
+    expect(tunnel.definition.activated[0]?.targetRequirements).toEqual([
+      { kind: "creature", maxPower: 2 },
+    ]);
+
+    const shizo = compileOracleCard({
+      ...spellBase,
+      oracleId: "shizo",
+      name: "Shizo, Death's Storehouse",
+      manaCost: "",
+      typeLine: "Legendary Land",
+      oracleText: "{T}: Add {B}.\n{B}, {T}: Target legendary creature gains fear until end of turn.",
+    });
+    expect(shizo.notes).toEqual([]);
+    expect(shizo.definition.activated[0]?.targetRequirements).toEqual([
+      { kind: "creature", legendaryOnly: true },
+    ]);
+  });
+
+  it("windfall discards every hand and refills to the greatest count", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 10);
+    addHandCards(game, p1, 3);
+    addHandCards(game, p2, 1);
+    const next = applyEffect(game, { kind: "windfall" });
+    const one = next.players.find((p) => p.id === p1.id)!;
+    const two = next.players.find((p) => p.id === p2.id)!;
+    expect(one.zones.hand).toHaveLength(3);
+    expect(two.zones.hand).toHaveLength(3);
+    expect(one.zones.graveyard.length).toBeGreaterThanOrEqual(3);
+  });
+
+  it("filters targets by power and legendary supertype", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const bigDef = createCardDefinition({
+      name: "Big",
+      typeLine: "Creature — Giant",
+      power: 4,
+      toughness: 4,
+    });
+    const smallDef = createCardDefinition({
+      name: "Small",
+      typeLine: "Legendary Creature — Mouse",
+      power: 1,
+      toughness: 1,
+    });
+    game.definitions[bigDef.id] = bigDef;
+    game.definitions[smallDef.id] = smallDef;
+    const big = createCardInstance({ definitionId: bigDef.id, ownerId: p2.id, zone: "battlefield" });
+    const small = createCardInstance({ definitionId: smallDef.id, ownerId: p2.id, zone: "battlefield" });
+    game.cards[big.id] = big;
+    game.cards[small.id] = small;
+    p2.zones.battlefield.push(big.id, small.id);
+
+    const power2 = { kind: "creature" as const, maxPower: 2 };
+    expect(isChosenTargetLegal(game, power2, { type: "creature", cardId: big.id }, p1.id)).toBe(false);
+    expect(isChosenTargetLegal(game, power2, { type: "creature", cardId: small.id }, p1.id)).toBe(true);
+
+    const legendary = { kind: "creature" as const, legendaryOnly: true };
+    expect(isChosenTargetLegal(game, legendary, { type: "creature", cardId: big.id }, p1.id)).toBe(false);
+    expect(isChosenTargetLegal(game, legendary, { type: "creature", cardId: small.id }, p1.id)).toBe(true);
+  });
+});
