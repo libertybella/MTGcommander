@@ -906,7 +906,8 @@ function applyCounterSpell(state: GameState, stackObjectId: StackObjectId): Game
   if (!removed?.sourceId || next.cards[removed.sourceId]?.zone !== "stack") {
     return next;
   }
-  return enterOwnerZone(next, removed.sourceId, "graveyard");
+  // A countered flashbacked card exiles instead (CR 702.34a).
+  return enterOwnerZone(next, removed.sourceId, removed.fromGraveyard ? "exile" : "graveyard");
 }
 
 /**

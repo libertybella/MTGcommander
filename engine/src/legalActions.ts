@@ -232,6 +232,7 @@ function castableFace(
   definition: CardDefinition,
   potential: PotentialMana,
   extraGeneric: number,
+  costOverride?: string,
 ): boolean {
   const isInstantSpeed =
     definition.characteristics.types.includes("instant") ||
@@ -239,7 +240,7 @@ function castableFace(
   if (!isInstantSpeed && !inSorceryWindow(state, playerId)) {
     return false;
   }
-  const cost = payableCost(definition.manaCost);
+  const cost = payableCost(costOverride ?? definition.manaCost);
   if (!cost) {
     return false;
   }
@@ -380,7 +381,17 @@ export function legalActions(state: GameState, playerId: PlayerId): LegalAction[
         return definition?.characteristics.types.includes("land") === true;
       })
     : [];
-  for (const cardId of [...player.zones.hand, ...graveyardLandIds]) {
+  const flashbackIds = player.zones.graveyard.filter((cardId) => {
+    const definition = state.cards[cardId]
+      ? state.definitions[state.cards[cardId]!.definitionId]
+      : undefined;
+    return Boolean(definition?.flashback);
+  });
+  for (const cardId of [
+    ...player.zones.hand,
+    ...graveyardLandIds,
+    ...flashbackIds.filter((id) => !graveyardLandIds.includes(id)),
+  ]) {
     const card = state.cards[cardId];
     const definition = card ? state.definitions[card.definitionId] : undefined;
     if (!card || !definition) {
@@ -399,6 +410,22 @@ export function legalActions(state: GameState, playerId: PlayerId): LegalAction[
         continue;
       }
       if (inGraveyard) {
+        // Flashback (CR 702.34): castable from the graveyard for its
+        // flashback cost; life portions are validated at cast time.
+        const flashback = face.definition.flashback;
+        if (
+          flashback &&
+          (face.definition.characteristics.types.includes("instant") ||
+            face.definition.characteristics.types.includes("sorcery")) &&
+          castableFace(state, playerId, face.definition, potential, 0, flashback.manaCost)
+        ) {
+          actions.push({
+            kind: "cast_spell",
+            cardId,
+            faceIndex: face.faceIndex,
+            fromCommand: false,
+          });
+        }
         continue;
       }
       if (castableFace(state, playerId, face.definition, potential, 0)) {

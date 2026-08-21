@@ -2243,6 +2243,28 @@ export function Battlefield(props: Props) {
                       </span>
                     );
                   })()}
+                  {you.zones.graveyard
+                    .filter((cardId) => {
+                      // Flashback: castable straight from the graveyard.
+                      const card = state.cards[cardId];
+                      const def = card ? state.definitions[card.definitionId] : undefined;
+                      return Boolean(def?.flashback);
+                    })
+                    .map((cardId) => (
+                      <span key={cardId} className="flashback-tile" data-testid="flashback-tile">
+                        <CardTile
+                          state={state}
+                          cardId={cardId}
+                          size="hand"
+                          previewable
+                          onClick={
+                            !over && !mulliganOpen ? () => clickHandCard(cardId) : undefined
+                          }
+                          onPreviewEnter={onPreviewEnter}
+                          onPreviewLeave={onPreviewLeave}
+                        />
+                      </span>
+                    ))}
                 </>
               }
             />

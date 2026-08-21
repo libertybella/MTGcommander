@@ -48,6 +48,7 @@ export type CompiledOracleText = {
   freeIfCommander?: boolean;
   changeling?: boolean;
   topOfLibrary?: TopOfLibraryGrant;
+  flashback?: { manaCost: string; life?: number };
   costReductions?: CostReduction[];
   chooseCreatureTypeOnEnter?: boolean;
   entersWithXCounters?: boolean;
@@ -613,6 +614,24 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
       return {
         targetRequirements: [],
         effects: [{ kind: "lose_life", playerId: "each_opponent", amount }],
+      };
+    }
+  }
+
+  // Looting/rummaging: "Draw two cards, then discard two cards."
+  const looting = sentence.match(
+    /^(?:you )?draw (a|an|one|two|three|four|\d+) cards?, then discard (a|an|one|two|three|four|\d+) cards?$/i,
+  );
+  if (looting?.[1] && looting[2]) {
+    const drawn = parseCount(looting[1]);
+    const discarded = parseCount(looting[2]);
+    if (drawn && discarded) {
+      return {
+        targetRequirements: [],
+        effects: [
+          { kind: "draw", playerId: "controller", count: drawn },
+          { kind: "discard", playerId: "controller", count: discarded },
+        ],
       };
     }
   }
@@ -2274,6 +2293,19 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
 
     if (/^Changeling$/i.test(sentence)) {
       result.changeling = true;
+      continue;
+    }
+
+    // "Flashback {2}{R}" / "Flashback—{1}{U}, Pay 3 life." Sacrifice-cost
+    // flashback (Dread Return) stays uncompiled.
+    const flashback = sentence.match(
+      /^Flashback\s*[—–-]?\s*((?:\{[^}]+\})+)(?:, Pay (\d+) life)?$/i,
+    );
+    if (flashback?.[1]) {
+      result.flashback = {
+        manaCost: flashback[1],
+        ...(flashback[2] ? { life: Number(flashback[2]) } : {}),
+      };
       continue;
     }
 

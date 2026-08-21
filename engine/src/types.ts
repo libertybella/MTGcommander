@@ -148,6 +148,12 @@ export type CardDefinition = {
    */
   topOfLibrary?: TopOfLibraryGrant;
   /**
+   * Flashback (CR 702.34): castable from the graveyard for this cost, then
+   * exiled as it leaves the stack. Only mana (plus optional life) costs are
+   * expressible; sacrifice-cost flashback stays uncompiled.
+   */
+  flashback?: { manaCost: string; life?: number };
+  /**
    * "Artifact spells you cast cost {1} less to cast" (medallions, Foundry
    * Inspector). Applies to the controller's spells while on the battlefield;
    * only the generic portion shrinks, never below zero.
@@ -255,6 +261,11 @@ export type StackObject = {
    * the source card anywhere.
    */
   isCopy?: boolean;
+  /**
+   * Cast via flashback (CR 702.34a): the card is exiled instead of going
+   * anywhere else as it leaves the stack.
+   */
+  fromGraveyard?: boolean;
 };
 
 export type CombatAttack = {

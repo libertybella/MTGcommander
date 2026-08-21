@@ -2820,3 +2820,101 @@ describe("wave 30: top-of-library grants (Oracle of Mul Daya shape)", () => {
     ).toThrow();
   });
 });
+
+describe("wave 31: flashback (CR 702.34)", () => {
+  it("compiles Faithless Looting and Deep Analysis fully", () => {
+    const looting = compileOracleCard({
+      oracleId: "faithless-looting",
+      name: "Faithless Looting",
+      manaCost: "{R}",
+      typeLine: "Sorcery",
+      oracleText: "Draw two cards, then discard two cards.\nFlashback {2}{R} (You may cast this card from your graveyard for its flashback cost. Then exile it.)",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+    });
+    expect(looting.definition.flashback).toEqual({ manaCost: "{2}{R}" });
+    expect(looting.notes).toEqual([]);
+
+    const analysis = compileOracleCard({
+      oracleId: "deep-analysis",
+      name: "Deep Analysis",
+      manaCost: "{3}{U}",
+      typeLine: "Sorcery",
+      oracleText: "Target player draws two cards.\nFlashback—{1}{U}, Pay 3 life. (You may cast this card from your graveyard for its flashback cost. Then exile it.)",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+    });
+    expect(analysis.definition.flashback).toEqual({ manaCost: "{1}{U}", life: 3 });
+    expect(analysis.notes).toEqual([]);
+  });
+
+  it("casts from the graveyard for the flashback cost, then exiles", () => {
+    const { game, p1 } = twoPlayers();
+    game.turn.phase = "precombatMain";
+    game.turn.step = "precombatMain";
+    const def = createCardDefinition({
+      name: "Echoing Lesson",
+      manaCost: "{U}",
+      typeLine: "Sorcery",
+      effects: [{ kind: "gain_life", playerId: "controller", amount: 2 }],
+      flashback: { manaCost: "{2}", life: 1 },
+    });
+    game.definitions[def.id] = def;
+    const spell = createCardInstance({ definitionId: def.id, ownerId: p1.id, zone: "graveyard" });
+    game.cards[spell.id] = spell;
+    p1.zones.graveyard.push(spell.id);
+
+    // The printed {U} cannot pay it; the flashback {2} can.
+    p1.mana.C = 2;
+    const actions = legalActions(game, p1.id);
+    expect(actions).toContainEqual({
+      kind: "cast_spell",
+      cardId: spell.id,
+      faceIndex: 0,
+      fromCommand: false,
+    });
+    const cast = applyAction(game, {
+      kind: "cast_spell",
+      playerId: p1.id,
+      cardId: spell.id,
+      targets: [],
+    });
+    expect(cast.stack).toHaveLength(1);
+    expect(cast.players[0]?.life).toBe(39); // paid 1 life
+    const resolved = resolveTopOfStack(cast);
+    expect(resolved.players[0]?.life).toBe(41); // gained 2
+    expect(resolved.cards[spell.id]?.zone).toBe("exile");
+  });
+
+  it("a countered flashback spell is exiled, not returned to the graveyard", () => {
+    const { game, p1 } = twoPlayers();
+    game.turn.phase = "precombatMain";
+    game.turn.step = "precombatMain";
+    const def = createCardDefinition({
+      name: "Echoing Lesson",
+      manaCost: "{U}",
+      typeLine: "Sorcery",
+      effects: [{ kind: "gain_life", playerId: "controller", amount: 2 }],
+      flashback: { manaCost: "{2}" },
+    });
+    game.definitions[def.id] = def;
+    const spell = createCardInstance({ definitionId: def.id, ownerId: p1.id, zone: "graveyard" });
+    game.cards[spell.id] = spell;
+    p1.zones.graveyard.push(spell.id);
+    p1.mana.C = 2;
+    const cast = applyAction(game, {
+      kind: "cast_spell",
+      playerId: p1.id,
+      cardId: spell.id,
+      targets: [],
+    });
+    const stackId = cast.stack[0]?.id ?? "";
+    const countered = applyEffect(cast, { kind: "counter_spell", stackObjectId: stackId });
+    expect(countered.stack).toEqual([]);
+    expect(countered.cards[spell.id]?.zone).toBe("exile");
+  });
+});

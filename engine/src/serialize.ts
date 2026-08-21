@@ -319,6 +319,24 @@ export function parseGameState(json: string): GameState {
       ...(def.cantBeCountered === true ? { cantBeCountered: true } : {}),
       ...(def.freeIfCommander === true ? { freeIfCommander: true } : {}),
       ...(def.changeling === true ? { changeling: true } : {}),
+      ...(def.flashback === undefined
+        ? {}
+        : {
+            flashback: (() => {
+              if (!isRecord(def.flashback)) {
+                throw new Error(`Invalid definition.${id}.flashback`);
+              }
+              return {
+                manaCost: expectString(
+                  def.flashback.manaCost,
+                  `definition.${id}.flashback.manaCost`,
+                ),
+                ...(def.flashback.life === undefined
+                  ? {}
+                  : { life: expectNumber(def.flashback.life, `definition.${id}.flashback.life`) }),
+              };
+            })(),
+          }),
       ...(def.topOfLibrary === undefined
         ? {}
         : {
@@ -572,6 +590,7 @@ export function parseGameState(json: string): GameState {
         ? {}
         : { modeIndex: expectNumber(entry.modeIndex, `stack[${index}].modeIndex`) }),
       ...(entry.isCopy === true ? { isCopy: true } : {}),
+      ...(entry.fromGraveyard === true ? { fromGraveyard: true } : {}),
       ...(entry.modeIndexes === undefined
         ? {}
         : {

@@ -108,7 +108,13 @@ export function putSpellOnStack(
   const fromLibraryTop =
     located?.zone === "library" &&
     castableFromTop(state, state.cards[cardId]?.controllerId ?? "", cardId);
-  if (!located || (located.zone !== "hand" && !fromCommand && !fromLibraryTop)) {
+  // Flashback (CR 702.34): an instant or sorcery with a flashback cost can be
+  // cast from its owner's graveyard; it will exile as it leaves the stack.
+  const fromFlashback =
+    located?.zone === "graveyard" &&
+    Boolean(state.definitions[state.cards[cardId]?.definitionId ?? ""]?.flashback) &&
+    isInstantOrSorcery(state, cardId);
+  if (!located || (located.zone !== "hand" && !fromCommand && !fromLibraryTop && !fromFlashback)) {
     throw new Error(`Card ${cardId} must be in hand to put on the stack`);
   }
   const definition = state.definitions[card.definitionId];
@@ -138,6 +144,7 @@ export function putSpellOnStack(
     ...(modeIndexes && modeIndexes.length > 0 ? { modeIndexes: [...modeIndexes] } : {}),
     ...(xValue !== undefined ? { xValue } : {}),
     ...(division !== undefined ? { division: [...division] } : {}),
+    ...(fromFlashback ? { fromGraveyard: true } : {}),
   });
   next.passesSinceAction = 0;
   next.priorityPlayerId = moved.controllerId;
@@ -257,7 +264,11 @@ export function resolveTopOfStack(state: GameState): GameState {
       next = enterOwnerZone(
         next,
         top.sourceId,
-        isInstantOrSorcery(next, top.sourceId) ? "graveyard" : "battlefield",
+        isInstantOrSorcery(next, top.sourceId)
+          ? top.fromGraveyard
+            ? "exile"
+            : "graveyard"
+          : "battlefield",
       );
     }
     applyStateBasedActionsInPlace(next);
@@ -308,8 +319,12 @@ export function resolveTopOfStack(state: GameState): GameState {
     }
   }
 
+  // Flashback exile replacement (CR 702.34a): a flashbacked card leaves the
+  // stack to exile instead of anywhere else.
   let destination: ZoneName = isInstantOrSorcery(next, top.sourceId)
-    ? "graveyard"
+    ? top.fromGraveyard
+      ? "exile"
+      : "graveyard"
     : "battlefield";
   let attachTo: CardInstanceId | null = null;
   if (definition?.enchant && destination === "battlefield") {

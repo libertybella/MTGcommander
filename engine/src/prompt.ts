@@ -488,9 +488,9 @@ export function applyResolvePay(
     if (index !== -1) {
       const [removed] = next.stack.splice(index, 1);
       // A countered copy ceases to exist; its source card belongs to the
-      // original spell (CR 707.10a).
+      // original spell (CR 707.10a). A flashbacked card exiles (CR 702.34a).
       if (!removed?.isCopy && removed?.sourceId && next.cards[removed.sourceId]?.zone === "stack") {
-        enterOwnerZoneInPlace(next, removed.sourceId, "graveyard");
+        enterOwnerZoneInPlace(next, removed.sourceId, removed.fromGraveyard ? "exile" : "graveyard");
       }
     }
     return next;

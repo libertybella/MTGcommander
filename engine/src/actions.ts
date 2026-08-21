@@ -89,7 +89,7 @@ function validateCast(
   state: GameState,
   playerId: PlayerId,
   cardId: CardInstanceId,
-): { cost: ReturnType<typeof parseManaCost>; fromCommand: boolean } {
+): { cost: ReturnType<typeof parseManaCost>; fromCommand: boolean; flashbackLife: number } {
   requirePriority(state, playerId);
 
   const card = state.cards[cardId];
@@ -115,7 +115,14 @@ function validateCast(
       located.playerId === playerId &&
       castableFromTop(state, playerId, cardId),
   );
-  if (!fromHand && !fromCommand && !fromLibraryTop) {
+  const fromGraveyard = Boolean(
+    located &&
+      located.zone === "graveyard" &&
+      located.playerId === playerId &&
+      definition.flashback &&
+      isInstantOrSorcery(state, cardId),
+  );
+  if (!fromHand && !fromCommand && !fromLibraryTop && !fromGraveyard) {
     throw new Error(`Card ${cardId} must be in the player's hand`);
   }
 
@@ -131,7 +138,11 @@ function validateCast(
   if (!player) {
     throw new Error(`Unknown player ${playerId}`);
   }
-  const cost = parseManaCost(definition.manaCost);
+  // Flashback replaces the printed mana cost (CR 702.34a).
+  const flashbackLife = fromGraveyard ? definition.flashback?.life ?? 0 : 0;
+  const cost = parseManaCost(
+    fromGraveyard ? definition.flashback?.manaCost ?? "" : definition.manaCost,
+  );
   if (fromCommand) {
     cost.generic += player.commander.tax;
   }
@@ -140,13 +151,16 @@ function validateCast(
   // Free-spell cycle: the alternative cost is auto-taken (documented
   // approximation) — the whole mana cost is skipped.
   if (definition.freeIfCommander && controlsCommander(state, playerId)) {
-    return { cost: parseManaCost(""), fromCommand };
+    return { cost: parseManaCost(""), fromCommand, flashbackLife: 0 };
+  }
+  if (flashbackLife > 0 && player.life <= flashbackLife) {
+    throw new Error(`Pay ${flashbackLife} life to cast this`);
   }
   if (!canPayManaCost(player.mana, cost, player.life)) {
     throw new Error("Cannot pay mana cost");
   }
 
-  return { cost, fromCommand };
+  return { cost, fromCommand, flashbackLife };
 }
 
 function applyChosenFace(
@@ -192,7 +206,7 @@ function applyCastSpell(
 ): GameState {
   requirePlaying(state);
   const faced = applyChosenFace(state, cardId, faceIndex);
-  const { cost, fromCommand } = validateCast(faced, playerId, cardId);
+  const { cost, fromCommand, flashbackLife } = validateCast(faced, playerId, cardId);
   const card = faced.cards[cardId];
   const definition = card ? faced.definitions[card.definitionId] : undefined;
   const additional = definition?.additionalCost;
@@ -309,6 +323,13 @@ function applyCastSpell(
     if (payer) {
       payer.life -= additional.life;
       paid.log.push({ kind: "life_change", playerId, delta: -additional.life });
+    }
+  }
+  if (flashbackLife > 0) {
+    const payer = paid.players.find((entry) => entry.id === playerId);
+    if (payer) {
+      payer.life -= flashbackLife;
+      paid.log.push({ kind: "life_change", playerId, delta: -flashbackLife });
     }
   }
   const stacked = putSpellOnStack(paid, cardId, targets ?? [], modeIndex, xValue, division, modeIndexes);

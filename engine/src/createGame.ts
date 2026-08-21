@@ -67,6 +67,7 @@ export function createCardDefinition(
         | "freeIfCommander"
         | "changeling"
         | "topOfLibrary"
+        | "flashback"
         | "costReductions"
         | "chooseCreatureTypeOnEnter"
         | "entersWithXCounters"
@@ -197,6 +198,14 @@ export function createCardDefinition(
     ...(input.cantBeCountered ? { cantBeCountered: true } : {}),
     ...(input.freeIfCommander ? { freeIfCommander: true } : {}),
     ...(input.changeling ? { changeling: true } : {}),
+    ...(input.flashback
+      ? {
+          flashback: {
+            manaCost: input.flashback.manaCost,
+            ...(input.flashback.life ? { life: input.flashback.life } : {}),
+          },
+        }
+      : {}),
     ...(input.topOfLibrary
       ? {
           topOfLibrary: {
