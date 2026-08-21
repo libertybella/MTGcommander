@@ -346,6 +346,7 @@ export function parseGameState(json: string): GameState {
       ...(def.opponentsCantCastDuringYourTurn === true
         ? { opponentsCantCastDuringYourTurn: true }
         : {}),
+      ...(def.mustAttack === true ? { mustAttack: true } : {}),
       ...(def.freeIfCommander === true ? { freeIfCommander: true } : {}),
       ...(def.changeling === true ? { changeling: true } : {}),
       ...(def.storm === true ? { storm: true } : {}),
@@ -1638,7 +1639,9 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
         kind,
         playerId: parsePlayerSelector(value.playerId, `${label}.playerId`),
         amount:
-          value.amount === "subject_amount" || value.amount === "subject_toughness"
+          value.amount === "subject_amount" ||
+          value.amount === "subject_toughness" ||
+          value.amount === "target_power"
             ? value.amount
             : expectNumber(value.amount, `${label}.amount`),
         ...(isRecord(value.perControlledCreature)
@@ -1655,6 +1658,7 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
               },
             }
           : {}),
+        ...(value.perSpellsCastThisTurn === true ? { perSpellsCastThisTurn: true } : {}),
       };
     case "lose_life":
       return {
@@ -2022,8 +2026,14 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
       return {
         kind,
         playerId: parsePlayerSelector(value.playerId, `${label}.playerId`),
-        power: expectNumber(value.power, `${label}.power`),
-        toughness: expectNumber(value.toughness, `${label}.toughness`),
+        power:
+          value.power === "creature_count"
+            ? "creature_count"
+            : expectNumber(value.power, `${label}.power`),
+        toughness:
+          value.toughness === "creature_count"
+            ? "creature_count"
+            : expectNumber(value.toughness, `${label}.toughness`),
         ...(nonSubtypes.length > 0 ? { nonSubtypes } : {}),
       };
     }

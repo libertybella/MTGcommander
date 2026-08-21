@@ -311,6 +311,14 @@ export function bindCardEffect(
       if (amount <= 0) {
         return null;
       }
+      // Aetherflux Reservoir: scale by the controller's casts this turn.
+      if (effect.kind === "gain_life" && effect.perSpellsCastThisTurn) {
+        const casts = state.spellsCastByPlayerThisTurn?.[context.controllerId] ?? 0;
+        if (casts === 0) {
+          return null;
+        }
+        return { kind: effect.kind, playerId, amount: amount * casts };
+      }
       // Shamanic Revelation's ferocious rider: scale by matching creatures.
       if (effect.kind === "gain_life" && effect.perControlledCreature) {
         const minPower = effect.perControlledCreature.minPower ?? 0;
@@ -636,11 +644,21 @@ export function bindCardEffect(
       if (!playerId) {
         return null;
       }
+      // Craterhoof Behemoth: X = controlled creatures, read at bind.
+      const teamCount =
+        effect.power === "creature_count" || effect.toughness === "creature_count"
+          ? Object.values(state.cards).filter(
+              (card) =>
+                card.zone === "battlefield" &&
+                card.controllerId === context.controllerId &&
+                isCreature(state, card.id),
+            ).length
+          : 0;
       return {
         kind: "team_pt_until_eot",
         playerId,
-        power: effect.power,
-        toughness: effect.toughness,
+        power: effect.power === "creature_count" ? teamCount : effect.power,
+        toughness: effect.toughness === "creature_count" ? teamCount : effect.toughness,
         ...(effect.nonSubtypes ? { nonSubtypes: [...effect.nonSubtypes] } : {}),
       };
     }

@@ -19,7 +19,7 @@ import { cardMatchesSubtype, computedCard } from "./characteristicsEngine";
 import { castCostReduction, landDropAllowance } from "./derived";
 import { hasKeyword } from "./keywords";
 import { dispatchEventsInPlace } from "./triggers";
-import { applyCombatDamage } from "./combat";
+import { applyCombatDamage, declareAttackers } from "./combat";
 import { manaAbilitiesFor } from "./manaOptions";
 import { legalActions } from "./legalActions";
 import { searchMatches } from "./prompt";
@@ -10110,6 +10110,138 @@ describe("wave 106: beacons and brass", () => {
     const next = applyEffect(game, { kind: "commander_to_hand", playerId: p1.id });
     expect(next.cards[general.id]?.zone).toBe("hand");
     expect(next.players[0]?.zones.hand).toContain(general.id);
+  });
+});
+
+describe("wave 107: titans and reservoirs", () => {
+  it("compiles the five-card batch fully", () => {
+    const compile = (name: string, typeLine: string, oracleText: string, manaCost = "{1}", pt?: string) =>
+      compileOracleCard({
+        oracleId: name,
+        name,
+        manaCost,
+        typeLine,
+        power: pt ?? null,
+        toughness: pt ?? null,
+        printedKeywords: [],
+        imageUrl: "",
+        oracleText,
+      });
+
+    const claim = compile("Nature's Claim", "Instant", "Destroy target artifact or enchantment. Its controller gains 4 life.", "{G}");
+    expect(claim.notes).toEqual([]);
+
+    const titan = compile(
+      "Sun Titan",
+      "Creature — Giant",
+      "Vigilance\nWhenever this creature enters or attacks, you may return target permanent card with mana value 3 or less from your graveyard to the battlefield.",
+      "{4}{W}{W}",
+      "6",
+    );
+    expect(titan.notes).toEqual([]);
+    expect(titan.definition.triggers).toHaveLength(2);
+    expect(titan.definition.triggers[0]?.targetRequirements?.[0]).toEqual({
+      kind: "own_graveyard_permanent_card",
+      maxManaValue: 3,
+    });
+
+    const hoof = compile(
+      "Craterhoof Behemoth",
+      "Creature — Beast",
+      "Haste\nWhen this creature enters, creatures you control gain trample and get +X/+X until end of turn, where X is the number of creatures you control.",
+      "{5}{G}{G}{G}",
+      "5",
+    );
+    expect(hoof.notes).toEqual([]);
+
+    const reservoir = compile(
+      "Aetherflux Reservoir",
+      "Artifact",
+      "Whenever you cast a spell, you gain 1 life for each spell you've cast this turn.\nPay 50 life: Aetherflux Reservoir deals 50 damage to any target.",
+      "{4}",
+    );
+    expect(reservoir.notes).toEqual([]);
+
+    const toski = compile(
+      "Toski, Bearer of Secrets",
+      "Legendary Creature — Squirrel",
+      "This spell can't be countered.\nIndestructible\nToski, Bearer of Secrets attacks each combat if able.\nWhenever a creature you control deals combat damage to a player, draw a card.",
+      "{3}{G}",
+      "1",
+    );
+    expect(toski.notes).toEqual([]);
+    expect(toski.definition.mustAttack).toBe(true);
+  });
+
+  it("scales Craterhoof pumps and Aetherflux gains at bind", () => {
+    const { game, p1 } = twoPlayers();
+    const bearDef = createCardDefinition({ name: "Bear", typeLine: "Creature — Bear", power: 2, toughness: 2 });
+    game.definitions[bearDef.id] = bearDef;
+    for (let index = 0; index < 3; index += 1) {
+      const bear = createCardInstance({ definitionId: bearDef.id, ownerId: p1.id, zone: "battlefield" });
+      game.cards[bear.id] = bear;
+      p1.zones.battlefield.push(bear.id);
+    }
+
+    const bound = bindCardEffects(
+      game,
+      [
+        {
+          kind: "team_pt_until_eot",
+          playerId: "controller",
+          power: "creature_count",
+          toughness: "creature_count",
+        },
+      ],
+      { controllerId: p1.id, sourceId: null },
+    );
+    const pumped = applyEffects(game, bound);
+    const anyBear = p1.zones.battlefield[0]!;
+    // Three creatures: +3/+3 each.
+    expect(computedCard(pumped, anyBear)?.power).toBe(5);
+
+    game.spellsCastByPlayerThisTurn = { [p1.id]: 3 };
+    const gains = bindCardEffects(
+      game,
+      [{ kind: "gain_life", playerId: "controller", amount: 1, perSpellsCastThisTurn: true }],
+      { controllerId: p1.id, sourceId: null },
+    );
+    const gained = applyEffects(game, gains);
+    expect(gained.players[0]?.life).toBe(43);
+  });
+
+  it("forces an able must-attacker into combat", () => {
+    const { game, p1, p2 } = twoPlayers();
+    game.turn.phase = "combat";
+    game.turn.step = "declareAttackers";
+    const toskiDef = createCardDefinition({
+      name: "Toski",
+      typeLine: "Legendary Creature — Squirrel",
+      power: 1,
+      toughness: 1,
+      mustAttack: true,
+    });
+    const bearDef = createCardDefinition({ name: "Bear", typeLine: "Creature — Bear", power: 2, toughness: 2 });
+    game.definitions[toskiDef.id] = toskiDef;
+    game.definitions[bearDef.id] = bearDef;
+    const toski = createCardInstance({ definitionId: toskiDef.id, ownerId: p1.id, zone: "battlefield" });
+    const bear = createCardInstance({ definitionId: bearDef.id, ownerId: p1.id, zone: "battlefield" });
+    toski.summoningSick = false;
+    bear.summoningSick = false;
+    game.cards[toski.id] = toski;
+    game.cards[bear.id] = bear;
+    p1.zones.battlefield.push(toski.id, bear.id);
+    game.priorityPlayerId = p1.id;
+
+    // Leaving Toski home is illegal while it can attack.
+    expect(() =>
+      declareAttackers(game, p1.id, [{ attackerId: bear.id, defenderId: p2.id }]),
+    ).toThrow(/attacks each combat/);
+    const declared = declareAttackers(game, p1.id, [
+      { attackerId: toski.id, defenderId: p2.id },
+      { attackerId: bear.id, defenderId: p2.id },
+    ]);
+    expect(declared.combat?.attacks).toHaveLength(2);
   });
 });
 

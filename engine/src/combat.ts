@@ -200,6 +200,31 @@ export function declareAttackers(state: GameState, playerId: PlayerId, attacks: 
     assertLegalAttacker(state, playerId, attack.attackerId, attack.defenderId);
   }
 
+  // Toski: "attacks each combat if able" — an able must-attacker can't stay
+  // home once any attack declaration is made.
+  for (const card of Object.values(state.cards)) {
+    if (
+      card.zone !== "battlefield" ||
+      card.controllerId !== playerId ||
+      seen.has(card.id) ||
+      state.definitions[card.definitionId]?.mustAttack !== true
+    ) {
+      continue;
+    }
+    const candidateDefender =
+      attacks[0]?.defenderId ??
+      state.players.find((player) => player.id !== playerId && !player.lost)?.id;
+    if (!candidateDefender) {
+      continue;
+    }
+    try {
+      assertLegalAttacker(state, playerId, card.id, candidateDefender);
+    } catch {
+      continue; // it isn't able to attack — the requirement lifts
+    }
+    throw new Error(`Card ${card.id} attacks each combat if able`);
+  }
+
   // Pillow forts (Propaganda / Sphere of Safety / Norn's Annex): total the
   // per-creature attack taxes of every defender and pay from the attacker's
   // floating pool (float mana with tap_for_mana first) and life.

@@ -51,6 +51,7 @@ export type CompiledOracleText = {
   creatureSpellsCantBeCountered?: boolean;
   opponentsLockedDuringYourTurn?: boolean;
   opponentsCantCastDuringYourTurn?: boolean;
+  mustAttack?: boolean;
   freeIfCommander?: boolean;
   changeling?: boolean;
   storm?: boolean;
@@ -2327,6 +2328,70 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     };
   }
 
+  // Nature's Claim.
+  match = sentence.match(/^Its controller gains (\d+) life$/i);
+  if (match?.[1]) {
+    return {
+      targetRequirements: [],
+      effects: [
+        {
+          kind: "gain_life",
+          playerId: { type: "chosen_controller", index: 0 },
+          amount: Number(match[1]),
+        },
+      ],
+    };
+  }
+
+  // Sun Titan.
+  match = sentence.match(
+    /^(?:you may )?return target permanent card with mana value (\d+) or less from your graveyard to the battlefield$/i,
+  );
+  if (match?.[1]) {
+    return {
+      targetRequirements: [
+        { kind: "own_graveyard_permanent_card", maxManaValue: Number(match[1]) },
+      ],
+      effects: [{ kind: "move_card", cardId: { type: "chosen", index: 0 }, toZone: "battlefield" }],
+    };
+  }
+
+  // Craterhoof Behemoth.
+  if (
+    /^creatures you control gain trample and get \+X\/\+X until end of turn, where X is the number of creatures you control$/i.test(
+      sentence,
+    )
+  ) {
+    return {
+      targetRequirements: [],
+      effects: [
+        { kind: "team_keyword_until_eot", playerId: "controller", keyword: "trample" },
+        {
+          kind: "team_pt_until_eot",
+          playerId: "controller",
+          power: "creature_count",
+          toughness: "creature_count",
+        },
+      ],
+    };
+  }
+
+  // Aetherflux Reservoir.
+  match = sentence.match(/^you gain (\d+) life for each spell you've cast this turn$/i);
+  if (match?.[1]) {
+    return {
+      targetRequirements: [],
+      effects: [
+        {
+          kind: "gain_life",
+          playerId: "controller",
+          amount: Number(match[1]),
+          perSpellsCastThisTurn: true,
+        },
+      ],
+    };
+  }
+
   // Swords to Plowshares: the exiled creature's controller gains its power.
   if (/^Its controller gains life equal to its power$/i.test(sentence)) {
     return {
@@ -3372,6 +3437,10 @@ function parseTriggerHead(head: string): TriggerHead | null {
       subjectFilter: { types: ["creature"], chosenSubtype: true },
       extraEvents: ["attacks"],
     };
+  }
+  // Sun Titan.
+  if (/^Whenever ~ enters or attacks$/i.test(text)) {
+    return { event: "enter_battlefield", extraEvents: ["attacks"] };
   }
   if (/^Whenever you cast a creature spell of the chosen type$/i.test(text)) {
     return {
@@ -4457,6 +4526,12 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
       )
     ) {
       result.opponentsLockedDuringYourTurn = true;
+      continue;
+    }
+
+    // Toski.
+    if (/^~ attacks each combat if able$/i.test(sentence)) {
+      result.mustAttack = true;
       continue;
     }
 

@@ -269,6 +269,10 @@ export function isChosenTargetLegal(
     if (!card || card.zone !== "graveyard" || card.ownerId !== casterId) {
       return false;
     }
+    // Sun Titan: "with mana value 3 or less" on graveyard targets.
+    if (violatesManaValueFilter(state, target.cardId, requirement)) {
+      return false;
+    }
     if (requirement.kind === "own_graveyard_creature_card") {
       return characteristicsOf(state, target.cardId).types.includes("creature");
     }

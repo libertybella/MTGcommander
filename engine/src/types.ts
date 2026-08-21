@@ -144,6 +144,8 @@ export type CardDefinition = {
   opponentsLockedDuringYourTurn?: boolean;
   /** Voice of Victory / Kutzil: the cast-only half of the Abolisher lock. */
   opponentsCantCastDuringYourTurn?: boolean;
+  /** Toski: this creature attacks each combat if able. */
+  mustAttack?: boolean;
   /**
    * "If you control a commander, you may cast this spell without paying its
    * mana cost" (the free-spell cycle). Documented approximation: the free
@@ -879,6 +881,8 @@ export type CardEffect =
       /** Shamanic Revelation's ferocious half: multiply the amount by the
        * controller's creatures matching the filter, at bind. */
       perControlledCreature?: { minPower?: number };
+      /** Aetherflux Reservoir: multiply by the controller's casts this turn. */
+      perSpellsCastThisTurn?: boolean;
     }
   | {
       kind: "lose_life";
@@ -1032,8 +1036,9 @@ export type CardEffect =
   | {
       kind: "team_pt_until_eot";
       playerId: PlayerSelector;
-      power: number;
-      toughness: number;
+      /** creature_count: X = the controller's creatures at bind (Craterhoof). */
+      power: number | "creature_count";
+      toughness: number | "creature_count";
       /** "Non-Human creatures you control" (Return of the Wildspeaker). */
       nonSubtypes?: string[];
     }
