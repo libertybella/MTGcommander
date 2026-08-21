@@ -161,6 +161,9 @@ export type CardDefinition = {
   storm?: boolean;
   /** "~ doesn't untap during your untap step." */
   doesntUntap?: boolean;
+  /** Drumbellower / Seedborn Muse: the controller's creatures (or all their
+   * permanents) also untap during each other player's untap step. */
+  untapDuringEachUntap?: "creatures" | "permanents";
   /** "You may cast spells as though they had flash" (Vedalken Orrery). */
   grantsFlash?: boolean;
   /** Howling Mine: each player draws an extra card in their draw step. */
@@ -538,6 +541,7 @@ export type GameEffect =
       counter: string;
       amount: number;
     }
+  | { kind: "counter_on_each_creature"; counter: string; amount: number }
   /** Board wipes: destroy every battlefield permanent of the scope at once. */
   | { kind: "destroy_all"; what: DestroyAllScope; maxManaValue?: number }
   /** Rhystic Study: the payer chooses to pay or the effects happen. */
@@ -815,6 +819,8 @@ export type CardEffect =
       counter: string;
       amount: number;
     }
+  /** Black Sun's Zenith: counters on every battlefield creature. */
+  | { kind: "counter_on_each_creature"; counter: string; amount: number | "x" }
   | { kind: "destroy_all"; what: DestroyAllScope; maxManaValue?: number }
   | { kind: "unless_pays"; playerId: PlayerSelector; cost: string; effects: CardEffect[] }
   | { kind: "may_pay"; playerId: PlayerSelector; cost: string; effects: CardEffect[] }

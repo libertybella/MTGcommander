@@ -440,6 +440,9 @@ export function parseGameState(json: string): GameState {
           }),
       ...(def.playLandsFromGraveyard === true ? { playLandsFromGraveyard: true } : {}),
       ...(def.leyline === true ? { leyline: true } : {}),
+      ...(def.untapDuringEachUntap === "creatures" || def.untapDuringEachUntap === "permanents"
+        ? { untapDuringEachUntap: def.untapDuringEachUntap }
+        : {}),
       ...(def.dynamicPt === undefined
         ? {}
         : {
@@ -1764,6 +1767,13 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
         counter: expectString(value.counter, `${label}.counter`),
         amount: expectNumber(value.amount, `${label}.amount`),
       };
+    case "counter_on_each_creature":
+      return {
+        kind,
+        counter: expectString(value.counter, `${label}.counter`),
+        amount:
+          value.amount === "x" ? ("x" as const) : expectNumber(value.amount, `${label}.amount`),
+      };
     case "destroy_all":
       return {
         kind,
@@ -2541,6 +2551,13 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
     return {
       kind,
       playerId: expectString(value.playerId, `${label}.playerId`),
+      counter: expectString(value.counter, `${label}.counter`),
+      amount: expectNumber(value.amount, `${label}.amount`),
+    };
+  }
+  if (kind === "counter_on_each_creature") {
+    return {
+      kind,
       counter: expectString(value.counter, `${label}.counter`),
       amount: expectNumber(value.amount, `${label}.amount`),
     };

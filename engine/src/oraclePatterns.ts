@@ -52,6 +52,7 @@ export type CompiledOracleText = {
   grantsFlash?: boolean;
   attackTax?: { generic?: number; perEnchantment?: boolean; lifePer?: number };
   leyline?: boolean;
+  untapDuringEachUntap?: "creatures" | "permanents";
   extraDrawStepDraws?: boolean;
   affinityArtifacts?: boolean;
   affinityAllCreatures?: boolean;
@@ -1754,6 +1755,21 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     }
   }
 
+  // Black Sun's Zenith: X counters sprayed across every creature.
+  const eachCounter = sentence.match(/^Put X (\+1\/\+1|-1\/-1) counters on each creature$/i);
+  if (eachCounter?.[1]) {
+    return {
+      targetRequirements: [],
+      effects: [
+        {
+          kind: "counter_on_each_creature",
+          counter: eachCounter[1] === "+1/+1" ? "p1p1" : "m1m1",
+          amount: "x",
+        },
+      ],
+    };
+  }
+
   match = sentence.match(/^Put a \+1\/\+1 counter on ~$/i);
   if (match) {
     return {
@@ -3061,6 +3077,16 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
       continue;
     }
 
+    // Drumbellower / Seedborn Muse.
+    const untapOthers = sentence.match(
+      /^Untap all (creatures|permanents) you control during each other player's untap step$/i,
+    );
+    if (untapOthers?.[1]) {
+      result.untapDuringEachUntap =
+        untapOthers[1].toLowerCase() === "permanents" ? "permanents" : "creatures";
+      continue;
+    }
+
     if (/^You may cast spells as though they had flash$/i.test(sentence)) {
       result.grantsFlash = true;
       continue;
@@ -3178,7 +3204,12 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
         green: "G",
       };
       let filter: CostReduction["filter"] | null = null;
-      if (colorOf[what]) {
+      const colorType = what.match(
+        /^(white|blue|black|red|green) (artifact|creature|enchantment|instant|sorcery)$/,
+      );
+      if (colorType?.[1] && colorType[2]) {
+        filter = { colors: [colorOf[colorType[1]]!], types: [colorType[2]] };
+      } else if (colorOf[what]) {
         filter = { colors: [colorOf[what]!] };
       } else if (["artifact", "creature", "enchantment", "instant", "sorcery"].includes(what)) {
         filter = { types: [what] };

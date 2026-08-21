@@ -5321,3 +5321,93 @@ describe("wave 55: basic-land search riders and leylines", () => {
     expect(next.cards[ley.id]?.zone).toBe("battlefield");
   });
 });
+
+describe("wave 56: color discounts, mass counters, untap statics", () => {
+  const base = { power: null, toughness: null, printedKeywords: [], imageUrl: "" };
+
+  it("compiles Oketra's Monument, Black Sun's Zenith, and Drumbellower fully", () => {
+    const monument = compileOracleCard({
+      ...base,
+      oracleId: "monument",
+      name: "Oketra's Monument",
+      manaCost: "{3}",
+      typeLine: "Legendary Artifact",
+      oracleText:
+        "White creature spells you cast cost {1} less to cast.\nWhenever you cast a creature spell, create a 1/1 white Warrior creature token.",
+    });
+    expect(monument.notes).toEqual([]);
+    expect(monument.definition.costReductions).toEqual([
+      { generic: 1, filter: { colors: ["W"], types: ["creature"] } },
+    ]);
+
+    const zenith = compileOracleCard({
+      ...base,
+      oracleId: "zenith",
+      name: "Black Sun's Zenith",
+      manaCost: "{X}{B}{B}",
+      typeLine: "Sorcery",
+      oracleText:
+        "Put X -1/-1 counters on each creature. Shuffle Black Sun's Zenith into its owner's library.",
+    });
+    expect(zenith.notes).toEqual([]);
+    expect(zenith.definition.effects[0]).toEqual({
+      kind: "counter_on_each_creature",
+      counter: "m1m1",
+      amount: "x",
+    });
+
+    const drum = compileOracleCard({
+      ...base,
+      oracleId: "drum",
+      name: "Drumbellower",
+      manaCost: "{2}{W}",
+      typeLine: "Creature — Human Soldier",
+      power: "1",
+      toughness: "3",
+      oracleText: "Untap all creatures you control during each other player's untap step.",
+    });
+    expect(drum.notes).toEqual([]);
+    expect(drum.definition.untapDuringEachUntap).toBe("creatures");
+  });
+
+  it("puts X counters on every creature and sweeps the dead", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const bearDef = createCardDefinition({ name: "Bear", typeLine: "Creature — Bear", power: 2, toughness: 2 });
+    const giantDef = createCardDefinition({ name: "Giant", typeLine: "Creature — Giant", power: 5, toughness: 5 });
+    game.definitions[bearDef.id] = bearDef;
+    game.definitions[giantDef.id] = giantDef;
+    const bear = createCardInstance({ definitionId: bearDef.id, ownerId: p1.id, zone: "battlefield" });
+    const giant = createCardInstance({ definitionId: giantDef.id, ownerId: p2.id, zone: "battlefield" });
+    game.cards[bear.id] = bear;
+    game.cards[giant.id] = giant;
+    p1.zones.battlefield.push(bear.id);
+    p2.zones.battlefield.push(giant.id);
+
+    const next = applyEffect(game, { kind: "counter_on_each_creature", counter: "m1m1", amount: 2 });
+    expect(next.cards[bear.id]?.zone).toBe("graveyard");
+    expect(next.cards[giant.id]?.zone).toBe("battlefield");
+    expect(next.cards[giant.id]?.counters["m1m1"]).toBe(2);
+  });
+
+  it("untaps the controller's creatures in other players' untap steps", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const drumDef = createCardDefinition({
+      name: "Drum Lite",
+      typeLine: "Creature — Human",
+      power: 1,
+      toughness: 3,
+      untapDuringEachUntap: "creatures",
+    });
+    game.definitions[drumDef.id] = drumDef;
+    const drum = createCardInstance({ definitionId: drumDef.id, ownerId: p2.id, zone: "battlefield" });
+    drum.tapped = true;
+    game.cards[drum.id] = drum;
+    p2.zones.battlefield.push(drum.id);
+
+    game.turn.activePlayerId = p1.id;
+    game.turn.phase = "ending";
+    game.turn.step = "cleanup";
+    const next = advanceSteps(game, 1);
+    expect(next.cards[drum.id]?.tapped).toBe(false);
+  });
+});

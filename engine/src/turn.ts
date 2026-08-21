@@ -1,3 +1,4 @@
+import { isCreature } from "./cardTypes";
 import { abilitiesRemoved } from "./characteristicsEngine";
 import { cloneGameState } from "./clone";
 import {
@@ -105,6 +106,28 @@ function onEnterStep(state: GameState): GameState {
         }
         card.summoningSick = false;
         card.loyaltyActivatedThisTurn = false;
+      }
+    }
+    // Drumbellower / Seedborn Muse: their controller's creatures (or all
+    // their permanents) untap during everyone else's untap step too.
+    for (const source of Object.values(state.cards)) {
+      const scope = state.definitions[source.definitionId]?.untapDuringEachUntap;
+      if (
+        !scope ||
+        source.zone !== "battlefield" ||
+        source.controllerId === activeId ||
+        abilitiesRemoved(state, source.id)
+      ) {
+        continue;
+      }
+      for (const card of Object.values(state.cards)) {
+        if (
+          card.zone === "battlefield" &&
+          card.controllerId === source.controllerId &&
+          (scope === "permanents" || isCreature(state, card.id))
+        ) {
+          card.tapped = false;
+        }
       }
     }
     return state;

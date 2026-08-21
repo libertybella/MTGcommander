@@ -621,6 +621,13 @@ export function bindCardEffect(
       return { kind: "fog" };
     case "windfall":
       return { kind: "windfall" };
+    case "counter_on_each_creature": {
+      const amount = effect.amount === "x" ? context.xValue ?? 0 : effect.amount;
+      if (amount <= 0) {
+        return null;
+      }
+      return { kind: "counter_on_each_creature", counter: effect.counter, amount };
+    }
     case "populate": {
       const playerId = bindPlayerSelector(state, effect.playerId, context);
       if (!playerId) {
@@ -1651,6 +1658,17 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
       case "fog": {
         next = cloneGameState(state);
         next.preventCombatDamage = true;
+        break;
+      }
+      case "counter_on_each_creature": {
+        next = cloneGameState(state);
+        for (const card of Object.values(next.cards)) {
+          if (card.zone === "battlefield" && isCreature(next, card.id)) {
+            card.counters[effect.counter] =
+              (card.counters[effect.counter] ?? 0) +
+              effect.amount * counterDoublingFactor(next, card.id, effect.counter);
+          }
+        }
         break;
       }
       case "windfall": {

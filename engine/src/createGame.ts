@@ -79,6 +79,7 @@ export function createCardDefinition(
         | "entersWithXCounters"
         | "playLandsFromGraveyard"
         | "leyline"
+        | "untapDuringEachUntap"
         | "additionalCost"
         | "attackTax"
         | "dynamicPt"
@@ -254,6 +255,9 @@ export function createCardDefinition(
     ...(input.entersWithXCounters ? { entersWithXCounters: true } : {}),
     ...(input.playLandsFromGraveyard ? { playLandsFromGraveyard: true } : {}),
     ...(input.leyline ? { leyline: true } : {}),
+    ...(input.untapDuringEachUntap
+      ? { untapDuringEachUntap: input.untapDuringEachUntap }
+      : {}),
     ...(input.additionalCost ? { additionalCost: { ...input.additionalCost } } : {}),
     ...(input.attackTax ? { attackTax: { ...input.attackTax } } : {}),
     ...(input.dynamicPt ? { dynamicPt: { count: input.dynamicPt.count } } : {}),

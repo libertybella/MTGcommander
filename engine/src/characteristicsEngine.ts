@@ -372,12 +372,12 @@ function computeAll(state: GameState): Record<CardInstanceId, ComputedCard> {
     }
   }
 
-  // Layer 7d: +1/+1 counters.
+  // Layer 7d: +1/+1 and -1/-1 counters net out.
   for (const card of Object.values(state.cards)) {
     const computed = computedById[card.id]!;
-    const plus = card.counters["p1p1"] ?? 0;
-    computed.power = Math.max(0, computed.power + plus);
-    computed.toughness = Math.max(0, computed.toughness + plus);
+    const net = (card.counters["p1p1"] ?? 0) - (card.counters["m1m1"] ?? 0);
+    computed.power = Math.max(0, computed.power + net);
+    computed.toughness = computed.toughness + net;
   }
   return computedById;
 }
