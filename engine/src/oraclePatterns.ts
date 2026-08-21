@@ -391,7 +391,7 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
   }
 
   const wipe = sentence.match(
-    /^Destroy all (creatures|artifacts|enchantments|planeswalkers|nonland permanents|artifacts and enchantments)$/i,
+    /^Destroy all (creatures|artifacts|enchantments|planeswalkers|nonland permanents|artifacts and enchantments)(?: with mana value (\d+) or less)?$/i,
   );
   if (wipe?.[1]) {
     const named = wipe[1].toLowerCase();
@@ -401,9 +401,14 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
         : named === "nonland permanents"
           ? ["nonland"]
           : [named as DestroyAllScope];
+    const maxManaValue = wipe[2] ? Number(wipe[2]) : undefined;
     return {
       targetRequirements: [],
-      effects: scopes.map((what) => ({ kind: "destroy_all", what })),
+      effects: scopes.map((what) => ({
+        kind: "destroy_all",
+        what,
+        ...(maxManaValue !== undefined ? { maxManaValue } : {}),
+      })),
     };
   }
 
@@ -1062,9 +1067,9 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
   }
 
   match = sentence.match(
-    /^(Destroy|Exile) target (artifact|enchantment|artifact or enchantment|artifact or creature|creature or artifact|creature or enchantment|nonland permanent)( you don't control| an opponent controls)?$/i,
+    /^(Destroy|Exile) target (artifact|enchantment|artifact or enchantment|artifact or creature|creature or artifact|creature or enchantment|nonland permanent|noncreature, nonland permanent|permanent)( you don't control| an opponent controls)?(?: with mana value (\d+) or (less|greater))?$/i,
   );
-  if (match?.[1] && match[2]) {
+  if (match?.[1] && match[2] && (match[2].toLowerCase() !== "permanent" || match[3] || match[4])) {
     const kindOf: Record<string, TargetKind> = {
       artifact: "artifact",
       enchantment: "enchantment",
@@ -1073,12 +1078,21 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
       "creature or artifact": "creature_or_artifact",
       "creature or enchantment": "creature_or_enchantment",
       "nonland permanent": "nonland_permanent",
+      "noncreature, nonland permanent": "noncreature_nonland_permanent",
+      permanent: "permanent",
     };
+    const bound = match[4] ? Number(match[4]) : undefined;
     return {
       targetRequirements: [
         {
           kind: kindOf[match[2].toLowerCase()]!,
           ...(match[3] ? { control: "not_own" as const } : {}),
+          ...(bound !== undefined && match[5]?.toLowerCase() === "less"
+            ? { maxManaValue: bound }
+            : {}),
+          ...(bound !== undefined && match[5]?.toLowerCase() === "greater"
+            ? { minManaValue: bound }
+            : {}),
         },
       ],
       effects: [

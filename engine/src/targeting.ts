@@ -57,6 +57,21 @@ function violatesColorExclusion(
   return requirement.excludeColors.some((color) => colors.includes(color));
 }
 
+function violatesManaValueFilter(
+  state: GameState,
+  cardId: CardInstanceId,
+  requirement: TargetRequirement,
+): boolean {
+  if (requirement.maxManaValue === undefined && requirement.minManaValue === undefined) {
+    return false;
+  }
+  const manaValue = characteristicsOf(state, cardId).manaValue;
+  if (requirement.maxManaValue !== undefined && manaValue > requirement.maxManaValue) {
+    return true;
+  }
+  return requirement.minManaValue !== undefined && manaValue < requirement.minManaValue;
+}
+
 function violatesControlFilter(
   state: GameState,
   cardId: CardInstanceId,
@@ -124,7 +139,8 @@ export function isChosenTargetLegal(
       target.type === "creature" &&
       isLegalCreatureTarget(state, target.cardId, casterId, sourceColors) &&
       !violatesColorExclusion(state, target.cardId, requirement) &&
-      !violatesControlFilter(state, target.cardId, requirement, casterId)
+      !violatesControlFilter(state, target.cardId, requirement, casterId) &&
+      !violatesManaValueFilter(state, target.cardId, requirement)
     );
   }
   if (requirement.kind === "own_creature") {
@@ -143,6 +159,9 @@ export function isChosenTargetLegal(
       return false;
     }
     if (violatesControlFilter(state, target.cardId, requirement, casterId)) {
+      return false;
+    }
+    if (violatesManaValueFilter(state, target.cardId, requirement)) {
       return false;
     }
     if (hasKeyword(state, target.cardId, "shroud")) {
@@ -193,7 +212,8 @@ export function isChosenTargetLegal(
     requirement.kind === "artifact_or_enchantment" ||
     requirement.kind === "creature_or_artifact" ||
     requirement.kind === "creature_or_enchantment" ||
-    requirement.kind === "nonland_permanent"
+    requirement.kind === "nonland_permanent" ||
+    requirement.kind === "noncreature_nonland_permanent"
   ) {
     if (target.type !== "creature") {
       return false;
@@ -209,6 +229,9 @@ export function isChosenTargetLegal(
       return false;
     }
     if (violatesControlFilter(state, target.cardId, requirement, casterId)) {
+      return false;
+    }
+    if (violatesManaValueFilter(state, target.cardId, requirement)) {
       return false;
     }
     const types = characteristicsOf(state, target.cardId).types;
@@ -227,6 +250,8 @@ export function isChosenTargetLegal(
         return isCreature(state, target.cardId) || types.includes("enchantment");
       case "nonland_permanent":
         return !types.includes("land");
+      case "noncreature_nonland_permanent":
+        return !types.includes("land") && !isCreature(state, target.cardId);
     }
   }
   if (requirement.kind === "spell") {
@@ -356,7 +381,8 @@ export function legalChoicesForRequirement(
     requirement.kind === "artifact_or_enchantment" ||
     requirement.kind === "creature_or_artifact" ||
     requirement.kind === "creature_or_enchantment" ||
-    requirement.kind === "nonland_permanent"
+    requirement.kind === "nonland_permanent" ||
+    requirement.kind === "noncreature_nonland_permanent"
   ) {
     const choices: ChosenTarget[] = [];
     for (const player of livingPlayers(state)) {

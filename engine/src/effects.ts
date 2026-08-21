@@ -462,7 +462,11 @@ export function bindCardEffect(
       };
     }
     case "destroy_all":
-      return { kind: "destroy_all", what: effect.what };
+      return {
+        kind: "destroy_all",
+        what: effect.what,
+        ...(effect.maxManaValue !== undefined ? { maxManaValue: effect.maxManaValue } : {}),
+      };
     case "unless_pays": {
       const playerId = bindPlayerSelector(state, effect.playerId, context);
       if (!playerId) {
@@ -1185,8 +1189,9 @@ function applyRevealZone(
 /** Board wipe (Wrath of God): destroy every matching permanent as one event batch. */
 function applyDestroyAll(
   state: GameState,
-  what: Extract<GameEffect, { kind: "destroy_all" }>["what"],
+  effect: Extract<GameEffect, { kind: "destroy_all" }>,
 ): GameState {
+  const what = effect.what;
   const next = cloneGameState(state);
   const matches = (cardId: CardInstanceId): boolean => {
     if (what === "creatures") {
@@ -1206,6 +1211,11 @@ function applyDestroyAll(
   };
   const doomed = Object.values(next.cards)
     .filter((card) => card.zone === "battlefield" && matches(card.id))
+    .filter(
+      (card) =>
+        effect.maxManaValue === undefined ||
+        characteristicsOf(next, card.id).manaValue <= effect.maxManaValue,
+    )
     .filter((card) => !hasKeyword(next, card.id, "indestructible"))
     .map((card) => card.id);
   const collectDies: EngineEvent[] = [];
@@ -1363,7 +1373,7 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
         );
         break;
       case "destroy_all":
-        next = applyDestroyAll(state, effect.what);
+        next = applyDestroyAll(state, effect);
         break;
       case "damage_all":
         next = applyDamageAll(state, effect);

@@ -416,6 +416,68 @@ describe("creature-or-planeswalker removal", () => {
   });
 });
 
+describe("mana-value filters", () => {
+  it("compiles Abrupt Decay's body and Despark, and enforces the bounds", () => {
+    const decay = compileOracleCard({
+      oracleId: "decay2",
+      name: "Abrupt Decay",
+      manaCost: "{B}{G}",
+      typeLine: "Instant",
+      oracleText:
+        "This spell can't be countered.\nDestroy target noncreature, nonland permanent with mana value 3 or less.",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+    });
+    expect(decay.notes).toEqual([]);
+    expect(decay.definition.targetRequirements).toEqual([
+      { kind: "noncreature_nonland_permanent", maxManaValue: 3 },
+    ]);
+
+    const despark = compileOracleCard({
+      oracleId: "despark",
+      name: "Despark",
+      manaCost: "{W}{B}",
+      typeLine: "Instant",
+      oracleText: "Exile target permanent with mana value 4 or greater.",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+    });
+    expect(despark.notes).toEqual([]);
+    expect(despark.definition.targetRequirements).toEqual([
+      { kind: "permanent", minManaValue: 4 },
+    ]);
+
+    const { game, p1, p2 } = twoPlayers();
+    const cheap = createCardDefinition({ name: "Mind Stone", typeLine: "Artifact", manaCost: "{2}" });
+    const pricey = createCardDefinition({
+      name: "Big Golem",
+      typeLine: "Artifact Creature — Golem",
+      manaCost: "{6}",
+      power: 6,
+      toughness: 6,
+    });
+    game.definitions[cheap.id] = cheap;
+    game.definitions[pricey.id] = pricey;
+    const small = createCardInstance({ definitionId: cheap.id, ownerId: p2.id, zone: "battlefield" });
+    const large = createCardInstance({ definitionId: pricey.id, ownerId: p2.id, zone: "battlefield" });
+    game.cards[small.id] = small;
+    game.cards[large.id] = large;
+    p2.zones.battlefield.push(small.id, large.id);
+
+    const desparkReq = { kind: "permanent" as const, minManaValue: 4 };
+    expect(isChosenTargetLegal(game, desparkReq, { type: "creature", cardId: small.id }, p1.id)).toBe(false);
+    expect(isChosenTargetLegal(game, desparkReq, { type: "creature", cardId: large.id }, p1.id)).toBe(true);
+
+    // "Destroy all creatures with mana value 3 or less" spares the golem.
+    const swept = applyEffect(game, { kind: "destroy_all", what: "creatures", maxManaValue: 3 });
+    expect(swept.cards[large.id]?.zone).toBe("battlefield");
+  });
+});
+
 describe("multi-mode spells", () => {
   it("compiles a Choose-two command and resolves both chosen modes", () => {
     const compiled = compileOracleCard({

@@ -1115,6 +1115,7 @@ function parseTargetRequirement(value: unknown, label: string): TargetRequiremen
     kind !== "creature_or_artifact" &&
     kind !== "creature_or_enchantment" &&
     kind !== "nonland_permanent" &&
+    kind !== "noncreature_nonland_permanent" &&
     kind !== "own_graveyard_card" &&
     kind !== "own_graveyard_creature_card" &&
     kind !== "nonartifact_creature" &&
@@ -1149,6 +1150,12 @@ function parseTargetRequirement(value: unknown, label: string): TargetRequiremen
     ...(value.variable === true ? { variable: true } : {}),
     ...(excludeColors.length > 0 ? { excludeColors } : {}),
     ...(control === undefined ? {} : { control }),
+    ...(value.maxManaValue === undefined
+      ? {}
+      : { maxManaValue: expectNumber(value.maxManaValue, `${label}.maxManaValue`) }),
+    ...(value.minManaValue === undefined
+      ? {}
+      : { minManaValue: expectNumber(value.minManaValue, `${label}.minManaValue`) }),
   };
 }
 
@@ -1517,7 +1524,13 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
         amount: expectNumber(value.amount, `${label}.amount`),
       };
     case "destroy_all":
-      return { kind, what: parseDestroyAllScope(value.what, `${label}.what`) };
+      return {
+        kind,
+        what: parseDestroyAllScope(value.what, `${label}.what`),
+        ...(value.maxManaValue === undefined
+          ? {}
+          : { maxManaValue: expectNumber(value.maxManaValue, `${label}.maxManaValue`) }),
+      };
     case "unless_pays":
     case "may_pay":
       return {
@@ -2200,7 +2213,13 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
     };
   }
   if (kind === "destroy_all") {
-    return { kind, what: parseDestroyAllScope(value.what, `${label}.what`) };
+    return {
+      kind,
+      what: parseDestroyAllScope(value.what, `${label}.what`),
+      ...(value.maxManaValue === undefined
+        ? {}
+        : { maxManaValue: expectNumber(value.maxManaValue, `${label}.maxManaValue`) }),
+    };
   }
   if (kind === "unless_pays" || kind === "may_pay") {
     return {

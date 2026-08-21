@@ -414,7 +414,7 @@ export type GameEffect =
       amount: number;
     }
   /** Board wipes: destroy every battlefield permanent of the scope at once. */
-  | { kind: "destroy_all"; what: DestroyAllScope }
+  | { kind: "destroy_all"; what: DestroyAllScope; maxManaValue?: number }
   /** Rhystic Study: the payer chooses to pay or the effects happen. */
   | { kind: "unless_pays"; playerId: PlayerId; cost: string; effects: GameEffect[] }
   /** "You may pay {N}. If you do, …" — paying causes the effects. */
@@ -476,6 +476,7 @@ export type TargetKind =
   | "creature_or_artifact"
   | "creature_or_enchantment"
   | "nonland_permanent"
+  | "noncreature_nonland_permanent"
   /** A card in the caster's own graveyard (Regrowth / Zombify recursion). */
   | "own_graveyard_card"
   | "own_graveyard_creature_card"
@@ -493,6 +494,10 @@ export type TargetRequirement = {
   excludeColors?: Color[];
   /** "you don't control" (Cyclonic Rift) / "you control" (Ephemerate). */
   control?: "own" | "not_own";
+  /** "with mana value N or less" (Abrupt Decay). */
+  maxManaValue?: number;
+  /** "with mana value N or greater" (Despark). */
+  minManaValue?: number;
 };
 
 /** One bullet of a modal spell. Targets are chosen for the picked mode only. */
@@ -626,7 +631,7 @@ export type CardEffect =
       counter: string;
       amount: number;
     }
-  | { kind: "destroy_all"; what: DestroyAllScope }
+  | { kind: "destroy_all"; what: DestroyAllScope; maxManaValue?: number }
   | { kind: "unless_pays"; playerId: PlayerSelector; cost: string; effects: CardEffect[] }
   | { kind: "may_pay"; playerId: PlayerSelector; cost: string; effects: CardEffect[] }
   | {
