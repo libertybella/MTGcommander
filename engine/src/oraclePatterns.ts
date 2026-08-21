@@ -1501,6 +1501,17 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     };
   }
 
+  // Setessan Champion's constellation body.
+  if (/^put a \+1\/\+1 counter on (?:~|this creature) and draw a card$/i.test(sentence)) {
+    return {
+      targetRequirements: [],
+      effects: [
+        { kind: "add_counter", cardId: "self", counter: "+1/+1", amount: 1 },
+        { kind: "draw", playerId: "controller", count: 1 },
+      ],
+    };
+  }
+
   const untapAll = sentence.match(/^untap all (creatures|lands) you control$/i);
   if (untapAll?.[1]) {
     return {
@@ -3253,7 +3264,7 @@ type TriggerHead = Pick<
 
 /** "Whenever another creature dies" → dies / any / excludeSelf, and friends. */
 function parseTriggerHead(head: string): TriggerHead | null {
-  const text = head.replace(/^(?:Landfall|Magecraft)\s*[—-]\s*/i, "").trim();
+  const text = head.replace(/^(?:Landfall|Magecraft|Constellation)\s*[—-]\s*/i, "").trim();
   if (/^Whenever you cast or copy an instant or sorcery spell$/i.test(text)) {
     return {
       event: "cast_spell",
@@ -3461,6 +3472,30 @@ function parseTriggerHead(head: string): TriggerHead | null {
   }
   if (/^Whenever (?:~|this creature) or another creature you control dies$/i.test(text)) {
     return { event: "dies", watch: "controlled", subjectFilter: { types: ["creature"] } };
+  }
+  // Constellation (an enchantment creature's own arrival counts too).
+  if (
+    /^Whenever an enchantment you control enters$/i.test(text) ||
+    /^Whenever (?:~|this creature) or another enchantment you control enters$/i.test(text)
+  ) {
+    return {
+      event: "enter_battlefield",
+      watch: "controlled",
+      subjectFilter: { types: ["enchantment"] },
+    };
+  }
+  // Welcoming Vampire / Enduring Innocence: a batched little-creature watch.
+  const batchEnter = text.match(
+    /^Whenever one or more other creatures you control with power (\d+) or less enter$/i,
+  );
+  if (batchEnter?.[1]) {
+    return {
+      event: "enter_battlefield",
+      watch: "controlled",
+      excludeSelf: true,
+      oncePerBatch: true,
+      subjectFilter: { types: ["creature"], maxPower: Number(batchEnter[1]) },
+    };
   }
   if (/^At the beginning of your upkeep$/i.test(text)) {
     return { event: "upkeep" };

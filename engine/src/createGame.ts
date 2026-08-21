@@ -148,6 +148,9 @@ export function createCardDefinition(
                   ...(trigger.subjectFilter.minPower !== undefined
                     ? { minPower: trigger.subjectFilter.minPower }
                     : {}),
+                  ...(trigger.subjectFilter.maxPower !== undefined
+                    ? { maxPower: trigger.subjectFilter.maxPower }
+                    : {}),
                 },
               }
             : {}),

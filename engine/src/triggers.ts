@@ -329,6 +329,9 @@ function subjectMatchesFilter(
   if (filter.minPower !== undefined && creaturePower(state, subjectId) < filter.minPower) {
     return false;
   }
+  if (filter.maxPower !== undefined && creaturePower(state, subjectId) > filter.maxPower) {
+    return false;
+  }
   for (const type of filter.types ?? []) {
     if (!traits.types.includes(type)) {
       return false;

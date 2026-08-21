@@ -1277,6 +1277,8 @@ export type CardTrigger = {
     nonSubtypes?: string[];
     /** "with power 3 or greater" (Elemental Bond). Computed power. */
     minPower?: number;
+    /** "with power 2 or less" (Welcoming Vampire). Computed power. */
+    maxPower?: number;
   };
   effects: CardEffect[];
   /** Chosen when the trigger is put on the stack. Empty or omitted means untargeted. */

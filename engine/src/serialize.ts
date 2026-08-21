@@ -2520,6 +2520,14 @@ function parseTriggers(value: unknown, label: string): CardTrigger[] {
                       `${label}[${index}].subjectFilter.minPower`,
                     ),
                   }),
+              ...(entry.subjectFilter.maxPower === undefined
+                ? {}
+                : {
+                    maxPower: expectNumber(
+                      entry.subjectFilter.maxPower,
+                      `${label}[${index}].subjectFilter.maxPower`,
+                    ),
+                  }),
             };
           })();
     return {

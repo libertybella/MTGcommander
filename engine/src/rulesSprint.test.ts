@@ -11264,3 +11264,177 @@ describe("wave 112: masks, axes, and swords", () => {
     expect(game.stack).toHaveLength(1);
   });
 });
+
+describe("wave 113: constellations and welcoming committees", () => {
+  it("compiles the batch fully", () => {
+    const champion = compileOracleCard({
+      oracleId: "champion",
+      name: "Setessan Champion",
+      manaCost: "{2}{G}",
+      typeLine: "Creature — Human Warrior",
+      power: "1",
+      toughness: "3",
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "Constellation — Whenever an enchantment you control enters, put a +1/+1 counter on this creature and draw a card.",
+    });
+    expect(champion.notes).toEqual([]);
+    expect(champion.definition.triggers[0]).toMatchObject({
+      event: "enter_battlefield",
+      watch: "controlled",
+      subjectFilter: { types: ["enchantment"] },
+    });
+    expect(champion.definition.triggers[0]?.effects).toEqual([
+      { kind: "add_counter", cardId: "self", counter: "+1/+1", amount: 1 },
+      { kind: "draw", playerId: "controller", count: 1 },
+    ]);
+
+    const eidolon = compileOracleCard({
+      oracleId: "eidolon",
+      name: "Eidolon of Blossoms",
+      manaCost: "{2}{G}{G}",
+      typeLine: "Enchantment Creature — Spirit",
+      power: "2",
+      toughness: "2",
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "Constellation — Whenever this creature or another enchantment you control enters, draw a card.",
+    });
+    expect(eidolon.notes).toEqual([]);
+    expect(eidolon.definition.triggers[0]?.subjectFilter?.types).toEqual(["enchantment"]);
+
+    const giant = compileOracleCard({
+      oracleId: "giant",
+      name: "Doomwake Giant",
+      manaCost: "{4}{B}",
+      typeLine: "Enchantment Creature — Giant",
+      power: "4",
+      toughness: "6",
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "Constellation — Whenever this creature or another enchantment you control enters, creatures your opponents control get -1/-1 until end of turn.",
+    });
+    expect(giant.notes).toEqual([]);
+
+    const vampire = compileOracleCard({
+      oracleId: "vampire",
+      name: "Welcoming Vampire",
+      manaCost: "{2}{W}",
+      typeLine: "Creature — Vampire",
+      power: "2",
+      toughness: "3",
+      printedKeywords: ["Flying"],
+      imageUrl: "",
+      oracleText:
+        "Flying\nWhenever one or more other creatures you control with power 2 or less enter, draw a card. This ability triggers only once each turn.",
+    });
+    expect(vampire.notes).toEqual([]);
+    expect(vampire.definition.triggers[0]).toMatchObject({
+      event: "enter_battlefield",
+      excludeSelf: true,
+      oncePerBatch: true,
+      oncePerTurn: true,
+      subjectFilter: { types: ["creature"], maxPower: 2 },
+    });
+  });
+
+  it("greets only small newcomers and only once a turn", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 10);
+    const vampireDef = createCardDefinition({
+      name: "Vampire",
+      typeLine: "Creature — Vampire",
+      power: 2,
+      toughness: 3,
+      triggers: [
+        {
+          event: "enter_battlefield",
+          watch: "controlled",
+          excludeSelf: true,
+          oncePerBatch: true,
+          oncePerTurn: true,
+          subjectFilter: { types: ["creature"], maxPower: 2 },
+          effects: [{ kind: "draw", playerId: "controller", count: 1 }],
+          targetRequirements: [],
+        },
+      ],
+    });
+    const smallDef = createCardDefinition({ name: "Small", typeLine: "Creature — Goblin", power: 1, toughness: 1 });
+    const bigDef = createCardDefinition({ name: "Big", typeLine: "Creature — Beast", power: 4, toughness: 4 });
+    game.definitions[vampireDef.id] = vampireDef;
+    game.definitions[smallDef.id] = smallDef;
+    game.definitions[bigDef.id] = bigDef;
+    const vampire = createCardInstance({ definitionId: vampireDef.id, ownerId: p1.id, zone: "battlefield" });
+    game.cards[vampire.id] = vampire;
+    p1.zones.battlefield.push(vampire.id);
+
+    // A big arrival is ignored.
+    const big = createCardInstance({ definitionId: bigDef.id, ownerId: p1.id, zone: "hand" });
+    game.cards[big.id] = big;
+    p1.zones.hand.push(big.id);
+    let next = moveCard(game, big.id, "battlefield");
+    expect(next.stack).toHaveLength(0);
+
+    // A small arrival draws...
+    const small = createCardInstance({ definitionId: smallDef.id, ownerId: p1.id, zone: "hand" });
+    next.cards[small.id] = small;
+    next.players[0]!.zones.hand.push(small.id);
+    const handBefore = next.players[0]!.zones.hand.length - 1;
+    next = moveCard(next, small.id, "battlefield");
+    while (next.stack.length > 0) {
+      next = resolveTopOfStack(next);
+    }
+    expect(next.players[0]?.zones.hand).toHaveLength(handBefore + 1);
+
+    // ...and a second small arrival the same turn stays quiet.
+    const second = createCardInstance({ definitionId: smallDef.id, ownerId: p1.id, zone: "hand" });
+    next.cards[second.id] = second;
+    next.players[0]!.zones.hand.push(second.id);
+    next = moveCard(next, second.id, "battlefield");
+    expect(next.stack).toHaveLength(0);
+  });
+
+  it("fires constellation for enchantments only, including itself", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 10);
+    const eidolonDef = createCardDefinition({
+      name: "Eidolon",
+      typeLine: "Enchantment Creature — Spirit",
+      power: 2,
+      toughness: 2,
+      triggers: [
+        {
+          event: "enter_battlefield",
+          watch: "controlled",
+          subjectFilter: { types: ["enchantment"] },
+          effects: [{ kind: "draw", playerId: "controller", count: 1 }],
+          targetRequirements: [],
+        },
+      ],
+    });
+    const bearDef = createCardDefinition({ name: "Bear", typeLine: "Creature — Bear", power: 2, toughness: 2 });
+    game.definitions[eidolonDef.id] = eidolonDef;
+    game.definitions[bearDef.id] = bearDef;
+
+    // Its own arrival is an enchantment entering.
+    const eidolon = createCardInstance({ definitionId: eidolonDef.id, ownerId: p1.id, zone: "hand" });
+    game.cards[eidolon.id] = eidolon;
+    p1.zones.hand.push(eidolon.id);
+    const handBefore = p1.zones.hand.length - 1;
+    let next = moveCard(game, eidolon.id, "battlefield");
+    while (next.stack.length > 0) {
+      next = resolveTopOfStack(next);
+    }
+    expect(next.players[0]?.zones.hand).toHaveLength(handBefore + 1);
+
+    // A plain creature's arrival is not.
+    const bear = createCardInstance({ definitionId: bearDef.id, ownerId: p1.id, zone: "hand" });
+    next.cards[bear.id] = bear;
+    next.players[0]!.zones.hand.push(bear.id);
+    next = moveCard(next, bear.id, "battlefield");
+    expect(next.stack).toHaveLength(0);
+  });
+});
