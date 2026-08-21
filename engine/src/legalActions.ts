@@ -1,4 +1,4 @@
-import { isClass, isCommander, isCreature, isLand, isMainPhase } from "./cardTypes";
+import { isClass, isCommander, isCreature, isLand, isLegendary, isMainPhase } from "./cardTypes";
 import { abilitiesRemoved, cardMatchesSubtype } from "./characteristicsEngine";
 import { hasKeyword } from "./keywords";
 import { emptyManaPool } from "./createGame";
@@ -339,7 +339,20 @@ function abilityUsable(
     }
   }
   const cost = payableCost(ability.manaCost);
-  if (!cost || !canPayWithPotential(potential, cost)) {
+  if (!cost) {
+    return false;
+  }
+  if (ability.legendaryDiscount) {
+    const legends = Object.values(state.cards).filter(
+      (entry) =>
+        entry.zone === "battlefield" &&
+        entry.controllerId === playerId &&
+        isCreature(state, entry.id) &&
+        isLegendary(state, entry.id),
+    ).length;
+    cost.generic = Math.max(0, cost.generic - legends);
+  }
+  if (!canPayWithPotential(potential, cost)) {
     return false;
   }
   if (ability.sacrificeCost) {

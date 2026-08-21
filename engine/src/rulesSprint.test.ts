@@ -6402,3 +6402,84 @@ describe("wave 70: choose-two wipes", () => {
     expect(next.cards[big.id]?.zone).toBe("graveyard");
   });
 });
+
+describe("wave 71: copy retargeting no-op and channel discounts", () => {
+  const base = { power: null, toughness: null, printedKeywords: [], imageUrl: "" };
+
+  it("compiles Otawara fully with the legendary discount", () => {
+    const otawara = compileOracleCard({
+      ...base,
+      oracleId: "otawara",
+      name: "Otawara, Soaring City",
+      manaCost: "",
+      typeLine: "Legendary Land",
+      oracleText:
+        "{T}: Add {U}.\nChannel — {3}{U}, Discard this card: Return target artifact, creature, enchantment, or planeswalker to its owner's hand. This ability costs {1} less to activate for each legendary creature you control.",
+    });
+    expect(otawara.notes).toEqual([]);
+    const channel = otawara.definition.activated[0];
+    expect(channel?.legendaryDiscount).toBe(true);
+    expect(channel?.zone).toBe("hand");
+    expect(channel?.targetRequirements).toEqual([{ kind: "nonland_permanent" }]);
+  });
+
+  it("swallows the copy retargeting permission", () => {
+    const twincast = compileOracleCard({
+      ...base,
+      oracleId: "twincast",
+      name: "Twincast",
+      manaCost: "{U}{U}",
+      typeLine: "Instant",
+      oracleText: "Copy target instant or sorcery spell. You may choose new targets for the copy.",
+    });
+    expect(twincast.notes).toEqual([]);
+    expect(twincast.definition.effects).toEqual([
+      { kind: "copy_spell", target: { type: "chosen", index: 0 } },
+    ]);
+  });
+
+  it("discounts the activation by controlled legendary creatures", () => {
+    const { game, p1 } = twoPlayers();
+    const landDef = createCardDefinition({
+      name: "Channel Land",
+      typeLine: "Legendary Land",
+      activated: [
+        {
+          tap: false,
+          manaCost: "{3}{U}",
+          zone: "hand",
+          discard: true,
+          legendaryDiscount: true,
+          effects: [{ kind: "draw", playerId: "controller", count: 1 }],
+          targetRequirements: [],
+        },
+      ],
+    });
+    const legendDef = createCardDefinition({
+      name: "Legend",
+      typeLine: "Legendary Creature — Human",
+      power: 2,
+      toughness: 2,
+    });
+    game.definitions[landDef.id] = landDef;
+    game.definitions[legendDef.id] = legendDef;
+    const land = createCardInstance({ definitionId: landDef.id, ownerId: p1.id, zone: "hand" });
+    game.cards[land.id] = land;
+    p1.zones.hand.push(land.id);
+    fillLibraries(game, 5);
+    for (let i = 0; i < 3; i += 1) {
+      const legend = createCardInstance({ definitionId: legendDef.id, ownerId: p1.id, zone: "battlefield" });
+      game.cards[legend.id] = legend;
+      p1.zones.battlefield.push(legend.id);
+    }
+    // {3}{U} minus three legends = {U}; give exactly one blue.
+    game.players.find((p) => p.id === p1.id)!.mana.U = 1;
+    const next = applyAction(game, {
+      kind: "activate_ability",
+      playerId: p1.id,
+      cardId: land.id,
+      abilityIndex: 0,
+    });
+    expect(next.cards[land.id]?.zone).toBe("graveyard");
+  });
+});

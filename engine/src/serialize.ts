@@ -1945,6 +1945,7 @@ function parseActivatedAbilities(value: unknown, label: string): ActivatedAbilit
             })(),
           }),
       ...(entry.exileSelf === true ? { exileSelf: true } : {}),
+      ...(entry.legendaryDiscount === true ? { legendaryDiscount: true } : {}),
       ...(entry.lifeCost === undefined
         ? {}
         : { lifeCost: expectNumber(entry.lifeCost, `${label}[${index}].lifeCost`) }),

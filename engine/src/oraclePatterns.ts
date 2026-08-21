@@ -1426,6 +1426,12 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     return { targetRequirements: [], effects: [] };
   }
 
+  // Documented approximation (matches storm): copies keep the original's
+  // targets, so the retargeting permission compiles as a no-op.
+  if (/^You may choose new targets for (?:the|that) cop(?:y|ies)$/i.test(sentence)) {
+    return { targetRequirements: [], effects: [] };
+  }
+
   // Feign Death family: an until-EOT "when it dies, return it tapped" grant,
   // optionally with +2/+0, a +1/+1 counter, or a Treasure rider.
   const diesReturn = sentence.match(
@@ -1646,6 +1652,18 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     return {
       targetRequirements: [{ kind: "creature", ...(match[1] ? { control: "own" as const } : {}) }],
       effects: [{ kind: "flicker", cardId: { type: "chosen", index: 0 } }],
+    };
+  }
+
+  // Otawara: the four-type list is exactly "nonland permanent".
+  if (
+    /^Return target artifact, creature, enchantment, or planeswalker to its owner's hand$/i.test(
+      sentence,
+    )
+  ) {
+    return {
+      targetRequirements: [{ kind: "nonland_permanent" }],
+      effects: [{ kind: "move_card", cardId: { type: "chosen", index: 0 }, toZone: "hand" }],
     };
   }
 
@@ -4057,6 +4075,20 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
       const last = result.activated[result.activated.length - 1];
       if (last && !last.timing) {
         last.timing = "sorcery";
+        continue;
+      }
+    }
+
+    // Kamigawa channel lands.
+    if (
+      /^This ability costs \{1\} less to activate for each legendary creature you control$/i.test(
+        sentence,
+      ) &&
+      result.activated.length > 0
+    ) {
+      const last = result.activated[result.activated.length - 1];
+      if (last && !last.legendaryDiscount) {
+        last.legendaryDiscount = true;
         continue;
       }
     }

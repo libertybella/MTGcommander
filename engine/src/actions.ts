@@ -1,6 +1,6 @@
 import { declareAttackers, declareBlockers, lockRemainingBlockers, pendingBlockerPlayer, priorityForStep } from "./combat";
 import { abilitiesRemoved } from "./characteristicsEngine";
-import { isCommander, isCreature, isInstant, isInstantOrSorcery, isLand, isMainPhase } from "./cardTypes";
+import { isCommander, isCreature, isInstant, isInstantOrSorcery, isLand, isLegendary, isMainPhase } from "./cardTypes";
 import { cloneGameState } from "./clone";
 import { affinityArtifactDiscount, allBattlefieldCreatureCount, canPlayLandFromTop, canPlayLandsFromGraveyard, castCostReduction, castableFromTop, controlsCommander, creaturePower, hasFlashGrant, landDropAllowance } from "./derived";
 import { eliminatePlayerInPlace } from "./elimination";
@@ -701,6 +701,17 @@ function applyActivateAbility(
     throw new Error(`Unknown player ${playerId}`);
   }
   const cost = parseManaCost(ability.manaCost);
+  if (ability.legendaryDiscount) {
+    // Kamigawa channel lands: {1} less per legendary creature you control.
+    const legends = Object.values(state.cards).filter(
+      (entry) =>
+        entry.zone === "battlefield" &&
+        entry.controllerId === playerId &&
+        isCreature(state, entry.id) &&
+        isLegendary(state, entry.id),
+    ).length;
+    cost.generic = Math.max(0, cost.generic - legends);
+  }
   if (!canPayManaCost(player.mana, cost)) {
     throw new Error("Cannot pay mana cost");
   }

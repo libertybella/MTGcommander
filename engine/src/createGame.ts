@@ -195,6 +195,7 @@ export function createCardDefinition(
           ...(ability.sacrificeSelf ? { sacrificeSelf: true } : {}),
           ...(ability.sacrificeCost ? { sacrificeCost: ability.sacrificeCost } : {}),
           ...(ability.exileSelf ? { exileSelf: true } : {}),
+          ...(ability.legendaryDiscount ? { legendaryDiscount: true } : {}),
           ...(ability.lifeCost && ability.lifeCost > 0 ? { lifeCost: ability.lifeCost } : {}),
           ...(ability.timing === "sorcery" ? { timing: "sorcery" as const } : {}),
           ...(ability.requiresControlled

@@ -1156,6 +1156,8 @@ export type ActivatedAbility = {
   timing?: "any" | "sorcery";
   /** "Activate only if you control a Swamp" — a controlled type/subtype gate. */
   requiresControlled?: { types?: string[]; subtypes?: string[] };
+  /** Kamigawa channel lands: {1} less per legendary creature you control. */
+  legendaryDiscount?: boolean;
 };
 
 export type ReplacementEffect =
