@@ -650,11 +650,30 @@ function snapshot(state: GameState): string {
   return JSON.stringify(state);
 }
 
+/** Rhox Faithmender-class: 2^n for n life-gain doublers the player controls. */
+function lifeGainFactor(state: GameState, playerId: PlayerId): number {
+  let factor = 1;
+  for (const card of Object.values(state.cards)) {
+    if (card.zone !== "battlefield" || card.controllerId !== playerId) {
+      continue;
+    }
+    const doubles = (state.definitions[card.definitionId]?.replacements ?? []).filter(
+      (replacement) => replacement.kind === "double_life_gain",
+    ).length;
+    if (doubles === 0 || abilitiesRemoved(state, card.id)) {
+      continue;
+    }
+    factor *= 2 ** doubles;
+  }
+  return factor;
+}
+
 function applyGainLife(state: GameState, playerId: PlayerId, amount: number): GameState {
   requirePositiveInteger(amount, "life gain");
   const next = cloneGameState(state);
-  requirePlayer(next, playerId).life += amount;
-  next.log.push({ kind: "life_change", playerId, delta: amount });
+  const gained = amount * lifeGainFactor(next, playerId);
+  requirePlayer(next, playerId).life += gained;
+  next.log.push({ kind: "life_change", playerId, delta: gained });
   dispatchEventsInPlace(next, [{ kind: "gains_life", playerId }]);
   return next;
 }

@@ -320,6 +320,7 @@ export function parseGameState(json: string): GameState {
       ...(def.freeIfCommander === true ? { freeIfCommander: true } : {}),
       ...(def.changeling === true ? { changeling: true } : {}),
       ...(def.storm === true ? { storm: true } : {}),
+      ...(def.doesntUntap === true ? { doesntUntap: true } : {}),
       ...(def.flashback === undefined
         ? {}
         : {
@@ -468,11 +469,16 @@ export function parseGameState(json: string): GameState {
                         return value as Color;
                       });
                     })());
+                const subtypesAny = parseStringList(
+                  entry.filter.subtypesAny,
+                  `definition.${id}.costReductions[${index}].filter.subtypesAny`,
+                );
                 return {
                   generic,
                   filter: {
                     ...(types.length > 0 ? { types } : {}),
                     ...(typesAny.length > 0 ? { typesAny } : {}),
+                    ...(subtypesAny.length > 0 ? { subtypesAny } : {}),
                     ...(colors.length > 0 ? { colors } : {}),
                   },
                 };
@@ -1877,7 +1883,12 @@ function parseReplacements(value: unknown, label: string): ReplacementEffect[] {
       throw new Error(`Invalid ${label}[${index}]`);
     }
     const kind = expectString(entry.kind, `${label}[${index}].kind`);
-    if (kind === "enters_tapped" || kind === "graveyard_to_exile" || kind === "double_tokens") {
+    if (
+      kind === "enters_tapped" ||
+      kind === "graveyard_to_exile" ||
+      kind === "double_tokens" ||
+      kind === "double_life_gain"
+    ) {
       return { kind };
     }
     if (kind === "double_counters") {
@@ -1967,6 +1978,7 @@ function parseEffectSelector(value: unknown, label: string): EffectSelector {
   if (scope !== "self" && scope !== "controlled" && scope !== "all" && scope !== "attached") {
     throw new Error(`Invalid ${label}.scope`);
   }
+  const excludeSelf = value.excludeSelf === true;
   const types = parseStringList(value.types, `${label}.types`);
   const subtypes = parseStringList(value.subtypes, `${label}.subtypes`);
   const colors =
@@ -1990,6 +2002,7 @@ function parseEffectSelector(value: unknown, label: string): EffectSelector {
     ...(subtypes.length > 0 ? { subtypes } : {}),
     ...(colors.length > 0 ? { colors } : {}),
     ...(value.chosenSubtype === true ? { chosenSubtype: true } : {}),
+    ...(excludeSelf ? { excludeSelf: true } : {}),
   };
 }
 

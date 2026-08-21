@@ -60,7 +60,10 @@ export function maxHandSizeOf(state: GameState, playerId: string): number | null
 export function castCostReduction(
   state: GameState,
   playerId: string,
-  spell: { characteristics: { types: string[]; colors: string[] } },
+  spell: {
+    characteristics: { types: string[]; subtypes?: string[]; colors: string[] };
+    changeling?: boolean;
+  },
 ): number {
   let total = 0;
   for (const card of Object.values(state.cards)) {
@@ -71,11 +74,18 @@ export function castCostReduction(
       continue;
     }
     for (const reduction of state.definitions[card.definitionId]?.costReductions ?? []) {
-      const { types, typesAny, colors } = reduction.filter;
+      const { types, typesAny, subtypesAny, colors } = reduction.filter;
       if (types && !types.every((type) => spell.characteristics.types.includes(type))) {
         continue;
       }
       if (typesAny && !typesAny.some((type) => spell.characteristics.types.includes(type))) {
+        continue;
+      }
+      if (
+        subtypesAny &&
+        !spell.changeling &&
+        !subtypesAny.some((subtype) => (spell.characteristics.subtypes ?? []).includes(subtype))
+      ) {
         continue;
       }
       if (colors && !colors.some((color) => spell.characteristics.colors.includes(color))) {

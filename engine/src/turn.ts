@@ -1,3 +1,4 @@
+import { abilitiesRemoved } from "./characteristicsEngine";
 import { cloneGameState } from "./clone";
 import {
   applyCombatDamage,
@@ -95,7 +96,13 @@ function onEnterStep(state: GameState): GameState {
     state.spellsCastThisTurn = 0;
     for (const card of Object.values(state.cards)) {
       if (card.zone === "battlefield" && card.controllerId === activeId) {
-        card.tapped = false;
+        // "~ doesn't untap during your untap step" (ability removal restores it).
+        const staysTapped =
+          state.definitions[card.definitionId]?.doesntUntap === true &&
+          !abilitiesRemoved(state, card.id);
+        if (!staysTapped) {
+          card.tapped = false;
+        }
         card.summoningSick = false;
         card.loyaltyActivatedThisTurn = false;
       }

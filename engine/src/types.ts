@@ -159,6 +159,8 @@ export type CardDefinition = {
    * cast (not via a stacked trigger) and keep the original's targets.
    */
   storm?: boolean;
+  /** "~ doesn't untap during your untap step." */
+  doesntUntap?: boolean;
   /**
    * "Artifact spells you cast cost {1} less to cast" (medallions, Foundry
    * Inspector). Applies to the controller's spells while on the battlefield;
@@ -531,7 +533,7 @@ export type AdditionalCastCost = {
 export type CostReduction = {
   generic: number;
   /** Empty filter means every spell. types all required; typesAny needs one; colors any overlap. */
-  filter: { types?: string[]; typesAny?: string[]; colors?: Color[] };
+  filter: { types?: string[]; typesAny?: string[]; subtypesAny?: string[]; colors?: Color[] };
 };
 
 export type EffectTarget =
@@ -1007,7 +1009,9 @@ export type ReplacementEffect =
   | { kind: "double_tokens" }
   /** Doubling Season / Branching Evolution: counters put on permanents the
    * controller controls are doubled; optional counter/creature restriction. */
-  | { kind: "double_counters"; counter?: string; creaturesOnly?: boolean };
+  | { kind: "double_counters"; counter?: string; creaturesOnly?: boolean }
+  /** Rhox Faithmender / Boon Reflection: life gained is doubled. */
+  | { kind: "double_life_gain" };
 
 export type ManaAbility = {
   produces: Partial<ManaPool>;
@@ -1035,6 +1039,8 @@ export type EffectSelector = {
   colors?: Color[];
   /** The target must have the source's chosen creature type (Vanquisher's Banner). */
   chosenSubtype?: boolean;
+  /** "Other Elves you control": the source itself is not affected. */
+  excludeSelf?: boolean;
 };
 
 /** What a continuous effect does, in CR 613 layer order (derived from kind). */

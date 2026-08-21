@@ -204,6 +204,7 @@ function compileOneFace(card: OracleCard, definitionId: string): OracleCompileRe
     ...(compiled.topOfLibrary ? { topOfLibrary: { ...compiled.topOfLibrary } } : {}),
     ...(compiled.flashback ? { flashback: { ...compiled.flashback } } : {}),
     ...(compiled.storm ? { storm: true } : {}),
+    ...(compiled.doesntUntap ? { doesntUntap: true } : {}),
     ...(compiled.costReductions && compiled.costReductions.length > 0
       ? { costReductions: compiled.costReductions }
       : {}),

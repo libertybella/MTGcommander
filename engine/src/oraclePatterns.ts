@@ -48,6 +48,7 @@ export type CompiledOracleText = {
   freeIfCommander?: boolean;
   changeling?: boolean;
   storm?: boolean;
+  doesntUntap?: boolean;
   topOfLibrary?: TopOfLibraryGrant;
   flashback?: { manaCost: string; life?: number };
   costReductions?: CostReduction[];
@@ -1839,12 +1840,45 @@ const COLOR_WORDS: Record<string, Color> = {
   green: "G",
 };
 
+/** MTG tribal plurals that don't just append "s". */
+const IRREGULAR_PLURALS: Record<string, string> = {
+  elves: "elf",
+  wolves: "wolf",
+  dwarves: "dwarf",
+  allies: "ally",
+  mercenaries: "mercenary",
+  foxes: "fox",
+  octopuses: "octopus",
+  mice: "mouse",
+};
+
+function singularSubtype(plural: string): string {
+  const lower = plural.toLowerCase();
+  return IRREGULAR_PLURALS[lower] ?? lower.replace(/s$/, "");
+}
+
 function compileAnthem(sentence: string): StaticAbility | null {
-  const match = sentence.match(/^(?:Other )?Creatures you control get \+(\d+)\/\+(\d+)$/i);
-  if (match?.[1] && match[2]) {
+  const match = sentence.match(/^(Other )?Creatures you control get \+(\d+)\/\+(\d+)$/i);
+  if (match?.[2] && match[3]) {
     return {
-      selector: { scope: "controlled", types: ["creature"] },
-      effect: { kind: "modify_pt", power: Number(match[1]), toughness: Number(match[2]) },
+      selector: {
+        scope: "controlled",
+        types: ["creature"],
+        ...(match[1] ? { excludeSelf: true } : {}),
+      },
+      effect: { kind: "modify_pt", power: Number(match[2]), toughness: Number(match[3]) },
+    };
+  }
+  // "Other Elves you control get +1/+1" — tribal anthems (changelings match).
+  const tribalPt = sentence.match(/^(Other )?([A-Z][a-z]+s) you control get \+(\d+)\/\+(\d+)$/);
+  if (tribalPt?.[2] && tribalPt[3] && tribalPt[4] && tribalPt[2] !== "Creatures") {
+    return {
+      selector: {
+        scope: "controlled",
+        subtypes: [singularSubtype(tribalPt[2])],
+        ...(tribalPt[1] ? { excludeSelf: true } : {}),
+      },
+      effect: { kind: "modify_pt", power: Number(tribalPt[3]), toughness: Number(tribalPt[4]) },
     };
   }
   const colored = sentence.match(
@@ -1862,7 +1896,7 @@ function compileAnthem(sentence: string): StaticAbility | null {
   }
   // "All Slivers have flying" / "Sliver creatures you control have shroud".
   const tribal = sentence.match(
-    /^(?:All )?([A-Z][a-z]+)(?: creature)?s(?: you control)? have ([a-z ]+)$/,
+    /^(?:All )?([A-Z][a-z]+?)(?: creature)?s(?: you control)? have ([a-z ]+)$/,
   );
   if (tribal?.[1] && tribal[2]) {
     const keyword = KEYWORD_GRANTS[tribal[2].trim().toLowerCase()];
@@ -1870,7 +1904,7 @@ function compileAnthem(sentence: string): StaticAbility | null {
       return {
         selector: {
           scope: /you control/.test(sentence) ? "controlled" : "all",
-          subtypes: [tribal[1].toLowerCase()],
+          subtypes: [singularSubtype(`${tribal[1]}s`)],
         },
         effect: { kind: "grant_keyword", keyword },
       };
@@ -2721,6 +2755,18 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
       continue;
     }
 
+    // Documented approximation: the public reveal is shown to the controller
+    // only (opponents cannot see revealed top cards at this table yet).
+    if (/^Play with the top card of your library revealed$/i.test(sentence)) {
+      result.topOfLibrary = { ...(result.topOfLibrary ?? {}), look: true };
+      continue;
+    }
+
+    if (/^~ doesn't untap during your untap step$/i.test(sentence)) {
+      result.doesntUntap = true;
+      continue;
+    }
+
     if (/^You may play lands and cast spells from the top of your library$/i.test(sentence)) {
       result.topOfLibrary = { ...(result.topOfLibrary ?? {}), playLands: true, castAll: true };
       continue;
@@ -2771,6 +2817,10 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
         filter = { types: [what] };
       } else if (what === "instant and sorcery") {
         filter = { typesAny: ["instant", "sorcery"] };
+      } else if (/^[a-z]+$/.test(what) && /^[A-Z]/.test(discount[1].trim())) {
+        // A single capitalized word that is not a card type: a tribal
+        // discount ("Dragon spells you cast cost {1} less").
+        filter = { subtypesAny: [what] };
       }
       if (filter) {
         result.costReductions = [
@@ -2824,6 +2874,14 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
       )
     ) {
       result.replacements.push({ kind: "double_counters" });
+      continue;
+    }
+
+    // Rhox Faithmender / Boon Reflection: life-gain doubling.
+    if (
+      /^If you would gain life, you gain twice that much life instead$/i.test(sentence)
+    ) {
+      result.replacements.push({ kind: "double_life_gain" });
       continue;
     }
 

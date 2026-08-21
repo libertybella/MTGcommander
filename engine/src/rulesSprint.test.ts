@@ -3787,3 +3787,139 @@ describe("wave 41: spree (CR 702.169)", () => {
     expect(resolved.players[0]?.life).toBe(47);
   });
 });
+
+describe("wave 42: one-away batch", () => {
+  it("doubles life gain per doubler the gaining player controls", () => {
+    const { game, p1 } = twoPlayers();
+    const mender = createCardDefinition({
+      name: "Rhox Faithmender",
+      typeLine: "Creature - Rhino Monk",
+      power: 1,
+      toughness: 5,
+      replacements: [{ kind: "double_life_gain" }],
+    });
+    game.definitions[mender.id] = mender;
+    const body = createCardInstance({ definitionId: mender.id, ownerId: p1.id, zone: "battlefield" });
+    game.cards[body.id] = body;
+    p1.zones.battlefield.push(body.id);
+    const after = applyEffect(game, { kind: "gain_life", playerId: p1.id, amount: 3 });
+    expect(after.players[0]?.life).toBe(46);
+  });
+
+  it("compiles doesn't-untap, top-revealed, tribal discounts, and Other-anthems", () => {
+    const winter = compileOracleCard({
+      oracleId: "winter-orb-ish",
+      name: "Static Orb Post",
+      manaCost: "{2}",
+      typeLine: "Artifact",
+      oracleText: "Static Orb Post doesn't untap during your untap step.",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+    });
+    expect(winter.definition.doesntUntap).toBe(true);
+    expect(winter.notes).toEqual([]);
+
+    const courser = compileOracleCard({
+      oracleId: "reveal-top",
+      name: "Watcher of Ways",
+      manaCost: "{2}",
+      typeLine: "Artifact",
+      oracleText: "Play with the top card of your library revealed.",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+    });
+    expect(courser.definition.topOfLibrary).toEqual({ look: true });
+    expect(courser.notes).toEqual([]);
+
+    const dragonspeaker = compileOracleCard({
+      oracleId: "dragonspeaker",
+      name: "Dragonspeaker Shaman",
+      manaCost: "{1}{R}{R}",
+      typeLine: "Creature - Human Barbarian Shaman",
+      oracleText: "Dragon spells you cast cost {2} less to cast.",
+      power: "2",
+      toughness: "2",
+      printedKeywords: [],
+      imageUrl: "",
+    });
+    expect(dragonspeaker.definition.costReductions).toEqual([
+      { generic: 2, filter: { subtypesAny: ["dragon"] } },
+    ]);
+    expect(dragonspeaker.notes).toEqual([]);
+
+    const visionary = compileOracleCard({
+      oracleId: "elf-lord",
+      name: "Elvish Archdruid Lite",
+      manaCost: "{1}{G}{G}",
+      typeLine: "Creature - Elf Druid",
+      oracleText: "Other Elves you control get +1/+1.",
+      power: "2",
+      toughness: "2",
+      printedKeywords: [],
+      imageUrl: "",
+    });
+    expect(visionary.definition.staticAbilities).toEqual([
+      {
+        selector: { scope: "controlled", subtypes: ["elf"], excludeSelf: true },
+        effect: { kind: "modify_pt", power: 1, toughness: 1 },
+      },
+    ]);
+    expect(visionary.notes).toEqual([]);
+  });
+
+  it("an Other-anthem boosts siblings but not itself, and untap skips locked permanents", () => {
+    const { game, p1 } = twoPlayers();
+    const lord = createCardDefinition({
+      name: "Elf Lord",
+      typeLine: "Creature - Elf Druid",
+      power: 2,
+      toughness: 2,
+      staticAbilities: [
+        {
+          selector: { scope: "controlled", subtypes: ["elf"], excludeSelf: true },
+          effect: { kind: "modify_pt", power: 1, toughness: 1 },
+        },
+      ],
+    });
+    const grunt = createCardDefinition({
+      name: "Elf Grunt",
+      typeLine: "Creature - Elf Warrior",
+      power: 1,
+      toughness: 1,
+    });
+    game.definitions[lord.id] = lord;
+    game.definitions[grunt.id] = grunt;
+    const lordCard = createCardInstance({ definitionId: lord.id, ownerId: p1.id, zone: "battlefield" });
+    const gruntCard = createCardInstance({ definitionId: grunt.id, ownerId: p1.id, zone: "battlefield" });
+    game.cards[lordCard.id] = lordCard;
+    game.cards[gruntCard.id] = gruntCard;
+    p1.zones.battlefield.push(lordCard.id, gruntCard.id);
+    expect(computedCard(game, gruntCard.id)?.power).toBe(2);
+    expect(computedCard(game, lordCard.id)?.power).toBe(2); // not itself
+
+    const orb = createCardDefinition({
+      name: "Locked Relic",
+      typeLine: "Artifact",
+      doesntUntap: true,
+    });
+    game.definitions[orb.id] = orb;
+    const relic = createCardInstance({ definitionId: orb.id, ownerId: p1.id, zone: "battlefield" });
+    relic.tapped = true;
+    gruntCard.tapped = true;
+    game.cards[relic.id] = relic;
+    p1.zones.battlefield.push(relic.id);
+    // Make p1 the incoming active player so their untap step is next.
+    game.turn.activePlayerId = game.players[1]!.id;
+    game.priorityPlayerId = game.players[1]!.id;
+    game.turn.phase = "ending";
+    game.turn.step = "cleanup";
+    const nextTurn = advanceSteps(game, 1);
+    expect(nextTurn.turn.step).toBe("untap");
+    expect(nextTurn.cards[gruntCard.id]?.tapped).toBe(false);
+    expect(nextTurn.cards[relic.id]?.tapped).toBe(true);
+  });
+});

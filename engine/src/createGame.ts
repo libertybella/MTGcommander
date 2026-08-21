@@ -67,6 +67,7 @@ export function createCardDefinition(
         | "freeIfCommander"
         | "changeling"
         | "storm"
+        | "doesntUntap"
         | "topOfLibrary"
         | "flashback"
         | "costReductions"
@@ -202,6 +203,7 @@ export function createCardDefinition(
     ...(input.freeIfCommander ? { freeIfCommander: true } : {}),
     ...(input.changeling ? { changeling: true } : {}),
     ...(input.storm ? { storm: true } : {}),
+    ...(input.doesntUntap ? { doesntUntap: true } : {}),
     ...(input.flashback
       ? {
           flashback: {
@@ -235,6 +237,7 @@ export function createCardDefinition(
             filter: {
               ...(entry.filter.types ? { types: [...entry.filter.types] } : {}),
               ...(entry.filter.typesAny ? { typesAny: [...entry.filter.typesAny] } : {}),
+              ...(entry.filter.subtypesAny ? { subtypesAny: [...entry.filter.subtypesAny] } : {}),
               ...(entry.filter.colors ? { colors: [...entry.filter.colors] } : {}),
             },
           })),
