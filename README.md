@@ -16,8 +16,8 @@ This is **not** Wizards of the Coast software. It is also **not** the sibling Bi
 | --- | --- |
 | **Phase** | Comprehensive Rules machinery (layers, events, choices, permanents) + coverage flywheel |
 | **Next** | Private alpha (invite friends, play complete games) |
-| **Tests** | 703 passing; a 10,000-game random-action fuzz marathon gates checkpoint-45, 200-game burns gate every wave and 800+ burns gate every checkpoint tag |
-| **Compile rate** | 88% of a 60-card real-staple sample compiles fully (CI floor 85%); 35.5% of the EDHREC top-2,000 (up from 15.6% at the start of the 2026-08-20 flywheel run) |
+| **Tests** | 712 passing; a 10,000-game random-action fuzz marathon gates checkpoint-45, 200-game burns gate every wave and 800+ burns gate every checkpoint tag |
+| **Compile rate** | 88% of a 60-card real-staple sample compiles fully (CI floor 85%); 36.0% of the EDHREC top-2,000 (up from 15.6% at the start of the 2026-08-20 flywheel run) |
 | **Installer** | `npm run dist` builds a one-click Windows installer (`release/BizzyMTG Commander Setup 0.1.0.exe`). |
 
 ---
@@ -170,5 +170,6 @@ Git tags on `main`. Do not move old tags.
 | `checkpoint-58-commands` | Austere Command, Padeem intervening-ifs, Green Sun's Zenith, Drakuseth up-to targets, Aurelia, 700 cards |
 | `checkpoint-59-tallies` | Smothering Tithe, impulse digs, Otawara channels, batch triggers, turn tallies (Mahadi, Lotho), 35% |
 | `checkpoint-60-primal` | Impulse exiles (Ragavan, Face-Breaker, Etali), dash, ascend, Boseiju, Wayward Swordtooth |
+| `checkpoint-61-wills` | Anim Pakal, Boros Charm, Return of the Wildspeaker, Jeska's/Akroma's Will choose-both, planeswalker damage, protection grants, 36% |
 
 These live on the `comprehensive-plan` branch (see docs/DEVELOPMENT_PROGRESS.md); merge to `main` at will — every checkpoint is a playable table. Next: **Private Alpha**, then productization.
