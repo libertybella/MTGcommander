@@ -2,7 +2,7 @@ import { declareAttackers, declareBlockers, lockRemainingBlockers, pendingBlocke
 import { abilitiesRemoved } from "./characteristicsEngine";
 import { characteristicsOf, isCommander, isCreature, isInstant, isInstantOrSorcery, isLand, isLegendary, isMainPhase } from "./cardTypes";
 import { cloneGameState } from "./clone";
-import { affinityArtifactDiscount, allBattlefieldCreatureCount, canPlayLandFromTop, canPlayLandsFromGraveyard, castCostReduction, castableFromTop, controlsCommander, creaturePower, hasFlashGrant, landDropAllowance, lockedByAbolisher, lockedFromCasting } from "./derived";
+import { affinityArtifactDiscount, allBattlefieldCreatureCount, canPlayLandFromTop, canPlayLandsFromGraveyard, castCostReduction, castableFromTop, controlsCommander, creaturePower, hasFlashGrant, landDropAllowance, lockedByAbolisher, lockedFromCasting, selfDiscountAmount } from "./derived";
 import { eliminatePlayerInPlace } from "./elimination";
 import { applyEffects, bindCardEffects, devotionTo } from "./effects";
 import { hasKeyword } from "./keywords";
@@ -196,6 +196,12 @@ function validateCast(
   }
   if (definition.affinityAllCreatures) {
     cost.generic = Math.max(0, cost.generic - allBattlefieldCreatureCount(state));
+  }
+  if (definition.selfDiscount) {
+    cost.generic = Math.max(
+      0,
+      cost.generic - selfDiscountAmount(state, playerId, definition.selfDiscount.per),
+    );
   }
   // Free-spell cycle: the alternative cost is auto-taken (documented
   // approximation) — the whole mana cost is skipped.

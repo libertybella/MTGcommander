@@ -218,7 +218,9 @@ export function isChosenTargetLegal(
     return (
       target.type === "creature" &&
       isLegalCreatureTarget(state, target.cardId, casterId, sourceColors) &&
-      state.cards[target.cardId]?.controllerId === casterId
+      state.cards[target.cardId]?.controllerId === casterId &&
+      // "Equip legendary creature" (Excalibur).
+      !violatesCharacteristicFilter(state, target.cardId, requirement)
     );
   }
   if (requirement.kind === "permanent") {

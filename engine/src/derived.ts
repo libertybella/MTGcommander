@@ -203,6 +203,43 @@ export function hasFlashGrant(state: GameState, playerId: string): boolean {
 }
 
 /** Affinity for artifacts: one generic less per artifact the caster controls. */
+/** "This spell costs {X} less to cast, where X is …" (the self-discount
+ * artifacts and Henges). Historic = artifact, legendary, or Saga (CR 700.4a). */
+export function selfDiscountAmount(
+  state: GameState,
+  playerId: string,
+  per: "noncreature_artifacts_total_mv" | "historic_total_mv" | "greatest_creature_power",
+): number {
+  let total = 0;
+  let greatest = 0;
+  for (const card of Object.values(state.cards)) {
+    if (card.zone !== "battlefield" || card.controllerId !== playerId) {
+      continue;
+    }
+    const traits = characteristicsOf(state, card.id);
+    if (per === "greatest_creature_power") {
+      if (traits.types.includes("creature")) {
+        greatest = Math.max(greatest, creaturePower(state, card.id));
+      }
+      continue;
+    }
+    if (per === "noncreature_artifacts_total_mv") {
+      if (traits.types.includes("artifact") && !traits.types.includes("creature")) {
+        total += traits.manaValue;
+      }
+      continue;
+    }
+    const historic =
+      traits.types.includes("artifact") ||
+      traits.supertypes.includes("legendary") ||
+      traits.subtypes.includes("saga");
+    if (historic) {
+      total += traits.manaValue;
+    }
+  }
+  return per === "greatest_creature_power" ? greatest : total;
+}
+
 export function affinityArtifactDiscount(state: GameState, playerId: string): number {
   let count = 0;
   for (const card of Object.values(state.cards)) {

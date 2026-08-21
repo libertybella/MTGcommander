@@ -747,7 +747,12 @@ export function bindCardEffect(
       if (!cardId) {
         return null;
       }
-      return { kind: "pt_until_eot", cardId, power: effect.power, toughness: effect.toughness };
+      // "Double target creature's power": +P/+0 where P reads at bind.
+      const power =
+        effect.power === "target_power"
+          ? Math.max(0, creaturePower(state, cardId))
+          : effect.power;
+      return { kind: "pt_until_eot", cardId, power, toughness: effect.toughness };
     }
     case "keyword_until_eot": {
       const cardId = bindCardId(state, effect.cardId, context);

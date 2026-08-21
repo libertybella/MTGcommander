@@ -377,6 +377,24 @@ export function parseGameState(json: string): GameState {
       ...(def.grantsFlash === true ? { grantsFlash: true } : {}),
       ...(def.extraDrawStepDraws === true ? { extraDrawStepDraws: true } : {}),
       ...(def.affinityArtifacts === true ? { affinityArtifacts: true } : {}),
+      ...(def.selfDiscount === undefined
+        ? {}
+        : {
+            selfDiscount: (() => {
+              if (!isRecord(def.selfDiscount)) {
+                throw new Error(`Invalid definition.${id}.selfDiscount`);
+              }
+              const per = def.selfDiscount.per;
+              if (
+                per !== "noncreature_artifacts_total_mv" &&
+                per !== "historic_total_mv" &&
+                per !== "greatest_creature_power"
+              ) {
+                throw new Error(`Invalid definition.${id}.selfDiscount.per`);
+              }
+              return { per };
+            })(),
+          }),
       ...(def.affinityAllCreatures === true ? { affinityAllCreatures: true } : {}),
       ...(def.flashback === undefined
         ? {}
@@ -2307,7 +2325,10 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
       return {
         kind,
         cardId: parseCardIdSelector(value.cardId, `${label}.cardId`),
-        power: expectNumber(value.power, `${label}.power`),
+        power:
+          value.power === "target_power"
+            ? "target_power"
+            : expectNumber(value.power, `${label}.power`),
         toughness: expectNumber(value.toughness, `${label}.toughness`),
       };
     case "keyword_until_eot": {

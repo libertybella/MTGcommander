@@ -193,6 +193,11 @@ export type CardDefinition = {
   extraDrawStepDraws?: boolean;
   /** Affinity for artifacts: generic cost shrinks per artifact you control. */
   affinityArtifacts?: boolean;
+  /** "This spell costs {X} less to cast, where X is …" (Metalwork Colossus,
+   * The Great Henge): the generic portion shrinks by a live count. */
+  selfDiscount?: {
+    per: "noncreature_artifacts_total_mv" | "historic_total_mv" | "greatest_creature_power";
+  };
   /** "costs {1} less for each creature on the battlefield" (anyone's). */
   affinityAllCreatures?: boolean;
   /**
@@ -1209,7 +1214,14 @@ export type CardEffect =
   /** Feign Death: until end of turn, "when it dies, return it tapped". */
   | { kind: "grant_dies_return"; cardId: CardIdSelector; counter?: boolean; treasure?: boolean }
   | { kind: "set_class_level"; cardId: CardIdSelector; level: number }
-  | { kind: "pt_until_eot"; cardId: CardIdSelector; power: number; toughness: number }
+  /** power "target_power": doubles — the bound card's power read at bind
+   * (The Skullspore Nexus). */
+  | {
+      kind: "pt_until_eot";
+      cardId: CardIdSelector;
+      power: number | "target_power";
+      toughness: number;
+    }
   | { kind: "keyword_until_eot"; cardId: CardIdSelector; keyword: Keyword }
   | {
       kind: "team_pt_until_eot";

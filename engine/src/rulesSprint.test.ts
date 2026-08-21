@@ -13812,3 +13812,122 @@ describe("wave 127: the dragons pick their partings", () => {
     expect((next.exilePlayable ?? [])[0]?.remainingOwnCleanups).toBe(1);
   });
 });
+
+describe("wave 128: the spell pays itself", () => {
+  it("compiles the self-discount batch", () => {
+    const henge = compileOracleCard({
+      oracleId: "henge",
+      name: "The Great Henge",
+      manaCost: "{7}{G}{G}",
+      typeLine: "Legendary Artifact",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "This spell costs {X} less to cast, where X is the greatest power among creatures you control.\n{T}: Add {G}{G}. You gain 2 life.\nWhenever a nontoken creature you control enters, put a +1/+1 counter on it and draw a card.",
+    });
+    expect(henge.notes).toEqual([]);
+    expect(henge.definition.selfDiscount).toEqual({ per: "greatest_creature_power" });
+    const hengeTrigger = henge.definition.triggers[0];
+    expect(hengeTrigger?.effects).toEqual([
+      { kind: "add_counter", cardId: "subject_card", counter: "p1p1", amount: 1 },
+      { kind: "draw", playerId: "controller", count: 1 },
+    ]);
+
+    const excalibur = compileOracleCard({
+      oracleId: "excalibur",
+      name: "Excalibur, Sword of Eden",
+      manaCost: "{12}",
+      typeLine: "Legendary Artifact — Equipment",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "This spell costs {X} less to cast, where X is the total mana value of historic permanents you control. (Artifacts, legendaries, and Sagas are historic.)\nEquipped creature gets +10/+0 and has vigilance.\nEquip legendary creature {2}",
+    });
+    expect(excalibur.notes).toEqual([]);
+    expect(excalibur.definition.selfDiscount).toEqual({ per: "historic_total_mv" });
+    const equip = excalibur.definition.activated.find((ability) => ability.timing === "sorcery");
+    expect(equip?.targetRequirements).toEqual([{ kind: "own_creature", legendaryOnly: true }]);
+
+    const colossus = compileOracleCard({
+      oracleId: "colossus",
+      name: "Metalwork Colossus",
+      manaCost: "{11}",
+      typeLine: "Artifact Creature — Construct",
+      power: "10",
+      toughness: "10",
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "This spell costs {X} less to cast, where X is the total mana value of noncreature artifacts you control.\nSacrifice two artifacts: Return this card from your graveyard to your hand.",
+    });
+    expect(colossus.definition.selfDiscount).toEqual({ per: "noncreature_artifacts_total_mv" });
+    // The graveyard activation stays a note for now.
+    expect(colossus.notes).toHaveLength(1);
+  });
+
+  it("shrinks the cast by the live count and doubles power at bind", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 10);
+    const hengeDef = createCardDefinition({
+      name: "Henge",
+      manaCost: "{7}{G}{G}",
+      typeLine: "Legendary Artifact",
+      selfDiscount: { per: "greatest_creature_power" },
+    });
+    const giantDef = createCardDefinition({
+      name: "Giant",
+      typeLine: "Creature — Giant",
+      power: 7,
+      toughness: 7,
+    });
+    game.definitions[hengeDef.id] = hengeDef;
+    game.definitions[giantDef.id] = giantDef;
+    const giant = createCardInstance({ definitionId: giantDef.id, ownerId: p1.id, zone: "battlefield" });
+    game.cards[giant.id] = giant;
+    p1.zones.battlefield.push(giant.id);
+    const henge = createCardInstance({ definitionId: hengeDef.id, ownerId: p1.id, zone: "hand" });
+    game.cards[henge.id] = henge;
+    p1.zones.hand.push(henge.id);
+    game.turn.phase = "precombatMain";
+    game.turn.activePlayerId = p1.id;
+    game.priorityPlayerId = p1.id;
+    // {7}{G}{G} minus 7 (the giant's power): just {G}{G}.
+    p1.mana.G = 2;
+
+    let next = applyAction(game, {
+      kind: "cast_spell",
+      playerId: p1.id,
+      cardId: henge.id,
+      targets: [],
+    });
+    next = resolveTopOfStack(next);
+    expect(next.cards[henge.id]?.zone).toBe("battlefield");
+
+    // Skullspore's activation: +7/+0 on the 7-power giant.
+    const doubled = applyEffects(
+      next,
+      bindCardEffects(
+        next,
+        [
+          {
+            kind: "pt_until_eot",
+            cardId: { type: "chosen", index: 0 },
+            power: "target_power",
+            toughness: 0,
+          },
+        ],
+        {
+          controllerId: p1.id,
+          sourceId: null,
+          targets: [{ type: "creature", cardId: giant.id }],
+          targetRequirements: [{ kind: "creature" }],
+        },
+      ),
+    );
+    expect(computedCard(doubled, giant.id)?.power).toBe(14);
+  });
+});

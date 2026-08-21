@@ -57,7 +57,7 @@ Statuses: `open` · `claimed` · `in-progress` · `done` · `blocked`
 | Sagas | D | open | | | | Urza's Saga is the #1 top-2,000 miss |
 | Phasing (Clever Concealment, Eerie Interlude) | D | open | | | | |
 | Extended impulse durations | D | open | | | | Shared with stream B (Atsushi) |
-| Dynamic self-discounts (Colossus/Henge quartet) | E | in-progress | claude/2daf8b18 | comprehensive-plan | 2026-08-21 | Wave 128 |
+| Dynamic self-discounts (Colossus/Henge quartet) | E | done | claude/2daf8b18 | comprehensive-plan | 2026-08-21 | Wave 128 merged: all four discounts compile; Great Henge + Excalibur flip (914/2,009 = 45.5%). Colossus still needs a graveyard sac-2 activation, Skullspore a dies-batch-total token — both rows below |
 | Phyrexian mana payment | E | open | | | | Unblocks Drivnod's activated ability |
 | Bolas's Citadel | E | open | | | | |
 | One-away grinding (rotating buckets) | F | open | | | 2026-08-21 | Wave 124 bucket done (6 flips: Ponder, Soul's Attendant, Archaeomancer, Muddle, Elspeth, Copper Dragon — 901/2,009 = 44.8%); Veil of Summer needs 3 pieces, still open. Next buckets open for anyone |

@@ -3,7 +3,7 @@ import { abilitiesRemoved, cardMatchesSubtype } from "./characteristicsEngine";
 import { hasKeyword } from "./keywords";
 import { emptyManaPool } from "./createGame";
 import { pendingBlockerPlayer } from "./combat";
-import { affinityArtifactDiscount, allBattlefieldCreatureCount, canPlayLandsFromGraveyard, castCostReduction, controlsCommander, hasFlashGrant, landDropAllowance, lockedByAbolisher, lockedFromCasting, topOfLibraryGrant } from "./derived";
+import { affinityArtifactDiscount, allBattlefieldCreatureCount, canPlayLandsFromGraveyard, castCostReduction, controlsCommander, hasFlashGrant, landDropAllowance, lockedByAbolisher, lockedFromCasting, selfDiscountAmount, topOfLibraryGrant } from "./derived";
 import { canPayManaCost, parseManaCost, type ParsedManaCost } from "./mana";
 import { colorsAmongControlled, manaAbilitiesFor, manaTapOptionsFor } from "./manaOptions";
 import { isMulliganOpen } from "./mulligan";
@@ -290,6 +290,12 @@ function castableFace(
   }
   if (definition.affinityAllCreatures) {
     cost.generic = Math.max(0, cost.generic - allBattlefieldCreatureCount(state));
+  }
+  if (definition.selfDiscount) {
+    cost.generic = Math.max(
+      0,
+      cost.generic - selfDiscountAmount(state, playerId, definition.selfDiscount.per),
+    );
   }
   const castsFree = definition.freeIfCommander === true && controlsCommander(state, playerId);
   if (!castsFree && !canPayWithPotential(potential, cost)) {

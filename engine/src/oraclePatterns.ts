@@ -71,6 +71,7 @@ export type CompiledOracleText = {
   extraDrawStepDraws?: boolean;
   affinityArtifacts?: boolean;
   affinityAllCreatures?: boolean;
+  selfDiscount?: CardDefinition["selfDiscount"];
   topOfLibrary?: TopOfLibraryGrant;
   flashback?: { manaCost: string; life?: number };
   costReductions?: CostReduction[];
@@ -1548,6 +1549,32 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
           cardId: { type: "chosen", index: 0 },
           toZone: "battlefield",
           underControlOf: "controller",
+        },
+      ],
+    };
+  }
+
+  // The Great Henge's trigger body: the counter lands on the entering subject.
+  if (/^put a \+1\/\+1 counter on it and draw a card$/i.test(sentence)) {
+    return {
+      targetRequirements: [],
+      effects: [
+        { kind: "add_counter", cardId: "subject_card", counter: "p1p1", amount: 1 },
+        { kind: "draw", playerId: "controller", count: 1 },
+      ],
+    };
+  }
+
+  // The Skullspore Nexus's activation.
+  if (/^Double target creature's power until end of turn$/i.test(sentence)) {
+    return {
+      targetRequirements: [{ kind: "creature" }],
+      effects: [
+        {
+          kind: "pt_until_eot",
+          cardId: { type: "chosen", index: 0 },
+          power: "target_power",
+          toughness: 0,
         },
       ],
     };
@@ -5591,6 +5618,35 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
         });
         continue;
       }
+    }
+
+    // The self-discount artifacts and Henges.
+    const selfDiscount = sentence.match(
+      /^This spell costs \{X\} less to cast, where X is the (total mana value of noncreature artifacts you control|total mana value of historic permanents you control|greatest power among creatures you control)$/i,
+    );
+    if (selfDiscount?.[1]) {
+      const phrase = selfDiscount[1].toLowerCase();
+      result.selfDiscount = {
+        per: phrase.startsWith("total mana value of noncreature")
+          ? "noncreature_artifacts_total_mv"
+          : phrase.startsWith("total mana value of historic")
+            ? "historic_total_mv"
+            : "greatest_creature_power",
+      };
+      continue;
+    }
+
+    // Excalibur: equip restricted to legendary creatures.
+    const restrictedEquip = sentence.match(/^Equip legendary creature \{?(\d+)\}?$/i);
+    if (restrictedEquip?.[1]) {
+      result.activated.push({
+        tap: false,
+        manaCost: `{${restrictedEquip[1]}}`,
+        effects: [{ kind: "attach", cardId: "self", toId: { type: "chosen", index: 0 } }],
+        targetRequirements: [{ kind: "own_creature", legendaryOnly: true }],
+        timing: "sorcery",
+      });
+      continue;
     }
 
     // Transmute (CR 702.53): a hand activation — discard this card, tutor a
