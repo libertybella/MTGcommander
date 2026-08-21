@@ -6153,3 +6153,62 @@ describe("wave 66: up-to optional targets", () => {
     );
   });
 });
+
+describe("wave 67: first-attack latches and tuck riders", () => {
+  const base = { power: null, toughness: null, printedKeywords: [], imageUrl: "" };
+
+  it("compiles Aurelia and Stormfist Crusader fully", () => {
+    const aurelia = compileOracleCard({
+      ...base,
+      oracleId: "aurelia",
+      name: "Aurelia, the Warleader",
+      manaCost: "{2}{R}{R}{W}{W}",
+      typeLine: "Legendary Creature — Angel",
+      power: "3",
+      toughness: "4",
+      printedKeywords: ["Flying", "Vigilance", "Haste"],
+      oracleText:
+        "Flying, vigilance, haste\nWhenever Aurelia attacks for the first time each turn, untap all creatures you control. After this phase, there is an additional combat phase.",
+    });
+    expect(aurelia.notes).toEqual([]);
+    const trigger = aurelia.definition.triggers[0];
+    expect(trigger?.event).toBe("attacks");
+    expect(trigger?.oncePerTurn).toBe(true);
+    expect(trigger?.effects.map((e) => e.kind)).toEqual(["untap_all", "extra_combat"]);
+
+    const crusader = compileOracleCard({
+      ...base,
+      oracleId: "crusader",
+      name: "Stormfist Crusader",
+      manaCost: "{B}{R}",
+      typeLine: "Creature — Human Knight",
+      power: "2",
+      toughness: "2",
+      printedKeywords: ["Menace"],
+      oracleText: "Menace\nAt the beginning of your upkeep, each player draws a card and loses 1 life.",
+    });
+    expect(crusader.notes).toEqual([]);
+    expect(crusader.definition.triggers[0]?.effects).toEqual([
+      { kind: "draw", playerId: "each_player", count: 1 },
+      { kind: "lose_life", playerId: "each_player", amount: 1 },
+    ]);
+  });
+
+  it("compiles the dies-to-bottom rider", () => {
+    const rider = compileOracleCard({
+      ...base,
+      oracleId: "rider",
+      name: "Murderous Rider",
+      manaCost: "{1}{B}{B}",
+      typeLine: "Creature — Zombie Knight",
+      power: "2",
+      toughness: "3",
+      printedKeywords: ["Lifelink"],
+      oracleText: "Lifelink\nWhen Murderous Rider dies, put it on the bottom of its owner's library.",
+    });
+    expect(rider.notes).toEqual([]);
+    expect(rider.definition.triggers[0]?.effects).toEqual([
+      { kind: "move_card", cardId: "self", toZone: "library", libraryPosition: "bottom" },
+    ]);
+  });
+});

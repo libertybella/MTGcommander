@@ -871,6 +871,34 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     };
   }
 
+  // Stormfist Crusader: symmetric draw-and-drain upkeep.
+  const eachDrawLose = sentence.match(
+    /^each player draws (a|an|one|two|\d+) cards? and loses (\d+|one|two) life$/i,
+  );
+  if (eachDrawLose?.[1] && eachDrawLose[2]) {
+    const count = parseCount(eachDrawLose[1]);
+    const amount = parseCount(eachDrawLose[2]);
+    if (count && amount) {
+      return {
+        targetRequirements: [],
+        effects: [
+          { kind: "draw", playerId: "each_player", count },
+          { kind: "lose_life", playerId: "each_player", amount },
+        ],
+      };
+    }
+  }
+
+  // Murderous Rider: the dies-trigger tucks the card away.
+  if (/^put (?:it|~) on the bottom of its owner's library$/i.test(sentence)) {
+    return {
+      targetRequirements: [],
+      effects: [
+        { kind: "move_card", cardId: "self", toZone: "library", libraryPosition: "bottom" },
+      ],
+    };
+  }
+
   if (/^each opponent loses that much life$/i.test(sentence)) {
     return {
       targetRequirements: [],
@@ -2002,7 +2030,7 @@ function controllerBasicSearchRider(sentence: string, lastIndex: number): CardEf
 
 type TriggerHead = Pick<
   CardTrigger,
-  "event" | "watch" | "excludeSelf" | "subjectFilter" | "subjectPlayerOpponent"
+  "event" | "watch" | "excludeSelf" | "subjectFilter" | "subjectPlayerOpponent" | "oncePerTurn"
 > & {
   /** "enters or attacks": emit a sibling trigger for each extra event. */
   extraEvents?: CardTrigger["event"][];
@@ -2101,6 +2129,10 @@ function parseTriggerHead(head: string): TriggerHead | null {
   }
   if (/^Whenever ~ attacks$/i.test(text)) {
     return { event: "attacks" };
+  }
+  // Aurelia: "for the first time each turn" maps to the once-per-turn latch.
+  if (/^Whenever ~ attacks for the first time each turn$/i.test(text)) {
+    return { event: "attacks", oncePerTurn: true };
   }
   // Tribal attack heads: "Whenever a Dragon you control attacks" (Utvara).
   const tribalAttack = text.match(/^Whenever an? ([A-Za-z]+) you control attacks$/i);
@@ -3921,11 +3953,18 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
       /^After this (?:main )?phase, there is an additional combat phase(?: followed by an additional main phase)?$/i.test(
         sentence,
       ) &&
-      result.activated.length > 0
+      (result.activated.length > 0 || result.triggers.length > 0)
     ) {
-      const last = result.activated[result.activated.length - 1];
-      if (last) {
-        last.effects.push({ kind: "extra_combat" });
+      // Aggravated Assault rides the last activated ability; Aurelia's rides
+      // her attack trigger.
+      const lastActivated = result.activated[result.activated.length - 1];
+      const lastTrigger = result.triggers[result.triggers.length - 1];
+      if (result.activated.length > 0 && lastActivated) {
+        lastActivated.effects.push({ kind: "extra_combat" });
+        continue;
+      }
+      if (lastTrigger) {
+        lastTrigger.effects.push({ kind: "extra_combat" });
         continue;
       }
     }
