@@ -542,6 +542,7 @@ export function parseGameState(json: string): GameState {
       ...(entry.modeIndex === undefined
         ? {}
         : { modeIndex: expectNumber(entry.modeIndex, `stack[${index}].modeIndex`) }),
+      ...(entry.isCopy === true ? { isCopy: true } : {}),
       ...(entry.modeIndexes === undefined
         ? {}
         : {
@@ -1122,7 +1123,8 @@ function parseTargetRequirement(value: unknown, label: string): TargetRequiremen
     kind !== "player_or_creature" &&
     kind !== "spell" &&
     kind !== "creature_spell" &&
-    kind !== "noncreature_spell"
+    kind !== "noncreature_spell" &&
+    kind !== "instant_or_sorcery_spell"
   ) {
     throw new Error(`Invalid ${label}.kind`);
   }
@@ -1402,7 +1404,11 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
         counter: expectString(value.counter, `${label}.counter`),
         amount: expectNumber(value.amount, `${label}.amount`),
       };
-    case "counter_spell": {
+    case "copy_subject_spell":
+    case "counter_subject_spell":
+      return { kind };
+    case "counter_spell":
+    case "copy_spell": {
       if (!isRecord(value.target)) {
         throw new Error(`Invalid ${label}.target`);
       }
@@ -2296,6 +2302,13 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
   }
   if (kind === "counter_spell") {
     return { kind, stackObjectId: expectString(value.stackObjectId, `${label}.stackObjectId`) };
+  }
+  if (kind === "copy_spell") {
+    return {
+      kind,
+      stackObjectId: expectString(value.stackObjectId, `${label}.stackObjectId`),
+      controllerId: expectString(value.controllerId, `${label}.controllerId`),
+    };
   }
   if (kind === "counter_unless_pays") {
     return {

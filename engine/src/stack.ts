@@ -245,7 +245,9 @@ export function resolveTopOfStack(state: GameState): GameState {
       });
       next = applyEffects(next, bound);
     }
-    if (next.cards[top.sourceId]?.zone === "stack") {
+    // A resolved copy ceases to exist (CR 707.10a); the source card belongs to
+    // the original spell, which may still be on the stack beneath it.
+    if (!top.isCopy && next.cards[top.sourceId]?.zone === "stack") {
       next = enterOwnerZone(
         next,
         top.sourceId,
@@ -319,8 +321,10 @@ export function resolveTopOfStack(state: GameState): GameState {
   }
   // CR 800.4a: if the spell's owner left the game mid-resolution (say, a
   // failed draw the spell itself caused), the card has already been removed —
-  // only a card still in the stack zone moves on to its destination.
-  if (next.cards[top.sourceId]?.zone === "stack") {
+  // only a card still in the stack zone moves on to its destination. A copy
+  // ceases to exist instead: its source card belongs to the original spell,
+  // which may still be on the stack beneath it (CR 707.10a).
+  if (!top.isCopy && next.cards[top.sourceId]?.zone === "stack") {
     next = enterOwnerZone(next, top.sourceId, destination);
     if (
       destination === "battlefield" &&

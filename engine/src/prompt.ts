@@ -486,7 +486,9 @@ export function applyResolvePay(
     const index = next.stack.findIndex((entry) => entry.id === prompt.stackObjectId);
     if (index !== -1) {
       const [removed] = next.stack.splice(index, 1);
-      if (removed?.sourceId && next.cards[removed.sourceId]?.zone === "stack") {
+      // A countered copy ceases to exist; its source card belongs to the
+      // original spell (CR 707.10a).
+      if (!removed?.isCopy && removed?.sourceId && next.cards[removed.sourceId]?.zone === "stack") {
         enterOwnerZoneInPlace(next, removed.sourceId, "graveyard");
       }
     }

@@ -1,6 +1,6 @@
 import { cloneGameState } from "./clone";
 import { createCardDefinition, createCardInstance } from "./createGame";
-import { characteristicsOf, hasSubtype, isCreature, isLand } from "./cardTypes";
+import { characteristicsOf, hasSubtype, isCreature, isInstantOrSorcery, isLand } from "./cardTypes";
 import { createId } from "./ids";
 import { wouldSkipDraw } from "./derived";
 import { hasKeyword } from "./keywords";
@@ -544,6 +544,35 @@ export function bindCardEffect(
       }
       return { kind: "counter_unless_pays", stackObjectId: chosen.stackObjectId, cost: effect.cost };
     }
+    case "copy_spell": {
+      const chosen = chosenTargetAt(context, effect.target.index, state);
+      if (!chosen || chosen.type !== "spell") {
+        return null;
+      }
+      return { kind: "copy_spell", stackObjectId: chosen.stackObjectId, controllerId: context.controllerId };
+    }
+    case "copy_subject_spell":
+    case "counter_subject_spell": {
+      const subject = context.subjectCardId;
+      const entry = subject
+        ? state.stack.find(
+            (object) => object.kind === "spell" && object.sourceId === subject && !object.isCopy,
+          )
+        : undefined;
+      if (!entry || !entry.sourceId) {
+        return null;
+      }
+      if (effect.kind === "copy_subject_spell") {
+        // Documented approximation (RULES_COVERAGE.md): only instant/sorcery
+        // subjects are copied — a permanent-spell copy would become a token
+        // (CR 707.10c), which this table does not model yet.
+        if (!isInstantOrSorcery(state, entry.sourceId)) {
+          return null;
+        }
+        return { kind: "copy_spell", stackObjectId: entry.id, controllerId: context.controllerId };
+      }
+      return { kind: "counter_spell", stackObjectId: entry.id };
+    }
     default: {
       const exhaustive: never = effect;
       throw new Error(`Unknown card effect ${(exhaustive as CardEffect).kind}`);
@@ -869,10 +898,47 @@ function applyCounterSpell(state: GameState, stackObjectId: StackObjectId): Game
     return next;
   }
   const [removed] = next.stack.splice(index, 1);
+  // A countered copy just ceases to exist — the source card belongs to the
+  // original spell, which may still be on the stack (CR 707.10a).
+  if (removed?.isCopy) {
+    return next;
+  }
   if (!removed?.sourceId || next.cards[removed.sourceId]?.zone !== "stack") {
     return next;
   }
   return enterOwnerZone(next, removed.sourceId, "graveyard");
+}
+
+/**
+ * Copy a spell on the stack (Fork / Reverberate / Dualcaster Mage). The copy
+ * keeps the original's targets, modes, X, and damage division, but is
+ * controlled by the copying player. Documented approximation: "You may choose
+ * new targets for the copy" is auto-declined — keeping the original targets is
+ * always a legal choice for that "may".
+ */
+function applyCopySpell(
+  state: GameState,
+  stackObjectId: StackObjectId,
+  controllerId: PlayerId,
+): GameState {
+  const entry = state.stack.find((object) => object.id === stackObjectId);
+  if (!entry || entry.kind !== "spell") {
+    return state;
+  }
+  const next = cloneGameState(state);
+  next.stack.push({
+    id: createId("stack"),
+    controllerId,
+    sourceId: entry.sourceId,
+    kind: "spell",
+    targets: entry.targets.map((target) => ({ ...target })),
+    ...(entry.modeIndex !== undefined ? { modeIndex: entry.modeIndex } : {}),
+    ...(entry.modeIndexes ? { modeIndexes: [...entry.modeIndexes] } : {}),
+    ...(entry.xValue !== undefined ? { xValue: entry.xValue } : {}),
+    ...(entry.division ? { division: [...entry.division] } : {}),
+    isCopy: true,
+  });
+  return next;
 }
 
 function applyCreateToken(
@@ -1335,6 +1401,9 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
         break;
       case "counter_unless_pays":
         next = applyCounterUnlessPays(state, effect.stackObjectId, effect.cost);
+        break;
+      case "copy_spell":
+        next = applyCopySpell(state, effect.stackObjectId, effect.controllerId);
         break;
       case "set_class_level":
         next = applySetClassLevel(state, effect.cardId, effect.level);

@@ -1154,7 +1154,8 @@ export function Battlefield(props: Props) {
     targeting &&
     (nextRequirement?.kind === "spell" ||
       nextRequirement?.kind === "creature_spell" ||
-      nextRequirement?.kind === "noncreature_spell");
+      nextRequirement?.kind === "noncreature_spell" ||
+      nextRequirement?.kind === "instant_or_sorcery_spell");
   const livingOpponents = opponents.filter((player) => !player.lost);
   const logLines = state.log.slice(-40);
   const noticeLines = state.log

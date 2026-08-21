@@ -2204,3 +2204,258 @@ describe("bounce lands", () => {
     expect(resolved.players[0]?.zones.battlefield).not.toContain(landId);
   });
 });
+
+describe("wave 25: spell copying (CR 707.10)", () => {
+  function stackedLifeSpell() {
+    const { game, p1, p2 } = twoPlayers();
+    const def = createCardDefinition({
+      name: "Warm Reflection",
+      typeLine: "Sorcery",
+      effects: [{ kind: "gain_life", playerId: "controller", amount: 3 }],
+    });
+    game.definitions[def.id] = def;
+    const spell = createCardInstance({ definitionId: def.id, ownerId: p1.id, zone: "stack" });
+    game.cards[spell.id] = spell;
+    game.stack.push({
+      id: "stack-orig",
+      kind: "spell",
+      sourceId: spell.id,
+      controllerId: p1.id,
+      targets: [],
+    });
+    return { game, p1, p2, spell };
+  }
+
+  it("a copy resolves for its own controller and never moves the original card", () => {
+    const { game, p1, p2, spell } = stackedLifeSpell();
+    const copied = applyEffect(game, {
+      kind: "copy_spell",
+      stackObjectId: "stack-orig",
+      controllerId: p2.id,
+    });
+    expect(copied.stack).toHaveLength(2);
+    expect(copied.stack[1]?.isCopy).toBe(true);
+    expect(copied.stack[1]?.controllerId).toBe(p2.id);
+
+    const afterCopy = resolveTopOfStack(copied);
+    expect(afterCopy.players[1]?.life).toBe(43);
+    expect(afterCopy.players[0]?.life).toBe(40);
+    // The copy ceased to exist; the card still belongs to the original spell.
+    expect(afterCopy.stack).toHaveLength(1);
+    expect(afterCopy.cards[spell.id]?.zone).toBe("stack");
+
+    const afterBoth = resolveTopOfStack(afterCopy);
+    expect(afterBoth.players[0]?.life).toBe(43);
+    expect(afterBoth.cards[spell.id]?.zone).toBe("graveyard");
+    expect(afterBoth.stack).toEqual([]);
+    void p1;
+  });
+
+  it("countering the copy leaves the original spell on the stack", () => {
+    const { game, p1, spell } = stackedLifeSpell();
+    const copied = applyEffect(game, {
+      kind: "copy_spell",
+      stackObjectId: "stack-orig",
+      controllerId: p1.id,
+    });
+    const copyId = copied.stack[1]?.id ?? "";
+    const countered = applyEffect(copied, { kind: "counter_spell", stackObjectId: copyId });
+    expect(countered.stack).toHaveLength(1);
+    expect(countered.stack[0]?.id).toBe("stack-orig");
+    expect(countered.cards[spell.id]?.zone).toBe("stack");
+  });
+
+  it("only instants and sorceries are legal copy targets", () => {
+    const { game, p1 } = stackedLifeSpell();
+    const bear = createCardDefinition({
+      name: "Runeclaw Bear",
+      typeLine: "Creature - Bear",
+      power: 2,
+      toughness: 2,
+    });
+    game.definitions[bear.id] = bear;
+    const bearSpell = createCardInstance({ definitionId: bear.id, ownerId: p1.id, zone: "stack" });
+    game.cards[bearSpell.id] = bearSpell;
+    game.stack.push({
+      id: "stack-bear",
+      kind: "spell",
+      sourceId: bearSpell.id,
+      controllerId: p1.id,
+      targets: [],
+    });
+    const requirement = { kind: "instant_or_sorcery_spell" } as const;
+    expect(
+      isChosenTargetLegal(game, requirement, { type: "spell", stackObjectId: "stack-orig" }, p1.id),
+    ).toBe(true);
+    expect(
+      isChosenTargetLegal(game, requirement, { type: "spell", stackObjectId: "stack-bear" }, p1.id),
+    ).toBe(false);
+  });
+
+  it("compiles Reverberate fully, with the kept-targets approximation noted", () => {
+    const compiled = compileOracleCard({
+      oracleId: "reverberate",
+      name: "Reverberate",
+      manaCost: "{R}{R}",
+      typeLine: "Instant",
+      oracleText: "Copy target instant or sorcery spell. You may choose new targets for the copy.",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+    });
+    expect(compiled.definition.targetRequirements).toEqual([{ kind: "instant_or_sorcery_spell" }]);
+    expect(compiled.definition.effects).toEqual([
+      { kind: "copy_spell", target: { type: "chosen", index: 0 } },
+    ]);
+    expect(compiled.notes).toEqual([]);
+  });
+
+  it("compiles an enters-the-battlefield copy trigger (Dualcaster Mage shape)", () => {
+    const compiled = compileOracleCard({
+      oracleId: "echo-caster",
+      name: "Echo Caster",
+      manaCost: "{1}{R}{R}",
+      typeLine: "Creature - Human Wizard",
+      oracleText:
+        "When Echo Caster enters, copy target instant or sorcery spell. You may choose new targets for the copy.",
+      power: "2",
+      toughness: "2",
+      printedKeywords: [],
+      imageUrl: "",
+    });
+    expect(compiled.definition.triggers).toHaveLength(1);
+    expect(compiled.definition.triggers[0]?.event).toBe("enter_battlefield");
+    expect(compiled.definition.triggers[0]?.effects).toEqual([
+      { kind: "copy_spell", target: { type: "chosen", index: 0 } },
+    ]);
+    expect(compiled.definition.triggers[0]?.targetRequirements).toEqual([
+      { kind: "instant_or_sorcery_spell" },
+    ]);
+    expect(compiled.notes.some((note) => note.startsWith("Some oracle text"))).toBe(false);
+  });
+
+  it("the rider alone does not compile without a copy effect", () => {
+    const compiled = compileOracleCard({
+      oracleId: "stray-rider",
+      name: "Stray Rider",
+      manaCost: "{U}",
+      typeLine: "Instant",
+      oracleText: "You may choose new targets for the copy.",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+    });
+    expect(compiled.notes.some((note) => note.startsWith("Some oracle text"))).toBe(true);
+  });
+});
+
+describe("wave 25b: subject-spell copy and counter triggers", () => {
+  it("a cast trigger copies the subject spell for its own controller", () => {
+    const { game, p1 } = twoPlayers();
+    const sage = createCardDefinition({
+      name: "Mirror Sage",
+      typeLine: "Creature - Human Wizard",
+      power: 2,
+      toughness: 2,
+      triggers: [
+        {
+          event: "cast_spell",
+          watch: "controlled",
+          subjectFilter: { typesAny: ["instant", "sorcery"] },
+          effects: [{ kind: "copy_subject_spell" }],
+          targetRequirements: [],
+        },
+      ],
+    });
+    game.definitions[sage.id] = sage;
+    const body = createCardInstance({ definitionId: sage.id, ownerId: p1.id, zone: "battlefield" });
+    game.cards[body.id] = body;
+    p1.zones.battlefield.push(body.id);
+
+    const lifeDef = createCardDefinition({
+      name: "Warm Reflection",
+      typeLine: "Sorcery",
+      effects: [{ kind: "gain_life", playerId: "controller", amount: 3 }],
+    });
+    game.definitions[lifeDef.id] = lifeDef;
+    const spell = createCardInstance({ definitionId: lifeDef.id, ownerId: p1.id, zone: "hand" });
+    game.cards[spell.id] = spell;
+    p1.zones.hand.push(spell.id);
+
+    let state = putSpellOnStack(game, spell.id);
+    // The cast trigger sits above the spell.
+    expect(state.stack).toHaveLength(2);
+    state = resolveTopOfStack(state); // trigger -> pushes the copy
+    expect(state.stack).toHaveLength(2);
+    expect(state.stack[1]?.isCopy).toBe(true);
+    state = resolveTopOfStack(state); // copy resolves
+    expect(state.players[0]?.life).toBe(43);
+    expect(state.cards[spell.id]?.zone).toBe("stack");
+    state = resolveTopOfStack(state); // original resolves
+    expect(state.players[0]?.life).toBe(46);
+    expect(state.cards[spell.id]?.zone).toBe("graveyard");
+  });
+
+  it("a cast trigger counters the subject spell", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const praetor = createCardDefinition({
+      name: "Cold Praetor",
+      typeLine: "Creature - Phyrexian Praetor",
+      power: 5,
+      toughness: 5,
+      triggers: [
+        {
+          event: "cast_spell",
+          watch: "opponents",
+          subjectFilter: { typesAny: ["instant", "sorcery"] },
+          effects: [{ kind: "counter_subject_spell" }],
+          targetRequirements: [],
+        },
+      ],
+    });
+    game.definitions[praetor.id] = praetor;
+    const body = createCardInstance({ definitionId: praetor.id, ownerId: p2.id, zone: "battlefield" });
+    game.cards[body.id] = body;
+    p2.zones.battlefield.push(body.id);
+
+    const lifeDef = createCardDefinition({
+      name: "Warm Reflection",
+      typeLine: "Sorcery",
+      effects: [{ kind: "gain_life", playerId: "controller", amount: 3 }],
+    });
+    game.definitions[lifeDef.id] = lifeDef;
+    const spell = createCardInstance({ definitionId: lifeDef.id, ownerId: p1.id, zone: "hand" });
+    game.cards[spell.id] = spell;
+    p1.zones.hand.push(spell.id);
+
+    let state = putSpellOnStack(game, spell.id);
+    expect(state.stack).toHaveLength(2);
+    state = resolveTopOfStack(state); // trigger -> counters the spell
+    expect(state.stack).toEqual([]);
+    expect(state.cards[spell.id]?.zone).toBe("graveyard");
+    expect(state.players[0]?.life).toBe(40);
+  });
+
+  it("compiles Jin-Gitaxias, Progress Tyrant fully", () => {
+    const compiled = compileOracleCard({
+      oracleId: "jin-gitaxias",
+      name: "Jin-Gitaxias, Progress Tyrant",
+      manaCost: "{4}{U}{U}{U}",
+      typeLine: "Legendary Creature - Phyrexian Praetor",
+      oracleText:
+        "Whenever you cast an artifact, instant, or sorcery spell, copy that spell. You may choose new targets for the copy. This ability triggers only once each turn. (A copy of a permanent spell becomes a token.)\nWhenever an opponent casts an artifact, instant, or sorcery spell, counter that spell. This ability triggers only once each turn.",
+      power: "5",
+      toughness: "5",
+      printedKeywords: [],
+      imageUrl: "",
+    });
+    expect(compiled.definition.triggers).toHaveLength(2);
+    expect(compiled.definition.triggers[0]?.effects).toEqual([{ kind: "copy_subject_spell" }]);
+    expect(compiled.definition.triggers[0]?.oncePerTurn).toBe(true);
+    expect(compiled.definition.triggers[1]?.effects).toEqual([{ kind: "counter_subject_spell" }]);
+    expect(compiled.definition.triggers[1]?.oncePerTurn).toBe(true);
+    expect(compiled.notes).toEqual([]);
+  });
+});

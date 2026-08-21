@@ -26,6 +26,7 @@ What the engine implements and what it intentionally does not. Tests are tagged 
 - **"As enters, choose a creature type"** prompts on entry; chosen-type filters work in trigger subjects (Kindred Discovery's enters-or-attacks) and static selectors (Vanquisher's Banner).
 - **Combat-damage triggers**: a `combat_damage_to_player` event fires per strike (Bident of Thassa saboteur heads); Curiosity's any-damage variant is still a gap.
 - **Documented approximation — optional draws**: "you may draw a card" is auto-taken and declined only when the library is too small to survive it.
+- **Spell copies (CR 707.10)**: "Copy target instant or sorcery spell" and cast-trigger "copy that spell" push an `isCopy` stack object that resolves normally, then ceases to exist without moving the source card; countering a copy likewise removes only the copy. Documented approximations: "You may choose new targets for the copy" is auto-declined (the copy keeps the original's targets — a legal choice for that "may"), and permanent-spell subjects are not copied (a real copy would become a token, CR 707.10c, which the table does not model yet). "Counter that spell" cast triggers (Jin-Gitaxias) counter the subject spell directly.
 
 ## The card pipeline (Stage 6)
 
@@ -43,7 +44,7 @@ What the engine implements and what it intentionally does not. Tests are tagged 
 
 ## Documented gaps (intentional, in plan order)
 
-- CR 613.8 dependency; copy effects beyond token copies; timestamps for auras vs. their hosts.
+- CR 613.8 dependency; copies of permanent spells and of activated/triggered abilities (instant/sorcery spell copies are in); timestamps for auras vs. their hosts.
 - CR 616 replacement-ordering choice; damage prevention/redirection shields; token-doubling replacements (Anointed Procession).
 - Casting face-down (morph); adventures/split cards; sagas; day/night automation (transform exists as an effect).
 - Damage-assignment order is blocker-list order; attack requirements ("must attack") and cost-to-attack effects.

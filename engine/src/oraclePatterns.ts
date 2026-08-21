@@ -798,6 +798,27 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     };
   }
 
+  if (/^copy target instant or sorcery spell$/i.test(sentence)) {
+    return {
+      targetRequirements: [{ kind: "instant_or_sorcery_spell" }],
+      effects: [{ kind: "copy_spell", target: { type: "chosen", index: 0 } }],
+    };
+  }
+
+  if (/^copy (?:that spell|it)$/i.test(sentence)) {
+    return {
+      targetRequirements: [],
+      effects: [{ kind: "copy_subject_spell" }],
+    };
+  }
+
+  if (/^counter (?:that spell|it)$/i.test(sentence)) {
+    return {
+      targetRequirements: [],
+      effects: [{ kind: "counter_subject_spell" }],
+    };
+  }
+
   match = sentence.match(
     /^Counter target (spell|noncreature spell|creature spell) unless its controller pays \{(\d+)\}$/i,
   );
@@ -1462,6 +1483,27 @@ function parseTriggerHead(head: string): TriggerHead | null {
       subjectFilter: { typesAny: ["instant", "sorcery"] },
     };
   }
+  if (/^Whenever you cast an artifact, instant, or sorcery spell$/i.test(text)) {
+    return {
+      event: "cast_spell",
+      watch: "controlled",
+      subjectFilter: { typesAny: ["artifact", "instant", "sorcery"] },
+    };
+  }
+  if (/^Whenever an opponent casts an artifact, instant, or sorcery spell$/i.test(text)) {
+    return {
+      event: "cast_spell",
+      watch: "opponents",
+      subjectFilter: { typesAny: ["artifact", "instant", "sorcery"] },
+    };
+  }
+  if (/^Whenever an opponent casts an instant or sorcery spell$/i.test(text)) {
+    return {
+      event: "cast_spell",
+      watch: "opponents",
+      subjectFilter: { typesAny: ["instant", "sorcery"] },
+    };
+  }
   if (/^Whenever you cast an artifact spell$/i.test(text)) {
     return { event: "cast_spell", watch: "controlled", subjectFilter: { types: ["artifact"] } };
   }
@@ -1615,6 +1657,8 @@ function shiftChosen(effect: CardEffect, offset: number): CardEffect {
     case "counter_unless_pays":
       return { ...effect, target: bumpChosen(effect.target) };
     case "divided_damage":
+    case "copy_subject_spell":
+    case "counter_subject_spell":
       return effect;
     case "move_card":
     case "tap":
@@ -1625,6 +1669,7 @@ function shiftChosen(effect: CardEffect, offset: number): CardEffect {
     case "set_class_level":
       return { ...effect, cardId: bumpChosen(effect.cardId) };
     case "counter_spell":
+    case "copy_spell":
       return { ...effect, target: bumpChosen(effect.target) };
     case "gain_life":
     case "lose_life":
@@ -2071,6 +2116,25 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
       continue;
     }
 
+    // The copy keeps the original's targets — declining the "may" is always a
+    // legal choice (CR 707.10c note). Only accepted when a copy effect
+    // actually compiled from an earlier sentence of this card.
+    if (/^You may choose new targets for (?:the|that) cop(?:y|ies)$/i.test(sentence)) {
+      const isCopyKind = (effect: CardEffect) =>
+        effect.kind === "copy_spell" || effect.kind === "copy_subject_spell";
+      const hasCopyEffect =
+        result.effects.some(isCopyKind) ||
+        result.triggers.some((trigger) => trigger.effects.some(isCopyKind)) ||
+        (result.modes ?? []).some((mode) => mode.effects.some(isCopyKind));
+      if (hasCopyEffect) {
+        // Documented approximation (RULES_COVERAGE.md): the "may" is
+        // auto-declined, so the copy keeps the original's targets.
+        continue;
+      }
+      result.leftover.push(sentence);
+      continue;
+    }
+
     if (/^As ~ enters, choose a creature type$/i.test(sentence)) {
       result.chooseCreatureTypeOnEnter = true;
       continue;
@@ -2406,6 +2470,27 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
         index += 1;
         continue;
       }
+    }
+
+    // The general branch splits at the first comma, which breaks heads that
+    // contain a type list ("an artifact, instant, or sorcery spell").
+    const listCast = sentence.match(
+      /^(Whenever (?:you cast|an opponent casts) an artifact, instant, or sorcery spell), (.+)$/i,
+    );
+    if (listCast?.[1] && listCast[2]) {
+      const head = parseTriggerHead(listCast[1]);
+      const inner = head ? compileSimpleClause(listCast[2].trim()) : null;
+      if (head && inner && !inner.leftover) {
+        const { extraEvents: _ignored, ...headRest } = head;
+        result.triggers.push({
+          ...headRest,
+          effects: inner.effects,
+          targetRequirements: inner.targetRequirements,
+        });
+        continue;
+      }
+      result.leftover.push(sentence);
+      continue;
     }
 
     const generalTrigger = sentence.match(/^((?:Landfall\s*[—-]\s*)?[^,]+?), (.+)$/i);

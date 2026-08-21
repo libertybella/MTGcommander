@@ -232,6 +232,12 @@ export type StackObject = {
   xValue?: number;
   /** Damage split for divided-damage spells; aligns with `targets`. */
   division?: number[];
+  /**
+   * A copy of a spell (CR 707.10): it resolves like the original but is not a
+   * card — on resolution or countering it ceases to exist instead of moving
+   * the source card anywhere.
+   */
+  isCopy?: boolean;
 };
 
 export type CombatAttack = {
@@ -391,6 +397,7 @@ export type GameEffect =
   | { kind: "add_counter"; cardId: CardInstanceId; counter: string; amount: number }
   | { kind: "counter_spell"; stackObjectId: StackObjectId }
   | { kind: "counter_unless_pays"; stackObjectId: StackObjectId; cost: string }
+  | { kind: "copy_spell"; stackObjectId: StackObjectId; controllerId: PlayerId }
   | { kind: "set_class_level"; cardId: CardInstanceId; level: number }
   | { kind: "pt_until_eot"; cardId: CardInstanceId; power: number; toughness: number }
   | { kind: "keyword_until_eot"; cardId: CardInstanceId; keyword: Keyword }
@@ -485,7 +492,8 @@ export type TargetKind =
   | "player_or_creature"
   | "spell"
   | "creature_spell"
-  | "noncreature_spell";
+  | "noncreature_spell"
+  | "instant_or_sorcery_spell";
 
 export type TargetRequirement = {
   kind: TargetKind;
@@ -611,6 +619,11 @@ export type CardEffect =
   | { kind: "add_counter"; cardId: CardIdSelector; counter: string; amount: number }
   | { kind: "counter_spell"; target: ChosenTargetRef }
   | { kind: "counter_unless_pays"; target: ChosenTargetRef; cost: string }
+  | { kind: "copy_spell"; target: ChosenTargetRef }
+  /** "copy that spell" in a cast trigger — the subject spell, not a target. */
+  | { kind: "copy_subject_spell" }
+  /** "counter that spell" in a cast trigger — the subject spell, not a target. */
+  | { kind: "counter_subject_spell" }
   | { kind: "set_class_level"; cardId: CardIdSelector; level: number }
   | { kind: "pt_until_eot"; cardId: CardIdSelector; power: number; toughness: number }
   | { kind: "keyword_until_eot"; cardId: CardIdSelector; keyword: Keyword }
