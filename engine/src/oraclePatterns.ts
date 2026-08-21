@@ -710,6 +710,18 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     };
   }
 
+  // Wave Goodbye: mass bounce that spares counter-carrying creatures.
+  if (/^Return each creature without a \+1\/\+1 counter on it to its owner's hand$/i.test(sentence)) {
+    return {
+      targetRequirements: [],
+      effects: [{ kind: "bounce_each_creature", unlessCounter: "p1p1" }],
+    };
+  }
+
+  if (/^Return each creature to its owner's hand$/i.test(sentence)) {
+    return { targetRequirements: [], effects: [{ kind: "bounce_each_creature" }] };
+  }
+
   if (/^(?:then )?populate$/i.test(sentence)) {
     return { targetRequirements: [], effects: [{ kind: "populate", playerId: "controller" }] };
   }
@@ -3880,6 +3892,25 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
       const lastMana = result.manaAbilities[result.manaAbilities.length - 1];
       if (lastMana && !lastMana.requiresControlled) {
         lastMana.requiresControlled = gate;
+        continue;
+      }
+    }
+
+    // Creeping Bloodsucker: fold the lifegain rider into the last trigger's
+    // damage effects.
+    if (
+      /^You gain life equal to the damage dealt this way$/i.test(sentence) &&
+      result.triggers.length > 0
+    ) {
+      const last = result.triggers[result.triggers.length - 1];
+      const damage = last?.effects.filter(
+        (effect): effect is Extract<CardEffect, { kind: "deal_damage" }> =>
+          effect.kind === "deal_damage",
+      );
+      if (last && damage && damage.length > 0) {
+        for (const entry of damage) {
+          entry.gainLife = true;
+        }
         continue;
       }
     }

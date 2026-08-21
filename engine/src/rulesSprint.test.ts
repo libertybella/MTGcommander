@@ -5971,3 +5971,72 @@ describe("wave 63: tribal-count damage and graveyard statics", () => {
     expect(computedCard(game, bear.id)?.keywords.includes("trample")).toBe(true);
   });
 });
+
+describe("wave 64: damage lifegain riders and filtered bounce", () => {
+  const base = { power: null, toughness: null, printedKeywords: [], imageUrl: "" };
+
+  it("compiles Creeping Bloodsucker and Wave Goodbye fully", () => {
+    const sucker = compileOracleCard({
+      ...base,
+      oracleId: "sucker",
+      name: "Creeping Bloodsucker",
+      manaCost: "{1}{B}",
+      typeLine: "Creature — Vampire",
+      power: "1",
+      toughness: "3",
+      oracleText:
+        "At the beginning of your upkeep, this creature deals 1 damage to each opponent. You gain life equal to the damage dealt this way.",
+    });
+    expect(sucker.notes).toEqual([]);
+    const damage = sucker.definition.triggers[0]?.effects[0];
+    expect(damage?.kind === "deal_damage" && damage.gainLife).toBe(true);
+
+    const wave = compileOracleCard({
+      ...base,
+      oracleId: "wave",
+      name: "Wave Goodbye",
+      manaCost: "{2}{U}{U}",
+      typeLine: "Sorcery",
+      oracleText: "Return each creature without a +1/+1 counter on it to its owner's hand.",
+    });
+    expect(wave.notes).toEqual([]);
+    expect(wave.definition.effects).toEqual([
+      { kind: "bounce_each_creature", unlessCounter: "p1p1" },
+    ]);
+  });
+
+  it("gains life per damage instance and spares countered creatures", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const suckerDef = createCardDefinition({
+      name: "Sucker Lite",
+      typeLine: "Creature — Vampire",
+      power: 1,
+      toughness: 3,
+    });
+    game.definitions[suckerDef.id] = suckerDef;
+    const sucker = createCardInstance({ definitionId: suckerDef.id, ownerId: p1.id, zone: "battlefield" });
+    game.cards[sucker.id] = sucker;
+    p1.zones.battlefield.push(sucker.id);
+
+    const before = game.players.find((p) => p.id === p1.id)!.life;
+    const next = applyEffect(game, {
+      kind: "deal_damage",
+      sourceId: sucker.id,
+      target: { type: "player", playerId: p2.id },
+      amount: 1,
+      gainLife: true,
+    });
+    expect(next.players.find((p) => p.id === p1.id)!.life).toBe(before + 1);
+
+    // Bounce: countered creature stays.
+    const bumped = applyEffect(next, { kind: "add_counter", cardId: sucker.id, counter: "p1p1", amount: 1 });
+    const bearDef = createCardDefinition({ name: "Bear", typeLine: "Creature — Bear", power: 2, toughness: 2 });
+    const withBear = { ...bumped, definitions: { ...bumped.definitions, [bearDef.id]: bearDef } };
+    const bear = createCardInstance({ definitionId: bearDef.id, ownerId: p2.id, zone: "battlefield" });
+    withBear.cards = { ...withBear.cards, [bear.id]: bear };
+    withBear.players.find((p) => p.id === p2.id)!.zones.battlefield.push(bear.id);
+    const bounced = applyEffect(withBear, { kind: "bounce_each_creature", unlessCounter: "p1p1" });
+    expect(bounced.cards[sucker.id]?.zone).toBe("battlefield");
+    expect(bounced.cards[bear.id]?.zone).toBe("hand");
+  });
+});

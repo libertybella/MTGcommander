@@ -1514,11 +1514,13 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
             : isRecord(value.amount) && typeof value.amount.subtypeCount === "string"
               ? { subtypeCount: value.amount.subtypeCount }
               : expectNumber(value.amount, `${label}.amount`);
+      const gainLife = value.gainLife === true ? { gainLife: true as const } : {};
       if (targetType === "player") {
         return {
           kind,
           amount,
           sourceId,
+          ...gainLife,
           target: {
             type: "player",
             playerId: parsePlayerSelector(value.target.playerId, `${label}.target.playerId`),
@@ -1530,6 +1532,7 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
           kind,
           amount,
           sourceId,
+          ...gainLife,
           target: {
             type: "creature",
             cardId: expectString(value.target.cardId, `${label}.target.cardId`),
@@ -1545,6 +1548,7 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
           kind,
           amount,
           sourceId,
+          ...gainLife,
           target: { type: "chosen", index },
         };
       }
@@ -1629,6 +1633,13 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
     case "fog":
     case "windfall":
       return { kind };
+    case "bounce_each_creature":
+      return {
+        kind,
+        ...(value.unlessCounter === undefined
+          ? {}
+          : { unlessCounter: expectString(value.unlessCounter, `${label}.unlessCounter`) }),
+      };
     case "untap_all": {
       const what = expectString(value.what, `${label}.what`);
       if (what !== "creature" && what !== "land") {
@@ -2744,6 +2755,14 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
   if (kind === "extra_combat" || kind === "fog" || kind === "windfall") {
     return { kind };
   }
+  if (kind === "bounce_each_creature") {
+    return {
+      kind,
+      ...(value.unlessCounter === undefined
+        ? {}
+        : { unlessCounter: expectString(value.unlessCounter, `${label}.unlessCounter`) }),
+    };
+  }
   if (kind === "untap_all") {
     const what = expectString(value.what, `${label}.what`);
     if (what !== "creature" && what !== "land") {
@@ -2829,6 +2848,7 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
           ? null
           : expectString(value.sourceId, `${label}.sourceId`),
       amount: expectNumber(value.amount, `${label}.amount`),
+      ...(value.gainLife === true ? { gainLife: true } : {}),
       target:
         targetType === "player"
           ? { type: "player", playerId: expectString(target.playerId, `${label}.target.playerId`) }

@@ -440,6 +440,7 @@ export type GameEffect =
       sourceId: CardInstanceId | null;
       target: EffectTarget;
       amount: number;
+      gainLife?: boolean;
     }
   | {
       kind: "draw";
@@ -503,6 +504,8 @@ export type GameEffect =
   | { kind: "untap_lands_up_to"; playerId: PlayerId; count: number }
   | { kind: "fog" }
   | { kind: "windfall" }
+  /** Wave Goodbye: bounce every creature missing the listed counter. */
+  | { kind: "bounce_each_creature"; unlessCounter?: string }
   /** Populate: copy the controller's best creature token (auto-picked). */
   | { kind: "populate"; playerId: PlayerId }
   | { kind: "proliferate"; playerId: PlayerId }
@@ -717,6 +720,8 @@ export type CardEffect =
       /** subtypeCount: X = the controller's battlefield permanents with the
        * subtype (Scourge of Valkas). */
       amount: number | "x" | "sacrificed_power" | { subtypeCount: string };
+      /** "You gain life equal to the damage dealt this way." */
+      gainLife?: boolean;
     }
   | {
       /** X damage divided as the caster chose among the spell's targets. */
@@ -785,6 +790,7 @@ export type CardEffect =
   | { kind: "fog" }
   /** Windfall: each player discards their hand, then draws the greatest count. */
   | { kind: "windfall" }
+  | { kind: "bounce_each_creature"; unlessCounter?: string }
   | { kind: "populate"; playerId: PlayerSelector }
   | { kind: "proliferate"; playerId: PlayerSelector }
   | {

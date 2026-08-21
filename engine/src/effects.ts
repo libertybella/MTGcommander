@@ -343,6 +343,7 @@ export function bindCardEffect(
           amount,
           sourceId: bindSourceId(effect.sourceId, context),
           target: chosen,
+          ...(effect.gainLife ? { gainLife: true } : {}),
         };
       }
       if (effect.target.type === "player") {
@@ -355,6 +356,7 @@ export function bindCardEffect(
           amount,
           sourceId: bindSourceId(effect.sourceId, context),
           target: { type: "player", playerId },
+          ...(effect.gainLife ? { gainLife: true } : {}),
         };
       }
       return {
@@ -362,6 +364,7 @@ export function bindCardEffect(
         amount,
         sourceId: bindSourceId(effect.sourceId, context),
         target: effect.target,
+        ...(effect.gainLife ? { gainLife: true } : {}),
       };
     }
     case "divided_damage":
@@ -646,6 +649,11 @@ export function bindCardEffect(
       return { kind: "fog" };
     case "windfall":
       return { kind: "windfall" };
+    case "bounce_each_creature":
+      return {
+        kind: "bounce_each_creature",
+        ...(effect.unlessCounter ? { unlessCounter: effect.unlessCounter } : {}),
+      };
     case "counter_on_each_creature": {
       const amount = effect.amount === "x" ? context.xValue ?? 0 : effect.amount;
       if (amount <= 0) {
@@ -793,12 +801,13 @@ function applyDealDamage(state: GameState, effect: Extract<GameEffect, { kind: "
   }
 
   if (effect.target.type === "player") {
-    const next = applyLoseLife(state, effect.target.playerId, effect.amount);
+    let next = applyLoseLife(state, effect.target.playerId, effect.amount);
     if (effect.sourceId && next.cards[effect.sourceId]) {
       dispatchEventsInPlace(next, [
         { kind: "deals_damage_to_player", cardId: effect.sourceId, playerId: effect.target.playerId },
       ]);
     }
+    next = applyDamageLifegainRider(next, effect);
     return next;
   }
 
@@ -828,7 +837,22 @@ function applyDealDamage(state: GameState, effect: Extract<GameEffect, { kind: "
     damaged.deathtouched = true;
   }
   // Destruction is a state-based action (CR 704.5g/h); applyEffect sweeps.
-  return next;
+  return applyDamageLifegainRider(next, effect);
+}
+
+/** "You gain life equal to the damage dealt this way" (Creeping Bloodsucker). */
+function applyDamageLifegainRider(
+  state: GameState,
+  effect: Extract<GameEffect, { kind: "deal_damage" }>,
+): GameState {
+  if (!effect.gainLife || !effect.sourceId) {
+    return state;
+  }
+  const controllerId = state.cards[effect.sourceId]?.controllerId;
+  if (!controllerId) {
+    return state;
+  }
+  return applyGainLife(state, controllerId, effect.amount);
 }
 
 /** Blasphemous Act: mark every creature's damage in one pass, sweep once. */
@@ -1733,6 +1757,21 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
             targetRequirements: [effect.requirement],
           });
           next = applyEffects(next, bound);
+        }
+        break;
+      }
+      case "bounce_each_creature": {
+        next = cloneGameState(state);
+        const bounced = Object.values(next.cards)
+          .filter(
+            (card) =>
+              card.zone === "battlefield" &&
+              isCreature(next, card.id) &&
+              (!effect.unlessCounter || (card.counters[effect.unlessCounter] ?? 0) === 0),
+          )
+          .map((card) => card.id);
+        for (const cardId of bounced) {
+          moveCardInPlace(next, cardId, "hand");
         }
         break;
       }
