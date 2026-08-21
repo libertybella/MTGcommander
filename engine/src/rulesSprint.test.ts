@@ -9521,3 +9521,106 @@ describe("wave 101: wurms, bonds, dark realms", () => {
   });
 });
 
+describe("wave 102: clocks, anarchists, ascensions", () => {
+  it("compiles the quartet fully", () => {
+    const clock = compileOracleCard({
+      oracleId: "clock",
+      name: "Unwinding Clock",
+      manaCost: "{4}",
+      typeLine: "Artifact",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText: "Untap all artifacts you control during each other player's untap step.",
+    });
+    expect(clock.notes).toEqual([]);
+    expect(clock.definition.untapDuringEachUntap).toBe("artifacts");
+
+    const anarchomancer = compileOracleCard({
+      oracleId: "anarchomancer",
+      name: "Goblin Anarchomancer",
+      manaCost: "{R}{G}",
+      typeLine: "Creature — Goblin Shaman",
+      power: "2",
+      toughness: "2",
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText: "Each spell you cast that's red or green costs {1} less to cast.",
+    });
+    expect(anarchomancer.notes).toEqual([]);
+    expect(anarchomancer.definition.costReductions?.[0]).toEqual({
+      generic: 1,
+      filter: { colors: ["R", "G"] },
+    });
+
+    const ascension = compileOracleCard({
+      oracleId: "ascension",
+      name: "Beastmaster Ascension",
+      manaCost: "{2}{G}",
+      typeLine: "Enchantment",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "Whenever a creature you control attacks, you may put a quest counter on this enchantment.\nAs long as this enchantment has seven or more quest counters on it, creatures you control get +5/+5.",
+    });
+    expect(ascension.notes).toEqual([]);
+    expect(ascension.definition.staticAbilities[0]?.requiresCounters).toEqual({
+      counter: "quest",
+      atLeast: 7,
+    });
+
+    const apprentice = compileOracleCard({
+      oracleId: "apprentice",
+      name: "Marionette Apprentice",
+      manaCost: "{1}{B}",
+      typeLine: "Creature — Human Artificer",
+      power: "1",
+      toughness: "2",
+      printedKeywords: ["Fabricate 1"],
+      imageUrl: "",
+      oracleText:
+        "Fabricate 1 (When this creature enters, put a +1/+1 counter on it or create a 1/1 colorless Servo artifact creature token.)\nWhenever another creature or artifact you control is put into a graveyard from the battlefield, each opponent loses 1 life.",
+    });
+    expect(apprentice.notes).toEqual([]);
+    expect(apprentice.definition.triggers.map((trigger) => trigger.event)).toEqual([
+      "enter_battlefield",
+      "dies",
+    ]);
+    expect(apprentice.definition.triggers[1]?.subjectFilter?.typesAny).toEqual([
+      "creature",
+      "artifact",
+    ]);
+  });
+
+  it("only turns the anthem on past the counter threshold", () => {
+    const { game, p1 } = twoPlayers();
+    const ascensionDef = createCardDefinition({
+      name: "Ascension",
+      typeLine: "Enchantment",
+      staticAbilities: [
+        {
+          selector: { scope: "controlled", types: ["creature"] },
+          effect: { kind: "modify_pt", power: 5, toughness: 5 },
+          requiresCounters: { counter: "quest", atLeast: 7 },
+        },
+      ],
+    });
+    const bearDef = createCardDefinition({ name: "Bear", typeLine: "Creature — Bear", power: 2, toughness: 2 });
+    game.definitions[ascensionDef.id] = ascensionDef;
+    game.definitions[bearDef.id] = bearDef;
+    const ascension = createCardInstance({ definitionId: ascensionDef.id, ownerId: p1.id, zone: "battlefield" });
+    const bear = createCardInstance({ definitionId: bearDef.id, ownerId: p1.id, zone: "battlefield" });
+    game.cards[ascension.id] = ascension;
+    game.cards[bear.id] = bear;
+    p1.zones.battlefield.push(ascension.id, bear.id);
+
+    ascension.counters["quest"] = 6;
+    expect(computedCard(game, bear.id)?.power).toBe(2);
+    ascension.counters["quest"] = 7;
+    expect(computedCard(game, bear.id)?.power).toBe(7);
+  });
+});
+

@@ -1,4 +1,4 @@
-import { isCreature } from "./cardTypes";
+import { characteristicsOf, isCreature } from "./cardTypes";
 import { abilitiesRemoved } from "./characteristicsEngine";
 import { cloneGameState } from "./clone";
 import {
@@ -131,11 +131,15 @@ function onEnterStep(state: GameState): GameState {
         continue;
       }
       for (const card of Object.values(state.cards)) {
-        if (
-          card.zone === "battlefield" &&
-          card.controllerId === source.controllerId &&
-          (scope === "permanents" || isCreature(state, card.id))
-        ) {
+        if (card.zone !== "battlefield" || card.controllerId !== source.controllerId) {
+          continue;
+        }
+        const matches =
+          scope === "permanents" ||
+          (scope === "artifacts"
+            ? characteristicsOf(state, card.id).types.includes("artifact")
+            : isCreature(state, card.id));
+        if (matches) {
           untapInPlace(card);
         }
       }

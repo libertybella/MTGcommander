@@ -175,7 +175,7 @@ export type CardDefinition = {
   doesntUntap?: boolean;
   /** Drumbellower / Seedborn Muse: the controller's creatures (or all their
    * permanents) also untap during each other player's untap step. */
-  untapDuringEachUntap?: "creatures" | "permanents";
+  untapDuringEachUntap?: "creatures" | "permanents" | "artifacts";
   /** Authority of the Consuls: opponents' creatures enter tapped. */
   opponentCreaturesEnterTapped?: boolean;
   /** Blind Obedience: opponents' artifacts enter tapped too. */
@@ -1547,6 +1547,9 @@ export type StaticAbility = {
   /** "…and you control a Forest": gate on the controller's battlefield
    * (checked against printed characteristics). */
   requiresControlled?: { types?: string[]; subtypes?: string[] };
+  /** Beastmaster Ascension: the ability is live only while the source
+   * carries at least this many of the named counter. */
+  requiresCounters?: { counter: string; atLeast: number };
 };
 
 /**

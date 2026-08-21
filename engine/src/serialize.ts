@@ -481,7 +481,7 @@ export function parseGameState(json: string): GameState {
               };
             })(),
           }),
-      ...(def.untapDuringEachUntap === "creatures" || def.untapDuringEachUntap === "permanents"
+      ...(def.untapDuringEachUntap === "creatures" || def.untapDuringEachUntap === "permanents" || def.untapDuringEachUntap === "artifacts"
         ? { untapDuringEachUntap: def.untapDuringEachUntap }
         : {}),
       ...(def.opponentCreaturesEnterTapped === true ? { opponentCreaturesEnterTapped: true } : {}),
@@ -2763,6 +2763,20 @@ function parseStaticAbilities(
                 };
               })(),
             }),
+        ...(isRecord(entry.requiresCounters)
+          ? {
+              requiresCounters: {
+                counter: expectString(
+                  entry.requiresCounters.counter,
+                  `${label}[${index}].requiresCounters.counter`,
+                ),
+                atLeast: expectNumber(
+                  entry.requiresCounters.atLeast,
+                  `${label}[${index}].requiresCounters.atLeast`,
+                ),
+              },
+            }
+          : {}),
       });
     }
   }

@@ -173,6 +173,9 @@ export function createCardDefinition(
                 },
               }
             : {}),
+          ...(ability.requiresCounters
+            ? { requiresCounters: { ...ability.requiresCounters } }
+            : {}),
         }))
       : [],
     produces: input.produces ? { ...input.produces } : {},

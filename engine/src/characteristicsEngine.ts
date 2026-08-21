@@ -312,6 +312,14 @@ function collectInstances(state: GameState): EffectInstance[] {
       if (!staticGateSatisfied(state, card.controllerId, ability.requiresControlled)) {
         continue;
       }
+      // Beastmaster Ascension: live only past the counter threshold.
+      if (
+        ability.requiresCounters &&
+        (card.counters[ability.requiresCounters.counter] ?? 0) <
+          ability.requiresCounters.atLeast
+      ) {
+        continue;
+      }
       instances.push({
         sourceId: card.id,
         selector: ability.selector,

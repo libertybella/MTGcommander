@@ -59,7 +59,7 @@ export type CompiledOracleText = {
   leyline?: boolean;
   castFromGraveyard?: { types?: string[]; subtypes?: string[] };
   ascend?: boolean;
-  untapDuringEachUntap?: "creatures" | "permanents";
+  untapDuringEachUntap?: "creatures" | "permanents" | "artifacts";
   opponentCreaturesEnterTapped?: boolean;
   opponentArtifactsEnterTapped?: boolean;
   extraDrawStepDraws?: boolean;
@@ -2542,6 +2542,17 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     };
   }
 
+  // Beastmaster Ascension ("you may" is auto-taken; quest counters only go up).
+  match = sentence.match(/^(?:you may )?put a ([a-z]+) counter on ~$/i);
+  if (match?.[1]) {
+    return {
+      targetRequirements: [],
+      effects: [
+        { kind: "add_counter", cardId: "self", counter: match[1].toLowerCase(), amount: 1 },
+      ],
+    };
+  }
+
   match = sentence.match(/^~ gets ([+-]\d+)\/([+-]\d+) until end of turn$/i);
   if (match?.[1] && match[2]) {
     return {
@@ -3013,6 +3024,22 @@ function parseTriggerHead(head: string): TriggerHead | null {
   }
   if (/^Whenever a creature an opponent controls dies$/i.test(text)) {
     return { event: "dies", watch: "opponents", subjectFilter: { types: ["creature"] } };
+  }
+  if (/^Whenever a creature you control attacks$/i.test(text)) {
+    return { event: "attacks", watch: "controlled", subjectFilter: { types: ["creature"] } };
+  }
+  // Marionette Apprentice.
+  if (
+    /^Whenever another creature or artifact you control is put into a graveyard from the battlefield$/i.test(
+      text,
+    )
+  ) {
+    return {
+      event: "dies",
+      watch: "controlled",
+      excludeSelf: true,
+      subjectFilter: { typesAny: ["creature", "artifact"] },
+    };
   }
   if (/^Whenever another creature you control dies$/i.test(text)) {
     return {
@@ -4326,13 +4353,15 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
       continue;
     }
 
-    // Drumbellower / Seedborn Muse.
+    // Drumbellower / Seedborn Muse / Unwinding Clock.
     const untapOthers = sentence.match(
-      /^Untap all (creatures|permanents) you control during each other player's untap step$/i,
+      /^Untap all (creatures|permanents|artifacts) you control during each other player's untap step$/i,
     );
     if (untapOthers?.[1]) {
-      result.untapDuringEachUntap =
-        untapOthers[1].toLowerCase() === "permanents" ? "permanents" : "creatures";
+      result.untapDuringEachUntap = untapOthers[1].toLowerCase() as
+        | "creatures"
+        | "permanents"
+        | "artifacts";
       continue;
     }
 
@@ -4381,6 +4410,44 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
       )
     ) {
       result.leyline = true;
+      continue;
+    }
+
+    // Beastmaster Ascension: a counter-gated anthem.
+    const questAnthem = sentence.match(
+      /^As long as (?:~|this enchantment|this artifact) has (\w+) or more (\w+) counters on it, creatures you control get \+(\d+)\/\+(\d+)$/i,
+    );
+    if (questAnthem?.[1] && questAnthem[2] && questAnthem[3] && questAnthem[4]) {
+      const atLeast = parseCount(questAnthem[1]) ?? Number(questAnthem[1]);
+      if (Number.isFinite(atLeast) && atLeast > 0) {
+        result.staticAbilities.push({
+          selector: { scope: "controlled", types: ["creature"] },
+          effect: {
+            kind: "modify_pt",
+            power: Number(questAnthem[3]),
+            toughness: Number(questAnthem[4]),
+          },
+          requiresCounters: { counter: questAnthem[2].toLowerCase(), atLeast },
+        });
+        continue;
+      }
+    }
+
+    // Fabricate N (CR 702.122): the counter half of the choice, always taken —
+    // a documented approximation.
+    const fabricate = sentence.match(/^Fabricate (\d+)$/i);
+    if (fabricate?.[1]) {
+      result.triggers.push({
+        event: "enter_battlefield",
+        effects: [
+          {
+            kind: "add_counter",
+            cardId: "self",
+            counter: "p1p1",
+            amount: Number(fabricate[1]),
+          },
+        ],
+      });
       continue;
     }
 
@@ -4561,6 +4628,26 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
         {
           generic: Number(chosenDiscount[1]),
           filter: { types: ["creature"], chosenSubtype: true },
+        },
+      ];
+      continue;
+    }
+
+    // Goblin Anarchomancer.
+    const colorPairDiscount = sentence.match(
+      /^Each spell you cast that's (white|blue|black|red|green) or (white|blue|black|red|green) costs \{(\d+)\} less to cast$/i,
+    );
+    if (colorPairDiscount?.[1] && colorPairDiscount[2] && colorPairDiscount[3]) {
+      result.costReductions = [
+        ...(result.costReductions ?? []),
+        {
+          generic: Number(colorPairDiscount[3]),
+          filter: {
+            colors: [
+              COLOR_WORDS[colorPairDiscount[1].toLowerCase()]!,
+              COLOR_WORDS[colorPairDiscount[2].toLowerCase()]!,
+            ],
+          },
         },
       ];
       continue;
