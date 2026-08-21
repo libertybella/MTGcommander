@@ -781,6 +781,8 @@ export type TargetKind =
   | "artifact_enchantment_or_nonbasic_land"
   /** Bedevil. */
   | "artifact_creature_or_planeswalker"
+  /** Casualties of War's fifth bullet. */
+  | "planeswalker"
   /** A commander creature on the battlefield (Witch's Clinic). */
   | "commander"
   | "player_or_creature"
@@ -1561,6 +1563,8 @@ export type ManaAbility = {
   noTap?: boolean;
   /** Kami of Whispered Hopes: the amount is the creature's power at tap. */
   countFromPower?: boolean;
+  /** Nykthos: the amount is the controller's devotion to the chosen color. */
+  countFromDevotion?: boolean;
   /** Springleaf Drum: tapping a chosen untapped controlled creature is part
    * of the cost. Never auto-tapped; adds nothing to potential mana. */
   costTapCreature?: boolean;

@@ -1522,6 +1522,7 @@ function parseTargetRequirement(value: unknown, label: string): TargetRequiremen
     kind !== "land" &&
     kind !== "artifact_enchantment_or_nonbasic_land" &&
     kind !== "artifact_creature_or_planeswalker" &&
+    kind !== "planeswalker" &&
     kind !== "commander"
   ) {
     throw new Error(`Invalid ${label}.kind`);
@@ -2970,6 +2971,7 @@ function parseManaAbilities(value: unknown, label: string): ManaAbility[] {
         : {}),
       ...(entry.noTap === true ? { noTap: true } : {}),
       ...(entry.countFromPower === true ? { countFromPower: true } : {}),
+      ...(entry.countFromDevotion === true ? { countFromDevotion: true } : {}),
       ...(entry.costTapCreature === true ? { costTapCreature: true } : {}),
       ...(entry.anyColorAmong === "legendary" ||
       entry.anyColorAmong === "opponent_lands" ||

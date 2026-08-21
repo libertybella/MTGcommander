@@ -4,7 +4,7 @@ import { characteristicsOf, isCommander, isCreature, isInstant, isInstantOrSorce
 import { cloneGameState } from "./clone";
 import { affinityArtifactDiscount, allBattlefieldCreatureCount, canPlayLandFromTop, canPlayLandsFromGraveyard, castCostReduction, castableFromTop, controlsCommander, creaturePower, hasFlashGrant, landDropAllowance, lockedByAbolisher, lockedFromCasting } from "./derived";
 import { eliminatePlayerInPlace } from "./elimination";
-import { applyEffects, bindCardEffects } from "./effects";
+import { applyEffects, bindCardEffects, devotionTo } from "./effects";
 import { hasKeyword } from "./keywords";
 import { controlsMatching, sacrificeScopeMatches } from "./legalActions";
 import { addMana, canPayManaCost, parseManaCost, payManaCost, tapCard, tapForMana } from "./mana";
@@ -28,7 +28,7 @@ import { applyOpeningRoll, isOpeningRoll } from "./openingRoll";
 import { applyManualOverride } from "./override";
 import { applyChooseEnterReplacement, applyChooseTargets, applyResolveChooseCard, applyResolveColor, applyResolveCreatureType, applyResolveDiscard, applyResolveLookAssign, applyResolveOrderTriggers, applyResolvePay, applyResolveScry, applyResolveSearch, applyResolveSurveil, currentPrompt, dropLostPlayerPromptsInPlace, isPromptOpen } from "./prompt";
 import { findCardZone, moveCard } from "./zones";
-import type { CardInstanceId, ChosenTarget, GameAction, GameState, ManaColor, ManaPool, PlayerId } from "./types";
+import type { CardInstanceId, ChosenTarget, Color, GameAction, GameState, ManaColor, ManaPool, PlayerId } from "./types";
 
 function requirePlayer(state: GameState, playerId: PlayerId): void {
   if (!state.players.some((player) => player.id === playerId)) {
@@ -627,9 +627,12 @@ function applyTapForMana(
   const ability = abilities[index]!;
   const options = manaTapOptionsFor(ability, state, playerId);
   // Kami of Whispered Hopes: the amount reads the creature's power at tap.
-  const amount = ability.countFromPower
-    ? Math.max(0, creaturePower(state, cardId))
-    : manaAbilityAmount(ability);
+  // Nykthos: the amount is the devotion to the chosen color at tap.
+  const amount = ability.countFromDevotion
+    ? Math.max(0, color ? devotionTo(state, playerId, color as Color) : 0)
+    : ability.countFromPower
+      ? Math.max(0, creaturePower(state, cardId))
+      : manaAbilityAmount(ability);
   let addition: Partial<ManaPool>;
   if (ability.producesColorsAmong) {
     // Bloom Tender: one mana of each color among controlled permanents.

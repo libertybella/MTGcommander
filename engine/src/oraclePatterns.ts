@@ -2616,11 +2616,47 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     };
   }
 
-  const destroyLand = sentence.match(/^Destroy target (nonbasic )?land$/i);
+  const destroyLand = sentence.match(
+    /^Destroy target (nonbasic )?land( an opponent controls| you don't control)?$/i,
+  );
   if (destroyLand) {
     return {
-      targetRequirements: [{ kind: "land", ...(destroyLand[1] ? { nonbasicOnly: true } : {}) }],
+      targetRequirements: [
+        {
+          kind: "land",
+          ...(destroyLand[1] ? { nonbasicOnly: true } : {}),
+          ...(destroyLand[2] ? { control: "not_own" as const } : {}),
+        },
+      ],
       effects: [{ kind: "move_card", cardId: { type: "chosen", index: 0 }, toZone: "graveyard" }],
+    };
+  }
+
+  // Casualties of War's fifth bullet.
+  if (/^Destroy target planeswalker$/i.test(sentence)) {
+    return {
+      targetRequirements: [{ kind: "planeswalker" }],
+      effects: [{ kind: "move_card", cardId: { type: "chosen", index: 0 }, toZone: "graveyard" }],
+    };
+  }
+
+  // Field of Ruin's group consolation search.
+  if (
+    /^Each player searches their library for a basic land card, puts it onto the battlefield, then shuffles$/i.test(
+      sentence,
+    )
+  ) {
+    return {
+      targetRequirements: [],
+      effects: [
+        {
+          kind: "search_library",
+          playerId: "each_player",
+          filter: { supertypes: ["basic"], types: ["land"] },
+          destination: "battlefield",
+          count: 1,
+        },
+      ],
     };
   }
 
@@ -5771,6 +5807,28 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
       const cost = parseAbilityCost(ability.costText);
       if (!cost) {
         result.leftover.push(sentence);
+        continue;
+      }
+      // Nykthos: "{2}, {T}: Choose a color. Add an amount of mana of that
+      // color equal to your devotion to that color."
+      if (
+        /^Choose a color$/i.test(ability.rest) &&
+        cost.tap &&
+        sentences[index + 1] &&
+        !lineStart[index + 1] &&
+        /^Add an amount of mana of that color equal to your devotion to that color$/i.test(
+          sentences[index + 1]!,
+        )
+      ) {
+        result.manaAbilities.push({
+          produces: {},
+          producesOptions: [],
+          producesAnyColor: true,
+          damageToController: 0,
+          countFromDevotion: true,
+          ...(cost.manaCost ? { costMana: cost.manaCost } : {}),
+        });
+        sentences[index + 1] = "";
         continue;
       }
       const add = parseAddMana(ability.rest);

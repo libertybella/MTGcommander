@@ -11438,3 +11438,148 @@ describe("wave 113: constellations and welcoming committees", () => {
     expect(next.stack).toHaveLength(0);
   });
 });
+
+describe("wave 114: shrines, casualties, ruined fields", () => {
+  it("compiles the batch fully", () => {
+    const nykthos = compileOracleCard({
+      oracleId: "nykthos",
+      name: "Nykthos, Shrine to Nyx",
+      manaCost: "",
+      typeLine: "Legendary Land",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "{T}: Add {C}.\n{2}, {T}: Choose a color. Add an amount of mana of that color equal to your devotion to that color.",
+    });
+    expect(nykthos.notes).toEqual([]);
+    expect(nykthos.definition.manaAbilities[1]).toMatchObject({
+      producesAnyColor: true,
+      countFromDevotion: true,
+      costMana: "{2}",
+    });
+
+    const casualties = compileOracleCard({
+      oracleId: "casualties",
+      name: "Casualties of War",
+      manaCost: "{2}{B}{B}{G}{G}",
+      typeLine: "Sorcery",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "Choose one or more —\n• Destroy target artifact.\n• Destroy target creature.\n• Destroy target enchantment.\n• Destroy target land.\n• Destroy target planeswalker.",
+    });
+    expect(casualties.notes).toEqual([]);
+    expect(casualties.definition.modes).toHaveLength(5);
+    expect(casualties.definition.modes?.[4]?.targetRequirements).toEqual([
+      { kind: "planeswalker" },
+    ]);
+    expect(casualties.definition.modeChoice).toMatchObject({ min: 1, max: 5 });
+
+    const field = compileOracleCard({
+      oracleId: "field",
+      name: "Field of Ruin",
+      manaCost: "",
+      typeLine: "Land",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "{T}: Add {C}.\n{2}, {T}, Sacrifice this land: Destroy target nonbasic land an opponent controls. Each player searches their library for a basic land card, puts it onto the battlefield, then shuffles.",
+    });
+    expect(field.notes).toEqual([]);
+    const ability = field.definition.activated[0];
+    expect(ability?.sacrificeSelf).toBe(true);
+    expect(ability?.targetRequirements).toEqual([
+      { kind: "land", nonbasicOnly: true, control: "not_own" },
+    ]);
+    expect(ability?.effects[1]).toMatchObject({
+      kind: "search_library",
+      playerId: "each_player",
+      destination: "battlefield",
+    });
+  });
+
+  it("scales the shrine to devotion of the chosen color", () => {
+    const { game, p1 } = twoPlayers();
+    const shrineDef = createCardDefinition({
+      name: "Shrine",
+      typeLine: "Legendary Land",
+      manaAbilities: [
+        {
+          produces: {},
+          producesOptions: [],
+          producesAnyColor: true,
+          damageToController: 0,
+          countFromDevotion: true,
+          costMana: "{2}",
+        },
+      ],
+    });
+    const elfDef = createCardDefinition({
+      name: "Elf",
+      typeLine: "Creature — Elf",
+      manaCost: "{G}{G}",
+      power: 2,
+      toughness: 2,
+    });
+    const druidDef = createCardDefinition({
+      name: "Druid",
+      typeLine: "Creature — Elf Druid",
+      manaCost: "{1}{G}",
+      power: 1,
+      toughness: 1,
+    });
+    game.definitions[shrineDef.id] = shrineDef;
+    game.definitions[elfDef.id] = elfDef;
+    game.definitions[druidDef.id] = druidDef;
+    const shrine = createCardInstance({ definitionId: shrineDef.id, ownerId: p1.id, zone: "battlefield" });
+    const elf = createCardInstance({ definitionId: elfDef.id, ownerId: p1.id, zone: "battlefield" });
+    const druid = createCardInstance({ definitionId: druidDef.id, ownerId: p1.id, zone: "battlefield" });
+    game.cards[shrine.id] = shrine;
+    game.cards[elf.id] = elf;
+    game.cards[druid.id] = druid;
+    p1.zones.battlefield.push(shrine.id, elf.id, druid.id);
+    game.priorityPlayerId = p1.id;
+    game.players[0]!.mana.C = 2;
+
+    // Devotion to green is three ({G}{G} + {1}{G}); the {2} cost is paid
+    // from the floating pool.
+    const next = applyAction(game, {
+      kind: "tap_for_mana",
+      playerId: p1.id,
+      cardId: shrine.id,
+      color: "G",
+    });
+    expect(next.players[0]?.mana.G).toBe(3);
+    expect(next.players[0]?.mana.C).toBe(0);
+  });
+
+  it("targets planeswalkers and only planeswalkers", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const walkerDef = createCardDefinition({
+      name: "Walker",
+      typeLine: "Legendary Planeswalker — Test",
+      loyalty: 3,
+    });
+    const bearDef = createCardDefinition({ name: "Bear", typeLine: "Creature — Bear", power: 2, toughness: 2 });
+    game.definitions[walkerDef.id] = walkerDef;
+    game.definitions[bearDef.id] = bearDef;
+    const walker = createCardInstance({ definitionId: walkerDef.id, ownerId: p2.id, zone: "battlefield" });
+    const bear = createCardInstance({ definitionId: bearDef.id, ownerId: p2.id, zone: "battlefield" });
+    game.cards[walker.id] = walker;
+    game.cards[bear.id] = bear;
+    p2.zones.battlefield.push(walker.id, bear.id);
+
+    expect(
+      isChosenTargetLegal(game, { kind: "planeswalker" }, { type: "creature", cardId: walker.id }, p1.id),
+    ).toBe(true);
+    expect(
+      isChosenTargetLegal(game, { kind: "planeswalker" }, { type: "creature", cardId: bear.id }, p1.id),
+    ).toBe(false);
+  });
+});

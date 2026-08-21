@@ -297,6 +297,7 @@ export function isChosenTargetLegal(
     requirement.kind === "land" ||
     requirement.kind === "artifact_enchantment_or_nonbasic_land" ||
     requirement.kind === "artifact_creature_or_planeswalker" ||
+    requirement.kind === "planeswalker" ||
     requirement.kind === "commander"
   ) {
     if (target.type !== "creature") {
@@ -361,6 +362,8 @@ export function isChosenTargetLegal(
           isCreature(state, target.cardId) ||
           isPlaneswalker(state, target.cardId)
         );
+      case "planeswalker":
+        return isPlaneswalker(state, target.cardId);
       case "commander":
         return isCommander(state, target.cardId);
     }
@@ -558,6 +561,7 @@ export function legalChoicesForRequirement(
     requirement.kind === "land" ||
     requirement.kind === "artifact_enchantment_or_nonbasic_land" ||
     requirement.kind === "artifact_creature_or_planeswalker" ||
+    requirement.kind === "planeswalker" ||
     requirement.kind === "commander"
   ) {
     const choices: ChosenTarget[] = [];

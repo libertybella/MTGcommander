@@ -123,7 +123,7 @@ function bindPlayer(
 
 /** CR 700.5: colored pips of the color among the player's permanents' mana
  * costs (a hybrid symbol counts toward each of its colors once). */
-function devotionTo(state: GameState, playerId: PlayerId, color: Color): number {
+export function devotionTo(state: GameState, playerId: PlayerId, color: Color): number {
   let pips = 0;
   for (const card of Object.values(state.cards)) {
     if (card.zone !== "battlefield" || card.controllerId !== playerId) {
@@ -165,7 +165,8 @@ function expandEachOpponent(
     effect.kind === "mill" ||
     effect.kind === "discard" ||
     effect.kind === "team_pt_until_eot" ||
-    effect.kind === "exile_top_play"
+    effect.kind === "exile_top_play" ||
+    effect.kind === "search_library"
   ) {
     const players = eachOf(effect.playerId);
     if (players) {
