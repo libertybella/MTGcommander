@@ -10933,3 +10933,193 @@ describe("wave 110: pacts, tops, mothers, devils", () => {
     expect(sawTrigger).toBe(true);
   });
 });
+
+describe("wave 111: orchards, pools, cutthroats, orchids", () => {
+  it("compiles the batch fully", () => {
+    const orchard = compileOracleCard({
+      oracleId: "orchard",
+      name: "Exotic Orchard",
+      manaCost: "",
+      typeLine: "Land",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText: "{T}: Add one mana of any color that a land an opponent controls could produce.",
+    });
+    expect(orchard.notes).toEqual([]);
+    expect(orchard.definition.manaAbilities[0]?.anyColorAmong).toBe("opponent_lands");
+
+    const pool = compileOracleCard({
+      oracleId: "pool",
+      name: "Reflecting Pool",
+      manaCost: "",
+      typeLine: "Land",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText: "{T}: Add one mana of any type that a land you control could produce.",
+    });
+    expect(pool.notes).toEqual([]);
+    expect(pool.definition.manaAbilities[0]?.anyColorAmong).toBe("your_lands");
+
+    const cutthroat = compileOracleCard({
+      oracleId: "cutthroat",
+      name: "Zulaport Cutthroat",
+      manaCost: "{1}{B}",
+      typeLine: "Creature — Human Rogue Ally",
+      power: "1",
+      toughness: "1",
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "Whenever this creature or another creature you control dies, each opponent loses 1 life and you gain 1 life.",
+    });
+    expect(cutthroat.notes).toEqual([]);
+    expect(cutthroat.definition.triggers[0]?.event).toBe("dies");
+    expect(cutthroat.definition.triggers[0]?.effects).toEqual([
+      { kind: "lose_life", playerId: "each_opponent", amount: 1 },
+      { kind: "gain_life", playerId: "controller", amount: 1 },
+    ]);
+
+    const knight = compileOracleCard({
+      oracleId: "knight",
+      name: "Knight of the White Orchid",
+      manaCost: "{W}{W}",
+      typeLine: "Creature — Human Knight",
+      power: "2",
+      toughness: "2",
+      printedKeywords: ["First strike"],
+      imageUrl: "",
+      oracleText:
+        "First strike\nWhen this creature enters, if an opponent controls more lands than you, you may search your library for a Plains card, put it onto the battlefield, then shuffle.",
+    });
+    expect(knight.notes).toEqual([]);
+    expect(knight.definition.triggers[0]?.condition).toEqual({
+      kind: "opponent_controls_more_lands",
+    });
+  });
+
+  it("limits the orchard to what opponent lands could produce", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const orchardDef = createCardDefinition({
+      name: "Orchard",
+      typeLine: "Land",
+      manaAbilities: [
+        {
+          produces: {},
+          producesOptions: [],
+          producesAnyColor: false,
+          damageToController: 0,
+          anyColorAmong: "opponent_lands",
+        },
+      ],
+    });
+    const mountainDef = createCardDefinition({
+      name: "Mountain",
+      typeLine: "Basic Land — Mountain",
+      produces: { R: 1 },
+    });
+    game.definitions[orchardDef.id] = orchardDef;
+    game.definitions[mountainDef.id] = mountainDef;
+    const orchard = createCardInstance({ definitionId: orchardDef.id, ownerId: p1.id, zone: "battlefield" });
+    game.cards[orchard.id] = orchard;
+    p1.zones.battlefield.push(orchard.id);
+    game.priorityPlayerId = p1.id;
+
+    // No opponent lands: the orchard offers nothing.
+    expect(manaAbilitiesFor(game, orchard.id)).toHaveLength(0);
+
+    const mountain = createCardInstance({ definitionId: mountainDef.id, ownerId: p2.id, zone: "battlefield" });
+    game.cards[mountain.id] = mountain;
+    p2.zones.battlefield.push(mountain.id);
+    expect(manaAbilitiesFor(game, orchard.id)).toHaveLength(1);
+    expect(() =>
+      applyAction(game, { kind: "tap_for_mana", playerId: p1.id, cardId: orchard.id, color: "U" }),
+    ).toThrow(/color/);
+    const next = applyAction(game, {
+      kind: "tap_for_mana",
+      playerId: p1.id,
+      cardId: orchard.id,
+      color: "R",
+    });
+    expect(next.players[0]?.mana.R).toBe(1);
+  });
+
+  it("lets the pool copy a colorless-producing land type", () => {
+    const { game, p1 } = twoPlayers();
+    const poolDef = createCardDefinition({
+      name: "Pool",
+      typeLine: "Land",
+      manaAbilities: [
+        {
+          produces: {},
+          producesOptions: [],
+          producesAnyColor: false,
+          damageToController: 0,
+          anyColorAmong: "your_lands",
+        },
+      ],
+    });
+    const wastesDef = createCardDefinition({
+      name: "Wastes",
+      typeLine: "Basic Land",
+      produces: { C: 1 },
+    });
+    game.definitions[poolDef.id] = poolDef;
+    game.definitions[wastesDef.id] = wastesDef;
+    const pool = createCardInstance({ definitionId: poolDef.id, ownerId: p1.id, zone: "battlefield" });
+    const wastes = createCardInstance({ definitionId: wastesDef.id, ownerId: p1.id, zone: "battlefield" });
+    game.cards[pool.id] = pool;
+    game.cards[wastes.id] = wastes;
+    p1.zones.battlefield.push(pool.id, wastes.id);
+    game.priorityPlayerId = p1.id;
+
+    // "Any type" includes colorless — the Wastes teaches the pool {C}.
+    const next = applyAction(game, {
+      kind: "tap_for_mana",
+      playerId: p1.id,
+      cardId: pool.id,
+      color: "C",
+    });
+    expect(next.players[0]?.mana.C).toBe(1);
+  });
+
+  it("drains a flat amount when the cutthroat's crew dies", () => {
+    const { game, p1 } = twoPlayers();
+    const cutthroatDef = createCardDefinition({
+      name: "Cutthroat",
+      typeLine: "Creature — Human Rogue",
+      power: 1,
+      toughness: 1,
+      triggers: [
+        {
+          event: "dies",
+          watch: "controlled",
+          subjectFilter: { types: ["creature"] },
+          effects: [
+            { kind: "lose_life", playerId: "each_opponent", amount: 1 },
+            { kind: "gain_life", playerId: "controller", amount: 1 },
+          ],
+          targetRequirements: [],
+        },
+      ],
+    });
+    const bearDef = createCardDefinition({ name: "Bear", typeLine: "Creature — Bear", power: 2, toughness: 2 });
+    game.definitions[cutthroatDef.id] = cutthroatDef;
+    game.definitions[bearDef.id] = bearDef;
+    const cutthroat = createCardInstance({ definitionId: cutthroatDef.id, ownerId: p1.id, zone: "battlefield" });
+    const bear = createCardInstance({ definitionId: bearDef.id, ownerId: p1.id, zone: "battlefield" });
+    game.cards[cutthroat.id] = cutthroat;
+    game.cards[bear.id] = bear;
+    p1.zones.battlefield.push(cutthroat.id, bear.id);
+
+    let next = applyEffect(game, { kind: "sacrifice", cardId: bear.id });
+    while (next.stack.length > 0) {
+      next = resolveTopOfStack(next);
+    }
+    expect(next.players[1]?.life).toBe(39);
+    expect(next.players[0]?.life).toBe(41);
+  });
+});

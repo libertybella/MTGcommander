@@ -47,9 +47,72 @@ export function colorsAmongControlled(
   return MANA_COLORS.filter((color) => found.has(color));
 }
 
+/** Exotic Orchard / Reflecting Pool: what a set of lands could produce.
+ * Board-aware abilities on those lands are skipped rather than resolved
+ * (Pool looking at Pool) — a documented approximation avoiding recursion. */
+function producibleLandColors(
+  state: GameState,
+  controllerId: string,
+  which: "opponents" | "own",
+): ManaColor[] {
+  const found = new Set<ManaColor>();
+  for (const card of Object.values(state.cards)) {
+    if (card.zone !== "battlefield") {
+      continue;
+    }
+    const mine = card.controllerId === controllerId;
+    if (which === "opponents" ? mine : !mine) {
+      continue;
+    }
+    if (!(computedCard(state, card.id)?.characteristics.types ?? []).includes("land")) {
+      continue;
+    }
+    for (const ability of manaAbilitiesUngated(state, card.id)) {
+      if (ability.anyColorAmong || ability.producesColorsAmong) {
+        continue;
+      }
+      if (ability.producesAnyColor) {
+        for (const color of COLOR_PIPS) {
+          found.add(color);
+        }
+        continue;
+      }
+      for (const color of ability.producesOptions) {
+        found.add(color);
+      }
+      for (const color of MANA_COLORS) {
+        if ((ability.produces[color] ?? 0) > 0) {
+          found.add(color);
+        }
+      }
+    }
+  }
+  return MANA_COLORS.filter((color) => found.has(color));
+}
+
+/** The legal picks for an anyColorAmong mana ability, by scope. */
+export function manaChoiceColors(
+  state: GameState,
+  controllerId: string,
+  scope: NonNullable<ManaAbility["anyColorAmong"]>,
+): ManaColor[] {
+  if (scope === "legendary") {
+    return colorsAmongControlled(state, controllerId, "legendary");
+  }
+  if (scope === "opponent_lands") {
+    // "any color": colorless is not a color (CR 107.4c).
+    return producibleLandColors(state, controllerId, "opponents").filter((color) => color !== "C");
+  }
+  // Reflecting Pool says "any type" — colorless counts.
+  return producibleLandColors(state, controllerId, "own");
+}
+
 function manaGateSatisfied(state: GameState, controllerId: string, ability: ManaAbility): boolean {
-  // Mox Amber: no legendary colors, no mana — the ability is unusable.
-  if (ability.anyColorAmong && colorsAmongControlled(state, controllerId, "legendary").length === 0) {
+  // Mox Amber / Exotic Orchard: an empty choice set means no mana at all.
+  if (
+    ability.anyColorAmong &&
+    manaChoiceColors(state, controllerId, ability.anyColorAmong).length === 0
+  ) {
     return false;
   }
   // Bloom Tender with a colorless board would tap for nothing.
@@ -104,7 +167,10 @@ function manaGateSatisfied(state: GameState, controllerId: string, ability: Mana
   });
 }
 
-export function manaAbilitiesFor(state: GameState, cardId: CardInstanceId): ManaAbility[] {
+/** The full ability list before gate filtering. producibleLandColors uses
+ * this directly — running the gates there would recurse (a Reflecting Pool
+ * scanning its own lands re-gates the Pool itself). */
+function manaAbilitiesUngated(state: GameState, cardId: CardInstanceId): ManaAbility[] {
   const card = state.cards[cardId];
   const definition = card ? state.definitions[card.definitionId] : undefined;
   if (!card || !definition) {
@@ -147,6 +213,18 @@ export function manaAbilitiesFor(state: GameState, cardId: CardInstanceId): Mana
         printedColors.add(color);
       }
     }
+  }
+  return abilities;
+}
+
+export function manaAbilitiesFor(state: GameState, cardId: CardInstanceId): ManaAbility[] {
+  const card = state.cards[cardId];
+  if (!card) {
+    return [];
+  }
+  const abilities = manaAbilitiesUngated(state, cardId);
+  if (card.zone !== "battlefield") {
+    return abilities;
   }
   return abilities.filter(
     (ability) =>
@@ -229,11 +307,12 @@ export function manaTapOptionsFor(
   state?: GameState,
   controllerId?: string,
 ): ManaColor[] | null {
-  // Mox Amber: the choice is limited to colors among controlled legendaries.
-  // Without state (client preview) every pip shows; the server validates.
+  // Mox Amber / Exotic Orchard / Reflecting Pool: the choice is limited to
+  // what the board offers. Without state (client preview) every pip shows;
+  // the server validates.
   if (ability.anyColorAmong) {
     return state && controllerId
-      ? colorsAmongControlled(state, controllerId, "legendary")
+      ? manaChoiceColors(state, controllerId, ability.anyColorAmong)
       : [...COLOR_PIPS];
   }
   if (ability.producesAnyColor) {

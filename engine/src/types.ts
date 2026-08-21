@@ -1562,9 +1562,12 @@ export type ManaAbility = {
   /** Springleaf Drum: tapping a chosen untapped controlled creature is part
    * of the cost. Never auto-tapped; adds nothing to potential mana. */
   costTapCreature?: boolean;
-  /** Mox Amber: the color choice is limited to colors among controlled
-   * legendary creatures and planeswalkers; unusable when there are none. */
-  anyColorAmong?: "legendary";
+  /** The color choice is limited to what the board offers: colors among
+   * controlled legendary creatures/planeswalkers (Mox Amber), colors an
+   * opponent's land could produce (Exotic Orchard, Fellwar Stone), or types
+   * — colorless included — your own lands could produce (Reflecting Pool).
+   * Unusable when the set is empty. */
+  anyColorAmong?: "legendary" | "opponent_lands" | "your_lands";
   /** Bloom Tender: one mana of each color among permanents you control. */
   producesColorsAmong?: "permanents";
   /** "Activate only if you control a Swamp" on a mana ability. */

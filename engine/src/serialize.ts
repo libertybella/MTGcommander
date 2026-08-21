@@ -2963,7 +2963,11 @@ function parseManaAbilities(value: unknown, label: string): ManaAbility[] {
       ...(entry.noTap === true ? { noTap: true } : {}),
       ...(entry.countFromPower === true ? { countFromPower: true } : {}),
       ...(entry.costTapCreature === true ? { costTapCreature: true } : {}),
-      ...(entry.anyColorAmong === "legendary" ? { anyColorAmong: "legendary" as const } : {}),
+      ...(entry.anyColorAmong === "legendary" ||
+      entry.anyColorAmong === "opponent_lands" ||
+      entry.anyColorAmong === "your_lands"
+        ? { anyColorAmong: entry.anyColorAmong }
+        : {}),
       ...(entry.producesColorsAmong === "permanents"
         ? { producesColorsAmong: "permanents" as const }
         : {}),

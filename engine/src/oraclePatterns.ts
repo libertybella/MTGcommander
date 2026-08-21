@@ -411,7 +411,7 @@ function copyFirstManaAbility(result: CompiledOracleText): void {
 type AddManaResult =
   | { kind: "fixed"; produces: Partial<ManaPool> }
   | { kind: "any_color"; identityRestricted: boolean; count?: number; countFromPower?: boolean }
-  | { kind: "any_color_among"; scope: "legendary" }
+  | { kind: "any_color_among"; scope: "legendary" | "opponent_lands" | "your_lands" }
   | { kind: "colors_among"; scope: "permanents" }
   | { kind: "or"; colors: ManaColor[] };
 
@@ -428,6 +428,14 @@ function parseAddMana(rest: string): AddManaResult | null {
   // Bloom Tender: one mana of each color represented on your board.
   if (/^For each color among permanents you control, add one mana of that color$/i.test(text)) {
     return { kind: "colors_among", scope: "permanents" };
+  }
+  // Exotic Orchard / Fellwar Stone.
+  if (/^Add one mana of any color that a land an opponent controls could produce$/i.test(text)) {
+    return { kind: "any_color_among", scope: "opponent_lands" };
+  }
+  // Reflecting Pool ("any type" — colorless included).
+  if (/^Add one mana of any type that a land you control could produce$/i.test(text)) {
+    return { kind: "any_color_among", scope: "your_lands" };
   }
   const identity = /any color in your commander'?s color identity/i.test(text);
   if (/^Add one mana of any color(?: in your commander'?s color identity)?$/i.test(text)) {
@@ -2696,6 +2704,24 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     };
   }
 
+  // Zulaport Cutthroat: a flat drain — the gain does not scale per opponent.
+  match = sentence.match(
+    /^each opponent loses (\d+|one|two) life and you gain (\d+|one|two) life$/i,
+  );
+  if (match?.[1] && match[2]) {
+    const lost = parseCount(match[1]);
+    const gained = parseCount(match[2]);
+    if (lost && gained) {
+      return {
+        targetRequirements: [],
+        effects: [
+          { kind: "lose_life", playerId: "each_opponent", amount: lost },
+          { kind: "gain_life", playerId: "controller", amount: gained },
+        ],
+      };
+    }
+  }
+
   match = sentence.match(/^Each (player|opponent) (draws|discards) (a|one|two|three) cards?$/i);
   if (match?.[1] && match[2] && match[3]) {
     const count = parseCount(match[3]);
@@ -3391,7 +3417,7 @@ function parseTriggerHead(head: string): TriggerHead | null {
       subjectFilter: { types: ["creature"] },
     };
   }
-  if (/^Whenever this creature or another creature you control dies$/i.test(text)) {
+  if (/^Whenever (?:~|this creature) or another creature you control dies$/i.test(text)) {
     return { event: "dies", watch: "controlled", subjectFilter: { types: ["creature"] } };
   }
   if (/^At the beginning of your upkeep$/i.test(text)) {
@@ -5239,6 +5265,12 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
       if (etbIf?.[1] && etbIf[2]) {
         etbCondition = { kind: "controls_power_at_least", power: Number(etbIf[1]) };
         etbRest = etbIf[2].trim();
+      }
+      // Knight of the White Orchid / Loyal Warhound: land catch-up ETBs.
+      const etbLands = etbRest.match(/^if an opponent controls more lands than you, (?:then )?(.+)$/i);
+      if (etbLands?.[1]) {
+        etbCondition = { kind: "opponent_controls_more_lands" };
+        etbRest = etbLands[1].trim();
       }
       const inner = compileSimpleClause(etbRest);
       if (inner) {
