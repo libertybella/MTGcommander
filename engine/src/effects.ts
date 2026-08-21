@@ -3,7 +3,7 @@ import { cloneGameState } from "./clone";
 import { createCardDefinition, createCardInstance } from "./createGame";
 import { characteristicsOf, hasSubtype, isCreature, isInstantOrSorcery, isLand } from "./cardTypes";
 import { createId } from "./ids";
-import { creaturePower, wouldSkipDraw } from "./derived";
+import { creaturePower, creatureToughness, wouldSkipDraw } from "./derived";
 import { hasKeyword } from "./keywords";
 import { addMana, tapCard, untapCard } from "./mana";
 import { isLiving, livingPlayers, nextLivingPlayerId } from "./players";
@@ -231,7 +231,13 @@ export function bindCardEffect(
         return null;
       }
       const amount =
-        effect.amount === "subject_amount" ? (context.subjectAmount ?? 0) : effect.amount;
+        effect.amount === "subject_amount"
+          ? (context.subjectAmount ?? 0)
+          : effect.amount === "subject_toughness"
+            ? context.subjectCardId
+              ? creatureToughness(state, context.subjectCardId)
+              : 0
+            : effect.amount;
       if (amount <= 0) {
         return null;
       }

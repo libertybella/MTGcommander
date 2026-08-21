@@ -702,6 +702,14 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     return { targetRequirements: [], effects: [{ kind: "windfall" }] };
   }
 
+  // Trostani: the entering creature's toughness feeds the gain.
+  if (/^you gain life equal to (?:that creature's|its) toughness$/i.test(sentence)) {
+    return {
+      targetRequirements: [],
+      effects: [{ kind: "gain_life", playerId: "controller", amount: "subject_toughness" }],
+    };
+  }
+
   // Tatyova-class compound: "you gain 1 life and draw a card".
   const gainDraw = sentence.match(
     /^you gain (\d+|a|an|one|two|three|four|five) life and draw (a|an|one|two|three|\d+) cards?$/i,
@@ -1579,6 +1587,14 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
   }
 
   // Beast Within (single sentence: destroy; the token clause is a pair).
+  const destroyLand = sentence.match(/^Destroy target (nonbasic )?land$/i);
+  if (destroyLand) {
+    return {
+      targetRequirements: [{ kind: "land", ...(destroyLand[1] ? { nonbasicOnly: true } : {}) }],
+      effects: [{ kind: "move_card", cardId: { type: "chosen", index: 0 }, toZone: "graveyard" }],
+    };
+  }
+
   if (/^Destroy target permanent$/i.test(sentence)) {
     return {
       targetRequirements: [{ kind: "permanent" }],
@@ -1718,13 +1734,18 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
   }
 
   match = sentence.match(
-    /^Target (legendary )?creature (?:gains|gets) ([a-z ]+?) until end of turn$/i,
+    /^Target (legendary creature|creature|commander) (?:gains|gets) ([a-z ]+?) until end of turn$/i,
   );
-  if (match?.[2]) {
+  if (match?.[1] && match[2]) {
     const keyword = KEYWORD_GRANTS[match[2].trim().toLowerCase()];
     if (keyword) {
+      const what = match[1].toLowerCase();
       return {
-        targetRequirements: [{ kind: "creature", ...(match[1] ? { legendaryOnly: true } : {}) }],
+        targetRequirements: [
+          what === "commander"
+            ? { kind: "commander" }
+            : { kind: "creature", ...(what.startsWith("legendary") ? { legendaryOnly: true } : {}) },
+        ],
         effects: [
           { kind: "keyword_until_eot", cardId: { type: "chosen", index: 0 }, keyword },
         ],

@@ -603,6 +603,9 @@ export type TargetKind =
   | "own_graveyard_permanent_card"
   | "own_graveyard_artifact_card"
   | "nonartifact_creature"
+  | "land"
+  /** A commander creature on the battlefield (Witch's Clinic). */
+  | "commander"
   | "player_or_creature"
   | "spell"
   | "creature_spell"
@@ -623,6 +626,8 @@ export type TargetRequirement = {
   minManaValue?: number;
   /** "with power N or less" (Escape Tunnel). */
   maxPower?: number;
+  /** "target nonbasic land" (Wasteland). */
+  nonbasicOnly?: boolean;
   /** "target legendary creature" (Shizo). */
   legendaryOnly?: boolean;
   /** "another target …": the effect's own source is not a legal target. */
@@ -679,7 +684,11 @@ export type CardEffectTarget =
  * Definition-stored effect data. Bound to concrete GameEffect values on resolve.
  */
 export type CardEffect =
-  | { kind: "gain_life"; playerId: PlayerSelector; amount: number | "subject_amount" }
+  | {
+      kind: "gain_life";
+      playerId: PlayerSelector;
+      amount: number | "subject_amount" | "subject_toughness";
+    }
   | { kind: "lose_life"; playerId: PlayerSelector; amount: number | "subject_amount" }
   | {
       kind: "deal_damage";

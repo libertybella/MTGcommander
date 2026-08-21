@@ -1,4 +1,4 @@
-import { characteristicsOf, isCreature, isPlaneswalker } from "./cardTypes";
+import { characteristicsOf, isCommander, isCreature, isPlaneswalker } from "./cardTypes";
 import { creaturePower } from "./derived";
 import { hasKeyword } from "./keywords";
 import { isLiving, livingPlayers } from "./players";
@@ -255,7 +255,9 @@ export function isChosenTargetLegal(
     requirement.kind === "creature_or_artifact" ||
     requirement.kind === "creature_or_enchantment" ||
     requirement.kind === "nonland_permanent" ||
-    requirement.kind === "noncreature_nonland_permanent"
+    requirement.kind === "noncreature_nonland_permanent" ||
+    requirement.kind === "land" ||
+    requirement.kind === "commander"
   ) {
     if (target.type !== "creature") {
       return false;
@@ -294,6 +296,14 @@ export function isChosenTargetLegal(
         return !types.includes("land");
       case "noncreature_nonland_permanent":
         return !types.includes("land") && !isCreature(state, target.cardId);
+      case "land":
+        return (
+          types.includes("land") &&
+          (!requirement.nonbasicOnly ||
+            !characteristicsOf(state, target.cardId).supertypes.includes("basic"))
+        );
+      case "commander":
+        return isCommander(state, target.cardId);
     }
   }
   if (requirement.kind === "spell") {
@@ -435,7 +445,9 @@ export function legalChoicesForRequirement(
     requirement.kind === "creature_or_artifact" ||
     requirement.kind === "creature_or_enchantment" ||
     requirement.kind === "nonland_permanent" ||
-    requirement.kind === "noncreature_nonland_permanent"
+    requirement.kind === "noncreature_nonland_permanent" ||
+    requirement.kind === "land" ||
+    requirement.kind === "commander"
   ) {
     const choices: ChosenTarget[] = [];
     for (const player of livingPlayers(state)) {

@@ -5067,3 +5067,108 @@ describe("wave 52: token keywords, tribal attacks, populate", () => {
     expect(bird && populated.definitions[bird.definitionId]?.keywords).toEqual(["flying"]);
   });
 });
+
+describe("wave 53: land targets, commander targets, toughness gains", () => {
+  const base = { power: null, toughness: null, printedKeywords: [], imageUrl: "" };
+
+  it("compiles Wasteland, Witch's Clinic, and Trostani fully", () => {
+    const wasteland = compileOracleCard({
+      ...base,
+      oracleId: "wasteland",
+      name: "Wasteland",
+      manaCost: "",
+      typeLine: "Land",
+      oracleText: "{T}: Add {C}.\n{T}, Sacrifice this land: Destroy target nonbasic land.",
+    });
+    expect(wasteland.notes).toEqual([]);
+    expect(wasteland.definition.activated[0]?.targetRequirements).toEqual([
+      { kind: "land", nonbasicOnly: true },
+    ]);
+
+    const clinic = compileOracleCard({
+      ...base,
+      oracleId: "clinic",
+      name: "Witch's Clinic",
+      manaCost: "",
+      typeLine: "Land",
+      oracleText: "{T}: Add {C}.\n{2}, {T}: Target commander gains lifelink until end of turn.",
+    });
+    expect(clinic.notes).toEqual([]);
+    expect(clinic.definition.activated[0]?.targetRequirements).toEqual([{ kind: "commander" }]);
+
+    const trostani = compileOracleCard({
+      ...base,
+      oracleId: "trostani",
+      name: "Trostani, Selesnya's Voice",
+      manaCost: "{G}{G}{W}{W}",
+      typeLine: "Legendary Creature — Dryad",
+      power: "2",
+      toughness: "5",
+      oracleText:
+        "Whenever another creature you control enters, you gain life equal to that creature's toughness.\n{1}{G}{W}, {T}: Populate. (Create a token that's a copy of a creature token you control.)",
+    });
+    expect(trostani.notes).toEqual([]);
+    expect(trostani.definition.triggers[0]?.effects[0]).toEqual({
+      kind: "gain_life",
+      playerId: "controller",
+      amount: "subject_toughness",
+    });
+  });
+
+  it("validates nonbasic land and commander targets", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const basicDef = createCardDefinition({ name: "Forest", typeLine: "Basic Land — Forest" });
+    const duallDef = createCardDefinition({ name: "Tundra", typeLine: "Land — Plains Island" });
+    game.definitions[basicDef.id] = basicDef;
+    game.definitions[duallDef.id] = duallDef;
+    const basic = createCardInstance({ definitionId: basicDef.id, ownerId: p2.id, zone: "battlefield" });
+    const dual = createCardInstance({ definitionId: duallDef.id, ownerId: p2.id, zone: "battlefield" });
+    game.cards[basic.id] = basic;
+    game.cards[dual.id] = dual;
+    p2.zones.battlefield.push(basic.id, dual.id);
+
+    const nonbasic = { kind: "land" as const, nonbasicOnly: true };
+    expect(isChosenTargetLegal(game, nonbasic, { type: "creature", cardId: basic.id }, p1.id)).toBe(false);
+    expect(isChosenTargetLegal(game, nonbasic, { type: "creature", cardId: dual.id }, p1.id)).toBe(true);
+    expect(isChosenTargetLegal(game, { kind: "land" }, { type: "creature", cardId: basic.id }, p1.id)).toBe(true);
+  });
+
+  it("gains life equal to the entering creature's toughness", () => {
+    const { game, p1 } = twoPlayers();
+    const trostaniDef = createCardDefinition({
+      name: "Trostani Lite",
+      typeLine: "Creature — Dryad",
+      power: 2,
+      toughness: 5,
+      triggers: [
+        {
+          event: "enter_battlefield",
+          watch: "controlled",
+          excludeSelf: true,
+          subjectFilter: { types: ["creature"] },
+          effects: [{ kind: "gain_life", playerId: "controller", amount: "subject_toughness" }],
+        },
+      ],
+    });
+    const oxDef = createCardDefinition({
+      name: "Ox",
+      typeLine: "Creature — Ox",
+      power: 4,
+      toughness: 6,
+    });
+    game.definitions[trostaniDef.id] = trostaniDef;
+    game.definitions[oxDef.id] = oxDef;
+    const trostani = createCardInstance({ definitionId: trostaniDef.id, ownerId: p1.id, zone: "battlefield" });
+    const ox = createCardInstance({ definitionId: oxDef.id, ownerId: p1.id, zone: "hand" });
+    game.cards[trostani.id] = trostani;
+    game.cards[ox.id] = ox;
+    p1.zones.battlefield.push(trostani.id);
+    p1.zones.hand.push(ox.id);
+
+    const before = game.players.find((p) => p.id === p1.id)!.life;
+    let next = moveCard(game, ox.id, "battlefield");
+    expect(next.stack).toHaveLength(1);
+    next = resolveTopOfStack(next);
+    expect(next.players.find((p) => p.id === p1.id)!.life).toBe(before + 6);
+  });
+});

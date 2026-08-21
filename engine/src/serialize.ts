@@ -1286,7 +1286,9 @@ function parseTargetRequirement(value: unknown, label: string): TargetRequiremen
     kind !== "spell" &&
     kind !== "creature_spell" &&
     kind !== "noncreature_spell" &&
-    kind !== "instant_or_sorcery_spell"
+    kind !== "instant_or_sorcery_spell" &&
+    kind !== "land" &&
+    kind !== "commander"
   ) {
     throw new Error(`Invalid ${label}.kind`);
   }
@@ -1324,6 +1326,7 @@ function parseTargetRequirement(value: unknown, label: string): TargetRequiremen
       ? {}
       : { maxPower: expectNumber(value.maxPower, `${label}.maxPower`) }),
     ...(value.legendaryOnly === true ? { legendaryOnly: true } : {}),
+    ...(value.nonbasicOnly === true ? { nonbasicOnly: true } : {}),
     ...(value.excludeSource === true ? { excludeSource: true } : {}),
   };
 }
@@ -1396,6 +1399,14 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
   const kind = expectString(value.kind, `${label}.kind`);
   switch (kind) {
     case "gain_life":
+      return {
+        kind,
+        playerId: parsePlayerSelector(value.playerId, `${label}.playerId`),
+        amount:
+          value.amount === "subject_amount" || value.amount === "subject_toughness"
+            ? value.amount
+            : expectNumber(value.amount, `${label}.amount`),
+      };
     case "lose_life":
       return {
         kind,
