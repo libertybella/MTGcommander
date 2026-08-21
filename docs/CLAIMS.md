@@ -51,7 +51,7 @@ Statuses: `open` · `claimed` · `in-progress` · `done` · `blocked`
 | Gift mechanic | B | open | | | | 4 cards |
 | Academy Manufactor | C | open | | | | Token-creation replacement |
 | Sylvan Library | C | open | | | | Draw-step replacement |
-| Waste Not | C | open | | | | |
+| Waste Not | C | in-progress | claude/2daf8b18 | comprehensive-plan | 2026-08-21 | Wave 130 |
 | Mana persistence (Electro, Ashling) | C | open | | | | |
 | Enters-tapped-unless-basic | C | open | | | | 2 lands |
 | Sagas | D | open | | | | Urza's Saga is the #1 top-2,000 miss |
