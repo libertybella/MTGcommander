@@ -11,8 +11,9 @@ starting it.
 One **wave** = one cluster of cards sharing a missing mechanic, implemented
 end-to-end and committed. Typical yield: 4–9 newly fully-compiling cards.
 
-1. **Pick a cluster** from your stream (or regenerate the one-away report,
-   below).
+1. **Claim a cluster** on [docs/CLAIMS.md](docs/CLAIMS.md) (protocol is in
+   that file — claim before coding, one at a time), picking from your
+   stream or a regenerated one-away report (below).
 2. **Probe real oracle text first.** Never write a regex from memory of a
    card. Create a scratch `server/src/tmpProbe.test.ts` that loads the
    Scryfall bulk file, compiles the named cards via
