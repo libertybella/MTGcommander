@@ -367,10 +367,23 @@ export function validateChosenTargets(
     }
     return;
   }
-  if (targets.length !== requirements.length) {
-    throw new Error(`Expected ${requirements.length} target(s)`);
+  // "Up to N other targets": trailing optional slots may stay unfilled, and
+  // every chosen target must then be distinct.
+  const requiredCount = requirements.filter((requirement) => !requirement.optional).length;
+  if (targets.length < requiredCount || targets.length > requirements.length) {
+    throw new Error(
+      requiredCount === requirements.length
+        ? `Expected ${requirements.length} target(s)`
+        : `Expected ${requiredCount} to ${requirements.length} target(s)`,
+    );
   }
-  for (let index = 0; index < requirements.length; index += 1) {
+  if (requiredCount !== requirements.length) {
+    const seen = new Set(targets.map((target) => JSON.stringify(target)));
+    if (seen.size !== targets.length) {
+      throw new Error("Choose each target once");
+    }
+  }
+  for (let index = 0; index < targets.length; index += 1) {
     const requirement = requirements[index];
     const target = targets[index];
     if (!requirement || !target || !isChosenTargetLegal(state, requirement, target, casterId, sourceColors, sourceId)) {
@@ -502,9 +515,9 @@ export function hasAnyLegalTargetSet(
   if (requirements.length === 0) {
     return true;
   }
-  return requirements.every(
-    (requirement) => legalChoicesForRequirement(state, requirement, casterId).length > 0,
-  );
+  return requirements
+    .filter((requirement) => !requirement.optional)
+    .every((requirement) => legalChoicesForRequirement(state, requirement, casterId).length > 0);
 }
 
 /** First legal target per requirement, or null if any requirement has none. */

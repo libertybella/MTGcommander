@@ -10,6 +10,7 @@ import {
   createGameState,
   isChosenTargetLegal,
   moveCard,
+  validateChosenTargets,
   putSpellOnStack,
   resolveTopOfStack,
 } from "./index";
@@ -6083,5 +6084,72 @@ describe("wave 65: darksteel mutation", () => {
     expect(computed?.keywords.includes("flying")).toBe(false);
     expect(computed?.characteristics.types.includes("artifact")).toBe(true);
     expect(computed?.abilitiesRemoved).toBe(true);
+  });
+});
+
+describe("wave 66: up-to optional targets", () => {
+  it("compiles Drakuseth fully", () => {
+    const drakuseth = compileOracleCard({
+      oracleId: "drakuseth",
+      name: "Drakuseth, Maw of Flames",
+      manaCost: "{4}{R}{R}{R}",
+      typeLine: "Legendary Creature — Dragon",
+      power: "7",
+      toughness: "7",
+      printedKeywords: ["Flying"],
+      imageUrl: "",
+      oracleText:
+        "Flying\nWhenever Drakuseth, Maw of Flames attacks, it deals 4 damage to any target and 3 damage to each of up to two other targets.",
+    });
+    expect(drakuseth.notes).toEqual([]);
+    const trigger = drakuseth.definition.triggers[0];
+    expect(trigger?.targetRequirements).toHaveLength(3);
+    expect(trigger?.targetRequirements?.[1]?.optional).toBe(true);
+  });
+
+  it("accepts partial target sets and skips unfilled slots", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const requirements = [
+      { kind: "player_or_creature" as const },
+      { kind: "player_or_creature" as const, optional: true },
+      { kind: "player_or_creature" as const, optional: true },
+    ];
+    // One target only: legal.
+    expect(() =>
+      validateChosenTargets(game, requirements, [{ type: "player", playerId: p2.id }], p1.id),
+    ).not.toThrow();
+    // Duplicate targets with optional slots present: rejected.
+    expect(() =>
+      validateChosenTargets(
+        game,
+        requirements,
+        [
+          { type: "player", playerId: p2.id },
+          { type: "player", playerId: p2.id },
+        ],
+        p1.id,
+      ),
+    ).toThrow(/once/);
+    // Zero targets: the required slot is missing.
+    expect(() => validateChosenTargets(game, requirements, [], p1.id)).toThrow(/target/);
+
+    // Resolution: absent optional slots simply skip their effects.
+    const effects = [0, 1, 2].map((index) => ({
+      kind: "deal_damage" as const,
+      sourceId: null,
+      target: { type: "chosen" as const, index },
+      amount: 4,
+    }));
+    const bound = bindCardEffects(game, effects, {
+      controllerId: p1.id,
+      sourceId: null,
+      targets: [{ type: "player", playerId: p2.id }],
+      targetRequirements: requirements,
+    });
+    expect(bound).toHaveLength(1);
+    const next = applyEffects(game, bound);
+    expect(next.players.find((p) => p.id === p2.id)!.life).toBe(
+      game.players.find((p) => p.id === p2.id)!.life - 4,
+    );
   });
 });

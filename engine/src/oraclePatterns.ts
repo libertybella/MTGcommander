@@ -651,6 +651,28 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     };
   }
 
+  // Drakuseth: a primary target plus up to two optional extras.
+  const multiBlast = sentence.match(
+    /^it deals (\d+) damage to any target and (\d+) damage to each of up to two other targets$/i,
+  );
+  if (multiBlast?.[1] && multiBlast[2]) {
+    const first = Number(multiBlast[1]);
+    const rest = Number(multiBlast[2]);
+    return {
+      targetRequirements: [
+        { kind: "player_or_creature" },
+        { kind: "player_or_creature", optional: true },
+        { kind: "player_or_creature", optional: true },
+      ],
+      effects: [0, 1, 2].map((index) => ({
+        kind: "deal_damage" as const,
+        sourceId: "self" as const,
+        target: { type: "chosen" as const, index },
+        amount: index === 0 ? first : rest,
+      })),
+    };
+  }
+
   // Scourge of Valkas: X scales with the controller's tribe at resolution.
   const tribalDamage = sentence.match(
     /^it deals X damage to any target, where X is the number of ([A-Za-z]+) you control$/i,

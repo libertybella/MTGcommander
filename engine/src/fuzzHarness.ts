@@ -75,8 +75,22 @@ function randomTargets(
   rng: () => number,
 ): ChosenTarget[] | null {
   const chosen: ChosenTarget[] = [];
+  const hasOptional = requirements.some((requirement) => requirement.optional);
   for (const requirement of requirements) {
-    const options = legalChoicesForRequirement(state, requirement, playerId);
+    let options = legalChoicesForRequirement(state, requirement, playerId);
+    if (hasOptional) {
+      // Optional slots demand distinct targets; drop what's already chosen.
+      const taken = new Set(chosen.map((target) => JSON.stringify(target)));
+      options = options.filter((option) => !taken.has(JSON.stringify(option)));
+    }
+    if (requirement.optional) {
+      // "Up to": sometimes stop filling, and always stop when nothing's left.
+      if (options.length === 0 || rng() < 0.4) {
+        break;
+      }
+      chosen.push(pick(rng, options));
+      continue;
+    }
     if (options.length === 0) {
       return null;
     }

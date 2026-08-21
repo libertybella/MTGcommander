@@ -639,6 +639,9 @@ export type TargetRequirement = {
   kind: TargetKind;
   /** "any number of targets": 1..N chosen targets all matching this kind. */
   variable?: boolean;
+  /** "up to two other targets": this trailing slot may be left unfilled;
+   * chosen targets must be distinct when optional slots are present. */
+  optional?: boolean;
   /** "target nonblack creature": these colors are illegal. */
   excludeColors?: Color[];
   /** "you don't control" (Cyclonic Rift) / "you control" (Ephemerate). */

@@ -1714,7 +1714,15 @@ export function Battlefield(props: Props) {
     const requirements = modeRequirements(state, mode);
     const chosen = [...mode.chosen, target];
     const playerId = controllerOf(mode.cardId) ?? actorId;
-    if (chosen.length >= requirements.length) {
+    // "Up to N" slots: stop early when the next optional slot has no distinct
+    // legal choice left.
+    const next = requirements[chosen.length];
+    const nextExhausted =
+      next?.optional === true &&
+      legalChoicesForRequirement(state, next, playerId).filter(
+        (option) => !chosen.some((entry) => JSON.stringify(entry) === JSON.stringify(option)),
+      ).length === 0;
+    if (chosen.length >= requirements.length || nextExhausted) {
       if (mode.origin === "trigger") {
         send({
           kind: "choose_targets",

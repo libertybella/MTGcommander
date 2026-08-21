@@ -1339,6 +1339,7 @@ function parseTargetRequirement(value: unknown, label: string): TargetRequiremen
   return {
     kind,
     ...(value.variable === true ? { variable: true } : {}),
+    ...(value.optional === true ? { optional: true } : {}),
     ...(excludeColors.length > 0 ? { excludeColors } : {}),
     ...(control === undefined ? {} : { control }),
     ...(value.maxManaValue === undefined
