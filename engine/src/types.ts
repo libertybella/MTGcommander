@@ -626,7 +626,13 @@ export type GameEffect =
   | { kind: "fog" }
   | { kind: "windfall" }
   /** Wave Goodbye: bounce every creature missing the listed counter. */
-  | { kind: "bounce_each_creature"; unlessCounter?: string; onlyAttacking?: boolean }
+  | {
+      kind: "bounce_each_creature";
+      unlessCounter?: string;
+      onlyAttacking?: boolean;
+      /** Raise the Palisade: spare creatures of this subtype. */
+      exceptSubtype?: string;
+    }
   /** Impulse digs: look at the top N, auto-take the first filter match to the
    * destination, rest to the bottom in random order. */
   | {
@@ -672,7 +678,13 @@ export type GameEffect =
       nonSubtypes?: string[];
     }
   | { kind: "team_protection_until_eot"; playerId: PlayerId; colors: Color[] }
-  | { kind: "all_pt_until_eot"; power: number; toughness: number }
+  | {
+      kind: "all_pt_until_eot";
+      power: number;
+      toughness: number;
+      /** Crippling Fear: spare creatures of this subtype. */
+      exceptSubtype?: string;
+    }
   | { kind: "reveal_top_put_permanent"; playerId: PlayerId }
   | { kind: "drain_opponents"; playerId: PlayerId; amount: number }
   | { kind: "silence"; playerId: PlayerId }
@@ -729,7 +741,14 @@ export type GameEffect =
       effects: CardEffect[];
     }
   /** Board wipes: destroy every battlefield permanent of the scope at once. */
-  | { kind: "destroy_all"; what: DestroyAllScope; maxManaValue?: number; minManaValue?: number }
+  | {
+      kind: "destroy_all";
+      what: DestroyAllScope;
+      maxManaValue?: number;
+      minManaValue?: number;
+      /** Kindred Dominance: spare permanents of this subtype. */
+      exceptSubtype?: string;
+    }
   /** Rhystic Study: the payer chooses to pay or the effects happen. */
   | { kind: "unless_pays"; playerId: PlayerId; cost: string; effects: GameEffect[] }
   /** "You may pay {N}. If you do, …" — paying causes the effects. */
@@ -963,6 +982,9 @@ export type CardEffect =
       /** Return of the Wildspeaker: draw the greatest power among the
        * controller's creatures instead, computed when the effect binds. */
       countFromGreatestPower?: { nonSubtypes?: string[] };
+      /** Distant Melody: draw per controlled permanent of the auto-chosen
+       * type instead, computed when the effect binds. */
+      countFromChosenTypePermanents?: boolean;
       /** Shamanic Revelation: one card per controlled creature at bind. */
       countPerControlled?: "creature";
     }
@@ -1055,7 +1077,13 @@ export type CardEffect =
   | { kind: "fog" }
   /** Windfall: each player discards their hand, then draws the greatest count. */
   | { kind: "windfall" }
-  | { kind: "bounce_each_creature"; unlessCounter?: string; onlyAttacking?: boolean }
+  | {
+      kind: "bounce_each_creature";
+      unlessCounter?: string;
+      onlyAttacking?: boolean;
+      /** Raise the Palisade: the auto-chosen type is spared. */
+      exceptChosenType?: boolean;
+    }
   | {
       kind: "dig_top";
       playerId: PlayerSelector;
@@ -1107,7 +1135,13 @@ export type CardEffect =
   /** "Creatures you control gain protection from each color" (Akroma's Will). */
   | { kind: "team_protection_until_eot"; playerId: PlayerSelector; colors: Color[] }
   /** "All creatures get -X/-X until end of turn" (Toxic Deluge). */
-  | { kind: "all_pt_until_eot"; power: number | "-x"; toughness: number | "-x" }
+  | {
+      kind: "all_pt_until_eot";
+      power: number | "-x";
+      toughness: number | "-x";
+      /** Crippling Fear: the auto-chosen type is spared. */
+      exceptChosenType?: boolean;
+    }
   /** Chaos Warp's back half: reveal the top card; a permanent card lands. */
   | { kind: "reveal_top_put_permanent"; playerId: PlayerSelector }
   /** Exsanguinate: each opponent loses N; you gain the total lost.
@@ -1181,7 +1215,15 @@ export type CardEffect =
       subtype?: string;
       controlledOnly?: boolean;
     }
-  | { kind: "destroy_all"; what: DestroyAllScope; maxManaValue?: number; minManaValue?: number }
+  | {
+      kind: "destroy_all";
+      what: DestroyAllScope;
+      maxManaValue?: number;
+      minManaValue?: number;
+      /** Kindred Dominance: the auto-chosen type (most common among the
+       * caster's creatures, bound at resolution) is spared. */
+      exceptChosenType?: boolean;
+    }
   | {
       kind: "unless_pays";
       playerId: PlayerSelector;

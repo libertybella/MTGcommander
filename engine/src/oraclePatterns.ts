@@ -948,6 +948,56 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     };
   }
 
+  // Distant Melody / Kindred Dominance / Crippling Fear / Raise the Palisade:
+  // "Choose a creature type." on a spell is consumed here; the choice itself
+  // is auto-picked at bind (the caster's most common creature type — a
+  // documented approximation) by the exceptChosenType effects that follow.
+  if (/^Choose a creature type$/i.test(sentence)) {
+    return { targetRequirements: [], effects: [] };
+  }
+
+  if (/^Draw a card for each permanent you control of that type$/i.test(sentence)) {
+    return {
+      targetRequirements: [],
+      effects: [
+        { kind: "draw", playerId: "controller", count: 1, countFromChosenTypePermanents: true },
+      ],
+    };
+  }
+
+  if (/^Destroy all creatures that aren't of the chosen type$/i.test(sentence)) {
+    return {
+      targetRequirements: [],
+      effects: [{ kind: "destroy_all", what: "creatures", exceptChosenType: true }],
+    };
+  }
+
+  const nonChosenDebuff = sentence.match(
+    /^Creatures that aren't of the chosen type get (-\d+)\/(-\d+) until end of turn$/i,
+  );
+  if (nonChosenDebuff?.[1] && nonChosenDebuff[2]) {
+    return {
+      targetRequirements: [],
+      effects: [
+        {
+          kind: "all_pt_until_eot",
+          power: Number(nonChosenDebuff[1]),
+          toughness: Number(nonChosenDebuff[2]),
+          exceptChosenType: true,
+        },
+      ],
+    };
+  }
+
+  if (
+    /^Return all creatures that aren't of the chosen type to their owners' hands$/i.test(sentence)
+  ) {
+    return {
+      targetRequirements: [],
+      effects: [{ kind: "bounce_each_creature", exceptChosenType: true }],
+    };
+  }
+
   if (/^(?:then )?populate$/i.test(sentence)) {
     return { targetRequirements: [], effects: [{ kind: "populate", playerId: "controller" }] };
   }
@@ -2062,8 +2112,14 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     const toughness = Number(match[3]);
     const subtype = match[5].replace(/\b\w/g, (letter) => letter.toUpperCase());
     const keywordText = match[6]?.replace(/^ with /i, "");
+    // "with prowess" (Monastery Mentor's Monks): prowess is not representable
+    // on a token definition — dropped, a documented approximation.
     const keywords = keywordText
-      ? keywordText.split(/ and |, /i).map((word) => KEYWORD_GRANTS[word.trim().toLowerCase()])
+      ? keywordText
+          .split(/ and |, /i)
+          .map((word) => word.trim().toLowerCase())
+          .filter((word) => word !== "prowess")
+          .map((word) => KEYWORD_GRANTS[word])
       : [];
     if (count && keywords.every((keyword): keyword is Keyword => Boolean(keyword))) {
       const token: CardEffect = {
@@ -4970,6 +5026,18 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
     if (/^The "legend rule" doesn't apply to permanents you control$/i.test(sentence)) {
       // The engine never applies CR 704.5j, so Sakashima's exemption already
       // matches the table's behavior — an accurate no-op, not an approximation.
+      continue;
+    }
+
+    // Prowess (CR 702.108) lowers to its full rules text.
+    if (/^Prowess$/i.test(sentence)) {
+      result.triggers.push({
+        event: "cast_spell",
+        watch: "controlled",
+        subjectFilter: { nonTypes: ["creature"] },
+        effects: [{ kind: "pt_until_eot", cardId: "self", power: 1, toughness: 1 }],
+        targetRequirements: [],
+      });
       continue;
     }
 

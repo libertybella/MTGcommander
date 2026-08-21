@@ -16,6 +16,7 @@ import {
   resolveTopOfStack,
 } from "./index";
 import { cardMatchesSubtype, computedCard } from "./characteristicsEngine";
+import { mostCommonControlledCreatureType } from "./effects";
 import { castCostReduction, landDropAllowance } from "./derived";
 import { hasKeyword } from "./keywords";
 import { dispatchEventsInPlace } from "./triggers";
@@ -12404,5 +12405,214 @@ describe("wave 119: signets and mimics", () => {
     next.players[0]!.zones.battlefield.push(goblin.id);
     dispatchEventsInPlace(next, [{ kind: "enters", cardId: goblin.id }]);
     expect(next.stack).toHaveLength(0);
+  });
+});
+
+describe("wave 120: mentors and kindred calls", () => {
+  it("compiles the prowess and chosen-type-spell batch fully", () => {
+    const mentor = compileOracleCard({
+      oracleId: "mentor",
+      name: "Monastery Mentor",
+      manaCost: "{2}{W}",
+      typeLine: "Creature — Human Monk",
+      power: "2",
+      toughness: "2",
+      printedKeywords: ["Prowess"],
+      imageUrl: "",
+      oracleText:
+        "Prowess\nWhenever you cast a noncreature spell, create a 1/1 white Monk creature token with prowess.",
+    });
+    expect(mentor.notes).toEqual([]);
+    expect(mentor.definition.triggers[0]).toMatchObject({
+      event: "cast_spell",
+      watch: "controlled",
+      subjectFilter: { nonTypes: ["creature"] },
+    });
+    expect(mentor.definition.triggers[0]?.effects).toEqual([
+      { kind: "pt_until_eot", cardId: "self", power: 1, toughness: 1 },
+    ]);
+    expect(mentor.definition.triggers[1]?.effects[0]).toMatchObject({
+      kind: "create_token",
+      name: "Monk",
+      power: 1,
+      toughness: 1,
+    });
+
+    const melody = compileOracleCard({
+      oracleId: "melody",
+      name: "Distant Melody",
+      manaCost: "{3}{U}",
+      typeLine: "Sorcery",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText: "Choose a creature type. Draw a card for each permanent you control of that type.",
+    });
+    expect(melody.notes).toEqual([]);
+    expect(melody.definition.effects).toEqual([
+      { kind: "draw", playerId: "controller", count: 1, countFromChosenTypePermanents: true },
+    ]);
+
+    const dominance = compileOracleCard({
+      oracleId: "dominance",
+      name: "Kindred Dominance",
+      manaCost: "{5}{B}{B}",
+      typeLine: "Sorcery",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText: "Choose a creature type. Destroy all creatures that aren't of the chosen type.",
+    });
+    expect(dominance.notes).toEqual([]);
+    expect(dominance.definition.effects).toEqual([
+      { kind: "destroy_all", what: "creatures", exceptChosenType: true },
+    ]);
+
+    const fear = compileOracleCard({
+      oracleId: "fear",
+      name: "Crippling Fear",
+      manaCost: "{2}{B}{B}",
+      typeLine: "Sorcery",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "Choose a creature type. Creatures that aren't of the chosen type get -3/-3 until end of turn.",
+    });
+    expect(fear.notes).toEqual([]);
+    expect(fear.definition.effects).toEqual([
+      { kind: "all_pt_until_eot", power: -3, toughness: -3, exceptChosenType: true },
+    ]);
+
+    const palisade = compileOracleCard({
+      oracleId: "palisade",
+      name: "Raise the Palisade",
+      manaCost: "{4}{U}",
+      typeLine: "Sorcery",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "Choose a creature type. Return all creatures that aren't of the chosen type to their owners' hands.",
+    });
+    expect(palisade.notes).toEqual([]);
+    expect(palisade.definition.effects).toEqual([
+      { kind: "bounce_each_creature", exceptChosenType: true },
+    ]);
+  });
+
+  it("auto-picks the caster's most common creature type and spares it", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 10);
+    const sliverDef = createCardDefinition({
+      name: "Sliver",
+      typeLine: "Creature — Sliver",
+      power: 1,
+      toughness: 1,
+    });
+    const goblinDef = createCardDefinition({
+      name: "Goblin",
+      typeLine: "Creature — Goblin",
+      power: 1,
+      toughness: 1,
+    });
+    game.definitions[sliverDef.id] = sliverDef;
+    game.definitions[goblinDef.id] = goblinDef;
+    const mine1 = createCardInstance({ definitionId: sliverDef.id, ownerId: p1.id, zone: "battlefield" });
+    const mine2 = createCardInstance({ definitionId: sliverDef.id, ownerId: p1.id, zone: "battlefield" });
+    const mine3 = createCardInstance({ definitionId: goblinDef.id, ownerId: p1.id, zone: "battlefield" });
+    const theirs = createCardInstance({ definitionId: goblinDef.id, ownerId: p2.id, zone: "battlefield" });
+    for (const card of [mine1, mine2, mine3]) {
+      game.cards[card.id] = card;
+      p1.zones.battlefield.push(card.id);
+    }
+    game.cards[theirs.id] = theirs;
+    p2.zones.battlefield.push(theirs.id);
+
+    expect(mostCommonControlledCreatureType(game, p1.id)).toBe("sliver");
+
+    // Kindred Dominance from p1: slivers stand, both goblins die.
+    const bound = bindCardEffects(
+      game,
+      [{ kind: "destroy_all", what: "creatures", exceptChosenType: true }],
+      { controllerId: p1.id, sourceId: null, targets: [], targetRequirements: [] },
+    );
+    expect(bound[0]).toEqual({ kind: "destroy_all", what: "creatures", exceptSubtype: "sliver" });
+    const swept = applyEffects(game, bound);
+    expect(swept.cards[mine1.id]?.zone).toBe("battlefield");
+    expect(swept.cards[mine2.id]?.zone).toBe("battlefield");
+    expect(swept.cards[mine3.id]?.zone).toBe("graveyard");
+    expect(swept.cards[theirs.id]?.zone).toBe("graveyard");
+
+    // Crippling Fear: the spared slivers stand; the 1/1 goblins die to it.
+    const feared = applyEffects(game, [
+      { kind: "all_pt_until_eot", power: -3, toughness: -3, exceptSubtype: "sliver" },
+    ]);
+    expect(feared.cards[mine1.id]?.zone).toBe("battlefield");
+    expect(computedCard(feared, mine1.id)?.power).toBe(1);
+    expect(feared.cards[mine3.id]?.zone).toBe("graveyard");
+
+    // Raise the Palisade: only the slivers keep the field.
+    const raised = applyEffects(game, [
+      { kind: "bounce_each_creature", exceptSubtype: "sliver" },
+    ]);
+    expect(raised.cards[mine1.id]?.zone).toBe("battlefield");
+    expect(raised.cards[mine3.id]?.zone).toBe("hand");
+    expect(raised.cards[theirs.id]?.zone).toBe("hand");
+
+    // Distant Melody: one card per controlled Sliver.
+    const drawn = bindCardEffects(
+      game,
+      [{ kind: "draw", playerId: "controller", count: 1, countFromChosenTypePermanents: true }],
+      { controllerId: p1.id, sourceId: null, targets: [], targetRequirements: [] },
+    );
+    expect(drawn[0]).toEqual({ kind: "draw", playerId: p1.id, count: 2 });
+  });
+
+  it("prowess pumps on noncreature casts only", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 10);
+    const monkDef = createCardDefinition({
+      name: "Monk",
+      typeLine: "Creature — Monk",
+      power: 2,
+      toughness: 2,
+      triggers: [
+        {
+          event: "cast_spell",
+          watch: "controlled",
+          subjectFilter: { nonTypes: ["creature"] },
+          effects: [{ kind: "pt_until_eot", cardId: "self", power: 1, toughness: 1 }],
+          targetRequirements: [],
+        },
+      ],
+    });
+    const boltDef = createCardDefinition({
+      name: "Bolt",
+      manaCost: "{R}",
+      typeLine: "Instant",
+      effects: [{ kind: "gain_life", playerId: "controller", amount: 1 }],
+    });
+    game.definitions[monkDef.id] = monkDef;
+    game.definitions[boltDef.id] = boltDef;
+    const monk = createCardInstance({ definitionId: monkDef.id, ownerId: p1.id, zone: "battlefield" });
+    const bolt = createCardInstance({ definitionId: boltDef.id, ownerId: p1.id, zone: "hand" });
+    game.cards[monk.id] = monk;
+    game.cards[bolt.id] = bolt;
+    p1.zones.battlefield.push(monk.id);
+    p1.zones.hand.push(bolt.id);
+    game.priorityPlayerId = p1.id;
+    p1.mana.R = 1;
+
+    let next = applyAction(game, { kind: "cast_spell", playerId: p1.id, cardId: bolt.id, targets: [] });
+    // The prowess trigger stacks above the spell; resolve it first.
+    while (next.stack.length > 0) {
+      next = resolveTopOfStack(next);
+    }
+    expect(computedCard(next, monk.id)?.power).toBe(3);
   });
 });

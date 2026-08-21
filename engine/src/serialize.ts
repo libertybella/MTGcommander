@@ -1811,6 +1811,9 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
           };
         })(),
         ...(value.countPerControlled === "creature" ? { countPerControlled: "creature" } : {}),
+        ...(value.countFromChosenTypePermanents === true
+          ? { countFromChosenTypePermanents: true }
+          : {}),
       };
     case "scry":
     case "surveil":
@@ -2041,6 +2044,7 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
           ? {}
           : { unlessCounter: expectString(value.unlessCounter, `${label}.unlessCounter`) }),
         ...(value.onlyAttacking === true ? { onlyAttacking: true } : {}),
+        ...(value.exceptChosenType === true ? { exceptChosenType: true } : {}),
       };
     case "dig_top": {
       const digDestination = expectString(value.destination, `${label}.destination`);
@@ -2219,6 +2223,7 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
         power: value.power === "-x" ? "-x" : expectNumber(value.power, `${label}.power`),
         toughness:
           value.toughness === "-x" ? "-x" : expectNumber(value.toughness, `${label}.toughness`),
+        ...(value.exceptChosenType === true ? { exceptChosenType: true } : {}),
       };
     case "reveal_top_put_permanent":
       return {
@@ -2358,6 +2363,7 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
         ...(value.minManaValue === undefined
           ? {}
           : { minManaValue: expectNumber(value.minManaValue, `${label}.minManaValue`) }),
+        ...(value.exceptChosenType === true ? { exceptChosenType: true } : {}),
       };
     case "unless_pays":
       return {
@@ -3337,6 +3343,9 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
       kind,
       power: expectNumber(value.power, `${label}.power`),
       toughness: expectNumber(value.toughness, `${label}.toughness`),
+      ...(value.exceptSubtype === undefined
+        ? {}
+        : { exceptSubtype: expectString(value.exceptSubtype, `${label}.exceptSubtype`) }),
     };
   }
   if (kind === "reveal_top_put_permanent") {
@@ -3474,6 +3483,9 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
       ...(value.minManaValue === undefined
         ? {}
         : { minManaValue: expectNumber(value.minManaValue, `${label}.minManaValue`) }),
+      ...(value.exceptSubtype === undefined
+        ? {}
+        : { exceptSubtype: expectString(value.exceptSubtype, `${label}.exceptSubtype`) }),
     };
   }
   if (kind === "unless_pays" || kind === "may_pay") {
@@ -3610,6 +3622,9 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
         ? {}
         : { unlessCounter: expectString(value.unlessCounter, `${label}.unlessCounter`) }),
       ...(value.onlyAttacking === true ? { onlyAttacking: true } : {}),
+      ...(value.exceptSubtype === undefined
+        ? {}
+        : { exceptSubtype: expectString(value.exceptSubtype, `${label}.exceptSubtype`) }),
     };
   }
   if (kind === "dig_top") {

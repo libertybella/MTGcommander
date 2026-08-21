@@ -123,6 +123,43 @@ function bindPlayer(
 
 /** CR 700.5: colored pips of the color among the player's permanents' mana
  * costs (a hybrid symbol counts toward each of its colors once). */
+/**
+ * "Choose a creature type" on a resolving spell, auto-picked as the type most
+ * common among the caster's creatures (ties break alphabetically, changelings
+ * are not counted) — a documented approximation like populate's auto-pick.
+ */
+export function mostCommonControlledCreatureType(
+  state: GameState,
+  playerId: PlayerId,
+): string | null {
+  const tally = new Map<string, number>();
+  for (const card of Object.values(state.cards)) {
+    if (
+      card.zone !== "battlefield" ||
+      card.controllerId !== playerId ||
+      !isCreature(state, card.id)
+    ) {
+      continue;
+    }
+    const computed = computedCard(state, card.id);
+    if (computed?.allCreatureTypes) {
+      continue;
+    }
+    for (const subtype of computed?.characteristics.subtypes ?? []) {
+      tally.set(subtype, (tally.get(subtype) ?? 0) + 1);
+    }
+  }
+  let best: string | null = null;
+  let bestCount = 0;
+  for (const [subtype, count] of [...tally.entries()].sort((a, b) => a[0].localeCompare(b[0]))) {
+    if (count > bestCount) {
+      best = subtype;
+      bestCount = count;
+    }
+  }
+  return best;
+}
+
 export function devotionTo(state: GameState, playerId: PlayerId, color: Color): number {
   let pips = 0;
   for (const card of Object.values(state.cards)) {
@@ -347,7 +384,26 @@ export function bindCardEffect(
       if (!playerId) {
         return null;
       }
-      const { countFromGreatestPower, countPerControlled, ...drawRest } = effect;
+      const { countFromGreatestPower, countPerControlled, countFromChosenTypePermanents, ...drawRest } = effect;
+      if (countFromChosenTypePermanents) {
+        // Distant Melody: "for each permanent you control of that type" —
+        // the type is auto-chosen at bind (most common among the caster's
+        // creatures), a documented approximation.
+        const chosen = mostCommonControlledCreatureType(state, context.controllerId);
+        if (!chosen) {
+          return null;
+        }
+        const count = Object.values(state.cards).filter(
+          (card) =>
+            card.zone === "battlefield" &&
+            card.controllerId === context.controllerId &&
+            cardMatchesSubtype(state, card.id, chosen),
+        ).length;
+        if (count === 0) {
+          return null;
+        }
+        return { ...drawRest, playerId, count };
+      }
       if (countPerControlled) {
         // Shamanic Revelation: one card per controlled creature at bind.
         const count = Object.values(state.cards).filter(
@@ -735,7 +791,15 @@ export function bindCardEffect(
       if (power === 0 && toughness === 0) {
         return null;
       }
-      return { kind: "all_pt_until_eot", power, toughness };
+      const spared = effect.exceptChosenType
+        ? mostCommonControlledCreatureType(state, context.controllerId)
+        : null;
+      return {
+        kind: "all_pt_until_eot",
+        power,
+        toughness,
+        ...(spared ? { exceptSubtype: spared } : {}),
+      };
     }
     case "reveal_top_put_permanent": {
       const playerId = bindPlayerSelector(state, effect.playerId, context);
@@ -911,13 +975,20 @@ export function bindCardEffect(
         amount,
       };
     }
-    case "destroy_all":
+    case "destroy_all": {
+      // Kindred Dominance: "aren't of the chosen type" — the type is
+      // auto-chosen at bind (the caster's most common creature type).
+      const spared = effect.exceptChosenType
+        ? mostCommonControlledCreatureType(state, context.controllerId)
+        : null;
       return {
         kind: "destroy_all",
         what: effect.what,
         ...(effect.maxManaValue !== undefined ? { maxManaValue: effect.maxManaValue } : {}),
         ...(effect.minManaValue !== undefined ? { minManaValue: effect.minManaValue } : {}),
+        ...(spared ? { exceptSubtype: spared } : {}),
       };
+    }
     case "unless_pays": {
       const playerId = bindPlayerSelector(state, effect.playerId, context);
       if (!playerId) {
@@ -1067,12 +1138,17 @@ export function bindCardEffect(
       return { kind: "fog" };
     case "windfall":
       return { kind: "windfall" };
-    case "bounce_each_creature":
+    case "bounce_each_creature": {
+      const spared = effect.exceptChosenType
+        ? mostCommonControlledCreatureType(state, context.controllerId)
+        : null;
       return {
         kind: "bounce_each_creature",
         ...(effect.unlessCounter ? { unlessCounter: effect.unlessCounter } : {}),
         ...(effect.onlyAttacking ? { onlyAttacking: true } : {}),
+        ...(spared ? { exceptSubtype: spared } : {}),
       };
+    }
     case "dig_top": {
       const playerId = bindPlayerSelector(state, effect.playerId, context);
       if (!playerId) {
@@ -2189,6 +2265,9 @@ function applyDestroyAll(
         (effect.minManaValue === undefined || manaValue >= effect.minManaValue)
       );
     })
+    .filter(
+      (card) => !effect.exceptSubtype || !cardMatchesSubtype(next, card.id, effect.exceptSubtype),
+    )
     .filter((card) => !hasKeyword(next, card.id, "indestructible"))
     .map((card) => card.id);
   const collectDies: EngineEvent[] = [];
@@ -2453,7 +2532,9 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
               card.zone === "battlefield" &&
               isCreature(next, card.id) &&
               (!effect.onlyAttacking || card.attacking) &&
-              (!effect.unlessCounter || (card.counters[effect.unlessCounter] ?? 0) === 0),
+              (!effect.unlessCounter || (card.counters[effect.unlessCounter] ?? 0) === 0) &&
+              (!effect.exceptSubtype ||
+                !cardMatchesSubtype(next, card.id, effect.exceptSubtype)),
           )
           .map((card) => card.id);
         for (const cardId of bounced) {
@@ -2868,6 +2949,10 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
         // CR 611.2c: every creature on the battlefield, all players.
         const everyone = Object.values(state.cards)
           .filter((card) => card.zone === "battlefield" && isCreature(state, card.id))
+          .filter(
+            (card) =>
+              !effect.exceptSubtype || !cardMatchesSubtype(state, card.id, effect.exceptSubtype),
+          )
           .map((card) => card.id);
         next =
           everyone.length === 0
