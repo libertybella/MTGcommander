@@ -13,6 +13,7 @@ import { createId } from "./ids";
 import { isLiving, livingPlayerCount, requireLiving } from "./players";
 import { passPriority, putActivatedAbilityOnStack, putSpellOnStack, resolveTopOfStack } from "./stack";
 import { applyStateBasedActionsInPlace, redirectPriorityIfLost } from "./status";
+import { dispatchEventsInPlace } from "./triggers";
 import { validateChosenTargets } from "./targeting";
 import {
   DEFAULT_SHORTCUT_POLICY,
@@ -668,6 +669,10 @@ function applyTapForMana(
     ? addMana(base, playerId, addition)
     : tapForMana(base, cardId, addition);
   next.priorityPlayerId = playerId;
+  // City of Brass: "Whenever this land becomes tapped".
+  if (!ability.noTap) {
+    dispatchEventsInPlace(next, [{ kind: "tapped", cardId }]);
+  }
   // Wild Growth / Utopia Sprawl: auras on the tapped land pay a bonus to the
   // land's controller (a triggered mana ability — no stack, CR 605.1b).
   if (!ability.noTap && isLand(next, cardId)) {
@@ -822,6 +827,7 @@ function applyActivateAbility(
   }
   if (ability.tap) {
     next = tapCard(next, cardId);
+    dispatchEventsInPlace(next, [{ kind: "tapped", cardId }]);
   }
   if (ability.discard) {
     next = moveCard(next, cardId, "graveyard");

@@ -399,6 +399,26 @@ function triggerMatchesEvent(
   if (trigger.event === "becomes_untapped") {
     return false;
   }
+  if (event.kind === "tapped") {
+    if (trigger.event !== "becomes_tapped") {
+      return false;
+    }
+    const watch = trigger.watch ?? "self";
+    if (watch === "self") {
+      return event.cardId === watcher.id;
+    }
+    const tappedController = state.cards[event.cardId]?.controllerId;
+    if (watch === "controlled" && tappedController !== watcher.controllerId) {
+      return false;
+    }
+    if (watch === "opponents" && tappedController === watcher.controllerId) {
+      return false;
+    }
+    return subjectMatchesFilter(state, event.cardId, trigger.subjectFilter, watcher);
+  }
+  if (trigger.event === "becomes_tapped") {
+    return false;
+  }
   if (event.kind === "searches_library") {
     return trigger.event === "opponent_searches" && watcher.controllerId !== event.playerId;
   }

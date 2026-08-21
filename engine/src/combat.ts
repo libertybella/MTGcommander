@@ -238,12 +238,17 @@ export function declareAttackers(state: GameState, playerId: PlayerId, attacks: 
       attacker.attackedThisTurn = true;
     }
   }
+  const tappedEvents: EngineEvent[] = [];
   for (const attack of combat.attacks) {
     const card = requireCard(next, attack.attackerId);
     card.attacking = true;
     if (!hasKeyword(next, attack.attackerId, "vigilance")) {
       card.tapped = true;
+      tappedEvents.push({ kind: "tapped", cardId: attack.attackerId });
     }
+  }
+  if (tappedEvents.length > 0) {
+    dispatchEventsInPlace(next, tappedEvents);
   }
   next.passesSinceAction = 0;
   next.priorityPlayerId = next.turn.activePlayerId;

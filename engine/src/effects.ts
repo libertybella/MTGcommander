@@ -738,6 +738,13 @@ export function bindCardEffect(
       }
       return { kind: "extra_land_drop", playerId };
     }
+    case "commander_to_hand": {
+      const playerId = bindPlayerSelector(state, effect.playerId, context);
+      if (!playerId) {
+        return null;
+      }
+      return { kind: "commander_to_hand", playerId };
+    }
     case "drain_opponents": {
       const playerId = bindPlayerSelector(state, effect.playerId, context);
       if (!playerId) {
@@ -2356,6 +2363,20 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
         next = cloneGameState(state);
         const granted = next.players.find((entry) => entry.id === effect.playerId)!;
         granted.extraLandDropsThisTurn = (granted.extraLandDropsThisTurn ?? 0) + 1;
+        break;
+      }
+      case "commander_to_hand": {
+        // Command Beacon: the commander leaves the command zone for the hand.
+        const beaconOwner = requirePlayer(state, effect.playerId);
+        const commanderId = beaconOwner.commander.commanderIds.find((id) =>
+          beaconOwner.zones.command.includes(id),
+        );
+        if (!commanderId) {
+          next = cloneGameState(state);
+          break;
+        }
+        next = cloneGameState(state);
+        moveCardInPlace(next, commanderId, "hand");
         break;
       }
       case "mass_reanimate": {

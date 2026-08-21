@@ -654,6 +654,22 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     }
   }
 
+  // City of Brass: the tapped land pings its own controller.
+  match = sentence.match(/^it deals (\d+) damage to you$/i);
+  if (match?.[1]) {
+    return {
+      targetRequirements: [],
+      effects: [
+        {
+          kind: "deal_damage",
+          sourceId: "self",
+          target: { type: "player", playerId: "controller" },
+          amount: Number(match[1]),
+        },
+      ],
+    };
+  }
+
   match = sentence.match(/^(?:~|this \w+) deals (\d+) damage to each opponent$/i);
   if (match?.[1]) {
     return {
@@ -1916,6 +1932,22 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     };
   }
 
+  // Command Beacon.
+  if (/^Put your commander into your hand from the command zone$/i.test(sentence)) {
+    return {
+      targetRequirements: [],
+      effects: [{ kind: "commander_to_hand", playerId: "controller" }],
+    };
+  }
+
+  // Mithril Coat.
+  if (/^attach it to target legendary creature you control$/i.test(sentence)) {
+    return {
+      targetRequirements: [{ kind: "creature", control: "own", legendaryOnly: true }],
+      effects: [{ kind: "attach", cardId: "self", toId: { type: "chosen", index: 0 } }],
+    };
+  }
+
   // Explore-family.
   if (/^You may play an additional land this turn$/i.test(sentence)) {
     return {
@@ -2072,7 +2104,7 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
   }
 
   match = sentence.match(
-    /^Search your library for (?:up to (one|two|three|\d+) )?(?:an? )?(.+?) cards?(?: and)?, (?:and )?put (?:it|them|that card|those cards) (onto the battlefield(?: tapped)?|into your hand|into your graveyard), then shuffle(?: your library)?$/i,
+    /^(?:you may )?Search your library for (?:up to (one|two|three|\d+) )?(?:an? )?(.+?) cards?(?: and)?, (?:and )?put (?:it|them|that card|those cards) (onto the battlefield(?: tapped)?|into your hand|into your graveyard), then shuffle(?: your library)?$/i,
   );
   if (match?.[2] && match[3]) {
     const filter = parseSearchDescriptor(match[2]);
@@ -2162,12 +2194,13 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
   }
 
   match = sentence.match(
-    /^Return target (creature |permanent )?card from your graveyard to (your hand|the battlefield)$/i,
+    /^Return target (creature |permanent |artifact )?card from your graveyard to (your hand|the battlefield)$/i,
   );
   if (match?.[2]) {
     const filterWord = match[1]?.trim().toLowerCase();
     const creatureOnly = filterWord === "creature";
     const permanentOnly = filterWord === "permanent";
+    const artifactOnly = filterWord === "artifact";
     const toHand = match[2].toLowerCase() === "your hand";
     if (toHand || creatureOnly) {
       return {
@@ -2177,7 +2210,9 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
               ? "own_graveyard_creature_card"
               : permanentOnly
                 ? "own_graveyard_permanent_card"
-                : "own_graveyard_card",
+                : artifactOnly
+                  ? "own_graveyard_artifact_card"
+                  : "own_graveyard_card",
           },
         ],
         effects: [
@@ -2797,7 +2832,7 @@ function parseSearchDescriptor(descriptor: string): SearchFilter | null {
  */
 function controllerBasicSearchRider(sentence: string, lastIndex: number): CardEffect | null {
   const plainBasic =
-    /^(?:Its|That (?:land|permanent|creature)'s) controller may search their library for a basic land card, put it onto the battlefield, then shuffle$/i.test(
+    /^(?:Its|That (?:land|permanent|creature)'s) controller may search their library for a basic land card, put (?:it|that card) onto the battlefield( tapped)?, then shuffle$/i.exec(
       sentence,
     );
   // Boseiju: "That player may search … a land card with a basic land type".
@@ -2816,6 +2851,7 @@ function controllerBasicSearchRider(sentence: string, lastIndex: number): CardEf
       : { types: ["land"], subtypesAny: ["plains", "island", "swamp", "mountain", "forest"] },
     destination: "battlefield",
     count: 1,
+    ...(plainBasic?.[1] ? { entersTapped: true } : {}),
   };
 }
 
@@ -3012,6 +3048,19 @@ function parseTriggerHead(head: string): TriggerHead | null {
   if (/^Whenever a permanent becomes untapped$/i.test(text)) {
     return { event: "becomes_untapped" };
   }
+  // City of Brass.
+  if (/^Whenever ~ becomes tapped$/i.test(text)) {
+    return { event: "becomes_tapped" };
+  }
+  // Magda: "Whenever a Dwarf you control becomes tapped".
+  const tappedTribe = text.match(/^Whenever an? ([A-Za-z]+) you control becomes tapped$/i);
+  if (tappedTribe?.[1] && !SEARCH_CARD_TYPES.has(tappedTribe[1].toLowerCase())) {
+    return {
+      event: "becomes_tapped",
+      watch: "controlled",
+      subjectFilter: { subtypes: [tappedTribe[1].toLowerCase()] },
+    };
+  }
   if (/^Whenever you create or sacrifice a token$/i.test(text)) {
     return { event: "you_create_token", extraEvents: ["you_sacrifice_token"] };
   }
@@ -3096,6 +3145,10 @@ function parseTriggerHead(head: string): TriggerHead | null {
   // Skullclamp.
   if (/^Whenever equipped creature dies$/i.test(text)) {
     return { event: "dies", watch: "attached" };
+  }
+  // Sword of the Animist.
+  if (/^Whenever equipped creature attacks$/i.test(text)) {
+    return { event: "attacks", watch: "attached" };
   }
   // Marionette Apprentice.
   if (

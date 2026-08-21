@@ -9986,3 +9986,130 @@ describe("wave 105: plowshares and clamps", () => {
   });
 });
 
+describe("wave 106: beacons and brass", () => {
+  it("compiles the six-card batch fully", () => {
+    const compile = (name: string, typeLine: string, oracleText: string, manaCost = "") =>
+      compileOracleCard({
+        oracleId: name,
+        name,
+        manaCost,
+        typeLine,
+        power: null,
+        toughness: null,
+        printedKeywords: [],
+        imageUrl: "",
+        oracleText,
+      });
+
+    const path = compile(
+      "Path to Exile",
+      "Instant",
+      "Exile target creature. Its controller may search their library for a basic land card, put that card onto the battlefield tapped, then shuffle.",
+      "{W}",
+    );
+    expect(path.notes).toEqual([]);
+    const consolation = path.definition.effects[1];
+    expect(consolation?.kind === "search_library" && consolation.entersTapped).toBe(true);
+
+    const brass = compile(
+      "City of Brass",
+      "Land",
+      "Whenever this land becomes tapped, it deals 1 damage to you.\n{T}: Add one mana of any color.",
+    );
+    expect(brass.notes).toEqual([]);
+    expect(brass.definition.triggers[0]?.event).toBe("becomes_tapped");
+
+    const beacon = compile(
+      "Command Beacon",
+      "Land",
+      "{T}: Add {C}.\n{T}, Sacrifice this land: Put your commander into your hand from the command zone.",
+    );
+    expect(beacon.notes).toEqual([]);
+
+    const ruin = compile(
+      "Buried Ruin",
+      "Land",
+      "{T}: Add {C}.\n{2}, {T}, Sacrifice this land: Return target artifact card from your graveyard to your hand.",
+    );
+    expect(ruin.notes).toEqual([]);
+
+    const coat = compile(
+      "Mithril Coat",
+      "Legendary Artifact — Equipment",
+      "Flash\nIndestructible\nWhen Mithril Coat enters, attach it to target legendary creature you control.\nEquipped creature has indestructible.\nEquip {3}",
+      "{3}",
+    );
+    expect(coat.notes).toEqual([]);
+    expect(coat.definition.triggers[0]?.targetRequirements).toEqual([
+      { kind: "creature", control: "own", legendaryOnly: true },
+    ]);
+
+    const sword = compile(
+      "Sword of the Animist",
+      "Legendary Artifact — Equipment",
+      "Equipped creature gets +1/+1.\nWhenever equipped creature attacks, you may search your library for a basic land card, put it onto the battlefield tapped, then shuffle.\nEquip {2}",
+      "{2}",
+    );
+    expect(sword.notes).toEqual([]);
+    expect(sword.definition.triggers[0]?.watch).toBe("attached");
+  });
+
+  it("pings the controller when City of Brass taps for mana", () => {
+    const { game, p1 } = twoPlayers();
+    const brassDef = createCardDefinition({
+      name: "Brass",
+      typeLine: "Land",
+      producesAnyColor: true,
+      triggers: [
+        {
+          event: "becomes_tapped",
+          effects: [
+            {
+              kind: "deal_damage",
+              sourceId: "self",
+              target: { type: "player", playerId: "controller" },
+              amount: 1,
+            },
+          ],
+        },
+      ],
+    });
+    game.definitions[brassDef.id] = brassDef;
+    const brass = createCardInstance({ definitionId: brassDef.id, ownerId: p1.id, zone: "battlefield" });
+    game.cards[brass.id] = brass;
+    p1.zones.battlefield.push(brass.id);
+    game.priorityPlayerId = p1.id;
+
+    let next = applyAction(game, {
+      kind: "tap_for_mana",
+      playerId: p1.id,
+      cardId: brass.id,
+      color: "R",
+    });
+    while (next.stack.length > 0) {
+      next = resolveTopOfStack(next);
+    }
+    expect(next.players[0]?.mana.R).toBe(1);
+    expect(next.players[0]?.life).toBe(39);
+  });
+
+  it("returns the commander to hand from the command zone", () => {
+    const { game, p1 } = twoPlayers();
+    const generalDef = createCardDefinition({
+      name: "General",
+      typeLine: "Legendary Creature — Human Soldier",
+      power: 2,
+      toughness: 2,
+    });
+    game.definitions[generalDef.id] = generalDef;
+    const general = createCardInstance({ definitionId: generalDef.id, ownerId: p1.id, zone: "command" });
+    game.cards[general.id] = general;
+    p1.zones.command.push(general.id);
+    p1.commander.commanderIds.push(general.id);
+
+    const next = applyEffect(game, { kind: "commander_to_hand", playerId: p1.id });
+    expect(next.cards[general.id]?.zone).toBe("hand");
+    expect(next.players[0]?.zones.hand).toContain(general.id);
+  });
+});
+

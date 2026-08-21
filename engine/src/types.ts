@@ -643,6 +643,7 @@ export type GameEffect =
   | { kind: "mass_reanimate"; playerId: PlayerId }
   | { kind: "prevent_combat_for"; cardId: CardInstanceId }
   | { kind: "extra_land_drop"; playerId: PlayerId }
+  | { kind: "commander_to_hand"; playerId: PlayerId }
   | {
       kind: "search_library";
       playerId: PlayerId;
@@ -1075,6 +1076,8 @@ export type CardEffect =
   | { kind: "prevent_combat_for"; cardId: ChosenTargetRef }
   /** Explore: one extra land drop this turn. */
   | { kind: "extra_land_drop"; playerId: PlayerSelector }
+  /** Command Beacon: the commander moves from the command zone to hand. */
+  | { kind: "commander_to_hand"; playerId: PlayerSelector }
   | {
       kind: "search_library";
       playerId: PlayerSelector;
@@ -1180,6 +1183,8 @@ export type TriggerEvent =
   | "you_sacrifice_token"
   /** Any permanent untapped (Mesmeric Orb). Subject is the permanent. */
   | "becomes_untapped"
+  /** Any permanent tapped (City of Brass, Magda). Subject is the permanent. */
+  | "becomes_tapped"
   /** An opponent searched their library (Archivist of Oghma). */
   | "opponent_searches"
   /** Any player cast their second spell this turn (Lotho). */
@@ -1287,6 +1292,8 @@ export type EngineEvent =
   | { kind: "sacrifices"; cardId: CardInstanceId; controllerId: PlayerId; wasToken: boolean }
   /** A permanent went from tapped to untapped. */
   | { kind: "untapped"; cardId: CardInstanceId }
+  /** A permanent went from untapped to tapped (City of Brass). */
+  | { kind: "tapped"; cardId: CardInstanceId }
   /** A player searched their library (found or not). */
   | { kind: "searches_library"; playerId: PlayerId }
   /** A card arrived in a graveyard from a zone other than the battlefield. */
