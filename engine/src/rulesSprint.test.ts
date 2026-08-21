@@ -13535,3 +13535,154 @@ describe("wave 125: germs and rebounds", () => {
     ]);
   });
 });
+
+describe("wave 126: triggers learn to choose", () => {
+  it("compiles the modal-trigger batch fully", () => {
+    const channeler = compileOracleCard({
+      oracleId: "channeler",
+      name: "Aether Channeler",
+      manaCost: "{2}{U}",
+      typeLine: "Creature — Human Wizard",
+      power: "1",
+      toughness: "1",
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "When this creature enters, choose one —\n• Create a 1/1 white Bird creature token with flying.\n• Return another target nonland permanent to its owner's hand.\n• Draw a card.",
+    });
+    expect(channeler.notes).toEqual([]);
+    const trigger = channeler.definition.triggers[0];
+    expect(trigger?.event).toBe("enter_battlefield");
+    expect(trigger?.modes).toHaveLength(3);
+    expect(trigger?.modes?.[1]?.targetRequirements).toEqual([
+      { kind: "nonland_permanent", excludeSource: true },
+    ]);
+    expect(trigger?.modes?.[2]?.effects).toEqual([
+      { kind: "draw", playerId: "controller", count: 1 },
+    ]);
+
+    const felidar = compileOracleCard({
+      oracleId: "felidar",
+      name: "Felidar Retreat",
+      manaCost: "{3}{W}",
+      typeLine: "Enchantment",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "Landfall — Whenever a land you control enters, choose one —\n• Create a 2/2 white Cat Beast creature token.\n• Put a +1/+1 counter on each creature you control. Those creatures gain vigilance until end of turn.",
+    });
+    expect(felidar.notes).toEqual([]);
+    const landfall = felidar.definition.triggers[0];
+    expect(landfall?.subjectFilter?.types).toEqual(["land"]);
+    expect(landfall?.modes?.[1]?.effects).toHaveLength(2);
+
+    const coralhelm = compileOracleCard({
+      oracleId: "coralhelm",
+      name: "Retreat to Coralhelm",
+      manaCost: "{2}{U}",
+      typeLine: "Enchantment",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "Landfall — Whenever a land you control enters, choose one —\n• You may tap or untap target creature.\n• Scry 1.",
+    });
+    expect(coralhelm.notes).toEqual([]);
+    expect(coralhelm.definition.triggers[0]?.modes?.[0]?.targetRequirements).toEqual([
+      { kind: "creature", optional: true },
+    ]);
+  });
+
+  it("prompts for the mode, then targets, then resolves the chosen half", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 10);
+    const modalDef = createCardDefinition({
+      name: "Chooser",
+      typeLine: "Creature — Wizard",
+      power: 1,
+      toughness: 1,
+      triggers: [
+        {
+          event: "enter_battlefield",
+          effects: [],
+          targetRequirements: [],
+          modes: [
+            {
+              label: "Draw a card",
+              effects: [{ kind: "draw", playerId: "controller", count: 1 }],
+              targetRequirements: [],
+            },
+            {
+              label: "Bounce",
+              effects: [
+                { kind: "move_card", cardId: { type: "chosen", index: 0 }, toZone: "hand" },
+              ],
+              targetRequirements: [{ kind: "nonland_permanent", excludeSource: true }],
+            },
+          ],
+        },
+      ],
+    });
+    const bearDef = createCardDefinition({
+      name: "Bear",
+      typeLine: "Creature — Bear",
+      power: 2,
+      toughness: 2,
+    });
+    game.definitions[modalDef.id] = modalDef;
+    game.definitions[bearDef.id] = bearDef;
+    const bear = createCardInstance({ definitionId: bearDef.id, ownerId: p2.id, zone: "battlefield" });
+    game.cards[bear.id] = bear;
+    p2.zones.battlefield.push(bear.id);
+    const chooser = createCardInstance({ definitionId: modalDef.id, ownerId: p1.id, zone: "battlefield" });
+    game.cards[chooser.id] = chooser;
+    p1.zones.battlefield.push(chooser.id);
+    dispatchEventsInPlace(game, [{ kind: "enters", cardId: chooser.id }]);
+    expect(game.prompts[0]?.kind).toBe("choose_trigger_mode");
+
+    // The pending mode prompt and the modal definition survive a reload.
+    const reloaded = parseGameState(serializeGameState(game));
+    expect(reloaded.prompts[0]?.kind).toBe("choose_trigger_mode");
+    expect(reloaded.definitions[modalDef.id]?.triggers[0]?.modes).toHaveLength(2);
+
+    // Mode 0: straight to the stack, resolves as a draw.
+    let drawn = applyAction(game, { kind: "resolve_trigger_mode", playerId: p1.id, modeIndex: 0 });
+    const handBefore = drawn.players[0]!.zones.hand.length;
+    expect(handBefore).toBe(0);
+    drawn = resolveTopOfStack(drawn);
+    expect(drawn.players[0]?.zones.hand).toHaveLength(1);
+
+    // Mode 1: pauses for its target, then bounces it.
+    let bounced = applyAction(game, { kind: "resolve_trigger_mode", playerId: p1.id, modeIndex: 1 });
+    expect(bounced.prompts[0]?.kind).toBe("choose_targets");
+    bounced = applyAction(bounced, {
+      kind: "choose_targets",
+      playerId: p1.id,
+      targets: [{ type: "creature", cardId: bear.id }],
+    });
+    bounced = resolveTopOfStack(bounced);
+    expect(bounced.cards[bear.id]?.zone).toBe("hand");
+  });
+
+  it("tap-or-untap toggles the current state", () => {
+    const { game, p1 } = twoPlayers();
+    const bearDef = createCardDefinition({
+      name: "Bear",
+      typeLine: "Creature — Bear",
+      power: 2,
+      toughness: 2,
+    });
+    game.definitions[bearDef.id] = bearDef;
+    const bear = createCardInstance({ definitionId: bearDef.id, ownerId: p1.id, zone: "battlefield" });
+    game.cards[bear.id] = bear;
+    p1.zones.battlefield.push(bear.id);
+
+    let next = applyEffects(game, [{ kind: "tap_or_untap", cardId: bear.id }]);
+    expect(next.cards[bear.id]?.tapped).toBe(true);
+    next = applyEffects(next, [{ kind: "tap_or_untap", cardId: bear.id }]);
+    expect(next.cards[bear.id]?.tapped).toBe(false);
+  });
+});

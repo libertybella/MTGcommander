@@ -615,6 +615,9 @@ export type GameEffect =
     }
   | { kind: "tap"; cardId: CardInstanceId }
   | { kind: "untap"; cardId: CardInstanceId }
+  /** "You may tap or untap target creature": toggles the current state — a
+   * documented approximation of the choice (Retreat to Coralhelm). */
+  | { kind: "tap_or_untap"; cardId: CardInstanceId }
   | { kind: "add_mana"; playerId: PlayerId; mana: Partial<ManaPool> }
   | {
       kind: "create_token";
@@ -1063,6 +1066,7 @@ export type CardEffect =
     }
   | { kind: "tap"; cardId: CardIdSelector }
   | { kind: "untap"; cardId: CardIdSelector }
+  | { kind: "tap_or_untap"; cardId: CardIdSelector }
   | {
       kind: "add_mana";
       playerId: PlayerSelector;
@@ -1407,6 +1411,12 @@ export type CardTrigger = {
   /** Intervening "if" clause; the trigger is skipped while it fails. */
   condition?: TriggerCondition;
   /**
+   * "…, choose one —" triggers (Aether Channeler, Felidar Retreat): the
+   * controller picks a mode when the trigger would stack; the chosen mode's
+   * effects and targets replace the (empty) top-level ones.
+   */
+  modes?: SpellMode[];
+  /**
    * Which objects' events fire this trigger (enter_battlefield, dies,
    * attacks). Default "self". "controlled" watches the trigger source's
    * controller's objects; "any" watches everyone's. upkeep/end_step fire at
@@ -1533,6 +1543,8 @@ export type PendingPrompt =
        * retarget: Deflecting Swat replaces a stack spell's targets. */
       origin: "trigger" | "retarget";
       triggerIndex?: number;
+      /** Modal trigger: the chosen mode whose targets these are. */
+      modeIndex?: number;
       stackObjectId?: StackObjectId;
       requirements: TargetRequirement[];
       /** The trigger event's subject, carried through to the stack object. */
@@ -1558,6 +1570,16 @@ export type PendingPrompt =
       /** Mother of Runes: the chosen color becomes an until-EOT protection
        * grant on this creature instead of a stored chosenColor. */
       grantProtectionTo?: CardInstanceId;
+    }
+  | {
+      /** Modal trigger (Aether Channeler): pick which mode stacks. */
+      kind: "choose_trigger_mode";
+      playerId: PlayerId;
+      sourceId: CardInstanceId;
+      triggerIndex: number;
+      subjectCardId?: CardInstanceId;
+      subjectPlayerId?: PlayerId;
+      subjectAmount?: number;
     }
   | {
       /** Clone family: pick a permanent for the just-entered card to copy,
@@ -1974,6 +1996,7 @@ export type GameAction =
   | { kind: "resolve_discard"; playerId: PlayerId; cardIds: CardInstanceId[] }
   | { kind: "resolve_choose_card"; playerId: PlayerId; cardId: CardInstanceId }
   | { kind: "resolve_enter_copy"; playerId: PlayerId; cardId: CardInstanceId | null }
+  | { kind: "resolve_trigger_mode"; playerId: PlayerId; modeIndex: number }
   | {
       kind: "resolve_look_assign";
       playerId: PlayerId;

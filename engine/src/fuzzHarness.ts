@@ -191,6 +191,17 @@ function nextAction(state: GameState, rng: () => number): GameAction | null {
         }
         return { kind: "resolve_enter_copy", playerId, cardId: pick(rng, legal) };
       }
+      case "choose_trigger_mode": {
+        const source = state.cards[prompt.sourceId];
+        const modes = source
+          ? state.definitions[source.definitionId]?.triggers[prompt.triggerIndex]?.modes ?? []
+          : [];
+        return {
+          kind: "resolve_trigger_mode",
+          playerId,
+          modeIndex: Math.floor(rng() * Math.max(1, modes.length)),
+        };
+      }
       case "pay_or_counter":
       case "pay_or_effect": {
         const player = state.players.find((entry) => entry.id === playerId)!;

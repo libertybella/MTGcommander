@@ -150,6 +150,20 @@ export function queueDefinitionTriggerInPlace(
     }
     state.oncePerTurnFired.push(key);
   }
+  // "…, choose one —" triggers: the controller picks the mode before the
+  // ability stacks; targets (if the mode has any) are chosen after.
+  if (trigger.modes && trigger.modes.length > 0) {
+    state.prompts.push({
+      kind: "choose_trigger_mode",
+      playerId: card.controllerId,
+      sourceId: cardId,
+      triggerIndex: index,
+      ...(subject?.cardId ? { subjectCardId: subject.cardId } : {}),
+      ...(subject?.playerId ? { subjectPlayerId: subject.playerId } : {}),
+      ...(subject?.amount ? { subjectAmount: subject.amount } : {}),
+    });
+    return true;
+  }
   const requirements = trigger.targetRequirements ?? [];
   if (requirements.length > 0) {
     if (!hasAnyLegalTargetSet(state, requirements, card.controllerId)) {

@@ -82,12 +82,79 @@ export function applyChooseTargets(
     kind: "ability",
     targets: targets.map((target) => ({ ...target })),
     triggerIndex: prompt.triggerIndex ?? 0,
+    ...(prompt.modeIndex !== undefined ? { modeIndex: prompt.modeIndex } : {}),
     ...(prompt.subjectCardId ? { subjectCardId: prompt.subjectCardId } : {}),
     ...(prompt.subjectPlayerId ? { subjectPlayerId: prompt.subjectPlayerId } : {}),
     ...(prompt.subjectAmount ? { subjectAmount: prompt.subjectAmount } : {}),
   });
   next.passesSinceAction = 0;
   next.priorityPlayerId = next.turn.activePlayerId;
+  return next;
+}
+
+/**
+ * Resolve a modal trigger's mode choice: the chosen mode's ability goes on
+ * the stack, pausing for its targets first when it has any (skipped with no
+ * legal target, CR 603.3d).
+ */
+export function applyResolveTriggerMode(
+  state: GameState,
+  playerId: PlayerId,
+  modeIndex: number,
+): GameState {
+  const prompt = currentPrompt(state);
+  if (!prompt || prompt.kind !== "choose_trigger_mode") {
+    throw new Error("No trigger mode choice pending");
+  }
+  requireLiving(state, playerId);
+  if (prompt.playerId !== playerId) {
+    throw new Error("It is not that player's choice");
+  }
+  const source = state.cards[prompt.sourceId];
+  const trigger = source
+    ? state.definitions[source.definitionId]?.triggers[prompt.triggerIndex]
+    : undefined;
+  const mode = trigger?.modes?.[modeIndex];
+  if (!mode) {
+    throw new Error("Choose one of the trigger's modes");
+  }
+  const next = cloneGameState(state);
+  next.prompts.shift();
+  const requirements = mode.targetRequirements ?? [];
+  if (requirements.length > 0) {
+    if (!hasAnyLegalTargetSet(next, requirements, playerId)) {
+      return next;
+    }
+    next.prompts.unshift({
+      kind: "choose_targets",
+      playerId,
+      sourceId: prompt.sourceId,
+      origin: "trigger",
+      triggerIndex: prompt.triggerIndex,
+      modeIndex,
+      requirements: requirements.map((requirement) => ({ ...requirement })),
+      ...(prompt.subjectCardId ? { subjectCardId: prompt.subjectCardId } : {}),
+      ...(prompt.subjectPlayerId ? { subjectPlayerId: prompt.subjectPlayerId } : {}),
+      ...(prompt.subjectAmount ? { subjectAmount: prompt.subjectAmount } : {}),
+    });
+    return next;
+  }
+  next.stack.push({
+    id: createId("stack"),
+    controllerId: playerId,
+    sourceId: prompt.sourceId,
+    kind: "ability",
+    targets: [],
+    triggerIndex: prompt.triggerIndex,
+    modeIndex,
+    ...(prompt.subjectCardId ? { subjectCardId: prompt.subjectCardId } : {}),
+    ...(prompt.subjectPlayerId ? { subjectPlayerId: prompt.subjectPlayerId } : {}),
+    ...(prompt.subjectAmount ? { subjectAmount: prompt.subjectAmount } : {}),
+  });
+  next.passesSinceAction = 0;
+  if (next.prompts.length === 0) {
+    next.priorityPlayerId = next.turn.activePlayerId;
+  }
   return next;
 }
 

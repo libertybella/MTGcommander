@@ -678,7 +678,8 @@ export function bindCardEffect(
       };
     }
     case "tap":
-    case "untap": {
+    case "untap":
+    case "tap_or_untap": {
       const cardId = bindCardId(state, effect.cardId, context);
       if (!cardId) {
         return null;
@@ -2430,6 +2431,23 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
       case "tap":
         next = tapCard(state, effect.cardId);
         break;
+      case "tap_or_untap": {
+        // "You may tap or untap": toggling is always the useful half — a
+        // documented approximation of the choice.
+        const toggled = state.cards[effect.cardId];
+        if (!toggled || toggled.zone !== "battlefield") {
+          next = cloneGameState(state);
+          break;
+        }
+        if (toggled.tapped) {
+          next = untapCard(state, effect.cardId);
+          dispatchEventsInPlace(next, [{ kind: "untapped", cardId: effect.cardId }]);
+        } else {
+          next = tapCard(state, effect.cardId);
+          dispatchEventsInPlace(next, [{ kind: "tapped", cardId: effect.cardId }]);
+        }
+        break;
+      }
       case "untap": {
         const wasTapped = state.cards[effect.cardId]?.tapped === true;
         next = untapCard(state, effect.cardId);

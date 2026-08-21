@@ -166,6 +166,17 @@ export function createCardDefinition(
           targetRequirements: (trigger.targetRequirements ?? []).map((requirement) => ({
             ...requirement,
           })),
+          ...(trigger.modes
+            ? {
+                modes: trigger.modes.map((mode) => ({
+                  label: mode.label,
+                  effects: mode.effects.map((effect) => ({ ...effect })),
+                  targetRequirements: (mode.targetRequirements ?? []).map((requirement) => ({
+                    ...requirement,
+                  })),
+                })),
+              }
+            : {}),
         }))
       : [],
     replacements: input.replacements ? input.replacements.map((replacement) => ({ ...replacement })) : [],

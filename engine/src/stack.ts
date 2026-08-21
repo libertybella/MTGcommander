@@ -267,12 +267,18 @@ export function resolveTopOfStack(state: GameState): GameState {
       }
     } else {
       const trigger = definition?.triggers[top.triggerIndex ?? 0];
-      const requirements = trigger?.targetRequirements ?? [];
+      // Modal trigger: the chosen mode's effects and targets replace the
+      // (empty) top-level ones.
+      const triggerMode =
+        top.modeIndex !== undefined ? trigger?.modes?.[top.modeIndex] : undefined;
+      const requirements = triggerMode
+        ? triggerMode.targetRequirements ?? []
+        : trigger?.targetRequirements ?? [];
       if (
         trigger &&
         hasLegalTargetRemaining(next, requirements, top.targets, top.controllerId, sourceColorsOf(next, top.sourceId), top.sourceId)
       ) {
-        const bound = bindCardEffects(next, trigger.effects, {
+        const bound = bindCardEffects(next, triggerMode ? triggerMode.effects : trigger.effects, {
           controllerId: top.controllerId,
           sourceId: top.sourceId,
           targets: top.targets,

@@ -2725,6 +2725,27 @@ export function Battlefield(props: Props) {
                 </button>
               </>
             ) : null}
+            {actorId === prompt.playerId && prompt.kind === "choose_trigger_mode" ? (
+              <>
+                {(
+                  state.definitions[state.cards[prompt.sourceId]?.definitionId ?? ""]?.triggers[
+                    prompt.triggerIndex
+                  ]?.modes ?? []
+                ).map((mode, modeIndex) => (
+                  <button
+                    key={mode.label}
+                    type="button"
+                    className="pass-button"
+                    data-testid={`trigger-mode-${modeIndex}`}
+                    onClick={() =>
+                      send({ kind: "resolve_trigger_mode", playerId: actorId, modeIndex })
+                    }
+                  >
+                    {mode.label}
+                  </button>
+                ))}
+              </>
+            ) : null}
             {actorId === prompt.playerId && prompt.kind === "enter_as_copy" ? (
               <>
                 <button type="button" className="pass-button" data-testid="enter-as-copy" disabled>

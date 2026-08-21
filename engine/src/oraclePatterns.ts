@@ -1505,6 +1505,41 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     };
   }
 
+  // Aether Channeler's bounce mode.
+  const nonlandBounce = sentence.match(
+    /^Return (another )?target nonland permanent to its owner's hand$/i,
+  );
+  if (nonlandBounce) {
+    return {
+      targetRequirements: [
+        { kind: "nonland_permanent", ...(nonlandBounce[1] ? { excludeSource: true } : {}) },
+      ],
+      effects: [{ kind: "move_card", cardId: { type: "chosen", index: 0 }, toZone: "hand" }],
+    };
+  }
+
+  // Retreat to Coralhelm: toggling is always the useful half of the choice —
+  // a documented approximation. The "may" is the up-to-one optional slot.
+  if (/^You may tap or untap target creature$/i.test(sentence)) {
+    return {
+      targetRequirements: [{ kind: "creature", optional: true }],
+      effects: [{ kind: "tap_or_untap", cardId: { type: "chosen", index: 0 } }],
+    };
+  }
+
+  // Felidar Retreat's second mode sentence: the counters just went on each
+  // creature you control, so "those creatures" is the controller's team.
+  const thoseGain = sentence.match(/^Those creatures gain ([a-z]+) until end of turn$/i);
+  if (thoseGain?.[1]) {
+    const keyword = KEYWORD_GRANTS[thoseGain[1].toLowerCase()];
+    if (keyword) {
+      return {
+        targetRequirements: [],
+        effects: [{ kind: "team_keyword_until_eot", playerId: "controller", keyword }],
+      };
+    }
+  }
+
   const targetCounter = sentence.match(
     /^put (a|one|two|three|four) \+1\/\+1 counters? on (target creature you control|target artifact or creature you control|target creature|~)$/i,
   );
@@ -4580,6 +4615,99 @@ function extractModalModes(card: OracleCard): ModalExtraction | null {
   return { remainingText, modes, raw, ...(choice ? { choice } : {}) };
 }
 
+type TriggerModalExtraction = {
+  remainingText: string;
+  trigger: CardTrigger | null;
+  raw: string;
+};
+
+/** Heads the general parser doesn't cover, in their modal-trigger forms. */
+function parseSimpleTriggerHead(text: string): TriggerHead | null {
+  const t = text.replace(/^(?:Landfall|Magecraft|Constellation|Enrage)\s*[—-]\s*/i, "").trim();
+  if (/^When(?:ever)? ~ enters$/i.test(t)) {
+    return { event: "enter_battlefield" };
+  }
+  if (/^When(?:ever)? ~ dies$/i.test(t)) {
+    return { event: "dies" };
+  }
+  return null;
+}
+
+/**
+ * "When ~ enters, choose one —" trigger blocks (Aether Channeler, Felidar
+ * Retreat): the head keeps its trigger event, the bullets become modes the
+ * controller picks from when the trigger would stack. Every bullet must
+ * compile whole or the block stays a note.
+ */
+function extractTriggerModalModes(card: OracleCard): TriggerModalExtraction | null {
+  const lines = stripReminderText(card.oracleText).replace(/\r/g, "").split("\n");
+  const headIndex = lines.findIndex((line) =>
+    /^(?:Landfall\s*[—-]\s*)?When(?:ever)? .+, choose one\s*[—-]\s*$/i.test(line.trim()),
+  );
+  if (headIndex === -1) {
+    return null;
+  }
+  const bullets: string[] = [];
+  let end = headIndex + 1;
+  while (end < lines.length && lines[end]!.trim().startsWith("•")) {
+    bullets.push(lines[end]!.trim().replace(/^•\s*/, ""));
+    end += 1;
+  }
+  if (bullets.length < 2) {
+    return null;
+  }
+  const remainingText = [...lines.slice(0, headIndex), ...lines.slice(end)].join("\n");
+  const raw = lines.slice(headIndex, end).join(" ");
+  const headText = lines[headIndex]!
+    .trim()
+    .replace(/,\s*choose one\s*[—-]\s*$/i, "")
+    .replace(/\bthis creature\b/gi, "~")
+    .replace(new RegExp(`\\b${card.name.split(" // ")[0]!.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "g"), "~");
+  const head = parseTriggerHead(headText) ?? parseSimpleTriggerHead(headText);
+  if (!head) {
+    return { remainingText, trigger: null, raw };
+  }
+  const modes: SpellMode[] = [];
+  for (const bullet of bullets) {
+    const bulletSentences = splitOracleSentences({ ...card, oracleText: bullet });
+    const effects: CardEffect[] = [];
+    let requirements: TargetRequirement[] = [];
+    let failed = bulletSentences.length === 0;
+    for (const sentence of bulletSentences) {
+      const clause = compileSimpleClause(sentence);
+      // A second targeted sentence would skew chosen indexes; keep modes to
+      // one targeted clause (first) plus untargeted riders.
+      if (
+        !clause ||
+        clause.leftover ||
+        (clause.targetRequirements.length > 0 && (requirements.length > 0 || effects.length > 0))
+      ) {
+        failed = true;
+        break;
+      }
+      if (clause.targetRequirements.length > 0) {
+        requirements = clause.targetRequirements;
+      }
+      effects.push(...clause.effects);
+    }
+    if (failed || effects.length === 0) {
+      return { remainingText, trigger: null, raw };
+    }
+    modes.push({
+      label: bullet.replace(/\.$/, ""),
+      effects,
+      targetRequirements: requirements,
+    });
+  }
+  const { extraEvents, ...headRest } = head;
+  void extraEvents;
+  return {
+    remainingText,
+    raw,
+    trigger: { ...headRest, modes, effects: [], targetRequirements: [] },
+  };
+}
+
 const CLONE_SCOPE_BY_PHRASE: Record<string, EnterAsCopyScope> = {
   "any creature on the battlefield": "any_creature",
   "a creature you control": "your_creature",
@@ -4665,9 +4793,27 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
       result.leftover.push(modal.raw);
     }
   }
-  const lines = splitOracleSentencesByLine(
+  // "When ~ dies/enters, choose one —" trigger blocks, before sentence
+  // splitting (the bullets are lines).
+  const triggerModal = extractTriggerModalModes(
     modal ? { ...card, oracleText: modal.remainingText } : card,
   );
+  if (triggerModal) {
+    if (triggerModal.trigger) {
+      result.triggers.push(triggerModal.trigger);
+    } else {
+      result.leftover.push(triggerModal.raw);
+    }
+  }
+  const sourceCard = triggerModal
+    ? {
+        ...card,
+        oracleText: triggerModal.remainingText,
+      }
+    : modal
+      ? { ...card, oracleText: modal.remainingText }
+      : card;
+  const lines = splitOracleSentencesByLine(sourceCard);
   const sentences: string[] = [];
   const lineStart: boolean[] = [];
   let kickerCost: string | null = null;

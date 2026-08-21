@@ -1182,6 +1182,28 @@ function parsePrompts(value: unknown, playerIds: Set<string>): PendingPrompt[] {
             }),
       };
     }
+    if (kind === "choose_trigger_mode") {
+      return {
+        kind,
+        playerId,
+        sourceId: expectString(entry.sourceId, `prompts[${index}].sourceId`),
+        triggerIndex: expectNumber(entry.triggerIndex, `prompts[${index}].triggerIndex`),
+        ...(entry.subjectCardId === undefined
+          ? {}
+          : { subjectCardId: expectString(entry.subjectCardId, `prompts[${index}].subjectCardId`) }),
+        ...(entry.subjectPlayerId === undefined
+          ? {}
+          : {
+              subjectPlayerId: expectString(
+                entry.subjectPlayerId,
+                `prompts[${index}].subjectPlayerId`,
+              ),
+            }),
+        ...(entry.subjectAmount === undefined
+          ? {}
+          : { subjectAmount: expectNumber(entry.subjectAmount, `prompts[${index}].subjectAmount`) }),
+      };
+    }
     if (kind === "enter_as_copy") {
       const scope = entry.scope;
       if (
@@ -1326,6 +1348,9 @@ function parsePrompts(value: unknown, playerIds: Set<string>): PendingPrompt[] {
       ...(entry.triggerIndex === undefined
         ? {}
         : { triggerIndex: expectNumber(entry.triggerIndex, `prompts[${index}].triggerIndex`) }),
+      ...(entry.modeIndex === undefined
+        ? {}
+        : { modeIndex: expectNumber(entry.modeIndex, `prompts[${index}].modeIndex`) }),
       ...(entry.stackObjectId === undefined
         ? {}
         : { stackObjectId: expectString(entry.stackObjectId, `prompts[${index}].stackObjectId`) }),
@@ -2094,6 +2119,7 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
     }
     case "tap":
     case "untap":
+    case "tap_or_untap":
       return {
         kind,
         cardId: parseCardIdSelector(value.cardId, `${label}.cardId`),
@@ -2776,6 +2802,9 @@ function parseTriggers(value: unknown, label: string): CardTrigger[] {
       ...(entry.oncePerTurn === true ? { oncePerTurn: true } : {}),
       ...(entry.oncePerBatch === true ? { oncePerBatch: true } : {}),
       ...(entry.alsoOnCopy === true ? { alsoOnCopy: true } : {}),
+      ...(entry.modes === undefined
+        ? {}
+        : { modes: parseSpellModes(entry.modes, `${label}[${index}].modes`) }),
       ...(entry.condition === undefined
         ? {}
         : {
@@ -3708,7 +3737,7 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
         : { controllerId: expectString(value.controllerId, `${label}.controllerId`) }),
     };
   }
-  if (kind === "tap" || kind === "untap" || kind === "sacrifice") {
+  if (kind === "tap" || kind === "untap" || kind === "tap_or_untap" || kind === "sacrifice") {
     return { kind, cardId: expectString(value.cardId, `${label}.cardId`) };
   }
   if (kind === "add_counter") {
@@ -4235,6 +4264,13 @@ export function parseGameAction(json: string): GameAction {
       kind,
       playerId,
       cardId: raw.cardId === null ? null : expectString(raw.cardId, "action.cardId"),
+    };
+  }
+  if (kind === "resolve_trigger_mode") {
+    return {
+      kind,
+      playerId,
+      modeIndex: expectNumber(raw.modeIndex, "action.modeIndex"),
     };
   }
   if (kind === "turn_face_up") {

@@ -426,6 +426,10 @@ export class GameHost {
           this.apply({ kind: "resolve_enter_copy", playerId: prompt.playerId, cardId: pick });
           continue;
         }
+        if (prompt.kind === "choose_trigger_mode") {
+          this.apply({ kind: "resolve_trigger_mode", playerId: prompt.playerId, modeIndex: 0 });
+          continue;
+        }
         if (prompt.kind === "choose_card") {
           const pick = legalIdsForChooseSources(this.state, prompt.sources)[0];
           if (!pick) {

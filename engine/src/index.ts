@@ -113,7 +113,7 @@ export {
   isMulliganOpen,
 } from "./mulligan";
 export { redactForSpectator, redactForViewer, isHiddenFromViewer, HIDDEN_DEFINITION_ID } from "./visibility";
-export { applyChooseTargets, applyChooseEnterReplacement, applyResolveOrderTriggers, applyResolvePay, applyResolveScry, applyResolveSearch, applyResolveSurveil, applyResolveDiscard, applyResolveChooseCard, applyResolveEnterCopy, applyResolveLookAssign, currentPrompt, isPromptOpen, legalEnterCopyIds, legalSearchIds, lookedAtCardIds, legalIdsForChooseSources, searchMatches } from "./prompt";
+export { applyChooseTargets, applyChooseEnterReplacement, applyResolveOrderTriggers, applyResolvePay, applyResolveScry, applyResolveSearch, applyResolveSurveil, applyResolveDiscard, applyResolveChooseCard, applyResolveEnterCopy, applyResolveLookAssign, applyResolveTriggerMode, currentPrompt, isPromptOpen, legalEnterCopyIds, legalSearchIds, lookedAtCardIds, legalIdsForChooseSources, searchMatches } from "./prompt";
 export { queueSimultaneousTriggersInPlace } from "./triggers";
 export { abilitiesRemoved, computedCard, computedCards } from "./characteristicsEngine";
 export type { ComputedCard } from "./characteristicsEngine";
