@@ -165,6 +165,9 @@ export function putSpellOnStack(
   // trigger) and keep the original's targets and mode.
   const stormCount = next.spellsCastThisTurn;
   next.spellsCastThisTurn += 1;
+  const byPlayer = next.spellsCastByPlayerThisTurn ?? {};
+  byPlayer[moved.controllerId] = (byPlayer[moved.controllerId] ?? 0) + 1;
+  next.spellsCastByPlayerThisTurn = byPlayer;
   if (definition?.storm && stormCount > 0) {
     for (let copyIndex = 0; copyIndex < stormCount; copyIndex += 1) {
       next.stack.push({

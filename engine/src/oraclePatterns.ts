@@ -1533,6 +1533,51 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     }
   }
 
+  // Mahadi: tokens keyed to the turn's creature deaths.
+  const perDied = sentence.match(
+    /^create a (Treasure|Clue|Food) token for each creature that died this turn$/i,
+  );
+  if (perDied?.[1]) {
+    const name = perDied[1][0]!.toUpperCase() + perDied[1].slice(1).toLowerCase();
+    return {
+      targetRequirements: [],
+      effects: [
+        {
+          kind: "create_token",
+          ownerId: "controller",
+          name,
+          typeLine: `Artifact — ${name} Token`,
+          power: null,
+          toughness: null,
+          perDiedCreatures: true,
+        },
+      ],
+    };
+  }
+
+  // Lotho: the second-spell tax body.
+  const loseAndTreasure = sentence.match(
+    /^you lose (\d+) life and create a (Treasure|Clue|Food) token$/i,
+  );
+  if (loseAndTreasure?.[1] && loseAndTreasure[2]) {
+    const name =
+      loseAndTreasure[2][0]!.toUpperCase() + loseAndTreasure[2].slice(1).toLowerCase();
+    return {
+      targetRequirements: [],
+      effects: [
+        { kind: "lose_life", playerId: "controller", amount: Number(loseAndTreasure[1]) },
+        {
+          kind: "create_token",
+          ownerId: "controller",
+          name,
+          typeLine: `Artifact — ${name} Token`,
+          power: null,
+          toughness: null,
+        },
+      ],
+    };
+  }
+
   // Brass's Bounty: one predefined artifact token per controlled type.
   const perControlledToken = sentence.match(
     /^For each (land|creature|artifact) you control, create a (Treasure|Clue|Food) token$/i,
@@ -2271,6 +2316,9 @@ function parseTriggerHead(head: string): TriggerHead | null {
   }
   if (/^Whenever an opponent searches their library$/i.test(text)) {
     return { event: "opponent_searches" };
+  }
+  if (/^Whenever a player casts their second spell each turn$/i.test(text)) {
+    return { event: "casts_second_spell" };
   }
   if (/^Whenever a creature you control dies$/i.test(text)) {
     return { event: "dies", watch: "controlled", subjectFilter: { types: ["creature"] } };

@@ -6673,3 +6673,109 @@ describe("wave 74: smothering tithe and per-controlled tokens", () => {
     expect(Object.values(next.cards).filter((card) => card.isToken)).toHaveLength(4);
   });
 });
+
+describe("wave 75: died-this-turn treasures and second-spell taxes", () => {
+  const base = { power: null, toughness: null, printedKeywords: [], imageUrl: "" };
+
+  it("compiles Mahadi and Lotho fully", () => {
+    const mahadi = compileOracleCard({
+      ...base,
+      oracleId: "mahadi",
+      name: "Mahadi, Emporium Master",
+      manaCost: "{1}{B}{R}",
+      typeLine: "Legendary Creature — Leonin Devil",
+      power: "3",
+      toughness: "3",
+      oracleText:
+        "At the beginning of your end step, create a Treasure token for each creature that died this turn. (It's an artifact with \"{T}, Sacrifice this token: Add one mana of any color.\")",
+    });
+    expect(mahadi.notes).toEqual([]);
+    const token = mahadi.definition.triggers[0]?.effects[0];
+    expect(token?.kind === "create_token" && token.perDiedCreatures).toBe(true);
+
+    const lotho = compileOracleCard({
+      ...base,
+      oracleId: "lotho",
+      name: "Lotho, Corrupt Shirriff",
+      manaCost: "{W}{B}",
+      typeLine: "Legendary Creature — Halfling Rogue",
+      power: "2",
+      toughness: "2",
+      oracleText:
+        "Whenever a player casts their second spell each turn, you lose 1 life and create a Treasure token. (It's an artifact with \"{T}, Sacrifice this token: Add one mana of any color.\")",
+    });
+    expect(lotho.notes).toEqual([]);
+    expect(lotho.definition.triggers[0]?.event).toBe("casts_second_spell");
+  });
+
+  it("counts the turn's creature deaths into the token batch", () => {
+    const { game, p1 } = twoPlayers();
+    const bearDef = createCardDefinition({ name: "Bear", typeLine: "Creature — Bear", power: 2, toughness: 2 });
+    game.definitions[bearDef.id] = bearDef;
+    let next = game;
+    for (let i = 0; i < 2; i += 1) {
+      const bear = createCardInstance({ definitionId: bearDef.id, ownerId: p1.id, zone: "battlefield" });
+      next.cards[bear.id] = bear;
+      next.players.find((p) => p.id === p1.id)!.zones.battlefield.push(bear.id);
+      next = applyEffect(next, { kind: "sacrifice", cardId: bear.id });
+    }
+    expect(next.creaturesDiedThisTurn).toBe(2);
+    const bound = bindCardEffects(
+      next,
+      [
+        {
+          kind: "create_token",
+          ownerId: "controller",
+          name: "Treasure",
+          typeLine: "Artifact — Treasure Token",
+          power: null,
+          toughness: null,
+          perDiedCreatures: true,
+        },
+      ],
+      { controllerId: p1.id, sourceId: null },
+    );
+    expect(bound[0]?.kind === "create_token" && bound[0].count).toBe(2);
+  });
+
+  it("fires only on each player's second cast of the turn", () => {
+    const { game, p1 } = twoPlayers();
+    const lothoDef = createCardDefinition({
+      name: "Lotho Lite",
+      typeLine: "Creature — Halfling",
+      power: 2,
+      toughness: 2,
+      triggers: [
+        {
+          event: "casts_second_spell",
+          effects: [{ kind: "lose_life", playerId: "controller", amount: 1 }],
+        },
+      ],
+    });
+    const boltDef = createCardDefinition({ name: "Bolt", manaCost: "", typeLine: "Instant" });
+    game.definitions[lothoDef.id] = lothoDef;
+    game.definitions[boltDef.id] = boltDef;
+    const lotho = createCardInstance({ definitionId: lothoDef.id, ownerId: p1.id, zone: "battlefield" });
+    game.cards[lotho.id] = lotho;
+    p1.zones.battlefield.push(lotho.id);
+    game.turn.activePlayerId = p1.id;
+    game.turn.phase = "precombatMain";
+    game.turn.step = "precombatMain";
+    game.priorityPlayerId = p1.id;
+
+    let next = game;
+    for (let i = 0; i < 2; i += 1) {
+      const bolt = createCardInstance({ definitionId: boltDef.id, ownerId: p1.id, zone: "hand" });
+      next.cards[bolt.id] = bolt;
+      next.players.find((p) => p.id === p1.id)!.zones.hand.push(bolt.id);
+      next = applyAction(next, { kind: "cast_spell", playerId: p1.id, cardId: bolt.id });
+      if (i === 0) {
+        // First cast: only the spell is on the stack.
+        expect(next.stack).toHaveLength(1);
+        next = resolveTopOfStack(next);
+      }
+    }
+    // Second cast: the spell plus Lotho's trigger.
+    expect(next.stack).toHaveLength(2);
+  });
+});

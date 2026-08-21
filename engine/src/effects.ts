@@ -376,7 +376,7 @@ export function bindCardEffect(
       if (!ownerId) {
         return null;
       }
-      const { perControlled, ...tokenRest } = effect;
+      const { perControlled, perDiedCreatures, ...tokenRest } = effect;
       let count: number | undefined;
       if (perControlled) {
         count = Object.values(state.cards).filter(
@@ -385,6 +385,12 @@ export function bindCardEffect(
             card.controllerId === context.controllerId &&
             characteristicsOf(state, card.id).types.includes(perControlled),
         ).length;
+        if (count === 0) {
+          return null;
+        }
+      }
+      if (perDiedCreatures) {
+        count = state.creaturesDiedThisTurn ?? 0;
         if (count === 0) {
           return null;
         }

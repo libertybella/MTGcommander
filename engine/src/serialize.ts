@@ -739,6 +739,23 @@ export function parseGameState(json: string): GameState {
       raw.spellsCastThisTurn === undefined
         ? 0
         : expectNumber(raw.spellsCastThisTurn, "spellsCastThisTurn"),
+    ...(raw.spellsCastByPlayerThisTurn === undefined
+      ? {}
+      : {
+          spellsCastByPlayerThisTurn: (() => {
+            if (!isRecord(raw.spellsCastByPlayerThisTurn)) {
+              throw new Error("Invalid spellsCastByPlayerThisTurn");
+            }
+            const counts: Record<string, number> = {};
+            for (const [key, entry] of Object.entries(raw.spellsCastByPlayerThisTurn)) {
+              counts[key] = expectNumber(entry, `spellsCastByPlayerThisTurn.${key}`);
+            }
+            return counts;
+          })(),
+        }),
+    ...(raw.creaturesDiedThisTurn === undefined
+      ? {}
+      : { creaturesDiedThisTurn: expectNumber(raw.creaturesDiedThisTurn, "creaturesDiedThisTurn") }),
     preventCombatDamage: raw.preventCombatDamage === true,
     delayedEndStep:
       raw.delayedEndStep === undefined
@@ -1598,6 +1615,7 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
         value.perControlled === "artifact"
           ? { perControlled: value.perControlled }
           : {}),
+        ...(value.perDiedCreatures === true ? { perDiedCreatures: true } : {}),
       };
     case "move_card": {
       const toZone = expectString(value.toZone, `${label}.toZone`);
@@ -2043,6 +2061,7 @@ function parseTriggers(value: unknown, label: string): CardTrigger[] {
       event !== "you_sacrifice_token" &&
       event !== "becomes_untapped" &&
       event !== "opponent_searches" &&
+      event !== "casts_second_spell" &&
       event !== "cast_spell" &&
       event !== "deals_combat_damage_to_player" &&
       event !== "deals_damage_to_player"

@@ -377,6 +377,10 @@ export type GameState = {
   delayedEndStep: Array<{ cardId: CardInstanceId; action: "sacrifice" | "exile" }>;
   /** Spells cast by anyone this turn — Storm's copy count (CR 702.40). */
   spellsCastThisTurn: number;
+  /** Per-player casts this turn (Lotho's second-spell watch). */
+  spellsCastByPlayerThisTurn?: Record<PlayerId, number>;
+  /** Creatures that died this turn (Mahadi's Treasure count). */
+  creaturesDiedThisTurn?: number;
   /** Fog: no combat damage is dealt for the rest of this turn. */
   preventCombatDamage: boolean;
   /**
@@ -783,6 +787,8 @@ export type CardEffect =
       keywords?: Keyword[];
       /** Brass's Bounty: one token per controlled permanent of this type. */
       perControlled?: "land" | "creature" | "artifact";
+      /** Mahadi: one token per creature that died this turn. */
+      perDiedCreatures?: boolean;
     }
   | { kind: "mill"; playerId: PlayerSelector; count: number }
   | { kind: "discard"; playerId: PlayerSelector; count: number }
@@ -939,7 +945,9 @@ export type TriggerEvent =
   /** Any permanent untapped (Mesmeric Orb). Subject is the permanent. */
   | "becomes_untapped"
   /** An opponent searched their library (Archivist of Oghma). */
-  | "opponent_searches";
+  | "opponent_searches"
+  /** Any player cast their second spell this turn (Lotho). */
+  | "casts_second_spell";
 
 /** An intervening-if condition, checked when the trigger would be queued.
  * Approximation: CR 603.4 also re-checks on resolution; this table checks

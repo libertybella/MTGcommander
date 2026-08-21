@@ -405,6 +405,13 @@ function triggerMatchesEvent(
   if (trigger.event === "deals_damage_to_player") {
     return false;
   }
+  if (event.kind === "casts" && trigger.event === "casts_second_spell") {
+    // Lotho: fires exactly on each player's second cast of the turn.
+    return (state.spellsCastByPlayerThisTurn?.[event.controllerId] ?? 0) === 2;
+  }
+  if (trigger.event === "casts_second_spell") {
+    return false;
+  }
   if (event.kind === "casts") {
     if (trigger.event !== "cast_spell") {
       return false;
@@ -471,6 +478,16 @@ function triggerMatchesEvent(
 export function dispatchEventsInPlace(state: GameState, events: EngineEvent[]): void {
   if (events.length === 0) {
     return;
+  }
+  // Mahadi's counter: every dies event for a printed creature bumps the
+  // per-turn tally (reset when a new turn begins).
+  for (const event of events) {
+    if (
+      event.kind === "dies" &&
+      characteristicsOf(state, event.cardId).types.includes("creature")
+    ) {
+      state.creaturesDiedThisTurn = (state.creaturesDiedThisTurn ?? 0) + 1;
+    }
   }
   const candidates: TriggerCandidate[] = [];
   const consider = (card: CardInstance) => {

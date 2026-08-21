@@ -95,6 +95,8 @@ function onEnterStep(state: GameState): GameState {
     // Unused extra combats do not carry across turns.
     state.pendingExtraCombats = 0;
     state.spellsCastThisTurn = 0;
+    state.spellsCastByPlayerThisTurn = {};
+    state.creaturesDiedThisTurn = 0;
     const untappedEvents: EngineEvent[] = [];
     const untapInPlace = (card: (typeof state.cards)[string]) => {
       if (card.tapped) {
