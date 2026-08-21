@@ -60,6 +60,7 @@ export function putActivatedAbilityOnStack(
   abilityIndex: number,
   targets: ChosenTarget[] = [],
   modeIndex?: number,
+  sacrificedPower?: number,
 ): GameState {
   const card = state.cards[cardId];
   if (!card) {
@@ -96,6 +97,8 @@ export function putActivatedAbilityOnStack(
     targets: targets.map((target) => ({ ...target })),
     activatedIndex: abilityIndex,
     ...(modeIndex !== undefined ? { modeIndex } : {}),
+    // Altar of Dementia: the sacrificed cost-creature's power.
+    ...(sacrificedPower !== undefined ? { sacrificedPower } : {}),
   });
   next.passesSinceAction = 0;
   next.priorityPlayerId = card.controllerId;
@@ -266,6 +269,8 @@ export function resolveTopOfStack(state: GameState): GameState {
           sourceId: top.sourceId,
           targets: top.targets,
           targetRequirements: requirements,
+          // Altar of Dementia: the sacrificed cost-creature's power.
+          ...(top.sacrificedPower !== undefined ? { sacrificedPower: top.sacrificedPower } : {}),
         });
         next = applyEffects(next, bound);
       }

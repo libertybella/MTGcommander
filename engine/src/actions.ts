@@ -655,7 +655,14 @@ function applyTapForMana(
     ? Math.max(0, color ? devotionTo(state, playerId, color as Color) : 0)
     : ability.countFromPower
       ? Math.max(0, creaturePower(state, cardId))
-      : manaAbilityAmount(ability);
+      : ability.countFromEnchantments
+        ? Object.values(state.cards).filter(
+            (entry) =>
+              entry.zone === "battlefield" &&
+              entry.controllerId === playerId &&
+              characteristicsOf(state, entry.id).types.includes("enchantment"),
+          ).length
+        : manaAbilityAmount(ability);
   let addition: Partial<ManaPool>;
   if (ability.producesColorsAmong) {
     // Bloom Tender: one mana of each color among controlled permanents.
@@ -954,7 +961,17 @@ function applyActivateAbility(
     next = moveCard(next, cardId, "exile");
     return resolveTopOfStack(next);
   }
-  next = putActivatedAbilityOnStack(next, cardId, abilityIndex, targets ?? [], modeIndex);
+  next = putActivatedAbilityOnStack(
+    next,
+    cardId,
+    abilityIndex,
+    targets ?? [],
+    modeIndex,
+    // Altar of Dementia: capture the fodder's power before it dies.
+    ability.sacrificeCost && costSacrificeId
+      ? Math.max(0, creaturePower(next, costSacrificeId))
+      : undefined,
+  );
   if (ability.sacrificeCost && costSacrificeId) {
     // Sacrificing is part of the cost (paid on activation); the ability
     // itself waits on the stack normally.

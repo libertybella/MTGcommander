@@ -1580,6 +1580,7 @@ function parseCardFilter(value: unknown, label: string): CardFilter {
     filter !== "any" &&
     filter !== "creature" &&
     filter !== "nontoken_creature" &&
+    filter !== "creature_or_planeswalker" &&
     filter !== "land" &&
     filter !== "nonland" &&
     filter !== "noncreature_nonland"
@@ -2044,6 +2045,9 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
         chooserId: parsePlayerSelector(value.chooserId, `${label}.chooserId`),
         sources: parseChooseCardSources(value.sources, `${label}.sources`),
         thenEffects: parseCardEffects(value.thenEffects, `${label}.thenEffects`),
+        ...(value.cantDiscards === undefined
+          ? {}
+          : { cantDiscards: expectNumber(value.cantDiscards, `${label}.cantDiscards`) }),
       };
     case "add_mana":
       return {
@@ -2203,6 +2207,14 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
         cardId: parseCardIdSelector(value.cardId, `${label}.cardId`),
       };
     case "mill":
+      return {
+        kind,
+        playerId: parsePlayerSelector(value.playerId, `${label}.playerId`),
+        count:
+          value.count === "sacrificed_power"
+            ? "sacrificed_power"
+            : expectNumber(value.count, `${label}.count`),
+      };
     case "discard":
     case "discard_random":
     case "exile_top":
@@ -2605,6 +2617,18 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
           ? {}
           : { minPower: expectNumber(value.minPower, `${label}.minPower`) }),
         ...(value.exceptChosenType === true ? { exceptChosenType: true } : {}),
+        ...(value.addManaPerDestroyedOptions === undefined
+          ? {}
+          : {
+              addManaPerDestroyedOptions: (() => {
+                if (!Array.isArray(value.addManaPerDestroyedOptions)) {
+                  throw new Error(`Invalid ${label}.addManaPerDestroyedOptions`);
+                }
+                return value.addManaPerDestroyedOptions.map((entry, index) =>
+                  parseManaColor(entry, `${label}.addManaPerDestroyedOptions[${index}]`),
+                );
+              })(),
+            }),
       };
     case "create_emblem":
       return {
@@ -3402,6 +3426,7 @@ function parseManaAbilities(value: unknown, label: string): ManaAbility[] {
       ...(entry.noTap === true ? { noTap: true } : {}),
       ...(entry.countFromPower === true ? { countFromPower: true } : {}),
       ...(entry.countFromDevotion === true ? { countFromDevotion: true } : {}),
+      ...(entry.countFromEnchantments === true ? { countFromEnchantments: true } : {}),
       ...(entry.costTapCreature === true ? { costTapCreature: true } : {}),
       ...(entry.anyColorAmong === "legendary" ||
       entry.anyColorAmong === "opponent_lands" ||
@@ -3807,6 +3832,12 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
       ...(value.exceptSubtype === undefined
         ? {}
         : { exceptSubtype: expectString(value.exceptSubtype, `${label}.exceptSubtype`) }),
+      ...(value.addManaPerDestroyed === undefined
+        ? {}
+        : { addManaPerDestroyed: parseManaColor(value.addManaPerDestroyed, `${label}.addManaPerDestroyed`) }),
+      ...(value.manaTo === undefined
+        ? {}
+        : { manaTo: expectString(value.manaTo, `${label}.manaTo`) }),
     };
   }
   if (kind === "create_emblem") {
@@ -4173,6 +4204,9 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
         };
       }),
       thenEffects: parseCardEffects(value.thenEffects, `${label}.thenEffects`),
+      ...(value.cantDiscards === undefined
+        ? {}
+        : { cantDiscards: expectNumber(value.cantDiscards, `${label}.cantDiscards`) }),
       sourceId:
         value.sourceId === undefined || value.sourceId === null
           ? null

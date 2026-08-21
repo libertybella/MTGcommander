@@ -386,6 +386,7 @@ function manaAbilityFromAdd(add: AddManaResult): ManaAbility {
       producesAnyColor: true,
       damageToController: 0,
       ...(add.countFromPower ? { countFromPower: true } : {}),
+      ...(add.countFromEnchantments ? { countFromEnchantments: true } : {}),
       ...(add.count && add.count > 1 ? { count: add.count } : {}),
     };
   }
@@ -436,7 +437,7 @@ function copyFirstManaAbility(result: CompiledOracleText): void {
 
 type AddManaResult =
   | { kind: "fixed"; produces: Partial<ManaPool> }
-  | { kind: "any_color"; count?: number; countFromPower?: boolean }
+  | { kind: "any_color"; count?: number; countFromPower?: boolean; countFromEnchantments?: boolean }
   | {
       kind: "any_color_among";
       scope: "legendary" | "opponent_lands" | "your_lands" | "commander_identity";
@@ -486,6 +487,10 @@ function parseAddMana(rest: string): AddManaResult | null {
   // Kami of Whispered Hopes: the amount reads the creature's power at tap.
   if (/^Add X mana of any one color, where X is (?:this creature|~)'s power$/i.test(text)) {
     return { kind: "any_color", countFromPower: true };
+  }
+  // Sanctum Weaver.
+  if (/^Add X mana of any one color, where X is the number of enchantments you control$/i.test(text)) {
+    return { kind: "any_color", countFromEnchantments: true };
   }
   if (!/^Add /i.test(text)) {
     return null;
@@ -1106,6 +1111,16 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     )
   ) {
     return { targetRequirements: [], effects: [{ kind: "windfall" }] };
+  }
+
+  // Altar of Dementia: the mill reads the sacrificed cost-creature's power.
+  if (/^Target player mills cards equal to the sacrificed creature's power$/i.test(sentence)) {
+    return {
+      targetRequirements: [{ kind: "player" }],
+      effects: [
+        { kind: "mill", playerId: { type: "chosen", index: 0 }, count: "sacrificed_power" },
+      ],
+    };
   }
 
   // Mystic Forge's exile activation.
@@ -2320,7 +2335,7 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
   }
   // Lotus Cobra: "add one mana of any color" as a resolved effect — the
   // color is auto-picked at bind (documented approximation).
-  if (ritual?.kind === "any_color" && !ritual.countFromPower) {
+  if (ritual?.kind === "any_color" && !ritual.countFromPower && !ritual.countFromEnchantments) {
     return {
       targetRequirements: [],
       effects: [
@@ -3504,9 +3519,10 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
   // edicts (Blasphemous Edict's thirteen) repeat the choice sequentially —
   // a documented approximation of the simultaneous pick.
   match = sentence.match(
-    /^Each (player|opponent|other player) sacrifices (a|one|two|three|thirteen|\d+) (nontoken )?creatures?(?: of their choice)?$/i,
+    /^Each (player|opponent|other player) sacrifices (a|one|two|three|thirteen|\d+) (nontoken )?(creatures?|creatures? or planeswalkers?)(?: of their choice)?$/i,
   );
   if (match?.[1] && match[2]) {
+    const withPlaneswalkers = /planeswalker/i.test(match[4] ?? "");
     const edictWord = match[2].toLowerCase();
     const edictCount =
       edictWord === "a" || edictWord === "one"
@@ -3526,7 +3542,11 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
           {
             playerId: match[1].toLowerCase() === "player" ? "each_player" : "each_opponent",
             zone: "battlefield",
-            filter: match[3] ? "nontoken_creature" : "creature",
+            filter: withPlaneswalkers
+              ? "creature_or_planeswalker"
+              : match[3]
+                ? "nontoken_creature"
+                : "creature",
           },
         ],
         thenEffects: [{ kind: "sacrifice", cardId: "chosen_card" }],
@@ -6960,6 +6980,76 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
       // cost is auto-taken whenever a commander is controlled.
       result.freeIfCommander = true;
       continue;
+    }
+
+    // Victimize: two graveyard picks and a tapped mass return. The real
+    // card sacrifices on resolution; here the sacrifice is a cast-time
+    // additional cost (Fling's pattern) — a documented approximation.
+    if (
+      /^Choose two target creature cards in your graveyard$/i.test(sentence) &&
+      /^Sacrifice a creature$/i.test(sentences[index + 1] ?? "") &&
+      /^If you do, return the chosen cards to the battlefield tapped$/i.test(
+        sentences[index + 2] ?? "",
+      )
+    ) {
+      result.additionalCost = { ...(result.additionalCost ?? {}), sacrifice: "creature" };
+      result.targetRequirements.push(
+        { kind: "own_graveyard_creature_card" },
+        { kind: "own_graveyard_creature_card" },
+      );
+      result.effects.push(
+        {
+          kind: "move_card",
+          cardId: { type: "chosen", index: 0 },
+          toZone: "battlefield",
+          entersTapped: true,
+        },
+        {
+          kind: "move_card",
+          cardId: { type: "chosen", index: 1 },
+          toZone: "battlefield",
+          entersTapped: true,
+        },
+      );
+      sentences[index + 1] = "";
+      sentences[index + 2] = "";
+      continue;
+    }
+
+    // Culling Ritual: the sweep counts its kills into mana.
+    const culling =
+      /^Destroy each nonland permanent with mana value (\d+) or less$/i.exec(sentence);
+    const cullingMana = /^Add \{([WUBRG])\} or \{([WUBRG])\} for each permanent destroyed this way$/i.exec(
+      sentences[index + 1] ?? "",
+    );
+    if (culling?.[1] && cullingMana?.[1] && cullingMana[2]) {
+      result.effects.push({
+        kind: "destroy_all",
+        what: "nonland",
+        maxManaValue: Number(culling[1]),
+        addManaPerDestroyedOptions: [
+          cullingMana[1].toUpperCase() as ManaColor,
+          cullingMana[2].toUpperCase() as ManaColor,
+        ],
+      });
+      sentences[index + 1] = "";
+      continue;
+    }
+
+    // Plaguecrafter's fallback rider: attaches to the just-compiled edict.
+    if (/^Each player who can't discards a card$/i.test(sentence)) {
+      const lastTrigger = result.triggers.at(-1);
+      const pool = lastTrigger ? lastTrigger.effects : result.effects;
+      const edicts = pool.filter(
+        (entry): entry is Extract<CardEffect, { kind: "choose_card" }> =>
+          entry.kind === "choose_card",
+      );
+      if (edicts.length > 0) {
+        for (const edict of edicts) {
+          edict.cantDiscards = 1;
+        }
+        continue;
+      }
     }
 
     // Dryad of the Ilysian Grove: controlled lands gain every basic type

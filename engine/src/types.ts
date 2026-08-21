@@ -576,6 +576,8 @@ export type CardFilter =
   | "any"
   | "creature"
   | "nontoken_creature"
+  /** Plaguecrafter: "a creature or planeswalker of their choice". */
+  | "creature_or_planeswalker"
   | "land"
   | "nonland"
   | "noncreature_nonland";
@@ -679,6 +681,8 @@ export type GameEffect =
       sources: BoundChooseCardSource[];
       thenEffects: CardEffect[];
       sourceId: CardInstanceId | null;
+      /** Plaguecrafter: with no legal choice, discard this many instead. */
+      cantDiscards?: number;
     }
   | {
       kind: "look_and_assign";
@@ -848,6 +852,10 @@ export type GameEffect =
       minPower?: number;
       /** Kindred Dominance: spare permanents of this subtype. */
       exceptSubtype?: string;
+      /** Culling Ritual: this player gets one mana of this color per
+       * permanent destroyed by the sweep. */
+      addManaPerDestroyed?: ManaColor;
+      manaTo?: PlayerId;
     }
   /** Rhystic Study: the payer chooses to pay or the effects happen. */
   | { kind: "unless_pays"; playerId: PlayerId; cost: string; effects: GameEffect[] }
@@ -1170,7 +1178,9 @@ export type CardEffect =
        * source instead of the printed token. */
       copySelfIfLandsAtLeast?: number;
     }
-  | { kind: "mill"; playerId: PlayerSelector; count: number }
+  /** count "sacrificed_power": Altar of Dementia reads the sacrificed
+   * cost-creature's power, captured on activation. */
+  | { kind: "mill"; playerId: PlayerSelector; count: number | "sacrificed_power" }
   | { kind: "discard"; playerId: PlayerSelector; count: number }
   /** Gamble: "discard a card at random". */
   | { kind: "discard_random"; playerId: PlayerSelector; count: number }
@@ -1187,6 +1197,8 @@ export type CardEffect =
       chooserId: PlayerSelector;
       sources: ChooseCardSource[];
       thenEffects: CardEffect[];
+      /** Plaguecrafter: with no legal choice, discard this many instead. */
+      cantDiscards?: number;
     }
   | {
       kind: "look_and_assign";
@@ -1398,6 +1410,10 @@ export type CardEffect =
       /** Kindred Dominance: the auto-chosen type (most common among the
        * caster's creatures, bound at resolution) is spared. */
       exceptChosenType?: boolean;
+      /** Culling Ritual: the caster gets one mana per destroyed permanent —
+       * the color is auto-picked at bind from these options (first
+       * commander-identity match, else the first listed; documented). */
+      addManaPerDestroyedOptions?: ManaColor[];
     }
   | {
       kind: "unless_pays";
@@ -1911,6 +1927,8 @@ export type ManaAbility = {
   countFromPower?: boolean;
   /** Nykthos: the amount is the controller's devotion to the chosen color. */
   countFromDevotion?: boolean;
+  /** Sanctum Weaver: the amount is the controller's enchantment count. */
+  countFromEnchantments?: boolean;
   /** Springleaf Drum: tapping a chosen untapped controlled creature is part
    * of the cost. Never auto-tapped; adds nothing to potential mana. */
   costTapCreature?: boolean;

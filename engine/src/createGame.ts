@@ -232,6 +232,7 @@ export function createCardDefinition(
           ...(ability.noTap ? { noTap: true } : {}),
           ...(ability.countFromPower ? { countFromPower: true } : {}),
           ...(ability.countFromDevotion ? { countFromDevotion: true } : {}),
+          ...(ability.countFromEnchantments ? { countFromEnchantments: true } : {}),
           ...(ability.costTapCreature ? { costTapCreature: true } : {}),
           ...(ability.anyColorAmong ? { anyColorAmong: ability.anyColorAmong } : {}),
           ...(ability.producesChosenColor ? { producesChosenColor: true } : {}),

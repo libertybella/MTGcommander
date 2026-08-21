@@ -390,6 +390,10 @@ function cardMatchesFilter(
   if (filter === "nontoken_creature") {
     return types.includes("creature") && !card?.isToken;
   }
+  // Plaguecrafter: "a creature or planeswalker of their choice".
+  if (filter === "creature_or_planeswalker") {
+    return types.includes("creature") || types.includes("planeswalker");
+  }
   return !types.includes("land");
 }
 

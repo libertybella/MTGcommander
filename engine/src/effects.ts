@@ -474,7 +474,20 @@ export function bindCardEffect(
       }
       return { ...manaRest, playerId, mana };
     }
-    case "mill":
+    case "mill": {
+      const playerId = bindPlayerSelector(state, effect.playerId, context);
+      if (!playerId) {
+        return null;
+      }
+      // Altar of Dementia: the sacrificed cost-creature's power, captured
+      // on activation.
+      const count =
+        effect.count === "sacrificed_power" ? context.sacrificedPower ?? 0 : effect.count;
+      if (count <= 0) {
+        return null;
+      }
+      return { kind: "mill", playerId, count };
+    }
     case "discard":
     case "discard_random":
     case "scry":
@@ -539,6 +552,7 @@ export function bindCardEffect(
         sources,
         thenEffects: effect.thenEffects.map((entry) => ({ ...entry })),
         sourceId: context.sourceId,
+        ...(effect.cantDiscards ? { cantDiscards: effect.cantDiscards } : {}),
       };
     }
     case "deal_damage": {
@@ -1021,6 +1035,13 @@ export function bindCardEffect(
       const spared = effect.exceptChosenType
         ? mostCommonControlledCreatureType(state, context.controllerId)
         : null;
+      // Culling Ritual: pick the mana color from the options — first
+      // commander-identity match, else the first listed (documented).
+      const manaOptions = effect.addManaPerDestroyedOptions;
+      const identity = manaOptions ? commanderIdentityColors(state, context.controllerId) : [];
+      const manaColor = manaOptions
+        ? manaOptions.find((color) => identity.includes(color)) ?? manaOptions[0]
+        : undefined;
       return {
         kind: "destroy_all",
         what: effect.what,
@@ -1028,6 +1049,7 @@ export function bindCardEffect(
         ...(effect.minManaValue !== undefined ? { minManaValue: effect.minManaValue } : {}),
         ...(effect.minPower !== undefined ? { minPower: effect.minPower } : {}),
         ...(spared ? { exceptSubtype: spared } : {}),
+        ...(manaColor ? { addManaPerDestroyed: manaColor, manaTo: context.controllerId } : {}),
       };
     }
     case "unless_pays": {
@@ -2438,6 +2460,10 @@ function applyDestroyAll(
     dispatchEventsInPlace(next, collectDies);
     processDiesReturnsInPlace(next, collectDies);
   }
+  // Culling Ritual: one mana per permanent the sweep destroyed.
+  if (effect.addManaPerDestroyed && effect.manaTo && doomed.length > 0) {
+    return addMana(next, effect.manaTo, { [effect.addManaPerDestroyed]: doomed.length });
+  }
   return next;
 }
 
@@ -2447,6 +2473,17 @@ function applyChooseCardEffect(
 ): GameState {
   const legal = legalIdsForChooseSources(state, effect.sources);
   if (legal.length === 0) {
+    // Plaguecrafter: "Each player who can't discards a card" — the discard
+    // is still that player's choice.
+    if (effect.cantDiscards && effect.cantDiscards > 0) {
+      const hand = state.players.find((entry) => entry.id === effect.chooserId)?.zones.hand ?? [];
+      const count = Math.min(effect.cantDiscards, hand.length);
+      if (count > 0) {
+        const withPrompt = cloneGameState(state);
+        withPrompt.prompts.push({ kind: "choose_discard", playerId: effect.chooserId, count });
+        return withPrompt;
+      }
+    }
     return state;
   }
   const next = cloneGameState(state);

@@ -15413,3 +15413,200 @@ describe("wave 137: nexus of types", () => {
   });
 });
 
+
+describe("wave 138: altars and rituals", () => {
+  it("compiles the five-card bucket fully", () => {
+    const weaver = compileOracleCard({
+      oracleId: "weaver",
+      name: "Sanctum Weaver",
+      manaCost: "{1}{G}",
+      typeLine: "Enchantment Creature — Dryad",
+      power: "0",
+      toughness: "2",
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "{T}: Add X mana of any one color, where X is the number of enchantments you control.",
+    });
+    expect(weaver.notes).toEqual([]);
+    expect(weaver.definition.manaAbilities[0]?.countFromEnchantments).toBe(true);
+    expect(weaver.definition.manaAbilities[0]?.producesAnyColor).toBe(true);
+
+    const altar = compileOracleCard({
+      oracleId: "altar",
+      name: "Altar of Dementia",
+      manaCost: "{2}",
+      typeLine: "Artifact",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "Sacrifice a creature: Target player mills cards equal to the sacrificed creature's power.",
+    });
+    expect(altar.notes).toEqual([]);
+    expect(altar.definition.activated[0]?.sacrificeCost).toBe("creature");
+    expect(altar.definition.activated[0]?.effects).toEqual([
+      { kind: "mill", playerId: { type: "chosen", index: 0 }, count: "sacrificed_power" },
+    ]);
+
+    const victimize = compileOracleCard({
+      oracleId: "victimize",
+      name: "Victimize",
+      manaCost: "{2}{B}",
+      typeLine: "Sorcery",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "Choose two target creature cards in your graveyard. Sacrifice a creature. If you do, return the chosen cards to the battlefield tapped.",
+    });
+    expect(victimize.notes).toEqual([]);
+    expect(victimize.definition.additionalCost?.sacrifice).toBe("creature");
+    expect(victimize.definition.targetRequirements).toEqual([
+      { kind: "own_graveyard_creature_card" },
+      { kind: "own_graveyard_creature_card" },
+    ]);
+    expect(victimize.definition.effects[1]).toMatchObject({
+      kind: "move_card",
+      toZone: "battlefield",
+      entersTapped: true,
+    });
+
+    const ritual = compileOracleCard({
+      oracleId: "ritual",
+      name: "Culling Ritual",
+      manaCost: "{2}{B}{G}",
+      typeLine: "Sorcery",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "Destroy each nonland permanent with mana value 2 or less. Add {B} or {G} for each permanent destroyed this way.",
+    });
+    expect(ritual.notes).toEqual([]);
+    expect(ritual.definition.effects).toEqual([
+      {
+        kind: "destroy_all",
+        what: "nonland",
+        maxManaValue: 2,
+        addManaPerDestroyedOptions: ["B", "G"],
+      },
+    ]);
+
+    const crafter = compileOracleCard({
+      oracleId: "crafter",
+      name: "Plaguecrafter",
+      manaCost: "{2}{B}",
+      typeLine: "Creature — Human Shaman",
+      power: "3",
+      toughness: "2",
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "When this creature enters, each player sacrifices a creature or planeswalker of their choice. Each player who can't discards a card.",
+    });
+    expect(crafter.notes).toEqual([]);
+    const edict = crafter.definition.triggers[0]?.effects[0];
+    expect(edict).toMatchObject({ kind: "choose_card", cantDiscards: 1 });
+    expect(edict?.kind === "choose_card" && edict.sources[0]?.filter).toBe(
+      "creature_or_planeswalker",
+    );
+  });
+
+  it("counts kills into mana, falls back to discards, and mills by power", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+
+    // Culling Ritual: two cheap permanents die, the expensive one lives,
+    // and the caster banks two mana (B — no commander identity in play).
+    const cheapDef = createCardDefinition({ name: "Sprite", typeLine: "Creature — Faerie", manaCost: "{1}", power: 1, toughness: 1 });
+    const bigDef = createCardDefinition({ name: "Ogre", typeLine: "Creature — Ogre", manaCost: "{4}", power: 4, toughness: 4 });
+    game.definitions[cheapDef.id] = cheapDef;
+    game.definitions[bigDef.id] = bigDef;
+    const mine = createCardInstance({ definitionId: cheapDef.id, ownerId: p1.id, zone: "battlefield" });
+    const theirs = createCardInstance({ definitionId: cheapDef.id, ownerId: p2.id, zone: "battlefield" });
+    const big = createCardInstance({ definitionId: bigDef.id, ownerId: p2.id, zone: "battlefield" });
+    game.cards[mine.id] = mine;
+    game.cards[theirs.id] = theirs;
+    game.cards[big.id] = big;
+    p1.zones.battlefield.push(mine.id);
+    p2.zones.battlefield.push(theirs.id, big.id);
+    let next = applyEffects(
+      game,
+      bindCardEffects(
+        game,
+        [
+          {
+            kind: "destroy_all",
+            what: "nonland",
+            maxManaValue: 2,
+            addManaPerDestroyedOptions: ["B", "G"],
+          },
+        ],
+        { controllerId: p1.id, sourceId: null, targets: [], targetRequirements: [] },
+      ),
+    );
+    expect(next.cards[mine.id]?.zone).toBe("graveyard");
+    expect(next.cards[theirs.id]?.zone).toBe("graveyard");
+    expect(next.cards[big.id]?.zone).toBe("battlefield");
+    expect(next.players.find((entry) => entry.id === p1.id)?.mana.B).toBe(2);
+
+    // Plaguecrafter's fallback: a player with no creature or planeswalker
+    // gets a discard choice instead (the survivor big Ogre belongs to p2,
+    // so p1 is the one who can't).
+    const p1Hand = addHandCards(next, next.players.find((entry) => entry.id === p1.id)!, 2);
+    expect(p1Hand).toHaveLength(2);
+    next = applyEffects(next, [
+      {
+        kind: "choose_card",
+        chooserId: p1.id,
+        sources: [{ playerId: p1.id, zone: "battlefield", filter: "creature_or_planeswalker" }],
+        thenEffects: [{ kind: "sacrifice", cardId: "chosen_card" }],
+        sourceId: null,
+        cantDiscards: 1,
+      },
+    ]);
+    expect(next.prompts[0]).toMatchObject({ kind: "choose_discard", playerId: p1.id, count: 1 });
+    next.prompts = [];
+
+    // Altar of Dementia: sacrificing the 4/4 mills the chosen player four.
+    const altarDef = createCardDefinition({
+      name: "Altar",
+      typeLine: "Artifact",
+      activated: [
+        {
+          tap: false,
+          manaCost: "",
+          sacrificeCost: "creature",
+          effects: [
+            { kind: "mill", playerId: { type: "chosen", index: 0 }, count: "sacrificed_power" },
+          ],
+          targetRequirements: [{ kind: "player" }],
+        },
+      ],
+    });
+    next.definitions[altarDef.id] = altarDef;
+    const altar = createCardInstance({ definitionId: altarDef.id, ownerId: p2.id, zone: "battlefield" });
+    next.cards[altar.id] = altar;
+    next.players.find((entry) => entry.id === p2.id)!.zones.battlefield.push(altar.id);
+    next.priorityPlayerId = p2.id;
+    const libraryBefore = next.players.find((entry) => entry.id === p1.id)!.zones.library.length;
+    next = applyAction(next, {
+      kind: "activate_ability",
+      playerId: p2.id,
+      cardId: altar.id,
+      abilityIndex: 0,
+      costSacrificeId: big.id,
+      targets: [{ type: "player", playerId: p1.id }],
+    });
+    expect(next.cards[big.id]?.zone).toBe("graveyard");
+    next = resolveTopOfStack(next);
+    expect(next.players.find((entry) => entry.id === p1.id)!.zones.library.length).toBe(
+      libraryBefore - 4,
+    );
+  });
+});
+
