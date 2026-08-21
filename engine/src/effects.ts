@@ -7,7 +7,8 @@ import { allBattlefieldCreatureCount, creaturePower, creatureToughness, wouldSki
 import { hasKeyword } from "./keywords";
 import { addMana, tapCard, untapCard } from "./mana";
 import { isLiving, livingPlayers, nextLivingPlayerId } from "./players";
-import { isPromptOpen, legalIdsForChooseSources } from "./prompt";
+import { isPromptOpen, legalIdsForChooseSources, searchMatches } from "./prompt";
+import { shuffleInPlace } from "./shuffle";
 import { applyStateBasedActionsInPlace } from "./status";
 import { isChosenTargetLegal, legalChoicesForRequirement, sourceColorsOf } from "./targeting";
 import { amassArmyTemplate, tokenPresetFor } from "./tokens";
@@ -659,6 +660,19 @@ export function bindCardEffect(
         kind: "bounce_each_creature",
         ...(effect.unlessCounter ? { unlessCounter: effect.unlessCounter } : {}),
       };
+    case "dig_top": {
+      const playerId = bindPlayerSelector(state, effect.playerId, context);
+      if (!playerId) {
+        return null;
+      }
+      return {
+        kind: "dig_top",
+        playerId,
+        count: effect.count,
+        filter: { ...effect.filter },
+        destination: effect.destination,
+      };
+    }
     case "counter_on_each_creature": {
       const amount = effect.amount === "x" ? context.xValue ?? 0 : effect.amount;
       if (amount <= 0) {
@@ -1765,6 +1779,37 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
           });
           next = applyEffects(next, bound);
         }
+        break;
+      }
+      case "dig_top": {
+        // Impulse dig, with the pick auto-taken: the first filter match among
+        // the looked cards goes to the destination (a documented
+        // approximation — no picker prompt), the rest go to the bottom in
+        // random order.
+        next = cloneGameState(state);
+        const digger = next.players.find((entry) => entry.id === effect.playerId);
+        if (!digger) {
+          throw new Error(`Unknown player ${effect.playerId}`);
+        }
+        const looked = digger.zones.library.slice(0, effect.count);
+        const pickedId = looked.find((cardId) => searchMatches(next, cardId, effect.filter));
+        if (pickedId) {
+          moveCardInPlace(next, pickedId, effect.destination === "hand" ? "hand" : "battlefield");
+          if (effect.destination === "battlefield_tapped") {
+            const entered = next.cards[pickedId];
+            if (entered && entered.zone === "battlefield") {
+              entered.tapped = true;
+            }
+          }
+        }
+        const rest = looked.filter((cardId) => cardId !== pickedId);
+        for (const cardId of rest) {
+          moveCardInPlace(next, cardId, "library", { libraryPosition: "bottom" });
+        }
+        // "In a random order": shuffle the moved tail in place.
+        const tail = digger.zones.library.splice(digger.zones.library.length - rest.length);
+        shuffleInPlace(tail);
+        digger.zones.library.push(...tail);
         break;
       }
       case "bounce_each_creature": {

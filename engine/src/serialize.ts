@@ -1053,7 +1053,11 @@ function parseSearchFilter(value: unknown, label: string): SearchFilter {
   const colors = parseStringList(value.colors, `${label}.colors`).filter(
     (entry): entry is Color => ["W", "U", "B", "R", "G"].includes(entry),
   );
+  const nonTypes = parseStringList(value.nonTypes, `${label}.nonTypes`);
+  const nonSubtypes = parseStringList(value.nonSubtypes, `${label}.nonSubtypes`);
   return {
+    ...(nonTypes.length > 0 ? { nonTypes } : {}),
+    ...(nonSubtypes.length > 0 ? { nonSubtypes } : {}),
     ...(supertypes.length > 0 ? { supertypes } : {}),
     ...(types.length > 0 ? { types } : {}),
     ...(subtypes.length > 0 ? { subtypes } : {}),
@@ -1649,6 +1653,23 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
           ? {}
           : { unlessCounter: expectString(value.unlessCounter, `${label}.unlessCounter`) }),
       };
+    case "dig_top": {
+      const digDestination = expectString(value.destination, `${label}.destination`);
+      if (
+        digDestination !== "hand" &&
+        digDestination !== "battlefield" &&
+        digDestination !== "battlefield_tapped"
+      ) {
+        throw new Error(`Invalid ${label}.destination`);
+      }
+      return {
+        kind,
+        playerId: parsePlayerSelector(value.playerId, `${label}.playerId`),
+        count: expectNumber(value.count, `${label}.count`),
+        filter: parseSearchFilter(value.filter, `${label}.filter`),
+        destination: digDestination,
+      };
+    }
     case "untap_all": {
       const what = expectString(value.what, `${label}.what`);
       if (what !== "creature" && what !== "land") {
@@ -2811,6 +2832,23 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
       ...(value.unlessCounter === undefined
         ? {}
         : { unlessCounter: expectString(value.unlessCounter, `${label}.unlessCounter`) }),
+    };
+  }
+  if (kind === "dig_top") {
+    const digDestination = expectString(value.destination, `${label}.destination`);
+    if (
+      digDestination !== "hand" &&
+      digDestination !== "battlefield" &&
+      digDestination !== "battlefield_tapped"
+    ) {
+      throw new Error(`Invalid ${label}.destination`);
+    }
+    return {
+      kind,
+      playerId: expectString(value.playerId, `${label}.playerId`),
+      count: expectNumber(value.count, `${label}.count`),
+      filter: parseSearchFilter(value.filter, `${label}.filter`),
+      destination: digDestination,
     };
   }
   if (kind === "untap_all") {

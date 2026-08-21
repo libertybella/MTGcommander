@@ -409,6 +409,10 @@ export type SearchFilter = {
   typesAny?: string[];
   /** "a green creature card": every listed color must be present. */
   colors?: Color[];
+  /** "a noncreature, nonland card": none of these types may be present. */
+  nonTypes?: string[];
+  /** "a non-Human creature card": none of these subtypes may be present. */
+  nonSubtypes?: string[];
   /** "with mana value N or less". */
   maxManaValue?: number;
   /** "with mana value X or less": resolved to maxManaValue from the announced
@@ -513,6 +517,15 @@ export type GameEffect =
   | { kind: "windfall" }
   /** Wave Goodbye: bounce every creature missing the listed counter. */
   | { kind: "bounce_each_creature"; unlessCounter?: string }
+  /** Impulse digs: look at the top N, auto-take the first filter match to the
+   * destination, rest to the bottom in random order. */
+  | {
+      kind: "dig_top";
+      playerId: PlayerId;
+      count: number;
+      filter: SearchFilter;
+      destination: "hand" | "battlefield" | "battlefield_tapped";
+    }
   /** Populate: copy the controller's best creature token (auto-picked). */
   | { kind: "populate"; playerId: PlayerId }
   | { kind: "proliferate"; playerId: PlayerId }
@@ -801,6 +814,13 @@ export type CardEffect =
   /** Windfall: each player discards their hand, then draws the greatest count. */
   | { kind: "windfall" }
   | { kind: "bounce_each_creature"; unlessCounter?: string }
+  | {
+      kind: "dig_top";
+      playerId: PlayerSelector;
+      count: number;
+      filter: SearchFilter;
+      destination: "hand" | "battlefield" | "battlefield_tapped";
+    }
   | { kind: "populate"; playerId: PlayerSelector }
   | { kind: "proliferate"; playerId: PlayerSelector }
   | {

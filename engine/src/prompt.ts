@@ -389,6 +389,16 @@ export function searchMatches(
       return false;
     }
   }
+  for (const type of filter.nonTypes ?? []) {
+    if (traits.types.includes(type)) {
+      return false;
+    }
+  }
+  for (const subtype of filter.nonSubtypes ?? []) {
+    if (cardMatchesSubtype(state, cardId, subtype)) {
+      return false;
+    }
+  }
   if (filter.maxManaValue !== undefined && traits.manaValue > filter.maxManaValue) {
     return false;
   }

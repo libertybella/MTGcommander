@@ -779,6 +779,27 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     };
   }
 
+  // The synthetic impulse-dig sentence from fuseDigSentencesInPlace. The
+  // pick is auto-taken (first match) — a documented approximation.
+  const digTop = sentence.match(/^Dig (\d+) for (.+?) to (hand|battlefield|battlefield_tapped)$/);
+  if (digTop?.[1] && digTop[2] && digTop[3]) {
+    const filter = parseDigDescriptor(digTop[2]);
+    if (filter) {
+      return {
+        targetRequirements: [],
+        effects: [
+          {
+            kind: "dig_top",
+            playerId: "controller",
+            count: Number(digTop[1]),
+            filter,
+            destination: digTop[3] as "hand" | "battlefield" | "battlefield_tapped",
+          },
+        ],
+      };
+    }
+  }
+
   // Windfall / wheel refills keyed to the biggest discarded hand.
   if (
     /^Each player discards their hand, then draws cards equal to the greatest number of cards a player discarded this way$/i.test(
@@ -2085,6 +2106,71 @@ function controllerBasicSearchRider(sentence: string, lastIndex: number): CardEf
   };
 }
 
+/** "a noncreature, nonland card" / "a non-Human creature card" and friends. */
+function parseDigDescriptor(descriptor: string): SearchFilter | null {
+  const parts = descriptor.toLowerCase().replace(/,/g, " ").split(/\s+/).filter(Boolean);
+  const nonTypes: string[] = [];
+  const nonSubtypes: string[] = [];
+  const rest: string[] = [];
+  for (const word of parts) {
+    const non = word.match(/^non-?([a-z]+)$/);
+    if (non?.[1] && SEARCH_CARD_TYPES.has(non[1])) {
+      nonTypes.push(non[1]);
+    } else if (non?.[1]) {
+      nonSubtypes.push(non[1]);
+    } else {
+      rest.push(word);
+    }
+  }
+  const base = rest.length > 0 ? parseSearchDescriptor(rest.join(" ")) : {};
+  if (!base) {
+    return null;
+  }
+  return {
+    ...base,
+    ...(nonTypes.length > 0 ? { nonTypes } : {}),
+    ...(nonSubtypes.length > 0 ? { nonSubtypes } : {}),
+  };
+}
+
+/**
+ * Fuse the three-sentence impulse dig ("Look at the top N… / You may reveal a
+ * X card from among them and put it into your hand. / Put the rest on the
+ * bottom of your library in a random order.") into one synthetic sentence the
+ * clause compiler can parse: "Dig N for <descriptor> to <destination>".
+ * Preserves any activation-cost prefix on the first sentence.
+ */
+function fuseDigSentencesInPlace(sentences: string[], lineStart: boolean[]): void {
+  for (let index = 0; index + 2 < sentences.length; index += 1) {
+    if (lineStart[index + 1] || lineStart[index + 2]) {
+      continue;
+    }
+    const look = sentences[index]!.match(
+      /^(.*: )?Look at the top (two|three|four|five|six|seven|eight|\d+) cards of your library$/i,
+    );
+    if (!look?.[2]) {
+      continue;
+    }
+    const count = parseCount(look[2]);
+    if (!count) {
+      continue;
+    }
+    if (!/^Put the rest on the bottom of your library in a random order$/i.test(sentences[index + 2]!)) {
+      continue;
+    }
+    const mid = sentences[index + 1]!;
+    const toHand = mid.match(/^You may reveal an? (.+?) card from among them and put it into your hand$/i);
+    const toField = mid.match(/^You may put an? (.+?) card from among them onto the battlefield( tapped)?$/i);
+    const descriptor = toHand?.[1] ?? toField?.[1];
+    if (!descriptor) {
+      continue;
+    }
+    const destination = toHand ? "hand" : toField?.[2] ? "battlefield_tapped" : "battlefield";
+    sentences.splice(index, 3, `${look[1] ?? ""}Dig ${count} for ${descriptor} to ${destination}`);
+    lineStart.splice(index + 1, 2);
+  }
+}
+
 type TriggerHead = Pick<
   CardTrigger,
   "event" | "watch" | "excludeSelf" | "subjectFilter" | "subjectPlayerOpponent" | "oncePerTurn"
@@ -2778,6 +2864,7 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
       lineStart.push(position === 0);
     });
   }
+  fuseDigSentencesInPlace(sentences, lineStart);
   for (let index = 0; index < sentences.length; index += 1) {
     const sentence = sentences[index];
     if (!sentence) {

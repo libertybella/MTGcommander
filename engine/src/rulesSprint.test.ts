@@ -6483,3 +6483,76 @@ describe("wave 71: copy retargeting no-op and channel discounts", () => {
     expect(next.cards[land.id]?.zone).toBe("graveyard");
   });
 });
+
+describe("wave 72: impulse digs", () => {
+  const base = { power: null, toughness: null, printedKeywords: [], imageUrl: "" };
+
+  it("compiles Silundi Vision's dig fully", () => {
+    const vision = compileOracleCard({
+      ...base,
+      oracleId: "silundi",
+      name: "Silundi Vision",
+      manaCost: "{1}{U}",
+      typeLine: "Instant",
+      oracleText:
+        "Look at the top six cards of your library. You may reveal an instant or sorcery card from among them and put it into your hand. Put the rest on the bottom of your library in a random order.",
+    });
+    expect(vision.notes).toEqual([]);
+    expect(vision.definition.effects).toEqual([
+      {
+        kind: "dig_top",
+        playerId: "controller",
+        count: 6,
+        filter: { typesAny: ["instant", "sorcery"] },
+        destination: "hand",
+      },
+    ]);
+  });
+
+  it("compiles Kinnan's ability dig with the non-Human filter", () => {
+    const kinnan = compileOracleCard({
+      ...base,
+      oracleId: "kinnan",
+      name: "Kinnan, Bonder Prodigy",
+      manaCost: "{G}{U}",
+      typeLine: "Legendary Creature — Human Druid",
+      power: "2",
+      toughness: "2",
+      oracleText:
+        "Whenever you tap a nonland permanent for mana, add one mana of any type that permanent produced.\n{5}{G}{U}: Look at the top five cards of your library. You may put a non-Human creature card from among them onto the battlefield. Put the rest on the bottom of your library in a random order.",
+    });
+    const dig = kinnan.definition.activated[0]?.effects[0];
+    expect(dig?.kind === "dig_top" && dig.filter).toEqual({
+      types: ["creature"],
+      nonSubtypes: ["human"],
+    });
+    expect(dig?.kind === "dig_top" && dig.destination).toBe("battlefield");
+  });
+
+  it("auto-takes the first match and randomizes the rest to the bottom", () => {
+    const { game, p1 } = twoPlayers();
+    const boltDef = createCardDefinition({ name: "Bolt", manaCost: "{R}", typeLine: "Instant" });
+    const bearDef = createCardDefinition({ name: "Bear", manaCost: "{1}{G}", typeLine: "Creature — Bear", power: 2, toughness: 2 });
+    game.definitions[boltDef.id] = boltDef;
+    game.definitions[bearDef.id] = bearDef;
+    const ids: string[] = [];
+    for (const def of [bearDef, boltDef, bearDef, bearDef]) {
+      const card = createCardInstance({ definitionId: def.id, ownerId: p1.id, zone: "library" });
+      game.cards[card.id] = card;
+      p1.zones.library.push(card.id);
+      ids.push(card.id);
+    }
+    const next = applyEffect(game, {
+      kind: "dig_top",
+      playerId: p1.id,
+      count: 3,
+      filter: { typesAny: ["instant", "sorcery"] },
+      destination: "hand",
+    });
+    const player = next.players.find((p) => p.id === p1.id)!;
+    expect(next.cards[ids[1]!]?.zone).toBe("hand");
+    // Two looked cards went to the bottom; the untouched fourth card is on top.
+    expect(player.zones.library[0]).toBe(ids[3]);
+    expect(player.zones.library).toHaveLength(3);
+  });
+});
