@@ -81,7 +81,39 @@ export function manaAbilitiesFor(state: GameState, cardId: CardInstanceId): Mana
       }
     }
   }
-  return abilities.filter((ability) => manaGateSatisfied(state, card.controllerId, ability));
+  return abilities.filter(
+    (ability) =>
+      manaGateSatisfied(state, card.controllerId, ability) &&
+      sacrificeFodderAvailable(state, card.controllerId, ability),
+  );
+}
+
+/** Phyrexian Altar-class: the sacrifice-cost ability needs legal fodder. */
+function sacrificeFodderAvailable(
+  state: GameState,
+  controllerId: string,
+  ability: ManaAbility,
+): boolean {
+  const scope = ability.costSacrifice;
+  if (!scope) {
+    return true;
+  }
+  return Object.values(state.cards).some((card) => {
+    if (card.zone !== "battlefield" || card.controllerId !== controllerId) {
+      return false;
+    }
+    const types = state.definitions[card.definitionId]?.characteristics.types ?? [];
+    if (scope === "creature") {
+      return types.includes("creature");
+    }
+    if (scope === "artifact") {
+      return types.includes("artifact");
+    }
+    if (scope === "land") {
+      return types.includes("land");
+    }
+    return types.includes("creature") || types.includes("artifact");
+  });
 }
 
 export function manaAbilitiesOf(definition: CardDefinition): ManaAbility[] {

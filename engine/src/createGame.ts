@@ -151,6 +151,8 @@ export function createCardDefinition(
           ...(ability.count && ability.count > 1 ? { count: ability.count } : {}),
           ...(ability.sacrificeSelf ? { sacrificeSelf: true } : {}),
           ...(ability.costMana ? { costMana: ability.costMana } : {}),
+          ...(ability.costSacrifice ? { costSacrifice: ability.costSacrifice } : {}),
+          ...(ability.noTap ? { noTap: true } : {}),
           ...(ability.requiresControlled
             ? {
                 requiresControlled: {

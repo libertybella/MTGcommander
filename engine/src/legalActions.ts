@@ -84,7 +84,8 @@ export function potentialMana(state: GameState, playerId: PlayerId): PotentialMa
       abilities.length === 1 &&
       !abilities[0]!.producesAnyColor &&
       abilities[0]!.producesOptions.length === 0 &&
-      !abilities[0]!.costMana
+      !abilities[0]!.costMana &&
+      !abilities[0]!.costSacrifice
     ) {
       for (const color of Object.keys(abilities[0]!.produces) as ManaColor[]) {
         fixed[color] += abilities[0]!.produces[color] ?? 0;
@@ -93,8 +94,8 @@ export function potentialMana(state: GameState, playerId: PlayerId): PotentialMa
     }
     const union = new Set<ManaColor>();
     for (const ability of abilities) {
-      if (ability.costMana) {
-        continue; // net-neutral converters add nothing to potential mana
+      if (ability.costMana || ability.costSacrifice) {
+        continue; // costed converters add nothing to potential mana
       }
       if (ability.producesAnyColor) {
         for (const color of ALL_COLORS) {
@@ -608,7 +609,7 @@ export function autoTapPlan(
       if (ability.sacrificeSelf) {
         return; // never auto-sacrifice a Treasure — tapping it stays a choice
       }
-      if (ability.costMana) {
+      if (ability.costMana || ability.costSacrifice) {
         return; // costed mana abilities are never auto-tapped
       }
       producers.push({

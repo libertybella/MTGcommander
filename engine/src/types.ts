@@ -1150,6 +1150,11 @@ export type ManaAbility = {
   /** Springleaf Drum-class: mana paid from the pool to activate. Costed
    * abilities are never auto-tapped and add nothing to potential mana. */
   costMana?: string;
+  /** Phyrexian Altar: sacrificing a chosen controlled permanent is the cost.
+   * Never auto-tapped; adds nothing to potential mana. */
+  costSacrifice?: "creature" | "artifact" | "creature_or_artifact" | "land";
+  /** The ability has no {T} in its cost (usable while tapped, repeatable). */
+  noTap?: boolean;
   /** "Activate only if you control a Swamp" on a mana ability. */
   requiresControlled?: { types?: string[]; subtypes?: string[] };
 };
@@ -1292,7 +1297,15 @@ export type GameAction =
       blocks: { blockerId: CardInstanceId; attackerId: CardInstanceId }[];
     }
   | { kind: "concede"; playerId: PlayerId }
-  | { kind: "tap_for_mana"; playerId: PlayerId; cardId: CardInstanceId; color?: ManaColor; manaIndex?: number }
+  | {
+      kind: "tap_for_mana";
+      playerId: PlayerId;
+      cardId: CardInstanceId;
+      color?: ManaColor;
+      manaIndex?: number;
+      /** The permanent sacrificed to a costSacrifice mana ability. */
+      costSacrificeId?: CardInstanceId;
+    }
   | {
       kind: "activate_ability";
       playerId: PlayerId;

@@ -5609,3 +5609,69 @@ describe("wave 59: offspring", () => {
     expect(next.definitions[ox.definitionId]?.power).toBe(4);
   });
 });
+
+describe("wave 60: sacrifice-cost mana abilities", () => {
+  it("compiles Phyrexian Altar fully", () => {
+    const altar = compileOracleCard({
+      oracleId: "phyrexianaltar",
+      name: "Phyrexian Altar",
+      manaCost: "{3}",
+      typeLine: "Artifact",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText: "Sacrifice a creature: Add one mana of any color.",
+    });
+    expect(altar.notes).toEqual([]);
+    const ability = altar.definition.manaAbilities[0];
+    expect(ability?.costSacrifice).toBe("creature");
+    expect(ability?.noTap).toBe(true);
+    expect(ability?.producesAnyColor).toBe(true);
+  });
+
+  it("pays the sacrifice, adds the chosen color, and never taps", () => {
+    const { game, p1 } = twoPlayers();
+    const altarDef = createCardDefinition({
+      name: "Altar Lite",
+      typeLine: "Artifact",
+      manaAbilities: [
+        {
+          produces: {},
+          producesOptions: [],
+          producesAnyColor: true,
+          damageToController: 0,
+          costSacrifice: "creature",
+          noTap: true,
+        },
+      ],
+    });
+    const bearDef = createCardDefinition({ name: "Bear", typeLine: "Creature — Bear", power: 2, toughness: 2 });
+    game.definitions[altarDef.id] = altarDef;
+    game.definitions[bearDef.id] = bearDef;
+    const altar = createCardInstance({ definitionId: altarDef.id, ownerId: p1.id, zone: "battlefield" });
+    const bear = createCardInstance({ definitionId: bearDef.id, ownerId: p1.id, zone: "battlefield" });
+    game.cards[altar.id] = altar;
+    game.cards[bear.id] = bear;
+    p1.zones.battlefield.push(altar.id, bear.id);
+
+    // Without fodder chosen the activation is rejected.
+    expect(() =>
+      applyAction(game, { kind: "tap_for_mana", playerId: p1.id, cardId: altar.id, color: "B" }),
+    ).toThrow(/Sacrifice a creature/);
+
+    const next = applyAction(game, {
+      kind: "tap_for_mana",
+      playerId: p1.id,
+      cardId: altar.id,
+      color: "B",
+      costSacrificeId: bear.id,
+    });
+    expect(next.players.find((p) => p.id === p1.id)!.mana.B).toBe(1);
+    expect(next.cards[bear.id]?.zone).toBe("graveyard");
+    expect(next.cards[altar.id]?.tapped).toBe(false);
+
+    // With no creatures left, the ability is no longer offered.
+    expect(manaAbilitiesFor(next, altar.id)).toHaveLength(0);
+  });
+});

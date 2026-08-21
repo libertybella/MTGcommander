@@ -7,7 +7,7 @@ import { eliminatePlayerInPlace } from "./elimination";
 import { applyEffects, bindCardEffects } from "./effects";
 import { hasKeyword } from "./keywords";
 import { controlsMatching, sacrificeScopeMatches } from "./legalActions";
-import { canPayManaCost, parseManaCost, payManaCost, tapCard, tapForMana } from "./mana";
+import { addMana, canPayManaCost, parseManaCost, payManaCost, tapCard, tapForMana } from "./mana";
 import { manaAbilityAmount, manaAbilitiesFor, manaTapOptionsFor } from "./manaOptions";
 import { createId } from "./ids";
 import { isLiving, livingPlayerCount, requireLiving } from "./players";
@@ -540,6 +540,7 @@ function applyTapForMana(
   cardId: CardInstanceId,
   color: ManaColor | undefined,
   manaIndex: number | undefined,
+  costSacrificeId: CardInstanceId | undefined,
 ): GameState {
   requirePlaying(state);
   requirePriority(state, playerId);
@@ -585,8 +586,30 @@ function applyTapForMana(
     }
     base = payManaCost(state, playerId, activation);
   }
-  let next = tapForMana(base, cardId, addition);
+  // Phyrexian Altar-class: sacrificing a chosen permanent is the cost.
+  if (ability.costSacrifice) {
+    const fodder = costSacrificeId ? base.cards[costSacrificeId] : undefined;
+    if (
+      !costSacrificeId ||
+      !fodder ||
+      fodder.zone !== "battlefield" ||
+      fodder.controllerId !== playerId ||
+      !sacrificeScopeMatches(base, costSacrificeId, ability.costSacrifice)
+    ) {
+      throw new Error(
+        `Sacrifice a ${ability.costSacrifice.replace(/_/g, " ")} to use that mana ability`,
+      );
+    }
+  } else if (costSacrificeId !== undefined) {
+    throw new Error("That mana ability has no sacrifice cost");
+  }
+  let next = ability.noTap
+    ? addMana(base, playerId, addition)
+    : tapForMana(base, cardId, addition);
   next.priorityPlayerId = playerId;
+  if (ability.costSacrifice && costSacrificeId) {
+    next = applyEffects(next, [{ kind: "sacrifice", cardId: costSacrificeId }]);
+  }
   if (ability.sacrificeSelf) {
     next = applyEffects(next, [{ kind: "sacrifice", cardId }]);
   }
@@ -879,6 +902,7 @@ export function applyAction(
           action.cardId,
           action.color,
           action.manaIndex,
+          action.costSacrificeId,
         );
         break;
       case "activate_ability":

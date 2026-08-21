@@ -340,13 +340,26 @@ function nextAction(state: GameState, rng: () => number): GameAction | null {
     case "mana": {
       const abilities = manaAbilitiesFor(state, action.cardId);
       const manaIndex = Math.floor(rng() * abilities.length);
-      const options = manaTapOptionsFor(abilities[manaIndex]!);
+      const ability = abilities[manaIndex]!;
+      const options = manaTapOptionsFor(ability);
+      let costSacrificeId: string | undefined;
+      if (ability.costSacrifice) {
+        const player = state.players.find((entry) => entry.id === playerId)!;
+        const fodder = player.zones.battlefield.filter((id) =>
+          sacrificeScopeMatches(state, id, ability.costSacrifice!),
+        );
+        if (fodder.length === 0) {
+          return { kind: "pass_priority", playerId };
+        }
+        costSacrificeId = pick(rng, fodder);
+      }
       return {
         kind: "tap_for_mana",
         playerId,
         cardId: action.cardId,
         manaIndex,
         ...(options ? { color: pick(rng, options) } : {}),
+        ...(costSacrificeId ? { costSacrificeId } : {}),
       };
     }
     default:

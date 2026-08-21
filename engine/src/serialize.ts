@@ -2333,6 +2333,13 @@ function parseManaAbilities(value: unknown, label: string): ManaAbility[] {
       ...(entry.costMana === undefined
         ? {}
         : { costMana: expectString(entry.costMana, `${label}[${index}].costMana`) }),
+      ...(entry.costSacrifice === "creature" ||
+      entry.costSacrifice === "artifact" ||
+      entry.costSacrifice === "creature_or_artifact" ||
+      entry.costSacrifice === "land"
+        ? { costSacrifice: entry.costSacrifice }
+        : {}),
+      ...(entry.noTap === true ? { noTap: true } : {}),
       ...(entry.requiresControlled === undefined
         ? {}
         : {
@@ -3006,6 +3013,9 @@ export function parseGameAction(json: string): GameAction {
       ...(raw.manaIndex === undefined
         ? {}
         : { manaIndex: expectNumber(raw.manaIndex, "action.manaIndex") }),
+      ...(raw.costSacrificeId === undefined
+        ? {}
+        : { costSacrificeId: expectString(raw.costSacrificeId, "action.costSacrificeId") }),
     };
   }
   if (kind === "activate_ability" || kind === "activate_loyalty") {

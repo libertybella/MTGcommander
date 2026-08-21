@@ -3671,6 +3671,15 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
         }
         continue;
       }
+      // Phyrexian Altar-class: a tapless mana ability paid by sacrificing.
+      if (add && !cost.tap && cost.manaCost === "" && cost.sacrificeCost && !cost.lifeCost) {
+        result.manaAbilities.push({
+          ...manaAbilityFromAdd(add),
+          costSacrifice: cost.sacrificeCost,
+          noTap: true,
+        });
+        continue;
+      }
       const levelUp = ability.rest.match(/^Level (\d+)$/i);
       if (levelUp?.[1] && !cost.tap && cost.manaCost !== "") {
         result.activated.push({
