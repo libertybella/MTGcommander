@@ -1901,6 +1901,15 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     };
   }
 
+  // Deflecting Swat: retargeting. Abilities on the stack can't be targeted —
+  // "spell or ability" compiles to spells only, a documented approximation.
+  if (/^You may choose new targets for target spell or ability$/i.test(sentence)) {
+    return {
+      targetRequirements: [{ kind: "spell" }],
+      effects: [{ kind: "retarget", target: { type: "chosen", index: 0 } }],
+    };
+  }
+
   // Chandra's Ignition.
   if (
     /^Target creature you control deals damage equal to its power to each other creature and each opponent$/i.test(

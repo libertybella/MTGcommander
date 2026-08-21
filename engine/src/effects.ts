@@ -687,6 +687,17 @@ export function bindCardEffect(
       }
       return { kind: "power_nova", sourceId: chosen.cardId, amount };
     }
+    case "retarget": {
+      const chosen = chosenTargetAt(context, effect.target.index, state);
+      if (!chosen || chosen.type !== "spell") {
+        return null;
+      }
+      return {
+        kind: "retarget",
+        stackObjectId: chosen.stackObjectId,
+        controllerId: context.controllerId,
+      };
+    }
     case "drain_opponents": {
       const playerId = bindPlayerSelector(state, effect.playerId, context);
       if (!playerId) {
@@ -2266,6 +2277,38 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
             (card.counters[effect.counter] ?? 0) +
             counterBatchAmount(next, card.id, effect.counter, effect.amount);
         }
+        break;
+      }
+      case "retarget": {
+        // Deflecting Swat: the retargeter picks replacement targets via a
+        // prompt; the spell's own requirements bound the choices.
+        const entry = state.stack.find((object) => object.id === effect.stackObjectId);
+        if (!entry || entry.kind !== "spell" || !entry.sourceId) {
+          next = cloneGameState(state);
+          break;
+        }
+        const spellCard = state.cards[entry.sourceId];
+        const spellDefinition = spellCard ? state.definitions[spellCard.definitionId] : undefined;
+        const requirements =
+          entry.modeIndexes && entry.modeIndexes.length > 0 && spellDefinition?.modes
+            ? entry.modeIndexes.flatMap(
+                (index) => spellDefinition.modes![index]?.targetRequirements ?? [],
+              )
+            : entry.modeIndex !== undefined && spellDefinition?.modes?.[entry.modeIndex]
+              ? spellDefinition.modes[entry.modeIndex]!.targetRequirements
+              : spellDefinition?.targetRequirements ?? [];
+        next = cloneGameState(state);
+        if (requirements.length === 0) {
+          break;
+        }
+        next.prompts.push({
+          kind: "choose_targets",
+          playerId: effect.controllerId,
+          sourceId: entry.sourceId,
+          origin: "retarget",
+          stackObjectId: entry.id,
+          requirements: requirements.map((requirement) => ({ ...requirement })),
+        });
         break;
       }
       case "power_nova": {

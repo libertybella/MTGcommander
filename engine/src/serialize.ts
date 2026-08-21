@@ -983,7 +983,14 @@ function parsePrompts(value: unknown, playerIds: Set<string>): PendingPrompt[] {
         amount: expectNumber(entry.amount, `prompts[${index}].amount`),
       };
     }
-    if (kind === "choose_creature_type" || kind === "choose_color") {
+    if (kind === "choose_creature_type") {
+      return {
+        kind,
+        playerId,
+        sourceId: expectString(entry.sourceId, `prompts[${index}].sourceId`),
+      };
+    }
+    if (kind === "choose_color") {
       return {
         kind,
         playerId,
@@ -1098,7 +1105,7 @@ function parsePrompts(value: unknown, playerIds: Set<string>): PendingPrompt[] {
       throw new Error(`Invalid prompts[${index}].kind`);
     }
     const origin = expectString(entry.origin, `prompts[${index}].origin`);
-    if (origin !== "trigger") {
+    if (origin !== "trigger" && origin !== "retarget") {
       throw new Error(`Invalid prompts[${index}].origin`);
     }
     return {
@@ -1106,7 +1113,12 @@ function parsePrompts(value: unknown, playerIds: Set<string>): PendingPrompt[] {
       playerId,
       sourceId: expectString(entry.sourceId, `prompts[${index}].sourceId`),
       origin,
-      triggerIndex: expectNumber(entry.triggerIndex, `prompts[${index}].triggerIndex`),
+      ...(entry.triggerIndex === undefined
+        ? {}
+        : { triggerIndex: expectNumber(entry.triggerIndex, `prompts[${index}].triggerIndex`) }),
+      ...(entry.stackObjectId === undefined
+        ? {}
+        : { stackObjectId: expectString(entry.stackObjectId, `prompts[${index}].stackObjectId`) }),
       requirements: parseTargetRequirements(entry.requirements, `prompts[${index}].requirements`),
       ...(entry.subjectCardId === undefined
         ? {}
@@ -1547,6 +1559,17 @@ function parseCardIdSelector(value: unknown, label: string): CardIdSelector {
   }
   if (expectString(value.type, `${label}.type`) !== "chosen") {
     throw new Error(`Invalid ${label}.type`);
+  }
+  const index = expectNumber(value.index, `${label}.index`);
+  if (!Number.isInteger(index) || index < 0) {
+    throw new Error(`Invalid ${label}.index`);
+  }
+  return { type: "chosen", index };
+}
+
+function parseChosenTargetRef(value: unknown, label: string): { type: "chosen"; index: number } {
+  if (!isRecord(value) || expectString(value.type, `${label}.type`) !== "chosen") {
+    throw new Error(`Invalid ${label}`);
   }
   const index = expectNumber(value.index, `${label}.index`);
   if (!Number.isInteger(index) || index < 0) {
@@ -2131,6 +2154,10 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
       return { kind, amount: expectNumber(value.amount, `${label}.amount`) };
     case "double_team_pt_until_eot":
       return { kind, playerId: parsePlayerSelector(value.playerId, `${label}.playerId`) };
+    case "power_nova":
+      return { kind, cardId: parseChosenTargetRef(value.cardId, `${label}.cardId`) };
+    case "retarget":
+      return { kind, target: parseChosenTargetRef(value.target, `${label}.target`) };
     case "overload_each":
       return {
         kind,
@@ -3137,6 +3164,20 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
   }
   if (kind === "double_team_pt_until_eot") {
     return { kind, playerId: expectString(value.playerId, `${label}.playerId`) };
+  }
+  if (kind === "power_nova") {
+    return {
+      kind,
+      sourceId: expectString(value.sourceId, `${label}.sourceId`),
+      amount: expectNumber(value.amount, `${label}.amount`),
+    };
+  }
+  if (kind === "retarget") {
+    return {
+      kind,
+      stackObjectId: expectString(value.stackObjectId, `${label}.stackObjectId`),
+      controllerId: expectString(value.controllerId, `${label}.controllerId`),
+    };
   }
   if (kind === "overload_each") {
     return {

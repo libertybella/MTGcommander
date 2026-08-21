@@ -63,6 +63,17 @@ export function applyChooseTargets(
     return next;
   }
 
+  // Deflecting Swat: replace the stack spell's targets in place.
+  if (prompt.origin === "retarget" && prompt.stackObjectId) {
+    const entry = next.stack.find((object) => object.id === prompt.stackObjectId);
+    if (entry && entry.kind === "spell") {
+      validateChosenTargets(next, prompt.requirements, targets, entry.controllerId);
+      entry.targets = targets.map((target) => ({ ...target }));
+    }
+    next.passesSinceAction = 0;
+    return next;
+  }
+
   validateChosenTargets(next, prompt.requirements, targets, playerId);
   next.stack.push({
     id: createId("stack"),
@@ -70,7 +81,7 @@ export function applyChooseTargets(
     sourceId: prompt.sourceId,
     kind: "ability",
     targets: targets.map((target) => ({ ...target })),
-    triggerIndex: prompt.triggerIndex,
+    triggerIndex: prompt.triggerIndex ?? 0,
     ...(prompt.subjectCardId ? { subjectCardId: prompt.subjectCardId } : {}),
     ...(prompt.subjectPlayerId ? { subjectPlayerId: prompt.subjectPlayerId } : {}),
     ...(prompt.subjectAmount ? { subjectAmount: prompt.subjectAmount } : {}),

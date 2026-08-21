@@ -9309,3 +9309,82 @@ describe("wave 99: sentinels and moxen", () => {
   });
 });
 
+describe("wave 100: deflecting swat", () => {
+  it("compiles Deflecting Swat fully", () => {
+    const swat = compileOracleCard({
+      oracleId: "swat",
+      name: "Deflecting Swat",
+      manaCost: "{2}{R}",
+      typeLine: "Instant",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "If you control a commander, you may cast this spell without paying its mana cost.\nYou may choose new targets for target spell or ability.",
+    });
+    expect(swat.notes).toEqual([]);
+    expect(swat.definition.freeIfCommander).toBe(true);
+    expect(swat.definition.targetRequirements).toEqual([{ kind: "spell" }]);
+    expect(swat.definition.effects[0]).toEqual({
+      kind: "retarget",
+      target: { type: "chosen", index: 0 },
+    });
+  });
+
+  it("retargets a spell on the stack through the prompt", () => {
+    const { game, p1, p2 } = twoPlayers();
+    game.turn.phase = "precombatMain";
+    game.turn.step = "precombatMain";
+    const boltDef = createCardDefinition({
+      name: "Bolt",
+      manaCost: "",
+      typeLine: "Instant",
+      targetRequirements: [{ kind: "creature" }],
+      effects: [
+        {
+          kind: "deal_damage",
+          sourceId: "self",
+          target: { type: "chosen", index: 0 },
+          amount: 3,
+        },
+      ],
+    });
+    const bearDef = createCardDefinition({ name: "Bear", typeLine: "Creature — Bear", power: 2, toughness: 2 });
+    game.definitions[boltDef.id] = boltDef;
+    game.definitions[bearDef.id] = bearDef;
+    const bolt = createCardInstance({ definitionId: boltDef.id, ownerId: p2.id, zone: "hand" });
+    const myBear = createCardInstance({ definitionId: bearDef.id, ownerId: p1.id, zone: "battlefield" });
+    const theirBear = createCardInstance({ definitionId: bearDef.id, ownerId: p2.id, zone: "battlefield" });
+    game.cards[bolt.id] = bolt;
+    game.cards[myBear.id] = myBear;
+    game.cards[theirBear.id] = theirBear;
+    p2.zones.hand.push(bolt.id);
+    p1.zones.battlefield.push(myBear.id);
+    p2.zones.battlefield.push(theirBear.id);
+
+    // p2 bolts p1's bear; p1 retargets it at p2's own bear.
+    game.turn.activePlayerId = p2.id;
+    game.priorityPlayerId = p2.id;
+    let next = applyAction(game, {
+      kind: "cast_spell",
+      playerId: p2.id,
+      cardId: bolt.id,
+      targets: [{ type: "creature", cardId: myBear.id }],
+    });
+    const spellId = next.stack[0]!.id;
+    next = applyEffects(next, [
+      { kind: "retarget", stackObjectId: spellId, controllerId: p1.id },
+    ]);
+    expect(next.prompts[0]?.kind).toBe("choose_targets");
+    next = applyAction(next, {
+      kind: "choose_targets",
+      playerId: p1.id,
+      targets: [{ type: "creature", cardId: theirBear.id }],
+    });
+    next = resolveTopOfStack(next);
+    expect(next.cards[theirBear.id]?.zone).toBe("graveyard");
+    expect(next.cards[myBear.id]?.zone).toBe("battlefield");
+  });
+});
+

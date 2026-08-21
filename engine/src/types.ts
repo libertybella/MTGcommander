@@ -629,6 +629,7 @@ export type GameEffect =
   | { kind: "each_creature_damages_controller"; amount: number }
   | { kind: "double_team_pt_until_eot"; playerId: PlayerId }
   | { kind: "power_nova"; sourceId: CardInstanceId; amount: number }
+  | { kind: "retarget"; stackObjectId: StackObjectId; controllerId: PlayerId }
   | {
       kind: "search_library";
       playerId: PlayerId;
@@ -1047,6 +1048,8 @@ export type CardEffect =
   /** Chandra's Ignition: the chosen creature hits every other creature and
    * each opponent for its power. */
   | { kind: "power_nova"; cardId: ChosenTargetRef }
+  /** Deflecting Swat: the caster picks new targets for the chosen spell. */
+  | { kind: "retarget"; target: ChosenTargetRef }
   | {
       kind: "search_library";
       playerId: PlayerSelector;
@@ -1287,8 +1290,11 @@ export type PendingPrompt =
       kind: "choose_targets";
       playerId: PlayerId;
       sourceId: CardInstanceId;
-      origin: "trigger";
-      triggerIndex: number;
+      /** trigger: a queued trigger needs targets before it stacks.
+       * retarget: Deflecting Swat replaces a stack spell's targets. */
+      origin: "trigger" | "retarget";
+      triggerIndex?: number;
+      stackObjectId?: StackObjectId;
       requirements: TargetRequirement[];
       /** The trigger event's subject, carried through to the stack object. */
       subjectCardId?: CardInstanceId;
