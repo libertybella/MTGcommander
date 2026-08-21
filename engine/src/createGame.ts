@@ -81,6 +81,7 @@ export function createCardDefinition(
         | "flashback"
         | "costReductions"
         | "chooseCreatureTypeOnEnter"
+        | "selfIsChosenType"
         | "chooseColorOnEnter"
         | "enchantedTappedBonus"
         | "entersWithXCounters"
@@ -318,6 +319,7 @@ export function createCardDefinition(
         }
       : {}),
     ...(input.chooseCreatureTypeOnEnter ? { chooseCreatureTypeOnEnter: true } : {}),
+    ...(input.selfIsChosenType ? { selfIsChosenType: true } : {}),
     ...(input.chooseColorOnEnter ? { chooseColorOnEnter: true } : {}),
     ...(input.enchantedTappedBonus
       ? { enchantedTappedBonus: { ...input.enchantedTappedBonus } }

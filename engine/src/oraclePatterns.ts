@@ -73,6 +73,7 @@ export type CompiledOracleText = {
   flashback?: { manaCost: string; life?: number };
   costReductions?: CostReduction[];
   chooseCreatureTypeOnEnter?: boolean;
+  selfIsChosenType?: boolean;
   entersWithXCounters?: boolean;
   enterAsCopy?: { scope: EnterAsCopyScope; extraCounters?: number; maxManaValueBySpent?: boolean };
   playLandsFromGraveyard?: boolean;
@@ -413,8 +414,11 @@ function copyFirstManaAbility(result: CompiledOracleText): void {
 
 type AddManaResult =
   | { kind: "fixed"; produces: Partial<ManaPool> }
-  | { kind: "any_color"; identityRestricted: boolean; count?: number; countFromPower?: boolean }
-  | { kind: "any_color_among"; scope: "legendary" | "opponent_lands" | "your_lands" }
+  | { kind: "any_color"; count?: number; countFromPower?: boolean }
+  | {
+      kind: "any_color_among";
+      scope: "legendary" | "opponent_lands" | "your_lands" | "commander_identity";
+    }
   | { kind: "colors_among"; scope: "permanents" }
   | { kind: "or"; colors: ManaColor[] };
 
@@ -440,17 +444,21 @@ function parseAddMana(rest: string): AddManaResult | null {
   if (/^Add one mana of any type that a land you control could produce$/i.test(text)) {
     return { kind: "any_color_among", scope: "your_lands" };
   }
-  const identity = /any color in your commander'?s color identity/i.test(text);
-  if (/^Add one mana of any color(?: in your commander'?s color identity)?$/i.test(text)) {
-    return { kind: "any_color", identityRestricted: identity };
+  // Command Tower / Arcane Signet: the color picker is limited to the
+  // controller's commanders' color identity, read from the board at tap time.
+  if (/^Add one mana of any color in your commander'?s color identity$/i.test(text)) {
+    return { kind: "any_color_among", scope: "commander_identity" };
+  }
+  if (/^Add one mana of any color$/i.test(text)) {
+    return { kind: "any_color" };
   }
   const big = text.match(/^Add (two|three|four|five) mana of any one color$/i);
   if (big?.[1]) {
-    return { kind: "any_color", identityRestricted: false, count: parseCount(big[1]) ?? 1 };
+    return { kind: "any_color", count: parseCount(big[1]) ?? 1 };
   }
   // Kami of Whispered Hopes: the amount reads the creature's power at tap.
   if (/^Add X mana of any one color, where X is (?:this creature|~)'s power$/i.test(text)) {
-    return { kind: "any_color", identityRestricted: false, countFromPower: true };
+    return { kind: "any_color", countFromPower: true };
   }
   if (!/^Add /i.test(text)) {
     return null;
@@ -5082,16 +5090,46 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
       continue;
     }
 
+    // Metallic Mimic / Adaptive Automaton: the entry choice becomes one of
+    // the card's own computed subtypes.
+    if (/^~ is the chosen type in addition to its other types$/i.test(sentence)) {
+      result.selfIsChosenType = true;
+      continue;
+    }
+
+    // Metallic Mimic. "enters with" is a replacement (CR 614.1c); the counter
+    // arrives via an ETB watch instead — a documented approximation.
+    if (
+      /^Each other creature you control of the chosen type enters with an additional \+1\/\+1 counter on it$/i.test(
+        sentence,
+      )
+    ) {
+      result.triggers.push({
+        event: "enter_battlefield",
+        watch: "controlled",
+        excludeSelf: true,
+        subjectFilter: { types: ["creature"], chosenSubtype: true },
+        effects: [{ kind: "add_counter", cardId: "subject_card", counter: "p1p1", amount: 1 }],
+        targetRequirements: [],
+      });
+      continue;
+    }
+
     const chosenAnthem = sentence.match(
-      /^Creatures you control of the chosen type get \+(\d+)\/\+(\d+)$/i,
+      /^(Other )?[Cc]reatures you control of the chosen type get \+(\d+)\/\+(\d+)$/i,
     );
-    if (chosenAnthem?.[1] && chosenAnthem[2]) {
+    if (chosenAnthem?.[2] && chosenAnthem[3]) {
       result.staticAbilities.push({
-        selector: { scope: "controlled", types: ["creature"], chosenSubtype: true },
+        selector: {
+          scope: "controlled",
+          types: ["creature"],
+          chosenSubtype: true,
+          ...(chosenAnthem[1] ? { excludeSelf: true } : {}),
+        },
         effect: {
           kind: "modify_pt",
-          power: Number(chosenAnthem[1]),
-          toughness: Number(chosenAnthem[2]),
+          power: Number(chosenAnthem[2]),
+          toughness: Number(chosenAnthem[3]),
         },
       });
       continue;
@@ -6183,17 +6221,11 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
           ...manaAbilityFromAdd(add),
           ...(cost.tapCreature ? { costTapCreature: true } : {}),
         });
-        if (add.kind === "any_color" && add.identityRestricted) {
-          result.notes.push("Commander's color identity is not enforced; any color may be added.");
-        }
         continue;
       }
       // Springleaf Drum-class: a tap mana ability with a mana activation cost.
       if (add && cost.tap && cost.manaCost !== "" && !cost.sacrificeSelf && !cost.lifeCost) {
         result.manaAbilities.push({ ...manaAbilityFromAdd(add), costMana: cost.manaCost });
-        if (add.kind === "any_color" && add.identityRestricted) {
-          result.notes.push("Commander's color identity is not enforced; any color may be added.");
-        }
         continue;
       }
       // Phyrexian Altar-class: a tapless mana ability paid by sacrificing.

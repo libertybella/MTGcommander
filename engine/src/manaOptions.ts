@@ -91,6 +91,31 @@ function producibleLandColors(
 }
 
 /** The legal picks for an anyColorAmong mana ability, by scope. */
+/** Command Tower: colors of mana symbols across a player's commanders'
+ * printed costs and rules text — a close reading of CR 903.4 identity
+ * (color indicators and back faces are not consulted; documented). */
+export function commanderIdentityColors(state: GameState, controllerId: string): ManaColor[] {
+  const found = new Set<string>();
+  const player = state.players.find((entry) => entry.id === controllerId);
+  for (const commanderId of player?.commander.commanderIds ?? []) {
+    const definition = state.definitions[state.cards[commanderId]?.definitionId ?? ""];
+    if (!definition) {
+      continue;
+    }
+    for (const color of definition.characteristics.colors) {
+      found.add(color);
+    }
+    for (const pip of definition.oracleText.matchAll(/\{([^}]+)\}/g)) {
+      for (const part of (pip[1] ?? "").split("/")) {
+        if (["W", "U", "B", "R", "G"].includes(part)) {
+          found.add(part);
+        }
+      }
+    }
+  }
+  return MANA_COLORS.filter((color) => color !== "C" && found.has(color));
+}
+
 export function manaChoiceColors(
   state: GameState,
   controllerId: string,
@@ -98,6 +123,9 @@ export function manaChoiceColors(
 ): ManaColor[] {
   if (scope === "legendary") {
     return colorsAmongControlled(state, controllerId, "legendary");
+  }
+  if (scope === "commander_identity") {
+    return commanderIdentityColors(state, controllerId);
   }
   if (scope === "opponent_lands") {
     // "any color": colorless is not a color (CR 107.4c).

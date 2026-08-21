@@ -20,7 +20,7 @@ import { castCostReduction, landDropAllowance } from "./derived";
 import { hasKeyword } from "./keywords";
 import { dispatchEventsInPlace } from "./triggers";
 import { applyCombatDamage, declareAttackers } from "./combat";
-import { manaAbilitiesFor } from "./manaOptions";
+import { commanderIdentityColors, manaAbilitiesFor, manaTapOptionsFor } from "./manaOptions";
 import { legalActions } from "./legalActions";
 import { legalEnterCopyIds, searchMatches } from "./prompt";
 import { parseGameState, serializeGameState } from "./serialize";
@@ -12236,5 +12236,173 @@ describe("wave 118: shapeshifters walk in as someone else", () => {
     next = applyAction(next, { kind: "resolve_enter_copy", playerId: p1.id, cardId: null });
     expect(next.prompts).toHaveLength(0);
     expect(next.cards[bird.id]?.definitionId).toBe(birdDef.id);
+  });
+});
+
+describe("wave 119: signets and mimics", () => {
+  it("compiles the commander-identity and chosen-type batch fully", () => {
+    const signet = compileOracleCard({
+      oracleId: "signet",
+      name: "Arcane Signet",
+      manaCost: "{2}",
+      typeLine: "Artifact",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText: "{T}: Add one mana of any color in your commander's color identity.",
+    });
+    expect(signet.notes).toEqual([]);
+    expect(signet.definition.manaAbilities[0]?.anyColorAmong).toBe("commander_identity");
+
+    const sphere = compileOracleCard({
+      oracleId: "sphere",
+      name: "Commander's Sphere",
+      manaCost: "{3}",
+      typeLine: "Artifact",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "{T}: Add one mana of any color in your commander's color identity.\nSacrifice this artifact: Draw a card.",
+    });
+    expect(sphere.notes).toEqual([]);
+
+    const automaton = compileOracleCard({
+      oracleId: "automaton",
+      name: "Adaptive Automaton",
+      manaCost: "{3}",
+      typeLine: "Artifact Creature — Construct",
+      power: "2",
+      toughness: "2",
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "As this creature enters, choose a creature type.\nThis creature is the chosen type in addition to its other types.\nOther creatures you control of the chosen type get +1/+1.",
+    });
+    expect(automaton.notes).toEqual([]);
+    expect(automaton.definition.selfIsChosenType).toBe(true);
+    expect(automaton.definition.staticAbilities[0]).toEqual({
+      selector: { scope: "controlled", types: ["creature"], chosenSubtype: true, excludeSelf: true },
+      effect: { kind: "modify_pt", power: 1, toughness: 1 },
+    });
+
+    const mimic = compileOracleCard({
+      oracleId: "mimic",
+      name: "Metallic Mimic",
+      manaCost: "{2}",
+      typeLine: "Artifact Creature — Shapeshifter",
+      power: "2",
+      toughness: "1",
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "As this creature enters, choose a creature type.\nThis creature is the chosen type in addition to its other types.\nEach other creature you control of the chosen type enters with an additional +1/+1 counter on it.",
+    });
+    expect(mimic.notes).toEqual([]);
+    expect(mimic.definition.triggers[0]).toMatchObject({
+      event: "enter_battlefield",
+      watch: "controlled",
+      excludeSelf: true,
+      subjectFilter: { types: ["creature"], chosenSubtype: true },
+    });
+    expect(mimic.definition.triggers[0]?.effects).toEqual([
+      { kind: "add_counter", cardId: "subject_card", counter: "p1p1", amount: 1 },
+    ]);
+  });
+
+  it("reads the commander's color identity from cost and rules-text pips", () => {
+    const { game, p1 } = twoPlayers();
+    const generalDef = createCardDefinition({
+      name: "General",
+      manaCost: "{1}{G}{W}",
+      typeLine: "Legendary Creature — Human Soldier",
+      power: 2,
+      toughness: 2,
+      oracleText: "{U}: This creature gains flying until end of turn.",
+    });
+    game.definitions[generalDef.id] = generalDef;
+    const general = createCardInstance({
+      definitionId: generalDef.id,
+      ownerId: p1.id,
+      zone: "battlefield",
+    });
+    game.cards[general.id] = general;
+    p1.zones.battlefield.push(general.id);
+    p1.commander.commanderIds.push(general.id);
+
+    // Cost pips give G and W; the activation cost in rules text adds U.
+    expect(commanderIdentityColors(game, p1.id)).toEqual(["W", "U", "G"]);
+
+    const towerAbility = {
+      produces: {},
+      producesOptions: [],
+      producesAnyColor: false,
+      damageToController: 0,
+      anyColorAmong: "commander_identity" as const,
+    };
+    expect(manaTapOptionsFor(towerAbility, game, p1.id)).toEqual(["W", "U", "G"]);
+  });
+
+  it("counts as the chosen type and stamps entering tribemates", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 10);
+    const mimicDef = createCardDefinition({
+      name: "Mimic",
+      typeLine: "Artifact Creature — Shapeshifter",
+      power: 2,
+      toughness: 1,
+      selfIsChosenType: true,
+      chooseCreatureTypeOnEnter: true,
+      triggers: [
+        {
+          event: "enter_battlefield",
+          watch: "controlled",
+          excludeSelf: true,
+          subjectFilter: { types: ["creature"], chosenSubtype: true },
+          effects: [{ kind: "add_counter", cardId: "subject_card", counter: "p1p1", amount: 1 }],
+          targetRequirements: [],
+        },
+      ],
+    });
+    const sliverDef = createCardDefinition({
+      name: "Sliver",
+      typeLine: "Creature — Sliver",
+      power: 1,
+      toughness: 1,
+    });
+    const goblinDef = createCardDefinition({
+      name: "Goblin",
+      typeLine: "Creature — Goblin",
+      power: 1,
+      toughness: 1,
+    });
+    game.definitions[mimicDef.id] = mimicDef;
+    game.definitions[sliverDef.id] = sliverDef;
+    game.definitions[goblinDef.id] = goblinDef;
+    const mimic = createCardInstance({ definitionId: mimicDef.id, ownerId: p1.id, zone: "battlefield" });
+    mimic.chosenCreatureType = "sliver";
+    game.cards[mimic.id] = mimic;
+    p1.zones.battlefield.push(mimic.id);
+
+    // "~ is the chosen type in addition to its other types."
+    expect(cardMatchesSubtype(game, mimic.id, "sliver")).toBe(true);
+    expect(cardMatchesSubtype(game, mimic.id, "goblin")).toBe(false);
+
+    const sliver = createCardInstance({ definitionId: sliverDef.id, ownerId: p1.id, zone: "battlefield" });
+    game.cards[sliver.id] = sliver;
+    p1.zones.battlefield.push(sliver.id);
+    dispatchEventsInPlace(game, [{ kind: "enters", cardId: sliver.id }]);
+    expect(game.stack).toHaveLength(1);
+    let next = resolveTopOfStack(game);
+    expect(next.cards[sliver.id]?.counters["p1p1"]).toBe(1);
+
+    // A goblin walks past unstamped.
+    const goblin = createCardInstance({ definitionId: goblinDef.id, ownerId: p1.id, zone: "battlefield" });
+    next.cards[goblin.id] = goblin;
+    next.players[0]!.zones.battlefield.push(goblin.id);
+    dispatchEventsInPlace(next, [{ kind: "enters", cardId: goblin.id }]);
+    expect(next.stack).toHaveLength(0);
   });
 });

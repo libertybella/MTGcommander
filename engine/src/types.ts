@@ -203,6 +203,8 @@ export type CardDefinition = {
   costReductions?: CostReduction[];
   /** "As ~ enters, choose a creature type." Prompts on battlefield entry. */
   chooseCreatureTypeOnEnter?: boolean;
+  /** "~ is the chosen type in addition to its other types" (Metallic Mimic). */
+  selfIsChosenType?: boolean;
   /** "~ enters with X +1/+1 counters on it" (hydras); X from the announced cost. */
   entersWithXCounters?: boolean;
   /**
@@ -1633,7 +1635,7 @@ export type ManaAbility = {
    * opponent's land could produce (Exotic Orchard, Fellwar Stone), or types
    * — colorless included — your own lands could produce (Reflecting Pool).
    * Unusable when the set is empty. */
-  anyColorAmong?: "legendary" | "opponent_lands" | "your_lands";
+  anyColorAmong?: "legendary" | "opponent_lands" | "your_lands" | "commander_identity";
   /** Bloom Tender: one mana of each color among permanents you control. */
   producesColorsAmong?: "permanents";
   /** "Activate only if you control a Swamp" on a mana ability. */

@@ -422,6 +422,7 @@ export function parseGameState(json: string): GameState {
             })(),
           }),
       ...(def.chooseCreatureTypeOnEnter === true ? { chooseCreatureTypeOnEnter: true } : {}),
+      ...(def.selfIsChosenType === true ? { selfIsChosenType: true } : {}),
       ...(def.entersWithXCounters === true ? { entersWithXCounters: true } : {}),
       ...(def.enterAsCopy === undefined
         ? {}
@@ -3095,7 +3096,8 @@ function parseManaAbilities(value: unknown, label: string): ManaAbility[] {
       ...(entry.costTapCreature === true ? { costTapCreature: true } : {}),
       ...(entry.anyColorAmong === "legendary" ||
       entry.anyColorAmong === "opponent_lands" ||
-      entry.anyColorAmong === "your_lands"
+      entry.anyColorAmong === "your_lands" ||
+      entry.anyColorAmong === "commander_identity"
         ? { anyColorAmong: entry.anyColorAmong }
         : {}),
       ...(entry.producesColorsAmong === "permanents"

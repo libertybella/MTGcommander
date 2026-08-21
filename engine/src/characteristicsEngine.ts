@@ -128,7 +128,13 @@ function baseComputed(state: GameState, card: CardInstance): ComputedCard {
       types: gateHolds
         ? printed.types.filter((type) => type !== "creature")
         : [...printed.types],
-      subtypes: [...printed.subtypes],
+      // Metallic Mimic: "~ is the chosen type in addition to its other
+      // types" folds the entry choice into the computed subtypes, so every
+      // subtype query (lords, tribal counts, chosen-type watchers) sees it.
+      subtypes:
+        definition?.selfIsChosenType && card.chosenCreatureType
+          ? [...printed.subtypes, card.chosenCreatureType]
+          : [...printed.subtypes],
       colors: [...printed.colors],
       manaValue: printed.manaValue,
     },

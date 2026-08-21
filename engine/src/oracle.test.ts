@@ -78,7 +78,7 @@ describe("oracle compile", () => {
     expect(compileOracleCard(solRing()).definition.produces).toEqual({ C: 2 });
   });
 
-  it("lets Command Tower tap for any color", () => {
+  it("limits Command Tower's colors to the commander's identity", () => {
     const tower: OracleCard = {
       oracleId: "tower",
       name: "Command Tower",
@@ -91,8 +91,8 @@ describe("oracle compile", () => {
     };
     expect(inferProduces(tower)).toEqual({});
     const compiled = compileOracleCard(tower);
-    expect(compiled.definition.producesAnyColor).toBe(true);
-    expect(compiled.notes.some((note) => /color identity is not enforced/.test(note))).toBe(true);
+    expect(compiled.definition.manaAbilities[0]?.anyColorAmong).toBe("commander_identity");
+    expect(compiled.notes).toEqual([]);
   });
 
   it("copies printed keywords and power/toughness", () => {
