@@ -326,6 +326,16 @@ export function isChosenTargetLegal(
       isChosenTargetLegal(state, { kind: "permanent" }, target, casterId, sourceColors)
     );
   }
+  if (requirement.kind === "player_or_planeswalker") {
+    if (target.type === "player") {
+      return isLegalPlayerTarget(state, target.playerId);
+    }
+    return (
+      target.type === "creature" &&
+      isPlaneswalker(state, target.cardId) &&
+      isChosenTargetLegal(state, { kind: "permanent" }, target, casterId, sourceColors)
+    );
+  }
   if (requirement.kind === "creature_spell") {
     return target.type === "spell" && isLegalSpellTarget(state, target.stackObjectId) && isCreatureSpell(state, target.stackObjectId);
   }
@@ -506,6 +516,21 @@ export function legalChoicesForRequirement(
       .filter((entry) => entry.kind === "spell")
       .map((entry) => ({ type: "spell" as const, stackObjectId: entry.id }))
       .filter((choice) => isChosenTargetLegal(state, requirement, choice, casterId));
+  }
+  if (requirement.kind === "player_or_planeswalker") {
+    const walkers: ChosenTarget[] = [];
+    for (const player of livingPlayers(state)) {
+      for (const cardId of player.zones.battlefield) {
+        const choice: ChosenTarget = { type: "creature", cardId };
+        if (isChosenTargetLegal(state, requirement, choice, casterId)) {
+          walkers.push(choice);
+        }
+      }
+    }
+    return [
+      ...livingPlayers(state).map((player) => ({ type: "player" as const, playerId: player.id })),
+      ...walkers,
+    ];
   }
   if (requirement.kind === "spell_or_permanent") {
     const spells = state.stack

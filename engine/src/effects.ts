@@ -1,7 +1,7 @@
 import { abilitiesRemoved, cardMatchesSubtype } from "./characteristicsEngine";
 import { cloneGameState } from "./clone";
 import { createCardDefinition, createCardInstance } from "./createGame";
-import { characteristicsOf, hasSubtype, isCreature, isInstantOrSorcery, isLand } from "./cardTypes";
+import { characteristicsOf, hasSubtype, isCreature, isInstantOrSorcery, isLand, isPlaneswalker } from "./cardTypes";
 import { createId } from "./ids";
 import { allBattlefieldCreatureCount, creaturePower, creatureToughness, wouldSkipDraw } from "./derived";
 import { hasKeyword } from "./keywords";
@@ -255,7 +255,35 @@ export function bindCardEffect(
       }
       return { kind: effect.kind, playerId, amount };
     }
-    case "draw":
+    case "draw": {
+      const playerId = bindPlayerSelector(state, effect.playerId, context);
+      if (!playerId) {
+        return null;
+      }
+      const { countFromGreatestPower, ...drawRest } = effect;
+      if (!countFromGreatestPower) {
+        return { ...drawRest, playerId };
+      }
+      // "the greatest power among … creatures you control", read when the
+      // effect binds (spell resolution).
+      const exclude = countFromGreatestPower.nonSubtypes ?? [];
+      let greatest = 0;
+      for (const card of Object.values(state.cards)) {
+        if (
+          card.zone !== "battlefield" ||
+          card.controllerId !== context.controllerId ||
+          !isCreature(state, card.id) ||
+          exclude.some((subtype) => cardMatchesSubtype(state, card.id, subtype))
+        ) {
+          continue;
+        }
+        greatest = Math.max(greatest, creaturePower(state, card.id));
+      }
+      if (greatest <= 0) {
+        return null;
+      }
+      return { ...drawRest, playerId, count: greatest };
+    }
     case "add_mana":
     case "mill":
     case "discard":
@@ -493,14 +521,26 @@ export function bindCardEffect(
       if (!playerId) {
         return null;
       }
-      return { kind: "team_pt_until_eot", playerId, power: effect.power, toughness: effect.toughness };
+      return {
+        kind: "team_pt_until_eot",
+        playerId,
+        power: effect.power,
+        toughness: effect.toughness,
+        ...(effect.nonSubtypes ? { nonSubtypes: [...effect.nonSubtypes] } : {}),
+      };
     }
     case "team_keyword_until_eot": {
       const playerId = bindPlayerSelector(state, effect.playerId, context);
       if (!playerId) {
         return null;
       }
-      return { kind: "team_keyword_until_eot", playerId, keyword: effect.keyword };
+      return {
+        kind: "team_keyword_until_eot",
+        playerId,
+        keyword: effect.keyword,
+        ...(effect.scope ? { scope: effect.scope } : {}),
+        ...(effect.nonSubtypes ? { nonSubtypes: [...effect.nonSubtypes] } : {}),
+      };
     }
     case "search_library": {
       const playerId = bindPlayerSelector(state, effect.playerId, context);
@@ -888,7 +928,10 @@ function applyDealDamage(state: GameState, effect: Extract<GameEffect, { kind: "
   if (!card) {
     throw new Error(`Unknown card ${effect.target.cardId}`);
   }
-  if (card.zone !== "battlefield" || !isCreature(state, card.id)) {
+  if (
+    card.zone !== "battlefield" ||
+    (!isCreature(state, card.id) && !isPlaneswalker(state, card.id))
+  ) {
     throw new Error(`Card ${card.id} is not a creature on the battlefield`);
   }
 
@@ -904,6 +947,14 @@ function applyDealDamage(state: GameState, effect: Extract<GameEffect, { kind: "
   const damaged = next.cards[card.id];
   if (!damaged) {
     throw new Error(`Unknown card ${card.id}`);
+  }
+  // CR 120.3c: damage to a planeswalker removes that many loyalty counters
+  // (a creature-planeswalker takes both — CR 120.3d).
+  if (isPlaneswalker(next, damaged.id)) {
+    damaged.counters["loyalty"] = Math.max(0, (damaged.counters["loyalty"] ?? 0) - effect.amount);
+    if (!isCreature(next, damaged.id)) {
+      return applyDamageLifegainRider(next, effect);
+    }
   }
   damaged.damageMarked += effect.amount;
   if (effect.sourceId && hasKeyword(next, effect.sourceId, "deathtouch")) {
@@ -1451,22 +1502,34 @@ function applyKeywordUntilEot(
   return pushUntilEotEffect(state, [cardId], { kind: "grant_keyword", keyword });
 }
 
+function teamMembers(
+  state: GameState,
+  playerId: PlayerId,
+  options: { scope?: "permanents"; nonSubtypes?: string[] },
+): CardInstanceId[] {
+  return Object.values(state.cards)
+    .filter(
+      (card) =>
+        card.zone === "battlefield" &&
+        card.controllerId === playerId &&
+        (options.scope === "permanents" || isCreature(state, card.id)) &&
+        !(options.nonSubtypes ?? []).some((subtype) =>
+          cardMatchesSubtype(state, card.id, subtype),
+        ),
+    )
+    .map((card) => card.id);
+}
+
 function applyTeamPtUntilEot(
   state: GameState,
   playerId: PlayerId,
   power: number,
   toughness: number,
+  nonSubtypes?: string[],
 ): GameState {
   requirePlayer(state, playerId);
   // CR 611.2c: the affected set locks in when the effect is created.
-  const team = Object.values(state.cards)
-    .filter(
-      (card) =>
-        card.zone === "battlefield" &&
-        card.controllerId === playerId &&
-        isCreature(state, card.id),
-    )
-    .map((card) => card.id);
+  const team = teamMembers(state, playerId, { nonSubtypes });
   if (team.length === 0) {
     return state;
   }
@@ -1477,17 +1540,11 @@ function applyTeamKeywordUntilEot(
   state: GameState,
   playerId: PlayerId,
   keyword: Keyword,
+  options: { scope?: "permanents"; nonSubtypes?: string[] } = {},
 ): GameState {
   requirePlayer(state, playerId);
   // CR 611.2c: the affected set locks in when the effect is created.
-  const team = Object.values(state.cards)
-    .filter(
-      (card) =>
-        card.zone === "battlefield" &&
-        card.controllerId === playerId &&
-        isCreature(state, card.id),
-    )
-    .map((card) => card.id);
+  const team = teamMembers(state, playerId, options);
   if (team.length === 0) {
     return state;
   }
@@ -2080,10 +2137,19 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
         });
         break;
       case "team_pt_until_eot":
-        next = applyTeamPtUntilEot(state, effect.playerId, effect.power, effect.toughness);
+        next = applyTeamPtUntilEot(
+          state,
+          effect.playerId,
+          effect.power,
+          effect.toughness,
+          effect.nonSubtypes,
+        );
         break;
       case "team_keyword_until_eot":
-        next = applyTeamKeywordUntilEot(state, effect.playerId, effect.keyword);
+        next = applyTeamKeywordUntilEot(state, effect.playerId, effect.keyword, {
+          scope: effect.scope,
+          nonSubtypes: effect.nonSubtypes,
+        });
         break;
       case "search_library":
         next = applySearchLibrary(state, effect);

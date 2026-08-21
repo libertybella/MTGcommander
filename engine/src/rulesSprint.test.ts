@@ -15,6 +15,7 @@ import {
   resolveTopOfStack,
 } from "./index";
 import { cardMatchesSubtype, computedCard } from "./characteristicsEngine";
+import { hasKeyword } from "./keywords";
 import { dispatchEventsInPlace } from "./triggers";
 import { applyCombatDamage } from "./combat";
 import { manaAbilitiesFor } from "./manaOptions";
@@ -7270,6 +7271,146 @@ describe("wave 83: anim pakal", () => {
     expect(gnomes).toHaveLength(2);
     expect(gnomes.every((gnome) => gnome.tapped && gnome.attacking)).toBe(true);
     expect(next.combat?.attacks).toHaveLength(3);
+  });
+});
+
+describe("wave 84: modal staples", () => {
+  it("compiles Boros Charm fully", () => {
+    const charm = compileOracleCard({
+      oracleId: "boros-charm",
+      name: "Boros Charm",
+      manaCost: "{R}{W}",
+      typeLine: "Instant",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "Choose one —\n• Boros Charm deals 4 damage to target player or planeswalker.\n• Permanents you control gain indestructible until end of turn.\n• Target creature gains double strike until end of turn.",
+    });
+    expect(charm.notes).toEqual([]);
+    expect(charm.definition.modes).toHaveLength(3);
+    expect(charm.definition.modes?.[0]?.targetRequirements).toEqual([
+      { kind: "player_or_planeswalker" },
+    ]);
+    const grant = charm.definition.modes?.[1]?.effects[0];
+    expect(grant?.kind === "team_keyword_until_eot" && grant.scope).toBe("permanents");
+  });
+
+  it("compiles Return of the Wildspeaker fully", () => {
+    const wildspeaker = compileOracleCard({
+      oracleId: "wildspeaker",
+      name: "Return of the Wildspeaker",
+      manaCost: "{4}{G}",
+      typeLine: "Instant",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "Choose one —\n• Draw cards equal to the greatest power among non-Human creatures you control.\n• Non-Human creatures you control get +3/+3 until end of turn.",
+    });
+    expect(wildspeaker.notes).toEqual([]);
+    expect(wildspeaker.definition.modes).toHaveLength(2);
+    const draw = wildspeaker.definition.modes?.[0]?.effects[0];
+    expect(draw?.kind === "draw" && draw.countFromGreatestPower).toEqual({
+      nonSubtypes: ["human"],
+    });
+    const pump = wildspeaker.definition.modes?.[1]?.effects[0];
+    expect(pump?.kind === "team_pt_until_eot" && pump.nonSubtypes).toEqual(["human"]);
+  });
+
+  it("damage to a planeswalker removes loyalty and kills it at zero", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const walkerDef = createCardDefinition({
+      name: "Walker",
+      typeLine: "Legendary Planeswalker — Test",
+    });
+    game.definitions[walkerDef.id] = walkerDef;
+    const walker = createCardInstance({
+      definitionId: walkerDef.id,
+      ownerId: p2.id,
+      zone: "battlefield",
+    });
+    walker.counters["loyalty"] = 4;
+    game.cards[walker.id] = walker;
+    p2.zones.battlefield.push(walker.id);
+    expect(p1.id).toBeTruthy();
+
+    const dinged = applyEffect(game, {
+      kind: "deal_damage",
+      sourceId: null,
+      target: { type: "creature", cardId: walker.id },
+      amount: 3,
+    });
+    expect(dinged.cards[walker.id]?.counters["loyalty"]).toBe(1);
+    expect(dinged.cards[walker.id]?.zone).toBe("battlefield");
+
+    const killed = applyEffect(dinged, {
+      kind: "deal_damage",
+      sourceId: null,
+      target: { type: "creature", cardId: walker.id },
+      amount: 4,
+    });
+    expect(killed.cards[walker.id]?.zone).toBe("graveyard");
+  });
+
+  it("grants indestructible to noncreature permanents with the permanents scope", () => {
+    const { game, p1 } = twoPlayers();
+    const rockDef = createCardDefinition({ name: "Rock", typeLine: "Artifact" });
+    const bearDef = createCardDefinition({ name: "Bear", typeLine: "Creature — Bear", power: 2, toughness: 2 });
+    game.definitions[rockDef.id] = rockDef;
+    game.definitions[bearDef.id] = bearDef;
+    const rock = createCardInstance({ definitionId: rockDef.id, ownerId: p1.id, zone: "battlefield" });
+    const bear = createCardInstance({ definitionId: bearDef.id, ownerId: p1.id, zone: "battlefield" });
+    game.cards[rock.id] = rock;
+    game.cards[bear.id] = bear;
+    p1.zones.battlefield.push(rock.id, bear.id);
+
+    const next = applyEffect(game, {
+      kind: "team_keyword_until_eot",
+      playerId: p1.id,
+      keyword: "indestructible",
+      scope: "permanents",
+    });
+    expect(hasKeyword(next, rock.id, "indestructible")).toBe(true);
+    expect(hasKeyword(next, bear.id, "indestructible")).toBe(true);
+  });
+
+  it("skips excluded subtypes in team pumps and greatest-power draws", () => {
+    const { game, p1 } = twoPlayers();
+    const humanDef = createCardDefinition({ name: "Human", typeLine: "Creature — Human", power: 5, toughness: 5 });
+    const beastDef = createCardDefinition({ name: "Beast", typeLine: "Creature — Beast", power: 3, toughness: 3 });
+    game.definitions[humanDef.id] = humanDef;
+    game.definitions[beastDef.id] = beastDef;
+    const human = createCardInstance({ definitionId: humanDef.id, ownerId: p1.id, zone: "battlefield" });
+    const beast = createCardInstance({ definitionId: beastDef.id, ownerId: p1.id, zone: "battlefield" });
+    game.cards[human.id] = human;
+    game.cards[beast.id] = beast;
+    p1.zones.battlefield.push(human.id, beast.id);
+    fillLibraries(game, 10);
+
+    const pumped = applyEffect(game, {
+      kind: "team_pt_until_eot",
+      playerId: p1.id,
+      power: 3,
+      toughness: 3,
+      nonSubtypes: ["human"],
+    });
+    expect(computedCard(pumped, beast.id)?.power).toBe(6);
+    expect(computedCard(pumped, human.id)?.power).toBe(5);
+
+    // The human's 5 power is excluded, so the beast's 3 sets the draw.
+    const bound = bindCardEffects(
+      game,
+      [{ kind: "draw", playerId: "controller", count: 0, countFromGreatestPower: { nonSubtypes: ["human"] } }],
+      { controllerId: p1.id, sourceId: null },
+    );
+    const handBefore = p1.zones.hand.length;
+    const drawn = applyEffects(game, bound);
+    expect(drawn.players.find((player) => player.id === p1.id)?.zones.hand).toHaveLength(
+      handBefore + 3,
+    );
   });
 });
 

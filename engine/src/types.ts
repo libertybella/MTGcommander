@@ -574,8 +574,20 @@ export type GameEffect =
   | { kind: "set_class_level"; cardId: CardInstanceId; level: number }
   | { kind: "pt_until_eot"; cardId: CardInstanceId; power: number; toughness: number }
   | { kind: "keyword_until_eot"; cardId: CardInstanceId; keyword: Keyword }
-  | { kind: "team_pt_until_eot"; playerId: PlayerId; power: number; toughness: number }
-  | { kind: "team_keyword_until_eot"; playerId: PlayerId; keyword: Keyword }
+  | {
+      kind: "team_pt_until_eot";
+      playerId: PlayerId;
+      power: number;
+      toughness: number;
+      nonSubtypes?: string[];
+    }
+  | {
+      kind: "team_keyword_until_eot";
+      playerId: PlayerId;
+      keyword: Keyword;
+      scope?: "permanents";
+      nonSubtypes?: string[];
+    }
   | {
       kind: "search_library";
       playerId: PlayerId;
@@ -687,6 +699,8 @@ export type TargetKind =
   /** A commander creature on the battlefield (Witch's Clinic). */
   | "commander"
   | "player_or_creature"
+  /** "target player or planeswalker" (Boros Charm). */
+  | "player_or_planeswalker"
   | "spell"
   | "creature_spell"
   | "noncreature_spell"
@@ -793,7 +807,15 @@ export type CardEffect =
       sourceId: CardInstanceId | "self" | null;
       amount: number | "x";
     }
-  | { kind: "draw"; playerId: PlayerSelector; count: number; optional?: boolean }
+  | {
+      kind: "draw";
+      playerId: PlayerSelector;
+      count: number;
+      optional?: boolean;
+      /** Return of the Wildspeaker: draw the greatest power among the
+       * controller's creatures instead, computed when the effect binds. */
+      countFromGreatestPower?: { nonSubtypes?: string[] };
+    }
   | { kind: "scry"; playerId: PlayerSelector; count: number }
   | { kind: "surveil"; playerId: PlayerSelector; count: number }
   | {
@@ -900,8 +922,22 @@ export type CardEffect =
   | { kind: "set_class_level"; cardId: CardIdSelector; level: number }
   | { kind: "pt_until_eot"; cardId: CardIdSelector; power: number; toughness: number }
   | { kind: "keyword_until_eot"; cardId: CardIdSelector; keyword: Keyword }
-  | { kind: "team_pt_until_eot"; playerId: PlayerSelector; power: number; toughness: number }
-  | { kind: "team_keyword_until_eot"; playerId: PlayerSelector; keyword: Keyword }
+  | {
+      kind: "team_pt_until_eot";
+      playerId: PlayerSelector;
+      power: number;
+      toughness: number;
+      /** "Non-Human creatures you control" (Return of the Wildspeaker). */
+      nonSubtypes?: string[];
+    }
+  | {
+      kind: "team_keyword_until_eot";
+      playerId: PlayerSelector;
+      keyword: Keyword;
+      /** "Permanents you control gain …" (Boros Charm). */
+      scope?: "permanents";
+      nonSubtypes?: string[];
+    }
   | {
       kind: "search_library";
       playerId: PlayerSelector;

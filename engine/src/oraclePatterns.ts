@@ -738,6 +738,21 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     };
   }
 
+  match = sentence.match(/^(?:~ )?deals (\d+) damage to target player or planeswalker$/i);
+  if (match?.[1]) {
+    return {
+      targetRequirements: [{ kind: "player_or_planeswalker" }],
+      effects: [
+        {
+          kind: "deal_damage",
+          sourceId: "self",
+          target: { type: "chosen", index: 0 },
+          amount: Number(match[1]),
+        },
+      ],
+    };
+  }
+
   // Wave Goodbye: mass bounce that spares counter-carrying creatures.
   if (/^Return each creature without a \+1\/\+1 counter on it to its owner's hand$/i.test(sentence)) {
     return {
@@ -973,6 +988,24 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
         effects: [{ kind: "draw", playerId: "controller", count }],
       };
     }
+  }
+
+  // Return of the Wildspeaker: the count reads the board at resolution.
+  match = sentence.match(
+    /^Draw cards equal to the greatest power among (?:non-([A-Za-z]+) )?creatures you control$/i,
+  );
+  if (match) {
+    return {
+      targetRequirements: [],
+      effects: [
+        {
+          kind: "draw",
+          playerId: "controller",
+          count: 0,
+          countFromGreatestPower: match[1] ? { nonSubtypes: [match[1].toLowerCase()] } : {},
+        },
+      ],
+    };
   }
 
   // Rhystic Study / Mystic Remora: the tax prompt goes to "that player".
@@ -2146,34 +2179,39 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     };
   }
 
-  match = sentence.match(/^Creatures you control get ([+-]\d+)\/([+-]\d+) until end of turn$/i);
-  if (match?.[1] && match[2]) {
+  match = sentence.match(
+    /^(?:Non-([A-Za-z]+) )?[Cc]reatures you control get ([+-]\d+)\/([+-]\d+) until end of turn$/,
+  );
+  if (match?.[2] && match[3]) {
     return {
       targetRequirements: [],
       effects: [
         {
           kind: "team_pt_until_eot",
           playerId: "controller",
-          power: Number(match[1]),
-          toughness: Number(match[2]),
+          power: Number(match[2]),
+          toughness: Number(match[3]),
+          ...(match[1] ? { nonSubtypes: [match[1].toLowerCase()] } : {}),
         },
       ],
     };
   }
 
   match = sentence.match(
-    /^Creatures you control gain ([a-z ]+?)(?: and ([a-z ]+?))? until end of turn$/i,
+    /^(Creatures|Permanents) you control gain ([a-z ]+?)(?: and ([a-z ]+?))? until end of turn$/i,
   );
-  if (match?.[1]) {
-    const names = [match[1], match[2]].filter((name): name is string => Boolean(name));
+  if (match?.[2]) {
+    const names = [match[2], match[3]].filter((name): name is string => Boolean(name));
     const keywords = names.map((name) => KEYWORD_GRANTS[name.trim().toLowerCase()]);
     if (keywords.every((keyword): keyword is Keyword => Boolean(keyword))) {
+      const permanents = match[1]!.toLowerCase() === "permanents";
       return {
         targetRequirements: [],
         effects: keywords.map((keyword) => ({
           kind: "team_keyword_until_eot",
           playerId: "controller",
           keyword,
+          ...(permanents ? { scope: "permanents" as const } : {}),
         })),
       };
     }

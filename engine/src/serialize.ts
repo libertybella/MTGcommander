@@ -1361,6 +1361,7 @@ function parseTargetRequirement(value: unknown, label: string): TargetRequiremen
     kind !== "own_graveyard_artifact_card" &&
     kind !== "nonartifact_creature" &&
     kind !== "player_or_creature" &&
+    kind !== "player_or_planeswalker" &&
     kind !== "spell" &&
     kind !== "creature_spell" &&
     kind !== "noncreature_spell" &&
@@ -1503,6 +1504,18 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
         playerId: parsePlayerSelector(value.playerId, `${label}.playerId`),
         count: expectNumber(value.count, `${label}.count`),
         ...(value.optional === true ? { optional: true } : {}),
+        ...(() => {
+          if (!isRecord(value.countFromGreatestPower)) {
+            return {};
+          }
+          const nonSubtypes = parseStringList(
+            value.countFromGreatestPower.nonSubtypes,
+            `${label}.countFromGreatestPower.nonSubtypes`,
+          );
+          return {
+            countFromGreatestPower: nonSubtypes.length > 0 ? { nonSubtypes } : {},
+          };
+        })(),
       };
     case "scry":
     case "surveil":
@@ -1830,22 +1843,28 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
         keyword: keyword as Keyword,
       };
     }
-    case "team_pt_until_eot":
+    case "team_pt_until_eot": {
+      const nonSubtypes = parseStringList(value.nonSubtypes, `${label}.nonSubtypes`);
       return {
         kind,
         playerId: parsePlayerSelector(value.playerId, `${label}.playerId`),
         power: expectNumber(value.power, `${label}.power`),
         toughness: expectNumber(value.toughness, `${label}.toughness`),
+        ...(nonSubtypes.length > 0 ? { nonSubtypes } : {}),
       };
+    }
     case "team_keyword_until_eot": {
       const keyword = expectString(value.keyword, `${label}.keyword`);
       if (!KEYWORDS.has(keyword as Keyword)) {
         throw new Error(`Invalid ${label}.keyword`);
       }
+      const nonSubtypes = parseStringList(value.nonSubtypes, `${label}.nonSubtypes`);
       return {
         kind,
         playerId: parsePlayerSelector(value.playerId, `${label}.playerId`),
         keyword: keyword as Keyword,
+        ...(value.scope === "permanents" ? { scope: "permanents" } : {}),
+        ...(nonSubtypes.length > 0 ? { nonSubtypes } : {}),
       };
     }
     case "search_library":
@@ -2728,11 +2747,13 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
     };
   }
   if (kind === "team_pt_until_eot") {
+    const nonSubtypes = parseStringList(value.nonSubtypes, `${label}.nonSubtypes`);
     return {
       kind,
       playerId: expectString(value.playerId, `${label}.playerId`),
       power: expectNumber(value.power, `${label}.power`),
       toughness: expectNumber(value.toughness, `${label}.toughness`),
+      ...(nonSubtypes.length > 0 ? { nonSubtypes } : {}),
     };
   }
   if (kind === "team_keyword_until_eot") {
@@ -2740,10 +2761,13 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
     if (!KEYWORDS.has(keyword as Keyword)) {
       throw new Error(`Invalid ${label}.keyword`);
     }
+    const nonSubtypes = parseStringList(value.nonSubtypes, `${label}.nonSubtypes`);
     return {
       kind,
       playerId: expectString(value.playerId, `${label}.playerId`),
       keyword: keyword as Keyword,
+      ...(value.scope === "permanents" ? { scope: "permanents" } : {}),
+      ...(nonSubtypes.length > 0 ? { nonSubtypes } : {}),
     };
   }
   if (kind === "search_library") {
