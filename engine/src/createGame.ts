@@ -86,6 +86,7 @@ export function createCardDefinition(
         | "landChosenColorBonus"
         | "landTapEcho"
         | "opponentLandTapsSkipUntap"
+        | "rebound"
         | "chooseColorOnEnter"
         | "enchantedTappedBonus"
         | "entersWithXCounters"
@@ -328,6 +329,7 @@ export function createCardDefinition(
     ...(input.landChosenColorBonus ? { landChosenColorBonus: true } : {}),
     ...(input.landTapEcho ? { landTapEcho: true } : {}),
     ...(input.opponentLandTapsSkipUntap ? { opponentLandTapsSkipUntap: true } : {}),
+    ...(input.rebound ? { rebound: true } : {}),
     ...(input.triggerDoubling
       ? {
           triggerDoubling: {

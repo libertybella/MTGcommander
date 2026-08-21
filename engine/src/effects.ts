@@ -1084,6 +1084,13 @@ export function bindCardEffect(
       }
       return { kind: "roll_die_treasures", playerId, sides: effect.sides };
     }
+    case "germ_attach": {
+      const cardId = bindCardId(state, effect.cardId, context);
+      if (!cardId) {
+        return null;
+      }
+      return { kind: "germ_attach", cardId };
+    }
     case "exile_graveyard": {
       const playerId = bindPlayerSelector(state, effect.playerId, context);
       if (!playerId) {
@@ -3222,6 +3229,43 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
           toughness: null,
           count: roll,
         });
+        break;
+      }
+      case "germ_attach": {
+        // Living weapon (CR 702.92): the Germ enters, then the Equipment
+        // attaches. A boostless Germ dies to the next SBA sweep as a 0/0 and
+        // the Equipment stays behind — the printed behavior.
+        const equipment = state.cards[effect.cardId];
+        if (!equipment || equipment.zone !== "battlefield") {
+          next = cloneGameState(state);
+          break;
+        }
+        next = cloneGameState(state);
+        const germDefinition = createCardDefinition({
+          name: "Phyrexian Germ",
+          typeLine: "Creature — Phyrexian Germ Token",
+          colors: ["B"],
+          power: 0,
+          toughness: 0,
+        });
+        next.definitions[germDefinition.id] = germDefinition;
+        const germ = createCardInstance({
+          definitionId: germDefinition.id,
+          ownerId: equipment.controllerId,
+          zone: "battlefield",
+          isToken: true,
+        });
+        germ.timestamp = next.nextTimestamp;
+        next.nextTimestamp += 1;
+        next.cards[germ.id] = germ;
+        next.players
+          .find((player) => player.id === equipment.controllerId)
+          ?.zones.battlefield.push(germ.id);
+        next.cards[effect.cardId]!.attachedTo = germ.id;
+        queueEnterBattlefieldTriggersInPlace(next, germ.id);
+        dispatchEventsInPlace(next, [
+          { kind: "creates_token", playerId: equipment.controllerId },
+        ]);
         break;
       }
       case "exile_graveyard": {

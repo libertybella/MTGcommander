@@ -14,6 +14,7 @@ import type {
   ChooseCardSource,
   ChosenTarget,
   DestroyAllScope,
+  DynamicCount,
   EnterTappedUnless,
   GameAction,
   GameEffect,
@@ -427,6 +428,7 @@ export function parseGameState(json: string): GameState {
       ...(def.landChosenColorBonus === true ? { landChosenColorBonus: true } : {}),
       ...(def.landTapEcho === true ? { landTapEcho: true } : {}),
       ...(def.opponentLandTapsSkipUntap === true ? { opponentLandTapsSkipUntap: true } : {}),
+      ...(def.rebound === true ? { rebound: true } : {}),
       ...(def.triggerDoubling === undefined
         ? {}
         : {
@@ -1022,6 +1024,24 @@ export function parseGameState(json: string): GameState {
                 cardId: expectString(entry.cardId, `exilePlayable[${index}].cardId`),
                 casterId: expectString(entry.casterId, `exilePlayable[${index}].casterId`),
                 ...(entry.freeCast === true ? { freeCast: true } : {}),
+              };
+            });
+          })(),
+        }),
+    ...(raw.pendingRebounds === undefined
+      ? {}
+      : {
+          pendingRebounds: (() => {
+            if (!Array.isArray(raw.pendingRebounds)) {
+              throw new Error("Invalid pendingRebounds");
+            }
+            return raw.pendingRebounds.map((entry, index) => {
+              if (!isRecord(entry)) {
+                throw new Error(`Invalid pendingRebounds[${index}]`);
+              }
+              return {
+                cardId: expectString(entry.cardId, `pendingRebounds[${index}].cardId`),
+                casterId: expectString(entry.casterId, `pendingRebounds[${index}].casterId`),
               };
             });
           })(),
@@ -2483,6 +2503,8 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
       return { kind, cardId: parseCardIdSelector(value.cardId, `${label}.cardId`) };
     case "return_self_as_enchantment":
       return { kind, cardId: parseCardIdSelector(value.cardId, `${label}.cardId`) };
+    case "germ_attach":
+      return { kind, cardId: parseCardIdSelector(value.cardId, `${label}.cardId`) };
     case "exile_graveyard":
       return { kind, playerId: parsePlayerSelector(value.playerId, `${label}.playerId`) };
     case "commander_to_hand":
@@ -3037,10 +3059,24 @@ function parseContinuousEffectData(value: unknown, label: string): ContinuousEff
     };
   }
   if (kind === "set_pt" || kind === "modify_pt") {
+    const per = value.per;
+    if (
+      kind === "modify_pt" &&
+      per !== undefined &&
+      per !== "lands_you_control" &&
+      per !== "creatures_you_control" &&
+      per !== "artifacts_you_control" &&
+      per !== "artifacts_and_enchantments_you_control" &&
+      per !== "cards_in_your_hand" &&
+      per !== "cards_in_your_graveyard"
+    ) {
+      throw new Error(`Invalid ${label}.per`);
+    }
     return {
       kind,
       power: expectNumber(value.power, `${label}.power`),
       toughness: expectNumber(value.toughness, `${label}.toughness`),
+      ...(kind === "modify_pt" && per !== undefined ? { per: per as DynamicCount } : {}),
     };
   }
   throw new Error(`Invalid ${label}.kind`);
@@ -3616,6 +3652,9 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
     return { kind, cardId: expectString(value.cardId, `${label}.cardId`) };
   }
   if (kind === "return_self_as_enchantment") {
+    return { kind, cardId: expectString(value.cardId, `${label}.cardId`) };
+  }
+  if (kind === "germ_attach") {
     return { kind, cardId: expectString(value.cardId, `${label}.cardId`) };
   }
   if (kind === "exile_graveyard") {

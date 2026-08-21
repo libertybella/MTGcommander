@@ -80,6 +80,7 @@ export type CompiledOracleText = {
   landChosenColorBonus?: boolean;
   landTapEcho?: boolean;
   opponentLandTapsSkipUntap?: boolean;
+  rebound?: boolean;
   entersWithXCounters?: boolean;
   enterAsCopy?: { scope: EnterAsCopyScope; extraCounters?: number; maxManaValueBySpent?: boolean };
   playLandsFromGraveyard?: boolean;
@@ -327,6 +328,10 @@ function compileControlCondition(text: string): EnterTappedUnless | null {
   }
   if (/^two or more basic lands$/i.test(rest)) {
     return { kind: "basic_lands", count: 2 };
+  }
+  // Ba Sing Se / Fire Nation Palace.
+  if (/^a basic land$/i.test(rest)) {
+    return { kind: "basic_lands", count: 1 };
   }
   if (/^a legendary creature$/i.test(rest)) {
     return { kind: "legendary_creature" };
@@ -5356,6 +5361,39 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
           },
         ],
         targetRequirements: [],
+      });
+      continue;
+    }
+
+    // Living weapon (CR 702.92) lowers to its full rules text.
+    if (/^Living weapon$/i.test(sentence)) {
+      result.triggers.push({
+        event: "enter_battlefield",
+        effects: [{ kind: "germ_attach", cardId: "self" }],
+        targetRequirements: [],
+      });
+      continue;
+    }
+
+    // Rebound (CR 702.87).
+    if (/^Rebound$/i.test(sentence)) {
+      result.rebound = true;
+      continue;
+    }
+
+    // Nettlecyst: a live-count attached buff.
+    const perBuff = sentence.match(
+      /^Equipped creature gets \+(\d+)\/\+(\d+) for each artifact and\/or enchantment you control$/i,
+    );
+    if (perBuff?.[1] && perBuff[2]) {
+      result.staticAbilities.push({
+        selector: { scope: "attached" },
+        effect: {
+          kind: "modify_pt",
+          power: Number(perBuff[1]),
+          toughness: Number(perBuff[2]),
+          per: "artifacts_and_enchantments_you_control",
+        },
       });
       continue;
     }

@@ -159,6 +159,24 @@ function onEnterStep(state: GameState): GameState {
     return state;
   }
   if (state.turn.step === "upkeep") {
+    // Rebound: the caster's exiled spells become free casts this turn. An
+    // unused offer stays exiled for good (CR 702.87e).
+    const activeId = state.turn.activePlayerId;
+    const rebounds = (state.pendingRebounds ?? []).filter(
+      (entry) => entry.casterId === activeId,
+    );
+    if (rebounds.length > 0) {
+      state.pendingRebounds = (state.pendingRebounds ?? []).filter(
+        (entry) => entry.casterId !== activeId,
+      );
+      const grants = state.exilePlayable ?? [];
+      for (const entry of rebounds) {
+        if (state.cards[entry.cardId]?.zone === "exile") {
+          grants.push({ cardId: entry.cardId, casterId: entry.casterId, freeCast: true });
+        }
+      }
+      state.exilePlayable = grants;
+    }
     dispatchEventsInPlace(state, [{ kind: "step_begins", step: "upkeep" }]);
     return state;
   }

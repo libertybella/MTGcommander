@@ -180,6 +180,20 @@ function dynamicCountOf(state: GameState, controllerId: string, count: DynamicCo
   if (count === "cards_in_your_graveyard") {
     return player.zones.graveyard.length;
   }
+  if (count === "artifacts_and_enchantments_you_control") {
+    // Nettlecyst: "and/or" — a card that is both counts once.
+    let both = 0;
+    for (const card of Object.values(state.cards)) {
+      if (card.zone !== "battlefield" || card.controllerId !== controllerId) {
+        continue;
+      }
+      const types = state.definitions[card.definitionId]?.characteristics.types ?? [];
+      if (types.includes("artifact") || types.includes("enchantment")) {
+        both += 1;
+      }
+    }
+    return both;
+  }
   const wanted =
     count === "lands_you_control" ? "land" : count === "creatures_you_control" ? "creature" : "artifact";
   let total = 0;
@@ -462,10 +476,20 @@ function applyInstance(
         computed.power = effect.power;
         computed.toughness = effect.toughness;
         break;
-      case "modify_pt":
-        computed.power += effect.power;
-        computed.toughness += effect.toughness;
+      case "modify_pt": {
+        // Nettlecyst: "+1/+1 for each artifact and/or enchantment you
+        // control" — the count reads the STATIC SOURCE's controller.
+        const multiplier = effect.per
+          ? dynamicCountOf(
+              state,
+              state.cards[instance.sourceId ?? ""]?.controllerId ?? "",
+              effect.per,
+            )
+          : 1;
+        computed.power += effect.power * multiplier;
+        computed.toughness += effect.toughness * multiplier;
         break;
+      }
       default: {
         const exhaustive: never = effect;
         throw new Error(`Unknown continuous effect ${(exhaustive as ContinuousEffectData).kind}`);

@@ -40,9 +40,9 @@ Statuses: `open` · `claimed` · `in-progress` · `done` · `blocked`
 | Spree mode bodies | A | open | | | | |
 | Hideaway trio | A | open | | | | Needs 3 per-turn tallies |
 | Multikicker | A | open | | | | |
-| Rebound | A | open | | | | |
+| Rebound | A | done | claude/2daf8b18 | comprehensive-plan | 2026-08-21 | Merged in wave 125 |
 | Evolve (+ second lines) | A | open | | | | Counter-added event; power-capped cast head |
-| Living weapon | A | in-progress | claude/2daf8b18 | comprehensive-plan | 2026-08-21 | Wave 125, bundled with enters-tapped-unless-basic pair |
+| Living weapon | A | done | claude/2daf8b18 | comprehensive-plan | 2026-08-21 | Wave 125 merged with rebound + tapped-unless-basic: 3 flips (Nettlecyst, Ephemerate, Quantum Misalignment), 905/2,009 (45.0%). Kaldra needs granted-trigger statics |
 | Small keywords (dethrone, split second, compleated, delirium, cascade ×2) | A | open | | | | One card each |
 | Station cycle | A | open | | | | Fringe cards; lowest priority |
 | Modal trigger prompt + modal dies/enters cards | B | open | | | | Unblocks Atsushi, Junji, Charming Prince, Aether Channeler, Felidar Retreat, Retreat to Coralhelm, Insidious Fungus, Cankerbloom |

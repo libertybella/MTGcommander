@@ -210,6 +210,9 @@ export type CardDefinition = {
   /** Mirari's Wake / Vorinclex: the controller's land taps add one more
    * mana of a type the land produced (auto-picked — documented). */
   landTapEcho?: boolean;
+  /** Rebound (CR 702.87): resolving from hand exiles the card; at the
+   * caster's next upkeep it may be cast from exile for free. */
+  rebound?: boolean;
   /** Vorinclex, Voice of Hunger: a land an opponent taps for mana skips
    * its controller's next untap step. */
   opponentLandTapsSkipUntap?: boolean;
@@ -485,6 +488,9 @@ export type GameState = {
    * Cleared at cleanup.
    */
   exilePlayable?: Array<{ cardId: CardInstanceId; casterId: PlayerId; freeCast?: boolean }>;
+  /** Rebound: cards waiting in exile to be offered free at the caster's
+   * next upkeep. */
+  pendingRebounds?: Array<{ cardId: CardInstanceId; casterId: PlayerId }>;
   /** Fog: no combat damage is dealt for the rest of this turn. */
   preventCombatDamage: boolean;
   /** Maze of Ith: creatures whose combat damage (dealt and received) is
@@ -807,6 +813,8 @@ export type GameEffect =
   /** Elspeth's ultimate: a permanent-less static carrier owned by a player.
    * Modeled as an indestructible-by-scope battlefield object (documented). */
   | { kind: "create_emblem"; ownerId: PlayerId; statics: StaticAbility[] }
+  /** Living weapon: create a 0/0 black Phyrexian Germ, attach source to it. */
+  | { kind: "germ_attach"; cardId: CardInstanceId }
   /** Ancient Copper Dragon: roll a die, create that many Treasures. */
   | { kind: "roll_die_treasures"; playerId: PlayerId; sides: number }
   /** Bojuka Bog: every card in the player's graveyard is exiled. */
@@ -824,6 +832,7 @@ export type DynamicCount =
   | "lands_you_control"
   | "creatures_you_control"
   | "artifacts_you_control"
+  | "artifacts_and_enchantments_you_control"
   | "cards_in_your_hand"
   | "cards_in_your_graveyard";
 
@@ -1300,6 +1309,8 @@ export type CardEffect =
   | { kind: "return_self_as_enchantment"; cardId: CardIdSelector }
   /** "You get an emblem with …" (Elspeth, Sun's Champion). */
   | { kind: "create_emblem"; ownerId: PlayerSelector; statics: StaticAbility[] }
+  /** Living weapon (CR 702.92). */
+  | { kind: "germ_attach"; cardId: CardIdSelector }
   /** "Roll a d20. You create a number of Treasure tokens equal to the result." */
   | { kind: "roll_die_treasures"; playerId: PlayerSelector; sides: number }
   | { kind: "exile_graveyard"; playerId: PlayerSelector }
@@ -1789,6 +1800,8 @@ export type ContinuousEffectData =
   | { kind: "grant_protection"; colors: Color[] }
   /** layer 6: Cryptolith Rite grants a mana ability to matching permanents. */
   | { kind: "grant_mana_ability"; ability: ManaAbility }
+  // (modify_pt lives in layer 7c; `per` scales it by a live count read from
+  // the static source's controller — Nettlecyst.)
   | { kind: "remove_all_abilities" } // layer 6
   /** layer 6: Shadowspear strips the listed keywords. */
   | { kind: "remove_keywords"; keywords: Keyword[] }
@@ -1803,7 +1816,7 @@ export type ContinuousEffectData =
       unlessCityBlessing?: boolean;
     }
   | { kind: "set_pt"; power: number; toughness: number } // layer 7b
-  | { kind: "modify_pt"; power: number; toughness: number }; // layer 7c
+  | { kind: "modify_pt"; power: number; toughness: number; per?: DynamicCount }; // layer 7c
 
 /** A static ability printed on a card: applies while its source is on the battlefield. */
 export type StaticAbility = {

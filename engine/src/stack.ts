@@ -391,8 +391,15 @@ export function resolveTopOfStack(state: GameState): GameState {
 
   // Flashback exile replacement (CR 702.34a): a flashbacked card leaves the
   // stack to exile instead of anywhere else.
+  // Rebound (CR 702.87): a rebound spell cast from hand goes to exile on
+  // resolution and is offered free at its caster's next upkeep.
+  const rebounds =
+    isInstantOrSorcery(next, top.sourceId) &&
+    definition?.rebound === true &&
+    !top.fromGraveyard &&
+    !top.isCopy;
   let destination: ZoneName = isInstantOrSorcery(next, top.sourceId)
-    ? top.fromGraveyard
+    ? top.fromGraveyard || rebounds
       ? "exile"
       : "graveyard"
     : "battlefield";
@@ -417,6 +424,11 @@ export function resolveTopOfStack(state: GameState): GameState {
   // which may still be on the stack beneath it (CR 707.10a).
   if (!top.isCopy && next.cards[top.sourceId]?.zone === "stack") {
     next = enterOwnerZone(next, top.sourceId, destination);
+    if (rebounds && next.cards[top.sourceId]?.zone === "exile") {
+      const pending = next.pendingRebounds ?? [];
+      pending.push({ cardId: top.sourceId, casterId: top.controllerId });
+      next.pendingRebounds = pending;
+    }
     if (
       destination === "battlefield" &&
       definition?.entersWithXCounters &&

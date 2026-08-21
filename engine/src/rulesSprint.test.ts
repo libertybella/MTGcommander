@@ -13408,3 +13408,130 @@ describe("wave 124: emblems, dice, and mixtures", () => {
     }
   });
 });
+
+describe("wave 125: germs and rebounds", () => {
+  it("compiles the living-weapon and rebound batch fully", () => {
+    const nettlecyst = compileOracleCard({
+      oracleId: "nettlecyst",
+      name: "Nettlecyst",
+      manaCost: "{3}",
+      typeLine: "Artifact — Equipment",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "Living weapon (When this Equipment enters, create a 0/0 black Phyrexian Germ creature token, then attach this to it.)\nEquipped creature gets +1/+1 for each artifact and/or enchantment you control.\nEquip {2}",
+    });
+    expect(nettlecyst.notes).toEqual([]);
+    expect(nettlecyst.definition.triggers[0]?.effects).toEqual([
+      { kind: "germ_attach", cardId: "self" },
+    ]);
+    expect(nettlecyst.definition.staticAbilities[0]).toEqual({
+      selector: { scope: "attached" },
+      effect: {
+        kind: "modify_pt",
+        power: 1,
+        toughness: 1,
+        per: "artifacts_and_enchantments_you_control",
+      },
+    });
+
+    const ephemerate = compileOracleCard({
+      oracleId: "ephemerate",
+      name: "Ephemerate",
+      manaCost: "{W}",
+      typeLine: "Instant",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "Exile target creature you control, then return it to the battlefield under its owner's control.\nRebound (If you cast this spell from your hand, exile it as it resolves. At the beginning of your next upkeep, you may cast this card from exile without paying its mana cost.)",
+    });
+    expect(ephemerate.notes).toEqual([]);
+    expect(ephemerate.definition.rebound).toBe(true);
+  });
+
+  it("arrives on a germ that its own buff keeps alive", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 10);
+    const cystDef = createCardDefinition({
+      name: "Cyst",
+      typeLine: "Artifact — Equipment",
+      triggers: [
+        {
+          event: "enter_battlefield",
+          effects: [{ kind: "germ_attach", cardId: "self" }],
+          targetRequirements: [],
+        },
+      ],
+      staticAbilities: [
+        {
+          selector: { scope: "attached" },
+          effect: {
+            kind: "modify_pt",
+            power: 1,
+            toughness: 1,
+            per: "artifacts_and_enchantments_you_control",
+          },
+        },
+      ],
+    });
+    game.definitions[cystDef.id] = cystDef;
+    const cyst = createCardInstance({ definitionId: cystDef.id, ownerId: p1.id, zone: "battlefield" });
+    game.cards[cyst.id] = cyst;
+    p1.zones.battlefield.push(cyst.id);
+
+    let next = applyEffects(game, [{ kind: "germ_attach", cardId: cyst.id }]);
+    const germ = Object.values(next.cards).find(
+      (card) => card.isToken && card.zone === "battlefield",
+    );
+    expect(germ).toBeDefined();
+    expect(next.cards[cyst.id]?.attachedTo).toBe(germ!.id);
+    // One artifact (the cyst itself): the 0/0 germ reads 1/1 and lives.
+    expect(computedCard(next, germ!.id)?.power).toBe(1);
+    expect(computedCard(next, germ!.id)?.toughness).toBe(1);
+  });
+
+  it("rebounds to exile and offers the free recast at the next upkeep", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 30);
+    const boltDef = createCardDefinition({
+      name: "Rebolt",
+      manaCost: "{W}",
+      typeLine: "Instant",
+      rebound: true,
+      effects: [{ kind: "gain_life", playerId: "controller", amount: 2 }],
+    });
+    game.definitions[boltDef.id] = boltDef;
+    const bolt = createCardInstance({ definitionId: boltDef.id, ownerId: p1.id, zone: "hand" });
+    game.cards[bolt.id] = bolt;
+    p1.zones.hand.push(bolt.id);
+    game.priorityPlayerId = p1.id;
+    p1.mana.W = 1;
+
+    let next = applyAction(game, {
+      kind: "cast_spell",
+      playerId: p1.id,
+      cardId: bolt.id,
+      targets: [],
+    });
+    next = resolveTopOfStack(next);
+    expect(next.cards[bolt.id]?.zone).toBe("exile");
+    expect(next.pendingRebounds).toEqual([{ cardId: bolt.id, casterId: p1.id }]);
+
+    // Walk to the caster's next upkeep: the free-cast offer appears.
+    for (let guard = 0; guard < 40; guard += 1) {
+      next = advanceSteps(next, 1);
+      if (next.turn.activePlayerId === p1.id && next.turn.step === "upkeep") {
+        break;
+      }
+    }
+    expect(next.turn.step).toBe("upkeep");
+    expect(next.pendingRebounds ?? []).toHaveLength(0);
+    expect(next.exilePlayable).toEqual([
+      { cardId: bolt.id, casterId: p1.id, freeCast: true },
+    ]);
+  });
+});
