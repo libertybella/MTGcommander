@@ -272,6 +272,15 @@ function triggerMatchesEvent(
   if (trigger.event === "you_sacrifice_token") {
     return false;
   }
+  if (event.kind === "untapped") {
+    return (
+      trigger.event === "becomes_untapped" &&
+      subjectMatchesFilter(state, event.cardId, trigger.subjectFilter, watcher)
+    );
+  }
+  if (trigger.event === "becomes_untapped") {
+    return false;
+  }
   if (event.kind === "draws") {
     return trigger.event === "opponent_draws" && watcher.controllerId !== event.playerId;
   }

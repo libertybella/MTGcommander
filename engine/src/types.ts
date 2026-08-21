@@ -837,7 +837,8 @@ export type CardEffect =
   | {
       kind: "damage_all";
       sourceId: CardInstanceId | "self" | null;
-      amount: number | "x";
+      /** "creature_count": X = creatures on the battlefield (Chain Reaction). */
+      amount: number | "x" | "creature_count";
       includePlayers?: boolean;
     }
   | { kind: "flicker"; cardId: CardIdSelector }
@@ -886,7 +887,9 @@ export type TriggerEvent =
   /** The controller created a token (Mirkwood Bats). */
   | "you_create_token"
   /** The controller sacrificed a token (Mirkwood Bats). */
-  | "you_sacrifice_token";
+  | "you_sacrifice_token"
+  /** Any permanent untapped (Mesmeric Orb). Subject is the permanent. */
+  | "becomes_untapped";
 
 export type CardTrigger = {
   event: TriggerEvent;
@@ -941,7 +944,9 @@ export type EngineEvent =
   /** A token was created under this player's control. One event per token. */
   | { kind: "creates_token"; playerId: PlayerId }
   /** A permanent was sacrificed (cost or effect). */
-  | { kind: "sacrifices"; cardId: CardInstanceId; controllerId: PlayerId; wasToken: boolean };
+  | { kind: "sacrifices"; cardId: CardInstanceId; controllerId: PlayerId; wasToken: boolean }
+  /** A permanent went from tapped to untapped. */
+  | { kind: "untapped"; cardId: CardInstanceId };
 
 /** One triggered ability waiting to be put on the stack. */
 export type TriggerCandidate = {

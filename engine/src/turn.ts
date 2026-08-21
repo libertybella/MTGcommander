@@ -13,7 +13,7 @@ import { emptyManaPoolsInPlace } from "./mana";
 import { livingPlayers, nextLivingPlayerId } from "./players";
 import { applyStateBasedActionsInPlace } from "./status";
 import { dispatchEventsInPlace, queueBeginCombatTriggersInPlace } from "./triggers";
-import type { GameState, Phase, PlayerId, Step } from "./types";
+import type { EngineEvent, GameState, Phase, PlayerId, Step } from "./types";
 
 export type TurnSlot = {
   phase: Phase;
@@ -95,6 +95,13 @@ function onEnterStep(state: GameState): GameState {
     // Unused extra combats do not carry across turns.
     state.pendingExtraCombats = 0;
     state.spellsCastThisTurn = 0;
+    const untappedEvents: EngineEvent[] = [];
+    const untapInPlace = (card: (typeof state.cards)[string]) => {
+      if (card.tapped) {
+        untappedEvents.push({ kind: "untapped", cardId: card.id });
+      }
+      card.tapped = false;
+    };
     for (const card of Object.values(state.cards)) {
       if (card.zone === "battlefield" && card.controllerId === activeId) {
         // "~ doesn't untap during your untap step" (ability removal restores it).
@@ -102,7 +109,7 @@ function onEnterStep(state: GameState): GameState {
           state.definitions[card.definitionId]?.doesntUntap === true &&
           !abilitiesRemoved(state, card.id);
         if (!staysTapped) {
-          card.tapped = false;
+          untapInPlace(card);
         }
         card.summoningSick = false;
         card.loyaltyActivatedThisTurn = false;
@@ -126,10 +133,11 @@ function onEnterStep(state: GameState): GameState {
           card.controllerId === source.controllerId &&
           (scope === "permanents" || isCreature(state, card.id))
         ) {
-          card.tapped = false;
+          untapInPlace(card);
         }
       }
     }
+    dispatchEventsInPlace(state, untappedEvents);
     return state;
   }
   if (state.turn.step === "upkeep") {

@@ -3,7 +3,7 @@ import { cloneGameState } from "./clone";
 import { createCardDefinition, createCardInstance } from "./createGame";
 import { characteristicsOf, hasSubtype, isCreature, isInstantOrSorcery, isLand } from "./cardTypes";
 import { createId } from "./ids";
-import { creaturePower, creatureToughness, wouldSkipDraw } from "./derived";
+import { allBattlefieldCreatureCount, creaturePower, creatureToughness, wouldSkipDraw } from "./derived";
 import { hasKeyword } from "./keywords";
 import { addMana, tapCard, untapCard } from "./mana";
 import { isLiving, livingPlayers, nextLivingPlayerId } from "./players";
@@ -549,13 +549,23 @@ export function bindCardEffect(
         effects: bindCardEffects(state, effect.effects, context),
       };
     }
-    case "damage_all":
+    case "damage_all": {
+      const amount =
+        effect.amount === "x"
+          ? context.xValue ?? 0
+          : effect.amount === "creature_count"
+            ? allBattlefieldCreatureCount(state)
+            : effect.amount;
+      if (amount <= 0) {
+        return null;
+      }
       return {
         kind: "damage_all",
         sourceId: bindSourceId(effect.sourceId, context),
-        amount: effect.amount === "x" ? context.xValue ?? 0 : effect.amount,
+        amount,
         ...(effect.includePlayers ? { includePlayers: true } : {}),
       };
+    }
     case "flicker": {
       const cardId = bindCardId(state, effect.cardId, context);
       if (!cardId) {
@@ -1628,9 +1638,14 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
       case "tap":
         next = tapCard(state, effect.cardId);
         break;
-      case "untap":
+      case "untap": {
+        const wasTapped = state.cards[effect.cardId]?.tapped === true;
         next = untapCard(state, effect.cardId);
+        if (wasTapped) {
+          dispatchEventsInPlace(next, [{ kind: "untapped", cardId: effect.cardId }]);
+        }
         break;
+      }
       case "add_mana":
         next = addMana(state, effect.playerId, effect.mana);
         break;
@@ -1737,21 +1752,27 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
       }
       case "untap_all": {
         next = cloneGameState(state);
+        const untapped: EngineEvent[] = [];
         for (const card of Object.values(next.cards)) {
           if (
             card.zone === "battlefield" &&
             card.controllerId === effect.playerId &&
             (effect.what === "creature" ? isCreature(next, card.id) : isLand(next, card.id))
           ) {
+            if (card.tapped) {
+              untapped.push({ kind: "untapped", cardId: card.id });
+            }
             card.tapped = false;
           }
         }
+        dispatchEventsInPlace(next, untapped);
         break;
       }
       case "untap_lands_up_to": {
         // Documented auto-choice: untap the first N tapped lands you control.
         next = cloneGameState(state);
         let remaining = effect.count;
+        const landsUntapped: EngineEvent[] = [];
         for (const card of Object.values(next.cards)) {
           if (remaining <= 0) {
             break;
@@ -1763,9 +1784,11 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
             isLand(next, card.id)
           ) {
             card.tapped = false;
+            landsUntapped.push({ kind: "untapped", cardId: card.id });
             remaining -= 1;
           }
         }
+        dispatchEventsInPlace(next, landsUntapped);
         break;
       }
       case "set_class_level":

@@ -695,6 +695,32 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     return { targetRequirements: [], effects: [{ kind: "populate", playerId: "controller" }] };
   }
 
+  // Mesmeric Orb's body: the untapped permanent's controller mills.
+  const subjectMill = sentence.match(
+    /^that (?:permanent|creature|player)(?:'s controller)? mills? (a|one|two|three|\d+) cards?$/i,
+  );
+  if (subjectMill?.[1]) {
+    const count = parseCount(subjectMill[1]);
+    if (count) {
+      return {
+        targetRequirements: [],
+        effects: [{ kind: "mill", playerId: { type: "subject_player" }, count }],
+      };
+    }
+  }
+
+  // Chain Reaction: X scales with the battlefield at resolution.
+  if (
+    /^~ deals X damage to each creature, where X is the number of creatures on the battlefield$/i.test(
+      sentence,
+    )
+  ) {
+    return {
+      targetRequirements: [],
+      effects: [{ kind: "damage_all", sourceId: "self", amount: "creature_count" }],
+    };
+  }
+
   // Windfall / wheel refills keyed to the biggest discarded hand.
   if (
     /^Each player discards their hand, then draws cards equal to the greatest number of cards a player discarded this way$/i.test(
@@ -1935,6 +1961,9 @@ function parseTriggerHead(head: string): TriggerHead | null {
   }
   if (/^Whenever you gain life$/i.test(text)) {
     return { event: "you_gain_life" };
+  }
+  if (/^Whenever a permanent becomes untapped$/i.test(text)) {
+    return { event: "becomes_untapped" };
   }
   if (/^Whenever you create or sacrifice a token$/i.test(text)) {
     return { event: "you_create_token", extraEvents: ["you_sacrifice_token"] };

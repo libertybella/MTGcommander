@@ -5468,3 +5468,92 @@ describe("wave 57: overload", () => {
     expect(next.cards[theirs2.id]?.zone).toBe("graveyard");
   });
 });
+
+describe("wave 58: untap watchers and creature-count damage", () => {
+  const base = { power: null, toughness: null, printedKeywords: [], imageUrl: "" };
+
+  it("compiles Mesmeric Orb and Chain Reaction fully", () => {
+    const orb = compileOracleCard({
+      ...base,
+      oracleId: "orb2",
+      name: "Mesmeric Orb",
+      manaCost: "{2}",
+      typeLine: "Artifact",
+      oracleText: "Whenever a permanent becomes untapped, that permanent's controller mills a card.",
+    });
+    expect(orb.notes).toEqual([]);
+    expect(orb.definition.triggers[0]?.event).toBe("becomes_untapped");
+    expect(orb.definition.triggers[0]?.effects[0]).toEqual({
+      kind: "mill",
+      playerId: { type: "subject_player" },
+      count: 1,
+    });
+
+    const chain = compileOracleCard({
+      ...base,
+      oracleId: "chain",
+      name: "Chain Reaction",
+      manaCost: "{2}{R}{R}",
+      typeLine: "Sorcery",
+      oracleText:
+        "Chain Reaction deals X damage to each creature, where X is the number of creatures on the battlefield.",
+    });
+    expect(chain.notes).toEqual([]);
+    expect(chain.definition.effects[0]).toEqual({
+      kind: "damage_all",
+      sourceId: "self",
+      amount: "creature_count",
+    });
+  });
+
+  it("mills the untapping permanent's controller", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 10);
+    const orbDef = createCardDefinition({
+      name: "Orb Lite",
+      typeLine: "Artifact",
+      triggers: [
+        {
+          event: "becomes_untapped",
+          effects: [{ kind: "mill", playerId: { type: "subject_player" }, count: 1 }],
+        },
+      ],
+    });
+    const landDef = createCardDefinition({ name: "Wastes", typeLine: "Basic Land" });
+    game.definitions[orbDef.id] = orbDef;
+    game.definitions[landDef.id] = landDef;
+    const orb = createCardInstance({ definitionId: orbDef.id, ownerId: p1.id, zone: "battlefield" });
+    const land = createCardInstance({ definitionId: landDef.id, ownerId: p2.id, zone: "battlefield" });
+    land.tapped = true;
+    game.cards[orb.id] = orb;
+    game.cards[land.id] = land;
+    p1.zones.battlefield.push(orb.id);
+    p2.zones.battlefield.push(land.id);
+
+    let next = applyEffect(game, { kind: "untap", cardId: land.id });
+    expect(next.stack).toHaveLength(1);
+    const before = next.players.find((p) => p.id === p2.id)!.zones.graveyard.length;
+    next = resolveTopOfStack(next);
+    expect(next.players.find((p) => p.id === p2.id)!.zones.graveyard.length).toBe(before + 1);
+
+    // Untapping an already-untapped permanent is rejected outright.
+    expect(() => applyEffect(next, { kind: "untap", cardId: land.id })).toThrow(/already untapped/);
+  });
+
+  it("scales damage with the creature count at bind time", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const bearDef = createCardDefinition({ name: "Bear", typeLine: "Creature — Bear", power: 2, toughness: 2 });
+    game.definitions[bearDef.id] = bearDef;
+    for (const owner of [p1, p2, p2]) {
+      const bear = createCardInstance({ definitionId: bearDef.id, ownerId: owner.id, zone: "battlefield" });
+      game.cards[bear.id] = bear;
+      owner.zones.battlefield.push(bear.id);
+    }
+    const bound = bindCardEffects(game, [
+      { kind: "damage_all", sourceId: null, amount: "creature_count" },
+    ], { controllerId: p1.id, sourceId: null });
+    expect(bound[0]?.kind === "damage_all" && bound[0].amount).toBe(3);
+    const next = applyEffects(game, bound);
+    expect(Object.values(next.cards).every((card) => card.zone === "graveyard")).toBe(true);
+  });
+});
