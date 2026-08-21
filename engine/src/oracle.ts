@@ -230,6 +230,7 @@ function compileOneFace(card: OracleCard, definitionId: string): OracleCompileRe
       : {}),
     ...(compiled.chooseCreatureTypeOnEnter ? { chooseCreatureTypeOnEnter: true } : {}),
     ...(compiled.selfIsChosenType ? { selfIsChosenType: true } : {}),
+    ...(compiled.triggerDoubling ? { triggerDoubling: { ...compiled.triggerDoubling } } : {}),
     ...(compiled.chooseColorOnEnter ? { chooseColorOnEnter: true } : {}),
     ...(compiled.enchantedTappedBonus
       ? { enchantedTappedBonus: compiled.enchantedTappedBonus }

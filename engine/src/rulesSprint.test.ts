@@ -12616,3 +12616,243 @@ describe("wave 120: mentors and kindred calls", () => {
     expect(computedCard(next, monk.id)?.power).toBe(3);
   });
 });
+
+describe("wave 121: panharmonic echoes", () => {
+  it("compiles the trigger-doubling batch fully", () => {
+    const panharmonicon = compileOracleCard({
+      oracleId: "panharmonicon",
+      name: "Panharmonicon",
+      manaCost: "{4}",
+      typeLine: "Artifact",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "If an artifact or creature entering causes a triggered ability of a permanent you control to trigger, that ability triggers an additional time.",
+    });
+    expect(panharmonicon.notes).toEqual([]);
+    expect(panharmonicon.definition.triggerDoubling).toEqual({
+      cause: "enters",
+      causeTypesAny: ["artifact", "creature"],
+    });
+
+    const teysa = compileOracleCard({
+      oracleId: "teysa",
+      name: "Teysa Karlov",
+      manaCost: "{2}{W}{B}",
+      typeLine: "Legendary Creature — Human Advisor",
+      power: "2",
+      toughness: "4",
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "If a creature dying causes a triggered ability of a permanent you control to trigger, that ability triggers an additional time.\nCreature tokens you control have vigilance and lifelink.",
+    });
+    expect(teysa.notes).toEqual([]);
+    expect(teysa.definition.triggerDoubling).toEqual({
+      cause: "dies",
+      causeTypesAny: ["creature"],
+    });
+    expect(teysa.definition.staticAbilities).toEqual([
+      {
+        selector: { scope: "controlled", types: ["creature"], tokenOnly: true },
+        effect: { kind: "grant_keyword", keyword: "vigilance" },
+      },
+      {
+        selector: { scope: "controlled", types: ["creature"], tokenOnly: true },
+        effect: { kind: "grant_keyword", keyword: "lifelink" },
+      },
+    ]);
+
+    const throne = compileOracleCard({
+      oracleId: "throne",
+      name: "Roaming Throne",
+      manaCost: "{4}",
+      typeLine: "Artifact Creature — Golem",
+      power: "4",
+      toughness: "4",
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "Ward {2}\nAs this creature enters, choose a creature type.\nThis creature is the chosen type in addition to its other types.\nIf a triggered ability of another creature you control of the chosen type triggers, it triggers an additional time.",
+    });
+    expect(throne.notes).toEqual([]);
+    expect(throne.definition.triggerDoubling).toEqual({
+      source: { types: ["creature"], chosenSubtype: true, excludeSelf: true },
+    });
+
+    const prodigy = compileOracleCard({
+      oracleId: "prodigy",
+      name: "Harmonic Prodigy",
+      manaCost: "{1}{R}",
+      typeLine: "Creature — Human Wizard",
+      power: "1",
+      toughness: "3",
+      printedKeywords: ["Prowess"],
+      imageUrl: "",
+      oracleText:
+        "Prowess\nIf a triggered ability of a Shaman or another Wizard you control triggers, that ability triggers an additional time.",
+    });
+    expect(prodigy.notes).toEqual([]);
+    expect(prodigy.definition.triggerDoubling).toEqual({
+      source: { subtypesAny: ["shaman", "wizard"], excludeSelf: true },
+    });
+
+    const isshin = compileOracleCard({
+      oracleId: "isshin",
+      name: "Isshin, Two Heavens as One",
+      manaCost: "{R}{W}{B}",
+      typeLine: "Legendary Creature — Human Samurai",
+      power: "3",
+      toughness: "4",
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "If a creature attacking causes a triggered ability of a permanent you control to trigger, that ability triggers an additional time.",
+    });
+    expect(isshin.notes).toEqual([]);
+    expect(isshin.definition.triggerDoubling).toEqual({
+      cause: "attacks",
+      causeTypesAny: ["creature"],
+    });
+  });
+
+  it("doubles an ETB watcher once per Panharmonicon, same controller only", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 10);
+    const wardenDef = createCardDefinition({
+      name: "Warden",
+      typeLine: "Creature — Human Cleric",
+      power: 1,
+      toughness: 1,
+      triggers: [
+        {
+          event: "enter_battlefield",
+          watch: "controlled",
+          excludeSelf: true,
+          subjectFilter: { types: ["creature"] },
+          effects: [{ kind: "gain_life", playerId: "controller", amount: 1 }],
+          targetRequirements: [],
+        },
+      ],
+    });
+    const panDef = createCardDefinition({
+      name: "Panharmonicon",
+      typeLine: "Artifact",
+      triggerDoubling: { cause: "enters", causeTypesAny: ["artifact", "creature"] },
+    });
+    const bearDef = createCardDefinition({
+      name: "Bear",
+      typeLine: "Creature — Bear",
+      power: 2,
+      toughness: 2,
+    });
+    game.definitions[wardenDef.id] = wardenDef;
+    game.definitions[panDef.id] = panDef;
+    game.definitions[bearDef.id] = bearDef;
+    const warden = createCardInstance({ definitionId: wardenDef.id, ownerId: p1.id, zone: "battlefield" });
+    const pan = createCardInstance({ definitionId: panDef.id, ownerId: p1.id, zone: "battlefield" });
+    game.cards[warden.id] = warden;
+    game.cards[pan.id] = pan;
+    p1.zones.battlefield.push(warden.id, pan.id);
+
+    const bear = createCardInstance({ definitionId: bearDef.id, ownerId: p1.id, zone: "battlefield" });
+    game.cards[bear.id] = bear;
+    p1.zones.battlefield.push(bear.id);
+    dispatchEventsInPlace(game, [{ kind: "enters", cardId: bear.id }]);
+
+    // Two copies of the same ability: the controller orders them.
+    const prompt = game.prompts[0];
+    expect(prompt?.kind).toBe("order_triggers");
+    let next = applyAction(game, { kind: "resolve_order_triggers", playerId: p1.id, order: [0, 1] });
+    expect(next.stack).toHaveLength(2);
+    while (next.stack.length > 0) {
+      next = resolveTopOfStack(next);
+    }
+    expect(next.players[0]?.life).toBe(42);
+
+    // An opponent's creature entering doesn't touch p1's doubling: the
+    // warden's excludeSelf/controlled watch doesn't even see it, and p2 has
+    // no watcher — no prompt, no stack.
+    const theirs = createCardInstance({ definitionId: bearDef.id, ownerId: p2.id, zone: "battlefield" });
+    next.cards[theirs.id] = theirs;
+    next.players[1]!.zones.battlefield.push(theirs.id);
+    dispatchEventsInPlace(next, [{ kind: "enters", cardId: theirs.id }]);
+    expect(next.prompts).toHaveLength(0);
+    expect(next.stack).toHaveLength(0);
+  });
+
+  it("doubles only chosen-type creatures' triggers for Roaming Throne", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 10);
+    const throneDef = createCardDefinition({
+      name: "Throne",
+      typeLine: "Artifact Creature — Golem",
+      power: 4,
+      toughness: 4,
+      selfIsChosenType: true,
+      chooseCreatureTypeOnEnter: true,
+      triggerDoubling: { source: { types: ["creature"], chosenSubtype: true, excludeSelf: true } },
+    });
+    const sliverDef = createCardDefinition({
+      name: "Sliver",
+      typeLine: "Creature — Sliver",
+      power: 1,
+      toughness: 1,
+      triggers: [
+        {
+          event: "enter_battlefield",
+          effects: [{ kind: "draw", playerId: "controller", count: 1 }],
+          targetRequirements: [],
+        },
+      ],
+    });
+    const goblinDef = createCardDefinition({
+      name: "Goblin",
+      typeLine: "Creature — Goblin",
+      power: 1,
+      toughness: 1,
+      triggers: [
+        {
+          event: "enter_battlefield",
+          effects: [{ kind: "draw", playerId: "controller", count: 1 }],
+          targetRequirements: [],
+        },
+      ],
+    });
+    game.definitions[throneDef.id] = throneDef;
+    game.definitions[sliverDef.id] = sliverDef;
+    game.definitions[goblinDef.id] = goblinDef;
+    const throne = createCardInstance({ definitionId: throneDef.id, ownerId: p1.id, zone: "battlefield" });
+    throne.chosenCreatureType = "sliver";
+    game.cards[throne.id] = throne;
+    p1.zones.battlefield.push(throne.id);
+
+    // A chosen-type creature's own ETB trigger doubles.
+    const sliver = createCardInstance({ definitionId: sliverDef.id, ownerId: p1.id, zone: "battlefield" });
+    game.cards[sliver.id] = sliver;
+    p1.zones.battlefield.push(sliver.id);
+    dispatchEventsInPlace(game, [{ kind: "enters", cardId: sliver.id }]);
+    expect(game.prompts[0]?.kind).toBe("order_triggers");
+    let next = applyAction(game, { kind: "resolve_order_triggers", playerId: p1.id, order: [0, 1] });
+    expect(next.stack).toHaveLength(2);
+    while (next.stack.length > 0) {
+      next = resolveTopOfStack(next);
+    }
+
+    // The definition survives a save/load round trip.
+    const reloaded = parseGameState(serializeGameState(next));
+    expect(reloaded.definitions[throneDef.id]?.triggerDoubling).toEqual({
+      source: { types: ["creature"], chosenSubtype: true, excludeSelf: true },
+    });
+
+    // An off-type creature's trigger stays single.
+    const goblin = createCardInstance({ definitionId: goblinDef.id, ownerId: p1.id, zone: "battlefield" });
+    next.cards[goblin.id] = goblin;
+    next.players[0]!.zones.battlefield.push(goblin.id);
+    dispatchEventsInPlace(next, [{ kind: "enters", cardId: goblin.id }]);
+    expect(next.prompts).toHaveLength(0);
+    expect(next.stack).toHaveLength(1);
+  });
+});

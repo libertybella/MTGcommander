@@ -82,6 +82,7 @@ export function createCardDefinition(
         | "costReductions"
         | "chooseCreatureTypeOnEnter"
         | "selfIsChosenType"
+        | "triggerDoubling"
         | "chooseColorOnEnter"
         | "enchantedTappedBonus"
         | "entersWithXCounters"
@@ -320,6 +321,19 @@ export function createCardDefinition(
       : {}),
     ...(input.chooseCreatureTypeOnEnter ? { chooseCreatureTypeOnEnter: true } : {}),
     ...(input.selfIsChosenType ? { selfIsChosenType: true } : {}),
+    ...(input.triggerDoubling
+      ? {
+          triggerDoubling: {
+            ...input.triggerDoubling,
+            ...(input.triggerDoubling.causeTypesAny
+              ? { causeTypesAny: [...input.triggerDoubling.causeTypesAny] }
+              : {}),
+            ...(input.triggerDoubling.source
+              ? { source: { ...input.triggerDoubling.source } }
+              : {}),
+          },
+        }
+      : {}),
     ...(input.chooseColorOnEnter ? { chooseColorOnEnter: true } : {}),
     ...(input.enchantedTappedBonus
       ? { enchantedTappedBonus: { ...input.enchantedTappedBonus } }

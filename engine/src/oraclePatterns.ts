@@ -4,6 +4,7 @@ import type {
   ActivatedAbility,
   AdditionalCastCost,
   TopOfLibraryGrant,
+  CardDefinition,
   CardEffect,
   CardTrigger,
   ChooseCardSource,
@@ -74,6 +75,7 @@ export type CompiledOracleText = {
   costReductions?: CostReduction[];
   chooseCreatureTypeOnEnter?: boolean;
   selfIsChosenType?: boolean;
+  triggerDoubling?: CardDefinition["triggerDoubling"];
   entersWithXCounters?: boolean;
   enterAsCopy?: { scope: EnterAsCopyScope; extraCounters?: number; maxManaValueBySpent?: boolean };
   playLandsFromGraveyard?: boolean;
@@ -5027,6 +5029,72 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
       // The engine never applies CR 704.5j, so Sakashima's exemption already
       // matches the table's behavior — an accurate no-op, not an approximation.
       continue;
+    }
+
+    // Panharmonicon / Yarok / Teysa Karlov / Drivnod / Isshin: cause-keyed
+    // trigger doubling.
+    const causeDoubling = sentence.match(
+      /^If an? (artifact or creature|permanent|creature) (entering|dying|attacking) causes a triggered ability of a permanent you control to trigger, that ability triggers an additional time$/i,
+    );
+    if (causeDoubling?.[1] && causeDoubling[2]) {
+      const cause = { entering: "enters", dying: "dies", attacking: "attacks" }[
+        causeDoubling[2].toLowerCase()
+      ] as "enters" | "dies" | "attacks";
+      const what = causeDoubling[1].toLowerCase();
+      result.triggerDoubling = {
+        cause,
+        ...(what === "artifact or creature"
+          ? { causeTypesAny: ["artifact", "creature"] }
+          : what === "creature"
+            ? { causeTypesAny: ["creature"] }
+            : {}),
+      };
+      continue;
+    }
+
+    // Roaming Throne: source-keyed doubling on the chosen type.
+    if (
+      /^If a triggered ability of another creature you control of the chosen type triggers, (?:that ability|it) triggers an additional time$/i.test(
+        sentence,
+      )
+    ) {
+      result.triggerDoubling = {
+        source: { types: ["creature"], chosenSubtype: true, excludeSelf: true },
+      };
+      continue;
+    }
+
+    // Harmonic Prodigy: "a Shaman or another Wizard you control". The
+    // excludeSelf covers both halves — a documented micro-approximation
+    // (the source is never its own first-listed subtype in practice).
+    const pairDoubling = sentence.match(
+      /^If a triggered ability of an? ([A-Z][a-z]+) or another ([A-Z][a-z]+) you control triggers, (?:that ability|it) triggers an additional time$/,
+    );
+    if (pairDoubling?.[1] && pairDoubling[2]) {
+      result.triggerDoubling = {
+        source: {
+          subtypesAny: [pairDoubling[1].toLowerCase(), pairDoubling[2].toLowerCase()],
+          excludeSelf: true,
+        },
+      };
+      continue;
+    }
+
+    // Teysa Karlov's second line: keyword grants limited to creature tokens.
+    const tokenGrants = sentence.match(/^Creature tokens you control have ([a-z ]+)$/i);
+    if (tokenGrants?.[1]) {
+      const granted = tokenGrants[1]
+        .split(/ and |, /i)
+        .map((word) => KEYWORD_GRANTS[word.trim().toLowerCase()]);
+      if (granted.every((keyword): keyword is Keyword => Boolean(keyword))) {
+        for (const keyword of granted) {
+          result.staticAbilities.push({
+            selector: { scope: "controlled", types: ["creature"], tokenOnly: true },
+            effect: { kind: "grant_keyword", keyword },
+          });
+        }
+        continue;
+      }
     }
 
     // Prowess (CR 702.108) lowers to its full rules text.

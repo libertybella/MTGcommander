@@ -423,6 +423,63 @@ export function parseGameState(json: string): GameState {
           }),
       ...(def.chooseCreatureTypeOnEnter === true ? { chooseCreatureTypeOnEnter: true } : {}),
       ...(def.selfIsChosenType === true ? { selfIsChosenType: true } : {}),
+      ...(def.triggerDoubling === undefined
+        ? {}
+        : {
+            triggerDoubling: (() => {
+              if (!isRecord(def.triggerDoubling)) {
+                throw new Error(`Invalid definition.${id}.triggerDoubling`);
+              }
+              const cause = def.triggerDoubling.cause;
+              if (
+                cause !== undefined &&
+                cause !== "enters" &&
+                cause !== "dies" &&
+                cause !== "attacks"
+              ) {
+                throw new Error(`Invalid definition.${id}.triggerDoubling.cause`);
+              }
+              const source = def.triggerDoubling.source;
+              if (source !== undefined && !isRecord(source)) {
+                throw new Error(`Invalid definition.${id}.triggerDoubling.source`);
+              }
+              return {
+                ...(cause === undefined ? {} : { cause }),
+                ...(def.triggerDoubling.causeTypesAny === undefined
+                  ? {}
+                  : {
+                      causeTypesAny: expectStringArray(
+                        def.triggerDoubling.causeTypesAny,
+                        `definition.${id}.triggerDoubling.causeTypesAny`,
+                      ),
+                    }),
+                ...(source === undefined
+                  ? {}
+                  : {
+                      source: {
+                        ...(source.types === undefined
+                          ? {}
+                          : {
+                              types: expectStringArray(
+                                source.types,
+                                `definition.${id}.triggerDoubling.source.types`,
+                              ),
+                            }),
+                        ...(source.subtypesAny === undefined
+                          ? {}
+                          : {
+                              subtypesAny: expectStringArray(
+                                source.subtypesAny,
+                                `definition.${id}.triggerDoubling.source.subtypesAny`,
+                              ),
+                            }),
+                        ...(source.chosenSubtype === true ? { chosenSubtype: true } : {}),
+                        ...(source.excludeSelf === true ? { excludeSelf: true } : {}),
+                      },
+                    }),
+              };
+            })(),
+          }),
       ...(def.entersWithXCounters === true ? { entersWithXCounters: true } : {}),
       ...(def.enterAsCopy === undefined
         ? {}
@@ -1288,6 +1345,9 @@ function parseTriggerCandidates(value: unknown, label: string): TriggerCandidate
         : {
             subjectAmount: expectNumber(entry.subjectAmount, `${label}[${index}].subjectAmount`),
           }),
+      ...(entry.causeKind === "enters" || entry.causeKind === "dies" || entry.causeKind === "attacks"
+        ? { causeKind: entry.causeKind }
+        : {}),
     };
   });
 }

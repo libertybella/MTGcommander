@@ -287,11 +287,77 @@ export function processTriggerGroupsInPlace(state: GameState, groups: TriggerGro
  * the owner without using the stack. Targeted abilities pause for
  * `choose_targets` unless no legal target exists (CR 603.3d — skipped).
  */
+/**
+ * "…triggers an additional time": one extra copy per matching doubler on the
+ * battlefield (Panharmonicon, Teysa Karlov, Isshin, Roaming Throne, Harmonic
+ * Prodigy). Cause-restricted doublers only fire for event-caused candidates
+ * (candidate.causeKind); source-restricted doublers also double turn-based
+ * triggers, which carry no cause.
+ */
+function triggerDoublingCopies(state: GameState, candidate: TriggerCandidate): number {
+  let copies = 1;
+  const source = state.cards[candidate.cardId];
+  if (!source) {
+    return copies;
+  }
+  for (const doubler of Object.values(state.cards)) {
+    const doubling = state.definitions[doubler.definitionId]?.triggerDoubling;
+    if (
+      !doubling ||
+      doubler.zone !== "battlefield" ||
+      doubler.controllerId !== source.controllerId ||
+      abilitiesRemoved(state, doubler.id)
+    ) {
+      continue;
+    }
+    if (doubling.cause) {
+      if (candidate.causeKind !== doubling.cause) {
+        continue;
+      }
+      if (doubling.causeTypesAny) {
+        const subjectId = candidate.subjectCardId;
+        const types = subjectId ? characteristicsOf(state, subjectId).types : [];
+        if (!doubling.causeTypesAny.some((type) => types.includes(type))) {
+          continue;
+        }
+      }
+    }
+    const filter = doubling.source;
+    if (filter) {
+      if (filter.excludeSelf && candidate.cardId === doubler.id) {
+        continue;
+      }
+      const sourceTypes = characteristicsOf(state, candidate.cardId).types;
+      if (filter.types && !filter.types.every((type) => sourceTypes.includes(type))) {
+        continue;
+      }
+      if (
+        filter.subtypesAny &&
+        !filter.subtypesAny.some((subtype) => cardMatchesSubtype(state, candidate.cardId, subtype))
+      ) {
+        continue;
+      }
+      if (filter.chosenSubtype) {
+        const chosen = doubler.chosenCreatureType;
+        if (!chosen || !cardMatchesSubtype(state, candidate.cardId, chosen)) {
+          continue;
+        }
+      }
+    }
+    copies += 1;
+  }
+  return copies;
+}
+
 export function queueSimultaneousTriggersInPlace(
   state: GameState,
   candidates: TriggerCandidate[],
 ): void {
-  const queueable = candidates.filter((candidate) => candidateIsQueueable(state, candidate));
+  const queueable = candidates
+    .filter((candidate) => candidateIsQueueable(state, candidate))
+    .flatMap((candidate) =>
+      Array.from({ length: triggerDoublingCopies(state, candidate) }, () => ({ ...candidate })),
+    );
   if (queueable.length === 0) {
     return;
   }
@@ -687,12 +753,17 @@ export function dispatchEventsInPlace(state: GameState, events: EngineEvent[]): 
             event.kind === "gains_life" || event.kind === "loses_life"
               ? event.amount
               : undefined;
+          const causeKind =
+            event.kind === "enters" || event.kind === "dies" || event.kind === "attacks"
+              ? event.kind
+              : undefined;
           candidates.push({
             cardId: card.id,
             triggerIndex: index,
             ...(subjectCardId ? { subjectCardId } : {}),
             ...(subjectPlayerId ? { subjectPlayerId } : {}),
             ...(subjectAmount ? { subjectAmount } : {}),
+            ...(causeKind ? { causeKind } : {}),
           });
         }
       }

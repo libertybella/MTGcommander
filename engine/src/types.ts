@@ -205,6 +205,28 @@ export type CardDefinition = {
   chooseCreatureTypeOnEnter?: boolean;
   /** "~ is the chosen type in addition to its other types" (Metallic Mimic). */
   selfIsChosenType?: boolean;
+  /**
+   * "…that ability triggers an additional time" (CR 614.1c-adjacent trigger
+   * doubling). Each matching doubler on the battlefield adds one extra copy
+   * of the queued trigger. The doubled ability's source must be a permanent
+   * the doubler's controller controls (true of every printed doubler).
+   */
+  triggerDoubling?: {
+    /** Restrict by the causing event (Panharmonicon "enters", Teysa Karlov
+     * "dies", Isshin "attacks"). Omitted: any trigger (Roaming Throne). */
+    cause?: "enters" | "dies" | "attacks";
+    /** The causing subject must have one of these types (Panharmonicon:
+     * artifact or creature; Drivnod: creature). */
+    causeTypesAny?: string[];
+    /** Restrict the doubled ability's source (Harmonic Prodigy: a Shaman or
+     * another Wizard; Roaming Throne: another creature of the chosen type). */
+    source?: {
+      types?: string[];
+      subtypesAny?: string[];
+      chosenSubtype?: boolean;
+      excludeSelf?: boolean;
+    };
+  };
   /** "~ enters with X +1/+1 counters on it" (hydras); X from the announced cost. */
   entersWithXCounters?: boolean;
   /**
@@ -1433,6 +1455,9 @@ export type TriggerCandidate = {
   subjectPlayerId?: PlayerId;
   /** The event's amount ("that much" — life gained or lost). */
   subjectAmount?: number;
+  /** What caused this trigger, when an event did — read by trigger doublers
+   * (Panharmonicon wants "enters", Teysa Karlov "dies", Isshin "attacks"). */
+  causeKind?: "enters" | "dies" | "attacks";
 };
 
 /** A required player decision that is not priority (targets, later modes). */
