@@ -324,6 +324,12 @@ export type GameState = {
   nextTimestamp: number;
   /** `${cardId}:${triggerIndex}` keys for once-per-turn triggers already fired. */
   oncePerTurnFired: string[];
+  /**
+   * Extra combat phases owed this turn (Aggravated Assault, Seize the Day).
+   * Consumed as the postcombat main phase ends: the turn re-enters combat,
+   * which naturally flows into another main phase.
+   */
+  pendingExtraCombats: number;
 };
 
 export type ZoneReveal = {
@@ -426,6 +432,8 @@ export type GameEffect =
   | { kind: "counter_spell"; stackObjectId: StackObjectId }
   | { kind: "counter_unless_pays"; stackObjectId: StackObjectId; cost: string }
   | { kind: "copy_spell"; stackObjectId: StackObjectId; controllerId: PlayerId }
+  | { kind: "extra_combat" }
+  | { kind: "untap_all"; playerId: PlayerId; what: "creature" | "land" }
   | { kind: "set_class_level"; cardId: CardInstanceId; level: number }
   | { kind: "pt_until_eot"; cardId: CardInstanceId; power: number; toughness: number }
   | { kind: "keyword_until_eot"; cardId: CardInstanceId; keyword: Keyword }
@@ -648,6 +656,8 @@ export type CardEffect =
   | { kind: "counter_spell"; target: ChosenTargetRef }
   | { kind: "counter_unless_pays"; target: ChosenTargetRef; cost: string }
   | { kind: "copy_spell"; target: ChosenTargetRef }
+  | { kind: "extra_combat" }
+  | { kind: "untap_all"; playerId: PlayerSelector; what: "creature" | "land" }
   /** "copy that spell" in a cast trigger — the subject spell, not a target. */
   | { kind: "copy_subject_spell" }
   /** "counter that spell" in a cast trigger — the subject spell, not a target. */

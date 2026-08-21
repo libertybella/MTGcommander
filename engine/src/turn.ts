@@ -90,6 +90,8 @@ function onEnterStep(state: GameState): GameState {
     }
     // "Only once each turn" abilities reset when a new turn begins.
     state.oncePerTurnFired = [];
+    // Unused extra combats do not carry across turns.
+    state.pendingExtraCombats = 0;
     for (const card of Object.values(state.cards)) {
       if (card.zone === "battlefield" && card.controllerId === activeId) {
         card.tapped = false;
@@ -185,6 +187,17 @@ export function advanceStep(state: GameState): GameState {
   emptyManaPoolsInPlace(next);
   const current = slotIndex(next.turn.phase, next.turn.step);
   const lastIndex = TURN_SEQUENCE.length - 1;
+
+  // Extra combat phases (Aggravated Assault): as the postcombat main ends,
+  // re-enter combat; the sequence then flows into another main phase.
+  if (next.turn.step === "postcombatMain" && next.pendingExtraCombats > 0) {
+    next.pendingExtraCombats -= 1;
+    next.turn.phase = "combat";
+    next.turn.step = "beginCombat";
+    const reentered = onEnterStep(next);
+    applyStateBasedActionsInPlace(reentered);
+    return reentered;
+  }
 
   if (current === lastIndex) {
     assignNextPlayerTurn(next, nextTurnPlayerId(next, next.turn.activePlayerId));

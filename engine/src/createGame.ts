@@ -333,5 +333,6 @@ export function createGameState(options: CreateGameOptions): GameState {
     activeEffects: [],
     nextTimestamp: 1,
     oncePerTurnFired: [],
+    pendingExtraCombats: 0,
   };
 }

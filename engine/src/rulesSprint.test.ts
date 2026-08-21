@@ -3038,3 +3038,67 @@ describe("wave 32: token and counter doubling (CR 614.1c)", () => {
     expect(counted.cards[theirs.id]?.counters["p1p1"]).toBe(1);
   });
 });
+
+describe("wave 33: extra combat phases", () => {
+  it("compiles Aggravated Assault and Seize the Day fully", () => {
+    const assault = compileOracleCard({
+      oracleId: "aggravated-assault",
+      name: "Aggravated Assault",
+      manaCost: "{2}{R}",
+      typeLine: "Enchantment",
+      oracleText:
+        "{3}{R}{R}: Untap all creatures you control. After this main phase, there is an additional combat phase followed by an additional main phase. Activate only as a sorcery.",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+    });
+    expect(assault.notes).toEqual([]);
+    expect(assault.definition.activated).toHaveLength(1);
+    const ability = assault.definition.activated[0]!;
+    expect(ability.timing).toBe("sorcery");
+    expect(ability.effects).toEqual([
+      { kind: "untap_all", playerId: "controller", what: "creature" },
+      { kind: "extra_combat" },
+    ]);
+
+    const seize = compileOracleCard({
+      oracleId: "seize-the-day",
+      name: "Seize the Day",
+      manaCost: "{3}{R}",
+      typeLine: "Sorcery",
+      oracleText:
+        "Untap target creature. After this main phase, there is an additional combat phase followed by an additional main phase.\nFlashback {2}{R} (You may cast this card from your graveyard for its flashback cost. Then exile it.)",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+    });
+    expect(seize.notes).toEqual([]);
+    expect(seize.definition.targetRequirements).toEqual([{ kind: "creature" }]);
+    expect(seize.definition.effects).toEqual([
+      { kind: "untap", cardId: { type: "chosen", index: 0 } },
+      { kind: "extra_combat" },
+    ]);
+    expect(seize.definition.flashback).toEqual({ manaCost: "{2}{R}" });
+  });
+
+  it("re-enters combat once after the postcombat main phase, then ends normally", () => {
+    const { game } = twoPlayers();
+    game.turn.phase = "postcombatMain";
+    game.turn.step = "postcombatMain";
+    const withExtra = applyEffect(game, { kind: "extra_combat" });
+    expect(withExtra.pendingExtraCombats).toBe(1);
+
+    const backToCombat = advanceSteps(withExtra, 1);
+    expect(backToCombat.turn.phase).toBe("combat");
+    expect(backToCombat.turn.step).toBe("beginCombat");
+    expect(backToCombat.pendingExtraCombats).toBe(0);
+
+    // Walk the extra combat through to the second postcombat main, then out.
+    const secondMain = advanceSteps(backToCombat, 5);
+    expect(secondMain.turn.phase).toBe("postcombatMain");
+    const ending = advanceSteps(secondMain, 1);
+    expect(ending.turn.phase).toBe("ending");
+  });
+});

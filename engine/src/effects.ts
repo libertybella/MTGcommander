@@ -552,6 +552,15 @@ export function bindCardEffect(
       }
       return { kind: "copy_spell", stackObjectId: chosen.stackObjectId, controllerId: context.controllerId };
     }
+    case "extra_combat":
+      return { kind: "extra_combat" };
+    case "untap_all": {
+      const playerId = bindPlayerSelector(state, effect.playerId, context);
+      if (!playerId) {
+        return null;
+      }
+      return { kind: "untap_all", playerId, what: effect.what };
+    }
     case "copy_subject_spell":
     case "counter_subject_spell": {
       const subject = context.subjectCardId;
@@ -1471,6 +1480,24 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
       case "copy_spell":
         next = applyCopySpell(state, effect.stackObjectId, effect.controllerId);
         break;
+      case "extra_combat": {
+        next = cloneGameState(state);
+        next.pendingExtraCombats += 1;
+        break;
+      }
+      case "untap_all": {
+        next = cloneGameState(state);
+        for (const card of Object.values(next.cards)) {
+          if (
+            card.zone === "battlefield" &&
+            card.controllerId === effect.playerId &&
+            (effect.what === "creature" ? isCreature(next, card.id) : isLand(next, card.id))
+          ) {
+            card.tapped = false;
+          }
+        }
+        break;
+      }
       case "set_class_level":
         next = applySetClassLevel(state, effect.cardId, effect.level);
         break;

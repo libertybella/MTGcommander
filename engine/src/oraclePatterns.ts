@@ -814,6 +814,38 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     };
   }
 
+  const untapAll = sentence.match(/^untap all (creatures|lands) you control$/i);
+  if (untapAll?.[1]) {
+    return {
+      targetRequirements: [],
+      effects: [
+        {
+          kind: "untap_all",
+          playerId: "controller",
+          what: untapAll[1].toLowerCase() === "creatures" ? "creature" : "land",
+        },
+      ],
+    };
+  }
+
+  if (/^untap target creature$/i.test(sentence)) {
+    return {
+      targetRequirements: [{ kind: "creature" }],
+      effects: [{ kind: "untap", cardId: { type: "chosen", index: 0 } }],
+    };
+  }
+
+  if (
+    /^after this (?:main )?phase, there is an additional combat phase(?: followed by an additional main phase)?$/i.test(
+      sentence,
+    )
+  ) {
+    return {
+      targetRequirements: [],
+      effects: [{ kind: "extra_combat" }],
+    };
+  }
+
   if (/^counter target spell$/i.test(sentence)) {
     return {
       targetRequirements: [{ kind: "spell" }],
@@ -1682,7 +1714,10 @@ function shiftChosen(effect: CardEffect, offset: number): CardEffect {
     case "divided_damage":
     case "copy_subject_spell":
     case "counter_subject_spell":
+    case "extra_combat":
       return effect;
+    case "untap_all":
+      return { ...effect, playerId: bumpChosen(effect.playerId) };
     case "move_card":
     case "tap":
     case "untap":
@@ -2755,6 +2790,22 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
         result.leftover.push(clause.leftover);
       }
       continue;
+    }
+
+    // "After this main phase, there is an additional combat phase…" as its
+    // own sentence after an activated ability (Aggravated Assault) extends
+    // that ability rather than the card's cast effects.
+    if (
+      /^After this (?:main )?phase, there is an additional combat phase(?: followed by an additional main phase)?$/i.test(
+        sentence,
+      ) &&
+      result.activated.length > 0
+    ) {
+      const last = result.activated[result.activated.length - 1];
+      if (last) {
+        last.effects.push({ kind: "extra_combat" });
+        continue;
+      }
     }
 
     if (/^Activate only as a sorcery$/i.test(sentence) && result.activated.length > 0) {

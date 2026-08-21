@@ -659,6 +659,10 @@ export function parseGameState(json: string): GameState {
     nextTimestamp:
       raw.nextTimestamp === undefined ? 1 : expectNumber(raw.nextTimestamp, "nextTimestamp"),
     oncePerTurnFired: parseStringList(raw.oncePerTurnFired, "oncePerTurnFired"),
+    pendingExtraCombats:
+      raw.pendingExtraCombats === undefined
+        ? 0
+        : expectNumber(raw.pendingExtraCombats, "pendingExtraCombats"),
   };
 }
 
@@ -1454,7 +1458,15 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
       };
     case "copy_subject_spell":
     case "counter_subject_spell":
+    case "extra_combat":
       return { kind };
+    case "untap_all": {
+      const what = expectString(value.what, `${label}.what`);
+      if (what !== "creature" && what !== "land") {
+        throw new Error(`Invalid ${label}.what`);
+      }
+      return { kind, playerId: parsePlayerSelector(value.playerId, `${label}.playerId`), what };
+    }
     case "counter_spell":
     case "copy_spell": {
       if (!isRecord(value.target)) {
@@ -2366,6 +2378,16 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
       stackObjectId: expectString(value.stackObjectId, `${label}.stackObjectId`),
       controllerId: expectString(value.controllerId, `${label}.controllerId`),
     };
+  }
+  if (kind === "extra_combat") {
+    return { kind };
+  }
+  if (kind === "untap_all") {
+    const what = expectString(value.what, `${label}.what`);
+    if (what !== "creature" && what !== "land") {
+      throw new Error(`Invalid ${label}.what`);
+    }
+    return { kind, playerId: expectString(value.playerId, `${label}.playerId`), what };
   }
   if (kind === "counter_unless_pays") {
     return {

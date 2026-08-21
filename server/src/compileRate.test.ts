@@ -82,7 +82,7 @@ describe("Stage 6: compile-rate metric", () => {
       console.log(`[compile-rate] partial: ${rate.partial.join(", ")}`);
     }
     // The floor only rises: raise it when new patterns land.
-    expect(fullPct).toBeGreaterThanOrEqual(82);
+    expect(fullPct).toBeGreaterThanOrEqual(85);
     expect(rate.none.length).toBeLessThanOrEqual(3);
   });
 
