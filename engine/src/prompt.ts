@@ -8,7 +8,7 @@ import { manaAbilitiesFor, manaTapOptionsFor } from "./manaOptions";
 import { isLiving, requireLiving } from "./players";
 import { shuffleInPlace } from "./shuffle";
 import { hasAnyLegalTargetSet, validateChosenTargets } from "./targeting";
-import { processTriggerGroupsInPlace, queueDefinitionTriggerInPlace } from "./triggers";
+import { dispatchEventsInPlace, processTriggerGroupsInPlace, queueDefinitionTriggerInPlace } from "./triggers";
 import { enterOwnerZoneInPlace, moveCard } from "./zones";
 import type {
   BoundChooseCardSource,
@@ -445,6 +445,7 @@ export function applyResolveSearch(
       shuffleInPlace(player.zones.library, random);
       player.zones.library = [...cardIds, ...player.zones.library];
     }
+    dispatchEventsInPlace(next, [{ kind: "searches_library", playerId }]);
     return next;
   }
   for (const cardId of cardIds) {
@@ -460,6 +461,7 @@ export function applyResolveSearch(
   if (player) {
     shuffleInPlace(player.zones.library, random);
   }
+  dispatchEventsInPlace(next, [{ kind: "searches_library", playerId }]);
   return next;
 }
 

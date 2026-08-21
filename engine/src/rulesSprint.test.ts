@@ -5675,3 +5675,109 @@ describe("wave 60: sacrifice-cost mana abilities", () => {
     expect(manaAbilitiesFor(next, altar.id)).toHaveLength(0);
   });
 });
+
+describe("wave 61: token filters and search watchers", () => {
+  const base = { power: null, toughness: null, printedKeywords: [], imageUrl: "" };
+
+  it("compiles the four filter/search staples fully", () => {
+    const slumlord = compileOracleCard({
+      ...base,
+      oracleId: "slumlord",
+      name: "Ogre Slumlord",
+      manaCost: "{3}{B}{B}",
+      typeLine: "Creature — Ogre Rogue",
+      power: "3",
+      toughness: "3",
+      oracleText:
+        "Whenever another nontoken creature dies, you may create a 1/1 black Rat creature token.\nRats you control have deathtouch.",
+    });
+    expect(slumlord.notes).toEqual([]);
+    expect(slumlord.definition.triggers[0]?.subjectFilter?.nonToken).toBe(true);
+
+    const evangel = compileOracleCard({
+      ...base,
+      oracleId: "evangel",
+      name: "Metastatic Evangel",
+      manaCost: "{2}{W}",
+      typeLine: "Creature — Phyrexian Cleric",
+      power: "2",
+      toughness: "3",
+      oracleText: "Whenever another nontoken creature you control enters, proliferate.",
+    });
+    expect(evangel.notes).toEqual([]);
+
+    const crafter = compileOracleCard({
+      ...base,
+      oracleId: "crafter",
+      name: "Curiosity Crafter",
+      manaCost: "{3}{U}",
+      typeLine: "Creature — Bird Wizard",
+      power: "3",
+      toughness: "3",
+      printedKeywords: ["Flying"],
+      oracleText:
+        "Flying\nWhenever a creature token you control deals combat damage to a player, draw a card.",
+    });
+    expect(crafter.notes).toEqual([]);
+    expect(crafter.definition.triggers[0]?.subjectFilter?.tokenOnly).toBe(true);
+
+    const archivist = compileOracleCard({
+      ...base,
+      oracleId: "archivist",
+      name: "Archivist of Oghma",
+      manaCost: "{1}{W}",
+      typeLine: "Legendary Creature — Gnome",
+      power: "2",
+      toughness: "2",
+      printedKeywords: ["Flash"],
+      oracleText:
+        "Flash\nWhenever an opponent searches their library, you gain 1 life and draw a card.",
+    });
+    expect(archivist.notes).toEqual([]);
+    expect(archivist.definition.triggers[0]?.event).toBe("opponent_searches");
+  });
+
+  it("fires the search watcher only for opponents' searches", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 10);
+    const archDef = createCardDefinition({
+      name: "Archivist Lite",
+      typeLine: "Creature — Gnome",
+      power: 2,
+      toughness: 2,
+      triggers: [
+        {
+          event: "opponent_searches",
+          effects: [{ kind: "draw", playerId: "controller", count: 1 }],
+        },
+      ],
+    });
+    game.definitions[archDef.id] = archDef;
+    const arch = createCardInstance({ definitionId: archDef.id, ownerId: p1.id, zone: "battlefield" });
+    game.cards[arch.id] = arch;
+    p1.zones.battlefield.push(arch.id);
+
+    // An opponent's search (fail-to-find) still triggers the watcher.
+    game.prompts.push({
+      kind: "search_library",
+      playerId: p2.id,
+      filter: {},
+      destination: "hand",
+      count: 1,
+    });
+    let next = applyAction(game, { kind: "resolve_search", playerId: p2.id, cardIds: [] });
+    expect(next.stack).toHaveLength(1);
+
+    // The controller's own search does not.
+    next = resolveTopOfStack(next);
+    next.prompts.push({
+      kind: "search_library",
+      playerId: p1.id,
+      filter: {},
+      destination: "hand",
+      count: 1,
+    });
+    const own = applyAction(next, { kind: "resolve_search", playerId: p1.id, cardIds: [] });
+    expect(own.stack).toHaveLength(0);
+  });
+});

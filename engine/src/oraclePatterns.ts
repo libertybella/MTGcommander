@@ -1442,8 +1442,10 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     }
   }
 
+  // "You may create" is auto-taken (creating a token is never a downside a
+  // casual table would decline) — a documented approximation.
   match = sentence.match(
-    /^Create (a|an|one|two|three|four|five|six|seven|eight|nine|ten|\d+) (\d+)\/(\d+)(?: (white|blue|black|red|green|colorless))? ([\w]+(?: [\w]+)?) creature tokens?( with [a-z ]+)?$/i,
+    /^(?:You may )?Create (a|an|one|two|three|four|five|six|seven|eight|nine|ten|\d+) (\d+)\/(\d+)(?: (white|blue|black|red|green|colorless))? ([\w]+(?: [\w]+)?) creature tokens?( with [a-z ]+)?$/i,
   );
   if (match?.[1] && match[2] && match[3] && match[5]) {
     const count = parseCount(match[1]);
@@ -1982,6 +1984,32 @@ function parseTriggerHead(head: string): TriggerHead | null {
   }
   if (/^Whenever another creature dies$/i.test(text)) {
     return { event: "dies", watch: "any", excludeSelf: true, subjectFilter: { types: ["creature"] } };
+  }
+  if (/^Whenever another nontoken creature dies$/i.test(text)) {
+    return {
+      event: "dies",
+      watch: "any",
+      excludeSelf: true,
+      subjectFilter: { types: ["creature"], nonToken: true },
+    };
+  }
+  if (/^Whenever another nontoken creature you control enters$/i.test(text)) {
+    return {
+      event: "enter_battlefield",
+      watch: "controlled",
+      excludeSelf: true,
+      subjectFilter: { types: ["creature"], nonToken: true },
+    };
+  }
+  if (/^Whenever a creature token you control deals combat damage to a player$/i.test(text)) {
+    return {
+      event: "deals_combat_damage_to_player",
+      watch: "controlled",
+      subjectFilter: { types: ["creature"], tokenOnly: true },
+    };
+  }
+  if (/^Whenever an opponent searches their library$/i.test(text)) {
+    return { event: "opponent_searches" };
   }
   if (/^Whenever a creature you control dies$/i.test(text)) {
     return { event: "dies", watch: "controlled", subjectFilter: { types: ["creature"] } };

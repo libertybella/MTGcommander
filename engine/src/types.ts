@@ -892,7 +892,9 @@ export type TriggerEvent =
   /** The controller sacrificed a token (Mirkwood Bats). */
   | "you_sacrifice_token"
   /** Any permanent untapped (Mesmeric Orb). Subject is the permanent. */
-  | "becomes_untapped";
+  | "becomes_untapped"
+  /** An opponent searched their library (Archivist of Oghma). */
+  | "opponent_searches";
 
 export type CardTrigger = {
   event: TriggerEvent;
@@ -922,6 +924,10 @@ export type CardTrigger = {
     nonTypes?: string[];
     /** The subject must have the watcher's chosen creature type. */
     chosenSubtype?: boolean;
+    /** "another nontoken creature" (Ogre Slumlord). */
+    nonToken?: boolean;
+    /** "a creature token you control" (Curiosity Crafter). */
+    tokenOnly?: boolean;
   };
   effects: CardEffect[];
   /** Chosen when the trigger is put on the stack. Empty or omitted means untargeted. */
@@ -949,7 +955,9 @@ export type EngineEvent =
   /** A permanent was sacrificed (cost or effect). */
   | { kind: "sacrifices"; cardId: CardInstanceId; controllerId: PlayerId; wasToken: boolean }
   /** A permanent went from tapped to untapped. */
-  | { kind: "untapped"; cardId: CardInstanceId };
+  | { kind: "untapped"; cardId: CardInstanceId }
+  /** A player searched their library (found or not). */
+  | { kind: "searches_library"; playerId: PlayerId };
 
 /** One triggered ability waiting to be put on the stack. */
 export type TriggerCandidate = {

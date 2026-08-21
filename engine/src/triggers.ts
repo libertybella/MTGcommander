@@ -217,6 +217,12 @@ function subjectMatchesFilter(
       return false;
     }
   }
+  if (filter.nonToken && state.cards[subjectId]?.isToken) {
+    return false;
+  }
+  if (filter.tokenOnly && !state.cards[subjectId]?.isToken) {
+    return false;
+  }
   for (const type of filter.types ?? []) {
     if (!traits.types.includes(type)) {
       return false;
@@ -279,6 +285,12 @@ function triggerMatchesEvent(
     );
   }
   if (trigger.event === "becomes_untapped") {
+    return false;
+  }
+  if (event.kind === "searches_library") {
+    return trigger.event === "opponent_searches" && watcher.controllerId !== event.playerId;
+  }
+  if (trigger.event === "opponent_searches") {
     return false;
   }
   if (event.kind === "draws") {

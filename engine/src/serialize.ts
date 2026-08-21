@@ -1969,6 +1969,7 @@ function parseTriggers(value: unknown, label: string): CardTrigger[] {
       event !== "you_create_token" &&
       event !== "you_sacrifice_token" &&
       event !== "becomes_untapped" &&
+      event !== "opponent_searches" &&
       event !== "cast_spell" &&
       event !== "deals_combat_damage_to_player" &&
       event !== "deals_damage_to_player"
@@ -2012,6 +2013,8 @@ function parseTriggers(value: unknown, label: string): CardTrigger[] {
               ...(typesAny.length > 0 ? { typesAny } : {}),
               ...(nonTypes.length > 0 ? { nonTypes } : {}),
               ...(entry.subjectFilter.chosenSubtype === true ? { chosenSubtype: true } : {}),
+              ...(entry.subjectFilter.nonToken === true ? { nonToken: true } : {}),
+              ...(entry.subjectFilter.tokenOnly === true ? { tokenOnly: true } : {}),
             };
           })();
     return {
@@ -2026,7 +2029,9 @@ function parseTriggers(value: unknown, label: string): CardTrigger[] {
         subjectFilter.subtypes ||
         subjectFilter.typesAny ||
         subjectFilter.nonTypes ||
-        subjectFilter.chosenSubtype)
+        subjectFilter.chosenSubtype ||
+        subjectFilter.nonToken ||
+        subjectFilter.tokenOnly)
         ? { subjectFilter }
         : {}),
       effects: parseCardEffects(entry.effects, `${label}[${index}].effects`),
