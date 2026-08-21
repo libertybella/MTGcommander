@@ -319,6 +319,7 @@ export function parseGameState(json: string): GameState {
       ...(def.cantBeCountered === true ? { cantBeCountered: true } : {}),
       ...(def.freeIfCommander === true ? { freeIfCommander: true } : {}),
       ...(def.changeling === true ? { changeling: true } : {}),
+      ...(def.storm === true ? { storm: true } : {}),
       ...(def.flashback === undefined
         ? {}
         : {
@@ -663,6 +664,10 @@ export function parseGameState(json: string): GameState {
       raw.pendingExtraCombats === undefined
         ? 0
         : expectNumber(raw.pendingExtraCombats, "pendingExtraCombats"),
+    spellsCastThisTurn:
+      raw.spellsCastThisTurn === undefined
+        ? 0
+        : expectNumber(raw.spellsCastThisTurn, "spellsCastThisTurn"),
     delayedEndStep:
       raw.delayedEndStep === undefined
         ? []

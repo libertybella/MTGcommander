@@ -47,6 +47,7 @@ export type CompiledOracleText = {
   cantBeCountered?: boolean;
   freeIfCommander?: boolean;
   changeling?: boolean;
+  storm?: boolean;
   topOfLibrary?: TopOfLibraryGrant;
   flashback?: { manaCost: string; life?: number };
   costReductions?: CostReduction[];
@@ -1029,7 +1030,7 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
   }
 
   match = sentence.match(
-    /^Counter target (spell|noncreature spell|creature spell) unless its controller pays \{(\d+)\}$/i,
+    /^Counter target (spell|noncreature spell|creature spell|instant or sorcery spell) unless its controller pays \{(\d+)\}$/i,
   );
   if (match?.[1] && match[2]) {
     const what = match[1].toLowerCase();
@@ -1041,7 +1042,9 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
               ? "noncreature_spell"
               : what === "creature spell"
                 ? "creature_spell"
-                : "spell",
+                : what === "instant or sorcery spell"
+                  ? "instant_or_sorcery_spell"
+                  : "spell",
         },
       ],
       effects: [
@@ -2384,6 +2387,11 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
     // Deckbuilding markers with no in-game effect at this table: commander
     // pairing is decided at import.
     if (/^(?:Partner|Choose a Background)$/i.test(sentence)) {
+      continue;
+    }
+
+    if (/^Storm$/i.test(sentence)) {
+      result.storm = true;
       continue;
     }
 

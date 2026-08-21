@@ -203,6 +203,7 @@ function compileOneFace(card: OracleCard, definitionId: string): OracleCompileRe
     ...(compiled.changeling ? { changeling: true } : {}),
     ...(compiled.topOfLibrary ? { topOfLibrary: { ...compiled.topOfLibrary } } : {}),
     ...(compiled.flashback ? { flashback: { ...compiled.flashback } } : {}),
+    ...(compiled.storm ? { storm: true } : {}),
     ...(compiled.costReductions && compiled.costReductions.length > 0
       ? { costReductions: compiled.costReductions }
       : {}),

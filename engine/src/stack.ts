@@ -148,6 +148,27 @@ export function putSpellOnStack(
   });
   next.passesSinceAction = 0;
   next.priorityPlayerId = moved.controllerId;
+  // Storm (CR 702.40): one copy per spell cast before this one this turn.
+  // Documented approximation: copies appear immediately (not as a stacked
+  // trigger) and keep the original's targets and mode.
+  const stormCount = next.spellsCastThisTurn;
+  next.spellsCastThisTurn += 1;
+  if (definition?.storm && stormCount > 0) {
+    for (let copyIndex = 0; copyIndex < stormCount; copyIndex += 1) {
+      next.stack.push({
+        id: createId("stack"),
+        controllerId: moved.controllerId,
+        sourceId: cardId,
+        kind: "spell",
+        targets: targets.map((target) => ({ ...target })),
+        ...(modeIndex !== undefined ? { modeIndex } : {}),
+        ...(modeIndexes && modeIndexes.length > 0 ? { modeIndexes: [...modeIndexes] } : {}),
+        ...(xValue !== undefined ? { xValue } : {}),
+        ...(division !== undefined ? { division: [...division] } : {}),
+        isCopy: true,
+      });
+    }
+  }
   // Cast triggers (Guttersnipe, Rhystic Study) go on the stack above the spell.
   dispatchEventsInPlace(next, [
     { kind: "casts", cardId, controllerId: moved.controllerId },

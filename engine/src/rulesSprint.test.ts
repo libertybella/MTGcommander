@@ -3611,3 +3611,85 @@ describe("wave 39: kicker as an extra-cost mode (CR 702.33)", () => {
     expect(tokens).toHaveLength(5);
   });
 });
+
+describe("wave 40: storm (CR 702.40)", () => {
+  it("compiles Grapeshot and Flusterstorm fully", () => {
+    const grapeshot = compileOracleCard({
+      oracleId: "grapeshot",
+      name: "Grapeshot",
+      manaCost: "{1}{R}",
+      typeLine: "Sorcery",
+      oracleText:
+        "Grapeshot deals 1 damage to any target.\nStorm (When you cast this spell, copy it for each spell cast before it this turn. You may choose new targets for the copies.)",
+      power: null,
+      toughness: null,
+      printedKeywords: ["Storm"],
+      imageUrl: "",
+    });
+    expect(grapeshot.notes).toEqual([]);
+    expect(grapeshot.definition.storm).toBe(true);
+
+    const fluster = compileOracleCard({
+      oracleId: "flusterstorm",
+      name: "Flusterstorm",
+      manaCost: "{U}",
+      typeLine: "Instant",
+      oracleText:
+        "Counter target instant or sorcery spell unless its controller pays {1}.\nStorm (When you cast this spell, copy it for each spell cast before it this turn. You may choose new targets for the copies.)",
+      power: null,
+      toughness: null,
+      printedKeywords: ["Storm"],
+      imageUrl: "",
+    });
+    expect(fluster.notes).toEqual([]);
+    expect(fluster.definition.storm).toBe(true);
+    expect(fluster.definition.targetRequirements).toEqual([{ kind: "instant_or_sorcery_spell" }]);
+  });
+
+  it("casting a storm spell copies it per earlier cast this turn", () => {
+    const { game, p1 } = twoPlayers();
+    game.turn.phase = "precombatMain";
+    game.turn.step = "precombatMain";
+    const filler = createCardDefinition({
+      name: "Simple Rite",
+      manaCost: "",
+      typeLine: "Sorcery",
+      effects: [{ kind: "gain_life", playerId: "controller", amount: 1 }],
+    });
+    const stormDef = createCardDefinition({
+      name: "Life Storm",
+      manaCost: "",
+      typeLine: "Sorcery",
+      storm: true,
+      effects: [{ kind: "gain_life", playerId: "controller", amount: 1 }],
+    });
+    game.definitions[filler.id] = filler;
+    game.definitions[stormDef.id] = stormDef;
+    const first = createCardInstance({ definitionId: filler.id, ownerId: p1.id, zone: "hand" });
+    const second = createCardInstance({ definitionId: filler.id, ownerId: p1.id, zone: "hand" });
+    const stormCard = createCardInstance({ definitionId: stormDef.id, ownerId: p1.id, zone: "hand" });
+    for (const card of [first, second, stormCard]) {
+      game.cards[card.id] = card;
+      p1.zones.hand.push(card.id);
+    }
+
+    // Cast and resolve two spells first.
+    let state = applyAction(game, { kind: "cast_spell", playerId: p1.id, cardId: first.id, targets: [] });
+    state = resolveTopOfStack(state);
+    state = applyAction(state, { kind: "cast_spell", playerId: p1.id, cardId: second.id, targets: [] });
+    state = resolveTopOfStack(state);
+    expect(state.spellsCastThisTurn).toBe(2);
+
+    // The storm spell adds two copies above itself: 3 stack objects.
+    state = applyAction(state, { kind: "cast_spell", playerId: p1.id, cardId: stormCard.id, targets: [] });
+    expect(state.stack).toHaveLength(3);
+    expect(state.stack.filter((entry) => entry.isCopy)).toHaveLength(2);
+    state = resolveTopOfStack(state);
+    state = resolveTopOfStack(state);
+    state = resolveTopOfStack(state);
+    // 2 filler + storm original + 2 copies = 5 life gained in total.
+    expect(state.players[0]?.life).toBe(45);
+    expect(state.cards[stormCard.id]?.zone).toBe("graveyard");
+    expect(state.stack).toEqual([]);
+  });
+});

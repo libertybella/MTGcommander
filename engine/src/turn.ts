@@ -92,6 +92,7 @@ function onEnterStep(state: GameState): GameState {
     state.oncePerTurnFired = [];
     // Unused extra combats do not carry across turns.
     state.pendingExtraCombats = 0;
+    state.spellsCastThisTurn = 0;
     for (const card of Object.values(state.cards)) {
       if (card.zone === "battlefield" && card.controllerId === activeId) {
         card.tapped = false;

@@ -154,6 +154,12 @@ export type CardDefinition = {
    */
   flashback?: { manaCost: string; life?: number };
   /**
+   * Storm (CR 702.40): casting this copies it once per spell cast before it
+   * this turn. Documented approximation: copies are created immediately on
+   * cast (not via a stacked trigger) and keep the original's targets.
+   */
+  storm?: boolean;
+  /**
    * "Artifact spells you cast cost {1} less to cast" (medallions, Foundry
    * Inspector). Applies to the controller's spells while on the battlefield;
    * only the generic portion shrinks, never below zero.
@@ -336,6 +342,8 @@ export type GameState = {
    * the end step begins; entries whose card already left are dropped.
    */
   delayedEndStep: Array<{ cardId: CardInstanceId; action: "sacrifice" | "exile" }>;
+  /** Spells cast by anyone this turn — Storm's copy count (CR 702.40). */
+  spellsCastThisTurn: number;
 };
 
 export type ZoneReveal = {

@@ -66,6 +66,7 @@ export function createCardDefinition(
         | "cantBeCountered"
         | "freeIfCommander"
         | "changeling"
+        | "storm"
         | "topOfLibrary"
         | "flashback"
         | "costReductions"
@@ -200,6 +201,7 @@ export function createCardDefinition(
     ...(input.cantBeCountered ? { cantBeCountered: true } : {}),
     ...(input.freeIfCommander ? { freeIfCommander: true } : {}),
     ...(input.changeling ? { changeling: true } : {}),
+    ...(input.storm ? { storm: true } : {}),
     ...(input.flashback
       ? {
           flashback: {
@@ -337,5 +339,6 @@ export function createGameState(options: CreateGameOptions): GameState {
     oncePerTurnFired: [],
     pendingExtraCombats: 0,
     delayedEndStep: [],
+    spellsCastThisTurn: 0,
   };
 }
