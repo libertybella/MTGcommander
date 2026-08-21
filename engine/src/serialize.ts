@@ -600,6 +600,11 @@ export function parseGameState(json: string): GameState {
       ...(entry.subjectAmount === undefined
         ? {}
         : { subjectAmount: expectNumber(entry.subjectAmount, `stack[${index}].subjectAmount`) }),
+      ...(entry.sacrificedPower === undefined
+        ? {}
+        : {
+            sacrificedPower: expectNumber(entry.sacrificedPower, `stack[${index}].sacrificedPower`),
+          }),
       ...(entry.modeIndex === undefined
         ? {}
         : { modeIndex: expectNumber(entry.modeIndex, `stack[${index}].modeIndex`) }),
@@ -1434,7 +1439,11 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
         throw new Error(`Invalid ${label}.sourceId`);
       }
       const amount =
-        value.amount === "x" ? ("x" as const) : expectNumber(value.amount, `${label}.amount`);
+        value.amount === "x"
+          ? ("x" as const)
+          : value.amount === "sacrificed_power"
+            ? ("sacrificed_power" as const)
+            : expectNumber(value.amount, `${label}.amount`);
       if (targetType === "player") {
         return {
           kind,
@@ -1800,6 +1809,22 @@ function parseActivatedAbilities(value: unknown, label: string): ActivatedAbilit
       ...(entry.zone === "hand" ? { zone: "hand" as const } : {}),
       ...(entry.discard === true ? { discard: true } : {}),
       ...(entry.sacrificeSelf === true ? { sacrificeSelf: true } : {}),
+      ...(entry.sacrificeCost === undefined
+        ? {}
+        : {
+            sacrificeCost: (() => {
+              const scope = expectString(entry.sacrificeCost, `${label}[${index}].sacrificeCost`);
+              if (
+                scope !== "creature" &&
+                scope !== "artifact" &&
+                scope !== "creature_or_artifact" &&
+                scope !== "land"
+              ) {
+                throw new Error(`Invalid ${label}[${index}].sacrificeCost`);
+              }
+              return scope;
+            })(),
+          }),
       ...(entry.exileSelf === true ? { exileSelf: true } : {}),
       ...(entry.lifeCost === undefined
         ? {}
@@ -2888,6 +2913,9 @@ export function parseGameAction(json: string): GameAction {
       ...(raw.targets === undefined
         ? {}
         : { targets: parseChosenTargets(raw.targets, "action.targets") }),
+      ...(raw.costSacrificeId === undefined
+        ? {}
+        : { costSacrificeId: expectString(raw.costSacrificeId, "action.costSacrificeId") }),
     };
   }
   if (kind === "choose_targets") {

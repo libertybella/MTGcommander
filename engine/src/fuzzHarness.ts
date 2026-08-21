@@ -317,12 +317,24 @@ function nextAction(state: GameState, rng: () => number): GameAction | null {
       if (targets === null) {
         return { kind: "pass_priority", playerId };
       }
+      let costSacrificeId: string | undefined;
+      if (ability.sacrificeCost) {
+        const player = state.players.find((entry) => entry.id === playerId)!;
+        const options = player.zones.battlefield.filter((id) =>
+          sacrificeScopeMatches(state, id, ability.sacrificeCost!),
+        );
+        if (options.length === 0) {
+          return { kind: "pass_priority", playerId };
+        }
+        costSacrificeId = pick(rng, options);
+      }
       return {
         kind: "activate_ability",
         playerId,
         cardId: action.cardId,
         abilityIndex: action.abilityIndex,
         targets,
+        ...(costSacrificeId ? { costSacrificeId } : {}),
       };
     }
     case "mana": {

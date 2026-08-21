@@ -4605,3 +4605,157 @@ describe("wave 48: until-EOT dies-return grants", () => {
     expect(treasure?.controllerId).toBe(p1.id);
   });
 });
+
+describe("wave 49: sacrifice costs and Fling", () => {
+  it("compiles sacrifice-cost staples and Fling fully", () => {
+    const base = {
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+    };
+    const seer = compileOracleCard({
+      ...base,
+      oracleId: "seer",
+      name: "Viscera Seer",
+      manaCost: "{B}",
+      typeLine: "Creature — Vampire Wizard",
+      power: "1",
+      toughness: "1",
+      oracleText: "Sacrifice a creature: Scry 1.",
+    });
+    expect(seer.notes).toEqual([]);
+    expect(seer.definition.activated[0]?.sacrificeCost).toBe("creature");
+
+    const orb = compileOracleCard({
+      ...base,
+      oracleId: "orb",
+      name: "Zuran Orb",
+      manaCost: "{0}",
+      typeLine: "Artifact",
+      oracleText: "Sacrifice a land: You gain 2 life.",
+    });
+    expect(orb.notes).toEqual([]);
+    expect(orb.definition.activated[0]?.sacrificeCost).toBe("land");
+
+    const altar = compileOracleCard({
+      ...base,
+      oracleId: "altar",
+      name: "Ashnod's Altar",
+      manaCost: "{3}",
+      typeLine: "Artifact",
+      oracleText: "Sacrifice a creature: Add {C}{C}.",
+    });
+    expect(altar.notes).toEqual([]);
+
+    const fling = compileOracleCard({
+      ...base,
+      oracleId: "fling",
+      name: "Fling",
+      manaCost: "{1}{R}",
+      typeLine: "Instant",
+      oracleText:
+        "As an additional cost to cast this spell, sacrifice a creature.\nFling deals damage equal to the sacrificed creature's power to any target.",
+    });
+    expect(fling.notes).toEqual([]);
+    expect(fling.definition.effects[0]).toEqual({
+      kind: "deal_damage",
+      sourceId: "self",
+      target: { type: "chosen", index: 0 },
+      amount: "sacrificed_power",
+    });
+  });
+
+  it("pays a sacrifice cost on activation, including self", () => {
+    const { game, p1 } = twoPlayers();
+    const seerDef = createCardDefinition({
+      name: "Seer Lite",
+      typeLine: "Creature — Vampire",
+      power: 1,
+      toughness: 1,
+      activated: [
+        {
+          tap: false,
+          manaCost: "",
+          sacrificeCost: "creature",
+          effects: [{ kind: "scry", playerId: "controller", count: 1 }],
+          targetRequirements: [],
+        },
+      ],
+    });
+    game.definitions[seerDef.id] = seerDef;
+    const seer = createCardInstance({ definitionId: seerDef.id, ownerId: p1.id, zone: "battlefield" });
+    game.cards[seer.id] = seer;
+    p1.zones.battlefield.push(seer.id);
+    fillLibraries(game, 10);
+    game.cards[seer.id]!.summoningSick = false;
+
+    // No sacrifice chosen: rejected.
+    expect(() =>
+      applyAction(game, {
+        kind: "activate_ability",
+        playerId: p1.id,
+        cardId: seer.id,
+        abilityIndex: 0,
+      }),
+    ).toThrow(/Sacrifice a creature/);
+
+    let next = applyAction(game, {
+      kind: "activate_ability",
+      playerId: p1.id,
+      cardId: seer.id,
+      abilityIndex: 0,
+      costSacrificeId: seer.id,
+    });
+    expect(next.cards[seer.id]?.zone).toBe("graveyard");
+    expect(next.stack).toHaveLength(1);
+    next = resolveTopOfStack(next);
+    expect(next.prompts[0]?.kind).toBe("scry");
+  });
+
+  it("flings the sacrificed creature's power at the target", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const oxDef = createCardDefinition({
+      name: "Ox",
+      typeLine: "Creature — Ox",
+      power: 4,
+      toughness: 4,
+    });
+    const flingDef = createCardDefinition({
+      name: "Fling Lite",
+      manaCost: "",
+      typeLine: "Instant",
+      additionalCost: { sacrifice: "creature" },
+      targetRequirements: [{ kind: "player_or_creature" }],
+      effects: [
+        {
+          kind: "deal_damage",
+          sourceId: "self",
+          target: { type: "chosen", index: 0 },
+          amount: "sacrificed_power",
+        },
+      ],
+    });
+    game.definitions[oxDef.id] = oxDef;
+    game.definitions[flingDef.id] = flingDef;
+    const ox = createCardInstance({ definitionId: oxDef.id, ownerId: p1.id, zone: "battlefield" });
+    const fling = createCardInstance({ definitionId: flingDef.id, ownerId: p1.id, zone: "hand" });
+    game.cards[ox.id] = ox;
+    game.cards[fling.id] = fling;
+    p1.zones.battlefield.push(ox.id);
+    p1.zones.hand.push(fling.id);
+    game.priorityPlayerId = p1.id;
+
+    let next = applyAction(game, {
+      kind: "cast_spell",
+      playerId: p1.id,
+      cardId: fling.id,
+      targets: [{ type: "player", playerId: p2.id }],
+      costSacrificeId: ox.id,
+    });
+    expect(next.cards[ox.id]?.zone).toBe("graveyard");
+    const before = next.players.find((p) => p.id === p2.id)!.life;
+    next = resolveTopOfStack(next);
+    expect(next.players.find((p) => p.id === p2.id)!.life).toBe(before - 4);
+  });
+});

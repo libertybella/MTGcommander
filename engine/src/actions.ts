@@ -2,7 +2,7 @@ import { declareAttackers, declareBlockers, lockRemainingBlockers, pendingBlocke
 import { abilitiesRemoved } from "./characteristicsEngine";
 import { isCommander, isCreature, isInstant, isInstantOrSorcery, isLand, isMainPhase } from "./cardTypes";
 import { cloneGameState } from "./clone";
-import { affinityArtifactDiscount, allBattlefieldCreatureCount, canPlayLandFromTop, canPlayLandsFromGraveyard, castCostReduction, castableFromTop, controlsCommander, hasFlashGrant, landDropAllowance } from "./derived";
+import { affinityArtifactDiscount, allBattlefieldCreatureCount, canPlayLandFromTop, canPlayLandsFromGraveyard, castCostReduction, castableFromTop, controlsCommander, creaturePower, hasFlashGrant, landDropAllowance } from "./derived";
 import { eliminatePlayerInPlace } from "./elimination";
 import { applyEffects, bindCardEffects } from "./effects";
 import { hasKeyword } from "./keywords";
@@ -342,6 +342,9 @@ function applyCastSpell(
     );
   }
   let paid = payManaCost(faced, playerId, cost);
+  // Fling: capture the sacrificed creature's power before it dies.
+  const sacrificedPower =
+    additional?.sacrifice && costSacrificeId ? creaturePower(paid, costSacrificeId) : undefined;
   if (additional?.sacrifice && costSacrificeId) {
     paid = applyEffects(paid, [{ kind: "sacrifice", cardId: costSacrificeId }]);
   }
@@ -362,7 +365,7 @@ function applyCastSpell(
       paid.log.push({ kind: "life_change", playerId, delta: -flashbackLife });
     }
   }
-  const stacked = putSpellOnStack(paid, cardId, targets ?? [], modeIndex, xValue, division, modeIndexes);
+  const stacked = putSpellOnStack(paid, cardId, targets ?? [], modeIndex, xValue, division, modeIndexes, sacrificedPower);
   if (!fromCommand) {
     return stacked;
   }
@@ -606,6 +609,7 @@ function applyActivateAbility(
   cardId: CardInstanceId,
   abilityIndex: number,
   targets: ChosenTarget[] | undefined,
+  costSacrificeId: CardInstanceId | undefined,
 ): GameState {
   requirePlaying(state);
   requirePriority(state, playerId);
@@ -671,6 +675,20 @@ function applyActivateAbility(
   if (ability.lifeCost && player.life < ability.lifeCost) {
     throw new Error("Cannot pay that much life");
   }
+  if (ability.sacrificeCost) {
+    const sacrifice = costSacrificeId ? state.cards[costSacrificeId] : undefined;
+    if (
+      !costSacrificeId ||
+      !sacrifice ||
+      sacrifice.zone !== "battlefield" ||
+      sacrifice.controllerId !== playerId ||
+      !sacrificeScopeMatches(state, costSacrificeId, ability.sacrificeCost)
+    ) {
+      throw new Error(`Sacrifice a ${ability.sacrificeCost.replace(/_/g, " ")} to activate this`);
+    }
+  } else if (costSacrificeId !== undefined) {
+    throw new Error("That ability has no sacrifice cost");
+  }
   let next = payManaCost(state, playerId, cost);
   if (ability.lifeCost && ability.lifeCost > 0) {
     const payer = next.players.find((entry) => entry.id === playerId)!;
@@ -690,6 +708,11 @@ function applyActivateAbility(
     return resolveTopOfStack(next);
   }
   next = putActivatedAbilityOnStack(next, cardId, abilityIndex, targets ?? []);
+  if (ability.sacrificeCost && costSacrificeId) {
+    // Sacrificing is part of the cost (paid on activation); the ability
+    // itself waits on the stack normally.
+    next = applyEffects(next, [{ kind: "sacrifice", cardId: costSacrificeId }]);
+  }
   if (ability.sacrificeSelf) {
     // Sacrificing is part of the cost: it happens on activation, and the
     // ability resolves immediately (fetch lands do not sit in priority).
@@ -865,6 +888,7 @@ export function applyAction(
           action.cardId,
           action.abilityIndex,
           action.targets,
+          action.costSacrificeId,
         );
         break;
       case "turn_face_up":

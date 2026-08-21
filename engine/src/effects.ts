@@ -47,6 +47,8 @@ export type BindEffectContext = {
   subjectCardId?: CardInstanceId;
   /** The trigger event's amount ("that much" life gained or lost). */
   subjectAmount?: number;
+  /** Fling: the power of the creature sacrificed as a cast cost. */
+  sacrificedPower?: number;
 };
 
 function nextOpponentId(state: GameState, controllerId: PlayerId): PlayerId {
@@ -304,7 +306,12 @@ export function bindCardEffect(
       };
     }
     case "deal_damage": {
-      const amount = effect.amount === "x" ? context.xValue ?? 0 : effect.amount;
+      const amount =
+        effect.amount === "x"
+          ? context.xValue ?? 0
+          : effect.amount === "sacrificed_power"
+            ? context.sacrificedPower ?? 0
+            : effect.amount;
       if (amount <= 0) {
         return null;
       }

@@ -199,9 +199,10 @@ function isKeywordLine(sentence: string): boolean {
 }
 
 const SACRIFICE_COST = /Sacrifice (?:~|this land|this creature|this artifact|this permanent)/i;
+const SACRIFICE_TYPE_COST = /Sacrifice an? (creature|artifact|land)\b/i;
 const LIFE_COST = /Pay (\d+) life/i;
 const COST_UNIT =
-  "(?:\\{[^}]+\\})+|Sacrifice (?:~|this land|this creature|this artifact|this permanent)|Pay \\d+ life";
+  "(?:\\{[^}]+\\})+|Sacrifice (?:~|this land|this creature|this artifact|this permanent)|Sacrifice an? (?:creature|artifact|land)|Pay \\d+ life";
 
 function splitAbility(sentence: string): { costText: string; rest: string } | null {
   const match = sentence.match(
@@ -215,12 +216,24 @@ function splitAbility(sentence: string): { costText: string; rest: string } | nu
 
 function parseAbilityCost(
   costText: string,
-): { tap: boolean; manaCost: string; sacrificeSelf: boolean; lifeCost?: number } | null {
+): {
+  tap: boolean;
+  manaCost: string;
+  sacrificeSelf: boolean;
+  lifeCost?: number;
+  sacrificeCost?: "creature" | "artifact" | "land";
+} | null {
   const sacrificeSelf = SACRIFICE_COST.test(costText);
+  const sacrificeTypeMatch = SACRIFICE_COST.test(costText)
+    ? null
+    : costText.match(SACRIFICE_TYPE_COST);
+  const sacrificeCost = sacrificeTypeMatch?.[1]
+    ? (sacrificeTypeMatch[1].toLowerCase() as "creature" | "artifact" | "land")
+    : undefined;
   const lifeMatch = costText.match(LIFE_COST);
   const lifeCost = lifeMatch?.[1] ? Number(lifeMatch[1]) : undefined;
   const symbols = [...costText.matchAll(/\{([^}]+)\}/g)].map((match) => match[1] ?? "");
-  if (symbols.length === 0 && !sacrificeSelf && !lifeCost) {
+  if (symbols.length === 0 && !sacrificeSelf && !lifeCost && !sacrificeCost) {
     return null;
   }
   let tap = false;
@@ -241,7 +254,13 @@ function parseAbilityCost(
   } catch {
     return null;
   }
-  return { tap, manaCost, sacrificeSelf, ...(lifeCost ? { lifeCost } : {}) };
+  return {
+    tap,
+    manaCost,
+    sacrificeSelf,
+    ...(lifeCost ? { lifeCost } : {}),
+    ...(sacrificeCost ? { sacrificeCost } : {}),
+  };
 }
 
 function parseControlledTypes(text: string): string[] | null {
@@ -619,6 +638,21 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
       targetRequirements: [{ kind: "player_or_creature" }],
       effects: [
         { kind: "deal_damage", sourceId: "self", target: { type: "chosen", index: 0 }, amount: "x" },
+      ],
+    };
+  }
+
+  // Fling / Kazuul's Fury: the power was captured when the cost was paid.
+  if (/^(?:~ )?deals damage equal to the sacrificed creature's power to any target$/i.test(sentence)) {
+    return {
+      targetRequirements: [{ kind: "player_or_creature" }],
+      effects: [
+        {
+          kind: "deal_damage",
+          sourceId: "self",
+          target: { type: "chosen", index: 0 },
+          amount: "sacrificed_power",
+        },
       ],
     };
   }
@@ -3446,6 +3480,7 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
         effects: clause.effects,
         targetRequirements: clause.targetRequirements,
         ...(cost.sacrificeSelf ? { sacrificeSelf: true } : {}),
+        ...(cost.sacrificeCost ? { sacrificeCost: cost.sacrificeCost } : {}),
         ...(cost.lifeCost ? { lifeCost: cost.lifeCost } : {}),
       };
       result.activated.push(pushed);

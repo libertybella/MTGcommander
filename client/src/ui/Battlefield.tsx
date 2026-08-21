@@ -64,7 +64,7 @@ export type UiMode =
       modeIndexes?: number[];
     }
   | { type: "spell-mode-pick"; cardId: CardInstanceId; chosen?: number[] }
-  | { type: "cost-sacrifice"; cardId: CardInstanceId }
+  | { type: "cost-sacrifice"; cardId: CardInstanceId; abilityIndex?: number }
   | { type: "cost-discard"; cardId: CardInstanceId; chosen: CardInstanceId[] }
   | { type: "attackers"; attackerIds: CardInstanceId[]; defenderId: PlayerId | null }
   | { type: "block-pick-blocker" }
@@ -1439,7 +1439,17 @@ export function Battlefield(props: Props) {
       return;
     }
     const playerId = controllerOf(mode.cardId) ?? actorId;
-    send({ kind: "cast_spell", playerId, cardId: mode.cardId, costSacrificeId: sacrificeId });
+    if (mode.abilityIndex !== undefined) {
+      send({
+        kind: "activate_ability",
+        playerId,
+        cardId: mode.cardId,
+        abilityIndex: mode.abilityIndex,
+        costSacrificeId: sacrificeId,
+      });
+    } else {
+      send({ kind: "cast_spell", playerId, cardId: mode.cardId, costSacrificeId: sacrificeId });
+    }
     onMode({ type: "idle" });
   }
 
@@ -1679,6 +1689,10 @@ export function Battlefield(props: Props) {
   function beginActivate(cardId: CardInstanceId, playerId: PlayerId, abilityIndex: number) {
     const ability = activatedAbility(state, cardId, abilityIndex);
     if (!ability || mulliganOpen) {
+      return;
+    }
+    if (ability.sacrificeCost) {
+      onMode({ type: "cost-sacrifice", cardId, abilityIndex });
       return;
     }
     if (ability.targetRequirements.length === 0) {

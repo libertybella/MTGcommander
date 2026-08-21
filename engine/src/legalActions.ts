@@ -341,6 +341,18 @@ function abilityUsable(
   if (!cost || !canPayWithPotential(potential, cost)) {
     return false;
   }
+  if (ability.sacrificeCost) {
+    const scope = ability.sacrificeCost;
+    const player = state.players.find((entry) => entry.id === playerId);
+    const hasFodder = (player?.zones.battlefield ?? []).some(
+      (fodderId) =>
+        state.cards[fodderId]?.controllerId === playerId &&
+        sacrificeScopeMatches(state, fodderId, scope),
+    );
+    if (!hasFodder) {
+      return false;
+    }
+  }
   if (ability.lifeCost) {
     const player = state.players.find((entry) => entry.id === playerId);
     if (!player || player.life < ability.lifeCost) {

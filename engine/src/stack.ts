@@ -96,6 +96,7 @@ export function putSpellOnStack(
   xValue?: number,
   division?: number[],
   modeIndexes?: number[],
+  sacrificedPower?: number,
 ): GameState {
   const card = state.cards[cardId];
   if (!card) {
@@ -143,6 +144,7 @@ export function putSpellOnStack(
     ...(modeIndex !== undefined ? { modeIndex } : {}),
     ...(modeIndexes && modeIndexes.length > 0 ? { modeIndexes: [...modeIndexes] } : {}),
     ...(xValue !== undefined ? { xValue } : {}),
+    ...(sacrificedPower !== undefined ? { sacrificedPower } : {}),
     ...(division !== undefined ? { division: [...division] } : {}),
     ...(fromFlashback ? { fromGraveyard: true } : {}),
   });
@@ -336,6 +338,7 @@ export function resolveTopOfStack(state: GameState): GameState {
         targets: top.targets,
         targetRequirements: requirements,
         xValue: top.xValue,
+        ...(top.sacrificedPower !== undefined ? { sacrificedPower: top.sacrificedPower } : {}),
       });
       next = applyEffects(next, bound);
     }

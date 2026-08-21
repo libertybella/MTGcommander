@@ -271,6 +271,8 @@ export type StackObject = {
   loyaltyIndex?: number;
   /** Announced X for {X} costs. */
   xValue?: number;
+  /** Fling: the power of the creature sacrificed as a cast cost. */
+  sacrificedPower?: number;
   /** Damage split for divided-damage spells; aligns with `targets`. */
   division?: number[];
   /**
@@ -667,7 +669,7 @@ export type CardEffect =
       kind: "deal_damage";
       sourceId: CardInstanceId | "self" | null;
       target: CardEffectTarget;
-      amount: number | "x";
+      amount: number | "x" | "sacrificed_power";
     }
   | {
       /** X damage divided as the caster chose among the spell's targets. */
@@ -1036,6 +1038,9 @@ export type ActivatedAbility = {
   discard?: boolean;
   /** True when the cost includes sacrificing this permanent (fetch lands). */
   sacrificeSelf?: boolean;
+  /** "Sacrifice a creature:" — the activation sacrifices a chosen controlled
+   * permanent of this scope (Viscera Seer, Zuran Orb). */
+  sacrificeCost?: "creature" | "artifact" | "creature_or_artifact" | "land";
   /** Spirit Guides: exiling this card (from hand) is part of the cost. */
   exileSelf?: boolean;
   /** Life paid as part of the cost (Doom Whisperer). */
@@ -1227,6 +1232,8 @@ export type GameAction =
       cardId: CardInstanceId;
       abilityIndex: number;
       targets?: ChosenTarget[];
+      /** The permanent sacrificed to a sacrificeCost ability. */
+      costSacrificeId?: CardInstanceId;
     }
   | {
       kind: "activate_loyalty";
