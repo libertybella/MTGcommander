@@ -1116,6 +1116,55 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     return { targetRequirements: [], effects: [{ kind: "windfall" }] };
   }
 
+  // Return to Nature's third bullet.
+  if (/^Exile target card from a graveyard$/i.test(sentence)) {
+    return {
+      targetRequirements: [{ kind: "graveyard_card" }],
+      effects: [{ kind: "move_card", cardId: { type: "chosen", index: 0 }, toZone: "exile" }],
+    };
+  }
+
+  // Dramatic Reversal.
+  if (/^Untap all nonland permanents you control$/i.test(sentence)) {
+    return {
+      targetRequirements: [],
+      effects: [{ kind: "untap_all", playerId: "controller", what: "nonland" }],
+    };
+  }
+
+  // Greater Good: the draw reads the sacrificed cost-creature's power. The
+  // discard picks the hand's first cards (the looting clause's precedent).
+  if (
+    /^Draw cards equal to the sacrificed creature's power, then discard three cards$/i.test(
+      sentence,
+    )
+  ) {
+    return {
+      targetRequirements: [],
+      effects: [
+        { kind: "draw", playerId: "controller", count: "sacrificed_power" },
+        { kind: "discard", playerId: "controller", count: 3 },
+      ],
+    };
+  }
+
+  // Investigate (CR 701.13): a Clue token; the preset supplies its ability.
+  if (/^investigate$/i.test(sentence)) {
+    return {
+      targetRequirements: [],
+      effects: [
+        {
+          kind: "create_token",
+          ownerId: "controller",
+          name: "Clue",
+          typeLine: "Artifact — Clue Token",
+          power: null,
+          toughness: null,
+        },
+      ],
+    };
+  }
+
   // The Ozolith's combat trigger: the has-counters gate folds into the
   // apply (empty counters move nothing); the "may" is auto-taken.
   if (
@@ -2925,7 +2974,7 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
   }
 
   match = sentence.match(
-    /^(?:you may )?Search your library for (?:up to (one|two|three|\d+) )?(?:an? )?(.+?) cards?(?: and)?, (?:and )?put (?:it|them|that card|those cards) (onto the battlefield(?: tapped)?|into your hand|into your graveyard), then shuffle(?: your library)?$/i,
+    /^(?:you may )?Search your library for (?:up to (one|two|three|\d+) )?(?:an? )?(.+?) cards?(?: and)?, (?:reveal (?:it|them), )?(?:and )?put (?:it|them|that card|those cards) (onto the battlefield(?: tapped)?|into your hand|into your graveyard), then shuffle(?: your library)?$/i,
   );
   if (match?.[2] && match[3]) {
     const filter = parseSearchDescriptor(match[2]);
@@ -4537,6 +4586,23 @@ function parseTriggerHead(head: string): TriggerHead | null {
       event: "enter_battlefield",
       watch: "controlled",
       subjectFilter: { subtypes: ["equipment"] },
+    };
+  }
+  // Reckless Fireweaver: an artifact arrival watch.
+  if (/^Whenever an artifact you control enters$/i.test(text)) {
+    return {
+      event: "enter_battlefield",
+      watch: "controlled",
+      subjectFilter: { types: ["artifact"] },
+    };
+  }
+  // Tireless Tracker: "Whenever you sacrifice a Clue" — tokens only, a
+  // documented approximation (nontoken Clues are vanishingly rare).
+  const sacSubtype = text.match(/^Whenever you sacrifice an? ([A-Za-z]+)$/i);
+  if (sacSubtype?.[1] && !SEARCH_CARD_TYPES.has(sacSubtype[1].toLowerCase())) {
+    return {
+      event: "you_sacrifice_token",
+      subjectFilter: { subtypes: [sacSubtype[1].toLowerCase()] },
     };
   }
   // Constellation (an enchantment creature's own arrival counts too).
@@ -7148,6 +7214,17 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
       )
     ) {
       result.freeEquipIfArtifacts = 3;
+      continue;
+    }
+
+    // Howling Mine: the untapped gate is honored for the whole extra-draw
+    // class at the draw step.
+    if (
+      /^At the beginning of each player's draw step, if ~ is untapped, that player draws an additional card$/i.test(
+        sentence,
+      )
+    ) {
+      result.extraDrawStepDraws = true;
       continue;
     }
 

@@ -386,6 +386,14 @@ export function bindCardEffect(
         return null;
       }
       const { countFromGreatestPower, countPerControlled, countFromChosenTypePermanents, ...drawRest } = effect;
+      // Greater Good: the count is the sacrificed cost-creature's power.
+      if (effect.count === "sacrificed_power") {
+        const count = Math.max(0, context.sacrificedPower ?? 0);
+        if (count === 0) {
+          return null;
+        }
+        return { ...drawRest, playerId, count };
+      }
       if (countFromChosenTypePermanents) {
         // Distant Melody: "for each permanent you control of that type" —
         // the type is auto-chosen at bind (most common among the caster's
@@ -419,7 +427,7 @@ export function bindCardEffect(
         return { ...drawRest, playerId, count };
       }
       if (!countFromGreatestPower) {
-        return { ...drawRest, playerId };
+        return { ...drawRest, playerId, count: effect.count as number };
       }
       // "the greatest power among … creatures you control", read when the
       // effect binds (spell resolution).
@@ -3200,7 +3208,11 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
             (attackingIds
               ? attackingIds.has(card.id)
               : card.controllerId === effect.playerId &&
-                (effect.what === "creature" ? isCreature(next, card.id) : isLand(next, card.id)))
+                (effect.what === "creature"
+                  ? isCreature(next, card.id)
+                  : effect.what === "nonland"
+                    ? !isLand(next, card.id)
+                    : isLand(next, card.id)))
           ) {
             if (card.tapped) {
               untapped.push({ kind: "untapped", cardId: card.id });

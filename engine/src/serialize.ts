@@ -2006,7 +2006,10 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
       return {
         kind,
         playerId: parsePlayerSelector(value.playerId, `${label}.playerId`),
-        count: expectNumber(value.count, `${label}.count`),
+        count:
+          value.count === "sacrificed_power"
+            ? "sacrificed_power"
+            : expectNumber(value.count, `${label}.count`),
         ...(value.optional === true ? { optional: true } : {}),
         ...(() => {
           if (!isRecord(value.countFromGreatestPower)) {
@@ -2320,7 +2323,7 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
     }
     case "untap_all": {
       const what = expectString(value.what, `${label}.what`);
-      if (what !== "creature" && what !== "land" && what !== "attacking") {
+      if (what !== "creature" && what !== "land" && what !== "attacking" && what !== "nonland") {
         throw new Error(`Invalid ${label}.what`);
       }
       return { kind, playerId: parsePlayerSelector(value.playerId, `${label}.playerId`), what };
@@ -4083,7 +4086,7 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
   }
   if (kind === "untap_all") {
     const what = expectString(value.what, `${label}.what`);
-    if (what !== "creature" && what !== "land") {
+    if (what !== "creature" && what !== "land" && what !== "attacking" && what !== "nonland") {
       throw new Error(`Invalid ${label}.what`);
     }
     return { kind, playerId: expectString(value.playerId, `${label}.playerId`), what };

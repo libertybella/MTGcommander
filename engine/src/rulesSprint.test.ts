@@ -15998,3 +15998,195 @@ describe("wave 140: keys, banners, and the ozolith", () => {
   });
 });
 
+
+describe("wave 141: mines, clues, and greater goods", () => {
+  it("compiles the eight-card bucket fully", () => {
+    const compile = (name: string, typeLine: string, oracleText: string, power?: string, toughness?: string) =>
+      compileOracleCard({
+        oracleId: name,
+        name,
+        manaCost: "{2}",
+        typeLine,
+        power: power ?? null,
+        toughness: toughness ?? null,
+        printedKeywords: [],
+        imageUrl: "",
+        oracleText,
+      });
+
+    const fireweaver = compile(
+      "Reckless Fireweaver",
+      "Creature — Human Artificer",
+      "Whenever an artifact you control enters, this creature deals 1 damage to each opponent.",
+      "1",
+      "3",
+    );
+    expect(fireweaver.notes).toEqual([]);
+    expect(fireweaver.definition.triggers[0]?.subjectFilter?.types).toEqual(["artifact"]);
+
+    const armory = compile(
+      "Open the Armory",
+      "Sorcery",
+      "Search your library for an Aura or Equipment card, reveal it, put it into your hand, then shuffle.",
+    );
+    expect(armory.notes).toEqual([]);
+    expect(armory.definition.effects[0]).toMatchObject({
+      kind: "search_library",
+      filter: { subtypesAny: ["aura", "equipment"] },
+      destination: "hand",
+    });
+
+    const idyllic = compile(
+      "Idyllic Tutor",
+      "Sorcery",
+      "Search your library for an enchantment card, reveal it, put it into your hand, then shuffle.",
+    );
+    expect(idyllic.notes).toEqual([]);
+    expect(idyllic.definition.effects[0]).toMatchObject({
+      kind: "search_library",
+      filter: { types: ["enchantment"] },
+    });
+
+    const nature = compile(
+      "Return to Nature",
+      "Instant",
+      "Choose one —\n• Destroy target artifact.\n• Destroy target enchantment.\n• Exile target card from a graveyard.",
+    );
+    expect(nature.notes).toEqual([]);
+    expect(nature.definition.modes?.[2]?.targetRequirements).toEqual([{ kind: "graveyard_card" }]);
+
+    const mine = compile(
+      "Howling Mine",
+      "Artifact",
+      "At the beginning of each player's draw step, if this artifact is untapped, that player draws an additional card.",
+    );
+    expect(mine.notes).toEqual([]);
+    expect(mine.definition.extraDrawStepDraws).toBe(true);
+
+    const reversal = compile("Dramatic Reversal", "Instant", "Untap all nonland permanents you control.");
+    expect(reversal.notes).toEqual([]);
+    expect(reversal.definition.effects).toEqual([
+      { kind: "untap_all", playerId: "controller", what: "nonland" },
+    ]);
+
+    const good = compile(
+      "Greater Good",
+      "Enchantment",
+      "Sacrifice a creature: Draw cards equal to the sacrificed creature's power, then discard three cards.",
+    );
+    expect(good.notes).toEqual([]);
+    expect(good.definition.activated[0]?.sacrificeCost).toBe("creature");
+    expect(good.definition.activated[0]?.effects).toEqual([
+      { kind: "draw", playerId: "controller", count: "sacrificed_power" },
+      { kind: "discard", playerId: "controller", count: 3 },
+    ]);
+
+    const tracker = compile(
+      "Tireless Tracker",
+      "Creature — Human Scout",
+      'Landfall — Whenever a land you control enters, investigate. (Create a Clue token. It\'s an artifact with "{2}, Sacrifice this token: Draw a card.")\nWhenever you sacrifice a Clue, put a +1/+1 counter on this creature.',
+      "3",
+      "2",
+    );
+    expect(tracker.notes).toEqual([]);
+    expect(tracker.definition.triggers[0]?.effects[0]).toMatchObject({
+      kind: "create_token",
+      name: "Clue",
+    });
+    expect(tracker.definition.triggers[1]?.event).toBe("you_sacrifice_token");
+    expect(tracker.definition.triggers[1]?.subjectFilter?.subtypes).toEqual(["clue"]);
+  });
+
+  it("draws by fodder power, untaps the mana engine, and grows the tracker", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    void p2;
+
+    // Greater Good: sacrificing a 4/4 draws four, then three cards go back.
+    const goodDef = createCardDefinition({
+      name: "Good",
+      typeLine: "Enchantment",
+      activated: [
+        {
+          tap: false,
+          manaCost: "",
+          sacrificeCost: "creature",
+          effects: [
+            { kind: "draw", playerId: "controller", count: "sacrificed_power" },
+            { kind: "discard", playerId: "controller", count: 3 },
+          ],
+          targetRequirements: [],
+        },
+      ],
+    });
+    const ogreDef = createCardDefinition({ name: "Ogre", typeLine: "Creature — Ogre", power: 4, toughness: 4 });
+    game.definitions[goodDef.id] = goodDef;
+    game.definitions[ogreDef.id] = ogreDef;
+    const good = createCardInstance({ definitionId: goodDef.id, ownerId: p1.id, zone: "battlefield" });
+    const ogre = createCardInstance({ definitionId: ogreDef.id, ownerId: p1.id, zone: "battlefield" });
+    game.cards[good.id] = good;
+    game.cards[ogre.id] = ogre;
+    p1.zones.battlefield.push(good.id, ogre.id);
+    game.priorityPlayerId = p1.id;
+    let next = applyAction(game, {
+      kind: "activate_ability",
+      playerId: p1.id,
+      cardId: good.id,
+      abilityIndex: 0,
+      costSacrificeId: ogre.id,
+    });
+    while (next.stack.length > 0) {
+      next = resolveTopOfStack(next);
+    }
+    expect(next.players.find((entry) => entry.id === p1.id)?.zones.hand).toHaveLength(1); // +4 -3
+
+    // Dramatic Reversal: the creature untaps, the land stays tapped.
+    const landDef = createCardDefinition({ name: "Island", typeLine: "Basic Land — Island" });
+    next.definitions[landDef.id] = landDef;
+    const bear = createCardInstance({ definitionId: ogreDef.id, ownerId: p1.id, zone: "battlefield" });
+    const island = createCardInstance({ definitionId: landDef.id, ownerId: p1.id, zone: "battlefield" });
+    bear.tapped = true;
+    island.tapped = true;
+    next.cards[bear.id] = bear;
+    next.cards[island.id] = island;
+    next.players.find((entry) => entry.id === p1.id)!.zones.battlefield.push(bear.id, island.id);
+    next = applyEffects(next, [{ kind: "untap_all", playerId: p1.id, what: "nonland" }]);
+    expect(next.cards[bear.id]?.tapped).toBe(false);
+    expect(next.cards[island.id]?.tapped).toBe(true);
+
+    // Tireless Tracker: a landfall Clue, then its sacrifice grows the scout.
+    const trackerDef = compileOracleCard({
+      oracleId: "tracker-rt",
+      name: "Tireless Tracker",
+      manaCost: "{2}{G}",
+      typeLine: "Creature — Human Scout",
+      power: "3",
+      toughness: "2",
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        'Landfall — Whenever a land you control enters, investigate. (Create a Clue token. It\'s an artifact with "{2}, Sacrifice this token: Draw a card.")\nWhenever you sacrifice a Clue, put a +1/+1 counter on this creature.',
+    }).definition;
+    next.definitions[trackerDef.id] = trackerDef;
+    const tracker = createCardInstance({ definitionId: trackerDef.id, ownerId: p1.id, zone: "battlefield" });
+    next.cards[tracker.id] = tracker;
+    next.players.find((entry) => entry.id === p1.id)!.zones.battlefield.push(tracker.id);
+    const forest = createCardInstance({ definitionId: landDef.id, ownerId: p1.id, zone: "hand" });
+    next.cards[forest.id] = forest;
+    next.players.find((entry) => entry.id === p1.id)!.zones.hand.push(forest.id);
+    next = moveCard(next, forest.id, "battlefield");
+    while (next.stack.length > 0) {
+      next = resolveTopOfStack(next);
+    }
+    const clueId = Object.values(next.cards).find(
+      (card) => card.isToken && next.definitions[card.definitionId]?.name === "Clue",
+    )?.id;
+    expect(clueId).toBeDefined();
+    next = applyEffects(next, [{ kind: "sacrifice", cardId: clueId! }]);
+    while (next.stack.length > 0) {
+      next = resolveTopOfStack(next);
+    }
+    expect(next.cards[tracker.id]?.counters["p1p1"]).toBe(1);
+  });
+});
+

@@ -241,6 +241,10 @@ function onEnterStep(state: GameState): GameState {
         if (
           card.zone === "battlefield" &&
           state.definitions[card.definitionId]?.extraDrawStepDraws === true &&
+          // Howling Mine reads "if this artifact is untapped"; the gate is
+          // applied to the whole class (a documented approximation for the
+          // few gateless printings).
+          !card.tapped &&
           !abilitiesRemoved(state, card.id)
         ) {
           extra += 1;

@@ -722,7 +722,7 @@ export type GameEffect =
   | { kind: "counter_unless_pays"; stackObjectId: StackObjectId; cost: string }
   | { kind: "copy_spell"; stackObjectId: StackObjectId; controllerId: PlayerId }
   | { kind: "extra_combat" }
-  | { kind: "untap_all"; playerId: PlayerId; what: "creature" | "land" | "attacking" }
+  | { kind: "untap_all"; playerId: PlayerId; what: "creature" | "land" | "attacking" | "nonland" }
   /** Karlach: "They gain first strike until end of turn" on all attackers. */
   | { kind: "attackers_gain_keyword_until_eot"; keyword: Keyword }
   | { kind: "untap_lands_up_to"; playerId: PlayerId; count: number }
@@ -1135,7 +1135,8 @@ export type CardEffect =
   | {
       kind: "draw";
       playerId: PlayerSelector;
-      count: number;
+      /** "sacrificed_power": Greater Good draws the fodder's power. */
+      count: number | "sacrificed_power";
       optional?: boolean;
       /** Return of the Wildspeaker: draw the greatest power among the
        * controller's creatures instead, computed when the effect binds. */
@@ -1255,7 +1256,11 @@ export type CardEffect =
   | { kind: "exchange_life_toughness"; playerId: PlayerSelector }
   | { kind: "copy_spell"; target: ChosenTargetRef }
   | { kind: "extra_combat" }
-  | { kind: "untap_all"; playerId: PlayerSelector; what: "creature" | "land" | "attacking" }
+  | {
+      kind: "untap_all";
+      playerId: PlayerSelector;
+      what: "creature" | "land" | "attacking" | "nonland";
+    }
   | { kind: "attackers_gain_keyword_until_eot"; keyword: Keyword }
   | { kind: "untap_lands_up_to"; playerId: PlayerSelector; count: number }
   | { kind: "fog" }

@@ -524,7 +524,9 @@ function triggerMatchesEvent(
     return (
       trigger.event === "you_sacrifice_token" &&
       event.wasToken &&
-      watcher.controllerId === event.controllerId
+      watcher.controllerId === event.controllerId &&
+      // Tireless Tracker: "Whenever you sacrifice a Clue".
+      subjectMatchesFilter(state, event.cardId, trigger.subjectFilter, watcher)
     );
   }
   if (trigger.event === "you_sacrifice_token" || trigger.event === "player_sacrifices") {
