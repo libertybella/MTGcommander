@@ -195,6 +195,11 @@ export function createCardDefinition(
           ...(ability.costSacrifice ? { costSacrifice: ability.costSacrifice } : {}),
           ...(ability.noTap ? { noTap: true } : {}),
           ...(ability.countFromPower ? { countFromPower: true } : {}),
+          ...(ability.costTapCreature ? { costTapCreature: true } : {}),
+          ...(ability.anyColorAmong ? { anyColorAmong: ability.anyColorAmong } : {}),
+          ...(ability.producesColorsAmong
+            ? { producesColorsAmong: ability.producesColorsAmong }
+            : {}),
           ...(ability.requiresCount ? { requiresCount: { ...ability.requiresCount } } : {}),
           ...(ability.requiresControlled
             ? {

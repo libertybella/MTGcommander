@@ -5,7 +5,7 @@ import { emptyManaPool } from "./createGame";
 import { pendingBlockerPlayer } from "./combat";
 import { affinityArtifactDiscount, allBattlefieldCreatureCount, canPlayLandsFromGraveyard, castCostReduction, controlsCommander, hasFlashGrant, landDropAllowance, lockedByAbolisher, lockedFromCasting, topOfLibraryGrant } from "./derived";
 import { canPayManaCost, parseManaCost, type ParsedManaCost } from "./mana";
-import { manaAbilitiesFor, manaTapOptionsFor } from "./manaOptions";
+import { colorsAmongControlled, manaAbilitiesFor, manaTapOptionsFor } from "./manaOptions";
 import { isMulliganOpen } from "./mulligan";
 import { isOpeningRoll } from "./openingRoll";
 import { isPromptOpen } from "./prompt";
@@ -82,10 +82,25 @@ export function potentialMana(state: GameState, playerId: PlayerId): PotentialMa
     }
     if (
       abilities.length === 1 &&
+      abilities[0]!.producesColorsAmong &&
+      !abilities[0]!.costMana &&
+      !abilities[0]!.costSacrifice &&
+      !abilities[0]!.costTapCreature
+    ) {
+      // Bloom Tender: one of each color among controlled permanents.
+      for (const color of colorsAmongControlled(state, playerId, "permanents")) {
+        fixed[color] += 1;
+      }
+      continue;
+    }
+    if (
+      abilities.length === 1 &&
       !abilities[0]!.producesAnyColor &&
+      !abilities[0]!.anyColorAmong &&
       abilities[0]!.producesOptions.length === 0 &&
       !abilities[0]!.costMana &&
-      !abilities[0]!.costSacrifice
+      !abilities[0]!.costSacrifice &&
+      !abilities[0]!.costTapCreature
     ) {
       for (const color of Object.keys(abilities[0]!.produces) as ManaColor[]) {
         fixed[color] += abilities[0]!.produces[color] ?? 0;
@@ -94,8 +109,14 @@ export function potentialMana(state: GameState, playerId: PlayerId): PotentialMa
     }
     const union = new Set<ManaColor>();
     for (const ability of abilities) {
-      if (ability.costMana || ability.costSacrifice) {
+      if (ability.costMana || ability.costSacrifice || ability.costTapCreature) {
         continue; // costed converters add nothing to potential mana
+      }
+      if (ability.producesColorsAmong) {
+        for (const color of colorsAmongControlled(state, playerId, "permanents")) {
+          union.add(color);
+        }
+        continue;
       }
       if (ability.producesAnyColor) {
         for (const color of ALL_COLORS) {
@@ -103,7 +124,7 @@ export function potentialMana(state: GameState, playerId: PlayerId): PotentialMa
         }
         continue;
       }
-      const options = manaTapOptionsFor(ability);
+      const options = manaTapOptionsFor(ability, state, playerId);
       if (options) {
         for (const color of options) {
           union.add(color);
@@ -676,13 +697,16 @@ export function autoTapPlan(
       if (ability.sacrificeSelf) {
         return; // never auto-sacrifice a Treasure — tapping it stays a choice
       }
-      if (ability.costMana || ability.costSacrifice) {
+      if (ability.costMana || ability.costSacrifice || ability.costTapCreature) {
         return; // costed mana abilities are never auto-tapped
+      }
+      if (ability.producesColorsAmong) {
+        return; // Bloom Tender's multi-color burst stays a manual choice
       }
       producers.push({
         cardId: card.id,
         manaIndex,
-        options: manaTapOptionsFor(ability),
+        options: manaTapOptionsFor(ability, state, playerId),
         produces: ability.produces,
       });
     });

@@ -1550,6 +1550,14 @@ export type ManaAbility = {
   noTap?: boolean;
   /** Kami of Whispered Hopes: the amount is the creature's power at tap. */
   countFromPower?: boolean;
+  /** Springleaf Drum: tapping a chosen untapped controlled creature is part
+   * of the cost. Never auto-tapped; adds nothing to potential mana. */
+  costTapCreature?: boolean;
+  /** Mox Amber: the color choice is limited to colors among controlled
+   * legendary creatures and planeswalkers; unusable when there are none. */
+  anyColorAmong?: "legendary";
+  /** Bloom Tender: one mana of each color among permanents you control. */
+  producesColorsAmong?: "permanents";
   /** "Activate only if you control a Swamp" on a mana ability. */
   requiresControlled?: { types?: string[]; subtypes?: string[] };
   /** Mox Opal: "Activate only if you control three or more artifacts." */
@@ -1721,6 +1729,8 @@ export type GameAction =
       manaIndex?: number;
       /** The permanent sacrificed to a costSacrifice mana ability. */
       costSacrificeId?: CardInstanceId;
+      /** The creature tapped for a costTapCreature mana ability. */
+      costTapId?: CardInstanceId;
     }
   | {
       kind: "activate_ability";

@@ -372,7 +372,10 @@ function nextAction(state: GameState, rng: () => number): GameAction | null {
       const abilities = manaAbilitiesFor(state, action.cardId);
       const manaIndex = Math.floor(rng() * abilities.length);
       const ability = abilities[manaIndex]!;
-      const options = manaTapOptionsFor(ability);
+      const options = manaTapOptionsFor(ability, state, playerId);
+      if (options && options.length === 0) {
+        return { kind: "pass_priority", playerId };
+      }
       let costSacrificeId: string | undefined;
       if (ability.costSacrifice) {
         const player = state.players.find((entry) => entry.id === playerId)!;
@@ -384,13 +387,26 @@ function nextAction(state: GameState, rng: () => number): GameAction | null {
         }
         costSacrificeId = pick(rng, fodder);
       }
+      let costTapId: string | undefined;
+      if (ability.costTapCreature) {
+        const player = state.players.find((entry) => entry.id === playerId)!;
+        const fodder = player.zones.battlefield.filter(
+          (id) =>
+            id !== action.cardId && !state.cards[id]?.tapped && isCreature(state, id),
+        );
+        if (fodder.length === 0) {
+          return { kind: "pass_priority", playerId };
+        }
+        costTapId = pick(rng, fodder);
+      }
       return {
         kind: "tap_for_mana",
         playerId,
         cardId: action.cardId,
         manaIndex,
-        ...(options ? { color: pick(rng, options) } : {}),
+        ...(options && options.length > 0 ? { color: pick(rng, options) } : {}),
         ...(costSacrificeId ? { costSacrificeId } : {}),
+        ...(costTapId ? { costTapId } : {}),
       };
     }
     default:

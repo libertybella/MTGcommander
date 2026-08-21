@@ -71,7 +71,14 @@ export type UiMode =
   | { type: "block-pick-blocker" }
   | { type: "block-pick-attacker"; blockerId: CardInstanceId }
   | { type: "bottom"; selected: CardInstanceId[] }
-  | { type: "mana-color"; cardId: CardInstanceId; colors: ManaColor[]; manaIndex: number }
+  | {
+      type: "mana-color";
+      cardId: CardInstanceId;
+      colors: ManaColor[];
+      manaIndex: number;
+      costTapId?: CardInstanceId;
+    }
+  | { type: "mana-tap-creature"; cardId: CardInstanceId; manaIndex: number }
   | { type: "ability-pick"; cardId: CardInstanceId }
   | { type: "hand-choice"; cardId: CardInstanceId }
   | { type: "token-create"; cardId: CardInstanceId }
@@ -1191,7 +1198,7 @@ export function Battlefield(props: Props) {
     if (mode.type === "block-pick-attacker") {
       return mode.blockerId === cardId;
     }
-    if (mode.type === "mana-color" || mode.type === "ability-pick" || mode.type === "hand-choice" || mode.type === "token-create" || mode.type === "spell-mode-pick" || mode.type === "cost-sacrifice" || mode.type === "cost-discard") {
+    if (mode.type === "mana-color" || mode.type === "mana-tap-creature" || mode.type === "ability-pick" || mode.type === "hand-choice" || mode.type === "token-create" || mode.type === "spell-mode-pick" || mode.type === "cost-sacrifice" || mode.type === "cost-discard") {
       return mode.cardId === cardId;
     }
     if (mode.type === "targets") {
@@ -1621,6 +1628,12 @@ export function Battlefield(props: Props) {
       }
       return;
     }
+    if (mode.type === "mana-tap-creature") {
+      if (controllerOf(cardId) === actorId) {
+        pickManaTapCreature(cardId);
+      }
+      return;
+    }
     if (mode.type === "targets" && !targetingSpell) {
       if (nextRequirement?.kind === "opponent" || nextRequirement?.kind === "player") {
         return;
@@ -1679,12 +1692,48 @@ export function Battlefield(props: Props) {
     if (!ability) {
       return;
     }
-    const options = manaTapOptionsFor(ability);
+    // Springleaf Drum: pick the creature to tap first, then any color.
+    if (ability.costTapCreature) {
+      onMode({ type: "mana-tap-creature", cardId, manaIndex });
+      return;
+    }
+    const options = manaTapOptionsFor(ability, state, playerId);
     if (options && options.length > 0) {
       onMode({ type: "mana-color", cardId, colors: options, manaIndex });
       return;
     }
     send({ kind: "tap_for_mana", playerId, cardId, manaIndex });
+  }
+
+  function pickManaTapCreature(tapId: CardInstanceId) {
+    if (mode.type !== "mana-tap-creature") {
+      return;
+    }
+    const tapped = state.cards[tapId];
+    if (!tapped || tapped.tapped || tapId === mode.cardId) {
+      return;
+    }
+    const playerId = controllerOf(mode.cardId) ?? actorId;
+    const ability = manaAbilitiesFor(state, mode.cardId)[mode.manaIndex];
+    const options = ability ? manaTapOptionsFor(ability, state, playerId) : null;
+    if (options && options.length > 0) {
+      onMode({
+        type: "mana-color",
+        cardId: mode.cardId,
+        colors: options,
+        manaIndex: mode.manaIndex,
+        costTapId: tapId,
+      });
+      return;
+    }
+    send({
+      kind: "tap_for_mana",
+      playerId,
+      cardId: mode.cardId,
+      manaIndex: mode.manaIndex,
+      costTapId: tapId,
+    });
+    onMode({ type: "idle" });
   }
 
   function beginActivate(cardId: CardInstanceId, playerId: PlayerId, abilityIndex: number) {
@@ -2956,6 +3005,7 @@ export function Battlefield(props: Props) {
               cardId: mode.cardId,
               color,
               manaIndex: mode.manaIndex,
+              ...(mode.costTapId ? { costTapId: mode.costTapId } : {}),
             })
           }
         />

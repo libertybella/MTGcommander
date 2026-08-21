@@ -4041,10 +4041,10 @@ describe("wave 44: gated mana, costed mana, spirit guides, fog", () => {
     expect(gated.definition.manaAbilities[0]?.requiresControlled).toEqual({ subtypes: ["swamp"] });
 
     const drum = compileOracleCard({
-      oracleId: "springleaf",
-      name: "Springleaf Drum",
-      manaCost: "{1}",
-      typeLine: "Artifact",
+      oracleId: "shores",
+      name: "Unknown Shores",
+      manaCost: "",
+      typeLine: "Land",
       oracleText: "{1}, {T}: Add one mana of any color.",
       power: null,
       toughness: null,
@@ -10497,5 +10497,205 @@ describe("wave 108: idols, spears, swarms, masterminds", () => {
       next = resolveTopOfStack(next);
     }
     expect(next.players[0]?.zones.hand).toHaveLength(myHand + 1);
+  });
+});
+
+describe("wave 109: elves, drums, tenders, ambers", () => {
+  it("compiles the quartet fully", () => {
+    const elf = compileOracleCard({
+      oracleId: "arbor",
+      name: "Arbor Elf",
+      manaCost: "{G}",
+      typeLine: "Creature — Elf Druid",
+      power: "1",
+      toughness: "1",
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText: "{T}: Untap target Forest.",
+    });
+    expect(elf.notes).toEqual([]);
+    expect(elf.definition.activated[0]?.targetRequirements).toEqual([
+      { kind: "land", requiredSubtypes: ["forest"] },
+    ]);
+
+    const drum = compileOracleCard({
+      oracleId: "drum",
+      name: "Springleaf Drum",
+      manaCost: "{1}",
+      typeLine: "Artifact",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText: "{T}, Tap an untapped creature you control: Add one mana of any color.",
+    });
+    expect(drum.notes).toEqual([]);
+    expect(drum.definition.manaAbilities[0]).toMatchObject({
+      producesAnyColor: true,
+      costTapCreature: true,
+    });
+
+    const tender = compileOracleCard({
+      oracleId: "tender",
+      name: "Bloom Tender",
+      manaCost: "{1}{G}",
+      typeLine: "Creature — Elf Druid",
+      power: "1",
+      toughness: "1",
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText: "Vivid — {T}: For each color among permanents you control, add one mana of that color.",
+    });
+    expect(tender.notes).toEqual([]);
+    expect(tender.definition.manaAbilities[0]?.producesColorsAmong).toBe("permanents");
+
+    const mox = compileOracleCard({
+      oracleId: "amber",
+      name: "Mox Amber",
+      manaCost: "{0}",
+      typeLine: "Legendary Artifact",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText: "{T}: Add one mana of any color among legendary creatures and planeswalkers you control.",
+    });
+    expect(mox.notes).toEqual([]);
+    expect(mox.definition.manaAbilities[0]?.anyColorAmong).toBe("legendary");
+  });
+
+  it("taps a creature as the drum's cost", () => {
+    const { game, p1 } = twoPlayers();
+    const drumDef = createCardDefinition({
+      name: "Drum",
+      typeLine: "Artifact",
+      manaAbilities: [
+        {
+          produces: {},
+          producesOptions: [],
+          producesAnyColor: true,
+          damageToController: 0,
+          costTapCreature: true,
+        },
+      ],
+    });
+    const bearDef = createCardDefinition({ name: "Bear", typeLine: "Creature — Bear", power: 2, toughness: 2 });
+    game.definitions[drumDef.id] = drumDef;
+    game.definitions[bearDef.id] = bearDef;
+    const drum = createCardInstance({ definitionId: drumDef.id, ownerId: p1.id, zone: "battlefield" });
+    const bear = createCardInstance({ definitionId: bearDef.id, ownerId: p1.id, zone: "battlefield" });
+    game.cards[drum.id] = drum;
+    game.cards[bear.id] = bear;
+    p1.zones.battlefield.push(drum.id, bear.id);
+    game.priorityPlayerId = p1.id;
+
+    // Skipping the creature cost is refused.
+    expect(() =>
+      applyAction(game, { kind: "tap_for_mana", playerId: p1.id, cardId: drum.id, color: "U" }),
+    ).toThrow(/untapped creature/);
+
+    const next = applyAction(game, {
+      kind: "tap_for_mana",
+      playerId: p1.id,
+      cardId: drum.id,
+      color: "U",
+      costTapId: bear.id,
+    });
+    expect(next.players[0]?.mana.U).toBe(1);
+    expect(next.cards[bear.id]?.tapped).toBe(true);
+    expect(next.cards[drum.id]?.tapped).toBe(true);
+
+    // With every creature tapped, the ability disappears entirely.
+    expect(manaAbilitiesFor(next, drum.id)).toHaveLength(0);
+  });
+
+  it("limits the mox to colors among controlled legendaries", () => {
+    const { game, p1 } = twoPlayers();
+    const moxDef = createCardDefinition({
+      name: "Mox",
+      typeLine: "Legendary Artifact",
+      manaAbilities: [
+        {
+          produces: {},
+          producesOptions: [],
+          producesAnyColor: false,
+          damageToController: 0,
+          anyColorAmong: "legendary",
+        },
+      ],
+    });
+    game.definitions[moxDef.id] = moxDef;
+    const mox = createCardInstance({ definitionId: moxDef.id, ownerId: p1.id, zone: "battlefield" });
+    game.cards[mox.id] = mox;
+    p1.zones.battlefield.push(mox.id);
+    game.priorityPlayerId = p1.id;
+
+    // No legendary creature or planeswalker: the ability is unusable.
+    expect(manaAbilitiesFor(game, mox.id)).toHaveLength(0);
+
+    const legendDef = createCardDefinition({
+      name: "Legend",
+      typeLine: "Legendary Creature — Human Wizard",
+      colors: ["U"],
+      power: 2,
+      toughness: 2,
+    });
+    game.definitions[legendDef.id] = legendDef;
+    const legend = createCardInstance({ definitionId: legendDef.id, ownerId: p1.id, zone: "battlefield" });
+    game.cards[legend.id] = legend;
+    p1.zones.battlefield.push(legend.id);
+
+    expect(manaAbilitiesFor(game, mox.id)).toHaveLength(1);
+    expect(() =>
+      applyAction(game, { kind: "tap_for_mana", playerId: p1.id, cardId: mox.id, color: "R" }),
+    ).toThrow(/color/);
+    const next = applyAction(game, {
+      kind: "tap_for_mana",
+      playerId: p1.id,
+      cardId: mox.id,
+      color: "U",
+    });
+    expect(next.players[0]?.mana.U).toBe(1);
+  });
+
+  it("adds one mana of each color on the tender's board", () => {
+    const { game, p1 } = twoPlayers();
+    const tenderDef = createCardDefinition({
+      name: "Tender",
+      typeLine: "Creature — Elf Druid",
+      colors: ["G"],
+      power: 1,
+      toughness: 1,
+      manaAbilities: [
+        {
+          produces: {},
+          producesOptions: [],
+          producesAnyColor: false,
+          damageToController: 0,
+          producesColorsAmong: "permanents",
+        },
+      ],
+    });
+    const angelDef = createCardDefinition({
+      name: "Angel",
+      typeLine: "Creature — Angel",
+      colors: ["W"],
+      power: 4,
+      toughness: 4,
+    });
+    game.definitions[tenderDef.id] = tenderDef;
+    game.definitions[angelDef.id] = angelDef;
+    const tender = createCardInstance({ definitionId: tenderDef.id, ownerId: p1.id, zone: "battlefield" });
+    const angel = createCardInstance({ definitionId: angelDef.id, ownerId: p1.id, zone: "battlefield" });
+    tender.summoningSick = false;
+    game.cards[tender.id] = tender;
+    game.cards[angel.id] = angel;
+    p1.zones.battlefield.push(tender.id, angel.id);
+    game.priorityPlayerId = p1.id;
+
+    const next = applyAction(game, { kind: "tap_for_mana", playerId: p1.id, cardId: tender.id });
+    expect(next.players[0]?.mana.G).toBe(1);
+    expect(next.players[0]?.mana.W).toBe(1);
+    expect(next.players[0]?.mana.U).toBe(0);
   });
 });

@@ -216,13 +216,14 @@ function isKeywordLine(sentence: string): boolean {
 const SACRIFICE_COST = /Sacrifice (?:~|this land|this creature|this artifact|this permanent)/i;
 const SACRIFICE_TYPE_COST = /Sacrifice (?:an? |another )(creature|artifact|land|Treasure)\b/i;
 const LIFE_COST = /Pay (\d+) life/i;
+const TAP_CREATURE_COST = /Tap an untapped creature you control/i;
 const COST_UNIT =
-  "(?:\\{[^}]+\\})+|Sacrifice (?:~|this land|this creature|this artifact|this permanent)|Sacrifice (?:an? |another )(?:creature|artifact|land|Treasure)|Pay \\d+ life";
+  "(?:\\{[^}]+\\})+|Sacrifice (?:~|this land|this creature|this artifact|this permanent)|Sacrifice (?:an? |another )(?:creature|artifact|land|Treasure)|Pay \\d+ life|Tap an untapped creature you control";
 
 function splitAbility(sentence: string): { costText: string; rest: string } | null {
   // "Metalcraft — {T}: …" — the ability word is flavor (Mox Opal).
   const stripped = sentence.replace(
-    /^(?:Metalcraft|Landfall|Threshold|Delirium|Hellbent)\s*[—-]\s*(?=\{)/i,
+    /^(?:Metalcraft|Landfall|Threshold|Delirium|Hellbent|Vivid)\s*[—-]\s*(?=\{)/i,
     "",
   );
   const match = stripped.match(
@@ -242,7 +243,9 @@ function parseAbilityCost(
   sacrificeSelf: boolean;
   lifeCost?: number;
   sacrificeCost?: "creature" | "another_creature" | "artifact" | "land" | "treasure";
+  tapCreature?: boolean;
 } | null {
+  const tapCreature = TAP_CREATURE_COST.test(costText);
   const sacrificeSelf = SACRIFICE_COST.test(costText);
   const sacrificeTypeMatch = SACRIFICE_COST.test(costText)
     ? null
@@ -256,7 +259,7 @@ function parseAbilityCost(
   const lifeMatch = costText.match(LIFE_COST);
   const lifeCost = lifeMatch?.[1] ? Number(lifeMatch[1]) : undefined;
   const symbols = [...costText.matchAll(/\{([^}]+)\}/g)].map((match) => match[1] ?? "");
-  if (symbols.length === 0 && !sacrificeSelf && !lifeCost && !sacrificeCost) {
+  if (symbols.length === 0 && !sacrificeSelf && !lifeCost && !sacrificeCost && !tapCreature) {
     return null;
   }
   let tap = false;
@@ -283,6 +286,7 @@ function parseAbilityCost(
     sacrificeSelf,
     ...(lifeCost ? { lifeCost } : {}),
     ...(sacrificeCost ? { sacrificeCost } : {}),
+    ...(tapCreature ? { tapCreature: true } : {}),
   };
 }
 
@@ -368,6 +372,24 @@ function manaAbilityFromAdd(add: AddManaResult): ManaAbility {
       ...(add.count && add.count > 1 ? { count: add.count } : {}),
     };
   }
+  if (add.kind === "any_color_among") {
+    return {
+      produces: {},
+      producesOptions: [],
+      producesAnyColor: false,
+      damageToController: 0,
+      anyColorAmong: add.scope,
+    };
+  }
+  if (add.kind === "colors_among") {
+    return {
+      produces: {},
+      producesOptions: [],
+      producesAnyColor: false,
+      damageToController: 0,
+      producesColorsAmong: add.scope,
+    };
+  }
   return {
     produces: {},
     producesOptions: add.colors,
@@ -389,10 +411,24 @@ function copyFirstManaAbility(result: CompiledOracleText): void {
 type AddManaResult =
   | { kind: "fixed"; produces: Partial<ManaPool> }
   | { kind: "any_color"; identityRestricted: boolean; count?: number; countFromPower?: boolean }
+  | { kind: "any_color_among"; scope: "legendary" }
+  | { kind: "colors_among"; scope: "permanents" }
   | { kind: "or"; colors: ManaColor[] };
 
 function parseAddMana(rest: string): AddManaResult | null {
   const text = rest.trim();
+  // Mox Amber: the choice is limited to colors among controlled legendaries.
+  if (
+    /^Add one mana of any color among legendary creatures and planeswalkers you control$/i.test(
+      text,
+    )
+  ) {
+    return { kind: "any_color_among", scope: "legendary" };
+  }
+  // Bloom Tender: one mana of each color represented on your board.
+  if (/^For each color among permanents you control, add one mana of that color$/i.test(text)) {
+    return { kind: "colors_among", scope: "permanents" };
+  }
   const identity = /any color in your commander'?s color identity/i.test(text);
   if (/^Add one mana of any color(?: in your commander'?s color identity)?$/i.test(text)) {
     return { kind: "any_color", identityRestricted: identity };
@@ -1984,6 +2020,18 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     return {
       targetRequirements: [],
       effects: [{ kind: "extra_land_drop", playerId: "controller" }],
+    };
+  }
+
+  // Arbor Elf ("Untap target Forest") / Voyaging Satyr ("Untap target land").
+  match = sentence.match(/^Untap target (land|Plains|Island|Swamp|Mountain|Forest)$/i);
+  if (match?.[1]) {
+    const word = match[1].toLowerCase();
+    return {
+      targetRequirements: [
+        { kind: "land", ...(word === "land" ? {} : { requiredSubtypes: [word] }) },
+      ],
+      effects: [{ kind: "untap", cardId: { type: "chosen", index: 0 } }],
     };
   }
 
@@ -5527,7 +5575,10 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
       }
       const add = parseAddMana(ability.rest);
       if (add && cost.tap && cost.manaCost === "") {
-        result.manaAbilities.push(manaAbilityFromAdd(add));
+        result.manaAbilities.push({
+          ...manaAbilityFromAdd(add),
+          ...(cost.tapCreature ? { costTapCreature: true } : {}),
+        });
         if (add.kind === "any_color" && add.identityRestricted) {
           result.notes.push("Commander's color identity is not enforced; any color may be added.");
         }

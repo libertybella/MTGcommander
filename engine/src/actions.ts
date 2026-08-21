@@ -8,7 +8,7 @@ import { applyEffects, bindCardEffects } from "./effects";
 import { hasKeyword } from "./keywords";
 import { controlsMatching, sacrificeScopeMatches } from "./legalActions";
 import { addMana, canPayManaCost, parseManaCost, payManaCost, tapCard, tapForMana } from "./mana";
-import { manaAbilityAmount, manaAbilitiesFor, manaTapOptionsFor } from "./manaOptions";
+import { colorsAmongControlled, manaAbilityAmount, manaAbilitiesFor, manaTapOptionsFor } from "./manaOptions";
 import { createId } from "./ids";
 import { isLiving, livingPlayerCount, requireLiving } from "./players";
 import { passPriority, putActivatedAbilityOnStack, putSpellOnStack, resolveTopOfStack } from "./stack";
@@ -599,6 +599,7 @@ function applyTapForMana(
   color: ManaColor | undefined,
   manaIndex: number | undefined,
   costSacrificeId: CardInstanceId | undefined,
+  costTapId: CardInstanceId | undefined,
 ): GameState {
   requirePlaying(state);
   requirePriority(state, playerId);
@@ -624,13 +625,19 @@ function applyTapForMana(
     throw new Error("Choose a mana ability");
   }
   const ability = abilities[index]!;
-  const options = manaTapOptionsFor(ability);
+  const options = manaTapOptionsFor(ability, state, playerId);
   // Kami of Whispered Hopes: the amount reads the creature's power at tap.
   const amount = ability.countFromPower
     ? Math.max(0, creaturePower(state, cardId))
     : manaAbilityAmount(ability);
   let addition: Partial<ManaPool>;
-  if (options) {
+  if (ability.producesColorsAmong) {
+    // Bloom Tender: one mana of each color among controlled permanents.
+    addition = {};
+    for (const present of colorsAmongControlled(state, playerId, ability.producesColorsAmong)) {
+      addition[present] = 1;
+    }
+  } else if (options) {
     if (!color || !options.includes(color)) {
       throw new Error("Choose a mana color");
     }
@@ -664,6 +671,28 @@ function applyTapForMana(
     }
   } else if (costSacrificeId !== undefined) {
     throw new Error("That mana ability has no sacrifice cost");
+  }
+  // Springleaf Drum: tapping a chosen untapped creature is part of the cost.
+  // Summoning sickness doesn't apply — the cost is not that creature's {T}.
+  if (ability.costTapCreature) {
+    const fodder = costTapId ? base.cards[costTapId] : undefined;
+    if (
+      !costTapId ||
+      costTapId === cardId ||
+      !fodder ||
+      fodder.zone !== "battlefield" ||
+      fodder.controllerId !== playerId ||
+      fodder.tapped ||
+      !isCreature(base, costTapId)
+    ) {
+      throw new Error("Tap an untapped creature you control to use that mana ability");
+    }
+  } else if (costTapId !== undefined) {
+    throw new Error("That mana ability has no tap-a-creature cost");
+  }
+  if (ability.costTapCreature && costTapId) {
+    base = tapCard(base, costTapId);
+    dispatchEventsInPlace(base, [{ kind: "tapped", cardId: costTapId }]);
   }
   let next = ability.noTap
     ? addMana(base, playerId, addition)
@@ -1015,6 +1044,7 @@ export function applyAction(
           action.color,
           action.manaIndex,
           action.costSacrificeId,
+          action.costTapId,
         );
         break;
       case "activate_ability":

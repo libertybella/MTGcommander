@@ -17,7 +17,61 @@ const BASIC_SUBTYPE_COLOR: Record<string, ManaColor> = {
  * basics already carry their color in `produces`, so only extra subtypes add.
  */
 /** "Activate only if you control a Swamp" on a mana ability (Cabal-class). */
+/** Mox Amber / Bloom Tender: colors among controlled permanents. */
+export function colorsAmongControlled(
+  state: GameState,
+  controllerId: string,
+  scope: "legendary" | "permanents",
+): ManaColor[] {
+  const found = new Set<string>();
+  for (const card of Object.values(state.cards)) {
+    if (card.zone !== "battlefield" || card.controllerId !== controllerId) {
+      continue;
+    }
+    const traits = computedCard(state, card.id)?.characteristics;
+    if (!traits) {
+      continue;
+    }
+    if (scope === "legendary") {
+      const legal =
+        traits.supertypes.includes("legendary") &&
+        (traits.types.includes("creature") || traits.types.includes("planeswalker"));
+      if (!legal) {
+        continue;
+      }
+    }
+    for (const color of traits.colors) {
+      found.add(color);
+    }
+  }
+  return MANA_COLORS.filter((color) => found.has(color));
+}
+
 function manaGateSatisfied(state: GameState, controllerId: string, ability: ManaAbility): boolean {
+  // Mox Amber: no legendary colors, no mana — the ability is unusable.
+  if (ability.anyColorAmong && colorsAmongControlled(state, controllerId, "legendary").length === 0) {
+    return false;
+  }
+  // Bloom Tender with a colorless board would tap for nothing.
+  if (
+    ability.producesColorsAmong &&
+    colorsAmongControlled(state, controllerId, "permanents").length === 0
+  ) {
+    return false;
+  }
+  // Springleaf Drum: the cost needs an untapped controlled creature.
+  if (ability.costTapCreature) {
+    const fodder = Object.values(state.cards).some(
+      (card) =>
+        card.zone === "battlefield" &&
+        card.controllerId === controllerId &&
+        !card.tapped &&
+        (computedCard(state, card.id)?.characteristics.types ?? []).includes("creature"),
+    );
+    if (!fodder) {
+      return false;
+    }
+  }
   // Mox Opal: "Activate only if you control three or more artifacts."
   if (ability.requiresCount) {
     const { what, atLeast } = ability.requiresCount;
@@ -170,7 +224,18 @@ export function manaAbilityAmount(ability: ManaAbility): number {
   return ability.count && ability.count > 0 ? ability.count : 1;
 }
 
-export function manaTapOptionsFor(ability: ManaAbility): ManaColor[] | null {
+export function manaTapOptionsFor(
+  ability: ManaAbility,
+  state?: GameState,
+  controllerId?: string,
+): ManaColor[] | null {
+  // Mox Amber: the choice is limited to colors among controlled legendaries.
+  // Without state (client preview) every pip shows; the server validates.
+  if (ability.anyColorAmong) {
+    return state && controllerId
+      ? colorsAmongControlled(state, controllerId, "legendary")
+      : [...COLOR_PIPS];
+  }
   if (ability.producesAnyColor) {
     return [...COLOR_PIPS];
   }
