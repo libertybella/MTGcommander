@@ -108,6 +108,7 @@ export function createCardDefinition(
           ...(trigger.watch ? { watch: trigger.watch } : {}),
           ...(trigger.excludeSelf ? { excludeSelf: true } : {}),
           ...(trigger.oncePerTurn ? { oncePerTurn: true } : {}),
+          ...(trigger.oncePerBatch ? { oncePerBatch: true } : {}),
           ...(trigger.condition ? { condition: { ...trigger.condition } } : {}),
           ...(trigger.subjectPlayerOpponent ? { subjectPlayerOpponent: true } : {}),
           ...(trigger.attacksAlone ? { attacksAlone: true } : {}),

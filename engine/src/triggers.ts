@@ -478,9 +478,15 @@ export function dispatchEventsInPlace(state: GameState, events: EngineEvent[]): 
     for (let index = 0; index < triggers.length; index += 1) {
       const trigger = triggers[index]!;
       // A trigger fires once for EACH matching event in the batch — a board
-      // wipe drains Blood Artist once per death, not once total.
+      // wipe drains Blood Artist once per death, not once total. "One or
+      // more" heads fire once per batch instead.
+      let firedThisBatch = false;
       for (const event of events) {
+        if (trigger.oncePerBatch && firedThisBatch) {
+          break;
+        }
         if (triggerMatchesEvent(state, card, trigger, event)) {
+          firedThisBatch = true;
           const subjectCardId = "cardId" in event ? event.cardId : undefined;
           const subjectPlayerId =
             event.kind === "gains_life" ||

@@ -15,6 +15,7 @@ import {
   resolveTopOfStack,
 } from "./index";
 import { cardMatchesSubtype, computedCard } from "./characteristicsEngine";
+import { dispatchEventsInPlace } from "./triggers";
 import { applyCombatDamage } from "./combat";
 import { manaAbilitiesFor } from "./manaOptions";
 import { legalActions } from "./legalActions";
@@ -6554,5 +6555,65 @@ describe("wave 72: impulse digs", () => {
     // Two looked cards went to the bottom; the untouched fourth card is on top.
     expect(player.zones.library[0]).toBe(ids[3]);
     expect(player.zones.library).toHaveLength(3);
+  });
+});
+
+describe("wave 73: once-per-batch combat triggers", () => {
+  it("compiles the one-or-more Treasure head fully", () => {
+    const breaker = compileOracleCard({
+      oracleId: "facebreaker",
+      name: "Professional Face-Breaker",
+      manaCost: "{2}{R}",
+      typeLine: "Creature — Human Warrior",
+      power: "3",
+      toughness: "2",
+      printedKeywords: ["Menace"],
+      imageUrl: "",
+      oracleText:
+        "Menace\nWhenever one or more creatures you control deal combat damage to a player, create a Treasure token.",
+    });
+    expect(breaker.notes).toEqual([]);
+    const trigger = breaker.definition.triggers[0];
+    expect(trigger?.oncePerBatch).toBe(true);
+    expect(trigger?.effects[0]?.kind).toBe("create_token");
+  });
+
+  it("fires once per batch, not once per creature", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const watcherDef = createCardDefinition({
+      name: "Watcher",
+      typeLine: "Creature — Human",
+      power: 1,
+      toughness: 1,
+      triggers: [
+        {
+          event: "deals_combat_damage_to_player",
+          watch: "controlled",
+          subjectFilter: { types: ["creature"] },
+          oncePerBatch: true,
+          effects: [{ kind: "draw", playerId: "controller", count: 1 }],
+        },
+      ],
+    });
+    game.definitions[watcherDef.id] = watcherDef;
+    const watcher = createCardInstance({ definitionId: watcherDef.id, ownerId: p1.id, zone: "battlefield" });
+    game.cards[watcher.id] = watcher;
+    p1.zones.battlefield.push(watcher.id);
+    fillLibraries(game, 10);
+
+    const bearDef = createCardDefinition({ name: "Bear", typeLine: "Creature — Bear", power: 2, toughness: 2 });
+    game.definitions[bearDef.id] = bearDef;
+    const a = createCardInstance({ definitionId: bearDef.id, ownerId: p1.id, zone: "battlefield" });
+    const b = createCardInstance({ definitionId: bearDef.id, ownerId: p1.id, zone: "battlefield" });
+    game.cards[a.id] = a;
+    game.cards[b.id] = b;
+    p1.zones.battlefield.push(a.id, b.id);
+
+    // Two creatures deal combat damage in the same batch: one trigger.
+    dispatchEventsInPlace(game, [
+      { kind: "combat_damage_to_player", cardId: a.id, playerId: p2.id },
+      { kind: "combat_damage_to_player", cardId: b.id, playerId: p2.id },
+    ]);
+    expect(game.stack).toHaveLength(1);
   });
 });

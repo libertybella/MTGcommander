@@ -2090,6 +2090,7 @@ function parseTriggers(value: unknown, label: string): CardTrigger[] {
       ...(watch === undefined ? {} : { watch }),
       ...(entry.excludeSelf === true ? { excludeSelf: true } : {}),
       ...(entry.oncePerTurn === true ? { oncePerTurn: true } : {}),
+      ...(entry.oncePerBatch === true ? { oncePerBatch: true } : {}),
       ...(entry.condition === undefined
         ? {}
         : {

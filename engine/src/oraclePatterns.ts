@@ -2173,7 +2173,13 @@ function fuseDigSentencesInPlace(sentences: string[], lineStart: boolean[]): voi
 
 type TriggerHead = Pick<
   CardTrigger,
-  "event" | "watch" | "excludeSelf" | "subjectFilter" | "subjectPlayerOpponent" | "oncePerTurn"
+  | "event"
+  | "watch"
+  | "excludeSelf"
+  | "subjectFilter"
+  | "subjectPlayerOpponent"
+  | "oncePerTurn"
+  | "oncePerBatch"
 > & {
   /** "enters or attacks": emit a sibling trigger for each extra event. */
   extraEvents?: CardTrigger["event"][];
@@ -2230,6 +2236,14 @@ function parseTriggerHead(head: string): TriggerHead | null {
       event: "deals_combat_damage_to_player",
       watch: "controlled",
       subjectFilter: { types: ["creature"], tokenOnly: true },
+    };
+  }
+  if (/^Whenever one or more creatures you control deal combat damage to a player$/i.test(text)) {
+    return {
+      event: "deals_combat_damage_to_player",
+      watch: "controlled",
+      subjectFilter: { types: ["creature"] },
+      oncePerBatch: true,
     };
   }
   if (/^Whenever an opponent searches their library$/i.test(text)) {

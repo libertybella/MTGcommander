@@ -986,6 +986,8 @@ export type CardTrigger = {
   targetRequirements?: TargetRequirement[];
   /** "This ability triggers only once each turn" (Morbid Opportunist). */
   oncePerTurn?: boolean;
+  /** "Whenever one or more …": fire once per simultaneous event batch. */
+  oncePerBatch?: boolean;
 };
 
 /** A change the trigger system reacts to. Dispatched synchronously in batches. */
