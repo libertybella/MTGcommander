@@ -85,6 +85,16 @@ function triggerConditionHolds(
     }
     return count >= condition.atLeast;
   }
+  if (condition.kind === "controls_power_at_least") {
+    // Garruk's Uprising: any controlled creature at or above the power bar.
+    return Object.values(state.cards).some(
+      (card) =>
+        card.zone === "battlefield" &&
+        card.controllerId === controllerId &&
+        characteristicsOf(state, card.id).types.includes("creature") &&
+        creaturePower(state, card.id) >= condition.power,
+    );
+  }
   if (condition.kind === "opponent_controls_more_lands") {
     // Land Tax: any opponent with strictly more lands than the controller.
     const landsOf = (playerId: string): number =>
@@ -554,8 +564,13 @@ function triggerMatchesEvent(
     return event.cardId === watcher.id;
   }
   if (watch === "attached") {
+    // The zone change already detached the watcher when the host died —
+    // the dies event remembers who was attached (Skullclamp).
+    const attachedNow = watcher.attachedTo === event.cardId;
+    const attachedThen =
+      event.kind === "dies" && (event.wasAttachedIds ?? []).includes(watcher.id);
     return (
-      watcher.attachedTo === event.cardId &&
+      (attachedNow || attachedThen) &&
       subjectMatchesFilter(state, event.cardId, trigger.subjectFilter, watcher)
     );
   }

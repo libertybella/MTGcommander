@@ -365,6 +365,13 @@ export function moveCardInPlace(
   }
 
   const diedControllerId = card.controllerId;
+  // Skullclamp: remember what was attached before the zone change detaches it.
+  const wasAttachedIds =
+    located.zone === "battlefield"
+      ? Object.values(state.cards)
+          .filter((other) => other.attachedTo === cardId)
+          .map((other) => other.id)
+      : [];
   removeFromZone(occupant, located.zone, cardId);
   insertIntoZone(owner, destination, cardId, options.libraryPosition ?? "top");
   card.zone = destination;
@@ -375,7 +382,12 @@ export function moveCardInPlace(
     queueEnterBattlefieldTriggersInPlace(state, cardId);
   }
   if (located.zone === "battlefield" && destination === "graveyard") {
-    const event: EngineEvent = { kind: "dies", cardId, controllerId: diedControllerId };
+    const event: EngineEvent = {
+      kind: "dies",
+      cardId,
+      controllerId: diedControllerId,
+      ...(wasAttachedIds.length > 0 ? { wasAttachedIds } : {}),
+    };
     if (options.collectDies) {
       options.collectDies.push(event);
     } else {

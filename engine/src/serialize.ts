@@ -194,6 +194,14 @@ function parsePlayer(value: unknown): PlayerState {
     attackedThisTurn: value.attackedThisTurn === true,
     failedToDraw: value.failedToDraw === true,
     ...(value.cityBlessing === true ? { cityBlessing: true } : {}),
+    ...(value.extraLandDropsThisTurn === undefined
+      ? {}
+      : {
+          extraLandDropsThisTurn: expectNumber(
+            value.extraLandDropsThisTurn,
+            "player.extraLandDropsThisTurn",
+          ),
+        }),
   };
 }
 
@@ -2172,6 +2180,8 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
       return { kind, playerId: parsePlayerSelector(value.playerId, `${label}.playerId`) };
     case "prevent_combat_for":
       return { kind, cardId: parseChosenTargetRef(value.cardId, `${label}.cardId`) };
+    case "extra_land_drop":
+      return { kind, playerId: parsePlayerSelector(value.playerId, `${label}.playerId`) };
     case "overload_each":
       return {
         kind,
@@ -2472,6 +2482,15 @@ function parseTriggers(value: unknown, label: string): CardTrigger[] {
                 conditionKind === "subject_name_unique"
               ) {
                 return { kind: conditionKind };
+              }
+              if (conditionKind === "controls_power_at_least") {
+                return {
+                  kind: conditionKind,
+                  power: expectNumber(
+                    entry.condition.power,
+                    `${label}[${index}].condition.power`,
+                  ),
+                };
               }
               if (conditionKind === "controls_count") {
                 const what = expectString(
@@ -3223,6 +3242,9 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
   }
   if (kind === "prevent_combat_for") {
     return { kind, cardId: expectString(value.cardId, `${label}.cardId`) };
+  }
+  if (kind === "extra_land_drop") {
+    return { kind, playerId: expectString(value.playerId, `${label}.playerId`) };
   }
   if (kind === "overload_each") {
     return {

@@ -16,7 +16,7 @@ import {
   resolveTopOfStack,
 } from "./index";
 import { cardMatchesSubtype, computedCard } from "./characteristicsEngine";
-import { castCostReduction } from "./derived";
+import { castCostReduction, landDropAllowance } from "./derived";
 import { hasKeyword } from "./keywords";
 import { dispatchEventsInPlace } from "./triggers";
 import { applyCombatDamage } from "./combat";
@@ -9851,6 +9851,138 @@ describe("wave 104: maniacs and mazes", () => {
     expect(fought.cards[blocker.id]?.zone).toBe("battlefield");
     expect(fought.cards[blocker.id]?.damageMarked ?? 0).toBe(0);
     expect(fought.cards[attacker.id]?.damageMarked ?? 0).toBe(0);
+  });
+});
+
+describe("wave 105: plowshares and clamps", () => {
+  it("compiles the eight-card batch fully", () => {
+    const compile = (name: string, typeLine: string, oracleText: string, manaCost = "{1}") =>
+      compileOracleCard({
+        oracleId: name,
+        name,
+        manaCost,
+        typeLine,
+        power: typeLine.includes("Creature") ? "2" : null,
+        toughness: typeLine.includes("Creature") ? "2" : null,
+        printedKeywords: [],
+        imageUrl: "",
+        oracleText,
+      });
+
+    const swords = compile(
+      "Swords to Plowshares",
+      "Instant",
+      "Exile target creature. Its controller gains life equal to its power.",
+      "{W}",
+    );
+    expect(swords.notes).toEqual([]);
+
+    const clamp = compile(
+      "Skullclamp",
+      "Artifact — Equipment",
+      "Equipped creature gets +1/-1.\nWhenever equipped creature dies, draw two cards.\nEquip {1}",
+    );
+    expect(clamp.notes).toEqual([]);
+    expect(clamp.definition.triggers[0]?.watch).toBe("attached");
+
+    const greaves = compile(
+      "Lightning Greaves",
+      "Artifact — Equipment",
+      "Equipped creature has haste and shroud.\nEquip {0}",
+    );
+    expect(greaves.notes).toEqual([]);
+    expect(greaves.definition.staticAbilities).toHaveLength(2);
+
+    const explore = compile(
+      "Explore",
+      "Sorcery",
+      "You may play an additional land this turn.\nDraw a card.",
+      "{1}{G}",
+    );
+    expect(explore.notes).toEqual([]);
+    expect(explore.definition.effects[0]).toEqual({
+      kind: "extra_land_drop",
+      playerId: "controller",
+    });
+
+    const uprising = compile(
+      "Garruk's Uprising",
+      "Enchantment",
+      "When this enchantment enters, if you control a creature with power 4 or greater, draw a card.\nWhenever a creature you control with power 4 or greater enters, draw a card.",
+      "{2}{G}",
+    );
+    expect(uprising.notes).toEqual([]);
+    expect(uprising.definition.triggers[0]?.condition).toEqual({
+      kind: "controls_power_at_least",
+      power: 4,
+    });
+  });
+
+  it("pays the plowshared creature's controller and clamps draw on death", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const bigDef = createCardDefinition({ name: "Big", typeLine: "Creature — Beast", power: 5, toughness: 5 });
+    game.definitions[bigDef.id] = bigDef;
+    const big = createCardInstance({ definitionId: bigDef.id, ownerId: p2.id, zone: "battlefield" });
+    game.cards[big.id] = big;
+    p2.zones.battlefield.push(big.id);
+
+    const bound = bindCardEffects(
+      game,
+      [
+        { kind: "move_card", cardId: { type: "chosen", index: 0 }, toZone: "exile" },
+        {
+          kind: "gain_life",
+          playerId: { type: "chosen_controller", index: 0 },
+          amount: "target_power",
+        },
+      ],
+      {
+        controllerId: p1.id,
+        sourceId: null,
+        targets: [{ type: "creature", cardId: big.id }],
+        targetRequirements: [{ kind: "creature" }],
+      },
+    );
+    const exiled = applyEffects(game, bound);
+    expect(exiled.cards[big.id]?.zone).toBe("exile");
+    expect(exiled.players[1]?.life).toBe(45);
+
+    // Skullclamp: the equipment sees its host die even though it detaches.
+    const clampDef = createCardDefinition({
+      name: "Clamp",
+      typeLine: "Artifact — Equipment",
+      triggers: [
+        {
+          event: "dies",
+          watch: "attached",
+          effects: [{ kind: "draw", playerId: "controller", count: 2 }],
+        },
+      ],
+    });
+    const bearDef = createCardDefinition({ name: "Bear", typeLine: "Creature — Bear", power: 2, toughness: 2 });
+    game.definitions[clampDef.id] = clampDef;
+    game.definitions[bearDef.id] = bearDef;
+    const clamp = createCardInstance({ definitionId: clampDef.id, ownerId: p1.id, zone: "battlefield" });
+    const bear = createCardInstance({ definitionId: bearDef.id, ownerId: p1.id, zone: "battlefield" });
+    clamp.attachedTo = bear.id;
+    game.cards[clamp.id] = clamp;
+    game.cards[bear.id] = bear;
+    p1.zones.battlefield.push(clamp.id, bear.id);
+    fillLibraries(game, 10);
+
+    const handBefore = p1.zones.hand.length;
+    let next = moveCard(game, bear.id, "graveyard");
+    while (next.stack.length > 0) {
+      next = resolveTopOfStack(next);
+    }
+    expect(next.players[0]?.zones.hand).toHaveLength(handBefore + 2);
+  });
+
+  it("grants a one-shot extra land drop that expires with the turn", () => {
+    const { game, p1 } = twoPlayers();
+    expect(landDropAllowance(game, p1.id)).toBe(1);
+    const granted = applyEffect(game, { kind: "extra_land_drop", playerId: p1.id });
+    expect(landDropAllowance(granted, p1.id)).toBe(2);
   });
 });
 

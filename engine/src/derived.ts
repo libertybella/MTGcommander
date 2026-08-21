@@ -285,7 +285,9 @@ export function landDropAllowance(state: GameState, playerId: string): number {
     }
     extra += state.definitions[card.definitionId]?.extraLandDrops ?? 0;
   }
-  return 1 + extra;
+  // Explore: one-shot grants for this turn only.
+  const player = state.players.find((entry) => entry.id === playerId);
+  return 1 + extra + (player?.extraLandDropsThisTurn ?? 0);
 }
 
 function controlledBattlefield(state: GameState, controllerId: string): CardInstance[] {

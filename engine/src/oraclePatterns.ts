@@ -1916,6 +1916,14 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     };
   }
 
+  // Explore-family.
+  if (/^You may play an additional land this turn$/i.test(sentence)) {
+    return {
+      targetRequirements: [],
+      effects: [{ kind: "extra_land_drop", playerId: "controller" }],
+    };
+  }
+
   // Maze of Ith.
   if (/^Untap target attacking creature$/i.test(sentence)) {
     return {
@@ -2284,7 +2292,41 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     };
   }
 
-  if (/^You lose life equal to that card's mana value$/i.test(sentence)) {
+  // Swords to Plowshares: the exiled creature's controller gains its power.
+  if (/^Its controller gains life equal to its power$/i.test(sentence)) {
+    return {
+      targetRequirements: [],
+      effects: [
+        {
+          kind: "gain_life",
+          playerId: { type: "chosen_controller", index: 0 },
+          amount: "target_power",
+        },
+      ],
+    };
+  }
+
+  // An Offer You Can't Refuse: the countered spell's controller gets paid.
+  match = sentence.match(/^Its controller creates (two|three|\d+) Treasure tokens$/i);
+  if (match?.[1]) {
+    const count = parseCount(match[1]) ?? Number(match[1]);
+    if (count) {
+      const token = {
+        kind: "create_token" as const,
+        ownerId: { type: "chosen_controller" as const, index: 0 },
+        name: "Treasure",
+        typeLine: "Artifact — Treasure Token",
+        power: null,
+        toughness: null,
+      };
+      return {
+        targetRequirements: [],
+        effects: Array.from({ length: count }, () => ({ ...token })),
+      };
+    }
+  }
+
+  if (/^You lose life equal to that (?:card|permanent)'s mana value$/i.test(sentence)) {
     return {
       targetRequirements: [],
       effects: [{ kind: "lose_life", playerId: "controller", amount: "target_mana_value" }],
@@ -3051,6 +3093,10 @@ function parseTriggerHead(head: string): TriggerHead | null {
   if (/^Whenever a creature you control attacks$/i.test(text)) {
     return { event: "attacks", watch: "controlled", subjectFilter: { types: ["creature"] } };
   }
+  // Skullclamp.
+  if (/^Whenever equipped creature dies$/i.test(text)) {
+    return { event: "dies", watch: "attached" };
+  }
   // Marionette Apprentice.
   if (
     /^Whenever another creature or artifact you control is put into a graveyard from the battlefield$/i.test(
@@ -3791,6 +3837,26 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
         ? { color: tappedBonus[1].toUpperCase() as Color, amount: 1 }
         : { color: "chosen", amount: 1 };
       continue;
+    }
+
+    // Lightning Greaves / Swiftfoot Boots: bare keyword grants on the host.
+    const attachedHas = sentence.match(
+      /^(?:Enchanted|Equipped) creature has ([a-z ]+?)(?: and ([a-z ]+?))?$/i,
+    );
+    if (attachedHas?.[1]) {
+      const names = [attachedHas[1], attachedHas[2]].filter((name): name is string =>
+        Boolean(name),
+      );
+      const keywords = names.map((name) => KEYWORD_GRANTS[name.trim().toLowerCase()]);
+      if (keywords.every((keyword): keyword is Keyword => Boolean(keyword))) {
+        for (const keyword of keywords) {
+          result.staticAbilities.push({
+            selector: { scope: "attached" },
+            effect: { kind: "grant_keyword", keyword },
+          });
+        }
+        continue;
+      }
     }
 
     const attachedBuff = sentence.match(
@@ -4906,10 +4972,19 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
 
     const etb = sentence.match(/^When ~ enters(?: and whenever [^,]+)?, (.+)$/i);
     if (etb?.[1]) {
-      const inner = compileSimpleClause(etb[1].trim());
+      // Garruk's Uprising: peel an intervening "if" off the ETB body.
+      let etbRest = etb[1].trim();
+      let etbCondition: TriggerCondition | undefined;
+      const etbIf = etbRest.match(/^if you control a creature with power (\d+) or greater, (?:then )?(.+)$/i);
+      if (etbIf?.[1] && etbIf[2]) {
+        etbCondition = { kind: "controls_power_at_least", power: Number(etbIf[1]) };
+        etbRest = etbIf[2].trim();
+      }
+      const inner = compileSimpleClause(etbRest);
       if (inner) {
         result.triggers.push({
           event: "enter_battlefield",
+          ...(etbCondition ? { condition: etbCondition } : {}),
           effects: inner.effects,
           targetRequirements: inner.targetRequirements,
         });
@@ -5136,6 +5211,13 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
           ) {
             // Guardian Project.
             condition = { kind: "subject_name_unique" };
+            rest = interveningIf[2].trim();
+          } else if (
+            /^you control a creature with power (\d+) or greater$/i.test(phrase)
+          ) {
+            // Garruk's Uprising.
+            const power = Number(phrase.match(/power (\d+)/i)![1]);
+            condition = { kind: "controls_power_at_least", power };
             rest = interveningIf[2].trim();
           } else {
             const controls = phrase.match(

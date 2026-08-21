@@ -90,6 +90,12 @@ function onEnterStep(state: GameState): GameState {
       active.landsPlayedThisTurn = 0;
       active.attackedThisTurn = false;
     }
+    // Explore-style one-shot land-drop grants expire with the turn.
+    for (const player of state.players) {
+      if (player.extraLandDropsThisTurn) {
+        delete player.extraLandDropsThisTurn;
+      }
+    }
     // "Only once each turn" abilities reset when a new turn begins.
     state.oncePerTurnFired = [];
     // Unused extra combats do not carry across turns.

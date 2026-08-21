@@ -68,7 +68,16 @@ function bindPlayerSelector(
   if (typeof selector === "object") {
     if (selector.type === "chosen_controller") {
       const chosen = chosenTargetAt(context, selector.index, state);
-      if (!chosen || chosen.type !== "creature") {
+      if (!chosen) {
+        return null;
+      }
+      // A chosen spell's controller (An Offer You Can't Refuse).
+      if (chosen.type === "spell") {
+        return (
+          state.stack.find((entry) => entry.id === chosen.stackObjectId)?.controllerId ?? null
+        );
+      }
+      if (chosen.type !== "creature") {
         return null;
       }
       return state.cards[chosen.cardId]?.controllerId ?? null;
@@ -290,7 +299,15 @@ export function bindCardEffect(
                     ? characteristicsOf(state, chosen.cardId).manaValue
                     : 0;
                 })()
-              : effect.amount;
+              : effect.amount === "target_power"
+                ? (() => {
+                    // Swords to Plowshares: power read before the exile.
+                    const chosen = chosenTargetAt(context, 0, state);
+                    return chosen?.type === "creature"
+                      ? creaturePower(state, chosen.cardId)
+                      : 0;
+                  })()
+                : effect.amount;
       if (amount <= 0) {
         return null;
       }
@@ -713,6 +730,13 @@ export function bindCardEffect(
         return null;
       }
       return { kind: "prevent_combat_for", cardId: chosen.cardId };
+    }
+    case "extra_land_drop": {
+      const playerId = bindPlayerSelector(state, effect.playerId, context);
+      if (!playerId) {
+        return null;
+      }
+      return { kind: "extra_land_drop", playerId };
     }
     case "drain_opponents": {
       const playerId = bindPlayerSelector(state, effect.playerId, context);
@@ -2325,6 +2349,13 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
           shieldedIds.push(effect.cardId);
         }
         next.preventCombatFor = shieldedIds;
+        break;
+      }
+      case "extra_land_drop": {
+        requirePlayer(state, effect.playerId);
+        next = cloneGameState(state);
+        const granted = next.players.find((entry) => entry.id === effect.playerId)!;
+        granted.extraLandDropsThisTurn = (granted.extraLandDropsThisTurn ?? 0) + 1;
         break;
       }
       case "mass_reanimate": {

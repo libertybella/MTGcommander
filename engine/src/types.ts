@@ -284,6 +284,9 @@ export type PlayerState = {
   lost: boolean;
   /** Lands played this turn. Resets on that player's untap. */
   landsPlayedThisTurn: number;
+  /** Explore: one-shot extra land drops granted this turn. Reset with the
+   * land count. */
+  extraLandDropsThisTurn?: number;
   /** True after this player declared at least one attacker this turn. */
   attackedThisTurn: boolean;
   /** Set when a draw is attempted from an empty library. SBA then eliminates. */
@@ -639,6 +642,7 @@ export type GameEffect =
   | { kind: "retarget"; stackObjectId: StackObjectId; controllerId: PlayerId }
   | { kind: "mass_reanimate"; playerId: PlayerId }
   | { kind: "prevent_combat_for"; cardId: CardInstanceId }
+  | { kind: "extra_land_drop"; playerId: PlayerId }
   | {
       kind: "search_library";
       playerId: PlayerId;
@@ -868,7 +872,9 @@ export type CardEffect =
   | {
       kind: "gain_life";
       playerId: PlayerSelector;
-      amount: number | "subject_amount" | "subject_toughness";
+      /** target_power: the first chosen target's computed power at bind
+       * (Swords to Plowshares — read before the exile applies). */
+      amount: number | "subject_amount" | "subject_toughness" | "target_power";
       /** Shamanic Revelation's ferocious half: multiply the amount by the
        * controller's creatures matching the filter, at bind. */
       perControlledCreature?: { minPower?: number };
@@ -1067,6 +1073,8 @@ export type CardEffect =
   | { kind: "mass_reanimate"; playerId: PlayerSelector }
   /** Maze of Ith: shield the chosen creature from combat damage this turn. */
   | { kind: "prevent_combat_for"; cardId: ChosenTargetRef }
+  /** Explore: one extra land drop this turn. */
+  | { kind: "extra_land_drop"; playerId: PlayerSelector }
   | {
       kind: "search_library";
       playerId: PlayerSelector;
@@ -1197,7 +1205,9 @@ export type TriggerCondition =
   | { kind: "opponent_controls_more_lands" }
   /** Guardian Project: the subject's name matches no other controlled
    * creature and no creature card in the controller's graveyard. */
-  | { kind: "subject_name_unique" };
+  | { kind: "subject_name_unique" }
+  /** Garruk's Uprising: "if you control a creature with power N or greater". */
+  | { kind: "controls_power_at_least"; power: number };
 
 export type CardTrigger = {
   event: TriggerEvent;
@@ -1254,7 +1264,13 @@ export type CardTrigger = {
 /** A change the trigger system reacts to. Dispatched synchronously in batches. */
 export type EngineEvent =
   | { kind: "enters"; cardId: CardInstanceId }
-  | { kind: "dies"; cardId: CardInstanceId; controllerId: PlayerId }
+  | {
+      kind: "dies";
+      cardId: CardInstanceId;
+      controllerId: PlayerId;
+      /** Equipment/auras attached before death (Skullclamp watches these). */
+      wasAttachedIds?: CardInstanceId[];
+    }
   | { kind: "attacks"; cardId: CardInstanceId }
   | { kind: "step_begins"; step: Step }
   | { kind: "gains_life"; playerId: PlayerId; amount: number }
