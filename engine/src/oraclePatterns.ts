@@ -1,3 +1,4 @@
+import { manaValueOf } from "./characteristics";
 import { parseManaCost } from "./mana";
 import { parseAmassClause } from "./tokens";
 import type {
@@ -1712,6 +1713,92 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     };
   }
 
+  // Archaeomancer / Mystic Sanctuary-class recursion.
+  if (
+    /^return target instant or sorcery card from your graveyard to your hand$/i.test(sentence)
+  ) {
+    return {
+      targetRequirements: [{ kind: "own_graveyard_instant_or_sorcery_card" }],
+      effects: [{ kind: "move_card", cardId: { type: "chosen", index: 0 }, toZone: "hand" }],
+    };
+  }
+
+  // Ponder's tail: the reorder just happened via look-and-assign; the
+  // optional shuffle is auto-declined — a documented approximation.
+  if (/^You may shuffle$/i.test(sentence)) {
+    return { targetRequirements: [], effects: [] };
+  }
+
+  // Soul's Attendant: the "may" is auto-taken (documented, like may-draw).
+  const mayGain = sentence.match(/^you may gain (\d+|a|an|one|two|three) life$/i);
+  if (mayGain?.[1]) {
+    const amount = parseCount(mayGain[1]);
+    if (amount) {
+      return {
+        targetRequirements: [],
+        effects: [{ kind: "gain_life", playerId: "controller", amount }],
+      };
+    }
+  }
+
+  // Elspeth, Sun's Champion's −3.
+  const powerSweep = sentence.match(/^Destroy all creatures with power (\d+) or greater$/i);
+  if (powerSweep?.[1]) {
+    return {
+      targetRequirements: [],
+      effects: [
+        { kind: "destroy_all", what: "creatures", minPower: Number(powerSweep[1]) },
+      ],
+    };
+  }
+
+  // "You get an emblem with ..." — the quoted grant becomes statics on a
+  // battlefield emblem object (a documented approximation of CR 114).
+  const emblem = sentence.match(
+    /^You get an emblem with "Creatures you control get \+(\d+)\/\+(\d+)(?: and have ([a-z]+))?\.?"$/i,
+  );
+  if (emblem?.[1] && emblem[2]) {
+    const granted = emblem[3] ? KEYWORD_GRANTS[emblem[3].toLowerCase()] : undefined;
+    if (!emblem[3] || granted) {
+      return {
+        targetRequirements: [],
+        effects: [
+          {
+            kind: "create_emblem",
+            ownerId: "controller",
+            statics: [
+              {
+                selector: { scope: "controlled", types: ["creature"] },
+                effect: {
+                  kind: "modify_pt",
+                  power: Number(emblem[1]),
+                  toughness: Number(emblem[2]),
+                },
+              },
+              ...(granted
+                ? [
+                    {
+                      selector: { scope: "controlled" as const, types: ["creature"] },
+                      effect: { kind: "grant_keyword" as const, keyword: granted },
+                    },
+                  ]
+                : []),
+            ],
+          },
+        ],
+      };
+    }
+  }
+
+  // The d20 dragons, fused: "roll a d20" + "You create a number of Treasure
+  // tokens equal to the result".
+  if (/^roll a d20 for Treasures$/i.test(sentence)) {
+    return {
+      targetRequirements: [],
+      effects: [{ kind: "roll_die_treasures", playerId: "controller", sides: 20 }],
+    };
+  }
+
   const putLand = sentence.match(
     /^you may put a land card from your hand onto the battlefield( tapped)?$/i,
   );
@@ -1847,6 +1934,14 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
   if (/^counter target noncreature spell$/i.test(sentence)) {
     return {
       targetRequirements: [{ kind: "noncreature_spell" }],
+      effects: [{ kind: "counter_spell", target: { type: "chosen", index: 0 } }],
+    };
+  }
+
+  // Muddle the Mixture.
+  if (/^counter target instant or sorcery spell$/i.test(sentence)) {
+    return {
+      targetRequirements: [{ kind: "instant_or_sorcery_spell" }],
       effects: [{ kind: "counter_spell", target: { type: "chosen", index: 0 } }],
     };
   }
@@ -3564,6 +3659,24 @@ function fuseDrainPairInPlace(sentences: string[], lineStart: boolean[]): void {
   }
 }
 
+/** Ancient Copper Dragon: "roll a d20" + "You create a number of Treasure
+ * tokens equal to the result" become one synthetic clause sentence. */
+function fuseD20TreasuresInPlace(sentences: string[], lineStart: boolean[]): void {
+  for (let index = 0; index + 1 < sentences.length; index += 1) {
+    if (lineStart[index + 1]) {
+      continue;
+    }
+    const roll = sentences[index]!.match(/^(.*, )?roll a d20$/i);
+    if (
+      roll &&
+      /^You create a number of Treasure tokens equal to the result$/i.test(sentences[index + 1]!)
+    ) {
+      sentences.splice(index, 2, `${roll[1] ?? ""}roll a d20 for Treasures`);
+      lineStart.splice(index + 1, 1);
+    }
+  }
+}
+
 /** Epic Confrontation: "Target creature you control gets +1/+2 until end of
  * turn." + "It fights target creature you don't control." — one clause. */
 function fuseBiteInPlace(sentences: string[], lineStart: boolean[]): void {
@@ -4563,6 +4676,7 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
   fuseExilePlayInPlace(sentences, lineStart);
   fuseDrainPairInPlace(sentences, lineStart);
   fuseBiteInPlace(sentences, lineStart);
+  fuseD20TreasuresInPlace(sentences, lineStart);
   for (let index = 0; index < sentences.length; index += 1) {
     const sentence = sentences[index];
     if (!sentence) {
@@ -5220,6 +5334,30 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
         });
         continue;
       }
+    }
+
+    // Transmute (CR 702.53): a hand activation — discard this card, tutor a
+    // card with the same mana value. The sorcery-timing restriction is not
+    // enforced (documented approximation).
+    const transmute = sentence.match(/^Transmute (\{.+\})$/i);
+    if (transmute?.[1]) {
+      result.activated.push({
+        tap: false,
+        manaCost: transmute[1],
+        zone: "hand",
+        discard: true,
+        effects: [
+          {
+            kind: "search_library",
+            playerId: "controller",
+            filter: { exactManaValue: manaValueOf(card.manaCost) },
+            destination: "hand",
+            count: 1,
+          },
+        ],
+        targetRequirements: [],
+      });
+      continue;
     }
 
     // Prowess (CR 702.108) lowers to its full rules text.

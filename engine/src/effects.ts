@@ -999,6 +999,7 @@ export function bindCardEffect(
         what: effect.what,
         ...(effect.maxManaValue !== undefined ? { maxManaValue: effect.maxManaValue } : {}),
         ...(effect.minManaValue !== undefined ? { minManaValue: effect.minManaValue } : {}),
+        ...(effect.minPower !== undefined ? { minPower: effect.minPower } : {}),
         ...(spared ? { exceptSubtype: spared } : {}),
       };
     }
@@ -1061,6 +1062,27 @@ export function bindCardEffect(
         return null;
       }
       return { kind: "return_self_as_enchantment", cardId };
+    }
+    case "create_emblem": {
+      const ownerId = bindPlayerSelector(state, effect.ownerId, context);
+      if (!ownerId) {
+        return null;
+      }
+      return {
+        kind: "create_emblem",
+        ownerId,
+        statics: effect.statics.map((entry) => ({
+          selector: { ...entry.selector },
+          effect: { ...entry.effect },
+        })),
+      };
+    }
+    case "roll_die_treasures": {
+      const playerId = bindPlayerSelector(state, effect.playerId, context);
+      if (!playerId) {
+        return null;
+      }
+      return { kind: "roll_die_treasures", playerId, sides: effect.sides };
     }
     case "exile_graveyard": {
       const playerId = bindPlayerSelector(state, effect.playerId, context);
@@ -2266,7 +2288,8 @@ function applyDestroyAll(
       return isCreature(next, cardId);
     }
     if (what === "nonland") {
-      return !isLand(next, cardId);
+      // Emblems are not permanents (CR 114) — mass removal spares them.
+      return !isLand(next, cardId) && !characteristicsOf(next, cardId).types.includes("emblem");
     }
     const types = characteristicsOf(next, cardId).types;
     if (what === "artifacts") {
@@ -2288,6 +2311,9 @@ function applyDestroyAll(
     })
     .filter(
       (card) => !effect.exceptSubtype || !cardMatchesSubtype(next, card.id, effect.exceptSubtype),
+    )
+    .filter(
+      (card) => effect.minPower === undefined || creaturePower(next, card.id) >= effect.minPower,
     )
     .filter((card) => !hasKeyword(next, card.id, "indestructible"))
     .map((card) => card.id);
@@ -3156,6 +3182,46 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
         // "under its owner's control": moveCard returns it to the owner's
         // battlefield, and control follows the owner's zone list.
         next = moveCard(next, effect.cardId, "battlefield");
+        break;
+      }
+      case "create_emblem": {
+        // An emblem is not a permanent (CR 114); modeling it as a
+        // battlefield static carrier is a documented approximation — mass
+        // removal is taught to spare the "emblem" type.
+        next = cloneGameState(state);
+        const emblemDefinition = createCardDefinition({
+          name: "Emblem",
+          typeLine: "Emblem",
+          staticAbilities: effect.statics,
+        });
+        next.definitions[emblemDefinition.id] = emblemDefinition;
+        const emblem = createCardInstance({
+          definitionId: emblemDefinition.id,
+          ownerId: effect.ownerId,
+          zone: "battlefield",
+          isToken: true,
+        });
+        emblem.timestamp = next.nextTimestamp;
+        next.nextTimestamp += 1;
+        next.cards[emblem.id] = emblem;
+        next.players
+          .find((player) => player.id === effect.ownerId)
+          ?.zones.battlefield.push(emblem.id);
+        break;
+      }
+      case "roll_die_treasures": {
+        // The d20 is a real random roll (like the opening roll); tests mock
+        // Math.random.
+        const roll = 1 + Math.floor(Math.random() * effect.sides);
+        next = applyCreateToken(state, {
+          kind: "create_token",
+          ownerId: effect.playerId,
+          name: "Treasure",
+          typeLine: "Artifact — Treasure Token",
+          power: null,
+          toughness: null,
+          count: roll,
+        });
         break;
       }
       case "exile_graveyard": {

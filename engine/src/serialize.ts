@@ -1412,6 +1412,9 @@ function parseSearchFilter(value: unknown, label: string): SearchFilter {
     ...(value.maxToughness === undefined
       ? {}
       : { maxToughness: expectNumber(value.maxToughness, `${label}.maxToughness`) }),
+    ...(value.exactManaValue === undefined
+      ? {}
+      : { exactManaValue: expectNumber(value.exactManaValue, `${label}.exactManaValue`) }),
   };
 }
 
@@ -1665,6 +1668,7 @@ function parseTargetRequirement(value: unknown, label: string): TargetRequiremen
     kind !== "own_graveyard_creature_card" &&
     kind !== "own_graveyard_permanent_card" &&
     kind !== "own_graveyard_artifact_card" &&
+    kind !== "own_graveyard_instant_or_sorcery_card" &&
     kind !== "graveyard_creature_card" &&
     kind !== "nonartifact_creature" &&
     kind !== "player_or_creature" &&
@@ -2431,7 +2435,22 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
         ...(value.minManaValue === undefined
           ? {}
           : { minManaValue: expectNumber(value.minManaValue, `${label}.minManaValue`) }),
+        ...(value.minPower === undefined
+          ? {}
+          : { minPower: expectNumber(value.minPower, `${label}.minPower`) }),
         ...(value.exceptChosenType === true ? { exceptChosenType: true } : {}),
+      };
+    case "create_emblem":
+      return {
+        kind,
+        ownerId: parsePlayerSelector(value.ownerId, `${label}.ownerId`),
+        statics: parseStaticAbilities(value.statics, undefined, `${label}.statics`),
+      };
+    case "roll_die_treasures":
+      return {
+        kind,
+        playerId: parsePlayerSelector(value.playerId, `${label}.playerId`),
+        sides: expectNumber(value.sides, `${label}.sides`),
       };
     case "unless_pays":
       return {
@@ -3555,9 +3574,26 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
       ...(value.minManaValue === undefined
         ? {}
         : { minManaValue: expectNumber(value.minManaValue, `${label}.minManaValue`) }),
+      ...(value.minPower === undefined
+        ? {}
+        : { minPower: expectNumber(value.minPower, `${label}.minPower`) }),
       ...(value.exceptSubtype === undefined
         ? {}
         : { exceptSubtype: expectString(value.exceptSubtype, `${label}.exceptSubtype`) }),
+    };
+  }
+  if (kind === "create_emblem") {
+    return {
+      kind,
+      ownerId: expectString(value.ownerId, `${label}.ownerId`),
+      statics: parseStaticAbilities(value.statics, undefined, `${label}.statics`),
+    };
+  }
+  if (kind === "roll_die_treasures") {
+    return {
+      kind,
+      playerId: expectString(value.playerId, `${label}.playerId`),
+      sides: expectNumber(value.sides, `${label}.sides`),
     };
   }
   if (kind === "unless_pays" || kind === "may_pay") {

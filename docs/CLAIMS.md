@@ -60,7 +60,7 @@ Statuses: `open` · `claimed` · `in-progress` · `done` · `blocked`
 | Dynamic self-discounts (Colossus/Henge quartet) | E | open | | | | |
 | Phyrexian mana payment | E | open | | | | Unblocks Drivnod's activated ability |
 | Bolas's Citadel | E | open | | | | |
-| One-away grinding (rotating buckets) | F | in-progress | claude/2daf8b18 | comprehensive-plan | 2026-08-21 | Wave 124 bucket: Ponder, Soul's Attendant, Archaeomancer, Muddle the Mixture, Elspeth Sun's Champion, Veil of Summer, Ancient Copper Dragon. Other buckets stay open for others |
+| One-away grinding (rotating buckets) | F | open | | | 2026-08-21 | Wave 124 bucket done (6 flips: Ponder, Soul's Attendant, Archaeomancer, Muddle, Elspeth, Copper Dragon — 901/2,009 = 44.8%); Veil of Summer needs 3 pieces, still open. Next buckets open for anyone |
 
 ## Done
 

@@ -12,6 +12,9 @@ const CARD_TYPES = new Set([
   "conspiracy",
   "creature",
   "dungeon",
+  // Not a CR card type: our emblems live on the battlefield as static
+  // carriers (a documented approximation), and mass removal spares the type.
+  "emblem",
   "enchantment",
   "instant",
   "kindred",

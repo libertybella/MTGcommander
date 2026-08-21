@@ -531,6 +531,8 @@ export type SearchFilter = {
   maxManaValueX?: boolean;
   /** "with toughness 2 or less" (Recruiter of the Guard). Printed toughness. */
   maxToughness?: number;
+  /** Transmute: "with the same mana value as this card". */
+  exactManaValue?: number;
 };
 
 export type SearchDestination = "hand" | "battlefield" | "graveyard" | "library_top";
@@ -781,6 +783,8 @@ export type GameEffect =
       what: DestroyAllScope;
       maxManaValue?: number;
       minManaValue?: number;
+      /** Elspeth: only creatures with computed power at least this. */
+      minPower?: number;
       /** Kindred Dominance: spare permanents of this subtype. */
       exceptSubtype?: string;
     }
@@ -800,6 +804,11 @@ export type GameEffect =
   /** Enduring cycle: a dead creature-enchantment returns as a pure
    * enchantment (a cloned definition without the creature type). */
   | { kind: "return_self_as_enchantment"; cardId: CardInstanceId }
+  /** Elspeth's ultimate: a permanent-less static carrier owned by a player.
+   * Modeled as an indestructible-by-scope battlefield object (documented). */
+  | { kind: "create_emblem"; ownerId: PlayerId; statics: StaticAbility[] }
+  /** Ancient Copper Dragon: roll a die, create that many Treasures. */
+  | { kind: "roll_die_treasures"; playerId: PlayerId; sides: number }
   /** Bojuka Bog: every card in the player's graveyard is exiled. */
   | { kind: "exile_graveyard"; playerId: PlayerId }
   /** Mother of Runes: the chooser picks a protection color at resolution. */
@@ -867,6 +876,7 @@ export type TargetKind =
   | "own_graveyard_creature_card"
   | "own_graveyard_permanent_card"
   | "own_graveyard_artifact_card"
+  | "own_graveyard_instant_or_sorcery_card"
   /** A creature card in ANY graveyard (Reanimate). */
   | "graveyard_creature_card"
   | "nonartifact_creature"
@@ -1263,6 +1273,8 @@ export type CardEffect =
       what: DestroyAllScope;
       maxManaValue?: number;
       minManaValue?: number;
+      /** Elspeth: only creatures with computed power at least this. */
+      minPower?: number;
       /** Kindred Dominance: the auto-chosen type (most common among the
        * caster's creatures, bound at resolution) is spared. */
       exceptChosenType?: boolean;
@@ -1286,6 +1298,10 @@ export type CardEffect =
   | { kind: "flicker"; cardId: CardIdSelector }
   /** Enduring cycle: "return it to the battlefield … It's an enchantment." */
   | { kind: "return_self_as_enchantment"; cardId: CardIdSelector }
+  /** "You get an emblem with …" (Elspeth, Sun's Champion). */
+  | { kind: "create_emblem"; ownerId: PlayerSelector; statics: StaticAbility[] }
+  /** "Roll a d20. You create a number of Treasure tokens equal to the result." */
+  | { kind: "roll_die_treasures"; playerId: PlayerSelector; sides: number }
   | { kind: "exile_graveyard"; playerId: PlayerSelector }
   /** Mother of Runes: protection from a color of your choice until EOT. */
   | { kind: "grant_protection_choice"; target: ChosenTargetRef }

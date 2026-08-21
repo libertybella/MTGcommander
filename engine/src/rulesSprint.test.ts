@@ -13215,3 +13215,196 @@ describe("wave 123: echoes, freezes, and last rites", () => {
     expect(vampires).toHaveLength(3);
   });
 });
+
+describe("wave 124: emblems, dice, and mixtures", () => {
+  it("compiles the one-away bucket fully", () => {
+    const muddle = compileOracleCard({
+      oracleId: "muddle",
+      name: "Muddle the Mixture",
+      manaCost: "{U}{U}",
+      typeLine: "Instant",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "Counter target instant or sorcery spell.\nTransmute {1}{U}{U} ({1}{U}{U}, Discard this card: Search your library for a card with the same mana value as this card, reveal it, put it into your hand, then shuffle. Transmute only as a sorcery.)",
+    });
+    expect(muddle.notes).toEqual([]);
+    expect(muddle.definition.targetRequirements).toEqual([{ kind: "instant_or_sorcery_spell" }]);
+    const transmute = muddle.definition.activated.find((ability) => ability.zone === "hand");
+    expect(transmute).toMatchObject({ manaCost: "{1}{U}{U}", discard: true });
+    expect(transmute?.effects[0]).toMatchObject({
+      kind: "search_library",
+      filter: { exactManaValue: 2 },
+      destination: "hand",
+    });
+
+    const elspeth = compileOracleCard({
+      oracleId: "elspeth",
+      name: "Elspeth, Sun's Champion",
+      manaCost: "{4}{W}{W}",
+      typeLine: "Legendary Planeswalker — Elspeth",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      loyalty: "4",
+      oracleText:
+        '+1: Create three 1/1 white Soldier creature tokens.\n−3: Destroy all creatures with power 4 or greater.\n−7: You get an emblem with "Creatures you control get +2/+2 and have flying."',
+    });
+    expect(elspeth.notes).toEqual([]);
+    expect(elspeth.definition.loyaltyAbilities?.[1]?.effects[0]).toEqual({
+      kind: "destroy_all",
+      what: "creatures",
+      minPower: 4,
+    });
+    expect(elspeth.definition.loyaltyAbilities?.[2]?.effects[0]).toMatchObject({
+      kind: "create_emblem",
+    });
+
+    const copper = compileOracleCard({
+      oracleId: "copper",
+      name: "Ancient Copper Dragon",
+      manaCost: "{4}{R}{R}",
+      typeLine: "Creature — Elder Dragon",
+      power: "7",
+      toughness: "6",
+      printedKeywords: ["Flying"],
+      imageUrl: "",
+      oracleText:
+        "Flying\nWhenever this creature deals combat damage to a player, roll a d20. You create a number of Treasure tokens equal to the result.",
+    });
+    expect(copper.notes).toEqual([]);
+    expect(copper.definition.triggers[0]?.effects[0]).toEqual({
+      kind: "roll_die_treasures",
+      playerId: "controller",
+      sides: 20,
+    });
+
+    const archaeomancer = compileOracleCard({
+      oracleId: "archaeomancer",
+      name: "Archaeomancer",
+      manaCost: "{2}{U}{U}",
+      typeLine: "Creature — Human Wizard",
+      power: "1",
+      toughness: "2",
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "When this creature enters, return target instant or sorcery card from your graveyard to your hand.",
+    });
+    expect(archaeomancer.notes).toEqual([]);
+    expect(archaeomancer.definition.triggers[0]?.targetRequirements).toEqual([
+      { kind: "own_graveyard_instant_or_sorcery_card" },
+    ]);
+
+    const ponder = compileOracleCard({
+      oracleId: "ponder",
+      name: "Ponder",
+      manaCost: "{U}",
+      typeLine: "Sorcery",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "Look at the top three cards of your library, then put them back in any order. You may shuffle.\nDraw a card.",
+    });
+    expect(ponder.notes).toEqual([]);
+
+    const attendant = compileOracleCard({
+      oracleId: "attendant",
+      name: "Soul's Attendant",
+      manaCost: "{W}",
+      typeLine: "Creature — Human Cleric",
+      power: "1",
+      toughness: "1",
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText: "Whenever another creature enters, you may gain 1 life.",
+    });
+    expect(attendant.notes).toEqual([]);
+    expect(attendant.definition.triggers[0]?.effects).toEqual([
+      { kind: "gain_life", playerId: "controller", amount: 1 },
+    ]);
+  });
+
+  it("sweeps by power, spares emblems, and grants through them", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 10);
+    const bigDef = createCardDefinition({
+      name: "Big",
+      typeLine: "Creature — Giant",
+      power: 5,
+      toughness: 5,
+    });
+    const smallDef = createCardDefinition({
+      name: "Small",
+      typeLine: "Creature — Soldier",
+      power: 1,
+      toughness: 1,
+    });
+    game.definitions[bigDef.id] = bigDef;
+    game.definitions[smallDef.id] = smallDef;
+    const big = createCardInstance({ definitionId: bigDef.id, ownerId: p2.id, zone: "battlefield" });
+    const small = createCardInstance({ definitionId: smallDef.id, ownerId: p1.id, zone: "battlefield" });
+    game.cards[big.id] = big;
+    game.cards[small.id] = small;
+    p2.zones.battlefield.push(big.id);
+    p1.zones.battlefield.push(small.id);
+
+    // The emblem lifts the soldier and survives a nonland sweep.
+    let next = applyEffects(game, [
+      {
+        kind: "create_emblem",
+        ownerId: p1.id,
+        statics: [
+          {
+            selector: { scope: "controlled", types: ["creature"] },
+            effect: { kind: "modify_pt", power: 2, toughness: 2 },
+          },
+          {
+            selector: { scope: "controlled", types: ["creature"] },
+            effect: { kind: "grant_keyword", keyword: "flying" },
+          },
+        ],
+      },
+    ]);
+    expect(computedCard(next, small.id)?.power).toBe(3);
+    expect(hasKeyword(next, small.id, "flying")).toBe(true);
+
+    // Elspeth's −3 fells only the giant.
+    next = applyEffects(next, [{ kind: "destroy_all", what: "creatures", minPower: 4 }]);
+    expect(next.cards[big.id]?.zone).toBe("graveyard");
+    expect(next.cards[small.id]?.zone).toBe("battlefield");
+
+    // A nonland board wipe leaves the emblem's grant standing.
+    next = applyEffects(next, [{ kind: "destroy_all", what: "nonland" }]);
+    expect(next.cards[small.id]?.zone).toBe("graveyard");
+    const emblemStands = Object.values(next.cards).some(
+      (card) =>
+        card.zone === "battlefield" &&
+        next.definitions[card.definitionId]?.typeLine === "Emblem",
+    );
+    expect(emblemStands).toBe(true);
+  });
+
+  it("rolls the d20 for Treasures", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 10);
+    const original = Math.random;
+    Math.random = () => 0.5; // 1 + floor(0.5 * 20) = 11
+    try {
+      const next = applyEffects(game, [
+        { kind: "roll_die_treasures", playerId: p1.id, sides: 20 },
+      ]);
+      const treasures = Object.values(next.cards).filter(
+        (card) => card.zone === "battlefield" && card.isToken,
+      );
+      expect(treasures).toHaveLength(11);
+    } finally {
+      Math.random = original;
+    }
+  });
+});
