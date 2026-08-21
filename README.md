@@ -16,8 +16,8 @@ This is **not** Wizards of the Coast software. It is also **not** the sibling Bi
 | --- | --- |
 | **Phase** | Comprehensive Rules machinery (layers, events, choices, permanents) + coverage flywheel |
 | **Next** | Private alpha (invite friends, play complete games) |
-| **Tests** | 812 passing; a 10,000-game random-action fuzz marathon gates checkpoint-45, 200-game burns gate every wave and 800+ burns gate every checkpoint tag |
-| **Compile rate** | 90% of a 60-card real-staple sample compiles fully (CI floor 85%); 42.2% of the EDHREC top-2,000 (up from 15.6% at the start of the 2026-08-20 flywheel run) |
+| **Tests** | 827 passing; a 10,000-game random-action fuzz marathon gates checkpoint-45, 200-game burns gate every wave and 800+ burns gate every checkpoint tag |
+| **Compile rate** | 93% of a 60-card real-staple sample compiles fully (CI floor 85%); 43.7% of the EDHREC top-2,000 (up from 15.6% at the start of the 2026-08-20 flywheel run) |
 | **Installer** | `npm run dist` builds a one-click Windows installer (`release/BizzyMTG Commander Setup 0.1.0.exe`). |
 
 ---
@@ -87,10 +87,10 @@ Still Override territory — see [docs/RULES_COVERAGE.md](docs/RULES_COVERAGE.md
 for the full list:
 
 - Ring tempts, “play the exiled card this turn”, sagas, morph casting
-- Permanent-copy effects (Clone); damage prevention shields
+- Damage prevention shields; trigger doubling (Panharmonicon, Roaming Throne)
 - Old-templating X spells, landwalk; countering abilities on the stack
 - Redirecting combat damage to planeswalkers
-- (No longer on this list: Rhystic taxes, cycling, board wipes, tutors-to-top, Treasures, additional cast costs, saboteur draws, spell copies, token doubling, Curiosity triggers, flashback, storm, kicker, pillow-fort taxes, sacrifice costs)
+- (No longer on this list: Rhystic taxes, cycling, board wipes, tutors-to-top, Treasures, additional cast costs, saboteur draws, spell copies, token doubling, Curiosity triggers, flashback, storm, kicker, pillow-fort taxes, sacrifice costs, Clone-style permanent copies)
 
 Compile notes show at import. Uncompiled cards still sit in the deck.
 
@@ -177,5 +177,6 @@ Git tags on `main`. Do not move old tags.
 | `checkpoint-65-plowshares` | Massacre Wurm, Rise of the Dark Realms, Beastmaster, Mobilize, Lab Maniac, Maze of Ith, Swords to Plowshares, Skullclamp, sample 90%, 39.5% |
 | `checkpoint-66-divination` | Sun Titan, Craterhoof, Idol of Oblivion, Scute Swarm, Faerie Mastermind, Shadowspear, Springleaf Drum, Mox Amber, Bloom Tender, Sensei's Top, Mother of Runes, Grave Pact, Mayhem Devil, 41.0% |
 | `checkpoint-67-fights` | Exotic Orchard, Reflecting Pool, Zulaport, the Swords cycle, Constellation, Welcoming Vampire, Nykthos, Casualties of War, Field of Ruin, Kogla, Apex Altisaur, real fights + Enrage, 42.2% |
+| `checkpoint-68-clones` | Enter-as-copy clones (Spark Double, Phantasmal Image, Sakashima), Command Tower real color identity, Metallic Mimic chosen types, Prowess, Monastery Mentor, Kindred Dominance auto-typed sweeps, sample 93%, 43.7% |
 
 These live on the `comprehensive-plan` branch (see docs/DEVELOPMENT_PROGRESS.md); merge to `main` at will — every checkpoint is a playable table. Next: **Private Alpha**, then productization.
