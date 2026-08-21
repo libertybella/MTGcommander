@@ -410,6 +410,34 @@ export function parseGameState(json: string): GameState {
               };
             })(),
           }),
+      ...(def.attackTax === undefined
+        ? {}
+        : {
+            attackTax: (() => {
+              if (!isRecord(def.attackTax)) {
+                throw new Error(`Invalid definition.${id}.attackTax`);
+              }
+              return {
+                ...(def.attackTax.generic === undefined
+                  ? {}
+                  : {
+                      generic: expectNumber(
+                        def.attackTax.generic,
+                        `definition.${id}.attackTax.generic`,
+                      ),
+                    }),
+                ...(def.attackTax.perEnchantment === true ? { perEnchantment: true } : {}),
+                ...(def.attackTax.lifePer === undefined
+                  ? {}
+                  : {
+                      lifePer: expectNumber(
+                        def.attackTax.lifePer,
+                        `definition.${id}.attackTax.lifePer`,
+                      ),
+                    }),
+              };
+            })(),
+          }),
       ...(def.playLandsFromGraveyard === true ? { playLandsFromGraveyard: true } : {}),
       ...(def.dynamicPt === undefined
         ? {}

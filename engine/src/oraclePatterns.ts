@@ -50,6 +50,7 @@ export type CompiledOracleText = {
   storm?: boolean;
   doesntUntap?: boolean;
   grantsFlash?: boolean;
+  attackTax?: { generic?: number; perEnchantment?: boolean; lifePer?: number };
   extraDrawStepDraws?: boolean;
   affinityArtifacts?: boolean;
   affinityAllCreatures?: boolean;
@@ -2958,6 +2959,31 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
 
     if (/^You may cast spells as though they had flash$/i.test(sentence)) {
       result.grantsFlash = true;
+      continue;
+    }
+
+    // Pillow forts. Norn's Annex's {W/P} is approximated as its life half.
+    const propaganda = sentence.match(
+      /^Creatures can't attack you unless their controller pays \{(\d+)\} for each creature they control that's attacking you$/i,
+    );
+    if (propaganda?.[1]) {
+      result.attackTax = { ...(result.attackTax ?? {}), generic: Number(propaganda[1]) };
+      continue;
+    }
+    if (
+      /^Creatures can't attack you or planeswalkers you control unless their controller pays \{X\} for each of those creatures, where X is the number of enchantments you control$/i.test(
+        sentence,
+      )
+    ) {
+      result.attackTax = { ...(result.attackTax ?? {}), perEnchantment: true };
+      continue;
+    }
+    if (
+      /^Creatures can't attack you or planeswalkers you control unless their controller pays \{W\/P\} for each of those creatures$/i.test(
+        sentence,
+      )
+    ) {
+      result.attackTax = { ...(result.attackTax ?? {}), lifePer: 2 };
       continue;
     }
 

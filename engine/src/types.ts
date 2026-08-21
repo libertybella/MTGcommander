@@ -181,6 +181,14 @@ export type CardDefinition = {
   entersWithXCounters?: boolean;
   /** "As an additional cost to cast this spell, …" (Deadly Dispute). */
   additionalCost?: AdditionalCastCost;
+  /**
+   * Pillow forts: creatures can't attack this permanent's controller unless
+   * their controller pays, per attacking creature, `generic` mana (Propaganda),
+   * X = the defender's enchantment count (Sphere of Safety), and/or `lifePer`
+   * life (Norn's Annex {W/P}, approximated as its life half). Paid from the
+   * attacker's floating pool when attackers are declared.
+   */
+  attackTax?: { generic?: number; perEnchantment?: boolean; lifePer?: number };
   /** "You may play lands from your graveyard" (Crucible of Worlds). */
   playLandsFromGraveyard?: boolean;
   /** Star P/T: base power and toughness are each this count (CR 613.3a). */

@@ -1,8 +1,9 @@
 import { cloneGameState } from "./clone";
 import { characteristicsOf, isCommander, isCreature } from "./cardTypes";
-import { computedCard } from "./characteristicsEngine";
+import { abilitiesRemoved, computedCard } from "./characteristicsEngine";
 import { creaturePower, creatureToughness } from "./derived";
 import { hasKeyword } from "./keywords";
+import { canPayManaCost, parseManaCost, payManaCost } from "./mana";
 import { isLiving, nextLivingPlayerId } from "./players";
 import { applyStateBasedActionsInPlace } from "./status";
 import { dispatchEventsInPlace } from "./triggers";
@@ -133,6 +134,44 @@ function assertLegalAttacker(
   }
 }
 
+/** Sum every defender's per-attacking-creature taxes for this declaration. */
+function attackTaxTotals(
+  state: GameState,
+  attacks: CombatAttack[],
+): { generic: number; life: number } {
+  let generic = 0;
+  let life = 0;
+  for (const attack of attacks) {
+    const defender = state.players.find((player) => player.id === attack.defenderId);
+    if (!defender) {
+      continue;
+    }
+    for (const permanentId of defender.zones.battlefield) {
+      const permanent = state.cards[permanentId];
+      if (!permanent || permanent.controllerId !== defender.id) {
+        continue;
+      }
+      const tax = state.definitions[permanent.definitionId]?.attackTax;
+      if (!tax || abilitiesRemoved(state, permanentId)) {
+        continue;
+      }
+      generic += tax.generic ?? 0;
+      if (tax.perEnchantment) {
+        generic += defender.zones.battlefield.filter((id) => {
+          const card = state.cards[id];
+          return (
+            card &&
+            card.controllerId === defender.id &&
+            characteristicsOf(state, id).types.includes("enchantment")
+          );
+        }).length;
+      }
+      life += tax.lifePer ?? 0;
+    }
+  }
+  return { generic, life };
+}
+
 export function declareAttackers(state: GameState, playerId: PlayerId, attacks: CombatAttack[]): GameState {
   if (state.turn.step !== "declareAttackers") {
     throw new Error("Attackers can only be declared in the declare attackers step");
@@ -161,7 +200,32 @@ export function declareAttackers(state: GameState, playerId: PlayerId, attacks: 
     assertLegalAttacker(state, playerId, attack.attackerId, attack.defenderId);
   }
 
-  const next = cloneGameState(state);
+  // Pillow forts (Propaganda / Sphere of Safety / Norn's Annex): total the
+  // per-creature attack taxes of every defender and pay from the attacker's
+  // floating pool (float mana with tap_for_mana first) and life.
+  const tax = attackTaxTotals(state, attacks);
+  const attackerState = state.players.find((player) => player.id === playerId);
+  const taxCost = parseManaCost(tax.generic > 0 ? `{${tax.generic}}` : "");
+  if (tax.generic > 0 && (!attackerState || !canPayManaCost(attackerState.mana, taxCost))) {
+    throw new Error(
+      `Attacking costs {${tax.generic}} — float the mana before declaring attackers`,
+    );
+  }
+  if (tax.life > 0 && (!attackerState || attackerState.life < tax.life)) {
+    throw new Error(`Attacking costs ${tax.life} life`);
+  }
+
+  let next = cloneGameState(state);
+  if (tax.generic > 0) {
+    next = payManaCost(next, playerId, taxCost);
+  }
+  if (tax.life > 0) {
+    const payer = next.players.find((player) => player.id === playerId);
+    if (payer) {
+      payer.life -= tax.life;
+      next.log.push({ kind: "life_change", playerId, delta: -tax.life });
+    }
+  }
   ensureCombatInPlace(next);
   const combat = requireCombat(next);
   combat.attacks = attacks.map((attack) => ({ ...attack }));

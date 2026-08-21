@@ -79,6 +79,7 @@ export function createCardDefinition(
         | "entersWithXCounters"
         | "playLandsFromGraveyard"
         | "additionalCost"
+        | "attackTax"
         | "dynamicPt"
         | "modeChoice"
       >
@@ -252,6 +253,7 @@ export function createCardDefinition(
     ...(input.entersWithXCounters ? { entersWithXCounters: true } : {}),
     ...(input.playLandsFromGraveyard ? { playLandsFromGraveyard: true } : {}),
     ...(input.additionalCost ? { additionalCost: { ...input.additionalCost } } : {}),
+    ...(input.attackTax ? { attackTax: { ...input.attackTax } } : {}),
     ...(input.dynamicPt ? { dynamicPt: { count: input.dynamicPt.count } } : {}),
     ...(input.modeChoice ? { modeChoice: { ...input.modeChoice } } : {}),
     ...(input.costReductions && input.costReductions.length > 0

@@ -4759,3 +4759,133 @@ describe("wave 49: sacrifice costs and Fling", () => {
     expect(next.players.find((p) => p.id === p2.id)!.life).toBe(before - 4);
   });
 });
+
+describe("wave 50: pillow-fort attack taxes", () => {
+  const enchantBase = {
+    power: null,
+    toughness: null,
+    printedKeywords: [],
+    imageUrl: "",
+  };
+
+  it("compiles the pillow-fort staples fully", () => {
+    const propaganda = compileOracleCard({
+      ...enchantBase,
+      oracleId: "prop",
+      name: "Propaganda",
+      manaCost: "{2}{U}",
+      typeLine: "Enchantment",
+      oracleText:
+        "Creatures can't attack you unless their controller pays {2} for each creature they control that's attacking you.",
+    });
+    expect(propaganda.notes).toEqual([]);
+    expect(propaganda.definition.attackTax).toEqual({ generic: 2 });
+
+    const sphere = compileOracleCard({
+      ...enchantBase,
+      oracleId: "sphere",
+      name: "Sphere of Safety",
+      manaCost: "{4}{W}",
+      typeLine: "Enchantment",
+      oracleText:
+        "Creatures can't attack you or planeswalkers you control unless their controller pays {X} for each of those creatures, where X is the number of enchantments you control.",
+    });
+    expect(sphere.notes).toEqual([]);
+    expect(sphere.definition.attackTax).toEqual({ perEnchantment: true });
+
+    const annex = compileOracleCard({
+      ...enchantBase,
+      oracleId: "annex",
+      name: "Norn's Annex",
+      manaCost: "{3}{W/P}{W/P}",
+      typeLine: "Artifact",
+      oracleText:
+        "({W/P} can be paid with either {W} or 2 life.)\nCreatures can't attack you or planeswalkers you control unless their controller pays {W/P} for each of those creatures.",
+    });
+    expect(annex.notes).toEqual([]);
+    expect(annex.definition.attackTax).toEqual({ lifePer: 2 });
+  });
+
+  function fortGame(tax: { generic?: number; perEnchantment?: boolean; lifePer?: number }) {
+    const { game, p1, p2 } = twoPlayers();
+    const fortDef = createCardDefinition({
+      name: "Fort",
+      typeLine: "Enchantment",
+      attackTax: tax,
+    });
+    const bearDef = createCardDefinition({
+      name: "Bear",
+      typeLine: "Creature — Bear",
+      power: 2,
+      toughness: 2,
+    });
+    game.definitions[fortDef.id] = fortDef;
+    game.definitions[bearDef.id] = bearDef;
+    const fort = createCardInstance({ definitionId: fortDef.id, ownerId: p2.id, zone: "battlefield" });
+    const bear = createCardInstance({ definitionId: bearDef.id, ownerId: p1.id, zone: "battlefield" });
+    bear.summoningSick = false;
+    game.cards[fort.id] = fort;
+    game.cards[bear.id] = bear;
+    p2.zones.battlefield.push(fort.id);
+    p1.zones.battlefield.push(bear.id);
+    game.turn.step = "declareAttackers";
+    game.turn.activePlayerId = p1.id;
+    game.priorityPlayerId = p1.id;
+    return { game, p1, p2, bear, fortDef };
+  }
+
+  it("requires floated mana to attack past Propaganda", () => {
+    const { game, p1, p2, bear } = fortGame({ generic: 2 });
+    expect(() =>
+      applyAction(game, {
+        kind: "declare_attackers",
+        playerId: p1.id,
+        attacks: [{ attackerId: bear.id, defenderId: p2.id }],
+      }),
+    ).toThrow(/float the mana/);
+
+    game.players.find((p) => p.id === p1.id)!.mana.C = 2;
+    const next = applyAction(game, {
+      kind: "declare_attackers",
+      playerId: p1.id,
+      attacks: [{ attackerId: bear.id, defenderId: p2.id }],
+    });
+    expect(next.combat?.attacks).toHaveLength(1);
+    expect(next.players.find((p) => p.id === p1.id)!.mana.C).toBe(0);
+  });
+
+  it("scales Sphere of Safety with the defender's enchantments", () => {
+    const { game, p1, p2, bear, fortDef } = fortGame({ perEnchantment: true });
+    const second = createCardInstance({ definitionId: fortDef.id, ownerId: p2.id, zone: "battlefield" });
+    game.cards[second.id] = second;
+    game.players.find((p) => p.id === p2.id)!.zones.battlefield.push(second.id);
+
+    game.players.find((p) => p.id === p1.id)!.mana.C = 3;
+    // Two tax permanents, each charging one per enchantment (2) = 4 total.
+    expect(() =>
+      applyAction(game, {
+        kind: "declare_attackers",
+        playerId: p1.id,
+        attacks: [{ attackerId: bear.id, defenderId: p2.id }],
+      }),
+    ).toThrow(/float the mana/);
+    game.players.find((p) => p.id === p1.id)!.mana.C = 4;
+    const next = applyAction(game, {
+      kind: "declare_attackers",
+      playerId: p1.id,
+      attacks: [{ attackerId: bear.id, defenderId: p2.id }],
+    });
+    expect(next.combat?.attacks).toHaveLength(1);
+  });
+
+  it("charges Norn's Annex life", () => {
+    const { game, p1, p2, bear } = fortGame({ lifePer: 2 });
+    const before = game.players.find((p) => p.id === p1.id)!.life;
+    const next = applyAction(game, {
+      kind: "declare_attackers",
+      playerId: p1.id,
+      attacks: [{ attackerId: bear.id, defenderId: p2.id }],
+    });
+    expect(next.players.find((p) => p.id === p1.id)!.life).toBe(before - 2);
+  });
+});

@@ -206,6 +206,7 @@ function compileOneFace(card: OracleCard, definitionId: string): OracleCompileRe
     ...(compiled.storm ? { storm: true } : {}),
     ...(compiled.doesntUntap ? { doesntUntap: true } : {}),
     ...(compiled.grantsFlash ? { grantsFlash: true } : {}),
+    ...(compiled.attackTax ? { attackTax: { ...compiled.attackTax } } : {}),
     ...(compiled.extraDrawStepDraws ? { extraDrawStepDraws: true } : {}),
     ...(compiled.affinityArtifacts ? { affinityArtifacts: true } : {}),
     ...(compiled.affinityAllCreatures ? { affinityAllCreatures: true } : {}),
