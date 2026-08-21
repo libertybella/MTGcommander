@@ -504,6 +504,9 @@ export type GameEffect =
       keywords?: Keyword[];
       /** Bound from perControlled; total tokens before doubling. */
       count?: number;
+      /** Anim Pakal: count the source's counters when the effect applies. */
+      countFromCounters?: { cardId: CardInstanceId; counter: string };
+      entersTappedAttacking?: boolean;
     }
   | { kind: "mill"; playerId: PlayerId; count: number }
   | { kind: "discard"; playerId: PlayerId; count: number }
@@ -821,6 +824,12 @@ export type CardEffect =
       perControlled?: "land" | "creature" | "artifact";
       /** Mahadi: one token per creature that died this turn. */
       perDiedCreatures?: boolean;
+      /** Anim Pakal: one token per named counter on the source, counted when
+       * the effect applies (after earlier effects in the same batch). */
+      perSourceCounters?: string;
+      /** "tapped and attacking": joins the current combat against the first
+       * declared defender (a documented approximation). */
+      entersTappedAttacking?: boolean;
     }
   | { kind: "mill"; playerId: PlayerSelector; count: number }
   | { kind: "discard"; playerId: PlayerSelector; count: number }
@@ -1033,6 +1042,8 @@ export type CardTrigger = {
     nonToken?: boolean;
     /** "a creature token you control" (Curiosity Crafter). */
     tokenOnly?: boolean;
+    /** "non-Gnome creatures" (Anim Pakal). */
+    nonSubtypes?: string[];
   };
   effects: CardEffect[];
   /** Chosen when the trigger is put on the stack. Empty or omitted means untargeted. */

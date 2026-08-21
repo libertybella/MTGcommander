@@ -271,6 +271,11 @@ function subjectMatchesFilter(
   if (filter.tokenOnly && !state.cards[subjectId]?.isToken) {
     return false;
   }
+  for (const subtype of filter.nonSubtypes ?? []) {
+    if (cardMatchesSubtype(state, subjectId, subtype)) {
+      return false;
+    }
+  }
   for (const type of filter.types ?? []) {
     if (!traits.types.includes(type)) {
       return false;

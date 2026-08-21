@@ -377,7 +377,7 @@ export function bindCardEffect(
       if (!ownerId) {
         return null;
       }
-      const { perControlled, perDiedCreatures, ...tokenRest } = effect;
+      const { perControlled, perDiedCreatures, perSourceCounters, ...tokenRest } = effect;
       let count: number | undefined;
       if (perControlled) {
         count = Object.values(state.cards).filter(
@@ -400,6 +400,9 @@ export function bindCardEffect(
         ...tokenRest,
         ownerId,
         ...(count !== undefined ? { count } : {}),
+        ...(perSourceCounters && context.sourceId
+          ? { countFromCounters: { cardId: context.sourceId, counter: perSourceCounters } }
+          : {}),
       };
     }
     case "move_card": {
@@ -1304,8 +1307,15 @@ function applyCreateToken(
     throw new Error(`Unknown player ${effect.ownerId}`);
   }
   // Anointed Procession / Doubling Season (CR 614.1c): each doubler the
-  // token's controller controls doubles the batch.
-  const copies = (effect.count ?? 1) * tokenDoublingFactor(next, effect.ownerId);
+  // token's controller controls doubles the batch. Anim Pakal counts the
+  // source's counters here, after earlier effects in the batch applied.
+  const counterCount = effect.countFromCounters
+    ? next.cards[effect.countFromCounters.cardId]?.counters[effect.countFromCounters.counter] ?? 0
+    : undefined;
+  if (counterCount === 0) {
+    return next;
+  }
+  const copies = (counterCount ?? effect.count ?? 1) * tokenDoublingFactor(next, effect.ownerId);
   for (let index = 0; index < copies; index += 1) {
     const token = createCardInstance({
       definitionId: definition.id,
@@ -1319,6 +1329,17 @@ function applyCreateToken(
     owner.zones.battlefield.push(token.id);
     if (countCardPlacements(next, token.id) !== 1) {
       throw new Error(`Token zone integrity failed for ${token.id}`);
+    }
+    // "Tapped and attacking": join the ongoing combat against the first
+    // declared defender (a documented approximation of the attack choice).
+    if (effect.entersTappedAttacking && next.combat?.attackersDeclared) {
+      const defenderId = next.combat.attacks[0]?.defenderId;
+      if (defenderId) {
+        token.tapped = true;
+        token.attacking = true;
+        token.summoningSick = false;
+        next.combat.attacks.push({ attackerId: token.id, defenderId });
+      }
     }
     queueEnterBattlefieldTriggersInPlace(next, token.id);
     dispatchEventsInPlace(next, [{ kind: "creates_token", playerId: effect.ownerId }]);

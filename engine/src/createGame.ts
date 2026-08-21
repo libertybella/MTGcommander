@@ -129,6 +129,9 @@ export function createCardDefinition(
                   ...(trigger.subjectFilter.chosenSubtype ? { chosenSubtype: true } : {}),
                   ...(trigger.subjectFilter.nonToken ? { nonToken: true } : {}),
                   ...(trigger.subjectFilter.tokenOnly ? { tokenOnly: true } : {}),
+                  ...(trigger.subjectFilter.nonSubtypes
+                    ? { nonSubtypes: [...trigger.subjectFilter.nonSubtypes] }
+                    : {}),
                 },
               }
             : {}),

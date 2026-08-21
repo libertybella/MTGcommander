@@ -2099,6 +2099,30 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     };
   }
 
+  // Anim Pakal's body: the token count reads the counters AFTER the add.
+  const pakal = sentence.match(
+    /^put a \+1\/\+1 counter on ~, then create X (\d+)\/(\d+) colorless ([A-Za-z]+) artifact creature tokens that are tapped and attacking, where X is the number of \+1\/\+1 counters on ~$/i,
+  );
+  if (pakal?.[1] && pakal[2] && pakal[3]) {
+    const subtype = pakal[3][0]!.toUpperCase() + pakal[3].slice(1).toLowerCase();
+    return {
+      targetRequirements: [],
+      effects: [
+        { kind: "add_counter", cardId: "self", counter: "p1p1", amount: 1 },
+        {
+          kind: "create_token",
+          ownerId: "controller",
+          name: subtype,
+          typeLine: `Artifact Creature — ${subtype} Token`,
+          power: Number(pakal[1]),
+          toughness: Number(pakal[2]),
+          perSourceCounters: "p1p1",
+          entersTappedAttacking: true,
+        },
+      ],
+    };
+  }
+
   match = sentence.match(/^Put a \+1\/\+1 counter on ~$/i);
   if (match) {
     return {
@@ -2429,6 +2453,16 @@ function parseTriggerHead(head: string): TriggerHead | null {
       event: "deals_combat_damage_to_player",
       watch: "controlled",
       subjectFilter: { types: ["creature"] },
+      oncePerBatch: true,
+    };
+  }
+  // Anim Pakal: an attack-batch head with a non-<subtype> filter.
+  const nonTribalAttack = text.match(/^Whenever you attack with one or more non-([A-Za-z]+) creatures$/i);
+  if (nonTribalAttack?.[1]) {
+    return {
+      event: "attacks",
+      watch: "controlled",
+      subjectFilter: { types: ["creature"], nonSubtypes: [nonTribalAttack[1].toLowerCase()] },
       oncePerBatch: true,
     };
   }

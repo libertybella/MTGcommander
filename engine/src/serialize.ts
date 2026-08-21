@@ -1642,6 +1642,10 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
           ? { perControlled: value.perControlled }
           : {}),
         ...(value.perDiedCreatures === true ? { perDiedCreatures: true } : {}),
+        ...(value.perSourceCounters === undefined
+          ? {}
+          : { perSourceCounters: expectString(value.perSourceCounters, `${label}.perSourceCounters`) }),
+        ...(value.entersTappedAttacking === true ? { entersTappedAttacking: true } : {}),
       };
     case "move_card": {
       const toZone = expectString(value.toZone, `${label}.toZone`);
@@ -2157,6 +2161,13 @@ function parseTriggers(value: unknown, label: string): CardTrigger[] {
               ...(entry.subjectFilter.chosenSubtype === true ? { chosenSubtype: true } : {}),
               ...(entry.subjectFilter.nonToken === true ? { nonToken: true } : {}),
               ...(entry.subjectFilter.tokenOnly === true ? { tokenOnly: true } : {}),
+              ...(() => {
+                const nonSubtypes = parseStringList(
+                  entry.subjectFilter.nonSubtypes,
+                  `${label}[${index}].subjectFilter.nonSubtypes`,
+                );
+                return nonSubtypes.length > 0 ? { nonSubtypes } : {};
+              })(),
             };
           })();
     return {
@@ -2208,7 +2219,8 @@ function parseTriggers(value: unknown, label: string): CardTrigger[] {
         subjectFilter.nonTypes ||
         subjectFilter.chosenSubtype ||
         subjectFilter.nonToken ||
-        subjectFilter.tokenOnly)
+        subjectFilter.tokenOnly ||
+        subjectFilter.nonSubtypes)
         ? { subjectFilter }
         : {}),
       effects: parseCardEffects(entry.effects, `${label}[${index}].effects`),
@@ -3027,6 +3039,18 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
       ...(value.count === undefined
         ? {}
         : { count: expectNumber(value.count, `${label}.count`) }),
+      ...(isRecord(value.countFromCounters)
+        ? {
+            countFromCounters: {
+              cardId: expectString(value.countFromCounters.cardId, `${label}.countFromCounters.cardId`),
+              counter: expectString(
+                value.countFromCounters.counter,
+                `${label}.countFromCounters.counter`,
+              ),
+            },
+          }
+        : {}),
+      ...(value.entersTappedAttacking === true ? { entersTappedAttacking: true } : {}),
     };
   }
   if (kind === "deal_damage") {

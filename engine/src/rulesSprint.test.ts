@@ -7199,3 +7199,77 @@ describe("wave 82: venser bounce and life exchange", () => {
     expect(next.definitions[newTree.definitionId]?.toughness).toBe(40);
   });
 });
+
+describe("wave 83: anim pakal", () => {
+  it("compiles fully", () => {
+    const pakal = compileOracleCard({
+      oracleId: "pakal",
+      name: "Anim Pakal, Thousandth Moon",
+      manaCost: "{1}{R}{W}",
+      typeLine: "Legendary Creature — Human Soldier",
+      power: "1",
+      toughness: "3",
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "Whenever you attack with one or more non-Gnome creatures, put a +1/+1 counter on Anim Pakal, then create X 1/1 colorless Gnome artifact creature tokens that are tapped and attacking, where X is the number of +1/+1 counters on Anim Pakal.",
+    });
+    expect(pakal.notes).toEqual([]);
+    const trigger = pakal.definition.triggers[0];
+    expect(trigger?.oncePerBatch).toBe(true);
+    expect(trigger?.subjectFilter?.nonSubtypes).toEqual(["gnome"]);
+    const token = trigger?.effects[1];
+    expect(token?.kind === "create_token" && token.perSourceCounters).toBe("p1p1");
+  });
+
+  it("counts the counters after the add and joins the combat", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const pakalDef = createCardDefinition({
+      name: "Pakal Lite",
+      typeLine: "Creature — Human Soldier",
+      power: 1,
+      toughness: 3,
+    });
+    const bearDef = createCardDefinition({ name: "Bear", typeLine: "Creature — Bear", power: 2, toughness: 2 });
+    game.definitions[pakalDef.id] = pakalDef;
+    game.definitions[bearDef.id] = bearDef;
+    const pakal = createCardInstance({ definitionId: pakalDef.id, ownerId: p1.id, zone: "battlefield" });
+    const bear = createCardInstance({ definitionId: bearDef.id, ownerId: p1.id, zone: "battlefield" });
+    bear.summoningSick = false;
+    game.cards[pakal.id] = pakal;
+    game.cards[bear.id] = bear;
+    p1.zones.battlefield.push(pakal.id, bear.id);
+    pakal.counters["p1p1"] = 1;
+    game.combat = {
+      attacks: [{ attackerId: bear.id, defenderId: p2.id }],
+      blockers: {},
+      attackersDeclared: true,
+      declaredBlockersFor: [],
+    };
+
+    const bound = bindCardEffects(
+      game,
+      [
+        { kind: "add_counter", cardId: "self", counter: "p1p1", amount: 1 },
+        {
+          kind: "create_token",
+          ownerId: "controller",
+          name: "Gnome",
+          typeLine: "Artifact Creature — Gnome Token",
+          power: 1,
+          toughness: 1,
+          perSourceCounters: "p1p1",
+          entersTappedAttacking: true,
+        },
+      ],
+      { controllerId: p1.id, sourceId: pakal.id },
+    );
+    const next = applyEffects(game, bound);
+    const gnomes = Object.values(next.cards).filter((card) => card.isToken);
+    // 1 existing counter + 1 added = 2 gnomes, tapped and attacking.
+    expect(gnomes).toHaveLength(2);
+    expect(gnomes.every((gnome) => gnome.tapped && gnome.attacking)).toBe(true);
+    expect(next.combat?.attacks).toHaveLength(3);
+  });
+});
+
