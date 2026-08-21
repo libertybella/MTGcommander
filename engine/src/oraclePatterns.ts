@@ -1534,6 +1534,18 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     }
   }
 
+  // Etali: everyone's top card, castable free this turn.
+  if (
+    /^exile the top card of each player's library, then you may cast any number of spells from among (?:those cards|them) without paying their mana costs?$/i.test(
+      sentence,
+    )
+  ) {
+    return {
+      targetRequirements: [],
+      effects: [{ kind: "exile_top_play", playerId: "each_player", count: 1, freeCast: true }],
+    };
+  }
+
   // Impulse exiles (fused by fuseExilePlayInPlace): cast/play this turn,
   // paying costs as normal.
   if (/^impulse from your library$/i.test(sentence)) {

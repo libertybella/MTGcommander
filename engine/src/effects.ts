@@ -122,7 +122,8 @@ function expandEachOpponent(
     effect.kind === "draw" ||
     effect.kind === "add_mana" ||
     effect.kind === "mill" ||
-    effect.kind === "discard"
+    effect.kind === "discard" ||
+    effect.kind === "exile_top_play"
   ) {
     const players = eachOf(effect.playerId);
     if (players) {
@@ -725,6 +726,7 @@ export function bindCardEffect(
         playerId,
         casterId: context.controllerId,
         count: effect.count,
+        ...(effect.freeCast ? { freeCast: true } : {}),
       };
     }
     case "proliferate": {
@@ -2013,7 +2015,11 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
         for (const cardId of tops) {
           moveCardInPlace(next, cardId, "exile");
           const grants = next.exilePlayable ?? [];
-          grants.push({ cardId, casterId: effect.casterId });
+          grants.push({
+            cardId,
+            casterId: effect.casterId,
+            ...(effect.freeCast ? { freeCast: true } : {}),
+          });
           next.exilePlayable = grants;
         }
         break;

@@ -392,7 +392,7 @@ export type GameState = {
    * the listed player may cast or play this turn, paying costs as normal.
    * Cleared at cleanup.
    */
-  exilePlayable?: Array<{ cardId: CardInstanceId; casterId: PlayerId }>;
+  exilePlayable?: Array<{ cardId: CardInstanceId; casterId: PlayerId; freeCast?: boolean }>;
   /** Fog: no combat damage is dealt for the rest of this turn. */
   preventCombatDamage: boolean;
   /**
@@ -545,7 +545,13 @@ export type GameEffect =
       destination: "hand" | "battlefield" | "battlefield_tapped";
     }
   /** Populate: copy the controller's best creature token (auto-picked). */
-  | { kind: "exile_top_play"; playerId: PlayerId; casterId: PlayerId; count: number }
+  | {
+      kind: "exile_top_play";
+      playerId: PlayerId;
+      casterId: PlayerId;
+      count: number;
+      freeCast?: boolean;
+    }
   | { kind: "populate"; playerId: PlayerId }
   | { kind: "proliferate"; playerId: PlayerId }
   | {
@@ -849,8 +855,8 @@ export type CardEffect =
       destination: "hand" | "battlefield" | "battlefield_tapped";
     }
   /** Impulse: exile the top of the player's library; the effect's controller
-   * may cast or play those cards this turn. */
-  | { kind: "exile_top_play"; playerId: PlayerSelector; count: number }
+   * may cast or play those cards this turn (free when freeCast — Etali). */
+  | { kind: "exile_top_play"; playerId: PlayerSelector; count: number; freeCast?: boolean }
   | { kind: "populate"; playerId: PlayerSelector }
   | { kind: "proliferate"; playerId: PlayerSelector }
   | {

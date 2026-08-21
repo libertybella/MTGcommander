@@ -7022,3 +7022,53 @@ describe("wave 79: boseiju", () => {
     expect(isChosenTargetLegal(game, requirement, { type: "creature", cardId: own.id }, p1.id)).toBe(false);
   });
 });
+
+describe("wave 80: free multi-player impulses", () => {
+  it("compiles Etali, Primal Storm fully", () => {
+    const etali = compileOracleCard({
+      oracleId: "etali",
+      name: "Etali, Primal Storm",
+      manaCost: "{4}{R}{R}",
+      typeLine: "Legendary Creature — Elder Dinosaur",
+      power: "6",
+      toughness: "6",
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "Whenever Etali attacks, exile the top card of each player's library, then you may cast any number of spells from among those cards without paying their mana costs.",
+    });
+    expect(etali.notes).toEqual([]);
+    expect(etali.definition.triggers[0]?.effects[0]).toEqual({
+      kind: "exile_top_play",
+      playerId: "each_player",
+      count: 1,
+      freeCast: true,
+    });
+  });
+
+  it("free-casts an expensive exiled spell without mana", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const bombDef = createCardDefinition({ name: "Bomb", manaCost: "{5}{R}{R}", typeLine: "Sorcery" });
+    game.definitions[bombDef.id] = bombDef;
+    const bomb = createCardInstance({ definitionId: bombDef.id, ownerId: p2.id, zone: "library" });
+    game.cards[bomb.id] = bomb;
+    p2.zones.library.unshift(bomb.id);
+    game.turn.activePlayerId = p1.id;
+    game.turn.phase = "precombatMain";
+    game.turn.step = "precombatMain";
+    game.priorityPlayerId = p1.id;
+
+    const bound = bindCardEffects(
+      game,
+      [{ kind: "exile_top_play", playerId: "each_player", count: 1, freeCast: true }],
+      { controllerId: p1.id, sourceId: null },
+    );
+    let next = applyEffects(game, bound);
+    expect(next.cards[bomb.id]?.zone).toBe("exile");
+    // p1 casts the opponent's exiled bomb with zero mana floating.
+    next = applyAction(next, { kind: "cast_spell", playerId: p1.id, cardId: bomb.id });
+    expect(next.stack).toHaveLength(1);
+    next = resolveTopOfStack(next);
+    expect(next.cards[bomb.id]?.zone).toBe("graveyard");
+  });
+});

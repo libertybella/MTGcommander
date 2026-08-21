@@ -772,6 +772,7 @@ export function parseGameState(json: string): GameState {
               return {
                 cardId: expectString(entry.cardId, `exilePlayable[${index}].cardId`),
                 casterId: expectString(entry.casterId, `exilePlayable[${index}].casterId`),
+                ...(entry.freeCast === true ? { freeCast: true } : {}),
               };
             });
           })(),
@@ -1729,6 +1730,7 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
         kind,
         playerId: parsePlayerSelector(value.playerId, `${label}.playerId`),
         count: expectNumber(value.count, `${label}.count`),
+        ...(value.freeCast === true ? { freeCast: true } : {}),
       };
     case "untap_lands_up_to":
       return {
@@ -2922,6 +2924,7 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
       playerId: expectString(value.playerId, `${label}.playerId`),
       casterId: expectString(value.casterId, `${label}.casterId`),
       count: expectNumber(value.count, `${label}.count`),
+      ...(value.freeCast === true ? { freeCast: true } : {}),
     };
   }
   if (kind === "untap_lands_up_to") {

@@ -160,8 +160,14 @@ function validateCast(
   }
   // Flashback replaces the printed mana cost (CR 702.34a).
   const flashbackLife = viaFlashback ? definition.flashback?.life ?? 0 : 0;
+  // Etali: free-cast impulse exiles pay nothing.
+  const freeExileCast =
+    fromExile &&
+    state.exilePlayable?.some(
+      (entry) => entry.cardId === cardId && entry.casterId === playerId && entry.freeCast,
+    );
   const cost = parseManaCost(
-    viaFlashback ? definition.flashback?.manaCost ?? "" : definition.manaCost,
+    freeExileCast ? "" : viaFlashback ? definition.flashback?.manaCost ?? "" : definition.manaCost,
   );
   if (fromCommand) {
     cost.generic += player.commander.tax;

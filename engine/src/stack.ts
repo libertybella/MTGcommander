@@ -122,14 +122,13 @@ export function putSpellOnStack(
     located?.zone === "graveyard" &&
     Boolean(graveyardGate) &&
     controlsMatching(state, state.cards[cardId]?.controllerId ?? "", graveyardGate!);
-  // Impulse exiles: listed cards may be cast from exile this turn.
-  const fromExilePlay =
-    located?.zone === "exile" &&
-    Boolean(
-      state.exilePlayable?.some(
-        (entry) => entry.cardId === cardId && entry.casterId === card.controllerId,
-      ),
-    );
+  // Impulse exiles: listed cards may be cast from exile this turn — by the
+  // listed caster, who takes control of the spell (Etali steals casts).
+  const exileEntry =
+    located?.zone === "exile"
+      ? state.exilePlayable?.find((entry) => entry.cardId === cardId)
+      : undefined;
+  const fromExilePlay = Boolean(exileEntry);
   if (
     !located ||
     (located.zone !== "hand" &&
@@ -157,6 +156,9 @@ export function putSpellOnStack(
     throw new Error(`Card ${cardId} missing after leaving hand`);
   }
   moved.zone = "stack";
+  if (exileEntry) {
+    moved.controllerId = exileEntry.casterId;
+  }
   const stackId = createId("stack");
   next.stack.push({
     id: stackId,
