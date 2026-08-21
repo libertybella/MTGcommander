@@ -44,6 +44,7 @@ export type CompiledOracleText = {
   noMaxHandSize?: boolean;
   extraLandDrops?: number;
   cantBeCountered?: boolean;
+  freeIfCommander?: boolean;
   costReductions?: CostReduction[];
   chooseCreatureTypeOnEnter?: boolean;
   entersWithXCounters?: boolean;
@@ -2257,6 +2258,17 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
 
     if (/^This spell can't be countered$/i.test(sentence)) {
       result.cantBeCountered = true;
+      continue;
+    }
+
+    if (
+      /^If you control a commander, you may cast this spell without paying its mana cost$/i.test(
+        sentence,
+      )
+    ) {
+      // Documented approximation (RULES_COVERAGE.md): the free alternative
+      // cost is auto-taken whenever a commander is controlled.
+      result.freeIfCommander = true;
       continue;
     }
 

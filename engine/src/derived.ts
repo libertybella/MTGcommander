@@ -1,4 +1,4 @@
-import { characteristicsOf, isBasic, isCreature, isLand, isLegendary } from "./cardTypes";
+import { characteristicsOf, isBasic, isCommander, isCreature, isLand, isLegendary } from "./cardTypes";
 import { abilitiesRemoved, computedCard } from "./characteristicsEngine";
 import type { CardInstance, CardInstanceId, EnterTappedUnless, GameState } from "./types";
 
@@ -98,6 +98,17 @@ export function canPlayLandsFromGraveyard(state: GameState, playerId: string): b
     }
     return state.definitions[card.definitionId]?.playLandsFromGraveyard === true;
   });
+}
+
+/** "If you control a commander" (the free-spell cycle): any commander on the
+ * battlefield under this player's control, their own or a stolen one. */
+export function controlsCommander(state: GameState, playerId: string): boolean {
+  return Object.values(state.cards).some(
+    (card) =>
+      card.zone === "battlefield" &&
+      card.controllerId === playerId &&
+      isCommander(state, card.id),
+  );
 }
 
 /** CR 305.2: one land drop plus any extras granted by permanents (Exploration). */

@@ -2,7 +2,7 @@ import { declareAttackers, declareBlockers, lockRemainingBlockers, pendingBlocke
 import { abilitiesRemoved } from "./characteristicsEngine";
 import { isCommander, isCreature, isInstant, isInstantOrSorcery, isLand, isMainPhase } from "./cardTypes";
 import { cloneGameState } from "./clone";
-import { canPlayLandsFromGraveyard, castCostReduction, landDropAllowance } from "./derived";
+import { canPlayLandsFromGraveyard, castCostReduction, controlsCommander, landDropAllowance } from "./derived";
 import { eliminatePlayerInPlace } from "./elimination";
 import { applyEffects, bindCardEffects } from "./effects";
 import { hasKeyword } from "./keywords";
@@ -131,6 +131,11 @@ function validateCast(
   }
   // CR 601.2f: increases (tax) first, then static discounts, floor zero.
   cost.generic = Math.max(0, cost.generic - castCostReduction(state, playerId, definition));
+  // Free-spell cycle: the alternative cost is auto-taken (documented
+  // approximation) — the whole mana cost is skipped.
+  if (definition.freeIfCommander && controlsCommander(state, playerId)) {
+    return { cost: parseManaCost(""), fromCommand };
+  }
   if (!canPayManaCost(player.mana, cost, player.life)) {
     throw new Error("Cannot pay mana cost");
   }

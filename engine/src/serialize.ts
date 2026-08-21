@@ -317,6 +317,7 @@ export function parseGameState(json: string): GameState {
         ? {}
         : { extraLandDrops: expectNumber(def.extraLandDrops, `definition.${id}.extraLandDrops`) }),
       ...(def.cantBeCountered === true ? { cantBeCountered: true } : {}),
+      ...(def.freeIfCommander === true ? { freeIfCommander: true } : {}),
       ...(def.chooseCreatureTypeOnEnter === true ? { chooseCreatureTypeOnEnter: true } : {}),
       ...(def.entersWithXCounters === true ? { entersWithXCounters: true } : {}),
       ...(def.additionalCost === undefined

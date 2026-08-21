@@ -3,7 +3,7 @@ import { abilitiesRemoved } from "./characteristicsEngine";
 import { hasKeyword } from "./keywords";
 import { emptyManaPool } from "./createGame";
 import { pendingBlockerPlayer } from "./combat";
-import { canPlayLandsFromGraveyard, castCostReduction, landDropAllowance } from "./derived";
+import { canPlayLandsFromGraveyard, castCostReduction, controlsCommander, landDropAllowance } from "./derived";
 import { canPayManaCost, parseManaCost, type ParsedManaCost } from "./mana";
 import { manaAbilitiesFor, manaTapOptionsFor } from "./manaOptions";
 import { isMulliganOpen } from "./mulligan";
@@ -245,7 +245,8 @@ function castableFace(
   }
   cost.generic += extraGeneric;
   cost.generic = Math.max(0, cost.generic - castCostReduction(state, playerId, definition));
-  if (!canPayWithPotential(potential, cost)) {
+  const castsFree = definition.freeIfCommander === true && controlsCommander(state, playerId);
+  if (!castsFree && !canPayWithPotential(potential, cost)) {
     return false;
   }
   const additional = definition.additionalCost;

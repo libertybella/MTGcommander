@@ -64,6 +64,7 @@ export function createCardDefinition(
         | "noMaxHandSize"
         | "extraLandDrops"
         | "cantBeCountered"
+        | "freeIfCommander"
         | "costReductions"
         | "chooseCreatureTypeOnEnter"
         | "entersWithXCounters"
@@ -192,6 +193,7 @@ export function createCardDefinition(
       ? { extraLandDrops: input.extraLandDrops }
       : {}),
     ...(input.cantBeCountered ? { cantBeCountered: true } : {}),
+    ...(input.freeIfCommander ? { freeIfCommander: true } : {}),
     ...(input.chooseCreatureTypeOnEnter ? { chooseCreatureTypeOnEnter: true } : {}),
     ...(input.entersWithXCounters ? { entersWithXCounters: true } : {}),
     ...(input.playLandsFromGraveyard ? { playLandsFromGraveyard: true } : {}),

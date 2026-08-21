@@ -131,6 +131,12 @@ export type CardDefinition = {
   /** "This spell can't be countered" (Abrupt Decay). */
   cantBeCountered?: boolean;
   /**
+   * "If you control a commander, you may cast this spell without paying its
+   * mana cost" (the free-spell cycle). Documented approximation: the free
+   * alternative cost is auto-taken whenever the condition holds.
+   */
+  freeIfCommander?: boolean;
+  /**
    * "Artifact spells you cast cost {1} less to cast" (medallions, Foundry
    * Inspector). Applies to the controller's spells while on the battlefield;
    * only the generic portion shrinks, never below zero.

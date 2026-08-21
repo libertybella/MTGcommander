@@ -2522,3 +2522,73 @@ describe("wave 26: reveal lands (SOI/STX shape)", () => {
     expect(untapped.cards[second.id]?.tapped).toBe(false);
   });
 });
+
+describe("wave 27: free-spell cycle (cast free with a commander)", () => {
+  it("compiles Fierce Guardianship fully", () => {
+    const compiled = compileOracleCard({
+      oracleId: "fierce-guardianship",
+      name: "Fierce Guardianship",
+      manaCost: "{2}{U}",
+      typeLine: "Instant",
+      oracleText:
+        "If you control a commander, you may cast this spell without paying its mana cost.\nCounter target noncreature spell.",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+    });
+    expect(compiled.definition.freeIfCommander).toBe(true);
+    expect(compiled.definition.effects).toEqual([
+      { kind: "counter_spell", target: { type: "chosen", index: 0 } },
+    ]);
+    expect(compiled.notes).toEqual([]);
+  });
+
+  it("casts free with a commander on the battlefield, else needs mana", () => {
+    const { game, p1 } = twoPlayers();
+    const freeDef = createCardDefinition({
+      name: "Loyal Aid",
+      manaCost: "{2}{B}",
+      typeLine: "Instant",
+      freeIfCommander: true,
+      effects: [{ kind: "gain_life", playerId: "controller", amount: 2 }],
+    });
+    game.definitions[freeDef.id] = freeDef;
+    const spell = createCardInstance({ definitionId: freeDef.id, ownerId: p1.id, zone: "hand" });
+    game.cards[spell.id] = spell;
+    p1.zones.hand.push(spell.id);
+
+    // No commander, empty pool: the cast is refused.
+    expect(() =>
+      applyAction(game, { kind: "cast_spell", playerId: p1.id, cardId: spell.id, targets: [] }),
+    ).toThrow();
+
+    // Commander on the battlefield: same cast is free.
+    const cmdDef = createCardDefinition({
+      name: "General",
+      manaCost: "{1}{B}",
+      typeLine: "Legendary Creature - Human Soldier",
+      power: 2,
+      toughness: 2,
+    });
+    game.definitions[cmdDef.id] = cmdDef;
+    const commander = createCardInstance({
+      definitionId: cmdDef.id,
+      ownerId: p1.id,
+      zone: "battlefield",
+    });
+    game.cards[commander.id] = commander;
+    p1.zones.battlefield.push(commander.id);
+    p1.commander.commanderIds.push(commander.id);
+
+    const cast = applyAction(game, {
+      kind: "cast_spell",
+      playerId: p1.id,
+      cardId: spell.id,
+      targets: [],
+    });
+    expect(cast.stack).toHaveLength(1);
+    const resolved = resolveTopOfStack(cast);
+    expect(resolved.players[0]?.life).toBe(42);
+  });
+});
