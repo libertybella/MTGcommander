@@ -723,6 +723,8 @@ export type GameEffect =
   | { kind: "exile_return_end_step"; cardId: CardInstanceId; controllerId: PlayerId }
   /** Eerie Interlude: each card returns under its owner's control. */
   | { kind: "exile_return_end_step_all"; cardIds: CardInstanceId[] }
+  /** Adapt (CR 701.46): N +1/+1 counters if it has none. */
+  | { kind: "adapt"; cardId: CardInstanceId; amount: number }
   | { kind: "populate"; playerId: PlayerId }
   | { kind: "proliferate"; playerId: PlayerId }
   | {
@@ -1205,6 +1207,8 @@ export type CardEffect =
   /** Eerie Interlude: every chosen creature blinks out and returns to its
    * OWNER's battlefield at the next end step. */
   | { kind: "exile_return_end_step_all" }
+  /** Adapt (Evolution Witness). */
+  | { kind: "adapt"; cardId: CardIdSelector; amount: number }
   | { kind: "populate"; playerId: PlayerSelector }
   | { kind: "proliferate"; playerId: PlayerSelector }
   | {
@@ -1302,6 +1306,9 @@ export type CardEffect =
       entersTapped?: boolean;
       /** Fabled Passage: untap the fetched land when controlling this many. */
       untapIfLands?: number;
+      /** Traverse the Outlands: count = greatest power among the
+       * controller's creatures, read at bind. */
+      countFromGreatestPower?: boolean;
     }
   | { kind: "attach"; cardId: CardIdSelector; toId: ChosenTargetRef | CardInstanceId }
   | { kind: "transform"; cardId: CardIdSelector }
@@ -1522,6 +1529,9 @@ export type CardTrigger = {
     manaValueBelowWatcherPower?: boolean;
     /** counter_added triggers: only this counter name fires it. */
     counterName?: string;
+    /** "a colorless spell" / "another colorless creature" (Glaring
+     * Fleshraker): the subject must have no colors. */
+    colorless?: boolean;
   };
   effects: CardEffect[];
   /** Chosen when the trigger is put on the stack. Empty or omitted means untargeted. */
@@ -1790,6 +1800,9 @@ export type ActivatedAbility = {
   requiresControlled?: { types?: string[]; subtypes?: string[] };
   /** Idol of Oblivion: "Activate only if you created a token this turn." */
   requiresCreatedToken?: boolean;
+  /** Weathered Wayfarer: "Activate only if an opponent controls more lands
+   * than you." */
+  requiresOpponentMoreLands?: boolean;
   /** Kamigawa channel lands: {1} less per legendary creature you control. */
   legendaryDiscount?: boolean;
   /** "…: Choose one —" activations (Cankerbloom): the activation picks a

@@ -203,6 +203,21 @@ export function hasFlashGrant(state: GameState, playerId: string): boolean {
 }
 
 /** Affinity for artifacts: one generic less per artifact the caster controls. */
+/** Weathered Wayfarer / Land Tax: is any opponent ahead on lands? */
+export function opponentControlsMoreLands(state: GameState, playerId: string): boolean {
+  const landCount = (owner: string): number =>
+    Object.values(state.cards).filter(
+      (card) =>
+        card.zone === "battlefield" &&
+        card.controllerId === owner &&
+        characteristicsOf(state, card.id).types.includes("land"),
+    ).length;
+  const mine = landCount(playerId);
+  return state.players.some(
+    (player) => player.id !== playerId && !player.lost && landCount(player.id) > mine,
+  );
+}
+
 /** "This spell costs {X} less to cast, where X is …" (the self-discount
  * artifacts and Henges). Historic = artifact, legendary, or Saga (CR 700.4a). */
 export function selfDiscountAmount(

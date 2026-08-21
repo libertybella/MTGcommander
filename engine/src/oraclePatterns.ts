@@ -693,6 +693,26 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     };
   }
 
+  // Weathered Wayfarer: any land, to hand.
+  if (
+    /^Search your library for a land card, reveal it, put it into your hand, then shuffle$/i.test(
+      sentence,
+    )
+  ) {
+    return {
+      targetRequirements: [],
+      effects: [
+        {
+          kind: "search_library",
+          playerId: "controller",
+          filter: { types: ["land"] },
+          destination: "hand",
+          count: 1,
+        },
+      ],
+    };
+  }
+
   // Recruiter of the Guard / Ranger-Captain of Eos: capped creature tutors.
   const cappedTutor = sentence.match(
     /^(?:you may )?search your library for a creature card with (toughness|mana value) (\d+) or less, reveal it, put it into your hand, then shuffle$/i,
@@ -1562,6 +1582,42 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     };
   }
 
+  // Traverse the Outlands, fused.
+  if (/^traverse-basics to battlefield tapped$/i.test(sentence)) {
+    return {
+      targetRequirements: [],
+      effects: [
+        {
+          kind: "search_library",
+          playerId: "controller",
+          filter: { supertypes: ["basic"], types: ["land"] },
+          destination: "battlefield",
+          count: 0,
+          entersTapped: true,
+          countFromGreatestPower: true,
+        },
+      ],
+    };
+  }
+
+  // Adapt (CR 701.46 — Evolution Witness).
+  const adapt = sentence.match(/^Adapt (\d+)$/i);
+  if (adapt?.[1]) {
+    return {
+      targetRequirements: [],
+      effects: [{ kind: "adapt", cardId: "self", amount: Number(adapt[1]) }],
+    };
+  }
+
+  // Gingerbrute: the hasty-blocker exception is dropped — a documented
+  // approximation (unblockable this turn).
+  if (/^~ can't be blocked this turn except by creatures with haste$/i.test(sentence)) {
+    return {
+      targetRequirements: [],
+      effects: [{ kind: "restrict_until_eot", cardId: "self", cantBeBlocked: true }],
+    };
+  }
+
   // Karlach: everyone's attackers untap and swing again.
   if (/^untap all attacking creatures$/i.test(sentence)) {
     return {
@@ -2397,8 +2453,10 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
 
   // "You may create" is auto-taken (creating a token is never a downside a
   // casual table would decline) — a documented approximation.
+  // The quoted grant is accepted only for Eldrazi Spawn, whose ability the
+  // token preset supplies.
   match = sentence.match(
-    /^(?:You may )?Create (a|an|one|two|three|four|five|six|seven|eight|nine|ten|\d+) (\d+)\/(\d+)(?: (white|blue|black|red|green|colorless))? ([\w]+(?: [\w]+)?) creature tokens?( with [a-z ]+)?$/i,
+    /^(?:You may )?Create (a|an|one|two|three|four|five|six|seven|eight|nine|ten|\d+) (\d+)\/(\d+)(?: (white|blue|black|red|green|colorless))? ([\w]+(?: [\w]+)?) creature tokens?( with [a-z ]+| with "Sacrifice this token: Add \{C\}\.")?$/i,
   );
   if (match?.[1] && match[2] && match[3] && match[5]) {
     const count = parseCount(match[1]);
@@ -2407,14 +2465,16 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     const subtype = match[5].replace(/\b\w/g, (letter) => letter.toUpperCase());
     const keywordText = match[6]?.replace(/^ with /i, "");
     // "with prowess" (Monastery Mentor's Monks): prowess is not representable
-    // on a token definition — dropped, a documented approximation.
-    const keywords = keywordText
-      ? keywordText
-          .split(/ and |, /i)
-          .map((word) => word.trim().toLowerCase())
-          .filter((word) => word !== "prowess")
-          .map((word) => KEYWORD_GRANTS[word])
-      : [];
+    // on a token definition — dropped, a documented approximation. The quoted
+    // Eldrazi Spawn grant is supplied by the token preset instead.
+    const keywords =
+      keywordText && !keywordText.startsWith('"')
+        ? keywordText
+            .split(/ and |, /i)
+            .map((word) => word.trim().toLowerCase())
+            .filter((word) => word !== "prowess")
+            .map((word) => KEYWORD_GRANTS[word])
+        : [];
     if (count && keywords.every((keyword): keyword is Keyword => Boolean(keyword))) {
       const token: CardEffect = {
         kind: "create_token",
@@ -3836,6 +3896,24 @@ function fuseDrainPairInPlace(sentences: string[], lineStart: boolean[]): void {
   }
 }
 
+/** Traverse the Outlands: the greatest-power basic fetch, fused. */
+function fuseTraverseInPlace(sentences: string[], lineStart: boolean[]): void {
+  for (let index = 0; index + 1 < sentences.length; index += 1) {
+    if (lineStart[index + 1]) {
+      continue;
+    }
+    if (
+      /^Search your library for up to X basic land cards, where X is the greatest power among creatures you control$/i.test(
+        sentences[index]!,
+      ) &&
+      /^Put those cards onto the battlefield tapped, then shuffle$/i.test(sentences[index + 1]!)
+    ) {
+      sentences.splice(index, 2, "traverse-basics to battlefield tapped");
+      lineStart.splice(index + 1, 1);
+    }
+  }
+}
+
 /** Charming Prince: "Exile another target creature you own." + "Return it to
  * the battlefield under your control at the beginning of the next end step."
  * become one synthetic delayed-flicker sentence. */
@@ -4376,9 +4454,21 @@ function parseTriggerHead(head: string): TriggerHead | null {
   if (/^Whenever an opponent draws a card$/i.test(text)) {
     return { event: "opponent_draws" };
   }
-  // Fathom Mage.
-  if (/^Whenever a \+1\/\+1 counter is put on ~$/i.test(text)) {
+  // Fathom Mage / Evolution Witness.
+  if (/^Whenever (?:a|one or more) \+1\/\+1 counters? (?:is|are) put on ~$/i.test(text)) {
     return { event: "counter_added", subjectFilter: { counterName: "p1p1" } };
+  }
+  // Glaring Fleshraker.
+  if (/^Whenever you cast a colorless spell$/i.test(text)) {
+    return { event: "cast_spell", watch: "controlled", subjectFilter: { colorless: true } };
+  }
+  if (/^Whenever another colorless creature you control enters$/i.test(text)) {
+    return {
+      event: "enter_battlefield",
+      watch: "controlled",
+      excludeSelf: true,
+      subjectFilter: { types: ["creature"], colorless: true },
+    };
   }
   // Waste Not / Bone Miser.
   const discardWatch = text.match(
@@ -5178,6 +5268,7 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
   fuseBiteInPlace(sentences, lineStart);
   fuseD20TreasuresInPlace(sentences, lineStart);
   fuseExileReturnEndStepInPlace(sentences, lineStart);
+  fuseTraverseInPlace(sentences, lineStart);
   for (let index = 0; index < sentences.length; index += 1) {
     const sentence = sentences[index];
     if (!sentence) {
@@ -7406,6 +7497,18 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
       const last = result.activated[result.activated.length - 1];
       if (last && !last.timing) {
         last.timing = "sorcery";
+        continue;
+      }
+    }
+
+    // Weathered Wayfarer.
+    if (
+      /^Activate only if an opponent controls more lands than you$/i.test(sentence) &&
+      result.activated.length > 0
+    ) {
+      const last = result.activated[result.activated.length - 1];
+      if (last) {
+        last.requiresOpponentMoreLands = true;
         continue;
       }
     }

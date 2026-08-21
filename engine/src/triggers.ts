@@ -477,6 +477,10 @@ function subjectMatchesFilter(
       return false;
     }
   }
+  // Glaring Fleshraker: colorless subjects only.
+  if (filter.colorless && traits.colors.length > 0) {
+    return false;
+  }
   return true;
 }
 

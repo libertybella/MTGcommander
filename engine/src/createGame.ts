@@ -169,6 +169,7 @@ export function createCardDefinition(
                   ...(trigger.subjectFilter.counterName
                     ? { counterName: trigger.subjectFilter.counterName }
                     : {}),
+                  ...(trigger.subjectFilter.colorless ? { colorless: true } : {}),
                 },
               }
             : {}),
@@ -276,6 +277,7 @@ export function createCardDefinition(
           ...(ability.lifeCost && ability.lifeCost > 0 ? { lifeCost: ability.lifeCost } : {}),
           ...(ability.timing === "sorcery" ? { timing: "sorcery" as const } : {}),
           ...(ability.requiresCreatedToken ? { requiresCreatedToken: true } : {}),
+          ...(ability.requiresOpponentMoreLands ? { requiresOpponentMoreLands: true } : {}),
           ...(ability.requiresControlled
             ? {
                 requiresControlled: {

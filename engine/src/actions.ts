@@ -2,7 +2,7 @@ import { declareAttackers, declareBlockers, lockRemainingBlockers, pendingBlocke
 import { abilitiesRemoved } from "./characteristicsEngine";
 import { characteristicsOf, isCommander, isCreature, isInstant, isInstantOrSorcery, isLand, isLegendary, isMainPhase } from "./cardTypes";
 import { cloneGameState } from "./clone";
-import { affinityArtifactDiscount, allBattlefieldCreatureCount, canPlayLandFromTop, canPlayLandsFromGraveyard, castCostReduction, castableFromTop, controlsCommander, creaturePower, hasFlashGrant, landDropAllowance, lockedByAbolisher, lockedFromCasting, selfDiscountAmount } from "./derived";
+import { affinityArtifactDiscount, allBattlefieldCreatureCount, canPlayLandFromTop, canPlayLandsFromGraveyard, castCostReduction, castableFromTop, controlsCommander, creaturePower, hasFlashGrant, landDropAllowance, lockedByAbolisher, lockedFromCasting, opponentControlsMoreLands, selfDiscountAmount } from "./derived";
 import { eliminatePlayerInPlace } from "./elimination";
 import { applyEffects, bindCardEffects, devotionTo } from "./effects";
 import { hasKeyword } from "./keywords";
@@ -870,6 +870,10 @@ function applyActivateAbility(
   // Idol of Oblivion: gated on this turn's token creation.
   if (ability.requiresCreatedToken && !(state.createdTokenThisTurn ?? []).includes(playerId)) {
     throw new Error("Activate only if you created a token this turn");
+  }
+  // Weathered Wayfarer: gated on being behind on lands.
+  if (ability.requiresOpponentMoreLands && !opponentControlsMoreLands(state, playerId)) {
+    throw new Error("Activate only if an opponent controls more lands than you");
   }
   const levelUp = ability.effects.find((effect) => effect.kind === "set_class_level");
   if (levelUp?.kind === "set_class_level" && levelUp.level !== card.classLevel + 1) {

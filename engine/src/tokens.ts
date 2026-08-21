@@ -40,6 +40,21 @@ export function tokenPresetFor(typeLine: string): TokenPreset | null {
       ],
     };
   }
+  if (lower.includes("spawn")) {
+    return {
+      // Eldrazi Spawn: "Sacrifice this token: Add {C}."
+      manaAbilities: [
+        {
+          produces: { C: 1 },
+          producesOptions: [],
+          producesAnyColor: false,
+          damageToController: 0,
+          sacrificeSelf: true,
+          noTap: true,
+        },
+      ],
+    };
+  }
   if (lower.includes("food")) {
     return {
       // "{2}, {T}, Sacrifice this artifact: You gain 3 life."

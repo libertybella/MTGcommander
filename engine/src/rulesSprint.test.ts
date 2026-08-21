@@ -14476,3 +14476,170 @@ describe("wave 132: thrones, rage, and second winds", () => {
     expect(computedCard(game, channeler.id)?.power).toBe(3);
   });
 });
+
+describe("wave 133: wayfarers and witnesses", () => {
+  it("compiles the bucket fully", () => {
+    const wayfarer = compileOracleCard({
+      oracleId: "wayfarer",
+      name: "Weathered Wayfarer",
+      manaCost: "{W}",
+      typeLine: "Creature — Human Nomad Cleric",
+      power: "1",
+      toughness: "1",
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "{W}, {T}: Search your library for a land card, reveal it, put it into your hand, then shuffle. Activate only if an opponent controls more lands than you.",
+    });
+    expect(wayfarer.notes).toEqual([]);
+    expect(wayfarer.definition.activated[0]?.requiresOpponentMoreLands).toBe(true);
+
+    const witness = compileOracleCard({
+      oracleId: "witness",
+      name: "Evolution Witness",
+      manaCost: "{2}{G}",
+      typeLine: "Creature — Elf Shaman",
+      power: "2",
+      toughness: "1",
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "{1}{G}: Adapt 2. (If this creature has no +1/+1 counters on it, put two +1/+1 counters on it.)\nWhenever one or more +1/+1 counters are put on this creature, return target permanent card from your graveyard to your hand.",
+    });
+    expect(witness.notes).toEqual([]);
+    expect(witness.definition.activated[0]?.effects).toEqual([
+      { kind: "adapt", cardId: "self", amount: 2 },
+    ]);
+    expect(witness.definition.triggers[0]?.event).toBe("counter_added");
+
+    const fleshraker = compileOracleCard({
+      oracleId: "fleshraker",
+      name: "Glaring Fleshraker",
+      manaCost: "{3}",
+      typeLine: "Creature — Eldrazi Drone",
+      power: "3",
+      toughness: "3",
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        'Whenever you cast a colorless spell, create a 0/1 colorless Eldrazi Spawn creature token with "Sacrifice this token: Add {C}."\nWhenever another colorless creature you control enters, this creature deals 1 damage to each opponent.',
+    });
+    expect(fleshraker.notes).toEqual([]);
+    expect(fleshraker.definition.triggers[0]?.subjectFilter?.colorless).toBe(true);
+    expect(fleshraker.definition.triggers[0]?.effects[0]).toMatchObject({
+      kind: "create_token",
+      name: "Eldrazi Spawn",
+    });
+
+    const traverse = compileOracleCard({
+      oracleId: "traverse",
+      name: "Traverse the Outlands",
+      manaCost: "{4}{G}",
+      typeLine: "Sorcery",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "Search your library for up to X basic land cards, where X is the greatest power among creatures you control. Put those cards onto the battlefield tapped, then shuffle.",
+    });
+    expect(traverse.notes).toEqual([]);
+    expect(traverse.definition.effects[0]).toMatchObject({
+      kind: "search_library",
+      destination: "battlefield",
+      entersTapped: true,
+      countFromGreatestPower: true,
+    });
+
+    const gingerbrute = compileOracleCard({
+      oracleId: "gingerbrute",
+      name: "Gingerbrute",
+      manaCost: "{1}",
+      typeLine: "Artifact Creature — Food Golem",
+      power: "1",
+      toughness: "1",
+      printedKeywords: ["Haste"],
+      imageUrl: "",
+      oracleText:
+        "Haste (This creature can attack and {T} as soon as it comes under your control.)\n{1}: This creature can't be blocked this turn except by creatures with haste.\n{2}, {T}, Sacrifice this creature: You gain 3 life.",
+    });
+    expect(gingerbrute.notes).toEqual([]);
+  });
+
+  it("adapts only once and gates the land tutor on being behind", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 10);
+    const witnessDef = createCardDefinition({
+      name: "Witness",
+      typeLine: "Creature — Elf Shaman",
+      power: 2,
+      toughness: 1,
+      activated: [
+        {
+          tap: false,
+          manaCost: "{1}",
+          effects: [{ kind: "adapt", cardId: "self", amount: 2 }],
+          targetRequirements: [],
+        },
+      ],
+    });
+    game.definitions[witnessDef.id] = witnessDef;
+    const witness = createCardInstance({ definitionId: witnessDef.id, ownerId: p1.id, zone: "battlefield" });
+    witness.summoningSick = false;
+    game.cards[witness.id] = witness;
+    p1.zones.battlefield.push(witness.id);
+
+    // First adapt lands two counters; a second adapt is a no-op.
+    let next = applyEffects(game, [{ kind: "adapt", cardId: witness.id, amount: 2 }]);
+    expect(next.cards[witness.id]?.counters["p1p1"]).toBe(2);
+    next = applyEffects(next, [{ kind: "adapt", cardId: witness.id, amount: 2 }]);
+    expect(next.cards[witness.id]?.counters["p1p1"]).toBe(2);
+
+    // Wayfarer's gate: even lands, no activation; opponent ahead, it opens.
+    const landDef = createCardDefinition({ name: "Plains", typeLine: "Basic Land — Plains" });
+    game.definitions[landDef.id] = landDef;
+    const theirLand = createCardInstance({ definitionId: landDef.id, ownerId: p2.id, zone: "battlefield" });
+    game.cards[theirLand.id] = theirLand;
+    p2.zones.battlefield.push(theirLand.id);
+    const gatedDef = createCardDefinition({
+      name: "Wayfarer",
+      typeLine: "Creature — Human Nomad",
+      power: 1,
+      toughness: 1,
+      activated: [
+        {
+          tap: true,
+          manaCost: "{W}",
+          requiresOpponentMoreLands: true,
+          effects: [
+            {
+              kind: "search_library",
+              playerId: "controller",
+              filter: { types: ["land"] },
+              destination: "hand",
+              count: 1,
+            },
+          ],
+          targetRequirements: [],
+        },
+      ],
+    });
+    game.definitions[gatedDef.id] = gatedDef;
+    const gated = createCardInstance({ definitionId: gatedDef.id, ownerId: p1.id, zone: "battlefield" });
+    gated.summoningSick = false;
+    game.cards[gated.id] = gated;
+    p1.zones.battlefield.push(gated.id);
+    game.priorityPlayerId = p1.id;
+    p1.mana.W = 1;
+
+    // The opponent has one land, we have none: the gate is open.
+    let activated = applyAction(game, {
+      kind: "activate_ability",
+      playerId: p1.id,
+      cardId: gated.id,
+      abilityIndex: 0,
+    });
+    activated = resolveTopOfStack(activated);
+    expect(activated.prompts[0]?.kind).toBe("search_library");
+  });
+});

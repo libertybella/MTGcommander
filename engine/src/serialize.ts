@@ -2260,6 +2260,12 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
       };
     case "exile_return_end_step_all":
       return { kind };
+    case "adapt":
+      return {
+        kind,
+        cardId: parseCardIdSelector(value.cardId, `${label}.cardId`),
+        amount: expectNumber(value.amount, `${label}.amount`),
+      };
     case "untap_lands_up_to":
       return {
         kind,
@@ -2444,6 +2450,7 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
         destination: parseSearchDestination(value.destination, `${label}.destination`),
         count: expectNumber(value.count, `${label}.count`),
         ...(value.entersTapped === true ? { entersTapped: true } : {}),
+        ...(value.countFromGreatestPower === true ? { countFromGreatestPower: true } : {}),
         ...(value.untapIfLands === undefined
           ? {}
           : { untapIfLands: expectNumber(value.untapIfLands, `${label}.untapIfLands`) }),
@@ -2695,6 +2702,7 @@ function parseActivatedAbilities(value: unknown, label: string): ActivatedAbilit
           }),
       ...(entry.exileSelf === true ? { exileSelf: true } : {}),
       ...(entry.legendaryDiscount === true ? { legendaryDiscount: true } : {}),
+      ...(entry.requiresOpponentMoreLands === true ? { requiresOpponentMoreLands: true } : {}),
       ...(entry.modes === undefined
         ? {}
         : { modes: parseSpellModes(entry.modes, `${label}[${index}].modes`) }),
@@ -2854,6 +2862,7 @@ function parseTriggers(value: unknown, label: string): CardTrigger[] {
                       `${label}[${index}].subjectFilter.counterName`,
                     ),
                   }),
+              ...(entry.subjectFilter.colorless === true ? { colorless: true } : {}),
               ...(() => {
                 const nonSubtypes = parseStringList(
                   entry.subjectFilter.nonSubtypes,
@@ -3949,6 +3958,13 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
   }
   if (kind === "exile_return_end_step_all") {
     return { kind, cardIds: expectStringArray(value.cardIds, `${label}.cardIds`) };
+  }
+  if (kind === "adapt") {
+    return {
+      kind,
+      cardId: expectString(value.cardId, `${label}.cardId`),
+      amount: expectNumber(value.amount, `${label}.amount`),
+    };
   }
   if (kind === "untap_lands_up_to") {
     return {

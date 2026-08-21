@@ -3,7 +3,7 @@ import { abilitiesRemoved, cardMatchesSubtype } from "./characteristicsEngine";
 import { hasKeyword } from "./keywords";
 import { emptyManaPool } from "./createGame";
 import { pendingBlockerPlayer } from "./combat";
-import { affinityArtifactDiscount, allBattlefieldCreatureCount, canPlayLandsFromGraveyard, castCostReduction, controlsCommander, hasFlashGrant, landDropAllowance, lockedByAbolisher, lockedFromCasting, selfDiscountAmount, topOfLibraryGrant } from "./derived";
+import { affinityArtifactDiscount, allBattlefieldCreatureCount, canPlayLandsFromGraveyard, castCostReduction, controlsCommander, hasFlashGrant, landDropAllowance, lockedByAbolisher, lockedFromCasting, opponentControlsMoreLands, selfDiscountAmount, topOfLibraryGrant } from "./derived";
 import { canPayManaCost, parseManaCost, type ParsedManaCost } from "./mana";
 import { colorsAmongControlled, manaAbilitiesFor, manaTapOptionsFor } from "./manaOptions";
 import { isMulliganOpen } from "./mulligan";
@@ -359,6 +359,9 @@ function abilityUsable(
     return false;
   }
   if (ability.requiresCreatedToken && !(state.createdTokenThisTurn ?? []).includes(playerId)) {
+    return false;
+  }
+  if (ability.requiresOpponentMoreLands && !opponentControlsMoreLands(state, playerId)) {
     return false;
   }
   if (ability.tap) {

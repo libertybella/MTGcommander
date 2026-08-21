@@ -936,7 +936,20 @@ export function bindCardEffect(
           ...(maxManaValueX ? { maxManaValue: context.xValue ?? 0 } : {}),
         },
         destination: effect.destination,
-        count: effect.count,
+        // Traverse the Outlands: X = greatest power, read at bind.
+        count: effect.countFromGreatestPower
+          ? Math.max(
+              0,
+              ...Object.values(state.cards)
+                .filter(
+                  (card) =>
+                    card.zone === "battlefield" &&
+                    card.controllerId === context.controllerId &&
+                    isCreature(state, card.id),
+                )
+                .map((card) => creaturePower(state, card.id)),
+            )
+          : effect.count,
         ...(effect.entersTapped ? { entersTapped: true } : {}),
         ...(effect.untapIfLands !== undefined ? { untapIfLands: effect.untapIfLands } : {}),
       };
@@ -1270,6 +1283,13 @@ export function bindCardEffect(
         cardId: chosen.cardId,
         controllerId: context.controllerId,
       };
+    }
+    case "adapt": {
+      const cardId = bindCardId(state, effect.cardId, context);
+      if (!cardId) {
+        return null;
+      }
+      return { kind: "adapt", cardId, amount: effect.amount };
     }
     case "exile_return_end_step_all": {
       // Eerie Interlude: every chosen creature target.
@@ -3202,6 +3222,16 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
             controllerId: effect.controllerId,
           });
         }
+        break;
+      }
+      case "adapt": {
+        // CR 701.46: only a counterless creature adapts.
+        const adapter = state.cards[effect.cardId];
+        if (!adapter || adapter.zone !== "battlefield" || (adapter.counters["p1p1"] ?? 0) > 0) {
+          next = cloneGameState(state);
+          break;
+        }
+        next = applyAddCounter(state, effect.cardId, "p1p1", effect.amount);
         break;
       }
       case "exile_return_end_step_all": {

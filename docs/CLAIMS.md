@@ -61,7 +61,7 @@ Statuses: `open` · `claimed` · `in-progress` · `done` · `blocked`
 | Dynamic self-discounts (Colossus/Henge quartet) | E | done | claude/2daf8b18 | comprehensive-plan | 2026-08-21 | Wave 128 merged: all four discounts compile; Great Henge + Excalibur flip (914/2,009 = 45.5%). Colossus still needs a graveyard sac-2 activation, Skullspore a dies-batch-total token — both rows below |
 | Phyrexian mana payment | E | open | | | | Unblocks Drivnod's activated ability |
 | Bolas's Citadel | E | open | | | | |
-| One-away grinding (rotating buckets) | F | in-progress | claude/2daf8b18 | comprehensive-plan | 2026-08-21 | Wave 133 bucket: Weathered Wayfarer, Gingerbrute, Glaring Fleshraker, Traverse the Outlands, Evolution Witness (adapt). Other buckets open |
+| One-away grinding (rotating buckets) | F | open | | | 2026-08-21 | Wave 133 bucket done (5 flips: Wayfarer, Gingerbrute, Fleshraker, Traverse, Evolution Witness — 934/2,009 = 46.5%). Next buckets open |
 
 ## Done
 
