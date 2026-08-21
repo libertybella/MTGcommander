@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { applyAction } from "./actions";
 import { isCreature } from "./cardTypes";
+import { controlsCommander } from "./derived";
 import { hasKeyword } from "./keywords";
 import { legalActions, sacrificeScopeMatches } from "./legalActions";
 import { canPayManaCost } from "./mana";
@@ -256,7 +257,11 @@ function nextAction(state: GameState, rng: () => number): GameAction | null {
               randomTargets(state, mode.targetRequirements, playerId, rng) !== null,
           );
         if (definition.modeChoice) {
-          const { min, max } = definition.modeChoice;
+          const { min, maxIfCommander } = definition.modeChoice;
+          const max =
+            maxIfCommander !== undefined && controlsCommander(state, playerId)
+              ? maxIfCommander
+              : definition.modeChoice.max;
           if (castable.length < min) {
             return { kind: "pass_priority", playerId };
           }

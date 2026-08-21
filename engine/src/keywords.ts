@@ -1,5 +1,5 @@
 import { computedCard } from "./characteristicsEngine";
-import type { CardInstanceId, GameState, Keyword } from "./types";
+import type { CardInstanceId, Color, GameState, Keyword } from "./types";
 
 /**
  * A card's current keywords. Battlefield objects go through the layer engine
@@ -19,4 +19,19 @@ export function cardKeywords(state: GameState, cardId: CardInstanceId): Keyword[
 
 export function hasKeyword(state: GameState, cardId: CardInstanceId, keyword: Keyword): boolean {
   return cardKeywords(state, cardId).includes(keyword);
+}
+
+/**
+ * The colors a card has protection from: printed protection plus layer-6
+ * grants ("gain protection from each color") for battlefield objects.
+ */
+export function protectionColorsOf(state: GameState, cardId: CardInstanceId): Color[] {
+  const card = state.cards[cardId];
+  if (!card) {
+    return [];
+  }
+  if (card.zone === "battlefield") {
+    return computedCard(state, cardId)?.protectionFrom ?? [];
+  }
+  return state.definitions[card.definitionId]?.protectionFrom ?? [];
 }

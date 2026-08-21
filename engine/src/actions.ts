@@ -323,7 +323,12 @@ function applyCastSpell(
     }
   }
   if (definition?.modes && definition.modes.length > 0 && definition.modeChoice) {
-    const { min, max } = definition.modeChoice;
+    const { min, maxIfCommander } = definition.modeChoice;
+    // "you may choose both instead" while you control a commander.
+    const max =
+      maxIfCommander !== undefined && controlsCommander(faced, playerId)
+        ? maxIfCommander
+        : definition.modeChoice.max;
     const chosen = modeIndexes ?? (modeIndex !== undefined ? [modeIndex] : []);
     if (
       chosen.length < min ||

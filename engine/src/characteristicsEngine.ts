@@ -2,6 +2,7 @@ import type {
   CardCharacteristics,
   CardInstance,
   CardInstanceId,
+  Color,
   ContinuousEffectData,
   DynamicCount,
   EffectSelector,
@@ -43,6 +44,8 @@ export type ComputedCard = {
   cantAttack: boolean;
   cantBlock: boolean;
   cantBeBlocked: boolean;
+  /** Printed protection plus layer-6 grants (Akroma's Will). */
+  protectionFrom: Color[];
 };
 
 type EffectInstance = {
@@ -59,6 +62,7 @@ const LAYER_OF: Record<ContinuousEffectData["kind"], number> = {
   add_types: 4,
   set_colors: 5,
   grant_keyword: 6,
+  grant_protection: 6,
   grant_mana_ability: 6,
   remove_all_abilities: 6,
   restrict: 6,
@@ -87,6 +91,7 @@ function baseComputed(state: GameState, card: CardInstance): ComputedCard {
       cantAttack: false,
       cantBlock: false,
       cantBeBlocked: false,
+      protectionFrom: [],
     };
   }
   const definition = state.definitions[card.definitionId];
@@ -118,6 +123,7 @@ function baseComputed(state: GameState, card: CardInstance): ComputedCard {
     cantAttack: false,
     cantBlock: false,
     cantBeBlocked: false,
+    protectionFrom: [...(definition?.protectionFrom ?? [])],
   };
 }
 
@@ -354,6 +360,13 @@ function applyInstance(
           computed.keywords.push(effect.keyword);
         }
         break;
+      case "grant_protection":
+        for (const color of effect.colors) {
+          if (!computed.protectionFrom.includes(color)) {
+            computed.protectionFrom.push(color);
+          }
+        }
+        break;
       case "grant_mana_ability":
         computed.grantedMana.push({ ...effect.ability });
         break;
@@ -362,6 +375,7 @@ function applyInstance(
         computed.abilitiesRemoved = true;
         computed.grantedMana = [];
         computed.allCreatureTypes = false;
+        computed.protectionFrom = [];
         break;
       case "restrict": {
         // Wayward Swordtooth: the restriction lifts with the city's blessing.

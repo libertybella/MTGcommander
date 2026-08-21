@@ -7414,3 +7414,178 @@ describe("wave 84: modal staples", () => {
   });
 });
 
+describe("wave 85: commander wills", () => {
+  it("compiles Jeska's Will fully", () => {
+    const will = compileOracleCard({
+      oracleId: "jeska",
+      name: "Jeska's Will",
+      manaCost: "{2}{R}",
+      typeLine: "Sorcery",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "Choose one. If you control a commander as you cast this spell, you may choose both instead.\n• Add {R} for each card in target opponent's hand.\n• Exile the top three cards of your library. You may play them this turn.",
+    });
+    expect(will.notes).toEqual([]);
+    expect(will.definition.modeChoice).toEqual({ min: 1, max: 1, maxIfCommander: 2 });
+    const mana = will.definition.modes?.[0]?.effects[0];
+    expect(mana?.kind === "add_mana" && mana.perChosenPlayerHand).toBe(true);
+    expect(will.definition.modes?.[0]?.targetRequirements).toEqual([{ kind: "opponent" }]);
+    const impulse = will.definition.modes?.[1]?.effects[0];
+    expect(impulse?.kind === "exile_top_play" && impulse.count).toBe(3);
+  });
+
+  it("compiles Akroma's Will fully", () => {
+    const will = compileOracleCard({
+      oracleId: "akroma",
+      name: "Akroma's Will",
+      manaCost: "{3}{W}",
+      typeLine: "Instant",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "Choose one. If you control a commander as you cast this spell, you may choose both instead.\n• Creatures you control gain flying, vigilance, and double strike until end of turn.\n• Creatures you control gain lifelink, indestructible, and protection from each color until end of turn.",
+    });
+    expect(will.notes).toEqual([]);
+    expect(will.definition.modeChoice).toEqual({ min: 1, max: 1, maxIfCommander: 2 });
+    expect(will.definition.modes?.[0]?.effects).toHaveLength(3);
+    const protection = will.definition.modes?.[1]?.effects[2];
+    expect(protection?.kind === "team_protection_until_eot" && protection.colors).toEqual([
+      "W",
+      "U",
+      "B",
+      "R",
+      "G",
+    ]);
+  });
+
+  it("allows both modes only while you control a commander", () => {
+    const { game, p1 } = twoPlayers();
+    game.turn.phase = "precombatMain";
+    game.turn.step = "precombatMain";
+    const will = createCardDefinition({
+      name: "Test Will",
+      manaCost: "",
+      typeLine: "Sorcery",
+      modeChoice: { min: 1, max: 1, maxIfCommander: 2 },
+      modes: [
+        {
+          label: "gain 2",
+          effects: [{ kind: "gain_life", playerId: "controller", amount: 2 }],
+          targetRequirements: [],
+        },
+        {
+          label: "gain 5",
+          effects: [{ kind: "gain_life", playerId: "controller", amount: 5 }],
+          targetRequirements: [],
+        },
+      ],
+    });
+    game.definitions[will.id] = will;
+    const card = createCardInstance({ definitionId: will.id, ownerId: p1.id, zone: "hand" });
+    game.cards[card.id] = card;
+    p1.zones.hand.push(card.id);
+
+    expect(() =>
+      applyAction(game, {
+        kind: "cast_spell",
+        playerId: p1.id,
+        cardId: card.id,
+        targets: [],
+        modeIndexes: [0, 1],
+      }),
+    ).toThrow();
+
+    const generalDef = createCardDefinition({
+      name: "General",
+      typeLine: "Legendary Creature — Human Soldier",
+      power: 2,
+      toughness: 2,
+    });
+    game.definitions[generalDef.id] = generalDef;
+    const general = createCardInstance({
+      definitionId: generalDef.id,
+      ownerId: p1.id,
+      zone: "battlefield",
+    });
+    game.cards[general.id] = general;
+    p1.zones.battlefield.push(general.id);
+    p1.commander.commanderIds.push(general.id);
+
+    const cast = applyAction(game, {
+      kind: "cast_spell",
+      playerId: p1.id,
+      cardId: card.id,
+      targets: [],
+      modeIndexes: [0, 1],
+    });
+    const resolved = resolveTopOfStack(cast);
+    expect(resolved.players[0]?.life).toBe(47);
+  });
+
+  it("granted protection blocks targeting and color-matched sweeps", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const bearDef = createCardDefinition({ name: "Bear", typeLine: "Creature — Bear", power: 2, toughness: 2 });
+    const boltDef = createCardDefinition({ name: "Bolt Source", manaCost: "{R}", typeLine: "Creature — Elemental", power: 1, toughness: 1 });
+    game.definitions[bearDef.id] = bearDef;
+    game.definitions[boltDef.id] = boltDef;
+    const bear = createCardInstance({ definitionId: bearDef.id, ownerId: p1.id, zone: "battlefield" });
+    const bolt = createCardInstance({ definitionId: boltDef.id, ownerId: p2.id, zone: "battlefield" });
+    game.cards[bear.id] = bear;
+    game.cards[bolt.id] = bolt;
+    p1.zones.battlefield.push(bear.id);
+    p2.zones.battlefield.push(bolt.id);
+
+    const shielded = applyEffect(game, {
+      kind: "team_protection_until_eot",
+      playerId: p1.id,
+      colors: ["W", "U", "B", "R", "G"],
+    });
+    expect(
+      isChosenTargetLegal(
+        shielded,
+        { kind: "creature" },
+        { type: "creature", cardId: bear.id },
+        p2.id,
+        ["R"],
+      ),
+    ).toBe(false);
+
+    const swept = applyEffect(shielded, {
+      kind: "damage_all",
+      sourceId: bolt.id,
+      amount: 5,
+    });
+    expect(swept.cards[bear.id]?.zone).toBe("battlefield");
+    expect(swept.cards[bolt.id]?.zone).toBe("graveyard");
+  });
+
+  it("multiplies Jeska mana by the chosen opponent's hand", () => {
+    const { game, p1, p2 } = twoPlayers();
+    addHandCards(game, p2, 3);
+    const bound = bindCardEffects(
+      game,
+      [
+        {
+          kind: "add_mana",
+          playerId: "controller",
+          mana: { R: 1 },
+          perChosenPlayerHand: true,
+        },
+      ],
+      {
+        controllerId: p1.id,
+        sourceId: null,
+        targets: [{ type: "player", playerId: p2.id }],
+        targetRequirements: [{ kind: "opponent" }],
+      },
+    );
+    const next = applyEffects(game, bound);
+    expect(next.players.find((player) => player.id === p1.id)?.mana.R).toBe(3);
+  });
+});
+

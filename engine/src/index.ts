@@ -27,7 +27,7 @@ export { declareAttackers, declareBlockers, lockRemainingBlockers, priorityForSt
 export { applyEffect, applyEffects, bindCardEffect, bindCardEffects } from "./effects";
 export type { BindEffectContext } from "./effects";
 export { hasKeyword } from "./keywords";
-export { topOfLibraryGrant, wouldSkipDraw, wouldEnterTapped } from "./derived";
+export { controlsCommander, topOfLibraryGrant, wouldSkipDraw, wouldEnterTapped } from "./derived";
 export {
   testBear,
   testBlankInstant,

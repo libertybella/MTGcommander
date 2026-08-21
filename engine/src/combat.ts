@@ -2,7 +2,7 @@ import { cloneGameState } from "./clone";
 import { characteristicsOf, isCommander, isCreature } from "./cardTypes";
 import { abilitiesRemoved, computedCard } from "./characteristicsEngine";
 import { creaturePower, creatureToughness } from "./derived";
-import { hasKeyword } from "./keywords";
+import { hasKeyword, protectionColorsOf } from "./keywords";
 import { canPayManaCost, parseManaCost, payManaCost } from "./mana";
 import { isLiving, nextLivingPlayerId } from "./players";
 import { applyStateBasedActionsInPlace } from "./status";
@@ -312,9 +312,7 @@ export function blockRestriction(
     return `Card ${blockerId} is too powerful to block a creature with skulk`;
   }
   const attacker = state.cards[attackerId];
-  const protection = attacker
-    ? state.definitions[attacker.definitionId]?.protectionFrom ?? []
-    : [];
+  const protection = attacker ? protectionColorsOf(state, attackerId) : [];
   if (protection.some((color) => blockerTraits.colors.includes(color))) {
     return `Card ${blockerId} cannot block a creature with protection from its colors`;
   }
@@ -492,7 +490,7 @@ function markCreatureDamageInPlace(
   if (!target) {
     return;
   }
-  const protection = state.definitions[target.definitionId]?.protectionFrom ?? [];
+  const protection = protectionColorsOf(state, targetId);
   if (protection.length > 0) {
     const colors = characteristicsOf(state, sourceId).colors;
     if (protection.some((color) => colors.includes(color))) {

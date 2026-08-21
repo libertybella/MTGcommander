@@ -122,8 +122,10 @@ export type CardDefinition = {
   loyaltyAbilities?: LoyaltyAbility[];
   /** "Choose one —" spells: cast picks exactly one mode (CR 700.2). */
   modes?: SpellMode[];
-  /** "Choose two —" / "Choose one or more —": how many modes the cast picks. */
-  modeChoice?: { min: number; max: number };
+  /** "Choose two —" / "Choose one or more —": how many modes the cast picks.
+   * maxIfCommander: "you may choose both instead" while you control a
+   * commander (Jeska's Will, Akroma's Will). */
+  modeChoice?: { min: number; max: number; maxIfCommander?: number };
   /** "You have no maximum hand size" while this permanent is on the battlefield. */
   noMaxHandSize?: boolean;
   /** Additional land drops granted each of the controller's turns (Exploration). */
@@ -588,6 +590,7 @@ export type GameEffect =
       scope?: "permanents";
       nonSubtypes?: string[];
     }
+  | { kind: "team_protection_until_eot"; playerId: PlayerId; colors: Color[] }
   | {
       kind: "search_library";
       playerId: PlayerId;
@@ -832,7 +835,13 @@ export type CardEffect =
     }
   | { kind: "tap"; cardId: CardIdSelector }
   | { kind: "untap"; cardId: CardIdSelector }
-  | { kind: "add_mana"; playerId: PlayerSelector; mana: Partial<ManaPool> }
+  | {
+      kind: "add_mana";
+      playerId: PlayerSelector;
+      mana: Partial<ManaPool>;
+      /** Jeska's Will: multiply the mana by the chosen player's hand size. */
+      perChosenPlayerHand?: boolean;
+    }
   | {
       kind: "create_token";
       ownerId: PlayerSelector;
@@ -938,6 +947,8 @@ export type CardEffect =
       scope?: "permanents";
       nonSubtypes?: string[];
     }
+  /** "Creatures you control gain protection from each color" (Akroma's Will). */
+  | { kind: "team_protection_until_eot"; playerId: PlayerSelector; colors: Color[] }
   | {
       kind: "search_library";
       playerId: PlayerSelector;
@@ -1350,6 +1361,8 @@ export type ContinuousEffectData =
   | { kind: "add_types"; types: string[]; subtypes: string[] } // layer 4
   | { kind: "set_colors"; colors: Color[] } // layer 5
   | { kind: "grant_keyword"; keyword: Keyword } // layer 6
+  /** layer 6: "gain protection from each color" (Akroma's Will). */
+  | { kind: "grant_protection"; colors: Color[] }
   /** layer 6: Cryptolith Rite grants a mana ability to matching permanents. */
   | { kind: "grant_mana_ability"; ability: ManaAbility }
   | { kind: "remove_all_abilities" } // layer 6

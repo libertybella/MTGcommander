@@ -67,7 +67,7 @@ export type CompiledOracleText = {
   playLandsFromGraveyard?: boolean;
   additionalCost?: AdditionalCastCost;
   dynamicPt?: { count: DynamicCount };
-  modeChoice?: { min: number; max: number };
+  modeChoice?: { min: number; max: number; maxIfCommander?: number };
   leftover: string[];
   notes: string[];
 };
@@ -1534,6 +1534,23 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     };
   }
 
+  // Jeska's Will: the count reads the chosen opponent's hand at resolution.
+  // Must run before the generic ritual parse, which would eat the prefix.
+  match = sentence.match(/^Add \{([WUBRGC])\} for each card in target opponent's hand$/i);
+  if (match?.[1]) {
+    return {
+      targetRequirements: [{ kind: "opponent" }],
+      effects: [
+        {
+          kind: "add_mana",
+          playerId: "controller",
+          mana: { [match[1].toUpperCase()]: 1 },
+          perChosenPlayerHand: true,
+        },
+      ],
+    };
+  }
+
   const ritual = parseAddMana(sentence);
   if (ritual?.kind === "fixed") {
     return {
@@ -1581,10 +1598,13 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
 
   // Impulse exiles (fused by fuseExilePlayInPlace): cast/play this turn,
   // paying costs as normal.
-  if (/^impulse from your library$/i.test(sentence)) {
+  match = sentence.match(/^impulse(?: (\d+))? from your library$/i);
+  if (match) {
     return {
       targetRequirements: [],
-      effects: [{ kind: "exile_top_play", playerId: "controller", count: 1 }],
+      effects: [
+        { kind: "exile_top_play", playerId: "controller", count: match[1] ? Number(match[1]) : 1 },
+      ],
     };
   }
 
@@ -2198,22 +2218,41 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
   }
 
   match = sentence.match(
-    /^(Creatures|Permanents) you control gain ([a-z ]+?)(?: and ([a-z ]+?))? until end of turn$/i,
+    /^(Creatures|Permanents) you control gain ([a-z ,]+?) until end of turn$/i,
   );
   if (match?.[2]) {
-    const names = [match[2], match[3]].filter((name): name is string => Boolean(name));
-    const keywords = names.map((name) => KEYWORD_GRANTS[name.trim().toLowerCase()]);
-    if (keywords.every((keyword): keyword is Keyword => Boolean(keyword))) {
-      const permanents = match[1]!.toLowerCase() === "permanents";
-      return {
-        targetRequirements: [],
-        effects: keywords.map((keyword) => ({
-          kind: "team_keyword_until_eot",
+    // "flying, vigilance, and double strike" — an Oxford list of grants;
+    // "protection from each color" may close the list (Akroma's Will).
+    const names = match[2]
+      .split(/,\s*(?:and\s+)?|\s+and\s+/)
+      .map((name) => name.trim().toLowerCase())
+      .filter(Boolean);
+    const permanents = match[1]!.toLowerCase() === "permanents";
+    const effects: CardEffect[] = [];
+    let ok = names.length > 0;
+    for (const name of names) {
+      if (name === "protection from each color") {
+        effects.push({
+          kind: "team_protection_until_eot",
           playerId: "controller",
-          keyword,
-          ...(permanents ? { scope: "permanents" as const } : {}),
-        })),
-      };
+          colors: ["W", "U", "B", "R", "G"],
+        });
+        continue;
+      }
+      const keyword = KEYWORD_GRANTS[name];
+      if (!keyword) {
+        ok = false;
+        break;
+      }
+      effects.push({
+        kind: "team_keyword_until_eot",
+        playerId: "controller",
+        keyword,
+        ...(permanents ? { scope: "permanents" as const } : {}),
+      });
+    }
+    if (ok) {
+      return { targetRequirements: [], effects };
     }
   }
 
@@ -2404,9 +2443,13 @@ function fuseExilePlayInPlace(sentences: string[], lineStart: boolean[]): void {
     if (lineStart[index + 1]) {
       continue;
     }
-    const own = sentences[index]!.match(/^(.*)Exile the top card of your library$/i);
-    if (own && /^You may play (?:it|that card) this turn$/i.test(sentences[index + 1]!)) {
-      sentences.splice(index, 2, `${own[1] ?? ""}impulse from your library`);
+    const own = sentences[index]!.match(
+      /^(.*)Exile the top (card|two cards|three cards|four cards|five cards) of your library$/i,
+    );
+    if (own && /^You may play (?:it|that card|them) this turn$/i.test(sentences[index + 1]!)) {
+      const count = own[2]!.toLowerCase() === "card" ? 1 : parseCount(own[2]!.split(" ")[0]!) ?? 1;
+      const suffix = count === 1 ? "" : ` ${count}`;
+      sentences.splice(index, 2, `${own[1] ?? ""}impulse${suffix} from your library`);
       lineStart.splice(index + 1, 1);
       continue;
     }
@@ -3036,8 +3079,13 @@ type ModalExtraction = {
   remainingText: string;
   modes: SpellMode[] | null;
   raw: string;
-  choice?: { min: number; max: number };
+  choice?: { min: number; max: number; maxIfCommander?: number };
 };
+
+/** "Choose one. If you control a commander as you cast this spell, you may
+ * choose both instead." (Jeska's Will, Akroma's Will). */
+const COMMANDER_BOTH_HEAD =
+  /^Choose one\. If you control a commander as you cast this spell, you may choose both instead\.$/i;
 
 /**
  * "Choose one —" blocks compile before sentence splitting (the bullets are
@@ -3046,16 +3094,19 @@ type ModalExtraction = {
  */
 function extractModalModes(card: OracleCard): ModalExtraction | null {
   const lines = stripReminderText(card.oracleText).replace(/\r/g, "").split("\n");
-  const headIndex = lines.findIndex((line) =>
-    /^Choose (one|two|three|one or more|one or both|up to one|up to two)\s*[—-]\s*$/i.test(
-      line.trim(),
-    ),
+  const headIndex = lines.findIndex(
+    (line) =>
+      /^Choose (one|two|three|one or more|one or both|up to one|up to two)\s*[—-]\s*$/i.test(
+        line.trim(),
+      ) || COMMANDER_BOTH_HEAD.test(line.trim()),
   );
   if (headIndex === -1) {
     return null;
   }
-  const headWord =
-    lines[headIndex]!.trim().match(/^Choose (.+?)\s*[—-]\s*$/i)?.[1]?.toLowerCase() ?? "one";
+  const bothIfCommander = COMMANDER_BOTH_HEAD.test(lines[headIndex]!.trim());
+  const headWord = bothIfCommander
+    ? "one"
+    : lines[headIndex]!.trim().match(/^Choose (.+?)\s*[—-]\s*$/i)?.[1]?.toLowerCase() ?? "one";
   const bullets: string[] = [];
   let end = headIndex + 1;
   while (end < lines.length && lines[end]!.trim().startsWith("•")) {
@@ -3070,6 +3121,13 @@ function extractModalModes(card: OracleCard): ModalExtraction | null {
   const modes: SpellMode[] = [];
   for (const bullet of bullets) {
     const sentences = splitOracleSentences({ ...card, oracleText: bullet });
+    if (sentences.length > 1) {
+      // "Exile the top three cards… You may play them this turn." fuses to
+      // one impulse clause, the same as it does outside a modal block.
+      const lineStart = sentences.map((_, index) => index === 0);
+      fuseDigSentencesInPlace(sentences, lineStart);
+      fuseExilePlayInPlace(sentences, lineStart);
+    }
     if (sentences.length !== 1 || !sentences[0]) {
       return { remainingText, modes: null, raw };
     }
@@ -3096,7 +3154,9 @@ function extractModalModes(card: OracleCard): ModalExtraction | null {
               ? { min: 0, max: 1 }
               : headWord === "up to two"
                 ? { min: 0, max: 2 }
-                : undefined;
+                : bothIfCommander
+                  ? { min: 1, max: 1, maxIfCommander: 2 }
+                  : undefined;
   return { remainingText, modes, raw, ...(choice ? { choice } : {}) };
 }
 

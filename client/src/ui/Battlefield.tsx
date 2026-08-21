@@ -4,6 +4,7 @@ import {
   MANA_COLORS,
   autoTapPlan,
   canPayManaCost,
+  controlsCommander,
   countedMulligans,
   currentPrompt,
   parseManaCost,
@@ -2841,10 +2842,15 @@ export function Battlefield(props: Props) {
               id: `mode-${index}`,
               label: `${chosen.includes(index) ? "✓ " : ""}${spellMode.label}`,
             }));
+            const caster = controllerOf(mode.cardId) ?? actorId;
+            const modeMax =
+              def?.modeChoice?.maxIfCommander !== undefined && controlsCommander(state, caster)
+                ? def.modeChoice.maxIfCommander
+                : def?.modeChoice?.max ?? 0;
             if (
               def?.modeChoice &&
               chosen.length >= def.modeChoice.min &&
-              chosen.length <= def.modeChoice.max
+              chosen.length <= modeMax
             ) {
               options.push({ id: "confirm", label: `Cast with ${chosen.length} mode(s)` });
             }

@@ -573,6 +573,14 @@ export function parseGameState(json: string): GameState {
               return {
                 min: expectNumber(def.modeChoice.min, `definition.${id}.modeChoice.min`),
                 max: expectNumber(def.modeChoice.max, `definition.${id}.modeChoice.max`),
+                ...(def.modeChoice.maxIfCommander === undefined
+                  ? {}
+                  : {
+                      maxIfCommander: expectNumber(
+                        def.modeChoice.maxIfCommander,
+                        `definition.${id}.modeChoice.maxIfCommander`,
+                      ),
+                    }),
               };
             })(),
           }),
@@ -1565,6 +1573,7 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
         kind,
         playerId: parsePlayerSelector(value.playerId, `${label}.playerId`),
         mana: parsePartialMana(value.mana, `${label}.mana`),
+        ...(value.perChosenPlayerHand === true ? { perChosenPlayerHand: true } : {}),
       };
     case "deal_damage": {
       if (!isRecord(value.target)) {
@@ -1865,6 +1874,22 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
         keyword: keyword as Keyword,
         ...(value.scope === "permanents" ? { scope: "permanents" } : {}),
         ...(nonSubtypes.length > 0 ? { nonSubtypes } : {}),
+      };
+    }
+    case "team_protection_until_eot": {
+      if (!Array.isArray(value.colors)) {
+        throw new Error(`Invalid ${label}.colors`);
+      }
+      return {
+        kind,
+        playerId: parsePlayerSelector(value.playerId, `${label}.playerId`),
+        colors: value.colors.map((entry, index) => {
+          const color = expectString(entry, `${label}.colors[${index}]`);
+          if (!(COLOR_KEYS as readonly string[]).includes(color)) {
+            throw new Error(`Invalid ${label}.colors[${index}]`);
+          }
+          return color as Color;
+        }),
       };
     }
     case "search_library":
@@ -2422,6 +2447,21 @@ function parseContinuousEffectData(value: unknown, label: string): ContinuousEff
     }
     return { kind, keyword: keyword as Keyword };
   }
+  if (kind === "grant_protection") {
+    if (!Array.isArray(value.colors)) {
+      throw new Error(`Invalid ${label}.colors`);
+    }
+    return {
+      kind,
+      colors: value.colors.map((entry, index) => {
+        const color = expectString(entry, `${label}.colors[${index}]`);
+        if (!(COLOR_KEYS as readonly string[]).includes(color)) {
+          throw new Error(`Invalid ${label}.colors[${index}]`);
+        }
+        return color as Color;
+      }),
+    };
+  }
   if (kind === "grant_mana_ability") {
     const parsed = parseManaAbilities([value.ability], `${label}.ability`);
     if (!parsed[0]) {
@@ -2768,6 +2808,22 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
       keyword: keyword as Keyword,
       ...(value.scope === "permanents" ? { scope: "permanents" } : {}),
       ...(nonSubtypes.length > 0 ? { nonSubtypes } : {}),
+    };
+  }
+  if (kind === "team_protection_until_eot") {
+    if (!Array.isArray(value.colors)) {
+      throw new Error(`Invalid ${label}.colors`);
+    }
+    return {
+      kind,
+      playerId: expectString(value.playerId, `${label}.playerId`),
+      colors: value.colors.map((entry, index) => {
+        const color = expectString(entry, `${label}.colors[${index}]`);
+        if (!(COLOR_KEYS as readonly string[]).includes(color)) {
+          throw new Error(`Invalid ${label}.colors[${index}]`);
+        }
+        return color as Color;
+      }),
     };
   }
   if (kind === "search_library") {

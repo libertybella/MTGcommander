@@ -1,6 +1,6 @@
 import { characteristicsOf, isCommander, isCreature, isPlaneswalker } from "./cardTypes";
 import { creaturePower } from "./derived";
-import { hasKeyword } from "./keywords";
+import { hasKeyword, protectionColorsOf } from "./keywords";
 import { isLiving, livingPlayers } from "./players";
 import type {
   CardInstanceId,
@@ -38,7 +38,7 @@ function isLegalCreatureTarget(
     return false;
   }
   if (sourceColors && sourceColors.length > 0) {
-    const protection = state.definitions[card.definitionId]?.protectionFrom ?? [];
+    const protection = protectionColorsOf(state, cardId);
     if (protection.some((color) => sourceColors.includes(color))) {
       return false;
     }
@@ -208,7 +208,7 @@ export function isChosenTargetLegal(
       return false;
     }
     if (sourceColors && sourceColors.length > 0) {
-      const protection = state.definitions[card.definitionId]?.protectionFrom ?? [];
+      const protection = protectionColorsOf(state, target.cardId);
       if (protection.some((color) => sourceColors.includes(color))) {
         return false;
       }

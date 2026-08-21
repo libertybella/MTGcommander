@@ -4,7 +4,7 @@ import { createCardDefinition, createCardInstance } from "./createGame";
 import { characteristicsOf, hasSubtype, isCreature, isInstantOrSorcery, isLand, isPlaneswalker } from "./cardTypes";
 import { createId } from "./ids";
 import { allBattlefieldCreatureCount, creaturePower, creatureToughness, wouldSkipDraw } from "./derived";
-import { hasKeyword } from "./keywords";
+import { hasKeyword, protectionColorsOf } from "./keywords";
 import { addMana, tapCard, untapCard } from "./mana";
 import { isLiving, livingPlayers, nextLivingPlayerId } from "./players";
 import { isPromptOpen, legalIdsForChooseSources, searchMatches } from "./prompt";
@@ -27,6 +27,7 @@ import type {
   GameState,
   Keyword,
   LookDestination,
+  ManaPool,
   PlayerId,
   PlayerSelector,
   PlayerState,
@@ -284,7 +285,33 @@ export function bindCardEffect(
       }
       return { ...drawRest, playerId, count: greatest };
     }
-    case "add_mana":
+    case "add_mana": {
+      const playerId = bindPlayerSelector(state, effect.playerId, context);
+      if (!playerId) {
+        return null;
+      }
+      const { perChosenPlayerHand, ...manaRest } = effect;
+      if (!perChosenPlayerHand) {
+        return { ...manaRest, playerId };
+      }
+      // Jeska's Will: "{R} for each card in target opponent's hand".
+      const chosen = chosenTargetAt(context, 0, state);
+      if (!chosen || chosen.type !== "player") {
+        return null;
+      }
+      const handSize =
+        state.players.find((entry) => entry.id === chosen.playerId)?.zones.hand.length ?? 0;
+      if (handSize === 0) {
+        return null;
+      }
+      const mana: Partial<ManaPool> = {};
+      for (const [color, amount] of Object.entries(effect.mana)) {
+        if (typeof amount === "number" && amount > 0) {
+          mana[color as keyof ManaPool] = amount * handSize;
+        }
+      }
+      return { ...manaRest, playerId, mana };
+    }
     case "mill":
     case "discard":
     case "scry":
@@ -541,6 +568,13 @@ export function bindCardEffect(
         ...(effect.scope ? { scope: effect.scope } : {}),
         ...(effect.nonSubtypes ? { nonSubtypes: [...effect.nonSubtypes] } : {}),
       };
+    }
+    case "team_protection_until_eot": {
+      const playerId = bindPlayerSelector(state, effect.playerId, context);
+      if (!playerId) {
+        return null;
+      }
+      return { kind: "team_protection_until_eot", playerId, colors: [...effect.colors] };
     }
     case "search_library": {
       const playerId = bindPlayerSelector(state, effect.playerId, context);
@@ -936,7 +970,7 @@ function applyDealDamage(state: GameState, effect: Extract<GameEffect, { kind: "
   }
 
   // Protection prevents damage from sources of the protected colors.
-  const protection = state.definitions[card.definitionId]?.protectionFrom ?? [];
+  const protection = protectionColorsOf(state, card.id);
   if (protection.length > 0) {
     const colors = sourceColorsOf(state, effect.sourceId ?? null);
     if (protection.some((color) => colors.includes(color))) {
@@ -992,7 +1026,7 @@ function applyDamageAll(
     if (card.zone !== "battlefield" || !isCreature(next, card.id)) {
       continue;
     }
-    const protection = next.definitions[card.definitionId]?.protectionFrom ?? [];
+    const protection = protectionColorsOf(next, card.id);
     if (protection.length > 0 && protection.some((color) => sourceColors.includes(color))) {
       continue;
     }
@@ -2151,6 +2185,19 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
           nonSubtypes: effect.nonSubtypes,
         });
         break;
+      case "team_protection_until_eot": {
+        requirePlayer(state, effect.playerId);
+        // CR 611.2c: the affected set locks in when the effect is created.
+        const team = teamMembers(state, effect.playerId, {});
+        next =
+          team.length === 0
+            ? state
+            : pushUntilEotEffect(state, team, {
+                kind: "grant_protection",
+                colors: [...effect.colors],
+              });
+        break;
+      }
       case "search_library":
         next = applySearchLibrary(state, effect);
         break;
