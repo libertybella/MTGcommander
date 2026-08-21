@@ -252,8 +252,17 @@ export function opponentControlsMoreLands(state: GameState, playerId: string): b
 export function selfDiscountAmount(
   state: GameState,
   playerId: string,
-  per: "noncreature_artifacts_total_mv" | "historic_total_mv" | "greatest_creature_power",
+  per:
+    | "noncreature_artifacts_total_mv"
+    | "historic_total_mv"
+    | "greatest_creature_power"
+    | "opponent_stack_3",
 ): number {
+  // Bolt Bend: {3} less while an opponent has a spell or ability on the
+  // stack — a documented proxy for "if it targets one".
+  if (per === "opponent_stack_3") {
+    return state.stack.some((entry) => entry.controllerId !== playerId) ? 3 : 0;
+  }
   let total = 0;
   let greatest = 0;
   for (const card of Object.values(state.cards)) {

@@ -1243,6 +1243,15 @@ export function bindCardEffect(
       }
       return { kind: "exile_top", playerId, count: effect.count };
     }
+    case "exile_top_to_hand": {
+      const playerId = bindPlayerSelector(state, effect.playerId, context);
+      if (!playerId) {
+        return null;
+      }
+      return { kind: "exile_top_to_hand", playerId };
+    }
+    case "living_death":
+      return { kind: "living_death" };
     case "copy_each_token": {
       const playerId = bindPlayerSelector(state, effect.playerId, context);
       if (!playerId) {
@@ -3059,6 +3068,47 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
             break;
           }
           next = moveCard(next, top, "exile");
+        }
+        break;
+      }
+      case "exile_top_to_hand": {
+        // Necropotence: the exiled card reaches its owner's hand at the next
+        // end step (face-down and "your next end step" are documented
+        // approximations).
+        const top = state.players.find((entry) => entry.id === effect.playerId)?.zones.library[0];
+        if (!top) {
+          next = cloneGameState(state);
+          break;
+        }
+        next = moveCard(state, top, "exile");
+        if (next.cards[top]?.zone === "exile") {
+          next.delayedEndStep.push({ cardId: top, action: "hand" });
+        }
+        break;
+      }
+      case "living_death": {
+        // Living Death: snapshot everyone's graveyard creatures, sacrifice
+        // every creature on the battlefield, then mass-return the snapshot.
+        next = cloneGameState(state);
+        const returning: CardInstanceId[] = [];
+        for (const player of livingPlayers(next)) {
+          for (const cardId of [...player.zones.graveyard]) {
+            if (isCreature(next, cardId)) {
+              next = moveCard(next, cardId, "exile");
+              returning.push(cardId);
+            }
+          }
+        }
+        const dying = Object.values(next.cards)
+          .filter((card) => card.zone === "battlefield" && isCreature(next, card.id))
+          .map((card) => card.id);
+        for (const cardId of dying) {
+          next = applyEffect(next, { kind: "sacrifice", cardId });
+        }
+        for (const cardId of returning) {
+          if (next.cards[cardId]?.zone === "exile") {
+            next = moveCard(next, cardId, "battlefield");
+          }
         }
         break;
       }

@@ -402,7 +402,8 @@ export function parseGameState(json: string): GameState {
               if (
                 per !== "noncreature_artifacts_total_mv" &&
                 per !== "historic_total_mv" &&
-                per !== "greatest_creature_power"
+                per !== "greatest_creature_power" &&
+                per !== "opponent_stack_3"
               ) {
                 throw new Error(`Invalid definition.${id}.selfDiscount.per`);
               }
@@ -2223,6 +2224,10 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
         playerId: parsePlayerSelector(value.playerId, `${label}.playerId`),
         count: expectNumber(value.count, `${label}.count`),
       };
+    case "exile_top_to_hand":
+      return { kind, playerId: parsePlayerSelector(value.playerId, `${label}.playerId`) };
+    case "living_death":
+      return { kind };
     case "sacrifice":
       return {
         kind,
@@ -3994,6 +3999,12 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
         ? {}
         : { drawCount: expectNumber(value.drawCount, `${label}.drawCount`) }),
     };
+  }
+  if (kind === "exile_top_to_hand") {
+    return { kind, playerId: expectString(value.playerId, `${label}.playerId`) };
+  }
+  if (kind === "living_death") {
+    return { kind };
   }
   if (kind === "copy_each_token") {
     return { kind, playerId: expectString(value.playerId, `${label}.playerId`) };

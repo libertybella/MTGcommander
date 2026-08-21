@@ -212,6 +212,11 @@ function onEnterStep(state: GameState): GameState {
           }
           continue;
         }
+        // Necropotence: an exiled card can be waiting to come to hand.
+        if (entry.action === "hand" && card && card.zone === "exile") {
+          current = applyEffect(current, { kind: "move_card", cardId: entry.cardId, toZone: "hand" });
+          continue;
+        }
         if (!card || card.zone !== "battlefield") {
           continue;
         }

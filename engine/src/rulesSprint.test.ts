@@ -17,7 +17,7 @@ import {
 } from "./index";
 import { cardMatchesSubtype, computedCard } from "./characteristicsEngine";
 import { mostCommonControlledCreatureType } from "./effects";
-import { castCostReduction, castableFromTop, landDropAllowance } from "./derived";
+import { castCostReduction, castableFromTop, landDropAllowance, selfDiscountAmount } from "./derived";
 import { hasKeyword } from "./keywords";
 import { dispatchEventsInPlace } from "./triggers";
 import { applyCombatDamage, declareAttackers } from "./combat";
@@ -15607,6 +15607,176 @@ describe("wave 138: altars and rituals", () => {
     expect(next.players.find((entry) => entry.id === p1.id)!.zones.library.length).toBe(
       libraryBefore - 4,
     );
+  });
+});
+
+
+describe("wave 139: death and taxes on the stack", () => {
+  it("compiles the five-card bucket fully", () => {
+    const death = compileOracleCard({
+      oracleId: "death",
+      name: "Living Death",
+      manaCost: "{3}{B}{B}",
+      typeLine: "Sorcery",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "Each player exiles all creature cards from their graveyard, then sacrifices all creatures they control, then puts all cards they exiled this way onto the battlefield.",
+    });
+    expect(death.notes).toEqual([]);
+    expect(death.definition.effects).toEqual([{ kind: "living_death" }]);
+
+    const tribute = compileOracleCard({
+      oracleId: "tribute",
+      name: "Tribute to the World Tree",
+      manaCost: "{G}{G}{G}",
+      typeLine: "Enchantment",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "Whenever a creature you control enters, draw a card if its power is 3 or greater. Otherwise, put two +1/+1 counters on it.",
+    });
+    expect(tribute.notes).toEqual([]);
+    expect(tribute.definition.triggers).toHaveLength(2);
+    expect(tribute.definition.triggers[0]?.subjectFilter?.minPower).toBe(3);
+    expect(tribute.definition.triggers[1]?.subjectFilter?.maxPower).toBe(2);
+    expect(tribute.definition.triggers[1]?.effects).toEqual([
+      { kind: "add_counter", cardId: "subject_card", counter: "p1p1", amount: 2 },
+    ]);
+
+    const necro = compileOracleCard({
+      oracleId: "necro",
+      name: "Necropotence",
+      manaCost: "{B}{B}{B}",
+      typeLine: "Enchantment",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "Skip your draw step.\nWhenever you discard a card, exile that card from your graveyard.\nPay 1 life: Exile the top card of your library face down. Put that card into your hand at the beginning of your next end step.",
+    });
+    expect(necro.notes).toEqual([]);
+    expect(necro.definition.replacements).toContainEqual({ kind: "replace_draw", instead: "skip" });
+    expect(necro.definition.triggers[0]?.event).toBe("discards");
+    expect(necro.definition.triggers[0]?.effects).toEqual([
+      { kind: "move_card", cardId: "subject_card", toZone: "exile" },
+    ]);
+    expect(necro.definition.activated[0]?.lifeCost).toBe(1);
+    expect(necro.definition.activated[0]?.effects).toEqual([
+      { kind: "exile_top_to_hand", playerId: "controller" },
+    ]);
+
+    const bend = compileOracleCard({
+      oracleId: "bend",
+      name: "Bolt Bend",
+      manaCost: "{3}{R}",
+      typeLine: "Instant",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "This spell costs {3} less to cast if it targets a spell or ability an opponent controls.\nChange the target of target spell or ability with a single target.",
+    });
+    expect(bend.notes).toEqual([]);
+    expect(bend.definition.selfDiscount).toEqual({ per: "opponent_stack_3" });
+    expect(bend.definition.effects).toEqual([
+      { kind: "retarget", target: { type: "chosen", index: 0 } },
+    ]);
+
+    const redirect = compileOracleCard({
+      oracleId: "redirect",
+      name: "Redirect Lightning",
+      manaCost: "{1}{R}",
+      typeLine: "Instant",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "Change the target of target spell that targets only a single creature or player. Flashback {3}{R} (You may cast this card from your graveyard for its flashback cost. Then exile it.)",
+    });
+    expect(redirect.notes).toEqual([]);
+    expect(redirect.definition.flashback?.manaCost).toBe("{3}{R}");
+  });
+
+  it("swaps the board with the graveyards and banks the Necro card", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    const bearDef = createCardDefinition({ name: "Bear", typeLine: "Creature — Bear", power: 2, toughness: 2 });
+    game.definitions[bearDef.id] = bearDef;
+
+    // Living Death: p1's buried bear rises, p2's live bear dies.
+    const buried = createCardInstance({ definitionId: bearDef.id, ownerId: p1.id, zone: "graveyard" });
+    const alive = createCardInstance({ definitionId: bearDef.id, ownerId: p2.id, zone: "battlefield" });
+    game.cards[buried.id] = buried;
+    game.cards[alive.id] = alive;
+    p1.zones.graveyard.push(buried.id);
+    p2.zones.battlefield.push(alive.id);
+    let next = applyEffects(game, [{ kind: "living_death" }]);
+    expect(next.cards[buried.id]?.zone).toBe("battlefield");
+    expect(next.cards[buried.id]?.controllerId).toBe(p1.id);
+    expect(next.cards[alive.id]?.zone).toBe("graveyard");
+
+    // Necropotence: the top card waits in exile, then lands in hand at the
+    // end-step sweep.
+    const top = next.players.find((entry) => entry.id === p1.id)!.zones.library[0]!;
+    next = applyEffects(next, [{ kind: "exile_top_to_hand", playerId: p1.id }]);
+    expect(next.cards[top]?.zone).toBe("exile");
+    for (let guard = 0; guard < 30; guard += 1) {
+      next = advanceSteps(next, 1);
+      if (next.cards[top]?.zone === "hand") {
+        break;
+      }
+    }
+    expect(next.cards[top]?.zone).toBe("hand");
+
+    // Bolt Bend's proxy discount: live only while an opponent owns the stack.
+    expect(selfDiscountAmount(next, p1.id, "opponent_stack_3")).toBe(0);
+    const boltDef = createCardDefinition({
+      name: "Bolt",
+      typeLine: "Instant",
+      manaCost: "{R}",
+      effects: [{ kind: "draw", playerId: "controller", count: 1 }],
+    });
+    next.definitions[boltDef.id] = boltDef;
+    const bolt = createCardInstance({ definitionId: boltDef.id, ownerId: p2.id, zone: "hand" });
+    next.cards[bolt.id] = bolt;
+    next.players.find((entry) => entry.id === p2.id)!.zones.hand.push(bolt.id);
+    next = putSpellOnStack(next, bolt.id, []);
+    expect(selfDiscountAmount(next, p1.id, "opponent_stack_3")).toBe(3);
+    expect(selfDiscountAmount(next, p2.id, "opponent_stack_3")).toBe(0);
+
+    // Tribute to the World Tree: a small arrival grows, a big one draws.
+    next = resolveTopOfStack(next);
+    const tributeDef = compileOracleCard({
+      oracleId: "tribute-rt",
+      name: "Tribute",
+      manaCost: "{G}{G}{G}",
+      typeLine: "Enchantment",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "Whenever a creature you control enters, draw a card if its power is 3 or greater. Otherwise, put two +1/+1 counters on it.",
+    }).definition;
+    next.definitions[tributeDef.id] = tributeDef;
+    const shrine = createCardInstance({ definitionId: tributeDef.id, ownerId: p1.id, zone: "battlefield" });
+    next.cards[shrine.id] = shrine;
+    next.players.find((entry) => entry.id === p1.id)!.zones.battlefield.push(shrine.id);
+    const small = createCardInstance({ definitionId: bearDef.id, ownerId: p1.id, zone: "hand" });
+    next.cards[small.id] = small;
+    next.players.find((entry) => entry.id === p1.id)!.zones.hand.push(small.id);
+    next = moveCard(next, small.id, "battlefield");
+    expect(next.stack).toHaveLength(1);
+    next = resolveTopOfStack(next);
+    expect(next.cards[small.id]?.counters["p1p1"]).toBe(2);
   });
 });
 

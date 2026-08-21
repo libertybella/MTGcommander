@@ -1113,6 +1113,48 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     return { targetRequirements: [], effects: [{ kind: "windfall" }] };
   }
 
+  // Necropotence: "exile that card from your graveyard" — the discard
+  // trigger's subject.
+  if (/^exile that card from your graveyard$/i.test(sentence)) {
+    return {
+      targetRequirements: [],
+      effects: [{ kind: "move_card", cardId: "subject_card", toZone: "exile" }],
+    };
+  }
+
+  // Necropotence's synthetic fused impulse (see fuseNecroTopInPlace).
+  if (/^Necro-exile the top card of your library$/i.test(sentence)) {
+    return {
+      targetRequirements: [],
+      effects: [{ kind: "exile_top_to_hand", playerId: "controller" }],
+    };
+  }
+
+  // Living Death.
+  if (
+    /^Each player exiles all creature cards from their graveyard, then sacrifices all creatures they control, then puts all cards they exiled this way onto the battlefield$/i.test(
+      sentence,
+    )
+  ) {
+    return { targetRequirements: [], effects: [{ kind: "living_death" }] };
+  }
+
+  // Bolt Bend / Redirect Lightning: retarget variants. The single-target
+  // restriction is dropped — the retarget prompt re-validates against the
+  // spell's own requirements — a documented approximation. Abilities on the
+  // stack can't be targeted (Deflecting Swat's precedent).
+  if (
+    /^Change the target of target spell or ability with a single target$/i.test(sentence) ||
+    /^Change the target of target spell that targets only a single creature or player$/i.test(
+      sentence,
+    )
+  ) {
+    return {
+      targetRequirements: [{ kind: "spell" }],
+      effects: [{ kind: "retarget", target: { type: "chosen", index: 0 } }],
+    };
+  }
+
   // Altar of Dementia: the mill reads the sacrificed cost-creature's power.
   if (/^Target player mills cards equal to the sacrificed creature's power$/i.test(sentence)) {
     return {
@@ -4041,6 +4083,29 @@ function fuseDrainPairInPlace(sentences: string[], lineStart: boolean[]): void {
 }
 
 /** Traverse the Outlands: the greatest-power basic fetch, fused. */
+function fuseNecroTopInPlace(sentences: string[], lineStart: boolean[]): void {
+  // Necropotence: the two-sentence activation body fuses to one synthetic
+  // clause (the face-down detail is a documented approximation).
+  for (let index = 0; index + 1 < sentences.length; index += 1) {
+    if (lineStart[index + 1]) {
+      continue;
+    }
+    if (
+      /Exile the top card of your library face down$/i.test(sentences[index] ?? "") &&
+      /^Put that card into your hand at the beginning of your next end step$/i.test(
+        sentences[index + 1] ?? "",
+      )
+    ) {
+      sentences[index] = sentences[index]!.replace(
+        /Exile the top card of your library face down$/i,
+        "Necro-exile the top card of your library",
+      );
+      sentences.splice(index + 1, 1);
+      lineStart.splice(index + 1, 1);
+    }
+  }
+}
+
 function fuseMayPayInPlace(sentences: string[], lineStart: boolean[]): void {
   // Mentor of the Meek: "…, you may pay {1}. If you do, draw a card." fuses
   // into one synthetic clause the may_pay parser reads.
@@ -4674,17 +4739,22 @@ function parseTriggerHead(head: string): TriggerHead | null {
   }
   // Waste Not / Bone Miser.
   const discardWatch = text.match(
-    /^Whenever (an opponent|you) discards? a (creature|land|noncreature, nonland) card$/i,
+    /^Whenever (an opponent|you) discards? a(?: (creature|land|noncreature, nonland))? card$/i,
   );
-  if (discardWatch?.[1] && discardWatch[2]) {
-    const what = discardWatch[2].toLowerCase();
+  if (discardWatch?.[1]) {
+    const what = discardWatch[2]?.toLowerCase();
     return {
       event: "discards",
       watch: discardWatch[1].toLowerCase() === "you" ? "controlled" : "opponents",
-      subjectFilter:
-        what === "noncreature, nonland"
-          ? { nonTypes: ["creature", "land"] }
-          : { types: [what] },
+      // Necropotence's "a card" carries no type filter at all.
+      ...(what === undefined
+        ? {}
+        : {
+            subjectFilter:
+              what === "noncreature, nonland"
+                ? { nonTypes: ["creature", "land"] }
+                : { types: [what] },
+          }),
     };
   }
   // Pollywog Prodigy: the cap reads the watcher's power live.
@@ -5607,6 +5677,7 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
   fuseTraverseInPlace(sentences, lineStart);
   expandEntersOrDiesInPlace(sentences, lineStart);
   fuseMayPayInPlace(sentences, lineStart);
+  fuseNecroTopInPlace(sentences, lineStart);
   for (let index = 0; index < sentences.length; index += 1) {
     const sentence = sentences[index];
     if (!sentence) {
@@ -6979,6 +7050,51 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
       // Documented approximation (RULES_COVERAGE.md): the free alternative
       // cost is auto-taken whenever a commander is controlled.
       result.freeIfCommander = true;
+      continue;
+    }
+
+    // Necropotence's first line.
+    if (/^Skip your draw step$/i.test(sentence)) {
+      result.replacements.push({ kind: "replace_draw", instead: "skip" });
+      continue;
+    }
+
+    // Bolt Bend: the conditional discount compiles to a proxy — {3} less
+    // while an opponent has a spell or ability on the stack (documented).
+    if (
+      /^This spell costs \{3\} less to cast if it targets a spell or ability an opponent controls$/i.test(
+        sentence,
+      )
+    ) {
+      result.selfDiscount = { per: "opponent_stack_3" };
+      continue;
+    }
+
+    // Tribute to the World Tree: the conditional branch compiles to two
+    // complementary-filter triggers over computed power.
+    const tribute = sentence.match(
+      /^Whenever a creature you control enters, draw a card if its power is (\d+) or greater$/i,
+    );
+    if (
+      tribute?.[1] &&
+      /^Otherwise, put two \+1\/\+1 counters on it$/i.test(sentences[index + 1] ?? "")
+    ) {
+      const threshold = Number(tribute[1]);
+      result.triggers.push(
+        {
+          event: "enter_battlefield",
+          watch: "controlled",
+          subjectFilter: { types: ["creature"], minPower: threshold },
+          effects: [{ kind: "draw", playerId: "controller", count: 1 }],
+        },
+        {
+          event: "enter_battlefield",
+          watch: "controlled",
+          subjectFilter: { types: ["creature"], maxPower: threshold - 1 },
+          effects: [{ kind: "add_counter", cardId: "subject_card", counter: "p1p1", amount: 2 }],
+        },
+      );
+      sentences[index + 1] = "";
       continue;
     }
 

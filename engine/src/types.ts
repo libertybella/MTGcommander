@@ -203,7 +203,14 @@ export type CardDefinition = {
   /** "This spell costs {X} less to cast, where X is …" (Metalwork Colossus,
    * The Great Henge): the generic portion shrinks by a live count. */
   selfDiscount?: {
-    per: "noncreature_artifacts_total_mv" | "historic_total_mv" | "greatest_creature_power";
+    /** "opponent_stack_3": Bolt Bend — {3} less while an opponent has a
+     * spell or ability on the stack (a documented proxy for "if it targets
+     * a spell or ability an opponent controls"). */
+    per:
+      | "noncreature_artifacts_total_mv"
+      | "historic_total_mv"
+      | "greatest_creature_power"
+      | "opponent_stack_3";
   };
   /** "costs {1} less for each creature on the battlefield" (anyone's). */
   affinityAllCreatures?: boolean;
@@ -709,6 +716,12 @@ export type GameEffect =
   | { kind: "fog" }
   /** Mystic Forge: exile the top card(s) of the player's library. */
   | { kind: "exile_top"; playerId: PlayerId; count: number }
+  /** Necropotence: exile the top card; it comes to hand at the next end
+   * step (the face-down detail and "your" end step are documented
+   * approximations). */
+  | { kind: "exile_top_to_hand"; playerId: PlayerId }
+  /** Living Death: everyone swaps graveyard creatures with board creatures. */
+  | { kind: "living_death" }
   | { kind: "windfall"; drawCount?: number }
   /** Second Harvest: one copy of every token the player controls. */
   | { kind: "copy_each_token"; playerId: PlayerId }
@@ -1224,6 +1237,10 @@ export type CardEffect =
   | { kind: "fog" }
   /** Mystic Forge: exile the top card(s) of the player's library. */
   | { kind: "exile_top"; playerId: PlayerSelector; count: number }
+  /** Necropotence: exile the top card; to hand at the next end step. */
+  | { kind: "exile_top_to_hand"; playerId: PlayerSelector }
+  /** Living Death: everyone swaps graveyard creatures with board creatures. */
+  | { kind: "living_death" }
   /** Windfall: each player discards their hand, then draws the greatest
    * count — or a fixed count when drawCount is set (Wheel of Fortune). */
   | { kind: "windfall"; drawCount?: number }
