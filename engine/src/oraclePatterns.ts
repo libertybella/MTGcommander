@@ -1134,6 +1134,18 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     }
   }
 
+  // Syr Konrad's activation body.
+  match = sentence.match(/^Each player mills (a|an|one|two|three|\d+) cards?$/i);
+  if (match?.[1]) {
+    const count = parseCount(match[1]);
+    if (count) {
+      return {
+        targetRequirements: [],
+        effects: [{ kind: "mill", playerId: "each_player", count }],
+      };
+    }
+  }
+
   match = sentence.match(
     /^target player mills (a|an|one|two|three|four|five|six|seven|eight|nine|ten|\d+) cards?$/i,
   );
@@ -2717,6 +2729,13 @@ function parseTriggerHead(head: string): TriggerHead | null {
       event: "enter_battlefield",
       watch: "controlled",
       excludeSelf: true,
+      subjectFilter: { types: ["creature"], nonToken: true },
+    };
+  }
+  if (/^Whenever a nontoken creature you control enters$/i.test(text)) {
+    return {
+      event: "enter_battlefield",
+      watch: "controlled",
       subjectFilter: { types: ["creature"], nonToken: true },
     };
   }
@@ -4536,6 +4555,36 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
       continue;
     }
 
+    // Syr Konrad's triple head: one body, three sibling triggers.
+    const konrad = sentence.match(
+      /^Whenever another creature dies, or a creature card is put into a graveyard from anywhere other than the battlefield, or a creature card leaves your graveyard, (.+)$/i,
+    );
+    if (konrad?.[1]) {
+      const inner = compileSimpleClause(konrad[1]);
+      if (inner && !inner.leftover && inner.targetRequirements.length === 0) {
+        result.triggers.push(
+          {
+            event: "dies",
+            watch: "any",
+            excludeSelf: true,
+            subjectFilter: { types: ["creature"] },
+            effects: inner.effects,
+          },
+          {
+            event: "graveyard_from_elsewhere",
+            subjectFilter: { types: ["creature"] },
+            effects: inner.effects.map((entry) => ({ ...entry })),
+          },
+          {
+            event: "leaves_your_graveyard",
+            subjectFilter: { types: ["creature"] },
+            effects: inner.effects.map((entry) => ({ ...entry })),
+          },
+        );
+        continue;
+      }
+    }
+
     const generalTrigger = sentence.match(/^((?:Landfall\s*[—-]\s*)?[^,]+?), (.+)$/i);
     if (generalTrigger?.[1] && generalTrigger[2]) {
       const head = parseTriggerHead(generalTrigger[1]);
@@ -4556,6 +4605,14 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
           } else if (/^an opponent controls more lands than you$/i.test(phrase)) {
             // Land Tax.
             condition = { kind: "opponent_controls_more_lands" };
+            rest = interveningIf[2].trim();
+          } else if (
+            /^it doesn't have the same name as another creature you control or a creature card in your graveyard$/i.test(
+              phrase,
+            )
+          ) {
+            // Guardian Project.
+            condition = { kind: "subject_name_unique" };
             rest = interveningIf[2].trim();
           } else {
             const controls = phrase.match(

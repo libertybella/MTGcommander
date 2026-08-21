@@ -42,9 +42,34 @@ function triggerConditionHolds(
   state: GameState,
   controllerId: PlayerId,
   condition: CardTrigger["condition"],
+  subjectCardId?: CardInstanceId,
 ): boolean {
   if (!condition) {
     return true;
+  }
+  if (condition.kind === "subject_name_unique") {
+    // Guardian Project: no other controlled creature and no creature card in
+    // the controller's graveyard shares the subject's name.
+    const subject = subjectCardId ? state.cards[subjectCardId] : undefined;
+    const name = subject ? state.definitions[subject.definitionId]?.name : undefined;
+    if (!subject || !name) {
+      return false;
+    }
+    const owner = state.players.find((entry) => entry.id === controllerId);
+    const clash = Object.values(state.cards).some((card) => {
+      if (card.id === subjectCardId) {
+        return false;
+      }
+      const sameName = state.definitions[card.definitionId]?.name === name;
+      if (!sameName || !characteristicsOf(state, card.id).types.includes("creature")) {
+        return false;
+      }
+      if (card.zone === "battlefield" && card.controllerId === controllerId) {
+        return true;
+      }
+      return card.zone === "graveyard" && (owner?.zones.graveyard ?? []).includes(card.id);
+    });
+    return !clash;
   }
   if (condition.kind === "controls_count") {
     let count = 0;
@@ -104,7 +129,7 @@ export function queueDefinitionTriggerInPlace(
   if (!card || !trigger) {
     return false;
   }
-  if (!triggerConditionHolds(state, card.controllerId, trigger.condition)) {
+  if (!triggerConditionHolds(state, card.controllerId, trigger.condition, subject?.cardId)) {
     return false;
   }
   if (trigger.oncePerTurn) {
@@ -168,7 +193,7 @@ function candidateIsQueueable(state: GameState, candidate: TriggerCandidate): bo
   ) {
     return false;
   }
-  if (!triggerConditionHolds(state, card.controllerId, trigger.condition)) {
+  if (!triggerConditionHolds(state, card.controllerId, trigger.condition, candidate.subjectCardId)) {
     return false;
   }
   // A permanent whose abilities were removed (Humility) has no triggers.
@@ -358,6 +383,25 @@ function triggerMatchesEvent(
     return trigger.event === "opponent_searches" && watcher.controllerId !== event.playerId;
   }
   if (trigger.event === "opponent_searches") {
+    return false;
+  }
+  if (event.kind === "put_in_graveyard_from_elsewhere") {
+    return (
+      trigger.event === "graveyard_from_elsewhere" &&
+      subjectMatchesFilter(state, event.cardId, trigger.subjectFilter, watcher)
+    );
+  }
+  if (trigger.event === "graveyard_from_elsewhere") {
+    return false;
+  }
+  if (event.kind === "leaves_graveyard") {
+    return (
+      trigger.event === "leaves_your_graveyard" &&
+      event.ownerId === watcher.controllerId &&
+      subjectMatchesFilter(state, event.cardId, trigger.subjectFilter, watcher)
+    );
+  }
+  if (trigger.event === "leaves_your_graveyard") {
     return false;
   }
   if (event.kind === "draws") {

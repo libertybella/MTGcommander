@@ -8328,3 +8328,148 @@ describe("wave 91: devotion and revelations", () => {
   });
 });
 
+describe("wave 92: konrad and guardians", () => {
+  it("compiles Syr Konrad and Guardian Project fully", () => {
+    const konrad = compileOracleCard({
+      oracleId: "konrad",
+      name: "Syr Konrad, the Grim",
+      manaCost: "{3}{B}{B}",
+      typeLine: "Legendary Creature — Human Knight",
+      power: "5",
+      toughness: "4",
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "Whenever another creature dies, or a creature card is put into a graveyard from anywhere other than the battlefield, or a creature card leaves your graveyard, Syr Konrad deals 1 damage to each opponent.\n{1}{B}: Each player mills a card.",
+    });
+    expect(konrad.notes).toEqual([]);
+    expect(konrad.definition.triggers).toHaveLength(3);
+    expect(konrad.definition.triggers.map((trigger) => trigger.event)).toEqual([
+      "dies",
+      "graveyard_from_elsewhere",
+      "leaves_your_graveyard",
+    ]);
+    expect(konrad.definition.activated).toHaveLength(1);
+
+    const project = compileOracleCard({
+      oracleId: "project",
+      name: "Guardian Project",
+      manaCost: "{3}{G}",
+      typeLine: "Enchantment",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "Whenever a nontoken creature you control enters, if it doesn't have the same name as another creature you control or a creature card in your graveyard, draw a card.",
+    });
+    expect(project.notes).toEqual([]);
+    expect(project.definition.triggers[0]?.condition).toEqual({ kind: "subject_name_unique" });
+    expect(project.definition.triggers[0]?.subjectFilter?.nonToken).toBe(true);
+  });
+
+  it("fires Konrad on graveyard traffic in both directions", () => {
+    const { game, p1 } = twoPlayers();
+    const konradDef = createCardDefinition({
+      name: "Konrad",
+      typeLine: "Creature — Human Knight",
+      power: 5,
+      toughness: 4,
+      triggers: [
+        {
+          event: "graveyard_from_elsewhere",
+          subjectFilter: { types: ["creature"] },
+          effects: [
+            {
+              kind: "deal_damage",
+              sourceId: "self",
+              target: { type: "player", playerId: "each_opponent" },
+              amount: 1,
+            },
+          ],
+        },
+        {
+          event: "leaves_your_graveyard",
+          subjectFilter: { types: ["creature"] },
+          effects: [
+            {
+              kind: "deal_damage",
+              sourceId: "self",
+              target: { type: "player", playerId: "each_opponent" },
+              amount: 1,
+            },
+          ],
+        },
+      ],
+    });
+    const bearDef = createCardDefinition({ name: "Bear", typeLine: "Creature — Bear", power: 2, toughness: 2 });
+    game.definitions[konradDef.id] = konradDef;
+    game.definitions[bearDef.id] = bearDef;
+    const konrad = createCardInstance({ definitionId: konradDef.id, ownerId: p1.id, zone: "battlefield" });
+    const bear = createCardInstance({ definitionId: bearDef.id, ownerId: p1.id, zone: "hand" });
+    game.cards[konrad.id] = konrad;
+    game.cards[bear.id] = bear;
+    p1.zones.battlefield.push(konrad.id);
+    p1.zones.hand.push(bear.id);
+
+    // Hand → graveyard: "from anywhere other than the battlefield".
+    let next = moveCard(game, bear.id, "graveyard");
+    while (next.stack.length > 0) {
+      next = resolveTopOfStack(next);
+    }
+    expect(next.players[1]?.life).toBe(39);
+
+    // Graveyard → battlefield: "leaves your graveyard".
+    next = moveCard(next, bear.id, "battlefield");
+    while (next.stack.length > 0) {
+      next = resolveTopOfStack(next);
+    }
+    expect(next.players[1]?.life).toBe(38);
+  });
+
+  it("draws only for uniquely named arrivals", () => {
+    const { game, p1 } = twoPlayers();
+    const projectDef = createCardDefinition({
+      name: "Project",
+      typeLine: "Enchantment",
+      triggers: [
+        {
+          event: "enter_battlefield",
+          watch: "controlled",
+          condition: { kind: "subject_name_unique" },
+          subjectFilter: { types: ["creature"], nonToken: true },
+          effects: [{ kind: "draw", playerId: "controller", count: 1 }],
+        },
+      ],
+    });
+    const bearDef = createCardDefinition({ name: "Bear", typeLine: "Creature — Bear", power: 2, toughness: 2 });
+    game.definitions[projectDef.id] = projectDef;
+    game.definitions[bearDef.id] = bearDef;
+    const project = createCardInstance({ definitionId: projectDef.id, ownerId: p1.id, zone: "battlefield" });
+    game.cards[project.id] = project;
+    p1.zones.battlefield.push(project.id);
+    fillLibraries(game, 10);
+
+    const first = createCardInstance({ definitionId: bearDef.id, ownerId: p1.id, zone: "hand" });
+    game.cards[first.id] = first;
+    p1.zones.hand.push(first.id);
+    const handBefore = p1.zones.hand.length - 1;
+    let next = moveCard(game, first.id, "battlefield");
+    while (next.stack.length > 0) {
+      next = resolveTopOfStack(next);
+    }
+    expect(next.players[0]?.zones.hand).toHaveLength(handBefore + 1);
+
+    // A second Bear shares a name with the first: no draw.
+    const second = createCardInstance({ definitionId: bearDef.id, ownerId: p1.id, zone: "hand" });
+    next.cards[second.id] = second;
+    next.players[0]!.zones.hand.push(second.id);
+    const handMid = next.players[0]!.zones.hand.length - 1;
+    let after = moveCard(next, second.id, "battlefield");
+    while (after.stack.length > 0) {
+      after = resolveTopOfStack(after);
+    }
+    expect(after.players[0]?.zones.hand).toHaveLength(handMid);
+  });
+});
+

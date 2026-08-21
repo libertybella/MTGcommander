@@ -383,6 +383,14 @@ export function moveCardInPlace(
       processDiesReturnsInPlace(state, [event]);
     }
   }
+  // Syr Konrad's graveyard traffic: arrivals from anywhere but the
+  // battlefield, and departures from any graveyard.
+  if (located.zone !== "battlefield" && destination === "graveyard") {
+    dispatchEventsInPlace(state, [{ kind: "put_in_graveyard_from_elsewhere", cardId }]);
+  }
+  if (located.zone === "graveyard" && destination !== "graveyard") {
+    dispatchEventsInPlace(state, [{ kind: "leaves_graveyard", cardId, ownerId: owner.id }]);
+  }
 
   if (countCardPlacements(state, cardId) !== 1) {
     throw new Error(`Zone integrity failed for ${cardId}`);

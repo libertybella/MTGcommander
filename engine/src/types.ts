@@ -1091,7 +1091,11 @@ export type TriggerEvent =
   /** An opponent searched their library (Archivist of Oghma). */
   | "opponent_searches"
   /** Any player cast their second spell this turn (Lotho). */
-  | "casts_second_spell";
+  | "casts_second_spell"
+  /** A card went to a graveyard from anywhere but the battlefield (Syr Konrad). */
+  | "graveyard_from_elsewhere"
+  /** A card left the watcher's controller's graveyard (Syr Konrad). */
+  | "leaves_your_graveyard";
 
 /** An intervening-if condition, checked when the trigger would be queued.
  * Approximation: CR 603.4 also re-checks on resolution; this table checks
@@ -1102,7 +1106,10 @@ export type TriggerCondition =
   /** "if you control four or more lands". */
   | { kind: "controls_count"; what: "land" | "creature" | "artifact"; atLeast: number }
   /** Land Tax: "if an opponent controls more lands than you". */
-  | { kind: "opponent_controls_more_lands" };
+  | { kind: "opponent_controls_more_lands" }
+  /** Guardian Project: the subject's name matches no other controlled
+   * creature and no creature card in the controller's graveyard. */
+  | { kind: "subject_name_unique" };
 
 export type CardTrigger = {
   event: TriggerEvent;
@@ -1171,7 +1178,11 @@ export type EngineEvent =
   /** A permanent went from tapped to untapped. */
   | { kind: "untapped"; cardId: CardInstanceId }
   /** A player searched their library (found or not). */
-  | { kind: "searches_library"; playerId: PlayerId };
+  | { kind: "searches_library"; playerId: PlayerId }
+  /** A card arrived in a graveyard from a zone other than the battlefield. */
+  | { kind: "put_in_graveyard_from_elsewhere"; cardId: CardInstanceId }
+  /** A card left a graveyard; ownerId names whose graveyard it was. */
+  | { kind: "leaves_graveyard"; cardId: CardInstanceId; ownerId: PlayerId };
 
 /** One triggered ability waiting to be put on the stack. */
 export type TriggerCandidate = {

@@ -2245,6 +2245,8 @@ function parseTriggers(value: unknown, label: string): CardTrigger[] {
       event !== "becomes_untapped" &&
       event !== "opponent_searches" &&
       event !== "casts_second_spell" &&
+      event !== "graveyard_from_elsewhere" &&
+      event !== "leaves_your_graveyard" &&
       event !== "cast_spell" &&
       event !== "deals_combat_damage_to_player" &&
       event !== "deals_damage_to_player"
@@ -2318,7 +2320,8 @@ function parseTriggers(value: unknown, label: string): CardTrigger[] {
               );
               if (
                 conditionKind === "greatest_artifact_mana_value" ||
-                conditionKind === "opponent_controls_more_lands"
+                conditionKind === "opponent_controls_more_lands" ||
+                conditionKind === "subject_name_unique"
               ) {
                 return { kind: conditionKind };
               }
