@@ -278,6 +278,9 @@ export function parseGameState(json: string): GameState {
         card.chosenCreatureType === undefined || card.chosenCreatureType === null
           ? null
           : expectString(card.chosenCreatureType, "card.chosenCreatureType"),
+      ...(card.chosenCardType === undefined || card.chosenCardType === null
+        ? {}
+        : { chosenCardType: expectString(card.chosenCardType, "card.chosenCardType") }),
       chosenColor:
         card.chosenColor === undefined || card.chosenColor === null
           ? null
@@ -459,6 +462,23 @@ export function parseGameState(json: string): GameState {
             })(),
           }),
       ...(def.chooseCreatureTypeOnEnter === true ? { chooseCreatureTypeOnEnter: true } : {}),
+      ...(def.chooseCardTypeOnEnter === true ? { chooseCardTypeOnEnter: true } : {}),
+      ...(def.enterCountersPerChosenType === undefined
+        ? {}
+        : {
+            enterCountersPerChosenType: expectString(
+              def.enterCountersPerChosenType,
+              `definition.${id}.enterCountersPerChosenType`,
+            ),
+          }),
+      ...(def.freeEquipIfArtifacts === undefined
+        ? {}
+        : {
+            freeEquipIfArtifacts: expectNumber(
+              def.freeEquipIfArtifacts,
+              `definition.${id}.freeEquipIfArtifacts`,
+            ),
+          }),
       ...(def.selfIsChosenType === true ? { selfIsChosenType: true } : {}),
       ...(def.landChosenColorBonus === true ? { landChosenColorBonus: true } : {}),
       ...(def.landTapEcho === true ? { landTapEcho: true } : {}),
@@ -750,6 +770,7 @@ export function parseGameState(json: string): GameState {
                     ...(subtypesAny.length > 0 ? { subtypesAny } : {}),
                     ...(colors.length > 0 ? { colors } : {}),
                     ...(entry.filter.chosenSubtype === true ? { chosenSubtype: true } : {}),
+                    ...(entry.filter.chosenCardType === true ? { chosenCardType: true } : {}),
                   },
                 };
               });
@@ -2241,7 +2262,15 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
         amount:
           value.amount === "source_power"
             ? ("source_power" as const)
-            : expectNumber(value.amount, `${label}.amount`),
+            : value.amount === "subject_amount"
+              ? ("subject_amount" as const)
+              : expectNumber(value.amount, `${label}.amount`),
+      };
+    case "move_all_counters":
+      return {
+        kind,
+        cardId: parseCardIdSelector(value.cardId, `${label}.cardId`),
+        target: parseChosenTargetRef(value.target, `${label}.target`),
       };
     case "copy_subject_spell":
     case "counter_subject_spell":
@@ -2837,6 +2866,7 @@ const TRIGGER_EVENT_NAMES: ReadonlySet<string> = new Set([
   "enter_battlefield",
   "begin_combat",
   "dies",
+  "leaves_battlefield",
   "attacks",
   "upkeep",
   "end_step",
@@ -3282,6 +3312,9 @@ function parseContinuousEffectData(value: unknown, label: string): ContinuousEff
       power: expectNumber(value.power, `${label}.power`),
       toughness: expectNumber(value.toughness, `${label}.toughness`),
       ...(kind === "modify_pt" && per !== undefined ? { per: per as DynamicCount } : {}),
+      ...(kind === "modify_pt" && value.perSourceCounter !== undefined
+        ? { perSourceCounter: expectString(value.perSourceCounter, `${label}.perSourceCounter`) }
+        : {}),
     };
   }
   throw new Error(`Invalid ${label}.kind`);
@@ -3944,6 +3977,13 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
       cardId: expectString(value.cardId, `${label}.cardId`),
       counter: expectString(value.counter, `${label}.counter`),
       amount: expectNumber(value.amount, `${label}.amount`),
+    };
+  }
+  if (kind === "move_all_counters") {
+    return {
+      kind,
+      fromId: expectString(value.fromId, `${label}.fromId`),
+      toId: expectString(value.toId, `${label}.toId`),
     };
   }
   if (kind === "set_class_level") {

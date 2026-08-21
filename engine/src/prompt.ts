@@ -257,6 +257,20 @@ export function applyResolveCreatureType(
   if (card) {
     card.chosenCreatureType = chosen;
     next.log.push({ kind: "creature_type_chosen", cardId: card.id, creatureType: chosen });
+    // Banner of Kinship: the enter counters land once the type is known.
+    const perType = next.definitions[card.definitionId]?.enterCountersPerChosenType;
+    if (perType && card.zone === "battlefield") {
+      const count = Object.values(next.cards).filter(
+        (entry) =>
+          entry.zone === "battlefield" &&
+          entry.controllerId === card.controllerId &&
+          isCreature(next, entry.id) &&
+          cardMatchesSubtype(next, entry.id, chosen),
+      ).length;
+      if (count > 0) {
+        card.counters[perType] = (card.counters[perType] ?? 0) + count;
+      }
+    }
   }
   return next;
 }

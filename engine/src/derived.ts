@@ -74,7 +74,8 @@ export function castCostReduction(
       continue;
     }
     for (const reduction of state.definitions[card.definitionId]?.costReductions ?? []) {
-      const { types, typesAny, subtypesAny, colors, chosenSubtype } = reduction.filter;
+      const { types, typesAny, subtypesAny, colors, chosenSubtype, chosenCardType } =
+        reduction.filter;
       if (types && !types.every((type) => spell.characteristics.types.includes(type))) {
         continue;
       }
@@ -86,6 +87,13 @@ export function castCostReduction(
           !chosen ||
           (!spell.changeling && !(spell.characteristics.subtypes ?? []).includes(chosen))
         ) {
+          continue;
+        }
+      }
+      // Cloud Key: the spell must have the source's auto-picked card type.
+      if (chosenCardType) {
+        const chosen = card.chosenCardType;
+        if (!chosen || !spell.characteristics.types.includes(chosen)) {
           continue;
         }
       }
@@ -249,6 +257,26 @@ export function opponentControlsMoreLands(state: GameState, playerId: string): b
 
 /** "This spell costs {X} less to cast, where X is …" (the self-discount
  * artifacts and Henges). Historic = artifact, legendary, or Saga (CR 700.4a). */
+/** Puresteel Paladin: any live granter makes controlled equips free. */
+export function freeEquipGranted(state: GameState, playerId: string): boolean {
+  return Object.values(state.cards).some((card) => {
+    if (card.zone !== "battlefield" || card.controllerId !== playerId) {
+      return false;
+    }
+    const need = state.definitions[card.definitionId]?.freeEquipIfArtifacts;
+    if (!need || abilitiesRemoved(state, card.id)) {
+      return false;
+    }
+    const artifacts = Object.values(state.cards).filter(
+      (entry) =>
+        entry.zone === "battlefield" &&
+        entry.controllerId === playerId &&
+        characteristicsOf(state, entry.id).types.includes("artifact"),
+    ).length;
+    return artifacts >= need;
+  });
+}
+
 export function selfDiscountAmount(
   state: GameState,
   playerId: string,
@@ -496,6 +524,26 @@ export function queueEnterReplacementChoicesInPlace(state: GameState, cardId: Ca
       playerId: card.controllerId,
       sourceId: card.id,
     });
+  }
+  // Cloud Key: the card-type choice is auto-picked — the most common card
+  // type among the controller's hand, else "creature" (documented).
+  if (definition?.chooseCardTypeOnEnter && (card.chosenCardType ?? null) === null) {
+    const tally: Record<string, number> = {};
+    const hand =
+      state.players.find((entry) => entry.id === card.controllerId)?.zones.hand ?? [];
+    for (const handId of hand) {
+      const types = state.definitions[state.cards[handId]?.definitionId ?? ""]?.characteristics
+        .types;
+      for (const type of types ?? []) {
+        if (["artifact", "creature", "enchantment", "instant", "sorcery"].includes(type)) {
+          tally[type] = (tally[type] ?? 0) + 1;
+        }
+      }
+    }
+    const best = Object.entries(tally).sort(
+      (a, b) => b[1] - a[1] || a[0].localeCompare(b[0]),
+    )[0]?.[0];
+    card.chosenCardType = best ?? "creature";
   }
   if (definition?.chooseColorOnEnter && card.chosenColor === null) {
     state.prompts.push({

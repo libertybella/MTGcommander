@@ -83,6 +83,9 @@ export function createCardDefinition(
         | "flashback"
         | "costReductions"
         | "chooseCreatureTypeOnEnter"
+        | "chooseCardTypeOnEnter"
+        | "enterCountersPerChosenType"
+        | "freeEquipIfArtifacts"
         | "selfIsChosenType"
         | "triggerDoubling"
         | "landChosenColorBonus"
@@ -367,6 +370,11 @@ export function createCardDefinition(
         }
       : {}),
     ...(input.chooseCreatureTypeOnEnter ? { chooseCreatureTypeOnEnter: true } : {}),
+    ...(input.chooseCardTypeOnEnter ? { chooseCardTypeOnEnter: true } : {}),
+    ...(input.enterCountersPerChosenType
+      ? { enterCountersPerChosenType: input.enterCountersPerChosenType }
+      : {}),
+    ...(input.freeEquipIfArtifacts ? { freeEquipIfArtifacts: input.freeEquipIfArtifacts } : {}),
     ...(input.selfIsChosenType ? { selfIsChosenType: true } : {}),
     ...(input.landChosenColorBonus ? { landChosenColorBonus: true } : {}),
     ...(input.landTapEcho ? { landTapEcho: true } : {}),
@@ -424,6 +432,7 @@ export function createCardDefinition(
               ...(entry.filter.subtypesAny ? { subtypesAny: [...entry.filter.subtypesAny] } : {}),
               ...(entry.filter.colors ? { colors: [...entry.filter.colors] } : {}),
               ...(entry.filter.chosenSubtype ? { chosenSubtype: true } : {}),
+              ...(entry.filter.chosenCardType ? { chosenCardType: true } : {}),
             },
           })),
         }

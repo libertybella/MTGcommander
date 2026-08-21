@@ -77,6 +77,9 @@ export type CompiledOracleText = {
   flashback?: { manaCost: string; life?: number };
   costReductions?: CostReduction[];
   chooseCreatureTypeOnEnter?: boolean;
+  chooseCardTypeOnEnter?: boolean;
+  enterCountersPerChosenType?: string;
+  freeEquipIfArtifacts?: number;
   selfIsChosenType?: boolean;
   triggerDoubling?: CardDefinition["triggerDoubling"];
   landChosenColorBonus?: boolean;
@@ -1111,6 +1114,19 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     )
   ) {
     return { targetRequirements: [], effects: [{ kind: "windfall" }] };
+  }
+
+  // The Ozolith's combat trigger: the has-counters gate folds into the
+  // apply (empty counters move nothing); the "may" is auto-taken.
+  if (
+    /^if ~ has counters on it, you may move all counters from ~ onto target creature$/i.test(
+      sentence,
+    )
+  ) {
+    return {
+      targetRequirements: [{ kind: "creature" }],
+      effects: [{ kind: "move_all_counters", cardId: "self", target: { type: "chosen", index: 0 } }],
+    };
   }
 
   // Necropotence: "exile that card from your graveyard" — the discard
@@ -3745,7 +3761,8 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     };
   }
 
-  match = sentence.match(/^Put a \+1\/\+1 counter on ~$/i);
+  // Forgotten Ancient's "you may" is auto-taken (a free counter).
+  match = sentence.match(/^(?:you may )?Put a \+1\/\+1 counter on ~$/i);
   if (match) {
     return {
       targetRequirements: [],
@@ -4513,6 +4530,14 @@ function parseTriggerHead(head: string): TriggerHead | null {
   }
   if (/^Whenever (?:~|this creature) or another creature you control dies$/i.test(text)) {
     return { event: "dies", watch: "controlled", subjectFilter: { types: ["creature"] } };
+  }
+  // Puresteel Paladin: an Equipment-subtype arrival watch.
+  if (/^Whenever an Equipment you control enters$/i.test(text)) {
+    return {
+      event: "enter_battlefield",
+      watch: "controlled",
+      subjectFilter: { subtypes: ["equipment"] },
+    };
   }
   // Constellation (an enchantment creature's own arrival counts too).
   if (
@@ -7050,6 +7075,79 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
       // Documented approximation (RULES_COVERAGE.md): the free alternative
       // cost is auto-taken whenever a commander is controlled.
       result.freeIfCommander = true;
+      continue;
+    }
+
+    // Cloud Key: the card-type choice (auto-picked, documented).
+    if (/^As ~ enters, choose artifact, creature, enchantment, instant, or sorcery$/i.test(sentence)) {
+      result.chooseCardTypeOnEnter = true;
+      continue;
+    }
+    if (/^Spells you cast of the chosen type cost \{(\d+)\} less to cast$/i.test(sentence)) {
+      const amount = Number(sentence.match(/\{(\d+)\}/)?.[1] ?? 1);
+      result.costReductions = [
+        ...(result.costReductions ?? []),
+        { generic: amount, filter: { chosenCardType: true } },
+      ];
+      continue;
+    }
+
+    // Banner of Kinship: the enter counters land once the type is chosen.
+    const kinshipEnter = sentence.match(
+      /^~ enters with an? ([a-z]+) counter on it for each creature you control of the chosen type$/i,
+    );
+    if (kinshipEnter?.[1]) {
+      result.enterCountersPerChosenType = kinshipEnter[1].toLowerCase();
+      continue;
+    }
+    const kinshipPump = sentence.match(
+      /^Creatures you control of the chosen type get \+(\d+)\/\+(\d+) for each ([a-z]+) counter on ~$/i,
+    );
+    if (kinshipPump?.[1] && kinshipPump[2] && kinshipPump[3]) {
+      result.staticAbilities.push({
+        selector: { scope: "controlled", types: ["creature"], chosenSubtype: true },
+        effect: {
+          kind: "modify_pt",
+          power: Number(kinshipPump[1]),
+          toughness: Number(kinshipPump[2]),
+          perSourceCounter: kinshipPump[3].toLowerCase(),
+        },
+      });
+      continue;
+    }
+
+    // Forgotten Ancient's upkeep redistribution: the "may" is auto-declined
+    // (counters stay put) — a documented approximation.
+    if (
+      /^At the beginning of your upkeep, you may move any number of \+1\/\+1 counters from ~ onto other creatures$/i.test(
+        sentence,
+      )
+    ) {
+      continue;
+    }
+
+    // The Ozolith: only +1/+1 counters transfer — a documented approximation.
+    if (
+      /^Whenever a creature you control leaves the battlefield, if it had counters on it, put those counters on ~$/i.test(
+        sentence,
+      )
+    ) {
+      result.triggers.push({
+        event: "leaves_battlefield",
+        watch: "controlled",
+        subjectFilter: { types: ["creature"] },
+        effects: [{ kind: "add_counter", cardId: "self", counter: "p1p1", amount: "subject_amount" }],
+      });
+      continue;
+    }
+
+    // Puresteel Paladin's metalcraft equip grant.
+    if (
+      /^(?:Metalcraft\s*[—-]\s*)?Equipment you control have equip \{0\} as long as you control three or more artifacts$/i.test(
+        sentence,
+      )
+    ) {
+      result.freeEquipIfArtifacts = 3;
       continue;
     }
 

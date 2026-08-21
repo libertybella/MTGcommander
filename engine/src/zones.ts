@@ -172,6 +172,8 @@ export function enterOwnerZoneInPlace(
     fromZone === "battlefield" && isCreature(state, cardId)
       ? creaturePower(state, cardId)
       : undefined;
+  // The Ozolith: +1/+1 counters at the moment of leaving (any exit).
+  const leftCounters = fromZone === "battlefield" ? card.counters["p1p1"] ?? 0 : 0;
   insertIntoZone(owner, destination, cardId, options.libraryPosition ?? "top");
   card.zone = destination;
   applyZoneChangeFlags(state, card, destination);
@@ -179,6 +181,11 @@ export function enterOwnerZoneInPlace(
   if (destination === "battlefield") {
     queueEnterReplacementChoicesInPlace(state, cardId);
     queueEnterBattlefieldTriggersInPlace(state, cardId);
+  }
+  if (fromZone === "battlefield" && leftCounters > 0) {
+    dispatchEventsInPlace(state, [
+      { kind: "leaves_battlefield", cardId, controllerId: diedControllerId, amount: leftCounters },
+    ]);
   }
   if (fromZone === "battlefield" && destination === "graveyard") {
     const event: EngineEvent = {
@@ -388,6 +395,8 @@ export function moveCardInPlace(
     located.zone === "battlefield" && isCreature(state, cardId)
       ? creaturePower(state, cardId)
       : undefined;
+  // The Ozolith: +1/+1 counters at the moment of leaving (any exit).
+  const leftCounters = located.zone === "battlefield" ? card.counters["p1p1"] ?? 0 : 0;
   removeFromZone(occupant, located.zone, cardId);
   insertIntoZone(owner, destination, cardId, options.libraryPosition ?? "top");
   card.zone = destination;
@@ -396,6 +405,11 @@ export function moveCardInPlace(
   if (destination === "battlefield") {
     queueEnterReplacementChoicesInPlace(state, cardId);
     queueEnterBattlefieldTriggersInPlace(state, cardId);
+  }
+  if (located.zone === "battlefield" && leftCounters > 0) {
+    dispatchEventsInPlace(state, [
+      { kind: "leaves_battlefield", cardId, controllerId: diedControllerId, amount: leftCounters },
+    ]);
   }
   if (located.zone === "battlefield" && destination === "graveyard") {
     const event: EngineEvent = {

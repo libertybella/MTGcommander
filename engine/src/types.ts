@@ -222,6 +222,15 @@ export type CardDefinition = {
   costReductions?: CostReduction[];
   /** "As ~ enters, choose a creature type." Prompts on battlefield entry. */
   chooseCreatureTypeOnEnter?: boolean;
+  /** Cloud Key: pick a card type on enter — auto-picked as the most common
+   * card type among the controller's hand, else "creature" (documented). */
+  chooseCardTypeOnEnter?: boolean;
+  /** Banner of Kinship: after the enter type choice resolves, this many
+   * named counters land per controlled creature of the chosen type. */
+  enterCountersPerChosenType?: string;
+  /** Puresteel Paladin: controlled Equipment equip for {0} while the
+   * controller has at least this many artifacts. */
+  freeEquipIfArtifacts?: number;
   /** "~ is the chosen type in addition to its other types" (Metallic Mimic). */
   selfIsChosenType?: boolean;
   /** Caged Sun: a land tap that adds the chosen color adds one more of it. */
@@ -336,6 +345,8 @@ export type CardInstance = {
   faceDown: boolean;
   /** "As ~ enters, choose a creature type" (Kindred Discovery). Lowercase. */
   chosenCreatureType: string | null;
+  /** Cloud Key: the auto-picked card type (documented approximation). */
+  chosenCardType?: string | null;
   /** "As this Aura enters, choose a color" (Utopia Sprawl). */
   chosenColor: Color | null;
   /** Vorinclex, Voice of Hunger froze this permanent: it skips its
@@ -699,6 +710,8 @@ export type GameEffect =
     }
   | { kind: "sacrifice"; cardId: CardInstanceId }
   | { kind: "add_counter"; cardId: CardInstanceId; counter: string; amount: number }
+  /** The Ozolith's combat trigger: every counter hops to the target. */
+  | { kind: "move_all_counters"; fromId: CardInstanceId; toId: CardInstanceId }
   | { kind: "counter_spell"; stackObjectId: StackObjectId }
   | {
       kind: "bounce_spell_or_permanent";
@@ -935,6 +948,8 @@ export type CostReduction = {
     subtypesAny?: string[];
     colors?: Color[];
     chosenSubtype?: boolean;
+    /** Cloud Key: the spell must have the source's chosen CARD type. */
+    chosenCardType?: boolean;
   };
 };
 
@@ -1222,7 +1237,16 @@ export type CardEffect =
   | { kind: "sacrifice"; cardId: CardIdSelector }
   /** amount "source_power": the source creature's power, read at bind
    * (Halana and Alena). */
-  | { kind: "add_counter"; cardId: CardIdSelector; counter: string; amount: number | "source_power" }
+  /** amount "subject_amount": The Ozolith absorbs the leave event's
+   * +1/+1-counter total. */
+  | {
+      kind: "add_counter";
+      cardId: CardIdSelector;
+      counter: string;
+      amount: number | "source_power" | "subject_amount";
+    }
+  /** The Ozolith's combat trigger: every counter hops to the target. */
+  | { kind: "move_all_counters"; cardId: CardIdSelector; target: ChosenTargetRef }
   | { kind: "counter_spell"; target: ChosenTargetRef }
   | { kind: "counter_unless_pays"; target: ChosenTargetRef; cost: string }
   /** Venser: bounce a spell (off the stack) or a permanent to its owner's hand. */
@@ -1489,6 +1513,8 @@ export type TriggerEvent =
   | "enter_battlefield"
   | "begin_combat"
   | "dies"
+  /** The Ozolith: a counter-carrying permanent left the battlefield. */
+  | "leaves_battlefield"
   | "attacks"
   | "upkeep"
   | "end_step"
@@ -1640,6 +1666,15 @@ export type EngineEvent =
       powerAtDeath?: number;
     }
   | { kind: "attacks"; cardId: CardInstanceId }
+  /** A permanent left the battlefield carrying +1/+1 counters — only
+   * dispatched when it had any; amount is the p1p1 total (The Ozolith's
+   * documented approximation: other counter kinds don't transfer). */
+  | {
+      kind: "leaves_battlefield";
+      cardId: CardInstanceId;
+      controllerId: PlayerId;
+      amount: number;
+    }
   | { kind: "step_begins"; step: Step }
   | { kind: "gains_life"; playerId: PlayerId; amount: number }
   /** Life lost to damage or a lose-life effect (not payments). */
@@ -2018,7 +2053,14 @@ export type ContinuousEffectData =
       unlessCityBlessing?: boolean;
     }
   | { kind: "set_pt"; power: number; toughness: number } // layer 7b
-  | { kind: "modify_pt"; power: number; toughness: number; per?: DynamicCount }; // layer 7c
+  | {
+      kind: "modify_pt";
+      power: number;
+      toughness: number;
+      per?: DynamicCount;
+      /** Banner of Kinship: multiply by this named counter on the SOURCE. */
+      perSourceCounter?: string;
+    }; // layer 7c
 
 /** A static ability printed on a card: applies while its source is on the battlefield. */
 export type StaticAbility = {

@@ -3,7 +3,7 @@ import { abilitiesRemoved, cardMatchesSubtype } from "./characteristicsEngine";
 import { hasKeyword } from "./keywords";
 import { emptyManaPool } from "./createGame";
 import { pendingBlockerPlayer } from "./combat";
-import { affinityArtifactDiscount, allBattlefieldCreatureCount, canPlayLandsFromGraveyard, castCostReduction, controlsCommander, hasFlashGrant, landDropAllowance, lockedByAbolisher, lockedFromCasting, opponentControlsMoreLands, selfDiscountAmount, topOfLibraryGrant } from "./derived";
+import { affinityArtifactDiscount, allBattlefieldCreatureCount, canPlayLandsFromGraveyard, castCostReduction, controlsCommander, freeEquipGranted, hasFlashGrant, landDropAllowance, lockedByAbolisher, lockedFromCasting, opponentControlsMoreLands, selfDiscountAmount, topOfLibraryGrant } from "./derived";
 import { canPayManaCost, parseManaCost, type ParsedManaCost } from "./mana";
 import { colorsAmongControlled, manaAbilitiesFor, manaTapOptionsFor } from "./manaOptions";
 import { isMulliganOpen } from "./mulligan";
@@ -399,6 +399,14 @@ function abilityUsable(
         isLegendary(state, entry.id),
     ).length;
     cost.generic = Math.max(0, cost.generic - legends);
+  }
+  // Puresteel Paladin: equips are free while a metalcraft granter is live.
+  if (
+    ability.effects[0]?.kind === "attach" &&
+    ability.effects[0].cardId === "self" &&
+    freeEquipGranted(state, playerId)
+  ) {
+    Object.assign(cost, parseManaCost(""));
   }
   if (!canPayWithPotential(potential, cost)) {
     return false;

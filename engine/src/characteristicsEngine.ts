@@ -500,13 +500,16 @@ function applyInstance(
       case "modify_pt": {
         // Nettlecyst: "+1/+1 for each artifact and/or enchantment you
         // control" — the count reads the STATIC SOURCE's controller.
-        const multiplier = effect.per
-          ? dynamicCountOf(
-              state,
-              state.cards[instance.sourceId ?? ""]?.controllerId ?? "",
-              effect.per,
-            )
-          : 1;
+        // Banner of Kinship: perSourceCounter reads the SOURCE's counters.
+        const multiplier = effect.perSourceCounter
+          ? state.cards[instance.sourceId ?? ""]?.counters[effect.perSourceCounter] ?? 0
+          : effect.per
+            ? dynamicCountOf(
+                state,
+                state.cards[instance.sourceId ?? ""]?.controllerId ?? "",
+                effect.per,
+              )
+            : 1;
         computed.power += effect.power * multiplier;
         computed.toughness += effect.toughness * multiplier;
         break;

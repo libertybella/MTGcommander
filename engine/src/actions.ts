@@ -2,7 +2,7 @@ import { declareAttackers, declareBlockers, lockRemainingBlockers, pendingBlocke
 import { abilitiesRemoved } from "./characteristicsEngine";
 import { characteristicsOf, isCommander, isCreature, isInstant, isInstantOrSorcery, isLand, isLegendary, isMainPhase } from "./cardTypes";
 import { cloneGameState } from "./clone";
-import { affinityArtifactDiscount, allBattlefieldCreatureCount, canPlayLandFromTop, canPlayLandsFromGraveyard, castCostReduction, castableFromTop, controlsCommander, creaturePower, hasFlashGrant, landDropAllowance, lockedByAbolisher, lockedFromCasting, opponentControlsMoreLands, selfDiscountAmount } from "./derived";
+import { affinityArtifactDiscount, allBattlefieldCreatureCount, canPlayLandFromTop, canPlayLandsFromGraveyard, castCostReduction, castableFromTop, controlsCommander, creaturePower, freeEquipGranted, hasFlashGrant, landDropAllowance, lockedByAbolisher, lockedFromCasting, opponentControlsMoreLands, selfDiscountAmount } from "./derived";
 import { eliminatePlayerInPlace } from "./elimination";
 import { applyEffects, bindCardEffects, devotionTo } from "./effects";
 import { hasKeyword } from "./keywords";
@@ -920,6 +920,15 @@ function applyActivateAbility(
         isLegendary(state, entry.id),
     ).length;
     cost.generic = Math.max(0, cost.generic - legends);
+  }
+  // Puresteel Paladin: equip abilities cost {0} while a metalcraft granter
+  // is live.
+  if (
+    ability.effects[0]?.kind === "attach" &&
+    ability.effects[0].cardId === "self" &&
+    freeEquipGranted(state, playerId)
+  ) {
+    Object.assign(cost, parseManaCost(""));
   }
   if (!canPayManaCost(player.mana, cost)) {
     throw new Error("Cannot pay mana cost");

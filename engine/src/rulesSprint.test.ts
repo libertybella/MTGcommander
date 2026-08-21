@@ -17,13 +17,13 @@ import {
 } from "./index";
 import { cardMatchesSubtype, computedCard } from "./characteristicsEngine";
 import { mostCommonControlledCreatureType } from "./effects";
-import { castCostReduction, castableFromTop, landDropAllowance, selfDiscountAmount } from "./derived";
+import { castCostReduction, castableFromTop, freeEquipGranted, landDropAllowance, selfDiscountAmount } from "./derived";
 import { hasKeyword } from "./keywords";
 import { dispatchEventsInPlace } from "./triggers";
 import { applyCombatDamage, declareAttackers } from "./combat";
 import { commanderIdentityColors, manaAbilitiesFor, manaTapOptionsFor } from "./manaOptions";
 import { legalActions } from "./legalActions";
-import { legalEnterCopyIds, searchMatches } from "./prompt";
+import { applyResolveCreatureType, legalEnterCopyIds, searchMatches } from "./prompt";
 import { parseGameState, serializeGameState } from "./serialize";
 import { fillLibraries } from "./testSupport";
 import { advanceSteps } from "./turn";
@@ -15777,6 +15777,224 @@ describe("wave 139: death and taxes on the stack", () => {
     expect(next.stack).toHaveLength(1);
     next = resolveTopOfStack(next);
     expect(next.cards[small.id]?.counters["p1p1"]).toBe(2);
+  });
+});
+
+
+describe("wave 140: keys, banners, and the ozolith", () => {
+  it("compiles the five-card bucket fully", () => {
+    const key = compileOracleCard({
+      oracleId: "key",
+      name: "Cloud Key",
+      manaCost: "{3}",
+      typeLine: "Artifact",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "As this artifact enters, choose artifact, creature, enchantment, instant, or sorcery.\nSpells you cast of the chosen type cost {1} less to cast.",
+    });
+    expect(key.notes).toEqual([]);
+    expect(key.definition.chooseCardTypeOnEnter).toBe(true);
+    expect(key.definition.costReductions).toEqual([
+      { generic: 1, filter: { chosenCardType: true } },
+    ]);
+
+    const banner = compileOracleCard({
+      oracleId: "banner",
+      name: "Banner of Kinship",
+      manaCost: "{5}",
+      typeLine: "Artifact",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "As this artifact enters, choose a creature type. This artifact enters with a fellowship counter on it for each creature you control of the chosen type.\nCreatures you control of the chosen type get +1/+1 for each fellowship counter on this artifact.",
+    });
+    expect(banner.notes).toEqual([]);
+    expect(banner.definition.chooseCreatureTypeOnEnter).toBe(true);
+    expect(banner.definition.enterCountersPerChosenType).toBe("fellowship");
+    expect(banner.definition.staticAbilities[0]).toEqual({
+      selector: { scope: "controlled", types: ["creature"], chosenSubtype: true },
+      effect: { kind: "modify_pt", power: 1, toughness: 1, perSourceCounter: "fellowship" },
+    });
+
+    const ancient = compileOracleCard({
+      oracleId: "ancient",
+      name: "Forgotten Ancient",
+      manaCost: "{3}{G}",
+      typeLine: "Creature — Elemental",
+      power: "0",
+      toughness: "3",
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "Whenever a player casts a spell, you may put a +1/+1 counter on this creature.\nAt the beginning of your upkeep, you may move any number of +1/+1 counters from this creature onto other creatures.",
+    });
+    expect(ancient.notes).toEqual([]);
+    expect(ancient.definition.triggers[0]?.event).toBe("cast_spell");
+    expect(ancient.definition.triggers[0]?.effects).toEqual([
+      { kind: "add_counter", cardId: "self", counter: "p1p1", amount: 1 },
+    ]);
+
+    const ozolith = compileOracleCard({
+      oracleId: "ozolith",
+      name: "The Ozolith",
+      manaCost: "{1}",
+      typeLine: "Legendary Artifact",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "Whenever a creature you control leaves the battlefield, if it had counters on it, put those counters on The Ozolith.\nAt the beginning of combat on your turn, if The Ozolith has counters on it, you may move all counters from The Ozolith onto target creature.",
+    });
+    expect(ozolith.notes).toEqual([]);
+    expect(ozolith.definition.triggers[0]?.event).toBe("leaves_battlefield");
+    expect(ozolith.definition.triggers[0]?.effects).toEqual([
+      { kind: "add_counter", cardId: "self", counter: "p1p1", amount: "subject_amount" },
+    ]);
+    expect(ozolith.definition.triggers[1]?.event).toBe("begin_combat");
+    expect(ozolith.definition.triggers[1]?.effects).toEqual([
+      { kind: "move_all_counters", cardId: "self", target: { type: "chosen", index: 0 } },
+    ]);
+
+    const paladin = compileOracleCard({
+      oracleId: "paladin",
+      name: "Puresteel Paladin",
+      manaCost: "{W}{W}",
+      typeLine: "Creature — Human Knight",
+      power: "2",
+      toughness: "2",
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "Whenever an Equipment you control enters, you may draw a card.\nMetalcraft — Equipment you control have equip {0} as long as you control three or more artifacts.",
+    });
+    expect(paladin.notes).toEqual([]);
+    expect(paladin.definition.freeEquipIfArtifacts).toBe(3);
+    expect(paladin.definition.triggers[0]?.subjectFilter?.subtypes).toEqual(["equipment"]);
+  });
+
+  it("banks counters, pumps the kindred, and equips for free", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    void p2;
+
+    // The Ozolith: a counter-laden creature's death banks its +1/+1s.
+    const ozolithDef = compileOracleCard({
+      oracleId: "ozolith-rt",
+      name: "The Ozolith",
+      manaCost: "{1}",
+      typeLine: "Legendary Artifact",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "Whenever a creature you control leaves the battlefield, if it had counters on it, put those counters on The Ozolith.\nAt the beginning of combat on your turn, if The Ozolith has counters on it, you may move all counters from The Ozolith onto target creature.",
+    }).definition;
+    game.definitions[ozolithDef.id] = ozolithDef;
+    const ozolith = createCardInstance({ definitionId: ozolithDef.id, ownerId: p1.id, zone: "battlefield" });
+    game.cards[ozolith.id] = ozolith;
+    p1.zones.battlefield.push(ozolith.id);
+    const bearDef = createCardDefinition({ name: "Bear", typeLine: "Creature — Bear", power: 2, toughness: 2 });
+    game.definitions[bearDef.id] = bearDef;
+    const bear = createCardInstance({ definitionId: bearDef.id, ownerId: p1.id, zone: "battlefield" });
+    bear.counters["p1p1"] = 2;
+    game.cards[bear.id] = bear;
+    p1.zones.battlefield.push(bear.id);
+    let next = moveCard(game, bear.id, "graveyard");
+    expect(next.stack.length).toBeGreaterThan(0);
+    while (next.stack.length > 0) {
+      next = resolveTopOfStack(next);
+    }
+    expect(next.cards[ozolith.id]?.counters["p1p1"]).toBe(2);
+
+    // move_all_counters hands the bank to a target.
+    const heir = createCardInstance({ definitionId: bearDef.id, ownerId: p1.id, zone: "battlefield" });
+    next.cards[heir.id] = heir;
+    next.players.find((entry) => entry.id === p1.id)!.zones.battlefield.push(heir.id);
+    next = applyEffects(next, [
+      { kind: "move_all_counters", fromId: ozolith.id, toId: heir.id },
+    ]);
+    expect(next.cards[heir.id]?.counters["p1p1"]).toBe(2);
+    expect(next.cards[ozolith.id]?.counters["p1p1"] ?? 0).toBe(0);
+
+    // Banner of Kinship: the type choice banks a counter per Bear, and the
+    // static pumps them per counter.
+    const bannerDef = compileOracleCard({
+      oracleId: "banner-rt",
+      name: "Banner",
+      manaCost: "{5}",
+      typeLine: "Artifact",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "As this artifact enters, choose a creature type. This artifact enters with a fellowship counter on it for each creature you control of the chosen type.\nCreatures you control of the chosen type get +1/+1 for each fellowship counter on this artifact.",
+    }).definition;
+    next.definitions[bannerDef.id] = bannerDef;
+    const bannerCard = createCardInstance({ definitionId: bannerDef.id, ownerId: p1.id, zone: "hand" });
+    next.cards[bannerCard.id] = bannerCard;
+    next.players.find((entry) => entry.id === p1.id)!.zones.hand.push(bannerCard.id);
+    next = moveCard(next, bannerCard.id, "battlefield");
+    expect(next.prompts[0]?.kind).toBe("choose_creature_type");
+    next = applyResolveCreatureType(next, p1.id, "bear");
+    expect(next.cards[bannerCard.id]?.counters["fellowship"]).toBe(1); // the heir
+    expect(computedCard(next, heir.id)?.power).toBe(2 + 2 + 1); // base + moved counters + banner
+
+    // Puresteel Paladin: two artifacts is not metalcraft, three is.
+    const paladinDef = createCardDefinition({
+      name: "Paladin",
+      typeLine: "Creature — Human Knight",
+      power: 2,
+      toughness: 2,
+      freeEquipIfArtifacts: 3,
+    });
+    next.definitions[paladinDef.id] = paladinDef;
+    const paladin = createCardInstance({ definitionId: paladinDef.id, ownerId: p1.id, zone: "battlefield" });
+    next.cards[paladin.id] = paladin;
+    next.players.find((entry) => entry.id === p1.id)!.zones.battlefield.push(paladin.id);
+    // Battlefield artifacts so far: ozolith + banner = 2.
+    expect(freeEquipGranted(next, p1.id)).toBe(false);
+    const swordDef = createCardDefinition({
+      name: "Sword",
+      typeLine: "Artifact — Equipment",
+      activated: [
+        {
+          tap: false,
+          manaCost: "{2}",
+          effects: [{ kind: "attach", cardId: "self", toId: { type: "chosen", index: 0 } }],
+          targetRequirements: [{ kind: "own_creature" }],
+          timing: "sorcery",
+        },
+      ],
+    });
+    next.definitions[swordDef.id] = swordDef;
+    const sword = createCardInstance({ definitionId: swordDef.id, ownerId: p1.id, zone: "battlefield" });
+    next.cards[sword.id] = sword;
+    next.players.find((entry) => entry.id === p1.id)!.zones.battlefield.push(sword.id);
+    expect(freeEquipGranted(next, p1.id)).toBe(true);
+    next.priorityPlayerId = p1.id;
+    next.turn.activePlayerId = p1.id;
+    next.turn.phase = "precombatMain";
+    next.turn.step = "precombatMain";
+    // No mana in pool: the equip still goes through at {0}.
+    next = applyAction(next, {
+      kind: "activate_ability",
+      playerId: p1.id,
+      cardId: sword.id,
+      abilityIndex: 0,
+      targets: [{ type: "creature", cardId: paladin.id }],
+    });
+    while (next.stack.length > 0) {
+      next = resolveTopOfStack(next);
+    }
+    expect(next.cards[sword.id]?.attachedTo).toBe(paladin.id);
   });
 });
 

@@ -233,6 +233,11 @@ function compileOneFace(card: OracleCard, definitionId: string): OracleCompileRe
       ? { costReductions: compiled.costReductions }
       : {}),
     ...(compiled.chooseCreatureTypeOnEnter ? { chooseCreatureTypeOnEnter: true } : {}),
+    ...(compiled.chooseCardTypeOnEnter ? { chooseCardTypeOnEnter: true } : {}),
+    ...(compiled.enterCountersPerChosenType
+      ? { enterCountersPerChosenType: compiled.enterCountersPerChosenType }
+      : {}),
+    ...(compiled.freeEquipIfArtifacts ? { freeEquipIfArtifacts: compiled.freeEquipIfArtifacts } : {}),
     ...(compiled.selfIsChosenType ? { selfIsChosenType: true } : {}),
     ...(compiled.triggerDoubling ? { triggerDoubling: { ...compiled.triggerDoubling } } : {}),
     ...(compiled.landChosenColorBonus ? { landChosenColorBonus: true } : {}),

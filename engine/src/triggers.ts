@@ -530,6 +530,18 @@ function triggerMatchesEvent(
   if (trigger.event === "you_sacrifice_token" || trigger.event === "player_sacrifices") {
     return false;
   }
+  // The Ozolith: a counter-carrying permanent left the battlefield.
+  if (event.kind === "leaves_battlefield") {
+    return (
+      trigger.event === "leaves_battlefield" &&
+      (trigger.watch ?? "controlled") === "controlled" &&
+      event.controllerId === watcher.controllerId &&
+      subjectMatchesFilter(state, event.cardId, trigger.subjectFilter, watcher)
+    );
+  }
+  if (trigger.event === "leaves_battlefield") {
+    return false;
+  }
   if (event.kind === "untapped") {
     return (
       trigger.event === "becomes_untapped" &&
@@ -849,7 +861,9 @@ export function dispatchEventsInPlace(state: GameState, events: EngineEvent[]): 
               ? event.amount
               : event.kind === "dies"
                 ? event.powerAtDeath
-                : undefined;
+                : event.kind === "leaves_battlefield"
+                  ? event.amount
+                  : undefined;
           const causeKind =
             event.kind === "enters" || event.kind === "dies" || event.kind === "attacks"
               ? event.kind

@@ -734,12 +734,15 @@ export function bindCardEffect(
         return null;
       }
       // Halana and Alena: X reads the source's power at bind.
+      // The Ozolith: "subject_amount" is the leave event's counter total.
       const amount =
         effect.amount === "source_power"
           ? context.sourceId
             ? Math.max(0, creaturePower(state, context.sourceId))
             : 0
-          : effect.amount;
+          : effect.amount === "subject_amount"
+            ? Math.max(0, context.subjectAmount ?? 0)
+            : effect.amount;
       if (amount <= 0) {
         return null;
       }
@@ -1252,6 +1255,14 @@ export function bindCardEffect(
     }
     case "living_death":
       return { kind: "living_death" };
+    case "move_all_counters": {
+      const fromId = bindCardId(state, effect.cardId, context);
+      const chosen = chosenTargetAt(context, effect.target.index, state);
+      if (!fromId || !chosen || chosen.type !== "creature") {
+        return null;
+      }
+      return { kind: "move_all_counters", fromId, toId: chosen.cardId };
+    }
     case "copy_each_token": {
       const playerId = bindPlayerSelector(state, effect.playerId, context);
       if (!playerId) {
@@ -3084,6 +3095,25 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
         if (next.cards[top]?.zone === "exile") {
           next.delayedEndStep.push({ cardId: top, action: "hand" });
         }
+        break;
+      }
+      case "move_all_counters": {
+        // The Ozolith: every counter kind hops to the target at once.
+        const from = state.cards[effect.fromId];
+        const to = state.cards[effect.toId];
+        if (!from || !to || to.zone !== "battlefield") {
+          next = cloneGameState(state);
+          break;
+        }
+        next = cloneGameState(state);
+        const moving = next.cards[effect.fromId]!;
+        const receiving = next.cards[effect.toId]!;
+        for (const [name, count] of Object.entries(moving.counters)) {
+          if (typeof count === "number" && count > 0) {
+            receiving.counters[name] = (receiving.counters[name] ?? 0) + count;
+          }
+        }
+        moving.counters = {};
         break;
       }
       case "living_death": {
