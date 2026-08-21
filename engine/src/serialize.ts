@@ -1102,6 +1102,14 @@ export function parseGameState(json: string): GameState {
               return {
                 cardId: expectString(entry.cardId, `delayedEndStep[${index}].cardId`),
                 action,
+                ...(entry.withCounter === undefined
+                  ? {}
+                  : {
+                      withCounter: expectString(
+                        entry.withCounter,
+                        `delayedEndStep[${index}].withCounter`,
+                      ),
+                    }),
                 ...(entry.controllerId === undefined
                   ? {}
                   : {
@@ -1808,6 +1816,7 @@ function parseTargetRequirement(value: unknown, label: string): TargetRequiremen
       ? {}
       : { maxPower: expectNumber(value.maxPower, `${label}.maxPower`) }),
     ...(value.legendaryOnly === true ? { legendaryOnly: true } : {}),
+    ...(value.nontoken === true ? { nontoken: true } : {}),
     ...(value.nonbasicOnly === true ? { nonbasicOnly: true } : {}),
     ...(value.attackingOnly === true ? { attackingOnly: true } : {}),
     ...(() => {
@@ -2130,6 +2139,7 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
           ? {}
           : { perSourceCounters: expectString(value.perSourceCounters, `${label}.perSourceCounters`) }),
         ...(value.entersTappedAttacking === true ? { entersTappedAttacking: true } : {}),
+        ...(value.entersTapped === true ? { entersTapped: true } : {}),
         ...(value.atEndStep === "sacrifice" || value.atEndStep === "exile"
           ? { atEndStep: value.atEndStep }
           : {}),
@@ -2257,6 +2267,10 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
       return {
         kind,
         target: parseChosenTargetRef(value.target, `${label}.target`),
+        ...(value.toOwner === true ? { toOwner: true } : {}),
+        ...(value.withCounter === undefined
+          ? {}
+          : { withCounter: expectString(value.withCounter, `${label}.withCounter`) }),
       };
     case "exile_return_end_step_all":
       return { kind };
@@ -3954,6 +3968,9 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
       kind,
       cardId: expectString(value.cardId, `${label}.cardId`),
       controllerId: expectString(value.controllerId, `${label}.controllerId`),
+      ...(value.withCounter === undefined
+        ? {}
+        : { withCounter: expectString(value.withCounter, `${label}.withCounter`) }),
     };
   }
   if (kind === "exile_return_end_step_all") {
@@ -4038,6 +4055,7 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
           }
         : {}),
       ...(value.entersTappedAttacking === true ? { entersTappedAttacking: true } : {}),
+      ...(value.entersTapped === true ? { entersTapped: true } : {}),
       ...(value.atEndStep === "sacrifice" || value.atEndStep === "exile"
         ? { atEndStep: value.atEndStep }
         : {}),

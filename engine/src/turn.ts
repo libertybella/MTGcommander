@@ -200,6 +200,15 @@ function onEnterStep(state: GameState): GameState {
               toZone: "battlefield",
               ...(entry.controllerId ? { controllerId: entry.controllerId } : {}),
             });
+            // Parting Gust: "with a +1/+1 counter on it".
+            if (entry.withCounter && current.cards[entry.cardId]?.zone === "battlefield") {
+              current = applyEffect(current, {
+                kind: "add_counter",
+                cardId: entry.cardId,
+                counter: entry.withCounter,
+                amount: 1,
+              });
+            }
           }
           continue;
         }

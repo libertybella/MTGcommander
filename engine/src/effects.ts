@@ -1278,10 +1278,15 @@ export function bindCardEffect(
       if (!chosen || chosen.type !== "creature") {
         return null;
       }
+      // Parting Gust returns the exiled card to its OWNER, not the caster.
+      const returnTo = effect.toOwner
+        ? state.cards[chosen.cardId]?.ownerId ?? context.controllerId
+        : context.controllerId;
       return {
         kind: "exile_return_end_step",
         cardId: chosen.cardId,
-        controllerId: context.controllerId,
+        controllerId: returnTo,
+        ...(effect.withCounter ? { withCounter: effect.withCounter } : {}),
       };
     }
     case "adapt": {
@@ -1998,6 +2003,10 @@ function applyCreateToken(
         token.summoningSick = false;
         next.combat.attacks.push({ attackerId: token.id, defenderId });
       }
+    }
+    // "a tapped 1/1 blue Fish" (the gift mechanic).
+    if (effect.entersTapped) {
+      token.tapped = true;
     }
     // Mobilize: the tokens clean themselves up at the next end step.
     if (effect.atEndStep) {
@@ -3220,6 +3229,7 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
             cardId: effect.cardId,
             action: "battlefield",
             controllerId: effect.controllerId,
+            ...(effect.withCounter ? { withCounter: effect.withCounter } : {}),
           });
         }
         break;

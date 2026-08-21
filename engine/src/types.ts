@@ -471,6 +471,8 @@ export type GameState = {
   delayedEndStep: Array<{
     cardId: CardInstanceId;
     action: "sacrifice" | "exile" | "hand" | "battlefield";
+    /** Parting Gust: the returned card picks up this counter. */
+    withCounter?: string;
     /** action "battlefield" (Charming Prince): who gets the returned card. */
     controllerId?: PlayerId;
   }>;
@@ -654,6 +656,8 @@ export type GameEffect =
       /** Anim Pakal: count the source's counters when the effect applies. */
       countFromCounters?: { cardId: CardInstanceId; counter: string };
       entersTappedAttacking?: boolean;
+      /** "a tapped 1/1 blue Fish" (the gift mechanic). */
+      entersTapped?: boolean;
     }
   | { kind: "mill"; playerId: PlayerId; count: number }
   | { kind: "discard"; playerId: PlayerId; count: number }
@@ -720,7 +724,13 @@ export type GameEffect =
       freeCast?: boolean;
     }
   /** Charming Prince: exile now, return at the next end step. */
-  | { kind: "exile_return_end_step"; cardId: CardInstanceId; controllerId: PlayerId }
+  | {
+      kind: "exile_return_end_step";
+      cardId: CardInstanceId;
+      controllerId: PlayerId;
+      /** Parting Gust: the returned card picks up this counter. */
+      withCounter?: string;
+    }
   /** Eerie Interlude: each card returns under its owner's control. */
   | { kind: "exile_return_end_step_all"; cardIds: CardInstanceId[] }
   /** Adapt (CR 701.46): N +1/+1 counters if it has none. */
@@ -973,6 +983,8 @@ export type TargetRequirement = {
   excludedSubtypes?: string[];
   /** "target creature you own" (Charming Prince): owner must be the caster. */
   owner?: "own";
+  /** "target nontoken creature" (Parting Gust). */
+  nontoken?: boolean;
 };
 
 /** One bullet of a modal spell. Targets are chosen for the picked mode only. */
@@ -1129,6 +1141,8 @@ export type CardEffect =
       /** "tapped and attacking": joins the current combat against the first
        * declared defender (a documented approximation). */
       entersTappedAttacking?: boolean;
+      /** "a tapped 1/1 blue Fish" (the gift mechanic). */
+      entersTapped?: boolean;
       /** Mobilize: "Sacrifice them at the beginning of the next end step." */
       atEndStep?: "sacrifice" | "exile";
       /** Scute Swarm: with this many lands, the token is a copy of the
@@ -1203,7 +1217,13 @@ export type CardEffect =
     }
   /** Charming Prince: exile the target; it returns to the battlefield under
    * the effect controller's control at the beginning of the next end step. */
-  | { kind: "exile_return_end_step"; target: ChosenTargetRef }
+  | {
+      kind: "exile_return_end_step";
+      target: ChosenTargetRef;
+      /** Parting Gust: the card comes back under its OWNER's control. */
+      toOwner?: boolean;
+      withCounter?: string;
+    }
   /** Eerie Interlude: every chosen creature blinks out and returns to its
    * OWNER's battlefield at the next end step. */
   | { kind: "exile_return_end_step_all" }

@@ -2816,9 +2816,10 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     };
   }
 
-  // Generalized bounce, with Cyclonic Rift's "you don't control".
+  // Generalized bounce, with Cyclonic Rift's "you don't control" ("an
+  // opponent controls" reads the same way here).
   match = sentence.match(
-    /^Return target (creature|artifact|enchantment|permanent|nonland permanent)( you don't control)? to its owner's hand$/i,
+    /^Return target (creature|artifact|enchantment|permanent|nonland permanent)( you don't control| an opponent controls)? to its owner's hand$/i,
   );
   if (match?.[1]) {
     const kindOf: Record<string, TargetKind> = {
@@ -4944,6 +4945,135 @@ function extractModalModes(card: OracleCard): ModalExtraction | null {
   return { remainingText, modes, raw, ...(choice ? { choice } : {}) };
 }
 
+/** "return that card to the battlefield under its owner's control with a
+ * +1/+1 counter on it at the beginning of the next end step" (Parting
+ * Gust's unpromised half). */
+const GIFT_RETURN_RIDER =
+  /^return that card to the battlefield under its owner's control with a \+1\/\+1 counter on it at the beginning of the next end step$/i;
+
+/**
+ * The gift mechanic (CR 702.174) compiles to a two-mode choice made on
+ * cast: mode 0 declines the gift and mode 1 promises it, with the
+ * recipient's reward resolving before the spell's other effects. Two
+ * documented approximations: the recipient is always the next opponent
+ * (rather than a chosen one), and Dawn's Truce's "You and …" player-
+ * hexproof half is dropped (player hexproof isn't modeled).
+ */
+function extractGiftModes(card: OracleCard): ModalExtraction | null {
+  const lines = stripReminderText(card.oracleText)
+    .replace(/\r/g, "")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+  const headIndex = lines.findIndex((line) => /^Gift a (card|tapped Fish)$/i.test(line));
+  if (headIndex === -1 || headIndex + 1 >= lines.length) {
+    return null;
+  }
+  const head = lines[headIndex]!;
+  const body = lines[headIndex + 1]!;
+  const remainingText = [...lines.slice(0, headIndex), ...lines.slice(headIndex + 2)].join("\n");
+  const raw = `${head} ${body}`;
+  const failed: ModalExtraction = { remainingText, modes: null, raw };
+  const giftEffect: CardEffect = /card$/i.test(head)
+    ? { kind: "draw", playerId: "next_opponent", count: 1 }
+    : {
+        kind: "create_token",
+        ownerId: "next_opponent",
+        name: "Fish",
+        typeLine: "Creature — Fish Token",
+        power: 1,
+        toughness: 1,
+        entersTapped: true,
+      };
+  const sentences = splitOracleSentences({ ...card, oracleText: body });
+  if (sentences.length !== 2 || !sentences[0] || !sentences[1]) {
+    return failed;
+  }
+  // Dawn's Truce: the player-hexproof half of "You and permanents you
+  // control" is dropped.
+  const base = sentences[0].replace(/^You and permanents you control gain/i, "Permanents you control gain");
+  const rider = sentences[1];
+  const buildModes = (
+    unpromised: { effects: CardEffect[]; targetRequirements: TargetRequirement[] },
+    promised: { effects: CardEffect[]; targetRequirements: TargetRequirement[] },
+  ): ModalExtraction => ({
+    remainingText,
+    raw,
+    modes: [
+      { label: "Don't promise a gift", effects: unpromised.effects, targetRequirements: unpromised.targetRequirements },
+      {
+        label: `Promise the gift (${head.replace(/^Gift /i, "")})`,
+        effects: [giftEffect, ...promised.effects],
+        targetRequirements: promised.targetRequirements,
+      },
+    ],
+  });
+
+  // Parting Gust: unpromised, the exiled creature blinks back to its owner
+  // with a +1/+1 counter; promised, it stays exiled.
+  const wasnt = rider.match(/^If the gift wasn't promised, (.+)$/i);
+  if (wasnt?.[1]) {
+    if (!GIFT_RETURN_RIDER.test(wasnt[1]) || !/^Exile target nontoken creature$/i.test(base)) {
+      return failed;
+    }
+    const target: TargetRequirement = { kind: "creature", nontoken: true };
+    return buildModes(
+      {
+        effects: [
+          { kind: "exile_return_end_step", target: { type: "chosen", index: 0 }, toOwner: true, withCounter: "p1p1" },
+        ],
+        targetRequirements: [target],
+      },
+      {
+        effects: [{ kind: "move_card", cardId: { type: "chosen", index: 0 }, toZone: "exile" }],
+        targetRequirements: [target],
+      },
+    );
+  }
+
+  const promisedRider = rider.match(/^If the gift was promised, (.+)$/i);
+  if (!promisedRider?.[1]) {
+    return failed;
+  }
+  const baseClause = compileSimpleClause(base);
+  if (!baseClause || baseClause.leftover) {
+    return failed;
+  }
+  const tail = promisedRider[1];
+
+  // "instead <alt clause>": the promised mode swaps the whole effect.
+  const instead = tail.match(/^instead (.+)$/i);
+  if (instead?.[1]) {
+    const alt = instead[1].charAt(0).toUpperCase() + instead[1].slice(1);
+    const altClause = compileSimpleClause(alt);
+    if (!altClause || altClause.leftover) {
+      return failed;
+    }
+    return buildModes(
+      { effects: baseClause.effects, targetRequirements: baseClause.targetRequirements },
+      { effects: altClause.effects, targetRequirements: altClause.targetRequirements },
+    );
+  }
+
+  // "<subject> also <grant>": the promised mode adds to the base effects.
+  const also = tail.match(/^(.+?) also (.+)$/i);
+  if (also?.[1] && also[2]) {
+    const extra = `${also[1].charAt(0).toUpperCase()}${also[1].slice(1)} ${also[2]}`;
+    const extraClause = compileSimpleClause(extra);
+    if (!extraClause || extraClause.leftover || extraClause.targetRequirements.length > 0) {
+      return failed;
+    }
+    return buildModes(
+      { effects: baseClause.effects, targetRequirements: baseClause.targetRequirements },
+      {
+        effects: [...baseClause.effects, ...extraClause.effects],
+        targetRequirements: baseClause.targetRequirements,
+      },
+    );
+  }
+  return failed;
+}
+
 type TriggerModalExtraction = {
   remainingText: string;
   trigger: CardTrigger | null;
@@ -5220,11 +5350,21 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
       result.leftover.push(modal.raw);
     }
   }
+  // Gift heads compile to a promise/decline mode pair, before sentence
+  // splitting (the head is its own line).
+  const afterModal = modal ? { ...card, oracleText: modal.remainingText } : card;
+  const gift = extractGiftModes(afterModal);
+  if (gift) {
+    if (gift.modes) {
+      result.modes = gift.modes;
+    } else {
+      result.leftover.push(gift.raw);
+    }
+  }
+  const afterGift = gift ? { ...afterModal, oracleText: gift.remainingText } : afterModal;
   // "When ~ dies/enters, choose one —" trigger blocks, before sentence
   // splitting (the bullets are lines).
-  const triggerModal = extractTriggerModalModes(
-    modal ? { ...card, oracleText: modal.remainingText } : card,
-  );
+  const triggerModal = extractTriggerModalModes(afterGift);
   if (triggerModal) {
     if (triggerModal.trigger) {
       result.triggers.push(triggerModal.trigger);
@@ -5233,13 +5373,8 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
     }
   }
   const afterTriggerModal = triggerModal
-    ? {
-        ...card,
-        oracleText: triggerModal.remainingText,
-      }
-    : modal
-      ? { ...card, oracleText: modal.remainingText }
-      : card;
+    ? { ...afterGift, oracleText: triggerModal.remainingText }
+    : afterGift;
   // "{2}, Sacrifice ~: Choose one —" activation blocks.
   const activatedModal = extractActivatedModalModes(afterTriggerModal);
   if (activatedModal) {

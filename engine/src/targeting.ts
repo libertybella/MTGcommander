@@ -85,6 +85,10 @@ function violatesCharacteristicFilter(
   if (requirement.attackingOnly && state.cards[cardId]?.attacking !== true) {
     return true;
   }
+  // "target nontoken creature" (Parting Gust).
+  if (requirement.nontoken && state.cards[cardId]?.isToken) {
+    return true;
+  }
   if (violatesRequiredColors(state, cardId, requirement)) {
     return true;
   }

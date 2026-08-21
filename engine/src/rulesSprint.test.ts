@@ -14643,3 +14643,175 @@ describe("wave 133: wayfarers and witnesses", () => {
     expect(activated.prompts[0]?.kind).toBe("search_library");
   });
 });
+
+describe("wave 134: the gift batch", () => {
+  it("compiles the four gift spells to promise/decline mode pairs", () => {
+    const gust = compileOracleCard({
+      oracleId: "gust",
+      name: "Parting Gust",
+      manaCost: "{W}{W}",
+      typeLine: "Instant",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "Gift a tapped Fish (You may promise an opponent a gift as you cast this spell. If you do, they create a tapped 1/1 blue Fish creature token before its other effects.)\nExile target nontoken creature. If the gift wasn't promised, return that card to the battlefield under its owner's control with a +1/+1 counter on it at the beginning of the next end step.",
+    });
+    expect(gust.notes).toEqual([]);
+    expect(gust.definition.modes).toHaveLength(2);
+    expect(gust.definition.modes?.[0]?.effects).toEqual([
+      {
+        kind: "exile_return_end_step",
+        target: { type: "chosen", index: 0 },
+        toOwner: true,
+        withCounter: "p1p1",
+      },
+    ]);
+    expect(gust.definition.modes?.[0]?.targetRequirements).toEqual([
+      { kind: "creature", nontoken: true },
+    ]);
+    expect(gust.definition.modes?.[1]?.effects[0]).toMatchObject({
+      kind: "create_token",
+      ownerId: "next_opponent",
+      name: "Fish",
+      entersTapped: true,
+    });
+    expect(gust.definition.modes?.[1]?.effects[1]).toMatchObject({
+      kind: "move_card",
+      toZone: "exile",
+    });
+
+    const truce = compileOracleCard({
+      oracleId: "truce",
+      name: "Dawn's Truce",
+      manaCost: "{1}{W}",
+      typeLine: "Instant",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "Gift a card (You may promise an opponent a gift as you cast this spell. If you do, they draw a card before its other effects.)\nYou and permanents you control gain hexproof until end of turn. If the gift was promised, permanents you control also gain indestructible until end of turn.",
+    });
+    expect(truce.notes).toEqual([]);
+    expect(truce.definition.modes?.[1]?.effects).toEqual([
+      { kind: "draw", playerId: "next_opponent", count: 1 },
+      { kind: "team_keyword_until_eot", playerId: "controller", keyword: "hexproof", scope: "permanents" },
+      { kind: "team_keyword_until_eot", playerId: "controller", keyword: "indestructible", scope: "permanents" },
+    ]);
+
+    const maw = compileOracleCard({
+      oracleId: "maw",
+      name: "Into the Flood Maw",
+      manaCost: "{U}",
+      typeLine: "Instant",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "Gift a tapped Fish (You may promise an opponent a gift as you cast this spell. If you do, they create a tapped 1/1 blue Fish creature token before its other effects.)\nReturn target creature an opponent controls to its owner's hand. If the gift was promised, instead return target nonland permanent an opponent controls to its owner's hand.",
+    });
+    expect(maw.notes).toEqual([]);
+    expect(maw.definition.modes?.[0]?.targetRequirements).toEqual([
+      { kind: "creature", control: "not_own" },
+    ]);
+    expect(maw.definition.modes?.[1]?.targetRequirements).toEqual([
+      { kind: "nonland_permanent", control: "not_own" },
+    ]);
+
+    const pull = compileOracleCard({
+      oracleId: "pull",
+      name: "Long River's Pull",
+      manaCost: "{U}{U}",
+      typeLine: "Instant",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "Gift a card (You may promise an opponent a gift as you cast this spell. If you do, they draw a card before its other effects.)\nCounter target creature spell. If the gift was promised, instead counter target spell.",
+    });
+    expect(pull.notes).toEqual([]);
+    expect(pull.definition.modes?.[0]?.targetRequirements).toEqual([{ kind: "creature_spell" }]);
+    expect(pull.definition.modes?.[1]?.effects).toEqual([
+      { kind: "draw", playerId: "next_opponent", count: 1 },
+      { kind: "counter_spell", target: { type: "chosen", index: 0 } },
+    ]);
+    expect(pull.definition.modes?.[1]?.targetRequirements).toEqual([{ kind: "spell" }]);
+  });
+
+  it("returns the unpromised exile to its owner with a counter and taps the gift Fish in", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 30);
+    const bearDef = createCardDefinition({
+      name: "Bear",
+      typeLine: "Creature — Bear",
+      power: 2,
+      toughness: 2,
+    });
+    game.definitions[bearDef.id] = bearDef;
+    const bear = createCardInstance({ definitionId: bearDef.id, ownerId: p2.id, zone: "battlefield" });
+    game.cards[bear.id] = bear;
+    p2.zones.battlefield.push(bear.id);
+
+    // toOwner binds the delayed return to the exiled card's owner, not the caster.
+    const bound = bindCardEffects(
+      game,
+      [
+        {
+          kind: "exile_return_end_step",
+          target: { type: "chosen", index: 0 },
+          toOwner: true,
+          withCounter: "p1p1",
+        },
+      ],
+      {
+        controllerId: p1.id,
+        sourceId: null,
+        targets: [{ type: "creature", cardId: bear.id }],
+        targetRequirements: [{ kind: "creature", nontoken: true }],
+      },
+    );
+    expect(bound[0]).toMatchObject({ controllerId: p2.id, withCounter: "p1p1" });
+
+    let next = applyEffects(game, bound);
+    expect(next.cards[bear.id]?.zone).toBe("exile");
+    expect(next.delayedEndStep[0]).toMatchObject({ action: "battlefield", withCounter: "p1p1" });
+
+    for (let guard = 0; guard < 30; guard += 1) {
+      next = advanceSteps(next, 1);
+      if (next.cards[bear.id]?.zone === "battlefield") {
+        break;
+      }
+    }
+    expect(next.cards[bear.id]?.zone).toBe("battlefield");
+    expect(next.cards[bear.id]?.controllerId).toBe(p2.id);
+    expect(next.cards[bear.id]?.counters["p1p1"]).toBe(1);
+
+    // The promised Fish enters tapped, and tokens fail nontoken targeting.
+    next = applyEffects(next, [
+      {
+        kind: "create_token",
+        ownerId: p2.id,
+        name: "Fish",
+        typeLine: "Creature — Fish Token",
+        power: 1,
+        toughness: 1,
+        entersTapped: true,
+      },
+    ]);
+    const fishId = Object.values(next.cards).find((card) => card.isToken)?.id;
+    expect(fishId).toBeDefined();
+    expect(next.cards[fishId!]?.tapped).toBe(true);
+    const nontokenReq = { kind: "creature" as const, nontoken: true };
+    expect(
+      isChosenTargetLegal(next, nontokenReq, { type: "creature", cardId: fishId! }, p1.id),
+    ).toBe(false);
+    expect(
+      isChosenTargetLegal(next, nontokenReq, { type: "creature", cardId: bear.id }, p1.id),
+    ).toBe(true);
+  });
+});
+

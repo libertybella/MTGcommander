@@ -49,7 +49,7 @@ Statuses: `open` · `claimed` · `in-progress` · `done` · `blocked`
 | Sac-modal activated abilities + Eerie Interlude | B/D | done | claude/2daf8b18 | comprehensive-plan | 2026-08-21 | Wave 131 merged: ActivatedAbility.modes + mass delayed blink, 3 flips (Insidious Fungus, Cankerbloom, Eerie Interlude) — 921/2,009 (45.8%) |
 | Confluences (choose-with-repeats) | B | open | | | | |
 | Opponent-chooses (Fact or Fiction) | B | open | | | | |
-| Gift mechanic | B | in-progress | claude/2daf8b18 | comprehensive-plan | 2026-08-21 | Wave 134: Parting Gust, Into the Flood Maw, Dawn's Truce, Long River's Pull |
+| Gift mechanic | B | done | claude/2daf8b18 | comprehensive-plan | 2026-08-21 | Wave 134 merged: promise/decline mode pairs, 4 flips (Parting Gust, Into the Flood Maw, Dawn's Truce, Long River's Pull) — 938/2,009 (46.7%) |
 | Academy Manufactor | C | open | | | | Token-creation replacement |
 | Sylvan Library | C | open | | | | Draw-step replacement |
 | Waste Not | C | done | claude/2daf8b18 | comprehensive-plan | 2026-08-21 | Wave 130 merged: discards event + watchers, 2 flips (Waste Not, Bone Miser) — 918/2,009 (45.7%). Tergrid remains open |
