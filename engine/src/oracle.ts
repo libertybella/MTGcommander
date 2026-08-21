@@ -208,6 +208,7 @@ function compileOneFace(card: OracleCard, definitionId: string): OracleCompileRe
     ...(compiled.grantsFlash ? { grantsFlash: true } : {}),
     ...(compiled.extraDrawStepDraws ? { extraDrawStepDraws: true } : {}),
     ...(compiled.affinityArtifacts ? { affinityArtifacts: true } : {}),
+    ...(compiled.affinityAllCreatures ? { affinityAllCreatures: true } : {}),
     ...(compiled.costReductions && compiled.costReductions.length > 0
       ? { costReductions: compiled.costReductions }
       : {}),

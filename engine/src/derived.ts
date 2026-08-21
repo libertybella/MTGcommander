@@ -206,6 +206,17 @@ export function affinityArtifactDiscount(state: GameState, playerId: string): nu
   return count;
 }
 
+/** "for each creature on the battlefield" — anyone's (Ghoulcaller's-class). */
+export function allBattlefieldCreatureCount(state: GameState): number {
+  let count = 0;
+  for (const card of Object.values(state.cards)) {
+    if (card.zone === "battlefield" && isCreature(state, card.id)) {
+      count += 1;
+    }
+  }
+  return count;
+}
+
 /** "If you control a commander" (the free-spell cycle): any commander on the
  * battlefield under this player's control, their own or a stolen one. */
 export function controlsCommander(state: GameState, playerId: string): boolean {

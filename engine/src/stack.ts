@@ -70,7 +70,7 @@ export function putActivatedAbilityOnStack(
   if (!ability) {
     throw new Error(`Unknown activated ability ${abilityIndex}`);
   }
-  validateChosenTargets(state, ability.targetRequirements, targets, card.controllerId, sourceColorsOf(state, cardId));
+  validateChosenTargets(state, ability.targetRequirements, targets, card.controllerId, sourceColorsOf(state, cardId), cardId);
 
   const next = cloneGameState(state);
   const stackId = createId("stack");
@@ -124,7 +124,7 @@ export function putSpellOnStack(
       : modeIndex !== undefined && definition?.modes?.[modeIndex]
         ? definition.modes[modeIndex]!.targetRequirements
         : definition?.targetRequirements ?? [];
-  validateChosenTargets(state, requirements, targets, card.controllerId, sourceColorsOf(state, cardId));
+  validateChosenTargets(state, requirements, targets, card.controllerId, sourceColorsOf(state, cardId), cardId);
 
   let next = cloneGameState(state);
   next = removeCardFromCurrentZone(next, cardId);
@@ -203,7 +203,7 @@ export function resolveTopOfStack(state: GameState): GameState {
       const requirements = ability?.targetRequirements ?? [];
       if (
         ability &&
-        hasLegalTargetRemaining(next, requirements, top.targets, top.controllerId, sourceColorsOf(next, top.sourceId))
+        hasLegalTargetRemaining(next, requirements, top.targets, top.controllerId, sourceColorsOf(next, top.sourceId), top.sourceId)
       ) {
         const bound = bindCardEffects(next, ability.effects, {
           controllerId: top.controllerId,
@@ -218,7 +218,7 @@ export function resolveTopOfStack(state: GameState): GameState {
       const requirements = ability?.targetRequirements ?? [];
       if (
         ability &&
-        hasLegalTargetRemaining(next, requirements, top.targets, top.controllerId, sourceColorsOf(next, top.sourceId))
+        hasLegalTargetRemaining(next, requirements, top.targets, top.controllerId, sourceColorsOf(next, top.sourceId), top.sourceId)
       ) {
         const bound = bindCardEffects(next, ability.effects, {
           controllerId: top.controllerId,
@@ -233,7 +233,7 @@ export function resolveTopOfStack(state: GameState): GameState {
       const requirements = trigger?.targetRequirements ?? [];
       if (
         trigger &&
-        hasLegalTargetRemaining(next, requirements, top.targets, top.controllerId, sourceColorsOf(next, top.sourceId))
+        hasLegalTargetRemaining(next, requirements, top.targets, top.controllerId, sourceColorsOf(next, top.sourceId), top.sourceId)
       ) {
         const bound = bindCardEffects(next, trigger.effects, {
           controllerId: top.controllerId,
@@ -266,7 +266,7 @@ export function resolveTopOfStack(state: GameState): GameState {
       offset += chosenMode.targetRequirements.length;
       if (
         chosenMode.effects.length === 0 ||
-        !hasLegalTargetRemaining(next, chosenMode.targetRequirements, slice, top.controllerId, sourceColorsOf(next, top.sourceId))
+        !hasLegalTargetRemaining(next, chosenMode.targetRequirements, slice, top.controllerId, sourceColorsOf(next, top.sourceId), top.sourceId)
       ) {
         continue;
       }
@@ -302,7 +302,7 @@ export function resolveTopOfStack(state: GameState): GameState {
   const effects = mode ? mode.effects : definition?.effects ?? [];
   const shouldResolveEffects =
     effects.length > 0 &&
-    hasLegalTargetRemaining(next, requirements, top.targets, top.controllerId, sourceColorsOf(next, top.sourceId));
+    hasLegalTargetRemaining(next, requirements, top.targets, top.controllerId, sourceColorsOf(next, top.sourceId), top.sourceId);
   if (shouldResolveEffects && definition) {
     const divided = effects.find((effect) => effect.kind === "divided_damage");
     if (divided?.kind === "divided_damage") {
@@ -354,7 +354,7 @@ export function resolveTopOfStack(state: GameState): GameState {
     const target = top.targets[0];
     if (
       target?.type === "creature" &&
-      hasLegalTargetRemaining(next, requirements, top.targets, top.controllerId, sourceColorsOf(next, top.sourceId))
+      hasLegalTargetRemaining(next, requirements, top.targets, top.controllerId, sourceColorsOf(next, top.sourceId), top.sourceId)
     ) {
       attachTo = target.cardId;
     } else {

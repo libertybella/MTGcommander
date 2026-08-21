@@ -52,6 +52,7 @@ export type CompiledOracleText = {
   grantsFlash?: boolean;
   extraDrawStepDraws?: boolean;
   affinityArtifacts?: boolean;
+  affinityAllCreatures?: boolean;
   topOfLibrary?: TopOfLibraryGrant;
   flashback?: { manaCost: string; life?: number };
   costReductions?: CostReduction[];
@@ -1057,6 +1058,44 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
           kind: "untap_all",
           playerId: "controller",
           what: untapAll[1].toLowerCase() === "creatures" ? "creature" : "land",
+        },
+      ],
+    };
+  }
+
+  if (/^untap another target artifact$/i.test(sentence)) {
+    return {
+      targetRequirements: [{ kind: "artifact", excludeSource: true }],
+      effects: [{ kind: "untap", cardId: { type: "chosen", index: 0 } }],
+    };
+  }
+
+  if (/^return another target artifact card from your graveyard to your hand$/i.test(sentence)) {
+    return {
+      targetRequirements: [{ kind: "own_graveyard_artifact_card", excludeSource: true }],
+      effects: [{ kind: "move_card", cardId: { type: "chosen", index: 0 }, toZone: "hand" }],
+    };
+  }
+
+  const putLand = sentence.match(
+    /^you may put a land card from your hand onto the battlefield( tapped)?$/i,
+  );
+  if (putLand) {
+    return {
+      targetRequirements: [],
+      effects: [
+        {
+          kind: "choose_card",
+          chooserId: "controller",
+          sources: [{ playerId: "controller", zone: "hand", filter: "land" }],
+          thenEffects: [
+            {
+              kind: "move_card",
+              cardId: "chosen_card",
+              toZone: "battlefield",
+              ...(putLand[1] ? { entersTapped: true } : {}),
+            },
+          ],
         },
       ],
     };
@@ -2828,6 +2867,13 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
 
     if (/^Affinity for artifacts$/i.test(sentence)) {
       result.affinityArtifacts = true;
+      continue;
+    }
+
+    if (
+      /^This spell costs \{1\} less to cast for each creature on the battlefield$/i.test(sentence)
+    ) {
+      result.affinityAllCreatures = true;
       continue;
     }
 

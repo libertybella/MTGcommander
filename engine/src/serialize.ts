@@ -324,6 +324,7 @@ export function parseGameState(json: string): GameState {
       ...(def.grantsFlash === true ? { grantsFlash: true } : {}),
       ...(def.extraDrawStepDraws === true ? { extraDrawStepDraws: true } : {}),
       ...(def.affinityArtifacts === true ? { affinityArtifacts: true } : {}),
+      ...(def.affinityAllCreatures === true ? { affinityAllCreatures: true } : {}),
       ...(def.flashback === undefined
         ? {}
         : {
@@ -1208,6 +1209,7 @@ function parseTargetRequirement(value: unknown, label: string): TargetRequiremen
     kind !== "own_graveyard_card" &&
     kind !== "own_graveyard_creature_card" &&
     kind !== "own_graveyard_permanent_card" &&
+    kind !== "own_graveyard_artifact_card" &&
     kind !== "nonartifact_creature" &&
     kind !== "player_or_creature" &&
     kind !== "spell" &&
@@ -1247,6 +1249,7 @@ function parseTargetRequirement(value: unknown, label: string): TargetRequiremen
     ...(value.minManaValue === undefined
       ? {}
       : { minManaValue: expectNumber(value.minManaValue, `${label}.minManaValue`) }),
+    ...(value.excludeSource === true ? { excludeSource: true } : {}),
   };
 }
 

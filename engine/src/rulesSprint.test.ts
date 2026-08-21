@@ -4148,3 +4148,93 @@ describe("wave 44: gated mana, costed mana, spirit guides, fog", () => {
     expect(fogged.preventCombatDamage).toBe(true);
   });
 });
+
+describe("wave 45: another-target, put-land, creature affinity", () => {
+  it("compiles the Myr Retriever, Walking Atlas body, and creature-affinity shapes", () => {
+    const retriever = compileOracleCard({
+      oracleId: "myr-retriever",
+      name: "Myr Retriever",
+      manaCost: "{2}",
+      typeLine: "Artifact Creature - Myr",
+      oracleText:
+        "When Myr Retriever dies, return another target artifact card from your graveyard to your hand.",
+      power: "1",
+      toughness: "1",
+      printedKeywords: [],
+      imageUrl: "",
+    });
+    expect(retriever.notes).toEqual([]);
+    expect(retriever.definition.triggers[0]?.targetRequirements).toEqual([
+      { kind: "own_graveyard_artifact_card", excludeSource: true },
+    ]);
+
+    const atlasBody = compileOracleCard({
+      oracleId: "atlas",
+      name: "Walking Atlas Lite",
+      manaCost: "{2}",
+      typeLine: "Artifact Creature - Construct",
+      oracleText: "{T}: You may put a land card from your hand onto the battlefield tapped.",
+      power: "1",
+      toughness: "1",
+      printedKeywords: [],
+      imageUrl: "",
+    });
+    expect(atlasBody.notes).toEqual([]);
+    const effect = atlasBody.definition.activated[0]?.effects[0];
+    expect(effect?.kind).toBe("choose_card");
+
+    const throng = compileOracleCard({
+      oracleId: "throng",
+      name: "Distant Melody Beast",
+      manaCost: "{6}",
+      typeLine: "Creature - Beast",
+      oracleText: "This spell costs {1} less to cast for each creature on the battlefield.",
+      power: "5",
+      toughness: "5",
+      printedKeywords: [],
+      imageUrl: "",
+    });
+    expect(throng.notes).toEqual([]);
+    expect(throng.definition.affinityAllCreatures).toBe(true);
+  });
+
+  it("excludeSource keeps an ability from targeting its own source", () => {
+    const { game, p1 } = twoPlayers();
+    const relicDef = createCardDefinition({
+      name: "Voltaic Servant Lite",
+      typeLine: "Artifact",
+      activated: [
+        {
+          tap: true,
+          manaCost: "",
+          effects: [{ kind: "untap", cardId: { type: "chosen", index: 0 } }],
+          targetRequirements: [{ kind: "artifact", excludeSource: true }],
+        },
+      ],
+    });
+    game.definitions[relicDef.id] = relicDef;
+    const relic = createCardInstance({ definitionId: relicDef.id, ownerId: p1.id, zone: "battlefield" });
+    const other = createCardInstance({ definitionId: relicDef.id, ownerId: p1.id, zone: "battlefield" });
+    game.cards[relic.id] = relic;
+    game.cards[other.id] = other;
+    p1.zones.battlefield.push(relic.id, other.id);
+
+    expect(() =>
+      applyAction(game, {
+        kind: "activate_ability",
+        playerId: p1.id,
+        cardId: relic.id,
+        abilityIndex: 0,
+        targets: [{ type: "creature", cardId: relic.id }],
+      }),
+    ).toThrow();
+    const legal = applyAction(game, {
+      kind: "activate_ability",
+      playerId: p1.id,
+      cardId: relic.id,
+      abilityIndex: 0,
+      targets: [{ type: "creature", cardId: other.id }],
+    });
+    expect(legal.stack).toHaveLength(1);
+  });
+});

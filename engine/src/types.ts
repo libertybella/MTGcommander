@@ -167,6 +167,8 @@ export type CardDefinition = {
   extraDrawStepDraws?: boolean;
   /** Affinity for artifacts: generic cost shrinks per artifact you control. */
   affinityArtifacts?: boolean;
+  /** "costs {1} less for each creature on the battlefield" (anyone's). */
+  affinityAllCreatures?: boolean;
   /**
    * "Artifact spells you cast cost {1} less to cast" (medallions, Foundry
    * Inspector). Applies to the controller's spells while on the battlefield;
@@ -568,6 +570,7 @@ export type TargetKind =
   | "own_graveyard_card"
   | "own_graveyard_creature_card"
   | "own_graveyard_permanent_card"
+  | "own_graveyard_artifact_card"
   | "nonartifact_creature"
   | "player_or_creature"
   | "spell"
@@ -587,6 +590,8 @@ export type TargetRequirement = {
   maxManaValue?: number;
   /** "with mana value N or greater" (Despark). */
   minManaValue?: number;
+  /** "another target …": the effect's own source is not a legal target. */
+  excludeSource?: boolean;
 };
 
 /** One bullet of a modal spell. Targets are chosen for the picked mode only. */

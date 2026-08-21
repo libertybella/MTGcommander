@@ -132,7 +132,17 @@ export function isChosenTargetLegal(
   target: ChosenTarget,
   casterId?: PlayerId,
   sourceColors?: Color[],
+  sourceId?: CardInstanceId | null,
 ): boolean {
+  // "another target …": the source itself is not a legal choice.
+  if (
+    requirement.excludeSource &&
+    sourceId &&
+    target.type === "creature" &&
+    target.cardId === sourceId
+  ) {
+    return false;
+  }
   if (requirement.kind === "player") {
     return target.type === "player" && isLegalPlayerTarget(state, target.playerId);
   }
@@ -202,7 +212,8 @@ export function isChosenTargetLegal(
   if (
     requirement.kind === "own_graveyard_card" ||
     requirement.kind === "own_graveyard_creature_card" ||
-    requirement.kind === "own_graveyard_permanent_card"
+    requirement.kind === "own_graveyard_permanent_card" ||
+    requirement.kind === "own_graveyard_artifact_card"
   ) {
     if (target.type !== "creature" || !casterId) {
       return false;
@@ -213,6 +224,9 @@ export function isChosenTargetLegal(
     }
     if (requirement.kind === "own_graveyard_creature_card") {
       return characteristicsOf(state, target.cardId).types.includes("creature");
+    }
+    if (requirement.kind === "own_graveyard_artifact_card") {
+      return characteristicsOf(state, target.cardId).types.includes("artifact");
     }
     if (requirement.kind === "own_graveyard_permanent_card") {
       const types = characteristicsOf(state, target.cardId).types;
@@ -307,6 +321,7 @@ export function validateChosenTargets(
   targets: ChosenTarget[],
   casterId?: PlayerId,
   sourceColors?: Color[],
+  sourceId?: CardInstanceId | null,
 ): void {
   if (requirements.length === 0) {
     if (targets.length > 0) {
@@ -323,7 +338,7 @@ export function validateChosenTargets(
       throw new Error("Choose each target once");
     }
     for (const target of targets) {
-      if (!isChosenTargetLegal(state, requirements[0]!, target, casterId, sourceColors)) {
+      if (!isChosenTargetLegal(state, requirements[0]!, target, casterId, sourceColors, sourceId)) {
         throw new Error("Illegal target");
       }
     }
@@ -335,7 +350,7 @@ export function validateChosenTargets(
   for (let index = 0; index < requirements.length; index += 1) {
     const requirement = requirements[index];
     const target = targets[index];
-    if (!requirement || !target || !isChosenTargetLegal(state, requirement, target, casterId, sourceColors)) {
+    if (!requirement || !target || !isChosenTargetLegal(state, requirement, target, casterId, sourceColors, sourceId)) {
       throw new Error("Illegal target");
     }
   }
@@ -348,18 +363,19 @@ export function hasLegalTargetRemaining(
   targets: ChosenTarget[],
   casterId?: PlayerId,
   sourceColors?: Color[],
+  sourceId?: CardInstanceId | null,
 ): boolean {
   if (requirements.length === 0) {
     return true;
   }
   if (requirements.length === 1 && requirements[0]?.variable) {
     return targets.some((target) =>
-      isChosenTargetLegal(state, requirements[0]!, target, casterId, sourceColors),
+      isChosenTargetLegal(state, requirements[0]!, target, casterId, sourceColors, sourceId),
     );
   }
   return requirements.some((requirement, index) => {
     const target = targets[index];
-    return Boolean(target && isChosenTargetLegal(state, requirement, target, casterId, sourceColors));
+    return Boolean(target && isChosenTargetLegal(state, requirement, target, casterId, sourceColors, sourceId));
   });
 }
 
@@ -389,7 +405,8 @@ export function legalChoicesForRequirement(
   if (
     requirement.kind === "own_graveyard_card" ||
     requirement.kind === "own_graveyard_creature_card" ||
-    requirement.kind === "own_graveyard_permanent_card"
+    requirement.kind === "own_graveyard_permanent_card" ||
+    requirement.kind === "own_graveyard_artifact_card"
   ) {
     const caster = state.players.find((entry) => entry.id === casterId);
     return (caster?.zones.graveyard ?? [])

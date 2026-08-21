@@ -16,8 +16,8 @@ This is **not** Wizards of the Coast software. It is also **not** the sibling Bi
 | --- | --- |
 | **Phase** | Comprehensive Rules machinery (layers, events, choices, permanents) + coverage flywheel |
 | **Next** | Private alpha (invite friends, play complete games) |
-| **Tests** | 607 passing; a 10,000-game random-action fuzz marathon gates checkpoint-45, 200-game burns gate every wave and 800+ burns gate every checkpoint tag |
-| **Compile rate** | 88% of a 60-card real-staple sample compiles fully (CI floor 85%); 27.7% of the EDHREC top-2,000 (measured 2026-08-20 — climbing from 15.6% the same day as the flywheel grinds) |
+| **Tests** | 618 passing; a 10,000-game random-action fuzz marathon gates checkpoint-45, 200-game burns gate every wave and 800+ burns gate every checkpoint tag |
+| **Compile rate** | 88% of a 60-card real-staple sample compiles fully (CI floor 85%); 30.3% of the EDHREC top-2,000 (measured 2026-08-20 — nearly doubled from 15.6% the same day as the flywheel grinds) |
 | **Installer** | `npm run dist` builds a one-click Windows installer (`release/BizzyMTG Commander Setup 0.1.0.exe`). |
 
 ---
@@ -162,5 +162,6 @@ Git tags on `main`. Do not move old tags.
 | `checkpoint-50-top-of-library` | Play/cast from the library top (Oracle of Mul Daya), changeling, free-spell cycle, reveal lands, filter lands |
 | `checkpoint-51-damage-triggers` | Flashback, token/counter doubling, extra combats, proliferate, Curiosity any-damage triggers |
 | `checkpoint-52-storm-and-kicker` | Storm, kicker as extra-cost modes, multi-sentence ability bodies, delayed end-step riders, fetch-sac lands |
+| `checkpoint-53-thirty-percent` | Spree, one-away batches (exalted, affinity, flash grants, tribal anthems, gated/costed mana), 30% top-2,000 |
 
 These live on the `comprehensive-plan` branch (see docs/DEVELOPMENT_PROGRESS.md); merge to `main` at will — every checkpoint is a playable table. Next: **Private Alpha**, then productization.

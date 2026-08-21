@@ -71,6 +71,7 @@ export function createCardDefinition(
         | "grantsFlash"
         | "extraDrawStepDraws"
         | "affinityArtifacts"
+        | "affinityAllCreatures"
         | "topOfLibrary"
         | "flashback"
         | "costReductions"
@@ -225,6 +226,7 @@ export function createCardDefinition(
     ...(input.grantsFlash ? { grantsFlash: true } : {}),
     ...(input.extraDrawStepDraws ? { extraDrawStepDraws: true } : {}),
     ...(input.affinityArtifacts ? { affinityArtifacts: true } : {}),
+    ...(input.affinityAllCreatures ? { affinityAllCreatures: true } : {}),
     ...(input.flashback
       ? {
           flashback: {
