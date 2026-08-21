@@ -407,6 +407,13 @@ export type SearchFilter = {
   subtypesAny?: string[];
   /** "an instant or sorcery card": any listed type matches. */
   typesAny?: string[];
+  /** "a green creature card": every listed color must be present. */
+  colors?: Color[];
+  /** "with mana value N or less". */
+  maxManaValue?: number;
+  /** "with mana value X or less": resolved to maxManaValue from the announced
+   * X when the effect binds (Green Sun's Zenith). */
+  maxManaValueX?: boolean;
 };
 
 export type SearchDestination = "hand" | "battlefield" | "graveyard" | "library_top";

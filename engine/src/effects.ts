@@ -482,10 +482,14 @@ export function bindCardEffect(
       if (!playerId) {
         return null;
       }
+      const { maxManaValueX, ...filterRest } = effect.filter;
       return {
         kind: "search_library",
         playerId,
-        filter: { ...effect.filter },
+        filter: {
+          ...filterRest,
+          ...(maxManaValueX ? { maxManaValue: context.xValue ?? 0 } : {}),
+        },
         destination: effect.destination,
         count: effect.count,
         ...(effect.entersTapped ? { entersTapped: true } : {}),

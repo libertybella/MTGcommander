@@ -384,6 +384,14 @@ export function searchMatches(
   ) {
     return false;
   }
+  for (const color of filter.colors ?? []) {
+    if (!traits.colors.includes(color)) {
+      return false;
+    }
+  }
+  if (filter.maxManaValue !== undefined && traits.manaValue > filter.maxManaValue) {
+    return false;
+  }
   if (
     filter.typesAny &&
     filter.typesAny.length > 0 &&

@@ -1050,12 +1050,20 @@ function parseSearchFilter(value: unknown, label: string): SearchFilter {
   const subtypes = parseStringList(value.subtypes, `${label}.subtypes`);
   const subtypesAny = parseStringList(value.subtypesAny, `${label}.subtypesAny`);
   const typesAny = parseStringList(value.typesAny, `${label}.typesAny`);
+  const colors = parseStringList(value.colors, `${label}.colors`).filter(
+    (entry): entry is Color => ["W", "U", "B", "R", "G"].includes(entry),
+  );
   return {
     ...(supertypes.length > 0 ? { supertypes } : {}),
     ...(types.length > 0 ? { types } : {}),
     ...(subtypes.length > 0 ? { subtypes } : {}),
     ...(subtypesAny.length > 0 ? { subtypesAny } : {}),
     ...(typesAny.length > 0 ? { typesAny } : {}),
+    ...(colors.length > 0 ? { colors } : {}),
+    ...(value.maxManaValue === undefined
+      ? {}
+      : { maxManaValue: expectNumber(value.maxManaValue, `${label}.maxManaValue`) }),
+    ...(value.maxManaValueX === true ? { maxManaValueX: true } : {}),
   };
 }
 

@@ -1582,6 +1582,29 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     };
   }
 
+  // Green Sun's Zenith: an X-capped tutor straight to the battlefield.
+  const xTutor = sentence.match(
+    /^Search your library for (?:an? )?(.+?) card with mana value X or less, put it (onto the battlefield( tapped)?|into your hand), then shuffle(?: your library)?$/i,
+  );
+  if (xTutor?.[1] && xTutor[2]) {
+    const filter = parseSearchDescriptor(xTutor[1]);
+    if (filter) {
+      return {
+        targetRequirements: [],
+        effects: [
+          {
+            kind: "search_library",
+            playerId: "controller",
+            filter: { ...filter, maxManaValueX: true },
+            destination: xTutor[2].toLowerCase().startsWith("onto") ? "battlefield" : "hand",
+            count: 1,
+            ...(xTutor[3] ? { entersTapped: true } : {}),
+          },
+        ],
+      };
+    }
+  }
+
   match = sentence.match(
     /^Search your library for (?:up to (one|two|three|\d+) )?(?:an? )?(.+?) cards?(?: and)?, (?:and )?put (?:it|them|that card|those cards) (onto the battlefield(?: tapped)?|into your hand|into your graveyard), then shuffle(?: your library)?$/i,
   );
@@ -1979,10 +2002,18 @@ function parseSearchDescriptor(descriptor: string): SearchFilter | null {
     }
     return null;
   }
-  const filter: Required<Omit<SearchFilter, "subtypesAny" | "typesAny">> = {
-    supertypes: [],
-    types: [],
-    subtypes: [],
+  const filter = {
+    supertypes: [] as string[],
+    types: [] as string[],
+    subtypes: [] as string[],
+    colors: [] as Color[],
+  };
+  const SEARCH_COLOR_WORDS: Record<string, Color> = {
+    white: "W",
+    blue: "U",
+    black: "B",
+    red: "R",
+    green: "G",
   };
   const words = descriptor.trim().toLowerCase().split(/\s+/).filter(Boolean);
   for (const word of words) {
@@ -1993,6 +2024,8 @@ function parseSearchDescriptor(descriptor: string): SearchFilter | null {
       filter.supertypes.push(word);
     } else if (SEARCH_CARD_TYPES.has(word)) {
       filter.types.push(word);
+    } else if (SEARCH_COLOR_WORDS[word]) {
+      filter.colors.push(SEARCH_COLOR_WORDS[word]!);
     } else if (/^[a-z]+$/.test(word)) {
       filter.subtypes.push(word);
     } else {
@@ -2003,6 +2036,7 @@ function parseSearchDescriptor(descriptor: string): SearchFilter | null {
     ...(filter.supertypes.length > 0 ? { supertypes: filter.supertypes } : {}),
     ...(filter.types.length > 0 ? { types: filter.types } : {}),
     ...(filter.subtypes.length > 0 ? { subtypes: filter.subtypes } : {}),
+    ...(filter.colors.length > 0 ? { colors: filter.colors } : {}),
   };
 }
 

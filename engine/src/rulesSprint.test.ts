@@ -6212,3 +6212,85 @@ describe("wave 67: first-attack latches and tuck riders", () => {
     ]);
   });
 });
+
+describe("wave 68: color and X-capped tutors", () => {
+  it("compiles Green Sun's Zenith fully", () => {
+    const zenith = compileOracleCard({
+      oracleId: "gsz",
+      name: "Green Sun's Zenith",
+      manaCost: "{X}{G}",
+      typeLine: "Sorcery",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "Search your library for a green creature card with mana value X or less, put it onto the battlefield, then shuffle. Shuffle Green Sun's Zenith into its owner's library.",
+    });
+    expect(zenith.notes).toEqual([]);
+    const search = zenith.definition.effects[0];
+    expect(search?.kind === "search_library" && search.filter).toEqual({
+      types: ["creature"],
+      colors: ["G"],
+      maxManaValueX: true,
+    });
+  });
+
+  it("filters searches by color and bound mana value", () => {
+    const { game, p1 } = twoPlayers();
+    const elfDef = createCardDefinition({
+      name: "Elf",
+      manaCost: "{G}",
+      typeLine: "Creature — Elf",
+      power: 1,
+      toughness: 1,
+    });
+    const wurmDef = createCardDefinition({
+      name: "Wurm",
+      manaCost: "{5}{G}",
+      typeLine: "Creature — Wurm",
+      power: 6,
+      toughness: 6,
+    });
+    const boarDef = createCardDefinition({
+      name: "Boar",
+      manaCost: "{1}{R}",
+      typeLine: "Creature — Boar",
+      power: 2,
+      toughness: 2,
+    });
+    game.definitions[elfDef.id] = elfDef;
+    game.definitions[wurmDef.id] = wurmDef;
+    game.definitions[boarDef.id] = boarDef;
+    const ids: string[] = [];
+    for (const def of [elfDef, wurmDef, boarDef]) {
+      const card = createCardInstance({ definitionId: def.id, ownerId: p1.id, zone: "library" });
+      game.cards[card.id] = card;
+      p1.zones.library.push(card.id);
+      ids.push(card.id);
+    }
+    const bound = bindCardEffects(
+      game,
+      [
+        {
+          kind: "search_library",
+          playerId: "controller",
+          filter: { types: ["creature"], colors: ["G"], maxManaValueX: true },
+          destination: "battlefield",
+          count: 1,
+        },
+      ],
+      { controllerId: p1.id, sourceId: null, xValue: 2 },
+    );
+    const next = applyEffects(game, bound);
+    const prompt = next.prompts[0];
+    expect(prompt?.kind).toBe("search_library");
+    if (prompt?.kind !== "search_library") {
+      throw new Error("expected search prompt");
+    }
+    expect(prompt.filter.maxManaValue).toBe(2);
+    expect(searchMatches(next, ids[0]!, prompt.filter)).toBe(true);
+    expect(searchMatches(next, ids[1]!, prompt.filter)).toBe(false);
+    expect(searchMatches(next, ids[2]!, prompt.filter)).toBe(false);
+  });
+});
