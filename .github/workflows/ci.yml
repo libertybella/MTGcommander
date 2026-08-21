@@ -1,0 +1,59 @@
+name: CI
+
+on:
+  push:
+    branches: [main, comprehensive-plan]
+  pull_request:
+
+jobs:
+  tier:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Typecheck engine
+        run: npx tsc -p engine --noEmit
+
+      - name: Typecheck server
+        run: npx tsc -p server --noEmit
+
+      - name: Typecheck client
+        run: npx tsc -p client --noEmit
+
+      - name: Lint
+        run: npx oxlint
+
+      # Full suite includes the 60-card staple compile-rate sample with its
+      # 85% floor — a merge cannot silently regress the compiler.
+      - name: Test suite
+        run: npx vitest run
+
+      # 200 random games against state-integrity checks. FUZZ_SEEDS is the
+      # TOTAL across the 8 shards; without it the shards run 8 games.
+      - name: Fuzz burn (200 games)
+        env:
+          FUZZ_SEEDS: "200"
+        run: >
+          npx vitest run
+          engine/src/fuzz.test.ts
+          engine/src/fuzz.shard2.test.ts
+          engine/src/fuzz.shard3.test.ts
+          engine/src/fuzz.shard4.test.ts
+          engine/src/fuzz.shard5.test.ts
+          engine/src/fuzz.shard6.test.ts
+          engine/src/fuzz.shard7.test.ts
+          engine/src/fuzz.shard8.test.ts
+
+# The full top-2,000 compile measure needs the Scryfall oracle bulk
+# (~150MB) and the EDHREC list; it stays a local/nightly step until a
+# scheduled job with a cached bulk download is added. See CONTRIBUTING.md
+# "Measurement".
