@@ -714,7 +714,9 @@ export type CardEffect =
       kind: "deal_damage";
       sourceId: CardInstanceId | "self" | null;
       target: CardEffectTarget;
-      amount: number | "x" | "sacrificed_power";
+      /** subtypeCount: X = the controller's battlefield permanents with the
+       * subtype (Scourge of Valkas). */
+      amount: number | "x" | "sacrificed_power" | { subtypeCount: string };
     }
   | {
       /** X damage divided as the caster chose among the spell's targets. */
@@ -1213,6 +1215,11 @@ export type ContinuousEffectData =
 export type StaticAbility = {
   selector: EffectSelector;
   effect: ContinuousEffectData;
+  /** Brawn: the ability works while this card is in its owner's graveyard. */
+  fromGraveyard?: boolean;
+  /** "…and you control a Forest": gate on the controller's battlefield
+   * (checked against printed characteristics). */
+  requiresControlled?: { types?: string[]; subtypes?: string[] };
 };
 
 /**

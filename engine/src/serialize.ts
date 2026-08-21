@@ -1511,7 +1511,9 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
           ? ("x" as const)
           : value.amount === "sacrificed_power"
             ? ("sacrificed_power" as const)
-            : expectNumber(value.amount, `${label}.amount`);
+            : isRecord(value.amount) && typeof value.amount.subtypeCount === "string"
+              ? { subtypeCount: value.amount.subtypeCount }
+              : expectNumber(value.amount, `${label}.amount`);
       if (targetType === "player") {
         return {
           kind,
@@ -2284,6 +2286,28 @@ function parseStaticAbilities(
       abilities.push({
         selector: parseEffectSelector(entry.selector, `${label}[${index}].selector`),
         effect: parseContinuousEffectData(entry.effect, `${label}[${index}].effect`),
+        ...(entry.fromGraveyard === true ? { fromGraveyard: true } : {}),
+        ...(entry.requiresControlled === undefined
+          ? {}
+          : {
+              requiresControlled: (() => {
+                if (!isRecord(entry.requiresControlled)) {
+                  throw new Error(`Invalid ${label}[${index}].requiresControlled`);
+                }
+                const types = parseStringList(
+                  entry.requiresControlled.types,
+                  `${label}[${index}].requiresControlled.types`,
+                );
+                const subtypes = parseStringList(
+                  entry.requiresControlled.subtypes,
+                  `${label}[${index}].requiresControlled.subtypes`,
+                );
+                return {
+                  ...(types.length > 0 ? { types } : {}),
+                  ...(subtypes.length > 0 ? { subtypes } : {}),
+                };
+              })(),
+            }),
       });
     }
   }

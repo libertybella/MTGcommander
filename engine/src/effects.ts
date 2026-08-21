@@ -1,4 +1,4 @@
-import { abilitiesRemoved } from "./characteristicsEngine";
+import { abilitiesRemoved, cardMatchesSubtype } from "./characteristicsEngine";
 import { cloneGameState } from "./clone";
 import { createCardDefinition, createCardInstance } from "./createGame";
 import { characteristicsOf, hasSubtype, isCreature, isInstantOrSorcery, isLand } from "./cardTypes";
@@ -161,6 +161,16 @@ function expandEachOpponent(
   return [effect];
 }
 
+/** "X is the number of Dragons you control" — computed characteristics. */
+function countControlledSubtype(state: GameState, controllerId: PlayerId, subtype: string): number {
+  return Object.values(state.cards).filter(
+    (card) =>
+      card.zone === "battlefield" &&
+      card.controllerId === controllerId &&
+      cardMatchesSubtype(state, card.id, subtype),
+  ).length;
+}
+
 function bindSourceId(
   sourceId: CardInstanceId | "self" | null,
   context: BindEffectContext,
@@ -317,7 +327,9 @@ export function bindCardEffect(
           ? context.xValue ?? 0
           : effect.amount === "sacrificed_power"
             ? context.sacrificedPower ?? 0
-            : effect.amount;
+            : typeof effect.amount === "object"
+              ? countControlledSubtype(state, context.controllerId, effect.amount.subtypeCount)
+              : effect.amount;
       if (amount <= 0) {
         return null;
       }

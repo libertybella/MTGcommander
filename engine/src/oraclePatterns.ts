@@ -651,6 +651,24 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     };
   }
 
+  // Scourge of Valkas: X scales with the controller's tribe at resolution.
+  const tribalDamage = sentence.match(
+    /^it deals X damage to any target, where X is the number of ([A-Za-z]+) you control$/i,
+  );
+  if (tribalDamage?.[1]) {
+    return {
+      targetRequirements: [{ kind: "player_or_creature" }],
+      effects: [
+        {
+          kind: "deal_damage",
+          sourceId: "self",
+          target: { type: "chosen", index: 0 },
+          amount: { subtypeCount: singularSubtype(tribalDamage[1]) },
+        },
+      ],
+    };
+  }
+
   // Fling / Kazuul's Fury: the power was captured when the cost was paid.
   if (/^(?:~ )?deals damage equal to the sacrificed creature's power to any target$/i.test(sentence)) {
     return {
@@ -2069,6 +2087,15 @@ function parseTriggerHead(head: string): TriggerHead | null {
   if (/^Whenever ~ or another creature enters$/i.test(text)) {
     return { event: "enter_battlefield", watch: "any", subjectFilter: { types: ["creature"] } };
   }
+  // "Whenever ~ or another Dragon you control enters" (Scourge of Valkas).
+  const tribalSelfEnter = text.match(/^Whenever ~ or another ([A-Za-z]+) you control enters$/i);
+  if (tribalSelfEnter?.[1] && !SEARCH_CARD_TYPES.has(tribalSelfEnter[1].toLowerCase())) {
+    return {
+      event: "enter_battlefield",
+      watch: "controlled",
+      subjectFilter: { subtypes: [tribalSelfEnter[1].toLowerCase()] },
+    };
+  }
   if (/^Whenever another creature enters$/i.test(text)) {
     return {
       event: "enter_battlefield",
@@ -3171,6 +3198,26 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
     ) {
       result.leyline = true;
       continue;
+    }
+
+    // Brawn: a keyword anthem that works from the graveyard behind a gate.
+    const graveAnthem = sentence.match(
+      /^As long as this card is in your graveyard and you control an? ([A-Za-z]+), creatures you control have ([a-z ]+)$/i,
+    );
+    if (graveAnthem?.[1] && graveAnthem[2]) {
+      const keyword = KEYWORD_GRANTS[graveAnthem[2].trim().toLowerCase()];
+      const gateWord = graveAnthem[1].toLowerCase();
+      if (keyword) {
+        result.staticAbilities.push({
+          selector: { scope: "controlled", types: ["creature"] },
+          effect: { kind: "grant_keyword", keyword },
+          fromGraveyard: true,
+          requiresControlled: SEARCH_CARD_TYPES.has(gateWord)
+            ? { types: [gateWord] }
+            : { subtypes: [gateWord] },
+        });
+        continue;
+      }
     }
 
     // Gravecrawler: a gated recast from the graveyard.

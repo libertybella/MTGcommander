@@ -8,6 +8,7 @@ import type {
   GameState,
   Keyword,
   ManaAbility,
+  StaticAbility,
 } from "./types";
 
 /**
@@ -255,14 +256,46 @@ export function cardMatchesSubtype(
   );
 }
 
+/** Printed-characteristics battlefield gate ("…and you control a Forest"). */
+function staticGateSatisfied(
+  state: GameState,
+  controllerId: string,
+  gate: StaticAbility["requiresControlled"],
+): boolean {
+  if (!gate) {
+    return true;
+  }
+  return Object.values(state.cards).some((card) => {
+    if (card.zone !== "battlefield" || card.controllerId !== controllerId) {
+      return false;
+    }
+    const traits = state.definitions[card.definitionId]?.characteristics;
+    if (!traits) {
+      return false;
+    }
+    return (
+      (gate.types ?? []).every((type) => traits.types.includes(type)) &&
+      (gate.subtypes ?? []).every((subtype) => traits.subtypes.includes(subtype))
+    );
+  });
+}
+
 function collectInstances(state: GameState): EffectInstance[] {
   const instances: EffectInstance[] = [];
   for (const card of Object.values(state.cards)) {
-    if (card.zone !== "battlefield" || card.faceDown) {
-      continue;
-    }
+    // Brawn-class statics work from the graveyard; everything else needs the
+    // battlefield.
     const definition = state.definitions[card.definitionId];
     for (const ability of definition?.staticAbilities ?? []) {
+      const zoneOk = ability.fromGraveyard
+        ? card.zone === "graveyard"
+        : card.zone === "battlefield" && !card.faceDown;
+      if (!zoneOk) {
+        continue;
+      }
+      if (!staticGateSatisfied(state, card.controllerId, ability.requiresControlled)) {
+        continue;
+      }
       instances.push({
         sourceId: card.id,
         selector: ability.selector,

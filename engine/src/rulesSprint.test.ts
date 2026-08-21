@@ -5892,3 +5892,82 @@ describe("wave 62: token mana grants and gated graveyard casts", () => {
     expect(next.cards[crawler.id]?.zone).toBe("battlefield");
   });
 });
+
+describe("wave 63: tribal-count damage and graveyard statics", () => {
+  const base = { power: null, toughness: null, printedKeywords: [], imageUrl: "" };
+
+  it("compiles Scourge of Valkas and Brawn fully", () => {
+    const scourge = compileOracleCard({
+      ...base,
+      oracleId: "scourge",
+      name: "Scourge of Valkas",
+      manaCost: "{2}{R}{R}{R}",
+      typeLine: "Creature — Dragon",
+      power: "4",
+      toughness: "4",
+      printedKeywords: ["Flying"],
+      oracleText:
+        "Flying\nWhenever Scourge of Valkas or another Dragon you control enters, it deals X damage to any target, where X is the number of Dragons you control.",
+    });
+    expect(scourge.notes).toEqual([]);
+    const trigger = scourge.definition.triggers[0];
+    expect(trigger?.subjectFilter).toEqual({ subtypes: ["dragon"] });
+    expect(trigger?.effects[0]?.kind === "deal_damage" && trigger.effects[0].amount).toEqual({
+      subtypeCount: "dragon",
+    });
+
+    const brawn = compileOracleCard({
+      ...base,
+      oracleId: "brawn",
+      name: "Brawn",
+      manaCost: "{3}{G}",
+      typeLine: "Creature — Incarnation",
+      power: "3",
+      toughness: "3",
+      printedKeywords: ["Trample"],
+      oracleText:
+        "Trample\nAs long as this card is in your graveyard and you control a Forest, creatures you control have trample.",
+    });
+    expect(brawn.notes).toEqual([]);
+    const anthem = brawn.definition.staticAbilities[0];
+    expect(anthem?.fromGraveyard).toBe(true);
+    expect(anthem?.requiresControlled).toEqual({ subtypes: ["forest"] });
+  });
+
+  it("grants trample from the graveyard only while the gate holds", () => {
+    const { game, p1 } = twoPlayers();
+    const brawnDef = createCardDefinition({
+      name: "Brawn Lite",
+      typeLine: "Creature — Incarnation",
+      power: 3,
+      toughness: 3,
+      staticAbilities: [
+        {
+          selector: { scope: "controlled", types: ["creature"] },
+          effect: { kind: "grant_keyword", keyword: "trample" },
+          fromGraveyard: true,
+          requiresControlled: { subtypes: ["forest"] },
+        },
+      ],
+    });
+    const bearDef = createCardDefinition({ name: "Bear", typeLine: "Creature — Bear", power: 2, toughness: 2 });
+    const forestDef = createCardDefinition({ name: "Forest", typeLine: "Basic Land — Forest" });
+    game.definitions[brawnDef.id] = brawnDef;
+    game.definitions[bearDef.id] = bearDef;
+    game.definitions[forestDef.id] = forestDef;
+    const brawn = createCardInstance({ definitionId: brawnDef.id, ownerId: p1.id, zone: "graveyard" });
+    const bear = createCardInstance({ definitionId: bearDef.id, ownerId: p1.id, zone: "battlefield" });
+    game.cards[brawn.id] = brawn;
+    game.cards[bear.id] = bear;
+    p1.zones.graveyard.push(brawn.id);
+    p1.zones.battlefield.push(bear.id);
+
+    // No Forest: no trample.
+    expect(computedCard(game, bear.id)?.keywords.includes("trample")).toBe(false);
+
+    const forest = createCardInstance({ definitionId: forestDef.id, ownerId: p1.id, zone: "battlefield" });
+    game.cards[forest.id] = forest;
+    p1.zones.battlefield.push(forest.id);
+    expect(computedCard(game, bear.id)?.keywords.includes("trample")).toBe(true);
+  });
+});

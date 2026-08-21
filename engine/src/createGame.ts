@@ -140,6 +140,19 @@ export function createCardDefinition(
       ? input.staticAbilities.map((ability) => ({
           selector: { ...ability.selector },
           effect: { ...ability.effect },
+          ...(ability.fromGraveyard ? { fromGraveyard: true } : {}),
+          ...(ability.requiresControlled
+            ? {
+                requiresControlled: {
+                  ...(ability.requiresControlled.types
+                    ? { types: [...ability.requiresControlled.types] }
+                    : {}),
+                  ...(ability.requiresControlled.subtypes
+                    ? { subtypes: [...ability.requiresControlled.subtypes] }
+                    : {}),
+                },
+              }
+            : {}),
         }))
       : [],
     produces: input.produces ? { ...input.produces } : {},
