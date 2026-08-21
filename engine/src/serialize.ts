@@ -1362,6 +1362,7 @@ function parseTargetRequirement(value: unknown, label: string): TargetRequiremen
     kind !== "noncreature_spell" &&
     kind !== "instant_or_sorcery_spell" &&
     kind !== "land" &&
+    kind !== "artifact_enchantment_or_nonbasic_land" &&
     kind !== "commander"
   ) {
     throw new Error(`Invalid ${label}.kind`);

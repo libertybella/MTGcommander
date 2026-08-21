@@ -1861,6 +1861,22 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
   }
 
   // Beast Within (single sentence: destroy; the token clause is a pair).
+  // Boseiju, Who Endures.
+  const boseiju = sentence.match(
+    /^Destroy target artifact, enchantment, or nonbasic land( an opponent controls)?$/i,
+  );
+  if (boseiju) {
+    return {
+      targetRequirements: [
+        {
+          kind: "artifact_enchantment_or_nonbasic_land",
+          ...(boseiju[1] ? { control: "not_own" as const } : {}),
+        },
+      ],
+      effects: [{ kind: "move_card", cardId: { type: "chosen", index: 0 }, toZone: "graveyard" }],
+    };
+  }
+
   const destroyLand = sentence.match(/^Destroy target (nonbasic )?land$/i);
   if (destroyLand) {
     return {
@@ -2186,17 +2202,24 @@ function parseSearchDescriptor(descriptor: string): SearchFilter | null {
  * previous sentence's permanent target, so the caller supplies the index.
  */
 function controllerBasicSearchRider(sentence: string, lastIndex: number): CardEffect | null {
-  if (
-    !/^(?:Its|That (?:land|permanent|creature)'s) controller may search their library for a basic land card, put it onto the battlefield, then shuffle$/i.test(
+  const plainBasic =
+    /^(?:Its|That (?:land|permanent|creature)'s) controller may search their library for a basic land card, put it onto the battlefield, then shuffle$/i.test(
       sentence,
-    )
-  ) {
+    );
+  // Boseiju: "That player may search … a land card with a basic land type".
+  const basicType =
+    /^That player may search their library for a land card with a basic land type, put it onto the battlefield, then shuffle$/i.test(
+      sentence,
+    );
+  if (!plainBasic && !basicType) {
     return null;
   }
   return {
     kind: "search_library",
     playerId: { type: "chosen_controller", index: lastIndex },
-    filter: { supertypes: ["basic"], types: ["land"] },
+    filter: plainBasic
+      ? { supertypes: ["basic"], types: ["land"] }
+      : { types: ["land"], subtypesAny: ["plains", "island", "swamp", "mountain", "forest"] },
     destination: "battlefield",
     count: 1,
   };
@@ -4415,6 +4438,18 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
     if (basicSearchRider && result.targetRequirements.length > 0) {
       result.effects.push(basicSearchRider);
       continue;
+    }
+    // Channel abilities (Boseiju) get the rider attached to their targets.
+    const lastActivated = result.activated[result.activated.length - 1];
+    if (lastActivated && lastActivated.targetRequirements.length > 0) {
+      const activatedRider = controllerBasicSearchRider(
+        sentence,
+        lastActivated.targetRequirements.length - 1,
+      );
+      if (activatedRider) {
+        lastActivated.effects.push(activatedRider);
+        continue;
+      }
     }
 
     // Pongify / Rapid Hybridization: the token goes to the destroyed

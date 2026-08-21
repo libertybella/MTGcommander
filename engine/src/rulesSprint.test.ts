@@ -6971,3 +6971,54 @@ describe("wave 78: ascend and the city's blessing", () => {
     expect(computedCard(next, tooth.id)?.cantAttack).toBe(false);
   });
 });
+
+describe("wave 79: boseiju", () => {
+  it("compiles Boseiju, Who Endures fully", () => {
+    const boseiju = compileOracleCard({
+      oracleId: "boseiju",
+      name: "Boseiju, Who Endures",
+      manaCost: "",
+      typeLine: "Legendary Land",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "{T}: Add {G}.\nChannel — {1}{G}, Discard this card: Destroy target artifact, enchantment, or nonbasic land an opponent controls. That player may search their library for a land card with a basic land type, put it onto the battlefield, then shuffle. This ability costs {1} less to activate for each legendary creature you control.",
+    });
+    expect(boseiju.notes).toEqual([]);
+    const channel = boseiju.definition.activated[0];
+    expect(channel?.legendaryDiscount).toBe(true);
+    expect(channel?.targetRequirements).toEqual([
+      { kind: "artifact_enchantment_or_nonbasic_land", control: "not_own" },
+    ]);
+    expect(channel?.effects).toHaveLength(2);
+    expect(channel?.effects[1]?.kind).toBe("search_library");
+  });
+
+  it("hits artifacts, enchantments, and nonbasic lands but not basics", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const basicDef = createCardDefinition({ name: "Forest", typeLine: "Basic Land — Forest" });
+    const dualDef = createCardDefinition({ name: "Tundra", typeLine: "Land — Plains Island" });
+    const relicDef = createCardDefinition({ name: "Relic", typeLine: "Artifact" });
+    for (const def of [basicDef, dualDef, relicDef]) {
+      game.definitions[def.id] = def;
+    }
+    const basic = createCardInstance({ definitionId: basicDef.id, ownerId: p2.id, zone: "battlefield" });
+    const dual = createCardInstance({ definitionId: dualDef.id, ownerId: p2.id, zone: "battlefield" });
+    const relic = createCardInstance({ definitionId: relicDef.id, ownerId: p2.id, zone: "battlefield" });
+    for (const card of [basic, dual, relic]) {
+      game.cards[card.id] = card;
+      p2.zones.battlefield.push(card.id);
+    }
+    const requirement = { kind: "artifact_enchantment_or_nonbasic_land" as const, control: "not_own" as const };
+    expect(isChosenTargetLegal(game, requirement, { type: "creature", cardId: basic.id }, p1.id)).toBe(false);
+    expect(isChosenTargetLegal(game, requirement, { type: "creature", cardId: dual.id }, p1.id)).toBe(true);
+    expect(isChosenTargetLegal(game, requirement, { type: "creature", cardId: relic.id }, p1.id)).toBe(true);
+    // Your own permanents are off-limits.
+    const own = createCardInstance({ definitionId: relicDef.id, ownerId: p1.id, zone: "battlefield" });
+    game.cards[own.id] = own;
+    p1.zones.battlefield.push(own.id);
+    expect(isChosenTargetLegal(game, requirement, { type: "creature", cardId: own.id }, p1.id)).toBe(false);
+  });
+});

@@ -666,6 +666,8 @@ export type TargetKind =
   | "own_graveyard_artifact_card"
   | "nonartifact_creature"
   | "land"
+  /** Boseiju, Who Endures. */
+  | "artifact_enchantment_or_nonbasic_land"
   /** A commander creature on the battlefield (Witch's Clinic). */
   | "commander"
   | "player_or_creature"
