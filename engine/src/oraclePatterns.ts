@@ -1518,6 +1518,58 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     };
   }
 
+  // Charming Prince's third mode, fused: exile now, return at end step.
+  const flickerDelay = sentence.match(/^flicker-delay (another )?target creature you own$/i);
+  if (flickerDelay) {
+    return {
+      targetRequirements: [
+        {
+          kind: "creature",
+          owner: "own",
+          ...(flickerDelay[1] ? { excludeSource: true } : {}),
+        },
+      ],
+      effects: [{ kind: "exile_return_end_step", target: { type: "chosen", index: 0 } }],
+    };
+  }
+
+  // Junji's reanimation mode.
+  const nonSubReanimate = sentence.match(
+    /^Put target non-([A-Za-z]+) creature card from a graveyard onto the battlefield under your control$/i,
+  );
+  if (nonSubReanimate?.[1]) {
+    return {
+      targetRequirements: [
+        { kind: "graveyard_creature_card", excludedSubtypes: [nonSubReanimate[1].toLowerCase()] },
+      ],
+      effects: [
+        {
+          kind: "move_card",
+          cardId: { type: "chosen", index: 0 },
+          toZone: "battlefield",
+          underControlOf: "controller",
+        },
+      ],
+    };
+  }
+
+  // Junji's other mode.
+  const massDiscardDrain = sentence.match(
+    /^Each opponent discards (a|one|two|three) cards? and loses (\d+) life$/i,
+  );
+  if (massDiscardDrain?.[1] && massDiscardDrain[2]) {
+    const count = parseCount(massDiscardDrain[1]);
+    if (count) {
+      return {
+        targetRequirements: [],
+        effects: [
+          { kind: "discard", playerId: "each_opponent", count },
+          { kind: "lose_life", playerId: "each_opponent", amount: Number(massDiscardDrain[2]) },
+        ],
+      };
+    }
+  }
+
   // Retreat to Coralhelm: toggling is always the useful half of the choice —
   // a documented approximation. The "may" is the up-to-one optional slot.
   if (/^You may tap or untap target creature$/i.test(sentence)) {
@@ -2122,12 +2174,17 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
 
   // Impulse exiles (fused by fuseExilePlayInPlace): cast/play this turn,
   // paying costs as normal.
-  match = sentence.match(/^impulse(?: (\d+))? from your library$/i);
+  match = sentence.match(/^impulse(?: (\d+))?( extended)? from your library$/i);
   if (match) {
     return {
       targetRequirements: [],
       effects: [
-        { kind: "exile_top_play", playerId: "controller", count: match[1] ? Number(match[1]) : 1 },
+        {
+          kind: "exile_top_play",
+          playerId: "controller",
+          count: match[1] ? Number(match[1]) : 1,
+          ...(match[2] ? { untilEndOfNextTurn: true } : {}),
+        },
       ],
     };
   }
@@ -3699,6 +3756,31 @@ function fuseDrainPairInPlace(sentences: string[], lineStart: boolean[]): void {
   }
 }
 
+/** Charming Prince: "Exile another target creature you own." + "Return it to
+ * the battlefield under your control at the beginning of the next end step."
+ * become one synthetic delayed-flicker sentence. */
+function fuseExileReturnEndStepInPlace(sentences: string[], lineStart: boolean[]): void {
+  for (let index = 0; index + 1 < sentences.length; index += 1) {
+    if (lineStart[index + 1]) {
+      continue;
+    }
+    const exile = sentences[index]!.match(/^(.*)Exile (another )?target creature you own$/i);
+    if (
+      exile &&
+      /^Return it to the battlefield under your control at the beginning of the next end step$/i.test(
+        sentences[index + 1]!,
+      )
+    ) {
+      sentences.splice(
+        index,
+        2,
+        `${exile[1] ?? ""}flicker-delay ${exile[2] ? "another " : ""}target creature you own`,
+      );
+      lineStart.splice(index + 1, 1);
+    }
+  }
+}
+
 /** Ancient Copper Dragon: "roll a d20" + "You create a number of Treasure
  * tokens equal to the result" become one synthetic clause sentence. */
 function fuseD20TreasuresInPlace(sentences: string[], lineStart: boolean[]): void {
@@ -3750,6 +3832,19 @@ function fuseExilePlayInPlace(sentences: string[], lineStart: boolean[]): void {
       const count = own[2]!.toLowerCase() === "card" ? 1 : parseCount(own[2]!.split(" ")[0]!) ?? 1;
       const suffix = count === 1 ? "" : ` ${count}`;
       sentences.splice(index, 2, `${own[1] ?? ""}impulse${suffix} from your library`);
+      lineStart.splice(index + 1, 1);
+      continue;
+    }
+    // Atsushi: the grant lasts through the caster's next turn.
+    if (
+      own &&
+      /^Until the end of your next turn, you may play (?:it|that card|them|those cards)$/i.test(
+        sentences[index + 1]!,
+      )
+    ) {
+      const count = own[2]!.toLowerCase() === "card" ? 1 : parseCount(own[2]!.split(" ")[0]!) ?? 1;
+      const suffix = count === 1 ? "" : ` ${count}`;
+      sentences.splice(index, 2, `${own[1] ?? ""}impulse${suffix} extended from your library`);
       lineStart.splice(index + 1, 1);
       continue;
     }
@@ -4658,11 +4753,15 @@ function extractTriggerModalModes(card: OracleCard): TriggerModalExtraction | nu
   }
   const remainingText = [...lines.slice(0, headIndex), ...lines.slice(end)].join("\n");
   const raw = lines.slice(headIndex, end).join(" ");
+  const frontName = card.name.split(" // ")[0]!;
+  const shortName = frontName.split(",")[0]!;
   const headText = lines[headIndex]!
     .trim()
     .replace(/,\s*choose one\s*[—-]\s*$/i, "")
     .replace(/\bthis creature\b/gi, "~")
-    .replace(new RegExp(`\\b${card.name.split(" // ")[0]!.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "g"), "~");
+    .replace(new RegExp(`\\b${frontName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "g"), "~")
+    // Legend short names ("When Atsushi dies").
+    .replace(new RegExp(`\\b${shortName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "g"), "~");
   const head = parseTriggerHead(headText) ?? parseSimpleTriggerHead(headText);
   if (!head) {
     return { remainingText, trigger: null, raw };
@@ -4670,6 +4769,12 @@ function extractTriggerModalModes(card: OracleCard): TriggerModalExtraction | nu
   const modes: SpellMode[] = [];
   for (const bullet of bullets) {
     const bulletSentences = splitOracleSentences({ ...card, oracleText: bullet });
+    if (bulletSentences.length > 1) {
+      const bulletLineStart = bulletSentences.map((_, position) => position === 0);
+      fuseDigSentencesInPlace(bulletSentences, bulletLineStart);
+      fuseExilePlayInPlace(bulletSentences, bulletLineStart);
+      fuseExileReturnEndStepInPlace(bulletSentences, bulletLineStart);
+    }
     const effects: CardEffect[] = [];
     let requirements: TargetRequirement[] = [];
     let failed = bulletSentences.length === 0;
@@ -4828,6 +4933,7 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
   fuseDrainPairInPlace(sentences, lineStart);
   fuseBiteInPlace(sentences, lineStart);
   fuseD20TreasuresInPlace(sentences, lineStart);
+  fuseExileReturnEndStepInPlace(sentences, lineStart);
   for (let index = 0; index < sentences.length; index += 1) {
     const sentence = sentences[index];
     if (!sentence) {

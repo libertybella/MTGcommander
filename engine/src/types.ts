@@ -463,7 +463,12 @@ export type GameState = {
    * next end step" (temporary tokens and reanimation shells). Processed as
    * the end step begins; entries whose card already left are dropped.
    */
-  delayedEndStep: Array<{ cardId: CardInstanceId; action: "sacrifice" | "exile" | "hand" }>;
+  delayedEndStep: Array<{
+    cardId: CardInstanceId;
+    action: "sacrifice" | "exile" | "hand" | "battlefield";
+    /** action "battlefield" (Charming Prince): who gets the returned card. */
+    controllerId?: PlayerId;
+  }>;
   /** Spells cast by anyone this turn — Storm's copy count (CR 702.40). */
   spellsCastThisTurn: number;
   /** Per-player casts this turn (Lotho's second-spell watch). */
@@ -487,7 +492,15 @@ export type GameState = {
    * the listed player may cast or play this turn, paying costs as normal.
    * Cleared at cleanup.
    */
-  exilePlayable?: Array<{ cardId: CardInstanceId; casterId: PlayerId; freeCast?: boolean }>;
+  exilePlayable?: Array<{
+    cardId: CardInstanceId;
+    casterId: PlayerId;
+    freeCast?: boolean;
+    /** Atsushi: "until the end of your next turn" — survives cleanups,
+     * decremented at the caster's own cleanups, dropped at 0. Entries
+     * without it clear at every cleanup as before. */
+    remainingOwnCleanups?: number;
+  }>;
   /** Rebound: cards waiting in exile to be offered free at the caster's
    * next upkeep. */
   pendingRebounds?: Array<{ cardId: CardInstanceId; casterId: PlayerId }>;
@@ -693,9 +706,12 @@ export type GameEffect =
       kind: "exile_top_play";
       playerId: PlayerId;
       casterId: PlayerId;
+      untilEndOfNextTurn?: boolean;
       count: number;
       freeCast?: boolean;
     }
+  /** Charming Prince: exile now, return at the next end step. */
+  | { kind: "exile_return_end_step"; cardId: CardInstanceId; controllerId: PlayerId }
   | { kind: "populate"; playerId: PlayerId }
   | { kind: "proliferate"; playerId: PlayerId }
   | {
@@ -940,6 +956,10 @@ export type TargetRequirement = {
   attackingOnly?: boolean;
   /** "another target …": the effect's own source is not a legal target. */
   excludeSource?: boolean;
+  /** "target non-Dragon creature card" (Junji): none of these subtypes. */
+  excludedSubtypes?: string[];
+  /** "target creature you own" (Charming Prince): owner must be the caster. */
+  owner?: "own";
 };
 
 /** One bullet of a modal spell. Targets are chosen for the picked mode only. */
@@ -1159,7 +1179,17 @@ export type CardEffect =
     }
   /** Impulse: exile the top of the player's library; the effect's controller
    * may cast or play those cards this turn (free when freeCast — Etali). */
-  | { kind: "exile_top_play"; playerId: PlayerSelector; count: number; freeCast?: boolean }
+  | {
+      kind: "exile_top_play";
+      playerId: PlayerSelector;
+      count: number;
+      freeCast?: boolean;
+      /** Atsushi: playable "until the end of your next turn". */
+      untilEndOfNextTurn?: boolean;
+    }
+  /** Charming Prince: exile the target; it returns to the battlefield under
+   * the effect controller's control at the beginning of the next end step. */
+  | { kind: "exile_return_end_step"; target: ChosenTargetRef }
   | { kind: "populate"; playerId: PlayerSelector }
   | { kind: "proliferate"; playerId: PlayerSelector }
   | {

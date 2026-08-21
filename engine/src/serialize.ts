@@ -1024,6 +1024,14 @@ export function parseGameState(json: string): GameState {
                 cardId: expectString(entry.cardId, `exilePlayable[${index}].cardId`),
                 casterId: expectString(entry.casterId, `exilePlayable[${index}].casterId`),
                 ...(entry.freeCast === true ? { freeCast: true } : {}),
+                ...(entry.remainingOwnCleanups === undefined
+                  ? {}
+                  : {
+                      remainingOwnCleanups: expectNumber(
+                        entry.remainingOwnCleanups,
+                        `exilePlayable[${index}].remainingOwnCleanups`,
+                      ),
+                    }),
               };
             });
           })(),
@@ -1062,12 +1070,25 @@ export function parseGameState(json: string): GameState {
                 throw new Error(`Invalid delayedEndStep[${index}]`);
               }
               const action = expectString(entry.action, `delayedEndStep[${index}].action`);
-              if (action !== "sacrifice" && action !== "exile" && action !== "hand") {
+              if (
+                action !== "sacrifice" &&
+                action !== "exile" &&
+                action !== "hand" &&
+                action !== "battlefield"
+              ) {
                 throw new Error(`Invalid delayedEndStep[${index}].action`);
               }
               return {
                 cardId: expectString(entry.cardId, `delayedEndStep[${index}].cardId`),
                 action,
+                ...(entry.controllerId === undefined
+                  ? {}
+                  : {
+                      controllerId: expectString(
+                        entry.controllerId,
+                        `delayedEndStep[${index}].controllerId`,
+                      ),
+                    }),
               };
             });
           })(),
@@ -1773,6 +1794,11 @@ function parseTargetRequirement(value: unknown, label: string): TargetRequiremen
       return requiredSubtypes.length > 0 ? { requiredSubtypes } : {};
     })(),
     ...(() => {
+      const excludedSubtypes = parseStringList(value.excludedSubtypes, `${label}.excludedSubtypes`);
+      return excludedSubtypes.length > 0 ? { excludedSubtypes } : {};
+    })(),
+    ...(value.owner === "own" ? { owner: "own" as const } : {}),
+    ...(() => {
       if (value.requiredColors === undefined) {
         return {};
       }
@@ -2197,6 +2223,12 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
         playerId: parsePlayerSelector(value.playerId, `${label}.playerId`),
         count: expectNumber(value.count, `${label}.count`),
         ...(value.freeCast === true ? { freeCast: true } : {}),
+        ...(value.untilEndOfNextTurn === true ? { untilEndOfNextTurn: true } : {}),
+      };
+    case "exile_return_end_step":
+      return {
+        kind,
+        target: parseChosenTargetRef(value.target, `${label}.target`),
       };
     case "untap_lands_up_to":
       return {
@@ -3843,6 +3875,14 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
       casterId: expectString(value.casterId, `${label}.casterId`),
       count: expectNumber(value.count, `${label}.count`),
       ...(value.freeCast === true ? { freeCast: true } : {}),
+      ...(value.untilEndOfNextTurn === true ? { untilEndOfNextTurn: true } : {}),
+    };
+  }
+  if (kind === "exile_return_end_step") {
+    return {
+      kind,
+      cardId: expectString(value.cardId, `${label}.cardId`),
+      controllerId: expectString(value.controllerId, `${label}.controllerId`),
     };
   }
   if (kind === "untap_lands_up_to") {

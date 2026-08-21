@@ -96,6 +96,14 @@ function violatesCharacteristicFilter(
   ) {
     return true;
   }
+  // "target non-Dragon creature card" (Junji).
+  if (
+    (requirement.excludedSubtypes ?? []).some((subtype) =>
+      cardMatchesSubtype(state, cardId, subtype),
+    )
+  ) {
+    return true;
+  }
   return requirement.maxPower !== undefined && creaturePower(state, cardId) > requirement.maxPower;
 }
 
@@ -201,7 +209,9 @@ export function isChosenTargetLegal(
       !violatesColorExclusion(state, target.cardId, requirement) &&
       !violatesControlFilter(state, target.cardId, requirement, casterId) &&
       !violatesManaValueFilter(state, target.cardId, requirement) &&
-      !violatesCharacteristicFilter(state, target.cardId, requirement)
+      !violatesCharacteristicFilter(state, target.cardId, requirement) &&
+      // "target creature you own" (Charming Prince).
+      (requirement.owner !== "own" || state.cards[target.cardId]?.ownerId === casterId)
     );
   }
   if (requirement.kind === "own_creature") {
@@ -261,7 +271,11 @@ export function isChosenTargetLegal(
     return Boolean(
       card &&
         card.zone === "graveyard" &&
-        characteristicsOf(state, target.cardId).types.includes("creature"),
+        characteristicsOf(state, target.cardId).types.includes("creature") &&
+        // "target non-Dragon creature card" (Junji).
+        !(requirement.excludedSubtypes ?? []).some((subtype) =>
+          cardMatchesSubtype(state, target.cardId, subtype),
+        ),
     );
   }
   if (

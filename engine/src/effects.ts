@@ -1252,6 +1252,18 @@ export function bindCardEffect(
         casterId: context.controllerId,
         count: effect.count,
         ...(effect.freeCast ? { freeCast: true } : {}),
+        ...(effect.untilEndOfNextTurn ? { untilEndOfNextTurn: true } : {}),
+      };
+    }
+    case "exile_return_end_step": {
+      const chosen = chosenTargetAt(context, effect.target.index, state);
+      if (!chosen || chosen.type !== "creature") {
+        return null;
+      }
+      return {
+        kind: "exile_return_end_step",
+        cardId: chosen.cardId,
+        controllerId: context.controllerId,
       };
     }
     case "proliferate": {
@@ -3111,6 +3123,13 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
           throw new Error(`Unknown player ${effect.playerId}`);
         }
         const tops = impulsed.zones.library.slice(0, effect.count);
+        // Atsushi: "until the end of your next turn" — the grant survives
+        // cleanups until the caster's own cleanup has run this many times.
+        const remainingOwnCleanups = effect.untilEndOfNextTurn
+          ? effect.casterId === state.turn.activePlayerId
+            ? 2
+            : 1
+          : undefined;
         for (const cardId of tops) {
           moveCardInPlace(next, cardId, "exile");
           const grants = next.exilePlayable ?? [];
@@ -3118,8 +3137,25 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
             cardId,
             casterId: effect.casterId,
             ...(effect.freeCast ? { freeCast: true } : {}),
+            ...(remainingOwnCleanups !== undefined ? { remainingOwnCleanups } : {}),
           });
           next.exilePlayable = grants;
+        }
+        break;
+      }
+      case "exile_return_end_step": {
+        const exiled = state.cards[effect.cardId];
+        if (!exiled || exiled.zone !== "battlefield") {
+          next = cloneGameState(state);
+          break;
+        }
+        next = moveCard(state, effect.cardId, "exile");
+        if (next.cards[effect.cardId]?.zone === "exile") {
+          next.delayedEndStep.push({
+            cardId: effect.cardId,
+            action: "battlefield",
+            controllerId: effect.controllerId,
+          });
         }
         break;
       }

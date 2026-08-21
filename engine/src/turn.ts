@@ -189,6 +189,19 @@ function onEnterStep(state: GameState): GameState {
       current.delayedEndStep = [];
       for (const entry of pending) {
         const card = current.cards[entry.cardId];
+        // Charming Prince: the returning card waits in exile, not on the
+        // battlefield.
+        if (entry.action === "battlefield") {
+          if (card && card.zone === "exile") {
+            current = applyEffect(current, {
+              kind: "move_card",
+              cardId: entry.cardId,
+              toZone: "battlefield",
+              ...(entry.controllerId ? { controllerId: entry.controllerId } : {}),
+            });
+          }
+          continue;
+        }
         if (!card || card.zone !== "battlefield") {
           continue;
         }
@@ -272,7 +285,18 @@ function onEnterStep(state: GameState): GameState {
       state.diesReturnUntilEot = [];
     }
     if (state.exilePlayable && state.exilePlayable.length > 0) {
-      state.exilePlayable = [];
+      // Plain grants end with the turn; extended grants (Atsushi) count down
+      // at the caster's own cleanups only.
+      state.exilePlayable = state.exilePlayable.flatMap((entry) => {
+        if (entry.remainingOwnCleanups === undefined) {
+          return [];
+        }
+        if (entry.casterId !== state.turn.activePlayerId) {
+          return [entry];
+        }
+        const remaining = entry.remainingOwnCleanups - 1;
+        return remaining > 0 ? [{ ...entry, remainingOwnCleanups: remaining }] : [];
+      });
     }
     if (state.castLockUntilEot) {
       delete state.castLockUntilEot;

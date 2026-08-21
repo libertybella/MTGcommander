@@ -13686,3 +13686,129 @@ describe("wave 126: triggers learn to choose", () => {
     expect(next.cards[bear.id]?.tapped).toBe(false);
   });
 });
+
+describe("wave 127: the dragons pick their partings", () => {
+  it("compiles the dies-modal batch fully", () => {
+    const atsushi = compileOracleCard({
+      oracleId: "atsushi",
+      name: "Atsushi, the Blazing Sky",
+      manaCost: "{2}{R}{R}",
+      typeLine: "Legendary Creature — Dragon Spirit",
+      power: "4",
+      toughness: "4",
+      printedKeywords: ["Flying", "Trample"],
+      imageUrl: "",
+      oracleText:
+        "Flying, trample\nWhen Atsushi dies, choose one —\n• Exile the top two cards of your library. Until the end of your next turn, you may play those cards.\n• Create three Treasure tokens.",
+    });
+    expect(atsushi.notes).toEqual([]);
+    const dies = atsushi.definition.triggers.find((trigger) => trigger.event === "dies");
+    expect(dies?.modes?.[0]?.effects[0]).toMatchObject({
+      kind: "exile_top_play",
+      count: 2,
+      untilEndOfNextTurn: true,
+    });
+    expect(dies?.modes?.[1]?.effects).toHaveLength(3);
+
+    const junji = compileOracleCard({
+      oracleId: "junji",
+      name: "Junji, the Midnight Sky",
+      manaCost: "{3}{B}{B}",
+      typeLine: "Legendary Creature — Dragon Spirit",
+      power: "5",
+      toughness: "5",
+      printedKeywords: ["Flying", "Menace"],
+      imageUrl: "",
+      oracleText:
+        "Flying, menace\nWhen Junji dies, choose one —\n• Each opponent discards two cards and loses 2 life.\n• Put target non-Dragon creature card from a graveyard onto the battlefield under your control. You lose 2 life.",
+    });
+    expect(junji.notes).toEqual([]);
+    const junjiDies = junji.definition.triggers.find((trigger) => trigger.event === "dies");
+    expect(junjiDies?.modes?.[1]?.targetRequirements).toEqual([
+      { kind: "graveyard_creature_card", excludedSubtypes: ["dragon"] },
+    ]);
+    expect(junjiDies?.modes?.[1]?.effects).toHaveLength(2);
+
+    const prince = compileOracleCard({
+      oracleId: "prince",
+      name: "Charming Prince",
+      manaCost: "{1}{W}",
+      typeLine: "Creature — Human Noble",
+      power: "2",
+      toughness: "2",
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "When this creature enters, choose one —\n• Scry 2.\n• You gain 3 life.\n• Exile another target creature you own. Return it to the battlefield under your control at the beginning of the next end step.",
+    });
+    expect(prince.notes).toEqual([]);
+    expect(prince.definition.triggers[0]?.modes?.[2]?.targetRequirements).toEqual([
+      { kind: "creature", owner: "own", excludeSource: true },
+    ]);
+    expect(prince.definition.triggers[0]?.modes?.[2]?.effects).toEqual([
+      { kind: "exile_return_end_step", target: { type: "chosen", index: 0 } },
+    ]);
+  });
+
+  it("blinks the owned creature out and home at the next end step", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 30);
+    const bearDef = createCardDefinition({
+      name: "Bear",
+      typeLine: "Creature — Bear",
+      power: 2,
+      toughness: 2,
+    });
+    game.definitions[bearDef.id] = bearDef;
+    const bear = createCardInstance({ definitionId: bearDef.id, ownerId: p1.id, zone: "battlefield" });
+    game.cards[bear.id] = bear;
+    p1.zones.battlefield.push(bear.id);
+
+    let next = applyEffects(game, [
+      { kind: "exile_return_end_step", cardId: bear.id, controllerId: p1.id },
+    ]);
+    expect(next.cards[bear.id]?.zone).toBe("exile");
+    expect(next.delayedEndStep).toEqual([
+      { cardId: bear.id, action: "battlefield", controllerId: p1.id },
+    ]);
+
+    for (let guard = 0; guard < 30; guard += 1) {
+      next = advanceSteps(next, 1);
+      if (next.cards[bear.id]?.zone === "battlefield") {
+        break;
+      }
+    }
+    expect(next.cards[bear.id]?.zone).toBe("battlefield");
+    expect(next.delayedEndStep).toHaveLength(0);
+  });
+
+  it("keeps the extended impulse through the caster's cleanup", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 30);
+    game.turn.activePlayerId = p1.id;
+
+    let next = applyEffects(game, [
+      {
+        kind: "exile_top_play",
+        playerId: p1.id,
+        casterId: p1.id,
+        count: 2,
+        untilEndOfNextTurn: true,
+      },
+    ]);
+    const granted = next.exilePlayable ?? [];
+    expect(granted).toHaveLength(2);
+    // Granted on the caster's own turn: it outlives this turn's cleanup.
+    expect(granted[0]?.remainingOwnCleanups).toBe(2);
+
+    for (let guard = 0; guard < 30; guard += 1) {
+      next = advanceSteps(next, 1);
+      if (next.turn.activePlayerId === p2.id && next.turn.step === "upkeep") {
+        break;
+      }
+    }
+    expect(next.turn.activePlayerId).toBe(p2.id);
+    expect(next.exilePlayable ?? []).toHaveLength(2);
+    expect((next.exilePlayable ?? [])[0]?.remainingOwnCleanups).toBe(1);
+  });
+});
