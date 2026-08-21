@@ -2759,6 +2759,7 @@ const TRIGGER_EVENT_NAMES: ReadonlySet<string> = new Set([
   "leaves_your_graveyard",
   "you_draw",
   "is_dealt_damage",
+  "counter_added",
 ] satisfies TriggerEvent[]);
 
 function parseTriggers(value: unknown, label: string): CardTrigger[] {
@@ -2823,6 +2824,20 @@ function parseTriggers(value: unknown, label: string): CardTrigger[] {
               ...(entry.subjectFilter.chosenSubtype === true ? { chosenSubtype: true } : {}),
               ...(entry.subjectFilter.nonToken === true ? { nonToken: true } : {}),
               ...(entry.subjectFilter.tokenOnly === true ? { tokenOnly: true } : {}),
+              ...(entry.subjectFilter.greaterPtThanWatcher === true
+                ? { greaterPtThanWatcher: true }
+                : {}),
+              ...(entry.subjectFilter.manaValueBelowWatcherPower === true
+                ? { manaValueBelowWatcherPower: true }
+                : {}),
+              ...(entry.subjectFilter.counterName === undefined
+                ? {}
+                : {
+                    counterName: expectString(
+                      entry.subjectFilter.counterName,
+                      `${label}[${index}].subjectFilter.counterName`,
+                    ),
+                  }),
               ...(() => {
                 const nonSubtypes = parseStringList(
                   entry.subjectFilter.nonSubtypes,

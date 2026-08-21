@@ -13931,3 +13931,118 @@ describe("wave 128: the spell pays itself", () => {
     expect(computedCard(doubled, giant.id)?.power).toBe(14);
   });
 });
+
+describe("wave 129: evolution notices its betters", () => {
+  it("compiles the evolve pair fully", () => {
+    const mage = compileOracleCard({
+      oracleId: "mage",
+      name: "Fathom Mage",
+      manaCost: "{2}{G}{U}",
+      typeLine: "Creature — Human Wizard",
+      power: "1",
+      toughness: "1",
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "Evolve (Whenever a creature you control enters, if that creature has greater power or toughness than this creature, put a +1/+1 counter on this creature.)\nWhenever a +1/+1 counter is put on this creature, you may draw a card.",
+    });
+    expect(mage.notes).toEqual([]);
+    const evolve = mage.definition.triggers[0];
+    expect(evolve).toMatchObject({
+      event: "enter_battlefield",
+      watch: "controlled",
+      excludeSelf: true,
+      subjectFilter: { types: ["creature"], greaterPtThanWatcher: true },
+    });
+    const counterWatch = mage.definition.triggers[1];
+    expect(counterWatch).toMatchObject({
+      event: "counter_added",
+      subjectFilter: { counterName: "p1p1" },
+    });
+
+    const pollywog = compileOracleCard({
+      oracleId: "pollywog",
+      name: "Pollywog Prodigy",
+      manaCost: "{1}{U}",
+      typeLine: "Creature — Frog Wizard",
+      power: "1",
+      toughness: "2",
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "Evolve (Whenever a creature you control enters, if that creature has greater power or toughness than this creature, put a +1/+1 counter on this creature.)\nWhenever an opponent casts a noncreature spell with mana value less than this creature's power, draw a card.",
+    });
+    expect(pollywog.notes).toEqual([]);
+    expect(pollywog.definition.triggers[1]).toMatchObject({
+      event: "cast_spell",
+      watch: "opponents",
+      subjectFilter: { nonTypes: ["creature"], manaValueBelowWatcherPower: true },
+    });
+  });
+
+  it("evolves only past its betters, then draws from the counter", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 10);
+    const mageDef = createCardDefinition({
+      name: "Mage",
+      typeLine: "Creature — Human Wizard",
+      power: 1,
+      toughness: 1,
+      triggers: [
+        {
+          event: "enter_battlefield",
+          watch: "controlled",
+          excludeSelf: true,
+          subjectFilter: { types: ["creature"], greaterPtThanWatcher: true },
+          effects: [{ kind: "add_counter", cardId: "self", counter: "p1p1", amount: 1 }],
+          targetRequirements: [],
+        },
+        {
+          event: "counter_added",
+          subjectFilter: { counterName: "p1p1" },
+          effects: [{ kind: "draw", playerId: "controller", count: 1, optional: true }],
+          targetRequirements: [],
+        },
+      ],
+    });
+    const weenieDef = createCardDefinition({
+      name: "Weenie",
+      typeLine: "Creature — Soldier",
+      power: 1,
+      toughness: 1,
+    });
+    const bruteDef = createCardDefinition({
+      name: "Brute",
+      typeLine: "Creature — Giant",
+      power: 3,
+      toughness: 3,
+    });
+    game.definitions[mageDef.id] = mageDef;
+    game.definitions[weenieDef.id] = weenieDef;
+    game.definitions[bruteDef.id] = bruteDef;
+    const mage = createCardInstance({ definitionId: mageDef.id, ownerId: p1.id, zone: "battlefield" });
+    game.cards[mage.id] = mage;
+    p1.zones.battlefield.push(mage.id);
+
+    // An equal-statted arrival does not evolve it.
+    const weenie = createCardInstance({ definitionId: weenieDef.id, ownerId: p1.id, zone: "battlefield" });
+    game.cards[weenie.id] = weenie;
+    p1.zones.battlefield.push(weenie.id);
+    dispatchEventsInPlace(game, [{ kind: "enters", cardId: weenie.id }]);
+    expect(game.stack).toHaveLength(0);
+
+    // A bigger arrival evolves it, and the landed counter feeds the draw.
+    const brute = createCardInstance({ definitionId: bruteDef.id, ownerId: p1.id, zone: "battlefield" });
+    game.cards[brute.id] = brute;
+    p1.zones.battlefield.push(brute.id);
+    dispatchEventsInPlace(game, [{ kind: "enters", cardId: brute.id }]);
+    let next = game;
+    let guard = 0;
+    while (next.stack.length > 0 && guard < 10) {
+      next = resolveTopOfStack(next);
+      guard += 1;
+    }
+    expect(next.cards[mage.id]?.counters["p1p1"]).toBe(1);
+    expect(next.players[0]?.zones.hand).toHaveLength(1);
+  });
+});

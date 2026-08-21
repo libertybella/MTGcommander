@@ -1417,6 +1417,8 @@ export type TriggerEvent =
   | "opponent_draws_second"
   /** Any player sacrificed a permanent (Mayhem Devil). */
   | "player_sacrifices"
+  /** A counter was put on this creature (Fathom Mage). */
+  | "counter_added"
   /** This creature was dealt damage (Enrage — Apex Altisaur). */
   | "is_dealt_damage"
   /** An opponent searched their library (Archivist of Oghma). */
@@ -1496,6 +1498,13 @@ export type CardTrigger = {
     minPower?: number;
     /** "with power 2 or less" (Welcoming Vampire). Computed power. */
     maxPower?: number;
+    /** Evolve: the subject outclasses the watcher in power or toughness. */
+    greaterPtThanWatcher?: boolean;
+    /** Pollywog Prodigy: the cast subject's mana value undercuts the
+     * watcher's power. */
+    manaValueBelowWatcherPower?: boolean;
+    /** counter_added triggers: only this counter name fires it. */
+    counterName?: string;
   };
   effects: CardEffect[];
   /** Chosen when the trigger is put on the stack. Empty or omitted means untargeted. */
@@ -1547,7 +1556,9 @@ export type EngineEvent =
   /** A spell copy hit the stack (Magecraft's "or copy" half). */
   | { kind: "copies_spell"; cardId: CardInstanceId; controllerId: PlayerId }
   /** A creature was dealt damage (Enrage — Apex Altisaur). */
-  | { kind: "damaged"; cardId: CardInstanceId };
+  | { kind: "damaged"; cardId: CardInstanceId }
+  /** A counter landed on a battlefield card (Fathom Mage). */
+  | { kind: "counter_added"; cardId: CardInstanceId; counter: string };
 
 /** One triggered ability waiting to be put on the stack. */
 export type TriggerCandidate = {

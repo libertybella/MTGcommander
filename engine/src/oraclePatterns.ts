@@ -1848,6 +1848,14 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     return { targetRequirements: [], effects: [] };
   }
 
+  // Fathom Mage's body: the "may" is auto-taken (documented).
+  if (/^you may draw a card$/i.test(sentence)) {
+    return {
+      targetRequirements: [],
+      effects: [{ kind: "draw", playerId: "controller", count: 1, optional: true }],
+    };
+  }
+
   // Soul's Attendant: the "may" is auto-taken (documented, like may-draw).
   const mayGain = sentence.match(/^you may gain (\d+|a|an|one|two|three) life$/i);
   if (mayGain?.[1]) {
@@ -4290,6 +4298,22 @@ function parseTriggerHead(head: string): TriggerHead | null {
   if (/^Whenever an opponent draws a card$/i.test(text)) {
     return { event: "opponent_draws" };
   }
+  // Fathom Mage.
+  if (/^Whenever a \+1\/\+1 counter is put on ~$/i.test(text)) {
+    return { event: "counter_added", subjectFilter: { counterName: "p1p1" } };
+  }
+  // Pollywog Prodigy: the cap reads the watcher's power live.
+  if (
+    /^Whenever an opponent casts a noncreature spell with mana value less than ~'s power$/i.test(
+      text,
+    )
+  ) {
+    return {
+      event: "cast_spell",
+      watch: "opponents",
+      subjectFilter: { nonTypes: ["creature"], manaValueBelowWatcherPower: true },
+    };
+  }
   if (/^Whenever an opponent casts a noncreature spell$/i.test(text)) {
     return { event: "cast_spell", watch: "opponents", subjectFilter: { nonTypes: ["creature"] } };
   }
@@ -5702,6 +5726,19 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
           toughness: Number(perBuff[2]),
           per: "artifacts_and_enchantments_you_control",
         },
+      });
+      continue;
+    }
+
+    // Evolve (CR 702.100) lowers to its full rules text.
+    if (/^Evolve$/i.test(sentence)) {
+      result.triggers.push({
+        event: "enter_battlefield",
+        watch: "controlled",
+        excludeSelf: true,
+        subjectFilter: { types: ["creature"], greaterPtThanWatcher: true },
+        effects: [{ kind: "add_counter", cardId: "self", counter: "p1p1", amount: 1 }],
+        targetRequirements: [],
       });
       continue;
     }

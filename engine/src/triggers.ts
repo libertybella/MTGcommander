@@ -1,6 +1,6 @@
 import { characteristicsOf } from "./cardTypes";
 import { abilitiesRemoved, cardMatchesSubtype } from "./characteristicsEngine";
-import { creaturePower } from "./derived";
+import { creaturePower, creatureToughness } from "./derived";
 import { createId } from "./ids";
 import { hasAnyLegalTargetSet } from "./targeting";
 import type {
@@ -436,6 +436,28 @@ function subjectMatchesFilter(
       return false;
     }
   }
+  // Evolve: the entering subject must outclass the watcher in power OR
+  // toughness (CR 702.100c).
+  if (filter.greaterPtThanWatcher) {
+    if (!watcher) {
+      return false;
+    }
+    const subjectPower = creaturePower(state, subjectId);
+    const subjectToughness = creatureToughness(state, subjectId);
+    if (
+      subjectPower <= creaturePower(state, watcher.id) &&
+      subjectToughness <= creatureToughness(state, watcher.id)
+    ) {
+      return false;
+    }
+  }
+  // Pollywog Prodigy: the cast subject's mana value must undercut the
+  // watcher's power, read when the trigger checks.
+  if (filter.manaValueBelowWatcherPower) {
+    if (!watcher || traits.manaValue >= creaturePower(state, watcher.id)) {
+      return false;
+    }
+  }
   return true;
 }
 
@@ -591,6 +613,17 @@ function triggerMatchesEvent(
     return trigger.event === "is_dealt_damage" && event.cardId === watcher.id;
   }
   if (trigger.event === "is_dealt_damage") {
+    return false;
+  }
+  if (event.kind === "counter_added") {
+    // Fathom Mage: a named counter landed on the watcher itself.
+    return (
+      trigger.event === "counter_added" &&
+      event.cardId === watcher.id &&
+      (!trigger.subjectFilter?.counterName || trigger.subjectFilter.counterName === event.counter)
+    );
+  }
+  if (trigger.event === "counter_added") {
     return false;
   }
   if (event.kind === "deals_damage_to_player") {

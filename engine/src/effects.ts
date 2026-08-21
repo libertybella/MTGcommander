@@ -1774,6 +1774,12 @@ function applyAddCounter(
   }
   card.counters[counter] =
     (card.counters[counter] ?? 0) + counterBatchAmount(next, cardId, counter, amount);
+  // Fathom Mage: effect-driven placements notify counter_added watchers.
+  // (Counters arriving through enter-with-counters setups do not — a
+  // documented approximation.)
+  if (card.zone === "battlefield") {
+    dispatchEventsInPlace(next, [{ kind: "counter_added", cardId, counter }]);
+  }
   return next;
 }
 

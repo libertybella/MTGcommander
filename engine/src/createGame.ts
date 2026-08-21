@@ -160,6 +160,15 @@ export function createCardDefinition(
                   ...(trigger.subjectFilter.maxPower !== undefined
                     ? { maxPower: trigger.subjectFilter.maxPower }
                     : {}),
+                  ...(trigger.subjectFilter.greaterPtThanWatcher
+                    ? { greaterPtThanWatcher: true }
+                    : {}),
+                  ...(trigger.subjectFilter.manaValueBelowWatcherPower
+                    ? { manaValueBelowWatcherPower: true }
+                    : {}),
+                  ...(trigger.subjectFilter.counterName
+                    ? { counterName: trigger.subjectFilter.counterName }
+                    : {}),
                 },
               }
             : {}),
