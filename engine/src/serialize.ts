@@ -597,6 +597,9 @@ export function parseGameState(json: string): GameState {
       ...(entry.subjectPlayerId === undefined
         ? {}
         : { subjectPlayerId: expectString(entry.subjectPlayerId, `stack[${index}].subjectPlayerId`) }),
+      ...(entry.subjectAmount === undefined
+        ? {}
+        : { subjectAmount: expectNumber(entry.subjectAmount, `stack[${index}].subjectAmount`) }),
       ...(entry.modeIndex === undefined
         ? {}
         : { modeIndex: expectNumber(entry.modeIndex, `stack[${index}].modeIndex`) }),
@@ -892,6 +895,17 @@ function parsePrompts(value: unknown, playerIds: Set<string>): PendingPrompt[] {
       origin,
       triggerIndex: expectNumber(entry.triggerIndex, `prompts[${index}].triggerIndex`),
       requirements: parseTargetRequirements(entry.requirements, `prompts[${index}].requirements`),
+      ...(entry.subjectCardId === undefined
+        ? {}
+        : { subjectCardId: expectString(entry.subjectCardId, `prompts[${index}].subjectCardId`) }),
+      ...(entry.subjectPlayerId === undefined
+        ? {}
+        : {
+            subjectPlayerId: expectString(entry.subjectPlayerId, `prompts[${index}].subjectPlayerId`),
+          }),
+      ...(entry.subjectAmount === undefined
+        ? {}
+        : { subjectAmount: expectNumber(entry.subjectAmount, `prompts[${index}].subjectAmount`) }),
     };
   });
 }
@@ -914,6 +928,11 @@ function parseTriggerCandidates(value: unknown, label: string): TriggerCandidate
         ? {}
         : {
             subjectPlayerId: expectString(entry.subjectPlayerId, `${label}[${index}].subjectPlayerId`),
+          }),
+      ...(entry.subjectAmount === undefined
+        ? {}
+        : {
+            subjectAmount: expectNumber(entry.subjectAmount, `${label}[${index}].subjectAmount`),
           }),
     };
   });
@@ -1325,7 +1344,10 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
       return {
         kind,
         playerId: parsePlayerSelector(value.playerId, `${label}.playerId`),
-        amount: expectNumber(value.amount, `${label}.amount`),
+        amount:
+          value.amount === "subject_amount"
+            ? "subject_amount"
+            : expectNumber(value.amount, `${label}.amount`),
       };
     case "draw":
       return {
@@ -1818,6 +1840,8 @@ function parseTriggers(value: unknown, label: string): CardTrigger[] {
       event !== "upkeep" &&
       event !== "end_step" &&
       event !== "you_gain_life" &&
+      event !== "opponent_loses_life" &&
+      event !== "opponent_draws" &&
       event !== "cast_spell" &&
       event !== "deals_combat_damage_to_player" &&
       event !== "deals_damage_to_player"

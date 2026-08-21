@@ -121,6 +121,8 @@ describe("triggered abilities", () => {
         origin: "trigger",
         triggerIndex: 0,
         requirements: [{ kind: "creature" }],
+        subjectCardId: sageCard.id,
+        subjectPlayerId: p1.id,
       },
     ]);
     expect(() =>

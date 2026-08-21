@@ -69,6 +69,9 @@ export function applyChooseTargets(
     kind: "ability",
     targets: targets.map((target) => ({ ...target })),
     triggerIndex: prompt.triggerIndex,
+    ...(prompt.subjectCardId ? { subjectCardId: prompt.subjectCardId } : {}),
+    ...(prompt.subjectPlayerId ? { subjectPlayerId: prompt.subjectPlayerId } : {}),
+    ...(prompt.subjectAmount ? { subjectAmount: prompt.subjectAmount } : {}),
   });
   next.passesSinceAction = 0;
   next.priorityPlayerId = next.turn.activePlayerId;
@@ -107,6 +110,7 @@ export function applyResolveOrderTriggers(
     queueDefinitionTriggerInPlace(next, entry.cardId, entry.triggerIndex, {
       cardId: entry.subjectCardId,
       playerId: entry.subjectPlayerId,
+      amount: entry.subjectAmount,
     });
   }
   processTriggerGroupsInPlace(next, prompt.remaining);

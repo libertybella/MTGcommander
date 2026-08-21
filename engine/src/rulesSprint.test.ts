@@ -4238,3 +4238,120 @@ describe("wave 45: another-target, put-land, creature affinity", () => {
     expect(legal.stack).toHaveLength(1);
   });
 });
+
+describe("wave 46: that-much life triggers", () => {
+  it("compiles Sanguine Bond, Exquisite Blood, and Voltaic Key shapes fully", () => {
+    const bond = compileOracleCard({
+      oracleId: "bond",
+      name: "Sanguine Bond",
+      manaCost: "{3}{B}{B}",
+      typeLine: "Enchantment",
+      oracleText: "Whenever you gain life, target opponent loses that much life.",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+    });
+    expect(bond.notes).toEqual([]);
+    expect(bond.definition.triggers[0]?.event).toBe("you_gain_life");
+    expect(bond.definition.triggers[0]?.targetRequirements).toEqual([{ kind: "opponent" }]);
+    expect(bond.definition.triggers[0]?.effects[0]).toEqual({
+      kind: "lose_life",
+      playerId: { type: "chosen", index: 0 },
+      amount: "subject_amount",
+    });
+
+    const blood = compileOracleCard({
+      oracleId: "blood",
+      name: "Exquisite Blood",
+      manaCost: "{4}{B}",
+      typeLine: "Enchantment",
+      oracleText: "Whenever an opponent loses life, you gain that much life.",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+    });
+    expect(blood.notes).toEqual([]);
+    expect(blood.definition.triggers[0]?.event).toBe("opponent_loses_life");
+
+    const key = compileOracleCard({
+      oracleId: "key",
+      name: "Voltaic Key",
+      manaCost: "{1}",
+      typeLine: "Artifact",
+      oracleText: "{1}, {T}: Untap target artifact.",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+    });
+    expect(key.notes).toEqual([]);
+    expect(key.definition.activated[0]?.targetRequirements).toEqual([{ kind: "artifact" }]);
+  });
+
+  it("threads the gained amount into the loss and back again", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const bondDef = createCardDefinition({
+      name: "Bond Lite",
+      typeLine: "Enchantment",
+      triggers: [
+        {
+          event: "you_gain_life",
+          targetRequirements: [{ kind: "opponent" }],
+          effects: [
+            { kind: "lose_life", playerId: { type: "chosen", index: 0 }, amount: "subject_amount" },
+          ],
+        },
+      ],
+    });
+    game.definitions[bondDef.id] = bondDef;
+    const bond = createCardInstance({ definitionId: bondDef.id, ownerId: p1.id, zone: "battlefield" });
+    game.cards[bond.id] = bond;
+    p1.zones.battlefield.push(bond.id);
+
+    let next = applyEffect(game, { kind: "gain_life", playerId: p1.id, amount: 3 });
+    const prompt = next.prompts[0];
+    expect(prompt?.kind).toBe("choose_targets");
+    if (prompt?.kind !== "choose_targets") {
+      throw new Error("expected target prompt");
+    }
+    next = applyAction(next, {
+      kind: "choose_targets",
+      playerId: p1.id,
+      targets: [{ type: "player", playerId: p2.id }],
+    });
+    expect(next.stack).toHaveLength(1);
+    const before = next.players.find((p) => p.id === p2.id)!.life;
+    next = resolveTopOfStack(next);
+    expect(next.players.find((p) => p.id === p2.id)!.life).toBe(before - 3);
+  });
+
+  it("gains that much when an opponent loses life to combat or effects", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const bloodDef = createCardDefinition({
+      name: "Blood Lite",
+      typeLine: "Enchantment",
+      triggers: [
+        {
+          event: "opponent_loses_life",
+          effects: [{ kind: "gain_life", playerId: "controller", amount: "subject_amount" }],
+        },
+      ],
+    });
+    game.definitions[bloodDef.id] = bloodDef;
+    const blood = createCardInstance({ definitionId: bloodDef.id, ownerId: p1.id, zone: "battlefield" });
+    game.cards[blood.id] = blood;
+    p1.zones.battlefield.push(blood.id);
+
+    let next = applyEffect(game, { kind: "lose_life", playerId: p2.id, amount: 4 });
+    expect(next.stack).toHaveLength(1);
+    const before = next.players.find((p) => p.id === p1.id)!.life;
+    next = resolveTopOfStack(next);
+    expect(next.players.find((p) => p.id === p1.id)!.life).toBe(before + 4);
+
+    // The controller's own life loss does not trigger it.
+    const own = applyEffect(game, { kind: "lose_life", playerId: p1.id, amount: 2 });
+    expect(own.stack).toHaveLength(0);
+  });
+});

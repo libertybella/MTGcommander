@@ -242,6 +242,7 @@ export function resolveTopOfStack(state: GameState): GameState {
           targetRequirements: requirements,
           ...(top.subjectCardId ? { subjectCardId: top.subjectCardId } : {}),
           ...(top.subjectPlayerId ? { subjectPlayerId: top.subjectPlayerId } : {}),
+          ...(top.subjectAmount ? { subjectAmount: top.subjectAmount } : {}),
         });
         next = applyEffects(next, bound);
       }

@@ -693,6 +693,31 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     }
   }
 
+  // "That much" reads the trigger event's amount (Sanguine Bond, Exquisite
+  // Blood); outside a life trigger it binds to 0 and fizzles silently.
+  if (/^target opponent loses that much life$/i.test(sentence)) {
+    return {
+      targetRequirements: [{ kind: "opponent" }],
+      effects: [
+        { kind: "lose_life", playerId: { type: "chosen", index: 0 }, amount: "subject_amount" },
+      ],
+    };
+  }
+
+  if (/^(?:you )?gain that much life$/i.test(sentence)) {
+    return {
+      targetRequirements: [],
+      effects: [{ kind: "gain_life", playerId: "controller", amount: "subject_amount" }],
+    };
+  }
+
+  if (/^each opponent loses that much life$/i.test(sentence)) {
+    return {
+      targetRequirements: [],
+      effects: [{ kind: "lose_life", playerId: "each_opponent", amount: "subject_amount" }],
+    };
+  }
+
   match = sentence.match(/^each opponent loses (\d+|a|an|one|two|three|four|five|six|seven|eight|nine|ten) life$/i);
   if (match?.[1]) {
     const amount = parseCount(match[1]);
@@ -1066,6 +1091,13 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
   if (/^untap another target artifact$/i.test(sentence)) {
     return {
       targetRequirements: [{ kind: "artifact", excludeSource: true }],
+      effects: [{ kind: "untap", cardId: { type: "chosen", index: 0 } }],
+    };
+  }
+
+  if (/^untap target artifact$/i.test(sentence)) {
+    return {
+      targetRequirements: [{ kind: "artifact" }],
       effects: [{ kind: "untap", cardId: { type: "chosen", index: 0 } }],
     };
   }
@@ -1732,6 +1764,9 @@ function parseTriggerHead(head: string): TriggerHead | null {
   }
   if (/^Whenever you gain life$/i.test(text)) {
     return { event: "you_gain_life" };
+  }
+  if (/^Whenever an opponent loses life$/i.test(text)) {
+    return { event: "opponent_loses_life" };
   }
   if (/^Whenever ~ or another creature dies$/i.test(text)) {
     return { event: "dies", watch: "any", subjectFilter: { types: ["creature"] } };

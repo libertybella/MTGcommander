@@ -259,6 +259,8 @@ export type StackObject = {
   subjectCardId?: CardInstanceId;
   /** The triggering event's subject player ("that player"). */
   subjectPlayerId?: PlayerId;
+  /** The triggering event's amount ("that much" life). */
+  subjectAmount?: number;
   /** Index into the source definition's `activated` for stacked abilities. */
   activatedIndex?: number;
   /** Chosen mode index for modal spells. */
@@ -644,8 +646,8 @@ export type CardEffectTarget =
  * Definition-stored effect data. Bound to concrete GameEffect values on resolve.
  */
 export type CardEffect =
-  | { kind: "gain_life"; playerId: PlayerSelector; amount: number }
-  | { kind: "lose_life"; playerId: PlayerSelector; amount: number }
+  | { kind: "gain_life"; playerId: PlayerSelector; amount: number | "subject_amount" }
+  | { kind: "lose_life"; playerId: PlayerSelector; amount: number | "subject_amount" }
   | {
       kind: "deal_damage";
       sourceId: CardInstanceId | "self" | null;
@@ -801,6 +803,8 @@ export type TriggerEvent =
   | "upkeep"
   | "end_step"
   | "you_gain_life"
+  /** An opponent lost life (Exquisite Blood). Subject is the losing player. */
+  | "opponent_loses_life"
   /** A spell was cast (Guttersnipe, Rhystic Study). Subject is the cast card. */
   | "cast_spell"
   /** Dealt combat damage to a player (Bident of Thassa). Subject is the dealer. */
@@ -852,7 +856,9 @@ export type EngineEvent =
   | { kind: "dies"; cardId: CardInstanceId; controllerId: PlayerId }
   | { kind: "attacks"; cardId: CardInstanceId }
   | { kind: "step_begins"; step: Step }
-  | { kind: "gains_life"; playerId: PlayerId }
+  | { kind: "gains_life"; playerId: PlayerId; amount: number }
+  /** Life lost to damage or a lose-life effect (not payments). */
+  | { kind: "loses_life"; playerId: PlayerId; amount: number }
   | { kind: "casts"; cardId: CardInstanceId; controllerId: PlayerId }
   | { kind: "combat_damage_to_player"; cardId: CardInstanceId; playerId: PlayerId }
   /** Any damage (combat or not) a permanent deals to a player. */
@@ -867,6 +873,8 @@ export type TriggerCandidate = {
   subjectCardId?: CardInstanceId;
   /** The event subject when it is a player (draws, gains life). */
   subjectPlayerId?: PlayerId;
+  /** The event's amount ("that much" — life gained or lost). */
+  subjectAmount?: number;
 };
 
 /** A required player decision that is not priority (targets, later modes). */
@@ -889,6 +897,10 @@ export type PendingPrompt =
       origin: "trigger";
       triggerIndex: number;
       requirements: TargetRequirement[];
+      /** The trigger event's subject, carried through to the stack object. */
+      subjectCardId?: CardInstanceId;
+      subjectPlayerId?: PlayerId;
+      subjectAmount?: number;
     }
   | {
       kind: "may_pay_life_or_enter_tapped";

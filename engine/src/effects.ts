@@ -45,6 +45,8 @@ export type BindEffectContext = {
   /** The trigger event's subject ("that player" / "that creature"). */
   subjectPlayerId?: PlayerId;
   subjectCardId?: CardInstanceId;
+  /** The trigger event's amount ("that much" life gained or lost). */
+  subjectAmount?: number;
 };
 
 function nextOpponentId(state: GameState, controllerId: PlayerId): PlayerId {
@@ -221,7 +223,18 @@ export function bindCardEffect(
 ): GameEffect | null {
   switch (effect.kind) {
     case "gain_life":
-    case "lose_life":
+    case "lose_life": {
+      const playerId = bindPlayerSelector(state, effect.playerId, context);
+      if (!playerId) {
+        return null;
+      }
+      const amount =
+        effect.amount === "subject_amount" ? (context.subjectAmount ?? 0) : effect.amount;
+      if (amount <= 0) {
+        return null;
+      }
+      return { kind: effect.kind, playerId, amount };
+    }
     case "draw":
     case "add_mana":
     case "mill":
@@ -686,7 +699,7 @@ function applyGainLife(state: GameState, playerId: PlayerId, amount: number): Ga
   const gained = amount * lifeGainFactor(next, playerId);
   requirePlayer(next, playerId).life += gained;
   next.log.push({ kind: "life_change", playerId, delta: gained });
-  dispatchEventsInPlace(next, [{ kind: "gains_life", playerId }]);
+  dispatchEventsInPlace(next, [{ kind: "gains_life", playerId, amount: gained }]);
   return next;
 }
 
@@ -695,6 +708,7 @@ function applyLoseLife(state: GameState, playerId: PlayerId, amount: number): Ga
   const next = cloneGameState(state);
   requirePlayer(next, playerId).life -= amount;
   next.log.push({ kind: "life_change", playerId, delta: -amount });
+  dispatchEventsInPlace(next, [{ kind: "loses_life", playerId, amount }]);
   return next;
 }
 
@@ -766,12 +780,15 @@ function applyDamageAll(
     }
   }
   if (effect.includePlayers) {
+    const lifeLoss: EngineEvent[] = [];
     for (const player of next.players) {
       if (!player.lost) {
         player.life -= effect.amount;
         next.log.push({ kind: "life_change", playerId: player.id, delta: -effect.amount });
+        lifeLoss.push({ kind: "loses_life", playerId: player.id, amount: effect.amount });
       }
     }
+    dispatchEventsInPlace(next, lifeLoss);
   }
   // Destruction is a state-based action; applyEffect sweeps the batch at once.
   return next;

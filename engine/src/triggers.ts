@@ -41,7 +41,7 @@ export function queueDefinitionTriggerInPlace(
   state: GameState,
   cardId: CardInstanceId,
   index: number,
-  subject?: { cardId?: CardInstanceId; playerId?: PlayerId },
+  subject?: { cardId?: CardInstanceId; playerId?: PlayerId; amount?: number },
 ): boolean {
   const card = state.cards[cardId];
   const trigger = card ? state.definitions[card.definitionId]?.triggers[index] : undefined;
@@ -67,6 +67,9 @@ export function queueDefinitionTriggerInPlace(
       origin: "trigger",
       triggerIndex: index,
       requirements: requirements.map((requirement) => ({ ...requirement })),
+      ...(subject?.cardId ? { subjectCardId: subject.cardId } : {}),
+      ...(subject?.playerId ? { subjectPlayerId: subject.playerId } : {}),
+      ...(subject?.amount ? { subjectAmount: subject.amount } : {}),
     });
     return true;
   }
@@ -87,6 +90,7 @@ export function queueDefinitionTriggerInPlace(
     triggerIndex: index,
     ...(subject?.cardId ? { subjectCardId: subject.cardId } : {}),
     ...(subject?.playerId ? { subjectPlayerId: subject.playerId } : {}),
+    ...(subject?.amount ? { subjectAmount: subject.amount } : {}),
   });
   return true;
 }
@@ -162,6 +166,7 @@ export function processTriggerGroupsInPlace(state: GameState, groups: TriggerGro
       queueDefinitionTriggerInPlace(state, entries[0]!.cardId, entries[0]!.triggerIndex, {
         cardId: entries[0]!.subjectCardId,
         playerId: entries[0]!.subjectPlayerId,
+        amount: entries[0]!.subjectAmount,
       });
       continue;
     }
@@ -243,6 +248,12 @@ function triggerMatchesEvent(
     return trigger.event === "you_gain_life" && watcher.controllerId === event.playerId;
   }
   if (trigger.event === "you_gain_life") {
+    return false;
+  }
+  if (event.kind === "loses_life") {
+    return trigger.event === "opponent_loses_life" && watcher.controllerId !== event.playerId;
+  }
+  if (trigger.event === "opponent_loses_life") {
     return false;
   }
   if (event.kind === "draws") {
@@ -388,6 +399,7 @@ export function dispatchEventsInPlace(state: GameState, events: EngineEvent[]): 
           const subjectCardId = "cardId" in event ? event.cardId : undefined;
           const subjectPlayerId =
             event.kind === "gains_life" ||
+            event.kind === "loses_life" ||
             event.kind === "combat_damage_to_player" ||
             event.kind === "deals_damage_to_player" ||
             event.kind === "draws"
@@ -397,11 +409,16 @@ export function dispatchEventsInPlace(state: GameState, events: EngineEvent[]): 
                 : subjectCardId
                   ? state.cards[subjectCardId]?.controllerId
                   : undefined;
+          const subjectAmount =
+            event.kind === "gains_life" || event.kind === "loses_life"
+              ? event.amount
+              : undefined;
           candidates.push({
             cardId: card.id,
             triggerIndex: index,
             ...(subjectCardId ? { subjectCardId } : {}),
             ...(subjectPlayerId ? { subjectPlayerId } : {}),
+            ...(subjectAmount ? { subjectAmount } : {}),
           });
         }
       }
