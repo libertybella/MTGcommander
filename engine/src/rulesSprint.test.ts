@@ -6040,3 +6040,48 @@ describe("wave 64: damage lifegain riders and filtered bounce", () => {
     expect(bounced.cards[bear.id]?.zone).toBe("hand");
   });
 });
+
+describe("wave 65: darksteel mutation", () => {
+  it("compiles fully and rewrites the enchanted creature", () => {
+    const mutation = compileOracleCard({
+      oracleId: "mutation",
+      name: "Darksteel Mutation",
+      manaCost: "{1}{W}",
+      typeLine: "Enchantment — Aura",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "Enchant creature\nEnchanted creature is an Insect artifact creature with base power and toughness 0/1 and has indestructible, and it loses all other abilities, card types, and creature types.",
+    });
+    expect(mutation.notes).toEqual([]);
+    expect(mutation.definition.staticAbilities).toHaveLength(4);
+
+    const { game, p1, p2 } = twoPlayers();
+    const dragonDef = createCardDefinition({
+      name: "Dragon",
+      typeLine: "Creature — Dragon",
+      power: 6,
+      toughness: 6,
+      keywords: ["flying"],
+    });
+    game.definitions[mutation.definition.id] = mutation.definition;
+    game.definitions[dragonDef.id] = dragonDef;
+    const dragon = createCardInstance({ definitionId: dragonDef.id, ownerId: p2.id, zone: "battlefield" });
+    const aura = createCardInstance({ definitionId: mutation.definition.id, ownerId: p1.id, zone: "battlefield" });
+    aura.attachedTo = dragon.id;
+    game.cards[dragon.id] = dragon;
+    game.cards[aura.id] = aura;
+    p2.zones.battlefield.push(dragon.id);
+    p1.zones.battlefield.push(aura.id);
+
+    const computed = computedCard(game, dragon.id);
+    expect(computed?.power).toBe(0);
+    expect(computed?.toughness).toBe(1);
+    expect(computed?.keywords.includes("indestructible")).toBe(true);
+    expect(computed?.keywords.includes("flying")).toBe(false);
+    expect(computed?.characteristics.types.includes("artifact")).toBe(true);
+    expect(computed?.abilitiesRemoved).toBe(true);
+  });
+});

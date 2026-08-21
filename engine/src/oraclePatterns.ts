@@ -2722,6 +2722,45 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
       continue;
     }
 
+    // Darksteel Mutation-class: the aura rewrites the host. Approximation:
+    // the new types are ADDED (layer 4 add, not set) — the host keeps its
+    // printed types; base P/T, ability removal, and the keyword are exact.
+    const attachedMutation = sentence.match(
+      /^Enchanted creature is an? ([A-Za-z]+) artifact creature with base power and toughness (\d+)\/(\d+) and has ([a-z ]+), and it loses all other abilities(?:, card types, and creature types)?$/i,
+    );
+    if (attachedMutation?.[1] && attachedMutation[2] && attachedMutation[3] && attachedMutation[4]) {
+      const keyword = KEYWORD_GRANTS[attachedMutation[4].trim().toLowerCase()];
+      if (keyword) {
+        result.staticAbilities.push(
+          {
+            selector: { scope: "attached" },
+            effect: { kind: "remove_all_abilities" },
+          },
+          {
+            selector: { scope: "attached" },
+            effect: {
+              kind: "add_types",
+              types: ["artifact", "creature"],
+              subtypes: [attachedMutation[1].toLowerCase()],
+            },
+          },
+          {
+            selector: { scope: "attached" },
+            effect: {
+              kind: "set_pt",
+              power: Number(attachedMutation[2]),
+              toughness: Number(attachedMutation[3]),
+            },
+          },
+          {
+            selector: { scope: "attached" },
+            effect: { kind: "grant_keyword", keyword },
+          },
+        );
+        continue;
+      }
+    }
+
     const selfRestrict = sentence.match(
       /^~ can't (attack or block|be blocked|attack|block)(?: and can't (be blocked|block|attack))?$/i,
     );
