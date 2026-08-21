@@ -1042,6 +1042,13 @@ export function bindCardEffect(
       }
       return { kind: "flicker", cardId };
     }
+    case "return_self_as_enchantment": {
+      const cardId = bindCardId(state, effect.cardId, context);
+      if (!cardId) {
+        return null;
+      }
+      return { kind: "return_self_as_enchantment", cardId };
+    }
     case "exile_graveyard": {
       const playerId = bindPlayerSelector(state, effect.playerId, context);
       if (!playerId) {
@@ -3094,6 +3101,40 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
         if (next.cards[effect.cardId]?.zone === "exile") {
           next = moveCard(next, effect.cardId, "battlefield");
         }
+        break;
+      }
+      case "return_self_as_enchantment": {
+        // Enduring cycle: "if it was a creature" — once returned, the cloned
+        // definition has no creature type, so a second death is final.
+        const dead = state.cards[effect.cardId];
+        const printed = dead ? state.definitions[dead.definitionId] : undefined;
+        if (
+          !dead ||
+          dead.zone !== "graveyard" ||
+          !printed ||
+          !printed.characteristics.types.includes("creature")
+        ) {
+          next = cloneGameState(state);
+          break;
+        }
+        next = cloneGameState(state);
+        const enchantmentOnly = JSON.parse(JSON.stringify(printed)) as typeof printed;
+        enchantmentOnly.id = createId("definition");
+        enchantmentOnly.typeLine = printed.typeLine
+          .replace(/\bCreature\b ?/i, "")
+          .replace(/\s+—/, " —")
+          .trim();
+        enchantmentOnly.characteristics = {
+          ...printed.characteristics,
+          types: printed.characteristics.types.filter((type) => type !== "creature"),
+        };
+        enchantmentOnly.power = null;
+        enchantmentOnly.toughness = null;
+        next.definitions[enchantmentOnly.id] = enchantmentOnly;
+        next.cards[effect.cardId]!.definitionId = enchantmentOnly.id;
+        // "under its owner's control": moveCard returns it to the owner's
+        // battlefield, and control follows the owner's zone list.
+        next = moveCard(next, effect.cardId, "battlefield");
         break;
       }
       case "exile_graveyard": {

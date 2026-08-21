@@ -648,6 +648,12 @@ function applyTapForMana(
     for (const present of colorsAmongControlled(state, playerId, ability.producesColorsAmong)) {
       addition[present] = 1;
     }
+  } else if (ability.producesChosenColor) {
+    // Heraldic Banner: the color picked as the source entered.
+    if (!card.chosenColor) {
+      throw new Error("No color was chosen for that mana ability");
+    }
+    addition = { [card.chosenColor]: amount };
   } else if (options) {
     if (!color || !options.includes(color)) {
       throw new Error("Choose a mana color");
@@ -729,6 +735,23 @@ function applyTapForMana(
         continue;
       }
       next = addMana(next, playerId, { [color]: bonus.amount });
+    }
+  }
+  // Caged Sun: a land's ability adding one or more of the chosen color adds
+  // one more of it (a triggered mana ability — no stack, CR 605.1b).
+  if (!ability.noTap && isLand(next, cardId)) {
+    for (const sun of Object.values(next.cards)) {
+      if (
+        sun.zone !== "battlefield" ||
+        sun.controllerId !== playerId ||
+        !next.definitions[sun.definitionId]?.landChosenColorBonus
+      ) {
+        continue;
+      }
+      const chosen = sun.chosenColor;
+      if (chosen && (addition[chosen] ?? 0) > 0) {
+        next = addMana(next, playerId, { [chosen]: 1 });
+      }
     }
   }
   if (ability.costSacrifice && costSacrificeId) {

@@ -135,7 +135,17 @@ export function manaChoiceColors(
   return producibleLandColors(state, controllerId, "own");
 }
 
-function manaGateSatisfied(state: GameState, controllerId: string, ability: ManaAbility): boolean {
+function manaGateSatisfied(
+  state: GameState,
+  controllerId: string,
+  ability: ManaAbility,
+  sourceId?: CardInstanceId,
+): boolean {
+  // Heraldic Banner with no chosen color (never chosen, e.g. an override
+  // placement) can't add anything.
+  if (ability.producesChosenColor && sourceId && !state.cards[sourceId]?.chosenColor) {
+    return false;
+  }
   // Mox Amber / Exotic Orchard: an empty choice set means no mana at all.
   if (
     ability.anyColorAmong &&
@@ -256,7 +266,7 @@ export function manaAbilitiesFor(state: GameState, cardId: CardInstanceId): Mana
   }
   return abilities.filter(
     (ability) =>
-      manaGateSatisfied(state, card.controllerId, ability) &&
+      manaGateSatisfied(state, card.controllerId, ability, cardId) &&
       sacrificeFodderAvailable(state, card.controllerId, ability),
   );
 }

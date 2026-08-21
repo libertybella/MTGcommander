@@ -12856,3 +12856,187 @@ describe("wave 121: panharmonic echoes", () => {
     expect(next.stack).toHaveLength(1);
   });
 });
+
+describe("wave 122: glimmers and banners", () => {
+  it("compiles the enduring and chosen-color batch fully", () => {
+    const vitality = compileOracleCard({
+      oracleId: "vitality",
+      name: "Enduring Vitality",
+      manaCost: "{1}{G}{G}",
+      typeLine: "Enchantment Creature — Elk Glimmer",
+      power: "2",
+      toughness: "2",
+      printedKeywords: ["Vigilance"],
+      imageUrl: "",
+      oracleText:
+        'Vigilance\nCreatures you control have "{T}: Add one mana of any color."\nWhen Enduring Vitality dies, if it was a creature, return it to the battlefield under its owner\'s control. It\'s an enchantment. (It\'s not a creature.)',
+    });
+    expect(vitality.notes).toEqual([]);
+    const diesTrigger = vitality.definition.triggers.find((trigger) => trigger.event === "dies");
+    expect(diesTrigger?.effects).toEqual([
+      { kind: "return_self_as_enchantment", cardId: "self" },
+    ]);
+
+    const sun = compileOracleCard({
+      oracleId: "sun",
+      name: "Caged Sun",
+      manaCost: "{6}",
+      typeLine: "Artifact",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "As this artifact enters, choose a color.\nCreatures you control of the chosen color get +1/+1.\nWhenever a land's ability causes you to add one or more mana of the chosen color, add an additional one mana of that color.",
+    });
+    expect(sun.notes).toEqual([]);
+    expect(sun.definition.chooseColorOnEnter).toBe(true);
+    expect(sun.definition.landChosenColorBonus).toBe(true);
+    expect(sun.definition.staticAbilities[0]).toEqual({
+      selector: { scope: "controlled", types: ["creature"], chosenColor: true },
+      effect: { kind: "modify_pt", power: 1, toughness: 1 },
+    });
+
+    const banner = compileOracleCard({
+      oracleId: "banner",
+      name: "Heraldic Banner",
+      manaCost: "{3}",
+      typeLine: "Artifact",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "As this artifact enters, choose a color.\nCreatures you control of the chosen color get +1/+0.\n{T}: Add one mana of the chosen color.",
+    });
+    expect(banner.notes).toEqual([]);
+    expect(banner.definition.manaAbilities[0]?.producesChosenColor).toBe(true);
+    expect(banner.definition.staticAbilities[0]).toEqual({
+      selector: { scope: "controlled", types: ["creature"], chosenColor: true },
+      effect: { kind: "modify_pt", power: 1, toughness: 0 },
+    });
+  });
+
+  it("returns a dead glimmer as a pure enchantment, once", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 10);
+    const glimmerDef = createCardDefinition({
+      name: "Glimmer",
+      typeLine: "Enchantment Creature — Elk Glimmer",
+      power: 2,
+      toughness: 2,
+      triggers: [
+        {
+          event: "dies",
+          effects: [{ kind: "return_self_as_enchantment", cardId: "self" }],
+          targetRequirements: [],
+        },
+      ],
+    });
+    game.definitions[glimmerDef.id] = glimmerDef;
+    const glimmer = createCardInstance({
+      definitionId: glimmerDef.id,
+      ownerId: p1.id,
+      zone: "battlefield",
+    });
+    game.cards[glimmer.id] = glimmer;
+    p1.zones.battlefield.push(glimmer.id);
+
+    let next = applyEffect(game, { kind: "sacrifice", cardId: glimmer.id });
+    while (next.stack.length > 0) {
+      next = resolveTopOfStack(next);
+    }
+    expect(next.cards[glimmer.id]?.zone).toBe("battlefield");
+    expect(computedCard(next, glimmer.id)?.characteristics.types).toEqual(["enchantment"]);
+
+    // The reloaded state keeps the rewritten definition.
+    const reloaded = parseGameState(serializeGameState(next));
+    expect(reloaded.cards[glimmer.id]?.zone).toBe("battlefield");
+
+    // A second death is final: the returned object was never a creature.
+    next = applyEffect(next, { kind: "sacrifice", cardId: glimmer.id });
+    while (next.stack.length > 0) {
+      next = resolveTopOfStack(next);
+    }
+    expect(next.cards[glimmer.id]?.zone).toBe("graveyard");
+  });
+
+  it("keys anthems and mana to the chosen color", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 10);
+    const bannerDef = createCardDefinition({
+      name: "Banner",
+      typeLine: "Artifact",
+      chooseColorOnEnter: true,
+      staticAbilities: [
+        {
+          selector: { scope: "controlled", types: ["creature"], chosenColor: true },
+          effect: { kind: "modify_pt", power: 1, toughness: 0 },
+        },
+      ],
+      manaAbilities: [
+        {
+          produces: {},
+          producesOptions: [],
+          producesAnyColor: false,
+          damageToController: 0,
+          producesChosenColor: true,
+        },
+      ],
+    });
+    const sunDef = createCardDefinition({
+      name: "Sun",
+      typeLine: "Artifact",
+      chooseColorOnEnter: true,
+      landChosenColorBonus: true,
+    });
+    const redDef = createCardDefinition({
+      name: "Red Bear",
+      manaCost: "{1}{R}",
+      typeLine: "Creature — Bear",
+      power: 2,
+      toughness: 2,
+    });
+    const greenDef = createCardDefinition({
+      name: "Green Bear",
+      manaCost: "{1}{G}",
+      typeLine: "Creature — Bear",
+      power: 2,
+      toughness: 2,
+    });
+    const mountainDef = createCardDefinition({
+      name: "Mountain",
+      typeLine: "Basic Land — Mountain",
+      produces: { R: 1 },
+    });
+    game.definitions[bannerDef.id] = bannerDef;
+    game.definitions[sunDef.id] = sunDef;
+    game.definitions[redDef.id] = redDef;
+    game.definitions[greenDef.id] = greenDef;
+    game.definitions[mountainDef.id] = mountainDef;
+    const banner = createCardInstance({ definitionId: bannerDef.id, ownerId: p1.id, zone: "battlefield" });
+    banner.chosenColor = "R";
+    const sun = createCardInstance({ definitionId: sunDef.id, ownerId: p1.id, zone: "battlefield" });
+    sun.chosenColor = "R";
+    const red = createCardInstance({ definitionId: redDef.id, ownerId: p1.id, zone: "battlefield" });
+    const green = createCardInstance({ definitionId: greenDef.id, ownerId: p1.id, zone: "battlefield" });
+    const mountain = createCardInstance({ definitionId: mountainDef.id, ownerId: p1.id, zone: "battlefield" });
+    for (const card of [banner, sun, red, green, mountain]) {
+      game.cards[card.id] = card;
+      p1.zones.battlefield.push(card.id);
+    }
+    game.priorityPlayerId = p1.id;
+
+    // The anthem lifts only the chosen color.
+    expect(computedCard(game, red.id)?.power).toBe(3);
+    expect(computedCard(game, green.id)?.power).toBe(2);
+
+    // The Banner taps for the chosen color without a color argument.
+    let next = applyAction(game, { kind: "tap_for_mana", playerId: p1.id, cardId: banner.id });
+    expect(next.players[0]?.mana.R).toBe(1);
+
+    // Caged Sun: a land tap that adds the chosen color adds one more.
+    next = applyAction(next, { kind: "tap_for_mana", playerId: p1.id, cardId: mountain.id });
+    expect(next.players[0]?.mana.R).toBe(3);
+  });
+});

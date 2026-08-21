@@ -76,6 +76,7 @@ export type CompiledOracleText = {
   chooseCreatureTypeOnEnter?: boolean;
   selfIsChosenType?: boolean;
   triggerDoubling?: CardDefinition["triggerDoubling"];
+  landChosenColorBonus?: boolean;
   entersWithXCounters?: boolean;
   enterAsCopy?: { scope: EnterAsCopyScope; extraCounters?: number; maxManaValueBySpent?: boolean };
   playLandsFromGraveyard?: boolean;
@@ -396,6 +397,15 @@ function manaAbilityFromAdd(add: AddManaResult): ManaAbility {
       producesColorsAmong: add.scope,
     };
   }
+  if (add.kind === "chosen_color") {
+    return {
+      produces: {},
+      producesOptions: [],
+      producesAnyColor: false,
+      damageToController: 0,
+      producesChosenColor: true,
+    };
+  }
   return {
     produces: {},
     producesOptions: add.colors,
@@ -421,6 +431,7 @@ type AddManaResult =
       kind: "any_color_among";
       scope: "legendary" | "opponent_lands" | "your_lands" | "commander_identity";
     }
+  | { kind: "chosen_color" }
   | { kind: "colors_among"; scope: "permanents" }
   | { kind: "or"; colors: ManaColor[] };
 
@@ -445,6 +456,10 @@ function parseAddMana(rest: string): AddManaResult | null {
   // Reflecting Pool ("any type" — colorless included).
   if (/^Add one mana of any type that a land you control could produce$/i.test(text)) {
     return { kind: "any_color_among", scope: "your_lands" };
+  }
+  // Heraldic Banner: the color picked as the source entered.
+  if (/^Add one mana of the chosen color$/i.test(text)) {
+    return { kind: "chosen_color" };
   }
   // Command Tower / Arcane Signet: the color picker is limited to the
   // controller's commanders' color identity, read from the board at tap time.
@@ -5095,6 +5110,51 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
         }
         continue;
       }
+    }
+
+    // Enduring cycle: the dead creature-enchantment comes back as a pure
+    // enchantment. The "It's an enchantment." rider is part of this effect —
+    // consumed here alongside the trigger.
+    if (
+      /^When ~ dies, if it was a creature, return it to the battlefield under its owner's control$/i.test(
+        sentence,
+      )
+    ) {
+      result.triggers.push({
+        event: "dies",
+        effects: [{ kind: "return_self_as_enchantment", cardId: "self" }],
+        targetRequirements: [],
+      });
+      if (/^It's an enchantment$/i.test(sentences[index + 1] ?? "")) {
+        sentences[index + 1] = "";
+      }
+      continue;
+    }
+
+    // Caged Sun / Heraldic Banner: chosen-color anthems.
+    const chosenColorAnthem = sentence.match(
+      /^Creatures you control of the chosen color get \+(\d+)\/\+(\d+)$/i,
+    );
+    if (chosenColorAnthem?.[1] && chosenColorAnthem[2]) {
+      result.staticAbilities.push({
+        selector: { scope: "controlled", types: ["creature"], chosenColor: true },
+        effect: {
+          kind: "modify_pt",
+          power: Number(chosenColorAnthem[1]),
+          toughness: Number(chosenColorAnthem[2]),
+        },
+      });
+      continue;
+    }
+
+    // Caged Sun's mana half.
+    if (
+      /^Whenever a land's ability causes you to add one or more mana of the chosen color, add an additional one mana of that color$/i.test(
+        sentence,
+      )
+    ) {
+      result.landChosenColorBonus = true;
+      continue;
     }
 
     // Prowess (CR 702.108) lowers to its full rules text.

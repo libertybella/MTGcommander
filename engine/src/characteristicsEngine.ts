@@ -259,6 +259,13 @@ function matches(
       return false;
     }
   }
+  if (selector.chosenColor) {
+    const source = instance.sourceId ? state.cards[instance.sourceId] : undefined;
+    const chosen = source?.chosenColor;
+    if (!chosen || !computed.characteristics.colors.includes(chosen)) {
+      return false;
+    }
+  }
   return true;
 }
 

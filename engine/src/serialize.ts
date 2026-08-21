@@ -423,6 +423,7 @@ export function parseGameState(json: string): GameState {
           }),
       ...(def.chooseCreatureTypeOnEnter === true ? { chooseCreatureTypeOnEnter: true } : {}),
       ...(def.selfIsChosenType === true ? { selfIsChosenType: true } : {}),
+      ...(def.landChosenColorBonus === true ? { landChosenColorBonus: true } : {}),
       ...(def.triggerDoubling === undefined
         ? {}
         : {
@@ -2454,6 +2455,8 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
       };
     case "flicker":
       return { kind, cardId: parseCardIdSelector(value.cardId, `${label}.cardId`) };
+    case "return_self_as_enchantment":
+      return { kind, cardId: parseCardIdSelector(value.cardId, `${label}.cardId`) };
     case "exile_graveyard":
       return { kind, playerId: parsePlayerSelector(value.playerId, `${label}.playerId`) };
     case "commander_to_hand":
@@ -2929,6 +2932,7 @@ function parseEffectSelector(value: unknown, label: string): EffectSelector {
     ...(subtypes.length > 0 ? { subtypes } : {}),
     ...(colors.length > 0 ? { colors } : {}),
     ...(value.chosenSubtype === true ? { chosenSubtype: true } : {}),
+    ...(value.chosenColor === true ? { chosenColor: true } : {}),
     ...(value.tokenOnly === true ? { tokenOnly: true } : {}),
     ...(value.nonToken === true ? { nonToken: true } : {}),
     ...(excludeSelf ? { excludeSelf: true } : {}),
@@ -3166,6 +3170,7 @@ function parseManaAbilities(value: unknown, label: string): ManaAbility[] {
       entry.anyColorAmong === "commander_identity"
         ? { anyColorAmong: entry.anyColorAmong }
         : {}),
+      ...(entry.producesChosenColor === true ? { producesChosenColor: true } : {}),
       ...(entry.producesColorsAmong === "permanents"
         ? { producesColorsAmong: "permanents" as const }
         : {}),
@@ -3565,6 +3570,9 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
     };
   }
   if (kind === "flicker") {
+    return { kind, cardId: expectString(value.cardId, `${label}.cardId`) };
+  }
+  if (kind === "return_self_as_enchantment") {
     return { kind, cardId: expectString(value.cardId, `${label}.cardId`) };
   }
   if (kind === "exile_graveyard") {

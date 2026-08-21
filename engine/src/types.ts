@@ -205,6 +205,8 @@ export type CardDefinition = {
   chooseCreatureTypeOnEnter?: boolean;
   /** "~ is the chosen type in addition to its other types" (Metallic Mimic). */
   selfIsChosenType?: boolean;
+  /** Caged Sun: a land tap that adds the chosen color adds one more of it. */
+  landChosenColorBonus?: boolean;
   /**
    * "…that ability triggers an additional time" (CR 614.1c-adjacent trigger
    * doubling). Each matching doubler on the battlefield adds one extra copy
@@ -784,6 +786,9 @@ export type GameEffect =
     }
   /** Ephemerate: exile a permanent and return it immediately (re-enters fresh). */
   | { kind: "flicker"; cardId: CardInstanceId }
+  /** Enduring cycle: a dead creature-enchantment returns as a pure
+   * enchantment (a cloned definition without the creature type). */
+  | { kind: "return_self_as_enchantment"; cardId: CardInstanceId }
   /** Bojuka Bog: every card in the player's graveyard is exiled. */
   | { kind: "exile_graveyard"; playerId: PlayerId }
   /** Mother of Runes: the chooser picks a protection color at resolution. */
@@ -1263,6 +1268,8 @@ export type CardEffect =
       includePlayers?: boolean;
     }
   | { kind: "flicker"; cardId: CardIdSelector }
+  /** Enduring cycle: "return it to the battlefield … It's an enchantment." */
+  | { kind: "return_self_as_enchantment"; cardId: CardIdSelector }
   | { kind: "exile_graveyard"; playerId: PlayerSelector }
   /** Mother of Runes: protection from a color of your choice until EOT. */
   | { kind: "grant_protection_choice"; target: ChosenTargetRef }
@@ -1703,6 +1710,9 @@ export type ManaAbility = {
    * — colorless included — your own lands could produce (Reflecting Pool).
    * Unusable when the set is empty. */
   anyColorAmong?: "legendary" | "opponent_lands" | "your_lands" | "commander_identity";
+  /** Heraldic Banner: "{T}: Add one mana of the chosen color" — the source
+   * card's chosenColor, picked as it entered. */
+  producesChosenColor?: boolean;
   /** Bloom Tender: one mana of each color among permanents you control. */
   producesColorsAmong?: "permanents";
   /** "Activate only if you control a Swamp" on a mana ability. */
@@ -1730,6 +1740,8 @@ export type EffectSelector = {
   colors?: Color[];
   /** The target must have the source's chosen creature type (Vanquisher's Banner). */
   chosenSubtype?: boolean;
+  /** The target must have the source's chosen color (Caged Sun, Heraldic Banner). */
+  chosenColor?: boolean;
   /** "Other Elves you control": the source itself is not affected. */
   excludeSelf?: boolean;
 };

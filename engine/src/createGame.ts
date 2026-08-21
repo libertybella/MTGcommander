@@ -83,6 +83,7 @@ export function createCardDefinition(
         | "chooseCreatureTypeOnEnter"
         | "selfIsChosenType"
         | "triggerDoubling"
+        | "landChosenColorBonus"
         | "chooseColorOnEnter"
         | "enchantedTappedBonus"
         | "entersWithXCounters"
@@ -205,6 +206,7 @@ export function createCardDefinition(
           ...(ability.countFromDevotion ? { countFromDevotion: true } : {}),
           ...(ability.costTapCreature ? { costTapCreature: true } : {}),
           ...(ability.anyColorAmong ? { anyColorAmong: ability.anyColorAmong } : {}),
+          ...(ability.producesChosenColor ? { producesChosenColor: true } : {}),
           ...(ability.producesColorsAmong
             ? { producesColorsAmong: ability.producesColorsAmong }
             : {}),
@@ -321,6 +323,7 @@ export function createCardDefinition(
       : {}),
     ...(input.chooseCreatureTypeOnEnter ? { chooseCreatureTypeOnEnter: true } : {}),
     ...(input.selfIsChosenType ? { selfIsChosenType: true } : {}),
+    ...(input.landChosenColorBonus ? { landChosenColorBonus: true } : {}),
     ...(input.triggerDoubling
       ? {
           triggerDoubling: {
