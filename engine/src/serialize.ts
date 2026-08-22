@@ -2947,6 +2947,7 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
           ? {}
           : { subtype: expectString(value.subtype, `${label}.subtype`) }),
         ...(value.controlledOnly === true ? { controlledOnly: true } : {}),
+        ...(value.opponentsOnly === true ? { opponentsOnly: true } : {}),
       };
     case "each_creature_damages_controller":
       return { kind, amount: expectNumber(value.amount, `${label}.amount`) };
@@ -4381,6 +4382,9 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
       ...(value.controllerId === undefined
         ? {}
         : { controllerId: expectString(value.controllerId, `${label}.controllerId`) }),
+      ...(value.opponentsOf === undefined
+        ? {}
+        : { opponentsOf: expectString(value.opponentsOf, `${label}.opponentsOf`) }),
     };
   }
   if (kind === "each_creature_damages_controller") {

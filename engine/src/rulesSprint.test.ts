@@ -22381,3 +22381,100 @@ describe("wave 183: conditional mana upgrades", () => {
   });
 });
 
+
+describe("wave 184: counter placement as a grammar", () => {
+  const compile = (name: string, manaCost: string, typeLine: string, oracleText: string, power?: string, toughness?: string) =>
+    compileOracleCard({
+      oracleId: name,
+      name,
+      manaCost,
+      typeLine,
+      power: power ?? null,
+      toughness: toughness ?? null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  it("reads a list of counters and puts every one of them on", () => {
+    const gift = compile(
+      "Gift of the Viper",
+      "{1}{G}",
+      "Instant",
+      "Put a +1/+1 counter, a reach counter, and a deathtouch counter on target creature.",
+    );
+    expect(gift.notes).toEqual([]);
+    expect(gift.definition.targetRequirements).toEqual([{ kind: "creature" }]);
+    expect(gift.definition.effects).toEqual([
+      { kind: "add_counter", cardId: { type: "chosen", index: 0 }, counter: "p1p1", amount: 1 },
+      { kind: "add_counter", cardId: { type: "chosen", index: 0 }, counter: "reach", amount: 1 },
+      {
+        kind: "add_counter",
+        cardId: { type: "chosen", index: 0 },
+        counter: "deathtouch",
+        amount: 1,
+      },
+    ]);
+  });
+
+  it("takes a minus counter and an untargeted subject", () => {
+    const clasp = compile(
+      "Contagion Clasp",
+      "{2}",
+      "Artifact",
+      "When this artifact enters, put a -1/-1 counter on target creature.",
+    );
+    expect(clasp.notes).toEqual([]);
+    expect(clasp.definition.triggers[0]?.effects[0]).toEqual({
+      kind: "add_counter",
+      cardId: { type: "chosen", index: 0 },
+      counter: "m1m1",
+      amount: 1,
+    });
+  });
+
+  it("spares your own board when the clause says your opponents'", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    const bearDef = createCardDefinition({
+      name: "Bear",
+      typeLine: "Creature — Bear",
+      power: 2,
+      toughness: 2,
+    });
+    game.definitions[bearDef.id] = bearDef;
+    const put = (owner: typeof p1) => {
+      const card = createCardInstance({ definitionId: bearDef.id, ownerId: owner.id, zone: "battlefield" });
+      game.cards[card.id] = card;
+      owner.zones.battlefield.push(card.id);
+      return card;
+    };
+    const mine = put(p1);
+    const theirs = put(p2);
+
+    const next = applyEffects(
+      game,
+      bindCardEffects(
+        game,
+        [{ kind: "counter_on_each_creature", counter: "m1m1", amount: 1, opponentsOnly: true }],
+        { controllerId: p1.id, sourceId: null },
+      ),
+    );
+    expect(next.cards[theirs.id]?.counters.m1m1).toBe(1);
+    // "your opponents control" — the caster's own creature is untouched.
+    expect(next.cards[mine.id]?.counters.m1m1).toBeUndefined();
+  });
+
+  it("refuses a counter name it cannot read rather than placing nothing", () => {
+    // A made-up counter phrase must leave the sentence uncompiled, not
+    // compile to an effect that quietly does nothing.
+    const odd = compile(
+      "Testcard",
+      "{1}",
+      "Instant",
+      "Put a fistful of counters on target creature.",
+    );
+    expect(odd.notes.join(" ")).toContain("fistful");
+  });
+});
+

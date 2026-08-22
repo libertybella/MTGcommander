@@ -1470,6 +1470,7 @@ export function bindCardEffect(
         amount,
         ...(effect.subtype ? { subtype: effect.subtype } : {}),
         ...(effect.controlledOnly ? { controllerId: context.controllerId } : {}),
+        ...(effect.opponentsOnly ? { opponentsOf: context.controllerId } : {}),
       };
     }
     case "overload_each":
@@ -3021,6 +3022,9 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
             continue;
           }
           if (effect.controllerId && card.controllerId !== effect.controllerId) {
+            continue;
+          }
+          if (effect.opponentsOf && card.controllerId === effect.opponentsOf) {
             continue;
           }
           if (effect.subtype && !cardMatchesSubtype(next, card.id, effect.subtype)) {

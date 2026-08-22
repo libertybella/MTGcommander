@@ -202,6 +202,8 @@ What the engine implements and what it intentionally does not. Tests are tagged 
 
 - **Conditional mana upgrades** (the Urza lands, Ilysian Caryatid): "… If you control X, add \<more\> instead" is a rider on the mana ability the previous sentence made. Every named permanent must be there — the Urza lands need two different ones, so the condition is a list of gates rather than one. A named permanent's words are split the way a printed type line is split (whitespace only), so "Power-Plant" stays the single subtype it is on the card. The colour-choice form upgrades the count and leaves the choice alone.
 
+- **Counter placement as a grammar**: "Put \<counters\> on \<subject\>" reads the counter list and the subject separately, so "a +1/+1 counter, a reach counter, and a deathtouch counter on target creature" needs neither a new branch nor a new effect. The subject accepts the source, the trigger's subject, any plain target phrase, or everyone's creatures on one side of the table. A counter name the list cannot read fails the whole clause rather than placing nothing.
+
 ## The card pipeline (Stage 6)
 
 - Real cards compile from Scryfall oracle text by shared sentence patterns; a hand-authored registry (`server/src/cardOverrides.ts`, data in the same schema) beats the compiler for the long tail. Never a named-card code path.

@@ -965,6 +965,8 @@ export type GameEffect =
       /** Avenger of Zendikar: only the listed subtype under this controller. */
       subtype?: string;
       controllerId?: PlayerId;
+      /** Archfiend of Ifnir: everyone EXCEPT this player. */
+      opponentsOf?: PlayerId;
     }
   | {
       kind: "overload_each";
@@ -1687,6 +1689,8 @@ export type CardEffect =
       amount: number | "x";
       subtype?: string;
       controlledOnly?: boolean;
+      /** Archfiend of Ifnir: "each creature your opponents control". */
+      opponentsOnly?: boolean;
     }
   | {
       kind: "destroy_all";

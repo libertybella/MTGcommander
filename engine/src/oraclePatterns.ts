@@ -829,6 +829,39 @@ function parseManaUpgradeGate(phrase: string): ControlledGate | null {
   return null;
 }
 
+/**
+ * The counter half of a placement clause: "a +1/+1", "two -1/-1", or a list
+ * like "a +1/+1 counter, a reach counter, and a deathtouch" (the trailing
+ * "counter(s)" is consumed by the caller). Null for anything unrecognised, so
+ * an unreadable counter name never lands as a silent no-op.
+ */
+function parseCounterList(phrase: string): { counter: string; amount: number }[] | null {
+  const entries: { counter: string; amount: number }[] = [];
+  for (const part of phrase.split(/,\s*(?:and\s+)?|\s+and\s+/)) {
+    const trimmed = part.replace(/\s+counters?$/i, "").trim();
+    if (!trimmed) {
+      continue;
+    }
+    const match = trimmed.match(
+      /^(a|an|one|two|three|four|five|X|\d+) ([+-]\d\/[+-]\d|[a-z]+)$/i,
+    );
+    if (!match?.[1] || !match[2]) {
+      return null;
+    }
+    const amount = /^X$/i.test(match[1]) ? null : parseCount(match[1].toLowerCase());
+    if (!amount) {
+      return null;
+    }
+    const named = match[2];
+    entries.push({
+      counter:
+        named === "+1/+1" ? "p1p1" : named === "-1/-1" ? "m1m1" : named.toLowerCase(),
+      amount,
+    });
+  }
+  return entries.length > 0 ? entries : null;
+}
+
 /** "{C}{C}{C}" → a mana pool. Null if any symbol is not a plain colour. */
 function parseManaSymbols(text: string): Partial<ManaPool> | null {
   const pool: Partial<ManaPool> = {};
@@ -2888,30 +2921,54 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     }
   }
 
-  const targetCounter = sentence.match(
-    /^put (a|one|two|three|four) \+1\/\+1 counters? on (target creature you control|target artifact or creature you control|target creature|~)$/i,
-  );
-  if (targetCounter?.[1] && targetCounter[2]) {
-    const amount = parseCount(targetCounter[1]) ?? 1;
-    const what = targetCounter[2].toLowerCase();
-    if (what === "~") {
+  // "Put a +1/+1 counter on target creature", "Put a -1/-1 counter on each
+  // creature your opponents control", "Put a +1/+1 counter, a reach counter,
+  // and a deathtouch counter on target creature" — the counter list and the
+  // subject are read separately, so a new wording is neither a new branch nor
+  // a new effect.
+  const counterPlacement = sentence.match(/^put (.+?) counters? on (.+)$/i);
+  const placed = counterPlacement?.[1] ? parseCounterList(counterPlacement[1]) : null;
+  if (placed && counterPlacement?.[2]) {
+    const where = counterPlacement[2].toLowerCase().trim();
+    const eachTeam = where.match(/^each creature (you control|your opponents control)$/);
+    if (eachTeam?.[1]) {
       return {
         targetRequirements: [],
-        effects: [{ kind: "add_counter", cardId: "self", counter: "p1p1", amount }],
+        effects: placed.map((entry) => ({
+          kind: "counter_on_each_creature",
+          counter: entry.counter,
+          amount: entry.amount,
+          ...(eachTeam[1] === "you control"
+            ? { controlledOnly: true }
+            : { opponentsOnly: true }),
+        })),
       };
     }
-    return {
-      targetRequirements: [
-        what === "target creature"
-          ? { kind: "creature" }
-          : what === "target creature you control"
-            ? { kind: "creature", control: "own" }
-            : { kind: "creature_or_artifact", control: "own" },
-      ],
-      effects: [
-        { kind: "add_counter", cardId: { type: "chosen", index: 0 }, counter: "p1p1", amount },
-      ],
-    };
+    // "~" is the source; "it" is the trigger's subject.
+    const selfLike = where === "~" ? ("self" as const) : where === "it" ? ("subject_card" as const) : null;
+    if (selfLike) {
+      return {
+        targetRequirements: [],
+        effects: placed.map((entry) => ({
+          kind: "add_counter",
+          cardId: selfLike,
+          counter: entry.counter,
+          amount: entry.amount,
+        })),
+      };
+    }
+    const requirement = parseSimpleTargetPhrase(where);
+    if (requirement) {
+      return {
+        targetRequirements: [requirement],
+        effects: placed.map((entry) => ({
+          kind: "add_counter",
+          cardId: { type: "chosen", index: 0 },
+          counter: entry.counter,
+          amount: entry.amount,
+        })),
+      };
+    }
   }
 
   const tokenCopy = sentence.match(
