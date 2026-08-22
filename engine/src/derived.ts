@@ -1,6 +1,7 @@
 import { characteristicsOf, isBasic, isCommander, isCreature, isLand, isLegendary } from "./cardTypes";
 import { abilitiesRemoved, cardMatchesSubtype, computedCard, controlsGate } from "./characteristicsEngine";
 import { canPayManaCost, type ParsedManaCost } from "./mana";
+import { triggerConditionHolds } from "./triggers";
 import type { ActivatedAbility, AlternativeCastCost, CardDefinition, CardInstance, CardInstanceId, EnterTappedUnless, GameState, ManaPool, PlayerId } from "./types";
 
 /**
@@ -463,6 +464,13 @@ export function castCostReduction(
       }
       // Defense Grid: the tax lifts on the holder's own turn.
       if (reduction.notDuringControllersTurn && state.turn.activePlayerId === card.controllerId) {
+        continue;
+      }
+      // Bolt Bend: the discount only applies while its condition holds.
+      if (
+        reduction.condition &&
+        !triggerConditionHolds(state, card.controllerId, reduction.condition, undefined, card.id)
+      ) {
         continue;
       }
       const { types, typesAny, subtypesAny, colors, chosenSubtype, chosenCardType } =

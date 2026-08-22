@@ -1176,6 +1176,10 @@ export type CostReduction = {
   scope?: "you" | "opponents" | "all";
   /** Defense Grid: "except during its controller's turn". */
   notDuringControllersTurn?: boolean;
+  /** Bolt Bend: "…less to cast IF you control a creature with power 4 or
+   * greater". The same condition vocabulary trigger heads and activation
+   * gates use. */
+  condition?: TriggerCondition;
   /** Empty filter means every spell. types all required; typesAny needs one; colors any overlap.
    * chosenSubtype: the spell must have the source's chosen creature type. */
   filter: {
@@ -2550,6 +2554,8 @@ export type ManaAbility = {
   /** Springleaf Drum: tapping a chosen untapped controlled creature is part
    * of the cost. Never auto-tapped; adds nothing to potential mana. */
   costTapCreature?: boolean;
+  /** Relic of Legends: the creature tapped for the cost must be legendary. */
+  costTapCreatureLegendary?: boolean;
   /** The color choice is limited to what the board offers: colors among
    * controlled legendary creatures/planeswalkers (Mox Amber), colors an
    * opponent's land could produce (Exotic Orchard, Fellwar Stone), or types

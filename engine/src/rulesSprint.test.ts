@@ -24894,3 +24894,197 @@ describe("wave 197: replacements on token creation", () => {
   });
 });
 
+
+describe("wave 198: variables and gates on costs already built", () => {
+  const compile = (name: string, manaCost: string, typeLine: string, oracleText: string, power?: string, toughness?: string) =>
+    compileOracleCard({
+      oracleId: name,
+      name,
+      manaCost,
+      typeLine,
+      power: power ?? null,
+      toughness: toughness ?? null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  it("sweeps for a negated X, and reads 'each creature' as the subject", () => {
+    const meathook = compile(
+      "The Meathook Massacre",
+      "{X}{B}{B}",
+      "Legendary Enchantment",
+      "When this enchantment enters, each creature gets -X/-X until end of turn.",
+    );
+    expect(meathook.notes).toEqual([]);
+    expect(meathook.definition.triggers[0]?.effects[0]).toEqual({
+      kind: "all_pt_until_eot",
+      power: "-x",
+      toughness: "-x",
+    });
+  });
+
+  it("gates a cost reduction on a condition", () => {
+    const bolt = compile(
+      "Bolt Bend",
+      "{3}{R}",
+      "Instant",
+      "This spell costs {3} less to cast if you control a creature with power 4 or greater.\nChange the target of target spell or ability with a single target.",
+    );
+    expect(bolt.definition.costReductions?.[0]).toMatchObject({
+      generic: 3,
+      condition: { kind: "controls_power_at_least", power: 4 },
+    });
+
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const holder = createCardDefinition({
+      name: "Bolt Bend",
+      typeLine: "Instant",
+      costReductions: [
+        {
+          generic: 3,
+          filter: {},
+          condition: { kind: "controls_power_at_least", power: 4 },
+        },
+      ],
+    });
+    const smallDef = createCardDefinition({
+      name: "Small",
+      typeLine: "Creature — Bear",
+      power: 2,
+      toughness: 2,
+    });
+    const bigDef = createCardDefinition({
+      name: "Big",
+      typeLine: "Creature — Giant",
+      power: 5,
+      toughness: 5,
+    });
+    for (const definition of [holder, smallDef, bigDef]) {
+      game.definitions[definition.id] = definition;
+    }
+    const put = (definitionId: string) => {
+      const card = createCardInstance({ definitionId, ownerId: p1.id, zone: "battlefield" });
+      game.cards[card.id] = card;
+      p1.zones.battlefield.push(card.id);
+      return card;
+    };
+    put(holder.id);
+    put(smallDef.id);
+    const spell = { characteristics: { types: ["instant"], colors: [] } };
+    // A 2/2 is not enough, so the discount stays off.
+    expect(castCostReduction(game, p1.id, spell)).toBe(0);
+    const withGiant = structuredClone(game);
+    const giant = createCardInstance({
+      definitionId: bigDef.id,
+      ownerId: p1.id,
+      zone: "battlefield",
+    });
+    withGiant.cards[giant.id] = giant;
+    withGiant.players[0]!.zones.battlefield.push(giant.id);
+    expect(castCostReduction(withGiant, p1.id, spell)).toBe(3);
+  });
+
+  it("takes only a legendary creature for a legendary tap cost", () => {
+    const relic = compile(
+      "Relic of Legends",
+      "{2}",
+      "Artifact",
+      "Tap an untapped legendary creature you control: Add one mana of any color.",
+    );
+    expect(relic.notes).toEqual([]);
+    expect(relic.definition.manaAbilities[0]).toMatchObject({
+      costTapCreature: true,
+      costTapCreatureLegendary: true,
+      producesAnyColor: true,
+    });
+
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const relicDef = createCardDefinition({
+      name: "Relic of Legends",
+      typeLine: "Artifact",
+      manaAbilities: [
+        {
+          produces: {},
+          producesOptions: [],
+          producesAnyColor: true,
+          damageToController: 0,
+          costTapCreature: true,
+          costTapCreatureLegendary: true,
+        },
+      ],
+    });
+    const plainDef = createCardDefinition({
+      name: "Bear",
+      typeLine: "Creature — Bear",
+      power: 2,
+      toughness: 2,
+    });
+    const legendDef = createCardDefinition({
+      name: "Legend",
+      typeLine: "Legendary Creature — Bear",
+      power: 2,
+      toughness: 2,
+    });
+    for (const definition of [relicDef, plainDef, legendDef]) {
+      game.definitions[definition.id] = definition;
+    }
+    const put = (definitionId: string) => {
+      const card = createCardInstance({ definitionId, ownerId: p1.id, zone: "battlefield" });
+      game.cards[card.id] = card;
+      p1.zones.battlefield.push(card.id);
+      return card;
+    };
+    const relicCard = put(relicDef.id);
+    const bear = put(plainDef.id);
+    const legend = put(legendDef.id);
+    game.priorityPlayerId = p1.id;
+
+    const tapFor = (costTapId: string) =>
+      applyAction(game, {
+        kind: "tap_for_mana",
+        playerId: p1.id,
+        cardId: relicCard.id,
+        manaIndex: 0,
+        color: "G",
+        costTapId,
+      });
+    expect(() => tapFor(bear.id)).toThrow();
+    // The legendary one pays it.
+    expect(tapFor(legend.id).cards[legend.id]?.tapped).toBe(true);
+  });
+
+  it("sacrifices a land as an effect, not a cost", () => {
+    const entish = compile(
+      "Testcard",
+      "{2}{G}",
+      "Sorcery",
+      "Sacrifice a land.\nDraw a card.",
+    );
+    expect(entish.notes).toEqual([]);
+    expect(entish.definition.effects[0]).toMatchObject({
+      kind: "choose_card",
+      chooserId: "controller",
+      thenEffects: [{ kind: "sacrifice", cardId: "chosen_card" }],
+    });
+  });
+
+  it("counts a plural subtype sacrifice as a cost unit", () => {
+    // The cost/body splitter did not recognise the phrase at all, so it never
+    // reached the parser that already knew how to read it.
+    const took = compile(
+      "Testcard",
+      "{2}",
+      "Artifact",
+      "Sacrifice three Clues: Draw a card.",
+    );
+    expect(took.notes).toEqual([]);
+    expect(took.definition.activated[0]).toMatchObject({
+      sacrificeSubtype: "clue",
+      sacrificeCount: 3,
+    });
+  });
+});
+

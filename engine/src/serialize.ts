@@ -1019,6 +1019,14 @@ export function parseGameState(json: string): GameState {
                   ...(entry.scope === "opponents" || entry.scope === "all" || entry.scope === "you"
                     ? { scope: entry.scope }
                     : {}),
+                  ...(entry.condition === undefined
+                    ? {}
+                    : {
+                        condition: parseTriggerCondition(
+                          entry.condition,
+                          "costReductions.condition",
+                        ),
+                      }),
                   ...(entry.notDuringControllersTurn === true
                     ? { notDuringControllersTurn: true }
                     : {}),
@@ -4292,6 +4300,7 @@ function parseManaAbilities(value: unknown, label: string): ManaAbility[] {
       ...(entry.countFromDevotion === true ? { countFromDevotion: true } : {}),
       ...(entry.countFromEnchantments === true ? { countFromEnchantments: true } : {}),
       ...(entry.costTapCreature === true ? { costTapCreature: true } : {}),
+      ...(entry.costTapCreatureLegendary === true ? { costTapCreatureLegendary: true } : {}),
       ...(entry.anyColorAmong === "legendary" ||
       entry.anyColorAmong === "opponent_lands" ||
       entry.anyColorAmong === "your_lands" ||

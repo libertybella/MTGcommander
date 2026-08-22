@@ -494,6 +494,21 @@ What the engine implements and what it intentionally does not. Tests are tagged 
   `sacrificeCount` — but the cost/body splitter did not recognise the phrase
   as a cost at all, so it never reached the parser that would have read it.
 
+- **Variables and gates on costs that were already built**: five small gaps,
+  every one of them a wording that existing machinery could already carry.
+  The sweep effect accepted a negated X all along and the grant refused to
+  hand it one, and "each creature" was not an alias for "all creatures".
+  Cost reductions gained a `condition` from the shared vocabulary, so Bolt
+  Bend's "if you control a creature with power 4 or greater" needed no shape
+  of its own. The tap-a-creature cost gained a legendary variant, and the
+  ability that uses it has no `{T}` of its own — the creature tap IS the whole
+  cost, which the mana-ability branch had required. "Sacrifice a land" as an
+  effect is the same choose-a-permanent shape an edict uses.
+
+  The recurring shape across all five: the capability existed and the reading
+  did not. That is worth checking before building anything — a refused
+  wording is cheaper to diagnose than a missing feature is to add.
+
 ## The card pipeline (Stage 6)
 
 - Real cards compile from Scryfall oracle text by shared sentence patterns; a hand-authored registry (`server/src/cardOverrides.ts`, data in the same schema) beats the compiler for the long tail. Never a named-card code path.

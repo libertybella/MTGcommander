@@ -1008,7 +1008,9 @@ function applyTapForMana(
       fodder.zone !== "battlefield" ||
       fodder.controllerId !== playerId ||
       fodder.tapped ||
-      !isCreature(base, costTapId)
+      !isCreature(base, costTapId) ||
+      // Relic of Legends: only a legendary creature pays this one.
+      (ability.costTapCreatureLegendary === true && !isLegendary(base, costTapId))
     ) {
       throw new Error("Tap an untapped creature you control to use that mana ability");
     }

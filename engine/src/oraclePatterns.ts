@@ -514,7 +514,8 @@ const SACRIFICE_TYPE_COST =
 const SACRIFICE_SUBTYPE_COST =
   /Sacrifice (?:an? |(one|two|three|four|five|\d+) )([A-Z][a-z]+?)s?\b/;
 const LIFE_COST = /Pay (\d+) life/i;
-const TAP_CREATURE_COST = /Tap an untapped creature you control/i;
+/** Springleaf Drum, and Relic of Legends' legendary-only variant. */
+const TAP_CREATURE_COST = /Tap an untapped (legendary )?creature you control/i;
 /** Walking Ballista, Dragon's Hoard, Mikaeus: counters come off as a cost. */
 const REMOVE_COUNTER_COST =
   /Remove (a|an|one|two|three|four|five|six|seven|eight|nine|ten|\d+) ([-+]\d\/[-+]\d|[a-z]+) counters? from ~/i;
@@ -529,7 +530,7 @@ const MILL_COST = /Mill (a|one|two|three|\d+) cards?/i;
 const EXILE_GRAVEYARD_COST =
   /Exile (a|one|two|three|four|five|\d+) (?:(creature|artifact|land|instant|sorcery) )?cards? from your graveyard/i;
 const COST_UNIT =
-  "(?:\\{[^}]+\\})+|Sacrifice (?:~|this land|this creature|this artifact|this permanent)|Sacrifice (?:an? |another )(?:black )?(?:creature|artifact|land|Treasure)|Sacrifice (?:an? |(?:one|two|three|four|five|\d+) )[A-Z][a-z]+s?|Sacrifice (?:two|three) (?:other )?(?:creatures|artifacts|lands|artifacts and\\/or creatures)|Pay \\d+ life|Tap an untapped creature you control|Remove (?:a|an|one|two|three|four|five|six|seven|eight|nine|ten|\\d+) (?:[-+]\\d\\/[-+]\\d|[a-z]+) counters? from ~|Put (?:a|an|one|two|three|\\d+) (?:[-+]\\d\\/[-+]\\d|[a-z]+) counters? on ~|Discard an? (?:creature|artifact|enchantment|land|instant|sorcery)? ?card|Mill (?:a|one|two|three|\\d+) cards?|Exile (?:a|one|two|three|four|five|\\d+) (?:(?:creature|artifact|land|instant|sorcery) )?cards? from your graveyard";
+  "(?:\\{[^}]+\\})+|Sacrifice (?:~|this land|this creature|this artifact|this permanent)|Sacrifice (?:an? |another )(?:black )?(?:creature|artifact|land|Treasure)|Sacrifice (?:an? |(?:one|two|three|four|five|\d+) )[A-Z][a-z]+s?|Sacrifice (?:two|three) (?:other )?(?:creatures|artifacts|lands|artifacts and\\/or creatures)|Pay \\d+ life|Tap an untapped (?:legendary )?creature you control|Remove (?:a|an|one|two|three|four|five|six|seven|eight|nine|ten|\\d+) (?:[-+]\\d\\/[-+]\\d|[a-z]+) counters? from ~|Put (?:a|an|one|two|three|\\d+) (?:[-+]\\d\\/[-+]\\d|[a-z]+) counters? on ~|Discard an? (?:creature|artifact|enchantment|land|instant|sorcery)? ?card|Mill (?:a|one|two|three|\\d+) cards?|Exile (?:a|one|two|three|four|five|\\d+) (?:(?:creature|artifact|land|instant|sorcery) )?cards? from your graveyard";
 
 function splitAbility(sentence: string): { costText: string; rest: string } | null {
   // "Metalcraft — {T}: …" — the ability word is flavor (Mox Opal).
@@ -572,13 +573,17 @@ function parseAbilityCost(
   sacrificeSubtype?: string;
   sacrificeCount?: number;
   tapCreature?: boolean;
+  /** Relic of Legends: the tapped creature must be legendary. */
+  tapCreatureLegendary?: boolean;
   removeCounterCost?: { counter: string; count: number };
   addCounterCost?: { counter: string; count: number };
   discardCost?: { count: number; types?: string[] };
   millCost?: number;
   exileFromGraveyardCost?: { count: number; types?: string[] };
 } | null {
-  const tapCreature = TAP_CREATURE_COST.test(costText);
+  const tapCreatureMatch = costText.match(TAP_CREATURE_COST);
+  const tapCreature = tapCreatureMatch !== null;
+  const tapCreatureLegendary = Boolean(tapCreatureMatch?.[1]);
   const sacrificeSelf = SACRIFICE_COST.test(costText);
   const sacrificeTypeMatch = SACRIFICE_COST.test(costText)
     ? null
@@ -721,6 +726,7 @@ function parseAbilityCost(
       ? { sacrificeCount: (sacrificeCount ?? subtypeCount)! }
       : {}),
     ...(tapCreature ? { tapCreature: true } : {}),
+    ...(tapCreatureLegendary ? { tapCreatureLegendary: true } : {}),
     ...(removeCounterCost ? { removeCounterCost } : {}),
     ...(addCounterCost ? { addCounterCost } : {}),
     ...(discardCost ? { discardCost } : {}),
@@ -6103,7 +6109,7 @@ function parseEotSubject(phrase: string): EotSubject | null {
     return { how: "team", playerId: "each_opponent" };
   }
   // Golgari Charm: everyone's creatures, the caster's included.
-  if (/^all creatures$/i.test(rest)) {
+  if (/^(?:all creatures|each creature)$/i.test(rest)) {
     return { how: "all" };
   }
   // Lathliss: "Dragons you control". The capital marks it as a subtype;
@@ -6219,11 +6225,20 @@ function compileUntilEotGrant(sentence: string): SimpleClause | null {
         continue;
       }
       if (subject.how === "all") {
-        // "All creatures get …" carries no card to read a variable against.
-        if (typeof power !== "number" || typeof toughness !== "number") {
+        // The sweep effect carries a negated X of its own ("-x"), which is
+        // the only variable a card-less subject can read.
+        const sweepTerm = (term: PtTerm): number | "-x" | null =>
+          typeof term === "number" ? term : term === "minus_x" ? "-x" : null;
+        const sweepPower = sweepTerm(power);
+        const sweepToughness = sweepTerm(toughness);
+        if (sweepPower === null || sweepToughness === null) {
           return null;
         }
-        effects.push({ kind: "all_pt_until_eot", power, toughness });
+        effects.push({
+          kind: "all_pt_until_eot",
+          power: sweepPower,
+          toughness: sweepToughness,
+        });
         continue;
       }
       // Off a single card only the announced X resolves; the board-reading
@@ -10342,6 +10357,49 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
       continue;
     }
 
+    // "This spell costs {3} less to cast if <condition>" (Bolt Bend) — the
+    // discount is a self cost-reduction gated by the shared condition
+    // vocabulary, so it needs no shape of its own.
+    const conditionalDiscount = sentence.match(
+      /^This spell costs \{(\d+)\} less to cast if (.+)$/i,
+    );
+    if (conditionalDiscount?.[1] && conditionalDiscount[2]) {
+      const discountCondition = parseEffectCondition(conditionalDiscount[2]);
+      if (discountCondition) {
+        result.costReductions = [
+          ...(result.costReductions ?? []),
+          {
+            generic: Number(conditionalDiscount[1]),
+            filter: {},
+            condition: discountCondition,
+          },
+        ];
+        continue;
+      }
+    }
+
+    // "Sacrifice a land." as an EFFECT rather than a cost: the controller
+    // picks one, which is the same choose-a-permanent shape an edict uses.
+    const sacrificeEffect = sentence.match(/^Sacrifice an? (land|creature|artifact)$/i);
+    if (sacrificeEffect?.[1]) {
+      const clauseEffects: CardEffect[] = [
+        {
+          kind: "choose_card",
+          chooserId: "controller",
+          sources: [
+            {
+              playerId: "controller",
+              zone: "battlefield",
+              filter: sacrificeEffect[1].toLowerCase() as "land" | "creature",
+            },
+          ],
+          thenEffects: [{ kind: "sacrifice", cardId: "chosen_card" }],
+        },
+      ];
+      result.effects.push(...clauseEffects);
+      continue;
+    }
+
     // Tribute to the World Tree: the conditional branch compiles to two
     // complementary-filter triggers over computed power.
     const tribute = sentence.match(
@@ -11262,10 +11320,13 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
         continue;
       }
       const add = parseAddMana(ability.rest);
-      if (add && cost.tap && cost.manaCost === "") {
+      // Relic of Legends taps a creature INSTEAD of itself, so the ability
+      // has no {T} of its own — the creature tap is the whole cost.
+      if (add && (cost.tap || cost.tapCreature) && cost.manaCost === "") {
         result.manaAbilities.push({
           ...manaAbilityFromAdd(add),
           ...(cost.tapCreature ? { costTapCreature: true } : {}),
+          ...(cost.tapCreatureLegendary ? { costTapCreatureLegendary: true } : {}),
         });
         continue;
       }

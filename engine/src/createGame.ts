@@ -290,6 +290,7 @@ export function createCardDefinition(
           ...(ability.countFromDevotion ? { countFromDevotion: true } : {}),
           ...(ability.countFromEnchantments ? { countFromEnchantments: true } : {}),
           ...(ability.costTapCreature ? { costTapCreature: true } : {}),
+          ...(ability.costTapCreatureLegendary ? { costTapCreatureLegendary: true } : {}),
           ...(ability.anyColorAmong ? { anyColorAmong: ability.anyColorAmong } : {}),
           ...(ability.producesChosenColor ? { producesChosenColor: true } : {}),
           ...(ability.producesColorsAmong
@@ -507,6 +508,7 @@ export function createCardDefinition(
           costReductions: input.costReductions.map((entry) => ({
             generic: entry.generic,
             ...(entry.scope ? { scope: entry.scope } : {}),
+            ...(entry.condition ? { condition: entry.condition } : {}),
             ...(entry.notDuringControllersTurn ? { notDuringControllersTurn: true } : {}),
             filter: {
               ...(entry.filter.types ? { types: [...entry.filter.types] } : {}),
