@@ -17903,3 +17903,125 @@ describe("wave 149: drains, deaths, and arrivals", () => {
   });
 });
 
+
+describe("wave 150: conjunctions and referents", () => {
+  const compile = (name: string, manaCost: string, typeLine: string, oracleText: string, power?: string, toughness?: string) =>
+    compileOracleCard({
+      oracleId: name,
+      name,
+      manaCost,
+      typeLine,
+      power: power ?? null,
+      toughness: toughness ?? null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  it("splits compound bodies whose halves are each understood", () => {
+    const augur = compile(
+      "Undead Augur",
+      "{1}{B}",
+      "Creature — Zombie Wizard",
+      "Whenever this creature or another Zombie you control dies, you draw a card and you lose 1 life.",
+      "2",
+      "2",
+    );
+    expect(augur.notes).toEqual([]);
+    expect(augur.definition.triggers[0]?.effects).toEqual([
+      { kind: "draw", playerId: "controller", count: 1 },
+      { kind: "lose_life", playerId: "controller", amount: 1 },
+    ]);
+
+    const reaper = compile(
+      "Midnight Reaper",
+      "{2}{B}",
+      "Creature — Zombie Cleric",
+      "Whenever a nontoken creature you control dies, Midnight Reaper deals 1 damage to you and you draw a card.",
+      "3",
+      "2",
+    );
+    expect(reaper.notes).toEqual([]);
+    expect(reaper.definition.triggers[0]?.subjectFilter?.nonToken).toBe(true);
+    expect(reaper.definition.triggers[0]?.effects).toHaveLength(2);
+    expect(reaper.definition.triggers[0]?.effects[0]).toMatchObject({
+      kind: "deal_damage",
+      target: { type: "player", playerId: "controller" },
+      amount: 1,
+    });
+
+    // Three parts: the split recurses through its own tail.
+    const regent = compile(
+      "Sunscorch Regent",
+      "{3}{W}{W}",
+      "Creature — Dragon",
+      "Flying\nWhenever an opponent casts a spell, put a +1/+1 counter on Sunscorch Regent and you gain 1 life.",
+      "3",
+      "3",
+    );
+    expect(regent.notes).toEqual([]);
+    expect(regent.definition.triggers[0]?.effects).toHaveLength(2);
+
+    // A conjunction that is really one phrase must NOT split — the whole
+    // clause has to keep compiling as itself.
+    const decimate = compile(
+      "And-Or Guard",
+      "{2}{G}",
+      "Sorcery",
+      "Destroy target artifact and/or enchantment.",
+    );
+    // Whatever this compiles to, the splitter must not have manufactured two
+    // half-clauses out of an "and/or" phrase.
+    expect(decimate.definition.effects.length).toBeLessThanOrEqual(1);
+  });
+
+  it("resolves 'it' to the watched object, not the source", () => {
+    const surrak = compile(
+      "Surrak and Goreclaw",
+      "{2}{G}{U}{R}",
+      "Legendary Creature — Human Bear Warrior",
+      "Trample, haste\nWhenever another nontoken creature you control enters, put a +1/+1 counter on it.",
+      "5",
+      "5",
+    );
+    expect(surrak.notes).toEqual([]);
+    expect(surrak.definition.triggers[0]?.effects[0]).toEqual({
+      kind: "add_counter",
+      cardId: "subject_card",
+      counter: "p1p1",
+      amount: 1,
+    });
+  });
+
+  it("puts the counter on the arriving creature at the table", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const surrakDef = compile(
+      "Surrak and Goreclaw",
+      "{2}{G}{U}{R}",
+      "Legendary Creature — Human Bear Warrior",
+      "Trample, haste\nWhenever another nontoken creature you control enters, put a +1/+1 counter on it.",
+      "5",
+      "5",
+    ).definition;
+    game.definitions[surrakDef.id] = surrakDef;
+    const surrak = createCardInstance({ definitionId: surrakDef.id, ownerId: p1.id, zone: "battlefield" });
+    game.cards[surrak.id] = surrak;
+    p1.zones.battlefield.push(surrak.id);
+
+    const bearDef = createCardDefinition({ name: "Bear", typeLine: "Creature — Bear", power: 2, toughness: 2 });
+    game.definitions[bearDef.id] = bearDef;
+    const bear = createCardInstance({ definitionId: bearDef.id, ownerId: p1.id, zone: "hand" });
+    game.cards[bear.id] = bear;
+    p1.zones.hand.push(bear.id);
+
+    let next = moveCard(game, bear.id, "battlefield");
+    while (next.stack.length > 0) {
+      next = resolveTopOfStack(next);
+    }
+    // The counter lands on the newcomer, and Surrak is untouched.
+    expect(next.cards[bear.id]?.counters.p1p1).toBe(1);
+    expect(next.cards[surrak.id]?.counters.p1p1 ?? 0).toBe(0);
+  });
+});
+

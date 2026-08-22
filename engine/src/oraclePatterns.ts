@@ -920,15 +920,22 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     };
   }
 
-  match = sentence.match(/^(?:~|this \w+) deals (\d+) damage to each opponent$/i);
-  if (match?.[1]) {
+  match = sentence.match(
+    /^(?:~|this \w+) deals (\d+) damage to (each opponent|you|each player)$/i,
+  );
+  if (match?.[1] && match[2]) {
+    const who = match[2].toLowerCase();
     return {
       targetRequirements: [],
       effects: [
         {
           kind: "deal_damage",
           sourceId: "self",
-          target: { type: "player", playerId: "each_opponent" },
+          target: {
+            type: "player",
+            playerId:
+              who === "you" ? "controller" : who === "each player" ? "each_player" : "each_opponent",
+          },
           amount: Number(match[1]),
         },
       ],
@@ -3982,6 +3989,29 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     };
   }
 
+  // "…on it": the object the trigger watched, not the source (Surrak and
+  // Goreclaw's "Whenever another nontoken creature you control enters, put a
+  // +1/+1 counter on it").
+  match = sentence.match(/^(?:you may )?Put (a|one|two|three|\d+) \+1\/\+1 counters? on it$/i);
+  if (match?.[1]) {
+    return {
+      targetRequirements: [],
+      effects: [
+        {
+          kind: "add_counter",
+          cardId: "subject_card",
+          counter: "p1p1",
+          amount: parseCount(match[1]) ?? 1,
+        },
+      ],
+    };
+  }
+
+  // Amulet of Vigor: "Whenever a permanent you control enters tapped, untap it."
+  if (/^Untap it$/i.test(sentence)) {
+    return { targetRequirements: [], effects: [{ kind: "untap", cardId: "subject_card" }] };
+  }
+
   // Beastmaster Ascension ("you may" is auto-taken; quest counters only go up).
   match = sentence.match(/^(?:you may )?put a ([a-z]+) counter on ~$/i);
   if (match?.[1]) {
@@ -4096,7 +4126,81 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     return untilEot;
   }
 
+  // Last resort: a compound body whose halves are each understood.
+  const compound = compileCompoundClause(sentence);
+  if (compound) {
+    return compound;
+  }
+
   return null;
+}
+
+/**
+ * "Draw a card and you lose 1 life", "~ deals 1 damage to you and you draw a
+ * card": split a clause at a top-level conjunction and compile each half.
+ *
+ * This is deliberately the very last thing tried, and it is self-validating —
+ * a split is accepted only when EVERY part compiles cleanly on its own, so a
+ * conjunction that is really part of one phrase ("artifacts and/or
+ * enchantments", "search … and put it onto the battlefield") simply fails to
+ * split and falls through. Parts shrink strictly, so the recursion terminates.
+ */
+function compileCompoundClause(sentence: string): SimpleClause | null {
+  // "and/or" is one phrase, never a join.
+  if (/\band\/or\b/i.test(sentence)) {
+    return null;
+  }
+  const separators = [/,\s+then\s+/i, /\s+and\s+then\s+/i, /\s+and\s+/i];
+  for (const separator of separators) {
+    const pieces = splitOnce(sentence, separator);
+    if (!pieces) {
+      continue;
+    }
+    const clauses: SimpleClause[] = [];
+    let ok = true;
+    for (const piece of pieces) {
+      const trimmed = piece.trim();
+      if (!trimmed) {
+        ok = false;
+        break;
+      }
+      // Patterns anchor on either casing, so try the raw text first and the
+      // sentence-cased form second.
+      const compiled =
+        compileSimpleClause(trimmed) ??
+        compileSimpleClause(trimmed.charAt(0).toUpperCase() + trimmed.slice(1));
+      if (!compiled || compiled.leftover || compiled.effects.length === 0) {
+        ok = false;
+        break;
+      }
+      clauses.push(compiled);
+    }
+    if (!ok) {
+      continue;
+    }
+    const targetRequirements: TargetRequirement[] = [];
+    const effects: CardEffect[] = [];
+    for (const clause of clauses) {
+      // Each half numbered its targets from zero; renumber onto the tail of
+      // the combined list.
+      const shifted = offsetChosenIndexes(clause, targetRequirements.length);
+      targetRequirements.push(...shifted.targetRequirements);
+      effects.push(...shifted.effects);
+    }
+    return { targetRequirements, effects };
+  }
+  return null;
+}
+
+/** Split at the FIRST match of a separator, into exactly two pieces. */
+function splitOnce(text: string, separator: RegExp): [string, string] | null {
+  const match = separator.exec(text);
+  if (!match || match.index <= 0) {
+    return null;
+  }
+  const head = text.slice(0, match.index);
+  const tail = text.slice(match.index + match[0].length);
+  return head && tail ? [head, tail] : null;
 }
 
 /**
