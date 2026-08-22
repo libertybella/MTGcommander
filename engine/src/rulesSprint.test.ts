@@ -13056,7 +13056,8 @@ describe("wave 123: echoes, freezes, and last rites", () => {
         "Creatures you control get +1/+1.\nWhenever you tap a land for mana, add one mana of any type that land produced.",
     });
     expect(wake.notes).toEqual([]);
-    expect(wake.definition.landTapEcho).toBe(true);
+    // The plain echo is the empty rule: no subtype, no colour override.
+    expect(wake.definition.landTapEcho).toEqual({});
 
     const vorinclex = compileOracleCard({
       oracleId: "vorinclex",
@@ -13071,7 +13072,7 @@ describe("wave 123: echoes, freezes, and last rites", () => {
         "Trample\nWhenever you tap a land for mana, add one mana of any type that land produced.\nWhenever an opponent taps a land for mana, that land doesn't untap during its controller's next untap step.",
     });
     expect(vorinclex.notes).toEqual([]);
-    expect(vorinclex.definition.landTapEcho).toBe(true);
+    expect(vorinclex.definition.landTapEcho).toEqual({});
     expect(vorinclex.definition.opponentLandTapsSkipUntap).toBe(true);
 
     const salvage = compileOracleCard({
@@ -13125,7 +13126,7 @@ describe("wave 123: echoes, freezes, and last rites", () => {
     const wakeDef = createCardDefinition({
       name: "Wake",
       typeLine: "Enchantment",
-      landTapEcho: true,
+      landTapEcho: {},
     });
     const praetorDef = createCardDefinition({
       name: "Praetor",
@@ -19393,6 +19394,132 @@ describe("wave 161: either-or additional costs", () => {
         (action) => action.kind === "cast_spell" && action.cardId === spell.id,
       ),
     ).toBe(false);
+  });
+});
+
+
+describe("wave 162: narrowed mana echoes", () => {
+  const compile = (name: string, manaCost: string, typeLine: string, oracleText: string, power?: string, toughness?: string) =>
+    compileOracleCard({
+      oracleId: name,
+      name,
+      manaCost,
+      typeLine,
+      power: power ?? null,
+      toughness: toughness ?? null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  it("compiles a subtype-gated echo and a produced-colour-gated one", () => {
+    const ghast = compile(
+      "Crypt Ghast",
+      "{3}{B}",
+      "Creature — Spirit",
+      "Extort\nWhenever you tap a Swamp for mana, add an additional {B}.",
+      "2",
+      "2",
+    );
+    expect(ghast.notes).toEqual([]);
+    expect(ghast.definition.landTapEcho).toEqual({ subtype: "swamp", addColor: "B" });
+
+    // Only the echo line: the real card's colourless cost reduction is a
+    // separate clause the compiler does not read yet, so it stays a miss.
+    const monument = compile(
+      "Forsaken Monument",
+      "{5}",
+      "Legendary Artifact",
+      "Whenever you tap a permanent for {C}, add an additional {C}.",
+    );
+    expect(monument.notes).toEqual([]);
+    expect(monument.definition.landTapEcho).toEqual({
+      anyPermanent: true,
+      requiresProduced: "C",
+      addColor: "C",
+    });
+  });
+
+  /** Tap `tapId` for mana and report what the pool gained. */
+  const tapFor = (game: ReturnType<typeof twoPlayers>["game"], playerId: string, tapId: string) => {
+    const before = { ...game.players.find((entry) => entry.id === playerId)!.mana };
+    const next = applyAction(game, { kind: "tap_for_mana", playerId, cardId: tapId });
+    const after = next.players.find((entry) => entry.id === playerId)!.mana;
+    return {
+      next,
+      gained: Object.fromEntries(
+        (Object.keys(after) as Array<keyof typeof after>).map((key) => [key, after[key] - before[key]]),
+      ),
+    };
+  };
+
+  it("echoes only the named subtype", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const ghastDef = compile(
+      "Crypt Ghast",
+      "{3}{B}",
+      "Creature — Spirit",
+      "Whenever you tap a Swamp for mana, add an additional {B}.",
+      "2",
+      "2",
+    ).definition;
+    game.definitions[ghastDef.id] = ghastDef;
+    const ghast = createCardInstance({ definitionId: ghastDef.id, ownerId: p1.id, zone: "battlefield" });
+    game.cards[ghast.id] = ghast;
+    p1.zones.battlefield.push(ghast.id);
+
+    const swampDef = createCardDefinition({ name: "Swamp", typeLine: "Basic Land — Swamp" });
+    const forestDef = createCardDefinition({ name: "Forest", typeLine: "Basic Land — Forest" });
+    game.definitions[swampDef.id] = swampDef;
+    game.definitions[forestDef.id] = forestDef;
+    const swamp = createCardInstance({ definitionId: swampDef.id, ownerId: p1.id, zone: "battlefield" });
+    const forest = createCardInstance({ definitionId: forestDef.id, ownerId: p1.id, zone: "battlefield" });
+    game.cards[swamp.id] = swamp;
+    game.cards[forest.id] = forest;
+    p1.zones.battlefield.push(swamp.id, forest.id);
+    game.priorityPlayerId = p1.id;
+
+    // The Swamp makes two black; the Forest is untouched.
+    expect(tapFor(game, p1.id, swamp.id).gained.B).toBe(2);
+    expect(tapFor(game, p1.id, forest.id).gained.G).toBe(1);
+  });
+
+  it("echoes any permanent, but only for the produced colour", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const monumentDef = compile(
+      "Forsaken Monument",
+      "{5}",
+      "Legendary Artifact",
+      "Whenever you tap a permanent for {C}, add an additional {C}.",
+    ).definition;
+    game.definitions[monumentDef.id] = monumentDef;
+    const monument = createCardInstance({ definitionId: monumentDef.id, ownerId: p1.id, zone: "battlefield" });
+    game.cards[monument.id] = monument;
+    p1.zones.battlefield.push(monument.id);
+
+    // A colorless-producing ARTIFACT echoes, which a land-only rule would miss.
+    const rockDef = createCardDefinition({
+      name: "Rock",
+      typeLine: "Artifact",
+      manaAbilities: [
+        { produces: { C: 1 }, producesOptions: [], producesAnyColor: false, damageToController: 0 },
+      ],
+    });
+    const forestDef = createCardDefinition({ name: "Forest", typeLine: "Basic Land — Forest" });
+    game.definitions[rockDef.id] = rockDef;
+    game.definitions[forestDef.id] = forestDef;
+    const rock = createCardInstance({ definitionId: rockDef.id, ownerId: p1.id, zone: "battlefield" });
+    const forest = createCardInstance({ definitionId: forestDef.id, ownerId: p1.id, zone: "battlefield" });
+    game.cards[rock.id] = rock;
+    game.cards[forest.id] = forest;
+    p1.zones.battlefield.push(rock.id, forest.id);
+    game.priorityPlayerId = p1.id;
+
+    expect(tapFor(game, p1.id, rock.id).gained.C).toBe(2);
+    // Green is not {C}, so nothing is added.
+    expect(tapFor(game, p1.id, forest.id).gained.G).toBe(1);
   });
 });
 

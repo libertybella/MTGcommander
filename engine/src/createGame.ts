@@ -383,7 +383,7 @@ export function createCardDefinition(
     ...(input.opponentsCastOnlyFromHand ? { opponentsCastOnlyFromHand: true } : {}),
     ...(input.selfIsChosenType ? { selfIsChosenType: true } : {}),
     ...(input.landChosenColorBonus ? { landChosenColorBonus: true } : {}),
-    ...(input.landTapEcho ? { landTapEcho: true } : {}),
+    ...(input.landTapEcho ? { landTapEcho: { ...input.landTapEcho } } : {}),
     ...(input.opponentLandTapsSkipUntap ? { opponentLandTapsSkipUntap: true } : {}),
     ...(input.rebound ? { rebound: true } : {}),
     ...(input.triggerDoubling

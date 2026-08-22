@@ -1,5 +1,5 @@
 import { declareAttackers, declareBlockers, lockRemainingBlockers, pendingBlockerPlayer, priorityForStep } from "./combat";
-import { abilitiesRemoved } from "./characteristicsEngine";
+import { abilitiesRemoved, cardMatchesSubtype } from "./characteristicsEngine";
 import { characteristicsOf, isCommander, isCreature, isInstant, isInstantOrSorcery, isLand, isLegendary, isMainPhase } from "./cardTypes";
 import { cloneGameState } from "./clone";
 import { affinityArtifactDiscount, allBattlefieldCreatureCount, canPlayLandFromTop, canPlayLandsFromGraveyard, castCostReduction, castableFromTop, controlsCommander, creaturePower, freeEquipGranted, hasFlashGrant, landDropAllowance, lockedByAbolisher, lockedFromCasting, opponentControlsMoreLands, findFreeHandGrantIndex, opponentsCastLockedToHand, selfDiscountAmount, staticFreeCastCap, usesOncePerTurnFreeCast } from "./derived";
@@ -84,6 +84,50 @@ function finalizeActionState(state: GameState): GameState {
   }
   redirectPriorityIfLost(state);
   return state;
+}
+
+/**
+ * "Whenever you tap … for mana, add an additional …" — a triggered mana
+ * ability, so it resolves immediately with no stack (CR 605.1b).
+ *
+ * The plain form (Mirari's Wake) adds one mana of a type the land produced,
+ * auto-picked as the biggest slice of what was added — a documented
+ * approximation of the free choice. The narrowed forms name their own colour
+ * (Crypt Ghast) or gate on what the tap produced (Forsaken Monument).
+ */
+function applyManaTapEchoes(
+  state: GameState,
+  playerId: PlayerId,
+  tappedId: CardInstanceId,
+  addition: Partial<ManaPool>,
+): GameState {
+  let next = state;
+  for (const echo of Object.values(next.cards)) {
+    if (echo.zone !== "battlefield" || echo.controllerId !== playerId) {
+      continue;
+    }
+    const rule = next.definitions[echo.definitionId]?.landTapEcho;
+    if (!rule) {
+      continue;
+    }
+    if (!rule.anyPermanent && !isLand(next, tappedId)) {
+      continue;
+    }
+    if (rule.subtype && !cardMatchesSubtype(next, tappedId, rule.subtype)) {
+      continue;
+    }
+    if (rule.requiresProduced && (addition[rule.requiresProduced] ?? 0) <= 0) {
+      continue;
+    }
+    const produced = (Object.entries(addition) as [ManaColor, number][])
+      .filter(([, amount]) => amount > 0)
+      .sort((a, b) => b[1] - a[1])[0]?.[0];
+    const color = rule.addColor ?? produced;
+    if (color) {
+      next = addMana(next, playerId, { [color]: 1 });
+    }
+  }
+  return next;
 }
 
 function findFreeHandGrant(
@@ -883,23 +927,6 @@ function applyTapForMana(
         next = addMana(next, playerId, { [chosen]: 1 });
       }
     }
-    // Mirari's Wake / Vorinclex: "add one mana of any type that land
-    // produced" — auto-picked as the addition's biggest type (documented).
-    for (const echo of Object.values(next.cards)) {
-      if (
-        echo.zone !== "battlefield" ||
-        echo.controllerId !== playerId ||
-        !next.definitions[echo.definitionId]?.landTapEcho
-      ) {
-        continue;
-      }
-      const best = (Object.entries(addition) as [ManaColor, number][])
-        .filter(([, amount]) => amount > 0)
-        .sort((a, b) => b[1] - a[1])[0]?.[0];
-      if (best) {
-        next = addMana(next, playerId, { [best]: 1 });
-      }
-    }
     // Vorinclex's other half: an opponent's land tap freezes that land
     // through its controller's next untap step.
     const frozen = Object.values(next.cards).some(
@@ -911,6 +938,10 @@ function applyTapForMana(
     if (frozen) {
       next.cards[cardId]!.skipNextUntap = true;
     }
+  }
+  // Outside the land gate: Forsaken Monument echoes any permanent's tap.
+  if (!ability.noTap) {
+    next = applyManaTapEchoes(next, playerId, cardId, addition);
   }
   if (ability.costSacrifice && costSacrificeId) {
     next = applyEffects(next, [{ kind: "sacrifice", cardId: costSacrificeId }]);

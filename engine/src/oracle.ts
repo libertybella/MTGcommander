@@ -243,7 +243,7 @@ function compileOneFace(card: OracleCard, definitionId: string): OracleCompileRe
     ...(compiled.selfIsChosenType ? { selfIsChosenType: true } : {}),
     ...(compiled.triggerDoubling ? { triggerDoubling: { ...compiled.triggerDoubling } } : {}),
     ...(compiled.landChosenColorBonus ? { landChosenColorBonus: true } : {}),
-    ...(compiled.landTapEcho ? { landTapEcho: true } : {}),
+    ...(compiled.landTapEcho ? { landTapEcho: { ...compiled.landTapEcho } } : {}),
     ...(compiled.opponentLandTapsSkipUntap ? { opponentLandTapsSkipUntap: true } : {}),
     ...(compiled.rebound ? { rebound: true } : {}),
     ...(compiled.chooseColorOnEnter ? { chooseColorOnEnter: true } : {}),

@@ -90,7 +90,7 @@ export type CompiledOracleText = {
   selfIsChosenType?: boolean;
   triggerDoubling?: CardDefinition["triggerDoubling"];
   landChosenColorBonus?: boolean;
-  landTapEcho?: boolean;
+  landTapEcho?: CardDefinition["landTapEcho"];
   opponentLandTapsSkipUntap?: boolean;
   rebound?: boolean;
   entersWithXCounters?: boolean;
@@ -7532,7 +7532,32 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
         sentence,
       )
     ) {
-      result.landTapEcho = true;
+      result.landTapEcho = {};
+      continue;
+    }
+
+    // Crypt Ghast: only Swamps echo, and they always add {B}.
+    const subtypeEcho = sentence.match(
+      /^Whenever you tap an? ([A-Z][a-z]+) for mana, add an additional \{([WUBRGC])\}$/,
+    );
+    if (subtypeEcho?.[1] && subtypeEcho[2]) {
+      result.landTapEcho = {
+        subtype: singularSubtype(`${subtypeEcho[1]}s`),
+        addColor: subtypeEcho[2] as ManaColor,
+      };
+      continue;
+    }
+
+    // Forsaken Monument: any permanent, but only when it made colorless.
+    const producedEcho = sentence.match(
+      /^Whenever you tap a permanent for \{([WUBRGC])\}, add an additional \{([WUBRGC])\}$/,
+    );
+    if (producedEcho?.[1] && producedEcho[2]) {
+      result.landTapEcho = {
+        anyPermanent: true,
+        requiresProduced: producedEcho[1] as ManaColor,
+        addColor: producedEcho[2] as ManaColor,
+      };
       continue;
     }
 

@@ -248,9 +248,23 @@ export type CardDefinition = {
   selfIsChosenType?: boolean;
   /** Caged Sun: a land tap that adds the chosen color adds one more of it. */
   landChosenColorBonus?: boolean;
-  /** Mirari's Wake / Vorinclex: the controller's land taps add one more
-   * mana of a type the land produced (auto-picked — documented). */
-  landTapEcho?: boolean;
+  /**
+   * Mirari's Wake / Vorinclex: the controller's land taps add one more mana
+   * of a type the land produced (auto-picked — documented). The empty object
+   * is that plain case; the fields narrow which taps echo and what they add,
+   * so Crypt Ghast (Swamps only, always {B}) and Forsaken Monument (any
+   * permanent, only when it made {C}) are the same mechanism.
+   */
+  landTapEcho?: {
+    /** Only lands with this subtype echo. */
+    subtype?: string;
+    /** Any permanent, not only lands. */
+    anyPermanent?: boolean;
+    /** Add this colour rather than matching what was produced. */
+    addColor?: ManaColor;
+    /** Only echo when the tap produced this colour. */
+    requiresProduced?: ManaColor;
+  };
   /** Rebound (CR 702.87): resolving from hand exiles the card; at the
    * caster's next upkeep it may be cast from exile for free. */
   rebound?: boolean;

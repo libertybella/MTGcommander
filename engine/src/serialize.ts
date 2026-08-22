@@ -552,7 +552,22 @@ export function parseGameState(json: string): GameState {
       ...(def.opponentsCastOnlyFromHand === true ? { opponentsCastOnlyFromHand: true } : {}),
       ...(def.selfIsChosenType === true ? { selfIsChosenType: true } : {}),
       ...(def.landChosenColorBonus === true ? { landChosenColorBonus: true } : {}),
-      ...(def.landTapEcho === true ? { landTapEcho: true } : {}),
+      ...(isRecord(def.landTapEcho)
+        ? {
+            landTapEcho: {
+              ...(def.landTapEcho.subtype === undefined
+                ? {}
+                : { subtype: expectString(def.landTapEcho.subtype, "definition.landTapEcho.subtype") }),
+              ...(def.landTapEcho.anyPermanent === true ? { anyPermanent: true } : {}),
+              ...(def.landTapEcho.addColor === undefined
+                ? {}
+                : { addColor: parseManaColor(def.landTapEcho.addColor, "definition.landTapEcho.addColor") }),
+              ...(def.landTapEcho.requiresProduced === undefined
+                ? {}
+                : { requiresProduced: parseManaColor(def.landTapEcho.requiresProduced, "definition.landTapEcho.requiresProduced") }),
+            },
+          }
+        : {}),
       ...(def.opponentLandTapsSkipUntap === true ? { opponentLandTapsSkipUntap: true } : {}),
       ...(def.rebound === true ? { rebound: true } : {}),
       ...(def.triggerDoubling === undefined
