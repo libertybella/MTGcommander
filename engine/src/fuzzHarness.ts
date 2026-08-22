@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { applyAction } from "./actions";
 import { isCreature } from "./cardTypes";
+import { cardMatchesSubtype } from "./characteristicsEngine";
 import { controlsCommander } from "./derived";
 import { hasKeyword } from "./keywords";
 import { legalActions, sacrificeScopeMatches } from "./legalActions";
@@ -381,8 +382,11 @@ function nextAction(state: GameState, rng: () => number): GameAction | null {
       let costSacrificeId: string | undefined;
       if (ability.sacrificeCost) {
         const player = state.players.find((entry) => entry.id === playerId)!;
-        const options = player.zones.battlefield.filter((id) =>
-          sacrificeScopeMatches(state, id, ability.sacrificeCost!, action.cardId),
+        const options = player.zones.battlefield.filter(
+          (id) =>
+            sacrificeScopeMatches(state, id, ability.sacrificeCost!, action.cardId) &&
+            (ability.sacrificeSubtype === undefined ||
+              cardMatchesSubtype(state, id, ability.sacrificeSubtype)),
         );
         if (options.length === 0) {
           return { kind: "pass_priority", playerId };
@@ -410,8 +414,11 @@ function nextAction(state: GameState, rng: () => number): GameAction | null {
       let costSacrificeId: string | undefined;
       if (ability.costSacrifice) {
         const player = state.players.find((entry) => entry.id === playerId)!;
-        const fodder = player.zones.battlefield.filter((id) =>
-          sacrificeScopeMatches(state, id, ability.costSacrifice!),
+        const fodder = player.zones.battlefield.filter(
+          (id) =>
+            sacrificeScopeMatches(state, id, ability.costSacrifice!) &&
+            (ability.costSacrificeSubtype === undefined ||
+              cardMatchesSubtype(state, id, ability.costSacrificeSubtype)),
         );
         if (fodder.length === 0) {
           return { kind: "pass_priority", playerId };

@@ -386,10 +386,19 @@ const SACRIFICE_COST = /Sacrifice (?:~|this land|this creature|this artifact|thi
  */
 const SACRIFICE_TYPE_COST =
   /Sacrifice (?:an? |another |(two|three) other )(black creature|creature|artifact|land|Treasure|artifacts and\/or creatures|creatures)\b/i;
+/**
+ * "Sacrifice a Goblin" / "Sacrifice a Desert" / "Sacrifice a Food" — the
+ * fodder is named by a subtype and no card type appears, so the scope is
+ * `permanent` and the subtype carries the whole filter. Case-sensitive on
+ * purpose: the capital is what separates a subtype from "Sacrifice a token",
+ * which this deliberately does not compile. Tried after SACRIFICE_TYPE_COST
+ * so "Sacrifice a Treasure" keeps its dedicated scope.
+ */
+const SACRIFICE_SUBTYPE_COST = /Sacrifice an? ([A-Z][a-z]+)\b/;
 const LIFE_COST = /Pay (\d+) life/i;
 const TAP_CREATURE_COST = /Tap an untapped creature you control/i;
 const COST_UNIT =
-  "(?:\\{[^}]+\\})+|Sacrifice (?:~|this land|this creature|this artifact|this permanent)|Sacrifice (?:an? |another )(?:black )?(?:creature|artifact|land|Treasure)|Sacrifice (?:two|three) other (?:creatures|artifacts and\\/or creatures)|Pay \\d+ life|Tap an untapped creature you control";
+  "(?:\\{[^}]+\\})+|Sacrifice (?:~|this land|this creature|this artifact|this permanent)|Sacrifice (?:an? |another )(?:black )?(?:creature|artifact|land|Treasure)|Sacrifice an? [A-Z][a-z]+|Sacrifice (?:two|three) other (?:creatures|artifacts and\\/or creatures)|Pay \\d+ life|Tap an untapped creature you control";
 
 function splitAbility(sentence: string): { costText: string; rest: string } | null {
   // "Metalcraft — {T}: …" — the ability word is flavor (Mox Opal).
@@ -421,7 +430,9 @@ function parseAbilityCost(
     | "creature_or_artifact"
     | "another_creature_or_artifact"
     | "land"
-    | "treasure";
+    | "treasure"
+    | "permanent";
+  sacrificeSubtype?: string;
   sacrificeCount?: number;
   tapCreature?: boolean;
 } | null {
@@ -440,7 +451,14 @@ function parseAbilityCost(
     ?.toLowerCase()
     .replace(/^artifacts and\/or creatures$/, "creature_or_artifact")
     .replace(/^creatures$/, "creature");
-  const sacrificeCost = scopeWord
+  // Only consulted when no card-type scope was found, so "a Treasure" and
+  // "another black creature" keep the scopes they already had.
+  const subtypeMatch =
+    sacrificeSelf || scopeWord ? null : costText.match(SACRIFICE_SUBTYPE_COST);
+  const sacrificeSubtype = subtypeMatch?.[1]?.toLowerCase();
+  const sacrificeCost = sacrificeSubtype
+    ? ("permanent" as const)
+    : scopeWord
     ? scopeWord === "black creature"
       ? another
         ? ("another_black_creature" as const)
@@ -452,6 +470,12 @@ function parseAbilityCost(
         : (scopeWord as "creature" | "artifact" | "land" | "treasure")
     : undefined;
   if (sacrificeCost === null) {
+    return null;
+  }
+  // COST_UNIT matches case-insensitively, so "Sacrifice a token:" splits off a
+  // cost none of the branches above understand. Refuse rather than compile an
+  // ability whose sacrifice quietly costs nothing.
+  if (/\bSacrifice\b/i.test(costText) && !sacrificeSelf && !sacrificeCost) {
     return null;
   }
   const lifeMatch = costText.match(LIFE_COST);
@@ -487,6 +511,7 @@ function parseAbilityCost(
     sacrificeSelf,
     ...(lifeCost ? { lifeCost } : {}),
     ...(sacrificeCost ? { sacrificeCost } : {}),
+    ...(sacrificeSubtype ? { sacrificeSubtype } : {}),
     ...(sacrificeCount && sacrificeCount > 1 ? { sacrificeCount } : {}),
     ...(tapCreature ? { tapCreature: true } : {}),
   };
@@ -6881,6 +6906,7 @@ function extractActivatedModalModes(card: OracleCard): ActivatedModalExtraction 
       manaCost: cost.manaCost,
       ...(cost.sacrificeSelf ? { sacrificeSelf: true } : {}),
       ...(cost.sacrificeCost ? { sacrificeCost: cost.sacrificeCost } : {}),
+      ...(cost.sacrificeSubtype ? { sacrificeSubtype: cost.sacrificeSubtype } : {}),
       ...(cost.sacrificeCount ? { sacrificeCount: cost.sacrificeCount } : {}),
       ...(cost.lifeCost ? { lifeCost: cost.lifeCost } : {}),
       modes,
@@ -9543,6 +9569,7 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
         result.manaAbilities.push({
           ...manaAbilityFromAdd(add),
           costSacrifice: cost.sacrificeCost,
+          ...(cost.sacrificeSubtype ? { costSacrificeSubtype: cost.sacrificeSubtype } : {}),
           noTap: true,
         });
         continue;
@@ -9570,6 +9597,7 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
         targetRequirements: clause.targetRequirements,
         ...(cost.sacrificeSelf ? { sacrificeSelf: true } : {}),
         ...(cost.sacrificeCost ? { sacrificeCost: cost.sacrificeCost } : {}),
+        ...(cost.sacrificeSubtype ? { sacrificeSubtype: cost.sacrificeSubtype } : {}),
         ...(cost.sacrificeCount ? { sacrificeCount: cost.sacrificeCount } : {}),
         ...(cost.lifeCost ? { lifeCost: cost.lifeCost } : {}),
         // Reassembling Skeleton: a self-return body activates from the yard.

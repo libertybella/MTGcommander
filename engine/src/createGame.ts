@@ -251,6 +251,9 @@ export function createCardDefinition(
           ...(ability.sacrificeSelf ? { sacrificeSelf: true } : {}),
           ...(ability.costMana ? { costMana: ability.costMana } : {}),
           ...(ability.costSacrifice ? { costSacrifice: ability.costSacrifice } : {}),
+          ...(ability.costSacrificeSubtype
+            ? { costSacrificeSubtype: ability.costSacrificeSubtype }
+            : {}),
           ...(ability.noTap ? { noTap: true } : {}),
           ...(ability.countFromPower ? { countFromPower: true } : {}),
           ...(ability.countFromDevotion ? { countFromDevotion: true } : {}),
@@ -279,6 +282,7 @@ export function createCardDefinition(
           ...(ability.discard ? { discard: true } : {}),
           ...(ability.sacrificeSelf ? { sacrificeSelf: true } : {}),
           ...(ability.sacrificeCost ? { sacrificeCost: ability.sacrificeCost } : {}),
+          ...(ability.sacrificeSubtype ? { sacrificeSubtype: ability.sacrificeSubtype } : {}),
           ...(ability.sacrificeCount && ability.sacrificeCount > 1
             ? { sacrificeCount: ability.sacrificeCount }
             : {}),

@@ -2145,7 +2145,15 @@ export type ActivatedAbility = {
     | "artifact"
     | "creature_or_artifact"
     | "land"
-    | "treasure";
+    | "treasure"
+    /** Any permanent you control — only ever paired with `sacrificeSubtype`,
+     * because "Sacrifice a Goblin" names no card type. */
+    | "permanent";
+  /** Scavenger Grounds: "Sacrifice a Desert"; Skirk Prospector: "Sacrifice a
+   * Goblin". The fodder must also have this subtype (lowercase). Rides
+   * alongside `sacrificeCost` so the two filters compose instead of the
+   * scope union growing a member per subtype. */
+  sacrificeSubtype?: string;
   /** The Dominus cycle: "Sacrifice two other creatures" — how many. The
    * activation supplies one and the rest are auto-taken (documented). */
   sacrificeCount?: number;
@@ -2211,7 +2219,18 @@ export type ManaAbility = {
   costMana?: string;
   /** Phyrexian Altar: sacrificing a chosen controlled permanent is the cost.
    * Never auto-tapped; adds nothing to potential mana. */
-  costSacrifice?: "creature" | "artifact" | "creature_or_artifact" | "land" | "treasure";
+  costSacrifice?:
+    | "creature"
+    | "artifact"
+    | "creature_or_artifact"
+    | "land"
+    | "treasure"
+    /** Skirk Prospector: "Sacrifice a Goblin" — always paired with
+     * `costSacrificeSubtype`, which carries the whole filter. */
+    | "permanent";
+  /** Gilded Goose: "Sacrifice a Food". Lowercase subtype the fodder must have,
+   * composing with `costSacrifice` rather than growing that union. */
+  costSacrificeSubtype?: string;
   /** The ability has no {T} in its cost (usable while tapped, repeatable). */
   noTap?: boolean;
   /** Kami of Whispered Hopes: the amount is the creature's power at tap. */

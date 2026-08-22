@@ -1,5 +1,5 @@
 import { characteristicsOf, isClass, isCommander, isCreature, isLand, isLegendary, isMainPhase } from "./cardTypes";
-import { abilitiesRemoved, controlsGate } from "./characteristicsEngine";
+import { abilitiesRemoved, cardMatchesSubtype, controlsGate } from "./characteristicsEngine";
 import { hasKeyword } from "./keywords";
 import { emptyManaPool } from "./createGame";
 import { pendingBlockerPlayer } from "./combat";
@@ -234,11 +234,17 @@ export function sacrificeScopeMatches(
     | "treasure"
     | "another_creature"
     | "another_black_creature"
-    | "another_creature_or_artifact",
+    | "another_creature_or_artifact"
+    | "permanent",
   sourceId?: CardInstanceId,
 ): boolean {
   const traits = state.definitions[state.cards[cardId]?.definitionId ?? ""]?.characteristics;
   const types = traits?.types ?? [];
+  // Only ever reached alongside a sacrificeSubtype filter, which is what
+  // actually narrows the fodder ("Sacrifice a Goblin").
+  if (scope === "permanent") {
+    return true;
+  }
   if (scope === "creature") {
     return types.includes("creature");
   }
@@ -441,7 +447,9 @@ function abilityUsable(
     const fodder = (player?.zones.battlefield ?? []).filter(
       (fodderId) =>
         state.cards[fodderId]?.controllerId === playerId &&
-        sacrificeScopeMatches(state, fodderId, scope, card.id),
+        sacrificeScopeMatches(state, fodderId, scope, card.id) &&
+        (ability.sacrificeSubtype === undefined ||
+          cardMatchesSubtype(state, fodderId, ability.sacrificeSubtype)),
     );
     if (fodder.length < (ability.sacrificeCount ?? 1)) {
       return false;

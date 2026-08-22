@@ -169,6 +169,8 @@ What the engine implements and what it intentionally does not. Tests are tagged 
 - **Reveal lands** ("you may reveal a Plains or Island card from your hand; if you don't, enters tapped"): the reveal "may" is auto-taken whenever the hand holds a card with a matching type or subtype (nonbasic duals count, per the printed rule).
 - **Spell copies (CR 707.10)**: "Copy target instant or sorcery spell" and cast-trigger "copy that spell" push an `isCopy` stack object that resolves normally, then ceases to exist without moving the source card; countering a copy likewise removes only the copy. Documented approximations: "You may choose new targets for the copy" is auto-declined (the copy keeps the original's targets — a legal choice for that "may"), and permanent-spell subjects are not copied (a real copy would become a token, CR 707.10c, which the table does not model yet). "Counter that spell" cast triggers (Jin-Gitaxias) counter the subject spell directly.
 
+- **Subtype sacrifice costs** ("Sacrifice a Desert", "Sacrifice a Goblin", "Sacrifice a Food"): the scope becomes `permanent` and a lowercase `sacrificeSubtype` (`costSacrificeSubtype` on mana abilities) carries the whole filter, honored through the shared `cardMatchesSubtype` helper — so a changeling is legal Goblin fodder and Humility takes that back. The subtype must be capitalized in the oracle text, which is what keeps "Sacrifice a token" (Fountainport) uncompiled rather than compiling to a free sacrifice.
+
 ## The card pipeline (Stage 6)
 
 - Real cards compile from Scryfall oracle text by shared sentence patterns; a hand-authored registry (`server/src/cardOverrides.ts`, data in the same schema) beats the compiler for the long tail. Never a named-card code path.

@@ -3027,12 +3027,21 @@ function parseActivatedAbilities(value: unknown, label: string): ActivatedAbilit
                 scope !== "artifact" &&
                 scope !== "creature_or_artifact" &&
                 scope !== "land" &&
-                scope !== "treasure"
+                scope !== "treasure" &&
+                scope !== "permanent"
               ) {
                 throw new Error(`Invalid ${label}[${index}].sacrificeCost`);
               }
               return scope;
             })(),
+          }),
+      ...(entry.sacrificeSubtype === undefined
+        ? {}
+        : {
+            sacrificeSubtype: expectString(
+              entry.sacrificeSubtype,
+              `${label}[${index}].sacrificeSubtype`,
+            ),
           }),
       ...(entry.exileSelf === true ? { exileSelf: true } : {}),
       ...(entry.legendaryDiscount === true ? { legendaryDiscount: true } : {}),
@@ -3785,9 +3794,18 @@ function parseManaAbilities(value: unknown, label: string): ManaAbility[] {
       entry.costSacrifice === "artifact" ||
       entry.costSacrifice === "creature_or_artifact" ||
       entry.costSacrifice === "land" ||
-      entry.costSacrifice === "treasure"
+      entry.costSacrifice === "treasure" ||
+      entry.costSacrifice === "permanent"
         ? { costSacrifice: entry.costSacrifice }
         : {}),
+      ...(entry.costSacrificeSubtype === undefined
+        ? {}
+        : {
+            costSacrificeSubtype: expectString(
+              entry.costSacrificeSubtype,
+              `${label}[${index}].costSacrificeSubtype`,
+            ),
+          }),
       ...(entry.noTap === true ? { noTap: true } : {}),
       ...(entry.countFromPower === true ? { countFromPower: true } : {}),
       ...(entry.countFromDevotion === true ? { countFromDevotion: true } : {}),

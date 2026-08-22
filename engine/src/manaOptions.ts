@@ -1,4 +1,4 @@
-import { computedCard, controlsGate } from "./characteristicsEngine";
+import { cardMatchesSubtype, computedCard, controlsGate } from "./characteristicsEngine";
 import { COLOR_PIPS, MANA_COLORS } from "./mana";
 import type { CardDefinition, CardInstanceId, GameState, ManaAbility, ManaColor } from "./types";
 
@@ -270,7 +270,23 @@ function sacrificeFodderAvailable(
     if (card.zone !== "battlefield" || card.controllerId !== controllerId) {
       return false;
     }
+    if (
+      ability.costSacrificeSubtype !== undefined &&
+      !cardMatchesSubtype(state, card.id, ability.costSacrificeSubtype)
+    ) {
+      return false;
+    }
     const types = state.definitions[card.definitionId]?.characteristics.types ?? [];
+    // Skirk Prospector: "Sacrifice a Goblin" names no card type — the subtype
+    // filter above is the whole test.
+    if (scope === "permanent") {
+      return true;
+    }
+    if (scope === "treasure") {
+      return (
+        state.definitions[card.definitionId]?.characteristics.subtypes ?? []
+      ).includes("treasure");
+    }
     if (scope === "creature") {
       return types.includes("creature");
     }

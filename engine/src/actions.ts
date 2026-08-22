@@ -895,10 +895,13 @@ function applyTapForMana(
       !fodder ||
       fodder.zone !== "battlefield" ||
       fodder.controllerId !== playerId ||
-      !sacrificeScopeMatches(base, costSacrificeId, ability.costSacrifice)
+      !sacrificeScopeMatches(base, costSacrificeId, ability.costSacrifice) ||
+      // Gilded Goose: the fodder must also be a Food.
+      (ability.costSacrificeSubtype !== undefined &&
+        !cardMatchesSubtype(base, costSacrificeId, ability.costSacrificeSubtype))
     ) {
       throw new Error(
-        `Sacrifice a ${ability.costSacrifice.replace(/_/g, " ")} to use that mana ability`,
+        `Sacrifice a ${ability.costSacrificeSubtype ?? ability.costSacrifice.replace(/_/g, " ")} to use that mana ability`,
       );
     }
   } else if (costSacrificeId !== undefined) {
@@ -1141,7 +1144,10 @@ function applyActivateAbility(
       !sacrifice ||
       sacrifice.zone !== "battlefield" ||
       sacrifice.controllerId !== playerId ||
-      !sacrificeScopeMatches(state, costSacrificeId, ability.sacrificeCost, cardId)
+      !sacrificeScopeMatches(state, costSacrificeId, ability.sacrificeCost, cardId) ||
+      // Scavenger Grounds: the land must be a Desert, not just a land.
+      (ability.sacrificeSubtype !== undefined &&
+        !cardMatchesSubtype(state, costSacrificeId, ability.sacrificeSubtype))
     ) {
       throw new Error(`Sacrifice a ${ability.sacrificeCost.replace(/_/g, " ")} to activate this`);
     }

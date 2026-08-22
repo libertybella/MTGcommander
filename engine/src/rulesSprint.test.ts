@@ -20103,3 +20103,153 @@ describe("wave 168: phyrexian costs and keyword counters", () => {
   });
 });
 
+
+describe("wave 169: subtype sacrifice costs", () => {
+  const compile = (name: string, manaCost: string, typeLine: string, oracleText: string, power?: string, toughness?: string) =>
+    compileOracleCard({
+      oracleId: name,
+      name,
+      manaCost,
+      typeLine,
+      power: power ?? null,
+      toughness: toughness ?? null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  const SCAVENGER = "{T}: Add {C}.\n{2}, {T}, Sacrifice a Desert: Exile all graveyards.";
+  const PROSPECTOR = "Sacrifice a Goblin: Add {R}.";
+  const FOUNTAINPORT =
+    "{T}: Add {C}.\n{2}, {T}, Sacrifice a token: Draw a card.\n{3}, {T}, Pay 1 life: Create a 1/1 blue Fish creature token.\n{4}, {T}: Create a Treasure token.";
+
+  it("compiles a subtype sacrifice as scope plus subtype", () => {
+    const grounds = compile("Scavenger Grounds", "", "Land — Desert", SCAVENGER);
+    expect(grounds.notes).toEqual([]);
+    const ability = grounds.definition.activated[0];
+    // No card type is named, so the subtype carries the whole filter.
+    expect(ability?.sacrificeCost).toBe("permanent");
+    expect(ability?.sacrificeSubtype).toBe("desert");
+    expect(ability?.effects[0]).toMatchObject({ kind: "exile_graveyard" });
+  });
+
+  it("offers the activation only while a matching permanent is on the battlefield", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const groundsDef = compile("Scavenger Grounds", "", "Land — Desert", SCAVENGER).definition;
+    game.definitions[groundsDef.id] = groundsDef;
+    const grounds = createCardInstance({ definitionId: groundsDef.id, ownerId: p1.id, zone: "battlefield" });
+    game.cards[grounds.id] = grounds;
+    p1.zones.battlefield.push(grounds.id);
+    p1.mana.C = 2;
+    game.turn.phase = "precombatMain";
+    game.turn.step = "precombatMain";
+    game.turn.activePlayerId = p1.id;
+    game.priorityPlayerId = p1.id;
+
+    const activation = (state: GameState) =>
+      legalActions(state, p1.id).some(
+        (action) => action.kind === "activate_ability" && action.cardId === grounds.id,
+      );
+
+    // The land is its own Desert, so it can eat itself.
+    expect(activation(game)).toBe(true);
+
+    const plainsDef = createCardDefinition({ name: "Wastes", typeLine: "Land" });
+    game.definitions[plainsDef.id] = plainsDef;
+    const plains = createCardInstance({ definitionId: plainsDef.id, ownerId: p1.id, zone: "battlefield" });
+    game.cards[plains.id] = plains;
+    p1.zones.battlefield.push(plains.id);
+
+    // A plain land is not legal fodder even though it is a land.
+    expect(() =>
+      applyAction(game, {
+        kind: "activate_ability",
+        playerId: p1.id,
+        cardId: grounds.id,
+        abilityIndex: 0,
+        costSacrificeId: plains.id,
+      }),
+    ).toThrow();
+
+    let next = applyAction(game, {
+      kind: "activate_ability",
+      playerId: p1.id,
+      cardId: grounds.id,
+      abilityIndex: 0,
+      costSacrificeId: grounds.id,
+    });
+    expect(next.cards[grounds.id]?.zone).toBe("graveyard");
+    while (next.stack.length > 0) {
+      next = resolveTopOfStack(next);
+    }
+  });
+
+  it("compiles a subtype sacrifice mana ability and spends a matching creature", () => {
+    const prospector = compile("Skirk Prospector", "{R}", "Creature — Goblin", PROSPECTOR, "1", "1");
+    expect(prospector.notes).toEqual([]);
+    const ability = prospector.definition.manaAbilities[0];
+    expect(ability?.costSacrifice).toBe("permanent");
+    expect(ability?.costSacrificeSubtype).toBe("goblin");
+    expect(ability?.noTap).toBe(true);
+
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    game.definitions[prospector.definition.id] = prospector.definition;
+    const source = createCardInstance({
+      definitionId: prospector.definition.id,
+      ownerId: p1.id,
+      zone: "battlefield",
+    });
+    source.summoningSick = false;
+    game.cards[source.id] = source;
+    p1.zones.battlefield.push(source.id);
+    const bearDef = createCardDefinition({
+      name: "Bear",
+      typeLine: "Creature — Bear",
+      power: 2,
+      toughness: 2,
+    });
+    game.definitions[bearDef.id] = bearDef;
+    const bear = createCardInstance({ definitionId: bearDef.id, ownerId: p1.id, zone: "battlefield" });
+    game.cards[bear.id] = bear;
+    p1.zones.battlefield.push(bear.id);
+    game.turn.phase = "precombatMain";
+    game.turn.step = "precombatMain";
+    game.turn.activePlayerId = p1.id;
+    game.priorityPlayerId = p1.id;
+
+    // A Bear is a creature, but it is not a Goblin.
+    expect(() =>
+      applyAction(game, {
+        kind: "tap_for_mana",
+        playerId: p1.id,
+        cardId: source.id,
+        manaIndex: 0,
+        costSacrificeId: bear.id,
+      }),
+    ).toThrow();
+
+    // The Prospector is itself a Goblin.
+    const next = applyAction(game, {
+      kind: "tap_for_mana",
+      playerId: p1.id,
+      cardId: source.id,
+      manaIndex: 0,
+      costSacrificeId: source.id,
+    });
+    expect(next.cards[source.id]?.zone).toBe("graveyard");
+    expect(next.players.find((entry) => entry.id === p1.id)?.mana.R).toBe(1);
+  });
+
+  it("refuses a sacrifice cost it cannot name", () => {
+    // "Sacrifice a token" splits off as a cost unit but matches no scope —
+    // compiling it would make the sacrifice free.
+    const fountainport = compile("Fountainport", "", "Land", FOUNTAINPORT);
+    expect(fountainport.notes.join(" ")).toContain("Sacrifice a token");
+    for (const ability of fountainport.definition.activated) {
+      expect(ability.sacrificeCost).toBeUndefined();
+    }
+  });
+});
+
