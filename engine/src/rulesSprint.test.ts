@@ -17690,3 +17690,216 @@ describe("wave 148: swords, boots, and hammers", () => {
   });
 });
 
+
+describe("wave 149: drains, deaths, and arrivals", () => {
+  const compile = (name: string, manaCost: string, typeLine: string, oracleText: string, power?: string, toughness?: string) =>
+    compileOracleCard({
+      oracleId: name,
+      name,
+      manaCost,
+      typeLine,
+      power: power ?? null,
+      toughness: toughness ?? null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  it("compiles the trigger-subject and drain bucket fully", () => {
+    // The drain body, on the triggering player.
+    const kambal = compile(
+      "Kambal, Consul of Allocation",
+      "{2}{W}{B}",
+      "Legendary Creature — Human Advisor",
+      "Whenever an opponent casts a noncreature spell, that player loses 2 life and you gain 2 life.",
+      "2",
+      "3",
+    );
+    expect(kambal.notes).toEqual([]);
+    expect(kambal.definition.triggers[0]?.effects).toEqual([
+      { kind: "lose_life", playerId: { type: "subject_player" }, amount: 2 },
+      { kind: "gain_life", playerId: "controller", amount: 2 },
+    ]);
+
+    // The pronoun form, with no lifegain rider.
+    const sheoldred = compile(
+      "Sheoldred, the Apocalypse",
+      "{2}{B}{B}",
+      "Legendary Creature — Phyrexian Praetor",
+      "Deathtouch\nWhenever you draw a card, you gain 2 life.\nWhenever an opponent draws a card, they lose 2 life.",
+      "4",
+      "5",
+    );
+    expect(sheoldred.notes).toEqual([]);
+    const theyLose = sheoldred.definition.triggers.find(
+      (trigger) => trigger.effects[0]?.kind === "lose_life",
+    );
+    expect(theyLose?.effects[0]).toEqual({
+      kind: "lose_life",
+      playerId: { type: "subject_player" },
+      amount: 2,
+    });
+
+    // "target opponent loses N and you gain N" — a flat gain, not the total.
+    const witch = compile(
+      "Vengeful Bloodwitch",
+      "{1}{B}",
+      "Creature — Vampire Warlock",
+      "Whenever this creature or another creature you control dies, target opponent loses 1 life and you gain 1 life.",
+      "1",
+      "1",
+    );
+    expect(witch.notes).toEqual([]);
+    expect(witch.definition.triggers[0]?.targetRequirements).toEqual([{ kind: "opponent" }]);
+
+    // A tribal death watch that used to need its own regex.
+    const augur = compile(
+      "Zombie Death Watcher",
+      "{1}{B}",
+      "Creature — Zombie",
+      "Whenever this creature or another Zombie you control dies, draw a card.",
+      "1",
+      "1",
+    );
+    expect(augur.notes).toEqual([]);
+    expect(augur.definition.triggers[0]).toMatchObject({
+      event: "dies",
+      watch: "controlled",
+      subjectFilter: { subtypes: ["zombie"] },
+    });
+    // "~ or another …" includes the source, so it must NOT exclude self.
+    expect(augur.definition.triggers[0]?.excludeSelf).toBeUndefined();
+
+    // "another …" does exclude the source.
+    const marwyn = compile(
+      "Marwyn, the Nurturer",
+      "{2}{G}",
+      "Legendary Creature — Elf Druid",
+      "Whenever another Elf you control enters, put a +1/+1 counter on Marwyn, the Nurturer.",
+      "1",
+      "1",
+    );
+    expect(marwyn.notes).toEqual([]);
+    expect(marwyn.definition.triggers[0]).toMatchObject({
+      event: "enter_battlefield",
+      watch: "controlled",
+      excludeSelf: true,
+      subjectFilter: { subtypes: ["elf"] },
+    });
+
+    // A card type rather than a subtype, and the long "is put into a
+    // graveyard from the battlefield" phrasing, which is just `dies`.
+    const mystic = compile(
+      "Starfield Mystic",
+      "{2}{W}",
+      "Creature — Human Cleric",
+      "Whenever an enchantment you control is put into a graveyard from the battlefield, put a +1/+1 counter on Starfield Mystic.",
+      "2",
+      "2",
+    );
+    expect(mystic.notes).toEqual([]);
+    expect(mystic.definition.triggers[0]).toMatchObject({
+      event: "dies",
+      watch: "controlled",
+      subjectFilter: { types: ["enchantment"] },
+    });
+
+    // A two-type subject.
+    const celebrant = compile(
+      "Cruel Celebrant",
+      "{W}{B}",
+      "Creature — Vampire Soldier",
+      "Whenever Cruel Celebrant or another creature or planeswalker you control dies, each opponent loses 1 life and you gain 1 life.",
+      "1",
+      "2",
+    );
+    expect(celebrant.notes).toEqual([]);
+    expect(celebrant.definition.triggers[0]?.subjectFilter?.typesAny).toEqual([
+      "creature",
+      "planeswalker",
+    ]);
+
+    // A bare permanent subject: no type restriction at all.
+    const altar = compile(
+      "Altar of the Brood",
+      "{1}",
+      "Artifact",
+      "Whenever another permanent you control enters, each opponent mills a card.",
+    );
+    expect(altar.notes).toEqual([]);
+    expect(altar.definition.triggers[0]?.subjectFilter).toBeUndefined();
+    expect(altar.definition.triggers[0]?.excludeSelf).toBe(true);
+  });
+
+  it("drains the right players for the right amounts at a four-player table", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    const startingLife = p1.life;
+
+    // "each opponent loses 1 and you gain 1" gains ONE, not one per opponent.
+    const celebrant = compile(
+      "Cruel Celebrant",
+      "{W}{B}",
+      "Creature — Vampire Soldier",
+      "Whenever Cruel Celebrant or another creature or planeswalker you control dies, each opponent loses 1 life and you gain 1 life.",
+      "1",
+      "2",
+    ).definition;
+    const next = applyEffects(
+      game,
+      bindCardEffects(game, celebrant.triggers[0]!.effects, {
+        controllerId: p1.id,
+        sourceId: null,
+        targets: [],
+        targetRequirements: [],
+      }),
+    );
+    expect(next.players.find((entry) => entry.id === p2.id)?.life).toBe(startingLife - 1);
+    expect(next.players.find((entry) => entry.id === p1.id)?.life).toBe(startingLife + 1);
+  });
+
+  it("fires a tribal death watch for the source and for its kin", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const watcherDef = compile(
+      "Zombie Death Watcher",
+      "{1}{B}",
+      "Creature — Zombie",
+      "Whenever this creature or another Zombie you control dies, draw a card.",
+      "1",
+      "1",
+    ).definition;
+    game.definitions[watcherDef.id] = watcherDef;
+    const watcher = createCardInstance({ definitionId: watcherDef.id, ownerId: p1.id, zone: "battlefield" });
+    game.cards[watcher.id] = watcher;
+    p1.zones.battlefield.push(watcher.id);
+
+    const zombieDef = createCardDefinition({
+      name: "Walker",
+      typeLine: "Creature — Zombie",
+      power: 2,
+      toughness: 2,
+    });
+    const bearDef = createCardDefinition({ name: "Bear", typeLine: "Creature — Bear", power: 2, toughness: 2 });
+    game.definitions[zombieDef.id] = zombieDef;
+    game.definitions[bearDef.id] = bearDef;
+    const zombie = createCardInstance({ definitionId: zombieDef.id, ownerId: p1.id, zone: "battlefield" });
+    const bear = createCardInstance({ definitionId: bearDef.id, ownerId: p1.id, zone: "battlefield" });
+    game.cards[zombie.id] = zombie;
+    game.cards[bear.id] = bear;
+    p1.zones.battlefield.push(zombie.id, bear.id);
+
+    // A Bear dying is not a Zombie dying.
+    let next = moveCard(game, bear.id, "graveyard");
+    expect(next.stack).toHaveLength(0);
+
+    // A kindred death does fire it.
+    next = moveCard(next, zombie.id, "graveyard");
+    expect(next.stack).toHaveLength(1);
+    while (next.stack.length > 0) {
+      next = resolveTopOfStack(next);
+    }
+    expect(next.players.find((entry) => entry.id === p1.id)?.zones.hand.length).toBeGreaterThan(0);
+  });
+});
+

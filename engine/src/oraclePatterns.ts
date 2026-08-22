@@ -23,6 +23,7 @@ import type {
   ManaAbility,
   ManaColor,
   ManaPool,
+  PlayerSelector,
   ReplacementEffect,
   SearchFilter,
   SpellMode,
@@ -3861,13 +3862,39 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     };
   }
 
-  match = sentence.match(/^Target player loses (\d+) life and you gain (\d+) life$/i);
-  if (match?.[1] && match[2]) {
+  // The drain body, over every subject that can carry it. Note that the gain
+  // is a flat amount, NOT the total lost — "each opponent loses 1 life and you
+  // gain 1 life" gains exactly 1 at a four-player table, which is why this
+  // cannot reuse drain_opponents.
+  match = sentence.match(
+    /^(Target player|Target opponent|That player|They|Each opponent) loses? (\d+) life and you gain (\d+) life$/i,
+  );
+  if (match?.[1] && match[2] && match[3]) {
+    const who = match[1].toLowerCase();
+    const loser: PlayerSelector | null =
+      who === "target player" || who === "target opponent"
+        ? { type: "chosen", index: 0 }
+        : who === "that player" || who === "they"
+          ? { type: "subject_player" }
+          : "each_opponent";
     return {
-      targetRequirements: [{ kind: "player" }],
+      targetRequirements: who.startsWith("target")
+        ? [{ kind: who === "target opponent" ? "opponent" : "player" }]
+        : [],
       effects: [
-        { kind: "lose_life", playerId: { type: "chosen", index: 0 }, amount: Number(match[1]) },
-        { kind: "gain_life", playerId: "controller", amount: Number(match[2]) },
+        { kind: "lose_life", playerId: loser, amount: Number(match[2]) },
+        { kind: "gain_life", playerId: "controller", amount: Number(match[3]) },
+      ],
+    };
+  }
+
+  // The same subjects without the lifegain rider ("they lose 2 life").
+  match = sentence.match(/^(That player|They) loses? (\d+) life$/i);
+  if (match?.[2]) {
+    return {
+      targetRequirements: [],
+      effects: [
+        { kind: "lose_life", playerId: { type: "subject_player" }, amount: Number(match[2]) },
       ],
     };
   }
@@ -5242,7 +5269,76 @@ function parseTriggerHead(head: string): TriggerHead | null {
       subjectFilter: { types: ["creature"], chosenSubtype: true },
     };
   }
+
+  // The general enters/dies head, tried after every specific one above.
+  const generic = parseGenericSubjectHead(text);
+  if (generic) {
+    return generic;
+  }
   return null;
+}
+
+/**
+ * "Whenever ~ or another Zombie you control dies", "Whenever another artifact
+ * you control enters", "Whenever an enchantment you control is put into a
+ * graveyard from the battlefield" — one grammar over the noun phrases that
+ * previously each needed their own regex.
+ *
+ * Runs only after every specific head above has declined, so it cannot change
+ * how an already-recognised sentence compiles.
+ */
+function parseGenericSubjectHead(text: string): TriggerHead | null {
+  const match = text.match(
+    /^Whenever (~ or another |another |an? )(.+?) (enters|dies|is put into a graveyard from the battlefield)$/i,
+  );
+  if (!match?.[1] || !match[2] || !match[3]) {
+    return null;
+  }
+  const lead = match[1].toLowerCase();
+  const verb = match[3].toLowerCase();
+  // A permanent going battlefield → graveyard *is* the dies event, whatever
+  // its card type; the long phrasing is just older templating.
+  const event = verb === "enters" ? ("enter_battlefield" as const) : ("dies" as const);
+
+  let rest = match[2].trim();
+  const filter: NonNullable<CardTrigger["subjectFilter"]> = {};
+  let watch: CardTrigger["watch"] = "any";
+  const possessor = rest.match(/^(.*?)\s+you control$/i);
+  if (possessor?.[1] !== undefined) {
+    watch = "controlled";
+    rest = possessor[1];
+  }
+  if (/^nontoken\s+/i.test(rest)) {
+    filter.nonToken = true;
+    rest = rest.replace(/^nontoken\s+/i, "");
+  }
+  const head = rest.trim();
+  // "creature or planeswalker" / "artifact or creature": any listed type.
+  const eitherType = head.match(/^([a-z]+) or ([a-z]+)$/i);
+  if (/^permanents?$/i.test(head)) {
+    // No type restriction.
+  } else if (SEARCH_CARD_TYPES.has(head.toLowerCase())) {
+    filter.types = [head.toLowerCase()];
+  } else if (
+    eitherType?.[1] &&
+    eitherType[2] &&
+    SEARCH_CARD_TYPES.has(eitherType[1].toLowerCase()) &&
+    SEARCH_CARD_TYPES.has(eitherType[2].toLowerCase())
+  ) {
+    filter.typesAny = [eitherType[1].toLowerCase(), eitherType[2].toLowerCase()];
+  } else if (/^[A-Z][a-z-]+$/.test(head)) {
+    // A creature subtype ("Zombie", "Elf") — changelings match.
+    filter.subtypes = [head.toLowerCase()];
+  } else {
+    return null;
+  }
+  return {
+    event,
+    watch,
+    // "another …" excludes the source; "~ or another …" deliberately does not.
+    ...(lead.startsWith("another") ? { excludeSelf: true } : {}),
+    ...(Object.keys(filter).length > 0 ? { subjectFilter: filter } : {}),
+  };
 }
 
 const COLOR_WORDS: Record<string, Color> = {
