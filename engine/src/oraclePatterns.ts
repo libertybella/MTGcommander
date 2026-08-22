@@ -156,6 +156,15 @@ const KEYWORD_GRANTS: Record<string, Keyword> = {
   skulk: "skulk",
 };
 
+/**
+ * Ability words ("Landfall —", "Treasure Hunter —", "Coven —") are pure
+ * flavour: CR 207.2c gives them no rules meaning, so any capitalised phrase
+ * before an em dash is stripped off a trigger head. The trailing lookahead
+ * keeps this away from real game text that happens to contain a dash — only
+ * a phrase introducing an actual trigger is removed.
+ */
+const ABILITY_WORD_PREFIX = /^[A-Z][A-Za-z'’ ]*\s*[—-]\s*(?=When|Whenever|At the beginning)/;
+
 /** "…for each <noun> you control" — the nouns a live count can scale by. */
 const PER_COUNTS: Record<string, DynamicCount> = {
   land: "lands_you_control",
@@ -177,6 +186,12 @@ const COUNT_WORDS: Record<string, number> = {
   eight: 8,
   nine: 9,
   ten: 10,
+  eleven: 11,
+  twelve: 12,
+  thirteen: 13,
+  twenty: 20,
+  thirty: 30,
+  forty: 40,
 };
 
 export function stripReminderText(oracleText: string): string {
@@ -3680,10 +3695,13 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
   }
 
   match = sentence.match(
-    /^(Destroy|Exile) target (artifact|enchantment|artifact or enchantment|artifact or creature|creature or artifact|creature or enchantment|nonland permanent|noncreature, nonland permanent|permanent)( you don't control| an opponent controls| defending player controls)?(?: with mana value (\d+) or (less|greater))?$/i,
+    // "creature" is listed so the control-qualified form reaches here; the
+    // plain "Destroy target creature" is claimed by an earlier pattern.
+    /^(Destroy|Exile) target (creature|artifact|enchantment|artifact or enchantment|artifact or creature|creature or artifact|creature or enchantment|nonland permanent|noncreature, nonland permanent|permanent)( you don't control| an opponent controls| defending player controls)?(?: with mana value (\d+) or (less|greater))?$/i,
   );
   if (match?.[1] && match[2] && (match[2].toLowerCase() !== "permanent" || match[3] || match[4])) {
     const kindOf: Record<string, TargetKind> = {
+      creature: "creature",
       artifact: "artifact",
       enchantment: "enchantment",
       "artifact or enchantment": "artifact_or_enchantment",
@@ -3987,6 +4005,10 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
       targetRequirements: [],
       effects: [{ kind: "add_counter", cardId: "self", counter: "p1p1", amount: 1 }],
     };
+  }
+
+  if (/^You win the game$/i.test(sentence)) {
+    return { targetRequirements: [], effects: [{ kind: "win_game", playerId: "controller" }] };
   }
 
   // "…on it": the object the trigger watched, not the source (Surrak and
@@ -4790,7 +4812,7 @@ type TriggerHead = Pick<
 
 /** "Whenever another creature dies" → dies / any / excludeSelf, and friends. */
 function parseTriggerHead(head: string): TriggerHead | null {
-  const text = head.replace(/^(?:Landfall|Magecraft|Constellation|Enrage)\s*[—-]\s*/i, "").trim();
+  const text = head.replace(ABILITY_WORD_PREFIX, "").trim();
   if (/^Whenever you cast or copy an instant or sorcery spell$/i.test(text)) {
     return {
       event: "cast_spell",
@@ -5119,11 +5141,17 @@ function parseTriggerHead(head: string): TriggerHead | null {
       subjectFilter: { types: ["creature"], maxPower: Number(batchEnter[1]) },
     };
   }
-  if (/^At the beginning of your upkeep$/i.test(text)) {
-    return { event: "upkeep" };
-  }
-  if (/^At the beginning of your end step$/i.test(text)) {
-    return { event: "end_step" };
+  // "your …" fires on the controller's step; "each …" on everyone's.
+  // "each opponent's …" is deliberately absent: approximating it as every
+  // player's step would fire it on the controller's own turn too, and
+  // Archfiend of Depravity making its own controller sacrifice is a wrong
+  // game, not a rough one. It stays a clean miss.
+  const stepHead = text.match(/^At the beginning of (your|each) (upkeep|end step)$/i);
+  if (stepHead?.[1] && stepHead[2]) {
+    return {
+      event: stepHead[2].toLowerCase() === "upkeep" ? "upkeep" : "end_step",
+      ...(stepHead[1].toLowerCase() === "each" ? { eachPlayersStep: true } : {}),
+    };
   }
   if (/^Whenever ~ attacks$/i.test(text)) {
     return { event: "attacks" };
@@ -6227,7 +6255,7 @@ type TriggerModalExtraction = {
 
 /** Heads the general parser doesn't cover, in their modal-trigger forms. */
 function parseSimpleTriggerHead(text: string): TriggerHead | null {
-  const t = text.replace(/^(?:Landfall|Magecraft|Constellation|Enrage)\s*[—-]\s*/i, "").trim();
+  const t = text.replace(ABILITY_WORD_PREFIX, "").trim();
   if (/^When(?:ever)? ~ enters$/i.test(t)) {
     return { event: "enter_battlefield" };
   }
@@ -8759,9 +8787,34 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
             // Scourge of the Throne.
             condition = { kind: "attacking_most_life" };
             rest = interveningIf[2].trim();
+          } else if (/^you have (\d+) or more life$/i.test(phrase)) {
+            // Felidar Sovereign.
+            condition = {
+              kind: "life_at_least",
+              amount: Number(phrase.match(/have (\d+)/i)![1]),
+            };
+            rest = interveningIf[2].trim();
+          } else if (
+            /^you have exactly (thirteen|\w+|\d+) cards in your hand$/i.test(phrase)
+          ) {
+            // Triskaidekaphile.
+            const count = parseCount(phrase.match(/exactly (\S+) cards/i)![1]!);
+            if (count) {
+              condition = { kind: "hand_size_exactly", count };
+              rest = interveningIf[2].trim();
+            }
+          } else if (/^you control no ([A-Z][a-z]+)s$/.test(phrase)) {
+            // Ophiomancer.
+            condition = {
+              kind: "controls_no_subtype",
+              subtype: singularSubtype(phrase.match(/no ([A-Za-z]+)$/)![1]!),
+            };
+            rest = interveningIf[2].trim();
           } else {
+            // The count is whatever parseCount recognises, rather than a
+            // hand-listed set of number words — "thirty" is as real as "ten".
             const controls = phrase.match(
-              /^you control (two|three|four|five|six|\d+) or more (lands|creatures|artifacts)$/i,
+              /^you control ([a-z]+|\d+) or more (lands|creatures|artifacts)$/i,
             );
             const atLeast = controls?.[1] ? parseCount(controls[1]) : null;
             if (controls?.[2] && atLeast) {
@@ -8774,6 +8827,21 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
                 atLeast,
               };
               rest = interveningIf[2].trim();
+            } else {
+              // "…ten or more Treasures" / "…seven or more Plains": a
+              // subtype count rather than a card type.
+              const subtypeCount = phrase.match(
+                /^you control ([a-z]+|\d+) or more ([A-Z][A-Za-z]*)s$/,
+              );
+              const subtypeAtLeast = subtypeCount?.[1] ? parseCount(subtypeCount[1]) : null;
+              if (subtypeCount?.[2] && subtypeAtLeast) {
+                condition = {
+                  kind: "controls_subtype_count",
+                  subtype: singularSubtype(`${subtypeCount[2]}s`),
+                  atLeast: subtypeAtLeast,
+                };
+                rest = interveningIf[2].trim();
+              }
             }
           }
         }

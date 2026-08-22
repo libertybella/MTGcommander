@@ -150,6 +150,7 @@ export function createCardDefinition(
           ...(trigger.excludeSelf ? { excludeSelf: true } : {}),
           ...(trigger.oncePerTurn ? { oncePerTurn: true } : {}),
           ...(trigger.oncePerBatch ? { oncePerBatch: true } : {}),
+          ...(trigger.eachPlayersStep ? { eachPlayersStep: true } : {}),
           ...(trigger.alsoOnCopy ? { alsoOnCopy: true } : {}),
           ...(trigger.condition ? { condition: { ...trigger.condition } } : {}),
           ...(trigger.subjectPlayerOpponent ? { subjectPlayerOpponent: true } : {}),

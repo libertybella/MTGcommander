@@ -940,6 +940,13 @@ export function bindCardEffect(
       }
       return { kind: "extra_land_drop", playerId };
     }
+    case "win_game": {
+      const playerId = bindPlayerSelector(state, effect.playerId, context);
+      if (!playerId) {
+        return null;
+      }
+      return { kind: "win_game", playerId };
+    }
     case "commander_to_hand": {
       const playerId = bindPlayerSelector(state, effect.playerId, context);
       if (!playerId) {
@@ -2860,6 +2867,18 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
         next = cloneGameState(state);
         const granted = next.players.find((entry) => entry.id === effect.playerId)!;
         granted.extraLandDropsThisTurn = (granted.extraLandDropsThisTurn ?? 0) + 1;
+        break;
+      }
+      case "win_game": {
+        // CR 104.2a: winning is expressed as everyone else losing, which is
+        // the same shape Laboratory Maniac already uses.
+        requirePlayer(state, effect.playerId);
+        next = cloneGameState(state);
+        for (const other of next.players) {
+          if (other.id !== effect.playerId && !other.lost) {
+            eliminatePlayerInPlace(next, other.id);
+          }
+        }
         break;
       }
       case "fight": {

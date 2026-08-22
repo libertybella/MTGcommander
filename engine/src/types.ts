@@ -846,6 +846,8 @@ export type GameEffect =
   | { kind: "mass_reanimate"; playerId: PlayerId }
   | { kind: "prevent_combat_for"; cardId: CardInstanceId }
   | { kind: "extra_land_drop"; playerId: PlayerId }
+  /** "You win the game": every other player loses (CR 104.2a). */
+  | { kind: "win_game"; playerId: PlayerId }
   | { kind: "commander_to_hand"; playerId: PlayerId }
   | { kind: "opponents_lose_keywords_until_eot"; playerId: PlayerId; keywords: Keyword[] }
   | {
@@ -1442,6 +1444,8 @@ export type CardEffect =
   | { kind: "prevent_combat_for"; cardId: ChosenTargetRef }
   /** Explore: one extra land drop this turn. */
   | { kind: "extra_land_drop"; playerId: PlayerSelector }
+  /** "You win the game": every other player loses (CR 104.2a). */
+  | { kind: "win_game"; playerId: PlayerSelector }
   /** Command Beacon: the commander moves from the command zone to hand. */
   | { kind: "commander_to_hand"; playerId: PlayerSelector }
   /** Shadowspear: opponents' permanents drop the listed keywords this turn. */
@@ -1627,7 +1631,15 @@ export type TriggerCondition =
   | { kind: "first_combat_this_turn" }
   /** Dethrone / Scourge: the subject attacker's defender has the most life
    * (or is tied for most). */
-  | { kind: "attacking_most_life" };
+  | { kind: "attacking_most_life" }
+  /** Felidar Sovereign: "if you have 40 or more life". */
+  | { kind: "life_at_least"; amount: number }
+  /** Revel in Riches / Emeria: "if you control ten or more Treasures". */
+  | { kind: "controls_subtype_count"; subtype: string; atLeast: number }
+  /** Ophiomancer: "if you control no Snakes". */
+  | { kind: "controls_no_subtype"; subtype: string }
+  /** Triskaidekaphile: "if you have exactly thirteen cards in your hand". */
+  | { kind: "hand_size_exactly"; count: number };
 
 export type CardTrigger = {
   event: TriggerEvent;
@@ -1703,6 +1715,12 @@ export type CardTrigger = {
   oncePerTurn?: boolean;
   /** "Whenever one or more …": fire once per simultaneous event batch. */
   oncePerBatch?: boolean;
+  /**
+   * "At the beginning of EACH end step" / "each upkeep": the step trigger
+   * fires on every player's turn, not only its controller's. Omitted means
+   * the usual "your" reading.
+   */
+  eachPlayersStep?: boolean;
 };
 
 /** A change the trigger system reacts to. Dispatched synchronously in batches. */

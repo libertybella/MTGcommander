@@ -18025,3 +18025,178 @@ describe("wave 150: conjunctions and referents", () => {
   });
 });
 
+
+describe("wave 151: upkeeps, win conditions, and ability words", () => {
+  const compile = (name: string, manaCost: string, typeLine: string, oracleText: string, power?: string, toughness?: string) =>
+    compileOracleCard({
+      oracleId: name,
+      name,
+      manaCost,
+      typeLine,
+      power: power ?? null,
+      toughness: toughness ?? null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  it("compiles the step-timing and win-condition bucket fully", () => {
+    const sovereign = compile(
+      "Felidar Sovereign",
+      "{4}{W}{W}",
+      "Creature — Cat Beast",
+      "Vigilance, lifelink\nAt the beginning of your upkeep, if you have 40 or more life, you win the game.",
+      "4",
+      "6",
+    );
+    expect(sovereign.notes).toEqual([]);
+    expect(sovereign.definition.triggers[0]).toMatchObject({
+      event: "upkeep",
+      condition: { kind: "life_at_least", amount: 40 },
+    });
+    expect(sovereign.definition.triggers[0]?.effects[0]).toEqual({
+      kind: "win_game",
+      playerId: "controller",
+    });
+
+    // A subtype count, not a card-type count.
+    const revel = compile(
+      "Revel in Riches",
+      "{4}{B}",
+      "Enchantment",
+      "Whenever a creature an opponent controls dies, create a Treasure token.\nAt the beginning of your upkeep, if you control ten or more Treasures, you win the game.",
+    );
+    expect(revel.notes).toEqual([]);
+    expect(revel.definition.triggers[1]?.condition).toEqual({
+      kind: "controls_subtype_count",
+      subtype: "treasure",
+      atLeast: 10,
+    });
+
+    const trisk = compile(
+      "Triskaidekaphile",
+      "{1}{U}",
+      "Creature — Human Wizard",
+      "You have no maximum hand size.\nAt the beginning of your upkeep, if you have exactly thirteen cards in your hand, you win the game.",
+      "1",
+      "3",
+    );
+    expect(trisk.notes).toEqual([]);
+    expect(trisk.definition.triggers[0]?.condition).toEqual({
+      kind: "hand_size_exactly",
+      count: 13,
+    });
+
+    // "each upkeep" fires on everybody's turn; the condition is a zero count.
+    const ophiomancer = compile(
+      "Ophiomancer",
+      "{2}{B}",
+      "Creature — Human Shaman",
+      "At the beginning of each upkeep, if you control no Snakes, create a 1/1 black Snake creature token with deathtouch.",
+      "2",
+      "2",
+    );
+    expect(ophiomancer.notes).toEqual([]);
+    expect(ophiomancer.definition.triggers[0]).toMatchObject({
+      event: "upkeep",
+      eachPlayersStep: true,
+      condition: { kind: "controls_no_subtype", subtype: "snake" },
+    });
+
+    // An ability word is pure flavour and is stripped whatever it says.
+    const knuckles = compile(
+      "Knuckles the Echidna",
+      "{2}{R}",
+      "Legendary Creature — Echidna Warrior",
+      "Treasure Hunter — At the beginning of your upkeep, if you control thirty or more artifacts, you win the game.",
+      "3",
+      "3",
+    );
+    expect(knuckles.notes).toEqual([]);
+    expect(knuckles.definition.triggers[0]?.condition).toEqual({
+      kind: "controls_count",
+      what: "artifact",
+      atLeast: 30,
+    });
+
+    // A control-qualified creature target.
+    const chupacabra = compile(
+      "Ravenous Chupacabra",
+      "{2}{B}{B}",
+      "Creature — Zombie Beast",
+      "When this creature enters, destroy target creature an opponent controls.",
+      "2",
+      "2",
+    );
+    expect(chupacabra.notes).toEqual([]);
+    expect(chupacabra.definition.triggers[0]?.targetRequirements).toEqual([
+      { kind: "creature", control: "not_own" },
+    ]);
+  });
+
+  it("fires an each-player step trigger on every turn, and a your-step one only on yours", () => {
+    // Both watchers belong to p1; `activeId` says whose end step it is.
+    const endStepTriggers = (activeId: "p1" | "p2"): number => {
+      const { game, p1, p2 } = twoPlayers();
+      fillLibraries(game, 20);
+      const eachDef = compile(
+        "Each-Step Watcher",
+        "{2}",
+        "Artifact",
+        "At the beginning of each end step, draw a card.",
+      ).definition;
+      const yoursDef = compile(
+        "Your-Step Watcher",
+        "{2}",
+        "Artifact",
+        "At the beginning of your end step, draw a card.",
+      ).definition;
+      expect(eachDef.triggers[0]?.eachPlayersStep).toBe(true);
+      expect(yoursDef.triggers[0]?.eachPlayersStep).toBeUndefined();
+      for (const definition of [eachDef, yoursDef]) {
+        game.definitions[definition.id] = definition;
+        const card = createCardInstance({
+          definitionId: definition.id,
+          ownerId: p1.id,
+          zone: "battlefield",
+        });
+        game.cards[card.id] = card;
+        p1.zones.battlefield.push(card.id);
+      }
+      const active = activeId === "p1" ? p1 : p2;
+      game.turn.activePlayerId = active.id;
+      game.turn.phase = "ending";
+      game.turn.step = "end";
+      game.priorityPlayerId = active.id;
+      dispatchEventsInPlace(game, [{ kind: "step_begins", step: "end" }]);
+      // A single trigger goes straight on the stack; two or more open an
+      // ordering prompt instead, so count both places.
+      const ordering = game.prompts.find((prompt) => prompt.kind === "order_triggers");
+      return ordering?.kind === "order_triggers"
+        ? ordering.entries.length
+        : game.stack.length;
+    };
+
+    // On the opponent's end step only the "each" watcher triggers.
+    expect(endStepTriggers("p2")).toBe(1);
+    // On the controller's own end step, both do.
+    expect(endStepTriggers("p1")).toBe(2);
+  });
+
+  it("wins the game by eliminating everyone else", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    const next = applyEffects(
+      game,
+      bindCardEffects(game, [{ kind: "win_game", playerId: "controller" }], {
+        controllerId: p1.id,
+        sourceId: null,
+        targets: [],
+        targetRequirements: [],
+      }),
+    );
+    expect(next.players.find((entry) => entry.id === p2.id)?.lost).toBe(true);
+    expect(next.players.find((entry) => entry.id === p1.id)?.lost).toBe(false);
+  });
+});
+

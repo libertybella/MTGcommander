@@ -104,6 +104,28 @@ function triggerConditionHolds(
     );
     return defender.life >= most;
   }
+  if (condition.kind === "life_at_least") {
+    const player = state.players.find((entry) => entry.id === controllerId);
+    return (player?.life ?? 0) >= condition.amount;
+  }
+  if (condition.kind === "hand_size_exactly") {
+    const player = state.players.find((entry) => entry.id === controllerId);
+    return (player?.zones.hand.length ?? -1) === condition.count;
+  }
+  if (
+    condition.kind === "controls_subtype_count" ||
+    condition.kind === "controls_no_subtype"
+  ) {
+    const count = Object.values(state.cards).filter(
+      (card) =>
+        card.zone === "battlefield" &&
+        card.controllerId === controllerId &&
+        cardMatchesSubtype(state, card.id, condition.subtype),
+    ).length;
+    return condition.kind === "controls_no_subtype"
+      ? count === 0
+      : count >= condition.atLeast;
+  }
   if (condition.kind === "controls_power_at_least") {
     // Garruk's Uprising: any controlled creature at or above the power bar.
     return Object.values(state.cards).some(
@@ -631,8 +653,12 @@ function triggerMatchesEvent(
       return false;
     }
     const step = trigger.event === "upkeep" ? "upkeep" : "end";
-    // "At the beginning of your …": the controller's own step.
-    return event.step === step && watcher.controllerId === state.turn.activePlayerId;
+    if (event.step !== step) {
+      return false;
+    }
+    // "At the beginning of EACH end step" fires on every player's turn;
+    // "your" fires only on the controller's own.
+    return trigger.eachPlayersStep === true || watcher.controllerId === state.turn.activePlayerId;
   }
   if (event.kind === "combat_damage_to_player") {
     if (trigger.event !== "deals_combat_damage_to_player") {

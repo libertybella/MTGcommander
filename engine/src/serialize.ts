@@ -2684,6 +2684,8 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
       return { kind, cardId: parseChosenTargetRef(value.cardId, `${label}.cardId`) };
     case "extra_land_drop":
       return { kind, playerId: parsePlayerSelector(value.playerId, `${label}.playerId`) };
+    case "win_game":
+      return { kind, playerId: parsePlayerSelector(value.playerId, `${label}.playerId`) };
     case "overload_each":
       return {
         kind,
@@ -3082,6 +3084,7 @@ function parseTriggers(value: unknown, label: string): CardTrigger[] {
       ...(entry.excludeSelf === true ? { excludeSelf: true } : {}),
       ...(entry.oncePerTurn === true ? { oncePerTurn: true } : {}),
       ...(entry.oncePerBatch === true ? { oncePerBatch: true } : {}),
+      ...(entry.eachPlayersStep === true ? { eachPlayersStep: true } : {}),
       ...(entry.alsoOnCopy === true ? { alsoOnCopy: true } : {}),
       ...(entry.modes === undefined
         ? {}
@@ -3112,6 +3115,46 @@ function parseTriggers(value: unknown, label: string): CardTrigger[] {
                   power: expectNumber(
                     entry.condition.power,
                     `${label}[${index}].condition.power`,
+                  ),
+                };
+              }
+              if (conditionKind === "life_at_least") {
+                return {
+                  kind: conditionKind,
+                  amount: expectNumber(
+                    entry.condition.amount,
+                    `${label}[${index}].condition.amount`,
+                  ),
+                };
+              }
+              if (conditionKind === "hand_size_exactly") {
+                return {
+                  kind: conditionKind,
+                  count: expectNumber(
+                    entry.condition.count,
+                    `${label}[${index}].condition.count`,
+                  ),
+                };
+              }
+              if (conditionKind === "controls_no_subtype") {
+                return {
+                  kind: conditionKind,
+                  subtype: expectString(
+                    entry.condition.subtype,
+                    `${label}[${index}].condition.subtype`,
+                  ),
+                };
+              }
+              if (conditionKind === "controls_subtype_count") {
+                return {
+                  kind: conditionKind,
+                  subtype: expectString(
+                    entry.condition.subtype,
+                    `${label}[${index}].condition.subtype`,
+                  ),
+                  atLeast: expectNumber(
+                    entry.condition.atLeast,
+                    `${label}[${index}].condition.atLeast`,
                   ),
                 };
               }
@@ -3940,7 +3983,7 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
   if (kind === "prevent_combat_for") {
     return { kind, cardId: expectString(value.cardId, `${label}.cardId`) };
   }
-  if (kind === "extra_land_drop") {
+  if (kind === "extra_land_drop" || kind === "win_game") {
     return { kind, playerId: expectString(value.playerId, `${label}.playerId`) };
   }
   if (kind === "overload_each") {
