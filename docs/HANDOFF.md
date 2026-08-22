@@ -8,21 +8,25 @@ on-what lives in [CLAIMS.md](CLAIMS.md). This file is the tribal
 knowledge that isn't obvious from those: exact commands, traps, and
 the current state of play. Read all four before writing code.
 
-## State of play (checkpoint-75-grammars-ii, 2026-08-22)
+## State of play (2026-08-22, two waves past checkpoint-75)
 
-- Branch `comprehensive-plan`, tags through `checkpoint-75-grammars-ii`.
-- 914 tests green; top-2,000 compile rate **54.1% (1,086/2,009)**,
-  60-card sample 93% (CI floor 85%).
+- Branch `comprehensive-plan`, tags through `checkpoint-75-grammars-ii`;
+  waves 155–156 are committed on top of it and the next checkpoint tag
+  is due after wave 159.
+- 920 tests green; top-2,000 compile rate **54.6% (1,096/2,009)**,
+  60-card sample 95% (CI floor now 90).
 - The wave loop continues toward the goal gate: M6, ≥95% of the EDHREC
   top-2,000 fully compiling. The rhythm below is proven across 154
   waves (15.6% → 54.1%); follow it as written.
-- **Yield per wave is falling and that is the real news.** Waves 145–154
-  flipped 13, 15, 11, 6, 7, 8, 7, 5, 1, 6. The early numbers came from
-  grammars that replaced whole families of regexes; those families are
-  now largely built, and what is left is a genuine long tail. Plan on
-  roughly 5–8 flips per wave from here, not 13, and pick clusters
+- **Yield per wave is falling and that is the real news.** Waves 145–156
+  flipped 13, 15, 11, 6, 7, 8, 7, 5, 1, 6, 6, 4. The early numbers came
+  from grammars that replaced whole families of regexes; those families
+  are now largely built, and what is left is a genuine long tail. Plan
+  on roughly 4–6 flips per wave from here, not 13, and pick clusters
   accordingly — a cycle of near-identical cards (the Verge lands, the
-  Landscapes) is worth far more than a high-ranked one-off.
+  Landscapes) is worth far more than a high-ranked one-off. At that
+  rate M6 (≥95%, another 813 cards) is not reachable by grinding alone;
+  see "The cheap tail is spent" below for what actually moves it.
 - **Never push to GitHub without Liberty's explicit yes.** Nothing has
   been pushed; the remote flow (Ross et al.) starts only when she says
   so.
@@ -288,6 +292,27 @@ field just silently drops).
   timeout failures masquerading as integrity failures.
 
 ## High-value open clusters (see CLAIMS.md for live status)
+
+**The cheap tail is spent.** Waves 145–156 took the compile rate from
+50.1% to 54.6% by finding families; by wave 157 the scan stopped
+returning them. What is left divides into two piles, and the second is
+where the remaining rate lives:
+
+- *One-off clauses* — 3–6 flips per wave, each card its own mechanic.
+  Still worth grinding, but budget accordingly.
+- *Machinery that unlocks many at once, and needs real surgery first.*
+  Three are worth doing in this order: *(a)* **free casting from hand**
+  ("you may cast a spell with mana value N or less without paying its
+  mana cost" — Rishkar's Expertise, Electrodominance, Omniscience,
+  Bolas's Citadel, As Foretold, One with the Multiverse) needs a new
+  choose-and-cast prompt, which means all four mapper layers including
+  the client/bot/fuzz answers; *(b)* **tagged mana** unblocks the
+  Spend-this-mana-only cluster and Phyrexian payment; *(c)* **sagas**,
+  still the single biggest miss (Urza's Saga).
+
+Doing (a) first is the best value: the prompt it needs is reusable by
+several later clusters, and unlike (b) it does not touch every payment
+site.
 
 Families identified but not yet built, each worth roughly a wave:
 **general "A and B" trigger bodies** (the clause compiler handles some
