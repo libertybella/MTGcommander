@@ -209,6 +209,10 @@ export type CardDefinition = {
   opponentArtifactsEnterTapped?: boolean;
   /** "You may cast spells as though they had flash" (Vedalken Orrery). */
   grantsFlash?: boolean;
+  /** Sigarda's Aid, Shimmer Myr: the grant covers only some spells. Kept
+   * narrower than a full subject filter because derived.ts cannot reach the
+   * trigger matcher without closing an import cycle. */
+  grantsFlashFor?: { types?: string[]; subtypesAny?: string[] };
   /** Omniscience: the controller casts from hand without paying mana costs.
    * As Foretold adds a per-turn limit and a counter-derived cap. */
   castFreeFromHand?: {

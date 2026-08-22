@@ -280,7 +280,7 @@ function validateCast(
   if (
     !isInstant(state, cardId) &&
     !hasKeyword(state, cardId, "flash") &&
-    !hasFlashGrant(state, playerId) &&
+    !hasFlashGrant(state, playerId, cardId) &&
     !canCastNonInstantNow(state, playerId)
   ) {
     throw new Error("That spell cannot be cast at this time");

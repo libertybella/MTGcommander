@@ -75,6 +75,7 @@ export type CompiledOracleText = {
   storm?: boolean;
   doesntUntap?: boolean;
   grantsFlash?: boolean;
+  grantsFlashFor?: { types?: string[]; subtypesAny?: string[] };
   castFreeFromHand?: CardDefinition["castFreeFromHand"];
   attackTax?: { generic?: number; perEnchantment?: boolean; lifePer?: number };
   leyline?: boolean;
@@ -1120,6 +1121,34 @@ function parseGraveyardTargetPhrase(phrase: string): TargetRequirement | null {
   }
   const head = GRAVEYARD_HEAD_NOUNS.find(([pattern]) => pattern.test(rest.trim()));
   return head ? { ...requirement, kind: head[1] } : null;
+}
+
+/**
+ * "Exile that creature", "Return that card … to the battlefield" — a clause
+ * whose subject is whatever an EARLIER clause targeted, rather than a target
+ * of its own. Callers must only use this when the card has already declared a
+ * target, because index 0 would otherwise bind to nobody and the effect would
+ * quietly do nothing.
+ */
+function compileBackReferenceClause(sentence: string): CardEffect[] | null {
+  const chosen = { type: "chosen", index: 0 } as const;
+  const moved = sentence.match(/^(Exile|Destroy|Tap|Untap) (?:that (?:creature|card|permanent)|it)$/i);
+  if (moved?.[1]) {
+    const verb = moved[1].toLowerCase();
+    if (verb === "tap") {
+      return [{ kind: "tap", cardId: chosen }];
+    }
+    if (verb === "untap") {
+      return [{ kind: "untap", cardId: chosen }];
+    }
+    return [
+      { kind: "move_card", cardId: chosen, toZone: verb === "exile" ? "exile" : "graveyard" },
+    ];
+  }
+  if (/^Return that card from your graveyard to the battlefield$/i.test(sentence)) {
+    return [{ kind: "move_card", cardId: chosen, toZone: "battlefield" }];
+  }
+  return null;
 }
 
 /**
@@ -9689,6 +9718,24 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
       result.grantsFlash = true;
       continue;
     }
+    // Sigarda's Aid, Shimmer Myr: the same grant narrowed to some spells.
+    const narrowFlash = sentence.match(
+      /^You may cast ([A-Za-z ]+?) spells as though they had flash$/i,
+    );
+    if (narrowFlash?.[1]) {
+      const words = narrowFlash[1].split(/,\s*(?:and\s+)?|\s+and\s+/).map((word) => word.trim());
+      const types = words.filter((word) => SPELL_CARD_TYPES.has(word.toLowerCase()));
+      const subtypes = words.filter((word) => /^[A-Z][a-z]+$/.test(word));
+      if (types.length + subtypes.length === words.length && words.length > 0) {
+        result.grantsFlashFor = {
+          ...(types.length > 0 ? { types: types.map((word) => word.toLowerCase()) } : {}),
+          ...(subtypes.length > 0
+            ? { subtypesAny: subtypes.map((word) => word.toLowerCase()) }
+            : {}),
+        };
+        continue;
+      }
+    }
 
     // Omniscience: an uncapped, unlimited free-cast permission.
     if (
@@ -11173,6 +11220,16 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
       }
     }
 
+    // A clause referring back to what an earlier clause targeted. Only read
+    // once the card has a target for it to refer to.
+    if (result.targetRequirements.length > 0) {
+      const backReference = compileBackReferenceClause(sentence);
+      if (backReference) {
+        result.effects.push(...backReference);
+        continue;
+      }
+    }
+
     // Ability-word riders: "<effect> instead if <condition>" (Cabal Ritual,
     // Tragic Slip) and "If <condition>, [instead ]<effect>" (Dispatch,
     // Stubborn Denial). "Instead" replaces what the card has said so far;
@@ -11202,9 +11259,16 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
           : null;
     if (rider) {
       const condition = parseEffectCondition(rider.condition);
-      const clause = condition
-        ? compileSimpleClause(rider.body.replace(/\s+instead$/i, ""))
-        : null;
+      const body = rider.body.replace(/\s+instead$/i, "");
+      const backReference =
+        condition && result.targetRequirements.length > 0
+          ? compileBackReferenceClause(body)
+          : null;
+      const clause = backReference
+        ? { targetRequirements: [], effects: backReference }
+        : condition
+          ? compileSimpleClause(body)
+          : null;
       // A replacing rider needs something to replace, and its own targets
       // would renumber against the clause it is replacing — so it only
       // compiles when it adds no targets of its own.

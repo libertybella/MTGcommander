@@ -371,6 +371,27 @@ What the engine implements and what it intentionally does not. Tests are tagged 
   Together each stop there, and it is the same gap Insurrection and Origin of
   Metalbending stop at.
 
+- **Back-references and narrowed flash**: "exile that creature", "return that
+  card to the battlefield" — a clause whose subject is what an EARLIER clause
+  targeted rather than a target of its own. Read only once the card has
+  declared a target, because index 0 would otherwise bind to nobody and the
+  effect would quietly do nothing; with no target to refer to, the sentence
+  stays a clean miss. It works through an "instead" rider too, which is what
+  Stitch Together needs.
+
+  Flash grants can now name which spells they cover ("You may cast artifact
+  spells as though they had flash"). `hasFlashGrant` takes the spell being
+  cast: an unrestricted grant answers for anything, a narrowed one only for a
+  spell it covers, and a caller naming no card gets the unrestricted grants
+  only. The legal-action hoist stays as a fast path for the unrestricted case.
+
+  Worth recording how the narrowed grant nearly shipped broken. The compiler
+  branch made the cards report **fully compiled** — and the rate went up —
+  while `oracle.ts` never copied the new field onto the definition, so the
+  grant did nothing at the table. The compile-rate metric cannot see that
+  class of bug by construction; only the test caught it. That is the fourth
+  mapper layer, and it has now bitten in the same place more than once.
+
 ## The card pipeline (Stage 6)
 
 - Real cards compile from Scryfall oracle text by shared sentence patterns; a hand-authored registry (`server/src/cardOverrides.ts`, data in the same schema) beats the compiler for the long tail. Never a named-card code path.

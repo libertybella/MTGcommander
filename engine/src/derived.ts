@@ -453,8 +453,13 @@ export function canPlayLandFromTop(state: GameState, playerId: string, cardId: s
   return topOfLibraryGrant(state, playerId)?.playLands === true;
 }
 
-/** Vedalken Orrery-class: the player may cast any spell at instant speed. */
-export function hasFlashGrant(state: GameState, playerId: string): boolean {
+/**
+ * Vedalken Orrery-class: the player may cast a spell at instant speed.
+ * `cardId` is the spell being cast — a grant restricted to some spells
+ * (Sigarda's Aid, Shimmer Myr) only answers for one it covers, so a caller
+ * that does not name a card gets the unrestricted grants only.
+ */
+export function hasFlashGrant(state: GameState, playerId: string, cardId?: string): boolean {
   // Emergence Zone-class one-shot grants last only for this turn.
   if ((state.flashThisTurn ?? []).includes(playerId)) {
     return true;
@@ -463,10 +468,28 @@ export function hasFlashGrant(state: GameState, playerId: string): boolean {
     if (card.zone !== "battlefield" || card.controllerId !== playerId) {
       return false;
     }
-    if (state.definitions[card.definitionId]?.grantsFlash !== true) {
+    const definition = state.definitions[card.definitionId];
+    if (!definition || abilitiesRemoved(state, card.id)) {
       return false;
     }
-    return !abilitiesRemoved(state, card.id);
+    if (definition.grantsFlash === true) {
+      return true;
+    }
+    const scope = definition.grantsFlashFor;
+    if (!scope || !cardId) {
+      return false;
+    }
+    const traits = characteristicsOf(state, cardId);
+    if (scope.types && !scope.types.every((type) => traits.types.includes(type))) {
+      return false;
+    }
+    if (
+      scope.subtypesAny &&
+      !scope.subtypesAny.some((subtype) => cardMatchesSubtype(state, cardId, subtype))
+    ) {
+      return false;
+    }
+    return true;
   });
 }
 

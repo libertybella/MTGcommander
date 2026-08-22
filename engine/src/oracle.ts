@@ -219,6 +219,7 @@ function compileOneFace(card: OracleCard, definitionId: string): OracleCompileRe
     ...(compiled.storm ? { storm: true } : {}),
     ...(compiled.doesntUntap ? { doesntUntap: true } : {}),
     ...(compiled.grantsFlash ? { grantsFlash: true } : {}),
+    ...(compiled.grantsFlashFor ? { grantsFlashFor: compiled.grantsFlashFor } : {}),
     ...(compiled.castFreeFromHand ? { castFreeFromHand: compiled.castFreeFromHand } : {}),
     ...(compiled.attackTax ? { attackTax: { ...compiled.attackTax } } : {}),
     ...(compiled.leyline ? { leyline: true } : {}),

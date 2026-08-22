@@ -287,7 +287,10 @@ function castableFace(
   const isInstantSpeed =
     definition.characteristics.types.includes("instant") ||
     definition.keywords.includes("flash") ||
-    (flashGrant ?? hasFlashGrant(state, playerId));
+    // The hoisted value answers only for UNRESTRICTED grants, so a grant
+    // narrowed to some spells (Sigarda's Aid) still needs the per-card check.
+    (flashGrant ?? false) ||
+    hasFlashGrant(state, playerId, spellId);
   if (!isInstantSpeed && !inSorceryWindow(state, playerId)) {
     return false;
   }
@@ -509,8 +512,8 @@ export function legalActions(state: GameState, playerId: PlayerId): LegalAction[
     return [];
   }
   const potential = potentialMana(state, playerId);
-  // Hoisted: hasFlashGrant scans the battlefield, so compute it once per
-  // legalActions call instead of once per castable card.
+  // Hoisted fast path: hasFlashGrant scans the battlefield, and an
+  // unrestricted grant answers for every card, so compute that once.
   const flashGrant = hasFlashGrant(state, playerId);
   // Grand Abolisher: no casts, no battlefield a/c/e activations, this turn.
   // Silence adds a cast-only lock for everyone but its caster.

@@ -23752,3 +23752,129 @@ describe("wave 191: ability words and the conditions behind them", () => {
   });
 });
 
+
+describe("wave 192: back-references and narrowed flash", () => {
+  const compile = (name: string, manaCost: string, typeLine: string, oracleText: string, power?: string, toughness?: string) =>
+    compileOracleCard({
+      oracleId: name,
+      name,
+      manaCost,
+      typeLine,
+      power: power ?? null,
+      toughness: toughness ?? null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  it("reads a clause whose subject is what an earlier clause targeted", () => {
+    const dispatch = compile(
+      "Dispatch",
+      "{W}",
+      "Instant",
+      "Tap target creature.\nMetalcraft — If you control three or more artifacts, exile that creature.",
+    );
+    expect(dispatch.notes).toEqual([]);
+    expect(dispatch.definition.targetRequirements).toEqual([{ kind: "creature" }]);
+    expect(dispatch.definition.effects[0]).toEqual({
+      kind: "tap",
+      cardId: { type: "chosen", index: 0 },
+    });
+    const gated = dispatch.definition.effects[1] as { then: unknown[] };
+    // "That creature" is the tapped one, not a second target.
+    expect(gated.then).toEqual([
+      { kind: "move_card", cardId: { type: "chosen", index: 0 }, toZone: "exile" },
+    ]);
+    expect(dispatch.definition.targetRequirements).toHaveLength(1);
+  });
+
+  it("refuses a back-reference with nothing to refer to", () => {
+    // With no earlier target, index 0 would bind to nobody and the effect
+    // would quietly do nothing — a clean miss is the honest answer.
+    const orphan = compile("Testcard", "{W}", "Instant", "Exile that creature.");
+    expect(orphan.notes.join(" ")).toContain("Exile that creature");
+  });
+
+  it("carries a back-reference through an instead rider", () => {
+    const stitch = compile(
+      "Stitch Together",
+      "{2}{B}",
+      "Sorcery",
+      "Return target creature card from your graveyard to your hand.\nThreshold — Return that card from your graveyard to the battlefield instead if there are seven or more cards in your graveyard.",
+    );
+    expect(stitch.notes).toEqual([]);
+    expect(stitch.definition.effects).toHaveLength(1);
+    const gated = stitch.definition.effects[0] as {
+      then: { toZone: string }[];
+      otherwise: { toZone: string }[];
+    };
+    expect(gated.then[0]?.toZone).toBe("battlefield");
+    expect(gated.otherwise[0]?.toZone).toBe("hand");
+  });
+
+  it("grants flash to only the spells the card names", () => {
+    const aid = compile(
+      "Sigarda's Aid",
+      "{W}",
+      "Enchantment",
+      "You may cast Aura and Equipment spells as though they had flash.",
+    );
+    expect(aid.notes).toEqual([]);
+    expect(aid.definition.grantsFlashFor).toEqual({ subtypesAny: ["aura", "equipment"] });
+
+    const myr = compile(
+      "Shimmer Myr",
+      "{3}",
+      "Artifact Creature — Myr",
+      "Flash\nYou may cast artifact spells as though they had flash.",
+      "1",
+      "1",
+    );
+    expect(myr.notes).toEqual([]);
+    expect(myr.definition.grantsFlashFor).toEqual({ types: ["artifact"] });
+  });
+
+  it("answers the narrowed grant per spell, not per player", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const myrDef = createCardDefinition({
+      name: "Shimmer Myr",
+      typeLine: "Artifact Creature — Myr",
+      power: 1,
+      toughness: 1,
+      grantsFlashFor: { types: ["artifact"] },
+    });
+    const relicDef = createCardDefinition({ name: "Relic", typeLine: "Artifact" });
+    const bearDef = createCardDefinition({
+      name: "Bear",
+      typeLine: "Creature — Bear",
+      power: 2,
+      toughness: 2,
+    });
+    for (const definition of [myrDef, relicDef, bearDef]) {
+      game.definitions[definition.id] = definition;
+    }
+    const myr = createCardInstance({
+      definitionId: myrDef.id,
+      ownerId: p1.id,
+      zone: "battlefield",
+    });
+    game.cards[myr.id] = myr;
+    p1.zones.battlefield.push(myr.id);
+    const inHand = (definitionId: string) => {
+      const card = createCardInstance({ definitionId, ownerId: p1.id, zone: "hand" });
+      game.cards[card.id] = card;
+      p1.zones.hand.push(card.id);
+      return card;
+    };
+    const relic = inHand(relicDef.id);
+    const bear = inHand(bearDef.id);
+
+    expect(hasFlashGrant(game, p1.id, relic.id)).toBe(true);
+    // A creature is not covered by an artifact-only grant.
+    expect(hasFlashGrant(game, p1.id, bear.id)).toBe(false);
+    // And a caller that names no card gets the unrestricted grants only.
+    expect(hasFlashGrant(game, p1.id)).toBe(false);
+  });
+});
+

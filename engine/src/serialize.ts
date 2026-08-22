@@ -597,6 +597,23 @@ export function parseGameState(json: string): GameState {
       ...(def.storm === true ? { storm: true } : {}),
       ...(def.doesntUntap === true ? { doesntUntap: true } : {}),
       ...(def.grantsFlash === true ? { grantsFlash: true } : {}),
+      ...(isRecord(def.grantsFlashFor)
+        ? {
+            grantsFlashFor: {
+              ...(def.grantsFlashFor.types === undefined
+                ? {}
+                : { types: parseStringList(def.grantsFlashFor.types, "grantsFlashFor.types") }),
+              ...(def.grantsFlashFor.subtypesAny === undefined
+                ? {}
+                : {
+                    subtypesAny: parseStringList(
+                      def.grantsFlashFor.subtypesAny,
+                      "grantsFlashFor.subtypesAny",
+                    ),
+                  }),
+            },
+          }
+        : {}),
       ...(isRecord(def.castFreeFromHand)
         ? {
             castFreeFromHand: {
