@@ -17362,7 +17362,11 @@ describe("wave 147: overruns, safekeeping, and last stands", () => {
       "Target creature you control gets +3/+3 and gains trample, hexproof, and indestructible until end of turn.",
     );
     expect(overprotect.notes).toEqual([]);
-    expect(overprotect.definition.targetRequirements).toEqual([{ kind: "own_creature" }]);
+    // The shared target phrase spells "you control" as a control filter; the
+    // dedicated own_creature kind means the same thing and both are honoured.
+    expect(overprotect.definition.targetRequirements).toEqual([
+      { kind: "creature", control: "own" },
+    ]);
     expect(overprotect.definition.effects).toHaveLength(4);
     expect(overprotect.definition.effects[0]).toMatchObject({ kind: "pt_until_eot", power: 3 });
     expect(
@@ -22475,6 +22479,268 @@ describe("wave 184: counter placement as a grammar", () => {
       "Put a fistful of counters on target creature.",
     );
     expect(odd.notes.join(" ")).toContain("fistful");
+  });
+});
+
+
+describe("wave 185: the target noun phrase, read once", () => {
+  const compile = (name: string, manaCost: string, typeLine: string, oracleText: string, power?: string, toughness?: string) =>
+    compileOracleCard({
+      oracleId: name,
+      name,
+      manaCost,
+      typeLine,
+      power: power ?? null,
+      toughness: toughness ?? null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  it("reads 'another target creature' on an until-EOT grant", () => {
+    // The grant used to enumerate five exact target phrases; "another" was
+    // not among them, so Heliod's activated ability stayed uncompiled.
+    const heliod = compile(
+      "Heliod, Sun-Crowned",
+      "{2}{W}",
+      "Legendary Enchantment Creature — God",
+      "{1}{W}: Another target creature gains lifelink until end of turn.",
+      "5",
+      "5",
+    );
+    expect(heliod.notes).toEqual([]);
+    const ability = heliod.definition.activated[0];
+    expect(ability?.targetRequirements).toEqual([{ kind: "creature", excludeSource: true }]);
+    expect(ability?.effects).toEqual([
+      { kind: "keyword_until_eot", cardId: { type: "chosen", index: 0 }, keyword: "lifelink" },
+    ]);
+  });
+
+  it("carries the qualifiers the shared phrase already knew about", () => {
+    const plaza = compile(
+      "Plaza of Heroes",
+      "",
+      "Land",
+      "{3}, {T}, Exile ~: Target legendary creature gains hexproof and indestructible until end of turn.",
+    );
+    // The cost half is a separate miss; the grant half now reads its subject.
+    expect(plaza.definition.activated[0]?.targetRequirements ?? []).toEqual([]);
+    const bear = compile(
+      "Testcard",
+      "{1}{G}",
+      "Instant",
+      "Target creature you don't control gets +1/+1 until end of turn.",
+    );
+    expect(bear.notes).toEqual([]);
+    expect(bear.definition.targetRequirements).toEqual([{ kind: "creature", control: "not_own" }]);
+  });
+
+  it("still refuses a subject it cannot read", () => {
+    // The delegation must not widen the grant to anything vaguely shaped like
+    // a target — an unreadable noun phrase stays a clean miss.
+    const odd = compile(
+      "Testcard",
+      "{1}{G}",
+      "Instant",
+      "Target hovercraft you control gets +1/+1 until end of turn.",
+    );
+    expect(odd.notes.join(" ")).toContain("hovercraft");
+  });
+
+  it("reads each side of a P/T modifier on its own", () => {
+    const oneSided = compile(
+      "Testcard",
+      "{X}{R}{G}",
+      "Instant",
+      "Target creature gets +X/+0 and gains trample until end of turn.",
+    );
+    expect(oneSided.notes).toEqual([]);
+    expect(oneSided.definition.effects[0]).toEqual({
+      kind: "pt_until_eot",
+      cardId: { type: "chosen", index: 0 },
+      power: "x",
+      toughness: 0,
+    });
+    const negated = compile(
+      "Testcard",
+      "{B}",
+      "Instant",
+      "Target creature gets -X/-X until end of turn.",
+    );
+    expect(negated.notes).toEqual([]);
+    expect(negated.definition.effects[0]).toEqual({
+      kind: "pt_until_eot",
+      cardId: { type: "chosen", index: 0 },
+      power: "minus_x",
+      toughness: "minus_x",
+    });
+  });
+
+  it("refuses a negated X that also names what X reads", () => {
+    // "-X/-X, where X is the number of creatures you control" would have to
+    // negate a board count; nothing prints it and guessing would be wrong.
+    const odd = compile(
+      "Testcard",
+      "{B}",
+      "Instant",
+      "Target creature gets -X/-X until end of turn, where X is the number of creatures you control.",
+    );
+    expect(odd.notes.length).toBeGreaterThan(0);
+  });
+
+  it("resolves a negated X to a real shrink", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    const bearDef = createCardDefinition({
+      name: "Bear",
+      typeLine: "Creature — Bear",
+      power: 4,
+      toughness: 4,
+    });
+    game.definitions[bearDef.id] = bearDef;
+    const bear = createCardInstance({
+      definitionId: bearDef.id,
+      ownerId: p2.id,
+      zone: "battlefield",
+    });
+    game.cards[bear.id] = bear;
+    p2.zones.battlefield.push(bear.id);
+
+    const next = applyEffects(
+      game,
+      bindCardEffects(
+        game,
+        [{ kind: "pt_until_eot", cardId: { type: "chosen", index: 0 }, power: "minus_x", toughness: "minus_x" }],
+        {
+          controllerId: p1.id,
+          sourceId: null,
+          targetRequirements: [{ kind: "creature" }],
+          targets: [{ type: "creature", cardId: bear.id }],
+          xValue: 3,
+        },
+      ),
+    );
+    const shrunk = computedCard(next, bear.id);
+    expect(shrunk?.power).toBe(1);
+    expect(shrunk?.toughness).toBe(1);
+  });
+
+  it("counters a multicolored spell and spares a mono-colored one", () => {
+    const blast = compile(
+      "Null Elemental Blast",
+      "{R}",
+      "Instant",
+      "Choose one —\n• Counter target multicolored spell.\n• Destroy target multicolored permanent.",
+    );
+    expect(blast.notes).toEqual([]);
+    expect(blast.definition.modes?.[0]?.targetRequirements).toEqual([
+      { kind: "spell", multicolored: true },
+    ]);
+    expect(blast.definition.modes?.[1]?.targetRequirements).toEqual([
+      { kind: "permanent", multicolored: true },
+    ]);
+
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    const gold = createCardDefinition({
+      name: "Gold Bear",
+      typeLine: "Creature — Bear",
+      manaCost: "{R}{G}",
+      power: 2,
+      toughness: 2,
+    });
+    const mono = createCardDefinition({
+      name: "Red Bear",
+      typeLine: "Creature — Bear",
+      manaCost: "{R}",
+      power: 2,
+      toughness: 2,
+    });
+    game.definitions[gold.id] = gold;
+    game.definitions[mono.id] = mono;
+    const put = (definitionId: string) => {
+      const card = createCardInstance({ definitionId, ownerId: p2.id, zone: "battlefield" });
+      game.cards[card.id] = card;
+      p2.zones.battlefield.push(card.id);
+      return card;
+    };
+    const twoColors = put(gold.id);
+    const oneColor = put(mono.id);
+    const requirement = { kind: "permanent", multicolored: true } as const;
+    expect(
+      isChosenTargetLegal(game, requirement, { type: "creature", cardId: twoColors.id }, p1.id),
+    ).toBe(true);
+    // One color is not "multicolored" — without the filter check this would
+    // have been a legal choice.
+    expect(
+      isChosenTargetLegal(game, requirement, { type: "creature", cardId: oneColor.id }, p1.id),
+    ).toBe(false);
+  });
+
+  it("offers only creatures the requirement actually admits", () => {
+    // legalChoicesForRequirement listed every creature for a "creature"
+    // requirement, ignoring the qualifiers isChosenTargetLegal enforces — so
+    // a control filter was honoured when checking and inert when choosing.
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    const bearDef = createCardDefinition({
+      name: "Bear",
+      typeLine: "Creature — Bear",
+      power: 2,
+      toughness: 2,
+    });
+    game.definitions[bearDef.id] = bearDef;
+    const put = (owner: typeof p1) => {
+      const card = createCardInstance({
+        definitionId: bearDef.id,
+        ownerId: owner.id,
+        zone: "battlefield",
+      });
+      game.cards[card.id] = card;
+      owner.zones.battlefield.push(card.id);
+      return card;
+    };
+    const mine = put(p1);
+    const theirs = put(p2);
+
+    const choices = legalChoicesForRequirement(
+      game,
+      { kind: "creature", control: "own" },
+      p1.id,
+    ).flatMap((choice) => (choice.type === "creature" ? [choice.cardId] : []));
+    expect(choices).toContain(mine.id);
+    expect(choices).not.toContain(theirs.id);
+  });
+
+  it("round-trips an until-EOT pump that carries an announced X", () => {
+    // The unbound parser accepted "target_power" and numbers only, so the
+    // "x" the type had allowed since the X-pump wave failed to deserialize.
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const definition = createCardDefinition({
+      name: "Tyvar's Stand",
+      typeLine: "Instant",
+      effects: [
+        { kind: "pt_until_eot", cardId: { type: "chosen", index: 0 }, power: "x", toughness: "x" },
+      ],
+      targetRequirements: [{ kind: "creature" }],
+    });
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({
+      definitionId: definition.id,
+      ownerId: p1.id,
+      zone: "hand",
+    });
+    game.cards[card.id] = card;
+    p1.zones.hand.push(card.id);
+
+    const restored = parseGameState(JSON.parse(JSON.stringify(serializeGameState(game))));
+    expect(restored.definitions[definition.id]?.effects[0]).toEqual({
+      kind: "pt_until_eot",
+      cardId: { type: "chosen", index: 0 },
+      power: "x",
+      toughness: "x",
+    });
   });
 });
 

@@ -2140,6 +2140,10 @@ function parseTargetRequirement(value: unknown, label: string): TargetRequiremen
     ...(value.maxPower === undefined
       ? {}
       : { maxPower: expectNumber(value.maxPower, `${label}.maxPower`) }),
+    ...(value.minPower === undefined
+      ? {}
+      : { minPower: expectNumber(value.minPower, `${label}.minPower`) }),
+    ...(value.multicolored === true ? { multicolored: true } : {}),
     ...(value.legendaryOnly === true ? { legendaryOnly: true } : {}),
     ...(value.nontoken === true ? { nontoken: true } : {}),
     ...(value.nonbasicOnly === true ? { nonbasicOnly: true } : {}),
@@ -2762,11 +2766,23 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
       return {
         kind,
         cardId: parseCardIdSelector(value.cardId, `${label}.cardId`),
+        // Both sides are read the same way: a number, or one of the variable
+        // terms the bind step resolves. "x" was admitted by the type but not
+        // by this parser, so an announced-X pump round-tripped as an error.
         power:
           value.power === "target_power"
             ? "target_power"
-            : expectNumber(value.power, `${label}.power`),
-        toughness: expectNumber(value.toughness, `${label}.toughness`),
+            : value.power === "x"
+              ? "x"
+              : value.power === "minus_x"
+                ? "minus_x"
+                : expectNumber(value.power, `${label}.power`),
+        toughness:
+          value.toughness === "x"
+            ? "x"
+            : value.toughness === "minus_x"
+              ? "minus_x"
+              : expectNumber(value.toughness, `${label}.toughness`),
       };
     case "keyword_until_eot": {
       const keyword = expectString(value.keyword, `${label}.keyword`);

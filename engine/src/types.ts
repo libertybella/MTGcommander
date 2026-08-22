@@ -1216,6 +1216,11 @@ export type TargetRequirement = {
   minManaValue?: number;
   /** "with power N or less" (Escape Tunnel). */
   maxPower?: number;
+  /** "with power N or greater" (Herd Heirloom). */
+  minPower?: number;
+  /** "target multicolored spell" / "…permanent" (Null Elemental Blast): two
+   * or more colors. Distinct from `requiredColors`, which names them. */
+  multicolored?: boolean;
   /** "target nonbasic land" (Wasteland). */
   nonbasicOnly?: boolean;
   /** "target legendary creature" (Shizo). */
@@ -1558,9 +1563,10 @@ export type CardEffect =
   | {
       kind: "pt_until_eot";
       cardId: CardIdSelector;
-      /** "x": the announced X on the spell that made this (Tyvar's Stand). */
-      power: number | "target_power" | "x";
-      toughness: number | "x";
+      /** "x": the announced X on the spell that made this (Tyvar's Stand).
+       * "minus_x": the same X, negated — "gets -X/-X" (Grim Hireling). */
+      power: number | "target_power" | "x" | "minus_x";
+      toughness: number | "x" | "minus_x";
     }
   | { kind: "keyword_until_eot"; cardId: CardIdSelector; keyword: Keyword }
   | {

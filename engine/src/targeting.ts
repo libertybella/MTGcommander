@@ -108,6 +108,13 @@ function violatesCharacteristicFilter(
   ) {
     return true;
   }
+  // "target multicolored permanent" (Null Elemental Blast).
+  if (requirement.multicolored && characteristicsOf(state, cardId).colors.length < 2) {
+    return true;
+  }
+  if (requirement.minPower !== undefined && creaturePower(state, cardId) < requirement.minPower) {
+    return true;
+  }
   return requirement.maxPower !== undefined && creaturePower(state, cardId) > requirement.maxPower;
 }
 
@@ -470,14 +477,21 @@ export function isChosenTargetLegal(
         return false;
       }
     }
-    if (requirement.requiredColors && requirement.requiredColors.length > 0) {
-      // "target blue spell" (Red Elemental Blast).
+    if (
+      (requirement.requiredColors && requirement.requiredColors.length > 0) ||
+      requirement.multicolored
+    ) {
+      // "target blue spell" (Red Elemental Blast), "target multicolored spell"
+      // (Null Elemental Blast).
       const entry = state.stack.find((object) => object.id === target.stackObjectId);
       const card = entry?.sourceId ? state.cards[entry.sourceId] : undefined;
       const colors = card
         ? state.definitions[card.definitionId]?.characteristics.colors ?? []
         : [];
-      return requirement.requiredColors.every((color) => colors.includes(color));
+      if (requirement.multicolored && colors.length < 2) {
+        return false;
+      }
+      return (requirement.requiredColors ?? []).every((color) => colors.includes(color));
     }
     return true;
   }
@@ -628,7 +642,14 @@ export function legalChoicesForRequirement(
       .map((player) => ({ type: "player" as const, playerId: player.id }));
   }
   if (requirement.kind === "creature") {
-    return legalCreatureTargets(state, casterId);
+    // Every qualifier a "creature" requirement can carry — control, mana
+    // value, characteristics — is enforced by isChosenTargetLegal. Listing the
+    // raw creature set here would offer choices the legality check then
+    // refuses, which is how a filter ends up inert on the choosing path while
+    // looking correct on the checking one.
+    return legalCreatureTargets(state, casterId).filter((choice) =>
+      isChosenTargetLegal(state, requirement, choice, casterId),
+    );
   }
   if (requirement.kind === "own_creature") {
     return legalCreatureTargets(state, casterId).filter(

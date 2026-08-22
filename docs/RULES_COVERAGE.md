@@ -204,6 +204,30 @@ What the engine implements and what it intentionally does not. Tests are tagged 
 
 - **Counter placement as a grammar**: "Put \<counters\> on \<subject\>" reads the counter list and the subject separately, so "a +1/+1 counter, a reach counter, and a deathtouch counter on target creature" needs neither a new branch nor a new effect. The subject accepts the source, the trigger's subject, any plain target phrase, or everyone's creatures on one side of the table. A counter name the list cannot read fails the whole clause rather than placing nothing.
 
+- **The target noun phrase, read once**: until-end-of-turn grants used to
+  match five exact target wordings of their own; they now read the same phrase
+  parser everything else uses, so "another target creature" (Heliod),
+  "target legendary creature" and "target creature you don't control" all
+  arrive without a branch each. That phrase gained a trailing-qualifier loop —
+  mana value, power, and the possessor, in any order — and the adjectives
+  "attacking" and "multicolored". A printed P/T modifier is now read as two
+  independent terms, each a signed number or a signed X, which is what admits
+  "+X/+0" and "-X/-X" instead of only the symmetric "+X/+X". A negated X paired
+  with a "where X is …" tail is refused: nothing prints it and the count would
+  have to be negated on a guess.
+
+  Two filters that existed but did not apply were fixed alongside it.
+  `legalChoicesForRequirement` listed every creature for a "creature"
+  requirement while `isChosenTargetLegal` enforced its qualifiers, so a control
+  or mana-value filter was honoured when checking a choice and inert when
+  offering one. And the unbound `pt_until_eot` parser accepted only numbers and
+  "target_power", so the announced-X pump the type had allowed since the X-pump
+  wave failed to deserialize.
+
+  Still open here: "gets -1/-1 until end of turn **for each** Swamp you
+  control" (Defile) — the grant carries no scale factor, and a basic-land
+  count is not in the dynamic-count table. That is a to-do, not a decision.
+
 ## The card pipeline (Stage 6)
 
 - Real cards compile from Scryfall oracle text by shared sentence patterns; a hand-authored registry (`server/src/cardOverrides.ts`, data in the same schema) beats the compiler for the long tail. Never a named-card code path.

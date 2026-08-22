@@ -672,6 +672,17 @@ function parseDamageReplacement(sentence: string): DamageReplacement | null {
   };
 }
 
+/**
+ * The colour word in "target \<colour\> spell" / "…permanent". A named colour
+ * becomes a required colour; "multicolored" is a count of them instead, which
+ * is why the two cannot share one field.
+ */
+function colorQualifierOf(word: string): Partial<TargetRequirement> {
+  return /^multicolored$/i.test(word)
+    ? { multicolored: true }
+    : { requiredColors: [COLOR_WORDS[word.toLowerCase()]!] };
+}
+
 /** Head nouns a plain "target …" phrase can name, longest first so
  * "artifact or creature" wins over "artifact". */
 const TARGET_HEAD_NOUNS: [RegExp, TargetKind][] = [
@@ -718,17 +729,46 @@ function parseSimpleTargetPhrase(phrase: string): TargetRequirement | null {
   }
   rest = target[1];
 
-  // Trailing possessor, stripped before the head noun is read.
-  const controlled = rest.match(/^(.*?)\s+you control$/i);
-  if (controlled?.[1]) {
-    requirement.control = "own";
-    rest = controlled[1];
-  } else {
-    const notControlled = rest.match(/^(.*?)\s+you don't control$/i);
+  // Trailing qualifiers, outermost first — the same shape parseSweepPhrase
+  // uses, so a new trailing wording is a loop arm rather than a branch.
+  for (;;) {
+    // "with mana value 1 or less" (Archmage's Charm), "…or greater" (Despark).
+    const manaValue = rest.match(/^(.*?)\s+with mana value (\d+) or (less|greater)$/i);
+    if (manaValue?.[1] && manaValue[2] && manaValue[3]) {
+      if (/^less$/i.test(manaValue[3])) {
+        requirement.maxManaValue = Number(manaValue[2]);
+      } else {
+        requirement.minManaValue = Number(manaValue[2]);
+      }
+      rest = manaValue[1];
+      continue;
+    }
+    // "with power 4 or greater" (Herd Heirloom), "…or less" (Escape Tunnel).
+    const power = rest.match(/^(.*?)\s+with power (\d+) or (less|greater)$/i);
+    if (power?.[1] && power[2] && power[3]) {
+      if (/^less$/i.test(power[3])) {
+        requirement.maxPower = Number(power[2]);
+      } else {
+        requirement.minPower = Number(power[2]);
+      }
+      rest = power[1];
+      continue;
+    }
+    const controlled = rest.match(/^(.*?)\s+you control$/i);
+    if (controlled?.[1]) {
+      requirement.control = "own";
+      rest = controlled[1];
+      continue;
+    }
+    // "an opponent controls" names the same set as "you don't control": every
+    // permanent the caster does not control is controlled by an opponent.
+    const notControlled = rest.match(/^(.*?)\s+(?:you don't control|an opponent controls)$/i);
     if (notControlled?.[1]) {
       requirement.control = "not_own";
       rest = notControlled[1];
+      continue;
     }
+    break;
   }
 
   // "target legendary permanent" (Minamo), "target nonbasic land" (Wasteland).
@@ -741,6 +781,19 @@ function parseSimpleTargetPhrase(phrase: string): TargetRequirement | null {
   if (nonbasic?.[1]) {
     requirement.nonbasicOnly = true;
     rest = nonbasic[1];
+  }
+  // "target attacking creature" (Maze of Ith, Duelist's Heritage).
+  const attacking = rest.match(/^attacking\s+(.*)$/i);
+  if (attacking?.[1]) {
+    requirement.attackingOnly = true;
+    rest = attacking[1];
+  }
+  // "target multicolored permanent" (Null Elemental Blast). "Monocolored" is
+  // deliberately absent: exactly-one-color has no filter to carry it.
+  const multicolored = rest.match(/^multicolored\s+(.*)$/i);
+  if (multicolored?.[1]) {
+    requirement.multicolored = true;
+    rest = multicolored[1];
   }
 
   // "non-Angel creature": a subtype the target may not have.
@@ -3321,25 +3374,21 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
   // restricted target — a documented approximation of the may-target-anything
   // wording; the outcomes match in practice).
   match =
-    sentence.match(/^Counter target (white|blue|black|red|green) spell$/i) ??
-    sentence.match(/^Counter target spell if it's (white|blue|black|red|green)$/i);
+    sentence.match(/^Counter target (white|blue|black|red|green|multicolored) spell$/i) ??
+    sentence.match(/^Counter target spell if it's (white|blue|black|red|green|multicolored)$/i);
   if (match?.[1]) {
     return {
-      targetRequirements: [
-        { kind: "spell", requiredColors: [COLOR_WORDS[match[1].toLowerCase()]!] },
-      ],
+      targetRequirements: [{ kind: "spell", ...colorQualifierOf(match[1]) }],
       effects: [{ kind: "counter_spell", target: { type: "chosen", index: 0 } }],
     };
   }
 
   match =
-    sentence.match(/^Destroy target (white|blue|black|red|green) permanent$/i) ??
-    sentence.match(/^Destroy target permanent if it's (white|blue|black|red|green)$/i);
+    sentence.match(/^Destroy target (white|blue|black|red|green|multicolored) permanent$/i) ??
+    sentence.match(/^Destroy target permanent if it's (white|blue|black|red|green|multicolored)$/i);
   if (match?.[1]) {
     return {
-      targetRequirements: [
-        { kind: "permanent", requiredColors: [COLOR_WORDS[match[1].toLowerCase()]!] },
-      ],
+      targetRequirements: [{ kind: "permanent", ...colorQualifierOf(match[1]) }],
       effects: [{ kind: "move_card", cardId: { type: "chosen", index: 0 }, toZone: "graveyard" }],
     };
   }
@@ -5326,6 +5375,10 @@ function splitOnce(text: string, separator: RegExp): [string, string] | null {
  * Who an until-end-of-turn grant applies to, in terms the effect vocabulary
  * can already address. `target` also carries the requirement to add.
  */
+/** One side of a printed P/T modifier, before it is matched to an effect that
+ * can carry it. Not every effect accepts every term. */
+type PtTerm = number | "x" | "minus_x" | "greatest_power" | "creature_count";
+
 type EotSubject =
   | { how: "team"; playerId: "controller" | "each_opponent"; subtypes?: string[] }
   | { how: "all" }
@@ -5364,28 +5417,13 @@ function parseEotSubject(phrase: string): EotSubject | null {
   if (/^(?:~|It|That creature|They)$/i.test(rest)) {
     return { how: "card", cardId: /^~$/.test(rest) ? "self" : "subject_card" };
   }
-  const targeted = rest.match(
-    /^Target (creature|creature you control|permanent you control|artifact or creature|attacking creature)$/i,
-  );
-  if (targeted?.[1]) {
-    const what = targeted[1].toLowerCase();
-    if (what === "creature") {
-      return { how: "target", requirement: { kind: "creature" } };
-    }
-    if (what === "creature you control") {
-      return { how: "target", requirement: { kind: "own_creature" } };
-    }
-    if (what === "attacking creature") {
-      return { how: "target", requirement: { kind: "creature", attackingOnly: true } };
-    }
-    if (what === "permanent you control") {
-      return { how: "target", requirement: { kind: "permanent", control: "own" } };
-    }
-    if (what === "artifact or creature") {
-      return { how: "target", requirement: { kind: "creature_or_artifact" } };
-    }
-  }
-  return null;
+  // The targeted subject is the ordinary targeting noun phrase, so it reads
+  // through the shared grammar rather than a list of the exact five wordings
+  // that happened to come up: "another target creature" (Heliod), "target
+  // legendary creature" (Plaza of Heroes) and "target creature you don't
+  // control" all arrive for free, and a new qualifier is added once.
+  const targeted = parseSimpleTargetPhrase(rest);
+  return targeted ? { how: "target", requirement: targeted } : null;
 }
 
 /**
@@ -5431,46 +5469,41 @@ function compileUntilEotGrant(sentence: string): SimpleClause | null {
     .map((part) => part.trim())
     .filter(Boolean);
   for (const part of parts) {
-    // "+X/+X" carries the announced X, or reads a "where X is …" tail
-    // (Tyvar's Stand, Overwhelming Stampede, Moonshaker Cavalry).
-    const variablePt = part.match(
-      /^gets?\s+([+-])X\/([+-])X(?:, where X is (the greatest power among creatures you control|the number of creatures you control))?$/i,
+    // A P/T modifier is two independent terms — each a signed number or a
+    // signed X — plus an optional "where X is …" tail naming what X reads.
+    // Reading the two sides separately is what admits "+X/+0" (Kessig Wolf
+    // Run) and "-X/-X" (Grim Hireling) without a branch per combination.
+    const ptMod = part.match(
+      /^gets?\s+([+-](?:\d+|X))\/([+-](?:\d+|X))(?:, where X is (the greatest power among creatures you control|the number of creatures you control))?$/i,
     );
-    if (variablePt?.[1] && variablePt[2]) {
-      // A minus sign would need a negated X, which nothing here produces.
-      if (variablePt[1] !== "+" || variablePt[2] !== "+") {
+    if (ptMod?.[1] && ptMod[2]) {
+      const xReads = ptMod[3]?.toLowerCase();
+      const term = (text: string): PtTerm | null => {
+        if (!/X$/i.test(text)) {
+          return Number(text);
+        }
+        if (text.startsWith("-")) {
+          // A "where X is …" tail names a board count, which is never
+          // negated on a printed card; pairing the two would be guesswork.
+          return xReads ? null : "minus_x";
+        }
+        return xReads === "the greatest power among creatures you control"
+          ? "greatest_power"
+          : xReads === "the number of creatures you control"
+            ? "creature_count"
+            : "x";
+      };
+      const power = term(ptMod[1]);
+      const toughness = term(ptMod[2]);
+      if (power === null || toughness === null) {
         return null;
       }
-      const source = variablePt[3]?.toLowerCase();
-      const amount =
-        source === "the greatest power among creatures you control"
-          ? ("greatest_power" as const)
-          : source === "the number of creatures you control"
-            ? ("creature_count" as const)
-            : ("x" as const);
       if (subject.how === "team") {
-        effects.push({
-          kind: "team_pt_until_eot",
-          playerId: subject.playerId,
-          power: amount,
-          toughness: amount,
-          ...(subject.subtypes ? { subtypes: [...subject.subtypes] } : {}),
-        });
-        continue;
-      }
-      // Only the announced X form works off a single card; the board-reading
-      // ones are printed on team effects only.
-      if (subject.how !== "all" && amount === "x") {
-        effects.push({ kind: "pt_until_eot", cardId: cardId!, power: "x", toughness: "x" });
-        continue;
-      }
-      return null;
-    }
-    const pt = part.match(/^gets?\s+([+-]\d+)\/([+-]\d+)$/i);
-    if (pt?.[1] && pt[2]) {
-      const power = Number(pt[1]);
-      const toughness = Number(pt[2]);
-      if (subject.how === "team") {
+        // The board-reading counts and the announced X all belong here; a
+        // negated X does not — no printed team effect uses one.
+        if (power === "minus_x" || toughness === "minus_x") {
+          return null;
+        }
         effects.push({
           kind: "team_pt_until_eot",
           playerId: subject.playerId,
@@ -5478,11 +5511,25 @@ function compileUntilEotGrant(sentence: string): SimpleClause | null {
           toughness,
           ...(subject.subtypes ? { subtypes: [...subject.subtypes] } : {}),
         });
-      } else if (subject.how === "all") {
-        effects.push({ kind: "all_pt_until_eot", power, toughness });
-      } else {
-        effects.push({ kind: "pt_until_eot", cardId: cardId!, power, toughness });
+        continue;
       }
+      if (subject.how === "all") {
+        // "All creatures get …" carries no card to read a variable against.
+        if (typeof power !== "number" || typeof toughness !== "number") {
+          return null;
+        }
+        effects.push({ kind: "all_pt_until_eot", power, toughness });
+        continue;
+      }
+      // Off a single card only the announced X resolves; the board-reading
+      // counts are printed on team effects only.
+      if (power === "greatest_power" || power === "creature_count") {
+        return null;
+      }
+      if (toughness === "greatest_power" || toughness === "creature_count") {
+        return null;
+      }
+      effects.push({ kind: "pt_until_eot", cardId: cardId!, power, toughness });
       continue;
     }
     const gains = part.match(/^gains?\s+(.+)$/i);

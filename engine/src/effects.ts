@@ -844,8 +844,15 @@ export function bindCardEffect(
           ? Math.max(0, creaturePower(state, cardId))
           : effect.power === "x"
             ? announced
-            : effect.power;
-      const toughness = effect.toughness === "x" ? announced : effect.toughness;
+            : effect.power === "minus_x"
+              ? -announced
+              : effect.power;
+      const toughness =
+        effect.toughness === "x"
+          ? announced
+          : effect.toughness === "minus_x"
+            ? -announced
+            : effect.toughness;
       return { kind: "pt_until_eot", cardId, power, toughness };
     }
     case "keyword_until_eot": {
