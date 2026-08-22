@@ -8,11 +8,26 @@ on-what lives in [CLAIMS.md](CLAIMS.md). This file is the tribal
 knowledge that isn't obvious from those: exact commands, traps, and
 the current state of play. Read all four before writing code.
 
-## State of play (checkpoint-79-grammars, 2026-08-22)
+## State of play (checkpoint-80-replacements, 2026-08-22)
 
-- Branch `comprehensive-plan`, tags through `checkpoint-79-grammars`.
-- 975 tests green; top-2,000 compile rate **57.4% (1,154/2,009)**,
+- Branch `comprehensive-plan`, tags through `checkpoint-80-replacements`.
+- 992 tests green; top-2,000 compile rate **58.9% (1,184/2,009)**,
   60-card sample 97% (CI floor now 90).
+- **Waves 174–178 flipped 7, 4, 5, 9, 5 — the grammar approach keeps
+  holding.** The pattern that produced the biggest wave (177, nine cards)
+  was the same one as wave 171: eight one-away cards turned out to be the
+  same sentence with different filling, so the filling became a parser.
+  Look for that shape first.
+- **A replacement effect is worth building the moment two cards want it,
+  because the third and fourth are free.** `damageAfterReplacements`
+  (wave 175) took four cards and the mana multiplier took two, but both
+  had to be wired at *every* application site — five for damage, or
+  Torbran would have boosted a Bolt and not an attack. Find every site
+  before writing the helper, not after.
+- **Before adding machinery, check whether the mirror of something that
+  exists will do.** A cost tax is a cost reduction with a negative
+  generic (wave 176); what was actually missing was a scope field, since
+  `castCostReduction` only ever walked the caster's own permanents.
 - **Waves 169–173 reversed the falling-yield trend, and the reason is
   worth copying: every one of them replaced a family of enumerated
   regexes with a parser.** Target noun phrases, graveyard noun phrases,
@@ -60,8 +75,8 @@ the current state of play. Read all four before writing code.
   normalisation bug affecting a whole class of legends. The zero-flip
   wave was worth more than its number.
 - The wave loop continues toward the goal gate: M6, ≥95% of the EDHREC
-  top-2,000 fully compiling. The rhythm below is proven across 173
-  waves (15.6% → 57.4%); follow it as written.
+  top-2,000 fully compiling. The rhythm below is proven across 178
+  waves (15.6% → 58.9%); follow it as written.
 - **Yield per wave tracks how much of the wave is a grammar.** Waves
   145–168 flipped 13, 15, 11, 6, 7, 8, 7, 5, 1, 6, 6, 4, 2, 2, 4, 9, 2, 2,
   1, 0, 1, 6, 0, 6, 0, 2 — a decline that read like an exhausted tail.
