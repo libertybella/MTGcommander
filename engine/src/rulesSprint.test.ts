@@ -20364,3 +20364,170 @@ describe("wave 170: granted quoted triggers on attachments", () => {
   });
 });
 
+
+describe("wave 171: target noun phrases as a grammar", () => {
+  const compile = (name: string, manaCost: string, typeLine: string, oracleText: string, power?: string, toughness?: string) =>
+    compileOracleCard({
+      oracleId: name,
+      name,
+      manaCost,
+      typeLine,
+      power: power ?? null,
+      toughness: toughness ?? null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  it("reads the qualifiers off a blink target instead of enumerating wordings", () => {
+    const angel = compile(
+      "Restoration Angel",
+      "{3}{W}",
+      "Creature — Angel",
+      "Flash\nFlying\nWhen this creature enters, you may exile target non-Angel creature you control, then return that card to the battlefield under your control.",
+      "3",
+      "4",
+    );
+    expect(angel.notes).toEqual([]);
+    expect(angel.definition.triggers[0]?.targetRequirements?.[0]).toEqual({
+      kind: "creature",
+      control: "own",
+      excludedSubtypes: ["angel"],
+    });
+
+    const guardian = compile(
+      "Felidar Guardian",
+      "{3}{W}",
+      "Creature — Cat Beast",
+      "When this creature enters, you may exile another target permanent you control, then return that card to the battlefield under its owner's control.",
+      "1",
+      "4",
+    );
+    expect(guardian.notes).toEqual([]);
+    expect(guardian.definition.triggers[0]?.targetRequirements?.[0]).toEqual({
+      kind: "permanent",
+      control: "own",
+      excludeSource: true,
+    });
+
+    const circle = compile(
+      "Teleportation Circle",
+      "{3}{W}",
+      "Enchantment",
+      "At the beginning of your end step, exile up to one target artifact or creature you control, then return that card to the battlefield under its owner's control.",
+    );
+    expect(circle.notes).toEqual([]);
+    expect(circle.definition.triggers[0]?.targetRequirements?.[0]).toEqual({
+      kind: "creature_or_artifact",
+      control: "own",
+      optional: true,
+    });
+  });
+
+  it("keeps the graveyard mana-value filter through one grammar", () => {
+    const unearth = compile(
+      "Unearth",
+      "{B}",
+      "Sorcery",
+      "Return target creature card with mana value 3 or less from your graveyard to the battlefield.\nCycling {2}",
+    );
+    expect(unearth.notes).toEqual([]);
+    expect(unearth.definition.targetRequirements[0]).toEqual({
+      kind: "own_graveyard_creature_card",
+      maxManaValue: 3,
+    });
+
+    const engineer = compile(
+      "Goblin Engineer",
+      "{1}{R}",
+      "Creature — Goblin Artificer",
+      "When this creature enters, you may search your library for an artifact card, put it into your graveyard, then shuffle.\n{R}, {T}, Sacrifice an artifact: Return target artifact card with mana value 3 or less from your graveyard to the battlefield.",
+      "1",
+      "2",
+    );
+    expect(engineer.notes).toEqual([]);
+    expect(engineer.definition.activated[0]?.targetRequirements[0]).toEqual({
+      kind: "own_graveyard_artifact_card",
+      maxManaValue: 3,
+    });
+  });
+
+  it("enforces legendary on a permanent target, not just a creature one", () => {
+    const minamo = compile(
+      "Minamo, School at Water's Edge",
+      "",
+      "Legendary Land",
+      "{T}: Add {U}.\n{U}, {T}: Untap target legendary permanent.",
+    );
+    expect(minamo.notes).toEqual([]);
+    const requirement = minamo.definition.activated[0]?.targetRequirements[0];
+    expect(requirement).toEqual({ kind: "permanent", legendaryOnly: true });
+
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const plainDef = createCardDefinition({
+      name: "Rock",
+      typeLine: "Artifact",
+    });
+    const legendDef = createCardDefinition({
+      name: "Relic",
+      typeLine: "Legendary Artifact",
+    });
+    game.definitions[plainDef.id] = plainDef;
+    game.definitions[legendDef.id] = legendDef;
+    const plain = createCardInstance({ definitionId: plainDef.id, ownerId: p1.id, zone: "battlefield" });
+    const legend = createCardInstance({ definitionId: legendDef.id, ownerId: p1.id, zone: "battlefield" });
+    plain.tapped = true;
+    legend.tapped = true;
+    game.cards[plain.id] = plain;
+    game.cards[legend.id] = legend;
+    p1.zones.battlefield.push(plain.id, legend.id);
+
+    expect(
+      isChosenTargetLegal(game, requirement!, { type: "creature", cardId: legend.id }, p1.id),
+    ).toBe(true);
+    // The plain artifact is a permanent, but it is not legendary.
+    expect(
+      isChosenTargetLegal(game, requirement!, { type: "creature", cardId: plain.id }, p1.id),
+    ).toBe(false);
+  });
+
+  it("untaps another target permanent without offering the source", () => {
+    const follower = compile(
+      "Kiora's Follower",
+      "{G}{U}",
+      "Creature — Merfolk",
+      "{T}: Untap another target permanent.",
+      "2",
+      "2",
+    );
+    expect(follower.notes).toEqual([]);
+    const requirement = follower.definition.activated[0]?.targetRequirements[0];
+    expect(requirement).toEqual({ kind: "permanent", excludeSource: true });
+
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    game.definitions[follower.definition.id] = follower.definition;
+    const source = createCardInstance({
+      definitionId: follower.definition.id,
+      ownerId: p1.id,
+      zone: "battlefield",
+    });
+    source.tapped = true;
+    game.cards[source.id] = source;
+    p1.zones.battlefield.push(source.id);
+
+    // "another" — the Follower cannot untap itself.
+    expect(
+      isChosenTargetLegal(
+        game,
+        requirement!,
+        { type: "creature", cardId: source.id },
+        p1.id,
+        undefined,
+        source.id,
+      ),
+    ).toBe(false);
+  });
+});
+

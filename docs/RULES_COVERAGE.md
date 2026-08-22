@@ -173,6 +173,8 @@ What the engine implements and what it intentionally does not. Tests are tagged 
 
 - **Granted quoted triggers on attachments** (Diamond Pick-Axe, Power Fist, The Reaver Cleaver): `Equipped creature gets +1/+1 and has "Whenever this creature attacks, …"` splits into the buff sentence and the quoted trigger, rewritten so the Equipment itself watches its host — exactly what the `Whenever equipped creature …` heads already mean, and the same game as granting the trigger to the creature. Aura wording ("enchanted creature") shares those heads. Quoted ACTIVATED abilities (Paradise Mantle) are deliberately refused: the same rewrite would leave the ability on the Equipment, which would then tap itself instead of the creature.
 
+- **Target noun phrases as a grammar**: `parseSimpleTargetPhrase` reads "up to one" / "another" / possessor / "legendary" / "nonbasic" / "non-\<Subtype\>" / head noun off a plain targeting phrase, and `parseGraveyardTargetPhrase` does the same for "target \<type\> card with mana value N or less from your graveyard". Blink, targeted untap, and graveyard recursion now share them, so a new wording is a card rather than a branch. Anything the grammar does not recognise returns null — an unparsed qualifier is a clean miss, never a silently widened target. Returning to the battlefield is restricted to card kinds that are certainly permanents.
+
 ## The card pipeline (Stage 6)
 
 - Real cards compile from Scryfall oracle text by shared sentence patterns; a hand-authored registry (`server/src/cardOverrides.ts`, data in the same schema) beats the compiler for the long tail. Never a named-card code path.

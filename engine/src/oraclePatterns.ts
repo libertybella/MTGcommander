@@ -517,6 +517,124 @@ function parseAbilityCost(
   };
 }
 
+/** Head nouns a plain "target …" phrase can name, longest first so
+ * "artifact or creature" wins over "artifact". */
+const TARGET_HEAD_NOUNS: [RegExp, TargetKind][] = [
+  [/^artifact or creature$/i, "creature_or_artifact"],
+  [/^creature or artifact$/i, "creature_or_artifact"],
+  [/^creature or enchantment$/i, "creature_or_enchantment"],
+  [/^creature or planeswalker$/i, "creature_or_planeswalker"],
+  [/^artifact or enchantment$/i, "artifact_or_enchantment"],
+  [/^nonland permanent$/i, "nonland_permanent"],
+  [/^permanent$/i, "permanent"],
+  [/^creature$/i, "creature"],
+  [/^artifact$/i, "artifact"],
+  [/^enchantment$/i, "enchantment"],
+  [/^land$/i, "land"],
+  [/^planeswalker$/i, "planeswalker"],
+];
+
+/**
+ * "another target permanent you control", "up to one target artifact or
+ * creature you control", "target non-Angel creature you control" — the plain
+ * targeting noun phrase, as a grammar rather than one branch per wording.
+ * Anything it does not recognise returns null, so an unparsed qualifier is a
+ * clean miss instead of a silently widened target.
+ */
+function parseSimpleTargetPhrase(phrase: string): TargetRequirement | null {
+  let rest = phrase.trim();
+  const requirement: Partial<TargetRequirement> = {};
+
+  const optional = rest.match(/^up to one\s+(.*)$/i);
+  if (optional?.[1]) {
+    requirement.optional = true;
+    rest = optional[1];
+  }
+  // "another target …", and the bare "other" that "up to one other target …"
+  // leaves behind (Thassa).
+  const another = rest.match(/^(?:an)?other\s+(.*)$/i);
+  if (another?.[1]) {
+    requirement.excludeSource = true;
+    rest = another[1];
+  }
+  const target = rest.match(/^target\s+(.*)$/i);
+  if (!target?.[1]) {
+    return null;
+  }
+  rest = target[1];
+
+  // Trailing possessor, stripped before the head noun is read.
+  const controlled = rest.match(/^(.*?)\s+you control$/i);
+  if (controlled?.[1]) {
+    requirement.control = "own";
+    rest = controlled[1];
+  } else {
+    const notControlled = rest.match(/^(.*?)\s+you don't control$/i);
+    if (notControlled?.[1]) {
+      requirement.control = "not_own";
+      rest = notControlled[1];
+    }
+  }
+
+  // "target legendary permanent" (Minamo), "target nonbasic land" (Wasteland).
+  const legendary = rest.match(/^legendary\s+(.*)$/i);
+  if (legendary?.[1]) {
+    requirement.legendaryOnly = true;
+    rest = legendary[1];
+  }
+  const nonbasic = rest.match(/^nonbasic\s+(.*)$/i);
+  if (nonbasic?.[1]) {
+    requirement.nonbasicOnly = true;
+    rest = nonbasic[1];
+  }
+
+  // "non-Angel creature": a subtype the target may not have.
+  const excluded = rest.match(/^non-([A-Za-z]+)\s+(.*)$/i);
+  if (excluded?.[1] && excluded[2]) {
+    requirement.excludedSubtypes = [excluded[1].toLowerCase()];
+    rest = excluded[2];
+  }
+
+  const head = TARGET_HEAD_NOUNS.find(([pattern]) => pattern.test(rest.trim()));
+  return head ? { ...requirement, kind: head[1] } : null;
+}
+
+/** Head nouns for a card in the caster's own graveyard. */
+const GRAVEYARD_HEAD_NOUNS: [RegExp, TargetKind][] = [
+  [/^creature card$/i, "own_graveyard_creature_card"],
+  [/^permanent card$/i, "own_graveyard_permanent_card"],
+  [/^artifact card$/i, "own_graveyard_artifact_card"],
+  [/^land card$/i, "own_graveyard_land_card"],
+  [/^instant or sorcery card$/i, "own_graveyard_instant_or_sorcery_card"],
+  [/^card$/i, "own_graveyard_card"],
+];
+
+/** Kinds whose cards are certainly permanents, so they may be returned to the
+ * battlefield rather than only to hand. */
+const BATTLEFIELD_RETURNABLE = new Set<TargetKind>([
+  "own_graveyard_creature_card",
+  "own_graveyard_permanent_card",
+  "own_graveyard_artifact_card",
+  "own_graveyard_land_card",
+]);
+
+/**
+ * "target creature card with mana value 3 or less" (Unearth), "target
+ * permanent card with mana value 3 or less" (Sun Titan), "target card"
+ * (Noxious Revival) — the graveyard noun phrase as a grammar.
+ */
+function parseGraveyardTargetPhrase(phrase: string): TargetRequirement | null {
+  let rest = phrase.trim();
+  const requirement: Partial<TargetRequirement> = {};
+  const manaValue = rest.match(/^(.*?)\s+with mana value (\d+) or less$/i);
+  if (manaValue?.[1] && manaValue[2]) {
+    requirement.maxManaValue = Number(manaValue[2]);
+    rest = manaValue[1];
+  }
+  const head = GRAVEYARD_HEAD_NOUNS.find(([pattern]) => pattern.test(rest.trim()));
+  return head ? { ...requirement, kind: head[1] } : null;
+}
+
 function parseControlledTypes(text: string): string[] | null {
   const parts = text.split(/\s+or\s+/i).map((part) => part.trim());
   const types: string[] = [];
@@ -3317,6 +3435,18 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     };
   }
 
+  // Minamo, Patriar's Seal, Kiora's Follower, Clock of Omens: the plain
+  // targeted untap, over whatever noun phrase the card names.
+  const untapTarget = /^Untap (target|another target|up to one target)\b/i.test(sentence)
+    ? parseSimpleTargetPhrase(sentence.replace(/^Untap\s+/i, ""))
+    : null;
+  if (untapTarget) {
+    return {
+      targetRequirements: [untapTarget],
+      effects: [{ kind: "untap", cardId: { type: "chosen", index: 0 } }],
+    };
+  }
+
   // Maze of Ith.
   if (/^Untap target attacking creature$/i.test(sentence)) {
     return {
@@ -3492,20 +3622,16 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     }
   }
 
-  // Ephemerate / Conjurer's Closet / Thassa, Deep-Dwelling flicker.
+  // Ephemerate / Conjurer's Closet / Restoration Angel / Felidar Guardian /
+  // Teleportation Circle flicker. The noun phrase is parsed rather than
+  // enumerated, so each new blink is a card, not a branch.
   match = sentence.match(
-    /^(?:you may )?Exile (up to one )?(?:an)?(other )?target creature( you control)?, then return (?:it|that card) to the battlefield(?: under (?:its owner's|your) control)?$/i,
+    /^(?:you may )?Exile (.+?), then return (?:it|that card) to the battlefield(?: under (?:its owner's|your) control)?$/i,
   );
-  if (match) {
+  const flickerTarget = match?.[1] ? parseSimpleTargetPhrase(match[1]) : null;
+  if (flickerTarget) {
     return {
-      targetRequirements: [
-        {
-          kind: "creature",
-          ...(match[3] ? { control: "own" as const } : {}),
-          ...(match[1] ? { optional: true } : {}),
-          ...(match[2] ? { excludeSource: true } : {}),
-        },
-      ],
+      targetRequirements: [flickerTarget],
       effects: [{ kind: "flicker", cardId: { type: "chosen", index: 0 } }],
     };
   }
@@ -3601,33 +3727,20 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     };
   }
 
+  // Regrowth / Zombify / Unearth / Sun Titan / Goblin Engineer: one grammar
+  // for the graveyard noun phrase and its destination.
   match = sentence.match(
-    /^Return target (creature |permanent |artifact |land )?card from your graveyard to (your hand|the battlefield)$/i,
+    /^(?:you may )?Return target (.+?) from your graveyard to (your hand|the battlefield)$/i,
   );
-  if (match?.[2]) {
-    const filterWord = match[1]?.trim().toLowerCase();
-    const creatureOnly = filterWord === "creature";
-    const permanentOnly = filterWord === "permanent";
-    const artifactOnly = filterWord === "artifact";
-    const landOnly = filterWord === "land";
+  const yardTarget = match?.[1] ? parseGraveyardTargetPhrase(match[1]) : null;
+  if (yardTarget && match?.[2]) {
     const toHand = match[2].toLowerCase() === "your hand";
-    // Lands and creatures may return to the battlefield; anything broader
-    // only goes to hand (a permanent card could be an instant otherwise).
-    if (toHand || creatureOnly || landOnly) {
+    // Only cards that are certainly permanents may return to the battlefield;
+    // "target card" could be an instant, and an instant on the battlefield is
+    // not a game state this engine has.
+    if (toHand || BATTLEFIELD_RETURNABLE.has(yardTarget.kind)) {
       return {
-        targetRequirements: [
-          {
-            kind: creatureOnly
-              ? "own_graveyard_creature_card"
-              : permanentOnly
-                ? "own_graveyard_permanent_card"
-                : artifactOnly
-                  ? "own_graveyard_artifact_card"
-                  : landOnly
-                    ? "own_graveyard_land_card"
-                    : "own_graveyard_card",
-          },
-        ],
+        targetRequirements: [yardTarget],
         effects: [
           {
             kind: "move_card",
@@ -3752,19 +3865,6 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
           amount: Number(match[1]),
         },
       ],
-    };
-  }
-
-  // Sun Titan.
-  match = sentence.match(
-    /^(?:you may )?return target permanent card with mana value (\d+) or less from your graveyard to the battlefield$/i,
-  );
-  if (match?.[1]) {
-    return {
-      targetRequirements: [
-        { kind: "own_graveyard_permanent_card", maxManaValue: Number(match[1]) },
-      ],
-      effects: [{ kind: "move_card", cardId: { type: "chosen", index: 0 }, toZone: "battlefield" }],
     };
   }
 

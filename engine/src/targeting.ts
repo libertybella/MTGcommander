@@ -256,7 +256,9 @@ export function isChosenTargetLegal(
     if (violatesManaValueFilter(state, target.cardId, requirement)) {
       return false;
     }
-    if (violatesRequiredColors(state, target.cardId, requirement)) {
+    // "target legendary permanent" (Minamo) — the same characteristic gate
+    // the creature branch runs; without it the qualifier would be inert.
+    if (violatesCharacteristicFilter(state, target.cardId, requirement)) {
       return false;
     }
     if (hasKeyword(state, target.cardId, "shroud")) {
