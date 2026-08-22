@@ -25374,3 +25374,138 @@ describe("wave 200: that player, that many, and a token as fodder", () => {
   });
 });
 
+
+describe("wave 201: conditions and counters that look back at a target", () => {
+  const compile = (name: string, manaCost: string, typeLine: string, oracleText: string, power?: string, toughness?: string) =>
+    compileOracleCard({
+      oracleId: name,
+      name,
+      manaCost,
+      typeLine,
+      power: power ?? null,
+      toughness: toughness ?? null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  it("tests the subtype of what an earlier clause targeted", () => {
+    const flux = compile(
+      "Essence Flux",
+      "{U}",
+      "Instant",
+      "Exile target creature you control, then return that card to the battlefield under its owner's control. If it's a Spirit, put a +1/+1 counter on it.",
+    );
+    expect(flux.notes).toEqual([]);
+    const gated = flux.definition.effects.at(-1);
+    expect(gated).toMatchObject({
+      kind: "if_condition",
+      condition: { kind: "chosen_has_subtype", subtype: "spirit" },
+    });
+    // "On it" is the same target, not a second one.
+    expect((gated as { then: unknown[] }).then).toEqual([
+      { kind: "add_counter", cardId: { type: "chosen", index: 0 }, counter: "p1p1", amount: 1 },
+    ]);
+    expect(flux.definition.targetRequirements).toHaveLength(1);
+  });
+
+  it("reads the referent from the target on a spell", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const spiritDef = createCardDefinition({
+      name: "Spirit",
+      typeLine: "Creature — Spirit",
+      power: 1,
+      toughness: 1,
+    });
+    const bearDef = createCardDefinition({
+      name: "Bear",
+      typeLine: "Creature — Bear",
+      power: 2,
+      toughness: 2,
+    });
+    game.definitions[spiritDef.id] = spiritDef;
+    game.definitions[bearDef.id] = bearDef;
+    const put = (definitionId: string) => {
+      const card = createCardInstance({ definitionId, ownerId: p1.id, zone: "battlefield" });
+      game.cards[card.id] = card;
+      p1.zones.battlefield.push(card.id);
+      return card;
+    };
+    const spirit = put(spiritDef.id);
+    const bear = put(bearDef.id);
+
+    const effects: CardEffect[] = [
+      {
+        kind: "if_condition",
+        condition: { kind: "chosen_has_subtype", subtype: "spirit" },
+        then: [
+          { kind: "add_counter", cardId: { type: "chosen", index: 0 }, counter: "p1p1", amount: 1 },
+        ],
+      },
+    ];
+    const bindFor = (cardId: string) =>
+      bindCardEffects(game, effects, {
+        controllerId: p1.id,
+        sourceId: null,
+        targetRequirements: [{ kind: "creature", control: "own" }],
+        targets: [{ type: "creature", cardId }],
+      });
+    expect(bindFor(spirit.id)).toHaveLength(1);
+    // A Bear is not a Spirit, so the branch is skipped rather than taken.
+    expect(bindFor(bear.id)).toEqual([]);
+  });
+
+  it("doubles the counters already there, and leaves bare creatures bare", () => {
+    const bill = compile(
+      "Bristly Bill, Spine Sower",
+      "{1}{G}",
+      "Legendary Creature — Plant Druid",
+      "Landfall — Whenever a land you control enters, put a +1/+1 counter on target creature.\n{3}{G}{G}: Double the number of +1/+1 counters on each creature you control.",
+      "1",
+      "1",
+    );
+    expect(bill.notes).toEqual([]);
+    expect(bill.definition.activated[0]?.effects).toEqual([
+      { kind: "double_counters_on_team", playerId: "controller", counter: "p1p1" },
+    ]);
+
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    const bearDef = createCardDefinition({
+      name: "Bear",
+      typeLine: "Creature — Bear",
+      power: 2,
+      toughness: 2,
+    });
+    game.definitions[bearDef.id] = bearDef;
+    const put = (owner: typeof p1, counters: number) => {
+      const card = createCardInstance({
+        definitionId: bearDef.id,
+        ownerId: owner.id,
+        zone: "battlefield",
+      });
+      if (counters > 0) {
+        card.counters["p1p1"] = counters;
+      }
+      game.cards[card.id] = card;
+      owner.zones.battlefield.push(card.id);
+      return card;
+    };
+    const stacked = put(p1, 3);
+    const bare = put(p1, 0);
+    const theirs = put(p2, 2);
+
+    const next = applyEffect(game, {
+      kind: "double_counters_on_team",
+      playerId: p1.id,
+      counter: "p1p1",
+    });
+    expect(next.cards[stacked.id]?.counters["p1p1"]).toBe(6);
+    // Doubling nothing is still nothing — it does not round up to one.
+    expect(next.cards[bare.id]?.counters["p1p1"]).toBeUndefined();
+    // And it is "each creature YOU control".
+    expect(next.cards[theirs.id]?.counters["p1p1"]).toBe(2);
+  });
+});
+

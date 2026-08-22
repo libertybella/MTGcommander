@@ -1193,6 +1193,17 @@ function compileBackReferenceClause(sentence: string): CardEffect[] | null {
   if (/^Return that card from your graveyard to the battlefield$/i.test(sentence)) {
     return [{ kind: "move_card", cardId: chosen, toZone: "battlefield" }];
   }
+  // "Put a +1/+1 counter on it" following a clause that targeted something.
+  const counters = sentence.match(/^Put (.+?) counters? on (?:it|that creature)$/i);
+  const placed = counters?.[1] ? parseCounterList(counters[1]) : null;
+  if (placed) {
+    return placed.map((entry) => ({
+      kind: "add_counter",
+      cardId: chosen,
+      counter: entry.counter,
+      amount: entry.amount,
+    }));
+  }
   // "It gains indestructible until end of turn" following a clause that
   // targeted something. The grant parser reads "It" as the TRIGGER's subject,
   // which is right in a trigger body and wrong here, so the referent is
@@ -1260,6 +1271,10 @@ function parseEffectCondition(phrase: string): TriggerCondition | null {
     if (atLeast) {
       return { kind: "graveyard_card_types_at_least", count: atLeast };
     }
+  }
+  const isSubtype = text.match(/^it's an? ([A-Z][a-z-]+)$/);
+  if (isSubtype?.[1]) {
+    return { kind: "chosen_has_subtype", subtype: isSubtype[1].toLowerCase() };
   }
   if (/^a creature died this turn$/i.test(text)) {
     return { kind: "creature_died_this_turn" };
@@ -1925,6 +1940,26 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
         effects: Array.from({ length: howMany }, () => ({ ...one })),
       };
     }
+  }
+
+  // Bristly Bill: "Double the number of +1/+1 counters on each creature you
+  // control" — a one-shot doubling of what is on the board, not a replacement
+  // effect on counters yet to be placed.
+  const doubleTeamCounters = sentence.match(
+    /^Double the number of (.+?) counters on each creature you control$/i,
+  );
+  const doubled = doubleTeamCounters?.[1] ? parseCounterList(`a ${doubleTeamCounters[1]}`) : null;
+  if (doubled && doubled.length === 1) {
+    return {
+      targetRequirements: [],
+      effects: [
+        {
+          kind: "double_counters_on_team",
+          playerId: "controller",
+          counter: doubled[0]!.counter,
+        },
+      ],
+    };
   }
 
   const amass = parseAmassClause(sentence);

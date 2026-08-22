@@ -2788,6 +2788,12 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
       };
     case "restore_control":
       return { kind, what: parseControlAllScope(value.what, `${label}.what`) };
+    case "double_counters_on_team":
+      return {
+        kind,
+        playerId: parsePlayerSelector(value.playerId, `${label}.playerId`),
+        counter: expectString(value.counter, `${label}.counter`),
+      };
     case "if_condition":
       return {
         kind,
@@ -3788,6 +3794,9 @@ function parseTriggerCondition(value: unknown, label: string): TriggerCondition 
           atLeast: expectNumber(value.atLeast, `${label}.atLeast`),
           ...(value.excludeSelf === true ? { excludeSelf: true } : {}),
         };
+      }
+      if (conditionKind === "chosen_has_subtype") {
+        return { kind: conditionKind, subtype: expectString(value.subtype, `${label}.subtype`) };
       }
       if (conditionKind === "controls_colored_permanent") {
         return { kind: conditionKind, color: parseColor(value.color, `${label}.color`) };
@@ -5007,6 +5016,13 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
   }
   if (kind === "restore_control") {
     return { kind, what: parseControlAllScope(value.what, `${label}.what`) };
+  }
+  if (kind === "double_counters_on_team") {
+    return {
+      kind,
+      playerId: expectString(value.playerId, `${label}.playerId`),
+      counter: expectString(value.counter, `${label}.counter`),
+    };
   }
   if (kind === "proliferate" || kind === "populate") {
     return { kind, playerId: expectString(value.playerId, `${label}.playerId`) };

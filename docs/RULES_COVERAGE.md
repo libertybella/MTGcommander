@@ -547,6 +547,18 @@ What the engine implements and what it intentionally does not. Tests are tagged 
   sacrifice would not compile to nothing, and that refusal test now guards an
   unnameable scope instead.
 
+- **Conditions and counters that look back at a target**: "If it's a Spirit,
+  put a +1/+1 counter on it" reads both halves against what an earlier clause
+  targeted — the condition tests that permanent's subtype, and "on it" is the
+  same target rather than a second one. The referent is the trigger's subject
+  in a trigger body and the first chosen target on a spell; with neither, the
+  condition FAILS rather than passing by default, so a card with nothing to
+  refer to does not quietly take the branch.
+
+  "Double the number of +1/+1 counters on each creature you control" doubles
+  what is on the board now — a one-shot, not a replacement on counters yet to
+  be placed. Doubling nothing stays nothing rather than rounding up to one.
+
 ## The card pipeline (Stage 6)
 
 - Real cards compile from Scryfall oracle text by shared sentence patterns; a hand-authored registry (`server/src/cardOverrides.ts`, data in the same schema) beats the compiler for the long tail. Never a named-card code path.

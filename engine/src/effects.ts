@@ -1633,6 +1633,13 @@ export function bindCardEffect(
     }
     case "restore_control":
       return { kind: "restore_control", what: effect.what };
+    case "double_counters_on_team": {
+      const playerId = bindPlayerSelector(state, effect.playerId, context);
+      if (!playerId) {
+        return null;
+      }
+      return { kind: "double_counters_on_team", playerId, counter: effect.counter };
+    }
     case "attackers_gain_keyword_until_eot":
       return { kind: "attackers_gain_keyword_until_eot", keyword: effect.keyword };
     case "copy_subject_spell":
@@ -1677,11 +1684,16 @@ export function bindCardEffects(
     // An ability-word rider picks one of its two branches here, which for a
     // spell is its resolution — the point the printed card checks.
     if (effect.kind === "if_condition") {
+      // The referent of "if it's a Spirit" is the trigger's subject in a
+      // trigger body, and the first chosen target on a spell.
+      const referent =
+        context.subjectCardId ??
+        (context.targets?.[0]?.type === "creature" ? context.targets[0].cardId : undefined);
       const branch = triggerConditionHolds(
         state,
         context.controllerId,
         effect.condition,
-        context.subjectCardId,
+        referent,
         context.sourceId ?? undefined,
       )
         ? effect.then
@@ -3782,6 +3794,19 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
         next = cloneGameState(state);
         for (const cardId of massControlTargets(next, effect.what, effect.fromId)) {
           takeControlInPlace(next, cardId, effect.controllerId, effect.untilEot === true);
+        }
+        break;
+      }
+      case "double_counters_on_team": {
+        next = cloneGameState(state);
+        // Doubling what is on the permanent now; a permanent with none stays
+        // at none rather than gaining one.
+        for (const cardId of permanentsControlledBy(next, effect.playerId)) {
+          const card = next.cards[cardId];
+          const held = card?.counters[effect.counter] ?? 0;
+          if (card && held > 0 && isCreature(next, cardId)) {
+            card.counters[effect.counter] = held * 2;
+          }
         }
         break;
       }

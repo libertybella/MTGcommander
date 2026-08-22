@@ -170,6 +170,11 @@ export function triggerConditionHolds(
       return held >= condition.atLeast;
     });
   }
+  if (condition.kind === "chosen_has_subtype") {
+    // The referent is what the clause before it targeted, so a card with no
+    // such target fails the condition rather than passing it by default.
+    return subjectCardId !== undefined && cardMatchesSubtype(state, subjectCardId, condition.subtype);
+  }
   if (condition.kind === "controls_colored_permanent") {
     return Object.values(state.cards).some(
       (card) =>

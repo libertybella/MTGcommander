@@ -819,6 +819,10 @@ export type GameEffect =
   | { kind: "add_counter"; cardId: CardInstanceId; counter: string; amount: number }
   /** The Ozolith's combat trigger: every counter hops to the target. */
   | { kind: "move_all_counters"; fromId: CardInstanceId; toId: CardInstanceId }
+  /** Bristly Bill: "Double the number of +1/+1 counters on each creature you
+   * control" — a one-shot doubling of what is already there, not a
+   * replacement on future counters. */
+  | { kind: "double_counters_on_team"; playerId: PlayerId; counter: string }
   | { kind: "counter_spell"; stackObjectId: StackObjectId }
   | {
       kind: "bounce_spell_or_permanent";
@@ -1534,6 +1538,7 @@ export type CardEffect =
     }
   /** The Ozolith's combat trigger: every counter hops to the target. */
   | { kind: "move_all_counters"; cardId: CardIdSelector; target: ChosenTargetRef }
+  | { kind: "double_counters_on_team"; playerId: PlayerSelector; counter: string }
   | { kind: "counter_spell"; target: ChosenTargetRef }
   | { kind: "counter_unless_pays"; target: ChosenTargetRef; cost: string }
   /** Venser: bounce a spell (off the stack) or a permanent to its owner's hand. */
@@ -1979,6 +1984,8 @@ export type TriggerCondition =
     }
   /** Kederekt Parasite: "if you control a red permanent". */
   | { kind: "controls_colored_permanent"; color: Color }
+  /** Essence Flux: "if it's a Spirit" — the first chosen target's subtype. */
+  | { kind: "chosen_has_subtype"; subtype: string }
   /** Ophiomancer: "if you control no Snakes". */
   | { kind: "controls_no_subtype"; subtype: string }
   /** Triskaidekaphile: "if you have exactly thirteen cards in your hand". */
