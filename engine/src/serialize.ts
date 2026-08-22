@@ -3371,6 +3371,9 @@ function parseContinuousEffectData(value: unknown, label: string): ContinuousEff
     }
     return { kind, keyword: keyword as Keyword };
   }
+  if (kind === "grant_ward") {
+    return { kind, amount: expectNumber(value.amount, `${label}.amount`) };
+  }
   if (kind === "grant_protection") {
     if (!Array.isArray(value.colors)) {
       throw new Error(`Invalid ${label}.colors`);

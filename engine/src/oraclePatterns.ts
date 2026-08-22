@@ -5340,12 +5340,21 @@ function parseGrantSubject(phrase: string): EffectSelector | null {
     return { scope: "attached" };
   }
 
-  // Leading "Other " / "All " qualifiers.
+  // "~ gets …" is deliberately NOT a subject here: self-scaling pumps have
+  // their own `bonusPt` machinery further down the sentence chain, and this
+  // grammar runs first, so claiming "~" would shadow it (Storm-Kiln Artist).
+
+  // Leading "Other " / "All " / "Each " qualifiers. "Each" is singular, so
+  // the head noun and any counter phrase below are singular too.
   if (/^Other /i.test(rest)) {
     selector.excludeSelf = true;
     rest = rest.slice("Other ".length);
   } else if (/^All /i.test(rest)) {
     rest = rest.slice("All ".length);
+  } else if (/^Each [A-Za-z]+\b/i.test(rest)) {
+    // Pluralise the head noun so the rest of the grammar sees its usual
+    // "Creatures you control …" shape.
+    rest = rest.replace(/^Each ([A-Za-z]+)\b/i, (_, noun: string) => `${noun}s`);
   }
 
   // Trailing qualifiers, stripped outermost-first: they follow the possessor
@@ -5356,7 +5365,7 @@ function parseGrantSubject(phrase: string): EffectSelector | null {
     selector.chosenSubtype = true;
     rest = chosen[1];
   }
-  const counters = rest.match(/^(.*?)\s+with \+1\/\+1 counters on them$/i);
+  const counters = rest.match(/^(.*?)\s+with (?:a )?\+1\/\+1 counters? on (?:them|it)$/i);
   if (counters?.[1] !== undefined) {
     selector.withCounter = "p1p1";
     rest = counters[1];
@@ -5442,7 +5451,7 @@ function parseGrantPredicate(phrase: string): ContinuousEffectData[] | null {
   // Split on the verbs rather than on "and", since a keyword list uses "and"
   // internally ("get +1/+1 and have vigilance and trample").
   const parts = phrase
-    .split(/\s+and\s+(?=(?:get|gets|have|has|can't)\s)/i)
+    .split(/\s+and\s+(?=(?:get|gets|have|has|lose|loses|can't)\s)/i)
     .map((part) => part.trim())
     .filter(Boolean);
   for (const part of parts) {
@@ -5466,6 +5475,18 @@ function parseGrantPredicate(phrase: string): ContinuousEffectData[] | null {
         toughness: Number(scaled[2]),
         per,
       });
+      continue;
+    }
+    // "loses flying" (Colossus Hammer).
+    const losses = part.match(/^loses?\s+(.+)$/i);
+    if (losses?.[1]) {
+      const lost = losses[1]
+        .split(/,\s*(?:and\s+)?|\s+and\s+/i)
+        .map((word) => KEYWORD_GRANTS[word.trim().toLowerCase()]);
+      if (!lost.every((keyword): keyword is Keyword => Boolean(keyword))) {
+        return null;
+      }
+      effects.push({ kind: "remove_keywords", keywords: lost });
       continue;
     }
     const restriction = part.match(/^can't\s+(be blocked|attack|block)$/i);
@@ -5502,6 +5523,12 @@ function parseGrantPredicate(phrase: string): ContinuousEffectData[] | null {
         effects.push({ kind: "grant_protection", colors });
         continue;
       }
+      // "ward {2}" is a numeric ability, not a plain keyword.
+      const ward = word.match(/^ward \{(\d+)\}$/i);
+      if (ward?.[1]) {
+        effects.push({ kind: "grant_ward", amount: Number(ward[1]) });
+        continue;
+      }
       const keyword = KEYWORD_GRANTS[word];
       if (!keyword) {
         return null;
@@ -5520,7 +5547,7 @@ function parseGrantPredicate(phrase: string): ContinuousEffectData[] | null {
  * cases; this is the general fallback.
  */
 function compileStaticGrant(sentence: string): StaticAbility[] | null {
-  const split = sentence.match(/^(.+?)\s+((?:get|gets|have|has|can't)\s+.+)$/i);
+  const split = sentence.match(/^(.+?)\s+((?:get|gets|have|has|lose|loses|can't)\s+.+)$/i);
   if (!split?.[1] || !split[2]) {
     return null;
   }
@@ -6417,84 +6444,10 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
       continue;
     }
 
-    // Lightning Greaves / Swiftfoot Boots: bare keyword grants on the host.
-    const attachedHas = sentence.match(
-      /^(?:Enchanted|Equipped) creature has ([a-z ]+?)(?: and ([a-z ]+?))?$/i,
-    );
-    if (attachedHas?.[1]) {
-      const names = [attachedHas[1], attachedHas[2]].filter((name): name is string =>
-        Boolean(name),
-      );
-      const keywords = names.map((name) => KEYWORD_GRANTS[name.trim().toLowerCase()]);
-      if (keywords.every((keyword): keyword is Keyword => Boolean(keyword))) {
-        for (const keyword of keywords) {
-          result.staticAbilities.push({
-            selector: { scope: "attached" },
-            effect: { kind: "grant_keyword", keyword },
-          });
-        }
-        continue;
-      }
-    }
-
-    // The Swords: "+2/+2 and has protection from red and from blue".
-    const attachedProtection = sentence.match(
-      /^(?:Enchanted|Equipped) creature gets ([+-]\d+)\/([+-]\d+) and has protection from ([a-z]+) and from ([a-z]+)$/i,
-    );
-    if (attachedProtection?.[1] && attachedProtection[2] && attachedProtection[3] && attachedProtection[4]) {
-      const colors = [attachedProtection[3], attachedProtection[4]].map(
-        (word) => COLOR_WORDS[word.toLowerCase()],
-      );
-      if (colors.every((color): color is Color => Boolean(color))) {
-        result.staticAbilities.push(
-          {
-            selector: { scope: "attached" },
-            effect: {
-              kind: "modify_pt",
-              power: Number(attachedProtection[1]),
-              toughness: Number(attachedProtection[2]),
-            },
-          },
-          {
-            selector: { scope: "attached" },
-            effect: { kind: "grant_protection", colors },
-          },
-        );
-        continue;
-      }
-    }
-
-    const attachedBuff = sentence.match(
-      /^(?:Enchanted|Equipped) creature gets ([+-]\d+)\/([+-]\d+)(?: and has ([a-z ,]+))?$/i,
-    );
-    if (attachedBuff?.[1] && attachedBuff[2]) {
-      result.staticAbilities.push({
-        selector: { scope: "attached" },
-        effect: {
-          kind: "modify_pt",
-          power: Number(attachedBuff[1]),
-          toughness: Number(attachedBuff[2]),
-        },
-      });
-      if (attachedBuff[3]) {
-        const grants = attachedBuff[3]
-          .split(/,\s*|\s+and\s+/i)
-          .map((word) => word.trim().toLowerCase())
-          .filter(Boolean);
-        const keywords = grants.map((word) => KEYWORD_GRANTS[word]);
-        if (keywords.every((keyword): keyword is Keyword => Boolean(keyword))) {
-          for (const keyword of keywords) {
-            result.staticAbilities.push({
-              selector: { scope: "attached" },
-              effect: { kind: "grant_keyword", keyword },
-            });
-          }
-        } else {
-          result.leftover.push(sentence);
-        }
-      }
-      continue;
-    }
+    // "Equipped/Enchanted creature gets …/has …" used to have three narrow
+    // branches here. They are gone: the general static-grant grammar below
+    // covers every shape they did and handles the Oxford comma they choked
+    // on ("first strike, vigilance, trample, and haste" left "and haste").
 
     // Kenrith's Transformation: the rewrite with the removal leading.
     const elkMutation = sentence.match(

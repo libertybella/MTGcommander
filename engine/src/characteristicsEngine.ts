@@ -48,6 +48,8 @@ export type ComputedCard = {
   cantBeBlocked: boolean;
   /** Printed protection plus layer-6 grants (Akroma's Will). */
   protectionFrom: Color[];
+  /** Printed ward plus layer-6 grants (Lavaspur Boots); 0 means none. */
+  ward: number;
 };
 
 type EffectInstance = {
@@ -66,6 +68,7 @@ const LAYER_OF: Record<ContinuousEffectData["kind"], number> = {
   set_colors: 5,
   grant_keyword: 6,
   grant_protection: 6,
+  grant_ward: 6,
   remove_keywords: 6,
   grant_mana_ability: 6,
   remove_all_abilities: 6,
@@ -96,6 +99,7 @@ function baseComputed(state: GameState, card: CardInstance): ComputedCard {
       cantBlock: false,
       cantBeBlocked: false,
       protectionFrom: [],
+      ward: 0,
     };
   }
   const definition = state.definitions[card.definitionId];
@@ -151,6 +155,7 @@ function baseComputed(state: GameState, card: CardInstance): ComputedCard {
     cantBlock: false,
     cantBeBlocked: false,
     protectionFrom: [...(definition?.protectionFrom ?? [])],
+    ward: definition?.ward ?? 0,
   };
 }
 
@@ -571,6 +576,12 @@ function applyInstance(
           }
         }
         break;
+      case "grant_ward":
+        // Highest wins rather than stacking: CR 702.21c would have each ward
+        // ability trigger separately, which the single pay-or-counter prompt
+        // cannot express (documented).
+        computed.ward = Math.max(computed.ward, effect.amount);
+        break;
       case "remove_keywords":
         // Shadowspear: strip the listed keywords (later grants can re-add
         // by timestamp, matching CR 613.7).
@@ -587,6 +598,7 @@ function applyInstance(
         computed.grantedMana = [];
         computed.allCreatureTypes = false;
         computed.protectionFrom = [];
+        computed.ward = 0;
         break;
       case "restrict": {
         // Wayward Swordtooth: the restriction lifts with the city's blessing.

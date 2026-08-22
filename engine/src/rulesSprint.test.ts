@@ -17515,3 +17515,178 @@ describe("wave 147: overruns, safekeeping, and last stands", () => {
   });
 });
 
+
+describe("wave 148: swords, boots, and hammers", () => {
+  const compile = (name: string, manaCost: string, typeLine: string, oracleText: string, power?: string, toughness?: string) =>
+    compileOracleCard({
+      oracleId: name,
+      name,
+      manaCost,
+      typeLine,
+      power: power ?? null,
+      toughness: toughness ?? null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  it("compiles the attached-grant bucket fully", () => {
+    // The Oxford comma the deleted narrow branch choked on: it split the
+    // list on commas first, leaving a literal "and haste".
+    const sword = compile(
+      "Sword of Vengeance",
+      "{3}",
+      "Artifact — Equipment",
+      "Equipped creature gets +2/+0 and has first strike, vigilance, trample, and haste.\nEquip {3}",
+    );
+    expect(sword.notes).toEqual([]);
+    const granted = sword.definition.staticAbilities
+      .filter((ability) => ability.effect.kind === "grant_keyword")
+      .map((ability) => (ability.effect as { keyword: string }).keyword);
+    expect(granted).toEqual(["first_strike", "vigilance", "trample", "haste"]);
+
+    // Ward is numeric, so it is its own effect rather than a keyword.
+    const boots = compile(
+      "Lavaspur Boots",
+      "{1}",
+      "Artifact — Equipment",
+      "Equipped creature gets +1/+0 and has haste and ward {1}.\nEquip {1}",
+    );
+    expect(boots.notes).toEqual([]);
+    expect(boots.definition.staticAbilities.map((ability) => ability.effect)).toContainEqual({
+      kind: "grant_ward",
+      amount: 1,
+    });
+
+    const winged = compile(
+      "Winged Boots",
+      "{1}",
+      "Artifact — Equipment",
+      "Equipped creature has flying and ward {4}.\nEquip {1}",
+    );
+    expect(winged.notes).toEqual([]);
+    expect(winged.definition.staticAbilities[1]?.effect).toEqual({ kind: "grant_ward", amount: 4 });
+
+    // Ward on a non-attached subject too.
+    const flowering = compile(
+      "Flowering of the White Tree",
+      "{1}{W}",
+      "Legendary Enchantment",
+      "Legendary creatures you control get +2/+1 and have ward {1}.\nNonlegendary creatures you control get +1/+1.",
+    );
+    expect(flowering.notes).toEqual([]);
+    const legendaryWard = flowering.definition.staticAbilities.find(
+      (ability) => ability.effect.kind === "grant_ward",
+    );
+    expect(legendaryWard?.selector.legendary).toBe(true);
+    const plain = flowering.definition.staticAbilities.find(
+      (ability) => ability.selector.nonLegendary,
+    );
+    expect(plain?.effect).toEqual({ kind: "modify_pt", power: 1, toughness: 1 });
+
+    // A predicate that takes a keyword away.
+    const hammer = compile(
+      "Colossus Hammer",
+      "{1}",
+      "Artifact — Equipment",
+      "Equipped creature gets +10/+10 and loses flying.\nEquip {8}",
+    );
+    expect(hammer.notes).toEqual([]);
+    expect(hammer.definition.staticAbilities[1]?.effect).toEqual({
+      kind: "remove_keywords",
+      keywords: ["flying"],
+    });
+
+    // "Each … with a +1/+1 counter on it" — the singular of the wave-146
+    // counter qualifier.
+    const crawler = compile(
+      "Duskshell Crawler",
+      "{1}{G}",
+      "Creature — Insect",
+      "Each creature you control with a +1/+1 counter on it has trample.",
+      "1",
+      "1",
+    );
+    expect(crawler.notes).toEqual([]);
+    expect(crawler.definition.staticAbilities[0]).toMatchObject({
+      selector: { scope: "controlled", types: ["creature"], withCounter: "p1p1" },
+      effect: { kind: "grant_keyword", keyword: "trample" },
+    });
+  });
+
+  it("taxes a targeted creature by its granted ward, not just its printed one", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    const bearDef = createCardDefinition({ name: "Bear", typeLine: "Creature — Bear", power: 2, toughness: 2 });
+    game.definitions[bearDef.id] = bearDef;
+    const bear = createCardInstance({ definitionId: bearDef.id, ownerId: p2.id, zone: "battlefield" });
+    game.cards[bear.id] = bear;
+    p2.zones.battlefield.push(bear.id);
+    expect(computedCard(game, bear.id)?.ward).toBe(0);
+
+    const bootsDef = compile(
+      "Winged Boots",
+      "{1}",
+      "Artifact — Equipment",
+      "Equipped creature has flying and ward {4}.\nEquip {1}",
+    ).definition;
+    game.definitions[bootsDef.id] = bootsDef;
+    const boots = createCardInstance({ definitionId: bootsDef.id, ownerId: p2.id, zone: "battlefield" });
+    boots.attachedTo = bear.id;
+    game.cards[boots.id] = boots;
+    p2.zones.battlefield.push(boots.id);
+    expect(computedCard(game, bear.id)?.ward).toBe(4);
+    expect(hasKeyword(game, bear.id, "flying")).toBe(true);
+
+    // Targeting it from across the table opens the pay-or-counter prompt.
+    const boltDef = compile(
+      "Shock",
+      "{R}",
+      "Instant",
+      "Shock deals 2 damage to any target.",
+    ).definition;
+    game.definitions[boltDef.id] = boltDef;
+    const bolt = createCardInstance({ definitionId: boltDef.id, ownerId: p1.id, zone: "hand" });
+    game.cards[bolt.id] = bolt;
+    p1.zones.hand.push(bolt.id);
+    const next = putSpellOnStack(game, bolt.id, [{ type: "creature", cardId: bear.id }]);
+    expect(next.prompts[0]).toMatchObject({ kind: "pay_or_counter", reason: "ward", cost: "{4}" });
+
+    // The grant leaves with the Equipment.
+    delete game.cards[boots.id];
+    p2.zones.battlefield = p2.zones.battlefield.filter((id) => id !== boots.id);
+    expect(computedCard(game, bear.id)?.ward).toBe(0);
+  });
+
+  it("strips a keyword the host printed", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const flierDef = createCardDefinition({
+      name: "Flier",
+      typeLine: "Creature — Bird",
+      power: 1,
+      toughness: 1,
+      keywords: ["flying"],
+    });
+    game.definitions[flierDef.id] = flierDef;
+    const flier = createCardInstance({ definitionId: flierDef.id, ownerId: p1.id, zone: "battlefield" });
+    game.cards[flier.id] = flier;
+    p1.zones.battlefield.push(flier.id);
+    expect(hasKeyword(game, flier.id, "flying")).toBe(true);
+
+    const hammerDef = compile(
+      "Colossus Hammer",
+      "{1}",
+      "Artifact — Equipment",
+      "Equipped creature gets +10/+10 and loses flying.\nEquip {8}",
+    ).definition;
+    game.definitions[hammerDef.id] = hammerDef;
+    const hammer = createCardInstance({ definitionId: hammerDef.id, ownerId: p1.id, zone: "battlefield" });
+    hammer.attachedTo = flier.id;
+    game.cards[hammer.id] = hammer;
+    p1.zones.battlefield.push(hammer.id);
+    expect(computedCard(game, flier.id)?.power).toBe(11);
+    expect(hasKeyword(game, flier.id, "flying")).toBe(false);
+  });
+});
+

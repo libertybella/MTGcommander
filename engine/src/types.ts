@@ -2124,6 +2124,11 @@ export type ContinuousEffectData =
   | { kind: "grant_keyword"; keyword: Keyword } // layer 6
   /** layer 6: "gain protection from each color" (Akroma's Will). */
   | { kind: "grant_protection"; colors: Color[] }
+  /** layer 6: "has ward {2}" (Lavaspur Boots). The highest granted amount
+   * wins over the printed one rather than stacking — CR 702.21c makes
+   * multiple ward abilities trigger separately, which the pay-or-counter
+   * prompt cannot yet express (documented). */
+  | { kind: "grant_ward"; amount: number }
   /** layer 6: Cryptolith Rite grants a mana ability to matching permanents. */
   | { kind: "grant_mana_ability"; ability: ManaAbility }
   // (modify_pt lives in layer 7c; `per` scales it by a live count read from

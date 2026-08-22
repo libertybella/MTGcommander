@@ -2,7 +2,7 @@ import { createId } from "./ids";
 import { cloneGameState } from "./clone";
 import { isCommander, isInstantOrSorcery } from "./cardTypes";
 import { manaValueOf } from "./characteristics";
-import { abilitiesRemoved } from "./characteristicsEngine";
+import { abilitiesRemoved, computedCard } from "./characteristicsEngine";
 import { castableFromTop } from "./derived";
 import { controlsMatching } from "./legalActions";
 import { enterOwnerZone, findCardZone, removeCardFromCurrentZone } from "./zones";
@@ -37,7 +37,8 @@ function queueWardPromptsInPlace(
       continue;
     }
     const card = state.cards[target.cardId];
-    const ward = card ? state.definitions[card.definitionId]?.ward : undefined;
+    // Computed, not printed: Lavaspur Boots and friends grant ward.
+    const ward = card ? computedCard(state, card.id)?.ward : undefined;
     if (!card || !ward || ward <= 0 || card.controllerId === casterId) {
       continue;
     }
