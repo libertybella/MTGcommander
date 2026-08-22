@@ -167,6 +167,46 @@ const KEYWORD_GRANTS: Record<string, Keyword> = {
  */
 const ABILITY_WORD_PREFIX = /^[A-Z][A-Za-z'’ ]*\s*[—-]\s*(?=When|Whenever|At the beginning)/;
 
+/**
+ * One "as an additional cost" clause, lower-cased. Returns null when the
+ * phrase is not a cost this engine can charge, so an either-or line only
+ * compiles when BOTH of its halves are understood.
+ */
+function parseSingleAdditionalCost(what: string): AdditionalCastCost | null {
+  if (what === "sacrifice a creature") {
+    return { sacrifice: "creature" };
+  }
+  if (what === "sacrifice an artifact") {
+    return { sacrifice: "artifact" };
+  }
+  if (
+    what === "sacrifice an artifact or creature" ||
+    what === "sacrifice a creature or artifact"
+  ) {
+    return { sacrifice: "creature_or_artifact" };
+  }
+  if (what === "sacrifice a land") {
+    return { sacrifice: "land" };
+  }
+  if (what === "discard a card") {
+    return { discard: 1 };
+  }
+  if (what === "discard two cards") {
+    return { discard: 2 };
+  }
+  if (what === "pay x life") {
+    return { lifeX: true };
+  }
+  const life = what.match(/^pay (\d+) life$/);
+  if (life?.[1]) {
+    return { life: Number(life[1]) };
+  }
+  // "pay {2}" as a branch has no home here — AdditionalCastCost charges
+  // permanents, cards, and life, not mana — so Redirect Lightning's
+  // "pay 5 life or pay {2}" stays a clean miss rather than half a cost.
+  return null;
+}
+
 /** "…for each <noun> you control" — the nouns a live count can scale by. */
 const PER_COUNTS: Record<string, DynamicCount> = {
   land: "lands_you_control",
@@ -7727,29 +7767,25 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
     const addCost = sentence.match(/^As an additional cost to cast this spell, (.+)$/i);
     if (addCost?.[1]) {
       const what = addCost[1].trim().toLowerCase();
-      let parsed: AdditionalCastCost | null = null;
-      if (what === "sacrifice a creature") {
-        parsed = { sacrifice: "creature" };
-      } else if (what === "sacrifice an artifact") {
-        parsed = { sacrifice: "artifact" };
-      } else if (what === "sacrifice an artifact or creature" || what === "sacrifice a creature or artifact") {
-        parsed = { sacrifice: "creature_or_artifact" };
-      } else if (what === "sacrifice a land") {
-        parsed = { sacrifice: "land" };
-      } else if (what === "discard a card") {
-        parsed = { discard: 1 };
-      } else if (what === "discard two cards") {
-        parsed = { discard: 2 };
-      } else if (what === "pay x life") {
-        parsed = { lifeX: true };
-      } else {
-        const life = what.match(/^pay (\d+) life$/);
-        if (life?.[1]) {
-          parsed = { life: Number(life[1]) };
+      // "sacrifice an artifact or discard a card": two whole costs, one of
+      // which is paid. Split before the single-cost table below, and only
+      // when BOTH halves are themselves understood.
+      const either = what.match(
+        /^((?:sacrifice|discard|pay) .+?) or ((?:sacrifice|discard|pay) .+)$/,
+      );
+      if (either?.[1] && either[2]) {
+        const branches = [parseSingleAdditionalCost(either[1]), parseSingleAdditionalCost(either[2])];
+        if (branches.every((branch): branch is AdditionalCastCost => branch !== null)) {
+          result.additionalCost = {
+            ...(result.additionalCost ?? {}),
+            alternatives: branches,
+          };
+          continue;
         }
       }
-      if (parsed) {
-        result.additionalCost = { ...(result.additionalCost ?? {}), ...parsed };
+      const single = parseSingleAdditionalCost(what);
+      if (single) {
+        result.additionalCost = { ...(result.additionalCost ?? {}), ...single };
         continue;
       }
     }

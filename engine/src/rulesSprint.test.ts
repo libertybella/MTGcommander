@@ -19257,3 +19257,142 @@ describe("wave 160: thriving lands and wider clones", () => {
   });
 });
 
+
+describe("wave 161: either-or additional costs", () => {
+  const compile = (name: string, manaCost: string, typeLine: string, oracleText: string) =>
+    compileOracleCard({
+      oracleId: name,
+      name,
+      manaCost,
+      typeLine,
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  it("compiles a two-branch additional cost, and refuses a half-known one", () => {
+    const demand = compile(
+      "Demand Answers",
+      "{1}{R}",
+      "Instant",
+      "As an additional cost to cast this spell, sacrifice an artifact or discard a card.\nDraw two cards.",
+    );
+    expect(demand.notes).toEqual([]);
+    expect(demand.definition.additionalCost).toEqual({
+      alternatives: [{ sacrifice: "artifact" }, { discard: 1 }],
+    });
+
+    const triumph = compile(
+      "Bitter Triumph",
+      "{1}{B}",
+      "Instant",
+      "As an additional cost to cast this spell, discard a card or pay 3 life.\nDestroy target creature or planeswalker.",
+    );
+    expect(triumph.notes).toEqual([]);
+    expect(triumph.definition.additionalCost).toEqual({
+      alternatives: [{ discard: 1 }, { life: 3 }],
+    });
+
+    // "pay {2}" is not a cost this shape can charge, so the whole clause is
+    // left alone rather than compiling half of it.
+    const redirect = compile(
+      "Redirect Lightning",
+      "{1}{R}",
+      "Instant",
+      "As an additional cost to cast this spell, pay 5 life or pay {2}.\nChange the target of target spell with a single target.",
+    );
+    expect(redirect.definition.additionalCost?.alternatives).toBeUndefined();
+  });
+
+  const table = () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const spellDef = compile(
+      "Demand Answers",
+      "{1}{R}",
+      "Instant",
+      "As an additional cost to cast this spell, sacrifice an artifact or discard a card.\nDraw two cards.",
+    ).definition;
+    game.definitions[spellDef.id] = spellDef;
+    const spell = createCardInstance({ definitionId: spellDef.id, ownerId: p1.id, zone: "hand" });
+    game.cards[spell.id] = spell;
+    p1.zones.hand.push(spell.id);
+    // fillLibraries stocks libraries, not hands — give the discard branch
+    // something to actually pitch.
+    const filler = createCardDefinition({ name: "Filler", typeLine: "Sorcery" });
+    game.definitions[filler.id] = filler;
+    for (let index = 0; index < 2; index += 1) {
+      const card = createCardInstance({ definitionId: filler.id, ownerId: p1.id, zone: "hand" });
+      game.cards[card.id] = card;
+      p1.zones.hand.push(card.id);
+    }
+    p1.mana.R = 1;
+    p1.mana.C = 1;
+    game.turn.phase = "precombatMain";
+    game.turn.step = "precombatMain";
+    game.turn.activePlayerId = p1.id;
+    game.priorityPlayerId = p1.id;
+    return { game, p1, spell };
+  };
+
+  it("reads the branch from what the caster supplied", () => {
+    // Supplying a discard picks the discard branch, with no artifact in play.
+    const discarding = table();
+    const pitched = discarding.p1.zones.hand.find((id) => id !== discarding.spell.id)!;
+    const afterDiscard = applyAction(discarding.game, {
+      kind: "cast_spell",
+      playerId: discarding.p1.id,
+      cardId: discarding.spell.id,
+      targets: [],
+      costDiscardIds: [pitched],
+    });
+    expect(afterDiscard.cards[pitched]?.zone).toBe("graveyard");
+
+    // Supplying a sacrifice picks the sacrifice branch instead.
+    const sacrificing = table();
+    const rockDef = createCardDefinition({ name: "Rock", typeLine: "Artifact" });
+    sacrificing.game.definitions[rockDef.id] = rockDef;
+    const rock = createCardInstance({
+      definitionId: rockDef.id,
+      ownerId: sacrificing.p1.id,
+      zone: "battlefield",
+    });
+    sacrificing.game.cards[rock.id] = rock;
+    sacrificing.p1.zones.battlefield.push(rock.id);
+    const handBefore = sacrificing.p1.zones.hand.length;
+    const afterSac = applyAction(sacrificing.game, {
+      kind: "cast_spell",
+      playerId: sacrificing.p1.id,
+      cardId: sacrificing.spell.id,
+      targets: [],
+      costSacrificeId: rock.id,
+    });
+    expect(afterSac.cards[rock.id]?.zone).toBe("graveyard");
+    // Only the spell left hand; nothing was pitched.
+    expect(afterSac.players.find((entry) => entry.id === sacrificing.p1.id)!.zones.hand.length).toBe(
+      handBefore - 1,
+    );
+  });
+
+  it("is castable when only one branch is affordable", () => {
+    const { game, p1, spell } = table();
+    // No artifacts at all, but a hand to pitch from.
+    expect(
+      legalActions(game, p1.id).some(
+        (action) => action.kind === "cast_spell" && action.cardId === spell.id,
+      ),
+    ).toBe(true);
+
+    // Empty the hand except the spell: now neither branch is payable.
+    const emptied = game.players.find((entry) => entry.id === p1.id)!;
+    emptied.zones.hand = [spell.id];
+    expect(
+      legalActions(game, p1.id).some(
+        (action) => action.kind === "cast_spell" && action.cardId === spell.id,
+      ),
+    ).toBe(false);
+  });
+});
+

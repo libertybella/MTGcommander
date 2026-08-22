@@ -5,6 +5,7 @@ import type {
   CardEffect,
   CardFilter,
   Color,
+  AdditionalCastCost,
   ContinuousEffect,
   ContinuousEffectData,
   ControlledGate,
@@ -72,6 +73,45 @@ const KEYWORDS = new Set<Keyword>([
 
 const MANA_KEYS = ["W", "U", "B", "R", "G", "C"] as const;
 const COLOR_KEYS = ["W", "U", "B", "R", "G"] as const;
+
+/**
+ * An "as an additional cost" clause. Recursive by one level: an either-or
+ * cost carries its branches in `alternatives`, and each branch is an ordinary
+ * cost, so the same parser reads both.
+ */
+function parseAdditionalCost(value: unknown, label: string): AdditionalCastCost {
+  if (!isRecord(value)) {
+    throw new Error(`Invalid ${label}`);
+  }
+  const sacrifice = value.sacrifice;
+  if (
+    sacrifice !== undefined &&
+    sacrifice !== "creature" &&
+    sacrifice !== "artifact" &&
+    sacrifice !== "creature_or_artifact" &&
+    sacrifice !== "land"
+  ) {
+    throw new Error(`Invalid ${label}.sacrifice`);
+  }
+  return {
+    ...(sacrifice === undefined ? {} : { sacrifice }),
+    ...(value.discard === undefined
+      ? {}
+      : { discard: expectNumber(value.discard, `${label}.discard`) }),
+    ...(value.life === undefined ? {} : { life: expectNumber(value.life, `${label}.life`) }),
+    ...(value.lifeX === true ? { lifeX: true } : {}),
+    ...(value.alternatives === undefined
+      ? {}
+      : {
+          alternatives: (Array.isArray(value.alternatives)
+            ? value.alternatives
+            : (() => {
+                throw new Error(`Invalid ${label}.alternatives`);
+              })()
+          ).map((entry, index) => parseAdditionalCost(entry, `${label}.alternatives[${index}]`)),
+        }),
+  };
+}
 
 /** One colour letter, validated. */
 function parseColor(value: unknown, label: string): Color {
@@ -615,41 +655,10 @@ export function parseGameState(json: string): GameState {
       ...(def.additionalCost === undefined
         ? {}
         : {
-            additionalCost: (() => {
-              if (!isRecord(def.additionalCost)) {
-                throw new Error(`Invalid definition.${id}.additionalCost`);
-              }
-              const sacrifice = def.additionalCost.sacrifice;
-              if (
-                sacrifice !== undefined &&
-                sacrifice !== "creature" &&
-                sacrifice !== "artifact" &&
-                sacrifice !== "creature_or_artifact" &&
-                sacrifice !== "land"
-              ) {
-                throw new Error(`Invalid definition.${id}.additionalCost.sacrifice`);
-              }
-              return {
-                ...(sacrifice === undefined ? {} : { sacrifice }),
-                ...(def.additionalCost.discard === undefined
-                  ? {}
-                  : {
-                      discard: expectNumber(
-                        def.additionalCost.discard,
-                        `definition.${id}.additionalCost.discard`,
-                      ),
-                    }),
-                ...(def.additionalCost.life === undefined
-                  ? {}
-                  : {
-                      life: expectNumber(
-                        def.additionalCost.life,
-                        `definition.${id}.additionalCost.life`,
-                      ),
-                    }),
-                ...(def.additionalCost.lifeX === true ? { lifeX: true } : {}),
-              };
-            })(),
+            additionalCost: parseAdditionalCost(
+              def.additionalCost,
+              `definition.${id}.additionalCost`,
+            ),
           }),
       ...(def.attackTax === undefined
         ? {}

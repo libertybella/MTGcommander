@@ -1010,6 +1010,15 @@ export type AdditionalCastCost = {
   life?: number;
   /** "Pay X life" — the announced X feeds the spell's "x" amounts (Toxic Deluge). */
   lifeX?: boolean;
+  /**
+   * "…sacrifice an artifact OR discard a card": exactly one branch is paid.
+   * The caster's choice is read from what the cast action supplied — a
+   * sacrifice id picks the sacrifice branch, discard ids the discard branch,
+   * neither the remaining one — so no extra prompt or action field is needed.
+   * When nothing distinguishes them, the first affordable branch is taken and
+   * that is a documented auto-pick.
+   */
+  alternatives?: AdditionalCastCost[];
 };
 
 /** A static generic-cost discount on spells the controller casts. */

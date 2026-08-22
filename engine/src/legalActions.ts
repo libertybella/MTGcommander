@@ -317,18 +317,25 @@ function castableFace(
     if (!player) {
       return false;
     }
-    if (
-      additional.sacrifice &&
-      !player.zones.battlefield.some((cardId) =>
-        sacrificeScopeMatches(state, cardId, additional.sacrifice!),
-      )
-    ) {
-      return false;
-    }
-    if (additional.discard && player.zones.hand.length <= additional.discard) {
-      return false;
-    }
-    if (additional.life && player.life <= additional.life) {
+    const payable = (cost: AdditionalCastCost): boolean => {
+      if (
+        cost.sacrifice &&
+        !player.zones.battlefield.some((cardId) =>
+          sacrificeScopeMatches(state, cardId, cost.sacrifice!),
+        )
+      ) {
+        return false;
+      }
+      if (cost.discard && player.zones.hand.length <= cost.discard) {
+        return false;
+      }
+      return !(cost.life && player.life <= cost.life);
+    };
+    // "…sacrifice an artifact or discard a card": any one branch suffices.
+    const ok = additional.alternatives?.length
+      ? additional.alternatives.some(payable)
+      : payable(additional);
+    if (!ok) {
       return false;
     }
   }

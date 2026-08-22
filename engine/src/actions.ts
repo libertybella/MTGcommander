@@ -28,7 +28,7 @@ import { applyOpeningRoll, isOpeningRoll } from "./openingRoll";
 import { applyManualOverride } from "./override";
 import { applyChooseEnterReplacement, applyChooseTargets, applyResolveChooseCard, applyResolveColor, applyResolveCreatureType, applyResolveDiscard, applyResolveEnterCopy, applyResolveLookAssign, applyResolveOrderTriggers, applyResolvePay, applyResolveScry, applyResolveSearch, applyResolveSurveil, applyResolveTriggerMode, currentPrompt, dropLostPlayerPromptsInPlace, isPromptOpen } from "./prompt";
 import { findCardZone, moveCard } from "./zones";
-import type { CardInstanceId, ChosenTarget, Color, GameAction, GameState, ManaColor, ManaPool, PlayerId } from "./types";
+import type { AdditionalCastCost, CardInstanceId, ChosenTarget, Color, GameAction, GameState, ManaColor, ManaPool, PlayerId } from "./types";
 
 function requirePlayer(state: GameState, playerId: PlayerId): void {
   if (!state.players.some((player) => player.id === playerId)) {
@@ -92,6 +92,59 @@ function findFreeHandGrant(
   cardId: CardInstanceId,
 ): boolean {
   return findFreeHandGrantIndex(state, playerId, cardId) >= 0;
+}
+
+/**
+ * Which branch of an either-or additional cost the caster is paying.
+ *
+ * The choice is read from the cast action's own fields rather than from a new
+ * prompt: supplying a sacrifice id means the sacrifice branch, discard ids
+ * mean the discard branch. When nothing distinguishes them the first
+ * affordable branch is taken — a documented auto-pick, in the same spirit as
+ * the other free choices the bot cannot reason about.
+ */
+function chooseAdditionalCostBranch(
+  state: GameState,
+  playerId: PlayerId,
+  cost: AdditionalCastCost | undefined,
+  costSacrificeId: CardInstanceId | undefined,
+  costDiscardIds: CardInstanceId[] | undefined,
+): AdditionalCastCost | undefined {
+  if (!cost?.alternatives || cost.alternatives.length === 0) {
+    return cost;
+  }
+  const branches = cost.alternatives;
+  if (costSacrificeId !== undefined) {
+    const sacrificeBranch = branches.find((branch) => branch.sacrifice);
+    if (sacrificeBranch) {
+      return sacrificeBranch;
+    }
+  }
+  if (costDiscardIds !== undefined && costDiscardIds.length > 0) {
+    const discardBranch = branches.find((branch) => branch.discard);
+    if (discardBranch) {
+      return discardBranch;
+    }
+  }
+  const player = state.players.find((entry) => entry.id === playerId);
+  const affordable = branches.find((branch) => {
+    if (branch.life !== undefined) {
+      return (player?.life ?? 0) > branch.life;
+    }
+    if (branch.discard !== undefined) {
+      return (player?.zones.hand.length ?? 0) >= branch.discard;
+    }
+    if (branch.sacrifice) {
+      return Object.values(state.cards).some(
+        (entry) =>
+          entry.zone === "battlefield" &&
+          entry.controllerId === playerId &&
+          sacrificeScopeMatches(state, entry.id, branch.sacrifice!),
+      );
+    }
+    return true;
+  });
+  return affordable ?? branches[0];
 }
 
 function validateCast(
@@ -296,7 +349,15 @@ function applyCastSpell(
   const { cost, fromCommand, flashbackLife } = validateCast(faced, playerId, cardId);
   const card = faced.cards[cardId];
   const definition = card ? faced.definitions[card.definitionId] : undefined;
-  const additional = definition?.additionalCost;
+  // "Sacrifice an artifact or discard a card": pick the branch the caster's
+  // own inputs point at, then treat it as the only cost.
+  const additional = chooseAdditionalCostBranch(
+    faced,
+    playerId,
+    definition?.additionalCost,
+    costSacrificeId,
+    costDiscardIds,
+  );
   if (additional?.sacrifice) {
     const sacrifice = costSacrificeId ? faced.cards[costSacrificeId] : undefined;
     if (
