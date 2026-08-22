@@ -8,11 +8,28 @@ on-what lives in [CLAIMS.md](CLAIMS.md). This file is the tribal
 knowledge that isn't obvious from those: exact commands, traps, and
 the current state of play. Read all four before writing code.
 
-## State of play (checkpoint-82-descriptors, 2026-08-22)
+## State of play (checkpoint-83-vocabularies, 2026-08-22)
 
-- Branch `comprehensive-plan`, tags through `checkpoint-82-descriptors`.
-- 1,043 tests green; top-2,000 compile rate **61.5% (1,236/2,009)**,
+- Branch `comprehensive-plan`, tags through `checkpoint-83-vocabularies`.
+- 1,075 tests green; top-2,000 compile rate **62.9% (1,263/2,009)**,
   60-card sample 97% (CI floor now 90).
+- **Waves 189–194 flipped 5, 3, 6, 4, 3, 6. Wave 189 is the one to read
+  first, because it corrects the rule above it.** The damage clauses were
+  the obvious next collapse by branch count — EIGHTEEN of them, more than
+  the token family that had just paid out eight. Sizing the miss list
+  first said not to: it held TWO damage-recipient gaps, because those
+  eighteen branches had already caught nearly every printed recipient.
+  **Counting branches is half the test. The other half is whether the miss
+  list still wants what they cover.**
+- **The compile-rate metric cannot see a dropped field, by construction.**
+  In wave 192 a narrowed flash grant compiled, the rate went UP, and both
+  cards reported "fully compiled" — while `oracle.ts` never copied the new
+  field onto the definition, so the grant did nothing at the table. Only
+  the test caught it. Whenever you add a definition field, walk all four
+  mapper layers before trusting the number.
+- **Read the printed card, not the report line.** Valakut looked like it
+  needed only a condition; the one-away report had truncated "you may have
+  this land deal 3 damage" out of view, and that was the real blocker.
 - **Waves 185–188 flipped 2, 3, 8, 5, and the size gap between them is
   the lesson.** Wave 185 pointed the until-EOT grant at the general
   target phrase and picked up almost nothing, because that grammar was
