@@ -2356,6 +2356,20 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
         value.perControlled === "artifact"
           ? { perControlled: value.perControlled }
           : {}),
+        ...(value.perControlledSubtype === undefined
+          ? {}
+          : {
+              perControlledSubtype: expectString(
+                value.perControlledSubtype,
+                `${label}.perControlledSubtype`,
+              ),
+            }),
+        ...(value.count === undefined
+          ? {}
+          : {
+              count:
+                value.count === "x" ? ("x" as const) : expectNumber(value.count, `${label}.count`),
+            }),
         ...(value.perDiedCreatures === true ? { perDiedCreatures: true } : {}),
         ...(value.countFromSubjectAmount === true ? { countFromSubjectAmount: true } : {}),
         ...(value.perSourceCounters === undefined

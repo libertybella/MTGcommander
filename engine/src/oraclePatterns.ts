@@ -3338,12 +3338,12 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
   }
 
   match = sentence.match(
-    /^Create (a|an|one|two|three|four|five|\d+) (Treasure|Clue|Food) tokens?$/i,
+    /^Create (a|an|one|two|three|four|five|\d+|X) (Treasure|Clue|Food) tokens?$/i,
   );
   if (match?.[1] && match[2]) {
-    const count = parseCount(match[1]);
+    const count = /^X$/i.test(match[1]) ? undefined : parseCount(match[1]) ?? undefined;
     const name = match[2][0]!.toUpperCase() + match[2].slice(1).toLowerCase();
-    if (count) {
+    if (count !== undefined || /^X$/i.test(match[1])) {
       const token: CardEffect = {
         kind: "create_token",
         ownerId: "controller",
@@ -3351,10 +3351,12 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
         typeLine: `Artifact — ${name} Token`,
         power: null,
         toughness: null,
+        ...(count === undefined ? { count: "x" as const } : {}),
       };
       return {
         targetRequirements: [],
-        effects: Array.from({ length: count }, () => ({ ...token })),
+        effects:
+          count === undefined ? [token] : Array.from({ length: count }, () => ({ ...token })),
       };
     }
   }
@@ -3364,13 +3366,30 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
   // The quoted grant is accepted only for Eldrazi Spawn, whose ability the
   // token preset supplies.
   match = sentence.match(
-    /^(?:You may )?Create (a|an|one|two|three|four|five|six|seven|eight|nine|ten|\d+) (\d+)\/(\d+)(?: (white|blue|black|red|green|colorless))? ([\w]+(?: [\w]+)?) creature tokens?( with [a-z ]+| with "Sacrifice this token: Add \{C\}\.")?$/i,
+    new RegExp(
+      "^(?:You may )?Create (a|an|one|two|three|four|five|six|seven|eight|nine|ten|\\d+|X) " +
+        // "1/1", one or two colours, then the type words: "Warrior creature",
+        // "Soldier artifact creature", "Forest Dryad land creature".
+        "(\\d+)\\/(\\d+)(?: (?:white|blue|black|red|green|colorless)(?: and (?:white|blue|black|red|green))?)? " +
+        "([\\w]+(?: [\\w]+)*?)((?: (?:artifact|land|enchantment))*) creature tokens?" +
+        "( with [a-z ]+| with \"Sacrifice this token: Add \\{C\\}\\.\")?" +
+        // Krenko / Myrel: "…, where X is the number of Goblins you control".
+        "(?:, where X is the number of ([A-Za-z]+)s you control)?$",
+      "i",
+    ),
   );
-  if (match?.[1] && match[2] && match[3] && match[5]) {
-    const count = parseCount(match[1]);
+  if (match?.[1] && match[2] && match[3] && match[4]) {
+    const literalCount = /^X$/i.test(match[1]) ? undefined : parseCount(match[1]);
+    const perSubtype = match[7]?.toLowerCase();
     const power = Number(match[2]);
     const toughness = Number(match[3]);
-    const subtype = match[5].replace(/\b\w/g, (letter) => letter.toUpperCase());
+    const subtype = match[4].replace(/\b\w/g, (letter) => letter.toUpperCase());
+    // Extra card types printed before "creature" (Awaken the Woods' land
+    // creatures, Myrel's artifact creatures) lead the type line.
+    const extraTypes = (match[5] ?? "")
+      .split(/\s+/)
+      .filter(Boolean)
+      .map((word) => word[0]!.toUpperCase() + word.slice(1).toLowerCase());
     const keywordText = match[6]?.replace(/^ with /i, "");
     // "with prowess" (Monastery Mentor's Monks): prowess is not representable
     // on a token definition — dropped, a documented approximation. The quoted
@@ -3383,19 +3402,30 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
             .filter((word) => word !== "prowess" && word !== "changeling")
             .map((word) => KEYWORD_GRANTS[word])
         : [];
-    if (count && keywords.every((keyword): keyword is Keyword => Boolean(keyword))) {
+    // "X" with no "where X is …" tail is the spell's announced X; with one it
+    // counts permanents. A literal count still emits that many effects, which
+    // is what every existing caller expects.
+    const dynamic = perSubtype
+      ? { perControlledSubtype: perSubtype }
+      : literalCount === undefined
+        ? { count: "x" as const }
+        : null;
+    if ((dynamic || literalCount) && keywords.every((keyword): keyword is Keyword => Boolean(keyword))) {
       const token: CardEffect = {
         kind: "create_token",
         ownerId: "controller",
         name: subtype,
-        typeLine: `Creature — ${subtype} Token`,
+        typeLine: `${[...extraTypes, "Creature"].join(" ")} — ${subtype} Token`,
         power,
         toughness,
         ...(keywords.length > 0 ? { keywords } : {}),
+        ...(dynamic ?? {}),
       };
       return {
         targetRequirements: [],
-        effects: Array.from({ length: count }, () => ({ ...token })),
+        effects: dynamic
+          ? [token]
+          : Array.from({ length: literalCount! }, () => ({ ...token })),
       };
     }
   }

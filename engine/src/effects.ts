@@ -656,10 +656,12 @@ export function bindCardEffect(
       }
       const {
         perControlled,
+        perControlledSubtype,
         perDiedCreatures,
         perSourceCounters,
         copySelfIfLandsAtLeast,
         countFromSubjectAmount,
+        count: printedCount,
         ...tokenRest
       } = effect;
       // Scute Swarm: at six lands the token becomes a copy of the source.
@@ -674,7 +676,25 @@ export function bindCardEffect(
           return { kind: "copy_token", ownerId, ofCardId: context.sourceId };
         }
       }
-      let count: number | undefined;
+      // Secure the Wastes: "Create X … tokens" reads the announced X. An X of
+      // zero makes no tokens rather than one.
+      let count: number | undefined =
+        printedCount === "x" ? Math.max(0, context.xValue ?? 0) : printedCount;
+      if (count === 0) {
+        return null;
+      }
+      // Krenko: "where X is the number of Goblins you control".
+      if (perControlledSubtype) {
+        count = Object.values(state.cards).filter(
+          (card) =>
+            card.zone === "battlefield" &&
+            card.controllerId === context.controllerId &&
+            cardMatchesSubtype(state, card.id, perControlledSubtype),
+        ).length;
+        if (count === 0) {
+          return null;
+        }
+      }
       if (perControlled) {
         count = Object.values(state.cards).filter(
           (card) =>

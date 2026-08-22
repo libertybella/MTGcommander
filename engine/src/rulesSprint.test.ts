@@ -20763,3 +20763,149 @@ describe("wave 173: one cast-trigger grammar, and dies by its long name", () => 
   });
 });
 
+
+describe("wave 174: X-count token creation", () => {
+  const compile = (name: string, manaCost: string, typeLine: string, oracleText: string, power?: string, toughness?: string) =>
+    compileOracleCard({
+      oracleId: name,
+      name,
+      manaCost,
+      typeLine,
+      power: power ?? null,
+      toughness: toughness ?? null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  it("reads the announced X, through one or two colours", () => {
+    const secure = compile(
+      "Secure the Wastes",
+      "{X}{W}",
+      "Instant",
+      "Create X 1/1 white Warrior creature tokens.",
+    );
+    expect(secure.notes).toEqual([]);
+    expect(secure.definition.effects).toEqual([
+      {
+        kind: "create_token",
+        ownerId: "controller",
+        name: "Warrior",
+        typeLine: "Creature — Warrior Token",
+        power: 1,
+        toughness: 1,
+        count: "x",
+      },
+    ]);
+
+    const crescendo = compile(
+      "Grand Crescendo",
+      "{X}{W}{W}",
+      "Instant",
+      "Create X 1/1 green and white Citizen creature tokens. Creatures you control gain indestructible until end of turn.",
+    );
+    expect(crescendo.notes).toEqual([]);
+    expect(crescendo.definition.effects[0]).toMatchObject({
+      kind: "create_token",
+      name: "Citizen",
+      count: "x",
+    });
+
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const bound = bindCardEffects(game, secure.definition.effects, {
+      controllerId: p1.id,
+      sourceId: null,
+      xValue: 3,
+    });
+    const next = applyEffects(game, bound);
+    const tokens = next.players
+      .find((entry) => entry.id === p1.id)!
+      .zones.battlefield.filter((id) => next.cards[id]?.isToken);
+    expect(tokens).toHaveLength(3);
+
+    // X of zero makes no tokens rather than one.
+    const none = applyEffects(
+      game,
+      bindCardEffects(game, secure.definition.effects, {
+        controllerId: p1.id,
+        sourceId: null,
+        xValue: 0,
+      }),
+    );
+    expect(
+      none.players.find((entry) => entry.id === p1.id)!.zones.battlefield,
+    ).toHaveLength(0);
+  });
+
+  it("counts controlled permanents of the named subtype, and keeps extra card types", () => {
+    const myrel = compile(
+      "Myrel, Shield of Argive",
+      "{3}{W}",
+      "Legendary Creature — Human Soldier",
+      "During your turn, your opponents can't cast spells or activate abilities of artifacts, creatures, or enchantments.\nWhenever Myrel attacks, create X 1/1 colorless Soldier artifact creature tokens, where X is the number of Soldiers you control.",
+      "3",
+      "4",
+    );
+    expect(myrel.notes).toEqual([]);
+    const attackTrigger = myrel.definition.triggers.find((entry) => entry.event === "attacks");
+    expect(attackTrigger?.effects[0]).toMatchObject({
+      kind: "create_token",
+      // "artifact creature" keeps both card types on the token.
+      typeLine: "Artifact Creature — Soldier Token",
+      perControlledSubtype: "soldier",
+    });
+
+    const krenko = compile(
+      "Krenko, Mob Boss",
+      "{2}{R}{R}",
+      "Legendary Creature — Goblin Warrior",
+      "{T}: Create X 1/1 red Goblin creature tokens, where X is the number of Goblins you control.",
+      "3",
+      "3",
+    );
+    expect(krenko.notes).toEqual([]);
+
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    game.definitions[krenko.definition.id] = krenko.definition;
+    const source = createCardInstance({
+      definitionId: krenko.definition.id,
+      ownerId: p1.id,
+      zone: "battlefield",
+    });
+    source.summoningSick = false;
+    game.cards[source.id] = source;
+    p1.zones.battlefield.push(source.id);
+    const bearDef = createCardDefinition({
+      name: "Bear",
+      typeLine: "Creature — Bear",
+      power: 2,
+      toughness: 2,
+    });
+    game.definitions[bearDef.id] = bearDef;
+    const bear = createCardInstance({ definitionId: bearDef.id, ownerId: p1.id, zone: "battlefield" });
+    game.cards[bear.id] = bear;
+    p1.zones.battlefield.push(bear.id);
+    game.turn.phase = "precombatMain";
+    game.turn.step = "precombatMain";
+    game.turn.activePlayerId = p1.id;
+    game.priorityPlayerId = p1.id;
+
+    let next = applyAction(game, {
+      kind: "activate_ability",
+      playerId: p1.id,
+      cardId: source.id,
+      abilityIndex: 0,
+    });
+    while (next.stack.length > 0) {
+      next = resolveTopOfStack(next);
+    }
+    // Krenko is the only Goblin, so exactly one token — the Bear does not count.
+    const tokens = next.players
+      .find((entry) => entry.id === p1.id)!
+      .zones.battlefield.filter((id) => next.cards[id]?.isToken);
+    expect(tokens).toHaveLength(1);
+  });
+});
+

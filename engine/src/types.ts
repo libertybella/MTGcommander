@@ -1337,8 +1337,12 @@ export type CardEffect =
       toughness?: number | null;
       /** "…creature token with flying" (Utvara Hellkite). */
       keywords?: Keyword[];
+      /** Secure the Wastes: "Create X … tokens" — the announced X. */
+      count?: number | "x";
       /** Brass's Bounty: one token per controlled permanent of this type. */
       perControlled?: "land" | "creature" | "artifact";
+      /** Krenko, Myrel: "where X is the number of Goblins you control". */
+      perControlledSubtype?: string;
       /** Mahadi: one token per creature that died this turn. */
       perDiedCreatures?: boolean;
       /** Elenda: X tokens where X is the dying subject's power, carried on
