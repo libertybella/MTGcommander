@@ -19665,3 +19665,73 @@ describe("wave 164: optional target slots", () => {
   });
 });
 
+
+describe("wave 165: comma-less legend short names", () => {
+  const compile = (name: string, manaCost: string, typeLine: string, oracleText: string, power?: string, toughness?: string) =>
+    compileOracleCard({
+      oracleId: name,
+      name,
+      manaCost,
+      typeLine,
+      power: power ?? null,
+      toughness: toughness ?? null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  it("shortens 'X of the Y' names to their leading word", () => {
+    const loran = compile(
+      "Loran of the Third Path",
+      "{2}{W}",
+      "Legendary Creature — Human Artificer",
+      "Vigilance\nWhen Loran enters, destroy up to one target artifact or enchantment.",
+      "3",
+      "2",
+    );
+    expect(loran.notes).toEqual([]);
+    expect(loran.definition.triggers[0]?.event).toBe("enter_battlefield");
+    expect(loran.definition.triggers[0]?.targetRequirements).toEqual([
+      { kind: "artifact_or_enchantment", optional: true },
+    ]);
+  });
+
+  it("keeps shortening comma names, and shortens nothing else", () => {
+    // The comma form still works.
+    const atsushi = compile(
+      "Atsushi, the Blazing Sky",
+      "{2}{R}{R}",
+      "Legendary Creature — Dragon Spirit",
+      "Flying, trample\nWhen Atsushi dies, draw a card.",
+      "4",
+      "4",
+    );
+    expect(atsushi.notes).toEqual([]);
+    expect(atsushi.definition.triggers[0]?.event).toBe("dies");
+
+    // A plain multi-word name has no short form: "Greaves" must not become
+    // "~", or unrelated text mentioning the word would be rewritten.
+    const greaves = compile(
+      "Lightning Greaves",
+      "{1}",
+      "Artifact — Equipment",
+      "Equipped creature has haste and shroud.\nEquip {0}",
+    );
+    expect(greaves.notes).toEqual([]);
+    expect(greaves.definition.staticAbilities).toHaveLength(2);
+  });
+
+  it("still reads Sakashima's self-referencing rider", () => {
+    const sakashima = compile(
+      "Sakashima of a Thousand Faces",
+      "{2}{U}{U}",
+      "Legendary Creature — Human Rogue",
+      "You may have Sakashima enter as a copy of another creature you control, except it has Sakashima's other abilities.",
+      "3",
+      "1",
+    );
+    expect(sakashima.notes).toEqual([]);
+    expect(sakashima.definition.enterAsCopy?.scope).toBe("another_your_creature");
+  });
+});
+

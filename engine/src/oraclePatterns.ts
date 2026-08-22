@@ -257,9 +257,21 @@ function normalizeOracleText(card: OracleCard): string {
   const printedName = card.name.includes(" // ") ? (card.name.split(" // ")[0] ?? card.name) : card.name;
   let text = stripReminderText(card.oracleText).replace(/\r/g, "");
   text = text.replace(new RegExp(escapeRegex(printedName), "gi"), "~");
-  const shortName = printedName.split(",")[0]?.trim();
-  if (shortName && shortName !== printedName) {
-    text = text.replace(new RegExp(`\\b${escapeRegex(shortName)}\\b`, "gi"), "~");
+  // Legends refer to themselves by their short name. That is the part before
+  // a comma ("Atsushi, the Blazing Sky" → "Atsushi"), and for the comma-less
+  // "X of the Y" / "X the Y" patterns it is the leading word or words
+  // ("Loran of the Third Path" → "Loran"). Only these two shapes are
+  // shortened: a bare multi-word name like "Lightning Greaves" has no short
+  // form, and treating its first word as one would rewrite unrelated text.
+  const shortNames = [printedName.split(",")[0]?.trim()];
+  const ofThe = printedName.match(/^(.+?) (?:of|the) \b/);
+  if (ofThe?.[1]) {
+    shortNames.push(ofThe[1].trim());
+  }
+  for (const shortName of shortNames) {
+    if (shortName && shortName !== printedName) {
+      text = text.replace(new RegExp(`\\b${escapeRegex(shortName)}\\b`, "gi"), "~");
+    }
   }
   text = text.replace(
     /\bthis (?:creature|artifact|enchantment|land|permanent|planeswalker|Aura|Equipment)\b/gi,
@@ -6839,7 +6851,9 @@ function parseCopyExceptRiders(tail: string): { extraCounters?: number } | null 
     if (/^(?:it |the token )?has (?:flying|myriad)$/i.test(atom)) {
       continue;
     }
-    if (/^it has [\w' -]+'s other abilities$/i.test(atom)) {
+    // "~" once the name is normalised, or a literal name on cards that
+    // spell out a different permanent's.
+    if (/^it has (?:~|[\w' -]+)'s other abilities$/i.test(atom)) {
       continue;
     }
     return null;
