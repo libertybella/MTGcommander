@@ -3930,9 +3930,13 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
   match = sentence.match(
     // "creature" is listed so the control-qualified form reaches here; the
     // plain "Destroy target creature" is claimed by an earlier pattern.
-    /^(Destroy|Exile) target (creature|artifact|enchantment|artifact or enchantment|artifact, enchantment, or land|artifact, enchantment, or planeswalker|artifact or creature|creature or artifact|creature or enchantment|nonland permanent|noncreature, nonland permanent|permanent)( you don't control| an opponent controls| defending player controls)?(?: with mana value (\d+) or (less|greater))?$/i,
+    // "up to one target …" is the same thing with an optional slot, which the
+    // requirement already models (Loran of the Third Path).
+    /^(Destroy|Exile) (up to one )?target (creature|artifact|enchantment|artifact or enchantment|artifact, enchantment, or land|artifact, enchantment, or planeswalker|artifact or creature|creature or artifact|creature or enchantment|nonland permanent|noncreature, nonland permanent|permanent)( you don't control| an opponent controls| defending player controls)?(?: with mana value (\d+) or (less|greater))?$/i,
   );
-  if (match?.[1] && match[2] && (match[2].toLowerCase() !== "permanent" || match[3] || match[4])) {
+  // A bare "Destroy target permanent" is too broad to be this pattern; it
+  // only qualifies once a control clause or a mana-value bound narrows it.
+  if (match?.[1] && match[3] && (match[3].toLowerCase() !== "permanent" || match[4] || match[5])) {
     const kindOf: Record<string, TargetKind> = {
       creature: "creature",
       artifact: "artifact",
@@ -3947,18 +3951,19 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
       "noncreature, nonland permanent": "noncreature_nonland_permanent",
       permanent: "permanent",
     };
-    const bound = match[4] ? Number(match[4]) : undefined;
+    const bound = match[5] ? Number(match[5]) : undefined;
     // "defending player controls" (Kogla) widens to any opponent's — a
     // documented approximation of the defender restriction.
     return {
       targetRequirements: [
         {
-          kind: kindOf[match[2].toLowerCase()]!,
-          ...(match[3] ? { control: "not_own" as const } : {}),
-          ...(bound !== undefined && match[5]?.toLowerCase() === "less"
+          kind: kindOf[match[3].toLowerCase()]!,
+          ...(match[2] ? { optional: true as const } : {}),
+          ...(match[4] ? { control: "not_own" as const } : {}),
+          ...(bound !== undefined && match[6]?.toLowerCase() === "less"
             ? { maxManaValue: bound }
             : {}),
-          ...(bound !== undefined && match[5]?.toLowerCase() === "greater"
+          ...(bound !== undefined && match[6]?.toLowerCase() === "greater"
             ? { minManaValue: bound }
             : {}),
         },

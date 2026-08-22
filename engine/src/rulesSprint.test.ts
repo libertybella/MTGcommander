@@ -19608,3 +19608,60 @@ describe("wave 163: damage amounts on the trigger", () => {
   });
 });
 
+
+describe("wave 164: optional target slots", () => {
+  const compile = (name: string, manaCost: string, typeLine: string, oracleText: string) =>
+    compileOracleCard({
+      oracleId: name,
+      name,
+      manaCost,
+      typeLine,
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  it("reads 'up to one target' as an optional slot", () => {
+    const optional = compile(
+      "Optional Shatter",
+      "{1}{W}",
+      "Instant",
+      "Destroy up to one target artifact or enchantment.",
+    );
+    expect(optional.notes).toEqual([]);
+    expect(optional.definition.targetRequirements).toEqual([
+      { kind: "artifact_or_enchantment", optional: true },
+    ]);
+  });
+
+  it("leaves the mandatory forms exactly as they were", () => {
+    const plain = compile("Shatter", "{1}{R}", "Instant", "Destroy target artifact.");
+    expect(plain.notes).toEqual([]);
+    expect(plain.definition.targetRequirements).toEqual([{ kind: "artifact" }]);
+
+    const controlled = compile(
+      "Murder",
+      "{1}{B}{B}",
+      "Instant",
+      "Destroy target creature an opponent controls.",
+    );
+    expect(controlled.notes).toEqual([]);
+    expect(controlled.definition.targetRequirements).toEqual([
+      { kind: "creature", control: "not_own" },
+    ]);
+
+    const bounded = compile(
+      "Small Exile",
+      "{1}{W}",
+      "Instant",
+      "Exile target nonland permanent with mana value 3 or less.",
+    );
+    expect(bounded.notes).toEqual([]);
+    expect(bounded.definition.targetRequirements).toEqual([
+      { kind: "nonland_permanent", maxManaValue: 3 },
+    ]);
+  });
+});
+
