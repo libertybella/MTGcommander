@@ -8,40 +8,49 @@ on-what lives in [CLAIMS.md](CLAIMS.md). This file is the tribal
 knowledge that isn't obvious from those: exact commands, traps, and
 the current state of play. Read all four before writing code.
 
-## State of play (checkpoint-76-free-casting, 2026-08-22)
+## State of play (checkpoint-77-permissions, 2026-08-22)
 
-- Branch `comprehensive-plan`, tags through `checkpoint-76-free-casting`.
-- 931 tests green; top-2,000 compile rate **55.0% (1,104/2,009)**,
+- Branch `comprehensive-plan`, tags through `checkpoint-77-permissions`.
+- 948 tests green; top-2,000 compile rate **55.7% (1,119/2,009)**,
   60-card sample 95% (CI floor now 90).
-- **The permission-not-prompt trick is the reusable idea from waves
-  157–158.** "You may cast … without paying its mana cost" looked like it
+- **The permission-not-prompt trick is the reusable idea of waves
+  157–161.** "You may cast … without paying its mana cost" looked like it
   needed a new prompt, which would have meant answer paths in the client,
   the bot, and the fuzzer — the expensive half of adding any choice.
   Modelling it as a *permission with a use count*, the way `exilePlayable`
   already handled impulse exiles, meant the existing cast action served
-  it. Before building a prompt, always ask whether the thing can be a
+  it. The same move worked twice more: a one-turn flash window is state on
+  the game read by the existing `hasFlashGrant`, and an either-or
+  additional cost reads its branch from the fields the cast action already
+  carries. Before building a prompt, always ask whether the thing can be a
   permission the player may or may not exercise. Bolas's Citadel is the
   next card that wants this shape (same permission, from the library top,
-  paying life) and is now one clause away.
+  paying life) and is one clause away.
+- **Cycles are worth more than ranks.** The five Verge lands, five
+  Landscapes, and five Thriving lands each fell to a single fix, and
+  together they beat a dozen individually-chased high-ranked cards. When
+  the miss list shows near-identical text five times, take that first.
+- **When a fix flips nothing, find out why before moving on.** Wave 164's
+  "up to one target" support flipped zero cards; chasing the reason found
+  that comma-less legend names were never shortened, which is a
+  normalisation bug affecting a whole class of legends. The zero-flip
+  wave was worth more than its number.
 - The wave loop continues toward the goal gate: M6, ≥95% of the EDHREC
-  top-2,000 fully compiling. The rhythm below is proven across 154
-  waves (15.6% → 54.1%); follow it as written.
-- **Yield per wave is falling and that is the real news.** Waves 145–156
-  flipped 13, 15, 11, 6, 7, 8, 7, 5, 1, 6, 6, 4. The early numbers came
+  top-2,000 fully compiling. The rhythm below is proven across 165
+  waves (15.6% → 55.7%); follow it as written.
+- **Yield per wave is falling and that is the real news.** Waves 145–165
+  flipped 13, 15, 11, 6, 7, 8, 7, 5, 1, 6, 6, 4, 2, 2, 4, 9, 2, 2, 1, 0, 1.
+  The early numbers came
   from grammars that replaced whole families of regexes; those families
   are now largely built, and what is left is a genuine long tail. Plan
-  on roughly 4–6 flips per wave from here, not 13, and pick clusters
+  on roughly 1–4 flips per wave from here, not 13, and pick clusters
   accordingly — a cycle of near-identical cards (the Verge lands, the
   Landscapes) is worth far more than a high-ranked one-off. At that
-  rate M6 (≥95%, another 813 cards) is not reachable by grinding alone;
+  rate M6 (≥95%, another 890 cards) is not reachable by grinding alone;
   see "The cheap tail is spent" below for what actually moves it.
 - **Never push to GitHub without Liberty's explicit yes.** Nothing has
   been pushed; the remote flow (Ross et al.) starts only when she says
   so.
-- Recent waves averaged 5–15 flips each; regenerate the miss list from
-  the compile measure every wave — stale lists waste probes, and
-  generic machinery (a new head, a regex variant) often flips unprobed
-  pattern-shares for free.
 
 ## Pick waves by machinery family, not by card
 
@@ -50,7 +59,8 @@ at the exact-text level almost every one of those fragments is unique —
 so there is no single big lever left, and picking "the top N misses"
 gives you N unrelated mechanics. What works instead is grouping the
 one-away pool by *shared machinery* and building one grammar per group.
-Waves 145–149 each did that and averaged ~10 flips.
+Waves 145–149 each did that and averaged ~10 flips; by wave 157 the scan
+stopped returning families, which is what the note above is about.
 
 Two scratch tools make this quick. Neither lives in the repo — they are
 kept outside it precisely so a `tmp*.test.ts` can never be committed:

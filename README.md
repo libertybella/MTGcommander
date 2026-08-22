@@ -16,8 +16,8 @@ This is **not** Wizards of the Coast software. It is also **not** the sibling Bi
 | --- | --- |
 | **Phase** | Comprehensive Rules machinery (layers, events, choices, permanents) + coverage flywheel |
 | **Next** | Private alpha (invite friends, play complete games) |
-| **Tests** | 931 passing; a 10,000-game random-action fuzz marathon gates checkpoint-45, 200-game burns gate every wave and 800+ burns gate every checkpoint tag |
-| **Compile rate** | 95% of a 60-card real-staple sample compiles fully (CI floor 90%); 55.0% of the EDHREC top-2,000, up from 15.6% at the start of the 2026-08-20 flywheel run |
+| **Tests** | 948 passing; a 10,000-game random-action fuzz marathon gates checkpoint-45, 200-game burns gate every wave and 800+ burns gate every checkpoint tag |
+| **Compile rate** | 95% of a 60-card real-staple sample compiles fully (CI floor 90%); 55.7% of the EDHREC top-2,000, up from 15.6% at the start of the 2026-08-20 flywheel run |
 | **Installer** | `npm run dist` builds a one-click Windows installer (`release/BizzyMTG Commander Setup 0.1.0.exe`). |
 
 ---
@@ -188,5 +188,7 @@ Git tags on `main`. Do not move old tags.
 | `checkpoint-75-grammars-ii` | **Five more grammars, and the bugs they flushed out.** Compound bodies split at a top-level conjunction when every half compiles (Undead Augur, Midnight Reaper); step triggers learn whose step they watch, with win conditions and generic ability-word stripping (Felidar Sovereign, Revel in Riches, Ophiomancer, Knuckles); "As long as …" splits into controller-gates and selector refinements (Serra Ascendant, Champion's Helm); subtype sweeps narrow as well as spare (Crux of Fate); and one search-descriptor fix compiled the whole Landscape cycle. Three latent bugs surfaced along the way — an `attached` selector that ignored every refinement, a `destroy_all` field the binder silently dropped, and a graveyard exile that bound to nobody, 54.1% |
 
 | `checkpoint-76-free-casting` | **Casting without paying, as a permission rather than a prompt.** "You may cast a spell with mana value N or less from your hand without paying its mana cost" is modelled the way impulse exiles already were — a permission with a use count — so the existing cast action serves it and no client, bot, or fuzzer answer path was needed. Its static form covers Omniscience (uncapped, continuous) and As Foretold (once per turn, cap read off its own counters). Alongside: a mass land return that compiled the Landscape cycle, one-turn flash windows, opponents-only sweeps, and X draws, 55.0% |
+
+| `checkpoint-77-permissions` | **Permissions instead of prompts, and cycles instead of cards.** Free casting from hand, one-turn flash windows, and either-or additional costs are all modelled as permissions the player may or may not exercise — none needed a new prompt, so none needed client, bot, and fuzzer answer paths. Cycles paid best: the five Thriving lands from one colour-exclusion, the five Landscapes from one search-descriptor fix, three clone scopes, narrowed mana echoes folded into one rule. Along the way, comma-less legend names finally shorten, 55.7% |
 
 These live on the `comprehensive-plan` branch (see docs/DEVELOPMENT_PROGRESS.md); merge to `main` at will — every checkpoint is a playable table. Next: **Private Alpha**, then productization.
