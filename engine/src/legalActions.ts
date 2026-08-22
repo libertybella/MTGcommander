@@ -315,7 +315,7 @@ function castableFace(
   if (definition.selfDiscount) {
     cost.generic = Math.max(
       0,
-      cost.generic - selfDiscountAmount(state, playerId, definition.selfDiscount.per),
+      cost.generic - selfDiscountAmount(state, playerId, definition.selfDiscount),
     );
   }
   // Blasphemous Edict: the cheap alternative cost is auto-taken whenever

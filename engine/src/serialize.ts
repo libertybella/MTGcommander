@@ -74,6 +74,37 @@ const KEYWORDS = new Set<Keyword>([
   "skulk",
 ]);
 
+/**
+ * The counted nouns a `modify_pt.per` may name. Written as a total record so
+ * that adding a `DynamicCount` without listing it here is a tsc error: this
+ * guard had drifted to seven of the union's thirteen, and a state holding Kor
+ * Spiritdancer's `auras_attached_to_it` therefore failed to deserialize.
+ */
+const DYNAMIC_COUNT_KEYS: Record<DynamicCount, true> = {
+  lands_you_control: true,
+  creatures_you_control: true,
+  artifacts_you_control: true,
+  enchantments_you_control: true,
+  artifacts_and_enchantments_you_control: true,
+  cards_in_your_hand: true,
+  cards_in_your_graveyard: true,
+  creature_cards_in_your_graveyard: true,
+  colors_among_permanents_you_control: true,
+  colorless_creatures_you_control: true,
+  creatures_you_control_with_a_counter: true,
+  auras_attached_to_it: true,
+  auras_and_equipment_attached_to_it: true,
+  creatures_and_enchantments_you_control: true,
+  auras_you_control_attached_to_a_creature: true,
+  legendary_creatures_you_control: true,
+  attacking_creatures_you_control: true,
+  permanents_you_control: true,
+};
+
+function isDynamicCount(value: unknown): value is DynamicCount {
+  return typeof value === "string" && Object.hasOwn(DYNAMIC_COUNT_KEYS, value);
+}
+
 const MANA_KEYS = ["W", "U", "B", "R", "G", "C"] as const;
 const COLOR_KEYS = ["W", "U", "B", "R", "G"] as const;
 
@@ -665,14 +696,33 @@ export function parseGameState(json: string): GameState {
               }
               const per = def.selfDiscount.per;
               if (
+                per !== undefined &&
                 per !== "noncreature_artifacts_total_mv" &&
                 per !== "historic_total_mv" &&
                 per !== "greatest_creature_power" &&
+                per !== "total_creature_power" &&
                 per !== "opponent_stack_3"
               ) {
                 throw new Error(`Invalid definition.${id}.selfDiscount.per`);
               }
-              return { per };
+              const scaled = def.selfDiscount.perDynamicCount;
+              if (scaled === undefined) {
+                return per === undefined ? {} : { per };
+              }
+              if (!isRecord(scaled) || !isDynamicCount(scaled.count)) {
+                throw new Error(`Invalid definition.${id}.selfDiscount.perDynamicCount`);
+              }
+              const count = scaled.count;
+              return {
+                ...(per === undefined ? {} : { per }),
+                perDynamicCount: {
+                  generic: expectNumber(
+                    scaled.generic,
+                    `definition.${id}.selfDiscount.perDynamicCount.generic`,
+                  ),
+                  count,
+                },
+              };
             })(),
           }),
       ...(def.affinityAllCreatures === true ? { affinityAllCreatures: true } : {}),
@@ -4146,17 +4196,7 @@ function parseContinuousEffectData(value: unknown, label: string): ContinuousEff
   }
   if (kind === "set_pt" || kind === "modify_pt") {
     const per = value.per;
-    if (
-      kind === "modify_pt" &&
-      per !== undefined &&
-      per !== "lands_you_control" &&
-      per !== "creatures_you_control" &&
-      per !== "artifacts_you_control" &&
-      per !== "enchantments_you_control" &&
-      per !== "artifacts_and_enchantments_you_control" &&
-      per !== "cards_in_your_hand" &&
-      per !== "cards_in_your_graveyard"
-    ) {
+    if (kind === "modify_pt" && per !== undefined && !isDynamicCount(per)) {
       throw new Error(`Invalid ${label}.per`);
     }
     return {

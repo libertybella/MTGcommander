@@ -313,6 +313,17 @@ const DYNAMIC_COUNTS: [RegExp, DynamicCount][] = [
   ],
   [/^Auras? attached to it$/i, "auras_attached_to_it"],
   [/^Aura and Equipment attached to it$/i, "auras_and_equipment_attached_to_it"],
+  [
+    /^creatures? and(?:\/or)? enchantments? you control$/i,
+    "creatures_and_enchantments_you_control",
+  ],
+  [
+    /^Auras? you control that(?:'s| are) attached to a creature$/i,
+    "auras_you_control_attached_to_a_creature",
+  ],
+  [/^legendary creatures? you control$/i, "legendary_creatures_you_control"],
+  [/^attacking creatures? you control$/i, "attacking_creatures_you_control"],
+  [/^permanents? you control$/i, "permanents_you_control"],
 ];
 
 /**
@@ -324,13 +335,6 @@ function parseDynamicCount(phrase: string): DynamicCount | null {
   const trimmed = phrase.trim();
   return DYNAMIC_COUNTS.find(([pattern]) => pattern.test(trimmed))?.[1] ?? null;
 }
-
-const PER_COUNTS: Record<string, DynamicCount> = {
-  land: "lands_you_control",
-  creature: "creatures_you_control",
-  artifact: "artifacts_you_control",
-  enchantment: "enchantments_you_control",
-};
 
 const COUNT_WORDS: Record<string, number> = {
   a: 1,
@@ -7988,12 +7992,12 @@ function parseGrantPredicate(phrase: string): ContinuousEffectData[] | null {
       effects.push({ kind: "modify_pt", power: Number(pt[1]), toughness: Number(pt[2]) });
       continue;
     }
-    // "gets +1/+1 for each enchantment you control" (Ethereal Armor).
-    const scaled = part.match(
-      /^(?:get|gets)\s+\+(\d+)\/\+(\d+) for each ([a-z]+) you control$/i,
-    );
+    // "gets +1/+1 for each enchantment you control" (Ethereal Armor). The
+    // counted noun comes from the shared table, not a private four-row one —
+    // "for each Aura and Equipment attached to it" is the same clause.
+    const scaled = part.match(/^(?:get|gets)\s+\+(\d+)\/\+(\d+) for each (.+)$/i);
     if (scaled?.[1] && scaled[2] && scaled[3]) {
-      const per = PER_COUNTS[scaled[3].toLowerCase()];
+      const per = parseDynamicCount(scaled[3]);
       if (!per) {
         return null;
       }
@@ -9679,7 +9683,7 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
 
     // The self-discount artifacts and Henges.
     const selfDiscount = sentence.match(
-      /^This spell costs \{X\} less to cast, where X is the (total mana value of noncreature artifacts you control|total mana value of historic permanents you control|greatest power among creatures you control)$/i,
+      /^This spell costs \{X\} less to cast, where X is the (total mana value of noncreature artifacts you control|total mana value of historic permanents you control|greatest power among creatures you control|total power of creatures you control)$/i,
     );
     if (selfDiscount?.[1]) {
       const phrase = selfDiscount[1].toLowerCase();
@@ -9688,9 +9692,25 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
           ? "noncreature_artifacts_total_mv"
           : phrase.startsWith("total mana value of historic")
             ? "historic_total_mv"
-            : "greatest_creature_power",
+            : phrase.startsWith("total power")
+              ? "total_creature_power"
+              : "greatest_creature_power",
       };
       continue;
+    }
+
+    // Embercleave: the same self-discount, counted rather than aggregated.
+    const perDiscount = sentence.match(
+      /^This spell costs \{(\d+)\} less to cast for each (.+)$/i,
+    );
+    if (perDiscount?.[1] && perDiscount[2]) {
+      const count = parseDynamicCount(perDiscount[2]);
+      if (count) {
+        result.selfDiscount = {
+          perDynamicCount: { generic: Number(perDiscount[1]), count },
+        };
+        continue;
+      }
     }
 
     // Excalibur: equip restricted to legendary creatures.
@@ -9746,23 +9766,9 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
       continue;
     }
 
-    // Nettlecyst: a live-count attached buff.
-    // Nettlecyst (equipped) and All That Glitters (enchanted) share the shape.
-    const perBuff = sentence.match(
-      /^(?:Equipped|Enchanted) creature gets \+(\d+)\/\+(\d+) for each artifact and\/or enchantment you control$/i,
-    );
-    if (perBuff?.[1] && perBuff[2]) {
-      result.staticAbilities.push({
-        selector: { scope: "attached" },
-        effect: {
-          kind: "modify_pt",
-          power: Number(perBuff[1]),
-          toughness: Number(perBuff[2]),
-          per: "artifacts_and_enchantments_you_control",
-        },
-      });
-      continue;
-    }
+    // Nettlecyst and All That Glitters used to need a branch here. They no
+    // longer do: the general static-grant grammar above reads their counted
+    // noun from the shared table, so this shape is one row, not a case.
 
     // Dethrone (CR 702.104) lowers to its full rules text.
     if (/^Dethrone$/i.test(sentence)) {

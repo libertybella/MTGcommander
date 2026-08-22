@@ -326,7 +326,7 @@ function validateCast(
   if (definition.selfDiscount) {
     cost.generic = Math.max(
       0,
-      cost.generic - selfDiscountAmount(state, playerId, definition.selfDiscount.per),
+      cost.generic - selfDiscountAmount(state, playerId, definition.selfDiscount),
     );
   }
   // Free-spell cycle: the alternative cost is auto-taken (documented

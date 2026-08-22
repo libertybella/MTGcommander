@@ -266,35 +266,83 @@ export function dynamicCountOf(
     }
     return total;
   }
-  if (count === "artifacts_and_enchantments_you_control") {
+  if (
+    count === "artifacts_and_enchantments_you_control" ||
+    count === "creatures_and_enchantments_you_control"
+  ) {
     // Nettlecyst: "and/or" — a card that is both counts once.
+    const first = count === "artifacts_and_enchantments_you_control" ? "artifact" : "creature";
     let both = 0;
     for (const card of Object.values(state.cards)) {
       if (card.zone !== "battlefield" || card.controllerId !== controllerId) {
         continue;
       }
       const types = state.definitions[card.definitionId]?.characteristics.types ?? [];
-      if (types.includes("artifact") || types.includes("enchantment")) {
+      if (types.includes(first) || types.includes("enchantment")) {
         both += 1;
       }
     }
     return both;
   }
-  const wanted =
-    count === "lands_you_control"
-      ? "land"
-      : count === "creatures_you_control"
-        ? "creature"
-        : count === "enchantments_you_control"
-          ? "enchantment"
-          : "artifact";
+  // Sage's Reverie counts YOUR Auras by where they are attached, so unlike
+  // `auras_attached_to_it` the source is irrelevant and the host must be a
+  // creature — an Aura on a land or a player does not count.
+  if (count === "auras_you_control_attached_to_a_creature") {
+    return Object.values(state.cards).filter((card) => {
+      if (card.zone !== "battlefield" || card.controllerId !== controllerId || !card.attachedTo) {
+        return false;
+      }
+      if (!(state.definitions[card.definitionId]?.characteristics.subtypes ?? []).includes("aura")) {
+        return false;
+      }
+      const host = state.cards[card.attachedTo];
+      return (
+        host?.zone === "battlefield" &&
+        (state.definitions[host.definitionId]?.characteristics.types ?? []).includes("creature")
+      );
+    }).length;
+  }
+  if (count === "legendary_creatures_you_control" || count === "attacking_creatures_you_control") {
+    let total = 0;
+    for (const card of Object.values(state.cards)) {
+      if (card.zone !== "battlefield" || card.controllerId !== controllerId) {
+        continue;
+      }
+      const traits = state.definitions[card.definitionId]?.characteristics;
+      if (!(traits?.types ?? []).includes("creature")) {
+        continue;
+      }
+      if (
+        count === "attacking_creatures_you_control"
+          ? card.attacking
+          : (traits?.supertypes ?? []).includes("legendary")
+      ) {
+        total += 1;
+      }
+    }
+    return total;
+  }
+  if (count === "permanents_you_control") {
+    return Object.values(state.cards).filter(
+      (card) => card.zone === "battlefield" && card.controllerId === controllerId,
+    ).length;
+  }
+  // A table rather than a chain of ternaries: `count` is narrowed to exactly
+  // the rows left, so a new member of the union that belongs here is a tsc
+  // error rather than a silent fall-through onto whichever type came last.
+  const wanted: Record<typeof count, string> = {
+    lands_you_control: "land",
+    creatures_you_control: "creature",
+    enchantments_you_control: "enchantment",
+    artifacts_you_control: "artifact",
+  };
   let total = 0;
   for (const card of Object.values(state.cards)) {
     if (card.zone !== "battlefield" || card.controllerId !== controllerId) {
       continue;
     }
     const types = state.definitions[card.definitionId]?.characteristics.types ?? [];
-    if (types.includes(wanted)) {
+    if (types.includes(wanted[count])) {
       total += 1;
     }
   }
@@ -719,6 +767,14 @@ function applyInstance(
                 state,
                 state.cards[instance.sourceId ?? ""]?.controllerId ?? "",
                 effect.per,
+                // "…for each Aura attached to IT" means the object the ability
+                // affects, which is the source only when the ability is its
+                // own (Kor Spiritdancer). On an Equipment the buff lands on
+                // the equipped creature, and it is that creature's
+                // attachments Thran Power Suit counts. Passing the source
+                // instead left the count silently 0, so the buff compiled,
+                // typechecked, and did nothing.
+                card.id,
               )
             : 1;
         computed.power += effect.power * multiplier;

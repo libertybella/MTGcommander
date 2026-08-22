@@ -245,11 +245,19 @@ export type CardDefinition = {
     /** "opponent_stack_3": Bolt Bend — {3} less while an opponent has a
      * spell or ability on the stack (a documented proxy for "if it targets
      * a spell or ability an opponent controls"). */
-    per:
+    per?:
       | "noncreature_artifacts_total_mv"
       | "historic_total_mv"
       | "greatest_creature_power"
+      /** Ghalta — the SUM, not the greatest. */
+      | "total_creature_power"
       | "opponent_stack_3";
+    /**
+     * Embercleave: "costs {1} less to cast for each attacking creature you
+     * control" — `generic` off the cost per thing counted, using the same
+     * counted-noun table every other live count reads.
+     */
+    perDynamicCount?: { generic: number; count: DynamicCount };
   };
   /** "costs {1} less for each creature on the battlefield" (anyone's). */
   affinityAllCreatures?: boolean;
@@ -1125,7 +1133,15 @@ export type DynamicCount =
   /** Kor Spiritdancer — counted on the source, not the controller. */
   | "auras_attached_to_it"
   /** Thran Power Suit. */
-  | "auras_and_equipment_attached_to_it";
+  | "auras_and_equipment_attached_to_it"
+  /** Strength of the Harvest: "and/or", so a card that is both counts once. */
+  | "creatures_and_enchantments_you_control"
+  /** Sage's Reverie — your Auras, wherever they are attached. */
+  | "auras_you_control_attached_to_a_creature"
+  | "legendary_creatures_you_control"
+  /** Embercleave. */
+  | "attacking_creatures_you_control"
+  | "permanents_you_control";
 
 /** "As an additional cost to cast this spell, …" — paid at cast time. */
 /**

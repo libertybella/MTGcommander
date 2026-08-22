@@ -15,7 +15,7 @@ import {
   putSpellOnStack,
   resolveTopOfStack,
 } from "./index";
-import { cardMatchesSubtype, computedCard } from "./characteristicsEngine";
+import { cardMatchesSubtype, computedCard, dynamicCountOf } from "./characteristicsEngine";
 import { mostCommonControlledCreatureType } from "./effects";
 import { castCostReduction, castableFromTop, freeEquipGranted, hasFlashGrant, landDropAllowance, permanentsControlledBy, reliefAdjustedCost, selfDiscountAmount, wouldEnterTapped } from "./derived";
 import { hasKeyword } from "./keywords";
@@ -29,7 +29,7 @@ import { applyResolveCreatureType, legalEnterCopyIds, searchMatches } from "./pr
 import { parseGameState, serializeGameState } from "./serialize";
 import { fillLibraries } from "./testSupport";
 import { advanceSteps } from "./turn";
-import type { CardEffect, GameState, PlayerState, TargetRequirement } from "./types";
+import type { CardDefinition, CardEffect, GameState, PlayerState, TargetRequirement } from "./types";
 
 function twoPlayers() {
   const game = createGameState({ playerCount: 2 });
@@ -15746,7 +15746,7 @@ describe("wave 139: death and taxes on the stack", () => {
     expect(next.cards[top]?.zone).toBe("hand");
 
     // Bolt Bend's proxy discount: live only while an opponent owns the stack.
-    expect(selfDiscountAmount(next, p1.id, "opponent_stack_3")).toBe(0);
+    expect(selfDiscountAmount(next, p1.id, { per: "opponent_stack_3" })).toBe(0);
     const boltDef = createCardDefinition({
       name: "Bolt",
       typeLine: "Instant",
@@ -15758,8 +15758,8 @@ describe("wave 139: death and taxes on the stack", () => {
     next.cards[bolt.id] = bolt;
     next.players.find((entry) => entry.id === p2.id)!.zones.hand.push(bolt.id);
     next = putSpellOnStack(next, bolt.id, []);
-    expect(selfDiscountAmount(next, p1.id, "opponent_stack_3")).toBe(3);
-    expect(selfDiscountAmount(next, p2.id, "opponent_stack_3")).toBe(0);
+    expect(selfDiscountAmount(next, p1.id, { per: "opponent_stack_3" })).toBe(3);
+    expect(selfDiscountAmount(next, p2.id, { per: "opponent_stack_3" })).toBe(0);
 
     // Tribute to the World Tree: a small arrival grows, a big one draws.
     next = resolveTopOfStack(next);
@@ -26015,6 +26015,196 @@ describe("wave 205: the last stretch to sixty-five", () => {
         toughness: 0,
       },
     ]);
+  });
+});
+
+
+describe("wave 206: one table of counted nouns", () => {
+  const compile = (name: string, manaCost: string, typeLine: string, oracleText: string, power?: string, toughness?: string) =>
+    compileOracleCard({
+      oracleId: name,
+      name,
+      manaCost,
+      typeLine,
+      power: power ?? null,
+      toughness: toughness ?? null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  /** A battlefield permanent for `p`, optionally attached to a host. */
+  const put = (
+    game: GameState,
+    ownerId: string,
+    definition: CardDefinition,
+    attachedTo?: string,
+  ) => {
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({
+      definitionId: definition.id,
+      ownerId,
+      zone: "battlefield",
+    });
+    if (attachedTo) {
+      card.attachedTo = attachedTo;
+    }
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === ownerId)!.zones.battlefield.push(card.id);
+    return card;
+  };
+
+  const aura = (name: string) =>
+    createCardDefinition({ name, typeLine: "Enchantment — Aura" });
+  const bear = (name: string) =>
+    createCardDefinition({ name, typeLine: "Creature — Bear", power: 2, toughness: 2 });
+
+  it("counts what is attached to the source, not the board", () => {
+    const suit = compile(
+      "Thran Power Suit",
+      "{2}",
+      "Artifact — Equipment",
+      "Equipped creature gets +1/+1 for each Aura and Equipment attached to it and has ward {2}.\nEquip {2}",
+    );
+    expect(suit.notes).toEqual([]);
+    expect(suit.definition.staticAbilities[0]).toEqual({
+      selector: { scope: "attached" },
+      effect: {
+        kind: "modify_pt",
+        power: 1,
+        toughness: 1,
+        per: "auras_and_equipment_attached_to_it",
+      },
+    });
+
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const host = put(game, p1.id, bear("Host"));
+    const other = put(game, p1.id, bear("Other"));
+    const suitDef = createCardDefinition({
+      name: "Thran Power Suit",
+      typeLine: "Artifact — Equipment",
+      staticAbilities: suit.definition.staticAbilities,
+    });
+    const equipment = put(game, p1.id, suitDef, host.id);
+    // The Equipment is itself an Equipment attached to the host, so it counts
+    // toward its own buff: a bare 2/2 wearing it is a 3/3.
+    expect(computedCard(game, host.id)?.power).toBe(3);
+    // An Aura on the OTHER creature is on the board but attached elsewhere, so
+    // it must not feed the count. While the count read the Equipment's own
+    // attachments instead of the equipped creature's it was always 0, and this
+    // buff compiled, typechecked, and did nothing.
+    put(game, p1.id, aura("Elsewhere"), other.id);
+    expect(computedCard(game, host.id)?.power).toBe(3);
+
+    put(game, p1.id, aura("On the host"), host.id);
+    expect(computedCard(game, host.id)?.power).toBe(4);
+    put(game, p1.id, aura("Also on the host"), host.id);
+    expect(computedCard(game, host.id)?.power).toBe(5);
+    expect(equipment.attachedTo).toBe(host.id);
+  });
+
+  it("counts only the Auras that are attached to a creature", () => {
+    const reverie = compile(
+      "Sage's Reverie",
+      "{3}{W}",
+      "Enchantment — Aura",
+      "Enchant creature\nWhen this Aura enters, draw a card for each Aura you control that's attached to a creature.\nEnchanted creature gets +1/+1 for each Aura you control that's attached to a creature.",
+    );
+    expect(reverie.notes).toEqual([]);
+    expect(reverie.definition.staticAbilities[0]?.effect).toEqual({
+      kind: "modify_pt",
+      power: 1,
+      toughness: 1,
+      per: "auras_you_control_attached_to_a_creature",
+    });
+
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    const host = put(game, p1.id, bear("Host"));
+    const land = put(game, p1.id, createCardDefinition({ name: "Plains", typeLine: "Basic Land — Plains" }));
+    put(game, p1.id, aura("On the creature"), host.id);
+    expect(dynamicCountOf(game, p1.id, "auras_you_control_attached_to_a_creature")).toBe(1);
+    // An Aura on a land is still an Aura you control; the clause asks where it
+    // is attached, so it does not count.
+    put(game, p1.id, aura("On the land"), land.id);
+    expect(dynamicCountOf(game, p1.id, "auras_you_control_attached_to_a_creature")).toBe(1);
+    // Nor does an opponent's Aura, even on your creature.
+    put(game, p2.id, aura("Theirs"), host.id);
+    expect(dynamicCountOf(game, p1.id, "auras_you_control_attached_to_a_creature")).toBe(1);
+  });
+
+  it("shrinks Embercleave by the creatures that are actually attacking", () => {
+    const cleave = compile(
+      "Embercleave",
+      "{4}{R}{R}",
+      "Artifact — Equipment",
+      "Flash\nThis spell costs {1} less to cast for each attacking creature you control.\nWhen Embercleave enters, attach it to target creature you control.\nEquipped creature gets +1/+1 and has double strike and trample.\nEquip {3}",
+    );
+    expect(cleave.notes).toEqual([]);
+    expect(cleave.definition.selfDiscount).toEqual({
+      perDynamicCount: { generic: 1, count: "attacking_creatures_you_control" },
+    });
+
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const discount = { perDynamicCount: { generic: 1, count: "attacking_creatures_you_control" } } as const;
+    const first = put(game, p1.id, bear("First"));
+    const second = put(game, p1.id, bear("Second"));
+    // On the battlefield but not attacking: no discount at all.
+    expect(selfDiscountAmount(game, p1.id, discount)).toBe(0);
+    game.cards[first.id]!.attacking = true;
+    expect(selfDiscountAmount(game, p1.id, discount)).toBe(1);
+    game.cards[second.id]!.attacking = true;
+    expect(selfDiscountAmount(game, p1.id, discount)).toBe(2);
+  });
+
+  it("sums Ghalta's creatures where the Henge takes the greatest", () => {
+    const ghalta = compile(
+      "Ghalta, Primal Hunger",
+      "{10}{G}{G}",
+      "Legendary Creature — Elder Dinosaur",
+      "This spell costs {X} less to cast, where X is the total power of creatures you control.\nTrample",
+      "12",
+      "12",
+    );
+    expect(ghalta.notes).toEqual([]);
+    expect(ghalta.definition.selfDiscount).toEqual({ per: "total_creature_power" });
+
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    put(game, p1.id, createCardDefinition({ name: "Small", typeLine: "Creature — Elf", power: 1, toughness: 1 }));
+    put(game, p1.id, createCardDefinition({ name: "Big", typeLine: "Creature — Wurm", power: 6, toughness: 6 }));
+    expect(selfDiscountAmount(game, p1.id, { per: "total_creature_power" })).toBe(7);
+    // The Great Henge reads the same board and takes the maximum instead.
+    expect(selfDiscountAmount(game, p1.id, { per: "greatest_creature_power" })).toBe(6);
+  });
+
+  it("round-trips every counted noun the union admits", () => {
+    // The serializer's allow-list had drifted to seven of the union's members,
+    // so a state holding Kor Spiritdancer's buff failed to parse.
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const dancer = createCardDefinition({
+      name: "Kor Spiritdancer",
+      typeLine: "Creature — Kor Wizard",
+      power: 2,
+      toughness: 2,
+      staticAbilities: [
+        {
+          selector: { scope: "self" },
+          effect: { kind: "modify_pt", power: 2, toughness: 2, per: "auras_attached_to_it" },
+        },
+      ],
+    });
+    put(game, p1.id, dancer);
+    const parsed = parseGameState(JSON.parse(JSON.stringify(serializeGameState(game))));
+    expect(parsed.definitions[dancer.id]?.staticAbilities[0]?.effect).toEqual({
+      kind: "modify_pt",
+      power: 2,
+      toughness: 2,
+      per: "auras_attached_to_it",
+    });
   });
 });
 

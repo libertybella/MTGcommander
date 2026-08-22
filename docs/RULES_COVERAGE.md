@@ -617,6 +617,7 @@ What the engine implements and what it intentionally does not. Tests are tagged 
 - Real cards compile from Scryfall oracle text by shared sentence patterns; a hand-authored registry (`server/src/cardOverrides.ts`, data in the same schema) beats the compiler for the long tail. Never a named-card code path.
 - The compile-rate metric runs in CI against a vendored 60-card staple fixture (floor: 80% full-compile, ≤3 uncompiled; currently 82%). `COMPILE_BULK=<path>` sweeps a full Scryfall bulk file.
 - A rulings corpus (`engine/src/rulings.test.ts`) converts actual Gatherer rulings into scenario tests; its first entry exposed and fixed the simultaneous-death batching gap.
+- "…for each &lt;noun&gt;" / "…equal to the number of &lt;noun&gt;" read one shared table (`DYNAMIC_COUNTS`), so a new counted noun is a row rather than a branch — static grants, self-discounts, scaled draws and scaled lifegain all parse through it. Counts naming "it" ("for each Aura attached to it") read the object the ability AFFECTS, which is the source only when the ability is its own: on an Equipment the buff lands on the equipped creature and counts that creature's attachments.
 - `GameHost.getOverrideStats()` counts manual overrides per game — the sprint queue for the compiler.
 - The oracle cache (v4) stamps fetch times, refreshes cards older than 30 days (Oracle errata reaches the compiler), falls back to stale copies offline, and ingests Scryfall bulk files.
 

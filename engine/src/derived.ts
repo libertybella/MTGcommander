@@ -1,5 +1,5 @@
 import { characteristicsOf, isBasic, isCommander, isCreature, isLand, isLegendary } from "./cardTypes";
-import { abilitiesRemoved, cardMatchesSubtype, computedCard, controlsGate } from "./characteristicsEngine";
+import { abilitiesRemoved, cardMatchesSubtype, computedCard, controlsGate, dynamicCountOf } from "./characteristicsEngine";
 import { canPayManaCost, type ParsedManaCost } from "./mana";
 import { triggerConditionHolds } from "./triggers";
 import type { ActivatedAbility, AlternativeCastCost, CardDefinition, CardInstance, CardInstanceId, EnterTappedUnless, GameState, ManaPool, PlayerId } from "./types";
@@ -721,12 +721,20 @@ export function freeEquipGranted(state: GameState, playerId: string): boolean {
 export function selfDiscountAmount(
   state: GameState,
   playerId: string,
-  per:
-    | "noncreature_artifacts_total_mv"
-    | "historic_total_mv"
-    | "greatest_creature_power"
-    | "opponent_stack_3",
+  discount: NonNullable<CardDefinition["selfDiscount"]>,
 ): number {
+  // Embercleave: the discount is a plain multiple of a counted noun, so it
+  // shares the table rather than earning its own aggregate.
+  if (discount.perDynamicCount) {
+    return (
+      discount.perDynamicCount.generic *
+      dynamicCountOf(state, playerId, discount.perDynamicCount.count)
+    );
+  }
+  const per = discount.per;
+  if (per === undefined) {
+    return 0;
+  }
   // Bolt Bend: {3} less while an opponent has a spell or ability on the
   // stack — a documented proxy for "if it targets one".
   if (per === "opponent_stack_3") {
@@ -739,9 +747,15 @@ export function selfDiscountAmount(
       continue;
     }
     const traits = characteristicsOf(state, card.id);
-    if (per === "greatest_creature_power") {
+    if (per === "greatest_creature_power" || per === "total_creature_power") {
       if (traits.types.includes("creature")) {
-        greatest = Math.max(greatest, creaturePower(state, card.id));
+        // Ghalta sums; The Great Henge takes the maximum.
+        const power = creaturePower(state, card.id);
+        if (per === "total_creature_power") {
+          total += power;
+        } else {
+          greatest = Math.max(greatest, power);
+        }
       }
       continue;
     }
