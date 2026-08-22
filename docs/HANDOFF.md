@@ -8,11 +8,22 @@ on-what lives in [CLAIMS.md](CLAIMS.md). This file is the tribal
 knowledge that isn't obvious from those: exact commands, traps, and
 the current state of play. Read all four before writing code.
 
-## State of play (checkpoint-80-replacements, 2026-08-22)
+## State of play (checkpoint-81-grammar-reuse, 2026-08-22)
 
-- Branch `comprehensive-plan`, tags through `checkpoint-80-replacements`.
-- 992 tests green; top-2,000 compile rate **58.9% (1,184/2,009)**,
+- Branch `comprehensive-plan`, tags through `checkpoint-81-grammar-reuse`.
+- 1,009 tests green; top-2,000 compile rate **60.5% (1,216/2,009)**,
   60-card sample 97% (CI floor now 90).
+- **Waves 179–183 flipped 11, 6, 5, 6, 4 — and the largest came from
+  pointing grammars that already existed at a new destination.** Wave 182
+  is the clearest case: "put target enchantment card from your graveyard
+  on top of your library" needed no new parsing at all, just the existing
+  graveyard noun phrase with a different `toZone`. Before writing a
+  parser, check whether one of the eight already here fits.
+- **A documented approximation is a to-do, not a decision.** "+X/+X until
+  end of turn" had been a written-off drop since wave 147 because those
+  effects held only fixed numbers; wave 181 closed it in one wave and
+  picked up five cards. Re-read the documented-drop list in
+  RULES_COVERAGE.md periodically — some entries have quietly become cheap.
 - **Waves 174–178 flipped 7, 4, 5, 9, 5 — the grammar approach keeps
   holding.** The pattern that produced the biggest wave (177, nine cards)
   was the same one as wave 171: eight one-away cards turned out to be the
@@ -75,8 +86,8 @@ the current state of play. Read all four before writing code.
   normalisation bug affecting a whole class of legends. The zero-flip
   wave was worth more than its number.
 - The wave loop continues toward the goal gate: M6, ≥95% of the EDHREC
-  top-2,000 fully compiling. The rhythm below is proven across 178
-  waves (15.6% → 58.9%); follow it as written.
+  top-2,000 fully compiling. The rhythm below is proven across 183
+  waves (15.6% → 60.5%); follow it as written.
 - **Yield per wave tracks how much of the wave is a grammar.** Waves
   145–168 flipped 13, 15, 11, 6, 7, 8, 7, 5, 1, 6, 6, 4, 2, 2, 4, 9, 2, 2,
   1, 0, 1, 6, 0, 6, 0, 2 — a decline that read like an exhausted tail.
