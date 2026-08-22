@@ -1962,7 +1962,9 @@ function parseCardFilter(value: unknown, label: string): CardFilter {
     filter !== "nonland" &&
     filter !== "noncreature_nonland" &&
     filter !== "equipment" &&
-    filter !== "basic_land"
+    filter !== "basic_land" &&
+    filter !== "token_creature" &&
+    filter !== "planeswalker"
   ) {
     throw new Error(`Invalid ${label}`);
   }
@@ -2734,6 +2736,17 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
         throw new Error(`Invalid ${label}.what`);
       }
       return { kind, playerId: parsePlayerSelector(value.playerId, `${label}.playerId`), what };
+    }
+    case "tap_all": {
+      const tapWhat = expectString(value.what, `${label}.what`);
+      if (tapWhat !== "creature" && tapWhat !== "land") {
+        throw new Error(`Invalid ${label}.what`);
+      }
+      return {
+        kind,
+        playerId: parsePlayerSelector(value.playerId, `${label}.playerId`),
+        what: tapWhat,
+      };
     }
     case "attackers_gain_keyword_until_eot": {
       const attackersKeyword = expectString(value.keyword, `${label}.keyword`);
@@ -4894,6 +4907,13 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
       throw new Error(`Invalid ${label}.what`);
     }
     return { kind, playerId: expectString(value.playerId, `${label}.playerId`), what };
+  }
+  if (kind === "tap_all") {
+    const tapWhat = expectString(value.what, `${label}.what`);
+    if (tapWhat !== "creature" && tapWhat !== "land") {
+      throw new Error(`Invalid ${label}.what`);
+    }
+    return { kind, playerId: expectString(value.playerId, `${label}.playerId`), what: tapWhat };
   }
   if (kind === "gain_control") {
     return {

@@ -24325,3 +24325,138 @@ describe("wave 194: paying with something other than mana", () => {
   });
 });
 
+
+describe("wave 195: modal bullets that carry more than one sentence", () => {
+  const compile = (name: string, manaCost: string, typeLine: string, oracleText: string, power?: string, toughness?: string) =>
+    compileOracleCard({
+      oracleId: name,
+      name,
+      manaCost,
+      typeLine,
+      power: power ?? null,
+      toughness: toughness ?? null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  it("joins a bullet's sentences and rebinds its back-reference", () => {
+    const origin = compile(
+      "Origin of Metalbending",
+      "{1}{W}",
+      "Enchantment — Saga",
+      "Choose one —\n• Destroy target artifact or enchantment.\n• Put a +1/+1 counter on target creature you control. It gains indestructible until end of turn.",
+    );
+    expect(origin.notes).toEqual([]);
+    const mode = origin.definition.modes?.[1];
+    // One target for the bullet, and "It" is that target — not a second one,
+    // and not the trigger subject the grant parser reads by default.
+    expect(mode?.targetRequirements).toEqual([{ kind: "creature", control: "own" }]);
+    expect(mode?.effects).toEqual([
+      { kind: "add_counter", cardId: { type: "chosen", index: 0 }, counter: "p1p1", amount: 1 },
+      {
+        kind: "keyword_until_eot",
+        cardId: { type: "chosen", index: 0 },
+        keyword: "indestructible",
+      },
+    ]);
+  });
+
+  it("numbers a two-sentence bullet's own targets from zero", () => {
+    // A mode's targets are chosen for that mode alone, so the renumbering is
+    // bounded to the bullet rather than continuing the card's list.
+    const twoTargets = compile(
+      "Testcard",
+      "{2}{R}",
+      "Instant",
+      "Choose one —\n• Tap target creature. Destroy target artifact.\n• Draw a card.",
+    );
+    expect(twoTargets.notes).toEqual([]);
+    const mode = twoTargets.definition.modes?.[0];
+    expect(mode?.targetRequirements).toEqual([{ kind: "creature" }, { kind: "artifact" }]);
+    expect(mode?.effects[1]).toMatchObject({ cardId: { type: "chosen", index: 1 } });
+  });
+
+  it("taps a whole team", () => {
+    const cryptic = compile(
+      "Cryptic Command",
+      "{1}{U}{U}{U}",
+      "Instant",
+      "Choose two —\n• Counter target spell.\n• Return target permanent to its owner's hand.\n• Tap all creatures your opponents control.\n• Draw a card.",
+    );
+    expect(cryptic.notes).toEqual([]);
+    expect(cryptic.definition.modes?.[2]?.effects).toEqual([
+      { kind: "tap_all", playerId: "each_opponent", what: "creature" },
+    ]);
+
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    const bearDef = createCardDefinition({
+      name: "Bear",
+      typeLine: "Creature — Bear",
+      power: 2,
+      toughness: 2,
+    });
+    game.definitions[bearDef.id] = bearDef;
+    const put = (owner: typeof p1) => {
+      const card = createCardInstance({
+        definitionId: bearDef.id,
+        ownerId: owner.id,
+        zone: "battlefield",
+      });
+      game.cards[card.id] = card;
+      owner.zones.battlefield.push(card.id);
+      return card;
+    };
+    const mine = put(p1);
+    const theirs = put(p2);
+
+    const next = applyEffects(
+      game,
+      bindCardEffects(game, [{ kind: "tap_all", playerId: "each_opponent", what: "creature" }], {
+        controllerId: p1.id,
+        sourceId: null,
+      }),
+    );
+    expect(next.cards[theirs.id]?.tapped).toBe(true);
+    // "Your opponents control" — the caster's own board is untouched.
+    expect(next.cards[mine.id]?.tapped).toBe(false);
+  });
+
+  it("aims a loot and a token at a chosen player", () => {
+    const prismari = compile(
+      "Prismari Command",
+      "{1}{U}{R}",
+      "Instant",
+      "Choose two —\n• Prismari Command deals 2 damage to any target.\n• Target player draws two cards, then discards two cards.\n• Target player creates a Treasure token.\n• Destroy target artifact.",
+    );
+    expect(prismari.notes).toEqual([]);
+    expect(prismari.definition.modes?.[1]?.targetRequirements).toEqual([{ kind: "player" }]);
+    expect(prismari.definition.modes?.[1]?.effects).toEqual([
+      { kind: "draw", playerId: { type: "chosen", index: 0 }, count: 2 },
+      { kind: "discard", playerId: { type: "chosen", index: 0 }, count: 2 },
+    ]);
+    expect(prismari.definition.modes?.[2]?.effects[0]).toMatchObject({
+      kind: "create_token",
+      ownerId: { type: "chosen", index: 0 },
+      name: "Treasure",
+    });
+  });
+
+  it("tells a token creature from a nontoken one in an edict", () => {
+    const edict = compile(
+      "Sheoldred's Edict",
+      "{1}{B}",
+      "Sorcery",
+      "Choose one —\n• Each opponent sacrifices a nontoken creature of their choice.\n• Each opponent sacrifices a creature token of their choice.\n• Each opponent sacrifices a planeswalker of their choice.",
+    );
+    expect(edict.notes).toEqual([]);
+    const filterOf = (index: number) =>
+      (edict.definition.modes?.[index]?.effects[0] as { sources: { filter: string }[] })
+        .sources[0]?.filter;
+    expect(filterOf(0)).toBe("nontoken_creature");
+    expect(filterOf(1)).toBe("token_creature");
+    expect(filterOf(2)).toBe("planeswalker");
+  });
+});
+

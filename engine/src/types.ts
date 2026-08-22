@@ -690,7 +690,11 @@ export type CardFilter =
   /** Stoneforge Mystic: "an Equipment card from your hand". */
   | "equipment"
   /** Terrain Generator: "a basic land card from your hand". */
-  | "basic_land";
+  | "basic_land"
+  /** Sheoldred's Edict: "a creature token of their choice". */
+  | "token_creature"
+  /** Sheoldred's Edict: "a planeswalker of their choice". */
+  | "planeswalker";
 
 /** What a Clone-style permanent may enter as a copy of. */
 export type EnterAsCopyScope =
@@ -826,6 +830,8 @@ export type GameEffect =
   | { kind: "copy_spell"; stackObjectId: StackObjectId; controllerId: PlayerId }
   | { kind: "extra_combat" }
   | { kind: "untap_all"; playerId: PlayerId; what: "creature" | "land" | "attacking" | "nonland" }
+  /** Cryptic Command: "Tap all creatures your opponents control." */
+  | { kind: "tap_all"; playerId: PlayerId; what: "creature" | "land" }
   /** "Gain control of target …" (Archmage's Charm). */
   | {
       kind: "gain_control";
@@ -1527,6 +1533,7 @@ export type CardEffect =
       playerId: PlayerSelector;
       what: "creature" | "land" | "attacking" | "nonland";
     }
+  | { kind: "tap_all"; playerId: PlayerSelector; what: "creature" | "land" }
   | {
       kind: "gain_control";
       cardId: CardIdSelector;

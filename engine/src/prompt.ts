@@ -408,6 +408,12 @@ function cardMatchesFilter(
   if (filter === "nontoken_creature") {
     return types.includes("creature") && !card?.isToken;
   }
+  if (filter === "token_creature") {
+    return types.includes("creature") && card?.isToken === true;
+  }
+  if (filter === "planeswalker") {
+    return types.includes("planeswalker");
+  }
   if (filter === "equipment") {
     return cardMatchesSubtype(state, cardId, "equipment");
   }

@@ -1152,6 +1152,23 @@ function compileBackReferenceClause(sentence: string): CardEffect[] | null {
   if (/^Return that card from your graveyard to the battlefield$/i.test(sentence)) {
     return [{ kind: "move_card", cardId: chosen, toZone: "battlefield" }];
   }
+  // "It gains indestructible until end of turn" following a clause that
+  // targeted something. The grant parser reads "It" as the TRIGGER's subject,
+  // which is right in a trigger body and wrong here, so the referent is
+  // rebound — and only when the grant chose no target of its own.
+  if (/^(?:It|That creature) (?:gets|gains) /i.test(sentence)) {
+    const grant = compileUntilEotGrant(sentence);
+    if (grant && grant.targetRequirements.length === 0 && grant.effects.length > 0) {
+      const rebound = grant.effects.map((effect) =>
+        (effect.kind === "pt_until_eot" || effect.kind === "keyword_until_eot") &&
+        effect.cardId === "subject_card"
+          ? { ...effect, cardId: chosen }
+          : effect,
+      );
+      // If nothing actually rebound, the clause was not about the referent.
+      return rebound.some((effect, index) => effect !== grant.effects[index]) ? rebound : null;
+    }
+  }
   return null;
 }
 
@@ -2943,6 +2960,28 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     }
   }
 
+  // "Target player draws two cards, then discards two cards" (Prismari
+  // Command) — the same loot aimed at a chosen player.
+  const targetedLoot = sentence.match(
+    /^Target (player|opponent) draws (a|an|one|two|three|four|\d+) cards?, then discards (a|an|one|two|three|four|\d+) cards?$/i,
+  );
+  if (targetedLoot?.[1] && targetedLoot[2] && targetedLoot[3]) {
+    const drawn = parseCount(targetedLoot[2]);
+    const discarded = parseCount(targetedLoot[3]);
+    if (drawn && discarded) {
+      const chosen = { type: "chosen", index: 0 } as const;
+      return {
+        targetRequirements: [
+          { kind: targetedLoot[1].toLowerCase() === "opponent" ? "opponent" : "player" },
+        ],
+        effects: [
+          { kind: "draw", playerId: chosen, count: drawn },
+          { kind: "discard", playerId: chosen, count: discarded },
+        ],
+      };
+    }
+  }
+
   // Looting/rummaging: "Draw two cards, then discard two cards."
   const looting = sentence.match(
     /^(?:you )?draw (a|an|one|two|three|four|\d+) cards?, then discard (a|an|one|two|three|four|\d+) cards?$/i,
@@ -3712,6 +3751,22 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     };
   }
 
+  const tapAll = sentence.match(
+    /^Tap all (creatures|lands) (you control|your opponents control)$/i,
+  );
+  if (tapAll?.[1] && tapAll[2]) {
+    return {
+      targetRequirements: [],
+      effects: [
+        {
+          kind: "tap_all",
+          playerId: /^you control$/i.test(tapAll[2]) ? "controller" : "each_opponent",
+          what: tapAll[1].toLowerCase() === "creatures" ? "creature" : "land",
+        },
+      ],
+    };
+  }
+
   const untapAll = sentence.match(/^untap all (creatures|lands) you control$/i);
   if (untapAll?.[1]) {
     return {
@@ -4422,10 +4477,13 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
   // of a word it does not know. What is left to them is what this cannot
   // express — a count read off the board, and quoted granted abilities.
   const createdTokens = sentence.match(
-    /^(?:Then )?(?:(You|Its controller|Each player|Each opponent) creates?|(?:You may )?Create) (.+)$/i,
+    /^(?:Then )?(?:(You|Its controller|Each player|Each opponent|Target player|Target opponent) creates?|(?:You may )?Create) (.+)$/i,
   );
   if (createdTokens?.[2]) {
     const who = createdTokens[1]?.toLowerCase();
+    // "Target player creates …" (Prismari Command): the token's owner is the
+    // chosen player, so the clause declares a target of its own.
+    const targeted = who === "target player" || who === "target opponent";
     const ownerId: PlayerSelector | null =
       who === undefined || who === "you"
         ? "controller"
@@ -4435,7 +4493,9 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
             ? "each_player"
             : who === "each opponent"
               ? "each_opponent"
-              : null;
+              : targeted
+                ? { type: "chosen", index: 0 }
+                : null;
     // A trailing count tail applies to the whole clause, so it comes off
     // before the descriptors are read. Each maps to a count the effect can
     // already work out for itself at resolution.
@@ -4492,7 +4552,12 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
           }
         }
       }
-      return { targetRequirements: [], effects };
+      return {
+        targetRequirements: targeted
+          ? [{ kind: who === "target opponent" ? "opponent" : "player" }]
+          : [],
+        effects,
+      };
     }
   }
 
@@ -5532,10 +5597,12 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
   // edicts (Blasphemous Edict's thirteen) repeat the choice sequentially —
   // a documented approximation of the simultaneous pick.
   match = sentence.match(
-    /^Each (player|opponent|other player) sacrifices (a|one|two|three|thirteen|\d+) (nontoken )?(creatures?|creatures? or planeswalkers?)(?: of their choice)?$/i,
+    /^Each (player|opponent|other player) sacrifices (a|one|two|three|thirteen|\d+) (nontoken )?(creatures?|planeswalkers?|creatures? or planeswalkers?|creature tokens?)(?: of their choice)?$/i,
   );
   if (match?.[1] && match[2]) {
-    const withPlaneswalkers = /planeswalker/i.test(match[4] ?? "");
+    // Only the "creature OR planeswalker" form widens; a bare "planeswalker"
+    // must not pull creatures in with it.
+    const withPlaneswalkers = /creatures? or planeswalkers?/i.test(match[4] ?? "");
     const edictWord = match[2].toLowerCase();
     const edictCount =
       edictWord === "a" || edictWord === "one"
@@ -5557,9 +5624,15 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
             zone: "battlefield",
             filter: withPlaneswalkers
               ? "creature_or_planeswalker"
-              : match[3]
-                ? "nontoken_creature"
-                : "creature",
+              : /^planeswalkers?$/i.test(match[4] ?? "")
+                ? "planeswalker"
+                : // The printed order is "a creature TOKEN", noun then noun —
+                  // not an adjective in front like "nontoken creature".
+                  /^creature tokens?$/i.test(match[4] ?? "")
+                  ? "token_creature"
+                  : match[3]
+                    ? "nontoken_creature"
+                    : "creature",
           },
         ],
         thenEffects: [{ kind: "sacrifice", cardId: "chosen_card" }],
@@ -8134,17 +8207,34 @@ function extractModalModes(card: OracleCard): ModalExtraction | null {
       fuseDigSentencesInPlace(sentences, lineStart);
       fuseExilePlayInPlace(sentences, lineStart);
     }
-    if (sentences.length !== 1 || !sentences[0]) {
+    if (sentences.length === 0) {
       return { remainingText, modes: null, raw };
     }
-    const clause = compileSimpleClause(sentences[0]);
-    if (!clause || clause.leftover) {
-      return { remainingText, modes: null, raw };
+    // A bullet may be more than one sentence ("Put a +1/+1 counter on target
+    // creature you control. It gains indestructible until end of turn."). Each
+    // compiles on its own and they join, with later sentences' chosen indexes
+    // renumbered onto the tail of the bullet's own target list — the same
+    // merge the top-level clause sequence does, but bounded to this bullet,
+    // since a mode's targets are chosen for that mode alone.
+    const effects: CardEffect[] = [];
+    const targetRequirements: TargetRequirement[] = [];
+    for (const part of sentences) {
+      const backReference =
+        targetRequirements.length > 0 ? compileBackReferenceClause(part) : null;
+      const clause = backReference
+        ? { targetRequirements: [], effects: backReference }
+        : compileSimpleClause(part);
+      if (!clause || clause.leftover) {
+        return { remainingText, modes: null, raw };
+      }
+      const shifted = offsetChosenIndexes(clause, targetRequirements.length);
+      targetRequirements.push(...shifted.targetRequirements);
+      effects.push(...shifted.effects);
     }
     modes.push({
       label: bullet.replace(/\.$/, ""),
-      effects: clause.effects,
-      targetRequirements: clause.targetRequirements,
+      effects,
+      targetRequirements,
     });
   }
   const choice =

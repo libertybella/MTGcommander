@@ -435,6 +435,27 @@ What the engine implements and what it intentionally does not. Tests are tagged 
   paid. The granted forms ("Nonartifact spells you cast have improvise") read
   the same helper.
 
+- **Modal bullets that carry more than one sentence**: a bullet used to have
+  to be exactly one sentence. Each sentence now compiles on its own and they
+  join, with later sentences' chosen indexes renumbered onto the tail of the
+  BULLET's own target list — bounded to the bullet, because a mode's targets
+  are chosen for that mode alone. A back-reference inside a bullet ("It gains
+  indestructible until end of turn") rebinds to what the bullet's earlier
+  sentence targeted: the grant parser reads "It" as the trigger's subject,
+  which is right in a trigger body and wrong here.
+
+  Alongside: a mass tap, a loot and a token aimed at a chosen player, and two
+  edict filters (a creature token, a planeswalker). Two things that would have
+  shipped wrong and did not: `tap_all` was not in the each-opponent expander,
+  so "your opponents control" would have thrown at bind rather than tapping
+  anyone; and the edict's planeswalker check matched a BARE "planeswalker"
+  as well as "creature or planeswalker", which would have widened an edict
+  that names only planeswalkers to take creatures too.
+
+  Note the printed word order in "sacrifices a creature **token**" — noun then
+  noun, not an adjective in front like "nontoken creature". Reading it as an
+  adjective is what the first attempt did, and it matched nothing.
+
 ## The card pipeline (Stage 6)
 
 - Real cards compile from Scryfall oracle text by shared sentence patterns; a hand-authored registry (`server/src/cardOverrides.ts`, data in the same schema) beats the compiler for the long tail. Never a named-card code path.

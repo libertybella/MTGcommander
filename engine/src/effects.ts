@@ -208,6 +208,8 @@ function expandEachOpponent(
     // Soul-Guide Lantern: "Exile each opponent's graveyard" is one clause but
     // one exile per player.
     effect.kind === "exile_graveyard" ||
+    // "Tap all creatures your opponents control" — one tap sweep per player.
+    effect.kind === "tap_all" ||
     effect.kind === "search_library"
   ) {
     const players = eachOf(effect.playerId);
@@ -1568,6 +1570,13 @@ export function bindCardEffect(
         return null;
       }
       return { kind: "untap_all", playerId, what: effect.what };
+    }
+    case "tap_all": {
+      const playerId = bindPlayerSelector(state, effect.playerId, context);
+      if (!playerId) {
+        return null;
+      }
+      return { kind: "tap_all", playerId, what: effect.what };
     }
     case "untap_lands_up_to": {
       const playerId = bindPlayerSelector(state, effect.playerId, context);
@@ -3666,6 +3675,22 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
         // Handing everything back also ends this turn's borrowings, so no
         // cleanup entry survives to steal them away again.
         next.temporaryControl = [];
+        break;
+      }
+      case "tap_all": {
+        next = cloneGameState(state);
+        // "your opponents control" binds to each opponent in turn, so one
+        // bound effect only ever taps one player's permanents.
+        for (const card of Object.values(next.cards)) {
+          if (
+            card.zone === "battlefield" &&
+            card.controllerId === effect.playerId &&
+            !card.tapped &&
+            characteristicsOf(next, card.id).types.includes(effect.what)
+          ) {
+            card.tapped = true;
+          }
+        }
         break;
       }
       case "untap_all": {
