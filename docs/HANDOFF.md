@@ -8,23 +8,95 @@ on-what lives in [CLAIMS.md](CLAIMS.md). This file is the tribal
 knowledge that isn't obvious from those: exact commands, traps, and
 the current state of play. Read all four before writing code.
 
-## State of play (checkpoint-73-halfway, 2026-08-21 — the handoff point)
+## State of play (checkpoint-74-grammars, 2026-08-21)
 
-- Branch `comprehensive-plan`, tags through `checkpoint-73-halfway`.
-- 883 tests green; top-2,000 compile rate **50.1% (1,007/2,009) —
-  half the meta**, 60-card sample 93% (CI floor 85%).
-- The original flywheel session stopped here by Liberty's directive
-  (clean handoff at ~50%). **You, the successor agent, continue the
-  wave loop toward the goal gate: M6, ≥95% of the EDHREC top-2,000
-  fully compiling.** The rhythm below is proven across 144 waves
-  (15.6% → 50.1%); follow it as written.
+- Branch `comprehensive-plan`, tags through `checkpoint-74-grammars`.
+- 899 tests green; top-2,000 compile rate **52.7% (1,059/2,009)**,
+  60-card sample 93% (CI floor 85%).
+- The wave loop continues toward the goal gate: M6, ≥95% of the EDHREC
+  top-2,000 fully compiling. The rhythm below is proven across 149
+  waves (15.6% → 52.7%); follow it as written.
 - **Never push to GitHub without Liberty's explicit yes.** Nothing has
   been pushed; the remote flow (Ross et al.) starts only when she says
   so.
-- Recent waves averaged 5–14 flips each; regenerate the top-miss list
-  from the compile measure every wave — stale lists waste probes, and
+- Recent waves averaged 5–15 flips each; regenerate the miss list from
+  the compile measure every wave — stale lists waste probes, and
   generic machinery (a new head, a regex variant) often flips unprobed
   pattern-shares for free.
+
+## Pick waves by machinery family, not by card
+
+Roughly **500 cards are exactly one fragment short of compiling**, and
+at the exact-text level almost every one of those fragments is unique —
+so there is no single big lever left, and picking "the top N misses"
+gives you N unrelated mechanics. What works instead is grouping the
+one-away pool by *shared machinery* and building one grammar per group.
+Waves 145–149 each did that and averaged ~10 flips.
+
+Two scratch tools make this quick. Neither lives in the repo — they are
+kept outside it precisely so a `tmp*.test.ts` can never be committed:
+
+- **`scan.sh`** copies a scratch scanner into `server/src/`, runs it,
+  and deletes it. `SCAN_ONEAWAY=1` histograms every one-away card by
+  EDHREC rank; `SCAN_RE=<regex> SCAN_MAXD=<n>` lists cards whose
+  remaining fragments match, at most n fragments from compiling;
+  `PROBE_NAMES='a|b|c'` prints compile notes for named cards.
+- **`synth.sh`** compiles synthetic oracle lines (`SYNTH='line|line'`).
+  This is the fastest way to tell a missing *head* from a missing
+  *body*: pair the suspect head with a known-good body ("draw a card")
+  and vice versa. Several waves' scope came straight out of that.
+
+Both are under the session scratchpad; recreate them from this
+description if they are gone — they are ~120 lines each and the
+descriptions above are the whole spec.
+
+## The duplicated-matcher trap
+
+Twice in five waves the same bug shape appeared: one concept
+hand-copied into several modules, then quietly diverging. The
+"you control …" gate had **four** copies (activated abilities, mana
+abilities, static abilities, and a fourth in `manaOptions.ts` that
+would have passed a new clause for *any* permanent); `createGame` and
+`serialize` had **three** each of the same field-copying block.
+
+Before adding a field to a shape that several carriers share, grep the
+field name across `engine/src` first. If it appears in more than two
+places, factor the logic out before extending it — the layer engine and
+gameplay paths can share one implementation parameterised by its trait
+source (see `gateSatisfied` in `characteristicsEngine.ts`, which takes
+computed characteristics for gameplay and printed ones for the layer
+engine, which must not recurse into its own output).
+
+## Grammars beat regexes
+
+Three of the five recent waves replaced a pile of fixed-shape regexes
+with a subject/predicate parser, and each one flipped cards nobody had
+probed. The pattern:
+
+1. Split the sentence into a **subject** phrase and a **predicate**.
+2. Parse the subject into the existing selector/filter shape,
+   composing qualifiers (possessor, "Other"/"Each", colour, supertype,
+   "…tokens", trailing "of the chosen type").
+3. Parse the predicate into a **list** of effects, splitting on the
+   verbs rather than on "and" (keyword lists use "and" internally).
+4. Return null if **any** conjunct is unrecognised. Half-understood
+   lines that compile to half a card are worse than a clean miss, and
+   the compile metric treats them identically.
+5. Run the new grammar **after** the existing narrow patterns, so it
+   only catches what already fell through. Then delete the narrow ones
+   only once the suite is green — that is how the Sword of Vengeance
+   Oxford-comma bug surfaced.
+
+Watch for shadowing in the other direction too: a grammar placed early
+in the sentence chain can swallow a sentence a *later*, more specific
+handler owns. `~ gets +1/+0 for each artifact you control` is Storm-Kiln
+Artist's `bonusPt`, not a static grant; claiming "~" as a subject broke
+it, and wave 94's test caught it.
+
+The three grammars now in `oraclePatterns.ts`:
+`compileStaticGrant` (permanent grants), `compileUntilEotGrant`
+(temporary grants), `parseGenericSubjectHead` (enters/dies trigger
+noun phrases). Extend these rather than adding a sibling regex.
 
 ## The wave rhythm
 
@@ -167,6 +239,21 @@ field just silently drops).
   timeout failures masquerading as integrity failures.
 
 ## High-value open clusters (see CLAIMS.md for live status)
+
+Families identified but not yet built, each worth roughly a wave:
+**general "A and B" trigger bodies** (the clause compiler handles some
+conjunctions ad hoc and misses others — Undead Augur, Midnight Reaper,
+Crime Novelist); **"As long as …" conditional statics** (Champion's
+Helm, Serra Ascendant, The World Tree, Thunderfoot Baloth);
+**granted abilities in quotes** ("Equipped creature has '{T}: Add one
+mana of any color.'" — Paradise Mantle, Bootleggers' Stash, The Reaver
+Cleaver, Diamond Pick-Axe); **an all-scope keyword grant** (there is
+`all_pt_until_eot` but no keyword sibling — Lord of the Accursed);
+**"+X/+X" in until-EOT effects** (they cannot carry an announced X —
+Tyvar's Stand, Kessig Wolf Run); **protection from a card type**
+(Spirit Mantle, Commander's Plate); **widening `leaves_battlefield`**,
+which currently fires only for permanents carrying counters and so
+cannot serve token-leave watches (Nadier's Nightblade).
 
 Stream-F one-away buckets remain the steadiest 5–14 flips/wave (probe
 the current top-miss list from the compile measure). Bigger machinery
