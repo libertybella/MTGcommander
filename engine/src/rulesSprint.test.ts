@@ -18886,3 +18886,128 @@ describe("wave 157: free casting from hand", () => {
   });
 });
 
+
+describe("wave 158: omniscience and foretelling", () => {
+  const compile = (name: string, manaCost: string, typeLine: string, oracleText: string) =>
+    compileOracleCard({
+      oracleId: name,
+      name,
+      manaCost,
+      typeLine,
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  it("compiles both static free-cast permissions", () => {
+    const omniscience = compile(
+      "Omniscience",
+      "{7}{U}{U}{U}",
+      "Enchantment",
+      "You may cast spells from your hand without paying their mana costs.",
+    );
+    expect(omniscience.notes).toEqual([]);
+    expect(omniscience.definition.castFreeFromHand).toEqual({});
+
+    const foretold = compile(
+      "As Foretold",
+      "{2}{U}",
+      "Enchantment",
+      "At the beginning of your upkeep, put a time counter on As Foretold.\nOnce each turn, you may pay {0} rather than pay the mana cost for a spell you cast with mana value X or less, where X is the number of time counters on As Foretold.",
+    );
+    expect(foretold.notes).toEqual([]);
+    expect(foretold.definition.castFreeFromHand).toEqual({
+      capFromCounter: "time",
+      oncePerTurn: true,
+    });
+  });
+
+  /** A table with one expensive spell in hand and no mana. */
+  const tableWith = (grantOracle: string, manaCost = "{9}{U}") => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const grantDef = compile("Grantor", "{2}", "Enchantment", grantOracle).definition;
+    game.definitions[grantDef.id] = grantDef;
+    const grant = createCardInstance({ definitionId: grantDef.id, ownerId: p1.id, zone: "battlefield" });
+    game.cards[grant.id] = grant;
+    p1.zones.battlefield.push(grant.id);
+
+    const spellDef = createCardDefinition({
+      name: "Expensive",
+      typeLine: "Creature — Giant",
+      manaCost,
+      power: 4,
+      toughness: 4,
+    });
+    game.definitions[spellDef.id] = spellDef;
+    const spell = createCardInstance({ definitionId: spellDef.id, ownerId: p1.id, zone: "hand" });
+    game.cards[spell.id] = spell;
+    p1.zones.hand.push(spell.id);
+    game.turn.phase = "precombatMain";
+    game.turn.step = "precombatMain";
+    game.turn.activePlayerId = p1.id;
+    game.priorityPlayerId = p1.id;
+    return { game, p1, grant, spell };
+  };
+
+  it("casts anything for free while Omniscience is out, repeatedly", () => {
+    const { game, p1, spell } = tableWith(
+      "You may cast spells from your hand without paying their mana costs.",
+    );
+    const next = applyAction(game, {
+      kind: "cast_spell",
+      playerId: p1.id,
+      cardId: spell.id,
+      targets: [],
+    });
+    expect(next.stack).toHaveLength(1);
+    // Nothing was spent and nothing latched — the permission is continuous.
+    expect(next.freeCastUsedThisTurn ?? []).toHaveLength(0);
+    expect(next.players.find((entry) => entry.id === p1.id)!.mana.U).toBe(0);
+  });
+
+  it("gates As Foretold on its counters and on once per turn", () => {
+    const foretoldText =
+      "At the beginning of your upkeep, put a time counter on Grantor.\nOnce each turn, you may pay {0} rather than pay the mana cost for a spell you cast with mana value X or less, where X is the number of time counters on Grantor.";
+    // Mana value 2 with only one time counter is outside the cap.
+    const tight = tableWith(foretoldText, "{1}{U}");
+    tight.game.cards[tight.grant.id]!.counters.time = 1;
+    expect(
+      legalActions(tight.game, tight.p1.id).some(
+        (action) => action.kind === "cast_spell" && action.cardId === tight.spell.id,
+      ),
+    ).toBe(false);
+
+    // Two counters cover it.
+    tight.game.cards[tight.grant.id]!.counters.time = 2;
+    expect(
+      legalActions(tight.game, tight.p1.id).some(
+        (action) => action.kind === "cast_spell" && action.cardId === tight.spell.id,
+      ),
+    ).toBe(true);
+
+    const after = applyAction(tight.game, {
+      kind: "cast_spell",
+      playerId: tight.p1.id,
+      cardId: tight.spell.id,
+      targets: [],
+    });
+    // The once-per-turn use latched, so a second free cast is refused.
+    expect(after.freeCastUsedThisTurn).toEqual([tight.p1.id]);
+    const second = createCardInstance({
+      definitionId: after.cards[tight.spell.id]!.definitionId,
+      ownerId: tight.p1.id,
+      zone: "hand",
+    });
+    after.cards[second.id] = second;
+    after.players.find((entry) => entry.id === tight.p1.id)!.zones.hand.push(second.id);
+    expect(
+      legalActions(after, tight.p1.id).some(
+        (action) => action.kind === "cast_spell" && action.cardId === second.id,
+      ),
+    ).toBe(false);
+  });
+});
+

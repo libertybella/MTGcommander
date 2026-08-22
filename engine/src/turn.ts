@@ -91,6 +91,10 @@ function onEnterStep(state: GameState): GameState {
       active.attackedThisTurn = false;
       active.attackersThisTurn = 0;
     }
+    // As Foretold: the once-per-turn free cast refreshes for everyone.
+    if (state.freeCastUsedThisTurn && state.freeCastUsedThisTurn.length > 0) {
+      state.freeCastUsedThisTurn = [];
+    }
     // Explore-style one-shot land-drop grants expire with the turn.
     for (const player of state.players) {
       if (player.extraLandDropsThisTurn) {

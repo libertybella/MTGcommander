@@ -2,7 +2,7 @@ import { declareAttackers, declareBlockers, lockRemainingBlockers, pendingBlocke
 import { abilitiesRemoved } from "./characteristicsEngine";
 import { characteristicsOf, isCommander, isCreature, isInstant, isInstantOrSorcery, isLand, isLegendary, isMainPhase } from "./cardTypes";
 import { cloneGameState } from "./clone";
-import { affinityArtifactDiscount, allBattlefieldCreatureCount, canPlayLandFromTop, canPlayLandsFromGraveyard, castCostReduction, castableFromTop, controlsCommander, creaturePower, freeEquipGranted, hasFlashGrant, landDropAllowance, lockedByAbolisher, lockedFromCasting, opponentControlsMoreLands, findFreeHandGrantIndex, opponentsCastLockedToHand, selfDiscountAmount } from "./derived";
+import { affinityArtifactDiscount, allBattlefieldCreatureCount, canPlayLandFromTop, canPlayLandsFromGraveyard, castCostReduction, castableFromTop, controlsCommander, creaturePower, freeEquipGranted, hasFlashGrant, landDropAllowance, lockedByAbolisher, lockedFromCasting, opponentControlsMoreLands, findFreeHandGrantIndex, opponentsCastLockedToHand, selfDiscountAmount, staticFreeCastCap, usesOncePerTurnFreeCast } from "./derived";
 import { eliminatePlayerInPlace } from "./elimination";
 import { applyEffects, bindCardEffects, devotionTo } from "./effects";
 import { hasKeyword } from "./keywords";
@@ -199,10 +199,10 @@ function validateCast(
   // Rishkar's Expertise: a hand grant covers this spell if its mana value is
   // inside the cap. Checked before tax and discounts because it replaces the
   // whole cost rather than reducing it.
-  const freeHandCast = Boolean(
-    findFreeHandGrant(state, playerId, cardId) &&
-      state.cards[cardId]?.zone === "hand",
-  );
+  const freeHandCast =
+    state.cards[cardId]?.zone === "hand" &&
+    (findFreeHandGrant(state, playerId, cardId) ||
+      staticFreeCastCap(state, playerId, cardId) !== null);
   const cost = parseManaCost(
     freeExileCast || freeHandCast
       ? ""
@@ -467,8 +467,18 @@ function applyCastSpell(
   }
   // Spend the free-cast grant before the card leaves hand, so the lookup
   // still sees where it was.
-  const grantIndex =
-    paid.cards[cardId]?.zone === "hand" ? findFreeHandGrantIndex(paid, playerId, cardId) : -1;
+  const inHand = paid.cards[cardId]?.zone === "hand";
+  const grantIndex = inHand ? findFreeHandGrantIndex(paid, playerId, cardId) : -1;
+  // As Foretold: a once-per-turn static grant latches instead of being spent,
+  // and only when no one-shot grant already covered the cast.
+  if (
+    inHand &&
+    grantIndex < 0 &&
+    usesOncePerTurnFreeCast(paid, playerId, cardId) &&
+    !(paid.freeCastUsedThisTurn ?? []).includes(playerId)
+  ) {
+    paid.freeCastUsedThisTurn = [...(paid.freeCastUsedThisTurn ?? []), playerId];
+  }
   if (grantIndex >= 0) {
     const grants = [...(paid.freeCastFromHand ?? [])];
     const grant = grants[grantIndex]!;

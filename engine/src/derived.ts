@@ -597,6 +597,68 @@ export function queueEnterReplacementChoicesInPlace(state: GameState, cardId: Ca
  * Lives here rather than in actions.ts so both the cast path and the
  * legal-action enumeration can read it without an import cycle.
  */
+/**
+ * Omniscience / As Foretold: a permanent that grants free casting from hand
+ * continuously, rather than the one-shot grants above. Returns the loosest
+ * cap available (Infinity for uncapped), or null when nothing grants it.
+ *
+ * As Foretold's "once each turn" is tracked on the player rather than the
+ * card, which is a documented simplification: two copies would each allow a
+ * cast, and here the second is refused.
+ */
+export function staticFreeCastCap(
+  state: GameState,
+  playerId: string,
+  cardId: CardInstanceId,
+): number | null {
+  const manaValue = characteristicsOf(state, cardId).manaValue;
+  let best: number | null = null;
+  for (const card of Object.values(state.cards)) {
+    if (card.zone !== "battlefield" || card.controllerId !== playerId) {
+      continue;
+    }
+    const grant = state.definitions[card.definitionId]?.castFreeFromHand;
+    if (!grant || abilitiesRemoved(state, card.id)) {
+      continue;
+    }
+    if (grant.oncePerTurn && (state.freeCastUsedThisTurn ?? []).includes(playerId)) {
+      continue;
+    }
+    const cap = grant.capFromCounter
+      ? card.counters[grant.capFromCounter] ?? 0
+      : Number.POSITIVE_INFINITY;
+    if (manaValue > cap) {
+      continue;
+    }
+    if (best === null || cap > best) {
+      best = cap;
+    }
+  }
+  return best;
+}
+
+/** Did a once-per-turn static grant cover this cast? */
+export function usesOncePerTurnFreeCast(
+  state: GameState,
+  playerId: string,
+  cardId: CardInstanceId,
+): boolean {
+  const manaValue = characteristicsOf(state, cardId).manaValue;
+  return Object.values(state.cards).some((card) => {
+    if (card.zone !== "battlefield" || card.controllerId !== playerId) {
+      return false;
+    }
+    const grant = state.definitions[card.definitionId]?.castFreeFromHand;
+    if (!grant?.oncePerTurn || abilitiesRemoved(state, card.id)) {
+      return false;
+    }
+    const cap = grant.capFromCounter
+      ? card.counters[grant.capFromCounter] ?? 0
+      : Number.POSITIVE_INFINITY;
+    return manaValue <= cap;
+  });
+}
+
 export function findFreeHandGrantIndex(
   state: GameState,
   playerId: string,

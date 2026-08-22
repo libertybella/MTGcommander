@@ -92,6 +92,7 @@ export function createCardDefinition(
         | "storm"
         | "doesntUntap"
         | "grantsFlash"
+        | "castFreeFromHand"
         | "extraDrawStepDraws"
         | "affinityArtifacts"
         | "selfDiscount"
@@ -345,6 +346,7 @@ export function createCardDefinition(
     ...(input.storm ? { storm: true } : {}),
     ...(input.doesntUntap ? { doesntUntap: true } : {}),
     ...(input.grantsFlash ? { grantsFlash: true } : {}),
+    ...(input.castFreeFromHand ? { castFreeFromHand: { ...input.castFreeFromHand } } : {}),
     ...(input.extraDrawStepDraws ? { extraDrawStepDraws: true } : {}),
     ...(input.affinityArtifacts ? { affinityArtifacts: true } : {}),
     ...(input.selfDiscount ? { selfDiscount: { ...input.selfDiscount } } : {}),

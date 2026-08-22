@@ -196,6 +196,14 @@ export type CardDefinition = {
   opponentArtifactsEnterTapped?: boolean;
   /** "You may cast spells as though they had flash" (Vedalken Orrery). */
   grantsFlash?: boolean;
+  /** Omniscience: the controller casts from hand without paying mana costs.
+   * As Foretold adds a per-turn limit and a counter-derived cap. */
+  castFreeFromHand?: {
+    /** As Foretold: cap = this many of the named counter on the source. */
+    capFromCounter?: string;
+    /** As Foretold: only the first such cast each turn. */
+    oncePerTurn?: boolean;
+  };
   /** Howling Mine: each player draws an extra card in their draw step. */
   extraDrawStepDraws?: boolean;
   /** Affinity for artifacts: generic cost shrinks per artifact you control. */
@@ -548,6 +556,9 @@ export type GameState = {
   /** Maze of Ith: creatures whose combat damage (dealt and received) is
    * prevented this turn. Cleared at cleanup. */
   preventCombatFor?: CardInstanceId[];
+  /** As Foretold: players who already used their once-per-turn free cast.
+   * Cleared at untap alongside the other per-turn tallies. */
+  freeCastUsedThisTurn?: PlayerId[];
   /** Emergence Zone / Borne Upon a Wind: players who may cast at instant
    * speed for the rest of this turn. Cleared at cleanup. The permanent form
    * (Vedalken Orrery) is `CardDefinition.grantsFlash` instead. */

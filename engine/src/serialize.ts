@@ -398,6 +398,21 @@ export function parseGameState(json: string): GameState {
       ...(def.storm === true ? { storm: true } : {}),
       ...(def.doesntUntap === true ? { doesntUntap: true } : {}),
       ...(def.grantsFlash === true ? { grantsFlash: true } : {}),
+      ...(isRecord(def.castFreeFromHand)
+        ? {
+            castFreeFromHand: {
+              ...(def.castFreeFromHand.capFromCounter === undefined
+                ? {}
+                : {
+                    capFromCounter: expectString(
+                      def.castFreeFromHand.capFromCounter,
+                      "definition.castFreeFromHand.capFromCounter",
+                    ),
+                  }),
+              ...(def.castFreeFromHand.oncePerTurn === true ? { oncePerTurn: true } : {}),
+            },
+          }
+        : {}),
       ...(def.extraDrawStepDraws === true ? { extraDrawStepDraws: true } : {}),
       ...(def.affinityArtifacts === true ? { affinityArtifacts: true } : {}),
       ...(def.selfDiscount === undefined
@@ -1138,6 +1153,14 @@ export function parseGameState(json: string): GameState {
     ...(raw.flashThisTurn === undefined
       ? {}
       : { flashThisTurn: expectStringArray(raw.flashThisTurn, "flashThisTurn") }),
+    ...(raw.freeCastUsedThisTurn === undefined
+      ? {}
+      : {
+          freeCastUsedThisTurn: expectStringArray(
+            raw.freeCastUsedThisTurn,
+            "freeCastUsedThisTurn",
+          ),
+        }),
     ...(raw.freeCastFromHand === undefined
       ? {}
       : {

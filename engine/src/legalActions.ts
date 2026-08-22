@@ -3,7 +3,7 @@ import { abilitiesRemoved, controlsGate } from "./characteristicsEngine";
 import { hasKeyword } from "./keywords";
 import { emptyManaPool } from "./createGame";
 import { pendingBlockerPlayer } from "./combat";
-import { affinityArtifactDiscount, allBattlefieldCreatureCount, canPlayLandsFromGraveyard, castCostReduction, castableFromTop, controlsCommander, freeEquipGranted, hasFlashGrant, landDropAllowance, lockedByAbolisher, lockedFromCasting, opponentControlsMoreLands, findFreeHandGrantIndex, opponentsCastLockedToHand, selfDiscountAmount, topOfLibraryGrant } from "./derived";
+import { affinityArtifactDiscount, allBattlefieldCreatureCount, canPlayLandsFromGraveyard, castCostReduction, castableFromTop, controlsCommander, freeEquipGranted, hasFlashGrant, landDropAllowance, lockedByAbolisher, lockedFromCasting, opponentControlsMoreLands, findFreeHandGrantIndex, opponentsCastLockedToHand, selfDiscountAmount, staticFreeCastCap, topOfLibraryGrant } from "./derived";
 import { canPayManaCost, parseManaCost, type ParsedManaCost } from "./mana";
 import { colorsAmongControlled, manaAbilitiesFor, manaTapOptionsFor } from "./manaOptions";
 import { isMulliganOpen } from "./mulligan";
@@ -588,7 +588,8 @@ export function legalActions(state: GameState, playerId: PlayerId): LegalAction[
           0,
           undefined,
           flashGrant,
-          findFreeHandGrantIndex(state, playerId, cardId) >= 0,
+          findFreeHandGrantIndex(state, playerId, cardId) >= 0 ||
+            staticFreeCastCap(state, playerId, cardId) !== null,
         )
       ) {
         actions.push({ kind: "cast_spell", cardId, faceIndex: face.faceIndex, fromCommand: false });

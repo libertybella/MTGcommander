@@ -66,6 +66,7 @@ export type CompiledOracleText = {
   storm?: boolean;
   doesntUntap?: boolean;
   grantsFlash?: boolean;
+  castFreeFromHand?: CardDefinition["castFreeFromHand"];
   attackTax?: { generic?: number; perEnchantment?: boolean; lifePer?: number };
   leyline?: boolean;
   castFromGraveyard?: { types?: string[]; subtypes?: string[] };
@@ -7948,6 +7949,26 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
 
     if (/^You may cast spells as though they had flash$/i.test(sentence)) {
       result.grantsFlash = true;
+      continue;
+    }
+
+    // Omniscience: an uncapped, unlimited free-cast permission.
+    if (
+      /^You may cast spells from your hand without paying their mana costs$/i.test(sentence)
+    ) {
+      result.castFreeFromHand = {};
+      continue;
+    }
+
+    // As Foretold: once each turn, capped by the counters it has accrued.
+    const foretold = sentence.match(
+      /^Once each turn, you may pay \{0\} rather than pay the mana cost for a spell you cast with mana value X or less, where X is the number of ([a-z]+) counters on ~$/i,
+    );
+    if (foretold?.[1]) {
+      result.castFreeFromHand = {
+        capFromCounter: foretold[1].toLowerCase(),
+        oncePerTurn: true,
+      };
       continue;
     }
 
