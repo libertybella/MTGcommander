@@ -397,6 +397,10 @@ export function bindCardEffect(
         return null;
       }
       const { countFromGreatestPower, countPerControlled, countFromChosenTypePermanents, ...drawRest } = effect;
+      // Blue Sun's Zenith: the announced X.
+      if (effect.count === "x") {
+        return { ...drawRest, playerId, count: Math.max(0, context.xValue ?? 0) };
+      }
       // Greater Good: the count is the sacrificed cost-creature's power.
       if (effect.count === "sacrificed_power") {
         const count = Math.max(0, context.sacrificedPower ?? 0);

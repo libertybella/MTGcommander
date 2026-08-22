@@ -1216,8 +1216,9 @@ export type CardEffect =
   | {
       kind: "draw";
       playerId: PlayerSelector;
-      /** "sacrificed_power": Greater Good draws the fodder's power. */
-      count: number | "sacrificed_power";
+      /** "sacrificed_power": Greater Good draws the fodder's power.
+       * "x": Blue Sun's Zenith draws the announced X. */
+      count: number | "sacrificed_power" | "x";
       optional?: boolean;
       /** Return of the Wildspeaker: draw the greatest power among the
        * controller's creatures instead, computed when the effect binds. */

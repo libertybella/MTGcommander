@@ -19011,3 +19011,116 @@ describe("wave 158: omniscience and foretelling", () => {
   });
 });
 
+
+describe("wave 159: draw variants", () => {
+  const compile = (name: string, manaCost: string, typeLine: string, oracleText: string) =>
+    compileOracleCard({
+      oracleId: name,
+      name,
+      manaCost,
+      typeLine,
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  it("compiles the draw-variant bucket fully", () => {
+    const zenith = compile(
+      "Blue Sun's Zenith",
+      "{X}{U}{U}{U}",
+      "Instant",
+      "Target player draws X cards. Shuffle Blue Sun's Zenith into its owner's library.",
+    );
+    expect(zenith.notes).toEqual([]);
+    expect(zenith.definition.targetRequirements[0]).toEqual({ kind: "player" });
+    expect(zenith.definition.effects[0]).toEqual({
+      kind: "draw",
+      playerId: { type: "chosen", index: 0 },
+      count: "x",
+    });
+
+    const pull = compile(
+      "Pull from Tomorrow",
+      "{X}{U}{U}",
+      "Instant",
+      "Draw X cards, then discard a card.",
+    );
+    expect(pull.notes).toEqual([]);
+    expect(pull.definition.effects).toEqual([
+      { kind: "draw", playerId: "controller", count: "x" },
+      { kind: "discard", playerId: "controller", count: 1 },
+    ]);
+
+    const rendezvous = compile(
+      "Secret Rendezvous",
+      "{2}{W}",
+      "Sorcery",
+      "You and target opponent each draw three cards.",
+    );
+    expect(rendezvous.notes).toEqual([]);
+    expect(rendezvous.definition.targetRequirements[0]).toEqual({ kind: "opponent" });
+    expect(rendezvous.definition.effects).toHaveLength(2);
+
+    const sanitarium = compile(
+      "Geier Reach Sanitarium",
+      "",
+      "Legendary Land",
+      "{T}: Add {C}.\n{2}, {T}: Each player draws a card, then discards a card.",
+    );
+    expect(sanitarium.notes).toEqual([]);
+    expect(sanitarium.definition.activated[0]?.effects).toEqual([
+      { kind: "draw", playerId: "each_player", count: 1 },
+      { kind: "discard", playerId: "each_player", count: 1 },
+    ]);
+  });
+
+  it("draws the announced X for the chosen player", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    const before = p2.zones.hand.length;
+    const next = applyEffects(
+      game,
+      bindCardEffects(
+        game,
+        [{ kind: "draw", playerId: { type: "chosen", index: 0 }, count: "x" }],
+        {
+          controllerId: p1.id,
+          sourceId: null,
+          targets: [{ type: "player", playerId: p2.id }],
+          targetRequirements: [{ kind: "player" }],
+          xValue: 3,
+        },
+      ),
+    );
+    expect(next.players.find((entry) => entry.id === p2.id)?.zones.hand.length).toBe(before + 3);
+    // The caster drew nothing — the draw was targeted.
+    expect(next.players.find((entry) => entry.id === p1.id)?.zones.hand.length).toBe(
+      p1.zones.hand.length,
+    );
+  });
+
+  it("loots every player at once", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    const sizes = [p1, p2].map((player) => player.zones.hand.length);
+    const next = applyEffects(
+      game,
+      bindCardEffects(
+        game,
+        [
+          { kind: "draw", playerId: "each_player", count: 1 },
+          { kind: "discard", playerId: "each_player", count: 1 },
+        ],
+        { controllerId: p1.id, sourceId: null, targets: [], targetRequirements: [] },
+      ),
+    );
+    // Drew one and pitched one, so hands are the size they started.
+    expect(next.players.find((entry) => entry.id === p1.id)?.zones.hand.length).toBe(sizes[0]);
+    expect(next.players.find((entry) => entry.id === p2.id)?.zones.hand.length).toBe(sizes[1]);
+    expect(next.players.find((entry) => entry.id === p1.id)?.zones.graveyard.length).toBe(1);
+    expect(next.players.find((entry) => entry.id === p2.id)?.zones.graveyard.length).toBe(1);
+  });
+});
+

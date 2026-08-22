@@ -676,6 +676,60 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     };
   }
 
+  // Blue Sun's Zenith: a targeted X draw.
+  const targetedXDraw = sentence.match(/^Target player draws X cards$/i);
+  if (targetedXDraw) {
+    return {
+      targetRequirements: [{ kind: "player" }],
+      effects: [{ kind: "draw", playerId: { type: "chosen", index: 0 }, count: "x" }],
+    };
+  }
+
+  // Pull from Tomorrow: draw X, then pay one card back.
+  const xLoot = sentence.match(/^Draw X cards, then discard (a|one|\d+) cards?$/i);
+  if (xLoot?.[1]) {
+    return {
+      targetRequirements: [],
+      effects: [
+        { kind: "draw", playerId: "controller", count: "x" },
+        {
+          kind: "discard",
+          playerId: "controller",
+          count: parseCount(xLoot[1]) ?? 1,
+        },
+      ],
+    };
+  }
+
+  // Secret Rendezvous: a shared draw with one opponent.
+  const sharedDraw = sentence.match(
+    /^You and target opponent each draw (a|one|two|three|four|\d+) cards?$/i,
+  );
+  if (sharedDraw?.[1]) {
+    const count = parseCount(sharedDraw[1]) ?? 1;
+    return {
+      targetRequirements: [{ kind: "opponent" }],
+      effects: [
+        { kind: "draw", playerId: "controller", count },
+        { kind: "draw", playerId: { type: "chosen", index: 0 }, count },
+      ],
+    };
+  }
+
+  // Geier Reach Sanitarium: a symmetric loot.
+  const eachLoot = sentence.match(
+    /^Each player draws (a|one|\d+) cards?, then discards (a|one|\d+) cards?$/i,
+  );
+  if (eachLoot?.[1] && eachLoot[2]) {
+    return {
+      targetRequirements: [],
+      effects: [
+        { kind: "draw", playerId: "each_player", count: parseCount(eachLoot[1]) ?? 1 },
+        { kind: "discard", playerId: "each_player", count: parseCount(eachLoot[2]) ?? 1 },
+      ],
+    };
+  }
+
   // Splendid Reclamation / Aftermath Analyst / Lumra: a mass land return.
   if (
     /^(?:Then )?return all land cards from your graveyard to the battlefield tapped$/i.test(

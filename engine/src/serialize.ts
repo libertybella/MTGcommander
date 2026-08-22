@@ -2090,7 +2090,9 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
         count:
           value.count === "sacrificed_power"
             ? "sacrificed_power"
-            : expectNumber(value.count, `${label}.count`),
+            : value.count === "x"
+              ? ("x" as const)
+              : expectNumber(value.count, `${label}.count`),
         ...(value.optional === true ? { optional: true } : {}),
         ...(() => {
           if (!isRecord(value.countFromGreatestPower)) {
