@@ -279,6 +279,9 @@ export function createCardDefinition(
           ...(ability.discard ? { discard: true } : {}),
           ...(ability.sacrificeSelf ? { sacrificeSelf: true } : {}),
           ...(ability.sacrificeCost ? { sacrificeCost: ability.sacrificeCost } : {}),
+          ...(ability.sacrificeCount && ability.sacrificeCount > 1
+            ? { sacrificeCount: ability.sacrificeCount }
+            : {}),
           ...(ability.exileSelf ? { exileSelf: true } : {}),
           ...(ability.legendaryDiscount ? { legendaryDiscount: true } : {}),
           ...(ability.modes

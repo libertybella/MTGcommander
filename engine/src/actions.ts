@@ -1183,6 +1183,25 @@ function applyActivateAbility(
     // Sacrificing is part of the cost (paid on activation); the ability
     // itself waits on the stack normally.
     next = applyEffects(next, [{ kind: "sacrifice", cardId: costSacrificeId }]);
+    // The Dominus cycle asks for two or three. The activation names one and
+    // the rest are auto-taken, cheapest first — a documented approximation
+    // of a choice the caller has no way to express.
+    const extra = (ability.sacrificeCount ?? 1) - 1;
+    if (extra > 0) {
+      const fodder = Object.values(next.cards)
+        .filter(
+          (entry) =>
+            entry.zone === "battlefield" &&
+            entry.controllerId === playerId &&
+            entry.id !== cardId &&
+            sacrificeScopeMatches(next, entry.id, ability.sacrificeCost!, cardId),
+        )
+        .sort((a, b) => creaturePower(next, a.id) - creaturePower(next, b.id))
+        .slice(0, extra);
+      for (const victim of fodder) {
+        next = applyEffects(next, [{ kind: "sacrifice", cardId: victim.id }]);
+      }
+    }
   }
   if (ability.sacrificeSelf) {
     // Sacrificing is part of the cost: it happens on activation, and the

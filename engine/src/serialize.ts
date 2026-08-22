@@ -3060,6 +3060,9 @@ function parseActivatedAbilities(value: unknown, label: string): ActivatedAbilit
               `${label}[${index}].requiresAttackersThisTurn`,
             ),
           }),
+      ...(entry.sacrificeCount === undefined
+        ? {}
+        : { sacrificeCount: expectNumber(entry.sacrificeCount, `${label}[${index}].sacrificeCount`) }),
       ...(entry.requiresCreatedToken === true ? { requiresCreatedToken: true } : {}),
     };
   });

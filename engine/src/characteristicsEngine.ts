@@ -62,6 +62,9 @@ type EffectInstance = {
   fromStatic: boolean;
 };
 
+/** Counters that grant their own keyword to the permanent (CR 122.1e). */
+const KEYWORD_COUNTERS: Keyword[] = ["indestructible", "flying"];
+
 const LAYER_OF: Record<ContinuousEffectData["kind"], number> = {
   add_types: 4,
   all_creature_types: 4,
@@ -145,7 +148,13 @@ function baseComputed(state: GameState, card: CardInstance): ComputedCard {
       colors: [...printed.colors],
       manaValue: printed.manaValue,
     },
-    keywords: [...(definition?.keywords ?? [])],
+    // Keyword counters (CR 122.1e): a permanent with an indestructible
+    // counter on it has indestructible. The Dominus cycle puts them on;
+    // shield counters and the rest would join this map when they arrive.
+    keywords: [
+      ...(definition?.keywords ?? []),
+      ...KEYWORD_COUNTERS.filter((keyword) => (card.counters[keyword] ?? 0) > 0),
+    ],
     abilitiesRemoved: false,
     power: (dynamic ?? definition?.power ?? 0) + bonusPower,
     toughness: (dynamic ?? definition?.toughness ?? 0) + bonusToughness,

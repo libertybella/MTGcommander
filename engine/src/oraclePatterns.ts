@@ -380,11 +380,16 @@ function isKeywordLine(sentence: string): boolean {
 }
 
 const SACRIFICE_COST = /Sacrifice (?:~|this land|this creature|this artifact|this permanent)/i;
-const SACRIFICE_TYPE_COST = /Sacrifice (?:an? |another )(black creature|creature|artifact|land|Treasure)\b/i;
+/**
+ * A sacrifice cost's scope, plus an optional count for the Dominus cycle's
+ * "Sacrifice two other creatures". Group 1 is the count word when present.
+ */
+const SACRIFICE_TYPE_COST =
+  /Sacrifice (?:an? |another |(two|three) other )(black creature|creature|artifact|land|Treasure|artifacts and\/or creatures|creatures)\b/i;
 const LIFE_COST = /Pay (\d+) life/i;
 const TAP_CREATURE_COST = /Tap an untapped creature you control/i;
 const COST_UNIT =
-  "(?:\\{[^}]+\\})+|Sacrifice (?:~|this land|this creature|this artifact|this permanent)|Sacrifice (?:an? |another )(?:black )?(?:creature|artifact|land|Treasure)|Pay \\d+ life|Tap an untapped creature you control";
+  "(?:\\{[^}]+\\})+|Sacrifice (?:~|this land|this creature|this artifact|this permanent)|Sacrifice (?:an? |another )(?:black )?(?:creature|artifact|land|Treasure)|Sacrifice (?:two|three) other (?:creatures|artifacts and\\/or creatures)|Pay \\d+ life|Tap an untapped creature you control";
 
 function splitAbility(sentence: string): { costText: string; rest: string } | null {
   // "Metalcraft — {T}: …" — the ability word is flavor (Mox Opal).
@@ -413,8 +418,11 @@ function parseAbilityCost(
     | "another_creature"
     | "another_black_creature"
     | "artifact"
+    | "creature_or_artifact"
+    | "another_creature_or_artifact"
     | "land"
     | "treasure";
+  sacrificeCount?: number;
   tapCreature?: boolean;
 } | null {
   const tapCreature = TAP_CREATURE_COST.test(costText);
@@ -422,15 +430,26 @@ function parseAbilityCost(
   const sacrificeTypeMatch = SACRIFICE_COST.test(costText)
     ? null
     : costText.match(SACRIFICE_TYPE_COST);
-  const another = /Sacrifice another /i.test(costText);
-  const sacrificeCost = sacrificeTypeMatch?.[1]
-    ? sacrificeTypeMatch[1].toLowerCase() === "black creature"
+  const another = /Sacrifice (?:another |(?:two|three) other )/i.test(costText);
+  const sacrificeCount = sacrificeTypeMatch?.[1]
+    ? parseCount(sacrificeTypeMatch[1].toLowerCase())
+    : undefined;
+  // "artifacts and/or creatures" and the bare plural are the counted forms;
+  // they map onto the same scopes as their singulars.
+  const scopeWord = sacrificeTypeMatch?.[2]
+    ?.toLowerCase()
+    .replace(/^artifacts and\/or creatures$/, "creature_or_artifact")
+    .replace(/^creatures$/, "creature");
+  const sacrificeCost = scopeWord
+    ? scopeWord === "black creature"
       ? another
         ? ("another_black_creature" as const)
         : null
-      : another && sacrificeTypeMatch[1].toLowerCase() === "creature"
-        ? ("another_creature" as const)
-        : (sacrificeTypeMatch[1].toLowerCase() as "creature" | "artifact" | "land" | "treasure")
+      : another && (scopeWord === "creature" || scopeWord === "creature_or_artifact")
+        ? scopeWord === "creature"
+          ? ("another_creature" as const)
+          : ("another_creature_or_artifact" as const)
+        : (scopeWord as "creature" | "artifact" | "land" | "treasure")
     : undefined;
   if (sacrificeCost === null) {
     return null;
@@ -448,7 +467,10 @@ function parseAbilityCost(
       tap = true;
       continue;
     }
-    if (symbol === "Q" || symbol === "X" || /P/.test(symbol)) {
+    // {Q} (untap) and {X} in an activation cost are unsupported. Phyrexian
+    // pips are fine — parseManaCost reads them and the payment path already
+    // charges 2 life when the colour is not available (the Dominus cycle).
+    if (symbol === "Q" || symbol === "X") {
       return null;
     }
     mana.push(`{${symbol}}`);
@@ -465,6 +487,7 @@ function parseAbilityCost(
     sacrificeSelf,
     ...(lifeCost ? { lifeCost } : {}),
     ...(sacrificeCost ? { sacrificeCost } : {}),
+    ...(sacrificeCount && sacrificeCount > 1 ? { sacrificeCount } : {}),
     ...(tapCreature ? { tapCreature: true } : {}),
   };
 }
@@ -4370,7 +4393,7 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
   }
 
   // Beastmaster Ascension ("you may" is auto-taken; quest counters only go up).
-  match = sentence.match(/^(?:you may )?put a ([a-z]+) counter on ~$/i);
+  match = sentence.match(/^(?:you may )?put an? ([a-z]+) counter on ~$/i);
   if (match?.[1]) {
     return {
       targetRequirements: [],
@@ -6858,6 +6881,7 @@ function extractActivatedModalModes(card: OracleCard): ActivatedModalExtraction 
       manaCost: cost.manaCost,
       ...(cost.sacrificeSelf ? { sacrificeSelf: true } : {}),
       ...(cost.sacrificeCost ? { sacrificeCost: cost.sacrificeCost } : {}),
+      ...(cost.sacrificeCount ? { sacrificeCount: cost.sacrificeCount } : {}),
       ...(cost.lifeCost ? { lifeCost: cost.lifeCost } : {}),
       modes,
       effects: [],
@@ -9513,6 +9537,7 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
         cost.sacrificeCost &&
         cost.sacrificeCost !== "another_creature" &&
         cost.sacrificeCost !== "another_black_creature" &&
+        cost.sacrificeCost !== "another_creature_or_artifact" &&
         !cost.lifeCost
       ) {
         result.manaAbilities.push({
@@ -9545,6 +9570,7 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
         targetRequirements: clause.targetRequirements,
         ...(cost.sacrificeSelf ? { sacrificeSelf: true } : {}),
         ...(cost.sacrificeCost ? { sacrificeCost: cost.sacrificeCost } : {}),
+        ...(cost.sacrificeCount ? { sacrificeCount: cost.sacrificeCount } : {}),
         ...(cost.lifeCost ? { lifeCost: cost.lifeCost } : {}),
         // Reassembling Skeleton: a self-return body activates from the yard.
         ...(/^Return (?:~|this card) from your graveyard to the battlefield/i.test(ability.rest)

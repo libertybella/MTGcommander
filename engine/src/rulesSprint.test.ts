@@ -23,6 +23,7 @@ import { dispatchEventsInPlace } from "./triggers";
 import { applyCombatDamage, declareAttackers } from "./combat";
 import { commanderIdentityColors, manaAbilitiesFor, manaTapOptionsFor } from "./manaOptions";
 import { emptyManaPools } from "./mana";
+import { applyStateBasedActionsInPlace } from "./status";
 import { legalActions } from "./legalActions";
 import { applyResolveCreatureType, legalEnterCopyIds, searchMatches } from "./prompt";
 import { parseGameState, serializeGameState } from "./serialize";
@@ -19935,6 +19936,170 @@ describe("wave 166: spend this mana only", () => {
       amount: 1,
       restriction: { types: ["creature"], chosenSubtype: true },
     });
+  });
+});
+
+
+describe("wave 168: phyrexian costs and keyword counters", () => {
+  const compile = (name: string, manaCost: string, typeLine: string, oracleText: string, power?: string, toughness?: string) =>
+    compileOracleCard({
+      oracleId: name,
+      name,
+      manaCost,
+      typeLine,
+      power: power ?? null,
+      toughness: toughness ?? null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  const MONDRAK =
+    "If one or more tokens would be created under your control, twice that many of those tokens are created instead.\n{1}{W/P}{W/P}, Sacrifice two other artifacts and/or creatures: Put an indestructible counter on Mondrak, Glory Dominus.";
+
+  it("compiles a Phyrexian activation cost with a counted sacrifice", () => {
+    const mondrak = compile(
+      "Mondrak, Glory Dominus",
+      "{2}{W}{W}",
+      "Legendary Creature — Phyrexian Horror",
+      MONDRAK,
+      "4",
+      "4",
+    );
+    expect(mondrak.notes).toEqual([]);
+    const ability = mondrak.definition.activated[0];
+    expect(ability?.manaCost).toBe("{1}{W/P}{W/P}");
+    // "two OTHER" — the source itself is not legal fodder.
+    expect(ability?.sacrificeCost).toBe("another_creature_or_artifact");
+    expect(ability?.sacrificeCount).toBe(2);
+    expect(ability?.effects[0]).toMatchObject({
+      kind: "add_counter",
+      counter: "indestructible",
+    });
+  });
+
+  it("gives a permanent indestructible from its counter, and takes it back", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const bearDef = createCardDefinition({
+      name: "Bear",
+      typeLine: "Creature — Bear",
+      power: 2,
+      toughness: 2,
+    });
+    game.definitions[bearDef.id] = bearDef;
+    const bear = createCardInstance({ definitionId: bearDef.id, ownerId: p1.id, zone: "battlefield" });
+    game.cards[bear.id] = bear;
+    p1.zones.battlefield.push(bear.id);
+
+    expect(hasKeyword(game, bear.id, "indestructible")).toBe(false);
+    bear.counters.indestructible = 1;
+    expect(hasKeyword(game, bear.id, "indestructible")).toBe(true);
+    // And it really survives lethal damage, not just the keyword query.
+    bear.damageMarked = 99;
+    applyStateBasedActionsInPlace(game);
+    expect(game.cards[bear.id]?.zone).toBe("battlefield");
+
+    delete bear.counters.indestructible;
+    expect(hasKeyword(game, bear.id, "indestructible")).toBe(false);
+  });
+
+  it("pays a Phyrexian pip with life when the colour is missing", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const mondrakDef = compile(
+      "Mondrak, Glory Dominus",
+      "{2}{W}{W}",
+      "Legendary Creature — Phyrexian Horror",
+      MONDRAK,
+      "4",
+      "4",
+    ).definition;
+    game.definitions[mondrakDef.id] = mondrakDef;
+    const mondrak = createCardInstance({ definitionId: mondrakDef.id, ownerId: p1.id, zone: "battlefield" });
+    mondrak.summoningSick = false;
+    game.cards[mondrak.id] = mondrak;
+    p1.zones.battlefield.push(mondrak.id);
+
+    const fodderDef = createCardDefinition({
+      name: "Fodder",
+      typeLine: "Creature — Goblin",
+      power: 1,
+      toughness: 1,
+    });
+    game.definitions[fodderDef.id] = fodderDef;
+    const fodder = [0, 1].map(() => {
+      const card = createCardInstance({ definitionId: fodderDef.id, ownerId: p1.id, zone: "battlefield" });
+      game.cards[card.id] = card;
+      p1.zones.battlefield.push(card.id);
+      return card;
+    });
+
+    // One generic mana, no white — both Phyrexian pips are paid with life.
+    p1.mana.C = 1;
+    const startingLife = p1.life;
+    game.turn.phase = "precombatMain";
+    game.turn.step = "precombatMain";
+    game.turn.activePlayerId = p1.id;
+    game.priorityPlayerId = p1.id;
+
+    let next = applyAction(game, {
+      kind: "activate_ability",
+      playerId: p1.id,
+      cardId: mondrak.id,
+      abilityIndex: 0,
+      costSacrificeId: fodder[0]!.id,
+    });
+    expect(next.players.find((entry) => entry.id === p1.id)?.life).toBe(startingLife - 4);
+    // The named fodder died, and the second was auto-taken.
+    expect(next.cards[fodder[0]!.id]?.zone).toBe("graveyard");
+    expect(next.cards[fodder[1]!.id]?.zone).toBe("graveyard");
+
+    while (next.stack.length > 0) {
+      next = resolveTopOfStack(next);
+    }
+    expect(next.cards[mondrak.id]?.counters.indestructible).toBe(1);
+    expect(hasKeyword(next, mondrak.id, "indestructible")).toBe(true);
+  });
+
+  it("refuses the activation without enough fodder", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const mondrakDef = compile(
+      "Mondrak, Glory Dominus",
+      "{2}{W}{W}",
+      "Legendary Creature — Phyrexian Horror",
+      MONDRAK,
+      "4",
+      "4",
+    ).definition;
+    game.definitions[mondrakDef.id] = mondrakDef;
+    const mondrak = createCardInstance({ definitionId: mondrakDef.id, ownerId: p1.id, zone: "battlefield" });
+    mondrak.summoningSick = false;
+    game.cards[mondrak.id] = mondrak;
+    p1.zones.battlefield.push(mondrak.id);
+    const loneDef = createCardDefinition({
+      name: "Lone",
+      typeLine: "Creature — Goblin",
+      power: 1,
+      toughness: 1,
+    });
+    game.definitions[loneDef.id] = loneDef;
+    const lone = createCardInstance({ definitionId: loneDef.id, ownerId: p1.id, zone: "battlefield" });
+    game.cards[lone.id] = lone;
+    p1.zones.battlefield.push(lone.id);
+    p1.mana.C = 1;
+    game.turn.phase = "precombatMain";
+    game.turn.step = "precombatMain";
+    game.turn.activePlayerId = p1.id;
+    game.priorityPlayerId = p1.id;
+
+    // One other creature is not two.
+    expect(
+      legalActions(game, p1.id).some(
+        (action) => action.kind === "activate_ability" && action.cardId === mondrak.id,
+      ),
+    ).toBe(false);
   });
 });
 

@@ -2141,10 +2141,14 @@ export type ActivatedAbility = {
     | "another_creature"
     /** Ayara: "Sacrifice another black creature". */
     | "another_black_creature"
+    | "another_creature_or_artifact"
     | "artifact"
     | "creature_or_artifact"
     | "land"
     | "treasure";
+  /** The Dominus cycle: "Sacrifice two other creatures" — how many. The
+   * activation supplies one and the rest are auto-taken (documented). */
+  sacrificeCount?: number;
   /** Spirit Guides: exiling this card (from hand) is part of the cost. */
   exileSelf?: boolean;
   /** Life paid as part of the cost (Doom Whisperer). */

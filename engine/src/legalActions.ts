@@ -233,7 +233,8 @@ export function sacrificeScopeMatches(
     | NonNullable<AdditionalCastCost["sacrifice"]>
     | "treasure"
     | "another_creature"
-    | "another_black_creature",
+    | "another_black_creature"
+    | "another_creature_or_artifact",
   sourceId?: CardInstanceId,
 ): boolean {
   const traits = state.definitions[state.cards[cardId]?.definitionId ?? ""]?.characteristics;
@@ -247,6 +248,12 @@ export function sacrificeScopeMatches(
   // Ayara: "Sacrifice another black creature".
   if (scope === "another_black_creature") {
     return types.includes("creature") && cardId !== sourceId && (traits?.colors ?? []).includes("B");
+  }
+  // Mondrak: "Sacrifice two other artifacts and/or creatures".
+  if (scope === "another_creature_or_artifact") {
+    return (
+      (types.includes("creature") || types.includes("artifact")) && cardId !== sourceId
+    );
   }
   if (scope === "artifact") {
     return types.includes("artifact");
@@ -430,12 +437,13 @@ function abilityUsable(
   if (ability.sacrificeCost) {
     const scope = ability.sacrificeCost;
     const player = state.players.find((entry) => entry.id === playerId);
-    const hasFodder = (player?.zones.battlefield ?? []).some(
+    // The Dominus cycle needs two or three, not one.
+    const fodder = (player?.zones.battlefield ?? []).filter(
       (fodderId) =>
         state.cards[fodderId]?.controllerId === playerId &&
         sacrificeScopeMatches(state, fodderId, scope, card.id),
     );
-    if (!hasFodder) {
+    if (fodder.length < (ability.sacrificeCount ?? 1)) {
       return false;
     }
   }
