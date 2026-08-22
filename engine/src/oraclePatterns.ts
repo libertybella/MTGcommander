@@ -215,34 +215,61 @@ function parseSingleAdditionalCost(what: string): AdditionalCastCost | null {
  * anything.
  */
 function parseSpendRestriction(tail: string): ManaRestriction | null {
-  if (tail === "cast a creature spell of the chosen type") {
-    return { types: ["creature"], chosenSubtype: true };
-  }
-  if (
-    tail ===
-    "cast a creature spell of the chosen type or activate an ability of a creature source of the chosen type"
-  ) {
-    return { types: ["creature"], chosenSubtype: true, allowsAbilities: true };
-  }
-  if (tail === "cast a legendary spell") {
-    return { legendary: true };
-  }
-  if (tail === "cast creature spells or activate abilities of creatures") {
-    return { types: ["creature"], allowsAbilities: true };
-  }
-  if (tail === "cast creature spells") {
-    return { types: ["creature"] };
-  }
-  const eldrazi = tail.match(
-    /^cast colorless ([a-z]+) spells or activate abilities of colorless \1$/,
+  // The clause is "cast <describes a spell>", optionally followed by an
+  // "or activate abilities of <the same thing>" half. Only the cast half
+  // carries the description; the ability half just widens what may be paid.
+  const split = tail.match(
+    /^cast (.+?)(?: or activate (?:an ability|abilities) of (.+))?$/,
   );
-  if (eldrazi?.[1]) {
-    return { colorless: true, subtype: eldrazi[1], allowsAbilities: true };
+  if (!split?.[1]) {
+    return null;
   }
-  if (tail === "cast colorless spells") {
-    return { colorless: true };
+  const allowsAbilities = split[2] !== undefined;
+
+  // Strip the article, the "spell(s)" noun, and a trailing chosen-type tag.
+  let phrase = split[1].replace(/^(?:an?|the) /, "").trim();
+  let chosenSubtype = false;
+  const chosen = phrase.match(/^(.*?) of the chosen type$/);
+  if (chosen?.[1]) {
+    chosenSubtype = true;
+    phrase = chosen[1].trim();
   }
-  return null;
+  const noun = phrase.match(/^(.*?) spells?$/);
+  if (!noun?.[1]) {
+    return null;
+  }
+  const words = noun[1].split(/\s+/).filter(Boolean);
+
+  const restriction: ManaRestriction = {
+    ...(chosenSubtype ? { chosenSubtype: true } : {}),
+    ...(allowsAbilities ? { allowsAbilities: true } : {}),
+  };
+  for (const word of words) {
+    if (word === "colorless") {
+      restriction.colorless = true;
+    } else if (word === "legendary") {
+      restriction.legendary = true;
+    } else if (word === "monocolored") {
+      // Monocolour is not a filter this engine can express; refuse rather
+      // than compile a restriction that would admit anything.
+      return null;
+    } else if (SEARCH_CARD_TYPES.has(word)) {
+      restriction.types = [...(restriction.types ?? []), word];
+    } else if (/^[a-z][a-z-]*$/.test(word)) {
+      // A creature subtype ("Dragon", "Angel", "Eldrazi"), lower-cased by
+      // the caller. Only one is supported; "Aura and/or Equipment" is not.
+      if (restriction.subtype) {
+        return null;
+      }
+      restriction.subtype = word;
+    } else {
+      return null;
+    }
+  }
+  if (Object.keys(restriction).length === 0) {
+    return null;
+  }
+  return restriction;
 }
 
 /** "…for each <noun> you control" — the nouns a live count can scale by. */
