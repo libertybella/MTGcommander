@@ -1,9 +1,11 @@
 import type {
   CardCharacteristics,
+  CardDefinition,
   CardInstance,
   CardInstanceId,
   Color,
   ContinuousEffectData,
+  ControlledGate,
   DynamicCount,
   EffectSelector,
   GameState,
@@ -329,6 +331,81 @@ export function cardMatchesSubtype(
   );
 }
 
+/**
+ * The single "you control …" gate matcher, shared by every carrier of a
+ * `ControlledGate` (activated abilities, mana abilities, static abilities,
+ * graveyard-cast conditions). `read` and `subtypeMatches` supply each
+ * permanent's traits, because the two callers need different sources:
+ * gameplay checks want *computed* characteristics, while the layer engine
+ * itself must read *printed* ones or it would recurse into its own output.
+ *
+ * Four hand-written copies of this logic had drifted apart before it was
+ * factored out here — the `subtypesAny` half was added to three of them and
+ * silently defaulted to "any permanent matches" in the fourth.
+ */
+function gateSatisfied(
+  state: GameState,
+  controllerId: string,
+  gate: ControlledGate,
+  read: (cardId: CardInstanceId) => { traits: CardCharacteristics; power: number } | null,
+  subtypeMatches: (cardId: CardInstanceId, subtype: string) => boolean,
+): boolean {
+  const controlled = Object.values(state.cards).filter(
+    (card) => card.zone === "battlefield" && card.controllerId === controllerId,
+  );
+  // "a Plains or a Swamp": any one of the listed subtypes satisfies the gate,
+  // and the halves may sit on different permanents.
+  if (
+    gate.subtypesAny &&
+    !gate.subtypesAny.some((subtype) =>
+      controlled.some((card) => subtypeMatches(card.id, subtype)),
+    )
+  ) {
+    return false;
+  }
+  if (!gate.types && !gate.subtypes && !gate.legendary && gate.minPower === undefined) {
+    return true;
+  }
+  // The remaining clauses must all hold of one and the same permanent.
+  return controlled.some((card) => {
+    const info = read(card.id);
+    if (!info) {
+      return false;
+    }
+    if (gate.legendary && !info.traits.supertypes.includes("legendary")) {
+      return false;
+    }
+    if (gate.minPower !== undefined && info.power < gate.minPower) {
+      return false;
+    }
+    return (
+      (gate.types ?? []).every((type) => info.traits.types.includes(type)) &&
+      (gate.subtypes ?? []).every((subtype) => subtypeMatches(card.id, subtype))
+    );
+  });
+}
+
+/**
+ * Computed-characteristics battlefield gate — the gameplay entry point.
+ * Bonders' Enclave reads current power, so counters and pumps count.
+ */
+export function controlsGate(
+  state: GameState,
+  controllerId: string,
+  gate: ControlledGate,
+): boolean {
+  return gateSatisfied(
+    state,
+    controllerId,
+    gate,
+    (cardId) => {
+      const computed = computedCard(state, cardId);
+      return computed ? { traits: computed.characteristics, power: computed.power } : null;
+    },
+    (cardId, subtype) => cardMatchesSubtype(state, cardId, subtype),
+  );
+}
+
 /** Printed-characteristics battlefield gate ("…and you control a Forest"). */
 function staticGateSatisfied(
   state: GameState,
@@ -338,19 +415,22 @@ function staticGateSatisfied(
   if (!gate) {
     return true;
   }
-  return Object.values(state.cards).some((card) => {
-    if (card.zone !== "battlefield" || card.controllerId !== controllerId) {
-      return false;
-    }
-    const traits = state.definitions[card.definitionId]?.characteristics;
-    if (!traits) {
-      return false;
-    }
-    return (
-      (gate.types ?? []).every((type) => traits.types.includes(type)) &&
-      (gate.subtypes ?? []).every((subtype) => traits.subtypes.includes(subtype))
-    );
-  });
+  const printed = (cardId: CardInstanceId): CardDefinition | undefined => {
+    const card = state.cards[cardId];
+    return card ? state.definitions[card.definitionId] : undefined;
+  };
+  return gateSatisfied(
+    state,
+    controllerId,
+    gate,
+    (cardId) => {
+      const definition = printed(cardId);
+      return definition
+        ? { traits: definition.characteristics, power: definition.power ?? 0 }
+        : null;
+    },
+    (cardId, subtype) => (printed(cardId)?.characteristics.subtypes ?? []).includes(subtype),
+  );
 }
 
 function collectInstances(state: GameState): EffectInstance[] {

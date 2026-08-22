@@ -379,6 +379,9 @@ export type PlayerState = {
   extraLandDropsThisTurn?: number;
   /** True after this player declared at least one attacker this turn. */
   attackedThisTurn: boolean;
+  /** How many creatures this player declared as attackers this turn, summed
+   * across combat phases (Minas Tirith's "attacked with two or more"). */
+  attackersThisTurn?: number;
   /** Set when a draw is attempted from an empty library. SBA then eliminates. */
   failedToDraw: boolean;
   /** Ascend (CR 702.131): once ten or more permanents are controlled while an
@@ -1939,6 +1942,24 @@ export type EnterTappedUnless =
    */
   | { kind: "hand_reveals_types"; types: string[] };
 
+/**
+ * "Activate only if you control …" / "…and you control a Forest": a gate on
+ * the controller's battlefield, checked against printed characteristics.
+ * `types`/`subtypes` must ALL be true of one permanent; `subtypesAny` is
+ * satisfied by any one of them (the Verge land cycle's "a Plains or a
+ * Swamp", where two different permanents may each supply half).
+ */
+export type ControlledGate = {
+  types?: string[];
+  subtypes?: string[];
+  /** Verge lands: "you control a Plains or a Swamp". */
+  subtypesAny?: string[];
+  /** Rivendell: "a legendary creature". */
+  legendary?: boolean;
+  /** Bonders' Enclave: "a creature with power 4 or greater". */
+  minPower?: number;
+};
+
 export type ActivatedAbility = {
   /** True when the cost includes {T}. */
   tap: boolean;
@@ -1971,7 +1992,10 @@ export type ActivatedAbility = {
   /** Class level-up is a sorcery-speed class ability. */
   timing?: "any" | "sorcery";
   /** "Activate only if you control a Swamp" — a controlled type/subtype gate. */
-  requiresControlled?: { types?: string[]; subtypes?: string[] };
+  requiresControlled?: ControlledGate;
+  /** Minas Tirith: "Activate only if you attacked with two or more creatures
+   * this turn." */
+  requiresAttackersThisTurn?: number;
   /** Idol of Oblivion: "Activate only if you created a token this turn." */
   requiresCreatedToken?: boolean;
   /** Weathered Wayfarer: "Activate only if an opponent controls more lands
@@ -2047,7 +2071,7 @@ export type ManaAbility = {
   /** Bloom Tender: one mana of each color among permanents you control. */
   producesColorsAmong?: "permanents";
   /** "Activate only if you control a Swamp" on a mana ability. */
-  requiresControlled?: { types?: string[]; subtypes?: string[] };
+  requiresControlled?: ControlledGate;
   /** Mox Opal: "Activate only if you control three or more artifacts." */
   requiresCount?: { what: "artifact" | "creature" | "land"; atLeast: number };
 };
@@ -2121,7 +2145,7 @@ export type StaticAbility = {
   fromGraveyard?: boolean;
   /** "…and you control a Forest": gate on the controller's battlefield
    * (checked against printed characteristics). */
-  requiresControlled?: { types?: string[]; subtypes?: string[] };
+  requiresControlled?: ControlledGate;
   /** Beastmaster Ascension: the ability is live only while the source
    * carries at least this many of the named counter. */
   requiresCounters?: { counter: string; atLeast: number };

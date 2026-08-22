@@ -1,5 +1,5 @@
 import { characteristicsOf, isClass, isCommander, isCreature, isLand, isLegendary, isMainPhase } from "./cardTypes";
-import { abilitiesRemoved, cardMatchesSubtype } from "./characteristicsEngine";
+import { abilitiesRemoved, controlsGate } from "./characteristicsEngine";
 import { hasKeyword } from "./keywords";
 import { emptyManaPool } from "./createGame";
 import { pendingBlockerPlayer } from "./combat";
@@ -17,6 +17,7 @@ import type {
   CardInstance,
   AdditionalCastCost,
   CardInstanceId,
+  ControlledGate,
   GameState,
   ManaColor,
   ManaPool,
@@ -219,21 +220,9 @@ function inSorceryWindow(state: GameState, playerId: PlayerId): boolean {
 export function controlsMatching(
   state: GameState,
   playerId: PlayerId,
-  wanted: { types?: string[]; subtypes?: string[] },
+  wanted: ControlledGate,
 ): boolean {
-  return Object.values(state.cards).some((card) => {
-    if (card.zone !== "battlefield" || card.controllerId !== playerId) {
-      return false;
-    }
-    const traits = state.definitions[card.definitionId]?.characteristics;
-    if (!traits) {
-      return false;
-    }
-    return (
-      (wanted.types ?? []).every((type) => traits.types.includes(type)) &&
-      (wanted.subtypes ?? []).every((subtype) => cardMatchesSubtype(state, card.id, subtype))
-    );
-  });
+  return controlsGate(state, playerId, wanted);
 }
 
 /** Does this battlefield card satisfy an additional-cost sacrifice scope? */
@@ -371,6 +360,13 @@ function abilityUsable(
   if (
     ability.requiresControlled &&
     !controlsMatching(state, playerId, ability.requiresControlled)
+  ) {
+    return false;
+  }
+  if (
+    ability.requiresAttackersThisTurn !== undefined &&
+    (state.players.find((player) => player.id === playerId)?.attackersThisTurn ?? 0) <
+      ability.requiresAttackersThisTurn
   ) {
     return false;
   }

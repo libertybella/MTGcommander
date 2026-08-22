@@ -887,6 +887,14 @@ function applyActivateAbility(
   ) {
     throw new Error("The activation condition is not met");
   }
+  // Minas Tirith: gated on how many creatures attacked this turn.
+  if (
+    ability.requiresAttackersThisTurn !== undefined &&
+    (state.players.find((player) => player.id === playerId)?.attackersThisTurn ?? 0) <
+      ability.requiresAttackersThisTurn
+  ) {
+    throw new Error("The activation condition is not met");
+  }
   // Idol of Oblivion: gated on this turn's token creation.
   if (ability.requiresCreatedToken && !(state.createdTokenThisTurn ?? []).includes(playerId)) {
     throw new Error("Activate only if you created a token this turn");

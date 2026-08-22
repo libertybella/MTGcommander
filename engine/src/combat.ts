@@ -261,6 +261,8 @@ export function declareAttackers(state: GameState, playerId: PlayerId, attacks: 
     const attacker = next.players.find((player) => player.id === playerId);
     if (attacker) {
       attacker.attackedThisTurn = true;
+      // Summed across combat phases — extra combats keep adding to the tally.
+      attacker.attackersThisTurn = (attacker.attackersThisTurn ?? 0) + attacks.length;
     }
   }
   const tappedEvents: EngineEvent[] = [];

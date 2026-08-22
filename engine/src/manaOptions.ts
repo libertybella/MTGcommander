@@ -1,4 +1,4 @@
-import { cardMatchesSubtype, computedCard } from "./characteristicsEngine";
+import { computedCard, controlsGate } from "./characteristicsEngine";
 import { COLOR_PIPS, MANA_COLORS } from "./mana";
 import type { CardDefinition, CardInstanceId, GameState, ManaAbility, ManaColor } from "./types";
 
@@ -187,22 +187,7 @@ function manaGateSatisfied(
     }
   }
   const gate = ability.requiresControlled;
-  if (!gate) {
-    return true;
-  }
-  return Object.values(state.cards).some((card) => {
-    if (card.zone !== "battlefield" || card.controllerId !== controllerId) {
-      return false;
-    }
-    const traits = state.definitions[card.definitionId]?.characteristics;
-    if (!traits) {
-      return false;
-    }
-    return (
-      (gate.types ?? []).every((type) => traits.types.includes(type)) &&
-      (gate.subtypes ?? []).every((subtype) => cardMatchesSubtype(state, card.id, subtype))
-    );
-  });
+  return gate ? controlsGate(state, controllerId, gate) : true;
 }
 
 /** The full ability list before gate filtering. producibleLandColors uses

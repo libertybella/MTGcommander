@@ -10,6 +10,7 @@ import type {
   CardTrigger,
   ChooseCardSource,
   Color,
+  ControlledGate,
   CostReduction,
   DestroyAllScope,
   DynamicCount,
@@ -8616,18 +8617,56 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
       }
     }
 
-    const activateGate = sentence.match(/^Activate only if you control (an? )?([A-Za-z]+)$/i);
-    if (activateGate?.[2]) {
-      const name = activateGate[2].toLowerCase();
-      const gate = SEARCH_CARD_TYPES.has(name)
-        ? { types: [name] }
-        : { subtypes: [name] };
+    // Minas Tirith: "Activate only if you attacked with two or more creatures
+    // this turn."
+    const attackGate = sentence.match(
+      /^Activate only if you attacked with (\w+) or more creatures this turn$/i,
+    );
+    if (attackGate?.[1]) {
+      const atLeast = parseCount(attackGate[1]);
+      const lastActivated = result.activated[result.activated.length - 1];
+      if (atLeast && lastActivated && lastActivated.requiresAttackersThisTurn === undefined) {
+        lastActivated.requiresAttackersThisTurn = atLeast;
+        continue;
+      }
+    }
+
+    const activateGate = sentence.match(
+      /^Activate only if you control (?:an? )?([A-Za-z]+)(?: or (?:an? )?([A-Za-z]+))?$/i,
+    );
+    // "…a legendary creature" / "…a creature with power 4 or greater" — the
+    // adjective forms the bare word-match above can't reach.
+    const legendaryGate = /^Activate only if you control a legendary creature$/i.test(sentence);
+    const powerGate = sentence.match(
+      /^Activate only if you control a creature with power (\d+) or greater$/i,
+    );
+    let gate: ControlledGate | null = null;
+    if (legendaryGate) {
+      gate = { types: ["creature"], legendary: true };
+    } else if (powerGate?.[1]) {
+      gate = { types: ["creature"], minPower: Number(powerGate[1]) };
+    } else if (activateGate?.[1]) {
+      const first = activateGate[1].toLowerCase();
+      const second = activateGate[2]?.toLowerCase();
+      if (second) {
+        // The Verge land cycle: "a Plains or a Swamp". Only the all-subtype
+        // form is supported — a mixed type/subtype "or" has no card in the
+        // measured set and would need a full disjunction shape.
+        if (!SEARCH_CARD_TYPES.has(first) && !SEARCH_CARD_TYPES.has(second)) {
+          gate = { subtypesAny: [first, second] };
+        }
+      } else {
+        gate = SEARCH_CARD_TYPES.has(first) ? { types: [first] } : { subtypes: [first] };
+      }
+    }
+    if (gate) {
       const lastActivated = result.activated[result.activated.length - 1];
       if (lastActivated && !lastActivated.requiresControlled) {
         lastActivated.requiresControlled = gate;
         continue;
       }
-      // The gate can also ride a mana ability (Cabal Stronghold-class).
+      // The gate can also ride a mana ability (Cabal Stronghold-class, and
+      // the Verge cycle's second mana ability).
       const lastMana = result.manaAbilities[result.manaAbilities.length - 1];
       if (lastMana && !lastMana.requiresControlled) {
         lastMana.requiresControlled = gate;

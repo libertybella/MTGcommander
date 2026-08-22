@@ -7,6 +7,7 @@ import type {
   Color,
   ContinuousEffect,
   ContinuousEffectData,
+  ControlledGate,
   EffectSelector,
   CardIdSelector,
   CardInstanceId,
@@ -194,6 +195,11 @@ function parsePlayer(value: unknown): PlayerState {
         ? 0
         : expectNumber(value.landsPlayedThisTurn, "player.landsPlayedThisTurn"),
     attackedThisTurn: value.attackedThisTurn === true,
+    ...(value.attackersThisTurn === undefined
+      ? {}
+      : {
+          attackersThisTurn: expectNumber(value.attackersThisTurn, "player.attackersThisTurn"),
+        }),
     failedToDraw: value.failedToDraw === true,
     ...(value.cityBlessing === true ? { cityBlessing: true } : {}),
     ...(value.extraLandDropsThisTurn === undefined
@@ -2867,17 +2873,18 @@ function parseActivatedAbilities(value: unknown, label: string): ActivatedAbilit
       ...(entry.requiresControlled === undefined
         ? {}
         : {
-            requiresControlled: (() => {
-              if (!isRecord(entry.requiresControlled)) {
-                throw new Error(`Invalid ${label}[${index}].requiresControlled`);
-              }
-              const types = parseStringList(entry.requiresControlled.types, `${label}[${index}].requiresControlled.types`);
-              const subtypes = parseStringList(entry.requiresControlled.subtypes, `${label}[${index}].requiresControlled.subtypes`);
-              return {
-                ...(types.length > 0 ? { types } : {}),
-                ...(subtypes.length > 0 ? { subtypes } : {}),
-              };
-            })(),
+            requiresControlled: parseControlledGate(
+              entry.requiresControlled,
+              `${label}[${index}].requiresControlled`,
+            ),
+          }),
+      ...(entry.requiresAttackersThisTurn === undefined
+        ? {}
+        : {
+            requiresAttackersThisTurn: expectNumber(
+              entry.requiresAttackersThisTurn,
+              `${label}[${index}].requiresAttackersThisTurn`,
+            ),
           }),
       ...(entry.requiresCreatedToken === true ? { requiresCreatedToken: true } : {}),
     };
@@ -3253,6 +3260,29 @@ function parseStringList(value: unknown, label: string): string[] {
   return value.map((entry, index) => expectString(entry, `${label}[${index}]`).toLowerCase());
 }
 
+/**
+ * "Activate only if you control …" gates ride activated abilities, mana
+ * abilities, and static abilities alike, so all three parsers share this one
+ * — a new gate field added here reaches every carrier at once.
+ */
+function parseControlledGate(value: unknown, label: string): ControlledGate {
+  if (!isRecord(value)) {
+    throw new Error(`Invalid ${label}`);
+  }
+  const types = parseStringList(value.types, `${label}.types`);
+  const subtypes = parseStringList(value.subtypes, `${label}.subtypes`);
+  const subtypesAny = parseStringList(value.subtypesAny, `${label}.subtypesAny`);
+  return {
+    ...(types.length > 0 ? { types } : {}),
+    ...(subtypes.length > 0 ? { subtypes } : {}),
+    ...(subtypesAny.length > 0 ? { subtypesAny } : {}),
+    ...(value.legendary === true ? { legendary: true } : {}),
+    ...(value.minPower === undefined
+      ? {}
+      : { minPower: expectNumber(value.minPower, `${label}.minPower`) }),
+  };
+}
+
 function parseEffectSelector(value: unknown, label: string): EffectSelector {
   if (!isRecord(value)) {
     throw new Error(`Invalid ${label}`);
@@ -3418,23 +3448,10 @@ function parseStaticAbilities(
         ...(entry.requiresControlled === undefined
           ? {}
           : {
-              requiresControlled: (() => {
-                if (!isRecord(entry.requiresControlled)) {
-                  throw new Error(`Invalid ${label}[${index}].requiresControlled`);
-                }
-                const types = parseStringList(
-                  entry.requiresControlled.types,
-                  `${label}[${index}].requiresControlled.types`,
-                );
-                const subtypes = parseStringList(
-                  entry.requiresControlled.subtypes,
-                  `${label}[${index}].requiresControlled.subtypes`,
-                );
-                return {
-                  ...(types.length > 0 ? { types } : {}),
-                  ...(subtypes.length > 0 ? { subtypes } : {}),
-                };
-              })(),
+              requiresControlled: parseControlledGate(
+                entry.requiresControlled,
+                `${label}[${index}].requiresControlled`,
+              ),
             }),
         ...(isRecord(entry.requiresCounters)
           ? {
@@ -3572,23 +3589,10 @@ function parseManaAbilities(value: unknown, label: string): ManaAbility[] {
       ...(entry.requiresControlled === undefined
         ? {}
         : {
-            requiresControlled: (() => {
-              if (!isRecord(entry.requiresControlled)) {
-                throw new Error(`Invalid ${label}[${index}].requiresControlled`);
-              }
-              const types = parseStringList(
-                entry.requiresControlled.types,
-                `${label}[${index}].requiresControlled.types`,
-              );
-              const subtypes = parseStringList(
-                entry.requiresControlled.subtypes,
-                `${label}[${index}].requiresControlled.subtypes`,
-              );
-              return {
-                ...(types.length > 0 ? { types } : {}),
-                ...(subtypes.length > 0 ? { subtypes } : {}),
-              };
-            })(),
+            requiresControlled: parseControlledGate(
+              entry.requiresControlled,
+              `${label}[${index}].requiresControlled`,
+            ),
           }),
     };
   });

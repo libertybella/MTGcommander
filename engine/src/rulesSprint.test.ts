@@ -16793,3 +16793,238 @@ describe("wave 144: skeletons, swine, and welcomes", () => {
   });
 });
 
+
+describe("wave 145: verges, gates, and marching orders", () => {
+  const compile = (name: string, manaCost: string, typeLine: string, oracleText: string, power?: string, toughness?: string) =>
+    compileOracleCard({
+      oracleId: name,
+      name,
+      manaCost,
+      typeLine,
+      power: power ?? null,
+      toughness: toughness ?? null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  it("compiles the thirteen-card activation-gate bucket fully", () => {
+    // The Verge land cycle: the second mana ability carries an OR gate, and
+    // the two halves may sit on different permanents.
+    const verge = compile(
+      "Bleachbone Verge",
+      "",
+      "Land",
+      "{T}: Add {B}.\n{T}: Add {W}. Activate only if you control a Plains or a Swamp.",
+    );
+    expect(verge.notes).toEqual([]);
+    expect(verge.definition.manaAbilities).toHaveLength(2);
+    expect(verge.definition.manaAbilities[0]?.requiresControlled).toBeUndefined();
+    expect(verge.definition.manaAbilities[1]?.requiresControlled).toEqual({
+      subtypesAny: ["plains", "swamp"],
+    });
+
+    // Every Verge in the top-2,000 uses the same shape; spot-check the rest
+    // of the cycle's gates so a regex regression can't quietly drop nine.
+    const cycle: Array<[string, string, string[]]> = [
+      ["Blazemire Verge", "{T}: Add {B}.\n{T}: Add {R}. Activate only if you control a Swamp or a Mountain.", ["swamp", "mountain"]],
+      ["Gloomlake Verge", "{T}: Add {U}.\n{T}: Add {B}. Activate only if you control an Island or a Swamp.", ["island", "swamp"]],
+      ["Floodfarm Verge", "{T}: Add {W}.\n{T}: Add {U}. Activate only if you control a Plains or an Island.", ["plains", "island"]],
+      ["Hushwood Verge", "{T}: Add {G}.\n{T}: Add {W}. Activate only if you control a Forest or a Plains.", ["forest", "plains"]],
+      ["Thornspire Verge", "{T}: Add {R}.\n{T}: Add {G}. Activate only if you control a Mountain or a Forest.", ["mountain", "forest"]],
+      ["Sunbillow Verge", "{T}: Add {W}.\n{T}: Add {R}. Activate only if you control a Mountain or a Plains.", ["mountain", "plains"]],
+      ["Riverpyre Verge", "{T}: Add {R}.\n{T}: Add {U}. Activate only if you control an Island or a Mountain.", ["island", "mountain"]],
+      ["Willowrush Verge", "{T}: Add {U}.\n{T}: Add {G}. Activate only if you control a Forest or an Island.", ["forest", "island"]],
+      ["Wastewood Verge", "{T}: Add {G}.\n{T}: Add {B}. Activate only if you control a Swamp or a Forest.", ["swamp", "forest"]],
+    ];
+    for (const [name, text, subtypesAny] of cycle) {
+      const compiled = compile(name, "", "Land", text);
+      expect(compiled.notes, name).toEqual([]);
+      expect(compiled.definition.manaAbilities[1]?.requiresControlled, name).toEqual({
+        subtypesAny,
+      });
+    }
+
+    // Rivendell: the gate rides the activated ability, not the mana ability.
+    const rivendell = compile(
+      "Rivendell",
+      "",
+      "Legendary Land",
+      "Rivendell enters tapped unless you control a legendary creature.\n{T}: Add {U}.\n{1}{U}, {T}: Scry 2. Activate only if you control a legendary creature.",
+    );
+    expect(rivendell.notes).toEqual([]);
+    expect(rivendell.definition.manaAbilities[0]?.requiresControlled).toBeUndefined();
+    expect(rivendell.definition.activated[0]?.requiresControlled).toEqual({
+      types: ["creature"],
+      legendary: true,
+    });
+
+    const enclave = compile(
+      "Bonders' Enclave",
+      "",
+      "Land",
+      "{T}: Add {C}.\n{3}, {T}: Draw a card. Activate only if you control a creature with power 4 or greater.",
+    );
+    expect(enclave.notes).toEqual([]);
+    expect(enclave.definition.activated[0]?.requiresControlled).toEqual({
+      types: ["creature"],
+      minPower: 4,
+    });
+
+    const minas = compile(
+      "Minas Tirith",
+      "",
+      "Legendary Land",
+      "Minas Tirith enters tapped unless you control a legendary creature.\n{T}: Add {W}.\n{1}{W}, {T}: Draw a card. Activate only if you attacked with two or more creatures this turn.",
+    );
+    expect(minas.notes).toEqual([]);
+    expect(minas.definition.activated[0]?.requiresAttackersThisTurn).toBe(2);
+  });
+
+  it("opens the verge's second color only once a half is on the battlefield", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const vergeDef = compile(
+      "Bleachbone Verge",
+      "",
+      "Land",
+      "{T}: Add {B}.\n{T}: Add {W}. Activate only if you control a Plains or a Swamp.",
+    ).definition;
+    game.definitions[vergeDef.id] = vergeDef;
+    const verge = createCardInstance({ definitionId: vergeDef.id, ownerId: p1.id, zone: "battlefield" });
+    game.cards[verge.id] = verge;
+    p1.zones.battlefield.push(verge.id);
+
+    // No Plains and no Swamp: only the ungated {B} half is available.
+    expect(manaAbilitiesFor(game, verge.id).map((ability) => ability.produces)).toEqual([
+      { B: 1 },
+    ]);
+
+    // A Plains satisfies the "or" even though the gate also names Swamp.
+    const plainsDef = createCardDefinition({ name: "Plains", typeLine: "Basic Land — Plains" });
+    game.definitions[plainsDef.id] = plainsDef;
+    const plains = createCardInstance({ definitionId: plainsDef.id, ownerId: p1.id, zone: "battlefield" });
+    game.cards[plains.id] = plains;
+    p1.zones.battlefield.push(plains.id);
+    expect(manaAbilitiesFor(game, verge.id).map((ability) => ability.produces)).toEqual([
+      { B: 1 },
+      { W: 1 },
+    ]);
+
+    // A Swamp alone satisfies the same gate — the halves are independent.
+    p1.zones.battlefield = p1.zones.battlefield.filter((id) => id !== plains.id);
+    delete game.cards[plains.id];
+    const swampDef = createCardDefinition({ name: "Swamp", typeLine: "Basic Land — Swamp" });
+    game.definitions[swampDef.id] = swampDef;
+    const swamp = createCardInstance({ definitionId: swampDef.id, ownerId: p1.id, zone: "battlefield" });
+    game.cards[swamp.id] = swamp;
+    p1.zones.battlefield.push(swamp.id);
+    expect(manaAbilitiesFor(game, verge.id)).toHaveLength(2);
+  });
+
+  it("gates the enclave on current power and Minas Tirith on the attack tally", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    game.turn.phase = "precombatMain";
+    game.turn.step = "precombatMain";
+    game.priorityPlayerId = p1.id;
+
+    const enclaveDef = compile(
+      "Bonders' Enclave",
+      "",
+      "Land",
+      "{T}: Add {C}.\n{3}, {T}: Draw a card. Activate only if you control a creature with power 4 or greater.",
+    ).definition;
+    game.definitions[enclaveDef.id] = enclaveDef;
+    const enclave = createCardInstance({ definitionId: enclaveDef.id, ownerId: p1.id, zone: "battlefield" });
+    game.cards[enclave.id] = enclave;
+    p1.zones.battlefield.push(enclave.id);
+
+    const bearDef = createCardDefinition({ name: "Bear", typeLine: "Creature — Bear", power: 2, toughness: 2 });
+    game.definitions[bearDef.id] = bearDef;
+    const bear = createCardInstance({ definitionId: bearDef.id, ownerId: p1.id, zone: "battlefield" });
+    game.cards[bear.id] = bear;
+    p1.zones.battlefield.push(bear.id);
+    p1.mana.C = 3;
+
+    // A 2/2 is not enough.
+    expect(() =>
+      applyAction(game, { kind: "activate_ability", playerId: p1.id, cardId: enclave.id, abilityIndex: 0 }),
+    ).toThrow(/activation condition/i);
+
+    // The gate reads *current* power, so two +1/+1 counters open it.
+    bear.counters.p1p1 = 2;
+    let next = applyAction(game, {
+      kind: "activate_ability",
+      playerId: p1.id,
+      cardId: enclave.id,
+      abilityIndex: 0,
+    });
+    while (next.stack.length > 0) {
+      next = resolveTopOfStack(next);
+    }
+    expect(next.cards[enclave.id]?.tapped).toBe(true);
+
+    // Minas Tirith: the tally is empty until creatures actually attack.
+    const minasDef = compile(
+      "Minas Tirith",
+      "",
+      "Legendary Land",
+      "Minas Tirith enters tapped unless you control a legendary creature.\n{T}: Add {W}.\n{1}{W}, {T}: Draw a card. Activate only if you attacked with two or more creatures this turn.",
+    ).definition;
+    next.definitions[minasDef.id] = minasDef;
+    const minas = createCardInstance({ definitionId: minasDef.id, ownerId: p1.id, zone: "battlefield" });
+    next.cards[minas.id] = minas;
+    next.players.find((entry) => entry.id === p1.id)!.zones.battlefield.push(minas.id);
+    const me = next.players.find((entry) => entry.id === p1.id)!;
+    me.mana.W = 1;
+    me.mana.C = 1;
+    expect(() =>
+      applyAction(next, { kind: "activate_ability", playerId: p1.id, cardId: minas.id, abilityIndex: 0 }),
+    ).toThrow(/activation condition/i);
+
+    // One attacker still is not two.
+    me.attackersThisTurn = 1;
+    expect(() =>
+      applyAction(next, { kind: "activate_ability", playerId: p1.id, cardId: minas.id, abilityIndex: 0 }),
+    ).toThrow(/activation condition/i);
+
+    me.attackersThisTurn = 2;
+    let after = applyAction(next, {
+      kind: "activate_ability",
+      playerId: p1.id,
+      cardId: minas.id,
+      abilityIndex: 0,
+    });
+    while (after.stack.length > 0) {
+      after = resolveTopOfStack(after);
+    }
+    expect(after.cards[minas.id]?.tapped).toBe(true);
+  });
+
+  it("counts declared attackers across the turn and clears them on untap", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    const bearDef = createCardDefinition({ name: "Bear", typeLine: "Creature — Bear", power: 2, toughness: 2 });
+    game.definitions[bearDef.id] = bearDef;
+    const attackers = [0, 1].map(() => {
+      const card = createCardInstance({ definitionId: bearDef.id, ownerId: p1.id, zone: "battlefield" });
+      card.summoningSick = false;
+      game.cards[card.id] = card;
+      p1.zones.battlefield.push(card.id);
+      return card;
+    });
+    game.turn.phase = "combat";
+    game.turn.step = "declareAttackers";
+    game.turn.activePlayerId = p1.id;
+    game.priorityPlayerId = p1.id;
+
+    const next = applyAction(game, {
+      kind: "declare_attackers",
+      playerId: p1.id,
+      attacks: attackers.map((card) => ({ attackerId: card.id, defenderId: p2.id })),
+    });
+    expect(next.players.find((entry) => entry.id === p1.id)?.attackersThisTurn).toBe(2);
+  });
+});
+

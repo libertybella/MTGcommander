@@ -4,6 +4,7 @@ import type {
   CardDefinition,
   CardInstance,
   Color,
+  ControlledGate,
   GameState,
   ManaPool,
   PlayerState,
@@ -17,6 +18,22 @@ export type CreateGameOptions = {
 
 export function emptyManaPool(): ManaPool {
   return { W: 0, U: 0, B: 0, R: 0, G: 0, C: 0 };
+}
+
+/**
+ * Deep-copies an "Activate only if you control …" gate. Shared by the
+ * activated-ability, mana-ability, and static-ability mappers below: the three
+ * used to carry identical inline spreads, which meant every new gate field had
+ * to be added in three places or it silently dropped on intake.
+ */
+function copyControlledGate(gate: ControlledGate): ControlledGate {
+  return {
+    ...(gate.types ? { types: [...gate.types] } : {}),
+    ...(gate.subtypes ? { subtypes: [...gate.subtypes] } : {}),
+    ...(gate.subtypesAny ? { subtypesAny: [...gate.subtypesAny] } : {}),
+    ...(gate.legendary ? { legendary: true } : {}),
+    ...(gate.minPower !== undefined ? { minPower: gate.minPower } : {}),
+  };
 }
 
 export function emptyPlayerZones(): PlayerZones {
@@ -209,16 +226,7 @@ export function createCardDefinition(
           effect: { ...ability.effect },
           ...(ability.fromGraveyard ? { fromGraveyard: true } : {}),
           ...(ability.requiresControlled
-            ? {
-                requiresControlled: {
-                  ...(ability.requiresControlled.types
-                    ? { types: [...ability.requiresControlled.types] }
-                    : {}),
-                  ...(ability.requiresControlled.subtypes
-                    ? { subtypes: [...ability.requiresControlled.subtypes] }
-                    : {}),
-                },
-              }
+            ? { requiresControlled: copyControlledGate(ability.requiresControlled) }
             : {}),
           ...(ability.requiresCounters
             ? { requiresCounters: { ...ability.requiresCounters } }
@@ -251,16 +259,7 @@ export function createCardDefinition(
             : {}),
           ...(ability.requiresCount ? { requiresCount: { ...ability.requiresCount } } : {}),
           ...(ability.requiresControlled
-            ? {
-                requiresControlled: {
-                  ...(ability.requiresControlled.types
-                    ? { types: [...ability.requiresControlled.types] }
-                    : {}),
-                  ...(ability.requiresControlled.subtypes
-                    ? { subtypes: [...ability.requiresControlled.subtypes] }
-                    : {}),
-                },
-              }
+            ? { requiresControlled: copyControlledGate(ability.requiresControlled) }
             : {}),
         }))
       : [],
@@ -289,19 +288,13 @@ export function createCardDefinition(
             : {}),
           ...(ability.lifeCost && ability.lifeCost > 0 ? { lifeCost: ability.lifeCost } : {}),
           ...(ability.timing === "sorcery" ? { timing: "sorcery" as const } : {}),
+          ...(ability.requiresAttackersThisTurn !== undefined
+            ? { requiresAttackersThisTurn: ability.requiresAttackersThisTurn }
+            : {}),
           ...(ability.requiresCreatedToken ? { requiresCreatedToken: true } : {}),
           ...(ability.requiresOpponentMoreLands ? { requiresOpponentMoreLands: true } : {}),
           ...(ability.requiresControlled
-            ? {
-                requiresControlled: {
-                  ...(ability.requiresControlled.types
-                    ? { types: [...ability.requiresControlled.types] }
-                    : {}),
-                  ...(ability.requiresControlled.subtypes
-                    ? { subtypes: [...ability.requiresControlled.subtypes] }
-                    : {}),
-                },
-              }
+            ? { requiresControlled: copyControlledGate(ability.requiresControlled) }
             : {}),
         }))
       : [],

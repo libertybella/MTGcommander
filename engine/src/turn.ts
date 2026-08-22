@@ -89,6 +89,7 @@ function onEnterStep(state: GameState): GameState {
     if (active) {
       active.landsPlayedThisTurn = 0;
       active.attackedThisTurn = false;
+      active.attackersThisTurn = 0;
     }
     // Explore-style one-shot land-drop grants expire with the turn.
     for (const player of state.players) {
