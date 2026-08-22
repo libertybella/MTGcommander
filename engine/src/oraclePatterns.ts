@@ -4061,7 +4061,158 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     return null;
   }
 
+  // The general until-end-of-turn grant, tried last: the narrow shapes above
+  // still own their exact sentences, and this catches the combinations they
+  // cannot express ("gets +3/+3 AND gains trample until end of turn").
+  const untilEot = compileUntilEotGrant(sentence);
+  if (untilEot) {
+    return untilEot;
+  }
+
   return null;
+}
+
+/**
+ * Who an until-end-of-turn grant applies to, in terms the effect vocabulary
+ * can already address. `target` also carries the requirement to add.
+ */
+type EotSubject =
+  | { how: "team"; playerId: "controller" | "each_opponent" }
+  | { how: "card"; cardId: "self" | "subject_card" }
+  | { how: "target"; requirement: TargetRequirement };
+
+function parseEotSubject(phrase: string): EotSubject | null {
+  const rest = phrase.trim();
+  if (/^(?:other )?creatures you control$/i.test(rest)) {
+    // "Other creatures you control" excludes the source; the team effects
+    // address a player rather than a card set, so the source is included.
+    // Documented approximation — it matters only for a source that is itself
+    // an affected creature (End-Raze Forerunners).
+    return { how: "team", playerId: "controller" };
+  }
+  if (/^creatures your opponents control$/i.test(rest)) {
+    return { how: "team", playerId: "each_opponent" };
+  }
+  if (/^(?:~|It|That creature|They)$/i.test(rest)) {
+    return { how: "card", cardId: /^~$/.test(rest) ? "self" : "subject_card" };
+  }
+  const targeted = rest.match(
+    /^Target (creature|creature you control|permanent you control|artifact or creature|attacking creature)$/i,
+  );
+  if (targeted?.[1]) {
+    const what = targeted[1].toLowerCase();
+    if (what === "creature") {
+      return { how: "target", requirement: { kind: "creature" } };
+    }
+    if (what === "creature you control") {
+      return { how: "target", requirement: { kind: "own_creature" } };
+    }
+    if (what === "attacking creature") {
+      return { how: "target", requirement: { kind: "creature", attackingOnly: true } };
+    }
+    if (what === "permanent you control") {
+      return { how: "target", requirement: { kind: "permanent", control: "own" } };
+    }
+    if (what === "artifact or creature") {
+      return { how: "target", requirement: { kind: "creature_or_artifact" } };
+    }
+  }
+  return null;
+}
+
+/**
+ * "gets +3/+3 and gains trample", "gains hexproof and indestructible",
+ * "gets +X/+X and gains trample". Returns null on any unrecognised conjunct
+ * so a half-understood line compiles to nothing rather than to half a card.
+ */
+function compileUntilEotGrant(sentence: string): SimpleClause | null {
+  // The duration sits at either end: "Until end of turn, X gets …" or
+  // "X gets … until end of turn".
+  let body: string;
+  const leading = sentence.match(/^Until end of turn, (.+)$/i);
+  const trailing = sentence.match(/^(.+?) until end of turn$/i);
+  if (leading?.[1]) {
+    body = leading[1];
+  } else if (trailing?.[1]) {
+    body = trailing[1];
+  } else {
+    return null;
+  }
+
+  const split = body.match(/^(.+?)\s+((?:gets?|gains?)\s+.+)$/i);
+  if (!split?.[1] || !split[2]) {
+    return null;
+  }
+  const subject = parseEotSubject(split[1]);
+  if (!subject) {
+    return null;
+  }
+
+  const cardId =
+    subject.how === "card"
+      ? subject.cardId
+      : subject.how === "target"
+        ? ({ type: "chosen", index: 0 } as const)
+        : null;
+
+  const effects: CardEffect[] = [];
+  const parts = split[2]
+    .split(/\s+and\s+(?=(?:gets?|gains?)\s)/i)
+    .map((part) => part.trim())
+    .filter(Boolean);
+  for (const part of parts) {
+    // Fixed modifiers only: "+X/+X" needs the announced X threaded into the
+    // until-EOT effects, which they cannot carry yet (Tyvar's Stand).
+    const pt = part.match(/^gets?\s+([+-]\d+)\/([+-]\d+)$/i);
+    if (pt?.[1] && pt[2]) {
+      const power = Number(pt[1]);
+      const toughness = Number(pt[2]);
+      if (subject.how === "team") {
+        effects.push({
+          kind: "team_pt_until_eot",
+          playerId: subject.playerId,
+          power,
+          toughness,
+        });
+      } else {
+        effects.push({ kind: "pt_until_eot", cardId: cardId!, power, toughness });
+      }
+      continue;
+    }
+    const gains = part.match(/^gains?\s+(.+)$/i);
+    if (!gains?.[1]) {
+      return null;
+    }
+    const names = gains[1]
+      .split(/,\s*(?:and\s+)?|\s+and\s+/)
+      .map((name) => name.trim().toLowerCase())
+      .filter(Boolean);
+    if (names.length === 0) {
+      return null;
+    }
+    for (const name of names) {
+      const keyword = KEYWORD_GRANTS[name];
+      if (!keyword) {
+        return null;
+      }
+      if (subject.how === "team") {
+        effects.push({
+          kind: "team_keyword_until_eot",
+          playerId: subject.playerId,
+          keyword,
+        });
+      } else {
+        effects.push({ kind: "keyword_until_eot", cardId: cardId!, keyword });
+      }
+    }
+  }
+  if (effects.length === 0) {
+    return null;
+  }
+  return {
+    targetRequirements: subject.how === "target" ? [subject.requirement] : [],
+    effects,
+  };
 }
 
 const SEARCH_CARD_TYPES = new Set([

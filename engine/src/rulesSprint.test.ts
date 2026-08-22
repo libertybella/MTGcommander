@@ -17311,3 +17311,207 @@ describe("wave 146: anthems, armors, and archdruids", () => {
   });
 });
 
+
+describe("wave 147: overruns, safekeeping, and last stands", () => {
+  const compile = (name: string, manaCost: string, typeLine: string, oracleText: string, power?: string, toughness?: string) =>
+    compileOracleCard({
+      oracleId: name,
+      name,
+      manaCost,
+      typeLine,
+      power: power ?? null,
+      toughness: toughness ?? null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  it("compiles the until-end-of-turn grant bucket fully", () => {
+    // The shape the old narrow patterns could not express: a pump AND a
+    // keyword in one sentence.
+    const overrun = compile(
+      "Overrun",
+      "{2}{G}{G}{G}",
+      "Sorcery",
+      "Creatures you control get +3/+3 and gain trample until end of turn.",
+    );
+    expect(overrun.notes).toEqual([]);
+    expect(overrun.definition.effects).toEqual([
+      { kind: "team_pt_until_eot", playerId: "controller", power: 3, toughness: 3 },
+      { kind: "team_keyword_until_eot", playerId: "controller", keyword: "trample" },
+    ]);
+
+    // The duration may lead instead of trail.
+    const stampede = compile(
+      "Leading Duration",
+      "{2}{G}",
+      "Instant",
+      "Until end of turn, creatures you control get +1/+1 and gain vigilance.",
+    );
+    expect(stampede.notes).toEqual([]);
+    expect(stampede.definition.effects).toHaveLength(2);
+
+    // A targeted subject brings its own target requirement.
+    const overprotect = compile(
+      "Overprotect",
+      "{1}{G}",
+      "Instant",
+      "Target creature you control gets +3/+3 and gains trample, hexproof, and indestructible until end of turn.",
+    );
+    expect(overprotect.notes).toEqual([]);
+    expect(overprotect.definition.targetRequirements).toEqual([{ kind: "own_creature" }]);
+    expect(overprotect.definition.effects).toHaveLength(4);
+    expect(overprotect.definition.effects[0]).toMatchObject({ kind: "pt_until_eot", power: 3 });
+    expect(
+      overprotect.definition.effects.slice(1).map((effect) => (effect as { keyword: string }).keyword),
+    ).toEqual(["trample", "hexproof", "indestructible"]);
+
+    // "Target permanent you control" — not just creatures.
+    const safekeeping = compile(
+      "Tamiyo's Safekeeping",
+      "{G}",
+      "Instant",
+      "Target permanent you control gains hexproof and indestructible until end of turn.",
+    );
+    expect(safekeeping.notes).toEqual([]);
+    expect(safekeeping.definition.targetRequirements).toEqual([
+      { kind: "permanent", control: "own" },
+    ]);
+
+    // "Target artifact or creature".
+    const escape = compile(
+      "Loran's Escape",
+      "{W}",
+      "Instant",
+      "Target artifact or creature gains hexproof and indestructible until end of turn.",
+    );
+    expect(escape.notes).toEqual([]);
+    expect(escape.definition.targetRequirements).toEqual([{ kind: "creature_or_artifact" }]);
+
+    // A referential subject inside a trigger, with a lowercase "other".
+    const forerunners = compile(
+      "End-Raze Forerunners",
+      "{6}{G}{G}",
+      "Creature — Boar",
+      "Vigilance, trample, haste\nWhen this creature enters, other creatures you control get +2/+2 and gain vigilance and trample until end of turn.",
+      "7",
+      "7",
+    );
+    expect(forerunners.notes).toEqual([]);
+    expect(forerunners.definition.triggers[0]?.effects).toHaveLength(3);
+
+    // An activated ability whose grant rides the same grammar.
+    const stronghold = compile(
+      "Slayers' Stronghold",
+      "",
+      "Land",
+      "{T}: Add {C}.\n{R}{W}, {T}: Target creature gets +2/+0 and gains vigilance and haste until end of turn.",
+    );
+    expect(stronghold.notes).toEqual([]);
+    expect(stronghold.definition.activated[0]?.targetRequirements).toEqual([{ kind: "creature" }]);
+    expect(stronghold.definition.activated[0]?.effects).toHaveLength(3);
+
+    // A sacrifice-cost activation granting a single keyword.
+    const sylvan = compile(
+      "Sylvan Safekeeper",
+      "{G}",
+      "Creature — Human Wizard",
+      "Sacrifice a land: Target creature you control gains shroud until end of turn.",
+      "1",
+      "1",
+    );
+    expect(sylvan.notes).toEqual([]);
+    expect(sylvan.definition.activated[0]?.sacrificeCost).toBe("land");
+    expect(sylvan.definition.activated[0]?.effects[0]).toMatchObject({
+      kind: "keyword_until_eot",
+      keyword: "shroud",
+    });
+
+    // A predicate with any unknown conjunct compiles to nothing, rather than
+    // half the card: "infect" is not a supported keyword.
+    const hordes = compile(
+      "Triumph of the Hordes",
+      "{3}{G}",
+      "Sorcery",
+      "Until end of turn, creatures you control get +1/+1 and gain trample and infect.",
+    );
+    expect(hordes.notes).not.toEqual([]);
+    expect(hordes.definition.effects).toEqual([]);
+  });
+
+  it("pumps the team and the target for exactly one turn", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    const bearDef = createCardDefinition({ name: "Bear", typeLine: "Creature — Bear", power: 2, toughness: 2 });
+    game.definitions[bearDef.id] = bearDef;
+    const mine = createCardInstance({ definitionId: bearDef.id, ownerId: p1.id, zone: "battlefield" });
+    const theirs = createCardInstance({ definitionId: bearDef.id, ownerId: p2.id, zone: "battlefield" });
+    game.cards[mine.id] = mine;
+    game.cards[theirs.id] = theirs;
+    p1.zones.battlefield.push(mine.id);
+    p2.zones.battlefield.push(theirs.id);
+
+    const overrun = compile(
+      "Overrun",
+      "{2}{G}{G}{G}",
+      "Sorcery",
+      "Creatures you control get +3/+3 and gain trample until end of turn.",
+    ).definition;
+    let next = applyEffects(
+      game,
+      bindCardEffects(game, overrun.effects, {
+        controllerId: p1.id,
+        sourceId: null,
+        targets: [],
+        targetRequirements: [],
+      }),
+    );
+    expect(computedCard(next, mine.id)?.power).toBe(5);
+    expect(hasKeyword(next, mine.id, "trample")).toBe(true);
+    // The opposing bear is untouched — "creatures you control".
+    expect(computedCard(next, theirs.id)?.power).toBe(2);
+    expect(hasKeyword(next, theirs.id, "trample")).toBe(false);
+
+    // Both halves expire together in cleanup.
+    next.turn.phase = "ending";
+    next.turn.step = "end";
+    next.priorityPlayerId = next.turn.activePlayerId;
+    next = advanceSteps(next, 4);
+    expect(computedCard(next, mine.id)?.power).toBe(2);
+    expect(hasKeyword(next, mine.id, "trample")).toBe(false);
+  });
+
+  it("routes a targeted grant to just the chosen permanent", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const bearDef = createCardDefinition({ name: "Bear", typeLine: "Creature — Bear", power: 2, toughness: 2 });
+    game.definitions[bearDef.id] = bearDef;
+    const first = createCardInstance({ definitionId: bearDef.id, ownerId: p1.id, zone: "battlefield" });
+    const second = createCardInstance({ definitionId: bearDef.id, ownerId: p1.id, zone: "battlefield" });
+    game.cards[first.id] = first;
+    game.cards[second.id] = second;
+    p1.zones.battlefield.push(first.id, second.id);
+
+    const overprotect = compile(
+      "Overprotect",
+      "{1}{G}",
+      "Instant",
+      "Target creature you control gets +3/+3 and gains trample, hexproof, and indestructible until end of turn.",
+    ).definition;
+    const next = applyEffects(
+      game,
+      bindCardEffects(game, overprotect.effects, {
+        controllerId: p1.id,
+        sourceId: null,
+        targets: [{ type: "creature", cardId: first.id }],
+        targetRequirements: overprotect.targetRequirements,
+      }),
+    );
+    expect(computedCard(next, first.id)?.power).toBe(5);
+    expect(hasKeyword(next, first.id, "hexproof")).toBe(true);
+    expect(hasKeyword(next, first.id, "indestructible")).toBe(true);
+    expect(computedCard(next, second.id)?.power).toBe(2);
+    expect(hasKeyword(next, second.id, "hexproof")).toBe(false);
+  });
+});
+
