@@ -1114,6 +1114,7 @@ function applyActivateAbility(
   targets: ChosenTarget[] | undefined,
   costSacrificeId: CardInstanceId | undefined,
   modeIndex: number | undefined,
+  xValue: number | undefined,
 ): GameState {
   requirePlaying(state);
   requirePriority(state, playerId);
@@ -1207,6 +1208,15 @@ function applyActivateAbility(
     throw new Error(`Unknown player ${playerId}`);
   }
   const cost = parseManaCost(ability.manaCost);
+  // {X} in an activation cost is announced the same way a spell's is.
+  if (ability.xCost) {
+    if (xValue === undefined || !Number.isInteger(xValue) || xValue < 0) {
+      throw new Error("Announce a value for X");
+    }
+    cost.generic += xValue * ability.xCost;
+  } else if (xValue !== undefined) {
+    throw new Error("That ability has no X in its cost");
+  }
   if (ability.legendaryDiscount) {
     // Kamigawa channel lands: {1} less per legendary creature you control.
     const legends = Object.values(state.cards).filter(
@@ -1294,7 +1304,15 @@ function applyActivateAbility(
   }
   if (ability.exileSelf) {
     // Spirit Guides: exiling from hand is the cost; resolve immediately.
-    next = putActivatedAbilityOnStack(next, cardId, abilityIndex, targets ?? [], modeIndex);
+    next = putActivatedAbilityOnStack(
+      next,
+      cardId,
+      abilityIndex,
+      targets ?? [],
+      modeIndex,
+      undefined,
+      xValue,
+    );
     next = moveCard(next, cardId, "exile");
     return resolveTopOfStack(next);
   }
@@ -1308,6 +1326,7 @@ function applyActivateAbility(
     ability.sacrificeCost && costSacrificeId
       ? Math.max(0, creaturePower(next, costSacrificeId))
       : undefined,
+    xValue,
   );
   if (ability.sacrificeCost && costSacrificeId) {
     // Sacrificing is part of the cost (paid on activation); the ability
@@ -1512,6 +1531,7 @@ export function applyAction(
           action.targets,
           action.costSacrificeId,
           action.modeIndex,
+          action.xValue,
         );
         break;
       case "turn_face_up":

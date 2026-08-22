@@ -24460,3 +24460,205 @@ describe("wave 195: modal bullets that carry more than one sentence", () => {
   });
 });
 
+
+describe("wave 196: an activated ability may announce X", () => {
+  const compile = (name: string, manaCost: string, typeLine: string, oracleText: string, power?: string, toughness?: string) =>
+    compileOracleCard({
+      oracleId: name,
+      name,
+      manaCost,
+      typeLine,
+      power: power ?? null,
+      toughness: toughness ?? null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  it("records how many X pips the cost carries", () => {
+    const run = compile(
+      "Kessig Wolf Run",
+      "",
+      "Land",
+      "{T}: Add {C}.\n{X}{R}{G}, {T}: Target creature gets +X/+0 and gains trample until end of turn.",
+    );
+    expect(run.notes).toEqual([]);
+    expect(run.definition.activated[0]).toMatchObject({ manaCost: "{R}{G}", xCost: 1, tap: true });
+
+    // "{X}{X}" charges the announced X twice.
+    const vault = compile(
+      "Treasure Vault",
+      "",
+      "Land",
+      "{T}: Add {C}.\n{X}{X}, {T}, Sacrifice this land: Create X Treasure tokens.",
+    );
+    expect(vault.notes).toEqual([]);
+    expect(vault.definition.activated[0]).toMatchObject({ xCost: 2, sacrificeSelf: true });
+  });
+
+  /** A player with `forests` untapped Forests and the given card in play. */
+  function board(forests: number) {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const forestDef = createCardDefinition({
+      name: "Forest",
+      typeLine: "Basic Land — Forest",
+      manaAbilities: [
+        { produces: { G: 1 }, producesOptions: [], producesAnyColor: false, damageToController: 0 },
+      ],
+    });
+    game.definitions[forestDef.id] = forestDef;
+    for (let index = 0; index < forests; index += 1) {
+      const card = createCardInstance({
+        definitionId: forestDef.id,
+        ownerId: p1.id,
+        zone: "battlefield",
+      });
+      game.cards[card.id] = card;
+      p1.zones.battlefield.push(card.id);
+    }
+    game.priorityPlayerId = p1.id;
+    return { game, p1 };
+  }
+
+  it("charges the announced X and carries it to resolution", () => {
+    const { game, p1 } = board(0);
+    const bearDef = createCardDefinition({
+      name: "Bear",
+      typeLine: "Creature — Bear",
+      power: 2,
+      toughness: 2,
+    });
+    const engineDef = createCardDefinition({
+      name: "Engine",
+      typeLine: "Artifact",
+      activated: [
+        {
+          tap: false,
+          manaCost: "",
+          xCost: 1,
+          effects: [
+            {
+              kind: "pt_until_eot",
+              cardId: { type: "chosen", index: 0 },
+              power: "x",
+              toughness: 0,
+            },
+          ],
+          targetRequirements: [{ kind: "creature" }],
+        },
+      ],
+    });
+    game.definitions[bearDef.id] = bearDef;
+    game.definitions[engineDef.id] = engineDef;
+    const put = (definitionId: string) => {
+      const card = createCardInstance({ definitionId, ownerId: p1.id, zone: "battlefield" });
+      game.cards[card.id] = card;
+      p1.zones.battlefield.push(card.id);
+      return card;
+    };
+    const engine = put(engineDef.id);
+    const bear = put(bearDef.id);
+    game.players[0]!.mana = { ...game.players[0]!.mana, G: 3 };
+
+    let next = applyAction(game, {
+      kind: "activate_ability",
+      playerId: p1.id,
+      cardId: engine.id,
+      abilityIndex: 0,
+      xValue: 3,
+      targets: [{ type: "creature", cardId: bear.id }],
+    });
+    // Three generic paid from the pool…
+    expect(next.players[0]?.mana.G).toBe(0);
+    next = resolveTopOfStack(next);
+    // …and the same three reach the effect.
+    expect(computedCard(next, bear.id)?.power).toBe(5);
+  });
+
+  it("insists on an announcement, and refuses one where there is no X", () => {
+    const { game, p1 } = board(0);
+    const withX = createCardDefinition({
+      name: "WithX",
+      typeLine: "Artifact",
+      activated: [
+        {
+          tap: false,
+          manaCost: "",
+          xCost: 1,
+          effects: [{ kind: "gain_life", playerId: "controller", amount: 1 }],
+          targetRequirements: [],
+        },
+      ],
+    });
+    const withoutX = createCardDefinition({
+      name: "WithoutX",
+      typeLine: "Artifact",
+      activated: [
+        {
+          tap: false,
+          manaCost: "",
+          effects: [{ kind: "gain_life", playerId: "controller", amount: 1 }],
+          targetRequirements: [],
+        },
+      ],
+    });
+    game.definitions[withX.id] = withX;
+    game.definitions[withoutX.id] = withoutX;
+    const put = (definitionId: string) => {
+      const card = createCardInstance({ definitionId, ownerId: p1.id, zone: "battlefield" });
+      game.cards[card.id] = card;
+      p1.zones.battlefield.push(card.id);
+      return card;
+    };
+    const a = put(withX.id);
+    const b = put(withoutX.id);
+
+    expect(() =>
+      applyAction(game, {
+        kind: "activate_ability",
+        playerId: p1.id,
+        cardId: a.id,
+        abilityIndex: 0,
+      }),
+    ).toThrow(/Announce a value for X/);
+    expect(() =>
+      applyAction(game, {
+        kind: "activate_ability",
+        playerId: p1.id,
+        cardId: b.id,
+        abilityIndex: 0,
+        xValue: 2,
+      }),
+    ).toThrow(/no X in its cost/);
+  });
+
+  it("amasses the announced X, and nothing at zero", () => {
+    const barad = compile(
+      "Barad-dûr",
+      "",
+      "Legendary Land",
+      "{T}: Add {B}.\n{X}{X}{B}, {T}: Amass Orcs X. Activate only if a creature died this turn.",
+    );
+    expect(barad.notes).toEqual([]);
+    expect(barad.definition.activated[0]).toMatchObject({ xCost: 2 });
+    expect(barad.definition.activated[0]?.effects[0]).toMatchObject({
+      kind: "amass",
+      amount: "x",
+      subtype: "Orc",
+    });
+
+    const { game, p1 } = board(0);
+    const amass: CardEffect[] = [
+      { kind: "amass", playerId: "controller", amount: "x", subtype: "Orc" },
+    ];
+    expect(
+      bindCardEffects(game, amass, { controllerId: p1.id, sourceId: null, xValue: 2 }),
+    ).toEqual([{ kind: "amass", playerId: p1.id, amount: 2, subtype: "Orc" }]);
+    // X of zero amasses nothing rather than falling back to the default one.
+    expect(
+      bindCardEffects(game, amass, { controllerId: p1.id, sourceId: null, xValue: 0 }),
+    ).toEqual([]);
+  });
+});
+

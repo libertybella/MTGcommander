@@ -1486,7 +1486,7 @@ export type CardEffect =
   /** Gamble: "discard a card at random". */
   | { kind: "discard_random"; playerId: PlayerSelector; count: number }
   | { kind: "discard_unless_attacked"; playerId: PlayerSelector; count: number }
-  | { kind: "amass"; playerId: PlayerSelector; amount: number; subtype?: string }
+  | { kind: "amass"; playerId: PlayerSelector; amount: number | "x"; subtype?: string }
   | {
       kind: "reveal_zone";
       fromPlayerId: PlayerSelector;
@@ -2435,6 +2435,10 @@ export type ActivatedAbility = {
   exileSelf?: boolean;
   /** Life paid as part of the cost (Doom Whisperer). */
   lifeCost?: number;
+  /** How many {X} pips the activation cost carries — Treasure Vault's
+   * "{X}{X}" charges the announced X twice (CR 601.2b applies to abilities
+   * through CR 602.2b). */
+  xCost?: number;
   /** Class level-up is a sorcery-speed class ability. */
   timing?: "any" | "sorcery";
   /** "Activate only if you control a Swamp" — a controlled type/subtype gate. */
@@ -2761,6 +2765,8 @@ export type GameAction =
       playerId: PlayerId;
       cardId: CardInstanceId;
       abilityIndex: number;
+      /** Announced X, for an ability whose cost carries {X}. */
+      xValue?: number;
       targets?: ChosenTarget[];
       /** Modal activations: which "Choose one —" bullet. */
       modeIndex?: number;

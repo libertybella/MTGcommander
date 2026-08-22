@@ -549,10 +549,16 @@ export function bindCardEffect(
       if (!playerId) {
         return null;
       }
+      // "Amass Orcs X": the announced X. An X of zero amasses nothing rather
+      // than the default one.
+      const amassed = effect.amount === "x" ? Math.max(0, context.xValue ?? 0) : effect.amount;
+      if (amassed <= 0) {
+        return null;
+      }
       return {
         kind: "amass",
         playerId,
-        amount: effect.amount,
+        amount: amassed,
         ...(effect.subtype ? { subtype: effect.subtype } : {}),
       };
     }

@@ -401,6 +401,11 @@ function nextAction(state: GameState, rng: () => number): GameAction | null {
         targets,
         ...(modeIndex !== undefined ? { modeIndex } : {}),
         ...(costSacrificeId ? { costSacrificeId } : {}),
+        // An ability with {X} in its cost must be told what X is. Legal-action
+        // enumeration only promises the BASE cost is affordable, so anything
+        // above zero could exceed the mana that made it legal — the harness
+        // would then be rejecting an action it had just chosen.
+        ...(ability?.xCost ? { xValue: 0 } : {}),
       };
     }
     case "mana": {

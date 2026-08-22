@@ -2415,7 +2415,7 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
       return {
         kind,
         playerId: parsePlayerSelector(value.playerId, `${label}.playerId`),
-        amount: expectNumber(value.amount, `${label}.amount`),
+        amount: value.amount === "x" ? ("x" as const) : expectNumber(value.amount, `${label}.amount`),
         ...(value.subtype === undefined
           ? {}
           : { subtype: expectString(value.subtype, `${label}.subtype`) }),
@@ -3407,6 +3407,7 @@ function parseActivatedAbilities(value: unknown, label: string): ActivatedAbilit
       ...(entry.sacrificeCount === undefined
         ? {}
         : { sacrificeCount: expectNumber(entry.sacrificeCount, `${label}[${index}].sacrificeCount`) }),
+      ...(entry.xCost === undefined ? {} : { xCost: expectNumber(entry.xCost, `${label}.xCost`) }),
       ...(entry.requiresCreatedToken === true ? { requiresCreatedToken: true } : {}),
       ...(entry.requiresCondition === undefined
         ? {}

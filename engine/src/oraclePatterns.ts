@@ -553,6 +553,8 @@ function parseAbilityCost(
 ): {
   tap: boolean;
   manaCost: string;
+  /** How many {X} pips the cost carries; 0 when it has none. */
+  xCost: number;
   sacrificeSelf: boolean;
   lifeCost?: number;
   sacrificeCost?:
@@ -676,16 +678,22 @@ function parseAbilityCost(
     return null;
   }
   let tap = false;
+  let xCost = 0;
   const mana: string[] = [];
   for (const symbol of symbols) {
     if (symbol === "T") {
       tap = true;
       continue;
     }
-    // {Q} (untap) and {X} in an activation cost are unsupported. Phyrexian
-    // pips are fine — parseManaCost reads them and the payment path already
-    // charges 2 life when the colour is not available (the Dominus cycle).
-    if (symbol === "Q" || symbol === "X") {
+    // {X} is announced when the ability is activated, the same way a spell's
+    // is; "{X}{X}" charges it twice. {Q} (untap) is still unsupported.
+    // Phyrexian pips are fine — parseManaCost reads them and the payment path
+    // already charges 2 life when the colour is not available.
+    if (symbol === "X") {
+      xCost += 1;
+      continue;
+    }
+    if (symbol === "Q") {
       return null;
     }
     mana.push(`{${symbol}}`);
@@ -699,6 +707,7 @@ function parseAbilityCost(
   return {
     tap,
     manaCost,
+    xCost,
     sacrificeSelf,
     ...(lifeCost ? { lifeCost } : {}),
     ...(sacrificeCost ? { sacrificeCost } : {}),
@@ -11246,6 +11255,7 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
         manaCost: cost.manaCost,
         effects: clause.effects,
         targetRequirements: clause.targetRequirements,
+        ...(cost.xCost ? { xCost: cost.xCost } : {}),
         ...(cost.sacrificeSelf ? { sacrificeSelf: true } : {}),
         ...(cost.sacrificeCost ? { sacrificeCost: cost.sacrificeCost } : {}),
         ...(cost.sacrificeSubtype ? { sacrificeSubtype: cost.sacrificeSubtype } : {}),

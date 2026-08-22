@@ -101,13 +101,21 @@ function amassOverrideTemplate(subtype?: string): TokenTemplate {
 }
 
 export function parseAmassClause(sentence: string): {
-  amount: number;
+  amount: number | "x";
   subtype?: string;
   rest?: string;
 } | null {
-  const match = sentence.match(/^amass(?: ([A-Za-z]+))?(?: (\d+))?(?:, then (.+))?$/i);
+  // "Amass Orcs X" (Barad-dûr): the announced X of the ability that amassed.
+  const match = sentence.match(/^amass(?: ([A-Za-z]+))?(?: (\d+|X))?(?:, then (.+))?$/i);
   if (!match) {
     return null;
+  }
+  if (/^X$/i.test(match[2] ?? "")) {
+    return {
+      amount: "x" as const,
+      ...(match[1] ? { subtype: singularizeType(match[1]) } : {}),
+      ...(match[3] ? { rest: `Then ${match[3].trim()}` } : {}),
+    };
   }
   const amount = match[2] ? Number(match[2]) : 1;
   if (!Number.isInteger(amount) || amount <= 0) {

@@ -358,6 +358,7 @@ export function createCardDefinition(
           ...(ability.requiresAttackersThisTurn !== undefined
             ? { requiresAttackersThisTurn: ability.requiresAttackersThisTurn }
             : {}),
+          ...(ability.xCost === undefined ? {} : { xCost: ability.xCost }),
           ...(ability.requiresCreatedToken ? { requiresCreatedToken: true } : {}),
           ...(ability.requiresCondition ? { requiresCondition: ability.requiresCondition } : {}),
           ...(ability.requiresOpponentMoreLands ? { requiresOpponentMoreLands: true } : {}),

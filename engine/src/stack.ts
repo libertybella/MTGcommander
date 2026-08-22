@@ -62,6 +62,7 @@ export function putActivatedAbilityOnStack(
   targets: ChosenTarget[] = [],
   modeIndex?: number,
   sacrificedPower?: number,
+  xValue?: number,
 ): GameState {
   const card = state.cards[cardId];
   if (!card) {
@@ -100,6 +101,7 @@ export function putActivatedAbilityOnStack(
     ...(modeIndex !== undefined ? { modeIndex } : {}),
     // Altar of Dementia: the sacrificed cost-creature's power.
     ...(sacrificedPower !== undefined ? { sacrificedPower } : {}),
+    ...(xValue !== undefined ? { xValue } : {}),
   });
   next.passesSinceAction = 0;
   next.priorityPlayerId = card.controllerId;
@@ -272,6 +274,8 @@ export function resolveTopOfStack(state: GameState): GameState {
           targetRequirements: requirements,
           // Altar of Dementia: the sacrificed cost-creature's power.
           ...(top.sacrificedPower !== undefined ? { sacrificedPower: top.sacrificedPower } : {}),
+          // Kessig Wolf Run: the X announced when the ability was activated.
+          ...(top.xValue !== undefined ? { xValue: top.xValue } : {}),
         });
         next = applyEffects(next, bound);
       }

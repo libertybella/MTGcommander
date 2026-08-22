@@ -456,6 +456,27 @@ What the engine implements and what it intentionally does not. Tests are tagged 
   noun, not an adjective in front like "nontoken creature". Reading it as an
   adjective is what the first attempt did, and it matched nothing.
 
+- **An activated ability may announce X**: `{X}` in an activation cost is
+  announced the way a spell's is, and `{X}{X}` (Treasure Vault) charges it
+  twice. The announced value threads through the stack entry to the resolution
+  context, so a body that reads "X" gets the same number the cost charged —
+  Kessig Wolf Run's "+X/+0" and Barad-dûr's "Amass Orcs X" both read it there.
+  An X of zero amasses nothing rather than falling back to the default one.
+
+  Two guards, both asserted: an ability with `{X}` refuses to activate without
+  an announcement, and one WITHOUT `{X}` refuses an announcement it has no use
+  for — otherwise a stray value would be silently ignored.
+
+  The fuzzer announces zero rather than a random value. Legal-action
+  enumeration only promises the BASE cost is affordable, so anything above
+  zero could exceed the mana that made the action legal, and the harness would
+  be rejecting an action it had just chosen.
+
+  This one needed the ability rebuilt field-by-field in the compiler as well
+  as the usual mapper layers — `xCost` reached the parser, typechecked, and
+  did not appear on the definition, because that construction lists its fields
+  explicitly. The same shape as the other four-layer drops.
+
 ## The card pipeline (Stage 6)
 
 - Real cards compile from Scryfall oracle text by shared sentence patterns; a hand-authored registry (`server/src/cardOverrides.ts`, data in the same schema) beats the compiler for the long tail. Never a named-card code path.
