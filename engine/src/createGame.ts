@@ -95,6 +95,10 @@ export function createCardDefinition(
         | "storm"
         | "doesntUntap"
         | "grantsFlash"
+        | "convoke"
+        | "improvise"
+        | "delve"
+        | "grantsCostKeyword"
         | "grantsFlashFor"
         | "castFreeFromHand"
         | "extraDrawStepDraws"
@@ -409,6 +413,10 @@ export function createCardDefinition(
     ...(input.changeling ? { changeling: true } : {}),
     ...(input.storm ? { storm: true } : {}),
     ...(input.doesntUntap ? { doesntUntap: true } : {}),
+    ...(input.convoke ? { convoke: true } : {}),
+    ...(input.improvise ? { improvise: true } : {}),
+    ...(input.delve ? { delve: true } : {}),
+    ...(input.grantsCostKeyword ? { grantsCostKeyword: { ...input.grantsCostKeyword } } : {}),
     ...(input.grantsFlash ? { grantsFlash: true } : {}),
     ...(input.grantsFlashFor ? { grantsFlashFor: { ...input.grantsFlashFor } } : {}),
     ...(input.castFreeFromHand ? { castFreeFromHand: { ...input.castFreeFromHand } } : {}),

@@ -413,6 +413,28 @@ What the engine implements and what it intentionally does not. Tests are tagged 
   the one-away report had truncated the phrase out of view — a reminder to
   read the printed card, not the report line.
 
+- **Paying with something other than mana**: convoke (CR 702.51), improvise
+  (702.126) and delve (702.66) all reduce a printed cost by spending a
+  different resource — tapping creatures, tapping artifacts, exiling your own
+  graveyard — so they share one helper. Convoke can cover a coloured pip, and
+  does so BEFORE generic ones: a creature tapped for convoke pays one generic
+  or one mana of its own colour, so spending a matching creature on a generic
+  pip can strand a coloured one it was the only answer to. Improvise and delve
+  cover generic only.
+
+  The cost is reduced only as far as it takes to make it payable from the mana
+  actually available, so nothing is tapped or exiled that the caster did not
+  need. That auto-policy stands in for a choice the cast action has no field
+  for, and is a documented approximation: a caster who would rather tap a
+  creature than spend mana cannot say so.
+
+  Both places that ask "can this be cast" needed it. Legal-action enumeration
+  works from POTENTIAL mana rather than a real pool, so it asks the optimistic
+  question and uses a separate ceiling-based variant — a spell must never be
+  offered that the payment path would then refuse, nor hidden when it could be
+  paid. The granted forms ("Nonartifact spells you cast have improvise") read
+  the same helper.
+
 ## The card pipeline (Stage 6)
 
 - Real cards compile from Scryfall oracle text by shared sentence patterns; a hand-authored registry (`server/src/cardOverrides.ts`, data in the same schema) beats the compiler for the long tail. Never a named-card code path.

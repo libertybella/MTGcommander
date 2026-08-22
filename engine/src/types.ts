@@ -208,6 +208,15 @@ export type CardDefinition = {
   /** Blind Obedience: opponents' artifacts enter tapped too. */
   opponentArtifactsEnterTapped?: boolean;
   /** "You may cast spells as though they had flash" (Vedalken Orrery). */
+  /** Convoke (CR 702.51): tap creatures to help pay. */
+  convoke?: boolean;
+  /** Improvise (CR 702.126): tap artifacts to help pay the generic cost. */
+  improvise?: boolean;
+  /** Delve (CR 702.66): exile cards from your graveyard to help pay. */
+  delve?: boolean;
+  /** Inspiring Statuary, Dazzling Theater: the same keyword granted to the
+   * spells this permanent's controller casts. */
+  grantsCostKeyword?: { keyword: "convoke" | "improvise"; types?: string[]; nonTypes?: string[] };
   grantsFlash?: boolean;
   /** Sigarda's Aid, Shimmer Myr: the grant covers only some spells. Kept
    * narrower than a full subject filter because derived.ts cannot reach the

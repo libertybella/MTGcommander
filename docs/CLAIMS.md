@@ -36,7 +36,7 @@ Statuses: `open` · `claimed` · `in-progress` · `done` · `blocked`
 | Cluster | Stream | Status | Owner | Branch | Updated | Notes |
 | --- | --- | --- | --- | --- | --- | --- |
 | Land-tap echo + Elenda + Grisly Salvage (Mirari's Wake, Vorinclex, Elenda ×2, Grisly Salvage) | E/F | done | claude/2daf8b18 | comprehensive-plan | 2026-08-21 | Wave 123 merged: 5 flips, 894/2,009 (44.5%), 836 tests |
-| Convoke + improvise | A | open | | | | Shared tap-to-pay machinery; see WORKSTREAMS caveats |
+| Convoke + improvise | A | done | claude/2daf8b18 | comprehensive-plan | 2026-08-22 | Wave 194 merged, together with delve: all three reduce a printed cost by spending a different resource, so they share `costRelief`. Convoke covers COLOURED pips first (a creature pays one generic OR one mana of its own colour, so spending a matching creature on a generic pip can strand a coloured one); improvise and delve cover generic only. The cost is reduced only as far as needed to make it payable, so nothing is tapped or exiled that the caster did not need — a documented auto-policy standing in for a choice the cast action has no field for. Legal-action enumeration works from POTENTIAL mana, so it uses a separate ceiling-based `reliefAdjustedCost` — a spell must never be offered that the payment path would refuse, nor hidden when it could be paid. Granted forms (Inspiring Statuary, Dazzling Theater) read the same helper. 6 flips (Chord of Calling, Treasure Cruise, City on Fire, Whir of Invention, Inspiring Statuary, Dazzling Theater) — 1,263/2,009 (62.9%), 1,075 tests |
 | Spree mode bodies | A | open | | | | |
 | Hideaway trio | A | open | | | | Needs 3 per-turn tallies |
 | Multikicker | A | open | | | | |

@@ -4,7 +4,7 @@ import { hasKeyword } from "./keywords";
 import { triggerConditionHolds } from "./triggers";
 import { emptyManaPool } from "./createGame";
 import { pendingBlockerPlayer } from "./combat";
-import { affinityArtifactDiscount, activationNonManaPayment, allBattlefieldCreatureCount, altCastPayment, canPlayLandsFromGraveyard, castCostReduction, castableFromTop, controlsCommander, freeEquipGranted, hasFlashGrant, landDropAllowance, lockedByAbolisher, lockedFromCasting, opponentControlsMoreLands, findFreeHandGrantIndex, opponentsCastLockedToHand, permanentsControlledBy, selfDiscountAmount, staticFreeCastCap, topOfLibraryGrant } from "./derived";
+import { reliefAdjustedCost, affinityArtifactDiscount, activationNonManaPayment, allBattlefieldCreatureCount, altCastPayment, canPlayLandsFromGraveyard, castCostReduction, castableFromTop, controlsCommander, freeEquipGranted, hasFlashGrant, landDropAllowance, lockedByAbolisher, lockedFromCasting, opponentControlsMoreLands, findFreeHandGrantIndex, opponentsCastLockedToHand, permanentsControlledBy, selfDiscountAmount, staticFreeCastCap, topOfLibraryGrant } from "./derived";
 import { canPayManaCost, parseManaCost, type ParsedManaCost } from "./mana";
 import { colorsAmongControlled, manaAbilitiesFor, manaTapOptionsFor } from "./manaOptions";
 import { isMulliganOpen } from "./mulligan";
@@ -329,8 +329,13 @@ function castableFace(
   // Force of Will / Snuff Out: an unpayable printed cost still leaves the
   // spell castable when the alternative can be paid.
   if (!castsFree && !canPayWithPotential(potential, cost)) {
-    if (!definition.altCost || !spellId || !altCastPayment(state, playerId, definition.altCost, spellId)) {
-      return false;
+    // Convoke / improvise / delve pay the printed cost, so they are tried
+    // before the alternative one.
+    const relieved = reliefAdjustedCost(state, playerId, definition, cost);
+    if (!relieved || !canPayWithPotential(potential, relieved)) {
+      if (!definition.altCost || !spellId || !altCastPayment(state, playerId, definition.altCost, spellId)) {
+        return false;
+      }
     }
   }
   const additional = definition.additionalCost;

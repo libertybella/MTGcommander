@@ -2,7 +2,7 @@ import { declareAttackers, declareBlockers, lockRemainingBlockers, pendingBlocke
 import { abilitiesRemoved, cardMatchesSubtype, controlsGate } from "./characteristicsEngine";
 import { characteristicsOf, isCommander, isCreature, isInstant, isInstantOrSorcery, isLand, isLegendary, isMainPhase } from "./cardTypes";
 import { cloneGameState } from "./clone";
-import { affinityArtifactDiscount, allBattlefieldCreatureCount, canPlayLandFromTop, canPlayLandsFromGraveyard, castCostReduction, castableFromTop, controlsCommander, creaturePower, freeEquipGranted, hasFlashGrant, activationNonManaPayment, altCastPayment, landDropAllowance, manaTapMultiplier, lockedByAbolisher, lockedFromCasting, opponentControlsMoreLands, findFreeHandGrantIndex, opponentsCastLockedToHand, selfDiscountAmount, staticFreeCastCap, usesOncePerTurnFreeCast } from "./derived";
+import { costRelief, affinityArtifactDiscount, allBattlefieldCreatureCount, canPlayLandFromTop, canPlayLandsFromGraveyard, castCostReduction, castableFromTop, controlsCommander, creaturePower, freeEquipGranted, hasFlashGrant, activationNonManaPayment, altCastPayment, landDropAllowance, manaTapMultiplier, lockedByAbolisher, lockedFromCasting, opponentControlsMoreLands, findFreeHandGrantIndex, opponentsCastLockedToHand, selfDiscountAmount, staticFreeCastCap, usesOncePerTurnFreeCast } from "./derived";
 import { eliminatePlayerInPlace } from "./elimination";
 import { applyEffects, bindCardEffects, devotionTo } from "./effects";
 import { hasKeyword } from "./keywords";
@@ -349,7 +349,20 @@ function validateCast(
   // the spell is one it is allowed to pay for.
   const purpose = manaPurposeForSpell(state, cardId);
   const available = poolWith(player.mana, usableRestrictedMana(state, playerId, purpose));
-  if (!canPayManaCost(available, cost, player.life)) {
+  if (
+    !canPayManaCost(available, cost, player.life) &&
+    // Convoke / improvise / delve are tried before the alternative cost: they
+    // pay the printed one rather than replacing it. This call only tests
+    // reachability; the payment path applies its own relief for real.
+    !costRelief(
+      state,
+      playerId,
+      definition,
+      { ...cost, hybrid: [...cost.hybrid], phyrexian: [...cost.phyrexian] },
+      available,
+      player.life,
+    )
+  ) {
     // Force of Will / Snuff Out: the printed cost is out of reach, so the
     // alternative is taken. Only in this direction — see AlternativeCastCost.
     const payment = definition.altCost
@@ -591,7 +604,23 @@ function applyCastSpell(
       definition?.characteristics.colors,
     );
   }
+  // Convoke / improvise / delve close the gap before the mana is spent.
+  const payer2 = faced.players.find((entry) => entry.id === playerId);
+  const relief = payer2
+    ? costRelief(faced, playerId, definition, cost, payer2.mana, payer2.life)
+    : null;
   let paid = payManaCost(faced, playerId, cost, manaPurposeForSpell(faced, cardId));
+  if (relief) {
+    for (const tapId of relief.tapIds) {
+      paid = tapCard(paid, tapId);
+    }
+    if (relief.exileIds.length > 0) {
+      paid = applyEffects(
+        paid,
+        relief.exileIds.map((exileId) => ({ kind: "move_card", cardId: exileId, toZone: "exile" })),
+      );
+    }
+  }
   // Fling: capture the sacrificed creature's power before it dies.
   const sacrificedPower =
     additional?.sacrifice && costSacrificeId ? creaturePower(paid, costSacrificeId) : undefined;

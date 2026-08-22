@@ -17,12 +17,12 @@ import {
 } from "./index";
 import { cardMatchesSubtype, computedCard } from "./characteristicsEngine";
 import { mostCommonControlledCreatureType } from "./effects";
-import { castCostReduction, castableFromTop, freeEquipGranted, hasFlashGrant, landDropAllowance, permanentsControlledBy, selfDiscountAmount } from "./derived";
+import { castCostReduction, castableFromTop, freeEquipGranted, hasFlashGrant, landDropAllowance, permanentsControlledBy, reliefAdjustedCost, selfDiscountAmount } from "./derived";
 import { hasKeyword } from "./keywords";
 import { dispatchEventsInPlace } from "./triggers";
 import { applyCombatDamage, declareAttackers } from "./combat";
 import { commanderIdentityColors, manaAbilitiesFor, manaTapOptionsFor } from "./manaOptions";
-import { emptyManaPools } from "./mana";
+import { emptyManaPools, parseManaCost } from "./mana";
 import { applyStateBasedActionsInPlace } from "./status";
 import { legalActions } from "./legalActions";
 import { applyResolveCreatureType, legalEnterCopyIds, searchMatches } from "./prompt";
@@ -24116,6 +24116,212 @@ describe("wave 193: one condition vocabulary, three consumers", () => {
     third.cards[extra.id] = extra;
     third.players[1]!.zones.battlefield.push(extra.id);
     expect(fires(third)).toBe(1);
+  });
+});
+
+
+describe("wave 194: paying with something other than mana", () => {
+  const compile = (name: string, manaCost: string, typeLine: string, oracleText: string, power?: string, toughness?: string) =>
+    compileOracleCard({
+      oracleId: name,
+      name,
+      manaCost,
+      typeLine,
+      power: power ?? null,
+      toughness: toughness ?? null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  it("reads the bare keywords and the granted forms", () => {
+    expect(
+      compile("Chord of Calling", "{X}{G}{G}{G}", "Instant", "Convoke\nSearch your library for a creature card, put it onto the battlefield, then shuffle.").definition.convoke,
+    ).toBe(true);
+    expect(
+      compile("Treasure Cruise", "{7}{U}", "Sorcery", "Delve\nDraw three cards.").definition.delve,
+    ).toBe(true);
+    const statuary = compile(
+      "Inspiring Statuary",
+      "{3}",
+      "Artifact",
+      "Nonartifact spells you cast have improvise.",
+    );
+    expect(statuary.notes).toEqual([]);
+    expect(statuary.definition.grantsCostKeyword).toEqual({
+      keyword: "improvise",
+      nonTypes: ["artifact"],
+    });
+  });
+
+  /** A player with `lands` untapped Forests and `bears` untapped Bears. */
+  function table(bears: number, forests: number) {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const bearDef = createCardDefinition({
+      name: "Bear",
+      typeLine: "Creature — Bear",
+      manaCost: "{G}",
+      power: 2,
+      toughness: 2,
+    });
+    const forestDef = createCardDefinition({
+      name: "Forest",
+      typeLine: "Basic Land — Forest",
+      manaAbilities: [
+        { produces: { G: 1 }, producesOptions: [], producesAnyColor: false, damageToController: 0 },
+      ],
+    });
+    game.definitions[bearDef.id] = bearDef;
+    game.definitions[forestDef.id] = forestDef;
+    const put = (definitionId: string) => {
+      const card = createCardInstance({ definitionId, ownerId: p1.id, zone: "battlefield" });
+      game.cards[card.id] = card;
+      p1.zones.battlefield.push(card.id);
+      return card;
+    };
+    const bearIds = Array.from({ length: bears }, () => put(bearDef.id).id);
+    for (let index = 0; index < forests; index += 1) {
+      put(forestDef.id);
+    }
+    return { game, p1, bearIds };
+  }
+
+  it("taps creatures for a convoke cost, and only as many as it needs", () => {
+    const { game, p1, bearIds } = table(3, 1);
+    const spellDef = createCardDefinition({
+      name: "Chord",
+      typeLine: "Instant",
+      manaCost: "{2}{G}",
+      convoke: true,
+      effects: [{ kind: "gain_life", playerId: "controller", amount: 1 }],
+    });
+    game.definitions[spellDef.id] = spellDef;
+    const spell = createCardInstance({
+      definitionId: spellDef.id,
+      ownerId: p1.id,
+      zone: "hand",
+    });
+    game.cards[spell.id] = spell;
+    p1.zones.hand.push(spell.id);
+    game.priorityPlayerId = p1.id;
+    // One Forest of mana against a {2}{G} cost: convoke must cover the rest.
+    game.players[0]!.mana = { ...game.players[0]!.mana, G: 1 };
+
+    const next = applyAction(game, {
+      kind: "cast_spell",
+      playerId: p1.id,
+      cardId: spell.id,
+      faceIndex: 0,
+    });
+    const tapped = bearIds.filter((id) => next.cards[id]?.tapped === true);
+    // Two pips left after the floating {G}; the third Bear stays untapped.
+    expect(tapped).toHaveLength(2);
+  });
+
+  it("exiles from the graveyard for delve", () => {
+    const { game, p1 } = table(0, 1);
+    const junkDef = createCardDefinition({ name: "Junk", typeLine: "Instant" });
+    game.definitions[junkDef.id] = junkDef;
+    const buried = Array.from({ length: 3 }, () => {
+      const card = createCardInstance({
+        definitionId: junkDef.id,
+        ownerId: p1.id,
+        zone: "graveyard",
+      });
+      game.cards[card.id] = card;
+      p1.zones.graveyard.push(card.id);
+      return card.id;
+    });
+    const spellDef = createCardDefinition({
+      name: "Cruise",
+      // An instant so the cast needs no sorcery window; delve behaves the same.
+      typeLine: "Instant",
+      manaCost: "{3}{G}",
+      delve: true,
+      effects: [{ kind: "gain_life", playerId: "controller", amount: 1 }],
+    });
+    game.definitions[spellDef.id] = spellDef;
+    const spell = createCardInstance({
+      definitionId: spellDef.id,
+      ownerId: p1.id,
+      zone: "hand",
+    });
+    game.cards[spell.id] = spell;
+    p1.zones.hand.push(spell.id);
+    game.priorityPlayerId = p1.id;
+    game.players[0]!.mana = { ...game.players[0]!.mana, G: 1 };
+
+    const next = applyAction(game, {
+      kind: "cast_spell",
+      playerId: p1.id,
+      cardId: spell.id,
+      faceIndex: 0,
+    });
+    expect(buried.filter((id) => next.cards[id]?.zone === "exile")).toHaveLength(3);
+  });
+
+  it("does not offer a spell the keyword still cannot pay for", () => {
+    // Two Bears against {5}{G} with no mana: convoke covers three, not six.
+    const { game, p1 } = table(2, 0);
+    const spellDef = createCardDefinition({
+      name: "Chord",
+      typeLine: "Instant",
+      manaCost: "{5}{G}",
+      convoke: true,
+      effects: [{ kind: "gain_life", playerId: "controller", amount: 1 }],
+    });
+    game.definitions[spellDef.id] = spellDef;
+    const spell = createCardInstance({
+      definitionId: spellDef.id,
+      ownerId: p1.id,
+      zone: "hand",
+    });
+    game.cards[spell.id] = spell;
+    p1.zones.hand.push(spell.id);
+    game.priorityPlayerId = p1.id;
+
+    expect(
+      legalActions(game, p1.id).some(
+        (action) => action.kind === "cast_spell" && action.cardId === spell.id,
+      ),
+    ).toBe(false);
+    expect(() =>
+      applyAction(game, { kind: "cast_spell", playerId: p1.id, cardId: spell.id, faceIndex: 0 }),
+    ).toThrow();
+  });
+
+  it("applies a granted keyword only to the spells it covers", () => {
+    const { game, p1 } = table(0, 0);
+    const statuaryDef = createCardDefinition({
+      name: "Inspiring Statuary",
+      typeLine: "Artifact",
+      grantsCostKeyword: { keyword: "improvise", nonTypes: ["artifact"] },
+    });
+    const rockDef = createCardDefinition({ name: "Rock", typeLine: "Artifact" });
+    game.definitions[statuaryDef.id] = statuaryDef;
+    game.definitions[rockDef.id] = rockDef;
+    const put = (definitionId: string) => {
+      const card = createCardInstance({ definitionId, ownerId: p1.id, zone: "battlefield" });
+      game.cards[card.id] = card;
+      p1.zones.battlefield.push(card.id);
+      return card;
+    };
+    put(statuaryDef.id);
+    put(rockDef.id);
+    put(rockDef.id);
+
+    const spell = (typeLine: string) =>
+      createCardDefinition({ name: "Spell", typeLine, manaCost: "{2}" });
+    const sorcery = spell("Sorcery");
+    const artifact = spell("Artifact");
+    game.definitions[sorcery.id] = sorcery;
+    game.definitions[artifact.id] = artifact;
+
+    const cost = () => parseManaCost("{2}");
+    expect(reliefAdjustedCost(game, p1.id, sorcery, cost())?.generic).toBe(0);
+    // The grant says NONartifact spells, so an artifact spell gets nothing.
+    expect(reliefAdjustedCost(game, p1.id, artifact, cost())).toBeNull();
   });
 });
 

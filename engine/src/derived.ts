@@ -1,6 +1,7 @@
 import { characteristicsOf, isBasic, isCommander, isCreature, isLand, isLegendary } from "./cardTypes";
 import { abilitiesRemoved, cardMatchesSubtype, computedCard, controlsGate } from "./characteristicsEngine";
-import type { ActivatedAbility, AlternativeCastCost, CardInstance, CardInstanceId, EnterTappedUnless, GameState, PlayerId } from "./types";
+import { canPayManaCost, type ParsedManaCost } from "./mana";
+import type { ActivatedAbility, AlternativeCastCost, CardDefinition, CardInstance, CardInstanceId, EnterTappedUnless, GameState, ManaPool, PlayerId } from "./types";
 
 /**
  * Every permanent a player controls, which is NOT the same as the battlefield
@@ -20,6 +21,173 @@ export function permanentsControlledBy(state: GameState, playerId: PlayerId): Ca
     }
   }
   return controlled;
+}
+
+/**
+ * Convoke (CR 702.51), improvise (702.126) and delve (702.66): part of a
+ * spell's cost may be paid with something other than mana — tapping creatures,
+ * tapping artifacts, or exiling cards from your own graveyard.
+ *
+ * The cost is reduced only as far as it takes to make it payable from the mana
+ * actually available, so nothing is tapped or exiled that the caster did not
+ * need. That auto-policy replaces a choice the cast action has no field for,
+ * and is a documented approximation — a caster who would rather tap a creature
+ * than spend mana cannot say so.
+ *
+ * `cost` is mutated. Returns what to tap and exile, or null when the keyword
+ * cannot close the gap (in which case `cost` is left as it was).
+ */
+export function costRelief(
+  state: GameState,
+  playerId: PlayerId,
+  definition: CardDefinition | undefined,
+  cost: ParsedManaCost,
+  available: ManaPool,
+  life: number,
+): { tapIds: CardInstanceId[]; exileIds: CardInstanceId[] } | null {
+  const convoke = definition?.convoke === true || grantedCostKeyword(state, playerId, definition, "convoke");
+  const improvise =
+    definition?.improvise === true || grantedCostKeyword(state, playerId, definition, "improvise");
+  const delve = definition?.delve === true;
+  if (!convoke && !improvise && !delve) {
+    return null;
+  }
+  const before = { ...cost, hybrid: [...cost.hybrid], phyrexian: [...cost.phyrexian] };
+  const tapIds: CardInstanceId[] = [];
+  const exileIds: CardInstanceId[] = [];
+
+  const untapped = (kind: "creature" | "artifact"): CardInstanceId[] =>
+    permanentsControlledBy(state, playerId).filter((cardId) => {
+      const card = state.cards[cardId];
+      if (!card || card.tapped || tapIds.includes(cardId)) {
+        return false;
+      }
+      // A creature that has not been under your control since your turn began
+      // may still be tapped for convoke — tapping is not a cost it pays.
+      return characteristicsOf(state, cardId).types.includes(kind);
+    });
+
+  // Coloured pips first, and only with a creature of that colour: a creature
+  // tapped for convoke pays one generic OR one mana of its own colour, so
+  // spending a matching creature on a generic pip can strand a coloured one.
+  if (convoke) {
+    for (const color of ["W", "U", "B", "R", "G"] as const) {
+      while (cost[color] > 0 && !canPayManaCost(available, cost, life)) {
+        const match = untapped("creature").find((cardId) =>
+          characteristicsOf(state, cardId).colors.includes(color),
+        );
+        if (!match) {
+          break;
+        }
+        tapIds.push(match);
+        cost[color] -= 1;
+      }
+    }
+  }
+  while (cost.generic > 0 && !canPayManaCost(available, cost, life)) {
+    const tapped = convoke
+      ? (untapped("creature")[0] ?? (improvise ? untapped("artifact")[0] : undefined))
+      : improvise
+        ? untapped("artifact")[0]
+        : undefined;
+    if (tapped) {
+      tapIds.push(tapped);
+      cost.generic -= 1;
+      continue;
+    }
+    const player = state.players.find((entry) => entry.id === playerId);
+    const card = delve
+      ? (player?.zones.graveyard ?? []).find((cardId) => !exileIds.includes(cardId))
+      : undefined;
+    if (!card) {
+      break;
+    }
+    exileIds.push(card);
+    cost.generic -= 1;
+  }
+
+  if (!canPayManaCost(available, cost, life)) {
+    Object.assign(cost, before);
+    return null;
+  }
+  return { tapIds, exileIds };
+}
+
+/**
+ * The most a cost keyword could cover, for legal-action enumeration — which
+ * works from POTENTIAL mana rather than a real pool, so it asks the optimistic
+ * question ("could this be paid?") and must not under-report. Returns a cost
+ * copy with that much removed, or null when no keyword applies.
+ */
+export function reliefAdjustedCost(
+  state: GameState,
+  playerId: PlayerId,
+  definition: CardDefinition | undefined,
+  cost: ParsedManaCost,
+): ParsedManaCost | null {
+  const convoke =
+    definition?.convoke === true || grantedCostKeyword(state, playerId, definition, "convoke");
+  const improvise =
+    definition?.improvise === true || grantedCostKeyword(state, playerId, definition, "improvise");
+  const delve = definition?.delve === true;
+  if (!convoke && !improvise && !delve) {
+    return null;
+  }
+  const untappedOf = (kind: "creature" | "artifact"): number =>
+    permanentsControlledBy(state, playerId).filter(
+      (cardId) =>
+        state.cards[cardId]?.tapped === false &&
+        characteristicsOf(state, cardId).types.includes(kind),
+    ).length;
+  let budget = 0;
+  if (convoke) {
+    budget += untappedOf("creature");
+  }
+  if (improvise) {
+    budget += untappedOf("artifact");
+  }
+  if (delve) {
+    budget += state.players.find((entry) => entry.id === playerId)?.zones.graveyard.length ?? 0;
+  }
+  const relieved: ParsedManaCost = {
+    ...cost,
+    hybrid: [...cost.hybrid],
+    phyrexian: [...cost.phyrexian],
+  };
+  // Convoke can cover coloured pips; improvise and delve cannot.
+  if (convoke) {
+    for (const color of ["W", "U", "B", "R", "G"] as const) {
+      const paid = Math.min(relieved[color], budget);
+      relieved[color] -= paid;
+      budget -= paid;
+    }
+  }
+  const generic = Math.min(relieved.generic, budget);
+  relieved.generic -= generic;
+  return relieved;
+}
+
+/** Inspiring Statuary / Dazzling Theater: the keyword granted from elsewhere. */
+function grantedCostKeyword(
+  state: GameState,
+  playerId: PlayerId,
+  definition: CardDefinition | undefined,
+  keyword: "convoke" | "improvise",
+): boolean {
+  if (!definition) {
+    return false;
+  }
+  return permanentsControlledBy(state, playerId).some((cardId) => {
+    const grant = state.definitions[state.cards[cardId]?.definitionId ?? ""]?.grantsCostKeyword;
+    if (!grant || grant.keyword !== keyword || abilitiesRemoved(state, cardId)) {
+      return false;
+    }
+    const types = definition.characteristics.types;
+    if (grant.types && !grant.types.some((type) => types.includes(type))) {
+      return false;
+    }
+    return !grant.nonTypes?.some((type) => types.includes(type));
+  });
 }
 
 /**

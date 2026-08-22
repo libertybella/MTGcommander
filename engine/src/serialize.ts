@@ -596,6 +596,31 @@ export function parseGameState(json: string): GameState {
       ...(def.changeling === true ? { changeling: true } : {}),
       ...(def.storm === true ? { storm: true } : {}),
       ...(def.doesntUntap === true ? { doesntUntap: true } : {}),
+      ...(def.convoke === true ? { convoke: true } : {}),
+      ...(def.improvise === true ? { improvise: true } : {}),
+      ...(def.delve === true ? { delve: true } : {}),
+      ...(isRecord(def.grantsCostKeyword)
+        ? {
+            grantsCostKeyword: {
+              keyword:
+                expectString(def.grantsCostKeyword.keyword, "grantsCostKeyword.keyword") ===
+                "improvise"
+                  ? ("improvise" as const)
+                  : ("convoke" as const),
+              ...(def.grantsCostKeyword.types === undefined
+                ? {}
+                : { types: parseStringList(def.grantsCostKeyword.types, "grantsCostKeyword.types") }),
+              ...(def.grantsCostKeyword.nonTypes === undefined
+                ? {}
+                : {
+                    nonTypes: parseStringList(
+                      def.grantsCostKeyword.nonTypes,
+                      "grantsCostKeyword.nonTypes",
+                    ),
+                  }),
+            },
+          }
+        : {}),
       ...(def.grantsFlash === true ? { grantsFlash: true } : {}),
       ...(isRecord(def.grantsFlashFor)
         ? {

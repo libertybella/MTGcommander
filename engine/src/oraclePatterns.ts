@@ -74,6 +74,10 @@ export type CompiledOracleText = {
   changeling?: boolean;
   storm?: boolean;
   doesntUntap?: boolean;
+  convoke?: boolean;
+  improvise?: boolean;
+  delve?: boolean;
+  grantsCostKeyword?: { keyword: "convoke" | "improvise"; types?: string[]; nonTypes?: string[] };
   grantsFlash?: boolean;
   grantsFlashFor?: { types?: string[]; subtypesAny?: string[] };
   castFreeFromHand?: CardDefinition["castFreeFromHand"];
@@ -9816,6 +9820,31 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
           },
         ],
       });
+      continue;
+    }
+
+    // Convoke / improvise / delve: a bare keyword line, and the granted forms
+    // ("Creature spells you cast have convoke").
+    const costKeyword = sentence.match(/^(Convoke|Improvise|Delve)$/i);
+    if (costKeyword?.[1]) {
+      const keyword = costKeyword[1].toLowerCase() as "convoke" | "improvise" | "delve";
+      result[keyword] = true;
+      continue;
+    }
+    const grantedCost = sentence.match(
+      /^(Creature|Artifact|Nonartifact|Noncreature|Enchantment)? ?spells you cast have (convoke|improvise)$/i,
+    );
+    if (grantedCost?.[2]) {
+      const scope = grantedCost[1]?.toLowerCase();
+      const type = scope?.replace(/^non/, "");
+      result.grantsCostKeyword = {
+        keyword: grantedCost[2].toLowerCase() as "convoke" | "improvise",
+        ...(type === undefined
+          ? {}
+          : scope!.startsWith("non")
+            ? { nonTypes: [type] }
+            : { types: [type] }),
+      };
       continue;
     }
 
