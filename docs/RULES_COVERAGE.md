@@ -195,6 +195,8 @@ What the engine implements and what it intentionally does not. Tests are tagged 
 
 - **"For each …" as one count table**: `DYNAMIC_COUNTS` names what a clause counts — permanents by type, cards in a zone, creature cards in the graveyard, colours among your permanents, colourless creatures, creatures carrying a counter, and Auras or Equipment attached to the source itself. Star P/T, self-scaling buffs, and count-scaled draws and lifegain all read it, so a new count is a row rather than a branch. Every row admits both wordings, since printed text uses the singular after "for each" and the plural after "the number of". Attachment counts take the source's id; everything else counts the controller's board or zones.
 
+- **Until-end-of-turn effects carry an X.** "+X/+X until end of turn" was previously a documented drop, since those effects held only fixed numbers. They now read the announced X on the spell that made them, or a printed "where X is …" tail — the greatest power among your creatures (Overwhelming Stampede) or how many you control (Moonshaker Cavalry, whose tail is printed *after* the duration and is moved back before the clause splits). Team pumps also take a creature-type filter, through the shared subtype matcher so a changeling qualifies. Documented narrowing: "All Zombies gain menace" (Lord of the Accursed) reaches only the controller's, because a team effect addresses a player.
+
 ## The card pipeline (Stage 6)
 
 - Real cards compile from Scryfall oracle text by shared sentence patterns; a hand-authored registry (`server/src/cardOverrides.ts`, data in the same schema) beats the compiler for the long tail. Never a named-card code path.

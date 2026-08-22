@@ -836,11 +836,17 @@ export function bindCardEffect(
         return null;
       }
       // "Double target creature's power": +P/+0 where P reads at bind.
+      // Tyvar's Stand: "+X/+X" reads the announced X, which is why until-EOT
+      // effects now carry it rather than compiling to nothing.
+      const announced = Math.max(0, context.xValue ?? 0);
       const power =
         effect.power === "target_power"
           ? Math.max(0, creaturePower(state, cardId))
-          : effect.power;
-      return { kind: "pt_until_eot", cardId, power, toughness: effect.toughness };
+          : effect.power === "x"
+            ? announced
+            : effect.power;
+      const toughness = effect.toughness === "x" ? announced : effect.toughness;
+      return { kind: "pt_until_eot", cardId, power, toughness };
     }
     case "keyword_until_eot": {
       const cardId = bindCardId(state, effect.cardId, context);
@@ -864,11 +870,29 @@ export function bindCardEffect(
                 isCreature(state, card.id),
             ).length
           : 0;
+      // Overwhelming Stampede: the largest power on the controller's board.
+      const greatest = Object.values(state.cards)
+        .filter(
+          (card) =>
+            card.zone === "battlefield" &&
+            card.controllerId === context.controllerId &&
+            isCreature(state, card.id),
+        )
+        .reduce((best, card) => Math.max(best, creaturePower(state, card.id)), 0);
+      const teamAmount = (value: number | "creature_count" | "greatest_power" | "x"): number =>
+        value === "creature_count"
+          ? teamCount
+          : value === "greatest_power"
+            ? greatest
+            : value === "x"
+              ? Math.max(0, context.xValue ?? 0)
+              : value;
       return {
         kind: "team_pt_until_eot",
         playerId,
-        power: effect.power === "creature_count" ? teamCount : effect.power,
-        toughness: effect.toughness === "creature_count" ? teamCount : effect.toughness,
+        power: teamAmount(effect.power),
+        toughness: teamAmount(effect.toughness),
+        ...(effect.subtypes ? { subtypes: [...effect.subtypes] } : {}),
         ...(effect.nonSubtypes ? { nonSubtypes: [...effect.nonSubtypes] } : {}),
         ...(effect.minPower !== undefined ? { minPower: effect.minPower } : {}),
       };
@@ -883,6 +907,7 @@ export function bindCardEffect(
         playerId,
         keyword: effect.keyword,
         ...(effect.scope ? { scope: effect.scope } : {}),
+        ...(effect.subtypes ? { subtypes: [...effect.subtypes] } : {}),
         ...(effect.nonSubtypes ? { nonSubtypes: [...effect.nonSubtypes] } : {}),
         ...(effect.minPower !== undefined ? { minPower: effect.minPower } : {}),
       };
@@ -2375,7 +2400,7 @@ function applyKeywordUntilEot(
 function teamMembers(
   state: GameState,
   playerId: PlayerId,
-  options: { scope?: "permanents"; nonSubtypes?: string[]; minPower?: number },
+  options: { scope?: "permanents"; subtypes?: string[]; nonSubtypes?: string[]; minPower?: number },
 ): CardInstanceId[] {
   return Object.values(state.cards)
     .filter(
@@ -2383,6 +2408,11 @@ function teamMembers(
         card.zone === "battlefield" &&
         card.controllerId === playerId &&
         (options.scope === "permanents" || isCreature(state, card.id)) &&
+        // Lathliss: "Dragons you control" — through the shared matcher, so a
+        // changeling counts.
+        (options.subtypes ?? []).every((subtype) =>
+          cardMatchesSubtype(state, card.id, subtype),
+        ) &&
         !(options.nonSubtypes ?? []).some((subtype) =>
           cardMatchesSubtype(state, card.id, subtype),
         ) &&
@@ -2399,10 +2429,11 @@ function applyTeamPtUntilEot(
   toughness: number,
   nonSubtypes?: string[],
   minPower?: number,
+  subtypes?: string[],
 ): GameState {
   requirePlayer(state, playerId);
   // CR 611.2c: the affected set locks in when the effect is created.
-  const team = teamMembers(state, playerId, { nonSubtypes, minPower });
+  const team = teamMembers(state, playerId, { nonSubtypes, minPower, subtypes });
   if (team.length === 0) {
     return state;
   }
@@ -2413,7 +2444,7 @@ function applyTeamKeywordUntilEot(
   state: GameState,
   playerId: PlayerId,
   keyword: Keyword,
-  options: { scope?: "permanents"; nonSubtypes?: string[]; minPower?: number } = {},
+  options: { scope?: "permanents"; subtypes?: string[]; nonSubtypes?: string[]; minPower?: number } = {},
 ): GameState {
   requirePlayer(state, playerId);
   // CR 611.2c: the affected set locks in when the effect is created.
@@ -3562,11 +3593,13 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
           effect.toughness,
           effect.nonSubtypes,
           effect.minPower,
+          effect.subtypes,
         );
         break;
       case "team_keyword_until_eot":
         next = applyTeamKeywordUntilEot(state, effect.playerId, effect.keyword, {
           scope: effect.scope,
+          subtypes: effect.subtypes,
           nonSubtypes: effect.nonSubtypes,
           minPower: effect.minPower,
         });

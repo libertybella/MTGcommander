@@ -21950,3 +21950,158 @@ describe("wave 180: for each — one count table", () => {
   });
 });
 
+
+describe("wave 181: until-end-of-turn effects that carry an X", () => {
+  const compile = (name: string, manaCost: string, typeLine: string, oracleText: string, power?: string, toughness?: string) =>
+    compileOracleCard({
+      oracleId: name,
+      name,
+      manaCost,
+      typeLine,
+      power: power ?? null,
+      toughness: toughness ?? null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  const put = (game: GameState, owner: PlayerState, definitionId: string) => {
+    const card = createCardInstance({ definitionId, ownerId: owner.id, zone: "battlefield" });
+    card.summoningSick = false;
+    game.cards[card.id] = card;
+    owner.zones.battlefield.push(card.id);
+    return card;
+  };
+
+  it("threads the announced X into a single-creature pump", () => {
+    const stand = compile(
+      "Tyvar's Stand",
+      "{X}{G}",
+      "Instant",
+      "Target creature you control gets +X/+X and gains hexproof and indestructible until end of turn.",
+    );
+    expect(stand.notes).toEqual([]);
+    expect(stand.definition.effects[0]).toEqual({
+      kind: "pt_until_eot",
+      cardId: { type: "chosen", index: 0 },
+      power: "x",
+      toughness: "x",
+    });
+
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const bearDef = createCardDefinition({
+      name: "Bear",
+      typeLine: "Creature — Bear",
+      power: 2,
+      toughness: 2,
+    });
+    game.definitions[bearDef.id] = bearDef;
+    const bear = put(game, p1, bearDef.id);
+
+    const next = applyEffects(
+      game,
+      bindCardEffects(game, stand.definition.effects, {
+        controllerId: p1.id,
+        sourceId: null,
+        xValue: 3,
+        targets: [{ type: "creature", cardId: bear.id }],
+        targetRequirements: stand.definition.targetRequirements,
+      }),
+    );
+    expect(computedCard(next, bear.id)?.power).toBe(5);
+    expect(hasKeyword(next, bear.id, "indestructible")).toBe(true);
+  });
+
+  it("reads a where-clause off the board instead", () => {
+    const stampede = compile(
+      "Overwhelming Stampede",
+      "{3}{G}{G}",
+      "Sorcery",
+      "Until end of turn, creatures you control gain trample and get +X/+X, where X is the greatest power among creatures you control.",
+    );
+    expect(stampede.notes).toEqual([]);
+    expect(stampede.definition.effects[1]).toMatchObject({
+      kind: "team_pt_until_eot",
+      power: "greatest_power",
+      toughness: "greatest_power",
+    });
+
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const bearDef = createCardDefinition({
+      name: "Bear",
+      typeLine: "Creature — Bear",
+      power: 2,
+      toughness: 2,
+    });
+    const giantDef = createCardDefinition({
+      name: "Giant",
+      typeLine: "Creature — Giant",
+      power: 5,
+      toughness: 5,
+    });
+    game.definitions[bearDef.id] = bearDef;
+    game.definitions[giantDef.id] = giantDef;
+    const bear = put(game, p1, bearDef.id);
+    put(game, p1, giantDef.id);
+
+    const next = applyEffects(
+      game,
+      bindCardEffects(game, stampede.definition.effects, {
+        controllerId: p1.id,
+        sourceId: null,
+      }),
+    );
+    // The Giant sets the bar at five for the whole team.
+    expect(computedCard(next, bear.id)?.power).toBe(7);
+    expect(hasKeyword(next, bear.id, "trample")).toBe(true);
+  });
+
+  it("narrows a team pump to a creature type", () => {
+    const lathliss = compile(
+      "Lathliss, Dragon Queen",
+      "{4}{R}{R}",
+      "Legendary Creature — Dragon",
+      "{1}{R}: Dragons you control get +1/+0 until end of turn.",
+      "4",
+      "4",
+    );
+    expect(lathliss.notes).toEqual([]);
+    expect(lathliss.definition.activated[0]?.effects[0]).toMatchObject({
+      kind: "team_pt_until_eot",
+      subtypes: ["dragon"],
+    });
+
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const dragonDef = createCardDefinition({
+      name: "Dragon",
+      typeLine: "Creature — Dragon",
+      power: 4,
+      toughness: 4,
+    });
+    const bearDef = createCardDefinition({
+      name: "Bear",
+      typeLine: "Creature — Bear",
+      power: 2,
+      toughness: 2,
+    });
+    game.definitions[dragonDef.id] = dragonDef;
+    game.definitions[bearDef.id] = bearDef;
+    const dragon = put(game, p1, dragonDef.id);
+    const bear = put(game, p1, bearDef.id);
+
+    const next = applyEffects(
+      game,
+      bindCardEffects(game, lathliss.definition.activated[0]!.effects, {
+        controllerId: p1.id,
+        sourceId: null,
+      }),
+    );
+    expect(computedCard(next, dragon.id)?.power).toBe(5);
+    // The Bear is a creature you control, but it is not a Dragon.
+    expect(computedCard(next, bear.id)?.power).toBe(2);
+  });
+});
+

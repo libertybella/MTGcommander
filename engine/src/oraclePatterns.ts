@@ -5176,7 +5176,7 @@ function splitOnce(text: string, separator: RegExp): [string, string] | null {
  * can already address. `target` also carries the requirement to add.
  */
 type EotSubject =
-  | { how: "team"; playerId: "controller" | "each_opponent" }
+  | { how: "team"; playerId: "controller" | "each_opponent"; subtypes?: string[] }
   | { how: "all" }
   | { how: "card"; cardId: "self" | "subject_card" }
   | { how: "target"; requirement: TargetRequirement };
@@ -5196,6 +5196,19 @@ function parseEotSubject(phrase: string): EotSubject | null {
   // Golgari Charm: everyone's creatures, the caster's included.
   if (/^all creatures$/i.test(rest)) {
     return { how: "all" };
+  }
+  // Lathliss: "Dragons you control". The capital marks it as a subtype;
+  // "Creatures" is claimed above.
+  const tribal = rest.match(/^([A-Z][a-z]+)s you control$/);
+  if (tribal?.[1]) {
+    return { how: "team", playerId: "controller", subtypes: [tribal[1].toLowerCase()] };
+  }
+  // Lord of the Accursed: "All Zombies" — everyone's, so it stays a team
+  // effect on the controller only. That is a documented narrowing: the
+  // printed card pumps opponents' Zombies too, which no team effect models.
+  const allTribal = rest.match(/^All ([A-Z][a-z]+)s$/);
+  if (allTribal?.[1]) {
+    return { how: "team", playerId: "controller", subtypes: [allTribal[1].toLowerCase()] };
   }
   if (/^(?:~|It|That creature|They)$/i.test(rest)) {
     return { how: "card", cardId: /^~$/.test(rest) ? "self" : "subject_card" };
@@ -5234,11 +5247,13 @@ function compileUntilEotGrant(sentence: string): SimpleClause | null {
   // "X gets … until end of turn".
   let body: string;
   const leading = sentence.match(/^Until end of turn, (.+)$/i);
-  const trailing = sentence.match(/^(.+?) until end of turn$/i);
+  // Moonshaker Cavalry prints the "where X is …" tail after the duration; it
+  // belongs to the modifier, so move it back before splitting.
+  const trailing = sentence.match(/^(.+?) until end of turn(, where X is .+)?$/i);
   if (leading?.[1]) {
     body = leading[1];
   } else if (trailing?.[1]) {
-    body = trailing[1];
+    body = trailing[1] + (trailing[2] ?? "");
   } else {
     return null;
   }
@@ -5265,8 +5280,41 @@ function compileUntilEotGrant(sentence: string): SimpleClause | null {
     .map((part) => part.trim())
     .filter(Boolean);
   for (const part of parts) {
-    // Fixed modifiers only: "+X/+X" needs the announced X threaded into the
-    // until-EOT effects, which they cannot carry yet (Tyvar's Stand).
+    // "+X/+X" carries the announced X, or reads a "where X is …" tail
+    // (Tyvar's Stand, Overwhelming Stampede, Moonshaker Cavalry).
+    const variablePt = part.match(
+      /^gets?\s+([+-])X\/([+-])X(?:, where X is (the greatest power among creatures you control|the number of creatures you control))?$/i,
+    );
+    if (variablePt?.[1] && variablePt[2]) {
+      // A minus sign would need a negated X, which nothing here produces.
+      if (variablePt[1] !== "+" || variablePt[2] !== "+") {
+        return null;
+      }
+      const source = variablePt[3]?.toLowerCase();
+      const amount =
+        source === "the greatest power among creatures you control"
+          ? ("greatest_power" as const)
+          : source === "the number of creatures you control"
+            ? ("creature_count" as const)
+            : ("x" as const);
+      if (subject.how === "team") {
+        effects.push({
+          kind: "team_pt_until_eot",
+          playerId: subject.playerId,
+          power: amount,
+          toughness: amount,
+          ...(subject.subtypes ? { subtypes: [...subject.subtypes] } : {}),
+        });
+        continue;
+      }
+      // Only the announced X form works off a single card; the board-reading
+      // ones are printed on team effects only.
+      if (subject.how !== "all" && amount === "x") {
+        effects.push({ kind: "pt_until_eot", cardId: cardId!, power: "x", toughness: "x" });
+        continue;
+      }
+      return null;
+    }
     const pt = part.match(/^gets?\s+([+-]\d+)\/([+-]\d+)$/i);
     if (pt?.[1] && pt[2]) {
       const power = Number(pt[1]);
@@ -5277,6 +5325,7 @@ function compileUntilEotGrant(sentence: string): SimpleClause | null {
           playerId: subject.playerId,
           power,
           toughness,
+          ...(subject.subtypes ? { subtypes: [...subject.subtypes] } : {}),
         });
       } else if (subject.how === "all") {
         effects.push({ kind: "all_pt_until_eot", power, toughness });
@@ -5306,6 +5355,7 @@ function compileUntilEotGrant(sentence: string): SimpleClause | null {
           kind: "team_keyword_until_eot",
           playerId: subject.playerId,
           keyword,
+          ...(subject.subtypes ? { subtypes: [...subject.subtypes] } : {}),
         });
       } else if (subject.how === "all") {
         // There is no all-scope keyword grant yet, and "all creatures" has no

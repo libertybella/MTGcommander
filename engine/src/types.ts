@@ -881,6 +881,8 @@ export type GameEffect =
       playerId: PlayerId;
       power: number;
       toughness: number;
+      /** Lathliss: "Dragons you control get +1/+0". */
+      subtypes?: string[];
       nonSubtypes?: string[];
       /** Goreclaw: only creatures with computed power at least this. */
       minPower?: number;
@@ -890,6 +892,8 @@ export type GameEffect =
       playerId: PlayerId;
       keyword: Keyword;
       scope?: "permanents";
+      /** Lord of the Accursed: "All Zombies gain menace". */
+      subtypes?: string[];
       nonSubtypes?: string[];
       /** Goreclaw: only creatures with computed power at least this. */
       minPower?: number;
@@ -1546,16 +1550,21 @@ export type CardEffect =
   | {
       kind: "pt_until_eot";
       cardId: CardIdSelector;
-      power: number | "target_power";
-      toughness: number;
+      /** "x": the announced X on the spell that made this (Tyvar's Stand). */
+      power: number | "target_power" | "x";
+      toughness: number | "x";
     }
   | { kind: "keyword_until_eot"; cardId: CardIdSelector; keyword: Keyword }
   | {
       kind: "team_pt_until_eot";
       playerId: PlayerSelector;
-      /** creature_count: X = the controller's creatures at bind (Craterhoof). */
-      power: number | "creature_count";
-      toughness: number | "creature_count";
+      /** creature_count: X = the controller's creatures at bind (Craterhoof).
+       * greatest_power: the largest power among them (Overwhelming Stampede).
+       * x: the announced X on the spell that made this. */
+      power: number | "creature_count" | "greatest_power" | "x";
+      toughness: number | "creature_count" | "greatest_power" | "x";
+      /** Lathliss: "Dragons you control get +1/+0". */
+      subtypes?: string[];
       /** "Non-Human creatures you control" (Return of the Wildspeaker). */
       nonSubtypes?: string[];
       /** Goreclaw: only creatures with computed power at least this. */
@@ -1567,6 +1576,8 @@ export type CardEffect =
       keyword: Keyword;
       /** "Permanents you control gain …" (Boros Charm). */
       scope?: "permanents";
+      /** Lord of the Accursed: "All Zombies gain menace". */
+      subtypes?: string[];
       nonSubtypes?: string[];
       /** Goreclaw: only creatures with computed power at least this. */
       minPower?: number;
