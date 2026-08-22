@@ -18333,3 +18333,140 @@ describe("wave 152: conditions, graveyards, and wider targets", () => {
   });
 });
 
+
+describe("wave 153: subtype sweeps and batched arrivals", () => {
+  const compile = (name: string, manaCost: string, typeLine: string, oracleText: string, power?: string, toughness?: string) =>
+    compileOracleCard({
+      oracleId: name,
+      name,
+      manaCost,
+      typeLine,
+      power: power ?? null,
+      toughness: toughness ?? null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  it("compiles both halves of a subtype sweep", () => {
+    const crux = compile(
+      "Crux of Fate",
+      "{3}{B}{B}",
+      "Sorcery",
+      "Choose one —\n• Destroy all Dragon creatures.\n• Destroy all non-Dragon creatures.",
+    );
+    expect(crux.notes).toEqual([]);
+    expect(crux.definition.modes?.[0]?.effects[0]).toEqual({
+      kind: "destroy_all",
+      what: "creatures",
+      onlySubtype: "dragon",
+    });
+    expect(crux.definition.modes?.[1]?.effects[0]).toEqual({
+      kind: "destroy_all",
+      what: "creatures",
+      exceptSubtype: "dragon",
+    });
+  });
+
+  it("sweeps only the named subtype, then only the rest", () => {
+    const build = () => {
+      const { game, p1, p2 } = twoPlayers();
+      fillLibraries(game, 20);
+      const dragonDef = createCardDefinition({
+        name: "Dragon",
+        typeLine: "Creature — Dragon",
+        power: 4,
+        toughness: 4,
+      });
+      const bearDef = createCardDefinition({
+        name: "Bear",
+        typeLine: "Creature — Bear",
+        power: 2,
+        toughness: 2,
+      });
+      game.definitions[dragonDef.id] = dragonDef;
+      game.definitions[bearDef.id] = bearDef;
+      const dragon = createCardInstance({ definitionId: dragonDef.id, ownerId: p1.id, zone: "battlefield" });
+      const bear = createCardInstance({ definitionId: bearDef.id, ownerId: p2.id, zone: "battlefield" });
+      game.cards[dragon.id] = dragon;
+      game.cards[bear.id] = bear;
+      p1.zones.battlefield.push(dragon.id);
+      p2.zones.battlefield.push(bear.id);
+      return { game, p1, dragon, bear };
+    };
+
+    // Mode one kills the Dragon and spares the Bear.
+    const first = build();
+    let next = applyEffects(
+      first.game,
+      bindCardEffects(
+        first.game,
+        [{ kind: "destroy_all", what: "creatures", onlySubtype: "dragon" }],
+        { controllerId: first.p1.id, sourceId: null, targets: [], targetRequirements: [] },
+      ),
+    );
+    expect(next.cards[first.dragon.id]?.zone).toBe("graveyard");
+    expect(next.cards[first.bear.id]?.zone).toBe("battlefield");
+
+    // Mode two does the opposite.
+    const second = build();
+    next = applyEffects(
+      second.game,
+      bindCardEffects(
+        second.game,
+        [{ kind: "destroy_all", what: "creatures", exceptSubtype: "dragon" }],
+        { controllerId: second.p1.id, sourceId: null, targets: [], targetRequirements: [] },
+      ),
+    );
+    expect(next.cards[second.dragon.id]?.zone).toBe("battlefield");
+    expect(next.cards[second.bear.id]?.zone).toBe("graveyard");
+  });
+
+  it("reads a batched arrival as one trigger for the whole batch", () => {
+    const artillerist = compile(
+      "Batch Watcher",
+      "{2}{R}",
+      "Creature — Human Artificer",
+      "Whenever one or more artifacts you control enter, draw a card.",
+      "2",
+      "2",
+    );
+    expect(artillerist.notes).toEqual([]);
+    expect(artillerist.definition.triggers[0]).toMatchObject({
+      event: "enter_battlefield",
+      watch: "controlled",
+      oncePerBatch: true,
+      subjectFilter: { types: ["artifact"] },
+    });
+
+    // The plural death form too, with its nontoken qualifier.
+    const deaths = compile(
+      "Batch Mourner",
+      "{2}{B}",
+      "Creature — Zombie",
+      "Whenever one or more nontoken creatures you control die, draw a card.",
+      "2",
+      "2",
+    );
+    expect(deaths.notes).toEqual([]);
+    expect(deaths.definition.triggers[0]).toMatchObject({
+      event: "dies",
+      oncePerBatch: true,
+      subjectFilter: { nonToken: true, types: ["creature"] },
+    });
+  });
+
+  it("pumps everyone's creatures with an all-scope until-eot clause", () => {
+    const charm = compile(
+      "All-Creature Shrink",
+      "{B}{G}",
+      "Instant",
+      "All creatures get -1/-1 until end of turn.",
+    );
+    expect(charm.notes).toEqual([]);
+    expect(charm.definition.effects).toEqual([
+      { kind: "all_pt_until_eot", power: -1, toughness: -1 },
+    ]);
+  });
+});
+

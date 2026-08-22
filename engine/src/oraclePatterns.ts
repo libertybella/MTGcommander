@@ -657,6 +657,22 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     };
   }
 
+  // Crux of Fate: "Destroy all Dragon creatures" / "all non-Dragon creatures".
+  const tribalWipe = sentence.match(/^Destroy all (non-)?([A-Z][a-z-]+) creatures$/);
+  if (tribalWipe?.[2]) {
+    const subtype = singularSubtype(`${tribalWipe[2]}s`);
+    return {
+      targetRequirements: [],
+      effects: [
+        {
+          kind: "destroy_all",
+          what: "creatures",
+          ...(tribalWipe[1] ? { exceptSubtype: subtype } : { onlySubtype: subtype }),
+        },
+      ],
+    };
+  }
+
   const loseLife = sentence.match(/^You lose (\d+) life$/i);
   if (loseLife?.[1]) {
     return {
@@ -4238,6 +4254,7 @@ function splitOnce(text: string, separator: RegExp): [string, string] | null {
  */
 type EotSubject =
   | { how: "team"; playerId: "controller" | "each_opponent" }
+  | { how: "all" }
   | { how: "card"; cardId: "self" | "subject_card" }
   | { how: "target"; requirement: TargetRequirement };
 
@@ -4252,6 +4269,10 @@ function parseEotSubject(phrase: string): EotSubject | null {
   }
   if (/^creatures your opponents control$/i.test(rest)) {
     return { how: "team", playerId: "each_opponent" };
+  }
+  // Golgari Charm: everyone's creatures, the caster's included.
+  if (/^all creatures$/i.test(rest)) {
+    return { how: "all" };
   }
   if (/^(?:~|It|That creature|They)$/i.test(rest)) {
     return { how: "card", cardId: /^~$/.test(rest) ? "self" : "subject_card" };
@@ -4334,6 +4355,8 @@ function compileUntilEotGrant(sentence: string): SimpleClause | null {
           power,
           toughness,
         });
+      } else if (subject.how === "all") {
+        effects.push({ kind: "all_pt_until_eot", power, toughness });
       } else {
         effects.push({ kind: "pt_until_eot", cardId: cardId!, power, toughness });
       }
@@ -4361,6 +4384,10 @@ function compileUntilEotGrant(sentence: string): SimpleClause | null {
           playerId: subject.playerId,
           keyword,
         });
+      } else if (subject.how === "all") {
+        // There is no all-scope keyword grant yet, and "all creatures" has no
+        // single card to hang one on — refuse rather than address nobody.
+        return null;
       } else {
         effects.push({ kind: "keyword_until_eot", cardId: cardId!, keyword });
       }
@@ -5428,16 +5455,20 @@ function parseTriggerHead(head: string): TriggerHead | null {
  */
 function parseGenericSubjectHead(text: string): TriggerHead | null {
   const match = text.match(
-    /^Whenever (~ or another |another |an? )(.+?) (enters|dies|is put into a graveyard from the battlefield)$/i,
+    /^Whenever (~ or another |another |one or more |an? )(.+?) (enters|enter|dies|die|is put into a graveyard from the battlefield)$/i,
   );
   if (!match?.[1] || !match[2] || !match[3]) {
     return null;
   }
   const lead = match[1].toLowerCase();
   const verb = match[3].toLowerCase();
+  // "Whenever one or more … enter" fires once for the whole simultaneous
+  // batch, not once per permanent.
+  const batched = lead.startsWith("one or more");
   // A permanent going battlefield → graveyard *is* the dies event, whatever
   // its card type; the long phrasing is just older templating.
-  const event = verb === "enters" ? ("enter_battlefield" as const) : ("dies" as const);
+  const event =
+    verb === "enters" || verb === "enter" ? ("enter_battlefield" as const) : ("dies" as const);
 
   let rest = match[2].trim();
   const filter: NonNullable<CardTrigger["subjectFilter"]> = {};
@@ -5451,7 +5482,9 @@ function parseGenericSubjectHead(text: string): TriggerHead | null {
     filter.nonToken = true;
     rest = rest.replace(/^nontoken\s+/i, "");
   }
-  const head = rest.trim();
+  // A batched head is plural ("one or more artifacts"); the rest of the
+  // grammar reads singular nouns.
+  const head = (batched ? rest.trim().replace(/s$/i, "") : rest.trim());
   // "creature or planeswalker" / "artifact or creature": any listed type.
   const eitherType = head.match(/^([a-z]+) or ([a-z]+)$/i);
   if (/^permanents?$/i.test(head)) {
@@ -5476,6 +5509,7 @@ function parseGenericSubjectHead(text: string): TriggerHead | null {
     watch,
     // "another …" excludes the source; "~ or another …" deliberately does not.
     ...(lead.startsWith("another") ? { excludeSelf: true } : {}),
+    ...(batched ? { oncePerBatch: true } : {}),
     ...(Object.keys(filter).length > 0 ? { subjectFilter: filter } : {}),
   };
 }

@@ -2709,6 +2709,12 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
           ? {}
           : { minPower: expectNumber(value.minPower, `${label}.minPower`) }),
         ...(value.exceptChosenType === true ? { exceptChosenType: true } : {}),
+        ...(value.exceptSubtype === undefined
+          ? {}
+          : { exceptSubtype: expectString(value.exceptSubtype, `${label}.exceptSubtype`) }),
+        ...(value.onlySubtype === undefined
+          ? {}
+          : { onlySubtype: expectString(value.onlySubtype, `${label}.onlySubtype`) }),
         ...(value.addManaPerDestroyedOptions === undefined
           ? {}
           : {
@@ -4018,6 +4024,9 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
       ...(value.exceptSubtype === undefined
         ? {}
         : { exceptSubtype: expectString(value.exceptSubtype, `${label}.exceptSubtype`) }),
+      ...(value.onlySubtype === undefined
+        ? {}
+        : { onlySubtype: expectString(value.onlySubtype, `${label}.onlySubtype`) }),
       ...(value.addManaPerDestroyed === undefined
         ? {}
         : { addManaPerDestroyed: parseManaColor(value.addManaPerDestroyed, `${label}.addManaPerDestroyed`) }),

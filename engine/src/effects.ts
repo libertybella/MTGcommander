@@ -1080,7 +1080,12 @@ export function bindCardEffect(
         ...(effect.maxManaValue !== undefined ? { maxManaValue: effect.maxManaValue } : {}),
         ...(effect.minManaValue !== undefined ? { minManaValue: effect.minManaValue } : {}),
         ...(effect.minPower !== undefined ? { minPower: effect.minPower } : {}),
-        ...(spared ? { exceptSubtype: spared } : {}),
+        // A printed "non-Dragon" spares that subtype; Kindred Dominance's
+        // auto-chosen type takes precedence when both are somehow present.
+        ...(spared ?? effect.exceptSubtype
+          ? { exceptSubtype: spared ?? effect.exceptSubtype }
+          : {}),
+        ...(effect.onlySubtype ? { onlySubtype: effect.onlySubtype } : {}),
         ...(manaColor ? { addManaPerDestroyed: manaColor, manaTo: context.controllerId } : {}),
       };
     }
@@ -2515,6 +2520,11 @@ function applyDestroyAll(
     })
     .filter(
       (card) => !effect.exceptSubtype || !cardMatchesSubtype(next, card.id, effect.exceptSubtype),
+    )
+    // Crux of Fate's first mode: the sweep is narrowed TO a subtype rather
+    // than sparing one.
+    .filter(
+      (card) => !effect.onlySubtype || cardMatchesSubtype(next, card.id, effect.onlySubtype),
     )
     .filter(
       (card) => effect.minPower === undefined || creaturePower(next, card.id) >= effect.minPower,

@@ -902,6 +902,8 @@ export type GameEffect =
       minPower?: number;
       /** Kindred Dominance: spare permanents of this subtype. */
       exceptSubtype?: string;
+      /** Crux of Fate: destroy ONLY permanents of this subtype. */
+      onlySubtype?: string;
       /** Culling Ritual: this player gets one mana of this color per
        * permanent destroyed by the sweep. */
       addManaPerDestroyed?: ManaColor;
@@ -1509,6 +1511,11 @@ export type CardEffect =
       /** Kindred Dominance: the auto-chosen type (most common among the
        * caster's creatures, bound at resolution) is spared. */
       exceptChosenType?: boolean;
+      /** Crux of Fate: a named subtype is spared ("all non-Dragon
+       * creatures") — the printed counterpart of exceptChosenType. */
+      exceptSubtype?: string;
+      /** Crux of Fate: destroy ONLY permanents of this subtype. */
+      onlySubtype?: string;
       /** Culling Ritual: the caster gets one mana per destroyed permanent —
        * the color is auto-picked at bind from these options (first
        * commander-identity match, else the first listed; documented). */
