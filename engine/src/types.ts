@@ -2253,6 +2253,18 @@ export type ActivatedAbility = {
   /** The Dominus cycle: "Sacrifice two other creatures" — how many. The
    * activation supplies one and the rest are auto-taken (documented). */
   sacrificeCount?: number;
+  /** Walking Ballista, Dragon's Hoard, Mikaeus: counters come off the source
+   * as part of the cost. */
+  removeCounterCost?: { counter: string; count: number };
+  /** Devoted Druid: a counter goes ON the source as part of the cost. */
+  addCounterCost?: { counter: string; count: number };
+  /** Fauna Shaman, Tortured Existence: "Discard a creature card". The card is
+   * auto-picked cheapest-first — a documented approximation. */
+  discardCost?: { count: number; types?: string[] };
+  /** Millikin: "Mill a card". */
+  millCost?: number;
+  /** Mines of Moria, Drivnod: "Exile three cards from your graveyard". */
+  exileFromGraveyardCost?: { count: number; types?: string[] };
   /** Spirit Guides: exiling this card (from hand) is part of the cost. */
   exileSelf?: boolean;
   /** Life paid as part of the cost (Doom Whisperer). */

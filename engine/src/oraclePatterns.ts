@@ -398,7 +398,7 @@ const SACRIFICE_COST = /Sacrifice (?:~|this land|this creature|this artifact|thi
  * "Sacrifice two other creatures". Group 1 is the count word when present.
  */
 const SACRIFICE_TYPE_COST =
-  /Sacrifice (?:an? |another |(two|three) other )(black creature|creature|artifact|land|Treasure|artifacts and\/or creatures|creatures)\b/i;
+  /Sacrifice (?:an? |another |(two|three) (?:other )?)(black creature|creature|artifact|land|Treasure|artifacts and\/or creatures|creatures|artifacts|lands)\b/i;
 /**
  * "Sacrifice a Goblin" / "Sacrifice a Desert" / "Sacrifice a Food" — the
  * fodder is named by a subtype and no card type appears, so the scope is
@@ -410,8 +410,21 @@ const SACRIFICE_TYPE_COST =
 const SACRIFICE_SUBTYPE_COST = /Sacrifice an? ([A-Z][a-z]+)\b/;
 const LIFE_COST = /Pay (\d+) life/i;
 const TAP_CREATURE_COST = /Tap an untapped creature you control/i;
+/** Walking Ballista, Dragon's Hoard, Mikaeus: counters come off as a cost. */
+const REMOVE_COUNTER_COST =
+  /Remove (a|an|one|two|three|four|five|six|seven|eight|nine|ten|\d+) ([-+]\d\/[-+]\d|[a-z]+) counters? from ~/i;
+/** Devoted Druid: a counter goes ON as a cost. */
+const ADD_COUNTER_COST =
+  /Put (a|an|one|two|three|\d+) ([-+]\d\/[-+]\d|[a-z]+) counters? on ~/i;
+/** Fauna Shaman, Tortured Existence: discarding a chosen card is the cost. */
+const DISCARD_TYPE_COST = /Discard an? (creature|artifact|enchantment|land|instant|sorcery)? ?card/i;
+/** Millikin. */
+const MILL_COST = /Mill (a|one|two|three|\d+) cards?/i;
+/** Mines of Moria, Drivnod. */
+const EXILE_GRAVEYARD_COST =
+  /Exile (a|one|two|three|four|five|\d+) (?:(creature|artifact|land|instant|sorcery) )?cards? from your graveyard/i;
 const COST_UNIT =
-  "(?:\\{[^}]+\\})+|Sacrifice (?:~|this land|this creature|this artifact|this permanent)|Sacrifice (?:an? |another )(?:black )?(?:creature|artifact|land|Treasure)|Sacrifice an? [A-Z][a-z]+|Sacrifice (?:two|three) other (?:creatures|artifacts and\\/or creatures)|Pay \\d+ life|Tap an untapped creature you control";
+  "(?:\\{[^}]+\\})+|Sacrifice (?:~|this land|this creature|this artifact|this permanent)|Sacrifice (?:an? |another )(?:black )?(?:creature|artifact|land|Treasure)|Sacrifice an? [A-Z][a-z]+|Sacrifice (?:two|three) (?:other )?(?:creatures|artifacts|lands|artifacts and\\/or creatures)|Pay \\d+ life|Tap an untapped creature you control|Remove (?:a|an|one|two|three|four|five|six|seven|eight|nine|ten|\\d+) (?:[-+]\\d\\/[-+]\\d|[a-z]+) counters? from ~|Put (?:a|an|one|two|three|\\d+) (?:[-+]\\d\\/[-+]\\d|[a-z]+) counters? on ~|Discard an? (?:creature|artifact|enchantment|land|instant|sorcery)? ?card|Mill (?:a|one|two|three|\\d+) cards?|Exile (?:a|one|two|three|four|five|\\d+) (?:(?:creature|artifact|land|instant|sorcery) )?cards? from your graveyard";
 
 function splitAbility(sentence: string): { costText: string; rest: string } | null {
   // "Metalcraft — {T}: …" — the ability word is flavor (Mox Opal).
@@ -425,7 +438,11 @@ function splitAbility(sentence: string): { costText: string; rest: string } | nu
   if (!match?.[1] || !match[2]) {
     return null;
   }
-  return { costText: match[1], rest: match[2].trim() };
+  // Walking Ballista: in an activated ability's body "it" is the source, so
+  // the rest of the grammar can read it as ~. (In a trigger body "it" is the
+  // watched object instead, which is why this rewrite lives here and not in
+  // normalizeOracleText.)
+  return { costText: match[1], rest: match[2].trim().replace(/^It\s+/, "~ ") };
 }
 
 function parseAbilityCost(
@@ -448,6 +465,11 @@ function parseAbilityCost(
   sacrificeSubtype?: string;
   sacrificeCount?: number;
   tapCreature?: boolean;
+  removeCounterCost?: { counter: string; count: number };
+  addCounterCost?: { counter: string; count: number };
+  discardCost?: { count: number; types?: string[] };
+  millCost?: number;
+  exileFromGraveyardCost?: { count: number; types?: string[] };
 } | null {
   const tapCreature = TAP_CREATURE_COST.test(costText);
   const sacrificeSelf = SACRIFICE_COST.test(costText);
@@ -493,8 +515,61 @@ function parseAbilityCost(
   }
   const lifeMatch = costText.match(LIFE_COST);
   const lifeCost = lifeMatch?.[1] ? Number(lifeMatch[1]) : undefined;
+
+  // Costs paid with something other than mana, life or a permanent: counters
+  // on or off the source, a card out of hand, library or graveyard. Each is
+  // read the same way — a count word and an optional filter.
+  const counterName = (word: string): string =>
+    word === "+1/+1" ? "p1p1" : word === "-1/-1" ? "m1m1" : word.toLowerCase();
+  const removeMatch = costText.match(REMOVE_COUNTER_COST);
+  const removeCount = removeMatch?.[1] ? parseCount(removeMatch[1].toLowerCase()) : undefined;
+  const removeCounterCost =
+    removeMatch?.[2] && removeCount
+      ? { counter: counterName(removeMatch[2]), count: removeCount }
+      : undefined;
+  const addMatch = costText.match(ADD_COUNTER_COST);
+  const addCount = addMatch?.[1] ? parseCount(addMatch[1].toLowerCase()) : undefined;
+  const addCounterCost =
+    addMatch?.[2] && addCount
+      ? { counter: counterName(addMatch[2]), count: addCount }
+      : undefined;
+  const discardMatch = costText.match(DISCARD_TYPE_COST);
+  const discardCost = discardMatch
+    ? { count: 1, ...(discardMatch[1] ? { types: [discardMatch[1].toLowerCase()] } : {}) }
+    : undefined;
+  const millMatch = costText.match(MILL_COST);
+  const millCost = millMatch?.[1] ? parseCount(millMatch[1].toLowerCase()) ?? undefined : undefined;
+  const exileMatch = costText.match(EXILE_GRAVEYARD_COST);
+  const exileCount = exileMatch?.[1] ? parseCount(exileMatch[1].toLowerCase()) : undefined;
+  const exileFromGraveyardCost = exileCount
+    ? { count: exileCount, ...(exileMatch?.[2] ? { types: [exileMatch[2].toLowerCase()] } : {}) }
+    : undefined;
+
   const symbols = [...costText.matchAll(/\{([^}]+)\}/g)].map((match) => match[1] ?? "");
-  if (symbols.length === 0 && !sacrificeSelf && !lifeCost && !sacrificeCost && !tapCreature) {
+  if (
+    symbols.length === 0 &&
+    !sacrificeSelf &&
+    !lifeCost &&
+    !sacrificeCost &&
+    !tapCreature &&
+    !removeCounterCost &&
+    !addCounterCost &&
+    !discardCost &&
+    millCost === undefined &&
+    !exileFromGraveyardCost
+  ) {
+    return null;
+  }
+  // Same guard as the sacrifice one above: COST_UNIT is case-insensitive and
+  // admits shapes these branches may not read, and a cost that quietly costs
+  // nothing is worse than a clean miss.
+  if (/\bRemove\b/i.test(costText) && !removeCounterCost) {
+    return null;
+  }
+  if (/\bDiscard\b/i.test(costText) && !discardCost) {
+    return null;
+  }
+  if (/\bMill\b/i.test(costText) && millCost === undefined) {
     return null;
   }
   let tap = false;
@@ -527,6 +602,11 @@ function parseAbilityCost(
     ...(sacrificeSubtype ? { sacrificeSubtype } : {}),
     ...(sacrificeCount && sacrificeCount > 1 ? { sacrificeCount } : {}),
     ...(tapCreature ? { tapCreature: true } : {}),
+    ...(removeCounterCost ? { removeCounterCost } : {}),
+    ...(addCounterCost ? { addCounterCost } : {}),
+    ...(discardCost ? { discardCost } : {}),
+    ...(millCost !== undefined ? { millCost } : {}),
+    ...(exileFromGraveyardCost ? { exileFromGraveyardCost } : {}),
   };
 }
 
@@ -7329,6 +7409,11 @@ function extractActivatedModalModes(card: OracleCard): ActivatedModalExtraction 
       ...(cost.sacrificeCost ? { sacrificeCost: cost.sacrificeCost } : {}),
       ...(cost.sacrificeSubtype ? { sacrificeSubtype: cost.sacrificeSubtype } : {}),
       ...(cost.sacrificeCount ? { sacrificeCount: cost.sacrificeCount } : {}),
+      ...(cost.removeCounterCost ? { removeCounterCost: cost.removeCounterCost } : {}),
+      ...(cost.addCounterCost ? { addCounterCost: cost.addCounterCost } : {}),
+      ...(cost.discardCost ? { discardCost: cost.discardCost } : {}),
+      ...(cost.millCost !== undefined ? { millCost: cost.millCost } : {}),
+      ...(cost.exileFromGraveyardCost ? { exileFromGraveyardCost: cost.exileFromGraveyardCost } : {}),
       ...(cost.lifeCost ? { lifeCost: cost.lifeCost } : {}),
       modes,
       effects: [],
@@ -10066,6 +10151,11 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
         ...(cost.sacrificeCost ? { sacrificeCost: cost.sacrificeCost } : {}),
         ...(cost.sacrificeSubtype ? { sacrificeSubtype: cost.sacrificeSubtype } : {}),
         ...(cost.sacrificeCount ? { sacrificeCount: cost.sacrificeCount } : {}),
+        ...(cost.removeCounterCost ? { removeCounterCost: cost.removeCounterCost } : {}),
+        ...(cost.addCounterCost ? { addCounterCost: cost.addCounterCost } : {}),
+        ...(cost.discardCost ? { discardCost: cost.discardCost } : {}),
+        ...(cost.millCost !== undefined ? { millCost: cost.millCost } : {}),
+        ...(cost.exileFromGraveyardCost ? { exileFromGraveyardCost: cost.exileFromGraveyardCost } : {}),
         ...(cost.lifeCost ? { lifeCost: cost.lifeCost } : {}),
         // Reassembling Skeleton: a self-return body activates from the yard.
         ...(/^Return (?:~|this card) from your graveyard to the battlefield/i.test(ability.rest)

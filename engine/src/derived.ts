@@ -1,6 +1,6 @@
 import { characteristicsOf, isBasic, isCommander, isCreature, isLand, isLegendary } from "./cardTypes";
 import { abilitiesRemoved, cardMatchesSubtype, computedCard, controlsGate } from "./characteristicsEngine";
-import type { AlternativeCastCost, CardInstance, CardInstanceId, EnterTappedUnless, GameState, PlayerId } from "./types";
+import type { ActivatedAbility, AlternativeCastCost, CardInstance, CardInstanceId, EnterTappedUnless, GameState, PlayerId } from "./types";
 
 /**
  * CR 616: damage-modifying replacements, applied wherever damage is actually
@@ -134,6 +134,63 @@ export function altCastPayment(
     }
   }
   return { exileIds, ...(sacrificeId ? { sacrificeId } : {}) };
+}
+
+/**
+ * The non-mana halves of an activation cost — counters off or on the source,
+ * a discard, a mill, an exile from the graveyard — or null if any of them
+ * cannot be paid. The cards are auto-picked cheapest-first, a documented
+ * approximation of a choice the activation has no field to express.
+ *
+ * Shared by the activation path and legal-action enumeration so an ability
+ * is never offered that the payment path would then refuse.
+ */
+export function activationNonManaPayment(
+  state: GameState,
+  playerId: PlayerId,
+  cardId: CardInstanceId,
+  ability: ActivatedAbility,
+): { discardIds: CardInstanceId[]; exileIds: CardInstanceId[] } | null {
+  const player = state.players.find((entry) => entry.id === playerId);
+  const source = state.cards[cardId];
+  if (!player || !source) {
+    return null;
+  }
+  if (ability.removeCounterCost) {
+    const held = source.counters[ability.removeCounterCost.counter] ?? 0;
+    if (held < ability.removeCounterCost.count) {
+      return null;
+    }
+  }
+  const byManaValue = (a: CardInstanceId, b: CardInstanceId): number =>
+    characteristicsOf(state, a).manaValue - characteristicsOf(state, b).manaValue;
+  const matchesTypes = (id: CardInstanceId, types?: string[]): boolean =>
+    (types ?? []).every((type) => characteristicsOf(state, id).types.includes(type));
+
+  const discardIds: CardInstanceId[] = [];
+  if (ability.discardCost) {
+    const candidates = player.zones.hand
+      .filter((id) => id !== cardId && matchesTypes(id, ability.discardCost!.types))
+      .sort(byManaValue);
+    if (candidates.length < ability.discardCost.count) {
+      return null;
+    }
+    discardIds.push(...candidates.slice(0, ability.discardCost.count));
+  }
+  const exileIds: CardInstanceId[] = [];
+  if (ability.exileFromGraveyardCost) {
+    const candidates = player.zones.graveyard
+      .filter((id) => id !== cardId && matchesTypes(id, ability.exileFromGraveyardCost!.types))
+      .sort(byManaValue);
+    if (candidates.length < ability.exileFromGraveyardCost.count) {
+      return null;
+    }
+    exileIds.push(...candidates.slice(0, ability.exileFromGraveyardCost.count));
+  }
+  if (ability.millCost && player.zones.library.length < ability.millCost) {
+    return null;
+  }
+  return { discardIds, exileIds };
 }
 
 function plus1Plus1(state: GameState, cardId: CardInstanceId): number {

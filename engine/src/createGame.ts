@@ -290,6 +290,29 @@ export function createCardDefinition(
           ...(ability.sacrificeCount && ability.sacrificeCount > 1
             ? { sacrificeCount: ability.sacrificeCount }
             : {}),
+          ...(ability.removeCounterCost
+            ? { removeCounterCost: { ...ability.removeCounterCost } }
+            : {}),
+          ...(ability.addCounterCost ? { addCounterCost: { ...ability.addCounterCost } } : {}),
+          ...(ability.discardCost
+            ? {
+                discardCost: {
+                  count: ability.discardCost.count,
+                  ...(ability.discardCost.types ? { types: [...ability.discardCost.types] } : {}),
+                },
+              }
+            : {}),
+          ...(ability.millCost !== undefined ? { millCost: ability.millCost } : {}),
+          ...(ability.exileFromGraveyardCost
+            ? {
+                exileFromGraveyardCost: {
+                  count: ability.exileFromGraveyardCost.count,
+                  ...(ability.exileFromGraveyardCost.types
+                    ? { types: [...ability.exileFromGraveyardCost.types] }
+                    : {}),
+                },
+              }
+            : {}),
           ...(ability.exileSelf ? { exileSelf: true } : {}),
           ...(ability.legendaryDiscount ? { legendaryDiscount: true } : {}),
           ...(ability.modes

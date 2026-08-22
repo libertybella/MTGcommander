@@ -21585,3 +21585,196 @@ describe("wave 178: alternative cast costs", () => {
   });
 });
 
+
+describe("wave 179: activation costs that are not mana", () => {
+  const compile = (name: string, manaCost: string, typeLine: string, oracleText: string, power?: string, toughness?: string) =>
+    compileOracleCard({
+      oracleId: name,
+      name,
+      manaCost,
+      typeLine,
+      power: power ?? null,
+      toughness: toughness ?? null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  const BALLISTA =
+    "This creature enters with X +1/+1 counters on it.\n{4}: Put a +1/+1 counter on this creature.\nRemove a +1/+1 counter from this creature: It deals 1 damage to any target.";
+  const DRUID = "{T}: Add {G}.\nPut a -1/-1 counter on this creature: Untap this creature.";
+  const SHAMAN =
+    "{G}, {T}, Discard a creature card: Search your library for a creature card, reveal it, put it into your hand, then shuffle.";
+
+  it("reads counters, discards, mills and graveyard exiles off the cost", () => {
+    const ballista = compile("Walking Ballista", "{X}{X}", "Artifact Creature — Construct", BALLISTA, "0", "0");
+    expect(ballista.notes).toEqual([]);
+    const shoot = ballista.definition.activated.find((entry) => entry.removeCounterCost);
+    expect(shoot?.removeCounterCost).toEqual({ counter: "p1p1", count: 1 });
+
+    const druid = compile("Devoted Druid", "{1}{G}", "Creature — Elf Druid", DRUID, "0", "2");
+    expect(druid.notes).toEqual([]);
+    expect(druid.definition.activated[0]?.addCounterCost).toEqual({ counter: "m1m1", count: 1 });
+
+    const shaman = compile("Fauna Shaman", "{1}{G}", "Creature — Elf Shaman", SHAMAN, "2", "2");
+    expect(shaman.notes).toEqual([]);
+    expect(shaman.definition.activated[0]?.discardCost).toEqual({ count: 1, types: ["creature"] });
+
+    const millikin = compile(
+      "Millikin",
+      "{2}",
+      "Artifact Creature — Construct",
+      "{T}, Mill a card: Add {C}.",
+      "0",
+      "1",
+    );
+    expect(millikin.notes).toEqual([]);
+    expect(millikin.definition.manaAbilities[0]?.produces.C).toBe(1);
+
+    const mines = compile(
+      "Mines of Moria",
+      "",
+      "Legendary Land",
+      "Mines of Moria enters tapped unless you control a legendary creature.\n{T}: Add {R}.\n{3}{R}, {T}, Exile three cards from your graveyard: Create two Treasure tokens.",
+    );
+    expect(mines.notes).toEqual([]);
+    expect(mines.definition.activated[0]?.exileFromGraveyardCost).toEqual({ count: 3 });
+  });
+
+  it("will not offer an ability whose counter is not there, and takes it when it is", () => {
+    const ballista = compile("Walking Ballista", "{X}{X}", "Artifact Creature — Construct", BALLISTA, "0", "0");
+    const shootIndex = ballista.definition.activated.findIndex((entry) => entry.removeCounterCost);
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    game.definitions[ballista.definition.id] = ballista.definition;
+    const card = createCardInstance({
+      definitionId: ballista.definition.id,
+      ownerId: p1.id,
+      zone: "battlefield",
+    });
+    card.summoningSick = false;
+    game.cards[card.id] = card;
+    p1.zones.battlefield.push(card.id);
+    game.turn.phase = "precombatMain";
+    game.turn.step = "precombatMain";
+    game.turn.activePlayerId = p1.id;
+    game.priorityPlayerId = p1.id;
+
+    const offered = (state: GameState) =>
+      legalActions(state, p1.id).some(
+        (action) =>
+          action.kind === "activate_ability" &&
+          action.cardId === card.id &&
+          action.abilityIndex === shootIndex,
+      );
+
+    // No counters, no shot.
+    expect(offered(game)).toBe(false);
+
+    game.cards[card.id]!.counters.p1p1 = 2;
+    expect(offered(game)).toBe(true);
+
+    const startingLife = p2.life;
+    let next = applyAction(game, {
+      kind: "activate_ability",
+      playerId: p1.id,
+      cardId: card.id,
+      abilityIndex: shootIndex,
+      targets: [{ type: "player", playerId: p2.id }],
+    });
+    // The counter comes off as the cost is paid, before the ability resolves.
+    expect(next.cards[card.id]?.counters.p1p1).toBe(1);
+    while (next.stack.length > 0) {
+      next = resolveTopOfStack(next);
+    }
+    expect(next.players.find((entry) => entry.id === p2.id)?.life).toBe(startingLife - 1);
+  });
+
+  it("discards a matching card and refuses when the hand has none", () => {
+    const shaman = compile("Fauna Shaman", "{1}{G}", "Creature — Elf Shaman", SHAMAN, "2", "2");
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    game.definitions[shaman.definition.id] = shaman.definition;
+    const source = createCardInstance({
+      definitionId: shaman.definition.id,
+      ownerId: p1.id,
+      zone: "battlefield",
+    });
+    source.summoningSick = false;
+    game.cards[source.id] = source;
+    p1.zones.battlefield.push(source.id);
+    p1.mana.G = 1;
+    game.turn.phase = "precombatMain";
+    game.turn.step = "precombatMain";
+    game.turn.activePlayerId = p1.id;
+    game.priorityPlayerId = p1.id;
+
+    const offered = (state: GameState) =>
+      legalActions(state, p1.id).some(
+        (action) => action.kind === "activate_ability" && action.cardId === source.id,
+      );
+
+    // A land in hand is not a creature card.
+    const landDef = createCardDefinition({ name: "Forest", typeLine: "Basic Land — Forest" });
+    game.definitions[landDef.id] = landDef;
+    const land = createCardInstance({ definitionId: landDef.id, ownerId: p1.id, zone: "hand" });
+    game.cards[land.id] = land;
+    p1.zones.hand.push(land.id);
+    expect(offered(game)).toBe(false);
+
+    const bearDef = createCardDefinition({
+      name: "Bear",
+      typeLine: "Creature — Bear",
+      power: 2,
+      toughness: 2,
+    });
+    game.definitions[bearDef.id] = bearDef;
+    const bear = createCardInstance({ definitionId: bearDef.id, ownerId: p1.id, zone: "hand" });
+    game.cards[bear.id] = bear;
+    p1.zones.hand.push(bear.id);
+    expect(offered(game)).toBe(true);
+
+    const next = applyAction(game, {
+      kind: "activate_ability",
+      playerId: p1.id,
+      cardId: source.id,
+      abilityIndex: 0,
+    });
+    // The creature card went, the land stayed.
+    expect(next.cards[bear.id]?.zone).toBe("graveyard");
+    expect(next.cards[land.id]?.zone).toBe("hand");
+  });
+
+  it("puts the Druid's counter on as a cost", () => {
+    const druid = compile("Devoted Druid", "{1}{G}", "Creature — Elf Druid", DRUID, "0", "2");
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    game.definitions[druid.definition.id] = druid.definition;
+    const card = createCardInstance({
+      definitionId: druid.definition.id,
+      ownerId: p1.id,
+      zone: "battlefield",
+    });
+    card.summoningSick = false;
+    card.tapped = true;
+    game.cards[card.id] = card;
+    p1.zones.battlefield.push(card.id);
+    game.turn.phase = "precombatMain";
+    game.turn.step = "precombatMain";
+    game.turn.activePlayerId = p1.id;
+    game.priorityPlayerId = p1.id;
+
+    let next = applyAction(game, {
+      kind: "activate_ability",
+      playerId: p1.id,
+      cardId: card.id,
+      abilityIndex: 0,
+    });
+    expect(next.cards[card.id]?.counters.m1m1).toBe(1);
+    while (next.stack.length > 0) {
+      next = resolveTopOfStack(next);
+    }
+    expect(next.cards[card.id]?.tapped).toBe(false);
+  });
+});
+

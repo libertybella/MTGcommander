@@ -2,7 +2,7 @@ import { declareAttackers, declareBlockers, lockRemainingBlockers, pendingBlocke
 import { abilitiesRemoved, cardMatchesSubtype } from "./characteristicsEngine";
 import { characteristicsOf, isCommander, isCreature, isInstant, isInstantOrSorcery, isLand, isLegendary, isMainPhase } from "./cardTypes";
 import { cloneGameState } from "./clone";
-import { affinityArtifactDiscount, allBattlefieldCreatureCount, canPlayLandFromTop, canPlayLandsFromGraveyard, castCostReduction, castableFromTop, controlsCommander, creaturePower, freeEquipGranted, hasFlashGrant, altCastPayment, landDropAllowance, manaTapMultiplier, lockedByAbolisher, lockedFromCasting, opponentControlsMoreLands, findFreeHandGrantIndex, opponentsCastLockedToHand, selfDiscountAmount, staticFreeCastCap, usesOncePerTurnFreeCast } from "./derived";
+import { affinityArtifactDiscount, allBattlefieldCreatureCount, canPlayLandFromTop, canPlayLandsFromGraveyard, castCostReduction, castableFromTop, controlsCommander, creaturePower, freeEquipGranted, hasFlashGrant, activationNonManaPayment, altCastPayment, landDropAllowance, manaTapMultiplier, lockedByAbolisher, lockedFromCasting, opponentControlsMoreLands, findFreeHandGrantIndex, opponentsCastLockedToHand, selfDiscountAmount, staticFreeCastCap, usesOncePerTurnFreeCast } from "./derived";
 import { eliminatePlayerInPlace } from "./elimination";
 import { applyEffects, bindCardEffects, devotionTo } from "./effects";
 import { hasKeyword } from "./keywords";
@@ -1203,11 +1203,39 @@ function applyActivateAbility(
   } else if (costSacrificeId !== undefined) {
     throw new Error("That ability has no sacrifice cost");
   }
+  // Counters, cards from hand, library and graveyard: costs that are neither
+  // mana nor a permanent. Checked together so an ability with an unpayable
+  // half never half-pays.
+  const nonManaCost = activationNonManaPayment(state, playerId, cardId, ability);
+  if (!nonManaCost) {
+    throw new Error("Cannot pay that ability's cost");
+  }
   let next = payManaCost(state, playerId, cost);
   if (ability.lifeCost && ability.lifeCost > 0) {
     const payer = next.players.find((entry) => entry.id === playerId)!;
     payer.life -= ability.lifeCost;
     next.log.push({ kind: "life_change", playerId, delta: -ability.lifeCost });
+  }
+  if (ability.removeCounterCost) {
+    const source = next.cards[cardId]!;
+    source.counters[ability.removeCounterCost.counter] =
+      (source.counters[ability.removeCounterCost.counter] ?? 0) - ability.removeCounterCost.count;
+  }
+  if (ability.addCounterCost) {
+    // A cost, not an effect: no doubling and no counter_added watchers.
+    const source = next.cards[cardId]!;
+    source.counters[ability.addCounterCost.counter] =
+      (source.counters[ability.addCounterCost.counter] ?? 0) + ability.addCounterCost.count;
+  }
+  for (const discardId of nonManaCost.discardIds) {
+    next = moveCard(next, discardId, "graveyard");
+    dispatchEventsInPlace(next, [{ kind: "discards", cardId: discardId, playerId }]);
+  }
+  for (const exileId of nonManaCost.exileIds) {
+    next = moveCard(next, exileId, "exile");
+  }
+  if (ability.millCost) {
+    next = applyEffects(next, [{ kind: "mill", playerId, count: ability.millCost }]);
   }
   if (ability.tap) {
     next = tapCard(next, cardId);

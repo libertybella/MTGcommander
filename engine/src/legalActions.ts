@@ -3,7 +3,7 @@ import { abilitiesRemoved, cardMatchesSubtype, controlsGate } from "./characteri
 import { hasKeyword } from "./keywords";
 import { emptyManaPool } from "./createGame";
 import { pendingBlockerPlayer } from "./combat";
-import { affinityArtifactDiscount, allBattlefieldCreatureCount, altCastPayment, canPlayLandsFromGraveyard, castCostReduction, castableFromTop, controlsCommander, freeEquipGranted, hasFlashGrant, landDropAllowance, lockedByAbolisher, lockedFromCasting, opponentControlsMoreLands, findFreeHandGrantIndex, opponentsCastLockedToHand, selfDiscountAmount, staticFreeCastCap, topOfLibraryGrant } from "./derived";
+import { affinityArtifactDiscount, activationNonManaPayment, allBattlefieldCreatureCount, altCastPayment, canPlayLandsFromGraveyard, castCostReduction, castableFromTop, controlsCommander, freeEquipGranted, hasFlashGrant, landDropAllowance, lockedByAbolisher, lockedFromCasting, opponentControlsMoreLands, findFreeHandGrantIndex, opponentsCastLockedToHand, selfDiscountAmount, staticFreeCastCap, topOfLibraryGrant } from "./derived";
 import { canPayManaCost, parseManaCost, type ParsedManaCost } from "./mana";
 import { colorsAmongControlled, manaAbilitiesFor, manaTapOptionsFor } from "./manaOptions";
 import { isMulliganOpen } from "./mulligan";
@@ -465,6 +465,11 @@ function abilityUsable(
     if (!player || player.life < ability.lifeCost) {
       return false;
     }
+  }
+  // Counters, discards, mills and graveyard exiles — the same check the
+  // activation path runs, so nothing is offered that would then be refused.
+  if (!activationNonManaPayment(state, playerId, card.id, ability)) {
+    return false;
   }
   if (ability.targetRequirements.length > 0) {
     return hasAnyLegalTargetSet(state, ability.targetRequirements, playerId);

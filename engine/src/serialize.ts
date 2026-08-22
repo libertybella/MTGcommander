@@ -3223,6 +3223,45 @@ function parseActivatedAbilities(value: unknown, label: string): ActivatedAbilit
               `${label}[${index}].requiresAttackersThisTurn`,
             ),
           }),
+      ...(isRecord(entry.removeCounterCost)
+        ? {
+            removeCounterCost: {
+              counter: expectString(entry.removeCounterCost.counter, `${label}[${index}].removeCounterCost.counter`),
+              count: expectNumber(entry.removeCounterCost.count, `${label}[${index}].removeCounterCost.count`),
+            },
+          }
+        : {}),
+      ...(isRecord(entry.addCounterCost)
+        ? {
+            addCounterCost: {
+              counter: expectString(entry.addCounterCost.counter, `${label}[${index}].addCounterCost.counter`),
+              count: expectNumber(entry.addCounterCost.count, `${label}[${index}].addCounterCost.count`),
+            },
+          }
+        : {}),
+      ...(isRecord(entry.discardCost)
+        ? {
+            discardCost: {
+              count: expectNumber(entry.discardCost.count, `${label}[${index}].discardCost.count`),
+              ...(entry.discardCost.types === undefined
+                ? {}
+                : { types: parseStringList(entry.discardCost.types, `${label}[${index}].discardCost.types`) }),
+            },
+          }
+        : {}),
+      ...(entry.millCost === undefined
+        ? {}
+        : { millCost: expectNumber(entry.millCost, `${label}[${index}].millCost`) }),
+      ...(isRecord(entry.exileFromGraveyardCost)
+        ? {
+            exileFromGraveyardCost: {
+              count: expectNumber(entry.exileFromGraveyardCost.count, `${label}[${index}].exileFromGraveyardCost.count`),
+              ...(entry.exileFromGraveyardCost.types === undefined
+                ? {}
+                : { types: parseStringList(entry.exileFromGraveyardCost.types, `${label}[${index}].exileFromGraveyardCost.types`) }),
+            },
+          }
+        : {}),
       ...(entry.sacrificeCount === undefined
         ? {}
         : { sacrificeCount: expectNumber(entry.sacrificeCount, `${label}[${index}].sacrificeCount`) }),
