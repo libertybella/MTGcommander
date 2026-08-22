@@ -10,8 +10,10 @@ the current state of play. Read all four before writing code.
 
 ## State of play (checkpoint-77-permissions, 2026-08-22)
 
-- Branch `comprehensive-plan`, tags through `checkpoint-77-permissions`.
-- 948 tests green; top-2,000 compile rate **55.7% (1,119/2,009)**,
+- Branch `comprehensive-plan`, tags through `checkpoint-77-permissions`;
+  waves 166–167 are committed on top and the next checkpoint is due
+  after wave 169.
+- 954 tests green; top-2,000 compile rate **56.0% (1,125/2,009)**,
   60-card sample 95% (CI floor now 90).
 - **The permission-not-prompt trick is the reusable idea of waves
   157–161.** "You may cast … without paying its mana cost" looked like it
@@ -36,17 +38,18 @@ the current state of play. Read all four before writing code.
   normalisation bug affecting a whole class of legends. The zero-flip
   wave was worth more than its number.
 - The wave loop continues toward the goal gate: M6, ≥95% of the EDHREC
-  top-2,000 fully compiling. The rhythm below is proven across 165
-  waves (15.6% → 55.7%); follow it as written.
-- **Yield per wave is falling and that is the real news.** Waves 145–165
-  flipped 13, 15, 11, 6, 7, 8, 7, 5, 1, 6, 6, 4, 2, 2, 4, 9, 2, 2, 1, 0, 1.
+  top-2,000 fully compiling. The rhythm below is proven across 167
+  waves (15.6% → 56.0%); follow it as written.
+- **Yield per wave is falling and that is the real news.** Waves 145–167
+  flipped 13, 15, 11, 6, 7, 8, 7, 5, 1, 6, 6, 4, 2, 2, 4, 9, 2, 2, 1, 0, 1,
+  6, 0.
   The early numbers came
   from grammars that replaced whole families of regexes; those families
   are now largely built, and what is left is a genuine long tail. Plan
   on roughly 1–4 flips per wave from here, not 13, and pick clusters
   accordingly — a cycle of near-identical cards (the Verge lands, the
   Landscapes) is worth far more than a high-ranked one-off. At that
-  rate M6 (≥95%, another 890 cards) is not reachable by grinding alone;
+  rate M6 (≥95%, another 884 cards) is not reachable by grinding alone;
   see "The cheap tail is spent" below for what actually moves it.
 - **Never push to GitHub without Liberty's explicit yes.** Nothing has
   been pushed; the remote flow (Ross et al.) starts only when she says
@@ -319,11 +322,23 @@ where the remaining rate lives:
 - *One-off clauses* — 3–6 flips per wave, each card its own mechanic.
   Still worth grinding, but budget accordingly.
 - *Machinery that unlocks many at once, and needs real surgery first.*
-  **Free casting is now done** (waves 157–158) and turned out not to need
-  a prompt at all — see the permission note above. The two that remain:
-  **tagged mana**, which unblocks the Spend-this-mana-only cluster and
-  Phyrexian payment but touches every payment site; and **sagas**, still
-  the single biggest miss (Urza's Saga).
+  **Free casting is done** (waves 157–158) and turned out not to need a
+  prompt at all — see the permission note above. **Tagged mana is done**
+  (waves 166–167): `PlayerState.restrictedMana` is a second pool and
+  payments take a `ManaPurpose`. It was smaller than feared because the
+  payment path is centralised in `mana.ts` and only two call sites — a
+  cast and an activation — ever admit restricted mana.
+  What remains: **Phyrexian payment**, which can now ride the same
+  purpose plumbing; and **sagas**, nominally the biggest miss (Urza's
+  Saga) but worth less than it looks — only about four saga cards are in
+  reach and each also needs its own chapter bodies compiled.
+
+  A note on the mana work, since it was the thing this brief called
+  blocked for several waves: the reason to build it rather than fake it
+  was that an unenforced restriction would have raised the number while
+  letting the bot spend Cavern of Souls mana on anything. The rule that
+  produced the right call — *compile "full" must mean playable* — is
+  worth keeping for the next cluster that looks similarly expensive.
 
 Families identified but not yet built, each worth roughly a wave:
 **general "A and B" trigger bodies** (the clause compiler handles some

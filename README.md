@@ -16,8 +16,8 @@ This is **not** Wizards of the Coast software. It is also **not** the sibling Bi
 | --- | --- |
 | **Phase** | Comprehensive Rules machinery (layers, events, choices, permanents) + coverage flywheel |
 | **Next** | Private alpha (invite friends, play complete games) |
-| **Tests** | 948 passing; a 10,000-game random-action fuzz marathon gates checkpoint-45, 200-game burns gate every wave and 800+ burns gate every checkpoint tag |
-| **Compile rate** | 95% of a 60-card real-staple sample compiles fully (CI floor 90%); 55.7% of the EDHREC top-2,000, up from 15.6% at the start of the 2026-08-20 flywheel run |
+| **Tests** | 954 passing; a 10,000-game random-action fuzz marathon gates checkpoint-45, 200-game burns gate every wave and 800+ burns gate every checkpoint tag |
+| **Compile rate** | 95% of a 60-card real-staple sample compiles fully (CI floor 90%); 56.0% of the EDHREC top-2,000, up from 15.6% at the start of the 2026-08-20 flywheel run |
 | **Installer** | `npm run dist` builds a one-click Windows installer (`release/BizzyMTG Commander Setup 0.1.0.exe`). |
 
 ---
