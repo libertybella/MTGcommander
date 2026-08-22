@@ -303,6 +303,9 @@ function onEnterStep(state: GameState): GameState {
     if (state.preventCombatFor && state.preventCombatFor.length > 0) {
       state.preventCombatFor = [];
     }
+    if (state.flashThisTurn && state.flashThisTurn.length > 0) {
+      state.flashThisTurn = [];
+    }
     if (state.diesReturnUntilEot && state.diesReturnUntilEot.length > 0) {
       state.diesReturnUntilEot = [];
     }

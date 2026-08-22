@@ -233,6 +233,10 @@ export function canPlayLandFromTop(state: GameState, playerId: string, cardId: s
 
 /** Vedalken Orrery-class: the player may cast any spell at instant speed. */
 export function hasFlashGrant(state: GameState, playerId: string): boolean {
+  // Emergence Zone-class one-shot grants last only for this turn.
+  if ((state.flashThisTurn ?? []).includes(playerId)) {
+    return true;
+  }
   return Object.values(state.cards).some((card) => {
     if (card.zone !== "battlefield" || card.controllerId !== playerId) {
       return false;

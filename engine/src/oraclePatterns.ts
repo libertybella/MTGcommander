@@ -3247,6 +3247,26 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     };
   }
 
+  // Emergence Zone / Alchemist's Refuge / Borne Upon a Wind: a one-turn
+  // flash grant, as opposed to Vedalken Orrery's permanent one.
+  if (
+    /^You may cast spells this turn as though they had flash$/i.test(sentence) ||
+    /^You may cast (?:a )?spells? this turn as though it had flash$/i.test(sentence)
+  ) {
+    return {
+      targetRequirements: [],
+      effects: [{ kind: "grant_flash_this_turn", playerId: "controller" }],
+    };
+  }
+
+  // Reprieve: the spell-only half of Venser's bounce.
+  if (/^return target spell to its owner's hand$/i.test(sentence)) {
+    return {
+      targetRequirements: [{ kind: "spell" }],
+      effects: [{ kind: "bounce_spell_or_permanent", target: { type: "chosen", index: 0 } }],
+    };
+  }
+
   // Venser, Shaper Savant.
   if (/^return target spell or permanent to its owner's hand$/i.test(sentence)) {
     return {

@@ -950,12 +950,13 @@ export function bindCardEffect(
       }
       return { kind: "extra_land_drop", playerId };
     }
+    case "grant_flash_this_turn":
     case "win_game": {
       const playerId = bindPlayerSelector(state, effect.playerId, context);
       if (!playerId) {
         return null;
       }
-      return { kind: "win_game", playerId };
+      return { kind: effect.kind, playerId };
     }
     case "commander_to_hand": {
       const playerId = bindPlayerSelector(state, effect.playerId, context);
@@ -2890,6 +2891,14 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
         next = cloneGameState(state);
         const granted = next.players.find((entry) => entry.id === effect.playerId)!;
         granted.extraLandDropsThisTurn = (granted.extraLandDropsThisTurn ?? 0) + 1;
+        break;
+      }
+      case "grant_flash_this_turn": {
+        requirePlayer(state, effect.playerId);
+        next = cloneGameState(state);
+        if (!(next.flashThisTurn ?? []).includes(effect.playerId)) {
+          next.flashThisTurn = [...(next.flashThisTurn ?? []), effect.playerId];
+        }
         break;
       }
       case "win_game": {

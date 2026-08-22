@@ -1135,6 +1135,9 @@ export function parseGameState(json: string): GameState {
     ...(raw.preventCombatFor === undefined
       ? {}
       : { preventCombatFor: expectStringArray(raw.preventCombatFor, "preventCombatFor") }),
+    ...(raw.flashThisTurn === undefined
+      ? {}
+      : { flashThisTurn: expectStringArray(raw.flashThisTurn, "flashThisTurn") }),
     delayedEndStep:
       raw.delayedEndStep === undefined
         ? []
@@ -2690,6 +2693,7 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
     case "extra_land_drop":
       return { kind, playerId: parsePlayerSelector(value.playerId, `${label}.playerId`) };
     case "win_game":
+    case "grant_flash_this_turn":
       return { kind, playerId: parsePlayerSelector(value.playerId, `${label}.playerId`) };
     case "overload_each":
       return {
@@ -3998,7 +4002,7 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
   if (kind === "prevent_combat_for") {
     return { kind, cardId: expectString(value.cardId, `${label}.cardId`) };
   }
-  if (kind === "extra_land_drop" || kind === "win_game") {
+  if (kind === "extra_land_drop" || kind === "win_game" || kind === "grant_flash_this_turn") {
     return { kind, playerId: expectString(value.playerId, `${label}.playerId`) };
   }
   if (kind === "overload_each") {

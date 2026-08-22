@@ -548,6 +548,10 @@ export type GameState = {
   /** Maze of Ith: creatures whose combat damage (dealt and received) is
    * prevented this turn. Cleared at cleanup. */
   preventCombatFor?: CardInstanceId[];
+  /** Emergence Zone / Borne Upon a Wind: players who may cast at instant
+   * speed for the rest of this turn. Cleared at cleanup. The permanent form
+   * (Vedalken Orrery) is `CardDefinition.grantsFlash` instead. */
+  flashThisTurn?: PlayerId[];
   /**
    * Feign Death-class until-EOT grants: if the listed creature dies this
    * turn, it returns to the battlefield tapped (optionally with a +1/+1
@@ -850,6 +854,8 @@ export type GameEffect =
   | { kind: "extra_land_drop"; playerId: PlayerId }
   /** "You win the game": every other player loses (CR 104.2a). */
   | { kind: "win_game"; playerId: PlayerId }
+  /** Emergence Zone: the player may cast at instant speed this turn. */
+  | { kind: "grant_flash_this_turn"; playerId: PlayerId }
   | { kind: "commander_to_hand"; playerId: PlayerId }
   | { kind: "opponents_lose_keywords_until_eot"; playerId: PlayerId; keywords: Keyword[] }
   | {
@@ -1462,6 +1468,8 @@ export type CardEffect =
   | { kind: "extra_land_drop"; playerId: PlayerSelector }
   /** "You win the game": every other player loses (CR 104.2a). */
   | { kind: "win_game"; playerId: PlayerSelector }
+  /** Emergence Zone: the player may cast at instant speed this turn. */
+  | { kind: "grant_flash_this_turn"; playerId: PlayerSelector }
   /** Command Beacon: the commander moves from the command zone to hand. */
   | { kind: "commander_to_hand"; playerId: PlayerSelector }
   /** Shadowspear: opponents' permanents drop the listed keywords this turn. */

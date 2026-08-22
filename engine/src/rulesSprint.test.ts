@@ -17,7 +17,7 @@ import {
 } from "./index";
 import { cardMatchesSubtype, computedCard } from "./characteristicsEngine";
 import { mostCommonControlledCreatureType } from "./effects";
-import { castCostReduction, castableFromTop, freeEquipGranted, landDropAllowance, selfDiscountAmount } from "./derived";
+import { castCostReduction, castableFromTop, freeEquipGranted, hasFlashGrant, landDropAllowance, selfDiscountAmount } from "./derived";
 import { hasKeyword } from "./keywords";
 import { dispatchEventsInPlace } from "./triggers";
 import { applyCombatDamage, declareAttackers } from "./combat";
@@ -18662,6 +18662,91 @@ describe("wave 155: reclamations, dispels, and ultimatums", () => {
     expect(next.cards[mine.id]?.zone).toBe("battlefield");
     // "nonland" spares their land too.
     expect(next.cards[theirLand.id]?.zone).toBe("battlefield");
+  });
+});
+
+
+describe("wave 156: flash windows and spell bounce", () => {
+  const compile = (name: string, manaCost: string, typeLine: string, oracleText: string) =>
+    compileOracleCard({
+      oracleId: name,
+      name,
+      manaCost,
+      typeLine,
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  it("compiles one-turn flash grants and the spell-only bounce", () => {
+    const wind = compile(
+      "Borne Upon a Wind",
+      "{1}{U}",
+      "Instant",
+      "You may cast spells this turn as though they had flash.\nDraw a card.",
+    );
+    expect(wind.notes).toEqual([]);
+    expect(wind.definition.effects[0]).toEqual({
+      kind: "grant_flash_this_turn",
+      playerId: "controller",
+    });
+
+    const zone = compile(
+      "Emergence Zone",
+      "",
+      "Land",
+      "{T}: Add {C}.\n{1}, {T}, Sacrifice this land: You may cast spells this turn as though they had flash.",
+    );
+    expect(zone.notes).toEqual([]);
+    expect(zone.definition.activated[0]?.sacrificeSelf).toBe(true);
+    expect(zone.definition.activated[0]?.effects[0]).toMatchObject({
+      kind: "grant_flash_this_turn",
+    });
+
+    const reprieve = compile(
+      "Reprieve",
+      "{1}{W}",
+      "Instant",
+      "Return target spell to its owner's hand.\nDraw a card.",
+    );
+    expect(reprieve.notes).toEqual([]);
+    expect(reprieve.definition.targetRequirements).toEqual([{ kind: "spell" }]);
+  });
+
+  it("opens the flash window for this turn only", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    expect(hasFlashGrant(game, p1.id)).toBe(false);
+
+    let next = applyEffects(
+      game,
+      bindCardEffects(game, [{ kind: "grant_flash_this_turn", playerId: "controller" }], {
+        controllerId: p1.id,
+        sourceId: null,
+        targets: [],
+        targetRequirements: [],
+      }),
+    );
+    expect(hasFlashGrant(next, p1.id)).toBe(true);
+    // It is the caster's window, not everyone's.
+    expect(hasFlashGrant(next, p2.id)).toBe(false);
+
+    // And it closes at cleanup.
+    next.turn.phase = "ending";
+    next.turn.step = "end";
+    next.priorityPlayerId = next.turn.activePlayerId;
+    next = advanceSteps(next, 4);
+    expect(hasFlashGrant(next, p1.id)).toBe(false);
+  });
+
+  it("round-trips the flash window through the serializer", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    game.flashThisTurn = [p1.id];
+    const round = parseGameState(JSON.parse(JSON.stringify(serializeGameState(game))));
+    expect(hasFlashGrant(round, p1.id)).toBe(true);
   });
 });
 
