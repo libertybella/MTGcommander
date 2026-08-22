@@ -346,6 +346,31 @@ What the engine implements and what it intentionally does not. Tests are tagged 
   And the second-spell count takes an opponents-only narrowing, so Monologue
   Tax does not pay its own controller.
 
+- **Ability words and the conditions behind them**: an ability word (CR
+  207.2c) is italic flavour with no rules meaning, and the condition it names
+  is spelled out in the text that follows — so the word is stripped and the
+  text read normally. Deliberately a LIST and not a shape: boast, channel,
+  imprint and strive also print before an em dash and do carry rules, and
+  stripping those would widen the ability rather than reveal it.
+
+  What the words were hiding is one clause shape: "\<effect\> instead if
+  \<condition\>", "If \<condition\>, [instead] \<effect\>", and the additive
+  "\<effect\> … if \<condition\>". "Instead" replaces what the card has said so
+  far; without it the rider is an extra effect the condition gates. Both
+  compile to one `if_condition` effect whose branch is chosen when the effects
+  bind — for a spell, its resolution, which is when the printed card checks.
+  The condition vocabulary is shared with trigger heads' intervening "if",
+  and the serializer's copy of it was extracted so the two cannot drift.
+
+  The condition parser is also what keeps the additive form honest: without a
+  condition it recognises, a sentence containing the word "if" is refused
+  rather than applied unconditionally.
+
+  Still open: "exile **that creature**" and "return **that card**" — a
+  back-reference to what an earlier clause targeted. Dispatch and Stitch
+  Together each stop there, and it is the same gap Insurrection and Origin of
+  Metalbending stop at.
+
 ## The card pipeline (Stage 6)
 
 - Real cards compile from Scryfall oracle text by shared sentence patterns; a hand-authored registry (`server/src/cardOverrides.ts`, data in the same schema) beats the compiler for the long tail. Never a named-card code path.

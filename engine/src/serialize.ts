@@ -16,6 +16,7 @@ import type {
   ChooseCardSource,
   ChosenTarget,
   ControlAllScope,
+  TriggerCondition,
   DestroyAllScope,
   DynamicCount,
   EnterTappedUnless,
@@ -2718,6 +2719,15 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
       };
     case "restore_control":
       return { kind, what: parseControlAllScope(value.what, `${label}.what`) };
+    case "if_condition":
+      return {
+        kind,
+        condition: parseTriggerCondition(value.condition, `${label}.condition`),
+        then: parseCardEffects(value.then, `${label}.then`),
+        ...(value.otherwise === undefined
+          ? {}
+          : { otherwise: parseCardEffects(value.otherwise, `${label}.otherwise`) }),
+      };
     case "proliferate":
     case "populate":
       return { kind, playerId: parsePlayerSelector(value.playerId, `${label}.playerId`) };
@@ -3575,92 +3585,10 @@ function parseTriggers(value: unknown, label: string): CardTrigger[] {
       ...(entry.condition === undefined
         ? {}
         : {
-            condition: (() => {
-              if (!isRecord(entry.condition)) {
-                throw new Error(`Invalid ${label}[${index}].condition`);
-              }
-              const conditionKind = expectString(
-                entry.condition.kind,
-                `${label}[${index}].condition.kind`,
-              );
-              if (
-                conditionKind === "greatest_artifact_mana_value" ||
-                conditionKind === "opponent_controls_more_lands" ||
-                conditionKind === "subject_name_unique" ||
-                conditionKind === "first_combat_this_turn" ||
-                conditionKind === "self_tapped" ||
-                conditionKind === "attacking_most_life"
-              ) {
-                return { kind: conditionKind };
-              }
-              if (conditionKind === "controls_power_at_least") {
-                return {
-                  kind: conditionKind,
-                  power: expectNumber(
-                    entry.condition.power,
-                    `${label}[${index}].condition.power`,
-                  ),
-                };
-              }
-              if (conditionKind === "life_at_least") {
-                return {
-                  kind: conditionKind,
-                  amount: expectNumber(
-                    entry.condition.amount,
-                    `${label}[${index}].condition.amount`,
-                  ),
-                };
-              }
-              if (conditionKind === "hand_size_exactly") {
-                return {
-                  kind: conditionKind,
-                  count: expectNumber(
-                    entry.condition.count,
-                    `${label}[${index}].condition.count`,
-                  ),
-                };
-              }
-              if (conditionKind === "controls_no_subtype") {
-                return {
-                  kind: conditionKind,
-                  subtype: expectString(
-                    entry.condition.subtype,
-                    `${label}[${index}].condition.subtype`,
-                  ),
-                };
-              }
-              if (conditionKind === "controls_subtype_count") {
-                return {
-                  kind: conditionKind,
-                  subtype: expectString(
-                    entry.condition.subtype,
-                    `${label}[${index}].condition.subtype`,
-                  ),
-                  atLeast: expectNumber(
-                    entry.condition.atLeast,
-                    `${label}[${index}].condition.atLeast`,
-                  ),
-                };
-              }
-              if (conditionKind === "controls_count") {
-                const what = expectString(
-                  entry.condition.what,
-                  `${label}[${index}].condition.what`,
-                );
-                if (what !== "land" && what !== "creature" && what !== "artifact") {
-                  throw new Error(`Invalid ${label}[${index}].condition.what`);
-                }
-                return {
-                  kind: conditionKind,
-                  what,
-                  atLeast: expectNumber(
-                    entry.condition.atLeast,
-                    `${label}[${index}].condition.atLeast`,
-                  ),
-                };
-              }
-              throw new Error(`Invalid ${label}[${index}].condition.kind`);
-            })(),
+            condition: parseTriggerCondition(
+              entry.condition,
+              `${label}[${index}].condition`,
+            ),
           }),
       ...(entry.subjectPlayerOpponent === true ? { subjectPlayerOpponent: true } : {}),
       ...(entry.attacksAlone === true ? { attacksAlone: true } : {}),
@@ -3684,6 +3612,107 @@ function parseTriggers(value: unknown, label: string): CardTrigger[] {
       ),
     };
   });
+}
+
+/**
+ * One intervening-"if" condition. Shared by trigger heads and by the
+ * ability-word riders that test the same vocabulary when their effects
+ * bind, so the two readings cannot drift apart.
+ */
+function parseTriggerCondition(value: unknown, label: string): TriggerCondition {
+  if (!isRecord(value)) {
+    throw new Error(`Invalid ${label}`);
+  }
+      const conditionKind = expectString(
+        value.kind,
+        `${label}.kind`,
+      );
+      if (
+        conditionKind === "greatest_artifact_mana_value" ||
+        conditionKind === "opponent_controls_more_lands" ||
+        conditionKind === "subject_name_unique" ||
+        conditionKind === "first_combat_this_turn" ||
+        conditionKind === "self_tapped" ||
+        conditionKind === "attacking_most_life"
+      ) {
+        return { kind: conditionKind };
+      }
+      if (conditionKind === "controls_power_at_least") {
+        return {
+          kind: conditionKind,
+          power: expectNumber(
+            value.power,
+            `${label}.power`,
+          ),
+        };
+      }
+      if (conditionKind === "life_at_least") {
+        return {
+          kind: conditionKind,
+          amount: expectNumber(
+            value.amount,
+            `${label}.amount`,
+          ),
+        };
+      }
+      if (conditionKind === "hand_size_exactly") {
+        return {
+          kind: conditionKind,
+          count: expectNumber(
+            value.count,
+            `${label}.count`,
+          ),
+        };
+      }
+      if (
+        conditionKind === "graveyard_cards_at_least" ||
+        conditionKind === "graveyard_card_types_at_least"
+      ) {
+        return { kind: conditionKind, count: expectNumber(value.count, `${label}.count`) };
+      }
+      if (conditionKind === "creature_died_this_turn") {
+        return { kind: conditionKind };
+      }
+      if (conditionKind === "controls_no_subtype") {
+        return {
+          kind: conditionKind,
+          subtype: expectString(
+            value.subtype,
+            `${label}.subtype`,
+          ),
+        };
+      }
+      if (conditionKind === "controls_subtype_count") {
+        return {
+          kind: conditionKind,
+          subtype: expectString(
+            value.subtype,
+            `${label}.subtype`,
+          ),
+          atLeast: expectNumber(
+            value.atLeast,
+            `${label}.atLeast`,
+          ),
+        };
+      }
+      if (conditionKind === "controls_count") {
+        const what = expectString(
+          value.what,
+          `${label}.what`,
+        );
+        if (what !== "land" && what !== "creature" && what !== "artifact") {
+          throw new Error(`Invalid ${label}.what`);
+        }
+        return {
+          kind: conditionKind,
+          what,
+          atLeast: expectNumber(
+            value.atLeast,
+            `${label}.atLeast`,
+          ),
+        };
+      }
+  throw new Error(`Invalid ${label}.kind`);
 }
 
 function parseReplacements(value: unknown, label: string): ReplacementEffect[] {

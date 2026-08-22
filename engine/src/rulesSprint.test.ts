@@ -29,7 +29,7 @@ import { applyResolveCreatureType, legalEnterCopyIds, searchMatches } from "./pr
 import { parseGameState, serializeGameState } from "./serialize";
 import { fillLibraries } from "./testSupport";
 import { advanceSteps } from "./turn";
-import type { GameState, PlayerState } from "./types";
+import type { CardEffect, GameState, PlayerState } from "./types";
 
 function twoPlayers() {
   const game = createGameState({ playerCount: 2 });
@@ -23584,6 +23584,171 @@ describe("wave 190: subjects that are nouns, not adjectives", () => {
     expect(firedFor(countered.id)).toBe(1);
     expect(firedFor(equipped.id)).toBe(1);
     expect(firedFor(plain.id)).toBe(0);
+  });
+});
+
+
+describe("wave 191: ability words and the conditions behind them", () => {
+  const compile = (name: string, manaCost: string, typeLine: string, oracleText: string, power?: string, toughness?: string) =>
+    compileOracleCard({
+      oracleId: name,
+      name,
+      manaCost,
+      typeLine,
+      power: power ?? null,
+      toughness: toughness ?? null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  it("strips an ability word wherever it appears", () => {
+    // The old strip only fired before a trigger head or a mana symbol, so an
+    // ability word in front of anything else kept the sentence uncompiled.
+    const metalcraft = compile(
+      "Testcard",
+      "{W}",
+      "Instant",
+      "Tap target creature.\nMetalcraft — If you control three or more artifacts, you gain 3 life.",
+    );
+    expect(metalcraft.notes).toEqual([]);
+    expect(metalcraft.definition.effects[0]).toMatchObject({ kind: "tap" });
+    expect(metalcraft.definition.effects[1]).toMatchObject({
+      kind: "if_condition",
+      condition: { kind: "controls_count", what: "artifact", atLeast: 3 },
+    });
+  });
+
+  it("leaves alone the italic words that are not ability words", () => {
+    // Boast is a real keyword ability (attacked this turn, once per turn);
+    // stripping it would widen the ability rather than reveal it.
+    const boast = compile(
+      "Testcard",
+      "{2}{B}",
+      "Creature — Rogue",
+      "Boast — {1}{B}: Draw a card.",
+      "2",
+      "2",
+    );
+    expect(boast.notes.join(" ")).toContain("Boast");
+  });
+
+  it("replaces the earlier effect when the rider says instead", () => {
+    const ritual = compile(
+      "Cabal Ritual",
+      "{1}{B}",
+      "Instant",
+      "Add {B}{B}{B}.\nThreshold — Add {B}{B}{B}{B}{B} instead if there are seven or more cards in your graveyard.",
+    );
+    expect(ritual.notes).toEqual([]);
+    // One effect, not two: the upgraded add replaces the printed one.
+    expect(ritual.definition.effects).toHaveLength(1);
+    expect(ritual.definition.effects[0]).toMatchObject({
+      kind: "if_condition",
+      condition: { kind: "graveyard_cards_at_least", count: 7 },
+    });
+    const gated = ritual.definition.effects[0] as {
+      then: { kind: string }[];
+      otherwise: { kind: string }[];
+    };
+    expect(gated.then).toHaveLength(1);
+    expect(gated.otherwise).toHaveLength(1);
+  });
+
+  it("adds rather than replaces when the rider does not", () => {
+    const rage = compile(
+      "Temur Battle Rage",
+      "{1}{R}",
+      "Instant",
+      "Target creature gains double strike until end of turn.\nFerocious — That creature also gains trample until end of turn if you control a creature with power 4 or greater.",
+    );
+    expect(rage.notes).toEqual([]);
+    expect(rage.definition.effects).toHaveLength(2);
+    expect(rage.definition.effects[1]).toMatchObject({
+      kind: "if_condition",
+      condition: { kind: "controls_power_at_least", power: 4 },
+    });
+    expect(
+      (rage.definition.effects[1] as { otherwise?: unknown[] }).otherwise,
+    ).toBeUndefined();
+  });
+
+  it("refuses a rider whose condition it cannot read", () => {
+    // Without the condition the rider would either be dropped or, worse,
+    // applied unconditionally.
+    const odd = compile(
+      "Testcard",
+      "{B}",
+      "Instant",
+      "Target creature gets -1/-1 until end of turn.\nMorbid — That creature gets -13/-13 until end of turn instead if the moon is full.",
+    );
+    expect(odd.notes.join(" ")).toContain("moon");
+  });
+
+  it("picks the branch the condition asks for, at resolution", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const bearDef = createCardDefinition({
+      name: "Bear",
+      typeLine: "Creature — Bear",
+      power: 2,
+      toughness: 2,
+    });
+    game.definitions[bearDef.id] = bearDef;
+    const bear = createCardInstance({
+      definitionId: bearDef.id,
+      ownerId: p1.id,
+      zone: "graveyard",
+    });
+    game.cards[bear.id] = bear;
+
+    const effects: CardEffect[] = [
+      {
+        kind: "if_condition",
+        condition: { kind: "graveyard_cards_at_least", count: 1 },
+        then: [{ kind: "gain_life", playerId: "controller", amount: 5 }],
+        otherwise: [{ kind: "gain_life", playerId: "controller", amount: 1 }],
+      },
+    ];
+    const withGraveyard = structuredClone(game);
+    withGraveyard.players[0]!.zones.graveyard.push(bear.id);
+    expect(
+      bindCardEffects(withGraveyard, effects, { controllerId: p1.id, sourceId: null }),
+    ).toEqual([{ kind: "gain_life", playerId: p1.id, amount: 5 }]);
+    // Empty graveyard takes the other branch, not neither.
+    expect(bindCardEffects(game, effects, { controllerId: p1.id, sourceId: null })).toEqual([
+      { kind: "gain_life", playerId: p1.id, amount: 1 },
+    ]);
+  });
+
+  it("counts card types rather than cards for delirium", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const bearDef = createCardDefinition({
+      name: "Bear",
+      typeLine: "Creature — Bear",
+      power: 2,
+      toughness: 2,
+    });
+    game.definitions[bearDef.id] = bearDef;
+    for (let index = 0; index < 4; index += 1) {
+      const card = createCardInstance({
+        definitionId: bearDef.id,
+        ownerId: p1.id,
+        zone: "graveyard",
+      });
+      game.cards[card.id] = card;
+      p1.zones.graveyard.push(card.id);
+    }
+    const effects: CardEffect[] = [
+      {
+        kind: "if_condition",
+        condition: { kind: "graveyard_card_types_at_least", count: 4 },
+        then: [{ kind: "gain_life", playerId: "controller", amount: 5 }],
+      },
+    ];
+    // Four cards, but all one type — delirium is not satisfied.
+    expect(bindCardEffects(game, effects, { controllerId: p1.id, sourceId: null })).toEqual([]);
   });
 });
 

@@ -362,6 +362,60 @@ function parseCount(raw: string): number | null {
   return COUNT_WORDS[text] ?? null;
 }
 
+/**
+ * Ability words (CR 207.2c) — italic flavour with no rules meaning. Every one
+ * of these is followed by text that states the condition in full, so removing
+ * the word loses nothing. Deliberately a list and not a shape: boast, channel,
+ * imprint and strive also print before an em dash and DO carry rules.
+ */
+const ABILITY_WORDS = new RegExp(
+  "(^|\\n)(?:" +
+    [
+      "Adamant",
+      "Addendum",
+      "Alliance",
+      "Battalion",
+      "Celebration",
+      "Constellation",
+      "Converge",
+      "Corrupted",
+      "Coven",
+      "Delirium",
+      "Descend",
+      "Domain",
+      "Eminence",
+      "Enrage",
+      "Fateful hour",
+      "Ferocious",
+      "Flurry",
+      "Formidable",
+      "Grandeur",
+      "Hellbent",
+      "Heroic",
+      "Inspired",
+      "Kinship",
+      "Landfall",
+      "Lieutenant",
+      "Magecraft",
+      "Metalcraft",
+      "Morbid",
+      "Pack tactics",
+      "Parade",
+      "Radiance",
+      "Raid",
+      "Rally",
+      "Revolt",
+      "Spell mastery",
+      "Survival",
+      "Sweep",
+      "Threshold",
+      "Undergrowth",
+      "Valiant",
+    ].join("|") +
+    ")\\s*[—-]\\s*",
+  "gi",
+);
+
 function normalizeOracleText(card: OracleCard): string {
   const printedName = card.name.includes(" // ") ? (card.name.split(" // ")[0] ?? card.name) : card.name;
   let text = stripReminderText(card.oracleText).replace(/\r/g, "");
@@ -387,6 +441,12 @@ function normalizeOracleText(card: OracleCard): string {
     "~",
   );
   text = text.replace(/\benters the battlefield\b/gi, "enters");
+  // CR 207.2c: an ability word is italic flavour with no rules meaning, and
+  // the condition it names is spelled out in the text that follows. Stripped
+  // from an explicit list rather than by shape, because several italicised
+  // words before an em dash are NOT ability words — boast, channel, imprint
+  // and strive carry real rules, and eating them would widen the ability.
+  text = text.replace(ABILITY_WORDS, "$1");
   // CR 700.4: for the card itself these are the same event, and "dies" is the
   // shape every trigger head here already reads (Rancor, Ichor Wellspring).
   text = text.replace(/~ is put into a graveyard from the battlefield\b/gi, "~ dies");
@@ -1060,6 +1120,63 @@ function parseGraveyardTargetPhrase(phrase: string): TargetRequirement | null {
   }
   const head = GRAVEYARD_HEAD_NOUNS.find(([pattern]) => pattern.test(rest.trim()));
   return head ? { ...requirement, kind: head[1] } : null;
+}
+
+/**
+ * The condition an ability-word rider or an activation gate tests. One
+ * vocabulary for both, so a wording added for Threshold also serves
+ * "Activate only if …". Anything unrecognised is null, which keeps the
+ * clause a clean miss rather than an ungated effect.
+ */
+function parseEffectCondition(phrase: string): TriggerCondition | null {
+  const text = phrase.trim().replace(/^if\s+/i, "");
+  const power = text.match(/^you control a creature with power (\d+) or greater$/i);
+  if (power?.[1]) {
+    return { kind: "controls_power_at_least", power: Number(power[1]) };
+  }
+  const count = text.match(
+    /^you control (\w+) or more (artifacts|creatures|lands)$/i,
+  );
+  if (count?.[1] && count[2]) {
+    const atLeast = parseCount(count[1]);
+    if (atLeast) {
+      return {
+        kind: "controls_count",
+        what: count[2].toLowerCase().replace(/s$/, "") as "land" | "creature" | "artifact",
+        atLeast,
+      };
+    }
+  }
+  const tribe = text.match(/^you control (\w+) or more ([A-Z][a-z-]+)s$/);
+  if (tribe?.[1] && tribe[2]) {
+    const atLeast = parseCount(tribe[1]);
+    if (atLeast) {
+      return { kind: "controls_subtype_count", subtype: tribe[2].toLowerCase(), atLeast };
+    }
+  }
+  const graveyard = text.match(/^there are (\w+) or more cards in your graveyard$/i);
+  if (graveyard?.[1]) {
+    const atLeast = parseCount(graveyard[1]);
+    if (atLeast) {
+      return { kind: "graveyard_cards_at_least", count: atLeast };
+    }
+  }
+  const graveyardTypes = text.match(
+    /^there are (\w+) or more card types among cards in your graveyard$/i,
+  );
+  if (graveyardTypes?.[1]) {
+    const atLeast = parseCount(graveyardTypes[1]);
+    if (atLeast) {
+      return { kind: "graveyard_card_types_at_least", count: atLeast };
+    }
+  }
+  if (/^a creature died this turn$/i.test(text)) {
+    return { kind: "creature_died_this_turn" };
+  }
+  if (/^you have (\d+) or more life$/i.test(text)) {
+    return { kind: "life_at_least", amount: Number(text.match(/(\d+)/)![1]) };
+  }
+  return null;
 }
 
 /** What a printed token descriptor spells out, before an owner is attached. */
@@ -9203,7 +9320,7 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
     // dropped — a documented approximation (the drawback is unrepresentable
     // as a gated static today).
     const delirium = sentence.match(
-      /^Delirium — As long as there are four or more card types among cards in your graveyard, ~ gets \+(\d+)\/\+(\d+), has ([a-z]+), and attacks each combat if able$/i,
+      /^As long as there are four or more card types among cards in your graveyard, ~ gets \+(\d+)\/\+(\d+), has ([a-z]+), and attacks each combat if able$/i,
     );
     if (delirium?.[1] && delirium[2] && delirium[3]) {
       const granted = KEYWORD_GRANTS[delirium[3].toLowerCase()];
@@ -11052,6 +11169,60 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
       }
       if (lastTrigger) {
         lastTrigger.effects.push({ kind: "extra_combat" });
+        continue;
+      }
+    }
+
+    // Ability-word riders: "<effect> instead if <condition>" (Cabal Ritual,
+    // Tragic Slip) and "If <condition>, [instead ]<effect>" (Dispatch,
+    // Stubborn Denial). "Instead" replaces what the card has said so far;
+    // without it the rider is an extra effect the condition gates. The ability
+    // word itself is already gone — normalizeOracleText strips it.
+    const riderTrailing = sentence.match(/^(.+?) instead if (.+)$/i);
+    const riderLeading = sentence.match(/^If (.+?), (instead )?(.+)$/i);
+    // "That creature ALSO gains trample … if you control …" — the condition
+    // trails without "instead", so the rider adds rather than replaces. The
+    // condition parser is what keeps this from claiming every sentence
+    // containing the word "if".
+    const riderAlso = sentence.match(/^(.+?) if (.+)$/i);
+    const rider = riderTrailing
+      ? { body: riderTrailing[1]!, condition: riderTrailing[2]!, replaces: true }
+      : riderLeading
+        ? {
+            body: riderLeading[3]!,
+            condition: riderLeading[1]!,
+            replaces: Boolean(riderLeading[2]) || /\binstead$/i.test(riderLeading[3]!),
+          }
+        : riderAlso
+          ? {
+              body: riderAlso[1]!.replace(/\balso\b/i, "").replace(/\s+/g, " ").trim(),
+              condition: riderAlso[2]!,
+              replaces: false,
+            }
+          : null;
+    if (rider) {
+      const condition = parseEffectCondition(rider.condition);
+      const clause = condition
+        ? compileSimpleClause(rider.body.replace(/\s+instead$/i, ""))
+        : null;
+      // A replacing rider needs something to replace, and its own targets
+      // would renumber against the clause it is replacing — so it only
+      // compiles when it adds no targets of its own.
+      if (
+        condition &&
+        clause &&
+        !clause.leftover &&
+        clause.targetRequirements.length === 0 &&
+        (!rider.replaces || result.effects.length > 0)
+      ) {
+        const gated: CardEffect = {
+          kind: "if_condition",
+          condition,
+          then: clause.effects,
+          ...(rider.replaces ? { otherwise: [...result.effects] } : {}),
+        };
+        // Replacing swallows what came before; adding runs after it.
+        result.effects = rider.replaces ? [gated] : [...result.effects, gated];
         continue;
       }
     }

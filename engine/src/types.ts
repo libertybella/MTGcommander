@@ -1529,6 +1529,18 @@ export type CardEffect =
       untilEot?: boolean;
     }
   | { kind: "restore_control"; what: ControlAllScope }
+  /**
+   * Ability-word riders ("Threshold — Add {B}{B}{B}{B}{B} instead if …"):
+   * whichever branch the condition picks is what binds. There is no bound
+   * counterpart — the choice is made when the effects are bound, which for a
+   * spell is its resolution.
+   */
+  | {
+      kind: "if_condition";
+      condition: TriggerCondition;
+      then: CardEffect[];
+      otherwise?: CardEffect[];
+    }
   | { kind: "attackers_gain_keyword_until_eot"; keyword: Keyword }
   | { kind: "untap_lands_up_to"; playerId: PlayerSelector; count: number }
   | { kind: "fog" }
@@ -1926,7 +1938,14 @@ export type TriggerCondition =
   /** Ophiomancer: "if you control no Snakes". */
   | { kind: "controls_no_subtype"; subtype: string }
   /** Triskaidekaphile: "if you have exactly thirteen cards in your hand". */
-  | { kind: "hand_size_exactly"; count: number };
+  | { kind: "hand_size_exactly"; count: number }
+  /** Threshold: "if there are seven or more cards in your graveyard". */
+  | { kind: "graveyard_cards_at_least"; count: number }
+  /** Delirium: "if there are four or more card types among cards in your
+   * graveyard". */
+  | { kind: "graveyard_card_types_at_least"; count: number }
+  /** Morbid: "if a creature died this turn". */
+  | { kind: "creature_died_this_turn" };
 
 export type CardTrigger = {
   event: TriggerEvent;

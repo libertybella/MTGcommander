@@ -41,8 +41,12 @@ function queueLookActionInPlace(
   state.prompts.push({ kind, playerId, count: looked });
 }
 
-/** Intervening "if" (CR 603.4), checked when the trigger would be queued. */
-function triggerConditionHolds(
+/**
+ * Intervening "if" (CR 603.4), checked when the trigger would be queued —
+ * and the same vocabulary an ability-word rider tests when its effects bind,
+ * which is why it is exported.
+ */
+export function triggerConditionHolds(
   state: GameState,
   controllerId: PlayerId,
   condition: CardTrigger["condition"],
@@ -119,6 +123,24 @@ function triggerConditionHolds(
   if (condition.kind === "hand_size_exactly") {
     const player = state.players.find((entry) => entry.id === controllerId);
     return (player?.zones.hand.length ?? -1) === condition.count;
+  }
+  if (condition.kind === "graveyard_cards_at_least") {
+    const player = state.players.find((entry) => entry.id === controllerId);
+    return (player?.zones.graveyard.length ?? 0) >= condition.count;
+  }
+  if (condition.kind === "graveyard_card_types_at_least") {
+    // Delirium counts distinct CARD TYPES, not cards.
+    const player = state.players.find((entry) => entry.id === controllerId);
+    const types = new Set<string>();
+    for (const cardId of player?.zones.graveyard ?? []) {
+      for (const type of characteristicsOf(state, cardId).types) {
+        types.add(type);
+      }
+    }
+    return types.size >= condition.count;
+  }
+  if (condition.kind === "creature_died_this_turn") {
+    return (state.creaturesDiedThisTurn ?? 0) > 0;
   }
   if (
     condition.kind === "controls_subtype_count" ||

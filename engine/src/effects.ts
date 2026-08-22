@@ -14,7 +14,7 @@ import { shuffleInPlace } from "./shuffle";
 import { applyStateBasedActionsInPlace } from "./status";
 import { isChosenTargetLegal, legalChoicesForRequirement, sourceColorsOf } from "./targeting";
 import { amassArmyTemplate, tokenPresetFor } from "./tokens";
-import { dispatchEventsInPlace, queueEnterBattlefieldTriggersInPlace } from "./triggers";
+import { dispatchEventsInPlace, queueEnterBattlefieldTriggersInPlace, triggerConditionHolds } from "./triggers";
 import { countCardPlacements, enterOwnerZone, moveCard, moveCardInPlace, processDiesReturnsInPlace } from "./zones";
 import type {
   CardEffect,
@@ -1634,6 +1634,10 @@ export function bindCardEffect(
       }
       return { kind: "counter_spell", stackObjectId: entry.id };
     }
+    // Resolved one level up, in bindCardEffects, because picking a branch
+    // yields a LIST of effects and this function returns one.
+    case "if_condition":
+      return null;
     default: {
       const exhaustive: never = effect;
       throw new Error(`Unknown card effect ${(exhaustive as CardEffect).kind}`);
@@ -1647,6 +1651,20 @@ export function bindCardEffects(
   context: BindEffectContext,
 ): GameEffect[] {
   return effects.flatMap((effect) => {
+    // An ability-word rider picks one of its two branches here, which for a
+    // spell is its resolution — the point the printed card checks.
+    if (effect.kind === "if_condition") {
+      const branch = triggerConditionHolds(
+        state,
+        context.controllerId,
+        effect.condition,
+        context.subjectCardId,
+        context.sourceId ?? undefined,
+      )
+        ? effect.then
+        : (effect.otherwise ?? []);
+      return bindCardEffects(state, branch, context);
+    }
     return expandEachOpponent(state, effect, context.controllerId).flatMap((item) => {
       const bound = bindCardEffect(state, item, context);
       return bound ? [bound] : [];
