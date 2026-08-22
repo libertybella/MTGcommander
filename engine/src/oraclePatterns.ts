@@ -29,6 +29,7 @@ import type {
   SearchFilter,
   SpellMode,
   StaticAbility,
+  TriggerEvent,
   TargetKind,
   TargetRequirement,
   TriggerCondition,
@@ -5719,11 +5720,20 @@ function parseTriggerHead(head: string): TriggerHead | null {
   // player's step would fire it on the controller's own turn too, and
   // Archfiend of Depravity making its own controller sacrifice is a wrong
   // game, not a rough one. It stays a clean miss.
-  const stepHead = text.match(/^At the beginning of (your|each) (upkeep|end step)$/i);
+  const stepHead = text.match(
+    /^At the beginning of (your|each|each player's) (upkeep|end step|draw step|first main phase|precombat main phase)$/i,
+  );
   if (stepHead?.[1] && stepHead[2]) {
+    const eventOf: Record<string, TriggerEvent> = {
+      upkeep: "upkeep",
+      "end step": "end_step",
+      "draw step": "draw_step",
+      "first main phase": "first_main_phase",
+      "precombat main phase": "first_main_phase",
+    };
     return {
-      event: stepHead[2].toLowerCase() === "upkeep" ? "upkeep" : "end_step",
-      ...(stepHead[1].toLowerCase() === "each" ? { eachPlayersStep: true } : {}),
+      event: eventOf[stepHead[2].toLowerCase()]!,
+      ...(/^your$/i.test(stepHead[1]) ? {} : { eachPlayersStep: true }),
     };
   }
   if (/^Whenever ~ attacks$/i.test(text)) {
@@ -9480,6 +9490,10 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
           ) {
             // Scourge of the Throne.
             condition = { kind: "attacking_most_life" };
+            rest = interveningIf[2].trim();
+          } else if (/^~ is tapped$/i.test(phrase)) {
+            // Mana Vault: the draw-step pain only lands while it stayed tapped.
+            condition = { kind: "self_tapped" };
             rest = interveningIf[2].trim();
           } else if (/^you have (\d+) or more life$/i.test(phrase)) {
             // Felidar Sovereign.

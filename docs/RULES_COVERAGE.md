@@ -175,6 +175,8 @@ What the engine implements and what it intentionally does not. Tests are tagged 
 
 - **Target noun phrases as a grammar**: `parseSimpleTargetPhrase` reads "up to one" / "another" / possessor / "legendary" / "nonbasic" / "non-\<Subtype\>" / head noun off a plain targeting phrase, and `parseGraveyardTargetPhrase` does the same for "target \<type\> card with mana value N or less from your graveyard". Blink, targeted untap, and graveyard recursion now share them, so a new wording is a card rather than a branch. Anything the grammar does not recognise returns null — an unparsed qualifier is a clean miss, never a silently widened target. Returning to the battlefield is restricted to card kinds that are certainly permanents.
 
+- **Draw-step and first-main-phase triggers**: the turn dispatches `step_begins` for the draw step (after the turn-based draw, per CR 504) and for the precombat main, so "At the beginning of your draw step" (Mana Vault) and "At the beginning of your first main phase" (Black Market, Hulking Raptor) are events rather than misses. "each player's" fires on everyone's turn, "your" only on the controller's. A `self_tapped` intervening "if" reads the watcher itself, which is what makes Mana Vault's pain conditional on staying tapped.
+
 ## The card pipeline (Stage 6)
 
 - Real cards compile from Scryfall oracle text by shared sentence patterns; a hand-authored registry (`server/src/cardOverrides.ts`, data in the same schema) beats the compiler for the long tail. Never a named-card code path.

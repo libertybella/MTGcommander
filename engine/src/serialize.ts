@@ -3132,6 +3132,8 @@ const TRIGGER_EVENT_NAMES: ReadonlySet<string> = new Set([
   "is_dealt_damage",
   "counter_added",
   "discards",
+  "draw_step",
+  "first_main_phase",
 ] satisfies TriggerEvent[]);
 
 function parseTriggers(value: unknown, label: string): CardTrigger[] {
@@ -3289,6 +3291,7 @@ function parseTriggers(value: unknown, label: string): CardTrigger[] {
                 conditionKind === "opponent_controls_more_lands" ||
                 conditionKind === "subject_name_unique" ||
                 conditionKind === "first_combat_this_turn" ||
+                conditionKind === "self_tapped" ||
                 conditionKind === "attacking_most_life"
               ) {
                 return { kind: conditionKind };

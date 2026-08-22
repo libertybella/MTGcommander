@@ -1706,6 +1706,12 @@ export type TriggerEvent =
   | "attacks"
   | "upkeep"
   | "end_step"
+  /** Mana Vault, Teferi's Puzzle Box: "at the beginning of your draw step".
+   * Queued after the turn-based draw, per CR 504. */
+  | "draw_step"
+  /** Black Market, Hulking Raptor: "at the beginning of your first main
+   * phase" — the precombat main only. */
+  | "first_main_phase"
   | "you_gain_life"
   /** An opponent lost life (Exquisite Blood). Subject is the losing player. */
   | "opponent_loses_life"
@@ -1765,6 +1771,8 @@ export type TriggerCondition =
   | { kind: "controls_power_at_least"; power: number }
   /** Karlach: "if it's the first combat phase of the turn". */
   | { kind: "first_combat_this_turn" }
+  /** Mana Vault: "if this artifact is tapped". */
+  | { kind: "self_tapped" }
   /** Dethrone / Scourge: the subject attacker's defender has the most life
    * (or is tied for most). */
   | { kind: "attacking_most_life" }

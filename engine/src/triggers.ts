@@ -11,6 +11,8 @@ import type {
   EngineEvent,
   GameState,
   PlayerId,
+  Step,
+  TriggerEvent,
   TriggerCandidate,
 } from "./types";
 
@@ -44,6 +46,7 @@ function triggerConditionHolds(
   controllerId: PlayerId,
   condition: CardTrigger["condition"],
   subjectCardId?: CardInstanceId,
+  watcherId?: CardInstanceId,
 ): boolean {
   if (!condition) {
     return true;
@@ -88,6 +91,10 @@ function triggerConditionHolds(
   if (condition.kind === "first_combat_this_turn") {
     // Karlach: only the turn's first combat phase qualifies.
     return (state.combatPhasesThisTurn ?? 0) <= 1;
+  }
+  if (condition.kind === "self_tapped") {
+    // Mana Vault: the watcher itself must still be tapped.
+    return state.cards[watcherId ?? ""]?.tapped === true;
   }
   if (condition.kind === "attacking_most_life") {
     // Dethrone: the subject attacker's defender has (or ties for) most life.
@@ -181,7 +188,7 @@ export function queueDefinitionTriggerInPlace(
   if (!card || !trigger) {
     return false;
   }
-  if (!triggerConditionHolds(state, card.controllerId, trigger.condition, subject?.cardId)) {
+  if (!triggerConditionHolds(state, card.controllerId, trigger.condition, subject?.cardId, cardId)) {
     return false;
   }
   if (trigger.oncePerTurn) {
@@ -259,7 +266,7 @@ function candidateIsQueueable(state: GameState, candidate: TriggerCandidate): bo
   ) {
     return false;
   }
-  if (!triggerConditionHolds(state, card.controllerId, trigger.condition, candidate.subjectCardId)) {
+  if (!triggerConditionHolds(state, card.controllerId, trigger.condition, candidate.subjectCardId, candidate.cardId)) {
     return false;
   }
   // A permanent whose abilities were removed (Humility) has no triggers.
@@ -649,11 +656,14 @@ function triggerMatchesEvent(
     return false;
   }
   if (event.kind === "step_begins") {
-    if (trigger.event !== "upkeep" && trigger.event !== "end_step") {
-      return false;
-    }
-    const step = trigger.event === "upkeep" ? "upkeep" : "end";
-    if (event.step !== step) {
+    const stepOf: Partial<Record<TriggerEvent, Step>> = {
+      upkeep: "upkeep",
+      end_step: "end",
+      draw_step: "draw",
+      first_main_phase: "precombatMain",
+    };
+    const step = stepOf[trigger.event];
+    if (!step || event.step !== step) {
       return false;
     }
     // "At the beginning of EACH end step" fires on every player's turn;

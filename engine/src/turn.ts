@@ -255,13 +255,22 @@ function onEnterStep(state: GameState): GameState {
           extra += 1;
         }
       }
-      return applyEffect(state, {
+      // CR 504: the turn-based draw happens first, then draw-step triggers
+      // go on the stack.
+      const drawn = applyEffect(state, {
         kind: "draw",
         playerId: active.id,
         count: 1 + extra,
         turnDraw: true,
       });
+      dispatchEventsInPlace(drawn, [{ kind: "step_begins", step: "draw" }]);
+      return drawn;
     }
+    dispatchEventsInPlace(state, [{ kind: "step_begins", step: "draw" }]);
+    return state;
+  }
+  if (state.turn.step === "precombatMain") {
+    dispatchEventsInPlace(state, [{ kind: "step_begins", step: "precombatMain" }]);
     return state;
   }
   if (state.turn.step === "declareAttackers") {

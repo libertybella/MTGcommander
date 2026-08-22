@@ -20531,3 +20531,95 @@ describe("wave 171: target noun phrases as a grammar", () => {
   });
 });
 
+
+describe("wave 172: draw step and first main phase triggers", () => {
+  const compile = (name: string, manaCost: string, typeLine: string, oracleText: string, power?: string, toughness?: string) =>
+    compileOracleCard({
+      oracleId: name,
+      name,
+      manaCost,
+      typeLine,
+      power: power ?? null,
+      toughness: toughness ?? null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  const VAULT =
+    "This artifact doesn't untap during your untap step.\nAt the beginning of your upkeep, you may pay {4}. If you do, untap this artifact.\nAt the beginning of your draw step, if this artifact is tapped, it deals 1 damage to you.\n{T}: Add {C}{C}{C}.";
+  const RAPTOR = "Ward {2}\nAt the beginning of your first main phase, add {G}{G}.";
+
+  const openMain = (state: GameState, playerId: string): GameState => {
+    let next = state;
+    next.turn.phase = "beginning";
+    next.turn.step = "draw";
+    next.turn.activePlayerId = playerId;
+    next.priorityPlayerId = playerId;
+    return next;
+  };
+
+  it("adds the mana as the precombat main phase begins", () => {
+    const raptor = compile("Hulking Raptor", "{2}{G}{G}", "Creature — Dinosaur", RAPTOR, "5", "3");
+    expect(raptor.notes).toEqual([]);
+    expect(raptor.definition.triggers[0]).toMatchObject({ event: "first_main_phase" });
+
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    game.definitions[raptor.definition.id] = raptor.definition;
+    const card = createCardInstance({
+      definitionId: raptor.definition.id,
+      ownerId: p1.id,
+      zone: "battlefield",
+    });
+    card.summoningSick = false;
+    game.cards[card.id] = card;
+    p1.zones.battlefield.push(card.id);
+    let next = openMain(game, p1.id);
+    next = advanceSteps(next, 1);
+    expect(next.turn.step).toBe("precombatMain");
+    while (next.stack.length > 0) {
+      next = resolveTopOfStack(next);
+    }
+    expect(next.players.find((entry) => entry.id === p1.id)?.mana.G).toBe(2);
+  });
+
+  it("only bites at the draw step while it is still tapped", () => {
+    const vault = compile("Mana Vault", "{1}", "Artifact", VAULT);
+    expect(vault.notes).toEqual([]);
+    const trigger = vault.definition.triggers.find((entry) => entry.event === "draw_step");
+    expect(trigger?.condition).toEqual({ kind: "self_tapped" });
+
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    game.definitions[vault.definition.id] = vault.definition;
+    const card = createCardInstance({
+      definitionId: vault.definition.id,
+      ownerId: p1.id,
+      zone: "battlefield",
+    });
+    card.tapped = true;
+    game.cards[card.id] = card;
+    p1.zones.battlefield.push(card.id);
+    game.turn.phase = "beginning";
+    game.turn.step = "upkeep";
+    game.turn.activePlayerId = p1.id;
+    game.priorityPlayerId = p1.id;
+    const startingLife = p1.life;
+
+    let next = advanceSteps(game, 1);
+    expect(next.turn.step).toBe("draw");
+    while (next.stack.length > 0) {
+      next = resolveTopOfStack(next);
+    }
+    expect(next.players.find((entry) => entry.id === p1.id)?.life).toBe(startingLife - 1);
+
+    // Untapped, the intervening "if" keeps the trigger off the stack.
+    next.cards[card.id]!.tapped = false;
+    next.turn.phase = "beginning";
+    next.turn.step = "upkeep";
+    next = advanceSteps(next, 1);
+    expect(next.stack).toHaveLength(0);
+  });
+});
+
