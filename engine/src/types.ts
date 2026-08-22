@@ -1937,8 +1937,16 @@ export type TriggerCondition =
   | { kind: "attacking_most_life" }
   /** Felidar Sovereign: "if you have 40 or more life". */
   | { kind: "life_at_least"; amount: number }
-  /** Revel in Riches / Emeria: "if you control ten or more Treasures". */
-  | { kind: "controls_subtype_count"; subtype: string; atLeast: number }
+  /** Revel in Riches / Emeria: "if you control ten or more Treasures".
+   * `excludeSelf` reads "at least five OTHER Mountains" (Valakut). */
+  | {
+      kind: "controls_subtype_count";
+      subtype: string;
+      atLeast: number;
+      excludeSelf?: boolean;
+    }
+  /** Kederekt Parasite: "if you control a red permanent". */
+  | { kind: "controls_colored_permanent"; color: Color }
   /** Ophiomancer: "if you control no Snakes". */
   | { kind: "controls_no_subtype"; subtype: string }
   /** Triskaidekaphile: "if you have exactly thirteen cards in your hand". */
@@ -1949,7 +1957,20 @@ export type TriggerCondition =
    * graveyard". */
   | { kind: "graveyard_card_types_at_least"; count: number }
   /** Morbid: "if a creature died this turn". */
-  | { kind: "creature_died_this_turn" };
+  | { kind: "creature_died_this_turn" }
+  /** Jadar-class: "if an opponent controls three or more creatures" — any
+   * single opponent, not the table's total. */
+  | {
+      kind: "opponent_controls_count";
+      what: "land" | "creature" | "artifact";
+      atLeast: number;
+    }
+  /** "if you have four or more creature cards in your graveyard". */
+  | { kind: "graveyard_creature_cards_at_least"; count: number }
+  /** Raid: "if you attacked this turn". */
+  | { kind: "attacked_this_turn" }
+  /** "if you've drawn more than one card this turn". */
+  | { kind: "drew_cards_this_turn"; moreThan: number };
 
 export type CardTrigger = {
   event: TriggerEvent;
@@ -2407,6 +2428,9 @@ export type ActivatedAbility = {
   requiresAttackersThisTurn?: number;
   /** Idol of Oblivion: "Activate only if you created a token this turn." */
   requiresCreatedToken?: boolean;
+  /** "Activate only if <condition>" — the same vocabulary trigger heads use
+   * for their intervening "if", so a wording added for one serves both. */
+  requiresCondition?: TriggerCondition;
   /** Weathered Wayfarer: "Activate only if an opponent controls more lands
    * than you." */
   requiresOpponentMoreLands?: boolean;

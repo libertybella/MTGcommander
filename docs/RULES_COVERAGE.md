@@ -392,6 +392,27 @@ What the engine implements and what it intentionally does not. Tests are tagged 
   class of bug by construction; only the test caught it. That is the fourth
   mapper layer, and it has now bitten in the same place more than once.
 
+- **One condition vocabulary, three consumers**: trigger heads' intervening
+  "if", "Activate only if …", and ability-word riders each spelled their
+  conditions out separately — the trigger one as a ~120-line chain of a branch
+  per wording. They now share `parseEffectCondition`, so a wording added for
+  one serves all three, and `ActivatedAbility.requiresCondition` carries the
+  general gate (checked at activation AND at legal-action enumeration, or the
+  ability would be offered and then refused).
+
+  New conditions the miss list asked for: an opponent's own count ("if an
+  opponent controls three or more creatures" — ANY single opponent, not the
+  table's total), creature cards in your graveyard, "you attacked this turn",
+  "you've drawn more than one card this turn", a coloured permanent, and
+  "at least five OTHER Mountains", where excluding the source is the whole
+  point — counting itself would meet the bar one Mountain early.
+
+  "You may have ~ deal 3 damage to any target" rewrites to the ordinary damage
+  clause with the "may" auto-taken, the same documented approximation the
+  other may-clauses use. Both Valakut and Kederekt Parasite stopped there, and
+  the one-away report had truncated the phrase out of view — a reminder to
+  read the printed card, not the report line.
+
 ## The card pipeline (Stage 6)
 
 - Real cards compile from Scryfall oracle text by shared sentence patterns; a hand-authored registry (`server/src/cardOverrides.ts`, data in the same schema) beats the compiler for the long tail. Never a named-card code path.

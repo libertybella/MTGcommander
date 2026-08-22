@@ -13,7 +13,7 @@ import { createId } from "./ids";
 import { isLiving, livingPlayerCount, requireLiving } from "./players";
 import { passPriority, putActivatedAbilityOnStack, putSpellOnStack, resolveTopOfStack } from "./stack";
 import { applyStateBasedActionsInPlace, redirectPriorityIfLost } from "./status";
-import { dispatchEventsInPlace } from "./triggers";
+import { dispatchEventsInPlace, triggerConditionHolds } from "./triggers";
 import { validateChosenTargets } from "./targeting";
 import {
   DEFAULT_SHORTCUT_POLICY,
@@ -1141,6 +1141,12 @@ function applyActivateAbility(
     ability.requiresAttackersThisTurn !== undefined &&
     (state.players.find((player) => player.id === playerId)?.attackersThisTurn ?? 0) <
       ability.requiresAttackersThisTurn
+  ) {
+    throw new Error("The activation condition is not met");
+  }
+  if (
+    ability.requiresCondition &&
+    !triggerConditionHolds(state, playerId, ability.requiresCondition, undefined, cardId)
   ) {
     throw new Error("The activation condition is not met");
   }

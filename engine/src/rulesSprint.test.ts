@@ -16873,9 +16873,12 @@ describe("wave 145: verges, gates, and marching orders", () => {
       "{T}: Add {C}.\n{3}, {T}: Draw a card. Activate only if you control a creature with power 4 or greater.",
     );
     expect(enclave.notes).toEqual([]);
-    expect(enclave.definition.activated[0]?.requiresControlled).toEqual({
-      types: ["creature"],
-      minPower: 4,
+    // The gate now reads through the shared condition vocabulary rather than
+    // a controlled-permanent filter of its own; both are enforced, and the
+    // shared one is what trigger heads and ability-word riders also use.
+    expect(enclave.definition.activated[0]?.requiresCondition).toEqual({
+      kind: "controls_power_at_least",
+      power: 4,
     });
 
     const minas = compile(
@@ -23875,6 +23878,244 @@ describe("wave 192: back-references and narrowed flash", () => {
     expect(hasFlashGrant(game, p1.id, bear.id)).toBe(false);
     // And a caller that names no card gets the unrestricted grants only.
     expect(hasFlashGrant(game, p1.id)).toBe(false);
+  });
+});
+
+
+describe("wave 193: one condition vocabulary, three consumers", () => {
+  const compile = (name: string, manaCost: string, typeLine: string, oracleText: string, power?: string, toughness?: string) =>
+    compileOracleCard({
+      oracleId: name,
+      name,
+      manaCost,
+      typeLine,
+      power: power ?? null,
+      toughness: toughness ?? null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  it("reads the same condition as a trigger's if, a gate, and a rider", () => {
+    // The three used to spell their conditions out separately, so a wording
+    // added for one served only that one.
+    const triggered = compile(
+      "Testcard",
+      "{2}",
+      "Enchantment",
+      "At the beginning of your end step, if a creature died this turn, you gain 1 life.",
+    );
+    expect(triggered.notes).toEqual([]);
+    expect(triggered.definition.triggers[0]?.condition).toEqual({
+      kind: "creature_died_this_turn",
+    });
+
+    const gated = compile(
+      "Testcard",
+      "{2}",
+      "Artifact",
+      "{T}: Draw a card. Activate only if a creature died this turn.",
+    );
+    expect(gated.notes).toEqual([]);
+    expect(gated.definition.activated[0]?.requiresCondition).toEqual({
+      kind: "creature_died_this_turn",
+    });
+
+    const rider = compile(
+      "Testcard",
+      "{B}",
+      "Instant",
+      "You gain 1 life.\nMorbid — You gain 5 life instead if a creature died this turn.",
+    );
+    expect(rider.notes).toEqual([]);
+    expect(rider.definition.effects[0]).toMatchObject({
+      kind: "if_condition",
+      condition: { kind: "creature_died_this_turn" },
+    });
+  });
+
+  it("gates an activation on a condition at both check and enumeration", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const rockDef = createCardDefinition({
+      name: "Rock",
+      typeLine: "Artifact",
+      activated: [
+        {
+          tap: true,
+          manaCost: "",
+          effects: [{ kind: "draw", playerId: "controller", count: 1 }],
+          targetRequirements: [],
+          requiresCondition: { kind: "creature_died_this_turn" },
+        },
+      ],
+    });
+    game.definitions[rockDef.id] = rockDef;
+    const rock = createCardInstance({
+      definitionId: rockDef.id,
+      ownerId: p1.id,
+      zone: "battlefield",
+    });
+    game.cards[rock.id] = rock;
+    p1.zones.battlefield.push(rock.id);
+    game.priorityPlayerId = p1.id;
+
+    const offered = (state: GameState): boolean =>
+      legalActions(state, p1.id).some(
+        (action) => action.kind === "activate_ability" && action.cardId === rock.id,
+      );
+    expect(offered(game)).toBe(false);
+    const withDeath = structuredClone(game);
+    withDeath.creaturesDiedThisTurn = 1;
+    expect(offered(withDeath)).toBe(true);
+    // And the activation itself refuses, not just the enumeration.
+    expect(() =>
+      applyAction(game, { kind: "activate_ability", playerId: p1.id, cardId: rock.id, abilityIndex: 0 }),
+    ).toThrow();
+  });
+
+  it("counts other permanents, not this one, when the text says other", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const mountainDef = createCardDefinition({
+      name: "Mountain",
+      typeLine: "Basic Land — Mountain",
+    });
+    game.definitions[mountainDef.id] = mountainDef;
+    const put = () => {
+      const card = createCardInstance({
+        definitionId: mountainDef.id,
+        ownerId: p1.id,
+        zone: "battlefield",
+      });
+      game.cards[card.id] = card;
+      p1.zones.battlefield.push(card.id);
+      return card;
+    };
+    const mountains = Array.from({ length: 5 }, put);
+    const watcherDef = createCardDefinition({
+      name: "Valakut",
+      typeLine: "Land",
+      triggers: [
+        {
+          event: "enter_battlefield",
+          watch: "controlled",
+          condition: {
+            kind: "controls_subtype_count",
+            subtype: "mountain",
+            atLeast: 5,
+            excludeSelf: true,
+          },
+          effects: [{ kind: "gain_life", playerId: "controller", amount: 1 }],
+          targetRequirements: [],
+        },
+      ],
+    });
+    game.definitions[watcherDef.id] = watcherDef;
+    const watcher = createCardInstance({
+      definitionId: watcherDef.id,
+      ownerId: p1.id,
+      zone: "battlefield",
+    });
+    game.cards[watcher.id] = watcher;
+    p1.zones.battlefield.push(watcher.id);
+
+    const fires = (state: GameState): number => {
+      const cloned = structuredClone(state);
+      dispatchEventsInPlace(cloned, [{ kind: "enters", cardId: mountains[0]!.id }]);
+      return cloned.stack.length;
+    };
+    expect(fires(game)).toBe(1);
+    // With only four other Mountains the bar is not met — and it would be if
+    // the watcher counted itself.
+    const fewer = structuredClone(game);
+    const dropped = mountains[4]!.id;
+    fewer.cards[dropped]!.zone = "graveyard";
+    fewer.players[0]!.zones.battlefield = fewer.players[0]!.zones.battlefield.filter(
+      (id) => id !== dropped,
+    );
+    expect(fires(fewer)).toBe(0);
+  });
+
+  it("takes the may in 'you may have ~ deal N damage'", () => {
+    const valakut = compile(
+      "Valakut, the Molten Pinnacle",
+      "",
+      "Land",
+      "This land enters tapped.\nWhenever a Mountain you control enters, if you control at least five other Mountains, you may have this land deal 3 damage to any target.\n{T}: Add {R}.",
+    );
+    expect(valakut.notes).toEqual([]);
+    expect(valakut.definition.triggers[0]?.condition).toEqual({
+      kind: "controls_subtype_count",
+      subtype: "mountain",
+      atLeast: 5,
+      excludeSelf: true,
+    });
+    expect(valakut.definition.triggers[0]?.effects[0]).toMatchObject({
+      kind: "deal_damage",
+      amount: 3,
+    });
+  });
+
+  it("asks any single opponent, not the table's total", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    const bearDef = createCardDefinition({
+      name: "Bear",
+      typeLine: "Creature — Bear",
+      power: 2,
+      toughness: 2,
+    });
+    game.definitions[bearDef.id] = bearDef;
+    const put = (owner: typeof p1) => {
+      const card = createCardInstance({
+        definitionId: bearDef.id,
+        ownerId: owner.id,
+        zone: "battlefield",
+      });
+      game.cards[card.id] = card;
+      owner.zones.battlefield.push(card.id);
+    };
+    put(p2);
+    put(p2);
+    const watcherDef = createCardDefinition({
+      name: "Watcher",
+      typeLine: "Enchantment",
+      triggers: [
+        {
+          event: "upkeep",
+          condition: { kind: "opponent_controls_count", what: "creature", atLeast: 3 },
+          effects: [{ kind: "gain_life", playerId: "controller", amount: 1 }],
+          targetRequirements: [],
+        },
+      ],
+    });
+    game.definitions[watcherDef.id] = watcherDef;
+    const watcher = createCardInstance({
+      definitionId: watcherDef.id,
+      ownerId: p1.id,
+      zone: "battlefield",
+    });
+    game.cards[watcher.id] = watcher;
+    p1.zones.battlefield.push(watcher.id);
+
+    const fires = (state: GameState): number => {
+      const cloned = structuredClone(state);
+      dispatchEventsInPlace(cloned, [{ kind: "step_begins", step: "upkeep" }]);
+      return cloned.stack.length;
+    };
+    // Two is short of three, even though the caster also has creatures.
+    put(p1);
+    expect(fires(game)).toBe(0);
+    const third = structuredClone(game);
+    const extra = createCardInstance({
+      definitionId: bearDef.id,
+      ownerId: p2.id,
+      zone: "battlefield",
+    });
+    third.cards[extra.id] = extra;
+    third.players[1]!.zones.battlefield.push(extra.id);
+    expect(fires(third)).toBe(1);
   });
 });
 

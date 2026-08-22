@@ -142,6 +142,42 @@ export function triggerConditionHolds(
   if (condition.kind === "creature_died_this_turn") {
     return (state.creaturesDiedThisTurn ?? 0) > 0;
   }
+  if (condition.kind === "attacked_this_turn") {
+    return state.players.find((entry) => entry.id === controllerId)?.attackedThisTurn === true;
+  }
+  if (condition.kind === "drew_cards_this_turn") {
+    return (state.drawsByPlayerThisTurn?.[controllerId] ?? 0) > condition.moreThan;
+  }
+  if (condition.kind === "graveyard_creature_cards_at_least") {
+    const player = state.players.find((entry) => entry.id === controllerId);
+    const creatures = (player?.zones.graveyard ?? []).filter((cardId) =>
+      characteristicsOf(state, cardId).types.includes("creature"),
+    ).length;
+    return creatures >= condition.count;
+  }
+  if (condition.kind === "opponent_controls_count") {
+    // ANY single opponent must be at the bar, not the table's total.
+    return state.players.some((player) => {
+      if (player.id === controllerId || player.lost) {
+        return false;
+      }
+      const held = Object.values(state.cards).filter(
+        (card) =>
+          card.zone === "battlefield" &&
+          card.controllerId === player.id &&
+          characteristicsOf(state, card.id).types.includes(condition.what),
+      ).length;
+      return held >= condition.atLeast;
+    });
+  }
+  if (condition.kind === "controls_colored_permanent") {
+    return Object.values(state.cards).some(
+      (card) =>
+        card.zone === "battlefield" &&
+        card.controllerId === controllerId &&
+        characteristicsOf(state, card.id).colors.includes(condition.color),
+    );
+  }
   if (
     condition.kind === "controls_subtype_count" ||
     condition.kind === "controls_no_subtype"
@@ -150,6 +186,11 @@ export function triggerConditionHolds(
       (card) =>
         card.zone === "battlefield" &&
         card.controllerId === controllerId &&
+        // "five OTHER Mountains": the permanent holding the ability is not
+        // one of the five it needs.
+        !(condition.kind === "controls_subtype_count" &&
+          condition.excludeSelf &&
+          card.id === watcherId) &&
         cardMatchesSubtype(state, card.id, condition.subtype),
     ).length;
     return condition.kind === "controls_no_subtype"

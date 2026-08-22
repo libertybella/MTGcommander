@@ -3370,6 +3370,14 @@ function parseActivatedAbilities(value: unknown, label: string): ActivatedAbilit
         ? {}
         : { sacrificeCount: expectNumber(entry.sacrificeCount, `${label}[${index}].sacrificeCount`) }),
       ...(entry.requiresCreatedToken === true ? { requiresCreatedToken: true } : {}),
+      ...(entry.requiresCondition === undefined
+        ? {}
+        : {
+            requiresCondition: parseTriggerCondition(
+              entry.requiresCondition,
+              `${label}.requiresCondition`,
+            ),
+          }),
     };
   });
 }
@@ -3687,8 +3695,25 @@ function parseTriggerCondition(value: unknown, label: string): TriggerCondition 
       ) {
         return { kind: conditionKind, count: expectNumber(value.count, `${label}.count`) };
       }
-      if (conditionKind === "creature_died_this_turn") {
+      if (conditionKind === "creature_died_this_turn" || conditionKind === "attacked_this_turn") {
         return { kind: conditionKind };
+      }
+      if (conditionKind === "graveyard_creature_cards_at_least") {
+        return { kind: conditionKind, count: expectNumber(value.count, `${label}.count`) };
+      }
+      if (conditionKind === "drew_cards_this_turn") {
+        return { kind: conditionKind, moreThan: expectNumber(value.moreThan, `${label}.moreThan`) };
+      }
+      if (conditionKind === "opponent_controls_count") {
+        const scope = expectString(value.what, `${label}.what`);
+        if (scope !== "land" && scope !== "creature" && scope !== "artifact") {
+          throw new Error(`Invalid ${label}.what`);
+        }
+        return {
+          kind: conditionKind,
+          what: scope,
+          atLeast: expectNumber(value.atLeast, `${label}.atLeast`),
+        };
       }
       if (conditionKind === "controls_no_subtype") {
         return {
@@ -3702,15 +3727,13 @@ function parseTriggerCondition(value: unknown, label: string): TriggerCondition 
       if (conditionKind === "controls_subtype_count") {
         return {
           kind: conditionKind,
-          subtype: expectString(
-            value.subtype,
-            `${label}.subtype`,
-          ),
-          atLeast: expectNumber(
-            value.atLeast,
-            `${label}.atLeast`,
-          ),
+          subtype: expectString(value.subtype, `${label}.subtype`),
+          atLeast: expectNumber(value.atLeast, `${label}.atLeast`),
+          ...(value.excludeSelf === true ? { excludeSelf: true } : {}),
         };
+      }
+      if (conditionKind === "controls_colored_permanent") {
+        return { kind: conditionKind, color: parseColor(value.color, `${label}.color`) };
       }
       if (conditionKind === "controls_count") {
         const what = expectString(

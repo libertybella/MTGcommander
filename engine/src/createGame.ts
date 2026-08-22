@@ -355,6 +355,7 @@ export function createCardDefinition(
             ? { requiresAttackersThisTurn: ability.requiresAttackersThisTurn }
             : {}),
           ...(ability.requiresCreatedToken ? { requiresCreatedToken: true } : {}),
+          ...(ability.requiresCondition ? { requiresCondition: ability.requiresCondition } : {}),
           ...(ability.requiresOpponentMoreLands ? { requiresOpponentMoreLands: true } : {}),
           ...(ability.requiresControlled
             ? { requiresControlled: copyControlledGate(ability.requiresControlled) }

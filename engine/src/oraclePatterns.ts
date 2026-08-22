@@ -1205,6 +1205,103 @@ function parseEffectCondition(phrase: string): TriggerCondition | null {
   if (/^you have (\d+) or more life$/i.test(text)) {
     return { kind: "life_at_least", amount: Number(text.match(/(\d+)/)![1]) };
   }
+  if (/^you attacked this turn$/i.test(text)) {
+    return { kind: "attacked_this_turn" };
+  }
+  const drew = text.match(/^you've drawn more than (\w+) cards? this turn$/i);
+  if (drew?.[1]) {
+    const moreThan = parseCount(drew[1]);
+    if (moreThan) {
+      return { kind: "drew_cards_this_turn", moreThan };
+    }
+  }
+  const opponentCount = text.match(
+    /^an opponent controls (\w+) or more (lands|creatures|artifacts)$/i,
+  );
+  if (opponentCount?.[1] && opponentCount[2]) {
+    const atLeast = parseCount(opponentCount[1]);
+    if (atLeast) {
+      return {
+        kind: "opponent_controls_count",
+        what: opponentCount[2].toLowerCase().replace(/s$/, "") as
+          | "land"
+          | "creature"
+          | "artifact",
+        atLeast,
+      };
+    }
+  }
+  const graveyardCreatures = text.match(
+    /^you have (\w+) or more creature cards in your graveyard$/i,
+  );
+  if (graveyardCreatures?.[1]) {
+    const atLeast = parseCount(graveyardCreatures[1]);
+    if (atLeast) {
+      return { kind: "graveyard_creature_cards_at_least", count: atLeast };
+    }
+  }
+  // The wordings the trigger heads' own chain used to spell out one by one.
+  if (
+    /^you control the artifact with the greatest mana value or tied for the greatest mana value$/i.test(
+      text,
+    )
+  ) {
+    return { kind: "greatest_artifact_mana_value" };
+  }
+  if (
+    /^an opponent controls more lands than you$/i.test(text) ||
+    // Archaeomancer's Map: "that player" is the land's controller, an
+    // opponent, so the same condition reads correctly.
+    /^that player controls more lands than you$/i.test(text)
+  ) {
+    return { kind: "opponent_controls_more_lands" };
+  }
+  if (
+    /^it doesn't have the same name as another creature you control or a creature card in your graveyard$/i.test(
+      text,
+    )
+  ) {
+    return { kind: "subject_name_unique" };
+  }
+  if (/^it's the first combat phase of the turn$/i.test(text)) {
+    return { kind: "first_combat_this_turn" };
+  }
+  if (/^it's attacking the player with the most life or tied for most life$/i.test(text)) {
+    return { kind: "attacking_most_life" };
+  }
+  if (/^~ is tapped$/i.test(text)) {
+    return { kind: "self_tapped" };
+  }
+  const handSize = text.match(/^you have exactly (\w+) cards in your hand$/i);
+  if (handSize?.[1]) {
+    const count = parseCount(handSize[1]);
+    if (count) {
+      return { kind: "hand_size_exactly", count };
+    }
+  }
+  const colored = text.match(/^you control an? (white|blue|black|red|green) permanent$/i);
+  if (colored?.[1]) {
+    return { kind: "controls_colored_permanent", color: COLOR_WORDS[colored[1].toLowerCase()]! };
+  }
+  // "at least five other Mountains" (Valakut) — the source is not one of them.
+  const otherSubtype = text.match(
+    /^you control at least (\w+) other ([A-Z][A-Za-z]*)s$/,
+  );
+  if (otherSubtype?.[1] && otherSubtype[2]) {
+    const atLeast = parseCount(otherSubtype[1]);
+    if (atLeast) {
+      return {
+        kind: "controls_subtype_count",
+        subtype: singularSubtype(`${otherSubtype[2]}s`),
+        atLeast,
+        excludeSelf: true,
+      };
+    }
+  }
+  const noSubtype = text.match(/^you control no ([A-Z][a-z]+)s$/);
+  if (noSubtype?.[1]) {
+    return { kind: "controls_no_subtype", subtype: singularSubtype(`${noSubtype[1]}s`) };
+  }
   return null;
 }
 
@@ -1697,6 +1794,14 @@ function foldSubjectRider(effects: CardEffect[], sentence: string): boolean {
 }
 
 function compileSimpleClause(sentence: string): SimpleClause | null {
+  // "You may have ~ deal 3 damage to any target" (Valakut, Kederekt Parasite):
+  // the "may" is auto-taken, the same documented approximation the other
+  // may-clauses here use, and what is left is the ordinary damage clause.
+  // Terminates because the rewrite removes the phrase it matched on.
+  const mayHave = sentence.match(/^you may have (.+?) deals? (.+)$/i);
+  if (mayHave?.[1] && mayHave[2]) {
+    return compileSimpleClause(`${mayHave[1]} deals ${mayHave[2]}`);
+  }
   const amass = parseAmassClause(sentence);
   if (amass) {
     return {
@@ -10797,108 +10902,14 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
         let condition: TriggerCondition | undefined;
         const interveningIf = rest.match(/^if (.+?), (?:then )?(.+)$/i);
         if (interveningIf?.[1] && interveningIf[2]) {
-          const phrase = interveningIf[1].trim();
-          if (
-            /^you control the artifact with the greatest mana value or tied for the greatest mana value$/i.test(
-              phrase,
-            )
-          ) {
-            condition = { kind: "greatest_artifact_mana_value" };
+          // One condition vocabulary, shared with activation gates and
+          // ability-word riders. It used to be spelled out here as a chain of
+          // one branch per wording, which meant a condition added for one of
+          // the three served only that one.
+          const parsed = parseEffectCondition(interveningIf[1].trim());
+          if (parsed) {
+            condition = parsed;
             rest = interveningIf[2].trim();
-          } else if (
-            /^an opponent controls more lands than you$/i.test(phrase) ||
-            // Archaeomancer's Map: "that player" is the land's controller —
-            // an opponent — so the same condition reads correctly.
-            /^that player controls more lands than you$/i.test(phrase)
-          ) {
-            // Land Tax.
-            condition = { kind: "opponent_controls_more_lands" };
-            rest = interveningIf[2].trim();
-          } else if (
-            /^it doesn't have the same name as another creature you control or a creature card in your graveyard$/i.test(
-              phrase,
-            )
-          ) {
-            // Guardian Project.
-            condition = { kind: "subject_name_unique" };
-            rest = interveningIf[2].trim();
-          } else if (
-            /^you control a creature with power (\d+) or greater$/i.test(phrase)
-          ) {
-            // Garruk's Uprising.
-            const power = Number(phrase.match(/power (\d+)/i)![1]);
-            condition = { kind: "controls_power_at_least", power };
-            rest = interveningIf[2].trim();
-          } else if (/^it's the first combat phase of the turn$/i.test(phrase)) {
-            // Karlach.
-            condition = { kind: "first_combat_this_turn" };
-            rest = interveningIf[2].trim();
-          } else if (
-            /^it's attacking the player with the most life or tied for most life$/i.test(phrase)
-          ) {
-            // Scourge of the Throne.
-            condition = { kind: "attacking_most_life" };
-            rest = interveningIf[2].trim();
-          } else if (/^~ is tapped$/i.test(phrase)) {
-            // Mana Vault: the draw-step pain only lands while it stayed tapped.
-            condition = { kind: "self_tapped" };
-            rest = interveningIf[2].trim();
-          } else if (/^you have (\d+) or more life$/i.test(phrase)) {
-            // Felidar Sovereign.
-            condition = {
-              kind: "life_at_least",
-              amount: Number(phrase.match(/have (\d+)/i)![1]),
-            };
-            rest = interveningIf[2].trim();
-          } else if (
-            /^you have exactly (thirteen|\w+|\d+) cards in your hand$/i.test(phrase)
-          ) {
-            // Triskaidekaphile.
-            const count = parseCount(phrase.match(/exactly (\S+) cards/i)![1]!);
-            if (count) {
-              condition = { kind: "hand_size_exactly", count };
-              rest = interveningIf[2].trim();
-            }
-          } else if (/^you control no ([A-Z][a-z]+)s$/.test(phrase)) {
-            // Ophiomancer.
-            condition = {
-              kind: "controls_no_subtype",
-              subtype: singularSubtype(phrase.match(/no ([A-Za-z]+)$/)![1]!),
-            };
-            rest = interveningIf[2].trim();
-          } else {
-            // The count is whatever parseCount recognises, rather than a
-            // hand-listed set of number words — "thirty" is as real as "ten".
-            const controls = phrase.match(
-              /^you control ([a-z]+|\d+) or more (lands|creatures|artifacts)$/i,
-            );
-            const atLeast = controls?.[1] ? parseCount(controls[1]) : null;
-            if (controls?.[2] && atLeast) {
-              condition = {
-                kind: "controls_count",
-                what: controls[2].toLowerCase().replace(/s$/, "") as
-                  | "land"
-                  | "creature"
-                  | "artifact",
-                atLeast,
-              };
-              rest = interveningIf[2].trim();
-            } else {
-              // "…ten or more Treasures" / "…seven or more Plains": a
-              // subtype count rather than a card type.
-              const subtypeCount = phrase.match(
-                /^you control ([a-z]+|\d+) or more ([A-Z][A-Za-z]*)s$/,
-              );
-              const subtypeAtLeast = subtypeCount?.[1] ? parseCount(subtypeCount[1]) : null;
-              if (subtypeCount?.[2] && subtypeAtLeast) {
-                condition = {
-                  kind: "controls_subtype_count",
-                  subtype: singularSubtype(`${subtypeCount[2]}s`),
-                  atLeast: subtypeAtLeast,
-                };
-                rest = interveningIf[2].trim();
-              }
-            }
           }
         }
         // Mask of Memory: "you may draw two cards. If you do, discard a
@@ -11376,6 +11387,19 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
       const lastActivated = result.activated[result.activated.length - 1];
       if (atLeast && lastActivated && lastActivated.requiresAttackersThisTurn === undefined) {
         lastActivated.requiresAttackersThisTurn = atLeast;
+        continue;
+      }
+    }
+
+    // "Activate only if <condition>" through the shared vocabulary. Tried
+    // before the type/subtype gates below, which read wordings this parser
+    // deliberately does not (a bare "you control a Swamp" names no count).
+    const generalGate = sentence.match(/^Activate only if (.+)$/i);
+    if (generalGate?.[1]) {
+      const gateCondition = parseEffectCondition(generalGate[1]);
+      const lastActivated = result.activated[result.activated.length - 1];
+      if (gateCondition && lastActivated && !lastActivated.requiresCondition) {
+        lastActivated.requiresCondition = gateCondition;
         continue;
       }
     }

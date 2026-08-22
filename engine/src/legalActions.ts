@@ -1,6 +1,7 @@
 import { characteristicsOf, isClass, isCommander, isCreature, isLand, isLegendary, isMainPhase } from "./cardTypes";
 import { abilitiesRemoved, cardMatchesSubtype, controlsGate } from "./characteristicsEngine";
 import { hasKeyword } from "./keywords";
+import { triggerConditionHolds } from "./triggers";
 import { emptyManaPool } from "./createGame";
 import { pendingBlockerPlayer } from "./combat";
 import { affinityArtifactDiscount, activationNonManaPayment, allBattlefieldCreatureCount, altCastPayment, canPlayLandsFromGraveyard, castCostReduction, castableFromTop, controlsCommander, freeEquipGranted, hasFlashGrant, landDropAllowance, lockedByAbolisher, lockedFromCasting, opponentControlsMoreLands, findFreeHandGrantIndex, opponentsCastLockedToHand, permanentsControlledBy, selfDiscountAmount, staticFreeCastCap, topOfLibraryGrant } from "./derived";
@@ -400,6 +401,12 @@ function abilityUsable(
     ability.requiresAttackersThisTurn !== undefined &&
     (state.players.find((player) => player.id === playerId)?.attackersThisTurn ?? 0) <
       ability.requiresAttackersThisTurn
+  ) {
+    return false;
+  }
+  if (
+    ability.requiresCondition &&
+    !triggerConditionHolds(state, playerId, ability.requiresCondition, undefined, card.id)
   ) {
     return false;
   }
