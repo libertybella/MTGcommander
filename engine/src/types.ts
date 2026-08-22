@@ -318,6 +318,9 @@ export type CardDefinition = {
   };
   /** "~ enters with X +1/+1 counters on it" (hydras); X from the announced cost. */
   entersWithXCounters?: boolean;
+  /** Kalonian Hydra: "~ enters with four +1/+1 counters on it" — a fixed
+   * count, unlike the announced-X form above. */
+  entersWithCounters?: { counter: string; count: number };
   /**
    * Clone family: "You may have ~ enter as a copy of …". Documented
    * approximation: the choice is prompted just after entry (not applied as a
@@ -1412,7 +1415,8 @@ export type CardEffect =
       playerId: PlayerSelector;
       /** "sacrificed_power": Greater Good draws the fodder's power.
        * "x": Blue Sun's Zenith draws the announced X. */
-      count: number | "sacrificed_power" | "x";
+      /** "subject_amount": Vilis draws the life the trigger watched lost. */
+      count: number | "sacrificed_power" | "x" | "subject_amount";
       optional?: boolean;
       /** Return of the Wildspeaker: draw the greatest power among the
        * controller's creatures instead, computed when the effect binds. */
@@ -1909,6 +1913,8 @@ export type TriggerEvent =
   | "you_gain_life"
   /** An opponent lost life (Exquisite Blood). Subject is the losing player. */
   | "opponent_loses_life"
+  /** Vilis: "Whenever you lose life". */
+  | "you_lose_life"
   /** A spell was cast (Guttersnipe, Rhystic Study). Subject is the cast card. */
   | "cast_spell"
   /** Dealt combat damage to a player (Bident of Thassa). Subject is the dealer. */

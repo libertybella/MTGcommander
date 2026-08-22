@@ -25509,3 +25509,143 @@ describe("wave 201: conditions and counters that look back at a target", () => {
   });
 });
 
+
+describe("wave 202: entering with counters, and life the trigger watched", () => {
+  const compile = (name: string, manaCost: string, typeLine: string, oracleText: string, power?: string, toughness?: string) =>
+    compileOracleCard({
+      oracleId: name,
+      name,
+      manaCost,
+      typeLine,
+      power: power ?? null,
+      toughness: toughness ?? null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  it("puts a fixed count of counters on as the permanent arrives", () => {
+    const hydra = compile(
+      "Kalonian Hydra",
+      "{2}{G}{G}",
+      "Creature — Hydra",
+      "Trample\nKalonian Hydra enters with four +1/+1 counters on it.\nWhenever Kalonian Hydra attacks, double the number of +1/+1 counters on each creature you control.",
+      "0",
+      "0",
+    );
+    expect(hydra.notes).toEqual([]);
+    expect(hydra.definition.entersWithCounters).toEqual({ counter: "p1p1", count: 4 });
+
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const definition = createCardDefinition({
+      name: "Kalonian Hydra",
+      typeLine: "Creature — Hydra",
+      power: 0,
+      toughness: 0,
+      entersWithCounters: { counter: "p1p1", count: 4 },
+    });
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({
+      definitionId: definition.id,
+      ownerId: p1.id,
+      zone: "hand",
+    });
+    game.cards[card.id] = card;
+    p1.zones.hand.push(card.id);
+
+    const next = moveCard(game, card.id, "battlefield");
+    // On the permanent the moment it arrives — a 0/0 with four counters is a
+    // 4/4, so it must not die to the state-based sweep on the way in.
+    expect(next.cards[card.id]?.counters["p1p1"]).toBe(4);
+    expect(computedCard(next, card.id)?.power).toBe(4);
+  });
+
+  it("takes the may in 'you may have that player lose 1 life'", () => {
+    const priest = compile(
+      "Suture Priest",
+      "{1}{W}",
+      "Creature — Cleric",
+      "Whenever a creature an opponent controls enters, you may have that player lose 1 life.",
+      "1",
+      "1",
+    );
+    expect(priest.notes).toEqual([]);
+    expect(priest.definition.triggers[0]).toMatchObject({
+      event: "enter_battlefield",
+      watch: "opponents",
+    });
+    expect(priest.definition.triggers[0]?.effects).toEqual([
+      { kind: "lose_life", playerId: { type: "subject_player" }, amount: 1 },
+    ]);
+  });
+
+  it("draws what the trigger watched you lose", () => {
+    const vilis = compile(
+      "Vilis, Broker of Blood",
+      "{6}{B}{B}",
+      "Legendary Creature — Demon",
+      "Flying\n{2}{B}: Target creature gets -1/-1 until end of turn.\nWhenever you lose life, draw that many cards.",
+      "8",
+      "8",
+    );
+    expect(vilis.notes).toEqual([]);
+    expect(vilis.definition.triggers[0]).toMatchObject({ event: "you_lose_life" });
+    expect(vilis.definition.triggers[0]?.effects).toEqual([
+      { kind: "draw", playerId: "controller", count: "subject_amount" },
+    ]);
+
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const drawEffects: CardEffect[] = [
+      { kind: "draw", playerId: "controller", count: "subject_amount" },
+    ];
+    expect(
+      bindCardEffects(game, drawEffects, {
+        controllerId: p1.id,
+        sourceId: null,
+        subjectAmount: 3,
+      }),
+    ).toEqual([{ kind: "draw", playerId: p1.id, count: 3 }]);
+    // Nothing watched means no draw, rather than a draw of nothing.
+    expect(
+      bindCardEffects(game, drawEffects, { controllerId: p1.id, sourceId: null }),
+    ).toEqual([]);
+  });
+
+  it("tells your own life loss from an opponent's", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    const watcherDef = createCardDefinition({
+      name: "Vilis",
+      typeLine: "Creature — Demon",
+      power: 8,
+      toughness: 8,
+      triggers: [
+        {
+          event: "you_lose_life",
+          effects: [{ kind: "draw", playerId: "controller", count: "subject_amount" }],
+          targetRequirements: [],
+        },
+      ],
+    });
+    game.definitions[watcherDef.id] = watcherDef;
+    const watcher = createCardInstance({
+      definitionId: watcherDef.id,
+      ownerId: p1.id,
+      zone: "battlefield",
+    });
+    game.cards[watcher.id] = watcher;
+    p1.zones.battlefield.push(watcher.id);
+
+    const firesFor = (playerId: string): number => {
+      const cloned = structuredClone(game);
+      dispatchEventsInPlace(cloned, [{ kind: "loses_life", playerId, amount: 2 }]);
+      return cloned.stack.length;
+    };
+    expect(firesFor(p1.id)).toBe(1);
+    // An opponent losing life is the OTHER event; this one stays put.
+    expect(firesFor(p2.id)).toBe(0);
+  });
+});
+

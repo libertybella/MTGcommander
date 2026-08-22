@@ -107,6 +107,7 @@ export type CompiledOracleText = {
   opponentLandTapsSkipUntap?: boolean;
   rebound?: boolean;
   entersWithXCounters?: boolean;
+  entersWithCounters?: { counter: string; count: number };
   enterAsCopy?: { scope: EnterAsCopyScope; extraCounters?: number; maxManaValueBySpent?: boolean };
   playLandsFromGraveyard?: boolean;
   additionalCost?: AdditionalCastCost;
@@ -1879,6 +1880,13 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
   if (mayHave?.[1] && mayHave[2]) {
     return compileSimpleClause(`${mayHave[1]} deals ${mayHave[2]}`);
   }
+  // "You may have that player lose 1 life" (Suture Priest) — the same
+  // auto-taken "may", over a verb that conjugates rather than staying put.
+  const mayHaveLose = sentence.match(/^you may have (.+?) (lose|gain|draw|mill|discard) (.+)$/i);
+  if (mayHaveLose?.[1] && mayHaveLose[2] && mayHaveLose[3]) {
+    const conjugated = `${mayHaveLose[2].toLowerCase()}s`;
+    return compileSimpleClause(`${mayHaveLose[1]} ${conjugated} ${mayHaveLose[3]}`);
+  }
   // "That player mills that many cards" (Mindcrank), "that player draws a
   // card" — the trigger's subject player, and its amount where the text
   // says "that many".
@@ -1959,6 +1967,15 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
           counter: doubled[0]!.counter,
         },
       ],
+    };
+  }
+
+  // Vilis: "draw that many cards" — the controller draws, and "that many" is
+  // the amount the trigger watched (the life just lost).
+  if (/^(?:you )?draw that many cards$/i.test(sentence)) {
+    return {
+      targetRequirements: [],
+      effects: [{ kind: "draw", playerId: "controller", count: "subject_amount" }],
     };
   }
 
@@ -7004,6 +7021,9 @@ function parseTriggerHead(head: string): TriggerHead | null {
   if (/^Whenever an opponent loses life$/i.test(text)) {
     return { event: "opponent_loses_life" };
   }
+  if (/^Whenever you lose life$/i.test(text)) {
+    return { event: "you_lose_life" };
+  }
   if (/^Whenever ~ or another creature dies$/i.test(text)) {
     return { event: "dies", watch: "any", subjectFilter: { types: ["creature"] } };
   }
@@ -9394,6 +9414,16 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
 
     if (/^~ enters with X \+1\/\+1 counters on it$/i.test(sentence)) {
       result.entersWithXCounters = true;
+      continue;
+    }
+    // The fixed-count form: "enters with four +1/+1 counters on it".
+    const entersCounters = sentence.match(/^~ enters with (.+?) counters? on it$/i);
+    const enteringList = entersCounters?.[1] ? parseCounterList(entersCounters[1]) : null;
+    if (enteringList && enteringList.length === 1) {
+      result.entersWithCounters = {
+        counter: enteringList[0]!.counter,
+        count: enteringList[0]!.amount,
+      };
       continue;
     }
 

@@ -423,6 +423,14 @@ export function bindCardEffect(
       if (effect.count === "x") {
         return { ...drawRest, playerId, count: Math.max(0, context.xValue ?? 0) };
       }
+      // Vilis: "draw that many cards" — the life the trigger watched lost.
+      if (effect.count === "subject_amount") {
+        const watched = Math.max(0, context.subjectAmount ?? 0);
+        if (watched === 0) {
+          return null;
+        }
+        return { ...drawRest, playerId, count: watched };
+      }
       // Greater Good: the count is the sacrificed cost-creature's power.
       if (effect.count === "sacrificed_power") {
         const count = Math.max(0, context.sacrificedPower ?? 0);

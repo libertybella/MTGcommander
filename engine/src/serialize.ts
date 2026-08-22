@@ -820,6 +820,14 @@ export function parseGameState(json: string): GameState {
             })(),
           }),
       ...(def.entersWithXCounters === true ? { entersWithXCounters: true } : {}),
+      ...(isRecord(def.entersWithCounters)
+        ? {
+            entersWithCounters: {
+              counter: expectString(def.entersWithCounters.counter, "entersWithCounters.counter"),
+              count: expectNumber(def.entersWithCounters.count, "entersWithCounters.count"),
+            },
+          }
+        : {}),
       ...(def.enterAsCopy === undefined
         ? {}
         : {
@@ -2391,7 +2399,9 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
             ? "sacrificed_power"
             : value.count === "x"
               ? ("x" as const)
-              : expectNumber(value.count, `${label}.count`),
+              : value.count === "subject_amount"
+                ? ("subject_amount" as const)
+                : expectNumber(value.count, `${label}.count`),
         ...(value.optional === true ? { optional: true } : {}),
         ...(() => {
           if (!isRecord(value.countFromGreatestPower)) {
@@ -3469,6 +3479,7 @@ function parseSpellModes(value: unknown, label: string): SpellMode[] {
  * becomes_tapped and opponent_draws_second definitions on reload.) */
 const TRIGGER_EVENT_NAMES: ReadonlySet<string> = new Set([
   "class_level",
+  "you_lose_life",
   "enter_battlefield",
   "begin_combat",
   "dies",

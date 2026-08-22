@@ -646,9 +646,11 @@ function triggerMatchesEvent(
     return false;
   }
   if (event.kind === "loses_life") {
-    return trigger.event === "opponent_loses_life" && watcher.controllerId !== event.playerId;
+    return trigger.event === "opponent_loses_life"
+      ? watcher.controllerId !== event.playerId
+      : trigger.event === "you_lose_life" && watcher.controllerId === event.playerId;
   }
-  if (trigger.event === "opponent_loses_life") {
+  if (trigger.event === "opponent_loses_life" || trigger.event === "you_lose_life") {
     return false;
   }
   if (event.kind === "creates_token") {

@@ -260,6 +260,7 @@ function compileOneFace(card: OracleCard, definitionId: string): OracleCompileRe
       ? { enchantedTappedBonus: compiled.enchantedTappedBonus }
       : {}),
     ...(compiled.entersWithXCounters ? { entersWithXCounters: true } : {}),
+    ...(compiled.entersWithCounters ? { entersWithCounters: compiled.entersWithCounters } : {}),
     ...(compiled.enterAsCopy ? { enterAsCopy: { ...compiled.enterAsCopy } } : {}),
     ...(compiled.playLandsFromGraveyard ? { playLandsFromGraveyard: true } : {}),
     ...(compiled.additionalCost ? { additionalCost: compiled.additionalCost } : {}),

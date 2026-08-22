@@ -286,6 +286,14 @@ function applyZoneChangeFlags(
     if (definition?.loyalty && definition.loyalty > 0 && !card.counters["loyalty"]) {
       card.counters["loyalty"] = definition.loyalty;
     }
+    // "Enters with four +1/+1 counters on it" — placed here rather than as an
+    // add_counter effect, so it is on the permanent the moment anything looks
+    // (CR 121.6: they were never not there).
+    const entering = definition?.entersWithCounters;
+    if (entering) {
+      card.counters[entering.counter] =
+        (card.counters[entering.counter] ?? 0) + entering.count;
+    }
   } else {
     card.damageMarked = 0;
     card.tapped = false;

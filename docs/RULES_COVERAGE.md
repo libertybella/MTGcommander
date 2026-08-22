@@ -559,6 +559,22 @@ What the engine implements and what it intentionally does not. Tests are tagged 
   what is on the board now — a one-shot, not a replacement on counters yet to
   be placed. Doubling nothing stays nothing rather than rounding up to one.
 
+- **Entering with counters, and life the trigger watched**: a permanent may
+  enter with a FIXED count of counters, alongside the announced-X form that
+  already existed. It is applied where the permanent arrives — beside the
+  loyalty a planeswalker enters with — rather than as an effect afterwards,
+  because CR 121.6 means they were never not there: a 0/0 that enters with
+  four is a 4/4 and must not meet the state-based sweep on the way in.
+
+  "Whenever you lose life" joins the opponent-scoped event that existed, and
+  "draw that many cards" reads the amount the trigger watched. The two life
+  events stay distinct, which is the case worth asserting — the wrong one
+  firing looks like a working card.
+
+  "You may have that player lose 1 life" takes the same auto-taken "may" as
+  the damage form; the verb conjugates where "deal" did not, which is the only
+  reason it needed a second reading.
+
 ## The card pipeline (Stage 6)
 
 - Real cards compile from Scryfall oracle text by shared sentence patterns; a hand-authored registry (`server/src/cardOverrides.ts`, data in the same schema) beats the compiler for the long tail. Never a named-card code path.
