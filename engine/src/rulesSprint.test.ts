@@ -18200,3 +18200,136 @@ describe("wave 151: upkeeps, win conditions, and ability words", () => {
   });
 });
 
+
+describe("wave 152: conditions, graveyards, and wider targets", () => {
+  const compile = (name: string, manaCost: string, typeLine: string, oracleText: string, power?: string, toughness?: string) =>
+    compileOracleCard({
+      oracleId: name,
+      name,
+      manaCost,
+      typeLine,
+      power: power ?? null,
+      toughness: toughness ?? null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  it("compiles the conditional-static and wider-target bucket fully", () => {
+    // A condition on the controller becomes a gate on the ability.
+    const ascendant = compile(
+      "Serra Ascendant",
+      "{W}",
+      "Creature — Human Monk",
+      "Flying, lifelink\nAs long as you have 30 or more life, Serra Ascendant gets +5/+5 and has flying.",
+      "1",
+      "1",
+    );
+    expect(ascendant.notes).toEqual([]);
+    const pump = ascendant.definition.staticAbilities[0];
+    expect(pump?.selector).toEqual({ scope: "self" });
+    expect(pump?.requiresLife).toBe(30);
+    expect(pump?.effect).toEqual({ kind: "modify_pt", power: 5, toughness: 5 });
+
+    // A condition on the AFFECTED object is just a narrower selector — no
+    // gate needed at all.
+    const helm = compile(
+      "Champion's Helm",
+      "{2}",
+      "Artifact — Equipment",
+      "As long as equipped creature is legendary, it has hexproof.\nEquip {2}",
+    );
+    expect(helm.notes).toEqual([]);
+    expect(helm.definition.staticAbilities[0]).toEqual({
+      selector: { scope: "attached", legendary: true },
+      effect: { kind: "grant_keyword", keyword: "hexproof" },
+    });
+
+    // A land card in your graveyard is a target kind of its own.
+    const titania = compile(
+      "Titania, Protector of Argoth",
+      "{3}{G}{G}",
+      "Legendary Creature — Elemental",
+      "When Titania, Protector of Argoth enters, return target land card from your graveyard to the battlefield.",
+      "5",
+      "3",
+    );
+    expect(titania.notes).toEqual([]);
+    expect(titania.definition.triggers[0]?.targetRequirements).toEqual([
+      { kind: "own_graveyard_land_card" },
+    ]);
+
+    const slime = compile(
+      "Acidic Slime",
+      "{3}{G}{G}",
+      "Creature — Ooze",
+      "Deathtouch\nWhen this creature enters, destroy target artifact, enchantment, or land.",
+      "2",
+      "2",
+    );
+    expect(slime.notes).toEqual([]);
+    expect(slime.definition.triggers[0]?.targetRequirements).toEqual([
+      { kind: "artifact_enchantment_or_land" },
+    ]);
+  });
+
+  it("switches the conditional static on and off with the life total", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const ascendantDef = compile(
+      "Serra Ascendant",
+      "{W}",
+      "Creature — Human Monk",
+      "Flying, lifelink\nAs long as you have 30 or more life, Serra Ascendant gets +5/+5 and has flying.",
+      "1",
+      "1",
+    ).definition;
+    game.definitions[ascendantDef.id] = ascendantDef;
+    const monk = createCardInstance({ definitionId: ascendantDef.id, ownerId: p1.id, zone: "battlefield" });
+    game.cards[monk.id] = monk;
+    p1.zones.battlefield.push(monk.id);
+
+    p1.life = 29;
+    expect(computedCard(game, monk.id)?.power).toBe(1);
+    p1.life = 30;
+    expect(computedCard(game, monk.id)?.power).toBe(6);
+    expect(computedCard(game, monk.id)?.toughness).toBe(6);
+    // Falling back below the line takes it away again.
+    p1.life = 20;
+    expect(computedCard(game, monk.id)?.power).toBe(1);
+  });
+
+  it("gives the helm's hexproof only to a legendary host", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const helmDef = compile(
+      "Champion's Helm",
+      "{2}",
+      "Artifact — Equipment",
+      "As long as equipped creature is legendary, it has hexproof.\nEquip {2}",
+    ).definition;
+    game.definitions[helmDef.id] = helmDef;
+    const plainDef = createCardDefinition({ name: "Bear", typeLine: "Creature — Bear", power: 2, toughness: 2 });
+    const legendDef = createCardDefinition({
+      name: "Hero",
+      typeLine: "Legendary Creature — Human",
+      power: 2,
+      toughness: 2,
+    });
+    game.definitions[plainDef.id] = plainDef;
+    game.definitions[legendDef.id] = legendDef;
+    const bear = createCardInstance({ definitionId: plainDef.id, ownerId: p1.id, zone: "battlefield" });
+    const hero = createCardInstance({ definitionId: legendDef.id, ownerId: p1.id, zone: "battlefield" });
+    const helm = createCardInstance({ definitionId: helmDef.id, ownerId: p1.id, zone: "battlefield" });
+    for (const card of [bear, hero, helm]) {
+      game.cards[card.id] = card;
+      p1.zones.battlefield.push(card.id);
+    }
+
+    helm.attachedTo = bear.id;
+    expect(hasKeyword(game, bear.id, "hexproof")).toBe(false);
+    helm.attachedTo = hero.id;
+    expect(hasKeyword(game, hero.id, "hexproof")).toBe(true);
+  });
+});
+

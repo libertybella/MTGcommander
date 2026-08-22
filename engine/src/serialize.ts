@@ -1824,6 +1824,9 @@ function parseTargetRequirement(value: unknown, label: string): TargetRequiremen
     kind !== "own_graveyard_creature_card" &&
     kind !== "own_graveyard_permanent_card" &&
     kind !== "own_graveyard_artifact_card" &&
+    kind !== "own_graveyard_land_card" &&
+    kind !== "artifact_enchantment_or_land" &&
+    kind !== "artifact_enchantment_or_planeswalker" &&
     kind !== "own_graveyard_instant_or_sorcery_card" &&
     kind !== "graveyard_creature_card" &&
     kind !== "graveyard_card" &&
@@ -3527,6 +3530,9 @@ function parseStaticAbilities(
             }
           : {}),
         ...(entry.requiresDelirium === true ? { requiresDelirium: true } : {}),
+        ...(entry.requiresLife === undefined
+          ? {}
+          : { requiresLife: expectNumber(entry.requiresLife, `${label}[${index}].requiresLife`) }),
       });
     }
   }

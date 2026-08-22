@@ -244,7 +244,12 @@ function matches(
   }
   if (selector.scope === "attached") {
     const source = instance.sourceId ? state.cards[instance.sourceId] : undefined;
-    return Boolean(source?.attachedTo && source.attachedTo === card.id);
+    if (!source?.attachedTo || source.attachedTo !== card.id) {
+      return false;
+    }
+    // Falls through to the refinements below rather than returning here:
+    // Champion's Helm is "attached AND legendary", and an early return made
+    // every other clause on an attached selector silently inert.
   }
   if (selector.scope === "controlled") {
     const source = instance.sourceId ? state.cards[instance.sourceId] : undefined;
@@ -504,6 +509,13 @@ function collectInstances(state: GameState): EffectInstance[] {
           }
         }
         if (types.size < 4) {
+          continue;
+        }
+      }
+      // Serra Ascendant: "As long as you have 30 or more life".
+      if (ability.requiresLife !== undefined) {
+        const owner = state.players.find((entry) => entry.id === card.controllerId);
+        if ((owner?.life ?? 0) < ability.requiresLife) {
           continue;
         }
       }

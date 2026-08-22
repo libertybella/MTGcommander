@@ -233,6 +233,7 @@ export function createCardDefinition(
             ? { requiresCounters: { ...ability.requiresCounters } }
             : {}),
           ...(ability.requiresDelirium ? { requiresDelirium: true } : {}),
+          ...(ability.requiresLife !== undefined ? { requiresLife: ability.requiresLife } : {}),
         }))
       : [],
     produces: input.produces ? { ...input.produces } : {},

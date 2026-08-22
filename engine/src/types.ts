@@ -1003,6 +1003,8 @@ export type TargetKind =
   | "own_graveyard_creature_card"
   | "own_graveyard_permanent_card"
   | "own_graveyard_artifact_card"
+  /** Titania: "target land card in your graveyard". */
+  | "own_graveyard_land_card"
   | "own_graveyard_instant_or_sorcery_card"
   /** A creature card in ANY graveyard (Reanimate). */
   | "graveyard_creature_card"
@@ -1014,6 +1016,10 @@ export type TargetKind =
   | "land"
   /** Boseiju, Who Endures. */
   | "artifact_enchantment_or_nonbasic_land"
+  /** Acidic Slime: "target artifact, enchantment, or land". */
+  | "artifact_enchantment_or_land"
+  /** Fracture: "target artifact, enchantment, or planeswalker". */
+  | "artifact_enchantment_or_planeswalker"
   /** Bedevil. */
   | "artifact_creature_or_planeswalker"
   /** Casualties of War's fifth bullet. */
@@ -2189,6 +2195,8 @@ export type StaticAbility = {
   /** Delirium (Dragon's Rage Channeler): live only with four or more card
    * types among the controller's graveyard. */
   requiresDelirium?: boolean;
+  /** Serra Ascendant: "As long as you have 30 or more life". */
+  requiresLife?: number;
 };
 
 /**

@@ -3231,15 +3231,18 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
   }
 
   match = sentence.match(
-    /^Return target (creature |permanent |artifact )?card from your graveyard to (your hand|the battlefield)$/i,
+    /^Return target (creature |permanent |artifact |land )?card from your graveyard to (your hand|the battlefield)$/i,
   );
   if (match?.[2]) {
     const filterWord = match[1]?.trim().toLowerCase();
     const creatureOnly = filterWord === "creature";
     const permanentOnly = filterWord === "permanent";
     const artifactOnly = filterWord === "artifact";
+    const landOnly = filterWord === "land";
     const toHand = match[2].toLowerCase() === "your hand";
-    if (toHand || creatureOnly) {
+    // Lands and creatures may return to the battlefield; anything broader
+    // only goes to hand (a permanent card could be an instant otherwise).
+    if (toHand || creatureOnly || landOnly) {
       return {
         targetRequirements: [
           {
@@ -3249,7 +3252,9 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
                 ? "own_graveyard_permanent_card"
                 : artifactOnly
                   ? "own_graveyard_artifact_card"
-                  : "own_graveyard_card",
+                  : landOnly
+                    ? "own_graveyard_land_card"
+                    : "own_graveyard_card",
           },
         ],
         effects: [
@@ -3697,7 +3702,7 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
   match = sentence.match(
     // "creature" is listed so the control-qualified form reaches here; the
     // plain "Destroy target creature" is claimed by an earlier pattern.
-    /^(Destroy|Exile) target (creature|artifact|enchantment|artifact or enchantment|artifact or creature|creature or artifact|creature or enchantment|nonland permanent|noncreature, nonland permanent|permanent)( you don't control| an opponent controls| defending player controls)?(?: with mana value (\d+) or (less|greater))?$/i,
+    /^(Destroy|Exile) target (creature|artifact|enchantment|artifact or enchantment|artifact, enchantment, or land|artifact, enchantment, or planeswalker|artifact or creature|creature or artifact|creature or enchantment|nonland permanent|noncreature, nonland permanent|permanent)( you don't control| an opponent controls| defending player controls)?(?: with mana value (\d+) or (less|greater))?$/i,
   );
   if (match?.[1] && match[2] && (match[2].toLowerCase() !== "permanent" || match[3] || match[4])) {
     const kindOf: Record<string, TargetKind> = {
@@ -3705,6 +3710,8 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
       artifact: "artifact",
       enchantment: "enchantment",
       "artifact or enchantment": "artifact_or_enchantment",
+      "artifact, enchantment, or land": "artifact_enchantment_or_land",
+      "artifact, enchantment, or planeswalker": "artifact_enchantment_or_planeswalker",
       "artifact or creature": "creature_or_artifact",
       "creature or artifact": "creature_or_artifact",
       "creature or enchantment": "creature_or_enchantment",
@@ -5555,6 +5562,23 @@ function compileAnthem(sentence: string): StaticAbility | null {
 }
 
 /**
+ * "~ gets +5/+5 and has flying" as a static on the source itself. Kept apart
+ * from `parseGrantSubject`, which deliberately refuses "~": an unconditional
+ * self grant is Storm-Kiln Artist's `bonusPt` territory, and only the
+ * conditional form ("As long as …") belongs here.
+ */
+function compileSelfGrant(body: string): StaticAbility[] | null {
+  const split = body.match(/^~\s+((?:get|gets|have|has)\s+.+)$/i);
+  if (!split?.[1]) {
+    return null;
+  }
+  const effects = parseGrantPredicate(split[1]);
+  return effects
+    ? effects.map((effect) => ({ selector: { scope: "self" as const }, effect }))
+    : null;
+}
+
+/**
  * The subject half of a static grant line: "Other Elf creatures you control",
  * "Creature tokens you control", "Creatures your opponents control". Returns
  * null when the phrase is not a recognised subject, so the caller falls
@@ -5775,6 +5799,43 @@ function parseGrantPredicate(phrase: string): ContinuousEffectData[] | null {
  * cases; this is the general fallback.
  */
 function compileStaticGrant(sentence: string): StaticAbility[] | null {
+  // "As long as <condition>, <grant>": peel the condition, compile the grant,
+  // and hang the condition on every ability it produced.
+  const conditional = sentence.match(/^As long as (.+?), (.+)$/i);
+  if (conditional?.[1] && conditional[2]) {
+    const phrase = conditional[1].trim();
+    let body = conditional[2].trim();
+    // "…, it has hexproof": the subject is the one the condition named.
+    const subject = phrase.match(/^(equipped creature|enchanted creature|~)\s+is (.+)$/i);
+    if (subject?.[1] && subject[2] && /^it\s/i.test(body)) {
+      const trait = subject[2].trim().toLowerCase();
+      if (trait !== "legendary") {
+        return null;
+      }
+      // Champion's Helm: a condition on the affected object is just a
+      // narrower selector, so no new gate is needed.
+      const grants = compileStaticGrant(
+        `${subject[1]} ${body.replace(/^it\s+/i, "")}`,
+      );
+      return grants
+        ? grants.map((ability) => ({
+            ...ability,
+            selector: { ...ability.selector, legendary: true },
+          }))
+        : null;
+    }
+    const life = phrase.match(/^you have (\d+) or more life$/i);
+    if (!life?.[1]) {
+      return null;
+    }
+    // Serra Ascendant's "~ gets +5/+5" is a self grant.
+    body = body.replace(/^~\s+/, "~ ");
+    const grants = compileSelfGrant(body);
+    return grants
+      ? grants.map((ability) => ({ ...ability, requiresLife: Number(life[1]) }))
+      : null;
+  }
+
   const split = sentence.match(/^(.+?)\s+((?:get|gets|have|has|lose|loses|can't)\s+.+)$/i);
   if (!split?.[1] || !split[2]) {
     return null;
