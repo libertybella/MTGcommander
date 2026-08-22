@@ -16,8 +16,8 @@ This is **not** Wizards of the Coast software. It is also **not** the sibling Bi
 | --- | --- |
 | **Phase** | Comprehensive Rules machinery (layers, events, choices, permanents) + coverage flywheel |
 | **Next** | Private alpha (invite friends, play complete games) |
-| **Tests** | 1,009 passing; a 10,000-game random-action fuzz marathon gates checkpoint-45, 200-game burns gate every wave and 800+ burns gate every checkpoint tag |
-| **Compile rate** | 97% of a 60-card real-staple sample compiles fully (CI floor 90%); 60.5% of the EDHREC top-2,000, up from 15.6% at the start of the 2026-08-20 flywheel run |
+| **Tests** | 1,043 passing; a 10,000-game random-action fuzz marathon gates checkpoint-45, 200-game burns gate every wave and 800+ burns gate every checkpoint tag |
+| **Compile rate** | 97% of a 60-card real-staple sample compiles fully (CI floor 90%); 61.5% of the EDHREC top-2,000, up from 15.6% at the start of the 2026-08-20 flywheel run |
 | **Installer** | `npm run dist` builds a one-click Windows installer (`release/BizzyMTG Commander Setup 0.1.0.exe`). |
 
 ---
@@ -198,5 +198,7 @@ Git tags on `main`. Do not move old tags.
 | `checkpoint-80-replacements` | **The rules that change a number before it lands.** Damage-modifying replacements (Fiery Emancipation, Torbran, Gratuitous Violence) run at every place damage is applied, so combat damage, commander damage and lifelink all agree; mana multipliers double or triple what a tapped permanent produces; a cost tax turns out to be a cost reduction with the sign flipped, which is what the scope field on discounts is for. Alongside: sweeps read their own noun phrase (eight board wipes from one grammar), token counts that say X, and alternative cast costs paid in life, cards and creatures — taken only when the printed cost is out of reach, 58.9% |
 
 | `checkpoint-81-grammar-reuse` | **Sixty per cent, mostly by pointing existing grammars somewhere new.** Non-mana activation costs (counters on or off, a discard, a mill, a graveyard exile) share one payability helper with legal-action enumeration; "for each …" becomes a single count table feeding star P/T, self-buffs, draws and lifegain; until-end-of-turn effects finally carry an X, closing a documented drop from wave 147; graveyard recursion and hand-to-battlefield reuse the noun-phrase parsers; and the Urza lands get conditional mana upgrades, 60.5% |
+
+| `checkpoint-82-descriptors` | **The descriptor waves.** Four collapses of "a branch per printed wording" into one parser each. Token creation reads a real descriptor — count, tapped, P/T, colours, supertypes, subtypes and card types, with subtypes told from card types by CAPITALISATION, since oracle text capitalises one and lowercases the other. Trigger heads read their subject the same way, sharing one noun-phrase parser across every event. Until-end-of-turn grants stopped matching five exact target phrases and delegate to the general one. And control finally changes hands, which exposed that every "what does this player control" site read that player's own zone list and filtered by controller — a subset that silently drops anything controlled but not owned, 61.5% |
 
 These live on the `comprehensive-plan` branch (see docs/DEVELOPMENT_PROGRESS.md); merge to `main` at will — every checkpoint is a playable table. Next: **Private Alpha**, then productization.

@@ -8,11 +8,40 @@ on-what lives in [CLAIMS.md](CLAIMS.md). This file is the tribal
 knowledge that isn't obvious from those: exact commands, traps, and
 the current state of play. Read all four before writing code.
 
-## State of play (checkpoint-81-grammar-reuse, 2026-08-22)
+## State of play (checkpoint-82-descriptors, 2026-08-22)
 
-- Branch `comprehensive-plan`, tags through `checkpoint-81-grammar-reuse`.
-- 1,009 tests green; top-2,000 compile rate **60.5% (1,216/2,009)**,
+- Branch `comprehensive-plan`, tags through `checkpoint-82-descriptors`.
+- 1,043 tests green; top-2,000 compile rate **61.5% (1,236/2,009)**,
   60-card sample 97% (CI floor now 90).
+- **Waves 185–188 flipped 2, 3, 8, 5, and the size gap between them is
+  the lesson.** Wave 185 pointed the until-EOT grant at the general
+  target phrase and picked up almost nothing, because that grammar was
+  already well covered. Wave 187 collapsed token creation — where a dozen
+  branches each rebuilt the same effect from a different printed wording —
+  and picked up eight. **Before starting a collapse, count the branches
+  you are collapsing.** A family with two or three near-duplicates is
+  already covered; a family with a dozen is where the cards are.
+- **The capitalisation trick is worth remembering.** Oracle text
+  capitalises subtypes and lowercases card types, so "Phyrexian Wurm
+  artifact creature" divides with no type table at all. Printed text
+  carries more structure than it looks like it does — look for it before
+  writing a lookup.
+- **Wave 186 found a bug class, not a bug.** Every "what does this player
+  control" site read that player's OWN battlefield list and then filtered
+  by controller. That is a subset of the real set — it silently drops
+  anything controlled but not owned — and it was correct only for as long
+  as nothing could change control. When you add a mechanic, grep for the
+  places that assumed it could not happen; they will all be shaped alike,
+  and they will all typecheck.
+- **Three inert filters turned up in four waves**, all the same shape as
+  the ones below: `legalChoicesForRequirement` listed every creature for a
+  "creature" requirement while the legality check enforced its qualifiers;
+  the unbound `pt_until_eot` parser rejected the `"x"` its own type had
+  allowed for four waves; and the `player_sacrifices` dispatch returned
+  true for any sacrifice by any player, ignoring watch, excludeSelf and
+  the subject filter outright. That last one was invisible because the
+  only head reaching it restricted nothing. **A filter with exactly one
+  caller that happens not to use it is not covered — it is untested.**
 - **Waves 179–183 flipped 11, 6, 5, 6, 4 — and the largest came from
   pointing grammars that already existed at a new destination.** Wave 182
   is the clearest case: "put target enchantment card from your graveyard
