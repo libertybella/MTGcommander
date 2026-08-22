@@ -611,7 +611,9 @@ export type EnterAsCopyScope =
   | "another_your_creature"
   | "your_creature_or_planeswalker"
   | "any_nonland_permanent"
-  | "any_artifact_or_creature";
+  | "any_artifact_or_creature"
+  /** Sculpting Steel. */
+  | "any_artifact";
 
 export type ChooseCardSource = {
   playerId: PlayerSelector;
@@ -801,6 +803,8 @@ export type GameEffect =
       power: number;
       toughness: number;
       nonSubtypes?: string[];
+      /** Goreclaw: only creatures with computed power at least this. */
+      minPower?: number;
     }
   | {
       kind: "team_keyword_until_eot";
@@ -808,6 +812,8 @@ export type GameEffect =
       keyword: Keyword;
       scope?: "permanents";
       nonSubtypes?: string[];
+      /** Goreclaw: only creatures with computed power at least this. */
+      minPower?: number;
     }
   | { kind: "team_protection_until_eot"; playerId: PlayerId; colors: Color[] }
   | {
@@ -954,6 +960,8 @@ export type CostReduction = {
     chosenSubtype?: boolean;
     /** Cloud Key: the spell must have the source's chosen CARD type. */
     chosenCardType?: boolean;
+    /** Goreclaw: the creature spell's printed power must be at least this. */
+    minPower?: number;
   };
 };
 
@@ -1362,7 +1370,9 @@ export type CardEffect =
       toughness: number | "creature_count";
       /** "Non-Human creatures you control" (Return of the Wildspeaker). */
       nonSubtypes?: string[];
-    }
+      /** Goreclaw: only creatures with computed power at least this. */
+      minPower?: number;
+    } // (unbound team_pt_until_eot)
   | {
       kind: "team_keyword_until_eot";
       playerId: PlayerSelector;
@@ -1370,6 +1380,8 @@ export type CardEffect =
       /** "Permanents you control gain …" (Boros Charm). */
       scope?: "permanents";
       nonSubtypes?: string[];
+      /** Goreclaw: only creatures with computed power at least this. */
+      minPower?: number;
     }
   /** "Creatures you control gain protection from each color" (Akroma's Will). */
   | { kind: "team_protection_until_eot"; playerId: PlayerSelector; colors: Color[] }

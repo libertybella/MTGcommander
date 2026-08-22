@@ -16391,3 +16391,196 @@ describe("wave 142: missteps and magistrates", () => {
   });
 });
 
+
+describe("wave 143: reversals and reflections", () => {
+  it("compiles the six-card bucket fully", () => {
+    const steel = compileOracleCard({
+      oracleId: "steel",
+      name: "Sculpting Steel",
+      manaCost: "{3}",
+      typeLine: "Artifact",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText: "You may have this artifact enter as a copy of any artifact on the battlefield.",
+    });
+    expect(steel.notes).toEqual([]);
+    expect(steel.definition.enterAsCopy?.scope).toBe("any_artifact");
+
+    const reversal = compileOracleCard({
+      oracleId: "reversal",
+      name: "Narset's Reversal",
+      manaCost: "{U}{U}",
+      typeLine: "Instant",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "Copy target instant or sorcery spell, then return it to its owner's hand. You may choose new targets for the copy.",
+    });
+    expect(reversal.notes).toEqual([]);
+    expect(reversal.definition.targetRequirements).toEqual([{ kind: "instant_or_sorcery_spell" }]);
+    expect(reversal.definition.effects.map((entry) => entry.kind)).toEqual([
+      "copy_spell",
+      "bounce_spell_or_permanent",
+    ]);
+
+    const mischief = compileOracleCard({
+      oracleId: "mischief",
+      name: "Imp's Mischief",
+      manaCost: "{1}{B}",
+      typeLine: "Instant",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "Change the target of target spell with a single target. You lose life equal to that spell's mana value.",
+    });
+    expect(mischief.notes).toEqual([]);
+    expect(mischief.definition.effects.map((entry) => entry.kind)).toEqual([
+      "retarget",
+      "lose_life",
+    ]);
+
+    const goreclaw = compileOracleCard({
+      oracleId: "goreclaw",
+      name: "Goreclaw, Terror of Qal Sisma",
+      manaCost: "{3}{G}",
+      typeLine: "Legendary Creature — Bear",
+      power: "4",
+      toughness: "3",
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "Creature spells you cast with power 4 or greater cost {2} less to cast.\nWhenever Goreclaw attacks, each creature you control with power 4 or greater gets +1/+1 and gains trample until end of turn.",
+    });
+    expect(goreclaw.notes).toEqual([]);
+    expect(goreclaw.definition.costReductions?.[0]).toEqual({
+      generic: 2,
+      filter: { types: ["creature"], minPower: 4 },
+    });
+    expect(goreclaw.definition.triggers[0]?.effects).toEqual([
+      { kind: "team_pt_until_eot", playerId: "controller", power: 1, toughness: 1, minPower: 4 },
+      { kind: "team_keyword_until_eot", playerId: "controller", keyword: "trample", minPower: 4 },
+    ]);
+
+    const reflections = compileOracleCard({
+      oracleId: "reflections",
+      name: "Reflections of Littjara",
+      manaCost: "{4}{U}",
+      typeLine: "Enchantment",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "As this enchantment enters, choose a creature type.\nWhenever you cast a spell of the chosen type, copy that spell. (A copy of a permanent spell becomes a token.)",
+    });
+    expect(reflections.notes).toEqual([]);
+    expect(reflections.definition.chooseCreatureTypeOnEnter).toBe(true);
+    expect(reflections.definition.triggers[0]?.subjectFilter?.chosenSubtype).toBe(true);
+    expect(reflections.definition.triggers[0]?.effects).toEqual([{ kind: "copy_subject_spell" }]);
+
+    const map = compileOracleCard({
+      oracleId: "map",
+      name: "Archaeomancer's Map",
+      manaCost: "{2}{W}",
+      typeLine: "Artifact",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "When this artifact enters, search your library for up to two basic Plains cards, reveal them, put them into your hand, then shuffle.\nWhenever a land an opponent controls enters, if that player controls more lands than you, you may put a land card from your hand onto the battlefield.",
+    });
+    expect(map.notes).toEqual([]);
+    expect(map.definition.triggers[1]?.condition).toEqual({ kind: "opponent_controls_more_lands" });
+  });
+
+  it("pumps only the big team and taxes the mischief by mana value", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+
+    // Goreclaw's pump: the 4/4 grows and tramples, the 2/2 is untouched.
+    const bigDef = createCardDefinition({ name: "Ogre", typeLine: "Creature — Ogre", power: 4, toughness: 4 });
+    const smallDef = createCardDefinition({ name: "Bear", typeLine: "Creature — Bear", power: 2, toughness: 2 });
+    game.definitions[bigDef.id] = bigDef;
+    game.definitions[smallDef.id] = smallDef;
+    const big = createCardInstance({ definitionId: bigDef.id, ownerId: p1.id, zone: "battlefield" });
+    const small = createCardInstance({ definitionId: smallDef.id, ownerId: p1.id, zone: "battlefield" });
+    game.cards[big.id] = big;
+    game.cards[small.id] = small;
+    p1.zones.battlefield.push(big.id, small.id);
+    let next = applyEffects(game, [
+      { kind: "team_pt_until_eot", playerId: p1.id, power: 1, toughness: 1, minPower: 4 },
+      { kind: "team_keyword_until_eot", playerId: p1.id, keyword: "trample", minPower: 4 },
+    ]);
+    expect(computedCard(next, big.id)?.power).toBe(5);
+    expect(hasKeyword(next, big.id, "trample")).toBe(true);
+    expect(computedCard(next, small.id)?.power).toBe(2);
+    expect(hasKeyword(next, small.id, "trample")).toBe(false);
+
+    // Imp's Mischief's toll: the retargeted spell's mana value comes out of
+    // the caster's life.
+    const boltDef = createCardDefinition({
+      name: "Bolt",
+      typeLine: "Instant",
+      manaCost: "{1}{R}",
+      effects: [{ kind: "draw", playerId: "controller", count: 1 }],
+    });
+    next.definitions[boltDef.id] = boltDef;
+    const bolt = createCardInstance({ definitionId: boltDef.id, ownerId: p2.id, zone: "hand" });
+    next.cards[bolt.id] = bolt;
+    next.players.find((entry) => entry.id === p2.id)!.zones.hand.push(bolt.id);
+    next = putSpellOnStack(next, bolt.id, []);
+    const entry = next.stack.find((object) => object.sourceId === bolt.id)!;
+    const bound = bindCardEffects(
+      next,
+      [{ kind: "lose_life", playerId: "controller", amount: "target_mana_value" }],
+      {
+        controllerId: p1.id,
+        sourceId: null,
+        targets: [{ type: "spell", stackObjectId: entry.id }],
+        targetRequirements: [{ kind: "spell" }],
+      },
+    );
+    expect(bound[0]).toMatchObject({ kind: "lose_life", amount: 2 });
+    while (next.stack.length > 0) {
+      next = resolveTopOfStack(next);
+    }
+
+    // Reflections of Littjara: only chosen-type casts fire the copier.
+    const reflectionsDef = compileOracleCard({
+      oracleId: "reflections-rt",
+      name: "Reflections of Littjara",
+      manaCost: "{4}{U}",
+      typeLine: "Enchantment",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "As this enchantment enters, choose a creature type.\nWhenever you cast a spell of the chosen type, copy that spell. (A copy of a permanent spell becomes a token.)",
+    }).definition;
+    next.definitions[reflectionsDef.id] = reflectionsDef;
+    const mirror = createCardInstance({ definitionId: reflectionsDef.id, ownerId: p1.id, zone: "battlefield" });
+    mirror.chosenCreatureType = "ogre";
+    next.cards[mirror.id] = mirror;
+    next.players.find((entry) => entry.id === p1.id)!.zones.battlefield.push(mirror.id);
+    const ogreSpell = createCardInstance({ definitionId: bigDef.id, ownerId: p1.id, zone: "hand" });
+    next.cards[ogreSpell.id] = ogreSpell;
+    next.players.find((entry) => entry.id === p1.id)!.zones.hand.push(ogreSpell.id);
+    dispatchEventsInPlace(next, [{ kind: "casts", cardId: ogreSpell.id, controllerId: p1.id }]);
+    expect(next.stack.length).toBeGreaterThan(0);
+    const bearSpell = createCardInstance({ definitionId: smallDef.id, ownerId: p1.id, zone: "hand" });
+    next.cards[bearSpell.id] = bearSpell;
+    next.players.find((entry) => entry.id === p1.id)!.zones.hand.push(bearSpell.id);
+    const stackBefore = next.stack.length;
+    dispatchEventsInPlace(next, [{ kind: "casts", cardId: bearSpell.id, controllerId: p1.id }]);
+    expect(next.stack.length).toBe(stackBefore);
+  });
+});
+

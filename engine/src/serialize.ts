@@ -557,7 +557,8 @@ export function parseGameState(json: string): GameState {
                 scope !== "another_your_creature" &&
                 scope !== "your_creature_or_planeswalker" &&
                 scope !== "any_nonland_permanent" &&
-                scope !== "any_artifact_or_creature"
+                scope !== "any_artifact_or_creature" &&
+                scope !== "any_artifact"
               ) {
                 throw new Error(`Invalid definition.${id}.enterAsCopy.scope`);
               }
@@ -772,6 +773,14 @@ export function parseGameState(json: string): GameState {
                     ...(colors.length > 0 ? { colors } : {}),
                     ...(entry.filter.chosenSubtype === true ? { chosenSubtype: true } : {}),
                     ...(entry.filter.chosenCardType === true ? { chosenCardType: true } : {}),
+                    ...(entry.filter.minPower === undefined
+                      ? {}
+                      : {
+                          minPower: expectNumber(
+                            entry.filter.minPower,
+                            `definition.${id}.costReductions.minPower`,
+                          ),
+                        }),
                   },
                 };
               });
@@ -1301,7 +1310,8 @@ function parsePrompts(value: unknown, playerIds: Set<string>): PendingPrompt[] {
         scope !== "another_your_creature" &&
         scope !== "your_creature_or_planeswalker" &&
         scope !== "any_nonland_permanent" &&
-        scope !== "any_artifact_or_creature"
+        scope !== "any_artifact_or_creature" &&
+        scope !== "any_artifact"
       ) {
         throw new Error(`Invalid prompts[${index}].scope`);
       }
@@ -2477,6 +2487,9 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
             ? "creature_count"
             : expectNumber(value.toughness, `${label}.toughness`),
         ...(nonSubtypes.length > 0 ? { nonSubtypes } : {}),
+        ...(value.minPower === undefined
+          ? {}
+          : { minPower: expectNumber(value.minPower, `${label}.minPower`) }),
       };
     }
     case "team_keyword_until_eot": {
@@ -2491,6 +2504,9 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
         keyword: keyword as Keyword,
         ...(value.scope === "permanents" ? { scope: "permanents" } : {}),
         ...(nonSubtypes.length > 0 ? { nonSubtypes } : {}),
+        ...(value.minPower === undefined
+          ? {}
+          : { minPower: expectNumber(value.minPower, `${label}.minPower`) }),
       };
     }
     case "team_protection_until_eot": {
@@ -3696,6 +3712,9 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
       power: expectNumber(value.power, `${label}.power`),
       toughness: expectNumber(value.toughness, `${label}.toughness`),
       ...(nonSubtypes.length > 0 ? { nonSubtypes } : {}),
+      ...(value.minPower === undefined
+        ? {}
+        : { minPower: expectNumber(value.minPower, `${label}.minPower`) }),
     };
   }
   if (kind === "team_keyword_until_eot") {
@@ -3710,6 +3729,9 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
       keyword: keyword as Keyword,
       ...(value.scope === "permanents" ? { scope: "permanents" } : {}),
       ...(nonSubtypes.length > 0 ? { nonSubtypes } : {}),
+      ...(value.minPower === undefined
+        ? {}
+        : { minPower: expectNumber(value.minPower, `${label}.minPower`) }),
     };
   }
   if (kind === "team_protection_until_eot") {

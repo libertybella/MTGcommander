@@ -63,6 +63,7 @@ export function castCostReduction(
   spell: {
     characteristics: { types: string[]; subtypes?: string[]; colors: string[] };
     changeling?: boolean;
+    power?: number | null;
   },
 ): number {
   let total = 0;
@@ -96,6 +97,10 @@ export function castCostReduction(
         if (!chosen || !spell.characteristics.types.includes(chosen)) {
           continue;
         }
+      }
+      // Goreclaw: printed power floor on the discounted spell.
+      if (reduction.filter.minPower !== undefined && (spell.power ?? 0) < reduction.filter.minPower) {
+        continue;
       }
       if (typesAny && !typesAny.some((type) => spell.characteristics.types.includes(type))) {
         continue;

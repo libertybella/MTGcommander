@@ -534,6 +534,12 @@ export function legalEnterCopyIds(
           ids.push(card.id);
         }
         break;
+      // Sculpting Steel.
+      case "any_artifact":
+        if (characteristicsOf(state, card.id).types.includes("artifact")) {
+          ids.push(card.id);
+        }
+        break;
     }
   }
   return ids;

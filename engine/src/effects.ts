@@ -339,6 +339,14 @@ export function bindCardEffect(
               ? (() => {
                   // Reanimate: "life equal to that card's mana value".
                   const chosen = chosenTargetAt(context, 0, state);
+                  // Imp's Mischief: the target may be a spell on the stack.
+                  if (chosen?.type === "spell") {
+                    const entry = state.stack.find((object) => object.id === chosen.stackObjectId);
+                    const card = entry?.sourceId ? state.cards[entry.sourceId] : undefined;
+                    return card
+                      ? state.definitions[card.definitionId]?.characteristics.manaValue ?? 0
+                      : 0;
+                  }
                   return chosen?.type === "creature"
                     ? characteristicsOf(state, chosen.cardId).manaValue
                     : 0;
@@ -819,6 +827,7 @@ export function bindCardEffect(
         power: effect.power === "creature_count" ? teamCount : effect.power,
         toughness: effect.toughness === "creature_count" ? teamCount : effect.toughness,
         ...(effect.nonSubtypes ? { nonSubtypes: [...effect.nonSubtypes] } : {}),
+        ...(effect.minPower !== undefined ? { minPower: effect.minPower } : {}),
       };
     }
     case "team_keyword_until_eot": {
@@ -832,6 +841,7 @@ export function bindCardEffect(
         keyword: effect.keyword,
         ...(effect.scope ? { scope: effect.scope } : {}),
         ...(effect.nonSubtypes ? { nonSubtypes: [...effect.nonSubtypes] } : {}),
+        ...(effect.minPower !== undefined ? { minPower: effect.minPower } : {}),
       };
     }
     case "team_protection_until_eot": {
@@ -2234,7 +2244,7 @@ function applyKeywordUntilEot(
 function teamMembers(
   state: GameState,
   playerId: PlayerId,
-  options: { scope?: "permanents"; nonSubtypes?: string[] },
+  options: { scope?: "permanents"; nonSubtypes?: string[]; minPower?: number },
 ): CardInstanceId[] {
   return Object.values(state.cards)
     .filter(
@@ -2244,7 +2254,9 @@ function teamMembers(
         (options.scope === "permanents" || isCreature(state, card.id)) &&
         !(options.nonSubtypes ?? []).some((subtype) =>
           cardMatchesSubtype(state, card.id, subtype),
-        ),
+        ) &&
+        // Goreclaw: "each creature you control with power 4 or greater".
+        (options.minPower === undefined || creaturePower(state, card.id) >= options.minPower),
     )
     .map((card) => card.id);
 }
@@ -2255,10 +2267,11 @@ function applyTeamPtUntilEot(
   power: number,
   toughness: number,
   nonSubtypes?: string[],
+  minPower?: number,
 ): GameState {
   requirePlayer(state, playerId);
   // CR 611.2c: the affected set locks in when the effect is created.
-  const team = teamMembers(state, playerId, { nonSubtypes });
+  const team = teamMembers(state, playerId, { nonSubtypes, minPower });
   if (team.length === 0) {
     return state;
   }
@@ -2269,7 +2282,7 @@ function applyTeamKeywordUntilEot(
   state: GameState,
   playerId: PlayerId,
   keyword: Keyword,
-  options: { scope?: "permanents"; nonSubtypes?: string[] } = {},
+  options: { scope?: "permanents"; nonSubtypes?: string[]; minPower?: number } = {},
 ): GameState {
   requirePlayer(state, playerId);
   // CR 611.2c: the affected set locks in when the effect is created.
@@ -3290,12 +3303,14 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
           effect.power,
           effect.toughness,
           effect.nonSubtypes,
+          effect.minPower,
         );
         break;
       case "team_keyword_until_eot":
         next = applyTeamKeywordUntilEot(state, effect.playerId, effect.keyword, {
           scope: effect.scope,
           nonSubtypes: effect.nonSubtypes,
+          minPower: effect.minPower,
         });
         break;
       case "team_protection_until_eot": {

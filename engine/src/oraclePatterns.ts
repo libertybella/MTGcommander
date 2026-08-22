@@ -1148,6 +1148,49 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     return { targetRequirements: [], effects: [{ kind: "windfall" }] };
   }
 
+  // Imp's Mischief's toll rides the retargeted spell's mana value.
+  if (/^You lose life equal to that spell's mana value$/i.test(sentence)) {
+    return {
+      targetRequirements: [],
+      effects: [{ kind: "lose_life", playerId: "controller", amount: "target_mana_value" }],
+    };
+  }
+
+  // Narset's Reversal: copy first, then hand the original back.
+  if (/^Copy target instant or sorcery spell, then return it to its owner's hand$/i.test(sentence)) {
+    return {
+      targetRequirements: [{ kind: "instant_or_sorcery_spell" }],
+      effects: [
+        { kind: "copy_spell", target: { type: "chosen", index: 0 } },
+        { kind: "bounce_spell_or_permanent", target: { type: "chosen", index: 0 } },
+      ],
+    };
+  }
+
+  // Goreclaw's attack pump: the big team only.
+  const bigTeam = sentence.match(
+    /^each creature you control with power (\d+) or greater gets \+(\d+)\/\+(\d+) and gains ([a-z ]+) until end of turn$/i,
+  );
+  if (bigTeam?.[1] && bigTeam[2] && bigTeam[3] && bigTeam[4]) {
+    const keyword = KEYWORD_GRANTS[bigTeam[4].trim().toLowerCase()];
+    if (keyword) {
+      const floor = Number(bigTeam[1]);
+      return {
+        targetRequirements: [],
+        effects: [
+          {
+            kind: "team_pt_until_eot",
+            playerId: "controller",
+            power: Number(bigTeam[2]),
+            toughness: Number(bigTeam[3]),
+            minPower: floor,
+          },
+          { kind: "team_keyword_until_eot", playerId: "controller", keyword, minPower: floor },
+        ],
+      };
+    }
+  }
+
   // Return to Nature's third bullet.
   if (/^Exile target card from a graveyard$/i.test(sentence)) {
     return {
@@ -1242,6 +1285,7 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
   // stack can't be targeted (Deflecting Swat's precedent).
   if (
     /^Change the target of target spell or ability with a single target$/i.test(sentence) ||
+    /^Change the target of target spell with a single target$/i.test(sentence) ||
     /^Change the target of target spell that targets only a single creature or player$/i.test(
       sentence,
     )
@@ -4628,6 +4672,22 @@ function parseTriggerHead(head: string): TriggerHead | null {
       subjectFilter: { types: ["artifact"] },
     };
   }
+  // Reflections of Littjara: casts of the watcher's chosen type.
+  if (/^Whenever you cast a spell of the chosen type$/i.test(text)) {
+    return {
+      event: "cast_spell",
+      watch: "controlled",
+      subjectFilter: { chosenSubtype: true },
+    };
+  }
+  // Archaeomancer's Map: an opponent's land arrival.
+  if (/^Whenever a land an opponent controls enters$/i.test(text)) {
+    return {
+      event: "enter_battlefield",
+      watch: "opponents",
+      subjectFilter: { types: ["land"] },
+    };
+  }
   // Tireless Tracker: "Whenever you sacrifice a Clue" — tokens only, a
   // documented approximation (nontoken Clues are vanishingly rare).
   const sacSubtype = text.match(/^Whenever you sacrifice an? ([A-Za-z]+)$/i);
@@ -5666,6 +5726,7 @@ const CLONE_SCOPE_BY_PHRASE: Record<string, EnterAsCopyScope> = {
   "a creature or planeswalker you control": "your_creature_or_planeswalker",
   "any nonland permanent on the battlefield": "any_nonland_permanent",
   "any artifact or creature on the battlefield": "any_artifact_or_creature",
+  "any artifact on the battlefield": "any_artifact",
 };
 
 /**
@@ -6309,7 +6370,7 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
     // Clone family. The leading name is "~" for most cards but stays a short
     // legend name when oracle text uses it (Sakashima).
     const cloneEnter = sentence.match(
-      /^You may have (?:~|[\w' -]+?) enter(?: the battlefield)? as a copy of (any creature on the battlefield|a creature you control|another creature you control|a creature or planeswalker you control|any nonland permanent on the battlefield|any artifact or creature on the battlefield)( with mana value less than or equal to the amount of mana spent to cast ~)?(?:, except (.+))?$/i,
+      /^You may have (?:~|[\w' -]+?) enter(?: the battlefield)? as a copy of (any creature on the battlefield|a creature you control|another creature you control|a creature or planeswalker you control|any nonland permanent on the battlefield|any artifact or creature on the battlefield|any artifact on the battlefield)( with mana value less than or equal to the amount of mana spent to cast ~)?(?:, except (.+))?$/i,
     );
     if (cloneEnter?.[1]) {
       const riders = cloneEnter[3] === undefined ? {} : parseCopyExceptRiders(cloneEnter[3]);
@@ -7219,6 +7280,21 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
       continue;
     }
 
+    // Goreclaw: the discount takes a printed-power floor.
+    const bigDiscount = sentence.match(
+      /^Creature spells you cast with power (\d+) or greater cost \{(\d+)\} less to cast$/i,
+    );
+    if (bigDiscount?.[1] && bigDiscount[2]) {
+      result.costReductions = [
+        ...(result.costReductions ?? []),
+        {
+          generic: Number(bigDiscount[2]),
+          filter: { types: ["creature"], minPower: Number(bigDiscount[1]) },
+        },
+      ];
+      continue;
+    }
+
     // Banner of Kinship: the enter counters land once the type is chosen.
     const kinshipEnter = sentence.match(
       /^~ enters with an? ([a-z]+) counter on it for each creature you control of the chosen type$/i,
@@ -7967,7 +8043,12 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
           ) {
             condition = { kind: "greatest_artifact_mana_value" };
             rest = interveningIf[2].trim();
-          } else if (/^an opponent controls more lands than you$/i.test(phrase)) {
+          } else if (
+            /^an opponent controls more lands than you$/i.test(phrase) ||
+            // Archaeomancer's Map: "that player" is the land's controller —
+            // an opponent — so the same condition reads correctly.
+            /^that player controls more lands than you$/i.test(phrase)
+          ) {
             // Land Tax.
             condition = { kind: "opponent_controls_more_lands" };
             rest = interveningIf[2].trim();
