@@ -79,6 +79,7 @@ export function createCardDefinition(
         | "loyalty"
         | "loyaltyAbilities"
         | "noMaxHandSize"
+        | "damageReplacement"
         | "extraLandDrops"
         | "cantBeCountered"
         | "creatureSpellsCantBeCountered"
@@ -340,6 +341,7 @@ export function createCardDefinition(
         }
       : {}),
     ...(input.noMaxHandSize ? { noMaxHandSize: true } : {}),
+    ...(input.damageReplacement ? { damageReplacement: { ...input.damageReplacement } } : {}),
     ...(input.extraLandDrops && input.extraLandDrops > 0
       ? { extraLandDrops: input.extraLandDrops }
       : {}),

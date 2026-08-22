@@ -4,7 +4,7 @@ import { createCardDefinition, createCardInstance } from "./createGame";
 import { characteristicsOf, hasSubtype, isCreature, isInstantOrSorcery, isLand, isPlaneswalker } from "./cardTypes";
 import { eliminatePlayerInPlace } from "./elimination";
 import { createId } from "./ids";
-import { allBattlefieldCreatureCount, creaturePower, creatureToughness, wouldSkipDraw } from "./derived";
+import { allBattlefieldCreatureCount, creaturePower, creatureToughness, damageAfterReplacements, wouldSkipDraw } from "./derived";
 import { hasKeyword, protectionColorsOf } from "./keywords";
 import { addMana, tapCard, untapCard } from "./mana";
 import { commanderIdentityColors } from "./manaOptions";
@@ -1599,7 +1599,14 @@ function applyDealDamage(state: GameState, effect: Extract<GameEffect, { kind: "
   }
 
   if (effect.target.type === "player") {
-    let next = applyLoseLife(state, effect.target.playerId, effect.amount);
+    // Fiery Emancipation et al: CR 616 replacements modify the amount.
+    const dealt = damageAfterReplacements(
+      state,
+      effect.sourceId,
+      effect.target.playerId,
+      effect.amount,
+    );
+    let next = applyLoseLife(state, effect.target.playerId, dealt);
     if (effect.sourceId && next.cards[effect.sourceId]) {
       dispatchEventsInPlace(next, [
         { kind: "deals_damage_to_player", cardId: effect.sourceId, playerId: effect.target.playerId },
@@ -1633,20 +1640,21 @@ function applyDealDamage(state: GameState, effect: Extract<GameEffect, { kind: "
   if (!damaged) {
     throw new Error(`Unknown card ${card.id}`);
   }
+  const dealt = damageAfterReplacements(next, effect.sourceId, damaged.controllerId, effect.amount);
   // CR 120.3c: damage to a planeswalker removes that many loyalty counters
   // (a creature-planeswalker takes both — CR 120.3d).
   if (isPlaneswalker(next, damaged.id)) {
-    damaged.counters["loyalty"] = Math.max(0, (damaged.counters["loyalty"] ?? 0) - effect.amount);
+    damaged.counters["loyalty"] = Math.max(0, (damaged.counters["loyalty"] ?? 0) - dealt);
     if (!isCreature(next, damaged.id)) {
       return applyDamageLifegainRider(next, effect);
     }
   }
-  damaged.damageMarked += effect.amount;
+  damaged.damageMarked += dealt;
   if (effect.sourceId && hasKeyword(next, effect.sourceId, "deathtouch")) {
     damaged.deathtouched = true;
   }
   // Enrage (Apex Altisaur) hears every marked point of noncombat damage.
-  if (effect.amount > 0) {
+  if (dealt > 0) {
     dispatchEventsInPlace(next, [{ kind: "damaged", cardId: damaged.id }]);
   }
   // Destruction is a state-based action (CR 704.5g/h); applyEffect sweeps.
@@ -1685,7 +1693,12 @@ function applyDamageAll(
     if (protection.length > 0 && protection.some((color) => sourceColors.includes(color))) {
       continue;
     }
-    card.damageMarked += effect.amount;
+    card.damageMarked += damageAfterReplacements(
+      next,
+      effect.sourceId,
+      card.controllerId,
+      effect.amount,
+    );
     if (deathtouch) {
       card.deathtouched = true;
     }
@@ -1694,9 +1707,10 @@ function applyDamageAll(
     const lifeLoss: EngineEvent[] = [];
     for (const player of next.players) {
       if (!player.lost) {
-        player.life -= effect.amount;
-        next.log.push({ kind: "life_change", playerId: player.id, delta: -effect.amount });
-        lifeLoss.push({ kind: "loses_life", playerId: player.id, amount: effect.amount });
+        const dealt = damageAfterReplacements(next, effect.sourceId, player.id, effect.amount);
+        player.life -= dealt;
+        next.log.push({ kind: "life_change", playerId: player.id, delta: -dealt });
+        lifeLoss.push({ kind: "loses_life", playerId: player.id, amount: dealt });
       }
     }
     dispatchEventsInPlace(next, lifeLoss);

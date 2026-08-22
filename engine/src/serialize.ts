@@ -436,6 +436,45 @@ export function parseGameState(json: string): GameState {
         def.imageUrl === undefined ? "" : expectString(def.imageUrl, "definition.imageUrl", true),
       ...(def.ward === undefined ? {} : { ward: expectNumber(def.ward, "definition.ward") }),
       ...(def.noMaxHandSize === true ? { noMaxHandSize: true } : {}),
+      ...(isRecord(def.damageReplacement)
+        ? {
+            damageReplacement: {
+              ...(def.damageReplacement.times === undefined
+                ? {}
+                : {
+                    times: expectNumber(
+                      def.damageReplacement.times,
+                      `definition.${id}.damageReplacement.times`,
+                    ),
+                  }),
+              ...(def.damageReplacement.plus === undefined
+                ? {}
+                : {
+                    plus: expectNumber(
+                      def.damageReplacement.plus,
+                      `definition.${id}.damageReplacement.plus`,
+                    ),
+                  }),
+              ...(def.damageReplacement.sourceColors === undefined
+                ? {}
+                : {
+                    sourceColors: (() => {
+                      const raw = def.damageReplacement.sourceColors;
+                      if (!Array.isArray(raw)) {
+                        throw new Error(`Invalid definition.${id}.damageReplacement.sourceColors`);
+                      }
+                      return raw.map((color: unknown) =>
+                        parseColor(color, `definition.${id}.damageReplacement.sourceColors`),
+                      );
+                    })(),
+                  }),
+              ...(def.damageReplacement.sourceMustBeCreature === true
+                ? { sourceMustBeCreature: true }
+                : {}),
+              ...(def.damageReplacement.opponentsOnly === true ? { opponentsOnly: true } : {}),
+            },
+          }
+        : {}),
       ...(def.extraLandDrops === undefined
         ? {}
         : { extraLandDrops: expectNumber(def.extraLandDrops, `definition.${id}.extraLandDrops`) }),

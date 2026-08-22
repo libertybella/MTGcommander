@@ -182,6 +182,8 @@ What the engine implements and what it intentionally does not. Tests are tagged 
 
 - **X-count token creation**: "Create X 1/1 white Warrior creature tokens" reads the announced X (an X of zero makes none), and "…, where X is the number of Goblins you control" counts controlled permanents through the shared subtype matcher. The token's printed card types survive — "Soldier artifact creature" becomes an Artifact Creature token, "Forest Dryad land creature" a Land Creature — and a two-colour printing parses like a one-colour one.
 
+- **Damage-modifying replacements** (CR 616 — Fiery Emancipation, Torbran, Gratuitous Violence, Twinflame Tyrant): a `damageReplacement` on a battlefield permanent multiplies or adds to damage, gated on the source's controller, its colors, whether it is a creature, and whether the target is an opponent or theirs. One helper runs at every place damage is actually applied — targeted damage, sweeps (creatures and players), and combat — so combat damage, commander damage, and lifelink all agree on the modified number, and a "that much damage" rider reads it. Documented approximation: multiplications apply before additions and holders apply in timestamp order, where CR 616.1 lets the affected player choose; with one holder the two agree.
+
 ## The card pipeline (Stage 6)
 
 - Real cards compile from Scryfall oracle text by shared sentence patterns; a hand-authored registry (`server/src/cardOverrides.ts`, data in the same schema) beats the compiler for the long tail. Never a named-card code path.

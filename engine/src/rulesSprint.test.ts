@@ -20909,3 +20909,189 @@ describe("wave 174: X-count token creation", () => {
   });
 });
 
+
+describe("wave 175: damage-modifying replacements", () => {
+  const compile = (name: string, manaCost: string, typeLine: string, oracleText: string, power?: string, toughness?: string) =>
+    compileOracleCard({
+      oracleId: name,
+      name,
+      manaCost,
+      typeLine,
+      power: power ?? null,
+      toughness: toughness ?? null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  const EMANCIPATION =
+    "If a source you control would deal damage to a permanent or player, it deals triple that damage to that permanent or player instead.";
+  const TORBRAN =
+    "If a red source you control would deal damage to an opponent or a permanent an opponent controls, it deals that much damage plus 2 instead.";
+  const VIOLENCE =
+    "If a creature you control would deal damage to a permanent or player, it deals double that damage instead.";
+
+  /** A battlefield permanent carrying the compiled replacement. */
+  const withRule = (
+    game: GameState,
+    owner: PlayerState,
+    compiled: ReturnType<typeof compile>,
+  ) => {
+    game.definitions[compiled.definition.id] = compiled.definition;
+    const card = createCardInstance({
+      definitionId: compiled.definition.id,
+      ownerId: owner.id,
+      zone: "battlefield",
+    });
+    card.summoningSick = false;
+    game.cards[card.id] = card;
+    owner.zones.battlefield.push(card.id);
+    return card;
+  };
+
+  it("compiles the four shapes into one rule", () => {
+    const emancipation = compile("Fiery Emancipation", "{3}{R}{R}{R}", "Enchantment", EMANCIPATION);
+    expect(emancipation.notes).toEqual([]);
+    expect(emancipation.definition.damageReplacement).toEqual({ times: 3 });
+
+    const torbran = compile(
+      "Torbran, Thane of Red Fell",
+      "{1}{R}{R}{R}",
+      "Legendary Creature — Dwarf Noble",
+      TORBRAN,
+      "2",
+      "4",
+    );
+    expect(torbran.notes).toEqual([]);
+    expect(torbran.definition.damageReplacement).toEqual({
+      plus: 2,
+      sourceColors: ["R"],
+      opponentsOnly: true,
+    });
+
+    const violence = compile("Gratuitous Violence", "{2}{R}{R}{R}", "Enchantment", VIOLENCE);
+    expect(violence.notes).toEqual([]);
+    expect(violence.definition.damageReplacement).toEqual({
+      times: 2,
+      sourceMustBeCreature: true,
+    });
+  });
+
+  it("triples noncombat damage to a player", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    withRule(game, p1, compile("Fiery Emancipation", "{3}{R}{R}{R}", "Enchantment", EMANCIPATION));
+    const boltDef = createCardDefinition({ name: "Bolt Source", typeLine: "Artifact" });
+    game.definitions[boltDef.id] = boltDef;
+    const source = createCardInstance({ definitionId: boltDef.id, ownerId: p1.id, zone: "battlefield" });
+    game.cards[source.id] = source;
+    p1.zones.battlefield.push(source.id);
+    const startingLife = p2.life;
+
+    const next = applyEffect(game, {
+      kind: "deal_damage",
+      sourceId: source.id,
+      target: { type: "player", playerId: p2.id },
+      amount: 3,
+    });
+    expect(next.players.find((entry) => entry.id === p2.id)?.life).toBe(startingLife - 9);
+  });
+
+  it("respects the source and target gates rather than boosting everything", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    withRule(
+      game,
+      p1,
+      compile(
+        "Torbran, Thane of Red Fell",
+        "{1}{R}{R}{R}",
+        "Legendary Creature — Dwarf Noble",
+        TORBRAN,
+        "2",
+        "4",
+      ),
+    );
+    const redDef = createCardDefinition({
+      name: "Red Source",
+      typeLine: "Creature — Goblin",
+      manaCost: "{R}",
+      power: 1,
+      toughness: 1,
+    });
+    const blueDef = createCardDefinition({
+      name: "Blue Source",
+      typeLine: "Creature — Merfolk",
+      manaCost: "{U}",
+      power: 1,
+      toughness: 1,
+    });
+    game.definitions[redDef.id] = redDef;
+    game.definitions[blueDef.id] = blueDef;
+    const red = createCardInstance({ definitionId: redDef.id, ownerId: p1.id, zone: "battlefield" });
+    const blue = createCardInstance({ definitionId: blueDef.id, ownerId: p1.id, zone: "battlefield" });
+    game.cards[red.id] = red;
+    game.cards[blue.id] = blue;
+    p1.zones.battlefield.push(red.id, blue.id);
+
+    const startingP2 = p2.life;
+    let next = applyEffect(game, {
+      kind: "deal_damage",
+      sourceId: red.id,
+      target: { type: "player", playerId: p2.id },
+      amount: 1,
+    });
+    expect(next.players.find((entry) => entry.id === p2.id)?.life).toBe(startingP2 - 3);
+
+    // A blue source you control gets nothing.
+    next = applyEffect(game, {
+      kind: "deal_damage",
+      sourceId: blue.id,
+      target: { type: "player", playerId: p2.id },
+      amount: 1,
+    });
+    expect(next.players.find((entry) => entry.id === p2.id)?.life).toBe(startingP2 - 1);
+
+    // Neither does damage aimed at yourself — "an opponent" is load-bearing.
+    const startingP1 = p1.life;
+    next = applyEffect(game, {
+      kind: "deal_damage",
+      sourceId: red.id,
+      target: { type: "player", playerId: p1.id },
+      amount: 1,
+    });
+    expect(next.players.find((entry) => entry.id === p1.id)?.life).toBe(startingP1 - 1);
+  });
+
+  it("applies to combat damage too, and the trigger sees the modified amount", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    withRule(
+      game,
+      p1,
+      compile("Gratuitous Violence", "{2}{R}{R}{R}", "Enchantment", VIOLENCE),
+    );
+    const bearDef = createCardDefinition({
+      name: "Bear",
+      typeLine: "Creature — Bear",
+      power: 2,
+      toughness: 2,
+    });
+    game.definitions[bearDef.id] = bearDef;
+    const bear = createCardInstance({ definitionId: bearDef.id, ownerId: p1.id, zone: "battlefield" });
+    bear.summoningSick = false;
+    game.cards[bear.id] = bear;
+    p1.zones.battlefield.push(bear.id);
+    game.turn.phase = "combat";
+    game.turn.step = "declareAttackers";
+    game.turn.activePlayerId = p1.id;
+    game.priorityPlayerId = p1.id;
+
+    const startingLife = p2.life;
+    let next = declareAttackers(game, p1.id, [{ attackerId: bear.id, defenderId: p2.id }]);
+    next = applyCombatDamage(next);
+    // A 2/2 creature you control hits for four.
+    expect(next.players.find((entry) => entry.id === p2.id)?.life).toBe(startingLife - 4);
+  });
+});
+

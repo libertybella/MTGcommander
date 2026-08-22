@@ -140,6 +140,11 @@ export type CardDefinition = {
   extraLandDrops?: number;
   /** "This spell can't be countered" (Abrupt Decay). */
   cantBeCountered?: boolean;
+  /** Fiery Emancipation, Torbran, Gratuitous Violence, Twinflame Tyrant:
+   * "If a \<source\> you control would deal damage to \<target\>, it deals
+   * \<modified\> damage instead." One replacement applies wherever damage is
+   * applied — noncombat, sweeps, and combat alike. */
+  damageReplacement?: DamageReplacement;
   /** Rhythm of the Wild: the controller's creature spells can't be countered. */
   creatureSpellsCantBeCountered?: boolean;
   /** Grand Abolisher: on this permanent's controller's turn, opponents can't
@@ -2123,6 +2128,25 @@ export type EnterTappedUnless =
  * satisfied by any one of them (the Verge land cycle's "a Plains or a
  * Swamp", where two different permanents may each supply half).
  */
+/**
+ * A damage-modifying replacement effect on a permanent. Multiplications apply
+ * before additions and holders apply in timestamp order — a documented
+ * approximation of CR 616.1, which lets the affected player order them.
+ */
+export type DamageReplacement = {
+  /** "double that damage" → 2, "triple" → 3. */
+  times?: number;
+  /** Torbran: "that much damage plus 2". */
+  plus?: number;
+  /** Torbran: "a red source you control". Every listed color must be present. */
+  sourceColors?: Color[];
+  /** Gratuitous Violence: "a creature you control", not any source. */
+  sourceMustBeCreature?: boolean;
+  /** Torbran, Twinflame Tyrant: only damage aimed at an opponent or a
+   * permanent an opponent controls. */
+  opponentsOnly?: boolean;
+};
+
 export type ControlledGate = {
   types?: string[];
   subtypes?: string[];

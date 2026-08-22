@@ -31,6 +31,7 @@ import type {
   StaticAbility,
   TriggerEvent,
   TargetKind,
+  DamageReplacement,
   TargetRequirement,
   TriggerCondition,
 } from "./types";
@@ -56,6 +57,7 @@ export type CompiledOracleText = {
   enchantedTappedBonus?: { color: Color | "chosen"; amount: number };
   loyaltyAbilities?: LoyaltyAbility[];
   noMaxHandSize?: boolean;
+  damageReplacement?: DamageReplacement;
   extraLandDrops?: number;
   cantBeCountered?: boolean;
   creatureSpellsCantBeCountered?: boolean;
@@ -522,6 +524,31 @@ function parseAbilityCost(
     ...(sacrificeSubtype ? { sacrificeSubtype } : {}),
     ...(sacrificeCount && sacrificeCount > 1 ? { sacrificeCount } : {}),
     ...(tapCreature ? { tapCreature: true } : {}),
+  };
+}
+
+/**
+ * Fiery Emancipation, Torbran, Gratuitous Violence, Twinflame Tyrant:
+ * "If a \<source\> you control would deal damage to \<target\>, it deals
+ * \<modified\> damage instead." One shape covers the four because the source
+ * clause, the target clause and the modification are each independent.
+ */
+function parseDamageReplacement(sentence: string): DamageReplacement | null {
+  const match = sentence.match(
+    /^If an? (red |white |blue |black |green )?(source|creature) you control would deal damage to (a permanent or player|an opponent or a permanent an opponent controls), it deals (?:(double|triple) that damage|that much damage plus (\d+))(?: to that permanent or player)? instead$/i,
+  );
+  if (!match?.[2] || !match[3] || (!match[4] && !match[5])) {
+    return null;
+  }
+  const color = match[1]?.trim().toLowerCase();
+  const plus = match[5] ? Number(match[5]) : undefined;
+  return {
+    ...(plus === undefined
+      ? { times: /^triple$/i.test(match[4] ?? "") ? 3 : 2 }
+      : { plus }),
+    ...(color ? { sourceColors: [COLOR_WORDS[color]!] } : {}),
+    ...(/^creature$/i.test(match[2]) ? { sourceMustBeCreature: true } : {}),
+    ...(/opponent/i.test(match[3]) ? { opponentsOnly: true } : {}),
   };
 }
 
@@ -7596,6 +7623,12 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
 
     if (/^You have no maximum hand size$/i.test(sentence)) {
       result.noMaxHandSize = true;
+      continue;
+    }
+
+    const damageRule = parseDamageReplacement(sentence);
+    if (damageRule) {
+      result.damageReplacement = damageRule;
       continue;
     }
 

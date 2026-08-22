@@ -1,7 +1,7 @@
 import { cloneGameState } from "./clone";
 import { characteristicsOf, isCommander, isCreature } from "./cardTypes";
 import { abilitiesRemoved, computedCard } from "./characteristicsEngine";
-import { creaturePower, creatureToughness } from "./derived";
+import { creaturePower, creatureToughness, damageAfterReplacements } from "./derived";
 import { hasKeyword, protectionColorsOf } from "./keywords";
 import { canPayManaCost, parseManaCost, payManaCost } from "./mana";
 import { isLiving, nextLivingPlayerId } from "./players";
@@ -495,17 +495,25 @@ function dealDamageToPlayerInPlace(
   if (!defender) {
     return;
   }
-  defender.life -= amount;
-  collect?.push({ kind: "combat_damage_to_player", cardId: sourceId, playerId: defenderId, amount });
+  // Torbran et al: combat damage takes the same CR 616 replacements. The
+  // events carry the modified amount, so "that much damage" riders agree.
+  const dealt = damageAfterReplacements(state, sourceId, defenderId, amount);
+  defender.life -= dealt;
+  collect?.push({
+    kind: "combat_damage_to_player",
+    cardId: sourceId,
+    playerId: defenderId,
+    amount: dealt,
+  });
   collect?.push({ kind: "deals_damage_to_player", cardId: sourceId, playerId: defenderId });
-  collect?.push({ kind: "loses_life", playerId: defenderId, amount });
+  collect?.push({ kind: "loses_life", playerId: defenderId, amount: dealt });
   if (isCommander(state, sourceId)) {
     defender.commander.damageReceived[sourceId] =
-      (defender.commander.damageReceived[sourceId] ?? 0) + amount;
+      (defender.commander.damageReceived[sourceId] ?? 0) + dealt;
   }
   const source = state.cards[sourceId];
   if (source && hasKeyword(state, sourceId, "lifelink")) {
-    gainLifeInPlace(state, source.controllerId, amount);
+    gainLifeInPlace(state, source.controllerId, dealt);
   }
 }
 
@@ -533,7 +541,8 @@ function markCreatureDamageInPlace(
       return;
     }
   }
-  target.damageMarked += amount;
+  const dealt = damageAfterReplacements(state, sourceId, target.controllerId, amount);
+  target.damageMarked += dealt;
   if (hasKeyword(state, sourceId, "deathtouch")) {
     target.deathtouched = true;
   }
@@ -541,7 +550,7 @@ function markCreatureDamageInPlace(
   dispatchEventsInPlace(state, [{ kind: "damaged", cardId: targetId }]);
   const source = state.cards[sourceId];
   if (source && hasKeyword(state, sourceId, "lifelink")) {
-    gainLifeInPlace(state, source.controllerId, amount);
+    gainLifeInPlace(state, source.controllerId, dealt);
   }
 }
 

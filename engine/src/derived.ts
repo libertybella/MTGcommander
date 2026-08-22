@@ -1,6 +1,60 @@
 import { characteristicsOf, isBasic, isCommander, isCreature, isLand, isLegendary } from "./cardTypes";
 import { abilitiesRemoved, cardMatchesSubtype, computedCard } from "./characteristicsEngine";
-import type { CardInstance, CardInstanceId, EnterTappedUnless, GameState } from "./types";
+import type { CardInstance, CardInstanceId, EnterTappedUnless, GameState, PlayerId } from "./types";
+
+/**
+ * CR 616: damage-modifying replacements, applied wherever damage is actually
+ * applied — noncombat effects, sweeps, and combat. `targetPlayerId` is the
+ * damaged player, or the controller of the damaged permanent.
+ *
+ * Documented approximation: multiplications apply before additions and
+ * holders apply in timestamp order, where the rules let the affected player
+ * choose the order. With one holder — the realistic table — the two agree.
+ */
+export function damageAfterReplacements(
+  state: GameState,
+  sourceId: CardInstanceId | null | undefined,
+  targetPlayerId: PlayerId | undefined,
+  amount: number,
+): number {
+  if (amount <= 0 || !sourceId) {
+    return amount;
+  }
+  const source = state.cards[sourceId];
+  if (!source) {
+    return amount;
+  }
+  const holders = Object.values(state.cards)
+    .filter((card) => {
+      if (card.zone !== "battlefield" || abilitiesRemoved(state, card.id)) {
+        return false;
+      }
+      const rule = state.definitions[card.definitionId]?.damageReplacement;
+      if (!rule) {
+        return false;
+      }
+      // "a source YOU control" — the holder's controller must control it.
+      if (source.controllerId !== card.controllerId) {
+        return false;
+      }
+      if (rule.opponentsOnly && (targetPlayerId === undefined || targetPlayerId === card.controllerId)) {
+        return false;
+      }
+      if (rule.sourceMustBeCreature && !isCreature(state, sourceId)) {
+        return false;
+      }
+      const colors = characteristicsOf(state, sourceId).colors;
+      return (rule.sourceColors ?? []).every((color) => colors.includes(color));
+    })
+    .sort((a, b) => a.timestamp - b.timestamp);
+
+  let result = amount;
+  for (const holder of holders) {
+    const rule = state.definitions[holder.definitionId]!.damageReplacement!;
+    result = result * (rule.times ?? 1) + (rule.plus ?? 0);
+  }
+  return result;
+}
 
 function plus1Plus1(state: GameState, cardId: CardInstanceId): number {
   return state.cards[cardId]?.counters["p1p1"] ?? 0;
