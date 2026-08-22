@@ -50,7 +50,7 @@ Statuses: `open` · `claimed` · `in-progress` · `done` · `blocked`
 | Confluences (choose-with-repeats) | B | open | | | | |
 | Opponent-chooses (Fact or Fiction) | B | open | | | | |
 | Gift mechanic | B | done | claude/2daf8b18 | comprehensive-plan | 2026-08-21 | Wave 134 merged: promise/decline mode pairs, 4 flips (Parting Gust, Into the Flood Maw, Dawn's Truce, Long River's Pull) — 938/2,009 (46.7%) |
-| Academy Manufactor | C | open | | | | Token-creation replacement |
+| Academy Manufactor | C | done | claude/2daf8b18 | comprehensive-plan | 2026-08-22 | Wave 197 merged as one family with the other token-creation replacements (CR 614): `extra_token` (one extra PER BATCH, not per token — Xorn on three Treasures makes four), `substitute_tokens` (Divine Visitation swaps the template), `tokens_one_of_each` (Academy Manufactor). A replacement does not apply to what it itself creates (CR 614.5) — without that guard Peregrin Took's extra Food, which matches every token, loops on the first one. Also a counted plural subtype sacrifice cost ("Sacrifice three Foods"): both `sacrificeSubtype` and `sacrificeCount` already existed, but COST_UNIT did not recognise the phrase as a cost, so it never reached the parser. 5 flips (Academy Manufactor, Divine Visitation, Stridehangar Automaton, Xorn, Peregrin Took) — 1,276/2,009 (63.5%), 1,090 tests |
 | Sylvan Library | C | open | | | | Draw-step replacement |
 | Waste Not | C | done | claude/2daf8b18 | comprehensive-plan | 2026-08-21 | Wave 130 merged: discards event + watchers, 2 flips (Waste Not, Bone Miser) — 918/2,009 (45.7%). Tergrid remains open |
 | Mana persistence (Electro, Ashling) | C | open | | | | |

@@ -2484,7 +2484,20 @@ export type ReplacementEffect =
   | { kind: "double_life_gain" }
   /** Teferi's Ageless Insight: draws are doubled, except the turn-based
    * first draw of the controller's own draw step. */
-  | { kind: "double_draws_except_first" };
+  | { kind: "double_draws_except_first" }
+  /** Xorn, Stridehangar Automaton, Peregrin Took: "those tokens plus an
+   * additional <token>". One extra per batch, not per token. */
+  | { kind: "extra_token"; match?: TokenMatch; token: TokenSpec }
+  /** Divine Visitation: "…that many <token> are created instead". */
+  | { kind: "substitute_tokens"; match?: TokenMatch; token: TokenSpec }
+  /** Academy Manufactor: creating any one of these makes one of each. */
+  | { kind: "tokens_one_of_each"; subtypes: string[] };
+
+/** Which created tokens a replacement applies to; omitted means all of them. */
+export type TokenMatch = { types?: string[]; subtypesAny?: string[] };
+
+/** A token a replacement creates or substitutes in. */
+export type TokenSpec = TokenTemplate & { keywords?: Keyword[]; colors?: Color[] };
 
 /**
  * The Urza lands, Ilysian Caryatid: "… If you control X, add <more> instead."

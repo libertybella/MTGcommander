@@ -24662,3 +24662,235 @@ describe("wave 196: an activated ability may announce X", () => {
   });
 });
 
+
+describe("wave 197: replacements on token creation", () => {
+  const compile = (name: string, manaCost: string, typeLine: string, oracleText: string, power?: string, toughness?: string) =>
+    compileOracleCard({
+      oracleId: name,
+      name,
+      manaCost,
+      typeLine,
+      power: power ?? null,
+      toughness: toughness ?? null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  /** A table with `holder` on p1's battlefield, ready to create tokens. */
+  function withHolder(holder: ReturnType<typeof createCardDefinition>) {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    game.definitions[holder.id] = holder;
+    const card = createCardInstance({
+      definitionId: holder.id,
+      ownerId: p1.id,
+      zone: "battlefield",
+    });
+    game.cards[card.id] = card;
+    p1.zones.battlefield.push(card.id);
+    return { game, p1 };
+  }
+
+  const namesOnBattlefield = (state: GameState, playerId: string): string[] =>
+    (state.players.find((player) => player.id === playerId)?.zones.battlefield ?? [])
+      .map((cardId) => state.definitions[state.cards[cardId]?.definitionId ?? ""]?.name ?? "")
+      .filter(Boolean);
+
+  it("reads the three printed shapes", () => {
+    const xorn = compile(
+      "Xorn",
+      "{2}{R}",
+      "Creature — Elemental",
+      "If you would create one or more Treasure tokens, instead create those tokens plus an additional Treasure token.",
+      "3",
+      "2",
+    );
+    expect(xorn.notes).toEqual([]);
+    expect(xorn.definition.replacements[0]).toMatchObject({
+      kind: "extra_token",
+      match: { subtypesAny: ["treasure"] },
+    });
+
+    const visitation = compile(
+      "Divine Visitation",
+      "{3}{W}{W}",
+      "Enchantment",
+      "If one or more creature tokens would be created under your control, that many 4/4 white Angel creature tokens with flying and vigilance are created instead.",
+    );
+    expect(visitation.notes).toEqual([]);
+    expect(visitation.definition.replacements[0]).toMatchObject({
+      kind: "substitute_tokens",
+      match: { types: ["creature"] },
+      token: { name: "Angel", power: 4, toughness: 4, keywords: ["flying", "vigilance"] },
+    });
+
+    const manufactor = compile(
+      "Academy Manufactor",
+      "{3}",
+      "Artifact Creature — Assembly-Worker",
+      "If you would create a Clue, Food, or Treasure token, instead create one of each.",
+      "1",
+      "3",
+    );
+    expect(manufactor.notes).toEqual([]);
+    expect(manufactor.definition.replacements[0]).toEqual({
+      kind: "tokens_one_of_each",
+      subtypes: ["Clue", "Food", "Treasure"],
+    });
+  });
+
+  it("adds one extra per batch, not one per token", () => {
+    const { game, p1 } = withHolder(
+      createCardDefinition({
+        name: "Xorn",
+        typeLine: "Creature — Elemental",
+        power: 3,
+        toughness: 2,
+        replacements: [
+          {
+            kind: "extra_token",
+            match: { subtypesAny: ["treasure"] },
+            token: {
+              name: "Treasure",
+              typeLine: "Artifact — Treasure Token",
+              power: null,
+              toughness: null,
+            },
+          },
+        ],
+      }),
+    );
+    const next = applyEffect(game, {
+      kind: "create_token",
+      ownerId: p1.id,
+      name: "Treasure",
+      typeLine: "Artifact — Treasure Token",
+      power: null,
+      toughness: null,
+      count: 3,
+    });
+    // Three Treasures plus one extra — not three extras.
+    expect(namesOnBattlefield(next, p1.id).filter((name) => name === "Treasure")).toHaveLength(4);
+  });
+
+  it("does not let an extra token replace itself", () => {
+    // CR 614.5: a replacement applies once to a given event. Without that,
+    // Xorn's extra Treasure would itself be a Treasure creation and loop.
+    const { game, p1 } = withHolder(
+      createCardDefinition({
+        name: "Peregrin Took",
+        typeLine: "Legendary Creature — Halfling",
+        power: 2,
+        toughness: 3,
+        replacements: [
+          {
+            kind: "extra_token",
+            token: {
+              name: "Food",
+              typeLine: "Artifact — Food Token",
+              power: null,
+              toughness: null,
+            },
+          },
+        ],
+      }),
+    );
+    const next = applyEffect(game, {
+      kind: "create_token",
+      ownerId: p1.id,
+      name: "Food",
+      typeLine: "Artifact — Food Token",
+      power: null,
+      toughness: null,
+    });
+    expect(namesOnBattlefield(next, p1.id).filter((name) => name === "Food")).toHaveLength(2);
+  });
+
+  it("swaps the whole template when the text says instead", () => {
+    const { game, p1 } = withHolder(
+      createCardDefinition({
+        name: "Divine Visitation",
+        typeLine: "Enchantment",
+        replacements: [
+          {
+            kind: "substitute_tokens",
+            match: { types: ["creature"] },
+            token: {
+              name: "Angel",
+              typeLine: "Creature — Angel Token",
+              power: 4,
+              toughness: 4,
+              keywords: ["flying"],
+            },
+          },
+        ],
+      }),
+    );
+    const next = applyEffect(game, {
+      kind: "create_token",
+      ownerId: p1.id,
+      name: "Squirrel",
+      typeLine: "Creature — Squirrel Token",
+      power: 1,
+      toughness: 1,
+      count: 2,
+    });
+    const made = namesOnBattlefield(next, p1.id);
+    expect(made.filter((name) => name === "Angel")).toHaveLength(2);
+    expect(made).not.toContain("Squirrel");
+  });
+
+  it("makes one of each, and leaves other tokens alone", () => {
+    const { game, p1 } = withHolder(
+      createCardDefinition({
+        name: "Academy Manufactor",
+        typeLine: "Artifact Creature — Assembly-Worker",
+        power: 1,
+        toughness: 3,
+        replacements: [{ kind: "tokens_one_of_each", subtypes: ["Clue", "Food", "Treasure"] }],
+      }),
+    );
+    const treasure = applyEffect(game, {
+      kind: "create_token",
+      ownerId: p1.id,
+      name: "Treasure",
+      typeLine: "Artifact — Treasure Token",
+      power: null,
+      toughness: null,
+    });
+    const made = namesOnBattlefield(treasure, p1.id);
+    expect(made).toContain("Clue");
+    expect(made).toContain("Food");
+    expect(made).toContain("Treasure");
+
+    // A token that is none of the three is untouched.
+    const squirrel = applyEffect(game, {
+      kind: "create_token",
+      ownerId: p1.id,
+      name: "Squirrel",
+      typeLine: "Creature — Squirrel Token",
+      power: 1,
+      toughness: 1,
+    });
+    expect(namesOnBattlefield(squirrel, p1.id)).not.toContain("Clue");
+  });
+
+  it("counts a plural subtype sacrifice cost", () => {
+    const took = compile(
+      "Peregrin Took",
+      "{2}{G}",
+      "Legendary Creature — Halfling Citizen",
+      "If one or more tokens would be created under your control, those tokens plus an additional Food token are created instead.\nSacrifice three Foods: Draw a card.",
+      "2",
+      "3",
+    );
+    expect(took.notes).toEqual([]);
+    expect(took.definition.activated[0]).toMatchObject({
+      sacrificeCost: "permanent",
+      sacrificeSubtype: "food",
+      sacrificeCount: 3,
+    });
+  });
+});
+

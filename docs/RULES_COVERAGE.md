@@ -477,6 +477,23 @@ What the engine implements and what it intentionally does not. Tests are tagged 
   did not appear on the definition, because that construction lists its fields
   explicitly. The same shape as the other four-layer drops.
 
+- **Replacements on token creation** (CR 614): three printed shapes, one
+  family. "Those tokens plus an additional \<token\>" adds one extra PER BATCH,
+  not per token — Xorn on a three-Treasure creation makes four, not six.
+  "That many \<token\> are created instead" swaps the whole template (Divine
+  Visitation). And Academy Manufactor turns a Clue, Food or Treasure into one
+  of each. Each names which tokens it touches, so the filter is shared.
+
+  A replacement does not apply to what it itself creates (CR 614.5). Without
+  that, Xorn's extra Treasure would be a Treasure creation and loop forever;
+  Peregrin Took's extra Food, which matches every token, would loop on the
+  first one. The recursion guard is asserted rather than assumed.
+
+  Alongside: a counted plural subtype sacrifice cost ("Sacrifice three
+  Foods"). Both halves already existed — `sacrificeSubtype` and
+  `sacrificeCount` — but the cost/body splitter did not recognise the phrase
+  as a cost at all, so it never reached the parser that would have read it.
+
 ## The card pipeline (Stage 6)
 
 - Real cards compile from Scryfall oracle text by shared sentence patterns; a hand-authored registry (`server/src/cardOverrides.ts`, data in the same schema) beats the compiler for the long tail. Never a named-card code path.

@@ -510,7 +510,9 @@ const SACRIFICE_TYPE_COST =
  * which this deliberately does not compile. Tried after SACRIFICE_TYPE_COST
  * so "Sacrifice a Treasure" keeps its dedicated scope.
  */
-const SACRIFICE_SUBTYPE_COST = /Sacrifice an? ([A-Z][a-z]+)\b/;
+/** "Sacrifice a Food", and the counted plural "Sacrifice three Foods". */
+const SACRIFICE_SUBTYPE_COST =
+  /Sacrifice (?:an? |(one|two|three|four|five|\d+) )([A-Z][a-z]+?)s?\b/;
 const LIFE_COST = /Pay (\d+) life/i;
 const TAP_CREATURE_COST = /Tap an untapped creature you control/i;
 /** Walking Ballista, Dragon's Hoard, Mikaeus: counters come off as a cost. */
@@ -527,7 +529,7 @@ const MILL_COST = /Mill (a|one|two|three|\d+) cards?/i;
 const EXILE_GRAVEYARD_COST =
   /Exile (a|one|two|three|four|five|\d+) (?:(creature|artifact|land|instant|sorcery) )?cards? from your graveyard/i;
 const COST_UNIT =
-  "(?:\\{[^}]+\\})+|Sacrifice (?:~|this land|this creature|this artifact|this permanent)|Sacrifice (?:an? |another )(?:black )?(?:creature|artifact|land|Treasure)|Sacrifice an? [A-Z][a-z]+|Sacrifice (?:two|three) (?:other )?(?:creatures|artifacts|lands|artifacts and\\/or creatures)|Pay \\d+ life|Tap an untapped creature you control|Remove (?:a|an|one|two|three|four|five|six|seven|eight|nine|ten|\\d+) (?:[-+]\\d\\/[-+]\\d|[a-z]+) counters? from ~|Put (?:a|an|one|two|three|\\d+) (?:[-+]\\d\\/[-+]\\d|[a-z]+) counters? on ~|Discard an? (?:creature|artifact|enchantment|land|instant|sorcery)? ?card|Mill (?:a|one|two|three|\\d+) cards?|Exile (?:a|one|two|three|four|five|\\d+) (?:(?:creature|artifact|land|instant|sorcery) )?cards? from your graveyard";
+  "(?:\\{[^}]+\\})+|Sacrifice (?:~|this land|this creature|this artifact|this permanent)|Sacrifice (?:an? |another )(?:black )?(?:creature|artifact|land|Treasure)|Sacrifice (?:an? |(?:one|two|three|four|five|\d+) )[A-Z][a-z]+s?|Sacrifice (?:two|three) (?:other )?(?:creatures|artifacts|lands|artifacts and\\/or creatures)|Pay \\d+ life|Tap an untapped creature you control|Remove (?:a|an|one|two|three|four|five|six|seven|eight|nine|ten|\\d+) (?:[-+]\\d\\/[-+]\\d|[a-z]+) counters? from ~|Put (?:a|an|one|two|three|\\d+) (?:[-+]\\d\\/[-+]\\d|[a-z]+) counters? on ~|Discard an? (?:creature|artifact|enchantment|land|instant|sorcery)? ?card|Mill (?:a|one|two|three|\\d+) cards?|Exile (?:a|one|two|three|four|five|\\d+) (?:(?:creature|artifact|land|instant|sorcery) )?cards? from your graveyard";
 
 function splitAbility(sentence: string): { costText: string; rest: string } | null {
   // "Metalcraft — {T}: …" — the ability word is flavor (Mox Opal).
@@ -595,7 +597,10 @@ function parseAbilityCost(
   // "another black creature" keep the scopes they already had.
   const subtypeMatch =
     sacrificeSelf || scopeWord ? null : costText.match(SACRIFICE_SUBTYPE_COST);
-  const sacrificeSubtype = subtypeMatch?.[1]?.toLowerCase();
+  const sacrificeSubtype = subtypeMatch?.[2]?.toLowerCase();
+  // "Sacrifice three Foods": the count rides alongside the subtype, the same
+  // way it does for a card-type scope.
+  const subtypeCount = subtypeMatch?.[1] ? parseCount(subtypeMatch[1].toLowerCase()) : undefined;
   const sacrificeCost = sacrificeSubtype
     ? ("permanent" as const)
     : scopeWord
@@ -712,7 +717,9 @@ function parseAbilityCost(
     ...(lifeCost ? { lifeCost } : {}),
     ...(sacrificeCost ? { sacrificeCost } : {}),
     ...(sacrificeSubtype ? { sacrificeSubtype } : {}),
-    ...(sacrificeCount && sacrificeCount > 1 ? { sacrificeCount } : {}),
+    ...((sacrificeCount ?? subtypeCount) && (sacrificeCount ?? subtypeCount)! > 1
+      ? { sacrificeCount: (sacrificeCount ?? subtypeCount)! }
+      : {}),
     ...(tapCreature ? { tapCreature: true } : {}),
     ...(removeCounterCost ? { removeCounterCost } : {}),
     ...(addCounterCost ? { addCounterCost } : {}),
@@ -10679,6 +10686,58 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
     ) {
       result.replacements.push({ kind: "double_counters", counter: "p1p1", creaturesOnly: true });
       continue;
+    }
+
+    // Token-creation replacements (CR 614). All three shapes name which
+    // tokens they touch and what to do, so they read as one family.
+    const oneOfEach = sentence.match(
+      /^If you would create an? ([A-Za-z]+(?:, [A-Za-z]+)*,? or [A-Za-z]+) token, instead create one of each$/i,
+    );
+    if (oneOfEach?.[1]) {
+      const subtypes = oneOfEach[1]
+        .split(/,\s*(?:or\s+)?|\s+or\s+/)
+        .map((word) => word.trim())
+        .filter(Boolean);
+      if (subtypes.length > 1) {
+        result.replacements.push({ kind: "tokens_one_of_each", subtypes });
+        continue;
+      }
+    }
+    const extraToken = sentence.match(
+      /^If (?:you would create |)?(?:one or more )?([A-Za-z ]*?)tokens? would be created(?: under your control)?, (?:those tokens plus an additional (.+?)|that many (.+?)) are created instead$/i,
+    );
+    const xornForm = sentence.match(
+      /^If you would create one or more ([A-Za-z ]*?)tokens?, instead create those tokens plus an additional (.+)$/i,
+    );
+    const replacementForm = extraToken ?? xornForm;
+    if (replacementForm) {
+      const scope = (replacementForm[1] ?? "").trim().toLowerCase();
+      const substituting = Boolean(extraToken?.[3]);
+      const descriptor = parseTokenDescriptor(
+        `a ${(extraToken?.[2] ?? extraToken?.[3] ?? xornForm?.[2] ?? "").replace(/^an?\s+/i, "")}`,
+      );
+      const match =
+        scope === "" || scope === "one or more"
+          ? undefined
+          : TOKEN_CARD_TYPES.includes(scope)
+            ? { types: [scope] }
+            : { subtypesAny: [scope] };
+      if (descriptor && descriptor.count === 1) {
+        const token = {
+          name: descriptor.name,
+          typeLine: descriptor.typeLine,
+          power: descriptor.power,
+          toughness: descriptor.toughness,
+          ...(descriptor.keywords.length > 0 ? { keywords: descriptor.keywords } : {}),
+          ...(descriptor.colors.length > 0 ? { colors: descriptor.colors } : {}),
+        };
+        result.replacements.push({
+          kind: substituting ? "substitute_tokens" : "extra_token",
+          ...(match ? { match } : {}),
+          token,
+        });
+        continue;
+      }
     }
 
     // Hardened Scales / Kami of Whispered Hopes: "that many plus one".

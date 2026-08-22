@@ -24,6 +24,8 @@ import type {
   ChosenOwnerRef,
   ChosenTarget,
   ControlAllScope,
+  TokenMatch,
+  TokenSpec,
   ChosenTargetRef,
   Color,
   ContinuousEffectData,
@@ -2295,11 +2297,115 @@ function applyCopySpell(
   return next;
 }
 
+/** Does a created token answer to a replacement's filter? */
+function tokenMatches(typeLine: string, match: TokenMatch | undefined): boolean {
+  if (!match) {
+    return true;
+  }
+  const lower = typeLine.toLowerCase();
+  if (match.types && !match.types.every((type) => lower.includes(type.toLowerCase()))) {
+    return false;
+  }
+  return (
+    !match.subtypesAny ||
+    match.subtypesAny.some((subtype) => lower.includes(subtype.toLowerCase()))
+  );
+}
+
+/**
+ * CR 614: what the controller's permanents do to a token about to be created.
+ * A substitution swaps the template; extras are created once per batch, not
+ * once per token ("those tokens PLUS AN ADDITIONAL Food token"). Academy
+ * Manufactor turns one of the three artifact tokens into one of each.
+ */
+function tokenCreationReplacements(
+  state: GameState,
+  ownerId: PlayerId,
+  typeLine: string,
+): { substitute?: TokenSpec; extras: TokenSpec[] } {
+  let substitute: TokenSpec | undefined;
+  const extras: TokenSpec[] = [];
+  for (const cardId of permanentsControlledBy(state, ownerId)) {
+    if (abilitiesRemoved(state, cardId)) {
+      continue;
+    }
+    for (const replacement of state.definitions[state.cards[cardId]!.definitionId]?.replacements ??
+      []) {
+      if (replacement.kind === "tokens_one_of_each") {
+        const lower = typeLine.toLowerCase();
+        const named = replacement.subtypes.find((subtype) => lower.includes(subtype.toLowerCase()));
+        if (named) {
+          for (const subtype of replacement.subtypes) {
+            if (subtype !== named) {
+              extras.push({
+                name: subtype,
+                typeLine: `Artifact — ${subtype} Token`,
+                power: null,
+                toughness: null,
+              });
+            }
+          }
+        }
+        continue;
+      }
+      if (replacement.kind === "extra_token" && tokenMatches(typeLine, replacement.match)) {
+        extras.push(replacement.token);
+        continue;
+      }
+      if (
+        replacement.kind === "substitute_tokens" &&
+        !substitute &&
+        tokenMatches(typeLine, replacement.match)
+      ) {
+        substitute = replacement.token;
+      }
+    }
+  }
+  return { ...(substitute ? { substitute } : {}), extras };
+}
+
 function applyCreateToken(
   state: GameState,
   effect: Extract<GameEffect, { kind: "create_token" }>,
+  /** Extras created by a replacement do not themselves get replaced again
+   * (CR 614.5: a replacement applies once to a given event). */
+  skipReplacements = false,
 ): GameState {
   requirePlayer(state, effect.ownerId);
+  const replaced = skipReplacements
+    ? { substitute: undefined, extras: [] as TokenSpec[] }
+    : tokenCreationReplacements(state, effect.ownerId, effect.typeLine);
+  if (replaced.substitute || replaced.extras.length > 0) {
+    const swapped = replaced.substitute
+      ? {
+          ...effect,
+          name: replaced.substitute.name,
+          typeLine: replaced.substitute.typeLine,
+          power: replaced.substitute.power,
+          toughness: replaced.substitute.toughness,
+          ...(replaced.substitute.keywords ? { keywords: replaced.substitute.keywords } : {}),
+          ...(replaced.substitute.colors ? { colors: replaced.substitute.colors } : {}),
+        }
+      : effect;
+    let after = applyCreateToken(state, swapped, true);
+    for (const extra of replaced.extras) {
+      after = applyCreateToken(
+        after,
+        {
+          kind: "create_token",
+          ownerId: effect.ownerId,
+          name: extra.name,
+          typeLine: extra.typeLine,
+          power: extra.power,
+          toughness: extra.toughness,
+          ...(extra.keywords ? { keywords: extra.keywords } : {}),
+          ...(extra.colors ? { colors: extra.colors } : {}),
+        },
+        true,
+      );
+    }
+    return after;
+  }
   const next = cloneGameState(state);
   const preset = tokenPresetFor(effect.typeLine);
   const definition = createCardDefinition({

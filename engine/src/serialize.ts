@@ -3816,6 +3816,57 @@ function parseReplacements(value: unknown, label: string): ReplacementEffect[] {
     ) {
       return { kind };
     }
+    if (kind === "tokens_one_of_each") {
+      return {
+        kind,
+        subtypes: parseStringList(entry.subtypes, `${label}[${index}].subtypes`),
+      };
+    }
+    if (kind === "extra_token" || kind === "substitute_tokens") {
+      const token = entry.token;
+      if (!isRecord(token)) {
+        throw new Error(`Invalid ${label}[${index}].token`);
+      }
+      const match = isRecord(entry.match) ? entry.match : undefined;
+      return {
+        kind,
+        ...(match
+          ? {
+              match: {
+                ...(match.types === undefined
+                  ? {}
+                  : { types: parseStringList(match.types, `${label}[${index}].match.types`) }),
+                ...(match.subtypesAny === undefined
+                  ? {}
+                  : {
+                      subtypesAny: parseStringList(
+                        match.subtypesAny,
+                        `${label}[${index}].match.subtypesAny`,
+                      ),
+                    }),
+              },
+            }
+          : {}),
+        token: {
+          name: expectString(token.name, `${label}[${index}].token.name`),
+          typeLine: expectString(token.typeLine, `${label}[${index}].token.typeLine`),
+          power:
+            token.power === null || token.power === undefined
+              ? null
+              : expectNumber(token.power, `${label}[${index}].token.power`),
+          toughness:
+            token.toughness === null || token.toughness === undefined
+              ? null
+              : expectNumber(token.toughness, `${label}[${index}].token.toughness`),
+          ...(token.keywords === undefined
+            ? {}
+            : { keywords: parseKeywords(token.keywords, `${label}[${index}].token.keywords`) }),
+          ...(token.colors === undefined
+            ? {}
+            : { colors: parseColorArray(token.colors, `${label}[${index}].token.colors`) }),
+        },
+      };
+    }
     if (kind === "double_counters" || kind === "bonus_counters") {
       return {
         kind,
