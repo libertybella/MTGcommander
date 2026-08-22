@@ -29,7 +29,7 @@ import { applyResolveCreatureType, legalEnterCopyIds, searchMatches } from "./pr
 import { parseGameState, serializeGameState } from "./serialize";
 import { fillLibraries } from "./testSupport";
 import { advanceSteps } from "./turn";
-import type { CardEffect, GameState, PlayerState } from "./types";
+import type { CardEffect, GameState, PlayerState, TargetRequirement } from "./types";
 
 function twoPlayers() {
   const game = createGameState({ playerCount: 2 });
@@ -25085,6 +25085,167 @@ describe("wave 198: variables and gates on costs already built", () => {
       sacrificeSubtype: "clue",
       sacrificeCount: 3,
     });
+  });
+});
+
+
+describe("wave 199: excluded types, class levels, and life read off a count", () => {
+  const compile = (name: string, manaCost: string, typeLine: string, oracleText: string, power?: string, toughness?: string) =>
+    compileOracleCard({
+      oracleId: name,
+      name,
+      manaCost,
+      typeLine,
+      power: power ?? null,
+      toughness: toughness ?? null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  it("lifts a repeated noncreature off both halves", () => {
+    const mite = compile(
+      "Haywire Mite",
+      "{1}",
+      "Artifact Creature — Construct",
+      "{G}, Sacrifice this creature: Exile target noncreature artifact or noncreature enchantment.",
+      "0",
+      "1",
+    );
+    expect(mite.notes).toEqual([]);
+    // One union with the adjective as a filter — not two separate targets.
+    expect(mite.definition.activated[0]?.targetRequirements).toEqual([
+      { kind: "artifact_or_enchantment", excludedTypes: ["creature"] },
+    ]);
+  });
+
+  it("keeps an excluded type out of the legal set", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const relicDef = createCardDefinition({ name: "Relic", typeLine: "Artifact" });
+    const golemDef = createCardDefinition({
+      name: "Golem",
+      typeLine: "Artifact Creature — Golem",
+      power: 3,
+      toughness: 3,
+    });
+    game.definitions[relicDef.id] = relicDef;
+    game.definitions[golemDef.id] = golemDef;
+    const put = (definitionId: string) => {
+      const card = createCardInstance({ definitionId, ownerId: p1.id, zone: "battlefield" });
+      game.cards[card.id] = card;
+      p1.zones.battlefield.push(card.id);
+      return card;
+    };
+    const relic = put(relicDef.id);
+    const golem = put(golemDef.id);
+    const requirement: TargetRequirement = {
+      kind: "artifact_or_enchantment",
+      excludedTypes: ["creature"],
+    };
+    expect(
+      isChosenTargetLegal(game, requirement, { type: "creature", cardId: relic.id }, p1.id),
+    ).toBe(true);
+    // An artifact CREATURE is excluded, which is the whole point of the word.
+    expect(
+      isChosenTargetLegal(game, requirement, { type: "creature", cardId: golem.id }, p1.id),
+    ).toBe(false);
+  });
+
+  it("fires a Class trigger on the level it names, and only its own", () => {
+    const wizard = compile(
+      "Wizard Class",
+      "{U}",
+      "Enchantment — Class",
+      "When this Class enters, draw a card.\n{2}{U}: Level 2\nWhen this Class becomes level 2, draw two cards.",
+    );
+    expect(wizard.notes).toEqual([]);
+    expect(wizard.definition.triggers[1]).toMatchObject({
+      event: "class_level",
+      classLevel: 2,
+    });
+
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const classDef = createCardDefinition({
+      name: "Wizard Class",
+      typeLine: "Enchantment — Class",
+      triggers: [
+        {
+          event: "class_level",
+          classLevel: 2,
+          effects: [{ kind: "draw", playerId: "controller", count: 2 }],
+          targetRequirements: [],
+        },
+      ],
+    });
+    game.definitions[classDef.id] = classDef;
+    const put = () => {
+      const card = createCardInstance({
+        definitionId: classDef.id,
+        ownerId: p1.id,
+        zone: "battlefield",
+      });
+      card.classLevel = 1;
+      game.cards[card.id] = card;
+      p1.zones.battlefield.push(card.id);
+      return card;
+    };
+    const mine = put();
+    const other = put();
+
+    const levelled = applyEffect(game, {
+      kind: "set_class_level",
+      cardId: mine.id,
+      level: 2,
+    });
+    // Exactly one trigger: the Class that levelled, not its twin beside it.
+    expect(levelled.stack).toHaveLength(1);
+    expect(levelled.cards[other.id]?.classLevel).toBe(1);
+  });
+
+  it("loses life equal to a shared count", () => {
+    const castle = compile(
+      "Castle Locthwain",
+      "",
+      "Land",
+      "{T}: Add {B}.\n{1}{B}{B}, {T}: Draw a card, then you lose life equal to the number of cards in your hand.",
+    );
+    expect(castle.notes).toEqual([]);
+    expect(castle.definition.activated[0]?.effects[1]).toEqual({
+      kind: "lose_life",
+      playerId: "controller",
+      amount: 1,
+      perDynamicCount: "cards_in_your_hand",
+    });
+
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const before = game.players[0]!.life;
+    const bound = bindCardEffects(
+      game,
+      [
+        {
+          kind: "lose_life",
+          playerId: "controller",
+          amount: 1,
+          perDynamicCount: "cards_in_your_hand",
+        },
+      ],
+      { controllerId: p1.id, sourceId: null },
+    );
+    // An empty hand costs nothing rather than the flat one.
+    expect(bound).toEqual([]);
+    const withHand = structuredClone(game);
+    withHand.players[0]!.zones.hand = withHand.players[0]!.zones.library.slice(0, 3);
+    expect(applyEffects(withHand, bindCardEffects(withHand, [
+      {
+        kind: "lose_life",
+        playerId: "controller",
+        amount: 1,
+        perDynamicCount: "cards_in_your_hand",
+      },
+    ], { controllerId: p1.id, sourceId: null })).players[0]?.life).toBe(before - 3);
   });
 });
 

@@ -108,6 +108,14 @@ function violatesCharacteristicFilter(
   ) {
     return true;
   }
+  // "target noncreature artifact" (Haywire Mite).
+  if (
+    (requirement.excludedTypes ?? []).some((type) =>
+      characteristicsOf(state, cardId).types.includes(type),
+    )
+  ) {
+    return true;
+  }
   // "target multicolored permanent" (Null Elemental Blast).
   if (requirement.multicolored && characteristicsOf(state, cardId).colors.length < 2) {
     return true;
@@ -395,6 +403,13 @@ export function isChosenTargetLegal(
       return false;
     }
     if (violatesRequiredColors(state, target.cardId, requirement)) {
+      return false;
+    }
+    // The permanent check above recursed with a BARE {kind:"permanent"}
+    // requirement, so it never saw this one's qualifiers. Without this line
+    // excludedTypes, legendaryOnly, multicolored, the power bounds and both
+    // subtype filters are inert for every kind in this group.
+    if (violatesCharacteristicFilter(state, target.cardId, requirement)) {
       return false;
     }
     const types = characteristicsOf(state, target.cardId).types;

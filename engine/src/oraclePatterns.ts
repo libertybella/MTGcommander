@@ -442,7 +442,7 @@ function normalizeOracleText(card: OracleCard): string {
     }
   }
   text = text.replace(
-    /\bthis (?:creature|artifact|enchantment|land|permanent|planeswalker|Aura|Equipment)\b/gi,
+    /\bthis (?:creature|artifact|enchantment|land|permanent|planeswalker|Aura|Equipment|Class)\b/gi,
     "~",
   );
   text = text.replace(/\benters the battlefield\b/gi, "enters");
@@ -779,6 +779,9 @@ const TARGET_HEAD_NOUNS: [RegExp, TargetKind][] = [
   [/^creature or enchantment$/i, "creature_or_enchantment"],
   [/^creature or planeswalker$/i, "creature_or_planeswalker"],
   [/^artifact or enchantment$/i, "artifact_or_enchantment"],
+  [/^artifact, enchantment, or land$/i, "artifact_enchantment_or_land"],
+  [/^artifact, enchantment, or planeswalker$/i, "artifact_enchantment_or_planeswalker"],
+  [/^noncreature, nonland permanent$/i, "noncreature_nonland_permanent"],
   [/^nonland permanent$/i, "nonland_permanent"],
   [/^permanent$/i, "permanent"],
   [/^creature$/i, "creature"],
@@ -882,6 +885,21 @@ function parseSimpleTargetPhrase(phrase: string): TargetRequirement | null {
   if (multicolored?.[1]) {
     requirement.multicolored = true;
     rest = multicolored[1];
+  }
+
+  // "noncreature artifact or noncreature enchantment" (Haywire Mite): the
+  // adjective repeats on each half, so it is lifted off both before the head
+  // noun is read as the plain two-type union it is.
+  // "nonland" is deliberately absent: "nonland permanent" is its own head
+  // noun already, and claiming it here would rewrite a shape that works.
+  const excludedType = rest.match(/^non(creature|artifact|enchantment)\s+(.*)$/i);
+  if (excludedType?.[1] && excludedType[2]) {
+    const bare = excludedType[1].toLowerCase();
+    requirement.excludedTypes = [bare];
+    // The adjective repeats on the second half ("noncreature artifact or
+    // noncreature enchantment"); lift it off there too so the head noun sees
+    // the plain two-type union it already knows.
+    rest = excludedType[2].replace(new RegExp(`\\bnon${bare}\\s+`, "gi"), "");
   }
 
   // "non-Angel creature": a subtype the target may not have.
@@ -5148,6 +5166,28 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
       ],
     };
   }
+  // Castle Locthwain: "you lose life equal to the number of cards in your
+  // hand" — the same count table, on the losing side.
+  const lifeEqualTo = sentence.match(
+    /^(?:you )?lose life equal to the number of (.+)$/i,
+  );
+  const lifeEqualCount = lifeEqualTo?.[1]
+    ? parseDynamicCount(`cards in ${lifeEqualTo[1]}`.replace(/^cards in cards in /, "cards in "))
+    : null;
+  if (lifeEqualCount) {
+    return {
+      targetRequirements: [],
+      effects: [
+        {
+          kind: "lose_life",
+          playerId: "controller",
+          amount: 1,
+          perDynamicCount: lifeEqualCount,
+        },
+      ],
+    };
+  }
+
   const perEachLife = sentence.match(/^You gain (\d+) life for each (.+)$/i);
   const perEachLifeCount = perEachLife?.[2] ? parseDynamicCount(perEachLife[2]) : null;
   if (perEachLife?.[1] && perEachLifeCount) {
@@ -5521,42 +5561,27 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
   match = sentence.match(
     // "creature" is listed so the control-qualified form reaches here; the
     // plain "Destroy target creature" is claimed by an earlier pattern.
-    // "up to one target …" is the same thing with an optional slot, which the
-    // requirement already models (Loran of the Third Path).
-    /^(Destroy|Exile) (up to one )?target (creature|artifact|enchantment|artifact or enchantment|artifact, enchantment, or land|artifact, enchantment, or planeswalker|artifact or creature|creature or artifact|creature or enchantment|nonland permanent|noncreature, nonland permanent|permanent)( you don't control| an opponent controls| defending player controls)?(?: with mana value (\d+) or (less|greater))?$/i,
+    // The noun phrase reads through the shared parser rather than a list of
+    // the wordings that happened to come up, so every qualifier it knows —
+    // mana value, power, multicolored, excluded types — arrives here too.
+    /^(Destroy|Exile) ((?:up to one )?target .+?)( defending player controls)?$/i,
   );
+  const destroyPhrase = match?.[2] ? parseSimpleTargetPhrase(match[2]) : null;
   // A bare "Destroy target permanent" is too broad to be this pattern; it
-  // only qualifies once a control clause or a mana-value bound narrows it.
-  if (match?.[1] && match[3] && (match[3].toLowerCase() !== "permanent" || match[4] || match[5])) {
-    const kindOf: Record<string, TargetKind> = {
-      creature: "creature",
-      artifact: "artifact",
-      enchantment: "enchantment",
-      "artifact or enchantment": "artifact_or_enchantment",
-      "artifact, enchantment, or land": "artifact_enchantment_or_land",
-      "artifact, enchantment, or planeswalker": "artifact_enchantment_or_planeswalker",
-      "artifact or creature": "creature_or_artifact",
-      "creature or artifact": "creature_or_artifact",
-      "creature or enchantment": "creature_or_enchantment",
-      "nonland permanent": "nonland_permanent",
-      "noncreature, nonland permanent": "noncreature_nonland_permanent",
-      permanent: "permanent",
-    };
-    const bound = match[5] ? Number(match[5]) : undefined;
+  // only qualifies once some qualifier narrows it.
+  const narrowed =
+    destroyPhrase &&
+    (destroyPhrase.kind !== "permanent" ||
+      Object.keys(destroyPhrase).length > 1 ||
+      Boolean(match?.[3]));
+  if (match?.[1] && destroyPhrase && narrowed) {
     // "defending player controls" (Kogla) widens to any opponent's — a
     // documented approximation of the defender restriction.
     return {
       targetRequirements: [
         {
-          kind: kindOf[match[3].toLowerCase()]!,
-          ...(match[2] ? { optional: true as const } : {}),
-          ...(match[4] ? { control: "not_own" as const } : {}),
-          ...(bound !== undefined && match[6]?.toLowerCase() === "less"
-            ? { maxManaValue: bound }
-            : {}),
-          ...(bound !== undefined && match[6]?.toLowerCase() === "greater"
-            ? { minManaValue: bound }
-            : {}),
+          ...destroyPhrase,
+          ...(match[3] ? { control: "not_own" as const } : {}),
         },
       ],
       effects: [
@@ -6791,6 +6816,7 @@ type TriggerHead = Pick<
   | "oncePerTurn"
   | "oncePerBatch"
   | "alsoOnCopy"
+  | "classLevel"
 > & {
   /** "enters or attacks": emit a sibling trigger for each extra event. */
   extraEvents?: CardTrigger["event"][];
@@ -6840,6 +6866,10 @@ function parseTriggerHead(head: string): TriggerHead | null {
   // Faerie Mastermind.
   if (/^Whenever an opponent draws their second card each turn$/i.test(text)) {
     return { event: "opponent_draws_second" };
+  }
+  const classLevel = text.match(/^When ~ becomes level (\d+)$/i);
+  if (classLevel?.[1]) {
+    return { event: "class_level", classLevel: Number(classLevel[1]) };
   }
   if (/^When(?:ever)? ~ dies$/i.test(text)) {
     return { event: "dies" };

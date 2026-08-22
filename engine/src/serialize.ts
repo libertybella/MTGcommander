@@ -2244,6 +2244,10 @@ function parseTargetRequirement(value: unknown, label: string): TargetRequiremen
       const excludedSubtypes = parseStringList(value.excludedSubtypes, `${label}.excludedSubtypes`);
       return excludedSubtypes.length > 0 ? { excludedSubtypes } : {};
     })(),
+    ...(() => {
+      const excludedTypes = parseStringList(value.excludedTypes, `${label}.excludedTypes`);
+      return excludedTypes.length > 0 ? { excludedTypes } : {};
+    })(),
     ...(value.owner === "own" ? { owner: "own" as const } : {}),
     ...(() => {
       if (value.requiredColors === undefined) {
@@ -3456,6 +3460,7 @@ function parseSpellModes(value: unknown, label: string): SpellMode[] {
  * (The old hand-written comparison chain silently fell behind: it rejected
  * becomes_tapped and opponent_draws_second definitions on reload.) */
 const TRIGGER_EVENT_NAMES: ReadonlySet<string> = new Set([
+  "class_level",
   "enter_battlefield",
   "begin_combat",
   "dies",
@@ -3649,6 +3654,9 @@ function parseTriggers(value: unknown, label: string): CardTrigger[] {
       ...(entry.excludeSelf === true ? { excludeSelf: true } : {}),
       ...(entry.oncePerTurn === true ? { oncePerTurn: true } : {}),
       ...(entry.oncePerBatch === true ? { oncePerBatch: true } : {}),
+      ...(entry.classLevel === undefined
+        ? {}
+        : { classLevel: expectNumber(entry.classLevel, `${label}[${index}].classLevel`) }),
       ...(entry.eachPlayersStep === true ? { eachPlayersStep: true } : {}),
       ...(entry.alsoOnCopy === true ? { alsoOnCopy: true } : {}),
       ...(entry.modes === undefined

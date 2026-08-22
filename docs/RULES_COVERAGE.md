@@ -509,6 +509,30 @@ What the engine implements and what it intentionally does not. Tests are tagged 
   did not. That is worth checking before building anything — a refused
   wording is cheaper to diagnose than a missing feature is to add.
 
+- **Excluded types, Class levels, and a filter that was inert for a dozen
+  target kinds**: "noncreature artifact or noncreature enchantment" repeats
+  the adjective on each half, so it is lifted off both and the head noun reads
+  the plain union it already knew. That needed `excludedTypes` on a target —
+  and adding it exposed the real problem.
+
+  The whole permanent-target family (artifact, enchantment, artifact or
+  enchantment, nonland permanent, planeswalker, commander and the rest)
+  recursed into the permanent check with a BARE `{kind:"permanent"}`
+  requirement, so it never saw its own qualifiers. `excludedTypes`,
+  `legendaryOnly`, `multicolored`, both power bounds, `nontoken` and both
+  subtype filters were all inert across every one of those kinds. Same shape
+  as the wave-171 `permanent` fix, an order of magnitude wider.
+
+  The destroy/exile clause now reads the shared target phrase instead of a
+  twelve-noun list of its own, so every qualifier that parser knows arrives
+  there too — and the three head nouns only that list had are now in the
+  shared table where everything else can use them.
+
+  Alongside: "When this Class becomes level N" as a real trigger (fired by the
+  level gain, matched to the Class that gained it rather than a twin beside
+  it), and life lost off the shared count table, which gain-life and draw
+  already scaled by.
+
 ## The card pipeline (Stage 6)
 
 - Real cards compile from Scryfall oracle text by shared sentence patterns; a hand-authored registry (`server/src/cardOverrides.ts`, data in the same schema) beats the compiler for the long tail. Never a named-card code path.

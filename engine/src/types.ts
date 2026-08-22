@@ -1291,6 +1291,8 @@ export type TargetRequirement = {
   excludeSource?: boolean;
   /** "target non-Dragon creature card" (Junji): none of these subtypes. */
   excludedSubtypes?: string[];
+  /** "target noncreature artifact" (Haywire Mite): none of these card types. */
+  excludedTypes?: string[];
   /** "target creature you own" (Charming Prince): owner must be the caster. */
   owner?: "own";
   /** "target nontoken creature" (Parting Gust). */
@@ -1371,6 +1373,9 @@ export type CardEffect =
       playerId: PlayerSelector;
       /** target_mana_value: the first chosen target's mana value (Reanimate). */
       amount: number | "subject_amount" | "target_mana_value";
+      /** Castle Locthwain: "life equal to the number of cards in your hand" —
+       * the same count table gain_life and draw already scale by. */
+      perDynamicCount?: DynamicCount;
     }
   | {
       kind: "deal_damage";
@@ -1931,7 +1936,9 @@ export type TriggerEvent =
   /** A card left the watcher's controller's graveyard (Syr Konrad). */
   | "leaves_your_graveyard"
   /** The controller drew a card (Psychosis Crawler). */
-  | "you_draw";
+  | "you_draw"
+  /** "When this Class becomes level 2" — the level is on the trigger. */
+  | "class_level";
 
 /** An intervening-if condition, checked when the trigger would be queued.
  * Approximation: CR 603.4 also re-checks on resolution; this table checks
@@ -2080,6 +2087,8 @@ export type CardTrigger = {
   oncePerTurn?: boolean;
   /** "Whenever one or more …": fire once per simultaneous event batch. */
   oncePerBatch?: boolean;
+  /** class_level triggers: which level reaching fires this. */
+  classLevel?: number;
   /**
    * "At the beginning of EACH end step" / "each upkeep": the step trigger
    * fires on every player's turn, not only its controller's. Omitted means
@@ -2111,6 +2120,7 @@ export type EngineEvent =
       amount: number;
     }
   | { kind: "step_begins"; step: Step }
+  | { kind: "class_level"; cardId: CardInstanceId; level: number }
   | { kind: "gains_life"; playerId: PlayerId; amount: number }
   /** Life lost to damage or a lose-life effect (not payments). */
   | { kind: "loses_life"; playerId: PlayerId; amount: number }

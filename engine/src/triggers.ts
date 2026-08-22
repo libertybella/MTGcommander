@@ -765,6 +765,17 @@ function triggerMatchesEvent(
   ) {
     return false;
   }
+  if (event.kind === "class_level") {
+    // A Class's own level trigger only — a Class does not watch its neighbours.
+    return (
+      trigger.event === "class_level" &&
+      event.cardId === watcher.id &&
+      trigger.classLevel === event.level
+    );
+  }
+  if (trigger.event === "class_level") {
+    return false;
+  }
   if (event.kind === "step_begins") {
     const stepOf: Partial<Record<TriggerEvent, Step>> = {
       upkeep: "upkeep",

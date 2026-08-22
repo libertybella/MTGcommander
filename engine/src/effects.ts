@@ -371,8 +371,9 @@ export function bindCardEffect(
       if (amount <= 0) {
         return null;
       }
-      // Venser's Journal: scale by whatever the shared count table names.
-      if (effect.kind === "gain_life" && effect.perDynamicCount) {
+      // Venser's Journal, Castle Locthwain: scale by whatever the shared count
+      // table names. A count of zero loses or gains nothing.
+      if (effect.perDynamicCount) {
         const count = dynamicCountOf(state, context.controllerId, effect.perDynamicCount, context.sourceId ?? undefined);
         if (count === 0) {
           return null;
@@ -2187,6 +2188,9 @@ function applySetClassLevel(state: GameState, cardId: CardInstanceId, level: num
     throw new Error("Class levels must be gained in order");
   }
   card.classLevel = level;
+  // "When this Class becomes level N": the level it just reached, so a Class
+  // levelled twice in a turn fires each level's trigger once.
+  dispatchEventsInPlace(next, [{ kind: "class_level", cardId, level }]);
   return next;
 }
 
