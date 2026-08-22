@@ -1851,7 +1851,8 @@ export type EngineEvent =
   /** Life lost to damage or a lose-life effect (not payments). */
   | { kind: "loses_life"; playerId: PlayerId; amount: number }
   | { kind: "casts"; cardId: CardInstanceId; controllerId: PlayerId }
-  | { kind: "combat_damage_to_player"; cardId: CardInstanceId; playerId: PlayerId }
+  /** `amount` feeds "that many"/"that much" bodies (Old Gnawbone, Kediss). */
+  | { kind: "combat_damage_to_player"; cardId: CardInstanceId; playerId: PlayerId; amount: number }
   /** Any damage (combat or not) a permanent deals to a player. */
   | { kind: "deals_damage_to_player"; cardId: CardInstanceId; playerId: PlayerId }
   | { kind: "draws"; playerId: PlayerId }

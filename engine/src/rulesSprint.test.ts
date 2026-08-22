@@ -6616,8 +6616,8 @@ describe("wave 73: once-per-batch combat triggers", () => {
 
     // Two creatures deal combat damage in the same batch: one trigger.
     dispatchEventsInPlace(game, [
-      { kind: "combat_damage_to_player", cardId: a.id, playerId: p2.id },
-      { kind: "combat_damage_to_player", cardId: b.id, playerId: p2.id },
+      { kind: "combat_damage_to_player", cardId: a.id, playerId: p2.id, amount: 1 },
+      { kind: "combat_damage_to_player", cardId: b.id, playerId: p2.id, amount: 1 },
     ]);
     expect(game.stack).toHaveLength(1);
   });
@@ -11255,13 +11255,13 @@ describe("wave 112: masks, axes, and swords", () => {
 
     // A bystander's strike is silent...
     dispatchEventsInPlace(game, [
-      { kind: "combat_damage_to_player", cardId: other.id, playerId: p2.id },
+      { kind: "combat_damage_to_player", cardId: other.id, playerId: p2.id, amount: 1 },
     ]);
     expect(game.stack).toHaveLength(0);
 
     // ...the host's strike feeds the sword.
     dispatchEventsInPlace(game, [
-      { kind: "combat_damage_to_player", cardId: host.id, playerId: p2.id },
+      { kind: "combat_damage_to_player", cardId: host.id, playerId: p2.id, amount: 1 },
     ]);
     expect(game.stack).toHaveLength(1);
   });
@@ -19520,6 +19520,91 @@ describe("wave 162: narrowed mana echoes", () => {
     expect(tapFor(game, p1.id, rock.id).gained.C).toBe(2);
     // Green is not {C}, so nothing is added.
     expect(tapFor(game, p1.id, forest.id).gained.G).toBe(1);
+  });
+});
+
+
+describe("wave 163: damage amounts on the trigger", () => {
+  const compile = (name: string, manaCost: string, typeLine: string, oracleText: string, power?: string, toughness?: string) =>
+    compileOracleCard({
+      oracleId: name,
+      name,
+      manaCost,
+      typeLine,
+      power: power ?? null,
+      toughness: toughness ?? null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  it("compiles 'create that many Treasure tokens'", () => {
+    const gnawbone = compile(
+      "Old Gnawbone",
+      "{4}{G}{G}",
+      "Legendary Creature — Dragon",
+      "Flying\nWhenever a creature you control deals combat damage to a player, create that many Treasure tokens.",
+      "7",
+      "5",
+    );
+    expect(gnawbone.notes).toEqual([]);
+    expect(gnawbone.definition.triggers[0]?.effects[0]).toMatchObject({
+      kind: "create_token",
+      name: "Treasure",
+      countFromSubjectAmount: true,
+    });
+  });
+
+  it("makes one Treasure per point of combat damage", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    const gnawboneDef = compile(
+      "Old Gnawbone",
+      "{4}{G}{G}",
+      "Legendary Creature — Dragon",
+      "Whenever a creature you control deals combat damage to a player, create that many Treasure tokens.",
+      "7",
+      "5",
+    ).definition;
+    game.definitions[gnawboneDef.id] = gnawboneDef;
+    const gnawbone = createCardInstance({ definitionId: gnawboneDef.id, ownerId: p1.id, zone: "battlefield" });
+    game.cards[gnawbone.id] = gnawbone;
+    p1.zones.battlefield.push(gnawbone.id);
+
+    const beaterDef = createCardDefinition({
+      name: "Beater",
+      typeLine: "Creature — Ogre",
+      power: 4,
+      toughness: 4,
+    });
+    game.definitions[beaterDef.id] = beaterDef;
+    const beater = createCardInstance({ definitionId: beaterDef.id, ownerId: p1.id, zone: "battlefield" });
+    beater.summoningSick = false;
+    game.cards[beater.id] = beater;
+    p1.zones.battlefield.push(beater.id);
+
+    game.turn.phase = "combat";
+    game.turn.step = "declareAttackers";
+    game.turn.activePlayerId = p1.id;
+    game.priorityPlayerId = p1.id;
+    let next = applyAction(game, {
+      kind: "declare_attackers",
+      playerId: p1.id,
+      attacks: [{ attackerId: beater.id, defenderId: p2.id }],
+    });
+    next = applyCombatDamage(next);
+    while (next.stack.length > 0) {
+      next = resolveTopOfStack(next);
+    }
+
+    const treasures = Object.values(next.cards).filter(
+      (card) =>
+        card.isToken &&
+        card.controllerId === p1.id &&
+        next.definitions[card.definitionId]?.name === "Treasure",
+    );
+    // A 4-power attacker dealt 4, so four Treasures — not one.
+    expect(treasures).toHaveLength(4);
   });
 });
 

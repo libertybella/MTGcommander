@@ -717,6 +717,30 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     };
   }
 
+  // Old Gnawbone: "that many" is the damage the trigger just carried.
+  const thatManyTreasures = sentence.match(
+    /^Create that many Treasure tokens$/i,
+  );
+  if (thatManyTreasures) {
+    return {
+      targetRequirements: [],
+      effects: [
+        {
+          kind: "create_token",
+          ownerId: "controller",
+          name: "Treasure",
+          typeLine: "Artifact — Treasure Token",
+          countFromSubjectAmount: true,
+        },
+      ],
+    };
+  }
+
+  // Kediss's "it deals that much damage to each OTHER opponent" is
+  // deliberately absent: "each_opponent" would include the player who was
+  // just damaged, and there is no selector for "the opponents other than the
+  // trigger's subject". Hitting the wrong player is worse than a miss.
+
   // Blue Sun's Zenith: a targeted X draw.
   const targetedXDraw = sentence.match(/^Target player draws X cards$/i);
   if (targetedXDraw) {

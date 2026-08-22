@@ -893,7 +893,10 @@ export function dispatchEventsInPlace(state: GameState, events: EngineEvent[]): 
                   ? state.cards[subjectCardId]?.controllerId
                   : undefined;
           const subjectAmount =
-            event.kind === "gains_life" || event.kind === "loses_life"
+            event.kind === "gains_life" ||
+            event.kind === "loses_life" ||
+            // Old Gnawbone / Kediss: "that many" is the damage just dealt.
+            event.kind === "combat_damage_to_player"
               ? event.amount
               : event.kind === "dies"
                 ? event.powerAtDeath
