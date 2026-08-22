@@ -255,6 +255,37 @@ What the engine implements and what it intentionally does not. Tests are tagged 
   carries a back-reference to a set, and binding it to the wrong set would be
   worse than leaving the card uncompiled.
 
+- **The token descriptor as a grammar**: "thirteen tapped 2/2 black Zombie
+  creature tokens", "a 3/3 colorless Phyrexian Wurm artifact creature token
+  with deathtouch and a 3/3 … with lifelink", "a 0/1 red Kobold creature token
+  named Kobolds of ~" all read through one parser instead of a branch per
+  printed wording. Subtypes are told from card types by capitalisation — oracle
+  text prints subtypes capitalised and card types in lower case — so no type
+  table is needed to divide "Phyrexian Wurm artifact creature". Two tokens in
+  one clause split at the "and" that is followed by a count word, which is what
+  keeps "blue and red" and "tapped and attacking" in one piece. A trailing
+  count tail ("for each creature you control", "for each +1/+1 counter on ~",
+  "equal to its power") becomes one scaled effect rather than N copies, and
+  "a number of … tokens" with no such tail is refused rather than silently
+  made into one token. Tokens now carry their printed colours: a token has no
+  mana cost to derive them from, so the words are the only source, and without
+  them a "blue and red Elemental" was colourless to every colour filter.
+
+  Two things this turned up. A clause that chose no targets of its own is no
+  longer renumbered when clauses merge — its chosen references point back at
+  what an earlier clause targeted ("Exile target artifact or creature. Its
+  controller creates …"), and shifting them walked them off the end of the
+  merged list, where they bound to nobody and the effect did nothing while the
+  card still reported a clean compile. And a token whose name quotes its own
+  card ("Kobolds of ~") gets the placeholder undone at bind time, which is the
+  first point the source is known.
+
+  Known laxity, deliberately left: the older token shapes still sit below this
+  grammar to supply what it cannot express (a count read off the board,
+  quoted granted abilities). Their subtype match is loose enough to accept any
+  unknown word as a subtype, so a descriptor this grammar refuses can still be
+  caught by them. Collapsing the remainder into the grammar would close that.
+
 ## The card pipeline (Stage 6)
 
 - Real cards compile from Scryfall oracle text by shared sentence patterns; a hand-authored registry (`server/src/cardOverrides.ts`, data in the same schema) beats the compiler for the long tail. Never a named-card code path.

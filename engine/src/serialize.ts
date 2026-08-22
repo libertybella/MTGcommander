@@ -2523,6 +2523,9 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
           : { perSourceCounters: expectString(value.perSourceCounters, `${label}.perSourceCounters`) }),
         ...(value.entersTappedAttacking === true ? { entersTappedAttacking: true } : {}),
         ...(value.entersTapped === true ? { entersTapped: true } : {}),
+        ...(value.colors === undefined
+          ? {}
+          : { colors: parseColorArray(value.colors, `${label}.colors`) }),
         ...(value.atEndStep === "sacrifice" || value.atEndStep === "exile"
           ? { atEndStep: value.atEndStep }
           : {}),
@@ -4876,6 +4879,9 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
       ...(value.keywords === undefined
         ? {}
         : { keywords: parseKeywords(value.keywords, `${label}.keywords`) }),
+      ...(value.colors === undefined
+        ? {}
+        : { colors: parseColorArray(value.colors, `${label}.colors`) }),
       ...(value.count === undefined
         ? {}
         : { count: expectNumber(value.count, `${label}.count`) }),

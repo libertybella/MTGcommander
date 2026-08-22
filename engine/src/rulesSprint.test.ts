@@ -20798,6 +20798,9 @@ describe("wave 174: X-count token creation", () => {
         typeLine: "Creature — Warrior Token",
         power: 1,
         toughness: 1,
+        // The descriptor grammar keeps the printed colour, which the older
+        // shape read past and dropped.
+        colors: ["W"],
         count: "x",
       },
     ]);
@@ -22942,6 +22945,209 @@ describe("wave 186: control is a real field", () => {
     const restored = parseGameState(JSON.parse(JSON.stringify(serializeGameState(stolen))));
     expect(restored.cards[theirs.id]?.controllerId).toBe(p1.id);
     expect(restored.temporaryControl).toEqual([{ cardId: theirs.id, returnToId: p2.id }]);
+  });
+});
+
+
+describe("wave 187: the token descriptor as a grammar", () => {
+  const compile = (name: string, manaCost: string, typeLine: string, oracleText: string, power?: string, toughness?: string) =>
+    compileOracleCard({
+      oracleId: name,
+      name,
+      manaCost,
+      typeLine,
+      power: power ?? null,
+      toughness: toughness ?? null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  it("reads a count past ten, 'tapped', and the printed colour", () => {
+    const army = compile(
+      "Army of the Damned",
+      "{5}{B}{B}{B}",
+      "Sorcery",
+      "Create thirteen tapped 2/2 black Zombie creature tokens.",
+    );
+    expect(army.notes).toEqual([]);
+    expect(army.definition.effects).toHaveLength(13);
+    expect(army.definition.effects[0]).toEqual({
+      kind: "create_token",
+      ownerId: "controller",
+      name: "Zombie",
+      typeLine: "Creature — Zombie Token",
+      power: 2,
+      toughness: 2,
+      colors: ["B"],
+      entersTapped: true,
+    });
+  });
+
+  it("splits two different tokens in one clause", () => {
+    const wurmcoil = compile(
+      "Wurmcoil Engine",
+      "{6}",
+      "Artifact Creature — Phyrexian Wurm",
+      "Deathtouch, lifelink\nWhen this creature dies, create a 3/3 colorless Phyrexian Wurm artifact creature token with deathtouch and a 3/3 colorless Phyrexian Wurm artifact creature token with lifelink.",
+      "6",
+      "6",
+    );
+    expect(wurmcoil.notes).toEqual([]);
+    const made = wurmcoil.definition.triggers[0]?.effects ?? [];
+    expect(made).toHaveLength(2);
+    // "colorless" leaves the colour list empty rather than absent-by-accident.
+    expect(made[0]).toEqual({
+      kind: "create_token",
+      ownerId: "controller",
+      name: "Phyrexian Wurm",
+      typeLine: "Artifact Creature — Phyrexian Wurm Token",
+      power: 3,
+      toughness: 3,
+      keywords: ["deathtouch"],
+    });
+    expect((made[1] as { keywords: string[] }).keywords).toEqual(["lifelink"]);
+  });
+
+  it("keeps a token's printed name", () => {
+    const keep = compile(
+      "Kher Keep",
+      "",
+      "Land",
+      "{T}: Add {C}.\n{1}{R}, {T}: Create a 0/1 red Kobold creature token named Kobolds of Kher Keep.",
+    );
+    expect(keep.notes).toEqual([]);
+    // The compiler rewrote the card's own name to "~" before parsing; the
+    // placeholder is put back at bind time, when the source is known.
+    expect(keep.definition.activated[0]?.effects[0]).toMatchObject({
+      name: "Kobolds of ~",
+      typeLine: "Creature — Kobold Token",
+      power: 0,
+      toughness: 1,
+      colors: ["R"],
+    });
+
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const source = createCardDefinition({ name: "Kher Keep", typeLine: "Land" });
+    game.definitions[source.id] = source;
+    const land = createCardInstance({
+      definitionId: source.id,
+      ownerId: p1.id,
+      zone: "battlefield",
+    });
+    game.cards[land.id] = land;
+    p1.zones.battlefield.push(land.id);
+    const bound = bindCardEffects(game, keep.definition.activated[0]!.effects, {
+      controllerId: p1.id,
+      sourceId: land.id,
+    });
+    expect(bound[0]).toMatchObject({ name: "Kobolds of Kher Keep" });
+  });
+
+  it("pays the target's controller, in two colours", () => {
+    const resculpt = compile(
+      "Resculpt",
+      "{1}{U}",
+      "Instant",
+      "Exile target artifact or creature. Its controller creates a 4/4 blue and red Elemental creature token.",
+    );
+    expect(resculpt.notes).toEqual([]);
+    expect(resculpt.definition.effects[1]).toEqual({
+      kind: "create_token",
+      ownerId: { type: "chosen_controller", index: 0 },
+      name: "Elemental",
+      typeLine: "Creature — Elemental Token",
+      power: 4,
+      toughness: 4,
+      colors: ["U", "R"],
+    });
+  });
+
+  it("reads a trailing count tail as one scaled effect", () => {
+    const bywater = compile(
+      "The Battle of Bywater",
+      "{1}{W}{W}",
+      "Sorcery",
+      "Destroy all creatures with power 3 or greater. Then create a Food token for each creature you control.",
+    );
+    expect(bywater.notes).toEqual([]);
+    // One effect that counts at resolution, not one effect per creature.
+    const food = bywater.definition.effects.filter(
+      (effect) => effect.kind === "create_token",
+    );
+    expect(food).toHaveLength(1);
+    expect(food[0]).toMatchObject({
+      typeLine: "Artifact — Food Token",
+      perControlled: "creature",
+    });
+
+    const hangarback = compile(
+      "Hangarback Walker",
+      "{X}{X}",
+      "Artifact Creature — Construct",
+      "This creature enters with X +1/+1 counters on it.\nWhen this creature dies, create a 1/1 colorless Thopter artifact creature token with flying for each +1/+1 counter on this creature.",
+      "0",
+      "0",
+    );
+    expect(hangarback.notes).toEqual([]);
+    expect(hangarback.definition.triggers[0]?.effects[0]).toMatchObject({
+      typeLine: "Artifact Creature — Thopter Token",
+      keywords: ["flying"],
+      perSourceCounters: "p1p1",
+    });
+  });
+
+  it("refuses a descriptor word it cannot place", () => {
+    // An unrecognised lower-case word must fail the clause rather than land a
+    // token with a type line quietly missing part of what was printed.
+    // (Without the leading "tapped" the older, looser shape below this
+    // grammar would still take it and invent "Sparkly Zombie" as a subtype —
+    // that laxity is recorded in the coverage notes, not relied on here.)
+    const odd = compile(
+      "Testcard",
+      "{2}",
+      "Sorcery",
+      "Create a tapped 2/2 sparkly Zombie creature token.",
+    );
+    expect(odd.notes.join(" ")).toContain("sparkly");
+  });
+
+  it("refuses 'a number of tokens' with nothing saying how many", () => {
+    const vague = compile(
+      "Testcard",
+      "{2}",
+      "Sorcery",
+      "Create a number of Treasure tokens.",
+    );
+    expect(vague.notes.length).toBeGreaterThan(0);
+  });
+
+  it("puts the printed colours on the token that reaches the battlefield", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const next = applyEffect(game, {
+      kind: "create_token",
+      ownerId: p1.id,
+      name: "Elemental",
+      typeLine: "Creature — Elemental Token",
+      power: 4,
+      toughness: 4,
+      colors: ["U", "R"],
+    });
+    const tokenId = next.players[0]?.zones.battlefield.at(-1);
+    expect(tokenId).toBeDefined();
+    const tokenDefId = next.cards[tokenId!]?.definitionId ?? "";
+    expect(next.definitions[tokenDefId]?.characteristics.colors).toEqual(["U", "R"]);
+    // And it now reads as multicolored to the filter added last wave.
+    expect(
+      isChosenTargetLegal(
+        next,
+        { kind: "permanent", multicolored: true },
+        { type: "creature", cardId: tokenId! },
+        p1.id,
+      ),
+    ).toBe(true);
   });
 });
 

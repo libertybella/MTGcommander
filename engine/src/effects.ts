@@ -736,9 +736,18 @@ export function bindCardEffect(
           return null;
         }
       }
+      // "…named Kobolds of ~": the compiler rewrites a card's own name to "~"
+      // before parsing, so a token that quotes it gets the placeholder back.
+      // The source is known here, which is the first point it can be undone.
+      const sourceName = context.sourceId
+        ? state.definitions[state.cards[context.sourceId]?.definitionId ?? ""]?.name
+        : undefined;
       return {
         ...tokenRest,
         ownerId,
+        ...(tokenRest.name.includes("~") && sourceName
+          ? { name: tokenRest.name.replace(/~/g, sourceName) }
+          : {}),
         ...(count !== undefined ? { count } : {}),
         ...(perSourceCounters && context.sourceId
           ? { countFromCounters: { cardId: context.sourceId, counter: perSourceCounters } }
@@ -2263,6 +2272,7 @@ function applyCreateToken(
     power: effect.power ?? null,
     toughness: effect.toughness ?? null,
     ...(effect.keywords && effect.keywords.length > 0 ? { keywords: effect.keywords } : {}),
+    ...(effect.colors && effect.colors.length > 0 ? { colors: effect.colors } : {}),
     ...(preset?.manaAbilities ? { manaAbilities: preset.manaAbilities } : {}),
     ...(preset?.activated ? { activated: preset.activated } : {}),
     ...(preset?.changeling ? { changeling: true } : {}),

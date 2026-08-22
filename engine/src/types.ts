@@ -772,6 +772,9 @@ export type GameEffect =
       entersTappedAttacking?: boolean;
       /** "a tapped 1/1 blue Fish" (the gift mechanic). */
       entersTapped?: boolean;
+      /** "a 4/4 blue and red Elemental" — a token has no mana cost to derive
+       * its colours from, so the printed words are the only source. */
+      colors?: Color[];
     }
   | { kind: "mill"; playerId: PlayerId; count: number }
   | { kind: "discard"; playerId: PlayerId; count: number }
@@ -1448,6 +1451,9 @@ export type CardEffect =
       entersTappedAttacking?: boolean;
       /** "a tapped 1/1 blue Fish" (the gift mechanic). */
       entersTapped?: boolean;
+      /** "a 4/4 blue and red Elemental" — a token has no mana cost to derive
+       * its colours from, so the printed words are the only source. */
+      colors?: Color[];
       /** Mobilize: "Sacrifice them at the beginning of the next end step." */
       atEndStep?: "sacrifice" | "exile";
       /** Scute Swarm: with this many lands, the token is a copy of the

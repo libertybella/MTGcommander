@@ -1062,6 +1062,181 @@ function parseGraveyardTargetPhrase(phrase: string): TargetRequirement | null {
   return head ? { ...requirement, kind: head[1] } : null;
 }
 
+/** What a printed token descriptor spells out, before an owner is attached. */
+type TokenDescriptor = {
+  count: number | "x";
+  name: string;
+  typeLine: string;
+  power: number | null;
+  toughness: number | null;
+  colors: Color[];
+  keywords: Keyword[];
+  /** "a number of … tokens": the count lives in a tail the caller strips. */
+  countUnspecified?: boolean;
+  entersTapped?: boolean;
+  entersTappedAttacking?: boolean;
+};
+
+const TOKEN_CARD_TYPES = ["artifact", "creature", "enchantment", "land", "planeswalker"];
+const TOKEN_SUPERTYPES = ["snow", "legendary"];
+
+const TOKEN_COUNT_WORDS =
+  "a|an|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|X|\\d+";
+
+/** Two tokens in one clause ("… and a 3/3 … token with lifelink"): the "and"
+ * that starts a second token is the one followed by a count word. */
+const TOKEN_CONJUNCTION = new RegExp(`\\s+and\\s+(?=(?:${TOKEN_COUNT_WORDS})\\s)`, "i");
+
+const capitalizeWord = (word: string): string =>
+  word[0]!.toUpperCase() + word.slice(1).toLowerCase();
+
+/**
+ * "thirteen tapped 2/2 black Zombie creature tokens", "a 3/3 colorless
+ * Phyrexian Wurm artifact creature token with deathtouch", "a tapped Treasure
+ * token", "a 0/1 red Kobold creature token named Kobolds of ~" — the token
+ * descriptor as one grammar rather than a branch per printed wording.
+ *
+ * The split between subtypes and card types is capitalisation: oracle text
+ * prints creature and artifact subtypes capitalised and card types in lower
+ * case, so "Phyrexian Wurm artifact creature" needs no type table to divide.
+ * An unrecognised lower-case word returns null, which keeps a descriptor this
+ * cannot read a clean miss instead of a token with the wrong type line.
+ */
+function parseTokenDescriptor(phrase: string): TokenDescriptor | null {
+  let rest = phrase.trim().replace(/\.$/, "");
+
+  const keywords: Keyword[] = [];
+  const withKeywords = rest.match(/^(.*?)\s+with\s+(.+)$/i);
+  if (withKeywords?.[1] && withKeywords[2]) {
+    for (const word of withKeywords[2].split(/,\s*(?:and\s+)?|\s+and\s+/)) {
+      const keyword = KEYWORD_GRANTS[word.trim().toLowerCase()];
+      if (!keyword) {
+        return null;
+      }
+      keywords.push(keyword);
+    }
+    rest = withKeywords[1];
+  }
+
+  let explicitName: string | null = null;
+  const named = rest.match(/^(.*?)\s+named\s+(.+)$/i);
+  if (named?.[1] && named[2]) {
+    explicitName = named[2].trim();
+    rest = named[1];
+  }
+
+  const head = rest.match(/^(.*?)\s+tokens?$/i);
+  if (!head?.[1]) {
+    return null;
+  }
+  rest = head[1];
+
+  // "a number of tapped Treasure tokens equal to its power": the count is not
+  // in the descriptor at all, so the caller must supply one from the tail it
+  // stripped. Flagged rather than guessed at.
+  let countUnspecified = false;
+  const vague = rest.match(/^a number of\s+(.*)$/i);
+  if (vague?.[1]) {
+    countUnspecified = true;
+    rest = vague[1];
+  }
+
+  let count: number | "x" = 1;
+  if (!countUnspecified) {
+    const counted = rest.match(new RegExp(`^(${TOKEN_COUNT_WORDS})\\s+(.*)$`, "i"));
+    if (!counted?.[1] || !counted[2]) {
+      return null;
+    }
+    count = /^X$/i.test(counted[1]) ? "x" : (parseCount(counted[1]) ?? Number(counted[1]));
+    if (count !== "x" && (!Number.isInteger(count) || count < 1)) {
+      return null;
+    }
+    rest = counted[2];
+  }
+
+  let entersTapped = false;
+  let entersTappedAttacking = false;
+  const attacking = rest.match(/^tapped and attacking\s+(.*)$/i);
+  if (attacking?.[1]) {
+    entersTappedAttacking = true;
+    rest = attacking[1];
+  } else {
+    const tapped = rest.match(/^tapped\s+(.*)$/i);
+    if (tapped?.[1]) {
+      entersTapped = true;
+      rest = tapped[1];
+    }
+  }
+
+  let power: number | null = null;
+  let toughness: number | null = null;
+  const pt = rest.match(/^(\d+|X)\/(\d+|X)\s+(.*)$/i);
+  if (pt?.[1] && pt[2] && pt[3]) {
+    // An X/X token would have to read the announced X at creation, which the
+    // effect's fixed power and toughness cannot carry.
+    if (/X/i.test(pt[1]) || /X/i.test(pt[2])) {
+      return null;
+    }
+    power = Number(pt[1]);
+    toughness = Number(pt[2]);
+    rest = pt[3];
+  }
+
+  const colors: Color[] = [];
+  const supertypes: string[] = [];
+  const types: string[] = [];
+  const subtypes: string[] = [];
+  for (const word of rest.split(/\s+/).filter(Boolean)) {
+    if (word === "and") {
+      continue; // "blue and red"
+    }
+    if (/^[A-Z]/.test(word)) {
+      subtypes.push(word);
+      continue;
+    }
+    const lower = word.toLowerCase();
+    if (lower === "colorless") {
+      continue;
+    }
+    if (COLOR_WORDS[lower]) {
+      colors.push(COLOR_WORDS[lower]!);
+      continue;
+    }
+    if (TOKEN_SUPERTYPES.includes(lower)) {
+      supertypes.push(lower);
+      continue;
+    }
+    if (TOKEN_CARD_TYPES.includes(lower)) {
+      types.push(lower);
+      continue;
+    }
+    return null;
+  }
+  if (types.length === 0) {
+    // "a Treasure token", "a Food token": the predefined artifact tokens are
+    // the only ones printed without a card type.
+    if (subtypes.length === 0) {
+      return null;
+    }
+    types.push("artifact");
+  }
+
+  const left = [...supertypes, ...types].map(capitalizeWord).join(" ");
+  const typeLine = subtypes.length > 0 ? `${left} — ${subtypes.join(" ")} Token` : `${left} Token`;
+  return {
+    count,
+    name: explicitName ?? (subtypes.length > 0 ? subtypes.join(" ") : left),
+    typeLine,
+    power,
+    toughness,
+    colors,
+    keywords,
+    ...(countUnspecified ? { countUnspecified: true } : {}),
+    ...(entersTapped ? { entersTapped: true } : {}),
+    ...(entersTappedAttacking ? { entersTappedAttacking: true } : {}),
+  };
+}
+
 /**
  * The descriptor in "Whenever you cast a <descriptor> spell" — a card type,
  * a type list, "noncreature", "colorless", "historic", or a creature type.
@@ -3924,6 +4099,86 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
         effects:
           count === undefined ? [token] : Array.from({ length: count }, () => ({ ...token })),
       };
+    }
+  }
+
+  // The token descriptor, read as one grammar. It runs before the older
+  // shapes below so the strict reading wins: those fall back to a loose
+  // "any words are the subtype" match, which happily invents a subtype out
+  // of a word it does not know. What is left to them is what this cannot
+  // express — a count read off the board, and quoted granted abilities.
+  const createdTokens = sentence.match(
+    /^(?:Then )?(?:(You|Its controller|Each player|Each opponent) creates?|(?:You may )?Create) (.+)$/i,
+  );
+  if (createdTokens?.[2]) {
+    const who = createdTokens[1]?.toLowerCase();
+    const ownerId: PlayerSelector | null =
+      who === undefined || who === "you"
+        ? "controller"
+        : who === "its controller"
+          ? { type: "chosen_controller", index: 0 }
+          : who === "each player"
+            ? "each_player"
+            : who === "each opponent"
+              ? "each_opponent"
+              : null;
+    // A trailing count tail applies to the whole clause, so it comes off
+    // before the descriptors are read. Each maps to a count the effect can
+    // already work out for itself at resolution.
+    let body = createdTokens[2];
+    let countTail: Partial<Extract<CardEffect, { kind: "create_token" }>> | null = null;
+    const perControlledTail = body.match(/^(.*?)\s+for each (land|creature|artifact) you control$/i);
+    const perCounterTail = body.match(/^(.*?)\s+for each \+1\/\+1 counter on ~$/i);
+    const perSubjectPowerTail = body.match(/^(.*?)\s+equal to its power$/i);
+    if (perControlledTail?.[1] && perControlledTail[2]) {
+      countTail = { perControlled: perControlledTail[2].toLowerCase() as "land" | "creature" | "artifact" };
+      body = perControlledTail[1];
+    } else if (perCounterTail?.[1]) {
+      countTail = { perSourceCounters: "p1p1" };
+      body = perCounterTail[1];
+    } else if (perSubjectPowerTail?.[1]) {
+      countTail = { countFromSubjectAmount: true };
+      body = perSubjectPowerTail[1];
+    }
+
+    // "Its controller" reads the first chosen target, which is the referent
+    // every printed card that uses the phrase means — it follows a sentence
+    // that targeted something (Resculpt exiles it, then pays its controller).
+    const descriptors =
+      ownerId === null ? [] : body.split(TOKEN_CONJUNCTION).map((part) => parseTokenDescriptor(part));
+    // "a number of … tokens" with no tail to say how many would create one
+    // token and quietly lose the count, so the whole clause is refused.
+    const countable = descriptors.every(
+      (entry) => entry !== null && (!entry.countUnspecified || countTail !== null),
+    );
+    if (descriptors.length > 0 && countable) {
+      const effects: CardEffect[] = [];
+      for (const descriptor of descriptors) {
+        const token: CardEffect = {
+          kind: "create_token",
+          ownerId: ownerId!,
+          name: descriptor!.name,
+          typeLine: descriptor!.typeLine,
+          power: descriptor!.power,
+          toughness: descriptor!.toughness,
+          ...(descriptor!.keywords.length > 0 ? { keywords: descriptor!.keywords } : {}),
+          ...(descriptor!.colors.length > 0 ? { colors: descriptor!.colors } : {}),
+          ...(descriptor!.entersTapped ? { entersTapped: true } : {}),
+          ...(descriptor!.entersTappedAttacking ? { entersTappedAttacking: true } : {}),
+          ...(descriptor!.count === "x" ? { count: "x" as const } : {}),
+          ...(countTail ?? {}),
+        };
+        // A count tail is a per-something multiplier the effect works out at
+        // resolution, so it emits one effect rather than N copies.
+        if (descriptor!.count === "x" || countTail) {
+          effects.push(token);
+        } else {
+          for (let index = 0; index < descriptor!.count; index += 1) {
+            effects.push({ ...token });
+          }
+        }
+      }
+      return { targetRequirements: [], effects };
     }
   }
 
@@ -7128,7 +7383,12 @@ function compileStaticGrant(sentence: string): StaticAbility[] | null {
 }
 
 function offsetChosenIndexes(clause: SimpleClause, offset: number): SimpleClause {
-  if (offset === 0) {
+  // A clause that chose no targets of its own cannot be numbering from its
+  // own list — its chosen references point back at what an earlier clause
+  // targeted ("Exile target artifact or creature. Its controller creates …").
+  // Shifting those would walk them off the end of the merged list, where they
+  // bind to nobody and the effect quietly does nothing.
+  if (offset === 0 || clause.targetRequirements.length === 0) {
     return clause;
   }
   return {
