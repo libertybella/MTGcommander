@@ -2928,6 +2928,26 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
       return {
         kind,
         what: parseDestroyAllScope(value.what, `${label}.what`),
+      ...(value.typesAny === undefined
+        ? {}
+        : { typesAny: parseStringList(value.typesAny, `${label}.typesAny`) }),
+      ...(value.tapState === "tapped" || value.tapState === "untapped"
+        ? { tapState: value.tapState }
+        : {}),
+      ...(value.withoutCounters === true ? { withoutCounters: true } : {}),
+      ...(value.notEnchanted === true ? { notEnchanted: true } : {}),
+      ...(value.notLegendary === true ? { notLegendary: true } : {}),
+      ...(value.toZone === "exile" ? { toZone: "exile" } : {}),
+        ...(value.typesAny === undefined
+          ? {}
+          : { typesAny: parseStringList(value.typesAny, `${label}.typesAny`) }),
+        ...(value.tapState === "tapped" || value.tapState === "untapped"
+          ? { tapState: value.tapState }
+          : {}),
+        ...(value.withoutCounters === true ? { withoutCounters: true } : {}),
+        ...(value.notEnchanted === true ? { notEnchanted: true } : {}),
+        ...(value.notLegendary === true ? { notLegendary: true } : {}),
+        ...(value.toZone === "exile" ? { toZone: "exile" } : {}),
         ...(value.maxManaValue === undefined
           ? {}
           : { maxManaValue: expectNumber(value.maxManaValue, `${label}.maxManaValue`) }),
@@ -2937,6 +2957,14 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
         ...(value.minPower === undefined
           ? {}
           : { minPower: expectNumber(value.minPower, `${label}.minPower`) }),
+        ...(value.minPowerAboveTarget === undefined
+          ? {}
+          : {
+              minPowerAboveTarget: expectNumber(
+                value.minPowerAboveTarget,
+                `${label}.minPowerAboveTarget`,
+              ),
+            }),
         ...(value.exceptChosenType === true ? { exceptChosenType: true } : {}),
         ...(value.exceptSubtype === undefined
           ? {}

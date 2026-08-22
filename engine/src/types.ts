@@ -967,6 +967,18 @@ export type GameEffect =
   | {
       kind: "destroy_all";
       what: DestroyAllScope;
+      /** Nevinyrral's Disk: any of these types, swept as one batch. */
+      typesAny?: string[];
+      /** Split Up: only tapped, or only untapped, permanents. */
+      tapState?: "tapped" | "untapped";
+      /** Damning Verdict: "with no counters on them". */
+      withoutCounters?: boolean;
+      /** Winds of Rath: "that aren't enchanted". */
+      notEnchanted?: boolean;
+      /** Urza's Ruinous Blast: "that aren't legendary". */
+      notLegendary?: boolean;
+      /** Urza's Ruinous Blast exiles rather than destroying. */
+      toZone?: "exile";
       maxManaValue?: number;
       minManaValue?: number;
       /** Elspeth: only creatures with computed power at least this. */
@@ -1644,10 +1656,26 @@ export type CardEffect =
   | {
       kind: "destroy_all";
       what: DestroyAllScope;
+      /** Nevinyrral's Disk: "all artifacts, creatures, and enchantments" —
+       * any of these types, swept as one batch rather than three. */
+      typesAny?: string[];
+      /** Split Up: only tapped, or only untapped, permanents. */
+      tapState?: "tapped" | "untapped";
+      /** Damning Verdict: "with no counters on them". */
+      withoutCounters?: boolean;
+      /** Winds of Rath: "that aren't enchanted". */
+      notEnchanted?: boolean;
+      /** Urza's Ruinous Blast: "that aren't legendary". */
+      notLegendary?: boolean;
+      /** Urza's Ruinous Blast exiles rather than destroying. */
+      toZone?: "exile";
       maxManaValue?: number;
       minManaValue?: number;
       /** Elspeth: only creatures with computed power at least this. */
       minPower?: number;
+      /** Fell the Mighty: strictly above the chosen target's power, read at
+       * bind. */
+      minPowerAboveTarget?: number;
       /** Kindred Dominance: the auto-chosen type (most common among the
        * caster's creatures, bound at resolution) is spared. */
       exceptChosenType?: boolean;

@@ -635,6 +635,102 @@ function parseSimpleTargetPhrase(phrase: string): TargetRequirement | null {
   return head ? { ...requirement, kind: head[1] } : null;
 }
 
+/** Plural head nouns a sweep can name, and the scope each maps to. */
+const SWEEP_HEAD_NOUNS: [RegExp, DestroyAllScope][] = [
+  [/^nonland permanents$/i, "nonland"],
+  [/^permanents$/i, "nonland"],
+  [/^creatures$/i, "creatures"],
+  [/^artifacts$/i, "artifacts"],
+  [/^enchantments$/i, "enchantments"],
+  [/^planeswalkers$/i, "planeswalkers"],
+];
+
+/** Type lists a sweep can name, in printed order. */
+const SWEEP_TYPE_LISTS: [RegExp, string[]][] = [
+  [/^artifacts, creatures, and enchantments$/i, ["artifact", "creature", "enchantment"]],
+  [/^artifacts and enchantments$/i, ["artifact", "enchantment"]],
+  [/^creatures and planeswalkers$/i, ["creature", "planeswalker"]],
+];
+
+type SweepFilters = Extract<CardEffect, { kind: "destroy_all" }>;
+
+/**
+ * The sweep noun phrase — "all tapped creatures", "all creatures with no
+ * counters on them", "all nonland permanents that aren't legendary", "all
+ * creatures you don't control". Qualifiers are read one at a time from both
+ * ends, so a new wording is a qualifier rather than a branch. Anything left
+ * over returns null and the sentence stays a clean miss.
+ */
+function parseSweepPhrase(phrase: string): Omit<SweepFilters, "kind"> | null {
+  let rest = phrase.trim();
+  const filters: Partial<SweepFilters> = {};
+
+  // Trailing qualifiers, outermost first.
+  for (;;) {
+    const possessor = rest.match(/^(.*?)\s+(?:you don't control|your opponents control)$/i);
+    if (possessor?.[1]) {
+      filters.opponentsOnly = true;
+      rest = possessor[1];
+      continue;
+    }
+    const counters = rest.match(/^(.*?)\s+with no counters on them$/i);
+    if (counters?.[1]) {
+      filters.withoutCounters = true;
+      rest = counters[1];
+      continue;
+    }
+    const enchanted = rest.match(/^(.*?)\s+that aren't enchanted$/i);
+    if (enchanted?.[1]) {
+      filters.notEnchanted = true;
+      rest = enchanted[1];
+      continue;
+    }
+    const legendary = rest.match(/^(.*?)\s+that aren't legendary$/i);
+    if (legendary?.[1]) {
+      filters.notLegendary = true;
+      rest = legendary[1];
+      continue;
+    }
+    const abovePower = rest.match(/^(.*?)\s+with power greater than target creature's power$/i);
+    if (abovePower?.[1]) {
+      filters.minPowerAboveTarget = 0;
+      rest = abovePower[1];
+      continue;
+    }
+    const power = rest.match(/^(.*?)\s+with power (\d+) or greater$/i);
+    if (power?.[1] && power[2]) {
+      filters.minPower = Number(power[2]);
+      rest = power[1];
+      continue;
+    }
+    const manaValue = rest.match(/^(.*?)\s+with mana value (\d+) or (less|greater)$/i);
+    if (manaValue?.[1] && manaValue[2] && manaValue[3]) {
+      if (/^less$/i.test(manaValue[3])) {
+        filters.maxManaValue = Number(manaValue[2]);
+      } else {
+        filters.minManaValue = Number(manaValue[2]);
+      }
+      rest = manaValue[1];
+      continue;
+    }
+    break;
+  }
+
+  // Leading qualifiers.
+  const tapState = rest.match(/^(tapped|untapped)\s+(.*)$/i);
+  if (tapState?.[1] && tapState[2]) {
+    filters.tapState = tapState[1].toLowerCase() as "tapped" | "untapped";
+    rest = tapState[2];
+  }
+
+  const list = SWEEP_TYPE_LISTS.find(([pattern]) => pattern.test(rest.trim()));
+  if (list) {
+    return { what: "nonland", typesAny: list[1], ...filters };
+  }
+  const head = SWEEP_HEAD_NOUNS.find(([pattern]) => pattern.test(rest.trim()));
+  return head ? { what: head[1], ...filters } : null;
+}
+
 /** Head nouns for a card in the caster's own graveyard. */
 const GRAVEYARD_HEAD_NOUNS: [RegExp, TargetKind][] = [
   [/^creature card$/i, "own_graveyard_creature_card"],
@@ -1581,7 +1677,11 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     };
   }
 
-  if (/^Return each creature to its owner's hand$/i.test(sentence)) {
+  if (
+    /^Return each creature to its owner's hand$/i.test(sentence) ||
+    // Evacuation says the same thing in the plural.
+    /^Return all creatures to their owners' hands$/i.test(sentence)
+  ) {
     return { targetRequirements: [], effects: [{ kind: "bounce_each_creature" }] };
   }
 
@@ -2830,6 +2930,29 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
   }
 
   // Elspeth, Sun's Champion's −3.
+  // The general sweep: "Destroy all X", "Exile all X", and the compound
+  // "Destroy all X and all Y" (In Garruk's Wake). Runs after the narrower
+  // sweep branches above, so nothing they already claim changes shape.
+  const sweep = sentence.match(/^(Destroy|Exile) all (.+)$/i);
+  if (sweep?.[1] && sweep[2]) {
+    const halves = sweep[2].split(/\s+and all\s+/i);
+    const parsed = halves.map((half) => parseSweepPhrase(half));
+    if (parsed.every((entry): entry is Omit<SweepFilters, "kind"> => entry !== null)) {
+      const exile = /^Exile$/i.test(sweep[1]);
+      return {
+        // Fell the Mighty names a creature whose power sets the bar.
+        targetRequirements: parsed.some((entry) => entry.minPowerAboveTarget !== undefined)
+          ? [{ kind: "creature" }]
+          : [],
+        effects: parsed.map((entry) => ({
+          kind: "destroy_all",
+          ...entry,
+          ...(exile ? { toZone: "exile" as const } : {}),
+        })),
+      };
+    }
+  }
+
   const powerSweep = sentence.match(/^Destroy all creatures with power (\d+) or greater$/i);
   if (powerSweep?.[1]) {
     return {

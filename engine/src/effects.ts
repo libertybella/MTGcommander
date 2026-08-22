@@ -1124,12 +1124,33 @@ export function bindCardEffect(
       const manaColor = manaOptions
         ? manaOptions.find((color) => identity.includes(color)) ?? manaOptions[0]
         : undefined;
+      // Fell the Mighty: "power greater than target creature's power" — the
+      // bar is read from the chosen target, so a sweep with no legal target
+      // does nothing rather than everything.
+      let minPower = effect.minPower;
+      if (effect.minPowerAboveTarget !== undefined) {
+        const targetId = bindCardId(
+          state,
+          { type: "chosen", index: effect.minPowerAboveTarget },
+          context,
+        );
+        if (!targetId) {
+          return null;
+        }
+        minPower = creaturePower(state, targetId) + 1;
+      }
       return {
         kind: "destroy_all",
         what: effect.what,
+        ...(effect.typesAny ? { typesAny: [...effect.typesAny] } : {}),
+        ...(effect.tapState ? { tapState: effect.tapState } : {}),
+        ...(effect.withoutCounters ? { withoutCounters: true } : {}),
+        ...(effect.notEnchanted ? { notEnchanted: true } : {}),
+        ...(effect.notLegendary ? { notLegendary: true } : {}),
+        ...(effect.toZone ? { toZone: effect.toZone } : {}),
         ...(effect.maxManaValue !== undefined ? { maxManaValue: effect.maxManaValue } : {}),
         ...(effect.minManaValue !== undefined ? { minManaValue: effect.minManaValue } : {}),
-        ...(effect.minPower !== undefined ? { minPower: effect.minPower } : {}),
+        ...(minPower !== undefined ? { minPower } : {}),
         // A printed "non-Dragon" spares that subtype; Kindred Dominance's
         // auto-chosen type takes precedence when both are somehow present.
         ...(spared ?? effect.exceptSubtype
@@ -2558,6 +2579,13 @@ function applyDestroyAll(
   const what = effect.what;
   const next = cloneGameState(state);
   const matches = (cardId: CardInstanceId): boolean => {
+    // Nevinyrral's Disk: a list of types, any of which qualifies.
+    if (effect.typesAny && effect.typesAny.length > 0) {
+      const types = characteristicsOf(next, cardId).types;
+      return effect.typesAny.some((type) =>
+        type === "creature" ? isCreature(next, cardId) : types.includes(type),
+      );
+    }
     if (what === "creatures") {
       return isCreature(next, cardId);
     }
@@ -2596,11 +2624,38 @@ function applyDestroyAll(
     .filter(
       (card) => effect.minPower === undefined || creaturePower(next, card.id) >= effect.minPower,
     )
-    .filter((card) => !hasKeyword(next, card.id, "indestructible"))
+    // Split Up: only one half of the board.
+    .filter(
+      (card) =>
+        effect.tapState === undefined || card.tapped === (effect.tapState === "tapped"),
+    )
+    // Damning Verdict: "with no counters on them" — any kind of counter saves it.
+    .filter(
+      (card) =>
+        !effect.withoutCounters ||
+        Object.values(card.counters).every((count) => count === 0),
+    )
+    // Winds of Rath: an Aura attached to it saves it.
+    .filter(
+      (card) =>
+        !effect.notEnchanted ||
+        !Object.values(next.cards).some(
+          (aura) =>
+            aura.zone === "battlefield" &&
+            aura.attachedTo === card.id &&
+            characteristicsOf(next, aura.id).types.includes("enchantment"),
+        ),
+    )
+    .filter(
+      (card) =>
+        !effect.notLegendary || !characteristicsOf(next, card.id).supertypes.includes("legendary"),
+    )
+    // Exiling sweeps are not "destroy", so indestructible does not save.
+    .filter((card) => effect.toZone === "exile" || !hasKeyword(next, card.id, "indestructible"))
     .map((card) => card.id);
   const collectDies: EngineEvent[] = [];
   for (const cardId of doomed) {
-    moveCardInPlace(next, cardId, "graveyard", { collectDies });
+    moveCardInPlace(next, cardId, effect.toZone ?? "graveyard", { collectDies });
   }
   if (collectDies.length > 0) {
     dispatchEventsInPlace(next, collectDies);

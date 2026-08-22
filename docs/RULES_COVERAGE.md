@@ -187,6 +187,8 @@ What the engine implements and what it intentionally does not. Tests are tagged 
 - **Mana multipliers** (Mana Reflection, Nyxbloom Ancient): "If you tap a permanent for mana, it produces twice as much of that mana instead" multiplies the addition before it reaches the pool. Only abilities that actually tap qualify, and several holders multiply together — which is what CR 616 gives whatever order the player picks.
 - **Cost taxes** (Grand Arbiter, Defense Grid, Helm of Awakening): a tax is a cost reduction with the sign flipped, so there is no second machinery for making spells cost more. A reduction carries a scope — the holder's own spells (the default, and what every earlier discount meant), opponents' spells, or everyone's — and Defense Grid's "except during its controller's turn" rider. The cast path still floors the total at zero.
 
+- **Sweeps as a noun-phrase grammar**: `parseSweepPhrase` reads qualifiers off "all \<phrase\>" from both ends — tap state, possessor, "with no counters on them", "that aren't enchanted", "that aren't legendary", power and mana-value bounds, and "with power greater than target creature's power" (the bar is read from the chosen target at bind, so a sweep with no legal target does nothing rather than everything). A type list ("all artifacts, creatures, and enchantments") sweeps as one batch rather than three, and "Destroy all X and all Y" compiles to two sweeps. Exiling sweeps move to exile, where indestructible correctly does not save.
+
 ## The card pipeline (Stage 6)
 
 - Real cards compile from Scryfall oracle text by shared sentence patterns; a hand-authored registry (`server/src/cardOverrides.ts`, data in the same schema) beats the compiler for the long tail. Never a named-card code path.

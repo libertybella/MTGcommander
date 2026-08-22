@@ -21237,3 +21237,192 @@ describe("wave 176: mana multipliers and cost taxes", () => {
   });
 });
 
+
+describe("wave 177: sweeps as a noun-phrase grammar", () => {
+  const compile = (name: string, manaCost: string, typeLine: string, oracleText: string) =>
+    compileOracleCard({
+      oracleId: name,
+      name,
+      manaCost,
+      typeLine,
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  /** A battlefield board: one plain bear, plus whatever the test adds. */
+  const board = () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    const bearDef = createCardDefinition({
+      name: "Bear",
+      typeLine: "Creature — Bear",
+      power: 2,
+      toughness: 2,
+    });
+    game.definitions[bearDef.id] = bearDef;
+    const add = (owner: PlayerState, definitionId: string) => {
+      const card = createCardInstance({ definitionId, ownerId: owner.id, zone: "battlefield" });
+      game.cards[card.id] = card;
+      owner.zones.battlefield.push(card.id);
+      return card;
+    };
+    return { game, p1, p2, bearDef, add };
+  };
+
+  it("reads qualifiers off the sweep phrase from both ends", () => {
+    const verdict = compile(
+      "Damning Verdict",
+      "{3}{W}{W}",
+      "Sorcery",
+      "Destroy all creatures with no counters on them.",
+    );
+    expect(verdict.notes).toEqual([]);
+    expect(verdict.definition.effects).toEqual([
+      { kind: "destroy_all", what: "creatures", withoutCounters: true },
+    ]);
+
+    const blast = compile(
+      "Urza's Ruinous Blast",
+      "{4}{W}",
+      "Legendary Sorcery",
+      "Exile all nonland permanents that aren't legendary.",
+    );
+    expect(blast.notes).toEqual([]);
+    expect(blast.definition.effects).toEqual([
+      { kind: "destroy_all", what: "nonland", notLegendary: true, toZone: "exile" },
+    ]);
+
+    // "and all …" is two sweeps, both keeping their own qualifier.
+    const wake = compile(
+      "In Garruk's Wake",
+      "{7}{B}{B}",
+      "Sorcery",
+      "Destroy all creatures you don't control and all planeswalkers you don't control.",
+    );
+    expect(wake.notes).toEqual([]);
+    expect(wake.definition.effects).toEqual([
+      { kind: "destroy_all", what: "creatures", opponentsOnly: true },
+      { kind: "destroy_all", what: "planeswalkers", opponentsOnly: true },
+    ]);
+
+    const disk = compile(
+      "Nevinyrral's Disk",
+      "{4}",
+      "Artifact",
+      "This artifact enters tapped.\n{1}, {T}: Destroy all artifacts, creatures, and enchantments.",
+    );
+    expect(disk.notes).toEqual([]);
+    expect(disk.definition.activated[0]?.effects[0]).toMatchObject({
+      kind: "destroy_all",
+      typesAny: ["artifact", "creature", "enchantment"],
+    });
+  });
+
+  it("spares an enchanted creature and one with a counter", () => {
+    const { game, p1, bearDef, add } = board();
+    const plain = add(p1, bearDef.id);
+    const countered = add(p1, bearDef.id);
+    countered.counters.p1p1 = 1;
+    const enchanted = add(p1, bearDef.id);
+    const auraDef = createCardDefinition({ name: "Aura", typeLine: "Enchantment — Aura" });
+    game.definitions[auraDef.id] = auraDef;
+    const aura = add(p1, auraDef.id);
+    aura.attachedTo = enchanted.id;
+
+    const verdict = applyEffect(game, {
+      kind: "destroy_all",
+      what: "creatures",
+      withoutCounters: true,
+    });
+    expect(verdict.cards[plain.id]?.zone).toBe("graveyard");
+    expect(verdict.cards[countered.id]?.zone).toBe("battlefield");
+
+    const winds = applyEffect(game, {
+      kind: "destroy_all",
+      what: "creatures",
+      notEnchanted: true,
+    });
+    expect(winds.cards[plain.id]?.zone).toBe("graveyard");
+    expect(winds.cards[enchanted.id]?.zone).toBe("battlefield");
+  });
+
+  it("splits the board by tap state", () => {
+    const { game, p1, bearDef, add } = board();
+    const tapped = add(p1, bearDef.id);
+    tapped.tapped = true;
+    const untapped = add(p1, bearDef.id);
+
+    const next = applyEffect(game, { kind: "destroy_all", what: "creatures", tapState: "tapped" });
+    expect(next.cards[tapped.id]?.zone).toBe("graveyard");
+    expect(next.cards[untapped.id]?.zone).toBe("battlefield");
+  });
+
+  it("exiles past indestructible and spares legendaries", () => {
+    const { game, p1, add } = board();
+    const toughDef = createCardDefinition({
+      name: "Tough",
+      typeLine: "Creature — Golem",
+      power: 3,
+      toughness: 3,
+      keywords: ["indestructible"],
+    });
+    const legendDef = createCardDefinition({
+      name: "Legend",
+      typeLine: "Legendary Creature — Dragon",
+      power: 4,
+      toughness: 4,
+    });
+    game.definitions[toughDef.id] = toughDef;
+    game.definitions[legendDef.id] = legendDef;
+    const tough = add(p1, toughDef.id);
+    const legend = add(p1, legendDef.id);
+
+    const next = applyEffect(game, {
+      kind: "destroy_all",
+      what: "nonland",
+      notLegendary: true,
+      toZone: "exile",
+    });
+    // Exiling is not destroying, so indestructible is no help...
+    expect(next.cards[tough.id]?.zone).toBe("exile");
+    // ...but "that aren't legendary" is.
+    expect(next.cards[legend.id]?.zone).toBe("battlefield");
+  });
+
+  it("reads Fell the Mighty's bar off the chosen target, strictly", () => {
+    const fell = compile(
+      "Fell the Mighty",
+      "{4}{W}",
+      "Sorcery",
+      "Destroy all creatures with power greater than target creature's power.",
+    );
+    expect(fell.notes).toEqual([]);
+    expect(fell.definition.targetRequirements).toEqual([{ kind: "creature" }]);
+
+    const { game, p1, bearDef, add } = board();
+    const bigDef = createCardDefinition({
+      name: "Big",
+      typeLine: "Creature — Giant",
+      power: 5,
+      toughness: 5,
+    });
+    game.definitions[bigDef.id] = bigDef;
+    const bear = add(p1, bearDef.id);
+    const big = add(p1, bigDef.id);
+
+    const bound = bindCardEffects(game, fell.definition.effects, {
+      controllerId: p1.id,
+      sourceId: null,
+      targets: [{ type: "creature", cardId: bear.id }],
+      targetRequirements: fell.definition.targetRequirements,
+    });
+    const next = applyEffects(game, bound);
+    // The 2/2 sets the bar; only strictly greater power dies.
+    expect(next.cards[bear.id]?.zone).toBe("battlefield");
+    expect(next.cards[big.id]?.zone).toBe("graveyard");
+  });
+});
+
