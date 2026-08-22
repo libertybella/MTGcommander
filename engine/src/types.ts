@@ -2346,8 +2346,22 @@ export type ReplacementEffect =
    * first draw of the controller's own draw step. */
   | { kind: "double_draws_except_first" };
 
+/**
+ * The Urza lands, Ilysian Caryatid: "… If you control X, add <more> instead."
+ * A conditional upgrade on what one tap makes. Every gate must hold, so the
+ * Urza lands can require two different permanents.
+ */
+export type ManaUpgrade = {
+  requires: ControlledGate[];
+  produces?: Partial<ManaPool>;
+  /** Ilysian Caryatid: "add two mana of any one color instead". */
+  anyColor?: number;
+};
+
 export type ManaAbility = {
   produces: Partial<ManaPool>;
+  /** "If you control …, add <more> instead." */
+  upgrade?: ManaUpgrade;
   producesOptions: ManaColor[];
   producesAnyColor: boolean;
   damageToController: number;

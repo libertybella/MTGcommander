@@ -22253,3 +22253,131 @@ describe("wave 182: cards moved between zones by filter", () => {
   });
 });
 
+
+describe("wave 183: conditional mana upgrades", () => {
+  const compile = (name: string, manaCost: string, typeLine: string, oracleText: string, power?: string, toughness?: string) =>
+    compileOracleCard({
+      oracleId: name,
+      name,
+      manaCost,
+      typeLine,
+      power: power ?? null,
+      toughness: toughness ?? null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  const TOWER =
+    "{T}: Add {C}. If you control an Urza's Mine and an Urza's Power-Plant, add {C}{C}{C} instead.";
+
+  it("requires every named permanent, and each is one card carrying both land types", () => {
+    const tower = compile("Urza's Tower", "", "Land — Urza's Tower", TOWER);
+    expect(tower.notes).toEqual([]);
+    expect(tower.definition.manaAbilities[0]?.upgrade).toEqual({
+      requires: [{ subtypes: ["urza's", "mine"] }, { subtypes: ["urza's", "power-plant"] }],
+      produces: { C: 3 },
+    });
+  });
+
+  it("adds the upgraded mana only once the whole condition holds", () => {
+    const tower = compile("Urza's Tower", "", "Land — Urza's Tower", TOWER);
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    game.definitions[tower.definition.id] = tower.definition;
+
+    const land = (name: string, typeLine: string) => {
+      const definition = createCardDefinition({ name, typeLine });
+      game.definitions[definition.id] = definition;
+      const card = createCardInstance({ definitionId: definition.id, ownerId: p1.id, zone: "battlefield" });
+      game.cards[card.id] = card;
+      p1.zones.battlefield.push(card.id);
+      return card;
+    };
+
+    const source = createCardInstance({
+      definitionId: tower.definition.id,
+      ownerId: p1.id,
+      zone: "battlefield",
+    });
+    game.cards[source.id] = source;
+    p1.zones.battlefield.push(source.id);
+    game.turn.phase = "precombatMain";
+    game.turn.step = "precombatMain";
+    game.turn.activePlayerId = p1.id;
+    game.priorityPlayerId = p1.id;
+
+    const tap = (state: GameState): number => {
+      const next = applyAction(state, {
+        kind: "tap_for_mana",
+        playerId: p1.id,
+        cardId: source.id,
+        manaIndex: 0,
+      });
+      return next.players.find((entry) => entry.id === p1.id)?.mana.C ?? 0;
+    };
+
+    // Alone, one colourless.
+    expect(tap(game)).toBe(1);
+
+    land("Urza's Mine", "Land — Urza's Mine");
+    // Half the condition is not the condition.
+    expect(tap(game)).toBe(1);
+
+    land("Urza's Power Plant", "Land — Urza's Power-Plant");
+    expect(tap(game)).toBe(3);
+  });
+
+  it("upgrades a colour choice by count rather than by pool", () => {
+    const caryatid = compile(
+      "Ilysian Caryatid",
+      "{1}{G}",
+      "Creature — Plant",
+      "{T}: Add one mana of any color. If you control a creature with power 4 or greater, add two mana of any one color instead.",
+      "1",
+      "1",
+    );
+    expect(caryatid.notes).toEqual([]);
+    expect(caryatid.definition.manaAbilities[0]?.upgrade).toEqual({
+      requires: [{ types: ["creature"], minPower: 4 }],
+      anyColor: 2,
+    });
+
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    game.definitions[caryatid.definition.id] = caryatid.definition;
+    const source = createCardInstance({
+      definitionId: caryatid.definition.id,
+      ownerId: p1.id,
+      zone: "battlefield",
+    });
+    source.summoningSick = false;
+    game.cards[source.id] = source;
+    p1.zones.battlefield.push(source.id);
+    const bigDef = createCardDefinition({
+      name: "Giant",
+      typeLine: "Creature — Giant",
+      power: 5,
+      toughness: 5,
+    });
+    game.definitions[bigDef.id] = bigDef;
+    const giant = createCardInstance({ definitionId: bigDef.id, ownerId: p1.id, zone: "battlefield" });
+    game.cards[giant.id] = giant;
+    p1.zones.battlefield.push(giant.id);
+    game.turn.phase = "precombatMain";
+    game.turn.step = "precombatMain";
+    game.turn.activePlayerId = p1.id;
+    game.priorityPlayerId = p1.id;
+
+    const next = applyAction(game, {
+      kind: "tap_for_mana",
+      playerId: p1.id,
+      cardId: source.id,
+      manaIndex: 0,
+      color: "G",
+    });
+    // The colour was chosen normally; the upgrade only changed how many.
+    expect(next.players.find((entry) => entry.id === p1.id)?.mana.G).toBe(2);
+  });
+});
+

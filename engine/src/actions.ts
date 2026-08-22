@@ -1,5 +1,5 @@
 import { declareAttackers, declareBlockers, lockRemainingBlockers, pendingBlockerPlayer, priorityForStep } from "./combat";
-import { abilitiesRemoved, cardMatchesSubtype } from "./characteristicsEngine";
+import { abilitiesRemoved, cardMatchesSubtype, controlsGate } from "./characteristicsEngine";
 import { characteristicsOf, isCommander, isCreature, isInstant, isInstantOrSorcery, isLand, isLegendary, isMainPhase } from "./cardTypes";
 import { cloneGameState } from "./clone";
 import { affinityArtifactDiscount, allBattlefieldCreatureCount, canPlayLandFromTop, canPlayLandsFromGraveyard, castCostReduction, castableFromTop, controlsCommander, creaturePower, freeEquipGranted, hasFlashGrant, activationNonManaPayment, altCastPayment, landDropAllowance, manaTapMultiplier, lockedByAbolisher, lockedFromCasting, opponentControlsMoreLands, findFreeHandGrantIndex, opponentsCastLockedToHand, selfDiscountAmount, staticFreeCastCap, usesOncePerTurnFreeCast } from "./derived";
@@ -905,6 +905,18 @@ function applyTapForMana(
     addition = { [color]: amount };
   } else {
     addition = ability.produces;
+  }
+  // The Urza lands, Ilysian Caryatid: "If you control …, add <more> instead."
+  // Checked before the multipliers, since it replaces what the tap makes.
+  if (ability.upgrade && ability.upgrade.requires.every((gate) => controlsGate(state, playerId, gate))) {
+    if (ability.upgrade.anyColor !== undefined) {
+      // The colour choice is already made above; the upgrade only changes how
+      // many of it there are.
+      const picked = (Object.keys(addition) as ManaColor[])[0];
+      addition = picked ? { [picked]: ability.upgrade.anyColor } : addition;
+    } else if (ability.upgrade.produces) {
+      addition = { ...ability.upgrade.produces };
+    }
   }
   // Mana Reflection / Nyxbloom Ancient: "If you tap a permanent for mana, it
   // produces twice as much of that mana instead." A replacement on the amount

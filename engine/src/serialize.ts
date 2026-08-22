@@ -3998,6 +3998,28 @@ function parseManaAbilities(value: unknown, label: string): ManaAbility[] {
       entry.costSacrifice === "permanent"
         ? { costSacrifice: entry.costSacrifice }
         : {}),
+      ...(isRecord(entry.upgrade)
+        ? {
+            upgrade: (() => {
+              const raw = entry.upgrade;
+              const label2 = `${label}[${index}].upgrade`;
+              if (!Array.isArray(raw.requires)) {
+                throw new Error(`Invalid ${label2}.requires`);
+              }
+              return {
+                requires: raw.requires.map((gate: unknown, gateIndex: number) =>
+                  parseControlledGate(gate, `${label2}.requires[${gateIndex}]`),
+                ),
+                ...(raw.produces === undefined
+                  ? {}
+                  : { produces: parseProduces(raw.produces, `${label2}.produces`) }),
+                ...(raw.anyColor === undefined
+                  ? {}
+                  : { anyColor: expectNumber(raw.anyColor, `${label2}.anyColor`) }),
+              };
+            })(),
+          }
+        : {}),
       ...(entry.costSacrificeSubtype === undefined
         ? {}
         : {

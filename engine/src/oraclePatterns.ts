@@ -803,6 +803,45 @@ function parseAlternativeCastCost(sentence: string): AlternativeCastCost | null 
   return Object.keys(cost).length > 0 ? cost : null;
 }
 
+/**
+ * One half of a mana-upgrade condition: "an Urza's Mine" (a permanent with
+ * both land types), "a creature with power 4 or greater". Null for anything
+ * else, which keeps the whole rider a clean miss.
+ */
+function parseManaUpgradeGate(phrase: string): ControlledGate | null {
+  const power = phrase.match(/^an? creature with power (\d+) or greater$/i);
+  if (power?.[1]) {
+    return { types: ["creature"], minPower: Number(power[1]) };
+  }
+  // "an Urza's Power-Plant" — the capitalised words are all land types, and
+  // one permanent must carry every one of them. Split on whitespace only, the
+  // way parseTypeLine splits a printed subtype list, so "Power-Plant" stays
+  // the single subtype it is on the card.
+  const named = phrase.match(/^an? ([A-Z][\w'-]*(?: [A-Z][\w'-]*)*)$/);
+  if (named?.[1]) {
+    return {
+      subtypes: named[1]
+        .split(/\s+/)
+        .map((word) => word.toLowerCase())
+        .filter(Boolean),
+    };
+  }
+  return null;
+}
+
+/** "{C}{C}{C}" → a mana pool. Null if any symbol is not a plain colour. */
+function parseManaSymbols(text: string): Partial<ManaPool> | null {
+  const pool: Partial<ManaPool> = {};
+  for (const symbol of text.matchAll(/\{([^}]+)\}/g)) {
+    const color = symbol[1]!.toUpperCase();
+    if (!["W", "U", "B", "R", "G", "C"].includes(color)) {
+      return null;
+    }
+    pool[color as ManaColor] = (pool[color as ManaColor] ?? 0) + 1;
+  }
+  return Object.keys(pool).length > 0 ? pool : null;
+}
+
 /** Plural head nouns a sweep can name, and the scope each maps to. */
 const SWEEP_HEAD_NOUNS: [RegExp, DestroyAllScope][] = [
   [/^nonland permanents$/i, "nonland"],
@@ -10622,6 +10661,31 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
           toughness: Number(controllerToken[2]),
         });
         continue;
+      }
+    }
+
+    // The Urza lands, Ilysian Caryatid: "If you control …, add <more>
+    // instead." A rider on the mana ability the previous sentence made, so it
+    // is read here rather than as a clause of its own.
+    const manaUpgrade = sentence.match(
+      /^If you control (.+?), add ((?:\{[^}]+\})+|two mana of any one color|three mana of any one color) instead$/i,
+    );
+    const lastMana = result.manaAbilities[result.manaAbilities.length - 1];
+    if (manaUpgrade?.[1] && manaUpgrade[2] && lastMana) {
+      const gates = manaUpgrade[1]
+        .split(/\s+and\s+/i)
+        .map((half) => parseManaUpgradeGate(half.trim()));
+      const anyColor = manaUpgrade[2].match(/^(two|three) mana of any one color$/i);
+      if (gates.every((gate): gate is ControlledGate => gate !== null)) {
+        const produces = anyColor ? null : parseManaSymbols(manaUpgrade[2]);
+        if (anyColor?.[1]) {
+          lastMana.upgrade = { requires: gates, anyColor: parseCount(anyColor[1].toLowerCase())! };
+          continue;
+        }
+        if (produces) {
+          lastMana.upgrade = { requires: gates, produces };
+          continue;
+        }
       }
     }
 

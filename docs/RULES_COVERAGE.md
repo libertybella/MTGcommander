@@ -200,6 +200,8 @@ What the engine implements and what it intentionally does not. Tests are tagged 
 - **Graveyard card to the library top** (Academy Ruins, Hall of Heliod's Generosity, Mortuary Mire, Volrath's Stronghold): the same graveyard noun-phrase grammar the recursion clause uses, aimed at a different destination. `own_graveyard_enchantment_card` joins the target kinds.
 - **A filtered card put from hand onto the battlefield** (Stoneforge Mystic, Terrain Generator, Monster Manual): a `choose_card` from the controller's own hand, so the "may" *is* the choice — declining is choosing nothing. The chooser's filter list gained Equipment and basic land, and the tapped rider survives to the move.
 
+- **Conditional mana upgrades** (the Urza lands, Ilysian Caryatid): "… If you control X, add \<more\> instead" is a rider on the mana ability the previous sentence made. Every named permanent must be there — the Urza lands need two different ones, so the condition is a list of gates rather than one. A named permanent's words are split the way a printed type line is split (whitespace only), so "Power-Plant" stays the single subtype it is on the card. The colour-choice form upgrades the count and leaves the choice alone.
+
 ## The card pipeline (Stage 6)
 
 - Real cards compile from Scryfall oracle text by shared sentence patterns; a hand-authored registry (`server/src/cardOverrides.ts`, data in the same schema) beats the compiler for the long tail. Never a named-card code path.

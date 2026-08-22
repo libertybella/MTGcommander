@@ -255,6 +255,17 @@ export function createCardDefinition(
           ...(ability.sacrificeSelf ? { sacrificeSelf: true } : {}),
           ...(ability.costMana ? { costMana: ability.costMana } : {}),
           ...(ability.costSacrifice ? { costSacrifice: ability.costSacrifice } : {}),
+          ...(ability.upgrade
+            ? {
+                upgrade: {
+                  requires: ability.upgrade.requires.map((gate) => copyControlledGate(gate)),
+                  ...(ability.upgrade.produces ? { produces: { ...ability.upgrade.produces } } : {}),
+                  ...(ability.upgrade.anyColor !== undefined
+                    ? { anyColor: ability.upgrade.anyColor }
+                    : {}),
+                },
+              }
+            : {}),
           ...(ability.costSacrificeSubtype
             ? { costSacrificeSubtype: ability.costSacrificeSubtype }
             : {}),
