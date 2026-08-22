@@ -7,7 +7,7 @@ import { eliminatePlayerInPlace } from "./elimination";
 import { applyEffects, bindCardEffects, devotionTo } from "./effects";
 import { hasKeyword } from "./keywords";
 import { controlsMatching, sacrificeScopeMatches } from "./legalActions";
-import { addMana, canPayManaCost, parseManaCost, payManaCost, tapCard, tapForMana } from "./mana";
+import { addMana, addRestrictedMana, canPayManaCost, parseManaCost, payManaCost, poolWith, tapCard, tapForMana, usableRestrictedMana, type ManaPurpose } from "./mana";
 import { colorsAmongControlled, manaAbilityAmount, manaAbilitiesFor, manaTapOptionsFor } from "./manaOptions";
 import { createId } from "./ids";
 import { isLiving, livingPlayerCount, requireLiving } from "./players";
@@ -340,11 +340,46 @@ function validateCast(
   if (flashbackLife > 0 && player.life <= flashbackLife) {
     throw new Error(`Pay ${flashbackLife} life to cast this`);
   }
-  if (!canPayManaCost(player.mana, cost, player.life)) {
+  // Cavern of Souls and friends: restricted mana counts toward this cast if
+  // the spell is one it is allowed to pay for.
+  const purpose = manaPurposeForSpell(state, cardId);
+  const available = poolWith(player.mana, usableRestrictedMana(state, playerId, purpose));
+  if (!canPayManaCost(available, cost, player.life)) {
     throw new Error("Cannot pay mana cost");
   }
 
   return { cost, fromCommand, flashbackLife };
+}
+
+/** What a cast is, for restricted-mana purposes. */
+export function manaPurposeForSpell(
+  state: GameState,
+  cardId: CardInstanceId,
+): ManaPurpose | undefined {
+  const definition = state.definitions[state.cards[cardId]?.definitionId ?? ""];
+  if (!definition) {
+    return undefined;
+  }
+  const traits = definition.characteristics;
+  return {
+    types: traits.types,
+    subtypes: traits.subtypes,
+    supertypes: traits.supertypes,
+    colorless: traits.colors.length === 0,
+    // A changeling is every creature type, so any chosen-type restriction
+    // admits it (CR 702.73a).
+    changeling: definition.changeling === true,
+    isAbility: false,
+  };
+}
+
+/** The same, for an activated ability's source permanent. */
+export function manaPurposeForAbility(
+  state: GameState,
+  cardId: CardInstanceId,
+): ManaPurpose | undefined {
+  const spell = manaPurposeForSpell(state, cardId);
+  return spell ? { ...spell, isAbility: true } : undefined;
 }
 
 function applyChosenFace(
@@ -538,7 +573,7 @@ function applyCastSpell(
       definition?.characteristics.colors,
     );
   }
-  let paid = payManaCost(faced, playerId, cost);
+  let paid = payManaCost(faced, playerId, cost, manaPurposeForSpell(faced, cardId));
   // Fling: capture the sacrificed creature's power before it dies.
   const sacrificedPower =
     additional?.sacrifice && costSacrificeId ? creaturePower(paid, costSacrificeId) : undefined;
@@ -841,10 +876,16 @@ function applyTapForMana(
   if (ability.costMana) {
     const activation = parseManaCost(ability.costMana);
     const payer = state.players.find((entry) => entry.id === playerId);
-    if (!payer || !canPayManaCost(payer.mana, activation, payer.life)) {
+    // A mana ability's own cost is an activation, so restricted mana that
+    // allows abilities of this permanent may pay for it.
+    const abilityPurpose = manaPurposeForAbility(state, cardId);
+    const abilityPool = payer
+      ? poolWith(payer.mana, usableRestrictedMana(state, playerId, abilityPurpose))
+      : null;
+    if (!payer || !abilityPool || !canPayManaCost(abilityPool, activation, payer.life)) {
       throw new Error("Cannot pay that mana ability's cost");
     }
-    base = payManaCost(state, playerId, activation);
+    base = payManaCost(state, playerId, activation, abilityPurpose);
   }
   // Phyrexian Altar-class: sacrificing a chosen permanent is the cost.
   if (ability.costSacrifice) {
@@ -885,9 +926,19 @@ function applyTapForMana(
     base = tapCard(base, costTapId);
     dispatchEventsInPlace(base, [{ kind: "tapped", cardId: costTapId }]);
   }
-  let next = ability.noTap
-    ? addMana(base, playerId, addition)
-    : tapForMana(base, cardId, addition);
+  // "Spend this mana only to …": the mana lands in the restricted pool
+  // instead, tagged with its producer so a chosen-type rule can read it.
+  let next = ability.spendOnly
+    ? addRestrictedMana(
+        ability.noTap ? base : tapCard(base, cardId),
+        playerId,
+        addition,
+        ability.spendOnly,
+        cardId,
+      )
+    : ability.noTap
+      ? addMana(base, playerId, addition)
+      : tapForMana(base, cardId, addition);
   next.priorityPlayerId = playerId;
   // City of Brass: "Whenever this land becomes tapped".
   if (!ability.noTap) {

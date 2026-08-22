@@ -262,6 +262,8 @@ export function createCardDefinition(
             ? { producesColorsAmong: ability.producesColorsAmong }
             : {}),
           ...(ability.requiresCount ? { requiresCount: { ...ability.requiresCount } } : {}),
+          ...(ability.spendOnly ? { spendOnly: { ...ability.spendOnly } } : {}),
+          ...(ability.spendOnly ? { spendOnly: { ...ability.spendOnly } } : {}),
           ...(ability.requiresControlled
             ? { requiresControlled: copyControlledGate(ability.requiresControlled) }
             : {}),

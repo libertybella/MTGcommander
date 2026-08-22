@@ -6,6 +6,8 @@ import type {
   ManaColor,
   ManaPool,
   PlayerId,
+  ManaRestriction,
+  RestrictedMana,
   PlayerState,
 } from "./types";
 
@@ -216,7 +218,32 @@ export function removeMana(
 export function emptyManaPoolsInPlace(state: GameState): void {
   for (const player of state.players) {
     player.mana = emptyManaPool();
+    // Restricted mana empties with everything else (CR 500.4).
+    if (player.restrictedMana) {
+      delete player.restrictedMana;
+    }
   }
+}
+
+/** Add mana under a "spend this mana only to …" restriction. */
+export function addRestrictedMana(
+  state: GameState,
+  playerId: PlayerId,
+  addition: Partial<ManaPool>,
+  restriction: ManaRestriction,
+  sourceId: CardInstanceId,
+): GameState {
+  assertNonNegativeIntegers(addition, "added mana");
+  const next = cloneGameState(state);
+  const player = requirePlayer(next, playerId);
+  player.restrictedMana = player.restrictedMana ?? [];
+  for (const color of MANA_COLORS) {
+    const amount = addition[color] ?? 0;
+    if (amount > 0) {
+      player.restrictedMana.push({ color, amount, restriction, sourceId });
+    }
+  }
+  return next;
 }
 
 export function emptyManaPools(state: GameState): GameState {
@@ -225,16 +252,135 @@ export function emptyManaPools(state: GameState): GameState {
   return next;
 }
 
+/**
+ * What a payment is for, so restricted mana knows whether it may be spent
+ * (CR 106.6). Omitted means "nothing restricted qualifies" — the safe
+ * default, used by taxes and other payments that are not a spell or ability.
+ */
+export type ManaPurpose = {
+  /** Card types of the spell being cast or the ability's source. */
+  types: string[];
+  subtypes: string[];
+  supertypes: string[];
+  colorless: boolean;
+  /** Changeling: counts as every creature type. */
+  changeling?: boolean;
+  /** True when this is an activated ability rather than a cast spell. */
+  isAbility: boolean;
+};
+
+/** May this tagged mana pay for this purpose? */
+export function restrictionAdmits(
+  entry: RestrictedMana,
+  purpose: ManaPurpose | undefined,
+  chosenSubtypeOf: (sourceId: CardInstanceId) => string | null,
+): boolean {
+  if (!purpose) {
+    return false;
+  }
+  const rule = entry.restriction;
+  if (purpose.isAbility && !rule.allowsAbilities) {
+    return false;
+  }
+  if ((rule.types ?? []).some((type) => !purpose.types.includes(type))) {
+    return false;
+  }
+  if (rule.legendary && !purpose.supertypes.includes("legendary")) {
+    return false;
+  }
+  if (rule.colorless && !purpose.colorless) {
+    return false;
+  }
+  const hasSubtype = (subtype: string): boolean =>
+    purpose.changeling === true || purpose.subtypes.includes(subtype);
+  if (rule.subtype && !hasSubtype(rule.subtype)) {
+    return false;
+  }
+  if (rule.chosenSubtype) {
+    const chosen = chosenSubtypeOf(entry.sourceId);
+    if (!chosen || !hasSubtype(chosen)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/** The subset of a player's restricted mana usable for this purpose. */
+export function usableRestrictedMana(
+  state: GameState,
+  playerId: PlayerId,
+  purpose: ManaPurpose | undefined,
+): ManaPool {
+  const player = state.players.find((entry) => entry.id === playerId);
+  const pool = { W: 0, U: 0, B: 0, R: 0, G: 0, C: 0 };
+  for (const entry of player?.restrictedMana ?? []) {
+    if (
+      restrictionAdmits(entry, purpose, (sourceId) =>
+        state.cards[sourceId]?.chosenCreatureType ?? null,
+      )
+    ) {
+      pool[entry.color] += entry.amount;
+    }
+  }
+  return pool;
+}
+
+/** The two pools merged, for a payability check. */
+export function poolWith(base: ManaPool, extra: ManaPool): ManaPool {
+  return {
+    W: base.W + extra.W,
+    U: base.U + extra.U,
+    B: base.B + extra.B,
+    R: base.R + extra.R,
+    G: base.G + extra.G,
+    C: base.C + extra.C,
+  };
+}
+
 export function payManaCost(
   state: GameState,
   playerId: PlayerId,
   cost: string | ParsedManaCost,
+  purpose?: ManaPurpose,
 ): GameState {
   const next = cloneGameState(state);
   const player = requirePlayer(next, playerId);
   const parsed = typeof cost === "string" ? parseManaCost(cost) : cost;
-  const paid = spendFromPool(player.mana, parsed, player.life);
-  player.mana = paid.pool;
+  // Restricted mana is spent first when it is legal to: it cannot be saved
+  // for anything else, so spending it never costs the player options.
+  const usable = usableRestrictedMana(next, playerId, purpose);
+  const combined = poolWith(player.mana, usable);
+  const paid = spendFromPool(combined, parsed, player.life);
+  // Split what remains back into the two pools, keeping as much unrestricted
+  // mana as possible.
+  for (const color of MANA_COLORS) {
+    const kept = paid.pool[color];
+    const fromRestricted = Math.max(0, kept - player.mana[color]);
+    player.mana[color] = kept - fromRestricted;
+    let toDrop = usable[color] - fromRestricted;
+    for (const entry of player.restrictedMana ?? []) {
+      if (toDrop <= 0) {
+        break;
+      }
+      if (entry.color !== color) {
+        continue;
+      }
+      if (
+        !restrictionAdmits(entry, purpose, (sourceId) =>
+          next.cards[sourceId]?.chosenCreatureType ?? null,
+        )
+      ) {
+        continue;
+      }
+      const taken = Math.min(entry.amount, toDrop);
+      entry.amount -= taken;
+      toDrop -= taken;
+    }
+  }
+  player.restrictedMana = (player.restrictedMana ?? []).filter((entry) => entry.amount > 0);
+  if (player.restrictedMana.length === 0) {
+    delete player.restrictedMana;
+  }
   if (paid.lifePaid > 0) {
     player.life -= paid.lifePaid;
     next.log.push({ kind: "life_change", playerId, delta: -paid.lifePaid });

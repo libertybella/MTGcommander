@@ -22,6 +22,7 @@ import { hasKeyword } from "./keywords";
 import { dispatchEventsInPlace } from "./triggers";
 import { applyCombatDamage, declareAttackers } from "./combat";
 import { commanderIdentityColors, manaAbilitiesFor, manaTapOptionsFor } from "./manaOptions";
+import { emptyManaPools } from "./mana";
 import { legalActions } from "./legalActions";
 import { applyResolveCreatureType, legalEnterCopyIds, searchMatches } from "./prompt";
 import { parseGameState, serializeGameState } from "./serialize";
@@ -19732,6 +19733,208 @@ describe("wave 165: comma-less legend short names", () => {
     );
     expect(sakashima.notes).toEqual([]);
     expect(sakashima.definition.enterAsCopy?.scope).toBe("another_your_creature");
+  });
+});
+
+
+describe("wave 166: spend this mana only", () => {
+  const compile = (name: string, manaCost: string, typeLine: string, oracleText: string, power?: string, toughness?: string) =>
+    compileOracleCard({
+      oracleId: name,
+      name,
+      manaCost,
+      typeLine,
+      power: power ?? null,
+      toughness: toughness ?? null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  const CAVERN =
+    "As this land enters, choose a creature type.\n{T}: Add {C}.\n{T}: Add one mana of any color. Spend this mana only to cast a creature spell of the chosen type, and that spell can't be countered.";
+
+  it("compiles the restriction onto the right mana ability", () => {
+    const cavern = compile("Cavern of Souls", "", "Land", CAVERN);
+    expect(cavern.notes).toEqual([]);
+    // The plain {C} ability is unrestricted; only the second is tagged.
+    expect(cavern.definition.manaAbilities[0]?.spendOnly).toBeUndefined();
+    expect(cavern.definition.manaAbilities[1]?.spendOnly).toEqual({
+      types: ["creature"],
+      chosenSubtype: true,
+    });
+
+    const halfling = compile(
+      "Delighted Halfling",
+      "{G}",
+      "Creature — Halfling Citizen",
+      "{T}: Add {C}.\n{T}: Add one mana of any color. Spend this mana only to cast a legendary spell, and that spell can't be countered.",
+      "1",
+      "1",
+    );
+    expect(halfling.notes).toEqual([]);
+    expect(halfling.definition.manaAbilities[1]?.spendOnly).toEqual({ legendary: true });
+
+    const temple = compile(
+      "Eldrazi Temple",
+      "",
+      "Land",
+      "{T}: Add {C}.\n{T}: Add {C}{C}. Spend this mana only to cast colorless Eldrazi spells or activate abilities of colorless Eldrazi.",
+    );
+    expect(temple.notes).toEqual([]);
+    expect(temple.definition.manaAbilities[1]?.spendOnly).toEqual({
+      colorless: true,
+      subtype: "eldrazi",
+      allowsAbilities: true,
+    });
+  });
+
+  /** A table with a Cavern naming Sliver, tapped for its restricted mana. */
+  const cavernTable = () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const cavernDef = compile("Cavern of Souls", "", "Land", CAVERN).definition;
+    game.definitions[cavernDef.id] = cavernDef;
+    const cavern = createCardInstance({ definitionId: cavernDef.id, ownerId: p1.id, zone: "battlefield" });
+    cavern.chosenCreatureType = "sliver";
+    game.cards[cavern.id] = cavern;
+    p1.zones.battlefield.push(cavern.id);
+    game.turn.phase = "precombatMain";
+    game.turn.step = "precombatMain";
+    game.turn.activePlayerId = p1.id;
+    game.priorityPlayerId = p1.id;
+    // Tap it for the restricted ability (index 1), choosing green.
+    const tapped = applyAction(game, {
+      kind: "tap_for_mana",
+      playerId: p1.id,
+      cardId: cavern.id,
+      manaIndex: 1,
+      color: "G",
+    });
+    return { game: tapped, p1, cavern };
+  };
+
+  const addCard = (
+    state: ReturnType<typeof twoPlayers>["game"],
+    playerId: string,
+    definition: ReturnType<typeof createCardDefinition>,
+  ) => {
+    state.definitions[definition.id] = definition;
+    const card = createCardInstance({ definitionId: definition.id, ownerId: playerId, zone: "hand" });
+    state.cards[card.id] = card;
+    state.players.find((entry) => entry.id === playerId)!.zones.hand.push(card.id);
+    return card;
+  };
+
+  it("keeps restricted mana out of the ordinary pool", () => {
+    const { game, p1 } = cavernTable();
+    const player = game.players.find((entry) => entry.id === p1.id)!;
+    // Nothing landed in the normal pool.
+    expect(player.mana).toEqual({ W: 0, U: 0, B: 0, R: 0, G: 0, C: 0 });
+    expect(player.restrictedMana).toHaveLength(1);
+    expect(player.restrictedMana?.[0]).toMatchObject({ color: "G", amount: 1 });
+  });
+
+  it("pays for a matching creature spell and refuses everything else", () => {
+    // A Sliver is the chosen type, so the mana pays for it.
+    const matching = cavernTable();
+    const sliver = addCard(
+      matching.game,
+      matching.p1.id,
+      createCardDefinition({
+        name: "Sliver",
+        typeLine: "Creature — Sliver",
+        manaCost: "{G}",
+        power: 1,
+        toughness: 1,
+      }),
+    );
+    const cast = applyAction(matching.game, {
+      kind: "cast_spell",
+      playerId: matching.p1.id,
+      cardId: sliver.id,
+      targets: [],
+    });
+    expect(cast.stack).toHaveLength(1);
+    expect(cast.players.find((entry) => entry.id === matching.p1.id)?.restrictedMana ?? []).toHaveLength(0);
+
+    // A Goblin is a creature but the wrong type.
+    const wrongType = cavernTable();
+    const goblin = addCard(
+      wrongType.game,
+      wrongType.p1.id,
+      createCardDefinition({
+        name: "Goblin",
+        typeLine: "Creature — Goblin",
+        manaCost: "{G}",
+        power: 1,
+        toughness: 1,
+      }),
+    );
+    expect(() =>
+      applyAction(wrongType.game, {
+        kind: "cast_spell",
+        playerId: wrongType.p1.id,
+        cardId: goblin.id,
+        targets: [],
+      }),
+    ).toThrow(/Cannot pay mana cost/);
+
+    // A Sliver-typed SORCERY is the right type but the wrong card type.
+    const wrongCardType = cavernTable();
+    const sorcery = addCard(
+      wrongCardType.game,
+      wrongCardType.p1.id,
+      createCardDefinition({ name: "Ritual", typeLine: "Sorcery", manaCost: "{G}" }),
+    );
+    expect(() =>
+      applyAction(wrongCardType.game, {
+        kind: "cast_spell",
+        playerId: wrongCardType.p1.id,
+        cardId: sorcery.id,
+        targets: [],
+      }),
+    ).toThrow(/Cannot pay mana cost/);
+  });
+
+  it("admits a changeling as any chosen type", () => {
+    const { game, p1 } = cavernTable();
+    const shifter = addCard(
+      game,
+      p1.id,
+      createCardDefinition({
+        name: "Shapeshifter",
+        typeLine: "Creature — Shapeshifter",
+        manaCost: "{G}",
+        power: 1,
+        toughness: 1,
+        changeling: true,
+      }),
+    );
+    const cast = applyAction(game, {
+      kind: "cast_spell",
+      playerId: p1.id,
+      cardId: shifter.id,
+      targets: [],
+    });
+    expect(cast.stack).toHaveLength(1);
+  });
+
+  it("empties restricted mana with the rest of the pool", () => {
+    const { game, p1 } = cavernTable();
+    expect(game.players.find((entry) => entry.id === p1.id)?.restrictedMana).toHaveLength(1);
+    const emptied = emptyManaPools(game);
+    expect(emptied.players.find((entry) => entry.id === p1.id)?.restrictedMana ?? []).toHaveLength(0);
+  });
+
+  it("round-trips restricted mana through the serializer", () => {
+    const { game, p1 } = cavernTable();
+    const round = parseGameState(JSON.parse(JSON.stringify(serializeGameState(game))));
+    expect(round.players.find((entry) => entry.id === p1.id)?.restrictedMana?.[0]).toMatchObject({
+      color: "G",
+      amount: 1,
+      restriction: { types: ["creature"], chosenSubtype: true },
+    });
   });
 });
 

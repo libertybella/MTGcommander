@@ -406,6 +406,9 @@ export type PlayerState = {
   extraLandDropsThisTurn?: number;
   /** True after this player declared at least one attacker this turn. */
   attackedThisTurn: boolean;
+  /** "Spend this mana only to …": mana that can only pay for matching
+   * spells and abilities. Emptied alongside the main pool. */
+  restrictedMana?: RestrictedMana[];
   /** How many creatures this player declared as attackers this turn, summed
    * across combat phases (Minas Tirith's "attacked with two or more"). */
   attackersThisTurn?: number;
@@ -1015,6 +1018,38 @@ export type DynamicCount =
   | "cards_in_your_graveyard";
 
 /** "As an additional cost to cast this spell, …" — paid at cast time. */
+/**
+ * "Spend this mana only to …" (CR 106.6). Mana produced under a restriction
+ * sits in its own pool and can only pay for things this filter admits.
+ *
+ * `chosenSubtype` reads the producing permanent's as-enters creature-type
+ * choice (Cavern of Souls), which is why the restriction records the source
+ * that made the mana rather than a fixed subtype.
+ */
+export type ManaRestriction = {
+  /** The spell or ability's source must have all of these card types. */
+  types?: string[];
+  /** …and this creature subtype, taken from the producer's chosen type. */
+  chosenSubtype?: boolean;
+  /** …and this literal subtype (Eldrazi Temple). */
+  subtype?: string;
+  /** …and be legendary (Delighted Halfling). */
+  legendary?: boolean;
+  /** …and have no colours (Eldrazi Temple). */
+  colorless?: boolean;
+  /** May it also pay for activated abilities of matching permanents? */
+  allowsAbilities?: boolean;
+};
+
+/** Restricted mana in a player's pool, tagged with what it may pay for. */
+export type RestrictedMana = {
+  color: ManaColor;
+  amount: number;
+  restriction: ManaRestriction;
+  /** The permanent that produced it, for `chosenSubtype` lookups. */
+  sourceId: CardInstanceId;
+};
+
 export type AdditionalCastCost = {
   /** Sacrifice one permanent of this scope. */
   sacrifice?: "creature" | "artifact" | "creature_or_artifact" | "land";
@@ -2199,6 +2234,8 @@ export type ManaAbility = {
   requiresControlled?: ControlledGate;
   /** Mox Opal: "Activate only if you control three or more artifacts." */
   requiresCount?: { what: "artifact" | "creature" | "land"; atLeast: number };
+  /** "Spend this mana only to …" — the mana this ability makes is tagged. */
+  spendOnly?: ManaRestriction;
 };
 
 /**

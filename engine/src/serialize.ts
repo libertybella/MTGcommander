@@ -28,6 +28,7 @@ import type {
   Keyword,
   ManaAbility,
   ManaColor,
+  ManaRestriction,
   ManaPool,
   MulliganState,
   OpeningRollState,
@@ -110,6 +111,24 @@ function parseAdditionalCost(value: unknown, label: string): AdditionalCastCost 
               })()
           ).map((entry, index) => parseAdditionalCost(entry, `${label}.alternatives[${index}]`)),
         }),
+  };
+}
+
+/** A "spend this mana only to …" filter. */
+function parseManaRestriction(value: unknown, label: string): ManaRestriction {
+  if (!isRecord(value)) {
+    throw new Error(`Invalid ${label}`);
+  }
+  const types = parseStringList(value.types, `${label}.types`);
+  return {
+    ...(types.length > 0 ? { types } : {}),
+    ...(value.chosenSubtype === true ? { chosenSubtype: true } : {}),
+    ...(value.subtype === undefined
+      ? {}
+      : { subtype: expectString(value.subtype, `${label}.subtype`) }),
+    ...(value.legendary === true ? { legendary: true } : {}),
+    ...(value.colorless === true ? { colorless: true } : {}),
+    ...(value.allowsAbilities === true ? { allowsAbilities: true } : {}),
   };
 }
 
@@ -244,6 +263,29 @@ function parsePlayer(value: unknown): PlayerState {
         ? 0
         : expectNumber(value.landsPlayedThisTurn, "player.landsPlayedThisTurn"),
     attackedThisTurn: value.attackedThisTurn === true,
+    ...(value.restrictedMana === undefined
+      ? {}
+      : {
+          restrictedMana: (Array.isArray(value.restrictedMana)
+            ? value.restrictedMana
+            : (() => {
+                throw new Error("Invalid player.restrictedMana");
+              })()
+          ).map((entry, index) => {
+            if (!isRecord(entry)) {
+              throw new Error(`Invalid player.restrictedMana[${index}]`);
+            }
+            return {
+              color: parseManaColor(entry.color, `player.restrictedMana[${index}].color`),
+              amount: expectNumber(entry.amount, `player.restrictedMana[${index}].amount`),
+              sourceId: expectString(entry.sourceId, `player.restrictedMana[${index}].sourceId`),
+              restriction: parseManaRestriction(
+                entry.restriction,
+                `player.restrictedMana[${index}].restriction`,
+              ),
+            };
+          }),
+        }),
     ...(value.attackersThisTurn === undefined
       ? {}
       : {
@@ -3786,6 +3828,14 @@ function parseManaAbilities(value: unknown, label: string): ManaAbility[] {
               `${label}[${index}].requiresControlled`,
             ),
           }),
+      ...(isRecord(entry.spendOnly)
+        ? {
+            spendOnly: parseManaRestriction(
+              entry.spendOnly,
+              `${label}[${index}].spendOnly`,
+            ),
+          }
+        : {}),
     };
   });
 }

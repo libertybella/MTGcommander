@@ -12,6 +12,7 @@ import type {
   Color,
   ContinuousEffectData,
   ControlledGate,
+  ManaRestriction,
   CostReduction,
   EffectSelector,
   DestroyAllScope,
@@ -204,6 +205,43 @@ function parseSingleAdditionalCost(what: string): AdditionalCastCost | null {
   // "pay {2}" as a branch has no home here — AdditionalCastCost charges
   // permanents, cards, and life, not mana — so Redirect Lightning's
   // "pay 5 life or pay {2}" stays a clean miss rather than half a cost.
+  return null;
+}
+
+/**
+ * The tail of "Spend this mana only to …", lower-cased. Returns null for any
+ * phrasing this engine cannot enforce, so an unenforceable restriction leaves
+ * the card uncompiled rather than producing mana that quietly spends on
+ * anything.
+ */
+function parseSpendRestriction(tail: string): ManaRestriction | null {
+  if (tail === "cast a creature spell of the chosen type") {
+    return { types: ["creature"], chosenSubtype: true };
+  }
+  if (
+    tail ===
+    "cast a creature spell of the chosen type or activate an ability of a creature source of the chosen type"
+  ) {
+    return { types: ["creature"], chosenSubtype: true, allowsAbilities: true };
+  }
+  if (tail === "cast a legendary spell") {
+    return { legendary: true };
+  }
+  if (tail === "cast creature spells or activate abilities of creatures") {
+    return { types: ["creature"], allowsAbilities: true };
+  }
+  if (tail === "cast creature spells") {
+    return { types: ["creature"] };
+  }
+  const eldrazi = tail.match(
+    /^cast colorless ([a-z]+) spells or activate abilities of colorless \1$/,
+  );
+  if (eldrazi?.[1]) {
+    return { colorless: true, subtype: eldrazi[1], allowsAbilities: true };
+  }
+  if (tail === "cast colorless spells") {
+    return { colorless: true };
+  }
   return null;
 }
 
@@ -9630,6 +9668,22 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
       const lastActivated = result.activated[result.activated.length - 1];
       if (lastActivated && !lastActivated.requiresCreatedToken) {
         lastActivated.requiresCreatedToken = true;
+        continue;
+      }
+    }
+
+    // "Spend this mana only to …" (CR 106.6): a restriction riding the mana
+    // ability just parsed. The trailing "and that spell can't be countered"
+    // is dropped — an uncounterable rider on restricted mana would need the
+    // spend to be tracked onto the spell, which it is not (documented).
+    const spendOnly = sentence.match(
+      /^Spend this mana only to (.+?)(?:, and that spell can't be countered)?$/i,
+    );
+    if (spendOnly?.[1]) {
+      const restriction = parseSpendRestriction(spendOnly[1].trim().toLowerCase());
+      const lastMana = result.manaAbilities[result.manaAbilities.length - 1];
+      if (restriction && lastMana && !lastMana.spendOnly) {
+        lastMana.spendOnly = restriction;
         continue;
       }
     }
