@@ -13868,8 +13868,14 @@ describe("wave 128: the spell pays itself", () => {
         "This spell costs {X} less to cast, where X is the total mana value of noncreature artifacts you control.\nSacrifice two artifacts: Return this card from your graveyard to your hand.",
     });
     expect(colossus.definition.selfDiscount).toEqual({ per: "noncreature_artifacts_total_mv" });
-    // The graveyard activation stays a note for now.
-    expect(colossus.notes).toHaveLength(1);
+    // The graveyard activation was a documented note until wave 205 taught
+    // the self-return clause to name the hand as well as the battlefield.
+    expect(colossus.notes).toEqual([]);
+    expect(colossus.definition.activated[0]).toMatchObject({
+      zone: "graveyard",
+      sacrificeCost: "artifact",
+      sacrificeCount: 2,
+    });
   });
 
   it("shrinks the cast by the live count and doubles power at bind", () => {
@@ -22545,8 +22551,13 @@ describe("wave 185: the target noun phrase, read once", () => {
       "Land",
       "{3}, {T}, Exile ~: Target legendary creature gains hexproof and indestructible until end of turn.",
     );
-    // The cost half is a separate miss; the grant half now reads its subject.
-    expect(plaza.definition.activated[0]?.targetRequirements ?? []).toEqual([]);
+    // The cost half was a separate miss until wave 205 read "Exile ~" as a
+    // cost; the whole ability compiles now, subject and all.
+    expect(plaza.notes).toEqual([]);
+    expect(plaza.definition.activated[0]?.targetRequirements).toEqual([
+      { kind: "creature", legendaryOnly: true },
+    ]);
+    expect(plaza.definition.activated[0]?.exileSelf).toBe(true);
     const bear = compile(
       "Testcard",
       "{1}{G}",
@@ -25905,6 +25916,105 @@ describe("wave 204: grants that reach the whole table", () => {
     expect(zealot.definition.activated[0]).toMatchObject({
       sacrificeCost: "another_creature_or_artifact",
     });
+  });
+});
+
+
+describe("wave 205: the last stretch to sixty-five", () => {
+  const compile = (name: string, manaCost: string, typeLine: string, oracleText: string, power?: string, toughness?: string) =>
+    compileOracleCard({
+      oracleId: name,
+      name,
+      manaCost,
+      typeLine,
+      power: power ?? null,
+      toughness: toughness ?? null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  it("returns itself from the graveyard to hand as well as to play", () => {
+    const colossus = compile(
+      "Metalwork Colossus",
+      "{11}",
+      "Artifact Creature — Construct",
+      "This spell costs {X} less to cast, where X is the total mana value of noncreature artifacts you control.\nSacrifice two artifacts: Return this card from your graveyard to your hand.",
+      "10",
+      "10",
+    );
+    expect(colossus.notes).toEqual([]);
+    expect(colossus.definition.activated[0]).toMatchObject({
+      zone: "graveyard",
+      sacrificeCost: "artifact",
+      sacrificeCount: 2,
+    });
+    expect(colossus.definition.activated[0]?.effects).toEqual([
+      { kind: "move_card", cardId: "self", toZone: "hand" },
+    ]);
+  });
+
+  it("singularises a counted sacrifice scope", () => {
+    // "Sacrifice two artifacts" carried the scope name "artifacts", which no
+    // fodder matcher would ever match — only "creatures" had been folded.
+    const zealot = compile(
+      "Testcard",
+      "{2}",
+      "Artifact",
+      "Sacrifice two artifacts: Draw a card.",
+    );
+    expect(zealot.definition.activated[0]?.sacrificeCost).toBe("artifact");
+    expect(zealot.definition.activated[0]?.sacrificeCount).toBe(2);
+  });
+
+  it("pays a cost by exiling the source", () => {
+    const weaver = compile(
+      "Nyx Weaver",
+      "{1}{B}{G}",
+      "Creature — Spider Spirit",
+      "Reach\nAt the beginning of your upkeep, mill a card.\n{1}{B}{G}, Exile this creature: Return target card from your graveyard to your hand.",
+      "2",
+      "3",
+    );
+    expect(weaver.notes).toEqual([]);
+    expect(weaver.definition.activated[0]).toMatchObject({
+      exileSelf: true,
+      manaCost: "{1}{B}{G}",
+    });
+  });
+
+  it("reads modular as the two halves it already had", () => {
+    const depot = compile(
+      "Power Depot",
+      "",
+      "Artifact Land",
+      "This land enters tapped.\n{T}: Add {C}.\nModular 1",
+    );
+    expect(depot.notes).toEqual([]);
+    // Enters with the counters, and hands them on when it dies.
+    expect(depot.definition.entersWithCounters).toEqual({ counter: "p1p1", count: 1 });
+    expect(depot.definition.triggers[0]).toMatchObject({ event: "dies" });
+    expect(depot.definition.triggers[0]?.effects).toEqual([
+      { kind: "move_all_counters", cardId: "self", target: { type: "chosen", index: 0 } },
+    ]);
+  });
+
+  it("doubles a creature's power whichever way the text says it", () => {
+    const fury = compile(
+      "Unleash Fury",
+      "{1}{R}",
+      "Instant",
+      "Double the power of target creature until end of turn.",
+    );
+    expect(fury.notes).toEqual([]);
+    expect(fury.definition.effects).toEqual([
+      {
+        kind: "pt_until_eot",
+        cardId: { type: "chosen", index: 0 },
+        power: "target_power",
+        toughness: 0,
+      },
+    ]);
   });
 });
 

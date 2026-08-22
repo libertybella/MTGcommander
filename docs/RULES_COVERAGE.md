@@ -599,6 +599,19 @@ What the engine implements and what it intentionally does not. Tests are tagged 
   cost splitter learned the two-type "sacrifice another creature or artifact"
   — the scope it maps onto already existed, and only the reading was missing.
 
+- **The last stretch to sixty-five**: the self-return clause names the hand as
+  well as the battlefield (Metalwork Colossus), exiling the source is a cost
+  the way sacrificing it already was (Nyx Weaver), and modular is the two
+  halves that already existed — enter with N counters, hand them on when it
+  dies. "Double the power of target creature" is the same effect as "double
+  target creature's power" with the noun phrase moved.
+
+  One real bug surfaced from a stale assertion rather than a card: a counted
+  sacrifice carried the PLURAL scope name ("artifacts"), which no fodder
+  matcher would ever match. Only "creatures" had been folded to its singular,
+  so "Sacrifice two artifacts" typechecked through an `as` cast and would have
+  found no fodder at the table. Every card-type plural folds now.
+
 ## The card pipeline (Stage 6)
 
 - Real cards compile from Scryfall oracle text by shared sentence patterns; a hand-authored registry (`server/src/cardOverrides.ts`, data in the same schema) beats the compiler for the long tail. Never a named-card code path.

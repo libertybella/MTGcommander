@@ -504,7 +504,7 @@ const SACRIFICE_COST = /Sacrifice (?:~|this land|this creature|this artifact|thi
  * "Sacrifice two other creatures". Group 1 is the count word when present.
  */
 const SACRIFICE_TYPE_COST =
-  /Sacrifice (?:an? |another |(two|three) (?:other )?)(black creature|creature or artifact|artifact or creature|creature|artifact|land|Treasure|token|artifacts and\/or creatures|creatures|artifacts|lands)\b/i;
+  /Sacrifice (?:an? |another |(two|three|four|five|six|seven|\d+) (?:other )?)(black creature|creature or artifact|artifact or creature|creature|artifact|land|Treasure|token|artifacts and\/or creatures|creatures|artifacts|lands)\b/i;
 /**
  * "Sacrifice a Goblin" / "Sacrifice a Desert" / "Sacrifice a Food" — the
  * fodder is named by a subtype and no card type appears, so the scope is
@@ -533,7 +533,7 @@ const MILL_COST = /Mill (a|one|two|three|\d+) cards?/i;
 const EXILE_GRAVEYARD_COST =
   /Exile (a|one|two|three|four|five|\d+) (?:(creature|artifact|land|instant|sorcery) )?cards? from your graveyard/i;
 const COST_UNIT =
-  "(?:\\{[^}]+\\})+|Sacrifice (?:~|this land|this creature|this artifact|this permanent)|Sacrifice (?:an? |another )(?:black )?(?:creature or artifact|artifact or creature|creature|artifact|land|Treasure|token)|Sacrifice (?:an? |(?:one|two|three|four|five|\d+) )[A-Z][a-z]+s?|Sacrifice (?:two|three) (?:other )?(?:creatures|artifacts|lands|artifacts and\\/or creatures)|Pay \\d+ life|Tap an untapped (?:legendary )?creature you control|Remove (?:a|an|one|two|three|four|five|six|seven|eight|nine|ten|\\d+) (?:[-+]\\d\\/[-+]\\d|[a-z]+) counters? from ~|Put (?:a|an|one|two|three|\\d+) (?:[-+]\\d\\/[-+]\\d|[a-z]+) counters? on ~|Discard an? (?:creature|artifact|enchantment|land|instant|sorcery)? ?card|Mill (?:a|one|two|three|\\d+) cards?|Exile (?:a|one|two|three|four|five|\\d+) (?:(?:creature|artifact|land|instant|sorcery) )?cards? from your graveyard";
+  "(?:\\{[^}]+\\})+|Sacrifice (?:~|this land|this creature|this artifact|this permanent)|Sacrifice (?:an? |another )(?:black )?(?:creature or artifact|artifact or creature|creature|artifact|land|Treasure|token)|Sacrifice (?:an? |(?:one|two|three|four|five|\d+) )[A-Z][a-z]+s?|Sacrifice (?:two|three|four|five|six|seven|\\d+) (?:other )?(?:creatures|artifacts|lands|artifacts and\\/or creatures)|Exile ~|Pay \\d+ life|Tap an untapped (?:legendary )?creature you control|Remove (?:a|an|one|two|three|four|five|six|seven|eight|nine|ten|\\d+) (?:[-+]\\d\\/[-+]\\d|[a-z]+) counters? from ~|Put (?:a|an|one|two|three|\\d+) (?:[-+]\\d\\/[-+]\\d|[a-z]+) counters? on ~|Discard an? (?:creature|artifact|enchantment|land|instant|sorcery)? ?card|Mill (?:a|one|two|three|\\d+) cards?|Exile (?:a|one|two|three|four|five|\\d+) (?:(?:creature|artifact|land|instant|sorcery) )?cards? from your graveyard";
 
 function splitAbility(sentence: string): { costText: string; rest: string } | null {
   // "Metalcraft — {T}: …" — the ability word is flavor (Mox Opal).
@@ -579,12 +579,16 @@ function parseAbilityCost(
   tapCreature?: boolean;
   /** Relic of Legends: the tapped creature must be legendary. */
   tapCreatureLegendary?: boolean;
+  /** Nyx Weaver: exiling the source pays for it. */
+  exileSelf?: boolean;
   removeCounterCost?: { counter: string; count: number };
   addCounterCost?: { counter: string; count: number };
   discardCost?: { count: number; types?: string[] };
   millCost?: number;
   exileFromGraveyardCost?: { count: number; types?: string[] };
 } | null {
+  // Nyx Weaver: exiling the source pays for it, the way sacrificing it does.
+  const exileSelfCost = /(?:^|,\s*)Exile ~(?:,|$)/i.test(costText);
   const tapCreatureMatch = costText.match(TAP_CREATURE_COST);
   const tapCreature = tapCreatureMatch !== null;
   const tapCreatureLegendary = Boolean(tapCreatureMatch?.[1]);
@@ -602,7 +606,10 @@ function parseAbilityCost(
     ?.toLowerCase()
     .replace(/^artifacts and\/or creatures$/, "creature_or_artifact")
     .replace(/^(?:creature or artifact|artifact or creature)$/, "creature_or_artifact")
-    .replace(/^creatures$/, "creature");
+    // The counted forms are printed plural; the scopes are singular. Only
+    // "creatures" was folded before, so "Sacrifice two artifacts" carried a
+    // scope name no fodder matcher would ever match.
+    .replace(/^(creature|artifact|land)s$/, "$1");
   // Only consulted when no card-type scope was found, so "a Treasure" and
   // "another black creature" keep the scopes they already had.
   const subtypeMatch =
@@ -732,6 +739,7 @@ function parseAbilityCost(
       : {}),
     ...(tapCreature ? { tapCreature: true } : {}),
     ...(tapCreatureLegendary ? { tapCreatureLegendary: true } : {}),
+    ...(exileSelfCost ? { exileSelf: true } : {}),
     ...(removeCounterCost ? { removeCounterCost } : {}),
     ...(addCounterCost ? { addCounterCost } : {}),
     ...(discardCost ? { discardCost } : {}),
@@ -2787,17 +2795,18 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
 
   // Reassembling Skeleton's self-reanimation body.
   const boneReturn = sentence.match(
-    /^Return (?:~|this card) from your graveyard to the battlefield( tapped)?$/i,
+    /^Return (?:~|this card) from your graveyard to (the battlefield|your hand)( tapped)?$/i,
   );
-  if (boneReturn) {
+  if (boneReturn?.[1]) {
+    const toHand = /^your hand$/i.test(boneReturn[1]);
     return {
       targetRequirements: [],
       effects: [
         {
           kind: "move_card",
           cardId: "self",
-          toZone: "battlefield",
-          ...(boneReturn[1] ? { entersTapped: true } : {}),
+          toZone: toHand ? "hand" : "battlefield",
+          ...(boneReturn[2] ? { entersTapped: true } : {}),
         },
       ],
     };
@@ -3576,7 +3585,11 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
   }
 
   // The Skullspore Nexus's activation.
-  if (/^Double target creature's power until end of turn$/i.test(sentence)) {
+  if (
+    /^Double target creature's power until end of turn$/i.test(sentence) ||
+    // Unleash Fury prints the same effect with the noun phrase moved.
+    /^Double the power of target creature until end of turn$/i.test(sentence)
+  ) {
     return {
       targetRequirements: [{ kind: "creature" }],
       effects: [
@@ -10323,10 +10336,31 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
     if (
       /^At the beginning of each player's draw step, that player draws an additional card$/i.test(
         sentence,
-      )
+      ) ||
+      // Rites of Flourishing prints the same rule as one sentence.
+      /^Each player draws an additional card during their draw step$/i.test(sentence)
     ) {
       result.extraDrawStepDraws = true;
       continue;
+    }
+
+    // Modular N (CR 702.43): enters with N +1/+1 counters, and on death moves
+    // them to an artifact creature. Both halves already existed separately —
+    // the enter-counters field and the counter-move effect.
+    const modular = sentence.match(/^Modular (\d+)$/i);
+    if (modular?.[1]) {
+      const count = Number(modular[1]);
+      if (count > 0) {
+        result.entersWithCounters = { counter: "p1p1", count };
+        result.triggers.push({
+          event: "dies",
+          effects: [
+            { kind: "move_all_counters", cardId: "self", target: { type: "chosen", index: 0 } },
+          ],
+          targetRequirements: [{ kind: "creature_or_artifact" }],
+        });
+        continue;
+      }
     }
 
     if (/^Affinity for artifacts$/i.test(sentence)) {
@@ -11568,8 +11602,11 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
         ...(cost.millCost !== undefined ? { millCost: cost.millCost } : {}),
         ...(cost.exileFromGraveyardCost ? { exileFromGraveyardCost: cost.exileFromGraveyardCost } : {}),
         ...(cost.lifeCost ? { lifeCost: cost.lifeCost } : {}),
+        ...(cost.exileSelf ? { exileSelf: true } : {}),
         // Reassembling Skeleton: a self-return body activates from the yard.
-        ...(/^Return (?:~|this card) from your graveyard to the battlefield/i.test(ability.rest)
+        ...(/^Return (?:~|this card) from your graveyard to (?:the battlefield|your hand)/i.test(
+          ability.rest,
+        )
           ? { zone: "graveyard" as const }
           : {}),
       };
