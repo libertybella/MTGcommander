@@ -931,6 +931,12 @@ export function parseGameState(json: string): GameState {
         ? { untapDuringEachUntap: def.untapDuringEachUntap }
         : {}),
       ...(def.opponentCreaturesEnterTapped === true ? { opponentCreaturesEnterTapped: true } : {}),
+      ...(def.opponentNonbasicLandsEnterTapped === true
+        ? { opponentNonbasicLandsEnterTapped: true }
+        : {}),
+      ...(def.extraLandDropsForAll === undefined
+        ? {}
+        : { extraLandDropsForAll: expectNumber(def.extraLandDropsForAll, "extraLandDropsForAll") }),
       ...(def.opponentArtifactsEnterTapped === true ? { opponentArtifactsEnterTapped: true } : {}),
       ...(def.dynamicPt === undefined
         ? {}

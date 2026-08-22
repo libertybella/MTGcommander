@@ -201,6 +201,12 @@ function compileOneFace(card: OracleCard, definitionId: string): OracleCompileRe
     ...(compiled.manaTapMultiplier ? { manaTapMultiplier: compiled.manaTapMultiplier } : {}),
     ...(compiled.altCost ? { altCost: compiled.altCost } : {}),
     ...(compiled.extraLandDrops ? { extraLandDrops: compiled.extraLandDrops } : {}),
+    ...(compiled.extraLandDropsForAll
+      ? { extraLandDropsForAll: compiled.extraLandDropsForAll }
+      : {}),
+    ...(compiled.opponentNonbasicLandsEnterTapped
+      ? { opponentNonbasicLandsEnterTapped: true }
+      : {}),
     ...(compiled.cantBeCountered ? { cantBeCountered: true } : {}),
     ...(compiled.creatureSpellsCantBeCountered ? { creatureSpellsCantBeCountered: true } : {}),
     ...(compiled.opponentsLockedDuringYourTurn ? { opponentsLockedDuringYourTurn: true } : {}),

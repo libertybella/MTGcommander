@@ -844,6 +844,14 @@ export function landDropAllowance(state: GameState, playerId: string): number {
     }
     extra += state.definitions[card.definitionId]?.extraLandDrops ?? 0;
   }
+  // Rites of Flourishing: a grant that reaches every player, so it is counted
+  // from the whole battlefield rather than only this player's side of it.
+  for (const card of Object.values(state.cards)) {
+    if (card.zone !== "battlefield" || abilitiesRemoved(state, card.id)) {
+      continue;
+    }
+    extra += state.definitions[card.definitionId]?.extraLandDropsForAll ?? 0;
+  }
   // Explore: one-shot grants for this turn only.
   const player = state.players.find((entry) => entry.id === playerId);
   return 1 + extra + (player?.extraLandDropsThisTurn ?? 0);
@@ -920,7 +928,11 @@ export function wouldEnterTapped(state: GameState, cardId: CardInstanceId): bool
       const flags = state.definitions[other.definitionId];
       return (
         (flags?.opponentCreaturesEnterTapped === true && arrivingTypes.includes("creature")) ||
-        (flags?.opponentArtifactsEnterTapped === true && arrivingTypes.includes("artifact"))
+        (flags?.opponentArtifactsEnterTapped === true && arrivingTypes.includes("artifact")) ||
+        // Thalia: nonbasic lands only — a basic still enters untapped.
+        (flags?.opponentNonbasicLandsEnterTapped === true &&
+          arrivingTypes.includes("land") &&
+          !characteristicsOf(state, cardId).supertypes.includes("basic"))
       );
     })
   ) {

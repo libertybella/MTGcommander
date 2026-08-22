@@ -588,6 +588,17 @@ What the engine implements and what it intentionally does not. Tests are tagged 
   counter-added trigger head reads the active voice ("whenever you put one or
   more +1/+1 counters on ~") beside the passive one it already knew.
 
+- **Grants that reach the whole table**: an extra land drop given to EVERY
+  player (Rites of Flourishing) is counted from the whole battlefield rather
+  than one player's side of it — the difference from Exploration is the only
+  thing that makes it a separate field. Thalia's static taps an opponent's
+  nonbasic lands beside their creatures, and spares a basic, which is the
+  whole word.
+
+  Alongside: "you may mill three cards" takes the auto-taken may, and the
+  cost splitter learned the two-type "sacrifice another creature or artifact"
+  — the scope it maps onto already existed, and only the reading was missing.
+
 ## The card pipeline (Stage 6)
 
 - Real cards compile from Scryfall oracle text by shared sentence patterns; a hand-authored registry (`server/src/cardOverrides.ts`, data in the same schema) beats the compiler for the long tail. Never a named-card code path.

@@ -63,6 +63,7 @@ export type CompiledOracleText = {
   manaTapMultiplier?: number;
   altCost?: AlternativeCastCost;
   extraLandDrops?: number;
+  extraLandDropsForAll?: number;
   cantBeCountered?: boolean;
   creatureSpellsCantBeCountered?: boolean;
   opponentsLockedDuringYourTurn?: boolean;
@@ -87,6 +88,7 @@ export type CompiledOracleText = {
   ascend?: boolean;
   untapDuringEachUntap?: "creatures" | "permanents" | "artifacts";
   opponentCreaturesEnterTapped?: boolean;
+  opponentNonbasicLandsEnterTapped?: boolean;
   opponentArtifactsEnterTapped?: boolean;
   extraDrawStepDraws?: boolean;
   affinityArtifacts?: boolean;
@@ -502,7 +504,7 @@ const SACRIFICE_COST = /Sacrifice (?:~|this land|this creature|this artifact|thi
  * "Sacrifice two other creatures". Group 1 is the count word when present.
  */
 const SACRIFICE_TYPE_COST =
-  /Sacrifice (?:an? |another |(two|three) (?:other )?)(black creature|creature|artifact|land|Treasure|token|artifacts and\/or creatures|creatures|artifacts|lands)\b/i;
+  /Sacrifice (?:an? |another |(two|three) (?:other )?)(black creature|creature or artifact|artifact or creature|creature|artifact|land|Treasure|token|artifacts and\/or creatures|creatures|artifacts|lands)\b/i;
 /**
  * "Sacrifice a Goblin" / "Sacrifice a Desert" / "Sacrifice a Food" — the
  * fodder is named by a subtype and no card type appears, so the scope is
@@ -531,7 +533,7 @@ const MILL_COST = /Mill (a|one|two|three|\d+) cards?/i;
 const EXILE_GRAVEYARD_COST =
   /Exile (a|one|two|three|four|five|\d+) (?:(creature|artifact|land|instant|sorcery) )?cards? from your graveyard/i;
 const COST_UNIT =
-  "(?:\\{[^}]+\\})+|Sacrifice (?:~|this land|this creature|this artifact|this permanent)|Sacrifice (?:an? |another )(?:black )?(?:creature|artifact|land|Treasure|token)|Sacrifice (?:an? |(?:one|two|three|four|five|\d+) )[A-Z][a-z]+s?|Sacrifice (?:two|three) (?:other )?(?:creatures|artifacts|lands|artifacts and\\/or creatures)|Pay \\d+ life|Tap an untapped (?:legendary )?creature you control|Remove (?:a|an|one|two|three|four|five|six|seven|eight|nine|ten|\\d+) (?:[-+]\\d\\/[-+]\\d|[a-z]+) counters? from ~|Put (?:a|an|one|two|three|\\d+) (?:[-+]\\d\\/[-+]\\d|[a-z]+) counters? on ~|Discard an? (?:creature|artifact|enchantment|land|instant|sorcery)? ?card|Mill (?:a|one|two|three|\\d+) cards?|Exile (?:a|one|two|three|four|five|\\d+) (?:(?:creature|artifact|land|instant|sorcery) )?cards? from your graveyard";
+  "(?:\\{[^}]+\\})+|Sacrifice (?:~|this land|this creature|this artifact|this permanent)|Sacrifice (?:an? |another )(?:black )?(?:creature or artifact|artifact or creature|creature|artifact|land|Treasure|token)|Sacrifice (?:an? |(?:one|two|three|four|five|\d+) )[A-Z][a-z]+s?|Sacrifice (?:two|three) (?:other )?(?:creatures|artifacts|lands|artifacts and\\/or creatures)|Pay \\d+ life|Tap an untapped (?:legendary )?creature you control|Remove (?:a|an|one|two|three|four|five|six|seven|eight|nine|ten|\\d+) (?:[-+]\\d\\/[-+]\\d|[a-z]+) counters? from ~|Put (?:a|an|one|two|three|\\d+) (?:[-+]\\d\\/[-+]\\d|[a-z]+) counters? on ~|Discard an? (?:creature|artifact|enchantment|land|instant|sorcery)? ?card|Mill (?:a|one|two|three|\\d+) cards?|Exile (?:a|one|two|three|four|five|\\d+) (?:(?:creature|artifact|land|instant|sorcery) )?cards? from your graveyard";
 
 function splitAbility(sentence: string): { costText: string; rest: string } | null {
   // "Metalcraft — {T}: …" — the ability word is flavor (Mox Opal).
@@ -599,6 +601,7 @@ function parseAbilityCost(
   const scopeWord = sacrificeTypeMatch?.[2]
     ?.toLowerCase()
     .replace(/^artifacts and\/or creatures$/, "creature_or_artifact")
+    .replace(/^(?:creature or artifact|artifact or creature)$/, "creature_or_artifact")
     .replace(/^creatures$/, "creature");
   // Only consulted when no card-type scope was found, so "a Treasure" and
   // "another black creature" keep the scopes they already had.
@@ -1986,6 +1989,17 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     return {
       targetRequirements: [],
       effects: [{ kind: "draw", playerId: "controller", count: "subject_amount" }],
+    };
+  }
+
+  // "You may mill three cards" (World Shaper) — the may is auto-taken, the
+  // same documented approximation the other may-clauses here use.
+  const mayMill = sentence.match(/^(?:you )?may mill (a|one|two|three|four|five|\d+) cards?$/i);
+  const milled = mayMill?.[1] ? parseCount(mayMill[1]) : null;
+  if (milled) {
+    return {
+      targetRequirements: [],
+      effects: [{ kind: "mill", playerId: "controller", count: milled }],
     };
   }
 
@@ -9949,6 +9963,17 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
       continue;
     }
 
+    // Rites of Flourishing: the same grant, given to the whole table.
+    const extraLandsForAll = sentence.match(
+      /^Each player may play (an|one|two|three) additional lands? on each of their turns$/i,
+    );
+    if (extraLandsForAll?.[1]) {
+      const count =
+        extraLandsForAll[1].toLowerCase() === "an" ? 1 : (parseCount(extraLandsForAll[1]) ?? 1);
+      result.extraLandDropsForAll = (result.extraLandDropsForAll ?? 0) + count;
+      continue;
+    }
+
     const extraLands = sentence.match(
       /^You may play (an|one|two|three) additional lands? on each of your turns$/i,
     );
@@ -10083,9 +10108,15 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
       continue;
     }
 
-    // Authority of the Consuls.
-    if (/^Creatures your opponents control enter (?:the battlefield )?tapped$/i.test(sentence)) {
+    // Authority of the Consuls, and Thalia's creatures-and-lands variant.
+    const enterTapped = sentence.match(
+      /^Creatures( and nonbasic lands)? your opponents control enter (?:the battlefield )?tapped$/i,
+    );
+    if (enterTapped) {
       result.opponentCreaturesEnterTapped = true;
+      if (enterTapped[1]) {
+        result.opponentNonbasicLandsEnterTapped = true;
+      }
       continue;
     }
 

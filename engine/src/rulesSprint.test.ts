@@ -17,7 +17,7 @@ import {
 } from "./index";
 import { cardMatchesSubtype, computedCard } from "./characteristicsEngine";
 import { mostCommonControlledCreatureType } from "./effects";
-import { castCostReduction, castableFromTop, freeEquipGranted, hasFlashGrant, landDropAllowance, permanentsControlledBy, reliefAdjustedCost, selfDiscountAmount } from "./derived";
+import { castCostReduction, castableFromTop, freeEquipGranted, hasFlashGrant, landDropAllowance, permanentsControlledBy, reliefAdjustedCost, selfDiscountAmount, wouldEnterTapped } from "./derived";
 import { hasKeyword } from "./keywords";
 import { dispatchEventsInPlace } from "./triggers";
 import { applyCombatDamage, declareAttackers } from "./combat";
@@ -25779,6 +25779,131 @@ describe("wave 203: sweeps that spare a type, and a gate on a mana ability", () 
     expect(exemplar.definition.triggers[1]).toMatchObject({
       event: "counter_added",
       subjectFilter: { counterName: "p1p1" },
+    });
+  });
+});
+
+
+describe("wave 204: grants that reach the whole table", () => {
+  const compile = (name: string, manaCost: string, typeLine: string, oracleText: string, power?: string, toughness?: string) =>
+    compileOracleCard({
+      oracleId: name,
+      name,
+      manaCost,
+      typeLine,
+      power: power ?? null,
+      toughness: toughness ?? null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  it("gives the extra land drop to every player, not just its controller", () => {
+    const rites = compile(
+      "Rites of Flourishing",
+      "{2}{G}",
+      "Enchantment",
+      "Each player draws an additional card during their draw step.\nEach player may play an additional land on each of their turns.",
+    );
+    expect(rites.definition.extraLandDropsForAll).toBe(1);
+
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    const definition = createCardDefinition({
+      name: "Rites of Flourishing",
+      typeLine: "Enchantment",
+      extraLandDropsForAll: 1,
+    });
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({
+      definitionId: definition.id,
+      ownerId: p1.id,
+      zone: "battlefield",
+    });
+    game.cards[card.id] = card;
+    p1.zones.battlefield.push(card.id);
+
+    expect(landDropAllowance(game, p1.id)).toBe(2);
+    // The opponent gets it too — that is the whole difference from Exploration.
+    expect(landDropAllowance(game, p2.id)).toBe(2);
+  });
+
+  it("taps an opponent's nonbasic lands but not their basics", () => {
+    const thalia = compile(
+      "Thalia, Heretic Cathar",
+      "{2}{W}",
+      "Legendary Creature — Human Soldier",
+      "First strike\nCreatures and nonbasic lands your opponents control enter tapped.",
+      "3",
+      "2",
+    );
+    expect(thalia.notes).toEqual([]);
+    expect(thalia.definition.opponentCreaturesEnterTapped).toBe(true);
+    expect(thalia.definition.opponentNonbasicLandsEnterTapped).toBe(true);
+
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    const thaliaDef = createCardDefinition({
+      name: "Thalia",
+      typeLine: "Legendary Creature — Human Soldier",
+      power: 3,
+      toughness: 2,
+      opponentCreaturesEnterTapped: true,
+      opponentNonbasicLandsEnterTapped: true,
+    });
+    const basicDef = createCardDefinition({ name: "Forest", typeLine: "Basic Land — Forest" });
+    const nonbasicDef = createCardDefinition({ name: "Tower", typeLine: "Land" });
+    for (const definition of [thaliaDef, basicDef, nonbasicDef]) {
+      game.definitions[definition.id] = definition;
+    }
+    const thaliaCard = createCardInstance({
+      definitionId: thaliaDef.id,
+      ownerId: p1.id,
+      zone: "battlefield",
+    });
+    game.cards[thaliaCard.id] = thaliaCard;
+    p1.zones.battlefield.push(thaliaCard.id);
+    const inHand = (definitionId: string) => {
+      const card = createCardInstance({ definitionId, ownerId: p2.id, zone: "hand" });
+      game.cards[card.id] = card;
+      p2.zones.hand.push(card.id);
+      return card;
+    };
+    const basic = inHand(basicDef.id);
+    const nonbasic = inHand(nonbasicDef.id);
+
+    expect(wouldEnterTapped(game, nonbasic.id)).toBe(true);
+    // A basic is spared, which is the whole word "nonbasic".
+    expect(wouldEnterTapped(game, basic.id)).toBe(false);
+  });
+
+  it("takes the may on a mill, and reads a two-type sacrifice cost", () => {
+    const shaper = compile(
+      "World Shaper",
+      "{3}{G}",
+      "Creature — Human Shaman",
+      "Whenever this creature attacks, you may mill three cards.",
+      "3",
+      "3",
+    );
+    expect(shaper.notes).toEqual([]);
+    expect(shaper.definition.triggers[0]?.effects).toEqual([
+      { kind: "mill", playerId: "controller", count: 3 },
+    ]);
+
+    const zealot = compile(
+      "Umbral Collar Zealot",
+      "{1}{B}",
+      "Creature — Human Rogue",
+      "Sacrifice another creature or artifact: Surveil 1.",
+      "1",
+      "3",
+    );
+    expect(zealot.notes).toEqual([]);
+    // The two-type form maps onto the scope its singulars already had, and
+    // "another" keeps the source out of its own fodder.
+    expect(zealot.definition.activated[0]).toMatchObject({
+      sacrificeCost: "another_creature_or_artifact",
     });
   });
 });

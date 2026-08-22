@@ -138,6 +138,9 @@ export type CardDefinition = {
   noMaxHandSize?: boolean;
   /** Additional land drops granted each of the controller's turns (Exploration). */
   extraLandDrops?: number;
+  /** Rites of Flourishing: the same grant, but to EVERY player rather than
+   * only the permanent's controller. */
+  extraLandDropsForAll?: number;
   /** "This spell can't be countered" (Abrupt Decay). */
   cantBeCountered?: boolean;
   /** Fiery Emancipation, Torbran, Gratuitous Violence, Twinflame Tyrant:
@@ -205,6 +208,8 @@ export type CardDefinition = {
   untapDuringEachUntap?: "creatures" | "permanents" | "artifacts";
   /** Authority of the Consuls: opponents' creatures enter tapped. */
   opponentCreaturesEnterTapped?: boolean;
+  /** Thalia, Heretic Cathar: the same static, for nonbasic lands. */
+  opponentNonbasicLandsEnterTapped?: boolean;
   /** Blind Obedience: opponents' artifacts enter tapped too. */
   opponentArtifactsEnterTapped?: boolean;
   /** "You may cast spells as though they had flash" (Vedalken Orrery). */

@@ -83,6 +83,8 @@ export function createCardDefinition(
         | "manaTapMultiplier"
         | "altCost"
         | "extraLandDrops"
+        | "extraLandDropsForAll"
+        | "opponentNonbasicLandsEnterTapped"
         | "cantBeCountered"
         | "creatureSpellsCantBeCountered"
         | "opponentsLockedDuringYourTurn"
@@ -402,6 +404,12 @@ export function createCardDefinition(
     ...(input.damageReplacement ? { damageReplacement: { ...input.damageReplacement } } : {}),
     ...(input.manaTapMultiplier ? { manaTapMultiplier: input.manaTapMultiplier } : {}),
     ...(input.altCost ? { altCost: { ...input.altCost } } : {}),
+    ...(input.extraLandDropsForAll && input.extraLandDropsForAll > 0
+      ? { extraLandDropsForAll: input.extraLandDropsForAll }
+      : {}),
+    ...(input.opponentNonbasicLandsEnterTapped
+      ? { opponentNonbasicLandsEnterTapped: true }
+      : {}),
     ...(input.extraLandDrops && input.extraLandDrops > 0
       ? { extraLandDrops: input.extraLandDrops }
       : {}),
