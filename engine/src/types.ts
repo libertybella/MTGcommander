@@ -844,6 +844,8 @@ export type GameEffect =
   | { kind: "power_nova"; sourceId: CardInstanceId; amount: number }
   | { kind: "retarget"; stackObjectId: StackObjectId; controllerId: PlayerId }
   | { kind: "mass_reanimate"; playerId: PlayerId }
+  /** Splendid Reclamation: every land card in YOUR graveyard returns tapped. */
+  | { kind: "return_all_lands"; playerId: PlayerId }
   | { kind: "prevent_combat_for"; cardId: CardInstanceId }
   | { kind: "extra_land_drop"; playerId: PlayerId }
   /** "You win the game": every other player loses (CR 104.2a). */
@@ -904,6 +906,8 @@ export type GameEffect =
       exceptSubtype?: string;
       /** Crux of Fate: destroy ONLY permanents of this subtype. */
       onlySubtype?: string;
+      /** Ruinous Ultimatum: only permanents this player does NOT control. */
+      opponentsOf?: PlayerId;
       /** Culling Ritual: this player gets one mana of this color per
        * permanent destroyed by the sweep. */
       addManaPerDestroyed?: ManaColor;
@@ -1034,6 +1038,8 @@ export type TargetKind =
   | "spell"
   | "creature_spell"
   | "noncreature_spell"
+  /** Dispel: instants only. */
+  | "instant_spell"
   | "instant_or_sorcery_spell"
   /** Venser, Shaper Savant. */
   | "spell_or_permanent";
@@ -1448,6 +1454,8 @@ export type CardEffect =
   | { kind: "retarget"; target: ChosenTargetRef }
   /** Rise of the Dark Realms: every graveyard creature card, under you. */
   | { kind: "mass_reanimate"; playerId: PlayerSelector }
+  /** Splendid Reclamation: every land card in YOUR graveyard returns tapped. */
+  | { kind: "return_all_lands"; playerId: PlayerSelector }
   /** Maze of Ith: shield the chosen creature from combat damage this turn. */
   | { kind: "prevent_combat_for"; cardId: ChosenTargetRef }
   /** Explore: one extra land drop this turn. */
@@ -1516,6 +1524,8 @@ export type CardEffect =
       exceptSubtype?: string;
       /** Crux of Fate: destroy ONLY permanents of this subtype. */
       onlySubtype?: string;
+      /** Ruinous Ultimatum: only permanents the caster does NOT control. */
+      opponentsOnly?: boolean;
       /** Culling Ritual: the caster gets one mana per destroyed permanent —
        * the color is auto-picked at bind from these options (first
        * commander-identity match, else the first listed; documented). */

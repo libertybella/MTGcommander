@@ -168,6 +168,21 @@ function isCreatureSpell(state: GameState, stackObjectId: StackObjectId): boolea
   return /\bcreature\b/.test(typeLine);
 }
 
+/** Dispel: a spell of exactly one card type. */
+function isSpellOfType(
+  state: GameState,
+  stackObjectId: StackObjectId,
+  type: string,
+): boolean {
+  const entry = state.stack.find((object) => object.id === stackObjectId);
+  if (!entry || entry.kind !== "spell" || !entry.sourceId) {
+    return false;
+  }
+  const card = state.cards[entry.sourceId];
+  const typeLine = card ? state.definitions[card.definitionId]?.typeLine.toLowerCase() ?? "" : "";
+  return new RegExp(`\\b${type}\\b`).test(typeLine);
+}
+
 function isInstantOrSorcerySpell(state: GameState, stackObjectId: StackObjectId): boolean {
   const entry = state.stack.find((object) => object.id === stackObjectId);
   if (!entry || entry.kind !== "spell" || !entry.sourceId) {
@@ -496,6 +511,13 @@ export function isChosenTargetLegal(
       isInstantOrSorcerySpell(state, target.stackObjectId)
     );
   }
+  if (requirement.kind === "instant_spell") {
+    return (
+      target.type === "spell" &&
+      isLegalSpellTarget(state, target.stackObjectId) &&
+      isSpellOfType(state, target.stackObjectId, "instant")
+    );
+  }
   if (target.type === "player") {
     return isLegalPlayerTarget(state, target.playerId);
   }
@@ -666,7 +688,8 @@ export function legalChoicesForRequirement(
     requirement.kind === "spell" ||
     requirement.kind === "creature_spell" ||
     requirement.kind === "noncreature_spell" ||
-    requirement.kind === "instant_or_sorcery_spell"
+    requirement.kind === "instant_or_sorcery_spell" ||
+    requirement.kind === "instant_spell"
   ) {
     return state.stack
       .filter((entry) => entry.kind === "spell")

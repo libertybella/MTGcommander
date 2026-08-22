@@ -929,6 +929,13 @@ export function bindCardEffect(
       }
       return { kind: "mass_reanimate", playerId };
     }
+    case "return_all_lands": {
+      const playerId = bindPlayerSelector(state, effect.playerId, context);
+      if (!playerId) {
+        return null;
+      }
+      return { kind: "return_all_lands", playerId };
+    }
     case "prevent_combat_for": {
       const chosen = chosenTargetAt(context, effect.cardId.index, state);
       if (!chosen || chosen.type !== "creature") {
@@ -1089,6 +1096,7 @@ export function bindCardEffect(
           ? { exceptSubtype: spared ?? effect.exceptSubtype }
           : {}),
         ...(effect.onlySubtype ? { onlySubtype: effect.onlySubtype } : {}),
+        ...(effect.opponentsOnly ? { opponentsOf: context.controllerId } : {}),
         ...(manaColor ? { addManaPerDestroyed: manaColor, manaTo: context.controllerId } : {}),
       };
     }
@@ -2514,6 +2522,8 @@ function applyDestroyAll(
   };
   const doomed = Object.values(next.cards)
     .filter((card) => card.zone === "battlefield" && matches(card.id))
+    // Ruinous Ultimatum: the caster's own board is spared.
+    .filter((card) => !effect.opponentsOf || card.controllerId !== effect.opponentsOf)
     .filter((card) => {
       const manaValue = characteristicsOf(next, card.id).manaValue;
       return (
@@ -3001,6 +3011,24 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
             if (arrived?.zone === "battlefield") {
               arrived.controllerId = effect.playerId;
             }
+          }
+        }
+        break;
+      }
+      case "return_all_lands": {
+        // Splendid Reclamation: only the effect's controller's own graveyard,
+        // and everything arrives tapped.
+        requirePlayer(state, effect.playerId);
+        next = cloneGameState(state);
+        const owner = next.players.find((entry) => entry.id === effect.playerId);
+        for (const cardId of [...(owner?.zones.graveyard ?? [])]) {
+          if (!characteristicsOf(next, cardId).types.includes("land")) {
+            continue;
+          }
+          moveCardInPlace(next, cardId, "battlefield");
+          const arrived = next.cards[cardId];
+          if (arrived?.zone === "battlefield") {
+            arrived.tapped = true;
           }
         }
         break;

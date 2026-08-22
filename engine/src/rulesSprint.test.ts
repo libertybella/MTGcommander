@@ -18550,3 +18550,118 @@ describe("wave 154: landscapes and graveyard hate", () => {
   });
 });
 
+
+describe("wave 155: reclamations, dispels, and ultimatums", () => {
+  const compile = (name: string, manaCost: string, typeLine: string, oracleText: string) =>
+    compileOracleCard({
+      oracleId: name,
+      name,
+      manaCost,
+      typeLine,
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  it("compiles the stack-and-sweep bucket fully", () => {
+    const reclamation = compile(
+      "Splendid Reclamation",
+      "{3}{G}",
+      "Sorcery",
+      "Return all land cards from your graveyard to the battlefield tapped.",
+    );
+    expect(reclamation.notes).toEqual([]);
+    expect(reclamation.definition.effects).toEqual([
+      { kind: "return_all_lands", playerId: "controller" },
+    ]);
+
+    const dispel = compile("Dispel", "{U}", "Instant", "Counter target instant spell.");
+    expect(dispel.notes).toEqual([]);
+    expect(dispel.definition.targetRequirements).toEqual([{ kind: "instant_spell" }]);
+
+    const ultimatum = compile(
+      "Ruinous Ultimatum",
+      "{R}{R}{W}{W}{W}{B}{B}",
+      "Sorcery",
+      "Destroy all nonland permanents your opponents control.",
+    );
+    expect(ultimatum.notes).toEqual([]);
+    expect(ultimatum.definition.effects).toEqual([
+      { kind: "destroy_all", what: "nonland", opponentsOnly: true },
+    ]);
+
+    const probe = compile(
+      "Gitaxian Probe",
+      "{U/P}",
+      "Sorcery",
+      "Look at target player's hand.\nDraw a card.",
+    );
+    expect(probe.notes).toEqual([]);
+    expect(probe.definition.effects[0]).toMatchObject({ kind: "reveal_zone", zone: "hand" });
+  });
+
+  it("returns only your own lands, and only lands, tapped", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    const landDef = createCardDefinition({ name: "Forest", typeLine: "Basic Land — Forest" });
+    const bearDef = createCardDefinition({ name: "Bear", typeLine: "Creature — Bear", power: 2, toughness: 2 });
+    game.definitions[landDef.id] = landDef;
+    game.definitions[bearDef.id] = bearDef;
+    const mine = createCardInstance({ definitionId: landDef.id, ownerId: p1.id, zone: "graveyard" });
+    const alsoMine = createCardInstance({ definitionId: bearDef.id, ownerId: p1.id, zone: "graveyard" });
+    const theirs = createCardInstance({ definitionId: landDef.id, ownerId: p2.id, zone: "graveyard" });
+    game.cards[mine.id] = mine;
+    game.cards[alsoMine.id] = alsoMine;
+    game.cards[theirs.id] = theirs;
+    p1.zones.graveyard.push(mine.id, alsoMine.id);
+    p2.zones.graveyard.push(theirs.id);
+
+    const next = applyEffects(
+      game,
+      bindCardEffects(game, [{ kind: "return_all_lands", playerId: "controller" }], {
+        controllerId: p1.id,
+        sourceId: null,
+        targets: [],
+        targetRequirements: [],
+      }),
+    );
+    expect(next.cards[mine.id]?.zone).toBe("battlefield");
+    expect(next.cards[mine.id]?.tapped).toBe(true);
+    // The creature stays dead, and the opponent's land stays in their yard.
+    expect(next.cards[alsoMine.id]?.zone).toBe("graveyard");
+    expect(next.cards[theirs.id]?.zone).toBe("graveyard");
+  });
+
+  it("sweeps only across the table", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    const bearDef = createCardDefinition({ name: "Bear", typeLine: "Creature — Bear", power: 2, toughness: 2 });
+    const landDef = createCardDefinition({ name: "Forest", typeLine: "Basic Land — Forest" });
+    game.definitions[bearDef.id] = bearDef;
+    game.definitions[landDef.id] = landDef;
+    const mine = createCardInstance({ definitionId: bearDef.id, ownerId: p1.id, zone: "battlefield" });
+    const theirs = createCardInstance({ definitionId: bearDef.id, ownerId: p2.id, zone: "battlefield" });
+    const theirLand = createCardInstance({ definitionId: landDef.id, ownerId: p2.id, zone: "battlefield" });
+    game.cards[mine.id] = mine;
+    game.cards[theirs.id] = theirs;
+    game.cards[theirLand.id] = theirLand;
+    p1.zones.battlefield.push(mine.id);
+    p2.zones.battlefield.push(theirs.id, theirLand.id);
+
+    const next = applyEffects(
+      game,
+      bindCardEffects(
+        game,
+        [{ kind: "destroy_all", what: "nonland", opponentsOnly: true }],
+        { controllerId: p1.id, sourceId: null, targets: [], targetRequirements: [] },
+      ),
+    );
+    expect(next.cards[theirs.id]?.zone).toBe("graveyard");
+    expect(next.cards[mine.id]?.zone).toBe("battlefield");
+    // "nonland" spares their land too.
+    expect(next.cards[theirLand.id]?.zone).toBe("battlefield");
+  });
+});
+

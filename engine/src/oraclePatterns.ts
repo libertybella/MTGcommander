@@ -657,6 +657,51 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     };
   }
 
+  // Ruinous Ultimatum: a sweep that spares the caster's own board.
+  const opponentWipe = sentence.match(
+    /^Destroy all (creatures|artifacts|enchantments|nonland permanents) your opponents control$/i,
+  );
+  if (opponentWipe?.[1]) {
+    const named = opponentWipe[1].toLowerCase();
+    return {
+      targetRequirements: [],
+      effects: [
+        {
+          kind: "destroy_all",
+          what: (named === "nonland permanents" ? "nonland" : named) as DestroyAllScope,
+          opponentsOnly: true,
+        },
+      ],
+    };
+  }
+
+  // Splendid Reclamation / Aftermath Analyst / Lumra: a mass land return.
+  if (
+    /^(?:Then )?return all land cards from your graveyard to the battlefield tapped$/i.test(
+      sentence,
+    )
+  ) {
+    return {
+      targetRequirements: [],
+      effects: [{ kind: "return_all_lands", playerId: "controller" }],
+    };
+  }
+
+  // Gitaxian Probe: a one-way look at somebody's hand.
+  if (/^Look at target player's hand$/i.test(sentence)) {
+    return {
+      targetRequirements: [{ kind: "player" }],
+      effects: [
+        {
+          kind: "reveal_zone",
+          fromPlayerId: { type: "chosen", index: 0 },
+          toPlayerId: "controller",
+          zone: "hand",
+        },
+      ],
+    };
+  }
+
   // Crux of Fate: "Destroy all Dragon creatures" / "all non-Dragon creatures".
   const tribalWipe = sentence.match(/^Destroy all (non-)?([A-Z][a-z-]+) creatures$/);
   if (tribalWipe?.[2]) {
@@ -2507,6 +2552,14 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
   if (/^counter target noncreature spell$/i.test(sentence)) {
     return {
       targetRequirements: [{ kind: "noncreature_spell" }],
+      effects: [{ kind: "counter_spell", target: { type: "chosen", index: 0 } }],
+    };
+  }
+
+  // Dispel: instants only, not sorceries.
+  if (/^counter target instant spell$/i.test(sentence)) {
+    return {
+      targetRequirements: [{ kind: "instant_spell" }],
       effects: [{ kind: "counter_spell", target: { type: "chosen", index: 0 } }],
     };
   }

@@ -1838,6 +1838,7 @@ function parseTargetRequirement(value: unknown, label: string): TargetRequiremen
     kind !== "creature_spell" &&
     kind !== "noncreature_spell" &&
     kind !== "instant_or_sorcery_spell" &&
+    kind !== "instant_spell" &&
     kind !== "spell_or_permanent" &&
     kind !== "land" &&
     kind !== "artifact_enchantment_or_nonbasic_land" &&
@@ -2682,6 +2683,7 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
     case "retarget":
       return { kind, target: parseChosenTargetRef(value.target, `${label}.target`) };
     case "mass_reanimate":
+    case "return_all_lands":
       return { kind, playerId: parsePlayerSelector(value.playerId, `${label}.playerId`) };
     case "prevent_combat_for":
       return { kind, cardId: parseChosenTargetRef(value.cardId, `${label}.cardId`) };
@@ -2712,6 +2714,7 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
         ...(value.exceptSubtype === undefined
           ? {}
           : { exceptSubtype: expectString(value.exceptSubtype, `${label}.exceptSubtype`) }),
+        ...(value.opponentsOnly === true ? { opponentsOnly: true } : {}),
         ...(value.onlySubtype === undefined
           ? {}
           : { onlySubtype: expectString(value.onlySubtype, `${label}.onlySubtype`) }),
@@ -3989,7 +3992,7 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
       controllerId: expectString(value.controllerId, `${label}.controllerId`),
     };
   }
-  if (kind === "mass_reanimate") {
+  if (kind === "mass_reanimate" || kind === "return_all_lands") {
     return { kind, playerId: expectString(value.playerId, `${label}.playerId`) };
   }
   if (kind === "prevent_combat_for") {
@@ -4024,6 +4027,9 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
       ...(value.exceptSubtype === undefined
         ? {}
         : { exceptSubtype: expectString(value.exceptSubtype, `${label}.exceptSubtype`) }),
+      ...(value.opponentsOf === undefined
+        ? {}
+        : { opponentsOf: expectString(value.opponentsOf, `${label}.opponentsOf`) }),
       ...(value.onlySubtype === undefined
         ? {}
         : { onlySubtype: expectString(value.onlySubtype, `${label}.onlySubtype`) }),
