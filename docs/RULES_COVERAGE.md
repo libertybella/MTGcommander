@@ -315,6 +315,27 @@ What the engine implements and what it intentionally does not. Tests are tagged 
   event. Combat damage cannot yet be redirected to a planeswalker, so the
   planeswalker half has nothing to fire on — a documented narrowing.
 
+- **Counter subjects and attaching**: counter placement gained two subjects
+  the grammar could already have carried — "equipped creature" / "enchanted
+  creature" (the permanent this one is attached to) and "each \<Subtype\> you
+  control", which is the same team effect as "each creature you control"
+  narrowed by one field. Attaching is now a clause: "you may attach ~ to it"
+  and "you may attach that Equipment to target creature you control" read
+  their subject and their host separately, with the "may" auto-taken like the
+  other may-clauses here.
+
+  The attach effect's host was passed through verbatim whenever it was a
+  string, so a named selector — "self", "subject_card", "host" — would have
+  been treated as a literal card id and the attachment would have gone
+  nowhere. It goes through the same binder as every other card reference now.
+
+  A note on picking clusters: the damage clauses were the obvious next
+  collapse — eighteen branches, more than the token family that paid out
+  eight. They were not worth it. Counting branches is only half the test; the
+  other half is whether the miss list still wants what they cover, and the
+  damage branches had already caught nearly every printed recipient. Two gaps
+  remained, against eighteen branches.
+
 ## The card pipeline (Stage 6)
 
 - Real cards compile from Scryfall oracle text by shared sentence patterns; a hand-authored registry (`server/src/cardOverrides.ts`, data in the same schema) beats the compiler for the long tail. Never a named-card code path.

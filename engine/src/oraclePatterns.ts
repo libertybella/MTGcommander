@@ -3173,8 +3173,31 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
         })),
       };
     }
-    // "~" is the source; "it" is the trigger's subject.
-    const selfLike = where === "~" ? ("self" as const) : where === "it" ? ("subject_card" as const) : null;
+    // "each Vampire you control" (Cordial Vampire) — the same team effect as
+    // "each creature you control", narrowed to one subtype.
+    const eachTribe = counterPlacement[2].trim().match(/^each ([A-Z][a-z-]+) you control$/);
+    if (eachTribe?.[1]) {
+      return {
+        targetRequirements: [],
+        effects: placed.map((entry) => ({
+          kind: "counter_on_each_creature",
+          counter: entry.counter,
+          amount: entry.amount,
+          subtype: eachTribe[1]!.toLowerCase(),
+          controlledOnly: true,
+        })),
+      };
+    }
+    // "~" is the source; "it" is the trigger's subject; "equipped creature"
+    // and "enchanted creature" are whatever this permanent is attached to.
+    const selfLike =
+      where === "~"
+        ? ("self" as const)
+        : where === "it"
+          ? ("subject_card" as const)
+          : /^(?:equipped|enchanted) creature$/.test(where)
+            ? ("host" as const)
+            : null;
     if (selfLike) {
       return {
         targetRequirements: [],
@@ -3197,6 +3220,37 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
           amount: entry.amount,
         })),
       };
+    }
+  }
+
+  // "you may attach ~ to it" (Hero's Blade), "you may attach that Equipment
+  // to target creature you control" (Hammer of Nazahn). Attaching is never a
+  // downside a casual table would decline, so the "may" is auto-taken — the
+  // same documented approximation the other may-clauses here use.
+  const attachClause = sentence.match(
+    /^(?:you may )?attach (~|that Equipment|that Aura|it) to (.+)$/i,
+  );
+  if (attachClause?.[1] && attachClause[2]) {
+    const what = attachClause[1].toLowerCase();
+    const cardId = what === "~" ? ("self" as const) : ("subject_card" as const);
+    const to = attachClause[2].trim();
+    if (/^it$/i.test(to)) {
+      // Both halves cannot be the trigger's subject; "attach ~ to it" is the
+      // only shape that reads this way.
+      if (cardId === "self") {
+        return {
+          targetRequirements: [],
+          effects: [{ kind: "attach", cardId, toId: "subject_card" }],
+        };
+      }
+    } else {
+      const requirement = parseSimpleTargetPhrase(to);
+      if (requirement) {
+        return {
+          targetRequirements: [requirement],
+          effects: [{ kind: "attach", cardId, toId: { type: "chosen", index: 0 } }],
+        };
+      }
     }
   }
 

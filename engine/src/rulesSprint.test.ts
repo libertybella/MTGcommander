@@ -23309,3 +23309,128 @@ describe("wave 188: the trigger head reads its subject", () => {
   });
 });
 
+
+describe("wave 189: counter subjects and attaching", () => {
+  const compile = (name: string, manaCost: string, typeLine: string, oracleText: string, power?: string, toughness?: string) =>
+    compileOracleCard({
+      oracleId: name,
+      name,
+      manaCost,
+      typeLine,
+      power: power ?? null,
+      toughness: toughness ?? null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  it("puts counters on the permanent this one is attached to", () => {
+    const cleaver = compile(
+      "Tarrian's Soulcleaver",
+      "{1}",
+      "Legendary Artifact — Equipment",
+      "Equipped creature has vigilance.\nWhenever another artifact or creature is put into a graveyard from the battlefield, put a +1/+1 counter on equipped creature.\nEquip {2}",
+    );
+    expect(cleaver.notes).toEqual([]);
+    expect(cleaver.definition.triggers[0]?.effects).toEqual([
+      { kind: "add_counter", cardId: "host", counter: "p1p1", amount: 1 },
+    ]);
+  });
+
+  it("narrows the team counter effect to one subtype", () => {
+    const vampire = compile(
+      "Cordial Vampire",
+      "{B}{B}",
+      "Creature — Vampire",
+      "Whenever this creature or another creature dies, put a +1/+1 counter on each Vampire you control.",
+      "2",
+      "2",
+    );
+    expect(vampire.notes).toEqual([]);
+    expect(vampire.definition.triggers[0]?.effects).toEqual([
+      {
+        kind: "counter_on_each_creature",
+        counter: "p1p1",
+        amount: 1,
+        subtype: "vampire",
+        controlledOnly: true,
+      },
+    ]);
+  });
+
+  it("attaches to the trigger's subject and to a chosen target", () => {
+    const blade = compile(
+      "Hero's Blade",
+      "{2}",
+      "Artifact — Equipment",
+      "Equipped creature gets +3/+2.\nWhenever a legendary creature you control enters, you may attach this Equipment to it.\nEquip {4}",
+    );
+    expect(blade.notes).toEqual([]);
+    expect(blade.definition.triggers[0]?.effects).toEqual([
+      { kind: "attach", cardId: "self", toId: "subject_card" },
+    ]);
+
+    const hammer = compile(
+      "Hammer of Nazahn",
+      "{4}",
+      "Legendary Artifact — Equipment",
+      "Whenever Hammer of Nazahn or another Equipment you control enters, you may attach that Equipment to target creature you control.\nEquipped creature gets +2/+0 and has indestructible.\nEquip {4}",
+    );
+    expect(hammer.notes).toEqual([]);
+    expect(hammer.definition.triggers[0]?.targetRequirements).toEqual([
+      { kind: "creature", control: "own" },
+    ]);
+    expect(hammer.definition.triggers[0]?.effects).toEqual([
+      { kind: "attach", cardId: "subject_card", toId: { type: "chosen", index: 0 } },
+    ]);
+  });
+
+  it("resolves an attach host that is named rather than chosen", () => {
+    // toId used to be passed through verbatim when it was a string, so
+    // "subject_card" would have been treated as a literal card id and the
+    // attachment would have gone nowhere.
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const bladeDef = createCardDefinition({
+      name: "Blade",
+      typeLine: "Artifact — Equipment",
+    });
+    const bearDef = createCardDefinition({
+      name: "Bear",
+      typeLine: "Creature — Bear",
+      power: 2,
+      toughness: 2,
+    });
+    game.definitions[bladeDef.id] = bladeDef;
+    game.definitions[bearDef.id] = bearDef;
+    const put = (definitionId: string) => {
+      const card = createCardInstance({ definitionId, ownerId: p1.id, zone: "battlefield" });
+      game.cards[card.id] = card;
+      p1.zones.battlefield.push(card.id);
+      return card;
+    };
+    const blade = put(bladeDef.id);
+    const bear = put(bearDef.id);
+
+    const next = applyEffects(
+      game,
+      bindCardEffects(game, [{ kind: "attach", cardId: "self", toId: "subject_card" }], {
+        controllerId: p1.id,
+        sourceId: blade.id,
+        subjectCardId: bear.id,
+      }),
+    );
+    expect(next.cards[blade.id]?.attachedTo).toBe(bear.id);
+  });
+
+  it("refuses a counter subject it cannot read", () => {
+    const odd = compile(
+      "Testcard",
+      "{1}",
+      "Instant",
+      "Put a +1/+1 counter on each hovercraft you control.",
+    );
+    expect(odd.notes.join(" ")).toContain("hovercraft");
+  });
+});
+

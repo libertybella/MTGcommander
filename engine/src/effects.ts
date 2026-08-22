@@ -1121,9 +1121,12 @@ export function bindCardEffect(
       if (!cardId) {
         return null;
       }
+      // The host goes through bindCardId like any other selector: a raw id
+      // passes through unchanged, but "self" / "subject_card" / "host" now
+      // resolve instead of being taken literally as a card id.
       let toId: CardInstanceId | null;
       if (typeof effect.toId === "string") {
-        toId = effect.toId;
+        toId = bindCardId(state, effect.toId, context);
       } else {
         const chosen = chosenTargetAt(context, effect.toId.index, state);
         toId = chosen?.type === "creature" ? chosen.cardId : null;
