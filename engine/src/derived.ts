@@ -588,3 +588,37 @@ export function queueEnterReplacementChoicesInPlace(state: GameState, cardId: Ca
     });
   }
 }
+
+/**
+ * The index of a free-cast-from-hand grant this spell could use, or -1.
+ * Grants are matched most-restrictive-first so a broad grant is not spent on
+ * a spell that a narrower one would have covered.
+ *
+ * Lives here rather than in actions.ts so both the cast path and the
+ * legal-action enumeration can read it without an import cycle.
+ */
+export function findFreeHandGrantIndex(
+  state: GameState,
+  playerId: string,
+  cardId: CardInstanceId,
+): number {
+  const grants = state.freeCastFromHand ?? [];
+  const manaValue = characteristicsOf(state, cardId).manaValue;
+  let best = -1;
+  let bestCap = Number.POSITIVE_INFINITY;
+  for (let index = 0; index < grants.length; index += 1) {
+    const grant = grants[index]!;
+    if (grant.casterId !== playerId || grant.remaining <= 0) {
+      continue;
+    }
+    const cap = grant.maxManaValue ?? Number.POSITIVE_INFINITY;
+    if (manaValue > cap) {
+      continue;
+    }
+    if (cap < bestCap) {
+      best = index;
+      bestCap = cap;
+    }
+  }
+  return best;
+}

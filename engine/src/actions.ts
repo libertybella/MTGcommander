@@ -2,7 +2,7 @@ import { declareAttackers, declareBlockers, lockRemainingBlockers, pendingBlocke
 import { abilitiesRemoved } from "./characteristicsEngine";
 import { characteristicsOf, isCommander, isCreature, isInstant, isInstantOrSorcery, isLand, isLegendary, isMainPhase } from "./cardTypes";
 import { cloneGameState } from "./clone";
-import { affinityArtifactDiscount, allBattlefieldCreatureCount, canPlayLandFromTop, canPlayLandsFromGraveyard, castCostReduction, castableFromTop, controlsCommander, creaturePower, freeEquipGranted, hasFlashGrant, landDropAllowance, lockedByAbolisher, lockedFromCasting, opponentControlsMoreLands, opponentsCastLockedToHand, selfDiscountAmount } from "./derived";
+import { affinityArtifactDiscount, allBattlefieldCreatureCount, canPlayLandFromTop, canPlayLandsFromGraveyard, castCostReduction, castableFromTop, controlsCommander, creaturePower, freeEquipGranted, hasFlashGrant, landDropAllowance, lockedByAbolisher, lockedFromCasting, opponentControlsMoreLands, findFreeHandGrantIndex, opponentsCastLockedToHand, selfDiscountAmount } from "./derived";
 import { eliminatePlayerInPlace } from "./elimination";
 import { applyEffects, bindCardEffects, devotionTo } from "./effects";
 import { hasKeyword } from "./keywords";
@@ -84,6 +84,14 @@ function finalizeActionState(state: GameState): GameState {
   }
   redirectPriorityIfLost(state);
   return state;
+}
+
+function findFreeHandGrant(
+  state: GameState,
+  playerId: PlayerId,
+  cardId: CardInstanceId,
+): boolean {
+  return findFreeHandGrantIndex(state, playerId, cardId) >= 0;
 }
 
 function validateCast(
@@ -188,8 +196,19 @@ function validateCast(
     state.exilePlayable?.some(
       (entry) => entry.cardId === cardId && entry.casterId === playerId && entry.freeCast,
     );
+  // Rishkar's Expertise: a hand grant covers this spell if its mana value is
+  // inside the cap. Checked before tax and discounts because it replaces the
+  // whole cost rather than reducing it.
+  const freeHandCast = Boolean(
+    findFreeHandGrant(state, playerId, cardId) &&
+      state.cards[cardId]?.zone === "hand",
+  );
   const cost = parseManaCost(
-    freeExileCast ? "" : viaFlashback ? definition.flashback?.manaCost ?? "" : definition.manaCost,
+    freeExileCast || freeHandCast
+      ? ""
+      : viaFlashback
+        ? definition.flashback?.manaCost ?? ""
+        : definition.manaCost,
   );
   if (fromCommand) {
     cost.generic += player.commander.tax;
@@ -445,6 +464,19 @@ function applyCastSpell(
       payer.life -= flashbackLife;
       paid.log.push({ kind: "life_change", playerId, delta: -flashbackLife });
     }
+  }
+  // Spend the free-cast grant before the card leaves hand, so the lookup
+  // still sees where it was.
+  const grantIndex =
+    paid.cards[cardId]?.zone === "hand" ? findFreeHandGrantIndex(paid, playerId, cardId) : -1;
+  if (grantIndex >= 0) {
+    const grants = [...(paid.freeCastFromHand ?? [])];
+    const grant = grants[grantIndex]!;
+    const remaining = grant.remaining - 1;
+    paid.freeCastFromHand =
+      remaining > 0
+        ? grants.map((entry, index) => (index === grantIndex ? { ...entry, remaining } : entry))
+        : grants.filter((_, index) => index !== grantIndex);
   }
   const stacked = putSpellOnStack(paid, cardId, targets ?? [], modeIndex, xValue, division, modeIndexes, sacrificedPower);
   if (!fromCommand) {

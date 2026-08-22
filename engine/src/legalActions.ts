@@ -3,7 +3,7 @@ import { abilitiesRemoved, controlsGate } from "./characteristicsEngine";
 import { hasKeyword } from "./keywords";
 import { emptyManaPool } from "./createGame";
 import { pendingBlockerPlayer } from "./combat";
-import { affinityArtifactDiscount, allBattlefieldCreatureCount, canPlayLandsFromGraveyard, castCostReduction, castableFromTop, controlsCommander, freeEquipGranted, hasFlashGrant, landDropAllowance, lockedByAbolisher, lockedFromCasting, opponentControlsMoreLands, opponentsCastLockedToHand, selfDiscountAmount, topOfLibraryGrant } from "./derived";
+import { affinityArtifactDiscount, allBattlefieldCreatureCount, canPlayLandsFromGraveyard, castCostReduction, castableFromTop, controlsCommander, freeEquipGranted, hasFlashGrant, landDropAllowance, lockedByAbolisher, lockedFromCasting, opponentControlsMoreLands, findFreeHandGrantIndex, opponentsCastLockedToHand, selfDiscountAmount, topOfLibraryGrant } from "./derived";
 import { canPayManaCost, parseManaCost, type ParsedManaCost } from "./mana";
 import { colorsAmongControlled, manaAbilitiesFor, manaTapOptionsFor } from "./manaOptions";
 import { isMulliganOpen } from "./mulligan";
@@ -268,6 +268,7 @@ function castableFace(
   extraGeneric: number,
   costOverride?: string,
   flashGrant?: boolean,
+  freeFromHand?: boolean,
 ): boolean {
   const isInstantSpeed =
     definition.characteristics.types.includes("instant") ||
@@ -302,7 +303,11 @@ function castableFace(
   ) {
     Object.assign(cost, parseManaCost(definition.altCostIfCreatures.cost));
   }
-  const castsFree = definition.freeIfCommander === true && controlsCommander(state, playerId);
+  const castsFree =
+    (definition.freeIfCommander === true && controlsCommander(state, playerId)) ||
+    // Rishkar's Expertise: a spent-once hand grant covers the whole cost, so
+    // the spell is castable with no mana available at all.
+    freeFromHand === true;
   if (!castsFree && !canPayWithPotential(potential, cost)) {
     return false;
   }
@@ -574,7 +579,18 @@ export function legalActions(state: GameState, playerId: PlayerId): LegalAction[
         }
         continue;
       }
-      if (castableFace(state, playerId, face.definition, potential, 0, undefined, flashGrant)) {
+      if (
+        castableFace(
+          state,
+          playerId,
+          face.definition,
+          potential,
+          0,
+          undefined,
+          flashGrant,
+          findFreeHandGrantIndex(state, playerId, cardId) >= 0,
+        )
+      ) {
         actions.push({ kind: "cast_spell", cardId, faceIndex: face.faceIndex, fromCommand: false });
       }
     }

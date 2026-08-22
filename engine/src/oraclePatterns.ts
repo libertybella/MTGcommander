@@ -3247,6 +3247,25 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     };
   }
 
+  // Rishkar's Expertise / Electrodominance: one free cast out of hand.
+  const freeHandCast = sentence.match(
+    /^You may cast a spell with mana value (X|\d+) or less from your hand without paying its mana cost$/i,
+  );
+  if (freeHandCast?.[1]) {
+    return {
+      targetRequirements: [],
+      effects: [
+        {
+          kind: "grant_free_cast_from_hand",
+          playerId: "controller",
+          maxManaValue:
+            freeHandCast[1].toUpperCase() === "X" ? ("x" as const) : Number(freeHandCast[1]),
+          count: 1,
+        },
+      ],
+    };
+  }
+
   // Emergence Zone / Alchemist's Refuge / Borne Upon a Wind: a one-turn
   // flash grant, as opposed to Vedalken Orrery's permanent one.
   if (

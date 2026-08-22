@@ -1138,6 +1138,35 @@ export function parseGameState(json: string): GameState {
     ...(raw.flashThisTurn === undefined
       ? {}
       : { flashThisTurn: expectStringArray(raw.flashThisTurn, "flashThisTurn") }),
+    ...(raw.freeCastFromHand === undefined
+      ? {}
+      : {
+          freeCastFromHand: (Array.isArray(raw.freeCastFromHand)
+            ? raw.freeCastFromHand
+            : (() => {
+                throw new Error("Invalid freeCastFromHand");
+              })()
+          ).map(
+            (entry, index) => {
+              if (!isRecord(entry)) {
+                throw new Error(`Invalid freeCastFromHand[${index}]`);
+              }
+              const record = entry;
+              return {
+                casterId: expectString(record.casterId, `freeCastFromHand[${index}].casterId`),
+                ...(record.maxManaValue === undefined
+                  ? {}
+                  : {
+                      maxManaValue: expectNumber(
+                        record.maxManaValue,
+                        `freeCastFromHand[${index}].maxManaValue`,
+                      ),
+                    }),
+                remaining: expectNumber(record.remaining, `freeCastFromHand[${index}].remaining`),
+              };
+            },
+          ),
+        }),
     delayedEndStep:
       raw.delayedEndStep === undefined
         ? []
@@ -2695,6 +2724,20 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
     case "win_game":
     case "grant_flash_this_turn":
       return { kind, playerId: parsePlayerSelector(value.playerId, `${label}.playerId`) };
+    case "grant_free_cast_from_hand": {
+      const cap = value.maxManaValue;
+      return {
+        kind,
+        playerId: parsePlayerSelector(value.playerId, `${label}.playerId`),
+        ...(cap === undefined
+          ? {}
+          : {
+              maxManaValue:
+                cap === "x" ? ("x" as const) : expectNumber(cap, `${label}.maxManaValue`),
+            }),
+        count: expectNumber(value.count, `${label}.count`),
+      };
+    }
     case "overload_each":
       return {
         kind,
@@ -4004,6 +4047,16 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
   }
   if (kind === "extra_land_drop" || kind === "win_game" || kind === "grant_flash_this_turn") {
     return { kind, playerId: expectString(value.playerId, `${label}.playerId`) };
+  }
+  if (kind === "grant_free_cast_from_hand") {
+    return {
+      kind,
+      playerId: expectString(value.playerId, `${label}.playerId`),
+      ...(value.maxManaValue === undefined
+        ? {}
+        : { maxManaValue: expectNumber(value.maxManaValue, `${label}.maxManaValue`) }),
+      count: expectNumber(value.count, `${label}.count`),
+    };
   }
   if (kind === "overload_each") {
     return {

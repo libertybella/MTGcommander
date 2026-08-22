@@ -306,6 +306,10 @@ function onEnterStep(state: GameState): GameState {
     if (state.flashThisTurn && state.flashThisTurn.length > 0) {
       state.flashThisTurn = [];
     }
+    if (state.freeCastFromHand && state.freeCastFromHand.length > 0) {
+      // An unused "you may cast" offer expires with the turn.
+      state.freeCastFromHand = [];
+    }
     if (state.diesReturnUntilEot && state.diesReturnUntilEot.length > 0) {
       state.diesReturnUntilEot = [];
     }

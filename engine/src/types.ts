@@ -553,6 +553,20 @@ export type GameState = {
    * (Vedalken Orrery) is `CardDefinition.grantsFlash` instead. */
   flashThisTurn?: PlayerId[];
   /**
+   * Rishkar's Expertise / Electrodominance: "you may cast a spell with mana
+   * value N or less from your hand without paying its mana cost". Modelled as
+   * a PERMISSION with a use count rather than a prompt, the same way
+   * `exilePlayable` works — so the existing cast action serves it and no new
+   * answer path is needed in the client, the bot, or the fuzzer. Each grant
+   * is consumed by one matching cast; leftovers clear at cleanup.
+   */
+  freeCastFromHand?: Array<{
+    casterId: PlayerId;
+    /** Omitted means any mana value (Omniscience-style). */
+    maxManaValue?: number;
+    remaining: number;
+  }>;
+  /**
    * Feign Death-class until-EOT grants: if the listed creature dies this
    * turn, it returns to the battlefield tapped (optionally with a +1/+1
    * counter or a Treasure for its controller). Cleared at cleanup.
@@ -856,6 +870,8 @@ export type GameEffect =
   | { kind: "win_game"; playerId: PlayerId }
   /** Emergence Zone: the player may cast at instant speed this turn. */
   | { kind: "grant_flash_this_turn"; playerId: PlayerId }
+  /** Rishkar's Expertise: one free cast from hand, capped by mana value. */
+  | { kind: "grant_free_cast_from_hand"; playerId: PlayerId; maxManaValue?: number; count: number }
   | { kind: "commander_to_hand"; playerId: PlayerId }
   | { kind: "opponents_lose_keywords_until_eot"; playerId: PlayerId; keywords: Keyword[] }
   | {
@@ -1471,6 +1487,14 @@ export type CardEffect =
   /** Emergence Zone: the player may cast at instant speed this turn. */
   | { kind: "grant_flash_this_turn"; playerId: PlayerSelector }
   /** Command Beacon: the commander moves from the command zone to hand. */
+  /** Rishkar's Expertise: one free cast from hand, capped by mana value.
+   * "X or less" (Electrodominance) reads the announced X at bind. */
+  | {
+      kind: "grant_free_cast_from_hand";
+      playerId: PlayerSelector;
+      maxManaValue?: number | "x";
+      count: number;
+    }
   | { kind: "commander_to_hand"; playerId: PlayerSelector }
   /** Shadowspear: opponents' permanents drop the listed keywords this turn. */
   | { kind: "opponents_lose_keywords_until_eot"; keywords: Keyword[] }

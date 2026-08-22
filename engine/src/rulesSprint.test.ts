@@ -18750,3 +18750,139 @@ describe("wave 156: flash windows and spell bounce", () => {
   });
 });
 
+
+describe("wave 157: free casting from hand", () => {
+  const compile = (name: string, manaCost: string, typeLine: string, oracleText: string) =>
+    compileOracleCard({
+      oracleId: name,
+      name,
+      manaCost,
+      typeLine,
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  it("compiles the capped free-cast grant, fixed and X", () => {
+    const expertise = compile(
+      "Rishkar's Expertise",
+      "{4}{G}{G}",
+      "Sorcery",
+      "Draw cards equal to the greatest power among creatures you control.\nYou may cast a spell with mana value 5 or less from your hand without paying its mana cost.",
+    );
+    expect(expertise.notes).toEqual([]);
+    expect(expertise.definition.effects[1]).toEqual({
+      kind: "grant_free_cast_from_hand",
+      playerId: "controller",
+      maxManaValue: 5,
+      count: 1,
+    });
+
+    const electro = compile(
+      "Electrodominance",
+      "{X}{R}{R}",
+      "Instant",
+      "Electrodominance deals X damage to any target. You may cast a spell with mana value X or less from your hand without paying its mana cost.",
+    );
+    expect(electro.notes).toEqual([]);
+    expect(electro.definition.effects[1]).toMatchObject({
+      kind: "grant_free_cast_from_hand",
+      maxManaValue: "x",
+    });
+  });
+
+  /** A game with an empty mana pool and one spell of the given cost in hand. */
+  const tableWith = (manaCost: string) => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const spellDef = createCardDefinition({
+      name: "Big Thing",
+      typeLine: "Creature — Giant",
+      manaCost,
+      power: 4,
+      toughness: 4,
+    });
+    game.definitions[spellDef.id] = spellDef;
+    const spell = createCardInstance({ definitionId: spellDef.id, ownerId: p1.id, zone: "hand" });
+    game.cards[spell.id] = spell;
+    p1.zones.hand.push(spell.id);
+    game.turn.phase = "precombatMain";
+    game.turn.step = "precombatMain";
+    game.turn.activePlayerId = p1.id;
+    game.priorityPlayerId = p1.id;
+    return { game, p1, spell };
+  };
+
+  it("lets a granted spell be cast with no mana at all, once", () => {
+    const { game, p1, spell } = tableWith("{4}{G}");
+    // Without a grant there is no mana and no legal cast.
+    expect(
+      legalActions(game, p1.id).some(
+        (action) => action.kind === "cast_spell" && action.cardId === spell.id,
+      ),
+    ).toBe(false);
+
+    game.freeCastFromHand = [{ casterId: p1.id, maxManaValue: 5, remaining: 1 }];
+    expect(
+      legalActions(game, p1.id).some(
+        (action) => action.kind === "cast_spell" && action.cardId === spell.id,
+      ),
+    ).toBe(true);
+
+    const next = applyAction(game, {
+      kind: "cast_spell",
+      playerId: p1.id,
+      cardId: spell.id,
+      targets: [],
+    });
+    expect(next.stack).toHaveLength(1);
+    // The grant is spent, not standing.
+    expect(next.freeCastFromHand ?? []).toHaveLength(0);
+    // And no mana was taken, because there was none.
+    const caster = next.players.find((entry) => entry.id === p1.id)!;
+    expect(caster.mana).toEqual({ W: 0, U: 0, B: 0, R: 0, G: 0, C: 0 });
+  });
+
+  it("refuses a spell above the cap", () => {
+    const { game, p1, spell } = tableWith("{5}{G}");
+    game.freeCastFromHand = [{ casterId: p1.id, maxManaValue: 5, remaining: 1 }];
+    // Mana value 6 is outside a "5 or less" grant.
+    expect(
+      legalActions(game, p1.id).some(
+        (action) => action.kind === "cast_spell" && action.cardId === spell.id,
+      ),
+    ).toBe(false);
+  });
+
+  it("spends the narrowest grant that covers the spell", () => {
+    const { game, p1, spell } = tableWith("{1}{G}");
+    game.freeCastFromHand = [
+      { casterId: p1.id, remaining: 1 },
+      { casterId: p1.id, maxManaValue: 2, remaining: 1 },
+    ];
+    const next = applyAction(game, {
+      kind: "cast_spell",
+      playerId: p1.id,
+      cardId: spell.id,
+      targets: [],
+    });
+    // The uncapped grant survives; the tight one was consumed.
+    expect(next.freeCastFromHand).toEqual([{ casterId: p1.id, remaining: 1 }]);
+  });
+
+  it("expires an unused grant at cleanup and survives a round trip", () => {
+    const { game, p1 } = tableWith("{1}{G}");
+    game.freeCastFromHand = [{ casterId: p1.id, maxManaValue: 5, remaining: 1 }];
+    const round = parseGameState(JSON.parse(JSON.stringify(serializeGameState(game))));
+    expect(round.freeCastFromHand).toEqual([{ casterId: p1.id, maxManaValue: 5, remaining: 1 }]);
+
+    round.turn.phase = "ending";
+    round.turn.step = "end";
+    round.priorityPlayerId = round.turn.activePlayerId;
+    const after = advanceSteps(round, 4);
+    expect(after.freeCastFromHand ?? []).toHaveLength(0);
+  });
+});
+

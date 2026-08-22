@@ -958,6 +958,21 @@ export function bindCardEffect(
       }
       return { kind: effect.kind, playerId };
     }
+    case "grant_free_cast_from_hand": {
+      const playerId = bindPlayerSelector(state, effect.playerId, context);
+      if (!playerId) {
+        return null;
+      }
+      // Electrodominance: "mana value X or less" reads the announced X.
+      const cap =
+        effect.maxManaValue === "x" ? context.xValue ?? 0 : effect.maxManaValue;
+      return {
+        kind: "grant_free_cast_from_hand",
+        playerId,
+        ...(cap !== undefined ? { maxManaValue: cap } : {}),
+        count: effect.count,
+      };
+    }
     case "commander_to_hand": {
       const playerId = bindPlayerSelector(state, effect.playerId, context);
       if (!playerId) {
@@ -2899,6 +2914,19 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
         if (!(next.flashThisTurn ?? []).includes(effect.playerId)) {
           next.flashThisTurn = [...(next.flashThisTurn ?? []), effect.playerId];
         }
+        break;
+      }
+      case "grant_free_cast_from_hand": {
+        requirePlayer(state, effect.playerId);
+        next = cloneGameState(state);
+        next.freeCastFromHand = [
+          ...(next.freeCastFromHand ?? []),
+          {
+            casterId: effect.playerId,
+            ...(effect.maxManaValue !== undefined ? { maxManaValue: effect.maxManaValue } : {}),
+            remaining: effect.count,
+          },
+        ];
         break;
       }
       case "win_game": {
