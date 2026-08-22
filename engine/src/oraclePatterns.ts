@@ -1117,6 +1117,16 @@ function parseSweepPhrase(phrase: string): Omit<SweepFilters, "kind"> | null {
     break;
   }
 
+  // "all NONARTIFACT creatures" — a card type the swept permanent must not
+  // have, read before the tap state so the adjectives can stack.
+  // "nonland" is deliberately absent here too: the sweep head noun already
+  // reads "nonland permanents", and claiming it here rewrites a working shape.
+  const exceptType = rest.match(/^non(artifact|creature|enchantment)\s+(.*)$/i);
+  if (exceptType?.[1] && exceptType[2]) {
+    filters.exceptTypes = [exceptType[1].toLowerCase()];
+    rest = exceptType[2];
+  }
+
   // Leading qualifiers.
   const tapState = rest.match(/^(tapped|untapped)\s+(.*)$/i);
   if (tapState?.[1] && tapState[2]) {
@@ -7444,7 +7454,11 @@ function parseTriggerHead(head: string): TriggerHead | null {
     return { event: "opponent_draws" };
   }
   // Fathom Mage / Evolution Witness.
-  if (/^Whenever (?:a|one or more) \+1\/\+1 counters? (?:is|are) put on ~$/i.test(text)) {
+  if (
+    /^Whenever (?:a|one or more) \+1\/\+1 counters? (?:is|are) put on ~$/i.test(text) ||
+    // Exemplar of Light prints the same event in the active voice.
+    /^Whenever you put (?:a|one or more) \+1\/\+1 counters? on ~$/i.test(text)
+  ) {
     return { event: "counter_added", subjectFilter: { counterName: "p1p1" } };
   }
   if (/^Whenever another colorless creature you control enters$/i.test(text)) {
@@ -11786,6 +11800,13 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
       const lastActivated = result.activated[result.activated.length - 1];
       if (gateCondition && lastActivated && !lastActivated.requiresCondition) {
         lastActivated.requiresCondition = gateCondition;
+        continue;
+      }
+      // Shrine of the Forsaken Gods: the gate rides a MANA ability, which is
+      // a separate list from the activated one.
+      const lastManaAbility = result.manaAbilities[result.manaAbilities.length - 1];
+      if (gateCondition && lastManaAbility && !lastManaAbility.requiresCondition) {
+        lastManaAbility.requiresCondition = gateCondition;
         continue;
       }
     }

@@ -2953,6 +2953,12 @@ function applyDestroyAll(
     .filter(
       (card) => !effect.exceptSubtype || !cardMatchesSubtype(next, card.id, effect.exceptSubtype),
     )
+    // "All NONARTIFACT creatures": a card type the permanent must not have.
+    .filter((card) =>
+      (effect.exceptTypes ?? []).every(
+        (type) => !characteristicsOf(next, card.id).types.includes(type),
+      ),
+    )
     // Crux of Fate's first mode: the sweep is narrowed TO a subtype rather
     // than sparing one.
     .filter(

@@ -1,4 +1,5 @@
 import { cardMatchesSubtype, computedCard, controlsGate } from "./characteristicsEngine";
+import { triggerConditionHolds } from "./triggers";
 import { COLOR_PIPS, MANA_COLORS } from "./mana";
 import type { CardDefinition, CardInstanceId, GameState, ManaAbility, ManaColor } from "./types";
 
@@ -185,6 +186,14 @@ function manaGateSatisfied(
     if (count < atLeast) {
       return false;
     }
+  }
+  // Shrine of the Forsaken Gods: the shared condition vocabulary, on a mana
+  // ability rather than an activated one.
+  if (
+    ability.requiresCondition &&
+    !triggerConditionHolds(state, controllerId, ability.requiresCondition, undefined, sourceId)
+  ) {
+    return false;
   }
   const gate = ability.requiresControlled;
   return gate ? controlsGate(state, controllerId, gate) : true;

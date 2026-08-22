@@ -3200,6 +3200,9 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
         ...(value.exceptSubtype === undefined
           ? {}
           : { exceptSubtype: expectString(value.exceptSubtype, `${label}.exceptSubtype`) }),
+        ...(value.exceptTypes === undefined
+          ? {}
+          : { exceptTypes: parseStringList(value.exceptTypes, `${label}.exceptTypes`) }),
         ...(value.opponentsOnly === true ? { opponentsOnly: true } : {}),
         ...(value.onlySubtype === undefined
           ? {}
@@ -4331,6 +4334,14 @@ function parseManaAbilities(value: unknown, label: string): ManaAbility[] {
       ...(entry.countFromEnchantments === true ? { countFromEnchantments: true } : {}),
       ...(entry.costTapCreature === true ? { costTapCreature: true } : {}),
       ...(entry.costTapCreatureLegendary === true ? { costTapCreatureLegendary: true } : {}),
+      ...(entry.requiresCondition === undefined
+        ? {}
+        : {
+            requiresCondition: parseTriggerCondition(
+              entry.requiresCondition,
+              `${label}[${index}].requiresCondition`,
+            ),
+          }),
       ...(entry.anyColorAmong === "legendary" ||
       entry.anyColorAmong === "opponent_lands" ||
       entry.anyColorAmong === "your_lands" ||
@@ -4593,6 +4604,9 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
       ...(value.exceptSubtype === undefined
         ? {}
         : { exceptSubtype: expectString(value.exceptSubtype, `${label}.exceptSubtype`) }),
+      ...(value.exceptTypes === undefined
+        ? {}
+        : { exceptTypes: parseStringList(value.exceptTypes, `${label}.exceptTypes`) }),
     };
   }
   if (kind === "reveal_top_put_permanent") {
@@ -4749,6 +4763,9 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
       ...(value.exceptSubtype === undefined
         ? {}
         : { exceptSubtype: expectString(value.exceptSubtype, `${label}.exceptSubtype`) }),
+      ...(value.exceptTypes === undefined
+        ? {}
+        : { exceptTypes: parseStringList(value.exceptTypes, `${label}.exceptTypes`) }),
       ...(value.opponentsOf === undefined
         ? {}
         : { opponentsOf: expectString(value.opponentsOf, `${label}.opponentsOf`) }),
@@ -4970,6 +4987,9 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
       ...(value.exceptSubtype === undefined
         ? {}
         : { exceptSubtype: expectString(value.exceptSubtype, `${label}.exceptSubtype`) }),
+      ...(value.exceptTypes === undefined
+        ? {}
+        : { exceptTypes: parseStringList(value.exceptTypes, `${label}.exceptTypes`) }),
     };
   }
   if (kind === "dig_top") {

@@ -25649,3 +25649,137 @@ describe("wave 202: entering with counters, and life the trigger watched", () =>
   });
 });
 
+
+describe("wave 203: sweeps that spare a type, and a gate on a mana ability", () => {
+  const compile = (name: string, manaCost: string, typeLine: string, oracleText: string, power?: string, toughness?: string) =>
+    compileOracleCard({
+      oracleId: name,
+      name,
+      manaCost,
+      typeLine,
+      power: power ?? null,
+      toughness: toughness ?? null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  it("spares the card type the sweep says non-", () => {
+    const extinction = compile(
+      "Organic Extinction",
+      "{5}{W}{W}",
+      "Sorcery",
+      "Improvise\nDestroy all nonartifact creatures.",
+    );
+    expect(extinction.notes).toEqual([]);
+    expect(extinction.definition.effects).toEqual([
+      { kind: "destroy_all", what: "creatures", exceptTypes: ["artifact"] },
+    ]);
+
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const bearDef = createCardDefinition({
+      name: "Bear",
+      typeLine: "Creature — Bear",
+      power: 2,
+      toughness: 2,
+    });
+    const golemDef = createCardDefinition({
+      name: "Golem",
+      typeLine: "Artifact Creature — Golem",
+      power: 3,
+      toughness: 3,
+    });
+    game.definitions[bearDef.id] = bearDef;
+    game.definitions[golemDef.id] = golemDef;
+    const put = (definitionId: string) => {
+      const card = createCardInstance({ definitionId, ownerId: p1.id, zone: "battlefield" });
+      game.cards[card.id] = card;
+      p1.zones.battlefield.push(card.id);
+      return card;
+    };
+    const bear = put(bearDef.id);
+    const golem = put(golemDef.id);
+
+    const next = applyEffect(game, {
+      kind: "destroy_all",
+      what: "creatures",
+      exceptTypes: ["artifact"],
+    });
+    expect(next.cards[bear.id]?.zone).toBe("graveyard");
+    // The artifact creature is spared, which is the whole word "nonartifact".
+    expect(next.cards[golem.id]?.zone).toBe("battlefield");
+  });
+
+  it("gates a mana ability on the shared condition", () => {
+    const shrine = compile(
+      "Shrine of the Forsaken Gods",
+      "",
+      "Land",
+      "{T}: Add {C}.\n{T}: Add {C}{C}. Activate only if you control seven or more lands.",
+    );
+    expect(shrine.notes).toEqual([]);
+    expect(shrine.definition.manaAbilities[1]).toMatchObject({
+      requiresCondition: { kind: "controls_count", what: "land", atLeast: 7 },
+    });
+
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const landDef = createCardDefinition({ name: "Waste", typeLine: "Land" });
+    const shrineDef = createCardDefinition({
+      name: "Shrine",
+      typeLine: "Land",
+      manaAbilities: [
+        {
+          produces: { C: 2 },
+          producesOptions: [],
+          producesAnyColor: false,
+          damageToController: 0,
+          requiresCondition: { kind: "controls_count", what: "land", atLeast: 7 },
+        },
+      ],
+    });
+    game.definitions[landDef.id] = landDef;
+    game.definitions[shrineDef.id] = shrineDef;
+    const put = (definitionId: string) => {
+      const card = createCardInstance({ definitionId, ownerId: p1.id, zone: "battlefield" });
+      game.cards[card.id] = card;
+      p1.zones.battlefield.push(card.id);
+      return card;
+    };
+    const shrineCard = put(shrineDef.id);
+    for (let index = 0; index < 3; index += 1) {
+      put(landDef.id);
+    }
+    // Four lands including the Shrine — short of seven, so no ability at all.
+    expect(manaAbilitiesFor(game, shrineCard.id)).toHaveLength(0);
+    const withLands = structuredClone(game);
+    for (let index = 0; index < 4; index += 1) {
+      const card = createCardInstance({
+        definitionId: landDef.id,
+        ownerId: p1.id,
+        zone: "battlefield",
+      });
+      withLands.cards[card.id] = card;
+      withLands.players[0]!.zones.battlefield.push(card.id);
+    }
+    expect(manaAbilitiesFor(withLands, shrineCard.id)).toHaveLength(1);
+  });
+
+  it("reads the active voice of the counter-added head", () => {
+    const exemplar = compile(
+      "Exemplar of Light",
+      "{3}{W}",
+      "Creature — Human Cleric",
+      "Whenever you gain life, put a +1/+1 counter on this creature.\nWhenever you put one or more +1/+1 counters on this creature, draw a card.",
+      "2",
+      "3",
+    );
+    expect(exemplar.notes).toEqual([]);
+    expect(exemplar.definition.triggers[1]).toMatchObject({
+      event: "counter_added",
+      subjectFilter: { counterName: "p1p1" },
+    });
+  });
+});
+

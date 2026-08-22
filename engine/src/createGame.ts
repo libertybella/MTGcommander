@@ -293,6 +293,7 @@ export function createCardDefinition(
           ...(ability.countFromEnchantments ? { countFromEnchantments: true } : {}),
           ...(ability.costTapCreature ? { costTapCreature: true } : {}),
           ...(ability.costTapCreatureLegendary ? { costTapCreatureLegendary: true } : {}),
+          ...(ability.requiresCondition ? { requiresCondition: ability.requiresCondition } : {}),
           ...(ability.anyColorAmong ? { anyColorAmong: ability.anyColorAmong } : {}),
           ...(ability.producesChosenColor ? { producesChosenColor: true } : {}),
           ...(ability.producesColorsAmong

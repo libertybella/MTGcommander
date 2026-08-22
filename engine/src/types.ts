@@ -1055,6 +1055,8 @@ export type GameEffect =
       exceptSubtype?: string;
       /** Crux of Fate: destroy ONLY permanents of this subtype. */
       onlySubtype?: string;
+      /** Organic Extinction: a card type the swept permanent must NOT have. */
+      exceptTypes?: string[];
       /** Ruinous Ultimatum: only permanents this player does NOT control. */
       opponentsOf?: PlayerId;
       /** Culling Ritual: this player gets one mana of this color per
@@ -1835,6 +1837,8 @@ export type CardEffect =
       exceptSubtype?: string;
       /** Crux of Fate: destroy ONLY permanents of this subtype. */
       onlySubtype?: string;
+      /** Organic Extinction: a card type the swept permanent must NOT have. */
+      exceptTypes?: string[];
       /** Ruinous Ultimatum: only permanents the caster does NOT control. */
       opponentsOnly?: boolean;
       /** Culling Ritual: the caster gets one mana per destroyed permanent —
@@ -2588,6 +2592,9 @@ export type ManaAbility = {
   costTapCreature?: boolean;
   /** Relic of Legends: the creature tapped for the cost must be legendary. */
   costTapCreatureLegendary?: boolean;
+  /** "Activate only if <condition>" on a mana ability (Shrine of the
+   * Forsaken Gods) — the same vocabulary the activated form uses. */
+  requiresCondition?: TriggerCondition;
   /** The color choice is limited to what the board offers: colors among
    * controlled legendary creatures/planeswalkers (Mox Amber), colors an
    * opponent's land could produce (Exotic Orchard, Fellwar Stone), or types

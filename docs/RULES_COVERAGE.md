@@ -575,6 +575,19 @@ What the engine implements and what it intentionally does not. Tests are tagged 
   the damage form; the verb conjugates where "deal" did not, which is the only
   reason it needed a second reading.
 
+- **Sweeps that spare a type, and a gate on a mana ability**: "all
+  nonartifact creatures" reads the excluded card type as a sweep qualifier.
+  "Nonland" is deliberately absent from both this and the target-phrase
+  version, because "nonland permanent" is already its own head noun in each —
+  claiming it there rewrites a shape that works, which is what the first
+  attempt did in both places.
+
+  "Activate only if …" now also rides a MANA ability, which lives in a
+  separate list from the activated ones — the gate had been attaching only to
+  the latter and falling through for Shrine of the Forsaken Gods. And the
+  counter-added trigger head reads the active voice ("whenever you put one or
+  more +1/+1 counters on ~") beside the passive one it already knew.
+
 ## The card pipeline (Stage 6)
 
 - Real cards compile from Scryfall oracle text by shared sentence patterns; a hand-authored registry (`server/src/cardOverrides.ts`, data in the same schema) beats the compiler for the long tail. Never a named-card code path.
