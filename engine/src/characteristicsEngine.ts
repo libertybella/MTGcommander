@@ -198,7 +198,13 @@ function dynamicCountOf(state: GameState, controllerId: string, count: DynamicCo
     return both;
   }
   const wanted =
-    count === "lands_you_control" ? "land" : count === "creatures_you_control" ? "creature" : "artifact";
+    count === "lands_you_control"
+      ? "land"
+      : count === "creatures_you_control"
+        ? "creature"
+        : count === "enchantments_you_control"
+          ? "enchantment"
+          : "artifact";
   let total = 0;
   for (const card of Object.values(state.cards)) {
     if (card.zone !== "battlefield" || card.controllerId !== controllerId) {
@@ -241,8 +247,31 @@ function matches(
       return false;
     }
   }
+  if (selector.scope === "opponents") {
+    const source = instance.sourceId ? state.cards[instance.sourceId] : undefined;
+    if (!source || card.controllerId === source.controllerId) {
+      return false;
+    }
+  }
   const computed = computedById[card.id];
   if (!computed) {
+    return false;
+  }
+  if (selector.legendary && !computed.characteristics.supertypes.includes("legendary")) {
+    return false;
+  }
+  if (selector.nonLegendary && computed.characteristics.supertypes.includes("legendary")) {
+    return false;
+  }
+  // Inlined rather than imported from cardTypes: that module reads computed
+  // characteristics, and the layer engine must not re-enter its own output.
+  if (
+    selector.commanderOnly &&
+    !state.players.some((player) => player.commander.commanderIds.includes(card.id))
+  ) {
+    return false;
+  }
+  if (selector.withCounter && (card.counters[selector.withCounter] ?? 0) <= 0) {
     return false;
   }
   if (selector.excludeSelf && card.id === instance.sourceId) {

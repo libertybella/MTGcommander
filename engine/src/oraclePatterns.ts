@@ -10,8 +10,10 @@ import type {
   CardTrigger,
   ChooseCardSource,
   Color,
+  ContinuousEffectData,
   ControlledGate,
   CostReduction,
+  EffectSelector,
   DestroyAllScope,
   DynamicCount,
   EnterAsCopyScope,
@@ -151,6 +153,14 @@ const KEYWORD_GRANTS: Record<string, Keyword> = {
   horsemanship: "horsemanship",
   shadow: "shadow",
   skulk: "skulk",
+};
+
+/** "…for each <noun> you control" — the nouns a live count can scale by. */
+const PER_COUNTS: Record<string, DynamicCount> = {
+  land: "lands_you_control",
+  creature: "creatures_you_control",
+  artifact: "artifacts_you_control",
+  enchantment: "enchantments_you_control",
 };
 
 const COUNT_WORDS: Record<string, number> = {
@@ -5165,6 +5175,215 @@ function compileAnthem(sentence: string): StaticAbility | null {
   return null;
 }
 
+/**
+ * The subject half of a static grant line: "Other Elf creatures you control",
+ * "Creature tokens you control", "Creatures your opponents control". Returns
+ * null when the phrase is not a recognised subject, so the caller falls
+ * through to the leftover pile rather than mis-compiling a card.
+ */
+function parseGrantSubject(phrase: string): EffectSelector | null {
+  let rest = phrase.trim();
+  const selector: EffectSelector = { scope: "all" };
+
+  if (/^(?:Enchanted|Equipped) (?:creature|permanent|land|artifact)$/i.test(rest)) {
+    return { scope: "attached" };
+  }
+
+  // Leading "Other " / "All " qualifiers.
+  if (/^Other /i.test(rest)) {
+    selector.excludeSelf = true;
+    rest = rest.slice("Other ".length);
+  } else if (/^All /i.test(rest)) {
+    rest = rest.slice("All ".length);
+  }
+
+  // Trailing qualifiers, stripped outermost-first: they follow the possessor
+  // ("Creatures you control of the chosen type"), so they must come off
+  // before it or the possessor match — which is anchored at the end — fails.
+  const chosen = rest.match(/^(.*?)\s+of the chosen type$/i);
+  if (chosen?.[1] !== undefined) {
+    selector.chosenSubtype = true;
+    rest = chosen[1];
+  }
+  const counters = rest.match(/^(.*?)\s+with \+1\/\+1 counters on them$/i);
+  if (counters?.[1] !== undefined) {
+    selector.withCounter = "p1p1";
+    rest = counters[1];
+  }
+
+  // Trailing possessor. Without one the line is unrestricted ("All Slivers").
+  const possessor = rest.match(/^(.*?)\s+you control$/i);
+  const opponents = rest.match(/^(.*?)\s+your opponents control$/i);
+  if (possessor?.[1] !== undefined) {
+    selector.scope = "controlled";
+    rest = possessor[1];
+  } else if (opponents?.[1] !== undefined) {
+    selector.scope = "opponents";
+    rest = opponents[1];
+  }
+
+  // Leading adjectives, in any order.
+  for (;;) {
+    const before = rest;
+    const colorWord = rest.match(/^(White|Blue|Black|Red|Green)\s+(.*)$/i);
+    if (colorWord?.[1] && colorWord[2]) {
+      selector.colors = [...(selector.colors ?? []), COLOR_WORDS[colorWord[1].toLowerCase()]!];
+      rest = colorWord[2];
+    }
+    const flags: Array<[RegExp, "legendary" | "nonLegendary" | "nonToken" | "commanderOnly"]> = [
+      [/^Legendary\s+(.*)$/i, "legendary"],
+      [/^Nonlegendary\s+(.*)$/i, "nonLegendary"],
+      [/^Nontoken\s+(.*)$/i, "nonToken"],
+      [/^Commander\s+(.*)$/i, "commanderOnly"],
+    ];
+    for (const [pattern, flag] of flags) {
+      const hit = rest.match(pattern);
+      if (hit?.[1]) {
+        selector[flag] = true;
+        rest = hit[1];
+      }
+    }
+    if (rest === before) {
+      break;
+    }
+  }
+
+  // "Creature tokens" — the noun is "tokens", qualified by a card type.
+  const tokenNoun = rest.match(/^([A-Za-z]+)\s+tokens$/i);
+  if (tokenNoun?.[1]) {
+    selector.tokenOnly = true;
+    rest = `${tokenNoun[1]}s`;
+  } else if (/^tokens$/i.test(rest)) {
+    selector.tokenOnly = true;
+    rest = "permanents";
+  }
+
+  // The head noun: a card type, a creature subtype, or bare "permanents".
+  const head = rest.trim();
+  if (!/^permanents$/i.test(head)) {
+    const typeWord = head.toLowerCase().replace(/s$/, "");
+    if (SEARCH_CARD_TYPES.has(typeWord)) {
+      selector.types = [typeWord];
+    } else {
+      // "Elf creatures" / "Elves" — a tribal subject (changelings match).
+      const tribalWithType = head.match(/^([A-Z][a-z-]+)\s+([a-z]+)s$/);
+      if (tribalWithType?.[1] && tribalWithType[2] && SEARCH_CARD_TYPES.has(tribalWithType[2])) {
+        selector.subtypes = [singularSubtype(`${tribalWithType[1]}s`)];
+        selector.types = [tribalWithType[2]];
+      } else if (/^[A-Z][a-z-]+s$/.test(head)) {
+        selector.subtypes = [singularSubtype(head)];
+      } else {
+        return null;
+      }
+    }
+  }
+  return selector;
+}
+
+/**
+ * The predicate half: "get +1/+1 and have vigilance", "have double strike and
+ * lifelink", "have flying, first strike, and protection from black and from
+ * red". Returns null if any conjunct is unrecognised — a half-understood
+ * grant would silently drop the rest of the card's text.
+ */
+function parseGrantPredicate(phrase: string): ContinuousEffectData[] | null {
+  const effects: ContinuousEffectData[] = [];
+  // Split on the verbs rather than on "and", since a keyword list uses "and"
+  // internally ("get +1/+1 and have vigilance and trample").
+  const parts = phrase
+    .split(/\s+and\s+(?=(?:get|gets|have|has|can't)\s)/i)
+    .map((part) => part.trim())
+    .filter(Boolean);
+  for (const part of parts) {
+    const pt = part.match(/^(?:get|gets)\s+([+-]\d+)\/([+-]\d+)$/i);
+    if (pt?.[1] && pt[2]) {
+      effects.push({ kind: "modify_pt", power: Number(pt[1]), toughness: Number(pt[2]) });
+      continue;
+    }
+    // "gets +1/+1 for each enchantment you control" (Ethereal Armor).
+    const scaled = part.match(
+      /^(?:get|gets)\s+\+(\d+)\/\+(\d+) for each ([a-z]+) you control$/i,
+    );
+    if (scaled?.[1] && scaled[2] && scaled[3]) {
+      const per = PER_COUNTS[scaled[3].toLowerCase()];
+      if (!per) {
+        return null;
+      }
+      effects.push({
+        kind: "modify_pt",
+        power: Number(scaled[1]),
+        toughness: Number(scaled[2]),
+        per,
+      });
+      continue;
+    }
+    const restriction = part.match(/^can't\s+(be blocked|attack|block)$/i);
+    if (restriction?.[1]) {
+      const what = restriction[1].toLowerCase();
+      effects.push({
+        kind: "restrict",
+        ...(what === "be blocked" ? { cantBeBlocked: true } : {}),
+        ...(what === "attack" ? { cantAttack: true } : {}),
+        ...(what === "block" ? { cantBlock: true } : {}),
+      });
+      continue;
+    }
+    const grants = part.match(/^(?:have|has)\s+(.+)$/i);
+    if (!grants?.[1]) {
+      return null;
+    }
+    // "flying, first strike, vigilance, and protection from black and from red"
+    const words = grants[1]
+      .split(/,\s*(?:and\s+)?|\s+and\s+(?!from\b)/i)
+      .map((word) => word.trim().toLowerCase())
+      .filter(Boolean);
+    for (const word of words) {
+      const protection = word.match(
+        /^protection from (white|blue|black|red|green)((?: and from (?:white|blue|black|red|green))*)$/i,
+      );
+      if (protection?.[1]) {
+        const colors = [
+          protection[1],
+          ...[...(protection[2] ?? "").matchAll(/from (\w+)/gi)].map((entry) => entry[1]!),
+        ]
+          .map((name) => COLOR_WORDS[name.toLowerCase()])
+          .filter((color): color is Color => Boolean(color));
+        effects.push({ kind: "grant_protection", colors });
+        continue;
+      }
+      const keyword = KEYWORD_GRANTS[word];
+      if (!keyword) {
+        return null;
+      }
+      effects.push({ kind: "grant_keyword", keyword });
+    }
+  }
+  return effects.length > 0 ? effects : null;
+}
+
+/**
+ * A static grant line: one subject, one or more granted effects. "Creature
+ * tokens you control get +1/+1 and have vigilance" compiles to two abilities
+ * sharing a selector, rather than falling off the single shape the anthem
+ * matcher above recognises. That matcher runs first and still owns the plain
+ * cases; this is the general fallback.
+ */
+function compileStaticGrant(sentence: string): StaticAbility[] | null {
+  const split = sentence.match(/^(.+?)\s+((?:get|gets|have|has|can't)\s+.+)$/i);
+  if (!split?.[1] || !split[2]) {
+    return null;
+  }
+  const selector = parseGrantSubject(split[1]);
+  if (!selector) {
+    return null;
+  }
+  const effects = parseGrantPredicate(split[2]);
+  if (!effects) {
+    return null;
+  }
+  return effects.map((effect) => ({ selector: { ...selector }, effect }));
+}
+
 function offsetChosenIndexes(clause: SimpleClause, offset: number): SimpleClause {
   if (offset === 0) {
     return clause;
@@ -6321,6 +6540,12 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
     const anthem = compileAnthem(sentence);
     if (anthem) {
       result.staticAbilities.push(anthem);
+      continue;
+    }
+
+    const grant = compileStaticGrant(sentence);
+    if (grant) {
+      result.staticAbilities.push(...grant);
       continue;
     }
 

@@ -943,6 +943,7 @@ export type DynamicCount =
   | "lands_you_control"
   | "creatures_you_control"
   | "artifacts_you_control"
+  | "enchantments_you_control"
   | "artifacts_and_enchantments_you_control"
   | "cards_in_your_hand"
   | "cards_in_your_graveyard";
@@ -2083,10 +2084,23 @@ export type ManaAbility = {
  * must be present (lowercase).
  */
 export type EffectSelector = {
-  /** "attached": the permanent this source is attached to (auras, equipment). */
-  scope: "self" | "controlled" | "all" | "attached";
+  /** "attached": the permanent this source is attached to (auras, equipment).
+   * "opponents": everything the source's controller does NOT control
+   * (Elesh Norn's "Creatures your opponents control get -2/-2"). */
+  scope: "self" | "controlled" | "all" | "attached" | "opponents";
   types?: string[];
   subtypes?: string[];
+  /** "Legendary creatures you control" (Rising of the Day). */
+  legendary?: boolean;
+  /** "Nonlegendary creatures you control" (Flowering of the White Tree). */
+  nonLegendary?: boolean;
+  /** "Commander creatures you control" (Bastion Protector). Matches a
+   * commander in any zone-of-play sense the engine tracks: the card is one of
+   * its owner's designated commanders. */
+  commanderOnly?: boolean;
+  /** "Creatures you control with +1/+1 counters on them" (Herald of Secret
+   * Streams). */
+  withCounter?: string;
   /** "Tokens you control" (Jaheira). */
   tokenOnly?: boolean;
   /** "Nontoken creatures you control" (Rhythm of the Wild). */

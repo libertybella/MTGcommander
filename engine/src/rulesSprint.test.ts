@@ -17028,3 +17028,286 @@ describe("wave 145: verges, gates, and marching orders", () => {
   });
 });
 
+
+describe("wave 146: anthems, armors, and archdruids", () => {
+  const compile = (name: string, manaCost: string, typeLine: string, oracleText: string, power?: string, toughness?: string) =>
+    compileOracleCard({
+      oracleId: name,
+      name,
+      manaCost,
+      typeLine,
+      power: power ?? null,
+      toughness: toughness ?? null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  it("compiles the static-grant bucket fully", () => {
+    // One subject, two granted effects: the line becomes two abilities.
+    const virtue = compile(
+      "Intangible Virtue",
+      "{1}{W}",
+      "Enchantment",
+      "Creature tokens you control get +1/+1 and have vigilance.",
+    );
+    expect(virtue.notes).toEqual([]);
+    expect(virtue.definition.staticAbilities).toHaveLength(2);
+    expect(virtue.definition.staticAbilities[0]).toMatchObject({
+      selector: { scope: "controlled", tokenOnly: true, types: ["creature"] },
+      effect: { kind: "modify_pt", power: 1, toughness: 1 },
+    });
+    expect(virtue.definition.staticAbilities[1]?.effect).toEqual({
+      kind: "grant_keyword",
+      keyword: "vigilance",
+    });
+
+    // A supertype subject.
+    const rising = compile(
+      "Rising of the Day",
+      "{2}{W}",
+      "Enchantment",
+      "Legendary creatures you control get +1/+0.",
+    );
+    expect(rising.notes).toEqual([]);
+    expect(rising.definition.staticAbilities[0]?.selector).toMatchObject({
+      scope: "controlled",
+      legendary: true,
+      types: ["creature"],
+    });
+
+    // Commander-only, with two effects again.
+    const bastion = compile(
+      "Bastion Protector",
+      "{2}{W}",
+      "Creature — Human Soldier",
+      "Commander creatures you control get +2/+2 and have indestructible.",
+      "2",
+      "2",
+    );
+    expect(bastion.notes).toEqual([]);
+    expect(bastion.definition.staticAbilities[0]?.selector.commanderOnly).toBe(true);
+    expect(bastion.definition.staticAbilities[1]?.effect).toEqual({
+      kind: "grant_keyword",
+      keyword: "indestructible",
+    });
+
+    // The opponents' side of the table, with a negative modifier.
+    const norn = compile(
+      "Elesh Norn, Grand Cenobite",
+      "{5}{W}{W}",
+      "Legendary Creature — Phyrexian Praetor",
+      "Vigilance\nOther creatures you control get +2/+2.\nCreatures your opponents control get -2/-2.",
+      "4",
+      "7",
+    );
+    expect(norn.notes).toEqual([]);
+    const opposing = norn.definition.staticAbilities.find(
+      (ability) => ability.selector.scope === "opponents",
+    );
+    expect(opposing?.effect).toEqual({ kind: "modify_pt", power: -2, toughness: -2 });
+
+    // A long keyword list with a two-color protection clause at the end.
+    const memorial = compile(
+      "Akroma's Memorial",
+      "{7}",
+      "Legendary Artifact",
+      "Creatures you control have flying, first strike, vigilance, trample, haste, and protection from black and from red.",
+    );
+    expect(memorial.notes).toEqual([]);
+    expect(memorial.definition.staticAbilities).toHaveLength(6);
+    expect(memorial.definition.staticAbilities.map((ability) => ability.effect)).toContainEqual({
+      kind: "grant_protection",
+      colors: ["B", "R"],
+    });
+
+    // "Other permanents": no type restriction at all.
+    const avacyn = compile(
+      "Avacyn, Angel of Hope",
+      "{5}{W}{W}{W}",
+      "Legendary Creature — Angel",
+      "Flying, vigilance, indestructible\nOther permanents you control have indestructible.",
+      "8",
+      "8",
+    );
+    expect(avacyn.notes).toEqual([]);
+    const grant = avacyn.definition.staticAbilities[0];
+    expect(grant?.selector).toEqual({ scope: "controlled", excludeSelf: true });
+    expect(grant?.effect).toEqual({ kind: "grant_keyword", keyword: "indestructible" });
+
+    // A tribal subject keeps working through the new grammar.
+    const archdruid = compile(
+      "Elvish Archdruid",
+      "{1}{G}{G}",
+      "Creature — Elf Druid",
+      "Other Elf creatures you control get +1/+1.\n{T}: Add {G} for each Elf you control.",
+      "2",
+      "2",
+    );
+    expect(archdruid.notes).toEqual([]);
+    expect(archdruid.definition.staticAbilities[0]?.selector).toMatchObject({
+      scope: "controlled",
+      excludeSelf: true,
+      subtypes: ["elf"],
+      types: ["creature"],
+    });
+
+    // A trailing qualifier that sits *after* the possessor.
+    const chronicle = compile(
+      "Chronicle of Victory",
+      "{2}{W}",
+      "Enchantment",
+      "Creatures you control of the chosen type get +2/+2 and have first strike and trample.",
+    );
+    expect(chronicle.notes).toEqual([]);
+    expect(chronicle.definition.staticAbilities).toHaveLength(3);
+    expect(chronicle.definition.staticAbilities[0]?.selector.chosenSubtype).toBe(true);
+
+    // A counter qualifier plus a combat restriction.
+    const herald = compile(
+      "Herald of Secret Streams",
+      "{3}{U}",
+      "Creature — Merfolk Wizard",
+      "Creatures you control with +1/+1 counters on them can't be blocked.",
+      "2",
+      "3",
+    );
+    expect(herald.notes).toEqual([]);
+    expect(herald.definition.staticAbilities[0]).toMatchObject({
+      selector: { scope: "controlled", withCounter: "p1p1", types: ["creature"] },
+      effect: { kind: "restrict", cantBeBlocked: true },
+    });
+
+    // An aura whose pump scales with a live count.
+    const armor = compile(
+      "Ethereal Armor",
+      "{W}",
+      "Enchantment — Aura",
+      "Enchant creature\nEnchanted creature gets +1/+1 for each enchantment you control and has first strike.",
+    );
+    expect(armor.notes).toEqual([]);
+    expect(armor.definition.staticAbilities[0]).toMatchObject({
+      selector: { scope: "attached" },
+      effect: { kind: "modify_pt", power: 1, toughness: 1, per: "enchantments_you_control" },
+    });
+  });
+
+  it("applies the new selectors and the live-count pump on the battlefield", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+
+    const bearDef = createCardDefinition({ name: "Bear", typeLine: "Creature — Bear", power: 2, toughness: 2 });
+    const legendDef = createCardDefinition({
+      name: "Hero",
+      typeLine: "Legendary Creature — Human",
+      power: 2,
+      toughness: 2,
+    });
+    game.definitions[bearDef.id] = bearDef;
+    game.definitions[legendDef.id] = legendDef;
+
+    const mine = createCardInstance({ definitionId: bearDef.id, ownerId: p1.id, zone: "battlefield" });
+    const hero = createCardInstance({ definitionId: legendDef.id, ownerId: p1.id, zone: "battlefield" });
+    const theirs = createCardInstance({ definitionId: bearDef.id, ownerId: p2.id, zone: "battlefield" });
+    for (const [card, owner] of [
+      [mine, p1],
+      [hero, p1],
+      [theirs, p2],
+    ] as const) {
+      game.cards[card.id] = card;
+      owner.zones.battlefield.push(card.id);
+    }
+
+    // Rising of the Day: only the legend grows, and only on our side.
+    const risingDef = compile(
+      "Rising of the Day",
+      "{2}{W}",
+      "Enchantment",
+      "Legendary creatures you control get +1/+0.",
+    ).definition;
+    game.definitions[risingDef.id] = risingDef;
+    const rising = createCardInstance({ definitionId: risingDef.id, ownerId: p1.id, zone: "battlefield" });
+    game.cards[rising.id] = rising;
+    p1.zones.battlefield.push(rising.id);
+    expect(computedCard(game, hero.id)?.power).toBe(3);
+    expect(computedCard(game, mine.id)?.power).toBe(2);
+
+    // Elesh Norn's opponents-only clause reaches across the table and no
+    // further — our own bears are untouched.
+    const nornDef = compile(
+      "Elesh Norn, Grand Cenobite",
+      "{5}{W}{W}",
+      "Legendary Creature — Phyrexian Praetor",
+      "Vigilance\nOther creatures you control get +2/+2.\nCreatures your opponents control get -2/-2.",
+      "4",
+      "7",
+    ).definition;
+    game.definitions[nornDef.id] = nornDef;
+    const norn = createCardInstance({ definitionId: nornDef.id, ownerId: p1.id, zone: "battlefield" });
+    game.cards[norn.id] = norn;
+    p1.zones.battlefield.push(norn.id);
+    expect(computedCard(game, theirs.id)?.power).toBe(0);
+    expect(computedCard(game, theirs.id)?.toughness).toBe(0);
+    expect(computedCard(game, mine.id)?.power).toBe(4);
+    // Norn excludes herself from her own anthem, but she is legendary, so
+    // Rising of the Day still finds her: 4 + 1, not 4 + 2 + 1.
+    expect(computedCard(game, norn.id)?.power).toBe(5);
+
+    // Herald of Secret Streams: the counter qualifier is read live.
+    const heraldDef = compile(
+      "Herald of Secret Streams",
+      "{3}{U}",
+      "Creature — Merfolk Wizard",
+      "Creatures you control with +1/+1 counters on them can't be blocked.",
+      "2",
+      "3",
+    ).definition;
+    game.definitions[heraldDef.id] = heraldDef;
+    const herald = createCardInstance({ definitionId: heraldDef.id, ownerId: p1.id, zone: "battlefield" });
+    game.cards[herald.id] = herald;
+    p1.zones.battlefield.push(herald.id);
+    expect(computedCard(game, mine.id)?.cantBeBlocked).toBe(false);
+    mine.counters.p1p1 = 1;
+    expect(computedCard(game, mine.id)?.cantBeBlocked).toBe(true);
+
+    // Ethereal Armor scales with enchantments — and the two already on the
+    // battlefield (Rising, Herald is a creature) plus the Armor itself count.
+    const armorDef = compile(
+      "Ethereal Armor",
+      "{W}",
+      "Enchantment — Aura",
+      "Enchant creature\nEnchanted creature gets +1/+1 for each enchantment you control and has first strike.",
+    ).definition;
+    game.definitions[armorDef.id] = armorDef;
+    const armor = createCardInstance({ definitionId: armorDef.id, ownerId: p1.id, zone: "battlefield" });
+    armor.attachedTo = mine.id;
+    game.cards[armor.id] = armor;
+    p1.zones.battlefield.push(armor.id);
+    // 2 printed + 2 (Norn's anthem) + 1 (the counter added above) + 2 (the
+    // Armor, scaling by Rising of the Day and itself).
+    expect(computedCard(game, mine.id)?.power).toBe(7);
+    expect(hasKeyword(game, mine.id, "first_strike")).toBe(true);
+  });
+
+  it("round-trips the new selector fields through the serializer", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const bastionDef = compile(
+      "Bastion Protector",
+      "{2}{W}",
+      "Creature — Human Soldier",
+      "Commander creatures you control get +2/+2 and have indestructible.",
+      "2",
+      "2",
+    ).definition;
+    game.definitions[bastionDef.id] = bastionDef;
+    const bastion = createCardInstance({ definitionId: bastionDef.id, ownerId: p1.id, zone: "battlefield" });
+    game.cards[bastion.id] = bastion;
+    p1.zones.battlefield.push(bastion.id);
+
+    const round = parseGameState(JSON.parse(JSON.stringify(serializeGameState(game))));
+    const restored = round.definitions[bastionDef.id]?.staticAbilities[0]?.selector;
+    expect(restored?.commanderOnly).toBe(true);
+  });
+});
+

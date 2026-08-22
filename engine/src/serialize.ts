@@ -3288,7 +3288,13 @@ function parseEffectSelector(value: unknown, label: string): EffectSelector {
     throw new Error(`Invalid ${label}`);
   }
   const scope = expectString(value.scope, `${label}.scope`);
-  if (scope !== "self" && scope !== "controlled" && scope !== "all" && scope !== "attached") {
+  if (
+    scope !== "self" &&
+    scope !== "controlled" &&
+    scope !== "all" &&
+    scope !== "attached" &&
+    scope !== "opponents"
+  ) {
     throw new Error(`Invalid ${label}.scope`);
   }
   const excludeSelf = value.excludeSelf === true;
@@ -3318,6 +3324,12 @@ function parseEffectSelector(value: unknown, label: string): EffectSelector {
     ...(value.chosenColor === true ? { chosenColor: true } : {}),
     ...(value.tokenOnly === true ? { tokenOnly: true } : {}),
     ...(value.nonToken === true ? { nonToken: true } : {}),
+    ...(value.legendary === true ? { legendary: true } : {}),
+    ...(value.nonLegendary === true ? { nonLegendary: true } : {}),
+    ...(value.commanderOnly === true ? { commanderOnly: true } : {}),
+    ...(value.withCounter === undefined
+      ? {}
+      : { withCounter: expectString(value.withCounter, `${label}.withCounter`) }),
     ...(excludeSelf ? { excludeSelf: true } : {}),
   };
 }
@@ -3404,6 +3416,7 @@ function parseContinuousEffectData(value: unknown, label: string): ContinuousEff
       per !== "lands_you_control" &&
       per !== "creatures_you_control" &&
       per !== "artifacts_you_control" &&
+      per !== "enchantments_you_control" &&
       per !== "artifacts_and_enchantments_you_control" &&
       per !== "cards_in_your_hand" &&
       per !== "cards_in_your_graveyard"
