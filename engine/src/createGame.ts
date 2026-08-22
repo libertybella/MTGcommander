@@ -200,6 +200,7 @@ export function createCardDefinition(
                   ...(trigger.subjectFilter.colorless ? { colorless: true } : {}),
                   ...(trigger.subjectFilter.historic ? { historic: true } : {}),
                   ...(trigger.subjectFilter.legendary ? { legendary: true } : {}),
+                  ...(trigger.subjectFilter.modified ? { modified: true } : {}),
                   ...(trigger.subjectFilter.minManaValue === undefined
                     ? {}
                     : { minManaValue: trigger.subjectFilter.minManaValue }),

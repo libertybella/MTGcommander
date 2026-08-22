@@ -1251,6 +1251,11 @@ function parseSpellDescriptor(descriptor: string): CardTrigger["subjectFilter"] 
   if (word === "colorless") {
     return { colorless: true };
   }
+  // "a red spell" (Runaway Steam-Kin) — a colour, not a type. Composed forms
+  // like "a red creature spell" fall through to the type paths below.
+  if (COLOR_WORDS[word]) {
+    return { colors: [COLOR_WORDS[word]!] };
+  }
   // CR 702.- historic: artifact, legendary, or Saga.
   if (word === "historic") {
     return { historic: true };
@@ -6581,8 +6586,14 @@ function parseTriggerHead(head: string): TriggerHead | null {
   if (/^Whenever an opponent searches their library$/i.test(text)) {
     return { event: "opponent_searches" };
   }
-  if (/^Whenever a player casts their second spell each turn$/i.test(text)) {
-    return { event: "casts_second_spell" };
+  const secondSpell = text.match(
+    /^Whenever (a player|an opponent) casts their second spell each turn$/i,
+  );
+  if (secondSpell?.[1]) {
+    return {
+      event: "casts_second_spell",
+      ...(/^an opponent$/i.test(secondSpell[1]) ? { watch: "opponents" as const } : {}),
+    };
   }
   if (/^Whenever a creature you control dies$/i.test(text)) {
     return { event: "dies", watch: "controlled", subjectFilter: { types: ["creature"] } };
@@ -7099,24 +7110,36 @@ function parseTriggerSubjectPhrase(
     watch = "attached";
     rest = attached[1];
   }
-  // Leading adjectives, read one at a time.
+  // Leading adjectives, read one at a time. Each requires a word after it —
+  // in "a token you control", "token" is the head noun, not an adjective, and
+  // eating it would leave nothing for the head to match.
   for (;;) {
-    if (/^nontoken\s+/i.test(rest)) {
+    if (/^nontoken\s+\S/i.test(rest)) {
       filter.nonToken = true;
       rest = rest.replace(/^nontoken\s+/i, "");
       continue;
     }
-    if (/^token\s+/i.test(rest)) {
+    if (/^token\s+\S/i.test(rest)) {
       filter.tokenOnly = true;
       rest = rest.replace(/^token\s+/i, "");
       continue;
     }
-    if (/^legendary\s+/i.test(rest)) {
+    if (/^legendary\s+\S/i.test(rest)) {
       filter.legendary = true;
       rest = rest.replace(/^legendary\s+/i, "");
       continue;
     }
+    if (/^modified\s+\S/i.test(rest)) {
+      filter.modified = true;
+      rest = rest.replace(/^modified\s+/i, "");
+      continue;
+    }
     break;
+  }
+  // A bare "token" / "permanent" head names no card type at all.
+  if (/^tokens?$/i.test(rest.trim())) {
+    filter.tokenOnly = true;
+    rest = "permanent";
   }
   // A batched head is plural ("one or more artifacts"); the rest of the
   // grammar reads singular nouns.

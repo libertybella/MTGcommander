@@ -336,6 +336,16 @@ What the engine implements and what it intentionally does not. Tests are tagged 
   damage branches had already caught nearly every printed recipient. Two gaps
   remained, against eighteen branches.
 
+- **Subjects that are nouns, not adjectives**: the trigger head's adjective
+  loop ate "token" in "a token you control", leaving nothing for the head noun
+  to match — so the subject parsed as no subject at all. Each leading
+  adjective now requires a word after it, and a bare "token" head becomes a
+  permanent filtered to tokens. "Modified" joined the adjectives as a real
+  CR 701.48 check (an Aura or Equipment attached, or any counter — not only
+  +1/+1). A colour is a spell descriptor in its own right ("a red spell").
+  And the second-spell count takes an opponents-only narrowing, so Monologue
+  Tax does not pay its own controller.
+
 ## The card pipeline (Stage 6)
 
 - Real cards compile from Scryfall oracle text by shared sentence patterns; a hand-authored registry (`server/src/cardOverrides.ts`, data in the same schema) beats the compiler for the long tail. Never a named-card code path.

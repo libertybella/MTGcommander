@@ -462,6 +462,18 @@ function subjectMatchesFilter(
   if (filter.legendary && !traits.supertypes.includes("legendary")) {
     return false;
   }
+  // CR 701.48: "modified" is an Aura or Equipment attached to it, or any
+  // counter on it. Counters of every kind count, not only +1/+1.
+  if (filter.modified) {
+    const subject = state.cards[subjectId];
+    const counters = Object.values(subject?.counters ?? {}).some((amount) => amount > 0);
+    const attached = Object.values(state.cards).some(
+      (card) => card.zone === "battlefield" && card.attachedTo === subjectId,
+    );
+    if (!counters && !attached) {
+      return false;
+    }
+  }
   if (filter.minManaValue !== undefined && traits.manaValue < filter.minManaValue) {
     return false;
   }
@@ -796,6 +808,10 @@ function triggerMatchesEvent(
   }
   if (event.kind === "casts" && trigger.event === "casts_second_spell") {
     // Lotho: fires exactly on each player's second cast of the turn.
+    // Monologue Tax narrows the same count to opponents only.
+    if (trigger.watch === "opponents" && watcher.controllerId === event.controllerId) {
+      return false;
+    }
     return (state.spellsCastByPlayerThisTurn?.[event.controllerId] ?? 0) === 2;
   }
   if (trigger.event === "casts_second_spell") {

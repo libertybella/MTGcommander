@@ -2003,6 +2003,9 @@ export type CardTrigger = {
     withKeyword?: Keyword;
     /** "a creature you control without flying" (Kudo). */
     withoutKeyword?: Keyword;
+    /** CR 701.48: an Aura or Equipment attached to it, or a counter on it
+     * (Kodama of the West Tree). */
+    modified?: boolean;
   };
   effects: CardEffect[];
   /** Chosen when the trigger is put on the stack. Empty or omitted means untargeted. */

@@ -23434,3 +23434,156 @@ describe("wave 189: counter subjects and attaching", () => {
   });
 });
 
+
+describe("wave 190: subjects that are nouns, not adjectives", () => {
+  const compile = (name: string, manaCost: string, typeLine: string, oracleText: string, power?: string, toughness?: string) =>
+    compileOracleCard({
+      oracleId: name,
+      name,
+      manaCost,
+      typeLine,
+      power: power ?? null,
+      toughness: toughness ?? null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  const headOf = (text: string) =>
+    compile("Testcard", "{2}", "Enchantment", `${text}, you gain 1 life.`).definition.triggers[0];
+
+  it("reads a bare 'token' as the subject rather than an adjective", () => {
+    // The adjective loop ate "token" and left nothing for the head noun to
+    // match, so "a token you control" parsed as no subject at all.
+    expect(headOf("Whenever a token you control leaves the battlefield")).toMatchObject({
+      event: "leaves_battlefield",
+      watch: "controlled",
+      subjectFilter: { tokenOnly: true },
+    });
+    // …while the adjective reading still applies when a noun follows it.
+    expect(headOf("Whenever a token creature you control dies")).toMatchObject({
+      event: "dies",
+      subjectFilter: { types: ["creature"], tokenOnly: true },
+    });
+  });
+
+  it("takes a colour as a spell descriptor", () => {
+    expect(headOf("Whenever you cast a red spell")).toMatchObject({
+      event: "cast_spell",
+      watch: "controlled",
+      subjectFilter: { colors: ["R"] },
+    });
+  });
+
+  it("narrows the second-spell count to opponents", () => {
+    const tax = compile(
+      "Monologue Tax",
+      "{2}{W}",
+      "Enchantment",
+      "Whenever an opponent casts their second spell each turn, you create a Treasure token.",
+    );
+    expect(tax.notes).toEqual([]);
+    expect(tax.definition.triggers[0]).toMatchObject({
+      event: "casts_second_spell",
+      watch: "opponents",
+    });
+  });
+
+  it("does not fire an opponents-only second-spell trigger on its own caster", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const watcherDef = createCardDefinition({
+      name: "Tax",
+      typeLine: "Enchantment",
+      triggers: [
+        {
+          event: "casts_second_spell",
+          watch: "opponents",
+          effects: [{ kind: "gain_life", playerId: "controller", amount: 1 }],
+          targetRequirements: [],
+        },
+      ],
+    });
+    game.definitions[watcherDef.id] = watcherDef;
+    const watcher = createCardInstance({
+      definitionId: watcherDef.id,
+      ownerId: p1.id,
+      zone: "battlefield",
+    });
+    game.cards[watcher.id] = watcher;
+    p1.zones.battlefield.push(watcher.id);
+    game.spellsCastByPlayerThisTurn = { [p1.id]: 2 };
+
+    const cloned = structuredClone(game);
+    dispatchEventsInPlace(cloned, [
+      { kind: "casts", cardId: watcher.id, controllerId: p1.id },
+    ]);
+    // The watcher's own controller cast it — an opponents-only head stays put.
+    expect(cloned.stack.length).toBe(0);
+  });
+
+  it("reads 'modified' as a real CR 701.48 check", () => {
+    expect(
+      headOf("Whenever a modified creature you control deals combat damage to a player"),
+    ).toMatchObject({
+      event: "deals_combat_damage_to_player",
+      watch: "controlled",
+      subjectFilter: { types: ["creature"], modified: true },
+    });
+
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const bearDef = createCardDefinition({
+      name: "Bear",
+      typeLine: "Creature — Bear",
+      power: 2,
+      toughness: 2,
+    });
+    const bladeDef = createCardDefinition({ name: "Blade", typeLine: "Artifact — Equipment" });
+    game.definitions[bearDef.id] = bearDef;
+    game.definitions[bladeDef.id] = bladeDef;
+    const put = (definitionId: string) => {
+      const card = createCardInstance({ definitionId, ownerId: p1.id, zone: "battlefield" });
+      game.cards[card.id] = card;
+      p1.zones.battlefield.push(card.id);
+      return card;
+    };
+    const plain = put(bearDef.id);
+    const countered = put(bearDef.id);
+    const equipped = put(bearDef.id);
+    const blade = put(bladeDef.id);
+    countered.counters["p1p1"] = 1;
+    blade.attachedTo = equipped.id;
+
+    const watcherDef = createCardDefinition({
+      name: "Kodama",
+      typeLine: "Creature — Spirit",
+      power: 4,
+      toughness: 4,
+      triggers: [
+        {
+          event: "deals_combat_damage_to_player",
+          watch: "controlled",
+          subjectFilter: { types: ["creature"], modified: true },
+          effects: [{ kind: "gain_life", playerId: "controller", amount: 1 }],
+          targetRequirements: [],
+        },
+      ],
+    });
+    game.definitions[watcherDef.id] = watcherDef;
+    put(watcherDef.id);
+
+    const firedFor = (cardId: string): number => {
+      const cloned = structuredClone(game);
+      dispatchEventsInPlace(cloned, [
+        { kind: "combat_damage_to_player", cardId, playerId: p1.id, amount: 2 },
+      ]);
+      return cloned.stack.length;
+    };
+    // A counter counts, an attachment counts, a bare creature does not.
+    expect(firedFor(countered.id)).toBe(1);
+    expect(firedFor(equipped.id)).toBe(1);
+    expect(firedFor(plain.id)).toBe(0);
+  });
+});
+
