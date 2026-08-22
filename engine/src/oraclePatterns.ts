@@ -7,6 +7,7 @@ import type {
   TopOfLibraryGrant,
   CardDefinition,
   CardEffect,
+  ControlAllScope,
   CardTrigger,
   ChooseCardSource,
   Color,
@@ -3173,6 +3174,52 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
         { kind: "add_counter", cardId: "self", counter: "+1/+1", amount: 1 },
         { kind: "draw", playerId: "controller", count: 1 },
       ],
+    };
+  }
+
+  // "Gain control of target nonland permanent with mana value 1 or less"
+  // (Archmage's Charm) — the subject is the ordinary target noun phrase.
+  const takeControl = sentence.match(/^Gain control of ((?:up to one |another )?target .+)$/i);
+  if (takeControl?.[1]) {
+    const requirement = parseSimpleTargetPhrase(takeControl[1]);
+    if (requirement) {
+      return {
+        targetRequirements: [requirement],
+        effects: [
+          { kind: "gain_control", cardId: { type: "chosen", index: 0 }, playerId: "controller" },
+        ],
+      };
+    }
+  }
+
+  // Hellkite Tyrant: "gain control of all artifacts that player controls" —
+  // "that player" is the trigger's subject, so this only compiles in a body
+  // that has one.
+  const takeControlOfTheirs = sentence.match(
+    /^gain control of all (artifacts|creatures|permanents) that player controls$/i,
+  );
+  if (takeControlOfTheirs?.[1]) {
+    return {
+      targetRequirements: [],
+      effects: [
+        {
+          kind: "gain_control_all",
+          playerId: "controller",
+          what: takeControlOfTheirs[1].toLowerCase() as ControlAllScope,
+          fromId: { type: "subject_player" },
+        },
+      ],
+    };
+  }
+
+  // Homeward Path: everyone takes their own things back.
+  const restore = sentence.match(
+    /^Each player gains control of all (creatures|artifacts|permanents) they own$/i,
+  );
+  if (restore?.[1]) {
+    return {
+      targetRequirements: [],
+      effects: [{ kind: "restore_control", what: restore[1].toLowerCase() as ControlAllScope }],
     };
   }
 

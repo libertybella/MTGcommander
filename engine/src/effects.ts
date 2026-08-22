@@ -4,7 +4,7 @@ import { createCardDefinition, createCardInstance } from "./createGame";
 import { characteristicsOf, hasSubtype, isCreature, isInstantOrSorcery, isLand, isPlaneswalker } from "./cardTypes";
 import { eliminatePlayerInPlace } from "./elimination";
 import { createId } from "./ids";
-import { allBattlefieldCreatureCount, creaturePower, creatureToughness, damageAfterReplacements, wouldSkipDraw } from "./derived";
+import { allBattlefieldCreatureCount, creaturePower, creatureToughness, damageAfterReplacements, permanentsControlledBy, wouldSkipDraw } from "./derived";
 import { hasKeyword, protectionColorsOf } from "./keywords";
 import { addMana, tapCard, untapCard } from "./mana";
 import { commanderIdentityColors } from "./manaOptions";
@@ -23,6 +23,7 @@ import type {
   ChosenControllerRef,
   ChosenOwnerRef,
   ChosenTarget,
+  ControlAllScope,
   ChosenTargetRef,
   Color,
   ContinuousEffectData,
@@ -1563,6 +1564,40 @@ export function bindCardEffect(
       }
       return { kind: "untap_lands_up_to", playerId, count: effect.count };
     }
+    case "gain_control": {
+      const cardId = bindCardId(state, effect.cardId, context);
+      const playerId = bindPlayerSelector(state, effect.playerId, context);
+      if (!cardId || !playerId) {
+        return null;
+      }
+      return {
+        kind: "gain_control",
+        cardId,
+        controllerId: playerId,
+        ...(effect.untilEot ? { untilEot: true } : {}),
+      };
+    }
+    case "gain_control_all": {
+      const playerId = bindPlayerSelector(state, effect.playerId, context);
+      if (!playerId) {
+        return null;
+      }
+      // "that player controls" must resolve to somebody; a missing subject
+      // would silently widen the steal to the whole table.
+      const fromId = effect.fromId ? bindPlayerSelector(state, effect.fromId, context) : undefined;
+      if (effect.fromId && !fromId) {
+        return null;
+      }
+      return {
+        kind: "gain_control_all",
+        controllerId: playerId,
+        what: effect.what,
+        ...(fromId ? { fromId } : {}),
+        ...(effect.untilEot ? { untilEot: true } : {}),
+      };
+    }
+    case "restore_control":
+      return { kind: "restore_control", what: effect.what };
     case "attackers_gain_keyword_until_eot":
       return { kind: "attackers_gain_keyword_until_eot", keyword: effect.keyword };
     case "copy_subject_spell":
@@ -2292,12 +2327,78 @@ function applyCreateToken(
   return next;
 }
 
-function findControlledArmy(state: GameState, playerId: PlayerId): CardInstanceId | undefined {
-  const player = state.players.find((entry) => entry.id === playerId);
-  return player?.zones.battlefield.find((cardId) => {
-    const card = state.cards[cardId];
-    return Boolean(card && card.controllerId === playerId && hasSubtype(state, cardId, "army"));
+/**
+ * Move one permanent under a new controller. CR 613.7: it has not been under
+ * that controller's command since their turn began, so it is summoning-sick
+ * again (Insurrection grants haste separately, which is why the printed card
+ * needs to). CR 506.4: it also leaves combat, so a stolen attacker is not left
+ * attacking on behalf of the player who just lost it.
+ *
+ * `untilEot` records who to hand it back to at cleanup. Stealing the same
+ * permanent twice in a turn keeps the FIRST record, so it returns to whoever
+ * held it before any of this turn's thefts rather than to the previous thief.
+ */
+function takeControlInPlace(
+  state: GameState,
+  cardId: CardInstanceId,
+  controllerId: PlayerId,
+  untilEot: boolean,
+): void {
+  const card = state.cards[cardId];
+  if (
+    !card ||
+    card.zone !== "battlefield" ||
+    card.controllerId === controllerId ||
+    !state.players.some((player) => player.id === controllerId)
+  ) {
+    return;
+  }
+  if (untilEot && !(state.temporaryControl ?? []).some((entry) => entry.cardId === cardId)) {
+    state.temporaryControl = [
+      ...(state.temporaryControl ?? []),
+      { cardId, returnToId: card.controllerId },
+    ];
+  }
+  card.controllerId = controllerId;
+  card.summoningSick = true;
+  if (card.attacking || card.blockingAttackerId) {
+    card.attacking = false;
+    card.blockingAttackerId = null;
+    if (state.combat) {
+      state.combat.attacks = state.combat.attacks.filter(
+        (attack) => attack.attackerId !== cardId,
+      );
+    }
+  }
+}
+
+/** The permanents a mass control change moves, optionally narrowed to the
+ * ones one player currently controls ("all artifacts that player controls"). */
+function massControlTargets(
+  state: GameState,
+  what: ControlAllScope,
+  fromId?: PlayerId,
+): CardInstanceId[] {
+  const pool = fromId
+    ? permanentsControlledBy(state, fromId)
+    : state.players.flatMap((player) => player.zones.battlefield);
+  return pool.filter((cardId) => {
+    if (state.cards[cardId]?.zone !== "battlefield") {
+      return false;
+    }
+    if (what === "permanents") {
+      return true;
+    }
+    return what === "creatures"
+      ? isCreature(state, cardId)
+      : characteristicsOf(state, cardId).types.includes("artifact");
   });
+}
+
+function findControlledArmy(state: GameState, playerId: PlayerId): CardInstanceId | undefined {
+  return permanentsControlledBy(state, playerId).find((cardId) =>
+    hasSubtype(state, cardId, "army"),
+  );
 }
 
 function applyAmass(
@@ -3409,9 +3510,9 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
       case "may_sacrifice": {
         // Springbloom Druid: auto-taken with the first controlled land —
         // both the take and the pick are documented approximations.
-        const fodder = state.players
-          .find((entry) => entry.id === effect.controllerId)
-          ?.zones.battlefield.find((cardId) => isLand(state, cardId));
+        const fodder = permanentsControlledBy(state, effect.controllerId).find((cardId) =>
+          isLand(state, cardId),
+        );
         if (!fodder) {
           next = cloneGameState(state);
           break;
@@ -3509,6 +3610,31 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
                 kind: "grant_keyword",
                 keyword: effect.keyword,
               });
+        break;
+      }
+      case "gain_control": {
+        next = cloneGameState(state);
+        takeControlInPlace(next, effect.cardId, effect.controllerId, effect.untilEot === true);
+        break;
+      }
+      case "gain_control_all": {
+        next = cloneGameState(state);
+        for (const cardId of massControlTargets(next, effect.what, effect.fromId)) {
+          takeControlInPlace(next, cardId, effect.controllerId, effect.untilEot === true);
+        }
+        break;
+      }
+      case "restore_control": {
+        next = cloneGameState(state);
+        for (const cardId of massControlTargets(next, effect.what)) {
+          const card = next.cards[cardId];
+          if (card) {
+            takeControlInPlace(next, cardId, card.ownerId, false);
+          }
+        }
+        // Handing everything back also ends this turn's borrowings, so no
+        // cleanup entry survives to steal them away again.
+        next.temporaryControl = [];
         break;
       }
       case "untap_all": {
@@ -3784,15 +3910,9 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
       case "populate": {
         // CR 701.35 is "choose a token you control" — auto-pick the highest
         // power creature token, a documented approximation like proliferate.
-        const player = state.players.find((entry) => entry.id === effect.playerId);
-        const tokens = (player?.zones.battlefield ?? []).filter((cardId) => {
+        const tokens = permanentsControlledBy(state, effect.playerId).filter((cardId) => {
           const card = state.cards[cardId];
-          return (
-            card &&
-            card.isToken &&
-            card.controllerId === effect.playerId &&
-            isCreature(state, cardId)
-          );
+          return Boolean(card?.isToken) && isCreature(state, cardId);
         });
         if (tokens.length === 0) {
           next = cloneGameState(state);

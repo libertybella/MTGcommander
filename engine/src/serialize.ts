@@ -15,6 +15,7 @@ import type {
   CardTrigger,
   ChooseCardSource,
   ChosenTarget,
+  ControlAllScope,
   DestroyAllScope,
   DynamicCount,
   EnterTappedUnless,
@@ -1347,6 +1348,24 @@ export function parseGameState(json: string): GameState {
     ...(raw.flashThisTurn === undefined
       ? {}
       : { flashThisTurn: expectStringArray(raw.flashThisTurn, "flashThisTurn") }),
+    ...(raw.temporaryControl === undefined
+      ? {}
+      : {
+          temporaryControl: (Array.isArray(raw.temporaryControl)
+            ? raw.temporaryControl
+            : (() => {
+                throw new Error("Invalid temporaryControl");
+              })()
+          ).map((entry: unknown, index: number) => {
+            if (!isRecord(entry)) {
+              throw new Error(`Invalid temporaryControl[${index}]`);
+            }
+            return {
+              cardId: expectString(entry.cardId, `temporaryControl[${index}].cardId`),
+              returnToId: expectString(entry.returnToId, `temporaryControl[${index}].returnToId`),
+            };
+          }),
+        }),
     ...(raw.freeCastUsedThisTurn === undefined
       ? {}
       : {
@@ -1826,6 +1845,14 @@ function parseSearchFilter(value: unknown, label: string): SearchFilter {
       ? {}
       : { exactManaValue: expectNumber(value.exactManaValue, `${label}.exactManaValue`) }),
   };
+}
+
+function parseControlAllScope(value: unknown, label: string): ControlAllScope {
+  const scope = expectString(value, label);
+  if (scope !== "creatures" && scope !== "artifacts" && scope !== "permanents") {
+    throw new Error(`Invalid ${label}`);
+  }
+  return scope;
 }
 
 function parseSearchDestination(value: unknown, label: string): SearchDestination {
@@ -2661,6 +2688,25 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
       }
       return { kind, keyword: attackersKeyword as Keyword };
     }
+    case "gain_control":
+      return {
+        kind,
+        cardId: parseCardIdSelector(value.cardId, `${label}.cardId`),
+        playerId: parsePlayerSelector(value.playerId, `${label}.playerId`),
+        ...(value.untilEot === true ? { untilEot: true } : {}),
+      };
+    case "gain_control_all":
+      return {
+        kind,
+        playerId: parsePlayerSelector(value.playerId, `${label}.playerId`),
+        what: parseControlAllScope(value.what, `${label}.what`),
+        ...(value.fromId === undefined
+          ? {}
+          : { fromId: parsePlayerSelector(value.fromId, `${label}.fromId`) }),
+        ...(value.untilEot === true ? { untilEot: true } : {}),
+      };
+    case "restore_control":
+      return { kind, what: parseControlAllScope(value.what, `${label}.what`) };
     case "proliferate":
     case "populate":
       return { kind, playerId: parsePlayerSelector(value.playerId, `${label}.playerId`) };
@@ -4717,6 +4763,28 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
       throw new Error(`Invalid ${label}.what`);
     }
     return { kind, playerId: expectString(value.playerId, `${label}.playerId`), what };
+  }
+  if (kind === "gain_control") {
+    return {
+      kind,
+      cardId: expectString(value.cardId, `${label}.cardId`),
+      controllerId: expectString(value.controllerId, `${label}.controllerId`),
+      ...(value.untilEot === true ? { untilEot: true } : {}),
+    };
+  }
+  if (kind === "gain_control_all") {
+    return {
+      kind,
+      controllerId: expectString(value.controllerId, `${label}.controllerId`),
+      what: parseControlAllScope(value.what, `${label}.what`),
+      ...(value.fromId === undefined
+        ? {}
+        : { fromId: expectString(value.fromId, `${label}.fromId`) }),
+      ...(value.untilEot === true ? { untilEot: true } : {}),
+    };
+  }
+  if (kind === "restore_control") {
+    return { kind, what: parseControlAllScope(value.what, `${label}.what`) };
   }
   if (kind === "proliferate" || kind === "populate") {
     return { kind, playerId: expectString(value.playerId, `${label}.playerId`) };

@@ -1,7 +1,7 @@
 import { cloneGameState } from "./clone";
 import { characteristicsOf, isCommander, isCreature } from "./cardTypes";
 import { abilitiesRemoved, computedCard } from "./characteristicsEngine";
-import { creaturePower, creatureToughness, damageAfterReplacements } from "./derived";
+import { creaturePower, creatureToughness, damageAfterReplacements, permanentsControlledBy } from "./derived";
 import { hasKeyword, protectionColorsOf } from "./keywords";
 import { canPayManaCost, parseManaCost, payManaCost } from "./mana";
 import { isLiving, nextLivingPlayerId } from "./players";
@@ -146,9 +146,9 @@ function attackTaxTotals(
     if (!defender) {
       continue;
     }
-    for (const permanentId of defender.zones.battlefield) {
+    for (const permanentId of permanentsControlledBy(state, defender.id)) {
       const permanent = state.cards[permanentId];
-      if (!permanent || permanent.controllerId !== defender.id) {
+      if (!permanent) {
         continue;
       }
       const tax = state.definitions[permanent.definitionId]?.attackTax;
@@ -157,14 +157,9 @@ function attackTaxTotals(
       }
       generic += tax.generic ?? 0;
       if (tax.perEnchantment) {
-        generic += defender.zones.battlefield.filter((id) => {
-          const card = state.cards[id];
-          return (
-            card &&
-            card.controllerId === defender.id &&
-            characteristicsOf(state, id).types.includes("enchantment")
-          );
-        }).length;
+        generic += permanentsControlledBy(state, defender.id).filter((id) =>
+          characteristicsOf(state, id).types.includes("enchantment"),
+        ).length;
       }
       life += tax.lifePer ?? 0;
     }

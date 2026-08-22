@@ -17,7 +17,7 @@ import {
 } from "./index";
 import { cardMatchesSubtype, computedCard } from "./characteristicsEngine";
 import { mostCommonControlledCreatureType } from "./effects";
-import { castCostReduction, castableFromTop, freeEquipGranted, hasFlashGrant, landDropAllowance, selfDiscountAmount } from "./derived";
+import { castCostReduction, castableFromTop, freeEquipGranted, hasFlashGrant, landDropAllowance, permanentsControlledBy, selfDiscountAmount } from "./derived";
 import { hasKeyword } from "./keywords";
 import { dispatchEventsInPlace } from "./triggers";
 import { applyCombatDamage, declareAttackers } from "./combat";
@@ -22741,6 +22741,207 @@ describe("wave 185: the target noun phrase, read once", () => {
       power: "x",
       toughness: "x",
     });
+  });
+});
+
+
+describe("wave 186: control is a real field", () => {
+  const compile = (name: string, manaCost: string, typeLine: string, oracleText: string, power?: string, toughness?: string) =>
+    compileOracleCard({
+      oracleId: name,
+      name,
+      manaCost,
+      typeLine,
+      power: power ?? null,
+      toughness: toughness ?? null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  /** Two players, each with one Bear on the battlefield they own. */
+  function board() {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    const bearDef = createCardDefinition({
+      name: "Bear",
+      typeLine: "Creature — Bear",
+      power: 2,
+      toughness: 2,
+    });
+    const relicDef = createCardDefinition({ name: "Relic", typeLine: "Artifact" });
+    game.definitions[bearDef.id] = bearDef;
+    game.definitions[relicDef.id] = relicDef;
+    const put = (definitionId: string, owner: typeof p1) => {
+      const card = createCardInstance({ definitionId, ownerId: owner.id, zone: "battlefield" });
+      game.cards[card.id] = card;
+      owner.zones.battlefield.push(card.id);
+      return card;
+    };
+    return { game, p1, p2, bearDef, relicDef, put };
+  }
+
+  it("reads 'Gain control of target …' through the shared target phrase", () => {
+    const charm = compile(
+      "Archmage's Charm",
+      "{U}{U}{U}",
+      "Instant",
+      "Choose one —\n• Counter target spell.\n• Target player draws two cards.\n• Gain control of target nonland permanent with mana value 1 or less.",
+    );
+    expect(charm.notes).toEqual([]);
+    const steal = charm.definition.modes?.[2];
+    expect(steal?.targetRequirements).toEqual([{ kind: "nonland_permanent", maxManaValue: 1 }]);
+    expect(steal?.effects).toEqual([
+      { kind: "gain_control", cardId: { type: "chosen", index: 0 }, playerId: "controller" },
+    ]);
+  });
+
+  it("moves a permanent between controllers without moving it between owners", () => {
+    const { game, p1, p2, bearDef, put } = board();
+    const theirs = put(bearDef.id, p2);
+
+    const next = applyEffects(
+      game,
+      bindCardEffects(
+        game,
+        [{ kind: "gain_control", cardId: { type: "chosen", index: 0 }, playerId: "controller" }],
+        {
+          controllerId: p1.id,
+          sourceId: null,
+          targetRequirements: [{ kind: "creature" }],
+          targets: [{ type: "creature", cardId: theirs.id }],
+        },
+      ),
+    );
+    expect(next.cards[theirs.id]?.controllerId).toBe(p1.id);
+    // Ownership and the zone list it lives in are untouched — control is the
+    // only thing that moved.
+    expect(next.cards[theirs.id]?.ownerId).toBe(p2.id);
+    expect(next.players[1]?.zones.battlefield).toContain(theirs.id);
+    // CR 613.7: it has not been under the new controller's command since
+    // their turn began.
+    expect(next.cards[theirs.id]?.summoningSick).toBe(true);
+
+    // The helper every "what do you control" site now uses reads the real
+    // set, not the thief's own zone list.
+    expect(permanentsControlledBy(next, p1.id)).toContain(theirs.id);
+    expect(permanentsControlledBy(next, p2.id)).not.toContain(theirs.id);
+  });
+
+  it("hands a borrowed permanent back at cleanup", () => {
+    const { game, p1, p2, bearDef, put } = board();
+    const theirs = put(bearDef.id, p2);
+
+    let next = applyEffect(game, {
+      kind: "gain_control",
+      cardId: theirs.id,
+      controllerId: p1.id,
+      untilEot: true,
+    });
+    expect(next.cards[theirs.id]?.controllerId).toBe(p1.id);
+    expect(next.temporaryControl).toEqual([{ cardId: theirs.id, returnToId: p2.id }]);
+
+    next = advanceSteps(next, 40);
+    expect(next.cards[theirs.id]?.controllerId).toBe(p2.id);
+    expect(next.temporaryControl ?? []).toEqual([]);
+  });
+
+  it("returns a twice-stolen permanent to who held it first", () => {
+    // Two borrowings in one turn must not chain: the card goes home, not to
+    // the previous thief.
+    const { game, p1, p2, bearDef, put } = board();
+    const theirs = put(bearDef.id, p2);
+
+    let next = applyEffect(game, {
+      kind: "gain_control",
+      cardId: theirs.id,
+      controllerId: p1.id,
+      untilEot: true,
+    });
+    next = applyEffect(next, {
+      kind: "gain_control",
+      cardId: theirs.id,
+      controllerId: p2.id,
+      untilEot: true,
+    });
+    // The second steal did not overwrite the record with "return to p1".
+    expect(next.temporaryControl).toEqual([{ cardId: theirs.id, returnToId: p2.id }]);
+  });
+
+  it("takes only the named player's artifacts", () => {
+    const tyrant = compile(
+      "Hellkite Tyrant",
+      "{4}{R}{R}",
+      "Creature — Dragon",
+      "Flying\nWhenever this creature deals combat damage to a player, gain control of all artifacts that player controls.",
+      "6",
+      "5",
+    );
+    expect(tyrant.notes).toEqual([]);
+    expect(tyrant.definition.triggers[0]?.effects).toEqual([
+      {
+        kind: "gain_control_all",
+        playerId: "controller",
+        what: "artifacts",
+        fromId: { type: "subject_player" },
+      },
+    ]);
+
+    const { game, p1, p2, bearDef, relicDef, put } = board();
+    const victimRelic = put(relicDef.id, p2);
+    const ownRelic = put(relicDef.id, p1);
+    const victimBear = put(bearDef.id, p2);
+
+    const next = applyEffect(game, {
+      kind: "gain_control_all",
+      controllerId: p1.id,
+      what: "artifacts",
+      fromId: p2.id,
+    });
+    expect(next.cards[victimRelic.id]?.controllerId).toBe(p1.id);
+    // Not a creature, and not already the caster's — neither moves.
+    expect(next.cards[victimBear.id]?.controllerId).toBe(p2.id);
+    expect(next.cards[ownRelic.id]?.controllerId).toBe(p1.id);
+  });
+
+  it("gives everything back to its owner", () => {
+    const path = compile(
+      "Homeward Path",
+      "",
+      "Land",
+      "{T}: Add {C}.\n{T}: Each player gains control of all creatures they own.",
+    );
+    expect(path.notes).toEqual([]);
+    expect(path.definition.activated[0]?.effects).toEqual([
+      { kind: "restore_control", what: "creatures" },
+    ]);
+
+    const { game, p1, p2, bearDef, put } = board();
+    const theirs = put(bearDef.id, p2);
+    let next = applyEffect(game, {
+      kind: "gain_control",
+      cardId: theirs.id,
+      controllerId: p1.id,
+      untilEot: true,
+    });
+    next = applyEffect(next, { kind: "restore_control", what: "creatures" });
+    expect(next.cards[theirs.id]?.controllerId).toBe(p2.id);
+    // The handback also cancels the cleanup entry, so nothing re-steals it.
+    expect(next.temporaryControl ?? []).toEqual([]);
+  });
+
+  it("round-trips a stolen board", () => {
+    const { game, p1, p2, bearDef, put } = board();
+    const theirs = put(bearDef.id, p2);
+    const stolen = applyEffect(game, {
+      kind: "gain_control",
+      cardId: theirs.id,
+      controllerId: p1.id,
+      untilEot: true,
+    });
+    const restored = parseGameState(JSON.parse(JSON.stringify(serializeGameState(stolen))));
+    expect(restored.cards[theirs.id]?.controllerId).toBe(p1.id);
+    expect(restored.temporaryControl).toEqual([{ cardId: theirs.id, returnToId: p2.id }]);
   });
 });
 

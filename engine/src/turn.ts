@@ -319,6 +319,18 @@ function onEnterStep(state: GameState): GameState {
     if (state.flashThisTurn && state.flashThisTurn.length > 0) {
       state.flashThisTurn = [];
     }
+    // Borrowed permanents go home. They are summoning-sick for the player
+    // getting them back, the same as they were for the borrower.
+    if (state.temporaryControl && state.temporaryControl.length > 0) {
+      for (const entry of state.temporaryControl) {
+        const card = state.cards[entry.cardId];
+        if (card && card.zone === "battlefield") {
+          card.controllerId = entry.returnToId;
+          card.summoningSick = true;
+        }
+      }
+      state.temporaryControl = [];
+    }
     if (state.freeCastFromHand && state.freeCastFromHand.length > 0) {
       // An unused "you may cast" offer expires with the turn.
       state.freeCastFromHand = [];

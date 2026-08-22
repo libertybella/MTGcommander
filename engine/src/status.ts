@@ -1,6 +1,6 @@
 import { isCreature, isLand, isPlaneswalker } from "./cardTypes";
 import { COMMANDER_DAMAGE_TO_LOSE } from "./cardTypes";
-import { creatureToughness } from "./derived";
+import { creatureToughness, permanentsControlledBy } from "./derived";
 import { hasKeyword } from "./keywords";
 import { eliminatePlayerInPlace } from "./elimination";
 import { isLiving, livingPlayerCount, nextLivingPlayerId, winnerId } from "./players";
@@ -228,9 +228,7 @@ export function applyStateBasedActionsInPlace(state: GameState): void {
     if (player.lost || player.cityBlessing) {
       continue;
     }
-    const permanents = player.zones.battlefield.filter(
-      (cardId) => state.cards[cardId]?.controllerId === player.id,
-    );
+    const permanents = permanentsControlledBy(state, player.id);
     if (permanents.length < 10) {
       continue;
     }

@@ -3,6 +3,26 @@ import { abilitiesRemoved, cardMatchesSubtype, computedCard, controlsGate } from
 import type { ActivatedAbility, AlternativeCastCost, CardInstance, CardInstanceId, EnterTappedUnless, GameState, PlayerId } from "./types";
 
 /**
+ * Every permanent a player controls, which is NOT the same as the battlefield
+ * entries in their own zone list: zone lists are keyed by owner, and control
+ * lives on the card. Reading a player's own list and filtering by controller
+ * yields a subset — it drops anything they control but do not own — so once
+ * control can change, that shape undercounts. Ordered by owner seat and then
+ * battlefield position so callers stay deterministic.
+ */
+export function permanentsControlledBy(state: GameState, playerId: PlayerId): CardInstanceId[] {
+  const controlled: CardInstanceId[] = [];
+  for (const player of state.players) {
+    for (const cardId of player.zones.battlefield) {
+      if (state.cards[cardId]?.controllerId === playerId) {
+        controlled.push(cardId);
+      }
+    }
+  }
+  return controlled;
+}
+
+/**
  * CR 616: damage-modifying replacements, applied wherever damage is actually
  * applied — noncombat effects, sweeps, and combat. `targetPlayerId` is the
  * damaged player, or the controller of the damaged permanent.

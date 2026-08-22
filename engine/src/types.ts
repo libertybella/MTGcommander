@@ -596,6 +596,13 @@ export type GameState = {
    * (Vedalken Orrery) is `CardDefinition.grantsFlash` instead. */
   flashThisTurn?: PlayerId[];
   /**
+   * Permanents whose control was taken for the turn (Insurrection), with the
+   * controller to hand them back to at cleanup. A second steal of the same
+   * permanent keeps the ORIGINAL entry, so the card returns to whoever held it
+   * before any of this turn's thefts rather than to the previous thief.
+   */
+  temporaryControl?: { cardId: CardInstanceId; returnToId: PlayerId }[];
+  /**
    * Rishkar's Expertise / Electrodominance: "you may cast a spell with mana
    * value N or less from your hand without paying its mana cost". Modelled as
    * a PERMISSION with a use count rather than a prompt, the same way
@@ -803,6 +810,26 @@ export type GameEffect =
   | { kind: "copy_spell"; stackObjectId: StackObjectId; controllerId: PlayerId }
   | { kind: "extra_combat" }
   | { kind: "untap_all"; playerId: PlayerId; what: "creature" | "land" | "attacking" | "nonland" }
+  /** "Gain control of target …" (Archmage's Charm). */
+  | {
+      kind: "gain_control";
+      cardId: CardInstanceId;
+      controllerId: PlayerId;
+      /** "…until end of turn" (Insurrection): handed back at cleanup. */
+      untilEot?: boolean;
+    }
+  /** "Gain control of all artifacts that player controls" (Hellkite Tyrant),
+   * "…all creatures" (Insurrection). */
+  | {
+      kind: "gain_control_all";
+      controllerId: PlayerId;
+      what: ControlAllScope;
+      /** Only permanents this player currently controls; omitted means all. */
+      fromId?: PlayerId;
+      untilEot?: boolean;
+    }
+  /** Homeward Path: "Each player gains control of all creatures they own." */
+  | { kind: "restore_control"; what: ControlAllScope }
   /** Karlach: "They gain first strike until end of turn" on all attackers. */
   | { kind: "attackers_gain_keyword_until_eot"; keyword: Keyword }
   | { kind: "untap_lands_up_to"; playerId: PlayerId; count: number }
@@ -1040,6 +1067,9 @@ export type GameEffect =
 export type DestroyAllScope = "creatures" | "artifacts" | "enchantments" | "planeswalkers" | "nonland";
 
 /** What a characteristic-defining P/T counts, relative to the controller. */
+/** What a mass control change moves. */
+export type ControlAllScope = "creatures" | "artifacts" | "permanents";
+
 export type DynamicCount =
   | "lands_you_control"
   | "creatures_you_control"
@@ -1478,6 +1508,21 @@ export type CardEffect =
       playerId: PlayerSelector;
       what: "creature" | "land" | "attacking" | "nonland";
     }
+  | {
+      kind: "gain_control";
+      cardId: CardIdSelector;
+      playerId: PlayerSelector;
+      untilEot?: boolean;
+    }
+  | {
+      kind: "gain_control_all";
+      playerId: PlayerSelector;
+      what: ControlAllScope;
+      /** "…that player controls" (Hellkite Tyrant reads the damaged player). */
+      fromId?: PlayerSelector;
+      untilEot?: boolean;
+    }
+  | { kind: "restore_control"; what: ControlAllScope }
   | { kind: "attackers_gain_keyword_until_eot"; keyword: Keyword }
   | { kind: "untap_lands_up_to"; playerId: PlayerSelector; count: number }
   | { kind: "fog" }

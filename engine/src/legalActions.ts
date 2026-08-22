@@ -3,7 +3,7 @@ import { abilitiesRemoved, cardMatchesSubtype, controlsGate } from "./characteri
 import { hasKeyword } from "./keywords";
 import { emptyManaPool } from "./createGame";
 import { pendingBlockerPlayer } from "./combat";
-import { affinityArtifactDiscount, activationNonManaPayment, allBattlefieldCreatureCount, altCastPayment, canPlayLandsFromGraveyard, castCostReduction, castableFromTop, controlsCommander, freeEquipGranted, hasFlashGrant, landDropAllowance, lockedByAbolisher, lockedFromCasting, opponentControlsMoreLands, findFreeHandGrantIndex, opponentsCastLockedToHand, selfDiscountAmount, staticFreeCastCap, topOfLibraryGrant } from "./derived";
+import { affinityArtifactDiscount, activationNonManaPayment, allBattlefieldCreatureCount, altCastPayment, canPlayLandsFromGraveyard, castCostReduction, castableFromTop, controlsCommander, freeEquipGranted, hasFlashGrant, landDropAllowance, lockedByAbolisher, lockedFromCasting, opponentControlsMoreLands, findFreeHandGrantIndex, opponentsCastLockedToHand, permanentsControlledBy, selfDiscountAmount, staticFreeCastCap, topOfLibraryGrant } from "./derived";
 import { canPayManaCost, parseManaCost, type ParsedManaCost } from "./mana";
 import { colorsAmongControlled, manaAbilitiesFor, manaTapOptionsFor } from "./manaOptions";
 import { isMulliganOpen } from "./mulligan";
@@ -338,7 +338,7 @@ function castableFace(
     const payable = (cost: AdditionalCastCost): boolean => {
       if (
         cost.sacrifice &&
-        !player.zones.battlefield.some((cardId) =>
+        !permanentsControlledBy(state, player.id).some((cardId) =>
           sacrificeScopeMatches(state, cardId, cost.sacrifice!),
         )
       ) {
@@ -447,11 +447,9 @@ function abilityUsable(
   }
   if (ability.sacrificeCost) {
     const scope = ability.sacrificeCost;
-    const player = state.players.find((entry) => entry.id === playerId);
     // The Dominus cycle needs two or three, not one.
-    const fodder = (player?.zones.battlefield ?? []).filter(
+    const fodder = permanentsControlledBy(state, playerId).filter(
       (fodderId) =>
-        state.cards[fodderId]?.controllerId === playerId &&
         sacrificeScopeMatches(state, fodderId, scope, card.id) &&
         (ability.sacrificeSubtype === undefined ||
           cardMatchesSubtype(state, fodderId, ability.sacrificeSubtype)),

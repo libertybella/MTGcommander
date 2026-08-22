@@ -228,6 +228,33 @@ What the engine implements and what it intentionally does not. Tests are tagged 
   control" (Defile) — the grant carries no scale factor, and a basic-land
   count is not in the dynamic-count table. That is a to-do, not a decision.
 
+- **Control is a real field**: `gain_control` moves one permanent, and
+  `gain_control_all` moves everything of a type — optionally only what one
+  named player controls, which is how "all artifacts **that player** controls"
+  reads the trigger's own subject rather than the whole table. `restore_control`
+  is the inverse (Homeward Path). A permanent that changes hands does not move
+  between zone lists: those are keyed by owner, and control lives on the card.
+  It becomes summoning-sick for its new controller (CR 613.7 — which is why
+  the printed cards that want it to attack grant haste themselves) and leaves
+  combat (CR 506.4), so a stolen attacker is not left attacking for the player
+  who just lost it. "Until end of turn" control records who to hand the card
+  back to; stealing the same permanent twice in one turn keeps the FIRST
+  record, so it goes home rather than to the previous thief.
+
+  This exposed a bug class rather than a single bug. Every "what does this
+  player control" site read that player's own battlefield list and then
+  filtered by controller — which is a subset of the real set, silently
+  dropping anything controlled but not owned. Correct while nothing could
+  change control, wrong the moment something could. Ascend's ten-permanent
+  count, the attack tax, sacrifice fodder in `legalActions`, populate and
+  the Army lookup all now go through one `permanentsControlledBy` helper.
+
+  Not compiled: Insurrection. "Untap all creatures and gain control of them"
+  needs "them" to name the set the previous clause just touched, and the
+  following "They gain haste" needs the same back-reference. Nothing here
+  carries a back-reference to a set, and binding it to the wrong set would be
+  worse than leaving the card uncompiled.
+
 ## The card pipeline (Stage 6)
 
 - Real cards compile from Scryfall oracle text by shared sentence patterns; a hand-authored registry (`server/src/cardOverrides.ts`, data in the same schema) beats the compiler for the long tail. Never a named-card code path.
