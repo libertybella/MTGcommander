@@ -20253,3 +20253,114 @@ describe("wave 169: subtype sacrifice costs", () => {
   });
 });
 
+
+describe("wave 170: granted quoted triggers on attachments", () => {
+  const compile = (name: string, manaCost: string, typeLine: string, oracleText: string, power?: string, toughness?: string) =>
+    compileOracleCard({
+      oracleId: name,
+      name,
+      manaCost,
+      typeLine,
+      power: power ?? null,
+      toughness: toughness ?? null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  const PICK_AXE =
+    'Indestructible (Effects that say "destroy" don\'t destroy this Equipment.)\nEquipped creature gets +1/+1 and has "Whenever this creature attacks, create a Treasure token." (It\'s an artifact with "{T}, Sacrifice this token: Add one mana of any color.")\nEquip {2}';
+  const POWER_FIST =
+    'Equipped creature has trample and "Whenever this creature deals combat damage to a player, put that many +1/+1 counters on it."\nEquip {2}';
+  const MANTLE = 'Equipped creature has "{T}: Add one mana of any color."\nEquip {1}';
+
+  it("splits the quoted trigger off the grant and points it at the host", () => {
+    const axe = compile("Diamond Pick-Axe", "{R}", "Artifact — Equipment", PICK_AXE);
+    expect(axe.notes).toEqual([]);
+    // The buff half stays a static grant on the attached creature...
+    expect(axe.definition.staticAbilities[0]).toMatchObject({
+      selector: { scope: "attached" },
+      effect: { kind: "modify_pt", power: 1, toughness: 1 },
+    });
+    // ...and the quoted half becomes the Equipment's own attached watch.
+    expect(axe.definition.triggers[0]).toMatchObject({ event: "attacks", watch: "attached" });
+    expect(axe.definition.triggers[0]?.effects[0]).toMatchObject({ kind: "create_token" });
+  });
+
+  it("leaves a quoted activated ability uncompiled", () => {
+    // Rewriting this the same way would put the ability on the Equipment,
+    // which would then tap itself instead of the creature.
+    const mantle = compile("Paradise Mantle", "{0}", "Artifact — Equipment", MANTLE);
+    expect(mantle.notes.join(" ")).toContain("Add one mana of any color");
+  });
+
+  it("puts that many counters on the creature that dealt the damage", () => {
+    const fist = compile("Power Fist", "{1}{G}", "Artifact — Equipment", POWER_FIST);
+    expect(fist.notes).toEqual([]);
+    expect(fist.definition.triggers[0]).toMatchObject({
+      event: "deals_combat_damage_to_player",
+      watch: "attached",
+    });
+
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    game.definitions[fist.definition.id] = fist.definition;
+    const bearDef = createCardDefinition({
+      name: "Bear",
+      typeLine: "Creature — Bear",
+      power: 2,
+      toughness: 2,
+    });
+    game.definitions[bearDef.id] = bearDef;
+    const equipment = createCardInstance({
+      definitionId: fist.definition.id,
+      ownerId: p1.id,
+      zone: "battlefield",
+    });
+    const host = createCardInstance({ definitionId: bearDef.id, ownerId: p1.id, zone: "battlefield" });
+    equipment.attachedTo = host.id;
+    game.cards[equipment.id] = equipment;
+    game.cards[host.id] = host;
+    p1.zones.battlefield.push(equipment.id, host.id);
+
+    // The host has trample from the surviving half of the grant.
+    expect(hasKeyword(game, host.id, "trample")).toBe(true);
+
+    dispatchEventsInPlace(game, [
+      { kind: "combat_damage_to_player", cardId: host.id, playerId: p2.id, amount: 3 },
+    ]);
+    let next = game;
+    while (next.stack.length > 0) {
+      next = resolveTopOfStack(next);
+    }
+    // Three damage, three counters, and they land on the creature.
+    expect(next.cards[host.id]?.counters.p1p1).toBe(3);
+    expect(next.cards[equipment.id]?.counters.p1p1).toBeUndefined();
+  });
+
+  it("accepts the Eldrazi Spawn reminder because the token preset is already true", () => {
+    const zone = compile(
+      "Awakening Zone",
+      "{2}{G}",
+      "Enchantment",
+      'At the beginning of your upkeep, you may create a 0/1 colorless Eldrazi Spawn creature token. It has "Sacrifice this token: Add {C}."',
+    );
+    expect(zone.notes).toEqual([]);
+
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const spawned = applyEffect(game, {
+      kind: "create_token",
+      ownerId: p1.id,
+      name: "Eldrazi Spawn",
+      typeLine: "Creature — Eldrazi Spawn Token",
+      power: 0,
+      toughness: 1,
+    });
+    const tokenId = spawned.players.find((entry) => entry.id === p1.id)!.zones.battlefield.at(-1)!;
+    const ability = manaAbilitiesFor(spawned, tokenId)[0];
+    expect(ability?.sacrificeSelf).toBe(true);
+    expect(ability?.produces.C).toBe(1);
+  });
+});
+

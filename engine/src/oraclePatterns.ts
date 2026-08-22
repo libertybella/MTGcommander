@@ -2301,6 +2301,17 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     };
   }
 
+  // Power Fist: "that many" is the combat damage the trigger just carried,
+  // and "it" is the creature that dealt it.
+  if (/^put that many \+1\/\+1 counters on it$/i.test(sentence)) {
+    return {
+      targetRequirements: [],
+      effects: [
+        { kind: "add_counter", cardId: "subject_card", counter: "p1p1", amount: "subject_amount" },
+      ],
+    };
+  }
+
   // The Skullspore Nexus's activation.
   if (/^Double target creature's power until end of turn$/i.test(sentence)) {
     return {
@@ -2833,6 +2844,13 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
 
   // The engine has no regeneration, so the denial is truthfully a no-op.
   if (/^it can't be regenerated$/i.test(sentence)) {
+    return { targetRequirements: [], effects: [] };
+  }
+
+  // Awakening Zone, Pawn of Ulamog: the Eldrazi Spawn token's sacrifice-for-
+  // {C} ability is a token preset (see tokens.ts), so the sentence that spells
+  // it out is already true of the token this card creates.
+  if (/^It has "Sacrifice this token: Add \{C\}\."$/i.test(sentence)) {
     return { targetRequirements: [], effects: [] };
   }
 
@@ -5134,6 +5152,46 @@ function fuseExileReturnEndStepInPlace(sentences: string[], lineStart: boolean[]
   }
 }
 
+/**
+ * Diamond Pick-Axe, Kaldra Compleat, Bear Umbra: `Equipped creature gets +1/+1
+ * and has "Whenever ~ attacks, …"` splits into the buff sentence and the
+ * quoted trigger, rewritten to watch the host — which is exactly what the
+ * `Whenever equipped creature …` heads already mean. Granting a trigger to
+ * another permanent would need a second address space for trigger indexes;
+ * the Equipment carrying its own attached-watch trigger is the same game.
+ *
+ * Quoted ACTIVATED abilities (Paradise Mantle's `"{T}: Add one mana of any
+ * color."`) are deliberately left alone: the same rewrite would put the
+ * ability on the Equipment, so it would tap itself instead of the creature.
+ */
+function splitGrantedQuotedTriggerInPlace(sentences: string[], lineStart: boolean[]): void {
+  for (let index = 0; index < sentences.length; index += 1) {
+    const match = sentences[index]!.match(
+      /^((?:Equipped|Enchanted) creature .*?)\s*"([^"]+)"\.?$/i,
+    );
+    const quoted = match?.[2]?.trim();
+    if (!match?.[1] || !quoted || !/^(?:Whenever|When|At the beginning)\b/i.test(quoted)) {
+      continue;
+    }
+    const subject = /^Equipped/i.test(match[1]) ? "equipped creature" : "enchanted creature";
+    const body = quoted.replace(/~/g, subject).replace(/\.$/, "");
+    // Everything before the quote, unwound in printed order: the "has" that
+    // introduced the quote, then the "and" that joined it to whatever came
+    // before. Doing these in the wrong order silently eats the other half of
+    // "gets +1/+1 and has \"…\"".
+    const head = match[1]
+      .replace(/\s+has$/i, "")
+      .replace(/(?:,)?\s*and$/i, "")
+      .replace(/,$/, "")
+      .trim();
+    // Nothing but the subject left: the quote was the only grant.
+    const replacement = /^(?:Equipped|Enchanted) creature$/i.test(head) ? [body] : [head, body];
+    sentences.splice(index, 1, ...replacement);
+    lineStart.splice(index, 1, ...replacement.map(() => true));
+    index += replacement.length - 1;
+  }
+}
+
 /** Ancient Copper Dragon: "roll a d20" + "You create a number of Treasure
  * tokens equal to the result" become one synthetic clause sentence. */
 function fuseD20TreasuresInPlace(sentences: string[], lineStart: boolean[]): void {
@@ -5390,12 +5448,12 @@ function parseTriggerHead(head: string): TriggerHead | null {
   if (/^Whenever a creature you control attacks$/i.test(text)) {
     return { event: "attacks", watch: "controlled", subjectFilter: { types: ["creature"] } };
   }
-  // Skullclamp.
-  if (/^Whenever equipped creature dies$/i.test(text)) {
+  // Skullclamp. Auras say "enchanted" for the same watch.
+  if (/^Whenever (?:equipped|enchanted) creature dies$/i.test(text)) {
     return { event: "dies", watch: "attached" };
   }
-  // Sword of the Animist.
-  if (/^Whenever equipped creature attacks$/i.test(text)) {
+  // Sword of the Animist, Bear Umbra.
+  if (/^Whenever (?:equipped|enchanted) creature attacks$/i.test(text)) {
     return { event: "attacks", watch: "attached" };
   }
   // Enrage (Apex Altisaur).
@@ -5403,7 +5461,7 @@ function parseTriggerHead(head: string): TriggerHead | null {
     return { event: "is_dealt_damage" };
   }
   // The Swords, Mask of Memory: the Equipment watches its host's strikes.
-  if (/^Whenever equipped creature deals combat damage to a player$/i.test(text)) {
+  if (/^Whenever (?:equipped|enchanted) creature deals combat damage to a player$/i.test(text)) {
     return { event: "deals_combat_damage_to_player", watch: "attached" };
   }
   // Marionette Apprentice.
@@ -7062,6 +7120,7 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
   fuseExileReturnEndStepInPlace(sentences, lineStart);
   fuseTraverseInPlace(sentences, lineStart);
   expandEntersOrDiesInPlace(sentences, lineStart);
+  splitGrantedQuotedTriggerInPlace(sentences, lineStart);
   fuseMayPayInPlace(sentences, lineStart);
   fuseMaySacrificeInPlace(sentences, lineStart);
   fuseNecroTopInPlace(sentences, lineStart);

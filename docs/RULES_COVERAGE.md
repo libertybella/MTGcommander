@@ -171,6 +171,8 @@ What the engine implements and what it intentionally does not. Tests are tagged 
 
 - **Subtype sacrifice costs** ("Sacrifice a Desert", "Sacrifice a Goblin", "Sacrifice a Food"): the scope becomes `permanent` and a lowercase `sacrificeSubtype` (`costSacrificeSubtype` on mana abilities) carries the whole filter, honored through the shared `cardMatchesSubtype` helper — so a changeling is legal Goblin fodder and Humility takes that back. The subtype must be capitalized in the oracle text, which is what keeps "Sacrifice a token" (Fountainport) uncompiled rather than compiling to a free sacrifice.
 
+- **Granted quoted triggers on attachments** (Diamond Pick-Axe, Power Fist, The Reaver Cleaver): `Equipped creature gets +1/+1 and has "Whenever this creature attacks, …"` splits into the buff sentence and the quoted trigger, rewritten so the Equipment itself watches its host — exactly what the `Whenever equipped creature …` heads already mean, and the same game as granting the trigger to the creature. Aura wording ("enchanted creature") shares those heads. Quoted ACTIVATED abilities (Paradise Mantle) are deliberately refused: the same rewrite would leave the ability on the Equipment, which would then tap itself instead of the creature.
+
 ## The card pipeline (Stage 6)
 
 - Real cards compile from Scryfall oracle text by shared sentence patterns; a hand-authored registry (`server/src/cardOverrides.ts`, data in the same schema) beats the compiler for the long tail. Never a named-card code path.
