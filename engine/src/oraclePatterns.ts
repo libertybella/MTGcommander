@@ -3892,6 +3892,24 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     };
   }
 
+  // Soul-Guide Lantern / Scavenger Grounds: untargeted mass graveyard hate.
+  const massGraveyardExile = sentence.match(
+    /^Exile (each opponent's graveyard|all graveyards)$/i,
+  );
+  if (massGraveyardExile?.[1]) {
+    return {
+      targetRequirements: [],
+      effects: [
+        {
+          kind: "exile_graveyard",
+          playerId: /all graveyards/i.test(massGraveyardExile[1])
+            ? "each_player"
+            : "each_opponent",
+        },
+      ],
+    };
+  }
+
   match = sentence.match(/^Put a \+1\/\+1 counter on each creature you control$/i);
   if (match) {
     return {
@@ -4421,11 +4439,32 @@ const SEARCH_SUPERTYPES = new Set(["basic", "legendary", "snow"]);
 function parseSearchDescriptor(descriptor: string): SearchFilter | null {
   // "Plains, Island, Swamp, or Mountain" — an any-of subtype list (Farseek).
   if (/,|\bor\b/i.test(descriptor)) {
-    const options = descriptor
+    // The Landscape cycle reads "a basic Swamp, Forest, or Island card": an
+    // article and a supertype sit in front of the list and qualify all of it,
+    // so peel them off before splitting rather than letting the first option
+    // come out as "a basic swamp".
+    let listText = descriptor.trim().replace(/^an?\s+/i, "");
+    const supertypes: string[] = [];
+    for (;;) {
+      const leading = listText.match(/^([a-z]+)\s+(.*)$/i);
+      if (!leading?.[1] || !SEARCH_SUPERTYPES.has(leading[1].toLowerCase())) {
+        break;
+      }
+      supertypes.push(leading[1].toLowerCase());
+      listText = leading[2]!;
+    }
+    const options = listText
       .split(/,\s*(?:or\s+)?|\s+or\s+/i)
       .map((word) => word.trim().toLowerCase().replace(/\s*cards?$/, ""))
       .filter(Boolean);
     if (options.length >= 2 && options.every((word) => /^[a-z]+$/.test(word))) {
+      if (supertypes.length > 0) {
+        // Only a subtype list can carry a supertype ("a basic Swamp or …").
+        if (options.some((word) => SEARCH_CARD_TYPES.has(word))) {
+          return null;
+        }
+        return { supertypes, subtypesAny: options };
+      }
       // "instant or sorcery" is an any-of over card TYPES (Mystical Tutor);
       // "Plains, Island, or Swamp" is an any-of over subtypes (Farseek).
       if (options.every((word) => SEARCH_CARD_TYPES.has(word))) {

@@ -204,6 +204,9 @@ function expandEachOpponent(
     effect.kind === "discard" ||
     effect.kind === "team_pt_until_eot" ||
     effect.kind === "exile_top_play" ||
+    // Soul-Guide Lantern: "Exile each opponent's graveyard" is one clause but
+    // one exile per player.
+    effect.kind === "exile_graveyard" ||
     effect.kind === "search_library"
   ) {
     const players = eachOf(effect.playerId);

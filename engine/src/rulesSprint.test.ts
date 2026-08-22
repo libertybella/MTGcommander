@@ -18470,3 +18470,83 @@ describe("wave 153: subtype sweeps and batched arrivals", () => {
   });
 });
 
+
+describe("wave 154: landscapes and graveyard hate", () => {
+  const compile = (name: string, manaCost: string, typeLine: string, oracleText: string) =>
+    compileOracleCard({
+      oracleId: name,
+      name,
+      manaCost,
+      typeLine,
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  it("compiles the whole Landscape cycle from one descriptor fix", () => {
+    const cycle: Array<[string, string[]]> = [
+      ["Foreboding Landscape", ["swamp", "forest", "island"]],
+      ["Bountiful Landscape", ["forest", "island", "mountain"]],
+      ["Twisted Landscape", ["swamp", "mountain", "forest"]],
+      ["Seething Landscape", ["island", "swamp", "mountain"]],
+      ["Shattered Landscape", ["mountain", "plains", "swamp"]],
+    ];
+    for (const [name, subtypes] of cycle) {
+      const capitalised = subtypes.map((word) => word[0]!.toUpperCase() + word.slice(1));
+      const compiled = compile(
+        name,
+        "",
+        "Land",
+        `{T}: Add {C}.\n{T}, Sacrifice this land: Search your library for a basic ${capitalised[0]}, ${capitalised[1]}, or ${capitalised[2]} card, put it onto the battlefield tapped, then shuffle.`,
+      );
+      expect(compiled.notes, name).toEqual([]);
+      // The article and the supertype qualify the whole list, so they must
+      // survive the split rather than becoming part of the first option.
+      expect(compiled.definition.activated[0]?.effects[0], name).toMatchObject({
+        kind: "search_library",
+        filter: { supertypes: ["basic"], subtypesAny: subtypes },
+        destination: "battlefield",
+        entersTapped: true,
+      });
+      expect(compiled.definition.activated[0]?.sacrificeSelf, name).toBe(true);
+    }
+  });
+
+  it("exiles every opponent's graveyard, and leaves your own alone", () => {
+    const lantern = compile(
+      "Soul-Guide Lantern",
+      "{1}",
+      "Artifact",
+      "When this artifact enters, exile target card from a graveyard.\n{T}, Sacrifice this artifact: Exile each opponent's graveyard.",
+    );
+    expect(lantern.notes).toEqual([]);
+    expect(lantern.definition.activated[0]?.effects[0]).toEqual({
+      kind: "exile_graveyard",
+      playerId: "each_opponent",
+    });
+
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    const junkDef = createCardDefinition({ name: "Junk", typeLine: "Creature — Bear", power: 1, toughness: 1 });
+    game.definitions[junkDef.id] = junkDef;
+    for (const owner of [p1, p2]) {
+      const card = createCardInstance({ definitionId: junkDef.id, ownerId: owner.id, zone: "graveyard" });
+      game.cards[card.id] = card;
+      owner.zones.graveyard.push(card.id);
+    }
+
+    const next = applyEffects(
+      game,
+      bindCardEffects(
+        game,
+        [{ kind: "exile_graveyard", playerId: "each_opponent" }],
+        { controllerId: p1.id, sourceId: null, targets: [], targetRequirements: [] },
+      ),
+    );
+    expect(next.players.find((entry) => entry.id === p2.id)?.zones.graveyard).toHaveLength(0);
+    expect(next.players.find((entry) => entry.id === p1.id)?.zones.graveyard).toHaveLength(1);
+  });
+});
+
