@@ -2,7 +2,7 @@ import { declareAttackers, declareBlockers, lockRemainingBlockers, pendingBlocke
 import { abilitiesRemoved } from "./characteristicsEngine";
 import { characteristicsOf, isCommander, isCreature, isInstant, isInstantOrSorcery, isLand, isLegendary, isMainPhase } from "./cardTypes";
 import { cloneGameState } from "./clone";
-import { affinityArtifactDiscount, allBattlefieldCreatureCount, canPlayLandFromTop, canPlayLandsFromGraveyard, castCostReduction, castableFromTop, controlsCommander, creaturePower, freeEquipGranted, hasFlashGrant, landDropAllowance, lockedByAbolisher, lockedFromCasting, opponentControlsMoreLands, selfDiscountAmount } from "./derived";
+import { affinityArtifactDiscount, allBattlefieldCreatureCount, canPlayLandFromTop, canPlayLandsFromGraveyard, castCostReduction, castableFromTop, controlsCommander, creaturePower, freeEquipGranted, hasFlashGrant, landDropAllowance, lockedByAbolisher, lockedFromCasting, opponentControlsMoreLands, opponentsCastLockedToHand, selfDiscountAmount } from "./derived";
 import { eliminatePlayerInPlace } from "./elimination";
 import { applyEffects, bindCardEffects, devotionTo } from "./effects";
 import { hasKeyword } from "./keywords";
@@ -120,6 +120,11 @@ function validateCast(
 
   const located = findCardZone(state, cardId);
   const fromHand = Boolean(located && located.zone === "hand" && located.playerId === playerId);
+  // Drannith Magistrate: opponents may only cast from their hands — the
+  // command zone, graveyard, exile, and library top are all shut.
+  if (!fromHand && opponentsCastLockedToHand(state, playerId)) {
+    throw new Error("An opponent's permanent stops you from casting from there");
+  }
   const fromCommand = Boolean(
     located &&
       located.zone === "command" &&

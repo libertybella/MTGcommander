@@ -238,6 +238,7 @@ function compileOneFace(card: OracleCard, definitionId: string): OracleCompileRe
       ? { enterCountersPerChosenType: compiled.enterCountersPerChosenType }
       : {}),
     ...(compiled.freeEquipIfArtifacts ? { freeEquipIfArtifacts: compiled.freeEquipIfArtifacts } : {}),
+    ...(compiled.opponentsCastOnlyFromHand ? { opponentsCastOnlyFromHand: true } : {}),
     ...(compiled.selfIsChosenType ? { selfIsChosenType: true } : {}),
     ...(compiled.triggerDoubling ? { triggerDoubling: { ...compiled.triggerDoubling } } : {}),
     ...(compiled.landChosenColorBonus ? { landChosenColorBonus: true } : {}),

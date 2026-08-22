@@ -231,6 +231,8 @@ export type CardDefinition = {
   /** Puresteel Paladin: controlled Equipment equip for {0} while the
    * controller has at least this many artifacts. */
   freeEquipIfArtifacts?: number;
+  /** Drannith Magistrate: opponents may only cast from their hands. */
+  opponentsCastOnlyFromHand?: boolean;
   /** "~ is the chosen type in addition to its other types" (Metallic Mimic). */
   selfIsChosenType?: boolean;
   /** Caged Sun: a land tap that adds the chosen color adds one more of it. */
@@ -584,6 +586,8 @@ export type SearchFilter = {
   maxManaValueX?: boolean;
   /** "with toughness 2 or less" (Recruiter of the Guard). Printed toughness. */
   maxToughness?: number;
+  /** "with power 2 or less" (Imperial Recruiter). Printed power. */
+  maxPower?: number;
   /** Transmute: "with the same mana value as this card". */
   exactManaValue?: number;
 };
@@ -1122,7 +1126,14 @@ export type CardEffect =
       /** subtypeCount: X = the controller's battlefield permanents with the
        * subtype (Scourge of Valkas). chosen_power: the bound source
        * creature's power, read at bind (Ram Through). */
-      amount: number | "x" | "sacrificed_power" | "chosen_power" | { subtypeCount: string };
+      /** subject_power: Warstorm Surge — the trigger subject's power at bind. */
+      amount:
+        | number
+        | "x"
+        | "sacrificed_power"
+        | "chosen_power"
+        | "subject_power"
+        | { subtypeCount: string };
       /** "You gain life equal to the damage dealt this way." */
       gainLife?: boolean;
     }

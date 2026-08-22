@@ -257,6 +257,17 @@ export function opponentControlsMoreLands(state: GameState, playerId: string): b
 
 /** "This spell costs {X} less to cast, where X is …" (the self-discount
  * artifacts and Henges). Historic = artifact, legendary, or Saga (CR 700.4a). */
+/** Drannith Magistrate: an opponent's live lock limits casts to the hand. */
+export function opponentsCastLockedToHand(state: GameState, playerId: string): boolean {
+  return Object.values(state.cards).some(
+    (card) =>
+      card.zone === "battlefield" &&
+      card.controllerId !== playerId &&
+      state.definitions[card.definitionId]?.opponentsCastOnlyFromHand === true &&
+      !abilitiesRemoved(state, card.id),
+  );
+}
+
 /** Puresteel Paladin: any live granter makes controlled equips free. */
 export function freeEquipGranted(state: GameState, playerId: string): boolean {
   return Object.values(state.cards).some((card) => {

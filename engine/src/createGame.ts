@@ -86,6 +86,7 @@ export function createCardDefinition(
         | "chooseCardTypeOnEnter"
         | "enterCountersPerChosenType"
         | "freeEquipIfArtifacts"
+        | "opponentsCastOnlyFromHand"
         | "selfIsChosenType"
         | "triggerDoubling"
         | "landChosenColorBonus"
@@ -375,6 +376,7 @@ export function createCardDefinition(
       ? { enterCountersPerChosenType: input.enterCountersPerChosenType }
       : {}),
     ...(input.freeEquipIfArtifacts ? { freeEquipIfArtifacts: input.freeEquipIfArtifacts } : {}),
+    ...(input.opponentsCastOnlyFromHand ? { opponentsCastOnlyFromHand: true } : {}),
     ...(input.selfIsChosenType ? { selfIsChosenType: true } : {}),
     ...(input.landChosenColorBonus ? { landChosenColorBonus: true } : {}),
     ...(input.landTapEcho ? { landTapEcho: true } : {}),

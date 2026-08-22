@@ -3,7 +3,7 @@ import { abilitiesRemoved, cardMatchesSubtype } from "./characteristicsEngine";
 import { hasKeyword } from "./keywords";
 import { emptyManaPool } from "./createGame";
 import { pendingBlockerPlayer } from "./combat";
-import { affinityArtifactDiscount, allBattlefieldCreatureCount, canPlayLandsFromGraveyard, castCostReduction, controlsCommander, freeEquipGranted, hasFlashGrant, landDropAllowance, lockedByAbolisher, lockedFromCasting, opponentControlsMoreLands, selfDiscountAmount, topOfLibraryGrant } from "./derived";
+import { affinityArtifactDiscount, allBattlefieldCreatureCount, canPlayLandsFromGraveyard, castCostReduction, castableFromTop, controlsCommander, freeEquipGranted, hasFlashGrant, landDropAllowance, lockedByAbolisher, lockedFromCasting, opponentControlsMoreLands, opponentsCastLockedToHand, selfDiscountAmount, topOfLibraryGrant } from "./derived";
 import { canPayManaCost, parseManaCost, type ParsedManaCost } from "./mana";
 import { colorsAmongControlled, manaAbilitiesFor, manaTapOptionsFor } from "./manaOptions";
 import { isMulliganOpen } from "./mulligan";
@@ -479,6 +479,9 @@ export function legalActions(state: GameState, playerId: PlayerId): LegalAction[
   const abolished = lockedFromCasting(state, playerId) || silenced;
   const actions: LegalAction[] = [];
 
+  // Drannith Magistrate: only hand casts (land PLAYS from the graveyard
+  // are not casts and stay legal).
+  const handOnly = opponentsCastLockedToHand(state, playerId);
   const graveyardLandIds = canPlayLandsFromGraveyard(state, playerId)
     ? player.zones.graveyard.filter((cardId) => {
         const definition = state.cards[cardId]
@@ -503,8 +506,8 @@ export function legalActions(state: GameState, playerId: PlayerId): LegalAction[
   for (const cardId of [
     ...player.zones.hand,
     ...graveyardLandIds,
-    ...flashbackIds.filter((id) => !graveyardLandIds.includes(id)),
-    ...exilePlayableIds,
+    ...(handOnly ? [] : flashbackIds.filter((id) => !graveyardLandIds.includes(id))),
+    ...(handOnly ? [] : exilePlayableIds),
   ]) {
     const card = state.cards[cardId];
     const definition = card ? state.definitions[card.definitionId] : undefined;
@@ -598,13 +601,13 @@ export function legalActions(state: GameState, playerId: PlayerId): LegalAction[
       ) {
         actions.push({ kind: "play_land", cardId: topCardId, faceIndex: 0 });
       }
+      // castableFromTop carries every grant filter (castColorless and
+      // castChosenType included — the inline check here had fallen behind).
       if (
         !topIsLand &&
         !abolished &&
-        (topGrant.castAll ||
-          topGrant.castTypesAny.some((type) =>
-            topDefinition.characteristics.types.includes(type),
-          )) &&
+        !handOnly &&
+        castableFromTop(state, playerId, topCardId) &&
         castableFace(state, playerId, topDefinition, potential, 0, undefined, flashGrant)
       ) {
         actions.push({ kind: "cast_spell", cardId: topCardId, faceIndex: 0, fromCommand: false });
@@ -613,6 +616,9 @@ export function legalActions(state: GameState, playerId: PlayerId): LegalAction[
   }
 
   for (const cardId of player.zones.command) {
+    if (handOnly) {
+      break;
+    }
     const card = state.cards[cardId];
     const definition = card ? state.definitions[card.definitionId] : undefined;
     if (!card || !definition || !isCommander(state, cardId) || isLand(state, cardId)) {

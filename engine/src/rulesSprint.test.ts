@@ -16190,3 +16190,204 @@ describe("wave 141: mines, clues, and greater goods", () => {
   });
 });
 
+
+describe("wave 142: missteps and magistrates", () => {
+  it("compiles the five-card bucket fully", () => {
+    const misstep = compileOracleCard({
+      oracleId: "misstep",
+      name: "Mental Misstep",
+      manaCost: "{U/P}",
+      typeLine: "Instant",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText: "({U/P} can be paid with either {U} or 2 life.)\nCounter target spell with mana value 1.",
+    });
+    expect(misstep.notes).toEqual([]);
+    expect(misstep.definition.targetRequirements).toEqual([
+      { kind: "spell", maxManaValue: 1, minManaValue: 1 },
+    ]);
+
+    const surge = compileOracleCard({
+      oracleId: "surge",
+      name: "Warstorm Surge",
+      manaCost: "{5}{R}",
+      typeLine: "Enchantment",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText: "Whenever a creature you control enters, it deals damage equal to its power to any target.",
+    });
+    expect(surge.notes).toEqual([]);
+    expect(surge.definition.triggers[0]?.effects[0]).toMatchObject({
+      kind: "deal_damage",
+      amount: "subject_power",
+    });
+    expect(surge.definition.triggers[0]?.targetRequirements).toEqual([
+      { kind: "player_or_creature" },
+    ]);
+
+    const recruiter = compileOracleCard({
+      oracleId: "recruiter",
+      name: "Imperial Recruiter",
+      manaCost: "{2}{R}",
+      typeLine: "Creature — Human Advisor",
+      power: "1",
+      toughness: "1",
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "When this creature enters, search your library for a creature card with power 2 or less, reveal it, put it into your hand, then shuffle.",
+    });
+    expect(recruiter.notes).toEqual([]);
+    expect(recruiter.definition.triggers[0]?.effects[0]).toMatchObject({
+      kind: "search_library",
+      filter: { types: ["creature"], maxPower: 2 },
+    });
+
+    const transformation = compileOracleCard({
+      oracleId: "transformation",
+      name: "Kenrith's Transformation",
+      manaCost: "{1}{G}",
+      typeLine: "Enchantment — Aura",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "Enchant creature\nWhen this Aura enters, draw a card.\nEnchanted creature loses all abilities and is a green Elk creature with base power and toughness 3/3. (It loses all other card types and creature types.)",
+    });
+    expect(transformation.notes).toEqual([]);
+    expect(transformation.definition.staticAbilities.map((entry) => entry.effect.kind)).toEqual([
+      "remove_all_abilities",
+      "add_types",
+      "set_colors",
+      "set_pt",
+    ]);
+
+    const magistrate = compileOracleCard({
+      oracleId: "magistrate",
+      name: "Drannith Magistrate",
+      manaCost: "{1}{W}",
+      typeLine: "Creature — Human Wizard",
+      power: "1",
+      toughness: "3",
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText: "Your opponents can't cast spells from anywhere other than their hands.",
+    });
+    expect(magistrate.notes).toEqual([]);
+    expect(magistrate.definition.opponentsCastOnlyFromHand).toBe(true);
+  });
+
+  it("caps counterspell targets, deals subject power, and locks non-hand casts", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+
+    // Mental Misstep's target filter: a one-drop is legal, a two-drop is not.
+    const oneDef = createCardDefinition({ name: "One", typeLine: "Instant", manaCost: "{U}", effects: [{ kind: "draw", playerId: "controller", count: 1 }] });
+    const twoDef = createCardDefinition({ name: "Two", typeLine: "Instant", manaCost: "{1}{U}", effects: [{ kind: "draw", playerId: "controller", count: 1 }] });
+    game.definitions[oneDef.id] = oneDef;
+    game.definitions[twoDef.id] = twoDef;
+    const one = createCardInstance({ definitionId: oneDef.id, ownerId: p2.id, zone: "hand" });
+    const two = createCardInstance({ definitionId: twoDef.id, ownerId: p2.id, zone: "hand" });
+    game.cards[one.id] = one;
+    game.cards[two.id] = two;
+    p2.zones.hand.push(one.id, two.id);
+    let next = putSpellOnStack(game, one.id, []);
+    next = putSpellOnStack(next, two.id, []);
+    const oneEntry = next.stack.find((entry) => entry.sourceId === one.id)!;
+    const twoEntry = next.stack.find((entry) => entry.sourceId === two.id)!;
+    const requirement = { kind: "spell" as const, maxManaValue: 1, minManaValue: 1 };
+    expect(
+      isChosenTargetLegal(next, requirement, { type: "spell", stackObjectId: oneEntry.id }, p1.id),
+    ).toBe(true);
+    expect(
+      isChosenTargetLegal(next, requirement, { type: "spell", stackObjectId: twoEntry.id }, p1.id),
+    ).toBe(false);
+    while (next.stack.length > 0) {
+      next = resolveTopOfStack(next);
+    }
+
+    // Warstorm Surge: the bound damage reads the entering subject's power.
+    const ogreDef = createCardDefinition({ name: "Ogre", typeLine: "Creature — Ogre", power: 4, toughness: 4 });
+    next.definitions[ogreDef.id] = ogreDef;
+    const ogre = createCardInstance({ definitionId: ogreDef.id, ownerId: p1.id, zone: "battlefield" });
+    next.cards[ogre.id] = ogre;
+    next.players.find((entry) => entry.id === p1.id)!.zones.battlefield.push(ogre.id);
+    const bound = bindCardEffects(
+      next,
+      [
+        {
+          kind: "deal_damage",
+          sourceId: null,
+          target: { type: "chosen", index: 0 },
+          amount: "subject_power",
+        },
+      ],
+      {
+        controllerId: p1.id,
+        sourceId: null,
+        subjectCardId: ogre.id,
+        targets: [{ type: "player", playerId: p2.id }],
+        targetRequirements: [{ kind: "player_or_creature" }],
+      },
+    );
+    expect(bound[0]).toMatchObject({ kind: "deal_damage", amount: 4 });
+
+    // Kenrith's Transformation: the host is a vanilla 3/3 green Elk.
+    const auraDef = compileOracleCard({
+      oracleId: "transformation-rt",
+      name: "Kenrith's Transformation",
+      manaCost: "{1}{G}",
+      typeLine: "Enchantment — Aura",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "Enchant creature\nWhen this Aura enters, draw a card.\nEnchanted creature loses all abilities and is a green Elk creature with base power and toughness 3/3. (It loses all other card types and creature types.)",
+    }).definition;
+    next.definitions[auraDef.id] = auraDef;
+    const aura = createCardInstance({ definitionId: auraDef.id, ownerId: p1.id, zone: "battlefield" });
+    aura.attachedTo = ogre.id;
+    next.cards[aura.id] = aura;
+    next.players.find((entry) => entry.id === p1.id)!.zones.battlefield.push(aura.id);
+    const computed = computedCard(next, ogre.id);
+    expect(computed?.power).toBe(3);
+    expect(computed?.toughness).toBe(3);
+    expect(computed?.characteristics.subtypes).toContain("elk");
+
+    // Drannith Magistrate: the opponent's flashback cast is refused.
+    const magistrateDef = createCardDefinition({
+      name: "Magistrate",
+      typeLine: "Creature — Human Wizard",
+      power: 1,
+      toughness: 3,
+      opponentsCastOnlyFromHand: true,
+    });
+    next.definitions[magistrateDef.id] = magistrateDef;
+    const magistrate = createCardInstance({ definitionId: magistrateDef.id, ownerId: p2.id, zone: "battlefield" });
+    next.cards[magistrate.id] = magistrate;
+    next.players.find((entry) => entry.id === p2.id)!.zones.battlefield.push(magistrate.id);
+    const flashDef = createCardDefinition({
+      name: "Flash",
+      typeLine: "Instant",
+      manaCost: "{U}",
+      flashback: { manaCost: "{1}{U}" },
+      effects: [{ kind: "draw", playerId: "controller", count: 1 }],
+    });
+    next.definitions[flashDef.id] = flashDef;
+    const flash = createCardInstance({ definitionId: flashDef.id, ownerId: p1.id, zone: "graveyard" });
+    next.cards[flash.id] = flash;
+    next.players.find((entry) => entry.id === p1.id)!.zones.graveyard.push(flash.id);
+    next.priorityPlayerId = p1.id;
+    next.players.find((entry) => entry.id === p1.id)!.mana.U = 2;
+    expect(() =>
+      applyAction(next, { kind: "cast_spell", playerId: p1.id, cardId: flash.id, targets: [] }),
+    ).toThrow(/casting from there/);
+  });
+});
+

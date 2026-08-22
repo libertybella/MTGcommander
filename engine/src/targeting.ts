@@ -418,6 +418,21 @@ export function isChosenTargetLegal(
     if (target.type !== "spell" || !isLegalSpellTarget(state, target.stackObjectId)) {
       return false;
     }
+    // Mental Misstep: "target spell with mana value 1" caps the stack
+    // object's source mana value.
+    if (requirement.maxManaValue !== undefined || requirement.minManaValue !== undefined) {
+      const entry = state.stack.find((object) => object.id === target.stackObjectId);
+      const card = entry?.sourceId ? state.cards[entry.sourceId] : undefined;
+      const manaValue = card
+        ? state.definitions[card.definitionId]?.characteristics.manaValue ?? 0
+        : 0;
+      if (requirement.maxManaValue !== undefined && manaValue > requirement.maxManaValue) {
+        return false;
+      }
+      if (requirement.minManaValue !== undefined && manaValue < requirement.minManaValue) {
+        return false;
+      }
+    }
     if (requirement.requiredColors && requirement.requiredColors.length > 0) {
       // "target blue spell" (Red Elemental Blast).
       const entry = state.stack.find((object) => object.id === target.stackObjectId);

@@ -650,6 +650,13 @@ export function searchMatches(
       return false;
     }
   }
+  // Imperial Recruiter: printed power cap.
+  if (filter.maxPower !== undefined) {
+    const power = state.definitions[state.cards[cardId]?.definitionId ?? ""]?.power ?? 0;
+    if ((power ?? 0) > filter.maxPower) {
+      return false;
+    }
+  }
   if (
     filter.typesAny &&
     filter.typesAny.length > 0 &&

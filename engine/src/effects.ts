@@ -587,9 +587,13 @@ export function bindCardEffect(
               ? boundSourceId
                 ? Math.max(0, creaturePower(state, boundSourceId))
                 : 0
-              : typeof effect.amount === "object"
-                ? countControlledSubtype(state, context.controllerId, effect.amount.subtypeCount)
-                : effect.amount;
+              : effect.amount === "subject_power"
+                ? context.subjectCardId
+                  ? Math.max(0, creaturePower(state, context.subjectCardId))
+                  : 0
+                : typeof effect.amount === "object"
+                  ? countControlledSubtype(state, context.controllerId, effect.amount.subtypeCount)
+                  : effect.amount;
       if (amount <= 0) {
         return null;
       }

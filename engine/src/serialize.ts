@@ -479,6 +479,7 @@ export function parseGameState(json: string): GameState {
               `definition.${id}.freeEquipIfArtifacts`,
             ),
           }),
+      ...(def.opponentsCastOnlyFromHand === true ? { opponentsCastOnlyFromHand: true } : {}),
       ...(def.selfIsChosenType === true ? { selfIsChosenType: true } : {}),
       ...(def.landChosenColorBonus === true ? { landChosenColorBonus: true } : {}),
       ...(def.landTapEcho === true ? { landTapEcho: true } : {}),
@@ -1545,6 +1546,9 @@ function parseSearchFilter(value: unknown, label: string): SearchFilter {
     ...(value.maxToughness === undefined
       ? {}
       : { maxToughness: expectNumber(value.maxToughness, `${label}.maxToughness`) }),
+    ...(value.maxPower === undefined
+      ? {}
+      : { maxPower: expectNumber(value.maxPower, `${label}.maxPower`) }),
     ...(value.exactManaValue === undefined
       ? {}
       : { exactManaValue: expectNumber(value.exactManaValue, `${label}.exactManaValue`) }),
@@ -2109,9 +2113,11 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
             ? ("sacrificed_power" as const)
             : value.amount === "chosen_power"
               ? ("chosen_power" as const)
-              : isRecord(value.amount) && typeof value.amount.subtypeCount === "string"
-                ? { subtypeCount: value.amount.subtypeCount }
-                : expectNumber(value.amount, `${label}.amount`);
+              : value.amount === "subject_power"
+                ? ("subject_power" as const)
+                : isRecord(value.amount) && typeof value.amount.subtypeCount === "string"
+                  ? { subtypeCount: value.amount.subtypeCount }
+                  : expectNumber(value.amount, `${label}.amount`);
       const gainLife = value.gainLife === true ? { gainLife: true as const } : {};
       if (targetType === "player") {
         return {

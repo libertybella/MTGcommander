@@ -80,6 +80,7 @@ export type CompiledOracleText = {
   chooseCardTypeOnEnter?: boolean;
   enterCountersPerChosenType?: string;
   freeEquipIfArtifacts?: number;
+  opponentsCastOnlyFromHand?: boolean;
   selfIsChosenType?: boolean;
   triggerDoubling?: CardDefinition["triggerDoubling"];
   landChosenColorBonus?: boolean;
@@ -191,7 +192,10 @@ function normalizeOracleText(card: OracleCard): string {
   if (shortName && shortName !== printedName) {
     text = text.replace(new RegExp(`\\b${escapeRegex(shortName)}\\b`, "gi"), "~");
   }
-  text = text.replace(/\bthis (?:creature|artifact|enchantment|land|permanent|planeswalker)\b/gi, "~");
+  text = text.replace(
+    /\bthis (?:creature|artifact|enchantment|land|permanent|planeswalker|Aura|Equipment)\b/gi,
+    "~",
+  );
   text = text.replace(/\benters the battlefield\b/gi, "enters");
   // Periods inside quoted granted abilities ('… have "{T}: Add {C}."') must
   // not split the sentence; shield them, split, then restore.
@@ -724,10 +728,11 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
 
   // Recruiter of the Guard / Ranger-Captain of Eos: capped creature tutors.
   const cappedTutor = sentence.match(
-    /^(?:you may )?search your library for a creature card with (toughness|mana value) (\d+) or less, reveal it, put it into your hand, then shuffle$/i,
+    /^(?:you may )?search your library for a creature card with (toughness|mana value|power) (\d+) or less, reveal it, put it into your hand, then shuffle$/i,
   );
   if (cappedTutor?.[1] && cappedTutor[2]) {
     const cap = Number(cappedTutor[2]);
+    const capKind = cappedTutor[1].toLowerCase();
     return {
       targetRequirements: [],
       effects: [
@@ -736,9 +741,11 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
           playerId: "controller",
           filter: {
             types: ["creature"],
-            ...(cappedTutor[1].toLowerCase() === "toughness"
+            ...(capKind === "toughness"
               ? { maxToughness: cap }
-              : { maxManaValue: cap }),
+              : capKind === "power"
+                ? { maxPower: cap }
+                : { maxManaValue: cap }),
           },
           destination: "hand",
           count: 1,
@@ -806,6 +813,31 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
           thenEffects: [{ kind: "move_card", cardId: "chosen_card", toZone: "hand" }],
         },
       ],
+    };
+  }
+
+  // Warstorm Surge: the trigger subject's power, read at bind.
+  if (/^it deals damage equal to its power to any target$/i.test(sentence)) {
+    return {
+      targetRequirements: [{ kind: "player_or_creature" }],
+      effects: [
+        {
+          kind: "deal_damage",
+          sourceId: null,
+          target: { type: "chosen", index: 0 },
+          amount: "subject_power",
+        },
+      ],
+    };
+  }
+
+  // Mental Misstep ({U/P} pays as plain {U}, documented).
+  const counterMv = sentence.match(/^Counter target spell with mana value (\d+)$/i);
+  if (counterMv?.[1]) {
+    const mv = Number(counterMv[1]);
+    return {
+      targetRequirements: [{ kind: "spell", maxManaValue: mv, minManaValue: mv }],
+      effects: [{ kind: "counter_spell", target: { type: "chosen", index: 0 } }],
     };
   }
 
@@ -5899,6 +5931,35 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
           result.leftover.push(sentence);
         }
       }
+      continue;
+    }
+
+    // Kenrith's Transformation: the rewrite with the removal leading.
+    const elkMutation = sentence.match(
+      /^Enchanted creature loses all abilities and is a (white|blue|black|red|green) ([A-Za-z]+) creature with base power and toughness (\d+)\/(\d+)$/i,
+    );
+    if (elkMutation?.[1] && elkMutation[2] && elkMutation[3] && elkMutation[4]) {
+      result.staticAbilities.push(
+        { selector: { scope: "attached" }, effect: { kind: "remove_all_abilities" } },
+        {
+          selector: { scope: "attached" },
+          effect: { kind: "add_types", types: ["creature"], subtypes: [elkMutation[2].toLowerCase()] },
+        },
+        {
+          selector: { scope: "attached" },
+          effect: { kind: "set_colors", colors: [COLOR_WORDS[elkMutation[1].toLowerCase()]!] },
+        },
+        {
+          selector: { scope: "attached" },
+          effect: { kind: "set_pt", power: Number(elkMutation[3]), toughness: Number(elkMutation[4]) },
+        },
+      );
+      continue;
+    }
+
+    // Drannith Magistrate.
+    if (/^Your opponents can't cast spells from anywhere other than their hands$/i.test(sentence)) {
+      result.opponentsCastOnlyFromHand = true;
       continue;
     }
 
