@@ -56,6 +56,25 @@ export function damageAfterReplacements(
   return result;
 }
 
+/**
+ * Mana Reflection, Nyxbloom Ancient: "If you tap a permanent for mana, it
+ * produces twice as much of that mana instead." Several holders multiply
+ * together, which is what CR 616 gives regardless of the chosen order.
+ */
+export function manaTapMultiplier(state: GameState, playerId: PlayerId): number {
+  let multiplier = 1;
+  for (const card of Object.values(state.cards)) {
+    if (card.zone !== "battlefield" || card.controllerId !== playerId) {
+      continue;
+    }
+    if (abilitiesRemoved(state, card.id)) {
+      continue;
+    }
+    multiplier *= state.definitions[card.definitionId]?.manaTapMultiplier ?? 1;
+  }
+  return multiplier;
+}
+
 function plus1Plus1(state: GameState, cardId: CardInstanceId): number {
   return state.cards[cardId]?.counters["p1p1"] ?? 0;
 }
@@ -122,13 +141,24 @@ export function castCostReduction(
 ): number {
   let total = 0;
   for (const card of Object.values(state.cards)) {
-    if (card.zone !== "battlefield" || card.controllerId !== playerId) {
+    if (card.zone !== "battlefield") {
       continue;
     }
     if (abilitiesRemoved(state, card.id)) {
       continue;
     }
     for (const reduction of state.definitions[card.definitionId]?.costReductions ?? []) {
+      // Whose spells this touches. Unscoped means the holder's own, which is
+      // what every discount written before taxes existed meant.
+      const scope = reduction.scope ?? "you";
+      const own = card.controllerId === playerId;
+      if ((scope === "you" && !own) || (scope === "opponents" && own)) {
+        continue;
+      }
+      // Defense Grid: the tax lifts on the holder's own turn.
+      if (reduction.notDuringControllersTurn && state.turn.activePlayerId === card.controllerId) {
+        continue;
+      }
       const { types, typesAny, subtypesAny, colors, chosenSubtype, chosenCardType } =
         reduction.filter;
       if (types && !types.every((type) => spell.characteristics.types.includes(type))) {

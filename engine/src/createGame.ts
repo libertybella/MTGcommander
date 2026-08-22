@@ -80,6 +80,7 @@ export function createCardDefinition(
         | "loyaltyAbilities"
         | "noMaxHandSize"
         | "damageReplacement"
+        | "manaTapMultiplier"
         | "extraLandDrops"
         | "cantBeCountered"
         | "creatureSpellsCantBeCountered"
@@ -342,6 +343,7 @@ export function createCardDefinition(
       : {}),
     ...(input.noMaxHandSize ? { noMaxHandSize: true } : {}),
     ...(input.damageReplacement ? { damageReplacement: { ...input.damageReplacement } } : {}),
+    ...(input.manaTapMultiplier ? { manaTapMultiplier: input.manaTapMultiplier } : {}),
     ...(input.extraLandDrops && input.extraLandDrops > 0
       ? { extraLandDrops: input.extraLandDrops }
       : {}),
@@ -445,6 +447,8 @@ export function createCardDefinition(
       ? {
           costReductions: input.costReductions.map((entry) => ({
             generic: entry.generic,
+            ...(entry.scope ? { scope: entry.scope } : {}),
+            ...(entry.notDuringControllersTurn ? { notDuringControllersTurn: true } : {}),
             filter: {
               ...(entry.filter.types ? { types: [...entry.filter.types] } : {}),
               ...(entry.filter.typesAny ? { typesAny: [...entry.filter.typesAny] } : {}),

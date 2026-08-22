@@ -58,6 +58,7 @@ export type CompiledOracleText = {
   loyaltyAbilities?: LoyaltyAbility[];
   noMaxHandSize?: boolean;
   damageReplacement?: DamageReplacement;
+  manaTapMultiplier?: number;
   extraLandDrops?: number;
   cantBeCountered?: boolean;
   creatureSpellsCantBeCountered?: boolean;
@@ -7632,6 +7633,15 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
       continue;
     }
 
+    // Mana Reflection, Nyxbloom Ancient.
+    const manaMultiplier = sentence.match(
+      /^If you tap a permanent for mana, it produces (twice|three times) as much of that mana instead$/i,
+    );
+    if (manaMultiplier?.[1]) {
+      result.manaTapMultiplier = /^twice$/i.test(manaMultiplier[1]) ? 2 : 3;
+      continue;
+    }
+
     // Regeneration is not implemented, so the denial is inert on this table.
     if (/^(?:They|It) can't be regenerated$/i.test(sentence)) {
       continue;
@@ -9038,6 +9048,26 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
         {
           generic: Number(chosenDiscount[1]),
           filter: { types: ["creature"], chosenSubtype: true },
+        },
+      ];
+      continue;
+    }
+
+    // Taxes are discounts with the sign flipped (Grand Arbiter, Defense Grid)
+    // and symmetric discounts are the same shape with a wider scope
+    // (Helm of Awakening) — no second machinery for making spells cost more.
+    const tax = sentence.match(
+      /^(Spells your opponents cast|Each spell|Spells) costs? \{(\d+)\} (more|less) to cast( except during its controller's turn)?$/i,
+    );
+    if (tax?.[1] && tax[2] && tax[3]) {
+      const amount = Number(tax[2]) * (/^more$/i.test(tax[3]) ? -1 : 1);
+      result.costReductions = [
+        ...(result.costReductions ?? []),
+        {
+          generic: amount,
+          filter: {},
+          scope: /opponents/i.test(tax[1]) ? ("opponents" as const) : ("all" as const),
+          ...(tax[4] ? { notDuringControllersTurn: true } : {}),
         },
       ];
       continue;

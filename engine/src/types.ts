@@ -145,6 +145,9 @@ export type CardDefinition = {
    * \<modified\> damage instead." One replacement applies wherever damage is
    * applied — noncombat, sweeps, and combat alike. */
   damageReplacement?: DamageReplacement;
+  /** Mana Reflection, Nyxbloom Ancient: "If you tap a permanent for mana, it
+   * produces twice as much of that mana instead." */
+  manaTapMultiplier?: number;
   /** Rhythm of the Wild: the controller's creature spells can't be countered. */
   creatureSpellsCantBeCountered?: boolean;
   /** Grand Abolisher: on this permanent's controller's turn, opponents can't
@@ -1077,7 +1080,14 @@ export type AdditionalCastCost = {
 
 /** A static generic-cost discount on spells the controller casts. */
 export type CostReduction = {
+  /** Generic mana off the cost. NEGATIVE is a tax (Grand Arbiter, Defense
+   * Grid) — the caller floors the total at zero either way. */
   generic: number;
+  /** Whose spells this touches, from the holder's side. Defaults to "you";
+   * "opponents" is the tax shape, "all" the symmetric one (Helm of Awakening). */
+  scope?: "you" | "opponents" | "all";
+  /** Defense Grid: "except during its controller's turn". */
+  notDuringControllersTurn?: boolean;
   /** Empty filter means every spell. types all required; typesAny needs one; colors any overlap.
    * chosenSubtype: the spell must have the source's chosen creature type. */
   filter: {

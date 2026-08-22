@@ -184,6 +184,9 @@ What the engine implements and what it intentionally does not. Tests are tagged 
 
 - **Damage-modifying replacements** (CR 616 — Fiery Emancipation, Torbran, Gratuitous Violence, Twinflame Tyrant): a `damageReplacement` on a battlefield permanent multiplies or adds to damage, gated on the source's controller, its colors, whether it is a creature, and whether the target is an opponent or theirs. One helper runs at every place damage is actually applied — targeted damage, sweeps (creatures and players), and combat — so combat damage, commander damage, and lifelink all agree on the modified number, and a "that much damage" rider reads it. Documented approximation: multiplications apply before additions and holders apply in timestamp order, where CR 616.1 lets the affected player choose; with one holder the two agree.
 
+- **Mana multipliers** (Mana Reflection, Nyxbloom Ancient): "If you tap a permanent for mana, it produces twice as much of that mana instead" multiplies the addition before it reaches the pool. Only abilities that actually tap qualify, and several holders multiply together — which is what CR 616 gives whatever order the player picks.
+- **Cost taxes** (Grand Arbiter, Defense Grid, Helm of Awakening): a tax is a cost reduction with the sign flipped, so there is no second machinery for making spells cost more. A reduction carries a scope — the holder's own spells (the default, and what every earlier discount meant), opponents' spells, or everyone's — and Defense Grid's "except during its controller's turn" rider. The cast path still floors the total at zero.
+
 ## The card pipeline (Stage 6)
 
 - Real cards compile from Scryfall oracle text by shared sentence patterns; a hand-authored registry (`server/src/cardOverrides.ts`, data in the same schema) beats the compiler for the long tail. Never a named-card code path.

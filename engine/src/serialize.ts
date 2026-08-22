@@ -475,6 +475,14 @@ export function parseGameState(json: string): GameState {
             },
           }
         : {}),
+      ...(def.manaTapMultiplier === undefined
+        ? {}
+        : {
+            manaTapMultiplier: expectNumber(
+              def.manaTapMultiplier,
+              `definition.${id}.manaTapMultiplier`,
+            ),
+          }),
       ...(def.extraLandDrops === undefined
         ? {}
         : { extraLandDrops: expectNumber(def.extraLandDrops, `definition.${id}.extraLandDrops`) }),
@@ -905,6 +913,12 @@ export function parseGameState(json: string): GameState {
                 );
                 return {
                   generic,
+                  ...(entry.scope === "opponents" || entry.scope === "all" || entry.scope === "you"
+                    ? { scope: entry.scope }
+                    : {}),
+                  ...(entry.notDuringControllersTurn === true
+                    ? { notDuringControllersTurn: true }
+                    : {}),
                   filter: {
                     ...(types.length > 0 ? { types } : {}),
                     ...(typesAny.length > 0 ? { typesAny } : {}),

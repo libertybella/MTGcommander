@@ -2,7 +2,7 @@ import { declareAttackers, declareBlockers, lockRemainingBlockers, pendingBlocke
 import { abilitiesRemoved, cardMatchesSubtype } from "./characteristicsEngine";
 import { characteristicsOf, isCommander, isCreature, isInstant, isInstantOrSorcery, isLand, isLegendary, isMainPhase } from "./cardTypes";
 import { cloneGameState } from "./clone";
-import { affinityArtifactDiscount, allBattlefieldCreatureCount, canPlayLandFromTop, canPlayLandsFromGraveyard, castCostReduction, castableFromTop, controlsCommander, creaturePower, freeEquipGranted, hasFlashGrant, landDropAllowance, lockedByAbolisher, lockedFromCasting, opponentControlsMoreLands, findFreeHandGrantIndex, opponentsCastLockedToHand, selfDiscountAmount, staticFreeCastCap, usesOncePerTurnFreeCast } from "./derived";
+import { affinityArtifactDiscount, allBattlefieldCreatureCount, canPlayLandFromTop, canPlayLandsFromGraveyard, castCostReduction, castableFromTop, controlsCommander, creaturePower, freeEquipGranted, hasFlashGrant, landDropAllowance, manaTapMultiplier, lockedByAbolisher, lockedFromCasting, opponentControlsMoreLands, findFreeHandGrantIndex, opponentsCastLockedToHand, selfDiscountAmount, staticFreeCastCap, usesOncePerTurnFreeCast } from "./derived";
 import { eliminatePlayerInPlace } from "./elimination";
 import { applyEffects, bindCardEffects, devotionTo } from "./effects";
 import { hasKeyword } from "./keywords";
@@ -870,6 +870,20 @@ function applyTapForMana(
     addition = { [color]: amount };
   } else {
     addition = ability.produces;
+  }
+  // Mana Reflection / Nyxbloom Ancient: "If you tap a permanent for mana, it
+  // produces twice as much of that mana instead." A replacement on the amount
+  // (CR 616), so it only applies to abilities that actually tap.
+  if (!ability.noTap) {
+    const multiplier = manaTapMultiplier(state, playerId);
+    if (multiplier !== 1) {
+      addition = Object.fromEntries(
+        (Object.entries(addition) as [ManaColor, number][]).map(([color, count]) => [
+          color,
+          count * multiplier,
+        ]),
+      );
+    }
   }
   // Springleaf Drum-class: the activation's mana cost is paid from the pool.
   let base = state;

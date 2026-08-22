@@ -21095,3 +21095,145 @@ describe("wave 175: damage-modifying replacements", () => {
   });
 });
 
+
+describe("wave 176: mana multipliers and cost taxes", () => {
+  const compile = (name: string, manaCost: string, typeLine: string, oracleText: string, power?: string, toughness?: string) =>
+    compileOracleCard({
+      oracleId: name,
+      name,
+      manaCost,
+      typeLine,
+      power: power ?? null,
+      toughness: toughness ?? null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  const REFLECTION =
+    "If you tap a permanent for mana, it produces twice as much of that mana instead.";
+  const NYXBLOOM =
+    "Trample\nIf you tap a permanent for mana, it produces three times as much of that mana instead.";
+
+  const onBattlefield = (
+    game: GameState,
+    owner: PlayerState,
+    compiled: ReturnType<typeof compile>,
+  ) => {
+    game.definitions[compiled.definition.id] = compiled.definition;
+    const card = createCardInstance({
+      definitionId: compiled.definition.id,
+      ownerId: owner.id,
+      zone: "battlefield",
+    });
+    card.summoningSick = false;
+    game.cards[card.id] = card;
+    owner.zones.battlefield.push(card.id);
+    return card;
+  };
+
+  it("multiplies what a tapped permanent produces, and stacks", () => {
+    const reflection = compile("Mana Reflection", "{4}{G}{G}", "Enchantment", REFLECTION);
+    expect(reflection.notes).toEqual([]);
+    expect(reflection.definition.manaTapMultiplier).toBe(2);
+
+    const nyxbloom = compile(
+      "Nyxbloom Ancient",
+      "{4}{G}{G}{G}",
+      "Enchantment Creature — Elemental",
+      NYXBLOOM,
+      "5",
+      "5",
+    );
+    expect(nyxbloom.notes).toEqual([]);
+    expect(nyxbloom.definition.manaTapMultiplier).toBe(3);
+
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const forestDef = createCardDefinition({ name: "Forest", typeLine: "Basic Land — Forest" });
+    game.definitions[forestDef.id] = forestDef;
+    const forest = createCardInstance({ definitionId: forestDef.id, ownerId: p1.id, zone: "battlefield" });
+    game.cards[forest.id] = forest;
+    p1.zones.battlefield.push(forest.id);
+    game.turn.phase = "precombatMain";
+    game.turn.step = "precombatMain";
+    game.turn.activePlayerId = p1.id;
+    game.priorityPlayerId = p1.id;
+
+    const tap = (state: GameState): GameState =>
+      applyAction(state, {
+        kind: "tap_for_mana",
+        playerId: p1.id,
+        cardId: forest.id,
+        manaIndex: 0,
+      });
+
+    // Bare, a Forest makes one.
+    expect(tap(game).players.find((entry) => entry.id === p1.id)?.mana.G).toBe(1);
+
+    onBattlefield(game, p1, reflection);
+    expect(tap(game).players.find((entry) => entry.id === p1.id)?.mana.G).toBe(2);
+
+    // Two holders multiply rather than add.
+    onBattlefield(game, p1, nyxbloom);
+    expect(tap(game).players.find((entry) => entry.id === p1.id)?.mana.G).toBe(6);
+  });
+
+  it("taxes opponents' spells and lifts on the holder's own turn", () => {
+    const arbiter = compile(
+      "Grand Arbiter Augustin IV",
+      "{2}{W}{U}",
+      "Legendary Creature — Human Advisor",
+      "White spells you cast cost {1} less to cast.\nBlue spells you cast cost {1} less to cast.\nSpells your opponents cast cost {1} more to cast.",
+      "2",
+      "3",
+    );
+    expect(arbiter.notes).toEqual([]);
+    expect(arbiter.definition.costReductions).toContainEqual({
+      generic: -1,
+      filter: {},
+      scope: "opponents",
+    });
+
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    onBattlefield(game, p1, arbiter);
+    const blueSpell = {
+      characteristics: { types: ["instant"], subtypes: [], colors: ["U"] },
+    };
+    // The Arbiter's controller gets the discount...
+    expect(castCostReduction(game, p1.id, blueSpell)).toBe(1);
+    // ...and the opponent gets the tax, as a negative reduction.
+    expect(castCostReduction(game, p2.id, blueSpell)).toBe(-1);
+
+    const grid = compile("Defense Grid", "{2}", "Artifact", "Each spell costs {3} more to cast except during its controller's turn.");
+    expect(grid.notes).toEqual([]);
+    onBattlefield(game, p1, grid);
+    game.turn.activePlayerId = p2.id;
+    // On the opponent's turn the Grid taxes its own controller too.
+    expect(castCostReduction(game, p1.id, blueSpell)).toBe(1 - 3);
+    expect(castCostReduction(game, p2.id, blueSpell)).toBe(-1 - 3);
+
+    // On the controller's own turn the Grid lifts — for everyone.
+    game.turn.activePlayerId = p1.id;
+    expect(castCostReduction(game, p1.id, blueSpell)).toBe(1);
+    expect(castCostReduction(game, p2.id, blueSpell)).toBe(-1);
+  });
+
+  it("makes a symmetric discount reach both players", () => {
+    const helm = compile("Helm of Awakening", "{2}", "Artifact", "Spells cost {1} less to cast.");
+    expect(helm.notes).toEqual([]);
+    expect(helm.definition.costReductions).toEqual([
+      { generic: 1, filter: {}, scope: "all" },
+    ]);
+
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    onBattlefield(game, p1, helm);
+    const spell = { characteristics: { types: ["sorcery"], subtypes: [], colors: ["R"] } };
+    expect(castCostReduction(game, p1.id, spell)).toBe(1);
+    // "Spells", not "spells you cast" — the opponent is cheaper too.
+    expect(castCostReduction(game, p2.id, spell)).toBe(1);
+  });
+});
+
