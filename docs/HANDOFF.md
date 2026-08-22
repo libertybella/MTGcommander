@@ -8,14 +8,21 @@ on-what lives in [CLAIMS.md](CLAIMS.md). This file is the tribal
 knowledge that isn't obvious from those: exact commands, traps, and
 the current state of play. Read all four before writing code.
 
-## State of play (checkpoint-74-grammars, 2026-08-21)
+## State of play (checkpoint-75-grammars-ii, 2026-08-22)
 
-- Branch `comprehensive-plan`, tags through `checkpoint-74-grammars`.
-- 899 tests green; top-2,000 compile rate **52.7% (1,059/2,009)**,
+- Branch `comprehensive-plan`, tags through `checkpoint-75-grammars-ii`.
+- 914 tests green; top-2,000 compile rate **54.1% (1,086/2,009)**,
   60-card sample 93% (CI floor 85%).
 - The wave loop continues toward the goal gate: M6, ≥95% of the EDHREC
-  top-2,000 fully compiling. The rhythm below is proven across 149
-  waves (15.6% → 52.7%); follow it as written.
+  top-2,000 fully compiling. The rhythm below is proven across 154
+  waves (15.6% → 54.1%); follow it as written.
+- **Yield per wave is falling and that is the real news.** Waves 145–154
+  flipped 13, 15, 11, 6, 7, 8, 7, 5, 1, 6. The early numbers came from
+  grammars that replaced whole families of regexes; those families are
+  now largely built, and what is left is a genuine long tail. Plan on
+  roughly 5–8 flips per wave from here, not 13, and pick clusters
+  accordingly — a cycle of near-identical cards (the Verge lands, the
+  Landscapes) is worth far more than a high-ranked one-off.
 - **Never push to GitHub without Liberty's explicit yes.** Nothing has
   been pushed; the remote flow (Ross et al.) starts only when she says
   so.
@@ -93,10 +100,52 @@ handler owns. `~ gets +1/+0 for each artifact you control` is Storm-Kiln
 Artist's `bonusPt`, not a static grant; claiming "~" as a subject broke
 it, and wave 94's test caught it.
 
-The three grammars now in `oraclePatterns.ts`:
-`compileStaticGrant` (permanent grants), `compileUntilEotGrant`
-(temporary grants), `parseGenericSubjectHead` (enters/dies trigger
-noun phrases). Extend these rather than adding a sibling regex.
+The grammars now in `oraclePatterns.ts`: `compileStaticGrant` (permanent
+grants, including the "As long as …" conditional forms),
+`compileUntilEotGrant` (temporary grants), `parseGenericSubjectHead`
+(enters/dies trigger noun phrases, singular and batched), and
+`compileCompoundClause` (a body split at a top-level conjunction).
+Extend these rather than adding a sibling regex.
+
+`compileCompoundClause` deserves a note of its own: it accepts a split
+only when EVERY part compiles cleanly alone, which makes it safe to
+apply to any sentence — a conjunction that is really one phrase just
+fails to split. That property is why it can sit last in the chain and
+catch things nobody enumerated.
+
+## Compile "full" must mean playable
+
+The metric counts a card as full when it leaves no notes, which makes it
+easy to inflate: store an unenforced field, emit no note, score a flip.
+Don't. The **"Spend this mana only to …"** cluster is six one-away cards
+including Cavern of Souls (rank 107) and is left BLOCKED on purpose for
+exactly this reason — the mana pool is an untyped `Record<ManaColor,
+number>`, so the restriction cannot be enforced without tagging mana
+through every payment site, and compiling it anyway would let the bot
+spend Cavern mana on anything while the number went up. Do the pool
+surgery first, then take the six cards honestly.
+
+The same instinct applies to approximations that *widen* what is legal.
+"At the beginning of each opponent's end step" is still a clean miss
+because the nearest cheap approximation — every player's step — would
+fire Archfiend of Depravity on its own controller. An approximation that
+makes the game merely rough is fine and is what the documented-
+approximation policy is for; one that makes it wrong is not.
+
+## Three latent bugs the recent waves flushed out
+
+All three had the same shape — a field that existed, typechecked, and
+did nothing — and all three were caught by *runtime* assertions, not
+compile assertions. Write both halves of every wave test.
+
+- The `attached` selector scope returned as soon as it matched the host,
+  so `legendary`, `withCounter`, and every other refinement on an
+  attached selector were inert.
+- The compiler emitted `exceptSubtype` on the UNBOUND `destroy_all`,
+  where only `exceptChosenType` existed; conditional spreads meant tsc
+  never saw the excess property and the binder dropped it silently.
+- `exile_graveyard` was missing from `expandEachOpponent`, so an
+  "each opponent's graveyard" clause bound to nobody.
 
 ## The wave rhythm
 

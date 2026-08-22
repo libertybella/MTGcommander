@@ -16,8 +16,8 @@ This is **not** Wizards of the Coast software. It is also **not** the sibling Bi
 | --- | --- |
 | **Phase** | Comprehensive Rules machinery (layers, events, choices, permanents) + coverage flywheel |
 | **Next** | Private alpha (invite friends, play complete games) |
-| **Tests** | 899 passing; a 10,000-game random-action fuzz marathon gates checkpoint-45, 200-game burns gate every wave and 800+ burns gate every checkpoint tag |
-| **Compile rate** | 93% of a 60-card real-staple sample compiles fully (CI floor 85%); 52.7% of the EDHREC top-2,000, up from 15.6% at the start of the 2026-08-20 flywheel run |
+| **Tests** | 914 passing; a 10,000-game random-action fuzz marathon gates checkpoint-45, 200-game burns gate every wave and 800+ burns gate every checkpoint tag |
+| **Compile rate** | 93% of a 60-card real-staple sample compiles fully (CI floor 85%); 54.1% of the EDHREC top-2,000, up from 15.6% at the start of the 2026-08-20 flywheel run |
 | **Installer** | `npm run dist` builds a one-click Windows installer (`release/BizzyMTG Commander Setup 0.1.0.exe`). |
 
 ---
@@ -184,5 +184,7 @@ Git tags on `main`. Do not move old tags.
 | `checkpoint-72-ozolith` | Wheels and cheap edicts (Wheel of Fortune, Blasphemous Edict), every-type statics (Maskwood Nexus, Dryad of the Ilysian Grove, Mystic Forge, Realmwalker), fodder-powered mills (Altar of Dementia, Victimize, Culling Ritual, Plaguecrafter), board swaps and stack taxes (Living Death, Necropotence, Bolt Bend), surviving counters (The Ozolith, Banner of Kinship, Cloud Key, Puresteel Paladin), 48.2% |
 | `checkpoint-73-halfway` | **Half the meta compiles.** Clue investigations (Tireless Tracker, Howling Mine, Greater Good), hand-only locks (Drannith Magistrate, Mental Misstep, Warstorm Surge, Kenrith's Transformation), reversals (Sculpting Steel, Narset's Reversal, Imp's Mischief, Goreclaw, Reflections of Littjara), and the crossing batch (Eladamri's Call, Ayara, Curse of the Swine, Reassembling Skeleton, Kaya's Ghostform), 50.1% — the session's handoff point |
 | `checkpoint-74-grammars` | **The wave that stopped writing regexes.** Four hand-written copies of the "you control …" gate collapse into one, and the Verge land cycle plus Rivendell, Bonders' Enclave and Minas Tirith come with it. Then three grammars replace piles of fixed shapes: static grants (Akroma's Memorial, Elesh Norn, Avacyn, Intangible Virtue, Bastion Protector, Ethereal Armor), until-end-of-turn grants (Overrun, Overprotect, Tamiyo's Safekeeping, End-Raze Forerunners), and enters/dies trigger subjects (Kambal, Sheoldred, Cruel Celebrant, Marwyn, Starfield Mystic) — with granted ward (Lavaspur Boots, Winged Boots) and the drain body along the way, 52.7% |
+
+| `checkpoint-75-grammars-ii` | **Five more grammars, and the bugs they flushed out.** Compound bodies split at a top-level conjunction when every half compiles (Undead Augur, Midnight Reaper); step triggers learn whose step they watch, with win conditions and generic ability-word stripping (Felidar Sovereign, Revel in Riches, Ophiomancer, Knuckles); "As long as …" splits into controller-gates and selector refinements (Serra Ascendant, Champion's Helm); subtype sweeps narrow as well as spare (Crux of Fate); and one search-descriptor fix compiled the whole Landscape cycle. Three latent bugs surfaced along the way — an `attached` selector that ignored every refinement, a `destroy_all` field the binder silently dropped, and a graveyard exile that bound to nobody, 54.1% |
 
 These live on the `comprehensive-plan` branch (see docs/DEVELOPMENT_PROGRESS.md); merge to `main` at will — every checkpoint is a playable table. Next: **Private Alpha**, then productization.
