@@ -8,11 +8,37 @@ on-what lives in [CLAIMS.md](CLAIMS.md). This file is the tribal
 knowledge that isn't obvious from those: exact commands, traps, and
 the current state of play. Read all four before writing code.
 
-## State of play (checkpoint-83-vocabularies, 2026-08-22)
+## State of play (checkpoint-84-inert-filters, 2026-08-22)
 
-- Branch `comprehensive-plan`, tags through `checkpoint-83-vocabularies`.
-- 1,075 tests green; top-2,000 compile rate **62.9% (1,263/2,009)**,
+- Branch `comprehensive-plan`, tags through `checkpoint-84-inert-filters`.
+- 1,103 tests green; top-2,000 compile rate **64.1% (1,287/2,009)**,
   60-card sample 97% (CI floor now 90).
+- **Waves 195–200 flipped 5, 3, 5, 10, 3, 3. The +10 was the cheapest
+  wave of the stretch, and it added almost no capability.** Every gap in
+  it was a REFUSED READING rather than a missing feature: the sweep
+  effect had accepted a negated X since it was written and the grant
+  refused to pass one; "each creature" was not an alias for "all
+  creatures". **Check whether the capability exists and the reading is
+  what is missing, before building anything.** A refused wording is far
+  cheaper to diagnose than a feature is to add, and it outperformed the
+  two heavy feature waves either side of it.
+- **When something you just added is inert, the cause is often older and
+  wider than your change.** Adding `excludedTypes` to a target did
+  nothing; chasing why found that the whole permanent-target family
+  (artifact / enchantment / artifact_or_enchantment / nonland_permanent /
+  planeswalker / commander / …) recursed into the permanent check with a
+  BARE `{kind:"permanent"}` requirement, so it never saw its own
+  qualifiers. Excluded types, legendary, multicolored, both power bounds,
+  nontoken and both subtype filters were inert across every one of them.
+- **A branch in the main sentence loop is invisible to trigger bodies.**
+  That loop only walks a card's top-level sentences; anything a trigger
+  or a modal bullet needs belongs in `compileSimpleClause`. This cost two
+  round-trips in wave 200 alone.
+- **A gap can sit upstream of perfectly good machinery.** "Sacrifice
+  three Foods" had both halves already (`sacrificeSubtype` and
+  `sacrificeCount`) — but `COST_UNIT`, which splits cost from body, did
+  not recognise the phrase as a cost at all, so the text never reached
+  the parser that knew what to do with it.
 - **Waves 189–194 flipped 5, 3, 6, 4, 3, 6. Wave 189 is the one to read
   first, because it corrects the rule above it.** The damage clauses were
   the obvious next collapse by branch count — EIGHTEEN of them, more than
