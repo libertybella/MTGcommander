@@ -8,17 +8,23 @@ on-what lives in [CLAIMS.md](CLAIMS.md). This file is the tribal
 knowledge that isn't obvious from those: exact commands, traps, and
 the current state of play. Read all four before writing code.
 
-## State of play (checkpoint-71, 2026-08-21)
+## State of play (checkpoint-73-halfway, 2026-08-21 — the handoff point)
 
-- Branch `comprehensive-plan`, tags through `checkpoint-71-gifts`.
-- 865 tests green; top-2,000 compile rate **46.9% (943/2,009)**,
-  60-card sample 93% (CI floor 85%).
-- The goal gate is **M6: ≥95% of the EDHREC top-2,000 fully
-  compiling**. Liberty's standing directive: grind waves toward ~50%,
-  then stop cleanly.
+- Branch `comprehensive-plan`, tags through `checkpoint-73-halfway`.
+- 883 tests green; top-2,000 compile rate **50.1% (1,007/2,009) —
+  half the meta**, 60-card sample 93% (CI floor 85%).
+- The original flywheel session stopped here by Liberty's directive
+  (clean handoff at ~50%). **You, the successor agent, continue the
+  wave loop toward the goal gate: M6, ≥95% of the EDHREC top-2,000
+  fully compiling.** The rhythm below is proven across 144 waves
+  (15.6% → 50.1%); follow it as written.
 - **Never push to GitHub without Liberty's explicit yes.** Nothing has
   been pushed; the remote flow (Ross et al.) starts only when she says
   so.
+- Recent waves averaged 5–14 flips each; regenerate the top-miss list
+  from the compile measure every wave — stale lists waste probes, and
+  generic machinery (a new head, a regex variant) often flips unprobed
+  pattern-shares for free.
 
 ## The wave rhythm
 
@@ -162,15 +168,20 @@ field just silently drops).
 
 ## High-value open clusters (see CLAIMS.md for live status)
 
-Stream-F one-away buckets remain the steadiest ~5 flips/wave (probe
+Stream-F one-away buckets remain the steadiest 5–14 flips/wave (probe
 the current top-miss list from the compile measure). Bigger machinery
 still open, roughly by value: sagas (Urza's Saga is the #1 miss),
-convoke/improvise (cast-payment surgery), Confluences
-(choose-with-repeats), Fact or Fiction (opponent-chooses), Academy
-Manufactor + Sylvan Library (replacement effects), multikicker,
-hideaway trio, Meren experience counters, Tergrid, Victimize-style
-resolution-cost sacrifices, Plaguecrafter-style each-player choices,
-Second Harvest (per-token copies), phasing, Phyrexian mana payment
-(unblocks Noxious Revival's {G/P} and Drivnod), station. Deliberately
-deferred: Chrome Mox imprint, Thassa's Oracle, cumulative upkeep,
-MDFCs, "Spend this mana only…" restrictions.
+MDFCs (four in the top-miss head: Sink into Stupor, Valakut
+Awakening, Sea Gate Restoration, Disciple of Freyalise),
+convoke/improvise + delve (cast-payment surgery — Dig Through Time),
+Confluences (choose-with-repeats), Fact or Fiction
+(opponent-chooses), Academy Manufactor + Sylvan Library (replacement
+effects), multikicker, hideaway trio, Meren experience counters,
+Tergrid, Fiery Emancipation (damage tripling — six damage-apply sites
+need a shared multiplier), High Tide (until-EOT tap replacement),
+escape (Underworld Breach), Bloodchief Ascension (quest gates),
+Wishclaw Talisman (control handoff), Trouble in Pairs (extra-turn
+replacement), phasing, Phyrexian mana payment (unblocks Noxious
+Revival's {G/P} and Drivnod), station. Deliberately deferred: Chrome
+Mox imprint, Thassa's Oracle, cumulative upkeep, "Spend this mana
+only…" restrictions.
