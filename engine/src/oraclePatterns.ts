@@ -44,7 +44,7 @@ export type CompiledOracleText = {
   ward?: number;
   modes?: SpellMode[];
   protectionFrom?: Color[];
-  enchant?: "creature" | "land";
+  enchant?: "creature" | "land" | "creature_or_planeswalker_own";
   chooseColorOnEnter?: boolean;
   enchantedTappedBonus?: { color: Color | "chosen"; amount: number };
   loyaltyAbilities?: LoyaltyAbility[];
@@ -234,11 +234,11 @@ function isKeywordLine(sentence: string): boolean {
 }
 
 const SACRIFICE_COST = /Sacrifice (?:~|this land|this creature|this artifact|this permanent)/i;
-const SACRIFICE_TYPE_COST = /Sacrifice (?:an? |another )(creature|artifact|land|Treasure)\b/i;
+const SACRIFICE_TYPE_COST = /Sacrifice (?:an? |another )(black creature|creature|artifact|land|Treasure)\b/i;
 const LIFE_COST = /Pay (\d+) life/i;
 const TAP_CREATURE_COST = /Tap an untapped creature you control/i;
 const COST_UNIT =
-  "(?:\\{[^}]+\\})+|Sacrifice (?:~|this land|this creature|this artifact|this permanent)|Sacrifice (?:an? |another )(?:creature|artifact|land|Treasure)|Pay \\d+ life|Tap an untapped creature you control";
+  "(?:\\{[^}]+\\})+|Sacrifice (?:~|this land|this creature|this artifact|this permanent)|Sacrifice (?:an? |another )(?:black )?(?:creature|artifact|land|Treasure)|Pay \\d+ life|Tap an untapped creature you control";
 
 function splitAbility(sentence: string): { costText: string; rest: string } | null {
   // "Metalcraft — {T}: …" — the ability word is flavor (Mox Opal).
@@ -262,7 +262,13 @@ function parseAbilityCost(
   manaCost: string;
   sacrificeSelf: boolean;
   lifeCost?: number;
-  sacrificeCost?: "creature" | "another_creature" | "artifact" | "land" | "treasure";
+  sacrificeCost?:
+    | "creature"
+    | "another_creature"
+    | "another_black_creature"
+    | "artifact"
+    | "land"
+    | "treasure";
   tapCreature?: boolean;
 } | null {
   const tapCreature = TAP_CREATURE_COST.test(costText);
@@ -272,10 +278,17 @@ function parseAbilityCost(
     : costText.match(SACRIFICE_TYPE_COST);
   const another = /Sacrifice another /i.test(costText);
   const sacrificeCost = sacrificeTypeMatch?.[1]
-    ? another && sacrificeTypeMatch[1].toLowerCase() === "creature"
-      ? ("another_creature" as const)
-      : (sacrificeTypeMatch[1].toLowerCase() as "creature" | "artifact" | "land" | "treasure")
+    ? sacrificeTypeMatch[1].toLowerCase() === "black creature"
+      ? another
+        ? ("another_black_creature" as const)
+        : null
+      : another && sacrificeTypeMatch[1].toLowerCase() === "creature"
+        ? ("another_creature" as const)
+        : (sacrificeTypeMatch[1].toLowerCase() as "creature" | "artifact" | "land" | "treasure")
     : undefined;
+  if (sacrificeCost === null) {
+    return null;
+  }
   const lifeMatch = costText.match(LIFE_COST);
   const lifeCost = lifeMatch?.[1] ? Number(lifeMatch[1]) : undefined;
   const symbols = [...costText.matchAll(/\{([^}]+)\}/g)].map((match) => match[1] ?? "");
@@ -1191,6 +1204,24 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     }
   }
 
+  // Reassembling Skeleton's self-reanimation body.
+  const boneReturn = sentence.match(
+    /^Return (?:~|this card) from your graveyard to the battlefield( tapped)?$/i,
+  );
+  if (boneReturn) {
+    return {
+      targetRequirements: [],
+      effects: [
+        {
+          kind: "move_card",
+          cardId: "self",
+          toZone: "battlefield",
+          ...(boneReturn[1] ? { entersTapped: true } : {}),
+        },
+      ],
+    };
+  }
+
   // Return to Nature's third bullet.
   if (/^Exile target card from a graveyard$/i.test(sentence)) {
     return {
@@ -1321,6 +1352,24 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
       ],
     };
   }
+
+  // Springbloom Druid: the fused "you may sacrifice a land to do: X". The
+  // take and the land pick are auto (documented approximations).
+  const maySacDo = sentence.match(/^you may sacrifice a land to do: (.+)$/i);
+  if (maySacDo?.[1]) {
+    const inner = compileSimpleClause(
+      maySacDo[1].charAt(0).toUpperCase() + maySacDo[1].slice(1),
+    );
+    if (inner && !inner.leftover && inner.targetRequirements.length === 0) {
+      return {
+        targetRequirements: [],
+        effects: [{ kind: "may_sacrifice", what: "land", effects: inner.effects }],
+      };
+    }
+  }
+
+  // Curse of the Swine's first half compiles with its rider (see the pair
+  // handler in the main loop); a bare variable exile also lands here.
 
   // Mentor of the Meek: the fused "you may pay {1} to do: draw a card".
   const mayPayDo = sentence.match(/^you may pay ((?:\{[^}]+\})+) to do: (.+)$/i);
@@ -3050,7 +3099,7 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
   }
 
   match = sentence.match(
-    /^(?:you may )?Search your library for (?:up to (one|two|three|\d+) )?(?:an? )?(.+?) cards?(?: and)?, (?:reveal (?:it|them), )?(?:and )?put (?:it|them|that card|those cards) (onto the battlefield(?: tapped)?|into your hand|into your graveyard), then shuffle(?: your library)?$/i,
+    /^(?:you may )?Search your library for (?:up to (one|two|three|\d+) )?(?:an? )?(.+?) cards?(?: and)?, (?:reveal (?:it|them|that card|those cards), )?(?:and )?put (?:it|them|that card|those cards) (onto the battlefield(?: tapped)?|into your hand|into your graveyard), then shuffle(?: your library)?$/i,
   );
   if (match?.[2] && match[3]) {
     const filter = parseSearchDescriptor(match[2]);
@@ -4225,6 +4274,24 @@ function fuseDrainPairInPlace(sentences: string[], lineStart: boolean[]): void {
 }
 
 /** Traverse the Outlands: the greatest-power basic fetch, fused. */
+function fuseMaySacrificeInPlace(sentences: string[], lineStart: boolean[]): void {
+  // Springbloom Druid: "…, you may sacrifice a land. If you do, X." fuses
+  // to one synthetic clause.
+  for (let index = 0; index + 1 < sentences.length; index += 1) {
+    if (lineStart[index + 1]) {
+      continue;
+    }
+    const head = sentences[index]?.match(/^(.+, )?you may sacrifice a land$/i);
+    const rider = sentences[index + 1]?.match(/^If you do, (.+)$/i);
+    if (!head || !rider?.[1]) {
+      continue;
+    }
+    sentences[index] = `${head[1] ?? ""}you may sacrifice a land to do: ${rider[1]}`;
+    sentences.splice(index + 1, 1);
+    lineStart.splice(index + 1, 1);
+  }
+}
+
 function fuseNecroTopInPlace(sentences: string[], lineStart: boolean[]): void {
   // Necropotence: the two-sentence activation body fuses to one synthetic
   // clause (the face-down detail is a documented approximation).
@@ -4718,6 +4785,32 @@ function parseTriggerHead(head: string): TriggerHead | null {
       watch: "controlled",
       excludeSelf: true,
       subjectFilter: { types: ["creature"], maxPower: Number(singleEnter[1]) },
+    };
+  }
+  // Tocasia's Welcome: a batched cheap-creature watch.
+  const batchMvEnter = text.match(
+    /^Whenever one or more creatures you control with mana value (\d+) or less enter$/i,
+  );
+  if (batchMvEnter?.[1]) {
+    return {
+      event: "enter_battlefield",
+      watch: "controlled",
+      oncePerBatch: true,
+      subjectFilter: { types: ["creature"], maxManaValue: Number(batchMvEnter[1]) },
+    };
+  }
+  // Ayara: a color-restricted self-or-another watch.
+  const colorSelfEnter = text.match(
+    /^Whenever ~ or another (white|blue|black|red|green) creature you control enters$/i,
+  );
+  if (colorSelfEnter?.[1]) {
+    return {
+      event: "enter_battlefield",
+      watch: "controlled",
+      subjectFilter: {
+        types: ["creature"],
+        colors: [COLOR_WORDS[colorSelfEnter[1].toLowerCase()]!],
+      },
     };
   }
   // Welcoming Vampire / Enduring Innocence: a batched little-creature watch.
@@ -5861,6 +5954,7 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
   fuseTraverseInPlace(sentences, lineStart);
   expandEntersOrDiesInPlace(sentences, lineStart);
   fuseMayPayInPlace(sentences, lineStart);
+  fuseMaySacrificeInPlace(sentences, lineStart);
   fuseNecroTopInPlace(sentences, lineStart);
   for (let index = 0; index < sentences.length; index += 1) {
     const sentence = sentences[index];
@@ -5882,6 +5976,42 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
       if (!result.targetRequirements.some((requirement) => requirement.kind === "creature")) {
         result.targetRequirements.push({ kind: "creature" });
       }
+      continue;
+    }
+
+    // Kaya's Ghostform ("you own" reads as "you control", the Staff of
+    // Compleation approximation).
+    if (/^Enchant creature or planeswalker you (?:own|control)$/i.test(sentence)) {
+      result.enchant = "creature_or_planeswalker_own";
+      if (
+        !result.targetRequirements.some(
+          (requirement) => requirement.kind === "creature_or_planeswalker",
+        )
+      ) {
+        result.targetRequirements.push({ kind: "creature_or_planeswalker", control: "own" });
+      }
+      continue;
+    }
+
+    // Kaya's Ghostform's return watch: the exile half is dropped — only the
+    // dies event is watched, a documented approximation.
+    if (
+      /^When enchanted permanent dies or is put into exile, return that card to the battlefield under your control$/i.test(
+        sentence,
+      )
+    ) {
+      result.triggers.push({
+        event: "dies",
+        watch: "attached",
+        effects: [
+          {
+            kind: "move_card",
+            cardId: "subject_card",
+            toZone: "battlefield",
+            underControlOf: "controller",
+          },
+        ],
+      });
       continue;
     }
 
@@ -7410,6 +7540,28 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
       continue;
     }
 
+    // Curse of the Swine: variable exile with per-controller pig tokens.
+    // The X cap on target count is dropped — "any number", documented.
+    const swine = /^Exile X target creatures$/i.test(sentence);
+    const swineRider = (sentences[index + 1] ?? "").match(
+      /^For each creature exiled this way, its controller creates a (\d+)\/(\d+) (white|blue|black|red|green) ([A-Za-z]+) creature token$/i,
+    );
+    if (swine && swineRider?.[1] && swineRider[2] && swineRider[4]) {
+      const subtype = swineRider[4].replace(/\b\w/g, (letter) => letter.toUpperCase());
+      result.targetRequirements.push({ kind: "creature", variable: true });
+      result.effects.push({
+        kind: "exile_targets_into_tokens",
+        token: {
+          name: subtype,
+          typeLine: `Creature — ${subtype} Token`,
+          power: Number(swineRider[1]),
+          toughness: Number(swineRider[2]),
+        },
+      });
+      sentences[index + 1] = "";
+      continue;
+    }
+
     // Victimize: two graveyard picks and a tapped mass return. The real
     // card sacrifices on resolution; here the sacrifice is a cast-time
     // additional cost (Fling's pattern) — a documented approximation.
@@ -8277,6 +8429,7 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
         cost.manaCost === "" &&
         cost.sacrificeCost &&
         cost.sacrificeCost !== "another_creature" &&
+        cost.sacrificeCost !== "another_black_creature" &&
         !cost.lifeCost
       ) {
         result.manaAbilities.push({
@@ -8310,6 +8463,10 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
         ...(cost.sacrificeSelf ? { sacrificeSelf: true } : {}),
         ...(cost.sacrificeCost ? { sacrificeCost: cost.sacrificeCost } : {}),
         ...(cost.lifeCost ? { lifeCost: cost.lifeCost } : {}),
+        // Reassembling Skeleton: a self-return body activates from the yard.
+        ...(/^Return (?:~|this card) from your graveyard to the battlefield/i.test(ability.rest)
+          ? { zone: "graveyard" as const }
+          : {}),
       };
       result.activated.push(pushed);
       if (clause.leftover) {

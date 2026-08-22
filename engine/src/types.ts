@@ -115,7 +115,7 @@ export type CardDefinition = {
    */
   protectionFrom?: Color[];
   /** Aura: cast targeting a creature; enters attached (CR 303.4). */
-  enchant?: "creature" | "land";
+  enchant?: "creature" | "land" | "creature_or_planeswalker_own";
   /** "As this Aura enters, choose a color" (Utopia Sprawl). */
   chooseColorOnEnter?: boolean;
   /** Wild Growth / Utopia Sprawl: when the enchanted land taps for mana, its
@@ -741,6 +741,15 @@ export type GameEffect =
   | { kind: "exile_top_to_hand"; playerId: PlayerId }
   /** Living Death: everyone swaps graveyard creatures with board creatures. */
   | { kind: "living_death" }
+  /** Springbloom Druid: the sacrifice is auto-taken with the first
+   * controlled land (documented approximations) and gates the effects. */
+  | { kind: "may_sacrifice"; controllerId: PlayerId; what: "land"; effects: GameEffect[] }
+  /** Curse of the Swine: exile each, its controller gets the token. */
+  | {
+      kind: "exile_targets_into_tokens";
+      cardIds: CardInstanceId[];
+      token: { name: string; typeLine: string; power: number; toughness: number };
+    }
   | { kind: "windfall"; drawCount?: number }
   /** Second Harvest: one copy of every token the player controls. */
   | { kind: "copy_each_token"; playerId: PlayerId }
@@ -1289,6 +1298,13 @@ export type CardEffect =
   | { kind: "exile_top_to_hand"; playerId: PlayerSelector }
   /** Living Death: everyone swaps graveyard creatures with board creatures. */
   | { kind: "living_death" }
+  /** Springbloom Druid: auto-taken land sacrifice gating the effects. */
+  | { kind: "may_sacrifice"; what: "land"; effects: CardEffect[] }
+  /** Curse of the Swine: exile each target, its controller gets the token. */
+  | {
+      kind: "exile_targets_into_tokens";
+      token: { name: string; typeLine: string; power: number; toughness: number };
+    }
   /** Windfall: each player discards their hand, then draws the greatest
    * count — or a fixed count when drawCount is set (Wheel of Fortune). */
   | { kind: "windfall"; drawCount?: number }
@@ -1669,6 +1685,10 @@ export type CardTrigger = {
     colorless?: boolean;
     /** Kutzil: computed power above the printed base power. */
     powerAboveBase?: boolean;
+    /** Ayara: "another black creature" — every listed color must be present. */
+    colors?: Color[];
+    /** Tocasia's Welcome: "with mana value 3 or less". */
+    maxManaValue?: number;
   };
   effects: CardEffect[];
   /** Chosen when the trigger is put on the stack. Empty or omitted means untargeted. */
@@ -1926,8 +1946,9 @@ export type ActivatedAbility = {
   manaCost: string;
   effects: CardEffect[];
   targetRequirements: TargetRequirement[];
-  /** Defaults to battlefield. Channel is activated from hand. */
-  zone?: "battlefield" | "hand";
+  /** Defaults to battlefield. Channel activates from hand; Reassembling
+   * Skeleton from the graveyard. */
+  zone?: "battlefield" | "hand" | "graveyard";
   /** True when the cost includes discarding this card (Channel). */
   discard?: boolean;
   /** True when the cost includes sacrificing this permanent (fetch lands). */
@@ -1937,6 +1958,8 @@ export type ActivatedAbility = {
   sacrificeCost?:
     | "creature"
     | "another_creature"
+    /** Ayara: "Sacrifice another black creature". */
+    | "another_black_creature"
     | "artifact"
     | "creature_or_artifact"
     | "land"

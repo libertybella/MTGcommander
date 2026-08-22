@@ -176,6 +176,12 @@ export function createCardDefinition(
                     : {}),
                   ...(trigger.subjectFilter.colorless ? { colorless: true } : {}),
                   ...(trigger.subjectFilter.powerAboveBase ? { powerAboveBase: true } : {}),
+                  ...(trigger.subjectFilter.colors
+                    ? { colors: [...trigger.subjectFilter.colors] }
+                    : {}),
+                  ...(trigger.subjectFilter.maxManaValue !== undefined
+                    ? { maxManaValue: trigger.subjectFilter.maxManaValue }
+                    : {}),
                 },
               }
             : {}),

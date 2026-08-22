@@ -1277,6 +1277,23 @@ export function bindCardEffect(
     }
     case "living_death":
       return { kind: "living_death" };
+    case "may_sacrifice":
+      return {
+        kind: "may_sacrifice",
+        controllerId: context.controllerId,
+        what: effect.what,
+        effects: bindCardEffects(state, effect.effects, context),
+      };
+    case "exile_targets_into_tokens": {
+      // Curse of the Swine: every chosen creature target.
+      const cardIds = (context.targets ?? [])
+        .filter((target): target is Extract<ChosenTarget, { type: "creature" }> => target.type === "creature")
+        .map((target) => target.cardId);
+      if (cardIds.length === 0) {
+        return null;
+      }
+      return { kind: "exile_targets_into_tokens", cardIds, token: { ...effect.token } };
+    }
     case "move_all_counters": {
       const fromId = bindCardId(state, effect.cardId, context);
       const chosen = chosenTargetAt(context, effect.target.index, state);
@@ -3139,6 +3156,41 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
           }
         }
         moving.counters = {};
+        break;
+      }
+      case "may_sacrifice": {
+        // Springbloom Druid: auto-taken with the first controlled land —
+        // both the take and the pick are documented approximations.
+        const fodder = state.players
+          .find((entry) => entry.id === effect.controllerId)
+          ?.zones.battlefield.find((cardId) => isLand(state, cardId));
+        if (!fodder) {
+          next = cloneGameState(state);
+          break;
+        }
+        next = applyEffect(state, { kind: "sacrifice", cardId: fodder });
+        next = applyEffects(next, effect.effects);
+        break;
+      }
+      case "exile_targets_into_tokens": {
+        // Curse of the Swine: capture each controller before the exile.
+        next = cloneGameState(state);
+        for (const cardId of effect.cardIds) {
+          const victim = next.cards[cardId];
+          if (!victim || victim.zone !== "battlefield") {
+            continue;
+          }
+          const owner = victim.controllerId;
+          next = moveCard(next, cardId, "exile");
+          next = applyCreateToken(next, {
+            kind: "create_token",
+            ownerId: owner,
+            name: effect.token.name,
+            typeLine: effect.token.typeLine,
+            power: effect.token.power,
+            toughness: effect.token.toughness,
+          });
+        }
         break;
       }
       case "living_death": {

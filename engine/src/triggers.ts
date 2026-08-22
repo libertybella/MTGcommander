@@ -481,6 +481,14 @@ function subjectMatchesFilter(
   if (filter.colorless && traits.colors.length > 0) {
     return false;
   }
+  // Ayara: "another black creature".
+  if (filter.colors && !filter.colors.every((color) => traits.colors.includes(color))) {
+    return false;
+  }
+  // Tocasia's Welcome: "with mana value 3 or less".
+  if (filter.maxManaValue !== undefined && traits.manaValue > filter.maxManaValue) {
+    return false;
+  }
   // Kutzil: the subject's computed power must beat its printed base power.
   if (filter.powerAboveBase) {
     const subject = state.cards[subjectId];

@@ -240,7 +240,11 @@ export function controlsMatching(
 export function sacrificeScopeMatches(
   state: GameState,
   cardId: CardInstanceId,
-  scope: NonNullable<AdditionalCastCost["sacrifice"]> | "treasure" | "another_creature",
+  scope:
+    | NonNullable<AdditionalCastCost["sacrifice"]>
+    | "treasure"
+    | "another_creature"
+    | "another_black_creature",
   sourceId?: CardInstanceId,
 ): boolean {
   const traits = state.definitions[state.cards[cardId]?.definitionId ?? ""]?.characteristics;
@@ -250,6 +254,10 @@ export function sacrificeScopeMatches(
   }
   if (scope === "another_creature") {
     return types.includes("creature") && cardId !== sourceId;
+  }
+  // Ayara: "Sacrifice another black creature".
+  if (scope === "another_black_creature") {
+    return types.includes("creature") && cardId !== sourceId && (traits?.colors ?? []).includes("B");
   }
   if (scope === "artifact") {
     return types.includes("artifact");
@@ -576,6 +584,23 @@ export function legalActions(state: GameState, playerId: PlayerId): LegalAction[
     }
     for (const [abilityIndex, ability] of definition.activated.entries()) {
       if ((ability.zone ?? "battlefield") !== "hand") {
+        continue;
+      }
+      if (abilityUsable(state, playerId, card, ability, potential)) {
+        actions.push({ kind: "activate_ability", cardId, abilityIndex });
+      }
+    }
+  }
+
+  // Reassembling Skeleton: graveyard activations.
+  for (const cardId of player.zones.graveyard) {
+    const card = state.cards[cardId];
+    const definition = card ? state.definitions[card.definitionId] : undefined;
+    if (!card || !definition) {
+      continue;
+    }
+    for (const [abilityIndex, ability] of definition.activated.entries()) {
+      if ((ability.zone ?? "battlefield") !== "graveyard") {
         continue;
       }
       if (abilityUsable(state, playerId, card, ability, potential)) {

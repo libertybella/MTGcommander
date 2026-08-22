@@ -16584,3 +16584,212 @@ describe("wave 143: reversals and reflections", () => {
   });
 });
 
+
+describe("wave 144: skeletons, swine, and welcomes", () => {
+  it("compiles the seven-card bucket fully", () => {
+    const compile = (name: string, manaCost: string, typeLine: string, oracleText: string, power?: string, toughness?: string) =>
+      compileOracleCard({
+        oracleId: name,
+        name,
+        manaCost,
+        typeLine,
+        power: power ?? null,
+        toughness: toughness ?? null,
+        printedKeywords: [],
+        imageUrl: "",
+        oracleText,
+      });
+
+    const call = compile(
+      "Eladamri's Call",
+      "{G}{W}",
+      "Instant",
+      "Search your library for a creature card, reveal that card, put it into your hand, then shuffle.",
+    );
+    expect(call.notes).toEqual([]);
+    expect(call.definition.effects[0]).toMatchObject({
+      kind: "search_library",
+      filter: { types: ["creature"] },
+      destination: "hand",
+    });
+
+    const welcome = compile(
+      "Tocasia's Welcome",
+      "{2}{W}",
+      "Enchantment",
+      "Whenever one or more creatures you control with mana value 3 or less enter, draw a card. This ability triggers only once each turn.",
+    );
+    expect(welcome.notes).toEqual([]);
+    expect(welcome.definition.triggers[0]?.subjectFilter?.maxManaValue).toBe(3);
+    expect(welcome.definition.triggers[0]?.oncePerBatch).toBe(true);
+    expect(welcome.definition.triggers[0]?.oncePerTurn).toBe(true);
+
+    const ayara = compile(
+      "Ayara, First of Locthwain",
+      "{B}{B}{B}",
+      "Legendary Creature — Elf Noble",
+      "Whenever Ayara or another black creature you control enters, each opponent loses 1 life and you gain 1 life.\n{T}, Sacrifice another black creature: Draw a card.",
+      "2",
+      "3",
+    );
+    expect(ayara.notes).toEqual([]);
+    expect(ayara.definition.triggers[0]?.subjectFilter?.colors).toEqual(["B"]);
+    expect(ayara.definition.activated[0]?.sacrificeCost).toBe("another_black_creature");
+
+    const swine = compile(
+      "Curse of the Swine",
+      "{X}{U}{U}",
+      "Sorcery",
+      "Exile X target creatures. For each creature exiled this way, its controller creates a 2/2 green Boar creature token.",
+    );
+    expect(swine.notes).toEqual([]);
+    expect(swine.definition.targetRequirements).toEqual([{ kind: "creature", variable: true }]);
+    expect(swine.definition.effects[0]).toMatchObject({
+      kind: "exile_targets_into_tokens",
+      token: { name: "Boar", power: 2, toughness: 2 },
+    });
+
+    const druid = compile(
+      "Springbloom Druid",
+      "{2}{G}",
+      "Creature — Elf Druid",
+      "When this creature enters, you may sacrifice a land. If you do, search your library for up to two basic land cards, put them onto the battlefield tapped, then shuffle.",
+      "1",
+      "1",
+    );
+    expect(druid.notes).toEqual([]);
+    expect(druid.definition.triggers[0]?.effects[0]).toMatchObject({
+      kind: "may_sacrifice",
+      what: "land",
+    });
+
+    const skeleton = compile(
+      "Reassembling Skeleton",
+      "{1}{B}",
+      "Creature — Skeleton Warrior",
+      "{1}{B}: Return this card from your graveyard to the battlefield tapped.",
+      "1",
+      "1",
+    );
+    expect(skeleton.notes).toEqual([]);
+    expect(skeleton.definition.activated[0]?.zone).toBe("graveyard");
+    expect(skeleton.definition.activated[0]?.effects[0]).toMatchObject({
+      kind: "move_card",
+      toZone: "battlefield",
+      entersTapped: true,
+    });
+
+    const ghostform = compile(
+      "Kaya's Ghostform",
+      "{B}",
+      "Enchantment — Aura",
+      "Enchant creature or planeswalker you control\nWhen enchanted permanent dies or is put into exile, return that card to the battlefield under your control.",
+    );
+    expect(ghostform.notes).toEqual([]);
+    expect(ghostform.definition.enchant).toBe("creature_or_planeswalker_own");
+    expect(ghostform.definition.triggers[0]?.watch).toBe("attached");
+  });
+
+  it("turns targets into pigs, ramps off a land, and rebuilds the skeleton", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+
+    // Curse of the Swine: both victims exile, each controller gets a Boar.
+    const bearDef = createCardDefinition({ name: "Bear", typeLine: "Creature — Bear", power: 2, toughness: 2 });
+    game.definitions[bearDef.id] = bearDef;
+    const mine = createCardInstance({ definitionId: bearDef.id, ownerId: p1.id, zone: "battlefield" });
+    const theirs = createCardInstance({ definitionId: bearDef.id, ownerId: p2.id, zone: "battlefield" });
+    game.cards[mine.id] = mine;
+    game.cards[theirs.id] = theirs;
+    p1.zones.battlefield.push(mine.id);
+    p2.zones.battlefield.push(theirs.id);
+    let next = applyEffects(
+      game,
+      bindCardEffects(
+        game,
+        [
+          {
+            kind: "exile_targets_into_tokens",
+            token: { name: "Boar", typeLine: "Creature — Boar Token", power: 2, toughness: 2 },
+          },
+        ],
+        {
+          controllerId: p1.id,
+          sourceId: null,
+          targets: [
+            { type: "creature", cardId: mine.id },
+            { type: "creature", cardId: theirs.id },
+          ],
+          targetRequirements: [{ kind: "creature", variable: true }],
+        },
+      ),
+    );
+    expect(next.cards[mine.id]?.zone).toBe("exile");
+    expect(next.cards[theirs.id]?.zone).toBe("exile");
+    const boars = Object.values(next.cards).filter(
+      (card) => card.isToken && next.definitions[card.definitionId]?.name === "Boar",
+    );
+    expect(boars).toHaveLength(2);
+    expect(new Set(boars.map((boar) => boar.controllerId))).toEqual(new Set([p1.id, p2.id]));
+
+    // Springbloom Druid: the auto-taken sacrifice opens the basic search.
+    const landDef = createCardDefinition({ name: "Forest", typeLine: "Basic Land — Forest" });
+    next.definitions[landDef.id] = landDef;
+    const forest = createCardInstance({ definitionId: landDef.id, ownerId: p1.id, zone: "battlefield" });
+    next.cards[forest.id] = forest;
+    next.players.find((entry) => entry.id === p1.id)!.zones.battlefield.push(forest.id);
+    next = applyEffects(next, [
+      {
+        kind: "may_sacrifice",
+        controllerId: p1.id,
+        what: "land",
+        effects: [
+          {
+            kind: "search_library",
+            playerId: p1.id,
+            filter: { supertypes: ["basic"], types: ["land"] },
+            destination: "battlefield",
+            count: 2,
+            entersTapped: true,
+          },
+        ],
+      },
+    ]);
+    expect(next.cards[forest.id]?.zone).toBe("graveyard");
+    expect(next.prompts[0]?.kind).toBe("search_library");
+    next.prompts = [];
+
+    // Reassembling Skeleton: activate from the graveyard, arrive tapped.
+    const skeletonDef = compileOracleCard({
+      oracleId: "skeleton-rt",
+      name: "Reassembling Skeleton",
+      manaCost: "{1}{B}",
+      typeLine: "Creature — Skeleton Warrior",
+      power: "1",
+      toughness: "1",
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText: "{1}{B}: Return this card from your graveyard to the battlefield tapped.",
+    }).definition;
+    next.definitions[skeletonDef.id] = skeletonDef;
+    const bones = createCardInstance({ definitionId: skeletonDef.id, ownerId: p1.id, zone: "graveyard" });
+    next.cards[bones.id] = bones;
+    next.players.find((entry) => entry.id === p1.id)!.zones.graveyard.push(bones.id);
+    next.priorityPlayerId = p1.id;
+    const me = next.players.find((entry) => entry.id === p1.id)!;
+    me.mana.B = 1;
+    me.mana.C = 1;
+    next = applyAction(next, {
+      kind: "activate_ability",
+      playerId: p1.id,
+      cardId: bones.id,
+      abilityIndex: 0,
+    });
+    while (next.stack.length > 0) {
+      next = resolveTopOfStack(next);
+    }
+    expect(next.cards[bones.id]?.zone).toBe("battlefield");
+    expect(next.cards[bones.id]?.tapped).toBe(true);
+  });
+});
+

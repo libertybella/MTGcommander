@@ -826,7 +826,9 @@ export function parseGameState(json: string): GameState {
               };
             })(),
           }),
-      ...(def.enchant === "creature" || def.enchant === "land"
+      ...(def.enchant === "creature" ||
+      def.enchant === "land" ||
+      def.enchant === "creature_or_planeswalker_own"
         ? { enchant: def.enchant }
         : {}),
       ...(def.chooseColorOnEnter === true ? { chooseColorOnEnter: true } : {}),
@@ -2268,6 +2270,26 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
       return { kind, playerId: parsePlayerSelector(value.playerId, `${label}.playerId`) };
     case "living_death":
       return { kind };
+    case "may_sacrifice": {
+      if (value.what !== "land") {
+        throw new Error(`Invalid ${label}.what`);
+      }
+      return { kind, what: "land", effects: parseCardEffects(value.effects, `${label}.effects`) };
+    }
+    case "exile_targets_into_tokens": {
+      if (!isRecord(value.token)) {
+        throw new Error(`Invalid ${label}.token`);
+      }
+      return {
+        kind,
+        token: {
+          name: expectString(value.token.name, `${label}.token.name`),
+          typeLine: expectString(value.token.typeLine, `${label}.token.typeLine`),
+          power: expectNumber(value.token.power, `${label}.token.power`),
+          toughness: expectNumber(value.token.toughness, `${label}.token.toughness`),
+        },
+      };
+    }
     case "sacrifice":
       return {
         kind,
@@ -2810,7 +2832,7 @@ function parseActivatedAbilities(value: unknown, label: string): ActivatedAbilit
         entry.targetRequirements,
         `${label}[${index}].targetRequirements`,
       ),
-      ...(entry.zone === "hand" ? { zone: "hand" as const } : {}),
+      ...(entry.zone === "hand" || entry.zone === "graveyard" ? { zone: entry.zone } : {}),
       ...(entry.discard === true ? { discard: true } : {}),
       ...(entry.sacrificeSelf === true ? { sacrificeSelf: true } : {}),
       ...(entry.sacrificeCost === undefined
@@ -2821,6 +2843,7 @@ function parseActivatedAbilities(value: unknown, label: string): ActivatedAbilit
               if (
                 scope !== "creature" &&
                 scope !== "another_creature" &&
+                scope !== "another_black_creature" &&
                 scope !== "artifact" &&
                 scope !== "creature_or_artifact" &&
                 scope !== "land" &&
@@ -2996,6 +3019,31 @@ function parseTriggers(value: unknown, label: string): CardTrigger[] {
                   }),
               ...(entry.subjectFilter.colorless === true ? { colorless: true } : {}),
               ...(entry.subjectFilter.powerAboveBase === true ? { powerAboveBase: true } : {}),
+              ...(() => {
+                if (entry.subjectFilter.colors === undefined) {
+                  return {};
+                }
+                if (!Array.isArray(entry.subjectFilter.colors)) {
+                  throw new Error(`Invalid ${label}[${index}].subjectFilter.colors`);
+                }
+                return {
+                  colors: entry.subjectFilter.colors.map((color) => {
+                    const parsed = expectString(color, `${label}[${index}].subjectFilter.colors`);
+                    if (!(COLOR_KEYS as readonly string[]).includes(parsed)) {
+                      throw new Error(`Invalid ${label}[${index}].subjectFilter.colors`);
+                    }
+                    return parsed as Color;
+                  }),
+                };
+              })(),
+              ...(entry.subjectFilter.maxManaValue === undefined
+                ? {}
+                : {
+                    maxManaValue: expectNumber(
+                      entry.subjectFilter.maxManaValue,
+                      `${label}[${index}].subjectFilter.maxManaValue`,
+                    ),
+                  }),
               ...(() => {
                 const nonSubtypes = parseStringList(
                   entry.subjectFilter.nonSubtypes,
@@ -4076,6 +4124,32 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
   }
   if (kind === "living_death") {
     return { kind };
+  }
+  if (kind === "may_sacrifice") {
+    if (value.what !== "land") {
+      throw new Error(`Invalid ${label}.what`);
+    }
+    return {
+      kind,
+      controllerId: expectString(value.controllerId, `${label}.controllerId`),
+      what: "land",
+      effects: parseGameEffects(value.effects, `${label}.effects`),
+    };
+  }
+  if (kind === "exile_targets_into_tokens") {
+    if (!isRecord(value.token)) {
+      throw new Error(`Invalid ${label}.token`);
+    }
+    return {
+      kind,
+      cardIds: expectStringArray(value.cardIds, `${label}.cardIds`),
+      token: {
+        name: expectString(value.token.name, `${label}.token.name`),
+        typeLine: expectString(value.token.typeLine, `${label}.token.typeLine`),
+        power: expectNumber(value.token.power, `${label}.token.power`),
+        toughness: expectNumber(value.token.toughness, `${label}.token.toughness`),
+      },
+    };
   }
   if (kind === "copy_each_token") {
     return { kind, playerId: expectString(value.playerId, `${label}.playerId`) };
