@@ -199,6 +199,16 @@ export function createCardDefinition(
                     : {}),
                   ...(trigger.subjectFilter.colorless ? { colorless: true } : {}),
                   ...(trigger.subjectFilter.historic ? { historic: true } : {}),
+                  ...(trigger.subjectFilter.legendary ? { legendary: true } : {}),
+                  ...(trigger.subjectFilter.minManaValue === undefined
+                    ? {}
+                    : { minManaValue: trigger.subjectFilter.minManaValue }),
+                  ...(trigger.subjectFilter.withKeyword
+                    ? { withKeyword: trigger.subjectFilter.withKeyword }
+                    : {}),
+                  ...(trigger.subjectFilter.withoutKeyword
+                    ? { withoutKeyword: trigger.subjectFilter.withoutKeyword }
+                    : {}),
                   ...(trigger.subjectFilter.powerAboveBase ? { powerAboveBase: true } : {}),
                   ...(trigger.subjectFilter.colors
                     ? { colors: [...trigger.subjectFilter.colors] }

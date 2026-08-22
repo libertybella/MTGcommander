@@ -2,6 +2,7 @@ import { characteristicsOf } from "./cardTypes";
 import { abilitiesRemoved, cardMatchesSubtype } from "./characteristicsEngine";
 import { creaturePower, creatureToughness } from "./derived";
 import { createId } from "./ids";
+import { hasKeyword } from "./keywords";
 import { hasAnyLegalTargetSet } from "./targeting";
 import type {
   CardEffect,
@@ -458,6 +459,20 @@ function subjectMatchesFilter(
   if (filter.tokenOnly && !state.cards[subjectId]?.isToken) {
     return false;
   }
+  if (filter.legendary && !traits.supertypes.includes("legendary")) {
+    return false;
+  }
+  if (filter.minManaValue !== undefined && traits.manaValue < filter.minManaValue) {
+    return false;
+  }
+  // "with flying" / "without flying": read computed, so a granted keyword
+  // counts and a removed one does not.
+  if (filter.withKeyword && !hasKeyword(state, subjectId, filter.withKeyword)) {
+    return false;
+  }
+  if (filter.withoutKeyword && hasKeyword(state, subjectId, filter.withoutKeyword)) {
+    return false;
+  }
   for (const subtype of filter.nonSubtypes ?? []) {
     if (cardMatchesSubtype(state, subjectId, subtype)) {
       return false;
@@ -563,9 +578,20 @@ function triggerMatchesEvent(
     return false;
   }
   if (event.kind === "sacrifices") {
-    // Mayhem Devil: any player's sacrifice of any permanent.
     if (trigger.event === "player_sacrifices") {
-      return true;
+      // These three qualifiers used to be ignored outright — the branch
+      // returned true for any sacrifice by anyone — so a head that named who
+      // sacrificed, or what, would have fired on everything.
+      if (trigger.watch === "controlled" && watcher.controllerId !== event.controllerId) {
+        return false;
+      }
+      if (trigger.watch === "opponents" && watcher.controllerId === event.controllerId) {
+        return false;
+      }
+      if (trigger.excludeSelf && event.cardId === watcher.id) {
+        return false;
+      }
+      return subjectMatchesFilter(state, event.cardId, trigger.subjectFilter, watcher);
     }
     return (
       trigger.event === "you_sacrifice_token" &&

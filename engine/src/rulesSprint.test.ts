@@ -16096,7 +16096,11 @@ describe("wave 141: mines, clues, and greater goods", () => {
       kind: "create_token",
       name: "Clue",
     });
-    expect(tracker.definition.triggers[1]?.event).toBe("you_sacrifice_token");
+    // "Whenever you sacrifice a Clue" now reads through the general sacrifice
+    // head. That is the broader and more faithful reading: the printed card
+    // does not say "token", and a nontoken Clue triggers it too.
+    expect(tracker.definition.triggers[1]?.event).toBe("player_sacrifices");
+    expect(tracker.definition.triggers[1]?.watch).toBe("controlled");
     expect(tracker.definition.triggers[1]?.subjectFilter?.subtypes).toEqual(["clue"]);
   });
 
@@ -23148,6 +23152,160 @@ describe("wave 187: the token descriptor as a grammar", () => {
         p1.id,
       ),
     ).toBe(true);
+  });
+});
+
+
+describe("wave 188: the trigger head reads its subject", () => {
+  const compile = (name: string, manaCost: string, typeLine: string, oracleText: string, power?: string, toughness?: string) =>
+    compileOracleCard({
+      oracleId: name,
+      name,
+      manaCost,
+      typeLine,
+      power: power ?? null,
+      toughness: toughness ?? null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  const headOf = (text: string) =>
+    compile("Testcard", "{2}", "Enchantment", `${text}, you gain 1 life.`).definition.triggers[0];
+
+  it("takes the verbs the events already had", () => {
+    // The head used to name only "enters" and "dies"; every other event was a
+    // branch spelling out one exact wording.
+    expect(headOf("Whenever a creature you control attacks")).toMatchObject({
+      event: "attacks",
+      watch: "controlled",
+      subjectFilter: { types: ["creature"] },
+    });
+    expect(headOf("Whenever an artifact you control becomes tapped")).toMatchObject({
+      event: "becomes_tapped",
+      watch: "controlled",
+    });
+    expect(headOf("Whenever a creature an opponent controls enters")).toMatchObject({
+      event: "enter_battlefield",
+      watch: "opponents",
+    });
+  });
+
+  it("reads qualifiers from both ends of the subject", () => {
+    const flying = headOf("Whenever a creature you control with flying enters");
+    expect(flying).toMatchObject({
+      event: "enter_battlefield",
+      watch: "controlled",
+      subjectFilter: { types: ["creature"], withKeyword: "flying" },
+    });
+    // "with flying" sits OUTSIDE "you control", so it has to come off first —
+    // reading the possessor first leaves a phrase no head noun matches.
+    expect(headOf("Whenever a creature you control without flying dies")).toMatchObject({
+      subjectFilter: { types: ["creature"], withoutKeyword: "flying" },
+    });
+    expect(headOf("Whenever a legendary creature you control enters")).toMatchObject({
+      subjectFilter: { types: ["creature"], legendary: true },
+    });
+    expect(
+      headOf("Whenever another artifact you control with mana value 3 or greater enters"),
+    ).toMatchObject({
+      excludeSelf: true,
+      subjectFilter: { types: ["artifact"], minManaValue: 3 },
+    });
+  });
+
+  it("refuses a qualifier it cannot read", () => {
+    // A keyword the grammar does not know must fail the head rather than
+    // widen the trigger to every creature.
+    const odd = compile(
+      "Testcard",
+      "{2}",
+      "Enchantment",
+      "Whenever a creature you control with sparkle enters, you gain 1 life.",
+    );
+    expect(odd.notes.join(" ")).toContain("sparkle");
+  });
+
+  it("names the damaged player when the head says opponent", () => {
+    expect(
+      headOf("Whenever a creature you control deals combat damage to an opponent"),
+    ).toMatchObject({
+      event: "deals_combat_damage_to_player",
+      watch: "controlled",
+      subjectPlayerOpponent: true,
+    });
+  });
+
+  it("reads who sacrificed separately from what was sacrificed", () => {
+    const mazirek = compile(
+      "Mazirek, Kraul Death Priest",
+      "{3}{B}{G}",
+      "Legendary Creature — Insect Shaman",
+      "Flying\nWhenever a player sacrifices another permanent, put a +1/+1 counter on each creature you control.",
+      "2",
+      "2",
+    );
+    expect(mazirek.notes).toEqual([]);
+    expect(mazirek.definition.triggers[0]).toMatchObject({
+      event: "player_sacrifices",
+      watch: "any",
+      excludeSelf: true,
+    });
+    expect(headOf("Whenever you sacrifice an artifact")).toMatchObject({
+      event: "player_sacrifices",
+      watch: "controlled",
+      subjectFilter: { types: ["artifact"] },
+    });
+  });
+
+  it("fires a sacrifice trigger only for the player and permanent it named", () => {
+    // The dispatch used to return true for ANY sacrifice by ANY player,
+    // ignoring watch, excludeSelf and the subject filter outright — so a head
+    // that named who or what would have fired on everything.
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    const watcherDef = createCardDefinition({
+      name: "Watcher",
+      typeLine: "Enchantment",
+      triggers: [
+        {
+          event: "player_sacrifices",
+          watch: "controlled",
+          subjectFilter: { types: ["artifact"] },
+          effects: [{ kind: "gain_life", playerId: "controller", amount: 1 }],
+          targetRequirements: [],
+        },
+      ],
+    });
+    const relicDef = createCardDefinition({ name: "Relic", typeLine: "Artifact" });
+    const bearDef = createCardDefinition({
+      name: "Bear",
+      typeLine: "Creature — Bear",
+      power: 2,
+      toughness: 2,
+    });
+    for (const definition of [watcherDef, relicDef, bearDef]) {
+      game.definitions[definition.id] = definition;
+    }
+    const put = (definitionId: string, owner: typeof p1) => {
+      const card = createCardInstance({ definitionId, ownerId: owner.id, zone: "battlefield" });
+      game.cards[card.id] = card;
+      owner.zones.battlefield.push(card.id);
+      return card;
+    };
+    put(watcherDef.id, p1);
+    const myRelic = put(relicDef.id, p1);
+    const myBear = put(bearDef.id, p1);
+    const theirRelic = put(relicDef.id, p2);
+
+    // The trigger goes on the stack; whether it got there is the question.
+    const firedFor = (cardId: string): number =>
+      applyEffect(game, { kind: "sacrifice", cardId }).stack.length;
+    expect(firedFor(myRelic.id)).toBe(1);
+    // Right player, wrong type.
+    expect(firedFor(myBear.id)).toBe(0);
+    // Right type, wrong player.
+    expect(firedFor(theirRelic.id)).toBe(0);
   });
 });
 

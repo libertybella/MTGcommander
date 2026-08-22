@@ -1992,8 +1992,17 @@ export type CardTrigger = {
     colors?: Color[];
     /** Tocasia's Welcome: "with mana value 3 or less". */
     maxManaValue?: number;
+    /** "with mana value 3 or greater" (Sai). */
+    minManaValue?: number;
+    /** "a legendary creature you control" (Kytheon's ally trigger). */
+    legendary?: boolean;
     /** Jhoira, Teshar: "a historic spell" — artifact, legendary, or Saga. */
     historic?: boolean;
+    /** "a creature you control with flying" (Dragon Tempest). Read computed,
+     * so a granted keyword counts. */
+    withKeyword?: Keyword;
+    /** "a creature you control without flying" (Kudo). */
+    withoutKeyword?: Keyword;
   };
   effects: CardEffect[];
   /** Chosen when the trigger is put on the stack. Empty or omitted means untargeted. */

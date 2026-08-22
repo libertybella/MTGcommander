@@ -6533,9 +6533,26 @@ function parseTriggerHead(head: string): TriggerHead | null {
   if (/^Whenever a creature you control dies$/i.test(text)) {
     return { event: "dies", watch: "controlled", subjectFilter: { types: ["creature"] } };
   }
-  // Mayhem Devil: every player's sacrifices, including your own.
-  if (/^Whenever a player sacrifices a permanent$/i.test(text)) {
-    return { event: "player_sacrifices" };
+  // Sacrifice heads name who did it separately from what was sacrificed, so
+  // "a player sacrifices a permanent" (Mayhem Devil), "you sacrifice an
+  // artifact" and "a player sacrifices another permanent" (Mazirek) are one
+  // shape rather than three.
+  const sacrificed = text.match(
+    /^Whenever (you|a player|an opponent) sacrifices? (another )?(?:an? )?(.+)$/i,
+  );
+  if (sacrificed?.[1] && sacrificed[3]) {
+    const subject = parseTriggerSubjectPhrase(sacrificed[3], false);
+    if (subject) {
+      const who = sacrificed[1].toLowerCase();
+      return {
+        event: "player_sacrifices",
+        // The sacrificer, not the permanent's controller — they are the same
+        // player, since only a permanent's controller may sacrifice it.
+        watch: who === "you" ? "controlled" : who === "an opponent" ? "opponents" : "any",
+        ...(sacrificed[2] ? { excludeSelf: true } : {}),
+        ...(Object.keys(subject.filter).length > 0 ? { subjectFilter: subject.filter } : {}),
+      };
+    }
   }
   if (/^Whenever a creature an opponent controls dies$/i.test(text)) {
     return { event: "dies", watch: "opponents", subjectFilter: { types: ["creature"] } };
@@ -6950,34 +6967,102 @@ function parseTriggerHead(head: string): TriggerHead | null {
  * Runs only after every specific head above has declined, so it cannot change
  * how an already-recognised sentence compiles.
  */
-function parseGenericSubjectHead(text: string): TriggerHead | null {
-  const match = text.match(
-    /^Whenever (~ or another |another |one or more |an? )(.+?) (enters|enter|dies|die|is put into a graveyard from the battlefield)$/i,
-  );
-  if (!match?.[1] || !match[2] || !match[3]) {
-    return null;
-  }
-  const lead = match[1].toLowerCase();
-  const verb = match[3].toLowerCase();
-  // "Whenever one or more … enter" fires once for the whole simultaneous
-  // batch, not once per permanent.
-  const batched = lead.startsWith("one or more");
-  // A permanent going battlefield → graveyard *is* the dies event, whatever
-  // its card type; the long phrasing is just older templating.
-  const event =
-    verb === "enters" || verb === "enter" ? ("enter_battlefield" as const) : ("dies" as const);
+/**
+ * What a subject can be seen doing in "Whenever \<subject\> \<verb\>". Longest
+ * first, so "deals combat damage to a player" wins over "deals damage …".
+ * A permanent going battlefield → graveyard *is* the dies event whatever its
+ * card type; the long phrasing is just older templating.
+ */
+const SUBJECT_HEAD_VERBS: [string, TriggerEvent][] = [
+  ["enters|enter", "enter_battlefield"],
+  ["dies|die|is put into a graveyard from the battlefield", "dies"],
+  ["attacks|attack", "attacks"],
+  ["becomes tapped|become tapped", "becomes_tapped"],
+  ["becomes untapped|become untapped", "becomes_untapped"],
+  // "…to a player or planeswalker" is compiled as the player event: combat
+  // damage cannot yet be redirected to a planeswalker, so the planeswalker
+  // half has nothing to fire on. A documented narrowing.
+  [
+    "deals? combat damage to (?:a player|an opponent|a player or planeswalker)",
+    "deals_combat_damage_to_player",
+  ],
+  ["deals? damage to (?:a player|an opponent)", "deals_damage_to_player"],
+  ["leaves the battlefield|leave the battlefield", "leaves_battlefield"],
+];
 
-  let rest = match[2].trim();
+/**
+ * The subject noun phrase of a trigger head — "another nontoken creature you
+ * control", "a Dwarf an opponent controls", "equipped creature". Shared by
+ * every head shape so a new qualifier is added once rather than per event.
+ */
+function parseTriggerSubjectPhrase(
+  phrase: string,
+  batched: boolean,
+): { watch: CardTrigger["watch"]; filter: NonNullable<CardTrigger["subjectFilter"]> } | null {
+  let rest = phrase.trim();
   const filter: NonNullable<CardTrigger["subjectFilter"]> = {};
   let watch: CardTrigger["watch"] = "any";
+  // Trailing qualifiers, outermost first: "a creature you control with flying"
+  // puts the keyword outside the possessor, so it comes off before it.
+  const keywordQualifier = rest.match(/^(.*?)\s+(with|without)\s+([a-z]+)$/i);
+  if (keywordQualifier?.[1] && keywordQualifier[2] && keywordQualifier[3]) {
+    const keyword = KEYWORD_GRANTS[keywordQualifier[3].toLowerCase()];
+    if (!keyword) {
+      return null;
+    }
+    if (/^with$/i.test(keywordQualifier[2])) {
+      filter.withKeyword = keyword;
+    } else {
+      filter.withoutKeyword = keyword;
+    }
+    rest = keywordQualifier[1];
+  }
+  // "with mana value 3 or greater" (Sai) rides in the same trailing slot.
+  const manaValue = rest.match(/^(.*?)\s+with mana value (\d+) or (less|greater)$/i);
+  if (manaValue?.[1] && manaValue[2] && manaValue[3]) {
+    if (/^less$/i.test(manaValue[3])) {
+      filter.maxManaValue = Number(manaValue[2]);
+    } else {
+      filter.minManaValue = Number(manaValue[2]);
+    }
+    rest = manaValue[1];
+  }
   const possessor = rest.match(/^(.*?)\s+you control$/i);
   if (possessor?.[1] !== undefined) {
     watch = "controlled";
     rest = possessor[1];
+  } else {
+    const theirs = rest.match(/^(.*?)\s+(?:an opponent controls|your opponents control)$/i);
+    if (theirs?.[1] !== undefined) {
+      watch = "opponents";
+      rest = theirs[1];
+    }
   }
-  if (/^nontoken\s+/i.test(rest)) {
-    filter.nonToken = true;
-    rest = rest.replace(/^nontoken\s+/i, "");
+  // The attached subjects name no possessor of their own — the Equipment or
+  // Aura's own host is the subject.
+  const attached = rest.match(/^(?:equipped|enchanted)\s+(.*)$/i);
+  if (attached?.[1]) {
+    watch = "attached";
+    rest = attached[1];
+  }
+  // Leading adjectives, read one at a time.
+  for (;;) {
+    if (/^nontoken\s+/i.test(rest)) {
+      filter.nonToken = true;
+      rest = rest.replace(/^nontoken\s+/i, "");
+      continue;
+    }
+    if (/^token\s+/i.test(rest)) {
+      filter.tokenOnly = true;
+      rest = rest.replace(/^token\s+/i, "");
+      continue;
+    }
+    if (/^legendary\s+/i.test(rest)) {
+      filter.legendary = true;
+      rest = rest.replace(/^legendary\s+/i, "");
+      continue;
+    }
+    break;
   }
   // A batched head is plural ("one or more artifacts"); the rest of the
   // grammar reads singular nouns.
@@ -7001,12 +7086,46 @@ function parseGenericSubjectHead(text: string): TriggerHead | null {
   } else {
     return null;
   }
+  return { watch, filter };
+}
+
+function parseGenericSubjectHead(text: string): TriggerHead | null {
+  const match = text.match(
+    new RegExp(
+      "^Whenever (~ or another |another |one or more |an? |)(.+?) " +
+        `(${SUBJECT_HEAD_VERBS.map(([pattern]) => pattern).join("|")})$`,
+      "i",
+    ),
+  );
+  if (match?.[1] === undefined || !match[2] || !match[3]) {
+    return null;
+  }
+  const lead = match[1].toLowerCase();
+  const verb = match[3].toLowerCase();
+  // "Whenever one or more … enter" fires once for the whole simultaneous
+  // batch, not once per permanent.
+  const batched = lead.startsWith("one or more");
+  const event = SUBJECT_HEAD_VERBS.find(([pattern]) =>
+    new RegExp(`^(?:${pattern})$`, "i").test(verb),
+  )?.[1];
+  if (!event) {
+    return null;
+  }
+
+  const subject = parseTriggerSubjectPhrase(match[2], batched);
+  if (!subject) {
+    return null;
+  }
+  const { watch, filter } = subject;
   return {
     event,
     watch,
     // "another …" excludes the source; "~ or another …" deliberately does not.
     ...(lead.startsWith("another") ? { excludeSelf: true } : {}),
     ...(batched ? { oncePerBatch: true } : {}),
+    // "deals combat damage to an opponent": the damaged player must not be
+    // the watcher's own controller.
+    ...(/to an opponent$/i.test(verb) ? { subjectPlayerOpponent: true } : {}),
     ...(Object.keys(filter).length > 0 ? { subjectFilter: filter } : {}),
   };
 }

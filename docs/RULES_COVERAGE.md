@@ -286,6 +286,35 @@ What the engine implements and what it intentionally does not. Tests are tagged 
   unknown word as a subtype, so a descriptor this grammar refuses can still be
   caught by them. Collapsing the remainder into the grammar would close that.
 
+- **The trigger head reads its subject**: the head grammar knew two verbs
+  ("enters", "dies") and one possessor ("you control"); every other event was
+  a branch spelling out one exact wording. The verb is now a table —
+  attacks, becomes tapped/untapped, deals combat damage to a player, deals
+  damage to a player, leaves the battlefield — and the subject noun phrase is
+  one shared parser: possessor ("you control" / "an opponent controls"),
+  attached subjects ("equipped creature", "enchanted creature"), leading
+  adjectives (nontoken, token, legendary) and trailing qualifiers ("with
+  flying", "without flying", "with mana value 3 or greater"). Order is
+  load-bearing: "a creature you control with flying" puts the keyword OUTSIDE
+  the possessor, so reading the possessor first leaves a phrase no head noun
+  matches. "…to an opponent" sets the damaged-player check rather than
+  becoming its own event. A qualifier the grammar cannot read fails the head
+  instead of widening the trigger to every creature.
+
+  Sacrifice heads now name who sacrificed separately from what was
+  sacrificed, which turned up an inert branch: the `player_sacrifices`
+  dispatch returned true for ANY sacrifice by ANY player, ignoring `watch`,
+  `excludeSelf` and `subjectFilter` outright. It only ever carried Mayhem
+  Devil's unrestricted head, so nothing had exposed it — but the moment a head
+  could say "you sacrifice an artifact", it would have fired on everything.
+  "Whenever you sacrifice a Clue" (Tireless Tracker) now reads through this
+  path rather than the token-sacrifice event, which is the more faithful
+  reading: the printed card does not say "token".
+
+  "…deals combat damage to a player or planeswalker" compiles as the player
+  event. Combat damage cannot yet be redirected to a planeswalker, so the
+  planeswalker half has nothing to fire on — a documented narrowing.
+
 ## The card pipeline (Stage 6)
 
 - Real cards compile from Scryfall oracle text by shared sentence patterns; a hand-authored registry (`server/src/cardOverrides.ts`, data in the same schema) beats the compiler for the long tail. Never a named-card code path.

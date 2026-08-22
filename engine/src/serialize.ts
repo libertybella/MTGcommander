@@ -1847,6 +1847,14 @@ function parseSearchFilter(value: unknown, label: string): SearchFilter {
   };
 }
 
+function parseSingleKeyword(value: unknown, label: string): Keyword {
+  const keyword = expectString(value, label);
+  if (!KEYWORDS.has(keyword as Keyword)) {
+    throw new Error(`Invalid ${label}`);
+  }
+  return keyword as Keyword;
+}
+
 function parseControlAllScope(value: unknown, label: string): ControlAllScope {
   const scope = expectString(value, label);
   if (scope !== "creatures" && scope !== "artifacts" && scope !== "permanents") {
@@ -3476,6 +3484,31 @@ function parseTriggers(value: unknown, label: string): CardTrigger[] {
                   }),
               ...(entry.subjectFilter.colorless === true ? { colorless: true } : {}),
               ...(entry.subjectFilter.historic === true ? { historic: true } : {}),
+              ...(entry.subjectFilter.legendary === true ? { legendary: true } : {}),
+              ...(entry.subjectFilter.minManaValue === undefined
+                ? {}
+                : {
+                    minManaValue: expectNumber(
+                      entry.subjectFilter.minManaValue,
+                      "trigger.subjectFilter.minManaValue",
+                    ),
+                  }),
+              ...(entry.subjectFilter.withKeyword === undefined
+                ? {}
+                : {
+                    withKeyword: parseSingleKeyword(
+                      entry.subjectFilter.withKeyword,
+                      "trigger.subjectFilter.withKeyword",
+                    ),
+                  }),
+              ...(entry.subjectFilter.withoutKeyword === undefined
+                ? {}
+                : {
+                    withoutKeyword: parseSingleKeyword(
+                      entry.subjectFilter.withoutKeyword,
+                      "trigger.subjectFilter.withoutKeyword",
+                    ),
+                  }),
               ...(entry.subjectFilter.powerAboveBase === true ? { powerAboveBase: true } : {}),
               ...(() => {
                 if (entry.subjectFilter.colors === undefined) {
