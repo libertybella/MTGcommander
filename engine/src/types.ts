@@ -666,7 +666,11 @@ export type CardFilter =
   | "creature_or_planeswalker"
   | "land"
   | "nonland"
-  | "noncreature_nonland";
+  | "noncreature_nonland"
+  /** Stoneforge Mystic: "an Equipment card from your hand". */
+  | "equipment"
+  /** Terrain Generator: "a basic land card from your hand". */
+  | "basic_land";
 
 /** What a Clone-style permanent may enter as a copy of. */
 export type EnterAsCopyScope =
@@ -1156,6 +1160,8 @@ export type TargetKind =
   | "own_graveyard_creature_card"
   | "own_graveyard_permanent_card"
   | "own_graveyard_artifact_card"
+  /** Hall of Heliod's Generosity. */
+  | "own_graveyard_enchantment_card"
   /** Titania: "target land card in your graveyard". */
   | "own_graveyard_land_card"
   | "own_graveyard_instant_or_sorcery_card"

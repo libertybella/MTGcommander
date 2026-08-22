@@ -197,6 +197,9 @@ What the engine implements and what it intentionally does not. Tests are tagged 
 
 - **Until-end-of-turn effects carry an X.** "+X/+X until end of turn" was previously a documented drop, since those effects held only fixed numbers. They now read the announced X on the spell that made them, or a printed "where X is …" tail — the greatest power among your creatures (Overwhelming Stampede) or how many you control (Moonshaker Cavalry, whose tail is printed *after* the duration and is moved back before the clause splits). Team pumps also take a creature-type filter, through the shared subtype matcher so a changeling qualifies. Documented narrowing: "All Zombies gain menace" (Lord of the Accursed) reaches only the controller's, because a team effect addresses a player.
 
+- **Graveyard card to the library top** (Academy Ruins, Hall of Heliod's Generosity, Mortuary Mire, Volrath's Stronghold): the same graveyard noun-phrase grammar the recursion clause uses, aimed at a different destination. `own_graveyard_enchantment_card` joins the target kinds.
+- **A filtered card put from hand onto the battlefield** (Stoneforge Mystic, Terrain Generator, Monster Manual): a `choose_card` from the controller's own hand, so the "may" *is* the choice — declining is choosing nothing. The chooser's filter list gained Equipment and basic land, and the tapped rider survives to the move.
+
 ## The card pipeline (Stage 6)
 
 - Real cards compile from Scryfall oracle text by shared sentence patterns; a hand-authored registry (`server/src/cardOverrides.ts`, data in the same schema) beats the compiler for the long tail. Never a named-card code path.

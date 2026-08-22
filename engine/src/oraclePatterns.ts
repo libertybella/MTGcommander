@@ -904,6 +904,7 @@ const GRAVEYARD_HEAD_NOUNS: [RegExp, TargetKind][] = [
   [/^creature card$/i, "own_graveyard_creature_card"],
   [/^permanent card$/i, "own_graveyard_permanent_card"],
   [/^artifact card$/i, "own_graveyard_artifact_card"],
+  [/^enchantment card$/i, "own_graveyard_enchantment_card"],
   [/^land card$/i, "own_graveyard_land_card"],
   [/^instant or sorcery card$/i, "own_graveyard_instant_or_sorcery_card"],
   [/^card$/i, "own_graveyard_card"],
@@ -3443,6 +3444,60 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
       targetRequirements: [],
       effects: [
         { kind: "add_mana", playerId: "controller", mana: {}, anyColor: ritual.count ?? 1 },
+      ],
+    };
+  }
+
+  // Academy Ruins, Hall of Heliod's Generosity, Mortuary Mire: the same
+  // graveyard noun phrase as the recursion grammar, aimed at the library top.
+  const toTop = sentence.match(
+    /^(?:you may )?Put target (.+?) from your graveyard on top of your library$/i,
+  );
+  const toTopTarget = toTop?.[1] ? parseGraveyardTargetPhrase(toTop[1]) : null;
+  if (toTopTarget) {
+    return {
+      targetRequirements: [toTopTarget],
+      effects: [
+        {
+          kind: "move_card",
+          cardId: { type: "chosen", index: 0 },
+          toZone: "library",
+          libraryPosition: "top",
+        },
+      ],
+    };
+  }
+
+  // Stoneforge Mystic, Terrain Generator, Monster Manual: the controller
+  // picks a matching card out of their own hand and it enters. The "may" is
+  // the choice itself — declining is choosing nothing.
+  const fromHand = sentence.match(
+    /^(?:You may )?put an? (creature|land|basic land|Equipment) card from your hand onto the battlefield( tapped)?$/i,
+  );
+  if (fromHand?.[1]) {
+    const named = fromHand[1].toLowerCase();
+    const filter =
+      named === "equipment"
+        ? ("equipment" as const)
+        : named === "basic land"
+          ? ("basic_land" as const)
+          : (named as "creature" | "land");
+    return {
+      targetRequirements: [],
+      effects: [
+        {
+          kind: "choose_card",
+          chooserId: "controller",
+          sources: [{ playerId: "controller", zone: "hand", filter }],
+          thenEffects: [
+            {
+              kind: "move_card",
+              cardId: "chosen_card",
+              toZone: "battlefield",
+              ...(fromHand[2] ? { entersTapped: true } : {}),
+            },
+          ],
+        },
       ],
     };
   }

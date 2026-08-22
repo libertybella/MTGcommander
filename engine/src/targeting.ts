@@ -313,6 +313,7 @@ export function isChosenTargetLegal(
     requirement.kind === "own_graveyard_creature_card" ||
     requirement.kind === "own_graveyard_permanent_card" ||
     requirement.kind === "own_graveyard_artifact_card" ||
+    requirement.kind === "own_graveyard_enchantment_card" ||
     requirement.kind === "own_graveyard_land_card" ||
     requirement.kind === "own_graveyard_instant_or_sorcery_card"
   ) {
@@ -332,6 +333,9 @@ export function isChosenTargetLegal(
     }
     if (requirement.kind === "own_graveyard_artifact_card") {
       return characteristicsOf(state, target.cardId).types.includes("artifact");
+    }
+    if (requirement.kind === "own_graveyard_enchantment_card") {
+      return characteristicsOf(state, target.cardId).types.includes("enchantment");
     }
     if (requirement.kind === "own_graveyard_land_card") {
       return characteristicsOf(state, target.cardId).types.includes("land");
@@ -637,6 +641,7 @@ export function legalChoicesForRequirement(
     requirement.kind === "own_graveyard_creature_card" ||
     requirement.kind === "own_graveyard_permanent_card" ||
     requirement.kind === "own_graveyard_artifact_card" ||
+    requirement.kind === "own_graveyard_enchantment_card" ||
     requirement.kind === "own_graveyard_land_card" ||
     requirement.kind === "own_graveyard_instant_or_sorcery_card"
   ) {

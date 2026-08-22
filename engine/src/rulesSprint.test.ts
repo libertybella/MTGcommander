@@ -22105,3 +22105,151 @@ describe("wave 181: until-end-of-turn effects that carry an X", () => {
   });
 });
 
+
+describe("wave 182: cards moved between zones by filter", () => {
+  const compile = (name: string, manaCost: string, typeLine: string, oracleText: string, power?: string, toughness?: string) =>
+    compileOracleCard({
+      oracleId: name,
+      name,
+      manaCost,
+      typeLine,
+      power: power ?? null,
+      toughness: toughness ?? null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  it("aims the graveyard noun phrase at the library top", () => {
+    const ruins = compile(
+      "Academy Ruins",
+      "",
+      "Legendary Land",
+      "{T}: Add {C}.\n{1}{U}, {T}: Put target artifact card from your graveyard on top of your library.",
+    );
+    expect(ruins.notes).toEqual([]);
+    expect(ruins.definition.activated[0]?.targetRequirements[0]).toEqual({
+      kind: "own_graveyard_artifact_card",
+    });
+    expect(ruins.definition.activated[0]?.effects[0]).toMatchObject({
+      kind: "move_card",
+      toZone: "library",
+      libraryPosition: "top",
+    });
+
+    const hall = compile(
+      "Hall of Heliod's Generosity",
+      "",
+      "Legendary Land",
+      "{T}: Add {C}.\n{1}{W}, {T}: Put target enchantment card from your graveyard on top of your library.",
+    );
+    expect(hall.notes).toEqual([]);
+    const requirement = hall.definition.activated[0]?.targetRequirements[0];
+    expect(requirement).toEqual({ kind: "own_graveyard_enchantment_card" });
+
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const auraDef = createCardDefinition({ name: "Aura", typeLine: "Enchantment — Aura" });
+    const bearDef = createCardDefinition({
+      name: "Bear",
+      typeLine: "Creature — Bear",
+      power: 2,
+      toughness: 2,
+    });
+    game.definitions[auraDef.id] = auraDef;
+    game.definitions[bearDef.id] = bearDef;
+    const aura = createCardInstance({ definitionId: auraDef.id, ownerId: p1.id, zone: "graveyard" });
+    const bear = createCardInstance({ definitionId: bearDef.id, ownerId: p1.id, zone: "graveyard" });
+    game.cards[aura.id] = aura;
+    game.cards[bear.id] = bear;
+    p1.zones.graveyard.push(aura.id, bear.id);
+
+    expect(
+      isChosenTargetLegal(game, requirement!, { type: "creature", cardId: aura.id }, p1.id),
+    ).toBe(true);
+    // A creature card in the same graveyard is not an enchantment card.
+    expect(
+      isChosenTargetLegal(game, requirement!, { type: "creature", cardId: bear.id }, p1.id),
+    ).toBe(false);
+  });
+
+  it("puts a filtered card from hand onto the battlefield", () => {
+    const mystic = compile(
+      "Stoneforge Mystic",
+      "{1}{W}",
+      "Creature — Kor Artificer",
+      "{1}{W}, {T}: You may put an Equipment card from your hand onto the battlefield.",
+      "1",
+      "2",
+    );
+    expect(mystic.notes).toEqual([]);
+    expect(mystic.definition.activated[0]?.effects[0]).toMatchObject({
+      kind: "choose_card",
+      sources: [{ zone: "hand", filter: "equipment" }],
+    });
+
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const swordDef = createCardDefinition({ name: "Sword", typeLine: "Artifact — Equipment" });
+    const bearDef = createCardDefinition({
+      name: "Bear",
+      typeLine: "Creature — Bear",
+      power: 2,
+      toughness: 2,
+    });
+    game.definitions[swordDef.id] = swordDef;
+    game.definitions[bearDef.id] = bearDef;
+    const sword = createCardInstance({ definitionId: swordDef.id, ownerId: p1.id, zone: "hand" });
+    const bear = createCardInstance({ definitionId: bearDef.id, ownerId: p1.id, zone: "hand" });
+    game.cards[sword.id] = sword;
+    game.cards[bear.id] = bear;
+    p1.zones.hand.push(sword.id, bear.id);
+
+    const next = applyEffects(
+      game,
+      bindCardEffects(game, mystic.definition.activated[0]!.effects, {
+        controllerId: p1.id,
+        sourceId: null,
+      }),
+    );
+    const prompt = next.prompts[0];
+    expect(prompt?.kind).toBe("choose_card");
+    if (prompt?.kind !== "choose_card") {
+      throw new Error("expected a choose_card prompt");
+    }
+    // The Equipment is offered; the Bear in the same hand is not.
+    const resolved = applyAction(next, {
+      kind: "resolve_choose_card",
+      playerId: p1.id,
+      cardId: sword.id,
+    });
+    expect(resolved.cards[sword.id]?.zone).toBe("battlefield");
+    expect(() =>
+      applyAction(next, { kind: "resolve_choose_card", playerId: p1.id, cardId: bear.id }),
+    ).toThrow();
+  });
+
+  it("keeps the tapped rider on a land put from hand", () => {
+    const generator = compile(
+      "Terrain Generator",
+      "",
+      "Land",
+      "{T}: Add {C}.\n{2}, {T}: You may put a basic land card from your hand onto the battlefield tapped.",
+    );
+    expect(generator.notes).toEqual([]);
+    const choose = generator.definition.activated[0]?.effects[0];
+    expect(choose).toMatchObject({
+      kind: "choose_card",
+      sources: [{ zone: "hand", filter: "basic_land" }],
+    });
+    if (choose?.kind !== "choose_card") {
+      throw new Error("expected a choose_card effect");
+    }
+    expect(choose.thenEffects[0]).toMatchObject({
+      kind: "move_card",
+      toZone: "battlefield",
+      entersTapped: true,
+    });
+  });
+});
+

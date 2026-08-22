@@ -408,6 +408,13 @@ function cardMatchesFilter(
   if (filter === "nontoken_creature") {
     return types.includes("creature") && !card?.isToken;
   }
+  if (filter === "equipment") {
+    return cardMatchesSubtype(state, cardId, "equipment");
+  }
+  if (filter === "basic_land") {
+    const traits = card ? state.definitions[card.definitionId]?.characteristics : undefined;
+    return types.includes("land") && (traits?.supertypes ?? []).includes("basic");
+  }
   // Plaguecrafter: "a creature or planeswalker of their choice".
   if (filter === "creature_or_planeswalker") {
     return types.includes("creature") || types.includes("planeswalker");

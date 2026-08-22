@@ -1882,7 +1882,9 @@ function parseCardFilter(value: unknown, label: string): CardFilter {
     filter !== "creature_or_planeswalker" &&
     filter !== "land" &&
     filter !== "nonland" &&
-    filter !== "noncreature_nonland"
+    filter !== "noncreature_nonland" &&
+    filter !== "equipment" &&
+    filter !== "basic_land"
   ) {
     throw new Error(`Invalid ${label}`);
   }
@@ -2079,6 +2081,7 @@ function parseTargetRequirement(value: unknown, label: string): TargetRequiremen
     kind !== "own_graveyard_creature_card" &&
     kind !== "own_graveyard_permanent_card" &&
     kind !== "own_graveyard_artifact_card" &&
+    kind !== "own_graveyard_enchantment_card" &&
     kind !== "own_graveyard_land_card" &&
     kind !== "artifact_enchantment_or_land" &&
     kind !== "artifact_enchantment_or_planeswalker" &&
