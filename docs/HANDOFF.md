@@ -8,13 +8,21 @@ on-what lives in [CLAIMS.md](CLAIMS.md). This file is the tribal
 knowledge that isn't obvious from those: exact commands, traps, and
 the current state of play. Read all four before writing code.
 
-## State of play (2026-08-22, two waves past checkpoint-75)
+## State of play (checkpoint-76-free-casting, 2026-08-22)
 
-- Branch `comprehensive-plan`, tags through `checkpoint-75-grammars-ii`;
-  waves 155–156 are committed on top of it and the next checkpoint tag
-  is due after wave 159.
-- 920 tests green; top-2,000 compile rate **54.6% (1,096/2,009)**,
+- Branch `comprehensive-plan`, tags through `checkpoint-76-free-casting`.
+- 931 tests green; top-2,000 compile rate **55.0% (1,104/2,009)**,
   60-card sample 95% (CI floor now 90).
+- **The permission-not-prompt trick is the reusable idea from waves
+  157–158.** "You may cast … without paying its mana cost" looked like it
+  needed a new prompt, which would have meant answer paths in the client,
+  the bot, and the fuzzer — the expensive half of adding any choice.
+  Modelling it as a *permission with a use count*, the way `exilePlayable`
+  already handled impulse exiles, meant the existing cast action served
+  it. Before building a prompt, always ask whether the thing can be a
+  permission the player may or may not exercise. Bolas's Citadel is the
+  next card that wants this shape (same permission, from the library top,
+  paying life) and is now one clause away.
 - The wave loop continues toward the goal gate: M6, ≥95% of the EDHREC
   top-2,000 fully compiling. The rhythm below is proven across 154
   waves (15.6% → 54.1%); follow it as written.
@@ -301,18 +309,11 @@ where the remaining rate lives:
 - *One-off clauses* — 3–6 flips per wave, each card its own mechanic.
   Still worth grinding, but budget accordingly.
 - *Machinery that unlocks many at once, and needs real surgery first.*
-  Three are worth doing in this order: *(a)* **free casting from hand**
-  ("you may cast a spell with mana value N or less without paying its
-  mana cost" — Rishkar's Expertise, Electrodominance, Omniscience,
-  Bolas's Citadel, As Foretold, One with the Multiverse) needs a new
-  choose-and-cast prompt, which means all four mapper layers including
-  the client/bot/fuzz answers; *(b)* **tagged mana** unblocks the
-  Spend-this-mana-only cluster and Phyrexian payment; *(c)* **sagas**,
-  still the single biggest miss (Urza's Saga).
-
-Doing (a) first is the best value: the prompt it needs is reusable by
-several later clusters, and unlike (b) it does not touch every payment
-site.
+  **Free casting is now done** (waves 157–158) and turned out not to need
+  a prompt at all — see the permission note above. The two that remain:
+  **tagged mana**, which unblocks the Spend-this-mana-only cluster and
+  Phyrexian payment but touches every payment site; and **sagas**, still
+  the single biggest miss (Urza's Saga).
 
 Families identified but not yet built, each worth roughly a wave:
 **general "A and B" trigger bodies** (the clause compiler handles some
