@@ -8,13 +8,19 @@ on-what lives in [CLAIMS.md](CLAIMS.md). This file is the tribal
 knowledge that isn't obvious from those: exact commands, traps, and
 the current state of play. Read all four before writing code.
 
-## State of play (checkpoint-77-permissions, 2026-08-22)
+## State of play (checkpoint-78-tagged-mana, 2026-08-22)
 
-- Branch `comprehensive-plan`, tags through `checkpoint-77-permissions`;
-  waves 166–167 are committed on top and the next checkpoint is due
-  after wave 169.
-- 954 tests green; top-2,000 compile rate **56.0% (1,125/2,009)**,
+- Branch `comprehensive-plan`, tags through `checkpoint-78-tagged-mana`.
+- 958 tests green; top-2,000 compile rate **56.1% (1,127/2,009)**,
   60-card sample 95% (CI floor now 90).
+- **Two clusters this brief called "needs real surgery" turned out to be
+  much smaller than the estimate, and both times the estimate was mine.**
+  Free casting was supposed to need a new prompt; it needed a permission.
+  Tagged mana was supposed to touch every payment site; the payment path
+  is centralised and only two call sites admit restricted mana. The
+  Dominus cycle looked like missing Phyrexian machinery and was one
+  over-strict line in the cost parser. **Scope the thing before believing
+  a scary estimate — especially your own.**
 - **The permission-not-prompt trick is the reusable idea of waves
   157–161.** "You may cast … without paying its mana cost" looked like it
   needed a new prompt, which would have meant answer paths in the client,
@@ -38,18 +44,17 @@ the current state of play. Read all four before writing code.
   normalisation bug affecting a whole class of legends. The zero-flip
   wave was worth more than its number.
 - The wave loop continues toward the goal gate: M6, ≥95% of the EDHREC
-  top-2,000 fully compiling. The rhythm below is proven across 167
-  waves (15.6% → 56.0%); follow it as written.
-- **Yield per wave is falling and that is the real news.** Waves 145–167
+  top-2,000 fully compiling. The rhythm below is proven across 168
+  waves (15.6% → 56.1%); follow it as written.
+- **Yield per wave is falling and that is the real news.** Waves 145–168
   flipped 13, 15, 11, 6, 7, 8, 7, 5, 1, 6, 6, 4, 2, 2, 4, 9, 2, 2, 1, 0, 1,
-  6, 0.
-  The early numbers came
+  6, 0, 6, 0, 2. The early numbers came
   from grammars that replaced whole families of regexes; those families
   are now largely built, and what is left is a genuine long tail. Plan
   on roughly 1–4 flips per wave from here, not 13, and pick clusters
   accordingly — a cycle of near-identical cards (the Verge lands, the
   Landscapes) is worth far more than a high-ranked one-off. At that
-  rate M6 (≥95%, another 884 cards) is not reachable by grinding alone;
+  rate M6 (≥95%, another 882 cards) is not reachable by grinding alone;
   see "The cheap tail is spent" below for what actually moves it.
 - **Never push to GitHub without Liberty's explicit yes.** Nothing has
   been pushed; the remote flow (Ross et al.) starts only when she says
