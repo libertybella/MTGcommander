@@ -195,6 +195,7 @@ export function createCardDefinition(
                     ? { counterName: trigger.subjectFilter.counterName }
                     : {}),
                   ...(trigger.subjectFilter.colorless ? { colorless: true } : {}),
+                  ...(trigger.subjectFilter.historic ? { historic: true } : {}),
                   ...(trigger.subjectFilter.powerAboveBase ? { powerAboveBase: true } : {}),
                   ...(trigger.subjectFilter.colors
                     ? { colors: [...trigger.subjectFilter.colors] }

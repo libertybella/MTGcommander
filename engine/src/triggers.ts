@@ -446,6 +446,15 @@ function subjectMatchesFilter(
   if (filter.nonToken && state.cards[subjectId]?.isToken) {
     return false;
   }
+  // CR 702: historic is artifact, legendary, or Saga.
+  if (
+    filter.historic &&
+    !traits.types.includes("artifact") &&
+    !traits.supertypes.includes("legendary") &&
+    !cardMatchesSubtype(state, subjectId, "saga")
+  ) {
+    return false;
+  }
   if (filter.tokenOnly && !state.cards[subjectId]?.isToken) {
     return false;
   }

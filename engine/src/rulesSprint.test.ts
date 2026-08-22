@@ -20623,3 +20623,143 @@ describe("wave 172: draw step and first main phase triggers", () => {
   });
 });
 
+
+describe("wave 173: one cast-trigger grammar, and dies by its long name", () => {
+  const compile = (name: string, manaCost: string, typeLine: string, oracleText: string, power?: string, toughness?: string) =>
+    compileOracleCard({
+      oracleId: name,
+      name,
+      manaCost,
+      typeLine,
+      power: power ?? null,
+      toughness: toughness ?? null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  it("reads who is watched and what the spell must be from one head", () => {
+    const jhoira = compile(
+      "Jhoira, Weatherlight Captain",
+      "{2}{U}{R}",
+      "Legendary Creature — Human Artificer",
+      "Whenever you cast a historic spell, draw a card. (Artifacts, legendaries, and Sagas are historic.)",
+      "3",
+      "3",
+    );
+    expect(jhoira.notes).toEqual([]);
+    expect(jhoira.definition.triggers[0]).toMatchObject({
+      event: "cast_spell",
+      watch: "controlled",
+      subjectFilter: { historic: true },
+    });
+
+    const niv = compile(
+      "Niv-Mizzet, Parun",
+      "{U}{U}{U}{R}{R}{R}",
+      "Legendary Creature — Dragon Wizard",
+      "This spell can't be countered.\nFlying\nWhenever you draw a card, Niv-Mizzet deals 1 damage to any target.\nWhenever a player casts an instant or sorcery spell, you draw a card.",
+      "5",
+      "5",
+    );
+    expect(niv.notes).toEqual([]);
+    // "a player" is everyone, not just the controller.
+    expect(niv.definition.triggers[1]).toMatchObject({
+      event: "cast_spell",
+      watch: "any",
+      subjectFilter: { typesAny: ["instant", "sorcery"] },
+    });
+  });
+
+  it("counts artifacts, legendaries and Sagas as historic and nothing else", () => {
+    const jhoira = compile(
+      "Jhoira, Weatherlight Captain",
+      "{2}{U}{R}",
+      "Legendary Creature — Human Artificer",
+      "Whenever you cast a historic spell, draw a card.",
+      "3",
+      "3",
+    );
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    game.definitions[jhoira.definition.id] = jhoira.definition;
+    const watcher = createCardInstance({
+      definitionId: jhoira.definition.id,
+      ownerId: p1.id,
+      zone: "battlefield",
+    });
+    game.cards[watcher.id] = watcher;
+    p1.zones.battlefield.push(watcher.id);
+
+    const plainDef = createCardDefinition({
+      name: "Bear",
+      typeLine: "Creature — Bear",
+      power: 2,
+      toughness: 2,
+    });
+    const relicDef = createCardDefinition({ name: "Relic", typeLine: "Artifact" });
+    game.definitions[plainDef.id] = plainDef;
+    game.definitions[relicDef.id] = relicDef;
+    const plain = createCardInstance({ definitionId: plainDef.id, ownerId: p1.id, zone: "stack" });
+    const relic = createCardInstance({ definitionId: relicDef.id, ownerId: p1.id, zone: "stack" });
+    game.cards[plain.id] = plain;
+    game.cards[relic.id] = relic;
+
+    dispatchEventsInPlace(game, [
+      { kind: "casts", cardId: plain.id, controllerId: p1.id },
+    ]);
+    expect(game.stack).toHaveLength(0);
+
+    dispatchEventsInPlace(game, [
+      { kind: "casts", cardId: relic.id, controllerId: p1.id },
+    ]);
+    expect(game.stack).toHaveLength(1);
+  });
+
+  it("treats the long spelling of dying as dying", () => {
+    const wellspring = compile(
+      "Ichor Wellspring",
+      "{2}",
+      "Artifact",
+      "When this artifact enters or is put into a graveyard from the battlefield, draw a card.",
+    );
+    expect(wellspring.notes).toEqual([]);
+    expect(wellspring.definition.triggers.map((entry) => entry.event)).toEqual([
+      "enter_battlefield",
+      "dies",
+    ]);
+
+    const rancor = compile(
+      "Rancor",
+      "{G}",
+      "Enchantment — Aura",
+      "Enchant creature\nEnchanted creature gets +2/+0 and has trample.\nWhen this Aura is put into a graveyard from the battlefield, return it to its owner's hand.",
+    );
+    expect(rancor.notes).toEqual([]);
+    const dies = rancor.definition.triggers.find((entry) => entry.event === "dies");
+    expect(dies?.effects[0]).toEqual({
+      kind: "move_card",
+      cardId: "subject_card",
+      toZone: "hand",
+    });
+
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    game.definitions[rancor.definition.id] = rancor.definition;
+    const aura = createCardInstance({
+      definitionId: rancor.definition.id,
+      ownerId: p1.id,
+      zone: "battlefield",
+    });
+    game.cards[aura.id] = aura;
+    p1.zones.battlefield.push(aura.id);
+
+    let next = applyEffect(game, { kind: "sacrifice", cardId: aura.id });
+    while (next.stack.length > 0) {
+      next = resolveTopOfStack(next);
+    }
+    // The Aura went to the graveyard and its own trigger brought it back.
+    expect(next.cards[aura.id]?.zone).toBe("hand");
+  });
+});
+

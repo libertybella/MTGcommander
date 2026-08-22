@@ -177,6 +177,9 @@ What the engine implements and what it intentionally does not. Tests are tagged 
 
 - **Draw-step and first-main-phase triggers**: the turn dispatches `step_begins` for the draw step (after the turn-based draw, per CR 504) and for the precombat main, so "At the beginning of your draw step" (Mana Vault) and "At the beginning of your first main phase" (Black Market, Hulking Raptor) are events rather than misses. "each player's" fires on everyone's turn, "your" only on the controller's. A `self_tapped` intervening "if" reads the watcher itself, which is what makes Mana Vault's pain conditional on staying tapped.
 
+- **Cast triggers as one grammar**: "Whenever \<you | an opponent | a player | each player\> casts a \<descriptor\> spell" is parsed rather than enumerated — the watcher comes from the subject and the subject filter from the descriptor (a card type, a type list, "noncreature", "colorless", "historic", or a creature type that changelings match). Historic is artifact, legendary, or Saga (CR 702). An unrecognised descriptor returns null, so the head stays a clean miss instead of watching every spell.
+- **"Put into a graveyard from the battlefield"** normalizes to "dies" for the card itself (CR 700.4 makes them the same event), so Rancor and Ichor Wellspring read through the trigger heads that already existed.
+
 ## The card pipeline (Stage 6)
 
 - Real cards compile from Scryfall oracle text by shared sentence patterns; a hand-authored registry (`server/src/cardOverrides.ts`, data in the same schema) beats the compiler for the long tail. Never a named-card code path.

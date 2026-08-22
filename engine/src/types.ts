@@ -1849,6 +1849,8 @@ export type CardTrigger = {
     colors?: Color[];
     /** Tocasia's Welcome: "with mana value 3 or less". */
     maxManaValue?: number;
+    /** Jhoira, Teshar: "a historic spell" — artifact, legendary, or Saga. */
+    historic?: boolean;
   };
   effects: CardEffect[];
   /** Chosen when the trigger is put on the stack. Empty or omitted means untargeted. */

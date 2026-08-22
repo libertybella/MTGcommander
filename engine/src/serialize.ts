@@ -3213,6 +3213,7 @@ function parseTriggers(value: unknown, label: string): CardTrigger[] {
                     ),
                   }),
               ...(entry.subjectFilter.colorless === true ? { colorless: true } : {}),
+              ...(entry.subjectFilter.historic === true ? { historic: true } : {}),
               ...(entry.subjectFilter.powerAboveBase === true ? { powerAboveBase: true } : {}),
               ...(() => {
                 if (entry.subjectFilter.colors === undefined) {

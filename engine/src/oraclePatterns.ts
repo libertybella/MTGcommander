@@ -344,6 +344,13 @@ function normalizeOracleText(card: OracleCard): string {
     "~",
   );
   text = text.replace(/\benters the battlefield\b/gi, "enters");
+  // CR 700.4: for the card itself these are the same event, and "dies" is the
+  // shape every trigger head here already reads (Rancor, Ichor Wellspring).
+  text = text.replace(/~ is put into a graveyard from the battlefield\b/gi, "~ dies");
+  text = text.replace(
+    /\benters or is put into a graveyard from the battlefield\b/gi,
+    "enters or dies",
+  );
   // Periods inside quoted granted abilities ('… have "{T}: Add {C}."') must
   // not split the sentence; shield them, split, then restore.
   text = text.replace(/"[^"]*"/g, (quoted) => quoted.replace(/\./g, ""));
@@ -635,6 +642,57 @@ function parseGraveyardTargetPhrase(phrase: string): TargetRequirement | null {
   const head = GRAVEYARD_HEAD_NOUNS.find(([pattern]) => pattern.test(rest.trim()));
   return head ? { ...requirement, kind: head[1] } : null;
 }
+
+/**
+ * The descriptor in "Whenever you cast a <descriptor> spell" — a card type,
+ * a type list, "noncreature", "colorless", "historic", or a creature type.
+ * Returns the subject filter it implies; an empty object means "any spell".
+ * Null for anything it does not recognise, which keeps the head a clean miss.
+ */
+function parseSpellDescriptor(descriptor: string): CardTrigger["subjectFilter"] | null {
+  const word = descriptor.trim().toLowerCase();
+  if (word === "") {
+    return {};
+  }
+  if (word === "colorless") {
+    return { colorless: true };
+  }
+  // CR 702.- historic: artifact, legendary, or Saga.
+  if (word === "historic") {
+    return { historic: true };
+  }
+  const nonType = word.match(/^non(creature|artifact|enchantment|land)$/);
+  if (nonType?.[1]) {
+    return { nonTypes: [nonType[1]] };
+  }
+  // "instant or sorcery", "artifact, instant, or sorcery" — a type list.
+  const listed = word
+    .split(/,\s*(?:or\s+)?|\s+or\s+/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+  if (listed.length > 1 && listed.every((part) => SPELL_CARD_TYPES.has(part))) {
+    return { typesAny: listed };
+  }
+  if (listed.length === 1 && SPELL_CARD_TYPES.has(word)) {
+    return { types: [word] };
+  }
+  // A creature type, which changelings match through the shared helper. The
+  // capital in the printed text is what marks it as a subtype.
+  if (/^[A-Z][a-z]+$/.test(descriptor.trim())) {
+    return { subtypes: [word] };
+  }
+  return null;
+}
+
+const SPELL_CARD_TYPES = new Set([
+  "artifact",
+  "creature",
+  "enchantment",
+  "instant",
+  "sorcery",
+  "planeswalker",
+  "battle",
+]);
 
 function parseControlledTypes(text: string): string[] | null {
   const parts = text.split(/\s+or\s+/i).map((part) => part.trim());
@@ -1559,6 +1617,15 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
 
   if (/^(?:then )?populate$/i.test(sentence)) {
     return { targetRequirements: [], effects: [{ kind: "populate", playerId: "controller" }] };
+  }
+
+  // Rancor: the Aura's own dies trigger sends it home. "It" is the trigger's
+  // subject, which for a self-watching dies trigger is this card.
+  if (/^return it to its owner's hand$/i.test(sentence)) {
+    return {
+      targetRequirements: [],
+      effects: [{ kind: "move_card", cardId: "subject_card", toZone: "hand" }],
+    };
   }
 
   // Mesmeric Orb's body: the untapped permanent's controller mills.
@@ -5829,48 +5896,19 @@ function parseTriggerHead(head: string): TriggerHead | null {
   ) {
     return { event: "enter_battlefield", watch: "opponents", subjectFilter: { types: ["creature"] } };
   }
-  if (/^Whenever you cast a spell$/i.test(text)) {
-    return { event: "cast_spell", watch: "controlled" };
-  }
-  if (/^Whenever you cast a creature spell$/i.test(text)) {
-    return { event: "cast_spell", watch: "controlled", subjectFilter: { types: ["creature"] } };
-  }
-  if (/^Whenever you cast a noncreature spell$/i.test(text)) {
-    return { event: "cast_spell", watch: "controlled", subjectFilter: { nonTypes: ["creature"] } };
-  }
-  if (/^Whenever you cast an instant or sorcery spell$/i.test(text)) {
+  // One cast-trigger grammar: who is watched, and what the spell has to be.
+  // Every "Whenever <someone> casts a <descriptor> spell" head lands here.
+  const castHead = text.match(
+    /^Whenever (you|an opponent|a player|each player) casts? an? (.+? )?spell$/i,
+  );
+  const castFilter = castHead ? parseSpellDescriptor(castHead[2]?.trim() ?? "") : null;
+  if (castHead?.[1] && castFilter) {
+    const who = castHead[1].toLowerCase();
     return {
       event: "cast_spell",
-      watch: "controlled",
-      subjectFilter: { typesAny: ["instant", "sorcery"] },
+      watch: who === "you" ? "controlled" : who === "an opponent" ? "opponents" : "any",
+      ...(Object.keys(castFilter).length > 0 ? { subjectFilter: castFilter } : {}),
     };
-  }
-  if (/^Whenever you cast an artifact, instant, or sorcery spell$/i.test(text)) {
-    return {
-      event: "cast_spell",
-      watch: "controlled",
-      subjectFilter: { typesAny: ["artifact", "instant", "sorcery"] },
-    };
-  }
-  if (/^Whenever an opponent casts an artifact, instant, or sorcery spell$/i.test(text)) {
-    return {
-      event: "cast_spell",
-      watch: "opponents",
-      subjectFilter: { typesAny: ["artifact", "instant", "sorcery"] },
-    };
-  }
-  if (/^Whenever an opponent casts an instant or sorcery spell$/i.test(text)) {
-    return {
-      event: "cast_spell",
-      watch: "opponents",
-      subjectFilter: { typesAny: ["instant", "sorcery"] },
-    };
-  }
-  if (/^Whenever you cast an artifact spell$/i.test(text)) {
-    return { event: "cast_spell", watch: "controlled", subjectFilter: { types: ["artifact"] } };
-  }
-  if (/^Whenever you cast an enchantment spell$/i.test(text)) {
-    return { event: "cast_spell", watch: "controlled", subjectFilter: { types: ["enchantment"] } };
   }
   if (/^Whenever enchanted creature deals damage to an opponent$/i.test(text)) {
     return {
@@ -5885,29 +5923,12 @@ function parseTriggerHead(head: string): TriggerHead | null {
   if (/^Whenever ~ deals damage to a player$/i.test(text)) {
     return { event: "deals_damage_to_player" };
   }
-  // Tribal cast triggers ("Whenever you cast an Elf spell") — changelings
-  // match through the shared subtype matcher.
-  const tribalCast = text.match(/^Whenever you cast an? ([A-Z][a-z]+) spell$/);
-  if (tribalCast?.[1] && !/^(creature|artifact|enchantment|instant|sorcery|noncreature)$/i.test(tribalCast[1])) {
-    return {
-      event: "cast_spell",
-      watch: "controlled",
-      subjectFilter: { subtypes: [tribalCast[1].toLowerCase()] },
-    };
-  }
-  if (/^Whenever an opponent casts a spell$/i.test(text)) {
-    return { event: "cast_spell", watch: "opponents" };
-  }
   if (/^Whenever an opponent draws a card$/i.test(text)) {
     return { event: "opponent_draws" };
   }
   // Fathom Mage / Evolution Witness.
   if (/^Whenever (?:a|one or more) \+1\/\+1 counters? (?:is|are) put on ~$/i.test(text)) {
     return { event: "counter_added", subjectFilter: { counterName: "p1p1" } };
-  }
-  // Glaring Fleshraker.
-  if (/^Whenever you cast a colorless spell$/i.test(text)) {
-    return { event: "cast_spell", watch: "controlled", subjectFilter: { colorless: true } };
   }
   if (/^Whenever another colorless creature you control enters$/i.test(text)) {
     return {
