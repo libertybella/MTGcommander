@@ -1037,7 +1037,19 @@ export type DynamicCount =
   | "enchantments_you_control"
   | "artifacts_and_enchantments_you_control"
   | "cards_in_your_hand"
-  | "cards_in_your_graveyard";
+  | "cards_in_your_graveyard"
+  /** Wight of the Reliquary. */
+  | "creature_cards_in_your_graveyard"
+  /** Faeburrow Elder: colours among permanents you control, not permanents. */
+  | "colors_among_permanents_you_control"
+  /** Tomb of the Spirit Dragon. */
+  | "colorless_creatures_you_control"
+  /** Inspiring Call. */
+  | "creatures_you_control_with_a_counter"
+  /** Kor Spiritdancer — counted on the source, not the controller. */
+  | "auras_attached_to_it"
+  /** Thran Power Suit. */
+  | "auras_and_equipment_attached_to_it";
 
 /** "As an additional cost to cast this spell, …" — paid at cast time. */
 /**
@@ -1278,6 +1290,8 @@ export type CardEffect =
       perControlledCreature?: { minPower?: number };
       /** Aetherflux Reservoir: multiply by the controller's casts this turn. */
       perSpellsCastThisTurn?: boolean;
+      /** Venser's Journal: multiply by a shared dynamic count at bind. */
+      perDynamicCount?: DynamicCount;
     }
   | {
       kind: "lose_life";
@@ -1326,6 +1340,8 @@ export type CardEffect =
       countFromChosenTypePermanents?: boolean;
       /** Shamanic Revelation: one card per controlled creature at bind. */
       countPerControlled?: "creature";
+      /** Inspiring Call: multiply the count by a shared dynamic count at bind. */
+      perDynamicCount?: DynamicCount;
     }
   | { kind: "scry"; playerId: PlayerSelector; count: number }
   | { kind: "surveil"; playerId: PlayerSelector; count: number }

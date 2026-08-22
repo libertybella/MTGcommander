@@ -279,6 +279,43 @@ function parseSpendRestriction(tail: string): ManaRestriction | null {
 }
 
 /** "…for each <noun> you control" — the nouns a live count can scale by. */
+/**
+ * The thing a "for each …" / "equal to the number of …" clause counts. One
+ * table, shared by star P/T, self-buffs, and count-scaled draws and lifegain,
+ * so a new count is a row rather than a branch.
+ */
+const DYNAMIC_COUNTS: [RegExp, DynamicCount][] = [
+  [/^lands? you control$/i, "lands_you_control"],
+  [/^creatures? you control$/i, "creatures_you_control"],
+  [/^artifacts? you control$/i, "artifacts_you_control"],
+  [/^enchantments? you control$/i, "enchantments_you_control"],
+  [
+    /^artifacts? and(?:\/or)? enchantments? you control$/i,
+    "artifacts_and_enchantments_you_control",
+  ],
+  [/^cards? in your hand$/i, "cards_in_your_hand"],
+  [/^cards? in your graveyard$/i, "cards_in_your_graveyard"],
+  [/^creature cards? in your graveyard$/i, "creature_cards_in_your_graveyard"],
+  [/^colors? among permanents you control$/i, "colors_among_permanents_you_control"],
+  [/^colorless creatures? you control$/i, "colorless_creatures_you_control"],
+  [
+    /^creatures? you control with an? \+1\/\+1 counter on (?:it|them)$/i,
+    "creatures_you_control_with_a_counter",
+  ],
+  [/^Auras? attached to it$/i, "auras_attached_to_it"],
+  [/^Aura and Equipment attached to it$/i, "auras_and_equipment_attached_to_it"],
+];
+
+/**
+ * Singular or plural, "for each X" and "the number of X" say the same thing —
+ * the printed text uses the singular after "for each" and the plural after
+ * "the number of", so every row admits both.
+ */
+function parseDynamicCount(phrase: string): DynamicCount | null {
+  const trimmed = phrase.trim();
+  return DYNAMIC_COUNTS.find(([pattern]) => pattern.test(trimmed))?.[1] ?? null;
+}
+
 const PER_COUNTS: Record<string, DynamicCount> = {
   land: "lands_you_control",
   creature: "creatures_you_control",
@@ -4193,6 +4230,34 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     return {
       targetRequirements: [],
       effects: [{ kind: "draw", playerId: "controller", count: 0, countPerControlled: "creature" }],
+    };
+  }
+
+  // Inspiring Call, Tomb of the Spirit Dragon, Venser's Journal: a draw or a
+  // lifegain scaled by whatever the shared count table names.
+  const perEachDraw = sentence.match(/^Draw a card for each (.+)$/i);
+  const perEachDrawCount = perEachDraw?.[1] ? parseDynamicCount(perEachDraw[1]) : null;
+  if (perEachDrawCount) {
+    return {
+      targetRequirements: [],
+      effects: [
+        { kind: "draw", playerId: "controller", count: 1, perDynamicCount: perEachDrawCount },
+      ],
+    };
+  }
+  const perEachLife = sentence.match(/^You gain (\d+) life for each (.+)$/i);
+  const perEachLifeCount = perEachLife?.[2] ? parseDynamicCount(perEachLife[2]) : null;
+  if (perEachLife?.[1] && perEachLifeCount) {
+    return {
+      targetRequirements: [],
+      effects: [
+        {
+          kind: "gain_life",
+          playerId: "controller",
+          amount: Number(perEachLife[1]),
+          perDynamicCount: perEachLifeCount,
+        },
+      ],
     };
   }
 
@@ -8443,34 +8508,23 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
     }
 
     const starPt = sentence.match(
-      /^~'s power and toughness are each equal to the number of (lands you control|creatures you control|artifacts you control|cards in your hand|cards in your graveyard)$/i,
+      /^~'s power and toughness are each equal to the number of (.+)$/i,
     );
-    if (starPt?.[1]) {
-      const countOf: Record<string, DynamicCount> = {
-        "lands you control": "lands_you_control",
-        "creatures you control": "creatures_you_control",
-        "artifacts you control": "artifacts_you_control",
-        "cards in your hand": "cards_in_your_hand",
-        "cards in your graveyard": "cards_in_your_graveyard",
-      };
-      result.dynamicPt = { count: countOf[starPt[1].toLowerCase()]! };
+    const starCount = starPt?.[1] ? parseDynamicCount(starPt[1]) : null;
+    if (starCount) {
+      result.dynamicPt = { count: starCount };
       continue;
     }
 
-    // Storm-Kiln Artist: an asymmetric per-count self-buff.
-    const bonusPt = sentence.match(
-      /^~ gets \+(\d+)\/\+(\d+) for each (artifact|creature|land) you control$/i,
-    );
-    if (bonusPt?.[1] && bonusPt[2] && bonusPt[3]) {
-      const perOf: Record<string, DynamicCount> = {
-        artifact: "artifacts_you_control",
-        creature: "creatures_you_control",
-        land: "lands_you_control",
-      };
+    // Storm-Kiln Artist, Faeburrow Elder, Kor Spiritdancer: an asymmetric
+    // per-count self-buff over whatever the shared count table admits.
+    const bonusPt = sentence.match(/^~ gets \+(\d+)\/\+(\d+) for each (.+)$/i);
+    const bonusCount = bonusPt?.[3] ? parseDynamicCount(bonusPt[3]) : null;
+    if (bonusPt?.[1] && bonusPt[2] && bonusCount) {
       result.bonusPt = {
         power: Number(bonusPt[1]),
         toughness: Number(bonusPt[2]),
-        per: perOf[bonusPt[3].toLowerCase()]!,
+        per: bonusCount,
       };
       continue;
     }

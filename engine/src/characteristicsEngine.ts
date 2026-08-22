@@ -115,12 +115,12 @@ function baseComputed(state: GameState, card: CardInstance): ComputedCard {
   };
   // CR 613.3a: a characteristic-defining star P/T applies before every layer.
   const dynamic = definition?.dynamicPt
-    ? dynamicCountOf(state, card.controllerId, definition.dynamicPt.count)
+    ? dynamicCountOf(state, card.controllerId, definition.dynamicPt.count, card.id)
     : null;
   // Storm-Kiln Artist: "+1/+0 for each artifact you control" self-buff.
   const bonusCount =
     definition?.bonusPt && card.zone === "battlefield"
-      ? dynamicCountOf(state, card.controllerId, definition.bonusPt.per)
+      ? dynamicCountOf(state, card.controllerId, definition.bonusPt.per, card.id)
       : 0;
   const bonusPower = (definition?.bonusPt?.power ?? 0) * bonusCount;
   const bonusToughness = (definition?.bonusPt?.toughness ?? 0) * bonusCount;
@@ -186,7 +186,17 @@ function devotionPips(state: GameState, controllerId: string, color: Color): num
   return pips;
 }
 
-function dynamicCountOf(state: GameState, controllerId: string, count: DynamicCount): number {
+/**
+ * How many of the thing a "for each …" clause counts. `sourceId` is only
+ * needed by the counts that read the source itself ("for each Aura attached
+ * to it"); everything else counts the controller's board or zones.
+ */
+export function dynamicCountOf(
+  state: GameState,
+  controllerId: string,
+  count: DynamicCount,
+  sourceId?: CardInstanceId,
+): number {
   const player = state.players.find((entry) => entry.id === controllerId);
   if (!player) {
     return 0;
@@ -196,6 +206,65 @@ function dynamicCountOf(state: GameState, controllerId: string, count: DynamicCo
   }
   if (count === "cards_in_your_graveyard") {
     return player.zones.graveyard.length;
+  }
+  if (count === "creature_cards_in_your_graveyard") {
+    return player.zones.graveyard.filter((id) =>
+      (state.definitions[state.cards[id]?.definitionId ?? ""]?.characteristics.types ?? []).includes(
+        "creature",
+      ),
+    ).length;
+  }
+  // Kor Spiritdancer / Thran Power Suit: attachments ON the source. Printed
+  // types, like the rest of this function — the layer engine cannot read its
+  // own output here.
+  if (count === "auras_attached_to_it" || count === "auras_and_equipment_attached_to_it") {
+    if (!sourceId) {
+      return 0;
+    }
+    return Object.values(state.cards).filter((card) => {
+      if (card.zone !== "battlefield" || card.attachedTo !== sourceId) {
+        return false;
+      }
+      const subtypes = state.definitions[card.definitionId]?.characteristics.subtypes ?? [];
+      return (
+        subtypes.includes("aura") ||
+        (count === "auras_and_equipment_attached_to_it" && subtypes.includes("equipment"))
+      );
+    }).length;
+  }
+  if (count === "colors_among_permanents_you_control") {
+    const colors = new Set<string>();
+    for (const card of Object.values(state.cards)) {
+      if (card.zone !== "battlefield" || card.controllerId !== controllerId) {
+        continue;
+      }
+      for (const color of state.definitions[card.definitionId]?.characteristics.colors ?? []) {
+        colors.add(color);
+      }
+    }
+    return colors.size;
+  }
+  if (count === "colorless_creatures_you_control" || count === "creatures_you_control_with_a_counter") {
+    let total = 0;
+    for (const card of Object.values(state.cards)) {
+      if (card.zone !== "battlefield" || card.controllerId !== controllerId) {
+        continue;
+      }
+      const traits = state.definitions[card.definitionId]?.characteristics;
+      if (!(traits?.types ?? []).includes("creature")) {
+        continue;
+      }
+      if (count === "colorless_creatures_you_control") {
+        if ((traits?.colors ?? []).length === 0) {
+          total += 1;
+        }
+        continue;
+      }
+      if (Object.values(card.counters).some((amount) => amount > 0)) {
+        total += 1;
+      }
+    }
+    return total;
   }
   if (count === "artifacts_and_enchantments_you_control") {
     // Nettlecyst: "and/or" — a card that is both counts once.

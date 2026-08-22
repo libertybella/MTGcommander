@@ -1,4 +1,4 @@
-import { abilitiesRemoved, cardMatchesSubtype, computedCard } from "./characteristicsEngine";
+import { abilitiesRemoved, cardMatchesSubtype, computedCard, dynamicCountOf } from "./characteristicsEngine";
 import { cloneGameState } from "./clone";
 import { createCardDefinition, createCardInstance } from "./createGame";
 import { characteristicsOf, hasSubtype, isCreature, isInstantOrSorcery, isLand, isPlaneswalker } from "./cardTypes";
@@ -366,6 +366,14 @@ export function bindCardEffect(
       if (amount <= 0) {
         return null;
       }
+      // Venser's Journal: scale by whatever the shared count table names.
+      if (effect.kind === "gain_life" && effect.perDynamicCount) {
+        const count = dynamicCountOf(state, context.controllerId, effect.perDynamicCount, context.sourceId ?? undefined);
+        if (count === 0) {
+          return null;
+        }
+        return { kind: effect.kind, playerId, amount: amount * count };
+      }
       // Aetherflux Reservoir: scale by the controller's casts this turn.
       if (effect.kind === "gain_life" && effect.perSpellsCastThisTurn) {
         const casts = state.spellsCastByPlayerThisTurn?.[context.controllerId] ?? 0;
@@ -396,7 +404,15 @@ export function bindCardEffect(
       if (!playerId) {
         return null;
       }
-      const { countFromGreatestPower, countPerControlled, countFromChosenTypePermanents, ...drawRest } = effect;
+      const { countFromGreatestPower, countPerControlled, countFromChosenTypePermanents, perDynamicCount, ...drawRest } = effect;
+      // Inspiring Call: one card per whatever the shared count table names.
+      if (perDynamicCount) {
+        const scaled = dynamicCountOf(state, context.controllerId, perDynamicCount, context.sourceId ?? undefined) * (typeof effect.count === "number" ? effect.count : 1);
+        if (scaled === 0) {
+          return null;
+        }
+        return { ...drawRest, playerId, count: scaled };
+      }
       // Blue Sun's Zenith: the announced X.
       if (effect.count === "x") {
         return { ...drawRest, playerId, count: Math.max(0, context.xValue ?? 0) };

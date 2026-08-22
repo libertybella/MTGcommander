@@ -21778,3 +21778,175 @@ describe("wave 179: activation costs that are not mana", () => {
   });
 });
 
+
+describe("wave 180: for each — one count table", () => {
+  const compile = (name: string, manaCost: string, typeLine: string, oracleText: string, power?: string, toughness?: string) =>
+    compileOracleCard({
+      oracleId: name,
+      name,
+      manaCost,
+      typeLine,
+      power: power ?? null,
+      toughness: toughness ?? null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  const put = (game: GameState, owner: PlayerState, definitionId: string) => {
+    const card = createCardInstance({ definitionId, ownerId: owner.id, zone: "battlefield" });
+    card.summoningSick = false;
+    game.cards[card.id] = card;
+    owner.zones.battlefield.push(card.id);
+    return card;
+  };
+
+  it("counts colours among permanents, not permanents", () => {
+    const elder = compile(
+      "Faeburrow Elder",
+      "{1}{G}{W}",
+      "Creature — Treefolk Druid",
+      "Vigilance\nThis creature gets +1/+1 for each color among permanents you control.",
+      "0",
+      "0",
+    );
+    expect(elder.definition.bonusPt).toEqual({
+      power: 1,
+      toughness: 1,
+      per: "colors_among_permanents_you_control",
+    });
+
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    game.definitions[elder.definition.id] = elder.definition;
+    const source = put(game, p1, elder.definition.id);
+    // The Elder itself is green and white: two colours.
+    expect(computedCard(game, source.id)?.power).toBe(2);
+
+    // A second green permanent adds no colour, so no size.
+    const greenDef = createCardDefinition({
+      name: "Green Bear",
+      typeLine: "Creature — Bear",
+      manaCost: "{G}",
+      power: 2,
+      toughness: 2,
+    });
+    game.definitions[greenDef.id] = greenDef;
+    put(game, p1, greenDef.id);
+    expect(computedCard(game, source.id)?.power).toBe(2);
+
+    // A blue one does.
+    const blueDef = createCardDefinition({
+      name: "Blue Bear",
+      typeLine: "Creature — Bear",
+      manaCost: "{U}",
+      power: 2,
+      toughness: 2,
+    });
+    game.definitions[blueDef.id] = blueDef;
+    put(game, p1, blueDef.id);
+    expect(computedCard(game, source.id)?.power).toBe(3);
+  });
+
+  it("counts what is attached to the source, not the board", () => {
+    const dancer = compile(
+      "Kor Spiritdancer",
+      "{1}{W}",
+      "Creature — Kor Wizard",
+      "This creature gets +2/+2 for each Aura attached to it.",
+      "0",
+      "2",
+    );
+    expect(dancer.notes).toEqual([]);
+    expect(dancer.definition.bonusPt?.per).toBe("auras_attached_to_it");
+
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    game.definitions[dancer.definition.id] = dancer.definition;
+    const source = put(game, p1, dancer.definition.id);
+    const other = put(game, p1, dancer.definition.id);
+    const auraDef = createCardDefinition({ name: "Aura", typeLine: "Enchantment — Aura" });
+    game.definitions[auraDef.id] = auraDef;
+    const mine = put(game, p1, auraDef.id);
+    const theirs = put(game, p1, auraDef.id);
+    mine.attachedTo = source.id;
+    theirs.attachedTo = other.id;
+
+    // One Aura on this one, not two.
+    expect(computedCard(game, source.id)?.power).toBe(2);
+    expect(computedCard(game, source.id)?.toughness).toBe(4);
+  });
+
+  it("scales a lifegain by a count, and the count is filtered", () => {
+    const tomb = compile(
+      "Tomb of the Spirit Dragon",
+      "",
+      "Land",
+      "{T}: Add {C}.\n{2}, {T}: You gain 1 life for each colorless creature you control.",
+    );
+    expect(tomb.notes).toEqual([]);
+    expect(tomb.definition.activated[0]?.effects[0]).toMatchObject({
+      kind: "gain_life",
+      amount: 1,
+      perDynamicCount: "colorless_creatures_you_control",
+    });
+
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const colorlessDef = createCardDefinition({
+      name: "Golem",
+      typeLine: "Artifact Creature — Golem",
+      power: 2,
+      toughness: 2,
+    });
+    const redDef = createCardDefinition({
+      name: "Red Bear",
+      typeLine: "Creature — Bear",
+      manaCost: "{R}",
+      power: 2,
+      toughness: 2,
+    });
+    game.definitions[colorlessDef.id] = colorlessDef;
+    game.definitions[redDef.id] = redDef;
+    put(game, p1, colorlessDef.id);
+    put(game, p1, colorlessDef.id);
+    put(game, p1, redDef.id);
+
+    const startingLife = p1.life;
+    const bound = bindCardEffects(game, tomb.definition.activated[0]!.effects, {
+      controllerId: p1.id,
+      sourceId: null,
+    });
+    const next = applyEffects(game, bound);
+    // Two colourless creatures; the red one does not count.
+    expect(next.players.find((entry) => entry.id === p1.id)?.life).toBe(startingLife + 2);
+  });
+
+  it("keeps the singular and plural wordings on one table", () => {
+    // "for each creature card" (singular) and "the number of cards in your
+    // hand" (plural) are the same count.
+    const wight = compile(
+      "Wight of the Reliquary",
+      "{B}{G}",
+      "Creature — Zombie Knight",
+      "Vigilance\nThis creature gets +1/+1 for each creature card in your graveyard.",
+      "2",
+      "2",
+    );
+    expect(wight.definition.bonusPt?.per).toBe("creature_cards_in_your_graveyard");
+
+    const journal = compile(
+      "Venser's Journal",
+      "{5}",
+      "Artifact — Book",
+      "You have no maximum hand size.\nAt the beginning of your upkeep, you gain 1 life for each card in your hand.",
+    );
+    expect(journal.notes).toEqual([]);
+    expect(journal.definition.noMaxHandSize).toBe(true);
+    expect(journal.definition.triggers[0]?.effects[0]).toMatchObject({
+      kind: "gain_life",
+      perDynamicCount: "cards_in_your_hand",
+    });
+  });
+});
+
