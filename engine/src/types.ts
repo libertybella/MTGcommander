@@ -117,7 +117,10 @@ export type CardDefinition = {
   /** Aura: cast targeting a creature; enters attached (CR 303.4). */
   enchant?: "creature" | "land" | "creature_or_planeswalker_own";
   /** "As this Aura enters, choose a color" (Utopia Sprawl). */
+  /** "As this enters, choose a color". The Thriving lands exclude their own
+   * colour, so the choice is a real restriction rather than free. */
   chooseColorOnEnter?: boolean;
+  chooseColorExcludes?: Color;
   /** Wild Growth / Utopia Sprawl: when the enchanted land taps for mana, its
    * controller adds this much extra ("chosen" reads the aura's chosenColor). */
   enchantedTappedBonus?: { color: Color | "chosen"; amount: number };
@@ -292,6 +295,8 @@ export type CardDefinition = {
     /** Mockingbird: only copy creatures with mana value ≤ the mana spent to
      * cast this (bound to the announced X + printed pips at resolution). */
     maxManaValueBySpent?: boolean;
+    /** Vesuva: the copy arrives tapped. */
+    entersTapped?: boolean;
   };
   /** "As an additional cost to cast this spell, …" (Deadly Dispute). */
   additionalCost?: AdditionalCastCost;
@@ -645,7 +650,13 @@ export type EnterAsCopyScope =
   | "any_nonland_permanent"
   | "any_artifact_or_creature"
   /** Sculpting Steel. */
-  | "any_artifact";
+  | "any_artifact"
+  /** Vesuva. */
+  | "any_land"
+  /** Masterwork of Ingenuity. */
+  | "any_equipment"
+  /** Mirrormade. */
+  | "any_artifact_or_enchantment";
 
 export type ChooseCardSource = {
   playerId: PlayerSelector;
@@ -1904,6 +1915,8 @@ export type PendingPrompt =
       kind: "choose_color";
       playerId: PlayerId;
       sourceId: CardInstanceId;
+      /** Thriving lands: "choose a color other than blue". */
+      excludeColor?: Color;
       /** Mother of Runes: the chosen color becomes an until-EOT protection
        * grant on this creature instead of a stored chosenColor. */
       grantProtectionTo?: CardInstanceId;
@@ -1928,6 +1941,8 @@ export type PendingPrompt =
       extraCounters?: number;
       /** Mockingbird: only cards with mana value at most this are legal. */
       maxManaValue?: number;
+      /** Vesuva: the copy arrives tapped. */
+      entersTapped?: boolean;
     }
   | {
       /**

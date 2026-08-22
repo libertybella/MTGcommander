@@ -570,6 +570,9 @@ export function queueEnterReplacementChoicesInPlace(state: GameState, cardId: Ca
       kind: "choose_color",
       playerId: card.controllerId,
       sourceId: card.id,
+      ...(definition.chooseColorExcludes
+        ? { excludeColor: definition.chooseColorExcludes }
+        : {}),
     });
   }
   if (definition?.enterAsCopy) {
@@ -585,6 +588,7 @@ export function queueEnterReplacementChoicesInPlace(state: GameState, cardId: Ca
         ? { extraCounters: definition.enterAsCopy.extraCounters }
         : {}),
       ...(definition.enterAsCopy.maxManaValueBySpent ? { maxManaValue: 0 } : {}),
+      ...(definition.enterAsCopy.entersTapped ? { entersTapped: true } : {}),
     });
   }
 }

@@ -292,6 +292,10 @@ export function applyResolveColor(
   if (!["W", "U", "B", "R", "G"].includes(color)) {
     throw new Error("Choose a color");
   }
+  // Thriving lands: the land's own colour is not on offer.
+  if (prompt.excludeColor && color === prompt.excludeColor) {
+    throw new Error("Choose a different color");
+  }
   const next = cloneGameState(state);
   next.prompts.shift();
   // Mother of Runes: the answer becomes an until-EOT protection grant.
@@ -540,6 +544,26 @@ export function legalEnterCopyIds(
           ids.push(card.id);
         }
         break;
+      // Vesuva.
+      case "any_land":
+        if (characteristicsOf(state, card.id).types.includes("land")) {
+          ids.push(card.id);
+        }
+        break;
+      // Masterwork of Ingenuity.
+      case "any_equipment":
+        if (cardMatchesSubtype(state, card.id, "equipment")) {
+          ids.push(card.id);
+        }
+        break;
+      // Mirrormade.
+      case "any_artifact_or_enchantment": {
+        const types = characteristicsOf(state, card.id).types;
+        if (types.includes("artifact") || types.includes("enchantment")) {
+          ids.push(card.id);
+        }
+        break;
+      }
     }
   }
   return ids;
@@ -578,6 +602,10 @@ export function applyResolveEnterCopy(
     return next;
   }
   entered.definitionId = original.definitionId;
+  // Vesuva: the copy arrives tapped regardless of what it copied.
+  if (prompt.entersTapped) {
+    entered.tapped = true;
+  }
   if (prompt.extraCounters && isCreature(next, entered.id)) {
     entered.counters["p1p1"] = (entered.counters["p1p1"] ?? 0) + prompt.extraCounters;
   }

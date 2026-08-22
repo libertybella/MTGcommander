@@ -50,6 +50,7 @@ export type CompiledOracleText = {
   protectionFrom?: Color[];
   enchant?: "creature" | "land" | "creature_or_planeswalker_own";
   chooseColorOnEnter?: boolean;
+  chooseColorExcludes?: Color;
   enchantedTappedBonus?: { color: Color | "chosen"; amount: number };
   loyaltyAbilities?: LoyaltyAbility[];
   noMaxHandSize?: boolean;
@@ -6727,6 +6728,9 @@ const CLONE_SCOPE_BY_PHRASE: Record<string, EnterAsCopyScope> = {
   "any nonland permanent on the battlefield": "any_nonland_permanent",
   "any artifact or creature on the battlefield": "any_artifact_or_creature",
   "any artifact on the battlefield": "any_artifact",
+  "any land on the battlefield": "any_land",
+  "any equipment on the battlefield": "any_equipment",
+  "any artifact or enchantment on the battlefield": "any_artifact_or_enchantment",
 };
 
 /**
@@ -6936,7 +6940,17 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
       continue;
     }
 
-    if (/^As (?:~|this Aura|this enchantment) enters, choose a color$/i.test(sentence)) {
+    // Thriving lands: the same choice, minus the land's own colour.
+    const excludedColor = sentence.match(
+      /^As (?:~|it|this land|this Aura|this enchantment) enters, choose a color other than (white|blue|black|red|green)$/i,
+    );
+    if (excludedColor?.[1]) {
+      result.chooseColorOnEnter = true;
+      result.chooseColorExcludes = COLOR_WORDS[excludedColor[1].toLowerCase()]!;
+      continue;
+    }
+
+    if (/^As (?:~|it|this land|this Aura|this enchantment) enters, choose a color$/i.test(sentence)) {
       result.chooseColorOnEnter = true;
       continue;
     }
@@ -7339,16 +7353,17 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
     // Clone family. The leading name is "~" for most cards but stays a short
     // legend name when oracle text uses it (Sakashima).
     const cloneEnter = sentence.match(
-      /^You may have (?:~|[\w' -]+?) enter(?: the battlefield)? as a copy of (any creature on the battlefield|a creature you control|another creature you control|a creature or planeswalker you control|any nonland permanent on the battlefield|any artifact or creature on the battlefield|any artifact on the battlefield)( with mana value less than or equal to the amount of mana spent to cast ~)?(?:, except (.+))?$/i,
+      /^You may have (?:~|[\w' -]+?) enter( tapped)?(?: the battlefield)? as a copy of (any creature on the battlefield|a creature you control|another creature you control|a creature or planeswalker you control|any nonland permanent on the battlefield|any artifact or creature on the battlefield|any artifact on the battlefield|any land on the battlefield|any equipment on the battlefield|any artifact or enchantment on the battlefield)( with mana value less than or equal to the amount of mana spent to cast ~)?(?:, except (.+))?$/i,
     );
-    if (cloneEnter?.[1]) {
-      const riders = cloneEnter[3] === undefined ? {} : parseCopyExceptRiders(cloneEnter[3]);
-      const scope = CLONE_SCOPE_BY_PHRASE[cloneEnter[1].toLowerCase()];
+    if (cloneEnter?.[2]) {
+      const riders = cloneEnter[4] === undefined ? {} : parseCopyExceptRiders(cloneEnter[4]);
+      const scope = CLONE_SCOPE_BY_PHRASE[cloneEnter[2].toLowerCase()];
       if (riders && scope) {
         result.enterAsCopy = {
           scope,
           ...(riders.extraCounters ? { extraCounters: riders.extraCounters } : {}),
-          ...(cloneEnter[2] ? { maxManaValueBySpent: true } : {}),
+          ...(cloneEnter[3] ? { maxManaValueBySpent: true } : {}),
+          ...(cloneEnter[1] ? { entersTapped: true } : {}),
         };
         continue;
       }

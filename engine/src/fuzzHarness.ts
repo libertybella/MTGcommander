@@ -157,7 +157,12 @@ function nextAction(state: GameState, rng: () => number): GameAction | null {
         return {
           kind: "resolve_color",
           playerId,
-          color: pick(rng, ["W", "U", "B", "R", "G"] as const),
+          color: pick(
+            rng,
+            (["W", "U", "B", "R", "G"] as const).filter(
+              (option) => option !== prompt.excludeColor,
+            ),
+          ),
         };
       case "scry": {
         const looked = lookedAtCardIds(state, prompt);

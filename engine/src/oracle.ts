@@ -247,6 +247,7 @@ function compileOneFace(card: OracleCard, definitionId: string): OracleCompileRe
     ...(compiled.opponentLandTapsSkipUntap ? { opponentLandTapsSkipUntap: true } : {}),
     ...(compiled.rebound ? { rebound: true } : {}),
     ...(compiled.chooseColorOnEnter ? { chooseColorOnEnter: true } : {}),
+    ...(compiled.chooseColorExcludes ? { chooseColorExcludes: compiled.chooseColorExcludes } : {}),
     ...(compiled.enchantedTappedBonus
       ? { enchantedTappedBonus: compiled.enchantedTappedBonus }
       : {}),

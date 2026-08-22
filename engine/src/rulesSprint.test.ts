@@ -19124,3 +19124,136 @@ describe("wave 159: draw variants", () => {
   });
 });
 
+
+describe("wave 160: thriving lands and wider clones", () => {
+  const compile = (name: string, manaCost: string, typeLine: string, oracleText: string) =>
+    compileOracleCard({
+      oracleId: name,
+      name,
+      manaCost,
+      typeLine,
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  it("compiles the whole Thriving cycle with its colour exclusion", () => {
+    const cycle: Array<[string, string, string]> = [
+      ["Thriving Isle", "blue", "U"],
+      ["Thriving Heath", "white", "W"],
+      ["Thriving Grove", "green", "G"],
+      ["Thriving Bluff", "red", "R"],
+      ["Thriving Moor", "black", "B"],
+    ];
+    for (const [name, word, code] of cycle) {
+      const compiled = compile(
+        name,
+        "",
+        "Land",
+        `This land enters tapped.\nAs it enters, choose a color other than ${word}.\n{T}: Add one mana of the chosen color.`,
+      );
+      expect(compiled.notes, name).toEqual([]);
+      expect(compiled.definition.chooseColorOnEnter, name).toBe(true);
+      expect(compiled.definition.chooseColorExcludes, name).toBe(code);
+    }
+
+    // The unrestricted form keeps working and carries no exclusion.
+    const lair = compile(
+      "Valgavoth's Lair",
+      "",
+      "Land",
+      "This land enters tapped.\nAs it enters, choose a color.\n{T}: Add one mana of the chosen color.",
+    );
+    expect(lair.notes).toEqual([]);
+    expect(lair.definition.chooseColorExcludes).toBeUndefined();
+  });
+
+  it("compiles the three new clone scopes", () => {
+    const vesuva = compile(
+      "Vesuva",
+      "",
+      "Land",
+      "You may have Vesuva enter tapped as a copy of any land on the battlefield.",
+    );
+    expect(vesuva.notes).toEqual([]);
+    expect(vesuva.definition.enterAsCopy).toEqual({ scope: "any_land", entersTapped: true });
+
+    const mirrormade = compile(
+      "Mirrormade",
+      "{3}{U}",
+      "Enchantment",
+      "You may have Mirrormade enter as a copy of any artifact or enchantment on the battlefield.",
+    );
+    expect(mirrormade.notes).toEqual([]);
+    expect(mirrormade.definition.enterAsCopy).toEqual({ scope: "any_artifact_or_enchantment" });
+
+    const masterwork = compile(
+      "Masterwork of Ingenuity",
+      "{1}",
+      "Artifact — Equipment",
+      "You may have Masterwork of Ingenuity enter as a copy of any Equipment on the battlefield.\nEquip {2}",
+    );
+    expect(masterwork.notes).toEqual([]);
+    expect(masterwork.definition.enterAsCopy).toEqual({ scope: "any_equipment" });
+  });
+
+  it("refuses the excluded colour and accepts the rest", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const isleDef = compile(
+      "Thriving Isle",
+      "",
+      "Land",
+      "This land enters tapped.\nAs it enters, choose a color other than blue.\n{T}: Add one mana of the chosen color.",
+    ).definition;
+    game.definitions[isleDef.id] = isleDef;
+    const isle = createCardInstance({ definitionId: isleDef.id, ownerId: p1.id, zone: "hand" });
+    game.cards[isle.id] = isle;
+    p1.zones.hand.push(isle.id);
+
+    const entered = moveCard(game, isle.id, "battlefield");
+    expect(entered.prompts[0]).toMatchObject({ kind: "choose_color", excludeColor: "U" });
+    expect(() =>
+      applyAction(entered, { kind: "resolve_color", playerId: p1.id, color: "U" }),
+    ).toThrow(/different color/i);
+
+    const chosen = applyAction(entered, { kind: "resolve_color", playerId: p1.id, color: "G" });
+    expect(chosen.cards[isle.id]?.chosenColor).toBe("G");
+  });
+
+  it("copies a land and arrives tapped", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const forestDef = createCardDefinition({ name: "Forest", typeLine: "Basic Land — Forest" });
+    game.definitions[forestDef.id] = forestDef;
+    const forest = createCardInstance({ definitionId: forestDef.id, ownerId: p1.id, zone: "battlefield" });
+    game.cards[forest.id] = forest;
+    p1.zones.battlefield.push(forest.id);
+
+    const vesuvaDef = compile(
+      "Vesuva",
+      "",
+      "Land",
+      "You may have Vesuva enter tapped as a copy of any land on the battlefield.",
+    ).definition;
+    game.definitions[vesuvaDef.id] = vesuvaDef;
+    const vesuva = createCardInstance({ definitionId: vesuvaDef.id, ownerId: p1.id, zone: "hand" });
+    game.cards[vesuva.id] = vesuva;
+    p1.zones.hand.push(vesuva.id);
+
+    const entered = moveCard(game, vesuva.id, "battlefield");
+    expect(entered.prompts[0]).toMatchObject({ kind: "enter_as_copy", scope: "any_land" });
+    expect(legalEnterCopyIds(entered, entered.prompts[0] as never)).toContain(forest.id);
+
+    const copied = applyAction(entered, {
+      kind: "resolve_enter_copy",
+      playerId: p1.id,
+      cardId: forest.id,
+    });
+    expect(copied.cards[vesuva.id]?.definitionId).toBe(forestDef.id);
+    expect(copied.cards[vesuva.id]?.tapped).toBe(true);
+  });
+});
+

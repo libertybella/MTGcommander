@@ -112,6 +112,7 @@ export function createCardDefinition(
         | "opponentLandTapsSkipUntap"
         | "rebound"
         | "chooseColorOnEnter"
+        | "chooseColorExcludes"
         | "enchantedTappedBonus"
         | "entersWithXCounters"
         | "enterAsCopy"
@@ -399,6 +400,7 @@ export function createCardDefinition(
         }
       : {}),
     ...(input.chooseColorOnEnter ? { chooseColorOnEnter: true } : {}),
+    ...(input.chooseColorExcludes ? { chooseColorExcludes: input.chooseColorExcludes } : {}),
     ...(input.enchantedTappedBonus
       ? { enchantedTappedBonus: { ...input.enchantedTappedBonus } }
       : {}),

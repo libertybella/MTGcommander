@@ -2644,7 +2644,10 @@ export function Battlefield(props: Props) {
                     ["R", "Red"],
                     ["G", "Green"],
                   ] as const
-                ).map(([code, label]) => (
+                )
+                  // Thriving lands exclude their own colour.
+                  .filter(([code]) => code !== prompt.excludeColor)
+                  .map(([code, label]) => (
                   <button
                     key={code}
                     type="button"

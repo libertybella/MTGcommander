@@ -73,6 +73,15 @@ const KEYWORDS = new Set<Keyword>([
 const MANA_KEYS = ["W", "U", "B", "R", "G", "C"] as const;
 const COLOR_KEYS = ["W", "U", "B", "R", "G"] as const;
 
+/** One colour letter, validated. */
+function parseColor(value: unknown, label: string): Color {
+  const color = expectString(value, label);
+  if (!(COLOR_KEYS as readonly string[]).includes(color)) {
+    throw new Error(`Invalid ${label}`);
+  }
+  return color as Color;
+}
+
 /**
  * Colors stored inside a serialized definition's characteristics, if any.
  * Old snapshots have no characteristics at all; both cases re-derive from
@@ -579,7 +588,10 @@ export function parseGameState(json: string): GameState {
                 scope !== "your_creature_or_planeswalker" &&
                 scope !== "any_nonland_permanent" &&
                 scope !== "any_artifact_or_creature" &&
-                scope !== "any_artifact"
+                scope !== "any_artifact" &&
+                scope !== "any_land" &&
+                scope !== "any_equipment" &&
+                scope !== "any_artifact_or_enchantment"
               ) {
                 throw new Error(`Invalid definition.${id}.enterAsCopy.scope`);
               }
@@ -596,6 +608,7 @@ export function parseGameState(json: string): GameState {
                 ...(def.enterAsCopy.maxManaValueBySpent === true
                   ? { maxManaValueBySpent: true }
                   : {}),
+                ...(def.enterAsCopy.entersTapped === true ? { entersTapped: true } : {}),
               };
             })(),
           }),
@@ -853,6 +866,9 @@ export function parseGameState(json: string): GameState {
         ? { enchant: def.enchant }
         : {}),
       ...(def.chooseColorOnEnter === true ? { chooseColorOnEnter: true } : {}),
+      ...(def.chooseColorExcludes === undefined
+        ? {}
+        : { chooseColorExcludes: parseColor(def.chooseColorExcludes, "definition.chooseColorExcludes") }),
       ...(def.enchantedTappedBonus === undefined
         ? {}
         : {
@@ -1340,6 +1356,9 @@ function parsePrompts(value: unknown, playerIds: Set<string>): PendingPrompt[] {
                 entry.grantProtectionTo,
                 `prompts[${index}].grantProtectionTo`,
               ),
+        ...(entry.excludeColor === undefined
+          ? {}
+          : { excludeColor: parseColor(entry.excludeColor, `prompts[${index}].excludeColor`) }),
             }),
       };
     }
@@ -1374,7 +1393,10 @@ function parsePrompts(value: unknown, playerIds: Set<string>): PendingPrompt[] {
         scope !== "your_creature_or_planeswalker" &&
         scope !== "any_nonland_permanent" &&
         scope !== "any_artifact_or_creature" &&
-        scope !== "any_artifact"
+        scope !== "any_artifact" &&
+        scope !== "any_land" &&
+        scope !== "any_equipment" &&
+        scope !== "any_artifact_or_enchantment"
       ) {
         throw new Error(`Invalid prompts[${index}].scope`);
       }

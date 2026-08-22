@@ -455,7 +455,12 @@ export class GameHost {
           continue;
         }
         if (prompt.kind === "choose_color") {
-          this.apply({ kind: "resolve_color", playerId: prompt.playerId, color: "G" });
+          // Green unless the card forbids it (Thriving Grove).
+          this.apply({
+            kind: "resolve_color",
+            playerId: prompt.playerId,
+            color: prompt.excludeColor === "G" ? "U" : "G",
+          });
           continue;
         }
         if (prompt.kind === "search_library") {
