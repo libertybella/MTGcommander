@@ -1490,7 +1490,12 @@ export type CardEffect =
     }
   /** count "sacrificed_power": Altar of Dementia reads the sacrificed
    * cost-creature's power, captured on activation. */
-  | { kind: "mill"; playerId: PlayerSelector; count: number | "sacrificed_power" }
+  | {
+      kind: "mill";
+      playerId: PlayerSelector;
+      /** subject_amount: "that many" — the life the trigger just saw lost. */
+      count: number | "sacrificed_power" | "subject_amount";
+    }
   | { kind: "discard"; playerId: PlayerSelector; count: number }
   /** Gamble: "discard a card at random". */
   | { kind: "discard_random"; playerId: PlayerSelector; count: number }
@@ -2424,7 +2429,9 @@ export type ActivatedAbility = {
     | "treasure"
     /** Any permanent you control — only ever paired with `sacrificeSubtype`,
      * because "Sacrifice a Goblin" names no card type. */
-    | "permanent";
+    | "permanent"
+    /** Fountainport: "Sacrifice a token" — any token, of any type. */
+    | "token";
   /** Scavenger Grounds: "Sacrifice a Desert"; Skirk Prospector: "Sacrifice a
    * Goblin". The fodder must also have this subtype (lowercase). Rides
    * alongside `sacrificeCost` so the two filters compose instead of the
@@ -2549,7 +2556,9 @@ export type ManaAbility = {
     | "treasure"
     /** Skirk Prospector: "Sacrifice a Goblin" — always paired with
      * `costSacrificeSubtype`, which carries the whole filter. */
-    | "permanent";
+    | "permanent"
+    /** Fountainport: "Sacrifice a token". */
+    | "token";
   /** Gilded Goose: "Sacrifice a Food". Lowercase subtype the fodder must have,
    * composing with `costSacrifice` rather than growing that union. */
   costSacrificeSubtype?: string;

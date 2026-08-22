@@ -526,8 +526,13 @@ export function bindCardEffect(
       }
       // Altar of Dementia: the sacrificed cost-creature's power, captured
       // on activation.
+      // Mindcrank: "that many" is the life the trigger just watched be lost.
       const count =
-        effect.count === "sacrificed_power" ? context.sacrificedPower ?? 0 : effect.count;
+        effect.count === "sacrificed_power"
+          ? context.sacrificedPower ?? 0
+          : effect.count === "subject_amount"
+            ? context.subjectAmount ?? 0
+            : effect.count;
       if (count <= 0) {
         return null;
       }

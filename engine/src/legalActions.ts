@@ -236,7 +236,8 @@ export function sacrificeScopeMatches(
     | "another_creature"
     | "another_black_creature"
     | "another_creature_or_artifact"
-    | "permanent",
+    | "permanent"
+    | "token",
   sourceId?: CardInstanceId,
 ): boolean {
   const traits = state.definitions[state.cards[cardId]?.definitionId ?? ""]?.characteristics;
@@ -245,6 +246,10 @@ export function sacrificeScopeMatches(
   // actually narrows the fodder ("Sacrifice a Goblin").
   if (scope === "permanent") {
     return true;
+  }
+  // Fountainport: any token, whatever it is a token of.
+  if (scope === "token") {
+    return state.cards[cardId]?.isToken === true;
   }
   if (scope === "creature") {
     return types.includes("creature");

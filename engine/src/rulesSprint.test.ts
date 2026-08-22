@@ -24,7 +24,7 @@ import { applyCombatDamage, declareAttackers } from "./combat";
 import { commanderIdentityColors, manaAbilitiesFor, manaTapOptionsFor } from "./manaOptions";
 import { emptyManaPools, parseManaCost } from "./mana";
 import { applyStateBasedActionsInPlace } from "./status";
-import { legalActions } from "./legalActions";
+import { legalActions, sacrificeScopeMatches } from "./legalActions";
 import { applyResolveCreatureType, legalEnterCopyIds, searchMatches } from "./prompt";
 import { parseGameState, serializeGameState } from "./serialize";
 import { fillLibraries } from "./testSupport";
@@ -20254,11 +20254,23 @@ describe("wave 169: subtype sacrifice costs", () => {
   });
 
   it("refuses a sacrifice cost it cannot name", () => {
-    // "Sacrifice a token" splits off as a cost unit but matches no scope —
-    // compiling it would make the sacrifice free.
+    // "Sacrifice a token" was refused here for several waves precisely so the
+    // sacrifice would not compile to nothing; wave 200 gave it a real scope,
+    // so what this now guards is that an UNNAMEABLE scope still refuses.
     const fountainport = compile("Fountainport", "", "Land", FOUNTAINPORT);
-    expect(fountainport.notes.join(" ")).toContain("Sacrifice a token");
-    for (const ability of fountainport.definition.activated) {
+    const tokenSacrifice = fountainport.definition.activated.find(
+      (ability) => ability.sacrificeCost === "token",
+    );
+    expect(tokenSacrifice).toBeDefined();
+
+    const odd = compile(
+      "Testcard",
+      "",
+      "Land",
+      "{2}, {T}, Sacrifice a hovercraft: Draw a card.",
+    );
+    expect(odd.notes.join(" ")).toContain("hovercraft");
+    for (const ability of odd.definition.activated) {
       expect(ability.sacrificeCost).toBeUndefined();
     }
   });
@@ -25246,6 +25258,119 @@ describe("wave 199: excluded types, class levels, and life read off a count", ()
         perDynamicCount: "cards_in_your_hand",
       },
     ], { controllerId: p1.id, sourceId: null })).players[0]?.life).toBe(before - 3);
+  });
+});
+
+
+describe("wave 200: that player, that many, and a token as fodder", () => {
+  const compile = (name: string, manaCost: string, typeLine: string, oracleText: string, power?: string, toughness?: string) =>
+    compileOracleCard({
+      oracleId: name,
+      name,
+      manaCost,
+      typeLine,
+      power: power ?? null,
+      toughness: toughness ?? null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  it("mills the player the trigger watched, for what it watched them lose", () => {
+    const mindcrank = compile(
+      "Mindcrank",
+      "{2}",
+      "Artifact",
+      "Whenever an opponent loses life, that player mills that many cards.",
+    );
+    expect(mindcrank.notes).toEqual([]);
+    expect(mindcrank.definition.triggers[0]?.effects).toEqual([
+      { kind: "mill", playerId: { type: "subject_player" }, count: "subject_amount" },
+    ]);
+
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    const bound = bindCardEffects(
+      game,
+      [{ kind: "mill", playerId: { type: "subject_player" }, count: "subject_amount" }],
+      { controllerId: p1.id, sourceId: null, subjectPlayerId: p2.id, subjectAmount: 3 },
+    );
+    expect(bound).toEqual([{ kind: "mill", playerId: p2.id, count: 3 }]);
+    // No amount means no mill, rather than a mill of nothing-in-particular.
+    expect(
+      bindCardEffects(
+        game,
+        [{ kind: "mill", playerId: { type: "subject_player" }, count: "subject_amount" }],
+        { controllerId: p1.id, sourceId: null, subjectPlayerId: p2.id },
+      ),
+    ).toEqual([]);
+  });
+
+  it("refuses 'that many' for a verb with no printed number to read", () => {
+    // Only mill carries an amount here; "that player draws that many cards"
+    // would be guessing which number the text meant.
+    const odd = compile(
+      "Testcard",
+      "{2}",
+      "Artifact",
+      "Whenever an opponent loses life, that player draws that many cards.",
+    );
+    expect(odd.notes.length).toBeGreaterThan(0);
+  });
+
+  it("makes a counted sacrifice one pick at a time", () => {
+    const lotus = compile(
+      "Lotus Field",
+      "",
+      "Land",
+      "Hexproof\nWhen this land enters, sacrifice two lands.\n{T}: Add three mana of any one color.",
+    );
+    expect(lotus.notes).toEqual([]);
+    const sacrifices = lotus.definition.triggers[0]?.effects ?? [];
+    // Two separate choices, not one choice of two.
+    expect(sacrifices).toHaveLength(2);
+    expect(sacrifices[0]).toMatchObject({
+      kind: "choose_card",
+      thenEffects: [{ kind: "sacrifice", cardId: "chosen_card" }],
+    });
+  });
+
+  it("takes any token as sacrifice fodder", () => {
+    const port = compile(
+      "Fountainport",
+      "",
+      "Land",
+      "{T}: Add {C}.\n{2}, {T}, Sacrifice a token: Draw a card.",
+    );
+    expect(port.notes).toEqual([]);
+    const ability = port.definition.activated.find((entry) => entry.sacrificeCost === "token");
+    expect(ability).toBeDefined();
+
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const bearDef = createCardDefinition({
+      name: "Bear",
+      typeLine: "Creature — Bear",
+      power: 2,
+      toughness: 2,
+    });
+    game.definitions[bearDef.id] = bearDef;
+    const put = (isToken: boolean) => {
+      const card = createCardInstance({
+        definitionId: bearDef.id,
+        ownerId: p1.id,
+        zone: "battlefield",
+        isToken,
+      });
+      game.cards[card.id] = card;
+      p1.zones.battlefield.push(card.id);
+      return card;
+    };
+    const token = put(true);
+    const real = put(false);
+    expect(sacrificeScopeMatches(game, token.id, "token")).toBe(true);
+    // A real card is not fodder for "sacrifice a token", whatever its type.
+    expect(sacrificeScopeMatches(game, real.id, "token")).toBe(false);
   });
 });
 

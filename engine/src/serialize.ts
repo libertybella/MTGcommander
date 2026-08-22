@@ -2639,7 +2639,9 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
         count:
           value.count === "sacrificed_power"
             ? "sacrificed_power"
-            : expectNumber(value.count, `${label}.count`),
+            : value.count === "subject_amount"
+              ? "subject_amount"
+              : expectNumber(value.count, `${label}.count`),
       };
     case "discard":
     case "discard_random":

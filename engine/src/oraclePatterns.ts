@@ -501,7 +501,7 @@ const SACRIFICE_COST = /Sacrifice (?:~|this land|this creature|this artifact|thi
  * "Sacrifice two other creatures". Group 1 is the count word when present.
  */
 const SACRIFICE_TYPE_COST =
-  /Sacrifice (?:an? |another |(two|three) (?:other )?)(black creature|creature|artifact|land|Treasure|artifacts and\/or creatures|creatures|artifacts|lands)\b/i;
+  /Sacrifice (?:an? |another |(two|three) (?:other )?)(black creature|creature|artifact|land|Treasure|token|artifacts and\/or creatures|creatures|artifacts|lands)\b/i;
 /**
  * "Sacrifice a Goblin" / "Sacrifice a Desert" / "Sacrifice a Food" — the
  * fodder is named by a subtype and no card type appears, so the scope is
@@ -530,7 +530,7 @@ const MILL_COST = /Mill (a|one|two|three|\d+) cards?/i;
 const EXILE_GRAVEYARD_COST =
   /Exile (a|one|two|three|four|five|\d+) (?:(creature|artifact|land|instant|sorcery) )?cards? from your graveyard/i;
 const COST_UNIT =
-  "(?:\\{[^}]+\\})+|Sacrifice (?:~|this land|this creature|this artifact|this permanent)|Sacrifice (?:an? |another )(?:black )?(?:creature|artifact|land|Treasure)|Sacrifice (?:an? |(?:one|two|three|four|five|\d+) )[A-Z][a-z]+s?|Sacrifice (?:two|three) (?:other )?(?:creatures|artifacts|lands|artifacts and\\/or creatures)|Pay \\d+ life|Tap an untapped (?:legendary )?creature you control|Remove (?:a|an|one|two|three|four|five|six|seven|eight|nine|ten|\\d+) (?:[-+]\\d\\/[-+]\\d|[a-z]+) counters? from ~|Put (?:a|an|one|two|three|\\d+) (?:[-+]\\d\\/[-+]\\d|[a-z]+) counters? on ~|Discard an? (?:creature|artifact|enchantment|land|instant|sorcery)? ?card|Mill (?:a|one|two|three|\\d+) cards?|Exile (?:a|one|two|three|four|five|\\d+) (?:(?:creature|artifact|land|instant|sorcery) )?cards? from your graveyard";
+  "(?:\\{[^}]+\\})+|Sacrifice (?:~|this land|this creature|this artifact|this permanent)|Sacrifice (?:an? |another )(?:black )?(?:creature|artifact|land|Treasure|token)|Sacrifice (?:an? |(?:one|two|three|four|five|\d+) )[A-Z][a-z]+s?|Sacrifice (?:two|three) (?:other )?(?:creatures|artifacts|lands|artifacts and\\/or creatures)|Pay \\d+ life|Tap an untapped (?:legendary )?creature you control|Remove (?:a|an|one|two|three|four|five|six|seven|eight|nine|ten|\\d+) (?:[-+]\\d\\/[-+]\\d|[a-z]+) counters? from ~|Put (?:a|an|one|two|three|\\d+) (?:[-+]\\d\\/[-+]\\d|[a-z]+) counters? on ~|Discard an? (?:creature|artifact|enchantment|land|instant|sorcery)? ?card|Mill (?:a|one|two|three|\\d+) cards?|Exile (?:a|one|two|three|four|five|\\d+) (?:(?:creature|artifact|land|instant|sorcery) )?cards? from your graveyard";
 
 function splitAbility(sentence: string): { costText: string; rest: string } | null {
   // "Metalcraft — {T}: …" — the ability word is flavor (Mox Opal).
@@ -569,7 +569,8 @@ function parseAbilityCost(
     | "another_creature_or_artifact"
     | "land"
     | "treasure"
-    | "permanent";
+    | "permanent"
+    | "token";
   sacrificeSubtype?: string;
   sacrificeCount?: number;
   tapCreature?: boolean;
@@ -617,7 +618,7 @@ function parseAbilityCost(
         ? scopeWord === "creature"
           ? ("another_creature" as const)
           : ("another_creature_or_artifact" as const)
-        : (scopeWord as "creature" | "artifact" | "land" | "treasure")
+        : (scopeWord as "creature" | "artifact" | "land" | "treasure" | "token")
     : undefined;
   if (sacrificeCost === null) {
     return null;
@@ -1863,6 +1864,69 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
   if (mayHave?.[1] && mayHave[2]) {
     return compileSimpleClause(`${mayHave[1]} deals ${mayHave[2]}`);
   }
+  // "That player mills that many cards" (Mindcrank), "that player draws a
+  // card" — the trigger's subject player, and its amount where the text
+  // says "that many".
+  const subjectPlayerBody = sentence.match(
+    /^That player (mills|draws|discards) (that many|a|an|one|two|three|\d+) cards?$/i,
+  );
+  if (subjectPlayerBody?.[1] && subjectPlayerBody[2]) {
+    const verb = subjectPlayerBody[1].toLowerCase();
+    const many = /^that many$/i.test(subjectPlayerBody[2]);
+    const count = many ? undefined : parseCount(subjectPlayerBody[2]);
+    if (many || count) {
+      // Only mill carries "that many"; a draw or discard of it has no
+      // printed card here and would be a guess.
+      if (!many || verb === "mills") {
+        return {
+          targetRequirements: [],
+          effects: [
+            verb === "mills"
+              ? {
+                  kind: "mill",
+                  playerId: { type: "subject_player" },
+                  count: many ? ("subject_amount" as const) : count!,
+                }
+              : {
+                  kind: verb === "draws" ? "draw" : "discard",
+                  playerId: { type: "subject_player" },
+                  count: count!,
+                },
+          ],
+        };
+      }
+    }
+  }
+
+  // "Sacrifice a land" / "sacrifice two lands" as an EFFECT rather than a
+  // cost: the controller picks, which is the choose-a-permanent shape an
+  // edict already uses. Each sacrifice is its own pick, so "two lands" is two
+  // choices rather than one choice of two.
+  const sacrificeEffect = sentence.match(
+    /^Sacrifice (?:an? |(two|three|four|\d+) )(land|creature|artifact)s?$/i,
+  );
+  if (sacrificeEffect?.[2]) {
+    const howMany = sacrificeEffect[1] ? parseCount(sacrificeEffect[1]) : 1;
+    if (howMany) {
+      const one: CardEffect = {
+        kind: "choose_card",
+        chooserId: "controller",
+        sources: [
+          {
+            playerId: "controller",
+            zone: "battlefield",
+            filter: sacrificeEffect[2].toLowerCase() as "land" | "creature",
+          },
+        ],
+        thenEffects: [{ kind: "sacrifice", cardId: "chosen_card" }],
+      };
+      return {
+        targetRequirements: [],
+        effects: Array.from({ length: howMany }, () => ({ ...one })),
+      };
+    }
+  }
+
   const amass = parseAmassClause(sentence);
   if (amass) {
     return {
@@ -10406,28 +10470,6 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
         ];
         continue;
       }
-    }
-
-    // "Sacrifice a land." as an EFFECT rather than a cost: the controller
-    // picks one, which is the same choose-a-permanent shape an edict uses.
-    const sacrificeEffect = sentence.match(/^Sacrifice an? (land|creature|artifact)$/i);
-    if (sacrificeEffect?.[1]) {
-      const clauseEffects: CardEffect[] = [
-        {
-          kind: "choose_card",
-          chooserId: "controller",
-          sources: [
-            {
-              playerId: "controller",
-              zone: "battlefield",
-              filter: sacrificeEffect[1].toLowerCase() as "land" | "creature",
-            },
-          ],
-          thenEffects: [{ kind: "sacrifice", cardId: "chosen_card" }],
-        },
-      ];
-      result.effects.push(...clauseEffects);
-      continue;
     }
 
     // Tribute to the World Tree: the conditional branch compiles to two

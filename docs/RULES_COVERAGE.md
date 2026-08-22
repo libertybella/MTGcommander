@@ -533,6 +533,20 @@ What the engine implements and what it intentionally does not. Tests are tagged 
   it), and life lost off the shared count table, which gain-life and draw
   already scaled by.
 
+- **That player, that many, and a token as fodder**: a trigger body may name
+  the player the trigger watched and the amount it watched ("that player mills
+  that many cards"). Only mill reads "that many" — a draw or discard of it has
+  no printed number here, and picking one would be a guess, so those are
+  refused. A missing amount mills nothing rather than milling zero-in-name.
+
+  A counted sacrifice as an EFFECT ("sacrifice two lands") is two separate
+  picks, not one pick of two — and it lives in the clause compiler, because a
+  trigger body is where the card that needed it says it. "Sacrifice a token"
+  became a real fodder scope on the shared matcher, so every caller got it at
+  once; it had been deliberately refused since wave 169 precisely so the
+  sacrifice would not compile to nothing, and that refusal test now guards an
+  unnameable scope instead.
+
 ## The card pipeline (Stage 6)
 
 - Real cards compile from Scryfall oracle text by shared sentence patterns; a hand-authored registry (`server/src/cardOverrides.ts`, data in the same schema) beats the compiler for the long tail. Never a named-card code path.
