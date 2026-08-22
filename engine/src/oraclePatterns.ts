@@ -31,6 +31,7 @@ import type {
   StaticAbility,
   TriggerEvent,
   TargetKind,
+  AlternativeCastCost,
   DamageReplacement,
   TargetRequirement,
   TriggerCondition,
@@ -59,6 +60,7 @@ export type CompiledOracleText = {
   noMaxHandSize?: boolean;
   damageReplacement?: DamageReplacement;
   manaTapMultiplier?: number;
+  altCost?: AlternativeCastCost;
   extraLandDrops?: number;
   cantBeCountered?: boolean;
   creatureSpellsCantBeCountered?: boolean;
@@ -633,6 +635,55 @@ function parseSimpleTargetPhrase(phrase: string): TargetRequirement | null {
 
   const head = TARGET_HEAD_NOUNS.find(([pattern]) => pattern.test(rest.trim()));
   return head ? { ...requirement, kind: head[1] } : null;
+}
+
+/**
+ * "You may \<cost\> rather than pay this spell's mana cost" — the Force of
+ * Will / Flare cycle, Snuff Out, Misdirection. The cost halves ("pay N life",
+ * "exile a blue card from your hand", "sacrifice a nontoken red creature")
+ * join with "and", so the grammar reads them one at a time and refuses the
+ * whole sentence if any half is unrecognised.
+ */
+function parseAlternativeCastCost(sentence: string): AlternativeCastCost | null {
+  const match = sentence.match(
+    /^(?:If you control an? ([A-Z][a-z]+), )?you may (.+) rather than pay this spell's mana cost$/i,
+  );
+  if (!match?.[2]) {
+    return null;
+  }
+  const cost: AlternativeCastCost = {};
+  if (match[1]) {
+    cost.requires = { subtypes: [match[1].toLowerCase()] };
+  }
+  for (const half of match[2].split(/\s+and\s+/i)) {
+    const life = half.match(/^pay (\d+) life$/i);
+    if (life?.[1]) {
+      cost.life = Number(life[1]);
+      continue;
+    }
+    const exile = half.match(
+      /^exile an? (white|blue|black|red|green)? ?card from your hand$/i,
+    );
+    if (exile) {
+      cost.exileFromHand = {
+        count: 1,
+        ...(exile[1] ? { colors: [COLOR_WORDS[exile[1].toLowerCase()]!] } : {}),
+      };
+      continue;
+    }
+    const sacrifice = half.match(
+      /^sacrifice a (nontoken )?(white|blue|black|red|green)? ?creature$/i,
+    );
+    if (sacrifice) {
+      cost.sacrificeCreature = {
+        ...(sacrifice[1] ? { nontoken: true } : {}),
+        ...(sacrifice[2] ? { colors: [COLOR_WORDS[sacrifice[2].toLowerCase()]!] } : {}),
+      };
+      continue;
+    }
+    return null;
+  }
+  return Object.keys(cost).length > 0 ? cost : null;
 }
 
 /** Plural head nouns a sweep can name, and the scope each maps to. */
@@ -7753,6 +7804,12 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
     const damageRule = parseDamageReplacement(sentence);
     if (damageRule) {
       result.damageReplacement = damageRule;
+      continue;
+    }
+
+    const alternative = parseAlternativeCastCost(sentence);
+    if (alternative) {
+      result.altCost = alternative;
       continue;
     }
 

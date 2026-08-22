@@ -1,6 +1,6 @@
 import { characteristicsOf, isBasic, isCommander, isCreature, isLand, isLegendary } from "./cardTypes";
-import { abilitiesRemoved, cardMatchesSubtype, computedCard } from "./characteristicsEngine";
-import type { CardInstance, CardInstanceId, EnterTappedUnless, GameState, PlayerId } from "./types";
+import { abilitiesRemoved, cardMatchesSubtype, computedCard, controlsGate } from "./characteristicsEngine";
+import type { AlternativeCastCost, CardInstance, CardInstanceId, EnterTappedUnless, GameState, PlayerId } from "./types";
 
 /**
  * CR 616: damage-modifying replacements, applied wherever damage is actually
@@ -73,6 +73,67 @@ export function manaTapMultiplier(state: GameState, playerId: PlayerId): number 
     multiplier *= state.definitions[card.definitionId]?.manaTapMultiplier ?? 1;
   }
   return multiplier;
+}
+
+/**
+ * What paying an alternative cast cost would actually take, or null if it
+ * cannot be paid. The cards are auto-picked cheapest-first — a documented
+ * approximation of the caster's choice, tolerable because the alternative is
+ * only ever reached when the printed cost was unpayable.
+ */
+export function altCastPayment(
+  state: GameState,
+  playerId: PlayerId,
+  cost: AlternativeCastCost,
+  spellId: CardInstanceId,
+): { exileIds: CardInstanceId[]; sacrificeId?: CardInstanceId } | null {
+  const player = state.players.find((entry) => entry.id === playerId);
+  if (!player) {
+    return null;
+  }
+  if (cost.requires && !controlsGate(state, playerId, cost.requires)) {
+    return null;
+  }
+  // CR 118.4: a cost that would reduce life to zero or below cannot be paid.
+  if (cost.life !== undefined && player.life <= cost.life) {
+    return null;
+  }
+  const exileIds: CardInstanceId[] = [];
+  if (cost.exileFromHand) {
+    const candidates = player.zones.hand
+      .filter((id) => id !== spellId)
+      .filter((id) => {
+        const colors = characteristicsOf(state, id).colors;
+        return (cost.exileFromHand!.colors ?? []).every((color) => colors.includes(color));
+      })
+      .sort(
+        (a, b) => characteristicsOf(state, a).manaValue - characteristicsOf(state, b).manaValue,
+      );
+    if (candidates.length < cost.exileFromHand.count) {
+      return null;
+    }
+    exileIds.push(...candidates.slice(0, cost.exileFromHand.count));
+  }
+  let sacrificeId: CardInstanceId | undefined;
+  if (cost.sacrificeCreature) {
+    const rule = cost.sacrificeCreature;
+    sacrificeId = Object.values(state.cards)
+      .filter(
+        (card) =>
+          card.zone === "battlefield" &&
+          card.controllerId === playerId &&
+          isCreature(state, card.id) &&
+          (!rule.nontoken || !card.isToken) &&
+          (rule.colors ?? []).every((color) =>
+            characteristicsOf(state, card.id).colors.includes(color),
+          ),
+      )
+      .sort((a, b) => creaturePower(state, a.id) - creaturePower(state, b.id))[0]?.id;
+    if (!sacrificeId) {
+      return null;
+    }
+  }
+  return { exileIds, ...(sacrificeId ? { sacrificeId } : {}) };
 }
 
 function plus1Plus1(state: GameState, cardId: CardInstanceId): number {

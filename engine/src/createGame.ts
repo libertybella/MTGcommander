@@ -81,6 +81,7 @@ export function createCardDefinition(
         | "noMaxHandSize"
         | "damageReplacement"
         | "manaTapMultiplier"
+        | "altCost"
         | "extraLandDrops"
         | "cantBeCountered"
         | "creatureSpellsCantBeCountered"
@@ -344,6 +345,7 @@ export function createCardDefinition(
     ...(input.noMaxHandSize ? { noMaxHandSize: true } : {}),
     ...(input.damageReplacement ? { damageReplacement: { ...input.damageReplacement } } : {}),
     ...(input.manaTapMultiplier ? { manaTapMultiplier: input.manaTapMultiplier } : {}),
+    ...(input.altCost ? { altCost: { ...input.altCost } } : {}),
     ...(input.extraLandDrops && input.extraLandDrops > 0
       ? { extraLandDrops: input.extraLandDrops }
       : {}),

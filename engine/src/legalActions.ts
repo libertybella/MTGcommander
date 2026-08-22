@@ -3,7 +3,7 @@ import { abilitiesRemoved, cardMatchesSubtype, controlsGate } from "./characteri
 import { hasKeyword } from "./keywords";
 import { emptyManaPool } from "./createGame";
 import { pendingBlockerPlayer } from "./combat";
-import { affinityArtifactDiscount, allBattlefieldCreatureCount, canPlayLandsFromGraveyard, castCostReduction, castableFromTop, controlsCommander, freeEquipGranted, hasFlashGrant, landDropAllowance, lockedByAbolisher, lockedFromCasting, opponentControlsMoreLands, findFreeHandGrantIndex, opponentsCastLockedToHand, selfDiscountAmount, staticFreeCastCap, topOfLibraryGrant } from "./derived";
+import { affinityArtifactDiscount, allBattlefieldCreatureCount, altCastPayment, canPlayLandsFromGraveyard, castCostReduction, castableFromTop, controlsCommander, freeEquipGranted, hasFlashGrant, landDropAllowance, lockedByAbolisher, lockedFromCasting, opponentControlsMoreLands, findFreeHandGrantIndex, opponentsCastLockedToHand, selfDiscountAmount, staticFreeCastCap, topOfLibraryGrant } from "./derived";
 import { canPayManaCost, parseManaCost, type ParsedManaCost } from "./mana";
 import { colorsAmongControlled, manaAbilitiesFor, manaTapOptionsFor } from "./manaOptions";
 import { isMulliganOpen } from "./mulligan";
@@ -282,6 +282,7 @@ function castableFace(
   costOverride?: string,
   flashGrant?: boolean,
   freeFromHand?: boolean,
+  spellId?: CardInstanceId,
 ): boolean {
   const isInstantSpeed =
     definition.characteristics.types.includes("instant") ||
@@ -321,8 +322,12 @@ function castableFace(
     // Rishkar's Expertise: a spent-once hand grant covers the whole cost, so
     // the spell is castable with no mana available at all.
     freeFromHand === true;
+  // Force of Will / Snuff Out: an unpayable printed cost still leaves the
+  // spell castable when the alternative can be paid.
   if (!castsFree && !canPayWithPotential(potential, cost)) {
-    return false;
+    if (!definition.altCost || !spellId || !altCastPayment(state, playerId, definition.altCost, spellId)) {
+      return false;
+    }
   }
   const additional = definition.additionalCost;
   if (additional) {
@@ -613,6 +618,7 @@ export function legalActions(state: GameState, playerId: PlayerId): LegalAction[
           flashGrant,
           findFreeHandGrantIndex(state, playerId, cardId) >= 0 ||
             staticFreeCastCap(state, playerId, cardId) !== null,
+          cardId,
         )
       ) {
         actions.push({ kind: "cast_spell", cardId, faceIndex: face.faceIndex, fromCommand: false });

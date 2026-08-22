@@ -199,6 +199,7 @@ function compileOneFace(card: OracleCard, definitionId: string): OracleCompileRe
     ...(compiled.noMaxHandSize ? { noMaxHandSize: true } : {}),
     ...(compiled.damageReplacement ? { damageReplacement: compiled.damageReplacement } : {}),
     ...(compiled.manaTapMultiplier ? { manaTapMultiplier: compiled.manaTapMultiplier } : {}),
+    ...(compiled.altCost ? { altCost: compiled.altCost } : {}),
     ...(compiled.extraLandDrops ? { extraLandDrops: compiled.extraLandDrops } : {}),
     ...(compiled.cantBeCountered ? { cantBeCountered: true } : {}),
     ...(compiled.creatureSpellsCantBeCountered ? { creatureSpellsCantBeCountered: true } : {}),

@@ -189,6 +189,8 @@ What the engine implements and what it intentionally does not. Tests are tagged 
 
 - **Sweeps as a noun-phrase grammar**: `parseSweepPhrase` reads qualifiers off "all \<phrase\>" from both ends — tap state, possessor, "with no counters on them", "that aren't enchanted", "that aren't legendary", power and mana-value bounds, and "with power greater than target creature's power" (the bar is read from the chosen target at bind, so a sweep with no legal target does nothing rather than everything). A type list ("all artifacts, creatures, and enchantments") sweeps as one batch rather than three, and "Destroy all X and all Y" compiles to two sweeps. Exiling sweeps move to exile, where indestructible correctly does not save.
 
+- **Alternative cast costs** ("You may … rather than pay this spell's mana cost" — Force of Will, Misdirection, Snuff Out, the Flare cycle): the cost halves ("pay N life", "exile a blue card from your hand", "sacrifice a nontoken red creature", and Snuff Out's "if you control a Swamp" gate) are read one at a time and the whole sentence is refused if any half is unrecognised. Documented approximation: the alternative is taken **only when the printed mana cost cannot be paid**, and the cards it needs are auto-picked cheapest-first — so it only ever enables a cast that was impossible, never replaces a line the caster would have preferred. Castability reflects it, so the spell shows up with no mana available at all.
+
 ## The card pipeline (Stage 6)
 
 - Real cards compile from Scryfall oracle text by shared sentence patterns; a hand-authored registry (`server/src/cardOverrides.ts`, data in the same schema) beats the compiler for the long tail. Never a named-card code path.

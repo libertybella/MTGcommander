@@ -133,6 +133,13 @@ function parseManaRestriction(value: unknown, label: string): ManaRestriction {
 }
 
 /** One colour letter, validated. */
+function parseColorArray(value: unknown, label: string): Color[] {
+  if (!Array.isArray(value)) {
+    throw new Error(`Invalid ${label}`);
+  }
+  return value.map((entry: unknown) => parseColor(entry, label));
+}
+
 function parseColor(value: unknown, label: string): Color {
   const color = expectString(value, label);
   if (!(COLOR_KEYS as readonly string[]).includes(color)) {
@@ -472,6 +479,58 @@ export function parseGameState(json: string): GameState {
                 ? { sourceMustBeCreature: true }
                 : {}),
               ...(def.damageReplacement.opponentsOnly === true ? { opponentsOnly: true } : {}),
+            },
+          }
+        : {}),
+      ...(isRecord(def.altCost)
+        ? {
+            altCost: {
+              ...(def.altCost.life === undefined
+                ? {}
+                : { life: expectNumber(def.altCost.life, `definition.${id}.altCost.life`) }),
+              ...(isRecord(def.altCost.exileFromHand)
+                ? {
+                    exileFromHand: {
+                      count: expectNumber(
+                        def.altCost.exileFromHand.count,
+                        `definition.${id}.altCost.exileFromHand.count`,
+                      ),
+                      ...(def.altCost.exileFromHand.colors === undefined
+                        ? {}
+                        : {
+                            colors: parseColorArray(
+                              def.altCost.exileFromHand.colors,
+                              `definition.${id}.altCost.exileFromHand.colors`,
+                            ),
+                          }),
+                    },
+                  }
+                : {}),
+              ...(isRecord(def.altCost.sacrificeCreature)
+                ? {
+                    sacrificeCreature: {
+                      ...(def.altCost.sacrificeCreature.nontoken === true
+                        ? { nontoken: true }
+                        : {}),
+                      ...(def.altCost.sacrificeCreature.colors === undefined
+                        ? {}
+                        : {
+                            colors: parseColorArray(
+                              def.altCost.sacrificeCreature.colors,
+                              `definition.${id}.altCost.sacrificeCreature.colors`,
+                            ),
+                          }),
+                    },
+                  }
+                : {}),
+              ...(isRecord(def.altCost.requires)
+                ? {
+                    requires: parseControlledGate(
+                      def.altCost.requires,
+                      `definition.${id}.altCost.requires`,
+                    ),
+                  }
+                : {}),
             },
           }
         : {}),

@@ -21426,3 +21426,162 @@ describe("wave 177: sweeps as a noun-phrase grammar", () => {
   });
 });
 
+
+describe("wave 178: alternative cast costs", () => {
+  const compile = (name: string, manaCost: string, typeLine: string, oracleText: string) =>
+    compileOracleCard({
+      oracleId: name,
+      name,
+      manaCost,
+      typeLine,
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  const FORCE =
+    "You may pay 1 life and exile a blue card from your hand rather than pay this spell's mana cost.\nCounter target spell.";
+  const SNUFF =
+    "If you control a Swamp, you may pay 4 life rather than pay this spell's mana cost.\nDestroy target nonblack creature. It can't be regenerated.";
+  const FLARE =
+    "You may sacrifice a nontoken blue creature rather than pay this spell's mana cost.\nCounter target spell.";
+
+  it("reads the cost halves off the sentence", () => {
+    const force = compile("Force of Will", "{3}{U}{U}", "Instant", FORCE);
+    expect(force.notes).toEqual([]);
+    expect(force.definition.altCost).toEqual({
+      life: 1,
+      exileFromHand: { count: 1, colors: ["U"] },
+    });
+
+    const snuff = compile("Snuff Out", "{3}{B}", "Instant", SNUFF);
+    expect(snuff.notes).toEqual([]);
+    expect(snuff.definition.altCost).toEqual({
+      life: 4,
+      requires: { subtypes: ["swamp"] },
+    });
+
+    const flare = compile("Flare of Denial", "{1}{U}{U}", "Instant", FLARE);
+    expect(flare.notes).toEqual([]);
+    expect(flare.definition.altCost).toEqual({
+      sacrificeCreature: { nontoken: true, colors: ["U"] },
+    });
+  });
+
+  it("takes the alternative only when the printed cost is out of reach", () => {
+    const force = compile("Force of Will", "{3}{U}{U}", "Instant", FORCE);
+    const blueDef = createCardDefinition({
+      name: "Blue Card",
+      typeLine: "Creature — Merfolk",
+      manaCost: "{U}",
+      power: 1,
+      toughness: 1,
+    });
+
+    const setUp = (mana: number) => {
+      const fresh = createGameState({ playerCount: 2 });
+      fillLibraries(fresh, 20);
+      const a = fresh.players[0]!;
+      const b = fresh.players[1]!;
+      fresh.definitions[force.definition.id] = force.definition;
+      fresh.definitions[blueDef.id] = blueDef;
+      const spell = createCardInstance({
+        definitionId: force.definition.id,
+        ownerId: a.id,
+        zone: "hand",
+      });
+      const pitch = createCardInstance({ definitionId: blueDef.id, ownerId: a.id, zone: "hand" });
+      fresh.cards[spell.id] = spell;
+      fresh.cards[pitch.id] = pitch;
+      a.zones.hand.push(spell.id, pitch.id);
+      a.mana.U = mana;
+      // Something to counter.
+      const bait = createCardInstance({ definitionId: blueDef.id, ownerId: b.id, zone: "stack" });
+      fresh.cards[bait.id] = bait;
+      fresh.stack.push({
+        id: "stack-bait",
+        controllerId: b.id,
+        sourceId: bait.id,
+        kind: "spell",
+        targets: [],
+      });
+      fresh.turn.phase = "precombatMain";
+      fresh.turn.step = "precombatMain";
+      fresh.turn.activePlayerId = a.id;
+      fresh.priorityPlayerId = a.id;
+      return { fresh, a, spell, pitch };
+    };
+
+    // With five blue floating the printed cost is payable, so it is paid.
+    const rich = setUp(5);
+    const paidWithMana = applyAction(rich.fresh, {
+      kind: "cast_spell",
+      playerId: rich.a.id,
+      cardId: rich.spell.id,
+      faceIndex: 0,
+      targets: [{ type: "spell", stackObjectId: rich.fresh.stack[0]!.id }],
+    });
+    expect(paidWithMana.players.find((entry) => entry.id === rich.a.id)?.life).toBe(rich.a.life);
+    expect(paidWithMana.cards[rich.pitch.id]?.zone).toBe("hand");
+
+    // With none, the alternative is taken: one life and the blue card.
+    const poor = setUp(0);
+    const paidWithCard = applyAction(poor.fresh, {
+      kind: "cast_spell",
+      playerId: poor.a.id,
+      cardId: poor.spell.id,
+      faceIndex: 0,
+      targets: [{ type: "spell", stackObjectId: poor.fresh.stack[0]!.id }],
+    });
+    expect(paidWithCard.players.find((entry) => entry.id === poor.a.id)?.life).toBe(poor.a.life - 1);
+    expect(paidWithCard.cards[poor.pitch.id]?.zone).toBe("exile");
+  });
+
+  it("honours the gate on the alternative", () => {
+    const snuff = compile("Snuff Out", "{3}{B}", "Instant", SNUFF);
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    game.definitions[snuff.definition.id] = snuff.definition;
+    const spell = createCardInstance({
+      definitionId: snuff.definition.id,
+      ownerId: p1.id,
+      zone: "hand",
+    });
+    game.cards[spell.id] = spell;
+    p1.zones.hand.push(spell.id);
+    const bearDef = createCardDefinition({
+      name: "Bear",
+      typeLine: "Creature — Bear",
+      power: 2,
+      toughness: 2,
+    });
+    game.definitions[bearDef.id] = bearDef;
+    const bear = createCardInstance({ definitionId: bearDef.id, ownerId: p1.id, zone: "battlefield" });
+    game.cards[bear.id] = bear;
+    p1.zones.battlefield.push(bear.id);
+    game.turn.phase = "precombatMain";
+    game.turn.step = "precombatMain";
+    game.turn.activePlayerId = p1.id;
+    game.priorityPlayerId = p1.id;
+
+    const castable = (state: GameState) =>
+      legalActions(state, p1.id).some(
+        (action) => action.kind === "cast_spell" && action.cardId === spell.id,
+      );
+
+    // No Swamp, no mana: the alternative is unavailable.
+    expect(castable(game)).toBe(false);
+
+    const swampDef = createCardDefinition({ name: "Swamp", typeLine: "Basic Land — Swamp" });
+    game.definitions[swampDef.id] = swampDef;
+    const swamp = createCardInstance({ definitionId: swampDef.id, ownerId: p1.id, zone: "battlefield" });
+    swamp.tapped = true;
+    game.cards[swamp.id] = swamp;
+    p1.zones.battlefield.push(swamp.id);
+    // A tapped Swamp still satisfies "if you control a Swamp".
+    expect(castable(game)).toBe(true);
+  });
+});
+

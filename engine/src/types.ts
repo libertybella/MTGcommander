@@ -148,6 +148,8 @@ export type CardDefinition = {
   /** Mana Reflection, Nyxbloom Ancient: "If you tap a permanent for mana, it
    * produces twice as much of that mana instead." */
   manaTapMultiplier?: number;
+  /** "You may … rather than pay this spell's mana cost." */
+  altCost?: AlternativeCastCost;
   /** Rhythm of the Wild: the controller's creature spells can't be countered. */
   creatureSpellsCantBeCountered?: boolean;
   /** Grand Abolisher: on this permanent's controller's turn, opponents can't
@@ -2183,6 +2185,24 @@ export type DamageReplacement = {
   /** Torbran, Twinflame Tyrant: only damage aimed at an opponent or a
    * permanent an opponent controls. */
   opponentsOnly?: boolean;
+};
+
+/**
+ * "You may \<cost\> rather than pay this spell's mana cost" (the Force of
+ * Will / Flare cycle, Snuff Out, Misdirection). Documented approximation: the
+ * alternative is taken only when the printed mana cost cannot be paid, and
+ * the cards it needs are auto-picked cheapest-first — so it only ever enables
+ * a cast that was impossible, never replaces a better line.
+ */
+export type AlternativeCastCost = {
+  /** "pay 1 life" / "pay 4 life". */
+  life?: number;
+  /** "exile a blue card from your hand". */
+  exileFromHand?: { count: number; colors?: Color[] };
+  /** "sacrifice a nontoken red creature". */
+  sacrificeCreature?: { colors?: Color[]; nontoken?: boolean };
+  /** Snuff Out: "If you control a Swamp". */
+  requires?: ControlledGate;
 };
 
 export type ControlledGate = {

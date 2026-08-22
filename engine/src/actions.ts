@@ -2,7 +2,7 @@ import { declareAttackers, declareBlockers, lockRemainingBlockers, pendingBlocke
 import { abilitiesRemoved, cardMatchesSubtype } from "./characteristicsEngine";
 import { characteristicsOf, isCommander, isCreature, isInstant, isInstantOrSorcery, isLand, isLegendary, isMainPhase } from "./cardTypes";
 import { cloneGameState } from "./clone";
-import { affinityArtifactDiscount, allBattlefieldCreatureCount, canPlayLandFromTop, canPlayLandsFromGraveyard, castCostReduction, castableFromTop, controlsCommander, creaturePower, freeEquipGranted, hasFlashGrant, landDropAllowance, manaTapMultiplier, lockedByAbolisher, lockedFromCasting, opponentControlsMoreLands, findFreeHandGrantIndex, opponentsCastLockedToHand, selfDiscountAmount, staticFreeCastCap, usesOncePerTurnFreeCast } from "./derived";
+import { affinityArtifactDiscount, allBattlefieldCreatureCount, canPlayLandFromTop, canPlayLandsFromGraveyard, castCostReduction, castableFromTop, controlsCommander, creaturePower, freeEquipGranted, hasFlashGrant, altCastPayment, landDropAllowance, manaTapMultiplier, lockedByAbolisher, lockedFromCasting, opponentControlsMoreLands, findFreeHandGrantIndex, opponentsCastLockedToHand, selfDiscountAmount, staticFreeCastCap, usesOncePerTurnFreeCast } from "./derived";
 import { eliminatePlayerInPlace } from "./elimination";
 import { applyEffects, bindCardEffects, devotionTo } from "./effects";
 import { hasKeyword } from "./keywords";
@@ -195,7 +195,12 @@ function validateCast(
   state: GameState,
   playerId: PlayerId,
   cardId: CardInstanceId,
-): { cost: ReturnType<typeof parseManaCost>; fromCommand: boolean; flashbackLife: number } {
+): {
+  cost: ReturnType<typeof parseManaCost>;
+  fromCommand: boolean;
+  flashbackLife: number;
+  altCost?: { life: number; exileIds: CardInstanceId[]; sacrificeId?: CardInstanceId };
+} {
   requirePriority(state, playerId);
   // Grand Abolisher / Voice of Victory: no casting on the lock's turn.
   if (lockedFromCasting(state, playerId)) {
@@ -345,7 +350,20 @@ function validateCast(
   const purpose = manaPurposeForSpell(state, cardId);
   const available = poolWith(player.mana, usableRestrictedMana(state, playerId, purpose));
   if (!canPayManaCost(available, cost, player.life)) {
-    throw new Error("Cannot pay mana cost");
+    // Force of Will / Snuff Out: the printed cost is out of reach, so the
+    // alternative is taken. Only in this direction — see AlternativeCastCost.
+    const payment = definition.altCost
+      ? altCastPayment(state, playerId, definition.altCost, cardId)
+      : null;
+    if (!payment) {
+      throw new Error("Cannot pay mana cost");
+    }
+    return {
+      cost: parseManaCost(""),
+      fromCommand,
+      flashbackLife,
+      altCost: { life: definition.altCost?.life ?? 0, ...payment },
+    };
   }
 
   return { cost, fromCommand, flashbackLife };
@@ -425,7 +443,7 @@ function applyCastSpell(
 ): GameState {
   requirePlaying(state);
   const faced = applyChosenFace(state, cardId, faceIndex);
-  const { cost, fromCommand, flashbackLife } = validateCast(faced, playerId, cardId);
+  const { cost, fromCommand, flashbackLife, altCost } = validateCast(faced, playerId, cardId);
   const card = faced.cards[cardId];
   const definition = card ? faced.definitions[card.definitionId] : undefined;
   // "Sacrifice an artifact or discard a card": pick the branch the caster's
@@ -603,6 +621,23 @@ function applyCastSpell(
     if (payer) {
       payer.life -= flashbackLife;
       paid.log.push({ kind: "life_change", playerId, delta: -flashbackLife });
+    }
+  }
+  // The alternative cast cost is paid here, alongside the other cost halves
+  // and before the spell leaves hand.
+  if (altCost) {
+    if (altCost.life > 0) {
+      const payer = paid.players.find((entry) => entry.id === playerId);
+      if (payer) {
+        payer.life -= altCost.life;
+        paid.log.push({ kind: "life_change", playerId, delta: -altCost.life });
+      }
+    }
+    for (const exileId of altCost.exileIds) {
+      paid = applyEffects(paid, [{ kind: "move_card", cardId: exileId, toZone: "exile" }]);
+    }
+    if (altCost.sacrificeId) {
+      paid = applyEffects(paid, [{ kind: "sacrifice", cardId: altCost.sacrificeId }]);
     }
   }
   // Spend the free-cast grant before the card leaves hand, so the lookup
