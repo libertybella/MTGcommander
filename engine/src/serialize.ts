@@ -269,6 +269,51 @@ function parseTeamPtTerm(
   return expectNumber(value, label);
 }
 
+/**
+ * Every DynamicCount, as values.
+ *
+ * Two hand-written parsers each carried their own short list — bonusPt.per
+ * took five of these and dynamicPt.count took eight — so cards the compiler
+ * emitted CORRECTLY produced definitions that could not be loaded, and a
+ * saved table holding one of them would not reopen. Being a
+ * Record<DynamicCount, true> makes a future union member a compile error
+ * here rather than a save file that will not open.
+ */
+const DYNAMIC_COUNTS_BY_NAME: Record<DynamicCount, true> = {
+  lands_you_control: true,
+  creatures_you_control: true,
+  artifacts_you_control: true,
+  enchantments_you_control: true,
+  artifacts_and_enchantments_you_control: true,
+  cards_in_your_hand: true,
+  cards_in_your_graveyard: true,
+  creature_cards_in_your_graveyard: true,
+  colors_among_permanents_you_control: true,
+  colorless_creatures_you_control: true,
+  creatures_you_control_with_a_counter: true,
+  auras_attached_to_it: true,
+  auras_and_equipment_attached_to_it: true,
+  creatures_and_enchantments_you_control: true,
+  auras_you_control_attached_to_a_creature: true,
+  legendary_creatures_you_control: true,
+  attacking_creatures_you_control: true,
+  permanents_you_control: true,
+  plains_you_control: true,
+  islands_you_control: true,
+  swamps_you_control: true,
+  mountains_you_control: true,
+  forests_you_control: true,
+  cards_drawn_this_turn: true,
+};
+
+function parseDynamicCount(value: unknown, label: string): DynamicCount {
+  const count = expectString(value, label);
+  if (!Object.hasOwn(DYNAMIC_COUNTS_BY_NAME, count)) {
+    throw new Error(`Invalid ${label}`);
+  }
+  return count as DynamicCount;
+}
+
 function expectNumber(value: unknown, label: string): number {
   if (typeof value !== "number" || !Number.isFinite(value)) {
     throw new Error(`Invalid ${label}`);
@@ -1129,16 +1174,10 @@ export function parseGameState(json: string): GameState {
               if (!isRecord(def.dynamicPt)) {
                 throw new Error(`Invalid definition.${id}.dynamicPt`);
               }
-              const count = expectString(def.dynamicPt.count, `definition.${id}.dynamicPt.count`);
-              if (
-                count !== "lands_you_control" &&
-                count !== "creatures_you_control" &&
-                count !== "artifacts_you_control" &&
-                count !== "cards_in_your_hand" &&
-                count !== "cards_in_your_graveyard"
-              ) {
-                throw new Error(`Invalid definition.${id}.dynamicPt.count`);
-              }
+              const count = parseDynamicCount(
+                def.dynamicPt.count,
+                `definition.${id}.dynamicPt.count`,
+              );
               return { count };
             })(),
           }),
@@ -1149,16 +1188,7 @@ export function parseGameState(json: string): GameState {
               if (!isRecord(def.bonusPt)) {
                 throw new Error(`Invalid definition.${id}.bonusPt`);
               }
-              const per = expectString(def.bonusPt.per, `definition.${id}.bonusPt.per`);
-              if (
-                per !== "lands_you_control" &&
-                per !== "creatures_you_control" &&
-                per !== "artifacts_you_control" &&
-                per !== "cards_in_your_hand" &&
-                per !== "cards_in_your_graveyard"
-              ) {
-                throw new Error(`Invalid definition.${id}.bonusPt.per`);
-              }
+              const per = parseDynamicCount(def.bonusPt.per, `definition.${id}.bonusPt.per`);
               return {
                 power: expectNumber(def.bonusPt.power, `definition.${id}.bonusPt.power`),
                 toughness: expectNumber(def.bonusPt.toughness, `definition.${id}.bonusPt.toughness`),
@@ -3932,7 +3962,13 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
             : value.sourceId === "self"
               ? "self"
               : expectString(value.sourceId, `${label}.sourceId`),
-        amount: value.amount === "x" ? "x" : expectNumber(value.amount, `${label}.amount`),
+        // Chain Reaction: "creature_count" is in the type and emitted by
+        // the compiler, but was not parsed — so the card compiled clean
+        // and produced a definition that could not be loaded.
+        amount:
+          value.amount === "x" || value.amount === "creature_count"
+            ? value.amount
+            : expectNumber(value.amount, `${label}.amount`),
         ...(value.includePlayers === true ? { includePlayers: true } : {}),
       };
     case "flicker":
@@ -4726,6 +4762,21 @@ function parseEnterTappedUnless(value: unknown, label: string): EnterTappedUnles
   }
   if (kind === "legendary_creature") {
     return { kind };
+  }
+  if (kind === "controlled_subtype") {
+    // The Eldraine castle lands. Present in the union and emitted by the
+    // compiler, but never parsed — so all five made definitions that could
+    // not be loaded, and a saved table holding one would not reopen.
+    const count = expectNumber(value.count, `${label}.count`);
+    if (!Number.isInteger(count) || count < 0) {
+      throw new Error(`Invalid ${label}.count`);
+    }
+    return {
+      kind,
+      subtype: expectString(value.subtype, `${label}.subtype`),
+      count,
+      ...(value.excludeSelf === true ? { excludeSelf: true } : {}),
+    };
   }
   if (kind === "controlled_types" || kind === "hand_reveals_types") {
     if (!Array.isArray(value.types) || value.types.length === 0) {

@@ -870,6 +870,32 @@ more questions it can now ask:
   (Bennie Bracks). Reads the existing per-player `createdTokenThisTurn`
   list, and asks whether the CONTROLLER is in it — an opponent's Treasure
   must not satisfy it.
+- **Definitions that compile but cannot LOAD** — a whole class, now guarded.
+  `server/src/definitionLoads.test.ts` round-trips every compiled definition
+  through `serializeGameState`/`parseGameState`, over the vendored sample
+  always and over the full bulk file when `COMPILE_BULK` is set.
+
+  The serializer's parsers are hand-written and had drifted NARROWER than
+  the types they parse. 39 printed cards compiled with no notes and produced
+  definitions that would not load, so a saved table holding one could not be
+  reopened. Nine were in the top 2000 and two of those inside the top 500 —
+  Mystic Sanctuary (#169) and Faeburrow Elder (#498) — both counted as fully
+  compiling the whole time, because the compile metric reads notes and a
+  definition that never loads produces none.
+
+  Four drifts, all closed:
+
+  - `dynamicPt.count` and `bonusPt.per` each carried their own hand-written
+    subset of `DynamicCount` — eight and five of the twenty-four. They now
+    share `DYNAMIC_COUNTS_BY_NAME`, a `Record<DynamicCount, true>`, so a new
+    union member is a COMPILE error here rather than a save that will not
+    open.
+  - `EnterTappedUnless.controlled_subtype` was in the union and emitted by
+    the compiler but never parsed, which took all five Eldraine castle lands.
+  - `damage_all.amount` did not parse `"creature_count"` (Chain Reaction).
+  - `team_pt_until_eot` took only `"creature_count"`, not `"greatest_power"`
+    or `"x"` — closed in the wave before this one, and the reason this sweep
+    exists at all.
 - **`search_library.alsoGraveyard`** — Finale of Devastation. "Your library
   AND/OR graveyard" is one pool the search picks from. The shuffle then
   happens only when the card did not come from the graveyard; finding

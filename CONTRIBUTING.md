@@ -98,6 +98,22 @@ $env:COMPILE_LIST="<path to edhrec-top2000.json (array of names)>"
 npx vitest run server/src/compileRate.test.ts
 ```
 
+**Run the load guard with the same bulk file.** A definition that compiles
+is not yet one that WORKS: the serializer's parsers are hand-written and can
+drift narrower than the types they parse. When that happens the card
+compiles with no notes, the compile-rate metric counts it as working, and
+the definition then fails to LOAD — so a saved table holding it cannot be
+reopened. That was 39 printed cards, nine of them top-2,000, before the
+guard existed.
+
+```powershell
+$env:COMPILE_BULK="<same bulk .jsonl>"
+npx vitest run server/src/definitionLoads.test.ts
+```
+
+`[load-fail] total: 0` is the pass. The sample half of that file runs in
+the ordinary suite; only the full sweep needs the env var.
+
 Read the `[compile-rate] list:` line. The one-away report (highest-ROI
 wave picker) buckets cards with exactly one note by the note's first
 snippet. Create it as scratch `server/src/tmpOneAway.test.ts` from the
