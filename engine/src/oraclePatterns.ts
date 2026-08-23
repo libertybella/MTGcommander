@@ -2011,6 +2011,45 @@ type SimpleClause = {
  * the next end step") into the previous effect when it created or moved a
  * permanent onto the battlefield. Returns true when consumed.
  */
+/**
+ * Move a rider that depends on the SACRIFICED creature into the
+ * `thenEffects` of the choose_card that sacrifices it.
+ *
+ * Left where it is printed, the rider binds against the trigger, where
+ * `sacrificedPower` is undefined — so the card compiles, scores, and pays
+ * out zero. Wave 228 was reverted for exactly that, and this is the half
+ * that was missing.
+ */
+function foldSacrificeRider(effects: CardEffect[], sentence: string): boolean {
+  for (let i = effects.length - 1; i >= 0; i -= 1) {
+    const effect = effects[i];
+    if (!effect || effect.kind !== "choose_card") {
+      continue;
+    }
+    const sacrifices = effect.thenEffects.some((then) => then.kind === "sacrifice");
+    if (!sacrifices) {
+      return false;
+    }
+    const clause = compileSimpleClause(sentence);
+    if (!clause || clause.leftover || clause.targetRequirements.length > 0) {
+      return false;
+    }
+    // Only riders that actually read the fodder belong in there; anything
+    // else is an ordinary following clause and must stay where it is.
+    const readsFodder = clause.effects.some(
+      (candidate) =>
+        ("amount" in candidate && candidate.amount === "sacrificed_power") ||
+        ("count" in candidate && candidate.count === "sacrificed_power"),
+    );
+    if (!readsFodder) {
+      return false;
+    }
+    effect.thenEffects.push(...clause.effects);
+    return true;
+  }
+  return false;
+}
+
 function foldSubjectRider(effects: CardEffect[], sentence: string): boolean {
   // Search BACKWARDS for the effect that made the permanent, rather than
   // insisting it be the very last one. "It gains haste until end of turn"
@@ -3913,6 +3952,21 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
         },
       ],
       effects: [{ kind: "exile_return_end_step", target: { type: "chosen", index: 0 } }],
+    };
+  }
+
+  // Disciple of Bolas: the payout is the power of the creature the
+  // preceding clause is about to sacrifice, which only the choose_card
+  // resolution knows. foldSacrificeRider moves this into thenEffects so it
+  // binds with that context; on its own it would bind against the trigger,
+  // where sacrificedPower is undefined and the payout would be zero.
+  if (/^You gain X life and draw X cards, where X is that creature's power$/i.test(sentence)) {
+    return {
+      targetRequirements: [],
+      effects: [
+        { kind: "gain_life", playerId: "controller", amount: "sacrificed_power" },
+        { kind: "draw", playerId: "controller", count: "sacrificed_power" },
+      ],
     };
   }
 
@@ -9941,6 +9995,19 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
     // moved a permanent.
     if (index > 0 && !lineStart[index] && foldSubjectRider(result.effects, sentence)) {
       continue;
+    }
+
+    // A rider that reads the sacrificed creature has to travel INTO the
+    // thenEffects of the choose_card that sacrifices it, whether that
+    // choose_card is in a trigger or in the spell itself.
+    if (index > 0 && !lineStart[index]) {
+      const lastTrigger = result.triggers[result.triggers.length - 1];
+      if (lastTrigger && foldSacrificeRider(lastTrigger.effects, sentence)) {
+        continue;
+      }
+      if (foldSacrificeRider(result.effects, sentence)) {
+        continue;
+      }
     }
 
     const keywordLine = readKeywordLine(sentence);

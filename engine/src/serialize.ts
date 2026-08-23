@@ -2571,7 +2571,8 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
         amount:
           value.amount === "subject_amount" ||
           value.amount === "subject_toughness" ||
-          value.amount === "target_power"
+          value.amount === "target_power" ||
+          value.amount === "sacrificed_power"
             ? value.amount
             : expectNumber(value.amount, `${label}.amount`),
         ...(isRecord(value.perControlledCreature)

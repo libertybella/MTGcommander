@@ -1621,7 +1621,14 @@ export type CardEffect =
       playerId: PlayerSelector;
       /** target_power: the first chosen target's computed power at bind
        * (Swords to Plowshares — read before the exile applies). */
-      amount: number | "subject_amount" | "subject_toughness" | "target_power";
+      /** sacrificed_power: Disciple of Bolas — the fodder's power, read
+       * before the sacrifice that is about to happen. */
+      amount:
+        | number
+        | "subject_amount"
+        | "subject_toughness"
+        | "target_power"
+        | "sacrificed_power";
       /** Shamanic Revelation's ferocious half: multiply the amount by the
        * controller's creatures matching the filter, at bind. */
       perControlledCreature?: { minPower?: number };

@@ -32253,3 +32253,138 @@ describe("wave 249: doubling every kind of counter", () => {
     });
   });
 });
+
+describe("wave 250: the sacrificed creature's power, paid out for real", () => {
+  it("puts the rider inside thenEffects, not beside the trigger", () => {
+    const disciple = compileOracleCard({
+      oracleId: "Disciple of Bolas",
+      name: "Disciple of Bolas",
+      manaCost: "{4}{B}",
+      typeLine: "Creature — Human Wizard",
+      power: "2",
+      toughness: "1",
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "When Disciple of Bolas enters, sacrifice another creature. You gain X life and draw X cards, where X is that creature's power.",
+    });
+    expect(disciple.notes).toEqual([]);
+    const choose = disciple.definition.triggers[0]?.effects[0] as {
+      kind: string;
+      thenEffects: { kind: string; amount?: string; count?: string }[];
+    };
+    expect(choose.kind).toBe("choose_card");
+    // Wave 228 compiled this card with the rider beside the trigger, where
+    // sacrificedPower is undefined — it scored and paid out zero. The rider
+    // has to live inside thenEffects to see the fodder at all.
+    expect(choose.thenEffects.map((effect) => effect.kind)).toEqual([
+      "sacrifice",
+      "gain_life",
+      "draw",
+    ]);
+    expect(disciple.definition.effects).toEqual([]);
+  });
+
+  it("actually gains the life and draws the cards", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const disciple = createCardDefinition({
+      name: "Disciple of Bolas",
+      typeLine: "Creature — Human Wizard",
+      power: 2,
+      toughness: 1,
+      triggers: [
+        {
+          event: "enter_battlefield",
+          effects: [
+            {
+              kind: "choose_card",
+              chooserId: "controller",
+              sources: [
+                { playerId: "controller", zone: "battlefield", filter: "creature", excludeSelf: true },
+              ],
+              thenEffects: [
+                { kind: "sacrifice", cardId: "chosen_card" },
+                { kind: "gain_life", playerId: "controller", amount: "sacrificed_power" },
+                { kind: "draw", playerId: "controller", count: "sacrificed_power" },
+              ],
+            },
+          ],
+          targetRequirements: [],
+        },
+      ],
+    });
+    const fatty = createCardDefinition({
+      name: "Fatty",
+      typeLine: "Creature — Beast",
+      power: 5,
+      toughness: 5,
+    });
+    for (const definition of [disciple, fatty]) {
+      game.definitions[definition.id] = definition;
+    }
+    const put = (definitionId: string) => {
+      const card = createCardInstance({ definitionId, ownerId: p1.id, zone: "battlefield" });
+      game.cards[card.id] = card;
+      p1.zones.battlefield.push(card.id);
+      return card;
+    };
+    const body = put(disciple.id);
+    const fodder = put(fatty.id);
+
+    const startingLife = p1.life;
+    const startingHand = p1.zones.hand.length;
+    dispatchEventsInPlace(game, [{ kind: "enters", cardId: body.id }]);
+    let next = resolveTopOfStack(game);
+
+    // The choose_card prompt is open; picking the 5/5 must pay 5, not 0.
+    next = applyAction(next, {
+      kind: "resolve_choose_card",
+      playerId: p1.id,
+      cardId: fodder.id,
+    });
+    const player = next.players.find((entry) => entry.id === p1.id)!;
+    expect(next.cards[fodder.id]?.zone).toBe("graveyard");
+    expect(player.life).toBe(startingLife + 5);
+    expect(player.zones.hand.length).toBe(startingHand + 5);
+  });
+
+  it("reads the power BEFORE the sacrifice, not after", () => {
+    // The first of the thenEffects is the sacrifice itself. Reading the power
+    // afterwards finds a card in the graveyard and pays out zero, which is
+    // precisely the shape wave 228 shipped and had to be reverted for.
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const fatty = createCardDefinition({
+      name: "Fatty",
+      typeLine: "Creature — Beast",
+      power: 4,
+      toughness: 4,
+    });
+    game.definitions[fatty.id] = fatty;
+    const card = createCardInstance({
+      definitionId: fatty.id,
+      ownerId: p1.id,
+      zone: "battlefield",
+    });
+    game.cards[card.id] = card;
+    p1.zones.battlefield.push(card.id);
+
+    const bound = bindCardEffects(
+      game,
+      [{ kind: "gain_life", playerId: "controller", amount: "sacrificed_power" }],
+      { controllerId: p1.id, sourceId: null, sacrificedPower: 4 },
+    );
+    expect((bound[0] as { amount: number }).amount).toBe(4);
+
+    // And with no fodder in context it binds to nothing rather than to some
+    // default — a zero payout must not look like a successful one.
+    expect(
+      bindCardEffects(
+        game,
+        [{ kind: "gain_life", playerId: "controller", amount: "sacrificed_power" }],
+        { controllerId: p1.id, sourceId: null },
+      ),
+    ).toEqual([]);
+  });
+});

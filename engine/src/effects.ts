@@ -381,7 +381,9 @@ export function bindCardEffect(
                       ? creaturePower(state, chosen.cardId)
                       : 0;
                   })()
-                : effect.amount === "source_power"
+                : effect.amount === "sacrificed_power"
+                  ? (context.sacrificedPower ?? 0)
+                  : effect.amount === "source_power"
                   ? // Marionette Master: the power of the ability's own source.
                     context.sourceId
                     ? Math.max(0, creaturePower(state, context.sourceId))

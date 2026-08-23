@@ -1667,6 +1667,11 @@ export function applyAction(
           controllerId: action.playerId,
           sourceId: chosen.sourceId,
           chosenCardId: chosen.cardId,
+          // Read BEFORE thenEffects runs, because the first of those
+          // effects is usually the sacrifice itself — after it the card
+          // is in the graveyard and its power is gone. Disciple of Bolas
+          // pays out what the creature was worth, not what is left.
+          sacrificedPower: Math.max(0, creaturePower(next, chosen.cardId)),
         });
         if (bound.length > 0) {
           next = applyEffects(next, bound);
