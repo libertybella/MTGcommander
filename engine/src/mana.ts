@@ -218,7 +218,26 @@ export function removeMana(
 
 export function emptyManaPoolsInPlace(state: GameState): void {
   for (const player of state.players) {
-    player.mana = emptyManaPool();
+    // Birgi: mana granted "until end of turn" survives CR 500.4. What
+    // survives is the SMALLER of the tally and what is actually left, so
+    // mana already spent does not come back. That reads the expiring mana
+    // as spent first, which is what a player would do anyway.
+    const kept = emptyManaPool();
+    let keptAny = false;
+    for (const [color, amount] of Object.entries(player.persistentMana ?? {})) {
+      const key = color as keyof ManaPool;
+      const survives = Math.min(amount ?? 0, player.mana[key]);
+      if (survives > 0) {
+        kept[key] = survives;
+        keptAny = true;
+      }
+    }
+    player.mana = kept;
+    if (keptAny) {
+      player.persistentMana = { ...kept };
+    } else if (player.persistentMana) {
+      delete player.persistentMana;
+    }
     // Restricted mana empties with everything else (CR 500.4).
     if (player.restrictedMana) {
       delete player.restrictedMana;

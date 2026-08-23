@@ -39956,3 +39956,161 @@ describe("wave 295: an opponent's graveyard replaced by a void exile", () => {
     expect(round.cards[theirs]?.counters["void"]).toBe(1);
   });
 });
+
+describe("wave 296: mana that a step boundary does not take", () => {
+  const persistent = (amount: number): CardEffect => ({
+    kind: "add_mana",
+    playerId: "controller",
+    mana: { R: amount },
+    untilEndOfTurn: true,
+  });
+
+  const seat = () => {
+    const { game, p1, p2 } = twoPlayers();
+    game.turn.activePlayerId = p1.id;
+    game.turn.phase = "precombatMain";
+    game.turn.step = "precombatMain";
+    game.priorityPlayerId = p1.id;
+    return { game, p1, p2 };
+  };
+
+  const add = (game: GameState, playerId: string, amount: number) =>
+    applyEffects(game, bindCardEffects(game, [persistent(amount)], { controllerId: playerId, sourceId: null }));
+
+  it("compiles Birgi whole, both faces", () => {
+    const compiled = compileOracleCard({
+      oracleId: "birgi",
+      name: "Birgi, God of Storytelling",
+      manaCost: "{2}{R}",
+      typeLine: "Legendary Creature — God",
+      power: "3",
+      toughness: "3",
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "Whenever you cast a spell, add {R}. Until end of turn, you don't lose this mana as steps and phases end.\nCreatures you control can boast twice during each of your turns rather than once.",
+    });
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.triggers).toEqual([
+      {
+        event: "cast_spell",
+        watch: "controlled",
+        effects: [
+          { kind: "add_mana", playerId: "controller", mana: { R: 1 }, untilEndOfTurn: true },
+        ],
+        targetRequirements: [],
+      },
+    ]);
+  });
+
+  it("survives a step ending", () => {
+    const { game, p1 } = seat();
+    const added = add(game, p1.id, 1);
+    expect(added.players.find((entry) => entry.id === p1.id)?.mana.R).toBe(1);
+    const later = advanceSteps(added, 1);
+    // CR 500.4 would empty it. This is the whole card.
+    expect(later.players.find((entry) => entry.id === p1.id)?.mana.R).toBe(1);
+  });
+
+  it("takes ordinary mana with it and keeps only its own", () => {
+    const { game, p1 } = seat();
+    const added = add(game, p1.id, 1);
+    const holder = added.players.find((entry) => entry.id === p1.id)!;
+    holder.mana.R += 2; // ordinary mana from elsewhere
+    holder.mana.G = 3;
+    const later = advanceSteps(added, 1);
+    const after = later.players.find((entry) => entry.id === p1.id)!;
+    expect(after.mana.R).toBe(1);
+    expect(after.mana.G).toBe(0);
+  });
+
+  it("does not bring back mana that was already spent", () => {
+    const { game, p1 } = seat();
+    const added = add(game, p1.id, 2);
+    const holder = added.players.find((entry) => entry.id === p1.id)!;
+    holder.mana.R -= 2; // both spent
+    const later = advanceSteps(added, 1);
+    // The tally is what was granted, not what survives — keeping the smaller
+    // of the two is what stops spent mana reappearing every step.
+    expect(later.players.find((entry) => entry.id === p1.id)?.mana.R).toBe(0);
+  });
+
+  it("keeps what is left when only some was spent", () => {
+    const { game, p1 } = seat();
+    const added = add(game, p1.id, 3);
+    const holder = added.players.find((entry) => entry.id === p1.id)!;
+    holder.mana.R -= 1;
+    const later = advanceSteps(added, 1);
+    expect(later.players.find((entry) => entry.id === p1.id)?.mana.R).toBe(2);
+  });
+
+  it("stops surviving when the turn does", () => {
+    const { game, p1 } = seat();
+    const added = add(game, p1.id, 1);
+    added.turn.phase = "ending";
+    added.turn.step = "end";
+    const cleaned = advanceSteps(added, 1);
+    expect(cleaned.turn.step).toBe("cleanup");
+    expect(cleaned.players.find((entry) => entry.id === p1.id)?.persistentMana).toBeUndefined();
+    const next = advanceSteps(cleaned, 1);
+    expect(next.players.find((entry) => entry.id === p1.id)?.mana.R).toBe(0);
+  });
+
+  it("leaves ordinary added mana emptying as it always did", () => {
+    const { game, p1 } = seat();
+    const added = applyEffects(
+      game,
+      bindCardEffects(game, [{ kind: "add_mana", playerId: "controller", mana: { R: 1 } }], {
+        controllerId: p1.id,
+        sourceId: null,
+      }),
+    );
+    expect(added.players.find((entry) => entry.id === p1.id)?.mana.R).toBe(1);
+    const later = advanceSteps(added, 1);
+    expect(later.players.find((entry) => entry.id === p1.id)?.mana.R).toBe(0);
+  });
+
+  it("compiles Harnfel's back face", () => {
+    const compiled = compileOracleCard({
+      oracleId: "harnfel",
+      name: "Harnfel, Horn of Bounty",
+      manaCost: "{4}{R}",
+      typeLine: "Legendary Artifact",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "Discard a card: Exile the top two cards of your library. You may play those cards this turn.",
+    });
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.activated[0]).toMatchObject({
+      discardCost: { count: 1 },
+      effects: [{ kind: "exile_top_play", playerId: "controller", count: 2 }],
+    });
+  });
+
+  it("round trips the tally and the flag", () => {
+    const { game, p1 } = seat();
+    const added = add(game, p1.id, 2);
+    const round = parseGameState(serializeGameState(added));
+    expect(round.players.find((entry) => entry.id === p1.id)?.persistentMana).toEqual({ R: 2 });
+    const definition = createCardDefinition({
+      name: "Birgi",
+      typeLine: "Legendary Creature — God",
+      triggers: [
+        {
+          event: "cast_spell",
+          watch: "controlled",
+          effects: [persistent(1)],
+          targetRequirements: [],
+        },
+      ],
+    });
+    added.definitions[definition.id] = definition;
+    const withDefinition = parseGameState(serializeGameState(added));
+    expect(withDefinition.definitions[definition.id]?.triggers[0]?.effects[0]).toEqual(
+      persistent(1),
+    );
+  });
+});

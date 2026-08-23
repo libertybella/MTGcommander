@@ -5571,6 +5571,28 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     };
   }
 
+  // Birgi, once the fuser has joined the rider to the add. The mana is
+  // ordinary in every way except that a step boundary does not take it.
+  const persistentAdd = sentence.match(
+    /^(add (?:\{[WUBRGC]\})+) that doesn['’]t empty until end of turn$/i,
+  );
+  if (persistentAdd?.[1]) {
+    const persistent = parseAddMana(persistentAdd[1]);
+    if (persistent?.kind === "fixed") {
+      return {
+        targetRequirements: [],
+        effects: [
+          {
+            kind: "add_mana",
+            playerId: "controller",
+            mana: persistent.produces,
+            untilEndOfTurn: true,
+          },
+        ],
+      };
+    }
+  }
+
   const ritual = parseAddMana(sentence);
   if (ritual?.kind === "fixed") {
     return {
@@ -8356,6 +8378,33 @@ function fuseMoxDiamondInPlace(sentences: string[], lineStart: boolean[]): void 
     }
     sentences.splice(index + 1, 2);
     lineStart.splice(index + 1, 2);
+  }
+}
+
+function fuseManaUntilEotInPlace(sentences: string[], lineStart: boolean[]): void {
+  // Birgi: "…, add {R}." then "Until end of turn, you don't lose this mana
+  // as steps and phases end." The second names the mana the first added, so
+  // parked alone it is an uncompiled sentence and the mana quietly empties
+  // at the next step — which is the whole card.
+  for (let index = 0; index + 1 < sentences.length; index += 1) {
+    if (lineStart[index + 1]) {
+      continue;
+    }
+    const adds = sentences[index]?.match(/^(.*\badd (?:\{[WUBRGC]\})+)$/i);
+    const rider = sentences[index + 1];
+    if (
+      !adds?.[1] ||
+      !rider ||
+      !/^Until end of turn, you don['’]t lose this mana as steps and phases end$/i.test(
+        rider,
+      )
+    ) {
+      continue;
+    }
+    sentences[index] = `${adds[1]} that doesn't empty until end of turn`;
+    sentences.splice(index + 1, 1);
+    lineStart.splice(index + 1, 1);
+    index -= 1;
   }
 }
 
@@ -11465,6 +11514,7 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
   fuseChooseTargetCreatureInPlace(sentences, lineStart);
   fuseLookTopTakeInPlace(sentences, lineStart);
   fuseVoidPlayInPlace(sentences, lineStart);
+  fuseManaUntilEotInPlace(sentences, lineStart);
   fuseMoxDiamondInPlace(sentences, lineStart);
   fuseMaySacrificeInPlace(sentences, lineStart);
   fuseNecroTopInPlace(sentences, lineStart);
@@ -12403,6 +12453,18 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
         };
         continue;
       }
+    }
+
+    // Birgi's second line. Boast (CR 702.142) is not implemented, so no
+    // permanent in this engine can boast even once — raising the limit to
+    // twice changes nothing that can happen. An ACCURATE no-op rather than
+    // a swallowed ability, and it stops being one the day boast lands.
+    if (
+      /^Creatures you control can boast twice during each of your turns rather than once$/i.test(
+        sentence,
+      )
+    ) {
+      continue;
     }
 
     if (/^The "legend rule" doesn't apply to permanents you control$/i.test(sentence)) {

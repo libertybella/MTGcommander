@@ -593,6 +593,15 @@ export type PlayerState = {
   /** "Spend this mana only to …": mana that can only pay for matching
    * spells and abilities. Emptied alongside the main pool. */
   restrictedMana?: RestrictedMana[];
+  /**
+   * Birgi: "Until end of turn, you don't lose this mana as steps and
+   * phases end." A tally of mana granted this turn that survives CR 500.4,
+   * cleared at cleanup. Emptying keeps the SMALLER of the tally and what is
+   * actually left, so mana already spent does not come back — a documented
+   * approximation that spends the expiring mana first, which is what a
+   * player would do anyway.
+   */
+  persistentMana?: Partial<ManaPool>;
   /** How many creatures this player declared as attackers this turn, summed
    * across combat phases (Minas Tirith's "attacked with two or more"). */
   attackersThisTurn?: number;
@@ -1102,7 +1111,13 @@ export type GameEffect =
   /** "You may tap or untap target creature": toggles the current state — a
    * documented approximation of the choice (Retreat to Coralhelm). */
   | { kind: "tap_or_untap"; cardId: CardInstanceId }
-  | { kind: "add_mana"; playerId: PlayerId; mana: Partial<ManaPool> }
+  | {
+      kind: "add_mana";
+      playerId: PlayerId;
+      mana: Partial<ManaPool>;
+      /** Birgi: this mana survives steps and phases ending, until cleanup. */
+      untilEndOfTurn?: boolean;
+    }
   | {
       kind: "create_token";
       ownerId: PlayerId;
@@ -2068,6 +2083,8 @@ export type CardEffect =
       kind: "add_mana";
       playerId: PlayerSelector;
       mana: Partial<ManaPool>;
+      /** Birgi: this mana survives steps and phases ending, until cleanup. */
+      untilEndOfTurn?: boolean;
       /** Jeska's Will: multiply the mana by the chosen player's hand size. */
       perChosenPlayerHand?: boolean;
       /** Mana Drain: multiply by the TARGET SPELL's mana value, read as

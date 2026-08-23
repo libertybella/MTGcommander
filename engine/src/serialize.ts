@@ -395,6 +395,9 @@ function parsePlayer(value: unknown): PlayerState {
         ? 0
         : expectNumber(value.landsPlayedThisTurn, "player.landsPlayedThisTurn"),
     attackedThisTurn: value.attackedThisTurn === true,
+    ...(value.persistentMana === undefined
+      ? {}
+      : { persistentMana: parsePartialMana(value.persistentMana, "player.persistentMana") }),
     ...(value.restrictedMana === undefined
       ? {}
       : {
@@ -3025,6 +3028,7 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
         playerId: parsePlayerSelector(value.playerId, `${label}.playerId`),
         mana: parsePartialMana(value.mana, `${label}.mana`),
         ...(value.perChosenPlayerHand === true ? { perChosenPlayerHand: true } : {}),
+        ...(value.untilEndOfTurn === true ? { untilEndOfTurn: true } : {}),
         ...(value.anyColor === undefined
           ? {}
           : { anyColor: expectNumber(value.anyColor, `${label}.anyColor`) }),
@@ -5472,6 +5476,7 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
       kind,
       playerId: expectString(value.playerId, `${label}.playerId`),
       mana: parsePartialMana(value.mana, `${label}.mana`),
+      ...(value.untilEndOfTurn === true ? { untilEndOfTurn: true } : {}),
     };
   }
   if (kind === "pt_until_eot") {

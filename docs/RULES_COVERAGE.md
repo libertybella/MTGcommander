@@ -870,6 +870,21 @@ more questions it can now ask:
   (Bennie Bracks). Reads the existing per-player `createdTokenThisTurn`
   list, and asks whether the CONTROLLER is in it — an opponent's Treasure
   must not satisfy it.
+- **`add_mana.untilEndOfTurn` / `PlayerState.persistentMana`** — Birgi.
+  "Until end of turn, you don't lose this mana as steps and phases end"
+  (CR 500.4). A tally is kept beside the pool, not in it, so ordinary mana
+  is untouched; emptying keeps the SMALLER of the tally and what is actually
+  left, which is what stops spent mana reappearing at every step boundary.
+  That reads the expiring mana as spent first — a documented approximation,
+  and the order a player would choose anyway. The tally clears at cleanup.
+
+- **Birgi's "boast twice" is an ACCURATE no-op**, not a swallowed ability.
+  Boast (CR 702.142) is not implemented, so no permanent in this engine can
+  boast even once and raising the limit to twice changes nothing that can
+  happen. Recorded here because it stops being accurate the day boast lands.
+
+  Harnfel, the back face, already compiled whole: a discard-cost activation
+  into `exile_top_play`.
 - **`opponents_graveyard_to_void_exile`** — Dauthi Voidwalker. A card headed
   for an OPPONENT's graveyard is exiled with a void counter instead. Scoped
   by the card's OWNER, unlike Rest in Peace, which applies to the whole

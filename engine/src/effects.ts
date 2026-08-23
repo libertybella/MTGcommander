@@ -3872,9 +3872,23 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
         }
         break;
       }
-      case "add_mana":
+      case "add_mana": {
         next = addMana(state, effect.playerId, effect.mana);
+        if (effect.untilEndOfTurn) {
+          // Birgi: tally what survives the next step boundary. Kept beside
+          // the pool rather than in it, so ordinary mana is untouched.
+          const holder = next.players.find((entry) => entry.id === effect.playerId);
+          if (holder) {
+            const tally = { ...(holder.persistentMana ?? {}) };
+            for (const [color, amount] of Object.entries(effect.mana)) {
+              const key = color as keyof ManaPool;
+              tally[key] = (tally[key] ?? 0) + (amount ?? 0);
+            }
+            holder.persistentMana = tally;
+          }
+        }
         break;
+      }
       case "create_token":
         next = applyCreateToken(state, effect);
         break;

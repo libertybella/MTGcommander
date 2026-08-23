@@ -417,6 +417,13 @@ function onEnterStep(state: GameState): GameState {
     state.activeEffects = state.activeEffects.filter(
       (effect) => effect.duration !== "until_end_of_turn",
     );
+    // Birgi: mana that survived the step boundaries stops surviving with
+    // the turn. The pool itself is emptied by the step advance either way.
+    for (const player of state.players) {
+      if (player.persistentMana) {
+        delete player.persistentMana;
+      }
+    }
     state.preventCombatDamage = false;
     if (state.preventCombatFor && state.preventCombatFor.length > 0) {
       state.preventCombatFor = [];
