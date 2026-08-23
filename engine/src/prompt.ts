@@ -538,6 +538,15 @@ export function legalIdsForChooseSources(
       ) {
         continue;
       }
+      // Sylvan Library: "cards in your hand drawn this turn". A card held
+      // since last turn is a better card to put back, and offering it would
+      // make the drawback a bonus.
+      if (
+        source.drawnThisTurn &&
+        state.cards[cardId]?.drawnOnTurn !== state.turn.number
+      ) {
+        continue;
+      }
       matching.push(cardId);
     }
     // Soul Shatter: the choice is restricted to the cards tied for the
@@ -1023,7 +1032,20 @@ export function applyResolvePay(
     }
     next = tapForMana(next, tap.cardId, addition);
   }
-  next = payManaCost(next, playerId, prompt.cost);
+  if (prompt.kind === "pay_or_effect" && prompt.life !== undefined) {
+    // Sylvan Library: paid from life, not mana. Declining is the other
+    // branch, so a player who cannot afford it must take that instead.
+    const payer = next.players.find((entry) => entry.id === playerId);
+    if (!payer || payer.life < prompt.life) {
+      throw new Error("Not enough life to pay");
+    }
+    payer.life -= prompt.life;
+    dispatchEventsInPlace(next, [
+      { kind: "loses_life", playerId, amount: prompt.life },
+    ]);
+  } else {
+    next = payManaCost(next, playerId, prompt.cost);
+  }
   if (prompt.kind === "pay_or_effect" && prompt.whenPaid) {
     next = applyEffects(next, prompt.thenEffects);
   }

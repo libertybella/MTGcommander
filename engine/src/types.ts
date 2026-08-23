@@ -531,6 +531,12 @@ export type CardInstance = {
    */
   reanimatedCardId?: CardInstanceId;
   /**
+   * Sylvan Library: the turn this card was DRAWN, so "cards in your hand
+   * drawn this turn" can name them. A tally of how many were drawn cannot:
+   * the card asks which ones.
+   */
+  drawnOnTurn?: number;
+  /**
    * Imprint (CR 702.16 flavour, mechanically CR 610.3): cards exiled
    * WITH this permanent, which its own abilities then read. Chrome Mox
    * takes its colours from here. Kept as a list because Panoptic Mirror
@@ -990,6 +996,14 @@ export type ChooseCardSource = {
   playerId: PlayerSelector;
   zone: "hand" | "graveyard" | "battlefield";
   filter: CardFilter;
+  /** Sylvan Library: only cards drawn THIS turn are eligible. */
+  drawnThisTurn?: boolean;
+  /**
+   * Sylvan Library chooses two cards, one after the other. Without this the
+   * second choice could name the first again — paying life leaves that card
+   * in hand, still drawn this turn, still legal.
+   */
+  excludePreviousChoice?: boolean;
   /** Korvold: "sacrifice ANOTHER permanent" — the source may not choose
    * itself. Bound to a concrete id when the effect binds, because the
    * definition does not know which instance it will be. */
@@ -1009,6 +1023,8 @@ export type BoundChooseCardSource = {
   playerId: PlayerId;
   zone: "hand" | "graveyard" | "battlefield";
   filter: CardFilter;
+  /** The bound half of `ChooseCardSource.drawnThisTurn`. */
+  drawnThisTurn?: boolean;
   /** The bound half of `ChooseCardSource.excludeSelf`. */
   excludeCardId?: CardInstanceId;
   /** The bound half of `ChooseCardSource.greatestManaValue`. */
@@ -1497,7 +1513,14 @@ export type GameEffect =
       counterPerDestroyed?: { cardId: CardInstanceId; counter: string; amount: number };
     }
   /** Rhystic Study: the payer chooses to pay or the effects happen. */
-  | { kind: "unless_pays"; playerId: PlayerId; cost: string; effects: GameEffect[] }
+  | {
+      kind: "unless_pays";
+      playerId: PlayerId;
+      cost: string;
+      /** Sylvan Library: "pay 4 life or …". Paid from life, not mana. */
+      life?: number;
+      effects: GameEffect[];
+    }
   /** Cumulative upkeep (CR 702.24), bound to its permanent. */
   | {
       kind: "cumulative_upkeep";
@@ -2626,6 +2649,8 @@ export type CardEffect =
       cost: string;
       /** Esper Sentinel: the cost is {X}, X = the source's power at bind. */
       costFromPower?: boolean;
+      /** Sylvan Library: "pay 4 life or …". Paid from life, not mana. */
+      life?: number;
       effects: CardEffect[];
     }
   /**
@@ -3185,6 +3210,8 @@ export type PendingPrompt =
       kind: "pay_or_effect";
       playerId: PlayerId;
       cost: string;
+      /** Sylvan Library: "pay 4 life or …" — paid from life, not mana. */
+      life?: number;
       thenEffects: GameEffect[];
       sourceId: CardInstanceId | null;
       whenPaid?: boolean;

@@ -870,6 +870,28 @@ more questions it can now ask:
   (Bennie Bracks). Reads the existing per-player `createdTokenThisTurn`
   list, and asks whether the CONTROLLER is in it — an opponent's Treasure
   must not satisfy it.
+- **`CardInstance.drawnOnTurn`** — Sylvan Library asks WHICH cards were
+  drawn this turn, and a per-turn tally cannot answer that. Stamped inside
+  the draw loop so every path that draws records it. A card held since last
+  turn is not offered: it is the better card to give back, and offering it
+  would turn the drawback into a bonus.
+
+- **`ChooseCardSource.excludePreviousChoice`** — the two choices run in
+  sequence, and the second must not name the first again. Paying the life
+  leaves that card in hand, still drawn this turn, still legal — without the
+  exclusion a player could pay for one card twice and keep both extras.
+  Bound against `context.chosenCardId`, onto the `excludeCardId` the bound
+  source already had.
+
+- **`unless_pays.life`** — a cost paid from life rather than mana, and the
+  first of those in a mid-resolution prompt. The mana half is then empty,
+  which `expectString` rejects by default: caught by the load guard as a
+  definition that compiled clean and could not be LOADED, exactly the class
+  the guard was added for.
+
+  All three sentences are ONE triggered ability, so the run builds the
+  trigger rather than going through `commitClause` — parked as top-level
+  effects on an enchantment, none of it would ever run.
 - **`dynamicPt.powerOnly`** — Adeline. Her POWER counts creatures while her
   toughness stays the printed 4. The existing star-P/T clause reads "power
   and toughness are each equal to…" and set both; applying the count to

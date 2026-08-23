@@ -10502,6 +10502,89 @@ function foldLookRun(
  * here. Left standing it would be an uncompiled sentence on a card that
  * otherwise reads whole.
  */
+/**
+ * Sylvan Library, whose three printed sentences are ONE ability:
+ *
+ *   "At the beginning of your draw step, you may draw two additional
+ *    cards. If you do, choose two cards in your hand drawn this turn. For
+ *    each of those cards, pay 4 life or put the card on top of your
+ *    library."
+ *
+ * Matched as a run rather than sentence by sentence: the second names what
+ * the first drew and the third names what the second chose, so no part of
+ * it compiles to anything meaningful alone.
+ *
+ * The two choices run in sequence, and the second excludes the first —
+ * paying life leaves that card in hand, still drawn this turn, still legal,
+ * and without the exclusion a player could pay for the same card twice and
+ * keep all three.
+ */
+function compileSylvanDrawStep(
+  sentences: string[],
+  index: number,
+): (SimpleClause & { consumed: number }) | null {
+  const head = sentences[index]?.match(
+    /^At the beginning of your draw step, you may draw (two|three|\d+) additional cards$/i,
+  );
+  const choose = sentences[index + 1];
+  const price = sentences[index + 2];
+  if (!head?.[1] || !choose || !price) {
+    return null;
+  }
+  const drawCount = parseCount(head[1]);
+  const chooseMatch = choose.match(
+    /^If you do, choose (two|three|\d+) cards in your hand drawn this turn$/i,
+  );
+  const priceMatch = price.match(
+    /^For each of those cards, pay (\d+) life or put the card on top of your library$/i,
+  );
+  if (!drawCount || !chooseMatch?.[1] || !priceMatch?.[1]) {
+    return null;
+  }
+  const chooseCount = parseCount(chooseMatch[1]);
+  if (!chooseCount) {
+    return null;
+  }
+  const life = Number(priceMatch[1]);
+  const pick = (first: boolean): CardEffect => ({
+    kind: "choose_card",
+    chooserId: "controller",
+    sources: [
+      {
+        playerId: "controller",
+        zone: "hand",
+        filter: "any",
+        drawnThisTurn: true,
+        ...(first ? {} : { excludePreviousChoice: true }),
+      },
+    ],
+    thenEffects: [
+      {
+        kind: "unless_pays",
+        playerId: "controller",
+        cost: "",
+        life,
+        effects: [
+          {
+            kind: "move_card",
+            cardId: "chosen_card",
+            toZone: "library",
+            libraryPosition: "top",
+          },
+        ],
+      },
+    ],
+  });
+  return {
+    targetRequirements: [],
+    effects: [
+      { kind: "draw", playerId: "controller", count: drawCount, optional: true },
+      ...Array.from({ length: chooseCount }, (_unused, slot) => pick(slot === 0)),
+    ],
+    consumed: 3,
+  };
+}
+
 function compileTwoZoneTutorPair(
   sentences: string[],
   index: number,
@@ -11828,6 +11911,21 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
         continue;
       }
       result.leftover.push(sentence);
+      continue;
+    }
+
+    // Sylvan Library: a three-sentence run that is one triggered ability.
+    // Parked as top-level effects on an enchantment, none of it would ever
+    // run — so the run builds the trigger here rather than going through
+    // commitClause.
+    const sylvan = compileSylvanDrawStep(sentences, index);
+    if (sylvan) {
+      result.triggers.push({
+        event: "draw_step",
+        effects: sylvan.effects,
+        targetRequirements: [],
+      });
+      index += sylvan.consumed - 1;
       continue;
     }
 

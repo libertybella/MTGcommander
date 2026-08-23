@@ -764,6 +764,13 @@ export function bindCardEffect(
                 ...(source.excludeSelf && context.sourceId
                   ? { excludeCardId: context.sourceId }
                   : {}),
+                // Sylvan Library's second choice must not name the first
+                // again: paying life leaves that card in hand, still drawn
+                // this turn, and still legal.
+                ...(source.excludePreviousChoice && context.chosenCardId
+                  ? { excludeCardId: context.chosenCardId }
+                  : {}),
+                ...(source.drawnThisTurn ? { drawnThisTurn: true } : {}),
                 ...(source.greatestManaValue ? { greatestManaValue: true } : {}),
               },
             ]
@@ -1577,6 +1584,7 @@ export function bindCardEffect(
         kind: "unless_pays",
         playerId,
         cost,
+        ...(effect.life !== undefined ? { life: effect.life } : {}),
         effects: bindCardEffects(state, effect.effects, context),
       };
     }
@@ -2448,6 +2456,12 @@ function applyDraw(
       break;
     }
     next = moveCard(next, top, "hand");
+    // Sylvan Library asks WHICH cards were drawn this turn, which a tally
+    // cannot answer. Stamped here so every path that draws records it.
+    const arrived = next.cards[top];
+    if (arrived) {
+      arrived.drawnOnTurn = next.turn.number;
+    }
     drawn += 1;
   }
   if (drawn > 0) {
@@ -5190,6 +5204,7 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
             kind: "pay_or_effect",
             playerId: effect.playerId,
             cost: effect.cost,
+            ...(effect.life !== undefined ? { life: effect.life } : {}),
             thenEffects: effect.effects.map((entry) => ({ ...entry })),
             sourceId: null,
           });

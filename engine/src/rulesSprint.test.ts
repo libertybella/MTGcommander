@@ -32,7 +32,7 @@ import { abilityLifeCost, colorsOutsideCommanderIdentity } from "./commanderIden
 import { addRestrictedMana, emptyManaPools, manaRiderFires, parseManaCost, payManaCost, restrictionAdmits, type ManaPurpose } from "./mana";
 import { applyStateBasedActionsInPlace } from "./status";
 import { legalActions, sacrificeColorMatches, sacrificeScopeMatches } from "./legalActions";
-import { applyResolveCreatureType, applyResolveDiscardLandOrGraveyard, applyResolveEnterCopy, applyResolveLookAssign, applyResolvePay, applyResolveSearch, applyResolveTriggerMode, legalEnterCopyIds, legalSearchIds, searchMatches } from "./prompt";
+import { applyResolveChooseCard, applyResolveCreatureType, applyResolveDiscardLandOrGraveyard, applyResolveEnterCopy, applyResolveLookAssign, applyResolvePay, applyResolveSearch, applyResolveTriggerMode, legalEnterCopyIds, legalSearchIds, searchMatches } from "./prompt";
 import { parseGameState, serializeGameState } from "./serialize";
 import { fillLibraries } from "./testSupport";
 import { advanceSteps } from "./turn";
@@ -39504,5 +39504,220 @@ describe("wave 293: a power that counts creatures, and a token per opponent", ()
       kind: "create_token",
       attackingEachOpponent: true,
     });
+  });
+});
+
+describe("wave 294: two extra draws, paid for in life or given back", () => {
+  const SYLVAN_TEXT =
+    "At the beginning of your draw step, you may draw two additional cards. If you do, choose two cards in your hand drawn this turn. For each of those cards, pay 4 life or put the card on top of your library.";
+
+  const SYLVAN_EFFECTS = (): CardEffect[] => {
+    const pick = (first: boolean): CardEffect => ({
+      kind: "choose_card",
+      chooserId: "controller",
+      sources: [
+        {
+          playerId: "controller",
+          zone: "hand",
+          filter: "any",
+          drawnThisTurn: true,
+          ...(first ? {} : { excludePreviousChoice: true }),
+        },
+      ],
+      thenEffects: [
+        {
+          kind: "unless_pays",
+          playerId: "controller",
+          cost: "",
+          life: 4,
+          effects: [
+            {
+              kind: "move_card",
+              cardId: "chosen_card",
+              toZone: "library",
+              libraryPosition: "top",
+            },
+          ],
+        },
+      ],
+    });
+    return [
+      { kind: "draw", playerId: "controller", count: 2, optional: true },
+      pick(true),
+      pick(false),
+    ];
+  };
+
+  const board = (librarySize = 10) => {
+    const { game, p1, p2 } = twoPlayers();
+    const filler = createCardDefinition({
+      name: "Filler",
+      typeLine: "Creature — Bear",
+      manaCost: "{1}{G}",
+      power: 2,
+      toughness: 2,
+    });
+    game.definitions[filler.id] = filler;
+    for (let index = 0; index < librarySize; index += 1) {
+      const card = createCardInstance({
+        definitionId: filler.id,
+        ownerId: p1.id,
+        zone: "library",
+      });
+      game.cards[card.id] = card;
+      p1.zones.library.push(card.id);
+    }
+    // A card held since before this turn: a better card to give back, and
+    // offering it would turn the drawback into a bonus.
+    const held = createCardInstance({ definitionId: filler.id, ownerId: p1.id, zone: "hand" });
+    game.cards[held.id] = held;
+    p1.zones.hand.push(held.id);
+    game.turn.number = 5;
+    game.priorityPlayerId = p1.id;
+    return { game, p1, p2, heldId: held.id };
+  };
+
+  it("compiles Sylvan Library as one triggered ability", () => {
+    const compiled = compileOracleCard({
+      oracleId: "sylvan-library",
+      name: "Sylvan Library",
+      manaCost: "{1}{G}",
+      typeLine: "Enchantment",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText: SYLVAN_TEXT,
+    });
+    expect(compiled.notes).toEqual([]);
+    // All three sentences are ONE ability. Parked as top-level effects on an
+    // enchantment none of it would ever run.
+    expect(compiled.definition.effects).toEqual([]);
+    expect(compiled.definition.triggers).toHaveLength(1);
+    expect(compiled.definition.triggers[0]?.event).toBe("draw_step");
+    expect(compiled.definition.triggers[0]?.effects).toEqual(SYLVAN_EFFECTS());
+  });
+
+  it("stamps the turn a card was drawn", () => {
+    const { game, p1 } = board();
+    const drawn = applyEffect(game, { kind: "draw", playerId: p1.id, count: 2 });
+    const hand = drawn.players.find((entry) => entry.id === p1.id)!.zones.hand;
+    const fresh = hand.filter((cardId) => drawn.cards[cardId]?.drawnOnTurn === 5);
+    expect(fresh).toHaveLength(2);
+  });
+
+  it("offers only cards drawn this turn", () => {
+    const { game, p1, heldId } = board();
+    const drawn = applyEffect(game, { kind: "draw", playerId: p1.id, count: 2 });
+    const opened = applyEffects(
+      drawn,
+      bindCardEffects(drawn, [SYLVAN_EFFECTS()[1]!], { controllerId: p1.id, sourceId: null }),
+    );
+    const prompt = opened.prompts[0];
+    expect(prompt?.kind).toBe("choose_card");
+    const legal = legalIdsForChooseSources(
+      opened,
+      (prompt as Extract<typeof prompt, { kind: "choose_card" }>).sources,
+    );
+    expect(legal).toHaveLength(2);
+    // The card held since last turn is not on offer.
+    expect(legal).not.toContain(heldId);
+  });
+
+  it("pays 4 life to keep the card", () => {
+    const { game, p1 } = board();
+    const drawn = applyEffect(game, { kind: "draw", playerId: p1.id, count: 2 });
+    const chosen = drawn.players.find((entry) => entry.id === p1.id)!.zones.hand.find(
+      (cardId) => drawn.cards[cardId]?.drawnOnTurn === 5,
+    )!;
+    const opened = applyEffects(
+      drawn,
+      bindCardEffects(drawn, [SYLVAN_EFFECTS()[1]!], { controllerId: p1.id, sourceId: null }),
+    );
+    const resolved = applyResolveChooseCard(opened, p1.id, chosen);
+    const withPay = applyEffects(
+      resolved.next,
+      bindCardEffects(resolved.next, resolved.thenEffects, {
+        controllerId: p1.id,
+        sourceId: null,
+        chosenCardId: resolved.cardId,
+      }),
+    );
+    expect(withPay.prompts[0]?.kind).toBe("pay_or_effect");
+    const paid = applyResolvePay(withPay, p1.id, true);
+    expect(paid.players.find((entry) => entry.id === p1.id)?.life).toBe(36);
+    // Paid for, so it stays in hand.
+    expect(paid.cards[chosen]?.zone).toBe("hand");
+  });
+
+  it("puts the card back on top when the life is declined", () => {
+    const { game, p1 } = board();
+    const drawn = applyEffect(game, { kind: "draw", playerId: p1.id, count: 2 });
+    const chosen = drawn.players.find((entry) => entry.id === p1.id)!.zones.hand.find(
+      (cardId) => drawn.cards[cardId]?.drawnOnTurn === 5,
+    )!;
+    const opened = applyEffects(
+      drawn,
+      bindCardEffects(drawn, [SYLVAN_EFFECTS()[1]!], { controllerId: p1.id, sourceId: null }),
+    );
+    const resolved = applyResolveChooseCard(opened, p1.id, chosen);
+    const withPay = applyEffects(
+      resolved.next,
+      bindCardEffects(resolved.next, resolved.thenEffects, {
+        controllerId: p1.id,
+        sourceId: null,
+        chosenCardId: resolved.cardId,
+      }),
+    );
+    const declined = applyResolvePay(withPay, p1.id, false);
+    expect(declined.players.find((entry) => entry.id === p1.id)?.life).toBe(40);
+    const player = declined.players.find((entry) => entry.id === p1.id)!;
+    expect(player.zones.hand).not.toContain(chosen);
+    // On TOP, not shuffled in — it is the next card drawn.
+    expect(player.zones.library[0]).toBe(chosen);
+  });
+
+  it("will not let the second choice name the first again", () => {
+    const { game, p1 } = board();
+    const drawn = applyEffect(game, { kind: "draw", playerId: p1.id, count: 2 });
+    const fresh = drawn.players.find((entry) => entry.id === p1.id)!.zones.hand.filter(
+      (cardId) => drawn.cards[cardId]?.drawnOnTurn === 5,
+    );
+    // Bind the SECOND pick with the first already chosen. Paying life leaves
+    // that card in hand and still drawn this turn, so without the exclusion a
+    // player could pay for one card twice and keep both extras.
+    const opened = applyEffects(
+      drawn,
+      bindCardEffects(drawn, [SYLVAN_EFFECTS()[2]!], {
+        controllerId: p1.id,
+        sourceId: null,
+        chosenCardId: fresh[0]!,
+      }),
+    );
+    const prompt = opened.prompts[0];
+    const legal = legalIdsForChooseSources(
+      opened,
+      (prompt as Extract<typeof prompt, { kind: "choose_card" }>).sources,
+    );
+    expect(legal).toEqual([fresh[1]!]);
+  });
+
+  it("round trips the draw stamp and the life cost", () => {
+    const { game, p1 } = board();
+    const drawn = applyEffect(game, { kind: "draw", playerId: p1.id, count: 1 });
+    const definition = createCardDefinition({
+      name: "Sylvan Library",
+      typeLine: "Enchantment",
+      triggers: [
+        { event: "draw_step", effects: SYLVAN_EFFECTS(), targetRequirements: [] },
+      ],
+    });
+    drawn.definitions[definition.id] = definition;
+    const round = parseGameState(serializeGameState(drawn));
+    expect(round.definitions[definition.id]?.triggers[0]?.effects).toEqual(SYLVAN_EFFECTS());
+    const stamped = drawn.players.find((entry) => entry.id === p1.id)!.zones.hand.find(
+      (cardId) => drawn.cards[cardId]?.drawnOnTurn === 5,
+    )!;
+    expect(round.cards[stamped]?.drawnOnTurn).toBe(5);
   });
 });

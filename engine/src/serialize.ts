@@ -519,6 +519,9 @@ export function parseGameState(json: string): GameState {
       ...(card.reanimatedCardId === undefined
         ? {}
         : { reanimatedCardId: expectString(card.reanimatedCardId, "card.reanimatedCardId") }),
+      ...(card.drawnOnTurn === undefined
+        ? {}
+        : { drawnOnTurn: expectNumber(card.drawnOnTurn, "card.drawnOnTurn") }),
       loyaltyActivatedThisTurn: card.loyaltyActivatedThisTurn === true,
       ...(card.skipNextUntap === true ? { skipNextUntap: true } : {}),
       ...(card.goadedBy === undefined
@@ -2137,7 +2140,10 @@ function parsePrompts(value: unknown, playerIds: Set<string>): PendingPrompt[] {
       return {
         kind,
         playerId,
-        cost: expectString(entry.cost, `prompts[${index}].cost`),
+        cost: expectString(entry.cost, `prompts[${index}].cost`, entry.life !== undefined),
+        ...(entry.life === undefined
+          ? {}
+          : { life: expectNumber(entry.life, `prompts[${index}].life`) }),
         thenEffects: parseGameEffects(entry.thenEffects, `prompts[${index}].thenEffects`),
         sourceId:
           entry.sourceId === undefined || entry.sourceId === null
@@ -2468,6 +2474,8 @@ function parseChooseCardSources(value: unknown, label: string): ChooseCardSource
       zone,
       filter: parseCardFilter(entry.filter, `${label}[${index}].filter`),
       ...(entry.excludeSelf === true ? { excludeSelf: true } : {}),
+      ...(entry.drawnThisTurn === true ? { drawnThisTurn: true } : {}),
+      ...(entry.excludePreviousChoice === true ? { excludePreviousChoice: true } : {}),
       ...(entry.greatestManaValue === true ? { greatestManaValue: true } : {}),
     };
   });
@@ -2500,6 +2508,7 @@ function parseBoundChooseSources(
       ...(typeof entry.excludeCardId === "string"
         ? { excludeCardId: entry.excludeCardId }
         : {}),
+      ...(entry.drawnThisTurn === true ? { drawnThisTurn: true } : {}),
       ...(entry.greatestManaValue === true ? { greatestManaValue: true } : {}),
     };
   });
@@ -3953,8 +3962,14 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
       return {
         kind,
         playerId: parsePlayerSelector(value.playerId, `${label}.playerId`),
-        cost: expectString(value.cost, `${label}.cost`),
+        // Sylvan Library's cost is life, so the mana half is empty. An
+        // empty string is rejected by default, which made the definition
+        // fail to LOAD.
+        cost: expectString(value.cost, `${label}.cost`, value.life !== undefined),
         ...(value.costFromPower === true ? { costFromPower: true } : {}),
+        ...(value.life === undefined
+          ? {}
+          : { life: expectNumber(value.life, `${label}.life`) }),
         effects: parseCardEffects(value.effects, `${label}.effects`),
       };
     case "may_pay":
@@ -5798,7 +5813,13 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
     return {
       kind,
       playerId: expectString(value.playerId, `${label}.playerId`),
-      cost: expectString(value.cost, `${label}.cost`),
+      cost: expectString(value.cost, `${label}.cost`, value.life !== undefined),
+      // Only unless_pays carries a life cost, but parsing it for both is
+      // harmless and keeps the two from drifting apart the way the grouped
+      // returns elsewhere in this file already have.
+      ...(value.life === undefined
+        ? {}
+        : { life: expectNumber(value.life, `${label}.life`) }),
       effects: parseGameEffects(value.effects, `${label}.effects`),
     };
   }
