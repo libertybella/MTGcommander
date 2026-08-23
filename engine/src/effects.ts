@@ -226,6 +226,10 @@ function expandEachOpponent(
     effect.kind === "exile_graveyard" ||
     // "Tap all creatures your opponents control" — one tap sweep per player.
     effect.kind === "tap_all" ||
+    // Insurrection: "untap all creatures" is everyone. The untap sweep sat
+    // outside this list while its tap sibling sat inside it, so an
+    // each-player untap threw at bind rather than expanding.
+    effect.kind === "untap_all" ||
     effect.kind === "search_library"
   ) {
     const players = eachOf(effect.playerId);

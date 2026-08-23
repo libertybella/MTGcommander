@@ -870,6 +870,21 @@ more questions it can now ask:
   (Bennie Bracks). Reads the existing per-player `createdTokenThisTurn`
   list, and asks whether the CONTROLLER is in it — an opponent's Treasure
   must not satisfy it.
+- **Board-wide untap and steal** — "Untap all creatures and gain control
+  of them until end of turn" (Insurrection). Both effects existed; neither
+  phrase parsed. The unscoped "all creatures" is EVERY player's, which is
+  the point of the card — it unlocks the board it is about to take — and it
+  is one word from the scoped "you control" form, so there is a test holding
+  those apart. `gain_control_all` with no `fromId` covers the whole table.
+
+  This turned up a latent asymmetry: `tap_all` was in the each-player
+  expansion list and `untap_all` was not, so an each-player untap THREW at
+  bind rather than expanding. The compile-rate metric could not have seen
+  it — the card compiles clean and would have crashed on resolution.
+- **"fights another target creature"** (Brash Taunter) — not the same as
+  "a creature you don't control": the Taunter may fight one of yours, and
+  the only thing ruled out is itself. That rides on the target requirement
+  as `excludeSource`, so the restriction lives where the target is chosen.
 - **"…in addition to its other types"** — "is an Assassin" (Brotherhood
   Regalia), "are Forest lands" (Ashaya, Soul of the Wild). `add_types`
   has existed at layer 4 since the mutation Auras; what was missing was a

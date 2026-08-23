@@ -4603,6 +4603,49 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     };
   }
 
+  // "Untap all creatures" without a "you control" is EVERYONE's, which is
+  // the whole point of Insurrection: it unlocks the board it is about to
+  // take. The optional tail is one sentence in print and stays one clause
+  // here, because "them" refers back to what was just untapped.
+  const untapEveryone = sentence.match(
+    /^untap all creatures(?: and gain control of them until end of turn)?$/i,
+  );
+  if (untapEveryone) {
+    const steals = /gain control/i.test(sentence);
+    return {
+      targetRequirements: [],
+      effects: [
+        { kind: "untap_all", playerId: "each_player", what: "creature" },
+        ...(steals
+          ? [
+              {
+                kind: "gain_control_all" as const,
+                playerId: "controller" as const,
+                what: "creatures" as const,
+                untilEot: true,
+              },
+            ]
+          : []),
+      ],
+    };
+  }
+
+  // Without a `fromId` the steal covers the whole table (Mass Mutiny's
+  // "all creatures", as against Hellkite Tyrant's "that player controls").
+  if (/^gain control of all creatures until end of turn$/i.test(sentence)) {
+    return {
+      targetRequirements: [],
+      effects: [
+        {
+          kind: "gain_control_all",
+          playerId: "controller",
+          what: "creatures",
+          untilEot: true,
+        },
+      ],
+    };
+  }
+
   const untapAll = sentence.match(/^untap all (creatures|lands) you control$/i);
   if (untapAll?.[1]) {
     return {
@@ -6345,6 +6388,16 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
   }
 
   // Kogla / Apex Altisaur: the fight is optional — an unfilled slot skips.
+  // "ANOTHER target creature" is not "a creature you don't control": Brash
+  // Taunter may fight one of yours, and the only thing it may not fight is
+  // itself. The requirement carries that as `excludeSource`, so the
+  // restriction lives where the target is chosen rather than in the effect.
+  if (/^(?:it|~|this creature) fights another target creature$/i.test(sentence)) {
+    return {
+      targetRequirements: [{ kind: "creature", excludeSource: true }],
+      effects: [{ kind: "fight", cardId: "self", withTarget: { type: "chosen", index: 0 } }],
+    };
+  }
   if (/^(?:it|~|this creature) fights up to one target creature you don't control$/i.test(sentence)) {
     return {
       targetRequirements: [{ kind: "creature", control: "not_own", optional: true }],

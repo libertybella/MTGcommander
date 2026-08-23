@@ -33492,3 +33492,118 @@ describe("wave 257: in addition to its other types", () => {
     expect(cardMatchesSubtype(game, bearId, "bear")).toBe(true);
   });
 });
+
+describe("wave 258: untapping everyone's board, and fighting anything else", () => {
+  const compile = (name: string, typeLine: string, oracleText: string, pt?: [string, string]) =>
+    compileOracleCard({
+      oracleId: name,
+      name,
+      manaCost: "{5}{R}{R}",
+      typeLine,
+      power: pt?.[0] ?? null,
+      toughness: pt?.[1] ?? null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  it("untaps EVERY player's creatures, not just the caster's", () => {
+    const insurrection = compile(
+      "Insurrection",
+      "Sorcery",
+      "Untap all creatures and gain control of them until end of turn. They gain haste until end of turn.",
+    );
+    expect(insurrection.notes).toEqual([]);
+    expect(insurrection.definition.effects[0]).toEqual({
+      kind: "untap_all",
+      playerId: "each_player",
+      what: "creature",
+    });
+    // No fromId: the steal covers the whole table rather than one player.
+    expect(insurrection.definition.effects[1]).toEqual({
+      kind: "gain_control_all",
+      playerId: "controller",
+      what: "creatures",
+      untilEot: true,
+    });
+  });
+
+  it("keeps the you-control form scoped to the controller", () => {
+    // The unscoped phrase is one word away from the scoped one, and reading
+    // them alike would quietly untap opponents' boards on every card that
+    // says "you control".
+    const scoped = compile(
+      "Scoped",
+      "Sorcery",
+      "Untap all creatures you control.",
+    );
+    expect(scoped.notes).toEqual([]);
+    expect(scoped.definition.effects[0]).toEqual({
+      kind: "untap_all",
+      playerId: "controller",
+      what: "creature",
+    });
+  });
+
+  it("fights ANOTHER creature, which may be one of yours", () => {
+    const taunter = compile(
+      "Brash Taunter",
+      "Creature — Giant",
+      "Indestructible\nWhenever Brash Taunter is dealt damage, it deals that much damage to target opponent.\n{2}{R}, {T}: Brash Taunter fights another target creature.",
+      ["1", "4"],
+    );
+    expect(taunter.notes).toEqual([]);
+    // "another", not "you don't control": the only creature ruled out is the
+    // Taunter itself, and that restriction belongs on the TARGET rather than
+    // in the fight effect.
+    expect(taunter.definition.activated[0]?.targetRequirements).toEqual([
+      { kind: "creature", excludeSource: true },
+    ]);
+    expect(taunter.definition.activated[0]?.effects).toEqual([
+      { kind: "fight", cardId: "self", withTarget: { type: "chosen", index: 0 } },
+    ]);
+  });
+
+  it("untaps and steals the whole board at runtime", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    const bear = createCardDefinition({
+      name: "Bear",
+      typeLine: "Creature — Bear",
+      power: 2,
+      toughness: 2,
+    });
+    game.definitions[bear.id] = bear;
+    const put = (ownerId: string) => {
+      const card = createCardInstance({ definitionId: bear.id, ownerId, zone: "battlefield" });
+      card.tapped = true;
+      game.cards[card.id] = card;
+      game.players.find((entry) => entry.id === ownerId)!.zones.battlefield.push(card.id);
+      return card.id;
+    };
+    const mine = put(p1.id);
+    const theirs = put(p2.id);
+
+    const after = applyEffects(
+      game,
+      bindCardEffects(
+        game,
+        [
+          { kind: "untap_all", playerId: "each_player", what: "creature" },
+          {
+            kind: "gain_control_all",
+            playerId: "controller",
+            what: "creatures",
+            untilEot: true,
+          },
+        ],
+        { controllerId: p1.id, sourceId: null },
+      ),
+    );
+    expect(after.cards[mine]?.tapped).toBe(false);
+    // The opponent's creature is the one that matters: an each_player that
+    // bound to the controller alone would leave this tapped and unstolen.
+    expect(after.cards[theirs]?.tapped).toBe(false);
+    expect(after.cards[theirs]?.controllerId).toBe(p1.id);
+  });
+});
