@@ -265,6 +265,7 @@ export function sacrificeScopeMatches(
     | "another_black_creature"
     | "another_creature_or_artifact"
     | "permanent"
+    | "nonland_permanent"
     | "token",
   sourceId?: CardInstanceId,
 ): boolean {
@@ -274,6 +275,11 @@ export function sacrificeScopeMatches(
   // actually narrows the fodder ("Sacrifice a Goblin").
   if (scope === "permanent") {
     return true;
+  }
+  // Bolas's Citadel: any permanent that is not a land. Falling through to
+  // the card-type checks below would make it match nothing.
+  if (scope === "nonland_permanent") {
+    return !types.includes("land");
   }
   // Fountainport: any token, whatever it is a token of.
   if (scope === "token") {
@@ -719,6 +725,10 @@ export function legalActions(state: GameState, playerId: PlayerId): LegalAction[
   // Top-of-library grants (Oracle of Mul Daya, Elven Chorus): the library's
   // top card joins the playable set when a battlefield permanent allows it.
   const topGrant = topOfLibraryGrant(state, playerId);
+  // Bolas's Citadel: a top-of-library cast costs LIFE, not mana, so the
+  // payability check must ask a different question or the spell is never
+  // offered — or is offered and then refused.
+  const topPaysLife = topGrant?.payLifeInsteadOfMana === true;
   const topCardId = topGrant ? player.zones.library[0] : undefined;
   if (topGrant && topCardId) {
     const topCard = state.cards[topCardId];
@@ -740,7 +750,21 @@ export function legalActions(state: GameState, playerId: PlayerId): LegalAction[
         !abolished &&
         !handOnly &&
         castableFromTop(state, playerId, topCardId) &&
-        castableFace(state, playerId, topDefinition, potential, 0, undefined, flashGrant)
+        (topPaysLife
+          ? // Bolas's Citadel: the cost is LIFE equal to the mana value, so
+            // asking whether the MANA is available would hide every spell
+            // the player could actually cast. CR 119.4: down to zero, not
+            // past it.
+            player.life >= topDefinition.characteristics.manaValue
+          : castableFace(
+              state,
+              playerId,
+              topDefinition,
+              potential,
+              0,
+              undefined,
+              flashGrant,
+            ))
       ) {
         actions.push({ kind: "cast_spell", cardId: topCardId, faceIndex: 0, fromCommand: false });
       }

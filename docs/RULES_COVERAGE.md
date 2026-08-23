@@ -870,6 +870,21 @@ more questions it can now ask:
   (Bennie Bracks). Reads the existing per-player `createdTokenThisTurn`
   list, and asks whether the CONTROLLER is in it — an opponent's Treasure
   must not satisfy it.
+- **Paying life for the top of your library** — Bolas's Citadel.
+  `TopOfLibraryGrant.payLifeInsteadOfMana` replaces the cost OUTRIGHT, the
+  same way flashback does, and rides the same life-payment path. A cost
+  that had merely been reduced would still refuse a caster with no mana.
+
+  CR 119.4: life may be paid down to zero but never past it, so the guard
+  is `life < cost` — not the `life <= cost` the flashback rule uses, which
+  would wrongly refuse the exact-life cast. `legalActions` asks the same
+  question, or the spell is never offered at all.
+
+- **`nonland_permanent` as a sacrifice scope** — Bolas's Citadel's own
+  ability. Falling through to the card-type checks would have made it match
+  nothing. Three scopes were missing from the SERIALIZER's hand-written
+  chain (`another_creature_or_artifact`, `token`, and this one), which made
+  any definition using them fail to LOAD rather than merely parse wrong.
 - **`becomes_target`** — Goldspan Dragon. Dispatched from `putSpellOnStack`
   for each DISTINCT permanent the spell targets: a spell that names the
   same creature twice still targeted it once for this purpose. Only the

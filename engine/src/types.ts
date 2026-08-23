@@ -3135,6 +3135,12 @@ export type TopOfLibraryGrant = {
   /** Realmwalker: "creature spells of the chosen type", read from the
    * granting card's chosen creature type. */
   castChosenType?: boolean;
+  /**
+   * Bolas's Citadel: a spell cast this way pays LIFE equal to its mana
+   * value instead of its mana cost. It replaces the cost outright, the
+   * same way flashback does, rather than reducing it.
+   */
+  payLifeInsteadOfMana?: boolean;
 };
 
 export type EnterTappedUnless =
@@ -3254,6 +3260,8 @@ export type ActivatedAbility = {
     | "creature_or_artifact"
     | "land"
     | "treasure"
+    /** Bolas's Citadel: "Sacrifice ten nonland permanents". */
+    | "nonland_permanent"
     /** Any permanent you control — only ever paired with `sacrificeSubtype`,
      * because "Sacrifice a Goblin" names no card type. */
     | "permanent"
@@ -3407,6 +3415,8 @@ export type ManaAbility = {
     | "creature_or_artifact"
     | "land"
     | "treasure"
+    /** Bolas's Citadel: "Sacrifice ten nonland permanents". */
+    | "nonland_permanent"
     /** Skirk Prospector: "Sacrifice a Goblin" — always paired with
      * `costSacrificeSubtype`, which carries the whole filter. */
     | "permanent"

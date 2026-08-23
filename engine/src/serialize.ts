@@ -869,6 +869,9 @@ export function parseGameState(json: string): GameState {
                 ...(grant.castAll === true ? { castAll: true } : {}),
                 ...(grant.castColorless === true ? { castColorless: true } : {}),
                 ...(grant.castChosenType === true ? { castChosenType: true } : {}),
+                ...(grant.payLifeInsteadOfMana === true
+                  ? { payLifeInsteadOfMana: true }
+                  : {}),
                 ...(grant.castTypesAny === undefined
                   ? {}
                   : {
@@ -3974,7 +3977,13 @@ function parseActivatedAbilities(value: unknown, label: string): ActivatedAbilit
                 scope !== "creature_or_artifact" &&
                 scope !== "land" &&
                 scope !== "treasure" &&
-                scope !== "permanent"
+                scope !== "permanent" &&
+                // These three were missing from the chain, which made any
+                // definition using them fail to LOAD rather than merely
+                // parse wrong.
+                scope !== "another_creature_or_artifact" &&
+                scope !== "nonland_permanent" &&
+                scope !== "token"
               ) {
                 throw new Error(`Invalid ${label}[${index}].sacrificeCost`);
               }

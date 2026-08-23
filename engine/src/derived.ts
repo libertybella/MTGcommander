@@ -768,11 +768,13 @@ export function topOfLibraryGrant(
   castColorless: boolean;
   castTypesAny: string[];
   castSubtypesAny: string[];
+  payLifeInsteadOfMana: boolean;
 } | null {
   let look = false;
   let playLands = false;
   let castAll = false;
   let castColorless = false;
+  let payLifeInsteadOfMana = false;
   const castTypes = new Set<string>();
   const castSubtypes = new Set<string>();
   for (const card of Object.values(state.cards)) {
@@ -792,6 +794,8 @@ export function topOfLibraryGrant(
     playLands = playLands || grant.playLands === true;
     castAll = castAll || grant.castAll === true;
     castColorless = castColorless || grant.castColorless === true;
+    payLifeInsteadOfMana =
+      payLifeInsteadOfMana || grant.payLifeInsteadOfMana === true;
     for (const type of grant.castTypesAny ?? []) {
       castTypes.add(type);
     }
@@ -809,6 +813,7 @@ export function topOfLibraryGrant(
     playLands,
     castAll,
     castColorless,
+    payLifeInsteadOfMana,
     castTypesAny: [...castTypes],
     castSubtypesAny: [...castSubtypes],
   };

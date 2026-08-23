@@ -593,7 +593,7 @@ const SACRIFICE_COST = /Sacrifice (?:~|this land|this creature|this artifact|thi
  * "Sacrifice two other creatures". Group 1 is the count word when present.
  */
 const SACRIFICE_TYPE_COST =
-  /Sacrifice (?:an? |another |(two|three|four|five|six|seven|\d+) (?:other )?)(black creature|creature or artifact|artifact or creature|creature|artifact|land|Treasure|token|artifacts and\/or creatures|creatures|artifacts|lands)\b/i;
+  /Sacrifice (?:an? |another |(two|three|four|five|six|seven|eight|nine|ten|\d+) (?:other )?)(black creature|creature or artifact|artifact or creature|creature|artifact|land|Treasure|token|artifacts and\/or creatures|nonland permanents|creatures|artifacts|lands)\b/i;
 /**
  * "Sacrifice a Goblin" / "Sacrifice a Desert" / "Sacrifice a Food" — the
  * fodder is named by a subtype and no card type appears, so the scope is
@@ -622,7 +622,7 @@ const MILL_COST = /Mill (a|one|two|three|\d+) cards?/i;
 const EXILE_GRAVEYARD_COST =
   /Exile (a|one|two|three|four|five|\d+) (?:(creature|artifact|land|instant|sorcery) )?cards? from your graveyard/i;
 const COST_UNIT =
-  "(?:\\{[^}]+\\})+|Sacrifice (?:~|this land|this creature|this artifact|this permanent)|Sacrifice (?:an? |another )(?:black )?(?:creature or artifact|artifact or creature|creature|artifact|land|Treasure|token)|Sacrifice (?:an? |(?:one|two|three|four|five|\\d+) )[A-Z][a-z]+s?|Sacrifice (?:two|three|four|five|six|seven|\\d+) (?:other )?(?:creatures|artifacts|lands|artifacts and\\/or creatures)|Exile ~|Pay \\d+ life|Pay life equal to the number of colors in your commanders?['\u2019]? color identity|Tap an untapped (?:legendary )?creature you control|Remove (?:a|an|one|two|three|four|five|six|seven|eight|nine|ten|\\d+) (?:[-+]\\d\\/[-+]\\d|[a-z]+) counters? from ~|Put (?:a|an|one|two|three|\\d+) (?:[-+]\\d\\/[-+]\\d|[a-z]+) counters? on ~|Discard an? (?:creature|artifact|enchantment|land|instant|sorcery)? ?card|Mill (?:a|one|two|three|\\d+) cards?|Exile (?:a|one|two|three|four|five|\\d+) (?:(?:creature|artifact|land|instant|sorcery) )?cards? from your graveyard";
+  "(?:\\{[^}]+\\})+|Sacrifice (?:~|this land|this creature|this artifact|this permanent)|Sacrifice (?:an? |another )(?:black )?(?:creature or artifact|artifact or creature|creature|artifact|land|Treasure|token)|Sacrifice (?:an? |(?:one|two|three|four|five|\\d+) )[A-Z][a-z]+s?|Sacrifice (?:two|three|four|five|six|seven|eight|nine|ten|\\d+) (?:other )?(?:creatures|artifacts|lands|nonland permanents|artifacts and\\/or creatures)|Exile ~|Pay \\d+ life|Pay life equal to the number of colors in your commanders?['\u2019]? color identity|Tap an untapped (?:legendary )?creature you control|Remove (?:a|an|one|two|three|four|five|six|seven|eight|nine|ten|\\d+) (?:[-+]\\d\\/[-+]\\d|[a-z]+) counters? from ~|Put (?:a|an|one|two|three|\\d+) (?:[-+]\\d\\/[-+]\\d|[a-z]+) counters? on ~|Discard an? (?:creature|artifact|enchantment|land|instant|sorcery)? ?card|Mill (?:a|one|two|three|\\d+) cards?|Exile (?:a|one|two|three|four|five|\\d+) (?:(?:creature|artifact|land|instant|sorcery) )?cards? from your graveyard";
 
 function splitAbility(sentence: string): { costText: string; rest: string } | null {
   // "Metalcraft — {T}: …" — the ability word is flavor (Mox Opal).
@@ -663,6 +663,7 @@ function parseAbilityCost(
     | "land"
     | "treasure"
     | "permanent"
+    | "nonland_permanent"
     | "token";
   sacrificeSubtype?: string;
   sacrificeCount?: number;
@@ -699,7 +700,9 @@ function parseAbilityCost(
     // The counted forms are printed plural; the scopes are singular. Only
     // "creatures" was folded before, so "Sacrifice two artifacts" carried a
     // scope name no fodder matcher would ever match.
-    .replace(/^(creature|artifact|land)s$/, "$1");
+    .replace(/^(creature|artifact|land)s$/, "$1")
+    // Bolas's Citadel: "ten nonland permanents".
+    .replace(/^nonland permanents$/, "nonland_permanent");
   // Only consulted when no card-type scope was found, so "a Treasure" and
   // "another black creature" keep the scopes they already had.
   const subtypeMatch =
@@ -719,7 +722,13 @@ function parseAbilityCost(
         ? scopeWord === "creature"
           ? ("another_creature" as const)
           : ("another_creature_or_artifact" as const)
-        : (scopeWord as "creature" | "artifact" | "land" | "treasure" | "token")
+        : (scopeWord as
+            | "creature"
+            | "artifact"
+            | "land"
+            | "treasure"
+            | "token"
+            | "nonland_permanent")
     : undefined;
   if (sacrificeCost === null) {
     return null;
@@ -14560,6 +14569,20 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
         lastMana.spendOnly = restriction;
         continue;
       }
+    }
+
+    // Bolas's Citadel: the top-of-library grant just parsed pays LIFE
+    // instead of mana. Attached to the grant rather than compiled as its
+    // own effect, because it is a cost replacement and not something that
+    // happens when the spell resolves.
+    if (
+      /^If you cast a spell this way, pay life equal to its mana value rather than pay its mana cost$/i.test(
+        sentence,
+      ) &&
+      result.topOfLibrary
+    ) {
+      result.topOfLibrary = { ...result.topOfLibrary, payLifeInsteadOfMana: true };
+      continue;
     }
 
     // Minas Tirith: "Activate only if you attacked with two or more creatures

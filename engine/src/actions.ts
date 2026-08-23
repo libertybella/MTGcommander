@@ -8,7 +8,7 @@ import {
 import { characteristicsOf, isCommander, isCreature, isInstant, isInstantOrSorcery, isLand, isLegendary, isMainPhase } from "./cardTypes";
 import { abilityLifeCost } from "./commanderIdentity";
 import { cloneGameState } from "./clone";
-import { costRelief, affinityArtifactDiscount, allBattlefieldCreatureCount, canPlayLandFromTop, canPlayLandsFromGraveyard, castCostReduction, castableFromTop, controlsCommander, creaturePower, freeEquipGranted, hasFlashGrant, activationNonManaPayment, altCastPayment, landDropAllowance, manaTapMultiplier, lockedByAbolisher, lockedFromCasting, noncreatureSpellCap, opponentControlsMoreLands, findFreeHandGrantIndex, opponentsCastLockedToHand, selfDiscountAmount, staticFreeCastCap, usesOncePerTurnFreeCast } from "./derived";
+import { costRelief, affinityArtifactDiscount, allBattlefieldCreatureCount, canPlayLandFromTop, canPlayLandsFromGraveyard, castCostReduction, castableFromTop, controlsCommander, creaturePower, freeEquipGranted, hasFlashGrant, activationNonManaPayment, altCastPayment, landDropAllowance, manaTapMultiplier, lockedByAbolisher, lockedFromCasting, noncreatureSpellCap, opponentControlsMoreLands, findFreeHandGrantIndex, opponentsCastLockedToHand, selfDiscountAmount, staticFreeCastCap, usesOncePerTurnFreeCast , topOfLibraryGrant } from "./derived";
 import { eliminatePlayerInPlace } from "./elimination";
 import { applyEffects, bindCardEffects, devotionTo } from "./effects";
 import { hasKeyword } from "./keywords";
@@ -332,8 +332,17 @@ function validateCast(
   if (!player) {
     throw new Error(`Unknown player ${playerId}`);
   }
-  // Flashback replaces the printed mana cost (CR 702.34a).
-  const flashbackLife = viaFlashback ? definition.flashback?.life ?? 0 : 0;
+  // Flashback replaces the printed mana cost (CR 702.34a). Bolas's
+  // Citadel does the same thing to a spell cast off the library top:
+  // life equal to its mana value, and no mana at all.
+  const citadelLife =
+    fromLibraryTop &&
+    topOfLibraryGrant(state, playerId)?.payLifeInsteadOfMana === true
+      ? definition.characteristics.manaValue
+      : 0;
+  const flashbackLife = viaFlashback
+    ? definition.flashback?.life ?? 0
+    : citadelLife;
   // Etali: free-cast impulse exiles pay nothing.
   const freeExileCast =
     fromExile &&
@@ -383,6 +392,13 @@ function validateCast(
     allBattlefieldCreatureCount(state) >= definition.altCostIfCreatures.count
   ) {
     Object.assign(cost, parseManaCost(definition.altCostIfCreatures.cost));
+  }
+  if (citadelLife > 0) {
+    // CR 119.4: life may be paid only down to zero, never past it.
+    if (player.life < citadelLife) {
+      throw new Error(`Pay ${citadelLife} life to cast this`);
+    }
+    return { cost: parseManaCost(""), fromCommand, flashbackLife: citadelLife };
   }
   if (flashbackLife > 0 && player.life <= flashbackLife) {
     throw new Error(`Pay ${flashbackLife} life to cast this`);

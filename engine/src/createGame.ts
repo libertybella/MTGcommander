@@ -541,6 +541,9 @@ export function createCardDefinition(
             ...(input.topOfLibrary.castAll ? { castAll: true } : {}),
             ...(input.topOfLibrary.castColorless ? { castColorless: true } : {}),
             ...(input.topOfLibrary.castChosenType ? { castChosenType: true } : {}),
+            ...(input.topOfLibrary.payLifeInsteadOfMana
+              ? { payLifeInsteadOfMana: true }
+              : {}),
             ...(input.topOfLibrary.castTypesAny
               ? { castTypesAny: [...input.topOfLibrary.castTypesAny] }
               : {}),

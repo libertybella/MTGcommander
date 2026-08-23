@@ -37325,3 +37325,189 @@ describe("wave 280: Goldspan Dragon", () => {
     expect(compiled.notes.length).toBeGreaterThan(0);
   });
 });
+
+describe("wave 281: paying life for the top of your library", () => {
+  const setup = (life: number, topManaValue: number) => {
+    const { game, p1 } = twoPlayers();
+    const citadelDef = createCardDefinition({
+      name: "Citadel",
+      typeLine: "Legendary Artifact",
+      topOfLibrary: { look: true, playLands: true, castAll: true, payLifeInsteadOfMana: true },
+    });
+    game.definitions[citadelDef.id] = citadelDef;
+    const citadel = createCardInstance({
+      definitionId: citadelDef.id,
+      ownerId: p1.id,
+      zone: "battlefield",
+    });
+    game.cards[citadel.id] = citadel;
+    p1.zones.battlefield.push(citadel.id);
+
+    const topDef = createCardDefinition({
+      name: "Big Spell",
+      typeLine: "Sorcery",
+      manaCost: "{" + String(topManaValue) + "}",
+      effects: [{ kind: "draw", playerId: "controller", count: 1 }],
+    });
+    game.definitions[topDef.id] = topDef;
+    const top = createCardInstance({
+      definitionId: topDef.id,
+      ownerId: p1.id,
+      zone: "library",
+    });
+    game.cards[top.id] = top;
+    p1.zones.library.unshift(top.id);
+    p1.life = life;
+    game.priorityPlayerId = p1.id;
+    game.turn = { ...game.turn, phase: "precombatMain", step: "precombatMain" };
+    return { game, p1, topId: top.id, citadelId: citadel.id };
+  };
+
+  it("charges life equal to the mana value and no mana", () => {
+    const { game, p1, topId } = setup(40, 5);
+    const cast = applyAction(game, {
+      kind: "cast_spell",
+      playerId: p1.id,
+      cardId: topId,
+      faceIndex: 0,
+    });
+    expect(cast.players.find((entry) => entry.id === p1.id)?.life).toBe(35);
+    expect(cast.stack).toHaveLength(1);
+    // No mana was available at all, so a cost that had merely been reduced
+    // would have refused the cast.
+    expect(cast.players.find((entry) => entry.id === p1.id)?.mana.C).toBe(0);
+  });
+
+  it("refuses when the life is not there", () => {
+    const { game, p1, topId } = setup(3, 5);
+    expect(() =>
+      applyAction(game, {
+        kind: "cast_spell",
+        playerId: p1.id,
+        cardId: topId,
+        faceIndex: 0,
+      }),
+    ).toThrow(/Pay 5 life/);
+  });
+
+  it("allows paying down to exactly zero", () => {
+    // CR 119.4: life may be paid down to zero, but never past it. A guard
+    // written as `life <= cost` — the flashback rule — would be wrong here.
+    const { game, p1, topId } = setup(5, 5);
+    const cast = applyAction(game, {
+      kind: "cast_spell",
+      playerId: p1.id,
+      cardId: topId,
+      faceIndex: 0,
+    });
+    expect(cast.players.find((entry) => entry.id === p1.id)?.life).toBe(0);
+  });
+
+  it("offers the cast when the life is there and no mana is", () => {
+    const { game, p1, topId } = setup(40, 5);
+    const actions = legalActions(game, p1.id);
+    expect(
+      actions.some(
+        (action) => action.kind === "cast_spell" && action.cardId === topId,
+      ),
+    ).toBe(true);
+
+    const broke = setup(2, 5);
+    expect(
+      legalActions(broke.game, broke.p1.id).some(
+        (action) => action.kind === "cast_spell" && action.cardId === broke.topId,
+      ),
+    ).toBe(false);
+  });
+
+  it("round trips the grant flag", () => {
+    const { game, citadelId } = setup(40, 5);
+    const round = parseGameState(serializeGameState(game));
+    expect(
+      round.definitions[round.cards[citadelId]!.definitionId]?.topOfLibrary,
+    ).toEqual({ look: true, playLands: true, castAll: true, payLifeInsteadOfMana: true });
+  });
+});
+
+describe("wave 281: sacrificing nonland permanents as a cost", () => {
+  it("matches any permanent that is not a land", () => {
+    const { game, p1 } = twoPlayers();
+    const put = (name: string, typeLine: string) => {
+      const definition = createCardDefinition({
+        name,
+        typeLine,
+        ...(typeLine.includes("Creature") ? { power: 1, toughness: 1 } : {}),
+      });
+      game.definitions[definition.id] = definition;
+      const card = createCardInstance({
+        definitionId: definition.id,
+        ownerId: p1.id,
+        zone: "battlefield",
+      });
+      game.cards[card.id] = card;
+      p1.zones.battlefield.push(card.id);
+      return card.id;
+    };
+    const bear = put("Bear", "Creature — Bear");
+    const rock = put("Rock", "Artifact");
+    const forest = put("Forest", "Basic Land — Forest");
+    expect(sacrificeScopeMatches(game, bear, "nonland_permanent")).toBe(true);
+    expect(sacrificeScopeMatches(game, rock, "nonland_permanent")).toBe(true);
+    // Falling through to the card-type checks would make it match nothing.
+    expect(sacrificeScopeMatches(game, forest, "nonland_permanent")).toBe(false);
+  });
+
+  it("compiles Bolas's Citadel whole", () => {
+    const compiled = compileOracleCard({
+      oracleId: "bc",
+      name: "Bolas's Citadel",
+      manaCost: "{3}{B}{B}{B}",
+      typeLine: "Legendary Artifact",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "You may look at the top card of your library any time.\nYou may play lands and cast spells from the top of your library. If you cast a spell this way, pay life equal to its mana value rather than pay its mana cost.\n{T}, Sacrifice ten nonland permanents: Each opponent loses 10 life.",
+    });
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.topOfLibrary).toEqual({
+      look: true,
+      playLands: true,
+      castAll: true,
+      payLifeInsteadOfMana: true,
+    });
+    expect(compiled.definition.activated[0]).toMatchObject({
+      tap: true,
+      sacrificeCost: "nonland_permanent",
+      sacrificeCount: 10,
+      effects: [{ kind: "lose_life", playerId: "each_opponent", amount: 10 }],
+    });
+  });
+
+  it("round trips the sacrifice scope", () => {
+    const { game, p1 } = twoPlayers();
+    const definition = createCardDefinition({
+      name: "Citadel",
+      typeLine: "Artifact",
+      activated: [
+        {
+          tap: true,
+          manaCost: "",
+          sacrificeCost: "nonland_permanent",
+          sacrificeCount: 10,
+          effects: [{ kind: "lose_life", playerId: "each_opponent", amount: 10 }],
+          targetRequirements: [],
+        },
+      ],
+    });
+    game.definitions[definition.id] = definition;
+    const round = parseGameState(serializeGameState(game));
+    // The parser's scope chain is hand-written: a scope missing from it makes
+    // the definition fail to LOAD, not merely parse wrong.
+    expect(round.definitions[definition.id]?.activated[0]?.sacrificeCost).toBe(
+      "nonland_permanent",
+    );
+    expect(p1.id).toBeDefined();
+  });
+});
