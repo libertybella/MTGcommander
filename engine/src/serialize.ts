@@ -3354,6 +3354,9 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
       ...(value.notLegendary === true ? { notLegendary: true } : {}),
       ...(value.nontoken === true ? { nontoken: true } : {}),
       ...(value.coloredOnly === true ? { coloredOnly: true } : {}),
+      ...(value.gainLifePerDestroyed === undefined
+        ? {}
+        : { gainLifePerDestroyed: expectNumber(value.gainLifePerDestroyed, `${label}.gainLifePerDestroyed`) }),
       ...(value.asSacrifice === true ? { asSacrifice: true } : {}),
       ...(value.toZone === "exile" ? { toZone: "exile" } : {}),
         ...(value.typesAny === undefined
@@ -3367,6 +3370,9 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
         ...(value.notLegendary === true ? { notLegendary: true } : {}),
         ...(value.nontoken === true ? { nontoken: true } : {}),
         ...(value.coloredOnly === true ? { coloredOnly: true } : {}),
+        ...(value.gainLifePerDestroyed === undefined
+          ? {}
+          : { gainLifePerDestroyed: expectNumber(value.gainLifePerDestroyed, `${label}.gainLifePerDestroyed`) }),
         ...(value.asSacrifice === true ? { asSacrifice: true } : {}),
         ...(value.toZone === "exile" ? { toZone: "exile" } : {}),
         ...(value.maxManaValue === undefined

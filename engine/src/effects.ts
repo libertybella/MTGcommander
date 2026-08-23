@@ -1273,6 +1273,23 @@ export function bindCardEffect(
         ...(effect.nontoken ? { nontoken: true } : {}),
         ...(effect.coloredOnly ? { coloredOnly: true } : {}),
         ...(effect.asSacrifice ? { asSacrifice: true } : {}),
+        ...(effect.gainLifePerDestroyed
+          ? { gainLifePerDestroyed: effect.gainLifePerDestroyed, lifeTo: context.controllerId }
+          : {}),
+        ...(effect.counterPerDestroyed
+          ? (() => {
+              const cardId = bindCardId(state, effect.counterPerDestroyed.cardId, context);
+              return cardId
+                ? {
+                    counterPerDestroyed: {
+                      cardId,
+                      counter: effect.counterPerDestroyed.counter,
+                      amount: effect.counterPerDestroyed.amount,
+                    },
+                  }
+                : {};
+            })()
+          : {}),
         ...(effect.toZone ? { toZone: effect.toZone } : {}),
         ...(effect.maxManaValue !== undefined ? { maxManaValue: effect.maxManaValue } : {}),
         ...(effect.minManaValue !== undefined ? { minManaValue: effect.minManaValue } : {}),
@@ -3120,6 +3137,23 @@ function applyDestroyAll(
   if (collectDies.length > 0) {
     dispatchEventsInPlace(next, collectDies);
     processDiesReturnsInPlace(next, collectDies);
+  }
+  // Fumigate / Bane of Progress: the sweep's own body count feeds what
+  // follows, so it is a rider on the sweep rather than a second effect that
+  // would have to ask what just happened.
+  if (effect.gainLifePerDestroyed && effect.lifeTo && doomed.length > 0) {
+    const gaining = next.players.find((entry) => entry.id === effect.lifeTo);
+    if (gaining) {
+      gaining.life += effect.gainLifePerDestroyed * doomed.length;
+    }
+  }
+  if (effect.counterPerDestroyed && doomed.length > 0) {
+    const holder = next.cards[effect.counterPerDestroyed.cardId];
+    if (holder && holder.zone === "battlefield") {
+      holder.counters[effect.counterPerDestroyed.counter] =
+        (holder.counters[effect.counterPerDestroyed.counter] ?? 0) +
+        effect.counterPerDestroyed.amount * doomed.length;
+    }
   }
   // Culling Ritual: one mana per permanent the sweep destroyed.
   if (effect.addManaPerDestroyed && effect.manaTo && doomed.length > 0) {

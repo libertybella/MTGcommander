@@ -11021,6 +11021,44 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
       continue;
     }
 
+    // Fumigate / Bane of Progress: "…for each <noun> destroyed this way"
+    // attaches to the sweep that just compiled, which is the only thing that
+    // knows the count. Refused when the previous effect was not a sweep,
+    // rather than compiling a rider that would read nothing.
+    const perDestroyed = sentence.match(
+      /^(?:You gain (\d+) life|Put an? ([+-]\d\/[+-]\d) counter on ~) for each (?:[a-z]+ )?destroyed this way$/i,
+    );
+    if (perDestroyed) {
+      const lastTrigger = result.triggers.at(-1);
+      const pool = lastTrigger ? lastTrigger.effects : result.effects;
+      // "Destroy all artifacts and enchantments" is TWO sweeps, so the rider
+      // goes on every trailing one — each counts its own kills and they add
+      // up. Attaching only to the last would have counted half the board and
+      // compiled perfectly cleanly.
+      const sweeps: Extract<CardEffect, { kind: "destroy_all" }>[] = [];
+      for (let back = pool.length - 1; back >= 0; back -= 1) {
+        const entry = pool[back];
+        if (entry?.kind !== "destroy_all") {
+          break;
+        }
+        sweeps.push(entry);
+      }
+      if (sweeps.length > 0) {
+        for (const sweep of sweeps) {
+          if (perDestroyed[1]) {
+            sweep.gainLifePerDestroyed = Number(perDestroyed[1]);
+          } else if (perDestroyed[2]) {
+            sweep.counterPerDestroyed = {
+              cardId: "self",
+              counter: perDestroyed[2] === "+1/+1" ? "p1p1" : "m1m1",
+              amount: 1,
+            };
+          }
+        }
+        continue;
+      }
+    }
+
     // Plaguecrafter's fallback rider: attaches to the just-compiled edict.
     if (/^Each player who can't discards a card$/i.test(sentence)) {
       const lastTrigger = result.triggers.at(-1);

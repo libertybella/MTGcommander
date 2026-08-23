@@ -28042,3 +28042,122 @@ describe("wave 219: a third spell union, and a restriction that lifts", () => {
   });
 });
 
+
+describe("wave 220: what the sweep took, counted", () => {
+  const compile = (name: string, manaCost: string, typeLine: string, oracleText: string, power?: string, toughness?: string) =>
+    compileOracleCard({
+      oracleId: name,
+      name,
+      manaCost,
+      typeLine,
+      power: power ?? null,
+      toughness: toughness ?? null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  it("pays Fumigate's life out of its own body count", () => {
+    const fumigate = compile(
+      "Fumigate",
+      "{3}{W}{W}",
+      "Sorcery",
+      "Destroy all creatures. You gain 1 life for each creature destroyed this way.",
+    );
+    expect(fumigate.notes).toEqual([]);
+    expect(fumigate.definition.effects).toEqual([
+      { kind: "destroy_all", what: "creatures", gainLifePerDestroyed: 1 },
+    ]);
+
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    const bearDef = createCardDefinition({
+      name: "Bear",
+      typeLine: "Creature — Bear",
+      power: 2,
+      toughness: 2,
+    });
+    game.definitions[bearDef.id] = bearDef;
+    const put = (ownerId: string) => {
+      const card = createCardInstance({ definitionId: bearDef.id, ownerId, zone: "battlefield" });
+      game.cards[card.id] = card;
+      game.players.find((entry) => entry.id === ownerId)!.zones.battlefield.push(card.id);
+      return card;
+    };
+    put(p1.id);
+    put(p2.id);
+    put(p2.id);
+
+    const before = game.players.find((entry) => entry.id === p1.id)!.life;
+    const next = applyEffect(game, {
+      kind: "destroy_all",
+      what: "creatures",
+      gainLifePerDestroyed: 1,
+      lifeTo: p1.id,
+    });
+    // Everyone's creatures count, not just the caster's — "each creature
+    // destroyed this way" is the whole sweep.
+    expect(next.players.find((entry) => entry.id === p1.id)!.life).toBe(before + 3);
+  });
+
+  it("counts both halves of a two-word sweep", () => {
+    const bane = compile(
+      "Bane of Progress",
+      "{4}{G}{G}",
+      "Creature — Elemental",
+      "When this creature enters, destroy all artifacts and enchantments. Put a +1/+1 counter on this creature for each permanent destroyed this way.",
+      "2",
+      "2",
+    );
+    expect(bane.notes).toEqual([]);
+    const effects = bane.definition.triggers[0]?.effects ?? [];
+    expect(effects).toHaveLength(2);
+    // "Artifacts and enchantments" is two sweeps, and the rider is on BOTH:
+    // on only the last it would have counted half the board.
+    for (const effect of effects) {
+      expect(effect).toMatchObject({
+        kind: "destroy_all",
+        counterPerDestroyed: { cardId: "self", counter: "p1p1", amount: 1 },
+      });
+    }
+
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const baneDef = createCardDefinition({
+      name: "Bane of Progress",
+      typeLine: "Creature — Elemental",
+      power: 2,
+      toughness: 2,
+    });
+    const artifactDef = createCardDefinition({ name: "Rock", typeLine: "Artifact" });
+    const enchantDef = createCardDefinition({ name: "Aura", typeLine: "Enchantment" });
+    for (const definition of [baneDef, artifactDef, enchantDef]) {
+      game.definitions[definition.id] = definition;
+    }
+    const put = (definitionId: string) => {
+      const card = createCardInstance({ definitionId, ownerId: p1.id, zone: "battlefield" });
+      game.cards[card.id] = card;
+      p1.zones.battlefield.push(card.id);
+      return card;
+    };
+    const baneCard = put(baneDef.id);
+    put(artifactDef.id);
+    put(artifactDef.id);
+    put(enchantDef.id);
+
+    let next = applyEffect(game, {
+      kind: "destroy_all",
+      what: "artifacts",
+      counterPerDestroyed: { cardId: baneCard.id, counter: "p1p1", amount: 1 },
+    });
+    next = applyEffect(next, {
+      kind: "destroy_all",
+      what: "enchantments",
+      counterPerDestroyed: { cardId: baneCard.id, counter: "p1p1", amount: 1 },
+    });
+    // Two artifacts plus one enchantment: three counters, not one.
+    expect(next.cards[baneCard.id]?.counters["p1p1"]).toBe(3);
+    expect(computedCard(next, baneCard.id)?.power).toBe(5);
+  });
+});
+

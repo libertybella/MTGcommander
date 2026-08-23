@@ -1166,6 +1166,11 @@ export type GameEffect =
        * permanent destroyed by the sweep. */
       addManaPerDestroyed?: ManaColor;
       manaTo?: PlayerId;
+      /** Fumigate: life for each permanent the sweep took. */
+      gainLifePerDestroyed?: number;
+      lifeTo?: PlayerId;
+      /** Bane of Progress: a counter on the source per permanent taken. */
+      counterPerDestroyed?: { cardId: CardInstanceId; counter: string; amount: number };
     }
   /** Rhystic Study: the payer chooses to pay or the effects happen. */
   | { kind: "unless_pays"; playerId: PlayerId; cost: string; effects: GameEffect[] }
@@ -2034,6 +2039,8 @@ export type CardEffect =
        * the color is auto-picked at bind from these options (first
        * commander-identity match, else the first listed; documented). */
       addManaPerDestroyedOptions?: ManaColor[];
+      gainLifePerDestroyed?: number;
+      counterPerDestroyed?: { cardId: CardIdSelector; counter: string; amount: number };
     }
   | {
       kind: "unless_pays";
