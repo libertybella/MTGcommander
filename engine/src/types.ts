@@ -2939,6 +2939,13 @@ export type ManaAbility = {
   producesOptions: ManaColor[];
   producesAnyColor: boolean;
   damageToController: number;
+  /**
+   * Pristine Talisman: "{T}: Add {C}. You gain 1 life." The life is part of
+   * the mana ability, not a separate effect — parked in
+   * `definition.effects` it would never run at all, because a permanent
+   * spell resolves by entering the battlefield.
+   */
+  gainLifeToController?: number;
   /** Gilded Lotus: how much of the chosen color one tap adds (default 1). */
   count?: number;
   /** Treasure tokens: tapping for this mana also sacrifices the permanent. */

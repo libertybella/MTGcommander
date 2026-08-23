@@ -1139,6 +1139,11 @@ function applyTapForMana(
       },
     ]);
   }
+  if (ability.gainLifeToController && ability.gainLifeToController > 0) {
+    next = applyEffects(next, [
+      { kind: "gain_life", playerId, amount: ability.gainLifeToController },
+    ]);
+  }
   return next;
 }
 

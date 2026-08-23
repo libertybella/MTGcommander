@@ -311,6 +311,9 @@ export function createCardDefinition(
           producesOptions: [...ability.producesOptions],
           producesAnyColor: ability.producesAnyColor,
           damageToController: ability.damageToController,
+          ...(ability.gainLifeToController === undefined
+            ? {}
+            : { gainLifeToController: ability.gainLifeToController }),
           ...(ability.count && ability.count > 1 ? { count: ability.count } : {}),
           ...(ability.sacrificeSelf ? { sacrificeSelf: true } : {}),
           ...(ability.costMana ? { costMana: ability.costMana } : {}),

@@ -31669,3 +31669,111 @@ describe("wave 244: subject riders on a spell, not only an ability", () => {
     expect(separated.notes.join(" ")).toContain("Sacrifice it");
   });
 });
+
+describe("wave 245: a mana ability that also gains life", () => {
+  it("folds the life onto the mana ability, not into spell effects", () => {
+    const talisman = compileOracleCard({
+      oracleId: "Pristine Talisman",
+      name: "Pristine Talisman",
+      manaCost: "{3}",
+      typeLine: "Artifact",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText: "{T}: Add {C}. You gain 1 life.",
+    });
+    expect(talisman.notes).toEqual([]);
+    expect(talisman.definition.manaAbilities[0]).toMatchObject({
+      produces: { C: 1 },
+      gainLifeToController: 1,
+    });
+    // The point of the wave: parked in `effects` it never runs at all,
+    // because a permanent spell resolves by entering the battlefield. The
+    // card scored a full compile in that state.
+    expect(talisman.definition.effects).toEqual([]);
+  });
+
+  it("gains the life when the ability is actually used", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const talisman = createCardDefinition({
+      name: "Pristine Talisman",
+      typeLine: "Artifact",
+      manaAbilities: [
+        {
+          produces: { C: 1 },
+          producesOptions: [],
+          producesAnyColor: false,
+          damageToController: 0,
+          gainLifeToController: 1,
+        },
+      ],
+    });
+    game.definitions[talisman.id] = talisman;
+    const card = createCardInstance({
+      definitionId: talisman.id,
+      ownerId: p1.id,
+      zone: "battlefield",
+    });
+    card.summoningSick = false;
+    game.cards[card.id] = card;
+    p1.zones.battlefield.push(card.id);
+    game.turn.phase = "precombatMain";
+    game.turn.step = "precombatMain";
+
+    const before = p1.life;
+    const after = applyAction(game, {
+      kind: "tap_for_mana",
+      playerId: p1.id,
+      cardId: card.id,
+    });
+    const player = after.players.find((entry) => entry.id === p1.id)!;
+    expect(player.mana.C).toBe(1);
+    expect(player.life).toBe(before + 1);
+  });
+
+  it("does not fold across a printed line, and round trips", () => {
+    // A new printed line is a different ability; the life would belong to
+    // that one instead.
+    const separated = compileOracleCard({
+      oracleId: "Separated",
+      name: "Separated",
+      manaCost: "{3}",
+      typeLine: "Artifact",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText: "{T}: Add {C}.\nYou gain 1 life.",
+    });
+    expect(separated.definition.manaAbilities[0]?.gainLifeToController).toBeUndefined();
+
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const definition = createCardDefinition({
+      name: "Rider Holder",
+      typeLine: "Artifact",
+      manaAbilities: [
+        {
+          produces: { C: 1 },
+          producesOptions: [],
+          producesAnyColor: false,
+          damageToController: 0,
+          gainLifeToController: 2,
+        },
+      ],
+    });
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({
+      definitionId: definition.id,
+      ownerId: p1.id,
+      zone: "battlefield",
+    });
+    game.cards[card.id] = card;
+    p1.zones.battlefield.push(card.id);
+
+    const round = parseGameState(serializeGameState(game));
+    expect(round.definitions[definition.id]?.manaAbilities[0]?.gainLifeToController).toBe(2);
+  });
+});

@@ -9849,6 +9849,27 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
     if (!sentence) {
       continue;
     }
+    // Pristine Talisman: a life rider on the mana ability printed with it.
+    // Parked in `result.effects` it would never run at all, because a
+    // permanent spell resolves by entering the battlefield rather than by
+    // resolving its effects.
+    const manaLifeRider = sentence.match(/^You gain (one|two|three|\d+) life$/i);
+    const riddenMana = result.manaAbilities[result.manaAbilities.length - 1];
+
+    if (
+      manaLifeRider?.[1] &&
+      riddenMana &&
+      index > 0 &&
+      !lineStart[index] &&
+      riddenMana.gainLifeToController === undefined
+    ) {
+      const gained = parseCount(manaLifeRider[1]);
+      if (gained) {
+        riddenMana.gainLifeToController = gained;
+        continue;
+      }
+    }
+
     // A subject rider attaches to the effect that made the permanent, and
     // it must be tried BEFORE the general clause branches. Read later,
     // "It gains haste until end of turn" compiles as a back-reference to

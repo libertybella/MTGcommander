@@ -4670,6 +4670,14 @@ function parseManaAbilities(value: unknown, label: string): ManaAbility[] {
         entry.damageToController === undefined
           ? 0
           : expectNumber(entry.damageToController, `${label}[${index}].damageToController`),
+      ...(entry.gainLifeToController === undefined
+        ? {}
+        : {
+            gainLifeToController: expectNumber(
+              entry.gainLifeToController,
+              `${label}[${index}].gainLifeToController`,
+            ),
+          }),
       ...(entry.count === undefined
         ? {}
         : { count: expectNumber(entry.count, `${label}[${index}].count`) }),
