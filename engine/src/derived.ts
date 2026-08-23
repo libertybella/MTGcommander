@@ -453,18 +453,54 @@ export function wouldSkipDraw(state: GameState, playerId: string): boolean {
   });
 }
 
-/** CR 402.2: 7 unless a permanent removes the maximum. null means no maximum. */
+/**
+ * CR 402.2: 7, unless a permanent removes the maximum (null) or changes it.
+ *
+ * A removed maximum wins over any numeric change: "no maximum hand size"
+ * and "reduced by seven" together is still no maximum, because there is
+ * nothing left to reduce. Numeric effects apply in set-then-reduce order
+ * and floor at zero — a hand size cannot go negative, and Jin-Gitaxias
+ * against the default seven is exactly zero.
+ */
 export function maxHandSizeOf(state: GameState, playerId: string): number | null {
-  const unlimited = Object.values(state.cards).some((card) => {
-    if (card.zone !== "battlefield" || card.controllerId !== playerId) {
-      return false;
+  let unlimited = false;
+  const effects: NonNullable<CardDefinition["handSizeEffect"]>[] = [];
+  for (const card of Object.values(state.cards)) {
+    if (card.zone !== "battlefield" || abilitiesRemoved(state, card.id)) {
+      continue;
     }
-    if (abilitiesRemoved(state, card.id)) {
-      return false;
+    const definition = state.definitions[card.definitionId];
+    if (!definition) {
+      continue;
     }
-    return state.definitions[card.definitionId]?.noMaxHandSize === true;
-  });
-  return unlimited ? null : 7;
+    if (card.controllerId === playerId && definition.noMaxHandSize === true) {
+      unlimited = true;
+    }
+    const effect = definition.handSizeEffect;
+    if (!effect) {
+      continue;
+    }
+    // "Each OPPONENT's maximum hand size" is read from the other side of
+    // the table: the card's controller is not who it affects.
+    const affected =
+      effect.scope === "controller"
+        ? card.controllerId === playerId
+        : card.controllerId !== playerId;
+    if (affected) {
+      effects.push(effect);
+    }
+  }
+  if (unlimited) {
+    return null;
+  }
+  let size = 7;
+  for (const effect of effects.filter((entry) => entry.mode === "set")) {
+    size = effect.amount;
+  }
+  for (const effect of effects.filter((entry) => entry.mode === "reduce")) {
+    size -= effect.amount;
+  }
+  return Math.max(0, size);
 }
 
 /**

@@ -136,6 +136,20 @@ export type CardDefinition = {
   modeChoice?: { min: number; max: number; maxIfCommander?: number };
   /** "You have no maximum hand size" while this permanent is on the battlefield. */
   noMaxHandSize?: boolean;
+  /**
+   * Jin-Gitaxias: "Each opponent's maximum hand size is reduced by seven."
+   * Twenty-Toed Toad: "Your maximum hand size is twenty."
+   *
+   * `mode` is explicit rather than implied by which of two optional
+   * numbers is present: "set to N" and "reduce by N" are different
+   * questions, and a shape where both or neither could be given would
+   * make two nonsense states representable.
+   */
+  handSizeEffect?: {
+    scope: "controller" | "opponents";
+    mode: "set" | "reduce";
+    amount: number;
+  };
   /** Additional land drops granted each of the controller's turns (Exploration). */
   extraLandDrops?: number;
   /** Rites of Flourishing: the same grant, but to EVERY player rather than

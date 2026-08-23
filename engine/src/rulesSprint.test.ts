@@ -18,7 +18,7 @@ import {
 } from "./index";
 import { activatedOf, cardMatchesSubtype, computedCard, dynamicCountOf, triggersOf } from "./characteristicsEngine";
 import { mostCommonControlledCreatureType } from "./effects";
-import { castCostReduction, castableFromTop, drawCapFor, freeEquipGranted, hasFlashGrant, landDropAllowance, permanentsControlledBy, reliefAdjustedCost, selfDiscountAmount, wouldEnterTapped } from "./derived";
+import { castCostReduction, castableFromTop, drawCapFor, freeEquipGranted, hasFlashGrant, landDropAllowance, maxHandSizeOf, permanentsControlledBy, reliefAdjustedCost, selfDiscountAmount, wouldEnterTapped } from "./derived";
 import { hasKeyword } from "./keywords";
 import { dispatchEventsInPlace, triggerConditionHolds } from "./triggers";
 import { applyCombatDamage, blockRestriction, declareAttackers } from "./combat";
@@ -29565,5 +29565,155 @@ describe("wave 225: damage that spends the amount the trigger carried", () => {
         subjectFilter,
       );
     }
+  });
+});
+
+describe("wave 226: a maximum hand size that is a number", () => {
+  const compile = (name: string, typeLine: string, oracleText: string, power?: string, toughness?: string) =>
+    compileOracleCard({
+      oracleId: name,
+      name,
+      manaCost: "{5}{U}{U}",
+      typeLine,
+      power: power ?? null,
+      toughness: toughness ?? null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  const put = (game: GameState, definitionId: string, ownerId: string) => {
+    const card = createCardInstance({ definitionId, ownerId, zone: "battlefield" });
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === ownerId)!.zones.battlefield.push(card.id);
+    return card;
+  };
+
+  it("reads both spellings into one field", () => {
+    const jin = compile(
+      "Jin-Gitaxias, Core Augur",
+      "Legendary Creature — Phyrexian Praetor",
+      "Flash\nEach opponent's maximum hand size is reduced by seven.",
+      "5",
+      "4",
+    );
+    expect(jin.notes).toEqual([]);
+    expect(jin.definition.handSizeEffect).toEqual({
+      scope: "opponents",
+      mode: "reduce",
+      amount: 7,
+    });
+
+    const toad = compile(
+      "Twenty-Toed Toad",
+      "Creature — Frog",
+      "Your maximum hand size is twenty.",
+      "1",
+      "3",
+    );
+    expect(toad.notes).toEqual([]);
+    expect(toad.definition.handSizeEffect).toEqual({
+      scope: "controller",
+      mode: "set",
+      amount: 20,
+    });
+  });
+
+  it("empties the opponents' hands and leaves the controller at seven", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    const jin = createCardDefinition({
+      name: "Jin-Gitaxias, Core Augur",
+      typeLine: "Legendary Creature — Phyrexian Praetor",
+      power: 5,
+      toughness: 4,
+      handSizeEffect: { scope: "opponents", mode: "reduce", amount: 7 },
+    });
+    game.definitions[jin.id] = jin;
+    expect(maxHandSizeOf(game, p1.id)).toBe(7);
+    expect(maxHandSizeOf(game, p2.id)).toBe(7);
+
+    put(game, jin.id, p1.id);
+    // "Each OPPONENT's" is read from the other side of the table: the card's
+    // own controller must be untouched, which a scope-blind reading would
+    // get exactly backwards for the player who cast it.
+    expect(maxHandSizeOf(game, p1.id)).toBe(7);
+    expect(maxHandSizeOf(game, p2.id)).toBe(0);
+  });
+
+  it("floors at zero rather than going negative", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    const jin = createCardDefinition({
+      name: "Jin-Gitaxias, Core Augur",
+      typeLine: "Legendary Creature — Phyrexian Praetor",
+      power: 5,
+      toughness: 4,
+      handSizeEffect: { scope: "opponents", mode: "reduce", amount: 7 },
+    });
+    game.definitions[jin.id] = jin;
+    put(game, jin.id, p1.id);
+    put(game, jin.id, p1.id);
+    // Two of them is minus seven, and a hand size cannot be negative — the
+    // cleanup step would otherwise ask for a discard count below zero.
+    expect(maxHandSizeOf(game, p2.id)).toBe(0);
+  });
+
+  it("lets 'no maximum' beat a reduction, not the other way round", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    const jin = createCardDefinition({
+      name: "Jin-Gitaxias, Core Augur",
+      typeLine: "Legendary Creature — Phyrexian Praetor",
+      power: 5,
+      toughness: 4,
+      handSizeEffect: { scope: "opponents", mode: "reduce", amount: 7 },
+    });
+    const reliquary = createCardDefinition({
+      name: "Reliquary Tower",
+      typeLine: "Land",
+      noMaxHandSize: true,
+    });
+    for (const definition of [jin, reliquary]) {
+      game.definitions[definition.id] = definition;
+    }
+    put(game, jin.id, p1.id);
+    put(game, reliquary.id, p2.id);
+    // There is nothing left to reduce once the maximum is gone. Applying the
+    // reduction first and then checking would return 0 instead of null.
+    expect(maxHandSizeOf(game, p2.id)).toBeNull();
+  });
+
+  it("sets before it reduces, and round trips", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const toad = createCardDefinition({
+      name: "Twenty-Toed Toad",
+      typeLine: "Creature — Frog",
+      power: 1,
+      toughness: 3,
+      handSizeEffect: { scope: "controller", mode: "set", amount: 20 },
+    });
+    const shrink = createCardDefinition({
+      name: "Hand Shrinker",
+      typeLine: "Enchantment",
+      handSizeEffect: { scope: "controller", mode: "reduce", amount: 5 },
+    });
+    for (const definition of [toad, shrink]) {
+      game.definitions[definition.id] = definition;
+    }
+    put(game, toad.id, p1.id);
+    put(game, shrink.id, p1.id);
+    // Twenty, then minus five. Reducing first would give 2 and then be
+    // overwritten by the set, losing the reduction entirely.
+    expect(maxHandSizeOf(game, p1.id)).toBe(15);
+
+    const round = parseGameState(serializeGameState(game));
+    expect(round.definitions[toad.id]?.handSizeEffect).toEqual({
+      scope: "controller",
+      mode: "set",
+      amount: 20,
+    });
+    expect(maxHandSizeOf(round, p1.id)).toBe(15);
   });
 });

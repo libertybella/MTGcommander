@@ -61,6 +61,7 @@ export type CompiledOracleText = {
   enchantedTappedBonus?: { color: Color | "chosen"; amount: number };
   loyaltyAbilities?: LoyaltyAbility[];
   noMaxHandSize?: boolean;
+  handSizeEffect?: CardDefinition["handSizeEffect"];
   opponentsDrawCap?: number;
   damageReplacement?: DamageReplacement;
   manaTapMultiplier?: number;
@@ -9915,6 +9916,37 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
     if (/^You have no maximum hand size$/i.test(sentence)) {
       result.noMaxHandSize = true;
       continue;
+    }
+    // "Your maximum hand size is twenty" (Twenty-Toed Toad) and "Each
+    // opponent's maximum hand size is reduced by seven" (Jin-Gitaxias) —
+    // one field, because they differ only in whose hand and which way.
+    const handSizeSet = sentence.match(
+      /^(Your|Each opponent's) maximum hand size is ([\w-]+)$/i,
+    );
+    if (handSizeSet?.[1] && handSizeSet[2]) {
+      const amount = parseCount(handSizeSet[2]);
+      if (amount !== null) {
+        result.handSizeEffect = {
+          scope: /^your$/i.test(handSizeSet[1]) ? "controller" : "opponents",
+          mode: "set",
+          amount,
+        };
+        continue;
+      }
+    }
+    const handSizeReduced = sentence.match(
+      /^(Your|Each opponent's) maximum hand size is reduced by ([\w-]+)$/i,
+    );
+    if (handSizeReduced?.[1] && handSizeReduced[2]) {
+      const amount = parseCount(handSizeReduced[2]);
+      if (amount !== null) {
+        result.handSizeEffect = {
+          scope: /^your$/i.test(handSizeReduced[1]) ? "controller" : "opponents",
+          mode: "reduce",
+          amount,
+        };
+        continue;
+      }
     }
 
     // Narset, Parter of Veils.

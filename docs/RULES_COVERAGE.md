@@ -648,6 +648,23 @@ Documented limits:
   (Cryptolith Rite's path), not `grant_activated` — a mana ability must never
   use the stack.
 
+### Maximum hand size as a number (wave 226)
+
+`maxHandSizeOf` returned 7 or null and nothing in between, because the
+only shape the engine knew was "you have no maximum hand size". It now
+also applies `CardDefinition.handSizeEffect` — a scope (the controller,
+or their opponents), a mode (set, or reduce by), and an amount:
+
+- "Each opponent's maximum hand size is reduced by seven" (Jin-Gitaxias)
+- "Your maximum hand size is twenty" (Twenty-Toed Toad)
+
+Three orderings are deliberate. A removed maximum beats any numeric
+change, because there is nothing left to reduce. Sets apply before
+reduces, so a set does not overwrite a reduction that should stack on top
+of it. And the result floors at zero — Jin-Gitaxias against the default
+seven is exactly zero, and the cleanup step must never be handed a
+negative discard count.
+
 ### Damage that spends the trigger's amount (wave 225)
 
 "It deals that much damage to …" pays out whatever the trigger carried —

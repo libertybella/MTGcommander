@@ -488,6 +488,28 @@ export function parseGameState(json: string): GameState {
         def.imageUrl === undefined ? "" : expectString(def.imageUrl, "definition.imageUrl", true),
       ...(def.ward === undefined ? {} : { ward: expectNumber(def.ward, "definition.ward") }),
       ...(def.noMaxHandSize === true ? { noMaxHandSize: true } : {}),
+      ...(def.handSizeEffect === undefined
+        ? {}
+        : {
+            handSizeEffect: (() => {
+              if (!isRecord(def.handSizeEffect)) {
+                throw new Error("Invalid definition.handSizeEffect");
+              }
+              const scope = expectString(def.handSizeEffect.scope, "definition.handSizeEffect.scope");
+              const mode = expectString(def.handSizeEffect.mode, "definition.handSizeEffect.mode");
+              if (scope !== "controller" && scope !== "opponents") {
+                throw new Error("Invalid definition.handSizeEffect.scope");
+              }
+              if (mode !== "set" && mode !== "reduce") {
+                throw new Error("Invalid definition.handSizeEffect.mode");
+              }
+              return {
+                scope,
+                mode,
+                amount: expectNumber(def.handSizeEffect.amount, "definition.handSizeEffect.amount"),
+              };
+            })(),
+          }),
       ...(def.opponentsDrawCap === undefined
         ? {}
         : { opponentsDrawCap: expectNumber(def.opponentsDrawCap, `definition.${id}.opponentsDrawCap`) }),
