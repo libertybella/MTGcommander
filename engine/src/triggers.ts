@@ -164,6 +164,20 @@ export function triggerConditionHolds(
   if (condition.kind === "drew_cards_this_turn") {
     return (state.drawsByPlayerThisTurn?.[controllerId] ?? 0) > condition.moreThan;
   }
+  if (condition.kind === "gained_life_this_turn") {
+    return (state.lifeGainedByPlayerThisTurn?.[controllerId] ?? 0) >= condition.atLeast;
+  }
+  if (condition.kind === "created_token_this_turn") {
+    return (state.createdTokenThisTurn ?? []).includes(controllerId);
+  }
+  if (condition.kind === "self_counter_count") {
+    // Read on the source, as `self_no_counter` is: an absent source reads as
+    // zero counters, which is the truthful answer for "fewer than three".
+    const held = (watcherId ? state.cards[watcherId]?.counters[condition.counter] : 0) ?? 0;
+    return condition.comparison === "at_least"
+      ? held >= condition.count
+      : held < condition.count;
+  }
   if (condition.kind === "graveyard_creature_cards_at_least") {
     const player = state.players.find((entry) => entry.id === controllerId);
     const creatures = (player?.zones.graveyard ?? []).filter((cardId) =>
@@ -1021,6 +1035,14 @@ export function dispatchEventsInPlace(state: GameState, events: EngineEvent[]): 
       characteristicsOf(state, event.cardId).types.includes("creature")
     ) {
       state.creaturesDiedThisTurn = (state.creaturesDiedThisTurn ?? 0) + 1;
+    }
+    // The Gaffer's tally rides the EVENT rather than each `player.life +=`
+    // site, so lifelink and a resolved gain_life are counted by the same
+    // line and a new way to gain life cannot quietly miss it.
+    if (event.kind === "gains_life" && event.amount > 0) {
+      const gained = state.lifeGainedByPlayerThisTurn ?? {};
+      gained[event.playerId] = (gained[event.playerId] ?? 0) + event.amount;
+      state.lifeGainedByPlayerThisTurn = gained;
     }
   }
   const candidates: TriggerCandidate[] = [];

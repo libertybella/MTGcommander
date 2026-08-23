@@ -648,6 +648,34 @@ Documented limits:
   (Cryptolith Rite's path), not `grant_activated` — a mana ability must never
   use the stack.
 
+### Intervening-if conditions (wave 224)
+
+The `if` between a trigger's head and its body (CR 603.4) is checked twice:
+once when the trigger would go on the stack and again as it resolves. Three
+more questions it can now ask:
+
+- **`self_counter_count`** — "if this creature has fewer than three +1/+1
+  counters on it" (Runaway Steam-Kin), and the "N or more" spelling
+  (Simic Ascendancy's growth counters). Read on the trigger's SOURCE, like
+  `self_no_counter`, not on the controller's board and not on whatever the
+  body targets. The bound is exclusive: three counters fails "fewer than
+  three", which is what stops the Steam-Kin at three rather than four.
+- **`gained_life_this_turn`** — "if you gained 3 or more life this turn"
+  (The Gaffer). This is a tally, not a life total: CR 118.3 makes the
+  amount gained the replaced amount, so a doubler's extra half counts, and
+  losing the life afterwards does not undo having gained it. It is
+  accumulated off the `gains_life` EVENT rather than at each site that
+  raises a life total, so lifelink and a resolved spell are counted by the
+  same line.
+- **`created_token_this_turn`** — "if you created a token this turn"
+  (Bennie Bracks). Reads the existing per-player `createdTokenThisTurn`
+  list, and asks whether the CONTROLLER is in it — an opponent's Treasure
+  must not satisfy it.
+
+Deliberate approximation: `gained_life_this_turn` resets with the turn, so
+life gained during another player's turn is visible only until that turn
+ends. Every printed card of this shape asks about the current turn.
+
 ## The card pipeline (Stage 6)
 
 - Real cards compile from Scryfall oracle text by shared sentence patterns; a hand-authored registry (`server/src/cardOverrides.ts`, data in the same schema) beats the compiler for the long tail. Never a named-card code path.

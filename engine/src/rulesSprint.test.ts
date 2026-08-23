@@ -29083,3 +29083,216 @@ describe("wave 223: protection from things that are not colors", () => {
   });
 });
 
+
+describe("wave 224: conditions the intervening 'if' could not ask", () => {
+  const compile = (name: string, typeLine: string, oracleText: string, power?: string, toughness?: string) =>
+    compileOracleCard({
+      oracleId: name,
+      name,
+      manaCost: "{2}",
+      typeLine,
+      power: power ?? null,
+      toughness: toughness ?? null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  const put = (game: GameState, definitionId: string, ownerId: string) => {
+    const card = createCardInstance({ definitionId, ownerId, zone: "battlefield" });
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === ownerId)!.zones.battlefield.push(card.id);
+    return card;
+  };
+
+  it("reads a counter count on the source, in both directions", () => {
+    const steamKin = compile(
+      "Runaway Steam-Kin",
+      "Creature — Elemental",
+      "Whenever you cast a red spell, if this creature has fewer than three +1/+1 counters on it, put a +1/+1 counter on this creature.",
+      "1",
+      "1",
+    );
+    expect(steamKin.notes).toEqual([]);
+    expect(steamKin.definition.triggers[0]?.condition).toEqual({
+      kind: "self_counter_count",
+      counter: "p1p1",
+      comparison: "fewer_than",
+      count: 3,
+    });
+
+    // The other spelling, and a NAMED counter rather than +1/+1 — both go
+    // through the one key helper, so "quest" is not normalised into "p1p1"
+    // and "+1/+1" is not left as a literal slash.
+    const quest = compile(
+      "Quest Keeper",
+      "Enchantment",
+      "At the beginning of your upkeep, if this enchantment has three or more quest counters on it, draw a card.",
+    );
+    expect(quest.notes).toEqual([]);
+    expect(quest.definition.triggers[0]?.condition).toEqual({
+      kind: "self_counter_count",
+      counter: "quest",
+      comparison: "at_least",
+      count: 3,
+    });
+  });
+
+  it("stops Runaway Steam-Kin at the third counter, not the first", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const definition = createCardDefinition({
+      name: "Runaway Steam-Kin",
+      typeLine: "Creature — Elemental",
+      power: 1,
+      toughness: 1,
+    });
+    game.definitions[definition.id] = definition;
+    const kin = put(game, definition.id, p1.id);
+
+    const condition = {
+      kind: "self_counter_count" as const,
+      counter: "p1p1",
+      comparison: "fewer_than" as const,
+      count: 3,
+    };
+    // The bound is exclusive at three: two counters still qualify, three do
+    // not. An inclusive test here would let the Steam-Kin run to four.
+    for (const [held, expected] of [
+      [0, true],
+      [2, true],
+      [3, false],
+      [4, false],
+    ] as const) {
+      game.cards[kin.id]!.counters["p1p1"] = held;
+      expect(triggerConditionHolds(game, p1.id, condition, undefined, kin.id)).toBe(expected);
+    }
+
+    // Read on the SOURCE, not across the controller's board: another creature
+    // carrying three counters does not close the gate.
+    game.cards[kin.id]!.counters["p1p1"] = 0;
+    const other = put(game, definition.id, p1.id);
+    game.cards[other.id]!.counters["p1p1"] = 9;
+    expect(triggerConditionHolds(game, p1.id, condition, undefined, kin.id)).toBe(true);
+  });
+
+  it("tallies life GAINED, which is not the change in life total", () => {
+    const gaffer = compile(
+      "The Gaffer",
+      "Creature — Halfling Peasant",
+      "At the beginning of each end step, if you gained 3 or more life this turn, draw a card.",
+      "2",
+      "2",
+    );
+    expect(gaffer.notes).toEqual([]);
+    expect(gaffer.definition.triggers[0]?.condition).toEqual({
+      kind: "gained_life_this_turn",
+      atLeast: 3,
+    });
+
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    const condition = { kind: "gained_life_this_turn" as const, atLeast: 3 };
+    expect(triggerConditionHolds(game, p1.id, condition)).toBe(false);
+
+    dispatchEventsInPlace(game, [{ kind: "gains_life", playerId: p1.id, amount: 2 }]);
+    expect(triggerConditionHolds(game, p1.id, condition)).toBe(false);
+    dispatchEventsInPlace(game, [{ kind: "gains_life", playerId: p1.id, amount: 1 }]);
+    expect(triggerConditionHolds(game, p1.id, condition)).toBe(true);
+
+    // Losing life afterwards does not undo having gained it: a condition that
+    // read the life TOTAL would flip back to false on this line.
+    dispatchEventsInPlace(game, [{ kind: "loses_life", playerId: p1.id, amount: 10 }]);
+    expect(triggerConditionHolds(game, p1.id, condition)).toBe(true);
+
+    // The tally is per player, not per table.
+    expect(triggerConditionHolds(game, p2.id, condition)).toBe(false);
+  });
+
+  it("resets the life tally when a new turn begins, and round trips", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    dispatchEventsInPlace(game, [{ kind: "gains_life", playerId: p1.id, amount: 5 }]);
+    expect(game.lifeGainedByPlayerThisTurn?.[p1.id]).toBe(5);
+
+    const round = parseGameState(serializeGameState(game));
+    expect(round.lifeGainedByPlayerThisTurn?.[p1.id]).toBe(5);
+
+    beginNextLivingTurnInPlace(round);
+    expect(round.lifeGainedByPlayerThisTurn?.[p1.id] ?? 0).toBe(0);
+  });
+
+  it("asks whether YOU made a token, not whether anyone did", () => {
+    const bennie = compile(
+      "Bennie Bracks, Zoologist",
+      "Creature — Elf Druid",
+      "At the beginning of each end step, if you created a token this turn, draw a card.",
+      "2",
+      "2",
+    );
+    expect(bennie.notes).toEqual([]);
+    expect(bennie.definition.triggers[0]?.condition).toEqual({ kind: "created_token_this_turn" });
+
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    const condition = { kind: "created_token_this_turn" as const };
+    expect(triggerConditionHolds(game, p1.id, condition)).toBe(false);
+
+    // An opponent's token must not satisfy it — the tally is a list of
+    // players, and reading it as "is it non-empty" would draw Bennie a card
+    // off someone else's Treasure.
+    game.createdTokenThisTurn = [p2.id];
+    expect(triggerConditionHolds(game, p1.id, condition)).toBe(false);
+    expect(triggerConditionHolds(game, p2.id, condition)).toBe(true);
+
+    game.createdTokenThisTurn = [p2.id, p1.id];
+    expect(triggerConditionHolds(game, p1.id, condition)).toBe(true);
+  });
+
+  it("round trips all three conditions through the state parser", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const definition = createCardDefinition({
+      name: "Condition Holder",
+      typeLine: "Enchantment",
+      triggers: [
+        {
+          event: "end_step",
+          condition: { kind: "gained_life_this_turn", atLeast: 3 },
+          effects: [{ kind: "draw", playerId: "controller", count: 1 }],
+          targetRequirements: [],
+        },
+        {
+          event: "upkeep",
+          condition: { kind: "created_token_this_turn" },
+          effects: [{ kind: "draw", playerId: "controller", count: 1 }],
+          targetRequirements: [],
+        },
+        {
+          event: "upkeep",
+          condition: {
+            kind: "self_counter_count",
+            counter: "quest",
+            comparison: "at_least",
+            count: 3,
+          },
+          effects: [{ kind: "draw", playerId: "controller", count: 1 }],
+          targetRequirements: [],
+        },
+      ],
+    });
+    game.definitions[definition.id] = definition;
+    put(game, definition.id, p1.id);
+
+    const round = parseGameState(serializeGameState(game));
+    const triggers = round.definitions[definition.id]?.triggers ?? [];
+    expect(triggers[0]?.condition).toEqual({ kind: "gained_life_this_turn", atLeast: 3 });
+    expect(triggers[1]?.condition).toEqual({ kind: "created_token_this_turn" });
+    expect(triggers[2]?.condition).toEqual({
+      kind: "self_counter_count",
+      counter: "quest",
+      comparison: "at_least",
+      count: 3,
+    });
+  });
+});

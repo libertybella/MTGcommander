@@ -1424,6 +1424,20 @@ export function parseGameState(json: string): GameState {
             return counts;
           })(),
         }),
+    ...(raw.lifeGainedByPlayerThisTurn === undefined
+      ? {}
+      : {
+          lifeGainedByPlayerThisTurn: (() => {
+            if (!isRecord(raw.lifeGainedByPlayerThisTurn)) {
+              throw new Error("Invalid lifeGainedByPlayerThisTurn");
+            }
+            const counts: Record<string, number> = {};
+            for (const [key, entry] of Object.entries(raw.lifeGainedByPlayerThisTurn)) {
+              counts[key] = expectNumber(entry, `lifeGainedByPlayerThisTurn.${key}`);
+            }
+            return counts;
+          })(),
+        }),
     ...(raw.castLockUntilEot === undefined
       ? {}
       : { castLockUntilEot: expectString(raw.castLockUntilEot, "castLockUntilEot") }),
@@ -3992,6 +4006,27 @@ function parseTriggerCondition(value: unknown, label: string): TriggerCondition 
       }
       if (conditionKind === "drew_cards_this_turn") {
         return { kind: conditionKind, moreThan: expectNumber(value.moreThan, `${label}.moreThan`) };
+      }
+      if (conditionKind === "gained_life_this_turn") {
+        return {
+          kind: conditionKind,
+          atLeast: expectNumber(value.atLeast, `${label}.atLeast`),
+        };
+      }
+      if (conditionKind === "created_token_this_turn") {
+        return { kind: conditionKind };
+      }
+      if (conditionKind === "self_counter_count") {
+        const comparison = expectString(value.comparison, `${label}.comparison`);
+        if (comparison !== "at_least" && comparison !== "fewer_than") {
+          throw new Error(`Invalid ${label}.comparison`);
+        }
+        return {
+          kind: conditionKind,
+          counter: expectString(value.counter, `${label}.counter`),
+          comparison,
+          count: expectNumber(value.count, `${label}.count`),
+        };
       }
       if (conditionKind === "opponent_controls_count") {
         const scope = expectString(value.what, `${label}.what`);

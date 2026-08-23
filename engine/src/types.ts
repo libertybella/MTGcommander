@@ -609,6 +609,13 @@ export type GameState = {
   createdTokenThisTurn?: PlayerId[];
   /** Faerie Mastermind: per-player draws this turn. */
   drawsByPlayerThisTurn?: Record<PlayerId, number>;
+  /**
+   * The Gaffer: per-player life GAINED this turn, which is not the same as
+   * the change in life total — losing 5 and gaining 3 leaves you lower but
+   * still counts as having gained 3. Tallied off the `gains_life` event so
+   * every path that gains life is counted once, lifelink included.
+   */
+  lifeGainedByPlayerThisTurn?: Record<PlayerId, number>;
   /** Creatures that died this turn (Mahadi's Treasure count). */
   creaturesDiedThisTurn?: number;
   /** Silence: everyone but this player is locked out of casting until end of
@@ -2232,7 +2239,29 @@ export type TriggerCondition =
   /** Raid: "if you attacked this turn". */
   | { kind: "attacked_this_turn" }
   /** "if you've drawn more than one card this turn". */
-  | { kind: "drew_cards_this_turn"; moreThan: number };
+  | { kind: "drew_cards_this_turn"; moreThan: number }
+  /** The Gaffer: "if you gained 3 or more life this turn". Counts life
+   * actually gained, so a doubler's extra half counts — CR 118.3 makes the
+   * replaced amount the amount gained. */
+  | { kind: "gained_life_this_turn"; atLeast: number }
+  /** Bennie Bracks: "if you created a token this turn". */
+  | { kind: "created_token_this_turn" }
+  /**
+   * Runaway Steam-Kin: "if this creature has fewer than three +1/+1
+   * counters on it". Read on the SOURCE of the trigger, like
+   * `self_no_counter`, not on whatever the clause targeted.
+   *
+   * `comparison` is spelled out rather than implied by which bound is
+   * present: "fewer than three" and "three or more" are both common on
+   * cards, and an optional-bounds shape would make "neither given" and
+   * "both given" representable when they mean nothing.
+   */
+  | {
+      kind: "self_counter_count";
+      counter: string;
+      comparison: "at_least" | "fewer_than";
+      count: number;
+    };
 
 export type CardTrigger = {
   event: TriggerEvent;

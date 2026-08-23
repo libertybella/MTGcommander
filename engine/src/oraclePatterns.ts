@@ -373,6 +373,15 @@ function escapeRegex(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+/**
+ * Oracle spelling of a counter to the key the engine stores it under.
+ * Shared rather than copied: it lived inline in two places, and a third
+ * reader would have been a third chance to spell "p1p1" differently.
+ */
+function counterKeyOf(named: string): string {
+  return named === "+1/+1" ? "p1p1" : named === "-1/-1" ? "m1m1" : named.toLowerCase();
+}
+
 function parseCount(raw: string): number | null {
   const text = raw.trim().toLowerCase();
   if (/^\d+$/.test(text)) {
@@ -694,8 +703,7 @@ function parseAbilityCost(
   // Costs paid with something other than mana, life or a permanent: counters
   // on or off the source, a card out of hand, library or graveyard. Each is
   // read the same way — a count word and an optional filter.
-  const counterName = (word: string): string =>
-    word === "+1/+1" ? "p1p1" : word === "-1/-1" ? "m1m1" : word.toLowerCase();
+  const counterName = counterKeyOf;
   const removeMatch = costText.match(REMOVE_COUNTER_COST);
   const removeCount = removeMatch?.[1] ? parseCount(removeMatch[1].toLowerCase()) : undefined;
   const removeCounterCost =
@@ -1077,11 +1085,7 @@ function parseCounterList(phrase: string): { counter: string; amount: number }[]
       return null;
     }
     const named = match[2];
-    entries.push({
-      counter:
-        named === "+1/+1" ? "p1p1" : named === "-1/-1" ? "m1m1" : named.toLowerCase(),
-      amount,
-    });
+    entries.push({ counter: counterKeyOf(named), amount });
   }
   return entries.length > 0 ? entries : null;
 }
@@ -1377,6 +1381,45 @@ function parseEffectCondition(phrase: string): TriggerCondition | null {
     const moreThan = parseCount(drew[1]);
     if (moreThan) {
       return { kind: "drew_cards_this_turn", moreThan };
+    }
+  }
+  // "you gained life this turn" is the same question with a bar of one, so
+  // both spellings read through one pattern rather than two conditions.
+  const gainedLife = text.match(/^you gained (?:([\w-]+) or more )?life this turn$/i);
+  if (gainedLife) {
+    const atLeast = gainedLife[1] ? parseCount(gainedLife[1]) : 1;
+    if (atLeast) {
+      return { kind: "gained_life_this_turn", atLeast };
+    }
+  }
+  if (/^you created a token this turn$/i.test(text)) {
+    return { kind: "created_token_this_turn" };
+  }
+  // Two spellings of one question. The counter NAME is normalised through
+  // the shared key helper, so a quest counter and a +1/+1 counter are read
+  // by the same line.
+  const fewerCounters = text.match(/^~ has fewer than ([\w-]+) (\S+) counters? on it$/i);
+  if (fewerCounters?.[1] && fewerCounters[2]) {
+    const count = parseCount(fewerCounters[1]);
+    if (count) {
+      return {
+        kind: "self_counter_count",
+        counter: counterKeyOf(fewerCounters[2]),
+        comparison: "fewer_than",
+        count,
+      };
+    }
+  }
+  const atLeastCounters = text.match(/^~ has ([\w-]+) or more (\S+) counters? on it$/i);
+  if (atLeastCounters?.[1] && atLeastCounters[2]) {
+    const count = parseCount(atLeastCounters[1]);
+    if (count) {
+      return {
+        kind: "self_counter_count",
+        counter: counterKeyOf(atLeastCounters[2]),
+        comparison: "at_least",
+        count,
+      };
     }
   }
   const opponentCount = text.match(
