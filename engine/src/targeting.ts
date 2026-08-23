@@ -560,11 +560,29 @@ export function isChosenTargetLegal(
   }
   if (requirement.kind === "spell_or_permanent") {
     if (target.type === "spell") {
-      return isLegalSpellTarget(state, target.stackObjectId);
+      if (!isLegalSpellTarget(state, target.stackObjectId)) {
+        return false;
+      }
+      // "…an opponent controls" narrows the SPELL half too. The permanent
+      // half below recurses with a BARE permanent requirement, which drops
+      // every qualifier this one carries — so both halves are filtered
+      // here, or Sink into Stupor would happily bounce your own spell.
+      if (requirement.control === undefined) {
+        return true;
+      }
+      const entry = state.stack.find((object) => object.id === target.stackObjectId);
+      if (!entry) {
+        return false;
+      }
+      return requirement.control === "not_own"
+        ? entry.controllerId !== casterId
+        : entry.controllerId === casterId;
     }
     return (
       target.type === "creature" &&
-      isChosenTargetLegal(state, { kind: "permanent" }, target, casterId, sourceColors)
+      isChosenTargetLegal(state, { kind: "permanent" }, target, casterId, sourceColors) &&
+      !violatesControlFilter(state, target.cardId, requirement, casterId) &&
+      !violatesCharacteristicFilter(state, target.cardId, requirement)
     );
   }
   if (requirement.kind === "player_or_planeswalker") {
@@ -826,7 +844,10 @@ export function legalChoicesForRequirement(
   if (requirement.kind === "spell_or_permanent") {
     const spells = state.stack
       .filter((entry) => entry.kind === "spell")
-      .map((entry) => ({ type: "spell" as const, stackObjectId: entry.id }));
+      .map((entry) => ({ type: "spell" as const, stackObjectId: entry.id }))
+      // Unfiltered, this offered a choice the legality check would then
+      // refuse — the enumeration has to narrow by the same qualifiers.
+      .filter((choice) => isChosenTargetLegal(state, requirement, choice, casterId));
     const permanents: ChosenTarget[] = [];
     for (const player of livingPlayers(state)) {
       for (const cardId of player.zones.battlefield) {

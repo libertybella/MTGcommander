@@ -1391,6 +1391,17 @@ function parseEffectCondition(phrase: string): TriggerCondition | null {
       };
     }
   }
+  // Field of the Dead: distinct NAMES, not a count of lands. Reading it
+  // as "seven or more lands" would fire off seven copies of one Wastes.
+  const differentNames = text.match(
+    /^you control (\w+) or more lands with different names$/i,
+  );
+  if (differentNames?.[1]) {
+    const atLeast = parseCount(differentNames[1]);
+    if (atLeast) {
+      return { kind: "controls_lands_with_different_names", atLeast };
+    }
+  }
   const tribe = text.match(/^you control (\w+) or more ([A-Z][a-z-]+)s$/);
   if (tribe?.[1] && tribe[2]) {
     const atLeast = parseCount(tribe[1]);
@@ -6027,6 +6038,22 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
   if (/^return target spell to its owner's hand$/i.test(sentence)) {
     return {
       targetRequirements: [{ kind: "spell" }],
+      effects: [{ kind: "bounce_spell_or_permanent", target: { type: "chosen", index: 0 } }],
+    };
+  }
+
+  // Sink into Stupor: Venser's bounce, narrowed. Both halves take the
+  // qualifiers — "an opponent controls" applies to the spell as much as
+  // to the permanent.
+  if (
+    /^return target spell or nonland permanent an opponent controls to its owner's hand$/i.test(
+      sentence,
+    )
+  ) {
+    return {
+      targetRequirements: [
+        { kind: "spell_or_permanent", excludedTypes: ["land"], control: "not_own" },
+      ],
       effects: [{ kind: "bounce_spell_or_permanent", target: { type: "chosen", index: 0 } }],
     };
   }
@@ -13426,7 +13453,11 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
     );
     if (channel?.[1] && channel[2]) {
       const cost = parseAbilityCost(channel[1]);
-      const clause = compileSimpleClause(channel[2].trim());
+      // Eiganjo: "It deals 4 damage to …". In a Channel body "it" is the
+      // card being discarded — there is no watched object to confuse it
+      // with, which is why the rewrite is scoped here and not global.
+      const channelBody = channel[2].trim().replace(/^It /, "~ ");
+      const clause = compileSimpleClause(channelBody);
       if (cost && !cost.tap && clause) {
         result.activated.push({
           tap: false,

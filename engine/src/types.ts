@@ -2474,6 +2474,14 @@ export type TriggerCondition =
   /** Revel in Riches / Emeria: "if you control ten or more Treasures".
    * `excludeSelf` reads "at least five OTHER Mountains" (Valakut). */
   | {
+      /**
+       * Field of the Dead: "seven or more lands with DIFFERENT NAMES".
+       * Distinct names, not a count of lands — seven Wastes is one name.
+       */
+      kind: "controls_lands_with_different_names";
+      atLeast: number;
+    }
+  | {
       kind: "controls_subtype_count";
       subtype: string;
       atLeast: number;

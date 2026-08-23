@@ -229,6 +229,25 @@ export function triggerConditionHolds(
         characteristicsOf(state, card.id).colors.includes(condition.color),
     );
   }
+  if (condition.kind === "controls_lands_with_different_names") {
+    const names = new Set<string>();
+    for (const card of Object.values(state.cards)) {
+      if (card.zone !== "battlefield" || card.controllerId !== controllerId) {
+        continue;
+      }
+      if (!characteristicsOf(state, card.id).types.includes("land")) {
+        continue;
+      }
+      // A copy carries the copied name on its cloned definition, which is
+      // the point: seven Wastes count once, a copied Island counts as an
+      // Island. An unnamed definition must not count as a distinct name.
+      const name = state.definitions[card.definitionId]?.name ?? "";
+      if (name) {
+        names.add(name);
+      }
+    }
+    return names.size >= condition.atLeast;
+  }
   if (
     condition.kind === "controls_subtype_count" ||
     condition.kind === "controls_no_subtype"

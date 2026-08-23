@@ -34327,3 +34327,257 @@ describe("wave 263: reading the delayed timing phrase", () => {
     ]);
   });
 });
+
+describe("wave 264: lands with different names", () => {
+  const landNamed = (game: GameState, player: PlayerState, name: string) => {
+    const definition = createCardDefinition({ name, typeLine: "Land" });
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({
+      definitionId: definition.id,
+      ownerId: player.id,
+      zone: "battlefield",
+    });
+    game.cards[card.id] = card;
+    player.zones.battlefield.push(card.id);
+    return card.id;
+  };
+
+  it("counts distinct NAMES, not lands", () => {
+    const { game, p1 } = twoPlayers();
+    // Seven copies of one land is one name. Counting lands instead would
+    // turn a basic-heavy board into a Zombie every time a Wastes landed.
+    for (let i = 0; i < 7; i += 1) {
+      landNamed(game, p1, "Wastes");
+    }
+    expect(
+      triggerConditionHolds(game, p1.id, {
+        kind: "controls_lands_with_different_names",
+        atLeast: 7,
+      }),
+    ).toBe(false);
+
+    for (const name of ["Island", "Swamp", "Mountain", "Forest", "Plains", "Bojuka Bog"]) {
+      landNamed(game, p1, name);
+    }
+    expect(
+      triggerConditionHolds(game, p1.id, {
+        kind: "controls_lands_with_different_names",
+        atLeast: 7,
+      }),
+    ).toBe(true);
+  });
+
+  it("reads only the asking player's own lands", () => {
+    const { game, p1, p2 } = twoPlayers();
+    for (const name of ["Island", "Swamp", "Mountain", "Forest", "Plains", "Wastes", "Bojuka Bog"]) {
+      landNamed(game, p2, name);
+    }
+    // An opponent's seven names are not yours.
+    expect(
+      triggerConditionHolds(game, p1.id, {
+        kind: "controls_lands_with_different_names",
+        atLeast: 7,
+      }),
+    ).toBe(false);
+    expect(
+      triggerConditionHolds(game, p2.id, {
+        kind: "controls_lands_with_different_names",
+        atLeast: 7,
+      }),
+    ).toBe(true);
+  });
+
+  it("does not count nonland permanents", () => {
+    const { game, p1 } = twoPlayers();
+    for (const name of ["Island", "Swamp", "Mountain"]) {
+      landNamed(game, p1, name);
+    }
+    for (const name of ["Bear", "Ogre", "Wolf", "Elk"]) {
+      const definition = createCardDefinition({
+        name,
+        typeLine: "Creature — Beast",
+        power: 2,
+        toughness: 2,
+      });
+      game.definitions[definition.id] = definition;
+      const card = createCardInstance({
+        definitionId: definition.id,
+        ownerId: p1.id,
+        zone: "battlefield",
+      });
+      game.cards[card.id] = card;
+      p1.zones.battlefield.push(card.id);
+    }
+    expect(
+      triggerConditionHolds(game, p1.id, {
+        kind: "controls_lands_with_different_names",
+        atLeast: 7,
+      }),
+    ).toBe(false);
+  });
+
+  it("round trips the condition", () => {
+    const { game, p1 } = twoPlayers();
+    const definition = createCardDefinition({
+      name: "Field",
+      typeLine: "Land",
+      triggers: [
+        {
+          event: "enter_battlefield",
+          watch: "controlled",
+          condition: { kind: "controls_lands_with_different_names", atLeast: 7 },
+          subjectFilter: { types: ["land"] },
+          effects: [],
+          targetRequirements: [],
+        },
+      ],
+    });
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({
+      definitionId: definition.id,
+      ownerId: p1.id,
+      zone: "battlefield",
+    });
+    game.cards[card.id] = card;
+    p1.zones.battlefield.push(card.id);
+    const round = parseGameState(serializeGameState(game));
+    expect(round.definitions[definition.id]?.triggers[0]?.condition).toEqual({
+      kind: "controls_lands_with_different_names",
+      atLeast: 7,
+    });
+  });
+});
+
+describe("wave 264: a qualified spell-or-permanent target", () => {
+  const setup = () => {
+    const { game, p1, p2 } = twoPlayers();
+    const make = (owner: PlayerState, name: string, typeLine: string, zone: "battlefield" | "stack") => {
+      const definition = createCardDefinition({
+        name,
+        typeLine,
+        ...(typeLine.includes("Creature") ? { power: 2, toughness: 2 } : {}),
+      });
+      game.definitions[definition.id] = definition;
+      const card = createCardInstance({ definitionId: definition.id, ownerId: owner.id, zone });
+      game.cards[card.id] = card;
+      if (zone === "battlefield") {
+        owner.zones.battlefield.push(card.id);
+      }
+      return card.id;
+    };
+    const mine = make(p1, "Mine", "Creature — Bear", "battlefield");
+    const theirs = make(p2, "Theirs", "Creature — Ogre", "battlefield");
+    const theirLand = make(p2, "Their Land", "Land", "battlefield");
+    const mySpellCard = make(p1, "My Spell", "Instant", "stack");
+    const theirSpellCard = make(p2, "Their Spell", "Instant", "stack");
+    game.stack = [
+      { id: "s-mine", controllerId: p1.id, sourceId: mySpellCard, kind: "spell", targets: [] },
+      { id: "s-theirs", controllerId: p2.id, sourceId: theirSpellCard, kind: "spell", targets: [] },
+    ];
+    return { game, p1, p2, mine, theirs, theirLand };
+  };
+
+  const requirement: TargetRequirement = {
+    kind: "spell_or_permanent",
+    excludedTypes: ["land"],
+    control: "not_own",
+  };
+
+  it("refuses your OWN spell", () => {
+    const { game, p1 } = setup();
+    // The permanent half recurses with a bare permanent requirement, which
+    // drops every qualifier — so without filtering the spell half here,
+    // Sink into Stupor would happily bounce its caster's own spell.
+    expect(
+      isChosenTargetLegal(game, requirement, { type: "spell", stackObjectId: "s-mine" }, p1.id),
+    ).toBe(false);
+    expect(
+      isChosenTargetLegal(game, requirement, { type: "spell", stackObjectId: "s-theirs" }, p1.id),
+    ).toBe(true);
+  });
+
+  it("refuses your own permanent and any land", () => {
+    const { game, p1, mine, theirs, theirLand } = setup();
+    expect(isChosenTargetLegal(game, requirement, { type: "creature", cardId: mine }, p1.id)).toBe(
+      false,
+    );
+    expect(isChosenTargetLegal(game, requirement, { type: "creature", cardId: theirs }, p1.id)).toBe(
+      true,
+    );
+    // "nonland permanent": an opponent's land is still not a legal choice.
+    expect(
+      isChosenTargetLegal(game, requirement, { type: "creature", cardId: theirLand }, p1.id),
+    ).toBe(false);
+  });
+
+  it("offers only what it would accept", () => {
+    const { game, p1, theirs } = setup();
+    const choices = legalChoicesForRequirement(game, requirement, p1.id);
+    // An unfiltered enumeration offered a choice the legality check then
+    // refused, which reads to a player as a target that does nothing.
+    expect(choices).toContainEqual({ type: "spell", stackObjectId: "s-theirs" });
+    expect(choices).not.toContainEqual({ type: "spell", stackObjectId: "s-mine" });
+    expect(choices).toContainEqual({ type: "creature", cardId: theirs });
+    expect(choices).toHaveLength(2);
+  });
+
+  it("leaves the unqualified form alone", () => {
+    const { game, p1, mine } = setup();
+    const open: TargetRequirement = { kind: "spell_or_permanent" };
+    // Venser takes anything, including your own — narrowing must be opt-in.
+    expect(
+      isChosenTargetLegal(game, open, { type: "spell", stackObjectId: "s-mine" }, p1.id),
+    ).toBe(true);
+    expect(isChosenTargetLegal(game, open, { type: "creature", cardId: mine }, p1.id)).toBe(true);
+  });
+});
+
+describe("wave 264: a Channel body says It", () => {
+  const channel = (body: string) =>
+    compileOracleCard({
+      oracleId: "c",
+      name: "Seat",
+      manaCost: "",
+      typeLine: "Legendary Land",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText: `Channel — {2}{W}, Discard this card: ${body}`,
+    });
+
+  it("reads It as the discarded card", () => {
+    const eiganjo = channel("It deals 4 damage to target attacking or blocking creature.");
+    expect(eiganjo.notes).toEqual([]);
+    expect(eiganjo.definition.activated[0]).toMatchObject({
+      zone: "hand",
+      discard: true,
+      effects: [{ kind: "deal_damage", sourceId: "self", amount: 4 }],
+      targetRequirements: [{ kind: "creature", attackingOrBlockingOnly: true }],
+    });
+  });
+
+  it("does not rewrite It in a trigger body", () => {
+    const trigger = compileOracleCard({
+      oracleId: "c2",
+      name: "Watcher",
+      manaCost: "{2}",
+      typeLine: "Enchantment",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText: "Whenever a creature dies, it deals 1 damage to any target.",
+    });
+    // In a trigger body "it" is the watched object, not the source. The
+    // Channel rewrite is scoped to the Channel parser for exactly this
+    // reason — global, it would silently redirect the damage.
+    expect(
+      trigger.definition.triggers.some((entry) =>
+        entry.effects.some(
+          (effect) => effect.kind === "deal_damage" && effect.sourceId === "self",
+        ),
+      ),
+    ).toBe(false);
+  });
+});

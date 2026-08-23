@@ -870,6 +870,35 @@ more questions it can now ask:
   (Bennie Bracks). Reads the existing per-player `createdTokenThisTurn`
   list, and asks whether the CONTROLLER is in it — an opponent's Treasure
   must not satisfy it.
+- **`controls_lands_with_different_names`** — Field of the Dead. Distinct
+  NAMES among controlled lands, not a count of lands: seven copies of one
+  Wastes is one name, and reading it as a land count would hand out a
+  Zombie every time a basic landed. A copy carries the copied name on its
+  cloned definition, so it counts as the thing it copied.
+
+- **A qualified spell-or-permanent target** — Sink into Stupor. The
+  `spell_or_permanent` requirement checked its permanent half by recursing
+  with a BARE `{kind:"permanent"}`, which drops every qualifier the outer
+  requirement carries, and left the spell half unfiltered entirely. So
+  "target spell or nonland permanent AN OPPONENT CONTROLS" would accept
+  your own spell, your own creature, and an opponent's land. Both halves
+  now apply `control` and the characteristic filters, and the enumeration
+  narrows by the same rule — an unfiltered offer reads to a player as a
+  target that does nothing.
+
+- **A Channel body that says "It"** — Eiganjo, Seat of the Empire. In a
+  Channel ability "it" is the card being discarded, so the body is rewritten
+  to the source before compiling. The rewrite is scoped to the Channel
+  parser: in a TRIGGER body "it" usually means the watched object, and a
+  global rewrite would silently redirect the damage.
+
+- **Not done: a leading "Then" as its own sentence.** Orcish Bowmasters
+  ends "…deals 1 damage to that player. Then amass Orcs 1." Stepping over
+  the "Then" makes the card compile clean and play WRONG twice over: the
+  amass lands as a top-level effect on a creature card, where nothing runs
+  it, and the dual trigger head ("When ~ enters AND whenever an opponent
+  draws…") already drops its second half silently. Left failing on purpose
+  — an honest miss beats a card that scores and does nothing.
 - **Delayed triggered abilities** (CR 603.7) — `GameState.delayedTriggers`.
   "At the beginning of your next upkeep, …" is not a trigger on a permanent;
   it is created by a spell as it resolves and fires once. Its effects are

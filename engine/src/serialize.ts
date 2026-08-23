@@ -4252,6 +4252,12 @@ function parseTriggerCondition(value: unknown, label: string): TriggerCondition 
           ),
         };
       }
+      if (conditionKind === "controls_lands_with_different_names") {
+        return {
+          kind: conditionKind,
+          atLeast: expectNumber(value.atLeast, `${label}.atLeast`),
+        };
+      }
       if (conditionKind === "controls_subtype_count") {
         return {
           kind: conditionKind,
