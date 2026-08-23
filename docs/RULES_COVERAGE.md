@@ -870,6 +870,27 @@ more questions it can now ask:
   (Bennie Bracks). Reads the existing per-player `createdTokenThisTurn`
   list, and asks whether the CONTROLLER is in it — an opponent's Treasure
   must not satisfy it.
+- **`search_library.alsoGraveyard`** — Finale of Devastation. "Your library
+  AND/OR graveyard" is one pool the search picks from. The shuffle then
+  happens only when the card did not come from the graveyard; finding
+  nothing still shuffles, because you looked. A documented reading — the
+  engine cannot know whether a player who took a graveyard card also looked
+  at their library. The empty-library bail now checks the graveyard too, or
+  the whole search would be skipped on the board where this card is best.
+
+- **`announced_x_at_least`** — "If X is 10 or more". The announced X lives
+  in the binding context, not on the board, so `if_condition` settles this
+  condition before consulting `triggerConditionHolds`, which has no X to
+  read. That function returns false for it explicitly: without a branch it
+  fell through to the artifact-mana-value check at its end, which answers a
+  different question and can say yes.
+
+  **A load failure this exposed:** the `team_pt_until_eot` parser accepted
+  only `creature_count`, though the type has always allowed `greatest_power`
+  and `x`. Four cards — Overwhelming Stampede, Pathbreaker Ibex, Tyvar the
+  Pummeler, and Finale itself — compiled with no notes and produced
+  definitions that could not be LOADED. The compile metric reads notes, so
+  it counted three of them as working.
 - **`enterAsCopy.untilEot` / `.grantHaste`** — Cursed Mirror. The copy
   lasts one turn and then the PRINTED card comes back, through the same
   `temporaryCopies` revert Mirage Mirror uses; the restore id is recorded

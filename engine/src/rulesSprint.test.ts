@@ -32,7 +32,7 @@ import { abilityLifeCost, colorsOutsideCommanderIdentity } from "./commanderIden
 import { addRestrictedMana, emptyManaPools, manaRiderFires, parseManaCost, payManaCost, restrictionAdmits, type ManaPurpose } from "./mana";
 import { applyStateBasedActionsInPlace } from "./status";
 import { legalActions, sacrificeColorMatches, sacrificeScopeMatches } from "./legalActions";
-import { applyResolveCreatureType, applyResolveDiscardLandOrGraveyard, applyResolveEnterCopy, applyResolveLookAssign, applyResolvePay, applyResolveTriggerMode, legalEnterCopyIds, searchMatches } from "./prompt";
+import { applyResolveCreatureType, applyResolveDiscardLandOrGraveyard, applyResolveEnterCopy, applyResolveLookAssign, applyResolvePay, applyResolveSearch, applyResolveTriggerMode, legalEnterCopyIds, legalSearchIds, searchMatches } from "./prompt";
 import { parseGameState, serializeGameState } from "./serialize";
 import { fillLibraries } from "./testSupport";
 import { advanceSteps } from "./turn";
@@ -38852,5 +38852,214 @@ describe("wave 288: a mirror that copies for one turn, with haste", () => {
     });
     expect(compiled.notes).toEqual([]);
     expect(compiled.definition.enterAsCopy).toEqual({ scope: "any_creature" });
+  });
+});
+
+describe("wave 289: a tutor across two zones, and a gate on announced X", () => {
+  const FINALE_TEXT =
+    "Search your library and/or graveyard for a creature card with mana value X or less and put it onto the battlefield. If you search your library this way, shuffle. If X is 10 or more, creatures you control get +X/+X and gain haste until end of turn.";
+
+  const board = () => {
+    const { game, p1, p2 } = twoPlayers();
+    const make = (name: string, manaCost: string, zone: "library" | "graveyard") => {
+      const definition = createCardDefinition({
+        name,
+        typeLine: "Creature — Bear",
+        manaCost,
+        power: 2,
+        toughness: 2,
+      });
+      game.definitions[definition.id] = definition;
+      const card = createCardInstance({ definitionId: definition.id, ownerId: p1.id, zone });
+      game.cards[card.id] = card;
+      p1.zones[zone].push(card.id);
+      return card.id;
+    };
+    return {
+      game,
+      p1,
+      p2,
+      inLibrary: make("Library Bear", "{1}{G}", "library"),
+      bigInLibrary: make("Huge Bear", "{9}{G}{G}{G}", "library"),
+      inGraveyard: make("Graveyard Bear", "{2}{G}", "graveyard"),
+    };
+  };
+
+  const search: CardEffect = {
+    kind: "search_library",
+    playerId: "controller",
+    filter: { types: ["creature"], maxManaValueX: true },
+    destination: "battlefield",
+    count: 1,
+    alsoGraveyard: true,
+  };
+
+  const open = (game: GameState, controllerId: string, xValue: number) =>
+    applyEffects(game, bindCardEffects(game, [search], { controllerId, sourceId: null, xValue }));
+
+  it("compiles Finale of Devastation whole", () => {
+    const compiled = compileOracleCard({
+      oracleId: "finale",
+      name: "Finale of Devastation",
+      manaCost: "{X}{G}{G}",
+      typeLine: "Sorcery",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText: FINALE_TEXT,
+    });
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.effects).toEqual([
+      {
+        kind: "search_library",
+        playerId: "controller",
+        filter: { types: ["creature"], maxManaValueX: true },
+        destination: "battlefield",
+        count: 1,
+        alsoGraveyard: true,
+      },
+      {
+        kind: "if_condition",
+        condition: { kind: "announced_x_at_least", amount: 10 },
+        then: [
+          { kind: "team_pt_until_eot", playerId: "controller", power: "x", toughness: "x" },
+          { kind: "team_keyword_until_eot", playerId: "controller", keyword: "haste" },
+        ],
+      },
+    ]);
+  });
+
+  it("offers both zones at once, capped by the announced X", () => {
+    const { game, p1, inLibrary, bigInLibrary, inGraveyard } = board();
+    const opened = open(game, p1.id, 3);
+    const prompt = opened.prompts[0];
+    expect(prompt?.kind).toBe("search_library");
+    const legal = legalSearchIds(opened, prompt!);
+    expect([...legal].sort()).toEqual([inGraveyard, inLibrary].sort());
+    // The 12-drop is in the pool's zone but over the cap.
+    expect(legal).not.toContain(bigInLibrary);
+  });
+
+  it("offers only the library when the card does not say graveyard", () => {
+    const { game, p1, inLibrary, inGraveyard } = board();
+    const opened = applyEffects(
+      game,
+      bindCardEffects(game, [{ ...search, alsoGraveyard: undefined }], {
+        controllerId: p1.id,
+        sourceId: null,
+        xValue: 3,
+      }),
+    );
+    const legal = legalSearchIds(opened, opened.prompts[0]!);
+    expect(legal).toContain(inLibrary);
+    expect(legal).not.toContain(inGraveyard);
+  });
+
+  it("puts the graveyard creature onto the battlefield", () => {
+    const { game, p1, inGraveyard } = board();
+    const opened = open(game, p1.id, 3);
+    const done = applyResolveSearch(opened, p1.id, [inGraveyard], () => 0.5);
+    expect(done.cards[inGraveyard]?.zone).toBe("battlefield");
+    expect(
+      done.players.find((entry) => entry.id === p1.id)?.zones.graveyard,
+    ).not.toContain(inGraveyard);
+  });
+
+  it("does not shuffle when the card came from the graveyard alone", () => {
+    const { game, p1, inGraveyard } = board();
+    const opened = open(game, p1.id, 3);
+    const before = [...(opened.players.find((entry) => entry.id === p1.id)?.zones.library ?? [])];
+    // A reversing shuffle, so any shuffle at all is visible.
+    const done = applyResolveSearch(opened, p1.id, [inGraveyard], () => 0);
+    const after = done.players.find((entry) => entry.id === p1.id)?.zones.library ?? [];
+    // The library was never searched, so its order is untouched.
+    expect(after).toEqual(before);
+  });
+
+  it("shuffles when the card came from the library", () => {
+    const { game, p1, inLibrary } = board();
+    const opened = open(game, p1.id, 3);
+    const done = applyResolveSearch(opened, p1.id, [inLibrary], () => 0);
+    expect(done.cards[inLibrary]?.zone).toBe("battlefield");
+    // Shuffling happened: the fetched card is gone from the library and the
+    // search event fired, which is what "you searched your library" means.
+    expect(done.players.find((entry) => entry.id === p1.id)?.zones.library).not.toContain(
+      inLibrary,
+    );
+  });
+
+  it("still searches with an empty library when the graveyard has a target", () => {
+    const { game, p1, inGraveyard } = board();
+    const player = game.players.find((entry) => entry.id === p1.id)!;
+    player.zones.library = [];
+    const opened = open(game, p1.id, 3);
+    // An empty-library bail would skip the whole search and quietly do nothing.
+    expect(opened.prompts[0]?.kind).toBe("search_library");
+    expect(legalSearchIds(opened, opened.prompts[0]!)).toEqual([inGraveyard]);
+  });
+
+  it("gates the pump on the announced X, at ten and not at nine", () => {
+    const { game, p1 } = board();
+    const gated: CardEffect[] = [
+      {
+        kind: "if_condition",
+        condition: { kind: "announced_x_at_least", amount: 10 },
+        then: [
+          { kind: "team_pt_until_eot", playerId: "controller", power: "x", toughness: "x" },
+          { kind: "team_keyword_until_eot", playerId: "controller", keyword: "haste" },
+        ],
+      },
+    ];
+    const at = (xValue: number) =>
+      bindCardEffects(game, gated, { controllerId: p1.id, sourceId: null, xValue });
+    expect(at(9)).toEqual([]);
+    expect(at(10)).toHaveLength(2);
+    // "+X/+X" reads the same X the search did.
+    const pump = at(12)[0];
+    expect(pump?.kind === "team_pt_until_eot" && pump.power).toBe(12);
+  });
+
+  it("reads false for a trigger, which has no announced X", () => {
+    // Without an explicit branch this condition fell through to the artifact
+    // check at the end of triggerConditionHolds, which answers a different
+    // question and can say yes.
+    const { game, p1 } = board();
+    expect(
+      triggerConditionHolds(game, p1.id, { kind: "announced_x_at_least", amount: 1 }),
+    ).toBe(false);
+  });
+
+  it("round trips the two-zone flag and the X gate", () => {
+    const { game } = board();
+    const definition = createCardDefinition({
+      name: "Finale of Devastation",
+      typeLine: "Sorcery",
+      effects: [
+        search,
+        {
+          kind: "if_condition",
+          condition: { kind: "announced_x_at_least", amount: 10 },
+          then: [
+            { kind: "team_pt_until_eot", playerId: "controller", power: "x", toughness: "x" },
+          ],
+        },
+      ],
+    });
+    game.definitions[definition.id] = definition;
+    const round = parseGameState(serializeGameState(game));
+    const effects = round.definitions[definition.id]?.effects ?? [];
+    expect(effects[0]).toMatchObject({ kind: "search_library", alsoGraveyard: true });
+    expect(effects[1]).toMatchObject({
+      kind: "if_condition",
+      condition: { kind: "announced_x_at_least", amount: 10 },
+    });
+  });
+
+  it("carries the two-zone flag on an open prompt", () => {
+    const { game, p1 } = board();
+    const opened = open(game, p1.id, 3);
+    const round = parseGameState(serializeGameState(opened));
+    expect(round.prompts[0]).toMatchObject({ kind: "search_library", alsoGraveyard: true });
   });
 });

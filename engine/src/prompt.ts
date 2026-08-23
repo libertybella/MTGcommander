@@ -871,9 +871,13 @@ export function legalSearchIds(state: GameState, prompt: PendingPrompt): CardIns
     return [];
   }
   const player = state.players.find((entry) => entry.id === prompt.playerId);
-  return (player?.zones.library ?? []).filter((cardId) =>
-    searchMatches(state, cardId, prompt.filter),
-  );
+  // Finale of Devastation: "your library AND/OR graveyard" is one pool the
+  // search picks from, so both zones are offered together.
+  const pool = [
+    ...(player?.zones.library ?? []),
+    ...(prompt.alsoGraveyard ? (player?.zones.graveyard ?? []) : []),
+  ];
+  return pool.filter((cardId) => searchMatches(state, cardId, prompt.filter));
 }
 
 /**
@@ -901,6 +905,15 @@ export function applyResolveSearch(
     throw new Error("Choose each card once");
   }
   const legal = new Set(legalSearchIds(state, prompt));
+  // "If you search your LIBRARY this way, shuffle." Which zone the card
+  // came from has to be read before it moves.
+  const fromGraveyard = new Set(
+    state.players.find((entry) => entry.id === playerId)?.zones.graveyard ?? [],
+  );
+  const tookFromLibraryOnly =
+    !prompt.alsoGraveyard ||
+    cardIds.length === 0 ||
+    cardIds.some((cardId) => !fromGraveyard.has(cardId));
   for (const cardId of cardIds) {
     if (!legal.has(cardId)) {
       throw new Error("That card does not match the search");
@@ -941,7 +954,11 @@ export function applyResolveSearch(
     }
   }
   const player = next.players.find((entry) => entry.id === playerId);
-  if (player) {
+  // Taking the card from the graveyard alone means the library was never
+  // searched, so it is not shuffled. Finding nothing still shuffles: you
+  // looked. A documented reading — the engine cannot know whether a player
+  // who took a graveyard card also looked at their library.
+  if (player && tookFromLibraryOnly) {
     shuffleInPlace(player.zones.library, random);
   }
   dispatchEventsInPlace(next, [{ kind: "searches_library", playerId }]);

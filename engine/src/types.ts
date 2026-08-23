@@ -1380,6 +1380,8 @@ export type GameEffect =
       count: number;
       entersTapped?: boolean;
       untapIfLands?: number;
+      /** Finale of Devastation: the graveyard is part of the pool. */
+      alsoGraveyard?: boolean;
     }
   | { kind: "attach"; cardId: CardInstanceId; toId: CardInstanceId }
   | { kind: "transform"; cardId: CardInstanceId }
@@ -2487,6 +2489,12 @@ export type CardEffect =
       /** Traverse the Outlands: count = greatest power among the
        * controller's creatures, read at bind. */
       countFromGreatestPower?: boolean;
+      /**
+       * Finale of Devastation: "search your library AND/OR graveyard".
+       * The graveyard joins the pool the search picks from, and the shuffle
+       * then happens only when the card did not come from there.
+       */
+      alsoGraveyard?: boolean;
     }
   | { kind: "attach"; cardId: CardIdSelector; toId: ChosenTargetRef | CardInstanceId }
   | { kind: "transform"; cardId: CardIdSelector }
@@ -2730,6 +2738,12 @@ export type TriggerCondition =
    * and a much easier one to meet.
    */
   | { kind: "controls_total_power_at_least"; power: number }
+  /**
+   * Finale of Devastation: "If X is 10 or more". The announced X, which
+   * exists only while a spell resolves — a TRIGGER has no X, so this reads
+   * false there rather than falling through to some other condition.
+   */
+  | { kind: "announced_x_at_least"; amount: number }
   /**
    * Selvala: the creature that just entered has power greater than EACH
    * other creature on the battlefield — a strict maximum, so a tie fails.
@@ -3184,6 +3198,8 @@ export type PendingPrompt =
       count: number;
       entersTapped?: boolean;
       untapIfLands?: number;
+      /** Finale of Devastation: the graveyard is part of the pool. */
+      alsoGraveyard?: boolean;
       resumeEffects?: GameEffect[];
     }
   | {

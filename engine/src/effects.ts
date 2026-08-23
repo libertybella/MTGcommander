@@ -1427,6 +1427,7 @@ export function bindCardEffect(
           : effect.count,
         ...(effect.entersTapped ? { entersTapped: true } : {}),
         ...(effect.untapIfLands !== undefined ? { untapIfLands: effect.untapIfLands } : {}),
+        ...(effect.alsoGraveyard ? { alsoGraveyard: true } : {}),
       };
     }
     case "attach": {
@@ -2134,6 +2135,16 @@ export function bindCardEffects(
       const referent =
         context.subjectCardId ??
         (context.targets?.[0]?.type === "creature" ? context.targets[0].cardId : undefined);
+      // Finale of Devastation: the announced X exists only here, in the
+      // binding context. triggerConditionHolds reads the board and has no
+      // X to read, so this condition is settled before it is consulted.
+      if (effect.condition?.kind === "announced_x_at_least") {
+        const branch =
+          (context.xValue ?? 0) >= effect.condition.amount
+            ? effect.then
+            : (effect.otherwise ?? []);
+        return bindCardEffects(state, branch, context);
+      }
       const branch = triggerConditionHolds(
         state,
         context.controllerId,
@@ -3272,7 +3283,12 @@ function applySearchLibrary(
 ): GameState {
   requirePositiveInteger(effect.count, "search count");
   const player = requirePlayer(state, effect.playerId);
-  if (player.zones.library.length === 0) {
+  // Finale of Devastation can find a creature with an empty library, so an
+  // empty-library bail would silently skip the whole search.
+  if (
+    player.zones.library.length === 0 &&
+    !(effect.alsoGraveyard && player.zones.graveyard.length > 0)
+  ) {
     return state;
   }
   const next = cloneGameState(state);
@@ -3284,6 +3300,7 @@ function applySearchLibrary(
     count: effect.count,
     ...(effect.entersTapped ? { entersTapped: true } : {}),
     ...(effect.untapIfLands !== undefined ? { untapIfLands: effect.untapIfLands } : {}),
+    ...(effect.alsoGraveyard ? { alsoGraveyard: true } : {}),
   });
   return next;
 }

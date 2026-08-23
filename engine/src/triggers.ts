@@ -277,6 +277,12 @@ export function triggerConditionHolds(
       ? count === 0
       : count >= condition.atLeast;
   }
+  if (condition.kind === "announced_x_at_least") {
+    // A triggered ability has no announced X. Reading false here keeps it
+    // from falling through to the artifact check at the end of this
+    // function, which would answer a question nobody asked.
+    return false;
+  }
   if (condition.kind === "subject_power_greatest") {
     // Strictly greater than EACH other creature: a tie fails, which is
     // what "greater than" says and is the whole restriction on the card.

@@ -254,6 +254,21 @@ function expectString(value: unknown, label: string, allowEmpty = false): string
   return value;
 }
 
+/** A team pump's power term: a number, or one of the read-at-bind names. */
+function parseTeamPtTerm(
+  value: unknown,
+  label: string,
+): number | "creature_count" | "greatest_power" | "x" {
+  if (
+    value === "creature_count" ||
+    value === "greatest_power" ||
+    value === "x"
+  ) {
+    return value;
+  }
+  return expectNumber(value, label);
+}
+
 function expectNumber(value: unknown, label: string): number {
   if (typeof value !== "number" || !Number.isFinite(value)) {
     throw new Error(`Invalid ${label}`);
@@ -2140,6 +2155,7 @@ function parsePrompts(value: unknown, playerIds: Set<string>): PendingPrompt[] {
         ...(entry.untapIfLands === undefined
           ? {}
           : { untapIfLands: expectNumber(entry.untapIfLands, `prompts[${index}].untapIfLands`) }),
+        ...(entry.alsoGraveyard === true ? { alsoGraveyard: true } : {}),
         ...(resumeEffects && resumeEffects.length > 0 ? { resumeEffects } : {}),
       };
     }
@@ -3529,14 +3545,11 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
       return {
         kind,
         playerId: parsePlayerSelector(value.playerId, `${label}.playerId`),
-        power:
-          value.power === "creature_count"
-            ? "creature_count"
-            : expectNumber(value.power, `${label}.power`),
-        toughness:
-          value.toughness === "creature_count"
-            ? "creature_count"
-            : expectNumber(value.toughness, `${label}.toughness`),
+        // The type has allowed "greatest_power" and "x" all along; only
+        // "creature_count" was parsed, so Overwhelming Stampede and Finale
+        // of Devastation made definitions that could not be LOADED.
+        power: parseTeamPtTerm(value.power, `${label}.power`),
+        toughness: parseTeamPtTerm(value.toughness, `${label}.toughness`),
         ...(nonSubtypes.length > 0 ? { nonSubtypes } : {}),
         ...(value.minPower === undefined
           ? {}
@@ -3644,6 +3657,7 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
         ...(value.untapIfLands === undefined
           ? {}
           : { untapIfLands: expectNumber(value.untapIfLands, `${label}.untapIfLands`) }),
+        ...(value.alsoGraveyard === true ? { alsoGraveyard: true } : {}),
       };
     case "attach":
       return {
@@ -4489,6 +4503,12 @@ function parseTriggerCondition(value: unknown, label: string): TriggerCondition 
       }
       if (conditionKind === "created_token_this_turn") {
         return { kind: conditionKind };
+      }
+      if (conditionKind === "announced_x_at_least") {
+        return {
+          kind: conditionKind,
+          amount: expectNumber(value.amount, `${label}.amount`),
+        };
       }
       if (conditionKind === "subject_power_greatest") {
         return { kind: conditionKind };
@@ -5499,6 +5519,7 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
       ...(value.untapIfLands === undefined
         ? {}
         : { untapIfLands: expectNumber(value.untapIfLands, `${label}.untapIfLands`) }),
+      ...(value.alsoGraveyard === true ? { alsoGraveyard: true } : {}),
     };
   }
   if (kind === "attach") {

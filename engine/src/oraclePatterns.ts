@@ -6680,6 +6680,37 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     };
   }
 
+  // Finale of Devastation: "If X is 10 or more, creatures you control get
+  // +X/+X and gain haste until end of turn." The gate is on the ANNOUNCED
+  // X, which only exists while the spell resolves.
+  if (
+    /^if X is (\d+) or more, creatures you control get \+X\/\+X and gain haste until end of turn$/i.test(
+      sentence,
+    )
+  ) {
+    const gate = sentence.match(/^if X is (\d+) or more/i);
+    if (gate?.[1]) {
+      return {
+        targetRequirements: [],
+        effects: [
+          {
+            kind: "if_condition",
+            condition: { kind: "announced_x_at_least", amount: Number(gate[1]) },
+            then: [
+              {
+                kind: "team_pt_until_eot",
+                playerId: "controller",
+                power: "x",
+                toughness: "x",
+              },
+              { kind: "team_keyword_until_eot", playerId: "controller", keyword: "haste" },
+            ],
+          },
+        ],
+      };
+    }
+  }
+
   // Craterhoof Behemoth.
   if (
     /^creatures you control gain trample and get \+X\/\+X until end of turn, where X is the number of creatures you control$/i.test(
@@ -10428,6 +10459,51 @@ function foldLookRun(
   return pair && !pair.leftover ? pair : null;
 }
 
+/**
+ * Finale of Devastation: "Search your library and/or graveyard for a
+ * creature card with mana value X or less and put it onto the battlefield."
+ * The next sentence, "If you search your library this way, shuffle.", is a
+ * rider on THIS search rather than an effect of its own, so it is consumed
+ * here. Left standing it would be an uncompiled sentence on a card that
+ * otherwise reads whole.
+ */
+function compileTwoZoneTutorPair(
+  sentences: string[],
+  index: number,
+): (SimpleClause & { consumed: number }) | null {
+  const tutor = sentences[index]?.match(
+    /^Search your library and\/or graveyard for (?:an? )?(.+?) card with mana value X or less and put it onto the battlefield$/i,
+  );
+  if (!tutor?.[1]) {
+    return null;
+  }
+  const filter = parseSearchDescriptor(tutor[1]);
+  if (!filter) {
+    return null;
+  }
+  const shuffle = sentences[index + 1];
+  if (
+    !shuffle ||
+    !/^If you search your library this way, shuffle$/i.test(shuffle)
+  ) {
+    return null;
+  }
+  return {
+    targetRequirements: [],
+    effects: [
+      {
+        kind: "search_library",
+        playerId: "controller",
+        filter: { ...filter, maxManaValueX: true },
+        destination: "battlefield",
+        count: 1,
+        alsoGraveyard: true,
+      },
+    ],
+    consumed: 2,
+  };
+}
+
 function compileLookAndAssignPair(sentences: string[], index: number): SimpleClause & { consumed: number } | null {
   // Thassa's Oracle: the count is X, and X is devotion — not a number the
   // compiler can know. A SECOND head rather than a widened first one, so
@@ -11657,6 +11733,13 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
         continue;
       }
       result.leftover.push(sentence);
+      continue;
+    }
+
+    const tutorPair = compileTwoZoneTutorPair(sentences, index);
+    if (tutorPair) {
+      commitClause(result, tutorPair);
+      index += tutorPair.consumed - 1;
       continue;
     }
 
