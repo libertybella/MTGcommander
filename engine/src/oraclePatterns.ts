@@ -338,6 +338,9 @@ const DYNAMIC_COUNTS: [RegExp, DynamicCount][] = [
   [/^Swamps? you control$/i, "swamps_you_control"],
   [/^Mountains? you control$/i, "mountains_you_control"],
   [/^Forests? you control$/i, "forests_you_control"],
+  // "card you've drawn this turn" after "for each"; "cards you've drawn
+  // this turn" after "the number of". Both spellings, one row.
+  [new RegExp("^cards? you" + "['’]" + "ve drawn this turn$", "i"), "cards_drawn_this_turn"],
 ];
 
 /**
@@ -4207,6 +4210,36 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     }
   }
 
+  // "Put X +1/+1 counters on target creature you control, where X is the
+  // number of cards you've drawn this turn minus one" (Proft's Eidetic
+  // Memory). This X is a live count, not a spell's announced X, so it reads
+  // through the shared DYNAMIC_COUNTS table rather than the cast-time value.
+  // It is checked before the ordinary counter grammar because the trailing
+  // "where X is …" clause is part of the subject phrase as far as that
+  // grammar can see, and would make the subject unparseable.
+  const scaledCounters = sentence.match(
+    /^put X ([+-]\d\/[+-]\d|[a-z]+) counters? on (.+?), where X is the number of (.+?)( minus one)?$/i,
+  );
+  if (scaledCounters?.[1] && scaledCounters[2] && scaledCounters[3]) {
+    const per = parseDynamicCount(scaledCounters[3]);
+    const requirement = per ? parseSimpleTargetPhrase(scaledCounters[2].trim()) : null;
+    if (per && requirement) {
+      return {
+        targetRequirements: [requirement],
+        effects: [
+          {
+            kind: "add_counter",
+            cardId: { type: "chosen", index: 0 },
+            counter: counterKeyOf(scaledCounters[1]),
+            amount: 1,
+            perDynamicCount: per,
+            ...(scaledCounters[4] ? { dynamicOffset: -1 } : {}),
+          },
+        ],
+      };
+    }
+  }
+
   // "Put a +1/+1 counter on target creature", "Put a -1/-1 counter on each
   // creature your opponents control", "Put a +1/+1 counter, a reach counter,
   // and a deathtouch counter on target creature" — the counter list and the
@@ -7036,8 +7069,12 @@ function compileUntilEotGrant(sentence: string): SimpleClause | null {
     // signed X — plus an optional "where X is …" tail naming what X reads.
     // Reading the two sides separately is what admits "+X/+0" (Kessig Wolf
     // Run) and "-X/-X" (Grim Hireling) without a branch per combination.
+    // The "for each …" trailer scales the modifier by a live count
+    // (Fists of Flame). It is mutually exclusive with the "where X is …"
+    // tail: both name what the number reads, and no printed card uses
+    // them together.
     const ptMod = part.match(
-      /^gets?\s+([+-](?:\d+|X))\/([+-](?:\d+|X))(?:, where X is (the greatest power among creatures you control|the number of creatures you control))?$/i,
+      /^gets?\s+([+-](?:\d+|X))\/([+-](?:\d+|X))(?:, where X is (the greatest power among creatures you control|the number of creatures you control))?(?:\s+for each (.+))?$/i,
     );
     if (ptMod?.[1] && ptMod[2]) {
       const xReads = ptMod[3]?.toLowerCase();
@@ -7059,6 +7096,9 @@ function compileUntilEotGrant(sentence: string): SimpleClause | null {
       const power = term(ptMod[1]);
       const toughness = term(ptMod[2]);
       if (power === null || toughness === null) {
+        return null;
+      }
+      if (ptMod[4] && subject.how !== "target" && subject.how !== "card") {
         return null;
       }
       if (subject.how === "team") {
@@ -7101,7 +7141,19 @@ function compileUntilEotGrant(sentence: string): SimpleClause | null {
       if (toughness === "greatest_power" || toughness === "creature_count") {
         return null;
       }
-      effects.push({ kind: "pt_until_eot", cardId: cardId!, power, toughness });
+      const per = ptMod[4] ? parseDynamicCount(ptMod[4]) : null;
+      if (ptMod[4] && !per) {
+        // A trailer we cannot count is not a trailer we may drop: the
+        // grant would silently become a flat +1/+0.
+        return null;
+      }
+      effects.push({
+        kind: "pt_until_eot",
+        cardId: cardId!,
+        power,
+        toughness,
+        ...(per ? { per } : {}),
+      });
       continue;
     }
     const gains = part.match(/^gains?\s+(.+)$/i);
@@ -12359,7 +12411,31 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
     );
     if (beginCombat?.[1]) {
       const everyCombat = /each combat/i.test(sentence);
-      const inner = compileSimpleClause(beginCombat[1].trim());
+      // Intervening "if" (CR 603.4). This head has its own branch — for
+      // the haste rider below — and so never reached the shared peel the
+      // other phase heads use. Without it the whole trigger was a miss,
+      // which is why Proft's Eidetic Memory read as needing a new count
+      // when the count it asks about already existed.
+      //
+      // The peel only applies when the condition is one we can READ. A
+      // condition we cannot read is left attached to the body, which is
+      // exactly what this branch did before the peel existed — The
+      // Ozolith's "if ~ has counters on it" compiles down there, as part
+      // of the whole clause, and peeling it off unconditionally turned a
+      // working card into a miss. Never drop the condition: the trigger
+      // would fire unconditionally, which is a wrong game rather than an
+      // uncompiled one.
+      let combatBody = beginCombat[1].trim();
+      let combatCondition: TriggerCondition | undefined;
+      const combatIf = combatBody.match(/^if (.+?), (?:then )?(.+)$/i);
+      if (combatIf?.[1] && combatIf[2]) {
+        const parsed = parseEffectCondition(combatIf[1].trim());
+        if (parsed) {
+          combatCondition = parsed;
+          combatBody = combatIf[2].trim();
+        }
+      }
+      const inner = compileSimpleClause(combatBody);
       // Halana and Alena: "That creature gains haste until end of turn."
       // rides the previous sentence's single target.
       const hasteRider = sentences[index + 1]?.match(
@@ -12386,6 +12462,7 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
         result.triggers.push({
           event: "begin_combat",
           ...(everyCombat ? { watch: "any" as const } : {}),
+          ...(combatCondition ? { condition: combatCondition } : {}),
           effects: inner.effects,
           targetRequirements: inner.targetRequirements,
         });

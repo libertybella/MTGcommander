@@ -870,6 +870,26 @@ more questions it can now ask:
   (Bennie Bracks). Reads the existing per-player `createdTokenThisTurn`
   list, and asks whether the CONTROLLER is in it — an opponent's Treasure
   must not satisfy it.
+- **`cards_drawn_this_turn`** — "for each card you've drawn this turn"
+  (Fists of Flame), "where X is the number of cards you've drawn this turn
+  minus one" (Proft's Eidetic Memory). A TALLY off the draw event, not a
+  hand count: a card drawn and then discarded still counted, and a card
+  put into hand another way never did. It is the same number the
+  `drew_cards_this_turn` trigger condition has always read — only the
+  ability to read it as a NUMBER is new. `pt_until_eot` already carried a
+  `per`; `add_counter` gained the `perDynamicCount` multiplier its
+  draw/gain_life siblings had, plus a `dynamicOffset` for the "minus one"
+  tail. An offset total of zero or less places no counters at all.
+
+  The combat trigger head ("At the beginning of combat on your turn") has
+  its own branch, for Halana and Alena's haste rider, and so had never
+  reached the shared intervening-`if` peel every other phase head uses —
+  the condition was not unsupported, it was unreachable. The peel now runs
+  there too, and only when the condition is one the shared vocabulary can
+  READ: an unreadable one stays attached to the body, which is how The
+  Ozolith's "if ~ has counters on it" compiles. Dropping a condition would
+  make the trigger fire unconditionally — a wrong game rather than an
+  uncompiled one.
 - **`EffectSelector.nonTypes`** — "each nonland permanent you control"
   (Leyline of the Guildpact). An EXCLUSION, which is the only way to say
   "permanent, but not a land": `types` is a whitelist and "permanent"

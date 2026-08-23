@@ -938,8 +938,17 @@ export function bindCardEffect(
       }
       // Halana and Alena: X reads the source's power at bind.
       // The Ozolith: "subject_amount" is the leave event's counter total.
-      const amount =
-        effect.amount === "source_power"
+      // Proft's Eidetic Memory: a live count, times the printed amount,
+      // plus the "minus one" offset.
+      const amount = effect.perDynamicCount
+        ? dynamicCountOf(
+            state,
+            context.controllerId,
+            effect.perDynamicCount,
+            context.sourceId ?? undefined,
+          ) * (typeof effect.amount === "number" ? effect.amount : 1) +
+          (effect.dynamicOffset ?? 0)
+        : effect.amount === "source_power"
           ? context.sourceId
             ? Math.max(0, creaturePower(state, context.sourceId))
             : 0

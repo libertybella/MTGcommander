@@ -1348,7 +1348,11 @@ export type DynamicCount =
   | "islands_you_control"
   | "swamps_you_control"
   | "mountains_you_control"
-  | "forests_you_control";
+  | "forests_you_control"
+  /** Fists of Flame. A TALLY, not a hand count: cards drawn and then
+   * discarded still counted, and the draw that is part of the same spell
+   * has already happened by the time the count is read. */
+  | "cards_drawn_this_turn";
 
 /** "As an additional cost to cast this spell, …" — paid at cast time. */
 /**
@@ -1843,6 +1847,15 @@ export type CardEffect =
       cardId: CardIdSelector;
       counter: string;
       amount: number | "source_power" | "subject_amount";
+      /** Proft's Eidetic Memory: "X counters, where X is the number of
+       * <count>" — the same shared table draw and gain_life scale by,
+       * multiplying `amount` at bind.
+       *
+       * `dynamicOffset` is the "minus one" tail. It is applied AFTER the
+       * multiplication, and a total of zero or less places no counters at
+       * all rather than a floor of one. */
+      perDynamicCount?: DynamicCount;
+      dynamicOffset?: number;
     }
   | {
       kind: "remove_counter";

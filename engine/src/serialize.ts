@@ -105,6 +105,7 @@ const DYNAMIC_COUNT_KEYS: Record<DynamicCount, true> = {
   swamps_you_control: true,
   mountains_you_control: true,
   forests_you_control: true,
+  cards_drawn_this_turn: true,
 };
 
 function isDynamicCount(value: unknown): value is DynamicCount {
@@ -2959,6 +2960,12 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
             : value.amount === "subject_amount"
               ? ("subject_amount" as const)
               : expectNumber(value.amount, `${label}.amount`),
+        ...(isDynamicCount(value.perDynamicCount)
+          ? { perDynamicCount: value.perDynamicCount }
+          : {}),
+        ...(value.dynamicOffset === undefined
+          ? {}
+          : { dynamicOffset: expectNumber(value.dynamicOffset, `${label}.dynamicOffset`) }),
       };
     case "remove_counter":
       return {

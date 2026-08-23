@@ -387,6 +387,12 @@ export function dynamicCountOf(
       (card) => card.zone === "battlefield" && card.controllerId === controllerId,
     ).length;
   }
+  // The turn tally, not the hand: a card drawn and then discarded still
+  // counted, and a card put into hand some other way never did. The same
+  // number the `drew_cards_this_turn` trigger condition already reads.
+  if (count === "cards_drawn_this_turn") {
+    return state.drawsByPlayerThisTurn?.[controllerId] ?? 0;
+  }
   // Basic land types are SUBTYPES, so a Swamp is anything with the subtype —
   // an Urborg'd Island counts, which is the whole point of the wording.
   const BASIC_LAND_COUNTS: Partial<Record<DynamicCount, string>> = {

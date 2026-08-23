@@ -32621,3 +32621,223 @@ describe("wave 252: nonland permanents, and being all colours", () => {
     });
   });
 });
+
+describe("wave 253: cards you've drawn this turn", () => {
+  const compile = (name: string, typeLine: string, oracleText: string) =>
+    compileOracleCard({
+      oracleId: name,
+      name,
+      manaCost: "{1}{U}",
+      typeLine,
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  it("scales an until-end-of-turn grant by the tally", () => {
+    const fists = compile(
+      "Fists of Flame",
+      "Instant",
+      "Draw a card. Until end of turn, target creature gains trample and gets +1/+0 for each card you've drawn this turn.",
+    );
+    expect(fists.notes).toEqual([]);
+    expect(fists.definition.effects).toEqual([
+      { kind: "draw", playerId: "controller", count: 1 },
+      { kind: "keyword_until_eot", cardId: { type: "chosen", index: 0 }, keyword: "trample" },
+      {
+        kind: "pt_until_eot",
+        cardId: { type: "chosen", index: 0 },
+        power: 1,
+        toughness: 0,
+        per: "cards_drawn_this_turn",
+      },
+    ]);
+  });
+
+  it("refuses a trailer it cannot count rather than flattening it", () => {
+    // Dropping an unreadable "for each …" would leave a flat +1/+0, which
+    // compiles clean and plays wrong — the worst of the two failures.
+    const bogus = compile(
+      "Bogus",
+      "Instant",
+      "Until end of turn, target creature gets +1/+0 for each mushroom you have foraged.",
+    );
+    expect(bogus.notes).not.toEqual([]);
+  });
+
+  it("compiles the condition, the count, and the minus one", () => {
+    const proft = compile(
+      "Proft's Eidetic Memory",
+      "Legendary Enchantment",
+      "When Proft's Eidetic Memory enters, draw a card.\nYou have no maximum hand size.\nAt the beginning of combat on your turn, if you've drawn more than one card this turn, put X +1/+1 counters on target creature you control, where X is the number of cards you've drawn this turn minus one.",
+    );
+    expect(proft.notes).toEqual([]);
+    const combat = proft.definition.triggers.find(
+      (trigger) => trigger.event === "begin_combat",
+    );
+    expect(combat?.condition).toEqual({ kind: "drew_cards_this_turn", moreThan: 1 });
+    expect(combat?.effects[0]).toEqual({
+      kind: "add_counter",
+      cardId: { type: "chosen", index: 0 },
+      counter: "p1p1",
+      amount: 1,
+      perDynamicCount: "cards_drawn_this_turn",
+      dynamicOffset: -1,
+    });
+  });
+
+  it("keeps the combat head working when the condition is unreadable", () => {
+    // The Ozolith's "if ~ has counters on it" is understood further down, as
+    // part of the whole clause. Peeling every "if" off unconditionally turned
+    // this card from a compile into a miss.
+    const ozolith = compile(
+      "The Ozolith",
+      "Legendary Artifact",
+      "At the beginning of combat on your turn, if ~ has counters on it, you may move all counters from ~ onto target creature.",
+    );
+    expect(ozolith.notes).toEqual([]);
+  });
+
+  it("counts the turn's draws, not the cards in hand", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const before = dynamicCountOf(game, p1.id, "cards_drawn_this_turn");
+    expect(before).toBe(0);
+
+    let next = applyEffects(game, [{ kind: "draw", playerId: p1.id, count: 3 }]);
+    expect(dynamicCountOf(next, p1.id, "cards_drawn_this_turn")).toBe(3);
+
+    // A drawn card that has since left the hand still counted: this is a
+    // tally of an event, not a measurement of a zone. Discarding two must
+    // not walk the number back.
+    const hand = next.players.find((entry) => entry.id === p1.id)!.zones.hand;
+    next = applyEffects(next, [
+      { kind: "discard", playerId: p1.id, count: 2 },
+    ]);
+    expect(next.players.find((entry) => entry.id === p1.id)!.zones.hand.length).toBe(
+      hand.length - 2,
+    );
+    expect(dynamicCountOf(next, p1.id, "cards_drawn_this_turn")).toBe(3);
+
+    // And it is per player: an opponent's draws are not the controller's.
+    expect(dynamicCountOf(next, game.players[1]!.id, "cards_drawn_this_turn")).toBe(0);
+  });
+
+  it("puts drawn-minus-one counters, and none at all for a single draw", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const bear = createCardDefinition({
+      name: "Bear",
+      typeLine: "Creature — Bear",
+      power: 2,
+      toughness: 2,
+    });
+    game.definitions[bear.id] = bear;
+    const card = createCardInstance({
+      definitionId: bear.id,
+      ownerId: p1.id,
+      zone: "battlefield",
+    });
+    game.cards[card.id] = card;
+    p1.zones.battlefield.push(card.id);
+
+    const scaled: CardEffect = {
+      kind: "add_counter",
+      cardId: { type: "chosen", index: 0 },
+      counter: "p1p1",
+      amount: 1,
+      perDynamicCount: "cards_drawn_this_turn",
+      dynamicOffset: -1,
+    };
+    const targets = [{ type: "creature" as const, cardId: card.id }];
+    const targetRequirements: TargetRequirement[] = [
+      { kind: "creature", control: "own" },
+    ];
+
+    const drewFour = applyEffects(game, [{ kind: "draw", playerId: p1.id, count: 4 }]);
+    const after = applyEffects(
+      drewFour,
+      bindCardEffects(drewFour, [scaled], {
+        controllerId: p1.id,
+        sourceId: null,
+        targets,
+        targetRequirements,
+      }),
+    );
+    expect(after.cards[card.id]?.counters["p1p1"]).toBe(3);
+
+    // One draw is X = 0. Zero counters means NO counters — not a floor of
+    // one, and not a negative that would read as removing them.
+    const drewOne = applyEffects(game, [{ kind: "draw", playerId: p1.id, count: 1 }]);
+    expect(
+      bindCardEffects(drewOne, [scaled], {
+        controllerId: p1.id,
+        sourceId: null,
+        targets,
+        targetRequirements,
+      }),
+    ).toEqual([]);
+  });
+
+  it("resets with the turn", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 40);
+    const drew = applyEffects(game, [{ kind: "draw", playerId: p1.id, count: 2 }]);
+    expect(dynamicCountOf(drew, p1.id, "cards_drawn_this_turn")).toBe(2);
+    const nextTurn = structuredClone(drew);
+    beginNextLivingTurnInPlace(nextTurn);
+    expect(dynamicCountOf(nextTurn, p1.id, "cards_drawn_this_turn")).toBe(0);
+  });
+
+  it("round trips the scaled counter and the scaled grant", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const definition = createCardDefinition({
+      name: "Scaler",
+      typeLine: "Enchantment",
+      triggers: [
+        {
+          event: "begin_combat",
+          condition: { kind: "drew_cards_this_turn", moreThan: 1 },
+          effects: [
+            {
+              kind: "add_counter",
+              cardId: { type: "chosen", index: 0 },
+              counter: "p1p1",
+              amount: 1,
+              perDynamicCount: "cards_drawn_this_turn",
+              dynamicOffset: -1,
+            },
+            {
+              kind: "pt_until_eot",
+              cardId: { type: "chosen", index: 0 },
+              power: 1,
+              toughness: 0,
+              per: "cards_drawn_this_turn",
+            },
+          ],
+          targetRequirements: [{ kind: "creature", control: "own" }],
+        },
+      ],
+    });
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({
+      definitionId: definition.id,
+      ownerId: p1.id,
+      zone: "battlefield",
+    });
+    game.cards[card.id] = card;
+    p1.zones.battlefield.push(card.id);
+
+    const round = parseGameState(serializeGameState(game));
+    const trigger = round.definitions[definition.id]?.triggers[0];
+    expect(trigger?.condition).toEqual({ kind: "drew_cards_this_turn", moreThan: 1 });
+    expect(trigger?.effects[0]).toMatchObject({
+      perDynamicCount: "cards_drawn_this_turn",
+      dynamicOffset: -1,
+    });
+    expect(trigger?.effects[1]).toMatchObject({ per: "cards_drawn_this_turn" });
+  });
+});
