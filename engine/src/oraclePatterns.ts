@@ -57,6 +57,7 @@ export type CompiledOracleText = {
   protectionFrom?: ProtectionFrom;
   enchant?: "creature" | "land" | "creature_or_planeswalker_own";
   reanimateOnEnter?: boolean;
+  copySelfWhenCastFromGraveyard?: boolean;
   chooseColorOnEnter?: boolean;
   chooseColorExcludes?: Color;
   enchantedTappedBonus?: { color: Color | "chosen"; amount: number };
@@ -11384,6 +11385,19 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
     // `enchant` value stays "creature" because that is what it is attached
     // to once it resolves, and it is the loose-Aura state-based action that
     // reads it — the graveyard is where the TARGET lives, not the host.
+    // Sevinne's Reclamation. The copy is pushed during resolution, from the
+    // resolving object itself, because the spell has already left the stack
+    // by the time its effects bind — so this is a definition flag and not an
+    // effect.
+    if (
+      /^If this spell was cast from a graveyard, you may copy this spell and may choose a new target for the copy$/i.test(
+        sentence,
+      )
+    ) {
+      result.copySelfWhenCastFromGraveyard = true;
+      continue;
+    }
+
     if (/^Enchant creature card in a graveyard$/i.test(sentence)) {
       result.enchant = "creature";
       if (

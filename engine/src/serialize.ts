@@ -1314,6 +1314,9 @@ export function parseGameState(json: string): GameState {
             })(),
           }),
       ...(def.reanimateOnEnter === true ? { reanimateOnEnter: true } : {}),
+      ...(def.copySelfWhenCastFromGraveyard === true
+        ? { copySelfWhenCastFromGraveyard: true }
+        : {}),
       ...(def.enchant === "creature" ||
       def.enchant === "land" ||
       def.enchant === "creature_or_planeswalker_own"

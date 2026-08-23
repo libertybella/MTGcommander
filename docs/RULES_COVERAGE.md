@@ -870,6 +870,21 @@ more questions it can now ask:
   (Bennie Bracks). Reads the existing per-player `createdTokenThisTurn`
   list, and asks whether the CONTROLLER is in it — an opponent's Treasure
   must not satisfy it.
+- **`copySelfWhenCastFromGraveyard`** — Sevinne's Reclamation. A definition
+  flag rather than an effect, because the spell has already been popped off
+  the stack by the time its own effects bind: there is no "this spell" left
+  for an effect to name. The copy is pushed during resolution, from the
+  resolving object.
+
+  The copy takes FRESH targets, not the original's. Keeping them would aim
+  it at the permanent this very resolution just returned to the battlefield,
+  where it is no longer a legal graveyard target — the card would compile,
+  resolve, and reliably do nothing, which is the failure this project cares
+  most about. The choice is auto-taken, the same documented approximation
+  `draw.optional` carries; with nothing else legal, no copy is made at all.
+
+  The copy does not carry `fromGraveyard`: it was never cast, and the flag
+  would have it copy itself until the graveyard ran out.
 - **`reanimateOnEnter`** — Animate Dead. An Aura cast on a creature card in
   a GRAVEYARD. The card is put onto the battlefield under the spell's
   controller and the Aura attaches to it, both during RESOLUTION rather than

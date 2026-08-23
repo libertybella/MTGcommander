@@ -113,6 +113,7 @@ export function createCardDefinition(
         | "protectionFrom"
         | "enchant"
         | "reanimateOnEnter"
+        | "copySelfWhenCastFromGraveyard"
         | "loyalty"
         | "loyaltyAbilities"
         | "noMaxHandSize"
@@ -449,6 +450,9 @@ export function createCardDefinition(
       : {}),
     ...(input.enchant ? { enchant: input.enchant } : {}),
     ...(input.reanimateOnEnter ? { reanimateOnEnter: true } : {}),
+    ...(input.copySelfWhenCastFromGraveyard
+      ? { copySelfWhenCastFromGraveyard: true }
+      : {}),
     ...(input.loyalty && input.loyalty > 0 ? { loyalty: input.loyalty } : {}),
     ...(input.loyaltyAbilities && input.loyaltyAbilities.length > 0
       ? {

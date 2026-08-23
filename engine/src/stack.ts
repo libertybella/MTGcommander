@@ -15,7 +15,7 @@ import { applyEffects, bindCardEffects } from "./effects";
 import { isLiving, livingPlayerCount, nextLivingPlayerId } from "./players";
 import { applyStateBasedActionsInPlace, redirectPriorityIfLost } from "./status";
 import { dispatchEventsInPlace } from "./triggers";
-import { hasLegalTargetRemaining, isChosenTargetLegal, sourceColorsOf, validateChosenTargets } from "./targeting";
+import { firstLegalTargetSet, hasLegalTargetRemaining, isChosenTargetLegal, sourceColorsOf, validateChosenTargets } from "./targeting";
 import type {
   CardInstanceId,
   ChosenTarget,
@@ -465,6 +465,39 @@ export function resolveTopOfStack(state: GameState): GameState {
         ...(top.sacrificedPower !== undefined ? { sacrificedPower: top.sacrificedPower } : {}),
       });
       next = applyEffects(next, bound);
+    }
+  }
+
+  // Sevinne's Reclamation: "If this spell was cast from a graveyard, you may
+  // copy this spell and may choose a new target for the copy." The spell has
+  // already left the stack by the time its effects bind, so the copy is
+  // pushed here, from the resolving object itself.
+  //
+  // The copy gets FRESH targets rather than the original's. Keeping them
+  // would aim it at the permanent this resolution just returned to the
+  // battlefield, where it is no longer a legal graveyard target — the card
+  // would compile, resolve, and reliably do nothing. The choice is
+  // auto-taken, the documented approximation `draw.optional` already uses.
+  if (definition?.copySelfWhenCastFromGraveyard && top.fromGraveyard && !top.isCopy) {
+    const fresh = firstLegalTargetSet(next, requirements, top.controllerId);
+    if (fresh) {
+      next = cloneGameState(next);
+      next.stack.push({
+        id: createId("stack"),
+        controllerId: top.controllerId,
+        sourceId: top.sourceId,
+        kind: "spell",
+        targets: fresh,
+        ...(top.modeIndex !== undefined ? { modeIndex: top.modeIndex } : {}),
+        ...(top.modeIndexes ? { modeIndexes: [...top.modeIndexes] } : {}),
+        ...(top.xValue !== undefined ? { xValue: top.xValue } : {}),
+        isCopy: true,
+      });
+      // NOT fromGraveyard: the copy was never cast, and carrying the flag
+      // would have it copy itself again without end.
+      dispatchEventsInPlace(next, [
+        { kind: "copies_spell", cardId: top.sourceId, controllerId: top.controllerId },
+      ]);
     }
   }
 

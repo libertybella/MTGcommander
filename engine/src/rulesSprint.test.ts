@@ -39212,3 +39212,135 @@ describe("wave 291: an Aura cast on a card in a graveyard", () => {
     expect(round.definitions[definitionId]?.reanimateOnEnter).toBe(true);
   });
 });
+
+describe("wave 292: a spell that copies itself when cast from a graveyard", () => {
+  const SEVINNE_TEXT =
+    "Return target permanent card with mana value 3 or less from your graveyard to the battlefield. If this spell was cast from a graveyard, you may copy this spell and may choose a new target for the copy.\nFlashback {4}{W}";
+
+  const board = (corpseCount: number) => {
+    const { game, p1, p2 } = twoPlayers();
+    const spellDefinition = createCardDefinition({
+      name: "Sevinne's Reclamation",
+      typeLine: "Sorcery",
+      manaCost: "{2}{W}",
+      targetRequirements: [{ kind: "own_graveyard_permanent_card", maxManaValue: 3 }],
+      effects: [{ kind: "move_card", cardId: { type: "chosen", index: 0 }, toZone: "battlefield" }],
+      copySelfWhenCastFromGraveyard: true,
+      flashback: { manaCost: "{4}{W}" },
+    });
+    game.definitions[spellDefinition.id] = spellDefinition;
+    const spell = createCardInstance({
+      definitionId: spellDefinition.id,
+      ownerId: p1.id,
+      zone: "graveyard",
+    });
+    game.cards[spell.id] = spell;
+    p1.zones.graveyard.push(spell.id);
+
+    const corpseIds: string[] = [];
+    for (let index = 0; index < corpseCount; index += 1) {
+      const definition = createCardDefinition({
+        name: `Bear${index}`,
+        typeLine: "Creature — Bear",
+        manaCost: "{1}{G}",
+        power: 2,
+        toughness: 2,
+      });
+      game.definitions[definition.id] = definition;
+      const card = createCardInstance({
+        definitionId: definition.id,
+        ownerId: p1.id,
+        zone: "graveyard",
+      });
+      game.cards[card.id] = card;
+      p1.zones.graveyard.push(card.id);
+      corpseIds.push(card.id);
+    }
+    game.priorityPlayerId = p1.id;
+    return { game, p1, p2, spellId: spell.id, corpseIds };
+  };
+
+  /** Put the spell on the stack as if cast from the graveyard (flashback). */
+  const fromGraveyard = (game: GameState, spellId: string, targetId: string) => {
+    const staged = putSpellOnStack(game, spellId, [{ type: "creature", cardId: targetId }]);
+    const top = staged.stack[staged.stack.length - 1]!;
+    staged.stack[staged.stack.length - 1] = { ...top, fromGraveyard: true };
+    return staged;
+  };
+
+  it("compiles Sevinne's Reclamation whole", () => {
+    const compiled = compileOracleCard({
+      oracleId: "sevinnes-reclamation",
+      name: "Sevinne's Reclamation",
+      manaCost: "{2}{W}",
+      typeLine: "Sorcery",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText: SEVINNE_TEXT,
+    });
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.copySelfWhenCastFromGraveyard).toBe(true);
+    expect(compiled.definition.flashback).toEqual({ manaCost: "{4}{W}" });
+    expect(compiled.definition.effects).toEqual([
+      { kind: "move_card", cardId: { type: "chosen", index: 0 }, toZone: "battlefield" },
+    ]);
+  });
+
+  it("copies itself when cast from a graveyard, and returns a SECOND card", () => {
+    const { game, spellId, corpseIds } = board(2);
+    const resolved = resolveTopOfStack(fromGraveyard(game, spellId, corpseIds[0]!));
+    expect(resolved.cards[corpseIds[0]!]?.zone).toBe("battlefield");
+    // The copy is waiting on the stack, aimed at the OTHER card. Keeping the
+    // original target would aim it at the permanent just returned, where it is
+    // no longer a legal graveyard target, and the copy would do nothing.
+    expect(resolved.stack).toHaveLength(1);
+    expect(resolved.stack[0]?.isCopy).toBe(true);
+    expect(resolved.stack[0]?.targets).toEqual([{ type: "creature", cardId: corpseIds[1]! }]);
+    const done = resolveTopOfStack(resolved);
+    expect(done.cards[corpseIds[1]!]?.zone).toBe("battlefield");
+  });
+
+  it("does not copy itself when cast from hand", () => {
+    const { game, p1, spellId, corpseIds } = board(2);
+    // Move the spell to hand and cast it normally.
+    const inHand = moveCard(game, spellId, "hand");
+    const cast = putSpellOnStack(inHand, spellId, [
+      { type: "creature", cardId: corpseIds[0]! },
+    ]);
+    const resolved = resolveTopOfStack(cast);
+    expect(resolved.cards[corpseIds[0]!]?.zone).toBe("battlefield");
+    expect(resolved.stack).toHaveLength(0);
+    expect(resolved.cards[corpseIds[1]!]?.zone).toBe("graveyard");
+    expect(p1.id).toBeDefined();
+  });
+
+  it("makes no copy when nothing else is left to target", () => {
+    const { game, spellId, corpseIds } = board(1);
+    const resolved = resolveTopOfStack(fromGraveyard(game, spellId, corpseIds[0]!));
+    expect(resolved.cards[corpseIds[0]!]?.zone).toBe("battlefield");
+    // One corpse, and it is already back. A copy with no legal target would
+    // just sit on the stack and fizzle.
+    expect(resolved.stack).toHaveLength(0);
+  });
+
+  it("does not let the copy copy itself again", () => {
+    const { game, spellId, corpseIds } = board(3);
+    const resolved = resolveTopOfStack(fromGraveyard(game, spellId, corpseIds[0]!));
+    expect(resolved.stack).toHaveLength(1);
+    // The copy was never CAST from a graveyard, so it carries no such flag —
+    // otherwise this would go on until the graveyard ran out.
+    expect(resolved.stack[0]?.fromGraveyard).not.toBe(true);
+    const afterCopy = resolveTopOfStack(resolved);
+    expect(afterCopy.stack).toHaveLength(0);
+    expect(afterCopy.cards[corpseIds[2]!]?.zone).toBe("graveyard");
+  });
+
+  it("round trips the flag", () => {
+    const { game, spellId } = board(1);
+    const definitionId = game.cards[spellId]!.definitionId;
+    const round = parseGameState(serializeGameState(game));
+    expect(round.definitions[definitionId]?.copySelfWhenCastFromGraveyard).toBe(true);
+  });
+});

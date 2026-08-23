@@ -124,6 +124,13 @@ export type CardDefinition = {
    * the gap between the two would be exactly that.
    */
   reanimateOnEnter?: boolean;
+  /**
+   * Sevinne's Reclamation: "If this spell was cast from a graveyard, you
+   * may copy this spell and may choose a new target for the copy." The
+   * spell has already left the stack by the time its effects bind, so the
+   * copy is pushed during resolution rather than by an effect.
+   */
+  copySelfWhenCastFromGraveyard?: boolean;
   /** "As this Aura enters, choose a color" (Utopia Sprawl). */
   /** "As this enters, choose a color". The Thriving lands exclude their own
    * colour, so the choice is a real restriction rather than free. */
