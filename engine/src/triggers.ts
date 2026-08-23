@@ -1058,6 +1058,13 @@ export function dispatchEventsInPlace(state: GameState, events: EngineEvent[]): 
       gained[event.playerId] = (gained[event.playerId] ?? 0) + event.amount;
       state.lifeGainedByPlayerThisTurn = gained;
     }
+    // Wound Reflection's mirror, on the same event-side principle: combat
+    // damage, a drain and a resolved lose_life are all counted once here.
+    if (event.kind === "loses_life" && event.amount > 0) {
+      const lost = state.lifeLostByPlayerThisTurn ?? {};
+      lost[event.playerId] = (lost[event.playerId] ?? 0) + event.amount;
+      state.lifeLostByPlayerThisTurn = lost;
+    }
   }
   const candidates: TriggerCandidate[] = [];
   // Computed once for the whole sweep: `triggersOf` would otherwise run the

@@ -1486,6 +1486,20 @@ export function parseGameState(json: string): GameState {
             return counts;
           })(),
         }),
+    ...(raw.lifeLostByPlayerThisTurn === undefined
+      ? {}
+      : {
+          lifeLostByPlayerThisTurn: (() => {
+            if (!isRecord(raw.lifeLostByPlayerThisTurn)) {
+              throw new Error("Invalid lifeLostByPlayerThisTurn");
+            }
+            const counts: Record<string, number> = {};
+            for (const [key, entry] of Object.entries(raw.lifeLostByPlayerThisTurn)) {
+              counts[key] = expectNumber(entry, `lifeLostByPlayerThisTurn.${key}`);
+            }
+            return counts;
+          })(),
+        }),
     ...(raw.castLockUntilEot === undefined
       ? {}
       : { castLockUntilEot: expectString(raw.castLockUntilEot, "castLockUntilEot") }),
@@ -2580,7 +2594,10 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
         kind,
         playerId: parsePlayerSelector(value.playerId, `${label}.playerId`),
         amount:
-          value.amount === "subject_amount" || value.amount === "target_mana_value"
+          value.amount === "subject_amount" ||
+          value.amount === "target_mana_value" ||
+          value.amount === "source_power" ||
+          value.amount === "own_life_lost_this_turn"
             ? value.amount
             : expectNumber(value.amount, `${label}.amount`),
       };

@@ -667,6 +667,12 @@ export type GameState = {
    * every path that gains life is counted once, lifelink included.
    */
   lifeGainedByPlayerThisTurn?: Record<PlayerId, number>;
+  /**
+   * Wound Reflection: per-player life LOST this turn, the mirror of the
+   * tally above and kept for the same reason — it is not the change in a
+   * life total, and gaining life back does not undo having lost it.
+   */
+  lifeLostByPlayerThisTurn?: Record<PlayerId, number>;
   /** Creatures that died this turn (Mahadi's Treasure count). */
   creaturesDiedThisTurn?: number;
   /** Silence: everyone but this player is locked out of casting until end of
@@ -1612,7 +1618,17 @@ export type CardEffect =
       kind: "lose_life";
       playerId: PlayerSelector;
       /** target_mana_value: the first chosen target's mana value (Reanimate). */
-      amount: number | "subject_amount" | "target_mana_value";
+      /** source_power: Marionette Master — the power of the ability's own
+       * source, read at bind. */
+      /** own_life_lost_this_turn: Wound Reflection — the life the BOUND
+       * player has lost this turn, so an each-opponent expansion gives each
+       * of them their own number rather than one shared total. */
+      amount:
+        | number
+        | "subject_amount"
+        | "target_mana_value"
+        | "source_power"
+        | "own_life_lost_this_turn";
       /** Castle Locthwain: "life equal to the number of cards in your hand" —
        * the same count table gain_life and draw already scale by. */
       perDynamicCount?: DynamicCount;

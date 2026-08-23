@@ -381,7 +381,17 @@ export function bindCardEffect(
                       ? creaturePower(state, chosen.cardId)
                       : 0;
                   })()
-                : effect.amount;
+                : effect.amount === "source_power"
+                  ? // Marionette Master: the power of the ability's own source.
+                    context.sourceId
+                    ? Math.max(0, creaturePower(state, context.sourceId))
+                    : 0
+                  : effect.amount === "own_life_lost_this_turn"
+                    ? // Wound Reflection: the BOUND player's own losses, so an
+                      // each-opponent expansion gives each of them their own
+                      // number instead of one shared total.
+                      (state.lifeLostByPlayerThisTurn?.[playerId] ?? 0)
+                    : effect.amount;
       if (amount <= 0) {
         return null;
       }

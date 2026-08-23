@@ -3456,6 +3456,29 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     };
   }
 
+  // Marionette Master: the amount is the SOURCE's power, not the trigger's
+  // subject. "That much" above reads what the event carried; this reads the
+  // permanent whose ability is resolving.
+  if (/^target opponent loses life equal to ~'s power$/i.test(sentence)) {
+    return {
+      targetRequirements: [{ kind: "opponent" }],
+      effects: [
+        { kind: "lose_life", playerId: { type: "chosen", index: 0 }, amount: "source_power" },
+      ],
+    };
+  }
+
+  // Wound Reflection: each opponent loses what THEY lost, so the amount is
+  // per-player and resolves after the each-opponent expansion picks one.
+  if (/^each opponent loses life equal to the life they lost this turn$/i.test(sentence)) {
+    return {
+      targetRequirements: [],
+      effects: [
+        { kind: "lose_life", playerId: "each_opponent", amount: "own_life_lost_this_turn" },
+      ],
+    };
+  }
+
   if (/^(?:you )?gain that much life$/i.test(sentence)) {
     return {
       targetRequirements: [],

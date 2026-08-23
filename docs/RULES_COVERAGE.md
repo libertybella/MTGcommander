@@ -660,6 +660,23 @@ is applied AFTER every layer-6 instance has run rather than in place: a
 grant later in the same layer would otherwise win. `remove_all_abilities`
 clears the lock along with everything else.
 
+### Two more amounts for life loss (wave 242)
+
+- **`source_power`** is the power of the ability's own SOURCE (Marionette
+  Master), which is a different number from `subject_amount` ("that much"
+  — what the event carried) and from `target_power`.
+- **`own_life_lost_this_turn`** is the BOUND player's own losses (Wound
+  Reflection). It resolves after the each-opponent expansion has picked a
+  player, so each opponent loses their own number rather than one shared
+  total — binding the amount before the expansion is the failure this
+  shape exists to avoid, and there is a test with two opponents on
+  different totals.
+
+`lifeLostByPlayerThisTurn` mirrors the gained tally from wave 224 and is
+kept for the same reason: it is not the change in a life total, and
+gaining the life back does not undo having lost it. Both ride their
+EVENT rather than each site that moves a life total.
+
 ### Hexproof on a player (wave 240)
 
 A player is not a permanent and has no computed characteristics, so

@@ -31316,3 +31316,154 @@ describe("wave 241: two more trigger-head gaps", () => {
     expect(triggers[1]?.subjectFilter).toEqual({ enteredTapped: true });
   });
 });
+
+describe("wave 242: two more amounts for life loss", () => {
+  const compile = (name: string, typeLine: string, oracleText: string, power?: string, toughness?: string) =>
+    compileOracleCard({
+      oracleId: name,
+      name,
+      manaCost: "{5}",
+      typeLine,
+      power: power ?? null,
+      toughness: toughness ?? null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  const threePlayers = () => {
+    const game = createGameState({ playerCount: 3 });
+    const [p1, p2, p3] = game.players;
+    if (!p1 || !p2 || !p3) {
+      throw new Error("expected three players");
+    }
+    fillLibraries(game, 20);
+    return { game, p1, p2, p3 };
+  };
+
+  it("reads both amounts off the printed lines", () => {
+    const marionette = compile(
+      "Marionette Master",
+      "Creature — Human Artificer",
+      "Whenever an artifact you control is put into a graveyard from the battlefield, target opponent loses life equal to Marionette Master's power.",
+      "0",
+      "3",
+    );
+    expect(marionette.notes).toEqual([]);
+    expect(marionette.definition.triggers[0]?.effects[0]).toMatchObject({
+      kind: "lose_life",
+      amount: "source_power",
+    });
+
+    const wound = compile(
+      "Wound Reflection",
+      "Enchantment",
+      "At the beginning of each end step, each opponent loses life equal to the life they lost this turn.",
+    );
+    expect(wound.notes).toEqual([]);
+    expect(wound.definition.triggers[0]?.effects[0]).toMatchObject({
+      kind: "lose_life",
+      playerId: "each_opponent",
+      amount: "own_life_lost_this_turn",
+    });
+  });
+
+  it("gives each opponent their OWN losses, not one shared total", () => {
+    const { game, p1, p2, p3 } = threePlayers();
+    dispatchEventsInPlace(game, [{ kind: "loses_life", playerId: p2.id, amount: 3 }]);
+    dispatchEventsInPlace(game, [{ kind: "loses_life", playerId: p3.id, amount: 7 }]);
+    expect(game.lifeLostByPlayerThisTurn?.[p2.id]).toBe(3);
+    expect(game.lifeLostByPlayerThisTurn?.[p3.id]).toBe(7);
+
+    const bound = bindCardEffects(
+      game,
+      [{ kind: "lose_life", playerId: "each_opponent", amount: "own_life_lost_this_turn" }],
+      { controllerId: p1.id, sourceId: null },
+    );
+    // Two effects, and they must carry DIFFERENT numbers. Binding the amount
+    // before the each-opponent expansion would give both the same total,
+    // which is the failure this shape exists to avoid.
+    expect(bound).toHaveLength(2);
+    const byPlayer = Object.fromEntries(
+      bound.map((effect) => [
+        (effect as { playerId: string }).playerId,
+        (effect as { amount: number }).amount,
+      ]),
+    );
+    expect(byPlayer[p2.id]).toBe(3);
+    expect(byPlayer[p3.id]).toBe(7);
+  });
+
+  it("counts losses, not the change in a life total", () => {
+    const { game, p1, p2 } = threePlayers();
+    dispatchEventsInPlace(game, [{ kind: "loses_life", playerId: p2.id, amount: 5 }]);
+    dispatchEventsInPlace(game, [{ kind: "gains_life", playerId: p2.id, amount: 5 }]);
+    // Gaining it back does not undo having lost it — the same principle as
+    // the gained tally, and a net-life reading would report zero here.
+    expect(game.lifeLostByPlayerThisTurn?.[p2.id]).toBe(5);
+
+    beginNextLivingTurnInPlace(game);
+    expect(game.lifeLostByPlayerThisTurn?.[p2.id] ?? 0).toBe(0);
+    void p1;
+  });
+
+  it("reads the source's power, not the trigger's subject", () => {
+    const { game, p1, p2 } = threePlayers();
+    const master = createCardDefinition({
+      name: "Marionette Master",
+      typeLine: "Creature — Human Artificer",
+      power: 4,
+      toughness: 3,
+    });
+    game.definitions[master.id] = master;
+    const source = createCardInstance({
+      definitionId: master.id,
+      ownerId: p1.id,
+      zone: "battlefield",
+    });
+    game.cards[source.id] = source;
+    p1.zones.battlefield.push(source.id);
+
+    const bound = bindCardEffects(
+      game,
+      [{ kind: "lose_life", playerId: p2.id, amount: "source_power" }],
+      { controllerId: p1.id, sourceId: source.id, subjectAmount: 99 },
+    );
+    // subjectAmount is deliberately absurd: source_power must read the
+    // permanent whose ability is resolving, not whatever the event carried.
+    expect((bound[0] as { amount: number }).amount).toBe(4);
+  });
+
+  it("round trips the tally and both amounts", () => {
+    const { game, p1, p2 } = threePlayers();
+    dispatchEventsInPlace(game, [{ kind: "loses_life", playerId: p2.id, amount: 6 }]);
+    const definition = createCardDefinition({
+      name: "Amount Holder",
+      typeLine: "Enchantment",
+      triggers: [
+        {
+          event: "end_step",
+          effects: [
+            { kind: "lose_life", playerId: "each_opponent", amount: "own_life_lost_this_turn" },
+            { kind: "lose_life", playerId: "each_opponent", amount: "source_power" },
+          ],
+          targetRequirements: [],
+        },
+      ],
+    });
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({
+      definitionId: definition.id,
+      ownerId: p1.id,
+      zone: "battlefield",
+    });
+    game.cards[card.id] = card;
+    p1.zones.battlefield.push(card.id);
+
+    const round = parseGameState(serializeGameState(game));
+    expect(round.lifeLostByPlayerThisTurn?.[p2.id]).toBe(6);
+    const effects = round.definitions[definition.id]?.triggers[0]?.effects ?? [];
+    expect(effects[0]).toMatchObject({ amount: "own_life_lost_this_turn" });
+    expect(effects[1]).toMatchObject({ amount: "source_power" });
+  });
+});
