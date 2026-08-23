@@ -82,6 +82,12 @@ function violatesCharacteristicFilter(
   if (requirement.legendaryOnly && !characteristicsOf(state, cardId).supertypes.includes("legendary")) {
     return true;
   }
+  if (
+    requirement.nonlegendaryOnly &&
+    characteristicsOf(state, cardId).supertypes.includes("legendary")
+  ) {
+    return true;
+  }
   if (requirement.attackingOnly && state.cards[cardId]?.attacking !== true) {
     return true;
   }
@@ -341,6 +347,13 @@ export function isChosenTargetLegal(
     }
     // Sun Titan: "with mana value 3 or less" on graveyard targets.
     if (violatesManaValueFilter(state, target.cardId, requirement)) {
+      return false;
+    }
+    // The rest of the adjectives ("nonlegendary", a colour, a subtype) were
+    // being parsed onto graveyard requirements and then ignored here, which
+    // is the same shape the permanent family had: a filter that reads as
+    // decoration because nothing consults it.
+    if (violatesCharacteristicFilter(state, target.cardId, requirement)) {
       return false;
     }
     if (requirement.kind === "own_graveyard_creature_card") {

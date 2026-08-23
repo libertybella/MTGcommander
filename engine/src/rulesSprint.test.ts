@@ -19,7 +19,7 @@ import { cardMatchesSubtype, computedCard, dynamicCountOf } from "./characterist
 import { mostCommonControlledCreatureType } from "./effects";
 import { castCostReduction, castableFromTop, freeEquipGranted, hasFlashGrant, landDropAllowance, permanentsControlledBy, reliefAdjustedCost, selfDiscountAmount, wouldEnterTapped } from "./derived";
 import { hasKeyword } from "./keywords";
-import { dispatchEventsInPlace } from "./triggers";
+import { dispatchEventsInPlace, triggerConditionHolds } from "./triggers";
 import { applyCombatDamage, declareAttackers } from "./combat";
 import { beginNextLivingTurnInPlace } from "./turn";
 import { commanderIdentityColors, manaAbilitiesFor, manaTapOptionsFor } from "./manaOptions";
@@ -26566,6 +26566,233 @@ describe("wave 208: keywords that lower onto machinery already here", () => {
       sacrificeWhenEmpty: true,
     });
     expect(next.cards[card.id]?.zone).toBe("battlefield");
+  });
+});
+
+
+describe("wave 209: coming back, and coming back smaller", () => {
+  const compile = (name: string, manaCost: string, typeLine: string, oracleText: string, power?: string, toughness?: string) =>
+    compileOracleCard({
+      oracleId: name,
+      name,
+      manaCost,
+      typeLine,
+      power: power ?? null,
+      toughness: toughness ?? null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  it("returns a nonlegendary creature card with the counter already on it", () => {
+    const persist = compile(
+      "Persist",
+      "{1}{B}",
+      "Sorcery",
+      "Return target nonlegendary creature card from your graveyard to the battlefield with a -1/-1 counter on it.",
+    );
+    expect(persist.notes).toEqual([]);
+    expect(persist.definition.targetRequirements).toEqual([
+      { kind: "own_graveyard_creature_card", nonlegendaryOnly: true },
+    ]);
+    expect(persist.definition.effects).toEqual([
+      {
+        kind: "move_card",
+        cardId: { type: "chosen", index: 0 },
+        toZone: "battlefield",
+        withCounter: { counter: "m1m1", amount: 1 },
+      },
+    ]);
+
+    // Reanimate reads the same grammar and must not pick up a counter.
+    const reanimate = compile(
+      "Reanimate",
+      "{B}",
+      "Sorcery",
+      "Return target creature card from your graveyard to the battlefield.",
+    );
+    expect(reanimate.definition.effects).toEqual([
+      { kind: "move_card", cardId: { type: "chosen", index: 0 }, toZone: "battlefield" },
+    ]);
+
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const definition = createCardDefinition({
+      name: "Bear",
+      typeLine: "Creature — Bear",
+      power: 2,
+      toughness: 2,
+    });
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({
+      definitionId: definition.id,
+      ownerId: p1.id,
+      zone: "graveyard",
+    });
+    game.cards[card.id] = card;
+    p1.zones.graveyard.push(card.id);
+
+    const next = applyEffect(game, {
+      kind: "move_card",
+      cardId: card.id,
+      toZone: "battlefield",
+      withCounter: { counter: "m1m1", amount: 1 },
+    });
+    expect(next.cards[card.id]?.zone).toBe("battlefield");
+    expect(next.cards[card.id]?.counters["m1m1"]).toBe(1);
+    // The counter is on before anything reads the creature, so it is a 1/1.
+    expect(computedCard(next, card.id)?.toughness).toBe(1);
+  });
+
+  it("refuses a legendary card for the nonlegendary slot", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const plain = createCardDefinition({
+      name: "Bear",
+      typeLine: "Creature — Bear",
+      power: 2,
+      toughness: 2,
+    });
+    const legend = createCardDefinition({
+      name: "Legend",
+      typeLine: "Legendary Creature — Human",
+      power: 2,
+      toughness: 2,
+    });
+    for (const definition of [plain, legend]) {
+      game.definitions[definition.id] = definition;
+    }
+    const inYard = (definitionId: string) => {
+      const card = createCardInstance({ definitionId, ownerId: p1.id, zone: "graveyard" });
+      game.cards[card.id] = card;
+      p1.zones.graveyard.push(card.id);
+      return card;
+    };
+    const bear = inYard(plain.id);
+    const legendary = inYard(legend.id);
+
+    const requirement: TargetRequirement = {
+      kind: "own_graveyard_creature_card",
+      nonlegendaryOnly: true,
+    };
+    const legal = legalChoicesForRequirement(game, requirement, p1.id).map((choice) =>
+      choice.type === "creature" ? choice.cardId : null,
+    );
+    expect(legal).toContain(bear.id);
+    // The whole word "nonlegendary" — without this the slot is just "creature
+    // card" and the target requirement reads as decoration.
+    expect(legal).not.toContain(legendary.id);
+  });
+
+  it("brings a persisting creature back once, and only once", () => {
+    const archmage = compile(
+      "Glen Elendra Archmage",
+      "{3}{U}",
+      "Creature — Faerie Wizard",
+      "Flying\n{U}, Sacrifice this creature: Counter target noncreature spell.\nPersist",
+      "2",
+      "2",
+    );
+    expect(archmage.notes).toEqual([]);
+    expect(archmage.definition.triggers[0]).toEqual({
+      event: "dies",
+      condition: { kind: "self_no_counter", counter: "m1m1" },
+      effects: [
+        {
+          kind: "move_card",
+          cardId: "self",
+          toZone: "battlefield",
+          withCounter: { counter: "m1m1", amount: 1 },
+        },
+      ],
+      targetRequirements: [],
+    });
+
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const definition = createCardDefinition({
+      name: "Glen Elendra Archmage",
+      typeLine: "Creature — Faerie Wizard",
+      power: 2,
+      toughness: 2,
+    });
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({
+      definitionId: definition.id,
+      ownerId: p1.id,
+      zone: "battlefield",
+    });
+    game.cards[card.id] = card;
+    p1.zones.battlefield.push(card.id);
+
+    const condition = { kind: "self_no_counter", counter: "m1m1" } as const;
+    expect(triggerConditionHolds(game, p1.id, condition, undefined, card.id)).toBe(true);
+    const back = applyEffect(game, {
+      kind: "move_card",
+      cardId: card.id,
+      toZone: "battlefield",
+      withCounter: { counter: "m1m1", amount: 1 },
+    });
+    // Second time round the intervening-if is false, which is the only thing
+    // stopping persist from looping forever.
+    expect(triggerConditionHolds(back, p1.id, condition, undefined, card.id)).toBe(false);
+  });
+
+  it("unearths from the graveyard with haste and an expiry", () => {
+    const gatekeeper = compile(
+      "Molten Gatekeeper",
+      "{2}{R}",
+      "Artifact Creature — Golem",
+      "Whenever another creature you control enters, this creature deals 1 damage to each opponent.\nUnearth {R}",
+      "2",
+      "3",
+    );
+    expect(gatekeeper.notes).toEqual([]);
+    expect(gatekeeper.definition.activated[0]).toEqual({
+      tap: false,
+      manaCost: "{R}",
+      zone: "graveyard",
+      effects: [
+        {
+          kind: "move_card",
+          cardId: "self",
+          toZone: "battlefield",
+          gainsHaste: true,
+          atEndStep: "exile",
+        },
+      ],
+      targetRequirements: [],
+      timing: "sorcery",
+    });
+
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const definition = createCardDefinition({
+      name: "Molten Gatekeeper",
+      typeLine: "Artifact Creature — Golem",
+      power: 2,
+      toughness: 3,
+    });
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({
+      definitionId: definition.id,
+      ownerId: p1.id,
+      zone: "graveyard",
+    });
+    game.cards[card.id] = card;
+    p1.zones.graveyard.push(card.id);
+
+    const next = applyEffect(game, {
+      kind: "move_card",
+      cardId: card.id,
+      toZone: "battlefield",
+      gainsHaste: true,
+      atEndStep: "exile",
+    });
+    expect(next.cards[card.id]?.zone).toBe("battlefield");
+    // Hasty on arrival, and already booked to leave.
+    expect(next.cards[card.id]?.summoningSick).toBe(false);
+    expect(next.delayedEndStep).toContainEqual({ cardId: card.id, action: "exile" });
   });
 });
 

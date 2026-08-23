@@ -2303,6 +2303,7 @@ function parseTargetRequirement(value: unknown, label: string): TargetRequiremen
       : { minPower: expectNumber(value.minPower, `${label}.minPower`) }),
     ...(value.multicolored === true ? { multicolored: true } : {}),
     ...(value.legendaryOnly === true ? { legendaryOnly: true } : {}),
+    ...(value.nonlegendaryOnly === true ? { nonlegendaryOnly: true } : {}),
     ...(value.nontoken === true ? { nontoken: true } : {}),
     ...(value.nonbasicOnly === true ? { nonbasicOnly: true } : {}),
     ...(value.attackingOnly === true ? { attackingOnly: true } : {}),
@@ -2695,6 +2696,14 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
           ? { atEndStep: value.atEndStep }
           : {}),
         ...(value.underControlOf === "controller" ? { underControlOf: "controller" } : {}),
+        ...(isRecord(value.withCounter)
+          ? {
+              withCounter: {
+                counter: expectString(value.withCounter.counter, `${label}.withCounter.counter`),
+                amount: expectNumber(value.withCounter.amount, `${label}.withCounter.amount`),
+              },
+            }
+          : {}),
       };
     }
     case "tap":
@@ -3832,6 +3841,9 @@ function parseTriggerCondition(value: unknown, label: string): TriggerCondition 
           ),
         };
       }
+      if (conditionKind === "self_no_counter") {
+        return { kind: conditionKind, counter: expectString(value.counter, `${label}.counter`) };
+      }
       if (conditionKind === "hand_size_exactly") {
         return {
           kind: conditionKind,
@@ -4933,6 +4945,14 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
       ...(value.controllerId === undefined
         ? {}
         : { controllerId: expectString(value.controllerId, `${label}.controllerId`) }),
+      ...(isRecord(value.withCounter)
+        ? {
+            withCounter: {
+              counter: expectString(value.withCounter.counter, `${label}.withCounter.counter`),
+              amount: expectNumber(value.withCounter.amount, `${label}.withCounter.amount`),
+            },
+          }
+        : {}),
     };
   }
   if (kind === "tap" || kind === "untap" || kind === "tap_or_untap" || kind === "sacrifice") {

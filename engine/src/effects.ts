@@ -795,6 +795,7 @@ export function bindCardEffect(
         ...(effect.underControlOf === "controller"
           ? { controllerId: context.controllerId }
           : {}),
+        ...(effect.withCounter ? { withCounter: { ...effect.withCounter } } : {}),
       };
     }
     case "tap":
@@ -3138,6 +3139,12 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
           // sits in its owner's zone list, but the caster controls it.
           if (effect.controllerId && next.players.some((p) => p.id === effect.controllerId)) {
             arrived.controllerId = effect.controllerId;
+          }
+          // Persist: "with a -1/-1 counter on it" is part of the arrival, so
+          // the state-based sweep that follows sees the shrunken creature.
+          if (effect.withCounter) {
+            arrived.counters[effect.withCounter.counter] =
+              (arrived.counters[effect.withCounter.counter] ?? 0) + effect.withCounter.amount;
           }
         }
         break;

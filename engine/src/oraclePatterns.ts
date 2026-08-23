@@ -1190,6 +1190,11 @@ function parseGraveyardTargetPhrase(phrase: string): TargetRequirement | null {
     requirement.maxManaValue = Number(manaValue[2]);
     rest = manaValue[1];
   }
+  const nonlegendary = rest.match(/^nonlegendary\s+(.*)$/i);
+  if (nonlegendary?.[1]) {
+    requirement.nonlegendaryOnly = true;
+    rest = nonlegendary[1];
+  }
   const head = GRAVEYARD_HEAD_NOUNS.find(([pattern]) => pattern.test(rest.trim()));
   return head ? { ...requirement, kind: head[1] } : null;
 }
@@ -5243,11 +5248,16 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
   // Regrowth / Zombify / Unearth / Sun Titan / Goblin Engineer: one grammar
   // for the graveyard noun phrase and its destination.
   match = sentence.match(
-    /^(?:you may )?Return target (.+?) from your graveyard to (your hand|the battlefield)$/i,
+    /^(?:you may )?Return target (.+?) from your graveyard to (your hand|the battlefield)(?: with an? ([+-]\d\/[+-]\d) counter on it)?$/i,
   );
   const yardTarget = match?.[1] ? parseGraveyardTargetPhrase(match[1]) : null;
   if (yardTarget && match?.[2]) {
     const toHand = match[2].toLowerCase() === "your hand";
+    // Persist: the counter rides the arrival, so the state-based sweep that
+    // follows sees the shrunken creature rather than a full-size one.
+    const arrivalCounter = match[3]
+      ? { counter: match[3] === "+1/+1" ? "p1p1" : "m1m1", amount: 1 }
+      : null;
     // Only cards that are certainly permanents may return to the battlefield;
     // "target card" could be an instant, and an instant on the battlefield is
     // not a game state this engine has.
@@ -5259,6 +5269,7 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
             kind: "move_card",
             cardId: { type: "chosen", index: 0 },
             toZone: toHand ? "hand" : "battlefield",
+            ...(arrivalCounter && !toHand ? { withCounter: arrivalCounter } : {}),
           },
         ],
       };
@@ -11544,6 +11555,59 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
           targetRequirements: [],
           zone: "hand",
           discard: true,
+        });
+        continue;
+      }
+    }
+
+    // Persist (CR 702.78) lowers to its full rules text. The intervening-if
+    // is what keeps it from looping: a creature that came back already has
+    // the counter, so its second death does nothing.
+    if (/^Persist$/i.test(sentence)) {
+      result.triggers.push({
+        event: "dies",
+        condition: { kind: "self_no_counter", counter: "m1m1" },
+        effects: [
+          {
+            kind: "move_card",
+            cardId: "self",
+            toZone: "battlefield",
+            withCounter: { counter: "m1m1", amount: 1 },
+          },
+        ],
+        targetRequirements: [],
+      });
+      continue;
+    }
+
+    // Unearth (CR 702.83) lowers to its full rules text as well: a graveyard
+    // activation at sorcery speed whose arrival is hasty and temporary. The
+    // "or if it would leave the battlefield" half of the exile is not modelled
+    // — a documented approximation; the end-step exile is the one that matters.
+    const unearth = sentence.match(/^Unearth ((?:\{[^}]+\})+)$/i);
+    if (unearth?.[1]) {
+      let unearthCostOk = true;
+      try {
+        parseManaCost(unearth[1]);
+      } catch {
+        unearthCostOk = false;
+      }
+      if (unearthCostOk) {
+        result.activated.push({
+          tap: false,
+          manaCost: unearth[1],
+          zone: "graveyard",
+          effects: [
+            {
+              kind: "move_card",
+              cardId: "self",
+              toZone: "battlefield",
+              gainsHaste: true,
+              atEndStep: "exile",
+            },
+          ],
+          targetRequirements: [],
+          timing: "sorcery",
         });
         continue;
       }

@@ -790,6 +790,8 @@ export type GameEffect =
       atEndStep?: "sacrifice" | "exile";
       /** Battlefield arrivals: the arriving card is controlled by this player. */
       controllerId?: PlayerId;
+      /** "…to the battlefield with a -1/-1 counter on it" (Persist). */
+      withCounter?: { counter: string; amount: number };
     }
   | { kind: "tap"; cardId: CardInstanceId }
   | { kind: "untap"; cardId: CardInstanceId }
@@ -1358,6 +1360,8 @@ export type TargetRequirement = {
   owner?: "own";
   /** "target nontoken creature" (Parting Gust). */
   nontoken?: boolean;
+  /** "target nonlegendary creature card" (Persist). */
+  nonlegendaryOnly?: boolean;
 };
 
 /** One bullet of a modal spell. Targets are chosen for the picked mode only. */
@@ -1498,6 +1502,8 @@ export type CardEffect =
       atEndStep?: "sacrifice" | "exile";
       /** "onto the battlefield under your control" (Reanimate). */
       underControlOf?: "controller";
+      /** "…to the battlefield with a -1/-1 counter on it" (Persist). */
+      withCounter?: { counter: string; amount: number };
     }
   | { kind: "tap"; cardId: CardIdSelector }
   | { kind: "untap"; cardId: CardIdSelector }
@@ -2063,6 +2069,11 @@ export type TriggerCondition =
   /** Triskaidekaphile: "if you have exactly thirteen cards in your hand". */
   | { kind: "hand_size_exactly"; count: number }
   /** Threshold: "if there are seven or more cards in your graveyard". */
+  /** Persist / undying: "if it had no -1/-1 counters on it". Read on the
+   * source itself, and after it has already left the battlefield — counters
+   * survive the move in this engine, which is what makes the intervening-if
+   * answerable at all. */
+  | { kind: "self_no_counter"; counter: string }
   | { kind: "graveyard_cards_at_least"; count: number }
   /** Delirium: "if there are four or more card types among cards in your
    * graveyard". */

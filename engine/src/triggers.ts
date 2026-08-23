@@ -120,6 +120,13 @@ export function triggerConditionHolds(
     const player = state.players.find((entry) => entry.id === controllerId);
     return (player?.life ?? 0) >= condition.amount;
   }
+  // Persist's intervening-if. Read on the source, which by then is in the
+  // graveyard: counters survive the move in this engine, so the question is
+  // still answerable (CR 400.7 would make it a new object with none).
+  if (condition.kind === "self_no_counter") {
+    const source = watcherId ? state.cards[watcherId] : undefined;
+    return (source?.counters[condition.counter] ?? 0) === 0;
+  }
   if (condition.kind === "hand_size_exactly") {
     const player = state.players.find((entry) => entry.id === controllerId);
     return (player?.zones.hand.length ?? -1) === condition.count;
