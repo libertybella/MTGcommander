@@ -3955,6 +3955,26 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     };
   }
 
+  // Jarad, Susur Secundi: the same fodder-power payout, but from an
+  // ACTIVATION cost rather than a clause. That path already captures the
+  // power as the cost is paid, so these need no plumbing — only the words.
+  if (
+    /^Each opponent loses life equal to the sacrificed creature's power$/i.test(sentence)
+  ) {
+    return {
+      targetRequirements: [],
+      effects: [
+        { kind: "lose_life", playerId: "each_opponent", amount: "sacrificed_power" },
+      ],
+    };
+  }
+  if (/^Draw cards equal to the sacrificed creature's power$/i.test(sentence)) {
+    return {
+      targetRequirements: [],
+      effects: [{ kind: "draw", playerId: "controller", count: "sacrificed_power" }],
+    };
+  }
+
   // Disciple of Bolas: the payout is the power of the creature the
   // preceding clause is about to sacrifice, which only the choose_card
   // resolution knows. foldSacrificeRider moves this into thenEffects so it

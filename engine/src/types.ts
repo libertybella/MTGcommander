@@ -1646,12 +1646,15 @@ export type CardEffect =
       /** own_life_lost_this_turn: Wound Reflection — the life the BOUND
        * player has lost this turn, so an each-opponent expansion gives each
        * of them their own number rather than one shared total. */
+      /** sacrificed_power: Jarad — the fodder's power, captured as the
+       * activation cost is paid. */
       amount:
         | number
         | "subject_amount"
         | "target_mana_value"
         | "source_power"
-        | "own_life_lost_this_turn";
+        | "own_life_lost_this_turn"
+        | "sacrificed_power";
       /** Castle Locthwain: "life equal to the number of cards in your hand" —
        * the same count table gain_life and draw already scale by. */
       perDynamicCount?: DynamicCount;

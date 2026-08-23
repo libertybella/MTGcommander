@@ -2599,7 +2599,8 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
           value.amount === "subject_amount" ||
           value.amount === "target_mana_value" ||
           value.amount === "source_power" ||
-          value.amount === "own_life_lost_this_turn"
+          value.amount === "own_life_lost_this_turn" ||
+          value.amount === "sacrificed_power"
             ? value.amount
             : expectNumber(value.amount, `${label}.amount`),
       };

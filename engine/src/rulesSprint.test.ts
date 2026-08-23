@@ -32388,3 +32388,104 @@ describe("wave 250: the sacrificed creature's power, paid out for real", () => {
     ).toEqual([]);
   });
 });
+
+describe("wave 251: fodder power from an activation cost", () => {
+  it("compiles the two activated-ability spellings", () => {
+    const jarad = compileOracleCard({
+      oracleId: "Jarad",
+      name: "Jarad",
+      manaCost: "{1}{B}{G}",
+      typeLine: "Legendary Creature — Zombie Elf Warrior",
+      power: "2",
+      toughness: "2",
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "{1}{B}{G}, Sacrifice another creature: Each opponent loses life equal to the sacrificed creature's power.",
+    });
+    expect(jarad.notes).toEqual([]);
+    expect(jarad.definition.activated[0]?.effects[0]).toMatchObject({
+      kind: "lose_life",
+      playerId: "each_opponent",
+      amount: "sacrificed_power",
+    });
+
+    const drawer = compileOracleCard({
+      oracleId: "Drawer",
+      name: "Drawer",
+      manaCost: "{1}{B}",
+      typeLine: "Artifact",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText: "{1}{B}, Sacrifice a creature: Draw cards equal to the sacrificed creature's power.",
+    });
+    expect(drawer.notes).toEqual([]);
+    expect(drawer.definition.activated[0]?.effects[0]).toMatchObject({
+      kind: "draw",
+      count: "sacrificed_power",
+    });
+  });
+
+  it("drains for the fodder's power when the ability is activated", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    const jarad = createCardDefinition({
+      name: "Jarad",
+      typeLine: "Legendary Creature — Zombie Elf Warrior",
+      power: 2,
+      toughness: 2,
+      activated: [
+        {
+          tap: false,
+          manaCost: "{1}{B}{G}",
+          sacrificeCost: "creature",
+          effects: [
+            { kind: "lose_life", playerId: "each_opponent", amount: "sacrificed_power" },
+          ],
+          targetRequirements: [],
+        },
+      ],
+    });
+    const fatty = createCardDefinition({
+      name: "Fatty",
+      typeLine: "Creature — Beast",
+      power: 6,
+      toughness: 6,
+    });
+    for (const definition of [jarad, fatty]) {
+      game.definitions[definition.id] = definition;
+    }
+    const put = (definitionId: string) => {
+      const card = createCardInstance({ definitionId, ownerId: p1.id, zone: "battlefield" });
+      card.summoningSick = false;
+      game.cards[card.id] = card;
+      p1.zones.battlefield.push(card.id);
+      return card;
+    };
+    const body = put(jarad.id);
+    const fodder = put(fatty.id);
+    game.turn.phase = "precombatMain";
+    game.turn.step = "precombatMain";
+    p1.mana.B = 3;
+    p1.mana.G = 3;
+
+    const before = p2.life;
+    let next = applyAction(game, {
+      kind: "activate_ability",
+      playerId: p1.id,
+      cardId: body.id,
+      abilityIndex: 0,
+      targets: [],
+      costSacrificeId: fodder.id,
+    });
+    next = resolveTopOfStack(next);
+
+    // The activation path captures the power as the cost is paid, so the
+    // 6/6 drains for six even though it is in the graveyard by the time the
+    // ability resolves.
+    expect(next.cards[fodder.id]?.zone).toBe("graveyard");
+    expect(next.players.find((entry) => entry.id === p2.id)?.life).toBe(before - 6);
+  });
+});
