@@ -35834,3 +35834,137 @@ describe("wave 271: the draw-step first card is exempt", () => {
     expect(p1.id).toBeDefined();
   });
 });
+
+describe("wave 272: a creature or planeswalker card in your graveyard", () => {
+  const setup = () => {
+    const { game, p1, p2 } = twoPlayers();
+    const put = (owner: PlayerState, name: string, typeLine: string) => {
+      const definition = createCardDefinition({
+        name,
+        typeLine,
+        ...(typeLine.includes("Creature") ? { power: 2, toughness: 2 } : {}),
+      });
+      game.definitions[definition.id] = definition;
+      const card = createCardInstance({
+        definitionId: definition.id,
+        ownerId: owner.id,
+        zone: "graveyard",
+      });
+      game.cards[card.id] = card;
+      owner.zones.graveyard.push(card.id);
+      return card.id;
+    };
+    return {
+      game,
+      p1,
+      p2,
+      bear: put(p1, "Bear", "Creature — Bear"),
+      walker: put(p1, "Jace", "Legendary Planeswalker — Jace"),
+      bolt: put(p1, "Bolt", "Instant"),
+      rock: put(p1, "Rock", "Artifact"),
+      theirs: put(p2, "Theirs", "Creature — Ogre"),
+    };
+  };
+
+  const requirement: TargetRequirement = {
+    kind: "own_graveyard_creature_or_planeswalker_card",
+  };
+
+  it("accepts a creature and a planeswalker, and nothing else", () => {
+    const { game, p1, bear, walker, bolt, rock } = setup();
+    const legal = (cardId: string) =>
+      isChosenTargetLegal(game, requirement, { type: "creature", cardId }, p1.id);
+    expect(legal(bear)).toBe(true);
+    expect(legal(walker)).toBe(true);
+    // An instant and an artifact are neither, and a family member missing
+    // from the legality chain reads as legal-by-default.
+    expect(legal(bolt)).toBe(false);
+    expect(legal(rock)).toBe(false);
+  });
+
+  it("reads only your own graveyard", () => {
+    const { game, p1, theirs } = setup();
+    expect(
+      isChosenTargetLegal(game, requirement, { type: "creature", cardId: theirs }, p1.id),
+    ).toBe(false);
+  });
+
+  it("offers exactly what it would accept", () => {
+    const { game, p1, bear, walker } = setup();
+    const choices = legalChoicesForRequirement(game, requirement, p1.id);
+    // The enumeration lists the graveyard family by hand too; a kind missing
+    // from it is silently unofferable even though it is legal.
+    expect(choices).toHaveLength(2);
+    expect(choices).toContainEqual({ type: "creature", cardId: bear });
+    expect(choices).toContainEqual({ type: "creature", cardId: walker });
+  });
+
+  it("round trips the new kind", () => {
+    const { game, p1 } = setup();
+    const definition = createCardDefinition({
+      name: "Channeler",
+      typeLine: "Land",
+      activated: [
+        {
+          tap: false,
+          manaCost: "{3}{B}",
+          zone: "hand",
+          discard: true,
+          effects: [
+            { kind: "move_card", cardId: { type: "chosen", index: 0 }, toZone: "hand" },
+          ],
+          targetRequirements: [requirement],
+        },
+      ],
+    });
+    game.definitions[definition.id] = definition;
+    const round = parseGameState(serializeGameState(game));
+    // The parser's allow-list is a hand-written chain: a kind missing from it
+    // makes the whole definition unloadable, not merely wrong.
+    expect(round.definitions[definition.id]?.activated[0]?.targetRequirements[0]).toEqual(
+      requirement,
+    );
+    expect(p1.id).toBeDefined();
+  });
+
+  it("compiles Takenuma's channel whole", () => {
+    const compiled = compileOracleCard({
+      oracleId: "tk",
+      name: "Takenuma, Abandoned Mire",
+      manaCost: "",
+      typeLine: "Legendary Land",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "{T}: Add {B}.\nChannel — {3}{B}, Discard this card: Mill three cards, then return a creature or planeswalker card from your graveyard to your hand. This ability costs {1} less to activate for each legendary creature you control.",
+    });
+    expect(compiled.notes).toEqual([]);
+    const channel = compiled.definition.activated.find((ability) => ability.discard);
+    expect(channel).toMatchObject({
+      zone: "hand",
+      discard: true,
+      legendaryDiscount: true,
+      targetRequirements: [{ kind: "own_graveyard_creature_or_planeswalker_card" }],
+    });
+    expect(channel?.effects.map((effect) => effect.kind)).toEqual(["mill", "move_card"]);
+  });
+
+  it("still refuses a graveyard noun it cannot read", () => {
+    const compiled = compileOracleCard({
+      oracleId: "x",
+      name: "Probe",
+      manaCost: "{1}",
+      typeLine: "Sorcery",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText: "Return a Goblin or Dwarf card from your graveyard to your hand.",
+    });
+    // Widening "target" to "a" must not turn every unreadable noun phrase
+    // into a silent success.
+    expect(compiled.notes.length).toBeGreaterThan(0);
+  });
+});

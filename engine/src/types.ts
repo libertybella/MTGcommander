@@ -1634,6 +1634,10 @@ export type TargetKind =
   /** Titania: "target land card in your graveyard". */
   | "own_graveyard_land_card"
   | "own_graveyard_instant_or_sorcery_card"
+  /** Takenuma: "a creature or planeswalker card in your graveyard". */
+  | "own_graveyard_creature_or_planeswalker_card"
+  /** Takenuma: "a creature or planeswalker card in your graveyard". */
+  | "own_graveyard_creature_or_planeswalker_card"
   /** A creature card in ANY graveyard (Reanimate). */
   | "graveyard_creature_card"
   /** Any card in ANY graveyard (Noxious Revival). */

@@ -368,7 +368,8 @@ export function isChosenTargetLegal(
     requirement.kind === "own_graveyard_artifact_card" ||
     requirement.kind === "own_graveyard_enchantment_card" ||
     requirement.kind === "own_graveyard_land_card" ||
-    requirement.kind === "own_graveyard_instant_or_sorcery_card"
+    requirement.kind === "own_graveyard_instant_or_sorcery_card" ||
+    requirement.kind === "own_graveyard_creature_or_planeswalker_card"
   ) {
     if (target.type !== "creature" || !casterId) {
       return false;
@@ -403,6 +404,10 @@ export function isChosenTargetLegal(
     if (requirement.kind === "own_graveyard_instant_or_sorcery_card") {
       const types = characteristicsOf(state, target.cardId).types;
       return types.includes("instant") || types.includes("sorcery");
+    }
+    if (requirement.kind === "own_graveyard_creature_or_planeswalker_card") {
+      const types = characteristicsOf(state, target.cardId).types;
+      return types.includes("creature") || types.includes("planeswalker");
     }
     if (requirement.kind === "own_graveyard_permanent_card") {
       const types = characteristicsOf(state, target.cardId).types;
@@ -774,7 +779,8 @@ export function legalChoicesForRequirement(
     requirement.kind === "own_graveyard_artifact_card" ||
     requirement.kind === "own_graveyard_enchantment_card" ||
     requirement.kind === "own_graveyard_land_card" ||
-    requirement.kind === "own_graveyard_instant_or_sorcery_card"
+    requirement.kind === "own_graveyard_instant_or_sorcery_card" ||
+    requirement.kind === "own_graveyard_creature_or_planeswalker_card"
   ) {
     const caster = state.players.find((entry) => entry.id === casterId);
     return (caster?.zones.graveyard ?? [])

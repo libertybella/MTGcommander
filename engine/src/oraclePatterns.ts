@@ -1281,6 +1281,10 @@ const GRAVEYARD_HEAD_NOUNS: [RegExp, TargetKind][] = [
   [/^enchantment card$/i, "own_graveyard_enchantment_card"],
   [/^land card$/i, "own_graveyard_land_card"],
   [/^instant or sorcery card$/i, "own_graveyard_instant_or_sorcery_card"],
+  [
+    /^creature or planeswalker card$/i,
+    "own_graveyard_creature_or_planeswalker_card",
+  ],
   [/^card$/i, "own_graveyard_card"],
 ];
 
@@ -6255,7 +6259,7 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
   // Regrowth / Zombify / Unearth / Sun Titan / Goblin Engineer: one grammar
   // for the graveyard noun phrase and its destination.
   match = sentence.match(
-    /^(?:you may )?Return target (.+?) from your graveyard to (your hand|the battlefield)(?: with an? ([+-]\d\/[+-]\d) counter on it)?$/i,
+    /^(?:you may )?Return (?:target|a|an) (.+?) from your graveyard to (your hand|the battlefield)(?: with an? ([+-]\d\/[+-]\d) counter on it)?$/i,
   );
   const yardTarget = match?.[1] ? parseGraveyardTargetPhrase(match[1]) : null;
   if (yardTarget && match?.[2]) {

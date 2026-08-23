@@ -870,6 +870,19 @@ more questions it can now ask:
   (Bennie Bracks). Reads the existing per-player `createdTokenThisTurn`
   list, and asks whether the CONTROLLER is in it — an opponent's Treasure
   must not satisfy it.
+- **`own_graveyard_creature_or_planeswalker_card`** — Takenuma, Abandoned
+  Mire. The graveyard target family is listed BY HAND in three places: the
+  legality gate, the enumeration, and the parser's allow-list. A kind
+  missing from the first reads as legal-by-default, missing from the second
+  is silently unofferable, and missing from the third makes the whole
+  definition fail to load. All three are covered by tests here.
+
+  Takenuma writes "a creature or planeswalker card", not "target". The
+  engine has no untargeted graveyard chooser, and reading it as a target
+  moves the choice from resolution to announcement — for a Channel ability
+  those are the same moment, and nothing in a graveyard has hexproof. A
+  documented approximation, and one that still refuses a noun phrase it
+  cannot read: "a Goblin or Dwarf card" stays a miss.
 - **Dual trigger heads** (CR 603.1) — "When ~ enters AND whenever …, BODY"
   is TWO triggered abilities sharing one body. The ETB branch matched
   `(?: and whenever [^,]+)?` and threw the second half away, so 5 cards in
