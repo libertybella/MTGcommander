@@ -534,6 +534,7 @@ export function parseGameState(json: string): GameState {
             ),
           }),
       ...(def.cantLoseGame === true ? { cantLoseGame: true } : {}),
+      ...(def.creaturesDontUntap === true ? { creaturesDontUntap: true } : {}),
       ...(def.controllerHexproof === true ? { controllerHexproof: true } : {}),
       ...(def.attackLimitPerCombat === undefined
         ? {}

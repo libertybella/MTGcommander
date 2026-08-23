@@ -65,6 +65,7 @@ export type CompiledOracleText = {
   opponentsDrawCap?: number;
   noncreatureSpellCap?: number;
   cantLoseGame?: boolean;
+  creaturesDontUntap?: boolean;
   controllerHexproof?: boolean;
   attackLimitPerCombat?: number;
   extraBlocksGranted?: number;
@@ -10800,6 +10801,12 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
       /^You can't lose the game and your opponents can't win the game$/i.test(sentence)
     ) {
       result.cantLoseGame = true;
+      continue;
+    }
+    if (
+      /^Creatures don't untap during their controllers' untap steps$/i.test(sentence)
+    ) {
+      result.creaturesDontUntap = true;
       continue;
     }
     const spellCap = sentence.match(

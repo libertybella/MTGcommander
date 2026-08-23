@@ -870,6 +870,16 @@ more questions it can now ask:
   (Bennie Bracks). Reads the existing per-player `createdTokenThisTurn`
   list, and asks whether the CONTROLLER is in it — an opponent's Treasure
   must not satisfy it.
+- **`creaturesDontUntap`** — "Creatures don't untap during their
+  controllers' untap steps" (Intruder Alarm). Global and SYMMETRIC: it
+  stops every player's creatures including the Alarm controller's own,
+  which is what makes the card a lock rather than an advantage, so the
+  query is not scoped to the untapping player. Read once per untap step —
+  an Alarm leaving mid-sweep must not untap half the board — and through
+  the same `abilitiesRemoved` check every printed static goes through, so a
+  Humility'd Alarm locks nothing. Creatures only: artifacts and lands untap
+  as usual, and there is a test for that, since a lock that stopped
+  everything would pass every other assertion.
 - **Board-wide untap and steal** — "Untap all creatures and gain control
   of them until end of turn" (Insurrection). Both effects existed; neither
   phrase parsed. The unscoped "all creatures" is EVERY player's, which is

@@ -197,6 +197,11 @@ export type CardDefinition = {
    * second name for the same rule.
    */
   cantLoseGame?: boolean;
+  /** Intruder Alarm: "Creatures don't untap during their controllers'
+   * untap steps." Global and symmetric — it stops EVERY player's
+   * creatures, including the controller's own, which is what makes the
+   * card a lock rather than an advantage. */
+  creaturesDontUntap?: boolean;
   /**
    * Shalai: "You … have hexproof." Hexproof on a PLAYER, which is a
    * different object from hexproof on a permanent — it stops opponents

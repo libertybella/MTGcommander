@@ -33607,3 +33607,140 @@ describe("wave 258: untapping everyone's board, and fighting anything else", () 
     expect(after.cards[theirs]?.controllerId).toBe(p1.id);
   });
 });
+
+describe("wave 259: creatures don't untap", () => {
+  it("compiles the lock as a definition flag", () => {
+    const alarm = compileOracleCard({
+      oracleId: "Intruder Alarm",
+      name: "Intruder Alarm",
+      manaCost: "{1}{U}{U}",
+      typeLine: "Enchantment",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "Creatures don't untap during their controllers' untap steps.\nWhenever a creature enters, untap all creatures.",
+    });
+    expect(alarm.notes).toEqual([]);
+    expect(alarm.definition.creaturesDontUntap).toBe(true);
+  });
+
+  it("locks EVERY player, including the Alarm's own controller", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 30);
+    const alarm = createCardDefinition({
+      name: "Intruder Alarm",
+      typeLine: "Enchantment",
+      creaturesDontUntap: true,
+    });
+    const bear = createCardDefinition({
+      name: "Bear",
+      typeLine: "Creature — Bear",
+      power: 2,
+      toughness: 2,
+    });
+    const rock = createCardDefinition({ name: "Rock", typeLine: "Artifact" });
+    for (const definition of [alarm, bear, rock]) {
+      game.definitions[definition.id] = definition;
+    }
+    const put = (definitionId: string, ownerId: string) => {
+      const card = createCardInstance({ definitionId, ownerId, zone: "battlefield" });
+      card.tapped = true;
+      game.cards[card.id] = card;
+      game.players.find((entry) => entry.id === ownerId)!.zones.battlefield.push(card.id);
+      return card.id;
+    };
+    put(alarm.id, p1.id);
+    const mine = put(bear.id, p1.id);
+    const theirs = put(bear.id, p2.id);
+    const artifact = put(rock.id, p1.id);
+
+    // Walk to the NEXT untap step rather than just flipping the turn:
+    // the sweep runs when the step is entered, not when the turn begins.
+    let walked = game;
+    for (let guard = 0; guard < 40; guard += 1) {
+      walked = advanceSteps(walked, 1);
+      if (walked.turn.activePlayerId === p1.id && walked.turn.step === "untap") {
+        break;
+      }
+    }
+    // The active player's creature stays tapped — the lock is symmetric,
+    // and a per-player reading would have let the Alarm's controller untap.
+    expect(walked.cards[mine]?.tapped).toBe(true);
+    expect(walked.cards[theirs]?.tapped).toBe(true);
+    // Only CREATURES: the artifact untaps as usual, so the lock is not just
+    // "nothing untaps".
+    expect(walked.cards[artifact]?.tapped).toBe(false);
+  });
+
+  it("stops locking once the Alarm's abilities are gone", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 30);
+    const alarm = createCardDefinition({
+      name: "Intruder Alarm",
+      typeLine: "Enchantment",
+      creaturesDontUntap: true,
+    });
+    const humility = createCardDefinition({
+      name: "Humility",
+      typeLine: "Enchantment",
+      staticAbilities: [
+        { selector: { scope: "all" }, effect: { kind: "remove_all_abilities" } },
+      ],
+    });
+    const bear = createCardDefinition({
+      name: "Bear",
+      typeLine: "Creature — Bear",
+      power: 2,
+      toughness: 2,
+    });
+    for (const definition of [alarm, humility, bear]) {
+      game.definitions[definition.id] = definition;
+    }
+    const put = (definitionId: string) => {
+      const card = createCardInstance({ definitionId, ownerId: p1.id, zone: "battlefield" });
+      card.tapped = true;
+      game.cards[card.id] = card;
+      p1.zones.battlefield.push(card.id);
+      return card.id;
+    };
+    put(alarm.id);
+    put(humility.id);
+    const mine = put(bear.id);
+
+    // Walk to the NEXT untap step rather than just flipping the turn:
+    // the sweep runs when the step is entered, not when the turn begins.
+    let walked = game;
+    for (let guard = 0; guard < 40; guard += 1) {
+      walked = advanceSteps(walked, 1);
+      if (walked.turn.activePlayerId === p1.id && walked.turn.step === "untap") {
+        break;
+      }
+    }
+    // A Humility'd Alarm locks nothing: the flag is read through the same
+    // ability-removal check every other printed static goes through.
+    expect(walked.cards[mine]?.tapped).toBe(false);
+  });
+
+  it("round trips the flag", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const definition = createCardDefinition({
+      name: "Alarm",
+      typeLine: "Enchantment",
+      creaturesDontUntap: true,
+    });
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({
+      definitionId: definition.id,
+      ownerId: p1.id,
+      zone: "battlefield",
+    });
+    game.cards[card.id] = card;
+    p1.zones.battlefield.push(card.id);
+
+    const round = parseGameState(serializeGameState(game));
+    expect(round.definitions[definition.id]?.creaturesDontUntap).toBe(true);
+  });
+});

@@ -8,7 +8,7 @@ import {
   ensureCombatInPlace,
 } from "./combat";
 import { applyEffect } from "./effects";
-import { maxHandSizeOf, wouldSkipDraw } from "./derived";
+import { creaturesDontUntap, maxHandSizeOf, wouldSkipDraw } from "./derived";
 import { emptyManaPoolsInPlace } from "./mana";
 import { livingPlayers, nextLivingPlayerId } from "./players";
 import { applyStateBasedActionsInPlace } from "./status";
@@ -138,6 +138,9 @@ function onEnterStep(state: GameState): GameState {
       }
     }
     const untappedEvents: EngineEvent[] = [];
+    // Intruder Alarm, read ONCE for the whole step: an Alarm that leaves
+    // mid-sweep must not untap half the board.
+    const creatureLock = creaturesDontUntap(state);
     const untapInPlace = (card: (typeof state.cards)[string]) => {
       if (card.tapped) {
         untappedEvents.push({ kind: "untapped", cardId: card.id });
@@ -148,8 +151,9 @@ function onEnterStep(state: GameState): GameState {
       if (card.zone === "battlefield" && card.controllerId === activeId) {
         // "~ doesn't untap during your untap step" (ability removal restores it).
         const staysTapped =
-          state.definitions[card.definitionId]?.doesntUntap === true &&
-          !abilitiesRemoved(state, card.id);
+          (state.definitions[card.definitionId]?.doesntUntap === true &&
+            !abilitiesRemoved(state, card.id)) ||
+          (creatureLock && isCreature(state, card.id));
         // Vorinclex froze it: skip this one untap step, then clear.
         if (card.skipNextUntap) {
           card.skipNextUntap = false;

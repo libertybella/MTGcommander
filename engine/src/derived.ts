@@ -508,6 +508,23 @@ export function cantLoseGame(state: GameState, playerId: string): boolean {
   );
 }
 
+/**
+ * Intruder Alarm: creatures do not untap in any untap step while one is on
+ * the battlefield. Global rather than per-player — the lock is symmetric,
+ * and reading it off the untapping player would let the Alarm's own
+ * controller untap freely, which is the opposite of the card.
+ *
+ * `abilitiesRemoved` still applies: a Humility'd Alarm locks nothing.
+ */
+export function creaturesDontUntap(state: GameState): boolean {
+  return Object.values(state.cards).some(
+    (card) =>
+      card.zone === "battlefield" &&
+      !abilitiesRemoved(state, card.id) &&
+      state.definitions[card.definitionId]?.creaturesDontUntap === true,
+  );
+}
+
 export function noncreatureSpellCap(state: GameState): number | null {
   let cap: number | null = null;
   for (const card of Object.values(state.cards)) {
