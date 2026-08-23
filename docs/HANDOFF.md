@@ -8,11 +8,40 @@ on-what lives in [CLAIMS.md](CLAIMS.md). This file is the tribal
 knowledge that isn't obvious from those: exact commands, traps, and
 the current state of play. Read all four before writing code.
 
-## State of play (checkpoint-84-inert-filters, 2026-08-22)
+## State of play (checkpoint-85-keyword-vein, 2026-08-22)
 
-- Branch `comprehensive-plan`, tags through `checkpoint-84-inert-filters`.
-- 1,103 tests green; top-2,000 compile rate **64.1% (1,287/2,009)**,
+- Branch `comprehensive-plan`, tags through `checkpoint-85-keyword-vein`.
+- 1,143 tests green; top-2,000 compile rate **65.9% (1,323/2,009)**,
   60-card sample 97% (CI floor now 90).
+- **The one-away pile has a vein in it: bare keyword lines.** Sorting the
+  misses by fragment LENGTH rather than by grammar found what clustering
+  by shape had missed — roughly thirty cards are one sentence away, and
+  that sentence is a keyword with nothing else on the line. Persist,
+  Vanishing, Outlast, Unearth, Eternalize, Umbra armor, Evoke, Foretell,
+  Morph, Dredge, Suspend, Cascade, Miracle, Spectacle, Escalate,
+  Reconfigure, Encore, Split second, Cumulative upkeep, Myriad, Warp,
+  Impending, Harmonize, Splice onto Arcane, Fuse. **Where the reminder
+  text says something the engine can already do, the keyword is a
+  lowering, not a mechanic** — outlast is a tap ability at sorcery
+  timing, typecycling is cycling with a search where the draw was,
+  unearth is a graveyard activation whose every rider already existed.
+  Those cost a few lines each. The rest are real work, and waves 208–210
+  took the cheap end first. **This is the highest-density remaining vein;
+  keep working it.**
+- **Sort the miss corpus by fragment length, not only by grammar.** The
+  structural clustering (`^Whenever` 48, `^If` 28, `^{` 31) is a long
+  thin tail of one-offs and reads as "no lever left". The same 294 cards
+  sorted by how much text is missing put the entire keyword vein on one
+  screen.
+- **Two things were probed this stretch and deliberately left**, both
+  worth knowing before someone tries again. Totem armor (Bear Umbra,
+  Snake Umbra) has nothing to hook: this engine has no "destroy" distinct
+  from a `move_card` to the graveyard, so a destruction replacement would
+  also catch sacrifices and bounces. Blade of Selves GRANTS myriad rather
+  than having it, which needs the granted-trigger statics Kaldra is also
+  waiting on. Encore needs a token that must attack one NAMED player —
+  wave 207 taught the engine "must attack" and "may not attack X", but
+  not "must attack X".
 - **Waves 195–200 flipped 5, 3, 5, 10, 3, 3. The +10 was the cheapest
   wave of the stretch, and it added almost no capability.** Every gap in
   it was a REFUSED READING rather than a missing feature: the sweep
