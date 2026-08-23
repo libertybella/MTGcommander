@@ -487,7 +487,11 @@ export function resolveTopOfStack(state: GameState): GameState {
       next.cards[top.sourceId]?.zone === "battlefield"
     ) {
       const entered = next.cards[top.sourceId]!;
-      entered.counters["p1p1"] = (entered.counters["p1p1"] ?? 0) + (top.xValue ?? 0);
+      // Everflowing Chalice takes charge counters, not +1/+1. Hardcoding
+      // the hydra counter here would give it the wrong kind and leave
+      // every ability that reads charge counters seeing none.
+      const xCounter = definition.entersWithXCounterKind ?? "p1p1";
+      entered.counters[xCounter] = (entered.counters[xCounter] ?? 0) + (top.xValue ?? 0);
     }
     if (destination === "battlefield" && definition?.enterAsCopy?.maxManaValueBySpent) {
       // Mockingbird: the copy cap is the mana spent to cast — the announced X

@@ -390,6 +390,12 @@ export type CardDefinition = {
   };
   /** "~ enters with X +1/+1 counters on it" (hydras); X from the announced cost. */
   entersWithXCounters?: boolean;
+  /**
+   * Everflowing Chalice: the X counters are CHARGE counters, not +1/+1.
+   * Absent means +1/+1, which is what every card written before
+   * multikicker arrived was asking for.
+   */
+  entersWithXCounterKind?: string;
   /** Kalonian Hydra: "~ enters with four +1/+1 counters on it" — a fixed
    * count, unlike the announced-X form above. */
   entersWithCounters?: { counter: string; count: number };

@@ -970,6 +970,9 @@ export function parseGameState(json: string): GameState {
             })(),
           }),
       ...(def.entersWithXCounters === true ? { entersWithXCounters: true } : {}),
+      ...(typeof def.entersWithXCounterKind === "string"
+        ? { entersWithXCounterKind: def.entersWithXCounterKind }
+        : {}),
       ...(isRecord(def.entersWithCounters)
         ? {
             entersWithCounters: {

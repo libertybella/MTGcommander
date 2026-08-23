@@ -22,6 +22,7 @@ import { mostCommonControlledCreatureType } from "./effects";
 import { creaturePower } from "./derived";
 import { attackLimitFor, blockAllowanceFor, castCostReduction, castableFromTop, drawCapFor, freeEquipGranted, hasFlashGrant, landDropAllowance, maxHandSizeOf, noncreatureSpellCap, permanentsControlledBy, playerHasHexproof, reliefAdjustedCost, selfDiscountAmount, wouldEnterTapped } from "./derived";
 import { characteristicsOf } from "./cardTypes";
+import { manaValueOf } from "./characteristics";
 import { hasKeyword } from "./keywords";
 import { dispatchEventsInPlace, triggerConditionHolds } from "./triggers";
 import { applyCombatDamage, blockRestriction, declareAttackers, declareBlockers } from "./combat";
@@ -35966,5 +35967,139 @@ describe("wave 272: a creature or planeswalker card in your graveyard", () => {
     // Widening "target" to "a" must not turn every unreadable noun phrase
     // into a silent success.
     expect(compiled.notes.length).toBeGreaterThan(0);
+  });
+});
+
+describe("wave 273: multikicker as an announced X", () => {
+  const put = (
+    game: GameState,
+    owner: PlayerState,
+    name: string,
+    extra: Partial<Parameters<typeof createCardDefinition>[0]>,
+  ) => {
+    const definition = createCardDefinition({ name, typeLine: "Artifact", ...extra });
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({
+      definitionId: definition.id,
+      ownerId: owner.id,
+      zone: "hand",
+    });
+    game.cards[card.id] = card;
+    owner.zones.hand.push(card.id);
+    return card.id;
+  };
+
+  const resolveWithX = (game: GameState, cardId: string, xValue: number) => {
+    const stacked = putSpellOnStack(game, cardId, [], undefined, xValue);
+    return resolveTopOfStack(stacked);
+  };
+
+  it("enters with X counters of the named kind", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 10);
+    const chalice = put(game, p1, "Everflowing Chalice", {
+      manaCost: "{0}{X}{X}",
+      entersWithXCounters: true,
+      entersWithXCounterKind: "charge",
+    });
+    const resolved = resolveWithX(game, chalice, 3);
+    expect(resolved.cards[chalice]?.zone).toBe("battlefield");
+    expect(resolved.cards[chalice]?.counters.charge).toBe(3);
+    // The counter KIND is the point: +1/+1 counters on a Chalice are invisible
+    // to everything that reads charge counters, and it is not a creature.
+    expect(resolved.cards[chalice]?.counters.p1p1 ?? 0).toBe(0);
+  });
+
+  it("still gives a hydra +1/+1 counters", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 10);
+    const hydra = put(game, p1, "Hydra", {
+      typeLine: "Creature — Hydra",
+      manaCost: "{X}{G}",
+      power: 0,
+      toughness: 0,
+      entersWithXCounters: true,
+    });
+    const resolved = resolveWithX(game, hydra, 4);
+    // The shared site used to hardcode p1p1; the default must survive.
+    expect(resolved.cards[hydra]?.counters.p1p1).toBe(4);
+    expect(resolved.cards[hydra]?.counters.charge ?? 0).toBe(0);
+  });
+
+  it("enters with nothing when it was not kicked", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 10);
+    const chalice = put(game, p1, "Chalice", {
+      manaCost: "{0}{X}{X}",
+      entersWithXCounters: true,
+      entersWithXCounterKind: "charge",
+    });
+    const resolved = resolveWithX(game, chalice, 0);
+    expect(resolved.cards[chalice]?.zone).toBe("battlefield");
+    expect(resolved.cards[chalice]?.counters.charge ?? 0).toBe(0);
+  });
+
+  it("charges two generic per kick and leaves the mana value alone", () => {
+    const cost = parseManaCost("{0}{X}{X}");
+    // One {X} per generic pip of the kicker cost, so announcing X is
+    // announcing how many times it was kicked.
+    expect(cost.xCount).toBe(2);
+    expect(cost.generic).toBe(0);
+    // CR 202.3b: {X} is 0 anywhere but the stack, so a Chalice on the
+    // battlefield is still mana value 0 and Mox Diamond-class effects that
+    // read it are unaffected.
+    expect(manaValueOf("{0}{X}{X}")).toBe(0);
+  });
+
+  it("compiles Everflowing Chalice whole", () => {
+    const compiled = compileOracleCard({
+      oracleId: "chalice",
+      name: "Everflowing Chalice",
+      manaCost: "{0}",
+      typeLine: "Artifact",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "Multikicker {2}\nEverflowing Chalice enters with a charge counter on it for each time it was kicked.\n{T}: Add {C} for each charge counter on Everflowing Chalice.",
+    });
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.manaCost).toBe("{0}{X}{X}");
+    expect(compiled.definition.entersWithXCounters).toBe(true);
+    expect(compiled.definition.entersWithXCounterKind).toBe("charge");
+  });
+
+  it("refuses a multikicker cost an {X} cannot express", () => {
+    const compiled = compileOracleCard({
+      oracleId: "x",
+      name: "Probe",
+      manaCost: "{1}{G}",
+      typeLine: "Creature — Beast",
+      power: "1",
+      toughness: "1",
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText: "Multikicker {1}{G}\n~ enters with a +1/+1 counter on it for each time it was kicked.",
+    });
+    // A coloured kicker cost is not a multiple of generic, so the {X} model
+    // would undercharge. An honest miss beats a cheaper card than printed.
+    expect(compiled.notes.length).toBeGreaterThan(0);
+  });
+
+  it("round trips the counter kind", () => {
+    const { game, p1 } = twoPlayers();
+    const definition = createCardDefinition({
+      name: "Chalice",
+      typeLine: "Artifact",
+      manaCost: "{0}{X}{X}",
+      entersWithXCounters: true,
+      entersWithXCounterKind: "charge",
+    });
+    game.definitions[definition.id] = definition;
+    const round = parseGameState(serializeGameState(game));
+    expect(round.definitions[definition.id]?.entersWithXCounterKind).toBe("charge");
+    expect(round.definitions[definition.id]?.manaCost).toBe("{0}{X}{X}");
+    expect(p1.id).toBeDefined();
   });
 });

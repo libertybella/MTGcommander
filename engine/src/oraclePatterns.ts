@@ -119,6 +119,8 @@ export type CompiledOracleText = {
   opponentLandTapsSkipUntap?: boolean;
   rebound?: boolean;
   entersWithXCounters?: boolean;
+  entersWithXCounterKind?: string;
+  manaCostOverride?: string;
   entersWithCounters?: { counter: string; count: number };
   enterAsCopy?: { scope: EnterAsCopyScope; extraCounters?: number; maxManaValueBySpent?: boolean };
   playLandsFromGraveyard?: boolean;
@@ -11412,6 +11414,29 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
 
     // Kicker (CR 702.33), modeled as two modes: the kicked mode carries the
     // extra cost. Multikicker stays uncompiled.
+    // Multikicker (CR 702.32): kickable any number of times. Modelled as
+    // {X} on the cast cost — one {X} per generic pip of the kicker cost —
+    // so the announced X IS "how many times it was kicked". Refused when
+    // the kicker cost has coloured pips, which an {X} cannot express.
+    const multikicker = sentence.match(/^Multikicker ((?:\{[^}]+\})+)$/i);
+    if (multikicker?.[1]) {
+      try {
+        const kick = parseManaCost(multikicker[1]);
+        const colourless =
+          (['W', 'U', 'B', 'R', 'G', 'C'] as const).every((pip) => kick[pip] === 0) &&
+          kick.hybrid.length === 0 &&
+          kick.xCount === 0 &&
+          kick.generic > 0;
+        if (colourless && !result.manaCostOverride) {
+          result.manaCostOverride = `${card.manaCost}${"{X}".repeat(kick.generic)}`;
+          continue;
+        }
+      } catch {
+        // An unparseable kicker cost stays a miss.
+      }
+      result.leftover.push(sentence);
+      continue;
+    }
     const kicker = sentence.match(/^Kicker ((?:\{[^}]+\})+)$/i);
     if (kicker?.[1]) {
       kickerCost = kicker[1];
@@ -11519,6 +11544,18 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
 
     if (/^~ enters with X \+1\/\+1 counters on it$/i.test(sentence)) {
       result.entersWithXCounters = true;
+      continue;
+    }
+    // Everflowing Chalice: "a charge counter on it for each time it was
+    // kicked". With multikicker modelled as {X}, "each time it was kicked"
+    // IS the announced X, so this is the hydra shape with a different
+    // counter — but only when multikicker actually rewrote the cost.
+    const kickedCounters = sentence.match(
+      /^~ enters with an? ([a-z][a-z-]*) counter on it for each time it was kicked$/i,
+    );
+    if (kickedCounters?.[1] && result.manaCostOverride) {
+      result.entersWithXCounters = true;
+      result.entersWithXCounterKind = counterKeyOf(kickedCounters[1]);
       continue;
     }
     // The fixed-count form: "enters with four +1/+1 counters on it".

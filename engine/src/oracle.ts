@@ -173,7 +173,11 @@ function compileOneFace(card: OracleCard, definitionId: string): OracleCompileRe
   const definition = createCardDefinition({
     id: definitionId,
     name: card.name.includes(" // ") ? (card.name.split(" // ")[0] ?? card.name) : card.name,
-    manaCost: card.manaCost,
+    // Multikicker is modelled by rewriting the cast cost to carry one {X}
+    // per generic pip of the kicker cost, so announcing X is announcing
+    // how many times it was kicked. The mana VALUE is unchanged: {X} is 0
+    // anywhere but the stack (CR 202.3b).
+    manaCost: compiled.manaCostOverride ?? card.manaCost,
     typeLine: card.typeLine,
     colors: explicitColors(card.colors),
     oracleText: card.oracleText,
@@ -282,6 +286,9 @@ function compileOneFace(card: OracleCard, definitionId: string): OracleCompileRe
       ? { enchantedTappedBonus: compiled.enchantedTappedBonus }
       : {}),
     ...(compiled.entersWithXCounters ? { entersWithXCounters: true } : {}),
+    ...(compiled.entersWithXCounterKind
+      ? { entersWithXCounterKind: compiled.entersWithXCounterKind }
+      : {}),
     ...(compiled.entersWithCounters ? { entersWithCounters: compiled.entersWithCounters } : {}),
     ...(compiled.enterAsCopy ? { enterAsCopy: { ...compiled.enterAsCopy } } : {}),
     ...(compiled.playLandsFromGraveyard ? { playLandsFromGraveyard: true } : {}),

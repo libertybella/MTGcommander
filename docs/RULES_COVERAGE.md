@@ -870,6 +870,23 @@ more questions it can now ask:
   (Bennie Bracks). Reads the existing per-player `createdTokenThisTurn`
   list, and asks whether the CONTROLLER is in it — an opponent's Treasure
   must not satisfy it.
+- **Multikicker** (CR 702.32) — Everflowing Chalice. Kickable any number of
+  times, which the two-mode shape Kicker uses cannot express. Modelled by
+  rewriting the CAST COST to carry one `{X}` per generic pip of the kicker
+  cost, so the announced X IS "how many times it was kicked" and the
+  existing announcement machinery does the rest.
+
+  The mana VALUE is unchanged: `{X}` is 0 anywhere but the stack (CR
+  202.3b), so a Chalice on the battlefield is still mana value 0 and every
+  effect that reads it is unaffected. A kicker cost with coloured pips is
+  REFUSED — an `{X}` cannot express it, and the model would undercharge,
+  which is a cheaper card than the one printed.
+
+  `entersWithXCounterKind` carries the counter kind, because "a charge
+  counter for each time it was kicked" is the hydra shape with a different
+  counter. The shared site hardcoded `p1p1`; +1/+1 counters on a Chalice
+  are invisible to everything that reads charge counters, and it is not a
+  creature. A test asserts hydras still get theirs.
 - **`own_graveyard_creature_or_planeswalker_card`** — Takenuma, Abandoned
   Mire. The graveyard target family is listed BY HAND in three places: the
   legality gate, the enumeration, and the parser's allow-list. A kind

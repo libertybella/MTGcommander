@@ -169,6 +169,7 @@ export function createCardDefinition(
         | "chooseColorExcludes"
         | "enchantedTappedBonus"
         | "entersWithXCounters"
+        | "entersWithXCounterKind"
         | "entersWithCounters"
         | "enterAsCopy"
         | "playLandsFromGraveyard"
@@ -576,6 +577,9 @@ export function createCardDefinition(
       ? { enchantedTappedBonus: { ...input.enchantedTappedBonus } }
       : {}),
     ...(input.entersWithXCounters ? { entersWithXCounters: true } : {}),
+    ...(input.entersWithXCounterKind
+      ? { entersWithXCounterKind: input.entersWithXCounterKind }
+      : {}),
     ...(input.entersWithCounters ? { entersWithCounters: { ...input.entersWithCounters } } : {}),
     ...(input.enterAsCopy ? { enterAsCopy: { ...input.enterAsCopy } } : {}),
     ...(input.playLandsFromGraveyard ? { playLandsFromGraveyard: true } : {}),
