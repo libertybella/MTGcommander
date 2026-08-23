@@ -32,6 +32,7 @@ import type {
   ManaAbility,
   ManaColor,
   ManaRestriction,
+  ManaRider,
   ManaPool,
   MulliganState,
   OpeningRollState,
@@ -179,6 +180,20 @@ function parseManaRestriction(value: unknown, label: string): ManaRestriction {
     ...(value.legendary === true ? { legendary: true } : {}),
     ...(value.colorless === true ? { colorless: true } : {}),
     ...(value.allowsAbilities === true ? { allowsAbilities: true } : {}),
+    ...(value.unrestricted === true ? { unrestricted: true } : {}),
+    ...(value.sharesCreatureTypeWithCommander === true
+      ? { sharesCreatureTypeWithCommander: true }
+      : {}),
+  };
+}
+
+function parseManaRider(value: unknown, label: string): ManaRider {
+  if (!isRecord(value)) {
+    throw new Error(`Invalid ${label}`);
+  }
+  return {
+    when: parseManaRestriction(value.when, `${label}.when`),
+    effects: parseCardEffects(value.effects, `${label}.effects`),
   };
 }
 
@@ -336,6 +351,14 @@ function parsePlayer(value: unknown): PlayerState {
               color: parseManaColor(entry.color, `player.restrictedMana[${index}].color`),
               amount: expectNumber(entry.amount, `player.restrictedMana[${index}].amount`),
               sourceId: expectString(entry.sourceId, `player.restrictedMana[${index}].sourceId`),
+              ...(entry.rider === undefined
+                ? {}
+                : {
+                    rider: parseManaRider(
+                      entry.rider,
+                      `player.restrictedMana[${index}].rider`,
+                    ),
+                  }),
               restriction: parseManaRestriction(
                 entry.restriction,
                 `player.restrictedMana[${index}].restriction`,
@@ -1548,6 +1571,34 @@ export function parseGameState(json: string): GameState {
                         `exilePlayable[${index}].remainingOwnCleanups`,
                       ),
                     }),
+              };
+            });
+          })(),
+        }),
+    ...(raw.pendingManaRiders === undefined
+      ? {}
+      : {
+          pendingManaRiders: (() => {
+            if (!Array.isArray(raw.pendingManaRiders)) {
+              throw new Error("Invalid pendingManaRiders");
+            }
+            return raw.pendingManaRiders.map((entry, index) => {
+              if (!isRecord(entry)) {
+                throw new Error(`Invalid pendingManaRiders[${index}]`);
+              }
+              return {
+                controllerId: expectString(
+                  entry.controllerId,
+                  `pendingManaRiders[${index}].controllerId`,
+                ),
+                sourceId: expectString(
+                  entry.sourceId,
+                  `pendingManaRiders[${index}].sourceId`,
+                ),
+                effects: parseCardEffects(
+                  entry.effects,
+                  `pendingManaRiders[${index}].effects`,
+                ),
               };
             });
           })(),
@@ -4905,6 +4956,9 @@ function parseManaAbilities(value: unknown, label: string): ManaAbility[] {
               `${label}[${index}].requiresControlled`,
             ),
           }),
+      ...(isRecord(entry.rider)
+        ? { rider: parseManaRider(entry.rider, `${label}[${index}].rider`) }
+        : {}),
       ...(isRecord(entry.spendOnly)
         ? {
             spendOnly: parseManaRestriction(

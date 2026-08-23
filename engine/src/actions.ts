@@ -35,6 +35,30 @@ import { applyChooseEnterReplacement, applyChooseTargets, applyResolveChooseCard
 import { findCardZone, moveCard } from "./zones";
 import type { AdditionalCastCost, CardInstanceId, ChosenTarget, Color, GameAction, GameState, ManaColor, ManaPool, PlayerId } from "./types";
 
+/**
+ * Run the mana riders that fired while a cost was paid (Path of Ancestry).
+ * The payment path records them instead of applying them, because effects.ts
+ * imports mana.ts and the arrow does not go back.
+ */
+function drainManaRiders(state: GameState): GameState {
+  const pending = state.pendingManaRiders ?? [];
+  if (pending.length === 0) {
+    return state;
+  }
+  let current = cloneGameState(state);
+  delete current.pendingManaRiders;
+  for (const entry of pending) {
+    current = applyEffects(
+      current,
+      bindCardEffects(current, entry.effects, {
+        controllerId: entry.controllerId,
+        sourceId: entry.sourceId,
+      }),
+    );
+  }
+  return current;
+}
+
 function requirePlayer(state: GameState, playerId: PlayerId): void {
   if (!state.players.some((player) => player.id === playerId)) {
     throw new Error(`Unknown player ${playerId}`);
@@ -723,13 +747,16 @@ function applyCastSpell(
       (_, index) => index !== nextGrantIndex,
     );
   }
-  const stacked = putSpellOnStack(paid, cardId, targets ?? [], modeIndex, xValue, division, modeIndexes, sacrificedPower);
+  let stacked = putSpellOnStack(paid, cardId, targets ?? [], modeIndex, xValue, division, modeIndexes, sacrificedPower);
   if (nextGrant?.cantBeCountered) {
     const top = stacked.stack[stacked.stack.length - 1];
     if (top) {
       top.cantBeCountered = true;
     }
   }
+  // Path of Ancestry: the rider fires with the spell already on the
+  // stack, so its effect resolves ABOVE the spell that mana paid for.
+  stacked = drainManaRiders(stacked);
   if (!fromCommand) {
     return stacked;
   }
@@ -1013,6 +1040,10 @@ function applyTapForMana(
       throw new Error("Cannot pay that mana ability's cost");
     }
     base = payManaCost(state, playerId, activation, abilityPurpose);
+    // No rider watching casts can fire for an ability (restrictionAdmits
+    // gates on isAbility), but draining here means a future one that CAN
+    // fire runs instead of sitting in the pool forever.
+    base = drainManaRiders(base);
   }
   // Phyrexian Altar-class: sacrificing a chosen permanent is the cost.
   if (ability.costSacrifice) {
@@ -1060,13 +1091,16 @@ function applyTapForMana(
   }
   // "Spend this mana only to …": the mana lands in the restricted pool
   // instead, tagged with its producer so a chosen-type rule can read it.
-  let next = ability.spendOnly
+  // A rider alone is reason enough to tag the mana: Path of Ancestry's
+  // mana is unrestricted, but it has to be watched to fire when spent.
+  let next = ability.spendOnly || ability.rider
     ? addRestrictedMana(
         ability.noTap ? base : tapCard(base, cardId),
         playerId,
         addition,
-        ability.spendOnly,
+        ability.spendOnly ?? { unrestricted: true },
         cardId,
+        ability.rider,
       )
     : ability.noTap
       ? addMana(base, playerId, addition)

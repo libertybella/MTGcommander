@@ -13816,6 +13816,26 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
       }
     }
 
+    // Path of Ancestry: "When that mana is spent to cast a creature spell
+    // that shares a creature type with your commander, scry 1." This is
+    // NOT a restriction — the mana pays for anything — so it rides the
+    // tagged pool purely so the spend can be watched.
+    const manaRider = sentence.match(
+      /^When that mana is spent to cast a creature spell that shares a creature type with your commander, scry (\d+)$/i,
+    );
+    if (manaRider?.[1]) {
+      const riderMana = result.manaAbilities[result.manaAbilities.length - 1];
+      if (riderMana && !riderMana.rider) {
+        riderMana.rider = {
+          when: { types: ["creature"], sharesCreatureTypeWithCommander: true },
+          effects: [
+            { kind: "scry", playerId: "controller", count: Number(manaRider[1]) },
+          ],
+        };
+        continue;
+      }
+    }
+
     // "Spend this mana only to …" (CR 106.6): a restriction riding the mana
     // ability just parsed. The trailing "and that spell can't be countered"
     // is dropped — an uncounterable rider on restricted mana would need the

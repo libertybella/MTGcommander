@@ -870,6 +870,28 @@ more questions it can now ask:
   (Bennie Bracks). Reads the existing per-player `createdTokenThisTurn`
   list, and asks whether the CONTROLLER is in it — an opponent's Treasure
   must not satisfy it.
+- **Mana riders** — Path of Ancestry. `ManaAbility.rider` tags produced mana
+  with an effect that fires when it is SPENT on a matching purpose. This is
+  not a restriction: the mana pays for whatever its owner likes, and rides
+  the tagged `restrictedMana` pool purely so the spend can be watched. A new
+  `unrestricted` flag on `ManaRestriction` says so, and is checked before
+  the purpose gate — a tag that refused an unknown purpose would strand the
+  mana everywhere the purpose is not computed.
+
+  The commander clause ("shares a creature type with your commander") is
+  read where state is in hand, in `manaRiderFires`, rather than inside the
+  purpose test. An empty commander type set matches NOTHING: read as
+  "matches everything" it would scry off every creature spell in the game.
+  Changelings share every type and so always match.
+
+  One rider fires per mana actually spent, not per pool entry — two tagged
+  mana on one spell are two triggers (CR 603.2). The payment path records
+  them on `pendingManaRiders` instead of applying them, because effects.ts
+  imports mana.ts and the arrow does not go back; the cast site drains the
+  list once the spell is on the stack, so the rider resolves above the spell
+  its mana paid for. The activated-ability path drains too — no cast-watching
+  rider can fire there, but a future one that can must not sit in the pool
+  forever.
 - **`controls_lands_with_different_names`** — Field of the Dead. Distinct
   NAMES among controlled lands, not a count of lands: seven copies of one
   Wastes is one name, and reading it as a land count would hand out a

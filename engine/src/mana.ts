@@ -7,6 +7,7 @@ import type {
   ManaPool,
   PlayerId,
   ManaRestriction,
+  ManaRider,
   RestrictedMana,
   PlayerState,
 } from "./types";
@@ -232,6 +233,7 @@ export function addRestrictedMana(
   addition: Partial<ManaPool>,
   restriction: ManaRestriction,
   sourceId: CardInstanceId,
+  rider?: ManaRider,
 ): GameState {
   assertNonNegativeIntegers(addition, "added mana");
   const next = cloneGameState(state);
@@ -240,7 +242,13 @@ export function addRestrictedMana(
   for (const color of MANA_COLORS) {
     const amount = addition[color] ?? 0;
     if (amount > 0) {
-      player.restrictedMana.push({ color, amount, restriction, sourceId });
+      player.restrictedMana.push({
+        color,
+        amount,
+        restriction,
+        sourceId,
+        ...(rider ? { rider } : {}),
+      });
     }
   }
   return next;
@@ -275,10 +283,16 @@ export function restrictionAdmits(
   purpose: ManaPurpose | undefined,
   chosenSubtypeOf: (sourceId: CardInstanceId) => string | null,
 ): boolean {
+  const rule = entry.restriction;
+  // An unrestricted tag is in this pool to be WATCHED, not to be limited.
+  // It has to admit an unknown purpose too, or Path of Ancestry's mana
+  // would be unspendable everywhere the purpose is not computed.
+  if (rule.unrestricted) {
+    return true;
+  }
   if (!purpose) {
     return false;
   }
-  const rule = entry.restriction;
   if (purpose.isAbility && !rule.allowsAbilities) {
     return false;
   }
@@ -303,6 +317,51 @@ export function restrictionAdmits(
     }
   }
   return true;
+}
+
+/**
+ * Does this entry's rider fire for what the mana just paid for? The
+ * standard qualifiers reuse `restrictionAdmits` over the rider's own
+ * filter; only the commander clause needs state.
+ */
+export function manaRiderFires(
+  state: GameState,
+  playerId: PlayerId,
+  entry: RestrictedMana,
+  purpose: ManaPurpose | undefined,
+): boolean {
+  const rider = entry.rider;
+  if (!rider || !purpose) {
+    return false;
+  }
+  if (
+    !restrictionAdmits({ ...entry, restriction: rider.when }, purpose, (sourceId) =>
+      state.cards[sourceId]?.chosenCreatureType ?? null,
+    )
+  ) {
+    return false;
+  }
+  if (!rider.when.sharesCreatureTypeWithCommander) {
+    return true;
+  }
+  const player = state.players.find((entry2) => entry2.id === playerId);
+  const commanderTypes = new Set<string>();
+  for (const commanderId of player?.commander.commanderIds ?? []) {
+    const definitionId = state.cards[commanderId]?.definitionId;
+    for (const subtype of state.definitions[definitionId ?? ""]?.characteristics.subtypes ?? []) {
+      commanderTypes.add(subtype.toLowerCase());
+    }
+  }
+  // A commanderless game shares nothing: firing on an empty set would
+  // scry off every creature spell rather than the matching ones.
+  if (commanderTypes.size === 0) {
+    return false;
+  }
+  // Changelings are every creature type, so they always share one.
+  return (
+    purpose.changeling === true ||
+    purpose.subtypes.some((subtype) => commanderTypes.has(subtype.toLowerCase()))
+  );
 }
 
 /** The subset of a player's restricted mana usable for this purpose. */
@@ -375,6 +434,18 @@ export function payManaCost(
       const taken = Math.min(entry.amount, toDrop);
       entry.amount -= taken;
       toDrop -= taken;
+      // One rider per mana actually spent, not one per entry: two tagged
+      // mana spent on the same spell are two triggers (CR 603.2).
+      if (taken > 0 && entry.rider && manaRiderFires(next, playerId, entry, purpose)) {
+        next.pendingManaRiders = next.pendingManaRiders ?? [];
+        for (let fired = 0; fired < taken; fired += 1) {
+          next.pendingManaRiders.push({
+            controllerId: playerId,
+            sourceId: entry.sourceId,
+            effects: entry.rider.effects,
+          });
+        }
+      }
     }
   }
   player.restrictedMana = (player.restrictedMana ?? []).filter((entry) => entry.amount > 0);

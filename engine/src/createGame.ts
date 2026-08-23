@@ -347,7 +347,9 @@ export function createCardDefinition(
             : {}),
           ...(ability.requiresCount ? { requiresCount: { ...ability.requiresCount } } : {}),
           ...(ability.spendOnly ? { spendOnly: { ...ability.spendOnly } } : {}),
+          ...(ability.rider ? { rider: { ...ability.rider } } : {}),
           ...(ability.spendOnly ? { spendOnly: { ...ability.spendOnly } } : {}),
+          ...(ability.rider ? { rider: { ...ability.rider } } : {}),
           ...(ability.requiresControlled
             ? { requiresControlled: copyControlledGate(ability.requiresControlled) }
             : {}),

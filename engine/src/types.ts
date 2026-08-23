@@ -707,6 +707,17 @@ export type GameState = {
    * respond to one. Documented in RULES_COVERAGE.
    */
   delayedTriggers: DelayedTrigger[];
+  /**
+   * Mana riders that just fired, waiting for the caster to run them. The
+   * payment path cannot apply effects itself — effects.ts imports mana.ts,
+   * so the arrow does not go back — and the cast site drains this the
+   * moment the cost is paid.
+   */
+  pendingManaRiders?: Array<{
+    controllerId: PlayerId;
+    sourceId: CardInstanceId;
+    effects: CardEffect[];
+  }>;
   /** Spells cast by anyone this turn — Storm's copy count (CR 702.40). */
   spellsCastThisTurn: number;
   /** Per-player casts this turn (Lotho's second-spell watch). */
@@ -1449,6 +1460,19 @@ export type DynamicCount =
  * that made the mana rather than a fixed subtype.
  */
 export type ManaRestriction = {
+  /**
+   * Path of Ancestry: this tag does not restrict anything — the mana pays
+   * for whatever its owner likes. It rides the tagged pool only so that a
+   * rider can watch it being spent, so it must admit every purpose, and
+   * even an unknown one.
+   */
+  unrestricted?: boolean;
+  /**
+   * Path of Ancestry: "…that shares a creature type with your commander".
+   * Read against the commanders, so it is evaluated where state is in
+   * hand rather than inside the purpose test.
+   */
+  sharesCreatureTypeWithCommander?: boolean;
   /** The spell or ability's source must have all of these card types. */
   types?: string[];
   /** …and this creature subtype, taken from the producer's chosen type. */
@@ -1463,6 +1487,16 @@ export type ManaRestriction = {
   allowsAbilities?: boolean;
 };
 
+/**
+ * Path of Ancestry: an effect that fires when this mana is SPENT on a
+ * matching purpose. Distinct from a restriction — the mana pays for
+ * anything; `when` only decides whether the rider fires.
+ */
+export type ManaRider = {
+  when: ManaRestriction;
+  effects: CardEffect[];
+};
+
 /** Restricted mana in a player's pool, tagged with what it may pay for. */
 export type RestrictedMana = {
   color: ManaColor;
@@ -1470,6 +1504,8 @@ export type RestrictedMana = {
   restriction: ManaRestriction;
   /** The permanent that produced it, for `chosenSubtype` lookups. */
   sourceId: CardInstanceId;
+  /** Path of Ancestry: "When that mana is spent to cast …". */
+  rider?: ManaRider;
 };
 
 export type AdditionalCastCost = {
@@ -3111,6 +3147,8 @@ export type ManaAbility = {
    * spell resolves by entering the battlefield.
    */
   gainLifeToController?: number;
+  /** Path of Ancestry: a rider watching where this mana is spent. */
+  rider?: ManaRider;
   /** Gilded Lotus: how much of the chosen color one tap adds (default 1). */
   count?: number;
   /** Treasure tokens: tapping for this mana also sacrifices the permanent. */

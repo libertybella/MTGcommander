@@ -25,14 +25,14 @@ import { dispatchEventsInPlace, triggerConditionHolds } from "./triggers";
 import { applyCombatDamage, blockRestriction, declareAttackers, declareBlockers } from "./combat";
 import { advanceStep, beginNextLivingTurnInPlace } from "./turn";
 import { colorsAmongControlled, commanderIdentityColors, manaAbilitiesFor, manaTapOptionsFor } from "./manaOptions";
-import { emptyManaPools, parseManaCost } from "./mana";
+import { addRestrictedMana, emptyManaPools, manaRiderFires, parseManaCost, payManaCost, restrictionAdmits, type ManaPurpose } from "./mana";
 import { applyStateBasedActionsInPlace } from "./status";
 import { legalActions, sacrificeColorMatches, sacrificeScopeMatches } from "./legalActions";
 import { applyResolveCreatureType, legalEnterCopyIds, searchMatches } from "./prompt";
 import { parseGameState, serializeGameState } from "./serialize";
 import { fillLibraries } from "./testSupport";
 import { advanceSteps } from "./turn";
-import type { CardDefinition, CardEffect, GameState, Keyword, PlayerState, Step, TargetRequirement } from "./types";
+import type { CardDefinition, CardEffect, GameState, Keyword, ManaRider, PlayerState, Step, TargetRequirement } from "./types";
 
 function twoPlayers() {
   const game = createGameState({ playerCount: 2 });
@@ -34579,5 +34579,184 @@ describe("wave 264: a Channel body says It", () => {
         ),
       ),
     ).toBe(false);
+  });
+});
+
+describe("wave 265: mana that carries a rider", () => {
+  const RIDER: ManaRider = {
+    when: { types: ["creature"], sharesCreatureTypeWithCommander: true },
+    effects: [{ kind: "scry", playerId: "controller", count: 1 }],
+  };
+
+  const purpose = (subtypes: string[], over: Partial<ManaPurpose> = {}): ManaPurpose => ({
+    types: ["creature"],
+    subtypes,
+    supertypes: [],
+    colorless: false,
+    isAbility: false,
+    ...over,
+  });
+
+  /** A player whose commander is a Human Wizard, holding one tagged mana. */
+  const withCommander = (subtypes: string[]) => {
+    const { game, p1 } = twoPlayers();
+    const commander = createCardDefinition({
+      name: "Chief",
+      typeLine: `Legendary Creature — ${subtypes.join(" ")}`,
+      power: 2,
+      toughness: 2,
+    });
+    game.definitions[commander.id] = commander;
+    const card = createCardInstance({
+      definitionId: commander.id,
+      ownerId: p1.id,
+      zone: "command",
+    });
+    game.cards[card.id] = card;
+    p1.commander.commanderIds = [card.id];
+    const path = createCardDefinition({ name: "Path", typeLine: "Land" });
+    game.definitions[path.id] = path;
+    const land = createCardInstance({
+      definitionId: path.id,
+      ownerId: p1.id,
+      zone: "battlefield",
+    });
+    game.cards[land.id] = land;
+    p1.zones.battlefield.push(land.id);
+    const tagged = addRestrictedMana(
+      game,
+      p1.id,
+      { G: 1 },
+      { unrestricted: true },
+      land.id,
+      RIDER,
+    );
+    return { game: tagged, p1, landId: land.id };
+  };
+
+  const entryOf = (state: GameState, playerId: string) =>
+    state.players.find((p) => p.id === playerId)!.restrictedMana![0]!;
+
+  it("is spendable on anything, unlike a spendOnly tag", () => {
+    const { game, p1 } = withCommander(["Human", "Wizard"]);
+    const entry = entryOf(game, p1.id);
+    // The whole point: it rides the tagged pool to be WATCHED, not limited.
+    // A tag that refused an unknown purpose would strand the mana.
+    expect(restrictionAdmits(entry, undefined, () => null)).toBe(true);
+    expect(restrictionAdmits(entry, purpose(["Goblin"]), () => null)).toBe(true);
+    expect(restrictionAdmits(entry, purpose([], { isAbility: true }), () => null)).toBe(true);
+    // …whereas a real restriction still refuses.
+    const restricted = { ...entry, restriction: { types: ["creature"] } };
+    expect(restrictionAdmits(restricted, purpose([], { types: ["instant"] }), () => null)).toBe(
+      false,
+    );
+  });
+
+  it("fires only on a creature spell sharing a commander type", () => {
+    const { game, p1 } = withCommander(["Human", "Wizard"]);
+    const entry = entryOf(game, p1.id);
+    expect(manaRiderFires(game, p1.id, entry, purpose(["Wizard"]))).toBe(true);
+    expect(manaRiderFires(game, p1.id, entry, purpose(["Human", "Cleric"]))).toBe(true);
+    // A creature that shares nothing must not scry.
+    expect(manaRiderFires(game, p1.id, entry, purpose(["Goblin"]))).toBe(false);
+    // Nor a noncreature spell, whatever its subtypes say.
+    expect(
+      manaRiderFires(game, p1.id, entry, purpose(["Wizard"], { types: ["instant"] })),
+    ).toBe(false);
+    // Nor an activated ability: the text says "spent to CAST".
+    expect(
+      manaRiderFires(game, p1.id, entry, purpose(["Wizard"], { isAbility: true })),
+    ).toBe(false);
+  });
+
+  it("treats a changeling as sharing every type", () => {
+    const { game, p1 } = withCommander(["Human", "Wizard"]);
+    const entry = entryOf(game, p1.id);
+    expect(
+      manaRiderFires(game, p1.id, entry, purpose([], { changeling: true })),
+    ).toBe(true);
+  });
+
+  it("shares nothing when there is no commander", () => {
+    const { game, p1 } = withCommander(["Human", "Wizard"]);
+    const player = game.players.find((p) => p.id === p1.id)!;
+    player.commander.commanderIds = [];
+    // An empty commander type set must not read as "matches everything",
+    // which would scry off every creature spell in the game.
+    expect(manaRiderFires(game, p1.id, entryOf(game, p1.id), purpose(["Wizard"]))).toBe(false);
+  });
+
+  it("records one pending rider per mana actually spent", () => {
+    const { game, p1, landId } = withCommander(["Human", "Wizard"]);
+    const twoMana = addRestrictedMana(
+      game,
+      p1.id,
+      { G: 1 },
+      { unrestricted: true },
+      landId,
+      RIDER,
+    );
+    const paid = payManaCost(twoMana, p1.id, "{G}{G}", purpose(["Wizard"]));
+    // Two tagged mana on one spell is two triggers (CR 603.2), not one.
+    expect(paid.pendingManaRiders).toHaveLength(2);
+    expect(paid.pendingManaRiders?.[0]).toMatchObject({
+      controllerId: p1.id,
+      sourceId: landId,
+      effects: [{ kind: "scry", playerId: "controller", count: 1 }],
+    });
+    // And the mana is gone from the pool.
+    expect(paid.players.find((p) => p.id === p1.id)?.restrictedMana).toBeUndefined();
+  });
+
+  it("records nothing when the rider does not match", () => {
+    const { game, p1 } = withCommander(["Human", "Wizard"]);
+    const paid = payManaCost(game, p1.id, "{G}", purpose(["Goblin"]));
+    // The mana still pays — it is unrestricted — but no scry is owed.
+    expect(paid.pendingManaRiders ?? []).toHaveLength(0);
+    expect(paid.players.find((p) => p.id === p1.id)?.restrictedMana).toBeUndefined();
+  });
+
+  it("round trips the tag, the rider and the pending list", () => {
+    const { game, p1, landId } = withCommander(["Human", "Wizard"]);
+    const paid = payManaCost(game, p1.id, "{G}", purpose(["Wizard"]));
+    const round = parseGameState(serializeGameState(paid));
+    expect(round.pendingManaRiders).toEqual([
+      {
+        controllerId: p1.id,
+        sourceId: landId,
+        effects: [{ kind: "scry", playerId: "controller", count: 1 }],
+      },
+    ]);
+
+    const unspent = parseGameState(serializeGameState(game));
+    expect(unspent.players.find((p) => p.id === p1.id)?.restrictedMana?.[0]).toMatchObject({
+      color: "G",
+      amount: 1,
+      restriction: { unrestricted: true },
+      rider: {
+        when: { types: ["creature"], sharesCreatureTypeWithCommander: true },
+        effects: [{ kind: "scry", playerId: "controller", count: 1 }],
+      },
+    });
+  });
+
+  it("compiles Path of Ancestry's rider onto its mana ability", () => {
+    const compiled = compileOracleCard({
+      oracleId: "poa",
+      name: "Path of Ancestry",
+      manaCost: "",
+      typeLine: "Land",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "Path of Ancestry enters tapped.\n{T}: Add one mana of any color in your commander's color identity.\nWhen that mana is spent to cast a creature spell that shares a creature type with your commander, scry 1.",
+    });
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.manaAbilities[0]?.rider).toEqual({
+      when: { types: ["creature"], sharesCreatureTypeWithCommander: true },
+      effects: [{ kind: "scry", playerId: "controller", count: 1 }],
+    });
   });
 });
