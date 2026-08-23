@@ -2007,17 +2007,39 @@ type SimpleClause = {
  * permanent onto the battlefield. Returns true when consumed.
  */
 function foldSubjectRider(effects: CardEffect[], sentence: string): boolean {
-  const last = effects[effects.length - 1];
+  // Search BACKWARDS for the effect that made the permanent, rather than
+  // insisting it be the very last one. "It gains haste until end of turn"
+  // compiles as a clause of its own and lands between the token creation
+  // and the sacrifice rider, and requiring adjacency silently dropped the
+  // rider whenever anything sat in the gap.
+  // A plain backwards loop rather than findLastIndex: the engine targets
+  // ES2022, and this keeps the narrowing that the callback form loses.
+  let last: Extract<CardEffect, { kind: "copy_token" | "move_card" }> | undefined;
+  for (let i = effects.length - 1; i >= 0; i -= 1) {
+    const effect = effects[i];
+    if (!effect) {
+      continue;
+    }
+    if (effect.kind === "copy_token") {
+      last = effect;
+      break;
+    }
+    if (effect.kind === "move_card" && effect.toZone === "battlefield") {
+      last = effect;
+      break;
+    }
+  }
   if (!last) {
     return false;
   }
-  const supports =
-    last.kind === "copy_token" ||
-    (last.kind === "move_card" && last.toZone === "battlefield");
-  if (!supports) {
-    return false;
-  }
-  if (/^(?:It|They|That token|That creature) gains? haste$/i.test(sentence)) {
+  // "…until end of turn" folds the same way. The token this rides on is
+  // sacrificed or exiled at the next end step anyway, so a haste that
+  // outlives the turn and a haste that does not are the same haste here.
+  if (
+    /^(?:It|They|That token|That creature) gains? haste(?: until end of turn)?$/i.test(
+      sentence,
+    )
+  ) {
     last.gainsHaste = true;
     return true;
   }
@@ -9827,6 +9849,19 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
     if (!sentence) {
       continue;
     }
+    // A subject rider attaches to the effect that made the permanent, and
+    // it must be tried BEFORE the general clause branches. Read later,
+    // "It gains haste until end of turn" compiles as a back-reference to
+    // the COPIED ORIGINAL instead of the token — the card then scores and
+    // hastes the wrong permanent, which is worse than not compiling.
+    //
+    // Safe to try first because the fold is narrow: two exact sentences,
+    // and only when an earlier effect on the same printed line created or
+    // moved a permanent.
+    if (index > 0 && !lineStart[index] && foldSubjectRider(result.effects, sentence)) {
+      continue;
+    }
+
     const keywordLine = readKeywordLine(sentence);
     if (keywordLine) {
       if (keywordLine.protection) {

@@ -31603,3 +31603,69 @@ describe("wave 243: connive", () => {
     });
   });
 });
+
+describe("wave 244: subject riders on a spell, not only an ability", () => {
+  const compile = (name: string, typeLine: string, oracleText: string) =>
+    compileOracleCard({
+      oracleId: name,
+      name,
+      manaCost: "{2}{R}",
+      typeLine,
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  it("folds both riders onto a sorcery's token creation", () => {
+    const molten = compile(
+      "Molten Duplication",
+      "Sorcery",
+      "Create a token that's a copy of target artifact or creature you control, except it's an artifact in addition to its other types. It gains haste until end of turn. Sacrifice it at the beginning of the next end step.",
+    );
+    expect(molten.notes).toEqual([]);
+    const copy = molten.definition.effects.find((effect) => effect.kind === "copy_token");
+    // Both riders land ON the token creation. Before this they were separate
+    // clauses with nothing to attach to, and the sacrifice was simply lost.
+    expect(copy).toMatchObject({ gainsHaste: true, atEndStep: "sacrifice" });
+  });
+
+  it("reaches back past a clause that sits in the gap", () => {
+    // "It gains haste until end of turn" compiles as a clause of its own on
+    // some cards, landing between the token and the sacrifice rider. A fold
+    // that insisted on adjacency dropped the rider whenever that happened.
+    const spaced = compile(
+      "Spaced",
+      "Sorcery",
+      "Create a token that's a copy of target creature you control. Draw a card. Sacrifice it at the beginning of the next end step.",
+    );
+    expect(spaced.notes).toEqual([]);
+    const copy = spaced.definition.effects.find((effect) => effect.kind === "copy_token");
+    expect(copy).toMatchObject({ atEndStep: "sacrifice" });
+  });
+
+  it("still refuses a rider with nothing to ride on", () => {
+    // No token creation anywhere, so the rider has no subject. A clean miss
+    // is the honest answer — folding it onto whatever happened to be last
+    // would attach a sacrifice to an unrelated effect.
+    const orphan = compile(
+      "Orphan",
+      "Sorcery",
+      "Draw a card. Sacrifice it at the beginning of the next end step.",
+    );
+    expect(orphan.notes.join(" ")).toContain("Sacrifice it");
+  });
+
+  it("does not fold across a printed line break", () => {
+    // A new printed line is a new ability. The rider belongs to the ability
+    // it is printed with, and reaching back over the newline would attach it
+    // to a different one entirely.
+    const separated = compile(
+      "Separated",
+      "Enchantment",
+      "Create a token that's a copy of target creature you control.\nSacrifice it at the beginning of the next end step.",
+    );
+    expect(separated.notes.join(" ")).toContain("Sacrifice it");
+  });
+});
