@@ -852,6 +852,14 @@ function triggerMatchesEvent(
   if (trigger.event === "leaves_your_graveyard") {
     return false;
   }
+  if (event.kind === "becomes_target") {
+    // Only the permanent that was targeted watches this, and only for
+    // its own targeting — "becomes the target" is about this object.
+    return trigger.event === "becomes_target" && watcher.id === event.cardId;
+  }
+  if (trigger.event === "becomes_target") {
+    return false;
+  }
   if (event.kind === "draws") {
     if (trigger.event === "opponent_draws") {
       return watcher.controllerId !== event.playerId;

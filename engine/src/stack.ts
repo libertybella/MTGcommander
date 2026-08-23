@@ -234,6 +234,26 @@ export function putSpellOnStack(
   dispatchEventsInPlace(next, [
     { kind: "casts", cardId, controllerId: moved.controllerId },
   ]);
+  // Goldspan Dragon: each permanent this SPELL targets. Dispatched once
+  // per distinct permanent — a spell that targets the same creature
+  // twice still only targeted it once for this purpose.
+  const targetedIds = [
+    ...new Set(
+      targets
+        .filter((target) => target.type === "creature")
+        .map((target) => target.cardId),
+    ),
+  ];
+  if (targetedIds.length > 0) {
+    dispatchEventsInPlace(
+      next,
+      targetedIds.map((targetId) => ({
+        kind: "becomes_target" as const,
+        cardId: targetId,
+        controllerId: moved.controllerId,
+      })),
+    );
+  }
   queueWardPromptsInPlace(next, stackId, moved.controllerId, targets);
   return next;
 }

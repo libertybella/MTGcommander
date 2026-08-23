@@ -4122,6 +4122,7 @@ const TRIGGER_EVENT_NAMES: ReadonlySet<string> = new Set([
   "becomes_tapped",
   "opponent_draws_second",
   "opponent_draws_except_first",
+  "becomes_target",
   "player_sacrifices",
   "opponent_searches",
   "casts_second_spell",

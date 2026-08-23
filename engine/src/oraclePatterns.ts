@@ -8567,6 +8567,10 @@ function parseTriggerHead(head: string): TriggerHead | null {
   if (/^Whenever an opponent draws their second card each turn$/i.test(text)) {
     return { event: "opponent_draws_second" };
   }
+  // Goldspan Dragon: "whenever ~ becomes the target of a spell".
+  if (/^Whenever ~ becomes the target of a spell$/i.test(text)) {
+    return { event: "becomes_target" };
+  }
   // Orcish Bowmasters. The exemption is not decoration: without it the
   // Bowmasters ping on the draw step too, which is a strictly stronger
   // card than the one printed.
@@ -8602,6 +8606,12 @@ function parseTriggerHead(head: string): TriggerHead | null {
       watch: "controlled",
       subjectFilter: { subtypes: [tappedTribe[1].toLowerCase()] },
     };
+  }
+  // Goldspan Dragon: one head, two events.  emits a sibling
+  // trigger carrying the same body, which is what CR 603.1 means by two
+  // triggered abilities written as one sentence.
+  if (/^Whenever ~ attacks or becomes the target of a spell$/i.test(text)) {
+    return { event: "attacks", extraEvents: ["becomes_target"] };
   }
   if (/^Whenever you create or sacrifice a token$/i.test(text)) {
     return { event: "you_create_token", extraEvents: ["you_sacrifice_token"] };
@@ -9741,8 +9751,26 @@ function compileQuotedAbility(quoted: string): ContinuousEffectData[] | null {
     // never use the stack — it belongs in the older `grant_mana_ability`,
     // which the Cryptolith Rite path already reads.
     const add = parseAddMana(split.rest);
-    if (add && cost.tap && cost.manaCost === "" && !cost.sacrificeSelf && !cost.lifeCost && !cost.lifeCostFromCommanderColors) {
-      return [{ kind: "grant_mana_ability", ability: manaAbilityFromAdd(add) }];
+    if (
+      add &&
+      cost.tap &&
+      cost.manaCost === "" &&
+      !cost.lifeCost &&
+      !cost.lifeCostFromCommanderColors
+    ) {
+      // Goldspan Dragon grants Treasures a BETTER mana ability, and a
+      // Treasure's ability sacrifices it. `sacrificeSelf` is a shape the
+      // mana ability already carries, so refusing it here was the only
+      // thing stopping the grant.
+      return [
+        {
+          kind: "grant_mana_ability",
+          ability: {
+            ...manaAbilityFromAdd(add),
+            ...(cost.sacrificeSelf ? { sacrificeSelf: true } : {}),
+          },
+        },
+      ];
     }
     if (add) {
       // A mana ability with a cost this shape cannot carry: refuse rather

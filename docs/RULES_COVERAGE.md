@@ -870,6 +870,22 @@ more questions it can now ask:
   (Bennie Bracks). Reads the existing per-player `createdTokenThisTurn`
   list, and asks whether the CONTROLLER is in it — an opponent's Treasure
   must not satisfy it.
+- **`becomes_target`** — Goldspan Dragon. Dispatched from `putSpellOnStack`
+  for each DISTINCT permanent the spell targets: a spell that names the
+  same creature twice still targeted it once for this purpose. Only the
+  targeted permanent watches it — a shared event would make every Dragon on
+  the table trigger off every spell.
+
+  Spells only, as the card says. An ability targeting it is a different
+  trigger and is not dispatched here.
+
+- **A granted mana ability may sacrifice its source** — Goldspan Dragon
+  grants Treasures a BETTER mana ability, and a Treasure's ability
+  sacrifices it. `sacrificeSelf` is a shape `ManaAbility` already carried;
+  refusing it in the quoted-ability compiler was the only thing stopping
+  the grant. A Treasure that taps without sacrificing is an infinite mana
+  engine, so the flag is not cosmetic. Costs the mana ability still cannot
+  carry (a life payment) are refused as before, rather than granted free.
 - **Modal triggers that take more or fewer than one** — Black Market
   Connections, Hullbreaker Horror. `CardTrigger.modeChoice` carries the
   bounds; absent means exactly one, which is what every modal trigger

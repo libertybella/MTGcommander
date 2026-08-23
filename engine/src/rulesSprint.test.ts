@@ -37131,3 +37131,197 @@ describe("wave 279: a spell target you do not control", () => {
     ).toBe(true);
   });
 });
+
+describe("wave 280: becoming the target of a spell", () => {
+  const setup = () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    const dragonDef = createCardDefinition({
+      name: "Dragon",
+      typeLine: "Creature — Dragon",
+      power: 4,
+      toughness: 4,
+      triggers: [
+        {
+          event: "becomes_target",
+          effects: [{ kind: "gain_life", playerId: "controller", amount: 2 }],
+          targetRequirements: [],
+        },
+      ],
+    });
+    game.definitions[dragonDef.id] = dragonDef;
+    const dragon = createCardInstance({
+      definitionId: dragonDef.id,
+      ownerId: p1.id,
+      zone: "battlefield",
+    });
+    game.cards[dragon.id] = dragon;
+    p1.zones.battlefield.push(dragon.id);
+
+    const bearDef = createCardDefinition({
+      name: "Bear",
+      typeLine: "Creature — Bear",
+      power: 2,
+      toughness: 2,
+    });
+    game.definitions[bearDef.id] = bearDef;
+    const bear = createCardInstance({
+      definitionId: bearDef.id,
+      ownerId: p1.id,
+      zone: "battlefield",
+    });
+    game.cards[bear.id] = bear;
+    p1.zones.battlefield.push(bear.id);
+
+    const boltDef = createCardDefinition({
+      name: "Bolt",
+      typeLine: "Instant",
+      manaCost: "{R}",
+      targetRequirements: [{ kind: "creature" }],
+      effects: [
+        { kind: "deal_damage", sourceId: "self", target: { type: "chosen", index: 0 }, amount: 1 },
+      ],
+    });
+    game.definitions[boltDef.id] = boltDef;
+    const bolt = createCardInstance({
+      definitionId: boltDef.id,
+      ownerId: p2.id,
+      zone: "hand",
+    });
+    game.cards[bolt.id] = bolt;
+    p2.zones.hand.push(bolt.id);
+    return { game, p1, p2, dragonId: dragon.id, bearId: bear.id, boltId: bolt.id };
+  };
+
+  it("fires when a spell targets it", () => {
+    const { game, p2, dragonId, boltId } = setup();
+    const stacked = putSpellOnStack(game, boltId, [
+      { type: "creature", cardId: dragonId },
+    ]);
+    expect(stacked.stack.filter((entry) => entry.kind === "ability")).toHaveLength(1);
+    expect(p2.id).toBeDefined();
+  });
+
+  it("does not fire when the spell targets something else", () => {
+    const { game, bearId, boltId } = setup();
+    const stacked = putSpellOnStack(game, boltId, [
+      { type: "creature", cardId: bearId },
+    ]);
+    // Only the permanent that was targeted watches this — a shared event
+    // would make every Dragon on the table trigger off every spell.
+    expect(stacked.stack.filter((entry) => entry.kind === "ability")).toHaveLength(0);
+  });
+
+  it("does not fire for an untargeted spell", () => {
+    const { game, p2 } = setup();
+    const definition = createCardDefinition({
+      name: "Ritual",
+      typeLine: "Instant",
+      manaCost: "{R}",
+      effects: [{ kind: "draw", playerId: "controller", count: 1 }],
+    });
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({
+      definitionId: definition.id,
+      ownerId: p2.id,
+      zone: "hand",
+    });
+    game.cards[card.id] = card;
+    p2.zones.hand.push(card.id);
+    const stacked = putSpellOnStack(game, card.id, []);
+    expect(stacked.stack.filter((entry) => entry.kind === "ability")).toHaveLength(0);
+  });
+
+  it("fires once for a spell that names it twice", () => {
+    const { game, p2, dragonId } = setup();
+    const definition = createCardDefinition({
+      name: "Twin Bolt",
+      typeLine: "Instant",
+      manaCost: "{R}",
+      targetRequirements: [{ kind: "creature" }, { kind: "creature" }],
+      effects: [
+        {
+          kind: "deal_damage",
+          sourceId: "self",
+          target: { type: "chosen", index: 0 },
+          amount: 1,
+        },
+      ],
+    });
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({
+      definitionId: definition.id,
+      ownerId: p2.id,
+      zone: "hand",
+    });
+    game.cards[card.id] = card;
+    p2.zones.hand.push(card.id);
+    const stacked = putSpellOnStack(game, card.id, [
+      { type: "creature", cardId: dragonId },
+      { type: "creature", cardId: dragonId },
+    ]);
+    // A spell that targets the same creature twice still targeted it once
+    // for this purpose.
+    expect(stacked.stack.filter((entry) => entry.kind === "ability")).toHaveLength(1);
+  });
+
+  it("round trips the event name", () => {
+    const { game, dragonId } = setup();
+    const round = parseGameState(serializeGameState(game));
+    // The allow-list is hand-written and has fallen behind before, which
+    // makes a definition unloadable rather than merely wrong.
+    expect(round.definitions[round.cards[dragonId]!.definitionId]?.triggers[0]?.event).toBe(
+      "becomes_target",
+    );
+  });
+});
+
+describe("wave 280: Goldspan Dragon", () => {
+  it("compiles both triggers and the granted mana ability", () => {
+    const compiled = compileOracleCard({
+      oracleId: "gd",
+      name: "Goldspan Dragon",
+      manaCost: "{3}{R}{R}",
+      typeLine: "Legendary Creature — Dragon",
+      power: "4",
+      toughness: "4",
+      printedKeywords: ["Flying", "Haste"],
+      imageUrl: "",
+      oracleText:
+        'Flying, haste\nWhenever Goldspan Dragon attacks or becomes the target of a spell, create a Treasure token.\nTreasures you control have "{T}, Sacrifice this artifact: Add two mana of any one color."',
+    });
+    expect(compiled.notes).toEqual([]);
+    // One head, two events (CR 603.1): the sibling carries the same body.
+    expect(compiled.definition.triggers.map((entry) => entry.event)).toEqual([
+      "attacks",
+      "becomes_target",
+    ]);
+    expect(compiled.definition.triggers[0]?.effects).toEqual(
+      compiled.definition.triggers[1]?.effects,
+    );
+    // The granted ability sacrifices its source. Refusing that shape was the
+    // only thing stopping the grant, and a Treasure that taps without
+    // sacrificing is an infinite mana engine.
+    expect(compiled.definition.staticAbilities[0]?.effect).toMatchObject({
+      kind: "grant_mana_ability",
+      ability: { producesAnyColor: true, count: 2, sacrificeSelf: true },
+    });
+  });
+
+  it("still refuses a granted mana ability with a cost it cannot carry", () => {
+    const compiled = compileOracleCard({
+      oracleId: "x",
+      name: "Probe",
+      manaCost: "{2}",
+      typeLine: "Creature — Dragon",
+      power: "4",
+      toughness: "4",
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText: 'Treasures you control have "{T}, Pay 3 life: Add {G}."',
+    });
+    // Granting a FREE version of a costed mana ability would be a strictly
+    // better card than the one printed.
+    expect(compiled.notes.length).toBeGreaterThan(0);
+  });
+});

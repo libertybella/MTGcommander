@@ -2617,6 +2617,8 @@ export type TriggerEvent =
   | "opponent_draws_second"
   /** Orcish Bowmasters: every opponent draw but their draw-step first. */
   | "opponent_draws_except_first"
+  /** Goldspan Dragon: "whenever ~ becomes the target of a spell". */
+  | "becomes_target"
   /** Any player sacrificed a permanent (Mayhem Devil). */
   | "player_sacrifices"
   /** A counter was put on this creature (Fathom Mage). */
@@ -2924,6 +2926,12 @@ export type EngineEvent =
        */
       firstInDrawStep?: boolean;
     }
+  /**
+   * Goldspan Dragon: a permanent was chosen as a target of a SPELL. Only
+   * spells — an ability targeting it is a different trigger, and the
+   * card says spell.
+   */
+  | { kind: "becomes_target"; cardId: CardInstanceId; controllerId: PlayerId }
   /** A token was created under this player's control. One event per token. */
   | { kind: "creates_token"; playerId: PlayerId }
   /** A permanent was sacrificed (cost or effect). */
