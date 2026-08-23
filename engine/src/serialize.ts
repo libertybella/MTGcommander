@@ -626,6 +626,9 @@ export function parseGameState(json: string): GameState {
       ...(isRecord(def.altCost)
         ? {
             altCost: {
+              ...(def.altCost.onlyOnOpponentsTurn === true
+                ? { onlyOnOpponentsTurn: true }
+                : {}),
               ...(def.altCost.life === undefined
                 ? {}
                 : { life: expectNumber(def.altCost.life, `definition.${id}.altCost.life`) }),
@@ -3371,7 +3374,13 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
       if (!Number.isInteger(index) || index < 0) {
         throw new Error(`Invalid ${label}.target.index`);
       }
-      return { kind, target: { type: "chosen", index } };
+      return {
+        kind,
+        target: { type: "chosen", index },
+        ...(kind === "counter_spell" && value.exileInstead === true
+          ? { exileInstead: true }
+          : {}),
+      };
     }
     case "counter_unless_pays": {
       if (!isRecord(value.target)) {
@@ -5751,7 +5760,11 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
     };
   }
   if (kind === "counter_spell") {
-    return { kind, stackObjectId: expectString(value.stackObjectId, `${label}.stackObjectId`) };
+    return {
+      kind,
+      stackObjectId: expectString(value.stackObjectId, `${label}.stackObjectId`),
+      ...(value.exileInstead === true ? { exileInstead: true } : {}),
+    };
   }
   if (kind === "bounce_spell_or_permanent") {
     return {

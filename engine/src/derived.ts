@@ -294,6 +294,13 @@ export function altCastPayment(
   if (cost.requires && !controlsGate(state, playerId, cost.requires)) {
     return null;
   }
+  // Force of Negation: "If it's NOT your turn." A free counterspell you
+  // could also fire on your own turn is a different, better card, so the
+  // gate is checked where the payment is offered rather than left to the
+  // player's honesty.
+  if (cost.onlyOnOpponentsTurn && state.turn.activePlayerId === playerId) {
+    return null;
+  }
   // CR 118.4: a cost that would reduce life to zero or below cannot be paid.
   if (cost.life !== undefined && player.life <= cost.life) {
     return null;

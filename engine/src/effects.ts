@@ -1733,7 +1733,11 @@ export function bindCardEffect(
       if (!chosen || chosen.type !== "spell") {
         return null;
       }
-      return { kind: "counter_spell", stackObjectId: chosen.stackObjectId };
+      return {
+        kind: "counter_spell",
+        stackObjectId: chosen.stackObjectId,
+        ...(effect.exileInstead ? { exileInstead: true } : {}),
+      };
     }
     case "bounce_spell_or_permanent": {
       const chosen = chosenTargetAt(context, effect.target.index, state);
@@ -2711,7 +2715,11 @@ function applyCounterUnlessPays(
   return next;
 }
 
-function applyCounterSpell(state: GameState, stackObjectId: StackObjectId): GameState {
+function applyCounterSpell(
+  state: GameState,
+  stackObjectId: StackObjectId,
+  exileInstead?: boolean,
+): GameState {
   if (cantBeCountered(state, stackObjectId)) {
     return state;
   }
@@ -2729,8 +2737,14 @@ function applyCounterSpell(state: GameState, stackObjectId: StackObjectId): Game
   if (!removed?.sourceId || next.cards[removed.sourceId]?.zone !== "stack") {
     return next;
   }
-  // A countered flashbacked card exiles instead (CR 702.34a).
-  return enterOwnerZone(next, removed.sourceId, removed.fromGraveyard ? "exile" : "graveyard");
+  // A countered flashbacked card exiles instead (CR 702.34a), and so does
+  // one Force of Negation caught — the destination matters to everything
+  // that reads a graveyard afterwards.
+  return enterOwnerZone(
+    next,
+    removed.sourceId,
+    exileInstead || removed.fromGraveyard ? "exile" : "graveyard",
+  );
 }
 
 /**
@@ -3755,7 +3769,7 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
         break;
       }
       case "counter_spell":
-        next = applyCounterSpell(state, effect.stackObjectId);
+        next = applyCounterSpell(state, effect.stackObjectId, effect.exileInstead);
         break;
       case "bounce_spell_or_permanent": {
         if (effect.cardId) {

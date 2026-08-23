@@ -1133,7 +1133,16 @@ export type GameEffect =
   /** Mossborn Hydra: the doubling lands on one permanent, not a team. */
   | { kind: "double_counters_on"; cardId: CardInstanceId; counter: string }
   | { kind: "double_all_counters"; cardIds: CardInstanceId[] }
-  | { kind: "counter_spell"; stackObjectId: StackObjectId }
+  | {
+      kind: "counter_spell";
+      stackObjectId: StackObjectId;
+      /**
+       * Force of Negation: the countered spell is EXILED instead of going
+       * to its owner's graveyard, which matters to everything that reads
+       * a graveyard afterwards.
+       */
+      exileInstead?: boolean;
+    }
   | {
       kind: "bounce_spell_or_permanent";
       cardId?: CardInstanceId;
@@ -2131,7 +2140,12 @@ export type CardEffect =
   /** Deepglow Skate: every KIND of counter at once, on every chosen
    * target. Distinct from `double_counters_on`, which names one kind. */
   | { kind: "double_all_counters"; cardIds: CardIdSelector[]; allChosen?: boolean }
-  | { kind: "counter_spell"; target: ChosenTargetRef }
+  | {
+      kind: "counter_spell";
+      target: ChosenTargetRef;
+      /** Force of Negation: "exile it instead". */
+      exileInstead?: boolean;
+    }
   | { kind: "counter_unless_pays"; target: ChosenTargetRef; cost: string }
   /** Venser: bounce a spell (off the stack) or a permanent to its owner's hand. */
   | { kind: "bounce_spell_or_permanent"; target: ChosenTargetRef }
@@ -3171,6 +3185,11 @@ export type AlternativeCastCost = {
   sacrificeCreature?: { colors?: Color[]; nontoken?: boolean };
   /** Snuff Out: "If you control a Swamp". */
   requires?: ControlledGate;
+  /**
+   * Force of Negation: "If it's NOT your turn". A free counterspell you
+   * could also fire on your own turn is a different, better card.
+   */
+  onlyOnOpponentsTurn?: boolean;
 };
 
 export type ControlledGate = {

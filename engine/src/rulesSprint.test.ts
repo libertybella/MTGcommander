@@ -19,7 +19,7 @@ import {
 } from "./index";
 import { activatedOf, cardMatchesSubtype, computedCard, dynamicCountOf, mergeProtection, triggersOf } from "./characteristicsEngine";
 import { mostCommonControlledCreatureType } from "./effects";
-import { creaturePower } from "./derived";
+import { altCastPayment, creaturePower } from "./derived";
 import { attackLimitFor, blockAllowanceFor, castCostReduction, castableFromTop, drawCapFor, freeEquipGranted, hasFlashGrant, landDropAllowance, maxHandSizeOf, noncreatureSpellCap, permanentsControlledBy, playerHasHexproof, reliefAdjustedCost, selfDiscountAmount, wouldEnterTapped } from "./derived";
 import { characteristicsOf } from "./cardTypes";
 import { manaValueOf } from "./characteristics";
@@ -36651,6 +36651,161 @@ describe("wave 276: hideaway", () => {
     expect(round.definitions[definition.id]?.activated[0]?.effects[0]).toEqual({
       kind: "play_hidden_card",
       free: true,
+    });
+  });
+});
+
+describe("wave 277: a free counter that only fires on someone else's turn", () => {
+  const setup = () => {
+    const { game, p1, p2 } = twoPlayers();
+    const forceDef = createCardDefinition({
+      name: "Force",
+      typeLine: "Instant",
+      manaCost: "{1}{U}{U}",
+      altCost: { exileFromHand: { count: 1, colors: ["U"] }, onlyOnOpponentsTurn: true },
+    });
+    game.definitions[forceDef.id] = forceDef;
+    const force = createCardInstance({
+      definitionId: forceDef.id,
+      ownerId: p1.id,
+      zone: "hand",
+    });
+    game.cards[force.id] = force;
+    p1.zones.hand.push(force.id);
+
+    const blueDef = createCardDefinition({
+      name: "Blue Card",
+      typeLine: "Instant",
+      manaCost: "{U}",
+      colors: ["U"],
+    });
+    game.definitions[blueDef.id] = blueDef;
+    const blue = createCardInstance({
+      definitionId: blueDef.id,
+      ownerId: p1.id,
+      zone: "hand",
+    });
+    game.cards[blue.id] = blue;
+    p1.zones.hand.push(blue.id);
+    return { game, p1, p2, forceId: force.id, blueId: blue.id, altCost: forceDef.altCost! };
+  };
+
+  it("refuses the alternative cost on your own turn", () => {
+    const { game, p1, forceId, altCost } = setup();
+    expect(game.turn.activePlayerId).toBe(p1.id);
+    // A free counterspell you could also fire on your own turn is a
+    // different, better card. The gate belongs where the payment is
+    // offered, not in the player's honesty.
+    expect(altCastPayment(game, p1.id, altCost, forceId)).toBeNull();
+  });
+
+  it("allows it on an opponent's turn", () => {
+    const { game, p1, p2, forceId, blueId, altCost } = setup();
+    const theirTurn = { ...game, turn: { ...game.turn, activePlayerId: p2.id } };
+    expect(altCastPayment(theirTurn, p1.id, altCost, forceId)).toEqual({
+      exileIds: [blueId],
+    });
+  });
+
+  it("still refuses without a blue card to exile", () => {
+    const { game, p1, p2, forceId, blueId, altCost } = setup();
+    const theirTurn = { ...game, turn: { ...game.turn, activePlayerId: p2.id } };
+    const player = theirTurn.players.find((entry) => entry.id === p1.id)!;
+    player.zones.hand = player.zones.hand.filter((id) => id !== blueId);
+    expect(altCastPayment(theirTurn, p1.id, altCost, forceId)).toBeNull();
+  });
+
+  it("leaves an ungated alternative cost alone", () => {
+    const { game, p1, forceId } = setup();
+    // Snuff Out and friends have no turn restriction, and adding one by
+    // default would silently make them uncastable half the time.
+    expect(
+      altCastPayment(game, p1.id, { exileFromHand: { count: 1, colors: ["U"] } }, forceId),
+    ).not.toBeNull();
+  });
+});
+
+describe("wave 277: a countered spell that exiles instead", () => {
+  const setup = () => {
+    const { game, p1, p2 } = twoPlayers();
+    const spellDef = createCardDefinition({ name: "Spell", typeLine: "Sorcery" });
+    game.definitions[spellDef.id] = spellDef;
+    const spell = createCardInstance({
+      definitionId: spellDef.id,
+      ownerId: p2.id,
+      zone: "stack",
+    });
+    game.cards[spell.id] = spell;
+    game.stack = [
+      { id: "s1", controllerId: p2.id, sourceId: spell.id, kind: "spell", targets: [] },
+    ];
+    return { game, p1, p2, spellId: spell.id };
+  };
+
+  it("exiles the countered spell when told to", () => {
+    const { game, spellId } = setup();
+    const after = applyEffect(game, {
+      kind: "counter_spell",
+      stackObjectId: "s1",
+      exileInstead: true,
+    });
+    expect(after.cards[spellId]?.zone).toBe("exile");
+    expect(after.stack).toHaveLength(0);
+  });
+
+  it("sends it to the graveyard without the rider", () => {
+    const { game, spellId } = setup();
+    const after = applyEffect(game, { kind: "counter_spell", stackObjectId: "s1" });
+    // The negative case: the destination matters to everything that reads a
+    // graveyard afterwards, so the flag has to be doing the work.
+    expect(after.cards[spellId]?.zone).toBe("graveyard");
+  });
+
+  it("compiles Force of Negation whole", () => {
+    const compiled = compileOracleCard({
+      oracleId: "fon",
+      name: "Force of Negation",
+      manaCost: "{1}{U}{U}",
+      typeLine: "Instant",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "If it's not your turn, you may exile a blue card from your hand rather than pay this spell's mana cost.\nCounter target noncreature spell. If that spell is countered this way, exile it instead of putting it into its owner's graveyard.",
+    });
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.altCost).toEqual({
+      exileFromHand: { count: 1, colors: ["U"] },
+      onlyOnOpponentsTurn: true,
+    });
+    // The rider is a sentence of its own that MODIFIES the counter before
+    // it; compiled separately it would be an effect with nothing to act on
+    // and the countered spell would quietly reach the graveyard anyway.
+    expect(compiled.definition.effects).toEqual([
+      { kind: "counter_spell", target: { type: "chosen", index: 0 }, exileInstead: true },
+    ]);
+  });
+
+  it("round trips both halves", () => {
+    const { game } = setup();
+    const definition = createCardDefinition({
+      name: "Force",
+      typeLine: "Instant",
+      manaCost: "{1}{U}{U}",
+      altCost: { exileFromHand: { count: 1, colors: ["U"] }, onlyOnOpponentsTurn: true },
+      effects: [
+        { kind: "counter_spell", target: { type: "chosen", index: 0 }, exileInstead: true },
+      ],
+      targetRequirements: [{ kind: "noncreature_spell" }],
+    });
+    game.definitions[definition.id] = definition;
+    const round = parseGameState(serializeGameState(game));
+    expect(round.definitions[definition.id]?.altCost?.onlyOnOpponentsTurn).toBe(true);
+    expect(round.definitions[definition.id]?.effects[0]).toEqual({
+      kind: "counter_spell",
+      target: { type: "chosen", index: 0 },
+      exileInstead: true,
     });
   });
 });

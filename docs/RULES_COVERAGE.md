@@ -870,6 +870,22 @@ more questions it can now ask:
   (Bennie Bracks). Reads the existing per-player `createdTokenThisTurn`
   list, and asks whether the CONTROLLER is in it — an opponent's Treasure
   must not satisfy it.
+- **A free spell only on someone else's turn** — Force of Negation.
+  `AlternativeCastCost.onlyOnOpponentsTurn` is checked in `altCastPayment`,
+  where the payment is offered, rather than left to the player's honesty: a
+  free counterspell you could also fire on your own turn is a different,
+  better card. The gate is peeled off the front of the sentence and only
+  when what follows parses as an ordinary alternative cost.
+
+- **A countered spell that exiles instead** — Force of Negation.
+  `counter_spell.exileInstead` joins the flashback rule already in
+  `applyCounterSpell` (CR 702.34a). The destination matters to everything
+  that reads a graveyard afterwards, so the negative case is tested too.
+
+  The rider is a SENTENCE of its own that modifies the counter before it.
+  Compiled separately it would be an effect with nothing to act on, and the
+  countered spell would quietly reach the graveyard anyway — so it folds
+  onto the last `counter_spell` on the same printed line.
 - **Hideaway** (CR 702.75) — Mosswort Bridge. The ETB is the existing
   look-and-assign prompt with one exile slot and the rest bottoming, plus a
   link: `hideawaySourceId` records the exiled card on the permanent that

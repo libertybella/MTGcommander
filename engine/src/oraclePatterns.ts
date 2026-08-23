@@ -1052,6 +1052,14 @@ function parseSimpleTargetPhrase(phrase: string): TargetRequirement | null {
  * whole sentence if any half is unrecognised.
  */
 function parseAlternativeCastCost(sentence: string): AlternativeCastCost | null {
+  // Force of Negation: the whole clause is gated on it not being your
+  // turn. Peeled first so the rest reads as the ordinary alternative-cost
+  // grammar, and only when what follows parses on its own.
+  const notYourTurn = sentence.match(/^If it['\u2019]s not your turn, (.+)$/i);
+  if (notYourTurn?.[1]) {
+    const inner = parseAlternativeCastCost(notYourTurn[1].trim());
+    return inner ? { ...inner, onlyOnOpponentsTurn: true } : null;
+  }
   const match = sentence.match(
     /^(?:If you control an? ([A-Z][a-z]+), )?you may (.+) rather than pay this spell's mana cost$/i,
   );
@@ -10955,6 +10963,27 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
     // moved a permanent.
     if (index > 0 && !lineStart[index] && foldSubjectRider(result.effects, sentence)) {
       continue;
+    }
+
+    // Force of Negation: "If that spell is countered this way, exile it
+    // instead of putting it into its owner's graveyard." A sentence of
+    // its own that MODIFIES the counter before it — compiled separately
+    // it would be an effect with nothing to act on, and the countered
+    // spell would quietly reach the graveyard after all.
+    if (
+      index > 0 &&
+      !lineStart[index] &&
+      /^If that spell is countered this way, exile it instead of putting it into its owner['\u2019]s graveyard$/i.test(
+        sentence,
+      )
+    ) {
+      const counter = [...result.effects]
+        .reverse()
+        .find((effect) => effect.kind === "counter_spell");
+      if (counter) {
+        counter.exileInstead = true;
+        continue;
+      }
     }
 
     // A rider that reads the sacrificed creature has to travel INTO the
