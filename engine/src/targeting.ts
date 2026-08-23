@@ -1,6 +1,6 @@
 import { characteristicsOf, isCommander, isCreature, isPlaneswalker } from "./cardTypes";
 import { cardMatchesSubtype } from "./characteristicsEngine";
-import { creaturePower } from "./derived";
+import { creaturePower, playerHasHexproof } from "./derived";
 import { hasKeyword, protectedFromSource } from "./keywords";
 import { isLiving, livingPlayers } from "./players";
 import type {
@@ -13,8 +13,21 @@ import type {
   TargetRequirement,
 } from "./types";
 
-function isLegalPlayerTarget(state: GameState, playerId: string): boolean {
-  return isLiving(state, playerId);
+function isLegalPlayerTarget(
+  state: GameState,
+  playerId: string,
+  casterId?: PlayerId,
+): boolean {
+  if (!isLiving(state, playerId)) {
+    return false;
+  }
+  // Hexproof stops OPPONENTS only, so a player may always target
+  // themselves — several cards a Shalai controller wants to cast do
+  // exactly that, and a blanket check would lock them out of their own.
+  if (casterId && casterId !== playerId && playerHasHexproof(state, playerId)) {
+    return false;
+  }
+  return true;
 }
 
 function isLegalCreatureTarget(
@@ -242,14 +255,14 @@ export function isChosenTargetLegal(
     return false;
   }
   if (requirement.kind === "player") {
-    return target.type === "player" && isLegalPlayerTarget(state, target.playerId);
+    return target.type === "player" && isLegalPlayerTarget(state, target.playerId, casterId);
   }
   if (requirement.kind === "opponent") {
     return (
       target.type === "player" &&
       Boolean(casterId) &&
       target.playerId !== casterId &&
-      isLegalPlayerTarget(state, target.playerId)
+      isLegalPlayerTarget(state, target.playerId, casterId)
     );
   }
   if (requirement.kind === "creature") {

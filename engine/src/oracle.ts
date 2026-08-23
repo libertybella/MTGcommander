@@ -205,6 +205,7 @@ function compileOneFace(card: OracleCard, definitionId: string): OracleCompileRe
       ? {}
       : { noncreatureSpellCap: compiled.noncreatureSpellCap }),
     ...(compiled.cantLoseGame ? { cantLoseGame: true } : {}),
+    ...(compiled.controllerHexproof ? { controllerHexproof: true } : {}),
     ...(compiled.attackLimitPerCombat === undefined
       ? {}
       : { attackLimitPerCombat: compiled.attackLimitPerCombat }),

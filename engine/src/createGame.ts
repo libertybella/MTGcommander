@@ -109,6 +109,7 @@ export function createCardDefinition(
         | "opponentsDrawCap"
         | "noncreatureSpellCap"
         | "cantLoseGame"
+        | "controllerHexproof"
         | "attackLimitPerCombat"
         | "extraBlocksGranted"
         | "damageReplacement"
@@ -454,6 +455,7 @@ export function createCardDefinition(
       ? {}
       : { noncreatureSpellCap: input.noncreatureSpellCap }),
     ...(input.cantLoseGame ? { cantLoseGame: true } : {}),
+    ...(input.controllerHexproof ? { controllerHexproof: true } : {}),
     ...(input.attackLimitPerCombat === undefined
       ? {}
       : { attackLimitPerCombat: input.attackLimitPerCombat }),

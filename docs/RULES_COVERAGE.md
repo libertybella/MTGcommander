@@ -660,6 +660,21 @@ is applied AFTER every layer-6 instance has run rather than in place: a
 grant later in the same layer would otherwise win. `remove_all_abilities`
 clears the lock along with everything else.
 
+### Hexproof on a player (wave 240)
+
+A player is not a permanent and has no computed characteristics, so
+player hexproof is a definition flag (`controllerHexproof`) rather than a
+granted keyword. `isLegalPlayerTarget` now takes the caster and refuses a
+hexproofed player only when the caster is someone else — hexproof stops
+opponents and nothing else, and a blanket check would lock the controller
+out of their own spells.
+
+Shalai's compound subject splits three ways: the player half sets the
+flag, and the two permanent halves are ordinary static grants that keep
+their own selectors. Only hexproof is read for the player half — most
+keywords mean nothing on a player, and granting one silently would be
+worse than leaving the line uncompiled.
+
 ### Vetoing a loss (wave 235)
 
 `CardDefinition.cantLoseGame` is **one** flag for both halves of Platinum

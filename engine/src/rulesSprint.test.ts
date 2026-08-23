@@ -19,7 +19,7 @@ import {
 } from "./index";
 import { activatedOf, cardMatchesSubtype, computedCard, dynamicCountOf, triggersOf } from "./characteristicsEngine";
 import { mostCommonControlledCreatureType } from "./effects";
-import { attackLimitFor, blockAllowanceFor, castCostReduction, castableFromTop, drawCapFor, freeEquipGranted, hasFlashGrant, landDropAllowance, maxHandSizeOf, noncreatureSpellCap, permanentsControlledBy, reliefAdjustedCost, selfDiscountAmount, wouldEnterTapped } from "./derived";
+import { attackLimitFor, blockAllowanceFor, castCostReduction, castableFromTop, drawCapFor, freeEquipGranted, hasFlashGrant, landDropAllowance, maxHandSizeOf, noncreatureSpellCap, permanentsControlledBy, playerHasHexproof, reliefAdjustedCost, selfDiscountAmount, wouldEnterTapped } from "./derived";
 import { hasKeyword } from "./keywords";
 import { dispatchEventsInPlace, triggerConditionHolds } from "./triggers";
 import { applyCombatDamage, blockRestriction, declareAttackers, declareBlockers } from "./combat";
@@ -31064,5 +31064,107 @@ describe("wave 238: keywords a permanent can't have or gain", () => {
       kind: "lock_keywords",
       keywords: ["flying"],
     });
+  });
+});
+
+describe("wave 240: hexproof for a player", () => {
+  const put = (game: GameState, definitionId: string, ownerId: string) => {
+    const card = createCardInstance({ definitionId, ownerId, zone: "battlefield" });
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === ownerId)!.zones.battlefield.push(card.id);
+    return card;
+  };
+
+  it("splits the compound subject into a flag and two grants", () => {
+    const shalai = compileOracleCard({
+      oracleId: "Shalai, Voice of Plenty",
+      name: "Shalai, Voice of Plenty",
+      manaCost: "{3}{W}",
+      typeLine: "Legendary Creature — Angel",
+      power: "3",
+      toughness: "4",
+      printedKeywords: ["flying"],
+      imageUrl: "",
+      oracleText:
+        "Flying\nYou, planeswalkers you control, and other creatures you control have hexproof.",
+    });
+    expect(shalai.notes).toEqual([]);
+    // The player half is a flag, because a player has no computed
+    // characteristics to hang a keyword on.
+    expect(shalai.definition.controllerHexproof).toBe(true);
+    // The two permanent halves are ordinary statics, and they keep their own
+    // selectors rather than collapsing into one.
+    const selectors = shalai.definition.staticAbilities.map((ability) => ability.selector);
+    expect(selectors).toContainEqual({ scope: "controlled", types: ["planeswalker"] });
+    expect(selectors).toContainEqual(
+      expect.objectContaining({ scope: "controlled", types: ["creature"], excludeSelf: true }),
+    );
+  });
+
+  it("stops an opponent targeting the player and not the player themselves", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    const shalai = createCardDefinition({
+      name: "Shalai, Voice of Plenty",
+      typeLine: "Legendary Creature — Angel",
+      power: 3,
+      toughness: 4,
+      controllerHexproof: true,
+    });
+    game.definitions[shalai.id] = shalai;
+    expect(playerHasHexproof(game, p1.id)).toBe(false);
+    put(game, shalai.id, p1.id);
+    expect(playerHasHexproof(game, p1.id)).toBe(true);
+    expect(playerHasHexproof(game, p2.id)).toBe(false);
+
+    const requirement: TargetRequirement = { kind: "player" };
+    const at = (playerId: string, casterId: string) =>
+      isChosenTargetLegal(game, requirement, { type: "player", playerId }, casterId, [], undefined);
+
+    expect(at(p1.id, p2.id)).toBe(false);
+    // Hexproof stops OPPONENTS only. A blanket check would lock the Shalai
+    // player out of every spell that targets themselves, which is most of the
+    // reason to play it.
+    expect(at(p1.id, p1.id)).toBe(true);
+    // And the opponent is not protected by someone else's Angel.
+    expect(at(p2.id, p1.id)).toBe(true);
+  });
+
+  it("stops protecting when the Angel is silenced, and round trips", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    const shalai = createCardDefinition({
+      name: "Shalai, Voice of Plenty",
+      typeLine: "Legendary Creature — Angel",
+      power: 3,
+      toughness: 4,
+      controllerHexproof: true,
+    });
+    const humility = createCardDefinition({
+      name: "Humility",
+      typeLine: "Enchantment",
+      staticAbilities: [
+        {
+          selector: { scope: "all", types: ["creature"] },
+          effect: { kind: "remove_all_abilities" },
+        },
+      ],
+    });
+    for (const definition of [shalai, humility]) {
+      game.definitions[definition.id] = definition;
+    }
+    put(game, shalai.id, p1.id);
+    put(game, humility.id, p2.id);
+    // Reading the definition without `abilitiesRemoved` would make this
+    // unanswerable, the same failure the Platinum Angel test guards.
+    expect(playerHasHexproof(game, p1.id)).toBe(false);
+
+    const fresh = twoPlayers();
+    fillLibraries(fresh.game, 20);
+    fresh.game.definitions[shalai.id] = shalai;
+    put(fresh.game, shalai.id, fresh.p1.id);
+    const round = parseGameState(serializeGameState(fresh.game));
+    expect(round.definitions[shalai.id]?.controllerHexproof).toBe(true);
+    expect(playerHasHexproof(round, fresh.p1.id)).toBe(true);
   });
 });

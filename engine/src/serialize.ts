@@ -522,6 +522,7 @@ export function parseGameState(json: string): GameState {
             ),
           }),
       ...(def.cantLoseGame === true ? { cantLoseGame: true } : {}),
+      ...(def.controllerHexproof === true ? { controllerHexproof: true } : {}),
       ...(def.attackLimitPerCombat === undefined
         ? {}
         : {

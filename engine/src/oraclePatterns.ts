@@ -65,6 +65,7 @@ export type CompiledOracleText = {
   opponentsDrawCap?: number;
   noncreatureSpellCap?: number;
   cantLoseGame?: boolean;
+  controllerHexproof?: boolean;
   attackLimitPerCombat?: number;
   extraBlocksGranted?: number;
   damageReplacement?: DamageReplacement;
@@ -10078,6 +10079,29 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
     if (grant) {
       result.staticAbilities.push(...grant);
       continue;
+    }
+
+    // Shalai: a compound subject in which one of the subjects is the
+    // PLAYER. The permanent halves are ordinary static grants; the player
+    // half is a definition flag, because a player is not a permanent and
+    // has no computed characteristics to hang a keyword on.
+    //
+    // Hexproof only. Most keywords mean nothing on a player, and granting
+    // one silently would be worse than leaving the line uncompiled.
+    const playerAndPermanents = sentence.match(
+      /^You, (.+?), and (.+?) have hexproof$/i,
+    );
+    if (playerAndPermanents?.[1] && playerAndPermanents[2]) {
+      const halves = [playerAndPermanents[1], playerAndPermanents[2]].map((subject) =>
+        compileStaticGrant(`${subject} have hexproof`),
+      );
+      if (halves.every((half) => half !== null)) {
+        result.controllerHexproof = true;
+        for (const half of halves) {
+          result.staticAbilities.push(...half!);
+        }
+        continue;
+      }
     }
 
     if (/^You have no maximum hand size$/i.test(sentence)) {

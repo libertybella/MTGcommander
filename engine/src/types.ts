@@ -198,6 +198,12 @@ export type CardDefinition = {
    */
   cantLoseGame?: boolean;
   /**
+   * Shalai: "You … have hexproof." Hexproof on a PLAYER, which is a
+   * different object from hexproof on a permanent — it stops opponents
+   * choosing that player as a target, and stops nothing else.
+   */
+  controllerHexproof?: boolean;
+  /**
    * Crawlspace: "No more than two creatures can attack you each combat."
    * The cap protects this permanent's CONTROLLER — the printed text says
    * "you" — so it is read off the defending player's own battlefield.

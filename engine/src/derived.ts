@@ -481,6 +481,20 @@ export function attackLimitFor(state: GameState, playerId: string): number | nul
   return cap;
 }
 
+/**
+ * Shalai: does this player have hexproof? Read through `abilitiesRemoved`,
+ * so a silenced Shalai stops protecting.
+ */
+export function playerHasHexproof(state: GameState, playerId: string): boolean {
+  return Object.values(state.cards).some(
+    (card) =>
+      card.zone === "battlefield" &&
+      card.controllerId === playerId &&
+      !abilitiesRemoved(state, card.id) &&
+      state.definitions[card.definitionId]?.controllerHexproof === true,
+  );
+}
+
 export function cantLoseGame(state: GameState, playerId: string): boolean {
   return Object.values(state.cards).some(
     (card) =>
