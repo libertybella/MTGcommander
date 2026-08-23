@@ -31983,3 +31983,142 @@ describe("wave 247: phasing", () => {
     expect(permanentsControlledBy(round, p1.id)).not.toContain(creature.id);
   });
 });
+
+describe("wave 248: phasing a variable number of targets", () => {
+  const compile = (name: string, typeLine: string, oracleText: string, power?: string, toughness?: string) =>
+    compileOracleCard({
+      oracleId: name,
+      name,
+      manaCost: "{2}{W}",
+      typeLine,
+      power: power ?? null,
+      toughness: toughness ?? null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  it("uses the variable requirement that already existed", () => {
+    const concealment = compile(
+      "Clever Concealment",
+      "Instant",
+      "Any number of target nonland permanents you control phase out.",
+    );
+    expect(concealment.notes).toEqual([]);
+    expect(concealment.definition.targetRequirements).toEqual([
+      { kind: "nonland_permanent", control: "own", variable: true },
+    ]);
+    expect(concealment.definition.effects).toEqual([
+      { kind: "phase_out", cardIds: [], allChosen: true },
+    ]);
+
+    const guardian = compile(
+      "Guardian of Faith",
+      "Creature — Spirit Cleric",
+      "Flash\nVigilance\nWhen Guardian of Faith enters, any number of other target creatures you control phase out.",
+      "3",
+      "3",
+    );
+    expect(guardian.notes).toEqual([]);
+    // "OTHER target creatures" — the Guardian must not phase itself out, or
+    // the enter trigger would remove the permanent that made it.
+    expect(guardian.definition.triggers[0]?.targetRequirements).toEqual([
+      { kind: "creature", control: "own", variable: true, excludeSource: true },
+    ]);
+  });
+
+  it("phases out every target chosen, however many that was", () => {
+    const game = createGameState({ playerCount: 2 });
+    const [p1] = game.players;
+    if (!p1) {
+      throw new Error("expected a player");
+    }
+    fillLibraries(game, 20);
+    const bear = createCardDefinition({
+      name: "Bear",
+      typeLine: "Creature — Bear",
+      power: 2,
+      toughness: 2,
+    });
+    game.definitions[bear.id] = bear;
+    const made = [0, 1, 2].map(() => {
+      const card = createCardInstance({
+        definitionId: bear.id,
+        ownerId: p1.id,
+        zone: "battlefield",
+      });
+      game.cards[card.id] = card;
+      p1.zones.battlefield.push(card.id);
+      return card;
+    });
+
+    const bound = bindCardEffects(
+      game,
+      [{ kind: "phase_out", cardIds: [], allChosen: true }],
+      {
+        controllerId: p1.id,
+        sourceId: null,
+        targets: made.map((card) => ({ type: "creature" as const, cardId: card.id })),
+      },
+    );
+    expect(bound).toHaveLength(1);
+    expect((bound[0] as { cardIds: string[] }).cardIds).toEqual(made.map((card) => card.id));
+
+    const after = applyEffects(game, bound);
+    for (const card of made) {
+      expect(after.cards[card.id]?.phasedOut).toBe(true);
+    }
+    expect(permanentsControlledBy(after, p1.id)).toEqual([]);
+  });
+
+  it("binds to nothing when no target was chosen", () => {
+    const game = createGameState({ playerCount: 2 });
+    const [p1] = game.players;
+    if (!p1) {
+      throw new Error("expected a player");
+    }
+    fillLibraries(game, 20);
+    // "Any number" includes none. Binding to an empty list must produce no
+    // effect rather than an effect that phases out everything.
+    expect(
+      bindCardEffects(game, [{ kind: "phase_out", cardIds: [], allChosen: true }], {
+        controllerId: p1.id,
+        sourceId: null,
+        targets: [],
+      }),
+    ).toEqual([]);
+  });
+
+  it("round trips the variable form", () => {
+    const game = createGameState({ playerCount: 2 });
+    const [p1] = game.players;
+    if (!p1) {
+      throw new Error("expected a player");
+    }
+    fillLibraries(game, 20);
+    const definition = createCardDefinition({
+      name: "Phaser",
+      typeLine: "Enchantment",
+      triggers: [
+        {
+          event: "enter_battlefield",
+          effects: [{ kind: "phase_out", cardIds: [], allChosen: true }],
+          targetRequirements: [{ kind: "creature", control: "own", variable: true }],
+        },
+      ],
+    });
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({
+      definitionId: definition.id,
+      ownerId: p1.id,
+      zone: "battlefield",
+    });
+    game.cards[card.id] = card;
+    p1.zones.battlefield.push(card.id);
+
+    const round = parseGameState(serializeGameState(game));
+    const trigger = round.definitions[definition.id]?.triggers[0];
+    expect(trigger?.effects[0]).toMatchObject({ kind: "phase_out", allChosen: true });
+    expect(trigger?.targetRequirements?.[0]).toMatchObject({ variable: true });
+  });
+});

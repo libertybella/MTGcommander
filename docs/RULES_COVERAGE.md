@@ -678,9 +678,11 @@ layer engine — it contributes no static abilities and receives none.
 It phases in at the start of its CONTROLLER's untap step, so a permanent
 phased out on an opponent's turn waits for its own.
 
-**Not yet covered:** "Any number of target …" is a variable target count
-the engine has no shape for, which is what still blocks Guardian of Faith
-and Clever Concealment. Phasing itself is done.
+"Any number of target …" uses `TargetRequirement.variable`, which already
+meant 1..N chosen targets matching one requirement — so it needed no new
+target shape, only a form of the effect that takes every chosen target
+rather than fixed slots (`phase_out.allChosen`). Choosing none binds to
+nothing rather than to everything.
 
 ### Connive (wave 243)
 

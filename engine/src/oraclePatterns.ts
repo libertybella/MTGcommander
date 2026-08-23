@@ -3916,6 +3916,30 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     };
   }
 
+  // Guardian of Faith, Clever Concealment: a variable number of targets,
+  // all phased out together. `variable` already means 1..N chosen targets
+  // matching one requirement, so this needs no new target shape — only a
+  // form of the effect that takes every target rather than fixed slots.
+  const phaseOutMany = sentence.match(
+    /^Any number of (other )?target (creatures|nonland permanents) you control phase out$/i,
+  );
+  if (phaseOutMany?.[2]) {
+    return {
+      targetRequirements: [
+        {
+          kind:
+            phaseOutMany[2].toLowerCase() === "creatures"
+              ? ("creature" as const)
+              : ("nonland_permanent" as const),
+          control: "own" as const,
+          variable: true,
+          ...(phaseOutMany[1] ? { excludeSource: true } : {}),
+        },
+      ],
+      effects: [{ kind: "phase_out", cardIds: [], allChosen: true }],
+    };
+  }
+
   // Eerie Interlude, fused: every chosen creature blinks home at end step.
   if (/^flicker-delay-mass your creatures$/i.test(sentence)) {
     return {

@@ -1819,8 +1819,10 @@ export type CardEffect =
       destinations: LookDestination[];
     }
   | { kind: "sacrifice"; cardId: CardIdSelector }
-  /** CR 702.26: Slip Out the Back, Guardian of Faith, Clever Concealment. */
-  | { kind: "phase_out"; cardIds: CardIdSelector[] }
+  /** CR 702.26: Slip Out the Back, Guardian of Faith, Clever Concealment.
+   * `allChosen` is the variable-target form — every target the caster
+   * picked, however many that was, rather than a fixed list of slots. */
+  | { kind: "phase_out"; cardIds: CardIdSelector[]; allChosen?: boolean }
   /** amount "source_power": the source creature's power, read at bind
    * (Halana and Alena). */
   /** amount "subject_amount": The Ozolith absorbs the leave event's

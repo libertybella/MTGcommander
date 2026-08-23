@@ -2892,6 +2892,7 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
         cardIds: value.cardIds.map((entry, index) =>
           parseCardIdSelector(entry, `${label}.cardIds[${index}]`),
         ),
+        ...(value.allChosen === true ? { allChosen: true } : {}),
       };
     }
     case "discard":

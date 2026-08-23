@@ -902,9 +902,15 @@ export function bindCardEffect(
       return { kind: "sacrifice", cardId };
     }
     case "phase_out": {
-      const cardIds = effect.cardIds
-        .map((selector) => bindCardId(state, selector, context))
-        .filter((cardId): cardId is CardInstanceId => Boolean(cardId));
+      // The variable-target form takes every creature the caster chose,
+      // however many that was; the fixed form resolves its own selectors.
+      const cardIds = effect.allChosen
+        ? (context.targets ?? [])
+            .filter((target) => target.type === "creature")
+            .map((target) => target.cardId)
+        : effect.cardIds
+            .map((selector) => bindCardId(state, selector, context))
+            .filter((cardId): cardId is CardInstanceId => Boolean(cardId));
       if (cardIds.length === 0) {
         return null;
       }
