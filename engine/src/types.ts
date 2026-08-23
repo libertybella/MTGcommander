@@ -3056,6 +3056,9 @@ export type EffectSelector = {
   legendary?: boolean;
   /** "Nonlegendary creatures you control" (Flowering of the White Tree). */
   nonLegendary?: boolean;
+  /** Leyline of the Guildpact: "each nonland permanent you control". None
+   * of these card types may be present. */
+  nonTypes?: string[];
   /** "Commander creatures you control" (Bastion Protector). Matches a
    * commander in any zone-of-play sense the engine tracks: the card is one of
    * its owner's designated commanders. */

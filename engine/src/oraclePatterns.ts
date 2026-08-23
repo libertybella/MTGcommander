@@ -8705,9 +8705,16 @@ function parseGrantSubject(phrase: string): EffectSelector | null {
   } else if (/^All /i.test(rest)) {
     rest = rest.slice("All ".length);
   } else if (/^Each [A-Za-z]+\b/i.test(rest)) {
-    // Pluralise the head noun so the rest of the grammar sees its usual
-    // "Creatures you control …" shape.
-    rest = rest.replace(/^Each ([A-Za-z]+)\b/i, (_, noun: string) => `${noun}s`);
+    // Pluralise the HEAD noun so the rest of the grammar sees its usual
+    // "Creatures you control …" shape. The head noun is the last word of
+    // the noun phrase, not the first: "Each nonland permanent you control"
+    // has to become "nonland permanents you control" and not "nonlands
+    // permanent you control", which is what pluralising the first word did
+    // and which then matched nothing at all.
+    rest = rest.replace(
+      /^Each ((?:[A-Za-z]+ )*?)([A-Za-z]+)(?= you control| your opponents control|$)/i,
+      (_, adjectives: string, noun: string) => `${adjectives}${noun}s`,
+    );
   }
 
   // Trailing qualifiers, stripped outermost-first: they follow the possessor
@@ -8762,6 +8769,13 @@ function parseGrantSubject(phrase: string): EffectSelector | null {
     if (colorWord?.[1] && colorWord[2]) {
       selector.colors = [...(selector.colors ?? []), COLOR_WORDS[colorWord[1].toLowerCase()]!];
       rest = colorWord[2];
+    }
+    // Leyline of the Guildpact: a type EXCLUSION rather than a flag, so it
+    // is peeled here and pushed onto nonTypes.
+    const nonland = rest.match(/^Nonland\s+(.*)$/i);
+    if (nonland?.[1]) {
+      selector.nonTypes = [...(selector.nonTypes ?? []), "land"];
+      rest = nonland[1];
     }
     const flags: Array<[RegExp, "legendary" | "nonLegendary" | "nonToken" | "commanderOnly"]> = [
       [/^Legendary\s+(.*)$/i, "legendary"],
@@ -8968,6 +8982,13 @@ function parseGrantPredicate(phrase: string): ContinuousEffectData[] | null {
     .map((part) => part.trim())
     .filter(Boolean);
   for (const part of parts) {
+    // Leyline of the Guildpact: "is all colors" is a layer-5 colour SET,
+    // not an addition — the permanent becomes every colour rather than
+    // gaining one.
+    if (/^(?:is|are)\s+all colors$/i.test(part)) {
+      effects.push({ kind: "set_colors", colors: ["W", "U", "B", "R", "G"] });
+      continue;
+    }
     const pt = part.match(/^(?:get|gets)\s+([+-]\d+)\/([+-]\d+)$/i);
     if (pt?.[1] && pt[2]) {
       effects.push({ kind: "modify_pt", power: Number(pt[1]), toughness: Number(pt[2]) });
@@ -9135,7 +9156,12 @@ function compileStaticGrant(sentence: string): StaticAbility[] | null {
       : null;
   }
 
-  const split = sentence.match(/^(.+?)\s+((?:get|gets|have|has|lose|loses|can't)\s+.+)$/i);
+  // "is"/"are" join the verb list. A predicate the grammar does not know
+  // still returns null, so widening the split cannot swallow a sentence
+  // that some other branch handles.
+  const split = sentence.match(
+    /^(.+?)\s+((?:get|gets|have|has|lose|loses|is|are|can't)\s+.+)$/i,
+  );
   if (!split?.[1] || !split[2]) {
     return null;
   }

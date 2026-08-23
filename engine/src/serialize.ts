@@ -4410,6 +4410,10 @@ function parseEffectSelector(value: unknown, label: string): EffectSelector {
     ...(value.nonToken === true ? { nonToken: true } : {}),
     ...(value.legendary === true ? { legendary: true } : {}),
     ...(value.nonLegendary === true ? { nonLegendary: true } : {}),
+    ...(() => {
+      const nonTypes = parseStringList(value.nonTypes, `${label}.nonTypes`);
+      return nonTypes.length > 0 ? { nonTypes } : {};
+    })(),
     ...(value.commanderOnly === true ? { commanderOnly: true } : {}),
     ...(value.maxPower === undefined
       ? {}

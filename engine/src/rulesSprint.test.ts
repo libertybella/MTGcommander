@@ -32489,3 +32489,135 @@ describe("wave 251: fodder power from an activation cost", () => {
     expect(next.players.find((entry) => entry.id === p2.id)?.life).toBe(before - 6);
   });
 });
+
+describe("wave 252: nonland permanents, and being all colours", () => {
+  const put = (game: GameState, definitionId: string, ownerId: string) => {
+    const card = createCardInstance({ definitionId, ownerId, zone: "battlefield" });
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === ownerId)!.zones.battlefield.push(card.id);
+    return card;
+  };
+
+  it("compiles the subject and the predicate", () => {
+    const leyline = compileOracleCard({
+      oracleId: "Leyline of the Guildpact",
+      name: "Leyline of the Guildpact",
+      manaCost: "{G}{U}",
+      typeLine: "Enchantment",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText: "Each nonland permanent you control is all colors.",
+    });
+    expect(leyline.notes).toEqual([]);
+    expect(leyline.definition.staticAbilities[0]).toEqual({
+      selector: { scope: "controlled", nonTypes: ["land"] },
+      effect: { kind: "set_colors", colors: ["W", "U", "B", "R", "G"] },
+    });
+  });
+
+  it("pluralises the HEAD noun, not the first word", () => {
+    // "Each nonland permanent" used to become "nonlands permanent", which
+    // matched nothing. Both spellings must reach the same selector.
+    const each = compileOracleCard({
+      oracleId: "Blanket",
+      name: "Blanket",
+      manaCost: "{1}",
+      typeLine: "Enchantment",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText: "Each nonland permanent you control is all colors.",
+    });
+    const plural = compileOracleCard({
+      oracleId: "Sheet",
+      name: "Sheet",
+      manaCost: "{1}",
+      typeLine: "Enchantment",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText: "Nonland permanents you control are all colors.",
+    });
+    expect(each.definition.staticAbilities[0]?.selector).toEqual(
+      plural.definition.staticAbilities[0]?.selector,
+    );
+    // And the ordinary single-word case still works.
+    const simple = compileOracleCard({
+      oracleId: "Anthem",
+      name: "Anthem",
+      manaCost: "{1}",
+      typeLine: "Enchantment",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText: "Each creature you control gets +1/+1.",
+    });
+    expect(simple.notes).toEqual([]);
+    expect(simple.definition.staticAbilities[0]?.selector).toMatchObject({
+      scope: "controlled",
+      types: ["creature"],
+    });
+  });
+
+  it("colours the permanents and leaves the lands alone", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const leyline = createCardDefinition({
+      name: "Leyline of the Guildpact",
+      typeLine: "Enchantment",
+      staticAbilities: [
+        {
+          selector: { scope: "controlled", nonTypes: ["land"] },
+          effect: { kind: "set_colors", colors: ["W", "U", "B", "R", "G"] },
+        },
+      ],
+    });
+    const bear = createCardDefinition({
+      name: "Bear",
+      typeLine: "Creature — Bear",
+      manaCost: "{G}",
+      power: 2,
+      toughness: 2,
+    });
+    const forest = createCardDefinition({ name: "Forest", typeLine: "Basic Land — Forest" });
+    for (const definition of [leyline, bear, forest]) {
+      game.definitions[definition.id] = definition;
+    }
+    put(game, leyline.id, p1.id);
+    const creature = put(game, bear.id, p1.id);
+    const land = put(game, forest.id, p1.id);
+
+    const painted = [...(computedCard(game, creature.id)?.characteristics.colors ?? [])];
+    expect(painted.sort()).toEqual(["B", "G", "R", "U", "W"]);
+    // `nonTypes` is the whole point: a land must be untouched, and a selector
+    // that ignored the exclusion would pass the assertion above and fail here.
+    expect(computedCard(game, land.id)?.characteristics.colors ?? []).toEqual([]);
+  });
+
+  it("round trips the exclusion", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const definition = createCardDefinition({
+      name: "Excluder",
+      typeLine: "Enchantment",
+      staticAbilities: [
+        {
+          selector: { scope: "controlled", nonTypes: ["land"] },
+          effect: { kind: "set_colors", colors: ["W", "U", "B", "R", "G"] },
+        },
+      ],
+    });
+    game.definitions[definition.id] = definition;
+    put(game, definition.id, p1.id);
+
+    const round = parseGameState(serializeGameState(game));
+    expect(round.definitions[definition.id]?.staticAbilities[0]?.selector).toMatchObject({
+      nonTypes: ["land"],
+    });
+  });
+});

@@ -479,6 +479,12 @@ function matches(
   if (selector.legendary && !computed.characteristics.supertypes.includes("legendary")) {
     return false;
   }
+  if (
+    selector.nonTypes &&
+    selector.nonTypes.some((type) => computed.characteristics.types.includes(type))
+  ) {
+    return false;
+  }
   // Read the COMPUTED keywords, so a granted flying counts and a Humility'd
   // one does not.
   if (selector.withoutKeyword && computed.keywords.includes(selector.withoutKeyword)) {

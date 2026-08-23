@@ -870,6 +870,20 @@ more questions it can now ask:
   (Bennie Bracks). Reads the existing per-player `createdTokenThisTurn`
   list, and asks whether the CONTROLLER is in it — an opponent's Treasure
   must not satisfy it.
+- **`EffectSelector.nonTypes`** — "each nonland permanent you control"
+  (Leyline of the Guildpact). An EXCLUSION, which is the only way to say
+  "permanent, but not a land": `types` is a whitelist and "permanent"
+  is not a card type, so the subject had no spelling before this. The
+  static-grant grammar reaches it through two other widenings — the
+  subject/predicate split accepts `is`/`are` alongside get/have/lose,
+  and `all colors` is a predicate over the layer-5 `set_colors` that
+  already existed for Kenrith's Transformation.
+
+The "Each <noun>" normalization pluralises the HEAD noun rather than the
+first word: "Each nonland permanent you control" is "nonland permanents",
+not "nonlands permanent". One-word subjects were the only ones this had
+ever been asked about, so the bug was invisible until a subject arrived
+with an adjective in front of it.
 
 Deliberate approximation: `gained_life_this_turn` resets with the turn, so
 life gained during another player's turn is visible only until that turn
