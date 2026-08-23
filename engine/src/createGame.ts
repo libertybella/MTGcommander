@@ -236,6 +236,7 @@ export function createCardDefinition(
                   ...(trigger.subjectFilter.colorless ? { colorless: true } : {}),
                   ...(trigger.subjectFilter.historic ? { historic: true } : {}),
                   ...(trigger.subjectFilter.legendary ? { legendary: true } : {}),
+                  ...(trigger.subjectFilter.commanderOnly ? { commanderOnly: true } : {}),
                   ...(trigger.subjectFilter.attacking ? { attacking: true } : {}),
                   ...(trigger.subjectFilter.modified ? { modified: true } : {}),
                   ...(trigger.subjectFilter.minManaValue === undefined

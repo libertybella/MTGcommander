@@ -120,7 +120,11 @@ function bindPlayer(
   if (selector === "next_opponent") {
     return nextOpponentId(state, controllerId);
   }
-  if (selector === "each_opponent" || selector === "each_player") {
+  if (
+    selector === "each_opponent" ||
+    selector === "each_player" ||
+    selector === "each_other_opponent"
+  ) {
     throw new Error("each-player selectors must be expanded before binding");
   }
   return selector;
@@ -191,6 +195,7 @@ function expandEachOpponent(
   state: GameState,
   effect: CardEffect,
   controllerId: PlayerId,
+  subjectPlayerId?: PlayerId,
 ): CardEffect[] {
   // APNAP-ish: the controller acts first, then opponents in seat order.
   const eachOf = (selector: unknown): PlayerId[] | null =>
@@ -198,7 +203,15 @@ function expandEachOpponent(
       ? opponentIds(state, controllerId)
       : selector === "each_player"
         ? [controllerId, ...opponentIds(state, controllerId)]
-        : null;
+        : selector === "each_other_opponent"
+          ? // Kediss: everyone but the opponent the trigger was already
+            // about. With no subject there is no "other", and expanding to
+            // every opponent would hit the damaged player twice — so this
+            // expands to nobody rather than guessing.
+            subjectPlayerId === undefined
+            ? []
+            : opponentIds(state, controllerId).filter((id) => id !== subjectPlayerId)
+          : null;
   if (
     effect.kind === "gain_life" ||
     effect.kind === "lose_life" ||
@@ -648,9 +661,15 @@ export function bindCardEffect(
                 ? context.subjectCardId
                   ? Math.max(0, creaturePower(state, context.subjectCardId))
                   : 0
-                : typeof effect.amount === "object"
-                  ? countControlledSubtype(state, context.controllerId, effect.amount.subtypeCount)
-                  : effect.amount;
+                : effect.amount === "subject_amount"
+                  ? context.subjectAmount ?? 0
+                  : typeof effect.amount === "object"
+                    ? countControlledSubtype(
+                        state,
+                        context.controllerId,
+                        effect.amount.subtypeCount,
+                      )
+                    : effect.amount;
       if (amount <= 0) {
         return null;
       }
@@ -1801,7 +1820,12 @@ export function bindCardEffects(
         : (effect.otherwise ?? []);
       return bindCardEffects(state, branch, context);
     }
-    return expandEachOpponent(state, effect, context.controllerId).flatMap((item) => {
+    return expandEachOpponent(
+      state,
+      effect,
+      context.controllerId,
+      context.subjectPlayerId,
+    ).flatMap((item) => {
       const bound = bindCardEffect(state, item, context);
       return bound ? [bound] : [];
     });

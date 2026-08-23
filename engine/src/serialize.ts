@@ -2642,6 +2642,8 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
               ? ("chosen_power" as const)
               : value.amount === "subject_power"
                 ? ("subject_power" as const)
+                : value.amount === "subject_amount"
+                ? ("subject_amount" as const)
                 : isRecord(value.amount) && typeof value.amount.subtypeCount === "string"
                   ? { subtypeCount: value.amount.subtypeCount }
                   : expectNumber(value.amount, `${label}.amount`);
@@ -3813,6 +3815,7 @@ function parseTriggers(value: unknown, label: string): CardTrigger[] {
               ...(entry.subjectFilter.colorless === true ? { colorless: true } : {}),
               ...(entry.subjectFilter.historic === true ? { historic: true } : {}),
               ...(entry.subjectFilter.legendary === true ? { legendary: true } : {}),
+              ...(entry.subjectFilter.commanderOnly === true ? { commanderOnly: true } : {}),
               ...(entry.subjectFilter.attacking === true ? { attacking: true } : {}),
               ...(entry.subjectFilter.modified === true ? { modified: true } : {}),
               ...(entry.subjectFilter.minManaValue === undefined
@@ -3914,19 +3917,13 @@ function parseTriggers(value: unknown, label: string): CardTrigger[] {
           }),
       ...(entry.subjectPlayerOpponent === true ? { subjectPlayerOpponent: true } : {}),
       ...(entry.attacksAlone === true ? { attacksAlone: true } : {}),
-      ...(subjectFilter &&
-      (subjectFilter.types ||
-        subjectFilter.subtypes ||
-        subjectFilter.subtypesAny ||
-        subjectFilter.typesAny ||
-        subjectFilter.nonTypes ||
-        subjectFilter.chosenSubtype ||
-        subjectFilter.nonToken ||
-        subjectFilter.tokenOnly ||
-        subjectFilter.nonSubtypes ||
-        subjectFilter.minPower !== undefined)
-        ? { subjectFilter }
-        : {}),
+      // Attach the filter when it has ANY field. This was a whitelist of
+      // ten names, and the filter has grown to roughly twenty-five — so a
+      // trigger filtered only on `legendary`, `attacking`, `modified`,
+      // `historic`, `colorless` or `commanderOnly` lost its whole filter on
+      // a round trip and afterwards fired for EVERY subject. Counting keys
+      // cannot go stale the way a list of names does.
+      ...(subjectFilter && Object.keys(subjectFilter).length > 0 ? { subjectFilter } : {}),
       effects: parseCardEffects(entry.effects, `${label}[${index}].effects`),
       targetRequirements: parseTargetRequirements(
         entry.targetRequirements,

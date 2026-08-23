@@ -1,4 +1,4 @@
-import { characteristicsOf } from "./cardTypes";
+import { characteristicsOf, isCommander } from "./cardTypes";
 import {
   abilitiesRemoved,
   cardMatchesSubtype,
@@ -557,6 +557,9 @@ function subjectMatchesFilter(
     return false;
   }
   if (filter.attacking && state.cards[subjectId]?.attacking !== true) {
+    return false;
+  }
+  if (filter.commanderOnly && !isCommander(state, subjectId)) {
     return false;
   }
   if (filter.legendary && !traits.supertypes.includes("legendary")) {

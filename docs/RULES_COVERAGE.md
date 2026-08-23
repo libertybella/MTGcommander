@@ -648,6 +648,34 @@ Documented limits:
   (Cryptolith Rite's path), not `grant_activated` — a mana ability must never
   use the stack.
 
+### Damage that spends the trigger's amount (wave 225)
+
+"It deals that much damage to …" pays out whatever the trigger carried —
+the damage just dealt (Kediss), or the size of the batch that fired it
+(Ingenious Artillerist). `deal_damage.amount` accepts `subject_amount`,
+and `expandEachOpponent` already fanned player-targeted damage out per
+opponent, so the scopes come free once the amount exists.
+
+- **`each_other_opponent`** is Kediss: every opponent EXCEPT the one the
+  trigger was already about. `each_opponent` would hit the just-damaged
+  player a second time, which is why this shape was a documented refusal
+  until now. With no subject there is no "other", so it expands to nobody
+  rather than falling back to everybody.
+- **`subjectFilter.commanderOnly`** reads "a commander you control". A
+  commander is a role its owner's chosen card holds, not a card type, so
+  it is a flag beside the type and is read off the player's commander
+  list. It shares the name `EffectSelector.commanderOnly` already used, so
+  one idea does not acquire two words.
+
+Fixed in passing, and older than this wave: the state parser attached a
+trigger's `subjectFilter` only when one of TEN named fields was present,
+while the filter has grown to about twenty-five. A trigger filtered solely
+on `legendary`, `attacking`, `modified`, `historic`, `colorless` or
+`commanderOnly` therefore lost its entire filter on a round trip and
+afterwards fired for **every** subject — a legendary-creature trigger
+firing for each Bear once a game was saved and loaded. It now attaches the
+filter whenever it has any field at all, which cannot go stale.
+
 ### Intervening-if conditions (wave 224)
 
 The `if` between a trigger's head and its body (CR 603.4) is checked twice:

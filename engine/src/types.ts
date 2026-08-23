@@ -1494,7 +1494,18 @@ export type CardIdSelector = CardInstanceId | ChosenTargetRef;
  * Relative player used in untargeted CardDefinition effects.
  * Targeted spells use ChosenTargetRef instead of next_opponent.
  */
-export type RelativePlayer = "controller" | "next_opponent" | "each_opponent" | "each_player";
+/**
+ * `each_other_opponent` is Kediss: the opponents OTHER than the one the
+ * trigger's subject event was about. It is a separate member rather than a
+ * flag on `each_opponent`, because the two differ in whether they need a
+ * subject at all — expanding it without one is a bug, not a default.
+ */
+export type RelativePlayer =
+  | "controller"
+  | "next_opponent"
+  | "each_opponent"
+  | "each_other_opponent"
+  | "each_player";
 /** The controller of the Nth chosen target (Beast Within). */
 export type ChosenControllerRef = { type: "chosen_controller"; index: number };
 /** The owner of the Nth chosen target (Chaos Warp). */
@@ -1551,12 +1562,16 @@ export type CardEffect =
        * subtype (Scourge of Valkas). chosen_power: the bound source
        * creature's power, read at bind (Ram Through). */
       /** subject_power: Warstorm Surge — the trigger subject's power at bind. */
+      /** subject_amount: "it deals THAT MUCH damage" — the amount the
+       * trigger itself carried (the damage just dealt, or the size of the
+       * batch that fired it). */
       amount:
         | number
         | "x"
         | "sacrificed_power"
         | "chosen_power"
         | "subject_power"
+        | "subject_amount"
         | { subtypeCount: string };
       /** "You gain life equal to the damage dealt this way." */
       gainLife?: boolean;
@@ -2331,6 +2346,12 @@ export type CardTrigger = {
     minManaValue?: number;
     /** "a legendary creature you control" (Kytheon's ally trigger). */
     legendary?: boolean;
+    /** Kediss: "a commander you control". Not a card type — a role the
+     * player's chosen card holds — so it is a flag beside the type rather
+     * than a type of its own, and it is read off the player's commander
+     * list, not off the card. Named to match `EffectSelector.commanderOnly`,
+     * so one idea does not acquire two words. */
+    commanderOnly?: boolean;
     /** Kardur: "an attacking creature" — read off the instance, so it is
      * still true for the creature that just died in combat. */
     attacking?: boolean;

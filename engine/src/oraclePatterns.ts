@@ -2211,10 +2211,48 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     };
   }
 
-  // Kediss's "it deals that much damage to each OTHER opponent" is
-  // deliberately absent: "each_opponent" would include the player who was
-  // just damaged, and there is no selector for "the opponents other than the
-  // trigger's subject". Hitting the wrong player is worse than a miss.
+  // "It deals that much damage to …" — the amount is whatever the trigger
+  // carried: the damage just dealt (Kediss), or the size of the batch that
+  // fired it (Ingenious Artillerist). One pattern for all three scopes,
+  // because the sentence differs only in who is hit.
+  //
+  // "Each OTHER opponent" was refused here for a long time, correctly:
+  // `each_opponent` would have hit the player who was just damaged a
+  // second time. It is now a selector of its own rather than an omission.
+  const thatMuchDamage = sentence.match(
+    /^(?:~|It) deals that much damage to (each opponent|each other opponent|target opponent)$/i,
+  );
+  if (thatMuchDamage?.[1]) {
+    const scope = thatMuchDamage[1].toLowerCase();
+    if (scope === "target opponent") {
+      return {
+        targetRequirements: [{ kind: "opponent" }],
+        effects: [
+          {
+            kind: "deal_damage",
+            sourceId: "self",
+            target: { type: "player", playerId: { type: "chosen", index: 0 } },
+            amount: "subject_amount",
+          },
+        ],
+      };
+    }
+    return {
+      targetRequirements: [],
+      effects: [
+        {
+          kind: "deal_damage",
+          sourceId: "self",
+          target: {
+            type: "player",
+            playerId:
+              scope === "each other opponent" ? "each_other_opponent" : "each_opponent",
+          },
+          amount: "subject_amount",
+        },
+      ],
+    };
+  }
 
   // Blue Sun's Zenith: a targeted X draw.
   const targetedXDraw = sentence.match(/^Target player draws X cards$/i);
@@ -8055,6 +8093,11 @@ function parseTriggerSubjectPhrase(
   const eitherType = head.match(/^([a-z]+) or ([a-z]+)$/i);
   if (/^permanents?$/i.test(head)) {
     // No type restriction.
+  } else if (/^commander$/i.test(head)) {
+    // "a commander you control" (Kediss). A commander is always a
+    // permanent on the battlefield here, and the flag does the narrowing,
+    // so no card type is asserted alongside it.
+    filter.commanderOnly = true;
   } else if (SEARCH_CARD_TYPES.has(head.toLowerCase())) {
     filter.types = [head.toLowerCase()];
   } else if (

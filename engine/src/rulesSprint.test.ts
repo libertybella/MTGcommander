@@ -29296,3 +29296,274 @@ describe("wave 224: conditions the intervening 'if' could not ask", () => {
     });
   });
 });
+
+describe("wave 225: damage that spends the amount the trigger carried", () => {
+  const compile = (name: string, typeLine: string, oracleText: string, power?: string, toughness?: string) =>
+    compileOracleCard({
+      oracleId: name,
+      name,
+      manaCost: "{2}{R}",
+      typeLine,
+      power: power ?? null,
+      toughness: toughness ?? null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  const threePlayers = () => {
+    const game = createGameState({ playerCount: 3 });
+    const [p1, p2, p3] = game.players;
+    if (!p1 || !p2 || !p3) {
+      throw new Error("expected three players");
+    }
+    fillLibraries(game, 20);
+    return { game, p1, p2, p3 };
+  };
+
+  const put = (game: GameState, definitionId: string, ownerId: string) => {
+    const card = createCardInstance({ definitionId, ownerId, zone: "battlefield" });
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === ownerId)!.zones.battlefield.push(card.id);
+    return card;
+  };
+
+  it("compiles both scopes, and reads a commander as a subject", () => {
+    const artillerist = compile(
+      "Ingenious Artillerist",
+      "Creature — Dwarf Artificer",
+      "Whenever one or more artifacts you control enter, this creature deals that much damage to each opponent.",
+      "1",
+      "2",
+    );
+    expect(artillerist.notes).toEqual([]);
+    expect(artillerist.definition.triggers[0]).toMatchObject({
+      event: "enter_battlefield",
+      oncePerBatch: true,
+      effects: [
+        {
+          kind: "deal_damage",
+          amount: "subject_amount",
+          target: { type: "player", playerId: "each_opponent" },
+        },
+      ],
+    });
+
+    const kediss = compile(
+      "Kediss, Emberclaw Familiar",
+      "Legendary Creature — Devil",
+      "Whenever a commander you control deals combat damage to an opponent, it deals that much damage to each other opponent.",
+      "1",
+      "1",
+    );
+    expect(kediss.notes).toEqual([]);
+    expect(kediss.definition.triggers[0]).toMatchObject({
+      event: "deals_combat_damage_to_player",
+      watch: "controlled",
+      subjectFilter: { commanderOnly: true },
+      effects: [
+        {
+          kind: "deal_damage",
+          amount: "subject_amount",
+          target: { type: "player", playerId: "each_other_opponent" },
+        },
+      ],
+    });
+  });
+
+  it("spends the batch count, once per opponent", () => {
+    const { game, p1, p2, p3 } = threePlayers();
+    const effects: CardEffect[] = [
+      {
+        kind: "deal_damage",
+        sourceId: "self",
+        target: { type: "player", playerId: "each_opponent" },
+        amount: "subject_amount",
+      },
+    ];
+    const bound = bindCardEffects(game, effects, {
+      controllerId: p1.id,
+      sourceId: null,
+      subjectAmount: 2,
+    });
+    expect(bound).toHaveLength(2);
+    expect(bound.map((effect) => (effect as { target: { playerId: string } }).target.playerId).sort()).toEqual(
+      [p2.id, p3.id].sort(),
+    );
+    // The amount is the trigger's, not a literal — two artifacts entering is
+    // two damage, and a missing subject amount must not become "some".
+    for (const effect of bound) {
+      expect((effect as { amount: number }).amount).toBe(2);
+    }
+  });
+
+  it("skips the opponent who was already damaged, and nobody else", () => {
+    const { game, p1, p2, p3 } = threePlayers();
+    const effects: CardEffect[] = [
+      {
+        kind: "deal_damage",
+        sourceId: "self",
+        target: { type: "player", playerId: "each_other_opponent" },
+        amount: "subject_amount",
+      },
+    ];
+    const bound = bindCardEffects(game, effects, {
+      controllerId: p1.id,
+      sourceId: null,
+      subjectPlayerId: p2.id,
+      subjectAmount: 4,
+    });
+    // THE point of the selector: p2 was just dealt combat damage, so Kediss
+    // must not hit them again. Using "each_opponent" here would produce two
+    // effects and double-hit p2 — which is why this shape was refused for so
+    // long rather than approximated.
+    expect(bound).toHaveLength(1);
+    expect((bound[0] as { target: { playerId: string } }).target.playerId).toBe(p3.id);
+    expect((bound[0] as { amount: number }).amount).toBe(4);
+  });
+
+  it("expands to nobody when there is no subject, rather than to everybody", () => {
+    const { game, p1 } = threePlayers();
+    const effects: CardEffect[] = [
+      {
+        kind: "deal_damage",
+        sourceId: "self",
+        target: { type: "player", playerId: "each_other_opponent" },
+        amount: "subject_amount",
+      },
+    ];
+    // With no subject there is no "other". Falling back to every opponent
+    // would silently turn Kediss into a worse card that hits the wrong
+    // player, which is the failure the refusal was guarding against.
+    expect(
+      bindCardEffects(game, effects, { controllerId: p1.id, sourceId: null, subjectAmount: 3 }),
+    ).toEqual([]);
+  });
+
+  it("fires for a commander and not for an ordinary creature", () => {
+    const { game, p1, p2 } = threePlayers();
+    const watcher = createCardDefinition({
+      name: "Kediss, Emberclaw Familiar",
+      typeLine: "Legendary Creature — Devil",
+      power: 1,
+      toughness: 1,
+      triggers: [
+        {
+          event: "deals_combat_damage_to_player",
+          watch: "controlled",
+          subjectPlayerOpponent: true,
+          subjectFilter: { commanderOnly: true },
+          effects: [
+            {
+              kind: "deal_damage",
+              sourceId: "self",
+              target: { type: "player", playerId: "each_other_opponent" },
+              amount: "subject_amount",
+            },
+          ],
+          targetRequirements: [],
+        },
+      ],
+    });
+    const bear = createCardDefinition({
+      name: "Bear",
+      typeLine: "Creature — Bear",
+      power: 2,
+      toughness: 2,
+    });
+    for (const definition of [watcher, bear]) {
+      game.definitions[definition.id] = definition;
+    }
+    put(game, watcher.id, p1.id);
+    const general = put(game, bear.id, p1.id);
+    const ordinary = put(game, bear.id, p1.id);
+    p1.commander.commanderIds.push(general.id);
+
+    // The ordinary creature is the same card, same controller, same event —
+    // only the commander role differs, so this isolates the filter.
+    const before = game.stack.length;
+    dispatchEventsInPlace(game, [
+      { kind: "combat_damage_to_player", cardId: ordinary.id, playerId: p2.id, amount: 2 },
+    ]);
+    expect(game.stack.length).toBe(before);
+
+    dispatchEventsInPlace(game, [
+      { kind: "combat_damage_to_player", cardId: general.id, playerId: p2.id, amount: 2 },
+    ]);
+    expect(game.stack.length).toBe(before + 1);
+  });
+
+  it("round trips the new amount, selector and filter", () => {
+    const { game, p1 } = threePlayers();
+    const definition = createCardDefinition({
+      name: "Round Tripper",
+      typeLine: "Enchantment",
+      triggers: [
+        {
+          event: "deals_combat_damage_to_player",
+          watch: "controlled",
+          subjectFilter: { commanderOnly: true },
+          effects: [
+            {
+              kind: "deal_damage",
+              sourceId: "self",
+              target: { type: "player", playerId: "each_other_opponent" },
+              amount: "subject_amount",
+            },
+          ],
+          targetRequirements: [],
+        },
+      ],
+    });
+    game.definitions[definition.id] = definition;
+    put(game, definition.id, p1.id);
+
+    const round = parseGameState(serializeGameState(game));
+    const trigger = round.definitions[definition.id]?.triggers[0];
+    expect(trigger?.subjectFilter).toEqual({ commanderOnly: true });
+    expect(trigger?.effects[0]).toMatchObject({
+      kind: "deal_damage",
+      amount: "subject_amount",
+      target: { type: "player", playerId: "each_other_opponent" },
+    });
+  });
+
+  it("keeps a subject filter whose only field is a late arrival", () => {
+    // The parser attached the filter only if one of TEN named fields was
+    // present, and the filter has about twenty-five. A trigger filtered
+    // solely on one of the other fifteen lost the WHOLE filter on a round
+    // trip and then fired for every subject — a legendary-creature trigger
+    // firing for each Bear, after a save and load, with nothing to show for
+    // it in the definition. Every one of these was broken before wave 225.
+    const { game, p1 } = threePlayers();
+    const shapes = [
+      { legendary: true },
+      { attacking: true },
+      { modified: true },
+      { historic: true },
+      { colorless: true },
+      { commanderOnly: true },
+    ] as const;
+    for (const subjectFilter of shapes) {
+      const definition = createCardDefinition({
+        name: "Filter Holder",
+        typeLine: "Enchantment",
+        triggers: [
+          {
+            event: "enter_battlefield",
+            watch: "controlled",
+            subjectFilter: { ...subjectFilter },
+            effects: [{ kind: "draw", playerId: "controller", count: 1 }],
+            targetRequirements: [],
+          },
+        ],
+      });
+      game.definitions[definition.id] = definition;
+      put(game, definition.id, p1.id);
+      const round = parseGameState(serializeGameState(game));
+      expect(round.definitions[definition.id]?.triggers[0]?.subjectFilter).toEqual(
+        subjectFilter,
+      );
+    }
+  });
+});
