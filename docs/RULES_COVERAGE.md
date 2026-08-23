@@ -648,6 +648,18 @@ Documented limits:
   (Cryptolith Rite's path), not `grant_activated` — a mana ability must never
   use the stack.
 
+### Keywords a permanent can't have or gain (wave 238)
+
+`remove_keywords` strips a keyword and a later grant re-adds it by
+timestamp — correct for Shadowspear (CR 613.7) and wrong for Archetype of
+Imagination, whose "can't have or gain" outranks any later grant rather
+than racing it.
+
+`lock_keywords` is therefore a set of its own on the computed card, and it
+is applied AFTER every layer-6 instance has run rather than in place: a
+grant later in the same layer would otherwise win. `remove_all_abilities`
+clears the lock along with everything else.
+
 ### Vetoing a loss (wave 235)
 
 `CardDefinition.cantLoseGame` is **one** flag for both halves of Platinum

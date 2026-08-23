@@ -8772,6 +8772,20 @@ function parseGrantPredicate(phrase: string): ContinuousEffectData[] | null {
       effects.push({ kind: "remove_keywords", keywords: lost });
       continue;
     }
+    // Archetype of Imagination: not merely losing the keyword. A lock that
+    // a later grant cannot beat, where `remove_keywords` would be re-added
+    // on timestamp (CR 613.7) — right for Shadowspear, wrong here.
+    const locked = part.match(/^can't have or gain\s+(.+)$/i);
+    if (locked?.[1]) {
+      const keywords = locked[1]
+        .split(/,\s*(?:or\s+)?|\s+or\s+/i)
+        .map((word) => KEYWORD_GRANTS[word.trim().toLowerCase()]);
+      if (!keywords.every((keyword): keyword is Keyword => Boolean(keyword))) {
+        return null;
+      }
+      effects.push({ kind: "lock_keywords", keywords });
+      continue;
+    }
     const restriction = part.match(/^can't\s+(be blocked|attack|block)$/i);
     if (restriction?.[1]) {
       const what = restriction[1].toLowerCase();

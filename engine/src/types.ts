@@ -3075,6 +3075,15 @@ export type ContinuousEffectData =
   | { kind: "remove_all_abilities" } // layer 6
   /** layer 6: Shadowspear strips the listed keywords. */
   | { kind: "remove_keywords"; keywords: Keyword[] }
+  /**
+   * layer 6: Archetype of Imagination — the affected permanents not only
+   * LOSE the keyword, they "can't have or gain" it.
+   *
+   * Distinct from `remove_keywords`, which a later grant re-adds by
+   * timestamp (CR 613.7). That is right for Shadowspear and wrong here, so
+   * a lock is a set of its own and is applied after every grant has run.
+   */
+  | { kind: "lock_keywords"; keywords: Keyword[] }
   | {
       // layer 6: combat restrictions (Pacifism, Whispersilk Cloak).
       kind: "restrict";

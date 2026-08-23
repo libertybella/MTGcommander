@@ -30936,3 +30936,133 @@ describe("wave 237: a creature that can block an additional creature", () => {
     expect(blockAllowanceFor(round, blocker.id)).toBe(2);
   });
 });
+
+describe("wave 238: keywords a permanent can't have or gain", () => {
+  const put = (game: GameState, definitionId: string, ownerId: string) => {
+    const card = createCardInstance({ definitionId, ownerId, zone: "battlefield" });
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === ownerId)!.zones.battlefield.push(card.id);
+    return card;
+  };
+
+  it("compiles the lock as its own effect, beside the loss", () => {
+    const archetype = compileOracleCard({
+      oracleId: "Archetype of Imagination",
+      name: "Archetype of Imagination",
+      manaCost: "{4}{U}{U}",
+      typeLine: "Enchantment Creature — Human",
+      power: "3",
+      toughness: "4",
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "Creatures you control have flying.\nCreatures your opponents control lose flying and can't have or gain flying.",
+    });
+    expect(archetype.notes).toEqual([]);
+    // The printed line says both halves, so both compile: the loss and the
+    // lock. The lock alone would be enough, but keeping the pair matches
+    // the text and costs nothing.
+    const againstOpponents = archetype.definition.staticAbilities.filter(
+      (ability) => ability.selector.scope === "opponents",
+    );
+    const kinds = againstOpponents.map((ability) => ability.effect.kind).sort();
+    expect(kinds).toEqual(["lock_keywords", "remove_keywords"]);
+    expect(
+      againstOpponents.find((ability) => ability.effect.kind === "lock_keywords")?.effect,
+    ).toMatchObject({ kind: "lock_keywords", keywords: ["flying"] });
+  });
+
+  const boardWithGrant = (lock: boolean) => {
+    const game = createGameState({ playerCount: 2 });
+    const [p1, p2] = game.players;
+    if (!p1 || !p2) {
+      throw new Error("expected two players");
+    }
+    fillLibraries(game, 20);
+    const stripper = createCardDefinition({
+      name: lock ? "Archetype" : "Shadowspear",
+      typeLine: "Enchantment",
+      staticAbilities: [
+        {
+          selector: { scope: "opponents", types: ["creature"] },
+          effect: lock
+            ? { kind: "lock_keywords", keywords: ["flying"] }
+            : { kind: "remove_keywords", keywords: ["flying"] },
+        },
+      ],
+    });
+    // A grant created AFTER the stripper, so it wins on timestamp.
+    const granter = createCardDefinition({
+      name: "Wind Lord",
+      typeLine: "Enchantment",
+      staticAbilities: [
+        {
+          selector: { scope: "controlled", types: ["creature"] },
+          effect: { kind: "grant_keyword", keyword: "flying" },
+        },
+      ],
+    });
+    const bear = createCardDefinition({
+      name: "Bear",
+      typeLine: "Creature — Bear",
+      power: 2,
+      toughness: 2,
+    });
+    for (const definition of [stripper, granter, bear]) {
+      game.definitions[definition.id] = definition;
+    }
+    put(game, stripper.id, p1.id);
+    const creature = put(game, bear.id, p2.id);
+    put(game, granter.id, p2.id);
+    return { game, creature };
+  };
+
+  it("outranks a later grant, where a plain removal does not", () => {
+    // Shadowspear's removal loses to a grant with a later timestamp, which is
+    // CR 613.7 and correct for that card.
+    const removal = boardWithGrant(false);
+    expect(computedCard(removal.game, removal.creature.id)?.keywords).toContain("flying");
+
+    // The lock does not race the grant at all — it is applied once every
+    // grant has run. This pair is the whole point of the new effect: one
+    // assertion alone could pass with either implementation.
+    const locked = boardWithGrant(true);
+    expect(computedCard(locked.game, locked.creature.id)?.keywords).not.toContain("flying");
+  });
+
+  it("locks only the named keyword, and only the selected permanents", () => {
+    const { game, creature } = boardWithGrant(true);
+    const [, p2] = game.players;
+    const flier = createCardDefinition({
+      name: "Hawk",
+      typeLine: "Creature — Bird",
+      power: 1,
+      toughness: 1,
+      keywords: ["flying", "vigilance"],
+    });
+    game.definitions[flier.id] = flier;
+    const hawk = put(game, flier.id, p2!.id);
+
+    // Vigilance is untouched: a lock that cleared every keyword would pass
+    // the flying assertions and quietly strip the rest of the card.
+    expect(computedCard(game, hawk.id)?.keywords).toContain("vigilance");
+    expect(computedCard(game, hawk.id)?.keywords).not.toContain("flying");
+
+    // The controller's own creatures are outside the "opponents" selector.
+    const own = put(game, flier.id, game.players[0]!.id);
+    expect(computedCard(game, own.id)?.keywords).toContain("flying");
+    void creature;
+  });
+
+  it("round trips the lock", () => {
+    const { game } = boardWithGrant(true);
+    const round = parseGameState(serializeGameState(game));
+    const locked = Object.values(round.definitions).find((definition) =>
+      definition.staticAbilities.some((ability) => ability.effect.kind === "lock_keywords"),
+    );
+    expect(locked?.staticAbilities[0]?.effect).toMatchObject({
+      kind: "lock_keywords",
+      keywords: ["flying"],
+    });
+  });
+});

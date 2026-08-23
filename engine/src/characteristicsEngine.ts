@@ -56,6 +56,10 @@ export type ComputedCard = {
    * with `activatedOf`, which appends them after the printed ones.
    */
   grantedActivated: ActivatedAbility[];
+  /** Keywords this permanent "can't have or gain" (Archetype of
+   * Imagination). Stripped after every grant has run, so a later grant
+   * cannot win on timestamp the way it beats `remove_keywords`. */
+  lockedKeywords: Keyword[];
   /** Changeling: matches every creature type (cleared with abilities). */
   allCreatureTypes: boolean;
   /** Combat restrictions from layer-6 effects (Pacifism). */
@@ -95,6 +99,7 @@ const LAYER_OF: Record<ContinuousEffectData["kind"], number> = {
   grant_protection: 6,
   grant_ward: 6,
   remove_keywords: 6,
+  lock_keywords: 6,
   grant_mana_ability: 6,
   grant_trigger: 6,
   grant_activated: 6,
@@ -145,6 +150,7 @@ function baseComputed(state: GameState, card: CardInstance): ComputedCard {
       grantedMana: [],
       grantedTriggers: [],
       grantedActivated: [],
+      lockedKeywords: [],
       allCreatureTypes: false,
       cantAttack: false,
       cantBlock: false,
@@ -210,6 +216,7 @@ function baseComputed(state: GameState, card: CardInstance): ComputedCard {
     grantedMana: [],
     grantedTriggers: [],
     grantedActivated: [],
+    lockedKeywords: [],
     allCreatureTypes: definition?.changeling === true,
     cantAttack: false,
     cantBlock: false,
@@ -860,6 +867,16 @@ function applyInstance(
           (keyword) => !effect.keywords.includes(keyword),
         );
         break;
+      case "lock_keywords":
+        // Archetype of Imagination: recorded rather than applied here,
+        // because a grant later in the same layer would otherwise win.
+        // computeAll strips the locked set once every grant has run.
+        for (const keyword of effect.keywords) {
+          if (!computed.lockedKeywords.includes(keyword)) {
+            computed.lockedKeywords.push(keyword);
+          }
+        }
+        break;
       case "grant_mana_ability":
         computed.grantedMana.push({ ...effect.ability });
         break;
@@ -886,6 +903,7 @@ function applyInstance(
         computed.grantedMana = [];
         computed.grantedTriggers = [];
         computed.grantedActivated = [];
+        computed.lockedKeywords = [];
         computed.allCreatureTypes = false;
         computed.protectionFrom = {};
         computed.ward = 0;
@@ -982,6 +1000,18 @@ function computeAll(state: GameState): Record<CardInstanceId, ComputedCard> {
         }
       }
     }
+  }
+
+  // A locked keyword loses to nothing: applied after every grant has run,
+  // because "can't have or gain" outranks a later timestamp rather than
+  // racing it.
+  for (const computed of Object.values(computedById)) {
+    if (computed.lockedKeywords.length === 0) {
+      continue;
+    }
+    computed.keywords = computed.keywords.filter(
+      (keyword) => !computed.lockedKeywords.includes(keyword),
+    );
   }
 
   // Layer 7d: +1/+1 and -1/-1 counters net out.

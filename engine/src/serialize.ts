@@ -4482,7 +4482,7 @@ function parseContinuousEffectData(value: unknown, label: string): ContinuousEff
   if (kind === "remove_all_abilities" || kind === "goaded") {
     return { kind };
   }
-  if (kind === "remove_keywords") {
+  if (kind === "remove_keywords" || kind === "lock_keywords") {
     return { kind, keywords: parseKeywords(value.keywords, `${label}.keywords`) };
   }
   if (kind === "restrict") {
