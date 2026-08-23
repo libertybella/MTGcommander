@@ -648,6 +648,23 @@ Documented limits:
   (Cryptolith Rite's path), not `grant_activated` — a mana ability must never
   use the stack.
 
+### Power and toughness on a static selector (wave 232)
+
+`EffectSelector` gained `maxPower` ("with power 2 or less") and
+`maxPowerOrToughness` ("with power or toughness 1 or less", Tetsuko). The
+second is ONE field rather than two maxima, because either half being
+small enough qualifies the creature — a pair of separate maxima reads as
+an AND and would match almost nothing.
+
+The selector runs during layer 6, and layer 7d (the +1/+1 and -1/-1
+counter net) has not been applied to the computed values yet. It
+therefore adds the counter net itself, through the same helper layer 7d
+uses, so a creature with a +1/+1 counter is read at its real size rather
+than its printed one. **Documented limit:** power changes coming from
+ANOTHER static are seen or not depending on instance order — the CR 613.8
+dependency gap this engine already declares. Counters are the common case
+and are exact.
+
 ### Two more target shapes, and one generalisation (wave 229)
 
 - **`creature_enchantment_or_planeswalker`** is a `TargetKind`, because it

@@ -8469,6 +8469,26 @@ function parseGrantSubject(phrase: string): EffectSelector | null {
     selector.withCounter = "p1p1";
     rest = counters[1];
   }
+  // "with power or toughness 1 or less" is tried before the bare power
+  // form so the longer phrase cannot be half-eaten.
+  const eitherPt = rest.match(
+    /^(.*?)\s+with power or toughness ([\w-]+) or less$/i,
+  );
+  if (eitherPt?.[1] !== undefined && eitherPt[2]) {
+    const amount = parseCount(eitherPt[2]);
+    if (amount !== null) {
+      selector.maxPowerOrToughness = amount;
+      rest = eitherPt[1];
+    }
+  }
+  const maxPower = rest.match(/^(.*?)\s+with power ([\w-]+) or less$/i);
+  if (maxPower?.[1] !== undefined && maxPower[2]) {
+    const amount = parseCount(maxPower[2]);
+    if (amount !== null) {
+      selector.maxPower = amount;
+      rest = maxPower[1];
+    }
+  }
 
   // Trailing possessor. Without one the line is unrestricted ("All Slivers").
   const possessor = rest.match(/^(.*?)\s+you control$/i);

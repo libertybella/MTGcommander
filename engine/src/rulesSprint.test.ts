@@ -30199,3 +30199,163 @@ describe("wave 231: one spelling of combat damage to a player", () => {
     expect(plain.definition.triggers[0]?.subjectPlayerOpponent).toBeUndefined();
   });
 });
+
+describe("wave 232: power and toughness thresholds on a static selector", () => {
+  const compile = (name: string, typeLine: string, oracleText: string, power?: string, toughness?: string) =>
+    compileOracleCard({
+      oracleId: name,
+      name,
+      manaCost: "{1}{U}",
+      typeLine,
+      power: power ?? null,
+      toughness: toughness ?? null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  const put = (game: GameState, definitionId: string, ownerId: string) => {
+    const card = createCardInstance({ definitionId, ownerId, zone: "battlefield" });
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === ownerId)!.zones.battlefield.push(card.id);
+    return card;
+  };
+
+  it("reads both thresholds off the printed line", () => {
+    const tetsuko = compile(
+      "Tetsuko Umezawa, Fugitive",
+      "Legendary Creature — Human Rogue",
+      "Creatures you control with power or toughness 1 or less can't be blocked.",
+      "1",
+      "3",
+    );
+    expect(tetsuko.notes).toEqual([]);
+    expect(tetsuko.definition.staticAbilities[0]?.selector).toMatchObject({
+      scope: "controlled",
+      types: ["creature"],
+      maxPowerOrToughness: 1,
+    });
+
+    const delney = compile(
+      "Power Two",
+      "Enchantment",
+      "Creatures you control with power 2 or less get +1/+1.",
+    );
+    expect(delney.notes).toEqual([]);
+    expect(delney.definition.staticAbilities[0]?.selector).toMatchObject({
+      maxPower: 2,
+      types: ["creature"],
+    });
+    // The bare-power form must NOT set the either-half field, or it would
+    // quietly widen to any creature with small toughness.
+    expect(
+      (delney.definition.staticAbilities[0]?.selector as
+        | { maxPowerOrToughness?: number }
+        | undefined)?.maxPowerOrToughness,
+    ).toBeUndefined();
+  });
+
+  it("qualifies on either half, and needs both to be over to fail", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const tetsuko = createCardDefinition({
+      name: "Tetsuko Umezawa, Fugitive",
+      typeLine: "Legendary Creature — Human Rogue",
+      power: 1,
+      toughness: 3,
+      staticAbilities: [
+        {
+          selector: { scope: "controlled", types: ["creature"], maxPowerOrToughness: 1 },
+          effect: { kind: "grant_keyword", keyword: "flying" },
+        },
+      ],
+    });
+    const bodies: Record<string, string> = {};
+    for (const [label, power, toughness] of [
+      ["small", 1, 1],
+      ["thinPower", 1, 5],
+      ["thinToughness", 5, 1],
+      ["big", 4, 4],
+    ] as const) {
+      const definition = createCardDefinition({
+        name: label,
+        typeLine: "Creature — Bear",
+        power,
+        toughness,
+      });
+      game.definitions[definition.id] = definition;
+      bodies[label] = put(game, definition.id, p1.id).id;
+    }
+    game.definitions[tetsuko.id] = tetsuko;
+    put(game, tetsuko.id, p1.id);
+
+    // Either half at or under the bar qualifies — that is what "power OR
+    // toughness" means, and two separate maxima would read as an AND here.
+    expect(computedCard(game, bodies["small"]!)?.keywords).toContain("flying");
+    expect(computedCard(game, bodies["thinPower"]!)?.keywords).toContain("flying");
+    expect(computedCard(game, bodies["thinToughness"]!)?.keywords).toContain("flying");
+    // Both halves over the bar is the only way to fail it.
+    expect(computedCard(game, bodies["big"]!)?.keywords).not.toContain("flying");
+  });
+
+  it("reads the computed power, so an anthem takes a creature out of range", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const gate = createCardDefinition({
+      name: "Small Gate",
+      typeLine: "Enchantment",
+      staticAbilities: [
+        {
+          selector: { scope: "controlled", types: ["creature"], maxPower: 1 },
+          effect: { kind: "grant_keyword", keyword: "flying" },
+        },
+      ],
+    });
+    const bear = createCardDefinition({
+      name: "Bear",
+      typeLine: "Creature — Bear",
+      power: 1,
+      toughness: 1,
+    });
+    for (const definition of [gate, bear]) {
+      game.definitions[definition.id] = definition;
+    }
+    put(game, gate.id, p1.id);
+    const creature = put(game, bear.id, p1.id);
+    expect(computedCard(game, creature.id)?.power).toBe(1);
+    expect(computedCard(game, creature.id)?.keywords).toContain("flying");
+
+    // A +1/+1 counter puts it at 2 power, over the bar. Reading the PRINTED
+    // power instead would leave the grant on and the assertion below would
+    // fail — which is the whole reason this test exists.
+    game.cards[creature.id]!.counters["p1p1"] = 1;
+    expect(computedCard(game, creature.id)?.power).toBe(2);
+    expect(computedCard(game, creature.id)?.keywords).not.toContain("flying");
+  });
+
+  it("round trips both fields", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const definition = createCardDefinition({
+      name: "Threshold Holder",
+      typeLine: "Enchantment",
+      staticAbilities: [
+        {
+          selector: { scope: "controlled", types: ["creature"], maxPowerOrToughness: 1 },
+          effect: { kind: "grant_keyword", keyword: "flying" },
+        },
+        {
+          selector: { scope: "controlled", types: ["creature"], maxPower: 2 },
+          effect: { kind: "grant_keyword", keyword: "trample" },
+        },
+      ],
+    });
+    game.definitions[definition.id] = definition;
+    put(game, definition.id, p1.id);
+
+    const round = parseGameState(serializeGameState(game));
+    const statics = round.definitions[definition.id]?.staticAbilities ?? [];
+    expect(statics[0]?.selector).toMatchObject({ maxPowerOrToughness: 1 });
+    expect(statics[1]?.selector).toMatchObject({ maxPower: 2 });
+  });
+});

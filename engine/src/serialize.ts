@@ -4337,6 +4337,17 @@ function parseEffectSelector(value: unknown, label: string): EffectSelector {
     ...(value.legendary === true ? { legendary: true } : {}),
     ...(value.nonLegendary === true ? { nonLegendary: true } : {}),
     ...(value.commanderOnly === true ? { commanderOnly: true } : {}),
+    ...(value.maxPower === undefined
+      ? {}
+      : { maxPower: expectNumber(value.maxPower, `${label}.maxPower`) }),
+    ...(value.maxPowerOrToughness === undefined
+      ? {}
+      : {
+          maxPowerOrToughness: expectNumber(
+            value.maxPowerOrToughness,
+            `${label}.maxPowerOrToughness`,
+          ),
+        }),
     ...(value.withCounter === undefined
       ? {}
       : { withCounter: expectString(value.withCounter, `${label}.withCounter`) }),

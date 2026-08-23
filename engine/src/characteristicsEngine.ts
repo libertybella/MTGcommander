@@ -494,6 +494,27 @@ function matches(
   if (selector.withCounter && (card.counters[selector.withCounter] ?? 0) <= 0) {
     return false;
   }
+  // Counters have to be added by hand here: this runs during layer 6 and
+  // layer 7d has not applied them to `computed` yet, so a creature with
+  // +1/+1 counters would otherwise be read at its printed size.
+  //
+  // Statics that change power from ANOTHER source are seen or not
+  // depending on instance order, which is the CR 613.8 dependency gap
+  // this engine already documents. Counters are the common case and are
+  // exact.
+  if (selector.maxPower !== undefined || selector.maxPowerOrToughness !== undefined) {
+    const size = withCounterNet(computed, card);
+    if (selector.maxPower !== undefined && size.power > selector.maxPower) {
+      return false;
+    }
+    if (
+      selector.maxPowerOrToughness !== undefined &&
+      size.power > selector.maxPowerOrToughness &&
+      size.toughness > selector.maxPowerOrToughness
+    ) {
+      return false;
+    }
+  }
   if (selector.excludeSelf && card.id === instance.sourceId) {
     return false;
   }
@@ -920,6 +941,25 @@ function applyInstance(
   }
 }
 
+/**
+ * Layer 7d: +1/+1 and -1/-1 counters net out.
+ *
+ * Shared because a selector that asks about power or toughness runs during
+ * layer 6, before 7d has been applied — so it has to add the net itself or
+ * it reads a creature as smaller than it is. Two copies of this arithmetic
+ * would be two chances to disagree about whether power floors at zero.
+ */
+function withCounterNet(computed: ComputedCard, card: CardInstance): {
+  power: number;
+  toughness: number;
+} {
+  const net = (card.counters["p1p1"] ?? 0) - (card.counters["m1m1"] ?? 0);
+  return {
+    power: Math.max(0, computed.power + net),
+    toughness: computed.toughness + net,
+  };
+}
+
 function computeAll(state: GameState): Record<CardInstanceId, ComputedCard> {
   const computedById: Record<CardInstanceId, ComputedCard> = {};
   for (const card of Object.values(state.cards)) {
@@ -947,9 +987,9 @@ function computeAll(state: GameState): Record<CardInstanceId, ComputedCard> {
   // Layer 7d: +1/+1 and -1/-1 counters net out.
   for (const card of Object.values(state.cards)) {
     const computed = computedById[card.id]!;
-    const net = (card.counters["p1p1"] ?? 0) - (card.counters["m1m1"] ?? 0);
-    computed.power = Math.max(0, computed.power + net);
-    computed.toughness = computed.toughness + net;
+    const netted = withCounterNet(computed, card);
+    computed.power = netted.power;
+    computed.toughness = netted.toughness;
   }
   return computedById;
 }

@@ -2952,6 +2952,12 @@ export type EffectSelector = {
   /** "Creatures you control with +1/+1 counters on them" (Herald of Secret
    * Streams). */
   withCounter?: string;
+  /** Delney: "Creatures you control with power 2 or less". */
+  maxPower?: number;
+  /** Tetsuko: "with power OR toughness 1 or less". One field rather than
+   * two, because either half being small enough qualifies the creature —
+   * a pair of separate maxima would read as an AND. */
+  maxPowerOrToughness?: number;
   /** "Tokens you control" (Jaheira). */
   tokenOnly?: boolean;
   /** "Nontoken creatures you control" (Rhythm of the Wild). */
