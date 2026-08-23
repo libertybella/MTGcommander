@@ -8,12 +8,17 @@ on-what lives in [CLAIMS.md](CLAIMS.md). This file is the tribal
 knowledge that isn't obvious from those: exact commands, traps, and
 the current state of play. Read all four before writing code.
 
-## State of play (checkpoint-86-one-away-grind, 2026-08-23)
+## State of play (checkpoint-87-invisible-characters, 2026-08-23)
 
-- Branch `comprehensive-plan`, tags through `checkpoint-86-one-away-grind`.
-- 1,180 tests green; top-2,000 compile rate **67.0% (1,347/2,009)**,
-  60-card sample 97% (CI floor now 90). Waves 218–221 and the
-  granted-ability primitive land after the tag.
+- Branch `comprehensive-plan`, tags through
+  `checkpoint-87-invisible-characters`, pushed to `fork`.
+- 1,194 tests green; top-2,000 compile rate **67.3% (1,353/2,009)**,
+  60-card sample 97% (CI floor now 90); oxlint silent; 800/800 fuzz
+  seeds on a clean tree at the tag.
+- **Next up: the wave grind.** The granted-ability primitive and its
+  reader both landed, so the quoted-grant family is harvestable now.
+  `PRIMITIVE: a real "destroy" event` is still open and is the widest
+  change since tagged mana — take wave sessions before it, not after.
 - **The granted-ability primitive is DONE** (`grant_trigger` +
   `grant_activated`, layer 6). It moved the rate by design: a primitive
   session is judged by what it unblocks. Its reader — the quoted-grant
