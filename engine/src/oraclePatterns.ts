@@ -1877,6 +1877,25 @@ function compileEntersTappedUnless(sentence: string): ReplacementEffect | null {
       unless: { kind: "opponents", count: parseCount(crowd[1]) ?? 2 },
     };
   }
+  // Mystic Sanctuary: "three or more other Islands". The subtype is
+  // capitalised in oracle text and stored lowercase.
+  const subtypeCount = sentence.match(
+    /^~ enters tapped unless you control (\w+) or more (other )?([A-Z][a-z]+)s$/,
+  );
+  if (subtypeCount?.[1] && subtypeCount[3]) {
+    const need = parseCount(subtypeCount[1].toLowerCase());
+    if (need) {
+      return {
+        kind: "enters_tapped_unless",
+        unless: {
+          kind: "controlled_subtype",
+          subtype: subtypeCount[3].toLowerCase(),
+          count: need,
+          ...(subtypeCount[2] ? { excludeSelf: true } : {}),
+        },
+      };
+    }
+  }
   const match = sentence.match(/^~ enters tapped unless you control (.+)$/i);
   if (!match?.[1]) {
     return null;
@@ -7984,6 +8003,51 @@ function fuseMayPayInPlace(sentences: string[], lineStart: boolean[]): void {
   }
 }
 
+function fuseChooseTargetCreatureInPlace(
+  sentences: string[],
+  lineStart: boolean[],
+): void {
+  // Malakir Rebirth: "Choose target creature. Until end of turn, that
+  // creature gains \"…\"" — the grant already compiles when the target is
+  // written into it, so the pair fuses rather than teaching the grant
+  // parser a second name for its subject. Left split, the "Choose target
+  // creature" sentence compiles to a target requirement with no effect.
+  for (let index = 0; index + 1 < sentences.length; index += 1) {
+    if (lineStart[index + 1]) {
+      continue;
+    }
+    if (!/^Choose target creature$/i.test(sentences[index] ?? "")) {
+      continue;
+    }
+    // The grant need not be the very next sentence — Malakir Rebirth puts
+    // "You lose 2 life." between them — so scan forward within the line.
+    let riderAt = -1;
+    let riderBody = "";
+    for (let ahead = index + 1; ahead < sentences.length; ahead += 1) {
+      if (lineStart[ahead]) {
+        break;
+      }
+      const found = sentences[ahead]?.match(
+        /^Until end of turn, that creature (.+)$/i,
+      );
+      if (found?.[1]) {
+        riderAt = ahead;
+        riderBody = found[1];
+        break;
+      }
+    }
+    if (riderAt < 0) {
+      continue;
+    }
+    sentences[riderAt] = `Until end of turn, target creature ${riderBody}`;
+    // The choose sentence has done its job; left in place it compiles to
+    // a SECOND target requirement the grant would not use.
+    sentences.splice(index, 1);
+    lineStart.splice(index, 1);
+    index -= 1;
+  }
+}
+
 function fusePactInPlace(sentences: string[], lineStart: boolean[]): void {
   // Pact of Negation: "…, pay {3}{U}{U}. If you don't, you lose the game."
   // The penalty belongs INSIDE the delayed trigger — left as its own
@@ -8204,6 +8268,7 @@ type TriggerHead = Pick<
   | "oncePerBatch"
   | "alsoOnCopy"
   | "classLevel"
+  | "condition"
 > & {
   /** "enters or attacks": emit a sibling trigger for each extra event. */
   extraEvents?: CardTrigger["event"][];
@@ -8300,6 +8365,15 @@ function parseTriggerHead(head: string): TriggerHead | null {
   }
   if (/^Whenever another creature dies$/i.test(text)) {
     return { event: "dies", watch: "any", excludeSelf: true, subjectFilter: { types: ["creature"] } };
+  }
+  // Mystic Sanctuary: "When ~ enters untapped". The event is the ordinary
+  // battlefield entry; "untapped" is an intervening condition read on the
+  // source, so a Sanctuary that entered tapped queues nothing.
+  if (/^When ~ enters untapped$/i.test(text)) {
+    return {
+      event: "enter_battlefield",
+      condition: { kind: "self_untapped" },
+    };
   }
   if (/^Whenever another nontoken creature dies$/i.test(text)) {
     return {
@@ -10628,6 +10702,7 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
   fuseItCantBeBlockedInPlace(sentences, lineStart);
   fuseMayPayInPlace(sentences, lineStart);
   fusePactInPlace(sentences, lineStart);
+  fuseChooseTargetCreatureInPlace(sentences, lineStart);
   fuseMaySacrificeInPlace(sentences, lineStart);
   fuseNecroTopInPlace(sentences, lineStart);
   for (let index = 0; index < sentences.length; index += 1) {
@@ -13630,6 +13705,28 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
       const cost = parseAbilityCost(ability.costText);
       if (!cost) {
         result.leftover.push(sentence);
+        continue;
+      }
+      // Three Tree City: the same "Choose a color" shell over a different
+      // count — creatures you control of the type chosen as it entered.
+      if (
+        /^Choose a color$/i.test(ability.rest) &&
+        cost.tap &&
+        sentences[index + 1] &&
+        !lineStart[index + 1] &&
+        /^Add an amount of mana of that color equal to the number of creatures you control of the chosen type$/i.test(
+          sentences[index + 1]!,
+        )
+      ) {
+        result.manaAbilities.push({
+          produces: {},
+          producesOptions: [],
+          producesAnyColor: true,
+          damageToController: 0,
+          countFromChosenTypeCreatures: true,
+          ...(cost.manaCost ? { costMana: cost.manaCost } : {}),
+        });
+        sentences[index + 1] = "";
         continue;
       }
       // Nykthos: "{2}, {T}: Choose a color. Add an amount of mana of that

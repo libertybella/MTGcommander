@@ -1121,6 +1121,14 @@ function unlessSatisfied(
     );
     return basics.length >= unless.count;
   }
+  if (unless.kind === "controlled_subtype") {
+    const matching = controlled.filter(
+      (entry) =>
+        !(unless.excludeSelf && entry.id === card.id) &&
+        characteristicsOf(state, entry.id).subtypes.includes(unless.subtype),
+    );
+    return matching.length >= unless.count;
+  }
   if (unless.kind === "hand_reveals_types") {
     // Documented approximation: the reveal "may" is auto-taken — any matching
     // card in hand means the land enters untapped.

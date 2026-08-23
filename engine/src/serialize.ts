@@ -4343,6 +4343,9 @@ function parseTriggerCondition(value: unknown, label: string): TriggerCondition 
       if (conditionKind === "created_token_this_turn") {
         return { kind: conditionKind };
       }
+      if (conditionKind === "self_untapped") {
+        return { kind: conditionKind };
+      }
       if (conditionKind === "library_empty" || conditionKind === "entered_from_cast") {
         return { kind: conditionKind };
       }
@@ -4984,6 +4987,9 @@ function parseManaAbilities(value: unknown, label: string): ManaAbility[] {
       ...(entry.noTap === true ? { noTap: true } : {}),
       ...(entry.countFromPower === true ? { countFromPower: true } : {}),
       ...(entry.countFromDevotion === true ? { countFromDevotion: true } : {}),
+      ...(entry.countFromChosenTypeCreatures === true
+        ? { countFromChosenTypeCreatures: true }
+        : {}),
       ...(entry.countFromEnchantments === true ? { countFromEnchantments: true } : {}),
       ...(entry.costTapCreature === true ? { costTapCreature: true } : {}),
       ...(entry.costTapCreatureLegendary === true ? { costTapCreatureLegendary: true } : {}),

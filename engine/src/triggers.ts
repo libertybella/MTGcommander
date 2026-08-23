@@ -103,6 +103,16 @@ export function triggerConditionHolds(
     // Karlach: only the turn's first combat phase qualifies.
     return (state.combatPhasesThisTurn ?? 0) <= 1;
   }
+  if (condition.kind === "self_untapped") {
+    // The mirror of self_tapped. An absent source is not an untapped
+    // one: a trigger whose permanent has already left must not fire.
+    const untappedSource = watcherId ? state.cards[watcherId] : undefined;
+    return (
+      untappedSource !== undefined &&
+      untappedSource.zone === "battlefield" &&
+      !untappedSource.tapped
+    );
+  }
   if (condition.kind === "self_tapped") {
     // Mana Vault: the watcher itself must still be tapped.
     return state.cards[watcherId ?? ""]?.tapped === true;

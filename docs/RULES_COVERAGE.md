@@ -870,6 +870,30 @@ more questions it can now ask:
   (Bennie Bracks). Reads the existing per-player `createdTokenThisTurn`
   list, and asks whether the CONTROLLER is in it — an opponent's Treasure
   must not satisfy it.
+- **`controlled_subtype` enters-tapped clause** — Mystic Sanctuary. "Unless
+  you control three or more OTHER Islands": `excludeSelf` is load-bearing,
+  because the land asking is an Island itself and counting it would let two
+  others satisfy a three-Island clause.
+
+- **`self_untapped`** — the mirror of `self_tapped`. "When ~ enters
+  UNTAPPED" is the ordinary battlefield-entry event with an intervening
+  condition, not a new event, so a Sanctuary that entered tapped queues
+  nothing. A permanent that has already left is not an untapped one either.
+
+- **`countFromChosenTypeCreatures`** — Three Tree City. The same
+  "Choose a color" shell Nykthos uses, over a different count: creatures you
+  control of the type chosen as the land entered. Added as a SECOND sentence
+  beside the devotion form rather than widening it, so no card that compiled
+  before can move. No chosen type counts NOTHING, not everything.
+
+- **A grant reached across the sentence between it and its target** —
+  Malakir Rebirth. "Choose target creature. You lose 2 life. Until end of
+  turn, that creature gains …": the grant already compiles when the target
+  is written into it, so the pair fuses across the intervening sentence
+  rather than teaching the grant parser a second name for its subject. The
+  "Choose target creature" sentence is then DROPPED — left in place it
+  compiles to a second target requirement the grant never uses, and the
+  caster would be asked to choose twice.
 - **Player-level shields** — Teferi's Protection, The One Ring.
   `GameState.playerShields` holds "until your next turn" protection from
   everything and a locked life total. That duration is one `activeEffects`

@@ -978,7 +978,21 @@ function applyTapForMana(
               entry.controllerId === playerId &&
               characteristicsOf(state, entry.id).types.includes("enchantment"),
           ).length
-        : manaAbilityAmount(ability);
+        : ability.countFromChosenTypeCreatures
+          ? // Three Tree City: creatures you control of the type chosen
+            // as this land entered. No chosen type means no creatures
+            // match, which is nothing rather than everything.
+            Object.values(state.cards).filter((entry) => {
+              const chosen = state.cards[cardId]?.chosenCreatureType ?? undefined;
+              return (
+                chosen !== undefined &&
+                entry.zone === "battlefield" &&
+                entry.controllerId === playerId &&
+                isCreature(state, entry.id) &&
+                cardMatchesSubtype(state, entry.id, chosen)
+              );
+            }).length
+          : manaAbilityAmount(ability);
   let addition: Partial<ManaPool>;
   if (ability.producesColorsAmong) {
     // Bloom Tender: one mana of each color among controlled permanents.

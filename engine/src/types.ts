@@ -2578,6 +2578,8 @@ export type TriggerCondition =
   | { kind: "own_main_phase" }
   /** Mana Vault: "if this artifact is tapped". */
   | { kind: "self_tapped" }
+  /** Mystic Sanctuary: "When ~ enters UNTAPPED". */
+  | { kind: "self_untapped" }
   /** Dethrone / Scourge: the subject attacker's defender has the most life
    * (or is tied for most). */
   | { kind: "attacking_most_life" }
@@ -3011,6 +3013,18 @@ export type EnterTappedUnless =
   | { kind: "legendary_creature" }
   | { kind: "controlled_types"; types: string[] }
   | { kind: "basic_lands"; count: number }
+  /**
+   * Mystic Sanctuary: "unless you control three or more OTHER Islands".
+   * A count of a subtype, and `excludeSelf` matters — the land asking
+   * the question is an Island itself, so counting it would let a lone
+   * Sanctuary satisfy part of its own clause.
+   */
+  | {
+      kind: "controlled_subtype";
+      subtype: string;
+      count: number;
+      excludeSelf?: boolean;
+    }
   /** "unless you have N or more opponents" (Battlebond crowd lands). */
   | { kind: "opponents"; count: number }
   /**
@@ -3260,6 +3274,12 @@ export type ManaAbility = {
   countFromPower?: boolean;
   /** Nykthos: the amount is the controller's devotion to the chosen color. */
   countFromDevotion?: boolean;
+  /**
+   * Three Tree City: the amount is the number of creatures you control
+   * of the type chosen as this permanent entered — the same chosen type
+   * the rest of the card reads.
+   */
+  countFromChosenTypeCreatures?: boolean;
   /** Sanctum Weaver: the amount is the controller's enchantment count. */
   countFromEnchantments?: boolean;
   /** Springleaf Drum: tapping a chosen untapped controlled creature is part

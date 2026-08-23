@@ -35311,3 +35311,199 @@ describe("wave 268: counting counters on the source", () => {
     });
   });
 });
+
+describe("wave 269: three tail readings", () => {
+  const land = (
+    game: GameState,
+    player: PlayerState,
+    name: string,
+    typeLine: string,
+    extra: Partial<Parameters<typeof createCardDefinition>[0]> = {},
+  ) => {
+    const definition = createCardDefinition({ name, typeLine, ...extra });
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({
+      definitionId: definition.id,
+      ownerId: player.id,
+      zone: "battlefield",
+    });
+    game.cards[card.id] = card;
+    player.zones.battlefield.push(card.id);
+    return card.id;
+  };
+
+  it("does not let a Sanctuary count itself toward its own Islands", () => {
+    const { game, p1 } = twoPlayers();
+    const sanctuary = land(game, p1, "Mystic Sanctuary", "Land — Island", {
+      replacements: [
+        {
+          kind: "enters_tapped_unless",
+          unless: {
+            kind: "controlled_subtype",
+            subtype: "island",
+            count: 3,
+            excludeSelf: true,
+          },
+        },
+      ],
+    });
+    // The Sanctuary is itself an Island. Counting it would let two other
+    // Islands satisfy a three-Island clause.
+    land(game, p1, "Island", "Basic Land — Island");
+    land(game, p1, "Island", "Basic Land — Island");
+    expect(wouldEnterTapped(game, sanctuary)).toBe(true);
+    land(game, p1, "Island", "Basic Land — Island");
+    expect(wouldEnterTapped(game, sanctuary)).toBe(false);
+  });
+
+  it("counts only that subtype, and only yours", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const sanctuary = land(game, p1, "Mystic Sanctuary", "Land — Island", {
+      replacements: [
+        {
+          kind: "enters_tapped_unless",
+          unless: { kind: "controlled_subtype", subtype: "island", count: 2, excludeSelf: true },
+        },
+      ],
+    });
+    land(game, p1, "Swamp", "Basic Land — Swamp");
+    land(game, p2, "Island", "Basic Land — Island");
+    land(game, p2, "Island", "Basic Land — Island");
+    // A Swamp is not an Island, and an opponent's Islands are not yours.
+    expect(wouldEnterTapped(game, sanctuary)).toBe(true);
+  });
+
+  it("fires the enters-untapped trigger only when it entered untapped", () => {
+    const { game, p1 } = twoPlayers();
+    const cardId = land(game, p1, "Sanctuary", "Land — Island");
+    expect(triggerConditionHolds(game, p1.id, { kind: "self_untapped" }, undefined, cardId)).toBe(true);
+    game.cards[cardId]!.tapped = true;
+    expect(triggerConditionHolds(game, p1.id, { kind: "self_untapped" }, undefined, cardId)).toBe(false);
+    // A permanent that has already left is not an untapped one either.
+    game.cards[cardId]!.tapped = false;
+    game.cards[cardId]!.zone = "graveyard";
+    expect(triggerConditionHolds(game, p1.id, { kind: "self_untapped" }, undefined, cardId)).toBe(false);
+  });
+
+  it("adds one mana per creature of the CHOSEN type", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const city = land(game, p1, "Three Tree City", "Legendary Land", {
+      chooseCreatureTypeOnEnter: true,
+      manaAbilities: [
+        {
+          produces: {},
+          producesOptions: [],
+          producesAnyColor: true,
+          damageToController: 0,
+          countFromChosenTypeCreatures: true,
+        },
+      ],
+    });
+    game.cards[city]!.chosenCreatureType = "elf";
+    const creature = (owner: PlayerState, name: string, typeLine: string) => {
+      const definition = createCardDefinition({ name, typeLine, power: 1, toughness: 1 });
+      game.definitions[definition.id] = definition;
+      const card = createCardInstance({
+        definitionId: definition.id,
+        ownerId: owner.id,
+        zone: "battlefield",
+      });
+      game.cards[card.id] = card;
+      owner.zones.battlefield.push(card.id);
+    };
+    creature(p1, "Llanowar Elves", "Creature — Elf Druid");
+    creature(p1, "Elvish Mystic", "Creature — Elf Druid");
+    creature(p1, "Grizzly Bears", "Creature — Bear");
+    creature(p2, "Elvish Archer", "Creature — Elf Archer");
+
+    game.priorityPlayerId = p1.id;
+    const tapped = applyAction(game, {
+      kind: "tap_for_mana",
+      playerId: p1.id,
+      cardId: city,
+      color: "G",
+    });
+    // Two Elves of your own. The Bear is not an Elf and the opponent's Elf
+    // is not yours — counting either would make the land print free mana.
+    expect(tapped.players.find((entry) => entry.id === p1.id)?.mana.G).toBe(2);
+  });
+
+  it("adds nothing when no type was chosen", () => {
+    const { game, p1 } = twoPlayers();
+    const city = land(game, p1, "Three Tree City", "Legendary Land", {
+      manaAbilities: [
+        {
+          produces: {},
+          producesOptions: [],
+          producesAnyColor: true,
+          damageToController: 0,
+          countFromChosenTypeCreatures: true,
+        },
+      ],
+    });
+    const definition = createCardDefinition({
+      name: "Elf",
+      typeLine: "Creature — Elf",
+      power: 1,
+      toughness: 1,
+    });
+    game.definitions[definition.id] = definition;
+    const elf = createCardInstance({
+      definitionId: definition.id,
+      ownerId: p1.id,
+      zone: "battlefield",
+    });
+    game.cards[elf.id] = elf;
+    p1.zones.battlefield.push(elf.id);
+
+    game.priorityPlayerId = p1.id;
+    const tapped = applyAction(game, {
+      kind: "tap_for_mana",
+      playerId: p1.id,
+      cardId: city,
+      color: "G",
+    });
+    // No chosen type matches nothing, not everything.
+    expect(tapped.players.find((entry) => entry.id === p1.id)?.mana.G).toBe(0);
+  });
+
+  it("fuses Malakir Rebirth's grant across the sentence between them", () => {
+    const compiled = compileOracleCard({
+      oracleId: "mr",
+      name: "Malakir Rebirth",
+      manaCost: "{B}",
+      typeLine: "Instant",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        'Choose target creature. You lose 2 life. Until end of turn, that creature gains "When this creature dies, return it to the battlefield tapped under its owner\'s control."',
+    });
+    expect(compiled.notes).toEqual([]);
+    // The sentence BETWEEN the pair must survive the fuse…
+    expect(compiled.definition.effects[0]).toMatchObject({ kind: "lose_life", amount: 2 });
+    expect(compiled.definition.effects[1]?.kind).toBe("grant_dies_return");
+    // …and there must be exactly ONE target requirement. Leaving the
+    // "Choose target creature" sentence in place would make a second one
+    // the grant never uses, so the caster would be asked twice.
+    expect(compiled.definition.targetRequirements).toEqual([{ kind: "creature" }]);
+  });
+
+  it("leaves an unfused choose-target sentence alone", () => {
+    // No "that creature" grant follows, so nothing should be rewritten and
+    // the card stays an honest miss rather than silently losing a sentence.
+    const compiled = compileOracleCard({
+      oracleId: "x",
+      name: "Probe",
+      manaCost: "{B}",
+      typeLine: "Instant",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText: "Choose target creature. You lose 2 life.",
+    });
+    expect(compiled.notes.length).toBeGreaterThan(0);
+  });
+});
