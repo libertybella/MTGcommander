@@ -2350,6 +2350,30 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     };
   }
 
+  // "Exile up to two target artifacts and/or enchantments" (Angel of the
+  // Ruins): "up to N" is N OPTIONAL slots, which is a clause-level shape.
+  // The noun-phrase parser can only say "up to one", because a phrase is one
+  // requirement; the plural head is singularised so it goes through the
+  // shared grammar rather than being parsed a second way.
+  const upToTwo = sentence.match(/^(Exile|Destroy) up to two target (.+)$/i);
+  if (upToTwo?.[1] && upToTwo[2]) {
+    const singular = upToTwo[2].replace(/and\/or/gi, "or").replace(/s(?= |$)/gi, "");
+    const requirement = parseSimpleTargetPhrase(`target ${singular}`);
+    if (requirement) {
+      const toZone = /^exile$/i.test(upToTwo[1]) ? ("exile" as const) : ("graveyard" as const);
+      return {
+        targetRequirements: [
+          { ...requirement, optional: true },
+          { ...requirement, optional: true },
+        ],
+        effects: [
+          { kind: "move_card", cardId: { type: "chosen", index: 0 }, toZone },
+          { kind: "move_card", cardId: { type: "chosen", index: 1 }, toZone },
+        ],
+      };
+    }
+  }
+
   // Decimate: four targets of four kinds, destroyed together.
   const decimate = sentence.match(
     /^Destroy target ([a-z]+), target ([a-z]+), target ([a-z]+), and target ([a-z]+)$/i,

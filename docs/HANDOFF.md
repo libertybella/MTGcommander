@@ -11,8 +11,12 @@ the current state of play. Read all four before writing code.
 ## State of play (checkpoint-86-one-away-grind, 2026-08-22)
 
 - Branch `comprehensive-plan`, tags through `checkpoint-86-one-away-grind`.
-- 1,168 tests green; top-2,000 compile rate **67.0% (1,346/2,009)**,
-  60-card sample 97% (CI floor now 90). Waves 218–220 land after the tag.
+- 1,169 tests green; top-2,000 compile rate **67.0% (1,347/2,009)**,
+  60-card sample 97% (CI floor now 90). Waves 218–221 land after the tag.
+- **Beware `` in a python heredoc**: it becomes a literal backspace in the
+  written file, and the regex then silently matches nothing. It cost a
+  round-trip in wave 211 and again in 221. Use the Edit tool for regex
+  literals, or a lookahead like `(?= |$)` instead of ``.
 - **Liberty's standing directive: grind to 75% = 1,507 cards.** 161 to go.
   Waves 206–220 flipped 5, 3, 4, 3, 2, 3, 3, 3, 2, 2, 2, 2, 2, 2, 2 — call
   it **under 3 a wave**, so 75% is roughly sixty more waves. The rate is

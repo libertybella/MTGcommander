@@ -28161,3 +28161,31 @@ describe("wave 220: what the sweep took, counted", () => {
   });
 });
 
+
+describe("wave 221: up to two is two optional slots", () => {
+  it("gives Angel of the Ruins two slots it may leave empty", () => {
+    const angel = compileOracleCard({
+      oracleId: "Angel of the Ruins",
+      name: "Angel of the Ruins",
+      manaCost: "{5}{W}{W}",
+      typeLine: "Creature — Angel",
+      power: "5",
+      toughness: "5",
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "Flying\nWhen this creature enters, exile up to two target artifacts and/or enchantments.\nPlainscycling {2}",
+    });
+    expect(angel.notes).toEqual([]);
+    // "Up to N" is N optional slots — a shape the noun-phrase parser cannot
+    // express, since a phrase is one requirement and can only say "up to one".
+    expect(angel.definition.triggers[0]?.targetRequirements).toEqual([
+      { kind: "artifact_or_enchantment", optional: true },
+      { kind: "artifact_or_enchantment", optional: true },
+    ]);
+    expect(angel.definition.triggers[0]?.effects).toEqual([
+      { kind: "move_card", cardId: { type: "chosen", index: 0 }, toZone: "exile" },
+      { kind: "move_card", cardId: { type: "chosen", index: 1 }, toZone: "exile" },
+    ]);
+  });
+});
