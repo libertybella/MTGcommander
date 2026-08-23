@@ -542,6 +542,21 @@ export function isChosenTargetLegal(
     if (target.type !== "spell" || !isLegalSpellTarget(state, target.stackObjectId)) {
       return false;
     }
+    // Hullbreaker Horror: "target spell you DON'T control". Parsed onto
+    // the requirement and then ignored here, the filter would read as
+    // decoration and the Horror could bounce its own spell.
+    if (requirement.control !== undefined) {
+      const entry = state.stack.find((object) => object.id === target.stackObjectId);
+      if (!entry) {
+        return false;
+      }
+      if (requirement.control === "not_own" && entry.controllerId === casterId) {
+        return false;
+      }
+      if (requirement.control === "own" && entry.controllerId !== casterId) {
+        return false;
+      }
+    }
     // Mental Misstep: "target spell with mana value 1" caps the stack
     // object's source mana value.
     if (requirement.maxManaValue !== undefined || requirement.minManaValue !== undefined) {

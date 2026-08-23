@@ -2771,6 +2771,12 @@ export type CardTrigger = {
    * controller picks a mode when the trigger would stack; the chosen mode's
    * effects and targets replace the (empty) top-level ones.
    */
+  /**
+   * Black Market Connections ("choose one or more") and Hullbreaker Horror
+   * ("choose up to one"). Absent means exactly one, which is what every
+   * modal trigger written before these asked for.
+   */
+  modeChoice?: { min: number; max: number };
   modes?: SpellMode[];
   /**
    * Which objects' events fire this trigger (enter_battlefield, dies,
@@ -3019,6 +3025,8 @@ export type PendingPrompt =
       playerId: PlayerId;
       sourceId: CardInstanceId;
       triggerIndex: number;
+      /** Absent means exactly one. */
+      modeChoice?: { min: number; max: number };
       subjectCardId?: CardInstanceId;
       subjectPlayerId?: PlayerId;
       subjectAmount?: number;
@@ -3776,7 +3784,14 @@ export type GameAction =
   | { kind: "resolve_discard"; playerId: PlayerId; cardIds: CardInstanceId[] }
   | { kind: "resolve_choose_card"; playerId: PlayerId; cardId: CardInstanceId }
   | { kind: "resolve_enter_copy"; playerId: PlayerId; cardId: CardInstanceId | null }
-  | { kind: "resolve_trigger_mode"; playerId: PlayerId; modeIndex: number }
+  | {
+      kind: "resolve_trigger_mode";
+      playerId: PlayerId;
+      /** One mode, the original form. */
+      modeIndex?: number;
+      /** "Choose one or more" / "up to one": every mode picked, in order. */
+      modeIndexes?: number[];
+    }
   | {
       kind: "resolve_look_assign";
       playerId: PlayerId;

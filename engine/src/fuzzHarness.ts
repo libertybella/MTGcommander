@@ -213,10 +213,14 @@ function nextAction(state: GameState, rng: () => number): GameAction | null {
         const modes = source
           ? triggersOf(state, prompt.sourceId)[prompt.triggerIndex]?.modes ?? []
           : [];
+        const bounds = prompt.modeChoice ?? { min: 1, max: 1 };
+        const cap = Math.min(bounds.max, modes.length);
+        const take = bounds.min + Math.floor(rng() * (cap - bounds.min + 1));
+        const order = modes.map((_, index) => index);
         return {
           kind: "resolve_trigger_mode",
           playerId,
-          modeIndex: Math.floor(rng() * Math.max(1, modes.length)),
+          modeIndexes: order.slice(0, Math.max(0, take)),
         };
       }
       case "pay_or_counter":

@@ -32,7 +32,7 @@ import { abilityLifeCost, colorsOutsideCommanderIdentity } from "./commanderIden
 import { addRestrictedMana, emptyManaPools, manaRiderFires, parseManaCost, payManaCost, restrictionAdmits, type ManaPurpose } from "./mana";
 import { applyStateBasedActionsInPlace } from "./status";
 import { legalActions, sacrificeColorMatches, sacrificeScopeMatches } from "./legalActions";
-import { applyResolveCreatureType, applyResolveDiscardLandOrGraveyard, applyResolveLookAssign, applyResolvePay, legalEnterCopyIds, searchMatches } from "./prompt";
+import { applyResolveCreatureType, applyResolveDiscardLandOrGraveyard, applyResolveLookAssign, applyResolvePay, applyResolveTriggerMode, legalEnterCopyIds, searchMatches } from "./prompt";
 import { parseGameState, serializeGameState } from "./serialize";
 import { fillLibraries } from "./testSupport";
 import { advanceSteps } from "./turn";
@@ -36927,5 +36927,207 @@ describe("wave 278: discard a land, or it goes to the graveyard", () => {
     // nothing.
     expect(compiled.definition.effects).toEqual([]);
     expect(compiled.definition.manaAbilities).toHaveLength(1);
+  });
+});
+
+describe("wave 279: modal triggers that take more or fewer than one", () => {
+  const setup = (modeChoice?: { min: number; max: number }) => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const definition = createCardDefinition({
+      name: "Connections",
+      typeLine: "Enchantment",
+      triggers: [
+        {
+          event: "first_main_phase",
+          effects: [],
+          targetRequirements: [],
+          ...(modeChoice ? { modeChoice } : {}),
+          modes: [
+            {
+              label: "Treasure",
+              effects: [
+                {
+                  kind: "create_token",
+                  ownerId: "controller",
+                  name: "Treasure",
+                  typeLine: "Artifact — Treasure Token",
+                  power: null,
+                  toughness: null,
+                },
+              ],
+              targetRequirements: [],
+            },
+            {
+              label: "Draw",
+              effects: [{ kind: "draw", playerId: "controller", count: 1 }],
+              targetRequirements: [],
+            },
+            {
+              label: "Life",
+              effects: [{ kind: "lose_life", playerId: "controller", amount: 3 }],
+              targetRequirements: [],
+            },
+          ],
+        },
+      ],
+    });
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({
+      definitionId: definition.id,
+      ownerId: p1.id,
+      zone: "battlefield",
+    });
+    game.cards[card.id] = card;
+    p1.zones.battlefield.push(card.id);
+    dispatchEventsInPlace(game, [{ kind: "step_begins", step: "precombatMain" }]);
+    return { game, p1, cardId: card.id, definitionId: definition.id };
+  };
+
+  const handSize = (state: GameState, playerId: string) =>
+    state.players.find((entry) => entry.id === playerId)!.zones.hand.length;
+
+  it("carries the bounds onto the prompt", () => {
+    const { game } = setup({ min: 1, max: 3 });
+    const prompt = game.prompts[0];
+    expect(prompt?.kind).toBe("choose_trigger_mode");
+    expect(prompt && "modeChoice" in prompt ? prompt.modeChoice : undefined).toEqual({
+      min: 1,
+      max: 3,
+    });
+  });
+
+  it("resolves every chosen mode, in order", () => {
+    const { game, p1 } = setup({ min: 1, max: 3 });
+    const chosen = applyResolveTriggerMode(game, p1.id, [0, 1]);
+    const resolved = resolveTopOfStack(chosen);
+    const before = handSize(game, p1.id);
+    // Two modes chosen means BOTH happen: one Treasure and one card. The
+    // single-mode path would silently drop the second.
+    expect(handSize(resolved, p1.id)).toBe(before + 1);
+    expect(
+      Object.values(resolved.cards).filter((card) => card.isToken),
+    ).toHaveLength(1);
+  });
+
+  it("refuses too few or too many", () => {
+    const { game, p1 } = setup({ min: 1, max: 2 });
+    expect(() => applyResolveTriggerMode(game, p1.id, [])).toThrow(/number of modes/);
+    expect(() => applyResolveTriggerMode(game, p1.id, [0, 1, 2])).toThrow(
+      /number of modes/,
+    );
+  });
+
+  it("lets an up-to-one trigger choose none", () => {
+    const { game, p1 } = setup({ min: 0, max: 1 });
+    const before = handSize(game, p1.id);
+    const chosen = applyResolveTriggerMode(game, p1.id, []);
+    // Nothing stacks and nothing happens — which is what "up to one" means
+    // when you take none.
+    expect(chosen.stack).toHaveLength(0);
+    expect(chosen.prompts).toHaveLength(0);
+    expect(handSize(chosen, p1.id)).toBe(before);
+  });
+
+  it("still takes exactly one when there are no bounds", () => {
+    const { game, p1 } = setup(undefined);
+    // Every modal trigger written before this wave asked for exactly one,
+    // and the absent-bounds default has to keep meaning that.
+    expect(() => applyResolveTriggerMode(game, p1.id, [0, 1])).toThrow(
+      /number of modes/,
+    );
+    const chosen = applyResolveTriggerMode(game, p1.id, 1);
+    const resolved = resolveTopOfStack(chosen);
+    expect(handSize(resolved, p1.id)).toBe(handSize(game, p1.id) + 1);
+  });
+
+  it("round trips the bounds", () => {
+    const { game, definitionId } = setup({ min: 1, max: 3 });
+    const round = parseGameState(serializeGameState(game));
+    expect(round.definitions[definitionId]?.triggers[0]?.modeChoice).toEqual({
+      min: 1,
+      max: 3,
+    });
+    const prompt = round.prompts[0];
+    expect(prompt && "modeChoice" in prompt ? prompt.modeChoice : undefined).toEqual({
+      min: 1,
+      max: 3,
+    });
+  });
+
+  it("compiles Black Market Connections and Hullbreaker Horror", () => {
+    const bmc = compileOracleCard({
+      oracleId: "bmc",
+      name: "Black Market Connections",
+      manaCost: "{2}{B}",
+      typeLine: "Enchantment",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "At the beginning of your first main phase, choose one or more —\n• Sell Contraband — Create a Treasure token. You lose 1 life.\n• Buy Information — Draw a card. You lose 2 life.\n• Hire a Mercenary — Create a 3/2 colorless Shapeshifter creature token with changeling. You lose 3 life.",
+    });
+    expect(bmc.notes).toEqual([]);
+    expect(bmc.definition.triggers[0]?.modeChoice).toEqual({ min: 1, max: 3 });
+    // The mode NAMES are flavour (CR 207.2c) and must not survive into the
+    // effects — "Sell Contraband" is not something the engine can do.
+    expect(bmc.definition.triggers[0]?.modes?.[0]?.effects[0]?.kind).toBe("create_token");
+
+    const horror = compileOracleCard({
+      oracleId: "hh",
+      name: "Hullbreaker Horror",
+      manaCost: "{5}{U}{U}",
+      typeLine: "Creature — Elemental Horror",
+      power: "7",
+      toughness: "8",
+      printedKeywords: ["Flash", "Ward"],
+      imageUrl: "",
+      oracleText:
+        "Flash\nWard {3}\nWhenever you cast a spell, choose up to one —\n• Return target spell you don't control to its owner's hand.\n• Return target nonland permanent to its owner's hand.",
+    });
+    expect(horror.notes).toEqual([]);
+    expect(horror.definition.triggers[0]?.modeChoice).toEqual({ min: 0, max: 1 });
+    expect(horror.definition.triggers[0]?.modes?.[0]?.targetRequirements).toEqual([
+      { kind: "spell", control: "not_own" },
+    ]);
+  });
+});
+
+describe("wave 279: a spell target you do not control", () => {
+  it("refuses your own spell", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const make = (owner: PlayerState, id: string) => {
+      const definition = createCardDefinition({ name: id, typeLine: "Instant" });
+      game.definitions[definition.id] = definition;
+      const card = createCardInstance({
+        definitionId: definition.id,
+        ownerId: owner.id,
+        zone: "stack",
+      });
+      game.cards[card.id] = card;
+      game.stack.push({
+        id,
+        controllerId: owner.id,
+        sourceId: card.id,
+        kind: "spell",
+        targets: [],
+      });
+    };
+    make(p1, "mine");
+    make(p2, "theirs");
+    const requirement: TargetRequirement = { kind: "spell", control: "not_own" };
+    // Parsed onto the requirement and then ignored, the filter would read as
+    // decoration and the Horror could bounce its own spell.
+    expect(
+      isChosenTargetLegal(game, requirement, { type: "spell", stackObjectId: "mine" }, p1.id),
+    ).toBe(false);
+    expect(
+      isChosenTargetLegal(game, requirement, { type: "spell", stackObjectId: "theirs" }, p1.id),
+    ).toBe(true);
+    // …and the unqualified form still takes anything.
+    expect(
+      isChosenTargetLegal(game, { kind: "spell" }, { type: "spell", stackObjectId: "mine" }, p1.id),
+    ).toBe(true);
   });
 });

@@ -1978,6 +1978,20 @@ function parsePrompts(value: unknown, playerIds: Set<string>): PendingPrompt[] {
         playerId,
         sourceId: expectString(entry.sourceId, `prompts[${index}].sourceId`),
         triggerIndex: expectNumber(entry.triggerIndex, `prompts[${index}].triggerIndex`),
+        ...(isRecord(entry.modeChoice)
+          ? {
+              modeChoice: {
+                min: expectNumber(
+                  entry.modeChoice.min,
+                  `prompts[${index}].modeChoice.min`,
+                ),
+                max: expectNumber(
+                  entry.modeChoice.max,
+                  `prompts[${index}].modeChoice.max`,
+                ),
+              },
+            }
+          : {}),
         ...(entry.subjectCardId === undefined
           ? {}
           : { subjectCardId: expectString(entry.subjectCardId, `prompts[${index}].subjectCardId`) }),
@@ -4294,6 +4308,14 @@ function parseTriggers(value: unknown, label: string): CardTrigger[] {
       ...(entry.modes === undefined
         ? {}
         : { modes: parseSpellModes(entry.modes, `${label}[${index}].modes`) }),
+      ...(isRecord(entry.modeChoice)
+        ? {
+            modeChoice: {
+              min: expectNumber(entry.modeChoice.min, `${label}[${index}].modeChoice.min`),
+              max: expectNumber(entry.modeChoice.max, `${label}[${index}].modeChoice.max`),
+            },
+          }
+        : {}),
       ...(entry.condition === undefined
         ? {}
         : {

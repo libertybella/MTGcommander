@@ -306,24 +306,40 @@ export function resolveTopOfStack(state: GameState): GameState {
       const trigger = top.grantedTrigger ?? definition?.triggers[top.triggerIndex ?? 0];
       // Modal trigger: the chosen mode's effects and targets replace the
       // (empty) top-level ones.
-      const triggerMode =
-        top.modeIndex !== undefined ? trigger?.modes?.[top.modeIndex] : undefined;
-      const requirements = triggerMode
-        ? triggerMode.targetRequirements ?? []
-        : trigger?.targetRequirements ?? [];
+      // Black Market Connections: several modes chosen at once resolve in
+      // order as ONE ability, so their effects concatenate rather than the
+      // first one winning.
+      const triggerModes =
+        top.modeIndexes && top.modeIndexes.length > 0
+          ? top.modeIndexes
+              .map((index) => trigger?.modes?.[index])
+              .filter((entry): entry is NonNullable<typeof entry> => Boolean(entry))
+          : top.modeIndex !== undefined && trigger?.modes?.[top.modeIndex]
+            ? [trigger.modes[top.modeIndex]!]
+            : [];
+      const requirements =
+        triggerModes.length > 0
+          ? triggerModes.flatMap((entry) => entry.targetRequirements ?? [])
+          : trigger?.targetRequirements ?? [];
       if (
         trigger &&
         hasLegalTargetRemaining(next, requirements, top.targets, top.controllerId, sourceColorsOf(next, top.sourceId), top.sourceId)
       ) {
-        const bound = bindCardEffects(next, triggerMode ? triggerMode.effects : trigger.effects, {
-          controllerId: top.controllerId,
-          sourceId: top.sourceId,
-          targets: top.targets,
-          targetRequirements: requirements,
-          ...(top.subjectCardId ? { subjectCardId: top.subjectCardId } : {}),
-          ...(top.subjectPlayerId ? { subjectPlayerId: top.subjectPlayerId } : {}),
-          ...(top.subjectAmount ? { subjectAmount: top.subjectAmount } : {}),
-        });
+        const bound = bindCardEffects(
+          next,
+          triggerModes.length > 0
+            ? triggerModes.flatMap((entry) => entry.effects)
+            : trigger.effects,
+          {
+            controllerId: top.controllerId,
+            sourceId: top.sourceId,
+            targets: top.targets,
+            targetRequirements: requirements,
+            ...(top.subjectCardId ? { subjectCardId: top.subjectCardId } : {}),
+            ...(top.subjectPlayerId ? { subjectPlayerId: top.subjectPlayerId } : {}),
+            ...(top.subjectAmount ? { subjectAmount: top.subjectAmount } : {}),
+          },
+        );
         next = applyEffects(next, bound);
       }
     }

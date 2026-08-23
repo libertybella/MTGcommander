@@ -366,6 +366,7 @@ export function queueDefinitionTriggerInPlace(
       playerId: card.controllerId,
       sourceId: cardId,
       triggerIndex: index,
+      ...(trigger.modeChoice ? { modeChoice: { ...trigger.modeChoice } } : {}),
       ...(subject?.cardId ? { subjectCardId: subject.cardId } : {}),
       ...(subject?.playerId ? { subjectPlayerId: subject.playerId } : {}),
       ...(subject?.amount ? { subjectAmount: subject.amount } : {}),

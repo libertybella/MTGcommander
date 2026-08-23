@@ -870,6 +870,30 @@ more questions it can now ask:
   (Bennie Bracks). Reads the existing per-player `createdTokenThisTurn`
   list, and asks whether the CONTROLLER is in it — an opponent's Treasure
   must not satisfy it.
+- **Modal triggers that take more or fewer than one** — Black Market
+  Connections, Hullbreaker Horror. `CardTrigger.modeChoice` carries the
+  bounds; absent means exactly one, which is what every modal trigger
+  written before these asked for. Several chosen modes ride the stack
+  object together in `modeIndexes` and resolve in order as ONE ability, so
+  their effects concatenate rather than the first one winning.
+
+  "Up to one" with none chosen stacks nothing at all, which is what the
+  phrase means. The bot and the fuzzer both respect the bounds — answering
+  a "choose one or more" trigger with a single mode would be refused and
+  freeze the game.
+
+  Bullet mode NAMES are flavour (CR 207.2c) and are stripped: "Sell
+  Contraband" is not something the engine can do, and leaving it in the
+  clause would make the whole mode a miss.
+
+  `modeChoice` was dropped by the trigger mapper on the way into the
+  definition, which is the four-layers trap: the compiler produced it
+  correctly and the definition never saw it.
+
+- **A spell target you do not control** — Hullbreaker Horror. The `spell`
+  requirement now honours `control`. Parsed onto the requirement and then
+  ignored, the filter read as decoration and the Horror could bounce its
+  own spell.
 - **`discard_land_or_graveyard`** — Mox Diamond. Modelled the way the shock
   lands already are: the permanent enters and the choice is prompted just
   after, rather than as a true CR 614 replacement. Declining moves it to

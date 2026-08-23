@@ -293,6 +293,7 @@ export function createCardDefinition(
                 })),
               }
             : {}),
+          ...(trigger.modeChoice ? { modeChoice: { ...trigger.modeChoice } } : {}),
         }))
       : [],
     replacements: input.replacements ? input.replacements.map((replacement) => ({ ...replacement })) : [],

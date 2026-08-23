@@ -6268,10 +6268,16 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     };
   }
 
-  // Reprieve: the spell-only half of Venser's bounce.
-  if (/^return target spell to its owner's hand$/i.test(sentence)) {
+  // Reprieve: the spell-only half of Venser's bounce. Hullbreaker Horror
+  // adds "you don't control", which narrows the same requirement.
+  const spellBounce = sentence.match(
+    /^return target spell(?: you (don't|do not) control)? to its owner's hand$/i,
+  );
+  if (spellBounce) {
     return {
-      targetRequirements: [{ kind: "spell" }],
+      targetRequirements: [
+        { kind: "spell", ...(spellBounce[1] ? { control: "not_own" as const } : {}) },
+      ],
       effects: [{ kind: "bounce_spell_or_permanent", target: { type: "chosen", index: 0 } }],
     };
   }
@@ -10630,15 +10636,32 @@ function parseSimpleTriggerHead(text: string): TriggerHead | null {
 function extractTriggerModalModes(card: OracleCard): TriggerModalExtraction | null {
   const lines = stripReminderText(card.oracleText).replace(/\r/g, "").split("\n");
   const headIndex = lines.findIndex((line) =>
-    /^(?:Landfall\s*[—-]\s*)?When(?:ever)? .+, choose one\s*[—-]\s*$/i.test(line.trim()),
+    /^(?:Landfall\s*[\u2014-]\s*)?(?:When(?:ever)?|At the beginning of) .+, choose (one|one or more|up to one|up to two|two)\s*[\u2014-]\s*$/i.test(
+      line.trim(),
+    ),
   );
   if (headIndex === -1) {
     return null;
   }
+  // Black Market Connections chooses one or more; Hullbreaker Horror up to
+  // one. Absent bounds mean exactly one, which is what every modal trigger
+  // written before them asked for.
+  const headCount =
+    lines[headIndex]!
+      .trim()
+      .match(/,\s*choose (one or more|up to one|up to two|two|one)\s*[\u2014-]\s*$/i)?.[1]
+      ?.toLowerCase() ?? "one";
   const bullets: string[] = [];
   let end = headIndex + 1;
   while (end < lines.length && lines[end]!.trim().startsWith("•")) {
-    bullets.push(lines[end]!.trim().replace(/^•\s*/, ""));
+    bullets.push(
+      lines[end]!
+        .trim()
+        .replace(/^•\s*/, "")
+        // Black Market Connections names each mode; the name is flavour
+        // (CR 207.2c) and is not part of what the mode does.
+        .replace(/^[A-Z][\w'\- ]*\s+[\u2014]\s+/, ""),
+    );
     end += 1;
   }
   if (bullets.length < 2) {
@@ -10650,7 +10673,7 @@ function extractTriggerModalModes(card: OracleCard): TriggerModalExtraction | nu
   const shortName = frontName.split(",")[0]!;
   const headText = lines[headIndex]!
     .trim()
-    .replace(/,\s*choose one\s*[—-]\s*$/i, "")
+    .replace(/,\s*choose (?:one or more|up to one|up to two|two|one)\s*[\u2014-]\s*$/i, "")
     .replace(/\bthis creature\b/gi, "~")
     .replace(new RegExp(`\\b${frontName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "g"), "~")
     // Legend short names ("When Atsushi dies").
@@ -10702,7 +10725,24 @@ function extractTriggerModalModes(card: OracleCard): TriggerModalExtraction | nu
   return {
     remainingText,
     raw,
-    trigger: { ...headRest, modes, effects: [], targetRequirements: [] },
+    trigger: {
+      ...headRest,
+      modes,
+      ...(headCount === "one"
+        ? {}
+        : {
+            modeChoice:
+              headCount === "one or more"
+                ? { min: 1, max: modes.length }
+                : headCount === "up to one"
+                  ? { min: 0, max: 1 }
+                  : headCount === "up to two"
+                    ? { min: 0, max: 2 }
+                    : { min: 2, max: 2 },
+          }),
+      effects: [],
+      targetRequirements: [],
+    },
   };
 }
 

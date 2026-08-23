@@ -435,7 +435,16 @@ export class GameHost {
           continue;
         }
         if (prompt.kind === "choose_trigger_mode") {
-          this.apply({ kind: "resolve_trigger_mode", playerId: prompt.playerId, modeIndex: 0 });
+          const bounds = prompt.modeChoice ?? { min: 1, max: 1 };
+          const available =
+            this.state.definitions[this.state.cards[prompt.sourceId]?.definitionId ?? ""]
+              ?.triggers[prompt.triggerIndex]?.modes?.length ?? 0;
+          const take = Math.min(Math.max(bounds.min, 1), bounds.max, available);
+          this.apply({
+            kind: "resolve_trigger_mode",
+            playerId: prompt.playerId,
+            modeIndexes: Array.from({ length: take }, (_, index) => index),
+          });
           continue;
         }
         if (prompt.kind === "choose_card") {

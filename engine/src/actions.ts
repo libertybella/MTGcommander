@@ -1686,7 +1686,11 @@ export function applyAction(
         next = applyResolveEnterCopy(state, action.playerId, action.cardId);
         break;
       case "resolve_trigger_mode":
-        next = applyResolveTriggerMode(state, action.playerId, action.modeIndex);
+        next = applyResolveTriggerMode(
+          state,
+          action.playerId,
+          action.modeIndexes ?? action.modeIndex ?? [],
+        );
         break;
       case "resolve_scry": {
         const prompt = currentPrompt(state);

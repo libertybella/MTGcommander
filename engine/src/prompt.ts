@@ -101,7 +101,7 @@ export function applyChooseTargets(
 export function applyResolveTriggerMode(
   state: GameState,
   playerId: PlayerId,
-  modeIndex: number,
+  chosen: number | number[],
 ): GameState {
   const prompt = currentPrompt(state);
   if (!prompt || prompt.kind !== "choose_trigger_mode") {
@@ -113,13 +113,36 @@ export function applyResolveTriggerMode(
   }
   const source = state.cards[prompt.sourceId];
   const trigger = source ? triggersOf(state, prompt.sourceId)[prompt.triggerIndex] : undefined;
-  const mode = trigger?.modes?.[modeIndex];
-  if (!mode) {
+  // Absent bounds mean exactly one, which is what every modal trigger
+  // written before Black Market Connections asked for.
+  const bounds = prompt.modeChoice ?? { min: 1, max: 1 };
+  const picked = (Array.isArray(chosen) ? chosen : [chosen]).filter(
+    (index, at, all) => all.indexOf(index) === at,
+  );
+  if (picked.length < bounds.min || picked.length > bounds.max) {
+    throw new Error("Wrong number of modes chosen");
+  }
+  if (picked.some((index) => !trigger?.modes?.[index])) {
     throw new Error("Choose one of the trigger's modes");
   }
+  const modeIndex = picked[0];
+  const mode = modeIndex === undefined ? undefined : trigger?.modes?.[modeIndex];
   const next = cloneGameState(state);
   next.prompts.shift();
-  const requirements = mode.targetRequirements ?? [];
+  // "Up to one" with none picked: the trigger simply does nothing.
+  if (picked.length === 0 || !mode || modeIndex === undefined) {
+    next.passesSinceAction = 0;
+    if (next.prompts.length === 0) {
+      next.priorityPlayerId = next.turn.activePlayerId;
+    }
+    return next;
+  }
+  // Several modes at once ride the stack object together; the targeting
+  // path below handles the single-mode case it always has.
+  const requirements =
+    picked.length > 1
+      ? picked.flatMap((index) => trigger?.modes?.[index]?.targetRequirements ?? [])
+      : mode.targetRequirements ?? [];
   if (requirements.length > 0) {
     if (!hasAnyLegalTargetSet(next, requirements, playerId)) {
       return next;
@@ -147,6 +170,7 @@ export function applyResolveTriggerMode(
     triggerIndex: prompt.triggerIndex,
     ...grantedTriggerSpread(next, prompt.sourceId, prompt.triggerIndex),
     modeIndex,
+    ...(picked.length > 1 ? { modeIndexes: [...picked] } : {}),
     ...(prompt.subjectCardId ? { subjectCardId: prompt.subjectCardId } : {}),
     ...(prompt.subjectPlayerId ? { subjectPlayerId: prompt.subjectPlayerId } : {}),
     ...(prompt.subjectAmount ? { subjectAmount: prompt.subjectAmount } : {}),
