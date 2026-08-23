@@ -1400,6 +1400,8 @@ export function bindCardEffect(
         ...(effect.gainsHaste ? { gainsHaste: true } : {}),
         ...(effect.atEndStep ? { atEndStep: effect.atEndStep } : {}),
         ...(effect.setPt ? { setPt: { ...effect.setPt } } : {}),
+        ...(effect.setColors ? { setColors: [...effect.setColors] } : {}),
+        ...(effect.addSubtypes ? { addSubtypes: [...effect.addSubtypes] } : {}),
       };
     }
     case "counter_spell": {
@@ -2830,26 +2832,45 @@ function applyCopyToken(
     gainsHaste?: boolean;
     atEndStep?: "sacrifice" | "exile";
     setPt?: { power: number; toughness: number };
+    setColors?: Color[];
+    addSubtypes?: string[];
   },
 ): GameState {
   requirePlayer(state, ownerId);
   const original = state.cards[ofCardId];
   // "stack" is allowed for Offspring: the copy is made as the spell resolves,
-  // just before the original itself enters the battlefield.
-  if (!original || (original.zone !== "battlefield" && original.zone !== "stack")) {
+  // just before the original itself enters the battlefield. "graveyard" is
+  // allowed for eternalize, which copies the card it is exiling.
+  if (
+    !original ||
+    (original.zone !== "battlefield" &&
+      original.zone !== "stack" &&
+      original.zone !== "graveyard")
+  ) {
     throw new Error(`Card ${ofCardId} is not on the battlefield`);
   }
   const next = cloneGameState(state);
   let copyDefinitionId = original.definitionId;
-  if (opts?.setPt) {
-    // Offspring: the copy is 1/1 — a cloned definition with overridden base
-    // power and toughness.
+  if (opts?.setPt || opts?.setColors || opts?.addSubtypes) {
+    // Offspring: the copy is 1/1. Eternalize: a 4/4 black Zombie that keeps
+    // its own name and abilities. Both are a cloned definition with the
+    // named characteristics overridden.
     const sourceDefinition = next.definitions[original.definitionId];
     if (sourceDefinition) {
       const overridden = JSON.parse(JSON.stringify(sourceDefinition)) as typeof sourceDefinition;
       overridden.id = createId("definition");
-      overridden.power = opts.setPt.power;
-      overridden.toughness = opts.setPt.toughness;
+      if (opts.setPt) {
+        overridden.power = opts.setPt.power;
+        overridden.toughness = opts.setPt.toughness;
+      }
+      if (opts.setColors) {
+        overridden.characteristics.colors = [...opts.setColors];
+      }
+      for (const subtype of opts.addSubtypes ?? []) {
+        if (!overridden.characteristics.subtypes.includes(subtype)) {
+          overridden.characteristics.subtypes.push(subtype);
+        }
+      }
       next.definitions[overridden.id] = overridden;
       copyDefinitionId = overridden.id;
     }

@@ -11580,6 +11580,41 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
       continue;
     }
 
+    // Eternalize (CR 702.129) lowers to its full rules text: exile the card
+    // from the graveyard and get a 4/4 black Zombie copy of it, which keeps
+    // its name and abilities and loses only its mana cost and its size.
+    const eternalize = sentence.match(/^Eternalize ((?:\{[^}]+\})+)$/i);
+    if (eternalize?.[1]) {
+      let eternalizeCostOk = true;
+      try {
+        parseManaCost(eternalize[1]);
+      } catch {
+        eternalizeCostOk = false;
+      }
+      if (eternalizeCostOk) {
+        result.activated.push({
+          tap: false,
+          manaCost: eternalize[1],
+          zone: "graveyard",
+          effects: [
+            {
+              kind: "copy_token",
+              ownerId: "controller",
+              ofCardId: "self",
+              setPt: { power: 4, toughness: 4 },
+              setColors: ["B"],
+              addSubtypes: ["zombie"],
+            },
+            // The copy is made from the card, so the exile follows it.
+            { kind: "move_card", cardId: "self", toZone: "exile" },
+          ],
+          targetRequirements: [],
+          timing: "sorcery",
+        });
+        continue;
+      }
+    }
+
     // Unearth (CR 702.83) lowers to its full rules text as well: a graveyard
     // activation at sorcery speed whose arrival is hasty and temporary. The
     // "or if it would leave the battlefield" half of the exile is not modelled

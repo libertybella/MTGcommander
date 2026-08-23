@@ -1052,6 +1052,9 @@ export type GameEffect =
       gainsHaste?: boolean;
       atEndStep?: "sacrifice" | "exile";
       setPt?: { power: number; toughness: number };
+      /** Eternalize: the copy is black and a Zombie on top of its own types. */
+      setColors?: Color[];
+      addSubtypes?: string[];
     }
   | { kind: "manifest"; playerId: PlayerId; count: number }
   | {
@@ -1855,6 +1858,9 @@ export type CardEffect =
       atEndStep?: "sacrifice" | "exile";
       /** Offspring: the copy's base power and toughness are overridden (1/1). */
       setPt?: { power: number; toughness: number };
+      /** Eternalize: the copy is black and a Zombie on top of its own types. */
+      setColors?: Color[];
+      addSubtypes?: string[];
     }
   | { kind: "manifest"; playerId: PlayerSelector; count: number }
   | {

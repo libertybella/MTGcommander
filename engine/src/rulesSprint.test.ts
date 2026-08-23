@@ -26796,3 +26796,124 @@ describe("wave 209: coming back, and coming back smaller", () => {
   });
 });
 
+
+describe("wave 210: eternalize, a copy made from the graveyard", () => {
+  const compile = (name: string, manaCost: string, typeLine: string, oracleText: string, power?: string, toughness?: string) =>
+    compileOracleCard({
+      oracleId: name,
+      name,
+      manaCost,
+      typeLine,
+      power: power ?? null,
+      toughness: toughness ?? null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  it("exiles the card and leaves a 4/4 black Zombie behind", () => {
+    const witness = compile(
+      "Timeless Witness",
+      "{2}{G}{G}",
+      "Creature — Human Shaman",
+      "When this creature enters, return target card from your graveyard to your hand.\nEternalize {5}{G}{G}",
+      "2",
+      "1",
+    );
+    expect(witness.notes).toEqual([]);
+    expect(witness.definition.activated[0]).toEqual({
+      tap: false,
+      manaCost: "{5}{G}{G}",
+      zone: "graveyard",
+      effects: [
+        {
+          kind: "copy_token",
+          ownerId: "controller",
+          ofCardId: "self",
+          setPt: { power: 4, toughness: 4 },
+          setColors: ["B"],
+          addSubtypes: ["zombie"],
+        },
+        { kind: "move_card", cardId: "self", toZone: "exile" },
+      ],
+      targetRequirements: [],
+      timing: "sorcery",
+    });
+
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const definition = createCardDefinition({
+      name: "Timeless Witness",
+      typeLine: "Creature — Human Shaman",
+      manaCost: "{2}{G}{G}",
+      power: 2,
+      toughness: 1,
+    });
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({
+      definitionId: definition.id,
+      ownerId: p1.id,
+      zone: "graveyard",
+    });
+    game.cards[card.id] = card;
+    p1.zones.graveyard.push(card.id);
+
+    // The copy is made from a card in the GRAVEYARD, which the copier used to
+    // refuse outright.
+    let next = applyEffect(game, {
+      kind: "copy_token",
+      ownerId: p1.id,
+      ofCardId: card.id,
+      setPt: { power: 4, toughness: 4 },
+      setColors: ["B"],
+      addSubtypes: ["zombie"],
+    });
+    next = applyEffect(next, { kind: "move_card", cardId: card.id, toZone: "exile" });
+
+    expect(next.cards[card.id]?.zone).toBe("exile");
+    const token = Object.values(next.cards).find((entry) => entry.isToken);
+    expect(token).toBeDefined();
+    const computed = computedCard(next, token!.id);
+    expect(computed?.power).toBe(4);
+    expect(computed?.toughness).toBe(4);
+    expect(computed?.characteristics.colors).toEqual(["B"]);
+    // A Zombie ON TOP of what it already was — the printed types stay.
+    expect(computed?.characteristics.subtypes).toContain("zombie");
+    expect(computed?.characteristics.subtypes).toContain("human");
+    expect(computed?.characteristics.subtypes).toContain("shaman");
+  });
+
+  it("leaves the original card's own definition alone", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const definition = createCardDefinition({
+      name: "Fanatic of Rhonas",
+      typeLine: "Creature — Human Warrior",
+      power: 2,
+      toughness: 6,
+    });
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({
+      definitionId: definition.id,
+      ownerId: p1.id,
+      zone: "graveyard",
+    });
+    game.cards[card.id] = card;
+    p1.zones.graveyard.push(card.id);
+
+    const next = applyEffect(game, {
+      kind: "copy_token",
+      ownerId: p1.id,
+      ofCardId: card.id,
+      setPt: { power: 4, toughness: 4 },
+      setColors: ["B"],
+      addSubtypes: ["zombie"],
+    });
+    // The overrides go on a CLONED definition; mutating the shared one would
+    // silently make every other copy of the card a black Zombie too.
+    expect(next.definitions[definition.id]?.power).toBe(2);
+    expect(next.definitions[definition.id]?.characteristics.colors).toEqual([]);
+    expect(next.definitions[definition.id]?.characteristics.subtypes).not.toContain("zombie");
+  });
+});
+

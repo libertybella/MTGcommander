@@ -3172,6 +3172,12 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
               },
             }
           : {}),
+        ...(value.setColors === undefined
+          ? {}
+          : { setColors: parseColorArray(value.setColors, `${label}.setColors`) }),
+        ...(value.addSubtypes === undefined
+          ? {}
+          : { addSubtypes: expectStringArray(value.addSubtypes, `${label}.addSubtypes`) }),
       };
     case "manifest":
       return {
@@ -4742,6 +4748,12 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
             },
           }
         : {}),
+      ...(value.setColors === undefined
+        ? {}
+        : { setColors: parseColorArray(value.setColors, `${label}.setColors`) }),
+      ...(value.addSubtypes === undefined
+        ? {}
+        : { addSubtypes: expectStringArray(value.addSubtypes, `${label}.addSubtypes`) }),
     };
   }
   if (kind === "manifest") {
