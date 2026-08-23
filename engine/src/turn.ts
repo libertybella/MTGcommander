@@ -1,4 +1,5 @@
 import { characteristicsOf, isCreature } from "./cardTypes";
+import { advanceControlledSagasInPlace } from "./saga";
 import { abilitiesRemoved } from "./characteristicsEngine";
 import { cloneGameState } from "./clone";
 import {
@@ -372,6 +373,10 @@ function onEnterStep(state: GameState): GameState {
     return state;
   }
   if (state.turn.step === "precombatMain") {
+    // Sagas take their lore counter after the active player's draw step
+    // (CR 714.2b), which is this moment — nothing happens between the two
+    // but priority.
+    advanceControlledSagasInPlace(state);
     const afterDelayedMain = fireDelayedTriggers(state, "first_main_phase");
     dispatchEventsInPlace(afterDelayedMain, [
       { kind: "step_begins", step: "precombatMain" },

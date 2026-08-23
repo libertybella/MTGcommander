@@ -98,6 +98,7 @@ export type CompiledOracleText = {
   attackTax?: { generic?: number; perEnchantment?: boolean; lifePer?: number };
   leyline?: boolean;
   openingHandStart?: { counter: string; exileFromHand: number };
+  saga?: { chapters: CardEffect[][] };
   castFromGraveyard?: { types?: string[]; subtypes?: string[] };
   ascend?: boolean;
   untapDuringEachUntap?: "creatures" | "permanents" | "artifacts";
@@ -540,6 +541,11 @@ function normalizeOracleText(card: OracleCard): string {
   // Periods inside quoted granted abilities ('… have "{T}: Add {C}."') must
   // not split the sentence; shield them, split, then restore.
   text = text.replace(/"[^"]*"/g, (quoted) => quoted.replace(/\./g, PERIOD_SHIELD));
+  // A quote INSIDE a quote uses single marks — Urza's Saga's Construct
+  // token carries its own '…gets +1/+1 for each artifact you control.'
+  // Only a span that looks like a whole quoted ability is shielded, so an
+  // ordinary apostrophe ("its controller's") is left alone.
+  text = text.replace(/'[A-Z~][^']*\.'/g, (quoted) => quoted.replace(/\./g, PERIOD_SHIELD));
   return text;
 }
 
@@ -5949,6 +5955,40 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     }
   }
 
+  // Urza's Saga's Construct: a token whose printed text is a static of its
+  // own. The static belongs to the TOKEN, not to whatever made it, so it
+  // rides the create_token effect onto the token's definition.
+  const tokenWithStatic = sentence.match(
+    /^Create (.+? token) with ['‘“](?:This token|~) gets \+(\d+)\/\+(\d+) for each (.+?)\.?['’”]\.?$/i,
+  );
+  if (tokenWithStatic?.[1] && tokenWithStatic[2] && tokenWithStatic[3] && tokenWithStatic[4]) {
+    const per = parseDynamicCount(tokenWithStatic[4]);
+    const descriptor = parseTokenDescriptor(tokenWithStatic[1]);
+    if (per && descriptor && !descriptor.countUnspecified) {
+      const token: CardEffect = {
+        kind: "create_token",
+        ownerId: "controller",
+        name: descriptor.name,
+        typeLine: descriptor.typeLine,
+        power: descriptor.power,
+        toughness: descriptor.toughness,
+        ...(descriptor.keywords.length > 0 ? { keywords: descriptor.keywords } : {}),
+        ...(descriptor.colors.length > 0 ? { colors: descriptor.colors } : {}),
+        bonusPt: {
+          power: Number(tokenWithStatic[2]),
+          toughness: Number(tokenWithStatic[3]),
+          per,
+        },
+      };
+      return {
+        targetRequirements: [],
+        effects: Array.from({ length: descriptor.count === "x" ? 1 : descriptor.count }, () => ({
+          ...token,
+        })),
+      };
+    }
+  }
+
   const createdTokens = sentence.match(
     /^(?:Then )?(?:(You|Its controller|Each player|Each opponent|Target player|Target opponent) creates?|(?:You may )?Create) (.+)$/i,
   );
@@ -6340,6 +6380,31 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
         },
       ],
     };
+  }
+
+  // Urza's Saga chapter III: "an artifact card with mana cost {0} or {1}".
+  // The printed COST, not the mana value — a {W} artifact has mana value 1
+  // and is not what this asks for.
+  const costTutor = sentence.match(
+    /^Search your library for (?:an? )?(.+?) card with mana cost ((?:\{[^}]+\})+(?: or (?:\{[^}]+\})+)*), put it onto the battlefield, then shuffle$/i,
+  );
+  if (costTutor?.[1] && costTutor[2]) {
+    const filter = parseSearchDescriptor(costTutor[1]);
+    const costs = costTutor[2].split(/\s+or\s+/i).map((entry) => entry.trim());
+    if (filter && costs.length > 0) {
+      return {
+        targetRequirements: [],
+        effects: [
+          {
+            kind: "search_library",
+            playerId: "controller",
+            filter: { ...filter, manaCostIn: costs },
+            destination: "battlefield",
+            count: 1,
+          },
+        ],
+      };
+    }
   }
 
   // Green Sun's Zenith: an X-capped tutor straight to the battlefield.
@@ -10709,6 +10774,81 @@ function foldLookRun(
  * auto-taking an opponent's would decide the punisher for them — which is
  * the entire card.
  */
+const ROMAN_CHAPTERS: Record<string, number> = {
+  i: 1,
+  ii: 2,
+  iii: 3,
+  iv: 4,
+  v: 5,
+};
+
+/**
+ * A Saga's chapter lines (CR 714), which print as "I — …", "II — …" and so
+ * on. Collected as a run, because a Saga is one object and a chapter that
+ * did not read leaves the whole card half-built — a Saga that sacrifices
+ * itself after a chapter it cannot perform is worse than one that misses.
+ *
+ * `This Saga gains "…"` goes through the shared quoted-ability compiler,
+ * which already knows a granted mana ability from a granted activated one.
+ * The grant is turned inward: it is the Saga itself that gains the ability.
+ */
+function compileSagaChapters(
+  sentences: string[],
+  index: number,
+): { chapters: CardEffect[][]; consumed: number } | null {
+  const chapters: CardEffect[][] = [];
+  let scan = index;
+  while (scan < sentences.length) {
+    const line = sentences[scan]?.match(/^([IVX]+(?:, ?[IVX]+)*) [—-] (.+)$/i);
+    if (!line?.[1] || !line[2]) {
+      break;
+    }
+    const numbers = line[1]
+      .split(/,\s*/)
+      .map((entry) => ROMAN_CHAPTERS[entry.trim().toLowerCase()]);
+    if (numbers.some((entry) => entry === undefined)) {
+      return null;
+    }
+    const body = line[2].trim();
+    const gains = body.match(/^This Saga gains "(.+)\.?"$/i);
+    let effects: CardEffect[] | null = null;
+    if (gains?.[1]) {
+      const granted = compileQuotedAbility(gains[1].replace(/\.$/, ""));
+      if (granted && granted.length === 1) {
+        const only = granted[0]!;
+        if (only.kind === "grant_mana_ability") {
+          effects = [{ kind: "grant_self_mana", ability: only.ability }];
+        } else if (only.kind === "grant_activated") {
+          effects = [{ kind: "grant_self_activated", ability: only.ability }];
+        }
+      }
+    } else {
+      const clause = compileSimpleClause(body);
+      if (clause && !clause.leftover && clause.targetRequirements.length === 0) {
+        effects = clause.effects;
+      }
+    }
+    if (!effects) {
+      return null;
+    }
+    for (const number of numbers) {
+      chapters[number! - 1] = effects.map((effect) => ({ ...effect }));
+    }
+    scan += 1;
+  }
+  if (chapters.length === 0) {
+    return null;
+  }
+  // A gap means a chapter did not read, and a Saga missing one of its own
+  // chapters is a wrong card rather than an incomplete one.
+  for (let chapter = 0; chapter < chapters.length; chapter += 1) {
+    if (!chapters[chapter]) {
+      return null;
+    }
+  }
+  return { chapters, consumed: scan - index };
+}
+
 function compileBraidsEndStep(
   sentences: string[],
   index: number,
@@ -12188,6 +12328,14 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
     // Parked as top-level effects on an enchantment, none of it would ever
     // run — so the run builds the trigger here rather than going through
     // commitClause.
+    // Sagas: the chapter lines are one object, read as a run.
+    const sagaRun = compileSagaChapters(sentences, index);
+    if (sagaRun) {
+      result.saga = { chapters: sagaRun.chapters };
+      index += sagaRun.consumed - 1;
+      continue;
+    }
+
     // Braids: a three-sentence run that is one triggered ability.
     const braids = compileBraidsEndStep(sentences, index);
     if (braids) {

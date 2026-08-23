@@ -178,6 +178,7 @@ export function createCardDefinition(
         | "playLandsFromGraveyard"
         | "leyline"
         | "openingHandStart"
+        | "saga"
         | "castFromGraveyard"
         | "ascend"
         | "untapDuringEachUntap"
@@ -605,6 +606,9 @@ export function createCardDefinition(
     ...(input.grantsEscape ? { grantsEscape: { ...input.grantsEscape } } : {}),
     ...(input.playLandsFromGraveyard ? { playLandsFromGraveyard: true } : {}),
     ...(input.leyline ? { leyline: true } : {}),
+    ...(input.saga
+      ? { saga: { chapters: input.saga.chapters.map((chapter) => chapter.map((effect) => ({ ...effect }))) } }
+      : {}),
     ...(input.openingHandStart
       ? { openingHandStart: { ...input.openingHandStart } }
       : {}),

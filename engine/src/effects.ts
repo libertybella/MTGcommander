@@ -1770,6 +1770,15 @@ export function bindCardEffect(
         ...(effect.notLegendary ? { notLegendary: true } : {}),
       };
     }
+    case "grant_self_activated":
+    case "grant_self_mana": {
+      // Urza's Saga: the chapter gives the ability to the SAGA, so with no
+      // source there is nothing to give it to.
+      if (!context.sourceId) {
+        return null;
+      }
+      return { kind: effect.kind, cardId: context.sourceId, ability: effect.ability } as GameEffect;
+    }
     case "grant_play_chosen": {
       const grantTo = bindPlayerSelector(state, effect.playerId, context);
       // Dauthi Voidwalker: the card the ability just chose. With no choice
@@ -3048,6 +3057,9 @@ function applyCreateToken(
     ...(preset?.manaAbilities ? { manaAbilities: preset.manaAbilities } : {}),
     ...(preset?.activated ? { activated: preset.activated } : {}),
     ...(preset?.changeling ? { changeling: true } : {}),
+    // Urza's Saga's Construct: the static belongs to the TOKEN, so it rides
+    // the definition every copy is made from.
+    ...(effect.bonusPt ? { bonusPt: { ...effect.bonusPt } } : {}),
   });
   next.definitions[definition.id] = definition;
   const owner = next.players.find((player) => player.id === effect.ownerId);
@@ -4209,6 +4221,28 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
             cost: effect.cost.repeat(age),
             effects: [{ kind: "sacrifice", cardId: effect.cardId }],
           });
+        }
+        break;
+      }
+      case "grant_self_activated": {
+        next = cloneGameState(state);
+        const gainer = next.cards[effect.cardId];
+        if (gainer && gainer.zone === "battlefield") {
+          gainer.grantedActivatedAbilities = [
+            ...(gainer.grantedActivatedAbilities ?? []),
+            structuredClone(effect.ability),
+          ];
+        }
+        break;
+      }
+      case "grant_self_mana": {
+        next = cloneGameState(state);
+        const producer = next.cards[effect.cardId];
+        if (producer && producer.zone === "battlefield") {
+          producer.grantedManaAbilities = [
+            ...(producer.grantedManaAbilities ?? []),
+            structuredClone(effect.ability),
+          ];
         }
         break;
       }

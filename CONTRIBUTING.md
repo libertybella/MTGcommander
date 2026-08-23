@@ -113,7 +113,13 @@ npx vitest run server/src/definitionLoads.test.ts
 
 `[load-fail] total: 0` is the pass.
 
-**If the fuzz burn hangs, add `--reporter=basic`.** Twice now the burn
+**If the fuzz burn hangs or exits 1, run the shards one at a time.**
+`npx vitest run engine/src/fuzz.test.ts` and each `fuzz.shardN.test.ts`
+separately, 25 tests apiece. The parallel run has hung twice and reported
+`Timeout calling "onTaskUpdate"` several times more — always with every
+test PASSED and zero assertion errors. It reproduces on an unmodified
+tree, so it is the reporter's RPC channel and not the engine; check
+`AssertionError` count, not the exit code. `--reporter=basic` helps some. Twice now the burn
 has left its eight workers alive with a full burn's worth of CPU spent
 (~37s each) and produced nothing for half an hour: the work is done and
 the interactive reporter's RPC channel is what is stuck. `--reporter=basic`

@@ -525,6 +525,22 @@ export function parseGameState(json: string): GameState {
       ...(card.drawnOnTurn === undefined
         ? {}
         : { drawnOnTurn: expectNumber(card.drawnOnTurn, "card.drawnOnTurn") }),
+      ...(Array.isArray(card.grantedActivatedAbilities)
+        ? {
+            grantedActivatedAbilities: parseActivatedAbilities(
+              card.grantedActivatedAbilities,
+              "card.grantedActivatedAbilities",
+            ),
+          }
+        : {}),
+      ...(Array.isArray(card.grantedManaAbilities)
+        ? {
+            grantedManaAbilities: parseManaAbilities(
+              card.grantedManaAbilities,
+              "card.grantedManaAbilities",
+            ),
+          }
+        : {}),
       loyaltyActivatedThisTurn: card.loyaltyActivatedThisTurn === true,
       ...(card.skipNextUntap === true ? { skipNextUntap: true } : {}),
       ...(card.goadedBy === undefined
@@ -1152,6 +1168,16 @@ export function parseGameState(json: string): GameState {
           }
         : {}),
       ...(def.playLandsFromGraveyard === true ? { playLandsFromGraveyard: true } : {}),
+      ...(isRecord(def.saga)
+        ? {
+            saga: {
+              chapters: (Array.isArray(def.saga.chapters) ? def.saga.chapters : []).map(
+                (chapter: unknown, chapterIndex: number) =>
+                  parseCardEffects(chapter, `definition.${id}.saga.chapters[${chapterIndex}]`),
+              ),
+            },
+          }
+        : {}),
       ...(def.leyline === true ? { leyline: true } : {}),
       ...(isRecord(def.openingHandStart)
         ? {
@@ -2378,6 +2404,9 @@ function parseSearchFilter(value: unknown, label: string): SearchFilter {
     ...(subtypesAny.length > 0 ? { subtypesAny } : {}),
     ...(typesAny.length > 0 ? { typesAny } : {}),
     ...(colors.length > 0 ? { colors } : {}),
+    ...(Array.isArray(value.manaCostIn)
+      ? { manaCostIn: parseStringList(value.manaCostIn, `${label}.manaCostIn`) }
+      : {}),
     ...(value.maxManaValue === undefined
       ? {}
       : { maxManaValue: expectNumber(value.maxManaValue, `${label}.maxManaValue`) }),
@@ -3043,6 +3072,16 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
       };
     case "play_hidden_card":
       return { kind, ...(value.free === true ? { free: true } : {}) };
+    case "grant_self_activated":
+      return {
+        kind,
+        ability: parseActivatedAbilities([value.ability], `${label}.ability`)[0]!,
+      };
+    case "grant_self_mana":
+      return {
+        kind,
+        ability: parseManaAbilities([value.ability], `${label}.ability`)[0]!,
+      };
     case "grant_play_chosen":
       return {
         kind,
@@ -3210,6 +3249,15 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
           : { perSourceCounters: expectString(value.perSourceCounters, `${label}.perSourceCounters`) }),
         ...(value.entersTappedAttacking === true ? { entersTappedAttacking: true } : {}),
         ...(value.attackingEachOpponent === true ? { attackingEachOpponent: true } : {}),
+        ...(isRecord(value.bonusPt)
+          ? {
+              bonusPt: {
+                power: expectNumber(value.bonusPt.power, `${label}.bonusPt.power`),
+                toughness: expectNumber(value.bonusPt.toughness, `${label}.bonusPt.toughness`),
+                per: parseDynamicCount(value.bonusPt.per, `${label}.bonusPt.per`),
+              },
+            }
+          : {}),
         ...(value.entersTapped === true ? { entersTapped: true } : {}),
         ...(value.colors === undefined
           ? {}
@@ -5993,6 +6041,20 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
       ...(value.free === true ? { free: true } : {}),
     };
   }
+  if (kind === "grant_self_activated") {
+    return {
+      kind,
+      cardId: expectString(value.cardId, `${label}.cardId`),
+      ability: parseActivatedAbilities([value.ability], `${label}.ability`)[0]!,
+    };
+  }
+  if (kind === "grant_self_mana") {
+    return {
+      kind,
+      cardId: expectString(value.cardId, `${label}.cardId`),
+      ability: parseManaAbilities([value.ability], `${label}.ability`)[0]!,
+    };
+  }
   if (kind === "grant_play_chosen") {
     return {
       kind,
@@ -6335,6 +6397,15 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
         : {}),
       ...(value.entersTappedAttacking === true ? { entersTappedAttacking: true } : {}),
       ...(value.attackingEachOpponent === true ? { attackingEachOpponent: true } : {}),
+      ...(isRecord(value.bonusPt)
+        ? {
+            bonusPt: {
+              power: expectNumber(value.bonusPt.power, `${label}.bonusPt.power`),
+              toughness: expectNumber(value.bonusPt.toughness, `${label}.bonusPt.toughness`),
+              per: parseDynamicCount(value.bonusPt.per, `${label}.bonusPt.per`),
+            },
+          }
+        : {}),
       ...(value.entersTapped === true ? { entersTapped: true } : {}),
       ...(value.atEndStep === "sacrifice" || value.atEndStep === "exile"
         ? { atEndStep: value.atEndStep }

@@ -213,7 +213,17 @@ function manaAbilitiesUngated(state: GameState, cardId: CardInstanceId): ManaAbi
   if (computed?.abilitiesRemoved) {
     return [...(computed?.grantedMana ?? [])];
   }
-  const abilities = [...manaAbilitiesOf(definition), ...(computed?.grantedMana ?? [])];
+  // Urza's Saga: chapter I gives it "{T}: Add {C}", which is a MANA
+  // ability and must never use the stack — so it joins the list here
+  // rather than among the activated ones.
+  const given = card.grantedManaAbilities;
+  const granted = computed?.grantedMana;
+  // This runs constantly. Both extras are empty on almost every permanent,
+  // so the common case keeps the printed array rather than rebuilding it.
+  const abilities =
+    (given && given.length > 0) || (granted && granted.length > 0)
+      ? [...manaAbilitiesOf(definition), ...(given ?? []), ...(granted ?? [])]
+      : manaAbilitiesOf(definition);
   if (computed?.characteristics.types.includes("land")) {
     const printedColors = new Set<ManaColor>();
     for (const ability of abilities) {

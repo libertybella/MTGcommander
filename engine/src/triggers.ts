@@ -1,4 +1,5 @@
 import { characteristicsOf, isCommander, isMainPhase } from "./cardTypes";
+import { advanceSagaInPlace } from "./saga";
 import {
   abilitiesRemoved,
   cardMatchesSubtype,
@@ -1277,6 +1278,12 @@ export function queueEnterBattlefieldTriggersInPlace(
     return;
   }
   dispatchEventsInPlace(state, [{ kind: "enters", cardId }]);
+  // A Saga enters with a lore counter and its first chapter fires at once
+  // (CR 714.2b), after the ordinary enter triggers rather than instead of
+  // them — a Saga that also has an ETB gets both.
+  if (state.definitions[state.cards[cardId]?.definitionId ?? ""]?.saga) {
+    advanceSagaInPlace(state, cardId);
+  }
 }
 
 /** Queue "at the beginning of combat on your turn" triggers for the active player. */

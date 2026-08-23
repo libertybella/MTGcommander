@@ -467,6 +467,18 @@ export type CardDefinition = {
    * Leylines: if in the opening hand, begins the game on the battlefield.
    * Deployed automatically when mulligans finish (the "may" is auto-taken).
    */
+  /**
+   * Sagas (CR 714). `chapters[0]` is chapter I. A lore counter goes on as
+   * the Saga enters and again after its controller's draw step, and the
+   * chapter matching the new count fires. After the final chapter it is
+   * sacrificed.
+   *
+   * Documented simplification: the sacrifice happens as the final chapter
+   * finishes resolving rather than when the ability leaves the stack, so a
+   * response to the last chapter cannot save the Saga. Nothing in this
+   * engine reads the difference.
+   */
+  saga?: { chapters: CardEffect[][] };
   leyline?: boolean;
   /**
    * Gemstone Caverns: if in the opening hand and its owner is NOT the
@@ -545,6 +557,15 @@ export type CardInstance = {
    * AFTER it has gone.
    */
   reanimatedCardId?: CardInstanceId;
+  /**
+   * Urza's Saga: abilities the permanent was GIVEN ("this Saga gains …").
+   * Instance state rather than a layer static, because the grant comes from
+   * a resolved chapter and has to outlive it — chapter II's ability is
+   * still there on chapter III.
+   */
+  grantedActivatedAbilities?: ActivatedAbility[];
+  /** The same, for granted MANA abilities, which never use the stack. */
+  grantedManaAbilities?: ManaAbility[];
   /**
    * Sylvan Library: the turn this card was DRAWN, so "cards in your hand
    * drawn this turn" can name them. A tally of how many were drawn cannot:
@@ -947,6 +968,12 @@ export type SearchFilter = {
   nonTypes?: string[];
   /** "a non-Human creature card": none of these subtypes may be present. */
   nonSubtypes?: string[];
+  /**
+   * Urza's Saga: "an artifact card with mana cost {0} or {1}". The printed
+   * COST, not the mana value — a {W} artifact has mana value 1 and is not
+   * what this asks for.
+   */
+  manaCostIn?: string[];
   /** "with mana value N or less". */
   maxManaValue?: number;
   /** "with mana value X or less": resolved to maxManaValue from the announced
@@ -1155,6 +1182,12 @@ export type GameEffect =
       atEndStep?: "sacrifice" | "exile";
       /** Anim Pakal: count the source's counters when the effect applies. */
       countFromCounters?: { cardId: CardInstanceId; counter: string };
+      /**
+       * Urza's Saga's Construct: "this token gets +1/+1 for each artifact
+       * you control". The static belongs to the TOKEN, so it rides the
+       * definition the token is made from.
+       */
+      bonusPt?: { power: number; toughness: number; per: DynamicCount };
       /** Adeline: one token per opponent, each attacking that opponent. */
       attackingEachOpponent?: boolean;
       entersTappedAttacking?: boolean;
@@ -1206,6 +1239,9 @@ export type GameEffect =
       sourceId: CardInstanceId;
       free?: boolean;
     }
+  /** Urza's Saga, with the permanent already bound. */
+  | { kind: "grant_self_activated"; cardId: CardInstanceId; ability: ActivatedAbility }
+  | { kind: "grant_self_mana"; cardId: CardInstanceId; ability: ManaAbility }
   /** Dauthi Voidwalker, with the chosen card already bound. */
   | {
       kind: "grant_play_chosen";
@@ -2151,6 +2187,12 @@ export type CardEffect =
        * opponent. Not a count with a shared defender — in a four-player
        * game that difference is the card.
        */
+      /**
+       * Urza's Saga's Construct: "this token gets +1/+1 for each artifact
+       * you control". The static belongs to the TOKEN, so it rides the
+       * definition the token is made from.
+       */
+      bonusPt?: { power: number; toughness: number; per: DynamicCount };
       attackingEachOpponent?: boolean;
       /** "tapped and attacking": joins the current combat against the first
        * declared defender (a documented approximation). */
@@ -2254,6 +2296,10 @@ export type CardEffect =
    * never offer each other's.
    */
   | { kind: "play_hidden_card"; free?: boolean }
+  /** Urza's Saga: "This Saga gains '{2}, {T}: …'" — kept on the instance. */
+  | { kind: "grant_self_activated"; ability: ActivatedAbility }
+  /** The same for a mana ability, which must never use the stack. */
+  | { kind: "grant_self_mana"; ability: ManaAbility }
   /**
    * Dauthi Voidwalker: the CHOSEN exiled card becomes playable this turn.
    * The impulse grants above only reach cards the same effect just exiled;

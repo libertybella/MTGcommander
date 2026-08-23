@@ -833,6 +833,12 @@ export function searchMatches(
   if (!traits) {
     return false;
   }
+  // Urza's Saga: the printed COST, not the mana value. A {W} artifact has
+  // mana value 1 and is not an artifact with mana cost {1}.
+  const printedCost = state.definitions[card?.definitionId ?? ""]?.manaCost ?? "";
+  if (filter.manaCostIn && !filter.manaCostIn.includes(printedCost)) {
+    return false;
+  }
   for (const supertype of filter.supertypes ?? []) {
     if (!traits.supertypes.includes(supertype)) {
       return false;

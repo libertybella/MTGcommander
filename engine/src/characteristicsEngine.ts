@@ -1142,9 +1142,14 @@ export function activatedOf(
     return [];
   }
   const printed = state.definitions[card.definitionId]?.activated ?? [];
+  // Urza's Saga: abilities the permanent was GIVEN by a resolved chapter.
+  // Instance state, so they outlive the ability that granted them. Empty on
+  // almost every permanent, and this is a hot path.
+  const given = card.grantedActivatedAbilities;
   const granted = (computedById ? computedById[cardId] : computedCard(state, cardId))
     ?.grantedActivated;
-  return granted && granted.length > 0 ? [...printed, ...granted] : printed;
+  const all = given && given.length > 0 ? [...printed, ...given] : printed;
+  return granted && granted.length > 0 ? [...all, ...granted] : all;
 }
 
 /**

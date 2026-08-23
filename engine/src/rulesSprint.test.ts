@@ -40694,3 +40694,238 @@ describe("wave 299: a land that starts the game already in play", () => {
     expect(round.cards[cavernsId]?.counters["luck"]).toBe(1);
   });
 });
+
+describe("wave 300: Sagas, and the one that builds its own board", () => {
+  const URZA_TEXT =
+    "(As this Saga enters and after your draw step, add a lore counter. Sacrifice after III.)\nI — This Saga gains \"{T}: Add {C}.\"\nII — This Saga gains \"{2}, {T}: Create a 0/0 colorless Construct artifact creature token with 'This token gets +1/+1 for each artifact you control.'\"\nIII — Search your library for an artifact card with mana cost {0} or {1}, put it onto the battlefield, then shuffle.";
+
+  const sagaDefinition = (game: GameState) => {
+    const definition = createCardDefinition({
+      name: "Urza's Saga",
+      typeLine: "Enchantment Land — Urza's Saga",
+      saga: {
+        chapters: [
+          [
+            {
+              kind: "grant_self_mana",
+              ability: {
+                produces: { C: 1 },
+                producesOptions: [],
+                producesAnyColor: false,
+                damageToController: 0,
+              },
+            },
+          ],
+          [
+            {
+              kind: "grant_self_activated",
+              ability: {
+                tap: true,
+                manaCost: "{2}",
+                effects: [
+                  {
+                    kind: "create_token",
+                    ownerId: "controller",
+                    name: "Construct",
+                    typeLine: "Artifact Creature — Construct Token",
+                    power: 0,
+                    toughness: 0,
+                    bonusPt: { power: 1, toughness: 1, per: "artifacts_you_control" },
+                  },
+                ],
+                targetRequirements: [],
+              },
+            },
+          ],
+          [{ kind: "draw", playerId: "controller", count: 1 }],
+        ],
+      },
+    });
+    game.definitions[definition.id] = definition;
+    return definition;
+  };
+
+  const board = () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 8);
+    const definition = sagaDefinition(game);
+    const saga = createCardInstance({
+      definitionId: definition.id,
+      ownerId: p1.id,
+      zone: "hand",
+    });
+    game.cards[saga.id] = saga;
+    p1.zones.hand.push(saga.id);
+    game.turn.activePlayerId = p1.id;
+    game.turn.phase = "precombatMain";
+    game.turn.step = "precombatMain";
+    game.priorityPlayerId = p1.id;
+    return { game, p1, p2, sagaId: saga.id, definitionId: definition.id };
+  };
+
+  const enters = (game: GameState, sagaId: string) => moveCard(game, sagaId, "battlefield");
+
+  it("compiles Urza's Saga whole, all three chapters", () => {
+    const compiled = compileOracleCard({
+      oracleId: "urzas-saga",
+      name: "Urza's Saga",
+      manaCost: "",
+      typeLine: "Enchantment Land — Urza's Saga",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText: URZA_TEXT,
+    });
+    expect(compiled.notes).toEqual([]);
+    const chapters = compiled.definition.saga?.chapters ?? [];
+    expect(chapters).toHaveLength(3);
+    // I gives a MANA ability, which must never use the stack.
+    expect(chapters[0]?.[0]).toMatchObject({
+      kind: "grant_self_mana",
+      ability: { produces: { C: 1 } },
+    });
+    expect(chapters[1]?.[0]).toMatchObject({
+      kind: "grant_self_activated",
+      ability: { tap: true, manaCost: "{2}" },
+    });
+    // The Construct's static belongs to the TOKEN.
+    const maker = chapters[1]?.[0];
+    const token =
+      maker?.kind === "grant_self_activated" ? maker.ability.effects[0] : undefined;
+    expect(token).toMatchObject({
+      kind: "create_token",
+      bonusPt: { power: 1, toughness: 1, per: "artifacts_you_control" },
+    });
+    // III searches by printed COST, not mana value.
+    expect(chapters[2]?.[0]).toMatchObject({
+      kind: "search_library",
+      filter: { types: ["artifact"], manaCostIn: ["{0}", "{1}"] },
+    });
+  });
+
+  it("enters with a lore counter and runs chapter I at once", () => {
+    const { game, sagaId } = board();
+    const entered = enters(game, sagaId);
+    expect(entered.cards[sagaId]?.counters["lore"]).toBe(1);
+    // Chapter I gave it a mana ability, and it is a MANA ability — usable
+    // without the stack.
+    expect(entered.cards[sagaId]?.grantedManaAbilities).toHaveLength(1);
+    expect(manaAbilitiesFor(entered, sagaId)).toHaveLength(1);
+  });
+
+  it("takes another lore counter after the draw step", () => {
+    const { game, p1, sagaId } = board();
+    let state = enters(game, sagaId);
+    state.turn.phase = "beginning";
+    state.turn.step = "draw";
+    state = advanceSteps(state, 1);
+    expect(state.turn.step).toBe("precombatMain");
+    expect(state.cards[sagaId]?.counters["lore"]).toBe(2);
+    // Chapter II's ability is activated, and chapter I's mana ability is
+    // still there — a grant outlives the chapter that made it.
+    expect(activatedOf(state, sagaId)).toHaveLength(1);
+    expect(manaAbilitiesFor(state, sagaId)).toHaveLength(1);
+    expect(p1.id).toBeDefined();
+  });
+
+  it("sacrifices itself after the final chapter", () => {
+    const { game, p1, sagaId } = board();
+    let state = enters(game, sagaId);
+    for (let turn = 0; turn < 2; turn += 1) {
+      state.turn.phase = "beginning";
+      state.turn.step = "draw";
+      state = advanceSteps(state, 1);
+    }
+    // Three lore counters, three chapters: it goes.
+    expect(state.cards[sagaId]?.zone).toBe("graveyard");
+    // And the final chapter still happened.
+    expect(state.players.find((entry) => entry.id === p1.id)?.zones.hand.length).toBeGreaterThan(0);
+  });
+
+  it("does not advance on an opponent's turn", () => {
+    const { game, p2, sagaId } = board();
+    let state = enters(game, sagaId);
+    expect(state.cards[sagaId]?.counters["lore"]).toBe(1);
+    state.turn.activePlayerId = p2.id;
+    state.turn.phase = "beginning";
+    state.turn.step = "draw";
+    state = advanceSteps(state, 1);
+    // "After YOUR draw step" — an opponent's turn does nothing.
+    expect(state.cards[sagaId]?.counters["lore"]).toBe(1);
+  });
+
+  it("gives the Construct its own +1/+1 per artifact", () => {
+    const { game, p1 } = twoPlayers();
+    const state = applyEffects(
+      game,
+      bindCardEffects(
+        game,
+        [
+          {
+            kind: "create_token",
+            ownerId: "controller",
+            name: "Construct",
+            typeLine: "Artifact Creature — Construct Token",
+            power: 0,
+            toughness: 0,
+            bonusPt: { power: 1, toughness: 1, per: "artifacts_you_control" },
+          },
+        ],
+        { controllerId: p1.id, sourceId: null },
+      ),
+    );
+    const token = Object.values(state.cards).find((card) => card.isToken)!;
+    // The token is itself an artifact, so a lone Construct is 1/1.
+    expect(creaturePower(state, token.id)).toBe(1);
+    expect(computedCard(state, token.id)?.toughness).toBe(1);
+  });
+
+  it("searches by printed cost, not by mana value", () => {
+    const { game, p1 } = twoPlayers();
+    const cheap = createCardDefinition({ name: "Mox", typeLine: "Artifact", manaCost: "{0}" });
+    const coloured = createCardDefinition({ name: "Signet", typeLine: "Artifact", manaCost: "{W}" });
+    game.definitions[cheap.id] = cheap;
+    game.definitions[coloured.id] = coloured;
+    const holder = game.players.find((entry) => entry.id === p1.id)!;
+    for (const definition of [cheap, coloured]) {
+      const card = createCardInstance({
+        definitionId: definition.id,
+        ownerId: p1.id,
+        zone: "library",
+      });
+      game.cards[card.id] = card;
+      holder.zones.library.push(card.id);
+    }
+    const opened = applyEffects(
+      game,
+      bindCardEffects(
+        game,
+        [
+          {
+            kind: "search_library",
+            playerId: "controller",
+            filter: { types: ["artifact"], manaCostIn: ["{0}", "{1}"] },
+            destination: "battlefield",
+            count: 1,
+          },
+        ],
+        { controllerId: p1.id, sourceId: null },
+      ),
+    );
+    const legal = legalSearchIds(opened, opened.prompts[0]!);
+    // A {W} artifact has mana value 1 and is NOT an artifact with mana cost
+    // {1}. That difference is the whole filter.
+    expect(legal).toHaveLength(1);
+    expect(opened.cards[legal[0]!]?.definitionId).toBe(cheap.id);
+  });
+
+  it("round trips the chapters and the granted abilities", () => {
+    const { game, sagaId, definitionId } = board();
+    const entered = enters(game, sagaId);
+    const round = parseGameState(serializeGameState(entered));
+    expect(round.definitions[definitionId]?.saga?.chapters).toHaveLength(3);
+    expect(round.cards[sagaId]?.grantedManaAbilities).toHaveLength(1);
+    expect(round.cards[sagaId]?.counters["lore"]).toBe(1);
+  });
+});

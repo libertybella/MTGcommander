@@ -870,6 +870,42 @@ more questions it can now ask:
   (Bennie Bracks). Reads the existing per-player `createdTokenThisTurn`
   list, and asks whether the CONTROLLER is in it — an opponent's Treasure
   must not satisfy it.
+- **Sagas (CR 714)** — `definition.saga.chapters`, indexed from chapter I. A
+  lore counter goes on as the Saga enters, and again after its controller's
+  draw step — modelled at the start of precombat main, which is the same
+  moment, since nothing happens between the two but priority. The chapter
+  matching the new count fires; a count past the last chapter does nothing.
+
+  Documented simplification: the sacrifice happens as the final chapter
+  finishes resolving rather than when the ability leaves the stack, so a
+  response to the last chapter cannot save the Saga. Nothing in this engine
+  reads the difference.
+
+  A chapter that does not read fails the WHOLE Saga rather than leaving a
+  gap. A Saga that sacrifices itself after a chapter it could not perform is
+  worse than one that honestly misses.
+
+- **`CardInstance.grantedActivatedAbilities` / `.grantedManaAbilities`** —
+  "This Saga gains …". Instance state rather than a layer static, because
+  the grant comes from a resolved chapter and has to outlive it: chapter
+  II's ability is still there on chapter III. The quoted text goes through
+  the shared `compileQuotedAbility`, which already tells a granted MANA
+  ability from an activated one — chapter I's `{T}: Add {C}` must never use
+  the stack.
+
+- **`SearchFilter.manaCostIn`** — Urza's Saga chapter III searches for an
+  artifact "with mana cost {0} or {1}": the printed COST, not the mana
+  value. A {W} artifact has mana value 1 and is not what the card asks for,
+  and there is a test for exactly that.
+
+- **`create_token.bonusPt`** — the Construct's "+1/+1 for each artifact you
+  control" belongs to the TOKEN, so it rides onto the definition each copy
+  is made from. A lone Construct is 1/1, counting itself.
+
+  The sentence splitter now shields periods inside SINGLE-quoted abilities
+  too, which is how a token carries its own rules text. Only a span that
+  looks like a whole quoted ability is shielded, so an ordinary apostrophe
+  is left alone.
 - **`openingHandStart`** — Gemstone Caverns. Begins the game on the
   battlefield with a counter, for a player who is NOT going first, at the
   cost of a card from hand. It rides the same start-of-game moment the
