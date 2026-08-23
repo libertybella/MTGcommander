@@ -768,6 +768,11 @@ export function bindCardEffect(
             zone: source.zone,
             filter: source.filter,
             ...(source.hasVoidCounter ? { hasVoidCounter: true } : {}),
+            // Braids: the chosen card is about to be sacrificed, so its
+            // types are read HERE and carried as a concrete list.
+            ...(source.sharesTypeWithChosen && context.chosenCardId
+              ? { sharesTypes: characteristicsOf(state, context.chosenCardId).types }
+              : {}),
             ...(source.drawnThisTurn ? { drawnThisTurn: true } : {}),
             ...(source.greatestManaValue ? { greatestManaValue: true } : {}),
           }));
@@ -792,6 +797,11 @@ export function bindCardEffect(
                   : {}),
                 ...(source.drawnThisTurn ? { drawnThisTurn: true } : {}),
                 ...(source.hasVoidCounter ? { hasVoidCounter: true } : {}),
+                // Braids: the chosen card is about to be sacrificed, so its
+                // types are read HERE and carried as a concrete list.
+                ...(source.sharesTypeWithChosen && context.chosenCardId
+                  ? { sharesTypes: characteristicsOf(state, context.chosenCardId).types }
+                  : {}),
                 ...(source.greatestManaValue ? { greatestManaValue: true } : {}),
               },
             ]
@@ -805,6 +815,12 @@ export function bindCardEffect(
         chooserId,
         sources,
         thenEffects: effect.thenEffects.map((entry) => ({ ...entry })),
+        ...(effect.optional ? { optional: true } : {}),
+        ...(effect.thenEffectsIfNone
+          ? { thenEffectsIfNone: effect.thenEffectsIfNone.map((entry) => ({ ...entry })) }
+          : {}),
+        // The ABILITY's controller, kept apart from the chooser.
+        controllerId: context.controllerId,
         sourceId: context.sourceId,
         ...(effect.cantDiscards ? { cantDiscards: effect.cantDiscards } : {}),
       };
@@ -3688,6 +3704,19 @@ function applyChooseCardEffect(
 ): GameState {
   const legal = legalIdsForChooseSources(state, effect.sources);
   if (legal.length === 0) {
+    // Braids: an opponent with nothing that shares a card type has not
+    // declined — they COULDN'T. The card says "for each opponent who
+    // doesn't", and that is them, so the punisher still lands.
+    if (effect.thenEffectsIfNone && effect.thenEffectsIfNone.length > 0) {
+      return applyEffects(
+        state,
+        bindCardEffects(state, effect.thenEffectsIfNone, {
+          controllerId: effect.controllerId ?? effect.chooserId,
+          sourceId: effect.sourceId,
+          subjectPlayerId: effect.chooserId,
+        }),
+      );
+    }
     // Plaguecrafter: "Each player who can't discards a card" — the discard
     // is still that player's choice.
     if (effect.cantDiscards && effect.cantDiscards > 0) {
@@ -3708,6 +3737,11 @@ function applyChooseCardEffect(
     sources: effect.sources.map((source) => ({ ...source })),
     thenEffects: effect.thenEffects.map((entry) => ({ ...entry })),
     sourceId: effect.sourceId,
+    ...(effect.optional ? { optional: true } : {}),
+    ...(effect.thenEffectsIfNone
+      ? { thenEffectsIfNone: effect.thenEffectsIfNone.map((entry) => ({ ...entry })) }
+      : {}),
+    ...(effect.controllerId ? { controllerId: effect.controllerId } : {}),
   });
   return next;
 }

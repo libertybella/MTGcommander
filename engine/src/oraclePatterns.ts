@@ -10625,6 +10625,84 @@ function foldLookRun(
  * and without the exclusion a player could pay for the same card twice and
  * keep all three.
  */
+/**
+ * Braids, Arisen Nightmare — three printed sentences that are one ability:
+ *
+ *   "At the beginning of your end step, you may sacrifice an artifact,
+ *    creature, enchantment, land, or planeswalker. If you do, each opponent
+ *    may sacrifice a permanent of their choice that shares a card type with
+ *    it. For each opponent who doesn't, that player loses 2 life and you
+ *    draw a card."
+ *
+ * Every choice here is a REAL one. Auto-taking the controller's would
+ * sacrifice something every end step whether they wanted it or not, and
+ * auto-taking an opponent's would decide the punisher for them — which is
+ * the entire card.
+ */
+function compileBraidsEndStep(
+  sentences: string[],
+  index: number,
+): (SimpleClause & { consumed: number }) | null {
+  const head = sentences[index]?.match(
+    /^At the beginning of your end step, you may sacrifice an artifact, creature, enchantment, land, or planeswalker$/i,
+  );
+  const answer = sentences[index + 1];
+  const punish = sentences[index + 2];
+  if (!head || !answer || !punish) {
+    return null;
+  }
+  if (
+    !/^If you do, each opponent may sacrifice a permanent of their choice that shares a card type with it$/i.test(
+      answer,
+    )
+  ) {
+    return null;
+  }
+  const punishMatch = punish.match(
+    /^For each opponent who doesn['’]t, that player loses (\d+) life and you draw a card$/i,
+  );
+  if (!punishMatch?.[1]) {
+    return null;
+  }
+  const life = Number(punishMatch[1]);
+  return {
+    targetRequirements: [],
+    effects: [
+      {
+        kind: "choose_card",
+        chooserId: "controller",
+        // The five listed types are every permanent type this card can see.
+        sources: [
+          { playerId: "controller", zone: "battlefield", filter: "any" },
+        ],
+        optional: true,
+        thenEffects: [
+          { kind: "sacrifice", cardId: "chosen_card" },
+          {
+            kind: "choose_card",
+            chooserId: "each_opponent",
+            sources: [
+              {
+                playerId: "each_opponent",
+                zone: "battlefield",
+                filter: "any",
+                sharesTypeWithChosen: true,
+              },
+            ],
+            optional: true,
+            thenEffects: [{ kind: "sacrifice", cardId: "chosen_card" }],
+            thenEffectsIfNone: [
+              { kind: "lose_life", playerId: { type: "subject_player" }, amount: life },
+              { kind: "draw", playerId: "controller", count: 1 },
+            ],
+          },
+        ],
+      },
+    ],
+    consumed: 3,
+  };
+}
+
 function compileSylvanDrawStep(
   sentences: string[],
   index: number,
@@ -12026,6 +12104,18 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
     // Parked as top-level effects on an enchantment, none of it would ever
     // run — so the run builds the trigger here rather than going through
     // commitClause.
+    // Braids: a three-sentence run that is one triggered ability.
+    const braids = compileBraidsEndStep(sentences, index);
+    if (braids) {
+      result.triggers.push({
+        event: "end_step",
+        effects: braids.effects,
+        targetRequirements: [],
+      });
+      index += braids.consumed - 1;
+      continue;
+    }
+
     const sylvan = compileSylvanDrawStep(sentences, index);
     if (sylvan) {
       result.triggers.push({

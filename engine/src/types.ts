@@ -1005,6 +1005,12 @@ export type ChooseCardSource = {
   playerId: PlayerSelector;
   zone: "hand" | "graveyard" | "battlefield" | "exile";
   filter: CardFilter;
+  /**
+   * Braids: "a permanent that shares a card type with it". Resolved to a
+   * concrete type list when the effect binds, against the card chosen
+   * just before — by prompt time that card is already in a graveyard.
+   */
+  sharesTypeWithChosen?: boolean;
   /** Dauthi Voidwalker: only exiled cards carrying a void counter. */
   hasVoidCounter?: boolean;
   /** Sylvan Library: only cards drawn THIS turn are eligible. */
@@ -1034,6 +1040,8 @@ export type BoundChooseCardSource = {
   playerId: PlayerId;
   zone: "hand" | "graveyard" | "battlefield" | "exile";
   filter: CardFilter;
+  /** The bound half of `ChooseCardSource.sharesTypeWithChosen`. */
+  sharesTypes?: string[];
   /** The bound half of `ChooseCardSource.hasVoidCounter`. */
   hasVoidCounter?: boolean;
   /** The bound half of `ChooseCardSource.drawnThisTurn`. */
@@ -1159,6 +1167,10 @@ export type GameEffect =
       sources: BoundChooseCardSource[];
       thenEffects: CardEffect[];
       sourceId: CardInstanceId | null;
+      optional?: boolean;
+      thenEffectsIfNone?: CardEffect[];
+      /** Braids: the ABILITY's controller, which is not the chooser. */
+      controllerId?: PlayerId;
       /** Plaguecrafter: with no legal choice, discard this many instead. */
       cantDiscards?: number;
     }
@@ -2175,6 +2187,14 @@ export type CardEffect =
       chooserId: PlayerSelector;
       sources: ChooseCardSource[];
       thenEffects: CardEffect[];
+      /** Braids: "you MAY sacrifice…" — the choice can be declined. */
+      optional?: boolean;
+      /**
+       * Braids: what happens to an opponent who declines. Only meaningful
+       * with `optional`; the punisher is the whole reason the choice is a
+       * real one rather than an auto-take.
+       */
+      thenEffectsIfNone?: CardEffect[];
       /** Plaguecrafter: with no legal choice, discard this many instead. */
       cantDiscards?: number;
     }
@@ -3275,6 +3295,14 @@ export type PendingPrompt =
       sources: BoundChooseCardSource[];
       thenEffects: CardEffect[];
       sourceId: CardInstanceId | null;
+      optional?: boolean;
+      thenEffectsIfNone?: CardEffect[];
+      /**
+       * Braids: the ABILITY's controller, which is not the chooser when an
+       * opponent is choosing. "You draw a card" in the effects means this
+       * player, and binding against the chooser would hand them the card.
+       */
+      controllerId?: PlayerId;
       resumeEffects?: GameEffect[];
     }
   | {
@@ -4008,7 +4036,8 @@ export type GameAction =
   | { kind: "resolve_scry"; playerId: PlayerId; bottomIds: CardInstanceId[] }
   | { kind: "resolve_surveil"; playerId: PlayerId; graveyardIds: CardInstanceId[] }
   | { kind: "resolve_discard"; playerId: PlayerId; cardIds: CardInstanceId[] }
-  | { kind: "resolve_choose_card"; playerId: PlayerId; cardId: CardInstanceId }
+  /** Braids: a null card DECLINES, which an optional choice allows. */
+  | { kind: "resolve_choose_card"; playerId: PlayerId; cardId: CardInstanceId | null }
   | { kind: "resolve_enter_copy"; playerId: PlayerId; cardId: CardInstanceId | null }
   | {
       kind: "resolve_trigger_mode";

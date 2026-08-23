@@ -870,6 +870,31 @@ more questions it can now ask:
   (Bennie Bracks). Reads the existing per-player `createdTokenThisTurn`
   list, and asks whether the CONTROLLER is in it — an opponent's Treasure
   must not satisfy it.
+- **`choose_card.optional` + `thenEffectsIfNone`** — Braids, Arisen
+  Nightmare, whose three sentences are one triggered ability. BOTH choices
+  are real: auto-taking the controller's would sacrifice a permanent every
+  end step whether they wanted it or not, and auto-taking an opponent's
+  would decide the punisher for them, which is the entire card. A null
+  answer declines, and the action type carries it so the decline is
+  sendable; a choice that is not optional still refuses null.
+
+  An opponent with nothing that shares a card type is punished too. They
+  have not declined, they COULDN'T — and "for each opponent who doesn't"
+  is still them.
+
+- **`ChooseCardSource.sharesTypeWithChosen`** — resolved to a concrete type
+  list when the effect BINDS, because by prompt time the card it shares a
+  type with is already in a graveyard.
+
+- **`choose_card` prompts now carry the ABILITY's controller.** The answer
+  handler bound `thenEffects` against the CHOOSER, so "you draw a card"
+  while an opponent is choosing would have handed the opponent the card.
+
+  Fixed alongside: the resume-effect parser rebuilt choose-card sources
+  inline and dropped every narrowing flag, so a RESUMED choice came back
+  offering the whole zone — Sylvan Library would have let a card held since
+  last turn be given back, and Dauthi Voidwalker would have offered an
+  opponent's every exiled card.
 - **`add_mana.untilEndOfTurn` / `PlayerState.persistentMana`** — Birgi.
   "Until end of turn, you don't lose this mana as steps and phases end"
   (CR 500.4). A tally is kept beside the pool, not in it, so ordinary mana

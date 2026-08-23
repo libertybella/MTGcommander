@@ -1793,14 +1793,19 @@ export function applyAction(
         const chosen = applyResolveChooseCard(state, action.playerId, action.cardId);
         next = chosen.next;
         const bound = bindCardEffects(next, chosen.thenEffects, {
-          controllerId: action.playerId,
+          // Braids: the ABILITY's controller, not the chooser. "You draw a
+          // card" while an opponent is choosing means the controller, and
+          // binding against the chooser would hand them the card.
+          controllerId: chosen.controllerId ?? action.playerId,
           sourceId: chosen.sourceId,
-          chosenCardId: chosen.cardId,
+          ...(chosen.cardId ? { chosenCardId: chosen.cardId } : {}),
+          // A declining opponent is "that player" for the punisher.
+          ...(chosen.declined ? { subjectPlayerId: action.playerId } : {}),
           // Read BEFORE thenEffects runs, because the first of those
           // effects is usually the sacrifice itself — after it the card
           // is in the graveyard and its power is gone. Disciple of Bolas
           // pays out what the creature was worth, not what is left.
-          sacrificedPower: Math.max(0, creaturePower(next, chosen.cardId)),
+          sacrificedPower: chosen.cardId ? Math.max(0, creaturePower(next, chosen.cardId)) : 0,
         });
         if (bound.length > 0) {
           next = applyEffects(next, bound);

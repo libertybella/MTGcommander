@@ -538,6 +538,14 @@ export function legalIdsForChooseSources(
       ) {
         continue;
       }
+      // Braids: the permanent must share a CARD TYPE with the one just
+      // sacrificed — a land answers a land, a creature a creature.
+      if (source.sharesTypes) {
+        const mine = characteristicsOf(state, cardId).types;
+        if (!source.sharesTypes.some((type) => mine.includes(type))) {
+          continue;
+        }
+      }
       // Dauthi Voidwalker: only the exiled cards its own replacement put
       // there. Every other card in that exile is somebody else's business.
       if (source.hasVoidCounter && (state.cards[cardId]?.counters["void"] ?? 0) === 0) {
@@ -606,8 +614,15 @@ export function applyResolveDiscard(
 export function applyResolveChooseCard(
   state: GameState,
   playerId: PlayerId,
-  cardId: CardInstanceId,
-): { next: GameState; thenEffects: CardEffect[]; sourceId: CardInstanceId | null; cardId: CardInstanceId } {
+  cardId: CardInstanceId | null,
+): {
+  next: GameState;
+  thenEffects: CardEffect[];
+  sourceId: CardInstanceId | null;
+  cardId: CardInstanceId | null;
+  controllerId?: PlayerId;
+  declined?: boolean;
+} {
   const prompt = currentPrompt(state);
   if (!prompt || prompt.kind !== "choose_card") {
     throw new Error("No card choice pending");
@@ -616,6 +631,26 @@ export function applyResolveChooseCard(
   if (prompt.playerId !== playerId) {
     throw new Error("It is not that player's choice");
   }
+  if (cardId === null) {
+    // Braids: declining is a real answer, and the punisher is what makes
+    // it one. A choice that is not optional still has to be answered.
+    if (!prompt.optional) {
+      throw new Error("That choice cannot be declined");
+    }
+    const declinedNext = cloneGameState(state);
+    declinedNext.prompts.shift();
+    declinedNext.reveals = declinedNext.reveals.filter(
+      (entry) => entry.viewerId !== playerId,
+    );
+    return {
+      next: declinedNext,
+      thenEffects: prompt.thenEffectsIfNone ?? [],
+      sourceId: prompt.sourceId,
+      cardId: null,
+      ...(prompt.controllerId ? { controllerId: prompt.controllerId } : {}),
+      declined: true,
+    };
+  }
   const legal = new Set(legalIdsForChooseSources(state, prompt.sources));
   if (!legal.has(cardId)) {
     throw new Error("That card is not a legal choice");
@@ -623,7 +658,13 @@ export function applyResolveChooseCard(
   const next = cloneGameState(state);
   next.prompts.shift();
   next.reveals = next.reveals.filter((entry) => entry.viewerId !== playerId);
-  return { next, thenEffects: prompt.thenEffects, sourceId: prompt.sourceId, cardId };
+  return {
+    next,
+    thenEffects: prompt.thenEffects,
+    sourceId: prompt.sourceId,
+    cardId,
+    ...(prompt.controllerId ? { controllerId: prompt.controllerId } : {}),
+  };
 }
 
 /** Battlefield cards a pending enter_as_copy prompt may legally copy. */

@@ -2222,6 +2222,18 @@ function parsePrompts(value: unknown, playerIds: Set<string>): PendingPrompt[] {
           entry.sourceId === undefined || entry.sourceId === null
             ? null
             : expectString(entry.sourceId, `prompts[${index}].sourceId`),
+        ...(entry.optional === true ? { optional: true } : {}),
+        ...(entry.thenEffectsIfNone === undefined
+          ? {}
+          : {
+              thenEffectsIfNone: parseCardEffects(
+                entry.thenEffectsIfNone,
+                `prompts[${index}].thenEffectsIfNone`,
+              ),
+            }),
+        ...(typeof entry.controllerId === "string"
+          ? { controllerId: entry.controllerId }
+          : {}),
         ...(resumeEffects && resumeEffects.length > 0 ? { resumeEffects } : {}),
       };
     }
@@ -2479,6 +2491,10 @@ function parseChooseCardSources(value: unknown, label: string): ChooseCardSource
       ...(entry.excludeSelf === true ? { excludeSelf: true } : {}),
       ...(entry.drawnThisTurn === true ? { drawnThisTurn: true } : {}),
       ...(entry.hasVoidCounter === true ? { hasVoidCounter: true } : {}),
+      ...(Array.isArray(entry.sharesTypes)
+        ? { sharesTypes: parseStringList(entry.sharesTypes, `${label}[${index}].sharesTypes`) }
+        : {}),
+      ...(entry.sharesTypeWithChosen === true ? { sharesTypeWithChosen: true } : {}),
       ...(entry.excludePreviousChoice === true ? { excludePreviousChoice: true } : {}),
       ...(entry.greatestManaValue === true ? { greatestManaValue: true } : {}),
     };
@@ -2514,6 +2530,10 @@ function parseBoundChooseSources(
         : {}),
       ...(entry.drawnThisTurn === true ? { drawnThisTurn: true } : {}),
       ...(entry.hasVoidCounter === true ? { hasVoidCounter: true } : {}),
+      ...(Array.isArray(entry.sharesTypes)
+        ? { sharesTypes: parseStringList(entry.sharesTypes, `${label}[${index}].sharesTypes`) }
+        : {}),
+      ...(entry.sharesTypeWithChosen === true ? { sharesTypeWithChosen: true } : {}),
       ...(entry.greatestManaValue === true ? { greatestManaValue: true } : {}),
     };
   });
@@ -3018,6 +3038,15 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
         chooserId: parsePlayerSelector(value.chooserId, `${label}.chooserId`),
         sources: parseChooseCardSources(value.sources, `${label}.sources`),
         thenEffects: parseCardEffects(value.thenEffects, `${label}.thenEffects`),
+        ...(value.optional === true ? { optional: true } : {}),
+        ...(value.thenEffectsIfNone === undefined
+          ? {}
+          : {
+              thenEffectsIfNone: parseCardEffects(
+                value.thenEffectsIfNone,
+                `${label}.thenEffectsIfNone`,
+              ),
+            }),
         ...(value.cantDiscards === undefined
           ? {}
           : { cantDiscards: expectNumber(value.cantDiscards, `${label}.cantDiscards`) }),
@@ -6338,9 +6367,39 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
           playerId: expectString(entry.playerId, `${label}.sources[${index}].playerId`),
           zone,
           filter: parseCardFilter(entry.filter, `${label}.sources[${index}].filter`),
+          // Every narrowing flag was dropped here. A RESUMED choice came
+          // back offering the whole zone: Sylvan Library would have let a
+          // card held since last turn be given back, and Dauthi Voidwalker
+          // would have offered an opponent's every exiled card.
+          ...(typeof entry.excludeCardId === "string"
+            ? { excludeCardId: entry.excludeCardId }
+            : {}),
+          ...(entry.drawnThisTurn === true ? { drawnThisTurn: true } : {}),
+          ...(entry.hasVoidCounter === true ? { hasVoidCounter: true } : {}),
+          ...(Array.isArray(entry.sharesTypes)
+            ? {
+                sharesTypes: parseStringList(
+                  entry.sharesTypes,
+                  `${label}.sources[${index}].sharesTypes`,
+                ),
+              }
+            : {}),
+          ...(entry.greatestManaValue === true ? { greatestManaValue: true } : {}),
         };
       }),
       thenEffects: parseCardEffects(value.thenEffects, `${label}.thenEffects`),
+      ...(value.optional === true ? { optional: true } : {}),
+      ...(value.thenEffectsIfNone === undefined
+        ? {}
+        : {
+            thenEffectsIfNone: parseCardEffects(
+              value.thenEffectsIfNone,
+              `${label}.thenEffectsIfNone`,
+            ),
+          }),
+      ...(typeof value.controllerId === "string"
+        ? { controllerId: value.controllerId }
+        : {}),
       ...(value.cantDiscards === undefined
         ? {}
         : { cantDiscards: expectNumber(value.cantDiscards, `${label}.cantDiscards`) }),
@@ -6633,7 +6692,12 @@ export function parseGameAction(json: string): GameAction {
     return {
       kind,
       playerId,
-      cardId: expectString(raw.cardId, "action.cardId"),
+      // Braids: null DECLINES. Demanding a string here would make the
+      // decline unsendable over the wire, and the choice not a choice.
+      cardId:
+        raw.cardId === null
+          ? null
+          : expectString(raw.cardId, "action.cardId"),
     };
   }
   if (kind === "resolve_enter_copy") {

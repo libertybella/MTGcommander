@@ -39640,7 +39640,7 @@ describe("wave 294: two extra draws, paid for in life or given back", () => {
       bindCardEffects(resolved.next, resolved.thenEffects, {
         controllerId: p1.id,
         sourceId: null,
-        chosenCardId: resolved.cardId,
+        chosenCardId: resolved.cardId ?? undefined,
       }),
     );
     expect(withPay.prompts[0]?.kind).toBe("pay_or_effect");
@@ -39666,7 +39666,7 @@ describe("wave 294: two extra draws, paid for in life or given back", () => {
       bindCardEffects(resolved.next, resolved.thenEffects, {
         controllerId: p1.id,
         sourceId: null,
-        chosenCardId: resolved.cardId,
+        chosenCardId: resolved.cardId ?? undefined,
       }),
     );
     const declined = applyResolvePay(withPay, p1.id, false);
@@ -39913,7 +39913,7 @@ describe("wave 295: an opponent's graveyard replaced by a void exile", () => {
       bindCardEffects(resolved.next, resolved.thenEffects, {
         controllerId: p1.id,
         sourceId: null,
-        chosenCardId: resolved.cardId,
+        chosenCardId: resolved.cardId ?? undefined,
       }),
     );
     // Free, and to the OPPONENT's card — the point of the card is stealing it.
@@ -40112,5 +40112,217 @@ describe("wave 296: mana that a step boundary does not take", () => {
     expect(withDefinition.definitions[definition.id]?.triggers[0]?.effects[0]).toEqual(
       persistent(1),
     );
+  });
+});
+
+describe("wave 297: a sacrifice each opponent may answer, or pay for", () => {
+  const BRAIDS_TEXT =
+    "At the beginning of your end step, you may sacrifice an artifact, creature, enchantment, land, or planeswalker. If you do, each opponent may sacrifice a permanent of their choice that shares a card type with it. For each opponent who doesn't, that player loses 2 life and you draw a card.";
+
+  const INNER = (): CardEffect => ({
+    kind: "choose_card",
+    chooserId: "each_opponent",
+    sources: [
+      {
+        playerId: "each_opponent",
+        zone: "battlefield",
+        filter: "any",
+        sharesTypeWithChosen: true,
+      },
+    ],
+    optional: true,
+    thenEffects: [{ kind: "sacrifice", cardId: "chosen_card" }],
+    thenEffectsIfNone: [
+      { kind: "lose_life", playerId: { type: "subject_player" }, amount: 2 },
+      { kind: "draw", playerId: "controller", count: 1 },
+    ],
+  });
+
+  const put = (game: GameState, ownerId: string, name: string, typeLine: string) => {
+    const definition = createCardDefinition({
+      name,
+      typeLine,
+      manaCost: "{1}",
+      ...(typeLine.includes("Creature") ? { power: 2, toughness: 2 } : {}),
+    });
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({
+      definitionId: definition.id,
+      ownerId,
+      zone: "battlefield",
+    });
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === ownerId)!.zones.battlefield.push(card.id);
+    return card.id;
+  };
+
+  const board = () => {
+    const { game, p1, p2 } = twoPlayers();
+    game.priorityPlayerId = p1.id;
+    // Give the controller a library so the punisher's draw has a card.
+    fillLibraries(game, 5);
+    return { game, p1, p2 };
+  };
+
+  it("compiles Braids as one triggered ability", () => {
+    const compiled = compileOracleCard({
+      oracleId: "braids-arisen-nightmare",
+      name: "Braids, Arisen Nightmare",
+      manaCost: "{2}{B}",
+      typeLine: "Legendary Creature — Nightmare",
+      power: "3",
+      toughness: "3",
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText: BRAIDS_TEXT,
+    });
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.effects).toEqual([]);
+    expect(compiled.definition.triggers).toHaveLength(1);
+    const trigger = compiled.definition.triggers[0];
+    expect(trigger?.event).toBe("end_step");
+    const outer = trigger?.effects[0];
+    // BOTH choices are real. Auto-taking the controller's would sacrifice
+    // something every end step whether they wanted it or not.
+    expect(outer?.kind === "choose_card" && outer.optional).toBe(true);
+    const inner = outer?.kind === "choose_card" ? outer.thenEffects[1] : undefined;
+    expect(inner?.kind === "choose_card" && inner.optional).toBe(true);
+    expect(inner?.kind === "choose_card" && inner.chooserId).toBe("each_opponent");
+  });
+
+  it("offers an opponent only permanents sharing a card type", () => {
+    const { game, p1, p2 } = board();
+    const myLand = put(game, p1.id, "My Land", "Land");
+    const theirLand = put(game, p2.id, "Their Land", "Land");
+    const theirBear = put(game, p2.id, "Their Bear", "Creature — Bear");
+    const opened = applyEffects(
+      game,
+      bindCardEffects(game, [INNER()], {
+        controllerId: p1.id,
+        sourceId: null,
+        chosenCardId: myLand,
+      }),
+    );
+    const prompt = opened.prompts[0];
+    expect(prompt?.kind).toBe("choose_card");
+    const legal = legalIdsForChooseSources(
+      opened,
+      (prompt as Extract<typeof prompt, { kind: "choose_card" }>).sources,
+    );
+    // A land answers a land. The creature is not an answer.
+    expect(legal).toEqual([theirLand]);
+    expect(legal).not.toContain(theirBear);
+  });
+
+  it("takes the sacrifice when an opponent answers", () => {
+    const { game, p1, p2 } = board();
+    const myLand = put(game, p1.id, "My Land", "Land");
+    const theirLand = put(game, p2.id, "Their Land", "Land");
+    const opened = applyEffects(
+      game,
+      bindCardEffects(game, [INNER()], {
+        controllerId: p1.id,
+        sourceId: null,
+        chosenCardId: myLand,
+      }),
+    );
+    const answered = applyAction(opened, {
+      kind: "resolve_choose_card",
+      playerId: p2.id,
+      cardId: theirLand,
+    });
+    expect(answered.cards[theirLand]?.zone).toBe("graveyard");
+    // They answered, so no punisher.
+    expect(answered.players.find((entry) => entry.id === p2.id)?.life).toBe(40);
+    expect(answered.players.find((entry) => entry.id === p1.id)?.zones.hand).toHaveLength(0);
+  });
+
+  it("charges the opponent and pays the controller when they decline", () => {
+    const { game, p1, p2 } = board();
+    const myLand = put(game, p1.id, "My Land", "Land");
+    put(game, p2.id, "Their Land", "Land");
+    const opened = applyEffects(
+      game,
+      bindCardEffects(game, [INNER()], {
+        controllerId: p1.id,
+        sourceId: null,
+        chosenCardId: myLand,
+      }),
+    );
+    const declined = applyAction(opened, {
+      kind: "resolve_choose_card",
+      playerId: p2.id,
+      cardId: null,
+    });
+    expect(declined.players.find((entry) => entry.id === p2.id)?.life).toBe(38);
+    // "You draw a card" is the ABILITY's controller, not the chooser. Binding
+    // against the chooser would hand the opponent the card.
+    expect(declined.players.find((entry) => entry.id === p1.id)?.zones.hand).toHaveLength(1);
+    expect(declined.players.find((entry) => entry.id === p2.id)?.zones.hand).toHaveLength(0);
+  });
+
+  it("punishes an opponent who has nothing to answer with", () => {
+    const { game, p1, p2 } = board();
+    const myLand = put(game, p1.id, "My Land", "Land");
+    put(game, p2.id, "Their Bear", "Creature — Bear");
+    const settled = applyEffects(
+      game,
+      bindCardEffects(game, [INNER()], {
+        controllerId: p1.id,
+        sourceId: null,
+        chosenCardId: myLand,
+      }),
+    );
+    // No prompt: they had no land. They have not declined, they COULDN'T —
+    // and "for each opponent who doesn't" is still them.
+    expect(settled.prompts).toEqual([]);
+    expect(settled.players.find((entry) => entry.id === p2.id)?.life).toBe(38);
+    expect(settled.players.find((entry) => entry.id === p1.id)?.zones.hand).toHaveLength(1);
+  });
+
+  it("refuses to decline a choice that is not optional", () => {
+    const { game, p1, p2 } = board();
+    put(game, p2.id, "Their Land", "Land");
+    const opened = applyEffects(
+      game,
+      bindCardEffects(
+        game,
+        [
+          {
+            kind: "choose_card",
+            chooserId: "each_opponent",
+            sources: [{ playerId: "each_opponent", zone: "battlefield", filter: "any" }],
+            thenEffects: [{ kind: "sacrifice", cardId: "chosen_card" }],
+          },
+        ],
+        { controllerId: p1.id, sourceId: null },
+      ),
+    );
+    expect(() => applyResolveChooseCard(opened, p2.id, null)).toThrow(/declined/i);
+  });
+
+  it("round trips the optional flag, the punisher and the type list", () => {
+    const { game, p1, p2 } = board();
+    const myLand = put(game, p1.id, "My Land", "Land");
+    put(game, p2.id, "Their Land", "Land");
+    const opened = applyEffects(
+      game,
+      bindCardEffects(game, [INNER()], {
+        controllerId: p1.id,
+        sourceId: null,
+        chosenCardId: myLand,
+      }),
+    );
+    const round = parseGameState(serializeGameState(opened));
+    const prompt = round.prompts[0];
+    expect(prompt).toMatchObject({
+      kind: "choose_card",
+      optional: true,
+      controllerId: p1.id,
+    });
+    expect(
+      prompt?.kind === "choose_card" && prompt.sources[0]?.sharesTypes,
+    ).toEqual(["land"]);
+    expect(prompt?.kind === "choose_card" && prompt.thenEffectsIfNone).toHaveLength(2);
   });
 });
