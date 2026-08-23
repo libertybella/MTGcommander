@@ -27,7 +27,7 @@ import { advanceStep, beginNextLivingTurnInPlace } from "./turn";
 import { colorsAmongControlled, commanderIdentityColors, manaAbilitiesFor, manaTapOptionsFor } from "./manaOptions";
 import { emptyManaPools, parseManaCost } from "./mana";
 import { applyStateBasedActionsInPlace } from "./status";
-import { legalActions, sacrificeScopeMatches } from "./legalActions";
+import { legalActions, sacrificeColorMatches, sacrificeScopeMatches } from "./legalActions";
 import { applyResolveCreatureType, legalEnterCopyIds, searchMatches } from "./prompt";
 import { parseGameState, serializeGameState } from "./serialize";
 import { fillLibraries } from "./testSupport";
@@ -33252,5 +33252,122 @@ describe("wave 255: superlatives", () => {
     const restored = round.definitions[definition.id]?.effects;
     expect(restored?.[0]).toMatchObject({ sources: [{ greatestManaValue: true }] });
     expect(restored?.[1]).toMatchObject({ countFromGreatestPower: { stat: "toughness" } });
+  });
+});
+
+describe("wave 256: a colour on the sacrifice cost", () => {
+  it("compiles the narrowing without inventing a new cost", () => {
+    const order = compileOracleCard({
+      oracleId: "Natural Order",
+      name: "Natural Order",
+      manaCost: "{2}{G}{G}",
+      typeLine: "Sorcery",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "As an additional cost to cast this spell, sacrifice a green creature.\nSearch your library for a green creature card, put it onto the battlefield, then shuffle.",
+    });
+    expect(order.notes).toEqual([]);
+    // The colour NARROWS the creature scope; it is not a scope of its own,
+    // so the sacrifice still reads "creature".
+    expect(order.definition.additionalCost).toEqual({
+      sacrifice: "creature",
+      sacrificeColor: "G",
+    });
+  });
+
+  it("accepts a green creature and refuses a red one", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const make = (name: string, manaCost: string) => {
+      const definition = createCardDefinition({
+        name,
+        typeLine: "Creature — Bear",
+        manaCost,
+        power: 2,
+        toughness: 2,
+      });
+      game.definitions[definition.id] = definition;
+      const card = createCardInstance({
+        definitionId: definition.id,
+        ownerId: p1.id,
+        zone: "battlefield",
+      });
+      game.cards[card.id] = card;
+      p1.zones.battlefield.push(card.id);
+      return card.id;
+    };
+    const green = make("Elf", "{G}");
+    const red = make("Goblin", "{R}");
+
+    expect(sacrificeColorMatches(game, green, "G")).toBe(true);
+    // The negative case: a cost that ignored the colour would accept this.
+    expect(sacrificeColorMatches(game, red, "G")).toBe(false);
+    // No colour named is no restriction — every cost written before this one.
+    expect(sacrificeColorMatches(game, red, undefined)).toBe(true);
+  });
+
+  it("reads the CURRENT colour, not the printed one", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const painter = createCardDefinition({
+      name: "Painter",
+      typeLine: "Enchantment",
+      staticAbilities: [
+        {
+          selector: { scope: "controlled", types: ["creature"] },
+          effect: { kind: "set_colors", colors: ["G"] },
+        },
+      ],
+    });
+    const goblin = createCardDefinition({
+      name: "Goblin",
+      typeLine: "Creature — Goblin",
+      manaCost: "{R}",
+      power: 2,
+      toughness: 2,
+    });
+    for (const definition of [painter, goblin]) {
+      game.definitions[definition.id] = definition;
+    }
+    const put = (definitionId: string) => {
+      const card = createCardInstance({ definitionId, ownerId: p1.id, zone: "battlefield" });
+      game.cards[card.id] = card;
+      p1.zones.battlefield.push(card.id);
+      return card.id;
+    };
+    put(painter.id);
+    const goblinId = put(goblin.id);
+
+    // Printed red, currently green: it pays the cost, because CR reads the
+    // characteristic as it is now and layer 5 has already spoken.
+    expect(sacrificeColorMatches(game, goblinId, "G")).toBe(true);
+    expect(sacrificeColorMatches(game, goblinId, "R")).toBe(false);
+  });
+
+  it("round trips the colour", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const definition = createCardDefinition({
+      name: "Order",
+      typeLine: "Sorcery",
+      additionalCost: { sacrifice: "creature", sacrificeColor: "G" },
+    });
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({
+      definitionId: definition.id,
+      ownerId: p1.id,
+      zone: "hand",
+    });
+    game.cards[card.id] = card;
+    p1.zones.hand.push(card.id);
+
+    const round = parseGameState(serializeGameState(game));
+    expect(round.definitions[definition.id]?.additionalCost).toEqual({
+      sacrifice: "creature",
+      sacrificeColor: "G",
+    });
   });
 });

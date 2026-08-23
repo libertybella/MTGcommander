@@ -870,6 +870,12 @@ more questions it can now ask:
   (Bennie Bracks). Reads the existing per-player `createdTokenThisTurn`
   list, and asks whether the CONTROLLER is in it — an opponent's Treasure
   must not satisfy it.
+- **`AdditionalCastCost.sacrificeColor`** — "sacrifice a GREEN creature"
+  (Natural Order). A narrowing of the existing `sacrifice` scope, never a
+  cost of its own, so it is read everywhere that scope is: the cast
+  validation, the bot's affordability check, and the fuzzer's own choice of
+  fodder. The colour is the permanent's CURRENT one, through the layer
+  engine — a creature painted green by a static pays the cost.
 - **Superlatives** — "a creature or planeswalker with the greatest mana
   value among creatures and planeswalkers they control" (Soul Shatter,
   Flare of Malice) and "the greatest toughness among creatures you

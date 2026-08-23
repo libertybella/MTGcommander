@@ -134,8 +134,18 @@ function parseAdditionalCost(value: unknown, label: string): AdditionalCastCost 
   ) {
     throw new Error(`Invalid ${label}.sacrifice`);
   }
+  const sacrificeColor = value.sacrificeColor;
+  if (
+    sacrificeColor !== undefined &&
+    !COLOR_KEYS.includes(sacrificeColor as (typeof COLOR_KEYS)[number])
+  ) {
+    throw new Error(`Invalid ${label}.sacrificeColor`);
+  }
   return {
     ...(sacrifice === undefined ? {} : { sacrifice }),
+    ...(sacrificeColor === undefined
+      ? {}
+      : { sacrificeColor: sacrificeColor as Color }),
     ...(value.discard === undefined
       ? {}
       : { discard: expectNumber(value.discard, `${label}.discard`) }),

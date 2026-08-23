@@ -197,9 +197,29 @@ const ABILITY_WORD_PREFIX = /^[A-Z][A-Za-z'’ ]*\s*[—-]\s*(?=When|Whenever|At
  * phrase is not a cost this engine can charge, so an either-or line only
  * compiles when BOTH of its halves are understood.
  */
+const COLOR_WORD_TO_SYMBOL: Record<string, Color> = {
+  white: "W",
+  blue: "U",
+  black: "B",
+  red: "R",
+  green: "G",
+};
+
 function parseSingleAdditionalCost(what: string): AdditionalCastCost | null {
   if (what === "sacrifice a creature") {
     return { sacrifice: "creature" };
+  }
+  // Natural Order: the colour narrows the same scope rather than naming a
+  // different one, so it rides on the creature branch instead of adding a
+  // branch per colour.
+  const coloredCreature = what.match(
+    /^sacrifice a (white|blue|black|red|green) creature$/,
+  );
+  if (coloredCreature?.[1]) {
+    return {
+      sacrifice: "creature",
+      sacrificeColor: COLOR_WORD_TO_SYMBOL[coloredCreature[1]]!,
+    };
   }
   if (what === "sacrifice an artifact") {
     return { sacrifice: "artifact" };

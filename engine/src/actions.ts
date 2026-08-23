@@ -11,7 +11,7 @@ import { costRelief, affinityArtifactDiscount, allBattlefieldCreatureCount, canP
 import { eliminatePlayerInPlace } from "./elimination";
 import { applyEffects, bindCardEffects, devotionTo } from "./effects";
 import { hasKeyword } from "./keywords";
-import { controlsMatching, sacrificeScopeMatches } from "./legalActions";
+import { controlsMatching, sacrificeColorMatches, sacrificeScopeMatches } from "./legalActions";
 import { addMana, addRestrictedMana, canPayManaCost, parseManaCost, payManaCost, poolWith, tapCard, tapForMana, usableRestrictedMana, type ManaPurpose } from "./mana";
 import { colorsAmongControlled, manaAbilityAmount, manaAbilitiesFor, manaTapOptionsFor } from "./manaOptions";
 import { createId } from "./ids";
@@ -492,9 +492,12 @@ function applyCastSpell(
       !sacrifice ||
       sacrifice.zone !== "battlefield" ||
       sacrifice.controllerId !== playerId ||
-      !sacrificeScopeMatches(faced, costSacrificeId, additional.sacrifice)
+      !sacrificeScopeMatches(faced, costSacrificeId, additional.sacrifice) ||
+      !sacrificeColorMatches(faced, costSacrificeId, additional.sacrificeColor)
     ) {
-      throw new Error(`Sacrifice a ${additional.sacrifice.replace(/_/g, " ")} to cast this`);
+      throw new Error(
+        `Sacrifice a ${additional.sacrificeColor ? `${additional.sacrificeColor} ` : ""}${additional.sacrifice.replace(/_/g, " ")} to cast this`,
+      );
     }
   } else if (costSacrificeId !== undefined) {
     throw new Error("That spell has no sacrifice cost");

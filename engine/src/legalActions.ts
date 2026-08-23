@@ -3,6 +3,7 @@ import {
   abilitiesRemoved,
   activatedOf,
   cardMatchesSubtype,
+  computedCard,
   controlsGate,
 } from "./characteristicsEngine";
 import { hasKeyword } from "./keywords";
@@ -25,6 +26,7 @@ import type {
   CardInstanceId,
   ControlledGate,
   GameState,
+  Color,
   ManaColor,
   ManaPool,
   PlayerId,
@@ -232,6 +234,26 @@ export function controlsMatching(
 }
 
 /** Does this battlefield card satisfy an additional-cost sacrifice scope? */
+/**
+ * The colour half of "sacrifice a GREEN creature". Absent means no colour
+ * restriction, which is every cost written before Natural Order — so this
+ * answers true for an undefined colour rather than false.
+ *
+ * The colour is the permanent's CURRENT one, read through the layer engine:
+ * a creature painted green by a static pays the cost, and one whose colour
+ * was overwritten no longer does.
+ */
+export function sacrificeColorMatches(
+  state: GameState,
+  cardId: CardInstanceId,
+  color: Color | undefined,
+): boolean {
+  if (!color) {
+    return true;
+  }
+  return (computedCard(state, cardId)?.characteristics.colors ?? []).includes(color);
+}
+
 export function sacrificeScopeMatches(
   state: GameState,
   cardId: CardInstanceId,
@@ -357,8 +379,10 @@ function castableFace(
     const payable = (cost: AdditionalCastCost): boolean => {
       if (
         cost.sacrifice &&
-        !permanentsControlledBy(state, player.id).some((cardId) =>
-          sacrificeScopeMatches(state, cardId, cost.sacrifice!),
+        !permanentsControlledBy(state, player.id).some(
+          (cardId) =>
+            sacrificeScopeMatches(state, cardId, cost.sacrifice!) &&
+            sacrificeColorMatches(state, cardId, cost.sacrificeColor),
         )
       ) {
         return false;

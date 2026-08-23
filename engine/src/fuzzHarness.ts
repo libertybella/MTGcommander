@@ -9,7 +9,7 @@ import {
 } from "./characteristicsEngine";
 import { controlsCommander } from "./derived";
 import { hasKeyword } from "./keywords";
-import { legalActions, sacrificeScopeMatches } from "./legalActions";
+import { legalActions, sacrificeColorMatches, sacrificeScopeMatches } from "./legalActions";
 import { canPayManaCost } from "./mana";
 import { manaAbilitiesFor, manaTapOptionsFor } from "./manaOptions";
 import { isMulliganOpen } from "./mulligan";
@@ -353,8 +353,10 @@ function nextAction(state: GameState, rng: () => number): GameAction | null {
       let costDiscardIds: string[] | undefined;
       if (additional?.sacrifice) {
         const player = state.players.find((entry) => entry.id === playerId)!;
-        const options = player.zones.battlefield.filter((id) =>
-          sacrificeScopeMatches(state, id, additional.sacrifice!),
+        const options = player.zones.battlefield.filter(
+          (id) =>
+            sacrificeScopeMatches(state, id, additional.sacrifice!) &&
+            sacrificeColorMatches(state, id, additional.sacrificeColor),
         );
         if (options.length === 0) {
           return { kind: "pass_priority", playerId };
