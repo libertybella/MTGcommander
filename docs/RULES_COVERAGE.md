@@ -648,6 +648,25 @@ Documented limits:
   (Cryptolith Rite's path), not `grant_activated` — a mana ability must never
   use the stack.
 
+### Two more target shapes, and one generalisation (wave 229)
+
+- **`creature_enchantment_or_planeswalker`** is a `TargetKind`, because it
+  names a union of card types (Get Lost).
+- **`attackingOrBlockingOnly`** is a FLAG on the requirement, because it
+  restricts state rather than type (Razorgrass Ambush, Eiganjo). It is
+  separate from `attackingOnly` rather than a widening of it: Maze of Ith
+  must keep refusing blockers. Blocking is not a field on the card — the
+  blocker list is keyed by attacker, so the question is whether the card
+  appears anywhere in it, and an absent combat means nothing qualifies.
+
+The larger change is that "deals N damage to target …" no longer carries
+its own two-entry noun list. It routes the phrase through the shared
+target-phrase parser, so every shape that parser already understood works
+for damage — "target artifact", "target nonland permanent", "target
+attacking creature" — none of which needed a damage rule of their own.
+The two original spellings are matched first and still win, so nothing
+they compiled to has changed.
+
 ### Sacrificing a permanent of your own choice (wave 227)
 
 "Each opponent sacrifices a creature" compiled; "YOU sacrifice another

@@ -847,6 +847,7 @@ const TARGET_HEAD_NOUNS: [RegExp, TargetKind][] = [
   [/^artifact or creature$/i, "creature_or_artifact"],
   [/^creature or artifact$/i, "creature_or_artifact"],
   [/^creature or enchantment$/i, "creature_or_enchantment"],
+  [/^creature, enchantment, or planeswalker$/i, "creature_enchantment_or_planeswalker"],
   [/^creature or planeswalker$/i, "creature_or_planeswalker"],
   [/^artifact or enchantment$/i, "artifact_or_enchantment"],
   [/^artifact, enchantment, or land$/i, "artifact_enchantment_or_land"],
@@ -946,6 +947,14 @@ function parseSimpleTargetPhrase(phrase: string): TargetRequirement | null {
   if (nonbasic?.[1]) {
     requirement.nonbasicOnly = true;
     rest = nonbasic[1];
+  }
+  // "target attacking or blocking creature" (Razorgrass Ambush). Read
+  // BEFORE the bare "attacking" below, which would otherwise take the word
+  // and leave "or blocking creature" as the noun.
+  const attackingOrBlocking = rest.match(/^attacking or blocking\s+(.*)$/i);
+  if (attackingOrBlocking?.[1]) {
+    requirement.attackingOrBlockingOnly = true;
+    rest = attackingOrBlocking[1];
   }
   // "target attacking creature" (Maze of Ith, Duelist's Heritage).
   const attacking = rest.match(/^attacking\s+(.*)$/i);
@@ -2904,6 +2913,29 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
         },
       ],
     };
+  }
+
+  // Any other damage target, read by the SHARED target-phrase parser
+  // rather than another noun list of its own — that is what lets
+  // "attacking or blocking creature" work here without teaching this
+  // sentence anything about combat. Deliberately last: the two spellings
+  // above are more specific and must keep winning.
+  match = sentence.match(/^(?:~ )?deals (\d+) damage to (target .+)$/i);
+  if (match?.[1] && match[2]) {
+    const requirement = parseSimpleTargetPhrase(match[2]);
+    if (requirement) {
+      return {
+        targetRequirements: [requirement],
+        effects: [
+          {
+            kind: "deal_damage",
+            sourceId: "self",
+            target: { type: "chosen", index: 0 },
+            amount: Number(match[1]),
+          },
+        ],
+      };
+    }
   }
 
   // Wave Goodbye: mass bounce that spares counter-carrying creatures.

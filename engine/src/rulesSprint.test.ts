@@ -29878,3 +29878,167 @@ describe("wave 227: sacrificing a permanent of your own choice", () => {
     ).toBe(true);
   });
 });
+
+describe("wave 229: two more target shapes", () => {
+  const compile = (name: string, typeLine: string, oracleText: string) =>
+    compileOracleCard({
+      oracleId: name,
+      name,
+      manaCost: "{1}{W}",
+      typeLine,
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  const put = (game: GameState, definitionId: string, ownerId: string) => {
+    const card = createCardInstance({ definitionId, ownerId, zone: "battlefield" });
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === ownerId)!.zones.battlefield.push(card.id);
+    return card;
+  };
+
+  it("compiles the three-way type and the combat restriction", () => {
+    const getLost = compile(
+      "Get Lost",
+      "Instant",
+      "Destroy target creature, enchantment, or planeswalker. Its controller creates two Map tokens.",
+    );
+    expect(getLost.definition.effects.length).toBeGreaterThan(0);
+    expect(getLost.definition.targetRequirements[0]).toEqual({
+      kind: "creature_enchantment_or_planeswalker",
+    });
+
+    const ambush = compile(
+      "Razorgrass Ambush",
+      "Instant",
+      "Razorgrass Ambush deals 3 damage to target attacking or blocking creature.",
+    );
+    expect(ambush.notes).toEqual([]);
+    expect(ambush.definition.targetRequirements[0]).toEqual({
+      kind: "creature",
+      attackingOrBlockingOnly: true,
+    });
+  });
+
+  it("takes the three named types and refuses the others", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    const made: Record<string, string> = {};
+    for (const [label, typeLine] of [
+      ["creature", "Creature — Bear"],
+      ["enchantment", "Enchantment"],
+      ["planeswalker", "Legendary Planeswalker — Jace"],
+      ["artifact", "Artifact"],
+      ["land", "Land"],
+    ] as const) {
+      const definition = createCardDefinition({
+        name: label,
+        typeLine,
+        ...(label === "creature" ? { power: 2, toughness: 2 } : {}),
+        ...(label === "planeswalker" ? { loyalty: 3 } : {}),
+      });
+      game.definitions[definition.id] = definition;
+      made[label] = put(game, definition.id, p2.id).id;
+    }
+
+    const requirement: TargetRequirement = { kind: "creature_enchantment_or_planeswalker" };
+    const legal = (cardId: string) =>
+      isChosenTargetLegal(game, requirement, { type: "creature", cardId }, p1.id, [], undefined);
+    expect(legal(made["creature"]!)).toBe(true);
+    expect(legal(made["enchantment"]!)).toBe(true);
+    expect(legal(made["planeswalker"]!)).toBe(true);
+    // The two the name leaves out. A kind that accepted every permanent would
+    // pass the three above and still be wrong.
+    expect(legal(made["artifact"]!)).toBe(false);
+    expect(legal(made["land"]!)).toBe(false);
+  });
+
+  it("accepts an attacker or a blocker, and nothing standing idle", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    const bear = createCardDefinition({
+      name: "Bear",
+      typeLine: "Creature — Bear",
+      power: 2,
+      toughness: 2,
+    });
+    game.definitions[bear.id] = bear;
+    const attacker = put(game, bear.id, p2.id);
+    const blocker = put(game, bear.id, p1.id);
+    const idle = put(game, bear.id, p2.id);
+
+    game.cards[attacker.id]!.attacking = true;
+    game.combat = {
+      attacks: [],
+      blockers: { [attacker.id]: [blocker.id] },
+      attackersDeclared: true,
+      declaredBlockersFor: [],
+    };
+
+    const both: TargetRequirement = { kind: "creature", attackingOrBlockingOnly: true };
+    const legal = (requirement: TargetRequirement, cardId: string) =>
+      isChosenTargetLegal(game, requirement, { type: "creature", cardId }, p1.id, [], undefined);
+    expect(legal(both, attacker.id)).toBe(true);
+    // Blocking is not a flag on the card — it is membership in a list keyed by
+    // attacker, so this is the half a naive reading misses.
+    expect(legal(both, blocker.id)).toBe(true);
+    expect(legal(both, idle.id)).toBe(false);
+
+    // Maze of Ith must NOT have been widened by this: attackingOnly still
+    // refuses a blocker, which is why the two are separate flags.
+    const attackingOnly: TargetRequirement = { kind: "creature", attackingOnly: true };
+    expect(legal(attackingOnly, attacker.id)).toBe(true);
+    expect(legal(attackingOnly, blocker.id)).toBe(false);
+  });
+
+  it("lets damage reuse every target shape the parser already knew", () => {
+    // The damage sentence used to carry its own two-entry noun list. It now
+    // routes through the shared phrase parser, so shapes nobody wrote a damage
+    // rule for work anyway — this is the generalisation, not a coincidence.
+    for (const [text, expected] of [
+      ["Probe deals 3 damage to target artifact.", { kind: "artifact" }],
+      ["Probe deals 3 damage to target nonland permanent.", { kind: "nonland_permanent" }],
+      ["Probe deals 2 damage to target attacking creature.", { kind: "creature", attackingOnly: true }],
+    ] as const) {
+      const compiled = compile("Probe", "Instant", text);
+      expect(compiled.notes).toEqual([]);
+      expect(compiled.definition.targetRequirements[0]).toEqual(expected);
+    }
+
+    // The two specific spellings that came first must keep winning, or the
+    // general branch would quietly change what they compile to.
+    const plain = compile("Probe", "Instant", "Probe deals 3 damage to target creature.");
+    expect(plain.definition.targetRequirements[0]).toEqual({ kind: "creature" });
+    const upstairs = compile("Probe", "Instant", "Probe deals 3 damage to target player or planeswalker.");
+    expect(upstairs.definition.targetRequirements[0]).toEqual({ kind: "player_or_planeswalker" });
+  });
+
+  it("round trips the kind and the flag", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const definition = createCardDefinition({
+      name: "Shape Holder",
+      typeLine: "Enchantment",
+      triggers: [
+        {
+          event: "enter_battlefield",
+          effects: [],
+          targetRequirements: [
+            { kind: "creature_enchantment_or_planeswalker" },
+            { kind: "creature", attackingOrBlockingOnly: true },
+          ],
+        },
+      ],
+    });
+    game.definitions[definition.id] = definition;
+    put(game, definition.id, p1.id);
+
+    const round = parseGameState(serializeGameState(game));
+    const requirements = round.definitions[definition.id]?.triggers[0]?.targetRequirements ?? [];
+    expect(requirements[0]).toEqual({ kind: "creature_enchantment_or_planeswalker" });
+    expect(requirements[1]).toEqual({ kind: "creature", attackingOrBlockingOnly: true });
+  });
+});

@@ -2333,6 +2333,7 @@ function parseTargetRequirement(value: unknown, label: string): TargetRequiremen
     kind !== "artifact_or_enchantment" &&
     kind !== "creature_or_artifact" &&
     kind !== "creature_or_enchantment" &&
+    kind !== "creature_enchantment_or_planeswalker" &&
     kind !== "nonland_permanent" &&
     kind !== "noncreature_nonland_permanent" &&
     kind !== "own_graveyard_card" &&
@@ -2410,6 +2411,7 @@ function parseTargetRequirement(value: unknown, label: string): TargetRequiremen
     ...(value.nontoken === true ? { nontoken: true } : {}),
     ...(value.nonbasicOnly === true ? { nonbasicOnly: true } : {}),
     ...(value.attackingOnly === true ? { attackingOnly: true } : {}),
+    ...(value.attackingOrBlockingOnly === true ? { attackingOrBlockingOnly: true } : {}),
     ...(() => {
       const requiredSubtypes = parseStringList(value.requiredSubtypes, `${label}.requiredSubtypes`);
       return requiredSubtypes.length > 0 ? { requiredSubtypes } : {};

@@ -1389,6 +1389,8 @@ export type TargetKind =
   | "artifact_or_enchantment"
   | "creature_or_artifact"
   | "creature_or_enchantment"
+  | "creature_enchantment_or_planeswalker"
+  | "creature_enchantment_or_planeswalker"
   | "nonland_permanent"
   | "noncreature_nonland_permanent"
   /** A card in the caster's own graveyard (Regrowth / Zombify recursion). */
@@ -1471,6 +1473,10 @@ export type TargetRequirement = {
   requiredColors?: Color[];
   /** "target attacking creature" (Maze of Ith). */
   attackingOnly?: boolean;
+  /** "target attacking or blocking creature" (Razorgrass Ambush). A
+   * separate flag rather than a widening of `attackingOnly`, because Maze
+   * of Ith must keep refusing blockers. */
+  attackingOrBlockingOnly?: boolean;
   /** "another target …": the effect's own source is not a legal target. */
   excludeSource?: boolean;
   /** "target non-Dragon creature card" (Junji): none of these subtypes. */

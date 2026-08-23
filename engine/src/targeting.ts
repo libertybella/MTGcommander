@@ -89,6 +89,18 @@ function violatesCharacteristicFilter(
   if (requirement.attackingOnly && state.cards[cardId]?.attacking !== true) {
     return true;
   }
+  // Blocking is not a flag on the instance the way attacking is: the
+  // blocker list is keyed by attacker, so the question is whether this card
+  // appears anywhere in it.
+  if (requirement.attackingOrBlockingOnly) {
+    const attacking = state.cards[cardId]?.attacking === true;
+    const blocking = Object.values(state.combat?.blockers ?? {}).some((ids) =>
+      ids.includes(cardId),
+    );
+    if (!attacking && !blocking) {
+      return true;
+    }
+  }
   // "target nontoken creature" (Parting Gust).
   if (requirement.nontoken && state.cards[cardId]?.isToken) {
     return true;
@@ -380,6 +392,7 @@ export function isChosenTargetLegal(
     requirement.kind === "artifact_or_enchantment" ||
     requirement.kind === "creature_or_artifact" ||
     requirement.kind === "creature_or_enchantment" ||
+    requirement.kind === "creature_enchantment_or_planeswalker" ||
     requirement.kind === "nonland_permanent" ||
     requirement.kind === "noncreature_nonland_permanent" ||
     requirement.kind === "land" ||
@@ -435,6 +448,12 @@ export function isChosenTargetLegal(
         return isCreature(state, target.cardId) || types.includes("artifact");
       case "creature_or_enchantment":
         return isCreature(state, target.cardId) || types.includes("enchantment");
+      case "creature_enchantment_or_planeswalker":
+        return (
+          isCreature(state, target.cardId) ||
+          types.includes("enchantment") ||
+          isPlaneswalker(state, target.cardId)
+        );
       case "nonland_permanent":
         return !types.includes("land");
       case "noncreature_nonland_permanent":
@@ -733,6 +752,7 @@ export function legalChoicesForRequirement(
     requirement.kind === "artifact_or_enchantment" ||
     requirement.kind === "creature_or_artifact" ||
     requirement.kind === "creature_or_enchantment" ||
+    requirement.kind === "creature_enchantment_or_planeswalker" ||
     requirement.kind === "nonland_permanent" ||
     requirement.kind === "noncreature_nonland_permanent" ||
     requirement.kind === "land" ||
