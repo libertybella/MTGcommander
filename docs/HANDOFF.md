@@ -12,14 +12,22 @@ the current state of play. Read all four before writing code.
 
 - Branch `comprehensive-plan`, tags through
   `checkpoint-88-long-tail-grind`, pushed to `fork`.
-- 1,221 tests green; top-2,000 compile rate **67.8% (1,362/2,009)**,
-  60-card sample 97% (CI floor now 90); oxlint silent; 800/800 fuzz
-  seeds on a clean tree at the tag.
-- **Liberty's goal is 80% = 1,608 cards.** That is 246 more from here.
-  Waves 224-229 flipped 3, 2, 1, 1, 2 and one wave was reverted, so the
-  honest rate is **under two a wave** and 80% is on the order of a
+- 1,234 tests green; top-2,000 compile rate **68.0% (1,366/2,009)** as of
+  wave 233 (the tag itself is 1,362); 60-card sample 97% (CI floor now
+  90); oxlint silent; 800/800 fuzz seeds on a clean tree at the tag.
+- **Liberty's goal is 80% = 1,608 cards.** That is 242 more from here.
+  Waves 224-233 flipped 3, 2, 1, 1, 2, 0, 1, 1, 2 with one wave reverted,
+  so the honest rate is **under two a wave** and 80% is on the order of a
   hundred and thirty more waves. Say so rather than implying otherwise;
   the number is not going to be reached in one session.
+- **The shape that pays best right now is a NARROW MATCHER, not a missing
+  feature.** Waves 231 and 233 were both "the engine already understands
+  this phrase somewhere else": a head verb widened in the shared table but
+  not in four hardcoded copies; an exclusion reachable from a leading
+  "another" but not a trailing "other than ~"; a qualifier the static
+  selector parser knew and the trigger-subject parser did not. Look for a
+  phrase understood by ONE parser and not its sibling before looking for a
+  feature to build.
 - **The miss corpus is a genuine long tail.** 653 fragments, 651 of them
   distinct — only two appear on more than one card. There is no lever
   left that flips ten cards; the method now is to find the handful of
