@@ -870,6 +870,15 @@ more questions it can now ask:
   (Bennie Bracks). Reads the existing per-player `createdTokenThisTurn`
   list, and asks whether the CONTROLLER is in it — an opponent's Treasure
   must not satisfy it.
+- **Land-keyed trigger doubling** — Ancient Greenwarden. `triggerDoubling`
+  already carried `cause` and `causeTypesAny`; the grammar's cause list did
+  not include `land`, and Greenwarden is the one printing that ends
+  "…an additional time INSTEAD". The word changes nothing — it is a
+  replacement either way — so it is optional rather than a second pattern.
+
+  The cause branch was rewritten so "permanent" is the unrestricted case and
+  every other word becomes its own `causeTypesAny`, which is why adding a
+  cause is now a word in an alternation rather than a branch.
 - **`enteredFromCast`** — "When this enters, IF YOU CAST IT" (Zacama; The
   One Ring wants it too and is still blocked elsewhere). True only for a
   permanent that arrived by resolving as a SPELL — reanimation and blink do

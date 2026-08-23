@@ -33883,3 +33883,134 @@ describe("wave 260: if you cast it", () => {
     expect(round.cards[card.id]?.enteredFromCast).toBe(true);
   });
 });
+
+describe("wave 261: a land entering doubles the trigger", () => {
+  it("keys the doubling on a land, and keeps the older keys", () => {
+    const greenwarden = compileOracleCard({
+      oracleId: "Ancient Greenwarden",
+      name: "Ancient Greenwarden",
+      manaCost: "{4}{G}{G}",
+      typeLine: "Creature — Elemental",
+      power: "5",
+      toughness: "7",
+      printedKeywords: ["reach"],
+      imageUrl: "",
+      oracleText:
+        "Reach\nIf a land entering causes a triggered ability of a permanent you control to trigger, that ability triggers an additional time instead.\nYou may play lands from your graveyard.",
+    });
+    expect(greenwarden.notes).toEqual([]);
+    expect(greenwarden.definition.triggerDoubling).toEqual({
+      cause: "enters",
+      causeTypesAny: ["land"],
+    });
+
+    // The rewritten branch must not have moved the cards it already served.
+    const panharmonicon = compileOracleCard({
+      oracleId: "Panharmonicon",
+      name: "Panharmonicon",
+      manaCost: "{4}",
+      typeLine: "Artifact",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "If an artifact or creature entering causes a triggered ability of a permanent you control to trigger, that ability triggers an additional time.",
+    });
+    expect(panharmonicon.definition.triggerDoubling).toEqual({
+      cause: "enters",
+      causeTypesAny: ["artifact", "creature"],
+    });
+
+    // "permanent" stays UNRESTRICTED — an empty causeTypesAny would match
+    // nothing, and a ["permanent"] one would look for a card type that no
+    // card has.
+    const yarok = compileOracleCard({
+      oracleId: "Yarok",
+      name: "Yarok",
+      manaCost: "{2}{B}{G}{U}",
+      typeLine: "Legendary Creature — Elemental Horror",
+      power: "3",
+      toughness: "5",
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "If a permanent entering causes a triggered ability of a permanent you control to trigger, that ability triggers an additional time.",
+    });
+    expect(yarok.definition.triggerDoubling).toEqual({ cause: "enters" });
+  });
+
+  it("doubles on a land and not on a creature", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const warden = createCardDefinition({
+      name: "Ancient Greenwarden",
+      typeLine: "Creature — Elemental",
+      power: 5,
+      toughness: 7,
+      triggerDoubling: { cause: "enters", causeTypesAny: ["land"] },
+    });
+    const watcher = createCardDefinition({
+      name: "Watcher",
+      typeLine: "Enchantment",
+      triggers: [
+        {
+          event: "enter_battlefield",
+          watch: "any",
+          effects: [{ kind: "gain_life", playerId: "controller", amount: 1 }],
+          targetRequirements: [],
+        },
+      ],
+    });
+    const forest = createCardDefinition({ name: "Forest", typeLine: "Basic Land — Forest" });
+    const bear = createCardDefinition({
+      name: "Bear",
+      typeLine: "Creature — Bear",
+      power: 2,
+      toughness: 2,
+    });
+    for (const definition of [warden, watcher, forest, bear]) {
+      game.definitions[definition.id] = definition;
+    }
+    const put = (definitionId: string) => {
+      const card = createCardInstance({ definitionId, ownerId: p1.id, zone: "battlefield" });
+      game.cards[card.id] = card;
+      p1.zones.battlefield.push(card.id);
+      return card.id;
+    };
+    put(warden.id);
+    put(watcher.id);
+
+    const lifeOf = (state: GameState) =>
+      state.players.find((entry) => entry.id === p1.id)?.life ?? 0;
+    const land = put(forest.id);
+    const creature = put(bear.id);
+
+    // Each entry is measured from the SAME starting board, so the two
+    // numbers below differ only in what caused the trigger.
+    const gainedFrom = (cardId: string): number => {
+      let state = structuredClone(game);
+      const before = lifeOf(state);
+      dispatchEventsInPlace(state, [{ kind: "enters", cardId }]);
+      // Two copies of one ability are ordered by their controller before
+      // either reaches the stack, so the prompt has to be answered first —
+      // an unanswered one leaves the stack empty and the test reading zero.
+      if (state.prompts[0]?.kind === "order_triggers") {
+        state = applyAction(state, {
+          kind: "resolve_order_triggers",
+          playerId: p1.id,
+          order: [0, 1],
+        });
+      }
+      while (state.stack.length > 0) {
+        state = resolveTopOfStack(state);
+      }
+      return lifeOf(state) - before;
+    };
+
+    // A land entering fires the watcher twice; a creature entering fires it
+    // once. A reading that ignored causeTypesAny would give two for both.
+    expect(gainedFrom(land)).toBe(2);
+    expect(gainedFrom(creature)).toBe(1);
+  });
+});

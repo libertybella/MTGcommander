@@ -11060,8 +11060,12 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
 
     // Panharmonicon / Yarok / Teysa Karlov / Drivnod / Isshin: cause-keyed
     // trigger doubling.
+    // Ancient Greenwarden keys the same doubling on a LAND entering, and
+    // is the one printing that ends "…an additional time INSTEAD". The
+    // word changes nothing about the effect — it is a replacement either
+    // way — so it is optional rather than a second pattern.
     const causeDoubling = sentence.match(
-      /^If an? (artifact or creature|permanent|creature) (entering|dying|attacking) causes a triggered ability of a permanent you control to trigger, that ability triggers an additional time$/i,
+      /^If an? (artifact or creature|permanent|creature|land) (entering|dying|attacking) causes a triggered ability of a permanent you control to trigger, that ability triggers an additional time(?: instead)?$/i,
     );
     if (causeDoubling?.[1] && causeDoubling[2]) {
       const cause = { entering: "enters", dying: "dies", attacking: "attacks" }[
@@ -11072,9 +11076,9 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
         cause,
         ...(what === "artifact or creature"
           ? { causeTypesAny: ["artifact", "creature"] }
-          : what === "creature"
-            ? { causeTypesAny: ["creature"] }
-            : {}),
+          : what === "permanent"
+            ? {}
+            : { causeTypesAny: [what] }),
       };
       continue;
     }
