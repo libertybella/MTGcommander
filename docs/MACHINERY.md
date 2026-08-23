@@ -222,6 +222,17 @@ tools are self-locating, so the directory can be moved as a unit.
 - Pick clusters by sorting that output **two ways**: by grammar, and by
   the *length* of the missing fragment. The length sort is what finds
   families the grammar sort reports as a thin tail.
+- `near.sh` — for every ONE-AWAY card, rewrites its fragment by a short
+  list of mechanical substitutions (drop "or planeswalker", "an opponent"
+  to "a player", drop "nontoken", drop "you may", …) and reports the ones
+  that compile afterwards. A hit is the cheapest kind of flip there is:
+  the engine already understands the shape and something narrower than it
+  needs one more spelling. Wave 231 was exactly that shape.
+  **Measured 2026-08-23: 254 one-away cards examined, ZERO fixed by any
+  rewrite in the list.** That is a real result and not a broken probe (it
+  reports how many cards it examined for exactly that reason): the cheap
+  phrasing wins are spent, and every remaining miss needs a feature.
+  Add rewrites to the list before concluding otherwise.
 - **Edit source with a script file, never `node -e '…'`.** Nested shell
   quoting adds another layer to the one the tool already applies (see the
   doubled-backslash trap below), and a `node -e` one-liner gives you nowhere
