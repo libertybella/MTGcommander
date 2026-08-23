@@ -8,11 +8,51 @@ on-what lives in [CLAIMS.md](CLAIMS.md). This file is the tribal
 knowledge that isn't obvious from those: exact commands, traps, and
 the current state of play. Read all four before writing code.
 
-## State of play (checkpoint-85-keyword-vein, 2026-08-22)
+## State of play (checkpoint-86-one-away-grind, 2026-08-22)
 
-- Branch `comprehensive-plan`, tags through `checkpoint-85-keyword-vein`.
-- 1,143 tests green; top-2,000 compile rate **65.9% (1,323/2,009)**,
+- Branch `comprehensive-plan`, tags through `checkpoint-86-one-away-grind`.
+- 1,161 tests green; top-2,000 compile rate **66.7% (1,340/2,009)**,
   60-card sample 97% (CI floor now 90).
+- **Liberty's standing directive: grind to 75% = 1,507 cards.** 167 to go.
+  Waves 206–217 flipped 5, 3, 4, 3, 2, 3, 3, 3, 2, 2, 2, 2 — call it
+  **3 a wave**, so 75% is roughly fifty more waves. There is no single
+  lever left in the miss corpus; this is a grind, and the method below is
+  what makes it a steady one rather than a stalling one.
+- **Pick clusters by sorting the miss corpus two ways, not one.** By
+  GRAMMAR (`^Whenever` 48, `^{` 31, `^If` 28) the d1 pool reads as a long
+  thin tail with nothing in it. By FRAGMENT LENGTH the same 286 cards put
+  whole families on one screen — that is how the keyword vein was found,
+  and how waves 211–217 kept finding three-card batches. Regenerate with
+  `scan.sh`, then `awk -F' :: '` on the length of field 2.
+- **The remaining keyword vein**, cheapest first: warp (3 cards), morph,
+  dredge, suspend (2), cascade (2), foretell, evoke, spectacle, miracle,
+  escalate, reconfigure, encore, split second, cumulative upkeep, myriad,
+  impending, harmonize, splice onto Arcane, fuse. Where the reminder text
+  says something the engine can already do, the keyword is a lowering and
+  costs a few lines; the rest are a wave each.
+- **Every wave this stretch that asserted a NEGATIVE case found a bug**,
+  and none of them were visible to tsc or to the compile-rate metric.
+  Three were the same shape — a filter that parses and is read by nobody
+  (the serializer's counted-noun allow-list had drifted to seven of
+  thirteen, so one card failed to DESERIALIZE; `dynamicCountOf` was
+  called with no source, so every "attached to it" count was zero; the
+  whole graveyard target family checked mana value and nothing else).
+  Two were logic: sacrificing on "no counters left" rather than "one was
+  actually removed" kills anything that outlives its counters, and
+  recording the restore on every copy rather than the first would have
+  restored the first copy instead of the printed card.
+- **When a new union member must be handled somewhere, make the somewhere
+  a total `Record<Union, …>`.** Wave 206 did that to the count evaluator
+  and the serializer guard; wave 215 added five members and got two tsc
+  errors instead of two silent fall-throughs. Prefer this to a chain of
+  `if`s or ternaries whenever a new case would otherwise be swallowed.
+- **Two shapes worth knowing before you re-try them.** Totem armor and
+  regeneration both need a "destroy" event this engine does not have — a
+  targeted destruction is a `move_card` to the graveyard, so a
+  replacement would also catch sacrifices and bounces. And "when you PLAY
+  a land" is not "when a land enters"; approximating it makes City of
+  Traitors die to a fetched land, which is a wrong game rather than a
+  rough one.
 - **The one-away pile has a vein in it: bare keyword lines.** Sorting the
   misses by fragment LENGTH rather than by grammar found what clustering
   by shape had missed — roughly thirty cards are one sentence away, and
