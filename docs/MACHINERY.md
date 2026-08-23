@@ -222,6 +222,12 @@ tools are self-locating, so the directory can be moved as a unit.
 - Pick clusters by sorting that output **two ways**: by grammar, and by
   the *length* of the missing fragment. The length sort is what finds
   families the grammar sort reports as a thin tail.
+- `stranded.sh` — counts permanents whose compiled definition carries
+  SPELL effects. Those never run (a permanent spell resolves by entering
+  the battlefield), so a sentence that lands there compiles clean, scores,
+  and does nothing. **Measured 2026-08-23: 26 such permanents, 7 of them
+  scoring as full compiles.** Run it after any wave that touches the
+  sentence loop; the number should only go down.
 - `near.sh` — for every ONE-AWAY card, rewrites its fragment by a short
   list of mechanical substitutions (drop "or planeswalker", "an opponent"
   to "a player", drop "nontoken", drop "you may", …) and reports the ones
