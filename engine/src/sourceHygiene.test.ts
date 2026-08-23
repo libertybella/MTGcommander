@@ -240,3 +240,49 @@ describe("source hygiene: one line ending per file", () => {
     ).toEqual([]);
   });
 });
+
+describe("source hygiene: no eaten regex escapes", () => {
+  it("finds no bare d+, w+ or s+ where a character class was meant", () => {
+    // The tooling that writes this repo collapses a doubled backslash, so a
+    // character class written into a regex can arrive with its backslash
+    // gone: `(one|two|\\d+)` becomes `(one|two|d+)`, which quietly matches the
+    // LETTER d instead of a digit. tsc and oxlint both accept it, and the
+    // pattern simply stops matching what it was written for.
+    //
+    // This has happened three times: once in COST_UNIT, once writing wave
+    // 236, and once in the doc note about it. The heuristic is deliberately
+    // narrow — a class letter followed by `+` immediately after an opening
+    // paren, a pipe, or a bracket, which is nonsense as literal text.
+    const suspicious = new RegExp("[(|" + String.fromCharCode(91) + "]([dws])\\+", "g");
+    const offences: string[] = [];
+    for (const file of sourceFiles(REPO_ROOT)) {
+      if (!file.endsWith(".ts") && !file.endsWith(".tsx")) {
+        continue;
+      }
+      if (statSync(file).size > MAX_SCANNED_BYTES) {
+        continue;
+      }
+      const lines = readFileSync(file, "utf8").split("\n");
+      lines.forEach((line, index) => {
+        // Only look inside something that is plausibly a regex literal.
+        if (!line.includes("/^") && !line.includes("new RegExp")) {
+          return;
+        }
+        for (const match of line.matchAll(suspicious)) {
+          offences.push(
+            `${relative(REPO_ROOT, file)}:${index + 1} — ${JSON.stringify(match[0])} in ${line.trim().slice(0, 90)}`,
+          );
+        }
+      });
+    }
+    expect(
+      offences,
+      offences.length === 0
+        ? ""
+        : `Regex escapes that look eaten:\n\n${offences.join("\n")}\n\n` +
+            "A class letter with a `+` straight after `(`, `|` or `[` is almost\n" +
+            "always a lost backslash. Build the backslash with\n" +
+            "String.fromCharCode(92) rather than typing a doubled one." + "\n",
+    ).toEqual([]);
+  });
+});

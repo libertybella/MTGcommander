@@ -203,6 +203,13 @@ export type CardDefinition = {
    * "you" — so it is read off the defending player's own battlefield.
    */
   attackLimitPerCombat?: number;
+  /**
+   * Brave the Sands: "Each creature you control can block an additional
+   * creature each combat." A static that raises the allowance of the
+   * CONTROLLER's creatures, so it is counted off the blocking player's own
+   * permanents and stacks if they control two of them.
+   */
+  extraBlocksGranted?: number;
   /** Theros gods: not a creature while devotion to the color is below the
    * threshold (applied before the layer passes — a documented simplification). */
   notCreatureBelowDevotion?: { color: Color; threshold: number };

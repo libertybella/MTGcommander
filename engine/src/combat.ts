@@ -1,7 +1,7 @@
 import { cloneGameState } from "./clone";
 import { characteristicsOf, isCommander, isCreature } from "./cardTypes";
 import { abilitiesRemoved, computedCard } from "./characteristicsEngine";
-import { attackLimitFor, creaturePower, creatureToughness, damageAfterReplacements, permanentsControlledBy } from "./derived";
+import { attackLimitFor, blockAllowanceFor, creaturePower, creatureToughness, damageAfterReplacements, permanentsControlledBy } from "./derived";
 import { hasKeyword, protectedFromSource } from "./keywords";
 import { canPayManaCost, parseManaCost, payManaCost } from "./mana";
 import { isLiving, nextLivingPlayerId } from "./players";
@@ -434,13 +434,21 @@ export function declareBlockers(
 
   const attackingThisPlayer = combat.attacks.filter((attack) => attack.defenderId === defenderId);
   const legalAttackers = new Set(attackingThisPlayer.map((attack) => attack.attackerId));
-  const seenBlockers = new Set<CardInstanceId>();
+  // CR 509.1a: one attacker per blocker, unless something raises the
+  // allowance (Brave the Sands). A Set could only ever say one.
+  const blocksByBlocker = new Map<CardInstanceId, number>();
 
   for (const block of blocks) {
-    if (seenBlockers.has(block.blockerId)) {
-      throw new Error(`Card ${block.blockerId} is listed as a blocker twice`);
+    const used = (blocksByBlocker.get(block.blockerId) ?? 0) + 1;
+    const allowed = blockAllowanceFor(state, block.blockerId);
+    if (used > allowed) {
+      throw new Error(
+        allowed === 1
+          ? `Card ${block.blockerId} is listed as a blocker twice`
+          : `Card ${block.blockerId} can block only ${allowed} creatures each combat`,
+      );
     }
-    seenBlockers.add(block.blockerId);
+    blocksByBlocker.set(block.blockerId, used);
     if (!legalAttackers.has(block.attackerId)) {
       throw new Error(`Card ${block.attackerId} is not attacking that player`);
     }

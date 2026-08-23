@@ -436,6 +436,33 @@ export function creatureToughness(state: GameState, cardId: CardInstanceId): num
  * combat, or null for no cap. Read off the DEFENDING player's own
  * permanents, because the printed text says "attack you".
  */
+/**
+ * How many attackers one creature may block this combat. One by default
+ * (CR 509.1a), plus whatever its controller's permanents grant.
+ *
+ * Additive rather than a maximum: two Brave the Sands should let a
+ * creature block three attackers, which a `Math.min` reading of the same
+ * field would silently refuse.
+ */
+export function blockAllowanceFor(state: GameState, blockerId: string): number {
+  const blocker = state.cards[blockerId];
+  if (!blocker) {
+    return 1;
+  }
+  let extra = 0;
+  for (const card of Object.values(state.cards)) {
+    if (
+      card.zone !== "battlefield" ||
+      card.controllerId !== blocker.controllerId ||
+      abilitiesRemoved(state, card.id)
+    ) {
+      continue;
+    }
+    extra += state.definitions[card.definitionId]?.extraBlocksGranted ?? 0;
+  }
+  return 1 + extra;
+}
+
 export function attackLimitFor(state: GameState, playerId: string): number | null {
   let cap: number | null = null;
   for (const card of Object.values(state.cards)) {

@@ -285,6 +285,14 @@ tools are self-locating, so the directory can be moved as a unit.
   fails the ordinary `npx vitest run` on any invisible character in the repo,
   naming file, line, column and character. Do not work around the trap with
   `(?= |$)`, which is a weaker assertion than a word boundary.
+- **A doubled backslash you typed may arrive as a single one, and `\d`
+  then means the LETTER d.** This is the same tool behaviour as the
+  backspace trap, but the result is visible and still wrong: a pattern that
+  compiles, lints, and matches nothing it was written for. It has happened
+  in `COST_UNIT` and again writing wave 236. `sourceHygiene.test.ts` now
+  fails on a class letter followed by `+` immediately after `(`, `|` or
+  `[` inside a regex, which is nonsense as literal text and is exactly what
+  the eaten form looks like.
 - **Never commit a raw control character, even a deliberate one.** If you need
   a sentinel, spell it `\u0001` and give it a name — `PERIOD_SHIELD` in
   `oraclePatterns.ts` shields periods inside quoted grants. An invisible byte

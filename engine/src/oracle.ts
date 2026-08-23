@@ -208,6 +208,9 @@ function compileOneFace(card: OracleCard, definitionId: string): OracleCompileRe
     ...(compiled.attackLimitPerCombat === undefined
       ? {}
       : { attackLimitPerCombat: compiled.attackLimitPerCombat }),
+    ...(compiled.extraBlocksGranted === undefined
+      ? {}
+      : { extraBlocksGranted: compiled.extraBlocksGranted }),
     ...(compiled.damageReplacement ? { damageReplacement: compiled.damageReplacement } : {}),
     ...(compiled.manaTapMultiplier ? { manaTapMultiplier: compiled.manaTapMultiplier } : {}),
     ...(compiled.altCost ? { altCost: compiled.altCost } : {}),

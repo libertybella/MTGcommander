@@ -530,6 +530,14 @@ export function parseGameState(json: string): GameState {
               `definition.${id}.attackLimitPerCombat`,
             ),
           }),
+      ...(def.extraBlocksGranted === undefined
+        ? {}
+        : {
+            extraBlocksGranted: expectNumber(
+              def.extraBlocksGranted,
+              `definition.${id}.extraBlocksGranted`,
+            ),
+          }),
       ...(isRecord(def.damageReplacement)
         ? {
             damageReplacement: {

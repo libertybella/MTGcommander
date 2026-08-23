@@ -19,10 +19,10 @@ import {
 } from "./index";
 import { activatedOf, cardMatchesSubtype, computedCard, dynamicCountOf, triggersOf } from "./characteristicsEngine";
 import { mostCommonControlledCreatureType } from "./effects";
-import { attackLimitFor, castCostReduction, castableFromTop, drawCapFor, freeEquipGranted, hasFlashGrant, landDropAllowance, maxHandSizeOf, noncreatureSpellCap, permanentsControlledBy, reliefAdjustedCost, selfDiscountAmount, wouldEnterTapped } from "./derived";
+import { attackLimitFor, blockAllowanceFor, castCostReduction, castableFromTop, drawCapFor, freeEquipGranted, hasFlashGrant, landDropAllowance, maxHandSizeOf, noncreatureSpellCap, permanentsControlledBy, reliefAdjustedCost, selfDiscountAmount, wouldEnterTapped } from "./derived";
 import { hasKeyword } from "./keywords";
 import { dispatchEventsInPlace, triggerConditionHolds } from "./triggers";
-import { applyCombatDamage, blockRestriction, declareAttackers } from "./combat";
+import { applyCombatDamage, blockRestriction, declareAttackers, declareBlockers } from "./combat";
 import { advanceStep, beginNextLivingTurnInPlace } from "./turn";
 import { colorsAmongControlled, commanderIdentityColors, manaAbilitiesFor, manaTapOptionsFor } from "./manaOptions";
 import { emptyManaPools, parseManaCost } from "./mana";
@@ -30804,5 +30804,135 @@ describe("wave 236: a cap on how many creatures may attack you", () => {
     const { game, p2 } = board();
     const round = parseGameState(serializeGameState(game));
     expect(attackLimitFor(round, p2.id)).toBe(2);
+  });
+});
+
+describe("wave 237: a creature that can block an additional creature", () => {
+  it("reads the grant off the printed line", () => {
+    const brave = compileOracleCard({
+      oracleId: "Brave the Sands",
+      name: "Brave the Sands",
+      manaCost: "{1}{W}",
+      typeLine: "Enchantment",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "Each creature you control has vigilance.\nEach creature you control can block an additional creature each combat.",
+    });
+    expect(brave.notes).toEqual([]);
+    expect(brave.definition.extraBlocksGranted).toBe(1);
+  });
+
+  const combatBoard = (braveCount: number) => {
+    const game = createGameState({ playerCount: 2 });
+    const [p1, p2] = game.players;
+    if (!p1 || !p2) {
+      throw new Error("expected two players");
+    }
+    fillLibraries(game, 20);
+    const brave = createCardDefinition({
+      name: "Brave the Sands",
+      typeLine: "Enchantment",
+      extraBlocksGranted: 1,
+    });
+    const bearDefinition = createCardDefinition({
+      name: "Bear",
+      typeLine: "Creature — Bear",
+      power: 2,
+      toughness: 2,
+    });
+    for (const definition of [brave, bearDefinition]) {
+      game.definitions[definition.id] = definition;
+    }
+    for (let index = 0; index < braveCount; index += 1) {
+      const card = createCardInstance({
+        definitionId: brave.id,
+        ownerId: p2.id,
+        zone: "battlefield",
+      });
+      game.cards[card.id] = card;
+      p2.zones.battlefield.push(card.id);
+    }
+
+    const makeCreature = (ownerId: string) => {
+      const card = createCardInstance({
+        definitionId: bearDefinition.id,
+        ownerId,
+        zone: "battlefield",
+      });
+      card.summoningSick = false;
+      game.cards[card.id] = card;
+      game.players.find((entry) => entry.id === ownerId)!.zones.battlefield.push(card.id);
+      return card;
+    };
+    const attackers = [makeCreature(p1.id), makeCreature(p1.id), makeCreature(p1.id)];
+    const blocker = makeCreature(p2.id);
+
+    game.turn.phase = "combat";
+    game.turn.step = "declareAttackers";
+    game.turn.activePlayerId = p1.id;
+    game.priorityPlayerId = p1.id;
+    const attacking = declareAttackers(
+      game,
+      p1.id,
+      attackers.map((bear) => ({ attackerId: bear.id, defenderId: p2.id })),
+    );
+    attacking.turn.step = "declareBlockers";
+    return { game: attacking, p2, attackers, blocker };
+  };
+
+  it("blocks one attacker without it and two with it", () => {
+    const plain = combatBoard(0);
+    // CR 509.1a: one attacker per blocker by default.
+    expect(() =>
+      declareBlockers(plain.game, plain.p2.id, [
+        { blockerId: plain.blocker.id, attackerId: plain.attackers[0]!.id },
+        { blockerId: plain.blocker.id, attackerId: plain.attackers[1]!.id },
+      ]),
+    ).toThrow();
+
+    const braved = combatBoard(1);
+    expect(() =>
+      declareBlockers(braved.game, braved.p2.id, [
+        { blockerId: braved.blocker.id, attackerId: braved.attackers[0]!.id },
+        { blockerId: braved.blocker.id, attackerId: braved.attackers[1]!.id },
+      ]),
+    ).not.toThrow();
+    // Two is the allowance, so the third is still refused — the grant raises
+    // the limit rather than removing it.
+    expect(() =>
+      declareBlockers(braved.game, braved.p2.id, [
+        { blockerId: braved.blocker.id, attackerId: braved.attackers[0]!.id },
+        { blockerId: braved.blocker.id, attackerId: braved.attackers[1]!.id },
+        { blockerId: braved.blocker.id, attackerId: braved.attackers[2]!.id },
+      ]),
+    ).toThrow(/only 2/);
+  });
+
+  it("stacks two copies rather than taking the larger", () => {
+    const { game, p2, attackers, blocker } = combatBoard(2);
+    expect(blockAllowanceFor(game, blocker.id)).toBe(3);
+    // Two Brave the Sands is three blocks, not two. A `Math.min` or a
+    // "greatest grant wins" reading of the same field would refuse this.
+    expect(() =>
+      declareBlockers(game, p2.id, [
+        { blockerId: blocker.id, attackerId: attackers[0]!.id },
+        { blockerId: blocker.id, attackerId: attackers[1]!.id },
+        { blockerId: blocker.id, attackerId: attackers[2]!.id },
+      ]),
+    ).not.toThrow();
+  });
+
+  it("grants only to its controller's creatures, and round trips", () => {
+    const { game, attackers, blocker } = combatBoard(1);
+    // The enchantment is the DEFENDER's, so the attacking player's creatures
+    // get nothing from it.
+    expect(blockAllowanceFor(game, blocker.id)).toBe(2);
+    expect(blockAllowanceFor(game, attackers[0]!.id)).toBe(1);
+
+    const round = parseGameState(serializeGameState(game));
+    expect(blockAllowanceFor(round, blocker.id)).toBe(2);
   });
 });

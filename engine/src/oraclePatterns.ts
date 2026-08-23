@@ -66,6 +66,7 @@ export type CompiledOracleText = {
   noncreatureSpellCap?: number;
   cantLoseGame?: boolean;
   attackLimitPerCombat?: number;
+  extraBlocksGranted?: number;
   damageReplacement?: DamageReplacement;
   manaTapMultiplier?: number;
   altCost?: AlternativeCastCost;
@@ -10102,8 +10103,16 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
     }
 
     // Narset, Parter of Veils.
+    if (
+      /^Each creature you control can block an additional creature each combat$/i.test(
+        sentence,
+      )
+    ) {
+      result.extraBlocksGranted = 1;
+      continue;
+    }
     const attackCap = sentence.match(
-      /^No more than (one|two|three|d+) creatures? can attack you each combat$/i,
+      /^No more than (one|two|three|\d+) creatures? can attack you each combat$/i,
     );
     if (attackCap?.[1]) {
       const cap = parseCount(attackCap[1]);
