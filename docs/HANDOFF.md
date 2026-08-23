@@ -8,17 +8,29 @@ on-what lives in [CLAIMS.md](CLAIMS.md). This file is the tribal
 knowledge that isn't obvious from those: exact commands, traps, and
 the current state of play. Read all four before writing code.
 
-## State of play (checkpoint-87-invisible-characters, 2026-08-23)
+## State of play (checkpoint-88-long-tail-grind, 2026-08-23)
 
 - Branch `comprehensive-plan`, tags through
-  `checkpoint-87-invisible-characters`, pushed to `fork`.
-- 1,194 tests green; top-2,000 compile rate **67.3% (1,353/2,009)**,
+  `checkpoint-88-long-tail-grind`, pushed to `fork`.
+- 1,221 tests green; top-2,000 compile rate **67.8% (1,362/2,009)**,
   60-card sample 97% (CI floor now 90); oxlint silent; 800/800 fuzz
   seeds on a clean tree at the tag.
-- **Next up: the wave grind.** The granted-ability primitive and its
-  reader both landed, so the quoted-grant family is harvestable now.
-  `PRIMITIVE: a real "destroy" event` is still open and is the widest
-  change since tagged mana — take wave sessions before it, not after.
+- **Liberty's goal is 80% = 1,608 cards.** That is 246 more from here.
+  Waves 224-229 flipped 3, 2, 1, 1, 2 and one wave was reverted, so the
+  honest rate is **under two a wave** and 80% is on the order of a
+  hundred and thirty more waves. Say so rather than implying otherwise;
+  the number is not going to be reached in one session.
+- **The miss corpus is a genuine long tail.** 653 fragments, 651 of them
+  distinct — only two appear on more than one card. There is no lever
+  left that flips ten cards; the method now is to find the handful of
+  cards that share ENGINE machinery rather than share wording, and to
+  batch several small readers into one wave.
+- **Wave 228 was reverted, and the reason generalises.** It measured +1
+  and the +1 was a mis-compile: the grammar was fine but the value it
+  read (`sacrificedPower`) is only ever set at cast time, so the card
+  would have scored and played wrong. Before counting a flip, check that
+  the value the new grammar reads is actually populated on the path that
+  card takes. See the blocked row in CLAIMS.md.
 - **The granted-ability primitive is DONE** (`grant_trigger` +
   `grant_activated`, layer 6). It moved the rate by design: a primitive
   session is judged by what it unblocks. Its reader — the quoted-grant
