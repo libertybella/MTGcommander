@@ -8,18 +8,27 @@ on-what lives in [CLAIMS.md](CLAIMS.md). This file is the tribal
 knowledge that isn't obvious from those: exact commands, traps, and
 the current state of play. Read all four before writing code.
 
-## State of play (checkpoint-89-self-contained-statics, 2026-08-23)
+## State of play (checkpoint-90-narrow-matchers, 2026-08-23)
 
-- Branch `comprehensive-plan`, tags through
-  `checkpoint-89-self-contained-statics`, pushed to `fork`.
-- 1,246 tests green; top-2,000 compile rate **68.1% (1,369/2,009)**;
+- Branch `comprehensive-plan`, tags through `checkpoint-90-narrow-matchers`,
+  pushed to `fork`.
+- 1,262 tests green; top-2,000 compile rate **68.4% (1,374/2,009)**;
   60-card sample 97% (CI floor now 90); oxlint silent; 800/800 fuzz seeds
   on a clean tree at the tag.
-- **Liberty's goal is 80% = 1,608 cards.** That is 239 more from here.
-  Waves 224-236 flipped 3, 2, 1, 1, 2, 0, 1, 1, 2, 1, 1, 1 with one wave
-  reverted, so the honest rate is **under one and a half a wave** and 80%
-  is on the order of a hundred and sixty more waves. Say so rather than
-  implying otherwise; it is not reachable in one session.
+- **Liberty's goal is 80% = 1,608 cards.** That is 234 more from here.
+  Sixteen waves measured across this run flipped 21 cards between them,
+  so the honest rate is **about one and a third a wave** and 80% is on the
+  order of a hundred and seventy more waves. Say so rather than implying
+  otherwise; it is not reachable in one session.
+- **Three veins are now measured as EXHAUSTED, so do not re-search them.**
+  `near.sh`: no one-away card is fixed by any mechanical rewording (251
+  examined, 0 hits). `split.sh`: of the 68 one-away cards whose fragment is
+  a trigger, **0 are blocked on the head** — 41 are blocked on the body and
+  27 on both. Waves 231 and 241 took the last of the head gaps. The
+  qualifier matrix still has unexplored cells, but corpus demand for them
+  is thin.
+- **What is left is bodies and features.** The largest single mechanism is
+  phasing (8 cards, 3 one-away) and it is filed as a PRIMITIVE, not a wave.
 - **Roughly 7 of the current wins are not wins.** See the stranded-effects
   row in CLAIMS.md: a rider on the same printed line as a trigger can land
   in `definition.effects`, where a permanent never runs it, so the card
