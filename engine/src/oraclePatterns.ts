@@ -59,6 +59,7 @@ export type CompiledOracleText = {
   enchantedTappedBonus?: { color: Color | "chosen"; amount: number };
   loyaltyAbilities?: LoyaltyAbility[];
   noMaxHandSize?: boolean;
+  opponentsDrawCap?: number;
   damageReplacement?: DamageReplacement;
   manaTapMultiplier?: number;
   altCost?: AlternativeCastCost;
@@ -2320,6 +2321,29 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
             target: { type: "chosen", index: 0 },
             ...(becomeCopy[3] ? { untilEot: true } : {}),
             ...(becomeCopy[2] ? { keepAbilities: true } : {}),
+          },
+        ],
+      };
+    }
+  }
+
+  // Sundering Eruption: a restriction laid on every creature that lacks a
+  // keyword, rather than on one this clause targets.
+  const allRestrict = sentence.match(
+    /^Creatures (with|without) ([a-z ]+) can't (attack|block) this turn$/i,
+  );
+  if (allRestrict?.[1] && allRestrict[2] && allRestrict[3]) {
+    const keyword = KEYWORD_GRANTS[allRestrict[2].trim().toLowerCase()];
+    if (keyword) {
+      return {
+        targetRequirements: [],
+        effects: [
+          {
+            kind: "all_restrict_until_eot",
+            ...(/^attack$/i.test(allRestrict[3]) ? { cantAttack: true } : { cantBlock: true }),
+            ...(/^with$/i.test(allRestrict[1])
+              ? { withKeyword: keyword }
+              : { withoutKeyword: keyword }),
           },
         ],
       };
@@ -9386,6 +9410,18 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
     if (/^You have no maximum hand size$/i.test(sentence)) {
       result.noMaxHandSize = true;
       continue;
+    }
+
+    // Narset, Parter of Veils.
+    const drawCap = sentence.match(
+      /^Each opponent can't draw more than (one|two|three|\d+) cards? each turn$/i,
+    );
+    if (drawCap?.[1]) {
+      const cap = parseCount(drawCap[1]);
+      if (cap) {
+        result.opponentsDrawCap = cap;
+        continue;
+      }
     }
 
     const damageRule = parseDamageReplacement(sentence);

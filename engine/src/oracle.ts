@@ -197,6 +197,9 @@ function compileOneFace(card: OracleCard, definitionId: string): OracleCompileRe
       : {}),
     ...(compiled.enchant ? { enchant: compiled.enchant } : {}),
     ...(compiled.noMaxHandSize ? { noMaxHandSize: true } : {}),
+    ...(compiled.opponentsDrawCap === undefined
+      ? {}
+      : { opponentsDrawCap: compiled.opponentsDrawCap }),
     ...(compiled.damageReplacement ? { damageReplacement: compiled.damageReplacement } : {}),
     ...(compiled.manaTapMultiplier ? { manaTapMultiplier: compiled.manaTapMultiplier } : {}),
     ...(compiled.altCost ? { altCost: compiled.altCost } : {}),

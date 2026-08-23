@@ -162,6 +162,9 @@ export type CardDefinition = {
   opponentsCantCastDuringYourTurn?: boolean;
   /** Toski: this creature attacks each combat if able. */
   mustAttack?: boolean;
+  /** Narset, Parter of Veils: "each opponent can't draw more than one card
+   * each turn" — a cap on the OPPONENTS' draws, counted per turn. */
+  opponentsDrawCap?: number;
   /** Theros gods: not a creature while devotion to the color is below the
    * threshold (applied before the layer passes — a documented simplification). */
   notCreatureBelowDevotion?: { color: Color; threshold: number };
@@ -1027,6 +1030,18 @@ export type GameEffect =
       /** Crippling Fear: spare creatures of this subtype. */
       exceptSubtype?: string;
     }
+  /**
+   * Sundering Eruption: "creatures without flying can't block this turn" —
+   * every creature on the battlefield, filtered by a keyword it lacks.
+   */
+  | {
+      kind: "all_restrict_until_eot";
+      cantAttack?: boolean;
+      cantBlock?: boolean;
+      cantBeBlocked?: boolean;
+      withoutKeyword?: Keyword;
+      withKeyword?: Keyword;
+    }
   | { kind: "reveal_top_put_permanent"; playerId: PlayerId }
   | { kind: "drain_opponents"; playerId: PlayerId; amount: number }
   | { kind: "silence"; playerId: PlayerId }
@@ -1814,6 +1829,26 @@ export type CardEffect =
       exceptChosenType?: boolean;
     }
   /** Chaos Warp's back half: reveal the top card; a permanent card lands. */
+  /**
+   * Sundering Eruption: "creatures without flying can't block this turn" —
+   * every creature on the battlefield, filtered by a keyword it lacks.
+   */
+  | {
+      kind: "all_restrict_until_eot";
+      cantAttack?: boolean;
+      cantBlock?: boolean;
+      cantBeBlocked?: boolean;
+      withoutKeyword?: Keyword;
+      withKeyword?: Keyword;
+    }
+  | {
+      kind: "all_restrict_until_eot";
+      cantAttack?: boolean;
+      cantBlock?: boolean;
+      cantBeBlocked?: boolean;
+      withoutKeyword?: Keyword;
+      withKeyword?: Keyword;
+    }
   | { kind: "reveal_top_put_permanent"; playerId: PlayerSelector }
   /** Exsanguinate: each opponent loses N; you gain the total lost.
    * devotion: X = colored pips of that color among the controller's
@@ -2762,6 +2797,10 @@ export type EffectSelector = {
   chosenSubtype?: boolean;
   /** The target must have the source's chosen color (Caged Sun, Heraldic Banner). */
   chosenColor?: boolean;
+  /** "creatures without flying" (Sundering Eruption). Read computed, so a
+   * granted keyword counts. */
+  withoutKeyword?: Keyword;
+  withKeyword?: Keyword;
   /** "Other Elves you control": the source itself is not affected. */
   excludeSelf?: boolean;
 };

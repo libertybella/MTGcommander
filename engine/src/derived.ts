@@ -405,7 +405,33 @@ export function creatureToughness(state: GameState, cardId: CardInstanceId): num
   return Math.max(0, base + plus1Plus1(state, cardId));
 }
 
+/**
+ * Narset: the lowest cap any opponent's permanent puts on this player's draws
+ * this turn, or null for none. Counted against the per-turn tally, so the
+ * first draw goes through and the rest do not.
+ */
+export function drawCapFor(state: GameState, playerId: string): number | null {
+  let cap: number | null = null;
+  for (const card of Object.values(state.cards)) {
+    if (card.zone !== "battlefield" || card.controllerId === playerId) {
+      continue;
+    }
+    if (abilitiesRemoved(state, card.id)) {
+      continue;
+    }
+    const limit = state.definitions[card.definitionId]?.opponentsDrawCap;
+    if (limit !== undefined && (cap === null || limit < cap)) {
+      cap = limit;
+    }
+  }
+  return cap;
+}
+
 export function wouldSkipDraw(state: GameState, playerId: string): boolean {
+  const cap = drawCapFor(state, playerId);
+  if (cap !== null && (state.drawsByPlayerThisTurn?.[playerId] ?? 0) >= cap) {
+    return true;
+  }
   return Object.values(state.cards).some((card) => {
     if (card.zone !== "battlefield" || card.controllerId !== playerId) {
       return false;

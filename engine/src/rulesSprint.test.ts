@@ -17,7 +17,7 @@ import {
 } from "./index";
 import { cardMatchesSubtype, computedCard, dynamicCountOf } from "./characteristicsEngine";
 import { mostCommonControlledCreatureType } from "./effects";
-import { castCostReduction, castableFromTop, freeEquipGranted, hasFlashGrant, landDropAllowance, permanentsControlledBy, reliefAdjustedCost, selfDiscountAmount, wouldEnterTapped } from "./derived";
+import { castCostReduction, castableFromTop, drawCapFor, freeEquipGranted, hasFlashGrant, landDropAllowance, permanentsControlledBy, reliefAdjustedCost, selfDiscountAmount, wouldEnterTapped } from "./derived";
 import { hasKeyword } from "./keywords";
 import { dispatchEventsInPlace, triggerConditionHolds } from "./triggers";
 import { applyCombatDamage, declareAttackers } from "./combat";
@@ -27348,6 +27348,125 @@ describe("wave 213: three more adjectives the grammars were missing", () => {
     expect(firesWith(true)).toBe(1);
     // A creature dying at home is the whole thing this filter excludes.
     expect(firesWith(false)).toBe(0);
+  });
+});
+
+
+describe("wave 214: a cap on drawing, and a restriction on a whole board", () => {
+  const compile = (name: string, manaCost: string, typeLine: string, oracleText: string, power?: string, toughness?: string) =>
+    compileOracleCard({
+      oracleId: name,
+      name,
+      manaCost,
+      typeLine,
+      power: power ?? null,
+      toughness: toughness ?? null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  it("lets an opponent have their first draw and no more", () => {
+    const narset = compile(
+      "Narset, Parter of Veils",
+      "{1}{U}{U}",
+      "Legendary Creature — Human Wizard",
+      "Each opponent can't draw more than one card each turn.",
+      "1",
+      "4",
+    );
+    expect(narset.definition.opponentsDrawCap).toBe(1);
+
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    const definition = createCardDefinition({
+      name: "Narset, Parter of Veils",
+      typeLine: "Legendary Creature — Human Wizard",
+      power: 1,
+      toughness: 4,
+      opponentsDrawCap: 1,
+    });
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({
+      definitionId: definition.id,
+      ownerId: p1.id,
+      zone: "battlefield",
+    });
+    game.cards[card.id] = card;
+    p1.zones.battlefield.push(card.id);
+
+    // Narset's own controller is not capped — "each opponent" is the whole
+    // asymmetry of the card.
+    expect(drawCapFor(game, p1.id)).toBeNull();
+    expect(drawCapFor(game, p2.id)).toBe(1);
+
+    const handOf = (state: GameState, playerId: string) =>
+      state.players.find((entry) => entry.id === playerId)!.zones.hand.length;
+    let next = applyEffect(game, { kind: "draw", playerId: p2.id, count: 1 });
+    expect(handOf(next, p2.id)).toBe(1);
+    next = applyEffect(next, { kind: "draw", playerId: p2.id, count: 1 });
+    expect(handOf(next, p2.id)).toBe(1);
+    // The controller draws as many as they like.
+    next = applyEffect(next, { kind: "draw", playerId: p1.id, count: 3 });
+    expect(handOf(next, p1.id)).toBe(3);
+  });
+
+  it("stops only the creatures that lack the keyword from blocking", () => {
+    const eruption = compile(
+      "Sundering Eruption",
+      "{2}{R}",
+      "Sorcery",
+      "Destroy target land.",
+    );
+    expect(eruption.notes).toEqual([]);
+
+    const back = compile(
+      "Volcanic Fissure",
+      "{4}{R}",
+      "Sorcery",
+      "Creatures without flying can't block this turn.",
+    );
+    expect(back.notes).toEqual([]);
+    expect(back.definition.effects).toEqual([
+      { kind: "all_restrict_until_eot", cantBlock: true, withoutKeyword: "flying" },
+    ]);
+
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    const groundDef = createCardDefinition({
+      name: "Bear",
+      typeLine: "Creature — Bear",
+      power: 2,
+      toughness: 2,
+    });
+    const flierDef = createCardDefinition({
+      name: "Bird",
+      typeLine: "Creature — Bird",
+      power: 2,
+      toughness: 2,
+      keywords: ["flying"],
+    });
+    for (const definition of [groundDef, flierDef]) {
+      game.definitions[definition.id] = definition;
+    }
+    const put = (definitionId: string) => {
+      const card = createCardInstance({ definitionId, ownerId: p2.id, zone: "battlefield" });
+      game.cards[card.id] = card;
+      game.players.find((entry) => entry.id === p2.id)!.zones.battlefield.push(card.id);
+      return card;
+    };
+    const bear = put(groundDef.id);
+    const bird = put(flierDef.id);
+
+    const next = applyEffect(game, {
+      kind: "all_restrict_until_eot",
+      cantBlock: true,
+      withoutKeyword: "flying",
+    });
+    expect(computedCard(next, bear.id)?.cantBlock).toBe(true);
+    // The flier is untouched, which is the whole word "without".
+    expect(computedCard(next, bird.id)?.cantBlock).toBe(false);
+    expect(p1.id).toBeTruthy();
   });
 });
 

@@ -821,6 +821,9 @@ export function bindCardEffect(
       }
       return { kind: effect.kind, cardId };
     }
+    case "all_restrict_until_eot":
+      // Nothing to bind: the effect names the whole battlefield.
+      return { ...effect };
     case "restrict_until_eot": {
       const cardId = bindCardId(state, effect.cardId, context);
       if (!cardId) {
@@ -4135,6 +4138,28 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
             : pushUntilEotEffect(state, team, {
                 kind: "grant_protection",
                 colors: [...effect.colors],
+              });
+        break;
+      }
+      case "all_restrict_until_eot": {
+        const restricted = Object.values(state.cards)
+          .filter((card) => card.zone === "battlefield" && isCreature(state, card.id))
+          .filter((card) => {
+            const computed = computedCard(state, card.id);
+            if (effect.withoutKeyword && computed?.keywords.includes(effect.withoutKeyword)) {
+              return false;
+            }
+            return !effect.withKeyword || computed?.keywords.includes(effect.withKeyword) === true;
+          })
+          .map((card) => card.id);
+        next =
+          restricted.length === 0
+            ? cloneGameState(state)
+            : pushUntilEotEffect(state, restricted, {
+                kind: "restrict",
+                ...(effect.cantAttack ? { cantAttack: true } : {}),
+                ...(effect.cantBlock ? { cantBlock: true } : {}),
+                ...(effect.cantBeBlocked ? { cantBeBlocked: true } : {}),
               });
         break;
       }

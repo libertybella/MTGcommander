@@ -407,6 +407,14 @@ function matches(
   if (selector.legendary && !computed.characteristics.supertypes.includes("legendary")) {
     return false;
   }
+  // Read the COMPUTED keywords, so a granted flying counts and a Humility'd
+  // one does not.
+  if (selector.withoutKeyword && computed.keywords.includes(selector.withoutKeyword)) {
+    return false;
+  }
+  if (selector.withKeyword && !computed.keywords.includes(selector.withKeyword)) {
+    return false;
+  }
   if (selector.nonLegendary && computed.characteristics.supertypes.includes("legendary")) {
     return false;
   }

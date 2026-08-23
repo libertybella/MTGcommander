@@ -79,6 +79,7 @@ export function createCardDefinition(
         | "loyalty"
         | "loyaltyAbilities"
         | "noMaxHandSize"
+        | "opponentsDrawCap"
         | "damageReplacement"
         | "manaTapMultiplier"
         | "altCost"
@@ -402,6 +403,9 @@ export function createCardDefinition(
         }
       : {}),
     ...(input.noMaxHandSize ? { noMaxHandSize: true } : {}),
+    ...(input.opponentsDrawCap === undefined
+      ? {}
+      : { opponentsDrawCap: input.opponentsDrawCap }),
     ...(input.damageReplacement ? { damageReplacement: { ...input.damageReplacement } } : {}),
     ...(input.manaTapMultiplier ? { manaTapMultiplier: input.manaTapMultiplier } : {}),
     ...(input.altCost ? { altCost: { ...input.altCost } } : {}),

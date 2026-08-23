@@ -482,6 +482,9 @@ export function parseGameState(json: string): GameState {
         def.imageUrl === undefined ? "" : expectString(def.imageUrl, "definition.imageUrl", true),
       ...(def.ward === undefined ? {} : { ward: expectNumber(def.ward, "definition.ward") }),
       ...(def.noMaxHandSize === true ? { noMaxHandSize: true } : {}),
+      ...(def.opponentsDrawCap === undefined
+        ? {}
+        : { opponentsDrawCap: expectNumber(def.opponentsDrawCap, `definition.${id}.opponentsDrawCap`) }),
       ...(isRecord(def.damageReplacement)
         ? {
             damageReplacement: {
@@ -3122,6 +3125,19 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
           value.toughness === "-x" ? "-x" : expectNumber(value.toughness, `${label}.toughness`),
         ...(value.exceptChosenType === true ? { exceptChosenType: true } : {}),
       };
+    case "all_restrict_until_eot":
+      return {
+        kind,
+        ...(value.cantAttack === true ? { cantAttack: true } : {}),
+        ...(value.cantBlock === true ? { cantBlock: true } : {}),
+        ...(value.cantBeBlocked === true ? { cantBeBlocked: true } : {}),
+        ...(value.withoutKeyword === undefined
+          ? {}
+          : { withoutKeyword: parseKeywords([value.withoutKeyword], `${label}.withoutKeyword`)[0]! }),
+        ...(value.withKeyword === undefined
+          ? {}
+          : { withKeyword: parseKeywords([value.withKeyword], `${label}.withKeyword`)[0]! }),
+      };
     case "reveal_top_put_permanent":
       return {
         kind,
@@ -4179,6 +4195,12 @@ function parseEffectSelector(value: unknown, label: string): EffectSelector {
     ...(colors.length > 0 ? { colors } : {}),
     ...(value.chosenSubtype === true ? { chosenSubtype: true } : {}),
     ...(value.chosenColor === true ? { chosenColor: true } : {}),
+    ...(value.withoutKeyword === undefined
+      ? {}
+      : { withoutKeyword: parseKeywords([value.withoutKeyword], `${label}.withoutKeyword`)[0]! }),
+    ...(value.withKeyword === undefined
+      ? {}
+      : { withKeyword: parseKeywords([value.withKeyword], `${label}.withKeyword`)[0]! }),
     ...(value.tokenOnly === true ? { tokenOnly: true } : {}),
     ...(value.nonToken === true ? { nonToken: true } : {}),
     ...(value.legendary === true ? { legendary: true } : {}),
@@ -4727,6 +4749,20 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
       ...(value.exceptTypes === undefined
         ? {}
         : { exceptTypes: parseStringList(value.exceptTypes, `${label}.exceptTypes`) }),
+    };
+  }
+  if (kind === "all_restrict_until_eot") {
+    return {
+      kind,
+      ...(value.cantAttack === true ? { cantAttack: true } : {}),
+      ...(value.cantBlock === true ? { cantBlock: true } : {}),
+      ...(value.cantBeBlocked === true ? { cantBeBlocked: true } : {}),
+      ...(value.withoutKeyword === undefined
+        ? {}
+        : { withoutKeyword: parseKeywords([value.withoutKeyword], `${label}.withoutKeyword`)[0]! }),
+      ...(value.withKeyword === undefined
+        ? {}
+        : { withKeyword: parseKeywords([value.withKeyword], `${label}.withKeyword`)[0]! }),
     };
   }
   if (kind === "reveal_top_put_permanent") {
