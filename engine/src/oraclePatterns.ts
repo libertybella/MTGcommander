@@ -889,6 +889,13 @@ function parseSimpleTargetPhrase(phrase: string): TargetRequirement | null {
     requirement.excludeSource = true;
     rest = another[1];
   }
+  // The same exclusion written after the noun: "target creature you control
+  // other than ~" (Rosie Cotton). One flag, two places it can be spelled.
+  const otherThan = rest.match(/^(.*?)\s+other than ~$/i);
+  if (otherThan?.[1]) {
+    requirement.excludeSource = true;
+    rest = otherThan[1];
+  }
   const target = rest.match(/^target\s+(.*)$/i);
   if (!target?.[1]) {
     return null;
@@ -8037,6 +8044,11 @@ function parseTriggerHead(head: string): TriggerHead | null {
       ...(/an opponent$/i.test(text) ? { subjectPlayerOpponent: true } : {}),
     };
   }
+  // The shared subject parser understands "of the chosen type" now, but
+  // this head is still reached first for the two-event spelling and is what
+  // supplies `extraEvents` — removing it makes the sentence stop compiling
+  // outright, so it is not the dead special case it looks like. The wave 233
+  // test pins both events firing so the two paths cannot drift.
   if (/^Whenever a creature you control of the chosen type enters or attacks$/i.test(text)) {
     return {
       event: "enter_battlefield",
@@ -8131,6 +8143,14 @@ function parseTriggerSubjectPhrase(
       filter.withoutKeyword = keyword;
     }
     rest = keywordQualifier[1];
+  }
+  // "of the chosen type" (Bloodline Pretender). The static selector parser
+  // has understood this for a long time; the trigger side had one
+  // hardcoded head for one exact sentence, so every other spelling missed.
+  const chosenType = rest.match(/^(.*?)\s+of the chosen type$/i);
+  if (chosenType?.[1] !== undefined) {
+    filter.chosenSubtype = true;
+    rest = chosenType[1];
   }
   // "with mana value 3 or greater" (Sai) rides in the same trailing slot.
   const manaValue = rest.match(/^(.*?)\s+with mana value (\d+) or (less|greater)$/i);

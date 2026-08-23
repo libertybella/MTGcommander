@@ -30359,3 +30359,115 @@ describe("wave 232: power and toughness thresholds on a static selector", () => 
     expect(statics[1]?.selector).toMatchObject({ maxPower: 2 });
   });
 });
+
+describe("wave 233: two narrow matchers widened to the shared parsers", () => {
+  const compile = (name: string, typeLine: string, oracleText: string, power?: string, toughness?: string) =>
+    compileOracleCard({
+      oracleId: name,
+      name,
+      manaCost: "{1}{W}",
+      typeLine,
+      power: power ?? null,
+      toughness: toughness ?? null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  const put = (game: GameState, definitionId: string, ownerId: string) => {
+    const card = createCardInstance({ definitionId, ownerId, zone: "battlefield" });
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === ownerId)!.zones.battlefield.push(card.id);
+    return card;
+  };
+
+  it("reads the exclusion whether it leads or trails the noun", () => {
+    const rosie = compile(
+      "Rosie Cotton of South Lane",
+      "Legendary Creature — Halfling Citizen",
+      "Whenever you create a token, put a +1/+1 counter on target creature you control other than Rosie Cotton of South Lane.",
+      "2",
+      "3",
+    );
+    expect(rosie.notes).toEqual([]);
+    expect(rosie.definition.triggers[0]?.targetRequirements?.[0]).toMatchObject({
+      kind: "creature",
+      control: "own",
+      excludeSource: true,
+    });
+
+    // The leading spelling must still set the same flag — one exclusion, two
+    // places the printed text can put it.
+    const leading = compile(
+      "Leader",
+      "Enchantment",
+      "When Leader enters, put a +1/+1 counter on another target creature you control.",
+    );
+    expect(leading.notes).toEqual([]);
+    expect(leading.definition.triggers[0]?.targetRequirements?.[0]).toMatchObject({
+      excludeSource: true,
+    });
+  });
+
+  it("refuses the source itself as a target", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const bear = createCardDefinition({
+      name: "Bear",
+      typeLine: "Creature — Bear",
+      power: 2,
+      toughness: 2,
+    });
+    game.definitions[bear.id] = bear;
+    const source = put(game, bear.id, p1.id);
+    const other = put(game, bear.id, p1.id);
+
+    const requirement: TargetRequirement = {
+      kind: "creature",
+      control: "own",
+      excludeSource: true,
+    };
+    const legal = (cardId: string) =>
+      isChosenTargetLegal(game, requirement, { type: "creature", cardId }, p1.id, [], source.id);
+    expect(legal(other.id)).toBe(true);
+    // "Other than ~" has to mean the source, not merely "some other creature":
+    // a flag that was parsed but never reached the legality check would pass
+    // the assertion above and fail this one.
+    expect(legal(source.id)).toBe(false);
+  });
+
+  it("reads the chosen type on any trigger subject, not one sentence", () => {
+    const pretender = compile(
+      "Bloodline Pretender",
+      "Artifact Creature — Shapeshifter",
+      "As Bloodline Pretender enters, choose a creature type.\nWhenever another creature you control of the chosen type enters, put a +1/+1 counter on Bloodline Pretender.",
+      "2",
+      "2",
+    );
+    expect(pretender.notes).toEqual([]);
+    expect(pretender.definition.triggers[0]).toMatchObject({
+      event: "enter_battlefield",
+      watch: "controlled",
+      excludeSelf: true,
+      subjectFilter: { types: ["creature"], chosenSubtype: true },
+    });
+
+    // This exact sentence used to have a hardcoded head of its own, which
+    // returned ONE trigger carrying `extraEvents`. The shared path covers it
+    // now and spells the same behaviour as two triggers, so the special case
+    // was deleted rather than left to drift. Both events must still fire.
+    const both = compile(
+      "Both Events",
+      "Enchantment",
+      "Whenever a creature you control of the chosen type enters or attacks, draw a card.",
+    );
+    expect(both.notes).toEqual([]);
+    const events = both.definition.triggers.map((trigger) => trigger.event).sort();
+    expect(events).toEqual(["attacks", "enter_battlefield"]);
+    for (const trigger of both.definition.triggers) {
+      expect(trigger.subjectFilter).toMatchObject({ chosenSubtype: true });
+      // "another" must not leak onto a sentence that does not say it.
+      expect(trigger.excludeSelf).toBeUndefined();
+    }
+  });
+});
