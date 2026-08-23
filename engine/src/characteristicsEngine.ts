@@ -1,4 +1,5 @@
 import type {
+  ActivatedAbility,
   CardCharacteristics,
   CardDefinition,
   CardInstance,
@@ -49,6 +50,11 @@ export type ComputedCard = {
    * index addresses one list, not two.
    */
   grantedTriggers: CardTrigger[];
+  /**
+   * Activated abilities granted by statics (Bootleggers' Stash). Read them
+   * with `activatedOf`, which appends them after the printed ones.
+   */
+  grantedActivated: ActivatedAbility[];
   /** Changeling: matches every creature type (cleared with abilities). */
   allCreatureTypes: boolean;
   /** Combat restrictions from layer-6 effects (Pacifism). */
@@ -90,6 +96,7 @@ const LAYER_OF: Record<ContinuousEffectData["kind"], number> = {
   remove_keywords: 6,
   grant_mana_ability: 6,
   grant_trigger: 6,
+  grant_activated: 6,
   goaded: 6,
   remove_all_abilities: 6,
   restrict: 6,
@@ -115,6 +122,7 @@ function baseComputed(state: GameState, card: CardInstance): ComputedCard {
       toughness: 2,
       grantedMana: [],
       grantedTriggers: [],
+      grantedActivated: [],
       allCreatureTypes: false,
       cantAttack: false,
       cantBlock: false,
@@ -179,6 +187,7 @@ function baseComputed(state: GameState, card: CardInstance): ComputedCard {
     toughness: (dynamic ?? definition?.toughness ?? 0) + bonusToughness,
     grantedMana: [],
     grantedTriggers: [],
+    grantedActivated: [],
     allCreatureTypes: definition?.changeling === true,
     cantAttack: false,
     cantBlock: false,
@@ -818,6 +827,9 @@ function applyInstance(
         // would let a per-card edit reach all of them.
         computed.grantedTriggers.push(structuredClone(effect.trigger));
         break;
+      case "grant_activated":
+        computed.grantedActivated.push(structuredClone(effect.ability));
+        break;
       case "goaded": {
         // The goader is whoever controls the source of the static.
         const by = state.cards[instance.sourceId ?? ""]?.controllerId;
@@ -831,6 +843,7 @@ function applyInstance(
         computed.abilitiesRemoved = true;
         computed.grantedMana = [];
         computed.grantedTriggers = [];
+        computed.grantedActivated = [];
         computed.allCreatureTypes = false;
         computed.protectionFrom = [];
         computed.ward = 0;
@@ -965,6 +978,50 @@ export function triggersOf(
   const granted = (computedById ? computedById[cardId] : computedCard(state, cardId))
     ?.grantedTriggers;
   return granted && granted.length > 0 ? [...printed, ...granted] : printed;
+}
+
+/**
+ * Every activated ability an object has right now: printed first, granted
+ * after, one address space — see `triggersOf` for why.
+ *
+ * Only battlefield statics grant, so hand and graveyard activations
+ * (cycling, Reassembling Skeleton) never reach a granted index.
+ */
+export function activatedOf(
+  state: GameState,
+  cardId: CardInstanceId,
+  computedById?: Record<CardInstanceId, ComputedCard>,
+): ActivatedAbility[] {
+  const card = state.cards[cardId];
+  if (!card) {
+    return [];
+  }
+  const printed = state.definitions[card.definitionId]?.activated ?? [];
+  const granted = (computedById ? computedById[cardId] : computedCard(state, cardId))
+    ?.grantedActivated;
+  return granted && granted.length > 0 ? [...printed, ...granted] : printed;
+}
+
+/**
+ * The spread that carries a granted activated ability onto a stack object.
+ * Same reason as `grantedTriggerSpread`: the grant can be gone by the time
+ * the ability resolves.
+ */
+export function grantedActivatedSpread(
+  state: GameState,
+  cardId: CardInstanceId | null,
+  index: number,
+): { grantedActivated?: ActivatedAbility } {
+  if (!cardId) {
+    return {};
+  }
+  const card = state.cards[cardId];
+  const printedCount = card ? state.definitions[card.definitionId]?.activated.length ?? 0 : 0;
+  if (index < printedCount) {
+    return {};
+  }
+  const granted = activatedOf(state, cardId)[index];
+  return granted ? { grantedActivated: structuredClone(granted) } : {};
 }
 
 /**

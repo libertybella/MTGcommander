@@ -487,6 +487,8 @@ export type StackObject = {
    * grant again at resolution would silently resolve nothing.
    */
   grantedTrigger?: CardTrigger;
+  /** A granted activated ability, snapshotted for the same reason. */
+  grantedActivated?: ActivatedAbility;
   /** The triggering event's subject card ("that creature", "that spell"). */
   subjectCardId?: CardInstanceId;
   /** The triggering event's subject player ("that player"). */
@@ -2907,6 +2909,16 @@ export type ContinuousEffectData =
    * carries, and cannot express a grant to a whole set.
    */
   | { kind: "grant_trigger"; trigger: CardTrigger }
+  /**
+   * layer 6: "Lands you control have '{T}: Create a Treasure token.'"
+   * (Bootleggers' Stash), "Equipped creature has '{T}: Add one mana of any
+   * color.'" (Paradise Mantle). Same ownership rule as `grant_trigger`:
+   * the ability is the AFFECTED permanent's, so its cost taps that
+   * permanent and "~" in its body is that permanent. A granted ability
+   * that only produces mana is a mana ability and belongs in
+   * `grant_mana_ability` instead — it must never use the stack.
+   */
+  | { kind: "grant_activated"; ability: ActivatedAbility }
   // (modify_pt lives in layer 7c; `per` scales it by a live count read from
   // the static source's controller — Nettlecyst.)
   /** layer 6: Shiny Impetus — "is goaded", for as long as the Aura is on. */

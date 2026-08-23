@@ -1,5 +1,10 @@
 import { characteristicsOf, isClass, isCommander, isCreature, isLand, isLegendary, isMainPhase } from "./cardTypes";
-import { abilitiesRemoved, cardMatchesSubtype, controlsGate } from "./characteristicsEngine";
+import {
+  abilitiesRemoved,
+  activatedOf,
+  cardMatchesSubtype,
+  controlsGate,
+} from "./characteristicsEngine";
 import { hasKeyword } from "./keywords";
 import { triggerConditionHolds } from "./triggers";
 import { emptyManaPool } from "./createGame";
@@ -743,7 +748,9 @@ export function legalActions(state: GameState, playerId: PlayerId): LegalAction[
         continue;
       }
     }
-    for (const [abilityIndex, ability] of definition.activated.entries()) {
+    // Granted abilities are enumerable too — enumeration must never hide
+    // an activation the payment path would allow.
+    for (const [abilityIndex, ability] of activatedOf(state, card.id).entries()) {
       if ((ability.zone ?? "battlefield") !== "battlefield") {
         continue;
       }

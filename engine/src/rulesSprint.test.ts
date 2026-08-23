@@ -16,7 +16,7 @@ import {
   putSpellOnStack,
   resolveTopOfStack,
 } from "./index";
-import { cardMatchesSubtype, computedCard, dynamicCountOf, triggersOf } from "./characteristicsEngine";
+import { activatedOf, cardMatchesSubtype, computedCard, dynamicCountOf, triggersOf } from "./characteristicsEngine";
 import { mostCommonControlledCreatureType } from "./effects";
 import { castCostReduction, castableFromTop, drawCapFor, freeEquipGranted, hasFlashGrant, landDropAllowance, permanentsControlledBy, reliefAdjustedCost, selfDiscountAmount, wouldEnterTapped } from "./derived";
 import { hasKeyword } from "./keywords";
@@ -28430,6 +28430,167 @@ describe("primitive: a static that grants a triggered ability", () => {
     // last-known information would keep it. Until that exists the compiler
     // REFUSES a granted dies-trigger rather than compiling a dead one.
     expect(game.stack).toHaveLength(0);
+  });
+});
+
+
+describe("primitive: a static that grants an activated ability", () => {
+  const board = () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    const stashDef = createCardDefinition({
+      name: "Bootleggers' Stash",
+      typeLine: "Enchantment",
+      staticAbilities: [
+        {
+          selector: { scope: "controlled", types: ["land"] },
+          effect: {
+            kind: "grant_activated",
+            ability: {
+              manaCost: "",
+              tap: true,
+              effects: [{ kind: "draw", playerId: "controller", count: 1 }],
+              targetRequirements: [],
+            },
+          },
+        },
+      ],
+    });
+    const forestDef = createCardDefinition({ name: "Forest", typeLine: "Basic Land — Forest" });
+    for (const definition of [stashDef, forestDef]) {
+      game.definitions[definition.id] = definition;
+    }
+    const put = (definitionId: string, ownerId: string) => {
+      const card = createCardInstance({ definitionId, ownerId, zone: "battlefield" });
+      game.cards[card.id] = card;
+      game.players.find((entry) => entry.id === ownerId)!.zones.battlefield.push(card.id);
+      return card;
+    };
+    const stash = put(stashDef.id, p1.id);
+    const mine = put(forestDef.id, p1.id);
+    const theirs = put(forestDef.id, p2.id);
+    return { game, p1, p2, stash, mine, theirs };
+  };
+
+  it("puts the ability on the land, not on the enchantment", () => {
+    const { game, stash, mine, theirs } = board();
+    expect(activatedOf(game, mine.id)).toHaveLength(1);
+    expect(activatedOf(game, mine.id)[0]?.effects[0]).toMatchObject({ kind: "draw", count: 1 });
+    expect(activatedOf(game, stash.id)).toEqual([]);
+    // "Lands YOU control": the opponent's Forest gains nothing.
+    expect(activatedOf(game, theirs.id)).toEqual([]);
+  });
+
+  it("offers the granted activation and pays its cost off the granted card", () => {
+    const { game, p1, mine } = board();
+    // Enumeration works from potential mana and must never hide an
+    // activation the payment path would allow — this is the site that used
+    // to walk `definition.activated` alone.
+    const offered = legalActions(game, p1.id).filter(
+      (action) => action.kind === "activate_ability" && action.cardId === mine.id,
+    );
+    expect(offered).toHaveLength(1);
+
+    const activated = applyAction(game, {
+      kind: "activate_ability",
+      playerId: p1.id,
+      cardId: mine.id,
+      abilityIndex: 0,
+      targets: [],
+    });
+    // The cost taps the LAND that has the ability, not the enchantment.
+    expect(activated.cards[mine.id]?.tapped).toBe(true);
+    expect(activated.stack).toHaveLength(1);
+    expect(activated.stack[0]?.sourceId).toBe(mine.id);
+
+    const handBefore = activated.players.find((entry) => entry.id === p1.id)!.zones.hand.length;
+    const resolved = resolveTopOfStack(activated);
+    expect(resolved.players.find((entry) => entry.id === p1.id)!.zones.hand).toHaveLength(
+      handBefore + 1,
+    );
+  });
+
+  it("resolves an activation whose grant vanished while it was on the stack", () => {
+    const { game, p1, mine, stash } = board();
+    let live = applyAction(game, {
+      kind: "activate_ability",
+      playerId: p1.id,
+      cardId: mine.id,
+      abilityIndex: 0,
+      targets: [],
+    });
+    expect(live.stack[0]?.grantedActivated).toMatchObject({ tap: true });
+    // The enchantment is destroyed with the ability on the stack. Without
+    // the snapshot the resolver would find no ability at index 0 and the
+    // activation would silently do nothing after the land was already
+    // tapped — a cost paid for nothing.
+    delete live.cards[stash.id];
+    live.players[0]!.zones.battlefield = live.players[0]!.zones.battlefield.filter(
+      (id) => id !== stash.id,
+    );
+    const handBefore = live.players.find((entry) => entry.id === p1.id)!.zones.hand.length;
+    live = resolveTopOfStack(live);
+    expect(live.players.find((entry) => entry.id === p1.id)!.zones.hand).toHaveLength(
+      handBefore + 1,
+    );
+  });
+
+  it("keeps printed and granted activations in one index space", () => {
+    const { game, p1 } = board();
+    const scepterDef = createCardDefinition({
+      name: "Cycling Rock",
+      typeLine: "Artifact",
+      activated: [
+        {
+          manaCost: "{2}",
+          tap: false,
+          effects: [{ kind: "draw", playerId: "controller", count: 1 }],
+          targetRequirements: [],
+        },
+      ],
+      staticAbilities: [],
+    });
+    game.definitions[scepterDef.id] = scepterDef;
+    const scepter = createCardInstance({
+      definitionId: scepterDef.id,
+      ownerId: p1.id,
+      zone: "battlefield",
+    });
+    game.cards[scepter.id] = scepter;
+    game.players[0]!.zones.battlefield.push(scepter.id);
+
+    // An artifact is not a land, so this one keeps only its printed ability:
+    // the selector still decides who gets the grant.
+    expect(activatedOf(game, scepter.id)).toHaveLength(1);
+    expect(activatedOf(game, scepter.id)[0]?.effects[0]).toMatchObject({ kind: "draw" });
+  });
+
+  it("loses the granted activation to Humility, and survives a round trip", () => {
+    const { game, mine } = board();
+    const humbled = structuredClone(game);
+    const humilityDef = createCardDefinition({
+      name: "Humility",
+      typeLine: "Enchantment",
+      staticAbilities: [
+        {
+          selector: { scope: "all", types: ["land"] },
+          effect: { kind: "remove_all_abilities" },
+        },
+      ],
+    });
+    humbled.definitions[humilityDef.id] = humilityDef;
+    const humility = createCardInstance({
+      definitionId: humilityDef.id,
+      ownerId: humbled.players[0]!.id,
+      zone: "battlefield",
+    });
+    humbled.cards[humility.id] = humility;
+    humbled.players[0]!.zones.battlefield.push(humility.id);
+    expect(computedCard(humbled, mine.id)?.grantedActivated).toEqual([]);
+    expect(activatedOf(humbled, mine.id)).toEqual([]);
+
+    const round = parseGameState(serializeGameState(game));
+    expect(activatedOf(round, mine.id)[0]).toMatchObject({ manaCost: "", tap: true });
   });
 });
 

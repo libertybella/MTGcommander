@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { applyAction } from "./actions";
 import { isCreature } from "./cardTypes";
-import { cardMatchesSubtype, computedCard, triggersOf } from "./characteristicsEngine";
+import {
+  activatedOf,
+  cardMatchesSubtype,
+  computedCard,
+  triggersOf,
+} from "./characteristicsEngine";
 import { controlsCommander } from "./derived";
 import { hasKeyword } from "./keywords";
 import { legalActions, sacrificeScopeMatches } from "./legalActions";
@@ -389,8 +394,7 @@ function nextAction(state: GameState, rng: () => number): GameAction | null {
       };
     }
     case "activate_ability": {
-      const card = state.cards[action.cardId]!;
-      const ability = state.definitions[card.definitionId]!.activated[action.abilityIndex]!;
+      const ability = activatedOf(state, action.cardId)[action.abilityIndex]!;
       // Sac-modal activations: pick a mode, then that mode's targets.
       let modeIndex: number | undefined;
       let requirements = ability.targetRequirements;

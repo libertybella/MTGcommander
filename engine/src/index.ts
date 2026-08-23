@@ -117,8 +117,10 @@ export { applyChooseTargets, applyChooseEnterReplacement, applyResolveOrderTrigg
 export { queueSimultaneousTriggersInPlace } from "./triggers";
 export {
   abilitiesRemoved,
+  activatedOf,
   computedCard,
   computedCards,
+  grantedActivatedSpread,
   grantedTriggerSpread,
   triggersOf,
 } from "./characteristicsEngine";

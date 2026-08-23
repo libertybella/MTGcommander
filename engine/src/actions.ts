@@ -1,5 +1,10 @@
 import { declareAttackers, declareBlockers, lockRemainingBlockers, pendingBlockerPlayer, priorityForStep } from "./combat";
-import { abilitiesRemoved, cardMatchesSubtype, controlsGate } from "./characteristicsEngine";
+import {
+  abilitiesRemoved,
+  activatedOf,
+  cardMatchesSubtype,
+  controlsGate,
+} from "./characteristicsEngine";
 import { characteristicsOf, isCommander, isCreature, isInstant, isInstantOrSorcery, isLand, isLegendary, isMainPhase } from "./cardTypes";
 import { cloneGameState } from "./clone";
 import { costRelief, affinityArtifactDiscount, allBattlefieldCreatureCount, canPlayLandFromTop, canPlayLandsFromGraveyard, castCostReduction, castableFromTop, controlsCommander, creaturePower, freeEquipGranted, hasFlashGrant, activationNonManaPayment, altCastPayment, landDropAllowance, manaTapMultiplier, lockedByAbolisher, lockedFromCasting, opponentControlsMoreLands, findFreeHandGrantIndex, opponentsCastLockedToHand, selfDiscountAmount, staticFreeCastCap, usesOncePerTurnFreeCast } from "./derived";
@@ -1147,8 +1152,7 @@ function applyActivateAbility(
   if (card.controllerId !== playerId) {
     throw new Error(`Card ${cardId} is not controlled by that player`);
   }
-  const definition = state.definitions[card.definitionId];
-  const ability = definition?.activated[abilityIndex];
+  const ability = activatedOf(state, cardId)[abilityIndex];
   if (!ability) {
     throw new Error(`Unknown activated ability ${abilityIndex}`);
   }

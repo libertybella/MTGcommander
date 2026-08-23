@@ -23,6 +23,7 @@ import {
   manaAbilitiesFor,
   manaAbilitiesOf,
   manaTapOptionsFor,
+  activatedOf,
   tokenTemplatesOf,
   topOfLibraryGrant,
   triggersOf,
@@ -121,7 +122,7 @@ function definition(state: GameState, cardId: CardInstanceId) {
 }
 
 function activatedAbility(state: GameState, cardId: CardInstanceId, abilityIndex = 0) {
-  return definition(state, cardId)?.activated[abilityIndex];
+  return activatedOf(state, cardId)[abilityIndex];
 }
 
 function manaAbilityLabel(ability: ManaAbility): string {
@@ -1241,7 +1242,7 @@ export function Battlefield(props: Props) {
       const def = card ? state.definitions[card.definitionId] : undefined;
       const costText =
         action.kind === "activate_ability"
-          ? def?.activated[action.abilityIndex]?.manaCost ?? ""
+          ? activatedOf(state, action.cardId)[action.abilityIndex]?.manaCost ?? ""
           : def?.manaCost ?? "";
       try {
         const cost = parseManaCost(costText);

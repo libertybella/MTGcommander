@@ -2,7 +2,12 @@ import { createId } from "./ids";
 import { cloneGameState } from "./clone";
 import { isCommander, isInstantOrSorcery } from "./cardTypes";
 import { manaValueOf } from "./characteristics";
-import { abilitiesRemoved, computedCard } from "./characteristicsEngine";
+import {
+  abilitiesRemoved,
+  activatedOf,
+  computedCard,
+  grantedActivatedSpread,
+} from "./characteristicsEngine";
 import { castableFromTop } from "./derived";
 import { controlsMatching } from "./legalActions";
 import { enterOwnerZone, findCardZone, removeCardFromCurrentZone } from "./zones";
@@ -71,8 +76,7 @@ export function putActivatedAbilityOnStack(
   if (card.zone !== "battlefield" && card.zone !== "hand" && card.zone !== "graveyard") {
     throw new Error(`Card ${cardId} cannot activate from ${card.zone}`);
   }
-  const definition = state.definitions[card.definitionId];
-  const ability = definition?.activated[abilityIndex];
+  const ability = activatedOf(state, cardId)[abilityIndex];
   if (!ability) {
     throw new Error(`Unknown activated ability ${abilityIndex}`);
   }
@@ -98,6 +102,7 @@ export function putActivatedAbilityOnStack(
     kind: "ability",
     targets: targets.map((target) => ({ ...target })),
     activatedIndex: abilityIndex,
+    ...grantedActivatedSpread(state, cardId, abilityIndex),
     ...(modeIndex !== undefined ? { modeIndex } : {}),
     // Altar of Dementia: the sacrificed cost-creature's power.
     ...(sacrificedPower !== undefined ? { sacrificedPower } : {}),
@@ -255,7 +260,8 @@ export function resolveTopOfStack(state: GameState): GameState {
     const source = next.cards[top.sourceId];
     const definition = source ? next.definitions[source.definitionId] : undefined;
     if (top.activatedIndex !== undefined) {
-      const ability = definition?.activated[top.activatedIndex];
+      // The snapshot first, for the same reason as a granted trigger.
+      const ability = top.grantedActivated ?? definition?.activated[top.activatedIndex];
       // Sac-modal activations (Cankerbloom): the chosen mode's effects and
       // targets replace the (empty) top-level ones.
       const abilityMode =
