@@ -702,11 +702,28 @@ export function bindCardEffect(
       if (!playerId) {
         return null;
       }
+      // Thassa's Oracle: with a devotion-sized X neither the count nor the
+      // number of destination slots is known until the effect binds.
+      const count = effect.countFromDevotion
+        ? devotionTo(state, playerId, effect.countFromDevotion)
+        : effect.count;
+      if (count <= 0) {
+        return null;
+      }
+      const destinations: LookDestination[] = effect.upToOneOnTop
+        ? [
+            "library_top",
+            // A bottom slot for EVERY card, so the single top slot may go
+            // unused. Exactly `count` bottom slots would force a card onto
+            // top, and the card says "up to one".
+            ...Array.from({ length: count }, () => "library_bottom" as const),
+          ]
+        : [...effect.destinations];
       return {
         kind: "look_and_assign",
         playerId,
-        count: effect.count,
-        destinations: [...effect.destinations],
+        count,
+        destinations,
         // Hideaway: the ability that plays the card later has no other
         // way to say WHICH exiled card is "the exiled card".
         ...(effect.hideawayFromSource && context.sourceId
@@ -1293,11 +1310,29 @@ export function bindCardEffect(
       return { kind: "extra_land_drop", playerId };
     }
     case "grant_flash_this_turn":
-    case "lose_game":
+    case "lose_game": {
+      const playerId = bindPlayerSelector(state, effect.playerId, context);
+      if (!playerId) {
+        return null;
+      }
+      return { kind: effect.kind, playerId };
+    }
+    // Split from its neighbours above so the devotion rider narrows: they
+    // share a shape, not a condition.
     case "win_game": {
       const playerId = bindPlayerSelector(state, effect.playerId, context);
       if (!playerId) {
         return null;
+      }
+      if (effect.ifDevotionAtLeastLibrary) {
+        // Thassa's Oracle. Bound beside the look that shares X, so both
+        // read one number. The comparison is >=, and an EMPTY library
+        // wins — that is the whole card, not an edge case.
+        const devotion = devotionTo(state, playerId, effect.ifDevotionAtLeastLibrary);
+        const library = state.players.find((entry) => entry.id === playerId)?.zones.library;
+        if (!library || devotion < library.length) {
+          return null;
+        }
       }
       return { kind: effect.kind, playerId };
     }

@@ -2900,8 +2900,24 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
         kind,
         playerId: parsePlayerSelector(value.playerId, `${label}.playerId`),
         count: expectNumber(value.count, `${label}.count`),
-        destinations: parseLookDestinations(value.destinations, `${label}.destinations`),
+        // Thassa's Oracle carries no slots: they are synthesized at bind
+        // from a devotion-sized count. Demanding a non-empty list here
+        // would make the DEFINITION fail to load, which is a card that
+        // never reaches the table rather than one that plays wrong.
+        destinations:
+          value.upToOneOnTop === true && Array.isArray(value.destinations)
+            ? []
+            : parseLookDestinations(value.destinations, `${label}.destinations`),
         ...(value.hideawayFromSource === true ? { hideawayFromSource: true } : {}),
+        ...(value.countFromDevotion === undefined
+          ? {}
+          : {
+              countFromDevotion: parseColor(
+                value.countFromDevotion,
+                `${label}.countFromDevotion`,
+              ),
+            }),
+        ...(value.upToOneOnTop === true ? { upToOneOnTop: true } : {}),
       };
     case "play_hidden_card":
       return { kind, ...(value.free === true ? { free: true } : {}) };
@@ -3722,6 +3738,20 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
         ...(value.lifeLocked === true ? { lifeLocked: true } : {}),
       };
     case "win_game":
+      // Split from the two below: they share a shape, but only this one
+      // carries a condition, and a grouped return would drop it silently.
+      return {
+        kind,
+        playerId: parsePlayerSelector(value.playerId, `${label}.playerId`),
+        ...(value.ifDevotionAtLeastLibrary === undefined
+          ? {}
+          : {
+              ifDevotionAtLeastLibrary: parseColor(
+                value.ifDevotionAtLeastLibrary,
+                `${label}.ifDevotionAtLeastLibrary`,
+              ),
+            }),
+      };
     case "lose_game":
     case "grant_flash_this_turn":
       return { kind, playerId: parsePlayerSelector(value.playerId, `${label}.playerId`) };

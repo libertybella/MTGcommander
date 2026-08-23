@@ -2081,8 +2081,24 @@ export type CardEffect =
   | {
       kind: "look_and_assign";
       playerId: PlayerSelector;
+      /** Ignored when `countFromDevotion` is set; the compiler emits 0
+       * there, so dropping the flag yields no look rather than a
+       * wrong-sized one. */
       count: number;
       destinations: LookDestination[];
+      /**
+       * Thassa's Oracle: X is the controller's devotion to this color.
+       * Read as the effect BINDS, so the win check bound beside it sees
+       * the same X — they are one number on the card, not two.
+       */
+      countFromDevotion?: Color;
+      /**
+       * "Put up to one of them on top of your library and the rest on the
+       * bottom": one top slot plus a bottom slot for EVERY card, so the
+       * top slot may go unused. Synthesized at bind, because with a
+       * devotion-sized count the slots are not known before then.
+       */
+      upToOneOnTop?: boolean;
       /**
        * Hideaway (CR 702.75): the card sent to exile is remembered ON
        * the source, because the ability that plays it later has no other
@@ -2404,7 +2420,18 @@ export type CardEffect =
   /** Explore: one extra land drop this turn. */
   | { kind: "extra_land_drop"; playerId: PlayerSelector }
   /** "You win the game": every other player loses (CR 104.2a). */
-  | { kind: "win_game"; playerId: PlayerSelector }
+  | {
+      kind: "win_game";
+      playerId: PlayerSelector;
+      /**
+       * Thassa's Oracle: "If X is greater than or equal to the number of
+       * cards in your library, you win the game", X being devotion to this
+       * color. Evaluated at BIND, beside the look that shares X — the look
+       * only reorders the library, so its size is the same either way, but
+       * binding both together is what guarantees one X and not two.
+       */
+      ifDevotionAtLeastLibrary?: Color;
+    }
   | { kind: "lose_game"; playerId: PlayerSelector }
   | {
       kind: "grant_player_shield";

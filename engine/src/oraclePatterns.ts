@@ -10388,7 +10388,83 @@ function shiftChosen(effect: CardEffect, offset: number): CardEffect {
   }
 }
 
+/**
+ * A look clause that spans SENTENCES, folded into a trigger body.
+ *
+ * Impulse-style ETBs print "look at the top four cards of your library."
+ * and "Put one of them into your hand and the rest on the bottom." as two
+ * sentences on ONE printed line, and Thassa's Oracle adds a third. A
+ * trigger body is parsed as a single sentence, so the pair compiler is
+ * handed a synthetic list starting at the body itself. The run stops at a
+ * printed line break, which is where a separate ability begins.
+ */
+function foldLookRun(
+  rest: string,
+  sentences: string[],
+  index: number,
+  lineStart: boolean[],
+): (SimpleClause & { consumed: number }) | null {
+  if (!/^look at the top /i.test(rest)) {
+    return null;
+  }
+  const run: string[] = [rest];
+  for (
+    let scan = index + 1;
+    scan < sentences.length && !lineStart[scan] && sentences[scan];
+    scan += 1
+  ) {
+    run.push(sentences[scan]!);
+  }
+  const pair = compileLookAndAssignPair(run, 0);
+  // A partial read would push a look with no assignment, which discards
+  // what it saw. Better to leave the whole run uncompiled.
+  return pair && !pair.leftover ? pair : null;
+}
+
 function compileLookAndAssignPair(sentences: string[], index: number): SimpleClause & { consumed: number } | null {
+  // Thassa's Oracle: the count is X, and X is devotion — not a number the
+  // compiler can know. A SECOND head rather than a widened first one, so
+  // the fixed-count forms below keep reading exactly as they did.
+  const devotionLook = sentences[index]?.match(
+    /^Look at the top X cards of your library, where X is your devotion to (white|blue|black|red|green)$/i,
+  );
+  const devotionAssign = sentences[index + 1];
+  if (devotionLook?.[1] && devotionAssign) {
+    const color = COLOR_WORDS[devotionLook[1].toLowerCase()];
+    const topRest =
+      /^Put up to one of them on top of your library and the rest on the bottom of your library in (?:any|a random) order$/i.test(
+        devotionAssign,
+      );
+    if (color && topRest) {
+      const effects: CardEffect[] = [
+        {
+          kind: "look_and_assign",
+          playerId: "controller",
+          // Unused while `countFromDevotion` is set. Zero and not four so
+          // that losing the flag yields no look at all rather than a look
+          // of some invented size.
+          count: 0,
+          destinations: [],
+          countFromDevotion: color,
+          upToOneOnTop: true,
+        },
+      ];
+      // "If X is greater than or equal to the number of cards in your
+      // library, you win the game." The same X, so the same colour.
+      const win = sentences[index + 2];
+      if (
+        win &&
+        /^If X is greater than or equal to the number of cards in your library, you win the game$/i.test(
+          win,
+        )
+      ) {
+        effects.push({ kind: "win_game", playerId: "controller", ifDevotionAtLeastLibrary: color });
+        return { targetRequirements: [], effects, consumed: 3 };
+      }
+      return { targetRequirements: [], effects, consumed: 2 };
+    }
+  }
+
   const look = sentences[index]?.match(
     /^Look at the top (a|an|one|two|three|four|five|six|seven|eight|nine|ten|\d+) cards? of your library$/i,
   );
@@ -13637,6 +13713,17 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
           }
         }
       }
+      const etbLook = foldLookRun(etbRest, sentences, index, lineStart);
+      if (etbLook) {
+        result.triggers.push({
+          event: "enter_battlefield",
+          ...(etbCondition ? { condition: etbCondition } : {}),
+          effects: etbLook.effects,
+          targetRequirements: etbLook.targetRequirements,
+        });
+        index += etbLook.consumed - 1;
+        continue;
+      }
       const inner = compileSimpleClause(etbRest);
       if (inner) {
         result.triggers.push({
@@ -13962,6 +14049,29 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
         ) {
           rest = `draw ${mayDraw[1]} cards, then discard a card`;
           sentences[index + 1] = "";
+        }
+        const pair = foldLookRun(rest, sentences, index, lineStart);
+        {
+          if (pair) {
+            const { extraEvents: lookExtras, ...lookHead } = head;
+            const built = {
+              ...lookHead,
+              ...(condition ? { condition } : {}),
+              effects: pair.effects,
+              targetRequirements: pair.targetRequirements,
+            };
+            result.triggers.push(built);
+            for (const extra of lookExtras ?? []) {
+              result.triggers.push({
+                ...built,
+                event: extra,
+                effects: pair.effects.map((effect) => ({ ...effect })),
+                targetRequirements: pair.targetRequirements.map((req) => ({ ...req })),
+              });
+            }
+            index += pair.consumed - 1;
+            continue;
+          }
         }
         const inner = compileSimpleClause(rest);
         if (inner && condition) {

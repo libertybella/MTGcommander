@@ -870,6 +870,30 @@ more questions it can now ask:
   (Bennie Bracks). Reads the existing per-player `createdTokenThisTurn`
   list, and asks whether the CONTROLLER is in it — an opponent's Treasure
   must not satisfy it.
+- **A look clause that spans SENTENCES** — Thassa's Oracle, and every
+  Impulse-style ETB. A trigger body is parsed as ONE sentence, but a look
+  and its assignment print as two on a single line. `foldLookRun` hands the
+  pair compiler a synthetic list starting at the body itself, stopping at
+  the printed line break where a separate ability begins. A partial read is
+  refused: a look with no assignment discards what it saw.
+
+- **`countFromDevotion` / `upToOneOnTop`** — Thassa's Oracle. X is devotion
+  to blue, so neither the count nor the number of destination slots exists
+  before the effect binds. The slots are one `library_top` plus a
+  `library_bottom` for EVERY card — exactly `count` bottom slots would force
+  a card onto top, and the card says "up to one". The unused `count` is 0,
+  so losing the flag yields no look rather than a look of invented size.
+
+- **`win_game.ifDevotionAtLeastLibrary`** — the same X, evaluated at bind
+  beside the look, because on the card it is one number and not two. The
+  comparison is `>=`, and an EMPTY library wins with nothing to look at —
+  that is the whole card, not an edge case.
+
+  Both `win_game` (bind and serializer) had to be split out of the grouped
+  case they shared with `lose_game`: the group returned `{kind, playerId}`
+  and would have dropped the condition in silence. The serializer also
+  accepts the empty `destinations` list, which it rejected — that made the
+  DEFINITION fail to load, a card that never reaches the table at all.
 - **"One or two target creatures can't block this turn"** — Untimely
   Malfunction. The COUNT is a clause-level shape, not a noun-phrase one: a
   phrase is a single requirement and cannot say "one or two". So the clause

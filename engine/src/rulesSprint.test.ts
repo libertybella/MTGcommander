@@ -38417,3 +38417,260 @@ describe("wave 286: one or two creatures that can't block", () => {
     ]);
   });
 });
+
+describe("wave 287: a devotion-sized look, and the win it gates", () => {
+  const ORACLE_TEXT =
+    "When ~ enters, look at the top X cards of your library, where X is your devotion to blue. Put up to one of them on top of your library and the rest on the bottom of your library in a random order. If X is greater than or equal to the number of cards in your library, you win the game.";
+
+  const board = (bluePips: number, librarySize: number) => {
+    const { game, p1, p2 } = twoPlayers();
+    // One {U} pip per permanent, so devotion is exactly the count.
+    for (let index = 0; index < bluePips; index += 1) {
+      const definition = createCardDefinition({
+        name: `Merfolk${index}`,
+        typeLine: "Creature — Merfolk",
+        manaCost: "{U}",
+        power: 1,
+        toughness: 1,
+      });
+      game.definitions[definition.id] = definition;
+      const card = createCardInstance({
+        definitionId: definition.id,
+        ownerId: p1.id,
+        zone: "battlefield",
+      });
+      game.cards[card.id] = card;
+      p1.zones.battlefield.push(card.id);
+    }
+    const filler = createCardDefinition({
+      name: "Filler",
+      typeLine: "Creature — Bear",
+      power: 2,
+      toughness: 2,
+    });
+    game.definitions[filler.id] = filler;
+    for (let index = 0; index < librarySize; index += 1) {
+      const card = createCardInstance({
+        definitionId: filler.id,
+        ownerId: p1.id,
+        zone: "library",
+      });
+      game.cards[card.id] = card;
+      p1.zones.library.push(card.id);
+    }
+    return { game, p1, p2 };
+  };
+
+  const ORACLE_EFFECTS: CardEffect[] = [
+    {
+      kind: "look_and_assign",
+      playerId: "controller",
+      count: 0,
+      destinations: [],
+      countFromDevotion: "U",
+      upToOneOnTop: true,
+    },
+    { kind: "win_game", playerId: "controller", ifDevotionAtLeastLibrary: "U" },
+  ];
+
+  const bind = (game: GameState, controllerId: string) =>
+    bindCardEffects(game, ORACLE_EFFECTS, { controllerId, sourceId: null });
+
+  it("compiles Thassa's Oracle whole, as one trigger", () => {
+    const compiled = compileOracleCard({
+      oracleId: "thassas-oracle",
+      name: "Thassa's Oracle",
+      manaCost: "{U}{U}",
+      typeLine: "Creature — Merfolk Wizard",
+      power: "1",
+      toughness: "3",
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText: ORACLE_TEXT,
+    });
+    expect(compiled.notes).toEqual([]);
+    // All three printed sentences are ONE ability. Parked as top-level
+    // effects the last two would never run, and the win would be unreachable.
+    expect(compiled.definition.effects).toEqual([]);
+    expect(compiled.definition.triggers).toHaveLength(1);
+    expect(compiled.definition.triggers[0]).toMatchObject({
+      event: "enter_battlefield",
+      effects: [
+        {
+          kind: "look_and_assign",
+          playerId: "controller",
+          countFromDevotion: "U",
+          upToOneOnTop: true,
+        },
+        { kind: "win_game", playerId: "controller", ifDevotionAtLeastLibrary: "U" },
+      ],
+    });
+    // The unused count is 0 and not some invented size, so dropping the
+    // devotion flag would yield no look rather than a wrong-sized one.
+    const look = compiled.definition.triggers[0]?.effects[0];
+    expect(look?.kind === "look_and_assign" && look.count).toBe(0);
+  });
+
+  it("sizes the look by devotion, not by a printed number", () => {
+    const { game, p1 } = board(3, 10);
+    const bound = bind(game, p1.id);
+    expect(bound).toHaveLength(1); // the win does not bind: 3 < 10
+    const look = bound[0];
+    expect(look?.kind === "look_and_assign" && look.count).toBe(3);
+    // One top slot and a bottom slot for EVERY card. Three bottom slots
+    // would force a card onto top, and the card says "up to one".
+    expect(look?.kind === "look_and_assign" && look.destinations).toEqual([
+      "library_top",
+      "library_bottom",
+      "library_bottom",
+      "library_bottom",
+    ]);
+  });
+
+  it("wins when devotion is at least the library, and not before", () => {
+    const tight = board(3, 3);
+    expect(bind(tight.game, tight.p1.id).some((effect) => effect.kind === "win_game")).toBe(true);
+    // 3 pips, 4 cards left: no win. Off by one is the whole card.
+    const loose = board(3, 4);
+    expect(bind(loose.game, loose.p1.id).some((effect) => effect.kind === "win_game")).toBe(false);
+  });
+
+  it("wins on an empty library, where there is nothing to look at", () => {
+    const { game, p1, p2 } = board(2, 0);
+    const bound = bind(game, p1.id);
+    // The look binds (devotion is 2) but finds nothing, so no prompt opens.
+    // The win must still land — an empty library is the card's whole point.
+    expect(bound.some((effect) => effect.kind === "win_game")).toBe(true);
+    const next = applyEffects(game, bound);
+    expect(next.prompts).toEqual([]);
+    expect(next.players.find((entry) => entry.id === p1.id)?.lost).not.toBe(true);
+    expect(next.players.find((entry) => entry.id === p2.id)?.lost).toBe(true);
+  });
+
+  it("reads ONE X for the look and the win", () => {
+    // 5 pips, 5 cards: the look sees 5 and the win compares 5, not two
+    // different numbers taken a moment apart.
+    const { game, p1 } = board(5, 5);
+    const bound = bind(game, p1.id);
+    const look = bound.find((effect) => effect.kind === "look_and_assign");
+    expect(look?.kind === "look_and_assign" && look.count).toBe(5);
+    expect(bound.some((effect) => effect.kind === "win_game")).toBe(true);
+  });
+
+  it("looks at only what is there when the library is short", () => {
+    const { game, p1 } = board(4, 2);
+    const next = applyEffects(game, bind(game, p1.id));
+    const prompt = next.prompts[0];
+    expect(prompt?.kind).toBe("look_and_assign");
+    expect(prompt?.kind === "look_and_assign" && prompt.count).toBe(2);
+  });
+
+  it("lets every card go to the bottom, since the top slot is up to one", () => {
+    const { game, p1 } = board(2, 6);
+    const looked = [...p1.zones.library.slice(0, 2)];
+    const opened = applyEffects(game, bind(game, p1.id));
+    expect(opened.prompts[0]?.kind).toBe("look_and_assign");
+    const settled = applyResolveLookAssign(
+      opened,
+      p1.id,
+      looked.map((cardId) => ({ cardId, destination: "library_bottom" as const })),
+    );
+    const library = settled.players.find((entry) => entry.id === p1.id)?.zones.library ?? [];
+    expect(library).toHaveLength(6);
+    // Both went under, so neither is on top any more.
+    expect(library.slice(0, 2)).not.toEqual(looked);
+    expect([...library.slice(-2)].sort()).toEqual([...looked].sort());
+  });
+
+  it("keeps one on top when that is the choice", () => {
+    const { game, p1 } = board(2, 6);
+    const looked = [...p1.zones.library.slice(0, 2)];
+    const opened = applyEffects(game, bind(game, p1.id));
+    const settled = applyResolveLookAssign(opened, p1.id, [
+      { cardId: looked[0]!, destination: "library_top" },
+      { cardId: looked[1]!, destination: "library_bottom" },
+    ]);
+    const library = settled.players.find((entry) => entry.id === p1.id)?.zones.library ?? [];
+    expect(library).toHaveLength(6);
+    expect(library[0]).toBe(looked[0]);
+  });
+
+  it("does not look at all with no devotion", () => {
+    const { game, p1 } = board(0, 5);
+    // Devotion 0. A zero-card look would throw on a positive-integer guard;
+    // binding nothing is the honest reading of "look at the top 0 cards".
+    const bound = bind(game, p1.id);
+    expect(bound.some((effect) => effect.kind === "look_and_assign")).toBe(false);
+    expect(bound.some((effect) => effect.kind === "win_game")).toBe(false);
+  });
+
+  it("counts pips, not permanents", () => {
+    const { game, p1 } = board(0, 2);
+    const definition = createCardDefinition({
+      name: "Deep Blue",
+      typeLine: "Creature — Merfolk",
+      manaCost: "{U}{U}{U}",
+      power: 1,
+      toughness: 1,
+    });
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({
+      definitionId: definition.id,
+      ownerId: p1.id,
+      zone: "battlefield",
+    });
+    game.cards[card.id] = card;
+    p1.zones.battlefield.push(card.id);
+    const look = bind(game, p1.id).find((effect) => effect.kind === "look_and_assign");
+    expect(look?.kind === "look_and_assign" && look.count).toBe(3);
+  });
+
+  it("folds an Impulse-style ETB body that spans two sentences", () => {
+    // The fold is not Thassa-only: a look and its assignment print as two
+    // sentences on one line, and a trigger body is parsed as one sentence.
+    const compiled = compileOracleCard({
+      oracleId: "impulse-etb",
+      name: "Probe",
+      manaCost: "{2}{U}",
+      typeLine: "Creature — Bird",
+      power: "2",
+      toughness: "2",
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "When ~ enters, look at the top four cards of your library. Put one of them into your hand and the rest on the bottom of your library in a random order.",
+    });
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.effects).toEqual([]);
+    expect(compiled.definition.triggers[0]).toMatchObject({
+      event: "enter_battlefield",
+      effects: [
+        {
+          kind: "look_and_assign",
+          count: 4,
+          destinations: ["hand", "library_bottom", "library_bottom", "library_bottom"],
+        },
+      ],
+    });
+  });
+
+  it("round trips the devotion count and the gated win", () => {
+    const { game } = board(1, 1);
+    const definition = createCardDefinition({
+      name: "Thassa's Oracle",
+      typeLine: "Creature — Merfolk Wizard",
+      power: 1,
+      toughness: 3,
+      triggers: [
+        {
+          event: "enter_battlefield",
+          effects: ORACLE_EFFECTS,
+          targetRequirements: [],
+        },
+      ],
+    });
+    game.definitions[definition.id] = definition;
+    const round = parseGameState(serializeGameState(game));
+    expect(round.definitions[definition.id]?.triggers[0]?.effects).toEqual(ORACLE_EFFECTS);
+  });
+});
