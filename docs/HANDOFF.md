@@ -8,18 +8,25 @@ on-what lives in [CLAIMS.md](CLAIMS.md). This file is the tribal
 knowledge that isn't obvious from those: exact commands, traps, and
 the current state of play. Read all four before writing code.
 
-## State of play (checkpoint-90-narrow-matchers, 2026-08-23)
+## State of play (checkpoint-91-phasing, 2026-08-23)
 
-- Branch `comprehensive-plan`, tags through `checkpoint-90-narrow-matchers`,
-  pushed to `fork`.
-- 1,262 tests green; top-2,000 compile rate **68.4% (1,374/2,009)**;
+- Branch `comprehensive-plan`, tags through `checkpoint-91-phasing`, pushed
+  to `fork`.
+- 1,297 tests green; top-2,000 compile rate **68.8% (1,382/2,009)**;
   60-card sample 97% (CI floor now 90); oxlint silent; 800/800 fuzz seeds
   on a clean tree at the tag.
-- **Liberty's goal is 80% = 1,608 cards.** That is 234 more from here.
-  Sixteen waves measured across this run flipped 21 cards between them,
-  so the honest rate is **about one and a third a wave** and 80% is on the
-  order of a hundred and seventy more waves. Say so rather than implying
-  otherwise; it is not reachable in one session.
+- **Liberty's goal is 80% = 1,608 cards.** That is 226 more from here.
+  Twenty-four waves in this run flipped 29 cards, so the rate is about
+  **1.2 a wave** and 80% is on the order of 180 more waves. Say so; it is
+  not reachable in one session.
+- **PHASING IS DONE** (wave 247), and it was worth more than the estimate
+  said. The scary number was 115 `zone === "battlefield"` sites; eight of
+  them were load-bearing. A flag on the instance, never a zone change.
+  Waves 247-249 took +4 between them.
+- **Two of my own "blocked" calls turned out to be wrong.** Phasing was
+  filed as too risky to attempt; it was not. "Any number of target …" was
+  filed as a missing feature; `TargetRequirement.variable` had existed all
+  along. **Check the claim before believing it** — including mine.
 - **Three veins are now measured as EXHAUSTED, so do not re-search them.**
   `near.sh`: no one-away card is fixed by any mechanical rewording (251
   examined, 0 hits). `split.sh`: of the 68 one-away cards whose fragment is
