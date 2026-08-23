@@ -39344,3 +39344,165 @@ describe("wave 292: a spell that copies itself when cast from a graveyard", () =
     expect(round.definitions[definitionId]?.copySelfWhenCastFromGraveyard).toBe(true);
   });
 });
+
+describe("wave 293: a power that counts creatures, and a token per opponent", () => {
+  const ADELINE_TEXT =
+    "Vigilance\nAdeline, Resplendent Cathar's power is equal to the number of creatures you control.\nWhenever you attack, for each opponent, create a 1/1 white Human creature token that's tapped and attacking that player or a planeswalker they control.";
+
+  const table = (playerCount: 2 | 3 | 4) => {
+    const game = createGameState({ playerCount });
+    const players = game.players;
+    const adelineDefinition = createCardDefinition({
+      name: "Adeline, Resplendent Cathar",
+      typeLine: "Legendary Creature — Human Knight",
+      manaCost: "{1}{W}{W}",
+      power: 0,
+      toughness: 4,
+      keywords: ["vigilance"],
+      dynamicPt: { count: "creatures_you_control", powerOnly: true },
+      triggers: [
+        {
+          event: "attacks",
+          watch: "controlled",
+          oncePerBatch: true,
+          effects: [
+            {
+              kind: "create_token",
+              ownerId: "controller",
+              name: "Human",
+              typeLine: "Creature — Human Token",
+              power: 1,
+              toughness: 1,
+              colors: ["W"],
+              attackingEachOpponent: true,
+            },
+          ],
+          targetRequirements: [],
+        },
+      ],
+    });
+    game.definitions[adelineDefinition.id] = adelineDefinition;
+    const adeline = createCardInstance({
+      definitionId: adelineDefinition.id,
+      ownerId: players[0]!.id,
+      zone: "battlefield",
+    });
+    game.cards[adeline.id] = adeline;
+    players[0]!.zones.battlefield.push(adeline.id);
+    adeline.summoningSick = false;
+    return { game, players, adelineId: adeline.id, adelineDefinitionId: adelineDefinition.id };
+  };
+
+  const addBear = (game: GameState, ownerId: string, name: string) => {
+    const definition = createCardDefinition({
+      name,
+      typeLine: "Creature — Bear",
+      manaCost: "{1}{G}",
+      power: 2,
+      toughness: 2,
+    });
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({ definitionId: definition.id, ownerId, zone: "battlefield" });
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === ownerId)!.zones.battlefield.push(card.id);
+    card.summoningSick = false;
+    return card.id;
+  };
+
+  it("compiles Adeline whole", () => {
+    const compiled = compileOracleCard({
+      oracleId: "adeline",
+      name: "Adeline, Resplendent Cathar",
+      manaCost: "{1}{W}{W}",
+      typeLine: "Legendary Creature — Human Knight",
+      power: "*",
+      toughness: "4",
+      printedKeywords: ["Vigilance"],
+      imageUrl: "",
+      oracleText: ADELINE_TEXT,
+    });
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.dynamicPt).toEqual({
+      count: "creatures_you_control",
+      powerOnly: true,
+    });
+    expect(compiled.definition.triggers[0]).toMatchObject({
+      event: "attacks",
+      watch: "controlled",
+      oncePerBatch: true,
+      effects: [{ kind: "create_token", attackingEachOpponent: true, power: 1, toughness: 1 }],
+    });
+  });
+
+  it("counts creatures for power and leaves toughness printed", () => {
+    const { game, players, adelineId } = table(2);
+    // Adeline herself is a creature, so she is already 1/4.
+    expect(creaturePower(game, adelineId)).toBe(1);
+    expect(computedCard(game, adelineId)?.toughness).toBe(4);
+    addBear(game, players[0]!.id, "Bear A");
+    addBear(game, players[0]!.id, "Bear B");
+    expect(creaturePower(game, adelineId)).toBe(3);
+    // The count must NOT reach toughness. Applying it to both would rewrite a
+    // number the card never touches.
+    expect(computedCard(game, adelineId)?.toughness).toBe(4);
+  });
+
+  it("does not count creatures an opponent controls", () => {
+    const { game, players, adelineId } = table(2);
+    addBear(game, players[1]!.id, "Their Bear");
+    expect(creaturePower(game, adelineId)).toBe(1);
+  });
+
+  it("makes one attacking token per opponent, each aimed at that opponent", () => {
+    const { game, players, adelineId } = table(4);
+    game.turn.activePlayerId = players[0]!.id;
+    game.turn.phase = "combat";
+    game.turn.step = "declareAttackers";
+    game.priorityPlayerId = players[0]!.id;
+    const attacked = declareAttackers(game, players[0]!.id, [
+      { attackerId: adelineId, defenderId: players[1]!.id },
+    ]);
+    const settled =
+      attacked.stack.length > 0 ? resolveTopOfStack(attacked) : attacked;
+    const tokens = Object.values(settled.cards).filter((card) => card.isToken);
+    expect(tokens).toHaveLength(3);
+    const defenders = settled.combat!.attacks
+      .filter((attack) => attack.attackerId !== adelineId)
+      .map((attack) => attack.defenderId)
+      .sort();
+    // One each, not three at whoever Adeline happened to attack. In a
+    // four-player game that difference is most of the card.
+    expect(defenders).toEqual([players[1]!.id, players[2]!.id, players[3]!.id].sort());
+    for (const token of tokens) {
+      expect(token.tapped).toBe(true);
+      expect(token.attacking).toBe(true);
+      expect(token.summoningSick).toBe(false);
+    }
+  });
+
+  it("makes exactly one token heads-up", () => {
+    const { game, players, adelineId } = table(2);
+    game.turn.activePlayerId = players[0]!.id;
+    game.turn.phase = "combat";
+    game.turn.step = "declareAttackers";
+    game.priorityPlayerId = players[0]!.id;
+    const attacked = declareAttackers(game, players[0]!.id, [
+      { attackerId: adelineId, defenderId: players[1]!.id },
+    ]);
+    const settled = attacked.stack.length > 0 ? resolveTopOfStack(attacked) : attacked;
+    expect(Object.values(settled.cards).filter((card) => card.isToken)).toHaveLength(1);
+    // And the new Human raises Adeline's power, which is the point of the CDA.
+    expect(creaturePower(settled, adelineId)).toBe(2);
+  });
+
+  it("round trips both new fields", () => {
+    const { game, adelineDefinitionId } = table(2);
+    const round = parseGameState(serializeGameState(game));
+    const definition = round.definitions[adelineDefinitionId];
+    expect(definition?.dynamicPt).toEqual({ count: "creatures_you_control", powerOnly: true });
+    expect(definition?.triggers[0]?.effects[0]).toMatchObject({
+      kind: "create_token",
+      attackingEachOpponent: true,
+    });
+  });
+});

@@ -617,7 +617,14 @@ export function createCardDefinition(
     ...(input.ascend ? { ascend: true } : {}),
     ...(input.additionalCost ? { additionalCost: { ...input.additionalCost } } : {}),
     ...(input.attackTax ? { attackTax: { ...input.attackTax } } : {}),
-    ...(input.dynamicPt ? { dynamicPt: { count: input.dynamicPt.count } } : {}),
+    ...(input.dynamicPt
+      ? {
+          dynamicPt: {
+            count: input.dynamicPt.count,
+            ...(input.dynamicPt.powerOnly ? { powerOnly: true } : {}),
+          },
+        }
+      : {}),
     ...(input.bonusPt ? { bonusPt: { ...input.bonusPt } } : {}),
     ...(input.modeChoice ? { modeChoice: { ...input.modeChoice } } : {}),
     ...(input.costReductions && input.costReductions.length > 0

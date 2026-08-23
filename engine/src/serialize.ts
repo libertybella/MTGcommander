@@ -1181,7 +1181,10 @@ export function parseGameState(json: string): GameState {
                 def.dynamicPt.count,
                 `definition.${id}.dynamicPt.count`,
               );
-              return { count };
+              return {
+                count,
+                ...(def.dynamicPt.powerOnly === true ? { powerOnly: true } : {}),
+              };
             })(),
           }),
       ...(def.bonusPt === undefined
@@ -3132,6 +3135,7 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
           ? {}
           : { perSourceCounters: expectString(value.perSourceCounters, `${label}.perSourceCounters`) }),
         ...(value.entersTappedAttacking === true ? { entersTappedAttacking: true } : {}),
+        ...(value.attackingEachOpponent === true ? { attackingEachOpponent: true } : {}),
         ...(value.entersTapped === true ? { entersTapped: true } : {}),
         ...(value.colors === undefined
           ? {}
@@ -6231,6 +6235,7 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
           }
         : {}),
       ...(value.entersTappedAttacking === true ? { entersTappedAttacking: true } : {}),
+      ...(value.attackingEachOpponent === true ? { attackingEachOpponent: true } : {}),
       ...(value.entersTapped === true ? { entersTapped: true } : {}),
       ...(value.atEndStep === "sacrifice" || value.atEndStep === "exile"
         ? { atEndStep: value.atEndStep }

@@ -2998,7 +2998,17 @@ function applyCreateToken(
   if (counterCount === 0) {
     return next;
   }
-  const copies = (counterCount ?? effect.count ?? 1) * tokenDoublingFactor(next, effect.ownerId);
+  // Adeline: one token per opponent, each attacking THAT opponent. A plain
+  // count with a shared defender would send the whole squad at one player,
+  // which in a four-player game is most of the card.
+  const perOpponent = effect.attackingEachOpponent
+    ? livingPlayers(next)
+        .filter((player) => player.id !== effect.ownerId)
+        .map((player) => player.id)
+    : null;
+  const copies = perOpponent
+    ? perOpponent.length * tokenDoublingFactor(next, effect.ownerId)
+    : (counterCount ?? effect.count ?? 1) * tokenDoublingFactor(next, effect.ownerId);
   for (let index = 0; index < copies; index += 1) {
     const token = createCardInstance({
       definitionId: definition.id,
@@ -3015,8 +3025,15 @@ function applyCreateToken(
     }
     // "Tapped and attacking": join the ongoing combat against the first
     // declared defender (a documented approximation of the attack choice).
-    if (effect.entersTappedAttacking && next.combat?.attackersDeclared) {
-      const defenderId = next.combat.attacks[0]?.defenderId;
+    if (
+      (effect.entersTappedAttacking || perOpponent) &&
+      next.combat?.attackersDeclared
+    ) {
+      // Each of Adeline's tokens gets its own defender; doubling cycles
+      // through the opponents so the extras are spread rather than piled.
+      const defenderId = perOpponent
+        ? perOpponent[index % perOpponent.length]
+        : next.combat.attacks[0]?.defenderId;
       if (defenderId) {
         token.tapped = true;
         token.attacking = true;

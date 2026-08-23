@@ -232,7 +232,12 @@ function baseComputed(state: GameState, card: CardInstance): ComputedCard {
     ],
     abilitiesRemoved: false,
     power: (dynamic ?? definition?.power ?? 0) + bonusPower,
-    toughness: (dynamic ?? definition?.toughness ?? 0) + bonusToughness,
+    // Adeline: her POWER counts creatures while her toughness stays the
+    // printed 4. Applying the count to both would rewrite a number the
+    // card never touches.
+    toughness:
+      (definition?.dynamicPt?.powerOnly ? definition?.toughness ?? 0 : dynamic ?? definition?.toughness ?? 0) +
+      bonusToughness,
     grantedMana: [],
     grantedTriggers: [],
     grantedActivated: [],

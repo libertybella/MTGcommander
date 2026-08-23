@@ -134,7 +134,7 @@ export type CompiledOracleText = {
   };
   playLandsFromGraveyard?: boolean;
   additionalCost?: AdditionalCastCost;
-  dynamicPt?: { count: DynamicCount };
+  dynamicPt?: { count: DynamicCount; powerOnly?: boolean };
   bonusPt?: { power: number; toughness: number; per: DynamicCount };
   modeChoice?: { min: number; max: number; maxIfCommander?: number };
   leftover: string[];
@@ -5852,6 +5852,39 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
   // "any words are the subtype" match, which happily invents a subtype out
   // of a word it does not know. What is left to them is what this cannot
   // express — a count read off the board, and quoted granted abilities.
+  // Adeline: "For each opponent, create a 1/1 white Human creature token
+  // that's tapped and attacking that player or a planeswalker they
+  // control." The COUNT and the DEFENDER are both per opponent — a plain
+  // count with one shared defender would send the whole squad at a single
+  // player, which in a four-player game is most of the card.
+  //
+  // "or a planeswalker they control" is not offered: the token attacks the
+  // player. A documented approximation of a choice.
+  const perOpponentAttackers = sentence.match(
+    /^For each opponent, create (.+?) that['’]s tapped and attacking that player(?: or a planeswalker they control)?$/i,
+  );
+  if (perOpponentAttackers?.[1]) {
+    const descriptor = parseTokenDescriptor(perOpponentAttackers[1]);
+    if (descriptor && !descriptor.countUnspecified && descriptor.count === 1) {
+      return {
+        targetRequirements: [],
+        effects: [
+          {
+            kind: "create_token",
+            ownerId: "controller",
+            name: descriptor.name,
+            typeLine: descriptor.typeLine,
+            power: descriptor.power,
+            toughness: descriptor.toughness,
+            ...(descriptor.keywords.length > 0 ? { keywords: descriptor.keywords } : {}),
+            ...(descriptor.colors.length > 0 ? { colors: descriptor.colors } : {}),
+            attackingEachOpponent: true,
+          },
+        ],
+      };
+    }
+  }
+
   const createdTokens = sentence.match(
     /^(?:Then )?(?:(You|Its controller|Each player|Each opponent|Target player|Target opponent) creates?|(?:You may )?Create) (.+)$/i,
   );
@@ -12578,6 +12611,16 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
 
     if (/^You may play lands from your graveyard$/i.test(sentence)) {
       result.playLandsFromGraveyard = true;
+      continue;
+    }
+
+    // Adeline: her POWER counts creatures while her toughness stays the
+    // printed 4. A second pattern rather than a widened one — the
+    // "power and toughness are each" form below means something different.
+    const starPower = sentence.match(/^~'s power is equal to the number of (.+)$/i);
+    const starPowerCount = starPower?.[1] ? parseDynamicCount(starPower[1]) : null;
+    if (starPowerCount) {
+      result.dynamicPt = { count: starPowerCount, powerOnly: true };
       continue;
     }
 

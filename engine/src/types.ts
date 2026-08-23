@@ -467,7 +467,12 @@ export type CardDefinition = {
    * permanents grants the city's blessing (checked in the SBA sweep). */
   ascend?: boolean;
   /** Star P/T: base power and toughness are each this count (CR 613.3a). */
-  dynamicPt?: { count: DynamicCount };
+  /**
+   * A characteristic-defining power/toughness (CR 613.3a). `powerOnly` is
+   * Adeline, whose toughness is the printed 4 while her power counts
+   * creatures — without it the count would overwrite both.
+   */
+  dynamicPt?: { count: DynamicCount; powerOnly?: boolean };
   /** Storm-Kiln Artist: "+1/+0 for each artifact you control". */
   bonusPt?: { power: number; toughness: number; per: DynamicCount };
   /** Scryfall card image, if known. Empty for synthetic / hidden cards. */
@@ -1092,6 +1097,8 @@ export type GameEffect =
       atEndStep?: "sacrifice" | "exile";
       /** Anim Pakal: count the source's counters when the effect applies. */
       countFromCounters?: { cardId: CardInstanceId; counter: string };
+      /** Adeline: one token per opponent, each attacking that opponent. */
+      attackingEachOpponent?: boolean;
       entersTappedAttacking?: boolean;
       /** "a tapped 1/1 blue Fish" (the gift mechanic). */
       entersTapped?: boolean;
@@ -2061,6 +2068,12 @@ export type CardEffect =
       /** Anim Pakal: one token per named counter on the source, counted when
        * the effect applies (after earlier effects in the same batch). */
       perSourceCounters?: string;
+      /**
+       * Adeline: one token per opponent, each tapped and attacking THAT
+       * opponent. Not a count with a shared defender — in a four-player
+       * game that difference is the card.
+       */
+      attackingEachOpponent?: boolean;
       /** "tapped and attacking": joins the current combat against the first
        * declared defender (a documented approximation). */
       entersTappedAttacking?: boolean;

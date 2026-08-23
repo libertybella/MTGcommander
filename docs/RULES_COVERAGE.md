@@ -870,6 +870,27 @@ more questions it can now ask:
   (Bennie Bracks). Reads the existing per-player `createdTokenThisTurn`
   list, and asks whether the CONTROLLER is in it — an opponent's Treasure
   must not satisfy it.
+- **`dynamicPt.powerOnly`** — Adeline. Her POWER counts creatures while her
+  toughness stays the printed 4. The existing star-P/T clause reads "power
+  and toughness are each equal to…" and set both; applying the count to
+  toughness rewrites a number the card never touches. A second pattern
+  beside it, not a widened one — the two phrasings mean different things.
+
+- **`create_token.attackingEachOpponent`** — Adeline's attack trigger. One
+  token per opponent, each tapped and attacking THAT opponent. The count and
+  the defender are both per-opponent: a plain count sharing
+  `entersTappedAttacking`'s single defender would send the whole squad at
+  one player, and in a four-player game that difference is most of the card.
+  Token doubling cycles through the opponents so the extras are spread
+  rather than piled.
+
+  "Or a planeswalker they control" is not offered: the token attacks the
+  player. A documented approximation of a choice.
+
+  `createGame`'s definition mapper rebuilt `dynamicPt` field by field and
+  dropped `powerOnly` — the fifth time a mapper layer has silently lost a
+  new field in this push, and the reason every wave now asserts through the
+  mappers rather than at the compiler alone.
 - **`copySelfWhenCastFromGraveyard`** — Sevinne's Reclamation. A definition
   flag rather than an effect, because the spell has already been popped off
   the stack by the time its own effects bind: there is no "this spell" left
