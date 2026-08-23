@@ -2883,6 +2883,19 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
               : expectNumber(value.count, `${label}.count`),
       };
     case "discard":
+      return {
+        kind,
+        playerId: parsePlayerSelector(value.playerId, `${label}.playerId`),
+        count: expectNumber(value.count, `${label}.count`),
+        ...(value.conniveCounterOn === undefined
+          ? {}
+          : {
+              conniveCounterOn: parseCardIdSelector(
+                value.conniveCounterOn,
+                `${label}.conniveCounterOn`,
+              ),
+            }),
+      };
     case "discard_random":
     case "exile_top":
       return {

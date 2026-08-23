@@ -931,7 +931,12 @@ export type GameEffect =
       colors?: Color[];
     }
   | { kind: "mill"; playerId: PlayerId; count: number }
-  | { kind: "discard"; playerId: PlayerId; count: number }
+  | {
+      kind: "discard";
+      playerId: PlayerId;
+      count: number;
+      conniveCounterOn?: CardInstanceId;
+    }
   /** Gamble: "discard a card at random". */
   | { kind: "discard_random"; playerId: PlayerId; count: number }
   | { kind: "discard_unless_attacked"; playerId: PlayerId; count: number }
@@ -1766,7 +1771,19 @@ export type CardEffect =
       /** subject_amount: "that many" — the life the trigger just saw lost. */
       count: number | "sacrificed_power" | "subject_amount";
     }
-  | { kind: "discard"; playerId: PlayerSelector; count: number }
+  /**
+   * `conniveCounterOn` is the third clause of connive (CR 702.148): a
+   * +1/+1 counter on that permanent for each NONLAND card discarded this
+   * way. It rides the discard rather than following it, because the count
+   * is only known once the discard has happened — the same rule as a sweep
+   * that gains life per creature destroyed.
+   */
+  | {
+      kind: "discard";
+      playerId: PlayerSelector;
+      count: number;
+      conniveCounterOn?: CardIdSelector;
+    }
   /** Gamble: "discard a card at random". */
   | { kind: "discard_random"; playerId: PlayerSelector; count: number }
   | { kind: "discard_unless_attacked"; playerId: PlayerSelector; count: number }

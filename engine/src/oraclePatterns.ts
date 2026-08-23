@@ -3447,6 +3447,20 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
 
   // "That much" reads the trigger event's amount (Sanguine Bond, Exquisite
   // Blood); outside a life trigger it binds to 0 and fizzles silently.
+  // Connive N (CR 702.148): draw N, discard N, and a +1/+1 counter for
+  // each NONLAND card discarded that way. The third clause rides the
+  // discard because its count is only known once the discard has run.
+  const connives = sentence.match(/^~ connives$/i);
+  if (connives) {
+    return {
+      targetRequirements: [],
+      effects: [
+        { kind: "draw", playerId: "controller", count: 1 },
+        { kind: "discard", playerId: "controller", count: 1, conniveCounterOn: "self" },
+      ],
+    };
+  }
+
   if (/^target opponent loses that much life$/i.test(sentence)) {
     return {
       targetRequirements: [{ kind: "opponent" }],

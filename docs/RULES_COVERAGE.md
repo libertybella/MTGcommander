@@ -660,6 +660,22 @@ is applied AFTER every layer-6 instance has run rather than in place: a
 grant later in the same layer would otherwise win. `remove_all_abilities`
 clears the lock along with everything else.
 
+### Connive (wave 243)
+
+Connive N (CR 702.148) is a draw, a discard, and a +1/+1 counter for each
+NONLAND card discarded that way. The first two were already ordinary
+effects; the third rides the discard as `conniveCounterOn`, because its
+count is only known once the discard has happened — the same rule as a
+sweep that gains life per creature destroyed.
+
+Counters are per nonland CARD, not one for having discarded at all, and a
+land discarded this way earns nothing (CR 702.148c). Both are asserted.
+
+Deliberate approximation, inherited rather than introduced: `applyDiscard`
+takes from the front of hand rather than prompting, so connive does not
+choose which card to pitch. That matters more for connive than for most
+discards and is worth revisiting when the discard prompt is generalised.
+
 ### Two more amounts for life loss (wave 242)
 
 - **`source_power`** is the power of the ability's own SOURCE (Marionette

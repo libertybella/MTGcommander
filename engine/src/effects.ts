@@ -570,7 +570,22 @@ export function bindCardEffect(
       }
       return { kind: "mill", playerId, count };
     }
-    case "discard":
+    case "discard": {
+      const playerId = bindPlayerSelector(state, effect.playerId, context);
+      if (!playerId) {
+        return null;
+      }
+      // A connive with nothing to put counters on is still a discard.
+      const conniveTarget = effect.conniveCounterOn
+        ? bindCardId(state, effect.conniveCounterOn, context)
+        : null;
+      return {
+        kind: "discard",
+        playerId,
+        count: effect.count,
+        ...(conniveTarget ? { conniveCounterOn: conniveTarget } : {}),
+      };
+    }
     case "discard_random":
     case "scry":
     case "surveil":
@@ -2174,18 +2189,36 @@ function applyMill(state: GameState, playerId: PlayerId, count: number): GameSta
   return next;
 }
 
-function applyDiscard(state: GameState, playerId: PlayerId, count: number): GameState {
+function applyDiscard(
+  state: GameState,
+  playerId: PlayerId,
+  count: number,
+  conniveCounterOn?: CardInstanceId,
+): GameState {
   requirePositiveInteger(count, "discard count");
   requirePlayer(state, playerId);
   let next = state;
+  let nonlandDiscarded = 0;
   for (let i = 0; i < count; i += 1) {
     const current = next.players.find((entry) => entry.id === playerId);
     const first = current?.zones.hand[0];
     if (!first) {
-      return next === state ? cloneGameState(state) : next;
+      break;
+    }
+    // Counted BEFORE the move, while the card is still readable in hand.
+    if (!characteristicsOf(next, first).types.includes("land")) {
+      nonlandDiscarded += 1;
     }
     next = moveCard(next, first, "graveyard");
     dispatchEventsInPlace(next, [{ kind: "discards", cardId: first, playerId }]);
+  }
+  if (next === state) {
+    next = cloneGameState(state);
+  }
+  // CR 702.148c: nonland cards only, and one counter per card rather than
+  // one counter for having discarded any.
+  if (conniveCounterOn && nonlandDiscarded > 0) {
+    next = applyAddCounter(next, conniveCounterOn, "p1p1", nonlandDiscarded);
   }
   return next;
 }
@@ -3403,7 +3436,7 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
         next = applyMill(state, effect.playerId, effect.count);
         break;
       case "discard":
-        next = applyDiscard(state, effect.playerId, effect.count);
+        next = applyDiscard(state, effect.playerId, effect.count, effect.conniveCounterOn);
         break;
       case "discard_random":
         next = applyDiscardRandom(state, effect.playerId, effect.count);

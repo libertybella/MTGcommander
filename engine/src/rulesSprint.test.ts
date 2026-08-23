@@ -31467,3 +31467,139 @@ describe("wave 242: two more amounts for life loss", () => {
     expect(effects[1]).toMatchObject({ amount: "source_power" });
   });
 });
+
+describe("wave 243: connive", () => {
+  const setup = () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const shredder = createCardDefinition({
+      name: "Ledger Shredder",
+      typeLine: "Creature — Bird Advisor",
+      power: 1,
+      toughness: 3,
+    });
+    const spell = createCardDefinition({ name: "Bolt", typeLine: "Instant", manaCost: "{R}" });
+    const land = createCardDefinition({ name: "Island", typeLine: "Basic Land — Island" });
+    for (const definition of [shredder, spell, land]) {
+      game.definitions[definition.id] = definition;
+    }
+    const bird = createCardInstance({
+      definitionId: shredder.id,
+      ownerId: p1.id,
+      zone: "battlefield",
+    });
+    game.cards[bird.id] = bird;
+    p1.zones.battlefield.push(bird.id);
+    // applyDiscard takes from the front of hand, so the hand is emptied and
+    // rebuilt to control exactly what gets discarded.
+    p1.zones.hand = [];
+    const toHand = (definitionId: string) => {
+      const card = createCardInstance({ definitionId, ownerId: p1.id, zone: "hand" });
+      game.cards[card.id] = card;
+      p1.zones.hand.push(card.id);
+      return card;
+    };
+    return { game, p1, bird, spell, land, toHand };
+  };
+
+  it("compiles as draw, discard, and a counter riding the discard", () => {
+    const shredder = compileOracleCard({
+      oracleId: "Ledger Shredder",
+      name: "Ledger Shredder",
+      manaCost: "{1}{U}",
+      typeLine: "Creature — Bird Advisor",
+      power: "1",
+      toughness: "3",
+      printedKeywords: ["flying"],
+      imageUrl: "",
+      oracleText: "Flying\nWhenever a player casts their second spell each turn, Ledger Shredder connives.",
+    });
+    expect(shredder.notes).toEqual([]);
+    expect(shredder.definition.triggers[0]?.effects).toEqual([
+      { kind: "draw", playerId: "controller", count: 1 },
+      { kind: "discard", playerId: "controller", count: 1, conniveCounterOn: "self" },
+    ]);
+  });
+
+  it("counts nonland cards only", () => {
+    const nonland = setup();
+    nonland.toHand(nonland.spell.id);
+    const afterSpell = applyEffect(nonland.game, {
+      kind: "discard",
+      playerId: nonland.p1.id,
+      count: 1,
+      conniveCounterOn: nonland.bird.id,
+    });
+    expect(afterSpell.cards[nonland.bird.id]?.counters["p1p1"] ?? 0).toBe(1);
+
+    // CR 702.148c: a land discarded this way earns nothing. A rider that
+    // counted "did I discard anything" would pass the line above and be
+    // wrong here.
+    const landed = setup();
+    landed.toHand(landed.land.id);
+    const afterLand = applyEffect(landed.game, {
+      kind: "discard",
+      playerId: landed.p1.id,
+      count: 1,
+      conniveCounterOn: landed.bird.id,
+    });
+    expect(afterLand.cards[landed.bird.id]?.counters["p1p1"] ?? 0).toBe(0);
+  });
+
+  it("gives one counter per nonland card, not one for the discard", () => {
+    const { game, p1, bird, spell, land, toHand } = setup();
+    toHand(spell.id);
+    toHand(spell.id);
+    toHand(land.id);
+    const after = applyEffect(game, {
+      kind: "discard",
+      playerId: p1.id,
+      count: 3,
+      conniveCounterOn: bird.id,
+    });
+    // Three cards discarded, two of them nonland.
+    expect(after.cards[bird.id]?.counters["p1p1"] ?? 0).toBe(2);
+  });
+
+  it("is still an ordinary discard with nothing to put counters on", () => {
+    const { game, p1, spell, toHand } = setup();
+    toHand(spell.id);
+    const after = applyEffect(game, { kind: "discard", playerId: p1.id, count: 1 });
+    expect(after.players.find((entry) => entry.id === p1.id)?.zones.hand).toHaveLength(0);
+  });
+
+  it("round trips the rider", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const definition = createCardDefinition({
+      name: "Conniver",
+      typeLine: "Creature — Bird",
+      power: 1,
+      toughness: 1,
+      triggers: [
+        {
+          event: "enter_battlefield",
+          effects: [
+            { kind: "draw", playerId: "controller", count: 1 },
+            { kind: "discard", playerId: "controller", count: 1, conniveCounterOn: "self" },
+          ],
+          targetRequirements: [],
+        },
+      ],
+    });
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({
+      definitionId: definition.id,
+      ownerId: p1.id,
+      zone: "battlefield",
+    });
+    game.cards[card.id] = card;
+    p1.zones.battlefield.push(card.id);
+
+    const round = parseGameState(serializeGameState(game));
+    expect(round.definitions[definition.id]?.triggers[0]?.effects[1]).toMatchObject({
+      kind: "discard",
+      conniveCounterOn: "self",
+    });
+  });
+});
