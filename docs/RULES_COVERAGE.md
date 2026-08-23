@@ -870,6 +870,31 @@ more questions it can now ask:
   (Bennie Bracks). Reads the existing per-player `createdTokenThisTurn`
   list, and asks whether the CONTROLLER is in it — an opponent's Treasure
   must not satisfy it.
+- **`opponents_graveyard_to_void_exile`** — Dauthi Voidwalker. A card headed
+  for an OPPONENT's graveyard is exiled with a void counter instead. Scoped
+  by the card's OWNER, unlike Rest in Peace, which applies to the whole
+  table — hitting your own graveyard too would be a different and much worse
+  card. The counter is stamped only when this replacement is what redirected
+  the move, so an ordinary exile stays bare, and it is how the ability below
+  finds the card again.
+
+- **`ChooseCardSource` in exile, with `hasVoidCounter`** — and an
+  each-player SOURCE now spreads into one bound source per player, pooling
+  every opponent's exile into a single choice. An each-player CHOOSER means
+  one choice per player, which is a different thing; only the chooser was
+  expanded before. `grant_play_chosen` then makes the chosen card playable
+  this turn for free — the impulse grants already there only reach cards the
+  same effect just exiled.
+
+- **Five evasion keywords were being dropped in silence.** `KEYWORD_BY_LABEL`
+  in `oracle.ts` was a hand-written THIRD copy of the keyword list, and it
+  had drifted: fear, intimidate, horsemanship, shadow and skulk were all
+  implemented in combat and present in the compiler's two tables, and
+  missing from the one that reads printed labels. Every creature printed
+  with one lost it and became ordinarily blockable — Dauthi Voidwalker is a
+  3/2 that is unblockable in practice, which is the whole reason it sees
+  play. The table is now DERIVED from `IMPLEMENTED_KEYWORDS`, so it cannot
+  drift again.
 - **`CardInstance.drawnOnTurn`** — Sylvan Library asks WHICH cards were
   drawn this turn, and a per-turn tally cannot answer that. Stamped inside
   the draw loop so every path that draws records it. A card held since last

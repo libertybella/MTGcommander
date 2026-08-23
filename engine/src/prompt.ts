@@ -538,6 +538,11 @@ export function legalIdsForChooseSources(
       ) {
         continue;
       }
+      // Dauthi Voidwalker: only the exiled cards its own replacement put
+      // there. Every other card in that exile is somebody else's business.
+      if (source.hasVoidCounter && (state.cards[cardId]?.counters["void"] ?? 0) === 0) {
+        continue;
+      }
       // Sylvan Library: "cards in your hand drawn this turn". A card held
       // since last turn is a better card to put back, and offering it would
       // make the drawback a bonus.

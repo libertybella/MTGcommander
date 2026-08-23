@@ -43,7 +43,35 @@ function commanderAwareDestination(
     // dies triggers do not fire.
     return "exile";
   }
+  if (toZone === "graveyard" && voidExileApplies(state, cardId)) {
+    // Dauthi Voidwalker: an OPPONENT's card only. Scoped by owner, unlike
+    // Rest in Peace, which is the whole difference between the two.
+    return "exile";
+  }
   return toZone;
+}
+
+/**
+ * Dauthi Voidwalker: is this card owned by an opponent of someone who has
+ * the void-exile replacement on the battlefield? The controller's own cards
+ * go to their graveyard as normal.
+ */
+export function voidExileApplies(state: GameState, cardId: CardInstanceId): boolean {
+  const ownerId = state.cards[cardId]?.ownerId;
+  if (!ownerId) {
+    return false;
+  }
+  return Object.values(state.cards).some((card) => {
+    if (card.zone !== "battlefield" || abilitiesRemoved(state, card.id)) {
+      return false;
+    }
+    if (card.controllerId === ownerId) {
+      return false;
+    }
+    return (state.definitions[card.definitionId]?.replacements ?? []).some(
+      (replacement) => replacement.kind === "opponents_graveyard_to_void_exile",
+    );
+  });
 }
 
 function graveyardReplacedByExile(state: GameState): boolean {
@@ -184,6 +212,12 @@ export function enterOwnerZoneInPlace(
   insertIntoZone(owner, destination, cardId, options.libraryPosition ?? "top");
   card.zone = destination;
   applyZoneChangeFlags(state, card, destination, options.fromCast);
+  // Dauthi Voidwalker: the card is exiled WITH a void counter, and the
+  // counter is how the ability later finds it. Stamped only when the void
+  // replacement is what redirected it, so an ordinary exile stays bare.
+  if (destination === "exile" && toZone === "graveyard" && voidExileApplies(state, cardId)) {
+    card.counters["void"] = (card.counters["void"] ?? 0) + 1;
+  }
   state.log.push({ kind: "zone_change", cardId, from: fromZone, to: destination });
   if (destination === "battlefield") {
     queueEnterReplacementChoicesInPlace(state, cardId);
@@ -429,6 +463,12 @@ export function moveCardInPlace(
   insertIntoZone(owner, destination, cardId, options.libraryPosition ?? "top");
   card.zone = destination;
   applyZoneChangeFlags(state, card, destination, options.fromCast);
+  // Dauthi Voidwalker: the card is exiled WITH a void counter, and the
+  // counter is how the ability later finds it. Stamped only when the void
+  // replacement is what redirected it, so an ordinary exile stays bare.
+  if (destination === "exile" && toZone === "graveyard" && voidExileApplies(state, cardId)) {
+    card.counters["void"] = (card.counters["void"] ?? 0) + 1;
+  }
   state.log.push({ kind: "zone_change", cardId, from: located.zone, to: destination });
   if (destination === "battlefield") {
     queueEnterReplacementChoicesInPlace(state, cardId);

@@ -2899,6 +2899,35 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     };
   }
 
+  // Dauthi Voidwalker's ability, once the fuser has joined its two halves.
+  // The pool is every opponent's exile, narrowed to the cards this card's
+  // own replacement put there — every other exiled card is somebody else's
+  // business.
+  if (
+    /^Choose an exiled card an opponent owns with a void counter on it, and you may play it this turn without paying its mana cost$/i.test(
+      sentence,
+    )
+  ) {
+    return {
+      targetRequirements: [],
+      effects: [
+        {
+          kind: "choose_card",
+          chooserId: "controller",
+          sources: [
+            {
+              playerId: "each_opponent",
+              zone: "exile",
+              filter: "any",
+              hasVoidCounter: true,
+            },
+          ],
+          thenEffects: [{ kind: "grant_play_chosen", playerId: "controller", free: true }],
+        },
+      ],
+    };
+  }
+
   const unblockable = sentence.match(
     /^(target creature( you control)?|~)(?: with power (\d+) or less)? can't be blocked this turn$/i,
   );
@@ -8330,6 +8359,34 @@ function fuseMoxDiamondInPlace(sentences: string[], lineStart: boolean[]): void 
   }
 }
 
+function fuseVoidPlayInPlace(sentences: string[], lineStart: boolean[]): void {
+  // Dauthi Voidwalker prints the choice and the permission as two sentences
+  // on one line: "Choose an exiled card…" and "You may play it this turn…".
+  // The second names the card the first chose, so neither means anything
+  // alone — split, the choice picks a card and does nothing with it.
+  for (let index = 0; index + 1 < sentences.length; index += 1) {
+    if (lineStart[index + 1]) {
+      continue;
+    }
+    const choose = sentences[index]?.match(
+      /^(.*\bChoose an exiled card an opponent owns with a void counter on it)$/i,
+    );
+    const play = sentences[index + 1];
+    if (
+      !choose?.[1] ||
+      !play ||
+      !/^You may play it this turn without paying its mana cost$/i.test(play)
+    ) {
+      continue;
+    }
+    sentences[index] =
+      `${choose[1]}, and you may play it this turn without paying its mana cost`;
+    sentences.splice(index + 1, 1);
+    lineStart.splice(index + 1, 1);
+    index -= 1;
+  }
+}
+
 function fuseLookTopTakeInPlace(sentences: string[], lineStart: boolean[]): void {
   // Herald's Horn prints "look at the top card of your library." and "If
   // it's a creature card of the chosen type, you may reveal it and put it
@@ -11407,6 +11464,7 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
   fusePactInPlace(sentences, lineStart);
   fuseChooseTargetCreatureInPlace(sentences, lineStart);
   fuseLookTopTakeInPlace(sentences, lineStart);
+  fuseVoidPlayInPlace(sentences, lineStart);
   fuseMoxDiamondInPlace(sentences, lineStart);
   fuseMaySacrificeInPlace(sentences, lineStart);
   fuseNecroTopInPlace(sentences, lineStart);
@@ -13792,6 +13850,17 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
       continue;
     }
 
+    // Dauthi Voidwalker: an OPPONENT's card only, and it carries a void
+    // counter so the ability below can find it again. Owner-scoped, unlike
+    // Rest in Peace, which is the whole difference between the two.
+    if (
+      /^If a card would be put into an opponent['’]s graveyard from anywhere, instead exile it with a void counter on it$/i.test(
+        sentence,
+      )
+    ) {
+      result.replacements.push({ kind: "opponents_graveyard_to_void_exile" });
+      continue;
+    }
     if (
       /^If a card or token would be put into a graveyard from anywhere, exile it instead$/i.test(
         sentence,

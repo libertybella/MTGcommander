@@ -2466,7 +2466,7 @@ function parseChooseCardSources(value: unknown, label: string): ChooseCardSource
       throw new Error(`Invalid ${label}[${index}]`);
     }
     const zone = expectString(entry.zone, `${label}[${index}].zone`);
-    if (zone !== "hand" && zone !== "graveyard" && zone !== "battlefield") {
+    if (zone !== "hand" && zone !== "graveyard" && zone !== "battlefield" && zone !== "exile") {
       throw new Error(`Invalid ${label}[${index}].zone`);
     }
     return {
@@ -2475,6 +2475,7 @@ function parseChooseCardSources(value: unknown, label: string): ChooseCardSource
       filter: parseCardFilter(entry.filter, `${label}[${index}].filter`),
       ...(entry.excludeSelf === true ? { excludeSelf: true } : {}),
       ...(entry.drawnThisTurn === true ? { drawnThisTurn: true } : {}),
+      ...(entry.hasVoidCounter === true ? { hasVoidCounter: true } : {}),
       ...(entry.excludePreviousChoice === true ? { excludePreviousChoice: true } : {}),
       ...(entry.greatestManaValue === true ? { greatestManaValue: true } : {}),
     };
@@ -2498,7 +2499,7 @@ function parseBoundChooseSources(
       throw new Error(`${label}[${index}].playerId must be a player`);
     }
     const zone = expectString(entry.zone, `${label}[${index}].zone`);
-    if (zone !== "hand" && zone !== "graveyard" && zone !== "battlefield") {
+    if (zone !== "hand" && zone !== "graveyard" && zone !== "battlefield" && zone !== "exile") {
       throw new Error(`Invalid ${label}[${index}].zone`);
     }
     return {
@@ -2509,6 +2510,7 @@ function parseBoundChooseSources(
         ? { excludeCardId: entry.excludeCardId }
         : {}),
       ...(entry.drawnThisTurn === true ? { drawnThisTurn: true } : {}),
+      ...(entry.hasVoidCounter === true ? { hasVoidCounter: true } : {}),
       ...(entry.greatestManaValue === true ? { greatestManaValue: true } : {}),
     };
   });
@@ -2994,6 +2996,12 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
       };
     case "play_hidden_card":
       return { kind, ...(value.free === true ? { free: true } : {}) };
+    case "grant_play_chosen":
+      return {
+        kind,
+        playerId: parsePlayerSelector(value.playerId, `${label}.playerId`),
+        ...(value.free === true ? { free: true } : {}),
+      };
     case "reveal_zone":
       return {
         kind,
@@ -4668,6 +4676,7 @@ function parseReplacements(value: unknown, label: string): ReplacementEffect[] {
     if (
       kind === "enters_tapped" ||
       kind === "graveyard_to_exile" ||
+      kind === "opponents_graveyard_to_void_exile" ||
       kind === "empty_draw_wins" ||
       kind === "double_tokens" ||
       kind === "double_life_gain" ||
@@ -5923,6 +5932,14 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
       ...(value.free === true ? { free: true } : {}),
     };
   }
+  if (kind === "grant_play_chosen") {
+    return {
+      kind,
+      playerId: expectString(value.playerId, `${label}.playerId`),
+      cardId: expectString(value.cardId, `${label}.cardId`),
+      ...(value.free === true ? { free: true } : {}),
+    };
+  }
   if (kind === "imprint") {
     return {
       kind,
@@ -6309,7 +6326,7 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
           throw new Error(`Invalid ${label}.sources[${index}]`);
         }
         const zone = expectString(entry.zone, `${label}.sources[${index}].zone`);
-        if (zone !== "hand" && zone !== "graveyard" && zone !== "battlefield") {
+        if (zone !== "hand" && zone !== "graveyard" && zone !== "battlefield" && zone !== "exile") {
           throw new Error(`Invalid ${label}.sources[${index}].zone`);
         }
         return {

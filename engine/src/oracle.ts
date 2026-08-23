@@ -1,4 +1,5 @@
 import { createCardDefinition } from "./createGame";
+import { IMPLEMENTED_KEYWORDS } from "./keywordCatalog";
 import { parseManaCost } from "./mana";
 import {
   compileOracleText,
@@ -52,23 +53,20 @@ export type OracleCompileResult = {
   notes: string[];
 };
 
-const KEYWORD_BY_LABEL: Record<string, Keyword> = {
-  flying: "flying",
-  reach: "reach",
-  haste: "haste",
-  vigilance: "vigilance",
-  trample: "trample",
-  deathtouch: "deathtouch",
-  lifelink: "lifelink",
-  "first strike": "first_strike",
-  "double strike": "double_strike",
-  menace: "menace",
-  hexproof: "hexproof",
-  shroud: "shroud",
-  indestructible: "indestructible",
-  flash: "flash",
-  defender: "defender",
-};
+/**
+ * Printed keyword label -> Keyword, DERIVED from the implemented catalogue.
+ *
+ * This was a hand-written third copy of that list and had drifted: fear,
+ * intimidate, horsemanship, shadow and skulk were all missing, so every
+ * creature printed with one lost it silently and became ordinarily
+ * blockable. Dauthi Voidwalker is a 3/2 that is unblockable in practice,
+ * which is the whole reason it is played.
+ */
+const KEYWORD_BY_LABEL: Record<string, Keyword> = Object.fromEntries(
+  (Object.entries(IMPLEMENTED_KEYWORDS) as [Keyword, string][]).map(
+    ([keyword, label]) => [label, keyword],
+  ),
+);
 
 export function normalizeCardName(name: string): string {
   return name

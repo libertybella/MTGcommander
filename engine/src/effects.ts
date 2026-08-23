@@ -752,6 +752,26 @@ export function bindCardEffect(
         return null;
       }
       const sources = effect.sources.flatMap((source) => {
+        // Dauthi Voidwalker looks through EVERY opponent's exile as one
+        // pool, so an each-player source becomes one bound source per
+        // player rather than one choice per player — which is what an
+        // each-player CHOOSER means, and a different card.
+        const spread =
+          source.playerId === "each_opponent"
+            ? opponentIds(state, context.controllerId)
+            : source.playerId === "each_player"
+              ? livingPlayers(state).map((player) => player.id)
+              : null;
+        if (spread) {
+          return spread.map((playerId) => ({
+            playerId,
+            zone: source.zone,
+            filter: source.filter,
+            ...(source.hasVoidCounter ? { hasVoidCounter: true } : {}),
+            ...(source.drawnThisTurn ? { drawnThisTurn: true } : {}),
+            ...(source.greatestManaValue ? { greatestManaValue: true } : {}),
+          }));
+        }
         const playerId = bindPlayerSelector(state, source.playerId, context);
         return playerId
           ? [
@@ -771,6 +791,7 @@ export function bindCardEffect(
                   ? { excludeCardId: context.chosenCardId }
                   : {}),
                 ...(source.drawnThisTurn ? { drawnThisTurn: true } : {}),
+                ...(source.hasVoidCounter ? { hasVoidCounter: true } : {}),
                 ...(source.greatestManaValue ? { greatestManaValue: true } : {}),
               },
             ]
@@ -1731,6 +1752,20 @@ export function bindCardEffect(
         ...(effect.setColors ? { setColors: [...effect.setColors] } : {}),
         ...(effect.addSubtypes ? { addSubtypes: [...effect.addSubtypes] } : {}),
         ...(effect.notLegendary ? { notLegendary: true } : {}),
+      };
+    }
+    case "grant_play_chosen": {
+      const grantTo = bindPlayerSelector(state, effect.playerId, context);
+      // Dauthi Voidwalker: the card the ability just chose. With no choice
+      // recorded there is nothing to make playable.
+      if (!grantTo || !context.chosenCardId) {
+        return null;
+      }
+      return {
+        kind: "grant_play_chosen",
+        playerId: grantTo,
+        cardId: context.chosenCardId,
+        ...(effect.free ? { free: true } : {}),
       };
     }
     case "play_hidden_card": {
@@ -4126,6 +4161,22 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
             cost: effect.cost.repeat(age),
             effects: [{ kind: "sacrifice", cardId: effect.cardId }],
           });
+        }
+        break;
+      }
+      case "grant_play_chosen": {
+        next = cloneGameState(state);
+        // The card must still be in exile: it is chosen and granted in one
+        // resolution, but anything could have moved it in between.
+        if (next.cards[effect.cardId]?.zone === "exile") {
+          next.exilePlayable = [
+            ...(next.exilePlayable ?? []),
+            {
+              cardId: effect.cardId,
+              casterId: effect.playerId,
+              ...(effect.free ? { freeCast: true } : {}),
+            },
+          ];
         }
         break;
       }

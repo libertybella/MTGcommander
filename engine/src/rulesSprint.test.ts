@@ -39721,3 +39721,238 @@ describe("wave 294: two extra draws, paid for in life or given back", () => {
     expect(round.cards[stamped]?.drawnOnTurn).toBe(5);
   });
 });
+
+describe("wave 295: an opponent's graveyard replaced by a void exile", () => {
+  const DAUTHI_TEXT =
+    "Shadow (This creature can block or be blocked by only creatures with shadow.)\nIf a card would be put into an opponent's graveyard from anywhere, instead exile it with a void counter on it.\n{T}, Sacrifice this creature: Choose an exiled card an opponent owns with a void counter on it. You may play it this turn without paying its mana cost.";
+
+  const board = () => {
+    const { game, p1, p2 } = twoPlayers();
+    const dauthiDefinition = createCardDefinition({
+      name: "Dauthi Voidwalker",
+      typeLine: "Creature — Dauthi Rogue",
+      manaCost: "{B}{B}",
+      power: 3,
+      toughness: 2,
+      keywords: ["shadow"],
+      replacements: [{ kind: "opponents_graveyard_to_void_exile" }],
+      activated: [
+        {
+          tap: true,
+          manaCost: "",
+          sacrificeSelf: true,
+          effects: [
+            {
+              kind: "choose_card",
+              chooserId: "controller",
+              sources: [
+                {
+                  playerId: "each_opponent",
+                  zone: "exile",
+                  filter: "any",
+                  hasVoidCounter: true,
+                },
+              ],
+              thenEffects: [
+                { kind: "grant_play_chosen", playerId: "controller", free: true },
+              ],
+            },
+          ],
+          targetRequirements: [],
+        },
+      ],
+    });
+    game.definitions[dauthiDefinition.id] = dauthiDefinition;
+    const dauthi = createCardInstance({
+      definitionId: dauthiDefinition.id,
+      ownerId: p1.id,
+      zone: "battlefield",
+    });
+    game.cards[dauthi.id] = dauthi;
+    p1.zones.battlefield.push(dauthi.id);
+    dauthi.summoningSick = false;
+
+    const make = (ownerId: string, zone: "battlefield" | "hand" | "library") => {
+      const definition = createCardDefinition({
+        name: "Runeclaw Bear",
+        typeLine: "Creature — Bear",
+        manaCost: "{1}{G}",
+        power: 2,
+        toughness: 2,
+      });
+      game.definitions[definition.id] = definition;
+      const card = createCardInstance({ definitionId: definition.id, ownerId, zone });
+      game.cards[card.id] = card;
+      game.players.find((entry) => entry.id === ownerId)!.zones[zone].push(card.id);
+      return card.id;
+    };
+    game.priorityPlayerId = p1.id;
+    return {
+      game,
+      p1,
+      p2,
+      dauthiId: dauthi.id,
+      dauthiDefinitionId: dauthiDefinition.id,
+      theirs: make(p2.id, "battlefield"),
+      mine: make(p1.id, "battlefield"),
+    };
+  };
+
+  it("compiles Dauthi Voidwalker whole, shadow included", () => {
+    const compiled = compileOracleCard({
+      oracleId: "dauthi-voidwalker",
+      name: "Dauthi Voidwalker",
+      manaCost: "{B}{B}",
+      typeLine: "Creature — Dauthi Rogue",
+      power: "3",
+      toughness: "2",
+      printedKeywords: ["Shadow"],
+      imageUrl: "",
+      oracleText: DAUTHI_TEXT,
+    });
+    expect(compiled.notes).toEqual([]);
+    // Shadow was silently dropped: a hand-written third copy of the keyword
+    // list had drifted, and a 3/2 that is unblockable in practice became an
+    // ordinary 3/2.
+    expect(compiled.definition.keywords).toContain("shadow");
+    expect(compiled.definition.replacements).toEqual([
+      { kind: "opponents_graveyard_to_void_exile" },
+    ]);
+    expect(compiled.definition.activated[0]).toMatchObject({
+      tap: true,
+      sacrificeSelf: true,
+      effects: [
+        {
+          kind: "choose_card",
+          sources: [{ playerId: "each_opponent", zone: "exile", hasVoidCounter: true }],
+          thenEffects: [{ kind: "grant_play_chosen", playerId: "controller", free: true }],
+        },
+      ],
+    });
+  });
+
+  it("exiles an opponent's dying creature with a void counter", () => {
+    const { game, theirs } = board();
+    const dead = applyEffect(game, { kind: "sacrifice", cardId: theirs });
+    expect(dead.cards[theirs]?.zone).toBe("exile");
+    expect(dead.cards[theirs]?.counters["void"]).toBe(1);
+  });
+
+  it("leaves its controller's own cards alone", () => {
+    const { game, mine } = board();
+    const dead = applyEffect(game, { kind: "sacrifice", cardId: mine });
+    // Owner-scoped, unlike Rest in Peace. Hitting your own graveyard too would
+    // be a different and much worse card.
+    expect(dead.cards[mine]?.zone).toBe("graveyard");
+    expect(dead.cards[mine]?.counters["void"] ?? 0).toBe(0);
+  });
+
+  it("offers only the cards its own replacement exiled", () => {
+    const { game, p1, p2, theirs } = board();
+    const dead = applyEffect(game, { kind: "sacrifice", cardId: theirs });
+    // An ordinary exile in the same zone is somebody else's business.
+    const plain = createCardDefinition({ name: "Plain", typeLine: "Sorcery", manaCost: "{1}" });
+    dead.definitions[plain.id] = plain;
+    const other = createCardInstance({
+      definitionId: plain.id,
+      ownerId: p2.id,
+      zone: "exile",
+    });
+    dead.cards[other.id] = other;
+    dead.players.find((entry) => entry.id === p2.id)!.zones.exile.push(other.id);
+
+    const opened = applyEffects(
+      dead,
+      bindCardEffects(
+        dead,
+        [
+          {
+            kind: "choose_card",
+            chooserId: "controller",
+            sources: [
+              { playerId: "each_opponent", zone: "exile", filter: "any", hasVoidCounter: true },
+            ],
+            thenEffects: [{ kind: "grant_play_chosen", playerId: "controller", free: true }],
+          },
+        ],
+        { controllerId: p1.id, sourceId: null },
+      ),
+    );
+    const prompt = opened.prompts[0];
+    expect(prompt?.kind).toBe("choose_card");
+    const legal = legalIdsForChooseSources(
+      opened,
+      (prompt as Extract<typeof prompt, { kind: "choose_card" }>).sources,
+    );
+    expect(legal).toEqual([theirs]);
+  });
+
+  it("lets the chosen card be played free this turn", () => {
+    const { game, p1, theirs } = board();
+    const dead = applyEffect(game, { kind: "sacrifice", cardId: theirs });
+    const opened = applyEffects(
+      dead,
+      bindCardEffects(
+        dead,
+        [
+          {
+            kind: "choose_card",
+            chooserId: "controller",
+            sources: [
+              { playerId: "each_opponent", zone: "exile", filter: "any", hasVoidCounter: true },
+            ],
+            thenEffects: [{ kind: "grant_play_chosen", playerId: "controller", free: true }],
+          },
+        ],
+        { controllerId: p1.id, sourceId: null },
+      ),
+    );
+    const resolved = applyResolveChooseCard(opened, p1.id, theirs);
+    const granted = applyEffects(
+      resolved.next,
+      bindCardEffects(resolved.next, resolved.thenEffects, {
+        controllerId: p1.id,
+        sourceId: null,
+        chosenCardId: resolved.cardId,
+      }),
+    );
+    // Free, and to the OPPONENT's card — the point of the card is stealing it.
+    expect(granted.exilePlayable).toEqual([
+      { cardId: theirs, casterId: p1.id, freeCast: true },
+    ]);
+  });
+
+  it("recovers every evasion keyword the label table had lost", () => {
+    // fear, intimidate, horsemanship, shadow and skulk were all in the engine
+    // and in two of the three keyword tables, and missing from the one that
+    // reads printed labels.
+    for (const label of ["Fear", "Intimidate", "Horsemanship", "Shadow", "Skulk"]) {
+      const compiled = compileOracleCard({
+        oracleId: `kw-${label}`,
+        name: "Probe",
+        manaCost: "{B}",
+        typeLine: "Creature — Horror",
+        power: "1",
+        toughness: "1",
+        printedKeywords: [label],
+        imageUrl: "",
+        oracleText: label,
+      });
+      expect(compiled.definition.keywords).toContain(label.toLowerCase());
+    }
+  });
+
+  it("round trips the replacement, the source flag and the grant", () => {
+    const { game, dauthiDefinitionId, theirs } = board();
+    const dead = applyEffect(game, { kind: "sacrifice", cardId: theirs });
+    const round = parseGameState(serializeGameState(dead));
+    expect(round.definitions[dauthiDefinitionId]?.replacements).toEqual([
+      { kind: "opponents_graveyard_to_void_exile" },
+    ]);
+    expect(round.definitions[dauthiDefinitionId]?.activated[0]?.effects[0]).toMatchObject({
+      kind: "choose_card",
+      sources: [{ zone: "exile", hasVoidCounter: true }],
+    });
+    expect(round.cards[theirs]?.counters["void"]).toBe(1);
+  });
+});

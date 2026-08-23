@@ -994,8 +994,10 @@ export type EnterAsCopyScope =
 
 export type ChooseCardSource = {
   playerId: PlayerSelector;
-  zone: "hand" | "graveyard" | "battlefield";
+  zone: "hand" | "graveyard" | "battlefield" | "exile";
   filter: CardFilter;
+  /** Dauthi Voidwalker: only exiled cards carrying a void counter. */
+  hasVoidCounter?: boolean;
   /** Sylvan Library: only cards drawn THIS turn are eligible. */
   drawnThisTurn?: boolean;
   /**
@@ -1021,8 +1023,10 @@ export type ChooseCardSource = {
 
 export type BoundChooseCardSource = {
   playerId: PlayerId;
-  zone: "hand" | "graveyard" | "battlefield";
+  zone: "hand" | "graveyard" | "battlefield" | "exile";
   filter: CardFilter;
+  /** The bound half of `ChooseCardSource.hasVoidCounter`. */
+  hasVoidCounter?: boolean;
   /** The bound half of `ChooseCardSource.drawnThisTurn`. */
   drawnThisTurn?: boolean;
   /** The bound half of `ChooseCardSource.excludeSelf`. */
@@ -1158,6 +1162,13 @@ export type GameEffect =
       kind: "play_hidden_card";
       playerId: PlayerId;
       sourceId: CardInstanceId;
+      free?: boolean;
+    }
+  /** Dauthi Voidwalker, with the chosen card already bound. */
+  | {
+      kind: "grant_play_chosen";
+      playerId: PlayerId;
+      cardId: CardInstanceId;
       free?: boolean;
     }
   /** Herald's Horn, with the filter already resolved. */
@@ -2191,6 +2202,12 @@ export type CardEffect =
    * never offer each other's.
    */
   | { kind: "play_hidden_card"; free?: boolean }
+  /**
+   * Dauthi Voidwalker: the CHOSEN exiled card becomes playable this turn.
+   * The impulse grants above only reach cards the same effect just exiled;
+   * this one names a card that was already there.
+   */
+  | { kind: "grant_play_chosen"; playerId: PlayerSelector; free?: boolean }
   /**
    * Herald's Horn: "look at the top card of your library. If it's a
    * creature card of the chosen type, you may reveal it and put it into
@@ -3502,6 +3519,13 @@ export type ReplacementEffect =
   | { kind: "discard_land_or_graveyard" }
   /** Rest in Peace: cards and tokens headed to a graveyard are exiled instead. */
   | { kind: "graveyard_to_exile" }
+  /**
+   * Dauthi Voidwalker: a card headed for an OPPONENT's graveyard is exiled
+   * with a void counter instead. Scoped by the card's owner rather than
+   * applying to the whole table the way Rest in Peace does — the
+   * controller's own graveyard is untouched, which is most of the card.
+   */
+  | { kind: "opponents_graveyard_to_void_exile" }
   /** Laboratory Maniac: the empty-library draw wins instead of losing. */
   | { kind: "empty_draw_wins" }
   /** Anointed Procession / Doubling Season: tokens created under the
