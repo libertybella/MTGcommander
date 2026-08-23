@@ -21,6 +21,7 @@ import { castCostReduction, castableFromTop, freeEquipGranted, hasFlashGrant, la
 import { hasKeyword } from "./keywords";
 import { dispatchEventsInPlace } from "./triggers";
 import { applyCombatDamage, declareAttackers } from "./combat";
+import { beginNextLivingTurnInPlace } from "./turn";
 import { commanderIdentityColors, manaAbilitiesFor, manaTapOptionsFor } from "./manaOptions";
 import { emptyManaPools, parseManaCost } from "./mana";
 import { applyStateBasedActionsInPlace } from "./status";
@@ -26205,6 +26206,200 @@ describe("wave 206: one table of counted nouns", () => {
       toughness: 2,
       per: "auras_attached_to_it",
     });
+  });
+});
+
+
+describe("wave 207: goad, and the requirement it puts on a declaration", () => {
+  const compile = (name: string, manaCost: string, typeLine: string, oracleText: string, power?: string, toughness?: string) =>
+    compileOracleCard({
+      oracleId: name,
+      name,
+      manaCost,
+      typeLine,
+      power: power ?? null,
+      toughness: toughness ?? null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  /** A three-player table with one bear each, ready to declare attackers. */
+  const goadTable = () => {
+    const game = createGameState({ playerCount: 3 });
+    fillLibraries(game, 20);
+    const [p1, p2, p3] = game.players;
+    if (!p1 || !p2 || !p3) {
+      throw new Error("need three players");
+    }
+    const bearDef = createCardDefinition({
+      name: "Bear",
+      typeLine: "Creature — Bear",
+      power: 2,
+      toughness: 2,
+    });
+    game.definitions[bearDef.id] = bearDef;
+    const bearFor = (ownerId: string) => {
+      const card = createCardInstance({
+        definitionId: bearDef.id,
+        ownerId,
+        zone: "battlefield",
+      });
+      card.summoningSick = false;
+      game.cards[card.id] = card;
+      game.players.find((entry) => entry.id === ownerId)!.zones.battlefield.push(card.id);
+      return card;
+    };
+    const mine = bearFor(p1.id);
+    const theirs = bearFor(p2.id);
+    game.turn.activePlayerId = p1.id;
+    game.turn.step = "declareAttackers";
+    game.priorityPlayerId = p1.id;
+    game.combat = null;
+    return { game, p1, p2, p3, mine, theirs };
+  };
+
+  it("goads every creature its caster does not control", () => {
+    const decorum = compile("Disrupt Decorum", "{2}{R}{R}", "Sorcery", "Goad all creatures you don't control.");
+    expect(decorum.notes).toEqual([]);
+    expect(decorum.definition.effects).toEqual([{ kind: "goad_all" }]);
+
+    const { game, p2, mine, theirs } = goadTable();
+    const next = applyEffect(game, { kind: "goad_all", byPlayerId: p2.id });
+    // Cast by p2, so p2's own creature is spared and p1's is goaded.
+    expect(next.cards[mine.id]?.goadedBy).toEqual([p2.id]);
+    expect(next.cards[theirs.id]?.goadedBy).toBeUndefined();
+  });
+
+  it("makes a goaded creature attack, and attack someone else", () => {
+    const { game, p1, p2, p3, mine } = goadTable();
+    const goaded = applyEffect(game, { kind: "goad_all", byPlayerId: p2.id });
+
+    // Staying home is no longer a legal declaration.
+    expect(() => declareAttackers(goaded, p1.id, [])).toThrow(/attacks each combat if able/);
+    // Nor is attacking the player who goaded it, while anyone else is there.
+    expect(() =>
+      declareAttackers(goaded, p1.id, [{ attackerId: mine.id, defenderId: p2.id }]),
+    ).toThrow(/must attack another player/);
+    // Attacking the third player satisfies both halves.
+    const declared = declareAttackers(goaded, p1.id, [
+      { attackerId: mine.id, defenderId: p3.id },
+    ]);
+    expect(declared.cards[mine.id]?.attacking).toBe(true);
+  });
+
+  it("lets a goaded creature attack its goader when there is nobody else", () => {
+    const { game, p1, p2, p3, mine } = goadTable();
+    let goaded = applyEffect(game, { kind: "goad_all", byPlayerId: p2.id });
+    goaded = structuredClone(goaded);
+    goaded.players.find((entry) => entry.id === p3.id)!.lost = true;
+    // "attacks a player other than you IF ABLE" — with p3 out, it is not able,
+    // so the requirement lifts rather than making the declaration impossible.
+    const declared = declareAttackers(goaded, p1.id, [
+      { attackerId: mine.id, defenderId: p2.id },
+    ]);
+    expect(declared.cards[mine.id]?.attacking).toBe(true);
+  });
+
+  it("expires goad when the goader's own turn comes round", () => {
+    const { game, p2, p3, mine } = goadTable();
+    let goaded = applyEffect(game, { kind: "goad_all", byPlayerId: p2.id });
+    goaded = applyEffect(goaded, { kind: "goad_all", byPlayerId: p3.id });
+    expect(goaded.cards[mine.id]?.goadedBy).toEqual([p2.id, p3.id]);
+
+    // Hand the turn to the named player and run their untap step: the helper
+    // advances from whoever is active, so start from the seat before them.
+    const beginTurnFor = (state: GameState, playerId: string) => {
+      const next = structuredClone(state);
+      const seat = next.players.findIndex((entry) => entry.id === playerId);
+      next.turn.activePlayerId = next.players[(seat + next.players.length - 1) % next.players.length]!.id;
+      beginNextLivingTurnInPlace(next);
+      expect(next.turn.activePlayerId).toBe(playerId);
+      return next;
+    };
+    const afterP2 = beginTurnFor(goaded, p2.id);
+    // Only p2's goad lifts — p3 goaded it too, and that lasts until p3's turn.
+    expect(afterP2.cards[mine.id]?.goadedBy).toEqual([p3.id]);
+    const afterP3 = beginTurnFor(afterP2, p3.id);
+    expect(afterP3.cards[mine.id]?.goadedBy).toBeUndefined();
+  });
+
+  it("reads Kardur's longhand as the same goad the keyword means", () => {
+    const kardur = compile(
+      "Kardur, Doomscourge",
+      "{2}{B}{R}",
+      "Legendary Creature — Demon Berserker",
+      "When Kardur enters, until your next turn, creatures your opponents control attack each combat if able and attack a player other than you if able.",
+      "3",
+      "3",
+    );
+    expect(kardur.definition.triggers[0]).toMatchObject({ event: "enter_battlefield" });
+    expect(kardur.definition.triggers[0]?.effects).toEqual([{ kind: "goad_all" }]);
+  });
+
+  it("takes Bident's must-attack without the say in the defender", () => {
+    const bident = compile(
+      "Bident of Thassa",
+      "{2}{U}{U}",
+      "Legendary Enchantment Artifact",
+      "Whenever a creature you control deals combat damage to a player, you may draw a card.\n{1}{U}, {T}: Creatures your opponents control attack this turn if able.",
+    );
+    expect(bident.notes).toEqual([]);
+    expect(bident.definition.activated[0]?.effects).toEqual([{ kind: "must_attack_all" }]);
+
+    const { game, p1, p2, mine } = goadTable();
+    const forced = applyEffect(game, { kind: "must_attack_all", byPlayerId: p2.id });
+    expect(forced.cards[mine.id]?.mustAttackThisTurn).toBe(true);
+    expect(() => declareAttackers(forced, p1.id, [])).toThrow(/attacks each combat if able/);
+    // Unlike goad, it may still attack the player who forced it — that is the
+    // whole difference between Bident and Disrupt Decorum.
+    const declared = declareAttackers(forced, p1.id, [
+      { attackerId: mine.id, defenderId: p2.id },
+    ]);
+    expect(declared.cards[mine.id]?.attacking).toBe(true);
+  });
+
+  it("keeps Shiny Impetus's goad alive for as long as the Aura is", () => {
+    const impetus = compile(
+      "Shiny Impetus",
+      "{2}{R}",
+      "Enchantment — Aura",
+      "Enchant creature\nEnchanted creature gets +2/+2 and is goaded.",
+    );
+    expect(impetus.notes).toEqual([]);
+    expect(impetus.definition.staticAbilities).toEqual([
+      {
+        selector: { scope: "attached" },
+        effect: { kind: "modify_pt", power: 2, toughness: 2 },
+      },
+      { selector: { scope: "attached" }, effect: { kind: "goaded" } },
+    ]);
+
+    const { game, p2, mine } = goadTable();
+    const auraDef = createCardDefinition({
+      name: "Shiny Impetus",
+      typeLine: "Enchantment — Aura",
+      staticAbilities: impetus.definition.staticAbilities,
+    });
+    game.definitions[auraDef.id] = auraDef;
+    const aura = createCardInstance({
+      definitionId: auraDef.id,
+      ownerId: p2.id,
+      zone: "battlefield",
+    });
+    aura.attachedTo = mine.id;
+    game.cards[aura.id] = aura;
+    game.players.find((entry) => entry.id === p2.id)!.zones.battlefield.push(aura.id);
+
+    // Goaded by the Aura's controller, and nothing is written on the creature:
+    // this goad has no expiry of its own, it just lasts as long as the Aura.
+    expect(computedCard(game, mine.id)?.goadedBy).toEqual([p2.id]);
+    expect(computedCard(game, mine.id)?.power).toBe(4);
+    expect(game.cards[mine.id]?.goadedBy).toBeUndefined();
+
+    const gone = structuredClone(game);
+    gone.cards[aura.id]!.zone = "graveyard";
+    expect(computedCard(gone, mine.id)?.goadedBy).toEqual([]);
   });
 });
 

@@ -134,6 +134,15 @@ function assertLegalAttacker(
   }
 }
 
+/**
+ * Who has goaded this creature: its own record plus any static saying it is
+ * goaded (Shiny Impetus). Empty for anything that is not a creature on the
+ * battlefield, so callers can treat a non-empty list as "under goad".
+ */
+function goadersOf(state: GameState, cardId: CardInstanceId): PlayerId[] {
+  return computedCard(state, cardId)?.goadedBy ?? [];
+}
+
 /** Sum every defender's per-attacking-creature taxes for this declaration. */
 function attackTaxTotals(
   state: GameState,
@@ -195,14 +204,42 @@ export function declareAttackers(state: GameState, playerId: PlayerId, attacks: 
     assertLegalAttacker(state, playerId, attack.attackerId, attack.defenderId);
   }
 
+  // A goaded creature must attack, and must attack someone other than the
+  // player who goaded it if it can (CR 701.38). The restriction is checked per
+  // declaration rather than in assertLegalAttacker because "if able" needs to
+  // know whether another defender was available at all.
+  for (const attack of attacks) {
+    const goaders = goadersOf(state, attack.attackerId);
+    if (goaders.length === 0 || !goaders.includes(attack.defenderId)) {
+      continue;
+    }
+    const alternative = state.players.some((player) => {
+      if (player.id === attack.defenderId || goaders.includes(player.id)) {
+        return false;
+      }
+      try {
+        assertLegalAttacker(state, playerId, attack.attackerId, player.id);
+        return true;
+      } catch {
+        return false;
+      }
+    });
+    if (alternative) {
+      throw new Error(`Card ${attack.attackerId} was goaded and must attack another player`);
+    }
+  }
+
   // Toski: "attacks each combat if able" — an able must-attacker can't stay
-  // home once any attack declaration is made.
+  // home once any attack declaration is made. A goaded creature and one told
+  // to attack this turn are under the same requirement.
   for (const card of Object.values(state.cards)) {
     if (
       card.zone !== "battlefield" ||
       card.controllerId !== playerId ||
       seen.has(card.id) ||
-      state.definitions[card.definitionId]?.mustAttack !== true
+      (state.definitions[card.definitionId]?.mustAttack !== true &&
+        card.mustAttackThisTurn !== true &&
+        goadersOf(state, card.id).length === 0)
     ) {
       continue;
     }

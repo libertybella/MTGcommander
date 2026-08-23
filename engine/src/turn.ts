@@ -112,6 +112,22 @@ function onEnterStep(state: GameState): GameState {
     state.createdTokenThisTurn = [];
     state.drawsByPlayerThisTurn = {};
     state.combatPhasesThisTurn = 0;
+    // Goad lasts "until your next turn" (CR 701.38), so the active player's
+    // own goads expire as their turn begins — every other goader's stay on.
+    // Bident's "attacks this turn" is spent by then either way.
+    for (const card of Object.values(state.cards)) {
+      if (card.goadedBy?.includes(activeId)) {
+        const left = card.goadedBy.filter((playerId) => playerId !== activeId);
+        if (left.length > 0) {
+          card.goadedBy = left;
+        } else {
+          delete card.goadedBy;
+        }
+      }
+      if (card.mustAttackThisTurn) {
+        delete card.mustAttackThisTurn;
+      }
+    }
     const untappedEvents: EngineEvent[] = [];
     const untapInPlace = (card: (typeof state.cards)[string]) => {
       if (card.tapped) {

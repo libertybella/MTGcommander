@@ -19,6 +19,7 @@ import { countCardPlacements, enterOwnerZone, moveCard, moveCardInPlace, process
 import type {
   CardEffect,
   CardIdSelector,
+  CardInstance,
   CardInstanceId,
   ChosenControllerRef,
   ChosenOwnerRef,
@@ -1600,6 +1601,20 @@ export function bindCardEffect(
       }
       return { kind: "tap_all", playerId, what: effect.what };
     }
+    // Goad is always dealt out by the controller of the source: it is the
+    // player the goaded creature may not attack, so there is nothing to
+    // select — the referent is fixed by CR 701.38.
+    case "goad": {
+      const cardId = bindCardId(state, effect.target, context);
+      if (!cardId) {
+        return null;
+      }
+      return { kind: "goad", cardId, byPlayerId: context.controllerId };
+    }
+    case "goad_all":
+      return { kind: "goad_all", byPlayerId: context.controllerId };
+    case "must_attack_all":
+      return { kind: "must_attack_all", byPlayerId: context.controllerId };
     case "untap_lands_up_to": {
       const playerId = bindPlayerSelector(state, effect.playerId, context);
       if (!playerId) {
@@ -3849,6 +3864,34 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
             characteristicsOf(next, card.id).types.includes(effect.what)
           ) {
             card.tapped = true;
+          }
+        }
+        break;
+      }
+      case "goad":
+      case "goad_all":
+      case "must_attack_all": {
+        next = cloneGameState(state);
+        const targets =
+          effect.kind === "goad"
+            ? [next.cards[effect.cardId]].filter(
+                (card): card is CardInstance => card?.zone === "battlefield",
+              )
+            : Object.values(next.cards).filter(
+                (card) =>
+                  card.zone === "battlefield" &&
+                  // "creatures you don't control" — the goader's own are spared.
+                  card.controllerId !== effect.byPlayerId &&
+                  characteristicsOf(next, card.id).types.includes("creature"),
+              );
+        for (const card of targets) {
+          if (effect.kind === "must_attack_all") {
+            card.mustAttackThisTurn = true;
+            continue;
+          }
+          const by = card.goadedBy ?? [];
+          if (!by.includes(effect.byPlayerId)) {
+            card.goadedBy = [...by, effect.byPlayerId];
           }
         }
         break;

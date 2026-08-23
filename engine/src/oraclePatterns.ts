@@ -3948,6 +3948,24 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     };
   }
 
+  // Goad (CR 701.38). Disrupt Decorum says the keyword; Kardur spells the
+  // same thing out longhand, so both land on one effect rather than the
+  // longhand becoming a second, subtly different mechanic.
+  if (
+    /^Goad all creatures you don't control$/i.test(sentence) ||
+    /^until your next turn, creatures your opponents control attack each combat if able and attack a player other than you if able$/i.test(
+      sentence,
+    )
+  ) {
+    return { targetRequirements: [], effects: [{ kind: "goad_all" }] };
+  }
+
+  // Bident of Thassa: the must-attack half of goad with no say in the
+  // defender, so it is NOT goad — a creature under it may still attack you.
+  if (/^Creatures your opponents control attack this turn if able$/i.test(sentence)) {
+    return { targetRequirements: [], effects: [{ kind: "must_attack_all" }] };
+  }
+
   const tapAll = sentence.match(
     /^Tap all (creatures|lands) (you control|your opponents control)$/i,
   );
@@ -7983,7 +8001,7 @@ function parseGrantPredicate(phrase: string): ContinuousEffectData[] | null {
   // Split on the verbs rather than on "and", since a keyword list uses "and"
   // internally ("get +1/+1 and have vigilance and trample").
   const parts = phrase
-    .split(/\s+and\s+(?=(?:get|gets|have|has|lose|loses|can't)\s)/i)
+    .split(/\s+and\s+(?=(?:get|gets|have|has|lose|loses|is|can't)\s)/i)
     .map((part) => part.trim())
     .filter(Boolean);
   for (const part of parts) {
@@ -8030,6 +8048,12 @@ function parseGrantPredicate(phrase: string): ContinuousEffectData[] | null {
         ...(what === "attack" ? { cantAttack: true } : {}),
         ...(what === "block" ? { cantBlock: true } : {}),
       });
+      continue;
+    }
+    // Shiny Impetus: "and is goaded" — a static, so it lasts as long as the
+    // Aura does rather than until anyone's next turn.
+    if (/^is goaded$/i.test(part)) {
+      effects.push({ kind: "goaded" });
       continue;
     }
     const grants = part.match(/^(?:have|has)\s+(.+)$/i);

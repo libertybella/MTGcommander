@@ -420,6 +420,15 @@ export type CardInstance = {
   /** Vorinclex, Voice of Hunger froze this permanent: it skips its
    * controller's next untap step, then the flag clears. */
   skipNextUntap?: boolean;
+  /**
+   * CR 701.38. Every player who has goaded this creature. Goad lasts "until
+   * your next turn", so an entry clears when that player's turn begins — one
+   * entry per goader, because two opponents goading it means it may attack
+   * neither of them.
+   */
+  goadedBy?: PlayerId[];
+  /** Bident of Thassa: "attacks this turn if able", with no say in whom. */
+  mustAttackThisTurn?: boolean;
 };
 
 export type CommanderState = {
@@ -852,6 +861,15 @@ export type GameEffect =
   | { kind: "untap_all"; playerId: PlayerId; what: "creature" | "land" | "attacking" | "nonland" }
   /** Cryptic Command: "Tap all creatures your opponents control." */
   | { kind: "tap_all"; playerId: PlayerId; what: "creature" | "land" }
+  /**
+   * CR 701.38: goad a creature. `byPlayerId` is the goading player — it is
+   * what the creature may not attack, and whose next turn ends the effect.
+   */
+  | { kind: "goad"; cardId: CardInstanceId; byPlayerId: PlayerId }
+  /** Disrupt Decorum / Kardur: goad every creature `byPlayerId` does not control. */
+  | { kind: "goad_all"; byPlayerId: PlayerId }
+  /** Bident of Thassa: those creatures must attack, but may pick anyone. */
+  | { kind: "must_attack_all"; byPlayerId: PlayerId }
   /** "Gain control of target …" (Archmage's Charm). */
   | {
       kind: "gain_control";
@@ -1580,6 +1598,9 @@ export type CardEffect =
       what: "creature" | "land" | "attacking" | "nonland";
     }
   | { kind: "tap_all"; playerId: PlayerSelector; what: "creature" | "land" }
+  | { kind: "goad"; target: ChosenTargetRef }
+  | { kind: "goad_all" }
+  | { kind: "must_attack_all" }
   | {
       kind: "gain_control";
       cardId: CardIdSelector;
@@ -2691,6 +2712,8 @@ export type ContinuousEffectData =
   | { kind: "grant_mana_ability"; ability: ManaAbility }
   // (modify_pt lives in layer 7c; `per` scales it by a live count read from
   // the static source's controller — Nettlecyst.)
+  /** layer 6: Shiny Impetus — "is goaded", for as long as the Aura is on. */
+  | { kind: "goaded" }
   | { kind: "remove_all_abilities" } // layer 6
   /** layer 6: Shadowspear strips the listed keywords. */
   | { kind: "remove_keywords"; keywords: Keyword[] }

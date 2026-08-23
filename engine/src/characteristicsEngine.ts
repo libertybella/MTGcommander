@@ -11,6 +11,7 @@ import type {
   GameState,
   Keyword,
   ManaAbility,
+  PlayerId,
   StaticAbility,
 } from "./types";
 
@@ -50,6 +51,12 @@ export type ComputedCard = {
   protectionFrom: Color[];
   /** Printed ward plus layer-6 grants (Lavaspur Boots); 0 means none. */
   ward: number;
+  /**
+   * Every player who has goaded this creature — the instance's own record
+   * (from the goad effect, which expires) merged with any static that says it
+   * is goaded for as long as the static lasts (Shiny Impetus).
+   */
+  goadedBy: PlayerId[];
 };
 
 type EffectInstance = {
@@ -74,6 +81,7 @@ const LAYER_OF: Record<ContinuousEffectData["kind"], number> = {
   grant_ward: 6,
   remove_keywords: 6,
   grant_mana_ability: 6,
+  goaded: 6,
   remove_all_abilities: 6,
   restrict: 6,
   set_pt: 7.2,
@@ -103,6 +111,7 @@ function baseComputed(state: GameState, card: CardInstance): ComputedCard {
       cantBeBlocked: false,
       protectionFrom: [],
       ward: 0,
+      goadedBy: [...(card.goadedBy ?? [])],
     };
   }
   const definition = state.definitions[card.definitionId];
@@ -165,6 +174,8 @@ function baseComputed(state: GameState, card: CardInstance): ComputedCard {
     cantBeBlocked: false,
     protectionFrom: [...(definition?.protectionFrom ?? [])],
     ward: definition?.ward ?? 0,
+    // The instance's own record is the base; statics add to it in layer 6.
+    goadedBy: [...(card.goadedBy ?? [])],
   };
 }
 
@@ -730,6 +741,14 @@ function applyInstance(
       case "grant_mana_ability":
         computed.grantedMana.push({ ...effect.ability });
         break;
+      case "goaded": {
+        // The goader is whoever controls the source of the static.
+        const by = state.cards[instance.sourceId ?? ""]?.controllerId;
+        if (by && !computed.goadedBy.includes(by)) {
+          computed.goadedBy.push(by);
+        }
+        break;
+      }
       case "remove_all_abilities":
         computed.keywords = [];
         computed.abilitiesRemoved = true;

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { applyAction } from "./actions";
 import { isCreature } from "./cardTypes";
-import { cardMatchesSubtype } from "./characteristicsEngine";
+import { cardMatchesSubtype, computedCard } from "./characteristicsEngine";
 import { controlsCommander } from "./derived";
 import { hasKeyword } from "./keywords";
 import { legalActions, sacrificeScopeMatches } from "./legalActions";
@@ -254,10 +254,33 @@ function nextAction(state: GameState, rng: () => number): GameAction | null {
         (!card.summoningSick || hasKeyword(state, card.id, "haste")) &&
         !hasKeyword(state, card.id, "defender"),
     );
-    const attacks = randomSubset(rng, attackers, 0.5).map((card) => ({
-      attackerId: card.id,
-      defenderId: pick(rng, defenders).id,
-    }));
+    // A creature under an attack requirement must be in the declaration, or
+    // every declaration is illegal and the walk stalls here. Goad also narrows
+    // whom it may attack, so its defender is picked from the non-goaders.
+    const required = new Set(
+      attackers
+        .filter(
+          (card) =>
+            state.definitions[card.definitionId]?.mustAttack === true ||
+            card.mustAttackThisTurn === true ||
+            (computedCard(state, card.id)?.goadedBy ?? []).length > 0,
+        )
+        .map((card) => card.id),
+    );
+    const chosen = randomSubset(rng, attackers, 0.5);
+    for (const card of attackers) {
+      if (required.has(card.id) && !chosen.includes(card)) {
+        chosen.push(card);
+      }
+    }
+    const attacks = chosen.map((card) => {
+      const goaders = computedCard(state, card.id)?.goadedBy ?? [];
+      const allowed = defenders.filter((player) => !goaders.includes(player.id));
+      return {
+        attackerId: card.id,
+        defenderId: pick(rng, allowed.length > 0 ? allowed : defenders).id,
+      };
+    });
     return { kind: "declare_attackers", playerId, attacks };
   }
 

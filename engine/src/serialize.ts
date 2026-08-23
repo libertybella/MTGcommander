@@ -410,6 +410,12 @@ export function parseGameState(json: string): GameState {
           : expectString(card.attachedTo, "card.attachedTo"),
       loyaltyActivatedThisTurn: card.loyaltyActivatedThisTurn === true,
       ...(card.skipNextUntap === true ? { skipNextUntap: true } : {}),
+      ...(card.goadedBy === undefined
+        ? {}
+        : {
+            goadedBy: expectStringArray(card.goadedBy, "card.goadedBy"),
+          }),
+      ...(card.mustAttackThisTurn === true ? { mustAttackThisTurn: true } : {}),
       faceDown: card.faceDown === true,
       chosenCreatureType:
         card.chosenCreatureType === undefined || card.chosenCreatureType === null
@@ -2828,6 +2834,11 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
         what: tapWhat,
       };
     }
+    case "goad":
+      return { kind, target: parseChosenTargetRef(value.target, `${label}.target`) };
+    case "goad_all":
+    case "must_attack_all":
+      return { kind };
     case "attackers_gain_keyword_until_eot": {
       const attackersKeyword = expectString(value.keyword, `${label}.keyword`);
       if (!KEYWORDS.has(attackersKeyword as Keyword)) {
@@ -4179,7 +4190,7 @@ function parseContinuousEffectData(value: unknown, label: string): ContinuousEff
     }
     return { kind, ability: parsed[0] };
   }
-  if (kind === "remove_all_abilities") {
+  if (kind === "remove_all_abilities" || kind === "goaded") {
     return { kind };
   }
   if (kind === "remove_keywords") {
@@ -5071,6 +5082,16 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
       throw new Error(`Invalid ${label}.what`);
     }
     return { kind, playerId: expectString(value.playerId, `${label}.playerId`), what: tapWhat };
+  }
+  if (kind === "goad") {
+    return {
+      kind,
+      cardId: expectString(value.cardId, `${label}.cardId`),
+      byPlayerId: expectString(value.byPlayerId, `${label}.byPlayerId`),
+    };
+  }
+  if (kind === "goad_all" || kind === "must_attack_all") {
+    return { kind, byPlayerId: expectString(value.byPlayerId, `${label}.byPlayerId`) };
   }
   if (kind === "gain_control") {
     return {
