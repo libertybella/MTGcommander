@@ -8,17 +8,48 @@ on-what lives in [CLAIMS.md](CLAIMS.md). This file is the tribal
 knowledge that isn't obvious from those: exact commands, traps, and
 the current state of play. Read all four before writing code.
 
-## State of play (checkpoint-92-disjunctive-searches, 2026-08-23)
+## State of play (checkpoint-93-long-tail-features, 2026-08-23)
 
 - Branch `comprehensive-plan`, tags through
-  `checkpoint-92-disjunctive-searches`, pushed to `fork`.
-- 1,319 tests green; top-2,000 compile rate **69.3% (1,392/2,009)**;
+  `checkpoint-93-long-tail-features`, pushed to `fork`.
+- 1,343 tests green; top-2,000 compile rate **69.7% (1,400/2,009)**;
   60-card sample 97% (CI floor now 90); oxlint silent; 800/800 fuzz seeds
   on a clean tree at the tag.
-- **Liberty's goal is 80% = 1,608 cards.** That is 216 more from here.
-  Twenty-seven waves in this run flipped 39 cards, so the rate is about
-  **1.4 a wave** and 80% is on the order of 150 more waves. Say so; it is
-  not reachable in one session.
+- **Liberty's goal is 80% = 1,608 cards.** That is 208 more from here.
+  Thirty-two waves in this run flipped 47 cards — about **1.5 a wave**.
+
+### The compiler path to 80% is MEASURED dead, not estimated
+
+Run `tools/frags.sh` (dumps every remaining fragment of every failing card)
+and `scratch/plan.mjs` (greedy: which idiom COMPLETES the most cards, given
+the ones already chosen). At checkpoint 93 that reads:
+
+- 611 failing cards carrying **1,145 distinct fragment shapes**
+- distances d1:222 d2:229 d3:97 d4:48 d5:7 d6:7 d8:1
+- the greedy flattens to **+1 at the very first step**; the top 40 idioms
+  together complete 41 cards
+
+A card flips only when EVERY one of its fragments is handled, so an idiom's
+value is not how often it appears. "Activate only as a sorcery" appears in
+ten failing cards and completes none of them, because each of those ten also
+carries a fragment nothing else shares. **There is no clustering left.**
+Every remaining card is its own feature, and the honest planning number is
+roughly one card per feature.
+
+Re-run both tools before believing this is still true — but do not spend a
+session hunting for a big block. It was hunted for, twice, and the histogram
+is the answer.
+
+### The registry is the other lever, and its gate is real
+
+`server/src/cardOverrides.ts` counts as a full compile in the metric, and it
+is the sanctioned long-tail mechanism. Its gate — "its behavior fits the
+existing effect vocabulary" — is not a formality: the high-value failures
+(Sylvan Library, Animate Dead, Abundance, Mox Diamond, Chrome Mox, Mystic
+Remora) mostly do NOT fit, which is exactly why the compiler cannot parse
+them either. Writing definitions for those would move the number while
+making the cards play wrong. Do not. Where behaviour DOES fit, an override
+is a genuine win and needs a proving test in cardOverrides.test.ts.
 - **The best wave of the run was a COMPOSITION fix, not a new feature.**
   Wave 254 took six cards by letting a search filter be a disjunction
   across axes, and by letting a list carry a shared qualifier. Both
