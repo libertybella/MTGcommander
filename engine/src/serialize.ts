@@ -3258,6 +3258,7 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
       ...(value.withoutCounters === true ? { withoutCounters: true } : {}),
       ...(value.notEnchanted === true ? { notEnchanted: true } : {}),
       ...(value.notLegendary === true ? { notLegendary: true } : {}),
+      ...(value.nontoken === true ? { nontoken: true } : {}),
       ...(value.toZone === "exile" ? { toZone: "exile" } : {}),
         ...(value.typesAny === undefined
           ? {}
@@ -3268,6 +3269,7 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
         ...(value.withoutCounters === true ? { withoutCounters: true } : {}),
         ...(value.notEnchanted === true ? { notEnchanted: true } : {}),
         ...(value.notLegendary === true ? { notLegendary: true } : {}),
+        ...(value.nontoken === true ? { nontoken: true } : {}),
         ...(value.toZone === "exile" ? { toZone: "exile" } : {}),
         ...(value.maxManaValue === undefined
           ? {}
@@ -3846,6 +3848,9 @@ function parseTriggerCondition(value: unknown, label: string): TriggerCondition 
             `${label}.amount`,
           ),
         };
+      }
+      if (conditionKind === "self_attacking") {
+        return { kind: conditionKind };
       }
       if (conditionKind === "self_no_counter") {
         return { kind: conditionKind, counter: expectString(value.counter, `${label}.counter`) };

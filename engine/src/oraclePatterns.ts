@@ -1142,6 +1142,14 @@ function parseSweepPhrase(phrase: string): Omit<SweepFilters, "kind"> | null {
     rest = exceptType[2];
   }
 
+  // "all NONTOKEN creatures" — not a card type, so it reads separately from
+  // the exceptTypes strip above.
+  const nontoken = rest.match(/^nontoken\s+(.*)$/i);
+  if (nontoken?.[1]) {
+    filters.nontoken = true;
+    rest = nontoken[1];
+  }
+
   // Leading qualifiers.
   const tapState = rest.match(/^(tapped|untapped)\s+(.*)$/i);
   if (tapState?.[1] && tapState[2]) {
@@ -1379,6 +1387,9 @@ function parseEffectCondition(phrase: string): TriggerCondition | null {
   }
   if (/^~ is tapped$/i.test(text)) {
     return { kind: "self_tapped" };
+  }
+  if (/^~ is attacking$/i.test(text)) {
+    return { kind: "self_attacking" };
   }
   const handSize = text.match(/^you have exactly (\w+) cards in your hand$/i);
   if (handSize?.[1]) {
@@ -6787,6 +6798,28 @@ function fuseNecroTopInPlace(sentences: string[], lineStart: boolean[]): void {
   }
 }
 
+function fuseItCantBeBlockedInPlace(sentences: string[], lineStart: boolean[]): void {
+  // Kappa Cannoneer: "…put a +1/+1 counter on ~. It can't be blocked this
+  // turn." The second sentence belongs to the trigger body the first one is
+  // in — left alone it becomes a top-level effect on a permanent card, which
+  // is not a place effects run. "It" is the source, since the sentence before
+  // it acted on the source; the fuse is refused otherwise rather than
+  // guessing, because in a trigger body "it" usually means the watched object.
+  for (let index = 0; index + 1 < sentences.length; index += 1) {
+    if (lineStart[index + 1]) {
+      continue;
+    }
+    if (
+      /on (?:~|this creature)$/i.test(sentences[index] ?? "") &&
+      /^It can't be blocked this turn$/i.test(sentences[index + 1] ?? "")
+    ) {
+      sentences[index] = `${sentences[index]} and ~ can't be blocked this turn`;
+      sentences.splice(index + 1, 1);
+      lineStart.splice(index + 1, 1);
+    }
+  }
+}
+
 function fuseMayPayInPlace(sentences: string[], lineStart: boolean[]): void {
   // Mentor of the Meek: "…, you may pay {1}. If you do, draw a card." fuses
   // into one synthetic clause the may_pay parser reads.
@@ -8990,6 +9023,7 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
   fuseTraverseInPlace(sentences, lineStart);
   expandEntersOrDiesInPlace(sentences, lineStart);
   splitGrantedQuotedTriggerInPlace(sentences, lineStart);
+  fuseItCantBeBlockedInPlace(sentences, lineStart);
   fuseMayPayInPlace(sentences, lineStart);
   fuseMaySacrificeInPlace(sentences, lineStart);
   fuseNecroTopInPlace(sentences, lineStart);

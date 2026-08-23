@@ -26917,3 +26917,120 @@ describe("wave 210: eternalize, a copy made from the graveyard", () => {
   });
 });
 
+
+describe("wave 211: three small readings the engine was one word from", () => {
+  const compile = (name: string, manaCost: string, typeLine: string, oracleText: string, power?: string, toughness?: string) =>
+    compileOracleCard({
+      oracleId: name,
+      name,
+      manaCost,
+      typeLine,
+      power: power ?? null,
+      toughness: toughness ?? null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  it("spares the tokens a nontoken sweep names", () => {
+    const hour = compile(
+      "Hour of Reckoning",
+      "{4}{W}{W}{W}",
+      "Sorcery",
+      "Convoke\nDestroy all nontoken creatures.",
+    );
+    expect(hour.notes).toEqual([]);
+    expect(hour.definition.effects).toEqual([
+      { kind: "destroy_all", what: "creatures", nontoken: true },
+    ]);
+
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const definition = createCardDefinition({
+      name: "Soldier",
+      typeLine: "Creature — Soldier",
+      power: 1,
+      toughness: 1,
+    });
+    game.definitions[definition.id] = definition;
+    const put = (isToken: boolean) => {
+      const card = createCardInstance({
+        definitionId: definition.id,
+        ownerId: p1.id,
+        zone: "battlefield",
+        isToken,
+      });
+      game.cards[card.id] = card;
+      p1.zones.battlefield.push(card.id);
+      return card;
+    };
+    const real = put(false);
+    const token = put(true);
+
+    const next = applyEffect(game, { kind: "destroy_all", what: "creatures", nontoken: true });
+    expect(next.cards[real.id]?.zone).toBe("graveyard");
+    // The whole point of the card: the tokens it convoked with survive.
+    expect(next.cards[token.id]?.zone).toBe("battlefield");
+  });
+
+  it("gates an activation on the source actually attacking", () => {
+    const buccaneer = compile(
+      "Glint-Horn Buccaneer",
+      "{1}{R}{R}",
+      "Creature — Minotaur Pirate",
+      "Haste\nWhenever you discard a card, this creature deals 1 damage to each opponent.\n{1}{R}, Discard a card: Draw a card. Activate only if this creature is attacking.",
+      "1",
+      "5",
+    );
+    expect(buccaneer.notes).toEqual([]);
+    expect(buccaneer.definition.activated[0]).toMatchObject({
+      manaCost: "{1}{R}",
+      discardCost: { count: 1 },
+      requiresCondition: { kind: "self_attacking" },
+    });
+
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const definition = createCardDefinition({
+      name: "Glint-Horn Buccaneer",
+      typeLine: "Creature — Minotaur Pirate",
+      power: 1,
+      toughness: 5,
+    });
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({
+      definitionId: definition.id,
+      ownerId: p1.id,
+      zone: "battlefield",
+    });
+    game.cards[card.id] = card;
+    p1.zones.battlefield.push(card.id);
+
+    const condition = { kind: "self_attacking" } as const;
+    // Sitting at home the ability is off, which is the whole restriction.
+    expect(triggerConditionHolds(game, p1.id, condition, undefined, card.id)).toBe(false);
+    const attacking = structuredClone(game);
+    attacking.cards[card.id]!.attacking = true;
+    expect(triggerConditionHolds(attacking, p1.id, condition, undefined, card.id)).toBe(true);
+  });
+
+  it("keeps a trailing 'It …' inside the trigger body it belongs to", () => {
+    const kappa = compile(
+      "Kappa Cannoneer",
+      "{5}{U}",
+      "Artifact Creature — Turtle Warrior",
+      "Improvise\nWard {4}\nWhenever this creature or another artifact you control enters, put a +1/+1 counter on this creature. It can't be blocked this turn.",
+      "2",
+      "2",
+    );
+    expect(kappa.notes).toEqual([]);
+    // Both halves land in the trigger. Left as its own sentence the second
+    // one became a top-level effect on a permanent card, where nothing runs it.
+    expect(kappa.definition.triggers[0]?.effects).toEqual([
+      { kind: "add_counter", cardId: "self", counter: "p1p1", amount: 1 },
+      { kind: "restrict_until_eot", cardId: "self", cantBeBlocked: true },
+    ]);
+    expect(kappa.definition.effects).toEqual([]);
+  });
+});
+

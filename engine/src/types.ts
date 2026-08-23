@@ -1094,6 +1094,8 @@ export type GameEffect =
       notEnchanted?: boolean;
       /** Urza's Ruinous Blast: "that aren't legendary". */
       notLegendary?: boolean;
+      /** Hour of Reckoning: "nontoken" — the tokens survive. */
+      nontoken?: boolean;
       /** Urza's Ruinous Blast exiles rather than destroying. */
       toZone?: "exile";
       maxManaValue?: number;
@@ -1894,6 +1896,8 @@ export type CardEffect =
       notEnchanted?: boolean;
       /** Urza's Ruinous Blast: "that aren't legendary". */
       notLegendary?: boolean;
+      /** Hour of Reckoning: "nontoken" — the tokens survive. */
+      nontoken?: boolean;
       /** Urza's Ruinous Blast exiles rather than destroying. */
       toZone?: "exile";
       maxManaValue?: number;
@@ -2080,6 +2084,8 @@ export type TriggerCondition =
    * survive the move in this engine, which is what makes the intervening-if
    * answerable at all. */
   | { kind: "self_no_counter"; counter: string }
+  /** Glint-Horn Buccaneer: "Activate only if this creature is attacking." */
+  | { kind: "self_attacking" }
   | { kind: "graveyard_cards_at_least"; count: number }
   /** Delirium: "if there are four or more card types among cards in your
    * graveyard". */

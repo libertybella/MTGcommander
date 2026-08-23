@@ -123,6 +123,9 @@ export function triggerConditionHolds(
   // Persist's intervening-if. Read on the source, which by then is in the
   // graveyard: counters survive the move in this engine, so the question is
   // still answerable (CR 400.7 would make it a new object with none).
+  if (condition.kind === "self_attacking") {
+    return watcherId ? state.cards[watcherId]?.attacking === true : false;
+  }
   if (condition.kind === "self_no_counter") {
     const source = watcherId ? state.cards[watcherId] : undefined;
     return (source?.counters[condition.counter] ?? 0) === 0;

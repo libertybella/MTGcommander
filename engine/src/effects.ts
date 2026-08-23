@@ -1247,6 +1247,7 @@ export function bindCardEffect(
         ...(effect.withoutCounters ? { withoutCounters: true } : {}),
         ...(effect.notEnchanted ? { notEnchanted: true } : {}),
         ...(effect.notLegendary ? { notLegendary: true } : {}),
+        ...(effect.nontoken ? { nontoken: true } : {}),
         ...(effect.toZone ? { toZone: effect.toZone } : {}),
         ...(effect.maxManaValue !== undefined ? { maxManaValue: effect.maxManaValue } : {}),
         ...(effect.minManaValue !== undefined ? { minManaValue: effect.minManaValue } : {}),
@@ -3042,6 +3043,9 @@ function applyDestroyAll(
     .filter(
       (card) =>
         !effect.notLegendary || !characteristicsOf(next, card.id).supertypes.includes("legendary"),
+    )
+    // Hour of Reckoning: the tokens it convoked with survive the sweep.
+    .filter((card) => !effect.nontoken || !card.isToken
     )
     // Exiling sweeps are not "destroy", so indestructible does not save.
     .filter((card) => effect.toZone === "exile" || !hasKeyword(next, card.id, "indestructible"))
