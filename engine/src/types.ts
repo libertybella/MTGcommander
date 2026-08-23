@@ -1198,7 +1198,19 @@ export type GameEffect =
   | { kind: "living_death" }
   /** Springbloom Druid: the sacrifice is auto-taken with the first
    * controlled land (documented approximations) and gates the effects. */
-  | { kind: "may_sacrifice"; controllerId: PlayerId; what: "land"; effects: GameEffect[] }
+  | {
+      kind: "may_sacrifice";
+      controllerId: PlayerId;
+      what: "land" | "another_creature";
+      /**
+       * The fodder, picked when the effect BOUND. Disciple of Freyalise
+       * reads the sacrificed creature's power, and the inner effects are
+       * bound at the same moment — picking again at apply could choose a
+       * different creature than the one the numbers came from.
+       */
+      cardId?: CardInstanceId;
+      effects: GameEffect[];
+    }
   /** Curse of the Swine: exile each, its controller gets the token. */
   | {
       kind: "exile_targets_into_tokens";
@@ -2207,7 +2219,15 @@ export type CardEffect =
   /** Living Death: everyone swaps graveyard creatures with board creatures. */
   | { kind: "living_death" }
   /** Springbloom Druid: auto-taken land sacrifice gating the effects. */
-  | { kind: "may_sacrifice"; what: "land"; effects: CardEffect[] }
+  /**
+   * Springbloom Druid, Disciple of Freyalise. The take and the pick are
+   * both auto — documented approximations of a free choice.
+   */
+  | {
+      kind: "may_sacrifice";
+      what: "land" | "another_creature";
+      effects: CardEffect[];
+    }
   /** Curse of the Swine: exile each target, its controller gets the token. */
   | {
       kind: "exile_targets_into_tokens";

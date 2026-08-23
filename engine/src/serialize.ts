@@ -3167,10 +3167,14 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
     case "living_death":
       return { kind };
     case "may_sacrifice": {
-      if (value.what !== "land") {
+      if (value.what !== "land" && value.what !== "another_creature") {
         throw new Error(`Invalid ${label}.what`);
       }
-      return { kind, what: "land", effects: parseCardEffects(value.effects, `${label}.effects`) };
+      return {
+        kind,
+        what: value.what,
+        effects: parseCardEffects(value.effects, `${label}.effects`),
+      };
     }
     case "exile_targets_into_tokens": {
       if (!isRecord(value.token)) {
@@ -5869,13 +5873,16 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
     return { kind };
   }
   if (kind === "may_sacrifice") {
-    if (value.what !== "land") {
+    if (value.what !== "land" && value.what !== "another_creature") {
       throw new Error(`Invalid ${label}.what`);
     }
     return {
       kind,
       controllerId: expectString(value.controllerId, `${label}.controllerId`),
-      what: "land",
+      what: value.what,
+      ...(value.cardId === undefined
+        ? {}
+        : { cardId: expectString(value.cardId, `${label}.cardId`) }),
       effects: parseGameEffects(value.effects, `${label}.effects`),
     };
   }

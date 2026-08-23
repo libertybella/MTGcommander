@@ -37682,3 +37682,174 @@ describe("wave 282: an overload cost in different colours", () => {
     ]);
   });
 });
+
+describe("wave 283: sacrificing another creature for what it was worth", () => {
+  const setup = (powers: number[]) => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 30);
+    const discipleDef = createCardDefinition({
+      name: "Disciple",
+      typeLine: "Creature — Elf Druid",
+      power: 2,
+      toughness: 2,
+    });
+    game.definitions[discipleDef.id] = discipleDef;
+    const disciple = createCardInstance({
+      definitionId: discipleDef.id,
+      ownerId: p1.id,
+      zone: "battlefield",
+    });
+    game.cards[disciple.id] = disciple;
+    p1.zones.battlefield.push(disciple.id);
+
+    const fodderIds = powers.map((power, index) => {
+      const definition = createCardDefinition({
+        name: `Fodder${index}`,
+        typeLine: "Creature — Beast",
+        power,
+        toughness: power,
+      });
+      game.definitions[definition.id] = definition;
+      const card = createCardInstance({
+        definitionId: definition.id,
+        ownerId: p1.id,
+        zone: "battlefield",
+      });
+      game.cards[card.id] = card;
+      p1.zones.battlefield.push(card.id);
+      return card.id;
+    });
+    return { game, p1, discipleId: disciple.id, fodderIds };
+  };
+
+  const body = [
+    {
+      kind: "may_sacrifice" as const,
+      what: "another_creature" as const,
+      effects: [
+        { kind: "gain_life" as const, playerId: "controller" as const, amount: "sacrificed_power" as const },
+        { kind: "draw" as const, playerId: "controller" as const, count: "sacrificed_power" as const },
+      ],
+    },
+  ];
+
+  const run = (state: GameState, sourceId: string) =>
+    applyEffects(
+      state,
+      bindCardEffects(state, body, {
+        controllerId: state.players[0]!.id,
+        sourceId,
+      }),
+    );
+
+  it("pays out the sacrificed creature's power", () => {
+    const { game, p1, discipleId, fodderIds } = setup([4]);
+    const before = game.players.find((entry) => entry.id === p1.id)!;
+    const life = before.life;
+    const hand = before.zones.hand.length;
+    const after = run(game, discipleId);
+    expect(after.cards[fodderIds[0]!]?.zone).toBe("graveyard");
+    const player = after.players.find((entry) => entry.id === p1.id)!;
+    expect(player.life).toBe(life + 4);
+    expect(player.zones.hand.length).toBe(hand + 4);
+  });
+
+  it("never eats the source itself", () => {
+    const { game, discipleId, fodderIds } = setup([1]);
+    const after = run(game, discipleId);
+    // "ANOTHER creature": a source that sacrificed itself would be a very
+    // different card, and would take its own trigger with it.
+    expect(after.cards[discipleId]?.zone).toBe("battlefield");
+    expect(after.cards[fodderIds[0]!]?.zone).toBe("graveyard");
+  });
+
+  it("declines when there is nothing else to sacrifice", () => {
+    const { game, discipleId } = setup([]);
+    const bound = bindCardEffects(game, body, {
+      controllerId: game.players[0]!.id,
+      sourceId: discipleId,
+    });
+    // The "may" declines rather than sacrificing the source or paying out
+    // for a creature that is not there.
+    expect(bound).toEqual([]);
+  });
+
+  it("binds the numbers to the creature it actually sacrifices", () => {
+    const { game, p1, discipleId, fodderIds } = setup([1, 5, 3]);
+    const life = game.players.find((entry) => entry.id === p1.id)!.life;
+    const after = run(game, discipleId);
+    // The pick happens at BIND, in the same breath as the numbers. Picking
+    // again at apply could sacrifice one creature and pay for another.
+    const dead = fodderIds.filter((id) => after.cards[id]?.zone === "graveyard");
+    expect(dead).toHaveLength(1);
+    const deadPower = 5;
+    expect(after.players.find((entry) => entry.id === p1.id)?.life).toBe(life + deadPower);
+  });
+
+  it("leaves the land form alone", () => {
+    const { game, p1, discipleId } = setup([]);
+    const forest = createCardDefinition({ name: "Forest", typeLine: "Basic Land — Forest" });
+    game.definitions[forest.id] = forest;
+    const land = createCardInstance({
+      definitionId: forest.id,
+      ownerId: p1.id,
+      zone: "battlefield",
+    });
+    game.cards[land.id] = land;
+    p1.zones.battlefield.push(land.id);
+    const after = applyEffects(
+      game,
+      bindCardEffects(
+        game,
+        [
+          {
+            kind: "may_sacrifice",
+            what: "land",
+            effects: [{ kind: "draw", playerId: "controller", count: 1 }],
+          },
+        ],
+        { controllerId: p1.id, sourceId: discipleId },
+      ),
+    );
+    expect(after.cards[land.id]?.zone).toBe("graveyard");
+  });
+
+  it("round trips both forms", () => {
+    const { game, discipleId } = setup([2]);
+    const definition = createCardDefinition({
+      name: "Disciple",
+      typeLine: "Creature — Elf",
+      power: 2,
+      toughness: 2,
+      triggers: [{ event: "enter_battlefield", effects: body, targetRequirements: [] }],
+    });
+    game.definitions[definition.id] = definition;
+    const round = parseGameState(serializeGameState(game));
+    expect(round.definitions[definition.id]?.triggers[0]?.effects[0]).toEqual(body[0]);
+    expect(discipleId).toBeDefined();
+  });
+
+  it("compiles Disciple of Freyalise whole", () => {
+    const compiled = compileOracleCard({
+      oracleId: "df",
+      name: "Disciple of Freyalise",
+      manaCost: "{2}{G}",
+      typeLine: "Creature — Elf Druid",
+      power: "2",
+      toughness: "2",
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "When Disciple of Freyalise enters, you may sacrifice another creature. If you do, you gain X life and draw X cards, where X is that creature's power.",
+    });
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.triggers[0]?.effects[0]).toEqual({
+      kind: "may_sacrifice",
+      what: "another_creature",
+      effects: [
+        { kind: "gain_life", playerId: "controller", amount: "sacrificed_power" },
+        { kind: "draw", playerId: "controller", count: "sacrificed_power" },
+      ],
+    });
+  });
+});

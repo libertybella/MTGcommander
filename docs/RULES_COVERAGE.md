@@ -870,6 +870,16 @@ more questions it can now ask:
   (Bennie Bracks). Reads the existing per-player `createdTokenThisTurn`
   list, and asks whether the CONTROLLER is in it — an opponent's Treasure
   must not satisfy it.
+- **`may_sacrifice` of ANOTHER creature** — Disciple of Freyalise. The
+  fodder is picked when the effect BINDS, not when it applies, because the
+  inner effects read its power and are bound in the same breath — picking
+  again at apply could sacrifice one creature and pay out for another. The
+  chosen card rides on the bound effect so the two can never disagree.
+
+  Biggest power first. The pick is an auto-choice either way, and this
+  shape only ever appears on cards that pay you for what you sacrificed.
+  With nothing else on the battlefield the "may" DECLINES rather than
+  eating the source, which would take the trigger with it.
 - **An overload cost in different colours** — Damn ({1}{B}{B} printed,
   Overload {2}{W}{W}). The existing overload path models the cost as the
   printed one plus a generic EXTRA, which cannot express a different

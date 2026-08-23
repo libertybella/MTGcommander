@@ -3740,15 +3740,26 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
 
   // Springbloom Druid: the fused "you may sacrifice a land to do: X". The
   // take and the land pick are auto (documented approximations).
-  const maySacDo = sentence.match(/^you may sacrifice a land to do: (.+)$/i);
-  if (maySacDo?.[1]) {
+  const maySacDo = sentence.match(
+    /^you may sacrifice (a land|another creature) to do: (.+)$/i,
+  );
+  if (maySacDo?.[1] && maySacDo[2]) {
     const inner = compileSimpleClause(
-      maySacDo[1].charAt(0).toUpperCase() + maySacDo[1].slice(1),
+      maySacDo[2].charAt(0).toUpperCase() + maySacDo[2].slice(1),
     );
     if (inner && !inner.leftover && inner.targetRequirements.length === 0) {
       return {
         targetRequirements: [],
-        effects: [{ kind: "may_sacrifice", what: "land", effects: inner.effects }],
+        effects: [
+          {
+            kind: "may_sacrifice",
+            what:
+              maySacDo[1].toLowerCase() === "a land"
+                ? ("land" as const)
+                : ("another_creature" as const),
+            effects: inner.effects,
+          },
+        ],
       };
     }
   }
@@ -8078,12 +8089,14 @@ function fuseMaySacrificeInPlace(sentences: string[], lineStart: boolean[]): voi
     if (lineStart[index + 1]) {
       continue;
     }
-    const head = sentences[index]?.match(/^(.+, )?you may sacrifice a land$/i);
+    const head = sentences[index]?.match(
+      /^(.+, )?you may sacrifice (a land|another creature)$/i,
+    );
     const rider = sentences[index + 1]?.match(/^If you do, (.+)$/i);
     if (!head || !rider?.[1]) {
       continue;
     }
-    sentences[index] = `${head[1] ?? ""}you may sacrifice a land to do: ${rider[1]}`;
+    sentences[index] = `${head[1] ?? ""}you may sacrifice ${head[2]} to do: ${rider[1]}`;
     sentences.splice(index + 1, 1);
     lineStart.splice(index + 1, 1);
   }

@@ -1791,13 +1791,37 @@ export function bindCardEffect(
     }
     case "living_death":
       return { kind: "living_death" };
-    case "may_sacrifice":
+    case "may_sacrifice": {
+      if (effect.what !== "another_creature") {
+        return {
+          kind: "may_sacrifice",
+          controllerId: context.controllerId,
+          what: effect.what,
+          effects: bindCardEffects(state, effect.effects, context),
+        };
+      }
+      // Disciple of Freyalise: the fodder is picked HERE, because the
+      // inner effects read its power and are bound in the same breath.
+      // Picking again at apply could choose a different creature than the
+      // numbers came from. Biggest power first: this shape only ever
+      // appears on cards that pay you for it (documented).
+      const fodderId = permanentsControlledBy(state, context.controllerId)
+        .filter((cardId) => cardId !== context.sourceId && isCreature(state, cardId))
+        .sort((a, b) => creaturePower(state, b) - creaturePower(state, a))[0];
+      if (!fodderId) {
+        return null;
+      }
       return {
         kind: "may_sacrifice",
         controllerId: context.controllerId,
         what: effect.what,
-        effects: bindCardEffects(state, effect.effects, context),
+        cardId: fodderId,
+        effects: bindCardEffects(state, effect.effects, {
+          ...context,
+          sacrificedPower: Math.max(0, creaturePower(state, fodderId)),
+        }),
       };
+    }
     case "exile_targets_into_tokens": {
       // Curse of the Swine: every chosen creature target.
       const cardIds = (context.targets ?? [])
@@ -4399,9 +4423,13 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
       case "may_sacrifice": {
         // Springbloom Druid: auto-taken with the first controlled land —
         // both the take and the pick are documented approximations.
-        const fodder = permanentsControlledBy(state, effect.controllerId).find((cardId) =>
-          isLand(state, cardId),
-        );
+        // Disciple of Freyalise already chose at bind, because its inner
+        // effects read the sacrificed creature's power.
+        const fodder =
+          effect.cardId ??
+          permanentsControlledBy(state, effect.controllerId).find((cardId) =>
+            isLand(state, cardId),
+          );
         if (!fodder) {
           next = cloneGameState(state);
           break;
