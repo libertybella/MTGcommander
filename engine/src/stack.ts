@@ -295,7 +295,9 @@ export function resolveTopOfStack(state: GameState): GameState {
         next = applyEffects(next, bound);
       }
     } else {
-      const trigger = definition?.triggers[top.triggerIndex ?? 0];
+      // The snapshot first: a granted trigger outlives the grant that made
+      // it, so re-reading the source here would resolve nothing.
+      const trigger = top.grantedTrigger ?? definition?.triggers[top.triggerIndex ?? 0];
       // Modal trigger: the chosen mode's effects and targets replace the
       // (empty) top-level ones.
       const triggerMode =

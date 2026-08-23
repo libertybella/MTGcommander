@@ -479,6 +479,14 @@ export type StackObject = {
   targets: ChosenTarget[];
   /** Index into the source definition's `triggers` for stacked abilities. */
   triggerIndex?: number;
+  /**
+   * A granted trigger (Kaldra Compleat) copied onto the stack object as it
+   * was queued. Once on the stack an ability exists independently of its
+   * source (CR 113.7a), and a grant does NOT: the Equipment can fall off, or
+   * the granting permanent leave, before the ability resolves. Reading the
+   * grant again at resolution would silently resolve nothing.
+   */
+  grantedTrigger?: CardTrigger;
   /** The triggering event's subject card ("that creature", "that spell"). */
   subjectCardId?: CardInstanceId;
   /** The triggering event's subject player ("that player"). */
@@ -2888,6 +2896,17 @@ export type ContinuousEffectData =
   | { kind: "grant_ward"; amount: number }
   /** layer 6: Cryptolith Rite grants a mana ability to matching permanents. */
   | { kind: "grant_mana_ability"; ability: ManaAbility }
+  /**
+   * layer 6: "Equipped creature has myriad" (Blade of Selves), "Equipped
+   * creature has 'Whenever this creature deals combat damage…'" (Kaldra
+   * Compleat). The granted ability belongs to the AFFECTED permanent, not to
+   * the granting source: it fires from that permanent, "~" in its body means
+   * that permanent, and its controller is that permanent's controller. Wave
+   * 170's older trick — rewriting a quoted trigger onto the Equipment's own
+   * `watch: "attached"` — only works for an ability the attachment itself
+   * carries, and cannot express a grant to a whole set.
+   */
+  | { kind: "grant_trigger"; trigger: CardTrigger }
   // (modify_pt lives in layer 7c; `per` scales it by a live count read from
   // the static source's controller — Nettlecyst.)
   /** layer 6: Shiny Impetus — "is goaded", for as long as the Aura is on. */

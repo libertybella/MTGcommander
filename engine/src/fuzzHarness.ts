@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { applyAction } from "./actions";
 import { isCreature } from "./cardTypes";
-import { cardMatchesSubtype, computedCard } from "./characteristicsEngine";
+import { cardMatchesSubtype, computedCard, triggersOf } from "./characteristicsEngine";
 import { controlsCommander } from "./derived";
 import { hasKeyword } from "./keywords";
 import { legalActions, sacrificeScopeMatches } from "./legalActions";
@@ -200,7 +200,7 @@ function nextAction(state: GameState, rng: () => number): GameAction | null {
       case "choose_trigger_mode": {
         const source = state.cards[prompt.sourceId];
         const modes = source
-          ? state.definitions[source.definitionId]?.triggers[prompt.triggerIndex]?.modes ?? []
+          ? triggersOf(state, prompt.sourceId)[prompt.triggerIndex]?.modes ?? []
           : [];
         return {
           kind: "resolve_trigger_mode",

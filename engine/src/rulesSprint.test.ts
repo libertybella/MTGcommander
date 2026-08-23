@@ -8,6 +8,7 @@ import {
   createCardDefinition,
   createCardInstance,
   createGameState,
+  applyResolveOrderTriggers,
   isChosenTargetLegal,
   legalChoicesForRequirement,
   moveCard,
@@ -15,7 +16,7 @@ import {
   putSpellOnStack,
   resolveTopOfStack,
 } from "./index";
-import { cardMatchesSubtype, computedCard, dynamicCountOf } from "./characteristicsEngine";
+import { cardMatchesSubtype, computedCard, dynamicCountOf, triggersOf } from "./characteristicsEngine";
 import { mostCommonControlledCreatureType } from "./effects";
 import { castCostReduction, castableFromTop, drawCapFor, freeEquipGranted, hasFlashGrant, landDropAllowance, permanentsControlledBy, reliefAdjustedCost, selfDiscountAmount, wouldEnterTapped } from "./derived";
 import { hasKeyword } from "./keywords";
@@ -28189,3 +28190,246 @@ describe("wave 221: up to two is two optional slots", () => {
     ]);
   });
 });
+
+describe("primitive: a static that grants a triggered ability", () => {
+  const grantAttackGain = (amount: number) => ({
+    selector: { scope: "controlled" as const, types: ["creature"] },
+    effect: {
+      kind: "grant_trigger" as const,
+      trigger: {
+        event: "attacks" as const,
+        watch: "self" as const,
+        effects: [{ kind: "gain_life" as const, playerId: "controller" as const, amount }],
+      },
+    },
+  });
+
+  const board = () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    const shrineDef = createCardDefinition({
+      name: "Grafted Wisdom",
+      typeLine: "Enchantment",
+      staticAbilities: [grantAttackGain(2)],
+    });
+    const bearDef = createCardDefinition({
+      name: "Bear",
+      typeLine: "Creature — Bear",
+      power: 2,
+      toughness: 2,
+    });
+    for (const definition of [shrineDef, bearDef]) {
+      game.definitions[definition.id] = definition;
+    }
+    const put = (definitionId: string, ownerId: string) => {
+      const card = createCardInstance({ definitionId, ownerId, zone: "battlefield" });
+      game.cards[card.id] = card;
+      game.players.find((entry) => entry.id === ownerId)!.zones.battlefield.push(card.id);
+      return card;
+    };
+    const shrine = put(shrineDef.id, p1.id);
+    const mine = put(bearDef.id, p1.id);
+    const theirs = put(bearDef.id, p2.id);
+    return { game, p1, p2, shrine, mine, theirs, bearDef };
+  };
+
+  it("hangs the ability on the affected creature, not on the granting source", () => {
+    const { game, shrine, mine, theirs } = board();
+    // The grant lands on the creature: it is that creature's ability, so "~"
+    // in the body and the ability's controller are the creature's, not the
+    // enchantment's. The enchantment itself gains nothing.
+    expect(triggersOf(game, mine.id)).toEqual([
+      {
+        event: "attacks",
+        watch: "self",
+        effects: [{ kind: "gain_life", playerId: "controller", amount: 2 }],
+      },
+    ]);
+    expect(triggersOf(game, shrine.id)).toEqual([]);
+    // The selector says "creatures YOU control": the opponent's bear is not
+    // in the set. Without this assertion a scope: "all" typo reads as a pass.
+    expect(triggersOf(game, theirs.id)).toEqual([]);
+  });
+
+  it("fires the granted trigger, and stops firing when the grant goes away", () => {
+    const { game, p1, mine, shrine } = board();
+    const before = game.players.find((entry) => entry.id === p1.id)!.life;
+    const live = structuredClone(game);
+    dispatchEventsInPlace(live, [{ kind: "attacks", cardId: mine.id }]);
+    expect(live.stack).toHaveLength(1);
+    // Index 0 on a card with no printed triggers: one address space, the
+    // granted ability simply follows the (empty) printed list.
+    expect(live.stack[0]?.triggerIndex).toBe(0);
+    expect(live.stack[0]?.sourceId).toBe(mine.id);
+    const resolved = resolveTopOfStack(live);
+    expect(resolved.players.find((entry) => entry.id === p1.id)!.life).toBe(before + 2);
+
+    // The same attack with the enchantment gone: nothing triggers at all.
+    const without = structuredClone(game);
+    delete without.cards[shrine.id];
+    without.players[0]!.zones.battlefield = without.players[0]!.zones.battlefield.filter(
+      (id) => id !== shrine.id,
+    );
+    dispatchEventsInPlace(without, [{ kind: "attacks", cardId: mine.id }]);
+    expect(without.stack).toHaveLength(0);
+  });
+
+  it("resolves an ability whose grant vanished while it was on the stack", () => {
+    const { game, p1, mine, shrine } = board();
+    const before = game.players.find((entry) => entry.id === p1.id)!.life;
+    let live = structuredClone(game);
+    dispatchEventsInPlace(live, [{ kind: "attacks", cardId: mine.id }]);
+    expect(live.stack[0]?.grantedTrigger).toMatchObject({ event: "attacks" });
+    // The enchantment is destroyed in response. An ability on the stack
+    // exists independently of its source (CR 113.7a) — but a GRANT does not,
+    // so re-reading the granting permanent at resolution would find nothing
+    // and the ability would silently do nothing.
+    delete live.cards[shrine.id];
+    live.players[0]!.zones.battlefield = live.players[0]!.zones.battlefield.filter(
+      (id) => id !== shrine.id,
+    );
+    live = resolveTopOfStack(live);
+    expect(live.players.find((entry) => entry.id === p1.id)!.life).toBe(before + 2);
+  });
+
+  it("keeps printed and granted abilities in one index space", () => {
+    const { game, p1 } = board();
+    const heraldDef = createCardDefinition({
+      name: "Herald of Secrets",
+      typeLine: "Creature — Human Wizard",
+      power: 1,
+      toughness: 1,
+      triggers: [
+        {
+          event: "attacks",
+          watch: "self",
+          effects: [{ kind: "draw", playerId: "controller", count: 1 }],
+        },
+      ],
+    });
+    game.definitions[heraldDef.id] = heraldDef;
+    const herald = createCardInstance({
+      definitionId: heraldDef.id,
+      ownerId: p1.id,
+      zone: "battlefield",
+    });
+    game.cards[herald.id] = herald;
+    game.players[0]!.zones.battlefield.push(herald.id);
+
+    // Printed first, granted after: index 1 names the grant, so no site that
+    // resolves a triggerIndex needs a second address space.
+    const list = triggersOf(game, herald.id);
+    expect(list).toHaveLength(2);
+    expect(list[0]?.effects[0]).toEqual({ kind: "draw", playerId: "controller", count: 1 });
+    expect(list[1]?.effects[0]).toEqual({
+      kind: "gain_life",
+      playerId: "controller",
+      amount: 2,
+    });
+
+    const live = structuredClone(game);
+    dispatchEventsInPlace(live, [{ kind: "attacks", cardId: herald.id }]);
+    // Two simultaneous triggers for one controller pause for an ordering
+    // choice rather than stacking themselves — and both are in it, printed
+    // and granted addressed the same way.
+    const ordering = live.prompts[0];
+    expect(ordering?.kind).toBe("order_triggers");
+    expect(
+      ordering?.kind === "order_triggers"
+        ? ordering.entries.map((entry) => entry.triggerIndex).sort()
+        : [],
+    ).toEqual([0, 1]);
+
+    const ordered = applyResolveOrderTriggers(live, p1.id, [1, 0]);
+    expect(ordered.stack.map((entry) => entry.triggerIndex)).toEqual([1, 0]);
+    // Only the granted one carries a snapshot; the printed one is still on
+    // the definition where it always was.
+    expect(ordered.stack.find((entry) => entry.triggerIndex === 1)?.grantedTrigger).toMatchObject({
+      event: "attacks",
+    });
+    expect(ordered.stack.find((entry) => entry.triggerIndex === 0)?.grantedTrigger).toBeUndefined();
+  });
+
+  it("loses the granted ability to Humility, and survives a round trip", () => {
+    const { game, mine } = board();
+    const humbled = structuredClone(game);
+    const humilityDef = createCardDefinition({
+      name: "Humility",
+      typeLine: "Enchantment",
+      staticAbilities: [
+        {
+          selector: { scope: "all", types: ["creature"] },
+          effect: { kind: "remove_all_abilities" },
+        },
+      ],
+    });
+    humbled.definitions[humilityDef.id] = humilityDef;
+    const humility = createCardInstance({
+      definitionId: humilityDef.id,
+      ownerId: humbled.players[0]!.id,
+      zone: "battlefield",
+    });
+    humbled.cards[humility.id] = humility;
+    humbled.players[0]!.zones.battlefield.push(humility.id);
+    // A granted trigger is an ability like any other: remove-all takes it.
+    expect(computedCard(humbled, mine.id)?.grantedTriggers).toEqual([]);
+    expect(triggersOf(humbled, mine.id)).toEqual([]);
+
+    const round = parseGameState(serializeGameState(game));
+    expect(triggersOf(round, mine.id)[0]).toMatchObject({
+      event: "attacks",
+      effects: [{ kind: "gain_life", playerId: "controller", amount: 2 }],
+    });
+  });
+
+  it("does NOT fire a granted dies-trigger, which is the documented limit", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const shrineDef = createCardDefinition({
+      name: "Grafted Sorrow",
+      typeLine: "Enchantment",
+      staticAbilities: [
+        {
+          selector: { scope: "controlled", types: ["creature"] },
+          effect: {
+            kind: "grant_trigger",
+            trigger: {
+              event: "dies",
+              watch: "self",
+              effects: [{ kind: "gain_life", playerId: "controller", amount: 2 }],
+            },
+          },
+        },
+      ],
+    });
+    const bearDef = createCardDefinition({
+      name: "Bear",
+      typeLine: "Creature — Bear",
+      power: 2,
+      toughness: 2,
+    });
+    for (const definition of [shrineDef, bearDef]) {
+      game.definitions[definition.id] = definition;
+    }
+    for (const definitionId of [shrineDef.id, bearDef.id]) {
+      const card = createCardInstance({ definitionId, ownerId: p1.id, zone: "battlefield" });
+      game.cards[card.id] = card;
+      game.players[0]!.zones.battlefield.push(card.id);
+    }
+    const bear = Object.values(game.cards).find(
+      (card) => card.definitionId === bearDef.id && card.zone === "battlefield",
+    )!;
+
+    game.cards[bear.id]!.zone = "graveyard";
+    dispatchEventsInPlace(game, [
+      { kind: "dies", cardId: bear.id, controllerId: p1.id, powerAtDeath: 2 },
+    ]);
+    // A dying object's own PRINTED dies-triggers still fire, looking back
+    // from the graveyard (CR 603.10a) — but the GRANT that gave this one is
+    // read from the live board, where the creature no longer is. Real
+    // last-known information would keep it. Until that exists the compiler
+    // REFUSES a granted dies-trigger rather than compiling a dead one.
+    expect(game.stack).toHaveLength(0);
+  });
+});
+

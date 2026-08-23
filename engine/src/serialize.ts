@@ -1266,6 +1266,14 @@ export function parseGameState(json: string): GameState {
       ...(activatedIndex === undefined
         ? {}
         : { activatedIndex: expectNumber(activatedIndex, `stack[${index}].activatedIndex`) }),
+      ...(entry.grantedTrigger === undefined
+        ? {}
+        : {
+            grantedTrigger: parseTriggers(
+              [entry.grantedTrigger],
+              `stack[${index}].grantedTrigger`,
+            )[0]!,
+          }),
       ...(entry.subjectCardId === undefined
         ? {}
         : { subjectCardId: expectString(entry.subjectCardId, `stack[${index}].subjectCardId`) }),
@@ -4327,6 +4335,15 @@ function parseContinuousEffectData(value: unknown, label: string): ContinuousEff
         return color as Color;
       }),
     };
+  }
+  if (kind === "grant_trigger") {
+    // Reuses the whole trigger parser rather than a second, drifting copy —
+    // a granted trigger is an ordinary trigger that lives somewhere else.
+    const parsed = parseTriggers([value.trigger], `${label}.trigger`);
+    if (!parsed[0]) {
+      throw new Error(`Invalid ${label}.trigger`);
+    }
+    return { kind, trigger: parsed[0] };
   }
   if (kind === "grant_mana_ability") {
     const parsed = parseManaAbilities([value.ability], `${label}.ability`);

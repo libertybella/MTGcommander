@@ -1,7 +1,7 @@
 import { createId } from "./ids";
 import { cloneGameState } from "./clone";
 // Deferred call only (decline path) — the effects/prompt import cycle is benign.
-import { cardMatchesSubtype } from "./characteristicsEngine";
+import { cardMatchesSubtype, grantedTriggerSpread, triggersOf } from "./characteristicsEngine";
 import { characteristicsOf, isCreature, isLand as cardIsLand, isPlaneswalker } from "./cardTypes";
 import { applyEffects, grantProtectionUntilEot } from "./effects";
 import { payManaCost, tapForMana } from "./mana";
@@ -82,6 +82,7 @@ export function applyChooseTargets(
     kind: "ability",
     targets: targets.map((target) => ({ ...target })),
     triggerIndex: prompt.triggerIndex ?? 0,
+    ...grantedTriggerSpread(next, prompt.sourceId, prompt.triggerIndex ?? 0),
     ...(prompt.modeIndex !== undefined ? { modeIndex: prompt.modeIndex } : {}),
     ...(prompt.subjectCardId ? { subjectCardId: prompt.subjectCardId } : {}),
     ...(prompt.subjectPlayerId ? { subjectPlayerId: prompt.subjectPlayerId } : {}),
@@ -111,9 +112,7 @@ export function applyResolveTriggerMode(
     throw new Error("It is not that player's choice");
   }
   const source = state.cards[prompt.sourceId];
-  const trigger = source
-    ? state.definitions[source.definitionId]?.triggers[prompt.triggerIndex]
-    : undefined;
+  const trigger = source ? triggersOf(state, prompt.sourceId)[prompt.triggerIndex] : undefined;
   const mode = trigger?.modes?.[modeIndex];
   if (!mode) {
     throw new Error("Choose one of the trigger's modes");
@@ -146,6 +145,7 @@ export function applyResolveTriggerMode(
     kind: "ability",
     targets: [],
     triggerIndex: prompt.triggerIndex,
+    ...grantedTriggerSpread(next, prompt.sourceId, prompt.triggerIndex),
     modeIndex,
     ...(prompt.subjectCardId ? { subjectCardId: prompt.subjectCardId } : {}),
     ...(prompt.subjectPlayerId ? { subjectPlayerId: prompt.subjectPlayerId } : {}),

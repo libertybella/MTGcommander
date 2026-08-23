@@ -115,7 +115,13 @@ export {
 export { redactForSpectator, redactForViewer, isHiddenFromViewer, HIDDEN_DEFINITION_ID } from "./visibility";
 export { applyChooseTargets, applyChooseEnterReplacement, applyResolveOrderTriggers, applyResolvePay, applyResolveScry, applyResolveSearch, applyResolveSurveil, applyResolveDiscard, applyResolveChooseCard, applyResolveEnterCopy, applyResolveLookAssign, applyResolveTriggerMode, currentPrompt, isPromptOpen, legalEnterCopyIds, legalSearchIds, lookedAtCardIds, legalIdsForChooseSources, searchMatches } from "./prompt";
 export { queueSimultaneousTriggersInPlace } from "./triggers";
-export { abilitiesRemoved, computedCard, computedCards } from "./characteristicsEngine";
+export {
+  abilitiesRemoved,
+  computedCard,
+  computedCards,
+  grantedTriggerSpread,
+  triggersOf,
+} from "./characteristicsEngine";
 export type { ComputedCard } from "./characteristicsEngine";
 export { isChosenTargetLegal, validateChosenTargets, legalChoicesForRequirement, firstLegalTargetSet, hasAnyLegalTargetSet } from "./targeting";
 export {

@@ -25,6 +25,7 @@ import {
   manaTapOptionsFor,
   tokenTemplatesOf,
   topOfLibraryGrant,
+  triggersOf,
   type ActivatedAbility,
   type CardDefinition,
   type CardInstanceId,
@@ -2771,11 +2772,7 @@ export function Battlefield(props: Props) {
             ) : null}
             {actorId === prompt.playerId && prompt.kind === "choose_trigger_mode" ? (
               <>
-                {(
-                  state.definitions[state.cards[prompt.sourceId]?.definitionId ?? ""]?.triggers[
-                    prompt.triggerIndex
-                  ]?.modes ?? []
-                ).map((mode, modeIndex) => (
+                {(triggersOf(state, prompt.sourceId)[prompt.triggerIndex]?.modes ?? []).map((mode, modeIndex) => (
                   <button
                     key={mode.label}
                     type="button"

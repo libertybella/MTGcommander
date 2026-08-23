@@ -3,6 +3,7 @@ import type {
   CardDefinition,
   CardInstance,
   CardInstanceId,
+  CardTrigger,
   Color,
   ContinuousEffectData,
   ControlledGate,
@@ -41,6 +42,13 @@ export type ComputedCard = {
   toughness: number;
   /** Mana abilities granted by statics (Cryptolith Rite). */
   grantedMana: ManaAbility[];
+  /**
+   * Triggered abilities granted by statics (Kaldra Compleat's equipped
+   * creature). They are this object's own abilities: read them with
+   * `triggersOf`, which appends them AFTER the printed ones so a trigger
+   * index addresses one list, not two.
+   */
+  grantedTriggers: CardTrigger[];
   /** Changeling: matches every creature type (cleared with abilities). */
   allCreatureTypes: boolean;
   /** Combat restrictions from layer-6 effects (Pacifism). */
@@ -81,6 +89,7 @@ const LAYER_OF: Record<ContinuousEffectData["kind"], number> = {
   grant_ward: 6,
   remove_keywords: 6,
   grant_mana_ability: 6,
+  grant_trigger: 6,
   goaded: 6,
   remove_all_abilities: 6,
   restrict: 6,
@@ -105,6 +114,7 @@ function baseComputed(state: GameState, card: CardInstance): ComputedCard {
       power: 2,
       toughness: 2,
       grantedMana: [],
+      grantedTriggers: [],
       allCreatureTypes: false,
       cantAttack: false,
       cantBlock: false,
@@ -168,6 +178,7 @@ function baseComputed(state: GameState, card: CardInstance): ComputedCard {
     power: (dynamic ?? definition?.power ?? 0) + bonusPower,
     toughness: (dynamic ?? definition?.toughness ?? 0) + bonusToughness,
     grantedMana: [],
+    grantedTriggers: [],
     allCreatureTypes: definition?.changeling === true,
     cantAttack: false,
     cantBlock: false,
@@ -801,6 +812,12 @@ function applyInstance(
       case "grant_mana_ability":
         computed.grantedMana.push({ ...effect.ability });
         break;
+      case "grant_trigger":
+        // Cloned, because the granted ability is now the AFFECTED card's and
+        // several cards may hold grants from one source; sharing the object
+        // would let a per-card edit reach all of them.
+        computed.grantedTriggers.push(structuredClone(effect.trigger));
+        break;
       case "goaded": {
         // The goader is whoever controls the source of the static.
         const by = state.cards[instance.sourceId ?? ""]?.controllerId;
@@ -813,6 +830,7 @@ function applyInstance(
         computed.keywords = [];
         computed.abilitiesRemoved = true;
         computed.grantedMana = [];
+        computed.grantedTriggers = [];
         computed.allCreatureTypes = false;
         computed.protectionFrom = [];
         computed.ward = 0;
@@ -914,6 +932,60 @@ export function computedCards(state: GameState): Record<CardInstanceId, Computed
 
 export function computedCard(state: GameState, cardId: CardInstanceId): ComputedCard | null {
   return computedCards(state)[cardId] ?? null;
+}
+
+/**
+ * Every triggered ability an object has right now: the printed list first,
+ * then anything a static granted it (Kaldra Compleat's equipped creature).
+ *
+ * ONE ADDRESS SPACE. A `triggerIndex` at or past the printed list's length
+ * names a granted ability, so every site that resolves an index — the stack,
+ * the targeting and mode prompts, the fuzzer, the client — reads this
+ * instead of `definition.triggers`. A second address space was the
+ * alternative and was rejected in wave 170; it would need a discriminator on
+ * every candidate, stack object and prompt that carries an index.
+ *
+ * Pass `computedById` inside a loop over the battlefield: without it every
+ * call recomputes the whole layer engine.
+ *
+ * Divergence: a grant is gone by the time the object is looked at from the
+ * graveyard, so a GRANTED dies-trigger does not fire where a printed one
+ * does. Real last-known-information (CR 603.10a) would keep it.
+ */
+export function triggersOf(
+  state: GameState,
+  cardId: CardInstanceId,
+  computedById?: Record<CardInstanceId, ComputedCard>,
+): CardTrigger[] {
+  const card = state.cards[cardId];
+  if (!card) {
+    return [];
+  }
+  const printed = state.definitions[card.definitionId]?.triggers ?? [];
+  const granted = (computedById ? computedById[cardId] : computedCard(state, cardId))
+    ?.grantedTriggers;
+  return granted && granted.length > 0 ? [...printed, ...granted] : printed;
+}
+
+/**
+ * The spread that carries a granted trigger onto a stack object as it is
+ * queued. Empty for a printed trigger, which the definition still holds.
+ */
+export function grantedTriggerSpread(
+  state: GameState,
+  cardId: CardInstanceId | null,
+  index: number,
+): { grantedTrigger?: CardTrigger } {
+  if (!cardId) {
+    return {};
+  }
+  const card = state.cards[cardId];
+  const printedCount = card ? state.definitions[card.definitionId]?.triggers.length ?? 0 : 0;
+  if (index < printedCount) {
+    return {};
+  }
+  const granted = triggersOf(state, cardId)[index];
+  return granted ? { grantedTrigger: structuredClone(granted) } : {};
 }
 
 /** True when a remove-all-abilities effect (Humility) silences this object. */

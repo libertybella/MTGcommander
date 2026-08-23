@@ -1,5 +1,11 @@
 import { characteristicsOf } from "./cardTypes";
-import { abilitiesRemoved, cardMatchesSubtype } from "./characteristicsEngine";
+import {
+  abilitiesRemoved,
+  cardMatchesSubtype,
+  computedCards,
+  grantedTriggerSpread,
+  triggersOf,
+} from "./characteristicsEngine";
 import { creaturePower, creatureToughness } from "./derived";
 import { createId } from "./ids";
 import { hasKeyword } from "./keywords";
@@ -263,7 +269,7 @@ export function queueDefinitionTriggerInPlace(
   subject?: { cardId?: CardInstanceId; playerId?: PlayerId; amount?: number },
 ): boolean {
   const card = state.cards[cardId];
-  const trigger = card ? state.definitions[card.definitionId]?.triggers[index] : undefined;
+  const trigger = card ? triggersOf(state, cardId)[index] : undefined;
   if (!card || !trigger) {
     return false;
   }
@@ -324,6 +330,7 @@ export function queueDefinitionTriggerInPlace(
     kind: "ability",
     targets: [],
     triggerIndex: index,
+    ...grantedTriggerSpread(state, cardId, index),
     ...(subject?.cardId ? { subjectCardId: subject.cardId } : {}),
     ...(subject?.playerId ? { subjectPlayerId: subject.playerId } : {}),
     ...(subject?.amount ? { subjectAmount: subject.amount } : {}),
@@ -333,9 +340,7 @@ export function queueDefinitionTriggerInPlace(
 
 function candidateIsQueueable(state: GameState, candidate: TriggerCandidate): boolean {
   const card = state.cards[candidate.cardId];
-  const trigger = card
-    ? state.definitions[card.definitionId]?.triggers[candidate.triggerIndex]
-    : undefined;
+  const trigger = card ? triggersOf(state, candidate.cardId)[candidate.triggerIndex] : undefined;
   if (!card || !trigger) {
     return false;
   }
@@ -1019,8 +1024,11 @@ export function dispatchEventsInPlace(state: GameState, events: EngineEvent[]): 
     }
   }
   const candidates: TriggerCandidate[] = [];
+  // Computed once for the whole sweep: `triggersOf` would otherwise run the
+  // layer engine per battlefield card.
+  const computedById = computedCards(state);
   const consider = (card: CardInstance) => {
-    const triggers = state.definitions[card.definitionId]?.triggers ?? [];
+    const triggers = triggersOf(state, card.id, computedById);
     for (let index = 0; index < triggers.length; index += 1) {
       const trigger = triggers[index]!;
       // A trigger fires once for EACH matching event in the batch — a board
@@ -1109,13 +1117,14 @@ export function queueEnterBattlefieldTriggersInPlace(
 export function queueBeginCombatTriggersInPlace(state: GameState): void {
   const activeId = state.turn.activePlayerId;
   const candidates: TriggerCandidate[] = [];
+  const computedById = computedCards(state);
   for (const player of state.players) {
     for (const cardId of player.zones.battlefield) {
       const card = state.cards[cardId];
       if (!card) {
         continue;
       }
-      const triggers = state.definitions[card.definitionId]?.triggers ?? [];
+      const triggers = triggersOf(state, cardId, computedById);
       for (let index = 0; index < triggers.length; index += 1) {
         const trigger = triggers[index];
         if (trigger?.event !== "begin_combat") {
