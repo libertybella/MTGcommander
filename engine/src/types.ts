@@ -1337,6 +1337,8 @@ export type TargetKind =
   /** Dispel: instants only. */
   | "instant_spell"
   | "instant_or_sorcery_spell"
+  /** Swan Song. */
+  | "enchantment_instant_or_sorcery_spell"
   /** Venser, Shaper Savant. */
   | "spell_or_permanent";
 
@@ -2198,6 +2200,9 @@ export type CardTrigger = {
     minManaValue?: number;
     /** "a legendary creature you control" (Kytheon's ally trigger). */
     legendary?: boolean;
+    /** Kardur: "an attacking creature" — read off the instance, so it is
+     * still true for the creature that just died in combat. */
+    attacking?: boolean;
     /** Jhoira, Teshar: "a historic spell" — artifact, legendary, or Saga. */
     historic?: boolean;
     /** "a creature you control with flying" (Dragon Tempest). Read computed,

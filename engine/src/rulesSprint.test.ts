@@ -27207,3 +27207,147 @@ describe("wave 212: becoming a copy, and stopping being one", () => {
   });
 });
 
+
+describe("wave 213: three more adjectives the grammars were missing", () => {
+  const compile = (name: string, manaCost: string, typeLine: string, oracleText: string, power?: string, toughness?: string) =>
+    compileOracleCard({
+      oracleId: name,
+      name,
+      manaCost,
+      typeLine,
+      power: power ?? null,
+      toughness: toughness ?? null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  it("counters the three spell types Swan Song names, and nothing else", () => {
+    const song = compile(
+      "Swan Song",
+      "{U}",
+      "Instant",
+      "Counter target enchantment, instant, or sorcery spell. Its controller creates a 2/2 blue Bird creature token with flying.",
+    );
+    expect(song.notes).toEqual([]);
+    expect(song.definition.targetRequirements).toEqual([
+      { kind: "enchantment_instant_or_sorcery_spell" },
+    ]);
+
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    const instantDef = createCardDefinition({
+      name: "Bolt",
+      typeLine: "Instant",
+      manaCost: "{R}",
+      effects: [{ kind: "draw", playerId: "controller", count: 1 }],
+    });
+    const creatureDef = createCardDefinition({
+      name: "Bear",
+      typeLine: "Creature — Bear",
+      manaCost: "{1}{G}",
+      power: 2,
+      toughness: 2,
+    });
+    for (const definition of [instantDef, creatureDef]) {
+      game.definitions[definition.id] = definition;
+    }
+    const cast = (definitionId: string) => {
+      const card = createCardInstance({ definitionId, ownerId: p2.id, zone: "hand" });
+      game.cards[card.id] = card;
+      game.players.find((entry) => entry.id === p2.id)!.zones.hand.push(card.id);
+      return card;
+    };
+    const bolt = cast(instantDef.id);
+    const bear = cast(creatureDef.id);
+    let stacked = putSpellOnStack(game, bolt.id, []);
+    stacked = putSpellOnStack(stacked, bear.id, []);
+
+    const requirement: TargetRequirement = { kind: "enchantment_instant_or_sorcery_spell" };
+    const legal = legalChoicesForRequirement(stacked, requirement, p1.id).map((choice) =>
+      choice.type === "spell" ? choice.stackObjectId : null,
+    );
+    const idOf = (cardId: string) =>
+      stacked.stack.find((entry) => entry.sourceId === cardId)?.id ?? null;
+    expect(legal).toContain(idOf(bolt.id));
+    // A creature spell is exactly what Swan Song can't answer.
+    expect(legal).not.toContain(idOf(bear.id));
+  });
+
+  it("reads a two-subtype spell discount", () => {
+    const danitha = compile(
+      "Danitha Capashen, Paragon",
+      "{2}{W}",
+      "Legendary Creature — Human Knight",
+      "First strike, vigilance, lifelink\nAura and Equipment spells you cast cost {1} less to cast.",
+      "2",
+      "2",
+    );
+    expect(danitha.notes).toEqual([]);
+    expect(danitha.definition.costReductions).toEqual([
+      { generic: 1, filter: { subtypesAny: ["aura", "equipment"] } },
+    ]);
+  });
+
+  it("watches only the creatures that were attacking when they died", () => {
+    const kardur = compile(
+      "Kardur, Doomscourge",
+      "{2}{B}{R}",
+      "Legendary Creature — Demon Berserker",
+      "When Kardur enters, until your next turn, creatures your opponents control attack each combat if able and attack a player other than you if able.\nWhenever an attacking creature dies, each opponent loses 1 life and you gain 1 life.",
+      "3",
+      "3",
+    );
+    expect(kardur.notes).toEqual([]);
+    expect(kardur.definition.triggers[1]).toMatchObject({
+      event: "dies",
+      subjectFilter: { types: ["creature"], attacking: true },
+    });
+
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    const watcherDef = createCardDefinition({
+      name: "Kardur",
+      typeLine: "Legendary Creature — Demon Berserker",
+      power: 3,
+      toughness: 3,
+      triggers: [
+        {
+          event: "dies",
+          watch: "any",
+          subjectFilter: { types: ["creature"], attacking: true },
+          effects: [{ kind: "gain_life", playerId: "controller", amount: 1 }],
+          targetRequirements: [],
+        },
+      ],
+    });
+    const bearDef = createCardDefinition({
+      name: "Bear",
+      typeLine: "Creature — Bear",
+      power: 2,
+      toughness: 2,
+    });
+    for (const definition of [watcherDef, bearDef]) {
+      game.definitions[definition.id] = definition;
+    }
+    const put = (definitionId: string, ownerId: string) => {
+      const card = createCardInstance({ definitionId, ownerId, zone: "battlefield" });
+      game.cards[card.id] = card;
+      game.players.find((entry) => entry.id === ownerId)!.zones.battlefield.push(card.id);
+      return card;
+    };
+    put(watcherDef.id, p1.id);
+    const bear = put(bearDef.id, p2.id);
+
+    const firesWith = (attacking: boolean): number => {
+      const cloned = structuredClone(game);
+      cloned.cards[bear.id]!.attacking = attacking;
+      dispatchEventsInPlace(cloned, [{ kind: "dies", cardId: bear.id, controllerId: p2.id }]);
+      return cloned.stack.length;
+    };
+    expect(firesWith(true)).toBe(1);
+    // A creature dying at home is the whole thing this filter excludes.
+    expect(firesWith(false)).toBe(0);
+  });
+});
+

@@ -537,6 +537,9 @@ function subjectMatchesFilter(
   if (filter.tokenOnly && !state.cards[subjectId]?.isToken) {
     return false;
   }
+  if (filter.attacking && state.cards[subjectId]?.attacking !== true) {
+    return false;
+  }
   if (filter.legendary && !traits.supertypes.includes("legendary")) {
     return false;
   }

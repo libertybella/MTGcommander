@@ -4329,6 +4329,13 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
   }
 
   // Muddle the Mixture.
+  if (/^counter target enchantment, instant, or sorcery spell$/i.test(sentence)) {
+    return {
+      targetRequirements: [{ kind: "enchantment_instant_or_sorcery_spell" }],
+      effects: [{ kind: "counter_spell", target: { type: "chosen", index: 0 } }],
+    };
+  }
+
   if (/^counter target instant or sorcery spell$/i.test(sentence)) {
     return {
       targetRequirements: [{ kind: "instant_or_sorcery_spell" }],
@@ -7784,6 +7791,11 @@ function parseTriggerSubjectPhrase(
       rest = rest.replace(/^modified\s+/i, "");
       continue;
     }
+    if (/^attacking\s+\S/i.test(rest)) {
+      filter.attacking = true;
+      rest = rest.replace(/^attacking\s+/i, "");
+      continue;
+    }
     break;
   }
   // A bare "token" / "permanent" head names no card type at all.
@@ -10973,6 +10985,10 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
         filter = { types: [what] };
       } else if (what === "instant and sorcery") {
         filter = { typesAny: ["instant", "sorcery"] };
+      } else if (/^[A-Za-z]+ and [A-Za-z]+$/.test(what) && /^[A-Z]/.test(discount[1].trim())) {
+        // Danitha Capashen: "Aura and Equipment spells" — two capitalised
+        // subtypes, either of which qualifies.
+        filter = { subtypesAny: what.split(" and ") };
       } else if (/^[a-z]+$/.test(what) && /^[A-Z]/.test(discount[1].trim())) {
         // A single capitalized word that is not a card type: a tribal
         // discount ("Dragon spells you cast cost {1} less").

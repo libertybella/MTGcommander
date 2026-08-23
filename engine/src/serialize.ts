@@ -2276,6 +2276,7 @@ function parseTargetRequirement(value: unknown, label: string): TargetRequiremen
     kind !== "creature_spell" &&
     kind !== "noncreature_spell" &&
     kind !== "instant_or_sorcery_spell" &&
+    kind !== "enchantment_instant_or_sorcery_spell" &&
     kind !== "instant_spell" &&
     kind !== "spell_or_permanent" &&
     kind !== "land" &&
@@ -3716,6 +3717,7 @@ function parseTriggers(value: unknown, label: string): CardTrigger[] {
               ...(entry.subjectFilter.colorless === true ? { colorless: true } : {}),
               ...(entry.subjectFilter.historic === true ? { historic: true } : {}),
               ...(entry.subjectFilter.legendary === true ? { legendary: true } : {}),
+              ...(entry.subjectFilter.attacking === true ? { attacking: true } : {}),
               ...(entry.subjectFilter.modified === true ? { modified: true } : {}),
               ...(entry.subjectFilter.minManaValue === undefined
                 ? {}
