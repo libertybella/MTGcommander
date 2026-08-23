@@ -2137,7 +2137,8 @@ function parseCardFilter(value: unknown, label: string): CardFilter {
     filter !== "equipment" &&
     filter !== "basic_land" &&
     filter !== "token_creature" &&
-    filter !== "planeswalker"
+    filter !== "planeswalker" &&
+    filter !== "artifact"
   ) {
     throw new Error(`Invalid ${label}`);
   }
@@ -2160,6 +2161,7 @@ function parseChooseCardSources(value: unknown, label: string): ChooseCardSource
       playerId: parsePlayerSelector(entry.playerId, `${label}[${index}].playerId`),
       zone,
       filter: parseCardFilter(entry.filter, `${label}[${index}].filter`),
+      ...(entry.excludeSelf === true ? { excludeSelf: true } : {}),
     };
   });
 }
@@ -2188,6 +2190,9 @@ function parseBoundChooseSources(
       playerId,
       zone,
       filter: parseCardFilter(entry.filter, `${label}[${index}].filter`),
+      ...(typeof entry.excludeCardId === "string"
+        ? { excludeCardId: entry.excludeCardId }
+        : {}),
     };
   });
 }

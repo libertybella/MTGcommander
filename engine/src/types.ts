@@ -766,7 +766,9 @@ export type CardFilter =
   /** Sheoldred's Edict: "a creature token of their choice". */
   | "token_creature"
   /** Sheoldred's Edict: "a planeswalker of their choice". */
-  | "planeswalker";
+  | "planeswalker"
+  /** Jarad-class: "sacrifice an artifact". */
+  | "artifact";
 
 /** What a Clone-style permanent may enter as a copy of. */
 export type EnterAsCopyScope =
@@ -789,12 +791,18 @@ export type ChooseCardSource = {
   playerId: PlayerSelector;
   zone: "hand" | "graveyard" | "battlefield";
   filter: CardFilter;
+  /** Korvold: "sacrifice ANOTHER permanent" — the source may not choose
+   * itself. Bound to a concrete id when the effect binds, because the
+   * definition does not know which instance it will be. */
+  excludeSelf?: boolean;
 };
 
 export type BoundChooseCardSource = {
   playerId: PlayerId;
   zone: "hand" | "graveyard" | "battlefield";
   filter: CardFilter;
+  /** The bound half of `ChooseCardSource.excludeSelf`. */
+  excludeCardId?: CardInstanceId;
 };
 
 export type TokenTemplate = {

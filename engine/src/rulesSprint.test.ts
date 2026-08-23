@@ -11,6 +11,7 @@ import {
   applyResolveOrderTriggers,
   isChosenTargetLegal,
   legalChoicesForRequirement,
+  legalIdsForChooseSources,
   moveCard,
   validateChosenTargets,
   putSpellOnStack,
@@ -29715,5 +29716,165 @@ describe("wave 226: a maximum hand size that is a number", () => {
       amount: 20,
     });
     expect(maxHandSizeOf(round, p1.id)).toBe(15);
+  });
+});
+
+describe("wave 227: sacrificing a permanent of your own choice", () => {
+  const compile = (name: string, typeLine: string, oracleText: string, power?: string, toughness?: string) =>
+    compileOracleCard({
+      oracleId: name,
+      name,
+      manaCost: "{2}{B}{R}{G}",
+      typeLine,
+      power: power ?? null,
+      toughness: toughness ?? null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  const put = (game: GameState, definitionId: string, ownerId: string) => {
+    const card = createCardInstance({ definitionId, ownerId, zone: "battlefield" });
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === ownerId)!.zones.battlefield.push(card.id);
+    return card;
+  };
+
+  it("reads the controller as the chooser, mirroring the edict", () => {
+    const korvold = compile(
+      "Korvold, Fae-Cursed King",
+      "Legendary Creature — Dragon Noble",
+      "Flying\nWhenever Korvold enters or attacks, sacrifice another permanent.\nWhenever you sacrifice a permanent, put a +1/+1 counter on Korvold and draw a card.",
+      "4",
+      "4",
+    );
+    expect(korvold.notes).toEqual([]);
+    expect(korvold.definition.triggers[0]?.effects[0]).toMatchObject({
+      kind: "choose_card",
+      chooserId: "controller",
+      sources: [{ playerId: "controller", zone: "battlefield", filter: "any", excludeSelf: true }],
+      thenEffects: [{ kind: "sacrifice", cardId: "chosen_card" }],
+    });
+
+    // Without "another" there is nothing to exclude, and the flag must be
+    // absent rather than false — a card that may eat itself is a different
+    // card from one that may not.
+    const plain = compile("Plain Sac", "Enchantment", "When Plain Sac enters, sacrifice a creature.");
+    expect(plain.notes).toEqual([]);
+    expect(plain.definition.triggers[0]?.effects[0]).toMatchObject({
+      kind: "choose_card",
+      sources: [{ filter: "creature" }],
+    });
+    expect(
+      (plain.definition.triggers[0]?.effects[0] as
+        | { sources: { excludeSelf?: boolean }[] }
+        | undefined)?.sources[0]?.excludeSelf,
+    ).toBeUndefined();
+  });
+
+  it("refuses to offer the source itself when the text says another", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const korvold = createCardDefinition({
+      name: "Korvold, Fae-Cursed King",
+      typeLine: "Legendary Creature — Dragon Noble",
+      power: 4,
+      toughness: 4,
+    });
+    const bear = createCardDefinition({
+      name: "Bear",
+      typeLine: "Creature — Bear",
+      power: 2,
+      toughness: 2,
+    });
+    for (const definition of [korvold, bear]) {
+      game.definitions[definition.id] = definition;
+    }
+    const dragon = put(game, korvold.id, p1.id);
+    const other = put(game, bear.id, p1.id);
+
+    // The whole point of "another": Korvold must not be able to eat itself,
+    // and everything else the player controls must still be on offer.
+    const offered = legalIdsForChooseSources(game, [
+      { playerId: p1.id, zone: "battlefield", filter: "any", excludeCardId: dragon.id },
+    ]);
+    expect(offered).toContain(other.id);
+    expect(offered).not.toContain(dragon.id);
+
+    // Drop the exclusion and the source is a legal choice again, so the
+    // filtering is doing the work rather than some other accident.
+    const unrestricted = legalIdsForChooseSources(game, [
+      { playerId: p1.id, zone: "battlefield", filter: "any" },
+    ]);
+    expect(unrestricted).toContain(dragon.id);
+  });
+
+  it("tells an artifact from a creature", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const relic = createCardDefinition({ name: "Relic", typeLine: "Artifact" });
+    const bear = createCardDefinition({
+      name: "Bear",
+      typeLine: "Creature — Bear",
+      power: 2,
+      toughness: 2,
+    });
+    for (const definition of [relic, bear]) {
+      game.definitions[definition.id] = definition;
+    }
+    const artifact = put(game, relic.id, p1.id);
+    const creature = put(game, bear.id, p1.id);
+
+    const offered = legalIdsForChooseSources(game, [
+      { playerId: p1.id, zone: "battlefield", filter: "artifact" },
+    ]);
+    expect(offered).toEqual([artifact.id]);
+    // A new filter that matched everything would pass the line above and be
+    // wrong; the creature has to be excluded for the filter to mean anything.
+    expect(offered).not.toContain(creature.id);
+  });
+
+  it("binds the exclusion to the instance, and round trips the definition", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const definition = createCardDefinition({
+      name: "Self Eater",
+      typeLine: "Enchantment",
+      triggers: [
+        {
+          event: "enter_battlefield",
+          effects: [
+            {
+              kind: "choose_card",
+              chooserId: "controller",
+              sources: [
+                { playerId: "controller", zone: "battlefield", filter: "any", excludeSelf: true },
+              ],
+              thenEffects: [{ kind: "sacrifice", cardId: "chosen_card" }],
+            },
+          ],
+          targetRequirements: [],
+        },
+      ],
+    });
+    game.definitions[definition.id] = definition;
+    const source = put(game, definition.id, p1.id);
+
+    // The definition cannot know which instance it will be, so the flag is
+    // what is stored and a concrete id is what binding produces.
+    const bound = bindCardEffects(game, definition.triggers[0]!.effects, {
+      controllerId: p1.id,
+      sourceId: source.id,
+    });
+    expect((bound[0] as { sources: { excludeCardId?: string }[] }).sources[0]?.excludeCardId).toBe(
+      source.id,
+    );
+
+    const round = parseGameState(serializeGameState(game));
+    expect(
+      (round.definitions[definition.id]?.triggers[0]?.effects[0] as
+        | { sources: { excludeSelf?: boolean }[] }
+        | undefined)?.sources[0]?.excludeSelf,
+    ).toBe(true);
   });
 });

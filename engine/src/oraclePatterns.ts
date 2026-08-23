@@ -6214,6 +6214,47 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     }
   }
 
+  // "Sacrifice another permanent" (Korvold), "sacrifice a creature". The
+  // mirror of the edict above, with the controller as the chooser: the
+  // `choose_card` machinery is identical, so this is a second reader of it
+  // rather than a second way to sacrifice.
+  //
+  // "Another" excludes the source, which only means anything once there is
+  // an instance — the exclusion is bound, not baked into the definition.
+  match = sentence.match(
+    /^(?:You )?[Ss]acrifice (a|an|another) (permanent|creature|artifact|land)$/i,
+  );
+  if (match?.[1] && match[2]) {
+    const noun = match[2].toLowerCase();
+    return {
+      targetRequirements: [],
+      effects: [
+        {
+          kind: "choose_card",
+          chooserId: "controller",
+          sources: [
+            {
+              playerId: "controller",
+              zone: "battlefield",
+              // A permanent is anything on the battlefield, which is what
+              // "any" already means for this zone.
+              filter:
+                noun === "permanent"
+                  ? ("any" as const)
+                  : noun === "creature"
+                    ? ("creature" as const)
+                    : noun === "artifact"
+                      ? ("artifact" as const)
+                      : ("land" as const),
+              ...(/^another$/i.test(match[1]) ? { excludeSelf: true } : {}),
+            },
+          ],
+          thenEffects: [{ kind: "sacrifice", cardId: "chosen_card" }],
+        },
+      ],
+    };
+  }
+
   // Zulaport Cutthroat: a flat drain — the gain does not scale per opponent.
   match = sentence.match(
     /^each opponent loses (\d+|one|two) life and you gain (\d+|one|two) life$/i,

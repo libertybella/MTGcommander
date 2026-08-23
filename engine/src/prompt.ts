@@ -414,6 +414,9 @@ function cardMatchesFilter(
   if (filter === "planeswalker") {
     return types.includes("planeswalker");
   }
+  if (filter === "artifact") {
+    return types.includes("artifact");
+  }
   if (filter === "equipment") {
     return cardMatchesSubtype(state, cardId, "equipment");
   }
@@ -437,7 +440,11 @@ export function legalIdsForChooseSources(
   for (const source of sources) {
     const player = state.players.find((entry) => entry.id === source.playerId);
     for (const cardId of player?.zones[source.zone] ?? []) {
-      if (seen.has(cardId) || !cardMatchesFilter(state, cardId, source.filter)) {
+      if (
+        seen.has(cardId) ||
+        cardId === source.excludeCardId ||
+        !cardMatchesFilter(state, cardId, source.filter)
+      ) {
         continue;
       }
       seen.add(cardId);

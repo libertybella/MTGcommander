@@ -648,6 +648,25 @@ Documented limits:
   (Cryptolith Rite's path), not `grant_activated` — a mana ability must never
   use the stack.
 
+### Sacrificing a permanent of your own choice (wave 227)
+
+"Each opponent sacrifices a creature" compiled; "YOU sacrifice another
+permanent" did not. The `choose_card` machinery was already there — a
+chooser, sources with a zone and a filter, and `thenEffects` that
+sacrifice what was picked — so this is a second reader of it with the
+controller as chooser, not a second way to sacrifice.
+
+- **`ChooseCardSource.excludeSelf`** reads the word "another". It is a
+  flag in the definition and a concrete `excludeCardId` once bound,
+  because the definition cannot know which instance it will be. Without a
+  source there is nothing to be other than, so the exclusion is simply
+  absent rather than guessed.
+- **`CardFilter` gained `artifact`**, which the sacrifice grammar needs
+  and which "nonland" was never a substitute for.
+
+"Permanent" maps to the `any` filter on the battlefield, which is what a
+permanent already means in that zone.
+
 ### Maximum hand size as a number (wave 226)
 
 `maxHandSizeOf` returned 7 or null and nothing in between, because the

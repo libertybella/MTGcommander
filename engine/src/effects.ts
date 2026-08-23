@@ -619,7 +619,20 @@ export function bindCardEffect(
       }
       const sources = effect.sources.flatMap((source) => {
         const playerId = bindPlayerSelector(state, source.playerId, context);
-        return playerId ? [{ playerId, zone: source.zone, filter: source.filter }] : [];
+        return playerId
+          ? [
+              {
+                playerId,
+                zone: source.zone,
+                filter: source.filter,
+                // "Another" is only meaningful once there is an instance to
+                // exclude; without a source there is nothing to be other than.
+                ...(source.excludeSelf && context.sourceId
+                  ? { excludeCardId: context.sourceId }
+                  : {}),
+              },
+            ]
+          : [];
       });
       if (sources.length === 0) {
         return null;
