@@ -435,6 +435,7 @@ export function parseGameState(json: string): GameState {
       ...(card.mustAttackThisTurn === true ? { mustAttackThisTurn: true } : {}),
       faceDown: card.faceDown === true,
       ...(card.phasedOut === true ? { phasedOut: true } : {}),
+      ...(card.enteredFromCast === true ? { enteredFromCast: true } : {}),
       chosenCreatureType:
         card.chosenCreatureType === undefined || card.chosenCreatureType === null
           ? null

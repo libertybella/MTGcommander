@@ -166,6 +166,11 @@ export function triggerConditionHolds(
   if (condition.kind === "attacked_this_turn") {
     return state.players.find((entry) => entry.id === controllerId)?.attackedThisTurn === true;
   }
+  if (condition.kind === "entered_from_cast") {
+    // Read on the source, and an absent source reads FALSE: a condition
+    // that cannot see the permanent has not seen you cast it.
+    return watcherId !== undefined && state.cards[watcherId]?.enteredFromCast === true;
+  }
   if (condition.kind === "drew_cards_this_turn") {
     return (state.drawsByPlayerThisTurn?.[controllerId] ?? 0) > condition.moreThan;
   }

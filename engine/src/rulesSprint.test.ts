@@ -33744,3 +33744,142 @@ describe("wave 259: creatures don't untap", () => {
     expect(round.definitions[definition.id]?.creaturesDontUntap).toBe(true);
   });
 });
+
+describe("wave 260: if you cast it", () => {
+  it("compiles the condition through the shared vocabulary", () => {
+    const zacama = compileOracleCard({
+      oracleId: "Zacama, Primal Calamity",
+      name: "Zacama, Primal Calamity",
+      manaCost: "{6}{R}{G}{W}",
+      typeLine: "Legendary Creature — Elder Dinosaur",
+      power: "9",
+      toughness: "9",
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "Vigilance, reach, trample\nWhen Zacama, Primal Calamity enters, if you cast it, untap all lands you control.\n{2}{R}: Zacama deals 2 damage to target creature.\n{1}{G}: Destroy target artifact or enchantment.\n{2}{W}: You gain 4 life.",
+    });
+    expect(zacama.notes).toEqual([]);
+    const entered = zacama.definition.triggers.find(
+      (trigger) => trigger.event === "enter_battlefield",
+    );
+    expect(entered?.condition).toEqual({ kind: "entered_from_cast" });
+  });
+
+  it("keeps reading conditions the ETB head already knew", () => {
+    // The general peel runs AFTER the two hardcoded ones, which name
+    // conditions the shared vocabulary does not carry. Those must be
+    // untouched.
+    const uprising = compileOracleCard({
+      oracleId: "Uprising",
+      name: "Uprising",
+      manaCost: "{2}{G}",
+      typeLine: "Enchantment",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "When Uprising enters, if you control a creature with power 4 or greater, draw a card.",
+    });
+    expect(uprising.notes).toEqual([]);
+    expect(uprising.definition.triggers[0]?.condition).toEqual({
+      kind: "controls_power_at_least",
+      power: 4,
+    });
+  });
+
+  it("is true when cast and FALSE when reanimated", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const dino = createCardDefinition({
+      name: "Zacama",
+      typeLine: "Legendary Creature — Elder Dinosaur",
+      manaCost: "{6}{R}{G}{W}",
+      power: 9,
+      toughness: 9,
+    });
+    game.definitions[dino.id] = dino;
+
+    // Put onto the battlefield WITHOUT casting: reanimation, blink, a
+    // cheat-into-play. This is the case the printed condition exists to
+    // exclude, and a flag stamped on every entry would get it wrong.
+    const reanimated = createCardInstance({
+      definitionId: dino.id,
+      ownerId: p1.id,
+      zone: "graveyard",
+    });
+    game.cards[reanimated.id] = reanimated;
+    p1.zones.graveyard.push(reanimated.id);
+    const returned = moveCard(game, reanimated.id, "battlefield");
+    expect(returned.cards[reanimated.id]?.enteredFromCast).toBeFalsy();
+    expect(
+      triggerConditionHolds(
+        returned,
+        p1.id,
+        { kind: "entered_from_cast" },
+        undefined,
+        reanimated.id,
+      ),
+    ).toBe(false);
+
+    // The same card arriving through the move that carries the cast flag.
+    const cast = moveCard(returned, reanimated.id, "graveyard");
+    const recast = moveCard(cast, reanimated.id, "battlefield", { fromCast: true });
+    expect(recast.cards[reanimated.id]?.enteredFromCast).toBe(true);
+    expect(
+      triggerConditionHolds(recast, p1.id, { kind: "entered_from_cast" }, undefined, reanimated.id),
+    ).toBe(true);
+  });
+
+  it("does not survive a trip through the graveyard", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const dino = createCardDefinition({
+      name: "Zacama",
+      typeLine: "Legendary Creature — Elder Dinosaur",
+      power: 9,
+      toughness: 9,
+    });
+    game.definitions[dino.id] = dino;
+    const card = createCardInstance({
+      definitionId: dino.id,
+      ownerId: p1.id,
+      zone: "hand",
+    });
+    game.cards[card.id] = card;
+    p1.zones.hand.push(card.id);
+
+    const cast = moveCard(game, card.id, "battlefield", { fromCast: true });
+    expect(cast.cards[card.id]?.enteredFromCast).toBe(true);
+    const died = moveCard(cast, card.id, "graveyard");
+    // Cleared on EVERY entry, so the second arrival starts false and only a
+    // real cast sets it again. A flag that stuck would make every later
+    // reanimation read as a cast.
+    const back = moveCard(died, card.id, "battlefield");
+    expect(back.cards[card.id]?.enteredFromCast).toBeFalsy();
+  });
+
+  it("round trips", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const dino = createCardDefinition({
+      name: "Zacama",
+      typeLine: "Legendary Creature — Elder Dinosaur",
+      power: 9,
+      toughness: 9,
+    });
+    game.definitions[dino.id] = dino;
+    const card = createCardInstance({
+      definitionId: dino.id,
+      ownerId: p1.id,
+      zone: "battlefield",
+    });
+    card.enteredFromCast = true;
+    game.cards[card.id] = card;
+    p1.zones.battlefield.push(card.id);
+
+    const round = parseGameState(serializeGameState(game));
+    expect(round.cards[card.id]?.enteredFromCast).toBe(true);
+  });
+});

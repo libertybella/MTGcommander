@@ -464,6 +464,16 @@ export type CardInstance = {
    * object when it comes back. It phases in at the start of its
    * controller's untap step.
    */
+  /**
+   * Zacama / The One Ring: "When this enters, IF YOU CAST IT, ...". True only
+   * for a permanent that arrived by resolving as a spell — a reanimated or
+   * blinked-in copy of the same card reads false, which is exactly the
+   * distinction the printed condition draws.
+   *
+   * Cleared on EVERY battlefield entry and set again by the one entry that
+   * came off the stack, so it cannot survive a trip through the graveyard.
+   */
+  enteredFromCast?: boolean;
   phasedOut?: boolean;
   /** 0 means not a Class. Class enchantments enter at 1. */
   classLevel: number;
@@ -2445,6 +2455,8 @@ export type TriggerCondition =
   | { kind: "attacked_this_turn" }
   /** "if you've drawn more than one card this turn". */
   | { kind: "drew_cards_this_turn"; moreThan: number }
+  /** Zacama: "When this enters, IF YOU CAST IT, …". Read on the SOURCE. */
+  | { kind: "entered_from_cast" }
   /** The Gaffer: "if you gained 3 or more life this turn". Counts life
    * actually gained, so a doubler's extra half counts — CR 118.3 makes the
    * replaced amount the amount gained. */

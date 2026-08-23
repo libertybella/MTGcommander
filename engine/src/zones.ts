@@ -67,6 +67,13 @@ export type MoveCardOptions = {
    * one batch (CR 603.10a look-back — the Blood Artist ruling).
    */
   collectDies?: EngineEvent[];
+  /**
+   * The permanent is arriving by resolving as a SPELL ("if you cast it").
+   * Carried through the move rather than stamped afterwards, because the
+   * enter-the-battlefield triggers are queued inside this call and an
+   * intervening `if` is checked as the trigger goes on the stack.
+   */
+  fromCast?: boolean;
 };
 
 function playerHasCard(player: PlayerState, cardId: CardInstanceId): keyof PlayerZones | null {
@@ -176,7 +183,7 @@ export function enterOwnerZoneInPlace(
   const leftCounters = fromZone === "battlefield" ? card.counters["p1p1"] ?? 0 : 0;
   insertIntoZone(owner, destination, cardId, options.libraryPosition ?? "top");
   card.zone = destination;
-  applyZoneChangeFlags(state, card, destination);
+  applyZoneChangeFlags(state, card, destination, options.fromCast);
   state.log.push({ kind: "zone_change", cardId, from: fromZone, to: destination });
   if (destination === "battlefield") {
     queueEnterReplacementChoicesInPlace(state, cardId);
@@ -269,12 +276,19 @@ function applyZoneChangeFlags(
   state: GameState,
   card: CardInstance,
   toZone: keyof PlayerZones,
+  fromCast?: boolean,
 ): void {
   card.attacking = false;
   card.blockingAttackerId = null;
   if (toZone === "battlefield") {
     card.summoningSick = true;
     card.damageMarked = 0;
+    // Cleared on every entry; the caster's entry sets it again below. A
+    // permanent that died and came back is not one you cast.
+    delete card.enteredFromCast;
+    if (fromCast) {
+      card.enteredFromCast = true;
+    }
     card.tapped = wouldEnterTapped(state, card.id);
     card.timestamp = state.nextTimestamp;
     state.nextTimestamp += 1;
@@ -408,7 +422,7 @@ export function moveCardInPlace(
   removeFromZone(occupant, located.zone, cardId);
   insertIntoZone(owner, destination, cardId, options.libraryPosition ?? "top");
   card.zone = destination;
-  applyZoneChangeFlags(state, card, destination);
+  applyZoneChangeFlags(state, card, destination, options.fromCast);
   state.log.push({ kind: "zone_change", cardId, from: located.zone, to: destination });
   if (destination === "battlefield") {
     queueEnterReplacementChoicesInPlace(state, cardId);

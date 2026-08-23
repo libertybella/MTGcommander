@@ -870,6 +870,22 @@ more questions it can now ask:
   (Bennie Bracks). Reads the existing per-player `createdTokenThisTurn`
   list, and asks whether the CONTROLLER is in it — an opponent's Treasure
   must not satisfy it.
+- **`enteredFromCast`** — "When this enters, IF YOU CAST IT" (Zacama; The
+  One Ring wants it too and is still blocked elsewhere). True only for a
+  permanent that arrived by resolving as a SPELL — reanimation and blink do
+  not come through the stack as spells, and excluding them is the whole
+  point of the printed condition.
+
+  The flag rides the zone move as an option rather than being stamped after
+  it, because the enter-the-battlefield triggers are queued INSIDE that call
+  and an intervening `if` is checked as the trigger goes on the stack. It is
+  cleared on every battlefield entry and set again only by the entry that
+  came off the stack, so it cannot survive a trip through the graveyard.
+
+  The ETB head now takes any condition the shared vocabulary can read, the
+  same peel the combat head got. The two hardcoded peels that predate that
+  vocabulary stay in front of it, and a condition the vocabulary cannot read
+  is left attached to the body rather than dropped.
 - **`creaturesDontUntap`** — "Creatures don't untap during their
   controllers' untap steps" (Intruder Alarm). Global and SYMMETRIC: it
   stops every player's creatures including the Alarm controller's own,

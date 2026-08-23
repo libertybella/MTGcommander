@@ -466,7 +466,15 @@ export function resolveTopOfStack(state: GameState): GameState {
   // ceases to exist instead: its source card belongs to the original spell,
   // which may still be on the stack beneath it (CR 707.10a).
   if (!top.isCopy && next.cards[top.sourceId]?.zone === "stack") {
-    next = enterOwnerZone(next, top.sourceId, destination);
+    // A permanent that arrives HERE arrived by resolving as a spell, which
+    // is what "if you cast it" asks. Reanimation and blink do not come
+    // through the stack as spells, so they never set it. The flag rides the
+    // move rather than being stamped afterwards: the enter triggers are
+    // queued inside this call, and an intervening `if` is checked as the
+    // trigger goes on the stack.
+    next = enterOwnerZone(next, top.sourceId, destination, {
+      ...(destination === "battlefield" ? { fromCast: true } : {}),
+    });
     if (rebounds && next.cards[top.sourceId]?.zone === "exile") {
       const pending = next.pendingRebounds ?? [];
       pending.push({ cardId: top.sourceId, casterId: top.controllerId });

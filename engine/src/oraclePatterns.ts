@@ -1430,6 +1430,9 @@ function parseEffectCondition(phrase: string): TriggerCondition | null {
   if (/^you attacked this turn$/i.test(text)) {
     return { kind: "attacked_this_turn" };
   }
+  if (/^you cast it$/i.test(text)) {
+    return { kind: "entered_from_cast" };
+  }
   const drew = text.match(/^you've drawn more than (\w+) cards? this turn$/i);
   if (drew?.[1]) {
     const moreThan = parseCount(drew[1]);
@@ -12678,6 +12681,24 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
       if (etbLands?.[1]) {
         etbCondition = { kind: "opponent_controls_more_lands" };
         etbRest = etbLands[1].trim();
+      }
+      // Any OTHER intervening "if" the shared condition vocabulary can
+      // read (CR 603.4). The two peels above predate that vocabulary and
+      // name conditions it does not carry, so they stay in front.
+      //
+      // A condition it cannot read is left attached to the body, exactly as
+      // before this peel existed — the same rule the combat head follows.
+      // Dropping one would make the trigger fire unconditionally, which is
+      // a wrong game rather than an uncompiled one.
+      if (!etbCondition) {
+        const general = etbRest.match(/^if (.+?), (?:then )?(.+)$/i);
+        if (general?.[1] && general[2]) {
+          const parsed = parseEffectCondition(general[1].trim());
+          if (parsed) {
+            etbCondition = parsed;
+            etbRest = general[2].trim();
+          }
+        }
       }
       const inner = compileSimpleClause(etbRest);
       if (inner) {
