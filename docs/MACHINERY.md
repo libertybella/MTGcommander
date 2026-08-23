@@ -83,6 +83,29 @@ widened away otherwise). This bit Metalwork Colossus's `xCost` in wave
 4. If it adds a field to `ComputedCard`, initialise it in **both**
    returns of `baseComputed` (the face-down branch is easy to miss).
 
+### … reader of a granted ability
+
+A permanent can hand a triggered or activated ability to a set of other
+permanents (`grant_trigger` / `grant_activated`, both layer 6). Two rules
+follow, and breaking either is silent:
+
+1. **Never read `definition.triggers` or `definition.activated` directly.**
+   Use `triggersOf(state, cardId)` and `activatedOf(state, cardId)` from
+   `characteristicsEngine.ts`. They return printed-then-granted as ONE
+   list, so an index past the printed length names a grant. Inside a loop
+   over the battlefield, pass a `computedCards(state)` map as the third
+   argument — otherwise every call reruns the whole layer engine.
+2. **Anything that goes on the stack snapshots the grant**, via
+   `grantedTriggerSpread` / `grantedActivatedSpread` at the push site. An
+   ability on the stack outlives its source (CR 113.7a); the grant does
+   not. Without the snapshot, destroying the granting permanent in
+   response resolves the ability into nothing — after its cost was paid.
+
+The grant is the AFFECTED permanent's ability: it fires from that
+permanent, "~" in its body is that permanent, and a granted `{T}` taps
+that permanent. Hand and graveyard activations still read the definition
+— only battlefield statics grant.
+
 ### … trigger event
 
 `types.ts` (`TriggerEvent`), `triggers.ts` (dispatch), `serialize.ts`
@@ -139,6 +162,7 @@ a gap there means working machinery downstream never sees the text.
 | Concern | File |
 | --- | --- |
 | CR 613 layers, `ComputedCard`, `dynamicCountOf` | `characteristicsEngine.ts` |
+| What abilities an object HAS (`triggersOf`, `activatedOf`) | `characteristicsEngine.ts` |
 | Binding unbound→bound, applying every effect | `effects.ts` |
 | Target legality and legal-choice enumeration | `targeting.ts` |
 | Trigger dispatch, `subjectMatchesFilter`, `triggerConditionHolds` | `triggers.ts` |

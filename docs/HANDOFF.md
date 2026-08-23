@@ -8,11 +8,18 @@ on-what lives in [CLAIMS.md](CLAIMS.md). This file is the tribal
 knowledge that isn't obvious from those: exact commands, traps, and
 the current state of play. Read all four before writing code.
 
-## State of play (checkpoint-86-one-away-grind, 2026-08-22)
+## State of play (checkpoint-86-one-away-grind, 2026-08-23)
 
 - Branch `comprehensive-plan`, tags through `checkpoint-86-one-away-grind`.
-- 1,169 tests green; top-2,000 compile rate **67.0% (1,347/2,009)**,
-  60-card sample 97% (CI floor now 90). Waves 218–221 land after the tag.
+- 1,180 tests green; top-2,000 compile rate **67.0% (1,347/2,009)**,
+  60-card sample 97% (CI floor now 90). Waves 218–221 and the
+  granted-ability primitive land after the tag.
+- **The granted-ability primitive is DONE** (`grant_trigger` +
+  `grant_activated`, layer 6). It moved the rate by design: a primitive
+  session is judged by what it unblocks. Its reader — the quoted-grant
+  grammar — is the next wave and is claimed as such in `CLAIMS.md`.
+  **Never read `definition.triggers` / `definition.activated` again;**
+  use `triggersOf` / `activatedOf`, and see the MACHINERY.md recipe.
 - **The plan, agreed 2026-08-22 (Liberty + a Fable 5 review).** The wave
   grind alone tops out: a growing share of what is left is blocked on
   engine primitives that do not exist, so yield keeps falling. The fix is
@@ -20,9 +27,11 @@ the current state of play. Read all four before writing code.
   1. **Primitive sessions, one primitive each, never mixed with wave
      grinding.** They end with the primitive, its tests, and maybe two
      demonstration cards — judged by what they unblock, not by the rate
-     they move. Order by blast radius, smallest first: **granted-trigger
-     statics** (contained: layer engine + trigger collection), then **a
-     real "destroy" event** (widest change since tagged mana).
+     they move. Order by blast radius, smallest first: granted-ability
+     statics (**done 2026-08-23**), then **a real "destroy" event**
+     (widest change since tagged mana) — but take the quoted-grant
+     grammar wave in between, so the primitive that just landed is
+     actually read by something.
   2. **Wave sessions harvest what the primitive unblocked**, five to
      eight waves, then a PLANNED stop at a checkpoint — do not run to
      context exhaustion, the last waves get cramped and the handoff
@@ -32,8 +41,10 @@ the current state of play. Read all four before writing code.
      compiler wave touches `oraclePatterns.ts`, `types.ts` and
      `serialize.ts`, so two wave-grinders at once will collide. One
      grinder plus one primitive session is safe.
-  4. **Use read-only subagents for the "where does X live" phase** so the
-     search stays out of the main context.
+  4. Read-only subagents for the "where does X live" phase were
+     PROPOSED and are **not authorised** — the project instruction
+     stands: do not call the Agent tool unless Liberty asks.
+     `MACHINERY.md` is the substitute, and it is working.
 - **`docs/MACHINERY.md` is the location map** — the per-kind checklists
   ("I am adding a new effect / target kind / counted noun"), the grammar
   inventory, which engine file owns what, and the traps. Read it before
@@ -121,8 +132,12 @@ the current state of play. Read all four before writing code.
   Snake Umbra) has nothing to hook: this engine has no "destroy" distinct
   from a `move_card` to the graveyard, so a destruction replacement would
   also catch sacrifices and bounces. Blade of Selves GRANTS myriad rather
-  than having it, which needs the granted-trigger statics Kaldra is also
-  waiting on. Encore needs a token that must attack one NAMED player —
+  than having it — the granted-ability primitive now exists for it, and
+  what is still missing is the grammar that reads the quoted body.
+  (Kaldra Compleat turned out NOT to be waiting on that primitive: its
+  miss is a printed `watch: "attached"` trigger head. **Check what a
+  card's miss actually is before listing it under a blocker.**)
+  Encore needs a token that must attack one NAMED player —
   wave 207 taught the engine "must attack" and "may not attack X", but
   not "must attack X".
 - **Waves 195–200 flipped 5, 3, 5, 10, 3, 3. The +10 was the cheapest

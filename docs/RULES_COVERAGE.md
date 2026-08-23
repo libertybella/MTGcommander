@@ -612,6 +612,42 @@ What the engine implements and what it intentionally does not. Tests are tagged 
   so "Sacrifice two artifacts" typechecked through an `as` cast and would have
   found no fodder at the table. Every card-type plural folds now.
 
+### Granted abilities (the layer-6 primitive)
+
+A static ability can hand a triggered or activated ability to a whole set of
+other permanents: `grant_trigger` and `grant_activated` are layer-6 continuous
+effects, and the granted ability lands on `ComputedCard.grantedTriggers` /
+`grantedActivated`. Before this, the only way to express "equipped creature
+has &lt;ability&gt;" was wave 170's trick of rewriting a quoted trigger onto the
+Equipment's own `watch: "attached"` — which works only for an ability the
+attachment itself carries, never for a grant to a set.
+
+Three rules make it behave:
+
+- **The ability belongs to the affected permanent**, not the granting source.
+  It fires from that permanent, "~" in its body is that permanent, its
+  controller is that permanent's controller, and a granted `{T}` cost taps
+  that permanent.
+- **One address space.** `triggersOf` and `activatedOf` return the printed
+  list followed by the granted one, so an index past the printed length names
+  a grant and no candidate, stack object or prompt needs a discriminator.
+  Every site that resolves an index reads those helpers.
+- **The stack snapshots the grant.** An ability on the stack exists
+  independently of its source (CR 113.7a); a grant does not. Destroying the
+  granting permanent in response would otherwise leave the ability resolving
+  to nothing — after its cost was already paid.
+
+Documented limits:
+
+- A granted **dies**-trigger does not fire. A dying object's own printed
+  dies-triggers look back from the graveyard (CR 603.10a), but the grant is
+  read from the live board, where the creature no longer is. Real last-known
+  information would keep it; until it exists the compiler must refuse that
+  shape rather than compile a dead one.
+- A granted ability that only produces mana belongs in `grant_mana_ability`
+  (Cryptolith Rite's path), not `grant_activated` — a mana ability must never
+  use the stack.
+
 ## The card pipeline (Stage 6)
 
 - Real cards compile from Scryfall oracle text by shared sentence patterns; a hand-authored registry (`server/src/cardOverrides.ts`, data in the same schema) beats the compiler for the long tail. Never a named-card code path.
