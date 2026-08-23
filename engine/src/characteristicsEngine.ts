@@ -14,6 +14,7 @@ import type {
   Keyword,
   ManaAbility,
   PlayerId,
+  ProtectionFrom,
   StaticAbility,
 } from "./types";
 
@@ -62,7 +63,7 @@ export type ComputedCard = {
   cantBlock: boolean;
   cantBeBlocked: boolean;
   /** Printed protection plus layer-6 grants (Akroma's Will). */
-  protectionFrom: Color[];
+  protectionFrom: ProtectionFrom;
   /** Printed ward plus layer-6 grants (Lavaspur Boots); 0 means none. */
   ward: number;
   /**
@@ -104,6 +105,27 @@ const LAYER_OF: Record<ContinuousEffectData["kind"], number> = {
   modify_pt: 7.3,
 };
 
+/**
+ * Union two protection shapes. Protection abilities do not stack in any way
+ * that matters here — a source stopped by either is stopped — so merging is
+ * a union per field rather than a list of separate abilities.
+ */
+export function mergeProtection(a: ProtectionFrom, b: ProtectionFrom): ProtectionFrom {
+  const union = (left?: string[], right?: string[]) =>
+    left || right ? [...new Set([...(left ?? []), ...(right ?? [])])] : undefined;
+  const colors = union(a.colors, b.colors) as Color[] | undefined;
+  const types = union(a.types, b.types);
+  const subtypes = union(a.subtypes, b.subtypes);
+  return {
+    ...(colors && colors.length > 0 ? { colors } : {}),
+    ...(types && types.length > 0 ? { types } : {}),
+    ...(subtypes && subtypes.length > 0 ? { subtypes } : {}),
+    ...(a.multicolored || b.multicolored ? { multicolored: true } : {}),
+    ...(a.colorless || b.colorless ? { colorless: true } : {}),
+    ...(a.everything || b.everything ? { everything: true } : {}),
+  };
+}
+
 function baseComputed(state: GameState, card: CardInstance): ComputedCard {
   // A face-down permanent is a 2/2 colorless creature with no name, types,
   // or abilities (CR 708.2). Its printed card is hidden information.
@@ -127,7 +149,7 @@ function baseComputed(state: GameState, card: CardInstance): ComputedCard {
       cantAttack: false,
       cantBlock: false,
       cantBeBlocked: false,
-      protectionFrom: [],
+      protectionFrom: {},
       ward: 0,
       goadedBy: [...(card.goadedBy ?? [])],
     };
@@ -192,7 +214,7 @@ function baseComputed(state: GameState, card: CardInstance): ComputedCard {
     cantAttack: false,
     cantBlock: false,
     cantBeBlocked: false,
-    protectionFrom: [...(definition?.protectionFrom ?? [])],
+    protectionFrom: { ...(definition?.protectionFrom ?? {}) },
     ward: definition?.ward ?? 0,
     // The instance's own record is the base; statics add to it in layer 6.
     goadedBy: [...(card.goadedBy ?? [])],
@@ -799,11 +821,10 @@ function applyInstance(
         }
         break;
       case "grant_protection":
-        for (const color of effect.colors) {
-          if (!computed.protectionFrom.includes(color)) {
-            computed.protectionFrom.push(color);
-          }
-        }
+        // Two protection abilities merge into one shape rather than stacking
+        // as separate ones — every field ORs, so the merge cannot lose a
+        // quality the way a last-writer-wins assignment would.
+        computed.protectionFrom = mergeProtection(computed.protectionFrom, effect.from);
         break;
       case "grant_ward":
         // Highest wins rather than stacking: CR 702.21c would have each ward
@@ -845,7 +866,7 @@ function applyInstance(
         computed.grantedTriggers = [];
         computed.grantedActivated = [];
         computed.allCreatureTypes = false;
-        computed.protectionFrom = [];
+        computed.protectionFrom = {};
         computed.ward = 0;
         break;
       case "restrict": {

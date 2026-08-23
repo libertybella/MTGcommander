@@ -1,7 +1,7 @@
 import { characteristicsOf, isCommander, isCreature, isPlaneswalker } from "./cardTypes";
 import { cardMatchesSubtype } from "./characteristicsEngine";
 import { creaturePower } from "./derived";
-import { hasKeyword, protectionColorsOf } from "./keywords";
+import { hasKeyword, protectedFromSource } from "./keywords";
 import { isLiving, livingPlayers } from "./players";
 import type {
   CardInstanceId,
@@ -22,6 +22,7 @@ function isLegalCreatureTarget(
   cardId: string,
   casterId?: PlayerId,
   sourceColors?: Color[],
+  sourceId?: CardInstanceId | null,
 ): boolean {
   const card = state.cards[cardId];
   if (!card || card.zone !== "battlefield" || !isCreature(state, cardId)) {
@@ -38,11 +39,8 @@ function isLegalCreatureTarget(
   ) {
     return false;
   }
-  if (sourceColors && sourceColors.length > 0) {
-    const protection = protectionColorsOf(state, cardId);
-    if (protection.some((color) => sourceColors.includes(color))) {
-      return false;
-    }
+  if (protectedFromSource(state, cardId, sourceId ?? null, sourceColors)) {
+    return false;
   }
   return true;
 }
@@ -245,7 +243,7 @@ export function isChosenTargetLegal(
   if (requirement.kind === "creature") {
     return (
       target.type === "creature" &&
-      isLegalCreatureTarget(state, target.cardId, casterId, sourceColors) &&
+      isLegalCreatureTarget(state, target.cardId, casterId, sourceColors, sourceId) &&
       !violatesColorExclusion(state, target.cardId, requirement) &&
       !violatesControlFilter(state, target.cardId, requirement, casterId) &&
       !violatesManaValueFilter(state, target.cardId, requirement) &&
@@ -257,7 +255,7 @@ export function isChosenTargetLegal(
   if (requirement.kind === "own_creature") {
     return (
       target.type === "creature" &&
-      isLegalCreatureTarget(state, target.cardId, casterId, sourceColors) &&
+      isLegalCreatureTarget(state, target.cardId, casterId, sourceColors, sourceId) &&
       state.cards[target.cardId]?.controllerId === casterId &&
       // "Equip legendary creature" (Excalibur).
       !violatesCharacteristicFilter(state, target.cardId, requirement)
@@ -292,18 +290,15 @@ export function isChosenTargetLegal(
     ) {
       return false;
     }
-    if (sourceColors && sourceColors.length > 0) {
-      const protection = protectionColorsOf(state, target.cardId);
-      if (protection.some((color) => sourceColors.includes(color))) {
-        return false;
-      }
+    if (protectedFromSource(state, target.cardId, sourceId ?? null, sourceColors)) {
+      return false;
     }
     return true;
   }
   if (requirement.kind === "nonartifact_creature") {
     return (
       target.type === "creature" &&
-      isLegalCreatureTarget(state, target.cardId, casterId, sourceColors) &&
+      isLegalCreatureTarget(state, target.cardId, casterId, sourceColors, sourceId) &&
       !isArtifactPermanent(state, target.cardId)
     );
   }
@@ -597,7 +592,7 @@ export function isChosenTargetLegal(
   if (target.type === "spell") {
     return false;
   }
-  return isLegalCreatureTarget(state, target.cardId, casterId, sourceColors);
+  return isLegalCreatureTarget(state, target.cardId, casterId, sourceColors, sourceId);
 }
 
 /**

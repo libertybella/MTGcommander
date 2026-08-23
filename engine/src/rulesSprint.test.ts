@@ -21,7 +21,7 @@ import { mostCommonControlledCreatureType } from "./effects";
 import { castCostReduction, castableFromTop, drawCapFor, freeEquipGranted, hasFlashGrant, landDropAllowance, permanentsControlledBy, reliefAdjustedCost, selfDiscountAmount, wouldEnterTapped } from "./derived";
 import { hasKeyword } from "./keywords";
 import { dispatchEventsInPlace, triggerConditionHolds } from "./triggers";
-import { applyCombatDamage, declareAttackers } from "./combat";
+import { applyCombatDamage, blockRestriction, declareAttackers } from "./combat";
 import { advanceStep, beginNextLivingTurnInPlace } from "./turn";
 import { colorsAmongControlled, commanderIdentityColors, manaAbilitiesFor, manaTapOptionsFor } from "./manaOptions";
 import { emptyManaPools, parseManaCost } from "./mana";
@@ -10897,7 +10897,7 @@ describe("wave 110: pacts, tops, mothers, devils", () => {
     }
     expect(next.prompts[0]?.kind).toBe("choose_color");
     next = applyAction(next, { kind: "resolve_color", playerId: p1.id, color: "R" });
-    expect(computedCard(next, bear.id)?.protectionFrom).toContain("R");
+    expect(computedCard(next, bear.id)?.protectionFrom.colors).toContain("R");
   });
 
   it("pings off every sacrifice at the table", () => {
@@ -11192,7 +11192,7 @@ describe("wave 112: masks, axes, and swords", () => {
       },
       {
         selector: { scope: "attached" },
-        effect: { kind: "grant_protection", colors: ["R", "U"] },
+        effect: { kind: "grant_protection", from: { colors: ["R", "U"] } },
       },
     ]);
 
@@ -11228,7 +11228,7 @@ describe("wave 112: masks, axes, and swords", () => {
         },
         {
           selector: { scope: "attached" },
-          effect: { kind: "grant_protection", colors: ["R", "U"] },
+          effect: { kind: "grant_protection", from: { colors: ["R", "U"] } },
         },
       ],
       triggers: [
@@ -11254,8 +11254,8 @@ describe("wave 112: masks, axes, and swords", () => {
 
     // The host reads 4/4 with protection; the bystander stays a plain bear.
     expect(computedCard(game, host.id)?.power).toBe(4);
-    expect(computedCard(game, host.id)?.protectionFrom).toEqual(["R", "U"]);
-    expect(computedCard(game, other.id)?.protectionFrom).toEqual([]);
+    expect(computedCard(game, host.id)?.protectionFrom).toEqual({ colors: ["R", "U"] });
+    expect(computedCard(game, other.id)?.protectionFrom).toEqual({});
 
     // A bystander's strike is silent...
     dispatchEventsInPlace(game, [
@@ -17136,7 +17136,7 @@ describe("wave 146: anthems, armors, and archdruids", () => {
     expect(memorial.definition.staticAbilities).toHaveLength(6);
     expect(memorial.definition.staticAbilities.map((ability) => ability.effect)).toContainEqual({
       kind: "grant_protection",
-      colors: ["B", "R"],
+      from: { colors: ["B", "R"] },
     });
 
     // "Other permanents": no type restriction at all.
@@ -28847,6 +28847,238 @@ describe("wave 222: any ability, in quotes, on any subject", () => {
       'Creatures you control have "{T}: Destroy target creature."',
     );
     expect(targeter.definition.staticAbilities).toEqual([]);
+  });
+});
+
+
+describe("wave 223: protection from things that are not colors", () => {
+  const compile = (name: string, manaCost: string, typeLine: string, oracleText: string, power?: string, toughness?: string) =>
+    compileOracleCard({
+      oracleId: name,
+      name,
+      manaCost,
+      typeLine,
+      power: power ?? null,
+      toughness: toughness ?? null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  const put = (game: GameState, definitionId: string, ownerId: string) => {
+    const card = createCardInstance({ definitionId, ownerId, zone: "battlefield" });
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === ownerId)!.zones.battlefield.push(card.id);
+    return card;
+  };
+
+  it("reads a subtype, a card type, and a quality where only colors used to fit", () => {
+    const yawgmoth = compile(
+      "Yawgmoth, Thran Physician",
+      "{2}{B}{B}",
+      "Legendary Creature — Phyrexian Praetor",
+      "Protection from Humans\n{B}: Draw a card.",
+      "2",
+      "4",
+    );
+    expect(yawgmoth.notes).toEqual([]);
+    expect(yawgmoth.definition.protectionFrom).toEqual({ subtypes: ["human"] });
+
+    // A keyword LINE can carry a protection conjunct: it is not a printed
+    // keyword, because it names a quality rather than being one.
+    const serpent = compile(
+      "Stonecoil Serpent",
+      "{X}",
+      "Artifact Creature — Snake",
+      "Reach, trample, protection from multicolored\nThis creature enters with X +1/+1 counters on it.",
+      "0",
+      "0",
+    );
+    expect(serpent.notes).toEqual([]);
+    expect(serpent.definition.protectionFrom).toEqual({ multicolored: true });
+
+    const mantle = compile(
+      "Spirit Mantle",
+      "{1}{W}",
+      "Enchantment — Aura",
+      "Enchant creature\nEnchanted creature gets +1/+1 and has protection from creatures.",
+    );
+    expect(mantle.notes).toEqual([]);
+    expect(mantle.definition.staticAbilities).toContainEqual({
+      selector: { scope: "attached" },
+      effect: { kind: "grant_protection", from: { types: ["creature"] } },
+    });
+  });
+
+  it("stops a Human and lets everything else through", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    const yawgmothDef = createCardDefinition({
+      name: "Yawgmoth, Thran Physician",
+      typeLine: "Legendary Creature — Phyrexian Praetor",
+      power: 2,
+      toughness: 4,
+      protectionFrom: { subtypes: ["human"] },
+    });
+    const humanDef = createCardDefinition({
+      name: "Soldier",
+      typeLine: "Creature — Human Soldier",
+      power: 2,
+      toughness: 2,
+    });
+    const bearDef = createCardDefinition({
+      name: "Bear",
+      typeLine: "Creature — Bear",
+      power: 2,
+      toughness: 2,
+    });
+    for (const definition of [yawgmothDef, humanDef, bearDef]) {
+      game.definitions[definition.id] = definition;
+    }
+    const yawgmoth = put(game, yawgmothDef.id, p1.id);
+    const human = put(game, humanDef.id, p2.id);
+    const bear = put(game, bearDef.id, p2.id);
+
+    // Targeting: the Human's ability can't choose it, the Bear's can.
+    const requirement: TargetRequirement = { kind: "creature" };
+    const target = { type: "creature" as const, cardId: yawgmoth.id };
+    expect(isChosenTargetLegal(game, requirement, target, p2.id, [], human.id)).toBe(false);
+    expect(isChosenTargetLegal(game, requirement, target, p2.id, [], bear.id)).toBe(true);
+
+    // Blocking: "can't be blocked by" is the same question with the blocker
+    // as the source.
+    expect(blockRestriction(game, yawgmoth.id, human.id)).not.toBeNull();
+    expect(blockRestriction(game, yawgmoth.id, bear.id)).toBeNull();
+  });
+
+  it("counts colors for multicolored rather than asking whether there are any", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    const serpentDef = createCardDefinition({
+      name: "Stonecoil Serpent",
+      typeLine: "Artifact Creature — Snake",
+      power: 3,
+      toughness: 3,
+      protectionFrom: { multicolored: true },
+    });
+    const goldDef = createCardDefinition({
+      name: "Gold Bear",
+      typeLine: "Creature — Bear",
+      manaCost: "{R}{G}",
+      power: 4,
+      toughness: 4,
+    });
+    const monoDef = createCardDefinition({
+      name: "Red Bear",
+      typeLine: "Creature — Bear",
+      manaCost: "{R}",
+      power: 2,
+      toughness: 2,
+    });
+    const colorlessDef = createCardDefinition({
+      name: "Scrap Golem",
+      typeLine: "Artifact Creature — Golem",
+      manaCost: "{3}",
+      power: 2,
+      toughness: 2,
+    });
+    for (const definition of [serpentDef, goldDef, monoDef, colorlessDef]) {
+      game.definitions[definition.id] = definition;
+    }
+    const serpent = put(game, serpentDef.id, p1.id);
+    const gold = put(game, goldDef.id, p2.id);
+    const mono = put(game, monoDef.id, p2.id);
+    const colorless = put(game, colorlessDef.id, p2.id);
+
+    expect(blockRestriction(game, serpent.id, gold.id)).not.toBeNull();
+    // One colour is not multicolored, and no colour is not multicolored
+    // either — the check counts, and a truthiness test on the colour list
+    // would pass the first assertion while failing both of these.
+    expect(blockRestriction(game, serpent.id, mono.id)).toBeNull();
+    expect(blockRestriction(game, serpent.id, colorless.id)).toBeNull();
+  });
+
+  it("shields the Aura's host from creatures but not from spells", () => {
+    const mantle = compile(
+      "Spirit Mantle",
+      "{1}{W}",
+      "Enchantment — Aura",
+      "Enchant creature\nEnchanted creature gets +1/+1 and has protection from creatures.",
+    );
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    const bearDef = createCardDefinition({
+      name: "Bear",
+      typeLine: "Creature — Bear",
+      power: 2,
+      toughness: 2,
+    });
+    const boltDef = createCardDefinition({
+      name: "Bolt",
+      typeLine: "Instant",
+      manaCost: "{R}",
+    });
+    for (const definition of [mantle.definition, bearDef, boltDef]) {
+      game.definitions[definition.id] = definition;
+    }
+    const host = put(game, bearDef.id, p1.id);
+    const aura = put(game, mantle.definition.id, p1.id);
+    game.cards[aura.id]!.attachedTo = host.id;
+    const attacker = put(game, bearDef.id, p2.id);
+    const bolt = put(game, boltDef.id, p2.id);
+
+    expect(computedCard(game, host.id)?.protectionFrom).toEqual({ types: ["creature"] });
+    expect(computedCard(game, host.id)?.power).toBe(3);
+    expect(blockRestriction(game, host.id, attacker.id)).not.toBeNull();
+    // An instant is not a creature: protection from creatures does not make
+    // a permanent untargetable in general, which a bare "has protection"
+    // flag would have.
+    expect(
+      isChosenTargetLegal(game, { kind: "creature" }, { type: "creature", cardId: host.id }, p2.id, ["R"], bolt.id),
+    ).toBe(true);
+  });
+
+  it("merges two protection abilities into one shape, and round trips", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const bearDef = createCardDefinition({
+      name: "Bear",
+      typeLine: "Creature — Bear",
+      power: 2,
+      toughness: 2,
+      protectionFrom: { colors: ["R"] },
+    });
+    const lordDef = createCardDefinition({
+      name: "Ward Lord",
+      typeLine: "Enchantment",
+      staticAbilities: [
+        {
+          selector: { scope: "controlled", types: ["creature"] },
+          effect: { kind: "grant_protection", from: { subtypes: ["human"], colorless: true } },
+        },
+      ],
+    });
+    for (const definition of [bearDef, lordDef]) {
+      game.definitions[definition.id] = definition;
+    }
+    const bear = put(game, bearDef.id, p1.id);
+    put(game, lordDef.id, p1.id);
+
+    // Printed and granted protection UNION rather than one replacing the
+    // other: a last-writer-wins assignment would have dropped the printed
+    // red half and still looked right in the granted half's own test.
+    expect(computedCard(game, bear.id)?.protectionFrom).toEqual({
+      colors: ["R"],
+      subtypes: ["human"],
+      colorless: true,
+    });
+
+    const round = parseGameState(serializeGameState(game));
+    expect(computedCard(round, bear.id)?.protectionFrom).toEqual({
+      colors: ["R"],
+      subtypes: ["human"],
+      colorless: true,
+    });
   });
 });
 

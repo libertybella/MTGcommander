@@ -110,10 +110,10 @@ export type CardDefinition = {
   /** Ward {N}: opponents targeting this pay N generic or the spell is countered. */
   ward?: number;
   /**
-   * Protection from these colors (CR 702.16): can't be targeted, damaged,
-   * or blocked by sources of the listed colors.
+   * Protection (CR 702.16): can't be targeted, damaged, enchanted/equipped,
+   * or blocked by sources this matches.
    */
-  protectionFrom?: Color[];
+  protectionFrom?: ProtectionFrom;
   /** Aura: cast targeting a creature; enters attached (CR 303.4). */
   enchant?: "creature" | "land" | "creature_or_planeswalker_own";
   /** "As this Aura enters, choose a color" (Utopia Sprawl). */
@@ -2882,6 +2882,30 @@ export type EffectSelector = {
   excludeSelf?: boolean;
 };
 
+/**
+ * What a permanent has protection from (CR 702.16). Every field is a
+ * separate quality and they OR together: a source matching any one of them
+ * is stopped. Printed protection and layer-6 grants merge into one of these,
+ * so a card with two protection abilities is not two different shapes.
+ *
+ * It replaced a bare `Color[]`, which could only say "protection from black"
+ * — a third of the printed protection lines in the measured set name a card
+ * type, a subtype, or a quality instead.
+ */
+export type ProtectionFrom = {
+  colors?: Color[];
+  /** "protection from creatures" / "from instants": card types. */
+  types?: string[];
+  /** "protection from Humans": a subtype (changelings qualify). */
+  subtypes?: string[];
+  /** Stonecoil Serpent: "protection from multicolored". */
+  multicolored?: boolean;
+  /** Giver of Runes: "protection from colorless". */
+  colorless?: boolean;
+  /** Teferi's Protection, The One Ring: stops every source. */
+  everything?: boolean;
+};
+
 /** What a continuous effect does, in CR 613 layer order (derived from kind). */
 export type ContinuousEffectData =
   | { kind: "add_types"; types: string[]; subtypes: string[] } // layer 4
@@ -2890,7 +2914,7 @@ export type ContinuousEffectData =
   | { kind: "set_colors"; colors: Color[] } // layer 5
   | { kind: "grant_keyword"; keyword: Keyword } // layer 6
   /** layer 6: "gain protection from each color" (Akroma's Will). */
-  | { kind: "grant_protection"; colors: Color[] }
+  | { kind: "grant_protection"; from: ProtectionFrom }
   /** layer 6: "has ward {2}" (Lavaspur Boots). The highest granted amount
    * wins over the printed one rather than stacking — CR 702.21c makes
    * multiple ward abilities trigger separately, which the pay-or-counter

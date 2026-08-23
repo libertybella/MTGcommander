@@ -2,6 +2,7 @@ import { manaValueOf } from "./characteristics";
 import { parseManaCost } from "./mana";
 import { parseAmassClause } from "./tokens";
 import type {
+  ProtectionFrom,
   ActivatedAbility,
   AdditionalCastCost,
   TopOfLibraryGrant,
@@ -37,6 +38,7 @@ import type {
   TargetRequirement,
   TriggerCondition,
 } from "./types";
+import { mergeProtection } from "./characteristicsEngine";
 import type { OracleCard } from "./oracle";
 
 export type CompiledOracleText = {
@@ -52,7 +54,7 @@ export type CompiledOracleText = {
   manaAbilities: ManaAbility[];
   ward?: number;
   modes?: SpellMode[];
-  protectionFrom?: Color[];
+  protectionFrom?: ProtectionFrom;
   enchant?: "creature" | "land" | "creature_or_planeswalker_own";
   chooseColorOnEnter?: boolean;
   chooseColorExcludes?: Color;
@@ -500,12 +502,37 @@ export function splitOracleSentencesByLine(card: OracleCard): string[][] {
     .map((line) => line.split(/\.+/).map(restoreSentence).filter(Boolean))
     .filter((line) => line.length > 0);
 }
-function isKeywordLine(sentence: string): boolean {
+/**
+ * A printed keyword line ("Flying, first strike"), which is skipped whole
+ * because the keywords already arrive on `printedKeywords`.
+ *
+ * A protection conjunct may sit in the same list (Stonecoil Serpent's
+ * "Reach, trample, protection from multicolored"), and it is NOT a printed
+ * keyword — it carries a quality, so it comes back here to be stored.
+ * Returns null when any conjunct is neither, which keeps the line a miss.
+ */
+function readKeywordLine(sentence: string): { protection: ProtectionFrom | null } | null {
+  // Case is preserved for the protection parts: "from Humans" is a subtype
+  // and "from creatures" is a card type, told apart by capitalisation alone.
   const parts = sentence
     .split(",")
-    .map((part) => part.trim().toLowerCase())
+    .map((part) => part.trim())
     .filter(Boolean);
-  return parts.length > 0 && parts.every((part) => KEYWORD_LINE.has(part));
+  if (parts.length === 0) {
+    return null;
+  }
+  let protection: ProtectionFrom | null = null;
+  for (const part of parts) {
+    if (KEYWORD_LINE.has(part.toLowerCase())) {
+      continue;
+    }
+    const from = /^protection from /i.test(part) ? parseProtectionPhrase(part) : null;
+    if (!from) {
+      return null;
+    }
+    protection = mergeProtection(protection ?? {}, from);
+  }
+  return { protection };
 }
 
 const SACRIFICE_COST = /Sacrifice (?:~|this land|this creature|this artifact|this permanent)/i;
@@ -8137,6 +8164,66 @@ function compileSelfGrant(body: string): StaticAbility[] | null {
  * null when the phrase is not a recognised subject, so the caller falls
  * through to the leftover pile rather than mis-compiling a card.
  */
+/**
+ * "protection from <what>", with `from` repeated across an "and" list
+ * ("protection from black and from red"). One reader for the printed line,
+ * the keyword list, and the grant predicate — three places that each used
+ * to carry their own colour-only regex, which is why nothing but a colour
+ * could be printed there.
+ *
+ * Refuses any conjunct it cannot read: half a protection is not protection.
+ */
+function parseProtectionPhrase(phrase: string): ProtectionFrom | null {
+  const body = phrase.trim().replace(/^protection from\s+/i, "");
+  if (body === phrase.trim()) {
+    return null;
+  }
+  let from: ProtectionFrom = {};
+  const parts = body
+    .split(/\s*,\s*(?:and\s+)?from\s+|\s+and\s+from\s+|\s*,\s*from\s+/i)
+    .map((part) => part.trim())
+    .filter(Boolean);
+  for (const part of parts) {
+    const one = parseOneProtectionQuality(part);
+    if (!one) {
+      return null;
+    }
+    from = mergeProtection(from, one);
+  }
+  return Object.keys(from).length > 0 ? from : null;
+}
+
+function parseOneProtectionQuality(word: string): ProtectionFrom | null {
+  const text = word.trim().replace(/\.$/, "").trim();
+  if (/^everything$/i.test(text)) {
+    return { everything: true };
+  }
+  if (/^multicolored$/i.test(text)) {
+    return { multicolored: true };
+  }
+  if (/^colorless$/i.test(text)) {
+    return { colorless: true };
+  }
+  if (/^each color$/i.test(text)) {
+    return { colors: ["W", "U", "B", "R", "G"] };
+  }
+  const color = COLOR_WORDS[text.toLowerCase()];
+  if (color) {
+    return { colors: [color] };
+  }
+  // "protection from creatures" / "from instants" — a card type, plural.
+  const typeWord = text.toLowerCase().replace(/s$/, "");
+  if (SEARCH_CARD_TYPES.has(typeWord)) {
+    return { types: [typeWord] };
+  }
+  // "protection from Humans" — a subtype, capitalised the way oracle text
+  // capitalises subtypes and lowercases card types.
+  if (/^[A-Z][a-z-]+s$/.test(text)) {
+    return { subtypes: [singularSubtype(text)] };
+  }
+  return null;
+}
+
 function parseGrantSubject(phrase: string): EffectSelector | null {
   let rest = phrase.trim();
   const selector: EffectSelector = { scope: "all" };
@@ -8456,22 +8543,21 @@ function parseGrantPredicate(phrase: string): ContinuousEffectData[] | null {
       return null;
     }
     // "flying, first strike, vigilance, and protection from black and from red"
-    const words = grants[1]
+    // Case is PRESERVED through the split: oracle text capitalises subtypes
+    // and lowercases card types, so "protection from Humans" and "protection
+    // from creatures" are told apart by nothing else.
+    const printedWords = grants[1]
       .split(/,\s*(?:and\s+)?|\s+and\s+(?!from\b)/i)
-      .map((word) => word.trim().toLowerCase())
+      .map((entry) => entry.trim())
       .filter(Boolean);
-    for (const word of words) {
-      const protection = word.match(
-        /^protection from (white|blue|black|red|green)((?: and from (?:white|blue|black|red|green))*)$/i,
-      );
-      if (protection?.[1]) {
-        const colors = [
-          protection[1],
-          ...[...(protection[2] ?? "").matchAll(/from (\w+)/gi)].map((entry) => entry[1]!),
-        ]
-          .map((name) => COLOR_WORDS[name.toLowerCase()])
-          .filter((color): color is Color => Boolean(color));
-        effects.push({ kind: "grant_protection", colors });
+    for (const printedWord of printedWords) {
+      const word = printedWord.toLowerCase();
+      if (/^protection from /i.test(printedWord)) {
+        const from = parseProtectionPhrase(printedWord);
+        if (!from) {
+          return null;
+        }
+        effects.push({ kind: "grant_protection", from });
         continue;
       }
       // "ward {2}" is a numeric ability, not a plain keyword.
@@ -9402,7 +9488,11 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
     if (!sentence) {
       continue;
     }
-    if (isKeywordLine(sentence)) {
+    const keywordLine = readKeywordLine(sentence);
+    if (keywordLine) {
+      if (keywordLine.protection) {
+        result.protectionFrom = mergeProtection(result.protectionFrom ?? {}, keywordLine.protection);
+      }
       continue;
     }
 
@@ -9689,21 +9779,13 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
       continue;
     }
 
-    const protectionLine = sentence.match(
-      /^Protection from (white|blue|black|red|green)(?: and from (white|blue|black|red|green))?$/i,
-    );
-    if (protectionLine?.[1]) {
-      const colorOf: Record<string, Color> = {
-        white: "W",
-        blue: "U",
-        black: "B",
-        red: "R",
-        green: "G",
-      };
-      const colors = [protectionLine[1], protectionLine[2]]
-        .filter((name): name is string => Boolean(name))
-        .map((name) => colorOf[name.toLowerCase()]!);
-      result.protectionFrom = [...new Set([...(result.protectionFrom ?? []), ...colors])];
+    if (/^Protection from /i.test(sentence)) {
+      const printed = parseProtectionPhrase(sentence);
+      if (printed) {
+        result.protectionFrom = mergeProtection(result.protectionFrom ?? {}, printed);
+        continue;
+      }
+      result.leftover.push(sentence);
       continue;
     }
 

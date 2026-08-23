@@ -19,7 +19,7 @@ function paladin(): CardDefinition {
     printedKeywords: [],
   });
   expect(compiled.notes).toEqual([]);
-  expect(compiled.definition.protectionFrom).toEqual(["R", "B"]);
+  expect(compiled.definition.protectionFrom).toEqual({ colors: ["R", "B"] });
   return compiled.definition;
 }
 

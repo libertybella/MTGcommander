@@ -5,7 +5,7 @@ import { characteristicsOf, hasSubtype, isCreature, isInstantOrSorcery, isLand, 
 import { eliminatePlayerInPlace } from "./elimination";
 import { createId } from "./ids";
 import { allBattlefieldCreatureCount, creaturePower, creatureToughness, damageAfterReplacements, permanentsControlledBy, wouldSkipDraw } from "./derived";
-import { hasKeyword, protectionColorsOf } from "./keywords";
+import { hasKeyword, protectedFromSource } from "./keywords";
 import { addMana, tapCard, untapCard } from "./mana";
 import { commanderIdentityColors } from "./manaOptions";
 import { isLiving, livingPlayers, nextLivingPlayerId } from "./players";
@@ -1898,13 +1898,16 @@ function applyDealDamage(state: GameState, effect: Extract<GameEffect, { kind: "
     throw new Error(`Card ${card.id} is not a creature on the battlefield`);
   }
 
-  // Protection prevents damage from sources of the protected colors.
-  const protection = protectionColorsOf(state, card.id);
-  if (protection.length > 0) {
-    const colors = sourceColorsOf(state, effect.sourceId ?? null);
-    if (protection.some((color) => colors.includes(color))) {
-      return cloneGameState(state);
-    }
+  // Protection prevents damage from a source it stops (CR 702.16e).
+  if (
+    protectedFromSource(
+      state,
+      card.id,
+      effect.sourceId ?? null,
+      sourceColorsOf(state, effect.sourceId ?? null),
+    )
+  ) {
+    return cloneGameState(state);
   }
   const next = cloneGameState(state);
   const damaged = next.cards[card.id];
@@ -1960,8 +1963,7 @@ function applyDamageAll(
     if (card.zone !== "battlefield" || !isCreature(next, card.id)) {
       continue;
     }
-    const protection = protectionColorsOf(next, card.id);
-    if (protection.length > 0 && protection.some((color) => sourceColors.includes(color))) {
+    if (protectedFromSource(next, card.id, effect.sourceId ?? null, sourceColors)) {
       continue;
     }
     card.damageMarked += damageAfterReplacements(
@@ -2729,7 +2731,10 @@ export function grantProtectionUntilEot(
   cardId: CardInstanceId,
   color: Color,
 ): GameState {
-  return pushUntilEotEffect(state, [cardId], { kind: "grant_protection", colors: [color] });
+  return pushUntilEotEffect(state, [cardId], {
+    kind: "grant_protection",
+    from: { colors: [color] },
+  });
 }
 
 function pushUntilEotEffect(
@@ -3618,14 +3623,8 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
         ) {
           const powerA = Math.max(0, creaturePower(state, a.id));
           const powerB = Math.max(0, creaturePower(state, b.id));
-          const colorsA = sourceColorsOf(state, a.id);
-          const colorsB = sourceColorsOf(state, b.id);
-          const shieldedA = protectionColorsOf(state, a.id).some((color) =>
-            colorsB.includes(color),
-          );
-          const shieldedB = protectionColorsOf(state, b.id).some((color) =>
-            colorsA.includes(color),
-          );
+          const shieldedA = protectedFromSource(state, a.id, b.id);
+          const shieldedB = protectedFromSource(state, b.id, a.id);
           const fighterA = next.cards[a.id]!;
           const fighterB = next.cards[b.id]!;
           const events: EngineEvent[] = [];
@@ -3780,8 +3779,7 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
           ) {
             continue;
           }
-          const protection = protectionColorsOf(next, card.id);
-          if (protection.some((color) => novaColors.includes(color))) {
+          if (protectedFromSource(next, card.id, effect.sourceId ?? null, novaColors)) {
             continue;
           }
           card.damageMarked += effect.amount;
@@ -4227,7 +4225,7 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
             ? state
             : pushUntilEotEffect(state, team, {
                 kind: "grant_protection",
-                colors: [...effect.colors],
+                from: { colors: [...effect.colors] },
               });
         break;
       }

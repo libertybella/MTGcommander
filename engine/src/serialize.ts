@@ -1,5 +1,6 @@
 import { deriveCharacteristics } from "./characteristics";
 import type {
+  ProtectionFrom,
   ActivatedAbility,
   BoundChooseCardSource,
   CardEffect,
@@ -1131,18 +1132,10 @@ export function parseGameState(json: string): GameState {
       ...(def.protectionFrom === undefined
         ? {}
         : {
-            protectionFrom: (() => {
-              if (!Array.isArray(def.protectionFrom)) {
-                throw new Error(`Invalid definition.${id}.protectionFrom`);
-              }
-              return def.protectionFrom.map((entry, index) => {
-                const color = expectString(entry, `definition.${id}.protectionFrom[${index}]`);
-                if (!(COLOR_KEYS as readonly string[]).includes(color)) {
-                  throw new Error(`Invalid definition.${id}.protectionFrom[${index}]`);
-                }
-                return color as Color;
-              });
-            })(),
+            protectionFrom: parseProtectionFrom(
+              def.protectionFrom,
+              `definition.${id}.protectionFrom`,
+            ),
           }),
       ...(def.modes === undefined
         ? {}
@@ -4289,6 +4282,39 @@ function parseEffectSelector(value: unknown, label: string): EffectSelector {
   };
 }
 
+function parseProtectionFrom(value: unknown, label: string): ProtectionFrom {
+  if (!isRecord(value)) {
+    throw new Error(`Invalid ${label}`);
+  }
+  const colors =
+    value.colors === undefined
+      ? undefined
+      : (() => {
+          if (!Array.isArray(value.colors)) {
+            throw new Error(`Invalid ${label}.colors`);
+          }
+          return value.colors.map((entry, index) => {
+            const color = expectString(entry, `${label}.colors[${index}]`);
+            if (!(COLOR_KEYS as readonly string[]).includes(color)) {
+              throw new Error(`Invalid ${label}.colors[${index}]`);
+            }
+            return color as Color;
+          });
+        })();
+  return {
+    ...(colors ? { colors } : {}),
+    ...(value.types === undefined
+      ? {}
+      : { types: parseStringList(value.types, `${label}.types`) }),
+    ...(value.subtypes === undefined
+      ? {}
+      : { subtypes: parseStringList(value.subtypes, `${label}.subtypes`) }),
+    ...(value.multicolored === true ? { multicolored: true } : {}),
+    ...(value.colorless === true ? { colorless: true } : {}),
+    ...(value.everything === true ? { everything: true } : {}),
+  };
+}
+
 function parseContinuousEffectData(value: unknown, label: string): ContinuousEffectData {
   if (!isRecord(value)) {
     throw new Error(`Invalid ${label}`);
@@ -4330,19 +4356,7 @@ function parseContinuousEffectData(value: unknown, label: string): ContinuousEff
     return { kind, amount: expectNumber(value.amount, `${label}.amount`) };
   }
   if (kind === "grant_protection") {
-    if (!Array.isArray(value.colors)) {
-      throw new Error(`Invalid ${label}.colors`);
-    }
-    return {
-      kind,
-      colors: value.colors.map((entry, index) => {
-        const color = expectString(entry, `${label}.colors[${index}]`);
-        if (!(COLOR_KEYS as readonly string[]).includes(color)) {
-          throw new Error(`Invalid ${label}.colors[${index}]`);
-        }
-        return color as Color;
-      }),
-    };
+    return { kind, from: parseProtectionFrom(value.from, `${label}.from`) };
   }
   if (kind === "grant_activated") {
     const parsed = parseActivatedAbilities([value.ability], `${label}.ability`);

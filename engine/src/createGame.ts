@@ -1,6 +1,7 @@
 import { deriveCharacteristics } from "./characteristics";
 import { createId } from "./ids";
 import type {
+  ProtectionFrom,
   CardDefinition,
   CardInstance,
   Color,
@@ -26,6 +27,22 @@ export function emptyManaPool(): ManaPool {
  * used to carry identical inline spreads, which meant every new gate field had
  * to be added in three places or it silently dropped on intake.
  */
+function copyProtection(from: ProtectionFrom): ProtectionFrom {
+  // Destructured for the same reason as `copyControlledGate`: a new
+  // ProtectionFrom field must be a tsc error here, not a silent drop.
+  const { colors, types, subtypes, multicolored, colorless, everything, ...rest } = from;
+  const exhaustive: Record<string, never> = rest;
+  void exhaustive;
+  return {
+    ...(colors ? { colors: [...colors] } : {}),
+    ...(types ? { types: [...types] } : {}),
+    ...(subtypes ? { subtypes: [...subtypes] } : {}),
+    ...(multicolored ? { multicolored: true } : {}),
+    ...(colorless ? { colorless: true } : {}),
+    ...(everything ? { everything: true } : {}),
+  };
+}
+
 function copyControlledGate(gate: ControlledGate): ControlledGate {
   // Destructured, so a new ControlledGate field is a tsc error HERE rather
   // than a silent drop: `rest` has to stay empty. `atLeast` was added in wave
@@ -389,8 +406,8 @@ export function createCardDefinition(
       : [],
     imageUrl: input.imageUrl ?? "",
     ...(input.ward && input.ward > 0 ? { ward: input.ward } : {}),
-    ...(input.protectionFrom && input.protectionFrom.length > 0
-      ? { protectionFrom: [...input.protectionFrom] }
+    ...(input.protectionFrom && Object.keys(input.protectionFrom).length > 0
+      ? { protectionFrom: copyProtection(input.protectionFrom) }
       : {}),
     ...(input.enchant ? { enchant: input.enchant } : {}),
     ...(input.loyalty && input.loyalty > 0 ? { loyalty: input.loyalty } : {}),
