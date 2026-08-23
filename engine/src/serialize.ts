@@ -1031,6 +1031,8 @@ export function parseGameState(json: string): GameState {
                   ? { maxManaValueBySpent: true }
                   : {}),
                 ...(def.enterAsCopy.entersTapped === true ? { entersTapped: true } : {}),
+                ...(def.enterAsCopy.untilEot === true ? { untilEot: true } : {}),
+                ...(def.enterAsCopy.grantHaste === true ? { grantHaste: true } : {}),
               };
             })(),
           }),
@@ -2038,6 +2040,12 @@ function parsePrompts(value: unknown, playerIds: Set<string>): PendingPrompt[] {
         ...(entry.maxManaValue === undefined
           ? {}
           : { maxManaValue: expectNumber(entry.maxManaValue, `prompts[${index}].maxManaValue`) }),
+        // These three were absent, so a game saved with the choice still
+        // open came back with Vesuva's copy untapped and, once Cursed
+        // Mirror existed, permanent and hasteless. The prompt is state.
+        ...(entry.entersTapped === true ? { entersTapped: true } : {}),
+        ...(entry.untilEot === true ? { untilEot: true } : {}),
+        ...(entry.grantHaste === true ? { grantHaste: true } : {}),
       };
     }
     if (kind === "order_triggers") {

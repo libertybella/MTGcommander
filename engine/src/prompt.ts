@@ -723,7 +723,30 @@ export function applyResolveEnterCopy(
   if (!entered || entered.zone !== "battlefield" || !original) {
     return next;
   }
-  entered.definitionId = original.definitionId;
+  // Cursed Mirror: record what to put back BEFORE the swap, so the card
+  // that returns at end of turn is the printed one and not the copy.
+  if (prompt.untilEot) {
+    const pending = next.temporaryCopies ?? [];
+    if (!pending.some((entry) => entry.cardId === entered.id)) {
+      pending.push({ cardId: entered.id, restoreDefinitionId: entered.definitionId });
+    }
+    next.temporaryCopies = pending;
+  }
+  let copiedId = original.definitionId;
+  if (prompt.grantHaste) {
+    // "Except it has haste" is not cosmetic on a card whose whole point is
+    // attacking the turn it arrives. A fresh definition, so every other
+    // copy of the same creature stays hasteless.
+    const source = next.definitions[copiedId];
+    if (source && !source.keywords.includes("haste")) {
+      const hasted = JSON.parse(JSON.stringify(source)) as typeof source;
+      hasted.id = createId("definition");
+      hasted.keywords = [...hasted.keywords, "haste"];
+      next.definitions[hasted.id] = hasted;
+      copiedId = hasted.id;
+    }
+  }
+  entered.definitionId = copiedId;
   // Vesuva: the copy arrives tapped regardless of what it copied.
   if (prompt.entersTapped) {
     entered.tapped = true;

@@ -32,7 +32,7 @@ import { abilityLifeCost, colorsOutsideCommanderIdentity } from "./commanderIden
 import { addRestrictedMana, emptyManaPools, manaRiderFires, parseManaCost, payManaCost, restrictionAdmits, type ManaPurpose } from "./mana";
 import { applyStateBasedActionsInPlace } from "./status";
 import { legalActions, sacrificeColorMatches, sacrificeScopeMatches } from "./legalActions";
-import { applyResolveCreatureType, applyResolveDiscardLandOrGraveyard, applyResolveLookAssign, applyResolvePay, applyResolveTriggerMode, legalEnterCopyIds, searchMatches } from "./prompt";
+import { applyResolveCreatureType, applyResolveDiscardLandOrGraveyard, applyResolveEnterCopy, applyResolveLookAssign, applyResolvePay, applyResolveTriggerMode, legalEnterCopyIds, searchMatches } from "./prompt";
 import { parseGameState, serializeGameState } from "./serialize";
 import { fillLibraries } from "./testSupport";
 import { advanceSteps } from "./turn";
@@ -38672,5 +38672,185 @@ describe("wave 287: a devotion-sized look, and the win it gates", () => {
     game.definitions[definition.id] = definition;
     const round = parseGameState(serializeGameState(game));
     expect(round.definitions[definition.id]?.triggers[0]?.effects).toEqual(ORACLE_EFFECTS);
+  });
+});
+
+describe("wave 288: a mirror that copies for one turn, with haste", () => {
+  const MIRROR_TEXT =
+    "{T}: Add {R}.\nAs this artifact enters, you may have it become a copy of any creature on the battlefield until end of turn, except it has haste.";
+
+  const board = () => {
+    const { game, p1, p2 } = twoPlayers();
+    const mirrorDefinition = createCardDefinition({
+      name: "Cursed Mirror",
+      typeLine: "Artifact",
+      manaCost: "{2}{R}",
+      manaAbilities: [
+        {
+          produces: { R: 1 },
+          producesOptions: [],
+          producesAnyColor: false,
+          damageToController: 0,
+        },
+      ],
+      enterAsCopy: { scope: "any_creature", untilEot: true, grantHaste: true },
+    });
+    game.definitions[mirrorDefinition.id] = mirrorDefinition;
+    const mirror = createCardInstance({
+      definitionId: mirrorDefinition.id,
+      ownerId: p1.id,
+      zone: "battlefield",
+    });
+    game.cards[mirror.id] = mirror;
+    p1.zones.battlefield.push(mirror.id);
+
+    // A hasteless creature, and a second copy of it that must stay hasteless.
+    const bearDefinition = createCardDefinition({
+      name: "Runeclaw Bear",
+      typeLine: "Creature — Bear",
+      manaCost: "{1}{G}",
+      power: 2,
+      toughness: 2,
+    });
+    game.definitions[bearDefinition.id] = bearDefinition;
+    const bears = [p2, p2].map((owner) => {
+      const card = createCardInstance({
+        definitionId: bearDefinition.id,
+        ownerId: owner.id,
+        zone: "battlefield",
+      });
+      game.cards[card.id] = card;
+      owner.zones.battlefield.push(card.id);
+      return card;
+    });
+    queueEnterReplacementChoicesInPlace(game, mirror.id);
+    return {
+      game,
+      p1,
+      p2,
+      mirrorId: mirror.id,
+      mirrorDefinitionId: mirrorDefinition.id,
+      bearId: bears[0]!.id,
+      otherBearId: bears[1]!.id,
+    };
+  };
+
+  it("compiles Cursed Mirror whole", () => {
+    const compiled = compileOracleCard({
+      oracleId: "cursed-mirror",
+      name: "Cursed Mirror",
+      manaCost: "{2}{R}",
+      typeLine: "Artifact",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText: MIRROR_TEXT,
+    });
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.enterAsCopy).toEqual({
+      scope: "any_creature",
+      untilEot: true,
+      grantHaste: true,
+    });
+    // The mana ability is the half that survives the turn, so it must still
+    // be there — a Cursed Mirror that forgets it is a worse Clone.
+    expect(compiled.definition.manaAbilities[0]).toMatchObject({ produces: { R: 1 } });
+  });
+
+  it("opens the choice on entry", () => {
+    const { game, p1 } = board();
+    expect(game.prompts[0]).toMatchObject({
+      kind: "enter_as_copy",
+      playerId: p1.id,
+      scope: "any_creature",
+      untilEot: true,
+      grantHaste: true,
+    });
+  });
+
+  it("becomes the creature and has haste, which the original does not", () => {
+    const { game, p1, mirrorId, bearId, otherBearId } = board();
+    const copied = applyResolveEnterCopy(game, p1.id, bearId);
+    expect(characteristicsOf(copied, mirrorId).types).toContain("creature");
+    expect(creaturePower(copied, mirrorId)).toBe(2);
+    expect(hasKeyword(copied, mirrorId, "haste")).toBe(true);
+    // The grant is a fresh definition, so the creature it copied — and every
+    // other copy of that creature — stays hasteless.
+    expect(hasKeyword(copied, bearId, "haste")).toBe(false);
+    expect(hasKeyword(copied, otherBearId, "haste")).toBe(false);
+  });
+
+  it("goes back to being a mana rock at end of turn", () => {
+    const { game, p1, mirrorId, mirrorDefinitionId, bearId } = board();
+    const copied = applyResolveEnterCopy(game, p1.id, bearId);
+    expect(copied.cards[mirrorId]?.definitionId).not.toBe(mirrorDefinitionId);
+    copied.turn.phase = "ending";
+    copied.turn.step = "end";
+    const cleaned = advanceSteps(copied, 1);
+    expect(cleaned.turn.step).toBe("cleanup");
+    // The PRINTED card comes back, not the copy — so the {T}: Add {R} that
+    // paid for it is available again next turn.
+    expect(cleaned.cards[mirrorId]?.definitionId).toBe(mirrorDefinitionId);
+    expect(characteristicsOf(cleaned, mirrorId).types).not.toContain("creature");
+    expect(cleaned.definitions[mirrorDefinitionId]?.manaAbilities[0]?.produces).toEqual({ R: 1 });
+  });
+
+  it("stays itself when the choice is declined", () => {
+    const { game, p1, mirrorId, mirrorDefinitionId } = board();
+    const declined = applyResolveEnterCopy(game, p1.id, null);
+    expect(declined.prompts).toEqual([]);
+    expect(declined.cards[mirrorId]?.definitionId).toBe(mirrorDefinitionId);
+    expect(declined.temporaryCopies ?? []).toEqual([]);
+  });
+
+  it("records the printed card to restore, not the copy", () => {
+    const { game, p1, mirrorId, mirrorDefinitionId, bearId } = board();
+    const copied = applyResolveEnterCopy(game, p1.id, bearId);
+    expect(copied.temporaryCopies).toEqual([
+      { cardId: mirrorId, restoreDefinitionId: mirrorDefinitionId },
+    ]);
+  });
+
+  it("carries the choice across the wire while it is still open", () => {
+    // These three prompt fields were absent from the serializer, so a game
+    // saved with the choice open came back with Vesuva's copy untapped and
+    // the Mirror's permanent and hasteless.
+    const { game } = board();
+    game.prompts[0] = { ...game.prompts[0]!, entersTapped: true } as typeof game.prompts[0];
+    const round = parseGameState(serializeGameState(game));
+    expect(round.prompts[0]).toMatchObject({
+      kind: "enter_as_copy",
+      entersTapped: true,
+      untilEot: true,
+      grantHaste: true,
+    });
+  });
+
+  it("round trips the definition's two new riders", () => {
+    const { game, mirrorDefinitionId } = board();
+    const round = parseGameState(serializeGameState(game));
+    expect(round.definitions[mirrorDefinitionId]?.enterAsCopy).toEqual({
+      scope: "any_creature",
+      untilEot: true,
+      grantHaste: true,
+    });
+  });
+
+  it("leaves a plain Clone permanent and hasteless", () => {
+    // The two riders are Cursed Mirror's, not the Clone family's.
+    const compiled = compileOracleCard({
+      oracleId: "clone",
+      name: "Clone",
+      manaCost: "{3}{U}",
+      typeLine: "Creature — Shapeshifter",
+      power: "0",
+      toughness: "0",
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText: "You may have Clone enter as a copy of any creature on the battlefield.",
+    });
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.enterAsCopy).toEqual({ scope: "any_creature" });
   });
 });

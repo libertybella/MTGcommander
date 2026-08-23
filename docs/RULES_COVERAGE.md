@@ -870,6 +870,25 @@ more questions it can now ask:
   (Bennie Bracks). Reads the existing per-player `createdTokenThisTurn`
   list, and asks whether the CONTROLLER is in it — an opponent's Treasure
   must not satisfy it.
+- **`enterAsCopy.untilEot` / `.grantHaste`** — Cursed Mirror. The copy
+  lasts one turn and then the PRINTED card comes back, through the same
+  `temporaryCopies` revert Mirage Mirror uses; the restore id is recorded
+  before the swap, so what returns is the mana rock and not the creature.
+
+  "Except it has haste" is NOT one of the cosmetic granted keywords the
+  Clone rider parser is allowed to drop. A mana rock that becomes a
+  creature and then cannot attack until next turn is a different card. The
+  grant clones the copied definition, so the creature it copied — and every
+  other copy of that creature — stays hasteless.
+
+  A second pattern rather than a widened Clone one: Cursed Mirror prints a
+  different sentence ("As ~ enters, you may have it BECOME a copy…"), and
+  its two riders are real where the Clone family's are cosmetic.
+
+  Fixed alongside: the `enter_as_copy` PROMPT serializer carried none of
+  `entersTapped`, `untilEot`, or `grantHaste`. A game saved with the choice
+  still open came back with Vesuva's copy untapped — a live drop that
+  predates this card. The prompt is state, not scaffolding.
 - **A look clause that spans SENTENCES** — Thassa's Oracle, and every
   Impulse-style ETB. A trigger body is parsed as ONE sentence, but a look
   and its assignment print as two on a single line. `foldLookRun` hands the

@@ -122,7 +122,14 @@ export type CompiledOracleText = {
   entersWithXCounterKind?: string;
   manaCostOverride?: string;
   entersWithCounters?: { counter: string; count: number };
-  enterAsCopy?: { scope: EnterAsCopyScope; extraCounters?: number; maxManaValueBySpent?: boolean };
+  enterAsCopy?: {
+    scope: EnterAsCopyScope;
+    extraCounters?: number;
+    maxManaValueBySpent?: boolean;
+    entersTapped?: boolean;
+    untilEot?: boolean;
+    grantHaste?: boolean;
+  };
   playLandsFromGraveyard?: boolean;
   additionalCost?: AdditionalCastCost;
   dynamicPt?: { count: DynamicCount };
@@ -12023,6 +12030,26 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
         count: enteringList[0]!.amount,
       };
       continue;
+    }
+
+    // Cursed Mirror: "As ~ enters, you may have it become a copy of any
+    // creature on the battlefield until end of turn, except it has haste."
+    // A SECOND pattern rather than a widened Clone one: the grammar is a
+    // different sentence, and the two riders here are real rather than the
+    // cosmetic ones parseCopyExceptRiders is allowed to drop.
+    const becomeCopyOnEnter = sentence.match(
+      /^As ~ enters, you may have it become a copy of (any creature on the battlefield|any nonland permanent on the battlefield|any artifact or creature on the battlefield)( until end of turn)?(?:, except it has haste)?$/i,
+    );
+    if (becomeCopyOnEnter?.[1]) {
+      const scope = CLONE_SCOPE_BY_PHRASE[becomeCopyOnEnter[1].toLowerCase()];
+      if (scope) {
+        result.enterAsCopy = {
+          scope,
+          ...(becomeCopyOnEnter[2] ? { untilEot: true } : {}),
+          ...(/except it has haste$/i.test(sentence) ? { grantHaste: true } : {}),
+        };
+        continue;
+      }
     }
 
     // Clone family. The leading name is "~" for most cards but stays a short

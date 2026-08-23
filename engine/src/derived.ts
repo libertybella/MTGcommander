@@ -1281,6 +1281,8 @@ export function queueEnterReplacementChoicesInPlace(state: GameState, cardId: Ca
         : {}),
       ...(definition.enterAsCopy.maxManaValueBySpent ? { maxManaValue: 0 } : {}),
       ...(definition.enterAsCopy.entersTapped ? { entersTapped: true } : {}),
+      ...(definition.enterAsCopy.untilEot ? { untilEot: true } : {}),
+      ...(definition.enterAsCopy.grantHaste ? { grantHaste: true } : {}),
     });
   }
 }

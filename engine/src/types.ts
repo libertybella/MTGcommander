@@ -415,6 +415,18 @@ export type CardDefinition = {
     maxManaValueBySpent?: boolean;
     /** Vesuva: the copy arrives tapped. */
     entersTapped?: boolean;
+    /**
+     * Cursed Mirror: the copy lasts only until end of turn, after which
+     * the printed card comes back. Recorded in `temporaryCopies`, the same
+     * revert Mirage Mirror uses.
+     */
+    untilEot?: boolean;
+    /**
+     * Cursed Mirror: "except it has haste". NOT one of the cosmetic
+     * granted keywords dropped above — a mana rock that becomes a creature
+     * and cannot attack until next turn is a different card.
+     */
+    grantHaste?: boolean;
   };
   /** "As an additional cost to cast this spell, …" (Deadly Dispute). */
   additionalCost?: AdditionalCastCost;
@@ -3111,6 +3123,10 @@ export type PendingPrompt =
       maxManaValue?: number;
       /** Vesuva: the copy arrives tapped. */
       entersTapped?: boolean;
+      /** Cursed Mirror: the copy reverts at end of turn. */
+      untilEot?: boolean;
+      /** Cursed Mirror: "except it has haste". */
+      grantHaste?: boolean;
     }
   | {
       /**
