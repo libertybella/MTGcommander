@@ -52,11 +52,13 @@ the current state of play. Read all four before writing code.
 - **The `\b` trap is caught by the tier now, not by vigilance.**
   `engine/src/sourceHygiene.test.ts` fails the ordinary `npx vitest run` on
   any invisible character anywhere in the repo, naming the file, line, column
-  and character. The cause was never the heredoc — that blame was wrong for
-  three waves and is most of why it recurred. It is any writer that expands
-  escapes: `echo -e`, `printf` with the pattern as its format argument, `sed`
-  replacements, a non-raw JS or Python string literal. MACHINERY.md §5 lists
-  the safe and unsafe writers; you should not need it, but read it once.
+  and character. **The cause is that the Bash tool cannot write a doubled
+  backslash** — every path through it, quoted heredoc included, collapses
+  them to one, so JS source that needs two gets one and reads it as an
+  escape. Two earlier explanations here ("a python heredoc", then "any
+  escape-expanding writer") were both wrong, which is most of why it
+  recurred three times. Build the character with `String.fromCharCode(92)`,
+  or use the Write/Edit tools. MACHINERY.md §5 has the verified detail.
 - **No live percentage target.** The "grind to 75%" directive was cleared by
   Liberty; the goal is 100% of the top 2,000, taken in chunks, with primitive
   sessions judged by what they unblock rather than by the rate they move.
@@ -422,6 +424,38 @@ compile assertions. Write both halves of every wave test.
 - `exile_graveyard` was missing from `expandEachOpponent`, so an
   "each opponent's graveyard" clause bound to nobody.
 
+## Unattended and overnight runs
+
+Written 2026-08-23, before an 8-hour unsupervised grind. Everything an
+unattended session needs is now off `%LOCALAPPDATA%\Temp` and in the
+workbench (see MACHINERY.md §5), because Storage Sense is enabled on this
+machine with temp-file deletion on.
+
+The rules that matter when nobody is watching:
+
+1. **Never weaken the tier to make it pass.** Do not lower a compile-rate
+   floor, skip a test, loosen an assertion, or delete a wave block because
+   it went red. A red tier means STOP: commit nothing, leave the tree
+   clean, and write what happened at the end of this file. A silently
+   weakened gate is worse than a stalled run, because the next session
+   inherits it believing it is green.
+2. **The rate only goes UP.** If the compile measure drops, the wave is
+   wrong — revert it rather than reasoning about why the drop is
+   acceptable.
+3. **Push to `fork` only** (`git@github.com:libertybella/MTGcommander.git`).
+   `origin` is Ross's repo and denies write access to this identity; work
+   reaches him by pull request. Never `git push origin`.
+4. **No subagents.** The project instruction stands: do not call the Agent
+   tool unless Liberty asks. MACHINERY.md is the substitute and it works.
+5. **Never run the suite alongside a fuzz burn** — the parallelism causes
+   false timeouts. One at a time, always.
+6. **Stop at a checkpoint, not at context exhaustion.** Five to eight waves,
+   then checkpoint: 800-seed burn on a CLEAN tree, tag, refresh this file.
+   The last waves of an over-long session are cramped and the handoff
+   suffers, which costs the next session more than the waves gained.
+7. **One commit per wave, tree clean between waves.** An interrupted run
+   should always be resumable from a committed state.
+
 ## The wave rhythm
 
 One wave ≈ one claimed cluster ≈ 4–6 card flips. The loop:
@@ -439,9 +473,12 @@ One wave ≈ one claimed cluster ≈ 4–6 card flips. The loop:
    (one got committed once; it inflates counts and breaks the tier).
 3. **Verify oracle text** against the real bulk file — never trust
    memory for card text:
-   `C:\Users\Ryan\AppData\Local\Temp\oracle-bulk.jsonl` (Scryfall
-   bulk), `C:\Users\Ryan\AppData\Local\Temp\edhrec-top2000.json` (the
-   measured list).
+   `E:\Claude\mtg-workbench\data\oracle-bulk.jsonl` (Scryfall bulk),
+   `E:\Claude\mtg-workbench\data\edhrec-top2000.json` (the measured
+   list). **These moved off `%LOCALAPPDATA%\Temp` on 2026-08-23** —
+   Storage Sense is enabled here with temp-file deletion on, which had
+   both the 200MB bulk and the whole session scratchpad in scope.
+   Nothing an unattended run depends on may live there.
 4. **Implement** across all four mapper layers (see below).
 5. **Test**: append a `wave NNN` describe block to
    `engine/src/rulesSprint.test.ts` (compile assertions + runtime
@@ -451,7 +488,7 @@ One wave ≈ one claimed cluster ≈ 4–6 card flips. The loop:
    npx tsc -p engine --noEmit; npx tsc -p server --noEmit; npx tsc -p client --noEmit
    npx oxlint
    npx vitest run
-   $env:COMPILE_BULK="C:\Users\Ryan\AppData\Local\Temp\oracle-bulk.jsonl"; $env:COMPILE_LIST="C:\Users\Ryan\AppData\Local\Temp\edhrec-top2000.json"; npx vitest run server/src/compileRate.test.ts
+   $env:COMPILE_BULK="E:\Claude\mtg-workbench\data\oracle-bulk.jsonl"; $env:COMPILE_LIST="E:\Claude\mtg-workbench\data\edhrec-top2000.json"; npx vitest run server/src/compileRate.test.ts
    # read the "[compile-rate] list:" line — the rate only goes UP
    $env:FUZZ_SEEDS="200"; npx vitest run engine/src/fuzz
    ```

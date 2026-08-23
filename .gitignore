@@ -13,3 +13,9 @@ logs
 npm-debug.log*
 .vite
 coverage
+
+# Scratch probes are copied into the tree, run, and removed (see the
+# workbench tools). If a session is interrupted mid-probe the file can
+# survive; it must never be committable, because a stray *.test.ts runs in
+# the suite and inflates the counts.
+**/src/tmp*.test.ts

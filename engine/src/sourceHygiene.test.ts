@@ -1,4 +1,4 @@
-import { readdirSync, readFileSync } from "node:fs";
+import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
@@ -6,13 +6,15 @@ import { describe, expect, it } from "vitest";
  * Characters that are legal in a source file and invisible in every editor,
  * diff, and terminal this project is read through.
  *
- * The one that keeps costing waves is U+0008. It arrives whenever a regex
- * containing a word boundary is written to disk through a layer that
- * interprets escape sequences: `echo -e`, `printf` with the pattern as its
- * FORMAT argument, a `sed` replacement, or a plain (non-raw) JavaScript or
- * Python string literal. The two characters backslash-b collapse into one
- * backspace byte, the word-boundary assertion becomes a match on a character
- * no card text contains, and the pattern silently matches nothing.
+ * The one that keeps costing waves is U+0008, and the cause is narrower than
+ * it looks. The agent tooling used on this repo cannot write a doubled
+ * backslash: every path through it, quoted heredoc included, collapses two
+ * into one. Source that legitimately needs two therefore arrives with one --
+ * a string meant to hold a word boundary becomes a string holding a
+ * backspace, and the pattern silently matches nothing for ever.
+ *
+ * Regex LITERALS are unaffected, since they need only one backslash. It is
+ * regex-in-a-string that breaks, which is why it took three waves to see.
  *
  * Nothing else in the tier can see that. tsc compiles it, oxlint has no rule
  * for it, and the compile-rate metric reports a smaller number with no reason
@@ -93,6 +95,15 @@ const SKIPPED_DIRECTORIES = new Set([
 
 const REPO_ROOT = resolve(__dirname, "../..");
 
+/**
+ * Source files are never this big — the largest here is a little over 1MB
+ * and grows by a describe block a wave. The cap exists so a stray dump left
+ * in the tree by an interrupted session cannot make the tier read hundreds
+ * of megabytes. Anything over it is REPORTED rather than skipped: a silent
+ * cap would quietly stop scanning the one file worth scanning.
+ */
+const MAX_SCANNED_BYTES = 8 * 1024 * 1024;
+
 type Finding = { line: number; column: number; codePoint: number; rendered: string };
 
 /** Every invisible character in `text`, with the line rendered so it can be seen. */
@@ -167,6 +178,15 @@ describe("source hygiene: no invisible characters", () => {
   it("finds no invisible character anywhere in the repository", () => {
     const offences: string[] = [];
     for (const file of sourceFiles(REPO_ROOT)) {
+      const size = statSync(file).size;
+      if (size > MAX_SCANNED_BYTES) {
+        offences.push(
+          `${relative(REPO_ROOT, file)} — ${size} bytes, over the ${MAX_SCANNED_BYTES}` +
+            " byte scan cap. If this is a real source file, raise the cap; if it is" +
+            " a dump left behind by an interrupted session, delete it.",
+        );
+        continue;
+      }
       for (const finding of scanText(readFileSync(file, "utf8"))) {
         const name = INVISIBLE.get(finding.codePoint) ?? "UNKNOWN";
         const point = `U+${finding.codePoint.toString(16).toUpperCase().padStart(4, "0")}`;
@@ -199,6 +219,9 @@ describe("source hygiene: one line ending per file", () => {
     // and a needle joined with the wrong newline silently matches zero times.
     const offences: string[] = [];
     for (const file of sourceFiles(REPO_ROOT)) {
+      if (statSync(file).size > MAX_SCANNED_BYTES) {
+        continue; // Already reported by the invisible-character scan above.
+      }
       const text = readFileSync(file, "utf8");
       const crlf = (text.match(/\r\n/g) ?? []).length;
       const total = (text.match(/\n/g) ?? []).length;
