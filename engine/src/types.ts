@@ -2233,6 +2233,16 @@ export type TriggerCondition =
   | { kind: "controls_power_at_least"; power: number }
   /** Karlach: "if it's the first combat phase of the turn". */
   | { kind: "first_combat_this_turn" }
+  /**
+   * Unbreakable Formation: "if you cast this spell during your main phase".
+   *
+   * Read when the spell RESOLVES, not when it was cast, and the two cannot
+   * disagree: phases do not advance while the stack is non-empty, so a
+   * spell cast in its controller's main phase resolves in that same main
+   * phase. Recording the cast-time phase on the stack object would be more
+   * words for the same answer.
+   */
+  | { kind: "own_main_phase" }
   /** Mana Vault: "if this artifact is tapped". */
   | { kind: "self_tapped" }
   /** Dethrone / Scourge: the subject attacker's defender has the most life

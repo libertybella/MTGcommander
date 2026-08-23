@@ -30042,3 +30042,90 @@ describe("wave 229: two more target shapes", () => {
     expect(requirements[1]).toEqual({ kind: "creature", attackingOrBlockingOnly: true });
   });
 });
+
+describe("wave 230: cast during your main phase", () => {
+  const compile = (name: string, typeLine: string, oracleText: string) =>
+    compileOracleCard({
+      oracleId: name,
+      name,
+      manaCost: "{2}{W}",
+      typeLine,
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  it("compiles the rider onto the condition vocabulary", () => {
+    const compiled = compile(
+      "Main Phase Rider",
+      "Instant",
+      "Creatures you control get +1/+1 until end of turn. If you cast this spell during your main phase, draw a card.",
+    );
+    expect(compiled.notes).toEqual([]);
+    const gated = compiled.definition.effects.find((effect) => effect.kind === "if_condition");
+    expect(gated).toMatchObject({
+      kind: "if_condition",
+      condition: { kind: "own_main_phase" },
+      then: [{ kind: "draw", playerId: "controller", count: 1 }],
+    });
+  });
+
+  it("wants your own main phase, not merely a main phase", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    const condition = { kind: "own_main_phase" as const };
+
+    game.turn.activePlayerId = p1.id;
+    game.turn.phase = "precombatMain";
+    game.turn.step = "precombatMain";
+    expect(triggerConditionHolds(game, p1.id, condition)).toBe(true);
+    // Same main phase, wrong player: an opponent casting an instant during
+    // your main phase did not cast it during THEIR main phase.
+    expect(triggerConditionHolds(game, p2.id, condition)).toBe(false);
+
+    game.turn.phase = "postcombatMain";
+    game.turn.step = "postcombatMain";
+    expect(triggerConditionHolds(game, p1.id, condition)).toBe(true);
+
+    // Your own turn, but not a main phase.
+    game.turn.phase = "combat";
+    game.turn.step = "declareAttackers";
+    expect(triggerConditionHolds(game, p1.id, condition)).toBe(false);
+
+    game.turn.phase = "beginning";
+    game.turn.step = "upkeep";
+    expect(triggerConditionHolds(game, p1.id, condition)).toBe(false);
+  });
+
+  it("round trips", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const definition = createCardDefinition({
+      name: "Rider Holder",
+      typeLine: "Enchantment",
+      triggers: [
+        {
+          event: "enter_battlefield",
+          condition: { kind: "own_main_phase" },
+          effects: [{ kind: "draw", playerId: "controller", count: 1 }],
+          targetRequirements: [],
+        },
+      ],
+    });
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({
+      definitionId: definition.id,
+      ownerId: p1.id,
+      zone: "battlefield",
+    });
+    game.cards[card.id] = card;
+    p1.zones.battlefield.push(card.id);
+
+    const round = parseGameState(serializeGameState(game));
+    expect(round.definitions[definition.id]?.triggers[0]?.condition).toEqual({
+      kind: "own_main_phase",
+    });
+  });
+});

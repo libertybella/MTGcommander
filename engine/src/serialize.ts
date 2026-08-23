@@ -3980,6 +3980,7 @@ function parseTriggerCondition(value: unknown, label: string): TriggerCondition 
         conditionKind === "opponent_controls_more_lands" ||
         conditionKind === "subject_name_unique" ||
         conditionKind === "first_combat_this_turn" ||
+        conditionKind === "own_main_phase" ||
         conditionKind === "self_tapped" ||
         conditionKind === "attacking_most_life"
       ) {

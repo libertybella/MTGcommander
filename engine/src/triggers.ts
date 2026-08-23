@@ -1,4 +1,4 @@
-import { characteristicsOf, isCommander } from "./cardTypes";
+import { characteristicsOf, isCommander, isMainPhase } from "./cardTypes";
 import {
   abilitiesRemoved,
   cardMatchesSubtype,
@@ -154,6 +154,11 @@ export function triggerConditionHolds(
       }
     }
     return types.size >= condition.count;
+  }
+  if (condition.kind === "own_main_phase") {
+    // Both halves matter: an opponent's main phase is a main phase, and
+    // the controller's own turn can be in combat.
+    return state.turn.activePlayerId === controllerId && isMainPhase(state);
   }
   if (condition.kind === "creature_died_this_turn") {
     return (state.creaturesDiedThisTurn ?? 0) > 0;

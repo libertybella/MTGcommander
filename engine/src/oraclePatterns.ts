@@ -1380,6 +1380,9 @@ function parseEffectCondition(phrase: string): TriggerCondition | null {
   if (/^a creature died this turn$/i.test(text)) {
     return { kind: "creature_died_this_turn" };
   }
+  if (/^you cast this spell during your main phase$/i.test(text)) {
+    return { kind: "own_main_phase" };
+  }
   if (/^you have (\d+) or more life$/i.test(text)) {
     return { kind: "life_at_least", amount: Number(text.match(/(\d+)/)![1]) };
   }
