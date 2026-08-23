@@ -2455,6 +2455,10 @@ export type TriggerCondition =
   | { kind: "attacked_this_turn" }
   /** "if you've drawn more than one card this turn". */
   | { kind: "drew_cards_this_turn"; moreThan: number }
+  /** Jace, Wielder of Mysteries: "if your library has no cards in it".
+   * The CONTROLLER's library — a rider on their own draw, not a question
+   * about the table. */
+  | { kind: "library_empty" }
   /** Zacama: "When this enters, IF YOU CAST IT, …". Read on the SOURCE. */
   | { kind: "entered_from_cast" }
   /** The Gaffer: "if you gained 3 or more life this turn". Counts life

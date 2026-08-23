@@ -870,6 +870,16 @@ more questions it can now ask:
   (Bennie Bracks). Reads the existing per-player `createdTokenThisTurn`
   list, and asks whether the CONTROLLER is in it — an opponent's Treasure
   must not satisfy it.
+- **`library_empty`** — "Then if your library has no cards in it, you win
+  the game" (Jace, Wielder of Mysteries). The CONTROLLER's library, and an
+  absent player reads false: a condition that answered true for nobody
+  would hand out a win nobody earned. It reaches the existing `if_condition`
+  gate, so the win sits INSIDE the branch — parked beside the draw it would
+  fire every time, which is a card that always wins.
+
+  A leading "Then" is sequencing, not a condition, and the rider parser now
+  steps over it. The condition parser still gates the match, so the wider
+  pattern cannot claim a sentence whose "if" it is unable to read.
 - **Land-keyed trigger doubling** — Ancient Greenwarden. `triggerDoubling`
   already carried `cause` and `causeTypesAny`; the grammar's cause list did
   not include `land`, and Greenwarden is the one printing that ends

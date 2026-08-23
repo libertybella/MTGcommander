@@ -1430,6 +1430,9 @@ function parseEffectCondition(phrase: string): TriggerCondition | null {
   if (/^you attacked this turn$/i.test(text)) {
     return { kind: "attacked_this_turn" };
   }
+  if (/^your library has no cards in it$/i.test(text)) {
+    return { kind: "library_empty" };
+  }
   if (/^you cast it$/i.test(text)) {
     return { kind: "entered_from_cast" };
   }
@@ -13515,7 +13518,11 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
     // without it the rider is an extra effect the condition gates. The ability
     // word itself is already gone — normalizeOracleText strips it.
     const riderTrailing = sentence.match(/^(.+?) instead if (.+)$/i);
-    const riderLeading = sentence.match(/^If (.+?), (instead )?(.+)$/i);
+    // A leading "Then" is sequencing, not a condition of its own (Jace,
+    // Wielder of Mysteries: "Then if your library has no cards in it, you
+    // win the game."). The condition parser still gates the match, so this
+    // cannot claim a sentence whose "if" it cannot read.
+    const riderLeading = sentence.match(/^(?:Then )?If (.+?), (instead )?(.+)$/i);
     // "That creature ALSO gains trample … if you control …" — the condition
     // trails without "instead", so the rider adds rather than replaces. The
     // condition parser is what keeps this from claiming every sentence

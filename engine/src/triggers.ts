@@ -166,6 +166,12 @@ export function triggerConditionHolds(
   if (condition.kind === "attacked_this_turn") {
     return state.players.find((entry) => entry.id === controllerId)?.attackedThisTurn === true;
   }
+  if (condition.kind === "library_empty") {
+    const player = state.players.find((entry) => entry.id === controllerId);
+    // An absent player is not a player with an empty library: reading
+    // this as true would hand out a win nobody earned.
+    return player !== undefined && player.zones.library.length === 0;
+  }
   if (condition.kind === "entered_from_cast") {
     // Read on the source, and an absent source reads FALSE: a condition
     // that cannot see the permanent has not seen you cast it.

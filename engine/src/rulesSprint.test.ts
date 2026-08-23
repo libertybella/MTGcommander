@@ -34014,3 +34014,94 @@ describe("wave 261: a land entering doubles the trigger", () => {
     expect(gainedFrom(creature)).toBe(1);
   });
 });
+
+describe("wave 262: an empty library wins the game", () => {
+  it("gates the win on the condition rather than running it flat", () => {
+    const jace = compileOracleCard({
+      oracleId: "Jace",
+      name: "Jace",
+      manaCost: "{3}{U}",
+      typeLine: "Sorcery",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText: "Draw three cards. Then if your library has no cards in it, you win the game.",
+    });
+    expect(jace.notes).toEqual([]);
+    expect(jace.definition.effects[0]).toMatchObject({ kind: "draw", count: 3 });
+    const gated = jace.definition.effects[1] as {
+      kind: string;
+      condition: { kind: string };
+      then: { kind: string }[];
+    };
+    // The win must sit INSIDE the gate. Parked beside the draw it would fire
+    // every time, which is a card that always wins.
+    expect(gated.kind).toBe("if_condition");
+    expect(gated.condition).toEqual({ kind: "library_empty" });
+    expect(gated.then).toEqual([{ kind: "win_game", playerId: "controller" }]);
+  });
+
+  it("reads the CONTROLLER's library, not anyone's", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 5);
+    expect(triggerConditionHolds(game, p1.id, { kind: "library_empty" })).toBe(false);
+
+    const emptied = structuredClone(game);
+    emptied.players.find((entry) => entry.id === p1.id)!.zones.library = [];
+    expect(triggerConditionHolds(emptied, p1.id, { kind: "library_empty" })).toBe(true);
+    // The opponent still has cards, and asking about THEM must say so — a
+    // condition that read "some library is empty" would pass the line above
+    // and fail only this one.
+    expect(triggerConditionHolds(emptied, p2.id, { kind: "library_empty" })).toBe(false);
+  });
+
+  it("wins only once the library is actually gone", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 4);
+    const gated: CardEffect = {
+      kind: "if_condition",
+      condition: { kind: "library_empty" },
+      then: [{ kind: "win_game", playerId: "controller" }],
+    };
+    const bind = (state: GameState) =>
+      bindCardEffects(state, [gated], { controllerId: p1.id, sourceId: null });
+
+    // Four cards left: the branch binds to nothing at all.
+    expect(bind(game)).toEqual([]);
+
+    const emptied = structuredClone(game);
+    emptied.players.find((entry) => entry.id === p1.id)!.zones.library = [];
+    expect(bind(emptied)).toEqual([{ kind: "win_game", playerId: p1.id }]);
+  });
+
+  it("round trips the condition", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const definition = createCardDefinition({
+      name: "Thesis",
+      typeLine: "Sorcery",
+      effects: [
+        {
+          kind: "if_condition",
+          condition: { kind: "library_empty" },
+          then: [{ kind: "win_game", playerId: "controller" }],
+        },
+      ],
+    });
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({
+      definitionId: definition.id,
+      ownerId: p1.id,
+      zone: "hand",
+    });
+    game.cards[card.id] = card;
+    p1.zones.hand.push(card.id);
+
+    const round = parseGameState(serializeGameState(game));
+    expect(round.definitions[definition.id]?.effects[0]).toMatchObject({
+      kind: "if_condition",
+      condition: { kind: "library_empty" },
+    });
+  });
+});

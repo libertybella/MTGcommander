@@ -4163,6 +4163,9 @@ function parseTriggerCondition(value: unknown, label: string): TriggerCondition 
       if (conditionKind === "created_token_this_turn") {
         return { kind: conditionKind };
       }
+      if (conditionKind === "library_empty" || conditionKind === "entered_from_cast") {
+        return { kind: conditionKind };
+      }
       if (conditionKind === "self_counter_count") {
         const comparison = expectString(value.comparison, `${label}.comparison`);
         if (comparison !== "at_least" && comparison !== "fewer_than") {
