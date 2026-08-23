@@ -1672,6 +1672,43 @@ export function parseGameState(json: string): GameState {
             },
           ),
         }),
+    delayedTriggers:
+      raw.delayedTriggers === undefined
+        ? []
+        : (() => {
+            if (!Array.isArray(raw.delayedTriggers)) {
+              throw new Error("Invalid delayedTriggers");
+            }
+            return raw.delayedTriggers.map((entry, index) => {
+              if (!isRecord(entry)) {
+                throw new Error(`Invalid delayedTriggers[${index}]`);
+              }
+              const step = expectString(entry.step, `delayedTriggers[${index}].step`);
+              if (step !== "upkeep" && step !== "first_main_phase") {
+                throw new Error(`Invalid delayedTriggers[${index}].step`);
+              }
+              const whose = expectString(entry.whose, `delayedTriggers[${index}].whose`);
+              if (whose !== "controller" && whose !== "any") {
+                throw new Error(`Invalid delayedTriggers[${index}].whose`);
+              }
+              return {
+                controllerId: expectString(
+                  entry.controllerId,
+                  `delayedTriggers[${index}].controllerId`,
+                ),
+                step,
+                whose,
+                effects: parseGameEffects(
+                  entry.effects,
+                  `delayedTriggers[${index}].effects`,
+                ),
+                sourceId:
+                  entry.sourceId === null || entry.sourceId === undefined
+                    ? null
+                    : expectString(entry.sourceId, `delayedTriggers[${index}].sourceId`),
+              };
+            });
+          })(),
     delayedEndStep:
       raw.delayedEndStep === undefined
         ? []
@@ -3489,8 +3526,25 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
     case "extra_land_drop":
       return { kind, playerId: parsePlayerSelector(value.playerId, `${label}.playerId`) };
     case "win_game":
+    case "lose_game":
     case "grant_flash_this_turn":
       return { kind, playerId: parsePlayerSelector(value.playerId, `${label}.playerId`) };
+    case "delayed_trigger": {
+      const step = expectString(value.step, `${label}.step`);
+      if (step !== "upkeep" && step !== "first_main_phase") {
+        throw new Error(`Invalid ${label}.step`);
+      }
+      const whose = expectString(value.whose, `${label}.whose`);
+      if (whose !== "controller" && whose !== "any") {
+        throw new Error(`Invalid ${label}.whose`);
+      }
+      return {
+        kind,
+        step,
+        whose,
+        effects: parseCardEffects(value.effects, `${label}.effects`),
+      };
+    }
     case "grant_free_cast_from_hand": {
       const cap = value.maxManaValue;
       return {
@@ -5217,8 +5271,34 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
   if (kind === "prevent_combat_for") {
     return { kind, cardId: expectString(value.cardId, `${label}.cardId`) };
   }
-  if (kind === "extra_land_drop" || kind === "win_game" || kind === "grant_flash_this_turn") {
+  if (
+    kind === "extra_land_drop" ||
+    kind === "win_game" ||
+    kind === "lose_game" ||
+    kind === "grant_flash_this_turn"
+  ) {
     return { kind, playerId: expectString(value.playerId, `${label}.playerId`) };
+  }
+  if (kind === "delayed_trigger") {
+    const step = expectString(value.step, `${label}.step`);
+    if (step !== "upkeep" && step !== "first_main_phase") {
+      throw new Error(`Invalid ${label}.step`);
+    }
+    const whose = expectString(value.whose, `${label}.whose`);
+    if (whose !== "controller" && whose !== "any") {
+      throw new Error(`Invalid ${label}.whose`);
+    }
+    return {
+      kind,
+      controllerId: expectString(value.controllerId, `${label}.controllerId`),
+      step,
+      whose,
+      effects: parseGameEffects(value.effects, `${label}.effects`),
+      sourceId:
+        value.sourceId === null || value.sourceId === undefined
+          ? null
+          : expectString(value.sourceId, `${label}.sourceId`),
+    };
   }
   if (kind === "grant_free_cast_from_hand") {
     return {

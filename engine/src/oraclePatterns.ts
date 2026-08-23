@@ -2146,7 +2146,133 @@ function foldSubjectRider(effects: CardEffect[], sentence: string): boolean {
   return false;
 }
 
+/**
+ * Read the timing phrase of a delayed triggered ability. "YOUR next"
+ * upkeep waits for the controller's own turn; "the NEXT TURN's" upkeep
+ * fires on whoever is active — four-handed those are three turns apart.
+ */
+function parseDelayedTiming(
+  phrase: string,
+): { step: "upkeep" | "first_main_phase"; whose: "controller" | "any" } | null {
+  if (/^your next upkeep$/i.test(phrase)) {
+    return { step: "upkeep", whose: "controller" };
+  }
+  if (/^the next turn['\u2019]s upkeep$/i.test(phrase)) {
+    return { step: "upkeep", whose: "any" };
+  }
+  if (/^your next main phase$/i.test(phrase)) {
+    return { step: "first_main_phase", whose: "controller" };
+  }
+  return null;
+}
+
+const DELAYED_TIMING = String.raw`your next upkeep|your next main phase|the next turn['\u2019]s upkeep`;
+
 function compileSimpleClause(sentence: string): SimpleClause | null {
+  // "At the beginning of your next upkeep, …" — a delayed triggered
+  // ability (CR 603.7) created by THIS spell, not a trigger on a
+  // permanent, which is why the permanent trigger head ("of your upkeep",
+  // no "next") does not read it. The body compiles here and binds when
+  // the spell resolves. Terminates: the body is strictly shorter and no
+  // longer holds the timing phrase.
+  const delayedLead = sentence.match(
+    new RegExp(`^At the beginning of (${DELAYED_TIMING}), (.+)$`, "i"),
+  );
+  const delayedTail = delayedLead
+    ? null
+    : sentence.match(
+        new RegExp(`^(.+?) at the beginning of (${DELAYED_TIMING})$`, "i"),
+      );
+  const delayedTiming = delayedLead?.[1] ?? delayedTail?.[2];
+  const delayedBody = delayedLead?.[2] ?? delayedTail?.[1];
+  if (delayedTiming && delayedBody) {
+    const timing = parseDelayedTiming(delayedTiming);
+    const inner = timing ? compileSimpleClause(delayedBody) : null;
+    // A body needing its own targets cannot be delayed: the choice would
+    // have to be made now, for a board that has not happened yet. Refuse
+    // rather than drop the requirement and target nothing later.
+    if (
+      timing &&
+      inner &&
+      !inner.leftover &&
+      inner.targetRequirements.length === 0 &&
+      inner.effects.length > 0
+    ) {
+      return {
+        targetRequirements: [],
+        effects: [
+          {
+            kind: "delayed_trigger",
+            step: timing.step,
+            whose: timing.whose,
+            effects: inner.effects,
+          },
+        ],
+      };
+    }
+  }
+  // Pact of Negation, after fusePactInPlace: "pay {3}{U}{U} or you lose
+  // the game". `unless_pays` is exactly this polarity — the effects run
+  // when the payment does NOT happen.
+  const payOrLose = sentence.match(
+    /^pay ((?:\{[^}]+\})+) or you lose the game$/i,
+  );
+  if (payOrLose?.[1]) {
+    return {
+      targetRequirements: [],
+      effects: [
+        {
+          kind: "unless_pays",
+          playerId: "controller",
+          cost: payOrLose[1],
+          effects: [{ kind: "lose_game", playerId: "controller" }],
+        },
+      ],
+    };
+  }
+  // Mana Drain: "add an amount of {C} equal to that spell's mana value".
+  // The amount is read as the effect binds, while the countered spell is
+  // still on the stack; by the time the mana arrives it is long gone.
+  if (
+    /^add an amount of \{C\} equal to that spell['\u2019]s mana value$/i.test(
+      sentence,
+    )
+  ) {
+    return {
+      targetRequirements: [],
+      effects: [
+        {
+          kind: "add_mana",
+          playerId: "controller",
+          mana: { C: 1 },
+          perTargetManaValue: true,
+        },
+      ],
+    };
+  }
+  // Arcane Denial: "Its controller may draw up to two cards" — the
+  // controller of the countered spell. "Up to" is taken in full, the
+  // same documented approximation `optional` already carries elsewhere:
+  // it draws the full count unless the library is too small.
+  const itsControllerDraws = sentence.match(
+    /^Its controller may draw up to (a|an|one|two|three|four|five|\d+) cards?$/i,
+  );
+  if (itsControllerDraws?.[1]) {
+    const drawCount = parseCount(itsControllerDraws[1]);
+    if (drawCount) {
+      return {
+        targetRequirements: [],
+        effects: [
+          {
+            kind: "draw",
+            playerId: { type: "chosen_controller", index: 0 },
+            count: drawCount,
+            optional: true,
+          },
+        ],
+      };
+    }
+  }
   // "You may have ~ deal 3 damage to any target" (Valakut, Kederekt Parasite):
   // the "may" is auto-taken, the same documented approximation the other
   // may-clauses here use, and what is left is the ordinary damage clause.
@@ -7739,6 +7865,28 @@ function fuseMayPayInPlace(sentences: string[], lineStart: boolean[]): void {
   }
 }
 
+function fusePactInPlace(sentences: string[], lineStart: boolean[]): void {
+  // Pact of Negation: "…, pay {3}{U}{U}. If you don't, you lose the game."
+  // The penalty belongs INSIDE the delayed trigger — left as its own
+  // sentence it would be a top-level effect on the spell, losing the game
+  // the moment the Pact resolved.
+  for (let index = 0; index + 1 < sentences.length; index += 1) {
+    if (lineStart[index + 1]) {
+      continue;
+    }
+    const head = sentences[index]?.match(/^(.*\bpay (?:\{[^}]+\})+)$/i);
+    const rider = sentences[index + 1]?.match(
+      /^If you don['\u2019]t, you lose the game$/i,
+    );
+    if (!head?.[1] || !rider) {
+      continue;
+    }
+    sentences[index] = `${head[1]} or you lose the game`;
+    sentences.splice(index + 1, 1);
+    lineStart.splice(index + 1, 1);
+  }
+}
+
 function expandEntersOrDiesInPlace(sentences: string[], lineStart: boolean[]): void {
   // Stitcher's Supplier: "When ~ enters or dies, X" expands to one enter
   // trigger and one dies trigger carrying the same clause.
@@ -10344,6 +10492,7 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
   splitGrantedQuotedTriggerInPlace(sentences, lineStart);
   fuseItCantBeBlockedInPlace(sentences, lineStart);
   fuseMayPayInPlace(sentences, lineStart);
+  fusePactInPlace(sentences, lineStart);
   fuseMaySacrificeInPlace(sentences, lineStart);
   fuseNecroTopInPlace(sentences, lineStart);
   for (let index = 0; index < sentences.length; index += 1) {

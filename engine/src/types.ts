@@ -545,6 +545,29 @@ export type PlayerState = {
   cityBlessing?: boolean;
 };
 
+/**
+ * A delayed triggered ability (CR 603.7) created by a resolving spell or
+ * ability: "At the beginning of your next upkeep, …".
+ *
+ * Its effects are already BOUND, because what they refer to ("that
+ * spell", "its controller") is usually gone by the time it fires — the
+ * same reason `StackObject.grantedTrigger` is snapshotted rather than
+ * re-read at resolution.
+ */
+export type DelayedTrigger = {
+  /** Whose ability it is: it acts for this player and makes their choices. */
+  controllerId: PlayerId;
+  step: "upkeep" | "first_main_phase";
+  /**
+   * "your next upkeep" waits for the controller's own turn; "the next
+   * turn's upkeep" fires on whoever's turn comes next. Four-handed those
+   * are three turns apart, so the distinction is not cosmetic.
+   */
+  whose: "controller" | "any";
+  effects: GameEffect[];
+  sourceId: CardInstanceId | null;
+};
+
 export type StackObject = {
   id: StackObjectId;
   controllerId: PlayerId;
@@ -674,6 +697,16 @@ export type GameState = {
     /** action "battlefield" (Charming Prince): who gets the returned card. */
     controllerId?: PlayerId;
   }>;
+  /**
+   * Delayed triggered abilities waiting on a future step. Distinct from
+   * `delayedEndStep`, which is a fixed four-action shorthand keyed to one
+   * card; these carry arbitrary bound effects and their own controller.
+   *
+   * Simplification: they apply as the step begins rather than going on
+   * the stack, exactly as `delayedEndStep` does, so there is no window to
+   * respond to one. Documented in RULES_COVERAGE.
+   */
+  delayedTriggers: DelayedTrigger[];
   /** Spells cast by anyone this turn — Storm's copy count (CR 702.40). */
   spellsCastThisTurn: number;
   /** Per-player casts this turn (Lotho's second-spell watch). */
@@ -1214,6 +1247,17 @@ export type GameEffect =
   | { kind: "extra_land_drop"; playerId: PlayerId }
   /** "You win the game": every other player loses (CR 104.2a). */
   | { kind: "win_game"; playerId: PlayerId }
+  /** "You lose the game" (Pact of Negation's unpaid upkeep). */
+  | { kind: "lose_game"; playerId: PlayerId }
+  /** Park a delayed triggered ability on a future step (CR 603.7). */
+  | {
+      kind: "delayed_trigger";
+      controllerId: PlayerId;
+      step: "upkeep" | "first_main_phase";
+      whose: "controller" | "any";
+      effects: GameEffect[];
+      sourceId: CardInstanceId | null;
+    }
   /** Emergence Zone: the player may cast at instant speed this turn. */
   | { kind: "grant_flash_this_turn"; playerId: PlayerId }
   /** Rishkar's Expertise: one free cast from hand, capped by mana value. */
@@ -1797,6 +1841,10 @@ export type CardEffect =
       mana: Partial<ManaPool>;
       /** Jeska's Will: multiply the mana by the chosen player's hand size. */
       perChosenPlayerHand?: boolean;
+      /** Mana Drain: multiply by the TARGET SPELL's mana value, read as
+       * the effect binds — by the time the delayed trigger fires the
+       * spell is long gone from the stack. */
+      perTargetManaValue?: boolean;
       /** Lotus Cobra: "add one mana of any color" — auto-picked at bind
        * (first commander-identity color, else {G}), a documented
        * approximation of the free choice. */
@@ -2154,6 +2202,17 @@ export type CardEffect =
   | { kind: "extra_land_drop"; playerId: PlayerSelector }
   /** "You win the game": every other player loses (CR 104.2a). */
   | { kind: "win_game"; playerId: PlayerSelector }
+  | { kind: "lose_game"; playerId: PlayerSelector }
+  /**
+   * "At the beginning of your next upkeep, …". The body is bound NOW,
+   * as the spell resolves, not when the step arrives.
+   */
+  | {
+      kind: "delayed_trigger";
+      step: "upkeep" | "first_main_phase";
+      whose: "controller" | "any";
+      effects: CardEffect[];
+    }
   /** Emergence Zone: the player may cast at instant speed this turn. */
   | { kind: "grant_flash_this_turn"; playerId: PlayerSelector }
   /** Command Beacon: the commander moves from the command zone to hand. */

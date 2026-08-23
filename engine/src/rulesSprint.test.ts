@@ -32,7 +32,7 @@ import { applyResolveCreatureType, legalEnterCopyIds, searchMatches } from "./pr
 import { parseGameState, serializeGameState } from "./serialize";
 import { fillLibraries } from "./testSupport";
 import { advanceSteps } from "./turn";
-import type { CardDefinition, CardEffect, GameState, Keyword, PlayerState, TargetRequirement } from "./types";
+import type { CardDefinition, CardEffect, GameState, Keyword, PlayerState, Step, TargetRequirement } from "./types";
 
 function twoPlayers() {
   const game = createGameState({ playerCount: 2 });
@@ -34103,5 +34103,227 @@ describe("wave 262: an empty library wins the game", () => {
       kind: "if_condition",
       condition: { kind: "library_empty" },
     });
+  });
+});
+describe("wave 263: delayed triggered abilities", () => {
+  const park = (
+    state: GameState,
+    controllerId: string,
+    step: "upkeep" | "first_main_phase",
+    whose: "controller" | "any",
+    effects: Parameters<typeof applyEffects>[1],
+  ) =>
+    applyEffect(state, {
+      kind: "delayed_trigger",
+      controllerId,
+      step,
+      whose,
+      effects,
+      sourceId: null,
+    });
+
+  /** Advance at least one step, then look for the named slot. */
+  const runTo = (state: GameState, playerId: string, step: Step): GameState => {
+    let current = state;
+    for (let i = 0; i < 80; i += 1) {
+      current = advanceStep(current);
+      if (current.turn.activePlayerId === playerId && current.turn.step === step) {
+        return current;
+      }
+    }
+    throw new Error(`never reached ${playerId} ${step}`);
+  };
+
+  const lifeOf = (state: GameState, playerId: string) =>
+    state.players.find((entry) => entry.id === playerId)!.life;
+
+  it("waits for the controller's OWN turn when the text says your next upkeep", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 30);
+    // Park it AFTER this turn's upkeep has gone by, which is when a
+    // counterspell is actually cast; parking before it would fire this
+    // turn, correctly, and prove nothing about the next one.
+    const ready = runTo(game, p1.id, "precombatMain");
+    const parked = park(ready, p1.id, "upkeep", "controller", [
+      { kind: "gain_life", playerId: p1.id, amount: 5 },
+    ]);
+    const start = lifeOf(parked, p1.id);
+
+    // The opponent's upkeep is not "your next upkeep". Firing here would
+    // resolve the ability a whole turn early, and four-handed, three.
+    const atOpponentUpkeep = runTo(parked, p2.id, "upkeep");
+    expect(lifeOf(atOpponentUpkeep, p1.id)).toBe(start);
+    expect(atOpponentUpkeep.delayedTriggers).toHaveLength(1);
+
+    const atOwnUpkeep = runTo(atOpponentUpkeep, p1.id, "upkeep");
+    expect(lifeOf(atOwnUpkeep, p1.id)).toBe(start + 5);
+    expect(atOwnUpkeep.delayedTriggers).toHaveLength(0);
+  });
+
+  it("fires on whoever is active when the text says the next turn's upkeep", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 30);
+    // Park it AFTER this turn's upkeep has gone by, which is when a
+    // counterspell is actually cast; parking before it would fire this
+    // turn, correctly, and prove nothing about the next one.
+    const ready = runTo(game, p1.id, "precombatMain");
+    const parked = park(ready, p1.id, "upkeep", "any", [
+      { kind: "gain_life", playerId: p1.id, amount: 5 },
+    ]);
+    const start = lifeOf(parked, p1.id);
+    // Arcane Denial pays out on the very next upkeep, not on the caster's
+    // own — the same phrase the previous test must NOT match.
+    const atOpponentUpkeep = runTo(parked, p2.id, "upkeep");
+    expect(lifeOf(atOpponentUpkeep, p1.id)).toBe(start + 5);
+    expect(atOpponentUpkeep.delayedTriggers).toHaveLength(0);
+  });
+
+  it("fires once, not every turn", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 40);
+    // Park it AFTER this turn's upkeep has gone by, which is when a
+    // counterspell is actually cast; parking before it would fire this
+    // turn, correctly, and prove nothing about the next one.
+    const ready = runTo(game, p1.id, "precombatMain");
+    const parked = park(ready, p1.id, "upkeep", "controller", [
+      { kind: "gain_life", playerId: p1.id, amount: 5 },
+    ]);
+    const start = lifeOf(parked, p1.id);
+    const first = runTo(parked, p1.id, "upkeep");
+    expect(lifeOf(first, p1.id)).toBe(start + 5);
+    const second = runTo(first, p1.id, "upkeep");
+    // An entry left in the list would gain life every upkeep forever.
+    expect(lifeOf(second, p1.id)).toBe(start + 5);
+  });
+
+  it("keeps upkeep and main-phase parkings apart", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 30);
+    const parked = park(game, p1.id, "first_main_phase", "controller", [
+      { kind: "gain_life", playerId: p1.id, amount: 7 },
+    ]);
+    const start = lifeOf(parked, p1.id);
+    const atUpkeep = runTo(parked, p1.id, "upkeep");
+    // Mana Drain's mana arrives at the MAIN PHASE. Paying out at upkeep
+    // would empty from the pool before the player could spend it.
+    expect(lifeOf(atUpkeep, p1.id)).toBe(start);
+    const atMain = runTo(atUpkeep, p1.id, "precombatMain");
+    expect(lifeOf(atMain, p1.id)).toBe(start + 7);
+  });
+
+  it("drops a parking whose controller has left the game", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 30);
+    let parked = park(game, p2.id, "upkeep", "any", [
+      { kind: "gain_life", playerId: p1.id, amount: 5 },
+    ]);
+    const start = lifeOf(parked, p1.id);
+    parked = applyEffect(parked, { kind: "lose_game", playerId: p2.id });
+    const next = runTo(parked, p1.id, "upkeep");
+    expect(lifeOf(next, p1.id)).toBe(start);
+  });
+
+  it("round trips through serialization", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const parked = park(game, p1.id, "first_main_phase", "any", [
+      { kind: "gain_life", playerId: p1.id, amount: 3 },
+    ]);
+    const round = parseGameState(serializeGameState(parked));
+    expect(round.delayedTriggers).toEqual([
+      {
+        controllerId: p1.id,
+        step: "first_main_phase",
+        whose: "any",
+        effects: [{ kind: "gain_life", playerId: p1.id, amount: 3 }],
+        sourceId: null,
+      },
+    ]);
+  });
+});
+
+describe("wave 263: losing the game as an effect", () => {
+  it("eliminates the named player and nobody else", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const next = applyEffect(game, { kind: "lose_game", playerId: p1.id });
+    expect(next.players.find((entry) => entry.id === p1.id)?.lost).toBe(true);
+    // The mirror of win_game must not take the table with it.
+    expect(next.players.find((entry) => entry.id === p2.id)?.lost).toBe(false);
+  });
+
+  it("respects a permanent that says you cannot lose the game", () => {
+    const { game, p1 } = twoPlayers();
+    const angel = createCardDefinition({
+      name: "Angel",
+      typeLine: "Artifact Creature — Angel",
+      cantLoseGame: true,
+    });
+    game.definitions[angel.id] = angel;
+    const card = createCardInstance({
+      definitionId: angel.id,
+      ownerId: p1.id,
+      zone: "battlefield",
+    });
+    game.cards[card.id] = card;
+    p1.zones.battlefield.push(card.id);
+    const next = applyEffect(game, { kind: "lose_game", playerId: p1.id });
+    expect(next.players.find((entry) => entry.id === p1.id)?.lost).toBe(false);
+  });
+});
+
+describe("wave 263: reading the delayed timing phrase", () => {
+  const compile = (oracleText: string) =>
+    compileOracleCard({
+      oracleId: "t",
+      name: "Trial",
+      manaCost: "{U}",
+      typeLine: "Instant",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  it("does not steal a permanent's ordinary upkeep trigger", () => {
+    const permanent = compileOracleCard({
+      oracleId: "t2",
+      name: "Watcher",
+      manaCost: "{2}",
+      typeLine: "Enchantment",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText: "At the beginning of your upkeep, draw a card.",
+    });
+    // "your upkeep" carries no "next": it is a trigger that fires EVERY
+    // turn, and reading it as a delayed one-shot would silence it after one.
+    expect(permanent.notes).toEqual([]);
+    expect(permanent.definition.triggers).toHaveLength(1);
+    expect(permanent.definition.effects).toEqual([]);
+  });
+
+  it("refuses a delayed body that needs its own target", () => {
+    // The target would have to be chosen NOW, for a board that has not
+    // happened yet. Leaving it uncompiled is the honest answer.
+    const refused = compile("At the beginning of your next upkeep, destroy target creature.");
+    expect(refused.notes.length).toBeGreaterThan(0);
+    expect(
+      refused.definition.effects.some((effect) => effect.kind === "delayed_trigger"),
+    ).toBe(false);
+  });
+
+  it("reads the trailing form as well as the leading one", () => {
+    const trailing = compile("You draw a card at the beginning of the next turn's upkeep.");
+    expect(trailing.notes).toEqual([]);
+    expect(trailing.definition.effects).toEqual([
+      {
+        kind: "delayed_trigger",
+        step: "upkeep",
+        whose: "any",
+        effects: [{ kind: "draw", playerId: "controller", count: 1 }],
+      },
+    ]);
   });
 });

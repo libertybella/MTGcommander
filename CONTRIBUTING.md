@@ -44,6 +44,15 @@ end-to-end and committed. Typical yield: 4–9 newly fully-compiling cards.
    ```
 
    Without `FUZZ_SEEDS` the shards run 8 games total, not 200.
+
+   **A burn that reports `Errors  8 errors` while every test passes is
+   not a failure.** The bodies read `[vitest-worker]: Timeout calling
+   "onTaskUpdate"` — the reporter's RPC channel timing out when eight
+   shards report at once on a loaded machine, one error per shard. It
+   appears when something else is running alongside the burn and vanishes
+   on an idle one. Check the bodies before chasing it: a real fuzz failure
+   names a seed and a state-integrity assertion. Do not run other vitest
+   invocations concurrently with the burn.
 6. **Document**: add one entry to `docs/RULES_COVERAGE.md` (newest entry
    goes directly after the previous newest). Every deliberate
    simplification must be *silent in gameplay but documented* — in a code

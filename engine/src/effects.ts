@@ -1,4 +1,5 @@
 import { abilitiesRemoved, cardMatchesSubtype, computedCard, dynamicCountOf } from "./characteristicsEngine";
+import { manaValueOf } from "./characteristics";
 import { cloneGameState } from "./clone";
 import { createCardDefinition, createCardInstance } from "./createGame";
 import { characteristicsOf, hasSubtype, isCreature, isInstantOrSorcery, isLand, isPlaneswalker } from "./cardTypes";
@@ -540,8 +541,35 @@ export function bindCardEffect(
         const color = commanderIdentityColors(state, playerId)[0] ?? "G";
         return { ...manaRest, playerId, mana: { [color]: anyColor } };
       }
+      // Mana Drain: {C} equal to the countered spell's mana value, read
+      // while that spell is still on the stack — the delayed trigger it
+      // feeds fires a whole turn later, with the spell long gone.
+      const { perTargetManaValue, ...manaOnly } = manaRest;
+      if (perTargetManaValue) {
+        const spell = chosenTargetAt(context, 0, state);
+        if (!spell || spell.type !== "spell") {
+          return null;
+        }
+        const onStack = state.stack.find((entry) => entry.id === spell.stackObjectId);
+        const spellCard = onStack?.sourceId ? state.cards[onStack.sourceId] : undefined;
+        const cost = spellCard
+          ? (state.definitions[spellCard.definitionId]?.manaCost ?? "")
+          : "";
+        // CR 202.3b: on the stack, {X} counts as the announced value.
+        const value = manaValueOf(cost) + (onStack?.xValue ?? 0);
+        if (value <= 0) {
+          return null;
+        }
+        const scaled: Partial<ManaPool> = {};
+        for (const [color, amount] of Object.entries(manaOnly.mana)) {
+          if (typeof amount === "number" && amount > 0) {
+            scaled[color as keyof ManaPool] = amount * value;
+          }
+        }
+        return { ...manaOnly, playerId, mana: scaled };
+      }
       if (!perChosenPlayerHand) {
-        return { ...manaRest, playerId };
+        return { ...manaOnly, playerId };
       }
       // Jeska's Will: "{R} for each card in target opponent's hand".
       const chosen = chosenTargetAt(context, 0, state);
@@ -1200,12 +1228,30 @@ export function bindCardEffect(
       return { kind: "extra_land_drop", playerId };
     }
     case "grant_flash_this_turn":
+    case "lose_game":
     case "win_game": {
       const playerId = bindPlayerSelector(state, effect.playerId, context);
       if (!playerId) {
         return null;
       }
       return { kind: effect.kind, playerId };
+    }
+    case "delayed_trigger": {
+      // The body is bound HERE, as the creating spell resolves, because
+      // "that spell" and "its controller" stop existing the moment it
+      // finishes resolving. An empty body would park a no-op, so refuse.
+      const delayedEffects = bindCardEffects(state, effect.effects, context);
+      if (delayedEffects.length === 0) {
+        return null;
+      }
+      return {
+        kind: "delayed_trigger",
+        controllerId: context.controllerId,
+        step: effect.step,
+        whose: effect.whose,
+        effects: delayedEffects,
+        sourceId: context.sourceId,
+      };
     }
     case "grant_free_cast_from_hand": {
       const playerId = bindPlayerSelector(state, effect.playerId, context);
@@ -3754,6 +3800,33 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
             eliminatePlayerInPlace(next, other.id);
           }
         }
+        break;
+      }
+      case "lose_game": {
+        // The mirror of win_game. A player who cannot lose is not
+        // eliminated by their own unpaid upkeep either: "you can't lose
+        // the game" is a veto on exactly this.
+        requirePlayer(state, effect.playerId);
+        next = cloneGameState(state);
+        const losing = next.players.find((entry) => entry.id === effect.playerId);
+        if (losing && !losing.lost && !cantLoseGame(next, effect.playerId)) {
+          eliminatePlayerInPlace(next, effect.playerId);
+        }
+        break;
+      }
+      case "delayed_trigger": {
+        requirePlayer(state, effect.controllerId);
+        next = cloneGameState(state);
+        next.delayedTriggers = [
+          ...(next.delayedTriggers ?? []),
+          {
+            controllerId: effect.controllerId,
+            step: effect.step,
+            whose: effect.whose,
+            effects: effect.effects,
+            sourceId: effect.sourceId,
+          },
+        ];
         break;
       }
       case "fight": {

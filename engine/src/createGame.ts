@@ -702,6 +702,7 @@ export function createGameState(options: CreateGameOptions): GameState {
     oncePerTurnFired: [],
     pendingExtraCombats: 0,
     delayedEndStep: [],
+    delayedTriggers: [],
     spellsCastThisTurn: 0,
     preventCombatDamage: false,
   };

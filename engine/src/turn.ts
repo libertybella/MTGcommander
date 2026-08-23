@@ -10,10 +10,64 @@ import {
 import { applyEffect } from "./effects";
 import { creaturesDontUntap, maxHandSizeOf, wouldSkipDraw } from "./derived";
 import { emptyManaPoolsInPlace } from "./mana";
-import { livingPlayers, nextLivingPlayerId } from "./players";
+import { isLiving, livingPlayers, nextLivingPlayerId } from "./players";
 import { applyStateBasedActionsInPlace } from "./status";
 import { dispatchEventsInPlace, queueBeginCombatTriggersInPlace } from "./triggers";
-import type { EngineEvent, GameState, Phase, PlayerId, Step } from "./types";
+import type {
+  DelayedTrigger,
+  EngineEvent,
+  GameState,
+  Phase,
+  PlayerId,
+  Step,
+} from "./types";
+
+/**
+ * Fire the delayed triggered abilities waiting on this step (CR 603.7).
+ *
+ * "At the beginning of YOUR next upkeep" waits for the controller's own
+ * turn; "the next turn's upkeep" fires on whoever is active. Each entry is
+ * removed BEFORE its effects run, so an effect that parks another delayed
+ * trigger for the same step waits a full cycle instead of re-firing in the
+ * window that just opened.
+ *
+ * Simplification: these apply directly rather than going on the stack, the
+ * same shape `delayedEndStep` already uses, so there is no window to
+ * respond to one.
+ */
+function fireDelayedTriggers(
+  state: GameState,
+  step: DelayedTrigger["step"],
+): GameState {
+  const pending = state.delayedTriggers ?? [];
+  if (pending.length === 0) {
+    return state;
+  }
+  const activeId = state.turn.activePlayerId;
+  const ready: DelayedTrigger[] = [];
+  const waiting: DelayedTrigger[] = [];
+  for (const entry of pending) {
+    const due =
+      entry.step === step &&
+      (entry.whose === "any" || entry.controllerId === activeId);
+    (due ? ready : waiting).push(entry);
+  }
+  if (ready.length === 0) {
+    return state;
+  }
+  let current = state;
+  current.delayedTriggers = waiting;
+  for (const entry of ready) {
+    // A controller eliminated in the meantime has no ability left to fire.
+    if (!isLiving(current, entry.controllerId)) {
+      continue;
+    }
+    for (const effect of entry.effects) {
+      current = applyEffect(current, effect);
+    }
+  }
+  return current;
+}
 
 export type TurnSlot = {
   phase: Phase;
@@ -212,8 +266,11 @@ function onEnterStep(state: GameState): GameState {
       }
       state.exilePlayable = grants;
     }
-    dispatchEventsInPlace(state, [{ kind: "step_begins", step: "upkeep" }]);
-    return state;
+    const afterDelayedUpkeep = fireDelayedTriggers(state, "upkeep");
+    dispatchEventsInPlace(afterDelayedUpkeep, [
+      { kind: "step_begins", step: "upkeep" },
+    ]);
+    return afterDelayedUpkeep;
   }
   if (state.turn.step === "end") {
     // "At the beginning of the next end step" one-shots (temporary tokens,
@@ -299,8 +356,11 @@ function onEnterStep(state: GameState): GameState {
     return state;
   }
   if (state.turn.step === "precombatMain") {
-    dispatchEventsInPlace(state, [{ kind: "step_begins", step: "precombatMain" }]);
-    return state;
+    const afterDelayedMain = fireDelayedTriggers(state, "first_main_phase");
+    dispatchEventsInPlace(afterDelayedMain, [
+      { kind: "step_begins", step: "precombatMain" },
+    ]);
+    return afterDelayedMain;
   }
   if (state.turn.step === "declareAttackers") {
     ensureCombatInPlace(state);

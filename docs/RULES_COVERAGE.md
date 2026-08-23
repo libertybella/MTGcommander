@@ -870,6 +870,31 @@ more questions it can now ask:
   (Bennie Bracks). Reads the existing per-player `createdTokenThisTurn`
   list, and asks whether the CONTROLLER is in it — an opponent's Treasure
   must not satisfy it.
+- **Delayed triggered abilities** (CR 603.7) — `GameState.delayedTriggers`.
+  "At the beginning of your next upkeep, …" is not a trigger on a permanent;
+  it is created by a spell as it resolves and fires once. Its effects are
+  BOUND at creation, for the same reason `StackObject.grantedTrigger` is
+  snapshotted: what they refer to ("that spell", "its controller") has
+  usually stopped existing by the time the step arrives.
+
+  `whose` separates two phrasings that look alike and are not. "Your next
+  upkeep" (Pact of Negation) waits for the controller's own turn; "the next
+  turn's upkeep" (Arcane Denial) fires on whoever is active — four-handed,
+  three turns apart. Each entry is removed BEFORE its effects run, so an
+  effect that parks another for the same step waits a full cycle instead of
+  re-firing in the window that just opened, and a parking whose controller
+  has left the game is dropped rather than resolved for nobody.
+
+  Two deliberate simplifications, both silent in play. They apply as the
+  step begins rather than using the stack, exactly as the `delayedEndStep`
+  sibling does, so there is no window to respond to one. And a body that
+  would need its own targets is REFUSED at compile time rather than
+  targeted now for a board that has not happened yet.
+
+- **`lose_game`** — the mirror of `win_game`, and the first effect to say it
+  directly rather than through damage or an empty library. It honours
+  "you can't lose the game" the same way `win_game` already did, since that
+  veto is the same one seen from the other side.
 - **`library_empty`** — "Then if your library has no cards in it, you win
   the game" (Jace, Wielder of Mysteries). The CONTROLLER's library, and an
   absent player reads false: a condition that answered true for nobody
