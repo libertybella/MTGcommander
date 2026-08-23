@@ -28,7 +28,7 @@ import { colorsAmongControlled, commanderIdentityColors, manaAbilitiesFor, manaT
 import { addRestrictedMana, emptyManaPools, manaRiderFires, parseManaCost, payManaCost, restrictionAdmits, type ManaPurpose } from "./mana";
 import { applyStateBasedActionsInPlace } from "./status";
 import { legalActions, sacrificeColorMatches, sacrificeScopeMatches } from "./legalActions";
-import { applyResolveCreatureType, legalEnterCopyIds, searchMatches } from "./prompt";
+import { applyResolveCreatureType, applyResolvePay, legalEnterCopyIds, searchMatches } from "./prompt";
 import { parseGameState, serializeGameState } from "./serialize";
 import { fillLibraries } from "./testSupport";
 import { advanceSteps } from "./turn";
@@ -34757,6 +34757,135 @@ describe("wave 265: mana that carries a rider", () => {
     expect(compiled.definition.manaAbilities[0]?.rider).toEqual({
       when: { types: ["creature"], sharesCreatureTypeWithCommander: true },
       effects: [{ kind: "scry", playerId: "controller", count: 1 }],
+    });
+  });
+});
+
+describe("wave 266: cumulative upkeep", () => {
+  const setup = () => {
+    const { game, p1 } = twoPlayers();
+    const remora = createCardDefinition({ name: "Remora", typeLine: "Enchantment" });
+    game.definitions[remora.id] = remora;
+    const card = createCardInstance({
+      definitionId: remora.id,
+      ownerId: p1.id,
+      zone: "battlefield",
+    });
+    game.cards[card.id] = card;
+    p1.zones.battlefield.push(card.id);
+    return { game, p1, cardId: card.id };
+  };
+
+  const upkeep = (state: GameState, playerId: string, cardId: string, cost = "{1}") => {
+    const bound = bindCardEffects(state, [{ kind: "cumulative_upkeep", playerId: "controller", cost }], {
+      controllerId: playerId,
+      sourceId: cardId,
+    });
+    return applyEffects(state, bound);
+  };
+
+  const askedCost = (state: GameState) => {
+    const prompt = state.prompts[0];
+    return prompt && "cost" in prompt ? prompt.cost : null;
+  };
+
+  it("ages first, then charges for every counter INCLUDING the new one", () => {
+    const { game, p1, cardId } = setup();
+    const first = upkeep(game, p1.id, cardId);
+    expect(first.cards[cardId]?.counters.age).toBe(1);
+    // Charging before the counter lands would make the first upkeep free
+    // and undercharge by one forever after.
+    expect(askedCost(first)).toBe("{1}");
+  });
+
+  it("charges more every turn", () => {
+    const { game, p1, cardId } = setup();
+    let current = game;
+    const costs: (string | null)[] = [];
+    for (let turn = 0; turn < 3; turn += 1) {
+      current = upkeep(current, p1.id, cardId);
+      costs.push(askedCost(current));
+      // Answer nothing; clear the prompt so the next upkeep can ask again.
+      current = { ...current, prompts: [] };
+    }
+    // The whole mechanic is that it gets worse. A flat {1} three times would
+    // pass a "does it ask?" test and be the wrong card.
+    expect(costs).toEqual(["{1}", "{1}{1}", "{1}{1}{1}"]);
+    expect(current.cards[cardId]?.counters.age).toBe(3);
+  });
+
+  it("counts a repeated cost as the sum, not as one symbol", () => {
+    // "{1}{1}{1}" has to read as three generic, or the scaling is cosmetic.
+    expect(parseManaCost("{1}{1}{1}").generic).toBe(3);
+    expect(parseManaCost("{U}{U}").U).toBe(2);
+  });
+
+  it("sacrifices the permanent when the cost goes unpaid", () => {
+    const { game, p1, cardId } = setup();
+    const asked = upkeep(game, p1.id, cardId);
+    const prompt = asked.prompts[0];
+    expect(prompt?.kind).toBe("pay_or_effect");
+    // Declining is what a player with no mana does, and it must kill it.
+    const declined = applyResolvePay(asked, p1.id, false);
+    expect(declined.cards[cardId]?.zone).toBe("graveyard");
+  });
+
+  it("does nothing for a permanent that has already left", () => {
+    const { game, p1, cardId } = setup();
+    const gone = moveCard(game, cardId, "graveyard");
+    const after = upkeep(gone, p1.id, cardId);
+    // No counter on a card in the graveyard, and no cost demanded for it.
+    expect(after.cards[cardId]?.counters.age ?? 0).toBe(0);
+    expect(after.prompts).toHaveLength(0);
+  });
+
+  it("round trips both halves of the effect", () => {
+    const { game, p1, cardId } = setup();
+    const definition = createCardDefinition({
+      name: "Aged",
+      typeLine: "Enchantment",
+      triggers: [
+        {
+          event: "upkeep",
+          effects: [{ kind: "cumulative_upkeep", playerId: "controller", cost: "{1}{U}" }],
+          targetRequirements: [],
+        },
+      ],
+    });
+    game.definitions[definition.id] = definition;
+    const round = parseGameState(serializeGameState(game));
+    expect(round.definitions[definition.id]?.triggers[0]?.effects[0]).toEqual({
+      kind: "cumulative_upkeep",
+      playerId: "controller",
+      cost: "{1}{U}",
+    });
+    // …and the bound form the trigger actually resolves.
+    const bound = bindCardEffects(game, [{ kind: "cumulative_upkeep", playerId: "controller", cost: "{1}" }], {
+      controllerId: p1.id,
+      sourceId: cardId,
+    });
+    expect(bound).toEqual([
+      { kind: "cumulative_upkeep", playerId: p1.id, cardId, cost: "{1}" },
+    ]);
+  });
+
+  it("compiles Mystic Remora's keyword line", () => {
+    const compiled = compileOracleCard({
+      oracleId: "mr",
+      name: "Mystic Remora",
+      manaCost: "{U}",
+      typeLine: "Enchantment",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText: "Cumulative upkeep {1}",
+    });
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.triggers[0]).toEqual({
+      event: "upkeep",
+      effects: [{ kind: "cumulative_upkeep", playerId: "controller", cost: "{1}" }],
+      targetRequirements: [],
     });
   });
 });

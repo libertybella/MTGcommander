@@ -1368,6 +1368,13 @@ export type GameEffect =
     }
   /** Rhystic Study: the payer chooses to pay or the effects happen. */
   | { kind: "unless_pays"; playerId: PlayerId; cost: string; effects: GameEffect[] }
+  /** Cumulative upkeep (CR 702.24), bound to its permanent. */
+  | {
+      kind: "cumulative_upkeep";
+      playerId: PlayerId;
+      cardId: CardInstanceId;
+      cost: string;
+    }
   /** "You may pay {N}. If you do, …" — paying causes the effects. */
   | { kind: "may_pay"; playerId: PlayerId; cost: string; effects: GameEffect[] }
   /** Blasphemous Act: damage every creature (and optionally player) at once. */
@@ -2366,6 +2373,20 @@ export type CardEffect =
       /** Esper Sentinel: the cost is {X}, X = the source's power at bind. */
       costFromPower?: boolean;
       effects: CardEffect[];
+    }
+  /**
+   * Cumulative upkeep (CR 702.24): put an age counter on the source, then
+   * pay `cost` once per age counter on it or sacrifice it.
+   *
+   * One effect rather than an add_counter beside an unless_pays, because
+   * the counter has to be ON before the cost is counted and effects bind
+   * as a batch — a sibling unless_pays would bind against the old count
+   * and undercharge by one every single upkeep.
+   */
+  | {
+      kind: "cumulative_upkeep";
+      playerId: PlayerSelector;
+      cost: string;
     }
   | { kind: "may_pay"; playerId: PlayerSelector; cost: string; effects: CardEffect[] }
   | {

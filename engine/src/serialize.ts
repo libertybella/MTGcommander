@@ -3705,6 +3705,12 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
         playerId: parsePlayerSelector(value.playerId, `${label}.playerId`),
         sides: expectNumber(value.sides, `${label}.sides`),
       };
+    case "cumulative_upkeep":
+      return {
+        kind,
+        playerId: parsePlayerSelector(value.playerId, `${label}.playerId`),
+        cost: expectString(value.cost, `${label}.cost`),
+      };
     case "unless_pays":
       return {
         kind,
@@ -5425,6 +5431,14 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
       kind,
       playerId: expectString(value.playerId, `${label}.playerId`),
       sides: expectNumber(value.sides, `${label}.sides`),
+    };
+  }
+  if (kind === "cumulative_upkeep") {
+    return {
+      kind,
+      playerId: expectString(value.playerId, `${label}.playerId`),
+      cardId: expectString(value.cardId, `${label}.cardId`),
+      cost: expectString(value.cost, `${label}.cost`),
     };
   }
   if (kind === "unless_pays" || kind === "may_pay") {

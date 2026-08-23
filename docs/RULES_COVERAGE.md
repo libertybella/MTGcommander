@@ -870,6 +870,18 @@ more questions it can now ask:
   (Bennie Bracks). Reads the existing per-player `createdTokenThisTurn`
   list, and asks whether the CONTROLLER is in it — an opponent's Treasure
   must not satisfy it.
+- **Cumulative upkeep** (CR 702.24) — Mystic Remora. One effect,
+  `cumulative_upkeep`, rather than an `add_counter` beside an `unless_pays`:
+  the age counter has to be ON before the cost is counted, and effects bind
+  as a BATCH, so a sibling `unless_pays` would bind against the old count
+  and undercharge by one every upkeep — the first one free, and every one
+  after it a turn behind. The apply path adds the counter, re-reads it, then
+  raises the pay-or-sacrifice, so the cost climbs {1}, {1}{1}, {1}{1}{1}.
+
+  Only the mana form is read. The pay-a-cost printings ("Cumulative
+  upkeep—Sacrifice a creature") need a cost the pay-or-sacrifice prompt
+  cannot express, and are left uncompiled rather than approximated.
+  11 cumulative-upkeep cards compile fully corpus-wide.
 - **Mana riders** — Path of Ancestry. `ManaAbility.rider` tags produced mana
   with an effect that fires when it is SPENT on a matching purpose. This is
   not a restriction: the mana pays for whatever its owner likes, and rides

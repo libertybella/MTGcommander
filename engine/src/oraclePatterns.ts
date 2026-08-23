@@ -10836,6 +10836,22 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
       }
     }
 
+    // Cumulative upkeep (CR 702.24). The keyword is its own upkeep
+    // trigger; only the mana form is read here, because the pay-a-cost
+    // forms ("Cumulative upkeep—Sacrifice a creature") need a cost the
+    // pay-or-sacrifice prompt cannot express.
+    const cumulative = sentence.match(/^Cumulative upkeep\s*[—-]?\s*((?:\{[^}]+\})+)$/i);
+    if (cumulative?.[1]) {
+      result.triggers.push({
+        event: "upkeep",
+        effects: [
+          { kind: "cumulative_upkeep", playerId: "controller", cost: cumulative[1] },
+        ],
+        targetRequirements: [],
+      });
+      continue;
+    }
+
     const equip = sentence.match(/^Equip (?:\{(\d+)\}|(\d+))$/i);
     if (equip) {
       const amount = equip[1] ?? equip[2] ?? "0";

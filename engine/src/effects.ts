@@ -1472,6 +1472,19 @@ export function bindCardEffect(
         effects: bindCardEffects(state, effect.effects, context),
       };
     }
+    case "cumulative_upkeep": {
+      const playerId = bindPlayerSelector(state, effect.playerId, context);
+      // No source means no permanent to age or sacrifice.
+      if (!playerId || !context.sourceId) {
+        return null;
+      }
+      return {
+        kind: "cumulative_upkeep",
+        playerId,
+        cardId: context.sourceId,
+        cost: effect.cost,
+      };
+    }
     case "may_pay": {
       const playerId = bindPlayerSelector(state, effect.playerId, context);
       if (!playerId) {
@@ -3799,6 +3812,33 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
           if (other.id !== effect.playerId && !other.lost && !cantLoseGame(next, other.id)) {
             eliminatePlayerInPlace(next, other.id);
           }
+        }
+        break;
+      }
+      case "cumulative_upkeep": {
+        const aging = state.cards[effect.cardId];
+        if (!aging || aging.zone !== "battlefield") {
+          next = cloneGameState(state);
+          break;
+        }
+        // CR 702.24a: the age counter goes on FIRST, then the cost is
+        // counted over every age counter INCLUDING the new one. Charging
+        // before it lands undercharges by one on every upkeep, and the
+        // first one would then be free.
+        next = applyEffect(state, {
+          kind: "add_counter",
+          cardId: effect.cardId,
+          counter: "age",
+          amount: 1,
+        });
+        const age = next.cards[effect.cardId]?.counters.age ?? 0;
+        if (age > 0) {
+          next = applyEffect(next, {
+            kind: "unless_pays",
+            playerId: effect.playerId,
+            cost: effect.cost.repeat(age),
+            effects: [{ kind: "sacrifice", cardId: effect.cardId }],
+          });
         }
         break;
       }
