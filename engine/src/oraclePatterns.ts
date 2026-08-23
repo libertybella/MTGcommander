@@ -65,6 +65,7 @@ export type CompiledOracleText = {
   opponentsDrawCap?: number;
   noncreatureSpellCap?: number;
   cantLoseGame?: boolean;
+  attackLimitPerCombat?: number;
   damageReplacement?: DamageReplacement;
   manaTapMultiplier?: number;
   altCost?: AlternativeCastCost;
@@ -10101,6 +10102,16 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
     }
 
     // Narset, Parter of Veils.
+    const attackCap = sentence.match(
+      /^No more than (one|two|three|d+) creatures? can attack you each combat$/i,
+    );
+    if (attackCap?.[1]) {
+      const cap = parseCount(attackCap[1]);
+      if (cap) {
+        result.attackLimitPerCombat = cap;
+        continue;
+      }
+    }
     if (
       /^You can't lose the game and your opponents can't win the game$/i.test(sentence)
     ) {

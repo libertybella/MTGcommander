@@ -197,6 +197,12 @@ export type CardDefinition = {
    * second name for the same rule.
    */
   cantLoseGame?: boolean;
+  /**
+   * Crawlspace: "No more than two creatures can attack you each combat."
+   * The cap protects this permanent's CONTROLLER — the printed text says
+   * "you" — so it is read off the defending player's own battlefield.
+   */
+  attackLimitPerCombat?: number;
   /** Theros gods: not a creature while devotion to the color is below the
    * threshold (applied before the layer passes — a documented simplification). */
   notCreatureBelowDevotion?: { color: Color; threshold: number };

@@ -522,6 +522,14 @@ export function parseGameState(json: string): GameState {
             ),
           }),
       ...(def.cantLoseGame === true ? { cantLoseGame: true } : {}),
+      ...(def.attackLimitPerCombat === undefined
+        ? {}
+        : {
+            attackLimitPerCombat: expectNumber(
+              def.attackLimitPerCombat,
+              `definition.${id}.attackLimitPerCombat`,
+            ),
+          }),
       ...(isRecord(def.damageReplacement)
         ? {
             damageReplacement: {

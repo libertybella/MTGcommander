@@ -1,7 +1,7 @@
 import { cloneGameState } from "./clone";
 import { characteristicsOf, isCommander, isCreature } from "./cardTypes";
 import { abilitiesRemoved, computedCard } from "./characteristicsEngine";
-import { creaturePower, creatureToughness, damageAfterReplacements, permanentsControlledBy } from "./derived";
+import { attackLimitFor, creaturePower, creatureToughness, damageAfterReplacements, permanentsControlledBy } from "./derived";
 import { hasKeyword, protectedFromSource } from "./keywords";
 import { canPayManaCost, parseManaCost, payManaCost } from "./mana";
 import { isLiving, nextLivingPlayerId } from "./players";
@@ -202,6 +202,22 @@ export function declareAttackers(state: GameState, playerId: PlayerId, attacks: 
     }
     seen.add(attack.attackerId);
     assertLegalAttacker(state, playerId, attack.attackerId, attack.defenderId);
+  }
+
+  // Crawlspace: a per-DEFENDER cap, so it is counted over the declaration
+  // as a whole rather than per attacker — no single attacker is illegal,
+  // the third one together with the first two is.
+  const perDefender = new Map<PlayerId, number>();
+  for (const attack of attacks) {
+    perDefender.set(attack.defenderId, (perDefender.get(attack.defenderId) ?? 0) + 1);
+  }
+  for (const [defenderId, count] of perDefender) {
+    const cap = attackLimitFor(state, defenderId);
+    if (cap !== null && count > cap) {
+      throw new Error(
+        `No more than ${cap} creatures can attack ${defenderId} each combat`,
+      );
+    }
   }
 
   // A goaded creature must attack, and must attack someone other than the

@@ -431,6 +431,29 @@ export function creatureToughness(state: GameState, cardId: CardInstanceId): num
  * Read on the battlefield and through `abilitiesRemoved`, so a Humility'd
  * Angel stops working — which is the usual way this card is answered.
  */
+/**
+ * The tightest cap on how many creatures may attack this player in one
+ * combat, or null for no cap. Read off the DEFENDING player's own
+ * permanents, because the printed text says "attack you".
+ */
+export function attackLimitFor(state: GameState, playerId: string): number | null {
+  let cap: number | null = null;
+  for (const card of Object.values(state.cards)) {
+    if (
+      card.zone !== "battlefield" ||
+      card.controllerId !== playerId ||
+      abilitiesRemoved(state, card.id)
+    ) {
+      continue;
+    }
+    const limit = state.definitions[card.definitionId]?.attackLimitPerCombat;
+    if (limit !== undefined && (cap === null || limit < cap)) {
+      cap = limit;
+    }
+  }
+  return cap;
+}
+
 export function cantLoseGame(state: GameState, playerId: string): boolean {
   return Object.values(state.cards).some(
     (card) =>

@@ -109,6 +109,7 @@ export function createCardDefinition(
         | "opponentsDrawCap"
         | "noncreatureSpellCap"
         | "cantLoseGame"
+        | "attackLimitPerCombat"
         | "damageReplacement"
         | "manaTapMultiplier"
         | "altCost"
@@ -452,6 +453,9 @@ export function createCardDefinition(
       ? {}
       : { noncreatureSpellCap: input.noncreatureSpellCap }),
     ...(input.cantLoseGame ? { cantLoseGame: true } : {}),
+    ...(input.attackLimitPerCombat === undefined
+      ? {}
+      : { attackLimitPerCombat: input.attackLimitPerCombat }),
     ...(input.damageReplacement ? { damageReplacement: { ...input.damageReplacement } } : {}),
     ...(input.manaTapMultiplier ? { manaTapMultiplier: input.manaTapMultiplier } : {}),
     ...(input.altCost ? { altCost: { ...input.altCost } } : {}),

@@ -19,7 +19,7 @@ import {
 } from "./index";
 import { activatedOf, cardMatchesSubtype, computedCard, dynamicCountOf, triggersOf } from "./characteristicsEngine";
 import { mostCommonControlledCreatureType } from "./effects";
-import { castCostReduction, castableFromTop, drawCapFor, freeEquipGranted, hasFlashGrant, landDropAllowance, maxHandSizeOf, noncreatureSpellCap, permanentsControlledBy, reliefAdjustedCost, selfDiscountAmount, wouldEnterTapped } from "./derived";
+import { attackLimitFor, castCostReduction, castableFromTop, drawCapFor, freeEquipGranted, hasFlashGrant, landDropAllowance, maxHandSizeOf, noncreatureSpellCap, permanentsControlledBy, reliefAdjustedCost, selfDiscountAmount, wouldEnterTapped } from "./derived";
 import { hasKeyword } from "./keywords";
 import { dispatchEventsInPlace, triggerConditionHolds } from "./triggers";
 import { applyCombatDamage, blockRestriction, declareAttackers } from "./combat";
@@ -30695,5 +30695,114 @@ describe("wave 235: Platinum Angel's two halves are one veto", () => {
     put(fresh.game, angel.id, fresh.p1.id);
     const round = parseGameState(serializeGameState(fresh.game));
     expect(round.definitions[angel.id]?.cantLoseGame).toBe(true);
+  });
+});
+
+describe("wave 236: a cap on how many creatures may attack you", () => {
+  it("reads the cap off the printed line", () => {
+    const crawlspace = compileOracleCard({
+      oracleId: "Crawlspace",
+      name: "Crawlspace",
+      manaCost: "{3}",
+      typeLine: "Artifact",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText: "No more than two creatures can attack you each combat.",
+    });
+    expect(crawlspace.notes).toEqual([]);
+    expect(crawlspace.definition.attackLimitPerCombat).toBe(2);
+  });
+
+  const board = () => {
+    const game = createGameState({ playerCount: 3 });
+    const [p1, p2, p3] = game.players;
+    if (!p1 || !p2 || !p3) {
+      throw new Error("expected three players");
+    }
+    fillLibraries(game, 20);
+    const crawlspace = createCardDefinition({
+      name: "Crawlspace",
+      typeLine: "Artifact",
+      attackLimitPerCombat: 2,
+    });
+    const bearDefinition = createCardDefinition({
+      name: "Bear",
+      typeLine: "Creature — Bear",
+      power: 2,
+      toughness: 2,
+    });
+    for (const definition of [crawlspace, bearDefinition]) {
+      game.definitions[definition.id] = definition;
+    }
+    const wall = createCardInstance({
+      definitionId: crawlspace.id,
+      ownerId: p2.id,
+      zone: "battlefield",
+    });
+    game.cards[wall.id] = wall;
+    p2.zones.battlefield.push(wall.id);
+
+    const attackers = [0, 1, 2].map(() => {
+      const bear = createCardInstance({
+        definitionId: bearDefinition.id,
+        ownerId: p1.id,
+        zone: "battlefield",
+      });
+      bear.summoningSick = false;
+      game.cards[bear.id] = bear;
+      p1.zones.battlefield.push(bear.id);
+      return bear;
+    });
+
+    game.turn.phase = "combat";
+    game.turn.step = "declareAttackers";
+    game.turn.activePlayerId = p1.id;
+    game.priorityPlayerId = p1.id;
+    return { game, p1, p2, p3, attackers };
+  };
+
+  it("allows two attackers and refuses the third", () => {
+    const { game, p1, p2, attackers } = board();
+    const at = (count: number) =>
+      attackers.slice(0, count).map((bear) => ({ attackerId: bear.id, defenderId: p2.id }));
+
+    // No single attacker is illegal here — the third one TOGETHER with the
+    // first two is, which is why the cap is counted over the declaration as a
+    // whole rather than per attacker.
+    expect(() => declareAttackers(game, p1.id, at(2))).not.toThrow();
+    expect(() => declareAttackers(game, p1.id, at(3))).toThrow(/No more than 2/);
+    expect(() => declareAttackers(game, p1.id, at(1))).not.toThrow();
+  });
+
+  it("protects only the player who controls it", () => {
+    const { game, p1, p2, p3, attackers } = board();
+    // Crawlspace says "attack YOU", so a third player is unprotected. A cap
+    // read off the whole board rather than the defender's own permanents
+    // would wrongly shield everyone at the table.
+    expect(() =>
+      declareAttackers(
+        game,
+        p1.id,
+        attackers.map((bear) => ({ attackerId: bear.id, defenderId: p3.id })),
+      ),
+    ).not.toThrow();
+
+    // Splitting across defenders counts per defender, not in total: two at
+    // the protected player and one elsewhere is legal.
+    expect(() =>
+      declareAttackers(game, p1.id, [
+        { attackerId: attackers[0]!.id, defenderId: p2.id },
+        { attackerId: attackers[1]!.id, defenderId: p2.id },
+        { attackerId: attackers[2]!.id, defenderId: p3.id },
+      ]),
+    ).not.toThrow();
+  });
+
+  it("round trips the cap", () => {
+    const { game, p2 } = board();
+    const round = parseGameState(serializeGameState(game));
+    expect(attackLimitFor(round, p2.id)).toBe(2);
   });
 });
