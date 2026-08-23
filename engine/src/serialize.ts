@@ -4096,6 +4096,14 @@ function parseSpellModes(value: unknown, label: string): SpellMode[] {
       ...(entry.extraCost === undefined
         ? {}
         : { extraCost: expectString(entry.extraCost, `${label}[${index}].extraCost`) }),
+      ...(entry.replacesCost === undefined
+        ? {}
+        : {
+            replacesCost: expectString(
+              entry.replacesCost,
+              `${label}[${index}].replacesCost`,
+            ),
+          }),
       ...(entry.dash === true ? { dash: true } : {}),
       effects: parseCardEffects(entry.effects, `${label}[${index}].effects`),
       targetRequirements: parseTargetRequirements(

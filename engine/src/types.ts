@@ -1773,6 +1773,14 @@ export type SpellMode = {
   label: string;
   /** Kicker-style modes: extra mana paid when this mode is chosen. */
   extraCost?: string;
+  /**
+   * Damn: an overload cost whose coloured pips differ from the printed
+   * ones ({1}{B}{B} printed, Overload {2}{W}{W}). It REPLACES the cost
+   * rather than adding to it — an extra cost cannot express a different
+   * colour, and treating it as one would let a mono-black caster
+   * overload a white spell.
+   */
+  replacesCost?: string;
   /** Dash: the permanent enters hasty and bounces at the next end step. */
   dash?: boolean;
   effects: CardEffect[];

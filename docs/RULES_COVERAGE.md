@@ -870,6 +870,22 @@ more questions it can now ask:
   (Bennie Bracks). Reads the existing per-player `createdTokenThisTurn`
   list, and asks whether the CONTROLLER is in it — an opponent's Treasure
   must not satisfy it.
+- **An overload cost in different colours** — Damn ({1}{B}{B} printed,
+  Overload {2}{W}{W}). The existing overload path models the cost as the
+  printed one plus a generic EXTRA, which cannot express a different
+  colour — treated as an extra, a mono-black caster could overload a white
+  spell by paying black. `SpellMode.replacesCost` swaps the whole cost
+  instead, and it is folded into the cost expression so it is in force
+  before the commander tax and before any payability check. Checked after,
+  the spell is refused for mana it was never going to spend.
+
+  Cyclonic Rift and the rest keep the cheaper extra-cost shape: same
+  colours, so nothing about them moves.
+
+- **"A creature destroyed this way can't be regenerated"** compiles to
+  NOTHING, and that is exact rather than approximate: regeneration is not
+  implemented anywhere in this engine, so there is no shield to deny. If
+  regeneration ever lands, this has to become a real flag.
 - **Paying life for the top of your library** — Bolas's Citadel.
   `TopOfLibraryGrant.payLifeInsteadOfMana` replaces the cost OUTRIGHT, the
   same way flashback does, and rides the same life-payment path. A cost

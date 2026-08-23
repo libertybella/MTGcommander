@@ -458,6 +458,7 @@ export function createCardDefinition(
           modes: input.modes.map((mode) => ({
             label: mode.label,
             ...(mode.extraCost ? { extraCost: mode.extraCost } : {}),
+            ...(mode.replacesCost ? { replacesCost: mode.replacesCost } : {}),
             ...(mode.dash ? { dash: true } : {}),
             effects: mode.effects.map((effect) => ({ ...effect })),
             targetRequirements: mode.targetRequirements.map((requirement) => ({ ...requirement })),

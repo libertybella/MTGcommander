@@ -225,6 +225,7 @@ function validateCast(
   state: GameState,
   playerId: PlayerId,
   cardId: CardInstanceId,
+  modeIndexes: number[] = [],
 ): {
   cost: ReturnType<typeof parseManaCost>;
   fromCommand: boolean;
@@ -356,12 +357,21 @@ function validateCast(
     state.cards[cardId]?.zone === "hand" &&
     (findFreeHandGrant(state, playerId, cardId) ||
       staticFreeCastCap(state, playerId, cardId) !== null);
+  // Damn: an overload cost in different colours REPLACES the printed one.
+  // Folded into the cost expression so it is in force before the commander
+  // tax and before any payability check — checked after, the spell would be
+  // refused for mana it was never going to spend.
+  const overloadSwap = modeIndexes
+    .map((chosen) => definition.modes?.[chosen]?.replacesCost)
+    .find((entry): entry is string => typeof entry === "string");
   const cost = parseManaCost(
     freeExileCast || freeHandCast
       ? ""
-      : viaFlashback
-        ? definition.flashback?.manaCost ?? ""
-        : definition.manaCost,
+      : overloadSwap
+        ? overloadSwap
+        : viaFlashback
+          ? definition.flashback?.manaCost ?? ""
+          : definition.manaCost,
   );
   if (fromCommand) {
     cost.generic += player.commander.tax;
@@ -514,7 +524,12 @@ function applyCastSpell(
 ): GameState {
   requirePlaying(state);
   const faced = applyChosenFace(state, cardId, faceIndex);
-  const { cost, fromCommand, flashbackLife, altCost } = validateCast(faced, playerId, cardId);
+  const { cost, fromCommand, flashbackLife, altCost } = validateCast(
+    faced,
+    playerId,
+    cardId,
+    modeIndexes ?? (modeIndex !== undefined ? [modeIndex] : []),
+  );
   const card = faced.cards[cardId];
   const definition = card ? faced.definitions[card.definitionId] : undefined;
   // "Sacrifice an artifact or discard a card": pick the branch the caster's
@@ -605,6 +620,19 @@ function applyCastSpell(
   const chosenModeIndexes =
     modeIndexes ?? (modeIndex !== undefined ? [modeIndex] : []);
   for (const chosen of chosenModeIndexes) {
+    // Damn: an overload cost in different colours replaces the printed
+    // one outright. Added to it, a mono-black caster could overload a
+    // white spell by paying black.
+    // validateCast already swapped the cost; this only re-checks that the
+    // caster can actually pay the replacement.
+    const replaced = definition?.modes?.[chosen]?.replacesCost;
+    if (replaced) {
+      const swapPayer = faced.players.find((entry) => entry.id === playerId);
+      if (!swapPayer || !canPayManaCost(swapPayer.mana, cost, swapPayer.life)) {
+        throw new Error("Cannot pay the overload cost");
+      }
+      continue;
+    }
     const extra = definition?.modes?.[chosen]?.extraCost;
     if (!extra) {
       continue;

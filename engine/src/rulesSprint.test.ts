@@ -37511,3 +37511,174 @@ describe("wave 281: sacrificing nonland permanents as a cost", () => {
     expect(p1.id).toBeDefined();
   });
 });
+
+describe("wave 282: an overload cost in different colours", () => {
+  const setup = (mana: Partial<Record<"W" | "B" | "C", number>>) => {
+    const { game, p1, p2 } = twoPlayers();
+    const definition = createCardDefinition({
+      name: "Damn",
+      typeLine: "Sorcery",
+      manaCost: "{1}{B}{B}",
+      modes: [
+        {
+          label: "Cast normally",
+          effects: [
+            { kind: "move_card", cardId: { type: "chosen", index: 0 }, toZone: "graveyard" },
+          ],
+          targetRequirements: [{ kind: "creature" }],
+        },
+        {
+          label: "Overload {2}{W}{W}",
+          replacesCost: "{2}{W}{W}",
+          effects: [
+            {
+              kind: "overload_each",
+              requirement: { kind: "creature" },
+              effects: [
+                { kind: "move_card", cardId: { type: "chosen", index: 0 }, toZone: "graveyard" },
+              ],
+            },
+          ],
+          targetRequirements: [],
+        },
+      ],
+    });
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({
+      definitionId: definition.id,
+      ownerId: p1.id,
+      zone: "hand",
+    });
+    game.cards[card.id] = card;
+    p1.zones.hand.push(card.id);
+    const pool = game.players.find((entry) => entry.id === p1.id)!.mana;
+    pool.W = mana.W ?? 0;
+    pool.B = mana.B ?? 0;
+    pool.C = mana.C ?? 0;
+    game.priorityPlayerId = p1.id;
+    game.turn = { ...game.turn, phase: "precombatMain", step: "precombatMain" };
+    return { game, p1, p2, spellId: card.id };
+  };
+
+  it("charges the overload cost, not the printed one plus extra", () => {
+    const { game, p1, spellId } = setup({ W: 2, C: 2 });
+    const cast = applyAction(game, {
+      kind: "cast_spell",
+      playerId: p1.id,
+      cardId: spellId,
+      targets: [],
+      modeIndex: 1,
+    });
+    const pool = cast.players.find((entry) => entry.id === p1.id)!.mana;
+    expect(pool.W).toBe(0);
+    expect(pool.C).toBe(0);
+    expect(cast.stack).toHaveLength(1);
+  });
+
+  it("refuses to overload on the printed colours", () => {
+    const { game, p1, spellId } = setup({ B: 2, C: 2 });
+    // Treating the overload as an EXTRA cost would let a mono-black caster
+    // overload a white spell by paying black, which is a different card.
+    expect(() =>
+      applyAction(game, {
+        kind: "cast_spell",
+        playerId: p1.id,
+        cardId: spellId,
+        targets: [],
+        modeIndex: 1,
+      }),
+    ).toThrow(/Cannot pay/i);
+  });
+
+  it("leaves the normal mode on the printed cost", () => {
+    const { game, p1, p2, spellId } = setup({ B: 2, C: 1 });
+    const bearDef = createCardDefinition({
+      name: "Bear",
+      typeLine: "Creature — Bear",
+      power: 2,
+      toughness: 2,
+    });
+    game.definitions[bearDef.id] = bearDef;
+    const bear = createCardInstance({
+      definitionId: bearDef.id,
+      ownerId: p2.id,
+      zone: "battlefield",
+    });
+    game.cards[bear.id] = bear;
+    p2.zones.battlefield.push(bear.id);
+    const cast = applyAction(game, {
+      kind: "cast_spell",
+      playerId: p1.id,
+      cardId: spellId,
+      targets: [{ type: "creature", cardId: bear.id }],
+      modeIndex: 0,
+    });
+    const pool = cast.players.find((entry) => entry.id === p1.id)!.mana;
+    expect(pool.B).toBe(0);
+    expect(pool.C).toBe(0);
+  });
+
+  it("round trips the replacement cost", () => {
+    const { game, spellId } = setup({ W: 2, C: 2 });
+    const round = parseGameState(serializeGameState(game));
+    const definition = round.definitions[round.cards[spellId]!.definitionId];
+    expect(definition?.modes?.[1]?.replacesCost).toBe("{2}{W}{W}");
+    expect(definition?.modes?.[1]?.extraCost).toBeUndefined();
+  });
+
+  it("compiles Damn, and leaves Cyclonic Rift's extra cost alone", () => {
+    const damn = compileOracleCard({
+      oracleId: "damn",
+      name: "Damn",
+      manaCost: "{1}{B}{B}",
+      typeLine: "Sorcery",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "Destroy target creature. A creature destroyed this way can't be regenerated.\nOverload {2}{W}{W}",
+    });
+    expect(damn.notes).toEqual([]);
+    expect(damn.definition.modes?.[1]?.replacesCost).toBe("{2}{W}{W}");
+    expect(damn.definition.modes?.[1]?.extraCost).toBeUndefined();
+
+    const rift = compileOracleCard({
+      oracleId: "cr",
+      name: "Cyclonic Rift",
+      manaCost: "{1}{U}",
+      typeLine: "Instant",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "Return target nonland permanent you don't control to its owner's hand.\nOverload {6}{U}",
+    });
+    expect(rift.notes).toEqual([]);
+    // Same colours, so it stays the cheaper extra-cost shape it always was.
+    expect(rift.definition.modes?.[1]?.extraCost).toBe("{5}");
+    expect(rift.definition.modes?.[1]?.replacesCost).toBeUndefined();
+  });
+
+  it("reads the no-regeneration rider as vacuous", () => {
+    const compiled = compileOracleCard({
+      oracleId: "x",
+      name: "Probe",
+      manaCost: "{1}{B}",
+      typeLine: "Sorcery",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText: "Destroy target creature. A creature destroyed this way can't be regenerated.",
+    });
+    // Regeneration is not implemented anywhere in this engine — there is no
+    // shield to deny — so the sentence is genuinely vacuous rather than
+    // approximated away. If regeneration ever lands, this becomes a real flag.
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.effects).toEqual([
+      { kind: "move_card", cardId: { type: "chosen", index: 0 }, toZone: "graveyard" },
+    ]);
+  });
+});

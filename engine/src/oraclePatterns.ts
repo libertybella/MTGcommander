@@ -4899,6 +4899,17 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     }
   }
 
+  // "A creature destroyed this way can't be regenerated." Regeneration
+  // is not implemented anywhere in this engine — there is no shield to
+  // deny — so the sentence is genuinely vacuous rather than approximated.
+  // If regeneration ever lands, this must become a real flag.
+  if (
+    /^A creature destroyed this way can't be regenerated$/i.test(sentence) ||
+    /^Creatures destroyed this way can't be regenerated$/i.test(sentence)
+  ) {
+    return { targetRequirements: [], effects: [] };
+  }
+
   // Setessan Champion's constellation body.
   if (/^put a \+1\/\+1 counter on (?:~|this creature) and draw a card$/i.test(sentence)) {
     return {
@@ -14813,6 +14824,36 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
           (pip) => base[pip] === over[pip],
         );
         const extra = over.generic - base.generic;
+        const swapsCost =
+          !coloredMatch && over.hybrid.length === 0 && over.xCount === 0;
+        if (swapsCost) {
+          // Damn: {1}{B}{B} printed, Overload {2}{W}{W}. An extra cost
+          // cannot express a different colour, so the mode replaces the
+          // whole cost instead.
+          const requirement = result.targetRequirements[0]!;
+          result.modes = [
+            {
+              label: "Cast normally",
+              effects: result.effects,
+              targetRequirements: result.targetRequirements,
+            },
+            {
+              label: `Overload ${overloadCost}`,
+              replacesCost: overloadCost,
+              effects: [
+                {
+                  kind: "overload_each",
+                  requirement,
+                  effects: result.effects.map((entry) => ({ ...entry })),
+                },
+              ],
+              targetRequirements: [],
+            },
+          ];
+          result.effects = [];
+          result.targetRequirements = [];
+          built = true;
+        }
         if (coloredMatch && extra > 0 && over.hybrid.length === 0 && over.xCount === 0) {
           const requirement = result.targetRequirements[0]!;
           result.modes = [
