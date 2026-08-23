@@ -1153,6 +1153,20 @@ export function parseGameState(json: string): GameState {
         : {}),
       ...(def.playLandsFromGraveyard === true ? { playLandsFromGraveyard: true } : {}),
       ...(def.leyline === true ? { leyline: true } : {}),
+      ...(isRecord(def.openingHandStart)
+        ? {
+            openingHandStart: {
+              counter: expectString(
+                def.openingHandStart.counter,
+                `definition.${id}.openingHandStart.counter`,
+              ),
+              exileFromHand: expectNumber(
+                def.openingHandStart.exileFromHand,
+                `definition.${id}.openingHandStart.exileFromHand`,
+              ),
+            },
+          }
+        : {}),
       ...(def.ascend === true ? { ascend: true } : {}),
       ...(def.castFromGraveyard === undefined
         ? {}
@@ -5277,6 +5291,9 @@ function parseManaAbilities(value: unknown, label: string): ManaAbility[] {
                 ...(raw.anyColor === undefined
                   ? {}
                   : { anyColor: expectNumber(raw.anyColor, `${label2}.anyColor`) }),
+                ...(raw.selfCounter === undefined
+                  ? {}
+                  : { selfCounter: expectString(raw.selfCounter, `${label2}.selfCounter`) }),
               };
             })(),
           }

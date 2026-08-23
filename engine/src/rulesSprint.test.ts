@@ -35,6 +35,7 @@ import { legalActions, sacrificeColorMatches, sacrificeScopeMatches } from "./le
 import { applyResolveChooseCard, applyResolveCreatureType, applyResolveDiscardLandOrGraveyard, applyResolveEnterCopy, applyResolveLookAssign, applyResolvePay, applyResolveSearch, applyResolveTriggerMode, legalEnterCopyIds, legalSearchIds, searchMatches } from "./prompt";
 import { parseGameState, serializeGameState } from "./serialize";
 import { fillLibraries } from "./testSupport";
+import { applyKeepHand, beginMulligan, isMulliganOpen } from "./mulligan";
 import { advanceSteps } from "./turn";
 import type { CardDefinition, CardEffect, Color, GameState, Keyword, ManaRider, PlayerState, Step, TargetRequirement } from "./types";
 
@@ -40521,5 +40522,175 @@ describe("wave 298: escape, granted to a whole graveyard", () => {
     const definitionId = game.cards[breachId]!.definitionId;
     const round = parseGameState(serializeGameState(game));
     expect(round.definitions[definitionId]?.grantsEscape).toEqual({ exileOther: 3 });
+  });
+});
+
+describe("wave 299: a land that starts the game already in play", () => {
+  const CAVERNS_TEXT =
+    "If this card is in your opening hand and you're not the starting player, you may begin the game with Gemstone Caverns on the battlefield with a luck counter on it. If you do, exile a card from your hand.\n{T}: Add {C}. If Gemstone Caverns has a luck counter on it, instead add one mana of any color.";
+
+  const cavernsDefinition = (game: GameState) => {
+    const definition = createCardDefinition({
+      name: "Gemstone Caverns",
+      typeLine: "Legendary Land",
+      openingHandStart: { counter: "luck", exileFromHand: 1 },
+      manaAbilities: [
+        {
+          produces: { C: 1 },
+          producesOptions: [],
+          producesAnyColor: false,
+          damageToController: 0,
+          upgrade: { requires: [], selfCounter: "luck", anyColor: 1 },
+        },
+      ],
+    });
+    game.definitions[definition.id] = definition;
+    return definition;
+  };
+
+  const onBattlefield = (game: GameState, ownerId: string, withCounter: boolean) => {
+    const definition = cavernsDefinition(game);
+    const card = createCardInstance({
+      definitionId: definition.id,
+      ownerId,
+      zone: "battlefield",
+    });
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === ownerId)!.zones.battlefield.push(card.id);
+    if (withCounter) {
+      card.counters["luck"] = 1;
+    }
+    return card.id;
+  };
+
+  it("compiles Gemstone Caverns whole", () => {
+    const compiled = compileOracleCard({
+      oracleId: "gemstone-caverns",
+      name: "Gemstone Caverns",
+      manaCost: "",
+      typeLine: "Legendary Land",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText: CAVERNS_TEXT,
+    });
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.openingHandStart).toEqual({ counter: "luck", exileFromHand: 1 });
+    // The upgrade is gated on the SOURCE's own counter. Without that it would
+    // always add any colour, and the card would compile clean and play wrong.
+    expect(compiled.definition.manaAbilities[0]?.upgrade).toEqual({
+      requires: [],
+      selfCounter: "luck",
+      anyColor: 1,
+    });
+  });
+
+  it("adds colorless without the counter", () => {
+    const { game, p1 } = twoPlayers();
+    const cavernsId = onBattlefield(game, p1.id, false);
+    game.priorityPlayerId = p1.id;
+    const tapped = applyAction(game, {
+      kind: "tap_for_mana",
+      playerId: p1.id,
+      cardId: cavernsId,
+    });
+    const pool = tapped.players.find((entry) => entry.id === p1.id)!.mana;
+    expect(pool.C).toBe(1);
+    expect(pool.U).toBe(0);
+  });
+
+  it("adds a color of choice with the counter", () => {
+    const { game, p1 } = twoPlayers();
+    const cavernsId = onBattlefield(game, p1.id, true);
+    game.priorityPlayerId = p1.id;
+    const tapped = applyAction(game, {
+      kind: "tap_for_mana",
+      playerId: p1.id,
+      cardId: cavernsId,
+      color: "U",
+    });
+    const pool = tapped.players.find((entry) => entry.id === p1.id)!.mana;
+    expect(pool.U).toBe(1);
+    expect(pool.C).toBe(0);
+  });
+
+  it("starts on the battlefield for a player who is not going first", () => {
+    const game = createGameState({ playerCount: 2 });
+    const definition = cavernsDefinition(game);
+    const second = game.players[1]!;
+    const caverns = createCardInstance({
+      definitionId: definition.id,
+      ownerId: second.id,
+      zone: "hand",
+    });
+    game.cards[caverns.id] = caverns;
+    second.zones.hand.push(caverns.id);
+    // A DIFFERENT card: two copies of a legendary land would take each other
+    // out and the test would be measuring the legend rule.
+    const spareDefinition = createCardDefinition({
+      name: "Forest",
+      typeLine: "Basic Land — Forest",
+    });
+    game.definitions[spareDefinition.id] = spareDefinition;
+    const spare = createCardInstance({
+      definitionId: spareDefinition.id,
+      ownerId: second.id,
+      zone: "hand",
+    });
+    game.cards[spare.id] = spare;
+    second.zones.hand.push(spare.id);
+    game.turn.activePlayerId = game.players[0]!.id;
+
+    const started = beginMulligan(game);
+    let settled = started;
+    for (const player of started.players) {
+      if (isMulliganOpen(settled)) {
+        settled = applyKeepHand(settled, settled.mulligan!.decidingPlayerId);
+      }
+      expect(player.id).toBeDefined();
+    }
+    expect(settled.cards[caverns.id]?.zone).toBe("battlefield");
+    expect(settled.cards[caverns.id]?.counters["luck"]).toBe(1);
+    // It costs a card, and the card it costs is not itself.
+    expect(settled.cards[spare.id]?.zone).toBe("exile");
+  });
+
+  it("stays in hand for the player going first", () => {
+    const game = createGameState({ playerCount: 2 });
+    const definition = cavernsDefinition(game);
+    const first = game.players[0]!;
+    const caverns = createCardInstance({
+      definitionId: definition.id,
+      ownerId: first.id,
+      zone: "hand",
+    });
+    game.cards[caverns.id] = caverns;
+    first.zones.hand.push(caverns.id);
+    game.turn.activePlayerId = first.id;
+
+    let settled = beginMulligan(game);
+    while (isMulliganOpen(settled)) {
+      settled = applyKeepHand(settled, settled.mulligan!.decidingPlayerId);
+    }
+    // "You're NOT the starting player" is the whole restriction.
+    expect(settled.cards[caverns.id]?.zone).toBe("hand");
+  });
+
+  it("round trips both halves", () => {
+    const { game, p1 } = twoPlayers();
+    const cavernsId = onBattlefield(game, p1.id, true);
+    const definitionId = game.cards[cavernsId]!.definitionId;
+    const round = parseGameState(serializeGameState(game));
+    expect(round.definitions[definitionId]?.openingHandStart).toEqual({
+      counter: "luck",
+      exileFromHand: 1,
+    });
+    expect(round.definitions[definitionId]?.manaAbilities[0]?.upgrade).toEqual({
+      requires: [],
+      selfCounter: "luck",
+      anyColor: 1,
+    });
+    expect(round.cards[cavernsId]?.counters["luck"]).toBe(1);
   });
 });

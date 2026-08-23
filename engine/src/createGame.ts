@@ -177,6 +177,7 @@ export function createCardDefinition(
         | "grantsEscape"
         | "playLandsFromGraveyard"
         | "leyline"
+        | "openingHandStart"
         | "castFromGraveyard"
         | "ascend"
         | "untapDuringEachUntap"
@@ -338,6 +339,9 @@ export function createCardDefinition(
             ? {
                 upgrade: {
                   requires: ability.upgrade.requires.map((gate) => copyControlledGate(gate)),
+                  ...(ability.upgrade.selfCounter
+                    ? { selfCounter: ability.upgrade.selfCounter }
+                    : {}),
                   ...(ability.upgrade.produces ? { produces: { ...ability.upgrade.produces } } : {}),
                   ...(ability.upgrade.anyColor !== undefined
                     ? { anyColor: ability.upgrade.anyColor }
@@ -601,6 +605,9 @@ export function createCardDefinition(
     ...(input.grantsEscape ? { grantsEscape: { ...input.grantsEscape } } : {}),
     ...(input.playLandsFromGraveyard ? { playLandsFromGraveyard: true } : {}),
     ...(input.leyline ? { leyline: true } : {}),
+    ...(input.openingHandStart
+      ? { openingHandStart: { ...input.openingHandStart } }
+      : {}),
     ...(input.castFromGraveyard
       ? {
           castFromGraveyard: {

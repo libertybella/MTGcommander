@@ -256,6 +256,9 @@ function compileOneFace(card: OracleCard, definitionId: string): OracleCompileRe
     ...(compiled.castFreeFromHand ? { castFreeFromHand: compiled.castFreeFromHand } : {}),
     ...(compiled.attackTax ? { attackTax: { ...compiled.attackTax } } : {}),
     ...(compiled.leyline ? { leyline: true } : {}),
+    ...(compiled.openingHandStart
+      ? { openingHandStart: compiled.openingHandStart }
+      : {}),
     ...(compiled.castFromGraveyard ? { castFromGraveyard: { ...compiled.castFromGraveyard } } : {}),
     ...(compiled.ascend ? { ascend: true } : {}),
     ...(compiled.untapDuringEachUntap

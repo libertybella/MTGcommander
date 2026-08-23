@@ -1143,12 +1143,31 @@ function applyTapForMana(
   }
   // The Urza lands, Ilysian Caryatid: "If you control …, add <more> instead."
   // Checked before the multipliers, since it replaces what the tap makes.
-  if (ability.upgrade && ability.upgrade.requires.every((gate) => controlsGate(state, playerId, gate))) {
+  // Gemstone Caverns: the upgrade can be gated on the SOURCE's own
+  // counters rather than on what its controller has out.
+  const selfCounterOk =
+    ability.upgrade?.selfCounter === undefined ||
+    (state.cards[cardId]?.counters[ability.upgrade.selfCounter] ?? 0) > 0;
+  if (
+    ability.upgrade &&
+    selfCounterOk &&
+    ability.upgrade.requires.every((gate) => controlsGate(state, playerId, gate))
+  ) {
     if (ability.upgrade.anyColor !== undefined) {
-      // The colour choice is already made above; the upgrade only changes how
-      // many of it there are.
-      const picked = (Object.keys(addition) as ManaColor[])[0];
-      addition = picked ? { [picked]: ability.upgrade.anyColor } : addition;
+      // Gemstone Caverns: the base ability is colourless, so no colour was
+      // ever chosen and there is nothing to rescale. The upgrade is what
+      // GRANTS the choice, so the tap's colour is honoured here.
+      if (!options && !ability.producesAnyColor) {
+        if (!color) {
+          throw new Error("Choose a mana color");
+        }
+        addition = { [color]: ability.upgrade.anyColor };
+      } else {
+        // Ilysian Caryatid: the colour is already picked above and the
+        // upgrade only changes how many of it there are.
+        const picked = (Object.keys(addition) as ManaColor[])[0];
+        addition = picked ? { [picked]: ability.upgrade.anyColor } : addition;
+      }
     } else if (ability.upgrade.produces) {
       addition = { ...ability.upgrade.produces };
     }

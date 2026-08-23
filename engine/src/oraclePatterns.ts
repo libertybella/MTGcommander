@@ -97,6 +97,7 @@ export type CompiledOracleText = {
   castFreeFromHand?: CardDefinition["castFreeFromHand"];
   attackTax?: { generic?: number; perEnchantment?: boolean; lifePer?: number };
   leyline?: boolean;
+  openingHandStart?: { counter: string; exileFromHand: number };
   castFromGraveyard?: { types?: string[]; subtypes?: string[] };
   ascend?: boolean;
   untapDuringEachUntap?: "creatures" | "permanents" | "artifacts";
@@ -8393,6 +8394,33 @@ function fuseMoxDiamondInPlace(sentences: string[], lineStart: boolean[]): void 
   }
 }
 
+function fuseOpeningHandStartInPlace(
+  sentences: string[],
+  lineStart: boolean[],
+): void {
+  // Gemstone Caverns prints the offer and its price as two sentences on one
+  // line. "If you do, exile a card from your hand" alone has nothing to be
+  // the price OF, and the offer alone would be a free land.
+  for (let index = 0; index + 1 < sentences.length; index += 1) {
+    if (lineStart[index + 1]) {
+      continue;
+    }
+    const offer = sentences[index]?.match(
+      /^If this card is in your opening hand and you['’]re not the starting player, you may begin the game with ~ on the battlefield with an? ([a-z]+) counter on it$/i,
+    );
+    const price = sentences[index + 1]?.match(
+      /^If you do, exile (a|an|one|two|\d+) cards? from your hand$/i,
+    );
+    if (!offer?.[1] || !price?.[1]) {
+      continue;
+    }
+    sentences[index] = `Begin the game with ~ on the battlefield with a ${offer[1]} counter, exiling ${price[1]} cards from your hand`;
+    sentences.splice(index + 1, 1);
+    lineStart.splice(index + 1, 1);
+    index -= 1;
+  }
+}
+
 function fuseEscapeGrantInPlace(sentences: string[], lineStart: boolean[]): void {
   // Underworld Breach prints the grant and its cost as two sentences on one
   // line. "Each nonland card in your graveyard has escape" alone says
@@ -11636,6 +11664,7 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
   fuseVoidPlayInPlace(sentences, lineStart);
   fuseManaUntilEotInPlace(sentences, lineStart);
   fuseEscapeGrantInPlace(sentences, lineStart);
+  fuseOpeningHandStartInPlace(sentences, lineStart);
   fuseMoxDiamondInPlace(sentences, lineStart);
   fuseMaySacrificeInPlace(sentences, lineStart);
   fuseNecroTopInPlace(sentences, lineStart);
@@ -13345,6 +13374,20 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
       continue;
     }
 
+    // Gemstone Caverns, once the fuser has joined the offer to its price.
+    const openingStart = sentence.match(
+      /^Begin the game with ~ on the battlefield with an? ([a-z]+) counter, exiling (a|an|one|two|\d+) cards? from your hand$/i,
+    );
+    if (openingStart?.[1] && openingStart[2]) {
+      const exileFromHand = parseCount(openingStart[2]);
+      if (exileFromHand) {
+        result.openingHandStart = {
+          counter: counterKeyOf(openingStart[1]),
+          exileFromHand,
+        };
+        continue;
+      }
+    }
     if (
       /^If this card is in your opening hand, you may begin the game with it on the battlefield$/i.test(
         sentence,
@@ -15591,6 +15634,23 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
         });
         continue;
       }
+    }
+
+    // Gemstone Caverns: "If ~ has a luck counter on it, instead add one
+    // mana of any color." The same rider shape as the Urza lands below, but
+    // gated on the SOURCE's own counters rather than on what its controller
+    // has out.
+    const selfCounterUpgrade = sentence.match(
+      /^If ~ has an? ([a-z]+) counter on it, instead add (one mana of any color|two mana of any one color)$/i,
+    );
+    const counterMana = result.manaAbilities[result.manaAbilities.length - 1];
+    if (selfCounterUpgrade?.[1] && selfCounterUpgrade[2] && counterMana) {
+      counterMana.upgrade = {
+        requires: [],
+        selfCounter: counterKeyOf(selfCounterUpgrade[1]),
+        anyColor: /^one /i.test(selfCounterUpgrade[2]) ? 1 : 2,
+      };
+      continue;
     }
 
     // The Urza lands, Ilysian Caryatid: "If you control …, add <more>

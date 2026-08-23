@@ -1,3 +1,4 @@
+import { manaValueOf } from "./characteristics";
 import { cloneGameState } from "./clone";
 import { isLiving, livingPlayerCount } from "./players";
 import { shuffleInPlace } from "./shuffle";
@@ -137,9 +138,52 @@ export function applyKeepHand(state: GameState, playerId: PlayerId): GameState {
   advanceDeciderInPlace(next);
   if (!next.mulligan) {
     deployLeylinesInPlace(next);
+    deployOpeningHandStartsInPlace(next);
     return skipFirstTurnUntap(next);
   }
   return next;
+}
+
+/**
+ * Gemstone Caverns: an opening-hand card that begins the game on the
+ * battlefield with a counter, for a player who is NOT going first, and costs
+ * them a card from hand.
+ *
+ * The "may" is auto-taken, the same documented approximation the leylines
+ * below make. The exiled card is picked cheapest-first, which is the
+ * approximation `altCastPayment` already makes for a cost the engine has to
+ * choose — a player paying this reaches for their most expendable card.
+ */
+function deployOpeningHandStartsInPlace(state: GameState): void {
+  // On turn one the active player is the one who went first, and this
+  // never applies to them.
+  const startingPlayerId = state.turn.activePlayerId;
+  for (const player of state.players) {
+    if (player.id === startingPlayerId) {
+      continue;
+    }
+    for (const cardId of [...player.zones.hand]) {
+      const start =
+        state.definitions[state.cards[cardId]?.definitionId ?? ""]?.openingHandStart;
+      if (!start) {
+        continue;
+      }
+      // The card leaves the hand first, so it cannot pay its own cost.
+      moveCardInPlace(state, cardId, "battlefield");
+      const arrived = state.cards[cardId];
+      if (arrived) {
+        arrived.counters[start.counter] = (arrived.counters[start.counter] ?? 0) + 1;
+      }
+      const payable = [...player.zones.hand].sort(
+        (left, right) =>
+          manaValueOf(state.definitions[state.cards[left]!.definitionId]?.manaCost ?? "") -
+          manaValueOf(state.definitions[state.cards[right]!.definitionId]?.manaCost ?? ""),
+      );
+      for (const exileId of payable.slice(0, start.exileFromHand)) {
+        moveCardInPlace(state, exileId, "exile");
+      }
+    }
+  }
 }
 
 /**

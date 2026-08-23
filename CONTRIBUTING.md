@@ -111,7 +111,14 @@ $env:COMPILE_BULK="<same bulk .jsonl>"
 npx vitest run server/src/definitionLoads.test.ts
 ```
 
-`[load-fail] total: 0` is the pass. The sample half of that file runs in
+`[load-fail] total: 0` is the pass.
+
+**If the fuzz burn hangs, add `--reporter=basic`.** Twice now the burn
+has left its eight workers alive with a full burn's worth of CPU spent
+(~37s each) and produced nothing for half an hour: the work is done and
+the interactive reporter's RPC channel is what is stuck. `--reporter=basic`
+sidesteps it. A burn that reports `Errors  8 errors` while all 200 tests
+pass is the same fault caught earlier in its teardown. The sample half of that file runs in
 the ordinary suite; only the full sweep needs the env var.
 
 Read the `[compile-rate] list:` line. The one-away report (highest-ROI

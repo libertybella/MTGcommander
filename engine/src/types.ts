@@ -468,6 +468,13 @@ export type CardDefinition = {
    * Deployed automatically when mulligans finish (the "may" is auto-taken).
    */
   leyline?: boolean;
+  /**
+   * Gemstone Caverns: if in the opening hand and its owner is NOT the
+   * starting player, it begins the game on the battlefield with a counter,
+   * and its owner exiles a card from hand. The same auto-taken "may" the
+   * leylines above use, and the same start-of-game moment.
+   */
+  openingHandStart?: { counter: string; exileFromHand: number };
   /** Gravecrawler: castable from the graveyard while the controller controls
    * a matching permanent. Resolves normally (a creature enters play). */
   castFromGraveyard?: { types?: string[]; subtypes?: string[] };
@@ -3616,6 +3623,12 @@ export type TokenSpec = TokenTemplate & { keywords?: Keyword[]; colors?: Color[]
  */
 export type ManaUpgrade = {
   requires: ControlledGate[];
+  /**
+   * Gemstone Caverns: "If ~ has a luck counter on it, instead add one mana
+   * of any color." The gate is on the SOURCE's own counters rather than on
+   * what its controller has out, which is what `requires` reads.
+   */
+  selfCounter?: string;
   produces?: Partial<ManaPool>;
   /** Ilysian Caryatid: "add two mana of any one color instead". */
   anyColor?: number;

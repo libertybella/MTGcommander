@@ -870,6 +870,23 @@ more questions it can now ask:
   (Bennie Bracks). Reads the existing per-player `createdTokenThisTurn`
   list, and asks whether the CONTROLLER is in it — an opponent's Treasure
   must not satisfy it.
+- **`openingHandStart`** — Gemstone Caverns. Begins the game on the
+  battlefield with a counter, for a player who is NOT going first, at the
+  cost of a card from hand. It rides the same start-of-game moment the
+  leylines already use, just after mulligans finish, and the "may" is
+  auto-taken the same way. The card leaves the hand FIRST, so it cannot pay
+  its own cost; the exiled card is picked cheapest-first.
+
+- **`ManaUpgrade.selfCounter`** — the same "add X instead" rider the Urza
+  lands use, gated on the SOURCE's own counters rather than on what its
+  controller has out. And the upgrade now GRANTS the colour choice when the
+  base ability had none: Gemstone Caverns taps for {C}, so no colour was
+  ever picked and the old path had nothing to rescale — it would have added
+  colourless mana with a luck counter sitting on it.
+
+  `createGame`'s mana mapper rebuilt `upgrade` field by field and dropped
+  `selfCounter`, which would have made the upgrade unconditional: any colour
+  always, counter or not. The sixth mapper-layer drop of this push.
 - **Escape (CR 702.139)** — Underworld Breach. `grantsEscape` is a
   DEFINITION field on the granting permanent, not a layer static: the cards
   it reaches are in a graveyard, and the layer engine only sees the
