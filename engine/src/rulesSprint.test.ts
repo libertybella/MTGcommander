@@ -19,7 +19,7 @@ import {
 } from "./index";
 import { activatedOf, cardMatchesSubtype, computedCard, dynamicCountOf, triggersOf } from "./characteristicsEngine";
 import { mostCommonControlledCreatureType } from "./effects";
-import { castCostReduction, castableFromTop, drawCapFor, freeEquipGranted, hasFlashGrant, landDropAllowance, maxHandSizeOf, permanentsControlledBy, reliefAdjustedCost, selfDiscountAmount, wouldEnterTapped } from "./derived";
+import { castCostReduction, castableFromTop, drawCapFor, freeEquipGranted, hasFlashGrant, landDropAllowance, maxHandSizeOf, noncreatureSpellCap, permanentsControlledBy, reliefAdjustedCost, selfDiscountAmount, wouldEnterTapped } from "./derived";
 import { hasKeyword } from "./keywords";
 import { dispatchEventsInPlace, triggerConditionHolds } from "./triggers";
 import { applyCombatDamage, blockRestriction, declareAttackers } from "./combat";
@@ -30469,5 +30469,120 @@ describe("wave 233: two narrow matchers widened to the shared parsers", () => {
       // "another" must not leak onto a sentence that does not say it.
       expect(trigger.excludeSelf).toBeUndefined();
     }
+  });
+});
+
+describe("wave 234: a per-turn cap on noncreature spells", () => {
+  const put = (game: GameState, definitionId: string, ownerId: string) => {
+    const card = createCardInstance({ definitionId, ownerId, zone: "battlefield" });
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === ownerId)!.zones.battlefield.push(card.id);
+    return card;
+  };
+
+  const toHand = (game: GameState, definitionId: string, ownerId: string) => {
+    const card = createCardInstance({ definitionId, ownerId, zone: "hand" });
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === ownerId)!.zones.hand.push(card.id);
+    return card;
+  };
+
+  it("reads the cap off the printed line", () => {
+    const silence = compileOracleCard({
+      oracleId: "Deafening Silence",
+      name: "Deafening Silence",
+      manaCost: "{W}",
+      typeLine: "Enchantment",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText: "Each player can't cast more than one noncreature spell each turn.",
+    });
+    expect(silence.notes).toEqual([]);
+    expect(silence.definition.noncreatureSpellCap).toBe(1);
+  });
+
+  it("binds the controller too, unlike the draw cap it is modelled on", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    const silence = createCardDefinition({
+      name: "Deafening Silence",
+      typeLine: "Enchantment",
+      noncreatureSpellCap: 1,
+    });
+    game.definitions[silence.id] = silence;
+    expect(noncreatureSpellCap(game)).toBeNull();
+
+    put(game, silence.id, p1.id);
+    // The printed text says EACH player, so the cap must apply to the
+    // controller as well. Modelling it on `opponentsDrawCap`, which skips the
+    // controller, would have made this card one-sided and much better.
+    expect(noncreatureSpellCap(game)).toBe(1);
+    for (const player of [p1, p2]) {
+      expect(noncreatureSpellCap(game), player.id).toBe(1);
+    }
+  });
+
+  it("refuses the second noncreature spell and still allows a creature", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const silence = createCardDefinition({
+      name: "Deafening Silence",
+      typeLine: "Enchantment",
+      noncreatureSpellCap: 1,
+    });
+    const bolt = createCardDefinition({ name: "Bolt", typeLine: "Instant", manaCost: "{R}" });
+    const bear = createCardDefinition({
+      name: "Bear",
+      typeLine: "Creature — Bear",
+      manaCost: "{G}",
+      power: 2,
+      toughness: 2,
+    });
+    for (const definition of [silence, bolt, bear]) {
+      game.definitions[definition.id] = definition;
+    }
+    put(game, silence.id, p1.id);
+    const instant = toHand(game, bolt.id, p1.id);
+    const creature = toHand(game, bear.id, p1.id);
+    game.turn.phase = "precombatMain";
+    game.turn.step = "precombatMain";
+    p1.mana.R = 5;
+    p1.mana.G = 5;
+
+    // Nothing cast yet: the instant is on offer.
+    const before = legalActions(game, p1.id);
+    expect(before.some((a) => a.kind === "cast_spell" && a.cardId === instant.id)).toBe(true);
+
+    // One noncreature spell already cast this turn fills the quota.
+    game.noncreatureSpellsCastByPlayerThisTurn = { [p1.id]: 1 };
+    const after = legalActions(game, p1.id);
+    expect(after.some((a) => a.kind === "cast_spell" && a.cardId === instant.id)).toBe(false);
+    // A CREATURE spell is untouched — the cap counts noncreature spells only,
+    // and a check that forgot the type would lock the turn down entirely.
+    expect(after.some((a) => a.kind === "cast_spell" && a.cardId === creature.id)).toBe(true);
+
+    // The engine must refuse it too, not merely decline to offer it: a legal
+    // action list that disagrees with the guard is a UI that lies.
+    expect(() =>
+      applyAction(game, { kind: "cast_spell", playerId: p1.id, cardId: instant.id, targets: [] }),
+    ).toThrow();
+  });
+
+  it("round trips the cap", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const silence = createCardDefinition({
+      name: "Deafening Silence",
+      typeLine: "Enchantment",
+      noncreatureSpellCap: 1,
+    });
+    game.definitions[silence.id] = silence;
+    put(game, silence.id, p1.id);
+
+    const round = parseGameState(serializeGameState(game));
+    expect(round.definitions[silence.id]?.noncreatureSpellCap).toBe(1);
+    expect(noncreatureSpellCap(round)).toBe(1);
   });
 });

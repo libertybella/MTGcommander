@@ -7,7 +7,7 @@ import {
 } from "./characteristicsEngine";
 import { characteristicsOf, isCommander, isCreature, isInstant, isInstantOrSorcery, isLand, isLegendary, isMainPhase } from "./cardTypes";
 import { cloneGameState } from "./clone";
-import { costRelief, affinityArtifactDiscount, allBattlefieldCreatureCount, canPlayLandFromTop, canPlayLandsFromGraveyard, castCostReduction, castableFromTop, controlsCommander, creaturePower, freeEquipGranted, hasFlashGrant, activationNonManaPayment, altCastPayment, landDropAllowance, manaTapMultiplier, lockedByAbolisher, lockedFromCasting, opponentControlsMoreLands, findFreeHandGrantIndex, opponentsCastLockedToHand, selfDiscountAmount, staticFreeCastCap, usesOncePerTurnFreeCast } from "./derived";
+import { costRelief, affinityArtifactDiscount, allBattlefieldCreatureCount, canPlayLandFromTop, canPlayLandsFromGraveyard, castCostReduction, castableFromTop, controlsCommander, creaturePower, freeEquipGranted, hasFlashGrant, activationNonManaPayment, altCastPayment, landDropAllowance, manaTapMultiplier, lockedByAbolisher, lockedFromCasting, noncreatureSpellCap, opponentControlsMoreLands, findFreeHandGrantIndex, opponentsCastLockedToHand, selfDiscountAmount, staticFreeCastCap, usesOncePerTurnFreeCast } from "./derived";
 import { eliminatePlayerInPlace } from "./elimination";
 import { applyEffects, bindCardEffects, devotionTo } from "./effects";
 import { hasKeyword } from "./keywords";
@@ -231,6 +231,18 @@ function validateCast(
     !definition.characteristics.types.includes("creature")
   ) {
     throw new Error("You can't cast noncreature spells this turn");
+  }
+  // Deafening Silence: a per-turn quota rather than a lock, and it binds
+  // the controller too. The tally is bumped as the spell goes on the
+  // stack, so the comparison here is against what has ALREADY been cast.
+  if (!definition.characteristics.types.includes("creature")) {
+    const cap = noncreatureSpellCap(state);
+    if (
+      cap !== null &&
+      (state.noncreatureSpellsCastByPlayerThisTurn?.[playerId] ?? 0) >= cap
+    ) {
+      throw new Error("You have cast your noncreature spell for the turn");
+    }
   }
 
   const located = findCardZone(state, cardId);

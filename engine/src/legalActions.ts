@@ -9,7 +9,7 @@ import { hasKeyword } from "./keywords";
 import { triggerConditionHolds } from "./triggers";
 import { emptyManaPool } from "./createGame";
 import { pendingBlockerPlayer } from "./combat";
-import { reliefAdjustedCost, affinityArtifactDiscount, activationNonManaPayment, allBattlefieldCreatureCount, altCastPayment, canPlayLandsFromGraveyard, castCostReduction, castableFromTop, controlsCommander, freeEquipGranted, hasFlashGrant, landDropAllowance, lockedByAbolisher, lockedFromCasting, opponentControlsMoreLands, findFreeHandGrantIndex, opponentsCastLockedToHand, permanentsControlledBy, selfDiscountAmount, staticFreeCastCap, topOfLibraryGrant } from "./derived";
+import { reliefAdjustedCost, affinityArtifactDiscount, activationNonManaPayment, allBattlefieldCreatureCount, altCastPayment, canPlayLandsFromGraveyard, castCostReduction, castableFromTop, controlsCommander, freeEquipGranted, hasFlashGrant, landDropAllowance, lockedByAbolisher, lockedFromCasting, noncreatureSpellCap, opponentControlsMoreLands, findFreeHandGrantIndex, opponentsCastLockedToHand, permanentsControlledBy, selfDiscountAmount, staticFreeCastCap, topOfLibraryGrant } from "./derived";
 import { canPayManaCost, parseManaCost, type ParsedManaCost } from "./mana";
 import { colorsAmongControlled, manaAbilitiesFor, manaTapOptionsFor } from "./manaOptions";
 import { isMulliganOpen } from "./mulligan";
@@ -601,6 +601,17 @@ export function legalActions(state: GameState, playerId: PlayerId): LegalAction[
         !face.definition.characteristics.types.includes("creature")
       ) {
         continue;
+      }
+      // Deafening Silence: the same quota the cast guard enforces. If the
+      // two disagree the UI offers a spell the engine then refuses.
+      if (!face.definition.characteristics.types.includes("creature")) {
+        const spellCap = noncreatureSpellCap(state);
+        if (
+          spellCap !== null &&
+          (state.noncreatureSpellsCastByPlayerThisTurn?.[playerId] ?? 0) >= spellCap
+        ) {
+          continue;
+        }
       }
       if (inGraveyard) {
         // Flashback (CR 702.34): castable from the graveyard for its

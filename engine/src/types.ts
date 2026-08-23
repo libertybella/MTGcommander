@@ -179,6 +179,13 @@ export type CardDefinition = {
   /** Narset, Parter of Veils: "each opponent can't draw more than one card
    * each turn" — a cap on the OPPONENTS' draws, counted per turn. */
   opponentsDrawCap?: number;
+  /**
+   * Deafening Silence: "Each player can't cast more than one noncreature
+   * spell each turn." Unlike `opponentsDrawCap` this binds EACH player,
+   * the controller included — the printed text says each player and the
+   * card is played for the symmetry.
+   */
+  noncreatureSpellCap?: number;
   /** Theros gods: not a creature while devotion to the color is below the
    * threshold (applied before the layer passes — a documented simplification). */
   notCreatureBelowDevotion?: { color: Color; threshold: number };

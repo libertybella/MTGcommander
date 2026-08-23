@@ -513,6 +513,14 @@ export function parseGameState(json: string): GameState {
       ...(def.opponentsDrawCap === undefined
         ? {}
         : { opponentsDrawCap: expectNumber(def.opponentsDrawCap, `definition.${id}.opponentsDrawCap`) }),
+      ...(def.noncreatureSpellCap === undefined
+        ? {}
+        : {
+            noncreatureSpellCap: expectNumber(
+              def.noncreatureSpellCap,
+              `definition.${id}.noncreatureSpellCap`,
+            ),
+          }),
       ...(isRecord(def.damageReplacement)
         ? {
             damageReplacement: {

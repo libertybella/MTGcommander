@@ -107,6 +107,7 @@ export function createCardDefinition(
         | "noMaxHandSize"
         | "handSizeEffect"
         | "opponentsDrawCap"
+        | "noncreatureSpellCap"
         | "damageReplacement"
         | "manaTapMultiplier"
         | "altCost"
@@ -446,6 +447,9 @@ export function createCardDefinition(
     ...(input.opponentsDrawCap === undefined
       ? {}
       : { opponentsDrawCap: input.opponentsDrawCap }),
+    ...(input.noncreatureSpellCap === undefined
+      ? {}
+      : { noncreatureSpellCap: input.noncreatureSpellCap }),
     ...(input.damageReplacement ? { damageReplacement: { ...input.damageReplacement } } : {}),
     ...(input.manaTapMultiplier ? { manaTapMultiplier: input.manaTapMultiplier } : {}),
     ...(input.altCost ? { altCost: { ...input.altCost } } : {}),

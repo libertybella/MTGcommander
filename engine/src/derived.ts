@@ -418,6 +418,27 @@ export function creatureToughness(state: GameState, cardId: CardInstanceId): num
  * this turn, or null for none. Counted against the per-turn tally, so the
  * first draw goes through and the rest do not.
  */
+/**
+ * The tightest per-turn noncreature-spell cap that applies to this player.
+ *
+ * It takes no player, because it binds every player equally — `drawCapFor`
+ * skips the controller because its card says opponents, and this one says
+ * each player. Making that visible in the signature is the point.
+ */
+export function noncreatureSpellCap(state: GameState): number | null {
+  let cap: number | null = null;
+  for (const card of Object.values(state.cards)) {
+    if (card.zone !== "battlefield" || abilitiesRemoved(state, card.id)) {
+      continue;
+    }
+    const limit = state.definitions[card.definitionId]?.noncreatureSpellCap;
+    if (limit !== undefined && (cap === null || limit < cap)) {
+      cap = limit;
+    }
+  }
+  return cap;
+}
+
 export function drawCapFor(state: GameState, playerId: string): number | null {
   let cap: number | null = null;
   for (const card of Object.values(state.cards)) {

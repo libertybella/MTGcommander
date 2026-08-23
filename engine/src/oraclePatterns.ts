@@ -63,6 +63,7 @@ export type CompiledOracleText = {
   noMaxHandSize?: boolean;
   handSizeEffect?: CardDefinition["handSizeEffect"];
   opponentsDrawCap?: number;
+  noncreatureSpellCap?: number;
   damageReplacement?: DamageReplacement;
   manaTapMultiplier?: number;
   altCost?: AlternativeCastCost;
@@ -10099,6 +10100,16 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
     }
 
     // Narset, Parter of Veils.
+    const spellCap = sentence.match(
+      /^Each player can't cast more than (one|two|three|\d+) noncreature spells? each turn$/i,
+    );
+    if (spellCap?.[1]) {
+      const cap = parseCount(spellCap[1]);
+      if (cap) {
+        result.noncreatureSpellCap = cap;
+        continue;
+      }
+    }
     const drawCap = sentence.match(
       /^Each opponent can't draw more than (one|two|three|\d+) cards? each turn$/i,
     );
