@@ -13,6 +13,27 @@ the current state of play. Read all four before writing code.
 - Branch `comprehensive-plan`, tags through `checkpoint-86-one-away-grind`.
 - 1,169 tests green; top-2,000 compile rate **67.0% (1,347/2,009)**,
   60-card sample 97% (CI floor now 90). Waves 218–221 land after the tag.
+- **The plan, agreed 2026-08-22 (Liberty + a Fable 5 review).** The wave
+  grind alone tops out: a growing share of what is left is blocked on
+  engine primitives that do not exist, so yield keeps falling. The fix is
+  to alternate.
+  1. **Primitive sessions, one primitive each, never mixed with wave
+     grinding.** They end with the primitive, its tests, and maybe two
+     demonstration cards — judged by what they unblock, not by the rate
+     they move. Order by blast radius, smallest first: **granted-trigger
+     statics** (contained: layer engine + trigger collection), then **a
+     real "destroy" event** (widest change since tagged mana).
+  2. **Wave sessions harvest what the primitive unblocked**, five to
+     eight waves, then a PLANNED stop at a checkpoint — do not run to
+     context exhaustion, the last waves get cramped and the handoff
+     suffers.
+  3. **Parallel sessions only when the streams are file-disjoint.**
+     `CLAIMS.md` stops duplicated work, not merge pain: nearly every
+     compiler wave touches `oraclePatterns.ts`, `types.ts` and
+     `serialize.ts`, so two wave-grinders at once will collide. One
+     grinder plus one primitive session is safe.
+  4. **Use read-only subagents for the "where does X live" phase** so the
+     search stays out of the main context.
 - **`docs/MACHINERY.md` is the location map** — the per-kind checklists
   ("I am adding a new effect / target kind / counted noun"), the grammar
   inventory, which engine file owns what, and the traps. Read it before
