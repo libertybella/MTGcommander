@@ -27470,3 +27470,160 @@ describe("wave 214: a cap on drawing, and a restriction on a whole board", () =>
   });
 });
 
+
+describe("wave 215: a pump the board sizes, and a doubling of one", () => {
+  const compile = (name: string, manaCost: string, typeLine: string, oracleText: string, power?: string, toughness?: string) =>
+    compileOracleCard({
+      oracleId: name,
+      name,
+      manaCost,
+      typeLine,
+      power: power ?? null,
+      toughness: toughness ?? null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  it("sizes Defile by the Swamps, counting the type and not the name", () => {
+    const defile = compile(
+      "Defile",
+      "{B}",
+      "Instant",
+      "Target creature gets -1/-1 until end of turn for each Swamp you control.",
+    );
+    expect(defile.notes).toEqual([]);
+    expect(defile.definition.effects).toEqual([
+      {
+        kind: "pt_until_eot",
+        cardId: { type: "chosen", index: 0 },
+        power: -1,
+        toughness: -1,
+        per: "swamps_you_control",
+      },
+    ]);
+
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const swampDef = createCardDefinition({ name: "Swamp", typeLine: "Basic Land — Swamp" });
+    const islandDef = createCardDefinition({ name: "Island", typeLine: "Basic Land — Island" });
+    // A Swamp is a land TYPE, so a nonbasic with the subtype counts too.
+    const bogDef = createCardDefinition({ name: "Bog", typeLine: "Land — Swamp Forest" });
+    for (const definition of [swampDef, islandDef, bogDef]) {
+      game.definitions[definition.id] = definition;
+    }
+    const put = (definitionId: string) => {
+      const card = createCardInstance({ definitionId, ownerId: p1.id, zone: "battlefield" });
+      game.cards[card.id] = card;
+      p1.zones.battlefield.push(card.id);
+      return card;
+    };
+    put(swampDef.id);
+    put(swampDef.id);
+    put(islandDef.id);
+    expect(dynamicCountOf(game, p1.id, "swamps_you_control")).toBe(2);
+    put(bogDef.id);
+    expect(dynamicCountOf(game, p1.id, "swamps_you_control")).toBe(3);
+    // The Island is never a Swamp, which is what keeps this from being a
+    // plain land count.
+    expect(dynamicCountOf(game, p1.id, "lands_you_control")).toBe(4);
+  });
+
+  it("bakes the count in when the spell resolves", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const swampDef = createCardDefinition({ name: "Swamp", typeLine: "Basic Land — Swamp" });
+    const bearDef = createCardDefinition({
+      name: "Bear",
+      typeLine: "Creature — Bear",
+      power: 4,
+      toughness: 4,
+    });
+    for (const definition of [swampDef, bearDef]) {
+      game.definitions[definition.id] = definition;
+    }
+    const put = (definitionId: string) => {
+      const card = createCardInstance({ definitionId, ownerId: p1.id, zone: "battlefield" });
+      game.cards[card.id] = card;
+      p1.zones.battlefield.push(card.id);
+      return card;
+    };
+    put(swampDef.id);
+    put(swampDef.id);
+    put(swampDef.id);
+    const bear = put(bearDef.id);
+
+    const bound = bindCardEffects(
+      game,
+      [
+        {
+          kind: "pt_until_eot",
+          cardId: { type: "chosen", index: 0 },
+          power: -1,
+          toughness: -1,
+          per: "swamps_you_control",
+        },
+      ],
+      {
+        controllerId: p1.id,
+        sourceId: null,
+        targets: [{ type: "creature", cardId: bear.id }],
+        targetRequirements: [{ kind: "creature" }],
+      },
+    );
+    // Three Swamps, so -3/-3 — the printed numbers are the per-unit step.
+    expect(bound).toEqual([
+      { kind: "pt_until_eot", cardId: bear.id, power: -3, toughness: -3 },
+    ]);
+  });
+
+  it("doubles the counters on the source, and doubles none into none", () => {
+    const hydra = compile(
+      "Mossborn Hydra",
+      "{2}{G}",
+      "Creature — Elemental Hydra",
+      "Trample\nThis creature enters with a +1/+1 counter on it.\nLandfall — Whenever a land you control enters, double the number of +1/+1 counters on this creature.",
+      "0",
+      "0",
+    );
+    expect(hydra.notes).toEqual([]);
+    expect(hydra.definition.entersWithCounters).toEqual({ counter: "p1p1", count: 1 });
+    expect(hydra.definition.triggers[0]?.effects).toEqual([
+      { kind: "double_counters_on", cardId: "self", counter: "p1p1" },
+    ]);
+
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const definition = createCardDefinition({
+      name: "Mossborn Hydra",
+      typeLine: "Creature — Elemental Hydra",
+      // 1/1 in the harness rather than the printed 0/0: a counterless 0/0 is
+      // swept by state-based actions before the second half of this test.
+      power: 1,
+      toughness: 1,
+    });
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({
+      definitionId: definition.id,
+      ownerId: p1.id,
+      zone: "battlefield",
+    });
+    game.cards[card.id] = card;
+    p1.zones.battlefield.push(card.id);
+
+    // Nothing to double is still nothing — doubling must not hand out a
+    // counter to a permanent that had none.
+    let next = applyEffect(game, {
+      kind: "double_counters_on",
+      cardId: card.id,
+      counter: "p1p1",
+    });
+    expect(next.cards[card.id]?.counters["p1p1"] ?? 0).toBe(0);
+
+    next = applyEffect(next, { kind: "add_counter", cardId: card.id, counter: "p1p1", amount: 3 });
+    next = applyEffect(next, { kind: "double_counters_on", cardId: card.id, counter: "p1p1" });
+    expect(next.cards[card.id]?.counters["p1p1"]).toBe(6);
+    expect(computedCard(next, card.id)?.power).toBe(7);
+  });
+});
+

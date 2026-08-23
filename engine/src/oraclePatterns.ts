@@ -325,6 +325,11 @@ const DYNAMIC_COUNTS: [RegExp, DynamicCount][] = [
   [/^legendary creatures? you control$/i, "legendary_creatures_you_control"],
   [/^attacking creatures? you control$/i, "attacking_creatures_you_control"],
   [/^permanents? you control$/i, "permanents_you_control"],
+  [/^Plains you control$/i, "plains_you_control"],
+  [/^Islands? you control$/i, "islands_you_control"],
+  [/^Swamps? you control$/i, "swamps_you_control"],
+  [/^Mountains? you control$/i, "mountains_you_control"],
+  [/^Forests? you control$/i, "forests_you_control"],
 ];
 
 /**
@@ -2325,6 +2330,42 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
         ],
       };
     }
+  }
+
+  // Defile: a targeted pump whose size is a live count. The count is read as
+  // the spell resolves, so the printed numbers are the per-unit step.
+  const scaledPump = sentence.match(
+    /^Target creature gets ([+-]\d+)\/([+-]\d+) until end of turn for each (.+)$/i,
+  );
+  if (scaledPump?.[1] && scaledPump[2] && scaledPump[3]) {
+    const per = parseDynamicCount(scaledPump[3]);
+    if (per) {
+      return {
+        targetRequirements: [{ kind: "creature" }],
+        effects: [
+          {
+            kind: "pt_until_eot",
+            cardId: { type: "chosen", index: 0 },
+            power: Number(scaledPump[1]),
+            toughness: Number(scaledPump[2]),
+            per,
+          },
+        ],
+      };
+    }
+  }
+
+  // Mossborn Hydra: the doubling lands on the source, not on a team.
+  const doubleSelf = sentence.match(
+    /^double the number of ([+-]\d\/[+-]\d|[a-z]+) counters on ~$/i,
+  );
+  if (doubleSelf?.[1]) {
+    const counter =
+      doubleSelf[1] === "+1/+1" ? "p1p1" : doubleSelf[1] === "-1/-1" ? "m1m1" : doubleSelf[1].toLowerCase();
+    return {
+      targetRequirements: [],
+      effects: [{ kind: "double_counters_on", cardId: "self", counter }],
+    };
   }
 
   // Sundering Eruption: a restriction laid on every creature that lacks a

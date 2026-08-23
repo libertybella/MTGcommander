@@ -99,6 +99,11 @@ const DYNAMIC_COUNT_KEYS: Record<DynamicCount, true> = {
   legendary_creatures_you_control: true,
   attacking_creatures_you_control: true,
   permanents_you_control: true,
+  plains_you_control: true,
+  islands_you_control: true,
+  swamps_you_control: true,
+  mountains_you_control: true,
+  forests_you_control: true,
 };
 
 function isDynamicCount(value: unknown): value is DynamicCount {
@@ -2916,6 +2921,12 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
       };
     case "restore_control":
       return { kind, what: parseControlAllScope(value.what, `${label}.what`) };
+    case "double_counters_on":
+      return {
+        kind,
+        cardId: parseCardIdSelector(value.cardId, `${label}.cardId`),
+        counter: expectString(value.counter, `${label}.counter`),
+      };
     case "double_counters_on_team":
       return {
         kind,
@@ -3053,6 +3064,13 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
             : value.toughness === "minus_x"
               ? "minus_x"
               : expectNumber(value.toughness, `${label}.toughness`),
+        ...(value.per === undefined
+          ? {}
+          : isDynamicCount(value.per)
+            ? { per: value.per }
+            : (() => {
+                throw new Error(`Invalid ${label}.per`);
+              })()),
       };
     case "keyword_until_eot": {
       const keyword = expectString(value.keyword, `${label}.keyword`);
@@ -5245,6 +5263,13 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
   }
   if (kind === "restore_control") {
     return { kind, what: parseControlAllScope(value.what, `${label}.what`) };
+  }
+  if (kind === "double_counters_on") {
+    return {
+      kind,
+      cardId: expectString(value.cardId, `${label}.cardId`),
+      counter: expectString(value.counter, `${label}.counter`),
+    };
   }
   if (kind === "double_counters_on_team") {
     return {

@@ -338,6 +338,24 @@ export function dynamicCountOf(
       (card) => card.zone === "battlefield" && card.controllerId === controllerId,
     ).length;
   }
+  // Basic land types are SUBTYPES, so a Swamp is anything with the subtype —
+  // an Urborg'd Island counts, which is the whole point of the wording.
+  const BASIC_LAND_COUNTS: Partial<Record<DynamicCount, string>> = {
+    plains_you_control: "plains",
+    islands_you_control: "island",
+    swamps_you_control: "swamp",
+    mountains_you_control: "mountain",
+    forests_you_control: "forest",
+  };
+  const landType = BASIC_LAND_COUNTS[count];
+  if (landType) {
+    return Object.values(state.cards).filter(
+      (card) =>
+        card.zone === "battlefield" &&
+        card.controllerId === controllerId &&
+        (state.definitions[card.definitionId]?.characteristics.subtypes ?? []).includes(landType),
+    ).length;
+  }
   // A table rather than a chain of ternaries: `count` is narrowed to exactly
   // the rows left, so a new member of the union that belongs here is a tsc
   // error rather than a silent fall-through onto whichever type came last.
@@ -346,6 +364,11 @@ export function dynamicCountOf(
     creatures_you_control: "creature",
     enchantments_you_control: "enchantment",
     artifacts_you_control: "artifact",
+    plains_you_control: "land",
+    islands_you_control: "land",
+    swamps_you_control: "land",
+    mountains_you_control: "land",
+    forests_you_control: "land",
   };
   let total = 0;
   for (const card of Object.values(state.cards)) {

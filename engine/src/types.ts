@@ -881,6 +881,8 @@ export type GameEffect =
    * control" — a one-shot doubling of what is already there, not a
    * replacement on future counters. */
   | { kind: "double_counters_on_team"; playerId: PlayerId; counter: string }
+  /** Mossborn Hydra: the doubling lands on one permanent, not a team. */
+  | { kind: "double_counters_on"; cardId: CardInstanceId; counter: string }
   | { kind: "counter_spell"; stackObjectId: StackObjectId }
   | {
       kind: "bounce_spell_or_permanent";
@@ -1209,7 +1211,14 @@ export type DynamicCount =
   | "legendary_creatures_you_control"
   /** Embercleave. */
   | "attacking_creatures_you_control"
-  | "permanents_you_control";
+  | "permanents_you_control"
+  /** Defile: a basic land TYPE, not a name — a Swamp is anything with the
+   * subtype, so Urborg's handiwork counts. */
+  | "plains_you_control"
+  | "islands_you_control"
+  | "swamps_you_control"
+  | "mountains_you_control"
+  | "forests_you_control";
 
 /** "As an additional cost to cast this spell, …" — paid at cast time. */
 /**
@@ -1656,6 +1665,7 @@ export type CardEffect =
   /** The Ozolith's combat trigger: every counter hops to the target. */
   | { kind: "move_all_counters"; cardId: CardIdSelector; target: ChosenTargetRef }
   | { kind: "double_counters_on_team"; playerId: PlayerSelector; counter: string }
+  | { kind: "double_counters_on"; cardId: CardIdSelector; counter: string }
   | { kind: "counter_spell"; target: ChosenTargetRef }
   | { kind: "counter_unless_pays"; target: ChosenTargetRef; cost: string }
   /** Venser: bounce a spell (off the stack) or a permanent to its owner's hand. */
@@ -1789,6 +1799,7 @@ export type CardEffect =
        * "minus_x": the same X, negated — "gets -X/-X" (Grim Hireling). */
       power: number | "target_power" | "x" | "minus_x";
       toughness: number | "x" | "minus_x";
+      per?: DynamicCount;
     }
   | { kind: "keyword_until_eot"; cardId: CardIdSelector; keyword: Keyword }
   | {

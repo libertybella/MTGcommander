@@ -919,7 +919,13 @@ export function bindCardEffect(
           : effect.toughness === "minus_x"
             ? -announced
             : effect.toughness;
-      return { kind: "pt_until_eot", cardId, power, toughness };
+      // Defile: "for each Swamp you control" — the count is taken as the
+      // spell resolves and baked in, so a Swamp lost afterwards does not
+      // shrink the effect (CR 611.2c).
+      const scale = effect.per
+        ? dynamicCountOf(state, context.controllerId, effect.per, context.sourceId ?? undefined)
+        : 1;
+      return { kind: "pt_until_eot", cardId, power: power * scale, toughness: toughness * scale };
     }
     case "keyword_until_eot": {
       const cardId = bindCardId(state, effect.cardId, context);
@@ -1690,6 +1696,13 @@ export function bindCardEffect(
     }
     case "restore_control":
       return { kind: "restore_control", what: effect.what };
+    case "double_counters_on": {
+      const cardId = bindCardId(state, effect.cardId, context);
+      if (!cardId) {
+        return null;
+      }
+      return { kind: "double_counters_on", cardId, counter: effect.counter };
+    }
     case "double_counters_on_team": {
       const playerId = bindPlayerSelector(state, effect.playerId, context);
       if (!playerId) {
@@ -3951,6 +3964,16 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
         next = cloneGameState(state);
         for (const cardId of massControlTargets(next, effect.what, effect.fromId)) {
           takeControlInPlace(next, cardId, effect.controllerId, effect.untilEot === true);
+        }
+        break;
+      }
+      case "double_counters_on": {
+        next = cloneGameState(state);
+        const doubling = next.cards[effect.cardId];
+        const held = doubling?.counters[effect.counter] ?? 0;
+        // Doubling nothing is nothing, not one.
+        if (doubling && doubling.zone === "battlefield" && held > 0) {
+          doubling.counters[effect.counter] = held * 2;
         }
         break;
       }
