@@ -41,7 +41,7 @@ import type { AdditionalCastCost, CardInstanceId, ChosenTarget, Color, GameActio
  * The payment path records them instead of applying them, because effects.ts
  * imports mana.ts and the arrow does not go back.
  */
-function drainManaRiders(state: GameState): GameState {
+function drainManaRiders(state: GameState, spellCardId?: CardInstanceId): GameState {
   const pending = state.pendingManaRiders ?? [];
   if (pending.length === 0) {
     return state;
@@ -54,6 +54,9 @@ function drainManaRiders(state: GameState): GameState {
       bindCardEffects(current, entry.effects, {
         controllerId: entry.controllerId,
         sourceId: entry.sourceId,
+        // Arena of Glory: "it gains haste" means the SPELL the mana paid
+        // for, which is on the stack by the time this drains.
+        ...(spellCardId ? { subjectCardId: spellCardId } : {}),
       }),
     );
   }
@@ -801,7 +804,7 @@ function applyCastSpell(
   }
   // Path of Ancestry: the rider fires with the spell already on the
   // stack, so its effect resolves ABOVE the spell that mana paid for.
-  stacked = drainManaRiders(stacked);
+  stacked = drainManaRiders(stacked, cardId);
   if (!fromCommand) {
     return stacked;
   }
@@ -1164,6 +1167,14 @@ function applyTapForMana(
     : ability.noTap
       ? addMana(base, playerId, addition)
       : tapForMana(base, cardId, addition);
+  if (ability.exertSelf) {
+    // Exert (CR 701.39): the skip is the whole mechanic. Without it the
+    // ability is a free tap for two red every turn.
+    const exerted = next.cards[cardId];
+    if (exerted) {
+      exerted.skipNextUntap = true;
+    }
+  }
   next.priorityPlayerId = playerId;
   // City of Brass: "Whenever this land becomes tapped".
   if (!ability.noTap) {

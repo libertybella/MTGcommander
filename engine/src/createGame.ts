@@ -348,6 +348,7 @@ export function createCardDefinition(
           ...(ability.noTap ? { noTap: true } : {}),
           ...(ability.countFromPower ? { countFromPower: true } : {}),
           ...(ability.countFromDevotion ? { countFromDevotion: true } : {}),
+          ...(ability.exertSelf ? { exertSelf: true } : {}),
           ...(ability.countFromChosenTypeCreatures
             ? { countFromChosenTypeCreatures: true }
             : {}),

@@ -870,6 +870,21 @@ more questions it can now ask:
   (Bennie Bracks). Reads the existing per-player `createdTokenThisTurn`
   list, and asks whether the CONTROLLER is in it — an opponent's Treasure
   must not satisfy it.
+- **Exert** (CR 701.39) — Arena of Glory. The permanent taps as usual and
+  then does not untap during its controller's NEXT untap step, which is
+  the `skipNextUntap` flag Vorinclex already set. The skip is the whole
+  mechanic: without it the ability is a free tap for two red every turn.
+
+  The regex first written for it was `/\bExert ~\b/`, which can never
+  match — `~` is a non-word character, so the trailing boundary needs a
+  word character next and the next character is a colon. The generic
+  costed-mana-ability branch then swallowed the ability and produced an
+  exert-FREE version; that branch now refuses an exert cost outright.
+
+- **A mana rider that reaches the spell** — Arena of Glory's "it gains
+  haste" means the spell its mana paid for. `drainManaRiders` binds with
+  the cast card as the subject, so `subject_card` resolves to it — the
+  spell is already on the stack by the time the riders drain.
 - **`may_sacrifice` of ANOTHER creature** — Disciple of Freyalise. The
   fodder is picked when the effect BINDS, not when it applies, because the
   inner effects read its power and are bound in the same breath — picking

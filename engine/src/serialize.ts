@@ -5102,6 +5102,7 @@ function parseManaAbilities(value: unknown, label: string): ManaAbility[] {
       ...(entry.noTap === true ? { noTap: true } : {}),
       ...(entry.countFromPower === true ? { countFromPower: true } : {}),
       ...(entry.countFromDevotion === true ? { countFromDevotion: true } : {}),
+      ...(entry.exertSelf === true ? { exertSelf: true } : {}),
       ...(entry.countFromChosenTypeCreatures === true
         ? { countFromChosenTypeCreatures: true }
         : {}),

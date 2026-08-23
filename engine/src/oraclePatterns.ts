@@ -622,7 +622,7 @@ const MILL_COST = /Mill (a|one|two|three|\d+) cards?/i;
 const EXILE_GRAVEYARD_COST =
   /Exile (a|one|two|three|four|five|\d+) (?:(creature|artifact|land|instant|sorcery) )?cards? from your graveyard/i;
 const COST_UNIT =
-  "(?:\\{[^}]+\\})+|Sacrifice (?:~|this land|this creature|this artifact|this permanent)|Sacrifice (?:an? |another )(?:black )?(?:creature or artifact|artifact or creature|creature|artifact|land|Treasure|token)|Sacrifice (?:an? |(?:one|two|three|four|five|\\d+) )[A-Z][a-z]+s?|Sacrifice (?:two|three|four|five|six|seven|eight|nine|ten|\\d+) (?:other )?(?:creatures|artifacts|lands|nonland permanents|artifacts and\\/or creatures)|Exile ~|Pay \\d+ life|Pay life equal to the number of colors in your commanders?['\u2019]? color identity|Tap an untapped (?:legendary )?creature you control|Remove (?:a|an|one|two|three|four|five|six|seven|eight|nine|ten|\\d+) (?:[-+]\\d\\/[-+]\\d|[a-z]+) counters? from ~|Put (?:a|an|one|two|three|\\d+) (?:[-+]\\d\\/[-+]\\d|[a-z]+) counters? on ~|Discard an? (?:creature|artifact|enchantment|land|instant|sorcery)? ?card|Mill (?:a|one|two|three|\\d+) cards?|Exile (?:a|one|two|three|four|five|\\d+) (?:(?:creature|artifact|land|instant|sorcery) )?cards? from your graveyard";
+  "(?:\\{[^}]+\\})+|Sacrifice (?:~|this land|this creature|this artifact|this permanent)|Sacrifice (?:an? |another )(?:black )?(?:creature or artifact|artifact or creature|creature|artifact|land|Treasure|token)|Sacrifice (?:an? |(?:one|two|three|four|five|\\d+) )[A-Z][a-z]+s?|Sacrifice (?:two|three|four|five|six|seven|eight|nine|ten|\\d+) (?:other )?(?:creatures|artifacts|lands|nonland permanents|artifacts and\\/or creatures)|Exile ~|Exert ~|Pay \\d+ life|Pay life equal to the number of colors in your commanders?['\u2019]? color identity|Tap an untapped (?:legendary )?creature you control|Remove (?:a|an|one|two|three|four|five|six|seven|eight|nine|ten|\\d+) (?:[-+]\\d\\/[-+]\\d|[a-z]+) counters? from ~|Put (?:a|an|one|two|three|\\d+) (?:[-+]\\d\\/[-+]\\d|[a-z]+) counters? on ~|Discard an? (?:creature|artifact|enchantment|land|instant|sorcery)? ?card|Mill (?:a|one|two|three|\\d+) cards?|Exile (?:a|one|two|three|four|five|\\d+) (?:(?:creature|artifact|land|instant|sorcery) )?cards? from your graveyard";
 
 function splitAbility(sentence: string): { costText: string; rest: string } | null {
   // "Metalcraft — {T}: …" — the ability word is flavor (Mox Opal).
@@ -671,6 +671,7 @@ function parseAbilityCost(
   /** Relic of Legends: the tapped creature must be legendary. */
   tapCreatureLegendary?: boolean;
   /** Nyx Weaver: exiling the source pays for it. */
+  exertSelf?: boolean;
   exileSelf?: boolean;
   removeCounterCost?: { counter: string; count: number };
   addCounterCost?: { counter: string; count: number };
@@ -739,6 +740,9 @@ function parseAbilityCost(
   if (/\bSacrifice\b/i.test(costText) && !sacrificeSelf && !sacrificeCost) {
     return null;
   }
+  // Exert (CR 701.39): the permanent taps and then skips its controller's
+  // next untap step.
+  const exertSelf = /\bExert ~/i.test(costText) || undefined;
   const lifeMatch = costText.match(LIFE_COST);
   const lifeCost = lifeMatch?.[1] ? Number(lifeMatch[1]) : undefined;
   // War Room: the life is a LIVE count, not a number, so it cannot ride
@@ -781,6 +785,7 @@ function parseAbilityCost(
   if (
     symbols.length === 0 &&
     !sacrificeSelf &&
+    !exertSelf &&
     !lifeCost &&
     !lifeCostFromCommanderColors &&
     !sacrificeCost &&
@@ -837,6 +842,7 @@ function parseAbilityCost(
     manaCost,
     xCost,
     sacrificeSelf,
+    ...(exertSelf ? { exertSelf: true } : {}),
     ...(lifeCost ? { lifeCost } : {}),
     ...(lifeCostFromCommanderColors ? { lifeCostFromCommanderColors: true } : {}),
     ...(sacrificeCost ? { sacrificeCost } : {}),
@@ -14257,16 +14263,22 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
       const add = parseAddMana(ability.rest);
       // Relic of Legends taps a creature INSTEAD of itself, so the ability
       // has no {T} of its own — the creature tap is the whole cost.
-      if (add && (cost.tap || cost.tapCreature) && cost.manaCost === "") {
+      if (
+        add &&
+        (cost.tap || cost.tapCreature) &&
+        (cost.manaCost === "" || cost.exertSelf)
+      ) {
         result.manaAbilities.push({
           ...manaAbilityFromAdd(add),
           ...(cost.tapCreature ? { costTapCreature: true } : {}),
           ...(cost.tapCreatureLegendary ? { costTapCreatureLegendary: true } : {}),
+          ...(cost.exertSelf ? { exertSelf: true } : {}),
+          ...(cost.exertSelf && cost.manaCost ? { costMana: cost.manaCost } : {}),
         });
         continue;
       }
       // Springleaf Drum-class: a tap mana ability with a mana activation cost.
-      if (add && cost.tap && cost.manaCost !== "" && !cost.sacrificeSelf && !cost.lifeCost && !cost.lifeCostFromCommanderColors) {
+      if (add && cost.tap && cost.manaCost !== "" && !cost.sacrificeSelf && !cost.exertSelf && !cost.lifeCost && !cost.lifeCostFromCommanderColors) {
         result.manaAbilities.push({ ...manaAbilityFromAdd(add), costMana: cost.manaCost });
         continue;
       }
@@ -14555,6 +14567,29 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
       const lastActivated = result.activated[result.activated.length - 1];
       if (lastActivated && !lastActivated.requiresCreatedToken) {
         lastActivated.requiresCreatedToken = true;
+        continue;
+      }
+    }
+
+    // Arena of Glory: "If that mana is spent on a creature spell, it gains
+    // haste until end of turn." A rider on the mana, not a restriction —
+    // the mana pays for anything, and "it" is the spell it paid for.
+    const hasteRiderMana = sentence.match(
+      /^If that mana is spent on a creature spell, it gains haste until end of turn$/i,
+    );
+    if (hasteRiderMana) {
+      const lastMana = result.manaAbilities[result.manaAbilities.length - 1];
+      if (lastMana && !lastMana.rider) {
+        lastMana.rider = {
+          when: { types: ["creature"] },
+          effects: [
+            {
+              kind: "keyword_until_eot",
+              cardId: "subject_card",
+              keyword: "haste",
+            },
+          ],
+        };
         continue;
       }
     }

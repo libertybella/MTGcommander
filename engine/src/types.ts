@@ -3315,6 +3315,12 @@ export type ActivatedAbility = {
   millCost?: number;
   /** Mines of Moria, Drivnod: "Exile three cards from your graveyard". */
   exileFromGraveyardCost?: { count: number; types?: string[] };
+  /**
+   * Exert (CR 701.39) — Arena of Glory: the permanent taps as usual and
+   * then does not untap during its controller's NEXT untap step. The
+   * skip is the whole mechanic; without it this is a free tap ability.
+   */
+  exertSelf?: boolean;
   /** Spirit Guides: exiling this card (from hand) is part of the cost. */
   exileSelf?: boolean;
   /** Life paid as part of the cost (Doom Whisperer). */
@@ -3426,6 +3432,8 @@ export type ManaAbility = {
    * spell resolves by entering the battlefield.
    */
   gainLifeToController?: number;
+  /** Arena of Glory: exerting the land is part of the mana ability's cost. */
+  exertSelf?: boolean;
   /** Path of Ancestry: a rider watching where this mana is spent. */
   rider?: ManaRider;
   /** Gilded Lotus: how much of the chosen color one tap adds (default 1). */

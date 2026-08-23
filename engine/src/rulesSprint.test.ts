@@ -37853,3 +37853,148 @@ describe("wave 283: sacrificing another creature for what it was worth", () => {
     });
   });
 });
+
+describe("wave 284: exert as a mana-ability cost", () => {
+  const setup = () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const arenaDef = createCardDefinition({
+      name: "Arena",
+      typeLine: "Land",
+      manaAbilities: [
+        {
+          produces: { R: 2 },
+          producesOptions: [],
+          producesAnyColor: false,
+          damageToController: 0,
+          costMana: "{R}",
+          exertSelf: true,
+        },
+      ],
+    });
+    game.definitions[arenaDef.id] = arenaDef;
+    const arena = createCardInstance({
+      definitionId: arenaDef.id,
+      ownerId: p1.id,
+      zone: "battlefield",
+    });
+    game.cards[arena.id] = arena;
+    p1.zones.battlefield.push(arena.id);
+    game.players.find((entry) => entry.id === p1.id)!.mana.R = 1;
+    game.priorityPlayerId = p1.id;
+    return { game, p1, arenaId: arena.id };
+  };
+
+  it("taps and refuses the next untap", () => {
+    const { game, p1, arenaId } = setup();
+    const tapped = applyAction(game, {
+      kind: "tap_for_mana",
+      playerId: p1.id,
+      cardId: arenaId,
+    });
+    expect(tapped.cards[arenaId]?.tapped).toBe(true);
+    // The skip is the whole mechanic; without it this is a free tap for two
+    // red every turn.
+    expect(tapped.cards[arenaId]?.skipNextUntap).toBe(true);
+    expect(tapped.players.find((entry) => entry.id === p1.id)?.mana.R).toBe(2);
+  });
+
+  it("stays tapped through the untap step it skips, then untaps", () => {
+    const { game, p1, arenaId } = setup();
+    const reach = (state: GameState) => {
+      let at = state;
+      for (let i = 0; i < 80; i += 1) {
+        at = advanceStep(at);
+        if (at.turn.activePlayerId === p1.id && at.turn.step === "upkeep") {
+          return at;
+        }
+      }
+      throw new Error("never reached the upkeep");
+    };
+    // Exert it AFTER this turn's untap step has gone by, which is when a
+    // land is actually tapped for mana. Exerting before it would skip the
+    // untap that had not happened yet and prove nothing.
+    const ready = reach(game);
+    ready.priorityPlayerId = p1.id;
+    ready.players.find((entry) => entry.id === p1.id)!.mana.R = 1;
+    let current = applyAction(ready, {
+      kind: "tap_for_mana",
+      playerId: p1.id,
+      cardId: arenaId,
+    });
+    current = reach(current);
+    expect(current.cards[arenaId]?.tapped).toBe(true);
+    current = reach(current);
+    expect(current.cards[arenaId]?.tapped).toBe(false);
+  });
+
+  it("compiles Arena of Glory whole", () => {
+    const compiled = compileOracleCard({
+      oracleId: "aog",
+      name: "Arena of Glory",
+      manaCost: "",
+      typeLine: "Land",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "Arena of Glory enters tapped unless you control a Mountain.\n{T}: Add {R}.\n{R}, {T}, Exert Arena of Glory: Add {R}{R}. If that mana is spent on a creature spell, it gains haste until end of turn.",
+    });
+    expect(compiled.notes).toEqual([]);
+    const exertAbility = compiled.definition.manaAbilities.find((ability) => ability.exertSelf);
+    expect(exertAbility).toMatchObject({
+      produces: { R: 2 },
+      costMana: "{R}",
+      exertSelf: true,
+      rider: {
+        when: { types: ["creature"] },
+        effects: [{ kind: "keyword_until_eot", cardId: "subject_card", keyword: "haste" }],
+      },
+    });
+  });
+
+  it("round trips the exert flag", () => {
+    const { game, arenaId } = setup();
+    const round = parseGameState(serializeGameState(game));
+    expect(
+      round.definitions[round.cards[arenaId]!.definitionId]?.manaAbilities[0]?.exertSelf,
+    ).toBe(true);
+  });
+});
+
+describe("wave 284: a mana rider that reaches the spell", () => {
+  it("fires on a creature spell and not on anything else", () => {
+    const { game, p1 } = twoPlayers();
+    const landDef = createCardDefinition({ name: "Arena", typeLine: "Land" });
+    game.definitions[landDef.id] = landDef;
+    const land = createCardInstance({
+      definitionId: landDef.id,
+      ownerId: p1.id,
+      zone: "battlefield",
+    });
+    game.cards[land.id] = land;
+    p1.zones.battlefield.push(land.id);
+
+    const rider: ManaRider = {
+      when: { types: ["creature"] },
+      effects: [{ kind: "keyword_until_eot", cardId: "subject_card", keyword: "haste" }],
+    };
+    const tagged = addRestrictedMana(game, p1.id, { R: 1 }, { unrestricted: true }, land.id, rider);
+    const entry = tagged.players.find((p) => p.id === p1.id)!.restrictedMana![0]!;
+    const purpose = (types: string[]): ManaPurpose => ({
+      types,
+      subtypes: [],
+      supertypes: [],
+      colorless: false,
+      isAbility: false,
+    });
+    expect(manaRiderFires(tagged, p1.id, entry, purpose(["creature"]))).toBe(true);
+    // Arena's mana is unrestricted — it pays for anything — but the haste
+    // only rides a creature spell.
+    expect(manaRiderFires(tagged, p1.id, entry, purpose(["instant"]))).toBe(false);
+    expect(
+      manaRiderFires(tagged, p1.id, entry, { ...purpose(["creature"]), isAbility: true }),
+    ).toBe(false);
+  });
+});
