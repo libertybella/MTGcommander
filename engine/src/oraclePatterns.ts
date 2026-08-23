@@ -8101,6 +8101,66 @@ function fusePactInPlace(sentences: string[], lineStart: boolean[]): void {
   }
 }
 
+function fuseThenIntoTriggerInPlace(
+  sentences: string[],
+  lineStart: boolean[],
+): void {
+  // Orcish Bowmasters: "…, ~ deals 1 damage to that player. Then amass
+  // Orcs 1." The "Then" clause belongs INSIDE the trigger body; parked as
+  // its own sentence it becomes a top-level effect on a creature card,
+  // where nothing ever runs it. Fused before the head split below, so a
+  // dual head carries the whole body into BOTH of its triggers.
+  for (let index = 0; index + 1 < sentences.length; index += 1) {
+    if (lineStart[index + 1]) {
+      continue;
+    }
+    const head = sentences[index] ?? "";
+    if (!/^(?:When|Whenever|At) .+, .+$/i.test(head)) {
+      continue;
+    }
+    const rider = sentences[index + 1]?.match(/^Then (.+)$/i);
+    if (!rider?.[1]) {
+      continue;
+    }
+    sentences[index] = `${head}, then ${rider[1]}`;
+    sentences.splice(index + 1, 1);
+    lineStart.splice(index + 1, 1);
+    index -= 1;
+  }
+}
+
+function expandDualTriggerHeadInPlace(
+  sentences: string[],
+  lineStart: boolean[],
+): void {
+  // Orcish Bowmasters: "When ~ enters AND whenever an opponent draws a
+  // card …, BODY" is two triggered abilities sharing one body (CR 603.1).
+  // Read as one head, the second half was dropped with no note at all —
+  // the card compiled clean and did half of what it says.
+  for (let index = 0; index < sentences.length; index += 1) {
+    const match = sentences[index]?.match(
+      /^When(?:ever)? (.+?) and whenever (.+?), (.+)$/i,
+    );
+    if (!match?.[1] || !match[2] || !match[3]) {
+      continue;
+    }
+    // Only split when BOTH halves read as heads on their own. A comma-free
+    // "and whenever" inside a body would otherwise be torn in two.
+    const first = `When ${match[1]}`;
+    const second = `Whenever ${match[2]}`;
+    // "When ~ enters" is read by its own branch further down rather than
+    // by parseTriggerHead, so it is recognised here directly.
+    const firstReadable = /^When ~ enters$/i.test(first) || parseTriggerHead(first) !== null;
+    if (!firstReadable || !parseTriggerHead(second)) {
+      continue;
+    }
+    sentences[index] = `${first}, ${match[3]}`;
+    sentences.splice(index + 1, 0, `${second}, ${match[3]}`);
+    lineStart.splice(index + 1, 0, true);
+    index += 1;
+  }
+}
+
 function expandEntersOrDiesInPlace(sentences: string[], lineStart: boolean[]): void {
   // Stitcher's Supplier: "When ~ enters or dies, X" expands to one enter
   // trigger and one dies trigger carrying the same clause.
@@ -8307,6 +8367,14 @@ type TriggerHead = Pick<
 
 /** "Whenever another creature dies" → dies / any / excludeSelf, and friends. */
 function parseTriggerHead(head: string): TriggerHead | null {
+  // "When X enters AND whenever Y" is TWO abilities sharing a body (CR
+  // 603.1). The splitter upstream turns it into two sentences when it can
+  // read both halves; if it could not, reading just the first half here
+  // would drop the second with no note at all — the card would compile
+  // clean and do half of what it says. Refuse instead.
+  if (/\band whenever\b/i.test(head)) {
+    return null;
+  }
   const text = head.replace(ABILITY_WORD_PREFIX, "").trim();
   if (/^Whenever you cast or copy an instant or sorcery spell$/i.test(text)) {
     return {
@@ -8349,6 +8417,16 @@ function parseTriggerHead(head: string): TriggerHead | null {
   // Faerie Mastermind.
   if (/^Whenever an opponent draws their second card each turn$/i.test(text)) {
     return { event: "opponent_draws_second" };
+  }
+  // Orcish Bowmasters. The exemption is not decoration: without it the
+  // Bowmasters ping on the draw step too, which is a strictly stronger
+  // card than the one printed.
+  if (
+    /^Whenever an opponent draws a card except the first one they draw in each of their draw steps$/i.test(
+      text,
+    )
+  ) {
+    return { event: "opponent_draws_except_first" };
   }
   const classLevel = text.match(/^When ~ becomes level (\d+)$/i);
   if (classLevel?.[1]) {
@@ -10734,6 +10812,8 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
   fuseD20TreasuresInPlace(sentences, lineStart);
   fuseExileReturnEndStepInPlace(sentences, lineStart);
   fuseTraverseInPlace(sentences, lineStart);
+  fuseThenIntoTriggerInPlace(sentences, lineStart);
+  expandDualTriggerHeadInPlace(sentences, lineStart);
   expandEntersOrDiesInPlace(sentences, lineStart);
   splitGrantedQuotedTriggerInPlace(sentences, lineStart);
   fuseItCantBeBlockedInPlace(sentences, lineStart);
@@ -13097,7 +13177,7 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
       }
     }
 
-    const etb = sentence.match(/^When ~ enters(?: and whenever [^,]+)?, (.+)$/i);
+    const etb = sentence.match(/^When ~ enters, (.+)$/i);
     if (etb?.[1]) {
       // Garruk's Uprising: peel an intervening "if" off the ETB body.
       let etbRest = etb[1].trim();

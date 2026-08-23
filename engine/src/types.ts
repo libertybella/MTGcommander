@@ -2534,6 +2534,8 @@ export type TriggerEvent =
   | "becomes_tapped"
   /** An opponent drew their second card this turn (Faerie Mastermind). */
   | "opponent_draws_second"
+  /** Orcish Bowmasters: every opponent draw but their draw-step first. */
+  | "opponent_draws_except_first"
   /** Any player sacrificed a permanent (Mayhem Devil). */
   | "player_sacrifices"
   /** A counter was put on this creature (Fathom Mage). */
@@ -2818,7 +2820,17 @@ export type EngineEvent =
   | { kind: "combat_damage_to_player"; cardId: CardInstanceId; playerId: PlayerId; amount: number }
   /** Any damage (combat or not) a permanent deals to a player. */
   | { kind: "deals_damage_to_player"; cardId: CardInstanceId; playerId: PlayerId }
-  | { kind: "draws"; playerId: PlayerId }
+  | {
+      kind: "draws";
+      playerId: PlayerId;
+      /**
+       * Orcish Bowmasters: "except the FIRST one they draw in each of
+       * their draw steps". True only for the first card of the
+       * turn-based draw-step batch, so a Howling Mine's extra draw in
+       * the same step still counts.
+       */
+      firstInDrawStep?: boolean;
+    }
   /** A token was created under this player's control. One event per token. */
   | { kind: "creates_token"; playerId: PlayerId }
   /** A permanent was sacrificed (cost or effect). */

@@ -839,6 +839,12 @@ function triggerMatchesEvent(
     if (trigger.event === "opponent_draws") {
       return watcher.controllerId !== event.playerId;
     }
+    if (trigger.event === "opponent_draws_except_first") {
+      // Orcish Bowmasters: every opponent draw except the first of their
+      // draw step. Without the exemption it pings on the draw step too,
+      // which is a strictly stronger card than the one printed.
+      return watcher.controllerId !== event.playerId && !event.firstInDrawStep;
+    }
     if (trigger.event === "opponent_draws_second") {
       // Faerie Mastermind: exactly the opponent's second draw of the turn.
       return (
@@ -851,7 +857,8 @@ function triggerMatchesEvent(
   if (
     trigger.event === "opponent_draws" ||
     trigger.event === "you_draw" ||
-    trigger.event === "opponent_draws_second"
+    trigger.event === "opponent_draws_second" ||
+    trigger.event === "opponent_draws_except_first"
   ) {
     return false;
   }

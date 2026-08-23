@@ -35691,3 +35691,146 @@ describe("wave 270: a copy of the equipped creature", () => {
     return { game, p1, helmId: helm.id };
   }
 });
+
+describe("wave 271: two triggers sharing one body", () => {
+  const compile = (oracleText: string) =>
+    compileOracleCard({
+      oracleId: "x",
+      name: "Probe",
+      manaCost: "{1}{B}",
+      typeLine: "Creature — Orc Archer",
+      power: "1",
+      toughness: "1",
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  it("splits a dual head into two triggers with the same body", () => {
+    const compiled = compile(
+      "When ~ enters and whenever an opponent draws a card except the first one they draw in each of their draw steps, ~ deals 1 damage to that player.",
+    );
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.triggers.map((entry) => entry.event)).toEqual([
+      "enter_battlefield",
+      "opponent_draws_except_first",
+    ]);
+    // Both carry the whole body, not a shared reference that one could edit.
+    expect(compiled.definition.triggers[0]?.effects).toEqual(
+      compiled.definition.triggers[1]?.effects,
+    );
+  });
+
+  it("carries a trailing Then clause into BOTH triggers", () => {
+    const compiled = compile(
+      "When ~ enters and whenever an opponent draws a card except the first one they draw in each of their draw steps, ~ deals 1 damage to that player. Then amass Orcs 1.",
+    );
+    expect(compiled.notes).toEqual([]);
+    for (const trigger of compiled.definition.triggers) {
+      expect(trigger.effects.map((effect) => effect.kind)).toEqual([
+        "deal_damage",
+        "amass",
+      ]);
+    }
+    // …and nothing is left parked as a top-level effect on a creature card,
+    // where it would never run.
+    expect(compiled.definition.effects).toEqual([]);
+  });
+
+  it("refuses a dual head whose second half it cannot read", () => {
+    const compiled = compile(
+      "When ~ enters and whenever you cast a spell with mana value 5 or greater, draw a card.",
+    );
+    // The old ETB branch matched "and whenever …" and threw it away, so this
+    // compiled CLEAN with one trigger and did half of what it says. An
+    // honest miss is strictly better than a card that scores and lies.
+    expect(compiled.notes.length).toBeGreaterThan(0);
+    expect(compiled.definition.triggers).toHaveLength(0);
+  });
+
+  it("still reads a plain enters trigger", () => {
+    const compiled = compile("When ~ enters, ~ deals 1 damage to that player.");
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.triggers).toHaveLength(1);
+    expect(compiled.definition.triggers[0]?.event).toBe("enter_battlefield");
+  });
+});
+
+describe("wave 271: the draw-step first card is exempt", () => {
+  const setup = () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 30);
+    const bowDef = createCardDefinition({
+      name: "Bowmasters",
+      typeLine: "Creature — Orc Archer",
+      power: 1,
+      toughness: 1,
+      triggers: [
+        {
+          event: "opponent_draws_except_first",
+          effects: [{ kind: "lose_life", playerId: { type: "subject_player" }, amount: 1 }],
+          targetRequirements: [],
+        },
+      ],
+    });
+    game.definitions[bowDef.id] = bowDef;
+    const bow = createCardInstance({
+      definitionId: bowDef.id,
+      ownerId: p1.id,
+      zone: "battlefield",
+    });
+    game.cards[bow.id] = bow;
+    p1.zones.battlefield.push(bow.id);
+    return { game, p1, p2 };
+  };
+
+  const stackSize = (state: GameState) => state.stack.length;
+
+  it("does not fire on the first card of the draw step", () => {
+    const { game, p2 } = setup();
+    const drawn = applyEffect(game, {
+      kind: "draw",
+      playerId: p2.id,
+      count: 1,
+      turnDraw: true,
+    });
+    expect(stackSize(drawn)).toBe(0);
+  });
+
+  it("fires on an EXTRA card drawn in the same draw step", () => {
+    const { game, p2 } = setup();
+    // Howling Mine: the draw-step batch is two cards, and only the first is
+    // exempt. Exempting the whole batch would be a weaker card than printed.
+    const drawn = applyEffect(game, {
+      kind: "draw",
+      playerId: p2.id,
+      count: 2,
+      turnDraw: true,
+    });
+    expect(stackSize(drawn)).toBe(1);
+  });
+
+  it("fires on an ordinary draw outside the draw step", () => {
+    const { game, p2 } = setup();
+    const drawn = applyEffect(game, { kind: "draw", playerId: p2.id, count: 1 });
+    expect(stackSize(drawn)).toBe(1);
+  });
+
+  it("never fires on its own controller's draws", () => {
+    const { game, p1 } = setup();
+    const drawn = applyEffect(game, { kind: "draw", playerId: p1.id, count: 3 });
+    expect(stackSize(drawn)).toBe(0);
+  });
+
+  it("round trips the new event name", () => {
+    const { game, p1 } = setup();
+    const round = parseGameState(serializeGameState(game));
+    const definition = Object.values(round.definitions).find(
+      (entry) => entry.name === "Bowmasters",
+    );
+    // The allow-list is hand-written and has fallen behind before, which
+    // makes a definition unloadable rather than merely wrong.
+    expect(definition?.triggers[0]?.event).toBe("opponent_draws_except_first");
+    expect(p1.id).toBeDefined();
+  });
+});

@@ -870,6 +870,30 @@ more questions it can now ask:
   (Bennie Bracks). Reads the existing per-player `createdTokenThisTurn`
   list, and asks whether the CONTROLLER is in it — an opponent's Treasure
   must not satisfy it.
+- **Dual trigger heads** (CR 603.1) — "When ~ enters AND whenever …, BODY"
+  is TWO triggered abilities sharing one body. The ETB branch matched
+  `(?: and whenever [^,]+)?` and threw the second half away, so 5 cards in
+  the bulk dump compiled CLEAN while doing half of what they say — a
+  correctness bug the compile metric scored as a success.
+
+  `expandDualTriggerHeadInPlace` now splits the sentence into two, each
+  carrying the whole body, and only when BOTH halves read as heads on their
+  own. `parseTriggerHead` refuses anything still containing "and whenever",
+  so a pair it could not split stays an honest miss instead of coming
+  through half-read. Three cards now compile with both triggers; the rest
+  became misses, which is the right direction — the raw count went flat and
+  the play-weighted number still rose.
+
+- **A trailing "Then …" belongs inside the trigger** — Orcish Bowmasters.
+  Parked as its own sentence it becomes a top-level effect on a creature
+  card, where nothing ever runs it. Fused BEFORE the head split, so a dual
+  head carries the whole body into both of its triggers.
+
+- **`opponent_draws_except_first`** — Orcish Bowmasters. The `draws` event
+  now carries `firstInDrawStep`, set only for the FIRST card of the
+  turn-based draw-step batch — a Howling Mine's extra draw in the same step
+  is not exempt. Without the exemption the Bowmasters ping on the draw step
+  too, which is a strictly stronger card than the one printed.
 - **A copy of the EQUIPPED creature, and a token that isn't legendary** —
   Helm of the Host. The `host` selector already read `attachedTo`, which is
   the field an Aura's "enchanted creature" resolves through and an

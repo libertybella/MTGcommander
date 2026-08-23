@@ -2325,7 +2325,15 @@ function applyDraw(
     for (let i = 0; i < drawn; i += 1) {
       tally[playerId] = (tally[playerId] ?? 0) + 1;
       next.drawsByPlayerThisTurn = tally;
-      dispatchEventsInPlace(next, [{ kind: "draws", playerId }]);
+      dispatchEventsInPlace(next, [
+        {
+          kind: "draws",
+          playerId,
+          // Only the FIRST card of the turn-based batch is the exempt
+          // one; a Howling Mine's extra draw in the same step is not.
+          ...(turnDraw && i === 0 ? { firstInDrawStep: true } : {}),
+        },
+      ]);
     }
   }
   return next;

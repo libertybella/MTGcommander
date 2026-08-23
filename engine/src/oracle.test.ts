@@ -588,9 +588,19 @@ describe("oracle compile", () => {
       toughness: null,
       printedKeywords: [],
     });
+    // TWO triggers, not one. The dual head is two abilities sharing a body
+    // (CR 603.1); this test used to assert the enters half alone, which is
+    // the silent drop wave 271 fixed rather than a behaviour worth keeping.
     expect(march.definition.triggers).toEqual([
       {
         event: "enter_battlefield",
+        effects: [{ kind: "amass", playerId: "controller", amount: 1, subtype: "Orc" }],
+        targetRequirements: [],
+      },
+      {
+        event: "attacks",
+        watch: "controlled",
+        subjectFilter: { subtypes: ["army"] },
         effects: [{ kind: "amass", playerId: "controller", amount: 1, subtype: "Orc" }],
         targetRequirements: [],
       },
