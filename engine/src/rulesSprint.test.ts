@@ -31168,3 +31168,151 @@ describe("wave 240: hexproof for a player", () => {
     expect(playerHasHexproof(round, fresh.p1.id)).toBe(true);
   });
 });
+
+describe("wave 241: two more trigger-head gaps", () => {
+  const compile = (name: string, typeLine: string, oracleText: string) =>
+    compileOracleCard({
+      oracleId: name,
+      name,
+      manaCost: "{2}{B}",
+      typeLine,
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  const put = (game: GameState, definitionId: string, ownerId: string) => {
+    const card = createCardInstance({ definitionId, ownerId, zone: "battlefield" });
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === ownerId)!.zones.battlefield.push(card.id);
+    return card;
+  };
+
+  it("reads 'to you' as the mirror of 'to an opponent'", () => {
+    const noMercy = compile(
+      "No Mercy",
+      "Enchantment",
+      "Whenever a creature deals damage to you, destroy it.",
+    );
+    expect(noMercy.notes).toEqual([]);
+    expect(noMercy.definition.triggers[0]).toMatchObject({
+      event: "deals_damage_to_player",
+      subjectPlayerSelf: true,
+      effects: [{ kind: "move_card", cardId: "subject_card", toZone: "graveyard" }],
+    });
+
+    // The opponent spelling must keep its own flag and NOT pick up the new
+    // one, or every such trigger would start firing on the wrong player.
+    const opponents = compile(
+      "Opposite",
+      "Enchantment",
+      "Whenever a creature deals damage to an opponent, draw a card.",
+    );
+    expect(opponents.definition.triggers[0]?.subjectPlayerOpponent).toBe(true);
+    expect(opponents.definition.triggers[0]?.subjectPlayerSelf).toBeUndefined();
+
+    // And the neutral "a player" spelling carries neither.
+    const anyone = compile(
+      "Neutral",
+      "Enchantment",
+      "Whenever a creature deals damage to a player, draw a card.",
+    );
+    expect(anyone.definition.triggers[0]?.subjectPlayerSelf).toBeUndefined();
+    expect(anyone.definition.triggers[0]?.subjectPlayerOpponent).toBeUndefined();
+  });
+
+  it("fires on damage to the controller and not to anyone else", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    const noMercy = createCardDefinition({
+      name: "No Mercy",
+      typeLine: "Enchantment",
+      triggers: [
+        {
+          event: "deals_damage_to_player",
+          watch: "any",
+          subjectPlayerSelf: true,
+          subjectFilter: { types: ["creature"] },
+          effects: [{ kind: "move_card", cardId: "subject_card", toZone: "graveyard" }],
+          targetRequirements: [],
+        },
+      ],
+    });
+    const bear = createCardDefinition({
+      name: "Bear",
+      typeLine: "Creature — Bear",
+      power: 2,
+      toughness: 2,
+    });
+    for (const definition of [noMercy, bear]) {
+      game.definitions[definition.id] = definition;
+    }
+    put(game, noMercy.id, p1.id);
+    const attacker = put(game, bear.id, p2.id);
+
+    // Damage to somebody else is not damage to you.
+    const before = game.stack.length;
+    dispatchEventsInPlace(game, [
+      { kind: "deals_damage_to_player", cardId: attacker.id, playerId: p2.id },
+    ]);
+    expect(game.stack.length).toBe(before);
+
+    dispatchEventsInPlace(game, [
+      { kind: "deals_damage_to_player", cardId: attacker.id, playerId: p1.id },
+    ]);
+    expect(game.stack.length).toBe(before + 1);
+  });
+
+  it("asks whether the permanent entered TAPPED", () => {
+    const amulet = compile(
+      "Amulet of Vigor",
+      "Artifact",
+      "Whenever a permanent you control enters tapped, untap it.",
+    );
+    expect(amulet.notes).toEqual([]);
+    expect(amulet.definition.triggers[0]).toMatchObject({
+      event: "enter_battlefield",
+      watch: "controlled",
+      subjectFilter: { enteredTapped: true },
+    });
+
+    // The same head without the word must NOT acquire the filter, or every
+    // enter-trigger in the file would stop firing for untapped permanents.
+    const plain = compile("Plain", "Artifact", "Whenever a permanent you control enters, draw a card.");
+    expect(plain.definition.triggers[0]?.subjectFilter?.enteredTapped).toBeUndefined();
+  });
+
+  it("round trips both riders", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const definition = createCardDefinition({
+      name: "Rider Holder",
+      typeLine: "Enchantment",
+      triggers: [
+        {
+          event: "deals_damage_to_player",
+          watch: "any",
+          subjectPlayerSelf: true,
+          effects: [{ kind: "draw", playerId: "controller", count: 1 }],
+          targetRequirements: [],
+        },
+        {
+          event: "enter_battlefield",
+          watch: "controlled",
+          subjectFilter: { enteredTapped: true },
+          effects: [{ kind: "draw", playerId: "controller", count: 1 }],
+          targetRequirements: [],
+        },
+      ],
+    });
+    game.definitions[definition.id] = definition;
+    put(game, definition.id, p1.id);
+
+    const round = parseGameState(serializeGameState(game));
+    const triggers = round.definitions[definition.id]?.triggers ?? [];
+    expect(triggers[0]?.subjectPlayerSelf).toBe(true);
+    expect(triggers[1]?.subjectFilter).toEqual({ enteredTapped: true });
+  });
+});

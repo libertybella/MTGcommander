@@ -3232,6 +3232,29 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     };
   }
 
+  // No Mercy: "destroy it" in a trigger body is the trigger SUBJECT — the
+  // creature the event was about — not anything targeted. Written as a
+  // move to the graveyard because that is what destruction is here until
+  // the destroy primitive lands; regeneration and totem armour are the
+  // documented casualties of that, and they are named in CLAIMS.md.
+  // Deliberately the PRONOUN only. "Exile that creature" is what an orphan
+  // instant says with no earlier target to refer to, and wave 192 refuses
+  // it on purpose — a clean miss beats an effect bound to nobody. "It"
+  // after a trigger head always has the subject to point at.
+  const subjectRemoval = sentence.match(/^(Destroy|Exile) it$/i);
+  if (subjectRemoval?.[1]) {
+    return {
+      targetRequirements: [],
+      effects: [
+        {
+          kind: "move_card",
+          cardId: "subject_card",
+          toZone: subjectRemoval[1].toLowerCase() === "exile" ? "exile" : "graveyard",
+        },
+      ],
+    };
+  }
+
   // Necropotence's synthetic fused impulse (see fuseNecroTopInPlace).
   if (/^Necro-exile the top card of your library$/i.test(sentence)) {
     return {
@@ -8112,13 +8135,14 @@ const COMBAT_DAMAGE_TO_PLAYER =
   "deals? combat damage to (?:a player|an opponent|a player or planeswalker)";
 
 const SUBJECT_HEAD_VERBS: [string, TriggerEvent][] = [
+  ["enters tapped|enter tapped", "enter_battlefield"],
   ["enters|enter", "enter_battlefield"],
   ["dies|die|is put into a graveyard from the battlefield", "dies"],
   ["attacks|attack", "attacks"],
   ["becomes tapped|become tapped", "becomes_tapped"],
   ["becomes untapped|become untapped", "becomes_untapped"],
   [COMBAT_DAMAGE_TO_PLAYER, "deals_combat_damage_to_player"],
-  ["deals? damage to (?:a player|an opponent)", "deals_damage_to_player"],
+  ["deals? damage to (?:a player|an opponent|you)", "deals_damage_to_player"],
   ["leaves the battlefield|leave the battlefield", "leaves_battlefield"],
 ];
 
@@ -8288,7 +8312,19 @@ function parseGenericSubjectHead(text: string): TriggerHead | null {
     // "deals combat damage to an opponent": the damaged player must not be
     // the watcher's own controller.
     ...(/to an opponent$/i.test(verb) ? { subjectPlayerOpponent: true } : {}),
-    ...(Object.keys(filter).length > 0 ? { subjectFilter: filter } : {}),
+    // "deals damage to YOU" is the mirror: it must BE the controller.
+    ...(/to you$/i.test(verb) ? { subjectPlayerSelf: true } : {}),
+    ...(Object.keys(filter).length > 0
+      ? {
+          subjectFilter: {
+            ...filter,
+            // "enters tapped" narrows the subject rather than the event.
+            ...(/tapped$/i.test(verb) ? { enteredTapped: true } : {}),
+          },
+        }
+      : /tapped$/i.test(verb)
+        ? { subjectFilter: { enteredTapped: true } }
+        : {}),
   };
 }
 

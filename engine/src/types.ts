@@ -2375,6 +2375,9 @@ export type CardTrigger = {
   /** "deals damage to an opponent": the damaged player must not be the
    * watcher's controller (Curiosity). */
   subjectPlayerOpponent?: boolean;
+  /** No Mercy: "deals damage to YOU" — the mirror of the flag above. The
+   * damaged player must be the watcher's controller, not merely someone. */
+  subjectPlayerSelf?: boolean;
   /** Exalted: only when exactly one creature is attacking. */
   attacksAlone?: boolean;
   /**
@@ -2432,6 +2435,9 @@ export type CardTrigger = {
     attacking?: boolean;
     /** Jhoira, Teshar: "a historic spell" — artifact, legendary, or Saga. */
     historic?: boolean;
+    /** Amulet of Vigor: the permanent entered TAPPED. Read off the
+     * instance, which is still tapped when the enter trigger matches. */
+    enteredTapped?: boolean;
     /** "a creature you control with flying" (Dragon Tempest). Read computed,
      * so a granted keyword counts. */
     withKeyword?: Keyword;

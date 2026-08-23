@@ -3871,6 +3871,7 @@ function parseTriggers(value: unknown, label: string): CardTrigger[] {
               ...(entry.subjectFilter.historic === true ? { historic: true } : {}),
               ...(entry.subjectFilter.legendary === true ? { legendary: true } : {}),
               ...(entry.subjectFilter.commanderOnly === true ? { commanderOnly: true } : {}),
+              ...(entry.subjectFilter.enteredTapped === true ? { enteredTapped: true } : {}),
               ...(entry.subjectFilter.attacking === true ? { attacking: true } : {}),
               ...(entry.subjectFilter.modified === true ? { modified: true } : {}),
               ...(entry.subjectFilter.minManaValue === undefined
@@ -3971,6 +3972,7 @@ function parseTriggers(value: unknown, label: string): CardTrigger[] {
             ),
           }),
       ...(entry.subjectPlayerOpponent === true ? { subjectPlayerOpponent: true } : {}),
+      ...(entry.subjectPlayerSelf === true ? { subjectPlayerSelf: true } : {}),
       ...(entry.attacksAlone === true ? { attacksAlone: true } : {}),
       // Attach the filter when it has ANY field. This was a whitelist of
       // ten names, and the filter has grown to roughly twenty-five — so a

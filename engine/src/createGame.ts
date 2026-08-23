@@ -201,6 +201,7 @@ export function createCardDefinition(
           ...(trigger.alsoOnCopy ? { alsoOnCopy: true } : {}),
           ...(trigger.condition ? { condition: { ...trigger.condition } } : {}),
           ...(trigger.subjectPlayerOpponent ? { subjectPlayerOpponent: true } : {}),
+          ...(trigger.subjectPlayerSelf ? { subjectPlayerSelf: true } : {}),
           ...(trigger.attacksAlone ? { attacksAlone: true } : {}),
           ...(trigger.subjectFilter
             ? {
@@ -243,6 +244,7 @@ export function createCardDefinition(
                   ...(trigger.subjectFilter.historic ? { historic: true } : {}),
                   ...(trigger.subjectFilter.legendary ? { legendary: true } : {}),
                   ...(trigger.subjectFilter.commanderOnly ? { commanderOnly: true } : {}),
+                  ...(trigger.subjectFilter.enteredTapped ? { enteredTapped: true } : {}),
                   ...(trigger.subjectFilter.attacking ? { attacking: true } : {}),
                   ...(trigger.subjectFilter.modified ? { modified: true } : {}),
                   ...(trigger.subjectFilter.minManaValue === undefined

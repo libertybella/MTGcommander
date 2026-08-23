@@ -567,6 +567,9 @@ function subjectMatchesFilter(
   if (filter.commanderOnly && !isCommander(state, subjectId)) {
     return false;
   }
+  if (filter.enteredTapped && state.cards[subjectId]?.tapped !== true) {
+    return false;
+  }
   if (filter.legendary && !traits.supertypes.includes("legendary")) {
     return false;
   }
@@ -920,6 +923,9 @@ function triggerMatchesEvent(
       return false;
     }
     if (trigger.subjectPlayerOpponent && event.playerId === watcher.controllerId) {
+      return false;
+    }
+    if (trigger.subjectPlayerSelf && event.playerId !== watcher.controllerId) {
       return false;
     }
     return subjectMatchesFilter(state, event.cardId, trigger.subjectFilter, watcher);
