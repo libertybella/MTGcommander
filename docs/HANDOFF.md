@@ -13,6 +13,10 @@ the current state of play. Read all four before writing code.
 - Branch `comprehensive-plan`, tags through `checkpoint-86-one-away-grind`.
 - 1,169 tests green; top-2,000 compile rate **67.0% (1,347/2,009)**,
   60-card sample 97% (CI floor now 90). Waves 218–221 land after the tag.
+- **`docs/MACHINERY.md` is the location map** — the per-kind checklists
+  ("I am adding a new effect / target kind / counted noun"), the grammar
+  inventory, which engine file owns what, and the traps. Read it before
+  searching; most of a wave's budget used to go on rediscovering it.
 - **Beware `` in a python heredoc**: it becomes a literal backspace in the
   written file, and the regex then silently matches nothing. It cost a
   round-trip in wave 211 and again in 221. Use the Edit tool for regex

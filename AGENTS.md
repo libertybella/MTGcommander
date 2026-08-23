@@ -73,6 +73,7 @@ silent-failure layers.
 | What's claimed / done? | `docs/CLAIMS.md` |
 | What does each cluster need? | `docs/WORKSTREAMS.md` |
 | How do I run/measure anything? | `CONTRIBUTING.md` |
+| **Where does machinery X live?** | **`docs/MACHINERY.md` — read before searching** |
 | What does the engine already do? | `docs/RULES_COVERAGE.md` |
 | Project architecture | `docs/ARCHITECTURE.md`, `README.md` |
 | Checkpoint history | README table + git tags (`checkpoint-NN-*`) |

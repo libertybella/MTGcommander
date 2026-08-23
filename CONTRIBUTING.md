@@ -53,6 +53,12 @@ end-to-end and committed. Typical yield: 4–9 newly fully-compiling cards.
 
 ## The four mapper layers (fields silently drop here)
 
+> Adding a new **effect**, **target kind**, **counted noun**, **trigger
+> event**, **continuous effect** or **subjectFilter field** rather than a
+> definition field? [docs/MACHINERY.md](docs/MACHINERY.md) has the
+> per-kind checklist and the rest of the location map. Read it before
+> searching — that is where a wave's budget goes.
+
 A new `CardDefinition` / ability field must be threaded through **all
 four**, or it compiles correctly and then silently vanishes:
 
