@@ -870,6 +870,29 @@ more questions it can now ask:
   (Bennie Bracks). Reads the existing per-player `createdTokenThisTurn`
   list, and asks whether the CONTROLLER is in it — an opponent's Treasure
   must not satisfy it.
+- **Escape (CR 702.139)** — Underworld Breach. `grantsEscape` is a
+  DEFINITION field on the granting permanent, not a layer static: the cards
+  it reaches are in a graveyard, and the layer engine only sees the
+  battlefield. The cost is the printed mana cost PLUS the exile, not instead
+  of it, so it rides beside the payment rather than through `altCost`.
+
+  The exiled cards are AUTO-PICKED cheapest-first, the same documented
+  approximation `altCastPayment` already makes — a player exiling for escape
+  reaches for spent lands and cantrips first. With too few other cards in
+  the graveyard the escape is simply not available.
+
+  Both zone gates had to learn it. `validateCast` decides and pays; but
+  `putSpellOnStack` keeps its OWN reading of which zones a spell may be cast
+  from, and without the same check there the spell was paid for and then
+  refused the stack.
+
+- **"Sacrifice ~." as a bare effect**, and **"At the beginning of THE end
+  step"** as a trigger head. Both were general gaps: the head table took
+  only your/each/each player's, and the self-sacrifice line had nowhere to
+  land at all. "The end step" is the current turn's, whoever is taking it,
+  so it reads as every player's — Underworld Breach goes away at the next
+  end step, not only at its controller's, and that is a turn cycle of
+  difference.
 - **`choose_card.optional` + `thenEffectsIfNone`** — Braids, Arisen
   Nightmare, whose three sentences are one triggered ability. BOTH choices
   are real: auto-taking the controller's would sacrifice a permanent every

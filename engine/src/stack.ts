@@ -1,6 +1,6 @@
 import { createId } from "./ids";
 import { cloneGameState } from "./clone";
-import { isCommander, isInstantOrSorcery } from "./cardTypes";
+import { isCommander, isInstantOrSorcery, isLand } from "./cardTypes";
 import { manaValueOf } from "./characteristics";
 import {
   abilitiesRemoved,
@@ -154,6 +154,19 @@ export function putSpellOnStack(
       ? state.exilePlayable?.find((entry) => entry.cardId === cardId)
       : undefined;
   const fromExilePlay = Boolean(exileEntry);
+  // Underworld Breach: escape is granted by a PERMANENT, not written on the
+  // card, so this gate has to look at the board. The cast action validates
+  // and pays for it; without the same reading here the spell would be paid
+  // for and then refused the stack.
+  const fromEscape =
+    located?.zone === "graveyard" &&
+    !isLand(state, cardId) &&
+    Object.values(state.cards).some(
+      (permanent) =>
+        permanent.zone === "battlefield" &&
+        permanent.controllerId === located.playerId &&
+        Boolean(state.definitions[permanent.definitionId]?.grantsEscape),
+    );
   if (
     !located ||
     (located.zone !== "hand" &&
@@ -161,6 +174,7 @@ export function putSpellOnStack(
       !fromLibraryTop &&
       !fromFlashback &&
       !fromGraveyardGate &&
+      !fromEscape &&
       !fromExilePlay)
   ) {
     throw new Error(`Card ${cardId} must be in hand to put on the stack`);

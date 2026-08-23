@@ -453,6 +453,14 @@ export type CardDefinition = {
    * attacker's floating pool when attackers are declared.
    */
   attackTax?: { generic?: number; perEnchantment?: boolean; lifePer?: number };
+  /**
+   * Underworld Breach: every NONLAND card in this permanent's controller's
+   * graveyard has escape (CR 702.139), for its mana cost plus exiling this
+   * many OTHER cards from that graveyard. A definition field rather than a
+   * layer static, because the cards it reaches are in a graveyard and the
+   * layer engine only sees the battlefield.
+   */
+  grantsEscape?: { exileOther: number };
   /** "You may play lands from your graveyard" (Crucible of Worlds). */
   playLandsFromGraveyard?: boolean;
   /**

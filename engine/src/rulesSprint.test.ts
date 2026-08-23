@@ -40326,3 +40326,200 @@ describe("wave 297: a sacrifice each opponent may answer, or pay for", () => {
     expect(prompt?.kind === "choose_card" && prompt.thenEffectsIfNone).toHaveLength(2);
   });
 });
+
+describe("wave 298: escape, granted to a whole graveyard", () => {
+  const BREACH_TEXT =
+    "Each nonland card in your graveyard has escape. The escape cost is equal to the card's mana cost plus exile three other cards from your graveyard.\nAt the beginning of the end step, sacrifice Underworld Breach.";
+
+  const board = (graveyardSize: number, opts: { withBreach?: boolean } = {}) => {
+    const { game, p1, p2 } = twoPlayers();
+    if (opts.withBreach !== false) {
+      const breachDefinition = createCardDefinition({
+        name: "Underworld Breach",
+        typeLine: "Enchantment",
+        manaCost: "{1}{R}",
+        grantsEscape: { exileOther: 3 },
+        triggers: [
+          {
+            event: "end_step",
+            eachPlayersStep: true,
+            effects: [{ kind: "sacrifice", cardId: "self" }],
+            targetRequirements: [],
+          },
+        ],
+      });
+      game.definitions[breachDefinition.id] = breachDefinition;
+      const breach = createCardInstance({
+        definitionId: breachDefinition.id,
+        ownerId: p1.id,
+        zone: "battlefield",
+      });
+      game.cards[breach.id] = breach;
+      p1.zones.battlefield.push(breach.id);
+    }
+
+    // The spell to escape: a {R} bolt at the top of the graveyard.
+    const boltDefinition = createCardDefinition({
+      name: "Lightning Bolt",
+      typeLine: "Instant",
+      manaCost: "{R}",
+      effects: [
+        { kind: "deal_damage", sourceId: "self", target: { type: "chosen", index: 0 }, amount: 3 },
+      ],
+      targetRequirements: [{ kind: "player_or_creature" }],
+    });
+    game.definitions[boltDefinition.id] = boltDefinition;
+    const bolt = createCardInstance({
+      definitionId: boltDefinition.id,
+      ownerId: p1.id,
+      zone: "graveyard",
+    });
+    game.cards[bolt.id] = bolt;
+    p1.zones.graveyard.push(bolt.id);
+
+    // Fodder, of varying mana value so the cheapest-first pick is visible.
+    const fodderIds: string[] = [];
+    for (let index = 0; index < graveyardSize; index += 1) {
+      const definition = createCardDefinition({
+        name: `Fodder${index}`,
+        typeLine: "Sorcery",
+        manaCost: `{${index + 1}}`,
+      });
+      game.definitions[definition.id] = definition;
+      const card = createCardInstance({
+        definitionId: definition.id,
+        ownerId: p1.id,
+        zone: "graveyard",
+      });
+      game.cards[card.id] = card;
+      p1.zones.graveyard.push(card.id);
+      fodderIds.push(card.id);
+    }
+    game.turn.activePlayerId = p1.id;
+    game.turn.phase = "precombatMain";
+    game.turn.step = "precombatMain";
+    game.priorityPlayerId = p1.id;
+    const holder = game.players.find((entry) => entry.id === p1.id)!;
+    holder.mana.R = 1;
+    return { game, p1, p2, boltId: bolt.id, fodderIds };
+  };
+
+  it("compiles Underworld Breach whole", () => {
+    const compiled = compileOracleCard({
+      oracleId: "underworld-breach",
+      name: "Underworld Breach",
+      manaCost: "{1}{R}",
+      typeLine: "Enchantment",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText: BREACH_TEXT,
+    });
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.grantsEscape).toEqual({ exileOther: 3 });
+    // "THE end step" is the current turn's, whoever is taking it — Breach goes
+    // away at the next end step, not only at its controller's.
+    expect(compiled.definition.triggers).toEqual([
+      {
+        event: "end_step",
+        eachPlayersStep: true,
+        effects: [{ kind: "sacrifice", cardId: "self" }],
+        targetRequirements: [],
+      },
+    ]);
+  });
+
+  it("casts a spell from the graveyard, exiling three others", () => {
+    const { game, p1, p2, boltId, fodderIds } = board(4);
+    const cast = applyAction(game, {
+      kind: "cast_spell",
+      playerId: p1.id,
+      cardId: boltId,
+      targets: [{ type: "player", playerId: p2.id }],
+    });
+    expect(cast.stack).toHaveLength(1);
+    expect(cast.cards[boltId]?.zone).toBe("stack");
+    // Cheapest-first: the {1}, {2} and {3}, not the {4}.
+    const exiled = fodderIds.filter((id) => cast.cards[id]?.zone === "exile");
+    expect(exiled).toEqual(fodderIds.slice(0, 3));
+    expect(cast.cards[fodderIds[3]!]?.zone).toBe("graveyard");
+  });
+
+  it("refuses when the graveyard cannot pay", () => {
+    const { game, p1, p2, boltId } = board(2);
+    // Two others is not three.
+    expect(() =>
+      applyAction(game, {
+        kind: "cast_spell",
+        playerId: p1.id,
+        cardId: boltId,
+        targets: [{ type: "player", playerId: p2.id }],
+      }),
+    ).toThrow(/hand/i);
+  });
+
+  it("refuses with no Breach on the battlefield", () => {
+    const { game, p1, p2, boltId } = board(4, { withBreach: false });
+    expect(() =>
+      applyAction(game, {
+        kind: "cast_spell",
+        playerId: p1.id,
+        cardId: boltId,
+        targets: [{ type: "player", playerId: p2.id }],
+      }),
+    ).toThrow(/hand/i);
+  });
+
+  it("does not reach lands", () => {
+    const { game, p1, fodderIds } = board(4);
+    const landDefinition = createCardDefinition({ name: "Mountain", typeLine: "Basic Land — Mountain" });
+    game.definitions[landDefinition.id] = landDefinition;
+    const land = createCardInstance({
+      definitionId: landDefinition.id,
+      ownerId: p1.id,
+      zone: "graveyard",
+    });
+    game.cards[land.id] = land;
+    game.players.find((entry) => entry.id === p1.id)!.zones.graveyard.push(land.id);
+    // "Each NONLAND card". A land in the graveyard stays there.
+    expect(() =>
+      applyAction(game, { kind: "play_land", playerId: p1.id, cardId: land.id }),
+    ).toThrow();
+    expect(fodderIds.length).toBe(4);
+  });
+
+  it("still pays the printed mana cost", () => {
+    const { game, p1, p2, boltId } = board(4);
+    const broke = game.players.find((entry) => entry.id === p1.id)!;
+    broke.mana.R = 0;
+    // Escape is the mana cost PLUS the exile, not instead of it.
+    expect(() =>
+      applyAction(game, {
+        kind: "cast_spell",
+        playerId: p1.id,
+        cardId: boltId,
+        targets: [{ type: "player", playerId: p2.id }],
+      }),
+    ).toThrow(/mana/i);
+  });
+
+  it("sacrifices itself at the end step, on anyone's turn", () => {
+    const { game, p1 } = board(4);
+    const breachId = game.players
+      .find((entry) => entry.id === p1.id)!
+      .zones.battlefield[0]!;
+    const trigger = game.definitions[game.cards[breachId]!.definitionId]!.triggers[0];
+    expect(trigger?.eachPlayersStep).toBe(true);
+    const gone = applyEffect(game, { kind: "sacrifice", cardId: breachId });
+    expect(gone.cards[breachId]?.zone).toBe("graveyard");
+  });
+
+  it("round trips the grant", () => {
+    const { game, p1 } = board(1);
+    const breachId = game.players.find((entry) => entry.id === p1.id)!.zones.battlefield[0]!;
+    const definitionId = game.cards[breachId]!.definitionId;
+    const round = parseGameState(serializeGameState(game));
+    expect(round.definitions[definitionId]?.grantsEscape).toEqual({ exileOther: 3 });
+  });
+});

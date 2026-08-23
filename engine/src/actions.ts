@@ -33,6 +33,7 @@ import { applyRollDie } from "./dice";
 import { applyOpeningRoll, isOpeningRoll } from "./openingRoll";
 import { applyManualOverride } from "./override";
 import { applyChooseEnterReplacement, applyChooseTargets, applyResolveChooseCard, applyResolveColor, applyResolveCreatureType, applyResolveDiscard, applyResolveEnterCopy, applyResolveLookAssign, applyResolveOrderTriggers, applyResolvePay, applyResolveScry, applyResolveSearch, applyResolveSurveil, applyResolveTriggerMode, currentPrompt, dropLostPlayerPromptsInPlace, isPromptOpen, applyResolveDiscardLandOrGraveyard } from "./prompt";
+import { manaValueOf } from "./characteristics";
 import { findCardZone, moveCard } from "./zones";
 import type { AdditionalCastCost, CardInstanceId, ChosenTarget, Color, GameAction, GameState, ManaColor, ManaPool, PlayerId } from "./types";
 
@@ -41,6 +42,50 @@ import type { AdditionalCastCost, CardInstanceId, ChosenTarget, Color, GameActio
  * The payment path records them instead of applying them, because effects.ts
  * imports mana.ts and the arrow does not go back.
  */
+/**
+ * Underworld Breach: the cards escape exiles as part of its cost, or null
+ * when no grant reaches this card or the graveyard cannot pay.
+ *
+ * The cards are AUTO-PICKED cheapest-first, the same documented
+ * approximation `altCastPayment` already makes — a player exiling for
+ * escape reaches for their spent lands and cantrips first.
+ */
+function escapeExilePayment(
+  state: GameState,
+  playerId: PlayerId,
+  cardId: CardInstanceId,
+): CardInstanceId[] | null {
+  if (isLand(state, cardId)) {
+    return null;
+  }
+  let exileOther = 0;
+  for (const card of Object.values(state.cards)) {
+    if (card.zone !== "battlefield" || card.controllerId !== playerId) {
+      continue;
+    }
+    const grant = state.definitions[card.definitionId]?.grantsEscape;
+    if (grant) {
+      // Two Breaches do not stack their costs; the cheapest grant applies.
+      exileOther = exileOther === 0 ? grant.exileOther : Math.min(exileOther, grant.exileOther);
+    }
+  }
+  if (exileOther === 0) {
+    return null;
+  }
+  const graveyard = state.players.find((entry) => entry.id === playerId)?.zones.graveyard ?? [];
+  const others = graveyard
+    .filter((entry) => entry !== cardId)
+    .sort(
+      (left, right) =>
+        manaValueOf(state.definitions[state.cards[left]!.definitionId]?.manaCost ?? "") -
+        manaValueOf(state.definitions[state.cards[right]!.definitionId]?.manaCost ?? ""),
+    );
+  if (others.length < exileOther) {
+    return null;
+  }
+  return others.slice(0, exileOther);
+}
+
 function drainManaRiders(state: GameState, spellCardId?: CardInstanceId): GameState {
   const pending = state.pendingManaRiders ?? [];
   if (pending.length === 0) {
@@ -234,6 +279,8 @@ function validateCast(
   fromCommand: boolean;
   flashbackLife: number;
   altCost?: { life: number; exileIds: CardInstanceId[]; sacrificeId?: CardInstanceId };
+  /** Underworld Breach: the OTHER graveyard cards escape exiles as a cost. */
+  escapeExileIds?: CardInstanceId[];
 } {
   requirePriority(state, playerId);
   // Grand Abolisher / Voice of Victory: no casting on the lock's turn.
@@ -308,7 +355,16 @@ function validateCast(
       definition.castFromGraveyard &&
       controlsMatching(state, playerId, definition.castFromGraveyard),
   );
-  const fromGraveyard = viaFlashback || viaGraveyardGate;
+  // Underworld Breach: a permanent grants escape to every nonland card in
+  // its controller's graveyard, for the mana cost plus exiling others. The
+  // grant lives on that permanent, not on the card being cast, so it is
+  // looked up rather than read off the definition.
+  const escapeExileIds =
+    located?.zone === "graveyard" && located.playerId === playerId
+      ? escapeExilePayment(state, playerId, cardId)
+      : null;
+  const viaEscape = escapeExileIds !== null;
+  const fromGraveyard = viaFlashback || viaGraveyardGate || viaEscape;
   // Impulse exiles: listed cards may be cast from exile this turn.
   const fromExile = Boolean(
     located &&
@@ -447,10 +503,16 @@ function validateCast(
       fromCommand,
       flashbackLife,
       altCost: { life: definition.altCost?.life ?? 0, ...payment },
+      ...(escapeExileIds && escapeExileIds.length > 0 ? { escapeExileIds } : {}),
     };
   }
 
-  return { cost, fromCommand, flashbackLife };
+  return {
+    cost,
+    fromCommand,
+    flashbackLife,
+    ...(escapeExileIds && escapeExileIds.length > 0 ? { escapeExileIds } : {}),
+  };
 }
 
 /** What a cast is, for restricted-mana purposes. */
@@ -527,7 +589,7 @@ function applyCastSpell(
 ): GameState {
   requirePlaying(state);
   const faced = applyChosenFace(state, cardId, faceIndex);
-  const { cost, fromCommand, flashbackLife, altCost } = validateCast(
+  const { cost, fromCommand, flashbackLife, altCost, escapeExileIds } = validateCast(
     faced,
     playerId,
     cardId,
@@ -760,6 +822,11 @@ function applyCastSpell(
     if (altCost.sacrificeId) {
       paid = applyEffects(paid, [{ kind: "sacrifice", cardId: altCost.sacrificeId }]);
     }
+  }
+  // Underworld Breach: escape's other half. Exiled BEFORE the spell leaves
+  // the graveyard, so the count it was chosen against still holds.
+  for (const exileId of escapeExileIds ?? []) {
+    paid = applyEffects(paid, [{ kind: "move_card", cardId: exileId, toZone: "exile" }]);
   }
   // Spend the free-cast grant before the card leaves hand, so the lookup
   // still sees where it was.

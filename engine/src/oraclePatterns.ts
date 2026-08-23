@@ -57,6 +57,7 @@ export type CompiledOracleText = {
   protectionFrom?: ProtectionFrom;
   enchant?: "creature" | "land" | "creature_or_planeswalker_own";
   reanimateOnEnter?: boolean;
+  grantsEscape?: { exileOther: number };
   copySelfWhenCastFromGraveyard?: boolean;
   chooseColorOnEnter?: boolean;
   chooseColorExcludes?: Color;
@@ -2926,6 +2927,17 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
         },
       ],
     };
+  }
+
+  // "Sacrifice ~." on its own — a common line with nowhere to land until
+  // now. New Capenna's fetch lands say it in a trigger body; Underworld
+  // Breach says it at the end step.
+  if (
+    /^Sacrifice (?:~|this (?:creature|artifact|enchantment|land|permanent|token))$/i.test(
+      sentence,
+    )
+  ) {
+    return { targetRequirements: [], effects: [{ kind: "sacrifice", cardId: "self" }] };
   }
 
   const unblockable = sentence.match(
@@ -8381,6 +8393,33 @@ function fuseMoxDiamondInPlace(sentences: string[], lineStart: boolean[]): void 
   }
 }
 
+function fuseEscapeGrantInPlace(sentences: string[], lineStart: boolean[]): void {
+  // Underworld Breach prints the grant and its cost as two sentences on one
+  // line. "Each nonland card in your graveyard has escape" alone says
+  // nothing about what escaping costs, and the cost sentence alone has
+  // nothing to attach to.
+  for (let index = 0; index + 1 < sentences.length; index += 1) {
+    if (lineStart[index + 1]) {
+      continue;
+    }
+    if (
+      !/^Each nonland card in your graveyard has escape$/i.test(sentences[index] ?? "")
+    ) {
+      continue;
+    }
+    const cost = sentences[index + 1]?.match(
+      /^The escape cost is equal to the card['’]s mana cost plus exile (a|an|one|two|three|four|five|\d+) other cards? from your graveyard$/i,
+    );
+    if (!cost?.[1]) {
+      continue;
+    }
+    sentences[index] = `Each nonland card in your graveyard has escape for exiling ${cost[1]} other cards`;
+    sentences.splice(index + 1, 1);
+    lineStart.splice(index + 1, 1);
+    index -= 1;
+  }
+}
+
 function fuseManaUntilEotInPlace(sentences: string[], lineStart: boolean[]): void {
   // Birgi: "…, add {R}." then "Until end of turn, you don't lose this mana
   // as steps and phases end." The second names the mana the first added, so
@@ -9210,7 +9249,7 @@ function parseTriggerHead(head: string): TriggerHead | null {
   // Archfiend of Depravity making its own controller sacrifice is a wrong
   // game, not a rough one. It stays a clean miss.
   const stepHead = text.match(
-    /^At the beginning of (your|each|each player's) (upkeep|end step|draw step|first main phase|precombat main phase)$/i,
+    /^At the beginning of (your|each|each player's|the) (upkeep|end step|draw step|first main phase|precombat main phase)$/i,
   );
   if (stepHead?.[1] && stepHead[2]) {
     const eventOf: Record<string, TriggerEvent> = {
@@ -9222,6 +9261,9 @@ function parseTriggerHead(head: string): TriggerHead | null {
     };
     return {
       event: eventOf[stepHead[2].toLowerCase()]!,
+      // "THE end step" is the current turn's, whoever is taking it —
+      // Underworld Breach goes away at the next end step, not only at its
+      // controller's, and that is a whole turn cycle of difference.
       ...(/^your$/i.test(stepHead[1]) ? {} : { eachPlayersStep: true }),
     };
   }
@@ -11593,6 +11635,7 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
   fuseLookTopTakeInPlace(sentences, lineStart);
   fuseVoidPlayInPlace(sentences, lineStart);
   fuseManaUntilEotInPlace(sentences, lineStart);
+  fuseEscapeGrantInPlace(sentences, lineStart);
   fuseMoxDiamondInPlace(sentences, lineStart);
   fuseMaySacrificeInPlace(sentences, lineStart);
   fuseNecroTopInPlace(sentences, lineStart);
@@ -11698,6 +11741,18 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
     ) {
       result.copySelfWhenCastFromGraveyard = true;
       continue;
+    }
+
+    // Underworld Breach, once the fuser has joined the grant to its cost.
+    const escapeGrant = sentence.match(
+      /^Each nonland card in your graveyard has escape for exiling (a|an|one|two|three|four|five|\d+) other cards$/i,
+    );
+    if (escapeGrant?.[1]) {
+      const exileOther = parseCount(escapeGrant[1]);
+      if (exileOther) {
+        result.grantsEscape = { exileOther };
+        continue;
+      }
     }
 
     if (/^Enchant creature card in a graveyard$/i.test(sentence)) {

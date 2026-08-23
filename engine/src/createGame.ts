@@ -174,6 +174,7 @@ export function createCardDefinition(
         | "entersWithXCounterKind"
         | "entersWithCounters"
         | "enterAsCopy"
+        | "grantsEscape"
         | "playLandsFromGraveyard"
         | "leyline"
         | "castFromGraveyard"
@@ -597,6 +598,7 @@ export function createCardDefinition(
       : {}),
     ...(input.entersWithCounters ? { entersWithCounters: { ...input.entersWithCounters } } : {}),
     ...(input.enterAsCopy ? { enterAsCopy: { ...input.enterAsCopy } } : {}),
+    ...(input.grantsEscape ? { grantsEscape: { ...input.grantsEscape } } : {}),
     ...(input.playLandsFromGraveyard ? { playLandsFromGraveyard: true } : {}),
     ...(input.leyline ? { leyline: true } : {}),
     ...(input.castFromGraveyard

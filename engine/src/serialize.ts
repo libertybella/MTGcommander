@@ -1141,6 +1141,16 @@ export function parseGameState(json: string): GameState {
               };
             })(),
           }),
+      ...(isRecord(def.grantsEscape)
+        ? {
+            grantsEscape: {
+              exileOther: expectNumber(
+                def.grantsEscape.exileOther,
+                `definition.${id}.grantsEscape.exileOther`,
+              ),
+            },
+          }
+        : {}),
       ...(def.playLandsFromGraveyard === true ? { playLandsFromGraveyard: true } : {}),
       ...(def.leyline === true ? { leyline: true } : {}),
       ...(def.ascend === true ? { ascend: true } : {}),

@@ -198,6 +198,7 @@ function compileOneFace(card: OracleCard, definitionId: string): OracleCompileRe
       ? { protectionFrom: compiled.protectionFrom }
       : {}),
     ...(compiled.enchant ? { enchant: compiled.enchant } : {}),
+    ...(compiled.grantsEscape ? { grantsEscape: compiled.grantsEscape } : {}),
     ...(compiled.reanimateOnEnter ? { reanimateOnEnter: true } : {}),
     ...(compiled.copySelfWhenCastFromGraveyard
       ? { copySelfWhenCastFromGraveyard: true }
