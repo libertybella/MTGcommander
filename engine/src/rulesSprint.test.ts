@@ -26403,3 +26403,169 @@ describe("wave 207: goad, and the requirement it puts on a declaration", () => {
   });
 });
 
+
+describe("wave 208: keywords that lower onto machinery already here", () => {
+  const compile = (name: string, manaCost: string, typeLine: string, oracleText: string, power?: string, toughness?: string) =>
+    compileOracleCard({
+      oracleId: name,
+      name,
+      manaCost,
+      typeLine,
+      power: power ?? null,
+      toughness: toughness ?? null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  it("reads outlast as the tap ability its reminder text spells out", () => {
+    const falconer = compile(
+      "Abzan Falconer",
+      "{2}{W}",
+      "Creature — Human Soldier",
+      "Outlast {W}\nEach creature you control with a +1/+1 counter on it has flying.",
+      "2",
+      "3",
+    );
+    expect(falconer.notes).toEqual([]);
+    expect(falconer.definition.activated[0]).toEqual({
+      tap: true,
+      manaCost: "{W}",
+      effects: [{ kind: "add_counter", cardId: "self", counter: "p1p1", amount: 1 }],
+      targetRequirements: [],
+      // "Outlast only as a sorcery" is the timing, not a separate rider.
+      timing: "sorcery",
+    });
+  });
+
+  it("fetches rather than draws for the typecycling forms", () => {
+    const lorien = compile(
+      "Lórien Revealed",
+      "{3}{U}{U}",
+      "Sorcery",
+      "Draw three cards.\nIslandcycling {1}",
+    );
+    expect(lorien.notes).toEqual([]);
+    expect(lorien.definition.activated[0]).toMatchObject({
+      manaCost: "{1}",
+      zone: "hand",
+      discard: true,
+    });
+    expect(lorien.definition.activated[0]?.effects).toEqual([
+      {
+        kind: "search_library",
+        playerId: "controller",
+        filter: { subtypes: ["island"] },
+        destination: "hand",
+        count: 1,
+      },
+    ]);
+
+    const barrens = compile("Ash Barrens", "", "Land", "{T}: Add {C}.\nBasic landcycling {1}");
+    expect(barrens.notes).toEqual([]);
+    // "Basic land" is the supertype form of the same clause, not a subtype.
+    expect(barrens.definition.activated[0]?.effects).toEqual([
+      {
+        kind: "search_library",
+        playerId: "controller",
+        filter: { supertypes: ["basic"], types: ["land"] },
+        destination: "hand",
+        count: 1,
+      },
+    ]);
+  });
+
+  it("counts a vanishing creature down and takes it on the last counter", () => {
+    const whale = compile(
+      "Dreamtide Whale",
+      "{2}{U}",
+      "Creature — Whale",
+      "Vanishing 2\nWhenever a player casts their second spell each turn, proliferate.",
+      "7",
+      "5",
+    );
+    expect(whale.notes).toEqual([]);
+    expect(whale.definition.entersWithCounters).toEqual({ counter: "time", count: 2 });
+    expect(whale.definition.triggers[0]).toEqual({
+      event: "upkeep",
+      effects: [
+        {
+          kind: "remove_counter",
+          cardId: "self",
+          counter: "time",
+          amount: 1,
+          sacrificeWhenEmpty: true,
+        },
+      ],
+      targetRequirements: [],
+    });
+
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const definition = createCardDefinition({
+      name: "Dreamtide Whale",
+      typeLine: "Creature — Whale",
+      power: 7,
+      toughness: 5,
+      entersWithCounters: { counter: "time", count: 2 },
+    });
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({
+      definitionId: definition.id,
+      ownerId: p1.id,
+      zone: "hand",
+    });
+    game.cards[card.id] = card;
+    p1.zones.hand.push(card.id);
+
+    const tick = (state: GameState) =>
+      applyEffect(state, {
+        kind: "remove_counter",
+        cardId: card.id,
+        counter: "time",
+        amount: 1,
+        sacrificeWhenEmpty: true,
+      });
+
+    let table = moveCard(game, card.id, "battlefield");
+    expect(table.cards[card.id]?.counters["time"]).toBe(2);
+    table = tick(table);
+    // One counter left, so it stays — the sacrifice rides on the LAST removal.
+    expect(table.cards[card.id]?.counters["time"]).toBe(1);
+    expect(table.cards[card.id]?.zone).toBe("battlefield");
+    table = tick(table);
+    expect(table.cards[card.id]?.zone).toBe("graveyard");
+  });
+
+  it("does not sacrifice a permanent that never had the counter", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const definition = createCardDefinition({
+      name: "Bear",
+      typeLine: "Creature — Bear",
+      power: 2,
+      toughness: 2,
+    });
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({
+      definitionId: definition.id,
+      ownerId: p1.id,
+      zone: "battlefield",
+    });
+    game.cards[card.id] = card;
+    p1.zones.battlefield.push(card.id);
+
+    // Zero counters is not "the last one was removed": a removal that took
+    // nothing off must not be a sacrifice, or the first upkeep after the
+    // counters ran out would kill anything that shared the effect.
+    const next = applyEffect(game, {
+      kind: "remove_counter",
+      cardId: card.id,
+      counter: "time",
+      amount: 1,
+      sacrificeWhenEmpty: true,
+    });
+    expect(next.cards[card.id]?.zone).toBe("battlefield");
+  });
+});
+

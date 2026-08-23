@@ -846,6 +846,19 @@ export function bindCardEffect(
       }
       return { kind: "add_counter", cardId, counter: effect.counter, amount };
     }
+    case "remove_counter": {
+      const cardId = bindCardId(state, effect.cardId, context);
+      if (!cardId) {
+        return null;
+      }
+      return {
+        kind: "remove_counter",
+        cardId,
+        counter: effect.counter,
+        amount: effect.amount,
+        ...(effect.sacrificeWhenEmpty ? { sacrificeWhenEmpty: true } : {}),
+      };
+    }
     case "set_class_level": {
       const cardId = bindCardId(state, effect.cardId, context);
       if (!cardId) {
@@ -3178,6 +3191,30 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
       case "add_counter":
         next = applyAddCounter(state, effect.cardId, effect.counter, effect.amount);
         break;
+      case "remove_counter": {
+        const target = state.cards[effect.cardId];
+        if (!target || target.zone !== "battlefield") {
+          next = cloneGameState(state);
+          break;
+        }
+        next = cloneGameState(state);
+        const holder = next.cards[effect.cardId]!;
+        const had = holder.counters[effect.counter] ?? 0;
+        const left = Math.max(0, had - effect.amount);
+        if (left === 0) {
+          delete holder.counters[effect.counter];
+        } else {
+          holder.counters[effect.counter] = left;
+        }
+        // Vanishing sacrifices when the LAST counter is removed, so something
+        // has to have been removed. A permanent with none left is simply not
+        // counting down any more; sacrificing it there would kill anything
+        // that outlived its counters.
+        if (effect.sacrificeWhenEmpty && had > 0 && left === 0) {
+          next = moveCard(next, effect.cardId, "graveyard");
+        }
+        break;
+      }
       case "counter_spell":
         next = applyCounterSpell(state, effect.stackObjectId);
         break;

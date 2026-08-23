@@ -11512,6 +11512,86 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
       }
     }
 
+    // Typecycling (CR 702.29f): the same discard-from-hand activation as
+    // plain cycling, but it fetches rather than draws. "Basic landcycling"
+    // is the supertype form of the same clause.
+    const typeCycling = sentence.match(/^(Basic land|[A-Z][a-z]+)cycling ((?:\{[^}]+\})+)$/);
+    if (typeCycling?.[1] && typeCycling[2]) {
+      let typeCyclingCostOk = true;
+      try {
+        parseManaCost(typeCycling[2]);
+      } catch {
+        typeCyclingCostOk = false;
+      }
+      const word = typeCycling[1];
+      const filter: SearchFilter =
+        word === "Basic land"
+          ? { supertypes: ["basic"], types: ["land"] }
+          : { subtypes: [singularSubtype(`${word}s`)] };
+      if (typeCyclingCostOk) {
+        result.activated.push({
+          tap: false,
+          manaCost: typeCycling[2],
+          effects: [
+            {
+              kind: "search_library",
+              playerId: "controller",
+              filter,
+              destination: "hand",
+              count: 1,
+            },
+          ],
+          targetRequirements: [],
+          zone: "hand",
+          discard: true,
+        });
+        continue;
+      }
+    }
+
+    // Outlast (CR 702.94): a tap ability at sorcery speed. The reminder's
+    // "Outlast only as a sorcery" is the same restriction the timing carries.
+    const outlast = sentence.match(/^Outlast ((?:\{[^}]+\})+)$/i);
+    if (outlast?.[1]) {
+      let outlastCostOk = true;
+      try {
+        parseManaCost(outlast[1]);
+      } catch {
+        outlastCostOk = false;
+      }
+      if (outlastCostOk) {
+        result.activated.push({
+          tap: true,
+          manaCost: outlast[1],
+          effects: [{ kind: "add_counter", cardId: "self", counter: "p1p1", amount: 1 }],
+          targetRequirements: [],
+          timing: "sorcery",
+        });
+        continue;
+      }
+    }
+
+    // Vanishing N (CR 702.62) lowers to its full rules text: enter with time
+    // counters, tick one off each upkeep, and go when the last one does.
+    const vanishing = sentence.match(/^Vanishing (\d+)$/i);
+    if (vanishing?.[1]) {
+      result.entersWithCounters = { counter: "time", count: Number(vanishing[1]) };
+      result.triggers.push({
+        event: "upkeep",
+        effects: [
+          {
+            kind: "remove_counter",
+            cardId: "self",
+            counter: "time",
+            amount: 1,
+            sacrificeWhenEmpty: true,
+          },
+        ],
+        targetRequirements: [],
+      });
+      continue;
+    }
+
     const channel = sentence.match(
       /^Channel\s*[—-]\s*((?:\{[^}]+\}(?:,\s*)?)+),\s*Discard this card:\s*(.+)$/i,
     );

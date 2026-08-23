@@ -842,6 +842,19 @@ export type GameEffect =
     }
   | { kind: "sacrifice"; cardId: CardInstanceId }
   | { kind: "add_counter"; cardId: CardInstanceId; counter: string; amount: number }
+  /**
+   * Vanishing (CR 702.62): take a counter off, and if that was the last one,
+   * sacrifice the permanent. One effect rather than a removal plus a separate
+   * "when the last is removed" trigger, because the trigger has no event to
+   * watch — counter removal is not an engine event.
+   */
+  | {
+      kind: "remove_counter";
+      cardId: CardInstanceId;
+      counter: string;
+      amount: number;
+      sacrificeWhenEmpty?: boolean;
+    }
   /** The Ozolith's combat trigger: every counter hops to the target. */
   | { kind: "move_all_counters"; fromId: CardInstanceId; toId: CardInstanceId }
   /** Bristly Bill: "Double the number of +1/+1 counters on each creature you
@@ -1580,6 +1593,13 @@ export type CardEffect =
       cardId: CardIdSelector;
       counter: string;
       amount: number | "source_power" | "subject_amount";
+    }
+  | {
+      kind: "remove_counter";
+      cardId: CardIdSelector;
+      counter: string;
+      amount: number;
+      sacrificeWhenEmpty?: boolean;
     }
   /** The Ozolith's combat trigger: every counter hops to the target. */
   | { kind: "move_all_counters"; cardId: CardIdSelector; target: ChosenTargetRef }

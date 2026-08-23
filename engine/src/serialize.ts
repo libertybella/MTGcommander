@@ -2764,6 +2764,14 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
               ? ("subject_amount" as const)
               : expectNumber(value.amount, `${label}.amount`),
       };
+    case "remove_counter":
+      return {
+        kind,
+        cardId: parseCardIdSelector(value.cardId, `${label}.cardId`),
+        counter: expectString(value.counter, `${label}.counter`),
+        amount: expectNumber(value.amount, `${label}.amount`),
+        ...(value.sacrificeWhenEmpty === true ? { sacrificeWhenEmpty: true } : {}),
+      };
     case "move_all_counters":
       return {
         kind,
@@ -4936,6 +4944,15 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
       cardId: expectString(value.cardId, `${label}.cardId`),
       counter: expectString(value.counter, `${label}.counter`),
       amount: expectNumber(value.amount, `${label}.amount`),
+    };
+  }
+  if (kind === "remove_counter") {
+    return {
+      kind,
+      cardId: expectString(value.cardId, `${label}.cardId`),
+      counter: expectString(value.counter, `${label}.counter`),
+      amount: expectNumber(value.amount, `${label}.amount`),
+      ...(value.sacrificeWhenEmpty === true ? { sacrificeWhenEmpty: true } : {}),
     };
   }
   if (kind === "move_all_counters") {
