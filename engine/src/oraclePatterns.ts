@@ -2014,13 +2014,13 @@ function foldSubjectRider(effects: CardEffect[], sentence: string): boolean {
   // rider whenever anything sat in the gap.
   // A plain backwards loop rather than findLastIndex: the engine targets
   // ES2022, and this keeps the narrowing that the callback form loses.
-  let last: Extract<CardEffect, { kind: "copy_token" | "move_card" }> | undefined;
+  let last: Extract<CardEffect, { kind: "copy_token" | "create_token" | "move_card" }> | undefined;
   for (let i = effects.length - 1; i >= 0; i -= 1) {
     const effect = effects[i];
     if (!effect) {
       continue;
     }
-    if (effect.kind === "copy_token") {
+    if (effect.kind === "copy_token" || effect.kind === "create_token") {
       last = effect;
       break;
     }
@@ -2040,6 +2040,25 @@ function foldSubjectRider(effects: CardEffect[], sentence: string): boolean {
       sentence,
     )
   ) {
+    if (last.kind === "create_token") {
+      // A freshly made token carries the keyword instead of a flag. Haste
+      // on a token that has already been able to attack once is inert, so
+      // "until end of turn" and a permanent haste are the same haste here
+      // — a documented approximation, and a far smaller one than losing
+      // the sentence entirely.
+      //
+      // "Create TWO tokens" compiles to two effects, and "They gain haste"
+      // means both — so every create_token in the trailing run gets it,
+      // not just the last one.
+      for (let i = effects.length - 1; i >= 0; i -= 1) {
+        const effect = effects[i];
+        if (!effect || effect.kind !== "create_token") {
+          break;
+        }
+        effect.keywords = [...(effect.keywords ?? []), "haste"];
+      }
+      return true;
+    }
     last.gainsHaste = true;
     return true;
   }
@@ -12721,6 +12740,19 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
         });
         if (clause.leftover) {
           result.leftover.push(clause.leftover);
+        }
+        // A Channel body carries the same subject riders an ordinary
+        // activated body does. Without this the rider fell through to the
+        // main loop and was committed as a SPELL effect, which a land never
+        // runs - so the card scored and the tokens had no haste.
+        const channelAbility = result.activated[result.activated.length - 1];
+        while (
+          channelAbility &&
+          index + 1 < sentences.length &&
+          !lineStart[index + 1] &&
+          foldSubjectRider(channelAbility.effects, sentences[index + 1]!)
+        ) {
+          index += 1;
         }
         continue;
       }

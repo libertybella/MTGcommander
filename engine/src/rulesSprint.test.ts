@@ -31777,3 +31777,61 @@ describe("wave 245: a mana ability that also gains life", () => {
     expect(round.definitions[definition.id]?.manaAbilities[0]?.gainLifeToController).toBe(2);
   });
 });
+
+describe("wave 246: a haste rider on a created token", () => {
+  const compile = (name: string, typeLine: string, oracleText: string) =>
+    compileOracleCard({
+      oracleId: name,
+      name,
+      manaCost: "",
+      typeLine,
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  it("puts the haste on the tokens, not in unreachable spell effects", () => {
+    const sokenzan = compile(
+      "Sokenzan, Crucible of Defiance",
+      "Legendary Land",
+      "{T}: Add {R}.\nChannel — {3}{R}, Discard this card: Create two 1/1 colorless Spirit creature tokens. They gain haste until end of turn.",
+    );
+    expect(sokenzan.notes).toEqual([]);
+    const channel = sokenzan.definition.activated[0];
+    expect(channel?.effects).toHaveLength(2);
+    for (const effect of channel?.effects ?? []) {
+      expect(effect).toMatchObject({ kind: "create_token", keywords: ["haste"] });
+    }
+    // The card already SCORED with the haste parked here, where a land never
+    // runs it. An empty spell-effect list is the whole point of the wave.
+    expect(sokenzan.definition.effects).toEqual([]);
+  });
+
+  it("folds onto a created token in an ordinary spell too", () => {
+    const tokens = compile(
+      "Token Maker",
+      "Sorcery",
+      "Create two 1/1 colorless Spirit creature tokens. They gain haste until end of turn.",
+    );
+    expect(tokens.notes).toEqual([]);
+    for (const effect of tokens.definition.effects) {
+      expect(effect).toMatchObject({ kind: "create_token", keywords: ["haste"] });
+    }
+  });
+
+  it("keeps the token's own printed keywords alongside the rider", () => {
+    const flier = compile(
+      "Flier Maker",
+      "Sorcery",
+      "Create a 1/1 white Spirit creature token with flying. It gains haste until end of turn.",
+    );
+    expect(flier.notes).toEqual([]);
+    const token = flier.definition.effects[0] as { keywords?: string[] };
+    // Appending rather than replacing: a rider that overwrote the list would
+    // pass a haste-only assertion and quietly ground the Spirit.
+    expect(token.keywords).toContain("flying");
+    expect(token.keywords).toContain("haste");
+  });
+});
