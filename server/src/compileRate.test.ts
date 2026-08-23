@@ -3,6 +3,12 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { compileOracleCard, type OracleCard } from "@mtgcommander/engine";
 import { cardOverrideFor } from "./cardOverrides";
+import {
+  DEFAULT_RANK_EXPONENT,
+  bandBreakdown,
+  weightedCoverage,
+  type RankedCard,
+} from "./compileRank";
 import { oracleCardFromScryfall } from "./scryfall";
 
 /**
@@ -127,19 +133,47 @@ describe("Stage 6: compile-rate metric", () => {
         `(${((rate.full.length / total) * 100).toFixed(1)}%), ` +
         `${rate.partial.length} partial, ${rate.none.length} none`,
     );
-    if (listPath && rate.none.length > 0) {
-      // Report misses in the list's own order (EDHREC rank), most-played first.
-      const rank = new Map(
-        (JSON.parse(readFileSync(listPath, "utf8")) as string[]).map((name, index) => [
-          name.toLowerCase(),
-          index,
-        ]),
+    if (listPath) {
+      // Rank-weighted view. The unweighted count above prices a card played
+      // in 1% of decks exactly like Sol Ring, so it is a poor guide to
+      // whether a real game works; this is the number the work follows.
+      const order = JSON.parse(readFileSync(listPath, "utf8")) as string[];
+      const fullNames = new Set(rate.full.map((name) => name.toLowerCase()));
+      const swept = new Set(cards.map((card) => card.name.toLowerCase()));
+      const ranked: RankedCard[] = order.map((name, index) => ({
+        name,
+        rank: index + 1,
+        // A name can sweep more than one printing; every one of them has to
+        // compile, because a deck may hold any of them.
+        full: swept.has(name.toLowerCase()) && fullNames.has(name.toLowerCase()),
+        present: swept.has(name.toLowerCase()),
+      }));
+      const exponent = Number(process.env.COMPILE_RANK_EXPONENT ?? DEFAULT_RANK_EXPONENT);
+      const coverage = weightedCoverage(ranked, exponent);
+      console.log(
+        `[compile-rate] play-weighted (a=${exponent}): ${(coverage.fraction * 100).toFixed(1)}% of deck slots, ` +
+          `~${coverage.brokenPerDeck.toFixed(1)} broken cards per 100-card deck`,
       );
-      const ranked = [...rate.none].sort(
-        (a, b) => (rank.get(a.toLowerCase()) ?? 9999) - (rank.get(b.toLowerCase()) ?? 9999),
-      );
+      for (const band of bandBreakdown(ranked, [100, 200, 500, 1000, 2000])) {
+        const pct = band.total === 0 ? 0 : (band.full / band.total) * 100;
+        console.log(
+          `[compile-rate] top ${String(band.limit).padStart(4)}: ${String(band.full).padStart(4)}/${String(band.total).padStart(4)} ` +
+            `(${pct.toFixed(1)}%)  ${band.failing.length} failing`,
+        );
+      }
+      const missing = ranked.filter((card) => !card.present).map((card) => card.name);
+      if (missing.length > 0) {
+        console.log(`[compile-rate] not in bulk: ${missing.join(" | ")}`);
+      }
+      const [top500] = bandBreakdown(ranked, [500]);
+      if (top500.failing.length > 0) {
+        console.log(`[compile-rate] top-500 work list: ${top500.failing.join(" | ")}`);
+      }
       const missLimit = Number(process.env.COMPILE_MISS_LIMIT ?? 60);
-      console.log(`[compile-rate] top misses: ${ranked.slice(0, missLimit).join(" | ")}`);
+      const allFailing = bandBreakdown(ranked, [order.length])[0].failing;
+      console.log(
+        `[compile-rate] top misses: ${allFailing.slice(0, missLimit).join(" | ")}`,
+      );
     }
     // COMPILE_ANALYZE=1 clusters compile notes across the swept cards so
     // pattern sprints can target the biggest wins first.
