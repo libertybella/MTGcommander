@@ -8,18 +8,24 @@ on-what lives in [CLAIMS.md](CLAIMS.md). This file is the tribal
 knowledge that isn't obvious from those: exact commands, traps, and
 the current state of play. Read all four before writing code.
 
-## State of play (checkpoint-88-long-tail-grind, 2026-08-23)
+## State of play (checkpoint-89-self-contained-statics, 2026-08-23)
 
 - Branch `comprehensive-plan`, tags through
-  `checkpoint-88-long-tail-grind`, pushed to `fork`.
-- 1,234 tests green; top-2,000 compile rate **68.0% (1,366/2,009)** as of
-  wave 233 (the tag itself is 1,362); 60-card sample 97% (CI floor now
-  90); oxlint silent; 800/800 fuzz seeds on a clean tree at the tag.
-- **Liberty's goal is 80% = 1,608 cards.** That is 242 more from here.
-  Waves 224-233 flipped 3, 2, 1, 1, 2, 0, 1, 1, 2 with one wave reverted,
-  so the honest rate is **under two a wave** and 80% is on the order of a
-  hundred and thirty more waves. Say so rather than implying otherwise;
-  the number is not going to be reached in one session.
+  `checkpoint-89-self-contained-statics`, pushed to `fork`.
+- 1,246 tests green; top-2,000 compile rate **68.1% (1,369/2,009)**;
+  60-card sample 97% (CI floor now 90); oxlint silent; 800/800 fuzz seeds
+  on a clean tree at the tag.
+- **Liberty's goal is 80% = 1,608 cards.** That is 239 more from here.
+  Waves 224-236 flipped 3, 2, 1, 1, 2, 0, 1, 1, 2, 1, 1, 1 with one wave
+  reverted, so the honest rate is **under one and a half a wave** and 80%
+  is on the order of a hundred and sixty more waves. Say so rather than
+  implying otherwise; it is not reachable in one session.
+- **Roughly 7 of the current wins are not wins.** See the stranded-effects
+  row in CLAIMS.md: a rider on the same printed line as a trigger can land
+  in `definition.effects`, where a permanent never runs it, so the card
+  scores and does nothing. Measured with `stranded.sh` — 26 permanents
+  carry spell effects, 7 of them currently score. Fixing it will LOWER the
+  headline rate, and should still be done.
 - **The shape that pays best right now is a NARROW MATCHER, not a missing
   feature.** Waves 231 and 233 were both "the engine already understands
   this phrase somewhere else": a head verb widened in the shared table but
