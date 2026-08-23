@@ -990,6 +990,7 @@ export type GameEffect =
   | { kind: "double_counters_on_team"; playerId: PlayerId; counter: string }
   /** Mossborn Hydra: the doubling lands on one permanent, not a team. */
   | { kind: "double_counters_on"; cardId: CardInstanceId; counter: string }
+  | { kind: "double_all_counters"; cardIds: CardInstanceId[] }
   | { kind: "counter_spell"; stackObjectId: StackObjectId }
   | {
       kind: "bounce_spell_or_permanent";
@@ -1844,6 +1845,9 @@ export type CardEffect =
   | { kind: "move_all_counters"; cardId: CardIdSelector; target: ChosenTargetRef }
   | { kind: "double_counters_on_team"; playerId: PlayerSelector; counter: string }
   | { kind: "double_counters_on"; cardId: CardIdSelector; counter: string }
+  /** Deepglow Skate: every KIND of counter at once, on every chosen
+   * target. Distinct from `double_counters_on`, which names one kind. */
+  | { kind: "double_all_counters"; cardIds: CardIdSelector[]; allChosen?: boolean }
   | { kind: "counter_spell"; target: ChosenTargetRef }
   | { kind: "counter_unless_pays"; target: ChosenTargetRef; cost: string }
   /** Venser: bounce a spell (off the stack) or a permanent to its owner's hand. */

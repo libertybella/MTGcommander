@@ -3916,6 +3916,18 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     };
   }
 
+  // Deepglow Skate: every kind of counter, on every chosen target.
+  if (
+    /^double the number of each kind of counter on any number of target permanents$/i.test(
+      sentence,
+    )
+  ) {
+    return {
+      targetRequirements: [{ kind: "permanent", variable: true }],
+      effects: [{ kind: "double_all_counters", cardIds: [], allChosen: true }],
+    };
+  }
+
   // Guardian of Faith, Clever Concealment: a variable number of targets,
   // all phased out together. `variable` already means 1..N chosen targets
   // matching one requirement, so this needs no new target shape — only a

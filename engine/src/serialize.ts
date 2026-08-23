@@ -2883,6 +2883,7 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
               ? "subject_amount"
               : expectNumber(value.count, `${label}.count`),
       };
+    case "double_all_counters":
     case "phase_out": {
       if (!Array.isArray(value.cardIds)) {
         throw new Error(`Invalid ${label}.cardIds`);

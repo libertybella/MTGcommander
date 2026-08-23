@@ -32122,3 +32122,134 @@ describe("wave 248: phasing a variable number of targets", () => {
     expect(trigger?.targetRequirements?.[0]).toMatchObject({ variable: true });
   });
 });
+
+describe("wave 249: doubling every kind of counter", () => {
+  it("compiles onto the variable requirement", () => {
+    const skate = compileOracleCard({
+      oracleId: "Deepglow Skate",
+      name: "Deepglow Skate",
+      manaCost: "{4}{U}",
+      typeLine: "Creature — Fish",
+      power: "3",
+      toughness: "3",
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "When Deepglow Skate enters, double the number of each kind of counter on any number of target permanents.",
+    });
+    expect(skate.notes).toEqual([]);
+    expect(skate.definition.triggers[0]?.targetRequirements).toEqual([
+      { kind: "permanent", variable: true },
+    ]);
+    expect(skate.definition.triggers[0]?.effects).toEqual([
+      { kind: "double_all_counters", cardIds: [], allChosen: true },
+    ]);
+  });
+
+  it("doubles every kind on it, not one named kind", () => {
+    const game = createGameState({ playerCount: 2 });
+    const [p1] = game.players;
+    if (!p1) {
+      throw new Error("expected a player");
+    }
+    fillLibraries(game, 20);
+    const walker = createCardDefinition({
+      name: "Planeswalker",
+      typeLine: "Legendary Planeswalker — Test",
+      loyalty: 3,
+    });
+    game.definitions[walker.id] = walker;
+    const card = createCardInstance({
+      definitionId: walker.id,
+      ownerId: p1.id,
+      zone: "battlefield",
+    });
+    game.cards[card.id] = card;
+    p1.zones.battlefield.push(card.id);
+    card.counters["loyalty"] = 3;
+    card.counters["p1p1"] = 2;
+    card.counters["quest"] = 0;
+
+    const after = applyEffect(game, { kind: "double_all_counters", cardIds: [card.id] });
+    // Every kind, which is the whole difference from double_counters_on.
+    expect(after.cards[card.id]?.counters["loyalty"]).toBe(6);
+    expect(after.cards[card.id]?.counters["p1p1"]).toBe(4);
+    // Doubling nothing is nothing, not one — the same rule the single-kind
+    // effect already follows.
+    expect(after.cards[card.id]?.counters["quest"]).toBe(0);
+  });
+
+  it("applies to every chosen target", () => {
+    const game = createGameState({ playerCount: 2 });
+    const [p1] = game.players;
+    if (!p1) {
+      throw new Error("expected a player");
+    }
+    fillLibraries(game, 20);
+    const bear = createCardDefinition({
+      name: "Bear",
+      typeLine: "Creature — Bear",
+      power: 2,
+      toughness: 2,
+    });
+    game.definitions[bear.id] = bear;
+    const made = [0, 1].map((index) => {
+      const card = createCardInstance({
+        definitionId: bear.id,
+        ownerId: p1.id,
+        zone: "battlefield",
+      });
+      card.counters["p1p1"] = index + 1;
+      game.cards[card.id] = card;
+      p1.zones.battlefield.push(card.id);
+      return card;
+    });
+
+    const bound = bindCardEffects(
+      game,
+      [{ kind: "double_all_counters", cardIds: [], allChosen: true }],
+      {
+        controllerId: p1.id,
+        sourceId: null,
+        targets: made.map((card) => ({ type: "creature" as const, cardId: card.id })),
+      },
+    );
+    const after = applyEffects(game, bound);
+    expect(after.cards[made[0]!.id]?.counters["p1p1"]).toBe(2);
+    expect(after.cards[made[1]!.id]?.counters["p1p1"]).toBe(4);
+  });
+
+  it("round trips", () => {
+    const game = createGameState({ playerCount: 2 });
+    const [p1] = game.players;
+    if (!p1) {
+      throw new Error("expected a player");
+    }
+    fillLibraries(game, 20);
+    const definition = createCardDefinition({
+      name: "Doubler",
+      typeLine: "Enchantment",
+      triggers: [
+        {
+          event: "enter_battlefield",
+          effects: [{ kind: "double_all_counters", cardIds: [], allChosen: true }],
+          targetRequirements: [{ kind: "permanent", variable: true }],
+        },
+      ],
+    });
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({
+      definitionId: definition.id,
+      ownerId: p1.id,
+      zone: "battlefield",
+    });
+    game.cards[card.id] = card;
+    p1.zones.battlefield.push(card.id);
+
+    const round = parseGameState(serializeGameState(game));
+    expect(round.definitions[definition.id]?.triggers[0]?.effects[0]).toMatchObject({
+      kind: "double_all_counters",
+      allChosen: true,
+    });
+  });
+});

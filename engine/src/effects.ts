@@ -901,6 +901,19 @@ export function bindCardEffect(
       }
       return { kind: "sacrifice", cardId };
     }
+    case "double_all_counters": {
+      const doubled = effect.allChosen
+        ? (context.targets ?? [])
+            .filter((target) => target.type === "creature")
+            .map((target) => target.cardId)
+        : effect.cardIds
+            .map((selector) => bindCardId(state, selector, context))
+            .filter((cardId): cardId is CardInstanceId => Boolean(cardId));
+      if (doubled.length === 0) {
+        return null;
+      }
+      return { kind: "double_all_counters", cardIds: doubled };
+    }
     case "phase_out": {
       // The variable-target form takes every creature the caster chose,
       // however many that was; the fixed form resolves its own selectors.
@@ -4144,6 +4157,23 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
         next = cloneGameState(state);
         for (const cardId of massControlTargets(next, effect.what, effect.fromId)) {
           takeControlInPlace(next, cardId, effect.controllerId, effect.untilEot === true);
+        }
+        break;
+      }
+      case "double_all_counters": {
+        next = cloneGameState(state);
+        for (const cardId of effect.cardIds) {
+          const card = next.cards[cardId];
+          if (!card || card.zone !== "battlefield") {
+            continue;
+          }
+          // Every KIND on it, not one named kind — and doubling nothing
+          // is still nothing, so a counter at zero does not become one.
+          for (const [name, held] of Object.entries(card.counters)) {
+            if (held > 0) {
+              card.counters[name] = held * 2;
+            }
+          }
         }
         break;
       }
