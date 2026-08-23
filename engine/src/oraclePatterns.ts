@@ -4432,6 +4432,13 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
   }
 
   // Muddle the Mixture.
+  if (/^counter target artifact, creature, or planeswalker spell$/i.test(sentence)) {
+    return {
+      targetRequirements: [{ kind: "artifact_creature_or_planeswalker_spell" }],
+      effects: [{ kind: "counter_spell", target: { type: "chosen", index: 0 } }],
+    };
+  }
+
   if (/^counter target enchantment, instant, or sorcery spell$/i.test(sentence)) {
     return {
       targetRequirements: [{ kind: "enchantment_instant_or_sorcery_spell" }],
@@ -9376,6 +9383,33 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
             effect: { kind: "grant_keyword", keyword },
           },
         );
+        continue;
+      }
+    }
+
+    // Topiary Stomper: the restriction lifts once the board reaches a count,
+    // which is a gate on the static rather than a second static.
+    const gatedRestrict = sentence.match(
+      /^~ can't (attack or block|attack|block) unless you control (\w+) or more (lands|creatures|artifacts)$/i,
+    );
+    if (gatedRestrict?.[1] && gatedRestrict[2] && gatedRestrict[3]) {
+      const atLeast = parseCount(gatedRestrict[2]);
+      if (atLeast) {
+        const what = gatedRestrict[1].toLowerCase();
+        result.staticAbilities.push({
+          selector: { scope: "self" },
+          effect: {
+            kind: "restrict",
+            ...(what.includes("attack") ? { cantAttack: true } : {}),
+            ...(what === "attack or block" || what === "block" ? { cantBlock: true } : {}),
+          },
+          // The gate says when the restriction is GONE, so the static is
+          // hung on its negation: a card cannot express "unless" directly.
+          requiresControlledBelow: {
+            types: [gatedRestrict[3].toLowerCase().replace(/s$/, "")],
+            atLeast,
+          },
+        });
         continue;
       }
     }

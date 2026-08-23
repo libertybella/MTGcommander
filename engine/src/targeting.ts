@@ -567,6 +567,15 @@ export function isChosenTargetLegal(
       isInstantOrSorcerySpell(state, target.stackObjectId)
     );
   }
+  if (requirement.kind === "artifact_creature_or_planeswalker_spell") {
+    return (
+      target.type === "spell" &&
+      isLegalSpellTarget(state, target.stackObjectId) &&
+      (isSpellOfType(state, target.stackObjectId, "artifact") ||
+        isCreatureSpell(state, target.stackObjectId) ||
+        isSpellOfType(state, target.stackObjectId, "planeswalker"))
+    );
+  }
   if (requirement.kind === "enchantment_instant_or_sorcery_spell") {
     return (
       target.type === "spell" &&
@@ -763,6 +772,7 @@ export function legalChoicesForRequirement(
     requirement.kind === "noncreature_spell" ||
     requirement.kind === "instant_or_sorcery_spell" ||
     requirement.kind === "enchantment_instant_or_sorcery_spell" ||
+    requirement.kind === "artifact_creature_or_planeswalker_spell" ||
     requirement.kind === "instant_spell"
   ) {
     return state.stack

@@ -573,6 +573,27 @@ function gateSatisfied(
   if (!gate.types && !gate.subtypes && !gate.legendary && gate.minPower === undefined) {
     return true;
   }
+  // "…seven or more lands": a count, so the question is how many satisfy the
+  // clauses rather than whether any one does.
+  const matches = (card: { id: CardInstanceId }): boolean => {
+    const info = read(card.id);
+    if (!info) {
+      return false;
+    }
+    if (gate.legendary && !info.traits.supertypes.includes("legendary")) {
+      return false;
+    }
+    if (gate.minPower !== undefined && info.power < gate.minPower) {
+      return false;
+    }
+    return (
+      (gate.types ?? []).every((type) => info.traits.types.includes(type)) &&
+      (gate.subtypes ?? []).every((subtype) => subtypeMatches(card.id, subtype))
+    );
+  };
+  if (gate.atLeast !== undefined) {
+    return controlled.filter((card) => matches(card)).length >= gate.atLeast;
+  }
   // The remaining clauses must all hold of one and the same permanent.
   return controlled.some((card) => {
     const info = read(card.id);
@@ -661,6 +682,14 @@ function collectInstances(state: GameState): EffectInstance[] {
         ability.requiresCounters &&
         (card.counters[ability.requiresCounters.counter] ?? 0) <
           ability.requiresCounters.atLeast
+      ) {
+        continue;
+      }
+      // Topiary Stomper: the restriction is ON only while the board is BELOW
+      // the gate; reaching it lifts the ability entirely.
+      if (
+        ability.requiresControlledBelow &&
+        staticGateSatisfied(state, card.controllerId, ability.requiresControlledBelow)
       ) {
         continue;
       }

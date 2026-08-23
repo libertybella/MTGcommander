@@ -27955,3 +27955,90 @@ describe("wave 218: a permission the next spell spends", () => {
   });
 });
 
+
+describe("wave 219: a third spell union, and a restriction that lifts", () => {
+  const compile = (name: string, manaCost: string, typeLine: string, oracleText: string, power?: string, toughness?: string) =>
+    compileOracleCard({
+      oracleId: name,
+      name,
+      manaCost,
+      typeLine,
+      power: power ?? null,
+      toughness: toughness ?? null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  it("counters the three spell types Strix Serenade names", () => {
+    const strix = compile(
+      "Strix Serenade",
+      "{1}{U}",
+      "Instant",
+      "Counter target artifact, creature, or planeswalker spell. Create a 1/1 blue Bird creature token with flying.",
+    );
+    expect(strix.notes).toEqual([]);
+    expect(strix.definition.targetRequirements).toEqual([
+      { kind: "artifact_creature_or_planeswalker_spell" },
+    ]);
+  });
+
+  it("stops the Stomper until the board reaches the gate", () => {
+    const stomper = compile(
+      "Topiary Stomper",
+      "{2}{G}",
+      "Creature — Plant Dinosaur",
+      "Vigilance\n~ can't attack or block unless you control seven or more lands.",
+      "5",
+      "5",
+    );
+    expect(stomper.notes).toEqual([]);
+    expect(stomper.definition.staticAbilities[0]).toEqual({
+      selector: { scope: "self" },
+      effect: { kind: "restrict", cantAttack: true, cantBlock: true },
+      requiresControlledBelow: { types: ["land"], atLeast: 7 },
+    });
+
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const stomperDef = createCardDefinition({
+      name: "Topiary Stomper",
+      typeLine: "Creature — Plant Dinosaur",
+      power: 5,
+      toughness: 5,
+      staticAbilities: stomper.definition.staticAbilities,
+    });
+    const landDef = createCardDefinition({ name: "Forest", typeLine: "Basic Land — Forest" });
+    for (const definition of [stomperDef, landDef]) {
+      game.definitions[definition.id] = definition;
+    }
+    const put = (definitionId: string) => {
+      const card = createCardInstance({ definitionId, ownerId: p1.id, zone: "battlefield" });
+      game.cards[card.id] = card;
+      p1.zones.battlefield.push(card.id);
+      return card;
+    };
+    const stomperCard = put(stomperDef.id);
+    for (let index = 0; index < 6; index += 1) {
+      put(landDef.id);
+    }
+    // Six lands: still shut in.
+    expect(computedCard(game, stomperCard.id)?.cantAttack).toBe(true);
+    expect(computedCard(game, stomperCard.id)?.cantBlock).toBe(true);
+
+    const seventh = structuredClone(game);
+    const extra = createCardInstance({
+      definitionId: landDef.id,
+      ownerId: p1.id,
+      zone: "battlefield",
+    });
+    seventh.cards[extra.id] = extra;
+    seventh.players[0]!.zones.battlefield.push(extra.id);
+    // The seventh land lifts the restriction rather than adding anything —
+    // "unless" says when the ability STOPS, which is why the gate is stored
+    // as the negation.
+    expect(computedCard(seventh, stomperCard.id)?.cantAttack).toBe(false);
+    expect(computedCard(seventh, stomperCard.id)?.cantBlock).toBe(false);
+  });
+});
+

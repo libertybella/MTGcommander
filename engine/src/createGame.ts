@@ -261,6 +261,9 @@ export function createCardDefinition(
             ? { requiresCounters: { ...ability.requiresCounters } }
             : {}),
           ...(ability.requiresDelirium ? { requiresDelirium: true } : {}),
+          ...(ability.requiresControlledBelow
+            ? { requiresControlledBelow: { ...ability.requiresControlledBelow } }
+            : {}),
           ...(ability.requiresLife !== undefined ? { requiresLife: ability.requiresLife } : {}),
         }))
       : [],

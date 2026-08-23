@@ -1371,6 +1371,8 @@ export type TargetKind =
   | "artifact_enchantment_or_land"
   /** Mirage Mirror: every permanent type it can turn into. */
   | "artifact_creature_enchantment_or_land"
+  /** Strix Serenade. */
+  | "artifact_creature_or_planeswalker_spell"
   /** Fracture: "target artifact, enchantment, or planeswalker". */
   | "artifact_enchantment_or_planeswalker"
   /** Bedevil. */
@@ -2613,6 +2615,9 @@ export type ControlledGate = {
   legendary?: boolean;
   /** Bonders' Enclave: "a creature with power 4 or greater". */
   minPower?: number;
+  /** Topiary Stomper: "seven or more lands" — the gate counts rather than
+   * asking whether any one permanent satisfies it. */
+  atLeast?: number;
 };
 
 export type ActivatedAbility = {
@@ -2917,6 +2922,10 @@ export type StaticAbility = {
   requiresCounters?: { counter: string; atLeast: number };
   /** Delirium (Dragon's Rage Channeler): live only with four or more card
    * types among the controller's graveyard. */
+  /** Topiary Stomper: the ability applies only while the board is BELOW this
+   * gate — "can't attack unless you control seven or more lands". Stated as a
+   * negation because the printed "unless" says when the ability stops. */
+  requiresControlledBelow?: ControlledGate;
   requiresDelirium?: boolean;
   /** Serra Ascendant: "As long as you have 30 or more life". */
   requiresLife?: number;

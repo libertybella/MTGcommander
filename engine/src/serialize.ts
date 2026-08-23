@@ -2306,6 +2306,7 @@ function parseTargetRequirement(value: unknown, label: string): TargetRequiremen
     kind !== "noncreature_spell" &&
     kind !== "instant_or_sorcery_spell" &&
     kind !== "enchantment_instant_or_sorcery_spell" &&
+    kind !== "artifact_creature_or_planeswalker_spell" &&
     kind !== "instant_spell" &&
     kind !== "spell_or_permanent" &&
     kind !== "land" &&
@@ -4203,6 +4204,9 @@ function parseControlledGate(value: unknown, label: string): ControlledGate {
     ...(value.minPower === undefined
       ? {}
       : { minPower: expectNumber(value.minPower, `${label}.minPower`) }),
+    ...(value.atLeast === undefined
+      ? {}
+      : { atLeast: expectNumber(value.atLeast, `${label}.atLeast`) }),
   };
 }
 
@@ -4402,6 +4406,14 @@ function parseStaticAbilities(
               },
             }
           : {}),
+        ...(entry.requiresControlledBelow === undefined
+          ? {}
+          : {
+              requiresControlledBelow: parseControlledGate(
+                entry.requiresControlledBelow,
+                `${label}[${index}].requiresControlledBelow`,
+              ),
+            }),
         ...(entry.requiresDelirium === true ? { requiresDelirium: true } : {}),
         ...(entry.requiresLife === undefined
           ? {}
