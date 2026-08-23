@@ -11,11 +11,11 @@ the current state of play. Read all four before writing code.
 ## State of play (checkpoint-86-one-away-grind, 2026-08-22)
 
 - Branch `comprehensive-plan`, tags through `checkpoint-86-one-away-grind`.
-- 1,161 tests green; top-2,000 compile rate **66.7% (1,340/2,009)**,
-  60-card sample 97% (CI floor now 90).
-- **Liberty's standing directive: grind to 75% = 1,507 cards.** 167 to go.
-  Waves 206–217 flipped 5, 3, 4, 3, 2, 3, 3, 3, 2, 2, 2, 2 — call it
-  **3 a wave**, so 75% is roughly fifty more waves. There is no single
+- 1,166 tests green; top-2,000 compile rate **66.9% (1,344/2,009)**,
+  60-card sample 97% (CI floor now 90). Waves 218–219 land after the tag.
+- **Liberty's standing directive: grind to 75% = 1,507 cards.** 163 to go.
+  Waves 206–219 flipped 5, 3, 4, 3, 2, 3, 3, 3, 2, 2, 2, 2, 2, 2 — call it
+  **under 3 a wave**, so 75% is roughly sixty more waves. There is no single
   lever left in the miss corpus; this is a grind, and the method below is
   what makes it a steady one rather than a stalling one.
 - **Pick clusters by sorting the miss corpus two ways, not one.** By
@@ -46,6 +46,11 @@ the current state of play. Read all four before writing code.
   and the serializer guard; wave 215 added five members and got two tsc
   errors instead of two silent fall-throughs. Prefer this to a chain of
   `if`s or ternaries whenever a new case would otherwise be swallowed.
+- **"Add N mana in any combination of colors"** (Cascading Cataracts,
+  Great Hall of the Citadel, Gwenna) needs a colour choice PER MANA.
+  `producesAnyColor` with `count: N` gives N mana of ONE chosen colour,
+  which turns a colour-fixing land into a meaningfully worse card — so it
+  stays a miss until the mana ability can carry a per-mana choice.
 - **Two shapes worth knowing before you re-try them.** Totem armor and
   regeneration both need a "destroy" event this engine does not have — a
   targeted destruction is a `move_card` to the graveyard, so a
