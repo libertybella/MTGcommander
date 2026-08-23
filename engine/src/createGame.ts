@@ -27,12 +27,21 @@ export function emptyManaPool(): ManaPool {
  * to be added in three places or it silently dropped on intake.
  */
 function copyControlledGate(gate: ControlledGate): ControlledGate {
+  // Destructured, so a new ControlledGate field is a tsc error HERE rather
+  // than a silent drop: `rest` has to stay empty. `atLeast` was added in wave
+  // 219 and never reached this copier, so every counted gate lost its count
+  // on the way through `createCardDefinition` — the gate stayed, asking
+  // "do you control a land" instead of "do you control six".
+  const { types, subtypes, subtypesAny, legendary, minPower, atLeast, ...rest } = gate;
+  const exhaustive: Record<string, never> = rest;
+  void exhaustive;
   return {
-    ...(gate.types ? { types: [...gate.types] } : {}),
-    ...(gate.subtypes ? { subtypes: [...gate.subtypes] } : {}),
-    ...(gate.subtypesAny ? { subtypesAny: [...gate.subtypesAny] } : {}),
-    ...(gate.legendary ? { legendary: true } : {}),
-    ...(gate.minPower !== undefined ? { minPower: gate.minPower } : {}),
+    ...(types ? { types: [...types] } : {}),
+    ...(subtypes ? { subtypes: [...subtypes] } : {}),
+    ...(subtypesAny ? { subtypesAny: [...subtypesAny] } : {}),
+    ...(legendary ? { legendary: true } : {}),
+    ...(minPower !== undefined ? { minPower } : {}),
+    ...(atLeast !== undefined ? { atLeast } : {}),
   };
 }
 

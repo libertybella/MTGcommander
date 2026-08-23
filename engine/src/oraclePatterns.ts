@@ -8246,12 +8246,152 @@ function parseGrantSubject(phrase: string): EffectSelector | null {
 }
 
 /**
+ * The body of a quoted grant: `<subject> has "<ability>"`.
+ *
+ * One entry point for all four body shapes, because the printed text gives
+ * no other signal than the ability's own grammar: a trigger head, a mana
+ * ability, an activated ability, or a bare keyword. Each is compiled by the
+ * same parser the printed form uses, so a body the card could have printed
+ * on itself is a body it can be given.
+ *
+ * Refuses anything it cannot read whole — a half-understood grant would hand
+ * a permanent an ability that does less than the card says.
+ */
+function compileQuotedAbility(quoted: string): ContinuousEffectData[] | null {
+  const body = quoted.trim().replace(/\.$/, "").trim();
+  if (body === "") {
+    return null;
+  }
+
+  // A trigger head: the body is "Whenever …, …" / "When …, …" / "At …, …".
+  if (/^(?:When|Whenever|At)\b/i.test(body)) {
+    const trigger = compileQuotedTrigger(body);
+    return trigger ? [{ kind: "grant_trigger", trigger }] : null;
+  }
+
+  const split = splitAbility(body);
+  if (split) {
+    const cost = parseAbilityCost(split.costText);
+    if (!cost) {
+      return null;
+    }
+    // A granted ability that only produces mana is a MANA ability and must
+    // never use the stack — it belongs in the older `grant_mana_ability`,
+    // which the Cryptolith Rite path already reads.
+    const add = parseAddMana(split.rest);
+    if (add && cost.tap && cost.manaCost === "" && !cost.sacrificeSelf && !cost.lifeCost) {
+      return [{ kind: "grant_mana_ability", ability: manaAbilityFromAdd(add) }];
+    }
+    if (add) {
+      // A mana ability with a cost this shape cannot carry: refuse rather
+      // than grant a free one.
+      return null;
+    }
+    const clause = compileSimpleClause(split.rest);
+    if (!clause || clause.leftover || clause.targetRequirements.length > 0) {
+      // A granted TARGETED ability would need its targets chosen against the
+      // granted permanent, which the grant carries no way to express yet.
+      return null;
+    }
+    return [
+      {
+        kind: "grant_activated",
+        ability: {
+          tap: cost.tap,
+          manaCost: cost.manaCost,
+          effects: clause.effects,
+          targetRequirements: [],
+          ...(cost.sacrificeSelf ? { sacrificeSelf: true } : {}),
+          ...(cost.lifeCost !== undefined ? { lifeCost: cost.lifeCost } : {}),
+        },
+      },
+    ];
+  }
+
+  // A bare keyword in quotes ("…have \"flying\""). Ward is spelled with an
+  // amount; "Ward—Pay 2 life" is a cost this engine cannot express, so it
+  // falls through to a clean miss.
+  const ward = body.match(/^Ward\s*\{(\d+)\}$/i);
+  if (ward?.[1]) {
+    return [{ kind: "grant_ward", amount: Number(ward[1]) }];
+  }
+  const keyword = KEYWORD_GRANTS[body.toLowerCase()];
+  if (keyword) {
+    return [{ kind: "grant_keyword", keyword }];
+  }
+  return null;
+}
+
+/**
+ * A self-contained "Whenever …, …" sentence compiled into a CardTrigger.
+ *
+ * The printed-trigger branch in the main sentence loop cannot be reused: it
+ * looks ahead into the following sentences (Scute Swarm's copy upgrade, Mask
+ * of Memory's loot fuse) and pushes straight onto the result. A quoted body
+ * has no neighbours, so it needs the head-plus-body core alone.
+ */
+function compileQuotedTrigger(sentence: string): CardTrigger | null {
+  const parts = sentence.match(/^((?:Landfall\s*[—-]\s*)?[^,]+?), (.+)$/i);
+  if (!parts?.[1] || !parts[2]) {
+    return null;
+  }
+  const head = parseTriggerHead(parts[1]) ?? parseSimpleTriggerHead(parts[1]);
+  if (!head) {
+    return null;
+  }
+  const { extraEvents, ...headRest } = head;
+  // A head that fires on several events is two abilities, not one; granting
+  // half of it would be worse than a clean miss.
+  if (extraEvents && extraEvents.length > 0) {
+    return null;
+  }
+  // The engine cannot fire a GRANTED dies-trigger: the grant is read from the
+  // live board, where the dead creature no longer is (see RULES_COVERAGE.md).
+  // Compiling it would put an ability on the card that never runs, and the
+  // compile-rate metric cannot see that by construction.
+  if (headRest.event === "dies" || headRest.event === "leaves_battlefield") {
+    return null;
+  }
+
+  // Intervening "if" (CR 603.4), read by the same shared vocabulary as
+  // printed triggers and activation gates.
+  let rest = parts[2].trim();
+  let condition: TriggerCondition | undefined;
+  const interveningIf = rest.match(/^if (.+?), (?:then )?(.+)$/i);
+  if (interveningIf?.[1] && interveningIf[2]) {
+    const parsed = parseEffectCondition(interveningIf[1].trim());
+    if (!parsed) {
+      return null;
+    }
+    condition = parsed;
+    rest = interveningIf[2].trim();
+  }
+  const inner = compileSimpleClause(rest);
+  if (!inner || inner.leftover || inner.targetRequirements.length > 0) {
+    return null;
+  }
+  return {
+    ...headRest,
+    ...(condition ? { condition } : {}),
+    effects: inner.effects,
+    targetRequirements: [],
+  };
+}
+
+/**
  * The predicate half: "get +1/+1 and have vigilance", "have double strike and
  * lifelink", "have flying, first strike, and protection from black and from
  * red". Returns null if any conjunct is unrecognised — a half-understood
  * grant would silently drop the rest of the card's text.
  */
 function parseGrantPredicate(phrase: string): ContinuousEffectData[] | null {
+  // A quoted ability is handled whole, BEFORE the verb split below: a body
+  // like "gets +1/+1 and has flying" inside the quotes would otherwise be
+  // torn in half by a split meant for the outer sentence.
+  const quoted = phrase.match(/^(?:have|has)\s+"(.+)"\.?$/i);
+  if (quoted?.[1]) {
+    return compileQuotedAbility(quoted[1]);
+  }
   const effects: ContinuousEffectData[] = [];
   // Split on the verbs rather than on "and", since a keyword list uses "and"
   // internally ("get +1/+1 and have vigilance and trample").
@@ -8380,6 +8520,25 @@ function compileStaticGrant(sentence: string): StaticAbility[] | null {
         ? grants.map((ability) => ({
             ...ability,
             selector: { ...ability.selector, legendary: true },
+          }))
+        : null;
+    }
+    // The World Tree: "As long as you control six or more lands, lands you
+    // control have …" — a COUNT gate on the controller's board, which is
+    // exactly what `ControlledGate.atLeast` was added for. The gate hangs on
+    // every ability the inner grant produced.
+    const countGate = phrase.match(/^you control (\w+) or more ([A-Za-z]+)s$/i);
+    if (countGate?.[1] && countGate[2]) {
+      const atLeast = parseCount(countGate[1]);
+      const noun = countGate[2].toLowerCase();
+      if (!atLeast || !SEARCH_CARD_TYPES.has(noun)) {
+        return null;
+      }
+      const gated = compileStaticGrant(body);
+      return gated
+        ? gated.map((ability) => ({
+            ...ability,
+            requiresControlled: { types: [noun], atLeast },
           }))
         : null;
     }
@@ -10215,43 +10374,6 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
       result.staticAbilities.push({
         selector: { scope: "all", types: ["land"] },
         effect: { kind: "add_types", types: [], subtypes: [landType[1].toLowerCase()] },
-      });
-      continue;
-    }
-
-    // Cryptolith Rite / Jaheira: permanents gain a tap mana ability.
-    const grantAnyMana = sentence.match(
-      /^(Creatures|Lands|Artifacts|Tokens) you control have "\{T\}: Add (one mana of any color|(?:\{[WUBRGC]\})+)\.?"$/i,
-    );
-    if (grantAnyMana?.[1] && grantAnyMana[2]) {
-      const typeOf: Record<string, string> = {
-        creatures: "creature",
-        lands: "land",
-        artifacts: "artifact",
-      };
-      const what = grantAnyMana[1].toLowerCase();
-      const anyColor = /any color/i.test(grantAnyMana[2]);
-      const produces: Partial<Record<"W" | "U" | "B" | "R" | "G" | "C", number>> = {};
-      if (!anyColor) {
-        for (const pip of grantAnyMana[2].match(/\{[WUBRGC]\}/g) ?? []) {
-          const color = pip[1] as "W" | "U" | "B" | "R" | "G" | "C";
-          produces[color] = (produces[color] ?? 0) + 1;
-        }
-      }
-      result.staticAbilities.push({
-        selector:
-          what === "tokens"
-            ? { scope: "controlled", tokenOnly: true }
-            : { scope: "controlled", types: [typeOf[what]!] },
-        effect: {
-          kind: "grant_mana_ability",
-          ability: {
-            produces: anyColor ? {} : produces,
-            producesOptions: [],
-            producesAnyColor: anyColor,
-            damageToController: 0,
-          },
-        },
       });
       continue;
     }

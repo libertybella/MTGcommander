@@ -20318,11 +20318,22 @@ describe("wave 170: granted quoted triggers on attachments", () => {
     expect(axe.definition.triggers[0]?.effects[0]).toMatchObject({ kind: "create_token" });
   });
 
-  it("leaves a quoted activated ability uncompiled", () => {
-    // Rewriting this the same way would put the ability on the Equipment,
-    // which would then tap itself instead of the creature.
+  it("grants the quoted mana ability to the host, not to the Equipment", () => {
+    // Wave 170 REFUSED this on purpose: rewriting it the way the quoted
+    // TRIGGER above is rewritten would have put the ability on the
+    // Equipment, which would then tap itself instead of the creature. The
+    // granted-ability primitive removes that reason — the grant lands on the
+    // equipped creature, so its {T} taps the creature. A documented drop
+    // that went stale in our favour.
     const mantle = compile("Paradise Mantle", "{0}", "Artifact — Equipment", MANTLE);
-    expect(mantle.notes.join(" ")).toContain("Add one mana of any color");
+    expect(mantle.notes).toEqual([]);
+    expect(mantle.definition.staticAbilities[0]).toMatchObject({
+      selector: { scope: "attached" },
+      effect: { kind: "grant_mana_ability", ability: { producesAnyColor: true } },
+    });
+    // Still a MANA ability, which must never use the stack: a granted
+    // "{T}: Add …" must not land in `grant_activated`.
+    expect(mantle.definition.staticAbilities[0]?.effect.kind).toBe("grant_mana_ability");
   });
 
   it("puts that many counters on the creature that dealt the damage", () => {
@@ -28591,6 +28602,251 @@ describe("primitive: a static that grants an activated ability", () => {
 
     const round = parseGameState(serializeGameState(game));
     expect(activatedOf(round, mine.id)[0]).toMatchObject({ manaCost: "", tap: true });
+  });
+});
+
+
+describe("wave 222: any ability, in quotes, on any subject", () => {
+  const compile = (name: string, manaCost: string, typeLine: string, oracleText: string) =>
+    compileOracleCard({
+      oracleId: name,
+      name,
+      manaCost,
+      typeLine,
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  const put = (game: GameState, definitionId: string, ownerId: string) => {
+    const card = createCardInstance({ definitionId, ownerId, zone: "battlefield" });
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === ownerId)!.zones.battlefield.push(card.id);
+    return card;
+  };
+
+  it("taps the LAND for the ability Bootleggers' Stash gave it", () => {
+    const stash = compile(
+      "Bootleggers' Stash",
+      "{5}{G}",
+      "Artifact",
+      'Lands you control have "{T}: Create a Treasure token."',
+    );
+    expect(stash.notes).toEqual([]);
+    expect(stash.definition.staticAbilities[0]).toMatchObject({
+      selector: { scope: "controlled", types: ["land"] },
+      effect: { kind: "grant_activated", ability: { tap: true, manaCost: "" } },
+    });
+
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const forestDef = createCardDefinition({ name: "Forest", typeLine: "Basic Land — Forest" });
+    for (const definition of [stash.definition, forestDef]) {
+      game.definitions[definition.id] = definition;
+    }
+    put(game, stash.definition.id, p1.id);
+    const forest = put(game, forestDef.id, p1.id);
+
+    const activated = applyAction(game, {
+      kind: "activate_ability",
+      playerId: p1.id,
+      cardId: forest.id,
+      abilityIndex: 0,
+      targets: [],
+    });
+    // The cost taps the FOREST. Wave 170 refused this whole family because
+    // its only tool put the ability on the granting card, which would then
+    // have tapped itself.
+    expect(activated.cards[forest.id]?.tapped).toBe(true);
+    const resolved = resolveTopOfStack(activated);
+    const treasures = Object.values(resolved.cards).filter(
+      (card) =>
+        card.zone === "battlefield" &&
+        resolved.definitions[card.definitionId]?.characteristics.subtypes.includes("treasure"),
+    );
+    expect(treasures).toHaveLength(1);
+  });
+
+  it("keeps a granted '{T}: Add …' a MANA ability, off the stack", () => {
+    const mantle = compile(
+      "Paradise Mantle",
+      "{0}",
+      "Artifact — Equipment",
+      'Equipped creature has "{T}: Add one mana of any color."\nEquip {1}',
+    );
+    expect(mantle.notes).toEqual([]);
+    // Not `grant_activated`: a mana ability must never use the stack, so the
+    // dispatch reads the BODY, not the subject.
+    expect(mantle.definition.staticAbilities[0]).toEqual({
+      selector: { scope: "attached" },
+      effect: {
+        kind: "grant_mana_ability",
+        ability: {
+          produces: {},
+          producesOptions: [],
+          producesAnyColor: true,
+          damageToController: 0,
+        },
+      },
+    });
+
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const bearDef = createCardDefinition({
+      name: "Bear",
+      typeLine: "Creature — Bear",
+      power: 2,
+      toughness: 2,
+    });
+    for (const definition of [mantle.definition, bearDef]) {
+      game.definitions[definition.id] = definition;
+    }
+    const equipment = put(game, mantle.definition.id, p1.id);
+    const bear = put(game, bearDef.id, p1.id);
+    game.cards[equipment.id]!.attachedTo = bear.id;
+
+    // The CREATURE taps for mana, and the Equipment does not.
+    expect(manaAbilitiesFor(game, bear.id).length).toBe(1);
+    expect(manaAbilitiesFor(game, equipment.id).length).toBe(0);
+  });
+
+  it("gives Insidious Roots' ability only to creature TOKENS", () => {
+    const roots = compile(
+      "Insidious Roots",
+      "{B}{G}",
+      "Enchantment",
+      'Creature tokens you control have "{T}: Add one mana of any color."',
+    );
+    expect(roots.notes).toEqual([]);
+    expect(roots.definition.staticAbilities[0]?.selector).toEqual({
+      scope: "controlled",
+      tokenOnly: true,
+      types: ["creature"],
+    });
+
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const bearDef = createCardDefinition({
+      name: "Bear",
+      typeLine: "Creature — Bear",
+      power: 2,
+      toughness: 2,
+    });
+    for (const definition of [roots.definition, bearDef]) {
+      game.definitions[definition.id] = definition;
+    }
+    put(game, roots.definition.id, p1.id);
+    const printed = put(game, bearDef.id, p1.id);
+    const token = put(game, bearDef.id, p1.id);
+    game.cards[token.id]!.isToken = true;
+
+    expect(manaAbilitiesFor(game, token.id).length).toBe(1);
+    // A printed creature is not a token: without this the selector could say
+    // "creatures you control" and every assertion above would still pass.
+    expect(manaAbilitiesFor(game, printed.id).length).toBe(0);
+  });
+
+  it("switches The World Tree's grant on at the sixth land", () => {
+    const tree = compile(
+      "The World Tree",
+      "",
+      "Land",
+      "This land enters tapped.\n{T}: Add {G}.\n" +
+        'As long as you control six or more lands, lands you control have "{T}: Add one mana of any color."',
+    );
+    // The fourth line (the ten-pip God tutor) is not in this fixture; what
+    // matters is that the gate rides the grant rather than being dropped.
+    expect(tree.definition.staticAbilities[0]).toEqual({
+      selector: { scope: "controlled", types: ["land"] },
+      effect: {
+        kind: "grant_mana_ability",
+        ability: {
+          produces: {},
+          producesOptions: [],
+          producesAnyColor: true,
+          damageToController: 0,
+        },
+      },
+      requiresControlled: { types: ["land"], atLeast: 6 },
+    });
+
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const forestDef = createCardDefinition({ name: "Forest", typeLine: "Basic Land — Forest" });
+    for (const definition of [tree.definition, forestDef]) {
+      game.definitions[definition.id] = definition;
+    }
+    const treeCard = put(game, tree.definition.id, p1.id);
+    for (let index = 0; index < 4; index += 1) {
+      put(game, forestDef.id, p1.id);
+    }
+    const firstForest = p1.zones.battlefield.find((id) => id !== treeCard.id)!;
+    // Five lands: the gate is a COUNT, not "do you control a land", so a
+    // board full of lands still fails it.
+    expect(manaAbilitiesFor(game, firstForest).some((ability) => ability.producesAnyColor)).toBe(
+      false,
+    );
+
+    const sixth = structuredClone(game);
+    put(sixth, forestDef.id, p1.id);
+    expect(
+      manaAbilitiesFor(sixth, firstForest).some((ability) => ability.producesAnyColor),
+    ).toBe(true);
+  });
+
+  it("refuses a granted dies-trigger rather than compiling a dead one", () => {
+    const shrine = compile(
+      "Grafted Sorrow",
+      "{2}{B}",
+      "Enchantment",
+      'Creatures you control have "Whenever this creature dies, you gain 1 life."',
+    );
+    // The engine cannot fire a granted dies-trigger — the grant is read from
+    // the live board, where the dead creature no longer is. Compiling it
+    // would put an ability on the card that never runs, and the compile-rate
+    // metric cannot see that by construction.
+    expect(shrine.notes.join(" ")).toContain("dies");
+    expect(shrine.definition.staticAbilities).toEqual([]);
+
+    // The same grant with an attack trigger is fine, so the refusal is about
+    // the EVENT and not about granted triggers in general.
+    const attacker = compile(
+      "Grafted Wisdom",
+      "{2}{W}",
+      "Enchantment",
+      'Creatures you control have "Whenever this creature attacks, you gain 1 life."',
+    );
+    expect(attacker.notes).toEqual([]);
+    expect(attacker.definition.staticAbilities[0]?.effect).toMatchObject({
+      kind: "grant_trigger",
+      trigger: { event: "attacks" },
+    });
+  });
+
+  it("refuses a quoted body it can only half read", () => {
+    // "Ward—Pay 2 life" is a cost this engine cannot express (Hexing
+    // Squelcher). A grant that compiled the word "Ward" and dropped the cost
+    // would score identically and play wrong.
+    const squelcher = compile(
+      "Hexing Squelcher",
+      "{2}{U}",
+      "Creature — Bird Wizard",
+      'Other creatures you control have "Ward—Pay 2 life."',
+    );
+    expect(squelcher.definition.staticAbilities).toEqual([]);
+    expect(squelcher.notes.join(" ")).toContain("Ward");
+
+    // A granted ability that TARGETS is refused for the same reason: the
+    // grant carries no way to choose targets against the granted permanent.
+    const targeter = compile(
+      "Grafted Malice",
+      "{2}{B}",
+      "Enchantment",
+      'Creatures you control have "{T}: Destroy target creature."',
+    );
+    expect(targeter.definition.staticAbilities).toEqual([]);
   });
 });
 
