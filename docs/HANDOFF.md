@@ -8,17 +8,29 @@ on-what lives in [CLAIMS.md](CLAIMS.md). This file is the tribal
 knowledge that isn't obvious from those: exact commands, traps, and
 the current state of play. Read all four before writing code.
 
-## State of play (checkpoint-91-phasing, 2026-08-23)
+## State of play (checkpoint-92-disjunctive-searches, 2026-08-23)
 
-- Branch `comprehensive-plan`, tags through `checkpoint-91-phasing`, pushed
-  to `fork`.
-- 1,297 tests green; top-2,000 compile rate **68.8% (1,382/2,009)**;
+- Branch `comprehensive-plan`, tags through
+  `checkpoint-92-disjunctive-searches`, pushed to `fork`.
+- 1,319 tests green; top-2,000 compile rate **69.3% (1,392/2,009)**;
   60-card sample 97% (CI floor now 90); oxlint silent; 800/800 fuzz seeds
   on a clean tree at the tag.
-- **Liberty's goal is 80% = 1,608 cards.** That is 226 more from here.
-  Twenty-four waves in this run flipped 29 cards, so the rate is about
-  **1.2 a wave** and 80% is on the order of 180 more waves. Say so; it is
+- **Liberty's goal is 80% = 1,608 cards.** That is 216 more from here.
+  Twenty-seven waves in this run flipped 39 cards, so the rate is about
+  **1.4 a wave** and 80% is on the order of 150 more waves. Say so; it is
   not reachable in one session.
+- **The best wave of the run was a COMPOSITION fix, not a new feature.**
+  Wave 254 took six cards by letting a search filter be a disjunction
+  across axes, and by letting a list carry a shared qualifier. Both
+  halves already existed and simply could not be combined. When picking
+  a wave, prefer "these two things cannot compose" over "this thing is
+  missing" — the composition fixes have been worth 3-6 cards and the
+  feature fixes 1-2.
+- **Add reach with a SECOND pattern, not a wider first one.** Wave 254's
+  new search sentence runs only after the existing one declines, so no
+  card already compiling could move. The one time this run that a
+  battle-tested path was widened in place (the intervening-`if` peel in
+  wave 253) it broke a working card the same hour.
 - **PHASING IS DONE** (wave 247), and it was worth more than the estimate
   said. The scary number was 115 `zone === "battlefield"` sites; eight of
   them were load-bearing. A flag on the instance, never a zone change.
