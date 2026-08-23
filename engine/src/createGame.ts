@@ -30,7 +30,16 @@ export function emptyManaPool(): ManaPool {
 function copyProtection(from: ProtectionFrom): ProtectionFrom {
   // Destructured for the same reason as `copyControlledGate`: a new
   // ProtectionFrom field must be a tsc error here, not a silent drop.
-  const { colors, types, subtypes, multicolored, colorless, everything, ...rest } = from;
+  const {
+    colors,
+    types,
+    subtypes,
+    multicolored,
+    colorless,
+    everything,
+    colorsOutsideCommanderIdentity,
+    ...rest
+  } = from;
   const exhaustive: Record<string, never> = rest;
   void exhaustive;
   return {
@@ -40,6 +49,7 @@ function copyProtection(from: ProtectionFrom): ProtectionFrom {
     ...(multicolored ? { multicolored: true } : {}),
     ...(colorless ? { colorless: true } : {}),
     ...(everything ? { everything: true } : {}),
+    ...(colorsOutsideCommanderIdentity ? { colorsOutsideCommanderIdentity: true } : {}),
   };
 }
 
@@ -394,6 +404,9 @@ export function createCardDefinition(
             : {}),
           ...(ability.exileSelf ? { exileSelf: true } : {}),
           ...(ability.legendaryDiscount ? { legendaryDiscount: true } : {}),
+          ...(ability.lifeCostFromCommanderColors
+            ? { lifeCostFromCommanderColors: true }
+            : {}),
           ...(ability.modes
             ? {
                 modes: ability.modes.map((mode) => ({

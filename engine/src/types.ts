@@ -1663,6 +1663,8 @@ export type TargetRequirement = {
   nonbasicOnly?: boolean;
   /** "target legendary creature" (Shizo). */
   legendaryOnly?: boolean;
+  /** Commander's Plate: "Equip commander" — only YOUR commander. */
+  commanderOnly?: boolean;
   /** "Enchant Forest": the target must have every listed subtype. */
   requiredSubtypes?: string[];
   /** "target blue spell" / "target blue permanent" (Red Elemental Blast). */
@@ -3078,6 +3080,12 @@ export type ActivatedAbility = {
   exileSelf?: boolean;
   /** Life paid as part of the cost (Doom Whisperer). */
   lifeCost?: number;
+  /**
+   * War Room: "Pay life equal to the number of colors in your commanders'
+   * color identity". A live count, so it cannot be a fixed `lifeCost`;
+   * read where the cost is checked and again where it is paid.
+   */
+  lifeCostFromCommanderColors?: boolean;
   /** How many {X} pips the activation cost carries — Treasure Vault's
    * "{X}{X}" charges the announced X twice (CR 601.2b applies to abilities
    * through CR 602.2b). */
@@ -3306,6 +3314,14 @@ export type ProtectionFrom = {
   multicolored?: boolean;
   /** Giver of Runes: "protection from colorless". */
   colorless?: boolean;
+  /**
+   * Commander's Plate: "protection from each color that's NOT in your
+   * commander's color identity". Resolved against the granting
+   * permanent's controller in the layer engine, where state is in hand;
+   * a commanderless player has no identity, so every colour is outside
+   * it and the Plate is a five-colour shield.
+   */
+  colorsOutsideCommanderIdentity?: boolean;
   /** Teferi's Protection, The One Ring: stops every source. */
   everything?: boolean;
 };

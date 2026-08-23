@@ -1,4 +1,5 @@
 import { characteristicsOf, isClass, isCommander, isCreature, isLand, isLegendary, isMainPhase } from "./cardTypes";
+import { abilityLifeCost } from "./commanderIdentity";
 import {
   abilitiesRemoved,
   activatedOf,
@@ -507,9 +508,10 @@ function abilityUsable(
       return false;
     }
   }
-  if (ability.lifeCost) {
+  const lifeDue = abilityLifeCost(state, playerId, ability);
+  if (lifeDue > 0) {
     const player = state.players.find((entry) => entry.id === playerId);
-    if (!player || player.life < ability.lifeCost) {
+    if (!player || player.life < lifeDue) {
       return false;
     }
   }

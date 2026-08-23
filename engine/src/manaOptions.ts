@@ -1,4 +1,5 @@
 import { cardMatchesSubtype, computedCard, controlsGate } from "./characteristicsEngine";
+import { commanderIdentityColors } from "./commanderIdentity";
 import { triggerConditionHolds } from "./triggers";
 import { COLOR_PIPS, MANA_COLORS } from "./mana";
 import type { CardDefinition, CardInstanceId, GameState, ManaAbility, ManaColor } from "./types";
@@ -97,27 +98,7 @@ function producibleLandColors(
 /** Command Tower: colors of mana symbols across a player's commanders'
  * printed costs and rules text — a close reading of CR 903.4 identity
  * (color indicators and back faces are not consulted; documented). */
-export function commanderIdentityColors(state: GameState, controllerId: string): ManaColor[] {
-  const found = new Set<string>();
-  const player = state.players.find((entry) => entry.id === controllerId);
-  for (const commanderId of player?.commander.commanderIds ?? []) {
-    const definition = state.definitions[state.cards[commanderId]?.definitionId ?? ""];
-    if (!definition) {
-      continue;
-    }
-    for (const color of definition.characteristics.colors) {
-      found.add(color);
-    }
-    for (const pip of definition.oracleText.matchAll(/\{([^}]+)\}/g)) {
-      for (const part of (pip[1] ?? "").split("/")) {
-        if (["W", "U", "B", "R", "G"].includes(part)) {
-          found.add(part);
-        }
-      }
-    }
-  }
-  return MANA_COLORS.filter((color) => color !== "C" && found.has(color));
-}
+export { commanderIdentityColors };
 
 export function manaChoiceColors(
   state: GameState,

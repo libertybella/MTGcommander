@@ -1,3 +1,4 @@
+import { colorsOutsideCommanderIdentity } from "./commanderIdentity";
 import type {
   ActivatedAbility,
   CardCharacteristics,
@@ -118,16 +119,35 @@ const LAYER_OF: Record<ContinuousEffectData["kind"], number> = {
 export function mergeProtection(a: ProtectionFrom, b: ProtectionFrom): ProtectionFrom {
   const union = (left?: string[], right?: string[]) =>
     left || right ? [...new Set([...(left ?? []), ...(right ?? [])])] : undefined;
-  const colors = union(a.colors, b.colors) as Color[] | undefined;
-  const types = union(a.types, b.types);
-  const subtypes = union(a.subtypes, b.subtypes);
+  // Destructured so a NEW ProtectionFrom field is a tsc error here rather
+  // than a silent drop. It was one: `colorsOutsideCommanderIdentity`
+  // merged away to nothing, which made the whole quality unreadable and
+  // the card a miss, with no note pointing anywhere near here.
+  const {
+    colors: aColors,
+    types: aTypes,
+    subtypes: aSubtypes,
+    multicolored: aMulti,
+    colorless: aColorless,
+    everything: aEverything,
+    colorsOutsideCommanderIdentity: aOutside,
+    ...aRest
+  } = a;
+  const exhaustive: Record<string, never> = aRest;
+  void exhaustive;
+  const colors = union(aColors, b.colors) as Color[] | undefined;
+  const types = union(aTypes, b.types);
+  const subtypes = union(aSubtypes, b.subtypes);
   return {
     ...(colors && colors.length > 0 ? { colors } : {}),
     ...(types && types.length > 0 ? { types } : {}),
     ...(subtypes && subtypes.length > 0 ? { subtypes } : {}),
-    ...(a.multicolored || b.multicolored ? { multicolored: true } : {}),
-    ...(a.colorless || b.colorless ? { colorless: true } : {}),
-    ...(a.everything || b.everything ? { everything: true } : {}),
+    ...(aMulti || b.multicolored ? { multicolored: true } : {}),
+    ...(aColorless || b.colorless ? { colorless: true } : {}),
+    ...(aEverything || b.everything ? { everything: true } : {}),
+    ...(aOutside || b.colorsOutsideCommanderIdentity
+      ? { colorsOutsideCommanderIdentity: true }
+      : {}),
   };
 }
 
@@ -860,12 +880,29 @@ function applyInstance(
           computed.keywords.push(effect.keyword);
         }
         break;
-      case "grant_protection":
+      case "grant_protection": {
         // Two protection abilities merge into one shape rather than stacking
         // as separate ones — every field ORs, so the merge cannot lose a
         // quality the way a last-writer-wins assignment would.
-        computed.protectionFrom = mergeProtection(computed.protectionFrom, effect.from);
+        //
+        // Commander's Plate resolves its colours HERE, against the
+        // GRANTING permanent's controller — "your commander" is the
+        // Equipment's controller, not the equipped creature's, and those
+        // come apart the moment control of the creature changes.
+        let from = effect.from;
+        if (from.colorsOutsideCommanderIdentity) {
+          const granterId = instance.sourceId
+            ? state.cards[instance.sourceId]?.controllerId
+            : undefined;
+          const outside = granterId
+            ? colorsOutsideCommanderIdentity(state, granterId)
+            : [];
+          const { colorsOutsideCommanderIdentity: _flag, ...rest } = from;
+          from = { ...rest, colors: [...(rest.colors ?? []), ...outside] };
+        }
+        computed.protectionFrom = mergeProtection(computed.protectionFrom, from);
         break;
+      }
       case "grant_ward":
         // Highest wins rather than stacking: CR 702.21c would have each ward
         // ability trigger separately, which the single pay-or-counter prompt

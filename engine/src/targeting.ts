@@ -90,6 +90,11 @@ function violatesCharacteristicFilter(
   cardId: CardInstanceId,
   requirement: TargetRequirement,
 ): boolean {
+  // "Equip commander": your commander, not merely a legendary creature —
+  // a legendary you did not name as commander must be refused.
+  if (requirement.commanderOnly && !isCommander(state, cardId)) {
+    return true;
+  }
   if (requirement.legendaryOnly && !characteristicsOf(state, cardId).supertypes.includes("legendary")) {
     return true;
   }

@@ -2569,6 +2569,7 @@ function parseTargetRequirement(value: unknown, label: string): TargetRequiremen
       : { minPower: expectNumber(value.minPower, `${label}.minPower`) }),
     ...(value.multicolored === true ? { multicolored: true } : {}),
     ...(value.legendaryOnly === true ? { legendaryOnly: true } : {}),
+    ...(value.commanderOnly === true ? { commanderOnly: true } : {}),
     ...(value.nonlegendaryOnly === true ? { nonlegendaryOnly: true } : {}),
     ...(value.nontoken === true ? { nontoken: true } : {}),
     ...(value.nonbasicOnly === true ? { nonbasicOnly: true } : {}),
@@ -3860,6 +3861,9 @@ function parseActivatedAbilities(value: unknown, label: string): ActivatedAbilit
       ...(entry.lifeCost === undefined
         ? {}
         : { lifeCost: expectNumber(entry.lifeCost, `${label}[${index}].lifeCost`) }),
+      ...(entry.lifeCostFromCommanderColors === true
+        ? { lifeCostFromCommanderColors: true }
+        : {}),
       ...(entry.timing === "sorcery" ? { timing: "sorcery" as const } : {}),
       ...(entry.requiresControlled === undefined
         ? {}
@@ -4629,6 +4633,9 @@ function parseProtectionFrom(value: unknown, label: string): ProtectionFrom {
     ...(value.multicolored === true ? { multicolored: true } : {}),
     ...(value.colorless === true ? { colorless: true } : {}),
     ...(value.everything === true ? { everything: true } : {}),
+    ...(value.colorsOutsideCommanderIdentity === true
+      ? { colorsOutsideCommanderIdentity: true }
+      : {}),
   };
 }
 

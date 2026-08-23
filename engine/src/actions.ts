@@ -6,6 +6,7 @@ import {
   controlsGate,
 } from "./characteristicsEngine";
 import { characteristicsOf, isCommander, isCreature, isInstant, isInstantOrSorcery, isLand, isLegendary, isMainPhase } from "./cardTypes";
+import { abilityLifeCost } from "./commanderIdentity";
 import { cloneGameState } from "./clone";
 import { costRelief, affinityArtifactDiscount, allBattlefieldCreatureCount, canPlayLandFromTop, canPlayLandsFromGraveyard, castCostReduction, castableFromTop, controlsCommander, creaturePower, freeEquipGranted, hasFlashGrant, activationNonManaPayment, altCastPayment, landDropAllowance, manaTapMultiplier, lockedByAbolisher, lockedFromCasting, noncreatureSpellCap, opponentControlsMoreLands, findFreeHandGrantIndex, opponentsCastLockedToHand, selfDiscountAmount, staticFreeCastCap, usesOncePerTurnFreeCast } from "./derived";
 import { eliminatePlayerInPlace } from "./elimination";
@@ -1317,7 +1318,8 @@ function applyActivateAbility(
   if (!canPayManaCost(player.mana, cost)) {
     throw new Error("Cannot pay mana cost");
   }
-  if (ability.lifeCost && player.life < ability.lifeCost) {
+  const lifeDue = abilityLifeCost(state, playerId, ability);
+  if (lifeDue > 0 && player.life < lifeDue) {
     throw new Error("Cannot pay that much life");
   }
   if (ability.sacrificeCost) {
@@ -1345,10 +1347,10 @@ function applyActivateAbility(
     throw new Error("Cannot pay that ability's cost");
   }
   let next = payManaCost(state, playerId, cost);
-  if (ability.lifeCost && ability.lifeCost > 0) {
+  if (lifeDue > 0) {
     const payer = next.players.find((entry) => entry.id === playerId)!;
-    payer.life -= ability.lifeCost;
-    next.log.push({ kind: "life_change", playerId, delta: -ability.lifeCost });
+    payer.life -= lifeDue;
+    next.log.push({ kind: "life_change", playerId, delta: -lifeDue });
   }
   if (ability.removeCounterCost) {
     const source = next.cards[cardId]!;

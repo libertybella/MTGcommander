@@ -1396,7 +1396,7 @@ export function bindCardEffect(
       const manaOptions = effect.addManaPerDestroyedOptions;
       const identity = manaOptions ? commanderIdentityColors(state, context.controllerId) : [];
       const manaColor = manaOptions
-        ? manaOptions.find((color) => identity.includes(color)) ?? manaOptions[0]
+        ? manaOptions.find((color) => identity.some((inside) => inside === color)) ?? manaOptions[0]
         : undefined;
       // Fell the Mighty: "power greater than target creature's power" — the
       // bar is read from the chosen target, so a sweep with no legal target

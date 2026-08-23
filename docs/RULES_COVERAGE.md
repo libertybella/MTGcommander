@@ -870,6 +870,33 @@ more questions it can now ask:
   (Bennie Bracks). Reads the existing per-player `createdTokenThisTurn`
   list, and asks whether the CONTROLLER is in it — an opponent's Treasure
   must not satisfy it.
+- **Commander colour identity** (CR 903.4) — `commanderIdentity.ts`. Lifted
+  out of `manaOptions.ts` into its own module because the CR 613 layer
+  engine needs it too, and `manaOptions` already imports the layer engine —
+  leaving it there would have made the arrow point both ways. It depends on
+  nothing but state and types, deliberately: the colour list is written out
+  rather than imported from `mana.ts`, which reaches back into the engine.
+
+  Commander's Plate grants "protection from each color that's NOT in your
+  commander's color identity", resolved in the layer engine against the
+  GRANTING permanent's controller. "Your commander" is the Equipment's
+  controller, not the equipped creature's, and those come apart the moment
+  control of the creature changes. A commanderless player has no identity,
+  so every colour is outside it and the Plate is a five-colour shield —
+  which is what the card says.
+
+  War Room pays life equal to that count, so it cannot ride the fixed
+  `lifeCost`: `abilityLifeCost` is read both where the activation is
+  checked and where it is paid, so the two can never disagree.
+
+  Two silent drops came out with it, neither visible to the compile metric.
+  `mergeProtection` listed its fields by hand, so a new `ProtectionFrom`
+  field merged away to nothing and the whole quality became unreadable —
+  it now destructures against `Record<string, never>`, the same guard
+  `copyProtection` already had. And the parsed activation cost is carried
+  into the ability at THREE separate construction sites; reaching only one
+  made War Room compile clean and cost nothing, which is worse than not
+  compiling. A test asserts the life cost survives the compiler.
 - **Cumulative upkeep** (CR 702.24) — Mystic Remora. One effect,
   `cumulative_upkeep`, rather than an `add_counter` beside an `unless_pays`:
   the age counter has to be ON before the cost is counted, and effects bind

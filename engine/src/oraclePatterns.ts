@@ -620,7 +620,7 @@ const MILL_COST = /Mill (a|one|two|three|\d+) cards?/i;
 const EXILE_GRAVEYARD_COST =
   /Exile (a|one|two|three|four|five|\d+) (?:(creature|artifact|land|instant|sorcery) )?cards? from your graveyard/i;
 const COST_UNIT =
-  "(?:\\{[^}]+\\})+|Sacrifice (?:~|this land|this creature|this artifact|this permanent)|Sacrifice (?:an? |another )(?:black )?(?:creature or artifact|artifact or creature|creature|artifact|land|Treasure|token)|Sacrifice (?:an? |(?:one|two|three|four|five|\\d+) )[A-Z][a-z]+s?|Sacrifice (?:two|three|four|five|six|seven|\\d+) (?:other )?(?:creatures|artifacts|lands|artifacts and\\/or creatures)|Exile ~|Pay \\d+ life|Tap an untapped (?:legendary )?creature you control|Remove (?:a|an|one|two|three|four|five|six|seven|eight|nine|ten|\\d+) (?:[-+]\\d\\/[-+]\\d|[a-z]+) counters? from ~|Put (?:a|an|one|two|three|\\d+) (?:[-+]\\d\\/[-+]\\d|[a-z]+) counters? on ~|Discard an? (?:creature|artifact|enchantment|land|instant|sorcery)? ?card|Mill (?:a|one|two|three|\\d+) cards?|Exile (?:a|one|two|three|four|five|\\d+) (?:(?:creature|artifact|land|instant|sorcery) )?cards? from your graveyard";
+  "(?:\\{[^}]+\\})+|Sacrifice (?:~|this land|this creature|this artifact|this permanent)|Sacrifice (?:an? |another )(?:black )?(?:creature or artifact|artifact or creature|creature|artifact|land|Treasure|token)|Sacrifice (?:an? |(?:one|two|three|four|five|\\d+) )[A-Z][a-z]+s?|Sacrifice (?:two|three|four|five|six|seven|\\d+) (?:other )?(?:creatures|artifacts|lands|artifacts and\\/or creatures)|Exile ~|Pay \\d+ life|Pay life equal to the number of colors in your commanders?['\u2019]? color identity|Tap an untapped (?:legendary )?creature you control|Remove (?:a|an|one|two|three|four|five|six|seven|eight|nine|ten|\\d+) (?:[-+]\\d\\/[-+]\\d|[a-z]+) counters? from ~|Put (?:a|an|one|two|three|\\d+) (?:[-+]\\d\\/[-+]\\d|[a-z]+) counters? on ~|Discard an? (?:creature|artifact|enchantment|land|instant|sorcery)? ?card|Mill (?:a|one|two|three|\\d+) cards?|Exile (?:a|one|two|three|four|five|\\d+) (?:(?:creature|artifact|land|instant|sorcery) )?cards? from your graveyard";
 
 function splitAbility(sentence: string): { costText: string; rest: string } | null {
   // "Metalcraft — {T}: …" — the ability word is flavor (Mox Opal).
@@ -650,6 +650,7 @@ function parseAbilityCost(
   xCost: number;
   sacrificeSelf: boolean;
   lifeCost?: number;
+  lifeCostFromCommanderColors?: boolean;
   sacrificeCost?:
     | "creature"
     | "another_creature"
@@ -729,6 +730,13 @@ function parseAbilityCost(
   }
   const lifeMatch = costText.match(LIFE_COST);
   const lifeCost = lifeMatch?.[1] ? Number(lifeMatch[1]) : undefined;
+  // War Room: the life is a LIVE count, not a number, so it cannot ride
+  // `lifeCost` — a fixed reading would charge 0 in a colourless deck and
+  // never change when the commander did.
+  const lifeCostFromCommanderColors =
+    /\bPay life equal to the number of colors in your commanders?['\u2019]? color identity\b/i.test(
+      costText,
+    ) || undefined;
 
   // Costs paid with something other than mana, life or a permanent: counters
   // on or off the source, a card out of hand, library or graveyard. Each is
@@ -763,6 +771,7 @@ function parseAbilityCost(
     symbols.length === 0 &&
     !sacrificeSelf &&
     !lifeCost &&
+    !lifeCostFromCommanderColors &&
     !sacrificeCost &&
     !tapCreature &&
     !removeCounterCost &&
@@ -818,6 +827,7 @@ function parseAbilityCost(
     xCost,
     sacrificeSelf,
     ...(lifeCost ? { lifeCost } : {}),
+    ...(lifeCostFromCommanderColors ? { lifeCostFromCommanderColors: true } : {}),
     ...(sacrificeCost ? { sacrificeCost } : {}),
     ...(sacrificeSubtype ? { sacrificeSubtype } : {}),
     ...((sacrificeCount ?? subtypeCount) && (sacrificeCount ?? subtypeCount)! > 1
@@ -9101,6 +9111,16 @@ function parseProtectionPhrase(phrase: string): ProtectionFrom | null {
 }
 
 function parseOneProtectionQuality(word: string): ProtectionFrom | null {
+  // Commander's Plate. Resolved in the layer engine against the granting
+  // permanent's controller, not baked to colours here — the identity can
+  // change mid-game when a commander does.
+  if (
+    /^each color that['\u2019]s not in your commander['\u2019]s color identity$/i.test(
+      word.trim(),
+    )
+  ) {
+    return { colorsOutsideCommanderIdentity: true };
+  }
   const text = word.trim().replace(/\.$/, "").trim();
   if (/^everything$/i.test(text)) {
     return { everything: true };
@@ -9307,7 +9327,7 @@ function compileQuotedAbility(quoted: string): ContinuousEffectData[] | null {
     // never use the stack — it belongs in the older `grant_mana_ability`,
     // which the Cryptolith Rite path already reads.
     const add = parseAddMana(split.rest);
-    if (add && cost.tap && cost.manaCost === "" && !cost.sacrificeSelf && !cost.lifeCost) {
+    if (add && cost.tap && cost.manaCost === "" && !cost.sacrificeSelf && !cost.lifeCost && !cost.lifeCostFromCommanderColors) {
       return [{ kind: "grant_mana_ability", ability: manaAbilityFromAdd(add) }];
     }
     if (add) {
@@ -9331,6 +9351,9 @@ function compileQuotedAbility(quoted: string): ContinuousEffectData[] | null {
           targetRequirements: [],
           ...(cost.sacrificeSelf ? { sacrificeSelf: true } : {}),
           ...(cost.lifeCost !== undefined ? { lifeCost: cost.lifeCost } : {}),
+          ...(cost.lifeCostFromCommanderColors
+            ? { lifeCostFromCommanderColors: true }
+            : {}),
         },
       },
     ];
@@ -10363,6 +10386,9 @@ function extractActivatedModalModes(card: OracleCard): ActivatedModalExtraction 
       ...(cost.millCost !== undefined ? { millCost: cost.millCost } : {}),
       ...(cost.exileFromGraveyardCost ? { exileFromGraveyardCost: cost.exileFromGraveyardCost } : {}),
       ...(cost.lifeCost ? { lifeCost: cost.lifeCost } : {}),
+      ...(cost.lifeCostFromCommanderColors
+        ? { lifeCostFromCommanderColors: true }
+        : {}),
       modes,
       effects: [],
       targetRequirements: [],
@@ -11474,6 +11500,18 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
     }
 
     // Excalibur: equip restricted to legendary creatures.
+    const commanderEquip = sentence.match(/^Equip commander \{?(\d+)\}?$/i);
+    if (commanderEquip?.[1]) {
+      result.activated.push({
+        tap: false,
+        manaCost: `{${commanderEquip[1]}}`,
+        effects: [{ kind: "attach", cardId: "self", toId: { type: "chosen", index: 0 } }],
+        targetRequirements: [{ kind: "own_creature", commanderOnly: true }],
+        timing: "sorcery",
+      });
+      continue;
+    }
+
     const restrictedEquip = sentence.match(/^Equip legendary creature \{?(\d+)\}?$/i);
     if (restrictedEquip?.[1]) {
       result.activated.push({
@@ -13546,7 +13584,7 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
         continue;
       }
       // Springleaf Drum-class: a tap mana ability with a mana activation cost.
-      if (add && cost.tap && cost.manaCost !== "" && !cost.sacrificeSelf && !cost.lifeCost) {
+      if (add && cost.tap && cost.manaCost !== "" && !cost.sacrificeSelf && !cost.lifeCost && !cost.lifeCostFromCommanderColors) {
         result.manaAbilities.push({ ...manaAbilityFromAdd(add), costMana: cost.manaCost });
         continue;
       }
@@ -13559,7 +13597,8 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
         cost.sacrificeCost !== "another_creature" &&
         cost.sacrificeCost !== "another_black_creature" &&
         cost.sacrificeCost !== "another_creature_or_artifact" &&
-        !cost.lifeCost
+        !cost.lifeCost &&
+        !cost.lifeCostFromCommanderColors
       ) {
         result.manaAbilities.push({
           ...manaAbilityFromAdd(add),
@@ -13601,6 +13640,9 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
         ...(cost.millCost !== undefined ? { millCost: cost.millCost } : {}),
         ...(cost.exileFromGraveyardCost ? { exileFromGraveyardCost: cost.exileFromGraveyardCost } : {}),
         ...(cost.lifeCost ? { lifeCost: cost.lifeCost } : {}),
+        ...(cost.lifeCostFromCommanderColors
+          ? { lifeCostFromCommanderColors: true }
+          : {}),
         ...(cost.exileSelf ? { exileSelf: true } : {}),
         // Reassembling Skeleton: a self-return body activates from the yard.
         ...(/^Return (?:~|this card) from your graveyard to (?:the battlefield|your hand)/i.test(

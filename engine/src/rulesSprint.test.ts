@@ -17,7 +17,7 @@ import {
   putSpellOnStack,
   resolveTopOfStack,
 } from "./index";
-import { activatedOf, cardMatchesSubtype, computedCard, dynamicCountOf, triggersOf } from "./characteristicsEngine";
+import { activatedOf, cardMatchesSubtype, computedCard, dynamicCountOf, mergeProtection, triggersOf } from "./characteristicsEngine";
 import { mostCommonControlledCreatureType } from "./effects";
 import { attackLimitFor, blockAllowanceFor, castCostReduction, castableFromTop, drawCapFor, freeEquipGranted, hasFlashGrant, landDropAllowance, maxHandSizeOf, noncreatureSpellCap, permanentsControlledBy, playerHasHexproof, reliefAdjustedCost, selfDiscountAmount, wouldEnterTapped } from "./derived";
 import { hasKeyword } from "./keywords";
@@ -25,6 +25,7 @@ import { dispatchEventsInPlace, triggerConditionHolds } from "./triggers";
 import { applyCombatDamage, blockRestriction, declareAttackers, declareBlockers } from "./combat";
 import { advanceStep, beginNextLivingTurnInPlace } from "./turn";
 import { colorsAmongControlled, commanderIdentityColors, manaAbilitiesFor, manaTapOptionsFor } from "./manaOptions";
+import { abilityLifeCost, colorsOutsideCommanderIdentity } from "./commanderIdentity";
 import { addRestrictedMana, emptyManaPools, manaRiderFires, parseManaCost, payManaCost, restrictionAdmits, type ManaPurpose } from "./mana";
 import { applyStateBasedActionsInPlace } from "./status";
 import { legalActions, sacrificeColorMatches, sacrificeScopeMatches } from "./legalActions";
@@ -34887,5 +34888,212 @@ describe("wave 266: cumulative upkeep", () => {
       effects: [{ kind: "cumulative_upkeep", playerId: "controller", cost: "{1}" }],
       targetRequirements: [],
     });
+  });
+});
+
+describe("wave 267: commander colour identity", () => {
+  const withCommander = (typeLine: string, oracleText = "") => {
+    const { game, p1, p2 } = twoPlayers();
+    const commander = createCardDefinition({
+      name: "Chief",
+      typeLine,
+      oracleText,
+      power: 2,
+      toughness: 2,
+    });
+    game.definitions[commander.id] = commander;
+    const card = createCardInstance({
+      definitionId: commander.id,
+      ownerId: p1.id,
+      zone: "command",
+    });
+    game.cards[card.id] = card;
+    p1.commander.commanderIds = [card.id];
+    return { game, p1, p2, commanderId: card.id };
+  };
+
+  it("reads colours from the commander and from its rules text", () => {
+    const { game, p1 } = withCommander(
+      "Legendary Creature — Human",
+      "{T}: Add {R}. Sacrifice a creature: draw a card.",
+    );
+    // The card itself is colourless here; the {R} pip is what puts red in
+    // the identity (CR 903.4), which is the half a colours-only read misses.
+    expect(commanderIdentityColors(game, p1.id)).toEqual(["R"]);
+    expect(colorsOutsideCommanderIdentity(game, p1.id)).toEqual(["W", "U", "B", "G"]);
+  });
+
+  it("gives a commanderless player no identity at all", () => {
+    const { game, p2 } = withCommander("Legendary Creature — Human");
+    expect(commanderIdentityColors(game, p2.id)).toEqual([]);
+    // …so every colour is outside it, which makes Commander's Plate a
+    // five-colour shield rather than no shield.
+    expect(colorsOutsideCommanderIdentity(game, p2.id)).toEqual(["W", "U", "B", "R", "G"]);
+  });
+
+  it("merges the outside-identity flag instead of dropping it", () => {
+    // This is the bug that nearly shipped: mergeProtection listed its fields
+    // by hand, so a new one merged away to nothing and the whole quality
+    // became unreadable — with no note pointing anywhere near it.
+    expect(
+      mergeProtection({ colorsOutsideCommanderIdentity: true }, {}),
+    ).toEqual({ colorsOutsideCommanderIdentity: true });
+    expect(
+      mergeProtection({ colors: ["R"] }, { colorsOutsideCommanderIdentity: true }),
+    ).toEqual({ colors: ["R"], colorsOutsideCommanderIdentity: true });
+  });
+
+  it("resolves the Plate's colours against the EQUIPMENT's controller", () => {
+    const { game, p1, p2 } = withCommander(
+      "Legendary Creature — Human",
+      "{T}: Add {R}.",
+    );
+    const plate = createCardDefinition({
+      name: "Plate",
+      typeLine: "Artifact — Equipment",
+      staticAbilities: [
+        {
+          selector: { scope: "attached" },
+          effect: { kind: "grant_protection", from: { colorsOutsideCommanderIdentity: true } },
+        },
+      ],
+    });
+    game.definitions[plate.id] = plate;
+    const equipment = createCardInstance({
+      definitionId: plate.id,
+      ownerId: p1.id,
+      zone: "battlefield",
+    });
+    game.cards[equipment.id] = equipment;
+    p1.zones.battlefield.push(equipment.id);
+
+    const bearDef = createCardDefinition({
+      name: "Bear",
+      typeLine: "Creature — Bear",
+      power: 2,
+      toughness: 2,
+    });
+    game.definitions[bearDef.id] = bearDef;
+    const bear = createCardInstance({
+      definitionId: bearDef.id,
+      ownerId: p2.id,
+      zone: "battlefield",
+    });
+    // A creature an OPPONENT controls, wearing your Equipment: "your
+    // commander" is the Equipment's controller, and reading the creature's
+    // instead would give it the wrong four colours.
+    bear.controllerId = p2.id;
+    game.cards[bear.id] = bear;
+    p2.zones.battlefield.push(bear.id);
+    equipment.attachedTo = bear.id;
+
+    const protection = computedCard(game, bear.id)?.protectionFrom;
+    expect(protection?.colors?.slice().sort()).toEqual(["B", "G", "U", "W"]);
+    expect(protection?.colors).not.toContain("R");
+  });
+
+  it("charges War Room the live number of identity colours", () => {
+    const { game, p1 } = withCommander(
+      "Legendary Creature — Human",
+      "{T}: Add {R} or {W}.",
+    );
+    const ability = { lifeCostFromCommanderColors: true };
+    expect(abilityLifeCost(game, p1.id, ability)).toBe(2);
+    // A fixed lifeCost would have been frozen at compile time; this has to
+    // follow the commander, so a mono-colour deck pays 1 and not 2.
+    const mono = withCommander("Legendary Creature — Human", "{T}: Add {R}.");
+    expect(abilityLifeCost(mono.game, mono.p1.id, ability)).toBe(1);
+    // And the plain fixed cost still reads as itself.
+    expect(abilityLifeCost(game, p1.id, { lifeCost: 3 })).toBe(3);
+  });
+
+  it("restricts Equip commander to your actual commander", () => {
+    const { game, p1, commanderId } = withCommander("Legendary Creature — Human");
+    const onField = { ...game.cards[commanderId]!, zone: "battlefield" as const };
+    game.cards[commanderId] = onField;
+    p1.zones.battlefield.push(commanderId);
+
+    const legendDef = createCardDefinition({
+      name: "Other Legend",
+      typeLine: "Legendary Creature — Human",
+      power: 2,
+      toughness: 2,
+    });
+    game.definitions[legendDef.id] = legendDef;
+    const legend = createCardInstance({
+      definitionId: legendDef.id,
+      ownerId: p1.id,
+      zone: "battlefield",
+    });
+    game.cards[legend.id] = legend;
+    p1.zones.battlefield.push(legend.id);
+
+    const requirement: TargetRequirement = { kind: "own_creature", commanderOnly: true };
+    expect(
+      isChosenTargetLegal(game, requirement, { type: "creature", cardId: commanderId }, p1.id),
+    ).toBe(true);
+    // A legendary creature you did not name as commander is not "commander".
+    expect(
+      isChosenTargetLegal(game, requirement, { type: "creature", cardId: legend.id }, p1.id),
+    ).toBe(false);
+  });
+
+  it("round trips all three new fields", () => {
+    const { game, p1 } = withCommander("Legendary Creature — Human");
+    const definition = createCardDefinition({
+      name: "Plate",
+      typeLine: "Artifact — Equipment",
+      staticAbilities: [
+        {
+          selector: { scope: "attached" },
+          effect: { kind: "grant_protection", from: { colorsOutsideCommanderIdentity: true } },
+        },
+      ],
+      activated: [
+        {
+          tap: true,
+          manaCost: "{3}",
+          lifeCostFromCommanderColors: true,
+          effects: [{ kind: "draw", playerId: "controller", count: 1 }],
+          targetRequirements: [{ kind: "own_creature", commanderOnly: true }],
+        },
+      ],
+    });
+    game.definitions[definition.id] = definition;
+    const round = parseGameState(serializeGameState(game));
+    const back = round.definitions[definition.id];
+    expect(back?.staticAbilities[0]?.effect).toEqual({
+      kind: "grant_protection",
+      from: { colorsOutsideCommanderIdentity: true },
+    });
+    expect(back?.activated[0]?.lifeCostFromCommanderColors).toBe(true);
+    expect(back?.activated[0]?.targetRequirements[0]).toEqual({
+      kind: "own_creature",
+      commanderOnly: true,
+    });
+    expect(p1.id).toBeDefined();
+  });
+
+  it("keeps War Room's life cost through the compiler", () => {
+    const compiled = compileOracleCard({
+      oracleId: "wr",
+      name: "War Room",
+      manaCost: "",
+      typeLine: "Land",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "{T}: Add {C}.\n{3}, {T}, Pay life equal to the number of colors in your commanders' color identity: Draw a card.",
+    });
+    expect(compiled.notes).toEqual([]);
+    const draw = compiled.definition.activated.find((ability) =>
+      ability.effects.some((effect) => effect.kind === "draw"),
+    );
+    // Three construction sites carry the parsed cost through. Reaching only
+    // one of them made this compile clean and cost nothing, which is worse
+    // than not compiling at all.
+    expect(draw?.lifeCostFromCommanderColors).toBe(true);
   });
 });
