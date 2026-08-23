@@ -189,7 +189,13 @@ export function enterOwnerZoneInPlace(
     queueEnterReplacementChoicesInPlace(state, cardId);
     queueEnterBattlefieldTriggersInPlace(state, cardId);
   }
-  if (fromZone === "battlefield" && leftCounters > 0) {
+  // Every battlefield exit dispatches this, not only one that carried
+  // counters. The Ozolith wanted the counters, so the gate used to live
+  // here; but "when ~ leaves the battlefield" is a real trigger on cards
+  // that have no counters at all, and gating the EVENT made those
+  // unfirable. The counter test now sits in the matcher, where it belongs
+  // to the trigger that asks it.
+  if (fromZone === "battlefield") {
     dispatchEventsInPlace(state, [
       { kind: "leaves_battlefield", cardId, controllerId: diedControllerId, amount: leftCounters },
     ]);
@@ -428,7 +434,13 @@ export function moveCardInPlace(
     queueEnterReplacementChoicesInPlace(state, cardId);
     queueEnterBattlefieldTriggersInPlace(state, cardId);
   }
-  if (located.zone === "battlefield" && leftCounters > 0) {
+  // Every battlefield exit dispatches this, not only one that carried
+  // counters. The Ozolith wanted the counters, so the gate used to live
+  // here; but "when ~ leaves the battlefield" is a real trigger on cards
+  // that have no counters at all, and gating the EVENT made those
+  // unfirable. The counter test now sits in the matcher, where it belongs
+  // to the trigger that asks it.
+  if (located.zone === "battlefield") {
     dispatchEventsInPlace(state, [
       { kind: "leaves_battlefield", cardId, controllerId: diedControllerId, amount: leftCounters },
     ]);

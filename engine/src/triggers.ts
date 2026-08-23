@@ -819,9 +819,22 @@ function triggerMatchesEvent(
   }
   // The Ozolith: a counter-carrying permanent left the battlefield.
   if (event.kind === "leaves_battlefield") {
+    if (trigger.event !== "leaves_battlefield") {
+      return false;
+    }
+    // Animate Dead watches ITSELF leave. By the time this runs it is gone
+    // from the battlefield, so the look-back below has to offer it — the
+    // same courtesy `dies` already gets. The Ozolith watches what its
+    // controller loses, which stays the default.
+    if (trigger.watch === "self") {
+      return event.cardId === watcher.id;
+    }
+    // The Ozolith: "if it had counters on it". That test used to gate the
+    // EVENT, which made every counterless leave invisible to any trigger.
+    // It belongs to the trigger that asks it, which is this one.
     return (
-      trigger.event === "leaves_battlefield" &&
       (trigger.watch ?? "controlled") === "controlled" &&
+      event.amount > 0 &&
       event.controllerId === watcher.controllerId &&
       subjectMatchesFilter(state, event.cardId, trigger.subjectFilter, watcher)
     );
@@ -1233,9 +1246,16 @@ export function dispatchEventsInPlace(state: GameState, events: EngineEvent[]): 
       consider(card);
     }
   }
+  // A permanent that has left still gets to see its own departure (CR
+  // 603.10a look-back). Both event kinds, deduped by card: a permanent that
+  // died dispatches BOTH, and considering it twice would fire its trigger
+  // twice.
   const deadConsidered = new Set<CardInstanceId>();
   for (const event of events) {
-    if (event.kind !== "dies" || deadConsidered.has(event.cardId)) {
+    if (
+      (event.kind !== "dies" && event.kind !== "leaves_battlefield") ||
+      deadConsidered.has(event.cardId)
+    ) {
       continue;
     }
     deadConsidered.add(event.cardId);

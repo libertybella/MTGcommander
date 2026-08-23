@@ -10,7 +10,7 @@ import {
 } from "./characteristicsEngine";
 import { castableFromTop } from "./derived";
 import { controlsMatching } from "./legalActions";
-import { enterOwnerZone, findCardZone, removeCardFromCurrentZone } from "./zones";
+import { enterOwnerZone, findCardZone, moveCard, removeCardFromCurrentZone } from "./zones";
 import { applyEffects, bindCardEffects } from "./effects";
 import { isLiving, livingPlayerCount, nextLivingPlayerId } from "./players";
 import { applyStateBasedActionsInPlace, redirectPriorityIfLost } from "./status";
@@ -546,6 +546,27 @@ export function resolveTopOfStack(state: GameState): GameState {
     if (dashed && dashedCard && dashedCard.zone === "battlefield") {
       dashedCard.summoningSick = false;
       next.delayedEndStep.push({ cardId: top.sourceId, action: "hand" });
+    }
+  }
+  // Animate Dead: the enchanted card is in a GRAVEYARD, so it is put onto
+  // the battlefield under this spell's controller and only then attached.
+  // Both happen here, before state-based actions run — a loose Aura is
+  // destroyed by one, and an enter trigger would leave exactly that gap.
+  if (
+    definition?.reanimateOnEnter &&
+    attachTo &&
+    next.cards[top.sourceId]?.zone === "battlefield" &&
+    next.cards[attachTo]?.zone === "graveyard"
+  ) {
+    next = moveCard(next, attachTo, "battlefield");
+    const arrived = next.cards[attachTo];
+    if (arrived?.zone === "battlefield") {
+      arrived.controllerId = top.controllerId;
+      next.cards[top.sourceId]!.reanimatedCardId = attachTo;
+    } else {
+      // It never arrived, so there is nothing to enchant and the Aura is
+      // a loose one. Let the state-based action below take it.
+      attachTo = null;
     }
   }
   if (attachTo && next.cards[top.sourceId]?.zone === "battlefield") {

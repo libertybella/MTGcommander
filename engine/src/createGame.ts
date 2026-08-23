@@ -112,6 +112,7 @@ export function createCardDefinition(
         | "modes"
         | "protectionFrom"
         | "enchant"
+        | "reanimateOnEnter"
         | "loyalty"
         | "loyaltyAbilities"
         | "noMaxHandSize"
@@ -447,6 +448,7 @@ export function createCardDefinition(
       ? { protectionFrom: copyProtection(input.protectionFrom) }
       : {}),
     ...(input.enchant ? { enchant: input.enchant } : {}),
+    ...(input.reanimateOnEnter ? { reanimateOnEnter: true } : {}),
     ...(input.loyalty && input.loyalty > 0 ? { loyalty: input.loyalty } : {}),
     ...(input.loyaltyAbilities && input.loyaltyAbilities.length > 0
       ? {

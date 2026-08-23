@@ -39063,3 +39063,152 @@ describe("wave 289: a tutor across two zones, and a gate on announced X", () => 
     expect(round.prompts[0]).toMatchObject({ kind: "search_library", alsoGraveyard: true });
   });
 });
+
+describe("wave 291: an Aura cast on a card in a graveyard", () => {
+  const ANIMATE_TEXT =
+    'Enchant creature card in a graveyard\nWhen Animate Dead enters, if it\'s on the battlefield, it loses "enchant creature card in a graveyard" and gains "enchant creature put onto the battlefield with Animate Dead." Return enchanted creature card to the battlefield under your control and attach Animate Dead to it.\nWhen Animate Dead leaves the battlefield, that creature\'s controller sacrifices it.';
+
+  const board = (graveyardOwner: 0 | 1 = 0) => {
+    const { game, p1, p2 } = twoPlayers();
+    const auraDefinition = createCardDefinition({
+      name: "Animate Dead",
+      typeLine: "Enchantment — Aura",
+      manaCost: "{1}{B}",
+      enchant: "creature",
+      reanimateOnEnter: true,
+      targetRequirements: [{ kind: "graveyard_creature_card" }],
+      triggers: [
+        {
+          event: "leaves_battlefield",
+          watch: "self",
+          effects: [{ kind: "sacrifice", cardId: "reanimated" }],
+          targetRequirements: [],
+        },
+      ],
+    });
+    game.definitions[auraDefinition.id] = auraDefinition;
+    const aura = createCardInstance({
+      definitionId: auraDefinition.id,
+      ownerId: p1.id,
+      zone: "hand",
+    });
+    game.cards[aura.id] = aura;
+    p1.zones.hand.push(aura.id);
+
+    const corpseDefinition = createCardDefinition({
+      name: "Runeclaw Bear",
+      typeLine: "Creature — Bear",
+      manaCost: "{1}{G}",
+      power: 2,
+      toughness: 2,
+    });
+    game.definitions[corpseDefinition.id] = corpseDefinition;
+    const holder = graveyardOwner === 0 ? p1 : p2;
+    const corpse = createCardInstance({
+      definitionId: corpseDefinition.id,
+      ownerId: holder.id,
+      zone: "graveyard",
+    });
+    game.cards[corpse.id] = corpse;
+    holder.zones.graveyard.push(corpse.id);
+
+    game.priorityPlayerId = p1.id;
+    return { game, p1, p2, auraId: aura.id, corpseId: corpse.id };
+  };
+
+  const cast = (game: GameState, auraId: string, corpseId: string) =>
+    resolveTopOfStack(
+      putSpellOnStack(game, auraId, [{ type: "creature", cardId: corpseId }]),
+    );
+
+  it("compiles Animate Dead whole", () => {
+    const compiled = compileOracleCard({
+      oracleId: "animate-dead",
+      name: "Animate Dead",
+      manaCost: "{1}{B}",
+      typeLine: "Enchantment — Aura",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText: ANIMATE_TEXT,
+    });
+    expect(compiled.notes).toEqual([]);
+    // The graveyard is where the TARGET lives; "creature" is what it ends up
+    // attached to, and that is what the loose-Aura sweep reads.
+    expect(compiled.definition.enchant).toBe("creature");
+    expect(compiled.definition.reanimateOnEnter).toBe(true);
+    expect(compiled.definition.targetRequirements).toEqual([
+      { kind: "graveyard_creature_card" },
+    ]);
+    expect(compiled.definition.triggers).toEqual([
+      {
+        event: "leaves_battlefield",
+        watch: "self",
+        effects: [{ kind: "sacrifice", cardId: "reanimated" }],
+        targetRequirements: [],
+      },
+    ]);
+  });
+
+  it("puts the creature onto the battlefield and stays attached to it", () => {
+    const { game, p1, auraId, corpseId } = board();
+    const done = cast(game, auraId, corpseId);
+    expect(done.cards[corpseId]?.zone).toBe("battlefield");
+    expect(done.cards[corpseId]?.controllerId).toBe(p1.id);
+    // The Aura survived. A loose Aura is destroyed by a state-based action, so
+    // reanimating in an enter TRIGGER instead of during resolution would have
+    // killed it in the gap.
+    expect(done.cards[auraId]?.zone).toBe("battlefield");
+    expect(done.cards[auraId]?.attachedTo).toBe(corpseId);
+    expect(done.cards[auraId]?.reanimatedCardId).toBe(corpseId);
+  });
+
+  it("takes a creature out of an opponent's graveyard, under your control", () => {
+    const { game, p1, p2, auraId, corpseId } = board(1);
+    const done = cast(game, auraId, corpseId);
+    expect(done.cards[corpseId]?.zone).toBe("battlefield");
+    // Owned by the opponent, controlled by the caster — that is the card.
+    expect(done.cards[corpseId]?.ownerId).toBe(p2.id);
+    expect(done.cards[corpseId]?.controllerId).toBe(p1.id);
+  });
+
+  it("sacrifices the creature when the Aura leaves", () => {
+    const { game, auraId, corpseId } = board();
+    const done = cast(game, auraId, corpseId);
+    const removed = applyEffect(done, { kind: "sacrifice", cardId: auraId });
+    // The trigger has to name the creature AFTER attachedTo is torn down, so
+    // it reads the recorded reanimatedCardId instead.
+    const resolved = removed.stack.length > 0 ? resolveTopOfStack(removed) : removed;
+    expect(resolved.cards[corpseId]?.zone).toBe("graveyard");
+  });
+
+  it("goes to the graveyard itself when the creature dies", () => {
+    const { game, auraId, corpseId } = board();
+    const done = cast(game, auraId, corpseId);
+    const killed = applyEffect(done, { kind: "sacrifice", cardId: corpseId });
+    // A loose Aura is destroyed by a state-based action (CR 704.5m).
+    expect(killed.cards[corpseId]?.zone).toBe("graveyard");
+    expect(killed.cards[auraId]?.zone).toBe("graveyard");
+  });
+
+  it("goes to the graveyard when its target is gone before it resolves", () => {
+    const { game, auraId, corpseId } = board();
+    const onStack = putSpellOnStack(game, auraId, [{ type: "creature", cardId: corpseId }]);
+    // Someone exiles the corpse in response.
+    const exiled = moveCard(onStack, corpseId, "exile");
+    const done = resolveTopOfStack(exiled);
+    expect(done.cards[auraId]?.zone).toBe("graveyard");
+    expect(done.cards[corpseId]?.zone).toBe("exile");
+  });
+
+  it("round trips the flag and the recorded creature", () => {
+    const { game, auraId, corpseId } = board();
+    const done = cast(game, auraId, corpseId);
+    const round = parseGameState(serializeGameState(done));
+    expect(round.cards[auraId]?.reanimatedCardId).toBe(corpseId);
+    expect(round.cards[auraId]?.attachedTo).toBe(corpseId);
+    const definitionId = done.cards[auraId]!.definitionId;
+    expect(round.definitions[definitionId]?.reanimateOnEnter).toBe(true);
+  });
+});

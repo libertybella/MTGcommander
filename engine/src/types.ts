@@ -116,6 +116,14 @@ export type CardDefinition = {
   protectionFrom?: ProtectionFrom;
   /** Aura: cast targeting a creature; enters attached (CR 303.4). */
   enchant?: "creature" | "land" | "creature_or_planeswalker_own";
+  /**
+   * Animate Dead: the Aura is cast on a creature card in a GRAVEYARD, and
+   * that card is put onto the battlefield under this spell's controller
+   * before the Aura attaches to it. Done during resolution rather than in
+   * an enter trigger, because a loose Aura dies to a state-based action and
+   * the gap between the two would be exactly that.
+   */
+  reanimateOnEnter?: boolean;
   /** "As this Aura enters, choose a color" (Utopia Sprawl). */
   /** "As this enters, choose a color". The Thriving lands exclude their own
    * colour, so the choice is a real restriction rather than free. */
@@ -503,6 +511,13 @@ export type CardInstance = {
   deathtouched: boolean;
   /** Auras and Equipment: what this permanent is attached to. */
   attachedTo: CardInstanceId | null;
+  /**
+   * Animate Dead: the creature this permanent put onto the battlefield.
+   * Kept apart from `attachedTo` because that link is torn down as the
+   * permanent leaves, and the leave trigger has to know what to sacrifice
+   * AFTER it has gone.
+   */
+  reanimatedCardId?: CardInstanceId;
   /**
    * Imprint (CR 702.16 flavour, mechanically CR 610.3): cards exiled
    * WITH this permanent, which its own abilities then read. Chrome Mox

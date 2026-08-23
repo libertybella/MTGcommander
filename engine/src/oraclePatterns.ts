@@ -56,6 +56,7 @@ export type CompiledOracleText = {
   modes?: SpellMode[];
   protectionFrom?: ProtectionFrom;
   enchant?: "creature" | "land" | "creature_or_planeswalker_own";
+  reanimateOnEnter?: boolean;
   chooseColorOnEnter?: boolean;
   chooseColorExcludes?: Color;
   enchantedTappedBonus?: { color: Color | "chosen"; amount: number };
@@ -11376,6 +11377,53 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
     const wardLine = sentence.match(/^Ward \{(\d+)\}$/i);
     if (wardLine?.[1]) {
       result.ward = Number(wardLine[1]);
+      continue;
+    }
+
+    // Animate Dead: an Aura cast on a creature card in a GRAVEYARD. The
+    // `enchant` value stays "creature" because that is what it is attached
+    // to once it resolves, and it is the loose-Aura state-based action that
+    // reads it — the graveyard is where the TARGET lives, not the host.
+    if (/^Enchant creature card in a graveyard$/i.test(sentence)) {
+      result.enchant = "creature";
+      if (
+        !result.targetRequirements.some(
+          (requirement) => requirement.kind === "graveyard_creature_card",
+        )
+      ) {
+        result.targetRequirements.push({ kind: "graveyard_creature_card" });
+      }
+      continue;
+    }
+
+    // The rest of the same card. The printed text is a legacy contortion —
+    // the Aura rewrites its own enchant clause — but all it does is put the
+    // enchanted card onto the battlefield and attach. Matched whole rather
+    // than in pieces, because no part of it means anything alone.
+    if (
+      /^When ~ enters, if it['’]s on the battlefield, it loses "enchant creature card in a graveyard" and gains "enchant creature put onto the battlefield with ~\." Return enchanted creature card to the battlefield under your control and attach ~ to it$/i.test(
+        sentence,
+      )
+    ) {
+      result.reanimateOnEnter = true;
+      continue;
+    }
+
+    // "When ~ leaves the battlefield, that creature's controller sacrifices
+    // it." — the creature it ANIMATED, which `attachedTo` can no longer
+    // name by the time this fires.
+    if (
+      /^When ~ leaves the battlefield, that creature['’]s controller sacrifices it$/i.test(
+        sentence,
+      )
+    ) {
+      result.triggers.push({
+        event: "leaves_battlefield",
+        // It watches ITSELF go, not what its controller loses.
+        watch: "self",
+        effects: [{ kind: "sacrifice", cardId: "reanimated" }],
+        targetRequirements: [],
+      });
       continue;
     }
 

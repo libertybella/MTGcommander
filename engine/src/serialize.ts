@@ -516,6 +516,9 @@ export function parseGameState(json: string): GameState {
         card.attachedTo === undefined || card.attachedTo === null
           ? null
           : expectString(card.attachedTo, "card.attachedTo"),
+      ...(card.reanimatedCardId === undefined
+        ? {}
+        : { reanimatedCardId: expectString(card.reanimatedCardId, "card.reanimatedCardId") }),
       loyaltyActivatedThisTurn: card.loyaltyActivatedThisTurn === true,
       ...(card.skipNextUntap === true ? { skipNextUntap: true } : {}),
       ...(card.goadedBy === undefined
@@ -1310,6 +1313,7 @@ export function parseGameState(json: string): GameState {
               };
             })(),
           }),
+      ...(def.reanimateOnEnter === true ? { reanimateOnEnter: true } : {}),
       ...(def.enchant === "creature" ||
       def.enchant === "land" ||
       def.enchant === "creature_or_planeswalker_own"

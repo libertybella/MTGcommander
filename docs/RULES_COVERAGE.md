@@ -870,6 +870,34 @@ more questions it can now ask:
   (Bennie Bracks). Reads the existing per-player `createdTokenThisTurn`
   list, and asks whether the CONTROLLER is in it — an opponent's Treasure
   must not satisfy it.
+- **`reanimateOnEnter`** — Animate Dead. An Aura cast on a creature card in
+  a GRAVEYARD. The card is put onto the battlefield under the spell's
+  controller and the Aura attaches to it, both during RESOLUTION rather than
+  in an enter trigger — a loose Aura is destroyed by a state-based action,
+  and a trigger would leave exactly that gap. `enchant` stays `"creature"`,
+  because that is what it ends up attached to and what the loose-Aura sweep
+  reads; the graveyard is where the TARGET lives, not the host.
+
+  The printed text is a legacy contortion — the Aura rewrites its own
+  enchant clause mid-resolution — and is matched whole, because no part of
+  it means anything alone.
+
+- **A permanent may watch ITSELF leave the battlefield.** Two gaps stood
+  between Animate Dead's last line and it ever running:
+
+  - `leaves_battlefield` was only DISPATCHED when the permanent carried
+    +1/+1 counters. That gate was The Ozolith's ("if it had counters on
+    it"), but it lived on the event, so every counterless departure was
+    invisible to every trigger. The event now fires on any battlefield exit
+    and the counter test sits in the matcher, with the trigger that asks it.
+  - The matcher forced `watch: "controlled"`, and the look-back that lets a
+    departed permanent see its own event covered `dies` only. Both now admit
+    `watch: "self"`, deduped by card so a permanent that DIED — which
+    dispatches both events — does not fire its trigger twice.
+
+  `CardInstance.reanimatedCardId` records what was animated, kept apart from
+  `attachedTo` because that link is torn down as the permanent leaves and
+  the trigger has to name the creature after it has gone.
 - **Definitions that compile but cannot LOAD** — a whole class, now guarded.
   `server/src/definitionLoads.test.ts` round-trips every compiled definition
   through `serializeGameState`/`parseGameState`, over the vendored sample

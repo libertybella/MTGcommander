@@ -200,6 +200,7 @@ function compileOneFace(card: OracleCard, definitionId: string): OracleCompileRe
       ? { protectionFrom: compiled.protectionFrom }
       : {}),
     ...(compiled.enchant ? { enchant: compiled.enchant } : {}),
+    ...(compiled.reanimateOnEnter ? { reanimateOnEnter: true } : {}),
     ...(compiled.noMaxHandSize ? { noMaxHandSize: true } : {}),
     ...(compiled.handSizeEffect ? { handSizeEffect: compiled.handSizeEffect } : {}),
     ...(compiled.opponentsDrawCap === undefined

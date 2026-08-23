@@ -329,6 +329,13 @@ function bindCardId(
     if (selector === "chosen_card") {
       return context.chosenCardId ?? null;
     }
+    // Animate Dead: the creature this permanent animated. Not `host` —
+    // that reads `attachedTo`, which is already gone by the time the
+    // leaves-the-battlefield trigger asks.
+    if (selector === "reanimated") {
+      const source = context.sourceId ? state.cards[context.sourceId] : undefined;
+      return source?.reanimatedCardId ?? null;
+    }
     // Freed from the Real: the aura's host ("enchanted creature").
     if (selector === "host") {
       const source = context.sourceId ? state.cards[context.sourceId] : undefined;
