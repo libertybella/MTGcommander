@@ -38211,3 +38211,209 @@ describe("wave 285: greater than EACH other creature", () => {
     expect(p1.id).toBeDefined();
   });
 });
+
+describe("wave 286: one or two creatures that can't block", () => {
+  const twoBears = () => {
+    const { game, p1, p2 } = twoPlayers();
+    const bear = createCardDefinition({
+      name: "Runeclaw Bear",
+      typeLine: "Creature — Bear",
+      power: 2,
+      toughness: 2,
+    });
+    game.definitions[bear.id] = bear;
+    const make = (owner: typeof p1) => {
+      const card = createCardInstance({
+        definitionId: bear.id,
+        ownerId: owner.id,
+        zone: "battlefield",
+      });
+      game.cards[card.id] = card;
+      owner.zones.battlefield.push(card.id);
+      return card;
+    };
+    return { game, p1, p2, attacker: make(p1), first: make(p2), second: make(p2) };
+  };
+
+  it("compiles Untimely Malfunction's three modes whole", () => {
+    const compiled = compileOracleCard({
+      oracleId: "untimely-malfunction",
+      name: "Untimely Malfunction",
+      manaCost: "{1}{R}",
+      typeLine: "Instant",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "Choose one —\n• Destroy target artifact.\n• Change the target of target spell or ability with a single target.\n• One or two target creatures can't block this turn.",
+    });
+    expect(compiled.notes).toEqual([]);
+    const modes = compiled.definition.modes;
+    expect(modes?.length).toBe(3);
+    expect(modes?.[0]).toMatchObject({
+      targetRequirements: [{ kind: "artifact" }],
+      effects: [{ kind: "move_card", cardId: { type: "chosen", index: 0 }, toZone: "graveyard" }],
+    });
+    expect(modes?.[1]).toMatchObject({
+      targetRequirements: [{ kind: "spell" }],
+      effects: [{ kind: "retarget", target: { type: "chosen", index: 0 } }],
+    });
+    // The second slot is optional, which is the whole of "one OR two".
+    expect(modes?.[2]?.targetRequirements).toEqual([
+      { kind: "creature" },
+      { kind: "creature", optional: true },
+    ]);
+    expect(modes?.[2]?.effects).toEqual([
+      { kind: "restrict_until_eot", cardId: { type: "chosen", index: 0 }, cantBlock: true },
+      { kind: "restrict_until_eot", cardId: { type: "chosen", index: 1 }, cantBlock: true },
+    ]);
+  });
+
+  it("takes one target or two, but not none and not three", () => {
+    const { game, p1, p2, first, second } = twoBears();
+    const requirements = [
+      { kind: "creature" as const },
+      { kind: "creature" as const, optional: true },
+    ];
+    const at = (id: string) => ({ type: "creature" as const, cardId: id });
+    expect(() =>
+      validateChosenTargets(game, requirements, [at(first.id)], p1.id),
+    ).not.toThrow();
+    expect(() =>
+      validateChosenTargets(game, requirements, [at(first.id), at(second.id)], p1.id),
+    ).not.toThrow();
+    expect(() => validateChosenTargets(game, requirements, [], p1.id)).toThrow(/target/i);
+    // The same creature twice would be two restrictions on one body, which is
+    // not what "two target creatures" buys.
+    expect(() =>
+      validateChosenTargets(game, requirements, [at(first.id), at(first.id)], p1.id),
+    ).toThrow(/once/i);
+    expect(p2.id).toBeDefined();
+  });
+
+  it("actually stops the blocks it names, and only those", () => {
+    const { game, attacker, first, second } = twoBears();
+    const stopped = applyEffect(
+      applyEffect(game, { kind: "restrict_until_eot", cardId: first.id, cantBlock: true }),
+      { kind: "restrict_until_eot", cardId: second.id, cantBlock: true },
+    );
+    expect(blockRestriction(stopped, attacker.id, first.id)).not.toBeNull();
+    expect(blockRestriction(stopped, attacker.id, second.id)).not.toBeNull();
+  });
+
+  it("leaves the other creature able to block when only one is named", () => {
+    const { game, attacker, first, second } = twoBears();
+    const stopped = applyEffect(game, {
+      kind: "restrict_until_eot",
+      cardId: first.id,
+      cantBlock: true,
+    });
+    expect(blockRestriction(stopped, attacker.id, first.id)).not.toBeNull();
+    // The second bear was never targeted. If it could not block either, the
+    // mode would read "creatures can't block" and the targeting would be a lie.
+    expect(blockRestriction(stopped, attacker.id, second.id)).toBeNull();
+  });
+
+  it("wears off during cleanup", () => {
+    const { game, attacker, first } = twoBears();
+    const stopped = applyEffect(game, {
+      kind: "restrict_until_eot",
+      cardId: first.id,
+      cantBlock: true,
+    });
+    stopped.turn.phase = "ending";
+    stopped.turn.step = "end";
+    const cleaned = advanceSteps(stopped, 1);
+    expect(cleaned.turn.step).toBe("cleanup");
+    expect(blockRestriction(cleaned, attacker.id, first.id)).toBeNull();
+  });
+
+  it("reads the counted heads apart", () => {
+    const compile = (line: string) =>
+      compileOracleCard({
+        oracleId: "probe",
+        name: "Probe",
+        manaCost: "{1}{R}",
+        typeLine: "Instant",
+        power: null,
+        toughness: null,
+        printedKeywords: [],
+        imageUrl: "",
+        oracleText: line,
+      });
+    // "Two" requires both, "up to two" requires neither, and the singular
+    // head takes one slot rather than two optional ones.
+    expect(compile("Two target creatures can't block this turn.").definition.targetRequirements).toEqual([
+      { kind: "creature" },
+      { kind: "creature" },
+    ]);
+    expect(
+      compile("Up to two target creatures can't block this turn.").definition.targetRequirements,
+    ).toEqual([
+      { kind: "creature", optional: true },
+      { kind: "creature", optional: true },
+    ]);
+    expect(compile("Target creature can't block this turn.").definition.effects).toEqual([
+      { kind: "restrict_until_eot", cardId: { type: "chosen", index: 0 }, cantBlock: true },
+    ]);
+    // "Can't attack" is the same clause and must not be read as a block.
+    expect(compile("Target creature can't attack this turn.").definition.effects).toEqual([
+      { kind: "restrict_until_eot", cardId: { type: "chosen", index: 0 }, cantAttack: true },
+    ]);
+  });
+
+  it("carries the mode through the definition mapper and the wire", () => {
+    // The four mapper layers have silently dropped a field four times in
+    // this push. A mode's restriction is worth checking on the real card
+    // rather than on a hand-built definition that skips the compiler.
+    const compiled = compileOracleCard({
+      oracleId: "untimely-malfunction",
+      name: "Untimely Malfunction",
+      manaCost: "{1}{R}",
+      typeLine: "Instant",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "Choose one —\n• Destroy target artifact.\n• Change the target of target spell or ability with a single target.\n• One or two target creatures can't block this turn.",
+    });
+    const { game } = twoBears();
+    const definition = createCardDefinition(compiled.definition);
+    game.definitions[definition.id] = definition;
+    const round = parseGameState(serializeGameState(game));
+    const mode = round.definitions[definition.id]?.modes?.[2];
+    expect(mode?.targetRequirements).toEqual([
+      { kind: "creature" },
+      { kind: "creature", optional: true },
+    ]);
+    expect(mode?.effects).toEqual([
+      { kind: "restrict_until_eot", cardId: { type: "chosen", index: 0 }, cantBlock: true },
+      { kind: "restrict_until_eot", cardId: { type: "chosen", index: 1 }, cantBlock: true },
+    ]);
+  });
+
+  it("round trips the optional slot and the restriction", () => {
+    const { game } = twoBears();
+    const definition = createCardDefinition({
+      name: "Untimely Malfunction",
+      typeLine: "Instant",
+      targetRequirements: [{ kind: "creature" }, { kind: "creature", optional: true }],
+      effects: [
+        { kind: "restrict_until_eot", cardId: { type: "chosen", index: 0 }, cantBlock: true },
+        { kind: "restrict_until_eot", cardId: { type: "chosen", index: 1 }, cantBlock: true },
+      ],
+    });
+    game.definitions[definition.id] = definition;
+    const round = parseGameState(serializeGameState(game));
+    expect(round.definitions[definition.id]?.targetRequirements).toEqual([
+      { kind: "creature" },
+      { kind: "creature", optional: true },
+    ]);
+    expect(round.definitions[definition.id]?.effects).toEqual([
+      { kind: "restrict_until_eot", cardId: { type: "chosen", index: 0 }, cantBlock: true },
+      { kind: "restrict_until_eot", cardId: { type: "chosen", index: 1 }, cantBlock: true },
+    ]);
+  });
+});

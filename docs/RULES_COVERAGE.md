@@ -870,6 +870,19 @@ more questions it can now ask:
   (Bennie Bracks). Reads the existing per-player `createdTokenThisTurn`
   list, and asks whether the CONTROLLER is in it — an opponent's Treasure
   must not satisfy it.
+- **"One or two target creatures can't block this turn"** — Untimely
+  Malfunction. The COUNT is a clause-level shape, not a noun-phrase one: a
+  phrase is a single requirement and cannot say "one or two". So the clause
+  emits two slots and the head decides how many are required — "two" needs
+  both, "one or two" needs the first, "up to two" needs neither — which is
+  the same trailing-optional shape "Exile up to two target" already uses.
+  Targeting rejects zero, rejects three, and rejects the same creature
+  twice; an untargeted creature is left able to block, which is the whole
+  difference between this and a one-sided blocking ban.
+
+  Untimely Malfunction's other two modes already compiled: "Destroy target
+  artifact" and the `retarget` of a spell with a single target. A modal card
+  only counts when EVERY bullet reads, so the card was failing on this one.
 - **`countFromGreatestControlledPower`** — Selvala, Heart of the Wilds. The
   GREATEST power among creatures you control: not the source's own
   (`countFromPower`) and not their sum, which are the two neighbouring

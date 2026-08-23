@@ -2861,6 +2861,35 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     };
   }
 
+  // Untimely Malfunction: "One or two target creatures can't block this
+  // turn." The count is a CLAUSE-level shape — a noun phrase is one
+  // requirement and cannot say "one or two" — so it becomes two slots and
+  // the head decides how many of them are required: "two" needs both,
+  // "one or two" needs the first, "up to two" needs neither.
+  const cantAct = sentence.match(
+    /^(?:(One or two|Up to two|Two) target creatures|Target creature) can't (block|attack) this turn$/i,
+  );
+  if (cantAct?.[2]) {
+    const head = cantAct[1]?.toLowerCase();
+    const slots = head ? 2 : 1;
+    const required = head === "two" ? 2 : head === "up to two" ? 0 : 1;
+    const cant =
+      cantAct[2].toLowerCase() === "block"
+        ? ({ cantBlock: true } as const)
+        : ({ cantAttack: true } as const);
+    return {
+      targetRequirements: Array.from({ length: slots }, (_unused, index) => ({
+        kind: "creature" as const,
+        ...(index >= required ? { optional: true } : {}),
+      })),
+      effects: Array.from({ length: slots }, (_unused, index) => ({
+        kind: "restrict_until_eot" as const,
+        cardId: { type: "chosen" as const, index },
+        ...cant,
+      })),
+    };
+  }
+
   const unblockable = sentence.match(
     /^(target creature( you control)?|~)(?: with power (\d+) or less)? can't be blocked this turn$/i,
   );
