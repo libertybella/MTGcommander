@@ -879,7 +879,7 @@ export function autoTapPlan(
       producers.push({
         cardId: card.id,
         manaIndex,
-        options: manaTapOptionsFor(ability, state, playerId),
+        options: manaTapOptionsFor(ability, state, playerId, card.id),
         produces: ability.produces,
       });
     });

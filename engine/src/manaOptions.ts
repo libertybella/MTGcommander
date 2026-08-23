@@ -104,7 +104,22 @@ export function manaChoiceColors(
   state: GameState,
   controllerId: string,
   scope: NonNullable<ManaAbility["anyColorAmong"]>,
+  sourceId?: CardInstanceId,
 ): ManaColor[] {
+  if (scope === "imprinted") {
+    // Chrome Mox: the colours of the cards exiled WITH this permanent.
+    // Nothing imprinted means no colours, so the gate refuses the tap —
+    // an unimprinted Mox taps for nothing, which is the card.
+    const source = sourceId ? state.cards[sourceId] : undefined;
+    const found = new Set<string>();
+    for (const imprintedId of source?.imprintedCardIds ?? []) {
+      const definition = state.definitions[state.cards[imprintedId]?.definitionId ?? ""];
+      for (const color of definition?.characteristics.colors ?? []) {
+        found.add(color);
+      }
+    }
+    return (["W", "U", "B", "R", "G"] as const).filter((color) => found.has(color));
+  }
   if (scope === "legendary" || scope === "legendary_permanents") {
     return colorsAmongControlled(state, controllerId, scope);
   }
@@ -133,7 +148,7 @@ function manaGateSatisfied(
   // Mox Amber / Exotic Orchard: an empty choice set means no mana at all.
   if (
     ability.anyColorAmong &&
-    manaChoiceColors(state, controllerId, ability.anyColorAmong).length === 0
+    manaChoiceColors(state, controllerId, ability.anyColorAmong, sourceId).length === 0
   ) {
     return false;
   }
@@ -337,13 +352,14 @@ export function manaTapOptionsFor(
   ability: ManaAbility,
   state?: GameState,
   controllerId?: string,
+  sourceId?: CardInstanceId,
 ): ManaColor[] | null {
   // Mox Amber / Exotic Orchard / Reflecting Pool: the choice is limited to
   // what the board offers. Without state (client preview) every pip shows;
   // the server validates.
   if (ability.anyColorAmong) {
     return state && controllerId
-      ? manaChoiceColors(state, controllerId, ability.anyColorAmong)
+      ? manaChoiceColors(state, controllerId, ability.anyColorAmong, sourceId)
       : [...COLOR_PIPS];
   }
   if (ability.producesAnyColor) {

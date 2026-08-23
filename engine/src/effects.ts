@@ -1677,6 +1677,16 @@ export function bindCardEffect(
         ...(effect.notLegendary ? { notLegendary: true } : {}),
       };
     }
+    case "imprint": {
+      const imprintId = bindCardId(state, effect.cardId, context);
+      // No source means nothing to record the exile against, and an
+      // imprint that forgets what it exiled is a Mox that taps for
+      // nothing — refuse rather than exile into the void.
+      if (!imprintId || !context.sourceId) {
+        return null;
+      }
+      return { kind: "imprint", cardId: imprintId, sourceId: context.sourceId };
+    }
     case "counter_spell": {
       const chosen = chosenTargetAt(context, effect.target.index, state);
       if (!chosen || chosen.type !== "spell") {
@@ -3945,6 +3955,23 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
             cost: effect.cost.repeat(age),
             effects: [{ kind: "sacrifice", cardId: effect.cardId }],
           });
+        }
+        break;
+      }
+      case "imprint": {
+        const host = state.cards[effect.sourceId];
+        const exiling = state.cards[effect.cardId];
+        if (!host || host.zone !== "battlefield" || !exiling) {
+          next = cloneGameState(state);
+          break;
+        }
+        next = moveCard(state, effect.cardId, "exile");
+        const recorded = next.cards[effect.sourceId];
+        if (recorded) {
+          recorded.imprintedCardIds = [
+            ...(recorded.imprintedCardIds ?? []),
+            effect.cardId,
+          ];
         }
         break;
       }

@@ -444,6 +444,14 @@ export function parseGameState(json: string): GameState {
         card.timestamp === undefined ? 0 : expectNumber(card.timestamp, "card.timestamp"),
       isToken: card.isToken === true,
       deathtouched: card.deathtouched === true,
+      ...(card.imprintedCardIds === undefined
+        ? {}
+        : {
+            imprintedCardIds: expectStringArray(
+              card.imprintedCardIds,
+              "card.imprintedCardIds",
+            ),
+          }),
       attachedTo:
         card.attachedTo === undefined || card.attachedTo === null
           ? null
@@ -2325,6 +2333,7 @@ function parseCardFilter(value: unknown, label: string): CardFilter {
     filter !== "land" &&
     filter !== "nonland" &&
     filter !== "noncreature_nonland" &&
+    filter !== "nonartifact_nonland" &&
     filter !== "equipment" &&
     filter !== "basic_land" &&
     filter !== "token_creature" &&
@@ -3133,6 +3142,7 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
       };
     }
     case "sacrifice":
+    case "imprint":
       return {
         kind,
         cardId: parseCardIdSelector(value.cardId, `${label}.cardId`),
@@ -5011,7 +5021,8 @@ function parseManaAbilities(value: unknown, label: string): ManaAbility[] {
       entry.anyColorAmong === "legendary_permanents" ||
       entry.anyColorAmong === "opponent_lands" ||
       entry.anyColorAmong === "your_lands" ||
-      entry.anyColorAmong === "commander_identity"
+      entry.anyColorAmong === "commander_identity" ||
+      entry.anyColorAmong === "imprinted"
         ? { anyColorAmong: entry.anyColorAmong }
         : {}),
       ...(entry.producesChosenColor === true ? { producesChosenColor: true } : {}),
@@ -5647,6 +5658,13 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
       ofCardId: expectString(value.ofCardId, `${label}.ofCardId`),
       ...(value.untilEot === true ? { untilEot: true } : {}),
       ...(value.keepAbilities === true ? { keepAbilities: true } : {}),
+    };
+  }
+  if (kind === "imprint") {
+    return {
+      kind,
+      cardId: expectString(value.cardId, `${label}.cardId`),
+      sourceId: expectString(value.sourceId, `${label}.sourceId`),
     };
   }
   if (kind === "tap" || kind === "untap" || kind === "tap_or_untap" || kind === "sacrifice") {

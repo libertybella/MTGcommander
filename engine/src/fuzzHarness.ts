@@ -441,7 +441,7 @@ function nextAction(state: GameState, rng: () => number): GameAction | null {
       const abilities = manaAbilitiesFor(state, action.cardId);
       const manaIndex = Math.floor(rng() * abilities.length);
       const ability = abilities[manaIndex]!;
-      const options = manaTapOptionsFor(ability, state, playerId);
+      const options = manaTapOptionsFor(ability, state, playerId, action.cardId);
       if (options && options.length === 0) {
         return { kind: "pass_priority", playerId };
       }

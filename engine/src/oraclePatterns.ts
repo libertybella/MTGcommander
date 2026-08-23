@@ -2029,6 +2029,14 @@ function parseAddMana(rest: string): AddManaResult | null {
   if (/^Add one mana of any color in your commander'?s color identity$/i.test(text)) {
     return { kind: "any_color_among", scope: "commander_identity" };
   }
+  // Chrome Mox: the colours of the card exiled with it. An unimprinted
+  // Mox has an empty set, and the mana gate refuses the tap — which is
+  // exactly what the card does.
+  if (
+    /^Add one mana of any of the exiled card['\u2019]s colors$/i.test(text)
+  ) {
+    return { kind: "any_color_among", scope: "imprinted" };
+  }
   if (/^Add one mana of any color$/i.test(text)) {
     return { kind: "any_color" };
   }
@@ -11152,6 +11160,33 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
         event: "upkeep",
         effects: [
           { kind: "cumulative_upkeep", playerId: "controller", cost: cumulative[1] },
+        ],
+        targetRequirements: [],
+      });
+      continue;
+    }
+
+    // Chrome Mox: "Imprint — When ~ enters, you may exile a nonartifact,
+    // nonland card from your hand." The ability word is flavour (CR
+    // 207.2c); the exile is what matters, and it must be recorded ON the
+    // source, since the mana ability reads the exiled card's colours.
+    const imprintEtb = sentence.match(
+      /^Imprint\s*[\u2014-]\s*When ~ enters, you may exile an? (nonartifact, nonland|noncreature, nonland) card from your hand$/i,
+    );
+    if (imprintEtb?.[1]) {
+      const handFilter =
+        imprintEtb[1].toLowerCase() === "nonartifact, nonland"
+          ? ("nonartifact_nonland" as const)
+          : ("noncreature_nonland" as const);
+      result.triggers.push({
+        event: "enter_battlefield",
+        effects: [
+          {
+            kind: "choose_card",
+            chooserId: "controller",
+            sources: [{ playerId: "controller", zone: "hand", filter: handFilter }],
+            thenEffects: [{ kind: "imprint", cardId: "chosen_card" }],
+          },
         ],
         targetRequirements: [],
       });

@@ -36,7 +36,7 @@ import { applyResolveCreatureType, applyResolvePay, legalEnterCopyIds, searchMat
 import { parseGameState, serializeGameState } from "./serialize";
 import { fillLibraries } from "./testSupport";
 import { advanceSteps } from "./turn";
-import type { CardDefinition, CardEffect, GameState, Keyword, ManaRider, PlayerState, Step, TargetRequirement } from "./types";
+import type { CardDefinition, CardEffect, Color, GameState, Keyword, ManaRider, PlayerState, Step, TargetRequirement } from "./types";
 
 function twoPlayers() {
   const game = createGameState({ playerCount: 2 });
@@ -36101,5 +36101,158 @@ describe("wave 273: multikicker as an announced X", () => {
     expect(round.definitions[definition.id]?.entersWithXCounterKind).toBe("charge");
     expect(round.definitions[definition.id]?.manaCost).toBe("{0}{X}{X}");
     expect(p1.id).toBeDefined();
+  });
+});
+
+describe("wave 274: imprint", () => {
+  const setup = () => {
+    const { game, p1 } = twoPlayers();
+    const moxDef = createCardDefinition({
+      name: "Chrome Mox",
+      typeLine: "Artifact",
+      manaAbilities: [
+        {
+          produces: {},
+          producesOptions: [],
+          producesAnyColor: false,
+          damageToController: 0,
+          anyColorAmong: "imprinted",
+        },
+      ],
+    });
+    game.definitions[moxDef.id] = moxDef;
+    const mox = createCardInstance({
+      definitionId: moxDef.id,
+      ownerId: p1.id,
+      zone: "battlefield",
+    });
+    game.cards[mox.id] = mox;
+    p1.zones.battlefield.push(mox.id);
+
+    const inHand = (name: string, typeLine: string, colors: Color[]) => {
+      const definition = createCardDefinition({
+        name,
+        typeLine,
+        colors,
+        ...(typeLine.includes("Creature") ? { power: 1, toughness: 1 } : {}),
+      });
+      game.definitions[definition.id] = definition;
+      const card = createCardInstance({
+        definitionId: definition.id,
+        ownerId: p1.id,
+        zone: "hand",
+      });
+      game.cards[card.id] = card;
+      p1.zones.hand.push(card.id);
+      return card.id;
+    };
+    return {
+      game,
+      p1,
+      moxId: mox.id,
+      bolt: inHand("Bolt", "Instant", ["R"]),
+      hybrid: inHand("Reckoner", "Creature — Minotaur", ["R", "W"]),
+      island: inHand("Island", "Basic Land — Island", []),
+      relic: inHand("Relic", "Artifact", []),
+    };
+  };
+
+  const imprint = (state: GameState, moxId: string, cardId: string) =>
+    applyEffects(
+      state,
+      bindCardEffects(state, [{ kind: "imprint", cardId }], {
+        controllerId: state.players[0]!.id,
+        sourceId: moxId,
+      }),
+    );
+
+  it("exiles the card and remembers it on the source", () => {
+    const { game, moxId, bolt } = setup();
+    const after = imprint(game, moxId, bolt);
+    expect(after.cards[bolt]?.zone).toBe("exile");
+    // Exiling with a plain move_card would lose the link and leave the Mox
+    // producing nothing at all.
+    expect(after.cards[moxId]?.imprintedCardIds).toEqual([bolt]);
+  });
+
+  it("taps for the imprinted card's colours, and only those", () => {
+    const { game, p1, moxId, hybrid } = setup();
+    const after = imprint(game, moxId, hybrid);
+    const ability = after.definitions[after.cards[moxId]!.definitionId]!.manaAbilities[0]!;
+    expect(manaTapOptionsFor(ability, after, p1.id, moxId)).toEqual(["W", "R"]);
+  });
+
+  it("offers nothing while nothing is imprinted", () => {
+    const { game, p1, moxId } = setup();
+    const ability = game.definitions[game.cards[moxId]!.definitionId]!.manaAbilities[0]!;
+    // An unimprinted Mox taps for nothing — which is the card, and why the
+    // gate has to see an empty set rather than defaulting to every colour.
+    expect(manaTapOptionsFor(ability, game, p1.id, moxId)).toEqual([]);
+  });
+
+  it("reads the source, not merely its controller", () => {
+    const { game, p1, moxId, bolt } = setup();
+    const after = imprint(game, moxId, bolt);
+    const ability = after.definitions[after.cards[moxId]!.definitionId]!.manaAbilities[0]!;
+    // Without a sourceId the reader cannot know WHICH Mox is tapping, and two
+    // Moxen with different imprints would produce the same colours.
+    expect(manaTapOptionsFor(ability, after, p1.id, moxId)).toEqual(["R"]);
+    expect(manaTapOptionsFor(ability, after, p1.id, undefined)).toEqual([]);
+  });
+
+  it("colourless imprints leave it producing nothing", () => {
+    const { game, p1, moxId, island } = setup();
+    const after = imprint(game, moxId, island);
+    const ability = after.definitions[after.cards[moxId]!.definitionId]!.manaAbilities[0]!;
+    // A colourless card is a legal imprint and a dead Mox; colourless is not
+    // a colour (CR 107.4c).
+    expect(after.cards[moxId]?.imprintedCardIds).toEqual([island]);
+    expect(manaTapOptionsFor(ability, after, p1.id, moxId)).toEqual([]);
+  });
+
+  it("filters the hand to nonartifact, nonland cards", () => {
+    const { game, p1, bolt, hybrid, island, relic } = setup();
+    const source = { playerId: p1.id, zone: "hand" as const, filter: "nonartifact_nonland" as const };
+    const legal = legalIdsForChooseSources(game, [source]);
+    expect(legal).toContain(bolt);
+    expect(legal).toContain(hybrid);
+    // A land and an artifact are both refused; a filter missing from the
+    // matcher reads as "everything qualifies".
+    expect(legal).not.toContain(island);
+    expect(legal).not.toContain(relic);
+  });
+
+  it("round trips the imprint list and the colour scope", () => {
+    const { game, moxId, bolt } = setup();
+    const after = imprint(game, moxId, bolt);
+    const round = parseGameState(serializeGameState(after));
+    expect(round.cards[moxId]?.imprintedCardIds).toEqual([bolt]);
+    expect(
+      round.definitions[after.cards[moxId]!.definitionId]?.manaAbilities[0]?.anyColorAmong,
+    ).toBe("imprinted");
+  });
+
+  it("compiles Chrome Mox whole", () => {
+    const compiled = compileOracleCard({
+      oracleId: "cm",
+      name: "Chrome Mox",
+      manaCost: "{0}",
+      typeLine: "Artifact",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "Imprint — When Chrome Mox enters, you may exile a nonartifact, nonland card from your hand.\n{T}: Add one mana of any of the exiled card's colors.",
+    });
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.manaAbilities[0]?.anyColorAmong).toBe("imprinted");
+    const etb = compiled.definition.triggers[0];
+    expect(etb?.event).toBe("enter_battlefield");
+    expect(etb?.effects[0]).toMatchObject({
+      kind: "choose_card",
+      sources: [{ zone: "hand", filter: "nonartifact_nonland" }],
+      thenEffects: [{ kind: "imprint", cardId: "chosen_card" }],
+    });
   });
 });

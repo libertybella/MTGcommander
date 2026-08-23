@@ -964,7 +964,7 @@ function applyTapForMana(
     throw new Error("Choose a mana ability");
   }
   const ability = abilities[index]!;
-  const options = manaTapOptionsFor(ability, state, playerId);
+  const options = manaTapOptionsFor(ability, state, playerId, cardId);
   // Kami of Whispered Hopes: the amount reads the creature's power at tap.
   // Nykthos: the amount is the devotion to the chosen color at tap.
   const amount = ability.countFromDevotion

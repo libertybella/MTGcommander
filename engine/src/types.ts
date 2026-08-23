@@ -491,6 +491,13 @@ export type CardInstance = {
   deathtouched: boolean;
   /** Auras and Equipment: what this permanent is attached to. */
   attachedTo: CardInstanceId | null;
+  /**
+   * Imprint (CR 702.16 flavour, mechanically CR 610.3): cards exiled
+   * WITH this permanent, which its own abilities then read. Chrome Mox
+   * takes its colours from here. Kept as a list because Panoptic Mirror
+   * and friends imprint repeatedly.
+   */
+  imprintedCardIds?: CardInstanceId[];
   /** One loyalty ability per turn per planeswalker (CR 606.3-ish V1). */
   loyaltyActivatedThisTurn: boolean;
   /** Manifested: a face-down 2/2 with no name, types, or abilities (CR 708). */
@@ -919,7 +926,9 @@ export type CardFilter =
   /** Sheoldred's Edict: "a planeswalker of their choice". */
   | "planeswalker"
   /** Jarad-class: "sacrifice an artifact". */
-  | "artifact";
+  | "artifact"
+  /** Chrome Mox: "a nonartifact, nonland card from your hand". */
+  | "nonartifact_nonland";
 
 /** What a Clone-style permanent may enter as a copy of. */
 export type EnterAsCopyScope =
@@ -1084,6 +1093,8 @@ export type GameEffect =
       destinations: LookDestination[];
     }
   | { kind: "sacrifice"; cardId: CardInstanceId }
+  /** Chrome Mox: exile `cardId` and record it on `sourceId`. */
+  | { kind: "imprint"; cardId: CardInstanceId; sourceId: CardInstanceId }
   | { kind: "phase_out"; cardIds: CardInstanceId[] }
   | { kind: "add_counter"; cardId: CardInstanceId; counter: string; amount: number }
   /**
@@ -2031,6 +2042,12 @@ export type CardEffect =
       destinations: LookDestination[];
     }
   | { kind: "sacrifice"; cardId: CardIdSelector }
+  /**
+   * Chrome Mox: exile the chosen card and record it on the SOURCE, so
+   * the source's own abilities can read it. Exiling it with a plain
+   * move_card would lose the link and leave the Mox producing nothing.
+   */
+  | { kind: "imprint"; cardId: CardIdSelector }
   /** CR 702.26: Slip Out the Back, Guardian of Faith, Clever Concealment.
    * `allChosen` is the variable-target form — every target the caster
    * picked, however many that was, rather than a fixed list of slots. */
@@ -3332,7 +3349,9 @@ export type ManaAbility = {
     | "legendary_permanents"
     | "opponent_lands"
     | "your_lands"
-    | "commander_identity";
+    | "commander_identity"
+    /** Chrome Mox: the colours of the cards imprinted on this source. */
+    | "imprinted";
   /** Heraldic Banner: "{T}: Add one mana of the chosen color" — the source
    * card's chosenColor, picked as it entered. */
   producesChosenColor?: boolean;

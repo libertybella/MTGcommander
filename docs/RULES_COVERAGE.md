@@ -870,6 +870,25 @@ more questions it can now ask:
   (Bennie Bracks). Reads the existing per-player `createdTokenThisTurn`
   list, and asks whether the CONTROLLER is in it — an opponent's Treasure
   must not satisfy it.
+- **Imprint** — Chrome Mox. `CardInstance.imprintedCardIds` records the
+  cards exiled WITH a permanent, which its own abilities then read. Exiling
+  with a plain `move_card` would lose the link and leave the Mox producing
+  nothing, so `imprint` is its own effect: it exiles and records in one go,
+  and refuses without a source rather than exiling into the void.
+
+  The colour choice is a new `anyColorAmong` scope, `"imprinted"`, which
+  needed the SOURCE threaded through `manaTapOptionsFor` and
+  `manaChoiceColors` — the controller alone cannot say which Mox is
+  tapping, and two Moxen with different imprints would produce the same
+  colours. An unimprinted Mox has an empty set and the existing mana gate
+  refuses the tap, which is exactly what the card does; a colourless
+  imprint is legal and equally dead, since colourless is not a colour
+  (CR 107.4c).
+
+  The ability word "Imprint —" is flavour (CR 207.2c) and is stepped over.
+  The hand filter `nonartifact_nonland` is new; a filter missing from the
+  matcher reads as "everything qualifies", so it is tested against a land
+  and an artifact directly.
 - **Multikicker** (CR 702.32) — Everflowing Chalice. Kickable any number of
   times, which the two-mode shape Kicker uses cannot express. Modelled by
   rewriting the CAST COST to carry one `{X}` per generic pip of the kicker
