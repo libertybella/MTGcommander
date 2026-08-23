@@ -33371,3 +33371,124 @@ describe("wave 256: a colour on the sacrifice cost", () => {
     });
   });
 });
+
+describe("wave 257: in addition to its other types", () => {
+  const compile = (name: string, typeLine: string, oracleText: string, pt?: [string, string]) =>
+    compileOracleCard({
+      oracleId: name,
+      name,
+      manaCost: "{2}",
+      typeLine,
+      power: pt?.[0] ?? null,
+      toughness: pt?.[1] ?? null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  it("adds types without disturbing the printed ones", () => {
+    const ashaya = compile(
+      "Ashaya, Soul of the Wild",
+      "Legendary Creature — Elemental",
+      "Nontoken creatures you control are Forest lands in addition to their other types.",
+      ["4", "4"],
+    );
+    expect(ashaya.notes).toEqual([]);
+    // A card TYPE and a SUBTYPE out of one phrase, and the effect is an
+    // ADDITION at layer 4 — a set would delete "creature".
+    expect(ashaya.definition.staticAbilities[0]?.effect).toEqual({
+      kind: "add_types",
+      types: ["land"],
+      subtypes: ["forest"],
+    });
+  });
+
+  it("reads a comma list, which the and-only split could not", () => {
+    const regalia = compile(
+      "Brotherhood Regalia",
+      "Artifact — Equipment",
+      "Equipped creature has ward {2}, is an Assassin in addition to its other types, and can't be blocked.\nEquip {2}",
+    );
+    expect(regalia.notes).toEqual([]);
+    const effects = regalia.definition.staticAbilities.map((entry) => entry.effect.kind);
+    // All three halves survive the split, in order.
+    expect(effects).toEqual(["grant_ward", "add_types", "restrict"]);
+  });
+
+  it("still splits an and-list the old way", () => {
+    // The comma split is a RETRY, not a replacement. A predicate that already
+    // compiled must come out identical, or the retry has changed behaviour it
+    // was never meant to touch.
+    const anthem = compile(
+      "Anthem",
+      "Enchantment",
+      "Creatures you control get +1/+1 and have vigilance and trample.",
+    );
+    expect(anthem.notes).toEqual([]);
+    expect(anthem.definition.staticAbilities.map((entry) => entry.effect.kind)).toEqual([
+      "modify_pt",
+      "grant_keyword",
+      "grant_keyword",
+    ]);
+  });
+
+  it("refuses a quantified phrase rather than granting its words", () => {
+    // "every basic land type" has its own rule. Before the proper-noun guard
+    // this branch claimed it first and granted the subtypes "every", "basic"
+    // and "type" — a clean compile that plays as nonsense, which is worse
+    // than a compile note.
+    const urborg = compile(
+      "Urborg",
+      "Legendary Land",
+      "Lands you control are every basic land type in addition to their other types.",
+    );
+    expect(urborg.notes).toEqual([]);
+    expect(urborg.definition.staticAbilities[0]?.effect).toEqual({
+      kind: "add_types",
+      types: [],
+      subtypes: ["plains", "island", "swamp", "mountain", "forest"],
+    });
+  });
+
+  it("keeps the printed types on the battlefield", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const ashaya = createCardDefinition({
+      name: "Ashaya",
+      typeLine: "Legendary Creature — Elemental",
+      power: 4,
+      toughness: 4,
+      staticAbilities: [
+        {
+          selector: { scope: "controlled", types: ["creature"] },
+          effect: { kind: "add_types", types: ["land"], subtypes: ["forest"] },
+        },
+      ],
+    });
+    const bear = createCardDefinition({
+      name: "Bear",
+      typeLine: "Creature — Bear",
+      power: 2,
+      toughness: 2,
+    });
+    for (const definition of [ashaya, bear]) {
+      game.definitions[definition.id] = definition;
+    }
+    const put = (definitionId: string) => {
+      const card = createCardInstance({ definitionId, ownerId: p1.id, zone: "battlefield" });
+      game.cards[card.id] = card;
+      p1.zones.battlefield.push(card.id);
+      return card.id;
+    };
+    put(ashaya.id);
+    const bearId = put(bear.id);
+
+    const computed = computedCard(game, bearId);
+    expect(computed?.characteristics.types).toContain("land");
+    // The negative case: an addition that quietly replaced would still put
+    // "land" on the card and would fail only here.
+    expect(computed?.characteristics.types).toContain("creature");
+    expect(cardMatchesSubtype(game, bearId, "forest")).toBe(true);
+    expect(cardMatchesSubtype(game, bearId, "bear")).toBe(true);
+  });
+});

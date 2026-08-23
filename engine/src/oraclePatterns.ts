@@ -9177,6 +9177,55 @@ function compileQuotedTrigger(sentence: string): CardTrigger | null {
  * red". Returns null if any conjunct is unrecognised — a half-understood
  * grant would silently drop the rest of the card's text.
  */
+/**
+ * "an Assassin", "Forest lands", "a Phyrexian" — the words after "is/are"
+ * in an "in addition to its other types" grant. A word that is a card TYPE
+ * lands in `types` and anything else in `subtypes`, which is the same
+ * division `parseSearchDescriptor` makes; the plural is stripped first so
+ * "lands" and "land" read alike.
+ *
+ * A subtype is a PROPER NOUN in oracle text, so a lowercase word that is
+ * not a card type is not a subtype at all — it is a quantifier, and the
+ * phrase is a quantified one rather than a type list. "Lands you control
+ * are every basic land type in addition to their other types" reads that
+ * way, and has its own rule; without this check it parsed here first and
+ * granted the subtypes "every", "basic", and "type".
+ */
+function parseAddedTypeWords(
+  phrase: string,
+): { types: string[]; subtypes: string[] } | null {
+  const types: string[] = [];
+  const subtypes: string[] = [];
+  for (const raw of phrase.trim().split(/\s+/)) {
+    const word = raw.toLowerCase().replace(/s$/, "");
+    if (!/^[a-z-]+$/.test(word)) {
+      return null;
+    }
+    if (SEARCH_CARD_TYPES.has(word)) {
+      types.push(word);
+      continue;
+    }
+    if (!/^[A-Z]/.test(raw)) {
+      return null;
+    }
+    subtypes.push(word);
+  }
+  if (types.length === 0 && subtypes.length === 0) {
+    return null;
+  }
+  return { types, subtypes };
+}
+
+/**
+ * A predicate may be a COMMA list rather than an "and" list: Brotherhood
+ * Regalia says "has ward {2}, is an Assassin …, and can't be blocked".
+ *
+ * The comma-aware split is a SECOND attempt, tried only after the plain
+ * one has failed, rather than a widening of it. Widening the split in
+ * place would change how every predicate already compiling is torn apart,
+ * and a comma inside a part is exactly the kind of thing that reads fine
+ * in the cases you thought of and wrongly in one you did not.
+ */
 function parseGrantPredicate(phrase: string): ContinuousEffectData[] | null {
   // A quoted ability is handled whole, BEFORE the verb split below: a body
   // like "gets +1/+1 and has flying" inside the quotes would otherwise be
@@ -9185,11 +9234,18 @@ function parseGrantPredicate(phrase: string): ContinuousEffectData[] | null {
   if (quoted?.[1]) {
     return compileQuotedAbility(quoted[1]);
   }
+  const VERB = "(?:get|gets|have|has|lose|loses|is|are|can't)";
+  return (
+    readGrantParts(phrase.split(new RegExp(`\\s+and\\s+(?=${VERB}\\s)`, "i"))) ??
+    readGrantParts(
+      phrase.split(new RegExp(`\\s*,\\s*(?:and\\s+)?(?=${VERB}\\s)|\\s+and\\s+(?=${VERB}\\s)`, "i")),
+    )
+  );
+}
+
+function readGrantParts(split: string[]): ContinuousEffectData[] | null {
   const effects: ContinuousEffectData[] = [];
-  // Split on the verbs rather than on "and", since a keyword list uses "and"
-  // internally ("get +1/+1 and have vigilance and trample").
-  const parts = phrase
-    .split(/\s+and\s+(?=(?:get|gets|have|has|lose|loses|is|can't)\s)/i)
+  const parts = split
     .map((part) => part.trim())
     .filter(Boolean);
   for (const part of parts) {
@@ -9198,6 +9254,21 @@ function parseGrantPredicate(phrase: string): ContinuousEffectData[] | null {
     // gaining one.
     if (/^(?:is|are)\s+all colors$/i.test(part)) {
       effects.push({ kind: "set_colors", colors: ["W", "U", "B", "R", "G"] });
+      continue;
+    }
+    // "is an Assassin in addition to its other types" (Brotherhood
+    // Regalia), "are Forest lands in addition to their other types"
+    // (Ashaya). Layer 4, and an ADDITION — the printed types survive,
+    // which is what the phrase says and why this is not a set.
+    const addedTypes = part.match(
+      /^(?:is|are)\s+(?:an?\s+)?(.+?)\s+in addition to (?:its|their) other types$/i,
+    );
+    if (addedTypes?.[1]) {
+      const parsed = parseAddedTypeWords(addedTypes[1]);
+      if (!parsed) {
+        return null;
+      }
+      effects.push({ kind: "add_types", ...parsed });
       continue;
     }
     const pt = part.match(/^(?:get|gets)\s+([+-]\d+)\/([+-]\d+)$/i);

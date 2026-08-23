@@ -870,6 +870,24 @@ more questions it can now ask:
   (Bennie Bracks). Reads the existing per-player `createdTokenThisTurn`
   list, and asks whether the CONTROLLER is in it — an opponent's Treasure
   must not satisfy it.
+- **"…in addition to its other types"** — "is an Assassin" (Brotherhood
+  Regalia), "are Forest lands" (Ashaya, Soul of the Wild). `add_types`
+  has existed at layer 4 since the mutation Auras; what was missing was a
+  way to REACH it from the general static-grant grammar, so the two cards
+  that say it plainly could not compile.
+
+  A grant predicate may be a COMMA list rather than an "and" list ("has
+  ward {2}, is an Assassin …, and can't be blocked"). The comma-aware
+  split is a SECOND attempt, run only after the plain one fails, not a
+  widening of it — a comma inside a part reads fine in the cases you
+  thought of and wrongly in one you did not.
+
+  A subtype is a PROPER NOUN in oracle text, and that is load-bearing: a
+  lowercase word which is not a card type is a quantifier, not a subtype.
+  Without the check, "Lands you control are every basic land type in
+  addition to their other types" parsed here before reaching its own rule
+  and granted the subtypes "every", "basic", and "type" — a clean compile
+  that plays as nonsense, which is worse than a compile note.
 - **`AdditionalCastCost.sacrificeColor`** — "sacrifice a GREEN creature"
   (Natural Order). A narrowing of the existing `sacrifice` scope, never a
   cost of its own, so it is read everywhere that scope is: the cast
