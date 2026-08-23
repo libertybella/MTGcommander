@@ -1306,6 +1306,11 @@ function compileBackReferenceClause(sentence: string): CardEffect[] | null {
   if (/^Return that card from your graveyard to the battlefield$/i.test(sentence)) {
     return [{ kind: "move_card", cardId: chosen, toZone: "battlefield" }];
   }
+  // Slip Out the Back: the thing that phases out is what the clause
+  // before it targeted.
+  if (/^It phases out$/i.test(sentence)) {
+    return [{ kind: "phase_out", cardIds: [chosen] }];
+  }
   // "Put a +1/+1 counter on it" following a clause that targeted something.
   const counters = sentence.match(/^Put (.+?) counters? on (?:it|that creature)$/i);
   const placed = counters?.[1] ? parseCounterList(counters[1]) : null;

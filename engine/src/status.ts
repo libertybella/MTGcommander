@@ -29,7 +29,7 @@ function shouldLose(state: GameState, player: GameState["players"][number]): boo
 function destroyZeroToughnessInPlace(state: GameState, collectDies: EngineEvent[]): boolean {
   let changed = false;
   for (const card of Object.values(state.cards)) {
-    if (card.zone !== "battlefield" || !isCreature(state, card.id)) {
+    if (card.zone !== "battlefield" || card.phasedOut || !isCreature(state, card.id)) {
       continue;
     }
     const definition = state.definitions[card.definitionId];
@@ -59,7 +59,7 @@ function destroyZeroToughnessInPlace(state: GameState, collectDies: EngineEvent[
 function destroyLethalDamageInPlace(state: GameState, collectDies: EngineEvent[]): boolean {
   let changed = false;
   for (const card of Object.values(state.cards)) {
-    if (card.zone !== "battlefield" || !isCreature(state, card.id)) {
+    if (card.zone !== "battlefield" || card.phasedOut || !isCreature(state, card.id)) {
       continue;
     }
     if (hasKeyword(state, card.id, "indestructible")) {

@@ -451,6 +451,15 @@ export type CardInstance = {
   blockingAttackerId: CardInstanceId | null;
   summoningSick: boolean;
   counters: Record<string, number>;
+  /**
+   * CR 702.26: a phased-out permanent is treated as though it did not
+   * exist, but it does NOT change zones. That is why this is a flag and
+   * not a move: no leave-the-battlefield trigger fires, Auras and
+   * Equipment stay attached, counters stay on, and the object is not a new
+   * object when it comes back. It phases in at the start of its
+   * controller's untap step.
+   */
+  phasedOut?: boolean;
   /** 0 means not a Class. Class enchantments enter at 1. */
   classLevel: number;
   /** CR 613.7 ordering: stamped when this object entered the battlefield. */
@@ -958,6 +967,7 @@ export type GameEffect =
       destinations: LookDestination[];
     }
   | { kind: "sacrifice"; cardId: CardInstanceId }
+  | { kind: "phase_out"; cardIds: CardInstanceId[] }
   | { kind: "add_counter"; cardId: CardInstanceId; counter: string; amount: number }
   /**
    * Vanishing (CR 702.62): take a counter off, and if that was the last one,
@@ -1809,6 +1819,8 @@ export type CardEffect =
       destinations: LookDestination[];
     }
   | { kind: "sacrifice"; cardId: CardIdSelector }
+  /** CR 702.26: Slip Out the Back, Guardian of Faith, Clever Concealment. */
+  | { kind: "phase_out"; cardIds: CardIdSelector[] }
   /** amount "source_power": the source creature's power, read at bind
    * (Halana and Alena). */
   /** amount "subject_amount": The Ozolith absorbs the leave event's

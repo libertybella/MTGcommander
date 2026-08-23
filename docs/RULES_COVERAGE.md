@@ -660,6 +660,28 @@ is applied AFTER every layer-6 instance has run rather than in place: a
 grant later in the same layer would otherwise win. `remove_all_abilities`
 clears the lock along with everything else.
 
+### Phasing (wave 247)
+
+CR 702.26. A phased-out permanent is a FLAG on the instance, never a zone
+change — and that is the whole design:
+
+- no leave-the-battlefield trigger fires, because it does not leave;
+- Auras and Equipment stay attached;
+- counters stay on it;
+- it is the same object when it returns, not a new one.
+
+It is treated as though it did not exist: not counted by
+`permanentsControlledBy`, not a legal target, unable to attack or block,
+invisible to state-based actions, and both inert and untouched in the
+layer engine — it contributes no static abilities and receives none.
+
+It phases in at the start of its CONTROLLER's untap step, so a permanent
+phased out on an opponent's turn waits for its own.
+
+**Not yet covered:** "Any number of target …" is a variable target count
+the engine has no shape for, which is what still blocks Guardian of Faith
+and Clever Concealment. Phasing itself is done.
+
 ### Connive (wave 243)
 
 Connive N (CR 702.148) is a draw, a discard, and a +1/+1 counter for each

@@ -423,6 +423,7 @@ export function parseGameState(json: string): GameState {
           }),
       ...(card.mustAttackThisTurn === true ? { mustAttackThisTurn: true } : {}),
       faceDown: card.faceDown === true,
+      ...(card.phasedOut === true ? { phasedOut: true } : {}),
       chosenCreatureType:
         card.chosenCreatureType === undefined || card.chosenCreatureType === null
           ? null
@@ -2882,6 +2883,17 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
               ? "subject_amount"
               : expectNumber(value.count, `${label}.count`),
       };
+    case "phase_out": {
+      if (!Array.isArray(value.cardIds)) {
+        throw new Error(`Invalid ${label}.cardIds`);
+      }
+      return {
+        kind,
+        cardIds: value.cardIds.map((entry, index) =>
+          parseCardIdSelector(entry, `${label}.cardIds[${index}]`),
+        ),
+      };
+    }
     case "discard":
       return {
         kind,

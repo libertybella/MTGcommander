@@ -31835,3 +31835,151 @@ describe("wave 246: a haste rider on a created token", () => {
     expect(token.keywords).toContain("haste");
   });
 });
+
+describe("wave 247: phasing", () => {
+  const board = () => {
+    const game = createGameState({ playerCount: 2 });
+    const [p1, p2] = game.players;
+    if (!p1 || !p2) {
+      throw new Error("expected two players");
+    }
+    fillLibraries(game, 20);
+    const bear = createCardDefinition({
+      name: "Bear",
+      typeLine: "Creature — Bear",
+      power: 2,
+      toughness: 2,
+    });
+    const lord = createCardDefinition({
+      name: "Bear Lord",
+      typeLine: "Enchantment",
+      staticAbilities: [
+        {
+          selector: { scope: "controlled", types: ["creature"] },
+          effect: { kind: "grant_keyword", keyword: "flying" },
+        },
+      ],
+    });
+    for (const definition of [bear, lord]) {
+      game.definitions[definition.id] = definition;
+    }
+    const put = (definitionId: string, ownerId: string) => {
+      const card = createCardInstance({ definitionId, ownerId, zone: "battlefield" });
+      card.summoningSick = false;
+      game.cards[card.id] = card;
+      game.players.find((entry) => entry.id === ownerId)!.zones.battlefield.push(card.id);
+      return card;
+    };
+    return { game, p1, p2, bear, lord, put };
+  };
+
+  it("compiles Slip Out the Back's back-reference", () => {
+    const slip = compileOracleCard({
+      oracleId: "Slip Out the Back",
+      name: "Slip Out the Back",
+      manaCost: "{U}",
+      typeLine: "Instant",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText: "Put a +1/+1 counter on target creature. It phases out.",
+    });
+    expect(slip.notes).toEqual([]);
+    expect(slip.definition.effects[1]).toMatchObject({
+      kind: "phase_out",
+      cardIds: [{ type: "chosen", index: 0 }],
+    });
+  });
+
+  it("stays on the battlefield rather than changing zones", () => {
+    const { game, p1, bear, put } = board();
+    const creature = put(bear.id, p1.id);
+    game.cards[creature.id]!.counters["p1p1"] = 2;
+
+    const after = applyEffect(game, { kind: "phase_out", cardIds: [creature.id] });
+    // CR 702.26a: it does NOT leave. That is the whole reason this is a flag
+    // and not a move — a zone change would fire leave-the-battlefield
+    // triggers, drop Auras, and reset the object.
+    expect(after.cards[creature.id]?.zone).toBe("battlefield");
+    expect(after.players.find((p) => p.id === p1.id)?.zones.battlefield).toContain(creature.id);
+    expect(after.cards[creature.id]?.phasedOut).toBe(true);
+    // Counters survive, because the object never left.
+    expect(after.cards[creature.id]?.counters["p1p1"]).toBe(2);
+  });
+
+  it("is treated as though it does not exist", () => {
+    const { game, p1, p2, bear, lord, put } = board();
+    put(lord.id, p1.id);
+    const creature = put(bear.id, p1.id);
+    expect(computedCard(game, creature.id)?.keywords).toContain("flying");
+    expect(permanentsControlledBy(game, p1.id)).toContain(creature.id);
+
+    const after = applyEffect(game, { kind: "phase_out", cardIds: [creature.id] });
+    // Not counted, not affected by continuous effects, not targetable.
+    expect(permanentsControlledBy(after, p1.id)).not.toContain(creature.id);
+    expect(computedCard(after, creature.id)?.keywords ?? []).not.toContain("flying");
+    expect(
+      isChosenTargetLegal(
+        after,
+        { kind: "creature" },
+        { type: "creature", cardId: creature.id },
+        p2.id,
+        [],
+        undefined,
+      ),
+    ).toBe(false);
+  });
+
+  it("contributes nothing while it is gone", () => {
+    const { game, p1, bear, lord, put } = board();
+    const anthem = put(lord.id, p1.id);
+    const creature = put(bear.id, p1.id);
+    expect(computedCard(game, creature.id)?.keywords).toContain("flying");
+
+    // Phasing out the LORD takes its static with it.
+    const after = applyEffect(game, { kind: "phase_out", cardIds: [anthem.id] });
+    expect(computedCard(after, creature.id)?.keywords ?? []).not.toContain("flying");
+  });
+
+  it("cannot attack or block while phased out", () => {
+    const { game, p1, p2, bear, put } = board();
+    const attacker = put(bear.id, p1.id);
+    const blocker = put(bear.id, p2.id);
+    const phased = applyEffect(game, { kind: "phase_out", cardIds: [attacker.id, blocker.id] });
+    phased.turn.phase = "combat";
+    phased.turn.step = "declareAttackers";
+    phased.turn.activePlayerId = p1.id;
+    phased.priorityPlayerId = p1.id;
+
+    expect(() =>
+      declareAttackers(phased, p1.id, [{ attackerId: attacker.id, defenderId: p2.id }]),
+    ).toThrow();
+  });
+
+  it("phases in on its controller's untap step, not an opponent's", () => {
+    const { game, p1, p2, bear, put } = board();
+    const mine = put(bear.id, p1.id);
+    const theirs = put(bear.id, p2.id);
+    const phased = applyEffect(game, { kind: "phase_out", cardIds: [mine.id, theirs.id] });
+    phased.turn.activePlayerId = p2.id;
+
+    // p1's permanent must wait for p1's own untap step.
+    beginNextLivingTurnInPlace(phased);
+    expect(phased.turn.activePlayerId).toBe(p1.id);
+    expect(phased.cards[mine.id]?.phasedOut).toBeUndefined();
+    expect(phased.cards[theirs.id]?.phasedOut).toBe(true);
+
+    beginNextLivingTurnInPlace(phased);
+    expect(phased.cards[theirs.id]?.phasedOut).toBeUndefined();
+  });
+
+  it("round trips the flag", () => {
+    const { game, p1, bear, put } = board();
+    const creature = put(bear.id, p1.id);
+    const phased = applyEffect(game, { kind: "phase_out", cardIds: [creature.id] });
+    const round = parseGameState(serializeGameState(phased));
+    expect(round.cards[creature.id]?.phasedOut).toBe(true);
+    expect(permanentsControlledBy(round, p1.id)).not.toContain(creature.id);
+  });
+});

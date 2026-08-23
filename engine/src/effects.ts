@@ -901,6 +901,15 @@ export function bindCardEffect(
       }
       return { kind: "sacrifice", cardId };
     }
+    case "phase_out": {
+      const cardIds = effect.cardIds
+        .map((selector) => bindCardId(state, selector, context))
+        .filter((cardId): cardId is CardInstanceId => Boolean(cardId));
+      if (cardIds.length === 0) {
+        return null;
+      }
+      return { kind: "phase_out", cardIds };
+    }
     case "add_counter": {
       const cardId = bindCardId(state, effect.cardId, context);
       if (!cardId) {
@@ -2185,6 +2194,23 @@ function applyMill(state: GameState, playerId: PlayerId, count: number): GameSta
       return next === state ? cloneGameState(state) : next;
     }
     next = moveCard(next, top, "graveyard");
+  }
+  return next;
+}
+
+/**
+ * CR 702.26a: the permanent is treated as though it did not exist, but it
+ * stays exactly where it is. No zone change, so no leave-the-battlefield
+ * trigger, no Aura falling off, no counters lost, and the same object
+ * comes back at the start of its controller's untap step.
+ */
+function applyPhaseOut(state: GameState, cardIds: CardInstanceId[]): GameState {
+  const next = cloneGameState(state);
+  for (const cardId of cardIds) {
+    const card = next.cards[cardId];
+    if (card && card.zone === "battlefield") {
+      card.phasedOut = true;
+    }
   }
   return next;
 }
@@ -4704,6 +4730,9 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
         break;
       case "look_and_assign":
         next = applyLookAndAssign(state, effect.playerId, effect.count, effect.destinations);
+        break;
+      case "phase_out":
+        next = applyPhaseOut(state, effect.cardIds);
         break;
       default: {
         const exhaustive: never = effect;

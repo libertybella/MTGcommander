@@ -16,7 +16,10 @@ export function permanentsControlledBy(state: GameState, playerId: PlayerId): Ca
   const controlled: CardInstanceId[] = [];
   for (const player of state.players) {
     for (const cardId of player.zones.battlefield) {
-      if (state.cards[cardId]?.controllerId === playerId) {
+      const card = state.cards[cardId];
+      // CR 702.26a: treated as though it did not exist, so it is not
+      // counted, cannot be chosen, and does nothing.
+      if (card?.controllerId === playerId && !card.phasedOut) {
         controlled.push(cardId);
       }
     }

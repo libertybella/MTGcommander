@@ -438,7 +438,7 @@ function matches(
   instance: EffectInstance,
   card: CardInstance,
 ): boolean {
-  if (card.zone !== "battlefield") {
+  if (card.zone !== "battlefield" || card.phasedOut) {
     return false;
   }
   if (instance.affected) {
@@ -740,7 +740,7 @@ function collectInstances(state: GameState): EffectInstance[] {
     for (const ability of definition?.staticAbilities ?? []) {
       const zoneOk = ability.fromGraveyard
         ? card.zone === "graveyard"
-        : card.zone === "battlefield" && !card.faceDown;
+        : card.zone === "battlefield" && !card.faceDown && !card.phasedOut;
       if (!zoneOk) {
         continue;
       }

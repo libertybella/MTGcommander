@@ -105,7 +105,7 @@ function assertLegalAttacker(
   defenderId: PlayerId,
 ): void {
   const card = requireCard(state, attackerId);
-  if (card.zone !== "battlefield" || !isCreature(state, attackerId)) {
+  if (card.zone !== "battlefield" || card.phasedOut || !isCreature(state, attackerId)) {
     throw new Error(`Card ${attackerId} cannot attack`);
   }
   if (card.controllerId !== playerId) {
@@ -453,7 +453,7 @@ export function declareBlockers(
       throw new Error(`Card ${block.attackerId} is not attacking that player`);
     }
     const blocker = requireCard(state, block.blockerId);
-    if (blocker.zone !== "battlefield" || !isCreature(state, block.blockerId)) {
+    if (blocker.zone !== "battlefield" || blocker.phasedOut || !isCreature(state, block.blockerId)) {
       throw new Error(`Card ${block.blockerId} cannot block`);
     }
     if (blocker.controllerId !== defenderId) {

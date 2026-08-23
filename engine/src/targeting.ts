@@ -38,7 +38,7 @@ function isLegalCreatureTarget(
   sourceId?: CardInstanceId | null,
 ): boolean {
   const card = state.cards[cardId];
-  if (!card || card.zone !== "battlefield" || !isCreature(state, cardId)) {
+  if (!card || card.zone !== "battlefield" || card.phasedOut || !isCreature(state, cardId)) {
     return false;
   }
   // Shroud blocks everyone, including its own controller (CR 702.18).
@@ -291,7 +291,7 @@ export function isChosenTargetLegal(
       return false;
     }
     const card = state.cards[target.cardId];
-    if (!card || card.zone !== "battlefield") {
+    if (!card || card.zone !== "battlefield" || card.phasedOut) {
       return false;
     }
     if (violatesControlFilter(state, target.cardId, requirement, casterId)) {

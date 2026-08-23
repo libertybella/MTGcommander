@@ -112,6 +112,13 @@ function onEnterStep(state: GameState): GameState {
     state.createdTokenThisTurn = [];
     state.drawsByPlayerThisTurn = {};
     state.lifeGainedByPlayerThisTurn = {};
+    // CR 702.26b: permanents phase in at the start of their controller's
+    // untap step, before untapping. Only the active player's own.
+    for (const card of Object.values(state.cards)) {
+      if (card.phasedOut && card.controllerId === activeId) {
+        delete card.phasedOut;
+      }
+    }
     state.lifeLostByPlayerThisTurn = {};
     state.combatPhasesThisTurn = 0;
     // Goad lasts "until your next turn" (CR 701.38), so the active player's
