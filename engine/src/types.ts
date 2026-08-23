@@ -2775,7 +2775,14 @@ export type ManaAbility = {
    * opponent's land could produce (Exotic Orchard, Fellwar Stone), or types
    * — colorless included — your own lands could produce (Reflecting Pool).
    * Unusable when the set is empty. */
-  anyColorAmong?: "legendary" | "opponent_lands" | "your_lands" | "commander_identity";
+  anyColorAmong?:
+    | "legendary"
+    /** Plaza of Heroes: legendary PERMANENTS, so a legendary artifact counts
+     * where Mox Amber's narrower wording would not. */
+    | "legendary_permanents"
+    | "opponent_lands"
+    | "your_lands"
+    | "commander_identity";
   /** Heraldic Banner: "{T}: Add one mana of the chosen color" — the source
    * card's chosenColor, picked as it entered. */
   producesChosenColor?: boolean;

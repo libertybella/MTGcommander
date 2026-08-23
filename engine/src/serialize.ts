@@ -4508,6 +4508,7 @@ function parseManaAbilities(value: unknown, label: string): ManaAbility[] {
             ),
           }),
       ...(entry.anyColorAmong === "legendary" ||
+      entry.anyColorAmong === "legendary_permanents" ||
       entry.anyColorAmong === "opponent_lands" ||
       entry.anyColorAmong === "your_lands" ||
       entry.anyColorAmong === "commander_identity"

@@ -22,7 +22,7 @@ import { hasKeyword } from "./keywords";
 import { dispatchEventsInPlace, triggerConditionHolds } from "./triggers";
 import { applyCombatDamage, declareAttackers } from "./combat";
 import { advanceStep, beginNextLivingTurnInPlace } from "./turn";
-import { commanderIdentityColors, manaAbilitiesFor, manaTapOptionsFor } from "./manaOptions";
+import { colorsAmongControlled, commanderIdentityColors, manaAbilitiesFor, manaTapOptionsFor } from "./manaOptions";
 import { emptyManaPools, parseManaCost } from "./mana";
 import { applyStateBasedActionsInPlace } from "./status";
 import { legalActions, sacrificeScopeMatches } from "./legalActions";
@@ -27731,6 +27731,113 @@ describe("wave 216: four targets at once, and a sweep that is a sacrifice", () =
     // A basic Forest is colorless, so it stays; the scope reaches lands but
     // the colour filter is what decides.
     expect(next.cards[land.id]?.zone).toBe("battlefield");
+  });
+});
+
+
+describe("wave 217: a wider legendary, and a manifest for someone else", () => {
+  const compile = (name: string, manaCost: string, typeLine: string, oracleText: string) =>
+    compileOracleCard({
+      oracleId: name,
+      name,
+      manaCost,
+      typeLine,
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  it("counts a legendary artifact where Mox Amber would not", () => {
+    const plaza = compile(
+      "Plaza of Heroes",
+      "",
+      "Land",
+      "{T}: Add {C}.\n{T}: Add one mana of any color among legendary permanents you control.",
+    );
+    expect(plaza.notes).toEqual([]);
+    expect(plaza.definition.manaAbilities[1]).toMatchObject({
+      anyColorAmong: "legendary_permanents",
+    });
+
+    const amber = compile(
+      "Mox Amber",
+      "{0}",
+      "Legendary Artifact",
+      "{T}: Add one mana of any color among legendary creatures and planeswalkers you control.",
+    );
+    // The narrower wording keeps the narrower scope.
+    expect(amber.definition.manaAbilities[0]).toMatchObject({ anyColorAmong: "legendary" });
+
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const artifactDef = createCardDefinition({
+      name: "Sol Talisman",
+      typeLine: "Legendary Artifact",
+      manaCost: "{2}{R}",
+    });
+    game.definitions[artifactDef.id] = artifactDef;
+    const card = createCardInstance({
+      definitionId: artifactDef.id,
+      ownerId: p1.id,
+      zone: "battlefield",
+    });
+    game.cards[card.id] = card;
+    p1.zones.battlefield.push(card.id);
+
+    // A legendary artifact is a legendary permanent but not a legendary
+    // creature — the two wordings must not share a scope.
+    expect(colorsAmongControlled(game, p1.id, "legendary_permanents")).toEqual(["R"]);
+    expect(colorsAmongControlled(game, p1.id, "legendary")).toEqual([]);
+  });
+
+  it("manifests for the player who owned what was exiled", () => {
+    const shift = compile(
+      "Reality Shift",
+      "{1}{U}",
+      "Instant",
+      "Exile target creature. Its controller manifests the top card of their library.",
+    );
+    expect(shift.notes).toEqual([]);
+    expect(shift.definition.effects).toEqual([
+      { kind: "move_card", cardId: { type: "chosen", index: 0 }, toZone: "exile" },
+      { kind: "manifest", playerId: { type: "chosen_owner", index: 0 }, count: 1 },
+    ]);
+
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    const bearDef = createCardDefinition({
+      name: "Bear",
+      typeLine: "Creature — Bear",
+      power: 2,
+      toughness: 2,
+    });
+    game.definitions[bearDef.id] = bearDef;
+    const bear = createCardInstance({
+      definitionId: bearDef.id,
+      ownerId: p2.id,
+      zone: "battlefield",
+    });
+    game.cards[bear.id] = bear;
+    game.players.find((entry) => entry.id === p2.id)!.zones.battlefield.push(bear.id);
+
+    const bound = bindCardEffects(
+      game,
+      [
+        { kind: "move_card", cardId: { type: "chosen", index: 0 }, toZone: "exile" },
+        { kind: "manifest", playerId: { type: "chosen_owner", index: 0 }, count: 1 },
+      ],
+      {
+        controllerId: p1.id,
+        sourceId: null,
+        targets: [{ type: "creature", cardId: bear.id }],
+        targetRequirements: [{ kind: "creature" }],
+      },
+    );
+    // The manifest goes to the OWNER of the exiled creature, not to the
+    // caster — binding it to the caster would hand them a free 2/2.
+    expect(bound[1]).toEqual({ kind: "manifest", playerId: p2.id, count: 1 });
   });
 });
 

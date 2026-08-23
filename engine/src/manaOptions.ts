@@ -22,7 +22,7 @@ const BASIC_SUBTYPE_COLOR: Record<string, ManaColor> = {
 export function colorsAmongControlled(
   state: GameState,
   controllerId: string,
-  scope: "legendary" | "permanents",
+  scope: "legendary" | "legendary_permanents" | "permanents",
 ): ManaColor[] {
   const found = new Set<string>();
   for (const card of Object.values(state.cards)) {
@@ -33,10 +33,12 @@ export function colorsAmongControlled(
     if (!traits) {
       continue;
     }
-    if (scope === "legendary") {
+    if (scope === "legendary" || scope === "legendary_permanents") {
       const legal =
         traits.supertypes.includes("legendary") &&
-        (traits.types.includes("creature") || traits.types.includes("planeswalker"));
+        (scope === "legendary_permanents" ||
+          traits.types.includes("creature") ||
+          traits.types.includes("planeswalker"));
       if (!legal) {
         continue;
       }
@@ -122,8 +124,8 @@ export function manaChoiceColors(
   controllerId: string,
   scope: NonNullable<ManaAbility["anyColorAmong"]>,
 ): ManaColor[] {
-  if (scope === "legendary") {
-    return colorsAmongControlled(state, controllerId, "legendary");
+  if (scope === "legendary" || scope === "legendary_permanents") {
+    return colorsAmongControlled(state, controllerId, scope);
   }
   if (scope === "commander_identity") {
     return commanderIdentityColors(state, controllerId);

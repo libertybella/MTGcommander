@@ -1802,7 +1802,7 @@ type AddManaResult =
   | { kind: "any_color"; count?: number; countFromPower?: boolean; countFromEnchantments?: boolean }
   | {
       kind: "any_color_among";
-      scope: "legendary" | "opponent_lands" | "your_lands" | "commander_identity";
+      scope: NonNullable<ManaAbility["anyColorAmong"]>;
     }
   | { kind: "chosen_color" }
   | { kind: "colors_among"; scope: "permanents" }
@@ -1811,13 +1811,18 @@ type AddManaResult =
 function parseAddMana(rest: string): AddManaResult | null {
   const text = rest.trim();
   // Mox Amber: the choice is limited to colors among controlled legendaries.
-  if (
-    /^Add one mana of any color among legendary creatures and planeswalkers you control$/i.test(
-      text,
-    )
-  ) {
-    return { kind: "any_color_among", scope: "legendary" };
+  const legendaryMana = text.match(
+    /^Add one mana of any color among legendary (creatures and planeswalkers|permanents) you control$/i,
+  );
+  if (legendaryMana?.[1]) {
+    return {
+      kind: "any_color_among",
+      scope: /^permanents$/i.test(legendaryMana[1]) ? "legendary_permanents" : "legendary",
+    };
   }
+
+  // Reality Shift: the manifest lands on whoever owned the exiled creature.
+  
   // Bloom Tender: one mana of each color represented on your board.
   if (/^For each color among permanents you control, add one mana of that color$/i.test(text)) {
     return { kind: "colors_among", scope: "permanents" };
@@ -5445,6 +5450,15 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
           libraryPosition: "shuffled",
         },
       ],
+    };
+  }
+
+  // Reality Shift: the manifest lands on whoever owned the exiled creature,
+  // which is an earlier clause's target rather than a target of its own.
+  if (/^Its controller manifests the top card of their library$/i.test(sentence)) {
+    return {
+      targetRequirements: [],
+      effects: [{ kind: "manifest", playerId: { type: "chosen_owner", index: 0 }, count: 1 }],
     };
   }
 
