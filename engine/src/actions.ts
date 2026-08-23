@@ -692,7 +692,24 @@ function applyCastSpell(
         ? grants.map((entry, index) => (index === grantIndex ? { ...entry, remaining } : entry))
         : grants.filter((_, index) => index !== grantIndex);
   }
+  // "The next spell you cast this turn …": the grant is spent here and rides
+  // the stack object, so it protects exactly one spell.
+  const nextGrantIndex = (paid.nextSpellGrants ?? []).findIndex(
+    (grant) => grant.playerId === playerId,
+  );
+  const nextGrant = nextGrantIndex >= 0 ? paid.nextSpellGrants![nextGrantIndex]! : null;
+  if (nextGrant) {
+    paid.nextSpellGrants = (paid.nextSpellGrants ?? []).filter(
+      (_, index) => index !== nextGrantIndex,
+    );
+  }
   const stacked = putSpellOnStack(paid, cardId, targets ?? [], modeIndex, xValue, division, modeIndexes, sacrificedPower);
+  if (nextGrant?.cantBeCountered) {
+    const top = stacked.stack[stacked.stack.length - 1];
+    if (top) {
+      top.cantBeCountered = true;
+    }
+  }
   if (!fromCommand) {
     return stacked;
   }

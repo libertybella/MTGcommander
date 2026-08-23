@@ -178,6 +178,14 @@ function grantedCostKeyword(
   if (!definition) {
     return false;
   }
+  // Archway of Innovation grants it to the next spell rather than to a class
+  // of spells, so it is read from the pending grant, not from a permanent.
+  if (
+    keyword === "improvise" &&
+    (state.nextSpellGrants ?? []).some((grant) => grant.playerId === playerId && grant.improvise)
+  ) {
+    return true;
+  }
   return permanentsControlledBy(state, playerId).some((cardId) => {
     const grant = state.definitions[state.cards[cardId]?.definitionId ?? ""]?.grantsCostKeyword;
     if (!grant || grant.keyword !== keyword || abilitiesRemoved(state, cardId)) {

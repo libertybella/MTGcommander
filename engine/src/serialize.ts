@@ -1284,6 +1284,7 @@ export function parseGameState(json: string): GameState {
         ? {}
         : { modeIndex: expectNumber(entry.modeIndex, `stack[${index}].modeIndex`) }),
       ...(entry.isCopy === true ? { isCopy: true } : {}),
+      ...(entry.cantBeCountered === true ? { cantBeCountered: true } : {}),
       ...(entry.fromGraveyard === true ? { fromGraveyard: true } : {}),
       ...(entry.modeIndexes === undefined
         ? {}
@@ -1492,6 +1493,25 @@ export function parseGameState(json: string): GameState {
             return {
               cardId: expectString(entry.cardId, `temporaryControl[${index}].cardId`),
               returnToId: expectString(entry.returnToId, `temporaryControl[${index}].returnToId`),
+            };
+          }),
+        }),
+    ...(raw.nextSpellGrants === undefined
+      ? {}
+      : {
+          nextSpellGrants: (Array.isArray(raw.nextSpellGrants)
+            ? raw.nextSpellGrants
+            : (() => {
+                throw new Error("Invalid nextSpellGrants");
+              })()
+          ).map((entry: unknown, index: number) => {
+            if (!isRecord(entry)) {
+              throw new Error(`Invalid nextSpellGrants[${index}]`);
+            }
+            return {
+              playerId: expectString(entry.playerId, `nextSpellGrants[${index}].playerId`),
+              ...(entry.improvise === true ? { improvise: true } : {}),
+              ...(entry.cantBeCountered === true ? { cantBeCountered: true } : {}),
             };
           }),
         }),
@@ -3157,6 +3177,13 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
           ? {}
           : { withKeyword: parseKeywords([value.withKeyword], `${label}.withKeyword`)[0]! }),
       };
+    case "grant_next_spell":
+      return {
+        kind,
+        playerId: parsePlayerSelector(value.playerId, `${label}.playerId`),
+        ...(value.improvise === true ? { improvise: true } : {}),
+        ...(value.cantBeCountered === true ? { cantBeCountered: true } : {}),
+      };
     case "reveal_top_put_permanent":
       return {
         kind,
@@ -4787,6 +4814,14 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
       ...(value.withKeyword === undefined
         ? {}
         : { withKeyword: parseKeywords([value.withKeyword], `${label}.withKeyword`)[0]! }),
+    };
+  }
+  if (kind === "grant_next_spell") {
+    return {
+      kind,
+      playerId: expectString(value.playerId, `${label}.playerId`),
+      ...(value.improvise === true ? { improvise: true } : {}),
+      ...(value.cantBeCountered === true ? { cantBeCountered: true } : {}),
     };
   }
   if (kind === "reveal_top_put_permanent") {

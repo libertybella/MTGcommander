@@ -357,6 +357,10 @@ function onEnterStep(state: GameState): GameState {
       }
       state.temporaryCopies = [];
     }
+    // An unspent "next spell" grant expires with the turn.
+    if (state.nextSpellGrants && state.nextSpellGrants.length > 0) {
+      state.nextSpellGrants = [];
+    }
     if (state.freeCastFromHand && state.freeCastFromHand.length > 0) {
       // An unused "you may cast" offer expires with the turn.
       state.freeCastFromHand = [];

@@ -1653,6 +1653,18 @@ export function bindCardEffect(
       }
       return { kind: "goad", cardId, byPlayerId: context.controllerId };
     }
+    case "grant_next_spell": {
+      const playerId = bindPlayerSelector(state, effect.playerId, context);
+      if (!playerId) {
+        return null;
+      }
+      return {
+        kind: "grant_next_spell",
+        playerId,
+        ...(effect.improvise ? { improvise: true } : {}),
+        ...(effect.cantBeCountered ? { cantBeCountered: true } : {}),
+      };
+    }
     case "goad_all":
       return { kind: "goad_all", byPlayerId: context.controllerId };
     case "must_attack_all":
@@ -2288,6 +2300,11 @@ function cantBeCountered(state: GameState, stackObjectId: StackObjectId): boolea
   const entry = state.stack.find((object) => object.id === stackObjectId);
   if (!entry || entry.kind !== "spell" || !entry.sourceId) {
     return false;
+  }
+  // Mistrise Village: the grant was spent at cast and rides the stack object,
+  // so a second spell in the same turn is not protected by it.
+  if (entry.cantBeCountered) {
+    return true;
   }
   const card = state.cards[entry.sourceId];
   if (card && state.definitions[card.definitionId]?.cantBeCountered) {
@@ -4219,6 +4236,18 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
                 power: effect.power,
                 toughness: effect.toughness,
               });
+        break;
+      }
+      case "grant_next_spell": {
+        next = cloneGameState(state);
+        next.nextSpellGrants = [
+          ...(next.nextSpellGrants ?? []),
+          {
+            playerId: effect.playerId,
+            ...(effect.improvise ? { improvise: true } : {}),
+            ...(effect.cantBeCountered ? { cantBeCountered: true } : {}),
+          },
+        ];
         break;
       }
       case "reveal_top_put_permanent": {

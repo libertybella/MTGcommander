@@ -1821,8 +1821,6 @@ function parseAddMana(rest: string): AddManaResult | null {
     };
   }
 
-  // Reality Shift: the manifest lands on whoever owned the exiled creature.
-  
   // Bloom Tender: one mana of each color represented on your board.
   if (/^For each color among permanents you control, add one mana of that color$/i.test(text)) {
     return { kind: "colors_among", scope: "permanents" };
@@ -5452,6 +5450,27 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
       ],
     };
   }
+
+  // Mistrise Village / Archway of Innovation: a permission spent by the next
+  // spell, rather than a class-wide grant from a permanent.
+  const nextSpell = sentence.match(
+    /^The next spell you cast this turn (can't be countered|has improvise)$/i,
+  );
+  if (nextSpell?.[1]) {
+    return {
+      targetRequirements: [],
+      effects: [
+        {
+          kind: "grant_next_spell",
+          playerId: "controller",
+          ...(/^has improvise$/i.test(nextSpell[1])
+            ? { improvise: true }
+            : { cantBeCountered: true }),
+        },
+      ],
+    };
+  }
+
 
   // Reality Shift: the manifest lands on whoever owned the exiled creature,
   // which is an earlier clause's target rather than a target of its own.

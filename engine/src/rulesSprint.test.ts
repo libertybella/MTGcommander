@@ -27841,3 +27841,117 @@ describe("wave 217: a wider legendary, and a manifest for someone else", () => {
   });
 });
 
+
+describe("wave 218: a permission the next spell spends", () => {
+  const compile = (name: string, manaCost: string, typeLine: string, oracleText: string) =>
+    compileOracleCard({
+      oracleId: name,
+      name,
+      manaCost,
+      typeLine,
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  it("reads both printings as one permission", () => {
+    const village = compile(
+      "Mistrise Village",
+      "",
+      "Land",
+      "{T}: Add {C}.\n{U}, {T}: The next spell you cast this turn can't be countered.",
+    );
+    expect(village.notes).toEqual([]);
+    expect(village.definition.activated[0]?.effects).toEqual([
+      { kind: "grant_next_spell", playerId: "controller", cantBeCountered: true },
+    ]);
+
+    const archway = compile(
+      "Archway of Innovation",
+      "",
+      "Land",
+      "{T}: Add {C}.\n{U}, {T}: The next spell you cast this turn has improvise.",
+    );
+    expect(archway.notes).toEqual([]);
+    expect(archway.definition.activated[0]?.effects).toEqual([
+      { kind: "grant_next_spell", playerId: "controller", improvise: true },
+    ]);
+  });
+
+  it("protects one spell and no more", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const boltDef = createCardDefinition({
+      name: "Bolt",
+      typeLine: "Instant",
+      manaCost: "{R}",
+      effects: [{ kind: "draw", playerId: "controller", count: 1 }],
+    });
+    game.definitions[boltDef.id] = boltDef;
+    const inHand = () => {
+      const card = createCardInstance({ definitionId: boltDef.id, ownerId: p1.id, zone: "hand" });
+      game.cards[card.id] = card;
+      p1.zones.hand.push(card.id);
+      return card;
+    };
+    const first = inHand();
+    const second = inHand();
+
+    p1.mana = { ...p1.mana, R: 2 };
+    let next = applyEffect(game, { kind: "grant_next_spell", playerId: p1.id, cantBeCountered: true });
+    expect(next.nextSpellGrants).toEqual([{ playerId: p1.id, cantBeCountered: true }]);
+
+    next = applyAction(next, {
+      kind: "cast_spell",
+      playerId: p1.id,
+      cardId: first.id,
+      targets: [],
+    });
+    expect(next.stack[next.stack.length - 1]?.cantBeCountered).toBe(true);
+    // Spent — a second spell this turn is not protected, which is the whole
+    // word "next".
+    expect(next.nextSpellGrants).toEqual([]);
+
+    next = applyAction(next, {
+      kind: "cast_spell",
+      playerId: p1.id,
+      cardId: second.id,
+      targets: [],
+    });
+    expect(next.stack[next.stack.length - 1]?.cantBeCountered).toBeUndefined();
+  });
+
+  it("lets the granted improvise pay, and expires unspent at cleanup", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const spellDef = createCardDefinition({
+      name: "Big Spell",
+      typeLine: "Sorcery",
+      manaCost: "{4}{U}",
+      effects: [{ kind: "draw", playerId: "controller", count: 1 }],
+    });
+    game.definitions[spellDef.id] = spellDef;
+
+    // With the grant in hand, improvise reads as granted for this caster.
+    const granted = applyEffect(game, {
+      kind: "grant_next_spell",
+      playerId: p1.id,
+      improvise: true,
+    });
+    const cost = parseManaCost("{4}{U}");
+    expect(
+      reliefAdjustedCost(granted, p1.id, spellDef, cost),
+    ).not.toBeNull();
+    // Without it, nothing about this spell reduces at all.
+    expect(reliefAdjustedCost(game, p1.id, spellDef, parseManaCost("{4}{U}"))).toBeNull();
+
+    let ending = structuredClone(granted);
+    ending.turn.phase = "ending";
+    ending.turn.step = "end";
+    ending = advanceStep(ending);
+    expect(ending.nextSpellGrants).toEqual([]);
+  });
+});
+

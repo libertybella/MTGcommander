@@ -505,6 +505,8 @@ export type StackObject = {
    * the source card anywhere.
    */
   isCopy?: boolean;
+  /** Mistrise Village: the "next spell you cast" grant, spent at cast. */
+  cantBeCountered?: boolean;
   /**
    * Cast via flashback (CR 702.34a): the card is exiled instead of going
    * anywhere else as it leaves the stack.
@@ -646,6 +648,14 @@ export type GameState = {
   /** Mirage Mirror: permanents copying something only until end of turn, with
    * the definition to put back. */
   temporaryCopies?: { cardId: CardInstanceId; restoreDefinitionId: CardDefinitionId }[];
+  /**
+   * "The next spell you cast this turn …" (Mistrise Village, Archway of
+   * Innovation). A permission with a use count rather than a prompt: it is
+   * spent by the next cast and expires with the turn. Modelled the same way
+   * as `freeCastFromHand`, which is the shape that keeps a new "choice" from
+   * needing client, bot and fuzz answer paths.
+   */
+  nextSpellGrants?: { playerId: PlayerId; improvise?: boolean; cantBeCountered?: boolean }[];
   /**
    * Rishkar's Expertise / Electrodominance: "you may cast a spell with mana
    * value N or less from your hand without paying its mana cost". Modelled as
@@ -1043,6 +1053,12 @@ export type GameEffect =
       cantBeBlocked?: boolean;
       withoutKeyword?: Keyword;
       withKeyword?: Keyword;
+    }
+  | {
+      kind: "grant_next_spell";
+      playerId: PlayerId;
+      improvise?: boolean;
+      cantBeCountered?: boolean;
     }
   | { kind: "reveal_top_put_permanent"; playerId: PlayerId }
   | { kind: "drain_opponents"; playerId: PlayerId; amount: number }
@@ -1870,6 +1886,12 @@ export type CardEffect =
       cantBeBlocked?: boolean;
       withoutKeyword?: Keyword;
       withKeyword?: Keyword;
+    }
+  | {
+      kind: "grant_next_spell";
+      playerId: PlayerSelector;
+      improvise?: boolean;
+      cantBeCountered?: boolean;
     }
   | { kind: "reveal_top_put_permanent"; playerId: PlayerSelector }
   /** Exsanguinate: each opponent loses N; you gain the total lost.
