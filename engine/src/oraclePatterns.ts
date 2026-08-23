@@ -5743,6 +5743,38 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     }
   }
 
+  // The same search, with a noun phrase the pattern above cannot hold: a
+  // cross-axis disjunction, an "and/or" list, or a trailing qualifier.
+  // It runs only AFTER that one declines, so every card already compiling
+  // through the battle-tested shape keeps compiling through it — this adds
+  // reach without moving anything.
+  match = sentence.match(
+    /^(?:you may )?Search your library for (.+?), (?:reveal (?:it|them|that card|those cards), )?(?:and )?put (?:it|them|that card|those cards) (onto the battlefield(?: tapped)?|into your hand|into your graveyard), then shuffle(?: your library)?$/i,
+  );
+  if (match?.[1] && match[2]) {
+    const phrase = parseSearchNounPhrase(match[1]);
+    if (phrase) {
+      const where = match[2].toLowerCase();
+      return {
+        targetRequirements: [],
+        effects: [
+          {
+            kind: "search_library",
+            playerId: "controller",
+            filter: phrase.filter,
+            destination: where.startsWith("onto the battlefield")
+              ? "battlefield"
+              : where === "into your hand"
+                ? "hand"
+                : "graveyard",
+            count: phrase.count,
+            ...(where.includes("tapped") ? { entersTapped: true } : {}),
+          },
+        ],
+      };
+    }
+  }
+
   // Ephemerate / Conjurer's Closet / Restoration Angel / Felidar Guardian /
   // Teleportation Circle flicker. The noun phrase is parsed rather than
   // enumerated, so each new blink is a card, not a branch.
@@ -7320,6 +7352,83 @@ function controllerBasicSearchRider(sentence: string, lastIndex: number): CardEf
     count: 1,
     ...(plainBasic?.[1] ? { entersTapped: true } : {}),
   };
+}
+
+/**
+ * The richer half of a library search: a noun phrase that may be a
+ * DISJUNCTION ("an artifact or Dragon card", "basic land cards and/or Gate
+ * cards") and may carry a qualifier that applies to all of it ("… with mana
+ * value 2 or less").
+ *
+ * `parseSearchDescriptor` handles a single descriptor and refuses a mixed
+ * list, because `typesAny` and `subtypesAny` each live on one axis. This
+ * splits the phrase first and hands each branch to that same function, so a
+ * cross-axis list is a disjunction of two ordinary filters rather than a
+ * new kind of list.
+ *
+ * The shared "with …" tail is peeled BEFORE the split, because its own "or"
+ * ("2 or less") would otherwise be read as another branch. A per-branch
+ * qualifier ("a card with flash") is peeled after, from its own branch.
+ */
+function parseSearchNounPhrase(
+  phrase: string,
+): { filter: SearchFilter; count: number } | null {
+  let text = phrase.trim();
+  let count = 1;
+  const upTo = text.match(/^up to ([a-z]+|\d+) /i);
+  if (upTo?.[1]) {
+    const parsed = parseCount(upTo[1].toLowerCase()) ?? Number(upTo[1]);
+    if (!parsed) {
+      return null;
+    }
+    count = parsed;
+    text = text.slice(upTo[0].length);
+  }
+
+  const shared: SearchFilter = {};
+  const manaCap = text.match(/^(.*?)\s+with mana value (\d+) or less$/i);
+  if (manaCap?.[1] && manaCap[2]) {
+    shared.maxManaValue = Number(manaCap[2]);
+    text = manaCap[1].trim();
+  }
+
+  const branchTexts = text
+    .split(/\s+and\/or\s+|\s+or\s+/i)
+    .map((part) => part.trim())
+    .filter(Boolean);
+  if (branchTexts.length === 0) {
+    return null;
+  }
+
+  const branches: SearchFilter[] = [];
+  for (const branchText of branchTexts) {
+    let branch = branchText.replace(/^an?\s+/i, "").trim();
+    let keyword: Keyword | undefined;
+    // KEYWORD_LINE, not KEYWORD_GRANTS: a search names printed keywords,
+    // and flash — the one this exists for — is not something a static can
+    // grant a creature, so it is absent from the grant table.
+    const withKeyword = branch.match(/^(.*?)\s+with (?:an? )?([a-z]+)$/i);
+    if (withKeyword?.[2] && KEYWORD_LINE.has(withKeyword[2].toLowerCase())) {
+      keyword = withKeyword[2].toLowerCase() as Keyword;
+      branch = (withKeyword[1] ?? "").trim();
+    }
+    // A trailing word that is NOT a keyword is left where it is rather
+    // than failing the phrase — the descriptor parser below is the one
+    // that decides whether "with a basic land type" means anything.
+    branch = branch.replace(/\s*cards?$/i, "").trim();
+    // "a card with flash" leaves nothing behind, which is the empty filter
+    // — every card — narrowed by the keyword alone.
+    const parsed = branch.length > 0 ? parseSearchDescriptor(branch) : {};
+    if (!parsed) {
+      return null;
+    }
+    branches.push({ ...parsed, ...(keyword ? { keyword } : {}) });
+  }
+
+  if (branches.length === 1) {
+    return { filter: { ...branches[0]!, ...shared }, count };
+  }
+  return { filter: { ...shared, anyOf: branches }, count };
 }
 
 /** "a noncreature, nonland card" / "a non-Human creature card" and friends. */

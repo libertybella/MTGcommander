@@ -2101,6 +2101,24 @@ function parseSearchFilter(value: unknown, label: string): SearchFilter {
     ...(value.exactManaValue === undefined
       ? {}
       : { exactManaValue: expectNumber(value.exactManaValue, `${label}.exactManaValue`) }),
+    ...(value.keyword === undefined
+      ? {}
+      : { keyword: parseSingleKeyword(value.keyword, `${label}.keyword`) }),
+    // One level only: a branch is parsed by this same function, and
+    // nothing writes a branch that carries its own `anyOf`, so the
+    // recursion terminates on the shape rather than on a depth counter.
+    ...(value.anyOf === undefined
+      ? {}
+      : {
+          anyOf: (() => {
+            if (!Array.isArray(value.anyOf)) {
+              throw new Error(`Invalid ${label}.anyOf`);
+            }
+            return value.anyOf.map((branch: unknown, index: number) =>
+              parseSearchFilter(branch, `${label}.anyOf[${index}]`),
+            );
+          })(),
+        }),
   };
 }
 

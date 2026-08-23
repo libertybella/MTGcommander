@@ -693,6 +693,25 @@ export function searchMatches(
   if (filter.maxManaValue !== undefined && traits.manaValue > filter.maxManaValue) {
     return false;
   }
+  // Printed keywords: a card in the library is not on the battlefield, so
+  // the layer engine has nothing to say about it.
+  if (
+    filter.keyword !== undefined &&
+    !(state.definitions[card.definitionId]?.keywords ?? []).includes(filter.keyword)
+  ) {
+    return false;
+  }
+  // The disjunction is checked LAST, so the fields beside it have already
+  // narrowed the card — they qualify every branch rather than competing
+  // with them. A branch is an ordinary filter, matched by this same
+  // function; nothing builds a branch carrying its own `anyOf`.
+  if (
+    filter.anyOf &&
+    filter.anyOf.length > 0 &&
+    !filter.anyOf.some((branch) => searchMatches(state, cardId, branch))
+  ) {
+    return false;
+  }
   // Transmute: "with the same mana value as this card".
   if (filter.exactManaValue !== undefined && traits.manaValue !== filter.exactManaValue) {
     return false;

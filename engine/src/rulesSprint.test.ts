@@ -32,7 +32,7 @@ import { applyResolveCreatureType, legalEnterCopyIds, searchMatches } from "./pr
 import { parseGameState, serializeGameState } from "./serialize";
 import { fillLibraries } from "./testSupport";
 import { advanceSteps } from "./turn";
-import type { CardDefinition, CardEffect, GameState, PlayerState, TargetRequirement } from "./types";
+import type { CardDefinition, CardEffect, GameState, Keyword, PlayerState, TargetRequirement } from "./types";
 
 function twoPlayers() {
   const game = createGameState({ playerCount: 2 });
@@ -32839,5 +32839,167 @@ describe("wave 253: cards you've drawn this turn", () => {
       dynamicOffset: -1,
     });
     expect(trigger?.effects[1]).toMatchObject({ per: "cards_drawn_this_turn" });
+  });
+});
+
+describe("wave 254: disjunctive library searches", () => {
+  const compile = (
+    name: string,
+    typeLine: string,
+    oracleText: string,
+    pt?: [string, string],
+  ) =>
+    compileOracleCard({
+      oracleId: name,
+      name,
+      manaCost: "{2}{G}",
+      typeLine,
+      power: pt?.[0] ?? null,
+      toughness: pt?.[1] ?? null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  it("splits a cross-axis list into a disjunction", () => {
+    // "artifact" is a type and "Dragon" is a subtype, so neither typesAny nor
+    // subtypesAny can hold this list — that is the whole reason anyOf exists.
+    const magda = compile(
+      "Magda, Brazen Outlaw",
+      "Legendary Creature — Dwarf Berserker",
+      "Sacrifice five Treasures: Search your library for an artifact or Dragon card, put that card onto the battlefield, then shuffle.",
+      ["1", "2"],
+    );
+    expect(magda.notes).toEqual([]);
+    expect(magda.definition.activated[0]?.effects[0]).toMatchObject({
+      kind: "search_library",
+      destination: "battlefield",
+      count: 1,
+      filter: { anyOf: [{ types: ["artifact"] }, { subtypes: ["dragon"] }] },
+    });
+  });
+
+  it("keeps a shared qualifier outside the disjunction", () => {
+    const spellseeker = compile(
+      "Spellseeker",
+      "Creature — Human Wizard",
+      "When Spellseeker enters, you may search your library for an instant or sorcery card with mana value 2 or less, reveal it, put it into your hand, then shuffle.",
+      ["1", "1"],
+    );
+    expect(spellseeker.notes).toEqual([]);
+    const search = spellseeker.definition.triggers[0]?.effects[0] as {
+      filter: { maxManaValue?: number; anyOf?: unknown[] };
+    };
+    // The cap sits BESIDE the branches, not inside one of them: "2 or less"
+    // qualifies the instants and the sorceries alike.
+    expect(search.filter.maxManaValue).toBe(2);
+    expect(search.filter.anyOf).toEqual([{ types: ["instant"] }, { types: ["sorcery"] }]);
+  });
+
+  it("reads an and/or list and a per-branch keyword", () => {
+    const route = compile(
+      "Circuitous Route",
+      "Sorcery",
+      "Search your library for up to two basic land cards and/or Gate cards, put them onto the battlefield tapped, then shuffle.",
+    );
+    expect(route.notes).toEqual([]);
+    expect(route.definition.effects[0]).toMatchObject({
+      kind: "search_library",
+      count: 2,
+      entersTapped: true,
+      filter: {
+        anyOf: [{ supertypes: ["basic"], types: ["land"] }, { subtypes: ["gate"] }],
+      },
+    });
+
+    const teachings = compile(
+      "Waterlogged Teachings",
+      "Sorcery",
+      "Search your library for an instant card or a card with flash, reveal it, put it into your hand, then shuffle.",
+    );
+    expect(teachings.notes).toEqual([]);
+    // "a card with flash" narrows nothing but the keyword — the empty filter
+    // plus one predicate, which is exactly what the printed card says.
+    expect(
+      (teachings.definition.effects[0] as { filter: { anyOf?: unknown[] } }).filter.anyOf,
+    ).toEqual([{ types: ["instant"] }, { keyword: "flash" }]);
+  });
+
+  it("matches any branch and refuses a card that matches none", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 5);
+    const make = (name: string, typeLine: string, keywords: Keyword[] = []) => {
+      const definition = createCardDefinition({ name, typeLine, keywords });
+      game.definitions[definition.id] = definition;
+      const card = createCardInstance({
+        definitionId: definition.id,
+        ownerId: p1.id,
+        zone: "library",
+      });
+      game.cards[card.id] = card;
+      p1.zones.library.push(card.id);
+      return card.id;
+    };
+    const relic = make("Relic", "Artifact");
+    const dragon = make("Dragon", "Creature — Dragon");
+    const bear = make("Bear", "Creature — Bear");
+
+    const filter = { anyOf: [{ types: ["artifact"] }, { subtypes: ["dragon"] }] };
+    expect(searchMatches(game, relic, filter)).toBe(true);
+    expect(searchMatches(game, dragon, filter)).toBe(true);
+    // The negative case is the one that matters: a filter that ignored anyOf
+    // entirely would pass both assertions above and fail only this one.
+    expect(searchMatches(game, bear, filter)).toBe(false);
+
+    // Fields beside anyOf narrow every branch, they do not add a branch.
+    const cheapDragon = make("Whelp", "Creature — Dragon");
+    game.definitions[game.cards[cheapDragon]!.definitionId]!.characteristics.manaValue = 2;
+    game.definitions[game.cards[dragon]!.definitionId]!.characteristics.manaValue = 6;
+    const capped = { maxManaValue: 2, anyOf: [{ types: ["artifact"] }, { subtypes: ["dragon"] }] };
+    expect(searchMatches(game, cheapDragon, capped)).toBe(true);
+    expect(searchMatches(game, dragon, capped)).toBe(false);
+
+    // The keyword predicate reads PRINTED keywords.
+    const flashy = make("Ambusher", "Creature — Cat", ["flash"]);
+    expect(searchMatches(game, flashy, { keyword: "flash" })).toBe(true);
+    expect(searchMatches(game, bear, { keyword: "flash" })).toBe(false);
+  });
+
+  it("round trips the disjunction and the keyword", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 5);
+    const definition = createCardDefinition({
+      name: "Seeker",
+      typeLine: "Sorcery",
+      effects: [
+        {
+          kind: "search_library",
+          playerId: "controller",
+          filter: {
+            maxManaValue: 2,
+            anyOf: [{ types: ["instant"] }, { keyword: "flash" }],
+          },
+          destination: "hand",
+          count: 1,
+        },
+      ],
+    });
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({
+      definitionId: definition.id,
+      ownerId: p1.id,
+      zone: "hand",
+    });
+    game.cards[card.id] = card;
+    p1.zones.hand.push(card.id);
+
+    const round = parseGameState(serializeGameState(game));
+    const restored = round.definitions[definition.id]?.effects[0];
+    expect(restored).toMatchObject({
+      filter: {
+        maxManaValue: 2,
+        anyOf: [{ types: ["instant"] }, { keyword: "flash" }],
+      },
+    });
   });
 });

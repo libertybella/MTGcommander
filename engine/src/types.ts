@@ -798,6 +798,21 @@ export type SearchFilter = {
   maxPower?: number;
   /** Transmute: "with the same mana value as this card". */
   exactManaValue?: number;
+  /** "a card with flash" (Waterlogged Teachings). Printed keywords only —
+   * a card in the library has no granted ones. */
+  keyword?: Keyword;
+  /**
+   * "an artifact or Dragon card", "basic land cards and/or Gate cards" —
+   * a disjunction whose branches sit on DIFFERENT axes, which neither
+   * `typesAny` (one axis: types) nor `subtypesAny` (one axis: subtypes)
+   * can express. A card matches if it matches ANY branch, and the fields
+   * beside `anyOf` still apply to all of them, so "an instant or sorcery
+   * card with mana value 2 or less" is a disjunction under a shared cap.
+   *
+   * One level deep by construction: nothing builds a branch that has its
+   * own `anyOf`, and the matcher does not recurse past the first.
+   */
+  anyOf?: SearchFilter[];
 };
 
 export type SearchDestination = "hand" | "battlefield" | "graveyard" | "library_top";

@@ -870,6 +870,24 @@ more questions it can now ask:
   (Bennie Bracks). Reads the existing per-player `createdTokenThisTurn`
   list, and asks whether the CONTROLLER is in it — an opponent's Treasure
   must not satisfy it.
+- **`SearchFilter.anyOf`** — "an artifact or Dragon card" (Magda), "basic
+  land cards and/or Gate cards" (Circuitous Route), "an instant card or a
+  card with flash" (Waterlogged Teachings). `typesAny` and `subtypesAny`
+  each live on ONE axis, so a list mixing a card type with a subtype had
+  no spelling at all. `anyOf` is a disjunction of whole filters, one level
+  deep; the fields beside it narrow every branch rather than adding one,
+  which is how "an instant or sorcery card with mana value 2 or less"
+  (Spellseeker) puts a single cap over two branches. `SearchFilter.keyword`
+  reads PRINTED keywords — a card in the library is not on the battlefield,
+  so the layer engine has nothing to say about it.
+
+  The reach comes from a second search sentence that runs only after the
+  existing one declines, so every card already compiling through the
+  battle-tested pattern keeps its path. Its noun-phrase parser peels a
+  shared "with mana value N or less" tail BEFORE splitting on "or" —
+  otherwise "2 or less" reads as another branch — and a per-branch keyword
+  after. Six cards moved on this: Spellseeker, Magda, Circuitous Route,
+  Waterlogged Teachings, Moonsilver Key, and Myriad Landscape.
 - **`cards_drawn_this_turn`** — "for each card you've drawn this turn"
   (Fists of Flame), "where X is the number of cards you've drawn this turn
   minus one" (Proft's Eidetic Memory). A TALLY off the draw event, not a
