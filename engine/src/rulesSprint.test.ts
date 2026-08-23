@@ -27627,3 +27627,110 @@ describe("wave 215: a pump the board sizes, and a doubling of one", () => {
   });
 });
 
+
+describe("wave 216: four targets at once, and a sweep that is a sacrifice", () => {
+  const compile = (name: string, manaCost: string, typeLine: string, oracleText: string) =>
+    compileOracleCard({
+      oracleId: name,
+      name,
+      manaCost,
+      typeLine,
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  it("takes one of each of Decimate's four kinds", () => {
+    const decimate = compile(
+      "Decimate",
+      "{2}{R}{G}",
+      "Sorcery",
+      "Destroy target artifact, target creature, target enchantment, and target land.",
+    );
+    expect(decimate.notes).toEqual([]);
+    expect(decimate.definition.targetRequirements).toEqual([
+      { kind: "artifact" },
+      { kind: "creature" },
+      { kind: "enchantment" },
+      { kind: "land" },
+    ]);
+    // Each destruction points at its OWN slot; sharing an index would send
+    // all four at whatever the first one picked.
+    expect(decimate.definition.effects).toEqual([
+      { kind: "move_card", cardId: { type: "chosen", index: 0 }, toZone: "graveyard" },
+      { kind: "move_card", cardId: { type: "chosen", index: 1 }, toZone: "graveyard" },
+      { kind: "move_card", cardId: { type: "chosen", index: 2 }, toZone: "graveyard" },
+      { kind: "move_card", cardId: { type: "chosen", index: 3 }, toZone: "graveyard" },
+    ]);
+  });
+
+  it("spares the colorless and ignores indestructible", () => {
+    const dust = compile(
+      "All Is Dust",
+      "{7}",
+      "Kindred Sorcery — Eldrazi",
+      "Each player sacrifices all permanents they control that are one or more colors.",
+    );
+    expect(dust.notes).toEqual([]);
+    expect(dust.definition.effects).toEqual([
+      { kind: "destroy_all", what: "permanents", coloredOnly: true, asSacrifice: true },
+    ]);
+
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const coloredDef = createCardDefinition({
+      name: "Bear",
+      typeLine: "Creature — Bear",
+      manaCost: "{1}{G}",
+      power: 2,
+      toughness: 2,
+    });
+    const colorlessDef = createCardDefinition({
+      name: "Scion",
+      typeLine: "Creature — Eldrazi",
+      manaCost: "{2}",
+      power: 1,
+      toughness: 1,
+    });
+    const toughDef = createCardDefinition({
+      name: "Darksteel",
+      typeLine: "Artifact Creature — Golem",
+      manaCost: "{1}{W}",
+      power: 3,
+      toughness: 3,
+      keywords: ["indestructible"],
+    });
+    const landDef = createCardDefinition({ name: "Forest", typeLine: "Basic Land — Forest" });
+    for (const definition of [coloredDef, colorlessDef, toughDef, landDef]) {
+      game.definitions[definition.id] = definition;
+    }
+    const put = (definitionId: string) => {
+      const card = createCardInstance({ definitionId, ownerId: p1.id, zone: "battlefield" });
+      game.cards[card.id] = card;
+      p1.zones.battlefield.push(card.id);
+      return card;
+    };
+    const colored = put(coloredDef.id);
+    const colorless = put(colorlessDef.id);
+    const tough = put(toughDef.id);
+    const land = put(landDef.id);
+
+    const next = applyEffect(game, {
+      kind: "destroy_all",
+      what: "permanents",
+      coloredOnly: true,
+      asSacrifice: true,
+    });
+    expect(next.cards[colored.id]?.zone).toBe("graveyard");
+    // Colorless survives — that is the whole card.
+    expect(next.cards[colorless.id]?.zone).toBe("battlefield");
+    // A sacrifice is not a destruction, so indestructible is no help.
+    expect(next.cards[tough.id]?.zone).toBe("graveyard");
+    // A basic Forest is colorless, so it stays; the scope reaches lands but
+    // the colour filter is what decides.
+    expect(next.cards[land.id]?.zone).toBe("battlefield");
+  });
+});
+

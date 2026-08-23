@@ -1128,6 +1128,10 @@ export type GameEffect =
       notLegendary?: boolean;
       /** Hour of Reckoning: "nontoken" — the tokens survive. */
       nontoken?: boolean;
+      /** All Is Dust: "that are one or more colors" — colourless survives. */
+      coloredOnly?: boolean;
+      /** All Is Dust: a SACRIFICE, so indestructible does not save. */
+      asSacrifice?: boolean;
       /** Urza's Ruinous Blast exiles rather than destroying. */
       toZone?: "exile";
       maxManaValue?: number;
@@ -1178,7 +1182,14 @@ export type GameEffect =
   | { kind: "fight"; cardId: CardInstanceId; otherId: CardInstanceId };
 
 /** What a "Destroy all …" wipe hits. */
-export type DestroyAllScope = "creatures" | "artifacts" | "enchantments" | "planeswalkers" | "nonland";
+export type DestroyAllScope =
+  | "creatures"
+  | "artifacts"
+  | "enchantments"
+  | "planeswalkers"
+  | "nonland"
+  /** All Is Dust: lands included. */
+  | "permanents";
 
 /** What a characteristic-defining P/T counts, relative to the controller. */
 /** What a mass control change moves. */
@@ -1970,6 +1981,10 @@ export type CardEffect =
       notLegendary?: boolean;
       /** Hour of Reckoning: "nontoken" — the tokens survive. */
       nontoken?: boolean;
+      /** All Is Dust: "that are one or more colors" — colourless survives. */
+      coloredOnly?: boolean;
+      /** All Is Dust: a SACRIFICE, so indestructible does not save. */
+      asSacrifice?: boolean;
       /** Urza's Ruinous Blast exiles rather than destroying. */
       toZone?: "exile";
       maxManaValue?: number;

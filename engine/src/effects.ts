@@ -1271,6 +1271,8 @@ export function bindCardEffect(
         ...(effect.notEnchanted ? { notEnchanted: true } : {}),
         ...(effect.notLegendary ? { notLegendary: true } : {}),
         ...(effect.nontoken ? { nontoken: true } : {}),
+        ...(effect.coloredOnly ? { coloredOnly: true } : {}),
+        ...(effect.asSacrifice ? { asSacrifice: true } : {}),
         ...(effect.toZone ? { toZone: effect.toZone } : {}),
         ...(effect.maxManaValue !== undefined ? { maxManaValue: effect.maxManaValue } : {}),
         ...(effect.minManaValue !== undefined ? { minManaValue: effect.minManaValue } : {}),
@@ -3004,6 +3006,9 @@ function applyDestroyAll(
         type === "creature" ? isCreature(next, cardId) : types.includes(type),
       );
     }
+    if (what === "permanents") {
+      return true;
+    }
     if (what === "creatures") {
       return isCreature(next, cardId);
     }
@@ -3077,8 +3082,19 @@ function applyDestroyAll(
     // Hour of Reckoning: the tokens it convoked with survive the sweep.
     .filter((card) => !effect.nontoken || !card.isToken
     )
-    // Exiling sweeps are not "destroy", so indestructible does not save.
-    .filter((card) => effect.toZone === "exile" || !hasKeyword(next, card.id, "indestructible"))
+    // All Is Dust: "that are one or more colors" — a colourless permanent,
+    // which is the whole point of an Eldrazi sweeper, is spared.
+    .filter(
+      (card) => !effect.coloredOnly || characteristicsOf(next, card.id).colors.length > 0,
+    )
+    // Exiling sweeps are not "destroy", so indestructible does not save; nor
+    // is a sacrifice a destruction.
+    .filter(
+      (card) =>
+        effect.toZone === "exile" ||
+        effect.asSacrifice === true ||
+        !hasKeyword(next, card.id, "indestructible"),
+    )
     .map((card) => card.id);
   const collectDies: EngineEvent[] = [];
   for (const cardId of doomed) {

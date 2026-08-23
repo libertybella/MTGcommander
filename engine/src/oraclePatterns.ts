@@ -2332,6 +2332,41 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     }
   }
 
+  // All Is Dust: a sacrifice, not a destruction, so indestructible does not
+  // save — and colourless permanents are spared, which is the whole card.
+  if (
+    /^Each player sacrifices all permanents they control that are one or more colors$/i.test(
+      sentence,
+    )
+  ) {
+    return {
+      targetRequirements: [],
+      effects: [
+        { kind: "destroy_all", what: "permanents", coloredOnly: true, asSacrifice: true },
+      ],
+    };
+  }
+
+  // Decimate: four targets of four kinds, destroyed together.
+  const decimate = sentence.match(
+    /^Destroy target ([a-z]+), target ([a-z]+), target ([a-z]+), and target ([a-z]+)$/i,
+  );
+  if (decimate) {
+    const kinds = [decimate[1], decimate[2], decimate[3], decimate[4]].map((word) =>
+      TARGET_HEAD_NOUNS.find(([pattern]) => pattern.test(word!.toLowerCase()))?.[1],
+    );
+    if (kinds.every((kind): kind is TargetKind => Boolean(kind))) {
+      return {
+        targetRequirements: kinds.map((kind) => ({ kind })),
+        effects: kinds.map((_, index) => ({
+          kind: "move_card" as const,
+          cardId: { type: "chosen" as const, index },
+          toZone: "graveyard" as const,
+        })),
+      };
+    }
+  }
+
   // Defile: a targeted pump whose size is a live count. The count is read as
   // the spell resolves, so the printed numbers are the per-unit step.
   const scaledPump = sentence.match(

@@ -2051,7 +2051,8 @@ function parseDestroyAllScope(value: unknown, label: string): DestroyAllScope {
     scope !== "artifacts" &&
     scope !== "enchantments" &&
     scope !== "planeswalkers" &&
-    scope !== "nonland"
+    scope !== "nonland" &&
+    scope !== "permanents"
   ) {
     throw new Error(`Invalid ${label}`);
   }
@@ -3324,6 +3325,8 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
       ...(value.notEnchanted === true ? { notEnchanted: true } : {}),
       ...(value.notLegendary === true ? { notLegendary: true } : {}),
       ...(value.nontoken === true ? { nontoken: true } : {}),
+      ...(value.coloredOnly === true ? { coloredOnly: true } : {}),
+      ...(value.asSacrifice === true ? { asSacrifice: true } : {}),
       ...(value.toZone === "exile" ? { toZone: "exile" } : {}),
         ...(value.typesAny === undefined
           ? {}
@@ -3335,6 +3338,8 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
         ...(value.notEnchanted === true ? { notEnchanted: true } : {}),
         ...(value.notLegendary === true ? { notLegendary: true } : {}),
         ...(value.nontoken === true ? { nontoken: true } : {}),
+        ...(value.coloredOnly === true ? { coloredOnly: true } : {}),
+        ...(value.asSacrifice === true ? { asSacrifice: true } : {}),
         ...(value.toZone === "exile" ? { toZone: "exile" } : {}),
         ...(value.maxManaValue === undefined
           ? {}
