@@ -11,11 +11,20 @@ the current state of play. Read all four before writing code.
 ## State of play (checkpoint-86-one-away-grind, 2026-08-22)
 
 - Branch `comprehensive-plan`, tags through `checkpoint-86-one-away-grind`.
-- 1,166 tests green; top-2,000 compile rate **66.9% (1,344/2,009)**,
-  60-card sample 97% (CI floor now 90). Waves 218–219 land after the tag.
-- **Liberty's standing directive: grind to 75% = 1,507 cards.** 163 to go.
-  Waves 206–219 flipped 5, 3, 4, 3, 2, 3, 3, 3, 2, 2, 2, 2, 2, 2 — call it
-  **under 3 a wave**, so 75% is roughly sixty more waves. There is no single
+- 1,168 tests green; top-2,000 compile rate **67.0% (1,346/2,009)**,
+  60-card sample 97% (CI floor now 90). Waves 218–220 land after the tag.
+- **Liberty's standing directive: grind to 75% = 1,507 cards.** 161 to go.
+  Waves 206–220 flipped 5, 3, 4, 3, 2, 3, 3, 3, 2, 2, 2, 2, 2, 2, 2 — call
+  it **under 3 a wave**, so 75% is roughly sixty more waves. The rate is
+  drifting down as the fat clusters get spent (206–210 averaged 3.4,
+  216–220 averaged 2.0); expect two a wave, not three.
+- **A rider that needs to know what just happened belongs ON the effect
+  that did it.** "You gain 1 life for each creature destroyed this way"
+  is a field on the sweep, not a second effect asking the state what it
+  missed — the sweep is the only thing that knows its own body count.
+  Culling Ritual's mana had the shape already. Watch the plural case:
+  "destroy all artifacts and enchantments" compiles to TWO sweeps, so the
+  rider goes on every trailing one or it counts half the board. There is no single
   lever left in the miss corpus; this is a grind, and the method below is
   what makes it a steady one rather than a stalling one.
 - **Pick clusters by sorting the miss corpus two ways, not one.** By
