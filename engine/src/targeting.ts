@@ -390,6 +390,7 @@ export function isChosenTargetLegal(
     requirement.kind === "land" ||
     requirement.kind === "artifact_enchantment_or_nonbasic_land" ||
     requirement.kind === "artifact_enchantment_or_land" ||
+    requirement.kind === "artifact_creature_enchantment_or_land" ||
     requirement.kind === "artifact_enchantment_or_planeswalker" ||
     requirement.kind === "artifact_creature_or_planeswalker" ||
     requirement.kind === "artifact_creature_or_land" ||
@@ -462,6 +463,13 @@ export function isChosenTargetLegal(
       case "artifact_enchantment_or_land":
         return (
           types.includes("artifact") || types.includes("enchantment") || types.includes("land")
+        );
+      case "artifact_creature_enchantment_or_land":
+        return (
+          types.includes("artifact") ||
+          isCreature(state, target.cardId) ||
+          types.includes("enchantment") ||
+          types.includes("land")
         );
       case "artifact_enchantment_or_planeswalker":
         return (
@@ -718,6 +726,7 @@ export function legalChoicesForRequirement(
     requirement.kind === "land" ||
     requirement.kind === "artifact_enchantment_or_nonbasic_land" ||
     requirement.kind === "artifact_enchantment_or_land" ||
+    requirement.kind === "artifact_creature_enchantment_or_land" ||
     requirement.kind === "artifact_enchantment_or_planeswalker" ||
     requirement.kind === "artifact_creature_or_planeswalker" ||
     requirement.kind === "artifact_creature_or_land" ||

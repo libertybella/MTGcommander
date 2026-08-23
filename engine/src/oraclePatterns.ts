@@ -797,6 +797,10 @@ const TARGET_HEAD_NOUNS: [RegExp, TargetKind][] = [
   [/^creature or planeswalker$/i, "creature_or_planeswalker"],
   [/^artifact or enchantment$/i, "artifact_or_enchantment"],
   [/^artifact, enchantment, or land$/i, "artifact_enchantment_or_land"],
+  [
+    /^artifact, creature, enchantment, or land$/i,
+    "artifact_creature_enchantment_or_land",
+  ],
   [/^artifact, enchantment, or planeswalker$/i, "artifact_enchantment_or_planeswalker"],
   [/^noncreature, nonland permanent$/i, "noncreature_nonland_permanent"],
   [/^nonland permanent$/i, "nonland_permanent"],
@@ -2289,6 +2293,37 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
         { kind: "restrict_until_eot", cardId: { type: "chosen", index: 0 }, cantBeBlocked: true },
       ],
     };
+  }
+
+  // Mirage Mirror / Thespian's Stage / Shifting Woodland: the source becomes
+  // a copy of something it targets. The noun phrase goes through the shared
+  // target grammars, so "nontoken artifact you control" and "permanent card in
+  // your graveyard" are read by the parsers that already know those shapes.
+  const becomeCopy = sentence.match(
+    /^~ becomes a copy of target (.+?)(, except it has this ability)?( until end of turn)?$/i,
+  );
+  if (becomeCopy?.[1]) {
+    const phrase = becomeCopy[1].trim();
+    const inGraveyard = phrase.match(/^(.+) card in your graveyard$/i);
+    const requirement = inGraveyard?.[1]
+      ? parseGraveyardTargetPhrase(`${inGraveyard[1]} card`)
+      : // this grammar reads the whole phrase INCLUDING "target", which the
+        // match above has already stripped.
+        parseSimpleTargetPhrase(`target ${phrase}`);
+    if (requirement) {
+      return {
+        targetRequirements: [requirement],
+        effects: [
+          {
+            kind: "become_copy",
+            cardId: "self",
+            target: { type: "chosen", index: 0 },
+            ...(becomeCopy[3] ? { untilEot: true } : {}),
+            ...(becomeCopy[2] ? { keepAbilities: true } : {}),
+          },
+        ],
+      };
+    }
   }
 
   // Thassa, Deep-Dwelling: "{3}{U}: Tap another target creature."

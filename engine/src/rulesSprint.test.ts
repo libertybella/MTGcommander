@@ -21,7 +21,7 @@ import { castCostReduction, castableFromTop, freeEquipGranted, hasFlashGrant, la
 import { hasKeyword } from "./keywords";
 import { dispatchEventsInPlace, triggerConditionHolds } from "./triggers";
 import { applyCombatDamage, declareAttackers } from "./combat";
-import { beginNextLivingTurnInPlace } from "./turn";
+import { advanceStep, beginNextLivingTurnInPlace } from "./turn";
 import { commanderIdentityColors, manaAbilitiesFor, manaTapOptionsFor } from "./manaOptions";
 import { emptyManaPools, parseManaCost } from "./mana";
 import { applyStateBasedActionsInPlace } from "./status";
@@ -27031,6 +27031,179 @@ describe("wave 211: three small readings the engine was one word from", () => {
       { kind: "restrict_until_eot", cardId: "self", cantBeBlocked: true },
     ]);
     expect(kappa.definition.effects).toEqual([]);
+  });
+});
+
+
+describe("wave 212: becoming a copy, and stopping being one", () => {
+  const compile = (name: string, manaCost: string, typeLine: string, oracleText: string) =>
+    compileOracleCard({
+      oracleId: name,
+      name,
+      manaCost,
+      typeLine,
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  it("reads the three printings of the same clause", () => {
+    const mirror = compile(
+      "Mirage Mirror",
+      "{3}",
+      "Artifact",
+      "{2}: Mirage Mirror becomes a copy of target artifact, creature, enchantment, or land until end of turn.",
+    );
+    expect(mirror.notes).toEqual([]);
+    expect(mirror.definition.activated[0]?.targetRequirements).toEqual([
+      { kind: "artifact_creature_enchantment_or_land" },
+    ]);
+    expect(mirror.definition.activated[0]?.effects).toEqual([
+      { kind: "become_copy", cardId: "self", target: { type: "chosen", index: 0 }, untilEot: true },
+    ]);
+
+    const stage = compile(
+      "Thespian's Stage",
+      "",
+      "Land",
+      "{T}: Add {C}.\n{2}, {T}: Thespian's Stage becomes a copy of target land, except it has this ability.",
+    );
+    expect(stage.notes).toEqual([]);
+    // No duration, and it keeps the ability — which is the whole reason it can
+    // go on copying things afterwards.
+    expect(stage.definition.activated[0]?.effects).toEqual([
+      {
+        kind: "become_copy",
+        cardId: "self",
+        target: { type: "chosen", index: 0 },
+        keepAbilities: true,
+      },
+    ]);
+
+    const woodland = compile(
+      "Shifting Woodland",
+      "",
+      "Land",
+      "{T}: Add {C}.\n{2}{G}{G}: Shifting Woodland becomes a copy of target permanent card in your graveyard until end of turn.",
+    );
+    expect(woodland.notes).toEqual([]);
+    expect(woodland.definition.activated[0]?.targetRequirements).toEqual([
+      { kind: "own_graveyard_permanent_card" },
+    ]);
+  });
+
+  it("takes on the copied card and gives it back at cleanup", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const mirrorDef = createCardDefinition({ name: "Mirage Mirror", typeLine: "Artifact" });
+    const bearDef = createCardDefinition({
+      name: "Bear",
+      typeLine: "Creature — Bear",
+      power: 2,
+      toughness: 2,
+    });
+    const wurmDef = createCardDefinition({
+      name: "Wurm",
+      typeLine: "Creature — Wurm",
+      power: 6,
+      toughness: 6,
+    });
+    for (const definition of [mirrorDef, bearDef, wurmDef]) {
+      game.definitions[definition.id] = definition;
+    }
+    const put = (definitionId: string) => {
+      const card = createCardInstance({ definitionId, ownerId: p1.id, zone: "battlefield" });
+      game.cards[card.id] = card;
+      p1.zones.battlefield.push(card.id);
+      return card;
+    };
+    const mirror = put(mirrorDef.id);
+    const bear = put(bearDef.id);
+    const wurm = put(wurmDef.id);
+
+    let next = applyEffect(game, {
+      kind: "become_copy",
+      cardId: mirror.id,
+      ofCardId: bear.id,
+      untilEot: true,
+    });
+    expect(computedCard(next, mirror.id)?.power).toBe(2);
+    expect(computedCard(next, mirror.id)?.characteristics.types).toContain("creature");
+
+    // Copying a second thing in the same turn must NOT record the Bear as
+    // what to restore — the printed Mirror is what comes back.
+    next = applyEffect(next, {
+      kind: "become_copy",
+      cardId: mirror.id,
+      ofCardId: wurm.id,
+      untilEot: true,
+    });
+    expect(computedCard(next, mirror.id)?.power).toBe(6);
+    expect(next.temporaryCopies).toEqual([
+      { cardId: mirror.id, restoreDefinitionId: mirrorDef.id },
+    ]);
+
+    // The restore rides the cleanup step, so step into it rather than
+    // straight into the next turn.
+    let ending = structuredClone(next);
+    ending.turn.phase = "ending";
+    ending.turn.step = "end";
+    ending = advanceStep(ending);
+    expect(ending.cards[mirror.id]?.definitionId).toBe(mirrorDef.id);
+    expect(ending.temporaryCopies).toEqual([]);
+    expect(computedCard(ending, mirror.id)?.characteristics.types).not.toContain("creature");
+  });
+
+  it("keeps the copying ability when the card says except", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const stageDef = createCardDefinition({
+      name: "Thespian's Stage",
+      typeLine: "Land",
+      activated: [
+        {
+          tap: true,
+          manaCost: "{2}",
+          effects: [
+            {
+              kind: "become_copy",
+              cardId: "self",
+              target: { type: "chosen", index: 0 },
+              keepAbilities: true,
+            },
+          ],
+          targetRequirements: [{ kind: "land" }],
+        },
+      ],
+    });
+    const depthsDef = createCardDefinition({ name: "Dark Depths", typeLine: "Legendary Land" });
+    for (const definition of [stageDef, depthsDef]) {
+      game.definitions[definition.id] = definition;
+    }
+    const put = (definitionId: string) => {
+      const card = createCardInstance({ definitionId, ownerId: p1.id, zone: "battlefield" });
+      game.cards[card.id] = card;
+      p1.zones.battlefield.push(card.id);
+      return card;
+    };
+    const stage = put(stageDef.id);
+    const depths = put(depthsDef.id);
+
+    const next = applyEffect(game, {
+      kind: "become_copy",
+      cardId: stage.id,
+      ofCardId: depths.id,
+      keepAbilities: true,
+    });
+    const became = next.definitions[next.cards[stage.id]!.definitionId];
+    expect(became?.name).toBe("Dark Depths");
+    // The copy carries the ability that made it, which the plain copy would
+    // have thrown away — and the ability lives on a CLONED definition, so the
+    // real Dark Depths is untouched.
+    expect(became?.activated).toHaveLength(1);
+    expect(next.definitions[depthsDef.id]?.activated).toHaveLength(0);
   });
 });
 

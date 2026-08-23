@@ -798,6 +798,20 @@ export function bindCardEffect(
         ...(effect.withCounter ? { withCounter: { ...effect.withCounter } } : {}),
       };
     }
+    case "become_copy": {
+      const cardId = bindCardId(state, effect.cardId, context);
+      const chosen = chosenTargetAt(context, effect.target.index, state);
+      if (!cardId || chosen?.type !== "creature") {
+        return null;
+      }
+      return {
+        kind: "become_copy",
+        cardId,
+        ofCardId: chosen.cardId,
+        ...(effect.untilEot ? { untilEot: true } : {}),
+        ...(effect.keepAbilities ? { keepAbilities: true } : {}),
+      };
+    }
     case "tap":
     case "untap":
     case "tap_or_untap": {
@@ -3172,6 +3186,48 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
               (arrived.counters[effect.withCounter.counter] ?? 0) + effect.withCounter.amount;
           }
         }
+        break;
+      }
+      case "become_copy": {
+        const copier = state.cards[effect.cardId];
+        const original = state.cards[effect.ofCardId];
+        if (!copier || copier.zone !== "battlefield" || !original) {
+          next = cloneGameState(state);
+          break;
+        }
+        next = cloneGameState(state);
+        const becoming = next.cards[effect.cardId]!;
+        // Only the FIRST copy this turn records what to put back: copying
+        // twice must still restore the printed card, not the first copy.
+        if (effect.untilEot) {
+          const pending = next.temporaryCopies ?? [];
+          if (!pending.some((entry) => entry.cardId === effect.cardId)) {
+            pending.push({
+              cardId: effect.cardId,
+              restoreDefinitionId: becoming.definitionId,
+            });
+          }
+          next.temporaryCopies = pending;
+        }
+        let copied = next.cards[effect.ofCardId]!.definitionId;
+        if (effect.keepAbilities) {
+          // Thespian's Stage: "except it has this ability" — the copy carries
+          // the copier's own activated abilities, which is the only reason it
+          // can go on copying things.
+          const source = next.definitions[copied];
+          const mine = next.definitions[becoming.definitionId];
+          if (source && mine) {
+            const merged = JSON.parse(JSON.stringify(source)) as typeof source;
+            merged.id = createId("definition");
+            merged.activated = [
+              ...merged.activated,
+              ...JSON.parse(JSON.stringify(mine.activated)),
+            ];
+            next.definitions[merged.id] = merged;
+            copied = merged.id;
+          }
+        }
+        becoming.definitionId = copied;
         break;
       }
       case "tap":

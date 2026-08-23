@@ -640,6 +640,9 @@ export type GameState = {
    * before any of this turn's thefts rather than to the previous thief.
    */
   temporaryControl?: { cardId: CardInstanceId; returnToId: PlayerId }[];
+  /** Mirage Mirror: permanents copying something only until end of turn, with
+   * the definition to put back. */
+  temporaryCopies?: { cardId: CardInstanceId; restoreDefinitionId: CardDefinitionId }[];
   /**
    * Rishkar's Expertise / Electrodominance: "you may cast a spell with mana
    * value N or less from your hand without paying its mana cost". Modelled as
@@ -792,6 +795,18 @@ export type GameEffect =
       controllerId?: PlayerId;
       /** "…to the battlefield with a -1/-1 counter on it" (Persist). */
       withCounter?: { counter: string; amount: number };
+    }
+  /**
+   * Mirage Mirror / Thespian's Stage: this permanent becomes a copy of
+   * another object. `keepAbilities` is Thespian's Stage keeping the ability
+   * that did the copying, which is the only reason it can do it twice.
+   */
+  | {
+      kind: "become_copy";
+      cardId: CardInstanceId;
+      ofCardId: CardInstanceId;
+      untilEot?: boolean;
+      keepAbilities?: boolean;
     }
   | { kind: "tap"; cardId: CardInstanceId }
   | { kind: "untap"; cardId: CardInstanceId }
@@ -1303,6 +1318,8 @@ export type TargetKind =
   | "artifact_enchantment_or_nonbasic_land"
   /** Acidic Slime: "target artifact, enchantment, or land". */
   | "artifact_enchantment_or_land"
+  /** Mirage Mirror: every permanent type it can turn into. */
+  | "artifact_creature_enchantment_or_land"
   /** Fracture: "target artifact, enchantment, or planeswalker". */
   | "artifact_enchantment_or_planeswalker"
   /** Bedevil. */
@@ -1509,6 +1526,13 @@ export type CardEffect =
       underControlOf?: "controller";
       /** "…to the battlefield with a -1/-1 counter on it" (Persist). */
       withCounter?: { counter: string; amount: number };
+    }
+  | {
+      kind: "become_copy";
+      cardId: CardIdSelector;
+      target: ChosenTargetRef;
+      untilEot?: boolean;
+      keepAbilities?: boolean;
     }
   | { kind: "tap"; cardId: CardIdSelector }
   | { kind: "untap"; cardId: CardIdSelector }

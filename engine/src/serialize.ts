@@ -1487,6 +1487,27 @@ export function parseGameState(json: string): GameState {
             };
           }),
         }),
+    ...(raw.temporaryCopies === undefined
+      ? {}
+      : {
+          temporaryCopies: (Array.isArray(raw.temporaryCopies)
+            ? raw.temporaryCopies
+            : (() => {
+                throw new Error("Invalid temporaryCopies");
+              })()
+          ).map((entry: unknown, index: number) => {
+            if (!isRecord(entry)) {
+              throw new Error(`Invalid temporaryCopies[${index}]`);
+            }
+            return {
+              cardId: expectString(entry.cardId, `temporaryCopies[${index}].cardId`),
+              restoreDefinitionId: expectString(
+                entry.restoreDefinitionId,
+                `temporaryCopies[${index}].restoreDefinitionId`,
+              ),
+            };
+          }),
+        }),
     ...(raw.freeCastUsedThisTurn === undefined
       ? {}
       : {
@@ -2242,6 +2263,7 @@ function parseTargetRequirement(value: unknown, label: string): TargetRequiremen
     kind !== "own_graveyard_enchantment_card" &&
     kind !== "own_graveyard_land_card" &&
     kind !== "artifact_enchantment_or_land" &&
+    kind !== "artifact_creature_enchantment_or_land" &&
     kind !== "artifact_enchantment_or_planeswalker" &&
     kind !== "own_graveyard_instant_or_sorcery_card" &&
     kind !== "graveyard_creature_card" &&
@@ -2706,6 +2728,14 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
           : {}),
       };
     }
+    case "become_copy":
+      return {
+        kind,
+        cardId: parseCardIdSelector(value.cardId, `${label}.cardId`),
+        target: parseChosenTargetRef(value.target, `${label}.target`),
+        ...(value.untilEot === true ? { untilEot: true } : {}),
+        ...(value.keepAbilities === true ? { keepAbilities: true } : {}),
+      };
     case "tap":
     case "untap":
     case "tap_or_untap":
@@ -4970,6 +5000,15 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
             },
           }
         : {}),
+    };
+  }
+  if (kind === "become_copy") {
+    return {
+      kind,
+      cardId: expectString(value.cardId, `${label}.cardId`),
+      ofCardId: expectString(value.ofCardId, `${label}.ofCardId`),
+      ...(value.untilEot === true ? { untilEot: true } : {}),
+      ...(value.keepAbilities === true ? { keepAbilities: true } : {}),
     };
   }
   if (kind === "tap" || kind === "untap" || kind === "tap_or_untap" || kind === "sacrifice") {

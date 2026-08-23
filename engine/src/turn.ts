@@ -347,6 +347,16 @@ function onEnterStep(state: GameState): GameState {
       }
       state.temporaryControl = [];
     }
+    // Mirage Mirror stops being whatever it was.
+    if (state.temporaryCopies && state.temporaryCopies.length > 0) {
+      for (const entry of state.temporaryCopies) {
+        const card = state.cards[entry.cardId];
+        if (card && card.zone === "battlefield") {
+          card.definitionId = entry.restoreDefinitionId;
+        }
+      }
+      state.temporaryCopies = [];
+    }
     if (state.freeCastFromHand && state.freeCastFromHand.length > 0) {
       // An unused "you may cast" offer expires with the turn.
       state.freeCastFromHand = [];
