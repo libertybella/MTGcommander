@@ -153,6 +153,12 @@ function nextAction(state: GameState, rng: () => number): GameAction | null {
       }
       case "may_pay_life_or_enter_tapped":
         return { kind: "choose_enter_replacement", playerId, pay: rng() < 0.5 };
+      case "discard_land_or_graveyard":
+        return {
+          kind: "choose_discard_land_or_graveyard",
+          playerId,
+          discard: rng() < 0.5,
+        };
       case "choose_creature_type":
         return {
           kind: "resolve_creature_type",

@@ -32,7 +32,7 @@ import { applyBottomCards, applyKeepHand, applyTakeMulligan, isMulliganOpen, rec
 import { applyRollDie } from "./dice";
 import { applyOpeningRoll, isOpeningRoll } from "./openingRoll";
 import { applyManualOverride } from "./override";
-import { applyChooseEnterReplacement, applyChooseTargets, applyResolveChooseCard, applyResolveColor, applyResolveCreatureType, applyResolveDiscard, applyResolveEnterCopy, applyResolveLookAssign, applyResolveOrderTriggers, applyResolvePay, applyResolveScry, applyResolveSearch, applyResolveSurveil, applyResolveTriggerMode, currentPrompt, dropLostPlayerPromptsInPlace, isPromptOpen } from "./prompt";
+import { applyChooseEnterReplacement, applyChooseTargets, applyResolveChooseCard, applyResolveColor, applyResolveCreatureType, applyResolveDiscard, applyResolveEnterCopy, applyResolveLookAssign, applyResolveOrderTriggers, applyResolvePay, applyResolveScry, applyResolveSearch, applyResolveSurveil, applyResolveTriggerMode, currentPrompt, dropLostPlayerPromptsInPlace, isPromptOpen, applyResolveDiscardLandOrGraveyard } from "./prompt";
 import { findCardZone, moveCard } from "./zones";
 import type { AdditionalCastCost, CardInstanceId, ChosenTarget, Color, GameAction, GameState, ManaColor, ManaPool, PlayerId } from "./types";
 
@@ -1669,6 +1669,10 @@ export function applyAction(
       case "resolve_order_triggers":
         next = applyResolveOrderTriggers(state, action.playerId, action.order);
         break;
+      case "choose_discard_land_or_graveyard":
+        return finalizeActionState(
+          applyResolveDiscardLandOrGraveyard(state, action.playerId, action.discard),
+        );
       case "choose_enter_replacement":
         next = applyChooseEnterReplacement(state, action.playerId, action.pay);
         break;

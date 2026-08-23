@@ -1891,6 +1891,19 @@ function compileControlCondition(text: string): EnterTappedUnless | null {
   return { kind: "controlled_types", types };
 }
 
+function compileDiscardLandOrGraveyard(sentence: string): ReplacementEffect | null {
+  // Mox Diamond: "If ~ would enter, you may discard a land card instead."
+  // The two follow-up sentences say what each answer does, and both are
+  // implied by the replacement itself — they are consumed by the fuser
+  // that builds this sentence rather than compiled separately.
+  if (
+    /^If ~ would enter, you may discard a land card instead$/i.test(sentence.trim())
+  ) {
+    return { kind: "discard_land_or_graveyard" };
+  }
+  return null;
+}
+
 function compileEntersTappedUnless(sentence: string): ReplacementEffect | null {
   const crowd = sentence.match(/^~ enters tapped unless you have (two|three) or more opponents$/i);
   if (crowd?.[1]) {
@@ -8113,6 +8126,33 @@ function fuseMayPayInPlace(sentences: string[], lineStart: boolean[]): void {
   }
 }
 
+function fuseMoxDiamondInPlace(sentences: string[], lineStart: boolean[]): void {
+  // Mox Diamond prints its replacement as three sentences: the offer, and
+  // one for each answer. The last two say exactly what the replacement
+  // already means, so they are dropped here — compiled separately they
+  // would be top-level effects on an artifact card ("put ~ onto the
+  // battlefield") that never run, and the card would score while doing
+  // nothing at all.
+  for (let index = 0; index + 2 < sentences.length; index += 1) {
+    if (lineStart[index + 1] || lineStart[index + 2]) {
+      continue;
+    }
+    if (
+      !/^If ~ would enter, you may discard a land card instead$/i.test(
+        sentences[index] ?? "",
+      ) ||
+      !/^If you do, put ~ onto the battlefield$/i.test(sentences[index + 1] ?? "") ||
+      !/^If you don['\u2019]t, put it into its owner['\u2019]s graveyard$/i.test(
+        sentences[index + 2] ?? "",
+      )
+    ) {
+      continue;
+    }
+    sentences.splice(index + 1, 2);
+    lineStart.splice(index + 1, 2);
+  }
+}
+
 function fuseLookTopTakeInPlace(sentences: string[], lineStart: boolean[]): void {
   // Herald's Horn prints "look at the top card of your library." and "If
   // it's a creature card of the chosen type, you may reveal it and put it
@@ -10924,6 +10964,7 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
   fusePactInPlace(sentences, lineStart);
   fuseChooseTargetCreatureInPlace(sentences, lineStart);
   fuseLookTopTakeInPlace(sentences, lineStart);
+  fuseMoxDiamondInPlace(sentences, lineStart);
   fuseMaySacrificeInPlace(sentences, lineStart);
   fuseNecroTopInPlace(sentences, lineStart);
   for (let index = 0; index < sentences.length; index += 1) {
@@ -13179,6 +13220,11 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
       continue;
     }
 
+    const moxReplacement = compileDiscardLandOrGraveyard(sentence);
+    if (moxReplacement) {
+      result.replacements.push(moxReplacement);
+      continue;
+    }
     const unlessTapped = compileEntersTappedUnless(sentence);
     if (unlessTapped) {
       result.replacements.push(unlessTapped);

@@ -388,6 +388,14 @@ export class GameHost {
           });
           continue;
         }
+        if (prompt.kind === "discard_land_or_graveyard") {
+          this.apply({
+            kind: "choose_discard_land_or_graveyard",
+            playerId: prompt.playerId,
+            discard: true,
+          });
+          continue;
+        }
         if (prompt.kind === "may_pay_life_or_enter_tapped") {
           this.apply({
             kind: "choose_enter_replacement",

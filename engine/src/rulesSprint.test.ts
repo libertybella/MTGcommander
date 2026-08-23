@@ -19,7 +19,7 @@ import {
 } from "./index";
 import { activatedOf, cardMatchesSubtype, computedCard, dynamicCountOf, mergeProtection, triggersOf } from "./characteristicsEngine";
 import { mostCommonControlledCreatureType } from "./effects";
-import { altCastPayment, creaturePower } from "./derived";
+import { altCastPayment, creaturePower, queueEnterReplacementChoicesInPlace } from "./derived";
 import { attackLimitFor, blockAllowanceFor, castCostReduction, castableFromTop, drawCapFor, freeEquipGranted, hasFlashGrant, landDropAllowance, maxHandSizeOf, noncreatureSpellCap, permanentsControlledBy, playerHasHexproof, reliefAdjustedCost, selfDiscountAmount, wouldEnterTapped } from "./derived";
 import { characteristicsOf } from "./cardTypes";
 import { manaValueOf } from "./characteristics";
@@ -32,7 +32,7 @@ import { abilityLifeCost, colorsOutsideCommanderIdentity } from "./commanderIden
 import { addRestrictedMana, emptyManaPools, manaRiderFires, parseManaCost, payManaCost, restrictionAdmits, type ManaPurpose } from "./mana";
 import { applyStateBasedActionsInPlace } from "./status";
 import { legalActions, sacrificeColorMatches, sacrificeScopeMatches } from "./legalActions";
-import { applyResolveCreatureType, applyResolveLookAssign, applyResolvePay, legalEnterCopyIds, searchMatches } from "./prompt";
+import { applyResolveCreatureType, applyResolveDiscardLandOrGraveyard, applyResolveLookAssign, applyResolvePay, legalEnterCopyIds, searchMatches } from "./prompt";
 import { parseGameState, serializeGameState } from "./serialize";
 import { fillLibraries } from "./testSupport";
 import { advanceSteps } from "./turn";
@@ -36807,5 +36807,125 @@ describe("wave 277: a countered spell that exiles instead", () => {
       target: { type: "chosen", index: 0 },
       exileInstead: true,
     });
+  });
+});
+
+describe("wave 278: discard a land, or it goes to the graveyard", () => {
+  const setup = (lands: number) => {
+    const { game, p1 } = twoPlayers();
+    const moxDef = createCardDefinition({
+      name: "Mox Diamond",
+      typeLine: "Artifact",
+      replacements: [{ kind: "discard_land_or_graveyard" }],
+    });
+    game.definitions[moxDef.id] = moxDef;
+    const mox = createCardInstance({
+      definitionId: moxDef.id,
+      ownerId: p1.id,
+      zone: "battlefield",
+    });
+    game.cards[mox.id] = mox;
+    p1.zones.battlefield.push(mox.id);
+
+    const landIds: string[] = [];
+    for (let i = 0; i < lands; i += 1) {
+      const definition = createCardDefinition({ name: `Land${i}`, typeLine: "Land" });
+      game.definitions[definition.id] = definition;
+      const card = createCardInstance({
+        definitionId: definition.id,
+        ownerId: p1.id,
+        zone: "hand",
+      });
+      game.cards[card.id] = card;
+      p1.zones.hand.push(card.id);
+      landIds.push(card.id);
+    }
+    const spellDef = createCardDefinition({ name: "Spell", typeLine: "Instant" });
+    game.definitions[spellDef.id] = spellDef;
+    const spell = createCardInstance({
+      definitionId: spellDef.id,
+      ownerId: p1.id,
+      zone: "hand",
+    });
+    game.cards[spell.id] = spell;
+    p1.zones.hand.push(spell.id);
+
+    queueEnterReplacementChoicesInPlace(game, mox.id);
+    return { game, p1, moxId: mox.id, landIds, spellId: spell.id };
+  };
+
+  it("asks as it enters", () => {
+    const { game } = setup(1);
+    expect(game.prompts[0]?.kind).toBe("discard_land_or_graveyard");
+  });
+
+  it("keeps the Mox when a land is discarded", () => {
+    const { game, p1, moxId, landIds } = setup(1);
+    const after = applyResolveDiscardLandOrGraveyard(game, p1.id, true);
+    expect(after.cards[moxId]?.zone).toBe("battlefield");
+    expect(after.cards[landIds[0]!]?.zone).toBe("graveyard");
+  });
+
+  it("sends the Mox to the graveyard when declined", () => {
+    const { game, p1, moxId, landIds } = setup(1);
+    const after = applyResolveDiscardLandOrGraveyard(game, p1.id, false);
+    expect(after.cards[moxId]?.zone).toBe("graveyard");
+    // The land stays in hand: declining costs nothing but the Mox.
+    expect(after.cards[landIds[0]!]?.zone).toBe("hand");
+  });
+
+  it("cannot be kept with no land in hand", () => {
+    const { game, p1, moxId, spellId } = setup(0);
+    const after = applyResolveDiscardLandOrGraveyard(game, p1.id, true);
+    // Saying yes with an empty hand must not keep it — both answers land in
+    // the same place, or the card is free whenever you are out of lands.
+    expect(after.cards[moxId]?.zone).toBe("graveyard");
+    expect(after.cards[spellId]?.zone).toBe("hand");
+  });
+
+  it("discards a land, never a spell", () => {
+    const { game, p1, landIds, spellId } = setup(2);
+    const after = applyResolveDiscardLandOrGraveyard(game, p1.id, true);
+    const discarded = landIds.filter((id) => after.cards[id]?.zone === "graveyard");
+    expect(discarded).toHaveLength(1);
+    expect(after.cards[spellId]?.zone).toBe("hand");
+  });
+
+  it("round trips the replacement and the prompt", () => {
+    const { game, moxId } = setup(1);
+    const round = parseGameState(serializeGameState(game));
+    expect(round.definitions[round.cards[moxId]!.definitionId]?.replacements).toEqual([
+      { kind: "discard_land_or_graveyard" },
+    ]);
+    expect(round.prompts[0]).toEqual({
+      kind: "discard_land_or_graveyard",
+      playerId: game.players[0]!.id,
+      sourceId: moxId,
+    });
+  });
+
+  it("compiles Mox Diamond with nothing stranded", () => {
+    const compiled = compileOracleCard({
+      oracleId: "md",
+      name: "Mox Diamond",
+      manaCost: "{0}",
+      typeLine: "Artifact",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "If Mox Diamond would enter, you may discard a land card instead. If you do, put Mox Diamond onto the battlefield. If you don't, put it into its owner's graveyard.\n{T}: Add one mana of any color.",
+    });
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.replacements).toEqual([
+      { kind: "discard_land_or_graveyard" },
+    ]);
+    // The two follow-up sentences say exactly what the replacement already
+    // means. Compiled separately they would be top-level effects on an
+    // artifact card, where nothing runs them — the card would score and do
+    // nothing.
+    expect(compiled.definition.effects).toEqual([]);
+    expect(compiled.definition.manaAbilities).toHaveLength(1);
   });
 });

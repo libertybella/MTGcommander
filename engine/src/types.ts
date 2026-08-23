@@ -2993,6 +2993,12 @@ export type PendingPrompt =
       amount: number;
     }
   | {
+      /** Mox Diamond: discard a land, or this goes to the graveyard. */
+      kind: "discard_land_or_graveyard";
+      playerId: PlayerId;
+      sourceId: CardInstanceId;
+    }
+  | {
       kind: "choose_creature_type";
       playerId: PlayerId;
       sourceId: CardInstanceId;
@@ -3299,6 +3305,17 @@ export type ReplacementEffect =
   | { kind: "enters_tapped_unless"; unless: EnterTappedUnless }
   | { kind: "enters_tapped_if"; if: EnterTappedUnless }
   | { kind: "may_pay_life_or_enter_tapped"; amount: number }
+  /**
+   * Mox Diamond: "If this would enter, you may discard a land card
+   * instead. If you do, put it onto the battlefield. If you don't, put
+   * it into its owner's graveyard."
+   *
+   * Modelled the way the shock lands already are: the permanent enters
+   * and the choice is prompted just after, rather than as a true CR 614
+   * replacement. Declining moves it to the graveyard. Documented, and
+   * silent in play — nothing can respond between the two.
+   */
+  | { kind: "discard_land_or_graveyard" }
   /** Rest in Peace: cards and tokens headed to a graveyard are exiled instead. */
   | { kind: "graveyard_to_exile" }
   /** Laboratory Maniac: the empty-library draw wins instead of losing. */
@@ -3750,6 +3767,8 @@ export type GameAction =
   | { kind: "choose_targets"; playerId: PlayerId; targets: ChosenTarget[] }
   | { kind: "resolve_order_triggers"; playerId: PlayerId; order: number[] }
   | { kind: "choose_enter_replacement"; playerId: PlayerId; pay: boolean }
+  /** Mox Diamond: discard a land, or it goes to the graveyard. */
+  | { kind: "choose_discard_land_or_graveyard"; playerId: PlayerId; discard: boolean }
   | { kind: "resolve_creature_type"; playerId: PlayerId; creatureType: string }
   | { kind: "resolve_color"; playerId: PlayerId; color: Color }
   | { kind: "resolve_scry"; playerId: PlayerId; bottomIds: CardInstanceId[] }

@@ -233,6 +233,50 @@ export function applyChooseEnterReplacement(
   return next;
 }
 
+/**
+ * Answer Mox Diamond's as-enters choice. Declining — or having no land to
+ * discard — puts the permanent into its owner's graveyard.
+ */
+export function applyResolveDiscardLandOrGraveyard(
+  state: GameState,
+  playerId: PlayerId,
+  discard: boolean,
+): GameState {
+  const prompt = currentPrompt(state);
+  if (!prompt || prompt.kind !== "discard_land_or_graveyard") {
+    throw new Error("No enter replacement pending");
+  }
+  requireLiving(state, playerId);
+  if (prompt.playerId !== playerId) {
+    throw new Error("It is not that player's choice");
+  }
+  let next = cloneGameState(state);
+  next.prompts.shift();
+  const player = next.players.find((entry) => entry.id === playerId);
+  // Cheapest land first — the same auto-pick `discardCost` already uses,
+  // and a documented approximation of the free choice.
+  const land = discard
+    ? (player?.zones.hand ?? [])
+        .filter((cardId) => characteristicsOf(next, cardId).types.includes("land"))
+        .sort(
+          (a, b) =>
+            characteristicsOf(next, a).manaValue - characteristicsOf(next, b).manaValue,
+        )[0]
+    : undefined;
+  if (land) {
+    next = moveCard(next, land, "graveyard");
+    dispatchEventsInPlace(next, [{ kind: "discards", cardId: land, playerId }]);
+    return next;
+  }
+  // No land, or declined: the Mox never stays. Both answers land here, so
+  // a player with an empty hand cannot keep it by saying yes.
+  const source = next.cards[prompt.sourceId];
+  if (source && source.zone === "battlefield") {
+    next = moveCard(next, prompt.sourceId, "graveyard");
+  }
+  return next;
+}
+
 /** Answer an as-enters creature-type choice (Kindred Discovery). */
 export function applyResolveCreatureType(
   state: GameState,

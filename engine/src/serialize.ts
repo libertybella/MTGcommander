@@ -1933,6 +1933,20 @@ function parsePrompts(value: unknown, playerIds: Set<string>): PendingPrompt[] {
         amount: expectNumber(entry.amount, `prompts[${index}].amount`),
       };
     }
+    if (kind === "discard_land_or_graveyard") {
+      return {
+        kind,
+        playerId,
+        sourceId: expectString(entry.sourceId, `prompts[${index}].sourceId`),
+      };
+    }
+    if (kind === "discard_land_or_graveyard") {
+      return {
+        kind,
+        playerId,
+        sourceId: expectString(entry.sourceId, `prompts[${index}].sourceId`),
+      };
+    }
     if (kind === "choose_creature_type") {
       return {
         kind,
@@ -4559,6 +4573,12 @@ function parseReplacements(value: unknown, label: string): ReplacementEffect[] {
         kind,
         amount: expectNumber(entry.amount, `${label}[${index}].amount`),
       };
+    }
+    if (kind === "discard_land_or_graveyard") {
+      return { kind };
+    }
+    if (kind === "discard_land_or_graveyard") {
+      return { kind };
     }
     if (kind === "enters_tapped_unless") {
       return {

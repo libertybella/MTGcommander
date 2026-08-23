@@ -870,6 +870,22 @@ more questions it can now ask:
   (Bennie Bracks). Reads the existing per-player `createdTokenThisTurn`
   list, and asks whether the CONTROLLER is in it — an opponent's Treasure
   must not satisfy it.
+- **`discard_land_or_graveyard`** — Mox Diamond. Modelled the way the shock
+  lands already are: the permanent enters and the choice is prompted just
+  after, rather than as a true CR 614 replacement. Declining moves it to
+  the graveyard. Documented, and silent in play — nothing can respond
+  between the two.
+
+  Saying yes with no land in hand lands in the SAME place as saying no. A
+  yes that quietly kept the Mox would make it free whenever you are out of
+  lands, which is a much better card. The land is auto-picked cheapest
+  first, the same approximation `discardCost` already uses.
+
+  Mox Diamond prints its replacement as three sentences — the offer, and
+  one for each answer. The last two say exactly what the replacement
+  already means, so they are dropped: compiled separately they would be
+  top-level effects on an artifact card ("put ~ onto the battlefield") that
+  never run, and the card would score while doing nothing at all.
 - **A free spell only on someone else's turn** — Force of Negation.
   `AlternativeCastCost.onlyOnOpponentsTurn` is checked in `altCastPayment`,
   where the payment is offered, rather than left to the player's honesty: a

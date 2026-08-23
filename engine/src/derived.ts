@@ -1215,6 +1215,16 @@ export function queueEnterReplacementChoicesInPlace(state: GameState, cardId: Ca
       });
     }
   }
+  for (const replacement of definition?.replacements ?? []) {
+    if (replacement.kind !== "discard_land_or_graveyard") {
+      continue;
+    }
+    state.prompts.push({
+      kind: "discard_land_or_graveyard",
+      playerId: card.controllerId,
+      sourceId: card.id,
+    });
+  }
   if (definition?.chooseCreatureTypeOnEnter && card.chosenCreatureType === null) {
     state.prompts.push({
       kind: "choose_creature_type",
