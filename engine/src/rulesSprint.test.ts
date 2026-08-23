@@ -30129,3 +30129,73 @@ describe("wave 230: cast during your main phase", () => {
     });
   });
 });
+
+describe("wave 231: one spelling of combat damage to a player", () => {
+  const compile = (name: string, typeLine: string, oracleText: string, power?: string, toughness?: string) =>
+    compileOracleCard({
+      oracleId: name,
+      name,
+      manaCost: "{1}{W}",
+      typeLine,
+      power: power ?? null,
+      toughness: toughness ?? null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  it("compiles Grateful Apparition, which only the phrasing blocked", () => {
+    const apparition = compile(
+      "Grateful Apparition",
+      "Creature — Spirit",
+      "Flying\nWhenever Grateful Apparition deals combat damage to a player or planeswalker, proliferate.",
+      "1",
+      "1",
+    );
+    expect(apparition.notes).toEqual([]);
+    expect(apparition.definition.triggers[0]).toMatchObject({
+      event: "deals_combat_damage_to_player",
+      effects: [{ kind: "proliferate", playerId: "controller" }],
+    });
+  });
+
+  it("accepts the planeswalker spelling on every head that reads the event", () => {
+    // Four heads used to spell this phrase out separately and accept only the
+    // bare player form, which is how one card compiles and its neighbour does
+    // not. They share one constant now.
+    const heads: [string, string][] = [
+      ["Probe", "Whenever Probe deals combat damage to a player or planeswalker, draw a card."],
+      ["Probe", "Whenever a creature you control deals combat damage to a player or planeswalker, draw a card."],
+      ["Probe", "Whenever a creature token you control deals combat damage to a player or planeswalker, draw a card."],
+      ["Probe", "Whenever equipped creature deals combat damage to a player or planeswalker, draw a card."],
+    ];
+    for (const [name, text] of heads) {
+      const compiled = compile(name, "Artifact — Equipment", text);
+      expect(compiled.notes, text).toEqual([]);
+      expect(compiled.definition.triggers[0]?.event).toBe("deals_combat_damage_to_player");
+    }
+  });
+
+  it("keeps the opponent narrowing on all four heads", () => {
+    // The shared constant also matches "an opponent", which is the same EVENT
+    // but restricts who the damaged player may be. Folding the heads onto the
+    // constant dropped this flag and let the trigger fire off damage dealt to
+    // the controller; every head is pinned so it cannot happen again quietly.
+    const opponents: string[] = [
+      "Whenever Probe deals combat damage to an opponent, draw a card.",
+      "Whenever a creature you control deals combat damage to an opponent, draw a card.",
+      "Whenever a creature token you control deals combat damage to an opponent, draw a card.",
+      "Whenever equipped creature deals combat damage to an opponent, draw a card.",
+    ];
+    for (const text of opponents) {
+      const compiled = compile("Probe", "Artifact — Equipment", text);
+      expect(compiled.notes, text).toEqual([]);
+      expect(compiled.definition.triggers[0]?.subjectPlayerOpponent, text).toBe(true);
+    }
+
+    // And the plain player spelling must NOT carry it, or every such trigger
+    // would quietly stop firing off damage dealt to its own controller.
+    const plain = compile("Probe", "Creature — Bear", "Whenever Probe deals combat damage to a player, draw a card.", "1", "1");
+    expect(plain.definition.triggers[0]?.subjectPlayerOpponent).toBeUndefined();
+  });
+});

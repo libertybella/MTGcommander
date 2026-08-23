@@ -7558,11 +7558,17 @@ function parseTriggerHead(head: string): TriggerHead | null {
       subjectFilter: { types: ["creature"], nonToken: true },
     };
   }
-  if (/^Whenever a creature token you control deals combat damage to a player$/i.test(text)) {
+  if (
+    new RegExp(
+      `^Whenever a creature token you control ${COMBAT_DAMAGE_TO_PLAYER}$`,
+      "i",
+    ).test(text)
+  ) {
     return {
       event: "deals_combat_damage_to_player",
       watch: "controlled",
       subjectFilter: { types: ["creature"], tokenOnly: true },
+      ...(/an opponent$/i.test(text) ? { subjectPlayerOpponent: true } : {}),
     };
   }
   if (/^Whenever one or more creatures you control deal combat damage to a player$/i.test(text)) {
@@ -7651,8 +7657,17 @@ function parseTriggerHead(head: string): TriggerHead | null {
     return { event: "is_dealt_damage" };
   }
   // The Swords, Mask of Memory: the Equipment watches its host's strikes.
-  if (/^Whenever (?:equipped|enchanted) creature deals combat damage to a player$/i.test(text)) {
-    return { event: "deals_combat_damage_to_player", watch: "attached" };
+  if (
+    new RegExp(
+      `^Whenever (?:equipped|enchanted) creature ${COMBAT_DAMAGE_TO_PLAYER}$`,
+      "i",
+    ).test(text)
+  ) {
+    return {
+      event: "deals_combat_damage_to_player",
+      watch: "attached",
+      ...(/an opponent$/i.test(text) ? { subjectPlayerOpponent: true } : {}),
+    };
   }
   // Marionette Apprentice.
   if (
@@ -8002,14 +8017,24 @@ function parseTriggerHead(head: string): TriggerHead | null {
   if (/^Whenever a player casts a spell$/i.test(text)) {
     return { event: "cast_spell", watch: "any" };
   }
-  if (/^Whenever ~ deals combat damage to a player$/i.test(text)) {
-    return { event: "deals_combat_damage_to_player" };
+  if (new RegExp(`^Whenever ~ ${COMBAT_DAMAGE_TO_PLAYER}$`, "i").test(text)) {
+    // The alternation includes "an opponent", which is the same EVENT but
+    // narrows who the subject player may be. The generic head path sets
+    // this flag too; losing it here would let the trigger fire off damage
+    // dealt to the controller.
+    return {
+      event: "deals_combat_damage_to_player",
+      ...(/an opponent$/i.test(text) ? { subjectPlayerOpponent: true } : {}),
+    };
   }
-  if (/^Whenever a creature you control deals combat damage to a player$/i.test(text)) {
+  if (
+    new RegExp(`^Whenever a creature you control ${COMBAT_DAMAGE_TO_PLAYER}$`, "i").test(text)
+  ) {
     return {
       event: "deals_combat_damage_to_player",
       watch: "controlled",
       subjectFilter: { types: ["creature"] },
+      ...(/an opponent$/i.test(text) ? { subjectPlayerOpponent: true } : {}),
     };
   }
   if (/^Whenever a creature you control of the chosen type enters or attacks$/i.test(text)) {
@@ -8055,19 +8080,27 @@ function parseTriggerHead(head: string): TriggerHead | null {
  * A permanent going battlefield → graveyard *is* the dies event whatever its
  * card type; the long phrasing is just older templating.
  */
+/**
+ * The head verb for "deals combat damage to a player", and the spellings
+ * that mean the same thing here.
+ *
+ * "…or planeswalker" is one of them because combat damage cannot be
+ * redirected to a planeswalker in this engine, so the planeswalker half has
+ * nothing to fire on — a documented narrowing, and stated once. It lives in
+ * a constant because four self-subject heads used to spell the phrase out
+ * again and accepted only the bare player form, which is exactly how one
+ * card ends up compiling and its neighbour not.
+ */
+const COMBAT_DAMAGE_TO_PLAYER =
+  "deals? combat damage to (?:a player|an opponent|a player or planeswalker)";
+
 const SUBJECT_HEAD_VERBS: [string, TriggerEvent][] = [
   ["enters|enter", "enter_battlefield"],
   ["dies|die|is put into a graveyard from the battlefield", "dies"],
   ["attacks|attack", "attacks"],
   ["becomes tapped|become tapped", "becomes_tapped"],
   ["becomes untapped|become untapped", "becomes_untapped"],
-  // "…to a player or planeswalker" is compiled as the player event: combat
-  // damage cannot yet be redirected to a planeswalker, so the planeswalker
-  // half has nothing to fire on. A documented narrowing.
-  [
-    "deals? combat damage to (?:a player|an opponent|a player or planeswalker)",
-    "deals_combat_damage_to_player",
-  ],
+  [COMBAT_DAMAGE_TO_PLAYER, "deals_combat_damage_to_player"],
   ["deals? damage to (?:a player|an opponent)", "deals_damage_to_player"],
   ["leaves the battlefield|leave the battlefield", "leaves_battlefield"],
 ];
