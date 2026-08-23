@@ -24488,8 +24488,9 @@ describe("wave 195: modal bullets that carry more than one sentence", () => {
     );
     expect(edict.notes).toEqual([]);
     const filterOf = (index: number) =>
-      (edict.definition.modes?.[index]?.effects[0] as { sources: { filter: string }[] })
-        .sources[0]?.filter;
+      (edict.definition.modes?.[index]?.effects[0] as
+        | { sources: { filter: string }[] }
+        | undefined)?.sources[0]?.filter;
     expect(filterOf(0)).toBe("nontoken_creature");
     expect(filterOf(1)).toBe("token_creature");
     expect(filterOf(2)).toBe("planeswalker");

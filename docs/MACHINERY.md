@@ -211,12 +211,46 @@ a `tmp*.test.ts` can never be committed (they are `.test.ts` files and
 - Pick clusters by sorting that output **two ways**: by grammar, and by
   the *length* of the missing fragment. The length sort is what finds
   families the grammar sort reports as a thin tail.
+- **Edit source with a script file, never `node -e '…'`.** Nested shell
+  quoting stacks an escape layer on top of JavaScript's own, which is how a
+  `\b` reaches disk as a backspace. Write the script to the scratchpad and
+  run it. Two rules then make an edit safe:
+  - Join a multi-line needle with **the file's own newline**. Line endings
+    are not uniform here: `HANDOFF.md`, `CLAIMS.md` and most of `engine/src`
+    are CRLF, `MACHINERY.md` is LF. A needle joined with the wrong one
+    matches zero times and the edit silently does nothing. git hides this —
+    `autocrlf` normalizes on commit, so `git diff` shows a file as unchanged
+    while the working tree an edit reads is mixed.
+  - **Assert exactly one match before writing.** A replace that matched zero
+    times looks identical to one that succeeded, and the next thing you run
+    is a full tier that passes for the wrong reason.
+  `sourceHygiene.test.ts` enforces the line-ending half repo-wide.
 
 ### Traps that have cost real time
 
-- **`\b` in a Python heredoc becomes a literal backspace** in the written
-  file, and the regex then silently matches nothing. Cost a round-trip
-  twice. Use the Edit tool for regex literals, or `(?= |$)`.
+- **An escape-interpreting layer turns `\b` into a literal backspace.** The
+  word boundary becomes one 0x08 byte, the pattern silently matches nothing,
+  and the compile rate drops with no reason attached. It cost a round-trip in
+  waves 211, 221 and 223. The heredoc was never the culprit — the blame in
+  this file was wrong for three waves, which is most of why it kept happening.
+  *Writers that expand escapes, and will eat it*: `echo -e`; `printf` with the
+  pattern as its FORMAT argument (`printf '…\b…'`); `sed` replacements; and any
+  non-raw JavaScript or Python string literal — including the JS inside
+  `node -e '…'`, where shell quoting stacks a second layer on top.
+  *Writers that leave it alone*: a quoted heredoc (`<<'EOF'`), `printf '%s'`,
+  plain `echo`, PowerShell under any quoting, and the Write/Edit tools.
+  **You no longer have to spot it.** `engine/src/sourceHygiene.test.ts` fails
+  the ordinary `npx vitest run` with the file, line, column and character name
+  of any invisible byte in the repo. Do not work around it with `(?= |$)`,
+  which is a weaker assertion than a word boundary.
+- **Never commit a raw control character, even a deliberate one.** If you need
+  a sentinel, spell it `\u0001` and give it a name — `PERIOD_SHIELD` in
+  `oraclePatterns.ts` shields periods inside quoted grants. An invisible byte
+  cannot be reviewed in a diff and survives the edit meant to remove it.
+- **`grep -P` refuses to run under a non-UTF-8 locale** ("supports only
+  unibyte and UTF-8 locales") and writes that to stderr, so a scan ending in
+  `|| echo clean` reports clean having matched nothing. Use `LC_ALL=C.UTF-8`,
+  or bash ANSI-C quoting with plain grep: `grep -c $'[\x08]' file`.
 - **A test card whose oracle text names the card** must use that exact
   `name`, or `~`-normalisation fails and triggers silently don't compile.
 - **A one-letter test card name** gets normalised out of the oracle text

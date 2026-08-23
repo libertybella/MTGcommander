@@ -49,15 +49,20 @@ the current state of play. Read all four before writing code.
   ("I am adding a new effect / target kind / counted noun"), the grammar
   inventory, which engine file owns what, and the traps. Read it before
   searching; most of a wave's budget used to go on rediscovering it.
-- **Beware `` in a python heredoc**: it becomes a literal backspace in the
-  written file, and the regex then silently matches nothing. It cost a
-  round-trip in wave 211 and again in 221. Use the Edit tool for regex
-  literals, or a lookahead like `(?= |$)` instead of ``.
-- **Liberty's standing directive: grind to 75% = 1,507 cards.** 161 to go.
-  Waves 206–220 flipped 5, 3, 4, 3, 2, 3, 3, 3, 2, 2, 2, 2, 2, 2, 2 — call
-  it **under 3 a wave**, so 75% is roughly sixty more waves. The rate is
+- **The `\b` trap is caught by the tier now, not by vigilance.**
+  `engine/src/sourceHygiene.test.ts` fails the ordinary `npx vitest run` on
+  any invisible character anywhere in the repo, naming the file, line, column
+  and character. The cause was never the heredoc — that blame was wrong for
+  three waves and is most of why it recurred. It is any writer that expands
+  escapes: `echo -e`, `printf` with the pattern as its format argument, `sed`
+  replacements, a non-raw JS or Python string literal. MACHINERY.md §5 lists
+  the safe and unsafe writers; you should not need it, but read it once.
+- **No live percentage target.** The "grind to 75%" directive was cleared by
+  Liberty; the goal is 100% of the top 2,000, taken in chunks, with primitive
+  sessions judged by what they unblock rather than by the rate they move.
+  Waves 206–223 flipped between two and five cards each, and the rate keeps
   drifting down as the fat clusters get spent (206–210 averaged 3.4,
-  216–220 averaged 2.0); expect two a wave, not three.
+  216–220 averaged 2.0). Size a session at **two a wave**, not three.
 - **A rider that needs to know what just happened belongs ON the effect
   that did it.** "You gain 1 life for each creature destroyed this way"
   is a field on the sweep, not a second effect asking the state what it

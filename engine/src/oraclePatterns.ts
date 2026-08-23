@@ -436,6 +436,17 @@ const ABILITY_WORDS = new RegExp(
   "gi",
 );
 
+/**
+ * Stands in for a period inside a quoted granted ability while the sentence
+ * splitter runs, then is restored afterwards. No oracle text contains it.
+ *
+ * Spelled as an escape rather than embedded as a raw byte: an invisible
+ * character in source cannot be reviewed in a diff and survives the edits
+ * meant to remove it. engine/src/sourceHygiene.test.ts enforces that
+ * repo-wide, for the same reason.
+ */
+const PERIOD_SHIELD = "\u0001";
+
 function normalizeOracleText(card: OracleCard): string {
   const printedName = card.name.includes(" // ") ? (card.name.split(" // ")[0] ?? card.name) : card.name;
   let text = stripReminderText(card.oracleText).replace(/\r/g, "");
@@ -476,12 +487,12 @@ function normalizeOracleText(card: OracleCard): string {
   );
   // Periods inside quoted granted abilities ('… have "{T}: Add {C}."') must
   // not split the sentence; shield them, split, then restore.
-  text = text.replace(/"[^"]*"/g, (quoted) => quoted.replace(/\./g, ""));
+  text = text.replace(/"[^"]*"/g, (quoted) => quoted.replace(/\./g, PERIOD_SHIELD));
   return text;
 }
 
 function restoreSentence(part: string): string {
-  return part.replace(//g, ".").replace(/\s+/g, " ").trim();
+  return part.split(PERIOD_SHIELD).join(".").replace(/\s+/g, " ").trim();
 }
 
 export function splitOracleSentences(card: OracleCard): string[] {
@@ -570,7 +581,7 @@ const MILL_COST = /Mill (a|one|two|three|\d+) cards?/i;
 const EXILE_GRAVEYARD_COST =
   /Exile (a|one|two|three|four|five|\d+) (?:(creature|artifact|land|instant|sorcery) )?cards? from your graveyard/i;
 const COST_UNIT =
-  "(?:\\{[^}]+\\})+|Sacrifice (?:~|this land|this creature|this artifact|this permanent)|Sacrifice (?:an? |another )(?:black )?(?:creature or artifact|artifact or creature|creature|artifact|land|Treasure|token)|Sacrifice (?:an? |(?:one|two|three|four|five|\d+) )[A-Z][a-z]+s?|Sacrifice (?:two|three|four|five|six|seven|\\d+) (?:other )?(?:creatures|artifacts|lands|artifacts and\\/or creatures)|Exile ~|Pay \\d+ life|Tap an untapped (?:legendary )?creature you control|Remove (?:a|an|one|two|three|four|five|six|seven|eight|nine|ten|\\d+) (?:[-+]\\d\\/[-+]\\d|[a-z]+) counters? from ~|Put (?:a|an|one|two|three|\\d+) (?:[-+]\\d\\/[-+]\\d|[a-z]+) counters? on ~|Discard an? (?:creature|artifact|enchantment|land|instant|sorcery)? ?card|Mill (?:a|one|two|three|\\d+) cards?|Exile (?:a|one|two|three|four|five|\\d+) (?:(?:creature|artifact|land|instant|sorcery) )?cards? from your graveyard";
+  "(?:\\{[^}]+\\})+|Sacrifice (?:~|this land|this creature|this artifact|this permanent)|Sacrifice (?:an? |another )(?:black )?(?:creature or artifact|artifact or creature|creature|artifact|land|Treasure|token)|Sacrifice (?:an? |(?:one|two|three|four|five|\\d+) )[A-Z][a-z]+s?|Sacrifice (?:two|three|four|five|six|seven|\\d+) (?:other )?(?:creatures|artifacts|lands|artifacts and\\/or creatures)|Exile ~|Pay \\d+ life|Tap an untapped (?:legendary )?creature you control|Remove (?:a|an|one|two|three|four|five|six|seven|eight|nine|ten|\\d+) (?:[-+]\\d\\/[-+]\\d|[a-z]+) counters? from ~|Put (?:a|an|one|two|three|\\d+) (?:[-+]\\d\\/[-+]\\d|[a-z]+) counters? on ~|Discard an? (?:creature|artifact|enchantment|land|instant|sorcery)? ?card|Mill (?:a|one|two|three|\\d+) cards?|Exile (?:a|one|two|three|four|five|\\d+) (?:(?:creature|artifact|land|instant|sorcery) )?cards? from your graveyard";
 
 function splitAbility(sentence: string): { costText: string; rest: string } | null {
   // "Metalcraft — {T}: …" — the ability word is flavor (Mox Opal).
