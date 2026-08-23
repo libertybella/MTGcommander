@@ -3141,6 +3141,15 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
         },
       };
     }
+    case "look_top_take_matching":
+      return {
+        kind,
+        playerId: parsePlayerSelector(value.playerId, `${label}.playerId`),
+        filter: parseSearchFilter(value.filter, `${label}.filter`),
+        ...(value.chosenSubtypeOfSource === true
+          ? { chosenSubtypeOfSource: true }
+          : {}),
+      };
     case "sacrifice":
     case "imprint":
       return {
@@ -5658,6 +5667,13 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
       ofCardId: expectString(value.ofCardId, `${label}.ofCardId`),
       ...(value.untilEot === true ? { untilEot: true } : {}),
       ...(value.keepAbilities === true ? { keepAbilities: true } : {}),
+    };
+  }
+  if (kind === "look_top_take_matching") {
+    return {
+      kind,
+      playerId: expectString(value.playerId, `${label}.playerId`),
+      filter: parseSearchFilter(value.filter, `${label}.filter`),
     };
   }
   if (kind === "imprint") {

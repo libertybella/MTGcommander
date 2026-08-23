@@ -870,6 +870,17 @@ more questions it can now ask:
   (Bennie Bracks). Reads the existing per-player `createdTokenThisTurn`
   list, and asks whether the CONTROLLER is in it — an opponent's Treasure
   must not satisfy it.
+- **`look_top_take_matching`** — Herald's Horn. Look at the top card and
+  take it if it matches. The two printed sentences are fused before
+  compiling, because the second names the card the first looked at: alone,
+  the look would discard what it saw and the condition would have no
+  referent.
+
+  The filter's subtype is filled from the SOURCE's as-enters chosen type at
+  bind. No type chosen matches NOTHING — read as "any type" a Horn placed
+  without its choice would hand over the top card of the library every
+  upkeep. The "you may" is auto-taken, the same documented approximation
+  `draw.optional` already carries: a free card is never worth declining.
 - **Imprint** — Chrome Mox. `CardInstance.imprintedCardIds` records the
   cards exiled WITH a permanent, which its own abilities then read. Exiling
   with a plain `move_card` would lose the link and leave the Mox producing

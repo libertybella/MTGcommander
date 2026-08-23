@@ -36256,3 +36256,169 @@ describe("wave 274: imprint", () => {
     });
   });
 });
+
+describe("wave 275: look at the top card and take it if it matches", () => {
+  const setup = (chosenType?: string) => {
+    const { game, p1 } = twoPlayers();
+    const hornDef = createCardDefinition({
+      name: "Horn",
+      typeLine: "Artifact",
+      chooseCreatureTypeOnEnter: true,
+    });
+    game.definitions[hornDef.id] = hornDef;
+    const horn = createCardInstance({
+      definitionId: hornDef.id,
+      ownerId: p1.id,
+      zone: "battlefield",
+    });
+    if (chosenType) {
+      horn.chosenCreatureType = chosenType;
+    }
+    game.cards[horn.id] = horn;
+    p1.zones.battlefield.push(horn.id);
+
+    const onTop = (name: string, typeLine: string) => {
+      const definition = createCardDefinition({
+        name,
+        typeLine,
+        ...(typeLine.includes("Creature") ? { power: 1, toughness: 1 } : {}),
+      });
+      game.definitions[definition.id] = definition;
+      const card = createCardInstance({
+        definitionId: definition.id,
+        ownerId: p1.id,
+        zone: "library",
+      });
+      game.cards[card.id] = card;
+      p1.zones.library.unshift(card.id);
+      return card.id;
+    };
+    return { game, p1, hornId: horn.id, onTop };
+  };
+
+  const fire = (state: GameState, hornId: string) =>
+    applyEffects(
+      state,
+      bindCardEffects(
+        state,
+        [
+          {
+            kind: "look_top_take_matching",
+            playerId: "controller",
+            filter: { types: ["creature"] },
+            chosenSubtypeOfSource: true,
+          },
+        ],
+        { controllerId: state.players[0]!.id, sourceId: hornId },
+      ),
+    );
+
+  it("takes a creature of the chosen type", () => {
+    const { game, p1, hornId, onTop } = setup("elf");
+    const elf = onTop("Llanowar Elves", "Creature — Elf Druid");
+    const after = fire(game, hornId);
+    expect(after.cards[elf]?.zone).toBe("hand");
+    expect(after.players.find((entry) => entry.id === p1.id)?.zones.library[0]).not.toBe(elf);
+  });
+
+  it("leaves a creature of the wrong type on top", () => {
+    const { game, p1, hornId, onTop } = setup("elf");
+    const bear = onTop("Grizzly Bears", "Creature — Bear");
+    const after = fire(game, hornId);
+    expect(after.cards[bear]?.zone).toBe("library");
+    expect(after.players.find((entry) => entry.id === p1.id)?.zones.library[0]).toBe(bear);
+  });
+
+  it("leaves a noncreature card of the right name alone", () => {
+    const { game, hornId, onTop } = setup("elf");
+    const shrine = onTop("Elvish Shrine", "Enchantment — Shrine");
+    const after = fire(game, hornId);
+    expect(after.cards[shrine]?.zone).toBe("library");
+  });
+
+  it("takes nothing when no type was chosen", () => {
+    const { game, hornId, onTop } = setup(undefined);
+    const elf = onTop("Llanowar Elves", "Creature — Elf Druid");
+    // No chosen type must match NOTHING. Reading it as "any type" would hand
+    // over the top card of the library every single upkeep.
+    const bound = bindCardEffects(
+      game,
+      [
+        {
+          kind: "look_top_take_matching",
+          playerId: "controller",
+          filter: { types: ["creature"] },
+          chosenSubtypeOfSource: true,
+        },
+      ],
+      { controllerId: game.players[0]!.id, sourceId: hornId },
+    );
+    expect(bound).toEqual([]);
+    expect(game.cards[elf]?.zone).toBe("library");
+  });
+
+  it("does nothing with an empty library", () => {
+    const { game, hornId } = setup("elf");
+    const after = fire(game, hornId);
+    expect(after.prompts).toHaveLength(0);
+    expect(after.players[0]?.zones.library).toHaveLength(0);
+  });
+
+  it("round trips both halves of the effect", () => {
+    const { game, hornId } = setup("elf");
+    const definition = createCardDefinition({
+      name: "Horn",
+      typeLine: "Artifact",
+      triggers: [
+        {
+          event: "upkeep",
+          effects: [
+            {
+              kind: "look_top_take_matching",
+              playerId: "controller",
+              filter: { types: ["creature"] },
+              chosenSubtypeOfSource: true,
+            },
+          ],
+          targetRequirements: [],
+        },
+      ],
+    });
+    game.definitions[definition.id] = definition;
+    const round = parseGameState(serializeGameState(game));
+    expect(round.definitions[definition.id]?.triggers[0]?.effects[0]).toEqual({
+      kind: "look_top_take_matching",
+      playerId: "controller",
+      filter: { types: ["creature"] },
+      chosenSubtypeOfSource: true,
+    });
+    expect(hornId).toBeDefined();
+  });
+
+  it("compiles Herald's Horn whole", () => {
+    const compiled = compileOracleCard({
+      oracleId: "hh",
+      name: "Herald's Horn",
+      manaCost: "{3}",
+      typeLine: "Artifact",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "As Herald's Horn enters, choose a creature type.\nCreature spells you cast of the chosen type cost {1} less to cast.\nAt the beginning of your upkeep, look at the top card of your library. If it's a creature card of the chosen type, you may reveal it and put it into your hand.",
+    });
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.chooseCreatureTypeOnEnter).toBe(true);
+    expect(compiled.definition.triggers[0]).toMatchObject({
+      event: "upkeep",
+      effects: [
+        {
+          kind: "look_top_take_matching",
+          filter: { types: ["creature"] },
+          chosenSubtypeOfSource: true,
+        },
+      ],
+    });
+  });
+});

@@ -1677,6 +1677,29 @@ export function bindCardEffect(
         ...(effect.notLegendary ? { notLegendary: true } : {}),
       };
     }
+    case "look_top_take_matching": {
+      const looker = bindPlayerSelector(state, effect.playerId, context);
+      if (!looker) {
+        return null;
+      }
+      let topFilter = effect.filter;
+      if (effect.chosenSubtypeOfSource) {
+        const chosenType = context.sourceId
+          ? state.cards[context.sourceId]?.chosenCreatureType
+          : undefined;
+        // No type chosen yet matches NOTHING, not everything — a Horn
+        // placed without its as-enters choice must not hand over the top
+        // card of the library every upkeep.
+        if (!chosenType) {
+          return null;
+        }
+        topFilter = {
+          ...topFilter,
+          subtypes: [...(topFilter.subtypes ?? []), chosenType],
+        };
+      }
+      return { kind: "look_top_take_matching", playerId: looker, filter: topFilter };
+    }
     case "imprint": {
       const imprintId = bindCardId(state, effect.cardId, context);
       // No source means nothing to record the exile against, and an
@@ -3956,6 +3979,16 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
             effects: [{ kind: "sacrifice", cardId: effect.cardId }],
           });
         }
+        break;
+      }
+      case "look_top_take_matching": {
+        const looking = state.players.find((entry) => entry.id === effect.playerId);
+        const topCard = looking?.zones.library[0];
+        if (!topCard || !searchMatches(state, topCard, effect.filter)) {
+          next = cloneGameState(state);
+          break;
+        }
+        next = moveCard(state, topCard, "hand");
         break;
       }
       case "imprint": {

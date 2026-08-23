@@ -4812,6 +4812,27 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     };
   }
 
+  // Herald's Horn: "look at the top card of your library. If it's a
+  // creature card of the chosen type, you may reveal it and put it into
+  // your hand." Fused into one clause because the condition names the
+  // card the first half looked at, which no separate sentence can reach.
+  const hornLook = sentence.match(
+    /^look at the top card of your library, and if it's an? (creature) card of the chosen type, you may reveal it and put it into your hand$/i,
+  );
+  if (hornLook?.[1]) {
+    return {
+      targetRequirements: [],
+      effects: [
+        {
+          kind: "look_top_take_matching",
+          playerId: "controller",
+          filter: { types: [hornLook[1].toLowerCase()] },
+          chosenSubtypeOfSource: true,
+        },
+      ],
+    };
+  }
+
   // Setessan Champion's constellation body.
   if (/^put a \+1\/\+1 counter on (?:~|this creature) and draw a card$/i.test(sentence)) {
     return {
@@ -8048,6 +8069,30 @@ function fuseMayPayInPlace(sentences: string[], lineStart: boolean[]): void {
   }
 }
 
+function fuseLookTopTakeInPlace(sentences: string[], lineStart: boolean[]): void {
+  // Herald's Horn prints "look at the top card of your library." and "If
+  // it's a creature card of the chosen type, you may reveal it and put it
+  // into your hand." as two sentences. The second names the card the
+  // first looked at, so neither compiles alone — the look would discard
+  // what it saw and the condition would have no referent.
+  for (let index = 0; index + 1 < sentences.length; index += 1) {
+    if (lineStart[index + 1]) {
+      continue;
+    }
+    const look = sentences[index]?.match(
+      /^(.*\blook at the top card of your library)$/i,
+    );
+    const rider = sentences[index + 1]?.match(/^If it's (.+)$/i);
+    if (!look?.[1] || !rider?.[1]) {
+      continue;
+    }
+    sentences[index] = `${look[1]}, and if it's ${rider[1]}`;
+    sentences.splice(index + 1, 1);
+    lineStart.splice(index + 1, 1);
+    index -= 1;
+  }
+}
+
 function fuseChooseTargetCreatureInPlace(
   sentences: string[],
   lineStart: boolean[],
@@ -10834,6 +10879,7 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
   fuseMayPayInPlace(sentences, lineStart);
   fusePactInPlace(sentences, lineStart);
   fuseChooseTargetCreatureInPlace(sentences, lineStart);
+  fuseLookTopTakeInPlace(sentences, lineStart);
   fuseMaySacrificeInPlace(sentences, lineStart);
   fuseNecroTopInPlace(sentences, lineStart);
   for (let index = 0; index < sentences.length; index += 1) {

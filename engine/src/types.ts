@@ -1095,6 +1095,12 @@ export type GameEffect =
   | { kind: "sacrifice"; cardId: CardInstanceId }
   /** Chrome Mox: exile `cardId` and record it on `sourceId`. */
   | { kind: "imprint"; cardId: CardInstanceId; sourceId: CardInstanceId }
+  /** Herald's Horn, with the filter already resolved. */
+  | {
+      kind: "look_top_take_matching";
+      playerId: PlayerId;
+      filter: SearchFilter;
+    }
   | { kind: "phase_out"; cardIds: CardInstanceId[] }
   | { kind: "add_counter"; cardId: CardInstanceId; counter: string; amount: number }
   /**
@@ -2048,6 +2054,20 @@ export type CardEffect =
    * move_card would lose the link and leave the Mox producing nothing.
    */
   | { kind: "imprint"; cardId: CardIdSelector }
+  /**
+   * Herald's Horn: "look at the top card of your library. If it's a
+   * creature card of the chosen type, you may reveal it and put it into
+   * your hand." The "may" is auto-taken, the same documented
+   * approximation `draw.optional` already carries — a free card is
+   * never worth declining.
+   */
+  | {
+      kind: "look_top_take_matching";
+      playerId: PlayerSelector;
+      filter: SearchFilter;
+      /** Fill `filter.subtypes` from the SOURCE's as-enters chosen type. */
+      chosenSubtypeOfSource?: boolean;
+    }
   /** CR 702.26: Slip Out the Back, Guardian of Faith, Clever Concealment.
    * `allChosen` is the variable-target form — every target the caster
    * picked, however many that was, rather than a fixed list of slots. */
