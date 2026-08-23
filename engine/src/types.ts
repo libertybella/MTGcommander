@@ -1330,6 +1330,8 @@ export type GameEffect =
       /** Eternalize: the copy is black and a Zombie on top of its own types. */
       setColors?: Color[];
       addSubtypes?: string[];
+      /** Helm of the Host: "except the token isn't legendary". */
+      notLegendary?: boolean;
     }
   | { kind: "manifest"; playerId: PlayerId; count: number }
   | {
@@ -2354,6 +2356,12 @@ export type CardEffect =
       /** Eternalize: the copy is black and a Zombie on top of its own types. */
       setColors?: Color[];
       addSubtypes?: string[];
+      /**
+       * Helm of the Host: "except the token isn't legendary". Without it
+       * the legend rule destroys one of the pair as soon as the copy
+       * arrives, which is the whole point of the card.
+       */
+      notLegendary?: boolean;
     }
   | { kind: "manifest"; playerId: PlayerSelector; count: number }
   | {

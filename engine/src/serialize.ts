@@ -3589,6 +3589,7 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
         ...(value.addSubtypes === undefined
           ? {}
           : { addSubtypes: expectStringArray(value.addSubtypes, `${label}.addSubtypes`) }),
+        ...(value.notLegendary === true ? { notLegendary: true } : {}),
       };
     case "manifest":
       return {
@@ -5376,6 +5377,7 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
       ...(value.addSubtypes === undefined
         ? {}
         : { addSubtypes: expectStringArray(value.addSubtypes, `${label}.addSubtypes`) }),
+      ...(value.notLegendary === true ? { notLegendary: true } : {}),
     };
   }
   if (kind === "manifest") {

@@ -1650,6 +1650,11 @@ export function bindCardEffect(
       let ofCardId: CardInstanceId | null;
       if (effect.ofCardId === "self") {
         ofCardId = context.sourceId;
+      } else if (effect.ofCardId === "host") {
+        // Helm of the Host: the equipped creature, through the same
+        // `attachedTo` field an Aura's enchanted creature uses.
+        const equipment = context.sourceId ? state.cards[context.sourceId] : undefined;
+        ofCardId = equipment?.attachedTo ?? null;
       } else if (typeof effect.ofCardId === "string") {
         ofCardId = effect.ofCardId;
       } else {
@@ -1669,6 +1674,7 @@ export function bindCardEffect(
         ...(effect.setPt ? { setPt: { ...effect.setPt } } : {}),
         ...(effect.setColors ? { setColors: [...effect.setColors] } : {}),
         ...(effect.addSubtypes ? { addSubtypes: [...effect.addSubtypes] } : {}),
+        ...(effect.notLegendary ? { notLegendary: true } : {}),
       };
     }
     case "counter_spell": {
@@ -3186,6 +3192,7 @@ function applyCopyToken(
     setPt?: { power: number; toughness: number };
     setColors?: Color[];
     addSubtypes?: string[];
+    notLegendary?: boolean;
   },
 ): GameState {
   requirePlayer(state, ownerId);
@@ -3203,7 +3210,7 @@ function applyCopyToken(
   }
   const next = cloneGameState(state);
   let copyDefinitionId = original.definitionId;
-  if (opts?.setPt || opts?.setColors || opts?.addSubtypes) {
+  if (opts?.setPt || opts?.setColors || opts?.addSubtypes || opts?.notLegendary) {
     // Offspring: the copy is 1/1. Eternalize: a 4/4 black Zombie that keeps
     // its own name and abilities. Both are a cloned definition with the
     // named characteristics overridden.
@@ -3222,6 +3229,12 @@ function applyCopyToken(
         if (!overridden.characteristics.subtypes.includes(subtype)) {
           overridden.characteristics.subtypes.push(subtype);
         }
+      }
+      if (opts.notLegendary) {
+        overridden.characteristics.supertypes =
+          overridden.characteristics.supertypes.filter(
+            (supertype) => supertype !== "legendary",
+          );
       }
       next.definitions[overridden.id] = overridden;
       copyDefinitionId = overridden.id;

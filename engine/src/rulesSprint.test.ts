@@ -19,7 +19,9 @@ import {
 } from "./index";
 import { activatedOf, cardMatchesSubtype, computedCard, dynamicCountOf, mergeProtection, triggersOf } from "./characteristicsEngine";
 import { mostCommonControlledCreatureType } from "./effects";
+import { creaturePower } from "./derived";
 import { attackLimitFor, blockAllowanceFor, castCostReduction, castableFromTop, drawCapFor, freeEquipGranted, hasFlashGrant, landDropAllowance, maxHandSizeOf, noncreatureSpellCap, permanentsControlledBy, playerHasHexproof, reliefAdjustedCost, selfDiscountAmount, wouldEnterTapped } from "./derived";
+import { characteristicsOf } from "./cardTypes";
 import { hasKeyword } from "./keywords";
 import { dispatchEventsInPlace, triggerConditionHolds } from "./triggers";
 import { applyCombatDamage, blockRestriction, declareAttackers, declareBlockers } from "./combat";
@@ -35506,4 +35508,186 @@ describe("wave 269: three tail readings", () => {
     });
     expect(compiled.notes.length).toBeGreaterThan(0);
   });
+});
+
+describe("wave 270: a copy of the equipped creature", () => {
+  const setup = (attach: boolean) => {
+    const { game, p1 } = twoPlayers();
+    const heroDef = createCardDefinition({
+      name: "Hero",
+      typeLine: "Legendary Creature — Human Soldier",
+      power: 3,
+      toughness: 3,
+    });
+    game.definitions[heroDef.id] = heroDef;
+    const hero = createCardInstance({
+      definitionId: heroDef.id,
+      ownerId: p1.id,
+      zone: "battlefield",
+    });
+    game.cards[hero.id] = hero;
+    p1.zones.battlefield.push(hero.id);
+
+    const helmDef = createCardDefinition({ name: "Helm", typeLine: "Artifact — Equipment" });
+    game.definitions[helmDef.id] = helmDef;
+    const helm = createCardInstance({
+      definitionId: helmDef.id,
+      ownerId: p1.id,
+      zone: "battlefield",
+    });
+    game.cards[helm.id] = helm;
+    p1.zones.battlefield.push(helm.id);
+    if (attach) {
+      helm.attachedTo = hero.id;
+    }
+    return { game, p1, heroId: hero.id, helmId: helm.id };
+  };
+
+  const bindCopy = (state: GameState, helmId: string, notLegendary: boolean) =>
+    bindCardEffects(
+      state,
+      [
+        {
+          kind: "copy_token",
+          ownerId: "controller",
+          ofCardId: "host",
+          ...(notLegendary ? { notLegendary: true } : {}),
+        },
+      ],
+      { controllerId: state.players[0]!.id, sourceId: helmId },
+    );
+
+  it("copies the creature the Equipment is attached to", () => {
+    const { game, p1, heroId, helmId } = setup(true);
+    const bound = bindCopy(game, helmId, true);
+    expect(bound).toEqual([
+      { kind: "copy_token", ownerId: p1.id, ofCardId: heroId, notLegendary: true },
+    ]);
+  });
+
+  it("copies nothing when the Equipment is attached to nothing", () => {
+    const { game, helmId } = setup(false);
+    // "host" is a magic selector, not a card id. Read as a literal it would
+    // look up a card named "host", find none, and copy silently nothing —
+    // or worse, throw at apply. Refusing at bind is the honest answer.
+    expect(bindCopy(game, helmId, true)).toEqual([]);
+  });
+
+  it("makes the token NON-legendary while the original stays legendary", () => {
+    const { game, p1, heroId, helmId } = setup(true);
+    const made = applyEffects(game, bindCopy(game, helmId, true));
+    const tokens = p1.id
+      ? Object.values(made.cards).filter(
+          (card) => card.id !== heroId && card.id !== helmId && card.zone === "battlefield",
+        )
+      : [];
+    expect(tokens).toHaveLength(1);
+    const token = tokens[0]!;
+    expect(characteristicsOf(made, token.id).supertypes).not.toContain("legendary");
+    // The clone must not have edited the shared definition out from under
+    // the creature it copied.
+    expect(characteristicsOf(made, heroId).supertypes).toContain("legendary");
+    expect(creaturePower(made, token.id)).toBe(creaturePower(made, heroId));
+  });
+
+  it("leaves both on the battlefield through the legend rule", () => {
+    const { game, helmId, heroId } = setup(true);
+    const made = applyEffects(game, bindCopy(game, helmId, true));
+    applyStateBasedActionsInPlace(made);
+    const alive = Object.values(made.cards).filter(
+      (card) => card.zone === "battlefield" && card.id !== helmId,
+    );
+    // Without notLegendary the legend rule eats one of the pair the instant
+    // the copy arrives — which is the entire card doing nothing.
+    expect(alive).toHaveLength(2);
+    expect(made.cards[heroId]?.zone).toBe("battlefield");
+  });
+
+  it("still applies the legend rule when the rider is absent", () => {
+    const { game, helmId, heroId } = setup(true);
+    const made = applyEffects(game, bindCopy(game, helmId, false));
+    applyStateBasedActionsInPlace(made);
+    const alive = Object.values(made.cards).filter(
+      (card) => card.zone === "battlefield" && card.id !== helmId,
+    );
+    // The negative case: a copy WITHOUT the rider is legendary and one of
+    // the pair dies, so the flag is doing the work and not the plumbing.
+    expect(alive).toHaveLength(1);
+    expect(made.cards[heroId]).toBeDefined();
+  });
+
+  it("compiles Helm of the Host whole", () => {
+    const compiled = compileOracleCard({
+      oracleId: "helm",
+      name: "Helm of the Host",
+      manaCost: "{4}",
+      typeLine: "Legendary Artifact — Equipment",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "At the beginning of combat on your turn, create a token that's a copy of equipped creature, except the token isn't legendary. That token gains haste.\nEquip {5}",
+    });
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.triggers[0]).toMatchObject({
+      event: "begin_combat",
+      effects: [
+        {
+          kind: "copy_token",
+          ofCardId: "host",
+          notLegendary: true,
+          gainsHaste: true,
+        },
+      ],
+    });
+  });
+
+  it("round trips the rider", () => {
+    const { game, p1, helmId } = twoPlayersWithHelm();
+    const definition = createCardDefinition({
+      name: "Helm",
+      typeLine: "Artifact — Equipment",
+      triggers: [
+        {
+          event: "begin_combat",
+          effects: [
+            {
+              kind: "copy_token",
+              ownerId: "controller",
+              ofCardId: "host",
+              notLegendary: true,
+              gainsHaste: true,
+            },
+          ],
+          targetRequirements: [],
+        },
+      ],
+    });
+    game.definitions[definition.id] = definition;
+    const round = parseGameState(serializeGameState(game));
+    expect(round.definitions[definition.id]?.triggers[0]?.effects[0]).toEqual({
+      kind: "copy_token",
+      ownerId: "controller",
+      ofCardId: "host",
+      notLegendary: true,
+      gainsHaste: true,
+    });
+    expect(p1.id).toBeDefined();
+    expect(helmId).toBeDefined();
+  });
+
+  function twoPlayersWithHelm() {
+    const { game, p1 } = twoPlayers();
+    const helmDef = createCardDefinition({ name: "H", typeLine: "Artifact — Equipment" });
+    game.definitions[helmDef.id] = helmDef;
+    const helm = createCardInstance({
+      definitionId: helmDef.id,
+      ownerId: p1.id,
+      zone: "battlefield",
+    });
+    game.cards[helm.id] = helm;
+    p1.zones.battlefield.push(helm.id);
+    return { game, p1, helmId: helm.id };
+  }
 });

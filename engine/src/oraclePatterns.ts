@@ -4629,7 +4629,9 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
   const tokenCopy = sentence.match(
     /^create a token that's a copy of (another )?target (artifact or creature|creature)( you control)?(?:, except (.+))?$/i,
   );
-  if (tokenCopy?.[2] && (tokenCopy[4] === undefined || parseCopyExceptRiders(tokenCopy[4]))) {
+  const tokenCopyRiders =
+    tokenCopy?.[4] === undefined ? {} : parseCopyExceptRiders(tokenCopy[4]);
+  if (tokenCopy?.[2] && tokenCopyRiders) {
     return {
       targetRequirements: [
         {
@@ -4641,7 +4643,12 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
         },
       ],
       effects: [
-        { kind: "copy_token", ownerId: "controller", ofCardId: { type: "chosen", index: 0 } },
+        {
+          kind: "copy_token",
+          ownerId: "controller",
+          ofCardId: { type: "chosen", index: 0 },
+          ...(tokenCopyRiders.notLegendary ? { notLegendary: true } : {}),
+        },
       ],
     };
   }
@@ -4764,6 +4771,30 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     return {
       targetRequirements: [],
       effects: [{ kind: "copy_token", ownerId: "controller", ofCardId: "self" }],
+    };
+  }
+
+  // Helm of the Host: "a copy of EQUIPPED creature". The `host` selector
+  // already reads `attachedTo`, which is the same field an Aura's
+  // "enchanted creature" resolves through — an Equipment attaches the
+  // same way. The except-riders and the trailing "That token gains haste"
+  // are both already understood, so only the subject was missing.
+  const equippedCopy = sentence.match(
+    /^create a token that's a copy of (?:equipped|enchanted) creature(?:, except (.+))?$/i,
+  );
+  const equippedRiders =
+    equippedCopy?.[1] === undefined ? {} : parseCopyExceptRiders(equippedCopy[1]);
+  if (equippedCopy && equippedRiders) {
+    return {
+      targetRequirements: [],
+      effects: [
+        {
+          kind: "copy_token",
+          ownerId: "controller",
+          ofCardId: "host",
+          ...(equippedRiders.notLegendary ? { notLegendary: true } : {}),
+        },
+      ],
     };
   }
 
@@ -10572,8 +10603,10 @@ const CLONE_SCOPE_BY_PHRASE: Record<string, EnterAsCopyScope> = {
  * abilities). Returns null when any rider is unrecognized, so exotic riders
  * keep the sentence uncompiled instead of silently vanishing.
  */
-function parseCopyExceptRiders(tail: string): { extraCounters?: number } | null {
-  const result: { extraCounters?: number } = {};
+function parseCopyExceptRiders(
+  tail: string,
+): { extraCounters?: number; notLegendary?: boolean } | null {
+  const result: { extraCounters?: number; notLegendary?: boolean } = {};
   // Quoted ability grants may hold commas and periods — strip them whole
   // before splitting the rest into rider atoms.
   let rest = tail.replace(/(?:and )?(?:it|the token) has "[^"]*"/gi, "").trim();
@@ -10594,6 +10627,10 @@ function parseCopyExceptRiders(tail: string): { extraCounters?: number } | null 
       continue;
     }
     if (/^(?:it|the token) (?:isn't|is not) legendary$/i.test(atom)) {
+      // Not cosmetic: a legendary copy of a legendary creature loses one
+      // of the pair to the legend rule the instant it arrives, which for
+      // Helm of the Host is the whole card. This used to be swallowed.
+      result.notLegendary = true;
       continue;
     }
     if (/^(?:it's|it is|is) (?:an? )?[\w' -]+ in addition to its other types$/i.test(atom)) {
@@ -13163,6 +13200,19 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
         });
         sentences[index + 1] = "";
       }
+      // Helm of the Host: "That token gains haste." — no target and no
+      // "until end of turn", so the branch above does not read it. The
+      // shared subject-rider fold does, and it must run here rather than
+      // leaving the sentence to become a top-level effect on a permanent
+      // card, where nothing would ever run it.
+      while (
+        inner &&
+        index + 1 < sentences.length &&
+        !lineStart[index + 1] &&
+        foldSubjectRider(inner.effects, sentences[index + 1]!)
+      ) {
+        index += 1;
+      }
       if (inner) {
         result.triggers.push({
           event: "begin_combat",
@@ -13425,6 +13475,18 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
           if (copyAt && lastEffect?.kind === "create_token") {
             lastEffect.copySelfIfLandsAtLeast = copyAt;
             sentences[index + 1] = "";
+          }
+          // Helm of the Host: "That token gains haste." is its own
+          // sentence on the same printed line. Folded BEFORE the push so
+          // an extraEvents sibling copies the rider too — and folded at
+          // all because a rider parked as a top-level effect on a
+          // permanent card never runs.
+          while (
+            index + 1 < sentences.length &&
+            !lineStart[index + 1] &&
+            foldSubjectRider(inner.effects, sentences[index + 1]!)
+          ) {
+            index += 1;
           }
           const { extraEvents, ...headRest } = head;
           result.triggers.push({

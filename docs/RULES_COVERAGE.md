@@ -870,6 +870,26 @@ more questions it can now ask:
   (Bennie Bracks). Reads the existing per-player `createdTokenThisTurn`
   list, and asks whether the CONTROLLER is in it — an opponent's Treasure
   must not satisfy it.
+- **A copy of the EQUIPPED creature, and a token that isn't legendary** —
+  Helm of the Host. The `host` selector already read `attachedTo`, which is
+  the field an Aura's "enchanted creature" resolves through and an
+  Equipment attaches by too — but `copy_token` bound its `ofCardId` with its
+  own string check, so "host" would have been taken as a literal card id and
+  copied nothing. An unattached Equipment now refuses at bind.
+
+  `parseCopyExceptRiders` READ "except the token isn't legendary" and threw
+  it away, so every card printing that rider made a LEGENDARY token and the
+  legend rule destroyed one of the pair the instant it arrived — for Helm of
+  the Host that is the entire card doing nothing. The rider now reaches the
+  token through `copy_token.notLegendary`, which strips the supertype on the
+  cloned definition (never the shared one). A test asserts the negative:
+  without the flag, one of the pair still dies.
+
+  A trailing subject rider now folds into a begin-combat trigger body the
+  way it already did for activated abilities. "That token gains haste." has
+  no target and no "until end of turn", so the branch that handles Halana
+  and Alena did not read it, and left alone it became a top-level effect on
+  a permanent card — where nothing ever runs it.
 - **`controlled_subtype` enters-tapped clause** — Mystic Sanctuary. "Unless
   you control three or more OTHER Islands": `excludeSelf` is load-bearing,
   because the land asking is an Island itself and counting it would let two
