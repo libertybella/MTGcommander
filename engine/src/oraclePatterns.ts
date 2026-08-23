@@ -1418,6 +1418,14 @@ function parseEffectCondition(phrase: string): TriggerCondition | null {
       return { kind: "controls_lands_with_different_names", atLeast };
     }
   }
+  // Mosswort Bridge: "creatures you control have TOTAL power 10 or
+  // greater" — the sum, not the greatest single power.
+  const totalPower = text.match(
+    /^creatures you control have total power (\d+) or greater$/i,
+  );
+  if (totalPower?.[1]) {
+    return { kind: "controls_total_power_at_least", power: Number(totalPower[1]) };
+  }
   const tribe = text.match(/^you control (\w+) or more ([A-Z][a-z-]+)s$/);
   if (tribe?.[1] && tribe[2]) {
     const atLeast = parseCount(tribe[1]);
@@ -2088,6 +2096,14 @@ type SimpleClause = {
   effects: CardEffect[];
   targetRequirements: TargetRequirement[];
   leftover?: string;
+  /**
+   * Mosswort Bridge prints its gate inside the effect sentence ("… if
+   * creatures you control have total power 10 or greater") rather than as
+   * a separate "Activate only if" line. Carried up to the ability so an
+   * unmet condition offers nothing, instead of offering an activation
+   * that resolves to nothing.
+   */
+  activationGate?: TriggerCondition;
 };
 
 /**
@@ -4831,6 +4847,26 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
         },
       ],
     };
+  }
+
+  // Mosswort Bridge's activated half. The gate rides the ABILITY rather
+  // than the effect, so an unmet condition offers nothing at all instead
+  // of offering an activation that resolves to nothing.
+  const playHidden = sentence.match(
+    /^You may play the exiled card without paying its mana cost(?: if (.+))?$/i,
+  );
+  if (playHidden) {
+    const gate = playHidden[1] ? parseEffectCondition(playHidden[1].trim()) : null;
+    // A condition we cannot read must not be dropped: the ability would
+    // then be activatable whenever, which is a wrong game rather than an
+    // uncompiled one.
+    if (!playHidden[1] || gate) {
+      return {
+        targetRequirements: [],
+        effects: [{ kind: "play_hidden_card", free: true }],
+        ...(gate ? { activationGate: gate } : {}),
+      };
+    }
   }
 
   // Setessan Champion's constellation body.
@@ -11239,6 +11275,33 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
       continue;
     }
 
+    // Hideaway N (CR 702.75): "When this permanent enters, look at the
+    // top N cards of your library, exile one face down, then put the rest
+    // on the bottom in a random order." The exiled card is recorded ON
+    // the source, because the ability that plays it later has no other
+    // way to say WHICH exiled card is "the exiled card".
+    const hideaway = sentence.match(/^Hideaway (\d+)$/i);
+    if (hideaway?.[1]) {
+      const look = Number(hideaway[1]);
+      result.triggers.push({
+        event: "enter_battlefield",
+        effects: [
+          {
+            kind: "look_and_assign",
+            playerId: "controller",
+            count: look,
+            destinations: [
+              "exile" as const,
+              ...Array.from({ length: look - 1 }, () => "library_bottom" as const),
+            ],
+            hideawayFromSource: true,
+          },
+        ],
+        targetRequirements: [],
+      });
+      continue;
+    }
+
     const equip = sentence.match(/^Equip (?:\{(\d+)\}|(\d+))$/i);
     if (equip) {
       const amount = equip[1] ?? equip[2] ?? "0";
@@ -14072,6 +14135,9 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
         manaCost: cost.manaCost,
         effects: clause.effects,
         targetRequirements: clause.targetRequirements,
+        ...(clause.activationGate
+          ? { requiresCondition: clause.activationGate }
+          : {}),
         ...(cost.xCost ? { xCost: cost.xCost } : {}),
         ...(cost.sacrificeSelf ? { sacrificeSelf: true } : {}),
         ...(cost.sacrificeCost ? { sacrificeCost: cost.sacrificeCost } : {}),

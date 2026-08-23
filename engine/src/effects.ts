@@ -707,6 +707,11 @@ export function bindCardEffect(
         playerId,
         count: effect.count,
         destinations: [...effect.destinations],
+        // Hideaway: the ability that plays the card later has no other
+        // way to say WHICH exiled card is "the exiled card".
+        ...(effect.hideawayFromSource && context.sourceId
+          ? { hideawaySourceId: context.sourceId }
+          : {}),
       };
     }
     case "reveal_zone": {
@@ -1675,6 +1680,19 @@ export function bindCardEffect(
         ...(effect.setColors ? { setColors: [...effect.setColors] } : {}),
         ...(effect.addSubtypes ? { addSubtypes: [...effect.addSubtypes] } : {}),
         ...(effect.notLegendary ? { notLegendary: true } : {}),
+      };
+    }
+    case "play_hidden_card": {
+      // The source is what holds the hidden card; without it there is
+      // nothing to play and the grant would name every exiled card.
+      if (!context.sourceId) {
+        return null;
+      }
+      return {
+        kind: "play_hidden_card",
+        playerId: context.controllerId,
+        sourceId: context.sourceId,
+        ...(effect.free ? { free: true } : {}),
       };
     }
     case "look_top_take_matching": {
@@ -3536,6 +3554,7 @@ function applyLookAndAssign(
   playerId: PlayerId,
   count: number,
   destinations: LookDestination[],
+  hideawaySourceId?: CardInstanceId,
 ): GameState {
   requirePositiveInteger(count, "look count");
   const player = requirePlayer(state, playerId);
@@ -3549,6 +3568,7 @@ function applyLookAndAssign(
     playerId,
     count: looked,
     destinations: destinations.slice(0, Math.max(looked, destinations.length)),
+    ...(hideawaySourceId ? { hideawaySourceId } : {}),
   });
   return next;
 }
@@ -3979,6 +3999,26 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
             effects: [{ kind: "sacrifice", cardId: effect.cardId }],
           });
         }
+        break;
+      }
+      case "play_hidden_card": {
+        const hider = state.cards[effect.sourceId];
+        const hidden = (hider?.imprintedCardIds ?? []).filter(
+          (cardId) => state.cards[cardId]?.zone === "exile",
+        );
+        next = cloneGameState(state);
+        if (hidden.length === 0) {
+          break;
+        }
+        const granted = next.exilePlayable ?? [];
+        for (const cardId of hidden) {
+          granted.push({
+            cardId,
+            casterId: effect.playerId,
+            ...(effect.free ? { freeCast: true } : {}),
+          });
+        }
+        next.exilePlayable = granted;
         break;
       }
       case "look_top_take_matching": {
@@ -5064,7 +5104,13 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
         next = applyChooseCardEffect(state, effect);
         break;
       case "look_and_assign":
-        next = applyLookAndAssign(state, effect.playerId, effect.count, effect.destinations);
+        next = applyLookAndAssign(
+          state,
+          effect.playerId,
+          effect.count,
+          effect.destinations,
+          effect.hideawaySourceId,
+        );
         break;
       case "grant_player_shield": {
         requirePlayer(state, effect.playerId);

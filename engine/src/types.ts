@@ -1091,10 +1091,18 @@ export type GameEffect =
       playerId: PlayerId;
       count: number;
       destinations: LookDestination[];
+      /** Hideaway: record the exiled card on this permanent. */
+      hideawaySourceId?: CardInstanceId;
     }
   | { kind: "sacrifice"; cardId: CardInstanceId }
   /** Chrome Mox: exile `cardId` and record it on `sourceId`. */
   | { kind: "imprint"; cardId: CardInstanceId; sourceId: CardInstanceId }
+  | {
+      kind: "play_hidden_card";
+      playerId: PlayerId;
+      sourceId: CardInstanceId;
+      free?: boolean;
+    }
   /** Herald's Horn, with the filter already resolved. */
   | {
       kind: "look_top_take_matching";
@@ -2046,6 +2054,12 @@ export type CardEffect =
       playerId: PlayerSelector;
       count: number;
       destinations: LookDestination[];
+      /**
+       * Hideaway (CR 702.75): the card sent to exile is remembered ON
+       * the source, because the ability that plays it later has no other
+       * way to say WHICH exiled card is "the exiled card".
+       */
+      hideawayFromSource?: boolean;
     }
   | { kind: "sacrifice"; cardId: CardIdSelector }
   /**
@@ -2054,6 +2068,12 @@ export type CardEffect =
    * move_card would lose the link and leave the Mox producing nothing.
    */
   | { kind: "imprint"; cardId: CardIdSelector }
+  /**
+   * Mosswort Bridge: play the card hidden away under this permanent,
+   * free. The grant names the SOURCE's own exiled cards, so two Bridges
+   * never offer each other's.
+   */
+  | { kind: "play_hidden_card"; free?: boolean }
   /**
    * Herald's Horn: "look at the top card of your library. If it's a
    * creature card of the chosen type, you may reveal it and put it into
@@ -2621,6 +2641,12 @@ export type TriggerCondition =
   | { kind: "subject_name_unique" }
   /** Garruk's Uprising: "if you control a creature with power N or greater". */
   | { kind: "controls_power_at_least"; power: number }
+  /**
+   * Mosswort Bridge: "creatures you control have TOTAL power 10 or
+   * greater" — the sum, not the greatest, which is a different question
+   * and a much easier one to meet.
+   */
+  | { kind: "controls_total_power_at_least"; power: number }
   /** Karlach: "if it's the first combat phase of the turn". */
   | { kind: "first_combat_this_turn" }
   /**
@@ -3034,6 +3060,8 @@ export type PendingPrompt =
       playerId: PlayerId;
       count: number;
       destinations: LookDestination[];
+      /** Hideaway: record the exiled card on this permanent. */
+      hideawaySourceId?: CardInstanceId;
       resumeEffects?: GameEffect[];
     }
   | {

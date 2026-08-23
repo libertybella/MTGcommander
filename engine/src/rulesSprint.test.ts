@@ -32,7 +32,7 @@ import { abilityLifeCost, colorsOutsideCommanderIdentity } from "./commanderIden
 import { addRestrictedMana, emptyManaPools, manaRiderFires, parseManaCost, payManaCost, restrictionAdmits, type ManaPurpose } from "./mana";
 import { applyStateBasedActionsInPlace } from "./status";
 import { legalActions, sacrificeColorMatches, sacrificeScopeMatches } from "./legalActions";
-import { applyResolveCreatureType, applyResolvePay, legalEnterCopyIds, searchMatches } from "./prompt";
+import { applyResolveCreatureType, applyResolveLookAssign, applyResolvePay, legalEnterCopyIds, searchMatches } from "./prompt";
 import { parseGameState, serializeGameState } from "./serialize";
 import { fillLibraries } from "./testSupport";
 import { advanceSteps } from "./turn";
@@ -36419,6 +36419,238 @@ describe("wave 275: look at the top card and take it if it matches", () => {
           chosenSubtypeOfSource: true,
         },
       ],
+    });
+  });
+});
+
+describe("wave 276: hideaway", () => {
+  const setup = () => {
+    const { game, p1 } = twoPlayers();
+    const bridgeDef = createCardDefinition({ name: "Bridge", typeLine: "Land" });
+    game.definitions[bridgeDef.id] = bridgeDef;
+    const bridge = createCardInstance({
+      definitionId: bridgeDef.id,
+      ownerId: p1.id,
+      zone: "battlefield",
+    });
+    game.cards[bridge.id] = bridge;
+    p1.zones.battlefield.push(bridge.id);
+
+    const inLibrary = (name: string) => {
+      const definition = createCardDefinition({ name, typeLine: "Sorcery" });
+      game.definitions[definition.id] = definition;
+      const card = createCardInstance({
+        definitionId: definition.id,
+        ownerId: p1.id,
+        zone: "library",
+      });
+      game.cards[card.id] = card;
+      p1.zones.library.push(card.id);
+      return card.id;
+    };
+    const cards = ["A", "B", "C", "D"].map(inLibrary);
+    return { game, p1, bridgeId: bridge.id, cards };
+  };
+
+  const hide = (state: GameState, bridgeId: string) =>
+    applyEffects(
+      state,
+      bindCardEffects(
+        state,
+        [
+          {
+            kind: "look_and_assign",
+            playerId: "controller",
+            count: 4,
+            destinations: ["exile", "library_bottom", "library_bottom", "library_bottom"],
+            hideawayFromSource: true,
+          },
+        ],
+        { controllerId: state.players[0]!.id, sourceId: bridgeId },
+      ),
+    );
+
+  it("records the exiled card on the permanent that hid it", () => {
+    const { game, p1, bridgeId, cards } = setup();
+    const looking = hide(game, bridgeId);
+    expect(looking.prompts[0]?.kind).toBe("look_and_assign");
+    const assigned = applyResolveLookAssign(looking, p1.id, [
+      { cardId: cards[0]!, destination: "exile" },
+      { cardId: cards[1]!, destination: "library_bottom" },
+      { cardId: cards[2]!, destination: "library_bottom" },
+      { cardId: cards[3]!, destination: "library_bottom" },
+    ]);
+    expect(assigned.cards[cards[0]!]?.zone).toBe("exile");
+    // Without the link the ability below cannot say WHICH exiled card is
+    // "the exiled card", and would offer every exiled card in the game.
+    expect(assigned.cards[bridgeId]?.imprintedCardIds).toEqual([cards[0]]);
+  });
+
+  it("grants only its OWN hidden card, free", () => {
+    const { game, p1, bridgeId, cards } = setup();
+    const assigned = applyResolveLookAssign(hide(game, bridgeId), p1.id, [
+      { cardId: cards[0]!, destination: "exile" },
+      { cardId: cards[1]!, destination: "library_bottom" },
+      { cardId: cards[2]!, destination: "library_bottom" },
+      { cardId: cards[3]!, destination: "library_bottom" },
+    ]);
+    // Another card sitting in exile for unrelated reasons must not be
+    // playable off this Bridge.
+    const stray = assigned.cards[cards[1]!]!;
+    stray.zone = "exile";
+    const played = applyEffects(
+      assigned,
+      bindCardEffects(assigned, [{ kind: "play_hidden_card", free: true }], {
+        controllerId: p1.id,
+        sourceId: bridgeId,
+      }),
+    );
+    expect(played.exilePlayable).toEqual([
+      { cardId: cards[0], casterId: p1.id, freeCast: true },
+    ]);
+  });
+
+  it("grants nothing when nothing was hidden", () => {
+    const { game, p1, bridgeId } = setup();
+    const played = applyEffects(
+      game,
+      bindCardEffects(game, [{ kind: "play_hidden_card", free: true }], {
+        controllerId: p1.id,
+        sourceId: bridgeId,
+      }),
+    );
+    expect(played.exilePlayable ?? []).toEqual([]);
+  });
+
+  it("reads TOTAL power, not the greatest", () => {
+    const { game, p1 } = twoPlayers();
+    const add = (power: number) => {
+      const definition = createCardDefinition({
+        name: `Bear${power}`,
+        typeLine: "Creature — Bear",
+        power,
+        toughness: power,
+      });
+      game.definitions[definition.id] = definition;
+      const card = createCardInstance({
+        definitionId: definition.id,
+        ownerId: p1.id,
+        zone: "battlefield",
+      });
+      game.cards[card.id] = card;
+      p1.zones.battlefield.push(card.id);
+    };
+    add(4);
+    add(4);
+    const gate = { kind: "controls_total_power_at_least", power: 10 } as const;
+    // Two 4/4s is 8, not 10 — and the greatest-power question would already
+    // be answered "no" at 4, so the two must not be confused.
+    expect(triggerConditionHolds(game, p1.id, gate)).toBe(false);
+    add(2);
+    expect(triggerConditionHolds(game, p1.id, gate)).toBe(true);
+  });
+
+  it("counts only your own creatures", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const definition = createCardDefinition({
+      name: "Giant",
+      typeLine: "Creature — Giant",
+      power: 12,
+      toughness: 12,
+    });
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({
+      definitionId: definition.id,
+      ownerId: p2.id,
+      zone: "battlefield",
+    });
+    game.cards[card.id] = card;
+    p2.zones.battlefield.push(card.id);
+    const gate = { kind: "controls_total_power_at_least", power: 10 } as const;
+    expect(triggerConditionHolds(game, p1.id, gate)).toBe(false);
+    expect(triggerConditionHolds(game, p2.id, gate)).toBe(true);
+  });
+
+  it("compiles Mosswort Bridge whole, with the gate on the ABILITY", () => {
+    const compiled = compileOracleCard({
+      oracleId: "mb",
+      name: "Mosswort Bridge",
+      manaCost: "",
+      typeLine: "Land",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "Hideaway 4\nMosswort Bridge enters tapped.\n{T}: Add {G}.\n{G}, {T}: You may play the exiled card without paying its mana cost if creatures you control have total power 10 or greater.",
+    });
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.triggers[0]?.effects[0]).toMatchObject({
+      kind: "look_and_assign",
+      count: 4,
+      destinations: ["exile", "library_bottom", "library_bottom", "library_bottom"],
+      hideawayFromSource: true,
+    });
+    const play = compiled.definition.activated.find((ability) =>
+      ability.effects.some((effect) => effect.kind === "play_hidden_card"),
+    );
+    // On the ability, not the effect: an unmet condition must offer nothing
+    // rather than offer an activation that resolves to nothing.
+    expect(play?.requiresCondition).toEqual({
+      kind: "controls_total_power_at_least",
+      power: 10,
+    });
+  });
+
+  it("refuses a gate it cannot read", () => {
+    const compiled = compileOracleCard({
+      oracleId: "x",
+      name: "Probe",
+      manaCost: "",
+      typeLine: "Land",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "Hideaway 4\n{T}: You may play the exiled card without paying its mana cost if the moon is full.",
+    });
+    // Dropping an unreadable condition would make the ability activatable
+    // whenever, which is a wrong game rather than an uncompiled one.
+    expect(compiled.notes.length).toBeGreaterThan(0);
+  });
+
+  it("round trips the link, the grant and the gate", () => {
+    const { game, p1, bridgeId, cards } = setup();
+    const assigned = applyResolveLookAssign(hide(game, bridgeId), p1.id, [
+      { cardId: cards[0]!, destination: "exile" },
+      { cardId: cards[1]!, destination: "library_bottom" },
+      { cardId: cards[2]!, destination: "library_bottom" },
+      { cardId: cards[3]!, destination: "library_bottom" },
+    ]);
+    const definition = createCardDefinition({
+      name: "Bridge",
+      typeLine: "Land",
+      activated: [
+        {
+          tap: true,
+          manaCost: "{G}",
+          effects: [{ kind: "play_hidden_card", free: true }],
+          targetRequirements: [],
+          requiresCondition: { kind: "controls_total_power_at_least", power: 10 },
+        },
+      ],
+    });
+    assigned.definitions[definition.id] = definition;
+    const round = parseGameState(serializeGameState(assigned));
+    expect(round.cards[bridgeId]?.imprintedCardIds).toEqual([cards[0]]);
+    expect(round.definitions[definition.id]?.activated[0]?.requiresCondition).toEqual({
+      kind: "controls_total_power_at_least",
+      power: 10,
+    });
+    expect(round.definitions[definition.id]?.activated[0]?.effects[0]).toEqual({
+      kind: "play_hidden_card",
+      free: true,
     });
   });
 });

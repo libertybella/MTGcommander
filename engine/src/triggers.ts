@@ -277,6 +277,22 @@ export function triggerConditionHolds(
       ? count === 0
       : count >= condition.atLeast;
   }
+  if (condition.kind === "controls_total_power_at_least") {
+    // Mosswort Bridge: the SUM across your creatures, which is a
+    // different question from the greatest single power and a much
+    // easier one to meet.
+    let total = 0;
+    for (const card of Object.values(state.cards)) {
+      if (
+        card.zone === "battlefield" &&
+        card.controllerId === controllerId &&
+        characteristicsOf(state, card.id).types.includes("creature")
+      ) {
+        total += Math.max(0, creaturePower(state, card.id));
+      }
+    }
+    return total >= condition.power;
+  }
   if (condition.kind === "controls_power_at_least") {
     // Garruk's Uprising: any controlled creature at or above the power bar.
     return Object.values(state.cards).some(

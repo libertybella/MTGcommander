@@ -870,6 +870,28 @@ more questions it can now ask:
   (Bennie Bracks). Reads the existing per-player `createdTokenThisTurn`
   list, and asks whether the CONTROLLER is in it — an opponent's Treasure
   must not satisfy it.
+- **Hideaway** (CR 702.75) — Mosswort Bridge. The ETB is the existing
+  look-and-assign prompt with one exile slot and the rest bottoming, plus a
+  link: `hideawaySourceId` records the exiled card on the permanent that
+  hid it, in the same `imprintedCardIds` list Chrome Mox uses. Without the
+  link the ability that plays it later cannot say WHICH exiled card is "the
+  exiled card", and would offer every exiled card in the game.
+
+  `play_hidden_card` grants the source's own hidden cards as playable, free.
+  It reads the SOURCE, so two Bridges never offer each other's.
+
+  `controls_total_power_at_least` is the SUM across your creatures, not the
+  greatest single power — a different question and a much easier one to
+  meet. Two 4/4s is 8, not 10.
+
+  The gate rides the ABILITY, not the effect. Mosswort Bridge prints its
+  condition inside the effect sentence rather than as a separate "Activate
+  only if" line, so `SimpleClause.activationGate` carries it up to
+  `requiresCondition` — an unmet condition then offers nothing, instead of
+  offering an activation that resolves to nothing. A condition the parser
+  cannot read is REFUSED rather than dropped: dropping it would make the
+  ability activatable whenever, which is a wrong game rather than an
+  uncompiled one.
 - **`look_top_take_matching`** — Herald's Horn. Look at the top card and
   take it if it matches. The two printed sentences are fused before
   compiling, because the second names the card the first looked at: alone,

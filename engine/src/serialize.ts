@@ -2072,6 +2072,14 @@ function parsePrompts(value: unknown, playerIds: Set<string>): PendingPrompt[] {
         playerId,
         count: expectNumber(entry.count, `prompts[${index}].count`),
         destinations: parseLookDestinations(entry.destinations, `prompts[${index}].destinations`),
+        ...(entry.hideawaySourceId === undefined
+          ? {}
+          : {
+              hideawaySourceId: expectString(
+                entry.hideawaySourceId,
+                `prompts[${index}].hideawaySourceId`,
+              ),
+            }),
         ...(resumeEffects && resumeEffects.length > 0 ? { resumeEffects } : {}),
       };
     }
@@ -2859,7 +2867,10 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
         playerId: parsePlayerSelector(value.playerId, `${label}.playerId`),
         count: expectNumber(value.count, `${label}.count`),
         destinations: parseLookDestinations(value.destinations, `${label}.destinations`),
+        ...(value.hideawayFromSource === true ? { hideawayFromSource: true } : {}),
       };
+    case "play_hidden_card":
+      return { kind, ...(value.free === true ? { free: true } : {}) };
     case "reveal_zone":
       return {
         kind,
@@ -4311,6 +4322,12 @@ function parseTriggerCondition(value: unknown, label: string): TriggerCondition 
       ) {
         return { kind: conditionKind };
       }
+      if (conditionKind === "controls_total_power_at_least") {
+        return {
+          kind: conditionKind,
+          power: expectNumber(value.power, `${label}.power`),
+        };
+      }
       if (conditionKind === "controls_power_at_least") {
         return {
           kind: conditionKind,
@@ -5676,6 +5693,14 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
       filter: parseSearchFilter(value.filter, `${label}.filter`),
     };
   }
+  if (kind === "play_hidden_card") {
+    return {
+      kind,
+      playerId: expectString(value.playerId, `${label}.playerId`),
+      sourceId: expectString(value.sourceId, `${label}.sourceId`),
+      ...(value.free === true ? { free: true } : {}),
+    };
+  }
   if (kind === "imprint") {
     return {
       kind,
@@ -6079,6 +6104,14 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
       playerId: expectString(value.playerId, `${label}.playerId`),
       count: expectNumber(value.count, `${label}.count`),
       destinations: parseLookDestinations(value.destinations, `${label}.destinations`),
+      ...(value.hideawaySourceId === undefined
+        ? {}
+        : {
+            hideawaySourceId: expectString(
+              value.hideawaySourceId,
+              `${label}.hideawaySourceId`,
+            ),
+          }),
     };
   }
   throw new Error(`Unsupported resume effect ${kind}`);

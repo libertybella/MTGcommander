@@ -971,6 +971,17 @@ export function applyResolveLookAssign(
       moved = moveCard(moved, assignment.cardId, "library", { libraryPosition: "top" });
     } else {
       moved = moveCard(moved, assignment.cardId, "exile");
+      // Hideaway: the exiled card is recorded on the permanent that hid
+      // it, so its own ability can play that card and no other.
+      if (prompt.hideawaySourceId) {
+        const hider = moved.cards[prompt.hideawaySourceId];
+        if (hider) {
+          hider.imprintedCardIds = [
+            ...(hider.imprintedCardIds ?? []),
+            assignment.cardId,
+          ];
+        }
+      }
     }
   }
   return moved;
