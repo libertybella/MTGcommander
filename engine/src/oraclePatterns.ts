@@ -64,6 +64,7 @@ export type CompiledOracleText = {
   handSizeEffect?: CardDefinition["handSizeEffect"];
   opponentsDrawCap?: number;
   noncreatureSpellCap?: number;
+  cantLoseGame?: boolean;
   damageReplacement?: DamageReplacement;
   manaTapMultiplier?: number;
   altCost?: AlternativeCastCost;
@@ -10100,6 +10101,12 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
     }
 
     // Narset, Parter of Veils.
+    if (
+      /^You can't lose the game and your opponents can't win the game$/i.test(sentence)
+    ) {
+      result.cantLoseGame = true;
+      continue;
+    }
     const spellCap = sentence.match(
       /^Each player can't cast more than (one|two|three|\d+) noncreature spells? each turn$/i,
     );

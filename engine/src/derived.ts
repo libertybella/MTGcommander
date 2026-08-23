@@ -425,6 +425,22 @@ export function creatureToughness(state: GameState, cardId: CardInstanceId): num
  * skips the controller because its card says opponents, and this one says
  * each player. Making that visible in the signature is the point.
  */
+/**
+ * Platinum Angel: does this player control something that vetoes losing?
+ *
+ * Read on the battlefield and through `abilitiesRemoved`, so a Humility'd
+ * Angel stops working — which is the usual way this card is answered.
+ */
+export function cantLoseGame(state: GameState, playerId: string): boolean {
+  return Object.values(state.cards).some(
+    (card) =>
+      card.zone === "battlefield" &&
+      card.controllerId === playerId &&
+      !abilitiesRemoved(state, card.id) &&
+      state.definitions[card.definitionId]?.cantLoseGame === true,
+  );
+}
+
 export function noncreatureSpellCap(state: GameState): number | null {
   let cap: number | null = null;
   for (const card of Object.values(state.cards)) {

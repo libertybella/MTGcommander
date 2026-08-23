@@ -186,6 +186,17 @@ export type CardDefinition = {
    * card is played for the symmetry.
    */
   noncreatureSpellCap?: number;
+  /**
+   * Platinum Angel: "You can't lose the game and your opponents can't win
+   * the game."
+   *
+   * ONE flag for both halves, because this engine expresses winning as
+   * everyone else losing (CR 104.2a, and the `win_game` effect does
+   * exactly that). A controller who cannot lose is therefore already a
+   * controller whose opponents cannot win — a second flag would be a
+   * second name for the same rule.
+   */
+  cantLoseGame?: boolean;
   /** Theros gods: not a creature while devotion to the color is below the
    * threshold (applied before the layer passes — a documented simplification). */
   notCreatureBelowDevotion?: { color: Color; threshold: number };

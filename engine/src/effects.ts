@@ -4,7 +4,7 @@ import { createCardDefinition, createCardInstance } from "./createGame";
 import { characteristicsOf, hasSubtype, isCreature, isInstantOrSorcery, isLand, isPlaneswalker } from "./cardTypes";
 import { eliminatePlayerInPlace } from "./elimination";
 import { createId } from "./ids";
-import { allBattlefieldCreatureCount, creaturePower, creatureToughness, damageAfterReplacements, permanentsControlledBy, wouldSkipDraw } from "./derived";
+import { allBattlefieldCreatureCount, cantLoseGame, creaturePower, creatureToughness, damageAfterReplacements, permanentsControlledBy, wouldSkipDraw } from "./derived";
 import { hasKeyword, protectedFromSource } from "./keywords";
 import { addMana, tapCard, untapCard } from "./mana";
 import { commanderIdentityColors } from "./manaOptions";
@@ -3639,7 +3639,10 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
         requirePlayer(state, effect.playerId);
         next = cloneGameState(state);
         for (const other of next.players) {
-          if (other.id !== effect.playerId && !other.lost) {
+          // A player who cannot lose is not eliminated by someone else's
+          // win either — "your opponents can't win the game" is the same
+          // veto seen from the other side.
+          if (other.id !== effect.playerId && !other.lost && !cantLoseGame(next, other.id)) {
             eliminatePlayerInPlace(next, other.id);
           }
         }

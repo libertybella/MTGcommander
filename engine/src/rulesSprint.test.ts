@@ -30586,3 +30586,114 @@ describe("wave 234: a per-turn cap on noncreature spells", () => {
     expect(noncreatureSpellCap(round)).toBe(1);
   });
 });
+
+describe("wave 235: Platinum Angel's two halves are one veto", () => {
+  const put = (game: GameState, definitionId: string, ownerId: string) => {
+    const card = createCardInstance({ definitionId, ownerId, zone: "battlefield" });
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === ownerId)!.zones.battlefield.push(card.id);
+    return card;
+  };
+
+  const angelDefinition = () =>
+    createCardDefinition({
+      name: "Platinum Angel",
+      typeLine: "Artifact Creature — Angel",
+      power: 4,
+      toughness: 4,
+      cantLoseGame: true,
+    });
+
+  it("reads one flag from the printed sentence", () => {
+    const angel = compileOracleCard({
+      oracleId: "Platinum Angel",
+      name: "Platinum Angel",
+      manaCost: "{7}",
+      typeLine: "Artifact Creature — Angel",
+      power: "4",
+      toughness: "4",
+      printedKeywords: ["flying"],
+      imageUrl: "",
+      oracleText: "Flying\nYou can't lose the game and your opponents can't win the game.",
+    });
+    expect(angel.notes).toEqual([]);
+    expect(angel.definition.cantLoseGame).toBe(true);
+  });
+
+  it("keeps a player at zero life in the game until the Angel goes", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const angel = angelDefinition();
+    game.definitions[angel.id] = angel;
+    const card = put(game, angel.id, p1.id);
+
+    p1.life = 0;
+    applyStateBasedActionsInPlace(game);
+    // The veto is on LOSING, not on the cause: the player stays at zero life
+    // and simply does not lose.
+    expect(game.players.find((entry) => entry.id === p1.id)?.life).toBe(0);
+    expect(game.players.find((entry) => entry.id === p1.id)?.lost).toBe(false);
+
+    // Remove the Angel and the loss lands at once, which is how the card is
+    // actually answered. A veto that cleared the life total instead would
+    // leave the player alive here.
+    const gone = moveCard(game, card.id, "graveyard");
+    applyStateBasedActionsInPlace(gone);
+    expect(gone.players.find((entry) => entry.id === p1.id)?.lost).toBe(true);
+  });
+
+  it("stops an opponent's win effect, which is the same veto from the far side", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    const angel = angelDefinition();
+    game.definitions[angel.id] = angel;
+    put(game, angel.id, p2.id);
+
+    // CR 104.2a: this engine spells "you win" as everyone else losing, so a
+    // player who cannot lose is a player whose opponents cannot win — and
+    // that is why there is one flag and not two.
+    const after = applyEffect(game, { kind: "win_game", playerId: p1.id });
+    expect(after.players.find((entry) => entry.id === p2.id)?.lost).toBe(false);
+
+    // Without the Angel the same effect eliminates them, so the assertion
+    // above is the flag working and not the effect being inert.
+    const { game: plain, p1: a, p2: b } = twoPlayers();
+    fillLibraries(plain, 20);
+    const won = applyEffect(plain, { kind: "win_game", playerId: a.id });
+    expect(won.players.find((entry) => entry.id === b.id)?.lost).toBe(true);
+  });
+
+  it("stops working when the Angel's abilities are removed, and round trips", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const angel = angelDefinition();
+    const humility = createCardDefinition({
+      name: "Humility",
+      typeLine: "Enchantment",
+      staticAbilities: [
+        {
+          selector: { scope: "all", types: ["creature"] },
+          effect: { kind: "remove_all_abilities" },
+        },
+      ],
+    });
+    for (const definition of [angel, humility]) {
+      game.definitions[definition.id] = definition;
+    }
+    put(game, angel.id, p1.id);
+    put(game, humility.id, p1.id);
+
+    p1.life = 0;
+    applyStateBasedActionsInPlace(game);
+    // A silenced Angel is not an Angel. Reading the definition without
+    // checking `abilitiesRemoved` would make the card unanswerable.
+    expect(game.players.find((entry) => entry.id === p1.id)?.lost).toBe(true);
+
+    const fresh = twoPlayers();
+    fillLibraries(fresh.game, 20);
+    fresh.game.definitions[angel.id] = angel;
+    put(fresh.game, angel.id, fresh.p1.id);
+    const round = parseGameState(serializeGameState(fresh.game));
+    expect(round.definitions[angel.id]?.cantLoseGame).toBe(true);
+  });
+});

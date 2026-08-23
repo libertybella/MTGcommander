@@ -521,6 +521,7 @@ export function parseGameState(json: string): GameState {
               `definition.${id}.noncreatureSpellCap`,
             ),
           }),
+      ...(def.cantLoseGame === true ? { cantLoseGame: true } : {}),
       ...(isRecord(def.damageReplacement)
         ? {
             damageReplacement: {

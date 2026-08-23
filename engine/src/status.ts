@@ -1,6 +1,6 @@
 import { isCreature, isLand, isPlaneswalker } from "./cardTypes";
 import { COMMANDER_DAMAGE_TO_LOSE } from "./cardTypes";
-import { creatureToughness, permanentsControlledBy } from "./derived";
+import { cantLoseGame, creatureToughness, permanentsControlledBy } from "./derived";
 import { hasKeyword } from "./keywords";
 import { eliminatePlayerInPlace } from "./elimination";
 import { isLiving, livingPlayerCount, nextLivingPlayerId, winnerId } from "./players";
@@ -8,7 +8,13 @@ import { dispatchEventsInPlace } from "./triggers";
 import { moveCardInPlace, processDiesReturnsInPlace } from "./zones";
 import type { EngineEvent, GameState } from "./types";
 
-function shouldLose(player: GameState["players"][number]): boolean {
+function shouldLose(state: GameState, player: GameState["players"][number]): boolean {
+  // Platinum Angel vetoes the loss itself, not the cause: the player stays
+  // at zero life or with lethal commander damage and simply does not lose,
+  // so removing the Angel loses the game immediately.
+  if (cantLoseGame(state, player.id)) {
+    return false;
+  }
   if (player.failedToDraw) {
     return true;
   }
@@ -190,7 +196,7 @@ export function applyStateBasedActionsInPlace(state: GameState): void {
     guard += 1;
     changed = false;
     const leaving = state.players
-      .filter((player) => !player.lost && shouldLose(player))
+      .filter((player) => !player.lost && shouldLose(state, player))
       .map((player) => player.id);
     for (const playerId of leaving) {
       eliminatePlayerInPlace(state, playerId);

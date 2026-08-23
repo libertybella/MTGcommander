@@ -648,6 +648,21 @@ Documented limits:
   (Cryptolith Rite's path), not `grant_activated` — a mana ability must never
   use the stack.
 
+### Vetoing a loss (wave 235)
+
+`CardDefinition.cantLoseGame` is **one** flag for both halves of Platinum
+Angel ("You can't lose the game and your opponents can't win the game"),
+because this engine expresses winning as everyone else losing (CR 104.2a —
+the `win_game` effect eliminates the other players). A controller who
+cannot lose already has opponents who cannot win; a second flag would be a
+second name for one rule.
+
+The veto is on LOSING, not on its cause: the player stays at zero life or
+with lethal commander damage and simply does not lose, so removing the
+permanent loses the game immediately. It is read through
+`abilitiesRemoved`, so a silenced Angel stops working — otherwise the card
+would be unanswerable.
+
 ### Power and toughness on a static selector (wave 232)
 
 `EffectSelector` gained `maxPower` ("with power 2 or less") and
