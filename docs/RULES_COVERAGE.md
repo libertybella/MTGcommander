@@ -870,6 +870,24 @@ more questions it can now ask:
   (Bennie Bracks). Reads the existing per-player `createdTokenThisTurn`
   list, and asks whether the CONTROLLER is in it — an opponent's Treasure
   must not satisfy it.
+- **`countFromGreatestControlledPower`** — Selvala, Heart of the Wilds. The
+  GREATEST power among creatures you control: not the source's own
+  (`countFromPower`) and not their sum, which are the two neighbouring
+  readings and both wrong. Opponents' creatures are not counted.
+
+  "In any combination of colors" is NOT offered: the tap picks one colour
+  and adds X of it. A documented approximation of a free split, and a real
+  loss of fixing on a card that exists to fix.
+
+- **`subject_power_greatest`** — Selvala's trigger. Strictly greater than
+  EACH other creature on the battlefield, so a tie fails — a tie passing
+  would fire the trigger on every mirrored board. Compared against every
+  creature, not only the controller's.
+
+- **A trailing intervening "if"** (CR 603.4). Selvala prints the condition
+  AFTER the body; the existing peel only read a leading one. Peeled only
+  when the condition READS, so an unreadable one stays attached and the
+  trigger is a miss rather than one that fires unconditionally.
 - **Exert** (CR 701.39) — Arena of Glory. The permanent taps as usual and
   then does not untap during its controller's NEXT untap step, which is
   the `skipNextUntap` flag Vorinclex already set. The skip is the whole

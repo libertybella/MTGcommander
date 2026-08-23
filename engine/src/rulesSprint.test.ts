@@ -37998,3 +37998,216 @@ describe("wave 284: a mana rider that reaches the spell", () => {
     ).toBe(false);
   });
 });
+
+describe("wave 285: the greatest power among your creatures", () => {
+  const setup = (mine: number[], theirs: number[] = []) => {
+    const { game, p1, p2 } = twoPlayers();
+    const selvalaDef = createCardDefinition({
+      name: "Selvala",
+      typeLine: "Legendary Creature — Elf Scout",
+      power: 1,
+      toughness: 1,
+      manaAbilities: [
+        {
+          produces: {},
+          producesOptions: [],
+          producesAnyColor: true,
+          damageToController: 0,
+          costMana: "{G}",
+          countFromGreatestControlledPower: true,
+        },
+      ],
+    });
+    game.definitions[selvalaDef.id] = selvalaDef;
+    const selvala = createCardInstance({
+      definitionId: selvalaDef.id,
+      ownerId: p1.id,
+      zone: "battlefield",
+    });
+    game.cards[selvala.id] = selvala;
+    p1.zones.battlefield.push(selvala.id);
+
+    const add = (owner: PlayerState, power: number, index: number) => {
+      const definition = createCardDefinition({
+        name: `Beast${index}`,
+        typeLine: "Creature — Beast",
+        power,
+        toughness: power,
+      });
+      game.definitions[definition.id] = definition;
+      const card = createCardInstance({
+        definitionId: definition.id,
+        ownerId: owner.id,
+        zone: "battlefield",
+      });
+      game.cards[card.id] = card;
+      owner.zones.battlefield.push(card.id);
+      return card.id;
+    };
+    const mineIds = mine.map((power, index) => add(p1, power, index));
+    const theirIds = theirs.map((power, index) => add(p2, power, index + 100));
+    selvala.summoningSick = false;
+    game.players.find((entry) => entry.id === p1.id)!.mana.G = 1;
+    game.priorityPlayerId = p1.id;
+    return { game, p1, p2, selvalaId: selvala.id, mineIds, theirIds };
+  };
+
+  it("adds the greatest power, not the sum and not the source's own", () => {
+    const { game, p1, selvalaId } = setup([3, 7, 2]);
+    const tapped = applyAction(game, {
+      kind: "tap_for_mana",
+      playerId: p1.id,
+      cardId: selvalaId,
+      color: "G",
+    });
+    // The sum would be 13, the source's own power 1. Seven is the answer.
+    expect(tapped.players.find((entry) => entry.id === p1.id)?.mana.G).toBe(7);
+  });
+
+  it("ignores creatures an opponent controls", () => {
+    const { game, p1, selvalaId } = setup([2], [9]);
+    const tapped = applyAction(game, {
+      kind: "tap_for_mana",
+      playerId: p1.id,
+      cardId: selvalaId,
+      color: "G",
+    });
+    expect(tapped.players.find((entry) => entry.id === p1.id)?.mana.G).toBe(2);
+  });
+
+  it("counts the source itself when it is the biggest", () => {
+    const { game, p1, selvalaId } = setup([]);
+    const tapped = applyAction(game, {
+      kind: "tap_for_mana",
+      playerId: p1.id,
+      cardId: selvalaId,
+      color: "G",
+    });
+    expect(tapped.players.find((entry) => entry.id === p1.id)?.mana.G).toBe(1);
+  });
+});
+
+describe("wave 285: greater than EACH other creature", () => {
+  const board = (powers: { owner: 0 | 1; power: number }[]) => {
+    const { game, p1, p2 } = twoPlayers();
+    const ids = powers.map(({ owner, power }, index) => {
+      const definition = createCardDefinition({
+        name: `C${index}`,
+        typeLine: "Creature — Beast",
+        power,
+        toughness: power,
+      });
+      game.definitions[definition.id] = definition;
+      const holder = owner === 0 ? p1 : p2;
+      const card = createCardInstance({
+        definitionId: definition.id,
+        ownerId: holder.id,
+        zone: "battlefield",
+      });
+      game.cards[card.id] = card;
+      holder.zones.battlefield.push(card.id);
+      return card.id;
+    });
+    return { game, p1, ids };
+  };
+
+  const gate = { kind: "subject_power_greatest" } as const;
+
+  it("holds only for a strict maximum", () => {
+    const { game, p1, ids } = board([
+      { owner: 0, power: 5 },
+      { owner: 0, power: 3 },
+      { owner: 1, power: 4 },
+    ]);
+    expect(triggerConditionHolds(game, p1.id, gate, ids[0])).toBe(true);
+    expect(triggerConditionHolds(game, p1.id, gate, ids[1])).toBe(false);
+  });
+
+  it("fails on a tie", () => {
+    const { game, p1, ids } = board([
+      { owner: 0, power: 5 },
+      { owner: 1, power: 5 },
+    ]);
+    // "Greater than" is strict. A tie passing would make the trigger fire on
+    // every mirrored board, which is not what the card says.
+    expect(triggerConditionHolds(game, p1.id, gate, ids[0])).toBe(false);
+  });
+
+  it("compares against EVERY creature, not only yours", () => {
+    const { game, p1, ids } = board([
+      { owner: 0, power: 5 },
+      { owner: 1, power: 9 },
+    ]);
+    expect(triggerConditionHolds(game, p1.id, gate, ids[0])).toBe(false);
+  });
+
+  it("fails with no subject at all", () => {
+    const { game, p1 } = board([{ owner: 0, power: 5 }]);
+    expect(triggerConditionHolds(game, p1.id, gate)).toBe(false);
+  });
+
+  it("compiles Selvala whole", () => {
+    const compiled = compileOracleCard({
+      oracleId: "sel",
+      name: "Selvala, Heart of the Wilds",
+      manaCost: "{1}{G}{G}",
+      typeLine: "Legendary Creature — Elf Scout",
+      power: "1",
+      toughness: "1",
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "Whenever another creature enters, its controller may draw a card if its power is greater than each other creature's power.\n{G}, {T}: Add X mana in any combination of colors, where X is the greatest power among creatures you control.",
+    });
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.triggers[0]).toMatchObject({
+      event: "enter_battlefield",
+      watch: "any",
+      excludeSelf: true,
+      condition: { kind: "subject_power_greatest" },
+      effects: [{ kind: "draw", playerId: { type: "subject_player" }, count: 1, optional: true }],
+    });
+    expect(compiled.definition.manaAbilities[0]).toMatchObject({
+      producesAnyColor: true,
+      costMana: "{G}",
+      countFromGreatestControlledPower: true,
+    });
+  });
+
+  it("round trips both new pieces", () => {
+    const { game, p1 } = board([{ owner: 0, power: 2 }]);
+    const definition = createCardDefinition({
+      name: "Selvala",
+      typeLine: "Creature — Elf",
+      power: 1,
+      toughness: 1,
+      manaAbilities: [
+        {
+          produces: {},
+          producesOptions: [],
+          producesAnyColor: true,
+          damageToController: 0,
+          countFromGreatestControlledPower: true,
+        },
+      ],
+      triggers: [
+        {
+          event: "enter_battlefield",
+          watch: "any",
+          condition: { kind: "subject_power_greatest" },
+          effects: [{ kind: "draw", playerId: { type: "subject_player" }, count: 1 }],
+          targetRequirements: [],
+        },
+      ],
+    });
+    game.definitions[definition.id] = definition;
+    const round = parseGameState(serializeGameState(game));
+    expect(
+      round.definitions[definition.id]?.manaAbilities[0]?.countFromGreatestControlledPower,
+    ).toBe(true);
+    expect(round.definitions[definition.id]?.triggers[0]?.condition).toEqual({
+      kind: "subject_power_greatest",
+    });
+    expect(p1.id).toBeDefined();
+  });
+});

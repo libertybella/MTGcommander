@@ -2691,6 +2691,11 @@ export type TriggerCondition =
    * and a much easier one to meet.
    */
   | { kind: "controls_total_power_at_least"; power: number }
+  /**
+   * Selvala: the creature that just entered has power greater than EACH
+   * other creature on the battlefield — a strict maximum, so a tie fails.
+   */
+  | { kind: "subject_power_greatest" }
   /** Karlach: "if it's the first combat phase of the turn". */
   | { kind: "first_combat_this_turn" }
   /**
@@ -3475,6 +3480,11 @@ export type ManaAbility = {
   countFromChosenTypeCreatures?: boolean;
   /** Sanctum Weaver: the amount is the controller's enchantment count. */
   countFromEnchantments?: boolean;
+  /**
+   * Selvala: X is the GREATEST power among creatures you control, not
+   * the source's own power (`countFromPower`) and not their sum.
+   */
+  countFromGreatestControlledPower?: boolean;
   /** Springleaf Drum: tapping a chosen untapped controlled creature is part
    * of the cost. Never auto-tapped; adds nothing to potential mana. */
   costTapCreature?: boolean;

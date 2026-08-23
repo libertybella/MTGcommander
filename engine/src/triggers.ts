@@ -277,6 +277,31 @@ export function triggerConditionHolds(
       ? count === 0
       : count >= condition.atLeast;
   }
+  if (condition.kind === "subject_power_greatest") {
+    // Strictly greater than EACH other creature: a tie fails, which is
+    // what "greater than" says and is the whole restriction on the card.
+    if (!subjectCardId) {
+      return false;
+    }
+    const subject = state.cards[subjectCardId];
+    if (!subject || subject.zone !== "battlefield") {
+      return false;
+    }
+    const mine = creaturePower(state, subjectCardId);
+    for (const card of Object.values(state.cards)) {
+      if (card.id === subjectCardId) {
+        continue;
+      }
+      if (
+        card.zone === "battlefield" &&
+        characteristicsOf(state, card.id).types.includes("creature") &&
+        creaturePower(state, card.id) >= mine
+      ) {
+        return false;
+      }
+    }
+    return true;
+  }
   if (condition.kind === "controls_total_power_at_least") {
     // Mosswort Bridge: the SUM across your creatures, which is a
     // different question from the greatest single power and a much

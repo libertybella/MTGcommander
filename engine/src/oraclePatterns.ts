@@ -1430,6 +1430,14 @@ function parseEffectCondition(phrase: string): TriggerCondition | null {
       };
     }
   }
+  // Selvala: "its power is greater than each other creature's power" —
+  // a strict maximum among every creature on the battlefield, so a tie
+  // fails, which is the whole restriction on the card.
+  if (
+    /^its power is greater than each other creature['\u2019]s power$/i.test(text)
+  ) {
+    return { kind: "subject_power_greatest" };
+  }
   // Field of the Dead: distinct NAMES, not a count of lands. Reading it
   // as "seven or more lands" would fire off seven copies of one Wastes.
   const differentNames = text.match(
@@ -4925,6 +4933,28 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     /^Creatures destroyed this way can't be regenerated$/i.test(sentence)
   ) {
     return { targetRequirements: [], effects: [] };
+  }
+
+  // Selvala: "its controller may draw a card" — the controller of the
+  // creature the trigger watched, not the ability's own controller.
+  const subjectControllerDraws = sentence.match(
+    /^its controller (?:may )?draws? (a|an|one|two|three|\d+) cards?$/i,
+  );
+  if (subjectControllerDraws?.[1]) {
+    const count = parseCount(subjectControllerDraws[1]);
+    if (count) {
+      return {
+        targetRequirements: [],
+        effects: [
+          {
+            kind: "draw",
+            playerId: { type: "subject_player" },
+            count,
+            ...(/may/i.test(sentence) ? { optional: true } : {}),
+          },
+        ],
+      };
+    }
   }
 
   // Setessan Champion's constellation body.
@@ -13867,6 +13897,17 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
         // Intervening "if" (CR 603.4): peel the condition off the body.
         let rest = generalTrigger[2].trim();
         let condition: TriggerCondition | undefined;
+        // Selvala prints the intervening "if" AFTER the body. Peeled only
+        // when the condition READS — an unreadable one stays attached, so
+        // the trigger is a miss rather than one that fires unconditionally.
+        const trailingIf = rest.match(/^(.+?) if (.+)$/i);
+        if (trailingIf?.[1] && trailingIf[2]) {
+          const parsedTrailing = parseEffectCondition(trailingIf[2].trim());
+          if (parsedTrailing) {
+            condition = parsedTrailing;
+            rest = trailingIf[1].trim();
+          }
+        }
         const interveningIf = rest.match(/^if (.+?), (?:then )?(.+)$/i);
         if (interveningIf?.[1] && interveningIf[2]) {
           // One condition vocabulary, shared with activation gates and
@@ -14258,6 +14299,26 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
           ...(cost.manaCost ? { costMana: cost.manaCost } : {}),
         });
         sentences[index + 1] = "";
+        continue;
+      }
+      // Selvala: "Add X mana in any combination of colors, where X is the
+      // greatest power among creatures you control." The split across
+      // colours is NOT offered — the tap picks one colour and adds X of
+      // it, a documented approximation of a free combination.
+      if (
+        /^Add X mana in any combination of colors, where X is the greatest power among creatures you control$/i.test(
+          ability.rest,
+        ) &&
+        cost.tap
+      ) {
+        result.manaAbilities.push({
+          produces: {},
+          producesOptions: [],
+          producesAnyColor: true,
+          damageToController: 0,
+          countFromGreatestControlledPower: true,
+          ...(cost.manaCost ? { costMana: cost.manaCost } : {}),
+        });
         continue;
       }
       const add = parseAddMana(ability.rest);

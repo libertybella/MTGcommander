@@ -4452,6 +4452,9 @@ function parseTriggerCondition(value: unknown, label: string): TriggerCondition 
       if (conditionKind === "created_token_this_turn") {
         return { kind: conditionKind };
       }
+      if (conditionKind === "subject_power_greatest") {
+        return { kind: conditionKind };
+      }
       if (conditionKind === "self_untapped") {
         return { kind: conditionKind };
       }
@@ -5105,6 +5108,9 @@ function parseManaAbilities(value: unknown, label: string): ManaAbility[] {
       ...(entry.exertSelf === true ? { exertSelf: true } : {}),
       ...(entry.countFromChosenTypeCreatures === true
         ? { countFromChosenTypeCreatures: true }
+        : {}),
+      ...(entry.countFromGreatestControlledPower === true
+        ? { countFromGreatestControlledPower: true }
         : {}),
       ...(entry.countFromEnchantments === true ? { countFromEnchantments: true } : {}),
       ...(entry.costTapCreature === true ? { costTapCreature: true } : {}),

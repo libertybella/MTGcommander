@@ -1025,7 +1025,20 @@ function applyTapForMana(
               entry.controllerId === playerId &&
               characteristicsOf(state, entry.id).types.includes("enchantment"),
           ).length
-        : ability.countFromChosenTypeCreatures
+        : ability.countFromGreatestControlledPower
+          ? // Selvala: the GREATEST power among creatures you control —
+            // not the source's own, and not the sum.
+            Object.values(state.cards).reduce((best, entry) => {
+              if (
+                entry.zone !== "battlefield" ||
+                entry.controllerId !== playerId ||
+                !isCreature(state, entry.id)
+              ) {
+                return best;
+              }
+              return Math.max(best, creaturePower(state, entry.id));
+            }, 0)
+          : ability.countFromChosenTypeCreatures
           ? // Three Tree City: creatures you control of the type chosen
             // as this land entered. No chosen type means no creatures
             // match, which is nothing rather than everything.

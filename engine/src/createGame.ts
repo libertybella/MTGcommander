@@ -352,6 +352,9 @@ export function createCardDefinition(
           ...(ability.countFromChosenTypeCreatures
             ? { countFromChosenTypeCreatures: true }
             : {}),
+          ...(ability.countFromGreatestControlledPower
+            ? { countFromGreatestControlledPower: true }
+            : {}),
           ...(ability.countFromEnchantments ? { countFromEnchantments: true } : {}),
           ...(ability.costTapCreature ? { costTapCreature: true } : {}),
           ...(ability.costTapCreatureLegendary ? { costTapCreatureLegendary: true } : {}),
