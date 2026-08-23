@@ -862,6 +862,15 @@ export type ChooseCardSource = {
    * itself. Bound to a concrete id when the effect binds, because the
    * definition does not know which instance it will be. */
   excludeSelf?: boolean;
+  /**
+   * Soul Shatter: "…with the greatest mana value among creatures and
+   * planeswalkers they control". A RESTRICTION on the choice, not a
+   * filter on what counts — the chooser still picks, but only from the
+   * cards tied for the highest mana value in this source's own matching
+   * set. Narrowed per source, so each opponent measures their own board
+   * rather than everyone measuring the table's biggest permanent.
+   */
+  greatestManaValue?: boolean;
 };
 
 export type BoundChooseCardSource = {
@@ -870,6 +879,8 @@ export type BoundChooseCardSource = {
   filter: CardFilter;
   /** The bound half of `ChooseCardSource.excludeSelf`. */
   excludeCardId?: CardInstanceId;
+  /** The bound half of `ChooseCardSource.greatestManaValue`. */
+  greatestManaValue?: boolean;
 };
 
 export type TokenTemplate = {
@@ -1717,8 +1728,13 @@ export type CardEffect =
       count: number | "sacrificed_power" | "x" | "subject_amount";
       optional?: boolean;
       /** Return of the Wildspeaker: draw the greatest power among the
-       * controller's creatures instead, computed when the effect binds. */
-      countFromGreatestPower?: { nonSubtypes?: string[] };
+       * controller's creatures instead, computed when the effect binds.
+       *
+       * `stat` picks the axis; absent means "power", which is what every
+       * card written before Last March of the Ents asked for. The field
+       * keeps its name so no stored state needs migrating — read it as
+       * "count from the greatest <stat>". */
+      countFromGreatestPower?: { nonSubtypes?: string[]; stat?: "power" | "toughness" };
       /** Distant Melody: draw per controlled permanent of the auto-chosen
        * type instead, computed when the effect binds. */
       countFromChosenTypePermanents?: boolean;

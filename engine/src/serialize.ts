@@ -2222,6 +2222,7 @@ function parseChooseCardSources(value: unknown, label: string): ChooseCardSource
       zone,
       filter: parseCardFilter(entry.filter, `${label}[${index}].filter`),
       ...(entry.excludeSelf === true ? { excludeSelf: true } : {}),
+      ...(entry.greatestManaValue === true ? { greatestManaValue: true } : {}),
     };
   });
 }
@@ -2253,6 +2254,7 @@ function parseBoundChooseSources(
       ...(typeof entry.excludeCardId === "string"
         ? { excludeCardId: entry.excludeCardId }
         : {}),
+      ...(entry.greatestManaValue === true ? { greatestManaValue: true } : {}),
     };
   });
 }
@@ -2644,8 +2646,15 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
             value.countFromGreatestPower.nonSubtypes,
             `${label}.countFromGreatestPower.nonSubtypes`,
           );
+          const stat =
+            value.countFromGreatestPower.stat === "toughness"
+              ? ({ stat: "toughness" } as const)
+              : {};
           return {
-            countFromGreatestPower: nonSubtypes.length > 0 ? { nonSubtypes } : {},
+            countFromGreatestPower: {
+              ...(nonSubtypes.length > 0 ? { nonSubtypes } : {}),
+              ...stat,
+            },
           };
         })(),
         ...(value.countPerControlled === "creature" ? { countPerControlled: "creature" } : {}),

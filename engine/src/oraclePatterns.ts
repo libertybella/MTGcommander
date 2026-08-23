@@ -3700,10 +3700,12 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
   }
 
   // Return of the Wildspeaker: the count reads the board at resolution.
+  // Last March of the Ents asks the same question about toughness, so the
+  // axis is a capture rather than a second pattern.
   match = sentence.match(
-    /^Draw cards equal to the greatest power among (?:non-([A-Za-z]+) )?creatures you control$/i,
+    /^Draw cards equal to the greatest (power|toughness) among (?:non-([A-Za-z]+) )?creatures you control$/i,
   );
-  if (match) {
+  if (match?.[1]) {
     return {
       targetRequirements: [],
       effects: [
@@ -3711,7 +3713,12 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
           kind: "draw",
           playerId: "controller",
           count: 0,
-          countFromGreatestPower: match[1] ? { nonSubtypes: [match[1].toLowerCase()] } : {},
+          countFromGreatestPower: {
+            ...(match[2] ? { nonSubtypes: [match[2].toLowerCase()] } : {}),
+            ...(match[1].toLowerCase() === "toughness"
+              ? { stat: "toughness" as const }
+              : {}),
+          },
         },
       ],
     };
@@ -6495,12 +6502,34 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
   // edicts (Blasphemous Edict's thirteen) repeat the choice sequentially —
   // a documented approximation of the simultaneous pick.
   match = sentence.match(
-    /^Each (player|opponent|other player) sacrifices (a|one|two|three|thirteen|\d+) (nontoken )?(creatures?|planeswalkers?|creatures? or planeswalkers?|creature tokens?)(?: of their choice)?$/i,
+    /^Each (player|opponent|other player) sacrifices (a|one|two|three|thirteen|\d+) (nontoken )?(creatures?|planeswalkers?|creatures? or planeswalkers?|creature tokens?)(?: of their choice)?(?: with the greatest mana value among (.+?) they control)?$/i,
   );
   if (match?.[1] && match[2]) {
     // Only the "creature OR planeswalker" form widens; a bare "planeswalker"
     // must not pull creatures in with it.
     const withPlaneswalkers = /creatures? or planeswalkers?/i.test(match[4] ?? "");
+    // Soul Shatter: the superlative must be measured over the SAME class
+    // the edict names. "Sacrifice a creature with the greatest mana value
+    // among artifacts they control" is not a card, and reading it as one
+    // would offer the wrong permanents; the scopes have to agree.
+    let greatestManaValue = false;
+    if (match[5]) {
+      // The two halves are printed differently — "a creature OR
+      // planeswalker" against "among creatureS AND planeswalkerS" — so
+      // they are compared as SETS of nouns rather than as strings.
+      const nouns = (phrase: string) =>
+        phrase
+          .toLowerCase()
+          .split(/\s*(?:,|\band\/or\b|\band\b|\bor\b)\s*/)
+          .map((word) => word.trim().replace(/s$/, ""))
+          .filter(Boolean)
+          .sort()
+          .join("|");
+      if (nouns(match[5]) !== nouns(match[4] ?? "")) {
+        return null;
+      }
+      greatestManaValue = true;
+    }
     const edictWord = match[2].toLowerCase();
     const edictCount =
       edictWord === "a" || edictWord === "one"
@@ -6520,6 +6549,7 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
           {
             playerId: match[1].toLowerCase() === "player" ? "each_player" : "each_opponent",
             zone: "battlefield",
+            ...(greatestManaValue ? { greatestManaValue: true } : {}),
             filter: withPlaneswalkers
               ? "creature_or_planeswalker"
               : /^planeswalkers?$/i.test(match[4] ?? "")

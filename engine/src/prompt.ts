@@ -431,6 +431,25 @@ function cardMatchesFilter(
   return !types.includes("land");
 }
 
+/**
+ * The cards tied for the highest mana value in the given set. Ties all
+ * survive: the printed card says "the greatest mana value", and two 6-drops
+ * are both permanents with the greatest mana value, so the chooser picks
+ * between them.
+ */
+function greatestManaValueOf(
+  state: GameState,
+  cardIds: CardInstanceId[],
+): CardInstanceId[] {
+  const manaValueOfCard = (cardId: CardInstanceId): number =>
+    state.definitions[state.cards[cardId]?.definitionId ?? ""]?.characteristics.manaValue ?? 0;
+  let greatest = -1;
+  for (const cardId of cardIds) {
+    greatest = Math.max(greatest, manaValueOfCard(cardId));
+  }
+  return cardIds.filter((cardId) => manaValueOfCard(cardId) === greatest);
+}
+
 export function legalIdsForChooseSources(
   state: GameState,
   sources: BoundChooseCardSource[],
@@ -439,12 +458,24 @@ export function legalIdsForChooseSources(
   const seen = new Set<CardInstanceId>();
   for (const source of sources) {
     const player = state.players.find((entry) => entry.id === source.playerId);
+    const matching: CardInstanceId[] = [];
     for (const cardId of player?.zones[source.zone] ?? []) {
       if (
         seen.has(cardId) ||
         cardId === source.excludeCardId ||
         !cardMatchesFilter(state, cardId, source.filter)
       ) {
+        continue;
+      }
+      matching.push(cardId);
+    }
+    // Soul Shatter: the choice is restricted to the cards tied for the
+    // highest mana value. Narrowed WITHIN this source, so each opponent
+    // measures their own board — a table-wide maximum would let the
+    // player with the small board off entirely.
+    const offered = source.greatestManaValue ? greatestManaValueOf(state, matching) : matching;
+    for (const cardId of offered) {
+      if (seen.has(cardId)) {
         continue;
       }
       seen.add(cardId);

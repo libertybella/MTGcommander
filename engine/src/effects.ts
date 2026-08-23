@@ -501,8 +501,12 @@ export function bindCardEffect(
         return { ...drawRest, playerId, count: effect.count as number };
       }
       // "the greatest power among … creatures you control", read when the
-      // effect binds (spell resolution).
+      // effect binds (spell resolution). `stat` picks the axis — absent
+      // means power, which is every card written before Last March of the
+      // Ents.
       const exclude = countFromGreatestPower.nonSubtypes ?? [];
+      const readStat =
+        countFromGreatestPower.stat === "toughness" ? creatureToughness : creaturePower;
       let greatest = 0;
       for (const card of Object.values(state.cards)) {
         if (
@@ -513,7 +517,7 @@ export function bindCardEffect(
         ) {
           continue;
         }
-        greatest = Math.max(greatest, creaturePower(state, card.id));
+        greatest = Math.max(greatest, readStat(state, card.id));
       }
       if (greatest <= 0) {
         return null;
@@ -657,6 +661,7 @@ export function bindCardEffect(
                 ...(source.excludeSelf && context.sourceId
                   ? { excludeCardId: context.sourceId }
                   : {}),
+                ...(source.greatestManaValue ? { greatestManaValue: true } : {}),
               },
             ]
           : [];

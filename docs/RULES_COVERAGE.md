@@ -870,6 +870,24 @@ more questions it can now ask:
   (Bennie Bracks). Reads the existing per-player `createdTokenThisTurn`
   list, and asks whether the CONTROLLER is in it — an opponent's Treasure
   must not satisfy it.
+- **Superlatives** — "a creature or planeswalker with the greatest mana
+  value among creatures and planeswalkers they control" (Soul Shatter,
+  Flare of Malice) and "the greatest toughness among creatures you
+  control" (Last March of the Ents, still blocked on its second half).
+  `ChooseCardSource.greatestManaValue` is a RESTRICTION on the choice, not
+  a filter on what counts: the chooser still picks, but only among the
+  cards tied for the highest mana value in that source's own matching set.
+  It is narrowed PER SOURCE, so each opponent measures their own board — a
+  table-wide maximum would offer only the biggest permanent in the game
+  and let every other player off entirely. Ties all survive; "the greatest
+  mana value" is a value, not a card.
+
+  The superlative scope must name the same nouns the edict does, compared
+  as SETS ("a creature OR planeswalker" against "among creatureS AND
+  planeswalkerS"). A mismatch is refused rather than approximated.
+  `countFromGreatestPower` gained a `stat` discriminator instead of being
+  renamed, so no stored state needs migrating — read it as "count from the
+  greatest <stat>", where an absent stat means power.
 - **`SearchFilter.anyOf`** — "an artifact or Dragon card" (Magda), "basic
   land cards and/or Gate cards" (Circuitous Route), "an instant card or a
   card with flash" (Waterlogged Teachings). `typesAny` and `subtypesAny`

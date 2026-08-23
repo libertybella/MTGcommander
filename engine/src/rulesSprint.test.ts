@@ -33003,3 +33003,254 @@ describe("wave 254: disjunctive library searches", () => {
     });
   });
 });
+
+describe("wave 255: superlatives", () => {
+  const compile = (name: string, typeLine: string, oracleText: string) =>
+    compileOracleCard({
+      oracleId: name,
+      name,
+      manaCost: "{3}{B}",
+      typeLine,
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  it("restricts the edict to the biggest permanent", () => {
+    const shatter = compile(
+      "Soul Shatter",
+      "Instant",
+      "Each opponent sacrifices a creature or planeswalker with the greatest mana value among creatures and planeswalkers they control.",
+    );
+    expect(shatter.notes).toEqual([]);
+    expect(shatter.definition.effects[0]).toMatchObject({
+      kind: "choose_card",
+      chooserId: "each_opponent",
+      sources: [
+        {
+          playerId: "each_opponent",
+          zone: "battlefield",
+          filter: "creature_or_planeswalker",
+          greatestManaValue: true,
+        },
+      ],
+    });
+  });
+
+  it("refuses a superlative measured over a different class", () => {
+    // "A creature with the greatest mana value among ARTIFACTS they control"
+    // is not a printed card, and reading it as one would offer the wrong
+    // permanents. The two scopes have to name the same nouns.
+    const mismatch = compile(
+      "Mismatch",
+      "Instant",
+      "Each opponent sacrifices a creature with the greatest mana value among artifacts they control.",
+    );
+    expect(mismatch.notes).not.toEqual([]);
+  });
+
+  it("picks the axis for the greatest-stat draw", () => {
+    const march = compile(
+      "March",
+      "Sorcery",
+      "Draw cards equal to the greatest toughness among creatures you control.",
+    );
+    expect(march.notes).toEqual([]);
+    expect(march.definition.effects[0]).toMatchObject({
+      kind: "draw",
+      countFromGreatestPower: { stat: "toughness" },
+    });
+
+    // Power stays the default, and the exclusion still rides along with it.
+    const wildspeaker = compile(
+      "Return of the Wildspeaker",
+      "Instant",
+      "Draw cards equal to the greatest power among non-Human creatures you control.",
+    );
+    expect(wildspeaker.notes).toEqual([]);
+    const drawn = wildspeaker.definition.effects[0] as {
+      countFromGreatestPower: { stat?: string; nonSubtypes?: string[] };
+    };
+    expect(drawn.countFromGreatestPower.stat).toBeUndefined();
+    expect(drawn.countFromGreatestPower.nonSubtypes).toEqual(["human"]);
+  });
+
+  it("draws the greatest toughness, which is not the greatest power", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 30);
+    const put = (name: string, power: number, toughness: number) => {
+      const definition = createCardDefinition({
+        name,
+        typeLine: "Creature — Wall",
+        power,
+        toughness,
+      });
+      game.definitions[definition.id] = definition;
+      const card = createCardInstance({
+        definitionId: definition.id,
+        ownerId: p1.id,
+        zone: "battlefield",
+      });
+      game.cards[card.id] = card;
+      p1.zones.battlefield.push(card.id);
+    };
+    // A 5/1 and a 0/7: the two axes give different answers, so an effect
+    // reading the wrong one cannot pass by coincidence.
+    put("Spear", 5, 1);
+    put("Wall", 0, 7);
+
+    const before = p1.zones.hand.length;
+    const byToughness = applyEffects(
+      game,
+      bindCardEffects(
+        game,
+        [
+          {
+            kind: "draw",
+            playerId: "controller",
+            count: 0,
+            countFromGreatestPower: { stat: "toughness" },
+          },
+        ],
+        { controllerId: p1.id, sourceId: null },
+      ),
+    );
+    expect(byToughness.players.find((entry) => entry.id === p1.id)?.zones.hand.length).toBe(
+      before + 7,
+    );
+
+    const byPower = applyEffects(
+      game,
+      bindCardEffects(
+        game,
+        [{ kind: "draw", playerId: "controller", count: 0, countFromGreatestPower: {} }],
+        { controllerId: p1.id, sourceId: null },
+      ),
+    );
+    expect(byPower.players.find((entry) => entry.id === p1.id)?.zones.hand.length).toBe(before + 5);
+  });
+
+  it("offers only the biggest, and measures each player's own board", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    const put = (ownerId: string, name: string, manaValue: number) => {
+      const definition = createCardDefinition({
+        name,
+        typeLine: "Creature — Bear",
+        manaCost: "{".concat(String(manaValue), "}"),
+        power: 2,
+        toughness: 2,
+      });
+      definition.characteristics.manaValue = manaValue;
+      game.definitions[definition.id] = definition;
+      const card = createCardInstance({ definitionId: definition.id, ownerId, zone: "battlefield" });
+      game.cards[card.id] = card;
+      game.players.find((entry) => entry.id === ownerId)!.zones.battlefield.push(card.id);
+      return card.id;
+    };
+    const smallOne = put(p1.id, "Cub", 1);
+    const bigOne = put(p1.id, "Titan", 6);
+    const midTwo = put(p2.id, "Ogre", 3);
+    const tinyTwo = put(p2.id, "Rat", 1);
+
+    const sources = [
+      { playerId: p1.id, zone: "battlefield" as const, filter: "creature" as const, greatestManaValue: true },
+      { playerId: p2.id, zone: "battlefield" as const, filter: "creature" as const, greatestManaValue: true },
+    ];
+    const offered = legalIdsForChooseSources(game, sources);
+    // Each player's own maximum: the 6-drop from one board and the 3-drop
+    // from the other. A table-wide maximum would offer only the Titan and
+    // let the second player off entirely — which is the bug this guards.
+    expect(offered).toContain(bigOne);
+    expect(offered).toContain(midTwo);
+    expect(offered).not.toContain(smallOne);
+    expect(offered).not.toContain(tinyTwo);
+
+    // Without the restriction every creature is on offer, so the narrowing
+    // above is doing the work rather than the filter.
+    expect(
+      legalIdsForChooseSources(
+        game,
+        sources.map((source) => ({ ...source, greatestManaValue: false })),
+      ),
+    ).toHaveLength(4);
+  });
+
+  it("keeps a tie on offer", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const put = (name: string, manaValue: number) => {
+      const definition = createCardDefinition({
+        name,
+        typeLine: "Creature — Bear",
+        power: 2,
+        toughness: 2,
+      });
+      definition.characteristics.manaValue = manaValue;
+      game.definitions[definition.id] = definition;
+      const card = createCardInstance({
+        definitionId: definition.id,
+        ownerId: p1.id,
+        zone: "battlefield",
+      });
+      game.cards[card.id] = card;
+      p1.zones.battlefield.push(card.id);
+      return card.id;
+    };
+    const first = put("Twin", 4);
+    const second = put("Other Twin", 4);
+    put("Runt", 2);
+
+    // "The greatest mana value" is a value, not a single card: two 4-drops
+    // are both permanents with it, and the chooser picks between them.
+    const offered = legalIdsForChooseSources(game, [
+      { playerId: p1.id, zone: "battlefield", filter: "creature", greatestManaValue: true },
+    ]);
+    expect(offered.sort()).toEqual([first, second].sort());
+  });
+
+  it("round trips both superlatives", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const definition = createCardDefinition({
+      name: "Superlative",
+      typeLine: "Instant",
+      effects: [
+        {
+          kind: "choose_card",
+          chooserId: "each_opponent",
+          sources: [
+            {
+              playerId: "each_opponent",
+              zone: "battlefield",
+              filter: "creature_or_planeswalker",
+              greatestManaValue: true,
+            },
+          ],
+          thenEffects: [{ kind: "sacrifice", cardId: "chosen_card" }],
+        },
+        {
+          kind: "draw",
+          playerId: "controller",
+          count: 0,
+          countFromGreatestPower: { stat: "toughness" },
+        },
+      ],
+    });
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({
+      definitionId: definition.id,
+      ownerId: p1.id,
+      zone: "hand",
+    });
+    game.cards[card.id] = card;
+    p1.zones.hand.push(card.id);
+
+    const round = parseGameState(serializeGameState(game));
+    const restored = round.definitions[definition.id]?.effects;
+    expect(restored?.[0]).toMatchObject({ sources: [{ greatestManaValue: true }] });
+    expect(restored?.[1]).toMatchObject({ countFromGreatestPower: { stat: "toughness" } });
+  });
+});
