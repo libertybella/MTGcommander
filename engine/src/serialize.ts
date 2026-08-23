@@ -1575,6 +1575,34 @@ export function parseGameState(json: string): GameState {
             });
           })(),
         }),
+    ...(raw.playerShields === undefined
+      ? {}
+      : {
+          playerShields: (() => {
+            if (!Array.isArray(raw.playerShields)) {
+              throw new Error("Invalid playerShields");
+            }
+            return raw.playerShields.map((entry, index) => {
+              if (!isRecord(entry)) {
+                throw new Error(`Invalid playerShields[${index}]`);
+              }
+              return {
+                playerId: expectString(
+                  entry.playerId,
+                  `playerShields[${index}].playerId`,
+                ),
+                ...(entry.protectionFromEverything === true
+                  ? { protectionFromEverything: true }
+                  : {}),
+                ...(entry.lifeLocked === true ? { lifeLocked: true } : {}),
+                createdOnTurn: expectNumber(
+                  entry.createdOnTurn,
+                  `playerShields[${index}].createdOnTurn`,
+                ),
+              };
+            });
+          })(),
+        }),
     ...(raw.pendingManaRiders === undefined
       ? {}
       : {
@@ -2725,6 +2753,20 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
           value.amount === "sacrificed_power"
             ? value.amount
             : expectNumber(value.amount, `${label}.amount`),
+        // `perDynamicCount` was documented on the type and dropped here,
+        // so Castle Locthwain's scaling did not survive a round trip —
+        // the loss silently became a flat 1.
+        ...(isDynamicCount(value.perDynamicCount)
+          ? { perDynamicCount: value.perDynamicCount }
+          : {}),
+        ...(value.perCounterOnSource === undefined
+          ? {}
+          : {
+              perCounterOnSource: expectString(
+                value.perCounterOnSource,
+                `${label}.perCounterOnSource`,
+              ),
+            }),
       };
     case "draw":
       return {
@@ -2762,6 +2804,19 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
         ...(value.countFromChosenTypePermanents === true
           ? { countFromChosenTypePermanents: true }
           : {}),
+        // Same drop as lose_life above: Inspiring Call's per-count draw
+        // came back as a flat 1.
+        ...(isDynamicCount(value.perDynamicCount)
+          ? { perDynamicCount: value.perDynamicCount }
+          : {}),
+        ...(value.countFromCounterOnSource === undefined
+          ? {}
+          : {
+              countFromCounterOnSource: expectString(
+                value.countFromCounterOnSource,
+                `${label}.countFromCounterOnSource`,
+              ),
+            }),
       };
     case "scry":
     case "surveil":
@@ -3025,6 +3080,7 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
           parseCardIdSelector(entry, `${label}.cardIds[${index}]`),
         ),
         ...(value.allChosen === true ? { allChosen: true } : {}),
+        ...(value.allControlled === true ? { allControlled: true } : {}),
       };
     }
     case "discard":
@@ -3577,6 +3633,15 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
       return { kind, cardId: parseChosenTargetRef(value.cardId, `${label}.cardId`) };
     case "extra_land_drop":
       return { kind, playerId: parsePlayerSelector(value.playerId, `${label}.playerId`) };
+    case "grant_player_shield":
+      return {
+        kind,
+        playerId: parsePlayerSelector(value.playerId, `${label}.playerId`),
+        ...(value.protectionFromEverything === true
+          ? { protectionFromEverything: true }
+          : {}),
+        ...(value.lifeLocked === true ? { lifeLocked: true } : {}),
+      };
     case "win_game":
     case "lose_game":
     case "grant_flash_this_turn":
@@ -5080,6 +5145,26 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
   }
   const kind = expectString(value.kind, `${label}.kind`);
   if (kind === "draw") {
+    const perCounter = value.countFromCounterOnSource;
+    if (isRecord(perCounter)) {
+      return {
+        kind,
+        playerId: expectString(value.playerId, `${label}.playerId`),
+        count: expectNumber(value.count, `${label}.count`),
+        ...(value.optional === true ? { optional: true } : {}),
+        ...(value.turnDraw === true ? { turnDraw: true } : {}),
+        countFromCounterOnSource: {
+          sourceId: expectString(
+            perCounter.sourceId,
+            `${label}.countFromCounterOnSource.sourceId`,
+          ),
+          counter: expectString(
+            perCounter.counter,
+            `${label}.countFromCounterOnSource.counter`,
+          ),
+        },
+      };
+    }
     return {
       kind,
       playerId: expectString(value.playerId, `${label}.playerId`),
@@ -5351,6 +5436,16 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
     kind === "grant_flash_this_turn"
   ) {
     return { kind, playerId: expectString(value.playerId, `${label}.playerId`) };
+  }
+  if (kind === "grant_player_shield") {
+    return {
+      kind,
+      playerId: expectString(value.playerId, `${label}.playerId`),
+      ...(value.protectionFromEverything === true
+        ? { protectionFromEverything: true }
+        : {}),
+      ...(value.lifeLocked === true ? { lifeLocked: true } : {}),
+    };
   }
   if (kind === "delayed_trigger") {
     const step = expectString(value.step, `${label}.step`);

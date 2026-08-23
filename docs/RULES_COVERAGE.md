@@ -870,6 +870,34 @@ more questions it can now ask:
   (Bennie Bracks). Reads the existing per-player `createdTokenThisTurn`
   list, and asks whether the CONTROLLER is in it — an opponent's Treasure
   must not satisfy it.
+- **Player-level shields** — Teferi's Protection, The One Ring.
+  `GameState.playerShields` holds "until your next turn" protection from
+  everything and a locked life total. That duration is one `activeEffects`
+  cannot express: it sweeps at cleanup, and this has to outlive every
+  opponent's whole turn. The sweep runs at untap and is guarded on the turn
+  NUMBER, so a shield made during its holder's own turn lasts a full cycle
+  instead of expiring at the very next untap.
+
+  Protection on a player is not hexproof: CR 702.16e makes no exception for
+  the protected player's own spells, which is why Teferi's Protection locks
+  its caster out of their own targeted effects. There is deliberately no
+  caster check in `isLegalPlayerTarget` for it. And "your life total can't
+  change" blocks GAINS as well as losses — a gain is a change, and no event
+  fires either way, so a gains-life watcher sees nothing.
+
+- **Counters on the source as a count** — The One Ring. "For each burden
+  counter on ~" cannot be a `DynamicCount`: that table is a string union
+  with nowhere to put a counter NAME, so the key rides on the effect.
+
+  The draw form resolves at APPLY time, not at bind. The Ring puts a counter
+  on and then draws per counter in ONE effect list, and effects bind as a
+  batch — a bind-time count reads the board from before the counter landed,
+  so the first activation would draw nothing and every one after it would be
+  a card short. A test asserts the 1, 2, 3 ladder.
+
+  Two pre-existing silent drops came out with it: the `draw` and `lose_life`
+  parsers both ignored `perDynamicCount`, so Inspiring Call's and Castle
+  Locthwain's scaling came back from a round trip as a flat 1.
 - **Commander colour identity** (CR 903.4) — `commanderIdentity.ts`. Lifted
   out of `manaOptions.ts` into its own module because the CR 613 layer
   engine needs it too, and `manaOptions` already imports the layer engine —

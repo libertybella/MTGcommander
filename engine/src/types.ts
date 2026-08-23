@@ -718,6 +718,25 @@ export type GameState = {
     sourceId: CardInstanceId;
     effects: CardEffect[];
   }>;
+  /**
+   * Player-level shields that last "until your next turn" — Teferi's
+   * Protection, The One Ring. A duration `activeEffects` cannot express:
+   * that list sweeps at cleanup, and this has to survive every
+   * opponent's whole turn and expire at the start of the holder's next.
+   */
+  playerShields?: Array<{
+    playerId: PlayerId;
+    /** CR 702.16 read on a player: it cannot be targeted or damaged. */
+    protectionFromEverything?: boolean;
+    /** Teferi's Protection: "your life total can't change" — both ways. */
+    lifeLocked?: boolean;
+    /**
+     * The turn it was made on. It expires at the START of this player's
+     * NEXT turn, so one made during their own turn lasts a full cycle
+     * rather than ending the moment it was cast.
+     */
+    createdOnTurn: number;
+  }>;
   /** Spells cast by anyone this turn — Storm's copy count (CR 702.40). */
   spellsCastThisTurn: number;
   /** Per-player casts this turn (Lotho's second-spell watch). */
@@ -963,6 +982,13 @@ export type GameEffect =
       kind: "draw";
       playerId: PlayerId;
       count: number;
+      /**
+       * The One Ring: read the count off this source's counters when the
+       * draw APPLIES, not when it binds. The sibling `add_counter` in the
+       * same list has not run yet at bind time, so a bind-time count is
+       * always one behind.
+       */
+      countFromCounterOnSource?: { sourceId: CardInstanceId; counter: string };
       /** "You may draw": auto-taken, but skipped when the library is too small. */
       optional?: boolean;
       /** The turn-based draw-step batch: its first card is exempt from
@@ -1260,6 +1286,13 @@ export type GameEffect =
   | { kind: "win_game"; playerId: PlayerId }
   /** "You lose the game" (Pact of Negation's unpaid upkeep). */
   | { kind: "lose_game"; playerId: PlayerId }
+  /** Teferi's Protection, The One Ring: a shield until your next turn. */
+  | {
+      kind: "grant_player_shield";
+      playerId: PlayerId;
+      protectionFromEverything?: boolean;
+      lifeLocked?: boolean;
+    }
   /** Park a delayed triggered ability on a future step (CR 603.7). */
   | {
       kind: "delayed_trigger";
@@ -1797,6 +1830,8 @@ export type CardEffect =
       /** Castle Locthwain: "life equal to the number of cards in your hand" —
        * the same count table gain_life and draw already scale by. */
       perDynamicCount?: DynamicCount;
+      /** The One Ring: "1 life for each burden counter on ~". */
+      perCounterOnSource?: string;
     }
   | {
       kind: "deal_damage";
@@ -1851,6 +1886,12 @@ export type CardEffect =
       countPerControlled?: "creature";
       /** Inspiring Call: multiply the count by a shared dynamic count at bind. */
       perDynamicCount?: DynamicCount;
+      /**
+       * The One Ring: "draw a card for each burden counter on ~". The
+       * shared count table is a string union and cannot carry a counter
+       * NAME, so the key rides here and is read off the source at bind.
+       */
+      countFromCounterOnSource?: string;
     }
   | { kind: "scry"; playerId: PlayerSelector; count: number }
   | { kind: "surveil"; playerId: PlayerSelector; count: number }
@@ -1981,7 +2022,13 @@ export type CardEffect =
   /** CR 702.26: Slip Out the Back, Guardian of Faith, Clever Concealment.
    * `allChosen` is the variable-target form — every target the caster
    * picked, however many that was, rather than a fixed list of slots. */
-  | { kind: "phase_out"; cardIds: CardIdSelector[]; allChosen?: boolean }
+  | {
+      kind: "phase_out";
+      cardIds: CardIdSelector[];
+      allChosen?: boolean;
+      /** Teferi's Protection: "ALL permanents you control phase out." */
+      allControlled?: boolean;
+    }
   /** amount "source_power": the source creature's power, read at bind
    * (Halana and Alena). */
   /** amount "subject_amount": The Ozolith absorbs the leave event's
@@ -2248,6 +2295,12 @@ export type CardEffect =
   /** "You win the game": every other player loses (CR 104.2a). */
   | { kind: "win_game"; playerId: PlayerSelector }
   | { kind: "lose_game"; playerId: PlayerSelector }
+  | {
+      kind: "grant_player_shield";
+      playerId: PlayerSelector;
+      protectionFromEverything?: boolean;
+      lifeLocked?: boolean;
+    }
   /**
    * "At the beginning of your next upkeep, …". The body is bound NOW,
    * as the spell resolves, not when the step arrives.

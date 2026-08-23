@@ -5,7 +5,7 @@ import { createCardDefinition, createCardInstance } from "./createGame";
 import { characteristicsOf, hasSubtype, isCreature, isInstantOrSorcery, isLand, isPlaneswalker } from "./cardTypes";
 import { eliminatePlayerInPlace } from "./elimination";
 import { createId } from "./ids";
-import { allBattlefieldCreatureCount, cantLoseGame, creaturePower, creatureToughness, damageAfterReplacements, permanentsControlledBy, wouldSkipDraw } from "./derived";
+import { allBattlefieldCreatureCount, cantLoseGame, creaturePower, creatureToughness, damageAfterReplacements, permanentsControlledBy, playerLifeLocked, playerProtectedFromEverything, wouldSkipDraw } from "./derived";
 import { hasKeyword, protectedFromSource } from "./keywords";
 import { addMana, tapCard, untapCard } from "./mana";
 import { commanderIdentityColors } from "./manaOptions";
@@ -402,6 +402,30 @@ export function bindCardEffect(
       if (amount <= 0) {
         return null;
       }
+      // The One Ring: 1 life for each burden counter on the source. The
+      // shared count table is a string union with no room for a counter
+      // NAME, so the key rides on the effect and is read off the source.
+      if (effect.kind === "lose_life" && effect.perCounterOnSource) {
+        const onSource = context.sourceId
+          ? state.cards[context.sourceId]?.counters[effect.perCounterOnSource] ?? 0
+          : 0;
+        if (onSource <= 0) {
+          return null;
+        }
+        return { kind: effect.kind, playerId, amount: amount * onSource };
+      }
+      // The One Ring: 1 life for each burden counter on the source. The
+      // shared count table is a string union with no room for a counter
+      // NAME, so the key rides on the effect and is read off the source.
+      if (effect.kind === "lose_life" && effect.perCounterOnSource) {
+        const onSource = context.sourceId
+          ? state.cards[context.sourceId]?.counters[effect.perCounterOnSource] ?? 0
+          : 0;
+        if (onSource <= 0) {
+          return null;
+        }
+        return { kind: effect.kind, playerId, amount: amount * onSource };
+      }
       // Venser's Journal, Castle Locthwain: scale by whatever the shared count
       // table names. A count of zero loses or gains nothing.
       if (effect.perDynamicCount) {
@@ -441,7 +465,25 @@ export function bindCardEffect(
       if (!playerId) {
         return null;
       }
-      const { countFromGreatestPower, countPerControlled, countFromChosenTypePermanents, perDynamicCount, ...drawRest } = effect;
+      const { countFromGreatestPower, countPerControlled, countFromChosenTypePermanents, perDynamicCount, countFromCounterOnSource, ...drawRest } = effect;
+      // The One Ring: one card per burden counter, read off the source as
+      // the ability resolves. Zero counters draws nothing rather than one.
+      if (countFromCounterOnSource) {
+        if (!context.sourceId) {
+          return null;
+        }
+        // Carried, not resolved: the add_counter beside this one in the
+        // effect list has not run yet.
+        return {
+          ...drawRest,
+          playerId,
+          count: 0,
+          countFromCounterOnSource: {
+            sourceId: context.sourceId,
+            counter: countFromCounterOnSource,
+          },
+        };
+      }
       // Inspiring Call: one card per whatever the shared count table names.
       if (perDynamicCount) {
         const scaled = dynamicCountOf(state, context.controllerId, perDynamicCount, context.sourceId ?? undefined) * (typeof effect.count === "number" ? effect.count : 1);
@@ -953,10 +995,28 @@ export function bindCardEffect(
       }
       return { kind: "double_all_counters", cardIds: doubled };
     }
+    case "grant_player_shield": {
+      const shieldedId = bindPlayerSelector(state, effect.playerId, context);
+      if (!shieldedId) {
+        return null;
+      }
+      return {
+        kind: "grant_player_shield",
+        playerId: shieldedId,
+        ...(effect.protectionFromEverything ? { protectionFromEverything: true } : {}),
+        ...(effect.lifeLocked ? { lifeLocked: true } : {}),
+      };
+    }
     case "phase_out": {
       // The variable-target form takes every creature the caster chose,
       // however many that was; the fixed form resolves its own selectors.
-      const cardIds = effect.allChosen
+      // Teferi's Protection: every permanent the controller has, read at
+      // resolution — a selector list fixed at compile time could not know
+      // what the board would look like.
+      const cardIds = effect.allControlled
+        ? (state.players.find((entry) => entry.id === context.controllerId)?.zones
+            .battlefield ?? [])
+        : effect.allChosen
         ? (context.targets ?? [])
             .filter((target) => target.type === "creature")
             .map((target) => target.cardId)
@@ -2016,6 +2076,12 @@ function lifeGainFactor(state: GameState, playerId: PlayerId): number {
 function applyGainLife(state: GameState, playerId: PlayerId, amount: number): GameState {
   requirePositiveInteger(amount, "life gain");
   const next = cloneGameState(state);
+  // Teferi's Protection: "your life total can't change" is not "you take
+  // no damage" — a gain is a change too, and no event fires, so a
+  // gains-life watcher must not see one either.
+  if (playerLifeLocked(next, playerId)) {
+    return next;
+  }
   const gained = amount * lifeGainFactor(next, playerId);
   requirePlayer(next, playerId).life += gained;
   next.log.push({ kind: "life_change", playerId, delta: gained });
@@ -2026,6 +2092,9 @@ function applyGainLife(state: GameState, playerId: PlayerId, amount: number): Ga
 function applyLoseLife(state: GameState, playerId: PlayerId, amount: number): GameState {
   requirePositiveInteger(amount, "life loss");
   const next = cloneGameState(state);
+  if (playerLifeLocked(next, playerId)) {
+    return next;
+  }
   requirePlayer(next, playerId).life -= amount;
   next.log.push({ kind: "life_change", playerId, delta: -amount });
   dispatchEventsInPlace(next, [{ kind: "loses_life", playerId, amount }]);
@@ -2039,6 +2108,13 @@ function applyDealDamage(state: GameState, effect: Extract<GameEffect, { kind: "
   }
 
   if (effect.target.type === "player") {
+    // Protection from everything prevents the damage outright (CR
+    // 702.16e), before replacements and before the deals-damage event —
+    // a lifelink source must gain nothing from a swing that never
+    // landed, and a damage watcher must not see one.
+    if (playerProtectedFromEverything(state, effect.target.playerId)) {
+      return cloneGameState(state);
+    }
     // Fiery Emancipation et al: CR 616 replacements modify the amount.
     const dealt = damageAfterReplacements(
       state,
@@ -3441,9 +3517,18 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
       case "deal_damage":
         next = applyDealDamage(state, effect);
         break;
-      case "draw":
-        next = applyDraw(state, effect.playerId, effect.count, effect.optional, effect.turnDraw);
+      case "draw": {
+        const drawCount = effect.countFromCounterOnSource
+          ? state.cards[effect.countFromCounterOnSource.sourceId]?.counters[
+              effect.countFromCounterOnSource.counter
+            ] ?? 0
+          : effect.count;
+        next =
+          drawCount > 0
+            ? applyDraw(state, effect.playerId, drawCount, effect.optional, effect.turnDraw)
+            : cloneGameState(state);
         break;
+      }
       case "scry":
         next = applyScry(state, effect.playerId, effect.count);
         break;
@@ -4900,6 +4985,20 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
       case "look_and_assign":
         next = applyLookAndAssign(state, effect.playerId, effect.count, effect.destinations);
         break;
+      case "grant_player_shield": {
+        requirePlayer(state, effect.playerId);
+        next = cloneGameState(state);
+        next.playerShields = [
+          ...(next.playerShields ?? []),
+          {
+            playerId: effect.playerId,
+            ...(effect.protectionFromEverything ? { protectionFromEverything: true } : {}),
+            ...(effect.lifeLocked ? { lifeLocked: true } : {}),
+            createdOnTurn: next.turn.number,
+          },
+        ];
+        break;
+      }
       case "phase_out":
         next = applyPhaseOut(state, effect.cardIds);
         break;

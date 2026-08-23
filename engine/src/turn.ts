@@ -138,6 +138,22 @@ function nextTurnPlayerId(state: GameState, currentId: PlayerId): PlayerId {
 
 function onEnterStep(state: GameState): GameState {
   if (state.turn.step === "untap") {
+    // "Until your next turn" ends as that turn BEGINS. The turn-number
+    // guard is what makes a shield created during your OWN turn last a
+    // full cycle rather than expiring the instant it resolved.
+    const shields = state.playerShields ?? [];
+    if (shields.length > 0) {
+      const survivors = shields.filter(
+        (shield) =>
+          !(
+            shield.playerId === state.turn.activePlayerId &&
+            state.turn.number > shield.createdOnTurn
+          ),
+      );
+      if (survivors.length !== shields.length) {
+        state.playerShields = survivors;
+      }
+    }
     const activeId = state.turn.activePlayerId;
     const active = state.players.find((player) => player.id === activeId);
     if (active) {

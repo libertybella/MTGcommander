@@ -498,6 +498,30 @@ export function playerHasHexproof(state: GameState, playerId: string): boolean {
   );
 }
 
+/**
+ * Protection from everything, read on a PLAYER (Teferi's Protection, The
+ * One Ring). Unlike hexproof this stops the holder's own spells too:
+ * CR 702.16e makes no exception for the protected object's controller,
+ * and Teferi's Protection is famous for locking you out of your own
+ * targeted effects for the turn.
+ */
+export function playerProtectedFromEverything(
+  state: GameState,
+  playerId: string,
+): boolean {
+  return (state.playerShields ?? []).some(
+    (shield) => shield.playerId === playerId && shield.protectionFromEverything === true,
+  );
+}
+
+/** Teferi's Protection: "your life total can't change" — gains as well */
+/** as losses, so a lifelink swing gives its controller nothing either. */
+export function playerLifeLocked(state: GameState, playerId: string): boolean {
+  return (state.playerShields ?? []).some(
+    (shield) => shield.playerId === playerId && shield.lifeLocked === true,
+  );
+}
+
 export function cantLoseGame(state: GameState, playerId: string): boolean {
   return Object.values(state.cards).some(
     (card) =>

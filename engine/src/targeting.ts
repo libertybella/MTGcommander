@@ -1,6 +1,6 @@
 import { characteristicsOf, isCommander, isCreature, isPlaneswalker } from "./cardTypes";
 import { cardMatchesSubtype } from "./characteristicsEngine";
-import { creaturePower, playerHasHexproof } from "./derived";
+import { creaturePower, playerHasHexproof, playerProtectedFromEverything } from "./derived";
 import { hasKeyword, protectedFromSource } from "./keywords";
 import { isLiving, livingPlayers } from "./players";
 import type {
@@ -25,6 +25,13 @@ function isLegalPlayerTarget(
   // themselves — several cards a Shalai controller wants to cast do
   // exactly that, and a blanket check would lock them out of their own.
   if (casterId && casterId !== playerId && playerHasHexproof(state, playerId)) {
+    return false;
+  }
+  // Protection from everything is NOT hexproof: CR 702.16e makes no
+  // exception for the protected player's own spells, which is why
+  // Teferi's Protection locks its caster out of their own targeted
+  // effects for the turn. No casterId check here on purpose.
+  if (playerProtectedFromEverything(state, playerId)) {
     return false;
   }
   return true;

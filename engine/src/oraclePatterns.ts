@@ -2232,6 +2232,88 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
       };
     }
   }
+  // The One Ring: "you lose 1 life for each burden counter on ~" and
+  // "draw a card for each burden counter on ~".
+  const perCounterLoss = sentence.match(
+    /^you lose (\d+) life for each ([a-z][a-z-]*) counter on ~$/i,
+  );
+  if (perCounterLoss?.[1] && perCounterLoss[2]) {
+    return {
+      targetRequirements: [],
+      effects: [
+        {
+          kind: "lose_life",
+          playerId: "controller",
+          amount: Number(perCounterLoss[1]),
+          perCounterOnSource: counterKeyOf(perCounterLoss[2]),
+        },
+      ],
+    };
+  }
+  const perCounterDraw = sentence.match(
+    /^draw a card for each ([a-z][a-z-]*) counter on ~$/i,
+  );
+  if (perCounterDraw?.[1]) {
+    return {
+      targetRequirements: [],
+      effects: [
+        {
+          kind: "draw",
+          playerId: "controller",
+          count: 1,
+          countFromCounterOnSource: counterKeyOf(perCounterDraw[1]),
+        },
+      ],
+    };
+  }
+  // Teferi's Protection and The One Ring: a shield on the PLAYER that
+  // lasts until their next turn. "Until your next turn" is a duration
+  // `activeEffects` cannot hold — that list sweeps at cleanup, and this
+  // has to outlive every opponent's whole turn.
+  const shieldBoth = /^Until your next turn, your life total can['\u2019]t change and you gain protection from everything$/i;
+  const shieldLife = /^Until your next turn, your life total can['\u2019]t change$/i;
+  const shieldProtection =
+    /^(?:Until your next turn, you gain protection from everything|You gain protection from everything until your next turn)$/i;
+  if (shieldBoth.test(sentence)) {
+    return {
+      targetRequirements: [],
+      effects: [
+        {
+          kind: "grant_player_shield",
+          playerId: "controller",
+          protectionFromEverything: true,
+          lifeLocked: true,
+        },
+      ],
+    };
+  }
+  if (shieldLife.test(sentence)) {
+    return {
+      targetRequirements: [],
+      effects: [{ kind: "grant_player_shield", playerId: "controller", lifeLocked: true }],
+    };
+  }
+  if (shieldProtection.test(sentence)) {
+    return {
+      targetRequirements: [],
+      effects: [
+        {
+          kind: "grant_player_shield",
+          playerId: "controller",
+          protectionFromEverything: true,
+        },
+      ],
+    };
+  }
+  // Teferi's Protection: "All permanents you control phase out." The set
+  // is read at RESOLUTION — a selector list fixed at compile time could
+  // not know what the board would look like.
+  if (/^All permanents you control phase out$/i.test(sentence)) {
+    return {
+      targetRequirements: [],
+      effects: [{ kind: "phase_out", cardIds: [], allControlled: true }],
+    };
+  }
   // Pact of Negation, after fusePactInPlace: "pay {3}{U}{U} or you lose
   // the game". `unless_pays` is exactly this polarity — the effects run
   // when the payment does NOT happen.

@@ -35097,3 +35097,217 @@ describe("wave 267: commander colour identity", () => {
     expect(draw?.lifeCostFromCommanderColors).toBe(true);
   });
 });
+
+describe("wave 268: player-level shields", () => {
+  const shield = (
+    state: GameState,
+    playerId: string,
+    what: { protectionFromEverything?: boolean; lifeLocked?: boolean },
+  ) => applyEffect(state, { kind: "grant_player_shield", playerId, ...what });
+
+  const lifeOf = (state: GameState, playerId: string) =>
+    state.players.find((entry) => entry.id === playerId)!.life;
+
+  it("locks the life total in BOTH directions", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const locked = shield(game, p1.id, { lifeLocked: true });
+    const start = lifeOf(locked, p1.id);
+    const afterLoss = applyEffect(locked, { kind: "lose_life", playerId: p1.id, amount: 7 });
+    expect(lifeOf(afterLoss, p1.id)).toBe(start);
+    // "Can't change" is not "takes no damage": a GAIN is a change too, and
+    // a lifelink swing must give its controller nothing either.
+    const afterGain = applyEffect(afterLoss, { kind: "gain_life", playerId: p1.id, amount: 7 });
+    expect(lifeOf(afterGain, p1.id)).toBe(start);
+    // …and nobody else is locked.
+    const opponent = applyEffect(afterGain, { kind: "lose_life", playerId: p2.id, amount: 7 });
+    expect(lifeOf(opponent, p2.id)).toBe(start - 7);
+  });
+
+  it("prevents damage to a protected player outright", () => {
+    const { game, p1 } = twoPlayers();
+    const bolt = createCardDefinition({ name: "Bolt", typeLine: "Instant" });
+    game.definitions[bolt.id] = bolt;
+    const source = createCardInstance({
+      definitionId: bolt.id,
+      ownerId: p1.id,
+      zone: "battlefield",
+    });
+    game.cards[source.id] = source;
+    const protectedState = shield(game, p1.id, { protectionFromEverything: true });
+    const start = lifeOf(protectedState, p1.id);
+    const damaged = applyEffect(protectedState, {
+      kind: "deal_damage",
+      sourceId: source.id,
+      target: { type: "player", playerId: p1.id },
+      amount: 5,
+    });
+    expect(lifeOf(damaged, p1.id)).toBe(start);
+  });
+
+  it("stops the holder's OWN spells from targeting them", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const protectedState = shield(game, p1.id, { protectionFromEverything: true });
+    // This is where protection differs from hexproof: CR 702.16e makes no
+    // exception for the protected player's own spells, which is why Teferi's
+    // Protection locks its caster out of their own targeted effects.
+    expect(
+      isChosenTargetLegal(
+        protectedState,
+        { kind: "player" },
+        { type: "player", playerId: p1.id },
+        p1.id,
+      ),
+    ).toBe(false);
+    expect(
+      isChosenTargetLegal(
+        protectedState,
+        { kind: "player" },
+        { type: "player", playerId: p2.id },
+        p1.id,
+      ),
+    ).toBe(true);
+  });
+
+  it("survives the opponents' turns and ends at the start of your next", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 40);
+    const protectedState = shield(game, p1.id, { lifeLocked: true });
+    expect(protectedState.playerShields).toHaveLength(1);
+
+    let current = protectedState;
+    for (let i = 0; i < 80; i += 1) {
+      current = advanceStep(current);
+      if (current.turn.activePlayerId === p2.id && current.turn.step === "upkeep") break;
+    }
+    // Still up through the opponent's whole turn — that is the point of the
+    // duration, and an until-end-of-turn sweep would have dropped it already.
+    expect(current.playerShields).toHaveLength(1);
+
+    for (let i = 0; i < 80; i += 1) {
+      current = advanceStep(current);
+      if (current.turn.activePlayerId === p1.id && current.turn.step === "upkeep") break;
+    }
+    expect(current.playerShields ?? []).toHaveLength(0);
+  });
+
+  it("does not expire on the turn it was made", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 40);
+    // Cast during your own turn before untap has passed: without the
+    // turn-number guard the very next untap would sweep it away, giving
+    // roughly no protection at all.
+    const protectedState = shield(game, p1.id, { lifeLocked: true });
+    const sameTurn = advanceSteps(protectedState, 3);
+    expect(sameTurn.playerShields).toHaveLength(1);
+  });
+
+  it("round trips the shields", () => {
+    const { game, p1 } = twoPlayers();
+    const both = shield(game, p1.id, { protectionFromEverything: true, lifeLocked: true });
+    const round = parseGameState(serializeGameState(both));
+    expect(round.playerShields).toEqual([
+      {
+        playerId: p1.id,
+        protectionFromEverything: true,
+        lifeLocked: true,
+        createdOnTurn: both.turn.number,
+      },
+    ]);
+  });
+});
+
+describe("wave 268: counting counters on the source", () => {
+  const ringLike = () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 40);
+    const definition = createCardDefinition({
+      name: "Ring",
+      typeLine: "Legendary Artifact",
+      activated: [
+        {
+          tap: true,
+          manaCost: "",
+          effects: [
+            { kind: "add_counter", cardId: "self", counter: "burden", amount: 1 },
+            { kind: "draw", playerId: "controller", count: 1, countFromCounterOnSource: "burden" },
+          ],
+          targetRequirements: [],
+        },
+      ],
+    });
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({
+      definitionId: definition.id,
+      ownerId: p1.id,
+      zone: "battlefield",
+    });
+    game.cards[card.id] = card;
+    p1.zones.battlefield.push(card.id);
+    return { game, p1, cardId: card.id, definition };
+  };
+
+  const handSize = (state: GameState, playerId: string) =>
+    state.players.find((entry) => entry.id === playerId)!.zones.hand.length;
+
+  it("counts the counter this very ability just added", () => {
+    const { game, p1, cardId, definition } = ringLike();
+    const ability = definition.activated[0]!;
+    let current = game;
+    const drawn: number[] = [];
+    for (let activation = 0; activation < 3; activation += 1) {
+      const before = handSize(current, p1.id);
+      const bound = bindCardEffects(current, ability.effects, {
+        controllerId: p1.id,
+        sourceId: cardId,
+      });
+      current = applyEffects(current, bound);
+      drawn.push(handSize(current, p1.id) - before);
+    }
+    // Effects bind as a BATCH, so a bind-time count reads the board from
+    // before the counter landed: the first activation would draw nothing
+    // and every one after it would be a card short.
+    expect(drawn).toEqual([1, 2, 3]);
+    expect(current.cards[cardId]?.counters.burden).toBe(3);
+  });
+
+  it("loses one life per counter at upkeep", () => {
+    const { game, p1, cardId } = ringLike();
+    const withCounters = applyEffect(game, {
+      kind: "add_counter",
+      cardId,
+      counter: "burden",
+      amount: 4,
+    });
+    const start = withCounters.players.find((entry) => entry.id === p1.id)!.life;
+    const bound = bindCardEffects(
+      withCounters,
+      [{ kind: "lose_life", playerId: "controller", amount: 1, perCounterOnSource: "burden" }],
+      { controllerId: p1.id, sourceId: cardId },
+    );
+    const after = applyEffects(withCounters, bound);
+    expect(after.players.find((entry) => entry.id === p1.id)?.life).toBe(start - 4);
+  });
+
+  it("loses nothing with no counters yet", () => {
+    const { game, p1, cardId } = ringLike();
+    const bound = bindCardEffects(
+      game,
+      [{ kind: "lose_life", playerId: "controller", amount: 1, perCounterOnSource: "burden" }],
+      { controllerId: p1.id, sourceId: cardId },
+    );
+    // A bare Ring on the turn it lands costs nothing; binding to a flat 1
+    // would charge for a counter that is not there.
+    expect(bound).toEqual([]);
+  });
+
+  it("round trips both counter-count forms", () => {
+    const { game, definition } = ringLike();
+    const round = parseGameState(serializeGameState(game));
+    expect(round.definitions[definition.id]?.activated[0]?.effects[1]).toEqual({
+      kind: "draw",
+      playerId: "controller",
+      count: 1,
+      countFromCounterOnSource: "burden",
+    });
+  });
+});
