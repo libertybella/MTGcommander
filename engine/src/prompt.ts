@@ -470,6 +470,14 @@ function cardMatchesFilter(
   if (filter === "nonartifact_nonland") {
     return !types.includes("land") && !types.includes("artifact");
   }
+  if (filter === "permanent") {
+    // CR 110.4a: the permanent card types. Instants and sorceries are the
+    // only things this excludes, but naming what IS one keeps a future
+    // card type (battle already landed once) from silently qualifying.
+    return ["creature", "artifact", "enchantment", "land", "planeswalker", "battle"].some(
+      (type) => types.includes(type),
+    );
+  }
   if (filter === "land") {
     return types.includes("land");
   }
@@ -557,6 +565,14 @@ export function legalIdsForChooseSources(
       if (
         source.drawnThisTurn &&
         state.cards[cardId]?.drawnOnTurn !== state.turn.number
+      ) {
+        continue;
+      }
+      // Kodama: "with equal or lesser mana value". A cap the caller can
+      // ignore is not a cap.
+      if (
+        source.maxManaValue !== undefined &&
+        characteristicsOf(state, cardId).manaValue > source.maxManaValue
       ) {
         continue;
       }

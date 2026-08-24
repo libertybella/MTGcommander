@@ -592,6 +592,11 @@ export function parseGameState(json: string): GameState {
           }),
       ...(card.mustAttackThisTurn === true ? { mustAttackThisTurn: true } : {}),
       ...(card.exileIfLeaves === true ? { exileIfLeaves: true } : {}),
+      // Kodama's mark is instance state: without it a reopened table lets
+      // the chain restart off a permanent the ability already placed.
+      ...(card.putByAbilityOf === undefined
+        ? {}
+        : { putByAbilityOf: expectString(card.putByAbilityOf, "card.putByAbilityOf") }),
       ...(card.evoked === true ? { evoked: true } : {}),
       ...(card.echoDue === true ? { echoDue: true } : {}),
       faceDown: card.faceDown === true,
@@ -2727,26 +2732,35 @@ function parseDestroyAllScope(value: unknown, label: string): DestroyAllScope {
   return scope;
 }
 
+/**
+ * A TOTAL record, not a chain of `!==`. The chain this replaced had already
+ * fallen a member behind the union once, so a definition using the newest
+ * filter compiled clean and then refused to load. A missing key here is a
+ * type error; a missing arm of a chain is a silent one.
+ */
+const CARD_FILTERS: Record<CardFilter, true> = {
+  any: true,
+  creature: true,
+  nontoken_creature: true,
+  creature_or_planeswalker: true,
+  land: true,
+  nonland: true,
+  noncreature_nonland: true,
+  nonartifact_nonland: true,
+  equipment: true,
+  basic_land: true,
+  token_creature: true,
+  planeswalker: true,
+  artifact: true,
+  permanent: true,
+};
+
 function parseCardFilter(value: unknown, label: string): CardFilter {
   const filter = expectString(value, label);
-  if (
-    filter !== "any" &&
-    filter !== "creature" &&
-    filter !== "nontoken_creature" &&
-    filter !== "creature_or_planeswalker" &&
-    filter !== "land" &&
-    filter !== "nonland" &&
-    filter !== "noncreature_nonland" &&
-    filter !== "nonartifact_nonland" &&
-    filter !== "equipment" &&
-    filter !== "basic_land" &&
-    filter !== "token_creature" &&
-    filter !== "planeswalker" &&
-    filter !== "artifact"
-  ) {
+  if (!(filter in CARD_FILTERS)) {
     throw new Error(`Invalid ${label}`);
   }
-  return filter;
+  return filter as CardFilter;
 }
 
 function parseChooseCardSources(value: unknown, label: string): ChooseCardSource[] {
@@ -2773,6 +2787,10 @@ function parseChooseCardSources(value: unknown, label: string): ChooseCardSource
         : {}),
       ...(entry.sharesTypeWithChosen === true ? { sharesTypeWithChosen: true } : {}),
       ...(entry.excludePreviousChoice === true ? { excludePreviousChoice: true } : {}),
+      ...(entry.maxManaValueOfSubject === true ? { maxManaValueOfSubject: true } : {}),
+      ...(entry.maxManaValue === undefined
+        ? {}
+        : { maxManaValue: expectNumber(entry.maxManaValue, "chooseSource.maxManaValue") }),
       ...(entry.greatestManaValue === true ? { greatestManaValue: true } : {}),
     };
   });
@@ -2811,6 +2829,10 @@ function parseBoundChooseSources(
         ? { sharesTypes: parseStringList(entry.sharesTypes, `${label}[${index}].sharesTypes`) }
         : {}),
       ...(entry.sharesTypeWithChosen === true ? { sharesTypeWithChosen: true } : {}),
+      ...(entry.maxManaValueOfSubject === true ? { maxManaValueOfSubject: true } : {}),
+      ...(entry.maxManaValue === undefined
+        ? {}
+        : { maxManaValue: expectNumber(entry.maxManaValue, "chooseSource.maxManaValue") }),
       ...(entry.greatestManaValue === true ? { greatestManaValue: true } : {}),
     };
   });
@@ -3574,6 +3596,7 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
           ? { atEndStep: value.atEndStep }
           : {}),
         ...(value.exileIfLeaves === true ? { exileIfLeaves: true } : {}),
+        ...(value.putByAbilityOf === true ? { putByAbilityOf: true } : {}),
         ...(value.destroy === true ? { destroy: true } : {}),
         ...(value.underControlOf === "controller" ? { underControlOf: "controller" } : {}),
         ...(isRecord(value.withCounter)
@@ -5027,6 +5050,7 @@ function parseTriggerCondition(value: unknown, label: string): TriggerCondition 
         conditionKind === "greatest_artifact_mana_value" ||
         conditionKind === "opponent_controls_more_lands" ||
         conditionKind === "subject_name_unique" ||
+        conditionKind === "subject_not_put_by_watcher" ||
         conditionKind === "first_combat_this_turn" ||
         conditionKind === "own_main_phase" ||
         conditionKind === "self_tapped" ||
@@ -6542,6 +6566,9 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
         ? { atEndStep: value.atEndStep }
         : {}),
       ...(value.exileIfLeaves === true ? { exileIfLeaves: true } : {}),
+      ...(value.putByAbilityOf === undefined
+        ? {}
+        : { putByAbilityOf: expectString(value.putByAbilityOf, `${label}.putByAbilityOf`) }),
       ...(value.destroy === true ? { destroy: true } : {}),
       ...(value.controllerId === undefined
         ? {}
@@ -7075,7 +7102,11 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
                 ),
               }
             : {}),
-          ...(entry.greatestManaValue === true ? { greatestManaValue: true } : {}),
+          ...(entry.maxManaValueOfSubject === true ? { maxManaValueOfSubject: true } : {}),
+      ...(entry.maxManaValue === undefined
+        ? {}
+        : { maxManaValue: expectNumber(entry.maxManaValue, "chooseSource.maxManaValue") }),
+      ...(entry.greatestManaValue === true ? { greatestManaValue: true } : {}),
         };
       }),
       thenEffects: parseCardEffects(value.thenEffects, `${label}.thenEffects`),

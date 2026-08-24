@@ -870,6 +870,24 @@ more questions it can now ask:
   (Bennie Bracks). Reads the existing per-player `createdTokenThisTurn`
   list, and asks whether the CONTROLLER is in it — an opponent's Treasure
   must not satisfy it.
+- **`subject_not_put_by_watcher`** — Kodama of the East Tree's "if it
+  wasn't put onto the battlefield with THIS ability". The intervening `if`
+  IS the loop guard: without it, one permanent entering chains the whole
+  hand onto the battlefield, which is a far stronger card than the printed
+  one.
+
+  The mark names WHICH ability did it, not merely that some ability did, so
+  a second Kodama still triggers off the first one's put — which is what
+  the printed cards do. It is instance state and crosses the wire, or a
+  reopened table lets the chain restart.
+
+- **`ChooseCardSource.maxManaValueOfSubject`** — "with equal or lesser mana
+  value": the cap is the mana value of the permanent whose entry triggered
+  this, so it resolves at bind. **`CardFilter` gained `permanent`**, and
+  its parser became a TOTAL RECORD rather than a chain of `!==` — the chain
+  had already fallen a member behind the union, so the definition compiled
+  clean and then refused to load.
+
 - **A free hand-cast capped by `subject_amount`** — Buster Sword: "cast a
   spell from your hand with mana value less than or equal to THAT DAMAGE".
   The grant, the cap and the payment path all already existed; only the

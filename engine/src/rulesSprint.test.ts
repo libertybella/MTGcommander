@@ -51280,3 +51280,302 @@ describe("wave 333: a free cast capped by the damage that earned it", () => {
     });
   });
 });
+
+describe("wave 334: a chain that must not feed itself", () => {
+  const compile = (
+    name: string,
+    typeLine: string,
+    oracleText: string,
+    manaCost = "",
+    pt: [string, string] | null = null,
+  ) =>
+    compileOracleCard({
+      oracleId: name.toLowerCase().replace(/[^a-z]+/g, "-"),
+      name,
+      manaCost,
+      typeLine,
+      power: pt?.[0] ?? null,
+      toughness: pt?.[1] ?? null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  const kodamaText =
+    "Reach\nWhenever another permanent you control enters, if it wasn't put onto the battlefield with this ability, you may put a permanent card with equal or lesser mana value from your hand onto the battlefield.";
+
+  const put = (
+    game: GameState,
+    ownerId: string,
+    definition: CardDefinition,
+    zone: "hand" | "battlefield" = "battlefield",
+  ) => {
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({ definitionId: definition.id, ownerId, zone });
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === ownerId)!.zones[zone].push(card.id);
+    return card.id;
+  };
+
+  const permanent = (name: string, manaCost: string) =>
+    createCardDefinition({
+      name,
+      typeLine: "Creature — Bear",
+      manaCost,
+      power: 2,
+      toughness: 2,
+    });
+
+  it("compiles the trigger, its guard and its body", () => {
+    const compiled = compile(
+      "Kodama of the East Tree",
+      "Legendary Creature — Spirit",
+      kodamaText,
+      "{4}{G}",
+      ["6", "6"],
+    );
+    expect(compiled.notes).toEqual([]);
+    const trigger = compiled.definition.triggers[0];
+    expect(trigger?.condition).toEqual({ kind: "subject_not_put_by_watcher" });
+    expect(trigger?.effects[0]).toEqual({
+      kind: "choose_card",
+      chooserId: "controller",
+      optional: true,
+      sources: [
+        {
+          playerId: "controller",
+          zone: "hand",
+          filter: "permanent",
+          maxManaValueOfSubject: true,
+        },
+      ],
+      thenEffects: [
+        {
+          kind: "move_card",
+          cardId: "chosen_card",
+          toZone: "battlefield",
+          putByAbilityOf: true,
+        },
+      ],
+    });
+  });
+
+  // ---- The cap -------------------------------------------------------------
+
+  it("offers only cards at or under the entering permanent's mana value", () => {
+    const { game, p1 } = twoPlayers();
+    const kodamaId = put(game, p1.id, permanent("Kodama", "{4}{G}"));
+    const subjectId = put(game, p1.id, permanent("Three Drop", "{2}{G}"));
+    const cheapId = put(game, p1.id, permanent("Two Drop", "{1}{G}"), "hand");
+    const equalId = put(game, p1.id, permanent("Also Three", "{2}{G}"), "hand");
+    const dearId = put(game, p1.id, permanent("Five Drop", "{4}{G}"), "hand");
+    const asked = applyEffects(
+      game,
+      bindCardEffects(
+        game,
+        [
+          {
+            kind: "choose_card",
+            chooserId: "controller",
+            optional: true,
+            sources: [
+              {
+                playerId: "controller",
+                zone: "hand",
+                filter: "permanent",
+                maxManaValueOfSubject: true,
+              },
+            ],
+            thenEffects: [],
+          },
+        ],
+        { controllerId: p1.id, sourceId: kodamaId, subjectCardId: subjectId },
+      ),
+    );
+    const prompt = asked.prompts[0]!;
+    const legal =
+      prompt.kind === "choose_card" ? legalIdsForChooseSources(asked, prompt.sources) : [];
+    // "EQUAL or lesser" — the tie is legal and the dearer card is not.
+    expect(legal).toContain(cheapId);
+    expect(legal).toContain(equalId);
+    expect(legal).not.toContain(dearId);
+  });
+
+  it("does not offer an instant or a sorcery", () => {
+    const { game, p1 } = twoPlayers();
+    const kodamaId = put(game, p1.id, permanent("Kodama", "{4}{G}"));
+    const subjectId = put(game, p1.id, permanent("Three Drop", "{2}{G}"));
+    const spellId = put(
+      game,
+      p1.id,
+      createCardDefinition({ name: "Shock", typeLine: "Instant", manaCost: "{R}" }),
+      "hand",
+    );
+    const landId = put(
+      game,
+      p1.id,
+      createCardDefinition({ name: "Forest", typeLine: "Basic Land — Forest" }),
+      "hand",
+    );
+    const asked = applyEffects(
+      game,
+      bindCardEffects(
+        game,
+        [
+          {
+            kind: "choose_card",
+            chooserId: "controller",
+            optional: true,
+            sources: [
+              {
+                playerId: "controller",
+                zone: "hand",
+                filter: "permanent",
+                maxManaValueOfSubject: true,
+              },
+            ],
+            thenEffects: [],
+          },
+        ],
+        { controllerId: p1.id, sourceId: kodamaId, subjectCardId: subjectId },
+      ),
+    );
+    const prompt = asked.prompts[0]!;
+    const legal =
+      prompt.kind === "choose_card" ? legalIdsForChooseSources(asked, prompt.sources) : [];
+    expect(legal).not.toContain(spellId);
+    // A land IS a permanent card, and costs nothing, so it qualifies.
+    expect(legal).toContain(landId);
+  });
+
+  // ---- The guard -----------------------------------------------------------
+
+  it("marks what it put down", () => {
+    const { game, p1 } = twoPlayers();
+    const kodamaId = put(game, p1.id, permanent("Kodama", "{4}{G}"));
+    const handId = put(game, p1.id, permanent("Two Drop", "{1}{G}"), "hand");
+    const placed = applyEffects(
+      game,
+      bindCardEffects(
+        game,
+        [
+          {
+            kind: "move_card",
+            cardId: "chosen_card",
+            toZone: "battlefield",
+            putByAbilityOf: true,
+          },
+        ],
+        { controllerId: p1.id, sourceId: kodamaId, chosenCardId: handId },
+      ),
+    );
+    expect(placed.cards[handId]?.putByAbilityOf).toBe(kodamaId);
+  });
+
+  it("refuses to trigger off what it put down", () => {
+    const { game, p1 } = twoPlayers();
+    const kodamaId = put(game, p1.id, permanent("Kodama", "{4}{G}"));
+    const placedId = put(game, p1.id, permanent("Placed", "{1}{G}"));
+    game.cards[placedId]!.putByAbilityOf = kodamaId;
+    // Without the guard, one permanent entering chains the whole hand onto
+    // the battlefield — a much stronger card than the printed one.
+    expect(
+      triggerConditionHolds(
+        game,
+        p1.id,
+        { kind: "subject_not_put_by_watcher" },
+        placedId,
+        kodamaId,
+      ),
+    ).toBe(false);
+  });
+
+  it("still triggers off a permanent a SECOND Kodama put down", () => {
+    const { game, p1 } = twoPlayers();
+    const mineId = put(game, p1.id, permanent("Kodama A", "{4}{G}"));
+    const theirsId = put(game, p1.id, permanent("Kodama B", "{4}{G}"));
+    const placedId = put(game, p1.id, permanent("Placed", "{1}{G}"));
+    game.cards[placedId]!.putByAbilityOf = theirsId;
+    // The mark names WHICH ability did it, so two Kodamas still feed each
+    // other — which is what the printed cards do.
+    expect(
+      triggerConditionHolds(
+        game,
+        p1.id,
+        { kind: "subject_not_put_by_watcher" },
+        placedId,
+        mineId,
+      ),
+    ).toBe(true);
+  });
+
+  it("triggers off an ordinary entry", () => {
+    const { game, p1 } = twoPlayers();
+    const kodamaId = put(game, p1.id, permanent("Kodama", "{4}{G}"));
+    const castId = put(game, p1.id, permanent("Cast Normally", "{1}{G}"));
+    expect(
+      triggerConditionHolds(
+        game,
+        p1.id,
+        { kind: "subject_not_put_by_watcher" },
+        castId,
+        kodamaId,
+      ),
+    ).toBe(true);
+  });
+
+  it("round trips the guard, the cap and the mark", () => {
+    const { game, p1 } = twoPlayers();
+    const definition = createCardDefinition({
+      name: "Wave 334 Kodama",
+      typeLine: "Legendary Creature — Spirit",
+      manaCost: "{4}{G}",
+      power: 6,
+      toughness: 6,
+      triggers: [
+        {
+          event: "enter_battlefield",
+          watch: "controlled",
+          excludeSelf: true,
+          condition: { kind: "subject_not_put_by_watcher" },
+          effects: [
+            {
+              kind: "choose_card",
+              chooserId: "controller",
+              optional: true,
+              sources: [
+                {
+                  playerId: "controller",
+                  zone: "hand",
+                  filter: "permanent",
+                  maxManaValueOfSubject: true,
+                },
+              ],
+              thenEffects: [
+                {
+                  kind: "move_card",
+                  cardId: "chosen_card",
+                  toZone: "battlefield",
+                  putByAbilityOf: true,
+                },
+              ],
+            },
+          ],
+          targetRequirements: [],
+        },
+      ],
+    });
+    const kodamaId = put(game, p1.id, definition);
+    game.cards[kodamaId]!.putByAbilityOf = kodamaId;
+    const round = parseGameState(serializeGameState(game));
+    const trigger = round.definitions[definition.id]?.triggers[0];
+    expect(trigger?.condition).toEqual({ kind: "subject_not_put_by_watcher" });
+    expect(trigger?.effects[0]).toMatchObject({
+      sources: [{ filter: "permanent", maxManaValueOfSubject: true }],
+      thenEffects: [{ putByAbilityOf: true }],
+    });
+    // The MARK is instance state and must survive too, or a reopened table
+    // lets the chain restart.
+    expect(round.cards[kodamaId]?.putByAbilityOf).toBe(kodamaId);
+  });
+});

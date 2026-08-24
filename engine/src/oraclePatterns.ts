@@ -1717,6 +1717,11 @@ function parseEffectCondition(phrase: string): TriggerCondition | null {
   ) {
     return { kind: "subject_name_unique" };
   }
+  // Kodama of the East Tree: the loop guard, read as an ordinary
+  // intervening `if` because that is exactly what it is.
+  if (/^it wasn't put onto the battlefield with this ability$/i.test(text)) {
+    return { kind: "subject_not_put_by_watcher" };
+  }
   if (/^it's the first combat phase of the turn$/i.test(text)) {
     return { kind: "first_combat_this_turn" };
   }
@@ -2504,6 +2509,46 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
 }
 
 function compileSimpleClauseInner(sentence: string): SimpleClause | null {
+  /**
+   * Kodama of the East Tree: "you may put a permanent card with equal or
+   * lesser mana value from your hand onto the battlefield." The cap is the
+   * mana value of the permanent whose entry triggered this, so it is
+   * resolved at bind rather than printed; the card put down is MARKED, so
+   * the entry it causes does not feed the ability again.
+   */
+  if (
+    /^You may put a permanent card with equal or lesser mana value from your hand onto the battlefield$/i.test(
+      sentence,
+    )
+  ) {
+    return {
+      effects: [
+        {
+          kind: "choose_card",
+          chooserId: "controller",
+          optional: true,
+          sources: [
+            {
+              playerId: "controller",
+              zone: "hand",
+              filter: "permanent",
+              maxManaValueOfSubject: true,
+            },
+          ],
+          thenEffects: [
+            {
+              kind: "move_card",
+              cardId: "chosen_card",
+              toZone: "battlefield",
+              putByAbilityOf: true,
+            },
+          ],
+        },
+      ],
+      targetRequirements: [],
+    };
+  }
+
   /**
    * High Tide: "Until end of turn, whenever a player taps an Island for
    * mana, that player adds an additional {U}." This is the rule a

@@ -807,6 +807,12 @@ export function bindCardEffect(
               ? { sharesTypes: characteristicsOf(state, context.chosenCardId).types }
               : {}),
             ...(source.drawnThisTurn ? { drawnThisTurn: true } : {}),
+            // Kodama: "with equal or lesser mana value" — the cap comes from
+            // the permanent whose entry triggered this, so it is resolved
+            // here rather than printed.
+            ...(source.maxManaValueOfSubject && context.subjectCardId
+              ? { maxManaValue: characteristicsOf(state, context.subjectCardId).manaValue }
+              : {}),
             ...(source.greatestManaValue ? { greatestManaValue: true } : {}),
           }));
         }
@@ -834,6 +840,9 @@ export function bindCardEffect(
                 // types are read HERE and carried as a concrete list.
                 ...(source.sharesTypeWithChosen && context.chosenCardId
                   ? { sharesTypes: characteristicsOf(state, context.chosenCardId).types }
+                  : {}),
+                ...(source.maxManaValueOfSubject && context.subjectCardId
+                  ? { maxManaValue: characteristicsOf(state, context.subjectCardId).manaValue }
                   : {}),
                 ...(source.greatestManaValue ? { greatestManaValue: true } : {}),
               },
@@ -1059,6 +1068,11 @@ export function bindCardEffect(
         ...(effect.gainsHaste ? { gainsHaste: true } : {}),
         ...(effect.atEndStep ? { atEndStep: effect.atEndStep } : {}),
         ...(effect.exileIfLeaves ? { exileIfLeaves: true } : {}),
+        // Kodama: the ability that put the card down is the WATCHER, so the
+        // mark is the bound source rather than anything printed.
+        ...(effect.putByAbilityOf && context.sourceId
+          ? { putByAbilityOf: context.sourceId }
+          : {}),
         ...(effect.destroy ? { destroy: true } : {}),
         ...(effect.underControlOf === "controller"
           ? { controllerId: context.controllerId }
@@ -4289,6 +4303,11 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
           // Whip of Erebos: the shield rides the arriving permanent.
           if (effect.exileIfLeaves) {
             arrived.exileIfLeaves = true;
+          }
+          // Kodama: mark what THIS ability put down, so the entry it is
+          // about to cause does not feed the ability again.
+          if (effect.putByAbilityOf) {
+            arrived.putByAbilityOf = effect.putByAbilityOf;
           }
           // Reanimate: "onto the battlefield under your control" — the card
           // sits in its owner's zone list, but the caster controls it.

@@ -670,6 +670,13 @@ export type CardInstance = {
   timestamp: number;
   /** Tokens cease to exist outside the battlefield (CR 704.5d). */
   isToken: boolean;
+  /**
+   * Kodama of the East Tree: the permanent was put onto the battlefield BY
+   * this ability, so it must not trigger it again. Without the mark, one
+   * permanent entering chains the player's whole hand onto the battlefield
+   * — a far stronger card than the printed one.
+   */
+  putByAbilityOf?: CardInstanceId;
   /** Damaged by a deathtouch source this turn (CR 704.5h). */
   deathtouched: boolean;
   /** Auras and Equipment: what this permanent is attached to. */
@@ -1207,7 +1214,9 @@ export type CardFilter =
   /** Jarad-class: "sacrifice an artifact". */
   | "artifact"
   /** Chrome Mox: "a nonartifact, nonland card from your hand". */
-  | "nonartifact_nonland";
+  | "nonartifact_nonland"
+  /** Kodama of the East Tree: "a permanent card from your hand". */
+  | "permanent";
 
 /** What a Clone-style permanent may enter as a copy of. */
 export type EnterAsCopyScope =
@@ -1238,6 +1247,12 @@ export type ChooseCardSource = {
   sharesTypeWithChosen?: boolean;
   /** Dauthi Voidwalker: only exiled cards carrying a void counter. */
   hasVoidCounter?: boolean;
+  /**
+   * Kodama of the East Tree: "with equal or lesser mana value" — the cap is
+   * the mana value of the permanent whose entry triggered this, so it is
+   * resolved when the effect binds rather than printed.
+   */
+  maxManaValueOfSubject?: boolean;
   /** Sylvan Library: only cards drawn THIS turn are eligible. */
   drawnThisTurn?: boolean;
   /**
@@ -1275,6 +1290,8 @@ export type BoundChooseCardSource = {
   excludeCardId?: CardInstanceId;
   /** The bound half of `ChooseCardSource.greatestManaValue`. */
   greatestManaValue?: boolean;
+  /** Kodama: the bound cap, resolved from the subject's mana value. */
+  maxManaValue?: number;
 };
 
 export type TokenTemplate = {
@@ -1343,6 +1360,8 @@ export type GameEffect =
        * word in the oracle text is what sets it.
        */
       destroy?: boolean;
+      /** Kodama: mark the arriving permanent as put by THIS ability. */
+      putByAbilityOf?: CardInstanceId;
       /** Battlefield arrivals: the arriving card is controlled by this player. */
       controllerId?: PlayerId;
       /** "…to the battlefield with a -1/-1 counter on it" (Persist). */
@@ -2586,6 +2605,12 @@ export type CardEffect =
        * word in the oracle text is what sets it.
        */
       destroy?: boolean;
+      /**
+       * Kodama: mark the arriving permanent as put by this ability. A
+       * BOOLEAN here and an id on the bound form — the definition does not
+       * know which instance of Kodama will do it.
+       */
+      putByAbilityOf?: boolean;
       /** "onto the battlefield under your control" (Reanimate). */
       underControlOf?: "controller";
       /** "…to the battlefield with a -1/-1 counter on it" (Persist). */
@@ -3501,6 +3526,12 @@ export type TriggerCondition =
   | { kind: "subject_name_unique" }
   /** Garruk's Uprising: "if you control a creature with power N or greater". */
   | { kind: "controls_power_at_least"; power: number }
+  /**
+   * Kodama of the East Tree: "if it wasn't put onto the battlefield with
+   * THIS ability". The intervening `if` is the loop guard, and without it
+   * the ability feeds itself.
+   */
+  | { kind: "subject_not_put_by_watcher" }
   /**
    * Mosswort Bridge: "creatures you control have TOTAL power 10 or
    * greater" — the sum, not the greatest, which is a different question

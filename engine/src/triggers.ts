@@ -354,6 +354,16 @@ export function triggerConditionHolds(
     }
     return total >= condition.power;
   }
+  if (condition.kind === "subject_not_put_by_watcher") {
+    // Kodama of the East Tree: "if it wasn't put onto the battlefield with
+    // THIS ability". The mark names the permanent whose ability did it, so
+    // a SECOND Kodama still triggers off the first one's put — which is
+    // what the printed cards do.
+    return (
+      subjectCardId === undefined ||
+      state.cards[subjectCardId]?.putByAbilityOf !== watcherId
+    );
+  }
   if (condition.kind === "controls_power_at_least") {
     // Garruk's Uprising: any controlled creature at or above the power bar.
     return Object.values(state.cards).some(
