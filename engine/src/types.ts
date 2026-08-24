@@ -3359,6 +3359,12 @@ export type TriggerCondition =
    */
   | { kind: "attackers_against_you_at_least"; count: number }
   /**
+   * Lieutenant (Loyal Apprentice): "if you control your commander". Any of
+   * the controller's own commanders being on the battlefield satisfies it —
+   * a partner pair needs only one of the two out.
+   */
+  | { kind: "controls_commander" }
+  /**
    * Windbrisk Heights: "you attacked with N or more creatures this turn".
    * The same question `ActivatedAbility.requiresAttackersThisTurn` asks for
    * Minas Tirith, in the shared condition vocabulary — an activation gate
@@ -4385,6 +4391,12 @@ export type StaticAbility = {
   requiresDelirium?: boolean;
   /** Serra Ascendant: "As long as you have 30 or more life". */
   requiresLife?: number;
+  /**
+   * Razorkin Needlehead: "has first strike DURING YOUR TURN". A static that
+   * is only live while its controller is the active player — not a keyword
+   * the permanent simply has, which is the whole card.
+   */
+  requiresYourTurn?: boolean;
 };
 
 /**

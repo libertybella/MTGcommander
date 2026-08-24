@@ -46992,3 +46992,277 @@ describe("wave 315: split second, and an edict aimed at a target", () => {
     expect(round.definitions[definition.id]?.splitSecond).toBe(true);
   });
 });
+
+describe("wave 316: conditions that name a commander, a turn, and a batch", () => {
+  const compile = (
+    name: string,
+    typeLine: string,
+    oracleText: string,
+    manaCost = "",
+    pt: [string, string] | null = null,
+  ) =>
+    compileOracleCard({
+      oracleId: name.toLowerCase().replace(/[^a-z]+/g, "-"),
+      name,
+      manaCost,
+      typeLine,
+      power: pt?.[0] ?? null,
+      toughness: pt?.[1] ?? null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  const put = (game: GameState, ownerId: string, definition: CardDefinition) => {
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({
+      definitionId: definition.id,
+      ownerId,
+      zone: "battlefield",
+    });
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === ownerId)!.zones.battlefield.push(card.id);
+    card.summoningSick = false;
+    return card.id;
+  };
+
+  // ---- "if you control an artifact" — the bare singular -------------------
+
+  it("compiles Thopter Spy Network's condition and its batch trigger", () => {
+    const compiled = compile(
+      "Thopter Spy Network",
+      "Enchantment",
+      "At the beginning of your upkeep, if you control an artifact, create a 1/1 colorless Thopter artifact creature token with flying.\nWhenever one or more artifact creatures you control deal combat damage to a player, draw a card.",
+      "{3}{U}",
+    );
+    expect(compiled.notes).toEqual([]);
+    const upkeep = compiled.definition.triggers.find((t) => t.event === "upkeep");
+    // No count word at all in the printed text — "an artifact" is one.
+    expect(upkeep?.condition).toEqual({
+      kind: "controls_count",
+      what: "artifact",
+      atLeast: 1,
+    });
+    const saboteur = compiled.definition.triggers.find(
+      (t) => t.event === "deals_combat_damage_to_player",
+    );
+    expect(saboteur).toMatchObject({
+      watch: "controlled",
+      oncePerBatch: true,
+      subjectFilter: { types: ["artifact", "creature"] },
+    });
+  });
+
+  it("leaves the plain creature form as one type", () => {
+    // The artifact variant is one more type on the same filter, not a
+    // second branch, so the plain reading must be untouched.
+    const compiled = compile(
+      "Bident of Thassa",
+      "Legendary Enchantment Artifact",
+      "Whenever one or more creatures you control deal combat damage to a player, draw a card.",
+      "{2}{U}",
+    );
+    expect(compiled.definition.triggers[0]?.subjectFilter).toEqual({ types: ["creature"] });
+  });
+
+  it("holds the condition only while an artifact is out", () => {
+    const { game, p1 } = twoPlayers();
+    const condition: NonNullable<CardDefinition["triggers"][number]["condition"]> = {
+      kind: "controls_count",
+      what: "artifact",
+      atLeast: 1,
+    };
+    expect(triggerConditionHolds(game, p1.id, condition)).toBe(false);
+    put(
+      game,
+      p1.id,
+      createCardDefinition({ name: "Rock", typeLine: "Artifact", manaCost: "{2}" }),
+    );
+    expect(triggerConditionHolds(game, p1.id, condition)).toBe(true);
+  });
+
+  // ---- Lieutenant: "if you control your commander" ------------------------
+
+  it("compiles Loyal Apprentice, ability word and haste rider included", () => {
+    const compiled = compile(
+      "Loyal Apprentice",
+      "Creature — Human Artificer",
+      "Haste\nLieutenant — At the beginning of combat on your turn, if you control your commander, create a 1/1 colorless Thopter artifact creature token with flying. That token gains haste until end of turn.",
+      "{1}{R}",
+      ["1", "1"],
+    );
+    expect(compiled.notes).toEqual([]);
+    const trigger = compiled.definition.triggers[0];
+    expect(trigger).toMatchObject({
+      event: "begin_combat",
+      condition: { kind: "controls_commander" },
+    });
+    // "That token gains haste until end of turn" is folded into the token's
+    // own keywords rather than kept as an until-EOT rider. The difference is
+    // unobservable for this card: a token that survives to its controller's
+    // next turn is no longer summoning sick, so the haste it would have lost
+    // was doing nothing by then, and a Thopter has no tap ability to use.
+    expect(trigger?.effects[0]).toMatchObject({
+      kind: "create_token",
+      name: "Thopter",
+      keywords: ["flying", "haste"],
+    });
+  });
+
+  it("holds only while a commander is on the battlefield", () => {
+    const { game, p1 } = twoPlayers();
+    const commanderId = put(
+      game,
+      p1.id,
+      createCardDefinition({
+        name: "The Commander",
+        typeLine: "Legendary Creature — Human",
+        manaCost: "{2}{R}",
+        power: 3,
+        toughness: 3,
+      }),
+    );
+    const holder = game.players.find((entry) => entry.id === p1.id)!;
+    // Designated but still in the command zone: not controlled.
+    holder.commander.commanderIds = [commanderId];
+    expect(triggerConditionHolds(game, p1.id, { kind: "controls_commander" })).toBe(true);
+    const gone = moveCard(game, commanderId, "command");
+    expect(triggerConditionHolds(gone, p1.id, { kind: "controls_commander" })).toBe(false);
+  });
+
+  it("does not read an opponent's commander", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const theirsId = put(
+      game,
+      p2.id,
+      createCardDefinition({
+        name: "Their Commander",
+        typeLine: "Legendary Creature — Human",
+        manaCost: "{2}{W}",
+        power: 3,
+        toughness: 3,
+      }),
+    );
+    game.players.find((entry) => entry.id === p2.id)!.commander.commanderIds = [theirsId];
+    expect(triggerConditionHolds(game, p1.id, { kind: "controls_commander" })).toBe(false);
+    expect(triggerConditionHolds(game, p2.id, { kind: "controls_commander" })).toBe(true);
+  });
+
+  // ---- Razorkin Needlehead: a keyword that comes and goes ------------------
+
+  it("compiles the turn-gated static and the draw punisher", () => {
+    const compiled = compile(
+      "Razorkin Needlehead",
+      "Creature — Phyrexian Horror",
+      "~ has first strike during your turn.\nWhenever an opponent draws a card, ~ deals 1 damage to them.",
+      "{2}{B}",
+      ["3", "2"],
+    );
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.staticAbilities[0]).toEqual({
+      selector: { scope: "self" },
+      effect: { kind: "grant_keyword", keyword: "first_strike" },
+      requiresYourTurn: true,
+    });
+    expect(compiled.definition.triggers[0]).toMatchObject({ event: "opponent_draws" });
+    expect(compiled.definition.triggers[0]?.effects[0]).toEqual({
+      kind: "deal_damage",
+      sourceId: "self",
+      target: { type: "player", playerId: { type: "subject_player" } },
+      amount: 1,
+    });
+  });
+
+  it("has first strike on your turn and loses it on theirs", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const needleheadId = put(
+      game,
+      p1.id,
+      createCardDefinition({
+        name: "Razorkin Needlehead",
+        typeLine: "Creature — Phyrexian Horror",
+        manaCost: "{2}{B}",
+        power: 3,
+        toughness: 2,
+        staticAbilities: [
+          {
+            selector: { scope: "self" },
+            effect: { kind: "grant_keyword", keyword: "first_strike" },
+            requiresYourTurn: true,
+          },
+        ],
+      }),
+    );
+    game.turn.activePlayerId = p1.id;
+    expect(hasKeyword(game, needleheadId, "first_strike")).toBe(true);
+    // A static gated on the turn, not a keyword the permanent simply has:
+    // it goes away the moment the turn passes, which is the whole card.
+    game.turn.activePlayerId = p2.id;
+    expect(hasKeyword(game, needleheadId, "first_strike")).toBe(false);
+  });
+
+  it("deals the damage to the player who drew", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const needleheadId = put(
+      game,
+      p1.id,
+      createCardDefinition({
+        name: "Razorkin Needlehead",
+        typeLine: "Creature — Phyrexian Horror",
+        manaCost: "{2}{B}",
+        power: 3,
+        toughness: 2,
+      }),
+    );
+    const before = game.players.find((entry) => entry.id === p2.id)!.life;
+    const dealt = applyEffects(
+      game,
+      bindCardEffects(
+        game,
+        [
+          {
+            kind: "deal_damage",
+            sourceId: "self",
+            target: { type: "player", playerId: { type: "subject_player" } },
+            amount: 1,
+          },
+        ],
+        { controllerId: p1.id, sourceId: needleheadId, subjectPlayerId: p2.id },
+      ),
+    );
+    // "Them" is whoever drew, not the controller.
+    expect(dealt.players.find((entry) => entry.id === p2.id)!.life).toBe(before - 1);
+    expect(dealt.players.find((entry) => entry.id === p1.id)!.life).toBe(40);
+  });
+
+  it("round trips the condition and the turn gate", () => {
+    const { game, p1 } = twoPlayers();
+    const definition = createCardDefinition({
+      name: "Wave 316 Omnibus",
+      typeLine: "Creature — Horror",
+      manaCost: "{2}{B}",
+      power: 3,
+      toughness: 2,
+      staticAbilities: [
+        {
+          selector: { scope: "self" },
+          effect: { kind: "grant_keyword", keyword: "first_strike" },
+          requiresYourTurn: true,
+        },
+      ],
+      triggers: [
+        {
+          event: "begin_combat",
+          condition: { kind: "controls_commander" },
+          effects: [{ kind: "gain_life", playerId: "controller", amount: 1 }],
+          targetRequirements: [],
+        },
+      ],
+    });
+    put(game, p1.id, definition);
+    const round = parseGameState(serializeGameState(game));
+    const parsed = round.definitions[definition.id]!;
+    expect(parsed.staticAbilities[0]?.requiresYourTurn).toBe(true);
+    expect(parsed.triggers[0]?.condition).toEqual({ kind: "controls_commander" });
+  });
+});

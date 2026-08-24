@@ -4861,6 +4861,9 @@ function parseTriggerCondition(value: unknown, label: string): TriggerCondition 
       if (conditionKind === "created_token_this_turn") {
         return { kind: conditionKind };
       }
+      if (conditionKind === "controls_commander") {
+        return { kind: conditionKind };
+      }
       if (conditionKind === "attackers_against_you_at_least") {
         return { kind: conditionKind, count: expectNumber(value.count, `${label}.count`) };
       }
@@ -5435,6 +5438,7 @@ function parseStaticAbilities(
               ),
             }),
         ...(entry.requiresDelirium === true ? { requiresDelirium: true } : {}),
+        ...(entry.requiresYourTurn === true ? { requiresYourTurn: true } : {}),
         ...(entry.requiresLife === undefined
           ? {}
           : { requiresLife: expectNumber(entry.requiresLife, `${label}[${index}].requiresLife`) }),

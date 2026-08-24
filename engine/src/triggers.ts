@@ -194,6 +194,12 @@ export function triggerConditionHolds(
   if (condition.kind === "gained_life_this_turn") {
     return (state.lifeGainedByPlayerThisTurn?.[controllerId] ?? 0) >= condition.atLeast;
   }
+  if (condition.kind === "controls_commander") {
+    const holder = state.players.find((player) => player.id === controllerId);
+    return (holder?.commander.commanderIds ?? []).some(
+      (commanderId) => state.cards[commanderId]?.zone === "battlefield",
+    );
+  }
   if (condition.kind === "attackers_against_you_at_least") {
     const aimed = (state.combat?.attacks ?? []).filter(
       (attack) => attack.defenderId === controllerId,

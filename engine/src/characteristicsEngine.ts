@@ -871,6 +871,12 @@ function collectInstances(state: GameState): EffectInstance[] {
           continue;
         }
       }
+      // Razorkin Needlehead: live only while its controller is the active
+      // player. Read here, with the rest of the static's gates, so the
+      // keyword comes and goes with the turn rather than being granted once.
+      if (ability.requiresYourTurn && state.turn.activePlayerId !== card.controllerId) {
+        continue;
+      }
       // Serra Ascendant: "As long as you have 30 or more life".
       if (ability.requiresLife !== undefined) {
         const owner = state.players.find((entry) => entry.id === card.controllerId);

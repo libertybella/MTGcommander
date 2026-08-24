@@ -870,6 +870,24 @@ more questions it can now ask:
   (Bennie Bracks). Reads the existing per-player `createdTokenThisTurn`
   list, and asks whether the CONTROLLER is in it — an opponent's Treasure
   must not satisfy it.
+- **`StaticAbility.requiresYourTurn`** — Razorkin Needlehead: "has first
+  strike DURING YOUR TURN". A static gated on the turn, not a keyword the
+  permanent simply has — it goes away the moment the turn passes, which is
+  the whole card. Read beside the static's other gates, so the keyword comes
+  and goes rather than being granted once.
+
+- **`controls_commander`** — the Lieutenant condition. Any of the
+  controller's OWN commanders being on the battlefield satisfies it, so a
+  partner pair needs only one of the two out, and an opponent's commander
+  never counts.
+
+- **"if you control an artifact"** — the bare singular, with no count word
+  at all, which the existing "N or more" reading could not see.
+
+- **The batch combat-damage head takes one more type** — "one or more
+  ARTIFACT creatures you control" is the same head with a wider filter, not a
+  second branch, and the plain creature form is untouched.
+
 - **Split second (CR 702.61)** — while the spell is on the stack, no player
   may cast a spell or activate a non-mana ability, the spell's own caster
   included. Read off the STACK rather than latched on the game, because the

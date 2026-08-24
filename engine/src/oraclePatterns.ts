@@ -1499,6 +1499,19 @@ function parseEffectCondition(phrase: string): TriggerCondition | null {
   if (totalPower?.[1]) {
     return { kind: "controls_total_power_at_least", power: Number(totalPower[1]) };
   }
+  // Lieutenant: "if you control your commander".
+  if (/^you control your commander$/i.test(text)) {
+    return { kind: "controls_commander" };
+  }
+  // Thopter Spy Network: the bare singular, with no count word at all.
+  const controlsOne = text.match(/^you control an? (artifact|creature|land)$/i);
+  if (controlsOne?.[1]) {
+    return {
+      kind: "controls_count",
+      what: controlsOne[1].toLowerCase() as "land" | "creature" | "artifact",
+      atLeast: 1,
+    };
+  }
   const tribe = text.match(/^you control (\w+) or more ([A-Z][a-z-]+)s$/);
   if (tribe?.[1] && tribe[2]) {
     const atLeast = parseCount(tribe[1]);
@@ -3275,6 +3288,24 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
         })),
       };
     }
+  }
+
+  // Razorkin Needlehead: "~ deals N damage to them" — "them" is the player
+  // the trigger watched. Damage, not life loss: the source matters, so a
+  // damage doubler and a prevention shield both see it.
+  const damageToSubject = sentence.match(/^~ deals (\d+) damage to them$/i);
+  if (damageToSubject?.[1]) {
+    return {
+      targetRequirements: [],
+      effects: [
+        {
+          kind: "deal_damage",
+          sourceId: "self",
+          target: { type: "player", playerId: { type: "subject_player" } },
+          amount: Number(damageToSubject[1]),
+        },
+      ],
+    };
   }
 
   // Scrap Trawler: "with LESSER mana value" — lesser than the artifact that
@@ -9645,11 +9676,19 @@ function parseTriggerHead(head: string): TriggerHead | null {
       ...(/an opponent$/i.test(text) ? { subjectPlayerOpponent: true } : {}),
     };
   }
-  if (/^Whenever one or more creatures you control deal combat damage to a player$/i.test(text)) {
+  // "…creatures you control" and Thopter Spy Network's narrower "…ARTIFACT
+  // creatures you control" are the same head with one more type on the
+  // filter, so they read as one line rather than two branches.
+  const batchCombatDamage = text.match(
+    /^Whenever one or more (artifact )?creatures you control deal combat damage to a player$/i,
+  );
+  if (batchCombatDamage) {
     return {
       event: "deals_combat_damage_to_player",
       watch: "controlled",
-      subjectFilter: { types: ["creature"] },
+      subjectFilter: {
+        types: batchCombatDamage[1] ? ["artifact", "creature"] : ["creature"],
+      },
       oncePerBatch: true,
     };
   }
@@ -13968,6 +14007,22 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
       )
     ) {
       result.opponentsLockedDuringYourTurn = true;
+      continue;
+    }
+
+    // Razorkin Needlehead: "~ has first strike DURING YOUR TURN". A static
+    // gated on the turn, not a keyword the permanent simply has — it loses
+    // first strike the moment the turn passes, which is the whole card.
+    const turnKeyword = sentence.match(/^~ has ([a-z ]+) during your turn$/i);
+    const turnGranted = turnKeyword?.[1]
+      ? KEYWORD_GRANTS[turnKeyword[1].trim().toLowerCase()]
+      : undefined;
+    if (turnGranted) {
+      result.staticAbilities.push({
+        selector: { scope: "self" },
+        effect: { kind: "grant_keyword", keyword: turnGranted },
+        requiresYourTurn: true,
+      });
       continue;
     }
 

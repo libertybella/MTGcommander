@@ -324,6 +324,7 @@ export function createCardDefinition(
           ...(ability.requiresControlledBelow
             ? { requiresControlledBelow: { ...ability.requiresControlledBelow } }
             : {}),
+          ...(ability.requiresYourTurn ? { requiresYourTurn: true } : {}),
           ...(ability.requiresLife !== undefined ? { requiresLife: ability.requiresLife } : {}),
         }))
       : [],
