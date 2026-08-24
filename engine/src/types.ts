@@ -1698,6 +1698,8 @@ export type GameEffect =
       kind: "team_keyword_until_eot";
       playerId: PlayerId;
       keyword: Keyword;
+      /** Elspeth, Teferi: the grant lasts until this player's NEXT turn. */
+      untilYourNextTurn?: boolean;
       scope?: "permanents";
       /** Lord of the Accursed: "All Zombies gain menace". */
       subtypes?: string[];
@@ -2980,6 +2982,8 @@ export type CardEffect =
       kind: "team_keyword_until_eot";
       playerId: PlayerSelector;
       keyword: Keyword;
+      /** Elspeth, Teferi: the grant lasts until this player's NEXT turn. */
+      untilYourNextTurn?: boolean;
       /** "Permanents you control gain …" (Boros Charm). */
       scope?: "permanents";
       /** Lord of the Accursed: "All Zombies gain menace". */
@@ -4610,7 +4614,18 @@ export type ContinuousEffect = {
   sourceId: CardInstanceId | null;
   affected: CardInstanceId[];
   effect: ContinuousEffectData;
-  duration: "until_end_of_turn";
+  /**
+   * "until end of turn" (CR 514.2, swept at cleanup) or "until your next
+   * turn" (Elspeth, Teferi), which ends as `forPlayerId`'s next turn
+   * BEGINS. The turn-number guard on the second is what makes one created
+   * during that player's own turn last a full cycle rather than expiring
+   * the instant it resolved — the same shape `playerShields` already uses.
+   */
+  duration: "until_end_of_turn" | "until_your_next_turn";
+  /** Set only for "until your next turn": whose next turn ends it. */
+  forPlayerId?: PlayerId;
+  /** Set only for "until your next turn": the turn it was made on. */
+  createdOnTurn?: number;
   timestamp: number;
 };
 

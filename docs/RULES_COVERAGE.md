@@ -870,6 +870,25 @@ more questions it can now ask:
   (Bennie Bracks). Reads the existing per-player `createdTokenThisTurn`
   list, and asks whether the CONTROLLER is in it — an opponent's Treasure
   must not satisfy it.
+- **A loyalty ability's SECOND SENTENCE now stays inside the ability.** The
+  rest of the printed LINE belongs to the ability, not to the card. Without
+  this, Elspeth's "Those creatures gain flying" landed in
+  `definition.effects` — which a PERMANENT never runs — and the card
+  compiled with zero notes while doing half of what it says. The same
+  defect as the trigger riders in waves 317-319, one layer over, and a
+  general fix rather than a fuser per card.
+
+- **"Until your next turn"** as a continuous-effect duration. It ends as
+  that player's next turn BEGINS, and the turn-NUMBER guard is what makes
+  one created during their own turn last a full cycle rather than expiring
+  the instant it resolved — the same shape `playerShields` already used, so
+  the two now sit side by side in the untap step.
+
+  Both guards cross the wire. The serializer hard-coded the old duration
+  and would have REJECTED a saved game holding one; without `forPlayerId`
+  and `createdOnTurn` a reopened table would sweep the grant at the next
+  untap step no matter whose turn it was.
+
 - **`animate_until_eot`** — Mutavault, Destiny Spinner and the manland
   cycle. Three layers behind one word: the creature type is ADDED (layer
   4), the power and toughness are SET (layer 7b), the colours are set

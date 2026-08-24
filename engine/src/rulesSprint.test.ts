@@ -49807,3 +49807,208 @@ describe("wave 325: a land that becomes a creature and stays a land", () => {
     });
   });
 });
+
+describe("wave 326: a grant that outlives the turn that made it", () => {
+  const compile = (name: string, typeLine: string, oracleText: string, manaCost = "") =>
+    compileOracleCard({
+      oracleId: name.toLowerCase().replace(/[^a-z]+/g, "-"),
+      name,
+      manaCost,
+      typeLine,
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  const put = (game: GameState, ownerId: string, definition: CardDefinition) => {
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({
+      definitionId: definition.id,
+      ownerId,
+      zone: "battlefield",
+    });
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === ownerId)!.zones.battlefield.push(card.id);
+    card.summoningSick = false;
+    return card.id;
+  };
+
+  const bear = (name = "Bear") =>
+    createCardDefinition({
+      name,
+      typeLine: "Creature — Bear",
+      manaCost: "{1}{G}",
+      power: 2,
+      toughness: 2,
+    });
+
+  // ---- The stranded rider --------------------------------------------------
+
+  it("keeps a loyalty ability's second sentence inside the ability", () => {
+    const compiled = compile(
+      "Elspeth, Storm Slayer",
+      "Legendary Planeswalker — Elspeth",
+      "0: Put a +1/+1 counter on each creature you control. Those creatures gain flying until your next turn.",
+      "{3}{W}{W}",
+    );
+    expect(compiled.notes).toEqual([]);
+    // The rider used to land in `definition.effects`, which a PERMANENT
+    // never runs: the card compiled with zero notes and the flying simply
+    // never happened. Same defect as the trigger riders, one layer over.
+    expect(compiled.definition.effects).toEqual([]);
+    expect(compiled.definition.loyaltyAbilities?.[0]?.effects).toEqual([
+      { kind: "counter_on_each_creature", counter: "p1p1", amount: 1, controlledOnly: true },
+      {
+        kind: "team_keyword_until_eot",
+        playerId: "controller",
+        keyword: "flying",
+        untilYourNextTurn: true,
+      },
+    ]);
+  });
+
+  it("stops absorbing at the printed line break", () => {
+    const compiled = compile(
+      "Two Abilities",
+      "Legendary Planeswalker — Test",
+      "+1: Draw a card.\n0: You gain 2 life.",
+      "{2}{W}",
+    );
+    expect(compiled.notes).toEqual([]);
+    // A new line is a new ability, so the second must not be swallowed by
+    // the first.
+    expect(compiled.definition.loyaltyAbilities).toHaveLength(2);
+    expect(compiled.definition.loyaltyAbilities?.[0]?.effects).toHaveLength(1);
+  });
+
+  it("reads the shorter duration as the shorter duration", () => {
+    const compiled = compile(
+      "Brief Grant",
+      "Legendary Planeswalker — Test",
+      "0: Put a +1/+1 counter on each creature you control. Those creatures gain flying until end of turn.",
+      "{2}{W}",
+    );
+    expect(compiled.notes).toEqual([]);
+    const grant = compiled.definition.loyaltyAbilities?.[0]?.effects[1];
+    expect(grant?.kind === "team_keyword_until_eot" && grant.untilYourNextTurn).toBeUndefined();
+  });
+
+  // ---- The duration --------------------------------------------------------
+
+  const grantFlying = (game: GameState, playerId: string, untilNextTurn: boolean) =>
+    applyEffect(game, {
+      kind: "team_keyword_until_eot",
+      playerId,
+      keyword: "flying",
+      ...(untilNextTurn ? { untilYourNextTurn: true } : {}),
+    });
+
+  /**
+   * Take the next untap step for real. The expiry runs on ENTERING untap,
+   * so setting the step by hand would never fire it; `activeAtCleanup` is
+   * whose turn is ending, which decides whose untap comes next.
+   */
+  const nextUntap = (game: GameState, activeAtCleanup: string) => {
+    const staged = parseGameState(serializeGameState(game));
+    staged.turn.activePlayerId = activeAtCleanup;
+    staged.turn.phase = "ending";
+    staged.turn.step = "cleanup";
+    staged.priorityPlayerId = activeAtCleanup;
+    return advanceStep(staged);
+  };
+
+  it("survives the cleanup of the turn it was made on", () => {
+    const { game, p1 } = twoPlayers();
+    const bearId = put(game, p1.id, bear());
+    game.turn.number = 5;
+    const granted = grantFlying(game, p1.id, true);
+    expect(hasKeyword(granted, bearId, "flying")).toBe(true);
+    // CR 514.2 sweeps "until end of turn"; this is not that.
+    const swept = {
+      ...granted,
+      activeEffects: granted.activeEffects.filter(
+        (entry) => entry.duration !== "until_end_of_turn",
+      ),
+    };
+    expect(hasKeyword(swept, bearId, "flying")).toBe(true);
+  });
+
+  it("survives an opponent's whole turn", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const bearId = put(game, p1.id, bear());
+    game.turn.number = 5;
+    const granted = grantFlying(game, p1.id, true);
+    // p1's turn ends, so p2's untap comes next. "Until YOUR next turn" —
+    // an opponent's untap step is not it.
+    const opponentTurn = nextUntap(granted, p1.id);
+    expect(opponentTurn.turn.activePlayerId).toBe(p2.id);
+    expect(hasKeyword(opponentTurn, bearId, "flying")).toBe(true);
+  });
+
+  it("ends as its controller's next turn begins", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const bearId = put(game, p1.id, bear());
+    game.turn.number = 5;
+    const granted = grantFlying(game, p1.id, true);
+    // p2's turn ends, so p1's untap comes next — and that is the moment.
+    const ownTurn = nextUntap(granted, p2.id);
+    expect(ownTurn.turn.activePlayerId).toBe(p1.id);
+    expect(hasKeyword(ownTurn, bearId, "flying")).toBe(false);
+  });
+
+  it("does not expire on the untap step of the turn that made it", () => {
+    const { game, p1 } = twoPlayers();
+    const bearId = put(game, p1.id, bear());
+    game.turn.number = 5;
+    const granted = grantFlying(game, p1.id, true);
+    // The turn-NUMBER guard is the whole trick. Without it a grant made on
+    // your own turn would be swept the moment anything re-entered that same
+    // turn's untap step, lasting no time at all.
+    void bearId;
+    expect(granted.activeEffects[0]).toMatchObject({
+      duration: "until_your_next_turn",
+      forPlayerId: p1.id,
+      createdOnTurn: 5,
+    });
+  });
+
+  it("still sweeps the ordinary duration at cleanup", () => {
+    const { game, p1 } = twoPlayers();
+    const bearId = put(game, p1.id, bear());
+    const granted = grantFlying(game, p1.id, false);
+    expect(hasKeyword(granted, bearId, "flying")).toBe(true);
+    const swept = {
+      ...granted,
+      activeEffects: granted.activeEffects.filter(
+        (entry) => entry.duration !== "until_end_of_turn",
+      ),
+    };
+    expect(hasKeyword(swept, bearId, "flying")).toBe(false);
+  });
+
+  it("locks in the creatures it saw, per CR 611.2c", () => {
+    const { game, p1 } = twoPlayers();
+    const bearId = put(game, p1.id, bear("First"));
+    const granted = grantFlying(game, p1.id, true);
+    const laterId = put(granted, p1.id, bear("Later"));
+    expect(hasKeyword(granted, bearId, "flying")).toBe(true);
+    expect(hasKeyword(granted, laterId, "flying")).toBe(false);
+  });
+
+  it("round trips the duration and both of its guards", () => {
+    const { game, p1 } = twoPlayers();
+    put(game, p1.id, bear());
+    game.turn.number = 5;
+    const granted = grantFlying(game, p1.id, true);
+    const round = parseGameState(serializeGameState(granted));
+    // Without these on the wire a reopened table sweeps the grant at the
+    // next untap step no matter whose turn it is.
+    expect(round.activeEffects[0]).toMatchObject({
+      duration: "until_your_next_turn",
+      forPlayerId: p1.id,
+      createdOnTurn: 5,
+    });
+  });
+});

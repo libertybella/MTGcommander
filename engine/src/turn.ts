@@ -146,6 +146,17 @@ function onEnterStep(state: GameState): GameState {
     // "Until your next turn" ends as that turn BEGINS. The turn-number
     // guard is what makes a shield created during your OWN turn last a
     // full cycle rather than expiring the instant it resolved.
+    // The same rule, and the same guard, for continuous effects: Elspeth's
+    // flying ends as its controller's next turn begins, not at the cleanup
+    // of the turn it was made on.
+    state.activeEffects = state.activeEffects.filter(
+      (effect) =>
+        !(
+          effect.duration === "until_your_next_turn" &&
+          effect.forPlayerId === state.turn.activePlayerId &&
+          state.turn.number > (effect.createdOnTurn ?? state.turn.number)
+        ),
+    );
     const shields = state.playerShields ?? [];
     if (shields.length > 0) {
       const survivors = shields.filter(

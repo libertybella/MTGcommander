@@ -2126,7 +2126,10 @@ function parseActiveEffects(value: unknown): ContinuousEffect[] {
     if (!isRecord(entry)) {
       throw new Error(`Invalid activeEffects[${index}]`);
     }
-    if (entry.duration !== "until_end_of_turn") {
+    if (
+      entry.duration !== "until_end_of_turn" &&
+      entry.duration !== "until_your_next_turn"
+    ) {
       throw new Error(`Invalid activeEffects[${index}].duration`);
     }
     return {
@@ -2137,7 +2140,21 @@ function parseActiveEffects(value: unknown): ContinuousEffect[] {
           : expectString(entry.sourceId, `activeEffects[${index}].sourceId`),
       affected: expectStringArray(entry.affected, `activeEffects[${index}].affected`),
       effect: parseContinuousEffectData(entry.effect, `activeEffects[${index}].effect`),
-      duration: "until_end_of_turn",
+      duration: entry.duration,
+      // Elspeth's grant outlives the turn it was made on, so BOTH of these
+      // have to cross the wire — without them a reopened table would sweep
+      // the grant at the next untap step no matter whose turn it was.
+      ...(entry.forPlayerId === undefined
+        ? {}
+        : { forPlayerId: expectString(entry.forPlayerId, `activeEffects[${index}].forPlayerId`) }),
+      ...(entry.createdOnTurn === undefined
+        ? {}
+        : {
+            createdOnTurn: expectNumber(
+              entry.createdOnTurn,
+              `activeEffects[${index}].createdOnTurn`,
+            ),
+          }),
       timestamp: expectNumber(entry.timestamp, `activeEffects[${index}].timestamp`),
     };
   });
@@ -3963,6 +3980,7 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
         kind,
         playerId: parsePlayerSelector(value.playerId, `${label}.playerId`),
         keyword: keyword as Keyword,
+        ...(value.untilYourNextTurn === true ? { untilYourNextTurn: true } : {}),
         ...(value.scope === "permanents" ? { scope: "permanents" } : {}),
         ...(nonSubtypes.length > 0 ? { nonSubtypes } : {}),
         ...(value.minPower === undefined
@@ -5972,6 +5990,7 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
       kind,
       playerId: expectString(value.playerId, `${label}.playerId`),
       keyword: keyword as Keyword,
+      ...(value.untilYourNextTurn === true ? { untilYourNextTurn: true } : {}),
       ...(value.scope === "permanents" ? { scope: "permanents" } : {}),
       ...(nonSubtypes.length > 0 ? { nonSubtypes } : {}),
       ...(value.minPower === undefined

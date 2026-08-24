@@ -5418,13 +5418,25 @@ function compileSimpleClauseInner(sentence: string): SimpleClause | null {
 
   // Felidar Retreat's second mode sentence: the counters just went on each
   // creature you control, so "those creatures" is the controller's team.
-  const thoseGain = sentence.match(/^Those creatures gain ([a-z]+) until end of turn$/i);
+  const thoseGain = sentence.match(
+    /^Those creatures gain ([a-z]+) until (end of turn|your next turn)$/i,
+  );
   if (thoseGain?.[1]) {
     const keyword = KEYWORD_GRANTS[thoseGain[1].toLowerCase()];
     if (keyword) {
+      // Elspeth's grant outlives the turn it was made on, which is most of
+      // why the ability is worth a loyalty activation at all.
+      const untilNextTurn = /your next turn/i.test(thoseGain[2] ?? "");
       return {
         targetRequirements: [],
-        effects: [{ kind: "team_keyword_until_eot", playerId: "controller", keyword }],
+        effects: [
+          {
+            kind: "team_keyword_until_eot",
+            playerId: "controller",
+            keyword,
+            ...(untilNextTurn ? { untilYourNextTurn: true } : {}),
+          },
+        ],
       };
     }
   }
@@ -13450,11 +13462,43 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
     if (loyaltyAbility?.[1] && loyaltyAbility[2]) {
       const clause = compileSimpleClause(loyaltyAbility[2].trim());
       if (clause && !clause.leftover) {
+        /**
+         * A loyalty ability's body can be more than one sentence, and the
+         * rest of the PRINTED LINE belongs to the ability rather than to
+         * the card. Without this, Elspeth's "Those creatures gain flying"
+         * landed in `definition.effects` — where a PERMANENT never runs it
+         * — and the card compiled with zero notes while doing half of what
+         * it says. Same defect as the trigger riders in waves 317-319, one
+         * layer over.
+         */
+        const effects = [...clause.effects];
+        let requirements = clause.targetRequirements;
+        for (
+          let rider = index + 1;
+          rider < sentences.length && !lineStart[rider] && sentences[rider];
+          rider += 1
+        ) {
+          const tail = compileSimpleClause(sentences[rider]!);
+          // A rider needing its OWN targets alongside a body that already
+          // has some cannot be expressed; leave it to fail honestly.
+          if (
+            !tail ||
+            tail.leftover ||
+            (tail.targetRequirements.length > 0 && requirements.length > 0)
+          ) {
+            break;
+          }
+          if (tail.targetRequirements.length > 0) {
+            requirements = tail.targetRequirements;
+          }
+          effects.push(...tail.effects);
+          sentences[rider] = "";
+        }
         result.loyaltyAbilities = result.loyaltyAbilities ?? [];
         result.loyaltyAbilities.push({
           cost: Number(loyaltyAbility[1].replace("−", "-")),
-          effects: clause.effects,
-          targetRequirements: clause.targetRequirements,
+          effects,
+          targetRequirements: requirements,
         });
         continue;
       }

@@ -3535,6 +3535,8 @@ function pushUntilEotEffect(
   state: GameState,
   affected: CardInstanceId[],
   effect: ContinuousEffectData,
+  /** Elspeth: "until your NEXT turn" rather than until this one ends. */
+  untilNextTurnOf?: PlayerId,
 ): GameState {
   const onBattlefield = affected.filter((cardId) => state.cards[cardId]?.zone === "battlefield");
   if (onBattlefield.length === 0) {
@@ -3546,7 +3548,13 @@ function pushUntilEotEffect(
     sourceId: null,
     affected: onBattlefield,
     effect,
-    duration: "until_end_of_turn",
+    ...(untilNextTurnOf
+      ? {
+          duration: "until_your_next_turn" as const,
+          forPlayerId: untilNextTurnOf,
+          createdOnTurn: next.turn.number,
+        }
+      : { duration: "until_end_of_turn" as const }),
     timestamp: next.nextTimestamp,
   });
   next.nextTimestamp += 1;
@@ -3631,7 +3639,13 @@ function applyTeamKeywordUntilEot(
   state: GameState,
   playerId: PlayerId,
   keyword: Keyword,
-  options: { scope?: "permanents"; subtypes?: string[]; nonSubtypes?: string[]; minPower?: number } = {},
+  options: {
+    scope?: "permanents";
+    subtypes?: string[];
+    nonSubtypes?: string[];
+    minPower?: number;
+    untilYourNextTurn?: boolean;
+  } = {},
 ): GameState {
   requirePlayer(state, playerId);
   // CR 611.2c: the affected set locks in when the effect is created.
@@ -3639,7 +3653,12 @@ function applyTeamKeywordUntilEot(
   if (team.length === 0) {
     return state;
   }
-  return pushUntilEotEffect(state, team, { kind: "grant_keyword", keyword });
+  return pushUntilEotEffect(
+    state,
+    team,
+    { kind: "grant_keyword", keyword },
+    options.untilYourNextTurn ? playerId : undefined,
+  );
 }
 
 function applySearchLibrary(
@@ -5516,6 +5535,7 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
           subtypes: effect.subtypes,
           nonSubtypes: effect.nonSubtypes,
           minPower: effect.minPower,
+          untilYourNextTurn: effect.untilYourNextTurn,
         });
         break;
       case "team_protection_until_eot": {
