@@ -2470,6 +2470,20 @@ export function bindCardEffect(
     // yields a LIST of effects and this function returns one.
     case "if_condition":
       return null;
+    case "sacrifice_others_of_type": {
+      const loser = bindPlayerSelector(state, effect.playerId, context);
+      if (!loser) {
+        return null;
+      }
+      // The CHOICE names the keeper. A player who controls none of this
+      // type chose nothing, and then there is nothing to sacrifice either.
+      return {
+        kind: "sacrifice_others_of_type",
+        playerId: loser,
+        cardType: effect.cardType,
+        keepId: context.chosenCardId ?? null,
+      };
+    }
     case "add_subtypes": {
       const gainerId = bindCardId(state, effect.cardId, context);
       return gainerId
@@ -6169,6 +6183,30 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
       case "phase_out":
         next = applyPhaseOut(state, effect.cardIds);
         break;
+      case "sacrifice_others_of_type": {
+        // "…and sacrifices THE REST": everything of this type except the
+        // one the player kept. Read at APPLY, so a permanent that arrived
+        // between the choice and here is included, which is what "the
+        // rest" means.
+        requirePlayer(state, effect.playerId);
+        const doomed = Object.values(state.cards)
+          .filter(
+            (card) =>
+              card.zone === "battlefield" &&
+              card.controllerId === effect.playerId &&
+              card.id !== effect.keepId &&
+              characteristicsOf(state, card.id).types.includes(effect.cardType),
+          )
+          .map((card) => card.id);
+        next =
+          doomed.length === 0
+            ? cloneGameState(state)
+            : applyEffects(
+                state,
+                doomed.map((cardId) => ({ kind: "sacrifice" as const, cardId })),
+              );
+        break;
+      }
       case "add_subtypes": {
         // Portal to Phyrexia: the type rides the PERMANENT, so it goes on
         // the instance. Duplicates are skipped rather than stacked — two

@@ -2511,6 +2511,55 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
 
 function compileSimpleClauseInner(sentence: string): SimpleClause | null {
   /**
+   * Liliana, Dreadhorde General's -9: "Each opponent chooses a permanent
+   * they control of each permanent type and sacrifices the rest."
+   *
+   * The choice names what to KEEP, which inverts every other "of their
+   * choice" sacrifice here. One `choose_card` per permanent type (CR
+   * 110.4a lists six), each followed by sacrificing everything ELSE of
+   * that type. A player who controls none of a type is asked nothing and
+   * loses nothing there.
+   */
+  if (
+    /^Each opponent chooses a permanent they control of each permanent type and sacrifices the rest$/i.test(
+      sentence,
+    )
+  ) {
+    const permanentTypes = [
+      "artifact",
+      "creature",
+      "enchantment",
+      "land",
+      "planeswalker",
+      "battle",
+    ] as const;
+    return {
+      targetRequirements: [],
+      effects: permanentTypes.map((cardType) => ({
+        kind: "choose_card" as const,
+        chooserId: "each_opponent" as const,
+        sources: [
+          {
+            playerId: "each_opponent" as const,
+            zone: "battlefield" as const,
+            filter: cardType,
+          },
+        ],
+        thenEffects: [
+          {
+            kind: "sacrifice_others_of_type" as const,
+            playerId: "each_opponent" as const,
+            cardType,
+          },
+        ],
+        // Controlling none of a type is not a decline: there is simply
+        // nothing to keep and nothing to lose.
+        thenEffectsIfNone: [],
+      })),
+    };
+  }
+
+  /**
    * Agadeem's Awakening: "Return from your graveyard to the battlefield any
    * number of target creature cards that each have a different mana value X
    * or less."

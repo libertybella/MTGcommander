@@ -53058,3 +53058,212 @@ describe("wave 342: any number of targets, each a different size", () => {
     });
   });
 });
+
+describe("wave 343: the choice names what to keep", () => {
+  const compile = (name: string, typeLine: string, oracleText: string, manaCost = "") =>
+    compileOracleCard({
+      oracleId: name.toLowerCase().replace(/[^a-z]+/g, "-"),
+      name,
+      manaCost,
+      typeLine,
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  const put = (game: GameState, ownerId: string, name: string, typeLine: string) => {
+    const definition = createCardDefinition({
+      name,
+      typeLine,
+      manaCost: "{2}",
+      ...(typeLine.includes("Creature") ? { power: 2, toughness: 2 } : {}),
+    });
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({
+      definitionId: definition.id,
+      ownerId,
+      zone: "battlefield",
+    });
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === ownerId)!.zones.battlefield.push(card.id);
+    return card.id;
+  };
+
+  it("compiles one choice per permanent type", () => {
+    const compiled = compile(
+      "Liliana, Dreadhorde General",
+      "Legendary Planeswalker — Liliana",
+      "Whenever a creature you control dies, draw a card.\n+1: Create a 2/2 black Zombie creature token.\n−4: Each player sacrifices two creatures of their choice.\n−9: Each opponent chooses a permanent they control of each permanent type and sacrifices the rest.",
+      "{4}{B}{B}",
+    );
+    expect(compiled.notes).toEqual([]);
+    const ultimate = compiled.definition.loyaltyAbilities?.find((entry) => entry.cost === -9);
+    // CR 110.4a lists six permanent types, and the card says "each".
+    expect(ultimate?.effects).toHaveLength(6);
+    expect(ultimate?.effects[0]).toMatchObject({
+      kind: "choose_card",
+      chooserId: "each_opponent",
+      sources: [{ playerId: "each_opponent", zone: "battlefield", filter: "artifact" }],
+      thenEffects: [
+        {
+          kind: "sacrifice_others_of_type",
+          playerId: "each_opponent",
+          cardType: "artifact",
+        },
+      ],
+    });
+    expect(
+      ultimate?.effects.map((effect) =>
+        effect.kind === "choose_card" ? effect.sources[0]?.filter : null,
+      ),
+    ).toEqual(["artifact", "creature", "enchantment", "land", "planeswalker", "battle"]);
+  });
+
+  it("keeps the chosen creature and sacrifices the rest", () => {
+    const { game, p1 } = twoPlayers();
+    const keepId = put(game, p1.id, "Keeper", "Creature — Bear");
+    const doomedA = put(game, p1.id, "Doomed A", "Creature — Bear");
+    const doomedB = put(game, p1.id, "Doomed B", "Creature — Bear");
+    const swept = applyEffect(game, {
+      kind: "sacrifice_others_of_type",
+      playerId: p1.id,
+      cardType: "creature",
+      keepId,
+    });
+    expect(swept.cards[keepId]?.zone).toBe("battlefield");
+    expect(swept.cards[doomedA]?.zone).toBe("graveyard");
+    expect(swept.cards[doomedB]?.zone).toBe("graveyard");
+  });
+
+  it("leaves the other permanent types alone", () => {
+    const { game, p1 } = twoPlayers();
+    const keepId = put(game, p1.id, "Keeper", "Creature — Bear");
+    const rockId = put(game, p1.id, "Rock", "Artifact");
+    const landId = put(game, p1.id, "Forest", "Basic Land — Forest");
+    const swept = applyEffect(game, {
+      kind: "sacrifice_others_of_type",
+      playerId: p1.id,
+      cardType: "creature",
+      keepId,
+    });
+    // One type at a time: the artifact and the land are another choice's
+    // business.
+    expect(swept.cards[rockId]?.zone).toBe("battlefield");
+    expect(swept.cards[landId]?.zone).toBe("battlefield");
+  });
+
+  it("leaves other players untouched", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const mineId = put(game, p1.id, "Mine", "Creature — Bear");
+    const theirsId = put(game, p2.id, "Theirs", "Creature — Bear");
+    const swept = applyEffect(game, {
+      kind: "sacrifice_others_of_type",
+      playerId: p1.id,
+      cardType: "creature",
+      keepId: mineId,
+    });
+    expect(swept.cards[theirsId]?.zone).toBe("battlefield");
+  });
+
+  it("sacrifices everything of the type when nothing was kept", () => {
+    const { game, p1 } = twoPlayers();
+    const a = put(game, p1.id, "A", "Creature — Bear");
+    const b = put(game, p1.id, "B", "Creature — Bear");
+    // A null keeper is "they chose nothing", which is only reachable with
+    // an empty board — but if it happens, "the rest" is everything.
+    const swept = applyEffect(game, {
+      kind: "sacrifice_others_of_type",
+      playerId: p1.id,
+      cardType: "creature",
+      keepId: null,
+    });
+    expect(swept.cards[a]?.zone).toBe("graveyard");
+    expect(swept.cards[b]?.zone).toBe("graveyard");
+  });
+
+  it("does nothing at all when the player controls none of the type", () => {
+    const { game, p1 } = twoPlayers();
+    const rockId = put(game, p1.id, "Rock", "Artifact");
+    const swept = applyEffect(game, {
+      kind: "sacrifice_others_of_type",
+      playerId: p1.id,
+      cardType: "planeswalker",
+      keepId: null,
+    });
+    expect(swept.cards[rockId]?.zone).toBe("battlefield");
+  });
+
+  it("counts an artifact creature under BOTH types", () => {
+    const { game, p1 } = twoPlayers();
+    const golemId = put(game, p1.id, "Golem", "Artifact Creature — Golem");
+    const bearId = put(game, p1.id, "Bear", "Creature — Bear");
+    // Keeping the Golem as your creature does not also save it from the
+    // artifact pass — it is one permanent of two types, and the card asks
+    // per type.
+    const afterCreatures = applyEffect(game, {
+      kind: "sacrifice_others_of_type",
+      playerId: p1.id,
+      cardType: "creature",
+      keepId: golemId,
+    });
+    expect(afterCreatures.cards[bearId]?.zone).toBe("graveyard");
+    expect(afterCreatures.cards[golemId]?.zone).toBe("battlefield");
+  });
+
+  it("offers only the matching type to the chooser", () => {
+    const { game, p1 } = twoPlayers();
+    const enchantId = put(game, p1.id, "Aura", "Enchantment");
+    put(game, p1.id, "Rock", "Artifact");
+    const legal = legalIdsForChooseSources(game, [
+      { playerId: p1.id, zone: "battlefield", filter: "enchantment" },
+    ]);
+    expect(legal).toEqual([enchantId]);
+  });
+
+  it("round trips both forms", () => {
+    const { game, p1 } = twoPlayers();
+    const definition = createCardDefinition({
+      name: "Wave 343 Liliana",
+      typeLine: "Legendary Planeswalker — Liliana",
+      manaCost: "{4}{B}{B}",
+      loyaltyAbilities: [
+        {
+          cost: -9,
+          effects: [
+            {
+              kind: "choose_card",
+              chooserId: "each_opponent",
+              sources: [
+                { playerId: "each_opponent", zone: "battlefield", filter: "battle" },
+              ],
+              thenEffects: [
+                {
+                  kind: "sacrifice_others_of_type",
+                  playerId: "each_opponent",
+                  cardType: "battle",
+                },
+              ],
+              thenEffectsIfNone: [],
+            },
+          ],
+          targetRequirements: [],
+        },
+      ],
+    });
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({
+      definitionId: definition.id,
+      ownerId: p1.id,
+      zone: "battlefield",
+    });
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === p1.id)!.zones.battlefield.push(card.id);
+    const round = parseGameState(serializeGameState(game));
+    expect(round.definitions[definition.id]?.loyaltyAbilities?.[0]?.effects[0]).toMatchObject({
+      sources: [{ filter: "battle" }],
+      thenEffects: [{ kind: "sacrifice_others_of_type", cardType: "battle" }],
+    });
+  });
+});

@@ -2764,6 +2764,8 @@ const CARD_FILTERS: Record<CardFilter, true> = {
   planeswalker: true,
   artifact: true,
   permanent: true,
+  enchantment: true,
+  battle: true,
 };
 
 function parseCardFilter(value: unknown, label: string): CardFilter {
@@ -4342,6 +4344,12 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
             ? "below_source"
             : expectNumber(value.maxManaValue, `${label}.maxManaValue`),
         ...(value.toHandAllowed === true ? { toHandAllowed: true } : {}),
+      };
+    case "sacrifice_others_of_type":
+      return {
+        kind,
+        playerId: parsePlayerSelector(value.playerId, `${label}.playerId`),
+        cardType: expectString(value.cardType, `${label}.cardType`),
       };
     case "look_top_card":
       return {
@@ -6393,6 +6401,17 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
       playerId: expectString(value.playerId, `${label}.playerId`),
       maxManaValue: expectNumber(value.maxManaValue, `${label}.maxManaValue`),
       ...(value.toHandAllowed === true ? { toHandAllowed: true } : {}),
+    };
+  }
+  if (kind === "sacrifice_others_of_type") {
+    return {
+      kind,
+      playerId: expectString(value.playerId, `${label}.playerId`),
+      cardType: expectString(value.cardType, `${label}.cardType`),
+      keepId:
+        value.keepId === null || value.keepId === undefined
+          ? null
+          : expectString(value.keepId, `${label}.keepId`),
     };
   }
   if (kind === "look_top_card") {

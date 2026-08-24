@@ -1233,7 +1233,10 @@ export type CardFilter =
   /** Chrome Mox: "a nonartifact, nonland card from your hand". */
   | "nonartifact_nonland"
   /** Kodama of the East Tree: "a permanent card from your hand". */
-  | "permanent";
+  | "permanent"
+  /** Liliana's -9 asks for one of EACH permanent type, so all six exist. */
+  | "enchantment"
+  | "battle";
 
 /** What a Clone-style permanent may enter as a copy of. */
 export type EnterAsCopyScope =
@@ -1864,6 +1867,19 @@ export type GameEffect =
     }
   /** Portal to Phyrexia: the reanimated card gains a creature type. */
   | { kind: "add_subtypes"; cardId: CardInstanceId; subtypes: string[] }
+  /**
+   * Liliana's -9: "chooses a permanent they control of each permanent type
+   * and sacrifices THE REST". The choice names what to KEEP, which is the
+   * inverse of every other "of their choice" sacrifice here, so the
+   * keeper rides the effect and everything else of that type goes.
+   */
+  | {
+      kind: "sacrifice_others_of_type";
+      playerId: PlayerId;
+      cardType: string;
+      /** The one the player chose to keep; null when they control none. */
+      keepId: CardInstanceId | null;
+    }
   | { kind: "mass_reanimate"; playerId: PlayerId }
   /** Splendid Reclamation: every land card in YOUR graveyard returns tapped. */
   | { kind: "return_all_lands"; playerId: PlayerId }
@@ -3230,6 +3246,7 @@ export type CardEffect =
       echo: NonNullable<CardDefinition["landTapEcho"]>;
     }
   | { kind: "add_subtypes"; cardId: CardIdSelector; subtypes: string[] }
+  | { kind: "sacrifice_others_of_type"; playerId: PlayerSelector; cardType: string }
   | { kind: "mass_reanimate"; playerId: PlayerSelector }
   /** Splendid Reclamation: every land card in YOUR graveyard returns tapped. */
   | { kind: "return_all_lands"; playerId: PlayerSelector }

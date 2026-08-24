@@ -478,6 +478,9 @@ function cardMatchesFilter(
       (type) => types.includes(type),
     );
   }
+  if (filter === "enchantment" || filter === "battle") {
+    return types.includes(filter);
+  }
   if (filter === "land") {
     return types.includes("land");
   }

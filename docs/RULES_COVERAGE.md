@@ -870,6 +870,25 @@ more questions it can now ask:
   (Bennie Bracks). Reads the existing per-player `createdTokenThisTurn`
   list, and asks whether the CONTROLLER is in it — an opponent's Treasure
   must not satisfy it.
+- **A choice that names what to KEEP** — Liliana, Dreadhorde General's -9:
+  "Each opponent chooses a permanent they control of each permanent type
+  and sacrifices THE REST." That inverts every other "of their choice"
+  sacrifice here, where the choice names what dies.
+
+  One `choose_card` per permanent type (CR 110.4a lists six), each followed
+  by `sacrifice_others_of_type`, which reads the keeper off the choice and
+  takes everything ELSE of that type. A player who controls none of a type
+  is asked nothing and loses nothing there.
+
+  The list is read at APPLY, so a permanent that arrived between the choice
+  and the sacrifice is included — which is what "the rest" means. An
+  artifact creature answers to BOTH passes: keeping it as your creature
+  does not also save it from the artifact one.
+
+  `CardFilter` gained `enchantment` and `battle` so all six types could be
+  named. The total record added in wave 334 caught both omissions as type
+  errors on the first compile, which is exactly what it is for.
+
 - **A VARIABLE requirement with constraints across the whole chosen set** —
   Agadeem's Awakening: "any number of target creature cards that each have
   a DIFFERENT mana value X OR LESS".
