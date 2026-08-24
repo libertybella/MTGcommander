@@ -1528,6 +1528,16 @@ function parseEffectCondition(phrase: string): TriggerCondition | null {
   if (/^a creature died this turn$/i.test(text)) {
     return { kind: "creature_died_this_turn" };
   }
+  // Mangara. Planeswalkers are not separate defenders in this engine — every
+  // attack names a PLAYER — so "you and/or planeswalkers you control" is
+  // exactly "you", and the two readings agree rather than approximate.
+  const aimedAtYou = text.match(
+    /^([\w-]+) or more of those creatures are attacking you(?: and\/or planeswalkers you control)?$/i,
+  );
+  const aimedCount = aimedAtYou?.[1] ? parseCount(aimedAtYou[1]) : null;
+  if (aimedCount) {
+    return { kind: "attackers_against_you_at_least", count: aimedCount };
+  }
   if (/^you cast this spell during your main phase$/i.test(text)) {
     return { kind: "own_main_phase" };
   }
@@ -3264,6 +3274,24 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
         })),
       };
     }
+  }
+
+  // Scrap Trawler: "with LESSER mana value" — lesser than the artifact that
+  // just died, which is the trigger's subject. Resolved where the trigger
+  // asks for targets, the only place that subject is known.
+  if (
+    /^return to your hand target artifact card in your graveyard with lesser mana value$/i.test(
+      sentence,
+    )
+  ) {
+    return {
+      targetRequirements: [
+        { kind: "own_graveyard_artifact_card", manaValueBelowSubject: true },
+      ],
+      effects: [
+        { kind: "move_card", cardId: { type: "chosen", index: 0 }, toZone: "hand" },
+      ],
+    };
   }
 
   // Midnight Clock: the cards go back in as one batch and the library is
@@ -9713,6 +9741,22 @@ function parseTriggerHead(head: string): TriggerHead | null {
       ...(/an opponent$/i.test(text) ? { subjectPlayerOpponent: true } : {}),
     };
   }
+  // Scrap Trawler: "~ dies OR another artifact you control is put into a
+  // graveyard from the battlefield". The Trawler is itself an artifact, so
+  // both halves are the same watch — an artifact you control dying, itself
+  // included — and there is no `excludeSelf`, which is the whole reason it
+  // chains off its own death.
+  if (
+    /^Whenever ~ dies or another artifact you control is put into a graveyard from the battlefield$/i.test(
+      text,
+    )
+  ) {
+    return {
+      event: "dies",
+      watch: "controlled",
+      subjectFilter: { types: ["artifact"] },
+    };
+  }
   // Marionette Apprentice.
   if (
     /^Whenever another creature or artifact you control is put into a graveyard from the battlefield$/i.test(
@@ -9900,6 +9944,12 @@ function parseTriggerHead(head: string): TriggerHead | null {
   // Karlach: one firing per attack declaration.
   if (/^Whenever you attack$/i.test(text)) {
     return { event: "attacks", watch: "controlled", oncePerBatch: true };
+  }
+  // Mangara: one firing per declaration, watching the other side. The "if
+  // two or more are attacking you" half is an intervening condition read
+  // separately, so the head only has to say WHOSE declaration this is.
+  if (/^Whenever an opponent attacks with creatures$/i.test(text)) {
+    return { event: "attacks", watch: "opponents", oncePerBatch: true };
   }
   // Dreadhorde Invasion's second line.
   const tokenTribalAttack = text.match(

@@ -46352,3 +46352,332 @@ describe("wave 313: the twelfth counter, and a copy of a token", () => {
     });
   });
 });
+
+describe("wave 314: triggers that measure their own cause", () => {
+  const compile = (
+    name: string,
+    typeLine: string,
+    oracleText: string,
+    manaCost = "",
+    pt: [string, string] | null = null,
+  ) =>
+    compileOracleCard({
+      oracleId: name.toLowerCase().replace(/[^a-z]+/g, "-"),
+      name,
+      manaCost,
+      typeLine,
+      power: pt?.[0] ?? null,
+      toughness: pt?.[1] ?? null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  const put = (
+    game: GameState,
+    ownerId: string,
+    definition: CardDefinition,
+    zone: "hand" | "battlefield" | "graveyard" = "battlefield",
+  ) => {
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({ definitionId: definition.id, ownerId, zone });
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === ownerId)!.zones[zone].push(card.id);
+    if (zone === "battlefield") {
+      card.summoningSick = false;
+    }
+    return card.id;
+  };
+
+  const artifact = (name: string, manaCost: string) =>
+    createCardDefinition({ name, typeLine: "Artifact", manaCost });
+
+  // ---- Mangara: how many are aimed at YOU ---------------------------------
+
+  it("compiles the attack head and its intervening if", () => {
+    const compiled = compile(
+      "Mangara, the Diplomat",
+      "Legendary Creature — Human Cleric",
+      "Lifelink\nWhenever an opponent attacks with creatures, if two or more of those creatures are attacking you and/or planeswalkers you control, draw a card.\nWhenever an opponent casts their second spell each turn, draw a card.",
+      "{2}{W}{W}",
+      ["2", "4"],
+    );
+    expect(compiled.notes).toEqual([]);
+    const attackTrigger = compiled.definition.triggers.find(
+      (trigger) => trigger.event === "attacks",
+    );
+    expect(attackTrigger).toMatchObject({
+      event: "attacks",
+      watch: "opponents",
+      oncePerBatch: true,
+      condition: { kind: "attackers_against_you_at_least", count: 2 },
+    });
+  });
+
+  const mangaraBoard = () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    put(
+      game,
+      p1.id,
+      createCardDefinition({
+        name: "Mangara, the Diplomat",
+        typeLine: "Legendary Creature — Human Cleric",
+        manaCost: "{2}{W}{W}",
+        power: 2,
+        toughness: 4,
+        triggers: [
+          {
+            event: "attacks",
+            watch: "opponents",
+            oncePerBatch: true,
+            condition: { kind: "attackers_against_you_at_least", count: 2 },
+            effects: [{ kind: "draw", playerId: "controller", count: 1 }],
+            targetRequirements: [],
+          },
+        ],
+      }),
+    );
+    const attackers = [1, 2, 3].map((n) =>
+      put(
+        game,
+        p2.id,
+        createCardDefinition({
+          name: `Attacker${n}`,
+          typeLine: "Creature — Bear",
+          manaCost: "{1}{G}",
+          power: 2,
+          toughness: 2,
+        }),
+      ),
+    );
+    game.turn.activePlayerId = p2.id;
+    game.turn.phase = "combat";
+    game.turn.step = "declareAttackers";
+    game.priorityPlayerId = p2.id;
+    return { game, p1, p2, attackers };
+  };
+
+  it("does not fire for a single attacker", () => {
+    const { game, p1, p2, attackers } = mangaraBoard();
+    const declared = declareAttackers(game, p2.id, [
+      { attackerId: attackers[0]!, defenderId: p1.id },
+    ]);
+    expect(declared.stack).toHaveLength(0);
+  });
+
+  it("fires once for two or more aimed at you", () => {
+    const { game, p1, p2, attackers } = mangaraBoard();
+    const declared = declareAttackers(game, p2.id, [
+      { attackerId: attackers[0]!, defenderId: p1.id },
+      { attackerId: attackers[1]!, defenderId: p1.id },
+      { attackerId: attackers[2]!, defenderId: p1.id },
+    ]);
+    // Once per declaration, not once per attacker.
+    expect(declared.stack).toHaveLength(1);
+  });
+
+  it("counts only the attackers aimed at the controller", () => {
+    const three = createGameState({ playerCount: 3 });
+    const [mine, theirs, other] = three.players;
+    three.combat = {
+      attacks: [
+        { attackerId: "a", defenderId: other!.id },
+        { attackerId: "b", defenderId: other!.id },
+      ],
+      blockers: {},
+      attackersDeclared: true,
+      declaredBlockersFor: [],
+    };
+    // Two attackers, neither aimed at Mangara's controller.
+    expect(
+      triggerConditionHolds(three, mine!.id, {
+        kind: "attackers_against_you_at_least",
+        count: 2,
+      }),
+    ).toBe(false);
+    three.combat.attacks.push({ attackerId: "c", defenderId: mine!.id });
+    expect(
+      triggerConditionHolds(three, mine!.id, {
+        kind: "attackers_against_you_at_least",
+        count: 2,
+      }),
+    ).toBe(false);
+    three.combat.attacks.push({ attackerId: "d", defenderId: mine!.id });
+    expect(
+      triggerConditionHolds(three, mine!.id, {
+        kind: "attackers_against_you_at_least",
+        count: 2,
+      }),
+    ).toBe(true);
+    expect(theirs?.id).toBeDefined();
+  });
+
+  // ---- Scrap Trawler: lesser than the one that died -----------------------
+
+  it("compiles the head as one watch and the target as subject-relative", () => {
+    const compiled = compile(
+      "Scrap Trawler",
+      "Artifact Creature — Construct",
+      "Whenever ~ dies or another artifact you control is put into a graveyard from the battlefield, return to your hand target artifact card in your graveyard with lesser mana value.",
+      "{4}",
+      ["1", "3"],
+    );
+    expect(compiled.notes).toEqual([]);
+    const trigger = compiled.definition.triggers[0];
+    // The Trawler is itself an artifact, so both printed halves are the same
+    // watch — and there is no excludeSelf, which is why it chains off its
+    // own death.
+    expect(trigger).toMatchObject({
+      event: "dies",
+      watch: "controlled",
+      subjectFilter: { types: ["artifact"] },
+    });
+    expect(trigger?.excludeSelf).toBeUndefined();
+    expect(trigger?.targetRequirements).toEqual([
+      { kind: "own_graveyard_artifact_card", manaValueBelowSubject: true },
+    ]);
+  });
+
+  const trawlerBoard = () => {
+    const { game, p1 } = twoPlayers();
+    const trawlerId = put(
+      game,
+      p1.id,
+      createCardDefinition({
+        name: "Scrap Trawler",
+        typeLine: "Artifact Creature — Construct",
+        manaCost: "{4}",
+        power: 1,
+        toughness: 3,
+        triggers: [
+          {
+            event: "dies",
+            watch: "controlled",
+            subjectFilter: { types: ["artifact"] },
+            targetRequirements: [
+              { kind: "own_graveyard_artifact_card", manaValueBelowSubject: true },
+            ],
+            effects: [
+              { kind: "move_card", cardId: { type: "chosen", index: 0 }, toZone: "hand" },
+            ],
+          },
+        ],
+      }),
+    );
+    const cheapId = put(game, p1.id, artifact("Mox", "{0}"), "graveyard");
+    const equalId = put(game, p1.id, artifact("Equal", "{4}"), "graveyard");
+    const dearId = put(game, p1.id, artifact("Colossus", "{8}"), "graveyard");
+    game.turn.activePlayerId = p1.id;
+    game.turn.phase = "precombatMain";
+    game.turn.step = "precombatMain";
+    return { game, p1, trawlerId, cheapId, equalId, dearId };
+  };
+
+  it("offers only the cheaper artifacts when the Trawler dies", () => {
+    const { game, p1, trawlerId, cheapId, equalId, dearId } = trawlerBoard();
+    const died = applyEffect(game, { kind: "sacrifice", cardId: trawlerId });
+    const prompt = died.prompts.find((entry) => entry.kind === "choose_targets");
+    expect(prompt).toBeDefined();
+    const legal =
+      prompt?.kind === "choose_targets"
+        ? legalChoicesForRequirement(died, prompt.requirements[0]!, p1.id)
+        : [];
+    const ids = legal.map((choice) => (choice.type === "creature" ? choice.cardId : ""));
+    // The Trawler's own mana value is 4, so LESSER means 3 or under.
+    expect(ids).toContain(cheapId);
+    expect(ids).not.toContain(equalId);
+    expect(ids).not.toContain(dearId);
+  });
+
+  it("measures against the artifact that actually died", () => {
+    const { game, p1, cheapId, equalId } = trawlerBoard();
+    // A {2} artifact dies: now only things under 2 qualify, and the {0} Mox
+    // is the only one left. The threshold moves with the subject.
+    const smallId = put(game, p1.id, artifact("Small", "{2}"));
+    const died = applyEffect(game, { kind: "sacrifice", cardId: smallId });
+    const prompt = died.prompts.find((entry) => entry.kind === "choose_targets");
+    const legal =
+      prompt?.kind === "choose_targets"
+        ? legalChoicesForRequirement(died, prompt.requirements[0]!, p1.id)
+        : [];
+    const ids = legal.map((choice) => (choice.type === "creature" ? choice.cardId : ""));
+    expect(ids).toContain(cheapId);
+    expect(ids).not.toContain(equalId);
+  });
+
+  it("skips the trigger entirely when nothing is cheap enough", () => {
+    const { game, p1 } = twoPlayers();
+    const trawlerId = put(
+      game,
+      p1.id,
+      createCardDefinition({
+        name: "Scrap Trawler",
+        typeLine: "Artifact Creature — Construct",
+        manaCost: "{4}",
+        power: 1,
+        toughness: 3,
+        triggers: [
+          {
+            event: "dies",
+            watch: "controlled",
+            subjectFilter: { types: ["artifact"] },
+            targetRequirements: [
+              { kind: "own_graveyard_artifact_card", manaValueBelowSubject: true },
+            ],
+            effects: [
+              { kind: "move_card", cardId: { type: "chosen", index: 0 }, toZone: "hand" },
+            ],
+          },
+        ],
+      }),
+    );
+    put(game, p1.id, artifact("Colossus", "{8}"), "graveyard");
+    const died = applyEffect(game, { kind: "sacrifice", cardId: trawlerId });
+    // CR 603.3d: a trigger with no legal target is not put on the stack, and
+    // the legality check has to see the RESOLVED requirement to know that.
+    expect(died.prompts.filter((entry) => entry.kind === "choose_targets")).toHaveLength(0);
+  });
+
+  it("round trips both new shapes", () => {
+    const { game, p1 } = twoPlayers();
+    const definition = createCardDefinition({
+      name: "Wave 314 Omnibus",
+      typeLine: "Artifact Creature — Construct",
+      manaCost: "{4}",
+      power: 1,
+      toughness: 3,
+      triggers: [
+        {
+          event: "attacks",
+          watch: "opponents",
+          oncePerBatch: true,
+          condition: { kind: "attackers_against_you_at_least", count: 2 },
+          effects: [{ kind: "draw", playerId: "controller", count: 1 }],
+          targetRequirements: [],
+        },
+        {
+          event: "dies",
+          watch: "controlled",
+          subjectFilter: { types: ["artifact"] },
+          targetRequirements: [
+            { kind: "own_graveyard_artifact_card", manaValueBelowSubject: true },
+          ],
+          effects: [
+            { kind: "move_card", cardId: { type: "chosen", index: 0 }, toZone: "hand" },
+          ],
+        },
+      ],
+    });
+    put(game, p1.id, definition);
+    const round = parseGameState(serializeGameState(game));
+    const parsed = round.definitions[definition.id]!;
+    expect(parsed.triggers[0]?.condition).toEqual({
+      kind: "attackers_against_you_at_least",
+      count: 2,
+    });
+    expect(parsed.triggers[1]?.targetRequirements).toEqual([
+      { kind: "own_graveyard_artifact_card", manaValueBelowSubject: true },
+    ]);
+  });
+});

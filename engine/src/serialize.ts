@@ -2928,6 +2928,7 @@ function parseTargetRequirement(value: unknown, label: string): TargetRequiremen
     ...(value.manaValueEqualsX === true ? { manaValueEqualsX: true } : {}),
     ...(value.nonTokenOnly === true ? { nonTokenOnly: true } : {}),
     ...(value.tokenTargetOnly === true ? { tokenTargetOnly: true } : {}),
+    ...(value.manaValueBelowSubject === true ? { manaValueBelowSubject: true } : {}),
     ...(value.attackingOnly === true ? { attackingOnly: true } : {}),
     ...(value.attackingOrBlockingOnly === true ? { attackingOrBlockingOnly: true } : {}),
     ...(value.singleTargetOnly === true ? { singleTargetOnly: true } : {}),
@@ -4858,6 +4859,9 @@ function parseTriggerCondition(value: unknown, label: string): TriggerCondition 
       }
       if (conditionKind === "created_token_this_turn") {
         return { kind: conditionKind };
+      }
+      if (conditionKind === "attackers_against_you_at_least") {
+        return { kind: conditionKind, count: expectNumber(value.count, `${label}.count`) };
       }
       if (
         conditionKind === "attacked_with_creatures_this_turn" ||

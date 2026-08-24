@@ -2137,6 +2137,13 @@ export type TargetRequirement = {
   /** Caretaker's Talent: "target token you control". */
   tokenTargetOnly?: boolean;
   /**
+   * Scrap Trawler: "with LESSER mana value" — lesser than the artifact that
+   * just died, which is the trigger's subject. Resolved to a concrete
+   * `maxManaValue` where the trigger asks for targets, the only place that
+   * subject is known.
+   */
+  manaValueBelowSubject?: boolean;
+  /**
    * The Mycosynth Gardens: "with mana value X" — EXACTLY the announced X,
    * not a cap. Resolved into a matching min/max pair where the ability goes
    * on the stack, which is the only place the announced value is known.
@@ -3337,6 +3344,13 @@ export type TriggerCondition =
   | { kind: "gained_life_this_turn"; atLeast: number }
   /** Bennie Bracks: "if you created a token this turn". */
   | { kind: "created_token_this_turn" }
+  /**
+   * Mangara: "if two or more of those creatures are attacking you and/or
+   * planeswalkers you control". Planeswalkers are not separate defenders in
+   * this engine — every attack names a PLAYER — so "you and/or your
+   * planeswalkers" is exactly "you", and the two readings agree.
+   */
+  | { kind: "attackers_against_you_at_least"; count: number }
   /**
    * Windbrisk Heights: "you attacked with N or more creatures this turn".
    * The same question `ActivatedAbility.requiresAttackersThisTurn` asks for

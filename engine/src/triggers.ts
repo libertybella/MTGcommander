@@ -194,6 +194,12 @@ export function triggerConditionHolds(
   if (condition.kind === "gained_life_this_turn") {
     return (state.lifeGainedByPlayerThisTurn?.[controllerId] ?? 0) >= condition.atLeast;
   }
+  if (condition.kind === "attackers_against_you_at_least") {
+    const aimed = (state.combat?.attacks ?? []).filter(
+      (attack) => attack.defenderId === controllerId,
+    ).length;
+    return aimed >= condition.count;
+  }
   if (condition.kind === "created_token_this_turn") {
     return (state.createdTokenThisTurn ?? []).includes(controllerId);
   }
@@ -422,7 +428,24 @@ export function queueDefinitionTriggerInPlace(
     });
     return true;
   }
-  const requirements = trigger.targetRequirements ?? [];
+  // Scrap Trawler: "with lesser mana value" is lesser than the artifact that
+  // just died. Resolved HERE, where the subject is known, and resolved
+  // before the legality check as well — asking whether a legal target exists
+  // against the unresolved requirement would offer a trigger the prompt then
+  // has no answer for.
+  const printedRequirements = trigger.targetRequirements ?? [];
+  const subjectManaValue = subject?.cardId
+    ? characteristicsOf(state, subject.cardId).manaValue
+    : undefined;
+  const requirements = printedRequirements.map((requirement) =>
+    requirement.manaValueBelowSubject
+      ? {
+          ...requirement,
+          manaValueBelowSubject: undefined,
+          maxManaValue: Math.max(0, (subjectManaValue ?? 0) - 1),
+        }
+      : requirement,
+  );
   if (requirements.length > 0) {
     if (!hasAnyLegalTargetSet(state, requirements, card.controllerId)) {
       return false;

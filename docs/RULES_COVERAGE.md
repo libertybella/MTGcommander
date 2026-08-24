@@ -870,6 +870,24 @@ more questions it can now ask:
   (Bennie Bracks). Reads the existing per-player `createdTokenThisTurn`
   list, and asks whether the CONTROLLER is in it — an opponent's Treasure
   must not satisfy it.
+- **`attackers_against_you_at_least`** — Mangara. Planeswalkers are not
+  separate defenders in this engine (every attack names a PLAYER), so "you
+  and/or planeswalkers you control" is exactly "you": the two readings agree
+  rather than one approximating the other. `oncePerBatch` makes it fire once
+  per declaration, not once per attacker.
+
+- **`TargetRequirement.manaValueBelowSubject`** — Scrap Trawler: "with
+  LESSER mana value" than the artifact that just died. Resolved to a concrete
+  `maxManaValue` where the trigger asks for targets, the only place the
+  subject is known — and resolved BEFORE the legality check, because asking
+  whether a legal target exists against the unresolved requirement would
+  queue a trigger the prompt then has no answer for (CR 603.3d).
+
+  Scrap Trawler's head is one watch, not two: the Trawler is itself an
+  artifact, so "~ dies or another artifact you control is put into a
+  graveyard" is "an artifact you control dies", itself included. There is no
+  `excludeSelf`, which is the whole reason it chains off its own death.
+
 - **"When the TWELFTH hour counter is put on ~"** — Midnight Clock. The
   same `counter_added` event Fathom Mage watches, with an intervening `if`
   on how many are now there. A count, not a distinct twelfth-counter event,
