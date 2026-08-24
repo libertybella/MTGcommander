@@ -1281,6 +1281,21 @@ export function wouldEnterTapped(state: GameState, cardId: CardInstanceId): bool
   ) {
     return true;
   }
+  // Spelunking: "Lands you control enter untapped" CANCELS an enters-tapped
+  // replacement rather than adding one, so it is asked last and wins. It is
+  // scoped to the arriving land's own controller.
+  if (
+    arrivingTypes.includes("land") &&
+    Object.values(state.cards).some(
+      (other) =>
+        other.zone === "battlefield" &&
+        other.controllerId === card.controllerId &&
+        state.definitions[other.definitionId]?.landsEnterUntapped === true &&
+        !abilitiesRemoved(state, other.id),
+    )
+  ) {
+    return false;
+  }
   return (state.definitions[card.definitionId]?.replacements ?? []).some((replacement) => {
     if (replacement.kind === "enters_tapped") {
       return true;

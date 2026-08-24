@@ -870,6 +870,24 @@ more questions it can now ask:
   (Bennie Bracks). Reads the existing per-player `createdTokenThisTurn`
   list, and asks whether the CONTROLLER is in it — an opponent's Treasure
   must not satisfy it.
+- **A look with more than one hand slot** — Dig Through Time. The
+  destination list is a MULTISET, so "two of them into your hand and the rest
+  on the bottom" is two hand slots and five bottom ones; nothing about the
+  mechanism changes with the count, and the one-slot forms (Impulse,
+  Anticipate) are the same run-compiler.
+
+  The three-sentence dig fuser also now accepts "in ANY order" beside "in a
+  random order", and "the bottom" without "of your library" — the same
+  instruction to an engine with no ordering prompt for the remainder.
+
+- **`landsEnterUntapped`** — Spelunking: the mirror of the enters-tapped
+  statics. It CANCELS a replacement rather than adding one, so it is asked
+  last and wins, and it is scoped to the arriving land's own controller.
+
+  Its lifegain rider is fused into the choice it reads (`fusePutLandRiderInPlace`),
+  the third time in three waves a rider sentence had to be joined to the
+  clause it belongs to rather than left as a top-level effect.
+
 - **`ActivatedAbility.timing: "your_turn"`** — Wishclaw Talisman. NOT
   sorcery timing: it may be activated in combat, or with the stack full, as
   long as it is your turn. Handing the artifact over at instant speed on

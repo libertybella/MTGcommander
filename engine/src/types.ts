@@ -359,6 +359,12 @@ export type CardDefinition = {
   opponentNonbasicLandsEnterTapped?: boolean;
   /** Blind Obedience: opponents' artifacts enter tapped too. */
   opponentArtifactsEnterTapped?: boolean;
+  /**
+   * Spelunking: "Lands you control enter untapped." The mirror of the
+   * statics above — it CANCELS an enters-tapped replacement rather than
+   * adding one, so it is checked after them and wins.
+   */
+  landsEnterUntapped?: boolean;
   /** "You may cast spells as though they had flash" (Vedalken Orrery). */
   /** Convoke (CR 702.51): tap creatures to help pay. */
   convoke?: boolean;

@@ -117,6 +117,7 @@ export function createCardDefinition(
         | "loyalty"
         | "loyaltyAbilities"
         | "noMaxHandSize"
+        | "landsEnterUntapped"
         | "handSizeEffect"
         | "opponentsDrawCap"
         | "noncreatureSpellCap"
@@ -495,6 +496,7 @@ export function createCardDefinition(
         }
       : {}),
     ...(input.noMaxHandSize ? { noMaxHandSize: true } : {}),
+    ...(input.landsEnterUntapped ? { landsEnterUntapped: true } : {}),
     ...(input.handSizeEffect
       ? {
           handSizeEffect: {

@@ -204,6 +204,7 @@ function compileOneFace(card: OracleCard, definitionId: string): OracleCompileRe
       ? { copySelfWhenCastFromGraveyard: true }
       : {}),
     ...(compiled.noMaxHandSize ? { noMaxHandSize: true } : {}),
+    ...(compiled.landsEnterUntapped ? { landsEnterUntapped: true } : {}),
     ...(compiled.handSizeEffect ? { handSizeEffect: compiled.handSizeEffect } : {}),
     ...(compiled.opponentsDrawCap === undefined
       ? {}

@@ -65,6 +65,7 @@ export type CompiledOracleText = {
   enchantedTappedBonus?: { color: Color | "chosen"; amount: number };
   loyaltyAbilities?: LoyaltyAbility[];
   noMaxHandSize?: boolean;
+  landsEnterUntapped?: boolean;
   handSizeEffect?: CardDefinition["handSizeEffect"];
   opponentsDrawCap?: number;
   noncreatureSpellCap?: number;
@@ -5886,8 +5887,11 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     };
   }
 
+  // The trailing "gaining N life if it is a <Subtype>" is Spelunking's
+  // fused rider (see `fusePutLandRiderInPlace`): it reads the card this
+  // clause just chose, so it belongs inside the same choice.
   const putLand = sentence.match(
-    /^you may put a land card from your hand onto the battlefield( tapped)?$/i,
+    /^you may put a land card from your hand onto the battlefield( tapped)?(?: gaining (\d+) life if it is an? ([A-Za-z-]+))?$/i,
   );
   if (putLand) {
     return {
@@ -5904,6 +5908,24 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
               toZone: "battlefield",
               ...(putLand[1] ? { entersTapped: true } : {}),
             },
+            ...(putLand[2] && putLand[3]
+              ? [
+                  {
+                    kind: "if_condition" as const,
+                    condition: {
+                      kind: "chosen_has_subtype" as const,
+                      subtype: putLand[3].toLowerCase(),
+                    },
+                    then: [
+                      {
+                        kind: "gain_life" as const,
+                        playerId: "controller" as const,
+                        amount: Number(putLand[2]),
+                      },
+                    ],
+                  },
+                ]
+              : []),
           ],
         },
       ],
@@ -8917,9 +8939,13 @@ function fuseDigSentencesInPlace(sentences: string[], lineStart: boolean[]): voi
     if (!count) {
       continue;
     }
-    const restBottom = /^Put the rest on the bottom of your library in a random order$/i.test(
-      sentences[index + 2]!,
-    );
+    // "In any order" and "in a random order" are the same instruction to an
+    // engine that has no ordering prompt for the discarded remainder — and
+    // "the bottom" is sometimes printed without "of your library".
+    const restBottom =
+      /^Put the rest on the bottom(?: of your library)? in (?:a random|any) order$/i.test(
+        sentences[index + 2]!,
+      );
     // Grisly Salvage: the unpicked reveals go to the graveyard instead.
     const restGraveyard = /^Put the rest into your graveyard$/i.test(sentences[index + 2]!);
     if (!restBottom && !restGraveyard) {
@@ -9093,6 +9119,35 @@ function fuseChooseGraveyardCastInPlace(sentences: string[], lineStart: boolean[
       /^You may cast that card this turn$/i.test(sentences[index + 1] ?? "")
     ) {
       sentences[index] = `${sentences[index]} and you may cast that card this turn`;
+      sentences.splice(index + 1, 1);
+      lineStart.splice(index + 1, 1);
+    }
+  }
+}
+
+/**
+ * Spelunking: "…you may put a land card from your hand onto the battlefield.
+ * If you put a Cave onto the battlefield this way, you gain 4 life."
+ *
+ * The rider reads the card the previous sentence chose, so it has to be part
+ * of that clause — on its own it names a card nothing has picked, and on a
+ * permanent card a top-level effect never runs.
+ */
+function fusePutLandRiderInPlace(sentences: string[], lineStart: boolean[]): void {
+  for (let index = 0; index + 1 < sentences.length; index += 1) {
+    if (lineStart[index + 1]) {
+      continue;
+    }
+    const rider = sentences[index + 1]?.match(
+      /^If you put an? ([A-Z][a-z-]+) onto the battlefield this way, you gain (\d+) life$/,
+    );
+    if (
+      rider?.[1] &&
+      rider[2] &&
+      /put a land card from your hand onto the battlefield$/i.test(sentences[index] ?? "")
+    ) {
+      sentences[index] =
+        `${sentences[index]} gaining ${rider[2]} life if it is a ${rider[1]}`;
       sentences.splice(index + 1, 1);
       lineStart.splice(index + 1, 1);
     }
@@ -11912,6 +11967,30 @@ function compileLookAndAssignPair(sentences: string[], index: number): SimpleCla
       consumed: 2,
     };
   }
+  // Dig Through Time: the same shape with more than one hand slot. The
+  // destination list is a MULTISET, so two hand slots and five bottom ones
+  // say it exactly; nothing about the mechanism changes with the count.
+  const manyToHand = assign.match(
+    /^Put (two|three|four|five) of them into your hand and (?:the rest|put the rest) on the bottom of your library in (?:any|a random) order$/i,
+  );
+  const toHand = manyToHand?.[1] ? parseCount(manyToHand[1]) : null;
+  if (toHand && toHand < count) {
+    return {
+      targetRequirements: [],
+      effects: [
+        {
+          kind: "look_and_assign",
+          playerId: "controller",
+          count,
+          destinations: [
+            ...Array.from({ length: toHand }, () => "hand" as const),
+            ...Array.from({ length: count - toHand }, () => "library_bottom" as const),
+          ],
+        },
+      ],
+      consumed: 2,
+    };
+  }
   return null;
 }
 
@@ -12597,6 +12676,7 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
   fuseItCantBeBlockedInPlace(sentences, lineStart);
   fuseDestroyLifegainInPlace(sentences, lineStart);
   fuseChooseGraveyardCastInPlace(sentences, lineStart);
+  fusePutLandRiderInPlace(sentences, lineStart);
   fuseMayPayInPlace(sentences, lineStart);
   fusePactInPlace(sentences, lineStart);
   fuseChooseTargetCreatureInPlace(sentences, lineStart);
@@ -14310,6 +14390,13 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
         result.notCreatureBelowDevotion = { color, threshold };
         continue;
       }
+    }
+
+    // Spelunking: the mirror of the enters-tapped statics — it cancels one
+    // rather than adding one.
+    if (/^Lands you control enter untapped$/i.test(sentence)) {
+      result.landsEnterUntapped = true;
+      continue;
     }
 
     // Bender's Waterskin: the one-permanent form of the same static.

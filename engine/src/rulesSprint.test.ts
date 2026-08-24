@@ -47783,3 +47783,240 @@ describe("wave 318: your turn is not sorcery timing", () => {
     expect(round.definitions[definition.id]?.activated[0]?.timing).toBe("your_turn");
   });
 });
+
+describe("wave 319: more hand slots, and a static that cancels one", () => {
+  const compile = (name: string, typeLine: string, oracleText: string, manaCost = "") =>
+    compileOracleCard({
+      oracleId: name.toLowerCase().replace(/[^a-z]+/g, "-"),
+      name,
+      manaCost,
+      typeLine,
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  const put = (
+    game: GameState,
+    ownerId: string,
+    definition: CardDefinition,
+    zone: "hand" | "battlefield" = "battlefield",
+  ) => {
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({ definitionId: definition.id, ownerId, zone });
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === ownerId)!.zones[zone].push(card.id);
+    return card.id;
+  };
+
+  // ---- Dig Through Time: two hand slots ----------------------------------
+
+  it("compiles a multi-slot look as a destination multiset", () => {
+    const compiled = compile(
+      "Dig Through Time",
+      "Instant",
+      "Delve\nLook at the top seven cards of your library. Put two of them into your hand and the rest on the bottom of your library in any order.",
+      "{6}{U}{U}",
+    );
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.effects[0]).toEqual({
+      kind: "look_and_assign",
+      playerId: "controller",
+      count: 7,
+      // The destination list is a multiset: two hand slots and five bottom
+      // ones say it exactly, and nothing about the mechanism changes.
+      destinations: [
+        "hand",
+        "hand",
+        "library_bottom",
+        "library_bottom",
+        "library_bottom",
+        "library_bottom",
+        "library_bottom",
+      ],
+    });
+  });
+
+  it("leaves the one-slot forms alone", () => {
+    // Impulse and Anticipate are the same run-compiler with one hand slot;
+    // widening the count must not have changed them.
+    const impulse = compile(
+      "Impulse",
+      "Instant",
+      "Look at the top four cards of your library. Put one of them into your hand and the rest on the bottom of your library in any order.",
+      "{1}{U}",
+    );
+    expect(impulse.notes).toEqual([]);
+    expect(impulse.definition.effects[0]).toMatchObject({
+      count: 4,
+      destinations: ["hand", "library_bottom", "library_bottom", "library_bottom"],
+    });
+  });
+
+  it("hands out exactly two of the seven", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const player = game.players.find((entry) => entry.id === p1.id)!;
+    const handBefore = player.zones.hand.length;
+    const opened = applyEffects(
+      game,
+      bindCardEffects(
+        game,
+        [
+          {
+            kind: "look_and_assign",
+            playerId: "controller",
+            count: 7,
+            destinations: [
+              "hand",
+              "hand",
+              "library_bottom",
+              "library_bottom",
+              "library_bottom",
+              "library_bottom",
+              "library_bottom",
+            ],
+          },
+        ],
+        { controllerId: p1.id, sourceId: null },
+      ),
+    );
+    const prompt = opened.prompts[0]!;
+    const looked = lookedAtCardIds(opened, prompt);
+    expect(looked).toHaveLength(7);
+    const resolved = applyResolveLookAssign(
+      opened,
+      p1.id,
+      looked.map((cardId, index) => ({
+        cardId,
+        destination: index < 2 ? ("hand" as const) : ("library_bottom" as const),
+      })),
+    );
+    expect(
+      resolved.players.find((entry) => entry.id === p1.id)!.zones.hand.length,
+    ).toBe(handBefore + 2);
+  });
+
+  it("refuses a third card into the hand", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const opened = applyEffects(
+      game,
+      bindCardEffects(
+        game,
+        [
+          {
+            kind: "look_and_assign",
+            playerId: "controller",
+            count: 3,
+            destinations: ["hand", "hand", "library_bottom"],
+          },
+        ],
+        { controllerId: p1.id, sourceId: null },
+      ),
+    );
+    const looked = lookedAtCardIds(opened, opened.prompts[0]!);
+    // Each destination slot can be used once, so a third hand assignment
+    // has nowhere to go.
+    expect(() =>
+      applyResolveLookAssign(
+        opened,
+        p1.id,
+        looked.map((cardId) => ({ cardId, destination: "hand" as const })),
+      ),
+    ).toThrow();
+  });
+
+  // ---- Spelunking: a static that CANCELS enters-tapped --------------------
+
+  it("compiles both halves of Spelunking", () => {
+    const compiled = compile(
+      "Spelunking",
+      "Enchantment",
+      "When ~ enters, draw a card, then you may put a land card from your hand onto the battlefield. If you put a Cave onto the battlefield this way, you gain 4 life.\nLands you control enter untapped.",
+      "{2}{G}",
+    );
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.landsEnterUntapped).toBe(true);
+    const choose = compiled.definition.triggers[0]?.effects.find(
+      (effect) => effect.kind === "choose_card",
+    );
+    // The rider reads the card the choice just made, so it lives inside it.
+    expect(choose?.kind === "choose_card" && choose.thenEffects.at(-1)).toEqual({
+      kind: "if_condition",
+      condition: { kind: "chosen_has_subtype", subtype: "cave" },
+      then: [{ kind: "gain_life", playerId: "controller", amount: 4 }],
+    });
+  });
+
+  const spelunking = () =>
+    createCardDefinition({
+      name: "Spelunking",
+      typeLine: "Enchantment",
+      manaCost: "{2}{G}",
+      landsEnterUntapped: true,
+    });
+
+  it("cancels an enters-tapped land", () => {
+    const { game, p1 } = twoPlayers();
+    const tapLandId = put(
+      game,
+      p1.id,
+      createCardDefinition({
+        name: "Slow Land",
+        typeLine: "Land",
+        replacements: [{ kind: "enters_tapped" }],
+      }),
+      "hand",
+    );
+    expect(wouldEnterTapped(game, tapLandId)).toBe(true);
+    put(game, p1.id, spelunking());
+    // It CANCELS the replacement rather than adding one, so it is asked
+    // last and wins.
+    expect(wouldEnterTapped(game, tapLandId)).toBe(false);
+  });
+
+  it("does not untap an opponent's lands", () => {
+    const { game, p1, p2 } = twoPlayers();
+    put(game, p1.id, spelunking());
+    const theirsId = put(
+      game,
+      p2.id,
+      createCardDefinition({
+        name: "Slow Land",
+        typeLine: "Land",
+        replacements: [{ kind: "enters_tapped" }],
+      }),
+      "hand",
+    );
+    // "Lands YOU control".
+    expect(wouldEnterTapped(game, theirsId)).toBe(true);
+  });
+
+  it("leaves nonland permanents tapped", () => {
+    const { game, p1 } = twoPlayers();
+    put(game, p1.id, spelunking());
+    const artifactId = put(
+      game,
+      p1.id,
+      createCardDefinition({
+        name: "Slow Rock",
+        typeLine: "Artifact",
+        manaCost: "{2}",
+        replacements: [{ kind: "enters_tapped" }],
+      }),
+      "hand",
+    );
+    expect(wouldEnterTapped(game, artifactId)).toBe(true);
+  });
+
+  it("round trips the static", () => {
+    const { game, p1 } = twoPlayers();
+    const definition = spelunking();
+    put(game, p1.id, definition);
+    const round = parseGameState(serializeGameState(game));
+    expect(round.definitions[definition.id]?.landsEnterUntapped).toBe(true);
+  });
+});

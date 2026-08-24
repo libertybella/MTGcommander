@@ -634,6 +634,7 @@ export function parseGameState(json: string): GameState {
         def.imageUrl === undefined ? "" : expectString(def.imageUrl, "definition.imageUrl", true),
       ...(def.ward === undefined ? {} : { ward: expectNumber(def.ward, "definition.ward") }),
       ...(def.noMaxHandSize === true ? { noMaxHandSize: true } : {}),
+      ...(def.landsEnterUntapped === true ? { landsEnterUntapped: true } : {}),
       ...(def.handSizeEffect === undefined
         ? {}
         : {
