@@ -3018,18 +3018,27 @@ function cantBeCountered(state: GameState, stackObjectId: StackObjectId): boolea
   if (card && state.definitions[card.definitionId]?.cantBeCountered) {
     return true;
   }
-  // Rhythm of the Wild: the spell's controller has a "creature spells you
-  // control can't be countered" permanent.
-  if (card && characteristicsOf(state, card.id).types.includes("creature")) {
-    return Object.values(state.cards).some(
-      (source) =>
-        source.zone === "battlefield" &&
-        source.controllerId === entry.controllerId &&
-        state.definitions[source.definitionId]?.creatureSpellsCantBeCountered === true &&
-        !abilitiesRemoved(state, source.id),
-    );
+  // Chimil / Rhythm of the Wild / Destiny Spinner: the spell's controller
+  // has a permanent saying their spells can't be countered. The narrowed
+  // forms name card types; the unnarrowed one names none.
+  if (!card) {
+    return false;
   }
-  return false;
+  const spellTypes = characteristicsOf(state, card.id).types;
+  return Object.values(state.cards).some((source) => {
+    if (
+      source.zone !== "battlefield" ||
+      source.controllerId !== entry.controllerId ||
+      abilitiesRemoved(state, source.id)
+    ) {
+      return false;
+    }
+    const shield = state.definitions[source.definitionId]?.spellsCantBeCountered;
+    if (!shield) {
+      return false;
+    }
+    return !shield.types?.length || shield.types.some((type) => spellTypes.includes(type));
+  });
 }
 
 function applyCounterUnlessPays(

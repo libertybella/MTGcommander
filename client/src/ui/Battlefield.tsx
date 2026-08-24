@@ -2582,13 +2582,23 @@ export function Battlefield(props: Props) {
                   type="button"
                   className="pass-button"
                   data-testid="pay-cost"
-                  disabled={autoTapPlan(state, actorId, prompt.cost) === null}
+                  disabled={
+                    prompt.life === undefined
+                      ? autoTapPlan(state, actorId, prompt.cost) === null
+                      : (state.players.find((entry) => entry.id === actorId)?.life ?? 0) <
+                        prompt.life
+                  }
                   onClick={() => {
-                    const plan = autoTapPlan(state, actorId, prompt.cost) ?? [];
+                    const plan =
+                      prompt.life === undefined
+                        ? (autoTapPlan(state, actorId, prompt.cost) ?? [])
+                        : [];
                     send({ kind: "resolve_pay", playerId: actorId, pay: true, taps: plan });
                   }}
                 >
-                  Pay {prompt.cost}
+                  {/* Ward—Pay 2 life: the tax is in life, so the button has
+                      to say so rather than reading "Pay " with nothing. */}
+                  {prompt.life === undefined ? `Pay ${prompt.cost}` : `Pay ${prompt.life} life`}
                 </button>
                 <button
                   type="button"

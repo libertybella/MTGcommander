@@ -71,6 +71,8 @@ export type ComputedCard = {
   protectionFrom: ProtectionFrom;
   /** Printed ward plus layer-6 grants (Lavaspur Boots); 0 means none. */
   ward: number;
+  /** Ward paid in life (CR 702.21b), taxed separately from `ward`. */
+  wardLife: number;
   /**
    * Every player who has goaded this creature — the instance's own record
    * (from the goad effect, which expires) merged with any static that says it
@@ -99,6 +101,7 @@ const LAYER_OF: Record<ContinuousEffectData["kind"], number> = {
   grant_keyword: 6,
   grant_protection: 6,
   grant_ward: 6,
+  grant_ward_life: 6,
   remove_keywords: 6,
   lock_keywords: 6,
   grant_mana_ability: 6,
@@ -177,6 +180,7 @@ function baseComputed(state: GameState, card: CardInstance): ComputedCard {
       cantBeBlocked: false,
       protectionFrom: {},
       ward: 0,
+      wardLife: 0,
       goadedBy: [...(card.goadedBy ?? [])],
     };
   }
@@ -248,6 +252,7 @@ function baseComputed(state: GameState, card: CardInstance): ComputedCard {
     cantBeBlocked: false,
     protectionFrom: { ...(definition?.protectionFrom ?? {}) },
     ward: definition?.ward ?? 0,
+    wardLife: definition?.wardLife ?? 0,
     // The instance's own record is the base; statics add to it in layer 6.
     goadedBy: [...(card.goadedBy ?? [])],
   };
@@ -975,6 +980,9 @@ function applyInstance(
         // cannot express (documented).
         computed.ward = Math.max(computed.ward, effect.amount);
         break;
+      case "grant_ward_life":
+        computed.wardLife = Math.max(computed.wardLife, effect.amount);
+        break;
       case "remove_keywords":
         // Shadowspear: strip the listed keywords (later grants can re-add
         // by timestamp, matching CR 613.7).
@@ -1022,6 +1030,7 @@ function applyInstance(
         computed.allCreatureTypes = false;
         computed.protectionFrom = {};
         computed.ward = 0;
+        computed.wardLife = 0;
         break;
       case "restrict": {
         // Wayward Swordtooth: the restriction lifts with the city's blessing.

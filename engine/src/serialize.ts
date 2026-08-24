@@ -633,6 +633,9 @@ export function parseGameState(json: string): GameState {
       imageUrl:
         def.imageUrl === undefined ? "" : expectString(def.imageUrl, "definition.imageUrl", true),
       ...(def.ward === undefined ? {} : { ward: expectNumber(def.ward, "definition.ward") }),
+      ...(def.wardLife === undefined
+        ? {}
+        : { wardLife: expectNumber(def.wardLife, "definition.wardLife") }),
       ...(def.noMaxHandSize === true ? { noMaxHandSize: true } : {}),
       ...(def.landsEnterUntapped === true ? { landsEnterUntapped: true } : {}),
       ...(def.totemArmor === true ? { totemArmor: true } : {}),
@@ -795,8 +798,18 @@ export function parseGameState(json: string): GameState {
         ? {}
         : { extraLandDrops: expectNumber(def.extraLandDrops, `definition.${id}.extraLandDrops`) }),
       ...(def.cantBeCountered === true ? { cantBeCountered: true } : {}),
-      ...(def.creatureSpellsCantBeCountered === true
-        ? { creatureSpellsCantBeCountered: true }
+      ...(isRecord(def.spellsCantBeCountered)
+        ? {
+            spellsCantBeCountered: {
+              ...(Array.isArray(def.spellsCantBeCountered.types)
+                ? {
+                    types: def.spellsCantBeCountered.types.map((type, index) =>
+                      expectString(type, `definition.spellsCantBeCountered.types[${index}]`),
+                    ),
+                  }
+                : {}),
+            },
+          }
         : {}),
       ...(def.opponentsLockedDuringYourTurn === true
         ? { opponentsLockedDuringYourTurn: true }
@@ -2299,6 +2312,11 @@ function parsePrompts(value: unknown, playerIds: Set<string>): PendingPrompt[] {
         cost: expectString(entry.cost, `prompts[${index}].cost`),
         stackObjectId: expectString(entry.stackObjectId, `prompts[${index}].stackObjectId`),
         reason,
+        // Ward—Pay N life: without this the tax came back across the wire as
+        // a free {0} and the ward simply stopped taxing.
+        ...(entry.life === undefined
+          ? {}
+          : { life: expectNumber(entry.life, `prompts[${index}].life`) }),
         ...(resumeEffects && resumeEffects.length > 0 ? { resumeEffects } : {}),
       };
     }
@@ -5379,7 +5397,7 @@ function parseContinuousEffectData(value: unknown, label: string): ContinuousEff
     }
     return { kind, keyword: keyword as Keyword };
   }
-  if (kind === "grant_ward") {
+  if (kind === "grant_ward" || kind === "grant_ward_life") {
     return { kind, amount: expectNumber(value.amount, `${label}.amount`) };
   }
   if (kind === "grant_protection") {

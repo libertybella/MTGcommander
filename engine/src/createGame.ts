@@ -109,6 +109,7 @@ export function createCardDefinition(
         | "otherFaceId"
         | "layout"
         | "ward"
+        | "wardLife"
         | "modes"
         | "protectionFrom"
         | "enchant"
@@ -134,7 +135,7 @@ export function createCardDefinition(
         | "extraLandDropsForAll"
         | "opponentNonbasicLandsEnterTapped"
         | "cantBeCountered"
-        | "creatureSpellsCantBeCountered"
+        | "spellsCantBeCountered"
         | "opponentsLockedDuringYourTurn"
         | "opponentsCantCastDuringYourTurn"
         | "mustAttack"
@@ -468,6 +469,7 @@ export function createCardDefinition(
       : [],
     imageUrl: input.imageUrl ?? "",
     ...(input.ward && input.ward > 0 ? { ward: input.ward } : {}),
+    ...(input.wardLife && input.wardLife > 0 ? { wardLife: input.wardLife } : {}),
     ...(input.protectionFrom && Object.keys(input.protectionFrom).length > 0
       ? { protectionFrom: copyProtection(input.protectionFrom) }
       : {}),
@@ -538,7 +540,15 @@ export function createCardDefinition(
       ? { extraLandDrops: input.extraLandDrops }
       : {}),
     ...(input.cantBeCountered ? { cantBeCountered: true } : {}),
-    ...(input.creatureSpellsCantBeCountered ? { creatureSpellsCantBeCountered: true } : {}),
+    ...(input.spellsCantBeCountered
+      ? {
+          spellsCantBeCountered: {
+            ...(input.spellsCantBeCountered.types
+              ? { types: [...input.spellsCantBeCountered.types] }
+              : {}),
+          },
+        }
+      : {}),
     ...(input.opponentsLockedDuringYourTurn ? { opponentsLockedDuringYourTurn: true } : {}),
     ...(input.opponentsCantCastDuringYourTurn ? { opponentsCantCastDuringYourTurn: true } : {}),
     ...(input.mustAttack ? { mustAttack: true } : {}),

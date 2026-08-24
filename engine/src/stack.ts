@@ -43,20 +43,36 @@ function queueWardPromptsInPlace(
     }
     const card = state.cards[target.cardId];
     // Computed, not printed: Lavaspur Boots and friends grant ward.
-    const ward = card ? computedCard(state, card.id)?.ward : undefined;
-    if (!card || !ward || ward <= 0 || card.controllerId === casterId) {
+    const computed = card ? computedCard(state, card.id) : undefined;
+    if (!card || card.controllerId === casterId || abilitiesRemoved(state, card.id)) {
       continue;
     }
-    if (abilitiesRemoved(state, card.id)) {
-      continue;
+    const ward = computed?.ward ?? 0;
+    const wardLife = computed?.wardLife ?? 0;
+    if (ward > 0) {
+      state.prompts.push({
+        kind: "pay_or_counter",
+        playerId: casterId,
+        cost: `{${ward}}`,
+        stackObjectId,
+        reason: "ward",
+      });
     }
-    state.prompts.push({
-      kind: "pay_or_counter",
-      playerId: casterId,
-      cost: `{${ward}}`,
-      stackObjectId,
-      reason: "ward",
-    });
+    // A permanent with both taxes twice: CR 702.21c has each ward ability
+    // trigger separately, and two prompts is the closest this engine's
+    // single-payment shape gets to that.
+    if (wardLife > 0) {
+      state.prompts.push({
+        kind: "pay_or_counter",
+        playerId: casterId,
+        // No mana is due at all; "{0}" says so and, unlike an empty
+        // string, survives the wire.
+        cost: "{0}",
+        stackObjectId,
+        reason: "ward",
+        life: wardLife,
+      });
+    }
   }
 }
 

@@ -121,6 +121,13 @@ export type CardDefinition = {
   /** Ward {N}: opponents targeting this pay N generic or the spell is countered. */
   ward?: number;
   /**
+   * Ward paid in LIFE rather than mana (CR 702.21b) — Hexing Squelcher's
+   * "Ward—Pay 2 life". Kept apart from `ward` because the two are paid from
+   * different pools and a single number could not say which; a permanent
+   * with both taxes twice, which is what the printed cards do.
+   */
+  wardLife?: number;
+  /**
    * Protection (CR 702.16): can't be targeted, damaged, enchanted/equipped,
    * or blocked by sources this matches.
    */
@@ -193,8 +200,17 @@ export type CardDefinition = {
   manaTapMultiplier?: number;
   /** "You may … rather than pay this spell's mana cost." */
   altCost?: AlternativeCastCost;
-  /** Rhythm of the Wild: the controller's creature spells can't be countered. */
-  creatureSpellsCantBeCountered?: boolean;
+  /**
+   * "Spells you control can't be countered" (Chimil), and its narrowed
+   * forms: Rhythm of the Wild's creature spells, Destiny Spinner's creature
+   * and enchantment spells. An empty/absent `types` means EVERY spell the
+   * controller casts; otherwise the spell must have one of these card types.
+   *
+   * One field rather than one boolean per wording — the narrowings differ
+   * only in which types they name, and a boolean apiece is a list waiting
+   * to fall behind.
+   */
+  spellsCantBeCountered?: { types?: string[] };
   /** Grand Abolisher: on this permanent's controller's turn, opponents can't
    * cast spells or activate artifact/creature/enchantment abilities. */
   opponentsLockedDuringYourTurn?: boolean;
@@ -3869,6 +3885,12 @@ export type PendingPrompt =
       stackObjectId: StackObjectId;
       /** Why the payment is due — shown in the UI. */
       reason: "unless_pays" | "ward";
+      /**
+       * Ward—Pay N life: the tax comes out of life, not mana, so `cost` is
+       * empty and this is what is owed. The same field `pay_or_effect`
+       * already uses, read by the same branch of the resolver.
+       */
+      life?: number;
       resumeEffects?: GameEffect[];
     };
 
@@ -4413,6 +4435,8 @@ export type ContinuousEffectData =
    * multiple ward abilities trigger separately, which the pay-or-counter
    * prompt cannot yet express (documented). */
   | { kind: "grant_ward"; amount: number }
+  /** Hexing Squelcher: "Other creatures you control have \"Ward—Pay 2 life.\"" */
+  | { kind: "grant_ward_life"; amount: number }
   /** layer 6: Cryptolith Rite grants a mana ability to matching permanents. */
   | { kind: "grant_mana_ability"; ability: ManaAbility }
   /**

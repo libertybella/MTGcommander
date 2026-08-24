@@ -870,6 +870,25 @@ more questions it can now ask:
   (Bennie Bracks). Reads the existing per-player `createdTokenThisTurn`
   list, and asks whether the CONTROLLER is in it — an opponent's Treasure
   must not satisfy it.
+- **`wardLife`** — Ward—Pay N life (CR 702.21b), Hexing Squelcher. Kept
+  apart from `ward` rather than folded into one number, because the two are
+  paid from different pools and one number could not say which. A permanent
+  carrying both taxes TWICE, which is what CR 702.21c says and what the
+  printed cards do.
+
+  The prompt reuses the `life` field `pay_or_effect` already had, and the
+  resolver branch that reads it. Teaching the fuzz answerer and the client
+  button about it also fixed a pre-existing hole in the SYLVAN LIBRARY path:
+  both asked `canPayManaCost` about a life prompt, got yes for a zero mana
+  cost, and then either threw or rendered a button reading "Pay ".
+
+- **`spellsCantBeCountered: { types? }`** — Chimil's unnarrowed "Spells you
+  control can't be countered", Rhythm of the Wild's creature spells, Destiny
+  Spinner's creature and enchantment spells. This REPLACES the old
+  `creatureSpellsCantBeCountered` boolean: the wordings differ only in which
+  card types they name, and a boolean per wording is a list waiting to fall
+  behind. No types named means every spell.
+
 - **Destruction is now a distinct thing from a trip to the graveyard.**
   `destroyPermanentInPlace` (CR 701.7) is the single chokepoint every
   destruction goes through, and it is where indestructible and totem armor

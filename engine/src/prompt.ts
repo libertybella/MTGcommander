@@ -1084,7 +1084,7 @@ export function applyResolvePay(
     }
     next = tapForMana(next, tap.cardId, addition);
   }
-  if (prompt.kind === "pay_or_effect" && prompt.life !== undefined) {
+  if (prompt.life !== undefined) {
     // Sylvan Library: paid from life, not mana. Declining is the other
     // branch, so a player who cannot afford it must take that instead.
     const payer = next.players.find((entry) => entry.id === playerId);

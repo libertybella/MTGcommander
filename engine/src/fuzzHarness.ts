@@ -226,7 +226,13 @@ function nextAction(state: GameState, rng: () => number): GameAction | null {
       case "pay_or_counter":
       case "pay_or_effect": {
         const player = state.players.find((entry) => entry.id === playerId)!;
-        const payable = canPayManaCost(player.mana, prompt.cost);
+        // Ward—Pay N life and Sylvan Library are paid from LIFE, not mana:
+        // asking canPayManaCost about an empty cost says yes and the
+        // payment then throws for a player who cannot afford it.
+        const payable =
+          prompt.life === undefined
+            ? canPayManaCost(player.mana, prompt.cost)
+            : player.life >= prompt.life;
         return { kind: "resolve_pay", playerId, pay: payable && rng() < 0.5 };
       }
       case "search_library": {

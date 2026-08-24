@@ -193,6 +193,7 @@ function compileOneFace(card: OracleCard, definitionId: string): OracleCompileRe
     manaAbilities: compiled.manaAbilities,
     activated: compiled.activated,
     ...(compiled.ward ? { ward: compiled.ward } : {}),
+    ...(compiled.wardLife ? { wardLife: compiled.wardLife } : {}),
     ...(compiled.modes ? { modes: compiled.modes } : {}),
     ...(compiled.protectionFrom && Object.keys(compiled.protectionFrom).length > 0
       ? { protectionFrom: compiled.protectionFrom }
@@ -233,7 +234,9 @@ function compileOneFace(card: OracleCard, definitionId: string): OracleCompileRe
       ? { opponentNonbasicLandsEnterTapped: true }
       : {}),
     ...(compiled.cantBeCountered ? { cantBeCountered: true } : {}),
-    ...(compiled.creatureSpellsCantBeCountered ? { creatureSpellsCantBeCountered: true } : {}),
+    ...(compiled.spellsCantBeCountered
+      ? { spellsCantBeCountered: { ...compiled.spellsCantBeCountered } }
+      : {}),
     ...(compiled.opponentsLockedDuringYourTurn ? { opponentsLockedDuringYourTurn: true } : {}),
     ...(compiled.opponentsCantCastDuringYourTurn ? { opponentsCantCastDuringYourTurn: true } : {}),
     ...(compiled.mustAttack ? { mustAttack: true } : {}),

@@ -8520,7 +8520,8 @@ describe("wave 93: abolishers and rhythms", () => {
         "Creature spells you control can't be countered.\nNontoken creatures you control have riot. (They can enter with a +1/+1 counter or with haste.)",
     });
     expect(rhythm.notes).toEqual([]);
-    expect(rhythm.definition.creatureSpellsCantBeCountered).toBe(true);
+    // The narrowed wording now names its type rather than owning a flag.
+    expect(rhythm.definition.spellsCantBeCountered).toEqual({ types: ["creature"] });
     expect(rhythm.definition.staticAbilities[0]?.selector.nonToken).toBe(true);
   });
 
@@ -8577,7 +8578,7 @@ describe("wave 93: abolishers and rhythms", () => {
     const rhythmDef = createCardDefinition({
       name: "Rhythm",
       typeLine: "Enchantment",
-      creatureSpellsCantBeCountered: true,
+      spellsCantBeCountered: { types: ["creature"] },
       staticAbilities: [
         {
           selector: { scope: "controlled", types: ["creature"], nonToken: true },
@@ -28849,17 +28850,25 @@ describe("wave 222: any ability, in quotes, on any subject", () => {
   });
 
   it("refuses a quoted body it can only half read", () => {
-    // "Ward—Pay 2 life" is a cost this engine cannot express (Hexing
-    // Squelcher). A grant that compiled the word "Ward" and dropped the cost
-    // would score identically and play wrong.
+    // "Ward—Pay 2 life" USED to be a cost this engine could not express, and
+    // this assertion existed to stop a grant compiling the word "Ward" while
+    // dropping the cost — which would have scored identically and played
+    // wrong. Wave 323 implemented the cost, so the assertion is inverted
+    // rather than deleted: the point it was making is that the cost must
+    // survive, and now it does.
     const squelcher = compile(
       "Hexing Squelcher",
       "{2}{U}",
       "Creature — Bird Wizard",
       'Other creatures you control have "Ward—Pay 2 life."',
     );
-    expect(squelcher.definition.staticAbilities).toEqual([]);
-    expect(squelcher.notes.join(" ")).toContain("Ward");
+    // The local `compile` helper leaves power/toughness unset, so the only
+    // remaining note is about that, not about the grant.
+    expect(squelcher.notes.join(" ")).not.toContain("Ward");
+    expect(squelcher.definition.staticAbilities[0]?.effect).toEqual({
+      kind: "grant_ward_life",
+      amount: 2,
+    });
 
     // A granted ability that TARGETS is refused for the same reason: the
     // grant carries no way to choose targets against the granted permanent.
@@ -48893,5 +48902,331 @@ describe("wave 322: destroy is a thing that can be stopped", () => {
     const parsed = round.definitions[definition.id]!;
     expect(parsed.totemArmor).toBe(true);
     expect(parsed.effects[0]).toMatchObject({ destroy: true });
+  });
+});
+
+describe("wave 323: a tax paid in life, and a shield that names types", () => {
+  const compile = (
+    name: string,
+    typeLine: string,
+    oracleText: string,
+    manaCost = "",
+    pt: [string, string] | null = null,
+  ) =>
+    compileOracleCard({
+      oracleId: name.toLowerCase().replace(/[^a-z]+/g, "-"),
+      name,
+      manaCost,
+      typeLine,
+      power: pt?.[0] ?? null,
+      toughness: pt?.[1] ?? null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  const put = (
+    game: GameState,
+    ownerId: string,
+    definition: CardDefinition,
+    zone: "hand" | "battlefield" = "battlefield",
+  ) => {
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({ definitionId: definition.id, ownerId, zone });
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === ownerId)!.zones[zone].push(card.id);
+    if (zone === "battlefield") {
+      card.summoningSick = false;
+    }
+    return card.id;
+  };
+
+  // ---- Hexing Squelcher: all three halves --------------------------------
+
+  it("compiles the whole card", () => {
+    const compiled = compile(
+      "Hexing Squelcher",
+      "Creature — Vedalken Wizard",
+      'Ward—Pay 2 life.\nSpells you control can\'t be countered.\nOther creatures you control have "Ward—Pay 2 life."',
+      "{2}{U}",
+      ["2", "3"],
+    );
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.wardLife).toBe(2);
+    // No card types named: EVERY spell its controller casts.
+    expect(compiled.definition.spellsCantBeCountered).toEqual({});
+    expect(compiled.definition.staticAbilities[0]).toEqual({
+      selector: { scope: "controlled", excludeSelf: true, types: ["creature"] },
+      effect: { kind: "grant_ward_life", amount: 2 },
+    });
+  });
+
+  it("reads a narrowed shield as the types it names", () => {
+    const spinner = compile(
+      "Destiny Spinner",
+      "Creature — Human",
+      "Creature and enchantment spells you control can't be countered.",
+      "{1}{G}",
+      ["2", "3"],
+    );
+    expect(spinner.notes).toEqual([]);
+    expect(spinner.definition.spellsCantBeCountered).toEqual({
+      types: ["creature", "enchantment"],
+    });
+  });
+
+  const squelcher = () =>
+    createCardDefinition({
+      name: "Hexing Squelcher",
+      typeLine: "Creature — Vedalken Wizard",
+      manaCost: "{2}{U}",
+      power: 2,
+      toughness: 3,
+      wardLife: 2,
+      spellsCantBeCountered: {},
+    });
+
+  const shocker = () =>
+    createCardDefinition({
+      name: "Shock",
+      typeLine: "Instant",
+      manaCost: "{R}",
+      effects: [
+        {
+          kind: "deal_damage",
+          sourceId: "self",
+          target: { type: "chosen", index: 0 },
+          amount: 2,
+        },
+      ],
+      targetRequirements: [{ kind: "creature" }],
+    });
+
+  /** A spell with no targets at all, so nothing but the shield is in play. */
+  const untargeted = () =>
+    createCardDefinition({
+      name: "Ancestral",
+      typeLine: "Instant",
+      manaCost: "{R}",
+      effects: [{ kind: "draw", playerId: "controller", count: 1 }],
+    });
+
+  const targetIt = (game: GameState, casterId: string, victimId: string) => {
+    const spellId = put(game, casterId, shocker(), "hand");
+    game.players.find((entry) => entry.id === casterId)!.mana.R = 1;
+    game.turn.activePlayerId = casterId;
+    game.turn.phase = "precombatMain";
+    game.turn.step = "precombatMain";
+    game.priorityPlayerId = casterId;
+    return applyAction(game, {
+      kind: "cast_spell",
+      playerId: casterId,
+      cardId: spellId,
+      targets: [{ type: "creature", cardId: victimId }],
+    });
+  };
+
+  it("taxes an opponent's spell in life", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const squelcherId = put(game, p1.id, squelcher());
+    const cast = targetIt(game, p2.id, squelcherId);
+    const prompt = cast.prompts[0];
+    expect(prompt).toMatchObject({ kind: "pay_or_counter", reason: "ward", life: 2 });
+    // No mana is due at all: this tax is not payable in mana.
+    expect(prompt?.kind === "pay_or_counter" && prompt.cost).toBe("{0}");
+  });
+
+  it("takes the life when it is paid", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const squelcherId = put(game, p1.id, squelcher());
+    const cast = targetIt(game, p2.id, squelcherId);
+    const before = cast.players.find((entry) => entry.id === p2.id)!.life;
+    const paid = applyResolvePay(cast, p2.id, true);
+    expect(paid.players.find((entry) => entry.id === p2.id)!.life).toBe(before - 2);
+    expect(paid.stack).toHaveLength(1);
+  });
+
+  it("counters the spell when it is declined", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const squelcherId = put(game, p1.id, squelcher());
+    const cast = targetIt(game, p2.id, squelcherId);
+    const before = cast.players.find((entry) => entry.id === p2.id)!.life;
+    const declined = applyResolvePay(cast, p2.id, false);
+    expect(declined.stack).toHaveLength(0);
+    expect(declined.players.find((entry) => entry.id === p2.id)!.life).toBe(before);
+  });
+
+  it("does not tax its own controller", () => {
+    const { game, p1 } = twoPlayers();
+    const squelcherId = put(game, p1.id, squelcher());
+    const cast = targetIt(game, p1.id, squelcherId);
+    expect(cast.prompts).toEqual([]);
+  });
+
+  it("grants the same tax to other creatures, and not to itself twice", () => {
+    const { game, p1 } = twoPlayers();
+    const squelcherId = put(
+      game,
+      p1.id,
+      createCardDefinition({
+        name: "Hexing Squelcher",
+        typeLine: "Creature — Vedalken Wizard",
+        manaCost: "{2}{U}",
+        power: 2,
+        toughness: 3,
+        wardLife: 2,
+        staticAbilities: [
+          {
+            selector: { scope: "controlled", excludeSelf: true, types: ["creature"] },
+            effect: { kind: "grant_ward_life", amount: 2 },
+          },
+        ],
+      }),
+    );
+    const friendId = put(
+      game,
+      p1.id,
+      createCardDefinition({
+        name: "Friend",
+        typeLine: "Creature — Bear",
+        manaCost: "{1}{G}",
+        power: 2,
+        toughness: 2,
+      }),
+    );
+    expect(computedCard(game, friendId)?.wardLife).toBe(2);
+    // "OTHER creatures" — and the highest wins rather than stacking, so
+    // the Squelcher still taxes exactly 2.
+    expect(computedCard(game, squelcherId)?.wardLife).toBe(2);
+  });
+
+  it("taxes twice when a permanent has both kinds of ward", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const bothId = put(
+      game,
+      p1.id,
+      createCardDefinition({
+        name: "Doubly Warded",
+        typeLine: "Creature — Bear",
+        manaCost: "{1}{G}",
+        power: 2,
+        toughness: 2,
+        ward: 1,
+        wardLife: 2,
+      }),
+    );
+    const cast = targetIt(game, p2.id, bothId);
+    // CR 702.21c: two ward abilities trigger separately.
+    expect(cast.prompts).toHaveLength(2);
+    expect(cast.prompts[0]).toMatchObject({ cost: "{1}" });
+    expect(cast.prompts[1]).toMatchObject({ life: 2 });
+  });
+
+  // ---- The shield ---------------------------------------------------------
+
+  const counterspell = (game: GameState, casterId: string, stackObjectId: string) => {
+    void casterId;
+    return applyEffect(game, { kind: "counter_spell", stackObjectId });
+  };
+
+  it("stops a counterspell aimed at any of its controller's spells", () => {
+    const { game, p1, p2 } = twoPlayers();
+    put(game, p1.id, squelcher());
+    const spellId = put(game, p1.id, untargeted(), "hand");
+    game.players.find((entry) => entry.id === p1.id)!.mana.R = 1;
+    game.turn.activePlayerId = p1.id;
+    game.turn.phase = "precombatMain";
+    game.turn.step = "precombatMain";
+    game.priorityPlayerId = p1.id;
+    const cast = applyAction(game, {
+      kind: "cast_spell",
+      playerId: p1.id,
+      cardId: spellId,
+      targets: [],
+    });
+    expect(cast.stack).toHaveLength(1);
+    const countered = counterspell(cast, p2.id, cast.stack[0]!.id);
+    // An unnarrowed shield names no types, so an INSTANT is covered too —
+    // the old creature-only field could not have said this.
+    expect(countered.stack).toHaveLength(1);
+  });
+
+  it("does not stop a counterspell aimed at the wrong type", () => {
+    const { game, p1, p2 } = twoPlayers();
+    put(
+      game,
+      p1.id,
+      createCardDefinition({
+        name: "Rhythm of the Wild",
+        typeLine: "Enchantment",
+        manaCost: "{1}{R}{G}",
+        spellsCantBeCountered: { types: ["creature"] },
+      }),
+    );
+    const spellId = put(game, p1.id, untargeted(), "hand");
+    game.players.find((entry) => entry.id === p1.id)!.mana.R = 1;
+    game.turn.activePlayerId = p1.id;
+    game.turn.phase = "precombatMain";
+    game.turn.step = "precombatMain";
+    game.priorityPlayerId = p1.id;
+    const cast = applyAction(game, {
+      kind: "cast_spell",
+      playerId: p1.id,
+      cardId: spellId,
+      targets: [],
+    });
+    const countered = counterspell(cast, p2.id, cast.stack[0]!.id);
+    // Rhythm covers creature spells; Shock is an instant.
+    expect(countered.stack).toHaveLength(0);
+  });
+
+  it("does not shield an opponent's spells", () => {
+    const { game, p1, p2 } = twoPlayers();
+    put(game, p1.id, squelcher());
+    const spellId = put(game, p2.id, untargeted(), "hand");
+    game.players.find((entry) => entry.id === p2.id)!.mana.R = 1;
+    game.turn.activePlayerId = p2.id;
+    game.turn.phase = "precombatMain";
+    game.turn.step = "precombatMain";
+    game.priorityPlayerId = p2.id;
+    const cast = applyAction(game, {
+      kind: "cast_spell",
+      playerId: p2.id,
+      cardId: spellId,
+      targets: [],
+    });
+    const countered = counterspell(cast, p1.id, cast.stack[0]!.id);
+    expect(countered.stack).toHaveLength(0);
+  });
+
+  it("round trips both, and the life on an open prompt", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const definition = createCardDefinition({
+      name: "Wave 323 Squelcher",
+      typeLine: "Creature — Vedalken Wizard",
+      manaCost: "{2}{U}",
+      power: 2,
+      toughness: 3,
+      wardLife: 2,
+      spellsCantBeCountered: { types: ["creature", "enchantment"] },
+      staticAbilities: [
+        {
+          selector: { scope: "controlled", excludeSelf: true, types: ["creature"] },
+          effect: { kind: "grant_ward_life", amount: 2 },
+        },
+      ],
+    });
+    const squelcherId = put(game, p1.id, definition);
+    const cast = targetIt(game, p2.id, squelcherId);
+    const round = parseGameState(serializeGameState(cast));
+    const parsed = round.definitions[definition.id]!;
+    expect(parsed.wardLife).toBe(2);
+    expect(parsed.spellsCantBeCountered).toEqual({ types: ["creature", "enchantment"] });
+    expect(parsed.staticAbilities[0]?.effect).toEqual({
+      kind: "grant_ward_life",
+      amount: 2,
+    });
+    // Without the prompt's own `life`, the tax came back as a free {0}.
+    expect(round.prompts[0]).toMatchObject({ kind: "pay_or_counter", life: 2 });
   });
 });

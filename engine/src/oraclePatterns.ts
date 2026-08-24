@@ -54,6 +54,7 @@ export type CompiledOracleText = {
   producesOptions: ManaColor[];
   manaAbilities: ManaAbility[];
   ward?: number;
+  wardLife?: number;
   modes?: SpellMode[];
   protectionFrom?: ProtectionFrom;
   enchant?: "creature" | "land" | "creature_or_planeswalker_own";
@@ -81,7 +82,7 @@ export type CompiledOracleText = {
   extraLandDrops?: number;
   extraLandDropsForAll?: number;
   cantBeCountered?: boolean;
-  creatureSpellsCantBeCountered?: boolean;
+  spellsCantBeCountered?: { types?: string[] };
   opponentsLockedDuringYourTurn?: boolean;
   opponentsCantCastDuringYourTurn?: boolean;
   mustAttack?: boolean;
@@ -11184,11 +11185,15 @@ function compileQuotedAbility(quoted: string): ContinuousEffectData[] | null {
   }
 
   // A bare keyword in quotes ("…have \"flying\""). Ward is spelled with an
-  // amount; "Ward—Pay 2 life" is a cost this engine cannot express, so it
-  // falls through to a clean miss.
+  // amount, in mana or in life.
   const ward = body.match(/^Ward\s*\{(\d+)\}$/i);
   if (ward?.[1]) {
     return [{ kind: "grant_ward", amount: Number(ward[1]) }];
+  }
+  // Hexing Squelcher grants the same ability it has.
+  const wardLife = body.match(/^Ward\s*[—-]\s*Pay (\d+) life$/i);
+  if (wardLife?.[1]) {
+    return [{ kind: "grant_ward_life", amount: Number(wardLife[1]) }];
   }
   const keyword = KEYWORD_GRANTS[body.toLowerCase()];
   if (keyword) {
@@ -11444,6 +11449,11 @@ function readGrantParts(split: string[]): ContinuousEffectData[] | null {
       const ward = word.match(/^ward \{(\d+)\}$/i);
       if (ward?.[1]) {
         effects.push({ kind: "grant_ward", amount: Number(ward[1]) });
+        continue;
+      }
+      const wardLife = word.match(/^ward\s*[—-]\s*pay (\d+) life$/i);
+      if (wardLife?.[1]) {
+        effects.push({ kind: "grant_ward_life", amount: Number(wardLife[1]) });
         continue;
       }
       const keyword = KEYWORD_GRANTS[word];
@@ -12892,6 +12902,13 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
       continue;
     }
 
+    // "Ward—Pay 2 life" (CR 702.21b): the same ability, taxed in life.
+    const wardLifeLine = sentence.match(/^Ward\s*[—-]\s*Pay (\d+) life$/i);
+    if (wardLifeLine?.[1]) {
+      result.wardLife = Number(wardLifeLine[1]);
+      continue;
+    }
+
     // Animate Dead: an Aura cast on a creature card in a GRAVEYARD. The
     // `enchant` value stays "creature" because that is what it is attached
     // to once it resolves, and it is the loose-Aura state-based action that
@@ -14321,9 +14338,19 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
       continue;
     }
 
-    // Rhythm of the Wild's first half.
-    if (/^Creature spells you control can't be countered$/i.test(sentence)) {
-      result.creatureSpellsCantBeCountered = true;
+    /**
+     * Chimil, Rhythm of the Wild and Destiny Spinner in one clause: the
+     * three wordings differ only in which card types they name, so the
+     * types are read out rather than each wording getting a flag.
+     */
+    const shield = sentence.match(
+      /^(?:(Creature|Enchantment|Artifact|Instant|Sorcery)(?: and (Creature|Enchantment|Artifact|Instant|Sorcery))? s|S)pells you control can't be countered$/i,
+    );
+    if (shield) {
+      const types = [shield[1], shield[2]]
+        .filter((type): type is string => Boolean(type))
+        .map((type) => type.toLowerCase());
+      result.spellsCantBeCountered = types.length > 0 ? { types } : {};
       continue;
     }
 
