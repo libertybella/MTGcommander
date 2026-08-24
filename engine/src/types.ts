@@ -1829,6 +1829,9 @@ export type GameEffect =
       count: number;
       entersTapped?: boolean;
       untapIfLands?: number;
+      /** Archdruid's Charm: a land found this way goes to the battlefield
+       * tapped, and everything else takes `destination`. */
+      landsToBattlefieldTapped?: boolean;
       /** Finale of Devastation: the graveyard is part of the pool. */
       alsoGraveyard?: boolean;
     }
@@ -3151,6 +3154,8 @@ export type CardEffect =
   | { kind: "opponents_lose_keywords_until_eot"; keywords: Keyword[] }
   | {
       kind: "search_library";
+      /** Archdruid's Charm: a land goes to the battlefield tapped instead. */
+      landsToBattlefieldTapped?: boolean;
       playerId: PlayerSelector;
       filter: SearchFilter;
       destination: SearchDestination;
@@ -4003,6 +4008,13 @@ export type PendingPrompt =
       count: number;
       entersTapped?: boolean;
       untapIfLands?: number;
+      /**
+       * Archdruid's Charm: "Put it onto the battlefield tapped if it's a
+       * LAND card. Otherwise, put it into your hand." The destination
+       * depends on what was found, so `destination` carries the otherwise
+       * branch and this carries the land one.
+       */
+      landsToBattlefieldTapped?: boolean;
       /** Finale of Devastation: the graveyard is part of the pool. */
       alsoGraveyard?: boolean;
       resumeEffects?: GameEffect[];

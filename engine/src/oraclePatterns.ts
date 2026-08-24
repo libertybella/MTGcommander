@@ -2313,6 +2313,15 @@ type SimpleClause = {
   targetRequirements: TargetRequirement[];
   leftover?: string;
   /**
+   * How many EARLIER targets this clause's chosen indexes already account
+   * for. "It deals damage equal to its power to target creature you don't
+   * control" reads `it` as the previous sentence's target, so it emits
+   * chosen 0 for that and chosen 1 for its own — a clause that already
+   * knows it is second. The assembler shifts by `offset - chosenBase`, so
+   * these two refs move together and stay one apart.
+   */
+  chosenBase?: number;
+  /**
    * Mosswort Bridge prints its gate inside the effect sentence ("… if
    * creatures you control have total power 10 or greater") rather than as
    * a separate "Activate only if" line. Carried up to the ability so an
@@ -2494,6 +2503,54 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
 }
 
 function compileSimpleClauseInner(sentence: string): SimpleClause | null {
+  /**
+   * Archdruid's Charm's first bullet, fused into one clause because the
+   * destination depends on WHAT was found and neither half means anything
+   * without the other: "Search your library for a creature or land card and
+   * reveal it. Put it onto the battlefield tapped if it's a land card.
+   * Otherwise, put it into your hand. Then shuffle."
+   */
+  if (/^search creature or land, land to battlefield tapped$/i.test(sentence)) {
+    return {
+      effects: [
+        {
+          kind: "search_library",
+          playerId: "controller",
+          filter: { typesAny: ["creature", "land"] },
+          destination: "hand",
+          count: 1,
+          landsToBattlefieldTapped: true,
+        },
+      ],
+      targetRequirements: [],
+    };
+  }
+
+  /**
+   * "It deals damage equal to its power to target creature you don't
+   * control" — the one-way bite, where "it" is whatever the PREVIOUS
+   * sentence in this mode targeted. That is chosen 0 here and the modal
+   * assembler shifts this clause's own target past it.
+   */
+  const oneWayBite = sentence.match(
+    /^It deals damage equal to its power to target creature you don't control$/i,
+  );
+  if (oneWayBite) {
+    return {
+      effects: [
+        {
+          kind: "deal_damage",
+          // "IT" — the creature the previous sentence targeted.
+          sourceId: { type: "chosen", index: 0 },
+          target: { type: "chosen", index: 1 },
+          amount: "chosen_power",
+        },
+      ],
+      targetRequirements: [{ kind: "creature", control: "not_own" }],
+      chosenBase: 1,
+    };
+  }
+
   /**
    * Descent into Avernus's second sentence: two clauses sharing one
    * "where X is …" tail, which is why they compile together rather than
@@ -9294,6 +9351,35 @@ function fuseDigSentencesInPlace(sentences: string[], lineStart: boolean[]): voi
  * Fuse "Each opponent loses X life." + "You gain life equal to the life lost
  * this way." into one synthetic drain sentence (Exsanguinate).
  */
+/**
+ * Archdruid's Charm's first bullet. The three sentences say ONE thing
+ * between them — search, then split the destination on what was found —
+ * and none of the last two means anything alone. Fusing them keeps
+ * "Otherwise, put it into your hand" from becoming a global no-op that
+ * would silently swallow the same sentence on a card with no search in
+ * front of it.
+ */
+function fuseSplitDestinationSearchInPlace(sentences: string[], lineStart: boolean[]): void {
+  for (let index = 0; index + 3 < sentences.length; index += 1) {
+    if (lineStart[index + 1] || lineStart[index + 2] || lineStart[index + 3]) {
+      continue;
+    }
+    const search = sentences[index]!.match(
+      /^Search your library for an? (?:creature or land|land or creature) card and reveal it$/i,
+    );
+    if (
+      search &&
+      /^Put it onto the battlefield tapped if it's a land card$/i.test(sentences[index + 1]!) &&
+      /^Otherwise, put it into your hand$/i.test(sentences[index + 2]!) &&
+      /^Then shuffle$/i.test(sentences[index + 3]!)
+    ) {
+      // The shuffle comes with the search and is not a separate effect.
+      sentences.splice(index, 4, "search creature or land, land to battlefield tapped");
+      lineStart.splice(index + 1, 3);
+    }
+  }
+}
+
 function fuseDrainPairInPlace(sentences: string[], lineStart: boolean[]): void {
   for (let index = 0; index + 1 < sentences.length; index += 1) {
     if (lineStart[index + 1]) {
@@ -11765,13 +11851,19 @@ function offsetChosenIndexes(clause: SimpleClause, offset: number): SimpleClause
   // targeted ("Exile target artifact or creature. Its controller creates …").
   // Shifting those would walk them off the end of the merged list, where they
   // bind to nobody and the effect quietly does nothing.
-  if (offset === 0 || clause.targetRequirements.length === 0) {
+  //
+  // `chosenBase` is the middle case: a clause that names a target of its own
+  // AND refers back to an earlier one already numbers from the merged list,
+  // so it is shifted by the REMAINDER or it walks past its own target.
+  const shift = offset - (clause.chosenBase ?? 0);
+  if (shift <= 0 || clause.targetRequirements.length === 0) {
     return clause;
   }
   return {
     targetRequirements: clause.targetRequirements,
-    effects: clause.effects.map((effect) => shiftChosen(effect, offset)),
+    effects: clause.effects.map((effect) => shiftChosen(effect, shift)),
     leftover: clause.leftover,
+    ...(clause.chosenBase === undefined ? {} : { chosenBase: clause.chosenBase }),
   };
 }
 
@@ -12440,6 +12532,7 @@ function extractModalModes(card: OracleCard): ModalExtraction | null {
       const lineStart = sentences.map((_, index) => index === 0);
       fuseDigSentencesInPlace(sentences, lineStart);
       fuseExilePlayInPlace(sentences, lineStart);
+      fuseSplitDestinationSearchInPlace(sentences, lineStart);
     }
     if (sentences.length === 0) {
       return { remainingText, modes: null, raw };
@@ -12698,6 +12791,7 @@ function extractTriggerModalModes(card: OracleCard): TriggerModalExtraction | nu
     if (bulletSentences.length > 1) {
       const bulletLineStart = bulletSentences.map((_, position) => position === 0);
       fuseDigSentencesInPlace(bulletSentences, bulletLineStart);
+      fuseSplitDestinationSearchInPlace(bulletSentences, bulletLineStart);
       fuseExilePlayInPlace(bulletSentences, bulletLineStart);
       fuseExileReturnEndStepInPlace(bulletSentences, bulletLineStart);
     }
@@ -12800,24 +12894,26 @@ function extractActivatedModalModes(card: OracleCard): ActivatedModalExtraction 
   for (const bullet of bullets) {
     const bulletSentences = splitOracleSentences({ ...card, oracleText: bullet });
     const effects: CardEffect[] = [];
-    let requirements: TargetRequirement[] = [];
+    const requirements: TargetRequirement[] = [];
     let failed = bulletSentences.length === 0;
     for (const rawSentence of bulletSentences) {
       // "Then you may put a land card…" riders keep their clause shape.
       const sentence = rawSentence.replace(/^Then /i, "");
       const clause = compileSimpleClause(sentence);
-      if (
-        !clause ||
-        clause.leftover ||
-        (clause.targetRequirements.length > 0 && (requirements.length > 0 || effects.length > 0))
-      ) {
+      if (!clause || clause.leftover) {
         failed = true;
         break;
       }
-      if (clause.targetRequirements.length > 0) {
-        requirements = clause.targetRequirements;
-      }
-      effects.push(...clause.effects);
+      // Same rule as the trigger-mode assembler above: a clause with
+      // targets of its own is shifted past the ones already claimed; a
+      // clause with none refers BACK and keeps its indexes.
+      const shift = requirements.length - (clause.chosenBase ?? 0);
+      effects.push(
+        ...(clause.targetRequirements.length > 0 && shift > 0
+          ? clause.effects.map((effect) => shiftChosen(effect, shift))
+          : clause.effects),
+      );
+      requirements.push(...clause.targetRequirements);
     }
     if (failed || effects.length === 0) {
       return { remainingText, ability: null, raw };
@@ -13001,6 +13097,7 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
   fuseDigSentencesInPlace(sentences, lineStart);
   fuseExilePlayInPlace(sentences, lineStart);
   fuseDrainPairInPlace(sentences, lineStart);
+  fuseSplitDestinationSearchInPlace(sentences, lineStart);
   fuseBiteInPlace(sentences, lineStart);
   fuseD20TreasuresInPlace(sentences, lineStart);
   fuseExileReturnEndStepInPlace(sentences, lineStart);
@@ -16849,8 +16946,15 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
         if (!followClause || followClause.leftover) {
           break;
         }
-        const offset = pushed.targetRequirements.length;
-        pushed.effects.push(...followClause.effects.map((effect) => shiftChosen(effect, offset)));
+        // A clause that already accounts for earlier targets ("It deals
+        // damage equal to its power to target …") must not be shifted past
+        // them twice.
+        const offset = pushed.targetRequirements.length - (followClause.chosenBase ?? 0);
+        pushed.effects.push(
+          ...(offset > 0
+            ? followClause.effects.map((effect) => shiftChosen(effect, offset))
+            : followClause.effects),
+        );
         pushed.targetRequirements.push(...followClause.targetRequirements);
         index += 1;
       }

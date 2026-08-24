@@ -50424,3 +50424,210 @@ describe("wave 328: an escalating tally read after it escalates", () => {
     });
   });
 });
+
+describe("wave 329: a mode may name more than one target", () => {
+  const compile = (name: string, typeLine: string, oracleText: string, manaCost = "") =>
+    compileOracleCard({
+      oracleId: name.toLowerCase().replace(/[^a-z]+/g, "-"),
+      name,
+      manaCost,
+      typeLine,
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  const put = (
+    game: GameState,
+    ownerId: string,
+    definition: CardDefinition,
+    zone: "battlefield" | "library" = "battlefield",
+  ) => {
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({ definitionId: definition.id, ownerId, zone });
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === ownerId)!.zones[zone].push(card.id);
+    if (zone === "battlefield") {
+      card.summoningSick = false;
+    }
+    return card.id;
+  };
+
+  const charmText =
+    "Choose one —\n• Search your library for a creature or land card and reveal it. Put it onto the battlefield tapped if it's a land card. Otherwise, put it into your hand. Then shuffle.\n• Put a +1/+1 counter on target creature you control. It deals damage equal to its power to target creature you don't control.\n• Exile target artifact or enchantment.";
+
+  it("compiles all three modes", () => {
+    const compiled = compile("Archdruid's Charm", "Instant", charmText, "{1}{G}{G}");
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.modes).toHaveLength(3);
+  });
+
+  it("numbers a mode's second target after its first", () => {
+    const compiled = compile("Archdruid's Charm", "Instant", charmText, "{1}{G}{G}");
+    const fight = compiled.definition.modes![1]!;
+    expect(fight.targetRequirements).toEqual([
+      { control: "own", kind: "creature" },
+      { kind: "creature", control: "not_own" },
+    ]);
+    // "IT deals damage" — the source is the creature the FIRST sentence
+    // targeted, and only the second sentence's own target is renumbered.
+    expect(fight.effects[1]).toEqual({
+      kind: "deal_damage",
+      sourceId: { type: "chosen", index: 0 },
+      target: { type: "chosen", index: 1 },
+      amount: "chosen_power",
+    });
+  });
+
+  it("leaves a back-reference rider pointing where it was", () => {
+    // A rider with no target of its own refers BACK; renumbering it would
+    // walk it off the end of the list and it would bind to nobody.
+    const compiled = compile(
+      "Riderful Charm",
+      "Instant",
+      "Choose one —\n• Destroy target creature. Its controller draws a card.\n• Draw a card.",
+      "{1}{B}",
+    );
+    expect(compiled.notes).toEqual([]);
+    const mode = compiled.definition.modes![0]!;
+    expect(mode.targetRequirements).toHaveLength(1);
+    // Nothing in the mode may point past the one target it actually has.
+    const indexes = [...JSON.stringify(mode.effects).matchAll(/"index":(\d+)/g)].map(
+      (match) => Number(match[1]),
+    );
+    expect(Math.max(0, ...indexes)).toBe(0);
+  });
+
+  it("folds the split-destination search into one clause", () => {
+    const compiled = compile("Archdruid's Charm", "Instant", charmText, "{1}{G}{G}");
+    expect(compiled.definition.modes![0]!.effects).toEqual([
+      {
+        kind: "search_library",
+        playerId: "controller",
+        filter: { typesAny: ["creature", "land"] },
+        destination: "hand",
+        count: 1,
+        landsToBattlefieldTapped: true,
+      },
+    ]);
+  });
+
+  it("refuses the otherwise-clause on its own", () => {
+    // Left as a global no-op it would silently swallow the same sentence on
+    // a card with no search in front of it.
+    const compiled = compile(
+      "Loose Otherwise",
+      "Instant",
+      "Otherwise, put it into your hand.",
+      "{U}",
+    );
+    expect(compiled.notes.join(" ")).toContain("not compiled");
+  });
+
+  // ---- Playing -------------------------------------------------------------
+
+  const forest = () => createCardDefinition({ name: "Forest", typeLine: "Basic Land — Forest" });
+  const bear = (name: string) =>
+    createCardDefinition({
+      name,
+      typeLine: "Creature — Bear",
+      manaCost: "{1}{G}",
+      power: 3,
+      toughness: 3,
+    });
+
+  it("puts a found land onto the battlefield tapped", () => {
+    const { game, p1 } = twoPlayers();
+    const landId = put(game, p1.id, forest(), "library");
+    const searched = applyEffect(game, {
+      kind: "search_library",
+      playerId: p1.id,
+      filter: { typesAny: ["creature", "land"] },
+      destination: "hand",
+      count: 1,
+      landsToBattlefieldTapped: true,
+    });
+    const resolved = applyResolveSearch(searched, p1.id, [landId]);
+    expect(resolved.cards[landId]?.zone).toBe("battlefield");
+    expect(resolved.cards[landId]?.tapped).toBe(true);
+  });
+
+  it("puts a found creature into the hand", () => {
+    const { game, p1 } = twoPlayers();
+    const creatureId = put(game, p1.id, bear("Found"), "library");
+    const searched = applyEffect(game, {
+      kind: "search_library",
+      playerId: p1.id,
+      filter: { typesAny: ["creature", "land"] },
+      destination: "hand",
+      count: 1,
+      landsToBattlefieldTapped: true,
+    });
+    const resolved = applyResolveSearch(searched, p1.id, [creatureId]);
+    // The destination is decided per CARD, not once for the search.
+    expect(resolved.cards[creatureId]?.zone).toBe("hand");
+  });
+
+  it("bites one way only", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const mineId = put(game, p1.id, bear("Mine"));
+    const theirsId = put(game, p2.id, bear("Theirs"));
+    const resolved = applyEffects(
+      game,
+      bindCardEffects(
+        game,
+        [
+          { kind: "add_counter", cardId: { type: "chosen", index: 0 }, counter: "p1p1", amount: 1 },
+          {
+            kind: "deal_damage",
+            sourceId: { type: "chosen", index: 0 },
+            target: { type: "chosen", index: 1 },
+            amount: "chosen_power",
+          },
+        ],
+        {
+          controllerId: p1.id,
+          sourceId: null,
+          targets: [
+            { type: "creature", cardId: mineId },
+            { type: "creature", cardId: theirsId },
+          ],
+          targetRequirements: [
+            { kind: "creature", control: "own" },
+            { kind: "creature", control: "not_own" },
+          ],
+        },
+      ),
+    );
+    // A one-way bite: theirs takes the damage and mine takes none.
+    expect(resolved.cards[theirsId]?.zone).toBe("graveyard");
+    expect(resolved.cards[mineId]?.zone).toBe("battlefield");
+    expect(resolved.cards[mineId]?.damageMarked).toBe(0);
+  });
+
+  it("round trips the split destination", () => {
+    const { game, p1 } = twoPlayers();
+    const definition = createCardDefinition({
+      name: "Wave 329 Charm",
+      typeLine: "Instant",
+      manaCost: "{1}{G}{G}",
+      effects: [
+        {
+          kind: "search_library",
+          playerId: "controller",
+          filter: { typesAny: ["creature", "land"] },
+          destination: "hand",
+          count: 1,
+          landsToBattlefieldTapped: true,
+        },
+      ],
+    });
+    put(game, p1.id, definition, "library");
+    const round = parseGameState(serializeGameState(game));
+    expect(round.definitions[definition.id]?.effects[0]).toMatchObject({
+      landsToBattlefieldTapped: true,
+    });
+  });
+});

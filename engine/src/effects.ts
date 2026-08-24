@@ -1581,6 +1581,7 @@ export function bindCardEffect(
           : effect.count,
         ...(effect.entersTapped ? { entersTapped: true } : {}),
         ...(effect.untapIfLands !== undefined ? { untapIfLands: effect.untapIfLands } : {}),
+        ...(effect.landsToBattlefieldTapped ? { landsToBattlefieldTapped: true } : {}),
         ...(effect.alsoGraveyard ? { alsoGraveyard: true } : {}),
       };
     }
@@ -3733,6 +3734,7 @@ function applySearchLibrary(
     count: effect.count,
     ...(effect.entersTapped ? { entersTapped: true } : {}),
     ...(effect.untapIfLands !== undefined ? { untapIfLands: effect.untapIfLands } : {}),
+    ...(effect.landsToBattlefieldTapped ? { landsToBattlefieldTapped: true } : {}),
     ...(effect.alsoGraveyard ? { alsoGraveyard: true } : {}),
   });
   return next;

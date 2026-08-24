@@ -870,6 +870,38 @@ more questions it can now ask:
   (Bennie Bracks). Reads the existing per-player `createdTokenThisTurn`
   list, and asks whether the CONTROLLER is in it — an opponent's Treasure
   must not satisfy it.
+- **A MODE MAY NAME MORE THAN ONE TARGET.** The three bullet assemblers
+  refused a second targeted sentence outright, with a comment saying a
+  second one "would skew chosen indexes" — and `shiftChosen`, the tool that
+  fixes exactly that, was already renumbering follow-on clauses elsewhere
+  in the same file. A composition gap, not a missing feature.
+
+  Three cases, and telling them apart is the whole of it: a clause with no
+  targets of its own refers BACK to an earlier one and keeps its indexes; a
+  clause with its own targets is shifted past those already claimed; and a
+  clause that does both — `chosenBase` — already numbers from the merged
+  list and is shifted by the REMAINDER, or it walks past its own target.
+
+- **`landsToBattlefieldTapped`** — Archdruid's Charm: "Put it onto the
+  battlefield tapped if it's a LAND card. Otherwise, put it into your
+  hand." The destination is decided per CARD found, not once for the
+  search. The three sentences that say this are FUSED rather than each
+  compiled: left as a standalone no-op, "Otherwise, put it into your hand"
+  would silently swallow the same sentence on a card with no search in
+  front of it.
+
+- **A counter tally read at APPLY, not at bind** — Descent into Avernus.
+  Its trigger adds two counters and then reads them twice in the same
+  batch, so a bind-time reading is two short **every time**, which on this
+  card is the entire escalation.
+
+  Both readers now defer: `deal_damage.amountFromCounters` carries the
+  lookup instead of a number, and `create_token`'s printed zero survives
+  binding when a dynamic source will supply the count. That second one was
+  a real trap — the bind refuses a zero count as "no tokens", which is
+  right for Secure the Wastes with X=0 and wrong for a card that prints no
+  count at all. A zero a dynamic source will replace is "not known yet".
+
 - **`choose_from_hand`** — "Put ANY NUMBER of cards from your hand …"
   (Valakut Awakening, Last March of the Ents). A **sibling** of
   `choose_discard`, not a widening of it: that prompt sits on the cleanup

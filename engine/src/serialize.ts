@@ -2441,6 +2441,9 @@ function parsePrompts(value: unknown, playerIds: Set<string>): PendingPrompt[] {
         ...(entry.untapIfLands === undefined
           ? {}
           : { untapIfLands: expectNumber(entry.untapIfLands, `prompts[${index}].untapIfLands`) }),
+        ...(entry.landsToBattlefieldTapped === true
+          ? { landsToBattlefieldTapped: true }
+          : {}),
         ...(entry.alsoGraveyard === true ? { alsoGraveyard: true } : {}),
         ...(resumeEffects && resumeEffects.length > 0 ? { resumeEffects } : {}),
       };
@@ -4105,7 +4108,10 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
         ...(value.untapIfLands === undefined
           ? {}
           : { untapIfLands: expectNumber(value.untapIfLands, `${label}.untapIfLands`) }),
-        ...(value.alsoGraveyard === true ? { alsoGraveyard: true } : {}),
+        ...(value.landsToBattlefieldTapped === true
+        ? { landsToBattlefieldTapped: true }
+        : {}),
+      ...(value.alsoGraveyard === true ? { alsoGraveyard: true } : {}),
       };
     case "attach":
       return {
@@ -6127,6 +6133,9 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
       ...(value.untapIfLands === undefined
         ? {}
         : { untapIfLands: expectNumber(value.untapIfLands, `${label}.untapIfLands`) }),
+      ...(value.landsToBattlefieldTapped === true
+        ? { landsToBattlefieldTapped: true }
+        : {}),
       ...(value.alsoGraveyard === true ? { alsoGraveyard: true } : {}),
     };
   }

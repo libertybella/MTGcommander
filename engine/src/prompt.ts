@@ -1050,7 +1050,19 @@ export function applyResolveSearch(
     return next;
   }
   for (const cardId of cardIds) {
-    next = moveCard(next, cardId, prompt.destination);
+    // Archdruid's Charm: a LAND found this way goes to the battlefield
+    // tapped and everything else goes to hand, so the destination is
+    // decided per card rather than once for the search.
+    const asLand =
+      prompt.landsToBattlefieldTapped === true && cardIsLand(next, cardId);
+    next = moveCard(next, cardId, asLand ? "battlefield" : prompt.destination);
+    if (asLand) {
+      const fetched = next.cards[cardId];
+      if (fetched && fetched.zone === "battlefield") {
+        fetched.tapped = true;
+      }
+      continue;
+    }
     if (prompt.destination === "battlefield" && prompt.entersTapped) {
       const fetched = next.cards[cardId];
       if (fetched && fetched.zone === "battlefield") {
