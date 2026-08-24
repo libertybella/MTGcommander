@@ -213,6 +213,7 @@ function compileOneFace(card: OracleCard, definitionId: string): OracleCompileRe
     ...(compiled.opponentsEnterTriggersSuppressed
       ? { opponentsEnterTriggersSuppressed: true }
       : {}),
+    ...(compiled.payLifeForColor ? { payLifeForColor: compiled.payLifeForColor } : {}),
     ...(compiled.handSizeEffect ? { handSizeEffect: compiled.handSizeEffect } : {}),
     ...(compiled.opponentsDrawCap === undefined
       ? {}

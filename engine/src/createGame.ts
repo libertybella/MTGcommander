@@ -124,6 +124,7 @@ export function createCardDefinition(
         | "totemArmor"
         | "targetingLifeTax"
         | "opponentsEnterTriggersSuppressed"
+        | "payLifeForColor"
         | "handSizeEffect"
         | "opponentsDrawCap"
         | "noncreatureSpellCap"
@@ -513,6 +514,7 @@ export function createCardDefinition(
     ...(input.opponentsEnterTriggersSuppressed
       ? { opponentsEnterTriggersSuppressed: true }
       : {}),
+    ...(input.payLifeForColor ? { payLifeForColor: input.payLifeForColor } : {}),
     ...(input.handSizeEffect
       ? {
           handSizeEffect: {

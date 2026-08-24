@@ -72,6 +72,7 @@ export type CompiledOracleText = {
   totemArmor?: boolean;
   targetingLifeTax?: number;
   opponentsEnterTriggersSuppressed?: boolean;
+  payLifeForColor?: Color;
   handSizeEffect?: CardDefinition["handSizeEffect"];
   opponentsDrawCap?: number;
   noncreatureSpellCap?: number;
@@ -15346,6 +15347,20 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
     );
     if (targetTax?.[1]) {
       result.targetingLifeTax = Number(targetTax[1]);
+      continue;
+    }
+
+    /**
+     * K'rrik, Son of Yawgmoth: "For each {B} in a cost, you may pay 2 life
+     * rather than pay that mana." That is Phyrexian mana (CR 107.4f) for
+     * every pip of the colour, so it becomes a grant the cost path already
+     * knows how to honour.
+     */
+    const payLife = sentence.match(
+      /^For each \{([WUBRG])\} in a cost, you may pay 2 life rather than pay that mana$/,
+    );
+    if (payLife?.[1]) {
+      result.payLifeForColor = payLife[1] as Color;
       continue;
     }
 

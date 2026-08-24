@@ -40,6 +40,41 @@ export function targetingLifeTaxFor(
   return total;
 }
 
+/**
+ * K'rrik: move every pip of a colour into the Phyrexian list, for a player
+ * who controls a permanent granting it. The Phyrexian path already prefers
+ * mana when it is available and pays life only when it is not, which is the
+ * conservative reading of "you MAY pay 2 life" — documented, and the same
+ * choice the engine already makes for a printed Phyrexian pip.
+ */
+export function applyPhyrexianColorGrants(
+  state: GameState,
+  playerId: PlayerId,
+  cost: ParsedManaCost,
+): void {
+  for (const card of Object.values(state.cards)) {
+    if (
+      card.zone !== "battlefield" ||
+      card.controllerId !== playerId ||
+      abilitiesRemoved(state, card.id)
+    ) {
+      continue;
+    }
+    // `Color` excludes colourless already, so there is no {C} case to skip.
+    const color = state.definitions[card.definitionId]?.payLifeForColor;
+    if (!color) {
+      continue;
+    }
+    const pips = cost[color];
+    if (pips > 0) {
+      cost[color] = 0;
+      for (let index = 0; index < pips; index += 1) {
+        cost.phyrexian.push(color);
+      }
+    }
+  }
+}
+
 export function inSorceryWindow(state: GameState, playerId: PlayerId): boolean {
   return (
     playerId === state.turn.activePlayerId && isMainPhase(state) && state.stack.length === 0

@@ -232,6 +232,14 @@ export type CardDefinition = {
    * all, so there is nothing on the stack to answer.
    */
   opponentsEnterTriggersSuppressed?: boolean;
+  /**
+   * K'rrik, Son of Yawgmoth: "For each {B} in a cost, you may pay 2 life
+   * rather than pay that mana." Exactly Phyrexian mana (CR 107.4f), applied
+   * to every pip of this colour in every cost its controller pays — so the
+   * pips are moved into the Phyrexian list and the machinery that already
+   * exists does the rest.
+   */
+  payLifeForColor?: Color;
   /** Grand Abolisher: on this permanent's controller's turn, opponents can't
    * cast spells or activate artifact/creature/enchantment abilities. */
   opponentsLockedDuringYourTurn?: boolean;

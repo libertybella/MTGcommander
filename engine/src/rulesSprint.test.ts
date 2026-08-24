@@ -53851,3 +53851,194 @@ describe("wave 346: a trigger that never happens, and a discount for two colours
     ]);
   });
 });
+
+describe("wave 347: a colour that can be paid in life", () => {
+  const compile = (
+    name: string,
+    typeLine: string,
+    oracleText: string,
+    manaCost = "",
+    pt: [string, string] | null = null,
+  ) =>
+    compileOracleCard({
+      oracleId: name.toLowerCase().replace(/[^a-z]+/g, "-"),
+      name,
+      manaCost,
+      typeLine,
+      power: pt?.[0] ?? null,
+      toughness: pt?.[1] ?? null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  const put = (
+    game: GameState,
+    ownerId: string,
+    definition: CardDefinition,
+    zone: "hand" | "battlefield" = "battlefield",
+  ) => {
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({ definitionId: definition.id, ownerId, zone });
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === ownerId)!.zones[zone].push(card.id);
+    if (zone === "battlefield") {
+      card.summoningSick = false;
+    }
+    return card.id;
+  };
+
+  it("compiles the grant", () => {
+    const compiled = compile(
+      "K'rrik, Son of Yawgmoth",
+      "Legendary Creature — Phyrexian Horror",
+      "For each {B} in a cost, you may pay 2 life rather than pay that mana.\nWhenever you cast a spell, if life was paid this turn, put a +1/+1 counter on this creature.",
+      "{3}{B}{B}",
+      ["2", "2"],
+    );
+    expect(compiled.definition.payLifeForColor).toBe("B");
+  });
+
+  const krrik = () =>
+    createCardDefinition({
+      name: "K'rrik, Son of Yawgmoth",
+      typeLine: "Legendary Creature — Phyrexian Horror",
+      manaCost: "{3}{B}{B}",
+      power: 2,
+      toughness: 2,
+      payLifeForColor: "B",
+    });
+
+  const blackSpell = () =>
+    createCardDefinition({
+      name: "Black Spell",
+      typeLine: "Sorcery",
+      manaCost: "{B}{B}",
+      effects: [{ kind: "draw", playerId: "controller", count: 1 }],
+    });
+
+  const cast = (game: GameState, playerId: string, cardId: string) => {
+    game.turn.activePlayerId = playerId;
+    game.turn.phase = "precombatMain";
+    game.turn.step = "precombatMain";
+    game.priorityPlayerId = playerId;
+    return applyAction(game, { kind: "cast_spell", playerId, cardId, targets: [] });
+  };
+
+  it("pays a black cost with life when no black mana is available", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    put(game, p1.id, krrik());
+    const spellId = put(game, p1.id, blackSpell(), "hand");
+    const before = game.players.find((entry) => entry.id === p1.id)!.life;
+    const casted = cast(game, p1.id, spellId);
+    expect(casted.stack).toHaveLength(1);
+    // Two black pips, two life each.
+    expect(casted.players.find((entry) => entry.id === p1.id)!.life).toBe(before - 4);
+  });
+
+  it("prefers the mana when it is there", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    put(game, p1.id, krrik());
+    const spellId = put(game, p1.id, blackSpell(), "hand");
+    game.players.find((entry) => entry.id === p1.id)!.mana.B = 2;
+    const before = game.players.find((entry) => entry.id === p1.id)!.life;
+    const casted = cast(game, p1.id, spellId);
+    // "You MAY pay 2 life" — the conservative auto-choice keeps the life,
+    // which is what the engine already does for a printed Phyrexian pip.
+    expect(casted.players.find((entry) => entry.id === p1.id)!.life).toBe(before);
+    expect(casted.players.find((entry) => entry.id === p1.id)!.mana.B).toBe(0);
+  });
+
+  it("leaves other colours alone", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    put(game, p1.id, krrik());
+    const greenSpell = createCardDefinition({
+      name: "Green Spell",
+      typeLine: "Sorcery",
+      manaCost: "{G}",
+      effects: [{ kind: "draw", playerId: "controller", count: 1 }],
+    });
+    const spellId = put(game, p1.id, greenSpell, "hand");
+    // "For each {B}" — green is still green.
+    expect(() => cast(game, p1.id, spellId)).toThrow();
+  });
+
+  it("does nothing for an opponent", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    put(game, p1.id, krrik());
+    const spellId = put(game, p2.id, blackSpell(), "hand");
+    expect(() => cast(game, p2.id, spellId)).toThrow();
+  });
+
+  it("applies to an ACTIVATION cost too", () => {
+    const { game, p1 } = twoPlayers();
+    put(game, p1.id, krrik());
+    const sourceId = put(
+      game,
+      p1.id,
+      createCardDefinition({
+        name: "Black Engine",
+        typeLine: "Artifact",
+        manaCost: "{2}",
+        activated: [
+          {
+            tap: false,
+            manaCost: "{B}",
+            effects: [{ kind: "gain_life", playerId: "controller", amount: 1 }],
+            targetRequirements: [],
+          },
+        ],
+      }),
+    );
+    game.turn.activePlayerId = p1.id;
+    game.turn.phase = "precombatMain";
+    game.turn.step = "precombatMain";
+    game.priorityPlayerId = p1.id;
+    const before = game.players.find((entry) => entry.id === p1.id)!.life;
+    const activated = applyAction(game, {
+      kind: "activate_ability",
+      playerId: p1.id,
+      cardId: sourceId,
+      abilityIndex: 0,
+      targets: [],
+    });
+    // The card says "in a COST", not "to cast a spell".
+    expect(activated.stack).toHaveLength(1);
+    expect(activated.players.find((entry) => entry.id === p1.id)!.life).toBe(before - 2);
+  });
+
+  it("stops once its abilities are gone", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    put(game, p1.id, krrik());
+    put(
+      game,
+      p1.id,
+      createCardDefinition({
+        name: "Humility",
+        typeLine: "Enchantment",
+        manaCost: "{2}{W}{W}",
+        staticAbilities: [
+          {
+            selector: { scope: "all", types: ["creature"] },
+            effect: { kind: "remove_all_abilities" },
+          },
+        ],
+      }),
+    );
+    const spellId = put(game, p1.id, blackSpell(), "hand");
+    expect(() => cast(game, p1.id, spellId)).toThrow();
+  });
+
+  it("round trips the grant", () => {
+    const { game, p1 } = twoPlayers();
+    const definition = krrik();
+    put(game, p1.id, definition);
+    const round = parseGameState(serializeGameState(game));
+    expect(round.definitions[definition.id]?.payLifeForColor).toBe("B");
+  });
+});

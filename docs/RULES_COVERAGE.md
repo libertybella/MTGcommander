@@ -870,6 +870,18 @@ more questions it can now ask:
   (Bennie Bracks). Reads the existing per-player `createdTokenThisTurn`
   list, and asks whether the CONTROLLER is in it — an opponent's Treasure
   must not satisfy it.
+- **`payLifeForColor`** — K'rrik, Son of Yawgmoth: "For each {B} in a cost,
+  you may pay 2 life rather than pay that mana." That is Phyrexian mana
+  (CR 107.4f) applied to every pip of one colour, so the pips are MOVED
+  into the Phyrexian list and the payment machinery that already existed
+  does the rest.
+
+  Applied at BOTH cost sites, because the card says "in a cost" rather
+  than "to cast a spell" — an activation pays life the same way, with a
+  test saying so. **Documented approximation**: "you MAY pay 2 life" is a
+  choice, and the auto-choice prefers the mana when it is available, which
+  is exactly what the engine already does for a printed Phyrexian pip.
+
 - **`opponentsEnterTriggersSuppressed`** — Elesh Norn's second half:
   "Permanents entering don't cause abilities of permanents your opponents
   control to trigger." A SUPPRESSION, not a replacement: checked where

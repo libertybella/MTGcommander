@@ -691,6 +691,9 @@ export function parseGameState(json: string): GameState {
       ...(def.opponentsEnterTriggersSuppressed === true
         ? { opponentsEnterTriggersSuppressed: true }
         : {}),
+      ...(def.payLifeForColor === undefined
+        ? {}
+        : { payLifeForColor: parseColor(def.payLifeForColor, "definition.payLifeForColor") }),
       ...(def.handSizeEffect === undefined
         ? {}
         : {

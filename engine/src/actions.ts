@@ -8,7 +8,7 @@ import {
 import { characteristicsOf, isCommander, isCreature, isInstant, isInstantOrSorcery, isLand, isLegendary, isMainPhase } from "./cardTypes";
 import { abilityLifeCost } from "./commanderIdentity";
 import { cloneGameState } from "./clone";
-import { targetingLifeTaxFor, splitSecondActive, costRelief, affinityArtifactDiscount, allBattlefieldCreatureCount, canActivateTapAbility, canPlayLandFromTop, canPlayLandsFromGraveyard, castCostReduction, castableFromTop, controlsCommander, creaturePower, freeEquipGranted, hasFlashGrant, activationNonManaPayment, altCastPayment, landDropAllowance, manaTapMultiplier, lockedByAbolisher, lockedFromCasting, noncreatureSpellCap, opponentControlsMoreLands, findFreeHandGrantIndex, opponentsCastLockedToHand, selfDiscountAmount, staticFreeCastCap, usesOncePerTurnFreeCast , topOfLibraryGrant } from "./derived";
+import { applyPhyrexianColorGrants, targetingLifeTaxFor, splitSecondActive, costRelief, affinityArtifactDiscount, allBattlefieldCreatureCount, canActivateTapAbility, canPlayLandFromTop, canPlayLandsFromGraveyard, castCostReduction, castableFromTop, controlsCommander, creaturePower, freeEquipGranted, hasFlashGrant, activationNonManaPayment, altCastPayment, landDropAllowance, manaTapMultiplier, lockedByAbolisher, lockedFromCasting, noncreatureSpellCap, opponentControlsMoreLands, findFreeHandGrantIndex, opponentsCastLockedToHand, selfDiscountAmount, staticFreeCastCap, usesOncePerTurnFreeCast , topOfLibraryGrant } from "./derived";
 import { eliminatePlayerInPlace } from "./elimination";
 import { applyEffects, bindCardEffects, devotionTo } from "./effects";
 import { hasKeyword } from "./keywords";
@@ -486,6 +486,10 @@ function validateCast(
           ? definition.flashback?.manaCost ?? ""
           : definition.manaCost,
   );
+  // K'rrik: every {B} in the cost becomes a Phyrexian pip for its
+  // controller. Applied before the tax and the discounts so it works on
+  // the printed pips rather than whatever survives them.
+  applyPhyrexianColorGrants(state, playerId, cost);
   if (fromCommand) {
     cost.generic += player.commander.tax;
   }
@@ -1694,6 +1698,9 @@ function applyActivateAbility(
     throw new Error(`Unknown player ${playerId}`);
   }
   const cost = parseManaCost(ability.manaCost);
+  // K'rrik says "in a COST", which is every cost its controller pays —
+  // activations included, not only spells.
+  applyPhyrexianColorGrants(state, playerId, cost);
   // {X} in an activation cost is announced the same way a spell's is.
   if (ability.xCost) {
     if (xValue === undefined || !Number.isInteger(xValue) || xValue < 0) {
