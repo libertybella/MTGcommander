@@ -3266,6 +3266,81 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     }
   }
 
+  // Cut a Deal: every living opponent drew, so "each opponent who drew a
+  // card this way" is just how many opponents there are — counted at bind,
+  // after their draws have resolved.
+  if (
+    /^you draw a card for each opponent who drew a card this way$/i.test(sentence)
+  ) {
+    return {
+      targetRequirements: [],
+      effects: [{ kind: "draw", playerId: "controller", count: 1, countPerOpponent: true }],
+    };
+  }
+
+  // Flare of Fortitude: a locked life total and a blanket grant, in one
+  // sentence. "Permanents you control" is wider than the creature team every
+  // other grant here means — the artifacts and lands are shielded too.
+  if (
+    /^Until end of turn, your life total can't change, and permanents you control gain hexproof and indestructible$/i.test(
+      sentence,
+    )
+  ) {
+    return {
+      targetRequirements: [],
+      effects: [
+        { kind: "grant_player_shield", playerId: "controller", lifeLocked: true },
+        {
+          kind: "team_keyword_until_eot",
+          playerId: "controller",
+          keyword: "hexproof",
+          scope: "permanents",
+        },
+        {
+          kind: "team_keyword_until_eot",
+          playerId: "controller",
+          keyword: "indestructible",
+          scope: "permanents",
+        },
+      ],
+    };
+  }
+
+  // Unbreakable Formation's addendum. "Those creatures" are the ones the
+  // previous sentence granted indestructible to — the controller's creatures,
+  // re-read here rather than remembered, which is the same set: nothing can
+  // die between two clauses of one resolution.
+  const addendumCounters = sentence.match(
+    /^If you cast this spell during your main phase, put a \+1\/\+1 counter on each of those creatures and they gain ([a-z ]+) until end of turn$/i,
+  );
+  const addendumKeyword = addendumCounters?.[1]
+    ? KEYWORD_GRANTS[addendumCounters[1].trim().toLowerCase()]
+    : undefined;
+  if (addendumKeyword) {
+    return {
+      targetRequirements: [],
+      effects: [
+        {
+          kind: "if_condition",
+          condition: { kind: "own_main_phase" },
+          then: [
+            {
+              kind: "counter_on_each_creature",
+              counter: "p1p1",
+              amount: 1,
+              controlledOnly: true,
+            },
+            {
+              kind: "team_keyword_until_eot",
+              playerId: "controller",
+              keyword: addendumKeyword,
+            },
+          ],
+        },
+      ],
+    };
+  }
+
   // Mirror Entity: a SET power and toughness, not a bonus, so the team is
   // X/X regardless of what it printed — and the announced X is read where
   // the ability resolves.

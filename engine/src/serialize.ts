@@ -3118,6 +3118,7 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
           };
         })(),
         ...(value.countPerControlled === "creature" ? { countPerControlled: "creature" } : {}),
+        ...(value.countPerOpponent === true ? { countPerOpponent: true } : {}),
         ...(value.countFromChosenTypePermanents === true
           ? { countFromChosenTypePermanents: true }
           : {}),

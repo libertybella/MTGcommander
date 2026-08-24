@@ -2335,6 +2335,12 @@ export type CardEffect =
       countFromChosenTypePermanents?: boolean;
       /** Shamanic Revelation: one card per controlled creature at bind. */
       countPerControlled?: "creature";
+      /**
+       * Cut a Deal: "a card for each opponent who drew a card this way" —
+       * every living opponent drew, so the count is how many there are.
+       * Read at bind, after the opponents' draws have resolved.
+       */
+      countPerOpponent?: boolean;
       /** Inspiring Call: multiply the count by a shared dynamic count at bind. */
       perDynamicCount?: DynamicCount;
       /**

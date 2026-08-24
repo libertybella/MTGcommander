@@ -870,6 +870,21 @@ more questions it can now ask:
   (Bennie Bracks). Reads the existing per-player `createdTokenThisTurn`
   list, and asks whether the CONTROLLER is in it — an opponent's Treasure
   must not satisfy it.
+- **Flare of Fortitude** — read entirely onto machinery already present:
+  `grant_player_shield` with `lifeLocked`, plus two `team_keyword_until_eot`
+  grants at `scope: "permanents"`. That scope is wider than the creature team
+  every other grant here means — the artifacts and lands are shielded too,
+  which is most of what the card does against a sweeper.
+
+- **Unbreakable Formation's addendum** — an `if_condition` on
+  `own_main_phase`. "Those creatures" are re-read as the controller's
+  creatures rather than remembered from the previous clause: it is the same
+  set, because nothing can die between two clauses of one resolution.
+
+- **`draw.countPerOpponent`** — Cut a Deal. Every living opponent drew, so
+  "each opponent who drew a card this way" is how many there are, counted at
+  bind, after their draws resolved. An eliminated player drew nothing.
+
 - **`plays_land` — a land PLAYED is not a land that entered.** A fetched or
   reanimated land enters and was never played, and the printed wording draws
   that line deliberately. Dispatched from the one site a land is played from;

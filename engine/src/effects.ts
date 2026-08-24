@@ -472,7 +472,7 @@ export function bindCardEffect(
       if (!playerId) {
         return null;
       }
-      const { countFromGreatestPower, countPerControlled, countFromChosenTypePermanents, perDynamicCount, countFromCounterOnSource, ...drawRest } = effect;
+      const { countFromGreatestPower, countPerControlled, countPerOpponent, countFromChosenTypePermanents, perDynamicCount, countFromCounterOnSource, ...drawRest } = effect;
       // The One Ring: one card per burden counter, read off the source as
       // the ability resolves. Zero counters draws nothing rather than one.
       if (countFromCounterOnSource) {
@@ -532,6 +532,17 @@ export function bindCardEffect(
             card.zone === "battlefield" &&
             card.controllerId === context.controllerId &&
             cardMatchesSubtype(state, card.id, chosen),
+        ).length;
+        if (count === 0) {
+          return null;
+        }
+        return { ...drawRest, playerId, count };
+      }
+      if (countPerOpponent) {
+        // Cut a Deal: every living opponent drew, so the count is how many
+        // there are — read at bind, which is after their draws resolved.
+        const count = livingPlayers(state).filter(
+          (player) => player.id !== context.controllerId,
         ).length;
         if (count === 0) {
           return null;

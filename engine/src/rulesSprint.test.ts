@@ -45820,3 +45820,258 @@ describe("wave 311: playing a land is not the same as a land entering", () => {
     });
   });
 });
+
+describe("wave 312: a locked life total, an addendum, and a count of opponents", () => {
+  const compile = (name: string, typeLine: string, oracleText: string, manaCost = "") =>
+    compileOracleCard({
+      oracleId: name.toLowerCase().replace(/[^a-z]+/g, "-"),
+      name,
+      manaCost,
+      typeLine,
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  const put = (game: GameState, ownerId: string, definition: CardDefinition) => {
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({
+      definitionId: definition.id,
+      ownerId,
+      zone: "battlefield",
+    });
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === ownerId)!.zones.battlefield.push(card.id);
+    card.summoningSick = false;
+    return card.id;
+  };
+
+  const bear = (name: string) =>
+    createCardDefinition({
+      name,
+      typeLine: "Creature — Bear",
+      manaCost: "{1}{G}",
+      power: 2,
+      toughness: 2,
+    });
+
+  // ---- Flare of Fortitude -------------------------------------------------
+
+  it("compiles the locked life total and the blanket grant", () => {
+    const compiled = compile(
+      "Flare of Fortitude",
+      "Instant",
+      "You may sacrifice a nontoken white creature rather than pay this spell's mana cost.\nUntil end of turn, your life total can't change, and permanents you control gain hexproof and indestructible.",
+      "{2}{W}{W}",
+    );
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.effects).toEqual([
+      { kind: "grant_player_shield", playerId: "controller", lifeLocked: true },
+      {
+        kind: "team_keyword_until_eot",
+        playerId: "controller",
+        keyword: "hexproof",
+        scope: "permanents",
+      },
+      {
+        kind: "team_keyword_until_eot",
+        playerId: "controller",
+        keyword: "indestructible",
+        scope: "permanents",
+      },
+    ]);
+  });
+
+  it("shields permanents, not just creatures", () => {
+    const { game, p1 } = twoPlayers();
+    const bearId = put(game, p1.id, bear("Bear"));
+    const rockId = put(
+      game,
+      p1.id,
+      createCardDefinition({ name: "Rock", typeLine: "Artifact", manaCost: "{2}" }),
+    );
+    const shielded = applyEffects(
+      game,
+      bindCardEffects(
+        game,
+        [
+          {
+            kind: "team_keyword_until_eot",
+            playerId: "controller",
+            keyword: "indestructible",
+            scope: "permanents",
+          },
+        ],
+        { controllerId: p1.id, sourceId: null },
+      ),
+    );
+    // "Permanents you control" is wider than the creature team every other
+    // grant here means — the artifact is covered too.
+    expect(hasKeyword(shielded, bearId, "indestructible")).toBe(true);
+    expect(hasKeyword(shielded, rockId, "indestructible")).toBe(true);
+  });
+
+  it("locks the life total against loss", () => {
+    const { game, p1 } = twoPlayers();
+    const locked = applyEffects(
+      game,
+      bindCardEffects(
+        game,
+        [{ kind: "grant_player_shield", playerId: "controller", lifeLocked: true }],
+        { controllerId: p1.id, sourceId: null },
+      ),
+    );
+    const before = locked.players.find((entry) => entry.id === p1.id)!.life;
+    const drained = applyEffect(locked, { kind: "lose_life", playerId: p1.id, amount: 5 });
+    expect(drained.players.find((entry) => entry.id === p1.id)!.life).toBe(before);
+  });
+
+  // ---- Unbreakable Formation's addendum -----------------------------------
+
+  it("compiles the addendum behind a main-phase condition", () => {
+    const compiled = compile(
+      "Unbreakable Formation",
+      "Instant",
+      "Creatures you control gain indestructible until end of turn.\nAddendum — If you cast this spell during your main phase, put a +1/+1 counter on each of those creatures and they gain vigilance until end of turn.",
+      "{2}{W}",
+    );
+    expect(compiled.notes).toEqual([]);
+    const addendum = compiled.definition.effects.find(
+      (effect) => effect.kind === "if_condition",
+    );
+    expect(addendum).toMatchObject({
+      kind: "if_condition",
+      condition: { kind: "own_main_phase" },
+    });
+    expect(addendum?.kind === "if_condition" && addendum.then).toEqual([
+      { kind: "counter_on_each_creature", counter: "p1p1", amount: 1, controlledOnly: true },
+      { kind: "team_keyword_until_eot", playerId: "controller", keyword: "vigilance" },
+    ]);
+  });
+
+  const formationEffects: CardEffect[] = [
+    {
+      kind: "if_condition",
+      condition: { kind: "own_main_phase" },
+      then: [
+        { kind: "counter_on_each_creature", counter: "p1p1", amount: 1, controlledOnly: true },
+        { kind: "team_keyword_until_eot", playerId: "controller", keyword: "vigilance" },
+      ],
+    },
+  ];
+
+  it("adds the counters on your own main phase", () => {
+    const { game, p1 } = twoPlayers();
+    const bearId = put(game, p1.id, bear("Bear"));
+    game.turn.activePlayerId = p1.id;
+    game.turn.phase = "precombatMain";
+    game.turn.step = "precombatMain";
+    const cast = applyEffects(
+      game,
+      bindCardEffects(game, formationEffects, { controllerId: p1.id, sourceId: null }),
+    );
+    expect(cast.cards[bearId]?.counters["p1p1"]).toBe(1);
+    expect(hasKeyword(cast, bearId, "vigilance")).toBe(true);
+  });
+
+  it("skips the addendum in combat", () => {
+    const { game, p1 } = twoPlayers();
+    const bearId = put(game, p1.id, bear("Bear"));
+    game.turn.activePlayerId = p1.id;
+    game.turn.phase = "combat";
+    game.turn.step = "declareAttackers";
+    const cast = applyEffects(
+      game,
+      bindCardEffects(game, formationEffects, { controllerId: p1.id, sourceId: null }),
+    );
+    expect(cast.cards[bearId]?.counters["p1p1"]).toBeUndefined();
+  });
+
+  it("skips it on an opponent's main phase", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const bearId = put(game, p1.id, bear("Bear"));
+    // "YOUR main phase": an opponent's main phase is a main phase and is not
+    // yours, which is the whole addendum condition.
+    game.turn.activePlayerId = p2.id;
+    game.turn.phase = "precombatMain";
+    game.turn.step = "precombatMain";
+    const cast = applyEffects(
+      game,
+      bindCardEffects(game, formationEffects, { controllerId: p1.id, sourceId: null }),
+    );
+    expect(cast.cards[bearId]?.counters["p1p1"]).toBeUndefined();
+  });
+
+  // ---- Cut a Deal ---------------------------------------------------------
+
+  it("compiles the draw as a count of opponents", () => {
+    const compiled = compile(
+      "Cut a Deal",
+      "Sorcery",
+      "Each opponent draws a card, then you draw a card for each opponent who drew a card this way.",
+      "{1}{U}",
+    );
+    expect(compiled.notes).toEqual([]);
+    const draw = compiled.definition.effects.at(-1);
+    expect(draw).toEqual({
+      kind: "draw",
+      playerId: "controller",
+      count: 1,
+      countPerOpponent: true,
+    });
+  });
+
+  it("draws one per opponent, and scales with the table", () => {
+    const two = createGameState({ playerCount: 2 });
+    fillLibraries(two, 20);
+    const twoBound = bindCardEffects(
+      two,
+      [{ kind: "draw", playerId: "controller", count: 1, countPerOpponent: true }],
+      { controllerId: two.players[0]!.id, sourceId: null },
+    );
+    expect(twoBound[0]).toMatchObject({ count: 1 });
+
+    const four = createGameState({ playerCount: 4 });
+    fillLibraries(four, 20);
+    const fourBound = bindCardEffects(
+      four,
+      [{ kind: "draw", playerId: "controller", count: 1, countPerOpponent: true }],
+      { controllerId: four.players[0]!.id, sourceId: null },
+    );
+    // Three opponents, three cards — the count is the table, not a constant.
+    expect(fourBound[0]).toMatchObject({ count: 3 });
+  });
+
+  it("counts only LIVING opponents", () => {
+    const four = createGameState({ playerCount: 4 });
+    fillLibraries(four, 20);
+    four.players[3]!.lost = true;
+    const bound = bindCardEffects(
+      four,
+      [{ kind: "draw", playerId: "controller", count: 1, countPerOpponent: true }],
+      { controllerId: four.players[0]!.id, sourceId: null },
+    );
+    // An eliminated player drew nothing.
+    expect(bound[0]).toMatchObject({ count: 2 });
+  });
+
+  it("round trips the new draw count", () => {
+    const { game, p1 } = twoPlayers();
+    const definition = createCardDefinition({
+      name: "Cut a Deal",
+      typeLine: "Sorcery",
+      manaCost: "{1}{U}",
+      effects: [{ kind: "draw", playerId: "controller", count: 1, countPerOpponent: true }],
+    });
+    put(game, p1.id, definition);
+    const round = parseGameState(serializeGameState(game));
+    expect(round.definitions[definition.id]?.effects[0]).toEqual({
+      kind: "draw",
+      playerId: "controller",
+      count: 1,
+      countPerOpponent: true,
+    });
+  });
+});
