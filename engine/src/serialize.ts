@@ -151,6 +151,7 @@ function parseAdditionalCost(value: unknown, label: string): AdditionalCastCost 
       ? {}
       : { discard: expectNumber(value.discard, `${label}.discard`) }),
     ...(value.life === undefined ? {} : { life: expectNumber(value.life, `${label}.life`) }),
+    ...(value.mana === undefined ? {} : { mana: expectString(value.mana, `${label}.mana`) }),
     ...(value.lifeX === true ? { lifeX: true } : {}),
     ...(value.alternatives === undefined
       ? {}
@@ -556,6 +557,8 @@ export function parseGameState(json: string): GameState {
             goadedBy: expectStringArray(card.goadedBy, "card.goadedBy"),
           }),
       ...(card.mustAttackThisTurn === true ? { mustAttackThisTurn: true } : {}),
+      ...(card.evoked === true ? { evoked: true } : {}),
+      ...(card.echoDue === true ? { echoDue: true } : {}),
       faceDown: card.faceDown === true,
       ...(card.phasedOut === true ? { phasedOut: true } : {}),
       ...(card.enteredFromCast === true ? { enteredFromCast: true } : {}),
@@ -937,16 +940,51 @@ export function parseGameState(json: string): GameState {
                 throw new Error(`Invalid definition.${id}.flashback`);
               }
               return {
+                // Dread Return and Cabal Therapy pay a sacrifice and no mana
+                // at all, so the mana half is legitimately empty. Rejected by
+                // default, those two definitions could not LOAD.
                 manaCost: expectString(
                   def.flashback.manaCost,
                   `definition.${id}.flashback.manaCost`,
+                  def.flashback.sacrificeCreatures !== undefined,
                 ),
                 ...(def.flashback.life === undefined
                   ? {}
                   : { life: expectNumber(def.flashback.life, `definition.${id}.flashback.life`) }),
+                ...(def.flashback.sacrificeCreatures === undefined
+                  ? {}
+                  : {
+                      sacrificeCreatures: expectNumber(
+                        def.flashback.sacrificeCreatures,
+                        `definition.${id}.flashback.sacrificeCreatures`,
+                      ),
+                    }),
               };
             })(),
           }),
+      ...(def.evoke === undefined
+        ? {}
+        : {
+            evoke: {
+              manaCost: expectString(
+                isRecord(def.evoke) ? def.evoke.manaCost : undefined,
+                `definition.${id}.evoke.manaCost`,
+              ),
+            },
+          }),
+      ...(def.echo === undefined
+        ? {}
+        : {
+            echo: {
+              manaCost: expectString(
+                isRecord(def.echo) ? def.echo.manaCost : undefined,
+                `definition.${id}.echo.manaCost`,
+              ),
+            },
+          }),
+      ...(def.escalate === undefined
+        ? {}
+        : { escalate: expectString(def.escalate, `definition.${id}.escalate`) }),
       ...(def.topOfLibrary === undefined
         ? {}
         : {
@@ -4094,6 +4132,7 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
         sides: expectNumber(value.sides, `${label}.sides`),
       };
     case "cumulative_upkeep":
+    case "echo":
       return {
         kind,
         playerId: parsePlayerSelector(value.playerId, `${label}.playerId`),
@@ -5953,7 +5992,7 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
       sides: expectNumber(value.sides, `${label}.sides`),
     };
   }
-  if (kind === "cumulative_upkeep") {
+  if (kind === "cumulative_upkeep" || kind === "echo") {
     return {
       kind,
       playerId: expectString(value.playerId, `${label}.playerId`),

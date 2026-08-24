@@ -249,7 +249,22 @@ function chooseAdditionalCostBranch(
     }
   }
   const player = state.players.find((entry) => entry.id === playerId);
+  // A mana branch beside a life branch (Redirect Lightning: "pay 5 life or
+  // pay {2}") is tried FIRST when it is payable. The documented rule is
+  // "first affordable branch", but taking 5 life off a player holding two
+  // spare mana is not a choice anyone makes, and life is the scarcer
+  // resource at this table size.
+  const manaBranch = branches.find((branch) => branch.mana !== undefined);
+  if (manaBranch?.mana !== undefined && player) {
+    if (canPayManaCost(player.mana, parseManaCost(manaBranch.mana), player.life)) {
+      return manaBranch;
+    }
+  }
   const affordable = branches.find((branch) => {
+    if (branch.mana !== undefined) {
+      // Already tried above and not payable.
+      return false;
+    }
     if (branch.life !== undefined) {
       return (player?.life ?? 0) > branch.life;
     }
@@ -281,6 +296,11 @@ function validateCast(
   altCost?: { life: number; exileIds: CardInstanceId[]; sacrificeId?: CardInstanceId };
   /** Underworld Breach: the OTHER graveyard cards escape exiles as a cost. */
   escapeExileIds?: CardInstanceId[];
+  /** Evoke (CR 702.74): the alternative cost was taken, so the permanent is
+   * sacrificed as it enters. */
+  viaEvoke?: boolean;
+  /** Dread Return: creatures sacrificed for a flashback cost, weakest first. */
+  flashbackSacrificeIds?: CardInstanceId[];
 } {
   requirePriority(state, playerId);
   // Grand Abolisher / Voice of Victory: no casting on the lock's turn.
@@ -403,6 +423,28 @@ function validateCast(
   const flashbackLife = viaFlashback
     ? definition.flashback?.life ?? 0
     : citadelLife;
+  // Dread Return: flashback whose whole cost is a sacrifice. The fodder is
+  // auto-picked WEAKEST-first, the same documented approximation
+  // `altCastPayment` makes — a player paying this reaches for tokens first.
+  // The card itself is in the graveyard, so it can never be its own fodder.
+  let flashbackSacrificeIds: CardInstanceId[] | undefined;
+  if (viaFlashback && definition.flashback?.sacrificeCreatures) {
+    const wanted = definition.flashback.sacrificeCreatures;
+    const fodder = Object.values(state.cards)
+      .filter(
+        (entry) =>
+          entry.zone === "battlefield" &&
+          entry.controllerId === playerId &&
+          isCreature(state, entry.id),
+      )
+      .sort((a, b) => creaturePower(state, a.id) - creaturePower(state, b.id))
+      .slice(0, wanted)
+      .map((entry) => entry.id);
+    if (fodder.length < wanted) {
+      throw new Error(`Sacrifice ${wanted} creatures to cast this`);
+    }
+    flashbackSacrificeIds = fodder;
+  }
   // Etali: free-cast impulse exiles pay nothing.
   const freeExileCast =
     fromExile &&
@@ -490,6 +532,21 @@ function validateCast(
       player.life,
     )
   ) {
+    // Evoke (CR 702.74): an alternative MANA cost, taken in the same one
+    // direction — a caster who can pay for the body gets the body, and
+    // nobody throws away a Mulldrifter they could have kept.
+    if (definition.evoke && state.cards[cardId]?.zone === "hand") {
+      const evokeCost = parseManaCost(definition.evoke.manaCost);
+      if (canPayManaCost(available, evokeCost, player.life)) {
+        return {
+          cost: evokeCost,
+          fromCommand,
+          flashbackLife,
+          viaEvoke: true,
+          ...(escapeExileIds && escapeExileIds.length > 0 ? { escapeExileIds } : {}),
+        };
+      }
+    }
     // Force of Will / Snuff Out: the printed cost is out of reach, so the
     // alternative is taken. Only in this direction — see AlternativeCastCost.
     const payment = definition.altCost
@@ -512,6 +569,7 @@ function validateCast(
     fromCommand,
     flashbackLife,
     ...(escapeExileIds && escapeExileIds.length > 0 ? { escapeExileIds } : {}),
+    ...(flashbackSacrificeIds ? { flashbackSacrificeIds } : {}),
   };
 }
 
@@ -589,7 +647,15 @@ function applyCastSpell(
 ): GameState {
   requirePlaying(state);
   const faced = applyChosenFace(state, cardId, faceIndex);
-  const { cost, fromCommand, flashbackLife, altCost, escapeExileIds } = validateCast(
+  const {
+    cost,
+    fromCommand,
+    flashbackLife,
+    altCost,
+    escapeExileIds,
+    viaEvoke,
+    flashbackSacrificeIds,
+  } = validateCast(
     faced,
     playerId,
     cardId,
@@ -641,6 +707,20 @@ function applyCastSpell(
     const player = faced.players.find((entry) => entry.id === playerId);
     if (!player || player.life <= additional.life) {
       throw new Error(`Pay ${additional.life} life to cast this`);
+    }
+  }
+  // "As an additional cost…, pay {2}": added to the spell's cost rather than
+  // paid separately, so one payment covers both halves.
+  if (additional?.mana) {
+    const extra = parseManaCost(additional.mana);
+    cost.generic += extra.generic;
+    for (const color of ["W", "U", "B", "R", "G", "C"] as const) {
+      cost[color] += extra[color];
+    }
+    cost.hybrid.push(...extra.hybrid);
+    const player = faced.players.find((entry) => entry.id === playerId);
+    if (!player || !canPayManaCost(player.mana, cost, player.life)) {
+      throw new Error("Cannot pay the additional cost");
     }
   }
   if (additional?.lifeX) {
@@ -711,6 +791,23 @@ function applyCastSpell(
     const payer = faced.players.find((entry) => entry.id === playerId);
     if (!payer || !canPayManaCost(payer.mana, cost, payer.life)) {
       throw new Error("Cannot pay the kicked cost");
+    }
+  }
+  // Escalate (CR 702.120): the cost again for EACH mode beyond the first.
+  // Not a per-mode `extraCost`, because which mode is "the first" depends on
+  // what the caster picked — charging every mode would tax the first one too.
+  if (definition?.escalate && chosenModeIndexes.length > 1) {
+    const escalateCost = parseManaCost(definition.escalate);
+    for (let extra = 1; extra < chosenModeIndexes.length; extra += 1) {
+      cost.generic += escalateCost.generic;
+      for (const color of ["W", "U", "B", "R", "G", "C"] as const) {
+        cost[color] += escalateCost[color];
+      }
+      cost.hybrid.push(...escalateCost.hybrid);
+    }
+    const payer = faced.players.find((entry) => entry.id === playerId);
+    if (!payer || !canPayManaCost(payer.mana, cost, payer.life)) {
+      throw new Error("Cannot pay the escalate cost");
     }
   }
   if (definition?.modes && definition.modes.length > 0 && definition.modeChoice) {
@@ -827,6 +924,15 @@ function applyCastSpell(
   // the graveyard, so the count it was chosen against still holds.
   for (const exileId of escapeExileIds ?? []) {
     paid = applyEffects(paid, [{ kind: "move_card", cardId: exileId, toZone: "exile" }]);
+  }
+  // Dread Return: "Flashback—Sacrifice three creatures." Paid here beside the
+  // other cost halves, and before the spell leaves the graveyard.
+  for (const fodderId of flashbackSacrificeIds ?? []) {
+    paid = applyEffects(paid, [{ kind: "sacrifice", cardId: fodderId }]);
+  }
+  // Evoke: recorded on the card while it is a spell, and read as it enters.
+  if (viaEvoke && paid.cards[cardId]) {
+    paid.cards[cardId]!.evoked = true;
   }
   // Spend the free-cast grant before the card leaves hand, so the lookup
   // still sees where it was.

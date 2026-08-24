@@ -276,10 +276,36 @@ export type CardDefinition = {
   topOfLibrary?: TopOfLibraryGrant;
   /**
    * Flashback (CR 702.34): castable from the graveyard for this cost, then
-   * exiled as it leaves the stack. Only mana (plus optional life) costs are
-   * expressible; sacrifice-cost flashback stays uncompiled.
+   * exiled as it leaves the stack.
    */
-  flashback?: { manaCost: string; life?: number };
+  flashback?: {
+    manaCost: string;
+    life?: number;
+    /** Dread Return: "Flashback—Sacrifice three creatures." The whole cost,
+     * with no mana at all. Fodder is auto-picked weakest-first, the same
+     * documented approximation `altCastPayment` makes. */
+    sacrificeCreatures?: number;
+  };
+  /**
+   * Evoke (CR 702.74): an alternative mana cost, and the permanent is
+   * sacrificed as it enters. Taken only when the printed cost is out of
+   * reach, the same one-way rule `altCost` follows — a caster who can pay
+   * for the body gets the body.
+   */
+  evoke?: { manaCost: string };
+  /**
+   * Echo (CR 702.29): at the controller's first upkeep after this came
+   * under their control, sacrifice it unless they pay this cost. Only the
+   * mana form is read; "Echo—Sacrifice a creature" would need a cost the
+   * pay-or-sacrifice prompt cannot express.
+   */
+  echo?: { manaCost: string };
+  /**
+   * Escalate (CR 702.120): this much more for EACH mode chosen beyond the
+   * first. A per-mode `extraCost` cannot say it — which mode is "the
+   * first" depends on what the caster picked.
+   */
+  escalate?: string;
   /**
    * Storm (CR 702.40): casting this copies it once per spell cast before it
    * this turn. Documented approximation: copies are created immediately on
@@ -612,6 +638,22 @@ export type CardInstance = {
   goadedBy?: PlayerId[];
   /** Bident of Thassa: "attacks this turn if able", with no say in whom. */
   mustAttackThisTurn?: boolean;
+  /**
+   * Cast for an evoke cost (CR 702.74b): sacrificed as it enters. Set while
+   * the card is a spell on the stack and cleared the moment it is read, so a
+   * Mulldrifter later reanimated is not sacrificed for a cost nobody paid.
+   */
+  evoked?: boolean;
+  /**
+   * Echo (CR 702.29) is owed at the next upkeep. Set as a permanent with
+   * echo enters and cleared when the upkeep trigger reads it, which is what
+   * makes "since the beginning of your last upkeep" answerable without a
+   * per-permanent upkeep history.
+   *
+   * Set on ENTRY only, so a permanent that changes control does not re-arm
+   * its echo — a documented gap, and the rarer half of the keyword.
+   */
+  echoDue?: boolean;
 };
 
 export type CommanderState = {
@@ -1663,6 +1705,13 @@ export type GameEffect =
       cardId: CardInstanceId;
       cost: string;
     }
+  /** Echo (CR 702.29): the same pay-or-sacrifice, owed exactly once. */
+  | {
+      kind: "echo";
+      playerId: PlayerId;
+      cardId: CardInstanceId;
+      cost: string;
+    }
   /** "You may pay {N}. If you do, …" — paying causes the effects. */
   | { kind: "may_pay"; playerId: PlayerId; cost: string; effects: GameEffect[] }
   /** Blasphemous Act: damage every creature (and optionally player) at once. */
@@ -1815,6 +1864,9 @@ export type AdditionalCastCost = {
   discard?: number;
   /** Pay this much life. */
   life?: number;
+  /** Redirect Lightning: "pay 5 life OR pay {2}" — a mana branch, which only
+   * ever appears inside `alternatives`. Added to the spell's cost. */
+  mana?: string;
   /** "Pay X life" — the announced X feeds the spell's "x" amounts (Toxic Deluge). */
   lifeX?: boolean;
   /**
@@ -2841,6 +2893,12 @@ export type CardEffect =
    */
   | {
       kind: "cumulative_upkeep";
+      playerId: PlayerSelector;
+      cost: string;
+    }
+  /** Echo (CR 702.29), bound to the source the way cumulative upkeep is. */
+  | {
+      kind: "echo";
       playerId: PlayerSelector;
       cost: string;
     }

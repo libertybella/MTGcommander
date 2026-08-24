@@ -110,7 +110,10 @@ export type CompiledOracleText = {
   affinityAllCreatures?: boolean;
   selfDiscount?: CardDefinition["selfDiscount"];
   topOfLibrary?: TopOfLibraryGrant;
-  flashback?: { manaCost: string; life?: number };
+  flashback?: CardDefinition["flashback"];
+  evoke?: CardDefinition["evoke"];
+  echo?: CardDefinition["echo"];
+  escalate?: CardDefinition["escalate"];
   costReductions?: CostReduction[];
   chooseCreatureTypeOnEnter?: boolean;
   chooseCardTypeOnEnter?: boolean;
@@ -260,6 +263,13 @@ function parseSingleAdditionalCost(what: string): AdditionalCastCost | null {
   const life = what.match(/^pay (\d+) life$/);
   if (life?.[1]) {
     return { life: Number(life[1]) };
+  }
+  // Redirect Lightning: "pay 5 life or pay {2}". A mana branch is only ever
+  // useful inside an `or`, but it is read here so both halves go through the
+  // same table rather than the disjunction growing a special case.
+  const mana = what.match(/^pay ((?:\{[^}]+\})+)$/);
+  if (mana?.[1]) {
+    return { mana: mana[1].toUpperCase() };
   }
   // "pay {2}" as a branch has no home here — AdditionalCastCost charges
   // permanents, cards, and life, not mana — so Redirect Lightning's
@@ -13498,8 +13508,7 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
       continue;
     }
 
-    // "Flashback {2}{R}" / "Flashback—{1}{U}, Pay 3 life." Sacrifice-cost
-    // flashback (Dread Return) stays uncompiled.
+    // "Flashback {2}{R}" / "Flashback—{1}{U}, Pay 3 life."
     const flashback = sentence.match(
       /^Flashback\s*[—–-]?\s*((?:\{[^}]+\})+)(?:, Pay (\d+) life)?$/i,
     );
@@ -13508,6 +13517,49 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
         manaCost: flashback[1],
         ...(flashback[2] ? { life: Number(flashback[2]) } : {}),
       };
+      continue;
+    }
+    // Dread Return: "Flashback—Sacrifice three creatures." The whole cost is
+    // the sacrifice, so there is no mana half at all.
+    const sacrificeFlashback = sentence.match(
+      /^Flashback\s*[—–-]\s*Sacrifice ([a-z]+) creatures?$/i,
+    );
+    const flashbackFodder = sacrificeFlashback?.[1]
+      ? parseCount(sacrificeFlashback[1])
+      : null;
+    if (flashbackFodder) {
+      result.flashback = { manaCost: "", sacrificeCreatures: flashbackFodder };
+      continue;
+    }
+
+    // Evoke (CR 702.74). The sacrifice half is machinery, not a compiled
+    // trigger: it has to survive onto the permanent the spell becomes.
+    const evoke = sentence.match(/^Evoke\s*[—–-]?\s*((?:\{[^}]+\})+)$/i);
+    if (evoke?.[1]) {
+      result.evoke = { manaCost: evoke[1] };
+      continue;
+    }
+
+    // Echo (CR 702.29). Compiled down onto the upkeep trigger it already
+    // is, the way cumulative upkeep is — only the mana form, because
+    // "Echo—Sacrifice a creature" needs a cost the prompt cannot express.
+    // `result.echo` still rides along: arming the debt on entry is what
+    // makes "since your last upkeep" answerable.
+    const echo = sentence.match(/^Echo\s*[—–-]?\s*((?:\{[^}]+\})+)$/i);
+    if (echo?.[1]) {
+      result.echo = { manaCost: echo[1] };
+      result.triggers.push({
+        event: "upkeep",
+        effects: [{ kind: "echo", playerId: "controller", cost: echo[1] }],
+        targetRequirements: [],
+      });
+      continue;
+    }
+
+    // Escalate (CR 702.120).
+    const escalate = sentence.match(/^Escalate\s*[—–-]?\s*((?:\{[^}]+\})+)$/i);
+    if (escalate?.[1]) {
+      result.escalate = escalate[1];
       continue;
     }
 

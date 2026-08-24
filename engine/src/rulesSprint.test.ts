@@ -19323,15 +19323,19 @@ describe("wave 161: either-or additional costs", () => {
       alternatives: [{ discard: 1 }, { life: 3 }],
     });
 
-    // "pay {2}" is not a cost this shape can charge, so the whole clause is
-    // left alone rather than compiling half of it.
+    // "pay {2}" was refused here until wave 302 gave `AdditionalCastCost` a
+    // mana branch. The refusal is obsolete, so the case is inverted rather
+    // than deleted — it is still the third shape this grammar has to read.
     const redirect = compile(
       "Redirect Lightning",
       "{1}{R}",
       "Instant",
       "As an additional cost to cast this spell, pay 5 life or pay {2}.\nChange the target of target spell with a single target.",
     );
-    expect(redirect.definition.additionalCost?.alternatives).toBeUndefined();
+    expect(redirect.definition.additionalCost?.alternatives).toEqual([
+      { life: 5 },
+      { mana: "{2}" },
+    ]);
   });
 
   const table = () => {
@@ -41812,5 +41816,620 @@ describe("wave 301: counters that move, spread, and land wider", () => {
       toId: receiverId,
       counter: "p1p1",
     });
+  });
+});
+
+describe("wave 302: costs printed as keywords", () => {
+  const compile = (
+    name: string,
+    typeLine: string,
+    oracleText: string,
+    manaCost: string,
+    pt: [string, string] | null = null,
+  ) =>
+    compileOracleCard({
+      oracleId: name.toLowerCase().replace(/[^a-z]+/g, "-"),
+      name,
+      manaCost,
+      typeLine,
+      power: pt?.[0] ?? null,
+      toughness: pt?.[1] ?? null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  const put = (game: GameState, ownerId: string, definition: CardDefinition, zone: "hand" | "battlefield" | "graveyard") => {
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({ definitionId: definition.id, ownerId, zone });
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === ownerId)!.zones[zone].push(card.id);
+    return card.id;
+  };
+
+  const ready = (game: GameState, playerId: string) => {
+    game.turn.activePlayerId = playerId;
+    game.turn.phase = "precombatMain";
+    game.turn.step = "precombatMain";
+    game.priorityPlayerId = playerId;
+  };
+
+  const mulldrifter = () =>
+    createCardDefinition({
+      name: "Mulldrifter",
+      typeLine: "Creature — Elemental",
+      manaCost: "{4}{U}",
+      power: 2,
+      toughness: 2,
+      keywords: ["flying"],
+      evoke: { manaCost: "{2}{U}" },
+      triggers: [
+        {
+          event: "enter_battlefield",
+          watch: "self",
+          effects: [{ kind: "draw", playerId: "controller", count: 2 }],
+          targetRequirements: [],
+        },
+      ],
+    });
+
+  // ---- Evoke -------------------------------------------------------------
+
+  it("compiles Mulldrifter's evoke cost", () => {
+    const compiled = compile(
+      "Mulldrifter",
+      "Creature — Elemental",
+      "Flying\nWhen this creature enters, draw two cards.\nEvoke {2}{U}",
+      "{4}{U}",
+      ["2", "2"],
+    );
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.evoke).toEqual({ manaCost: "{2}{U}" });
+  });
+
+  it("keeps the body when the printed cost is payable", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 12);
+    const cardId = put(game, p1.id, mulldrifter(), "hand");
+    ready(game, p1.id);
+    const payer = game.players.find((entry) => entry.id === p1.id)!;
+    payer.mana.U = 1;
+    payer.mana.C = 4;
+    let state = applyAction(game, { kind: "cast_spell", playerId: p1.id, cardId, targets: [] });
+    while (state.stack.length > 0) {
+      state = resolveTopOfStack(state);
+    }
+    // Evoke is one-way, like every other alternative cost here: a caster who
+    // can pay for the body gets the body.
+    expect(state.cards[cardId]?.zone).toBe("battlefield");
+    expect(state.cards[cardId]?.evoked).toBeUndefined();
+  });
+
+  it("draws two and then dies when only the evoke cost is payable", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 12);
+    const cardId = put(game, p1.id, mulldrifter(), "hand");
+    ready(game, p1.id);
+    const payer = game.players.find((entry) => entry.id === p1.id)!;
+    payer.mana.U = 1;
+    payer.mana.C = 2;
+    const handBefore = payer.zones.hand.length;
+    let state = applyAction(game, { kind: "cast_spell", playerId: p1.id, cardId, targets: [] });
+    expect(state.cards[cardId]?.evoked).toBe(true);
+    while (state.stack.length > 0) {
+      state = resolveTopOfStack(state);
+    }
+    // The enter trigger is queued BEFORE the sacrifice, so the two cards
+    // arrive — that is the whole card.
+    const after = state.players.find((entry) => entry.id === p1.id)!;
+    // Minus the Mulldrifter itself, plus two drawn.
+    expect(after.zones.hand.length).toBe(handBefore - 1 + 2);
+    expect(state.cards[cardId]?.zone).toBe("graveyard");
+  });
+
+  it("does not sacrifice a Mulldrifter that arrives some other way", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 12);
+    const cardId = put(game, p1.id, mulldrifter(), "graveyard");
+    ready(game, p1.id);
+    const arrived = moveCard(game, cardId, "battlefield");
+    // The flag is set at cast and read once; nobody paid an evoke cost here.
+    expect(arrived.cards[cardId]?.zone).toBe("battlefield");
+  });
+
+  it("clears the evoke flag so a rebought copy keeps its body", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 12);
+    const cardId = put(game, p1.id, mulldrifter(), "hand");
+    ready(game, p1.id);
+    const payer = game.players.find((entry) => entry.id === p1.id)!;
+    payer.mana.U = 1;
+    payer.mana.C = 2;
+    let state = applyAction(game, { kind: "cast_spell", playerId: p1.id, cardId, targets: [] });
+    while (state.stack.length > 0) {
+      state = resolveTopOfStack(state);
+    }
+    expect(state.cards[cardId]?.zone).toBe("graveyard");
+    const back = moveCard(state, cardId, "battlefield");
+    expect(back.cards[cardId]?.zone).toBe("battlefield");
+  });
+
+  // ---- Echo --------------------------------------------------------------
+
+  const karmicGuide = () =>
+    createCardDefinition({
+      name: "Karmic Guide",
+      typeLine: "Creature — Angel Spirit",
+      manaCost: "{3}{W}{W}",
+      power: 2,
+      toughness: 2,
+      keywords: ["flying"],
+      echo: { manaCost: "{3}{W}{W}" },
+      triggers: [
+        {
+          event: "upkeep",
+          effects: [{ kind: "echo", playerId: "controller", cost: "{3}{W}{W}" }],
+          targetRequirements: [],
+        },
+      ],
+    });
+
+  it("compiles Karmic Guide's echo into an upkeep trigger", () => {
+    const compiled = compile(
+      "Karmic Guide",
+      "Creature — Angel Spirit",
+      "Flying, protection from black\nEcho {3}{W}{W}\nWhen this creature enters, return target creature card from your graveyard to the battlefield.",
+      "{3}{W}{W}",
+      ["2", "2"],
+    );
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.echo).toEqual({ manaCost: "{3}{W}{W}" });
+    const upkeep = compiled.definition.triggers.find((trigger) => trigger.event === "upkeep");
+    expect(upkeep?.effects[0]).toEqual({
+      kind: "echo",
+      playerId: "controller",
+      cost: "{3}{W}{W}",
+    });
+  });
+
+  it("arms the echo debt as the permanent enters", () => {
+    const { game, p1 } = twoPlayers();
+    const cardId = put(game, p1.id, karmicGuide(), "hand");
+    const arrived = moveCard(game, cardId, "battlefield");
+    expect(arrived.cards[cardId]?.echoDue).toBe(true);
+  });
+
+  it("sacrifices the permanent when the echo goes unpaid", () => {
+    const { game, p1 } = twoPlayers();
+    const cardId = put(game, p1.id, karmicGuide(), "hand");
+    let state = moveCard(game, cardId, "battlefield");
+    ready(state, p1.id);
+    state = applyEffect(state, {
+      kind: "echo",
+      playerId: p1.id,
+      cardId,
+      cost: "{3}{W}{W}",
+    });
+    // The debt is settled the moment it is ASKED, whichever way it goes.
+    expect(state.cards[cardId]?.echoDue).toBeUndefined();
+    // Declining the pay-or-sacrifice prompt loses the permanent.
+    state = applyResolvePay(state, p1.id, false);
+    expect(state.cards[cardId]?.zone).toBe("graveyard");
+  });
+
+  it("settles the debt for good once the echo has been asked", () => {
+    const { game, p1 } = twoPlayers();
+    const cardId = put(game, p1.id, karmicGuide(), "hand");
+    let state = moveCard(game, cardId, "battlefield");
+    ready(state, p1.id);
+    const payer = state.players.find((entry) => entry.id === p1.id)!;
+    payer.mana.W = 2;
+    payer.mana.C = 3;
+    state = applyEffect(state, {
+      kind: "echo",
+      playerId: p1.id,
+      cardId,
+      cost: "{3}{W}{W}",
+    });
+    state = applyResolvePay(state, p1.id, true);
+    expect(state.cards[cardId]?.zone).toBe("battlefield");
+    expect(state.cards[cardId]?.echoDue).toBeUndefined();
+    // A second upkeep asks for nothing: echo is owed once (CR 702.29a), so
+    // no prompt is raised at all and there is nothing to decline.
+    const broke = state.players.find((entry) => entry.id === p1.id)!;
+    broke.mana.W = 0;
+    broke.mana.C = 0;
+    const later = applyEffect(state, {
+      kind: "echo",
+      playerId: p1.id,
+      cardId,
+      cost: "{3}{W}{W}",
+    });
+    expect(later.prompts).toHaveLength(0);
+    expect(later.cards[cardId]?.zone).toBe("battlefield");
+  });
+
+  // ---- Escalate ----------------------------------------------------------
+
+  const collectiveResistance = () =>
+    createCardDefinition({
+      name: "Collective Resistance",
+      typeLine: "Instant",
+      manaCost: "{1}{G}",
+      escalate: "{G}",
+      modeChoice: { min: 1, max: 2 },
+      modes: [
+        {
+          label: "Destroy target artifact",
+          effects: [
+            { kind: "move_card", cardId: { type: "chosen", index: 0 }, toZone: "graveyard" },
+          ],
+          targetRequirements: [{ kind: "artifact" }],
+        },
+        {
+          label: "Destroy target enchantment",
+          effects: [
+            { kind: "move_card", cardId: { type: "chosen", index: 0 }, toZone: "graveyard" },
+          ],
+          targetRequirements: [{ kind: "enchantment" }],
+        },
+      ],
+    });
+
+  it("compiles the escalate cost apart from the modes", () => {
+    const compiled = compile(
+      "Collective Resistance",
+      "Instant",
+      "Escalate {G}\nChoose one or more —\n• Destroy target artifact.\n• Destroy target enchantment.",
+      "{1}{G}",
+    );
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.escalate).toBe("{G}");
+    expect(compiled.definition.modeChoice).toEqual({ min: 1, max: 2 });
+  });
+
+  it("charges nothing extra for a single mode", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const spellId = put(game, p1.id, collectiveResistance(), "hand");
+    const rockId = put(
+      game,
+      p2.id,
+      createCardDefinition({ name: "Rock", typeLine: "Artifact" }),
+      "battlefield",
+    );
+    ready(game, p1.id);
+    const payer = game.players.find((entry) => entry.id === p1.id)!;
+    payer.mana.G = 1;
+    payer.mana.C = 1;
+    const cast = applyAction(game, {
+      kind: "cast_spell",
+      playerId: p1.id,
+      cardId: spellId,
+      modeIndexes: [0],
+      targets: [{ type: "creature", cardId: rockId }],
+    });
+    expect(cast.stack).toHaveLength(1);
+    const spent = cast.players.find((entry) => entry.id === p1.id)!;
+    expect(spent.mana.G).toBe(0);
+    expect(spent.mana.C).toBe(0);
+  });
+
+  it("charges the escalate cost once for a second mode", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const spellId = put(game, p1.id, collectiveResistance(), "hand");
+    const rockId = put(
+      game,
+      p2.id,
+      createCardDefinition({ name: "Rock", typeLine: "Artifact" }),
+      "battlefield",
+    );
+    const shrineId = put(
+      game,
+      p2.id,
+      createCardDefinition({ name: "Shrine", typeLine: "Enchantment" }),
+      "battlefield",
+    );
+    ready(game, p1.id);
+    const payer = game.players.find((entry) => entry.id === p1.id)!;
+    payer.mana.G = 2;
+    payer.mana.C = 1;
+    const cast = applyAction(game, {
+      kind: "cast_spell",
+      playerId: p1.id,
+      cardId: spellId,
+      modeIndexes: [0, 1],
+      targets: [
+        { type: "creature", cardId: rockId },
+        { type: "creature", cardId: shrineId },
+      ],
+    });
+    expect(cast.stack).toHaveLength(1);
+    const spent = cast.players.find((entry) => entry.id === p1.id)!;
+    // {1}{G} plus one {G}, not two: the first mode is free.
+    expect(spent.mana.G).toBe(0);
+    expect(spent.mana.C).toBe(0);
+  });
+
+  it("refuses a second mode with no mana for the escalate", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const spellId = put(game, p1.id, collectiveResistance(), "hand");
+    const rockId = put(
+      game,
+      p2.id,
+      createCardDefinition({ name: "Rock", typeLine: "Artifact" }),
+      "battlefield",
+    );
+    const shrineId = put(
+      game,
+      p2.id,
+      createCardDefinition({ name: "Shrine", typeLine: "Enchantment" }),
+      "battlefield",
+    );
+    ready(game, p1.id);
+    const payer = game.players.find((entry) => entry.id === p1.id)!;
+    payer.mana.G = 1;
+    payer.mana.C = 1;
+    expect(() =>
+      applyAction(game, {
+        kind: "cast_spell",
+        playerId: p1.id,
+        cardId: spellId,
+        modeIndexes: [0, 1],
+        targets: [
+          { type: "creature", cardId: rockId },
+          { type: "creature", cardId: shrineId },
+        ],
+      }),
+    ).toThrow(/escalate/i);
+  });
+
+  // ---- Flashback that costs creatures ------------------------------------
+
+  const dreadReturn = () =>
+    createCardDefinition({
+      name: "Dread Return",
+      typeLine: "Sorcery",
+      manaCost: "{2}{B}{B}",
+      flashback: { manaCost: "", sacrificeCreatures: 3 },
+      effects: [
+        { kind: "move_card", cardId: { type: "chosen", index: 0 }, toZone: "battlefield" },
+      ],
+      targetRequirements: [{ kind: "own_graveyard_creature_card" }],
+    });
+
+  const bearOnBoard = (game: GameState, ownerId: string, name: string, power: number) =>
+    put(
+      game,
+      ownerId,
+      createCardDefinition({
+        name,
+        typeLine: "Creature — Bear",
+        manaCost: "{1}{G}",
+        power,
+        toughness: 2,
+      }),
+      "battlefield",
+    );
+
+  it("compiles Dread Return's sacrifice flashback", () => {
+    const compiled = compile(
+      "Dread Return",
+      "Sorcery",
+      "Return target creature card from your graveyard to the battlefield.\nFlashback—Sacrifice three creatures.",
+      "{2}{B}{B}",
+    );
+    expect(compiled.notes).toEqual([]);
+    // No mana half at all: the sacrifice IS the cost.
+    expect(compiled.definition.flashback).toEqual({ manaCost: "", sacrificeCreatures: 3 });
+  });
+
+  it("casts from the graveyard by sacrificing three creatures", () => {
+    const { game, p1 } = twoPlayers();
+    const spellId = put(game, p1.id, dreadReturn(), "graveyard");
+    const targetId = put(
+      game,
+      p1.id,
+      createCardDefinition({
+        name: "Angel",
+        typeLine: "Creature — Angel",
+        manaCost: "{4}{W}",
+        power: 4,
+        toughness: 4,
+      }),
+      "graveyard",
+    );
+    const weak = bearOnBoard(game, p1.id, "Weak", 1);
+    const mid = bearOnBoard(game, p1.id, "Mid", 2);
+    const strongish = bearOnBoard(game, p1.id, "Strongish", 3);
+    const strongest = bearOnBoard(game, p1.id, "Strongest", 9);
+    ready(game, p1.id);
+    const cast = applyAction(game, {
+      kind: "cast_spell",
+      playerId: p1.id,
+      cardId: spellId,
+      targets: [{ type: "creature", cardId: targetId }],
+    });
+    expect(cast.stack).toHaveLength(1);
+    // Weakest-first, and the biggest body is spared.
+    for (const id of [weak, mid, strongish]) {
+      expect(cast.cards[id]?.zone).toBe("graveyard");
+    }
+    expect(cast.cards[strongest]?.zone).toBe("battlefield");
+  });
+
+  it("refuses the flashback with too few creatures", () => {
+    const { game, p1 } = twoPlayers();
+    const spellId = put(game, p1.id, dreadReturn(), "graveyard");
+    const targetId = put(
+      game,
+      p1.id,
+      createCardDefinition({
+        name: "Angel",
+        typeLine: "Creature — Angel",
+        manaCost: "{4}{W}",
+        power: 4,
+        toughness: 4,
+      }),
+      "graveyard",
+    );
+    bearOnBoard(game, p1.id, "One", 1);
+    bearOnBoard(game, p1.id, "Two", 1);
+    ready(game, p1.id);
+    expect(() =>
+      applyAction(game, {
+        kind: "cast_spell",
+        playerId: p1.id,
+        cardId: spellId,
+        targets: [{ type: "creature", cardId: targetId }],
+      }),
+    ).toThrow(/Sacrifice 3 creatures/i);
+  });
+
+  // ---- An additional cost with a mana branch ------------------------------
+
+  const redirectLightning = () =>
+    createCardDefinition({
+      name: "Redirect Lightning",
+      typeLine: "Instant — Lesson",
+      manaCost: "{R}",
+      additionalCost: { alternatives: [{ life: 5 }, { mana: "{2}" }] },
+      effects: [{ kind: "retarget", target: { type: "chosen", index: 0 } }],
+      targetRequirements: [{ kind: "spell" }],
+    });
+
+  it("compiles the life-or-mana additional cost as two branches", () => {
+    const compiled = compile(
+      "Redirect Lightning",
+      "Instant — Lesson",
+      "As an additional cost to cast this spell, pay 5 life or pay {2}.\nChange the target of target spell or ability with a single target.",
+      "{R}",
+    );
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.additionalCost?.alternatives).toEqual([
+      { life: 5 },
+      { mana: "{2}" },
+    ]);
+  });
+
+  it("pays the mana branch when the mana is there", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const boltDefinition = createCardDefinition({
+      name: "Bolt",
+      typeLine: "Instant",
+      manaCost: "{R}",
+      effects: [
+        { kind: "deal_damage", sourceId: null, target: { type: "chosen", index: 0 }, amount: 3 },
+      ],
+      targetRequirements: [{ kind: "player_or_creature" }],
+    });
+    const boltId = put(game, p2.id, boltDefinition, "hand");
+    ready(game, p2.id);
+    game.players.find((entry) => entry.id === p2.id)!.mana.R = 1;
+    const state = applyAction(game, {
+      kind: "cast_spell",
+      playerId: p2.id,
+      cardId: boltId,
+      targets: [{ type: "player", playerId: p1.id }],
+    });
+
+    const redirectId = put(state, p1.id, redirectLightning(), "hand");
+    state.priorityPlayerId = p1.id;
+    const caster = state.players.find((entry) => entry.id === p1.id)!;
+    caster.mana.R = 1;
+    caster.mana.C = 2;
+    const lifeBefore = caster.life;
+    const cast = applyAction(state, {
+      kind: "cast_spell",
+      playerId: p1.id,
+      cardId: redirectId,
+      targets: [{ type: "spell", stackObjectId: state.stack[0]!.id }],
+    });
+    const after = cast.players.find((entry) => entry.id === p1.id)!;
+    // Nobody pays 5 life holding two spare mana, so the mana branch wins.
+    expect(after.life).toBe(lifeBefore);
+    expect(after.mana.C).toBe(0);
+    expect(after.mana.R).toBe(0);
+  });
+
+  it("falls back to the life branch with no spare mana", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const boltDefinition = createCardDefinition({
+      name: "Bolt",
+      typeLine: "Instant",
+      manaCost: "{R}",
+      effects: [
+        { kind: "deal_damage", sourceId: null, target: { type: "chosen", index: 0 }, amount: 3 },
+      ],
+      targetRequirements: [{ kind: "player_or_creature" }],
+    });
+    const boltId = put(game, p2.id, boltDefinition, "hand");
+    ready(game, p2.id);
+    game.players.find((entry) => entry.id === p2.id)!.mana.R = 1;
+    const state = applyAction(game, {
+      kind: "cast_spell",
+      playerId: p2.id,
+      cardId: boltId,
+      targets: [{ type: "player", playerId: p1.id }],
+    });
+
+    const redirectId = put(state, p1.id, redirectLightning(), "hand");
+    state.priorityPlayerId = p1.id;
+    const caster = state.players.find((entry) => entry.id === p1.id)!;
+    caster.mana.R = 1;
+    const lifeBefore = caster.life;
+    const cast = applyAction(state, {
+      kind: "cast_spell",
+      playerId: p1.id,
+      cardId: redirectId,
+      targets: [{ type: "spell", stackObjectId: state.stack[0]!.id }],
+    });
+    const after = cast.players.find((entry) => entry.id === p1.id)!;
+    expect(after.life).toBe(lifeBefore - 5);
+  });
+
+  // ---- the wire ----------------------------------------------------------
+
+  it("round trips every new field", () => {
+    const { game, p1 } = twoPlayers();
+    const definition = createCardDefinition({
+      name: "Cost Omnibus",
+      typeLine: "Creature — Elemental",
+      manaCost: "{4}{U}",
+      power: 2,
+      toughness: 2,
+      evoke: { manaCost: "{2}{U}" },
+      echo: { manaCost: "{3}{W}{W}" },
+      escalate: "{G}",
+      flashback: { manaCost: "{1}{B}", life: 2, sacrificeCreatures: 3 },
+      additionalCost: { alternatives: [{ life: 5 }, { mana: "{2}" }] },
+      triggers: [
+        {
+          event: "upkeep",
+          effects: [{ kind: "echo", playerId: "controller", cost: "{3}{W}{W}" }],
+          targetRequirements: [],
+        },
+      ],
+    });
+    const cardId = put(game, p1.id, definition, "battlefield");
+    game.cards[cardId]!.echoDue = true;
+    game.cards[cardId]!.evoked = true;
+    const round = parseGameState(serializeGameState(game));
+    const parsed = round.definitions[definition.id]!;
+    expect(parsed.evoke).toEqual({ manaCost: "{2}{U}" });
+    expect(parsed.echo).toEqual({ manaCost: "{3}{W}{W}" });
+    expect(parsed.escalate).toBe("{G}");
+    expect(parsed.flashback).toEqual({
+      manaCost: "{1}{B}",
+      life: 2,
+      sacrificeCreatures: 3,
+    });
+    expect(parsed.additionalCost?.alternatives).toEqual([{ life: 5 }, { mana: "{2}" }]);
+    expect(parsed.triggers[0]?.effects[0]).toEqual({
+      kind: "echo",
+      playerId: "controller",
+      cost: "{3}{W}{W}",
+    });
+    expect(round.cards[cardId]?.echoDue).toBe(true);
+    expect(round.cards[cardId]?.evoked).toBe(true);
   });
 });

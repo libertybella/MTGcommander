@@ -220,8 +220,7 @@ export function enterOwnerZoneInPlace(
   }
   state.log.push({ kind: "zone_change", cardId, from: fromZone, to: destination });
   if (destination === "battlefield") {
-    queueEnterReplacementChoicesInPlace(state, cardId);
-    queueEnterBattlefieldTriggersInPlace(state, cardId);
+    onEnterBattlefieldInPlace(state, cardId);
   }
   // Every battlefield exit dispatches this, not only one that carried
   // counters. The Ozolith wanted the counters, so the gate used to live
@@ -309,6 +308,39 @@ export function processDiesReturnsInPlace(state: GameState, died: EngineEvent[])
         dispatchEventsInPlace(state, [{ kind: "creates_token", playerId: owner.id }]);
       }
     }
+  }
+}
+
+/**
+ * Everything a permanent's arrival owes, in ONE place. Both zone-change
+ * paths call this rather than repeating the queue calls, which is also where
+ * an evoke sacrifice or an echo debt would otherwise be added to one path
+ * and forgotten on the other.
+ */
+function onEnterBattlefieldInPlace(state: GameState, cardId: CardInstanceId): void {
+  queueEnterReplacementChoicesInPlace(state, cardId);
+  queueEnterBattlefieldTriggersInPlace(state, cardId);
+  const card = state.cards[cardId];
+  if (!card) {
+    return;
+  }
+  // Echo (CR 702.29): the debt is armed on ENTRY, so the next upkeep trigger
+  // has something to read. Armed before the evoke sacrifice below, because
+  // an evoked permanent never sees an upkeep and the order must not matter.
+  if (state.definitions[card.definitionId]?.echo) {
+    card.echoDue = true;
+  }
+  // Evoke (CR 702.74b): "it's sacrificed when it enters". The flag is read
+  // once and cleared, so a Mulldrifter later reanimated keeps its body.
+  //
+  // Documented simplification: the sacrifice happens as the permanent
+  // finishes entering rather than as a separate triggered ability, so
+  // nothing can respond between the two — the same shape the Saga sacrifice
+  // already uses. The enter triggers are queued FIRST, so Mulldrifter's two
+  // cards are on the stack before the body goes, which is the whole card.
+  if (card.evoked) {
+    delete card.evoked;
+    moveCardInPlace(state, cardId, "graveyard");
   }
 }
 
@@ -471,8 +503,7 @@ export function moveCardInPlace(
   }
   state.log.push({ kind: "zone_change", cardId, from: located.zone, to: destination });
   if (destination === "battlefield") {
-    queueEnterReplacementChoicesInPlace(state, cardId);
-    queueEnterBattlefieldTriggersInPlace(state, cardId);
+    onEnterBattlefieldInPlace(state, cardId);
   }
   // Every battlefield exit dispatches this, not only one that carried
   // counters. The Ozolith wanted the counters, so the gate used to live

@@ -870,6 +870,65 @@ more questions it can now ask:
   (Bennie Bracks). Reads the existing per-player `createdTokenThisTurn`
   list, and asks whether the CONTROLLER is in it — an opponent's Treasure
   must not satisfy it.
+- **Evoke (CR 702.74)** — an alternative MANA cost taken in the same one
+  direction every other alternative cost here is: only when the printed cost
+  is out of reach. Nobody throws away a Mulldrifter they could have kept.
+
+  `CardInstance.evoked` is set while the card is a spell on the stack and
+  read once as it enters, so a Mulldrifter later reanimated keeps its body.
+
+  Documented simplification: the sacrifice happens as the permanent finishes
+  entering rather than as a separate triggered ability, so nothing can
+  respond between the two — the same shape the Saga sacrifice uses. The
+  enter triggers are queued FIRST, so the two cards are on the stack before
+  the body goes, which is the whole card.
+
+- **Echo (CR 702.29)** — compiled down onto the upkeep trigger it already
+  is, the way cumulative upkeep is, and paying goes through the same
+  pay-or-sacrifice prompt. `CardInstance.echoDue` is armed on entry and
+  cleared the moment the upkeep asks, which is what makes "since the
+  beginning of your last upkeep" answerable without a per-permanent upkeep
+  history. Cleared whether or not the cost is paid: an unpaid echo loses the
+  permanent and a paid one is settled for good.
+
+  Documented gap: the debt is armed on ENTRY only, so a permanent that
+  changes control does not re-arm its echo. That is the rarer half of the
+  keyword. Only the mana form is read — "Echo—Sacrifice a creature" needs a
+  cost the prompt cannot express, the same line cumulative upkeep draws.
+
+- **Escalate (CR 702.120)** — the cost again for EACH mode beyond the
+  first. A per-mode `extraCost` cannot say it: which mode is "the first"
+  depends on what the caster picked, so charging every mode would tax the
+  first one too.
+
+- **`flashback.sacrificeCreatures`** — Dread Return and Cabal Therapy:
+  "Flashback—Sacrifice three creatures", a cost with no mana half at all.
+  Fodder is auto-picked WEAKEST-first, the documented approximation
+  `altCastPayment` already makes; the card is in the graveyard, so it can
+  never be its own fodder.
+
+  **The load guard caught the empty mana half.** `expectString` rejects an
+  empty string by default, so both cards compiled with no notes and then
+  could not LOAD — and Cabal Therapy was not even on the list this wave set
+  out to fix. That is the second time this guard has found a card the
+  compile metric scored as working.
+
+- **`AdditionalCastCost.mana`** — Redirect Lightning: "pay 5 life or pay
+  {2}". The branch is added to the spell's cost rather than paid separately,
+  so one payment covers both halves.
+
+  The mana branch is preferred when payable, which departs from the
+  documented "first affordable branch": nobody pays 5 life holding two spare
+  mana, and life is the scarcer resource at this table size. Legal-action
+  enumeration checks the branch against the spell's own cost PLUS the extra,
+  because a branch payable alone is not payable at all — a spell must never
+  be offered that the payment path would then refuse.
+
+- **One battlefield-entry hook.** Both zone-change paths now call a single
+  `onEnterBattlefieldInPlace` rather than repeating the queue calls. That is
+  where the evoke sacrifice and the echo debt live, and where they would
+  otherwise have been added to one path and forgotten on the other.
+
 - **Counter replacements read a type SCOPE** — `double_counters` and
   `bonus_counters` each carried a lone `creaturesOnly` boolean, which is why
   nothing but "a creature" or "a permanent" could be said. Both now also

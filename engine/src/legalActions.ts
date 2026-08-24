@@ -383,21 +383,38 @@ function castableFace(
     if (!player) {
       return false;
     }
-    const payable = (cost: AdditionalCastCost): boolean => {
+    const payable = (branch: AdditionalCastCost): boolean => {
       if (
-        cost.sacrifice &&
+        branch.sacrifice &&
         !permanentsControlledBy(state, player.id).some(
           (cardId) =>
-            sacrificeScopeMatches(state, cardId, cost.sacrifice!) &&
-            sacrificeColorMatches(state, cardId, cost.sacrificeColor),
+            sacrificeScopeMatches(state, cardId, branch.sacrifice!) &&
+            sacrificeColorMatches(state, cardId, branch.sacrifice ? branch.sacrificeColor : undefined),
         )
       ) {
         return false;
       }
-      if (cost.discard && player.zones.hand.length <= cost.discard) {
+      if (branch.discard && player.zones.hand.length <= branch.discard) {
         return false;
       }
-      return !(cost.life && player.life <= cost.life);
+      // A mana branch is payable only ON TOP of the spell's own cost, which
+      // has already been checked against `potential` above. Checking it
+      // alone would offer a spell the payment path then refuses.
+      if (branch.mana !== undefined) {
+        const extra = parseManaCost(branch.mana);
+        const combined = {
+          ...cost,
+          hybrid: [...cost.hybrid],
+          phyrexian: [...cost.phyrexian],
+        };
+        combined.generic += extra.generic;
+        for (const color of ["W", "U", "B", "R", "G", "C"] as const) {
+          combined[color] += extra[color];
+        }
+        combined.hybrid.push(...extra.hybrid);
+        return canPayWithPotential(potential, combined);
+      }
+      return !(branch.life && player.life <= branch.life);
     };
     // "…sacrifice an artifact or discard a card": any one branch suffices.
     const ok = additional.alternatives?.length

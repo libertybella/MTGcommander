@@ -155,6 +155,9 @@ export function createCardDefinition(
         | "affinityAllCreatures"
         | "topOfLibrary"
         | "flashback"
+        | "evoke"
+        | "echo"
+        | "escalate"
         | "costReductions"
         | "chooseCreatureTypeOnEnter"
         | "chooseCardTypeOnEnter"
@@ -547,9 +550,15 @@ export function createCardDefinition(
           flashback: {
             manaCost: input.flashback.manaCost,
             ...(input.flashback.life ? { life: input.flashback.life } : {}),
+            ...(input.flashback.sacrificeCreatures
+              ? { sacrificeCreatures: input.flashback.sacrificeCreatures }
+              : {}),
           },
         }
       : {}),
+    ...(input.evoke ? { evoke: { manaCost: input.evoke.manaCost } } : {}),
+    ...(input.echo ? { echo: { manaCost: input.echo.manaCost } } : {}),
+    ...(input.escalate ? { escalate: input.escalate } : {}),
     ...(input.topOfLibrary
       ? {
           topOfLibrary: {

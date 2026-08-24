@@ -1638,6 +1638,13 @@ export function bindCardEffect(
         cost: effect.cost,
       };
     }
+    case "echo": {
+      const playerId = bindPlayerSelector(state, effect.playerId, context);
+      if (!playerId || !context.sourceId) {
+        return null;
+      }
+      return { kind: "echo", playerId, cardId: context.sourceId, cost: effect.cost };
+    }
     case "may_pay": {
       const playerId = bindPlayerSelector(state, effect.playerId, context);
       if (!playerId) {
@@ -4306,6 +4313,26 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
             effects: [{ kind: "sacrifice", cardId: effect.cardId }],
           });
         }
+        break;
+      }
+      case "echo": {
+        // CR 702.29a: owed at the FIRST upkeep after it came under your
+        // control, and never again. The debt is the instance flag, cleared
+        // whether or not the cost is paid — an unpaid echo sacrifices the
+        // permanent, and a paid one is settled for good.
+        const owing = state.cards[effect.cardId];
+        if (!owing || owing.zone !== "battlefield" || !owing.echoDue) {
+          next = cloneGameState(state);
+          break;
+        }
+        next = cloneGameState(state);
+        delete next.cards[effect.cardId]!.echoDue;
+        next = applyEffect(next, {
+          kind: "unless_pays",
+          playerId: effect.playerId,
+          cost: effect.cost,
+          effects: [{ kind: "sacrifice", cardId: effect.cardId }],
+        });
         break;
       }
       case "grant_self_activated": {
