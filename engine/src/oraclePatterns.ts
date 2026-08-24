@@ -3266,6 +3266,37 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     }
   }
 
+  // Midnight Clock: the cards go back in as one batch and the library is
+  // shuffled ONCE. Shuffling never would leave the graveyard sitting on top
+  // in order, which is exactly what the printed word rules out.
+  if (
+    /^shuffle your hand and graveyard into your library$/i.test(sentence)
+  ) {
+    return {
+      targetRequirements: [],
+      effects: [
+        {
+          kind: "shuffle_zones_into_library",
+          playerId: "controller",
+          zones: ["hand", "graveyard"],
+        },
+      ],
+    };
+  }
+
+  // Caretaker's Talent: a copy of a TOKEN, which is the restriction — the
+  // Class cannot copy a real permanent.
+  if (
+    /^create a token that's a copy of target token you control$/i.test(sentence)
+  ) {
+    return {
+      targetRequirements: [{ kind: "creature", control: "own", tokenTargetOnly: true }],
+      effects: [
+        { kind: "copy_token", ownerId: "controller", ofCardId: { type: "chosen", index: 0 } },
+      ],
+    };
+  }
+
   // Cut a Deal: every living opponent drew, so "each opponent who drew a
   // card this way" is just how many opponents there are — counted at bind,
   // after their draws have resolved.
@@ -9444,6 +9475,41 @@ function parseTriggerHead(head: string): TriggerHead | null {
     )
   ) {
     return { event: "opponent_draws_except_first" };
+  }
+  // Midnight Clock: "When the TWELFTH hour counter is put on ~". The same
+  // counter-added event Fathom Mage watches, with an intervening `if` on how
+  // many are now there — a count, not a distinct twelfth-counter event.
+  const nthCounter = text.match(
+    /^When the (\w+) ([a-z+/-]+) counter is put on ~$/i,
+  );
+  const ORDINAL_COUNTS: Record<string, number> = {
+    second: 2,
+    third: 3,
+    fourth: 4,
+    fifth: 5,
+    sixth: 6,
+    seventh: 7,
+    eighth: 8,
+    ninth: 9,
+    tenth: 10,
+    eleventh: 11,
+    twelfth: 12,
+  };
+  const nthCount = nthCounter?.[1]
+    ? ORDINAL_COUNTS[nthCounter[1].toLowerCase()]
+    : undefined;
+  if (nthCount && nthCounter?.[2]) {
+    const counter = counterKeyOf(nthCounter[2].toLowerCase());
+    return {
+      event: "counter_added",
+      subjectFilter: { counterName: counter },
+      condition: {
+        kind: "self_counter_count",
+        counter,
+        comparison: "at_least",
+        count: nthCount,
+      },
+    };
   }
   const classLevel = text.match(/^When ~ becomes level (\d+)$/i);
   if (classLevel?.[1]) {

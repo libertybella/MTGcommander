@@ -318,6 +318,16 @@ function expectNumber(value: unknown, label: string): number {
   return value;
 }
 
+/** The zones Midnight Clock may sweep back into a library. */
+function parseShuffleZones(value: unknown, label: string): ("hand" | "graveyard")[] {
+  return expectStringArray(value, label).map((zone) => {
+    if (zone !== "hand" && zone !== "graveyard") {
+      throw new Error(`Invalid ${label}`);
+    }
+    return zone;
+  });
+}
+
 function expectList(value: unknown, label: string): unknown[] {
   if (!Array.isArray(value)) {
     throw new Error(`Invalid ${label}`);
@@ -2917,6 +2927,7 @@ function parseTargetRequirement(value: unknown, label: string): TargetRequiremen
     ...(value.nonbasicOnly === true ? { nonbasicOnly: true } : {}),
     ...(value.manaValueEqualsX === true ? { manaValueEqualsX: true } : {}),
     ...(value.nonTokenOnly === true ? { nonTokenOnly: true } : {}),
+    ...(value.tokenTargetOnly === true ? { tokenTargetOnly: true } : {}),
     ...(value.attackingOnly === true ? { attackingOnly: true } : {}),
     ...(value.attackingOrBlockingOnly === true ? { attackingOrBlockingOnly: true } : {}),
     ...(value.singleTargetOnly === true ? { singleTargetOnly: true } : {}),
@@ -3426,6 +3437,12 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
         target: parseChosenTargetRef(value.target, `${label}.target`),
         ...(value.untilEot === true ? { untilEot: true } : {}),
         ...(value.keepAbilities === true ? { keepAbilities: true } : {}),
+      };
+    case "shuffle_zones_into_library":
+      return {
+        kind,
+        playerId: parsePlayerSelector(value.playerId, `${label}.playerId`),
+        zones: parseShuffleZones(value.zones, `${label}.zones`),
       };
     case "tap":
     case "untap":
@@ -6289,6 +6306,13 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
       kind,
       cardId: expectString(value.cardId, `${label}.cardId`),
       types: expectStringArray(value.types, `${label}.types`),
+    };
+  }
+  if (kind === "shuffle_zones_into_library") {
+    return {
+      kind,
+      playerId: expectString(value.playerId, `${label}.playerId`),
+      zones: parseShuffleZones(value.zones, `${label}.zones`),
     };
   }
   if (kind === "add_counter") {

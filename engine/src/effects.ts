@@ -1040,6 +1040,17 @@ export function bindCardEffect(
         ...(effect.keepAbilities ? { keepAbilities: true } : {}),
       };
     }
+    case "shuffle_zones_into_library": {
+      const shufflePlayerId = bindPlayerSelector(state, effect.playerId, context);
+      if (!shufflePlayerId) {
+        return null;
+      }
+      return {
+        kind: "shuffle_zones_into_library",
+        playerId: shufflePlayerId,
+        zones: [...effect.zones],
+      };
+    }
     case "tap":
     case "untap":
     case "remove_from_combat":
@@ -5204,6 +5215,30 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
           subtypes: [],
         });
         break;
+      case "shuffle_zones_into_library": {
+        // The cards go in as ONE batch and the library is shuffled once
+        // afterwards. Moving them one at a time and shuffling per card would
+        // be slower and no more random; shuffling never would leave the
+        // graveyard sitting on top in order, which is the whole point of
+        // the printed word.
+        next = cloneGameState(state);
+        const shuffler = next.players.find((entry) => entry.id === effect.playerId);
+        if (!shuffler) {
+          break;
+        }
+        for (const zone of effect.zones) {
+          for (const movedId of [...shuffler.zones[zone]]) {
+            const moved = next.cards[movedId];
+            if (moved) {
+              moved.zone = "library";
+              shuffler.zones.library.push(movedId);
+            }
+          }
+          shuffler.zones[zone] = [];
+        }
+        shuffleInPlace(shuffler.zones.library);
+        break;
+      }
       case "remove_from_combat": {
         // CR 506.4: out of combat, but still on the battlefield. Any
         // "whenever this attacks" trigger that already fired stays fired.

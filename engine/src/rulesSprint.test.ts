@@ -46075,3 +46075,280 @@ describe("wave 312: a locked life total, an addendum, and a count of opponents",
     });
   });
 });
+
+describe("wave 313: the twelfth counter, and a copy of a token", () => {
+  const compile = (name: string, typeLine: string, oracleText: string, manaCost = "") =>
+    compileOracleCard({
+      oracleId: name.toLowerCase().replace(/[^a-z]+/g, "-"),
+      name,
+      manaCost,
+      typeLine,
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  const put = (
+    game: GameState,
+    ownerId: string,
+    definition: CardDefinition,
+    zone: "hand" | "battlefield" | "graveyard" = "battlefield",
+  ) => {
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({ definitionId: definition.id, ownerId, zone });
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === ownerId)!.zones[zone].push(card.id);
+    if (zone === "battlefield") {
+      card.summoningSick = false;
+    }
+    return card.id;
+  };
+
+  // ---- Midnight Clock: the twelfth hour ----------------------------------
+
+  it("compiles the ordinal counter head as a count, not a new event", () => {
+    const compiled = compile(
+      "Midnight Clock",
+      "Artifact",
+      "{T}: Add {U}.\n{2}{U}: Put an hour counter on ~.\nAt the beginning of each upkeep, put an hour counter on ~.\nWhen the twelfth hour counter is put on ~, shuffle your hand and graveyard into your library, then draw seven cards. Exile ~.",
+      "{3}{U}",
+    );
+    expect(compiled.notes).toEqual([]);
+    const trigger = compiled.definition.triggers.find(
+      (entry) => entry.event === "counter_added",
+    );
+    expect(trigger).toMatchObject({
+      event: "counter_added",
+      subjectFilter: { counterName: "hour" },
+      condition: {
+        kind: "self_counter_count",
+        counter: "hour",
+        comparison: "at_least",
+        count: 12,
+      },
+    });
+    expect(trigger?.effects[0]).toEqual({
+      kind: "shuffle_zones_into_library",
+      playerId: "controller",
+      zones: ["hand", "graveyard"],
+    });
+  });
+
+  it("fires only once the twelfth counter has landed", () => {
+    const { game, p1 } = twoPlayers();
+    const clockId = put(
+      game,
+      p1.id,
+      createCardDefinition({
+        name: "Midnight Clock",
+        typeLine: "Artifact",
+        manaCost: "{3}{U}",
+        triggers: [
+          {
+            event: "counter_added",
+            subjectFilter: { counterName: "hour" },
+            condition: {
+              kind: "self_counter_count",
+              counter: "hour",
+              comparison: "at_least",
+              count: 12,
+            },
+            effects: [{ kind: "gain_life", playerId: "controller", amount: 1 }],
+            targetRequirements: [],
+          },
+        ],
+      }),
+    );
+    game.cards[clockId]!.counters["hour"] = 10;
+    const eleventh = applyEffect(game, {
+      kind: "add_counter",
+      cardId: clockId,
+      counter: "hour",
+      amount: 1,
+    });
+    expect(eleventh.stack).toHaveLength(0);
+    const twelfth = applyEffect(eleventh, {
+      kind: "add_counter",
+      cardId: clockId,
+      counter: "hour",
+      amount: 1,
+    });
+    expect(twelfth.stack).toHaveLength(1);
+  });
+
+  it("ignores a counter of another kind", () => {
+    const { game, p1 } = twoPlayers();
+    const clockId = put(
+      game,
+      p1.id,
+      createCardDefinition({
+        name: "Midnight Clock",
+        typeLine: "Artifact",
+        manaCost: "{3}{U}",
+        triggers: [
+          {
+            event: "counter_added",
+            subjectFilter: { counterName: "hour" },
+            condition: {
+              kind: "self_counter_count",
+              counter: "hour",
+              comparison: "at_least",
+              count: 12,
+            },
+            effects: [{ kind: "gain_life", playerId: "controller", amount: 1 }],
+            targetRequirements: [],
+          },
+        ],
+      }),
+    );
+    game.cards[clockId]!.counters["hour"] = 12;
+    const other = applyEffect(game, {
+      kind: "add_counter",
+      cardId: clockId,
+      counter: "charge",
+      amount: 1,
+    });
+    // The count is already past twelve, but a charge counter is not an
+    // hour counter — the subject filter is what stops it.
+    expect(other.stack).toHaveLength(0);
+  });
+
+  it("sweeps hand and graveyard back in and shuffles once", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 10);
+    const filler = () =>
+      createCardDefinition({ name: `Filler${Math.round(1)}`, typeLine: "Sorcery", manaCost: "{1}" });
+    const inHand = [put(game, p1.id, filler(), "hand"), put(game, p1.id, filler(), "hand")];
+    const inYard = [put(game, p1.id, filler(), "graveyard")];
+    const player = game.players.find((entry) => entry.id === p1.id)!;
+    const libraryBefore = player.zones.library.length;
+
+    const swept = applyEffects(
+      game,
+      bindCardEffects(
+        game,
+        [
+          {
+            kind: "shuffle_zones_into_library",
+            playerId: "controller",
+            zones: ["hand", "graveyard"],
+          },
+        ],
+        { controllerId: p1.id, sourceId: null },
+      ),
+    );
+    const after = swept.players.find((entry) => entry.id === p1.id)!;
+    expect(after.zones.hand).toEqual([]);
+    expect(after.zones.graveyard).toEqual([]);
+    expect(after.zones.library.length).toBe(libraryBefore + inHand.length + inYard.length);
+    // Every swept card really is in the library, and says so.
+    for (const cardId of [...inHand, ...inYard]) {
+      expect(swept.cards[cardId]?.zone).toBe("library");
+      expect(after.zones.library).toContain(cardId);
+    }
+  });
+
+  // ---- Caretaker's Talent: a copy of a TOKEN -----------------------------
+
+  it("compiles the level-2 ability with a token-only target", () => {
+    const compiled = compile(
+      "Caretaker's Talent",
+      "Enchantment — Class",
+      "Whenever one or more tokens you control enter, draw a card. This ability triggers only once each turn.\n{W}: Level 2\nWhen ~ becomes level 2, create a token that's a copy of target token you control.\n{3}{W}: Level 3\nCreature tokens you control get +2/+2.",
+      "{1}{W}",
+    );
+    expect(compiled.notes).toEqual([]);
+    const levelTwo = compiled.definition.triggers.find(
+      (trigger) => trigger.event === "class_level",
+    );
+    expect(levelTwo).toMatchObject({ event: "class_level", classLevel: 2 });
+    expect(levelTwo?.targetRequirements).toEqual([
+      { kind: "creature", control: "own", tokenTargetOnly: true },
+    ]);
+    expect(levelTwo?.effects[0]).toEqual({
+      kind: "copy_token",
+      ownerId: "controller",
+      ofCardId: { type: "chosen", index: 0 },
+    });
+  });
+
+  it("accepts a token and refuses a real permanent", () => {
+    const { game, p1 } = twoPlayers();
+    const printedId = put(
+      game,
+      p1.id,
+      createCardDefinition({
+        name: "Real Bear",
+        typeLine: "Creature — Bear",
+        manaCost: "{1}{G}",
+        power: 2,
+        toughness: 2,
+      }),
+    );
+    const tokenDefinition = createCardDefinition({
+      name: "Bear Token",
+      typeLine: "Creature — Bear Token",
+      power: 2,
+      toughness: 2,
+    });
+    game.definitions[tokenDefinition.id] = tokenDefinition;
+    const token = createCardInstance({
+      definitionId: tokenDefinition.id,
+      ownerId: p1.id,
+      zone: "battlefield",
+      isToken: true,
+    });
+    game.cards[token.id] = token;
+    game.players.find((entry) => entry.id === p1.id)!.zones.battlefield.push(token.id);
+
+    const requirement: TargetRequirement = {
+      kind: "creature",
+      control: "own",
+      tokenTargetOnly: true,
+    };
+    expect(
+      isChosenTargetLegal(game, requirement, { type: "creature", cardId: token.id }, p1.id),
+    ).toBe(true);
+    // "Target TOKEN you control" — the printed Bear is not one.
+    expect(
+      isChosenTargetLegal(game, requirement, { type: "creature", cardId: printedId }, p1.id),
+    ).toBe(false);
+  });
+
+  it("round trips the new effect and target flag", () => {
+    const { game, p1 } = twoPlayers();
+    const definition = createCardDefinition({
+      name: "Wave 313 Omnibus",
+      typeLine: "Enchantment — Class",
+      manaCost: "{1}{W}",
+      triggers: [
+        {
+          event: "class_level",
+          classLevel: 2,
+          targetRequirements: [{ kind: "creature", control: "own", tokenTargetOnly: true }],
+          effects: [
+            { kind: "copy_token", ownerId: "controller", ofCardId: { type: "chosen", index: 0 } },
+            {
+              kind: "shuffle_zones_into_library",
+              playerId: "controller",
+              zones: ["hand", "graveyard"],
+            },
+          ],
+        },
+      ],
+    });
+    put(game, p1.id, definition);
+    const round = parseGameState(serializeGameState(game));
+    const parsed = round.definitions[definition.id]!;
+    expect(parsed.triggers[0]?.targetRequirements).toEqual([
+      { kind: "creature", control: "own", tokenTargetOnly: true },
+    ]);
+    expect(parsed.triggers[0]?.effects[1]).toEqual({
+      kind: "shuffle_zones_into_library",
+      playerId: "controller",
+      zones: ["hand", "graveyard"],
+    });
+  });
+});

@@ -1264,6 +1264,17 @@ export type GameEffect =
       untilEot?: boolean;
       keepAbilities?: boolean;
     }
+  /**
+   * Midnight Clock: "shuffle your hand and graveyard into your library".
+   * Not a series of `move_card`s — the cards go in as one batch and the
+   * library is shuffled ONCE afterwards, which is what makes the result a
+   * genuinely random order rather than a stack of the graveyard on top.
+   */
+  | {
+      kind: "shuffle_zones_into_library";
+      playerId: PlayerId;
+      zones: ("hand" | "graveyard")[];
+    }
   | { kind: "tap"; cardId: CardInstanceId }
   | { kind: "untap"; cardId: CardInstanceId }
   /**
@@ -2123,6 +2134,8 @@ export type TargetRequirement = {
   multicolored?: boolean;
   /** "target nonbasic land" (Wasteland). */
   nonbasicOnly?: boolean;
+  /** Caretaker's Talent: "target token you control". */
+  tokenTargetOnly?: boolean;
   /**
    * The Mycosynth Gardens: "with mana value X" — EXACTLY the announced X,
    * not a cap. Resolved into a matching min/max pair where the ability goes
@@ -2377,6 +2390,12 @@ export type CardEffect =
       target: ChosenTargetRef;
       untilEot?: boolean;
       keepAbilities?: boolean;
+    }
+  /** Midnight Clock: hand and graveyard back in, then one shuffle. */
+  | {
+      kind: "shuffle_zones_into_library";
+      playerId: PlayerSelector;
+      zones: ("hand" | "graveyard")[];
     }
   | { kind: "tap"; cardId: CardIdSelector }
   /** Reconnaissance: out of combat, still on the battlefield. */

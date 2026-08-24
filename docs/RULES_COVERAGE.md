@@ -870,6 +870,20 @@ more questions it can now ask:
   (Bennie Bracks). Reads the existing per-player `createdTokenThisTurn`
   list, and asks whether the CONTROLLER is in it — an opponent's Treasure
   must not satisfy it.
+- **"When the TWELFTH hour counter is put on ~"** — Midnight Clock. The
+  same `counter_added` event Fathom Mage watches, with an intervening `if`
+  on how many are now there. A count, not a distinct twelfth-counter event,
+  which is also why a charge counter arriving at hour thirteen does nothing:
+  the subject filter still has to match.
+
+- **`shuffle_zones_into_library`** — the cards go back in as ONE batch and
+  the library is shuffled once afterwards. Moving them one at a time would be
+  no more random; not shuffling at all would leave the graveyard sitting on
+  top in order, which is exactly what the printed word rules out.
+
+- **`TargetRequirement.tokenTargetOnly`** — Caretaker's Talent: "target
+  TOKEN you control". The mirror of `nonTokenOnly` from wave 310.
+
 - **Flare of Fortitude** — read entirely onto machinery already present:
   `grant_player_shield` with `lifeLocked`, plus two `team_keyword_until_eot`
   grants at `scope: "permanents"`. That scope is wider than the creature team
