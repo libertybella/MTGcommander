@@ -1413,6 +1413,28 @@ function parseGraveyardTargetPhrase(phrase: string): TargetRequirement | null {
     requirement.nonlegendaryOnly = true;
     rest = nonlegendary[1];
   }
+  /**
+   * Haven of the Spirit Dragon: "Dragon creature card OR Ugin planeswalker
+   * card". Both halves name a SUBTYPE, and a card carrying either subtype
+   * is the card the phrase means — there is no Dragon planeswalker or Ugin
+   * creature to tell them apart. So the two collapse to one any-of filter
+   * over `card`, rather than a disjunction across two target kinds.
+   */
+  const subtypePair = rest
+    .trim()
+    .match(
+      /^([A-Z][a-z]+) (?:creature|planeswalker) card(?: or ([A-Z][a-z]+) (?:creature|planeswalker) card)?$/,
+    );
+  if (subtypePair?.[1]) {
+    const subtypes = [subtypePair[1], subtypePair[2]]
+      .filter((subtype): subtype is string => Boolean(subtype))
+      .map((subtype) => subtype.toLowerCase());
+    return {
+      ...requirement,
+      kind: "own_graveyard_card",
+      requiredSubtypesAny: subtypes,
+    };
+  }
   const head = GRAVEYARD_HEAD_NOUNS.find(([pattern]) => pattern.test(rest.trim()));
   return head ? { ...requirement, kind: head[1] } : null;
 }

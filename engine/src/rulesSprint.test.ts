@@ -53493,3 +53493,146 @@ describe("wave 344: a shield, not a heal", () => {
     expect(round.cards[bearId]?.regenerationShields).toBe(2);
   });
 });
+
+describe("wave 345: two named subtypes, one filter", () => {
+  const compile = (name: string, typeLine: string, oracleText: string, manaCost = "") =>
+    compileOracleCard({
+      oracleId: name.toLowerCase().replace(/[^a-z]+/g, "-"),
+      name,
+      manaCost,
+      typeLine,
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  const bury = (game: GameState, ownerId: string, name: string, typeLine: string) => {
+    const definition = createCardDefinition({
+      name,
+      typeLine,
+      manaCost: "{4}",
+      ...(typeLine.includes("Creature") ? { power: 4, toughness: 4 } : {}),
+    });
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({
+      definitionId: definition.id,
+      ownerId,
+      zone: "graveyard",
+    });
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === ownerId)!.zones.graveyard.push(card.id);
+    return card.id;
+  };
+
+  it("compiles Haven's two-subtype target as one any-of filter", () => {
+    const compiled = compile(
+      "Haven of the Spirit Dragon",
+      "Land",
+      "{T}: Add {C}.\n{2}, {T}, Sacrifice this land: Return target Dragon creature card or Ugin planeswalker card from your graveyard to your hand.",
+    );
+    expect(compiled.notes).toEqual([]);
+    // Both halves name a SUBTYPE, and no card is a Dragon planeswalker or a
+    // Ugin creature — so the two collapse to one filter over `card` rather
+    // than a disjunction across target kinds.
+    expect(compiled.definition.activated[0]?.targetRequirements).toEqual([
+      { kind: "own_graveyard_card", requiredSubtypesAny: ["dragon", "ugin"] },
+    ]);
+  });
+
+  it("compiles the single-subtype form too", () => {
+    const compiled = compile(
+      "Dragon Haven",
+      "Land",
+      "{2}, {T}, Sacrifice this land: Return target Dragon creature card from your graveyard to your hand.",
+    );
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.activated[0]?.targetRequirements).toEqual([
+      { kind: "own_graveyard_card", requiredSubtypesAny: ["dragon"] },
+    ]);
+  });
+
+  const requirement: TargetRequirement = {
+    kind: "own_graveyard_card",
+    requiredSubtypesAny: ["dragon", "ugin"],
+  };
+
+  it("accepts either named subtype", () => {
+    const { game, p1 } = twoPlayers();
+    const dragonId = bury(game, p1.id, "Dragon", "Creature — Dragon");
+    const uginId = bury(game, p1.id, "Ugin", "Legendary Planeswalker — Ugin");
+    expect(
+      isChosenTargetLegal(game, requirement, { type: "creature", cardId: dragonId }, p1.id),
+    ).toBe(true);
+    expect(
+      isChosenTargetLegal(game, requirement, { type: "creature", cardId: uginId }, p1.id),
+    ).toBe(true);
+  });
+
+  it("refuses a card carrying neither", () => {
+    const { game, p1 } = twoPlayers();
+    const bearId = bury(game, p1.id, "Bear", "Creature — Bear");
+    const jaceId = bury(game, p1.id, "Jace", "Legendary Planeswalker — Jace");
+    // A filter the caller can ignore is not a filter — without the check
+    // the land returns any card in the graveyard at all.
+    expect(
+      isChosenTargetLegal(game, requirement, { type: "creature", cardId: bearId }, p1.id),
+    ).toBe(false);
+    expect(
+      isChosenTargetLegal(game, requirement, { type: "creature", cardId: jaceId }, p1.id),
+    ).toBe(false);
+  });
+
+  it("refuses a card in an opponent's graveyard", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const theirsId = bury(game, p2.id, "Their Dragon", "Creature — Dragon");
+    // "from YOUR graveyard" — the subtype filter must not loosen the zone.
+    expect(
+      isChosenTargetLegal(game, requirement, { type: "creature", cardId: theirsId }, p1.id),
+    ).toBe(false);
+  });
+
+  it("offers only the matching cards", () => {
+    const { game, p1 } = twoPlayers();
+    const dragonId = bury(game, p1.id, "Dragon", "Creature — Dragon");
+    bury(game, p1.id, "Bear", "Creature — Bear");
+    const uginId = bury(game, p1.id, "Ugin", "Legendary Planeswalker — Ugin");
+    const legal = legalChoicesForRequirement(game, requirement, p1.id).map((target) =>
+      "cardId" in target ? target.cardId : null,
+    );
+    expect(legal.sort()).toEqual([dragonId, uginId].sort());
+  });
+
+  it("round trips the any-of list", () => {
+    const { game, p1 } = twoPlayers();
+    const definition = createCardDefinition({
+      name: "Wave 345 Haven",
+      typeLine: "Land",
+      activated: [
+        {
+          tap: true,
+          manaCost: "{2}",
+          sacrificeSelf: true,
+          effects: [
+            { kind: "move_card", cardId: { type: "chosen", index: 0 }, toZone: "hand" },
+          ],
+          targetRequirements: [requirement],
+        },
+      ],
+    });
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({
+      definitionId: definition.id,
+      ownerId: p1.id,
+      zone: "battlefield",
+    });
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === p1.id)!.zones.battlefield.push(card.id);
+    const round = parseGameState(serializeGameState(game));
+    // Losing the list on the wire turns the land into "return any card".
+    expect(round.definitions[definition.id]?.activated[0]?.targetRequirements[0]).toEqual(
+      requirement,
+    );
+  });
+});

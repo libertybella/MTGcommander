@@ -870,6 +870,16 @@ more questions it can now ask:
   (Bennie Bracks). Reads the existing per-player `createdTokenThisTurn`
   list, and asks whether the CONTROLLER is in it — an opponent's Treasure
   must not satisfy it.
+- **A graveyard target named by SUBTYPE** — Haven of the Spirit Dragon:
+  "target Dragon creature card OR Ugin planeswalker card". Both halves name
+  a subtype, and there is no Dragon planeswalker or Ugin creature to tell
+  them apart, so the two collapse into ONE any-of filter over `card`
+  rather than a disjunction across two target kinds.
+
+  The filter is enforced, not merely recorded: a Bear and a Jace in the
+  same graveyard are both refused, and a Dragon in an OPPONENT's graveyard
+  stays refused — the subtype list must not loosen the zone.
+
 - **Regeneration (CR 701.15)** — a SHIELD, not a heal. Nothing happens when
   it resolves; the NEXT destruction this turn is replaced instead, and the
   shield costs the permanent a tap and its place in combat when it is
