@@ -8,7 +8,7 @@ import {
 import { characteristicsOf, isCommander, isCreature, isInstant, isInstantOrSorcery, isLand, isLegendary, isMainPhase } from "./cardTypes";
 import { abilityLifeCost } from "./commanderIdentity";
 import { cloneGameState } from "./clone";
-import { costRelief, affinityArtifactDiscount, allBattlefieldCreatureCount, canPlayLandFromTop, canPlayLandsFromGraveyard, castCostReduction, castableFromTop, controlsCommander, creaturePower, freeEquipGranted, hasFlashGrant, activationNonManaPayment, altCastPayment, landDropAllowance, manaTapMultiplier, lockedByAbolisher, lockedFromCasting, noncreatureSpellCap, opponentControlsMoreLands, findFreeHandGrantIndex, opponentsCastLockedToHand, selfDiscountAmount, staticFreeCastCap, usesOncePerTurnFreeCast , topOfLibraryGrant } from "./derived";
+import { costRelief, affinityArtifactDiscount, allBattlefieldCreatureCount, canActivateTapAbility, canPlayLandFromTop, canPlayLandsFromGraveyard, castCostReduction, castableFromTop, controlsCommander, creaturePower, freeEquipGranted, hasFlashGrant, activationNonManaPayment, altCastPayment, landDropAllowance, manaTapMultiplier, lockedByAbolisher, lockedFromCasting, noncreatureSpellCap, opponentControlsMoreLands, findFreeHandGrantIndex, opponentsCastLockedToHand, selfDiscountAmount, staticFreeCastCap, usesOncePerTurnFreeCast , topOfLibraryGrant } from "./derived";
 import { eliminatePlayerInPlace } from "./elimination";
 import { applyEffects, bindCardEffects, devotionTo } from "./effects";
 import { hasKeyword } from "./keywords";
@@ -1172,7 +1172,7 @@ function applyTapForMana(
   if (card.zone !== "battlefield") {
     throw new Error(`Card ${cardId} must be on the battlefield`);
   }
-  if (isCreature(state, cardId) && card.summoningSick && !hasKeyword(state, cardId, "haste")) {
+  if (!canActivateTapAbility(state, cardId)) {
     throw new Error(`Card ${cardId} has summoning sickness`);
   }
   const abilities = manaAbilitiesFor(state, cardId);
@@ -1381,9 +1381,13 @@ function applyTapForMana(
     }
   }
   next.priorityPlayerId = playerId;
-  // City of Brass: "Whenever this land becomes tapped".
+  // City of Brass: "Whenever this land becomes tapped". Forbidden Orchard
+  // asks the narrower question, so both events fire from the one tap.
   if (!ability.noTap) {
-    dispatchEventsInPlace(next, [{ kind: "tapped", cardId }]);
+    dispatchEventsInPlace(next, [
+      { kind: "tapped", cardId },
+      { kind: "tapped_for_mana", cardId },
+    ]);
   }
   // Wild Growth / Utopia Sprawl: auras on the tapped land pay a bonus to the
   // land's controller (a triggered mana ability — no stack, CR 605.1b).
@@ -1547,12 +1551,7 @@ function applyActivateAbility(
   if (ability.tap && card.tapped) {
     throw new Error(`Card ${cardId} is already tapped`);
   }
-  if (
-    ability.tap &&
-    isCreature(state, cardId) &&
-    card.summoningSick &&
-    !hasKeyword(state, cardId, "haste")
-  ) {
+  if (ability.tap && !canActivateTapAbility(state, cardId)) {
     throw new Error(`Card ${cardId} has summoning sickness`);
   }
   const player = state.players.find((entry) => entry.id === playerId);

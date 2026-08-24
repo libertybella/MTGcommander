@@ -11,7 +11,7 @@ import { hasKeyword } from "./keywords";
 import { triggerConditionHolds } from "./triggers";
 import { emptyManaPool } from "./createGame";
 import { pendingBlockerPlayer } from "./combat";
-import { reliefAdjustedCost, affinityArtifactDiscount, activationNonManaPayment, allBattlefieldCreatureCount, altCastPayment, canPlayLandsFromGraveyard, castCostReduction, castableFromTop, controlsCommander, freeEquipGranted, hasFlashGrant, landDropAllowance, lockedByAbolisher, lockedFromCasting, noncreatureSpellCap, opponentControlsMoreLands, findFreeHandGrantIndex, opponentsCastLockedToHand, permanentsControlledBy, selfDiscountAmount, staticFreeCastCap, topOfLibraryGrant } from "./derived";
+import { reliefAdjustedCost, affinityArtifactDiscount, activationNonManaPayment, allBattlefieldCreatureCount, altCastPayment, canActivateTapAbility, canPlayLandsFromGraveyard, castCostReduction, castableFromTop, controlsCommander, freeEquipGranted, hasFlashGrant, landDropAllowance, lockedByAbolisher, lockedFromCasting, noncreatureSpellCap, opponentControlsMoreLands, findFreeHandGrantIndex, opponentsCastLockedToHand, permanentsControlledBy, selfDiscountAmount, staticFreeCastCap, topOfLibraryGrant } from "./derived";
 import { canPayManaCost, parseManaCost, type ParsedManaCost } from "./mana";
 import { colorsAmongControlled, manaAbilitiesFor, manaTapOptionsFor } from "./manaOptions";
 import { isMulliganOpen } from "./mulligan";
@@ -68,7 +68,7 @@ function producerUsableNow(state: GameState, card: CardInstance): boolean {
   if (abilitiesRemoved(state, card.id)) {
     return false;
   }
-  if (isCreature(state, card.id) && card.summoningSick && !hasKeyword(state, card.id, "haste")) {
+  if (!canActivateTapAbility(state, card.id)) {
     return false;
   }
   return true;
@@ -483,7 +483,10 @@ function abilityUsable(
     if (card.tapped) {
       return false;
     }
-    if (isCreature(state, card.id) && card.summoningSick && !hasKeyword(state, card.id, "haste")) {
+    // Thousand-Year Elixir: abilities only. The attacker enumeration below
+    // deliberately keeps its own haste check — a sick creature under the
+    // Elixir may tap for an ability and still may not attack.
+    if (!canActivateTapAbility(state, card.id)) {
       return false;
     }
   }

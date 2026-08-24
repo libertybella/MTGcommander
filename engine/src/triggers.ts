@@ -894,6 +894,14 @@ function triggerMatchesEvent(
     }
     return subjectMatchesFilter(state, event.cardId, trigger.subjectFilter, watcher);
   }
+  if (event.kind === "tapped_for_mana") {
+    // Forbidden Orchard. Only the source itself is ever watched this way in
+    // the printed corpus, so "self" is the default and the only reading.
+    return trigger.event === "taps_for_mana" && event.cardId === watcher.id;
+  }
+  if (trigger.event === "taps_for_mana") {
+    return false;
+  }
   if (trigger.event === "becomes_tapped") {
     return false;
   }

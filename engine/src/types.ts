@@ -336,8 +336,16 @@ export type CardDefinition = {
   /** "~ doesn't untap during your untap step." */
   doesntUntap?: boolean;
   /** Drumbellower / Seedborn Muse: the controller's creatures (or all their
-   * permanents) also untap during each other player's untap step. */
-  untapDuringEachUntap?: "creatures" | "permanents" | "artifacts";
+   * permanents) also untap during each other player's untap step.
+   * Bender's Waterskin is the one-permanent form: only the source itself. */
+  untapDuringEachUntap?: "creatures" | "permanents" | "artifacts" | "self";
+  /**
+   * Thousand-Year Elixir: "You may activate abilities of creatures you
+   * control as though those creatures had haste." ABILITIES only — a
+   * summoning-sick creature still cannot attack, which is the whole
+   * difference between this and handing out haste.
+   */
+  abilityHaste?: boolean;
   /** Authority of the Consuls: opponents' creatures enter tapped. */
   opponentCreaturesEnterTapped?: boolean;
   /** Thalia, Heretic Cathar: the same static, for nonbasic lands. */
@@ -3077,6 +3085,12 @@ export type TriggerEvent =
   | "becomes_untapped"
   /** Any permanent tapped (City of Brass, Magda). Subject is the permanent. */
   | "becomes_tapped"
+  /**
+   * Forbidden Orchard: tapped FOR MANA specifically. Distinct from
+   * `becomes_tapped`, which also fires when a permanent taps to attack or
+   * is tapped by an opponent — neither of which is "you tap it for mana".
+   */
+  | "taps_for_mana"
   /** An opponent drew their second card this turn (Faerie Mastermind). */
   | "opponent_draws_second"
   /** Orcish Bowmasters: every opponent draw but their draw-step first. */
@@ -3441,6 +3455,8 @@ export type EngineEvent =
   | { kind: "untapped"; cardId: CardInstanceId }
   /** A permanent went from untapped to tapped (City of Brass). */
   | { kind: "tapped"; cardId: CardInstanceId }
+  /** Forbidden Orchard: the same tap, but specifically for mana. */
+  | { kind: "tapped_for_mana"; cardId: CardInstanceId }
   /** A player searched their library (found or not). */
   | { kind: "searches_library"; playerId: PlayerId }
   /** A card arrived in a graveyard from a zone other than the battlefield. */

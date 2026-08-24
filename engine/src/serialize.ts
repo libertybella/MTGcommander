@@ -1290,7 +1290,8 @@ export function parseGameState(json: string): GameState {
               };
             })(),
           }),
-      ...(def.untapDuringEachUntap === "creatures" || def.untapDuringEachUntap === "permanents" || def.untapDuringEachUntap === "artifacts"
+      ...(def.abilityHaste === true ? { abilityHaste: true } : {}),
+      ...(def.untapDuringEachUntap === "creatures" || def.untapDuringEachUntap === "permanents" || def.untapDuringEachUntap === "artifacts" || def.untapDuringEachUntap === "self"
         ? { untapDuringEachUntap: def.untapDuringEachUntap }
         : {}),
       ...(def.opponentCreaturesEnterTapped === true ? { opponentCreaturesEnterTapped: true } : {}),
@@ -4475,45 +4476,51 @@ function parseSpellModes(value: unknown, label: string): SpellMode[] {
   });
 }
 
-/** Every TriggerEvent name — keep in lockstep with the union in types.ts.
- * (The old hand-written comparison chain silently fell behind: it rejected
- * becomes_tapped and opponent_draws_second definitions on reload.) */
-const TRIGGER_EVENT_NAMES: ReadonlySet<string> = new Set([
-  "class_level",
-  "you_lose_life",
-  "enter_battlefield",
-  "begin_combat",
-  "dies",
-  "leaves_battlefield",
-  "attacks",
-  "upkeep",
-  "end_step",
-  "you_gain_life",
-  "opponent_loses_life",
-  "cast_spell",
-  "deals_combat_damage_to_player",
-  "deals_damage_to_player",
-  "opponent_draws",
-  "you_create_token",
-  "you_sacrifice_token",
-  "becomes_untapped",
-  "becomes_tapped",
-  "opponent_draws_second",
-  "opponent_draws_except_first",
-  "becomes_target",
-  "player_sacrifices",
-  "opponent_searches",
-  "casts_second_spell",
-  "opponent_casts_first_noncreature_spell",
-  "graveyard_from_elsewhere",
-  "leaves_your_graveyard",
-  "you_draw",
-  "is_dealt_damage",
-  "counter_added",
-  "discards",
-  "draw_step",
-  "first_main_phase",
-] satisfies TriggerEvent[]);
+/**
+ * Every TriggerEvent name, as a TOTAL record: omitting a union member is a
+ * tsc error here rather than a definition that compiles clean and then fails
+ * to LOAD. This was a hand-written comparison chain that silently fell
+ * behind (it rejected becomes_tapped and opponent_draws_second on reload),
+ * then a `satisfies TriggerEvent[]` array — which checks that every entry is
+ * valid but not that every member is present.
+ */
+const TRIGGER_EVENT_NAMES: Record<TriggerEvent, true> = {
+  class_level: true,
+  you_lose_life: true,
+  enter_battlefield: true,
+  begin_combat: true,
+  dies: true,
+  leaves_battlefield: true,
+  attacks: true,
+  upkeep: true,
+  end_step: true,
+  you_gain_life: true,
+  opponent_loses_life: true,
+  cast_spell: true,
+  deals_combat_damage_to_player: true,
+  deals_damage_to_player: true,
+  opponent_draws: true,
+  you_create_token: true,
+  you_sacrifice_token: true,
+  becomes_untapped: true,
+  becomes_tapped: true,
+  taps_for_mana: true,
+  opponent_draws_second: true,
+  opponent_draws_except_first: true,
+  becomes_target: true,
+  player_sacrifices: true,
+  opponent_searches: true,
+  casts_second_spell: true,
+  opponent_casts_first_noncreature_spell: true,
+  graveyard_from_elsewhere: true,
+  leaves_your_graveyard: true,
+  you_draw: true,
+  is_dealt_damage: true,
+  counter_added: true,
+  discards: true,
+  draw_step: true,
+  first_main_phase: true,
+};
 
 function parseTriggers(value: unknown, label: string): CardTrigger[] {
   if (value === undefined) {
@@ -4527,7 +4534,7 @@ function parseTriggers(value: unknown, label: string): CardTrigger[] {
       throw new Error(`Invalid ${label}[${index}]`);
     }
     const eventName = expectString(entry.event, `${label}[${index}].event`);
-    if (!TRIGGER_EVENT_NAMES.has(eventName)) {
+    if (!Object.hasOwn(TRIGGER_EVENT_NAMES, eventName)) {
       throw new Error(`Invalid ${label}[${index}].event`);
     }
     const event = eventName as TriggerEvent;

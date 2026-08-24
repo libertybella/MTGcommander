@@ -44194,3 +44194,366 @@ describe("wave 306: an ability on the stack is a target too", () => {
     expect(parsed.activated[1]?.manaCost).toBe("{U/P}");
   });
 });
+
+describe("wave 307: what untaps, and what a tap sets off", () => {
+  const compile = (name: string, typeLine: string, oracleText: string, manaCost = "") =>
+    compileOracleCard({
+      oracleId: name.toLowerCase().replace(/[^a-z]+/g, "-"),
+      name,
+      manaCost,
+      typeLine,
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  const put = (game: GameState, ownerId: string, definition: CardDefinition) => {
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({
+      definitionId: definition.id,
+      ownerId,
+      zone: "battlefield",
+    });
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === ownerId)!.zones.battlefield.push(card.id);
+    card.summoningSick = false;
+    return card.id;
+  };
+
+  // ---- Untapping on somebody else's turn ---------------------------------
+
+  it("compiles Bender's Waterskin as the one-permanent untap static", () => {
+    const compiled = compile(
+      "Bender's Waterskin",
+      "Artifact",
+      "Untap this artifact during each other player's untap step.\n{T}: Add one mana of any color.",
+      "{2}",
+    );
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.untapDuringEachUntap).toBe("self");
+  });
+
+  it("untaps only itself on an opponent's untap step", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const waterskinId = put(
+      game,
+      p1.id,
+      createCardDefinition({
+        name: "Bender's Waterskin",
+        typeLine: "Artifact",
+        manaCost: "{2}",
+        untapDuringEachUntap: "self",
+        manaAbilities: [
+          {
+            produces: {},
+            producesOptions: [],
+            producesAnyColor: true,
+            damageToController: 0,
+          },
+        ],
+      }),
+    );
+    const otherId = put(
+      game,
+      p1.id,
+      createCardDefinition({ name: "Rock", typeLine: "Artifact", manaCost: "{2}" }),
+    );
+    game.cards[waterskinId]!.tapped = true;
+    game.cards[otherId]!.tapped = true;
+    game.turn.activePlayerId = p1.id;
+    game.turn.phase = "ending";
+    game.turn.step = "cleanup";
+    const next = advanceSteps(game, 1);
+    expect(next.turn.activePlayerId).toBe(p2.id);
+    expect(next.cards[waterskinId]?.tapped).toBe(false);
+    // "Untap THIS artifact" — the rest of the board stays down.
+    expect(next.cards[otherId]?.tapped).toBe(true);
+  });
+
+  it("leaves the team untap statics alone", () => {
+    const seedborn = compile(
+      "Seedborn Muse",
+      "Creature — Nymph",
+      "Untap all permanents you control during each other player's untap step.",
+      "{3}{G}{G}",
+    );
+    expect(seedborn.definition.untapDuringEachUntap).toBe("permanents");
+  });
+
+  // ---- Activating as though hasty ----------------------------------------
+
+  it("compiles Thousand-Year Elixir as an ABILITY permission", () => {
+    const compiled = compile(
+      "Thousand-Year Elixir",
+      "Artifact",
+      "You may activate abilities of creatures you control as though those creatures had haste.\n{1}, {T}: Untap target creature.",
+      "{3}",
+    );
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.abilityHaste).toBe(true);
+    // NOT a haste grant: a static that handed out haste would also let the
+    // creature attack, which is a different and much better card.
+    expect(compiled.definition.staticAbilities).toEqual([]);
+  });
+
+  const sickTapper = (game: GameState, ownerId: string) => {
+    const id = put(
+      game,
+      ownerId,
+      createCardDefinition({
+        name: "Tapper",
+        typeLine: "Creature — Elf",
+        manaCost: "{G}",
+        power: 1,
+        toughness: 1,
+        activated: [
+          {
+            tap: true,
+            manaCost: "",
+            effects: [{ kind: "gain_life", playerId: "controller", amount: 1 }],
+            targetRequirements: [],
+          },
+        ],
+      }),
+    );
+    game.cards[id]!.summoningSick = true;
+    game.turn.activePlayerId = ownerId;
+    game.turn.phase = "precombatMain";
+    game.turn.step = "precombatMain";
+    game.priorityPlayerId = ownerId;
+    return id;
+  };
+
+  it("refuses a summoning-sick tap ability without the Elixir", () => {
+    const { game, p1 } = twoPlayers();
+    const tapperId = sickTapper(game, p1.id);
+    expect(() =>
+      applyAction(game, {
+        kind: "activate_ability",
+        playerId: p1.id,
+        cardId: tapperId,
+        abilityIndex: 0,
+        targets: [],
+      }),
+    ).toThrow(/summoning sickness/);
+  });
+
+  it("allows it with the Elixir out", () => {
+    const { game, p1 } = twoPlayers();
+    const tapperId = sickTapper(game, p1.id);
+    put(
+      game,
+      p1.id,
+      createCardDefinition({
+        name: "Thousand-Year Elixir",
+        typeLine: "Artifact",
+        manaCost: "{3}",
+        abilityHaste: true,
+      }),
+    );
+    const activated = applyAction(game, {
+      kind: "activate_ability",
+      playerId: p1.id,
+      cardId: tapperId,
+      abilityIndex: 0,
+      targets: [],
+    });
+    expect(activated.stack).toHaveLength(1);
+  });
+
+  it("still refuses the ATTACK, which is the whole distinction", () => {
+    const { game, p1 } = twoPlayers();
+    const tapperId = sickTapper(game, p1.id);
+    put(
+      game,
+      p1.id,
+      createCardDefinition({
+        name: "Thousand-Year Elixir",
+        typeLine: "Artifact",
+        manaCost: "{3}",
+        abilityHaste: true,
+      }),
+    );
+    game.turn.phase = "combat";
+    game.turn.step = "declareAttackers";
+    expect(() =>
+      declareAttackers(game, p1.id, [{ attackerId: tapperId, defenderId: game.players[1]!.id }]),
+    ).toThrow();
+  });
+
+  it("does not lend the permission across the table", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const tapperId = sickTapper(game, p2.id);
+    // The Elixir belongs to p1; p2's creature is not "creatures you control".
+    put(
+      game,
+      p1.id,
+      createCardDefinition({
+        name: "Thousand-Year Elixir",
+        typeLine: "Artifact",
+        manaCost: "{3}",
+        abilityHaste: true,
+      }),
+    );
+    expect(() =>
+      applyAction(game, {
+        kind: "activate_ability",
+        playerId: p2.id,
+        cardId: tapperId,
+        abilityIndex: 0,
+        targets: [],
+      }),
+    ).toThrow(/summoning sickness/);
+  });
+
+  it("offers the ability in the legal-action list too", () => {
+    const { game, p1 } = twoPlayers();
+    const tapperId = sickTapper(game, p1.id);
+    const before = legalActions(game, p1.id).filter(
+      (action) => action.kind === "activate_ability" && action.cardId === tapperId,
+    );
+    expect(before).toHaveLength(0);
+    put(
+      game,
+      p1.id,
+      createCardDefinition({
+        name: "Thousand-Year Elixir",
+        typeLine: "Artifact",
+        manaCost: "{3}",
+        abilityHaste: true,
+      }),
+    );
+    // A grant honoured by the validator but not the enumerator would hide an
+    // ability the player is allowed to use.
+    const after = legalActions(game, p1.id).filter(
+      (action) => action.kind === "activate_ability" && action.cardId === tapperId,
+    );
+    expect(after.length).toBeGreaterThan(0);
+  });
+
+  // ---- Tapping for mana as its own event ---------------------------------
+
+  it("compiles Forbidden Orchard's mana-tap trigger", () => {
+    const compiled = compile(
+      "Forbidden Orchard",
+      "Land",
+      "{T}: Add one mana of any color.\nWhenever you tap this land for mana, target opponent creates a 1/1 colorless Spirit creature token.",
+    );
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.triggers[0]).toMatchObject({ event: "taps_for_mana" });
+    expect(compiled.definition.triggers[0]?.targetRequirements).toEqual([{ kind: "opponent" }]);
+  });
+
+  const orchard = () =>
+    createCardDefinition({
+      name: "Forbidden Orchard",
+      typeLine: "Land",
+      manaAbilities: [
+        {
+          produces: {},
+          producesOptions: [],
+          producesAnyColor: true,
+          damageToController: 0,
+        },
+      ],
+      triggers: [
+        {
+          event: "taps_for_mana",
+          effects: [{ kind: "gain_life", playerId: "controller", amount: 1 }],
+          targetRequirements: [],
+        },
+      ],
+    });
+
+  it("fires when the land is tapped for mana", () => {
+    const { game, p1 } = twoPlayers();
+    const orchardId = put(game, p1.id, orchard());
+    game.turn.activePlayerId = p1.id;
+    game.turn.phase = "precombatMain";
+    game.turn.step = "precombatMain";
+    game.priorityPlayerId = p1.id;
+    const tapped = applyAction(game, {
+      kind: "tap_for_mana",
+      playerId: p1.id,
+      cardId: orchardId,
+      color: "U",
+    });
+    expect(tapped.stack).toHaveLength(1);
+  });
+
+  it("does not fire when the permanent is tapped some other way", () => {
+    const { game, p1 } = twoPlayers();
+    const orchardId = put(game, p1.id, orchard());
+    // "Becomes tapped" would catch this; "you tap it for mana" must not.
+    const tapped = { ...game, stack: [...game.stack] };
+    dispatchEventsInPlace(tapped, [{ kind: "tapped", cardId: orchardId }]);
+    expect(tapped.stack).toHaveLength(0);
+  });
+
+  it("still fires City of Brass's becomes-tapped trigger on a mana tap", () => {
+    const { game, p1 } = twoPlayers();
+    const cityId = put(
+      game,
+      p1.id,
+      createCardDefinition({
+        name: "City of Brass",
+        typeLine: "Land",
+        manaAbilities: [
+          {
+            produces: {},
+            producesOptions: [],
+            producesAnyColor: true,
+            damageToController: 0,
+          },
+        ],
+        triggers: [
+          {
+            event: "becomes_tapped",
+            effects: [{ kind: "lose_life", playerId: "controller", amount: 1 }],
+            targetRequirements: [],
+          },
+        ],
+      }),
+    );
+    game.turn.activePlayerId = p1.id;
+    game.turn.phase = "precombatMain";
+    game.turn.step = "precombatMain";
+    game.priorityPlayerId = p1.id;
+    const tapped = applyAction(game, {
+      kind: "tap_for_mana",
+      playerId: p1.id,
+      cardId: cityId,
+      color: "R",
+    });
+    // Both events fire from the one tap; neither replaced the other.
+    expect(tapped.stack).toHaveLength(1);
+  });
+
+  // ---- the wire ----------------------------------------------------------
+
+  it("round trips the new fields and event", () => {
+    const { game, p1 } = twoPlayers();
+    const definition = createCardDefinition({
+      name: "Tap Omnibus",
+      typeLine: "Artifact",
+      manaCost: "{3}",
+      abilityHaste: true,
+      untapDuringEachUntap: "self",
+      triggers: [
+        {
+          event: "taps_for_mana",
+          effects: [{ kind: "gain_life", playerId: "controller", amount: 1 }],
+          targetRequirements: [],
+        },
+      ],
+    });
+    put(game, p1.id, definition);
+    const round = parseGameState(serializeGameState(game));
+    const parsed = round.definitions[definition.id]!;
+    expect(parsed.abilityHaste).toBe(true);
+    expect(parsed.untapDuringEachUntap).toBe("self");
+    expect(parsed.triggers[0]?.event).toBe("taps_for_mana");
+  });
+});

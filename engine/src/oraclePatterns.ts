@@ -102,7 +102,8 @@ export type CompiledOracleText = {
   saga?: { chapters: CardEffect[][] };
   castFromGraveyard?: { types?: string[]; subtypes?: string[] };
   ascend?: boolean;
-  untapDuringEachUntap?: "creatures" | "permanents" | "artifacts";
+  untapDuringEachUntap?: CardDefinition["untapDuringEachUntap"];
+  abilityHaste?: boolean;
   opponentCreaturesEnterTapped?: boolean;
   opponentNonbasicLandsEnterTapped?: boolean;
   opponentArtifactsEnterTapped?: boolean;
@@ -9232,6 +9233,12 @@ function parseTriggerHead(head: string): TriggerHead | null {
     return { event: "becomes_untapped" };
   }
   // City of Brass.
+  // Forbidden Orchard: the narrower question. "Becomes tapped" also fires
+  // when the permanent taps to attack or an opponent taps it, and neither of
+  // those is "you tap it for mana".
+  if (/^Whenever you tap ~ for mana$/i.test(text)) {
+    return { event: "taps_for_mana" };
+  }
   if (/^Whenever ~ becomes tapped$/i.test(text)) {
     return { event: "becomes_tapped" };
   }
@@ -13744,6 +13751,24 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
         result.notCreatureBelowDevotion = { color, threshold };
         continue;
       }
+    }
+
+    // Bender's Waterskin: the one-permanent form of the same static.
+    if (/^Untap ~ during each other player's untap step$/i.test(sentence)) {
+      result.untapDuringEachUntap = "self";
+      continue;
+    }
+
+    // Thousand-Year Elixir. ABILITIES only — compiling this as a haste grant
+    // would also let a summoning-sick creature attack, which is a different
+    // and much better card.
+    if (
+      /^You may activate abilities of creatures you control as though those creatures had haste$/i.test(
+        sentence,
+      )
+    ) {
+      result.abilityHaste = true;
+      continue;
     }
 
     // Drumbellower / Seedborn Muse / Unwinding Clock.

@@ -862,6 +862,38 @@ export function canPlayLandFromTop(state: GameState, playerId: string, cardId: s
  * (Sigarda's Aid, Shimmer Myr) only answers for one it covers, so a caller
  * that does not name a card gets the unrestricted grants only.
  */
+/**
+ * May this permanent's TAP abilities be activated right now, summoning
+ * sickness and all? Haste answers yes; so does Thousand-Year Elixir, which
+ * grants the permission for ABILITIES only — a sick creature under it still
+ * cannot attack.
+ *
+ * One helper because the question is asked in four places (the activation
+ * validator, the mana-tap validator, and the two legal-action enumerators),
+ * and a grant honoured in three of them would offer an ability the payment
+ * path then refuses.
+ */
+export function canActivateTapAbility(state: GameState, cardId: string): boolean {
+  const card = state.cards[cardId];
+  if (!card) {
+    return false;
+  }
+  if (
+    !isCreature(state, cardId) ||
+    !card.summoningSick ||
+    (computedCard(state, cardId)?.keywords ?? []).includes("haste")
+  ) {
+    return true;
+  }
+  return Object.values(state.cards).some(
+    (source) =>
+      source.zone === "battlefield" &&
+      source.controllerId === card.controllerId &&
+      state.definitions[source.definitionId]?.abilityHaste === true &&
+      !abilitiesRemoved(state, source.id),
+  );
+}
+
 export function hasFlashGrant(state: GameState, playerId: string, cardId?: string): boolean {
   // Emergence Zone-class one-shot grants last only for this turn.
   if ((state.flashThisTurn ?? []).includes(playerId)) {

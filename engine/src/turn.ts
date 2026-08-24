@@ -258,9 +258,13 @@ function onEnterStep(state: GameState): GameState {
         }
         const matches =
           scope === "permanents" ||
-          (scope === "artifacts"
-            ? characteristicsOf(state, card.id).types.includes("artifact")
-            : isCreature(state, card.id));
+          // Bender's Waterskin untaps only ITSELF, so the sweep over the
+          // controller's board narrows to the one permanent.
+          (scope === "self"
+            ? card.id === source.id
+            : scope === "artifacts"
+              ? characteristicsOf(state, card.id).types.includes("artifact")
+              : isCreature(state, card.id));
         if (matches) {
           untapInPlace(card);
         }

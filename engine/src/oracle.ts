@@ -266,6 +266,7 @@ function compileOneFace(card: OracleCard, definitionId: string): OracleCompileRe
       : {}),
     ...(compiled.castFromGraveyard ? { castFromGraveyard: { ...compiled.castFromGraveyard } } : {}),
     ...(compiled.ascend ? { ascend: true } : {}),
+    ...(compiled.abilityHaste ? { abilityHaste: true } : {}),
     ...(compiled.untapDuringEachUntap
       ? { untapDuringEachUntap: compiled.untapDuringEachUntap }
       : {}),

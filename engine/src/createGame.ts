@@ -186,6 +186,7 @@ export function createCardDefinition(
         | "castFromGraveyard"
         | "ascend"
         | "untapDuringEachUntap"
+        | "abilityHaste"
         | "opponentCreaturesEnterTapped"
         | "opponentArtifactsEnterTapped"
         | "additionalCost"
@@ -634,6 +635,7 @@ export function createCardDefinition(
           },
         }
       : {}),
+    ...(input.abilityHaste ? { abilityHaste: true } : {}),
     ...(input.untapDuringEachUntap
       ? { untapDuringEachUntap: input.untapDuringEachUntap }
       : {}),

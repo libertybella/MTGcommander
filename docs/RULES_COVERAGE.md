@@ -870,6 +870,35 @@ more questions it can now ask:
   (Bennie Bracks). Reads the existing per-player `createdTokenThisTurn`
   list, and asks whether the CONTROLLER is in it — an opponent's Treasure
   must not satisfy it.
+- **`untapDuringEachUntap: "self"`** — Bender's Waterskin is the
+  one-permanent form of the Seedborn Muse static, so the sweep over the
+  controller's board narrows to the source rather than growing a second
+  mechanism.
+
+- **`abilityHaste`** — Thousand-Year Elixir: "activate abilities of
+  creatures you control as though those creatures had haste". ABILITIES
+  only. Compiling it as a haste GRANT would also let a summoning-sick
+  creature attack, which is a different and much better card.
+
+  The summoning-sickness question is asked in four places — the activation
+  validator, the mana-tap validator, and two legal-action enumerators — and
+  they all now call one `canActivateTapAbility`. A grant honoured in three of
+  them would either hide an ability the player may use or offer one the
+  payment path then refuses. The ATTACK enumerator deliberately keeps its own
+  haste check.
+
+- **`taps_for_mana`** — Forbidden Orchard. Distinct from `becomes_tapped`,
+  which also fires when a permanent taps to attack or an opponent taps it,
+  and neither of those is "you tap it for mana". Both events fire from the
+  one mana tap, so City of Brass is untouched.
+
+- **The serializer's TriggerEvent guard is now a total record too.** It had
+  already been a hand-written comparison chain that fell behind (rejecting
+  `becomes_tapped` and `opponent_draws_second` on reload) and was then a
+  `satisfies TriggerEvent[]` array — which checks that every entry is valid
+  but not that every member is present. Third guard of this shape fixed in
+  three waves.
+
 - **An ability on the stack is a targetable object** (CR 113.7) — two target
   kinds, `spell_or_ability` (Spellskite) and `triggered_ability_you_control`
   (Strionic Resonator). The second refuses an activated or loyalty ability:
