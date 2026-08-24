@@ -2525,6 +2525,38 @@ function markDestructionsInPlace(sentence: string, effects: CardEffect[]): void 
   }
 }
 
+/**
+ * Every printed wording of the denial, in one place: it is read from four
+ * assemblers and a miss in any of them is silent.
+ */
+const REGENERATION_DENIAL =
+  /^(?:(?:They|It)|(?:A creature|Creatures) destroyed this way) can't be regenerated$/i;
+
+/**
+ * "It can't be regenerated" (CR 701.15d). The denial rides the destruction
+ * it was printed beside — "destroyed THIS WAY" scopes to one ability — so
+ * it is applied to a list of effects, never to the card. A sweep that
+ * exiles or sacrifices is not a destruction and takes no flag.
+ */
+function denyRegenerationInPlace(effects: CardEffect[]): void {
+  for (const effect of effects) {
+    if (effect.kind === "move_card" && effect.destroy === true) {
+      effect.denyRegeneration = true;
+    } else if (
+      effect.kind === "destroy_all" &&
+      effect.toZone !== "exile" &&
+      effect.asSacrifice !== true
+    ) {
+      effect.denyRegeneration = true;
+    } else if (effect.kind === "if_condition") {
+      denyRegenerationInPlace(effect.then);
+      if (effect.otherwise) {
+        denyRegenerationInPlace(effect.otherwise);
+      }
+    }
+  }
+}
+
 function compileSimpleClause(sentence: string): SimpleClause | null {
   const clause = compileSimpleClauseInner(sentence);
   if (clause) {
@@ -13043,6 +13075,11 @@ function extractModalModes(card: OracleCard): ModalExtraction | null {
       const shifted = offsetChosenIndexes(clause, targetRequirements.length);
       targetRequirements.push(...shifted.targetRequirements);
       effects.push(...shifted.effects);
+      // Scoped to this bullet: a mode denies regeneration only to what it
+      // destroyed, and the modes beside it are other abilities entirely.
+      if (REGENERATION_DENIAL.test(part)) {
+        denyRegenerationInPlace(effects);
+      }
     }
     modes.push({
       label: bullet.replace(/\.$/, ""),
@@ -13300,6 +13337,9 @@ function extractTriggerModalModes(card: OracleCard): TriggerModalExtraction | nu
         requirements = clause.targetRequirements;
       }
       effects.push(...clause.effects);
+      if (REGENERATION_DENIAL.test(sentence)) {
+        denyRegenerationInPlace(effects);
+      }
     }
     if (failed || effects.length === 0) {
       return { remainingText, trigger: null, raw };
@@ -13400,6 +13440,9 @@ function extractActivatedModalModes(card: OracleCard): ActivatedModalExtraction 
           : clause.effects),
       );
       requirements.push(...clause.targetRequirements);
+      if (REGENERATION_DENIAL.test(sentence)) {
+        denyRegenerationInPlace(effects);
+      }
     }
     if (failed || effects.length === 0) {
       return { remainingText, ability: null, raw };
@@ -13608,10 +13651,21 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
   fuseMoxDiamondInPlace(sentences, lineStart);
   fuseMaySacrificeInPlace(sentences, lineStart);
   fuseNecroTopInPlace(sentences, lineStart);
+  // A printed line is an ability, so these mark where the current line's
+  // output begins. Riders that reach BACKWARD — the regeneration denial
+  // below — use them to stop at the line they were printed on.
+  let lineEffectFloor = 0;
+  let lineTriggerFloor = 0;
+  let lineActivatedFloor = 0;
   for (let index = 0; index < sentences.length; index += 1) {
     const sentence = sentences[index];
     if (!sentence) {
       continue;
+    }
+    if (lineStart[index]) {
+      lineEffectFloor = result.effects.length;
+      lineTriggerFloor = result.triggers.length;
+      lineActivatedFloor = result.activated.length;
     }
     // Pristine Talisman: a life rider on the mana ability printed with it.
     // Parked in `result.effects` it would never run at all, because a
@@ -14135,6 +14189,13 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
           rider < sentences.length && !lineStart[rider] && sentences[rider];
           rider += 1
         ) {
+          // Consumed the way every other rider here is consumed: blanked
+          // in place, so the outer loop skips it.
+          if (REGENERATION_DENIAL.test(sentences[rider]!)) {
+            denyRegenerationInPlace(effects);
+            sentences[rider] = "";
+            continue;
+          }
           const tail = compileSimpleClause(sentences[rider]!);
           // A rider needing its OWN targets alongside a body that already
           // has some cannot be expressed; leave it to fail honestly.
@@ -14373,8 +14434,15 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
       continue;
     }
 
-    // Regeneration is not implemented, so the denial is inert on this table.
-    if (/^(?:They|It) can't be regenerated$/i.test(sentence)) {
+    // The denial is a rider on whatever this LINE destroyed, so it reaches
+    // back only as far as the line's own output (CR 701.15d). Marking the
+    // whole card would deny regeneration to an unrelated second ability.
+    if (REGENERATION_DENIAL.test(sentence)) {
+      denyRegenerationInPlace([
+        ...result.effects.slice(lineEffectFloor),
+        ...result.triggers.slice(lineTriggerFloor).flatMap((entry) => entry.effects),
+        ...result.activated.slice(lineActivatedFloor).flatMap((entry) => entry.effects),
+      ]);
       continue;
     }
 
@@ -17468,6 +17536,13 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
       // below, which attach to this same (last) ability.
       while (index + 1 < sentences.length && !lineStart[index + 1]) {
         const follow = sentences[index + 1]!;
+        // The denial belongs to the ability's own destruction, and this
+        // loop is the only thing that sees both.
+        if (REGENERATION_DENIAL.test(follow)) {
+          denyRegenerationInPlace(pushed.effects);
+          index += 1;
+          continue;
+        }
         if (foldSubjectRider(pushed.effects, follow)) {
           index += 1;
           continue;

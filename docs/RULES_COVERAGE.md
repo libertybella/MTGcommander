@@ -2259,12 +2259,20 @@ more questions it can now ask:
   Cyclonic Rift and the rest keep the cheaper extra-cost shape: same
   colours, so nothing about them moves.
 
-- **"A creature destroyed this way can't be regenerated"** compiles to
-  NOTHING. This was exact until wave 344 gave regeneration real shields;
-  it is now a KNOWN APPROXIMATION in the other direction — a shielded
-  creature survives a wrath that printed the denial. The clause is read
-  and swallowed at three sites in `oraclePatterns.ts`; turning it into a
-  flag on the destruction is the fix, and it has not been done yet.
+- **"It can't be regenerated"** (CR 701.15d) is `denyRegeneration` on the
+  destruction it was printed beside — on the `move_card` for the targeted
+  form and on the `destroy_all` for a sweep, never on the card. "Destroyed
+  THIS WAY" reaches one ability: the top-level reader stops at the printed
+  LINE it was on, and the modal, activated-body and loyalty-body readers
+  stop at their own bullet or ability. It turns the shield off for that
+  one destruction without spending it, and it answers regeneration only —
+  indestructible and totem armor are unaffected. The clause compiled to
+  nothing until wave 351, which was exact until wave 344 gave regeneration
+  a shield to deny and left the wraths losing to it.
+- **"Can't be regenerated THIS TURN"** — the damage-based form (Incinerate,
+  Disintegrate, Flamebreak) is a lasting effect on the creature rather than
+  a rider on a destruction, and is **not** implemented. 18 printings, none
+  in the top 2,000.
 - **Paying life for the top of your library** — Bolas's Citadel.
   `TopOfLibraryGrant.payLifeInsteadOfMana` replaces the cost OUTRIGHT, the
   same way flashback does, and rides the same life-payment path. A cost

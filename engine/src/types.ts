@@ -1402,6 +1402,12 @@ export type GameEffect =
        * word in the oracle text is what sets it.
        */
       destroy?: boolean;
+      /**
+       * "It can't be regenerated" (CR 701.15d). Rides the destruction it
+       * belongs to rather than the card, because "destroyed THIS WAY"
+       * scopes to one ability, and it never spends a shield it denies.
+       */
+      denyRegeneration?: boolean;
       /** Kodama: mark the arriving permanent as put by THIS ability. */
       putByAbilityOf?: CardInstanceId;
       /** Battlefield arrivals: the arriving card is controlled by this player. */
@@ -2029,6 +2035,8 @@ export type GameEffect =
       coloredOnly?: boolean;
       /** All Is Dust: a SACRIFICE, so indestructible does not save. */
       asSacrifice?: boolean;
+      /** Damnation: "They can't be regenerated" — shields do not apply. */
+      denyRegeneration?: boolean;
       /** Urza's Ruinous Blast exiles rather than destroying. */
       toZone?: "exile";
       maxManaValue?: number;
@@ -2718,6 +2726,12 @@ export type CardEffect =
        * word in the oracle text is what sets it.
        */
       destroy?: boolean;
+      /**
+       * "It can't be regenerated" (CR 701.15d). Rides the destruction it
+       * belongs to rather than the card, because "destroyed THIS WAY"
+       * scopes to one ability, and it never spends a shield it denies.
+       */
+      denyRegeneration?: boolean;
       /**
        * Kodama: mark the arriving permanent as put by this ability. A
        * BOOLEAN here and an id on the bound form — the definition does not
@@ -3452,6 +3466,8 @@ export type CardEffect =
       coloredOnly?: boolean;
       /** All Is Dust: a SACRIFICE, so indestructible does not save. */
       asSacrifice?: boolean;
+      /** Damnation: "They can't be regenerated" — shields do not apply. */
+      denyRegeneration?: boolean;
       /** Urza's Ruinous Blast exiles rather than destroying. */
       toZone?: "exile";
       maxManaValue?: number;

@@ -346,7 +346,7 @@ describe("this spell can't be countered", () => {
 });
 
 describe("board wipes", () => {
-  it("compiles Wrath of God including the inert regeneration denial", () => {
+  it("compiles Wrath of God including the regeneration denial", () => {
     const compiled = compileOracleCard({
       oracleId: "wrath",
       name: "Wrath of God",
@@ -359,7 +359,11 @@ describe("board wipes", () => {
       imageUrl: "",
     });
     expect(compiled.notes).toEqual([]);
-    expect(compiled.definition.effects).toEqual([{ kind: "destroy_all", what: "creatures" }]);
+    // Inert until wave 351: the denial now rides the sweep it was printed
+    // beside, because wave 344 gave regeneration a shield to deny.
+    expect(compiled.definition.effects).toEqual([
+      { kind: "destroy_all", what: "creatures", denyRegeneration: true },
+    ]);
   });
 
   it("destroys every creature at once but spares indestructible ones", () => {
@@ -4400,7 +4404,13 @@ describe("wave 47: token riders and draw doubling", () => {
     expect(pongify.notes).toEqual([]);
     expect(pongify.definition.targetRequirements).toEqual([{ kind: "creature" }]);
     expect(pongify.definition.effects).toEqual([
-      { kind: "move_card", cardId: { type: "chosen", index: 0 }, toZone: "graveyard", destroy: true },
+      {
+        kind: "move_card",
+        cardId: { type: "chosen", index: 0 },
+        toZone: "graveyard",
+        destroy: true,
+        denyRegeneration: true,
+      },
       {
         kind: "create_token",
         ownerId: { type: "chosen_controller", index: 0 },
@@ -37716,7 +37726,7 @@ describe("wave 282: an overload cost in different colours", () => {
     expect(rift.definition.modes?.[1]?.replacesCost).toBeUndefined();
   });
 
-  it("reads the no-regeneration rider as vacuous", () => {
+  it("reads the longhand no-regeneration rider", () => {
     const compiled = compileOracleCard({
       oracleId: "x",
       name: "Probe",
@@ -37728,12 +37738,18 @@ describe("wave 282: an overload cost in different colours", () => {
       imageUrl: "",
       oracleText: "Destroy target creature. A creature destroyed this way can't be regenerated.",
     });
-    // Regeneration is not implemented anywhere in this engine — there is no
-    // shield to deny — so the sentence is genuinely vacuous rather than
-    // approximated away. If regeneration ever lands, this becomes a real flag.
+    // Wave 282 read this as vacuous, and it was: nothing regenerated yet.
+    // Wave 344 shipped the shield, so wave 351 made the denial real — this
+    // is the longhand wording of the same rider.
     expect(compiled.notes).toEqual([]);
     expect(compiled.definition.effects).toEqual([
-      { kind: "move_card", cardId: { type: "chosen", index: 0 }, toZone: "graveyard", destroy: true },
+      {
+        kind: "move_card",
+        cardId: { type: "chosen", index: 0 },
+        toZone: "graveyard",
+        destroy: true,
+        denyRegeneration: true,
+      },
     ]);
   });
 });
@@ -54709,5 +54725,270 @@ describe("wave 350: coven gates the casting, not the looking", () => {
       castTypesAny: ["creature"],
       castRequiresCoven: true,
     });
+  });
+});
+
+describe("wave 351: a denial the shield has to hear", () => {
+  const compile = (name: string, typeLine: string, oracleText: string, manaCost = "") =>
+    compileOracleCard({
+      oracleId: name.toLowerCase().replace(/[^a-z]+/g, "-"),
+      name,
+      manaCost,
+      typeLine,
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  const put = (game: GameState, ownerId: string, definition: CardDefinition) => {
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({
+      definitionId: definition.id,
+      ownerId,
+      zone: "battlefield",
+    });
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === ownerId)!.zones.battlefield.push(card.id);
+    card.summoningSick = false;
+    return card.id;
+  };
+
+  const bear = (name = "Bear") =>
+    createCardDefinition({
+      name,
+      typeLine: "Creature — Bear",
+      manaCost: "{1}{G}",
+      power: 2,
+      toughness: 2,
+    });
+
+  it("compiles the targeted denial and leaves a plain destroy alone", () => {
+    const denied = compile(
+      "Terminate",
+      "Instant",
+      "Destroy target creature. It can't be regenerated.",
+      "{B}{R}",
+    );
+    expect(denied.notes).toEqual([]);
+    expect(denied.definition.effects).toEqual([
+      {
+        kind: "move_card",
+        cardId: { type: "chosen", index: 0 },
+        toZone: "graveyard",
+        destroy: true,
+        denyRegeneration: true,
+      },
+    ]);
+    const plain = compile("Murder", "Instant", "Destroy target creature.", "{1}{B}{B}");
+    expect(plain.definition.effects).toEqual([
+      {
+        kind: "move_card",
+        cardId: { type: "chosen", index: 0 },
+        toZone: "graveyard",
+        destroy: true,
+      },
+    ]);
+  });
+
+  it("compiles the sweep denial", () => {
+    const denied = compile(
+      "Damnation",
+      "Sorcery",
+      "Destroy all creatures. They can't be regenerated.",
+      "{2}{B}{B}",
+    );
+    expect(denied.notes).toEqual([]);
+    expect(denied.definition.effects).toEqual([
+      { kind: "destroy_all", what: "creatures", denyRegeneration: true },
+    ]);
+    const plain = compile("Plain Wrath", "Sorcery", "Destroy all creatures.", "{2}{W}{W}");
+    expect(plain.definition.effects).toEqual([{ kind: "destroy_all", what: "creatures" }]);
+  });
+
+  it("keeps the denial on the ability that printed it", () => {
+    const compiled = compile(
+      "Two Engines",
+      "Artifact",
+      "{2}, {T}: Destroy target creature. It can't be regenerated.\n{3}, {T}: Destroy target artifact.",
+      "{4}",
+    );
+    expect(compiled.notes).toEqual([]);
+    // "Destroyed THIS WAY" is one ability's worth of reach. Marking the
+    // card would hand the second ability a denial it never printed.
+    expect(compiled.definition.activated[0]?.effects[0]).toMatchObject({
+      denyRegeneration: true,
+    });
+    expect(compiled.definition.activated[1]?.effects[0]).not.toHaveProperty(
+      "denyRegeneration",
+    );
+  });
+
+  it("keeps the denial on the mode that printed it", () => {
+    const compiled = compile(
+      "Crosis's Charm",
+      "Instant",
+      "Choose one —\n• Return target permanent to its owner's hand.\n• Destroy target nonblack creature. It can't be regenerated.\n• Destroy target artifact.",
+      "{U}{B}{R}",
+    );
+    expect(compiled.notes).toEqual([]);
+    const modes = compiled.definition.modes ?? [];
+    expect(modes[1]?.effects[0]).toMatchObject({ denyRegeneration: true });
+    expect(modes[2]?.effects[0]).not.toHaveProperty("denyRegeneration");
+  });
+
+  // ---- What it does at the table -------------------------------------------
+
+  const destroy = (
+    game: GameState,
+    playerId: string,
+    victimId: string,
+    denyRegeneration = false,
+  ) =>
+    applyEffects(
+      game,
+      bindCardEffects(
+        game,
+        [
+          {
+            kind: "move_card",
+            cardId: { type: "chosen", index: 0 },
+            toZone: "graveyard",
+            destroy: true,
+            ...(denyRegeneration ? { denyRegeneration: true } : {}),
+          },
+        ],
+        {
+          controllerId: playerId,
+          sourceId: null,
+          targets: [{ type: "creature", cardId: victimId }],
+          targetRequirements: [{ kind: "creature" }],
+        },
+      ),
+    );
+
+  const shielded = (game: GameState, cardId: string, times = 1) => {
+    let state = game;
+    for (let index = 0; index < times; index += 1) {
+      state = applyEffect(state, { kind: "regenerate", cardIds: [cardId] });
+    }
+    return state;
+  };
+
+  it("kills through a regeneration shield", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const bearId = put(game, p1.id, bear());
+    let state = shielded(game, bearId);
+    // Wave 344 gave the shield teeth; until this wave the printed denial
+    // still compiled to nothing, so Terminate lost to a Regeneration.
+    state = destroy(state, p2.id, bearId, true);
+    expect(state.cards[bearId]?.zone).toBe("graveyard");
+  });
+
+  it("still loses to a shield without the denial", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const bearId = put(game, p1.id, bear());
+    let state = shielded(game, bearId);
+    state = destroy(state, p2.id, bearId);
+    expect(state.cards[bearId]?.zone).toBe("battlefield");
+  });
+
+  it("does not spend the shield it denies", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const bearId = put(game, p1.id, bear());
+    const otherId = put(game, p1.id, bear("Other"));
+    let state = shielded(game, otherId);
+    state = shielded(state, bearId);
+    state = destroy(state, p2.id, bearId, true);
+    expect(state.cards[bearId]?.zone).toBe("graveyard");
+    // CR 701.15d turns the shield OFF for that destruction; it does not
+    // consume one. The bystander's shield is untouched either way.
+    expect(state.cards[otherId]?.regenerationShields).toBe(1);
+  });
+
+  it("leaves indestructible and totem armor alone", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const steelId = put(
+      game,
+      p1.id,
+      createCardDefinition({
+        name: "Steel Bear",
+        typeLine: "Creature — Bear",
+        manaCost: "{1}{G}",
+        power: 2,
+        toughness: 2,
+        keywords: ["indestructible"],
+      }),
+    );
+    const wrappedId = put(game, p1.id, bear("Wrapped"));
+    const umbraId = put(
+      game,
+      p1.id,
+      createCardDefinition({
+        name: "Eel Umbra",
+        typeLine: "Enchantment — Aura",
+        manaCost: "{1}{U}",
+        totemArmor: true,
+      }),
+    );
+    game.cards[umbraId]!.attachedTo = wrappedId;
+    // The denial answers regeneration and nothing else: neither of these
+    // is a regeneration shield.
+    let state = destroy(game, p2.id, steelId, true);
+    expect(state.cards[steelId]?.zone).toBe("battlefield");
+    state = destroy(state, p2.id, wrappedId, true);
+    expect(state.cards[wrappedId]?.zone).toBe("battlefield");
+    expect(state.cards[umbraId]?.zone).toBe("graveyard");
+  });
+
+  it("sweeps through shields too", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const mineId = put(game, p1.id, bear("Mine"));
+    const theirsId = put(game, p2.id, bear("Theirs"));
+    let state = shielded(game, mineId);
+    state = shielded(state, theirsId);
+    state = applyEffects(
+      state,
+      bindCardEffects(
+        state,
+        [{ kind: "destroy_all", what: "creatures", denyRegeneration: true }],
+        { controllerId: p2.id, sourceId: null, targets: [], targetRequirements: [] },
+      ),
+    );
+    expect(state.cards[mineId]?.zone).toBe("graveyard");
+    expect(state.cards[theirsId]?.zone).toBe("graveyard");
+  });
+
+  it("round trips both flags", () => {
+    const { game, p1 } = twoPlayers();
+    const definition = createCardDefinition({
+      name: "Wave 351 Engine",
+      typeLine: "Artifact",
+      manaCost: "{4}",
+      activated: [
+        {
+          tap: true,
+          manaCost: "{2}",
+          effects: [
+            {
+              kind: "move_card",
+              cardId: { type: "chosen", index: 0 },
+              toZone: "graveyard",
+              destroy: true,
+              denyRegeneration: true,
+            },
+            { kind: "destroy_all", what: "creatures", denyRegeneration: true },
+          ],
+          targetRequirements: [{ kind: "creature" }],
+        },
+      ],
+    });
+    put(game, p1.id, definition);
+    const round = parseGameState(serializeGameState(game));
+    // Dropping the flag on the wire is a Damnation that Regeneration beats.
+    expect(round.definitions[definition.id]?.activated[0]?.effects).toEqual(
+      definition.activated[0]!.effects,
+    );
   });
 });

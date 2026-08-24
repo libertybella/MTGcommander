@@ -3640,6 +3640,7 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
         ...(value.exileIfLeaves === true ? { exileIfLeaves: true } : {}),
         ...(value.putByAbilityOf === true ? { putByAbilityOf: true } : {}),
         ...(value.destroy === true ? { destroy: true } : {}),
+        ...(value.denyRegeneration === true ? { denyRegeneration: true } : {}),
         ...(value.underControlOf === "controller" ? { underControlOf: "controller" } : {}),
         ...(isRecord(value.withCounter)
           ? {
@@ -4490,6 +4491,7 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
         ? {}
         : { gainLifePerDestroyed: expectNumber(value.gainLifePerDestroyed, `${label}.gainLifePerDestroyed`) }),
       ...(value.asSacrifice === true ? { asSacrifice: true } : {}),
+      ...(value.denyRegeneration === true ? { denyRegeneration: true } : {}),
       ...(value.toZone === "exile" ? { toZone: "exile" } : {}),
         ...(value.typesAny === undefined
           ? {}
@@ -4506,6 +4508,7 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
           ? {}
           : { gainLifePerDestroyed: expectNumber(value.gainLifePerDestroyed, `${label}.gainLifePerDestroyed`) }),
         ...(value.asSacrifice === true ? { asSacrifice: true } : {}),
+        ...(value.denyRegeneration === true ? { denyRegeneration: true } : {}),
         ...(value.toZone === "exile" ? { toZone: "exile" } : {}),
         ...(value.maxManaValue === undefined
           ? {}
@@ -6677,6 +6680,7 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
         ? {}
         : { putByAbilityOf: expectString(value.putByAbilityOf, `${label}.putByAbilityOf`) }),
       ...(value.destroy === true ? { destroy: true } : {}),
+      ...(value.denyRegeneration === true ? { denyRegeneration: true } : {}),
       ...(value.controllerId === undefined
         ? {}
         : { controllerId: expectString(value.controllerId, `${label}.controllerId`) }),

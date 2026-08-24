@@ -1102,6 +1102,7 @@ export function bindCardEffect(
           ? { putByAbilityOf: context.sourceId }
           : {}),
         ...(effect.destroy ? { destroy: true } : {}),
+        ...(effect.denyRegeneration ? { denyRegeneration: true } : {}),
         ...(effect.underControlOf === "controller"
           ? { controllerId: context.controllerId }
           : {}),
@@ -1730,6 +1731,7 @@ export function bindCardEffect(
         ...(effect.nontoken ? { nontoken: true } : {}),
         ...(effect.coloredOnly ? { coloredOnly: true } : {}),
         ...(effect.asSacrifice ? { asSacrifice: true } : {}),
+        ...(effect.denyRegeneration ? { denyRegeneration: true } : {}),
         ...(effect.gainLifePerDestroyed
           ? { gainLifePerDestroyed: effect.gainLifePerDestroyed, lifeTo: context.controllerId }
           : {}),
@@ -4129,7 +4131,9 @@ function applyDestroyAll(
   const isDestruction = effect.toZone !== "exile" && effect.asSacrifice !== true;
   for (const cardId of doomed) {
     if (isDestruction) {
-      destroyPermanentInPlace(next, cardId, collectDies);
+      destroyPermanentInPlace(next, cardId, collectDies, {
+        denyRegeneration: effect.denyRegeneration === true,
+      });
     } else {
       moveCardInPlace(next, cardId, effect.toZone ?? "graveyard", { collectDies });
     }
@@ -4355,7 +4359,9 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
         if (effect.destroy) {
           next = cloneGameState(state);
           const collectDies: EngineEvent[] = [];
-          destroyPermanentInPlace(next, effect.cardId, collectDies);
+          destroyPermanentInPlace(next, effect.cardId, collectDies, {
+            denyRegeneration: effect.denyRegeneration === true,
+          });
           if (collectDies.length > 0) {
             dispatchEventsInPlace(next, collectDies);
             processDiesReturnsInPlace(next, collectDies);

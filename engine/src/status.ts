@@ -74,6 +74,7 @@ export function destroyPermanentInPlace(
   state: GameState,
   cardId: CardInstanceId,
   collectDies: EngineEvent[],
+  options: { denyRegeneration?: boolean } = {},
 ): boolean {
   const card = state.cards[cardId];
   if (!card || card.zone !== "battlefield") {
@@ -94,7 +95,11 @@ export function destroyPermanentInPlace(
    * documented auto-pick.
    */
   const shields = card.regenerationShields ?? 0;
-  if (shields > 0) {
+  // "It can't be regenerated" (CR 701.15d) turns the shield off for THIS
+  // destruction without spending it: the creature keeps whatever it paid
+  // for, and the next destruction is still replaced. Totem armor is not
+  // regeneration and still applies below.
+  if (shields > 0 && options.denyRegeneration !== true) {
     card.regenerationShields = shields - 1;
     card.damageMarked = 0;
     card.deathtouched = false;
