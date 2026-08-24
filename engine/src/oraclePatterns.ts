@@ -2495,6 +2495,109 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
 
 function compileSimpleClauseInner(sentence: string): SimpleClause | null {
   /**
+   * "~ becomes a 2/2 creature with all creature types until end of turn"
+   * (Mutavault) and "Target land you control becomes an X/X Elemental
+   * creature with trample and haste until end of turn, where X is the
+   * number of enchantments you control" (Destiny Spinner).
+   *
+   * One clause for both because they are one sentence shape: a subject, a
+   * size, optional creature types, optional keywords, and an optional
+   * "where X is" tail. "It's still a land" is consumed separately and means
+   * nothing here — the creature type is ADDED, so the land stays a land
+   * whether or not the card bothers to say so.
+   */
+  // The duration is printed at either end of the sentence — Mutavault
+  // trails it, the enemy-colour manlands front it — and it says the same
+  // thing in both places, so one pattern reads both rather than two
+  // patterns saying the same thing twice.
+  const animate = sentence.match(
+    /^(?:Until end of turn, )?(~|Target land you control|Target land) becomes an? (?:(\d+)\/(\d+)|X\/X) ((?:[A-Za-z]+ )*)creature(?: with (all creature types|[a-z, ]+?))?(?: until end of turn)?(?:, where X is (.+))?$/i,
+  );
+  if (animate && !/until end of turn/i.test(sentence)) {
+    // Every printed form says it somewhere. A sentence that does not is
+    // some other card doing something permanent, and guessing is worse
+    // than a clean miss.
+    return null;
+  }
+  if (animate?.[1]) {
+    const withClause = animate[5]?.toLowerCase().trim();
+    const all = withClause === "all creature types";
+    const keywords: Keyword[] = [];
+    if (withClause && !all) {
+      for (const word of withClause.split(/,| and /).map((part) => part.trim())) {
+        if (!word) {
+          continue;
+        }
+        const keyword = KEYWORD_GRANTS[word];
+        if (!keyword) {
+          return null;
+        }
+        keywords.push(keyword);
+      }
+    }
+    // The count table is keyed on the noun phrase alone ("enchantments you
+    // control"), so the "the number of" the card prints in front of it is
+    // stripped rather than duplicated into every entry.
+    const ptFrom = animate[6]
+      ? parseDynamicCount(animate[6].replace(/^the number of /i, ""))
+      : null;
+    // An X/X with no "where X is" tail has nothing to read: refuse rather
+    // than animate something as a 0/0 that the card never said was one.
+    if (!animate[2] && !ptFrom) {
+      return null;
+    }
+    // "a 1/1 Phyrexian Blinkmoth ARTIFACT creature", "a 2/1 BLUE Faerie
+    // creature" — one run of words carrying three different kinds of thing,
+    // sorted by what each word is rather than by where it sits.
+    const subtypes: string[] = [];
+    const extraTypes: string[] = [];
+    const colors: Color[] = [];
+    for (const word of (animate[4] ?? "").trim().split(/\s+/).filter(Boolean)) {
+      const lower = word.toLowerCase();
+      if (lower === "and") {
+        // "blue and black Elemental" — the conjunction joins the colours
+        // and is not a creature type of its own.
+        continue;
+      }
+      const color = COLOR_WORDS[lower];
+      if (color) {
+        colors.push(color);
+      } else if (lower === "artifact" || lower === "enchantment" || lower === "land") {
+        extraTypes.push(lower);
+      } else {
+        subtypes.push(lower);
+      }
+    }
+    return {
+      effects: [
+        {
+          kind: "animate_until_eot",
+          cardId: animate[1] === "~" ? "self" : { type: "chosen", index: 0 },
+          power: animate[2] ? Number(animate[2]) : 0,
+          toughness: animate[3] ? Number(animate[3]) : 0,
+          ...(ptFrom ? { ptFrom } : {}),
+          ...(subtypes.length > 0 ? { subtypes } : {}),
+          ...(extraTypes.length > 0 ? { types: extraTypes } : {}),
+          ...(colors.length > 0 ? { colors } : {}),
+          ...(all ? { allCreatureTypes: true } : {}),
+          ...(keywords.length > 0 ? { keywords } : {}),
+        },
+      ],
+      targetRequirements:
+        animate[1] === "~" ? [] : [{ kind: "land" as const, control: "own" as const }],
+    };
+  }
+
+  /**
+   * "It's still a land." Consumed rather than compiled: the animation above
+   * ADDS the creature type instead of replacing what was there, so this
+   * sentence is already true and there is nothing to do about it.
+   */
+  if (/^It's still a land$/i.test(sentence)) {
+    return { effects: [], targetRequirements: [] };
+  }
+
+  /**
    * Discover N (CR 702.163) — the same walk cascade makes, with a printed
    * ceiling instead of the spell's own mana value, and with the extra
    * option of taking the card to hand.

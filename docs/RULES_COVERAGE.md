@@ -870,6 +870,28 @@ more questions it can now ask:
   (Bennie Bracks). Reads the existing per-player `createdTokenThisTurn`
   list, and asks whether the CONTROLLER is in it — an opponent's Treasure
   must not satisfy it.
+- **`animate_until_eot`** — Mutavault, Destiny Spinner and the manland
+  cycle. Three layers behind one word: the creature type is ADDED (layer
+  4), the power and toughness are SET (layer 7b), the colours are set
+  (layer 5), and the keywords are granted (layer 6).
+
+  Adding rather than replacing the card type is what makes **"It's still a
+  land"** true, so that sentence is consumed as a no-op rather than
+  compiled — there is nothing for it to do. The land also keeps its mana
+  ability while animated, with a test saying so.
+
+  Setting rather than modifying the power matters because a land has no
+  printed power to modify. The test proves it on a 5/5, which is the only
+  subject that can tell the two apart.
+
+  One pattern reads the duration at either end of the sentence — Mutavault
+  trails it, the enemy-colour manlands front it — and one run of words is
+  sorted by what each word IS rather than by where it sits, so "1/1
+  Phyrexian Blinkmoth artifact creature" yields two creature types and one
+  card type without a clause per shape. A sentence with no duration at all
+  is refused: guessing that an animation is permanent is worse than a
+  clean miss.
+
 - **Cascade (CR 702.85) and discover N (CR 702.163)** are ONE effect, not
   two. Both exile from the top of the library until a nonland card with a
   small enough mana value turns up, then bottom the rest; they differ only

@@ -39,7 +39,7 @@ import { parseGameState, serializeGameState } from "./serialize";
 import { fillLibraries } from "./testSupport";
 import { applyKeepHand, beginMulligan, isMulliganOpen } from "./mulligan";
 import { advanceSteps } from "./turn";
-import type { CardDefinition, CardEffect, Color, GameState, Keyword, ManaRider, PlayerState, Step, TargetRequirement } from "./types";
+import type { CardDefinition, CardEffect, Color, GameEffect, GameState, Keyword, ManaRider, PlayerState, Step, TargetRequirement } from "./types";
 
 function twoPlayers() {
   const game = createGameState({ playerCount: 2 });
@@ -49526,6 +49526,284 @@ describe("wave 324: one walk down the library, two keywords", () => {
       playerId: "controller",
       maxManaValue: 5,
       toHandAllowed: true,
+    });
+  });
+});
+
+describe("wave 325: a land that becomes a creature and stays a land", () => {
+  const compile = (
+    name: string,
+    typeLine: string,
+    oracleText: string,
+    manaCost = "",
+    pt: [string, string] | null = null,
+  ) =>
+    compileOracleCard({
+      oracleId: name.toLowerCase().replace(/[^a-z]+/g, "-"),
+      name,
+      manaCost,
+      typeLine,
+      power: pt?.[0] ?? null,
+      toughness: pt?.[1] ?? null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  const put = (game: GameState, ownerId: string, definition: CardDefinition) => {
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({
+      definitionId: definition.id,
+      ownerId,
+      zone: "battlefield",
+    });
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === ownerId)!.zones.battlefield.push(card.id);
+    card.summoningSick = false;
+    return card.id;
+  };
+
+  // ---- Compiling -----------------------------------------------------------
+
+  it("compiles Mutavault's trailing duration", () => {
+    const compiled = compile(
+      "Mutavault",
+      "Land",
+      "{T}: Add {C}.\n{1}: ~ becomes a 2/2 creature with all creature types until end of turn. It's still a land.",
+    );
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.activated[0]?.effects[0]).toEqual({
+      kind: "animate_until_eot",
+      cardId: "self",
+      power: 2,
+      toughness: 2,
+      allCreatureTypes: true,
+    });
+  });
+
+  it("compiles a fronted duration and a two-word colour", () => {
+    // The enemy-colour manlands print the duration in front; it says the
+    // same thing, so one pattern reads both.
+    const compiled = compile(
+      "Celestial Colonnade",
+      "Land",
+      "{3}{W}{U}: Until end of turn, ~ becomes a 4/4 white and blue Elemental creature with flying and vigilance.",
+    );
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.activated[0]?.effects[0]).toEqual({
+      kind: "animate_until_eot",
+      cardId: "self",
+      power: 4,
+      toughness: 4,
+      subtypes: ["elemental"],
+      colors: ["W", "U"],
+      keywords: ["flying", "vigilance"],
+    });
+  });
+
+  it("sorts a run of words by what each word is", () => {
+    const compiled = compile(
+      "Blinkmoth Nexus",
+      "Land",
+      "{1}: ~ becomes a 1/1 Blinkmoth artifact creature with flying until end of turn. It's still a land.",
+    );
+    expect(compiled.notes).toEqual([]);
+    // "Blinkmoth" is a creature type, "artifact" is a CARD type — one run
+    // of words carrying two different kinds of thing.
+    expect(compiled.definition.activated[0]?.effects[0]).toMatchObject({
+      subtypes: ["blinkmoth"],
+      types: ["artifact"],
+    });
+  });
+
+  it("reads a size the card does not print", () => {
+    const spinner = compile(
+      "Destiny Spinner",
+      "Creature — Human",
+      "{3}{G}: Target land you control becomes an X/X Elemental creature with trample and haste until end of turn, where X is the number of enchantments you control. It's still a land.",
+      "{1}{G}",
+      ["2", "3"],
+    );
+    expect(spinner.notes).toEqual([]);
+    expect(spinner.definition.activated[0]?.effects[0]).toMatchObject({
+      ptFrom: "enchantments_you_control",
+    });
+    expect(spinner.definition.activated[0]?.targetRequirements).toEqual([
+      { kind: "land", control: "own" },
+    ]);
+  });
+
+  it("refuses an X/X with nothing to read it from", () => {
+    const compiled = compile(
+      "Vague Animator",
+      "Enchantment",
+      "{2}: Target land you control becomes an X/X Elemental creature until end of turn.",
+      "{2}",
+    );
+    // A 0/0 the card never asked for would die on the spot; a clean miss
+    // is better than a creature that vanishes.
+    expect(compiled.notes.join(" ")).toContain("not compiled");
+  });
+
+  it("refuses a permanent animation", () => {
+    const compiled = compile(
+      "Forever Animator",
+      "Enchantment",
+      "{2}: Target land you control becomes a 3/3 Elemental creature.",
+      "{2}",
+    );
+    expect(compiled.notes.join(" ")).toContain("not compiled");
+  });
+
+  // ---- Playing -------------------------------------------------------------
+
+  const land = () => createCardDefinition({ name: "Mutavault", typeLine: "Land" });
+
+  const animate = (
+    game: GameState,
+    cardId: string,
+    extra: Partial<Extract<GameEffect, { kind: "animate_until_eot" }>> = {},
+  ) =>
+    applyEffect(game, {
+      kind: "animate_until_eot",
+      cardId,
+      power: 2,
+      toughness: 2,
+      ...extra,
+    });
+
+  it("is a creature and still a land", () => {
+    const { game, p1 } = twoPlayers();
+    const landId = put(game, p1.id, land());
+    expect(characteristicsOf(game, landId).types).not.toContain("creature");
+    const live = animate(game, landId);
+    const computed = computedCard(live, landId);
+    expect(computed?.power).toBe(2);
+    expect(computed?.toughness).toBe(2);
+    // "It's still a land" needs no clause of its own: the creature type is
+    // ADDED, so the land was never stopped being one.
+    expect(computed?.characteristics.types).toContain("land");
+    expect(computed?.characteristics.types).toContain("creature");
+  });
+
+  it("sets the power rather than adding to it", () => {
+    const { game, p1 } = twoPlayers();
+    const bearId = put(
+      game,
+      p1.id,
+      createCardDefinition({
+        name: "Bear",
+        typeLine: "Creature — Bear",
+        manaCost: "{1}{G}",
+        power: 5,
+        toughness: 5,
+      }),
+    );
+    // A land has no printed power to modify, so this layer SETS. Proving
+    // it on something that does have one is the only way to tell.
+    const live = animate(game, bearId, { power: 2, toughness: 2 });
+    expect(computedCard(live, bearId)?.power).toBe(2);
+  });
+
+  it("grants the keywords it names", () => {
+    const { game, p1 } = twoPlayers();
+    const landId = put(game, p1.id, land());
+    const live = animate(game, landId, { keywords: ["flying", "haste"] });
+    expect(hasKeyword(live, landId, "flying")).toBe(true);
+    expect(hasKeyword(live, landId, "haste")).toBe(true);
+  });
+
+  it("takes the colours it names, and no others", () => {
+    const { game, p1 } = twoPlayers();
+    const landId = put(game, p1.id, land());
+    expect(computedCard(game, landId)?.characteristics.colors).toEqual([]);
+    const live = animate(game, landId, { colors: ["W", "U"] });
+    expect(live && computedCard(live, landId)?.characteristics.colors.sort()).toEqual([
+      "U",
+      "W",
+    ]);
+  });
+
+  it("gains all creature types when told to", () => {
+    const { game, p1 } = twoPlayers();
+    const landId = put(game, p1.id, land());
+    const live = animate(game, landId, { allCreatureTypes: true });
+    expect(cardMatchesSubtype(live, landId, "goblin")).toBe(true);
+    expect(cardMatchesSubtype(live, landId, "wizard")).toBe(true);
+  });
+
+  it("keeps the land's mana ability while animated", () => {
+    const { game, p1 } = twoPlayers();
+    const landId = put(
+      game,
+      p1.id,
+      createCardDefinition({
+        name: "Mutavault",
+        typeLine: "Land",
+        manaAbilities: [
+          {
+            produces: { C: 1 },
+            producesOptions: [],
+            producesAnyColor: false,
+            damageToController: 0,
+          },
+        ],
+      }),
+    );
+    const live = animate(game, landId);
+    // Animating ADDS; it does not replace what the permanent already did.
+    expect(manaAbilitiesFor(live, landId)).toHaveLength(1);
+  });
+
+  it("wears off at cleanup", () => {
+    const { game, p1 } = twoPlayers();
+    const landId = put(game, p1.id, land());
+    let live = animate(game, landId, { keywords: ["flying"] });
+    expect(characteristicsOf(live, landId).types).toContain("creature");
+    // CR 514.2: "until end of turn" ends at cleanup.
+    live = { ...live, activeEffects: live.activeEffects.filter((entry) => entry.duration !== "until_end_of_turn") };
+    expect(characteristicsOf(live, landId).types).not.toContain("creature");
+    expect(hasKeyword(live, landId, "flying")).toBe(false);
+  });
+
+  it("round trips", () => {
+    const { game, p1 } = twoPlayers();
+    const definition = createCardDefinition({
+      name: "Wave 325 Manland",
+      typeLine: "Land",
+      activated: [
+        {
+          tap: false,
+          manaCost: "{1}",
+          effects: [
+            {
+              kind: "animate_until_eot",
+              cardId: "self",
+              power: 0,
+              toughness: 0,
+              ptFrom: "enchantments_you_control",
+              subtypes: ["elemental"],
+              types: ["artifact"],
+              colors: ["W", "U"],
+              keywords: ["flying"],
+            },
+          ],
+          targetRequirements: [],
+        },
+      ],
+    });
+    put(game, p1.id, definition);
+    const round = parseGameState(serializeGameState(game));
+    expect(round.definitions[definition.id]?.activated[0]?.effects[0]).toEqual({
+      kind: "animate_until_eot",
+      cardId: "self",
+      power: 0,
+      toughness: 0,
+      ptFrom: "enchantments_you_control",
+      subtypes: ["elemental"],
+      types: ["artifact"],
+      colors: ["W", "U"],
+      keywords: ["flying"],
     });
   });
 });

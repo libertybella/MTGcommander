@@ -2345,6 +2345,28 @@ export function bindCardEffect(
       }
       return { kind: "counter_spell", stackObjectId: entry.id };
     }
+    case "animate_until_eot": {
+      const animated = bindCardId(state, effect.cardId, context);
+      if (!animated) {
+        return null;
+      }
+      // "where X is the number of enchantments you control" is read HERE,
+      // at bind, the way every other dynamic count on a one-shot is.
+      const size = effect.ptFrom
+        ? dynamicCountOf(state, context.controllerId, effect.ptFrom, animated)
+        : null;
+      return {
+        kind: "animate_until_eot",
+        cardId: animated,
+        power: size ?? effect.power,
+        toughness: size ?? effect.toughness,
+        ...(effect.subtypes ? { subtypes: [...effect.subtypes] } : {}),
+        ...(effect.types ? { types: [...effect.types] } : {}),
+        ...(effect.colors ? { colors: [...effect.colors] } : {}),
+        ...(effect.allCreatureTypes ? { allCreatureTypes: true } : {}),
+        ...(effect.keywords ? { keywords: [...effect.keywords] } : {}),
+      };
+    }
     case "discover": {
       const discoverer = bindPlayerSelector(state, effect.playerId, context);
       if (!discoverer) {
@@ -5922,6 +5944,37 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
             createdOnTurn: next.turn.number,
           },
         ];
+        break;
+      }
+      case "animate_until_eot": {
+        // Three layers, one word. The card TYPE is added rather than set,
+        // which is what makes "it's still a land" true without a clause of
+        // its own; the power and toughness are SET, because a land has none
+        // to modify.
+        next = pushUntilEotEffect(state, [effect.cardId], {
+          kind: "add_types",
+          types: ["creature", ...(effect.types ?? [])],
+          subtypes: [...(effect.subtypes ?? [])],
+        });
+        if (effect.colors && effect.colors.length > 0) {
+          // Layer 5, and a SET rather than an add: a colourless land that
+          // becomes "a 2/1 blue Faerie" is blue, not blue-and-colourless.
+          next = pushUntilEotEffect(next, [effect.cardId], {
+            kind: "set_colors",
+            colors: [...effect.colors],
+          });
+        }
+        if (effect.allCreatureTypes) {
+          next = pushUntilEotEffect(next, [effect.cardId], { kind: "all_creature_types" });
+        }
+        next = pushUntilEotEffect(next, [effect.cardId], {
+          kind: "set_pt",
+          power: effect.power,
+          toughness: effect.toughness,
+        });
+        for (const keyword of effect.keywords ?? []) {
+          next = pushUntilEotEffect(next, [effect.cardId], { kind: "grant_keyword", keyword });
+        }
         break;
       }
       case "discover":

@@ -1653,6 +1653,28 @@ export type GameEffect =
   | { kind: "set_class_level"; cardId: CardInstanceId; level: number }
   | { kind: "pt_until_eot"; cardId: CardInstanceId; power: number; toughness: number }
   | { kind: "keyword_until_eot"; cardId: CardInstanceId; keyword: Keyword }
+  /**
+   * Mutavault, Destiny Spinner, Nissa: a permanent BECOMES a creature until
+   * end of turn. Three continuous effects in one word — the creature type
+   * is ADDED (layer 4), so "it's still a land" is true without anyone
+   * saying so; the power and toughness are SET (layer 7b), because a land
+   * has none to modify; and the keywords are granted (layer 6).
+   */
+  | {
+      kind: "animate_until_eot";
+      cardId: CardInstanceId;
+      power: number;
+      toughness: number;
+      /** "an Elemental creature" — creature types, not card types. */
+      subtypes?: string[];
+      /** "a 1/1 Blinkmoth ARTIFACT creature" — card types beyond creature. */
+      types?: string[];
+      /** "a 2/1 BLUE Faerie creature" — a land has no colour of its own. */
+      colors?: Color[];
+      /** Mutavault: "with all creature types". */
+      allCreatureTypes?: boolean;
+      keywords?: Keyword[];
+    }
   | {
       kind: "team_set_pt_until_eot";
       playerId: PlayerId;
@@ -2914,6 +2936,23 @@ export type CardEffect =
       per?: DynamicCount;
     }
   | { kind: "keyword_until_eot"; cardId: CardIdSelector; keyword: Keyword }
+  /**
+   * Mutavault and Destiny Spinner. `ptFrom` is the "where X is …" tail,
+   * read when the effect binds rather than printed, which is the only
+   * reason the numbers below can be a fallback rather than the whole story.
+   */
+  | {
+      kind: "animate_until_eot";
+      cardId: CardIdSelector;
+      power: number;
+      toughness: number;
+      ptFrom?: DynamicCount;
+      subtypes?: string[];
+      types?: string[];
+      colors?: Color[];
+      allCreatureTypes?: boolean;
+      keywords?: Keyword[];
+    }
   | {
       kind: "team_set_pt_until_eot";
       playerId: PlayerSelector;

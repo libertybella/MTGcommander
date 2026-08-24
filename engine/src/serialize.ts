@@ -4146,6 +4146,37 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
         target: parseChosenTargetRef(value.target, `${label}.target`),
         ...(value.toSelf === true ? { toSelf: true } : {}),
       };
+    case "animate_until_eot":
+      return {
+        kind,
+        cardId: parseCardIdSelector(value.cardId, `${label}.cardId`),
+        power: expectNumber(value.power, `${label}.power`),
+        toughness: expectNumber(value.toughness, `${label}.toughness`),
+        ...(value.ptFrom === undefined
+          ? {}
+          : { ptFrom: parseDynamicCount(value.ptFrom, `${label}.ptFrom`) }),
+        ...(Array.isArray(value.subtypes)
+          ? {
+              subtypes: value.subtypes.map((subtype, index) =>
+                expectString(subtype, `${label}.subtypes[${index}]`),
+              ),
+            }
+          : {}),
+        ...(Array.isArray(value.types)
+          ? {
+              types: value.types.map((type, index) =>
+                expectString(type, `${label}.types[${index}]`),
+              ),
+            }
+          : {}),
+        ...(value.colors === undefined
+          ? {}
+          : { colors: parseColorArray(value.colors, `${label}.colors`) }),
+        ...(value.allCreatureTypes === true ? { allCreatureTypes: true } : {}),
+        ...(value.keywords === undefined
+          ? {}
+          : { keywords: parseKeywords(value.keywords, `${label}.keywords`) }),
+      };
     case "discover":
       return {
         kind,
@@ -6119,6 +6150,35 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
       ...(value.toCardId === undefined
         ? {}
         : { toCardId: expectString(value.toCardId, `${label}.toCardId`) }),
+    };
+  }
+  if (kind === "animate_until_eot") {
+    return {
+      kind,
+      cardId: expectString(value.cardId, `${label}.cardId`),
+      power: expectNumber(value.power, `${label}.power`),
+      toughness: expectNumber(value.toughness, `${label}.toughness`),
+      ...(Array.isArray(value.subtypes)
+        ? {
+            subtypes: value.subtypes.map((subtype, index) =>
+              expectString(subtype, `${label}.subtypes[${index}]`),
+            ),
+          }
+        : {}),
+      ...(Array.isArray(value.types)
+        ? {
+            types: value.types.map((type, index) =>
+              expectString(type, `${label}.types[${index}]`),
+            ),
+          }
+        : {}),
+      ...(value.colors === undefined
+        ? {}
+        : { colors: parseColorArray(value.colors, `${label}.colors`) }),
+      ...(value.allCreatureTypes === true ? { allCreatureTypes: true } : {}),
+      ...(value.keywords === undefined
+        ? {}
+        : { keywords: parseKeywords(value.keywords, `${label}.keywords`) }),
     };
   }
   if (kind === "discover") {
