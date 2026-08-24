@@ -1849,6 +1849,21 @@ export type GameEffect =
       cardId: CardInstanceId;
       cost: string;
     }
+  /**
+   * The Gitrog Monster: "sacrifice ~ unless you sacrifice a land". The
+   * pay-or-effect prompt speaks mana and life, not permanents, so the choice
+   * is auto-taken: feed it a land if there is one, otherwise let it go.
+   *
+   * A documented approximation, and the one a player makes nearly always —
+   * the land sacrifice is the ENGINE the card is played for. The land is
+   * picked cheapest-first, like every other auto-picked fodder here.
+   */
+  | {
+      kind: "sacrifice_unless_sacrifice";
+      playerId: PlayerId;
+      cardId: CardInstanceId;
+      scope: "land";
+    }
   /** "You may pay {N}. If you do, …" — paying causes the effects. */
   | { kind: "may_pay"; playerId: PlayerId; cost: string; effects: GameEffect[] }
   /** Blasphemous Act: damage every creature (and optionally player) at once. */
@@ -3130,6 +3145,12 @@ export type CardEffect =
       playerId: PlayerSelector;
       cost: string;
     }
+  /** The Gitrog Monster: feed it a land, or lose it. */
+  | {
+      kind: "sacrifice_unless_sacrifice";
+      playerId: PlayerSelector;
+      scope: "land";
+    }
   | { kind: "may_pay"; playerId: PlayerSelector; cost: string; effects: CardEffect[] }
   | {
       kind: "damage_all";
@@ -3909,6 +3930,12 @@ export type DamageReplacement = {
   /** Torbran, Twinflame Tyrant: only damage aimed at an opponent or a
    * permanent an opponent controls. */
   opponentsOnly?: boolean;
+  /**
+   * Solphim: "NONCOMBAT damage". The combat step passes `combat: true` and
+   * every other damage site leaves it out, so a replacement carrying this
+   * flag simply never fires in combat.
+   */
+  noncombatOnly?: boolean;
 };
 
 /**

@@ -651,7 +651,7 @@ function dealDamageToPlayerInPlace(
   }
   // Torbran et al: combat damage takes the same CR 616 replacements. The
   // events carry the modified amount, so "that much damage" riders agree.
-  const dealt = damageAfterReplacements(state, sourceId, defenderId, amount);
+  const dealt = damageAfterReplacements(state, sourceId, defenderId, amount, true);
   // Bloodletter of Aclazotz: damage causes loss of life, and the loss is
   // what the replacement touches. The DAMAGE figure stays as dealt — lifelink
   // and "was dealt N damage" both read that — while the life actually lost
@@ -701,7 +701,7 @@ function markCreatureDamageInPlace(
   if (protectedFromSource(state, targetId, sourceId)) {
     return;
   }
-  const dealt = damageAfterReplacements(state, sourceId, target.controllerId, amount);
+  const dealt = damageAfterReplacements(state, sourceId, target.controllerId, amount, true);
   target.damageMarked += dealt;
   if (hasKeyword(state, sourceId, "deathtouch")) {
     target.deathtouched = true;

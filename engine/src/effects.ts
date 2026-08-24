@@ -1729,6 +1729,18 @@ export function bindCardEffect(
       }
       return { kind: "echo", playerId, cardId: context.sourceId, cost: effect.cost };
     }
+    case "sacrifice_unless_sacrifice": {
+      const feederId = bindPlayerSelector(state, effect.playerId, context);
+      if (!feederId || !context.sourceId) {
+        return null;
+      }
+      return {
+        kind: "sacrifice_unless_sacrifice",
+        playerId: feederId,
+        cardId: context.sourceId,
+        scope: effect.scope,
+      };
+    }
     case "may_pay": {
       const playerId = bindPlayerSelector(state, effect.playerId, context);
       if (!playerId) {
@@ -4452,6 +4464,22 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
             effects: [{ kind: "sacrifice", cardId: effect.cardId }],
           });
         }
+        break;
+      }
+      case "sacrifice_unless_sacrifice": {
+        // Auto-taken: a land if there is one, otherwise the permanent itself.
+        // Documented, and the choice a player makes nearly always — the land
+        // sacrifice is the engine The Gitrog Monster is played for.
+        const fodder = permanentsControlledBy(state, effect.playerId)
+          .filter((cardId) => cardId !== effect.cardId && isLand(state, cardId))
+          .sort(
+            (a, b) =>
+              characteristicsOf(state, a).manaValue - characteristicsOf(state, b).manaValue,
+          )[0];
+        next = applyEffect(state, {
+          kind: "sacrifice",
+          cardId: fodder ?? effect.cardId,
+        });
         break;
       }
       case "echo": {

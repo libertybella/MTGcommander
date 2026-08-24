@@ -870,6 +870,28 @@ more questions it can now ask:
   (Bennie Bracks). Reads the existing per-player `createdTokenThisTurn`
   list, and asks whether the CONTROLLER is in it — an opponent's Treasure
   must not satisfy it.
+- **`DamageReplacement.noncombatOnly`** — Solphim. The combat step passes
+  `isCombat` and every other damage site leaves it out, so a replacement
+  carrying this flag simply never fires in combat. That restriction is most
+  of what stops the card doubling every swing, and Torbran (which DOES double
+  combat damage) is unchanged, with a test saying so.
+
+- **A counted discard cost** — "Discard two cards" beside "Discard a card".
+  **The cost SPLITTER had its own copy of the discard pattern**, so widening
+  only the reader left the splitter refusing the cost and the ability
+  compiling to nothing. Both now build from shared fragments.
+
+- **`sacrifice_unless_sacrifice`** — The Gitrog Monster. The pay-or-effect
+  prompt speaks mana and life, not permanents, so the choice is auto-taken:
+  feed it a land if there is one, otherwise let it go. A documented
+  approximation, and the one a player makes nearly always — the land
+  sacrifice is the engine the card is played for. The land is picked
+  cheapest-first, like every other auto-picked fodder here.
+
+  Its second trigger reads `graveyard_from_elsewhere`, not `dies`: "put into
+  your graveyard FROM ANYWHERE" catches a milled land, which is most of how
+  the card is used.
+
 - **A look with more than one hand slot** — Dig Through Time. The
   destination list is a MULTISET, so "two of them into your hand and the rest
   on the bottom" is two hand slots and five bottom ones; nothing about the

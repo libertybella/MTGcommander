@@ -48020,3 +48020,274 @@ describe("wave 319: more hand slots, and a static that cancels one", () => {
     expect(round.definitions[definition.id]?.landsEnterUntapped).toBe(true);
   });
 });
+
+describe("wave 320: noncombat damage, and feeding a monster", () => {
+  const compile = (
+    name: string,
+    typeLine: string,
+    oracleText: string,
+    manaCost = "",
+    pt: [string, string] | null = null,
+  ) =>
+    compileOracleCard({
+      oracleId: name.toLowerCase().replace(/[^a-z]+/g, "-"),
+      name,
+      manaCost,
+      typeLine,
+      power: pt?.[0] ?? null,
+      toughness: pt?.[1] ?? null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  const put = (game: GameState, ownerId: string, definition: CardDefinition) => {
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({
+      definitionId: definition.id,
+      ownerId,
+      zone: "battlefield",
+    });
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === ownerId)!.zones.battlefield.push(card.id);
+    card.summoningSick = false;
+    return card.id;
+  };
+
+  // ---- Solphim: noncombat only -------------------------------------------
+
+  it("compiles the doubler with the noncombat restriction", () => {
+    const compiled = compile(
+      "Solphim, Mayhem Dominus",
+      "Legendary Creature — Phyrexian Demon",
+      "If a source you control would deal noncombat damage to an opponent or a permanent an opponent controls, it deals double that damage to that player or permanent instead.\n{1}{R/P}{R/P}, Discard two cards: Put an indestructible counter on ~.",
+      "{2}{R}",
+      ["4", "4"],
+    );
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.damageReplacement).toEqual({
+      times: 2,
+      opponentsOnly: true,
+      noncombatOnly: true,
+    });
+    // "Discard two cards" as an activation cost — the counted form.
+    expect(compiled.definition.activated[0]?.discardCost).toEqual({ count: 2 });
+    expect(compiled.definition.activated[0]?.manaCost).toBe("{1}{R/P}{R/P}");
+  });
+
+  it("leaves Torbran without the noncombat flag", () => {
+    // Torbran doubles combat damage too; the flag has to be opt-in.
+    const torbran = compile(
+      "Torbran, Thane of Red Fell",
+      "Legendary Creature — Dwarf Noble",
+      "If a red source you control would deal damage to an opponent or a permanent an opponent controls, it deals that much damage plus 2 to that permanent or player instead.",
+      "{1}{R}{R}",
+      ["2", "4"],
+    );
+    expect(torbran.notes).toEqual([]);
+    expect(torbran.definition.damageReplacement?.noncombatOnly).toBeUndefined();
+  });
+
+  const solphim = (game: GameState, ownerId: string) =>
+    put(
+      game,
+      ownerId,
+      createCardDefinition({
+        name: "Solphim, Mayhem Dominus",
+        typeLine: "Legendary Creature — Phyrexian Demon",
+        manaCost: "{2}{R}",
+        power: 4,
+        toughness: 4,
+        damageReplacement: { times: 2, opponentsOnly: true, noncombatOnly: true },
+      }),
+    );
+
+  it("doubles a burn spell", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const sourceId = solphim(game, p1.id);
+    const before = game.players.find((entry) => entry.id === p2.id)!.life;
+    const burned = applyEffect(game, {
+      kind: "deal_damage",
+      sourceId,
+      target: { type: "player", playerId: p2.id },
+      amount: 3,
+    });
+    expect(burned.players.find((entry) => entry.id === p2.id)!.life).toBe(before - 6);
+  });
+
+  it("leaves combat damage alone", () => {
+    const { game, p1, p2 } = twoPlayers();
+    solphim(game, p1.id);
+    const attackerId = put(
+      game,
+      p1.id,
+      createCardDefinition({
+        name: "Attacker",
+        typeLine: "Creature — Bear",
+        manaCost: "{1}{G}",
+        power: 3,
+        toughness: 3,
+      }),
+    );
+    game.turn.activePlayerId = p1.id;
+    game.turn.phase = "combat";
+    game.turn.step = "declareAttackers";
+    game.priorityPlayerId = p1.id;
+    const before = game.players.find((entry) => entry.id === p2.id)!.life;
+    let state = declareAttackers(game, p1.id, [{ attackerId, defenderId: p2.id }]);
+    state.turn.step = "declareBlockers";
+    state = declareBlockers(state, p2.id, []);
+    state = applyCombatDamage(state);
+    // "NONCOMBAT damage" — most of what stops the card doubling every swing.
+    expect(state.players.find((entry) => entry.id === p2.id)!.life).toBe(before - 3);
+  });
+
+  it("does not double damage aimed at its own controller", () => {
+    const { game, p1 } = twoPlayers();
+    const sourceId = solphim(game, p1.id);
+    const before = game.players.find((entry) => entry.id === p1.id)!.life;
+    const burned = applyEffect(game, {
+      kind: "deal_damage",
+      sourceId,
+      target: { type: "player", playerId: p1.id },
+      amount: 3,
+    });
+    expect(burned.players.find((entry) => entry.id === p1.id)!.life).toBe(before - 3);
+  });
+
+  // ---- The Gitrog Monster -------------------------------------------------
+
+  it("compiles both of the Gitrog's halves", () => {
+    const compiled = compile(
+      "The Gitrog Monster",
+      "Legendary Creature — Frog Horror",
+      "Deathtouch\nAt the beginning of your upkeep, sacrifice ~ unless you sacrifice a land.\nYou may play an additional land on each of your turns.\nWhenever one or more land cards are put into your graveyard from anywhere, draw a card.",
+      "{3}{B}{G}",
+      ["6", "6"],
+    );
+    expect(compiled.notes).toEqual([]);
+    const upkeep = compiled.definition.triggers.find((t) => t.event === "upkeep");
+    expect(upkeep?.effects[0]).toEqual({
+      kind: "sacrifice_unless_sacrifice",
+      playerId: "controller",
+      scope: "land",
+    });
+    const mill = compiled.definition.triggers.find(
+      (t) => t.event === "graveyard_from_elsewhere",
+    );
+    // "From ANYWHERE" — a milled land counts, not only one that died.
+    expect(mill).toMatchObject({
+      event: "graveyard_from_elsewhere",
+      subjectFilter: { types: ["land"] },
+      oncePerBatch: true,
+    });
+  });
+
+  const gitrogBoard = (landCount: number) => {
+    const { game, p1 } = twoPlayers();
+    const gitrogId = put(
+      game,
+      p1.id,
+      createCardDefinition({
+        name: "The Gitrog Monster",
+        typeLine: "Legendary Creature — Frog Horror",
+        manaCost: "{3}{B}{G}",
+        power: 6,
+        toughness: 6,
+      }),
+    );
+    const landIds: string[] = [];
+    for (let index = 0; index < landCount; index += 1) {
+      landIds.push(
+        put(
+          game,
+          p1.id,
+          createCardDefinition({ name: `Forest${index}`, typeLine: "Basic Land — Forest" }),
+        ),
+      );
+    }
+    return { game, p1, gitrogId, landIds };
+  };
+
+  it("eats a land rather than itself", () => {
+    const { game, p1, gitrogId, landIds } = gitrogBoard(2);
+    const fed = applyEffect(game, {
+      kind: "sacrifice_unless_sacrifice",
+      playerId: p1.id,
+      cardId: gitrogId,
+      scope: "land",
+    });
+    expect(fed.cards[gitrogId]?.zone).toBe("battlefield");
+    const eaten = landIds.filter((id) => fed.cards[id]?.zone === "graveyard");
+    expect(eaten).toHaveLength(1);
+  });
+
+  it("goes hungry and dies with no land to eat", () => {
+    const { game, p1, gitrogId } = gitrogBoard(0);
+    const starved = applyEffect(game, {
+      kind: "sacrifice_unless_sacrifice",
+      playerId: p1.id,
+      cardId: gitrogId,
+      scope: "land",
+    });
+    expect(starved.cards[gitrogId]?.zone).toBe("graveyard");
+  });
+
+  it("never eats itself while a land is available", () => {
+    const { game, p1, gitrogId, landIds } = gitrogBoard(1);
+    const fed = applyEffect(game, {
+      kind: "sacrifice_unless_sacrifice",
+      playerId: p1.id,
+      cardId: gitrogId,
+      scope: "land",
+    });
+    expect(fed.cards[gitrogId]?.zone).toBe("battlefield");
+    expect(fed.cards[landIds[0]!]?.zone).toBe("graveyard");
+  });
+
+  it("round trips both new shapes", () => {
+    const { game, p1 } = twoPlayers();
+    const definition = createCardDefinition({
+      name: "Wave 320 Omnibus",
+      typeLine: "Legendary Creature — Frog Horror",
+      manaCost: "{3}{B}{G}",
+      power: 6,
+      toughness: 6,
+      damageReplacement: { times: 2, opponentsOnly: true, noncombatOnly: true },
+      activated: [
+        {
+          tap: false,
+          manaCost: "{1}{R/P}{R/P}",
+          discardCost: { count: 2 },
+          effects: [
+            { kind: "add_counter", cardId: "self", counter: "indestructible", amount: 1 },
+          ],
+          targetRequirements: [],
+        },
+      ],
+      triggers: [
+        {
+          event: "upkeep",
+          effects: [
+            { kind: "sacrifice_unless_sacrifice", playerId: "controller", scope: "land" },
+          ],
+          targetRequirements: [],
+        },
+      ],
+    });
+    put(game, p1.id, definition);
+    const round = parseGameState(serializeGameState(game));
+    const parsed = round.definitions[definition.id]!;
+    expect(parsed.damageReplacement).toEqual({
+      times: 2,
+      opponentsOnly: true,
+      noncombatOnly: true,
+    });
+    expect(parsed.activated[0]?.discardCost).toEqual({ count: 2 });
+    expect(parsed.triggers[0]?.effects[0]).toEqual({
+      kind: "sacrifice_unless_sacrifice",
+      playerId: "controller",
+      scope: "land",
+    });
+  });
+});

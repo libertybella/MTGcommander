@@ -723,6 +723,7 @@ export function parseGameState(json: string): GameState {
                 ? { sourceMustBeCreature: true }
                 : {}),
               ...(def.damageReplacement.opponentsOnly === true ? { opponentsOnly: true } : {}),
+              ...(def.damageReplacement.noncombatOnly === true ? { noncombatOnly: true } : {}),
             },
           }
         : {}),
@@ -4270,6 +4271,12 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
         playerId: parsePlayerSelector(value.playerId, `${label}.playerId`),
         cost: expectString(value.cost, `${label}.cost`),
       };
+    case "sacrifice_unless_sacrifice":
+      return {
+        kind,
+        playerId: parsePlayerSelector(value.playerId, `${label}.playerId`),
+        scope: "land",
+      };
     case "unless_pays":
       return {
         kind,
@@ -6183,6 +6190,14 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
       playerId: expectString(value.playerId, `${label}.playerId`),
       cardId: expectString(value.cardId, `${label}.cardId`),
       cost: expectString(value.cost, `${label}.cost`),
+    };
+  }
+  if (kind === "sacrifice_unless_sacrifice") {
+    return {
+      kind,
+      playerId: expectString(value.playerId, `${label}.playerId`),
+      cardId: expectString(value.cardId, `${label}.cardId`),
+      scope: "land",
     };
   }
   if (kind === "unless_pays" || kind === "may_pay") {

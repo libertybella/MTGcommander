@@ -252,6 +252,8 @@ export function damageAfterReplacements(
   sourceId: CardInstanceId | null | undefined,
   targetPlayerId: PlayerId | undefined,
   amount: number,
+  /** Solphim: combat damage is exempt. Only the combat step passes this. */
+  isCombat = false,
 ): number {
   if (amount <= 0 || !sourceId) {
     return amount;
@@ -274,6 +276,9 @@ export function damageAfterReplacements(
         return false;
       }
       if (rule.opponentsOnly && (targetPlayerId === undefined || targetPlayerId === card.controllerId)) {
+        return false;
+      }
+      if (rule.noncombatOnly && isCombat) {
         return false;
       }
       if (rule.sourceMustBeCreature && !isCreature(state, sourceId)) {

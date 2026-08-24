@@ -632,14 +632,29 @@ const REMOVE_COUNTER_COST =
 const ADD_COUNTER_COST =
   /Put (a|an|one|two|three|\d+) ([-+]\d\/[-+]\d|[a-z]+) counters? on ~/i;
 /** Fauna Shaman, Tortured Existence: discarding a chosen card is the cost. */
-const DISCARD_TYPE_COST = /Discard an? (creature|artifact|enchantment|land|instant|sorcery)? ?card/i;
+/**
+ * "Discard a card" and its typed forms, plus Solphim's counted "Discard two
+ * cards". The count and the type never appear together on a printed cost,
+ * which is why one pattern reads both alternatives rather than composing them.
+ *
+ * The pieces are shared with COST_UNIT below rather than written twice: that
+ * was a duplicate, and the two drifted apart the moment this grew a counted
+ * form — the cost SPLITTER refused "Discard two cards" while the cost READER
+ * accepted it, so the ability compiled to nothing at all.
+ */
+const DISCARD_COST_TYPES = "creature|artifact|enchantment|land|instant|sorcery";
+const DISCARD_COST_COUNTS = "two|three|four|\\d+";
+const DISCARD_TYPE_COST = new RegExp(
+  `Discard (?:an? (${DISCARD_COST_TYPES})? ?card|(${DISCARD_COST_COUNTS}) cards)`,
+  "i",
+);
 /** Millikin. */
 const MILL_COST = /Mill (a|one|two|three|\d+) cards?/i;
 /** Mines of Moria, Drivnod. */
 const EXILE_GRAVEYARD_COST =
   /Exile (a|one|two|three|four|five|\d+) (?:(creature|artifact|land|instant|sorcery) )?cards? from your graveyard/i;
 const COST_UNIT =
-  "(?:\\{[^}]+\\})+|Sacrifice (?:~|this land|this creature|this artifact|this permanent)|Sacrifice (?:an? |another )(?:black )?(?:creature or artifact|artifact or creature|creature|artifact|land|Treasure|token)|Sacrifice (?:an? |(?:one|two|three|four|five|\\d+) )[A-Z][a-z]+s?|Sacrifice (?:two|three|four|five|six|seven|eight|nine|ten|\\d+) (?:other )?(?:creatures|artifacts|lands|nonland permanents|artifacts and\\/or creatures)|Exile ~|Exert ~|Pay \\d+ life|Pay life equal to the number of colors in your commanders?['\u2019]? color identity|Tap an untapped (?:legendary )?creature you control|Remove (?:a|an|one|two|three|four|five|six|seven|eight|nine|ten|\\d+) (?:[-+]\\d\\/[-+]\\d|[a-z]+) counters? from ~|Put (?:a|an|one|two|three|\\d+) (?:[-+]\\d\\/[-+]\\d|[a-z]+) counters? on ~|Discard an? (?:creature|artifact|enchantment|land|instant|sorcery)? ?card|Mill (?:a|one|two|three|\\d+) cards?|Exile (?:a|one|two|three|four|five|\\d+) (?:(?:creature|artifact|land|instant|sorcery) )?cards? from your graveyard";
+  `(?:\\{[^}]+\\})+|Sacrifice (?:~|this land|this creature|this artifact|this permanent)|Sacrifice (?:an? |another )(?:black )?(?:creature or artifact|artifact or creature|creature|artifact|land|Treasure|token)|Sacrifice (?:an? |(?:one|two|three|four|five|\\d+) )[A-Z][a-z]+s?|Sacrifice (?:two|three|four|five|six|seven|eight|nine|ten|\\d+) (?:other )?(?:creatures|artifacts|lands|nonland permanents|artifacts and\\/or creatures)|Exile ~|Exert ~|Pay \\d+ life|Pay life equal to the number of colors in your commanders?['\u2019]? color identity|Tap an untapped (?:legendary )?creature you control|Remove (?:a|an|one|two|three|four|five|six|seven|eight|nine|ten|\\d+) (?:[-+]\\d\\/[-+]\\d|[a-z]+) counters? from ~|Put (?:a|an|one|two|three|\\d+) (?:[-+]\\d\\/[-+]\\d|[a-z]+) counters? on ~|Discard (?:an? (?:${DISCARD_COST_TYPES})? ?card|(?:${DISCARD_COST_COUNTS}) cards)|Mill (?:a|one|two|three|\\d+) cards?|Exile (?:a|one|two|three|four|five|\\d+) (?:(?:creature|artifact|land|instant|sorcery) )?cards? from your graveyard`;
 
 function splitAbility(sentence: string): { costText: string; rest: string } | null {
   // "Metalcraft — {T}: …" — the ability word is flavor (Mox Opal).
@@ -788,7 +803,10 @@ function parseAbilityCost(
       : undefined;
   const discardMatch = costText.match(DISCARD_TYPE_COST);
   const discardCost = discardMatch
-    ? { count: 1, ...(discardMatch[1] ? { types: [discardMatch[1].toLowerCase()] } : {}) }
+    ? {
+        count: discardMatch[2] ? parseCount(discardMatch[2].toLowerCase()) ?? 1 : 1,
+        ...(discardMatch[1] ? { types: [discardMatch[1].toLowerCase()] } : {}),
+      }
     : undefined;
   const millMatch = costText.match(MILL_COST);
   const millCost = millMatch?.[1] ? parseCount(millMatch[1].toLowerCase()) ?? undefined : undefined;
@@ -886,20 +904,23 @@ function parseAbilityCost(
  */
 function parseDamageReplacement(sentence: string): DamageReplacement | null {
   const match = sentence.match(
-    /^If an? (red |white |blue |black |green )?(source|creature) you control would deal damage to (a permanent or player|an opponent or a permanent an opponent controls), it deals (?:(double|triple) that damage|that much damage plus (\d+))(?: to that permanent or player)? instead$/i,
+    /^If an? (red |white |blue |black |green )?(source|creature) you control would deal (noncombat )?damage to (a permanent or player|an opponent or a permanent an opponent controls), it deals (?:(double|triple) that damage|that much damage plus (\d+))(?: to that (?:permanent or player|player or permanent))? instead$/i,
   );
-  if (!match?.[2] || !match[3] || (!match[4] && !match[5])) {
+  if (!match?.[2] || !match[4] || (!match[5] && !match[6])) {
     return null;
   }
   const color = match[1]?.trim().toLowerCase();
-  const plus = match[5] ? Number(match[5]) : undefined;
+  const plus = match[6] ? Number(match[6]) : undefined;
   return {
     ...(plus === undefined
-      ? { times: /^triple$/i.test(match[4] ?? "") ? 3 : 2 }
+      ? { times: /^triple$/i.test(match[5] ?? "") ? 3 : 2 }
       : { plus }),
     ...(color ? { sourceColors: [COLOR_WORDS[color]!] } : {}),
     ...(/^creature$/i.test(match[2]) ? { sourceMustBeCreature: true } : {}),
-    ...(/opponent/i.test(match[3]) ? { opponentsOnly: true } : {}),
+    // Solphim: combat damage is exempt, which is most of what stops the
+    // card from simply doubling every attack.
+    ...(match[3] ? { noncombatOnly: true } : {}),
+    ...(/opponent/i.test(match[4]) ? { opponentsOnly: true } : {}),
   };
 }
 
@@ -3412,6 +3433,18 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
       ],
       effects: [
         { kind: "move_card", cardId: { type: "chosen", index: 0 }, toZone: "hand" },
+      ],
+    };
+  }
+
+  // The Gitrog Monster: feed it a land, or lose it. The pay-or-effect prompt
+  // speaks mana and life, not permanents, so the choice is auto-taken —
+  // documented, and the one a player makes nearly always.
+  if (/^sacrifice ~ unless you sacrifice a land$/i.test(sentence)) {
+    return {
+      targetRequirements: [],
+      effects: [
+        { kind: "sacrifice_unless_sacrifice", playerId: "controller", scope: "land" },
       ],
     };
   }
@@ -9975,6 +10008,20 @@ function parseTriggerHead(head: string): TriggerHead | null {
       ...(/an opponent$/i.test(text) ? { subjectPlayerOpponent: true } : {}),
     };
   }
+  // The Gitrog Monster: "one or more LAND CARDS are put into your graveyard
+  // FROM ANYWHERE" — a milled land and a fetch land both count, which is why
+  // this is `graveyard_from_elsewhere` and not `dies`.
+  const landsToGraveyard = text.match(
+    /^Whenever one or more ([a-z]+) cards are put into your graveyard from anywhere$/i,
+  );
+  if (landsToGraveyard?.[1] && SEARCH_CARD_TYPES.has(landsToGraveyard[1].toLowerCase())) {
+    return {
+      event: "graveyard_from_elsewhere",
+      subjectFilter: { types: [landsToGraveyard[1].toLowerCase()] },
+      oncePerBatch: true,
+    };
+  }
+
   // Scrap Trawler: "~ dies OR another artifact you control is put into a
   // graveyard from the battlefield". The Trawler is itself an artifact, so
   // both halves are the same watch — an artifact you control dying, itself
