@@ -707,7 +707,26 @@ export function isChosenTargetLegal(
     );
   }
   if (requirement.kind === "spell_or_ability") {
-    return target.type === "spell" && isLegalStackTarget(state, target.stackObjectId);
+    if (target.type !== "spell" || !isLegalStackTarget(state, target.stackObjectId)) {
+      return false;
+    }
+    /**
+     * Siren Stormtamer: the object must itself be aiming at the caster or
+     * something they control. Read off the stack object's OWN targets —
+     * without it the Siren counters anything at all, which is a much
+     * better card than the printed one.
+     */
+    if (requirement.targetsYouOrYours) {
+      const entry = state.stack.find((object) => object.id === target.stackObjectId);
+      return (entry?.targets ?? []).some((aimed) =>
+        aimed.type === "player"
+          ? aimed.playerId === casterId
+          : "cardId" in aimed
+            ? state.cards[aimed.cardId]?.controllerId === casterId
+            : false,
+      );
+    }
+    return true;
   }
   if (requirement.kind === "triggered_ability_you_control") {
     if (target.type !== "spell") {

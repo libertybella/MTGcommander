@@ -2446,6 +2446,13 @@ export type TargetRequirement = {
    * subtypes matches, where `requiredSubtypes` demands all of them.
    */
   requiredSubtypesAny?: string[];
+  /**
+   * Siren Stormtamer: "target spell or ability THAT TARGETS YOU OR A
+   * CREATURE YOU CONTROL". A constraint on the stack object's own targets,
+   * not on the object itself — and the whole card, since without it the
+   * Siren counters anything at all.
+   */
+  targetsYouOrYours?: boolean;
   requiredSubtypes?: string[];
   /** "target blue spell" / "target blue permanent" (Red Elemental Blast). */
   requiredColors?: Color[];

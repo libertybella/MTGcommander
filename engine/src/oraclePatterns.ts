@@ -2535,6 +2535,27 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
 
 function compileSimpleClauseInner(sentence: string): SimpleClause | null {
   /**
+   * Siren Stormtamer, and the plain form beside it. "That targets you or a
+   * creature you control" is a constraint on what the STACK OBJECT is
+   * aiming at, which is most of the card — without it the Siren counters
+   * anything at all.
+   */
+  const counterStackObject = sentence.match(
+    /^Counter target spell or ability( that targets you or a creature you control)?$/i,
+  );
+  if (counterStackObject) {
+    return {
+      targetRequirements: [
+        {
+          kind: "spell_or_ability",
+          ...(counterStackObject[1] ? { targetsYouOrYours: true } : {}),
+        },
+      ],
+      effects: [{ kind: "counter_spell", target: { type: "chosen", index: 0 } }],
+    };
+  }
+
+  /**
    * Regenerate (CR 701.15). A SHIELD against the next destruction this
    * turn, not a heal — which is why it costs the permanent a tap and its
    * place in combat when it is spent.

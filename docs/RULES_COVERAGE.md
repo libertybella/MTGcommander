@@ -870,6 +870,16 @@ more questions it can now ask:
   (Bennie Bracks). Reads the existing per-player `createdTokenThisTurn`
   list, and asks whether the CONTROLLER is in it — an opponent's Treasure
   must not satisfy it.
+- **`targetsYouOrYours`** — Siren Stormtamer: "target spell or ability THAT
+  TARGETS you or a creature you control". A constraint on what the stack
+  object is itself aiming at, read off its own targets — not on the object.
+  It is most of the card: without it the Siren counters anything at all,
+  which is a far better card than the printed one. An UNTARGETED spell is
+  refused too, with a test for it.
+
+  The plain "Counter target spell or ability" landed at the same time; the
+  target KIND already existed and only the sentence was missing.
+
 - **`payLifeForColor`** — K'rrik, Son of Yawgmoth: "For each {B} in a cost,
   you may pay 2 life rather than pay that mana." That is Phyrexian mana
   (CR 107.4f) applied to every pip of one colour, so the pips are MOVED

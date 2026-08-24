@@ -3100,6 +3100,7 @@ function parseTargetRequirement(value: unknown, label: string): TargetRequiremen
           ),
         }
       : {}),
+    ...(value.targetsYouOrYours === true ? { targetsYouOrYours: true } : {}),
     ...(value.maxManaValueX === true ? { maxManaValueX: true } : {}),
     ...(value.distinctManaValues === true ? { distinctManaValues: true } : {}),
     ...(value.optional === true ? { optional: true } : {}),

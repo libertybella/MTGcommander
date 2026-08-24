@@ -54042,3 +54042,273 @@ describe("wave 347: a colour that can be paid in life", () => {
     expect(round.definitions[definition.id]?.payLifeForColor).toBe("B");
   });
 });
+
+describe("wave 348: countering only what is aimed at you", () => {
+  const compile = (
+    name: string,
+    typeLine: string,
+    oracleText: string,
+    manaCost = "",
+    pt: [string, string] | null = null,
+  ) =>
+    compileOracleCard({
+      oracleId: name.toLowerCase().replace(/[^a-z]+/g, "-"),
+      name,
+      manaCost,
+      typeLine,
+      power: pt?.[0] ?? null,
+      toughness: pt?.[1] ?? null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  const put = (
+    game: GameState,
+    ownerId: string,
+    definition: CardDefinition,
+    zone: "hand" | "battlefield" = "battlefield",
+  ) => {
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({ definitionId: definition.id, ownerId, zone });
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === ownerId)!.zones[zone].push(card.id);
+    if (zone === "battlefield") {
+      card.summoningSick = false;
+    }
+    return card.id;
+  };
+
+  it("compiles Siren Stormtamer with the aiming constraint", () => {
+    const compiled = compile(
+      "Siren Stormtamer",
+      "Creature — Siren Wizard",
+      "Flying\n{U}, Sacrifice this creature: Counter target spell or ability that targets you or a creature you control.",
+      "{U}",
+      ["1", "1"],
+    );
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.activated[0]?.targetRequirements).toEqual([
+      { kind: "spell_or_ability", targetsYouOrYours: true },
+    ]);
+  });
+
+  it("compiles the plain form without it", () => {
+    const compiled = compile(
+      "Plain Counter",
+      "Instant",
+      "Counter target spell or ability.",
+      "{1}{U}",
+    );
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.targetRequirements).toEqual([{ kind: "spell_or_ability" }]);
+  });
+
+  const shock = () =>
+    createCardDefinition({
+      name: "Shock",
+      typeLine: "Instant",
+      manaCost: "{R}",
+      effects: [
+        {
+          kind: "deal_damage",
+          sourceId: "self",
+          target: { type: "chosen", index: 0 },
+          amount: 2,
+        },
+      ],
+      targetRequirements: [{ kind: "creature" }],
+    });
+
+  const aimAt = (
+    game: GameState,
+    casterId: string,
+    target: { type: "creature"; cardId: string } | { type: "player"; playerId: string },
+  ) => {
+    const spellId = put(game, casterId, shock(), "hand");
+    game.players.find((entry) => entry.id === casterId)!.mana.R = 1;
+    game.turn.activePlayerId = casterId;
+    game.turn.phase = "precombatMain";
+    game.turn.step = "precombatMain";
+    game.priorityPlayerId = casterId;
+    return applyAction(game, {
+      kind: "cast_spell",
+      playerId: casterId,
+      cardId: spellId,
+      targets: [target],
+    });
+  };
+
+  const requirement: TargetRequirement = {
+    kind: "spell_or_ability",
+    targetsYouOrYours: true,
+  };
+
+  it("may counter a spell aimed at your creature", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const mineId = put(
+      game,
+      p1.id,
+      createCardDefinition({
+        name: "Mine",
+        typeLine: "Creature — Bear",
+        manaCost: "{1}{G}",
+        power: 2,
+        toughness: 2,
+      }),
+    );
+    const cast = aimAt(game, p2.id, { type: "creature", cardId: mineId });
+    expect(
+      isChosenTargetLegal(
+        cast,
+        requirement,
+        { type: "spell", stackObjectId: cast.stack[0]!.id },
+        p1.id,
+      ),
+    ).toBe(true);
+  });
+
+  it("may counter a spell aimed at you", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const bolt = createCardDefinition({
+      name: "Bolt",
+      typeLine: "Instant",
+      manaCost: "{R}",
+      effects: [
+        {
+          kind: "deal_damage",
+          sourceId: "self",
+          target: { type: "chosen", index: 0 },
+          amount: 3,
+        },
+      ],
+      targetRequirements: [{ kind: "player" }],
+    });
+    const spellId = put(game, p2.id, bolt, "hand");
+    game.players.find((entry) => entry.id === p2.id)!.mana.R = 1;
+    game.turn.activePlayerId = p2.id;
+    game.turn.phase = "precombatMain";
+    game.turn.step = "precombatMain";
+    game.priorityPlayerId = p2.id;
+    const cast = applyAction(game, {
+      kind: "cast_spell",
+      playerId: p2.id,
+      cardId: spellId,
+      targets: [{ type: "player", playerId: p1.id }],
+    });
+    expect(
+      isChosenTargetLegal(
+        cast,
+        requirement,
+        { type: "spell", stackObjectId: cast.stack[0]!.id },
+        p1.id,
+      ),
+    ).toBe(true);
+  });
+
+  it("may NOT counter a spell aimed elsewhere", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const theirsId = put(
+      game,
+      p2.id,
+      createCardDefinition({
+        name: "Theirs",
+        typeLine: "Creature — Bear",
+        manaCost: "{1}{G}",
+        power: 2,
+        toughness: 2,
+      }),
+    );
+    const cast = aimAt(game, p2.id, { type: "creature", cardId: theirsId });
+    // Without the constraint the Siren counters anything at all, which is
+    // a much better card than the printed one.
+    expect(
+      isChosenTargetLegal(
+        cast,
+        requirement,
+        { type: "spell", stackObjectId: cast.stack[0]!.id },
+        p1.id,
+      ),
+    ).toBe(false);
+  });
+
+  it("may not counter an untargeted spell", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    const draw = createCardDefinition({
+      name: "Divination",
+      typeLine: "Sorcery",
+      manaCost: "{R}",
+      effects: [{ kind: "draw", playerId: "controller", count: 1 }],
+    });
+    const spellId = put(game, p2.id, draw, "hand");
+    game.players.find((entry) => entry.id === p2.id)!.mana.R = 1;
+    game.turn.activePlayerId = p2.id;
+    game.turn.phase = "precombatMain";
+    game.turn.step = "precombatMain";
+    game.priorityPlayerId = p2.id;
+    const cast = applyAction(game, {
+      kind: "cast_spell",
+      playerId: p2.id,
+      cardId: spellId,
+      targets: [],
+    });
+    expect(
+      isChosenTargetLegal(
+        cast,
+        requirement,
+        { type: "spell", stackObjectId: cast.stack[0]!.id },
+        p1.id,
+      ),
+    ).toBe(false);
+  });
+
+  it("leaves the plain form countering anything", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const theirsId = put(
+      game,
+      p2.id,
+      createCardDefinition({
+        name: "Theirs",
+        typeLine: "Creature — Bear",
+        manaCost: "{1}{G}",
+        power: 2,
+        toughness: 2,
+      }),
+    );
+    const cast = aimAt(game, p2.id, { type: "creature", cardId: theirsId });
+    expect(
+      isChosenTargetLegal(
+        cast,
+        { kind: "spell_or_ability" },
+        { type: "spell", stackObjectId: cast.stack[0]!.id },
+        p1.id,
+      ),
+    ).toBe(true);
+  });
+
+  it("round trips the constraint", () => {
+    const { game, p1 } = twoPlayers();
+    const definition = createCardDefinition({
+      name: "Wave 348 Siren",
+      typeLine: "Creature — Siren Wizard",
+      manaCost: "{U}",
+      power: 1,
+      toughness: 1,
+      activated: [
+        {
+          tap: false,
+          manaCost: "{U}",
+          sacrificeSelf: true,
+          effects: [{ kind: "counter_spell", target: { type: "chosen", index: 0 } }],
+          targetRequirements: [requirement],
+        },
+      ],
+    });
+    put(game, p1.id, definition);
+    const round = parseGameState(serializeGameState(game));
+    expect(round.definitions[definition.id]?.activated[0]?.targetRequirements[0]).toEqual(
+      requirement,
+    );
+  });
+});
