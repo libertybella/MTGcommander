@@ -40929,3 +40929,888 @@ describe("wave 300: Sagas, and the one that builds its own board", () => {
     expect(round.cards[sagaId]?.counters["lore"]).toBe(1);
   });
 });
+
+describe("wave 301: counters that move, spread, and land wider", () => {
+  const compile = (name: string, typeLine: string, oracleText: string, manaCost = "") =>
+    compileOracleCard({
+      oracleId: name.toLowerCase().replace(/[^a-z]+/g, "-"),
+      name,
+      manaCost,
+      typeLine,
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  const onBattlefield = (
+    game: GameState,
+    ownerId: string,
+    definition: CardDefinition,
+  ): string => {
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({
+      definitionId: definition.id,
+      ownerId,
+      zone: "battlefield",
+    });
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === ownerId)!.zones.battlefield.push(card.id);
+    return card.id;
+  };
+
+  const bear = (name = "Bear") =>
+    createCardDefinition({
+      name,
+      typeLine: "Creature — Bear",
+      manaCost: "{1}{G}",
+      power: 2,
+      toughness: 2,
+    });
+
+  // ---- Ozolith, the Shattered Spire: one more, on two card types ----------
+
+  it("reads Ozolith's replacement as a two-type scope", () => {
+    const compiled = compile(
+      "Ozolith, the Shattered Spire",
+      "Legendary Artifact",
+      "If one or more +1/+1 counters would be put on an artifact or creature you control, that many plus one +1/+1 counters are put on it instead.\n" +
+        "{1}{G}, {T}: Put a +1/+1 counter on target artifact or creature you control. Activate only as a sorcery.\n" +
+        "Cycling {2}",
+      "{1}{G}",
+    );
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.replacements[0]).toEqual({
+      kind: "bonus_counters",
+      counter: "p1p1",
+      typesAny: ["artifact", "creature"],
+    });
+  });
+
+  it("still reads the one-type forms as the narrow field", () => {
+    // Hardened Scales and Branching Evolution must not change shape: a
+    // widening that rewrote them would be a silent behaviour change on two
+    // cards that already worked.
+    const scales = compile(
+      "Hardened Scales",
+      "Enchantment",
+      "If one or more +1/+1 counters would be put on a creature you control, that many plus one +1/+1 counters are put on it instead.",
+    );
+    expect(scales.definition.replacements[0]).toEqual({
+      kind: "bonus_counters",
+      counter: "p1p1",
+      creaturesOnly: true,
+    });
+    const season = compile(
+      "Doubling Season",
+      "Enchantment",
+      "If an effect would put one or more counters on a permanent you control, it puts twice that many of those counters on that permanent instead.",
+    );
+    expect(season.definition.replacements[0]).toEqual({ kind: "double_counters" });
+  });
+
+  it("gives the extra counter to an artifact, not just a creature", () => {
+    const { game, p1 } = twoPlayers();
+    onBattlefield(
+      game,
+      p1.id,
+      createCardDefinition({
+        name: "Ozolith, the Shattered Spire",
+        typeLine: "Legendary Artifact",
+        replacements: [
+          { kind: "bonus_counters", counter: "p1p1", typesAny: ["artifact", "creature"] },
+        ],
+      }),
+    );
+    const rockId = onBattlefield(
+      game,
+      p1.id,
+      createCardDefinition({ name: "Rock", typeLine: "Artifact" }),
+    );
+    const bearId = onBattlefield(game, p1.id, bear());
+    const grown = applyEffects(game, [
+      { kind: "add_counter", cardId: rockId, counter: "p1p1", amount: 1 },
+      { kind: "add_counter", cardId: bearId, counter: "p1p1", amount: 1 },
+    ]);
+    // Both types are covered, and the bonus is +1 per batch, not per counter.
+    expect(grown.cards[rockId]?.counters["p1p1"]).toBe(2);
+    expect(grown.cards[bearId]?.counters["p1p1"]).toBe(2);
+  });
+
+  it("leaves an enchantment alone", () => {
+    const { game, p1 } = twoPlayers();
+    onBattlefield(
+      game,
+      p1.id,
+      createCardDefinition({
+        name: "Ozolith, the Shattered Spire",
+        typeLine: "Legendary Artifact",
+        replacements: [
+          { kind: "bonus_counters", counter: "p1p1", typesAny: ["artifact", "creature"] },
+        ],
+      }),
+    );
+    const auraId = onBattlefield(
+      game,
+      p1.id,
+      createCardDefinition({ name: "Shrine", typeLine: "Enchantment" }),
+    );
+    const grown = applyEffect(game, {
+      kind: "add_counter",
+      cardId: auraId,
+      counter: "p1p1",
+      amount: 1,
+    });
+    // "An artifact or creature" is a closed list — a third type is not on it.
+    expect(grown.cards[auraId]?.counters["p1p1"]).toBe(1);
+  });
+
+  // ---- Innkeeper's Talent: every counter, and ward for carrying one -------
+
+  it("compiles Innkeeper's Talent whole, both levels", () => {
+    const compiled = compile(
+      "Innkeeper's Talent",
+      "Enchantment — Class",
+      "At the beginning of combat on your turn, put a +1/+1 counter on target creature you control.\n" +
+        "{G}: Level 2\n" +
+        "Permanents you control with counters on them have ward {1}.\n" +
+        "{3}{G}: Level 3\n" +
+        "If you would put one or more counters on a permanent or player, put twice that many of each of those kinds of counters on that permanent or player instead.",
+      "{1}{G}",
+    );
+    expect(compiled.notes).toEqual([]);
+    // No counter name and no type scope: every kind, on every permanent.
+    // The "or player" half is dropped — nothing in this engine puts a
+    // counter on a player, so it is silent rather than wrong.
+    expect(compiled.definition.replacements).toEqual([{ kind: "double_counters" }]);
+    const ward = compiled.definition.staticAbilities.find(
+      (ability) => ability.effect.kind === "grant_ward",
+    );
+    expect(ward?.selector).toMatchObject({ scope: "controlled", withAnyCounter: true });
+  });
+
+  it("wards a permanent carrying any counter, not only +1/+1", () => {
+    const { game, p1 } = twoPlayers();
+    onBattlefield(
+      game,
+      p1.id,
+      createCardDefinition({
+        name: "Innkeeper's Talent",
+        typeLine: "Enchantment — Class",
+        staticAbilities: [
+          {
+            selector: { scope: "controlled", withAnyCounter: true },
+            effect: { kind: "grant_ward", amount: 1 },
+          },
+        ],
+      }),
+    );
+    const loadedId = onBattlefield(game, p1.id, bear("Loaded"));
+    const bareId = onBattlefield(game, p1.id, bear("Bare"));
+    game.cards[loadedId]!.counters["stun"] = 1;
+    expect(computedCard(game, loadedId)?.ward).toBe(1);
+    // Ward is a number that defaults to 0, and 0 is what the pay-or-counter
+    // gate reads as "no ward".
+    expect(computedCard(game, bareId)?.ward).toBe(0);
+  });
+
+  it("stops warding when the last counter comes off", () => {
+    const { game, p1 } = twoPlayers();
+    onBattlefield(
+      game,
+      p1.id,
+      createCardDefinition({
+        name: "Innkeeper's Talent",
+        typeLine: "Enchantment — Class",
+        staticAbilities: [
+          {
+            selector: { scope: "controlled", withAnyCounter: true },
+            effect: { kind: "grant_ward", amount: 1 },
+          },
+        ],
+      }),
+    );
+    const bearId = onBattlefield(game, p1.id, bear());
+    game.cards[bearId]!.counters["p1p1"] = 1;
+    const stripped = applyEffect(game, {
+      kind: "remove_counter",
+      cardId: bearId,
+      counter: "p1p1",
+      amount: 1,
+    });
+    // A zeroed entry is not a counter — the selector reads the values.
+    expect(computedCard(stripped, bearId)?.ward).toBe(0);
+  });
+
+  it("doubles a counter kind that is not +1/+1", () => {
+    const { game, p1 } = twoPlayers();
+    onBattlefield(
+      game,
+      p1.id,
+      createCardDefinition({
+        name: "Innkeeper's Talent",
+        typeLine: "Enchantment — Class",
+        replacements: [{ kind: "double_counters" }],
+      }),
+    );
+    const rockId = onBattlefield(
+      game,
+      p1.id,
+      createCardDefinition({ name: "Chalice", typeLine: "Artifact" }),
+    );
+    const grown = applyEffect(game, {
+      kind: "add_counter",
+      cardId: rockId,
+      counter: "charge",
+      amount: 2,
+    });
+    // "Of each of those kinds" — an unnamed doubler reaches every counter.
+    expect(grown.cards[rockId]?.counters["charge"]).toBe(4);
+  });
+
+  // ---- Nesting Grounds: one counter, two targets --------------------------
+
+  it("compiles Nesting Grounds with two distinct target slots", () => {
+    const compiled = compile(
+      "Nesting Grounds",
+      "Land",
+      "{T}: Add {C}.\n" +
+        "{1}, {T}: Move a counter from target permanent you control onto a second target permanent. Activate only as a sorcery.",
+    );
+    expect(compiled.notes).toEqual([]);
+    const ability = compiled.definition.activated[0];
+    // The donor is restricted to what you control; the receiver is not.
+    expect(ability?.targetRequirements).toEqual([
+      { kind: "permanent", control: "own" },
+      { kind: "permanent" },
+    ]);
+    expect(ability?.timing).toBe("sorcery");
+    expect(ability?.effects[0]).toEqual({
+      kind: "move_counter",
+      from: { type: "chosen", index: 0 },
+      to: { type: "chosen", index: 1 },
+    });
+  });
+
+  it("moves exactly one counter between two permanents", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const donorId = onBattlefield(game, p1.id, bear("Donor"));
+    const receiverId = onBattlefield(game, p2.id, bear("Receiver"));
+    game.cards[donorId]!.counters["p1p1"] = 3;
+    const moved = applyEffects(
+      game,
+      bindCardEffects(
+        game,
+        [
+          {
+            kind: "move_counter",
+            from: { type: "chosen", index: 0 },
+            to: { type: "chosen", index: 1 },
+          },
+        ],
+        {
+          controllerId: p1.id,
+          sourceId: null,
+          targets: [
+            { type: "creature", cardId: donorId },
+            { type: "creature", cardId: receiverId },
+          ],
+          targetRequirements: [{ kind: "permanent", control: "own" }, { kind: "permanent" }],
+        },
+      ),
+    );
+    // One counter, not the pile — this is not The Ozolith.
+    expect(moved.cards[donorId]?.counters["p1p1"]).toBe(2);
+    expect(moved.cards[receiverId]?.counters["p1p1"]).toBe(1);
+  });
+
+  it("moves a counter that is not +1/+1 when that is all there is", () => {
+    const { game, p1 } = twoPlayers();
+    const donorId = onBattlefield(
+      game,
+      p1.id,
+      createCardDefinition({ name: "Chalice", typeLine: "Artifact" }),
+    );
+    const receiverId = onBattlefield(game, p1.id, bear("Receiver"));
+    game.cards[donorId]!.counters["charge"] = 1;
+    const moved = applyEffects(
+      game,
+      bindCardEffects(
+        game,
+        [
+          {
+            kind: "move_counter",
+            from: { type: "chosen", index: 0 },
+            to: { type: "chosen", index: 1 },
+          },
+        ],
+        {
+          controllerId: p1.id,
+          sourceId: null,
+          targets: [
+            { type: "creature", cardId: donorId },
+            { type: "creature", cardId: receiverId },
+          ],
+          targetRequirements: [{ kind: "permanent", control: "own" }, { kind: "permanent" }],
+        },
+      ),
+    );
+    expect(moved.cards[donorId]?.counters["charge"]).toBeUndefined();
+    expect(moved.cards[receiverId]?.counters["charge"]).toBe(1);
+  });
+
+  it("doubles the arriving counter, because moving is putting", () => {
+    const { game, p1 } = twoPlayers();
+    onBattlefield(
+      game,
+      p1.id,
+      createCardDefinition({
+        name: "Doubling Season",
+        typeLine: "Enchantment",
+        replacements: [{ kind: "double_counters" }],
+      }),
+    );
+    const donorId = onBattlefield(game, p1.id, bear("Donor"));
+    const receiverId = onBattlefield(game, p1.id, bear("Receiver"));
+    game.cards[donorId]!.counters["p1p1"] = 2;
+    const moved = applyEffects(
+      game,
+      bindCardEffects(
+        game,
+        [
+          {
+            kind: "move_counter",
+            from: { type: "chosen", index: 0 },
+            to: { type: "chosen", index: 1 },
+          },
+        ],
+        {
+          controllerId: p1.id,
+          sourceId: null,
+          targets: [
+            { type: "creature", cardId: donorId },
+            { type: "creature", cardId: receiverId },
+          ],
+          targetRequirements: [{ kind: "permanent", control: "own" }, { kind: "permanent" }],
+        },
+      ),
+    );
+    // One leaves, two arrive: the arrival goes through the same replacement
+    // path any other placement does.
+    expect(moved.cards[donorId]?.counters["p1p1"]).toBe(1);
+    expect(moved.cards[receiverId]?.counters["p1p1"]).toBe(2);
+  });
+
+  it("does nothing when the donor carries no counters", () => {
+    const { game, p1 } = twoPlayers();
+    const donorId = onBattlefield(game, p1.id, bear("Donor"));
+    const receiverId = onBattlefield(game, p1.id, bear("Receiver"));
+    const bound = bindCardEffects(
+      game,
+      [
+        {
+          kind: "move_counter",
+          from: { type: "chosen", index: 0 },
+          to: { type: "chosen", index: 1 },
+        },
+      ],
+      {
+        controllerId: p1.id,
+        sourceId: null,
+        targets: [
+          { type: "creature", cardId: donorId },
+          { type: "creature", cardId: receiverId },
+        ],
+        targetRequirements: [{ kind: "permanent", control: "own" }, { kind: "permanent" }],
+      },
+    );
+    // The printed ability has no "if you do" rider, so a bare donor simply
+    // moves nothing rather than failing the activation.
+    expect(bound).toEqual([]);
+    const still = applyEffects(game, bound);
+    expect(still.cards[receiverId]?.counters["p1p1"]).toBeUndefined();
+  });
+
+  // ---- The Earth Crystal: a division chosen up front ----------------------
+
+  it("compiles the distribute ability as two slots, the second optional", () => {
+    const compiled = compile(
+      "The Earth Crystal",
+      "Legendary Artifact",
+      "Green spells you cast cost {1} less to cast.\n" +
+        "If one or more +1/+1 counters would be put on a creature you control, twice that many +1/+1 counters are put on that creature instead.\n" +
+        "{4}{G}{G}, {T}: Distribute two +1/+1 counters among one or two target creatures you control.",
+      "{2}{G}{G}",
+    );
+    expect(compiled.notes).toEqual([]);
+    const ability = compiled.definition.activated[0];
+    expect(ability?.targetRequirements).toEqual([
+      { kind: "creature", control: "own" },
+      { kind: "creature", control: "own", optional: true },
+    ]);
+    expect(ability?.effects[0]).toEqual({
+      kind: "distribute_counters",
+      counter: "p1p1",
+      amount: 2,
+      targets: [
+        { type: "chosen", index: 0 },
+        { type: "chosen", index: 1 },
+      ],
+    });
+  });
+
+  it("splits the counters one apiece across two targets", () => {
+    const { game, p1 } = twoPlayers();
+    const firstId = onBattlefield(game, p1.id, bear("First"));
+    const secondId = onBattlefield(game, p1.id, bear("Second"));
+    const spread = applyEffects(
+      game,
+      bindCardEffects(
+        game,
+        [
+          {
+            kind: "distribute_counters",
+            counter: "p1p1",
+            amount: 2,
+            targets: [
+              { type: "chosen", index: 0 },
+              { type: "chosen", index: 1 },
+            ],
+          },
+        ],
+        {
+          controllerId: p1.id,
+          sourceId: null,
+          targets: [
+            { type: "creature", cardId: firstId },
+            { type: "creature", cardId: secondId },
+          ],
+          targetRequirements: [
+            { kind: "creature", control: "own" },
+            { kind: "creature", control: "own", optional: true },
+          ],
+        },
+      ),
+    );
+    expect(spread.cards[firstId]?.counters["p1p1"]).toBe(1);
+    expect(spread.cards[secondId]?.counters["p1p1"]).toBe(1);
+  });
+
+  it("puts both counters on one target when only one is chosen", () => {
+    const { game, p1 } = twoPlayers();
+    const onlyId = onBattlefield(game, p1.id, bear("Only"));
+    const spread = applyEffects(
+      game,
+      bindCardEffects(
+        game,
+        [
+          {
+            kind: "distribute_counters",
+            counter: "p1p1",
+            amount: 2,
+            targets: [
+              { type: "chosen", index: 0 },
+              { type: "chosen", index: 1 },
+            ],
+          },
+        ],
+        {
+          controllerId: p1.id,
+          sourceId: null,
+          targets: [{ type: "creature", cardId: onlyId }],
+          targetRequirements: [
+            { kind: "creature", control: "own" },
+            { kind: "creature", control: "own", optional: true },
+          ],
+        },
+      ),
+    );
+    // "One or two" permits one, and then the whole division lands there.
+    expect(spread.cards[onlyId]?.counters["p1p1"]).toBe(2);
+  });
+
+  // ---- Oran-Rief, the Vastwood: what came down this turn ------------------
+
+  it("compiles Oran-Rief's colour-and-freshness filter", () => {
+    const compiled = compile(
+      "Oran-Rief, the Vastwood",
+      "Legendary Land",
+      "This land enters tapped.\n{T}: Add {G}.\n{T}: Put a +1/+1 counter on each green creature that entered this turn.",
+    );
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.activated[0]?.effects[0]).toEqual({
+      kind: "counter_on_each_creature",
+      counter: "p1p1",
+      amount: 1,
+      colors: ["G"],
+      enteredThisTurn: true,
+    });
+  });
+
+  it("counters only the green creatures that arrived this turn", () => {
+    const { game, p1, p2 } = twoPlayers();
+    // Two green creatures that have been out since before this turn.
+    const staleId = onBattlefield(game, p1.id, bear("Stale"));
+    game.cards[staleId]!.timestamp = 1;
+    game.nextTimestamp = 10;
+    game.turn.startTimestamp = 5;
+
+    const freshId = onBattlefield(game, p1.id, bear("Fresh"));
+    game.cards[freshId]!.timestamp = 7;
+    const blueId = onBattlefield(
+      game,
+      p1.id,
+      createCardDefinition({
+        name: "Drake",
+        typeLine: "Creature — Drake",
+        manaCost: "{2}{U}",
+        power: 2,
+        toughness: 2,
+      }),
+    );
+    game.cards[blueId]!.timestamp = 8;
+    // An OPPONENT's green creature that came down this turn: the printed
+    // text puts no controller restriction on it, so it gets one too.
+    const theirsId = onBattlefield(game, p2.id, bear("Theirs"));
+    game.cards[theirsId]!.timestamp = 9;
+
+    const grown = applyEffect(game, {
+      kind: "counter_on_each_creature",
+      counter: "p1p1",
+      amount: 1,
+      colors: ["G"],
+      enteredThisTurn: true,
+    });
+    expect(grown.cards[freshId]?.counters["p1p1"]).toBe(1);
+    expect(grown.cards[theirsId]?.counters["p1p1"]).toBe(1);
+    expect(grown.cards[staleId]?.counters["p1p1"]).toBeUndefined();
+    expect(grown.cards[blueId]?.counters["p1p1"]).toBeUndefined();
+  });
+
+  it("resets what counts as this turn when the turn passes", () => {
+    const { game, p1, p2 } = twoPlayers();
+    game.turn.activePlayerId = p1.id;
+    game.turn.phase = "ending";
+    game.turn.step = "cleanup";
+    const arrivedId = onBattlefield(game, p1.id, bear("Arrived"));
+    game.cards[arrivedId]!.timestamp = game.nextTimestamp;
+    game.nextTimestamp += 1;
+    const before = game.turn.startTimestamp;
+    let state = advanceSteps(game, 1);
+    // A new turn moves the line forward past everything already down.
+    expect(state.turn.activePlayerId).toBe(p2.id);
+    expect(state.turn.startTimestamp).toBeGreaterThan(before);
+    state = applyEffect(state, {
+      kind: "counter_on_each_creature",
+      counter: "p1p1",
+      amount: 1,
+      colors: ["G"],
+      enteredThisTurn: true,
+    });
+    expect(state.cards[arrivedId]?.counters["p1p1"]).toBeUndefined();
+  });
+
+  // ---- Terrasymbiosis: watching the whole board, once a turn -------------
+
+  it("compiles Terrasymbiosis watching the board rather than itself", () => {
+    const compiled = compile(
+      "Terrasymbiosis",
+      "Enchantment",
+      "Whenever you put one or more +1/+1 counters on a creature you control, you may draw that many cards. Do this only once each turn.",
+      "{2}{G}",
+    );
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.triggers[0]).toMatchObject({
+      event: "counter_added",
+      watch: "controlled",
+      oncePerTurn: true,
+      oncePerBatch: true,
+      subjectFilter: { counterName: "p1p1", types: ["creature"] },
+    });
+    expect(compiled.definition.triggers[0]?.effects[0]).toEqual({
+      kind: "draw",
+      playerId: "controller",
+      count: "subject_amount",
+    });
+  });
+
+  it("leaves Fathom Mage watching only itself", () => {
+    // The default for this event stays "self". Widening it here would have
+    // turned Fathom Mage into a card that draws off every creature.
+    const compiled = compile(
+      "Fathom Mage",
+      "Creature — Human Wizard",
+      "Whenever a +1/+1 counter is put on ~, you may draw a card.",
+      "{2}{G}{U}",
+    );
+    expect(compiled.definition.triggers[0]?.watch).toBeUndefined();
+  });
+
+  it("fires on a counter landing anywhere on your board", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 8);
+    onBattlefield(
+      game,
+      p1.id,
+      createCardDefinition({
+        name: "Terrasymbiosis",
+        typeLine: "Enchantment",
+        triggers: [
+          {
+            event: "counter_added",
+            watch: "controlled",
+            oncePerTurn: true,
+            oncePerBatch: true,
+            subjectFilter: { counterName: "p1p1", types: ["creature"] },
+            effects: [{ kind: "draw", playerId: "controller", count: "subject_amount" }],
+            targetRequirements: [],
+          },
+        ],
+      }),
+    );
+    const bearId = onBattlefield(game, p1.id, bear());
+    game.turn.activePlayerId = p1.id;
+    game.turn.phase = "precombatMain";
+    game.turn.step = "precombatMain";
+    game.priorityPlayerId = p1.id;
+    const handBefore = game.players.find((entry) => entry.id === p1.id)!.zones.hand.length;
+
+    let state = applyEffect(game, {
+      kind: "add_counter",
+      cardId: bearId,
+      counter: "p1p1",
+      amount: 3,
+    });
+    while (state.stack.length > 0) {
+      state = resolveTopOfStack(state);
+    }
+    // Three counters, three cards — "that many" is the batch, not one.
+    expect(state.players.find((entry) => entry.id === p1.id)!.zones.hand.length).toBe(
+      handBefore + 3,
+    );
+  });
+
+  it("does not fire a second time in the same turn", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 12);
+    onBattlefield(
+      game,
+      p1.id,
+      createCardDefinition({
+        name: "Terrasymbiosis",
+        typeLine: "Enchantment",
+        triggers: [
+          {
+            event: "counter_added",
+            watch: "controlled",
+            oncePerTurn: true,
+            oncePerBatch: true,
+            subjectFilter: { counterName: "p1p1", types: ["creature"] },
+            effects: [{ kind: "draw", playerId: "controller", count: "subject_amount" }],
+            targetRequirements: [],
+          },
+        ],
+      }),
+    );
+    const bearId = onBattlefield(game, p1.id, bear());
+    game.turn.activePlayerId = p1.id;
+    game.turn.phase = "precombatMain";
+    game.turn.step = "precombatMain";
+    game.priorityPlayerId = p1.id;
+    const handBefore = game.players.find((entry) => entry.id === p1.id)!.zones.hand.length;
+
+    let state = game as GameState;
+    for (let round = 0; round < 2; round += 1) {
+      state = applyEffect(state, {
+        kind: "add_counter",
+        cardId: bearId,
+        counter: "p1p1",
+        amount: 1,
+      });
+      while (state.stack.length > 0) {
+        state = resolveTopOfStack(state);
+      }
+    }
+    expect(state.players.find((entry) => entry.id === p1.id)!.zones.hand.length).toBe(
+      handBefore + 1,
+    );
+  });
+
+  it("ignores a counter on a permanent an opponent controls", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 8);
+    onBattlefield(
+      game,
+      p1.id,
+      createCardDefinition({
+        name: "Terrasymbiosis",
+        typeLine: "Enchantment",
+        triggers: [
+          {
+            event: "counter_added",
+            watch: "controlled",
+            oncePerTurn: true,
+            oncePerBatch: true,
+            subjectFilter: { counterName: "p1p1", types: ["creature"] },
+            effects: [{ kind: "draw", playerId: "controller", count: "subject_amount" }],
+            targetRequirements: [],
+          },
+        ],
+      }),
+    );
+    const theirsId = onBattlefield(game, p2.id, bear("Theirs"));
+    game.turn.activePlayerId = p1.id;
+    game.turn.phase = "precombatMain";
+    game.turn.step = "precombatMain";
+    game.priorityPlayerId = p1.id;
+    const state = applyEffect(game, {
+      kind: "add_counter",
+      cardId: theirsId,
+      counter: "p1p1",
+      amount: 2,
+    });
+    // "On a creature YOU control" — the watch is the whole restriction.
+    expect(state.stack).toHaveLength(0);
+  });
+
+  // ---- the wire ----------------------------------------------------------
+
+  it("round trips every new field", () => {
+    const { game, p1 } = twoPlayers();
+    const definition = createCardDefinition({
+      name: "Counter Omnibus",
+      typeLine: "Legendary Artifact",
+      replacements: [
+        { kind: "bonus_counters", counter: "p1p1", typesAny: ["artifact", "creature"] },
+        { kind: "double_counters" },
+      ],
+      staticAbilities: [
+        {
+          selector: { scope: "controlled", withAnyCounter: true },
+          effect: { kind: "grant_ward", amount: 1 },
+        },
+      ],
+      triggers: [
+        {
+          event: "counter_added",
+          watch: "controlled",
+          oncePerTurn: true,
+          oncePerBatch: true,
+          subjectFilter: { counterName: "p1p1", types: ["creature"] },
+          effects: [{ kind: "draw", playerId: "controller", count: "subject_amount" }],
+          targetRequirements: [],
+        },
+      ],
+      activated: [
+        {
+          tap: true,
+          manaCost: "{1}",
+          timing: "sorcery",
+          targetRequirements: [{ kind: "permanent", control: "own" }, { kind: "permanent" }],
+          effects: [
+            {
+              kind: "move_counter",
+              from: { type: "chosen", index: 0 },
+              to: { type: "chosen", index: 1 },
+            },
+          ],
+        },
+        {
+          tap: true,
+          manaCost: "{4}{G}{G}",
+          targetRequirements: [
+            { kind: "creature", control: "own" },
+            { kind: "creature", control: "own", optional: true },
+          ],
+          effects: [
+            {
+              kind: "distribute_counters",
+              counter: "p1p1",
+              amount: 2,
+              targets: [
+                { type: "chosen", index: 0 },
+                { type: "chosen", index: 1 },
+              ],
+            },
+          ],
+        },
+        {
+          tap: true,
+          manaCost: "",
+          targetRequirements: [],
+          effects: [
+            {
+              kind: "counter_on_each_creature",
+              counter: "p1p1",
+              amount: 1,
+              colors: ["G"],
+              enteredThisTurn: true,
+            },
+          ],
+        },
+      ],
+    });
+    onBattlefield(game, p1.id, definition);
+    game.turn.startTimestamp = 4;
+    const round = parseGameState(serializeGameState(game));
+    const parsed = round.definitions[definition.id]!;
+    expect(parsed.replacements[0]).toEqual({
+      kind: "bonus_counters",
+      counter: "p1p1",
+      typesAny: ["artifact", "creature"],
+    });
+    expect(parsed.staticAbilities[0]?.selector).toMatchObject({ withAnyCounter: true });
+    expect(parsed.triggers[0]).toMatchObject({ watch: "controlled", oncePerTurn: true });
+    expect(parsed.activated[0]?.effects[0]).toEqual({
+      kind: "move_counter",
+      from: { type: "chosen", index: 0 },
+      to: { type: "chosen", index: 1 },
+    });
+    expect(parsed.activated[1]?.effects[0]).toMatchObject({
+      kind: "distribute_counters",
+      amount: 2,
+    });
+    expect(parsed.activated[2]?.effects[0]).toMatchObject({
+      colors: ["G"],
+      enteredThisTurn: true,
+    });
+    expect(round.turn.startTimestamp).toBe(4);
+  });
+
+  it("round trips the bound forms too", () => {
+    const { game, p1 } = twoPlayers();
+    const donorId = onBattlefield(game, p1.id, bear("Donor"));
+    const receiverId = onBattlefield(game, p1.id, bear("Receiver"));
+    game.cards[donorId]!.counters["p1p1"] = 1;
+    const staged = { ...game };
+    staged.delayedEndStep = [];
+    const round = parseGameState(serializeGameState(staged));
+    // The bound effects live on the stack, so bind one and push it through.
+    const bound = bindCardEffects(
+      round,
+      [
+        {
+          kind: "move_counter",
+          from: { type: "chosen", index: 0 },
+          to: { type: "chosen", index: 1 },
+        },
+      ],
+      {
+        controllerId: p1.id,
+        sourceId: null,
+        targets: [
+          { type: "creature", cardId: donorId },
+          { type: "creature", cardId: receiverId },
+        ],
+        targetRequirements: [{ kind: "permanent", control: "own" }, { kind: "permanent" }],
+      },
+    );
+    expect(bound[0]).toEqual({
+      kind: "move_counter",
+      fromId: donorId,
+      toId: receiverId,
+      counter: "p1p1",
+    });
+  });
+});

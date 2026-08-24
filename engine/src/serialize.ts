@@ -321,6 +321,13 @@ function expectNumber(value: unknown, label: string): number {
   return value;
 }
 
+function expectList(value: unknown, label: string): unknown[] {
+  if (!Array.isArray(value)) {
+    throw new Error(`Invalid ${label}`);
+  }
+  return value;
+}
+
 function expectStringArray(value: unknown, label: string): string[] {
   if (!Array.isArray(value) || value.some((item) => typeof item !== "string")) {
     throw new Error(`Invalid ${label}`);
@@ -1554,6 +1561,10 @@ export function parseGameState(json: string): GameState {
       activePlayerId: expectString(raw.turn.activePlayerId, "turn.activePlayerId"),
       phase: phase as GameState["turn"]["phase"],
       step: step as GameState["turn"]["step"],
+      // Tables saved before Oran-Rief landed have no opening stamp; 0 reads
+      // as "everything on the battlefield entered this turn", which only a
+      // freshly loaded Oran-Rief activation could notice.
+      startTimestamp: expectNumber(raw.turn.startTimestamp ?? 0, "turn.startTimestamp"),
     },
     stack,
     cards,
@@ -3440,6 +3451,21 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
         cardId: parseCardIdSelector(value.cardId, `${label}.cardId`),
         target: parseChosenTargetRef(value.target, `${label}.target`),
       };
+    case "move_counter":
+      return {
+        kind,
+        from: parseChosenTargetRef(value.from, `${label}.from`),
+        to: parseChosenTargetRef(value.to, `${label}.to`),
+      };
+    case "distribute_counters":
+      return {
+        kind,
+        counter: expectString(value.counter, `${label}.counter`),
+        amount: expectNumber(value.amount, `${label}.amount`),
+        targets: expectList(value.targets, `${label}.targets`).map((entry, index) =>
+          parseChosenTargetRef(entry, `${label}.targets[${index}]`),
+        ),
+      };
     case "copy_subject_spell":
     case "counter_subject_spell":
     case "extra_combat":
@@ -3897,6 +3923,8 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
           : { subtype: expectString(value.subtype, `${label}.subtype`) }),
         ...(value.controlledOnly === true ? { controlledOnly: true } : {}),
         ...(value.opponentsOnly === true ? { opponentsOnly: true } : {}),
+        ...(value.colors === undefined ? {} : { colors: parseColorArray(value.colors, `${label}.colors`) }),
+        ...(value.enteredThisTurn === true ? { enteredThisTurn: true } : {}),
       };
     case "each_creature_damages_controller":
       return { kind, amount: expectNumber(value.amount, `${label}.amount`) };
@@ -4847,6 +4875,9 @@ function parseReplacements(value: unknown, label: string): ReplacementEffect[] {
           ? {}
           : { counter: expectString(entry.counter, `${label}[${index}].counter`) }),
         ...(entry.creaturesOnly === true ? { creaturesOnly: true } : {}),
+        ...(entry.typesAny === undefined
+          ? {}
+          : { typesAny: expectStringArray(entry.typesAny, `${label}[${index}].typesAny`) }),
       };
     }
     if (kind === "may_pay_life_or_enter_tapped") {
@@ -5034,6 +5065,7 @@ function parseEffectSelector(value: unknown, label: string): EffectSelector {
     ...(value.withCounter === undefined
       ? {}
       : { withCounter: expectString(value.withCounter, `${label}.withCounter`) }),
+    ...(value.withAnyCounter === true ? { withAnyCounter: true } : {}),
     ...(excludeSelf ? { excludeSelf: true } : {}),
   };
 }
@@ -5785,6 +5817,8 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
       ...(value.opponentsOf === undefined
         ? {}
         : { opponentsOf: expectString(value.opponentsOf, `${label}.opponentsOf`) }),
+      ...(value.colors === undefined ? {} : { colors: parseColorArray(value.colors, `${label}.colors`) }),
+      ...(value.enteredThisTurn === true ? { enteredThisTurn: true } : {}),
     };
   }
   if (kind === "each_creature_damages_controller") {
@@ -6095,6 +6129,21 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
       kind,
       fromId: expectString(value.fromId, `${label}.fromId`),
       toId: expectString(value.toId, `${label}.toId`),
+    };
+  }
+  if (kind === "move_counter") {
+    return {
+      kind,
+      fromId: expectString(value.fromId, `${label}.fromId`),
+      toId: expectString(value.toId, `${label}.toId`),
+      counter: expectString(value.counter, `${label}.counter`),
+    };
+  }
+  if (kind === "distribute_counters") {
+    return {
+      kind,
+      counter: expectString(value.counter, `${label}.counter`),
+      cardIds: expectStringArray(value.cardIds, `${label}.cardIds`),
     };
   }
   if (kind === "set_class_level") {

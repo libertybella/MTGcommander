@@ -1676,6 +1676,40 @@ type TokenDescriptor = {
 const TOKEN_CARD_TYPES = ["artifact", "creature", "enchantment", "land", "planeswalker"];
 const TOKEN_SUPERTYPES = ["snow", "legendary"];
 
+/**
+ * The scope phrase shared by every counter replacement — Hardened Scales
+ * ("a creature you control"), Doubling Season ("a permanent you control"),
+ * Ozolith the Shattered Spire ("an artifact or creature you control").
+ *
+ * "permanent" is the unrestricted case and yields no filter at all, which is
+ * what the replacement types mean by an absent scope. Anything that is not a
+ * card type returns null, so an unread noun leaves the sentence uncompiled
+ * rather than quietly widening the replacement to the whole board.
+ */
+function counterReplacementScope(
+  phrase: string,
+): { creaturesOnly?: true; typesAny?: string[] } | null {
+  const words = phrase
+    .toLowerCase()
+    .split(/\s+or\s+/)
+    .map((word) => word.trim())
+    .filter(Boolean);
+  if (words.length === 0) {
+    return null;
+  }
+  if (words.length === 1 && words[0] === "permanent") {
+    return {};
+  }
+  if (!words.every((word) => TOKEN_CARD_TYPES.includes(word))) {
+    return null;
+  }
+  // One type keeps the older, narrower field so existing states still read.
+  if (words.length === 1 && words[0] === "creature") {
+    return { creaturesOnly: true };
+  }
+  return { typesAny: words };
+}
+
 const TOKEN_COUNT_WORDS =
   "a|an|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|X|\\d+";
 
@@ -2585,8 +2619,10 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
   }
 
   // Vilis: "draw that many cards" — the controller draws, and "that many" is
-  // the amount the trigger watched (the life just lost).
-  if (/^(?:you )?draw that many cards$/i.test(sentence)) {
+  // the amount the trigger watched (the life just lost). Terrasymbiosis
+  // prints "you may draw that many cards"; the may is auto-taken, the same
+  // documented approximation the other may-clauses here use.
+  if (/^(?:you )?(?:may )?draw that many cards$/i.test(sentence)) {
     return {
       targetRequirements: [],
       effects: [{ kind: "draw", playerId: "controller", count: "subject_amount" }],
@@ -3036,6 +3072,64 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
         effects: [
           { kind: "move_card", cardId: { type: "chosen", index: 0 }, toZone },
           { kind: "move_card", cardId: { type: "chosen", index: 1 }, toZone },
+        ],
+      };
+    }
+  }
+
+  // Nesting Grounds: "Move a counter from target permanent you control onto
+  // a second target permanent." Two independent target slots — the donor is
+  // restricted to what its controller owns and the receiver is not, which is
+  // the whole reason this is not one requirement used twice.
+  const moveCounter = sentence.match(
+    /^Move a counter from (target .+?) onto a second (target .+)$/i,
+  );
+  if (moveCounter?.[1] && moveCounter[2]) {
+    const from = parseSimpleTargetPhrase(moveCounter[1]);
+    const to = parseSimpleTargetPhrase(moveCounter[2]);
+    if (from && to) {
+      return {
+        targetRequirements: [from, to],
+        effects: [
+          {
+            kind: "move_counter",
+            from: { type: "chosen", index: 0 },
+            to: { type: "chosen", index: 1 },
+          },
+        ],
+      };
+    }
+  }
+
+  // The Earth Crystal: "Distribute two +1/+1 counters among one or two
+  // target creatures you control." The count of counters and the count of
+  // SLOTS are different numbers and are read separately; every slot after
+  // the first is optional, because "one or two" permits one.
+  const distribute = sentence.match(
+    /^Distribute ([a-z]+) (.+?) counters among (one|one or two|one, two, or three) target (.+)$/i,
+  );
+  if (distribute?.[1] && distribute[2] && distribute[3] && distribute[4]) {
+    const amount = parseCount(distribute[1]);
+    const counter = counterKeyOf(distribute[2]);
+    const slots = distribute[3].toLowerCase() === "one" ? 1 : distribute[3].includes("three") ? 3 : 2;
+    const singular = distribute[4].replace(/s(?= |$)/gi, "");
+    const requirement = parseSimpleTargetPhrase(`target ${singular}`);
+    if (amount !== null && amount > 0 && counter && requirement) {
+      return {
+        targetRequirements: Array.from({ length: slots }, (_, index) => ({
+          ...requirement,
+          ...(index === 0 ? {} : { optional: true as const }),
+        })),
+        effects: [
+          {
+            kind: "distribute_counters",
+            counter,
+            amount,
+            targets: Array.from({ length: slots }, (_, index) => ({
+              type: "chosen" as const,
+              index,
+            })),
+          },
         ],
       };
     }
@@ -4713,6 +4807,26 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
           ...(eachTeam[1] === "you control"
             ? { controlledOnly: true }
             : { opponentsOnly: true }),
+        })),
+      };
+    }
+    // Oran-Rief, the Vastwood: "each green creature that entered this turn".
+    // Both riders narrow the same team effect, and neither restricts the
+    // creature to one controller — an opponent's green creature that came
+    // down this turn gets a counter too, which is what the card says.
+    const eachFresh = where.match(
+      /^each (white|blue|black|red|green )?creature that entered this turn$/,
+    );
+    if (eachFresh) {
+      const color = eachFresh[1] ? COLOR_WORDS[eachFresh[1].trim()] : undefined;
+      return {
+        targetRequirements: [],
+        effects: placed.map((entry) => ({
+          kind: "counter_on_each_creature",
+          counter: entry.counter,
+          amount: entry.amount,
+          ...(color ? { colors: [color] } : {}),
+          enteredThisTurn: true,
         })),
       };
     }
@@ -9491,6 +9605,24 @@ function parseTriggerHead(head: string): TriggerHead | null {
   ) {
     return { event: "counter_added", subjectFilter: { counterName: "p1p1" } };
   }
+  // Terrasymbiosis: the same event, watched across the board rather than on
+  // the source. `watch` has to be explicit — "self" stays the default for
+  // this event so Fathom Mage keeps watching only itself.
+  const countersOnTeam = text.match(
+    /^Whenever you put (?:a|one or more) \+1\/\+1 counters? on an? (creature|permanent|artifact) you control$/i,
+  );
+  if (countersOnTeam?.[1]) {
+    const noun = countersOnTeam[1].toLowerCase();
+    return {
+      event: "counter_added",
+      watch: "controlled",
+      oncePerBatch: true,
+      subjectFilter: {
+        counterName: "p1p1",
+        ...(noun === "permanent" ? {} : { types: [noun] }),
+      },
+    };
+  }
   if (/^Whenever another colorless creature you control enters$/i.test(text)) {
     return {
       event: "enter_battlefield",
@@ -10027,9 +10159,16 @@ function parseGrantSubject(phrase: string): EffectSelector | null {
     selector.chosenSubtype = true;
     rest = chosen[1];
   }
-  const counters = rest.match(/^(.*?)\s+with (?:a )?\+1\/\+1 counters? on (?:them|it)$/i);
+  // "with +1/+1 counters on them" names a kind; Innkeeper's Talent's "with
+  // counters on them" means any kind at all, which is a different filter and
+  // not a wider reading of the same one.
+  const counters = rest.match(/^(.*?)\s+with (?:a )?(\+1\/\+1 )?counters? on (?:them|it)$/i);
   if (counters?.[1] !== undefined) {
-    selector.withCounter = "p1p1";
+    if (counters[2]) {
+      selector.withCounter = "p1p1";
+    } else {
+      selector.withAnyCounter = true;
+    }
     rest = counters[1];
   }
   // "with power or toughness 1 or less" is tried before the bare power
@@ -14318,12 +14457,14 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
     }
 
     // Branching Evolution: +1/+1 counters on your creatures.
-    if (
-      /^If one or more \+1\/\+1 counters would be put on a creature you control, twice that many \+1\/\+1 counters are put on (?:it|that creature) instead$/i.test(
-        sentence,
-      )
-    ) {
-      result.replacements.push({ kind: "double_counters", counter: "p1p1", creaturesOnly: true });
+    const doubleCounters = sentence.match(
+      /^If one or more \+1\/\+1 counters would be put on an? ([a-z]+(?: or [a-z]+)*) you control, twice that many \+1\/\+1 counters are put on (?:it|that creature|that permanent) instead$/i,
+    );
+    const doubleScope = doubleCounters?.[1]
+      ? counterReplacementScope(doubleCounters[1])
+      : null;
+    if (doubleScope) {
+      result.replacements.push({ kind: "double_counters", counter: "p1p1", ...doubleScope });
       continue;
     }
 
@@ -14379,16 +14520,30 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
       }
     }
 
-    // Hardened Scales / Kami of Whispered Hopes: "that many plus one".
+    // Hardened Scales / Kami of Whispered Hopes / Ozolith, the Shattered
+    // Spire: "that many plus one". The scope phrase is shared with the
+    // doubling half below — "a creature", "a permanent", or a disjunction
+    // of card types ("an artifact or creature").
     const bonusCounters = sentence.match(
-      /^If one or more \+1\/\+1 counters would be put on a (creature|permanent) you control, that many plus one \+1\/\+1 counters are put on (?:it|that creature|that permanent) instead$/i,
+      /^If one or more \+1\/\+1 counters would be put on an? ([a-z]+(?: or [a-z]+)*) you control, that many plus one \+1\/\+1 counters are put on (?:it|that creature|that permanent) instead$/i,
     );
-    if (bonusCounters?.[1]) {
-      result.replacements.push({
-        kind: "bonus_counters",
-        counter: "p1p1",
-        ...(bonusCounters[1].toLowerCase() === "creature" ? { creaturesOnly: true } : {}),
-      });
+    const bonusScope = bonusCounters?.[1]
+      ? counterReplacementScope(bonusCounters[1])
+      : null;
+    if (bonusScope) {
+      result.replacements.push({ kind: "bonus_counters", counter: "p1p1", ...bonusScope });
+      continue;
+    }
+
+    // Innkeeper's Talent level 3. "Or player" is read and DROPPED: nothing
+    // in this engine puts a counter on a player, so the half is silent
+    // rather than wrong — a documented omission, not an approximation.
+    if (
+      /^If you would put one or more counters on a permanent or player, put twice that many of each of those kinds of counters on that permanent or player instead$/i.test(
+        sentence,
+      )
+    ) {
+      result.replacements.push({ kind: "double_counters" });
       continue;
     }
 
@@ -15720,8 +15875,11 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
       }
     }
 
+    // "This ability triggers only once each turn" (Morbid Opportunist) and
+    // Terrasymbiosis's "Do this only once each turn" are the same cap, and
+    // both ride the trigger they follow.
     if (
-      /^This ability triggers only once each turn$/i.test(sentence) &&
+      /^(?:This ability triggers|Do this) only once each turn$/i.test(sentence) &&
       result.triggers.length > 0
     ) {
       const last = result.triggers[result.triggers.length - 1];

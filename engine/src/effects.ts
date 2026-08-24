@@ -2,7 +2,7 @@ import { abilitiesRemoved, cardMatchesSubtype, computedCard, dynamicCountOf } fr
 import { manaValueOf } from "./characteristics";
 import { cloneGameState } from "./clone";
 import { createCardDefinition, createCardInstance } from "./createGame";
-import { characteristicsOf, hasSubtype, isCreature, isInstantOrSorcery, isLand, isPlaneswalker } from "./cardTypes";
+import { characteristicsOf, hasSubtype, hasType, isCreature, isInstantOrSorcery, isLand, isPlaneswalker } from "./cardTypes";
 import { eliminatePlayerInPlace } from "./elimination";
 import { createId } from "./ids";
 import { allBattlefieldCreatureCount, cantLoseGame, creaturePower, creatureToughness, damageAfterReplacements, permanentsControlledBy, playerLifeLocked, playerProtectedFromEverything, wouldSkipDraw } from "./derived";
@@ -1951,6 +1951,55 @@ export function bindCardEffect(
       }
       return { kind: "move_all_counters", fromId, toId: chosen.cardId };
     }
+    case "move_counter": {
+      const from = chosenTargetAt(context, effect.from.index, state);
+      const to = chosenTargetAt(context, effect.to.index, state);
+      if (!from || !to || !("cardId" in from) || !("cardId" in to)) {
+        return null;
+      }
+      if (from.cardId === to.cardId) {
+        return null;
+      }
+      // Which counter moves is not printed — Nesting Grounds says "a
+      // counter". Auto-picked +1/+1 first and otherwise the first kind the
+      // donor carries, a documented approximation standing in for a choice
+      // the action has no field for. Picked at BIND, so the donor's state
+      // as the ability resolves is what is read.
+      const donor = state.cards[from.cardId];
+      const carried = Object.entries(donor?.counters ?? {}).filter(
+        ([, count]) => typeof count === "number" && count > 0,
+      );
+      if (carried.length === 0) {
+        return null;
+      }
+      const counter = carried.some(([name]) => name === "p1p1")
+        ? "p1p1"
+        : (carried[0]?.[0] ?? "p1p1");
+      return { kind: "move_counter", fromId: from.cardId, toId: to.cardId, counter };
+    }
+    case "distribute_counters": {
+      // CR 601.2d: the division is chosen up front and every chosen target
+      // gets at least one. One per target, then the remainder front-loaded
+      // onto the first — a documented auto-split.
+      const chosenIds: CardInstanceId[] = [];
+      for (const ref of effect.targets) {
+        const chosen = chosenTargetAt(context, ref.index, state);
+        if (chosen && "cardId" in chosen && !chosenIds.includes(chosen.cardId)) {
+          chosenIds.push(chosen.cardId);
+        }
+      }
+      if (chosenIds.length === 0) {
+        return null;
+      }
+      const placements: CardInstanceId[] = [];
+      for (const cardId of chosenIds.slice(0, effect.amount)) {
+        placements.push(cardId);
+      }
+      while (placements.length < effect.amount) {
+        placements.push(chosenIds[0]!);
+      }
+      return { kind: "distribute_counters", counter: effect.counter, cardIds: placements };
+    }
     case "copy_each_token": {
       const playerId = bindPlayerSelector(state, effect.playerId, context);
       if (!playerId) {
@@ -1995,6 +2044,8 @@ export function bindCardEffect(
         ...(effect.subtype ? { subtype: effect.subtype } : {}),
         ...(effect.controlledOnly ? { controllerId: context.controllerId } : {}),
         ...(effect.opponentsOnly ? { opponentsOf: context.controllerId } : {}),
+        ...(effect.colors ? { colors: [...effect.colors] } : {}),
+        ...(effect.enteredThisTurn ? { enteredThisTurn: true } : {}),
       };
     }
     case "overload_each":
@@ -2695,6 +2746,26 @@ export function tokenDoublingFactor(state: GameState, ownerId: PlayerId): number
   return factor;
 }
 
+/**
+ * Whether a counter replacement's type scope admits this permanent.
+ * `creaturesOnly` is the one-type form Doubling Season needed; `typesAny`
+ * is the disjunction Ozolith prints ("an artifact or creature you control").
+ * Read COMPUTED types, so an animated artifact counts as a creature.
+ */
+function counterReplacementCovers(
+  state: GameState,
+  cardId: CardInstanceId,
+  replacement: { creaturesOnly?: boolean; typesAny?: string[] },
+): boolean {
+  if (replacement.creaturesOnly && !isCreature(state, cardId)) {
+    return false;
+  }
+  if (replacement.typesAny && replacement.typesAny.length > 0) {
+    return replacement.typesAny.some((type) => hasType(state, cardId, type));
+  }
+  return true;
+}
+
 /** Doubling Season / Branching Evolution: 2^n for matching counter doublers. */
 export function counterDoublingFactor(
   state: GameState,
@@ -2716,7 +2787,7 @@ export function counterDoublingFactor(
       (replacement) =>
         replacement.kind === "double_counters" &&
         (!replacement.counter || replacement.counter === counter) &&
-        (!replacement.creaturesOnly || isCreature(state, cardId)),
+        counterReplacementCovers(state, cardId, replacement),
     ).length;
     if (matching === 0 || abilitiesRemoved(state, source.id)) {
       continue;
@@ -2741,7 +2812,7 @@ function counterBonusAmount(state: GameState, cardId: CardInstanceId, counter: s
       (replacement) =>
         replacement.kind === "bonus_counters" &&
         (!replacement.counter || replacement.counter === counter) &&
-        (!replacement.creaturesOnly || isCreature(state, cardId)),
+        counterReplacementCovers(state, cardId, replacement),
     ).length;
     if (matching === 0 || abilitiesRemoved(state, source.id)) {
       continue;
@@ -2780,13 +2851,14 @@ function applyAddCounter(
   if (!card) {
     throw new Error(`Unknown card ${cardId}`);
   }
-  card.counters[counter] =
-    (card.counters[counter] ?? 0) + counterBatchAmount(next, cardId, counter, amount);
+  const placed = counterBatchAmount(next, cardId, counter, amount);
+  card.counters[counter] = (card.counters[counter] ?? 0) + placed;
   // Fathom Mage: effect-driven placements notify counter_added watchers.
   // (Counters arriving through enter-with-counters setups do not — a
   // documented approximation.)
+  // Terrasymbiosis reads the amount, so the batch total goes on the event.
   if (card.zone === "battlefield") {
-    dispatchEventsInPlace(next, [{ kind: "counter_added", cardId, counter }]);
+    dispatchEventsInPlace(next, [{ kind: "counter_added", cardId, counter, amount: placed }]);
   }
   return next;
 }
@@ -4139,6 +4211,18 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
           if (effect.subtype && !cardMatchesSubtype(next, card.id, effect.subtype)) {
             continue;
           }
+          // Oran-Rief: colour is read COMPUTED, so a creature turned green by
+          // a static counts, and "entered this turn" is the timestamp against
+          // the turn's opening one — which catches tokens made this turn too.
+          if (effect.colors && effect.colors.length > 0) {
+            const colors = computedCard(next, card.id)?.characteristics.colors ?? [];
+            if (!effect.colors.some((color) => colors.includes(color))) {
+              continue;
+            }
+          }
+          if (effect.enteredThisTurn && card.timestamp < next.turn.startTimestamp) {
+            continue;
+          }
           card.counters[effect.counter] =
             (card.counters[effect.counter] ?? 0) +
             counterBatchAmount(next, card.id, effect.counter, effect.amount);
@@ -4641,6 +4725,41 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
           }
         }
         moving.counters = {};
+        break;
+      }
+      case "move_counter": {
+        // Nesting Grounds: exactly one counter changes permanents. The
+        // arrival goes through applyAddCounter so doublers and
+        // counter_added watchers see it, but the removal is a plain
+        // decrement — taking a counter off is not an engine event.
+        const donor = state.cards[effect.fromId];
+        const receiver = state.cards[effect.toId];
+        if (
+          !donor ||
+          !receiver ||
+          donor.zone !== "battlefield" ||
+          receiver.zone !== "battlefield" ||
+          (donor.counters[effect.counter] ?? 0) <= 0
+        ) {
+          next = cloneGameState(state);
+          break;
+        }
+        next = cloneGameState(state);
+        const losing = next.cards[effect.fromId]!;
+        losing.counters[effect.counter] = (losing.counters[effect.counter] ?? 0) - 1;
+        if (losing.counters[effect.counter]! <= 0) {
+          delete losing.counters[effect.counter];
+        }
+        next = applyAddCounter(next, effect.toId, effect.counter, 1);
+        break;
+      }
+      case "distribute_counters": {
+        next = cloneGameState(state);
+        for (const cardId of effect.cardIds) {
+          if (next.cards[cardId]?.zone === "battlefield") {
+            next = applyAddCounter(next, cardId, effect.counter, 1);
+          }
+        }
         break;
       }
       case "may_sacrifice": {

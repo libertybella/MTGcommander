@@ -993,12 +993,29 @@ function triggerMatchesEvent(
     return false;
   }
   if (event.kind === "counter_added") {
-    // Fathom Mage: a named counter landed on the watcher itself.
-    return (
-      trigger.event === "counter_added" &&
-      event.cardId === watcher.id &&
-      (!trigger.subjectFilter?.counterName || trigger.subjectFilter.counterName === event.counter)
-    );
+    if (trigger.event !== "counter_added") {
+      return false;
+    }
+    if (
+      trigger.subjectFilter?.counterName &&
+      trigger.subjectFilter.counterName !== event.counter
+    ) {
+      return false;
+    }
+    // Fathom Mage watches ITSELF, and is the shape this event was built for,
+    // so "self" stays the default. Terrasymbiosis watches the whole board it
+    // controls, and says so.
+    if ((trigger.watch ?? "self") === "controlled") {
+      const subject = state.cards[event.cardId];
+      if (!subject || subject.controllerId !== watcher.controllerId) {
+        return false;
+      }
+      if (trigger.excludeSelf && event.cardId === watcher.id) {
+        return false;
+      }
+      return subjectMatchesFilter(state, event.cardId, trigger.subjectFilter, watcher);
+    }
+    return event.cardId === watcher.id;
   }
   if (trigger.event === "counter_added") {
     return false;
@@ -1223,7 +1240,7 @@ export function dispatchEventsInPlace(state: GameState, events: EngineEvent[]): 
               ? event.amount
               : event.kind === "dies"
                 ? event.powerAtDeath
-                : event.kind === "leaves_battlefield"
+                : event.kind === "leaves_battlefield" || event.kind === "counter_added"
                   ? event.amount
                   : undefined;
           const causeKind =

@@ -124,6 +124,10 @@ function assignNextPlayerTurn(state: GameState, nextId: PlayerId): void {
     state.turn.number += 1;
   }
   state.turn.activePlayerId = nextId;
+  // "Entered this turn" resets every TURN, not every round — `turn.number`
+  // counts rounds, so it cannot carry this. Stamped here because this is the
+  // one place a turn begins, extra turns included.
+  state.turn.startTimestamp = state.nextTimestamp;
 }
 
 function nextTurnPlayerId(state: GameState, currentId: PlayerId): PlayerId {

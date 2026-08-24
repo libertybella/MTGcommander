@@ -538,6 +538,15 @@ function matches(
   if (selector.withCounter && (card.counters[selector.withCounter] ?? 0) <= 0) {
     return false;
   }
+  // Innkeeper's Talent: "with counters on them" — any kind at all. A zeroed
+  // entry left behind by a removal is not a counter, so the values are read
+  // rather than the keys.
+  if (
+    selector.withAnyCounter &&
+    !Object.values(card.counters).some((count) => typeof count === "number" && count > 0)
+  ) {
+    return false;
+  }
   // Counters have to be added by hand here: this runs during layer 6 and
   // layer 7d has not applied them to `computed` yet, so a creature with
   // +1/+1 counters would otherwise be read at its printed size.

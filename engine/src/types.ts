@@ -52,6 +52,17 @@ export type TurnState = {
   activePlayerId: PlayerId;
   phase: Phase;
   step: Step;
+  /**
+   * Oran-Rief, the Vastwood: "each green creature that entered this turn".
+   * The value `nextTimestamp` held when this turn began — a permanent
+   * entered this turn exactly when `card.timestamp >= startTimestamp`.
+   *
+   * Derived rather than stamped per card on purpose: a card's timestamp is
+   * written at battlefield entry and nowhere else, but there are six such
+   * entry sites (four of them token paths), and a per-card flag would be
+   * silently missed by the seventh one somebody adds.
+   */
+  startTimestamp: number;
 };
 
 export type PlayerZones = {
@@ -1272,6 +1283,35 @@ export type GameEffect =
     }
   /** The Ozolith's combat trigger: every counter hops to the target. */
   | { kind: "move_all_counters"; fromId: CardInstanceId; toId: CardInstanceId }
+  /**
+   * Nesting Grounds: "Move A counter from target permanent you control onto
+   * a second target permanent" — one counter, of a kind the source picks,
+   * between two independently chosen permanents.
+   *
+   * `counter` is resolved at bind from what the donor actually carries
+   * (documented auto-pick: +1/+1 first, then whatever else is there, since a
+   * player moving a counter almost always means the growth one). Moving
+   * nothing when the donor is bare is correct — the printed ability has no
+   * "if you do" rider to fail.
+   */
+  | {
+      kind: "move_counter";
+      fromId: CardInstanceId;
+      toId: CardInstanceId;
+      counter: string;
+    }
+  /**
+   * The Earth Crystal: "Distribute two +1/+1 counters among one or two
+   * target creatures you control." Distinct from N separate add_counters
+   * because the DIVISION is chosen as the ability is put on the stack
+   * (CR 601.2d) and each chosen target must get at least one.
+   */
+  | {
+      kind: "distribute_counters";
+      counter: string;
+      /** One entry per counter placed; repeats mean two on one permanent. */
+      cardIds: CardInstanceId[];
+    }
   /** Bristly Bill: "Double the number of +1/+1 counters on each creature you
    * control" — a one-shot doubling of what is already there, not a
    * replacement on future counters. */
@@ -1549,6 +1589,12 @@ export type GameEffect =
       controllerId?: PlayerId;
       /** Archfiend of Ifnir: everyone EXCEPT this player. */
       opponentsOf?: PlayerId;
+      /** Oran-Rief, the Vastwood: "each GREEN creature". Read computed, so a
+       * creature made green by a static qualifies. */
+      colors?: Color[];
+      /** Oran-Rief: "…that entered this turn". Compared against
+       * `turn.startTimestamp`, so tokens made this turn count too. */
+      enteredThisTurn?: boolean;
     }
   | {
       kind: "overload_each";
@@ -2358,6 +2404,18 @@ export type CardEffect =
     }
   /** The Ozolith's combat trigger: every counter hops to the target. */
   | { kind: "move_all_counters"; cardId: CardIdSelector; target: ChosenTargetRef }
+  /** Nesting Grounds: one counter, from the first chosen permanent to the
+   * second. Two independent target slots, so both are `ChosenTargetRef`. */
+  | { kind: "move_counter"; from: ChosenTargetRef; to: ChosenTargetRef }
+  /** The Earth Crystal: N counters divided among the chosen targets. The
+   * division is auto-taken one-per-target and then front-loaded, which is
+   * documented; the engine has no field for a player-chosen split. */
+  | {
+      kind: "distribute_counters";
+      counter: string;
+      amount: number;
+      targets: ChosenTargetRef[];
+    }
   | { kind: "double_counters_on_team"; playerId: PlayerSelector; counter: string }
   | { kind: "double_counters_on"; cardId: CardIdSelector; counter: string }
   /** Deepglow Skate: every KIND of counter at once, on every chosen
@@ -2709,6 +2767,10 @@ export type CardEffect =
       controlledOnly?: boolean;
       /** Archfiend of Ifnir: "each creature your opponents control". */
       opponentsOnly?: boolean;
+      /** Oran-Rief, the Vastwood: "each green creature". */
+      colors?: Color[];
+      /** Oran-Rief: "…that entered this turn". */
+      enteredThisTurn?: boolean;
     }
   | {
       kind: "destroy_all";
@@ -3212,7 +3274,15 @@ export type EngineEvent =
   /** A creature was dealt damage (Enrage — Apex Altisaur). */
   | { kind: "damaged"; cardId: CardInstanceId }
   /** A counter landed on a battlefield card (Fathom Mage). */
-  | { kind: "counter_added"; cardId: CardInstanceId; counter: string }
+  | {
+      kind: "counter_added";
+      cardId: CardInstanceId;
+      counter: string;
+      /** How many landed in this batch — Terrasymbiosis draws that many.
+       * The batch total AFTER doublers and bonuses, which is what the
+       * printed "one or more counters" refers to. */
+      amount: number;
+    }
   /** A player discarded a card (Waste Not). Subject is the discarded card. */
   | { kind: "discards"; cardId: CardInstanceId; playerId: PlayerId };
 
@@ -3639,10 +3709,25 @@ export type ReplacementEffect =
   | { kind: "double_tokens" }
   /** Doubling Season / Branching Evolution: counters put on permanents the
    * controller controls are doubled; optional counter/creature restriction. */
-  | { kind: "double_counters"; counter?: string; creaturesOnly?: boolean }
+  | {
+      kind: "double_counters";
+      counter?: string;
+      creaturesOnly?: boolean;
+      /** Innkeeper's Talent: "on a permanent or player you control". Any of
+       * these card types qualifies, where `creaturesOnly` can only say the
+       * one. The two never appear together. */
+      typesAny?: string[];
+    }
   /** Hardened Scales-family: "that many plus one" (additive, applied before
    * doublers — the controller's optimal CR 616.1 ordering). */
-  | { kind: "bonus_counters"; counter?: string; creaturesOnly?: boolean }
+  | {
+      kind: "bonus_counters";
+      counter?: string;
+      creaturesOnly?: boolean;
+      /** Ozolith, the Shattered Spire: "on an artifact or creature you
+       * control" — either type qualifies. */
+      typesAny?: string[];
+    }
   /** Rhox Faithmender / Boon Reflection: life gained is doubled. */
   | { kind: "double_life_gain" }
   /** Teferi's Ageless Insight: draws are doubled, except the turn-based
@@ -3805,6 +3890,9 @@ export type EffectSelector = {
   /** "Creatures you control with +1/+1 counters on them" (Herald of Secret
    * Streams). */
   withCounter?: string;
+  /** Innkeeper's Talent: "Permanents you control with counters on them" —
+   * any counter of any kind, where `withCounter` names one. */
+  withAnyCounter?: boolean;
   /** Delney: "Creatures you control with power 2 or less". */
   maxPower?: number;
   /** Tetsuko: "with power OR toughness 1 or less". One field rather than

@@ -870,6 +870,72 @@ more questions it can now ask:
   (Bennie Bracks). Reads the existing per-player `createdTokenThisTurn`
   list, and asks whether the CONTROLLER is in it — an opponent's Treasure
   must not satisfy it.
+- **Counter replacements read a type SCOPE** — `double_counters` and
+  `bonus_counters` each carried a lone `creaturesOnly` boolean, which is why
+  nothing but "a creature" or "a permanent" could be said. Both now also
+  take `typesAny`, and one shared `counterReplacementScope` reads the printed
+  phrase for both. Ozolith, the Shattered Spire covers "an artifact or
+  creature you control"; an enchantment is left alone, because the printed
+  list is closed.
+
+  Innkeeper's Talent's level 3 doubles EVERY kind of counter on every
+  permanent. Its "or player" half is read and DROPPED: nothing in this
+  engine puts a counter on a player, so the omission is silent rather than
+  wrong — not an approximation, a gap with nothing behind it yet.
+
+- **`EffectSelector.withAnyCounter`** — "Permanents you control with
+  counters on them have ward {1}". `withCounter` names a kind; this asks
+  whether there is any counter at all, and reads the counter VALUES rather
+  than the keys, so a zeroed entry left behind by a removal does not keep
+  the ward alive.
+
+- **`move_counter`** — Nesting Grounds: one counter, from one chosen
+  permanent to another. Two independent target slots, because the donor is
+  restricted to what you control and the receiver is not.
+
+  Which counter moves is not printed. It is auto-picked at bind, +1/+1 first
+  and otherwise the first kind the donor carries — a documented stand-in for
+  a choice the action has no field for. A bare donor moves nothing and does
+  not fail the activation, since the printed ability has no "if you do".
+
+  The ARRIVAL goes through the same placement path everything else does, so
+  Doubling Season turns one counter moved into two arrived, which is the
+  printed ruling. The removal is a plain decrement: taking a counter off is
+  not an engine event.
+
+- **`distribute_counters`** — The Earth Crystal: "Distribute two +1/+1
+  counters among one or two target creatures you control." The count of
+  COUNTERS and the count of SLOTS are different numbers and are read
+  separately; every slot after the first is optional, because "one or two"
+  permits one. The division is auto-split one-per-target and the remainder
+  front-loaded — documented, since CR 601.2d wants the player to choose it
+  and there is no field for that choice.
+
+- **`counter_on_each_creature.colors` / `.enteredThisTurn`** — Oran-Rief,
+  the Vastwood. Colour is read COMPUTED, so a creature made green by a
+  static qualifies. Neither rider restricts the creature to one controller:
+  an opponent's green creature that came down this turn gets a counter too,
+  which is what the card says.
+
+- **`TurnState.startTimestamp`** — what "entered this turn" is measured
+  against: the value `nextTimestamp` held when the turn began. A permanent
+  entered this turn exactly when its own timestamp is at least that.
+
+  Derived rather than stamped per card deliberately. A card's timestamp is
+  written at battlefield entry and nowhere else, but there are six such
+  entry sites — four of them token paths — and a per-card flag would have
+  been silently missed by the seventh one somebody adds. It is stamped in
+  `assignNextPlayerTurn`, the one place a turn begins, extra turns included.
+  `turn.number` could not carry this: it counts ROUNDS, not turns.
+
+- **`counter_added` learned to watch a board** — Terrasymbiosis. The event
+  existed for Fathom Mage, which watches ITSELF, so "self" stays the default
+  and a board-watching head has to say `watch: "controlled"`. The event now
+  carries the batch AMOUNT (after doublers and bonuses), which is what "draw
+  that many cards" reads through the existing `subject_amount`. "Do this
+  only once each turn" is the same `oncePerTurn` latch Morbid Opportunist
+  uses, and both spellings now reach it.
+
 - **Sagas (CR 714)** — `definition.saga.chapters`, indexed from chapter I. A
   lore counter goes on as the Saga enters, and again after its controller's
   draw step — modelled at the start of precombat main, which is the same

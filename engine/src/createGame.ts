@@ -740,6 +740,7 @@ export function createGameState(options: CreateGameOptions): GameState {
       activePlayerId: first.id,
       phase: "beginning",
       step: "untap",
+      startTimestamp: 0,
     },
     stack: [],
     cards: {},

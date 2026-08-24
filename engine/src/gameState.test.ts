@@ -95,6 +95,7 @@ function populateForRoundTrip(game: GameState): GameState {
     activePlayerId: p2.id,
     phase: "combat",
     step: "declareAttackers",
+    startTimestamp: 0,
   };
   game.stack.push({
     id: "stack-1",
