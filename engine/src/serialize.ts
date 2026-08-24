@@ -4339,6 +4339,12 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
             : expectNumber(value.maxManaValue, `${label}.maxManaValue`),
         ...(value.toHandAllowed === true ? { toHandAllowed: true } : {}),
       };
+    case "look_top_card":
+      return {
+        kind,
+        playerId: parsePlayerSelector(value.playerId, `${label}.playerId`),
+        viewerId: parsePlayerSelector(value.viewerId, `${label}.viewerId`),
+      };
     case "add_subtypes":
       return {
         kind,
@@ -6383,6 +6389,13 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
       playerId: expectString(value.playerId, `${label}.playerId`),
       maxManaValue: expectNumber(value.maxManaValue, `${label}.maxManaValue`),
       ...(value.toHandAllowed === true ? { toHandAllowed: true } : {}),
+    };
+  }
+  if (kind === "look_top_card") {
+    return {
+      kind,
+      playerId: expectString(value.playerId, `${label}.playerId`),
+      viewerId: expectString(value.viewerId, `${label}.viewerId`),
     };
   }
   if (kind === "add_subtypes") {

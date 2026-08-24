@@ -2463,6 +2463,13 @@ export function bindCardEffect(
         ? { kind: "add_subtypes", cardId: gainerId, subtypes: [...effect.subtypes] }
         : null;
     }
+    case "look_top_card": {
+      const lookedAt = bindPlayerSelector(state, effect.playerId, context);
+      const viewer = bindPlayerSelector(state, effect.viewerId, context);
+      return lookedAt && viewer
+        ? { kind: "look_top_card", playerId: lookedAt, viewerId: viewer }
+        : null;
+    }
     default: {
       const exhaustive: never = effect;
       throw new Error(`Unknown card effect ${(exhaustive as CardEffect).kind}`);
@@ -6160,6 +6167,20 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
             ...existing,
             ...effect.subtypes.filter((subtype) => !existing.includes(subtype)),
           ];
+        }
+        break;
+      }
+      case "look_top_card": {
+        // A LOOK, not a reveal: only the viewer sees it. Nothing happens at
+        // all with an empty library, which is the honest reading of
+        // "look at the top card" when there is none.
+        requirePlayer(state, effect.playerId);
+        requirePlayer(state, effect.viewerId);
+        next = cloneGameState(state);
+        const top = next.players.find((entry) => entry.id === effect.playerId)
+          ?.zones.library[0];
+        if (top) {
+          next.reveals.push({ viewerId: effect.viewerId, cardIds: [top] });
         }
         break;
       }

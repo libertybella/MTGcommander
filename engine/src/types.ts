@@ -1480,6 +1480,12 @@ export type GameEffect =
   | { kind: "discard_unless_attacked"; playerId: PlayerId; count: number }
   | { kind: "amass"; playerId: PlayerId; amount: number; subtype?: string }
   | { kind: "reveal_zone"; fromPlayerId: PlayerId; toPlayerId: PlayerId; zone: "hand" }
+  /**
+   * Mishra's Bauble: "Look at the top card of target player's library."
+   * A LOOK, not a reveal — only `viewerId` sees it, which is the whole
+   * point of aiming it at an opponent.
+   */
+  | { kind: "look_top_card"; playerId: PlayerId; viewerId: PlayerId }
   | {
       kind: "choose_card";
       chooserId: PlayerId;
@@ -2758,6 +2764,13 @@ export type CardEffect =
   | { kind: "discard_random"; playerId: PlayerSelector; count: number }
   | { kind: "discard_unless_attacked"; playerId: PlayerSelector; count: number }
   | { kind: "amass"; playerId: PlayerSelector; amount: number | "x"; subtype?: string }
+  | {
+      kind: "look_top_card";
+      /** Whose library is looked at. */
+      playerId: PlayerSelector;
+      /** Who sees it — the effect's controller. */
+      viewerId: PlayerSelector;
+    }
   | {
       kind: "reveal_zone";
       fromPlayerId: PlayerSelector;

@@ -870,6 +870,14 @@ more questions it can now ask:
   (Bennie Bracks). Reads the existing per-player `createdTokenThisTurn`
   list, and asks whether the CONTROLLER is in it — an opponent's Treasure
   must not satisfy it.
+- **`look_top_card`** — Mishra's Bauble. A LOOK, not a reveal: only the
+  effect's controller sees the card, which is the whole point of aiming it
+  at an opponent. It moves nothing, and an empty library is not an error —
+  "look at the top card" when there is none simply does nothing.
+
+  The delayed draw that is the rest of the card was already understood; the
+  look was the only gap.
+
 - **Arcane Lighthouse: losing a keyword is not enough if it can be given
   back.** The removal already existed as Shadowspear's
   `opponents_lose_keywords_until_eot`; this narrows it to CREATURES (where

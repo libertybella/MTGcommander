@@ -2511,6 +2511,34 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
 
 function compileSimpleClauseInner(sentence: string): SimpleClause | null {
   /**
+   * Mishra's Bauble: "Look at the top card of target player's library."
+   * A LOOK, not a reveal — only the effect's controller sees it, which is
+   * the whole point of aiming it at an opponent.
+   */
+  if (/^Look at the top card of target player's library$/i.test(sentence)) {
+    return {
+      targetRequirements: [{ kind: "player" }],
+      effects: [
+        {
+          kind: "look_top_card",
+          playerId: { type: "chosen", index: 0 },
+          viewerId: "controller",
+        },
+      ],
+    };
+  }
+
+  /** The same look, aimed at yourself. */
+  if (/^Look at the top card of your library$/i.test(sentence)) {
+    return {
+      targetRequirements: [],
+      effects: [
+        { kind: "look_top_card", playerId: "controller", viewerId: "controller" },
+      ],
+    };
+  }
+
+  /**
    * Portal to Phyrexia's rider: "It's a Phyrexian in addition to its other
    * types." A characteristic the reanimated permanent keeps for as long as
    * it is on the battlefield — "in addition to" is the whole of it, so the

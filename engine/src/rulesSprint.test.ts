@@ -52724,3 +52724,161 @@ describe("wave 340: losing a keyword is not enough if it can be given back", () 
     });
   });
 });
+
+describe("wave 341: a look is not a reveal", () => {
+  const compile = (name: string, typeLine: string, oracleText: string, manaCost = "") =>
+    compileOracleCard({
+      oracleId: name.toLowerCase().replace(/[^a-z]+/g, "-"),
+      name,
+      manaCost,
+      typeLine,
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  it("compiles Mishra's Bauble", () => {
+    const compiled = compile(
+      "Mishra's Bauble",
+      "Artifact",
+      "{T}, Sacrifice this artifact: Look at the top card of target player's library. Draw a card at the beginning of the next turn's upkeep.",
+      "{0}",
+    );
+    expect(compiled.notes).toEqual([]);
+    const ability = compiled.definition.activated[0];
+    expect(ability?.targetRequirements).toEqual([{ kind: "player" }]);
+    expect(ability?.effects[0]).toEqual({
+      kind: "look_top_card",
+      playerId: { type: "chosen", index: 0 },
+      viewerId: "controller",
+    });
+    // The delayed draw is the rest of the card and was already understood.
+    expect(ability?.effects[1]).toMatchObject({ kind: "delayed_trigger", step: "upkeep" });
+  });
+
+  it("compiles the look aimed at yourself", () => {
+    const compiled = compile(
+      "Self Look",
+      "Artifact",
+      "{T}: Look at the top card of your library.",
+      "{1}",
+    );
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.activated[0]?.effects[0]).toEqual({
+      kind: "look_top_card",
+      playerId: "controller",
+      viewerId: "controller",
+    });
+    expect(compiled.definition.activated[0]?.targetRequirements).toEqual([]);
+  });
+
+  const stack = (game: GameState, playerId: string, count: number) => {
+    const player = game.players.find((entry) => entry.id === playerId)!;
+    player.zones.library = [];
+    const ids: string[] = [];
+    for (let index = 0; index < count; index += 1) {
+      const definition = createCardDefinition({
+        name: `Card${index}`,
+        typeLine: "Sorcery",
+        manaCost: "{1}",
+      });
+      game.definitions[definition.id] = definition;
+      const card = createCardInstance({
+        definitionId: definition.id,
+        ownerId: playerId,
+        zone: "library",
+      });
+      game.cards[card.id] = card;
+      player.zones.library.push(card.id);
+      ids.push(card.id);
+    }
+    return ids;
+  };
+
+  it("shows the top card to the looker and to nobody else", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const theirs = stack(game, p2.id, 3);
+    const looked = applyEffect(game, {
+      kind: "look_top_card",
+      playerId: p2.id,
+      viewerId: p1.id,
+    });
+    expect(looked.reveals).toEqual([{ viewerId: p1.id, cardIds: [theirs[0]] }]);
+  });
+
+  it("shows the TOP card, not any other", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const theirs = stack(game, p2.id, 3);
+    const looked = applyEffect(game, {
+      kind: "look_top_card",
+      playerId: p2.id,
+      viewerId: p1.id,
+    });
+    expect(looked.reveals[0]?.cardIds).not.toContain(theirs[1]);
+    expect(looked.reveals[0]?.cardIds).toHaveLength(1);
+  });
+
+  it("leaves the card where it is", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const theirs = stack(game, p2.id, 3);
+    const looked = applyEffect(game, {
+      kind: "look_top_card",
+      playerId: p2.id,
+      viewerId: p1.id,
+    });
+    // Looking moves nothing: the library is untouched.
+    expect(looked.players.find((entry) => entry.id === p2.id)!.zones.library).toEqual(theirs);
+  });
+
+  it("does nothing at all with an empty library", () => {
+    const { game, p1, p2 } = twoPlayers();
+    stack(game, p2.id, 0);
+    const looked = applyEffect(game, {
+      kind: "look_top_card",
+      playerId: p2.id,
+      viewerId: p1.id,
+    });
+    // "Look at the top card" when there is none is not an error.
+    expect(looked.reveals).toEqual([]);
+  });
+
+  it("round trips", () => {
+    const { game, p1 } = twoPlayers();
+    const definition = createCardDefinition({
+      name: "Wave 341 Bauble",
+      typeLine: "Artifact",
+      manaCost: "{0}",
+      activated: [
+        {
+          tap: true,
+          manaCost: "",
+          sacrificeSelf: true,
+          effects: [
+            {
+              kind: "look_top_card",
+              playerId: { type: "chosen", index: 0 },
+              viewerId: "controller",
+            },
+          ],
+          targetRequirements: [{ kind: "player" }],
+        },
+      ],
+    });
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({
+      definitionId: definition.id,
+      ownerId: p1.id,
+      zone: "battlefield",
+    });
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === p1.id)!.zones.battlefield.push(card.id);
+    const round = parseGameState(serializeGameState(game));
+    expect(round.definitions[definition.id]?.activated[0]?.effects[0]).toEqual({
+      kind: "look_top_card",
+      playerId: { type: "chosen", index: 0 },
+      viewerId: "controller",
+    });
+  });
+});
