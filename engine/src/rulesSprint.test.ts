@@ -51786,3 +51786,199 @@ describe("wave 335: a tax you cannot decline", () => {
     expect(round.definitions[definition.id]?.targetingLifeTax).toBe(3);
   });
 });
+
+describe("wave 336: a permanent that blinks itself, and comes back tapped", () => {
+  const compile = (
+    name: string,
+    typeLine: string,
+    oracleText: string,
+    manaCost = "",
+    pt: [string, string] | null = null,
+  ) =>
+    compileOracleCard({
+      oracleId: name.toLowerCase().replace(/[^a-z]+/g, "-"),
+      name,
+      manaCost,
+      typeLine,
+      power: pt?.[0] ?? null,
+      toughness: pt?.[1] ?? null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  const put = (game: GameState, ownerId: string, definition: CardDefinition) => {
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({
+      definitionId: definition.id,
+      ownerId,
+      zone: "battlefield",
+    });
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === ownerId)!.zones.battlefield.push(card.id);
+    card.summoningSick = false;
+    return card.id;
+  };
+
+  it("compiles the self blink", () => {
+    const compiled = compile(
+      "Nezahal, Primal Tide",
+      "Legendary Creature — Elder Dinosaur",
+      "Discard three cards: Exile this creature. Return it to the battlefield tapped under its owner's control at the beginning of the next end step.",
+      "{5}{U}{U}",
+      ["7", "7"],
+    );
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.activated[0]?.effects).toEqual([
+      { kind: "exile_return_end_step", self: true, returnsTapped: true },
+    ]);
+  });
+
+  it("leaves the targeted blink targeted", () => {
+    // Charming Prince exiles ANOTHER creature and has a target; the self
+    // form has none, and conflating them would drop the target silently.
+    const prince = compile(
+      "Charming Prince",
+      "Creature — Human Noble",
+      "When this creature enters, choose one —\n• Scry 2.\n• You gain 3 life.\n• Exile another target creature you own. Return it to the battlefield under your control at the beginning of the next end step.",
+      "{1}{W}",
+      ["2", "2"],
+    );
+    expect(prince.notes).toEqual([]);
+    // The blink mode keeps a TARGET; conflating it with the self form
+    // would have dropped that silently.
+    const blinkMode = prince.definition.triggers[0]?.modes?.find((mode) =>
+      mode.effects.some((effect) => effect.kind === "exile_return_end_step"),
+    );
+    expect(blinkMode?.targetRequirements).toHaveLength(1);
+    expect(blinkMode?.effects[0]).toMatchObject({ target: { type: "chosen", index: 0 } });
+  });
+
+  it("reads an untapped return as untapped", () => {
+    const compiled = compile(
+      "Plain Blinker",
+      "Creature — Bear",
+      "{2}: Exile this creature. Return it to the battlefield under its owner's control at the beginning of the next end step.",
+      "{1}{G}",
+      ["2", "2"],
+    );
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.activated[0]?.effects[0]).toEqual({
+      kind: "exile_return_end_step",
+      self: true,
+    });
+  });
+
+  const nezahal = () =>
+    createCardDefinition({
+      name: "Nezahal, Primal Tide",
+      typeLine: "Legendary Creature — Elder Dinosaur",
+      manaCost: "{5}{U}{U}",
+      power: 7,
+      toughness: 7,
+    });
+
+  const blink = (game: GameState, playerId: string, sourceId: string, tapped: boolean) =>
+    applyEffects(
+      game,
+      bindCardEffects(
+        game,
+        [
+          {
+            kind: "exile_return_end_step",
+            self: true,
+            ...(tapped ? { returnsTapped: true } : {}),
+          },
+        ],
+        { controllerId: playerId, sourceId },
+      ),
+    );
+
+  it("exiles the source with no target at all", () => {
+    const { game, p1 } = twoPlayers();
+    const nezahalId = put(game, p1.id, nezahal());
+    const gone = blink(game, p1.id, nezahalId, true);
+    expect(gone.cards[nezahalId]?.zone).toBe("exile");
+    expect(gone.delayedEndStep).toEqual([
+      {
+        cardId: nezahalId,
+        action: "battlefield",
+        controllerId: p1.id,
+        returnsTapped: true,
+      },
+    ]);
+  });
+
+  it("binds nothing when there is no source to blink", () => {
+    const { game, p1 } = twoPlayers();
+    const bound = bindCardEffects(
+      game,
+      [{ kind: "exile_return_end_step", self: true }],
+      { controllerId: p1.id, sourceId: null },
+    );
+    expect(bound).toEqual([]);
+  });
+
+  it("brings it back tapped at the end step", () => {
+    const { game, p1 } = twoPlayers();
+    const nezahalId = put(game, p1.id, nezahal());
+    let state = blink(game, p1.id, nezahalId, true);
+    state = {
+      ...state,
+      turn: { ...state.turn, phase: "combat", step: "endCombat" },
+      priorityPlayerId: p1.id,
+    };
+    while (state.turn.step !== "end") {
+      state = advanceStep(state);
+    }
+    expect(state.cards[nezahalId]?.zone).toBe("battlefield");
+    // "Return it to the battlefield TAPPED" — the whole drawback.
+    expect(state.cards[nezahalId]?.tapped).toBe(true);
+  });
+
+  it("brings an untapped blink back untapped", () => {
+    const { game, p1 } = twoPlayers();
+    const nezahalId = put(game, p1.id, nezahal());
+    let state = blink(game, p1.id, nezahalId, false);
+    state = {
+      ...state,
+      turn: { ...state.turn, phase: "combat", step: "endCombat" },
+      priorityPlayerId: p1.id,
+    };
+    while (state.turn.step !== "end") {
+      state = advanceStep(state);
+    }
+    expect(state.cards[nezahalId]?.tapped).toBe(false);
+  });
+
+  it("round trips both halves", () => {
+    const { game, p1 } = twoPlayers();
+    const definition = createCardDefinition({
+      name: "Wave 336 Blinker",
+      typeLine: "Legendary Creature — Elder Dinosaur",
+      manaCost: "{5}{U}{U}",
+      power: 7,
+      toughness: 7,
+      activated: [
+        {
+          tap: false,
+          manaCost: "",
+          discardCost: { count: 3 },
+          effects: [{ kind: "exile_return_end_step", self: true, returnsTapped: true }],
+          targetRequirements: [],
+        },
+      ],
+    });
+    const cardId = put(game, p1.id, definition);
+    const blinked = blink(game, p1.id, cardId, true);
+    const round = parseGameState(serializeGameState(blinked));
+    expect(round.definitions[definition.id]?.activated[0]?.effects[0]).toEqual({
+      kind: "exile_return_end_step",
+      self: true,
+      returnsTapped: true,
+    });
+    // The pending return is game state: without it a reopened table brings
+    // the card back UNTAPPED and the drawback is gone.
+    expect(round.delayedEndStep[0]).toMatchObject({ returnsTapped: true });
+  });
+});

@@ -2226,19 +2226,28 @@ export function bindCardEffect(
       };
     }
     case "exile_return_end_step": {
-      const chosen = chosenTargetAt(context, effect.target.index, state);
-      if (!chosen || chosen.type !== "creature") {
+      // Nezahal blinks itself, so there is no target to read.
+      const blinkedId = effect.self
+        ? context.sourceId
+        : effect.target
+          ? (() => {
+              const chosen = chosenTargetAt(context, effect.target.index, state);
+              return chosen?.type === "creature" ? chosen.cardId : null;
+            })()
+          : null;
+      if (!blinkedId) {
         return null;
       }
       // Parting Gust returns the exiled card to its OWNER, not the caster.
       const returnTo = effect.toOwner
-        ? state.cards[chosen.cardId]?.ownerId ?? context.controllerId
+        ? state.cards[blinkedId]?.ownerId ?? context.controllerId
         : context.controllerId;
       return {
         kind: "exile_return_end_step",
-        cardId: chosen.cardId,
+        cardId: blinkedId,
         controllerId: returnTo,
         ...(effect.withCounter ? { withCounter: effect.withCounter } : {}),
+        ...(effect.returnsTapped ? { returnsTapped: true } : {}),
       };
     }
     case "adapt": {
@@ -5800,6 +5809,7 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
             action: "battlefield",
             controllerId: effect.controllerId,
             ...(effect.withCounter ? { withCounter: effect.withCounter } : {}),
+            ...(effect.returnsTapped ? { returnsTapped: true } : {}),
           });
         }
         break;

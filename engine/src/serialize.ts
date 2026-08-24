@@ -2116,6 +2116,9 @@ export function parseGameState(json: string): GameState {
               return {
                 cardId: expectString(entry.cardId, `delayedEndStep[${index}].cardId`),
                 action,
+                // Nezahal comes back TAPPED; without this the drawback is
+                // lost the moment a table is reopened mid-blink.
+                ...(entry.returnsTapped === true ? { returnsTapped: true } : {}),
                 ...(entry.withCounter === undefined
                   ? {}
                   : {
@@ -3906,8 +3909,12 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
     case "exile_return_end_step":
       return {
         kind,
-        target: parseChosenTargetRef(value.target, `${label}.target`),
+        // Nezahal blinks ITSELF, so there is no target to read.
+        ...(value.self === true
+          ? { self: true }
+          : { target: parseChosenTargetRef(value.target, `${label}.target`) }),
         ...(value.toOwner === true ? { toOwner: true } : {}),
+        ...(value.returnsTapped === true ? { returnsTapped: true } : {}),
         ...(value.withCounter === undefined
           ? {}
           : { withCounter: expectString(value.withCounter, `${label}.withCounter`) }),
@@ -6910,6 +6917,7 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
       kind,
       cardId: expectString(value.cardId, `${label}.cardId`),
       controllerId: expectString(value.controllerId, `${label}.controllerId`),
+      ...(value.returnsTapped === true ? { returnsTapped: true } : {}),
       ...(value.withCounter === undefined
         ? {}
         : { withCounter: expectString(value.withCounter, `${label}.withCounter`) }),

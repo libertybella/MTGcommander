@@ -958,6 +958,8 @@ export type GameState = {
   delayedEndStep: Array<{
     cardId: CardInstanceId;
     action: "sacrifice" | "exile" | "hand" | "battlefield";
+    /** Nezahal: the card comes back TAPPED, which is the whole drawback. */
+    returnsTapped?: boolean;
     /** Parting Gust: the returned card picks up this counter. */
     withCounter?: string;
     /** action "battlefield" (Charming Prince): who gets the returned card. */
@@ -1694,6 +1696,8 @@ export type GameEffect =
       controllerId: PlayerId;
       /** Parting Gust: the returned card picks up this counter. */
       withCounter?: string;
+      /** Nezahal: "Return it to the battlefield TAPPED". */
+      returnsTapped?: boolean;
     }
   /** Eerie Interlude: each card returns under its owner's control. */
   | { kind: "exile_return_end_step_all"; cardIds: CardInstanceId[] }
@@ -2989,10 +2993,15 @@ export type CardEffect =
    * the effect controller's control at the beginning of the next end step. */
   | {
       kind: "exile_return_end_step";
-      target: ChosenTargetRef;
+      /** Absent when `self` is set: Nezahal blinks ITSELF, with no target. */
+      target?: ChosenTargetRef;
+      /** Nezahal: the source blinks, so there is nothing to target. */
+      self?: boolean;
       /** Parting Gust: the card comes back under its OWNER's control. */
       toOwner?: boolean;
       withCounter?: string;
+      /** Nezahal: "Return it to the battlefield TAPPED". */
+      returnsTapped?: boolean;
     }
   /** Eerie Interlude: every chosen creature blinks out and returns to its
    * OWNER's battlefield at the next end step. */

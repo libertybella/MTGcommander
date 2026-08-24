@@ -5388,6 +5388,20 @@ function compileSimpleClauseInner(sentence: string): SimpleClause | null {
   }
 
   // Charming Prince's third mode, fused: exile now, return at end step.
+  const flickerSelf = sentence.match(/^flicker-delay-self( tapped)?$/i);
+  if (flickerSelf) {
+    return {
+      targetRequirements: [],
+      effects: [
+        {
+          kind: "exile_return_end_step",
+          self: true,
+          ...(flickerSelf[1] ? { returnsTapped: true } : {}),
+        },
+      ],
+    };
+  }
+
   const flickerDelay = sentence.match(/^flicker-delay (another )?target creature you own$/i);
   if (flickerDelay) {
     return {
@@ -10032,6 +10046,23 @@ function fuseExileReturnEndStepInPlace(sentences: string[], lineStart: boolean[]
       lineStart.splice(index + 1, 1);
       continue;
     }
+    // Nezahal: the SELF blink, home tapped. "Its owner" and "your" are the
+    // same player for a permanent blinking itself, so both wordings land on
+    // the same clause.
+    const selfExile = sentences[index]!.match(/^(.*)Exile ~$/i);
+    const selfReturn = sentences[index + 1]!.match(
+      /^Return it to the battlefield (tapped )?under (?:its owner's|your) control at the beginning of the next end step$/i,
+    );
+    if (selfExile && selfReturn) {
+      sentences.splice(
+        index,
+        2,
+        `${selfExile[1] ?? ""}flicker-delay-self${selfReturn[1] ? " tapped" : ""}`,
+      );
+      lineStart.splice(index + 1, 1);
+      continue;
+    }
+
     // Eerie Interlude: the mass blink, home to each owner.
     const mass = sentences[index]!.match(
       /^(.*)Exile any number of target creatures you control$/i,

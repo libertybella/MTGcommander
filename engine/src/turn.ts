@@ -328,6 +328,12 @@ function onEnterStep(state: GameState): GameState {
               toZone: "battlefield",
               ...(entry.controllerId ? { controllerId: entry.controllerId } : {}),
             });
+            // Nezahal: "Return it to the battlefield TAPPED" — the whole
+            // drawback of the blink, so it is applied before anything else
+            // can untap it.
+            if (entry.returnsTapped && current.cards[entry.cardId]?.zone === "battlefield") {
+              current.cards[entry.cardId]!.tapped = true;
+            }
             // Parting Gust: "with a +1/+1 counter on it".
             if (entry.withCounter && current.cards[entry.cardId]?.zone === "battlefield") {
               current = applyEffect(current, {

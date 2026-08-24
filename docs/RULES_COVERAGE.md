@@ -870,6 +870,17 @@ more questions it can now ask:
   (Bennie Bracks). Reads the existing per-player `createdTokenThisTurn`
   list, and asks whether the CONTROLLER is in it — an opponent's Treasure
   must not satisfy it.
+- **A permanent that blinks ITSELF** — Nezahal. The existing delayed blink
+  reads a chosen target; Nezahal has none, so `exile_return_end_step` gained
+  a `self` form that reads the source instead. The targeted form keeps its
+  target, with a test on Charming Prince saying so — conflating the two
+  would have dropped the target silently.
+
+  `returnsTapped` is the whole drawback: without it the card blinks back
+  ready to block, which is a strictly better permanent than the printed
+  one. It rides the pending return as well as the effect, or a table
+  reopened mid-blink brings the card back untapped.
+
 - **`targetingLifeTax`** — Terror of the Peaks: "Spells your opponents cast
   that TARGET this permanent cost an additional 3 life to cast." A COST,
   not a ward trigger. It is paid as the spell is cast, there is no prompt
