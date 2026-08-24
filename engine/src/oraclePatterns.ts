@@ -2511,6 +2511,49 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
 
 function compileSimpleClauseInner(sentence: string): SimpleClause | null {
   /**
+   * Regenerate (CR 701.15). A SHIELD against the next destruction this
+   * turn, not a heal — which is why it costs the permanent a tap and its
+   * place in combat when it is spent.
+   *
+   * Swarmyard names four creature types and ANY of them qualifies, where
+   * the existing subtype filter demands all of them at once.
+   */
+  const regenerateAny = sentence.match(
+    /^Regenerate target ([A-Z][a-z]+), ([A-Z][a-z]+), ([A-Z][a-z]+), or ([A-Z][a-z]+)$/,
+  );
+  if (regenerateAny) {
+    return {
+      targetRequirements: [
+        {
+          kind: "creature",
+          requiredSubtypesAny: regenerateAny
+            .slice(1, 5)
+            .map((subtype) => subtype!.toLowerCase()),
+        },
+      ],
+      effects: [{ kind: "regenerate", cardId: { type: "chosen", index: 0 } }],
+    };
+  }
+  if (/^Regenerate target creature$/i.test(sentence)) {
+    return {
+      targetRequirements: [{ kind: "creature" }],
+      effects: [{ kind: "regenerate", cardId: { type: "chosen", index: 0 } }],
+    };
+  }
+  if (/^Regenerate ~$/i.test(sentence)) {
+    return {
+      targetRequirements: [],
+      effects: [{ kind: "regenerate", cardId: "self" }],
+    };
+  }
+  if (/^Regenerate each creature you control$/i.test(sentence)) {
+    return {
+      targetRequirements: [],
+      effects: [{ kind: "regenerate", allControlled: true }],
+    };
+  }
+
+  /**
    * Liliana, Dreadhorde General's -9: "Each opponent chooses a permanent
    * they control of each permanent type and sacrifices the rest."
    *

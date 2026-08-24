@@ -870,6 +870,24 @@ more questions it can now ask:
   (Bennie Bracks). Reads the existing per-player `createdTokenThisTurn`
   list, and asks whether the CONTROLLER is in it — an opponent's Treasure
   must not satisfy it.
+- **Regeneration (CR 701.15)** — a SHIELD, not a heal. Nothing happens when
+  it resolves; the NEXT destruction this turn is replaced instead, and the
+  shield costs the permanent a tap and its place in combat when it is
+  spent. A COUNT rather than a flag: two regenerates save it twice.
+
+  It was cheap only because wave 322 made destruction a single chokepoint.
+  One shield covers targeted removal, a wrath and lethal combat damage
+  alike, with no second code path — and it correctly does NOT save the
+  permanent from exile or a sacrifice, because neither is a destruction.
+
+  Tried BEFORE totem armor: CR 616.1 lets the controller choose between two
+  replacements, and the documented auto-pick is the shield that was paid
+  for this turn over the Aura that was standing there anyway.
+
+- **`requiredSubtypesAny`** — Swarmyard's "target Insect, Rat, Spider, or
+  Squirrel". ANY of them qualifies, where `requiredSubtypes` demands all of
+  them at once, which no creature could satisfy.
+
 - **A choice that names what to KEEP** — Liliana, Dreadhorde General's -9:
   "Each opponent chooses a permanent they control of each permanent type
   and sacrifices THE REST." That inverts every other "of their choice"

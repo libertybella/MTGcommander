@@ -148,6 +148,17 @@ function violatesCharacteristicFilter(
   ) {
     return true;
   }
+  // Swarmyard: "target Insect, Rat, Spider, or Squirrel" — ANY of them,
+  // where the list above demands all of them at once.
+  if (
+    requirement.requiredSubtypesAny &&
+    requirement.requiredSubtypesAny.length > 0 &&
+    !requirement.requiredSubtypesAny.some((subtype) =>
+      cardMatchesSubtype(state, cardId, subtype),
+    )
+  ) {
+    return true;
+  }
   // "target non-Dragon creature card" (Junji).
   if (
     (requirement.excludedSubtypes ?? []).some((subtype) =>

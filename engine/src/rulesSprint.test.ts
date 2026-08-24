@@ -53267,3 +53267,229 @@ describe("wave 343: the choice names what to keep", () => {
     });
   });
 });
+
+describe("wave 344: a shield, not a heal", () => {
+  const compile = (name: string, typeLine: string, oracleText: string, manaCost = "") =>
+    compileOracleCard({
+      oracleId: name.toLowerCase().replace(/[^a-z]+/g, "-"),
+      name,
+      manaCost,
+      typeLine,
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  const put = (game: GameState, ownerId: string, name: string, typeLine: string) => {
+    const definition = createCardDefinition({
+      name,
+      typeLine,
+      manaCost: "{1}{G}",
+      power: 2,
+      toughness: 2,
+    });
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({
+      definitionId: definition.id,
+      ownerId,
+      zone: "battlefield",
+    });
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === ownerId)!.zones.battlefield.push(card.id);
+    card.summoningSick = false;
+    return card.id;
+  };
+
+  it("compiles the targeted, self and mass forms", () => {
+    const asceticism = compile(
+      "Asceticism",
+      "Enchantment",
+      "{1}{G}: Regenerate target creature.",
+      "{3}{G}{G}",
+    );
+    expect(asceticism.notes).toEqual([]);
+    expect(asceticism.definition.activated[0]?.effects[0]).toEqual({
+      kind: "regenerate",
+      cardId: { type: "chosen", index: 0 },
+    });
+
+    const familiar = compile(
+      "Nightscape Familiar",
+      "Creature — Zombie Frog",
+      "{1}{B}: Regenerate this creature.",
+      "{1}{U}",
+    );
+    expect(familiar.definition.activated[0]?.effects[0]).toEqual({
+      kind: "regenerate",
+      cardId: "self",
+    });
+  });
+
+  it("compiles Swarmyard's four-type target", () => {
+    const compiled = compile(
+      "Swarmyard",
+      "Land",
+      "{T}: Add {C}.\n{T}: Regenerate target Insect, Rat, Spider, or Squirrel.",
+    );
+    expect(compiled.notes).toEqual([]);
+    // ANY of the four qualifies; the existing subtype filter demands all
+    // of them at once, which no creature could satisfy.
+    // The mana ability is not an activated ability here, so the regenerate
+    // is the only one.
+    expect(compiled.definition.activated[0]?.targetRequirements).toEqual([
+      { kind: "creature", requiredSubtypesAny: ["insect", "rat", "spider", "squirrel"] },
+    ]);
+  });
+
+  it("offers a Rat but not a Bear", () => {
+    const { game, p1 } = twoPlayers();
+    const ratId = put(game, p1.id, "Rat", "Creature — Rat");
+    const bearId = put(game, p1.id, "Bear", "Creature — Bear");
+    const requirement: TargetRequirement = {
+      kind: "creature",
+      requiredSubtypesAny: ["insect", "rat", "spider", "squirrel"],
+    };
+    expect(
+      isChosenTargetLegal(game, requirement, { type: "creature", cardId: ratId }, p1.id),
+    ).toBe(true);
+    expect(
+      isChosenTargetLegal(game, requirement, { type: "creature", cardId: bearId }, p1.id),
+    ).toBe(false);
+  });
+
+  // ---- The shield ----------------------------------------------------------
+
+  const shield = (game: GameState, cardId: string, times = 1) => {
+    let state = game;
+    for (let index = 0; index < times; index += 1) {
+      state = applyEffect(state, { kind: "regenerate", cardIds: [cardId] });
+    }
+    return state;
+  };
+
+  const destroy = (game: GameState, playerId: string, victimId: string) =>
+    applyEffects(
+      game,
+      bindCardEffects(
+        game,
+        [
+          {
+            kind: "move_card",
+            cardId: { type: "chosen", index: 0 },
+            toZone: "graveyard",
+            destroy: true,
+          },
+        ],
+        {
+          controllerId: playerId,
+          sourceId: null,
+          targets: [{ type: "creature", cardId: victimId }],
+          targetRequirements: [{ kind: "creature" }],
+        },
+      ),
+    );
+
+  it("does nothing until something tries to destroy it", () => {
+    const { game, p1 } = twoPlayers();
+    const bearId = put(game, p1.id, "Bear", "Creature — Bear");
+    const shielded = shield(game, bearId);
+    // A SHIELD, not a heal: the creature is untouched until it is hit.
+    expect(shielded.cards[bearId]?.tapped).toBe(false);
+    expect(shielded.cards[bearId]?.regenerationShields).toBe(1);
+  });
+
+  it("survives a destroy, tapped and undamaged", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const bearId = put(game, p1.id, "Bear", "Creature — Bear");
+    let state = shield(game, bearId);
+    state.cards[bearId]!.damageMarked = 1;
+    state = destroy(state, p2.id, bearId);
+    expect(state.cards[bearId]?.zone).toBe("battlefield");
+    // The shield costs a tap and clears the damage — that is the whole
+    // shape of CR 701.15.
+    expect(state.cards[bearId]?.tapped).toBe(true);
+    expect(state.cards[bearId]?.damageMarked).toBe(0);
+    expect(state.cards[bearId]?.regenerationShields).toBe(0);
+  });
+
+  it("is spent once, so the second destroy lands", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const bearId = put(game, p1.id, "Bear", "Creature — Bear");
+    let state = shield(game, bearId);
+    state = destroy(state, p2.id, bearId);
+    expect(state.cards[bearId]?.zone).toBe("battlefield");
+    state = destroy(state, p2.id, bearId);
+    expect(state.cards[bearId]?.zone).toBe("graveyard");
+  });
+
+  it("stacks, so two regenerates survive two destroys", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const bearId = put(game, p1.id, "Bear", "Creature — Bear");
+    let state = shield(game, bearId, 2);
+    state = destroy(state, p2.id, bearId);
+    state = destroy(state, p2.id, bearId);
+    expect(state.cards[bearId]?.zone).toBe("battlefield");
+  });
+
+  it("saves a creature from lethal damage too", () => {
+    const { game, p1 } = twoPlayers();
+    const bearId = put(game, p1.id, "Bear", "Creature — Bear");
+    const state = shield(game, bearId);
+    state.cards[bearId]!.damageMarked = 9;
+    applyStateBasedActionsInPlace(state);
+    // The destroy chokepoint is shared, so one shield covers removal and
+    // combat alike without a second code path.
+    expect(state.cards[bearId]?.zone).toBe("battlefield");
+    expect(state.cards[bearId]?.damageMarked).toBe(0);
+  });
+
+  it("does not save it from EXILE or a sacrifice", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const bearId = put(game, p1.id, "Bear", "Creature — Bear");
+    const shielded = shield(game, bearId);
+    const exiled = applyEffects(
+      shielded,
+      bindCardEffects(
+        shielded,
+        [{ kind: "move_card", cardId: { type: "chosen", index: 0 }, toZone: "exile" }],
+        {
+          controllerId: p2.id,
+          sourceId: null,
+          targets: [{ type: "creature", cardId: bearId }],
+          targetRequirements: [{ kind: "creature" }],
+        },
+      ),
+    );
+    expect(exiled.cards[bearId]?.zone).toBe("exile");
+    const sacrificed = applyEffect(shielded, { kind: "sacrifice", cardId: bearId });
+    expect(sacrificed.cards[bearId]?.zone).toBe("graveyard");
+  });
+
+  it("shields every creature you control at once", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const aId = put(game, p1.id, "A", "Creature — Bear");
+    const bId = put(game, p1.id, "B", "Creature — Bear");
+    const theirsId = put(game, p2.id, "Theirs", "Creature — Bear");
+    const shielded = applyEffects(
+      game,
+      bindCardEffects(game, [{ kind: "regenerate", allControlled: true }], {
+        controllerId: p1.id,
+        sourceId: null,
+      }),
+    );
+    expect(shielded.cards[aId]?.regenerationShields).toBe(1);
+    expect(shielded.cards[bId]?.regenerationShields).toBe(1);
+    expect(shielded.cards[theirsId]?.regenerationShields).toBeUndefined();
+  });
+
+  it("round trips the shield count", () => {
+    const { game, p1 } = twoPlayers();
+    const bearId = put(game, p1.id, "Bear", "Creature — Bear");
+    const shielded = shield(game, bearId, 2);
+    const round = parseGameState(serializeGameState(shielded));
+    // Without this a reopened table forgets a shield that was paid for.
+    expect(round.cards[bearId]?.regenerationShields).toBe(2);
+  });
+});

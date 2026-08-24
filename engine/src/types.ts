@@ -691,6 +691,13 @@ export type CardInstance = {
    * entry — that list only knows durations that end.
    */
   addedSubtypes?: string[];
+  /**
+   * Regeneration shields (CR 701.15). A COUNT, not a flag: two regenerates
+   * this turn save the permanent twice, and each one is spent by a single
+   * destruction. Cleared at cleanup with everything else that lasts "this
+   * turn".
+   */
+  regenerationShields?: number;
   putByAbilityOf?: CardInstanceId;
   /** Damaged by a deathtouch source this turn (CR 704.5h). */
   deathtouched: boolean;
@@ -1867,6 +1874,8 @@ export type GameEffect =
     }
   /** Portal to Phyrexia: the reanimated card gains a creature type. */
   | { kind: "add_subtypes"; cardId: CardInstanceId; subtypes: string[] }
+  /** Regenerate (CR 701.15): a shield against the next destruction. */
+  | { kind: "regenerate"; cardIds: CardInstanceId[] }
   /**
    * Liliana's -9: "chooses a permanent they control of each permanent type
    * and sacrifices THE REST". The choice names what to KEEP, which is the
@@ -2417,6 +2426,11 @@ export type TargetRequirement = {
   /** Commander's Plate: "Equip commander" — only YOUR commander. */
   commanderOnly?: boolean;
   /** "Enchant Forest": the target must have every listed subtype. */
+  /**
+   * Swarmyard: "target Insect, Rat, Spider, or Squirrel" — ANY of these
+   * subtypes matches, where `requiredSubtypes` demands all of them.
+   */
+  requiredSubtypesAny?: string[];
   requiredSubtypes?: string[];
   /** "target blue spell" / "target blue permanent" (Red Elemental Blast). */
   requiredColors?: Color[];
@@ -3246,6 +3260,12 @@ export type CardEffect =
       echo: NonNullable<CardDefinition["landTapEcho"]>;
     }
   | { kind: "add_subtypes"; cardId: CardIdSelector; subtypes: string[] }
+  | {
+      kind: "regenerate";
+      cardId?: CardIdSelector;
+      /** Golgari Charm: "regenerate EACH creature you control". */
+      allControlled?: boolean;
+    }
   | { kind: "sacrifice_others_of_type"; playerId: PlayerSelector; cardType: string }
   | { kind: "mass_reanimate"; playerId: PlayerSelector }
   /** Splendid Reclamation: every land card in YOUR graveyard returns tapped. */

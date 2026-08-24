@@ -2497,8 +2497,18 @@ export function bindCardEffect(
         ? { kind: "look_top_card", playerId: lookedAt, viewerId: viewer }
         : null;
     }
-    default: {
-      const exhaustive: never = effect;
+    case "regenerate": {
+      const cardIds = effect.allControlled
+        ? (state.players.find((entry) => entry.id === context.controllerId)?.zones
+            .battlefield ?? []
+          ).filter((cardId) => isCreature(state, cardId))
+        : [bindCardId(state, effect.cardId ?? "self", context)].filter(
+            (cardId): cardId is CardInstanceId => Boolean(cardId),
+          );
+      return cardIds.length > 0 ? { kind: "regenerate", cardIds } : null;
+    }
+          default: {
+    const exhaustive: never = effect;
       throw new Error(`Unknown card effect ${(exhaustive as CardEffect).kind}`);
     }
   }
@@ -6236,8 +6246,20 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
         }
         break;
       }
-      default: {
-        const exhaustive: never = effect;
+      case "regenerate": {
+        // CR 701.15: a SHIELD, not a heal. Nothing happens now; the next
+        // destruction this turn is replaced instead.
+        next = cloneGameState(state);
+        for (const cardId of effect.cardIds) {
+          const shielded = next.cards[cardId];
+          if (shielded && shielded.zone === "battlefield") {
+            shielded.regenerationShields = (shielded.regenerationShields ?? 0) + 1;
+          }
+        }
+        break;
+      }
+              default: {
+      const exhaustive: never = effect;
         throw new Error(`Unknown effect ${(exhaustive as GameEffect).kind}`);
       }
     }

@@ -465,6 +465,12 @@ function onEnterStep(state: GameState): GameState {
     // High Tide's echo is an "until end of turn" effect too, just one that
     // lives on the game rather than on a permanent.
     delete state.turnManaEchoes;
+    // CR 701.15d: unused regeneration shields are lost at cleanup.
+    for (const card of Object.values(state.cards)) {
+      if (card.regenerationShields) {
+        delete card.regenerationShields;
+      }
+    }
     // CR 514.2: "until end of turn" effects end during cleanup.
     state.activeEffects = state.activeEffects.filter(
       (effect) => effect.duration !== "until_end_of_turn",

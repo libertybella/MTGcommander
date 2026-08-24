@@ -599,6 +599,14 @@ export function parseGameState(json: string): GameState {
             addedSubtypes: expectStringArray(card.addedSubtypes, "card.addedSubtypes"),
           }
         : {}),
+      ...(card.regenerationShields === undefined
+        ? {}
+        : {
+            regenerationShields: expectNumber(
+              card.regenerationShields,
+              "card.regenerationShields",
+            ),
+          }),
       ...(card.putByAbilityOf === undefined
         ? {}
         : { putByAbilityOf: expectString(card.putByAbilityOf, "card.putByAbilityOf") }),
@@ -3078,6 +3086,14 @@ function parseTargetRequirement(value: unknown, label: string): TargetRequiremen
     ...(value.variable === true ? { variable: true } : {}),
     // Agadeem's Awakening: both bounds ride the requirement, and losing
     // either on the wire turns the spell into a graveyard-wide reanimate.
+    ...(Array.isArray(value.requiredSubtypesAny)
+      ? {
+          requiredSubtypesAny: expectStringArray(
+            value.requiredSubtypesAny,
+            `${label}.requiredSubtypesAny`,
+          ),
+        }
+      : {}),
     ...(value.maxManaValueX === true ? { maxManaValueX: true } : {}),
     ...(value.distinctManaValues === true ? { distinctManaValues: true } : {}),
     ...(value.optional === true ? { optional: true } : {}),
@@ -4344,6 +4360,13 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
             ? "below_source"
             : expectNumber(value.maxManaValue, `${label}.maxManaValue`),
         ...(value.toHandAllowed === true ? { toHandAllowed: true } : {}),
+      };
+    case "regenerate":
+      return {
+        kind,
+        ...(value.allControlled === true
+          ? { allControlled: true }
+          : { cardId: parseCardIdSelector(value.cardId, `${label}.cardId`) }),
       };
     case "sacrifice_others_of_type":
       return {
@@ -6402,6 +6425,9 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
       maxManaValue: expectNumber(value.maxManaValue, `${label}.maxManaValue`),
       ...(value.toHandAllowed === true ? { toHandAllowed: true } : {}),
     };
+  }
+  if (kind === "regenerate") {
+    return { kind, cardIds: expectStringArray(value.cardIds, `${label}.cardIds`) };
   }
   if (kind === "sacrifice_others_of_type") {
     return {

@@ -85,6 +85,33 @@ export function destroyPermanentInPlace(
   if (hasKeyword(state, cardId, "indestructible")) {
     return false;
   }
+  /**
+   * Regeneration (CR 701.15). A replacement for the destruction: the shield
+   * is spent, all damage comes off, the permanent taps, and it leaves
+   * combat. Tried BEFORE totem armor because the shield was paid for this
+   * turn specifically and the Umbra is a standing effect — CR 616.1 lets
+   * the controller choose between two replacements, and this is the
+   * documented auto-pick.
+   */
+  const shields = card.regenerationShields ?? 0;
+  if (shields > 0) {
+    card.regenerationShields = shields - 1;
+    card.damageMarked = 0;
+    card.deathtouched = false;
+    card.tapped = true;
+    // "Remove it from combat": it stops attacking, and the combat record
+    // drops it so no damage is assigned to or by it.
+    card.attacking = false;
+    if (state.combat) {
+      state.combat.attacks = state.combat.attacks.filter(
+        (attack) => attack.attackerId !== cardId,
+      );
+      for (const [attackerId, blockers] of Object.entries(state.combat.blockers)) {
+        state.combat.blockers[attackerId] = blockers.filter((id) => id !== cardId);
+      }
+    }
+    return false;
+  }
   // Totem armor (CR 702.87a): the Aura dies instead and the damage comes
   // off. Auras are checked oldest-first so that with two Umbras on one
   // creature the second one is still there for the next destruction.
