@@ -3074,6 +3074,10 @@ function parseTargetRequirement(value: unknown, label: string): TargetRequiremen
   return {
     kind,
     ...(value.variable === true ? { variable: true } : {}),
+    // Agadeem's Awakening: both bounds ride the requirement, and losing
+    // either on the wire turns the spell into a graveyard-wide reanimate.
+    ...(value.maxManaValueX === true ? { maxManaValueX: true } : {}),
+    ...(value.distinctManaValues === true ? { distinctManaValues: true } : {}),
     ...(value.optional === true ? { optional: true } : {}),
     ...(excludeColors.length > 0 ? { excludeColors } : {}),
     ...(control === undefined ? {} : { control }),

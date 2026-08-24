@@ -2511,6 +2511,39 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
 
 function compileSimpleClauseInner(sentence: string): SimpleClause | null {
   /**
+   * Agadeem's Awakening: "Return from your graveyard to the battlefield any
+   * number of target creature cards that each have a different mana value X
+   * or less."
+   *
+   * The two qualifiers are what make the card a card. "X or less" bounds
+   * the pool by the mana actually spent, and "each a DIFFERENT mana value"
+   * stops the spell emptying a graveyard full of one-drops. Both read the
+   * whole chosen SET, so they ride the requirement and are checked where
+   * the set is in hand.
+   */
+  if (
+    /^Return from your graveyard to the battlefield any number of target creature cards that each have a different mana value X or less$/i.test(
+      sentence,
+    )
+  ) {
+    return {
+      targetRequirements: [
+        {
+          kind: "own_graveyard_creature_card",
+          variable: true,
+          maxManaValueX: true,
+          distinctManaValues: true,
+        },
+      ],
+      effects: [
+        // ALL of them: a variable requirement is satisfied by any number of
+        // targets, and naming `chosen 0` would return only the first.
+        { kind: "move_card", cardId: "all_chosen", toZone: "battlefield" },
+      ],
+    };
+  }
+
+  /**
    * Mishra's Bauble: "Look at the top card of target player's library."
    * A LOOK, not a reveal — only the effect's controller sees it, which is
    * the whole point of aiming it at an opponent.

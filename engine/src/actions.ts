@@ -867,6 +867,9 @@ function applyCastSpell(
       targets ?? [],
       playerId,
       definition?.characteristics.colors,
+      null,
+      // Agadeem's Awakening: "mana value X or less" needs the announced X.
+      xValue,
     );
   }
   // Convoke / improvise / delve close the gap before the mana is spent.

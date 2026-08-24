@@ -197,6 +197,8 @@ function expandEachOpponent(
   effect: CardEffect,
   controllerId: PlayerId,
   subjectPlayerId?: PlayerId,
+  /** Agadeem's Awakening: the targets a VARIABLE requirement collected. */
+  chosenTargets?: ChosenTarget[],
 ): CardEffect[] {
   // APNAP-ish: the controller acts first, then opponents in seat order.
   const eachOf = (selector: unknown): PlayerId[] | null =>
@@ -243,6 +245,17 @@ function expandEachOpponent(
     if (players) {
       return players.map((ownerId) => ({ ...effect, ownerId }));
     }
+  }
+  /**
+   * Agadeem's Awakening: a VARIABLE requirement is satisfied by any number
+   * of targets, and an effect naming `chosen 0` would touch only the first.
+   * One effect per chosen target, expanded here where the whole list is in
+   * hand.
+   */
+  if (effect.kind === "move_card" && effect.cardId === "all_chosen") {
+    return (chosenTargets ?? [])
+      .filter((target) => target.type === "creature")
+      .map((target) => ({ ...effect, cardId: target.cardId }));
   }
   if (effect.kind === "choose_card") {
     const players = eachOf(effect.chooserId);
@@ -2517,6 +2530,7 @@ export function bindCardEffects(
       effect,
       context.controllerId,
       context.subjectPlayerId,
+      context.targets,
     ).flatMap((item) => {
       const bound = bindCardEffect(state, item, context);
       return bound ? [bound] : [];

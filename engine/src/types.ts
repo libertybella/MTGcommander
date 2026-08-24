@@ -2354,6 +2354,20 @@ export type TargetRequirement = {
   control?: "own" | "not_own";
   /** "with mana value N or less" (Abrupt Decay). */
   maxManaValue?: number;
+  /**
+   * Agadeem's Awakening: "mana value X or less", where X is the value
+   * announced for the spell. A separate flag from `maxManaValue` because
+   * the bound is not known until the spell is cast.
+   */
+  maxManaValueX?: boolean;
+  /**
+   * Agadeem's Awakening: "that each have a DIFFERENT mana value". A
+   * constraint ACROSS the chosen targets rather than on any one of them,
+   * so it is checked where the whole set is in hand — and it is most of
+   * the card, since without it the spell returns a graveyard full of
+   * one-drops.
+   */
+  distinctManaValues?: boolean;
   /** "with mana value N or greater" (Despark). */
   minManaValue?: number;
   /** "with power N or less" (Escape Tunnel). */
@@ -2449,6 +2463,12 @@ export type ChosenTarget =
 
 export type ChosenTargetRef = { type: "chosen"; index: number };
 
+/**
+ * `"all_chosen"` is Agadeem's Awakening: a VARIABLE target requirement can
+ * be satisfied by any number of cards, and an effect naming `chosen 0`
+ * would move only the first of them. It expands to one effect per chosen
+ * target where the batch is bound.
+ */
 export type CardIdSelector = CardInstanceId | ChosenTargetRef;
 
 /**

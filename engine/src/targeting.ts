@@ -770,6 +770,8 @@ export function validateChosenTargets(
   casterId?: PlayerId,
   sourceColors?: Color[],
   sourceId?: CardInstanceId | null,
+  /** Agadeem's Awakening: the announced X bounds what may be chosen. */
+  xValue?: number,
 ): void {
   if (requirements.length === 0) {
     if (targets.length > 0) {
@@ -788,6 +790,23 @@ export function validateChosenTargets(
     for (const target of targets) {
       if (!isChosenTargetLegal(state, requirements[0]!, target, casterId, sourceColors, sourceId)) {
         throw new Error("Illegal target");
+      }
+    }
+    // Agadeem's Awakening: "mana value X or less" and "each a DIFFERENT
+    // mana value". Both read the whole chosen SET, so they are checked
+    // here rather than inside the per-target test.
+    if (requirements[0]!.maxManaValueX || requirements[0]!.distinctManaValues) {
+      const values = targets.map((target) =>
+        "cardId" in target ? characteristicsOf(state, target.cardId).manaValue : 0,
+      );
+      if (requirements[0]!.maxManaValueX && values.some((value) => value > (xValue ?? 0))) {
+        throw new Error("That card's mana value is above X");
+      }
+      if (
+        requirements[0]!.distinctManaValues &&
+        new Set(values).size !== values.length
+      ) {
+        throw new Error("Each target must have a different mana value");
       }
     }
     return;

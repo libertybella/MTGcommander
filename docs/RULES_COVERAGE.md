@@ -870,6 +870,22 @@ more questions it can now ask:
   (Bennie Bracks). Reads the existing per-player `createdTokenThisTurn`
   list, and asks whether the CONTROLLER is in it — an opponent's Treasure
   must not satisfy it.
+- **A VARIABLE requirement with constraints across the whole chosen set** —
+  Agadeem's Awakening: "any number of target creature cards that each have
+  a DIFFERENT mana value X OR LESS".
+
+  Both qualifiers read the SET, not any one card, so they ride the
+  requirement and are checked where the set is in hand. Both are the card:
+  "X or less" bounds the pool by the mana actually spent, and "each a
+  different mana value" is what stops the spell emptying a graveyard full
+  of one-drops.
+
+- **`"all_chosen"`** — a variable requirement is satisfied by ANY NUMBER of
+  targets, and an effect naming `chosen 0` touches only the first of them.
+  That would have been a card returning one creature and scoring as a full
+  compile. The selector expands to one effect per chosen target where the
+  batch is bound, beside the each-player expansion that was already there.
+
 - **`look_top_card`** — Mishra's Bauble. A LOOK, not a reveal: only the
   effect's controller sees the card, which is the whole point of aiming it
   at an opponent. It moves nothing, and an empty library is not an error —

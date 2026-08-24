@@ -52882,3 +52882,179 @@ describe("wave 341: a look is not a reveal", () => {
     });
   });
 });
+
+describe("wave 342: any number of targets, each a different size", () => {
+  const compile = (name: string, typeLine: string, oracleText: string, manaCost = "") =>
+    compileOracleCard({
+      oracleId: name.toLowerCase().replace(/[^a-z]+/g, "-"),
+      name,
+      manaCost,
+      typeLine,
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  const agadeemText =
+    "Return from your graveyard to the battlefield any number of target creature cards that each have a different mana value X or less.";
+
+  it("compiles both bounds onto the requirement", () => {
+    const compiled = compile(
+      "Agadeem's Awakening",
+      "Sorcery",
+      agadeemText,
+      "{X}{B}{B}{B}",
+    );
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.targetRequirements).toEqual([
+      {
+        kind: "own_graveyard_creature_card",
+        variable: true,
+        maxManaValueX: true,
+        distinctManaValues: true,
+      },
+    ]);
+    // ALL of them: naming `chosen 0` would return only the first card.
+    expect(compiled.definition.effects).toEqual([
+      { kind: "move_card", cardId: "all_chosen", toZone: "battlefield" },
+    ]);
+  });
+
+  const buried = (game: GameState, ownerId: string, manaCosts: string[]) => {
+    const player = game.players.find((entry) => entry.id === ownerId)!;
+    const ids: string[] = [];
+    for (const manaCost of manaCosts) {
+      const definition = createCardDefinition({
+        name: `Creature ${manaCost}-${ids.length}`,
+        typeLine: "Creature — Bear",
+        manaCost,
+        power: 2,
+        toughness: 2,
+      });
+      game.definitions[definition.id] = definition;
+      const card = createCardInstance({
+        definitionId: definition.id,
+        ownerId,
+        zone: "graveyard",
+      });
+      game.cards[card.id] = card;
+      player.zones.graveyard.push(card.id);
+      ids.push(card.id);
+    }
+    return ids;
+  };
+
+  const requirement: TargetRequirement = {
+    kind: "own_graveyard_creature_card",
+    variable: true,
+    maxManaValueX: true,
+    distinctManaValues: true,
+  };
+
+  const check = (game: GameState, playerId: string, ids: string[], xValue: number) =>
+    validateChosenTargets(
+      game,
+      [requirement],
+      ids.map((cardId) => ({ type: "creature" as const, cardId })),
+      playerId,
+      undefined,
+      null,
+      xValue,
+    );
+
+  it("accepts a set of distinct sizes within X", () => {
+    const { game, p1 } = twoPlayers();
+    const ids = buried(game, p1.id, ["{1}", "{2}", "{3}"]);
+    expect(() => check(game, p1.id, ids, 3)).not.toThrow();
+  });
+
+  it("refuses two cards of the same mana value", () => {
+    const { game, p1 } = twoPlayers();
+    const ids = buried(game, p1.id, ["{2}", "{2}"]);
+    // Without this the spell empties a graveyard full of one-drops, which
+    // is a different and far better card.
+    expect(() => check(game, p1.id, ids, 5)).toThrow(/different mana value/i);
+  });
+
+  it("refuses a card above the announced X", () => {
+    const { game, p1 } = twoPlayers();
+    const ids = buried(game, p1.id, ["{1}", "{4}"]);
+    expect(() => check(game, p1.id, ids, 3)).toThrow(/above X/i);
+  });
+
+  it("accepts a card exactly at X", () => {
+    const { game, p1 } = twoPlayers();
+    const ids = buried(game, p1.id, ["{3}"]);
+    // "X or LESS" — the bound is inclusive.
+    expect(() => check(game, p1.id, ids, 3)).not.toThrow();
+  });
+
+  it("refuses everything at X of zero except a free spell", () => {
+    const { game, p1 } = twoPlayers();
+    const free = buried(game, p1.id, [""]);
+    const one = buried(game, p1.id, ["{1}"]);
+    expect(() => check(game, p1.id, free, 0)).not.toThrow();
+    expect(() => check(game, p1.id, one, 0)).toThrow();
+  });
+
+  it("returns every chosen card, not just the first", () => {
+    const { game, p1 } = twoPlayers();
+    const ids = buried(game, p1.id, ["{1}", "{2}", "{3}"]);
+    const returned = applyEffects(
+      game,
+      bindCardEffects(
+        game,
+        [{ kind: "move_card", cardId: "all_chosen", toZone: "battlefield" }],
+        {
+          controllerId: p1.id,
+          sourceId: null,
+          targets: ids.map((cardId) => ({ type: "creature" as const, cardId })),
+          targetRequirements: [requirement],
+        },
+      ),
+    );
+    for (const id of ids) {
+      expect(returned.cards[id]?.zone).toBe("battlefield");
+    }
+  });
+
+  it("returns nothing when nothing was chosen", () => {
+    const { game, p1 } = twoPlayers();
+    const bound = bindCardEffects(
+      game,
+      [{ kind: "move_card", cardId: "all_chosen", toZone: "battlefield" }],
+      { controllerId: p1.id, sourceId: null, targets: [], targetRequirements: [requirement] },
+    );
+    expect(bound).toEqual([]);
+  });
+
+  it("round trips both bounds", () => {
+    const { game, p1 } = twoPlayers();
+    const definition = createCardDefinition({
+      name: "Wave 342 Awakening",
+      typeLine: "Sorcery",
+      manaCost: "{X}{B}{B}{B}",
+      targetRequirements: [requirement],
+      effects: [{ kind: "move_card", cardId: "all_chosen", toZone: "battlefield" }],
+    });
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({
+      definitionId: definition.id,
+      ownerId: p1.id,
+      zone: "hand",
+    });
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === p1.id)!.zones.hand.push(card.id);
+    const round = parseGameState(serializeGameState(game));
+    // Losing either bound on the wire turns the spell into a
+    // graveyard-wide reanimate.
+    expect(round.definitions[definition.id]?.targetRequirements[0]).toEqual(requirement);
+    expect(round.definitions[definition.id]?.effects[0]).toEqual({
+      kind: "move_card",
+      cardId: "all_chosen",
+      toZone: "battlefield",
+    });
+  });
+});
