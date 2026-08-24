@@ -43330,3 +43330,449 @@ describe("wave 304: hideaway, and the exiled card you may play", () => {
     expect(round.damageToPlayerThisTurn?.[p1.id]).toBe(7);
   });
 });
+
+describe("wave 305: changing a target, and counting shared creature types", () => {
+  const compile = (
+    name: string,
+    typeLine: string,
+    oracleText: string,
+    manaCost = "",
+    pt: [string, string] | null = null,
+  ) =>
+    compileOracleCard({
+      oracleId: name.toLowerCase().replace(/[^a-z]+/g, "-"),
+      name,
+      manaCost,
+      typeLine,
+      power: pt?.[0] ?? null,
+      toughness: pt?.[1] ?? null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  const put = (
+    game: GameState,
+    ownerId: string,
+    definition: CardDefinition,
+    zone: "hand" | "battlefield" = "battlefield",
+  ) => {
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({ definitionId: definition.id, ownerId, zone });
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === ownerId)!.zones[zone].push(card.id);
+    if (zone === "battlefield") {
+      card.summoningSick = false;
+    }
+    return card.id;
+  };
+
+  const tribal = (name: string, subtypes: string, extra: Record<string, unknown> = {}) =>
+    createCardDefinition({
+      name,
+      typeLine: `Creature — ${subtypes}`,
+      manaCost: "{1}{R}",
+      power: 1,
+      toughness: 1,
+      ...extra,
+    });
+
+  // ---- Counting shared creature types -------------------------------------
+
+  it("compiles Coat of Arms as an every-creature anthem with a live count", () => {
+    const compiled = compile(
+      "Coat of Arms",
+      "Artifact",
+      "Each creature gets +1/+1 for each other creature on the battlefield that shares at least one creature type with it.",
+      "{5}",
+    );
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.staticAbilities[0]).toMatchObject({
+      selector: { scope: "all", types: ["creature"] },
+      effect: {
+        kind: "modify_pt",
+        power: 1,
+        toughness: 1,
+        per: "creatures_sharing_a_type_with_it",
+      },
+    });
+  });
+
+  it("counts other creatures sharing a type, never the creature itself", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const first = put(game, p1.id, tribal("Goblin Warrior A", "Goblin Warrior"));
+    const second = put(game, p1.id, tribal("Goblin Warrior B", "Goblin Warrior"));
+    const shaman = put(game, p2.id, tribal("Goblin Shaman", "Goblin Shaman"));
+    const elf = put(game, p2.id, tribal("Elf", "Elf"));
+    const count = (cardId: string) =>
+      dynamicCountOf(game, p1.id, "creatures_sharing_a_type_with_it", cardId);
+    // The printed example: two Goblin Warriors and a Goblin Shaman.
+    expect(count(first)).toBe(2);
+    expect(count(second)).toBe(2);
+    expect(count(shaman)).toBe(2);
+    // And the lone Elf shares with nobody — not even itself.
+    expect(count(elf)).toBe(0);
+  });
+
+  it("counts across the whole battlefield, both sides", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const mine = put(game, p1.id, tribal("My Goblin", "Goblin"));
+    put(game, p2.id, tribal("Their Goblin", "Goblin"));
+    // "Each other creature ON THE BATTLEFIELD" — Coat of Arms helps the
+    // table, which is the whole reason it is a risky card to play.
+    expect(dynamicCountOf(game, p1.id, "creatures_sharing_a_type_with_it", mine)).toBe(1);
+  });
+
+  it("lets a changeling share with every typed creature", () => {
+    const { game, p1 } = twoPlayers();
+    const shifter = put(game, p1.id, tribal("Shapeshifter", "Shapeshifter", { changeling: true }));
+    put(game, p1.id, tribal("Goblin", "Goblin"));
+    put(game, p1.id, tribal("Elf", "Elf"));
+    expect(dynamicCountOf(game, p1.id, "creatures_sharing_a_type_with_it", shifter)).toBe(2);
+    // And from the other side: the Goblin shares with the changeling.
+    const goblin = Object.values(game.cards).find(
+      (card) => game.definitions[card.definitionId]?.name === "Goblin",
+    )!;
+    expect(dynamicCountOf(game, p1.id, "creatures_sharing_a_type_with_it", goblin.id)).toBe(1);
+  });
+
+  it("ignores noncreature permanents and noncreature subtypes", () => {
+    const { game, p1 } = twoPlayers();
+    const goblin = put(game, p1.id, tribal("Goblin", "Goblin"));
+    // An Equipment is not a creature and its subtype is not a creature type.
+    put(
+      game,
+      p1.id,
+      createCardDefinition({ name: "Sword", typeLine: "Artifact — Equipment", manaCost: "{2}" }),
+    );
+    put(game, p1.id, createCardDefinition({ name: "Island", typeLine: "Basic Land — Island" }));
+    expect(dynamicCountOf(game, p1.id, "creatures_sharing_a_type_with_it", goblin)).toBe(0);
+  });
+
+  it("compiles Shared Animosity onto the trigger's subject", () => {
+    const compiled = compile(
+      "Shared Animosity",
+      "Enchantment",
+      "Whenever a creature you control attacks, it gets +1/+0 until end of turn for each other attacking creature that shares a creature type with it.",
+      "{2}{R}",
+    );
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.triggers[0]).toMatchObject({
+      event: "attacks",
+      watch: "controlled",
+    });
+    expect(compiled.definition.triggers[0]?.effects[0]).toEqual({
+      kind: "pt_until_eot",
+      cardId: "subject_card",
+      power: 1,
+      toughness: 0,
+      per: "attacking_creatures_sharing_a_type_with_it",
+    });
+  });
+
+  it("counts only the attacking sharers", () => {
+    const { game, p1 } = twoPlayers();
+    const leader = put(game, p1.id, tribal("Goblin Leader", "Goblin"));
+    const friend = put(game, p1.id, tribal("Goblin Friend", "Goblin"));
+    const homebody = put(game, p1.id, tribal("Goblin Homebody", "Goblin"));
+    game.cards[leader]!.attacking = true;
+    game.cards[friend]!.attacking = true;
+    expect(
+      dynamicCountOf(game, p1.id, "attacking_creatures_sharing_a_type_with_it", leader),
+    ).toBe(1);
+    game.cards[homebody]!.attacking = true;
+    expect(
+      dynamicCountOf(game, p1.id, "attacking_creatures_sharing_a_type_with_it", leader),
+    ).toBe(2);
+  });
+
+  it("measures the pump against the creature, not the enchantment", () => {
+    const { game, p1 } = twoPlayers();
+    // The enchantment shares a creature type with nothing — it is not a
+    // creature at all — so binding the count to the SOURCE would give every
+    // attacker +0/+0.
+    const animosityId = put(
+      game,
+      p1.id,
+      createCardDefinition({ name: "Shared Animosity", typeLine: "Enchantment", manaCost: "{2}{R}" }),
+    );
+    const leader = put(game, p1.id, tribal("Goblin Leader", "Goblin"));
+    put(game, p1.id, tribal("Goblin Friend", "Goblin")).valueOf();
+    for (const card of Object.values(game.cards)) {
+      if (game.definitions[card.definitionId]?.characteristics.types.includes("creature")) {
+        card.attacking = true;
+      }
+    }
+    const pumped = applyEffects(
+      game,
+      bindCardEffects(
+        game,
+        [
+          {
+            kind: "pt_until_eot",
+            cardId: "subject_card",
+            power: 1,
+            toughness: 0,
+            per: "attacking_creatures_sharing_a_type_with_it",
+          },
+        ],
+        { controllerId: p1.id, sourceId: animosityId, subjectCardId: leader },
+      ),
+    );
+    expect(creaturePower(pumped, leader)).toBe(2);
+  });
+
+  // ---- Changing a target to this ------------------------------------------
+
+  it("compiles Hydroelectric Specimen's forced redirect", () => {
+    const compiled = compile(
+      "Hydroelectric Specimen",
+      "Creature — Weird",
+      "Flash\nWhen this creature enters, you may change the target of target instant or sorcery spell with a single target to this creature.",
+      "{2}{U}",
+      ["2", "2"],
+    );
+    expect(compiled.notes).toEqual([]);
+    const trigger = compiled.definition.triggers[0];
+    expect(trigger?.targetRequirements).toEqual([
+      { kind: "instant_or_sorcery_spell", singleTargetOnly: true },
+    ]);
+    expect(trigger?.effects[0]).toEqual({
+      kind: "retarget",
+      target: { type: "chosen", index: 0 },
+      toSelf: true,
+    });
+  });
+
+  const bolt = () =>
+    createCardDefinition({
+      name: "Bolt",
+      typeLine: "Instant",
+      manaCost: "{R}",
+      effects: [
+        { kind: "deal_damage", sourceId: null, target: { type: "chosen", index: 0 }, amount: 3 },
+      ],
+      targetRequirements: [{ kind: "creature" }],
+    });
+
+  const boltOnStack = () => {
+    const { game, p1, p2 } = twoPlayers();
+    const victimId = put(
+      game,
+      p1.id,
+      createCardDefinition({
+        name: "Victim",
+        typeLine: "Creature — Bear",
+        manaCost: "{1}{G}",
+        power: 2,
+        toughness: 2,
+      }),
+    );
+    const boltId = put(game, p2.id, bolt(), "hand");
+    game.turn.activePlayerId = p2.id;
+    game.turn.phase = "precombatMain";
+    game.turn.step = "precombatMain";
+    game.priorityPlayerId = p2.id;
+    game.players.find((entry) => entry.id === p2.id)!.mana.R = 1;
+    const cast = applyAction(game, {
+      kind: "cast_spell",
+      playerId: p2.id,
+      cardId: boltId,
+      targets: [{ type: "creature", cardId: victimId }],
+    });
+    return { game: cast, p1, p2, victimId, boltId };
+  };
+
+  it("points the spell at the source, with no prompt", () => {
+    const { game, p1, victimId } = boltOnStack();
+    const specimenId = put(
+      game,
+      p1.id,
+      createCardDefinition({
+        name: "Hydroelectric Specimen",
+        typeLine: "Creature — Weird",
+        manaCost: "{2}{U}",
+        power: 2,
+        toughness: 2,
+      }),
+    );
+    const redirected = applyEffects(
+      game,
+      bindCardEffects(
+        game,
+        [{ kind: "retarget", target: { type: "chosen", index: 0 }, toSelf: true }],
+        {
+          controllerId: p1.id,
+          sourceId: specimenId,
+          targets: [{ type: "spell", stackObjectId: game.stack[0]!.id }],
+          targetRequirements: [{ kind: "instant_or_sorcery_spell", singleTargetOnly: true }],
+        },
+      ),
+    );
+    // The new target is named by the card, so nothing is asked.
+    expect(redirected.prompts).toHaveLength(0);
+    expect(redirected.stack[0]?.targets).toEqual([
+      { type: "creature", cardId: specimenId },
+    ]);
+    expect(victimId).toBeDefined();
+  });
+
+  it("leaves the spell alone when the source is not a legal target", () => {
+    const { game, p1 } = boltOnStack();
+    const originalTargets = [...game.stack[0]!.targets];
+    // A land is not a legal target for "target creature", so the redirect
+    // does nothing rather than pointing the Bolt somewhere illegal.
+    const landId = put(
+      game,
+      p1.id,
+      createCardDefinition({ name: "Forest", typeLine: "Basic Land — Forest" }),
+    );
+    const attempted = applyEffects(
+      game,
+      bindCardEffects(
+        game,
+        [{ kind: "retarget", target: { type: "chosen", index: 0 }, toSelf: true }],
+        {
+          controllerId: p1.id,
+          sourceId: landId,
+          targets: [{ type: "spell", stackObjectId: game.stack[0]!.id }],
+          targetRequirements: [{ kind: "instant_or_sorcery_spell", singleTargetOnly: true }],
+        },
+      ),
+    );
+    expect(attempted.stack[0]?.targets).toEqual(originalTargets);
+  });
+
+  it("refuses a spell with more than one target", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const oneId = put(
+      game,
+      p1.id,
+      createCardDefinition({
+        name: "One",
+        typeLine: "Creature — Bear",
+        manaCost: "{1}{G}",
+        power: 2,
+        toughness: 2,
+      }),
+    );
+    const twoId = put(
+      game,
+      p1.id,
+      createCardDefinition({
+        name: "Two",
+        typeLine: "Creature — Bear",
+        manaCost: "{1}{G}",
+        power: 2,
+        toughness: 2,
+      }),
+    );
+    const pairId = put(
+      game,
+      p2.id,
+      createCardDefinition({
+        name: "Pair Bolt",
+        typeLine: "Instant",
+        manaCost: "{R}",
+        effects: [
+          { kind: "deal_damage", sourceId: null, target: { type: "chosen", index: 0 }, amount: 1 },
+          { kind: "deal_damage", sourceId: null, target: { type: "chosen", index: 1 }, amount: 1 },
+        ],
+        targetRequirements: [{ kind: "creature" }, { kind: "creature" }],
+      }),
+      "hand",
+    );
+    game.turn.activePlayerId = p2.id;
+    game.turn.phase = "precombatMain";
+    game.turn.step = "precombatMain";
+    game.priorityPlayerId = p2.id;
+    game.players.find((entry) => entry.id === p2.id)!.mana.R = 1;
+    const cast = applyAction(game, {
+      kind: "cast_spell",
+      playerId: p2.id,
+      cardId: pairId,
+      targets: [
+        { type: "creature", cardId: oneId },
+        { type: "creature", cardId: twoId },
+      ],
+    });
+    // "With a single target" is the whole restriction.
+    expect(
+      isChosenTargetLegal(
+        cast,
+        { kind: "instant_or_sorcery_spell", singleTargetOnly: true },
+        { type: "spell", stackObjectId: cast.stack[0]!.id },
+        p1.id,
+      ),
+    ).toBe(false);
+    expect(
+      isChosenTargetLegal(
+        cast,
+        { kind: "instant_or_sorcery_spell" },
+        { type: "spell", stackObjectId: cast.stack[0]!.id },
+        p1.id,
+      ),
+    ).toBe(true);
+  });
+
+  // ---- the wire ----------------------------------------------------------
+
+  it("round trips the new count, flag and rider", () => {
+    const { game, p1 } = twoPlayers();
+    const definition = createCardDefinition({
+      name: "Redirect Omnibus",
+      typeLine: "Artifact",
+      manaCost: "{5}",
+      staticAbilities: [
+        {
+          selector: { scope: "all", types: ["creature"] },
+          effect: {
+            kind: "modify_pt",
+            power: 1,
+            toughness: 1,
+            per: "creatures_sharing_a_type_with_it",
+          },
+        },
+      ],
+      triggers: [
+        {
+          event: "attacks",
+          watch: "controlled",
+          effects: [
+            {
+              kind: "pt_until_eot",
+              cardId: "subject_card",
+              power: 1,
+              toughness: 0,
+              per: "attacking_creatures_sharing_a_type_with_it",
+            },
+          ],
+          targetRequirements: [],
+        },
+        {
+          event: "enter_battlefield",
+          watch: "self",
+          effects: [{ kind: "retarget", target: { type: "chosen", index: 0 }, toSelf: true }],
+          targetRequirements: [{ kind: "instant_or_sorcery_spell", singleTargetOnly: true }],
+        },
+      ],
+    });
+    put(game, p1.id, definition);
+    const round = parseGameState(serializeGameState(game));
+    const parsed = round.definitions[definition.id]!;
+    expect(parsed.staticAbilities[0]?.effect).toMatchObject({
+      per: "creatures_sharing_a_type_with_it",
+    });
+    expect(parsed.triggers[0]?.effects[0]).toMatchObject({
+      per: "attacking_creatures_sharing_a_type_with_it",
+    });
+    expect(parsed.triggers[1]?.effects[0]).toEqual({
+      kind: "retarget",
+      target: { type: "chosen", index: 0 },
+      toSelf: true,
+    });
+    expect(parsed.triggers[1]?.targetRequirements).toEqual([
+      { kind: "instant_or_sorcery_spell", singleTargetOnly: true },
+    ]);
+  });
+});

@@ -1189,8 +1189,13 @@ export function bindCardEffect(
       // Defile: "for each Swamp you control" — the count is taken as the
       // spell resolves and baked in, so a Swamp lost afterwards does not
       // shrink the effect (CR 611.2c).
+      // "For each … with IT": the referent is the object being MODIFIED,
+      // not the permanent the ability came from. Shared Animosity's count is
+      // taken against the attacking creature; passing the enchantment would
+      // ask how many creatures share a type with an enchantment, which is
+      // always none.
       const scale = effect.per
-        ? dynamicCountOf(state, context.controllerId, effect.per, context.sourceId ?? undefined)
+        ? dynamicCountOf(state, context.controllerId, effect.per, cardId)
         : 1;
       return { kind: "pt_until_eot", cardId, power: power * scale, toughness: toughness * scale };
     }
@@ -1327,10 +1332,16 @@ export function bindCardEffect(
       if (!chosen || chosen.type !== "spell") {
         return null;
       }
+      // Hydroelectric Specimen: with no source there is nothing to point
+      // the spell at, so the redirect does not happen at all.
+      if (effect.toSelf && !context.sourceId) {
+        return null;
+      }
       return {
         kind: "retarget",
         stackObjectId: chosen.stackObjectId,
         controllerId: context.controllerId,
+        ...(effect.toSelf && context.sourceId ? { toCardId: context.sourceId } : {}),
       };
     }
     case "mass_reanimate": {
@@ -4598,6 +4609,30 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
               : spellDefinition?.targetRequirements ?? [];
         next = cloneGameState(state);
         if (requirements.length === 0) {
+          break;
+        }
+        // Hydroelectric Specimen names the new target, so there is nothing
+        // to prompt for. The FIRST slot this permanent legally fits is the
+        // one it takes; if it fits none, the spell keeps its targets rather
+        // than being pointed somewhere illegal.
+        if (effect.toCardId) {
+          const live = next.stack.find((object) => object.id === effect.stackObjectId);
+          const replacement: ChosenTarget = { type: "creature", cardId: effect.toCardId };
+          const slot = requirements.findIndex((requirement) =>
+            isChosenTargetLegal(
+              next,
+              requirement,
+              replacement,
+              effect.controllerId,
+              undefined,
+              entry.sourceId,
+            ),
+          );
+          if (live && slot >= 0) {
+            live.targets = live.targets.map((target, index) =>
+              index === slot ? replacement : target,
+            );
+          }
           break;
         }
         next.prompts.push({

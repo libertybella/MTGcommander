@@ -362,6 +362,17 @@ const DYNAMIC_COUNTS: [RegExp, DynamicCount][] = [
   // "card you've drawn this turn" after "for each"; "cards you've drawn
   // this turn" after "the number of". Both spellings, one row.
   [new RegExp("^cards? you" + "['’]" + "ve drawn this turn$", "i"), "cards_drawn_this_turn"],
+  // Coat of Arms and Shared Animosity. "Other" is not optional: a creature
+  // shares a type with itself, and counting itself would give every lone
+  // Goblin a free +1/+1.
+  [
+    /^other creatures? on the battlefield that shares? at least one creature type with it$/i,
+    "creatures_sharing_a_type_with_it",
+  ],
+  [
+    /^other attacking creatures? that shares? a creature type with it$/i,
+    "attacking_creatures_sharing_a_type_with_it",
+  ],
 ];
 
 /**
@@ -3167,6 +3178,30 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     }
   }
 
+  // Shared Animosity: the same scaled pump aimed at the trigger's SUBJECT
+  // rather than a target. "It" is the creature that attacked, and it is also
+  // the referent the count is measured against.
+  const subjectScaledPump = sentence.match(
+    /^it gets ([+-]\d+)\/([+-]\d+) until end of turn for each (.+)$/i,
+  );
+  if (subjectScaledPump?.[1] && subjectScaledPump[2] && subjectScaledPump[3]) {
+    const per = parseDynamicCount(subjectScaledPump[3]);
+    if (per) {
+      return {
+        targetRequirements: [],
+        effects: [
+          {
+            kind: "pt_until_eot",
+            cardId: "subject_card",
+            power: Number(subjectScaledPump[1]),
+            toughness: Number(subjectScaledPump[2]),
+            per,
+          },
+        ],
+      };
+    }
+  }
+
   // Defile: a targeted pump whose size is a live count. The count is read as
   // the spell resolves, so the printed numbers are the per-unit step.
   const scaledPump = sentence.match(
@@ -3915,6 +3950,20 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     return {
       targetRequirements: [{ kind: "spell" }],
       effects: [{ kind: "retarget", target: { type: "chosen", index: 0 } }],
+    };
+  }
+
+  // Hydroelectric Specimen: the same redirect, but the new target is named
+  // by the card rather than chosen — so there is nothing to prompt for. The
+  // "may" is auto-taken, the documented approximation used throughout.
+  if (
+    /^(?:you may )?change the target of target instant or sorcery spell with a single target to ~$/i.test(
+      sentence,
+    )
+  ) {
+    return {
+      targetRequirements: [{ kind: "instant_or_sorcery_spell", singleTargetOnly: true }],
+      effects: [{ kind: "retarget", target: { type: "chosen", index: 0 }, toSelf: true }],
     };
   }
 

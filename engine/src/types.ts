@@ -1590,7 +1590,19 @@ export type GameEffect =
   | { kind: "each_creature_damages_controller"; amount: number }
   | { kind: "double_team_pt_until_eot"; playerId: PlayerId }
   | { kind: "power_nova"; sourceId: CardInstanceId; amount: number }
-  | { kind: "retarget"; stackObjectId: StackObjectId; controllerId: PlayerId }
+  | {
+      kind: "retarget";
+      stackObjectId: StackObjectId;
+      controllerId: PlayerId;
+      /**
+       * Hydroelectric Specimen: "change the target … TO THIS CREATURE". The
+       * new target is named by the card, so there is nothing to prompt for —
+       * and the redirect is refused outright when this object is not a legal
+       * target for the slot, rather than silently leaving the spell pointed
+       * where it was and reporting success.
+       */
+      toCardId?: CardInstanceId;
+    }
   | { kind: "mass_reanimate"; playerId: PlayerId }
   /** Splendid Reclamation: every land card in YOUR graveyard returns tapped. */
   | { kind: "return_all_lands"; playerId: PlayerId }
@@ -1826,7 +1838,19 @@ export type DynamicCount =
   /** Fists of Flame. A TALLY, not a hand count: cards drawn and then
    * discarded still counted, and the draw that is part of the same spell
    * has already happened by the time the count is read. */
-  | "cards_drawn_this_turn";
+  | "cards_drawn_this_turn"
+  /**
+   * Coat of Arms: "each OTHER creature on the battlefield that shares at
+   * least one creature type with it". Counted against the AFFECTED object,
+   * the way `auras_attached_to_it` is — "it" is what the ability touches,
+   * not the permanent the ability came from.
+   *
+   * Changelings are every creature type (CR 702.73), so one on either side
+   * of the comparison shares with anything that has a creature type at all.
+   */
+  | "creatures_sharing_a_type_with_it"
+  /** Shared Animosity: the same count, narrowed to the ones attacking. */
+  | "attacking_creatures_sharing_a_type_with_it";
 
 /** "As an additional cost to cast this spell, …" — paid at cast time. */
 /**
@@ -2053,6 +2077,12 @@ export type TargetRequirement = {
    * separate flag rather than a widening of `attackingOnly`, because Maze
    * of Ith must keep refusing blockers. */
   attackingOrBlockingOnly?: boolean;
+  /**
+   * Hydroelectric Specimen: "target instant or sorcery spell WITH A SINGLE
+   * TARGET". A spell pointing at two things cannot be redirected by it, and
+   * one pointing at nothing has no target to change.
+   */
+  singleTargetOnly?: boolean;
   /** "another target …": the effect's own source is not a legal target. */
   excludeSource?: boolean;
   /** "target non-Dragon creature card" (Junji): none of these subtypes. */
@@ -2743,7 +2773,12 @@ export type CardEffect =
    * each opponent for its power. */
   | { kind: "power_nova"; cardId: ChosenTargetRef }
   /** Deflecting Swat: the caster picks new targets for the chosen spell. */
-  | { kind: "retarget"; target: ChosenTargetRef }
+  | {
+      kind: "retarget";
+      target: ChosenTargetRef;
+      /** Hydroelectric Specimen: the new target is the SOURCE of this ability. */
+      toSelf?: boolean;
+    }
   /** Rise of the Dark Realms: every graveyard creature card, under you. */
   | { kind: "mass_reanimate"; playerId: PlayerSelector }
   /** Splendid Reclamation: every land card in YOUR graveyard returns tapped. */

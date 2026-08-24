@@ -638,11 +638,21 @@ export function isChosenTargetLegal(
     );
   }
   if (requirement.kind === "instant_or_sorcery_spell") {
-    return (
-      target.type === "spell" &&
-      isLegalSpellTarget(state, target.stackObjectId) &&
-      isInstantOrSorcerySpell(state, target.stackObjectId)
-    );
+    if (
+      target.type !== "spell" ||
+      !isLegalSpellTarget(state, target.stackObjectId) ||
+      !isInstantOrSorcerySpell(state, target.stackObjectId)
+    ) {
+      return false;
+    }
+    // Hydroelectric Specimen: "with a single target". A spell pointing at
+    // two things cannot be redirected by it, and one pointing at nothing
+    // has no target to change.
+    if (requirement.singleTargetOnly) {
+      const entry = state.stack.find((object) => object.id === target.stackObjectId);
+      return (entry?.targets.length ?? 0) === 1;
+    }
+    return true;
   }
   if (requirement.kind === "artifact_creature_or_planeswalker_spell") {
     return (

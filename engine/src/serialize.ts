@@ -98,6 +98,8 @@ const DYNAMIC_COUNT_KEYS: Record<DynamicCount, true> = {
   mountains_you_control: true,
   forests_you_control: true,
   cards_drawn_this_turn: true,
+  creatures_sharing_a_type_with_it: true,
+  attacking_creatures_sharing_a_type_with_it: true,
 };
 
 function isDynamicCount(value: unknown): value is DynamicCount {
@@ -296,6 +298,8 @@ const DYNAMIC_COUNTS_BY_NAME: Record<DynamicCount, true> = {
   mountains_you_control: true,
   forests_you_control: true,
   cards_drawn_this_turn: true,
+  creatures_sharing_a_type_with_it: true,
+  attacking_creatures_sharing_a_type_with_it: true,
 };
 
 function parseDynamicCount(value: unknown, label: string): DynamicCount {
@@ -2898,6 +2902,7 @@ function parseTargetRequirement(value: unknown, label: string): TargetRequiremen
     ...(value.nonbasicOnly === true ? { nonbasicOnly: true } : {}),
     ...(value.attackingOnly === true ? { attackingOnly: true } : {}),
     ...(value.attackingOrBlockingOnly === true ? { attackingOrBlockingOnly: true } : {}),
+    ...(value.singleTargetOnly === true ? { singleTargetOnly: true } : {}),
     ...(() => {
       const requiredSubtypes = parseStringList(value.requiredSubtypes, `${label}.requiredSubtypes`);
       return requiredSubtypes.length > 0 ? { requiredSubtypes } : {};
@@ -4012,7 +4017,11 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
     case "power_nova":
       return { kind, cardId: parseChosenTargetRef(value.cardId, `${label}.cardId`) };
     case "retarget":
-      return { kind, target: parseChosenTargetRef(value.target, `${label}.target`) };
+      return {
+        kind,
+        target: parseChosenTargetRef(value.target, `${label}.target`),
+        ...(value.toSelf === true ? { toSelf: true } : {}),
+      };
     case "mass_reanimate":
     case "return_all_lands":
       return { kind, playerId: parsePlayerSelector(value.playerId, `${label}.playerId`) };
@@ -5932,6 +5941,9 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
       kind,
       stackObjectId: expectString(value.stackObjectId, `${label}.stackObjectId`),
       controllerId: expectString(value.controllerId, `${label}.controllerId`),
+      ...(value.toCardId === undefined
+        ? {}
+        : { toCardId: expectString(value.toCardId, `${label}.toCardId`) }),
     };
   }
   if (kind === "mass_reanimate" || kind === "return_all_lands") {

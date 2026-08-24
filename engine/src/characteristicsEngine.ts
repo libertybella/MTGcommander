@@ -317,6 +317,52 @@ export function dynamicCountOf(
       );
     }).length;
   }
+  if (
+    count === "creatures_sharing_a_type_with_it" ||
+    count === "attacking_creatures_sharing_a_type_with_it"
+  ) {
+    if (!sourceId) {
+      return 0;
+    }
+    const subject = computedCard(state, sourceId);
+    if (!subject) {
+      return 0;
+    }
+    // A changeling shares with everything that has a creature type at all
+    // (CR 702.73), so its own list is not what to compare against.
+    const subjectIsChangeling = subject.allCreatureTypes;
+    const own = subject.characteristics.subtypes.filter(
+      (subtype) => !NONCREATURE_SUBTYPES.has(subtype.toLowerCase()),
+    );
+    let total = 0;
+    for (const other of Object.values(state.cards)) {
+      if (other.zone !== "battlefield" || other.id === sourceId) {
+        continue;
+      }
+      if (
+        count === "attacking_creatures_sharing_a_type_with_it" &&
+        !other.attacking
+      ) {
+        continue;
+      }
+      const computed = computedCard(state, other.id);
+      if (!computed || !computed.characteristics.types.includes("creature")) {
+        continue;
+      }
+      const theirs = computed.characteristics.subtypes.filter(
+        (subtype) => !NONCREATURE_SUBTYPES.has(subtype.toLowerCase()),
+      );
+      const shares = subjectIsChangeling
+        ? computed.allCreatureTypes || theirs.length > 0
+        : computed.allCreatureTypes
+          ? own.length > 0
+          : own.some((subtype) => theirs.includes(subtype));
+      if (shares) {
+        total += 1;
+      }
+    }
+    return total;
+  }
   if (count === "colors_among_permanents_you_control") {
     const colors = new Set<string>();
     for (const card of Object.values(state.cards)) {

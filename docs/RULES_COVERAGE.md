@@ -870,6 +870,35 @@ more questions it can now ask:
   (Bennie Bracks). Reads the existing per-player `createdTokenThisTurn`
   list, and asks whether the CONTROLLER is in it — an opponent's Treasure
   must not satisfy it.
+- **`creatures_sharing_a_type_with_it`** — Coat of Arms, and its
+  `attacking_` sibling for Shared Animosity. Counted against the AFFECTED
+  object, the way `auras_attached_to_it` is: "it" is what the ability
+  touches, not the permanent the ability came from. Changelings are every
+  creature type (CR 702.73), so one on either side of the comparison shares
+  with anything that has a creature type at all.
+
+  **`pt_until_eot`'s `per` count was measured against the SOURCE**, which is
+  wrong for every "with it" count and was invisible while the only counts
+  used there were controller-wide. Shared Animosity would have asked how
+  many creatures share a creature type with an ENCHANTMENT — always none —
+  and pumped every attacker by +0/+0, compiling perfectly cleanly.
+
+- **`retarget.toCardId`** — Hydroelectric Specimen: "change the target … to
+  THIS CREATURE". The new target is named by the card, so unlike Deflecting
+  Swat there is nothing to prompt for. It takes the first requirement slot it
+  legally fits; fitting none, the spell keeps its targets rather than being
+  pointed somewhere illegal and reporting success.
+
+- **`TargetRequirement.singleTargetOnly`** — "with a single target". A spell
+  pointing at two things cannot be redirected, and one pointing at nothing
+  has no target to change.
+
+  Spellskite was probed and deliberately left: it says "target spell OR
+  ABILITY", and no target kind in this engine reaches an ability on the
+  stack. Narrowing it to spells would compile clean and play wrong — half
+  the reason the card sees play is stopping targeted ABILITIES. Strionic
+  Resonator and Return the Favor want the same missing primitive.
+
 - **Hideaway's activation, and the gates it names** — the hideaway half was
   already here (`hideawayFromSource` records the exiled card ON the
   permanent, because "the exiled card" has no other referent). What was
