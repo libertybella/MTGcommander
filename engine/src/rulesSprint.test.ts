@@ -505,9 +505,12 @@ describe("activation gates and dies-return", () => {
       imageUrl: "",
     });
     expect(compiled.notes).toEqual([]);
+    // "IT" binds the trigger's SUBJECT, which under a "When ~ dies" head is
+    // the source itself — same card, and the reading that stays correct
+    // when the head watches something else.
     expect(compiled.definition.triggers[0]?.effects[0]).toEqual({
       kind: "move_card",
-      cardId: "self",
+      cardId: "subject_card",
       toZone: "battlefield",
       entersTapped: true,
     });
@@ -3507,9 +3510,13 @@ describe("wave 38: unblockable-until-EOT, self-shuffle, dies-return counters", (
     });
     const trigger = diesReturn.definition.triggers[0];
     expect(trigger?.event).toBe("dies");
+    // "IT" is the trigger's SUBJECT. Under a "When ~ dies" head the subject
+    // IS the source, so this binds the same card either way — but under
+    // "Whenever a creature you control dies" it is the creature that died,
+    // and the source reading would return the WATCHER instead.
     expect(trigger?.effects).toEqual([
-      { kind: "move_card", cardId: "self", toZone: "battlefield", entersTapped: true },
-      { kind: "add_counter", cardId: "self", counter: "p1p1", amount: 1 },
+      { kind: "move_card", cardId: "subject_card", toZone: "battlefield", entersTapped: true },
+      { kind: "add_counter", cardId: "subject_card", counter: "p1p1", amount: 1 },
     ]);
   });
 });
@@ -52181,5 +52188,193 @@ describe("wave 337: a qualifier one head knew and its sibling did not", () => {
     });
     // One spell, one trigger: the {1} did not qualify.
     expect(big.stack.filter((entry) => entry.kind === "ability")).toHaveLength(1);
+  });
+});
+
+describe("wave 338: 'it' is the subject, not the watcher", () => {
+  const compile = (
+    name: string,
+    typeLine: string,
+    oracleText: string,
+    manaCost = "",
+    pt: [string, string] | null = null,
+  ) =>
+    compileOracleCard({
+      oracleId: name.toLowerCase().replace(/[^a-z]+/g, "-"),
+      name,
+      manaCost,
+      typeLine,
+      power: pt?.[0] ?? null,
+      toughness: pt?.[1] ?? null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  const put = (game: GameState, ownerId: string, definition: CardDefinition) => {
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({
+      definitionId: definition.id,
+      ownerId,
+      zone: "battlefield",
+    });
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === ownerId)!.zones.battlefield.push(card.id);
+    card.summoningSick = false;
+    return card.id;
+  };
+
+  it("compiles Luminous Broodmoth", () => {
+    const compiled = compile(
+      "Luminous Broodmoth",
+      "Creature — Insect",
+      "Flying\nWhenever a creature you control without flying dies, return it to the battlefield under its owner's control with a flying counter on it.",
+      "{2}{W}{W}",
+      ["3", "4"],
+    );
+    expect(compiled.notes).toEqual([]);
+    const trigger = compiled.definition.triggers[0];
+    expect(trigger?.subjectFilter).toEqual({
+      types: ["creature"],
+      withoutKeyword: "flying",
+    });
+    // "IT" is the creature that DIED, not the Broodmoth watching it.
+    expect(trigger?.effects).toEqual([
+      { kind: "move_card", cardId: "subject_card", toZone: "battlefield" },
+      { kind: "add_counter", cardId: "subject_card", counter: "flying", amount: 1 },
+    ]);
+  });
+
+  it("binds the subject under a self head too", () => {
+    // "When ~ dies, return it …" — the subject IS the source there, so the
+    // same reading is correct and nothing about persist-shaped cards moves.
+    const compiled = compile(
+      "Persist Shell",
+      "Artifact Creature — Construct",
+      "When this creature dies, return it to the battlefield tapped under its owner's control with a +1/+1 counter on it.",
+      "{3}",
+      ["1", "1"],
+    );
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.triggers[0]?.effects).toEqual([
+      { kind: "move_card", cardId: "subject_card", toZone: "battlefield", entersTapped: true },
+      { kind: "add_counter", cardId: "subject_card", counter: "p1p1", amount: 1 },
+    ]);
+  });
+
+  it("still reads ~ as the source", () => {
+    const compiled = compile(
+      "Named Return",
+      "Creature — Bear",
+      "When this creature dies, return this creature to the battlefield.",
+      "{1}{G}",
+      ["2", "2"],
+    );
+    expect(compiled.notes).toEqual([]);
+    // The word "~" names the source, so that is what it binds.
+    expect(compiled.definition.triggers[0]?.effects[0]).toMatchObject({ cardId: "self" });
+  });
+
+  it("reads a counter the clause never knew by name", () => {
+    // The counter used to be hardcoded to +1/+1; it is read now, which is
+    // the only reason a FLYING counter can appear here at all.
+    const compiled = compile(
+      "Odd Counter",
+      "Creature — Bear",
+      "When this creature dies, return it to the battlefield with a shield counter on it.",
+      "{1}{G}",
+      ["2", "2"],
+    );
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.triggers[0]?.effects[1]).toMatchObject({
+      counter: "shield",
+    });
+  });
+
+  // ---- Playing -------------------------------------------------------------
+
+  const broodmoth = () =>
+    createCardDefinition({
+      name: "Luminous Broodmoth",
+      typeLine: "Creature — Insect",
+      manaCost: "{2}{W}{W}",
+      power: 3,
+      toughness: 4,
+      keywords: ["flying"],
+      triggers: [
+        {
+          event: "dies",
+          watch: "controlled",
+          subjectFilter: { types: ["creature"], withoutKeyword: "flying" },
+          effects: [
+            { kind: "move_card", cardId: "subject_card", toZone: "battlefield" },
+            { kind: "add_counter", cardId: "subject_card", counter: "flying", amount: 1 },
+          ],
+          targetRequirements: [],
+        },
+      ],
+    });
+
+  const groundling = (name: string) =>
+    createCardDefinition({
+      name,
+      typeLine: "Creature — Bear",
+      manaCost: "{1}{G}",
+      power: 2,
+      toughness: 2,
+    });
+
+  it("returns the creature that died, not the watcher", () => {
+    const { game, p1 } = twoPlayers();
+    const mothId = put(game, p1.id, broodmoth());
+    const bearId = put(game, p1.id, groundling("Bear"));
+    const bound = bindCardEffects(
+      game,
+      game.definitions[game.cards[mothId]!.definitionId]!.triggers[0]!.effects,
+      { controllerId: p1.id, sourceId: mothId, subjectCardId: bearId },
+    );
+    // The source binding would have named the Broodmoth here, and the card
+    // would have returned ITSELF every time a creature died.
+    expect(bound[0]).toMatchObject({ kind: "move_card", cardId: bearId });
+    expect(bound[1]).toMatchObject({ cardId: bearId, counter: "flying" });
+  });
+
+  it("gives the returned creature flying", () => {
+    const { game, p1 } = twoPlayers();
+    const bearId = put(game, p1.id, groundling("Bear"));
+    expect(hasKeyword(game, bearId, "flying")).toBe(false);
+    const countered = applyEffect(game, {
+      kind: "add_counter",
+      cardId: bearId,
+      counter: "flying",
+      amount: 1,
+    });
+    // CR 122.1e: a flying counter grants flying, which is what stops the
+    // Broodmoth returning the same creature for ever.
+    expect(hasKeyword(countered, bearId, "flying")).toBe(true);
+  });
+
+  it("compiles the without-flying filter, not a bare creature watch", () => {
+    const compiled = compile(
+      "Luminous Broodmoth",
+      "Creature — Insect",
+      "Whenever a creature you control without flying dies, draw a card.",
+      "{2}{W}{W}",
+      ["3", "4"],
+    );
+    // Without the qualifier the Broodmoth would return its own fliers too,
+    // returning the same creature for ever.
+    expect(compiled.definition.triggers[0]?.subjectFilter?.withoutKeyword).toBe("flying");
+  });
+
+  it("round trips", () => {
+    const { game, p1 } = twoPlayers();
+    const definition = broodmoth();
+    put(game, p1.id, definition);
+    const round = parseGameState(serializeGameState(game));
+    expect(round.definitions[definition.id]?.triggers[0]?.effects).toEqual([
+      { kind: "move_card", cardId: "subject_card", toZone: "battlefield" },
+      { kind: "add_counter", cardId: "subject_card", counter: "flying", amount: 1 },
+    ]);
   });
 });

@@ -3381,20 +3381,30 @@ function compileSimpleClauseInner(sentence: string): SimpleClause | null {
   // "When ~ dies, return it to the battlefield tapped under its owner's
   // control [with a +1/+1 counter on it]."
   const selfReturn = sentence.match(
-    /^return (?:it|~) to the battlefield( tapped)?(?: under its owner's control)?( with a \+1\/\+1 counter on it)?$/i,
+    /^return (it|~) to the battlefield( tapped)?(?: under its owner's control)?(?: with an? ([+\w/]+) counter on it)?$/i,
   );
-  if (selfReturn) {
+  if (selfReturn?.[1]) {
+    /**
+     * "IT" is the trigger's SUBJECT, not the source. Under "When ~ dies"
+     * those are the same card and either reading works; under "Whenever a
+     * creature you control dies" they are not, and binding the source
+     * would return the WATCHER to the battlefield instead of the creature
+     * that died — a card that compiles clean and returns the wrong thing.
+     * `~` still means the source, because that is what the word says.
+     */
+    const returned = /^~$/.test(selfReturn[1]) ? ("self" as const) : ("subject_card" as const);
+    const counter = selfReturn[3] ? counterKeyOf(selfReturn[3]) : null;
     return {
       targetRequirements: [],
       effects: [
         {
           kind: "move_card",
-          cardId: "self",
+          cardId: returned,
           toZone: "battlefield",
-          ...(selfReturn[1] ? { entersTapped: true } : {}),
+          ...(selfReturn[2] ? { entersTapped: true } : {}),
         },
-        ...(selfReturn[2]
-          ? [{ kind: "add_counter" as const, cardId: "self", counter: "p1p1", amount: 1 }]
+        ...(counter
+          ? [{ kind: "add_counter" as const, cardId: returned, counter, amount: 1 }]
           : []),
       ],
     };

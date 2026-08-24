@@ -870,6 +870,23 @@ more questions it can now ask:
   (Bennie Bracks). Reads the existing per-player `createdTokenThisTurn`
   list, and asks whether the CONTROLLER is in it — an opponent's Treasure
   must not satisfy it.
+- **"IT" IS THE TRIGGER'S SUBJECT, NOT THE WATCHER.** The dies-return
+  clause bound `self` — the SOURCE — for both "When ~ dies, return it" and
+  "Whenever a creature you control dies, return it". Under the first head
+  those are the same card and the reading is harmless; under the second the
+  card would have returned ITSELF every time a creature died, compiling
+  clean and returning the wrong thing.
+
+  `it` now binds `subject_card` and `~` still binds the source, because
+  that is what the word says. Under a self head the subject IS the source,
+  so persist-shaped cards are untouched — three existing assertions moved
+  from one selector name to the other with no behaviour change.
+
+  The counter in that clause was hardcoded to `+1/+1` and is now read,
+  which is the only reason a FLYING counter can appear there at all
+  (CR 122.1e: a flying counter grants flying, and that is what stops
+  Luminous Broodmoth returning the same creature for ever).
+
 - **A cast head reads the mana-value qualifier the ENTERS head already
   knew.** "Whenever another creature you control WITH MANA VALUE 3 OR
   GREATER enters" parsed; "whenever you cast a spell with mana value 5 or
