@@ -183,6 +183,12 @@ export type CardDefinition = {
     mode: "set" | "reduce";
     amount: number;
   };
+  /**
+   * Cascade (CR 702.85) — how many times. A count, not a boolean: Maelstrom
+   * Wanderer cascades twice and Apex Devastator four times, and each is its
+   * own separate walk down the library.
+   */
+  cascade?: number;
   /** Additional land drops granted each of the controller's turns (Exploration). */
   extraLandDrops?: number;
   /** Rites of Flourishing: the same grant, but to EVERY player rather than
@@ -1723,6 +1729,26 @@ export type GameEffect =
        */
       toCardId?: CardInstanceId;
     }
+  /**
+   * Discover N (CR 702.163) and cascade (CR 702.85), which are the same
+   * walk: exile from the top of the library until a NONLAND card with a
+   * small enough mana value turns up, then the rest go to the bottom in a
+   * random order.
+   *
+   * The two differ only in the bound `maxManaValue` and in what may be done
+   * with the card found, so they are one effect rather than two.
+   */
+  | {
+      kind: "discover";
+      playerId: PlayerId;
+      /** Inclusive. Cascade binds this to the source's mana value minus one. */
+      maxManaValue: number;
+      /**
+       * Discover may take the card to hand instead of casting it; cascade
+       * may not. See the apply path for which branch is taken and why.
+       */
+      toHandAllowed?: boolean;
+    }
   | { kind: "mass_reanimate"; playerId: PlayerId }
   /** Splendid Reclamation: every land card in YOUR graveyard returns tapped. */
   | { kind: "return_all_lands"; playerId: PlayerId }
@@ -2988,6 +3014,16 @@ export type CardEffect =
       toSelf?: boolean;
     }
   /** Rise of the Dark Realms: every graveyard creature card, under you. */
+  /**
+   * Discover N, and cascade. `maxManaValue` is the printed N; "below_source"
+   * is cascade reading the cascading spell's own mana value at bind.
+   */
+  | {
+      kind: "discover";
+      playerId: PlayerSelector;
+      maxManaValue: number | "below_source";
+      toHandAllowed?: boolean;
+    }
   | { kind: "mass_reanimate"; playerId: PlayerSelector }
   /** Splendid Reclamation: every land card in YOUR graveyard returns tapped. */
   | { kind: "return_all_lands"; playerId: PlayerSelector }

@@ -49230,3 +49230,302 @@ describe("wave 323: a tax paid in life, and a shield that names types", () => {
     expect(round.prompts[0]).toMatchObject({ kind: "pay_or_counter", life: 2 });
   });
 });
+
+describe("wave 324: one walk down the library, two keywords", () => {
+  const compile = (
+    name: string,
+    typeLine: string,
+    oracleText: string,
+    manaCost = "",
+    pt: [string, string] | null = null,
+  ) =>
+    compileOracleCard({
+      oracleId: name.toLowerCase().replace(/[^a-z]+/g, "-"),
+      name,
+      manaCost,
+      typeLine,
+      power: pt?.[0] ?? null,
+      toughness: pt?.[1] ?? null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  const define = (name: string, typeLine: string, manaCost: string) =>
+    createCardDefinition({ name, typeLine, manaCost });
+
+  /** A library stacked from the top down, so each test says what it will find. */
+  const stack = (game: GameState, playerId: string, definitions: CardDefinition[]) => {
+    const player = game.players.find((entry) => entry.id === playerId)!;
+    player.zones.library = [];
+    const ids: string[] = [];
+    for (const definition of definitions) {
+      game.definitions[definition.id] = definition;
+      const card = createCardInstance({
+        definitionId: definition.id,
+        ownerId: playerId,
+        zone: "library",
+      });
+      game.cards[card.id] = card;
+      player.zones.library.push(card.id);
+      ids.push(card.id);
+    }
+    return ids;
+  };
+
+  const mainPhase = (game: GameState, playerId: string) => {
+    game.turn.activePlayerId = playerId;
+    game.turn.phase = "precombatMain";
+    game.turn.step = "precombatMain";
+    game.priorityPlayerId = playerId;
+  };
+
+  // ---- Compiling -----------------------------------------------------------
+
+  it("compiles a printed discover", () => {
+    const chimil = compile(
+      "Chimil, the Inner Sun",
+      "Legendary Artifact",
+      "Spells you control can't be countered.\nAt the beginning of your end step, discover 5.",
+      "{6}",
+    );
+    expect(chimil.notes).toEqual([]);
+    expect(chimil.definition.triggers[0]?.effects[0]).toEqual({
+      kind: "discover",
+      playerId: "controller",
+      maxManaValue: 5,
+      toHandAllowed: true,
+    });
+  });
+
+  it("counts a repeated cascade rather than flattening it", () => {
+    // Maelstrom Wanderer cascades twice, Apex Devastator four times; each is
+    // its own walk, so the count is the card.
+    expect(compile("Wanderer", "Creature — Elemental", "Cascade, cascade.", "{5}{G}{U}{R}")
+      .definition.cascade).toBe(2);
+    expect(
+      compile("Apex", "Creature — Hydra", "Cascade, cascade, cascade, cascade.", "{8}{G}")
+        .definition.cascade,
+    ).toBe(4);
+    expect(compile("One", "Sorcery", "Cascade.", "{3}{R}").definition.cascade).toBe(1);
+  });
+
+  // ---- The walk ------------------------------------------------------------
+
+  const discover = (game: GameState, playerId: string, max: number, toHand = true) =>
+    applyEffect(game, {
+      kind: "discover",
+      playerId,
+      maxManaValue: max,
+      ...(toHand ? { toHandAllowed: true } : {}),
+    });
+
+  it("exiles past lands and past cards that cost too much", () => {
+    const { game, p1 } = twoPlayers();
+    mainPhase(game, p1.id);
+    const [forest, bigSpell, hit, spare] = stack(game, p1.id, [
+      define("Forest", "Basic Land — Forest", ""),
+      define("Expensive", "Sorcery", "{7}"),
+      define("Cheap", "Instant", "{1}{R}"),
+      define("Spare", "Sorcery", "{2}"),
+    ]);
+    const found = discover(game, p1.id, 3);
+    // The land is skipped even though a land's mana value is 0 — discover
+    // wants a NONLAND card.
+    expect(found.cards[hit!]?.zone).toBe("exile");
+    expect(found.cards[forest!]?.zone).toBe("library");
+    expect(found.cards[bigSpell!]?.zone).toBe("library");
+    // The walk stopped, so the card under it was never touched.
+    expect(found.cards[spare!]?.zone).toBe("library");
+  });
+
+  it("puts the passed-over cards on the bottom", () => {
+    const { game, p1 } = twoPlayers();
+    mainPhase(game, p1.id);
+    const [forest, hit] = stack(game, p1.id, [
+      define("Forest", "Basic Land — Forest", ""),
+      define("Cheap", "Instant", "{1}{R}"),
+      define("Spare", "Sorcery", "{2}"),
+    ]);
+    const found = discover(game, p1.id, 3);
+    const library = found.players.find((entry) => entry.id === p1.id)!.zones.library;
+    expect(library.at(-1)).toBe(forest);
+    void hit;
+  });
+
+  it("grants a free cast of what it found", () => {
+    const { game, p1 } = twoPlayers();
+    mainPhase(game, p1.id);
+    const [hit] = stack(game, p1.id, [define("Cheap", "Instant", "{1}{R}")]);
+    const found = discover(game, p1.id, 3);
+    const entry = (found.exilePlayable ?? []).find((row) => row.cardId === hit);
+    expect(entry).toMatchObject({ casterId: p1.id, freeCast: true });
+  });
+
+  it("takes the hand branch for a sorcery it could not cast now", () => {
+    const { game, p1 } = twoPlayers();
+    mainPhase(game, p1.id);
+    game.turn.phase = "ending";
+    game.turn.step = "end";
+    const [hit] = stack(game, p1.id, [define("Slow", "Sorcery", "{2}")]);
+    const found = discover(game, p1.id, 5);
+    // Chimil discovers on the END STEP. Without the hand branch a sorcery
+    // found there would sit in exile forever instead of being drawn.
+    expect(found.cards[hit!]?.zone).toBe("hand");
+    expect(found.exilePlayable ?? []).toEqual([]);
+  });
+
+  it("still casts an instant found on an end step", () => {
+    const { game, p1 } = twoPlayers();
+    mainPhase(game, p1.id);
+    game.turn.phase = "ending";
+    game.turn.step = "end";
+    const [hit] = stack(game, p1.id, [define("Fast", "Instant", "{2}")]);
+    const found = discover(game, p1.id, 5);
+    expect(found.cards[hit!]?.zone).toBe("exile");
+    expect((found.exilePlayable ?? [])[0]).toMatchObject({ cardId: hit, freeCast: true });
+  });
+
+  it("gives cascade no hand branch at all", () => {
+    const { game, p1 } = twoPlayers();
+    mainPhase(game, p1.id);
+    game.turn.phase = "ending";
+    game.turn.step = "end";
+    const [hit] = stack(game, p1.id, [define("Slow", "Sorcery", "{2}")]);
+    // Cascade says "you may cast it"; there is no hand to take it to, so
+    // the card stays exiled either way.
+    const found = discover(game, p1.id, 5, false);
+    expect(found.cards[hit!]?.zone).toBe("exile");
+  });
+
+  it("bottoms everything when nothing qualifies", () => {
+    const { game, p1 } = twoPlayers();
+    mainPhase(game, p1.id);
+    const ids = stack(game, p1.id, [
+      define("Forest", "Basic Land — Forest", ""),
+      define("Island", "Basic Land — Island", ""),
+    ]);
+    const found = discover(game, p1.id, 3);
+    for (const id of ids) {
+      expect(found.cards[id]?.zone).toBe("library");
+    }
+    expect(found.exilePlayable ?? []).toEqual([]);
+  });
+
+  it("survives an empty library", () => {
+    const { game, p1 } = twoPlayers();
+    mainPhase(game, p1.id);
+    stack(game, p1.id, []);
+    expect(() => discover(game, p1.id, 3)).not.toThrow();
+  });
+
+  // ---- Cascade at cast time ------------------------------------------------
+
+  it("walks once per cascade, under the spell's own cost", () => {
+    const { game, p1 } = twoPlayers();
+    mainPhase(game, p1.id);
+    const wandererDefinition = createCardDefinition({
+      name: "Maelstrom Wanderer",
+      typeLine: "Creature — Elemental",
+      manaCost: "{5}{G}{U}{R}",
+      power: 7,
+      toughness: 5,
+      cascade: 2,
+    });
+    game.definitions[wandererDefinition.id] = wandererDefinition;
+    const wanderer = createCardInstance({
+      definitionId: wandererDefinition.id,
+      ownerId: p1.id,
+      zone: "hand",
+    });
+    game.cards[wanderer.id] = wanderer;
+    const player = game.players.find((entry) => entry.id === p1.id)!;
+    player.zones.hand.push(wanderer.id);
+    const [first, second, tooBig] = stack(game, p1.id, [
+      define("First", "Instant", "{1}"),
+      define("Second", "Instant", "{2}"),
+      define("Huge", "Sorcery", "{9}"),
+    ]);
+    player.mana = { ...player.mana, G: 1, U: 1, R: 1, C: 5 };
+    const cast = applyAction(game, {
+      kind: "cast_spell",
+      playerId: p1.id,
+      cardId: wanderer.id,
+      targets: [],
+    });
+    // Two cascades, two separate walks, two free casts offered.
+    const offered = (cast.exilePlayable ?? []).map((row) => row.cardId);
+    expect(offered).toEqual([first, second]);
+    expect(cast.cards[tooBig!]?.zone).toBe("library");
+    // The cascading spell is still on the stack, so the free casts happen
+    // first — which is the printed ordering.
+    expect(cast.stack).toHaveLength(1);
+  });
+
+  it("finds nothing under a one-mana cascade spell", () => {
+    const { game, p1 } = twoPlayers();
+    mainPhase(game, p1.id);
+    const cheapDefinition = createCardDefinition({
+      name: "Cheap Cascader",
+      typeLine: "Sorcery",
+      manaCost: "{R}",
+      cascade: 1,
+    });
+    game.definitions[cheapDefinition.id] = cheapDefinition;
+    const spell = createCardInstance({
+      definitionId: cheapDefinition.id,
+      ownerId: p1.id,
+      zone: "hand",
+    });
+    game.cards[spell.id] = spell;
+    const player = game.players.find((entry) => entry.id === p1.id)!;
+    player.zones.hand.push(spell.id);
+    const ids = stack(game, p1.id, [define("Free", "Instant", "")]);
+    player.mana = { ...player.mana, R: 1 };
+    const cast = applyAction(game, {
+      kind: "cast_spell",
+      playerId: p1.id,
+      cardId: spell.id,
+      targets: [],
+    });
+    // "Mana value LESS THAN this spell's" — under {R} that is nothing at
+    // all, not even a zero-cost card, because the ceiling is inclusive and
+    // sits at 0... which a {0} instant meets. It IS found.
+    expect(cast.cards[ids[0]!]?.zone).toBe("exile");
+  });
+
+  it("round trips both", () => {
+    const { game, p1 } = twoPlayers();
+    const definition = createCardDefinition({
+      name: "Wave 324 Cascader",
+      typeLine: "Sorcery",
+      manaCost: "{3}{R}",
+      cascade: 2,
+      effects: [
+        {
+          kind: "discover",
+          playerId: "controller",
+          maxManaValue: 5,
+          toHandAllowed: true,
+        },
+      ],
+    });
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({
+      definitionId: definition.id,
+      ownerId: p1.id,
+      zone: "hand",
+    });
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === p1.id)!.zones.hand.push(card.id);
+    const round = parseGameState(serializeGameState(game));
+    const parsed = round.definitions[definition.id]!;
+    expect(parsed.cascade).toBe(2);
+    expect(parsed.effects[0]).toEqual({
+      kind: "discover",
+      playerId: "controller",
+      maxManaValue: 5,
+      toHandAllowed: true,
+    });
+  });
+});

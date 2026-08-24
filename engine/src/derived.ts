@@ -1,8 +1,20 @@
-import { characteristicsOf, isBasic, isCommander, isCreature, isLand, isLegendary } from "./cardTypes";
+import { characteristicsOf, isBasic, isCommander, isCreature, isLand, isLegendary, isMainPhase } from "./cardTypes";
 import { abilitiesRemoved, cardMatchesSubtype, computedCard, controlsGate, dynamicCountOf } from "./characteristicsEngine";
 import { canPayManaCost, type ParsedManaCost } from "./mana";
 import { triggerConditionHolds } from "./triggers";
 import type { ActivatedAbility, AlternativeCastCost, CardDefinition, CardInstance, CardInstanceId, EnterTappedUnless, GameState, ManaPool, PlayerId } from "./types";
+
+/**
+ * CR 307.1: the window a sorcery may be cast in — your own main phase with
+ * the stack empty. Lives here rather than in legalActions because the
+ * discover/cascade path needs the same question answered, and two copies of
+ * a rule this small is exactly how the two drift apart.
+ */
+export function inSorceryWindow(state: GameState, playerId: PlayerId): boolean {
+  return (
+    playerId === state.turn.activePlayerId && isMainPhase(state) && state.stack.length === 0
+  );
+}
 
 /**
  * Every permanent a player controls, which is NOT the same as the battlefield

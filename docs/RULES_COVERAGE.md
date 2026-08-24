@@ -870,6 +870,30 @@ more questions it can now ask:
   (Bennie Bracks). Reads the existing per-player `createdTokenThisTurn`
   list, and asks whether the CONTROLLER is in it — an opponent's Treasure
   must not satisfy it.
+- **Cascade (CR 702.85) and discover N (CR 702.163)** are ONE effect, not
+  two. Both exile from the top of the library until a nonland card with a
+  small enough mana value turns up, then bottom the rest; they differ only
+  in where the ceiling comes from and in what may be done with the card
+  found. `cascade` is a COUNT, because Maelstrom Wanderer cascades twice
+  and Apex Devastator four times and each is its own walk.
+
+  **Documented approximation.** The rules cast the found card during the
+  resolution; this engine has no cast-during-resolution path, so the card
+  is exiled and granted a free cast for the turn through the same
+  `exilePlayable` permission Dauthi Voidwalker already uses. Cascade runs
+  at CAST time rather than at resolution, which is what preserves the
+  printed ordering — the window opens while the cascading spell is still
+  on the stack, so the cascaded spell can be cast and resolve first.
+
+  When the found card could not legally be cast in that window anyway — a
+  sorcery discovered on an end step, which is exactly Chimil — and the card
+  allows it, the HAND branch is taken instead. Without that, Chimil's
+  end-step discover would exile a sorcery forever rather than drawing it.
+
+- **`inSorceryWindow`** moved from `legalActions` to `derived`, because the
+  discover path needs the same question answered and two copies of a rule
+  that small is how the two drift apart.
+
 - **`wardLife`** — Ward—Pay N life (CR 702.21b), Hexing Squelcher. Kept
   apart from `ward` rather than folded into one number, because the two are
   paid from different pools and one number could not say which. A permanent

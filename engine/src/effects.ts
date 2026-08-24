@@ -5,7 +5,7 @@ import { createCardDefinition, createCardInstance } from "./createGame";
 import { characteristicsOf, hasSubtype, hasType, isCreature, isInstantOrSorcery, isLand, isPlaneswalker } from "./cardTypes";
 import { eliminatePlayerInPlace } from "./elimination";
 import { createId } from "./ids";
-import { allBattlefieldCreatureCount, cantLoseGame, creaturePower, creatureToughness, damageAfterReplacements, lifeLossAfterReplacements, permanentsControlledBy, playerLifeLocked, playerProtectedFromEverything, wouldSkipDraw } from "./derived";
+import { allBattlefieldCreatureCount, cantLoseGame, inSorceryWindow, creaturePower, creatureToughness, damageAfterReplacements, lifeLossAfterReplacements, permanentsControlledBy, playerLifeLocked, playerProtectedFromEverything, wouldSkipDraw } from "./derived";
 import { hasKeyword, protectedFromSource } from "./keywords";
 import { addMana, tapCard, untapCard } from "./mana";
 import { commanderIdentityColors } from "./manaOptions";
@@ -2345,6 +2345,27 @@ export function bindCardEffect(
       }
       return { kind: "counter_spell", stackObjectId: entry.id };
     }
+    case "discover": {
+      const discoverer = bindPlayerSelector(state, effect.playerId, context);
+      if (!discoverer) {
+        return null;
+      }
+      // Cascade reads the cascading spell's own mana value, which is why
+      // this is bound rather than printed: "less than" makes the inclusive
+      // ceiling one lower.
+      const max =
+        effect.maxManaValue === "below_source"
+          ? (context.sourceId
+              ? characteristicsOf(state, context.sourceId).manaValue - 1
+              : -1)
+          : effect.maxManaValue;
+      return {
+        kind: "discover",
+        playerId: discoverer,
+        maxManaValue: max,
+        ...(effect.toHandAllowed ? { toHandAllowed: true } : {}),
+      };
+    }
     // Resolved one level up, in bindCardEffects, because picking a branch
     // yields a LIST of effects and this function returns one.
     case "if_condition":
@@ -4004,6 +4025,80 @@ function applyLookAndAssign(
     ...(hideawaySourceId ? { hideawaySourceId } : {}),
     ...(exilePlayableThisTurn ? { exilePlayableThisTurn: true } : {}),
   });
+  return next;
+}
+
+
+/**
+ * Discover N (CR 702.163) and cascade (CR 702.85). Exile from the top of the
+ * library until a NONLAND card with mana value at most `maxManaValue` turns
+ * up; the rest go to the bottom in a random order.
+ *
+ * **Documented approximation.** The rules then offer a choice — cast the
+ * card without paying its mana cost, or (discover only) put it into your
+ * hand — and cast it right there, during the resolution. This engine has no
+ * cast-during-resolution path, so instead:
+ *
+ *   - the card is exiled and granted a free cast for the turn, using the
+ *     same `exilePlayable` permission Dauthi Voidwalker already uses; the
+ *     player casts it at their next priority rather than immediately, so a
+ *     cascaded spell resolves AFTER the spell that cascaded rather than
+ *     before it;
+ *   - when the card could not legally be cast in this window anyway (a
+ *     sorcery discovered on an end step, say) and the card allows it, the
+ *     hand branch is taken instead. That is the choice a player makes, and
+ *     without it Chimil's end-step discover would exile a sorcery forever
+ *     rather than drawing it.
+ *
+ * The bottoming order uses the library's existing order rather than a real
+ * shuffle: the cards are hidden either way, and this engine has no seeded
+ * randomness a replay could reproduce.
+ */
+function applyDiscover(
+  state: GameState,
+  effect: Extract<GameEffect, { kind: "discover" }>,
+): GameState {
+  const player = requirePlayer(state, effect.playerId);
+  const next = cloneGameState(state);
+  const nextPlayer = next.players.find((entry) => entry.id === effect.playerId)!;
+  void player;
+  const exiled: CardInstanceId[] = [];
+  let found: CardInstanceId | null = null;
+  while (nextPlayer.zones.library.length > 0 && found === null) {
+    const cardId = nextPlayer.zones.library[0]!;
+    moveCardInPlace(next, cardId, "exile");
+    exiled.push(cardId);
+    const characteristics = characteristicsOf(next, cardId);
+    if (
+      !characteristics.types.includes("land") &&
+      characteristics.manaValue <= effect.maxManaValue
+    ) {
+      found = cardId;
+    }
+  }
+  if (found === null) {
+    // Nothing qualified: every exiled card goes to the bottom.
+    for (const cardId of exiled) {
+      moveCardInPlace(next, cardId, "library", { libraryPosition: "bottom" });
+    }
+    return next;
+  }
+  const castable =
+    !characteristicsOf(next, found).types.includes("sorcery") ||
+    inSorceryWindow(next, effect.playerId);
+  if (castable || !effect.toHandAllowed) {
+    next.exilePlayable = [
+      ...(next.exilePlayable ?? []),
+      { cardId: found, casterId: effect.playerId, freeCast: true },
+    ];
+  } else {
+    moveCardInPlace(next, found, "hand");
+  }
+  for (const cardId of exiled) {
+    if (cardId !== found) {
+      moveCardInPlace(next, cardId, "library", { libraryPosition: "bottom" });
+    }
+  }
   return next;
 }
 
@@ -5829,6 +5924,9 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
         ];
         break;
       }
+      case "discover":
+        next = applyDiscover(state, effect);
+        break;
       case "phase_out":
         next = applyPhaseOut(state, effect.cardIds);
         break;

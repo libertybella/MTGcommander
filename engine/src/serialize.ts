@@ -1477,6 +1477,9 @@ export function parseGameState(json: string): GameState {
             })(),
           }),
       ...(def.reanimateOnEnter === true ? { reanimateOnEnter: true } : {}),
+      ...(def.cascade === undefined
+        ? {}
+        : { cascade: expectNumber(def.cascade, "definition.cascade") }),
       ...(def.copySelfWhenCastFromGraveyard === true
         ? { copySelfWhenCastFromGraveyard: true }
         : {}),
@@ -4143,6 +4146,16 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
         target: parseChosenTargetRef(value.target, `${label}.target`),
         ...(value.toSelf === true ? { toSelf: true } : {}),
       };
+    case "discover":
+      return {
+        kind,
+        playerId: parsePlayerSelector(value.playerId, `${label}.playerId`),
+        maxManaValue:
+          value.maxManaValue === "below_source"
+            ? "below_source"
+            : expectNumber(value.maxManaValue, `${label}.maxManaValue`),
+        ...(value.toHandAllowed === true ? { toHandAllowed: true } : {}),
+      };
     case "mass_reanimate":
     case "return_all_lands":
       return { kind, playerId: parsePlayerSelector(value.playerId, `${label}.playerId`) };
@@ -6106,6 +6119,14 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
       ...(value.toCardId === undefined
         ? {}
         : { toCardId: expectString(value.toCardId, `${label}.toCardId`) }),
+    };
+  }
+  if (kind === "discover") {
+    return {
+      kind,
+      playerId: expectString(value.playerId, `${label}.playerId`),
+      maxManaValue: expectNumber(value.maxManaValue, `${label}.maxManaValue`),
+      ...(value.toHandAllowed === true ? { toHandAllowed: true } : {}),
     };
   }
   if (kind === "mass_reanimate" || kind === "return_all_lands") {

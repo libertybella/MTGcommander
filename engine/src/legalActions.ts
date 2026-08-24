@@ -1,4 +1,4 @@
-import { characteristicsOf, isClass, isCommander, isCreature, isLand, isLegendary, isMainPhase } from "./cardTypes";
+import { characteristicsOf, isClass, isCommander, isCreature, isLand, isLegendary } from "./cardTypes";
 import { abilityLifeCost } from "./commanderIdentity";
 import {
   abilitiesRemoved,
@@ -11,7 +11,7 @@ import { hasKeyword } from "./keywords";
 import { triggerConditionHolds } from "./triggers";
 import { emptyManaPool } from "./createGame";
 import { pendingBlockerPlayer } from "./combat";
-import { splitSecondActive, reliefAdjustedCost, affinityArtifactDiscount, activationNonManaPayment, allBattlefieldCreatureCount, altCastPayment, canActivateTapAbility, canPlayLandsFromGraveyard, castCostReduction, castableFromTop, controlsCommander, freeEquipGranted, hasFlashGrant, landDropAllowance, lockedByAbolisher, lockedFromCasting, noncreatureSpellCap, opponentControlsMoreLands, findFreeHandGrantIndex, opponentsCastLockedToHand, permanentsControlledBy, selfDiscountAmount, staticFreeCastCap, topOfLibraryGrant } from "./derived";
+import { inSorceryWindow, splitSecondActive, reliefAdjustedCost, affinityArtifactDiscount, activationNonManaPayment, allBattlefieldCreatureCount, altCastPayment, canActivateTapAbility, canPlayLandsFromGraveyard, castCostReduction, castableFromTop, controlsCommander, freeEquipGranted, hasFlashGrant, landDropAllowance, lockedByAbolisher, lockedFromCasting, noncreatureSpellCap, opponentControlsMoreLands, findFreeHandGrantIndex, opponentsCastLockedToHand, permanentsControlledBy, selfDiscountAmount, staticFreeCastCap, topOfLibraryGrant } from "./derived";
 import { canPayManaCost, parseManaCost, type ParsedManaCost } from "./mana";
 import {
   colorsAmongControlled,
@@ -218,12 +218,6 @@ function payableCost(manaCost: string): ParsedManaCost | null {
   } catch {
     return null;
   }
-}
-
-function inSorceryWindow(state: GameState, playerId: PlayerId): boolean {
-  return (
-    playerId === state.turn.activePlayerId && isMainPhase(state) && state.stack.length === 0
-  );
 }
 
 /** "Activate only if you control a Swamp": any controlled match satisfies. */

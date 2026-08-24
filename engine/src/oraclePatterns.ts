@@ -61,6 +61,7 @@ export type CompiledOracleText = {
   reanimateOnEnter?: boolean;
   grantsEscape?: { exileOther: number };
   copySelfWhenCastFromGraveyard?: boolean;
+  cascade?: number;
   chooseColorOnEnter?: boolean;
   chooseColorExcludes?: Color;
   enchantedTappedBonus?: { color: Color | "chosen"; amount: number };
@@ -2493,6 +2494,26 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
 }
 
 function compileSimpleClauseInner(sentence: string): SimpleClause | null {
+  /**
+   * Discover N (CR 702.163) — the same walk cascade makes, with a printed
+   * ceiling instead of the spell's own mana value, and with the extra
+   * option of taking the card to hand.
+   */
+  const discoverLine = sentence.match(/^Discover (\d+)$/i);
+  if (discoverLine?.[1]) {
+    return {
+      effects: [
+        {
+          kind: "discover",
+          playerId: "controller",
+          maxManaValue: Number(discoverLine[1]),
+          toHandAllowed: true,
+        },
+      ],
+      targetRequirements: [],
+    };
+  }
+
   // "At the beginning of your next upkeep, …" — a delayed triggered
   // ability (CR 603.7) created by THIS spell, not a trigger on a
   // permanent, which is why the permanent trigger head ("of your upkeep",
@@ -12893,6 +12914,16 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
       if (keywordLine.protection) {
         result.protectionFrom = mergeProtection(result.protectionFrom ?? {}, keywordLine.protection);
       }
+      continue;
+    }
+
+    /**
+     * "Cascade", "Cascade, cascade" (Maelstrom Wanderer) and four of them
+     * (Apex Devastator) are the same keyword repeated, so the count is read
+     * off the sentence rather than each arity getting a clause.
+     */
+    if (/^cascade(?:, cascade)*$/i.test(sentence)) {
+      result.cascade = (result.cascade ?? 0) + sentence.split(",").length;
       continue;
     }
 

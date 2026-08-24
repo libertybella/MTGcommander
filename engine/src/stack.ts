@@ -299,6 +299,26 @@ export function putSpellOnStack(
     );
   }
   queueWardPromptsInPlace(next, stackId, moved.controllerId, targets);
+  /**
+   * Cascade (CR 702.85) triggers when the spell is CAST, and its exiled card
+   * is cast while the cascading spell is still on the stack. Running it here
+   * rather than at resolution is what preserves that ordering: the free-cast
+   * window opens now, so the cascaded spell can be cast — and resolve —
+   * first, the way the printed card works.
+   *
+   * A count rather than a boolean: Maelstrom Wanderer cascades twice and
+   * Apex Devastator four times, and each is its own walk down the library.
+   */
+  const cascadeDefinition = next.definitions[moved.definitionId];
+  const cascade = cascadeDefinition?.cascade ?? 0;
+  if (cascade > 0) {
+    const ceiling = manaValueOf(cascadeDefinition?.manaCost ?? "") - 1;
+    for (let index = 0; index < cascade; index += 1) {
+      next = applyEffects(next, [
+        { kind: "discover", playerId: moved.controllerId, maxManaValue: ceiling },
+      ]);
+    }
+  }
   return next;
 }
 
