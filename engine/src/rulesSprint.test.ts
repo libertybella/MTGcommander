@@ -19,7 +19,7 @@ import {
 } from "./index";
 import { activatedOf, cardMatchesSubtype, computedCard, dynamicCountOf, mergeProtection, triggersOf } from "./characteristicsEngine";
 import { mostCommonControlledCreatureType } from "./effects";
-import { altCastPayment, creaturePower, queueEnterReplacementChoicesInPlace } from "./derived";
+import { altCastPayment, canPlayLandFromTop, creaturePower, hasCoven, queueEnterReplacementChoicesInPlace, topOfLibraryGrant } from "./derived";
 import { attackLimitFor, blockAllowanceFor, castCostReduction, castableFromTop, drawCapFor, freeEquipGranted, hasFlashGrant, landDropAllowance, maxHandSizeOf, noncreatureSpellCap, permanentsControlledBy, playerHasHexproof, reliefAdjustedCost, selfDiscountAmount, wouldEnterTapped } from "./derived";
 import { characteristicsOf } from "./cardTypes";
 import { keywordCoverage } from "./keywordCatalog";
@@ -54505,5 +54505,209 @@ describe("wave 349: connive X, counted off the graveyard", () => {
     expect(round.definitions[definition.id]?.activated[0]?.effects).toEqual(
       definition.activated[0]!.effects,
     );
+  });
+});
+
+describe("wave 350: coven gates the casting, not the looking", () => {
+  const compile = (
+    name: string,
+    typeLine: string,
+    oracleText: string,
+    manaCost = "",
+    pt: [string, string] | null = null,
+  ) =>
+    compileOracleCard({
+      oracleId: name.toLowerCase().replace(/[^a-z]+/g, "-"),
+      name,
+      manaCost,
+      typeLine,
+      power: pt?.[0] ?? null,
+      toughness: pt?.[1] ?? null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  const put = (
+    game: GameState,
+    ownerId: string,
+    definition: CardDefinition,
+    zone: "library" | "battlefield" = "battlefield",
+  ) => {
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({ definitionId: definition.id, ownerId, zone });
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === ownerId)!.zones[zone].push(card.id);
+    if (zone === "battlefield") {
+      card.summoningSick = false;
+    }
+    return card.id;
+  };
+
+  const body = [
+    "You may look at the top card of your library any time.",
+    "You may play lands from the top of your library.",
+    "Coven — As long as you control three or more creatures with different powers, you may cast creature spells from the top of your library.",
+  ].join("\n");
+
+  it("compiles all three of Augur's grants and gates only the casting", () => {
+    const compiled = compile(
+      "Augur of Autumn",
+      "Creature — Human Druid",
+      body,
+      "{1}{G}",
+      ["2", "3"],
+    );
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.topOfLibrary).toEqual({
+      look: true,
+      playLands: true,
+      castTypesAny: ["creature"],
+      castRequiresCoven: true,
+    });
+  });
+
+  it("leaves the ungated printing ungated", () => {
+    const compiled = compile(
+      "Vizier of the Menagerie",
+      "Creature — Naga Cleric",
+      "You may cast creature spells from the top of your library.",
+      "{3}{G}{G}",
+      ["3", "4"],
+    );
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.topOfLibrary).toEqual({ castTypesAny: ["creature"] });
+  });
+
+  const augur = () =>
+    createCardDefinition({
+      name: "Augur of Autumn",
+      typeLine: "Creature — Human Druid",
+      manaCost: "{1}{G}",
+      power: 2,
+      toughness: 3,
+      topOfLibrary: {
+        look: true,
+        playLands: true,
+        castTypesAny: ["creature"],
+        castRequiresCoven: true,
+      },
+    });
+
+  const bear = (name: string, power: number, toughness: number) =>
+    createCardDefinition({
+      name,
+      typeLine: "Creature — Bear",
+      manaCost: "{1}{G}",
+      power,
+      toughness,
+    });
+
+  it("turns the casting on once three powers differ", () => {
+    const { game, p1 } = twoPlayers();
+    // The Augur is a 2/3, so she brings power 2 herself.
+    put(game, p1.id, augur());
+    put(game, p1.id, bear("One", 1, 1));
+    put(game, p1.id, bear("Three", 3, 3));
+    expect(hasCoven(game, p1.id)).toBe(true);
+    expect(topOfLibraryGrant(game, p1.id)?.castTypesAny).toEqual(["creature"]);
+  });
+
+  it("keeps the look and the land drop when coven is off", () => {
+    const { game, p1 } = twoPlayers();
+    put(game, p1.id, augur());
+    put(game, p1.id, bear("Same A", 2, 2));
+    put(game, p1.id, bear("Same B", 2, 2));
+    const grant = topOfLibraryGrant(game, p1.id);
+    // Three creatures, one power. Coven is a count of DISTINCT powers.
+    expect(hasCoven(game, p1.id)).toBe(false);
+    // Gating the whole record would silently take away two abilities the
+    // card prints with no gate at all.
+    expect(grant?.look).toBe(true);
+    expect(grant?.playLands).toBe(true);
+    expect(grant?.castTypesAny).toEqual([]);
+  });
+
+  it("does not count an opponent's creatures", () => {
+    const { game, p1, p2 } = twoPlayers();
+    put(game, p1.id, augur());
+    put(game, p2.id, bear("Theirs One", 1, 1));
+    put(game, p2.id, bear("Theirs Three", 3, 3));
+    // "creatures YOU control" — across the table they are just creatures.
+    expect(hasCoven(game, p1.id)).toBe(false);
+    expect(topOfLibraryGrant(game, p1.id)?.castTypesAny).toEqual([]);
+  });
+
+  it("reads power live, so counters can switch it on", () => {
+    const { game, p1 } = twoPlayers();
+    put(game, p1.id, augur());
+    const aId = put(game, p1.id, bear("A", 2, 2));
+    const bId = put(game, p1.id, bear("B", 2, 2));
+    expect(hasCoven(game, p1.id)).toBe(false);
+    game.cards[aId]!.counters["p1p1"] = 1;
+    game.cards[bId]!.counters["p1p1"] = 2;
+    // Powers 2, 3 and 4 — coven asks what the creatures ARE, not what
+    // they were printed as.
+    expect(hasCoven(game, p1.id)).toBe(true);
+  });
+
+  it("refuses the cast from the top until coven is on", () => {
+    const { game, p1 } = twoPlayers();
+    put(game, p1.id, augur());
+    put(game, p1.id, bear("One", 1, 1));
+    const topId = put(game, p1.id, bear("Top", 5, 5), "library");
+    expect(castableFromTop(game, p1.id, topId)).toBe(false);
+    put(game, p1.id, bear("Four", 4, 4));
+    expect(castableFromTop(game, p1.id, topId)).toBe(true);
+  });
+
+  it("still plays a land off the top with coven off", () => {
+    const { game, p1 } = twoPlayers();
+    put(game, p1.id, augur());
+    const landId = put(
+      game,
+      p1.id,
+      createCardDefinition({ name: "Forest", typeLine: "Basic Land — Forest" }),
+      "library",
+    );
+    expect(hasCoven(game, p1.id)).toBe(false);
+    expect(canPlayLandFromTop(game, p1.id, landId)).toBe(true);
+  });
+
+  it("loses the whole grant when her abilities are removed", () => {
+    const { game, p1 } = twoPlayers();
+    put(game, p1.id, augur());
+    put(game, p1.id, bear("One", 1, 1));
+    put(game, p1.id, bear("Three", 3, 3));
+    put(
+      game,
+      p1.id,
+      createCardDefinition({
+        name: "Humility",
+        typeLine: "Enchantment",
+        manaCost: "{2}{W}{W}",
+        staticAbilities: [
+          {
+            selector: { scope: "all", types: ["creature"] },
+            effect: { kind: "remove_all_abilities" },
+          },
+        ],
+      }),
+    );
+    expect(topOfLibraryGrant(game, p1.id)).toBeNull();
+  });
+
+  it("round trips the gate", () => {
+    const { game, p1 } = twoPlayers();
+    const definition = augur();
+    put(game, p1.id, definition);
+    const round = parseGameState(serializeGameState(game));
+    // Dropping the flag on the wire hands the caster an ungated Vizier.
+    expect(round.definitions[definition.id]?.topOfLibrary).toEqual({
+      look: true,
+      playLands: true,
+      castTypesAny: ["creature"],
+      castRequiresCoven: true,
+    });
   });
 });

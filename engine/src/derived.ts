@@ -75,6 +75,26 @@ export function applyPhyrexianColorGrants(
   }
 }
 
+/**
+ * Coven (CR 702.145): three or more creatures you control with DIFFERENT
+ * powers. The distinctness is the whole gate — a headcount would turn it
+ * on for three copies of the same creature, which is exactly what the
+ * keyword exists to refuse.
+ */
+export function hasCoven(state: GameState, playerId: PlayerId): boolean {
+  const powers = new Set<number>();
+  for (const card of Object.values(state.cards)) {
+    if (
+      card.zone === "battlefield" &&
+      card.controllerId === playerId &&
+      isCreature(state, card.id)
+    ) {
+      powers.add(creaturePower(state, card.id));
+    }
+  }
+  return powers.size >= 3;
+}
+
 export function inSorceryWindow(state: GameState, playerId: PlayerId): boolean {
   return (
     playerId === state.turn.activePlayerId && isMainPhase(state) && state.stack.length === 0
@@ -919,18 +939,24 @@ export function topOfLibraryGrant(
     if (abilitiesRemoved(state, card.id)) {
       continue;
     }
+    // Augur of Autumn: only the CAST half waits on coven. Its look and its
+    // land drop are separate abilities printed without the gate, so darken
+    // the casting and leave the rest of this record alone.
+    const mayCast = grant.castRequiresCoven !== true || hasCoven(state, playerId);
     look = look || grant.look === true;
     playLands = playLands || grant.playLands === true;
-    castAll = castAll || grant.castAll === true;
-    castColorless = castColorless || grant.castColorless === true;
+    castAll = castAll || (mayCast && grant.castAll === true);
+    castColorless = castColorless || (mayCast && grant.castColorless === true);
     payLifeInsteadOfMana =
       payLifeInsteadOfMana || grant.payLifeInsteadOfMana === true;
-    for (const type of grant.castTypesAny ?? []) {
-      castTypes.add(type);
+    if (mayCast) {
+      for (const type of grant.castTypesAny ?? []) {
+        castTypes.add(type);
+      }
     }
     // Realmwalker: "creature spells of the chosen type", read live from the
     // granting card's own chosen creature type.
-    if (grant.castChosenType && card.chosenCreatureType) {
+    if (mayCast && grant.castChosenType && card.chosenCreatureType) {
       castSubtypes.add(card.chosenCreatureType);
     }
   }

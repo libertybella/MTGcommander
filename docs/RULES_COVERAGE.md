@@ -2260,13 +2260,24 @@ more questions it can now ask:
   colours, so nothing about them moves.
 
 - **"A creature destroyed this way can't be regenerated"** compiles to
-  NOTHING, and that is exact rather than approximate: regeneration is not
-  implemented anywhere in this engine, so there is no shield to deny. If
-  regeneration ever lands, this has to become a real flag.
+  NOTHING. This was exact until wave 344 gave regeneration real shields;
+  it is now a KNOWN APPROXIMATION in the other direction — a shielded
+  creature survives a wrath that printed the denial. The clause is read
+  and swallowed at three sites in `oraclePatterns.ts`; turning it into a
+  flag on the destruction is the fix, and it has not been done yet.
 - **Paying life for the top of your library** — Bolas's Citadel.
   `TopOfLibraryGrant.payLifeInsteadOfMana` replaces the cost OUTRIGHT, the
   same way flashback does, and rides the same life-payment path. A cost
   that had merely been reduced would still refuse a caster with no mana.
+- **Coven gating a top-of-library grant** (CR 702.145) — Augur of Autumn.
+  `hasCoven` counts DISTINCT powers among the creatures you control, not
+  creatures: three 2/2s do not turn it on, and the powers are read live
+  through `creaturePower`, so a +1/+1 counter can switch the grant on
+  without anything else changing. The flag is `castRequiresCoven` rather
+  than a whole-record `requiresCoven` because Augur prints three grants
+  into one `TopOfLibraryGrant` and only the casting is gated — her look
+  at the top card and her land drop off the top are ungated abilities
+  that must keep working with coven off.
 
   CR 119.4: life may be paid down to zero but never past it, so the guard
   is `life < cost` — not the `life <= cost` the flashback rule uses, which

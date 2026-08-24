@@ -4279,6 +4279,14 @@ export type TopOfLibraryGrant = {
    * same way flashback does, rather than reducing it.
    */
   payLifeInsteadOfMana?: boolean;
+  /**
+   * Augur of Autumn: the CAST half of the grant is live only with COVEN
+   * (CR 702.145) — three or more creatures you control with DIFFERENT
+   * powers. Distinct counts, not a headcount: three 2/2s do not turn it
+   * on. Named for the cast half alone because Augur's `look` and
+   * `playLands` are separate, ungated abilities that share this record.
+   */
+  castRequiresCoven?: boolean;
 };
 
 export type EnterTappedUnless =

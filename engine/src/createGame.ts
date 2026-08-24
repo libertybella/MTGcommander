@@ -601,15 +601,11 @@ export function createCardDefinition(
     ...(input.escalate ? { escalate: input.escalate } : {}),
     ...(input.topOfLibrary
       ? {
+          // Copied whole rather than field by field: a hand-written list here
+          // falls behind the grant's own type and drops the newest flag in
+          // silence, which is how wave 350 lost `requiresCoven`.
           topOfLibrary: {
-            ...(input.topOfLibrary.look ? { look: true } : {}),
-            ...(input.topOfLibrary.playLands ? { playLands: true } : {}),
-            ...(input.topOfLibrary.castAll ? { castAll: true } : {}),
-            ...(input.topOfLibrary.castColorless ? { castColorless: true } : {}),
-            ...(input.topOfLibrary.castChosenType ? { castChosenType: true } : {}),
-            ...(input.topOfLibrary.payLifeInsteadOfMana
-              ? { payLifeInsteadOfMana: true }
-              : {}),
+            ...input.topOfLibrary,
             ...(input.topOfLibrary.castTypesAny
               ? { castTypesAny: [...input.topOfLibrary.castTypesAny] }
               : {}),

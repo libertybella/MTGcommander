@@ -15809,14 +15809,20 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
       continue;
     }
 
+    /**
+     * Augur of Autumn's second half carries a COVEN gate on the front. The
+     * grant is otherwise identical, so the gate is read here rather than
+     * given a clause of its own.
+     */
     const topCast = sentence.match(
-      /^You may cast (artifact|creature|enchantment|instant|sorcery) spells from the top of your library$/i,
+      /^(As long as you control three or more creatures with different powers, y|Y)ou may cast (artifact|creature|enchantment|instant|sorcery) spells from the top of your library$/i,
     );
-    if (topCast?.[1]) {
+    if (topCast?.[2]) {
       const prior = result.topOfLibrary ?? {};
       result.topOfLibrary = {
         ...prior,
-        castTypesAny: [...new Set([...(prior.castTypesAny ?? []), topCast[1].toLowerCase()])],
+        castTypesAny: [...new Set([...(prior.castTypesAny ?? []), topCast[2].toLowerCase()])],
+        ...(/^As long as/i.test(topCast[1] ?? "") ? { castRequiresCoven: true } : {}),
       };
       continue;
     }
