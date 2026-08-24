@@ -202,6 +202,7 @@ function compileOneFace(card: OracleCard, definitionId: string): OracleCompileRe
     ...(compiled.grantsEscape ? { grantsEscape: compiled.grantsEscape } : {}),
     ...(compiled.reanimateOnEnter ? { reanimateOnEnter: true } : {}),
     ...(compiled.cascade ? { cascade: compiled.cascade } : {}),
+    ...(compiled.harmonizeConvoke ? { harmonizeConvoke: true } : {}),
     ...(compiled.copySelfWhenCastFromGraveyard
       ? { copySelfWhenCastFromGraveyard: true }
       : {}),

@@ -870,6 +870,17 @@ more questions it can now ask:
   (Bennie Bracks). Reads the existing per-player `createdTokenThisTurn`
   list, and asks whether the CONTROLLER is in it — an opponent's Treasure
   must not satisfy it.
+- **Harmonize (CR 702.184)** — Nature's Rhythm. Two keywords the engine
+  already had, welded together: cast it from your GRAVEYARD for the
+  harmonize cost, which is flashback (exile rider and all), and tap
+  creatures to help pay it, which is convoke.
+
+  `harmonizeConvoke` is a separate flag from `convoke` because the convoke
+  half belongs to the GRAVEYARD cast alone. Setting `convoke` outright
+  would have made the printed hand cast three mana cheaper than the card
+  says — a compile-clean, plays-wrong card. There is a test for both
+  halves: creatures pay the graveyard cast and are refused on the hand one.
+
 - **`turnManaEchoes`** — High Tide. This is the rule a permanent already
   carried as `landTapEcho`, with no permanent to carry it, so it lives on
   the GAME for the turn and is swept at cleanup beside the other

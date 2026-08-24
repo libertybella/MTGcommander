@@ -1495,6 +1495,7 @@ export function parseGameState(json: string): GameState {
       ...(def.cascade === undefined
         ? {}
         : { cascade: expectNumber(def.cascade, "definition.cascade") }),
+      ...(def.harmonizeConvoke === true ? { harmonizeConvoke: true } : {}),
       ...(def.copySelfWhenCastFromGraveyard === true
         ? { copySelfWhenCastFromGraveyard: true }
         : {}),

@@ -365,7 +365,16 @@ function castableFace(
   if (!castsFree && !canPayWithPotential(potential, cost)) {
     // Convoke / improvise / delve pay the printed cost, so they are tried
     // before the alternative one.
-    const relieved = reliefAdjustedCost(state, playerId, definition, cost);
+    const relieved = reliefAdjustedCost(
+      state,
+      playerId,
+      definition,
+      cost,
+      // Harmonize: the convoke half is for the graveyard cast only.
+      definition.harmonizeConvoke === true &&
+        spellId !== undefined &&
+        state.cards[spellId]?.zone === "graveyard",
+    );
     if (!relieved || !canPayWithPotential(potential, relieved)) {
       if (!definition.altCost || !spellId || !altCastPayment(state, playerId, definition.altCost, spellId)) {
         return false;

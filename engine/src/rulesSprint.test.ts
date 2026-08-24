@@ -50799,3 +50799,152 @@ describe("wave 330: an echo with no permanent to live on", () => {
     expect(round.turnManaEchoes).toEqual([{ subtype: "island", addColor: "U" }]);
   });
 });
+
+describe("wave 331: harmonize is two keywords welded together", () => {
+  const compile = (name: string, typeLine: string, oracleText: string, manaCost = "") =>
+    compileOracleCard({
+      oracleId: name.toLowerCase().replace(/[^a-z]+/g, "-"),
+      name,
+      manaCost,
+      typeLine,
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  it("compiles harmonize as flashback plus a scoped convoke", () => {
+    const compiled = compile(
+      "Nature's Rhythm",
+      "Sorcery",
+      "Search your library for a creature card, put it onto the battlefield, then shuffle.\nHarmonize {X}{G}{G}{G}{G}",
+      "{2}{G}{G}",
+    );
+    expect(compiled.notes).toEqual([]);
+    // The graveyard cast IS flashback: same cost path, same exile rider.
+    expect(compiled.definition.flashback).toEqual({ manaCost: "{X}{G}{G}{G}{G}" });
+    expect(compiled.definition.harmonizeConvoke).toBe(true);
+    // And emphatically NOT plain convoke, which would apply to the hand cast.
+    expect(compiled.definition.convoke).toBeUndefined();
+  });
+
+  const rhythm = () =>
+    createCardDefinition({
+      name: "Nature's Rhythm",
+      typeLine: "Sorcery",
+      manaCost: "{2}{G}{G}",
+      flashback: { manaCost: "{2}{G}{G}" },
+      harmonizeConvoke: true,
+      effects: [{ kind: "draw", playerId: "controller", count: 1 }],
+    });
+
+  const board = (zone: "hand" | "graveyard", creatures: number) => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const definition = rhythm();
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({ definitionId: definition.id, ownerId: p1.id, zone });
+    game.cards[card.id] = card;
+    const player = game.players.find((entry) => entry.id === p1.id)!;
+    player.zones[zone].push(card.id);
+    for (let index = 0; index < creatures; index += 1) {
+      const bear = createCardDefinition({
+        name: `Bear${index}`,
+        typeLine: "Creature — Bear",
+        manaCost: "{1}{G}",
+        power: 2,
+        toughness: 2,
+      });
+      game.definitions[bear.id] = bear;
+      const instance = createCardInstance({
+        definitionId: bear.id,
+        ownerId: p1.id,
+        zone: "battlefield",
+      });
+      instance.summoningSick = false;
+      game.cards[instance.id] = instance;
+      player.zones.battlefield.push(instance.id);
+    }
+    game.turn.activePlayerId = p1.id;
+    game.turn.phase = "precombatMain";
+    game.turn.step = "precombatMain";
+    game.priorityPlayerId = p1.id;
+    return { game, p1, player, cardId: card.id };
+  };
+
+  const cast = (game: GameState, playerId: string, cardId: string) =>
+    applyAction(game, { kind: "cast_spell", playerId, cardId, targets: [] });
+
+  it("taps creatures to help pay the graveyard cast", () => {
+    const { game, p1, player, cardId } = board("graveyard", 6);
+    // Six green creatures and one green mana: convoke closes the rest.
+    player.mana = { ...player.mana, G: 1 };
+    const casted = cast(game, p1.id, cardId);
+    expect(casted.stack).toHaveLength(1);
+    const tapped = player.zones.battlefield.filter((id) => casted.cards[id]?.tapped);
+    expect(tapped.length).toBeGreaterThan(0);
+  });
+
+  it("does NOT let creatures pay the printed hand cast", () => {
+    const { game, p1, player, cardId } = board("hand", 6);
+    player.mana = { ...player.mana, G: 1 };
+    // Setting `convoke` outright would have made this succeed, and the card
+    // would be three mana cheaper from hand than it is printed.
+    expect(() => cast(game, p1.id, cardId)).toThrow();
+  });
+
+  it("still casts normally from hand with the mana for it", () => {
+    const { game, p1, player, cardId } = board("hand", 0);
+    player.mana = { ...player.mana, G: 2, C: 2 };
+    expect(cast(game, p1.id, cardId).stack).toHaveLength(1);
+  });
+
+  it("exiles the card as it leaves the stack", () => {
+    const { game, p1, player, cardId } = board("graveyard", 6);
+    player.mana = { ...player.mana, G: 1 };
+    const casted = cast(game, p1.id, cardId);
+    const resolved = resolveTopOfStack(casted);
+    // The exile rider is flashback's, and harmonize wanted exactly it.
+    expect(resolved.cards[cardId]?.zone).toBe("exile");
+  });
+
+  it("leaves an ordinary flashback card without convoke", () => {
+    const { game, p1, player } = board("graveyard", 6);
+    const plain = createCardDefinition({
+      name: "Plain Flashback",
+      typeLine: "Sorcery",
+      manaCost: "{2}{G}{G}",
+      flashback: { manaCost: "{2}{G}{G}" },
+      effects: [{ kind: "draw", playerId: "controller", count: 1 }],
+    });
+    game.definitions[plain.id] = plain;
+    const card = createCardInstance({
+      definitionId: plain.id,
+      ownerId: p1.id,
+      zone: "graveyard",
+    });
+    game.cards[card.id] = card;
+    player.zones.graveyard.push(card.id);
+    player.mana = { ...player.mana, G: 1 };
+    expect(() => cast(game, p1.id, card.id)).toThrow();
+  });
+
+  it("round trips the flag", () => {
+    const { game, p1 } = twoPlayers();
+    const definition = rhythm();
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({
+      definitionId: definition.id,
+      ownerId: p1.id,
+      zone: "graveyard",
+    });
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === p1.id)!.zones.graveyard.push(card.id);
+    const round = parseGameState(serializeGameState(game));
+    expect(round.definitions[definition.id]?.harmonizeConvoke).toBe(true);
+    expect(round.definitions[definition.id]?.flashback).toEqual({
+      manaCost: "{2}{G}{G}",
+    });
+  });
+});

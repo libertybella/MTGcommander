@@ -542,6 +542,8 @@ function validateCast(
       { ...cost, hybrid: [...cost.hybrid], phyrexian: [...cost.phyrexian] },
       available,
       player.life,
+      // Harmonize's convoke half is for the graveyard cast only.
+      viaFlashback,
     )
   ) {
     // Evoke (CR 702.74): an alternative MANA cost, taken in the same one
@@ -869,8 +871,21 @@ function applyCastSpell(
   }
   // Convoke / improvise / delve close the gap before the mana is spent.
   const payer2 = faced.players.find((entry) => entry.id === playerId);
+  // Harmonize's convoke half applies only to the graveyard cast, and by
+  // this point the card is still in the graveyard it will be cast from.
+  const castFromGraveyard =
+    definition?.harmonizeConvoke === true &&
+    findCardZone(faced, cardId)?.zone === "graveyard";
   const relief = payer2
-    ? costRelief(faced, playerId, definition, cost, payer2.mana, payer2.life)
+    ? costRelief(
+        faced,
+        playerId,
+        definition,
+        cost,
+        payer2.mana,
+        payer2.life,
+        castFromGraveyard,
+      )
     : null;
   let paid = payManaCost(faced, playerId, cost, manaPurposeForSpell(faced, cardId));
   if (relief) {

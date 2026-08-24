@@ -398,6 +398,17 @@ export type CardDefinition = {
   /** "You may cast spells as though they had flash" (Vedalken Orrery). */
   /** Convoke (CR 702.51): tap creatures to help pay. */
   convoke?: boolean;
+  /**
+   * Harmonize (CR 702.184) — Nature's Rhythm. Two keywords the engine
+   * already has, welded together: cast this from your GRAVEYARD for the
+   * harmonize cost (which is `flashback`, exile rider and all), and tap
+   * creatures to help pay it (which is convoke).
+   *
+   * A separate flag from `convoke` because the convoke half applies ONLY
+   * to the graveyard cast. Setting `convoke` outright would quietly make
+   * the printed hand cast cheaper than the card says.
+   */
+  harmonizeConvoke?: boolean;
   /** Improvise (CR 702.126): tap artifacts to help pay the generic cost. */
   improvise?: boolean;
   /** Delve (CR 702.66): exile cards from your graveyard to help pay. */

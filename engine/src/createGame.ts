@@ -116,6 +116,7 @@ export function createCardDefinition(
         | "reanimateOnEnter"
         | "copySelfWhenCastFromGraveyard"
         | "cascade"
+        | "harmonizeConvoke"
         | "loyalty"
         | "loyaltyAbilities"
         | "noMaxHandSize"
@@ -477,6 +478,7 @@ export function createCardDefinition(
     ...(input.enchant ? { enchant: input.enchant } : {}),
     ...(input.reanimateOnEnter ? { reanimateOnEnter: true } : {}),
     ...(input.cascade ? { cascade: input.cascade } : {}),
+    ...(input.harmonizeConvoke ? { harmonizeConvoke: true } : {}),
     ...(input.copySelfWhenCastFromGraveyard
       ? { copySelfWhenCastFromGraveyard: true }
       : {}),

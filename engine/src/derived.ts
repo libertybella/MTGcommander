@@ -60,8 +60,13 @@ export function costRelief(
   cost: ParsedManaCost,
   available: ManaPool,
   life: number,
+  /** Harmonize: its convoke half applies only to the graveyard cast. */
+  fromGraveyard?: boolean,
 ): { tapIds: CardInstanceId[]; exileIds: CardInstanceId[] } | null {
-  const convoke = definition?.convoke === true || grantedCostKeyword(state, playerId, definition, "convoke");
+  const convoke =
+    definition?.convoke === true ||
+    (definition?.harmonizeConvoke === true && fromGraveyard === true) ||
+    grantedCostKeyword(state, playerId, definition, "convoke");
   const improvise =
     definition?.improvise === true || grantedCostKeyword(state, playerId, definition, "improvise");
   const delve = definition?.delve === true;
@@ -140,9 +145,13 @@ export function reliefAdjustedCost(
   playerId: PlayerId,
   definition: CardDefinition | undefined,
   cost: ParsedManaCost,
+  /** Harmonize: its convoke half applies only to the graveyard cast. */
+  fromGraveyard?: boolean,
 ): ParsedManaCost | null {
   const convoke =
-    definition?.convoke === true || grantedCostKeyword(state, playerId, definition, "convoke");
+    definition?.convoke === true ||
+    (definition?.harmonizeConvoke === true && fromGraveyard === true) ||
+    grantedCostKeyword(state, playerId, definition, "convoke");
   const improvise =
     definition?.improvise === true || grantedCostKeyword(state, playerId, definition, "improvise");
   const delve = definition?.delve === true;

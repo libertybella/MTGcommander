@@ -62,6 +62,7 @@ export type CompiledOracleText = {
   grantsEscape?: { exileOther: number };
   copySelfWhenCastFromGraveyard?: boolean;
   cascade?: number;
+  harmonizeConvoke?: boolean;
   chooseColorOnEnter?: boolean;
   chooseColorExcludes?: Color;
   enchantedTappedBonus?: { color: Color | "chosen"; amount: number };
@@ -14836,6 +14837,21 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
       };
       continue;
     }
+    /**
+     * Harmonize (CR 702.184) — Nature's Rhythm. Two keywords this engine
+     * already has, welded together: cast it from your GRAVEYARD for this
+     * cost (flashback, exile rider and all) and tap creatures to help pay
+     * (convoke). The convoke half is flagged separately because it belongs
+     * to the graveyard cast alone — setting `convoke` outright would make
+     * the printed hand cast cheaper than the card says.
+     */
+    const harmonize = sentence.match(/^Harmonize\s*[—–-]?\s*((?:\{[^}]+\})+)$/i);
+    if (harmonize?.[1]) {
+      result.flashback = { manaCost: harmonize[1] };
+      result.harmonizeConvoke = true;
+      continue;
+    }
+
     // Dread Return: "Flashback—Sacrifice three creatures." The whole cost is
     // the sacrifice, so there is no mana half at all.
     const sacrificeFlashback = sentence.match(
