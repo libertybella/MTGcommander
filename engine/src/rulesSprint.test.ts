@@ -22,6 +22,7 @@ import { mostCommonControlledCreatureType } from "./effects";
 import { altCastPayment, creaturePower, queueEnterReplacementChoicesInPlace } from "./derived";
 import { attackLimitFor, blockAllowanceFor, castCostReduction, castableFromTop, drawCapFor, freeEquipGranted, hasFlashGrant, landDropAllowance, maxHandSizeOf, noncreatureSpellCap, permanentsControlledBy, playerHasHexproof, reliefAdjustedCost, selfDiscountAmount, wouldEnterTapped } from "./derived";
 import { characteristicsOf } from "./cardTypes";
+import { keywordCoverage } from "./keywordCatalog";
 import { manaValueOf } from "./characteristics";
 import { hasKeyword } from "./keywords";
 import { dispatchEventsInPlace, triggerConditionHolds } from "./triggers";
@@ -8230,7 +8231,9 @@ describe("wave 90: warps, drains, taxes", () => {
     function queueTrigger(state: GameState): boolean {
       const cloned = structuredClone(state);
       const before = cloned.stack.length;
-      dispatchEventsInPlace(cloned, [{ kind: "step_begins", step: "upkeep" }]);
+      dispatchEventsInPlace(cloned, [
+        { kind: "step_begins", step: "upkeep", playerId: cloned.turn.activePlayerId },
+      ]);
       return cloned.stack.length > before || cloned.prompts.length > 0;
     }
   });
@@ -18196,7 +18199,9 @@ describe("wave 151: upkeeps, win conditions, and ability words", () => {
       game.turn.phase = "ending";
       game.turn.step = "end";
       game.priorityPlayerId = active.id;
-      dispatchEventsInPlace(game, [{ kind: "step_begins", step: "end" }]);
+      dispatchEventsInPlace(game, [
+        { kind: "step_begins", step: "end", playerId: game.turn.activePlayerId },
+      ]);
       // A single trigger goes straight on the stack; two or more open an
       // ordering prompt instead, so count both places.
       const ordering = game.prompts.find((prompt) => prompt.kind === "order_triggers");
@@ -24147,7 +24152,9 @@ describe("wave 193: one condition vocabulary, three consumers", () => {
 
     const fires = (state: GameState): number => {
       const cloned = structuredClone(state);
-      dispatchEventsInPlace(cloned, [{ kind: "step_begins", step: "upkeep" }]);
+      dispatchEventsInPlace(cloned, [
+        { kind: "step_begins", step: "upkeep", playerId: cloned.turn.activePlayerId },
+      ]);
       return cloned.stack.length;
     };
     // Two is short of three, even though the caster also has creatures.
@@ -36985,7 +36992,9 @@ describe("wave 279: modal triggers that take more or fewer than one", () => {
     });
     game.cards[card.id] = card;
     p1.zones.battlefield.push(card.id);
-    dispatchEventsInPlace(game, [{ kind: "step_begins", step: "precombatMain" }]);
+    dispatchEventsInPlace(game, [
+      { kind: "step_begins", step: "precombatMain", playerId: game.turn.activePlayerId },
+    ]);
     return { game, p1, cardId: card.id, definitionId: definition.id };
   };
 
@@ -42431,5 +42440,564 @@ describe("wave 302: costs printed as keywords", () => {
     });
     expect(round.cards[cardId]?.echoDue).toBe(true);
     expect(round.cards[cardId]?.evoked).toBe(true);
+  });
+});
+
+describe("wave 303: who can block whom, and what triggers twice", () => {
+  const compile = (
+    name: string,
+    typeLine: string,
+    oracleText: string,
+    manaCost: string,
+    pt: [string, string] | null = null,
+    printedKeywords: string[] = [],
+  ) =>
+    compileOracleCard({
+      oracleId: name.toLowerCase().replace(/[^a-z]+/g, "-"),
+      name,
+      manaCost,
+      typeLine,
+      power: pt?.[0] ?? null,
+      toughness: pt?.[1] ?? null,
+      printedKeywords,
+      imageUrl: "",
+      oracleText,
+    });
+
+  const put = (
+    game: GameState,
+    ownerId: string,
+    definition: CardDefinition,
+    zone: "hand" | "battlefield" | "graveyard" = "battlefield",
+  ) => {
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({ definitionId: definition.id, ownerId, zone });
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === ownerId)!.zones[zone].push(card.id);
+    if (zone === "battlefield") {
+      card.summoningSick = false;
+    }
+    return card.id;
+  };
+
+  const creature = (
+    name: string,
+    power: number,
+    toughness: number,
+    extra: Partial<Parameters<typeof createCardDefinition>[0]> = {},
+  ) =>
+    createCardDefinition({
+      name,
+      typeLine: "Creature — Bear",
+      manaCost: "{1}{G}",
+      power,
+      toughness,
+      ...extra,
+    });
+
+  const land = (name: string, typeLine: string) =>
+    createCardDefinition({ name, typeLine });
+
+  // ---- Landwalk ----------------------------------------------------------
+
+  it("reads every printed landwalk variant as a keyword", () => {
+    const sheoldred = compile(
+      "Sheoldred, Whispering One",
+      "Legendary Creature — Phyrexian Praetor",
+      "Swampwalk\nAt the beginning of your upkeep, return target creature card from your graveyard to the battlefield.\nAt the beginning of each opponent's upkeep, that player sacrifices a creature of their choice.",
+      "{5}{B}{B}",
+      ["6", "6"],
+      ["Landwalk", "Swampwalk"],
+    );
+    expect(sheoldred.notes).toEqual([]);
+    expect(sheoldred.definition.keywords).toContain("swampwalk");
+
+    const boots = compile(
+      "Trailblazer's Boots",
+      "Artifact — Equipment",
+      "Equipped creature has nonbasic landwalk.\nEquip {2}",
+      "{2}",
+    );
+    expect(boots.notes).toEqual([]);
+    expect(boots.definition.staticAbilities[0]).toEqual({
+      selector: { scope: "attached" },
+      effect: { kind: "grant_keyword", keyword: "nonbasic_landwalk" },
+    });
+  });
+
+  it("counts landwalk once in the CR 702 coverage report", () => {
+    // Six union members, one printed ability. A per-variant entry would
+    // inflate the coverage denominator's numerator six-fold.
+    const coverage = keywordCoverage();
+    expect(coverage.implemented.filter((name) => name === "landwalk")).toHaveLength(1);
+    expect(coverage.implemented).toContain("landwalk");
+  });
+
+  const walkBoard = (attackerKeywords: Keyword[], defenderLand: CardDefinition | null) => {
+    const { game, p1, p2 } = twoPlayers();
+    const attackerId = put(
+      game,
+      p1.id,
+      creature("Walker", 3, 3, { keywords: attackerKeywords }),
+    );
+    const blockerId = put(game, p2.id, creature("Wall", 2, 4));
+    if (defenderLand) {
+      put(game, p2.id, defenderLand);
+    }
+    return { game, p1, p2, attackerId, blockerId };
+  };
+
+  it("stops a block when the defender controls the named land", () => {
+    const { game, attackerId, blockerId } = walkBoard(
+      ["swampwalk"],
+      land("Swamp", "Basic Land — Swamp"),
+    );
+    expect(blockRestriction(game, attackerId, blockerId)).toMatch(/swampwalk/);
+  });
+
+  it("allows the block when the defender controls no such land", () => {
+    const { game, attackerId, blockerId } = walkBoard(
+      ["swampwalk"],
+      land("Island", "Basic Land — Island"),
+    );
+    expect(blockRestriction(game, attackerId, blockerId)).toBeNull();
+  });
+
+  it("reads the land's CURRENT subtypes, so an Urborg'd Island is a Swamp", () => {
+    const { game, p2, attackerId, blockerId } = walkBoard(["swampwalk"], null);
+    // A land printed as an Island that also has the Swamp subtype: the
+    // wording is a TYPE, not a name, which is the whole point of it.
+    put(game, p2.id, land("Tainted Isle", "Land — Island Swamp"));
+    expect(blockRestriction(game, attackerId, blockerId)).toMatch(/swampwalk/);
+    expect(p2.id).toBeDefined();
+  });
+
+  it("asks the defending PLAYER's lands, not the blocker's own type", () => {
+    const { game, p1, p2 } = walkBoard(["islandwalk"], null);
+    // The blocker is not a land and never could be; the Island is somewhere
+    // else entirely under the same player.
+    const attackerId = put(game, p1.id, creature("Fish", 2, 2, { keywords: ["islandwalk"] }));
+    const blockerId = put(game, p2.id, creature("Guard", 4, 4));
+    put(game, p2.id, land("Island", "Basic Land — Island"));
+    expect(blockRestriction(game, attackerId, blockerId)).toMatch(/islandwalk/);
+  });
+
+  it("reads nonbasic landwalk as any land without the basic supertype", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const attackerId = put(
+      game,
+      p1.id,
+      creature("Scout", 1, 1, { keywords: ["nonbasic_landwalk"] }),
+    );
+    const blockerId = put(game, p2.id, creature("Guard", 4, 4));
+    const basicId = put(game, p2.id, land("Forest", "Basic Land — Forest"));
+    expect(blockRestriction(game, attackerId, blockerId)).toBeNull();
+    expect(basicId).toBeDefined();
+    put(game, p2.id, land("Command Tower", "Land"));
+    expect(blockRestriction(game, attackerId, blockerId)).toMatch(/nonbasic landwalk/);
+  });
+
+  it("gives Chasm Skulker's Squids their islandwalk and their count", () => {
+    const compiled = compile(
+      "Chasm Skulker",
+      "Creature — Squid Horror",
+      "Whenever you draw a card, put a +1/+1 counter on this creature.\nWhen this creature dies, create X 1/1 blue Squid creature tokens with islandwalk, where X is the number of +1/+1 counters on this creature.",
+      "{2}{U}",
+      ["1", "1"],
+    );
+    expect(compiled.notes).toEqual([]);
+    const dies = compiled.definition.triggers.find((trigger) => trigger.event === "dies");
+    expect(dies?.effects[0]).toMatchObject({
+      kind: "create_token",
+      name: "Squid",
+      keywords: ["islandwalk"],
+      perSourceCounters: "p1p1",
+    });
+  });
+
+  it("makes one Squid per counter, counted after the Skulker has died", () => {
+    const { game, p1 } = twoPlayers();
+    const skulkerId = put(game, p1.id, creature("Chasm Skulker", 1, 1));
+    game.cards[skulkerId]!.counters["p1p1"] = 3;
+    const dead = moveCard(game, skulkerId, "graveyard");
+    const spawned = applyEffects(
+      dead,
+      bindCardEffects(
+        dead,
+        [
+          {
+            kind: "create_token",
+            ownerId: "controller",
+            name: "Squid",
+            typeLine: "Creature — Squid Token",
+            power: 1,
+            toughness: 1,
+            keywords: ["islandwalk"],
+            perSourceCounters: "p1p1",
+          },
+        ],
+        { controllerId: p1.id, sourceId: skulkerId },
+      ),
+    );
+    // The counters ride the card object through the zone change, so a
+    // dies-trigger can still read them.
+    const squids = Object.values(spawned.cards).filter((card) => card.isToken);
+    expect(squids).toHaveLength(3);
+  });
+
+  // ---- Blocks decided by power -------------------------------------------
+
+  it("compiles Champion of Lambholt's live power threshold", () => {
+    const compiled = compile(
+      "Champion of Lambholt",
+      "Creature — Human Warrior",
+      "Creatures with power less than this creature's power can't block creatures you control.\nWhenever another creature you control enters, put a +1/+1 counter on this creature.",
+      "{1}{G}{G}",
+      ["2", "2"],
+    );
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.blockPowerGate).toEqual({ blockerBelowSourcePower: true });
+  });
+
+  it("refuses a blocker weaker than the Champion", () => {
+    const { game, p1, p2 } = twoPlayers();
+    put(
+      game,
+      p1.id,
+      creature("Champion of Lambholt", 4, 4, {
+        blockPowerGate: { blockerBelowSourcePower: true },
+      }),
+    );
+    const attackerId = put(game, p1.id, creature("Ally", 1, 1));
+    const smallId = put(game, p2.id, creature("Small", 3, 3));
+    const bigId = put(game, p2.id, creature("Big", 4, 4));
+    expect(blockRestriction(game, attackerId, smallId)).toMatch(/not powerful enough/);
+    // Equal power is not LESS than: the wall starts at the Champion's own.
+    expect(blockRestriction(game, attackerId, bigId)).toBeNull();
+  });
+
+  it("moves the threshold when the Champion grows", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const championId = put(
+      game,
+      p1.id,
+      creature("Champion of Lambholt", 4, 4, {
+        blockPowerGate: { blockerBelowSourcePower: true },
+      }),
+    );
+    const attackerId = put(game, p1.id, creature("Ally", 1, 1));
+    const blockerId = put(game, p2.id, creature("Guard", 4, 4));
+    expect(blockRestriction(game, attackerId, blockerId)).toBeNull();
+    const grown = applyEffect(game, {
+      kind: "add_counter",
+      cardId: championId,
+      counter: "p1p1",
+      amount: 1,
+    });
+    // Power is computed on both sides, so a counter moves the wall.
+    expect(blockRestriction(grown, attackerId, blockerId)).toMatch(/not powerful enough/);
+  });
+
+  it("does not protect an opponent's creatures", () => {
+    const { game, p1, p2 } = twoPlayers();
+    put(
+      game,
+      p1.id,
+      creature("Champion of Lambholt", 4, 4, {
+        blockPowerGate: { blockerBelowSourcePower: true },
+      }),
+    );
+    // "creatures YOU control" — the attacker has to be on the Champion's side.
+    const theirAttackerId = put(game, p2.id, creature("Theirs", 1, 1));
+    const myBlockerId = put(game, p1.id, creature("Mine", 1, 1));
+    expect(blockRestriction(game, theirAttackerId, myBlockerId)).toBeNull();
+  });
+
+  it("compiles Delney's fixed thresholds, both halves", () => {
+    const compiled = compile(
+      "Delney, Streetwise Lookout",
+      "Legendary Creature — Human Scout",
+      "Creatures you control with power 2 or less can't be blocked by creatures with power 3 or greater.\nIf a triggered ability of a creature you control with power 2 or less triggers, that ability triggers an additional time.",
+      "{2}{W}",
+      ["2", "2"],
+    );
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.blockPowerGate).toEqual({
+      attackerMaxPower: 2,
+      blockerMinPower: 3,
+    });
+    expect(compiled.definition.triggerDoubling).toEqual({
+      source: { types: ["creature"], maxPower: 2 },
+    });
+  });
+
+  it("shields only the small attackers, and only from the big blockers", () => {
+    const { game, p1, p2 } = twoPlayers();
+    put(
+      game,
+      p1.id,
+      creature("Delney", 2, 2, {
+        blockPowerGate: { attackerMaxPower: 2, blockerMinPower: 3 },
+      }),
+    );
+    const smallAttackerId = put(game, p1.id, creature("Sneak", 2, 2));
+    const bigAttackerId = put(game, p1.id, creature("Brute", 3, 3));
+    const bigBlockerId = put(game, p2.id, creature("Ogre", 3, 3));
+    const smallBlockerId = put(game, p2.id, creature("Rat", 1, 1));
+    expect(blockRestriction(game, smallAttackerId, bigBlockerId)).toMatch(/too powerful/);
+    // A small blocker still gets there.
+    expect(blockRestriction(game, smallAttackerId, smallBlockerId)).toBeNull();
+    // And a big attacker was never protected.
+    expect(blockRestriction(game, bigAttackerId, bigBlockerId)).toBeNull();
+  });
+
+  // ---- Triggering twice ---------------------------------------------------
+
+  it("compiles Veyran's cause as a cast", () => {
+    const compiled = compile(
+      "Veyran, Voice of Duality",
+      "Legendary Creature — Efreet Wizard",
+      "Magecraft — Whenever you cast or copy an instant or sorcery spell, ~ gets +1/+1 until end of turn.\nIf you casting or copying an instant or sorcery spell causes a triggered ability of a permanent you control to trigger, that ability triggers an additional time.",
+      "{1}{U}{R}",
+      ["2", "2"],
+    );
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.triggerDoubling).toEqual({
+      cause: "casts",
+      causeTypesAny: ["instant", "sorcery"],
+    });
+  });
+
+  it("doubles a cast-watching trigger, and leaves an entry alone", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    put(
+      game,
+      p1.id,
+      creature("Veyran", 2, 2, {
+        triggerDoubling: { cause: "casts", causeTypesAny: ["instant", "sorcery"] },
+      }),
+    );
+    put(
+      game,
+      p1.id,
+      createCardDefinition({
+        name: "Guttersnipe",
+        typeLine: "Creature — Goblin Shaman",
+        manaCost: "{2}{R}",
+        power: 2,
+        toughness: 2,
+        triggers: [
+          {
+            event: "cast_spell",
+            watch: "controlled",
+            subjectFilter: { typesAny: ["instant", "sorcery"] },
+            effects: [{ kind: "draw", playerId: "controller", count: 1 }],
+            targetRequirements: [],
+          },
+        ],
+      }),
+    );
+    const boltId = put(
+      game,
+      p1.id,
+      createCardDefinition({
+        name: "Bolt",
+        typeLine: "Instant",
+        manaCost: "{R}",
+        effects: [{ kind: "gain_life", playerId: "controller", amount: 1 }],
+      }),
+      "hand",
+    );
+    game.turn.activePlayerId = p1.id;
+    game.turn.phase = "precombatMain";
+    game.turn.step = "precombatMain";
+    game.priorityPlayerId = p1.id;
+    game.players.find((entry) => entry.id === p1.id)!.mana.R = 1;
+    const cast = applyAction(game, {
+      kind: "cast_spell",
+      playerId: p1.id,
+      cardId: boltId,
+      targets: [],
+    });
+    // Two copies of Guttersnipe's trigger. Simultaneous triggers under one
+    // controller go to an ordering prompt rather than straight to the stack.
+    expect(queuedTriggerCount(cast)).toBe(2);
+  });
+
+  it("doubles only the triggers of small creatures for Delney", () => {
+    const { game, p1 } = twoPlayers();
+    const smallId = put(
+      game,
+      p1.id,
+      creature("Scout", 2, 2, {
+        triggers: [
+          {
+            event: "upkeep",
+            effects: [{ kind: "gain_life", playerId: "controller", amount: 1 }],
+            targetRequirements: [],
+          },
+        ],
+      }),
+    );
+    const bigId = put(
+      game,
+      p1.id,
+      creature("Giant", 5, 5, {
+        triggers: [
+          {
+            event: "upkeep",
+            effects: [{ kind: "gain_life", playerId: "controller", amount: 1 }],
+            targetRequirements: [],
+          },
+        ],
+      }),
+    );
+    put(
+      game,
+      p1.id,
+      creature("Delney", 2, 2, {
+        triggerDoubling: { source: { types: ["creature"], maxPower: 2 } },
+      }),
+    );
+    game.turn.activePlayerId = p1.id;
+    game.turn.phase = "beginning";
+    game.turn.step = "upkeep";
+    const fired = cloneForUpkeep(game);
+    // Two from the Scout, one from the Giant.
+    expect(queuedTriggerCount(fired)).toBe(3);
+    // And the doubled pair really are the Scout's.
+    const scoutCopies = queuedTriggers(fired).filter((entry) => entry.cardId === smallId);
+    expect(scoutCopies).toHaveLength(2);
+    expect(queuedTriggers(fired).filter((entry) => entry.cardId === bigId)).toHaveLength(1);
+  });
+
+  const cloneForUpkeep = (game: GameState) => {
+    const cloned = structuredClone(game);
+    dispatchEventsInPlace(cloned, [
+      { kind: "step_begins", step: "upkeep", playerId: cloned.turn.activePlayerId },
+    ]);
+    return cloned;
+  };
+
+  /**
+   * Triggers waiting to resolve, wherever they are. Two or more that fire at
+   * once under one controller stop in an APNAP ordering prompt instead of
+   * going straight onto the stack, so counting the stack alone misses them.
+   */
+  const queuedTriggers = (state: GameState) => {
+    const ordering = state.prompts.find((prompt) => prompt.kind === "order_triggers");
+    if (ordering?.kind === "order_triggers") {
+      return [...ordering.entries, ...ordering.remaining.flatMap((rest) => rest.entries)];
+    }
+    return state.stack
+      .filter((entry) => entry.kind === "ability" && entry.sourceId)
+      .map((entry) => ({ cardId: entry.sourceId!, triggerIndex: entry.triggerIndex ?? 0 }));
+  };
+
+  const queuedTriggerCount = (state: GameState) => queuedTriggers(state).length;
+
+  // ---- An opponent's upkeep ----------------------------------------------
+
+  it("compiles Sheoldred's opponent-upkeep edict", () => {
+    const compiled = compile(
+      "Sheoldred, Whispering One",
+      "Legendary Creature — Phyrexian Praetor",
+      "Swampwalk\nAt the beginning of each opponent's upkeep, that player sacrifices a creature of their choice.",
+      "{5}{B}{B}",
+      ["6", "6"],
+      ["Swampwalk"],
+    );
+    expect(compiled.notes).toEqual([]);
+    const trigger = compiled.definition.triggers[0];
+    expect(trigger).toMatchObject({
+      event: "upkeep",
+      eachPlayersStep: true,
+      opponentsStepOnly: true,
+    });
+    expect(trigger?.effects[0]).toMatchObject({
+      kind: "choose_card",
+      chooserId: { type: "subject_player" },
+    });
+  });
+
+  it("fires on an opponent's upkeep and not on the controller's", () => {
+    const { game, p1, p2 } = twoPlayers();
+    put(
+      game,
+      p1.id,
+      creature("Sheoldred", 6, 6, {
+        triggers: [
+          {
+            event: "upkeep",
+            eachPlayersStep: true,
+            opponentsStepOnly: true,
+            effects: [{ kind: "gain_life", playerId: "controller", amount: 1 }],
+            targetRequirements: [],
+          },
+        ],
+      }),
+    );
+    game.turn.step = "upkeep";
+
+    game.turn.activePlayerId = p1.id;
+    const own = { ...game, stack: [...game.stack] };
+    dispatchEventsInPlace(own, [
+      { kind: "step_begins", step: "upkeep", playerId: p1.id },
+    ]);
+    expect(own.stack).toHaveLength(0);
+
+    game.turn.activePlayerId = p2.id;
+    const theirs = { ...game, stack: [...game.stack] };
+    dispatchEventsInPlace(theirs, [
+      { kind: "step_begins", step: "upkeep", playerId: p2.id },
+    ]);
+    expect(theirs.stack).toHaveLength(1);
+    // "That player" is whose upkeep it is.
+    expect(theirs.stack[0]?.subjectPlayerId).toBe(p2.id);
+  });
+
+  // ---- the wire ----------------------------------------------------------
+
+  it("round trips the new fields", () => {
+    const { game, p1 } = twoPlayers();
+    const definition = creature("Omnibus", 2, 2, {
+      keywords: ["swampwalk", "nonbasic_landwalk"],
+      blockPowerGate: { attackerMaxPower: 2, blockerMinPower: 3 },
+      triggerDoubling: { cause: "casts", causeTypesAny: ["instant"], source: { maxPower: 2 } },
+      triggers: [
+        {
+          event: "upkeep",
+          eachPlayersStep: true,
+          opponentsStepOnly: true,
+          effects: [
+            {
+              kind: "choose_card",
+              chooserId: { type: "subject_player" },
+              sources: [
+                { playerId: { type: "subject_player" }, zone: "battlefield", filter: "creature" },
+              ],
+              thenEffects: [{ kind: "sacrifice", cardId: "chosen" }],
+            },
+          ],
+          targetRequirements: [],
+        },
+      ],
+    });
+    put(game, p1.id, definition);
+    const round = parseGameState(serializeGameState(game));
+    const parsed = round.definitions[definition.id]!;
+    expect(parsed.keywords).toEqual(["swampwalk", "nonbasic_landwalk"]);
+    expect(parsed.blockPowerGate).toEqual({ attackerMaxPower: 2, blockerMinPower: 3 });
+    expect(parsed.triggerDoubling).toEqual({
+      cause: "casts",
+      causeTypesAny: ["instant"],
+      source: { maxPower: 2 },
+    });
+    expect(parsed.triggers[0]?.opponentsStepOnly).toBe(true);
+    expect(parsed.triggers[0]?.effects[0]).toMatchObject({
+      kind: "choose_card",
+      chooserId: { type: "subject_player" },
+    });
   });
 });

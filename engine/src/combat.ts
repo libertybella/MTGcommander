@@ -1,6 +1,6 @@
 import { cloneGameState } from "./clone";
 import { characteristicsOf, isCommander, isCreature } from "./cardTypes";
-import { abilitiesRemoved, computedCard } from "./characteristicsEngine";
+import { abilitiesRemoved, cardMatchesSubtype, computedCard } from "./characteristicsEngine";
 import { attackLimitFor, blockAllowanceFor, creaturePower, creatureToughness, damageAfterReplacements, permanentsControlledBy } from "./derived";
 import { hasKeyword, protectedFromSource } from "./keywords";
 import { canPayManaCost, parseManaCost, payManaCost } from "./mana";
@@ -15,6 +15,7 @@ import type {
   CombatState,
   EngineEvent,
   GameState,
+  Keyword,
   PlayerId,
 } from "./types";
 
@@ -341,6 +342,91 @@ export function declareAttackers(state: GameState, playerId: PlayerId, attacks: 
  * horsemanship, shadow (both directions), and skulk. Returns an error
  * message, or null when the block is legal.
  */
+/** The basic land subtype each landwalk variant looks for. */
+const LANDWALK_SUBTYPE: Partial<Record<Keyword, string>> = {
+  plainswalk: "plains",
+  islandwalk: "island",
+  swampwalk: "swamp",
+  mountainwalk: "mountain",
+  forestwalk: "forest",
+};
+
+/**
+ * Which landwalk (if any) makes this attacker unblockable against this
+ * defending player. Returns the keyword's printed name for the message, or
+ * null. Subtypes are read through `cardMatchesSubtype`, so an Urborg'd
+ * Island is a Swamp — which is exactly why the wording is a type.
+ */
+function landwalkBlocked(
+  state: GameState,
+  attackerId: CardInstanceId,
+  defenderId: PlayerId | undefined,
+): string | null {
+  if (!defenderId) {
+    return null;
+  }
+  const lands = permanentsControlledBy(state, defenderId).filter((cardId) =>
+    characteristicsOf(state, cardId).types.includes("land"),
+  );
+  if (lands.length === 0) {
+    return null;
+  }
+  for (const [keyword, subtype] of Object.entries(LANDWALK_SUBTYPE) as [Keyword, string][]) {
+    if (
+      hasKeyword(state, attackerId, keyword) &&
+      lands.some((cardId) => cardMatchesSubtype(state, cardId, subtype))
+    ) {
+      return keyword;
+    }
+  }
+  if (
+    hasKeyword(state, attackerId, "nonbasic_landwalk") &&
+    lands.some((cardId) => !characteristicsOf(state, cardId).supertypes.includes("basic"))
+  ) {
+    return "nonbasic landwalk";
+  }
+  return null;
+}
+
+/**
+ * Champion of Lambholt / Delney: a block refused because of the two
+ * creatures' POWER. Every permanent on the battlefield carrying the static is
+ * asked; the attacker must be one its controller controls.
+ */
+function blockPowerGateBlocked(
+  state: GameState,
+  attackerId: CardInstanceId,
+  blockerId: CardInstanceId,
+): string | null {
+  const attackerController = state.cards[attackerId]?.controllerId;
+  if (!attackerController) {
+    return null;
+  }
+  for (const source of Object.values(state.cards)) {
+    if (source.zone !== "battlefield" || source.controllerId !== attackerController) {
+      continue;
+    }
+    const gate = state.definitions[source.definitionId]?.blockPowerGate;
+    if (!gate || abilitiesRemoved(state, source.id)) {
+      continue;
+    }
+    if (
+      gate.attackerMaxPower !== undefined &&
+      creaturePower(state, attackerId) > gate.attackerMaxPower
+    ) {
+      continue;
+    }
+    const blockerPower = creaturePower(state, blockerId);
+    if (gate.blockerMinPower !== undefined && blockerPower >= gate.blockerMinPower) {
+      return `Card ${blockerId} is too powerful to block that creature`;
+    }
+    if (gate.blockerBelowSourcePower && blockerPower < creaturePower(state, source.id)) {
+      return `Card ${blockerId} is not powerful enough to block that creature`;
+    }
+  }
+  return null;
+}
+
 export function blockRestriction(
   state: GameState,
   attackerId: CardInstanceId,
@@ -390,6 +476,18 @@ export function blockRestriction(
     creaturePower(state, blockerId) > creaturePower(state, attackerId)
   ) {
     return `Card ${blockerId} is too powerful to block a creature with skulk`;
+  }
+  // Champion of Lambholt / Delney: a block refused on a power comparison.
+  const gated = blockPowerGateBlocked(state, attackerId, blockerId);
+  if (gated) {
+    return gated;
+  }
+  // Landwalk (CR 702.14). Asked of the DEFENDING PLAYER's lands, not the
+  // blocker's own — an Island anywhere under that player stops every one of
+  // their blockers, including the ones that are not lands themselves.
+  const walked = landwalkBlocked(state, attackerId, state.cards[blockerId]?.controllerId);
+  if (walked) {
+    return `Card ${blockerId} cannot block a creature with ${walked}`;
   }
   // Protection is asked of the ATTACKER about the blocker: "can't be blocked
   // by" is a quality of the blocker, so the blocker is the source here.

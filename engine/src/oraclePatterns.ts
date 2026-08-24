@@ -1,4 +1,5 @@
 import { manaValueOf } from "./characteristics";
+import { IMPLEMENTED_KEYWORDS } from "./keywordCatalog";
 import { parseManaCost } from "./mana";
 import { parseAmassClause } from "./tokens";
 import type {
@@ -112,6 +113,7 @@ export type CompiledOracleText = {
   topOfLibrary?: TopOfLibraryGrant;
   flashback?: CardDefinition["flashback"];
   evoke?: CardDefinition["evoke"];
+  blockPowerGate?: CardDefinition["blockPowerGate"];
   echo?: CardDefinition["echo"];
   escalate?: CardDefinition["escalate"];
   costReductions?: CostReduction[];
@@ -147,28 +149,12 @@ export type CompiledOracleText = {
   notes: string[];
 };
 
-const KEYWORD_LINE = new Set([
-  "flying",
-  "reach",
-  "haste",
-  "vigilance",
-  "trample",
-  "deathtouch",
-  "lifelink",
-  "first strike",
-  "double strike",
-  "menace",
-  "hexproof",
-  "shroud",
-  "indestructible",
-  "flash",
-  "defender",
-  "fear",
-  "intimidate",
-  "horsemanship",
-  "shadow",
-  "skulk",
-]);
+/**
+ * The printed labels that ARE a keyword line, DERIVED from the implemented
+ * catalogue. This was a hand-written copy — the fourth in the codebase — and
+ * a copy is how five evasion keywords went missing once already.
+ */
+const KEYWORD_LINE = new Set(Object.values(IMPLEMENTED_KEYWORDS));
 
 const BASIC_TYPE_MANA: Record<string, Color> = {
   plains: "W",
@@ -179,27 +165,17 @@ const BASIC_TYPE_MANA: Record<string, Color> = {
 };
 
 /** Keywords a sentence can grant ("All Slivers have shroud", "gains flying"). */
-const KEYWORD_GRANTS: Record<string, Keyword> = {
-  flying: "flying",
-  reach: "reach",
-  haste: "haste",
-  vigilance: "vigilance",
-  trample: "trample",
-  deathtouch: "deathtouch",
-  lifelink: "lifelink",
-  "first strike": "first_strike",
-  "double strike": "double_strike",
-  menace: "menace",
-  hexproof: "hexproof",
-  indestructible: "indestructible",
-  shroud: "shroud",
-  defender: "defender",
-  fear: "fear",
-  intimidate: "intimidate",
-  horsemanship: "horsemanship",
-  shadow: "shadow",
-  skulk: "skulk",
-};
+/**
+ * Printed label -> Keyword for a GRANT ("Equipped creature has islandwalk").
+ * DERIVED, like the label lookup in oracle.ts and `KEYWORD_LINE` above: this
+ * was the fifth hand-written copy of the keyword list in the codebase, and a
+ * copy is how five evasion keywords went missing once already.
+ */
+const KEYWORD_GRANTS: Record<string, Keyword> = Object.fromEntries(
+  (Object.entries(IMPLEMENTED_KEYWORDS) as [Keyword, string][]).map(
+    ([keyword, label]) => [label, keyword],
+  ),
+);
 
 /**
  * Ability words ("Landfall —", "Treasure Hunter —", "Coven —") are pure
@@ -6210,8 +6186,9 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
         "(\\d+)\\/(\\d+)(?: (?:white|blue|black|red|green|colorless)(?: and (?:white|blue|black|red|green))?)? " +
         "([\\w]+(?: [\\w]+)*?)((?: (?:artifact|land|enchantment))*) creature tokens?" +
         "( with [a-z ]+| with \"Sacrifice this token: Add \\{C\\}\\.\")?" +
-        // Krenko / Myrel: "…, where X is the number of Goblins you control".
-        "(?:, where X is the number of ([A-Za-z]+)s you control)?$",
+        // Krenko / Myrel: "…, where X is the number of Goblins you control";
+        // Chasm Skulker: "…, where X is the number of +1/+1 counters on ~".
+        "(?:, where X is the number of (?:([A-Za-z]+)s you control|([+-]\\d\\/[+-]\\d|[a-z]+) counters on ~))?$",
       "i",
     ),
   );
@@ -6242,11 +6219,17 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     // "X" with no "where X is …" tail is the spell's announced X; with one it
     // counts permanents. A literal count still emits that many effects, which
     // is what every existing caller expects.
+    // Chasm Skulker: the count is the source's own counters. Read when the
+    // effect APPLIES, which is what lets a dies-trigger still see them — the
+    // counters ride the card object through the zone change.
+    const perCounter = match[8] ? counterKeyOf(match[8].toLowerCase()) : undefined;
     const dynamic = perSubtype
       ? { perControlledSubtype: perSubtype }
-      : literalCount === undefined
-        ? { count: "x" as const }
-        : null;
+      : perCounter
+        ? { perSourceCounters: perCounter }
+        : literalCount === undefined
+          ? { count: "x" as const }
+          : null;
     if ((dynamic || literalCount) && keywords.every((keyword): keyword is Keyword => Boolean(keyword))) {
       const token: CardEffect = {
         kind: "create_token",
@@ -7389,6 +7372,32 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
       effects: [
         { kind: "draw", playerId: "controller", count: 1 },
         { kind: "move_card", cardId: "self", toZone: "library", libraryPosition: "top" },
+      ],
+    };
+  }
+
+  // Sheoldred: "THAT PLAYER sacrifices a creature of their choice" — the one
+  // player whose step began, not every opponent. The same edict machinery as
+  // below, aimed at the trigger's subject.
+  const subjectEdict = sentence.match(
+    /^(?:That player|They) sacrifices? a creature(?: of their choice)?$/i,
+  );
+  if (subjectEdict) {
+    return {
+      targetRequirements: [],
+      effects: [
+        {
+          kind: "choose_card",
+          chooserId: { type: "subject_player" },
+          sources: [
+            {
+              playerId: { type: "subject_player" },
+              zone: "battlefield",
+              filter: "creature",
+            },
+          ],
+          thenEffects: [{ kind: "sacrifice", cardId: "chosen" }],
+        },
       ],
     };
   }
@@ -9466,7 +9475,7 @@ function parseTriggerHead(head: string): TriggerHead | null {
   // Archfiend of Depravity making its own controller sacrifice is a wrong
   // game, not a rough one. It stays a clean miss.
   const stepHead = text.match(
-    /^At the beginning of (your|each|each player's|the) (upkeep|end step|draw step|first main phase|precombat main phase)$/i,
+    /^At the beginning of (your|each|each player's|each opponent's|the) (upkeep|end step|draw step|first main phase|precombat main phase)$/i,
   );
   if (stepHead?.[1] && stepHead[2]) {
     const eventOf: Record<string, TriggerEvent> = {
@@ -9482,6 +9491,9 @@ function parseTriggerHead(head: string): TriggerHead | null {
       // Underworld Breach goes away at the next end step, not only at its
       // controller's, and that is a whole turn cycle of difference.
       ...(/^your$/i.test(stepHead[1]) ? {} : { eachPlayersStep: true }),
+      // Sheoldred: "each OPPONENT'S upkeep" skips the controller's own turn,
+      // and the step's player becomes the trigger's subject.
+      ...(/^each opponent's$/i.test(stepHead[1]) ? { opponentsStepOnly: true } : {}),
     };
   }
   if (/^Whenever ~ attacks$/i.test(text)) {
@@ -12969,6 +12981,29 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
       continue;
     }
 
+    // Veyran: the cause is a CAST rather than a permanent arriving. "Or
+    // copying" is dropped — a copy is put on the stack, never cast, so this
+    // engine has no cast event for it, and a doubler that fired on copies it
+    // cannot see would be worse than one that honestly misses them.
+    if (
+      /^If you casting or copying an instant or sorcery spell causes a triggered ability of a permanent you control to trigger, that ability triggers an additional time$/i.test(
+        sentence,
+      )
+    ) {
+      result.triggerDoubling = { cause: "casts", causeTypesAny: ["instant", "sorcery"] };
+      continue;
+    }
+
+    // Delney: the restriction is on the ABILITY'S SOURCE, not on the cause.
+    const smallSourceDoubling = sentence.match(
+      /^If a triggered ability of a creature you control with power (\w+) or less triggers, (?:that ability|it) triggers an additional time$/i,
+    );
+    const smallPower = smallSourceDoubling?.[1] ? parseCount(smallSourceDoubling[1]) : null;
+    if (smallPower !== null) {
+      result.triggerDoubling = { source: { types: ["creature"], maxPower: smallPower } };
+      continue;
+    }
+
     // Roaming Throne: source-keyed doubling on the chosen type.
     if (
       /^If a triggered ability of another creature you control of the chosen type triggers, (?:that ability|it) triggers an additional time$/i.test(
@@ -13473,6 +13508,29 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
     // Toski.
     if (/^~ attacks each combat if able$/i.test(sentence)) {
       result.mustAttack = true;
+      continue;
+    }
+
+    // Champion of Lambholt: the threshold is the source's OWN power, read
+    // live — the creature grows and the wall of legal blockers shrinks with
+    // it. Neither "can't block" nor "can't be blocked" says this alone.
+    if (
+      /^Creatures with power less than ~'s power can't block creatures you control$/i.test(
+        sentence,
+      )
+    ) {
+      result.blockPowerGate = { blockerBelowSourcePower: true };
+      continue;
+    }
+
+    // Delney: the mirror, with both halves printed as fixed numbers.
+    const delney = sentence.match(
+      /^Creatures you control with power (\w+) or less can't be blocked by creatures with power (\w+) or greater$/i,
+    );
+    const attackerMax = delney?.[1] ? parseCount(delney[1]) : null;
+    const blockerMin = delney?.[2] ? parseCount(delney[2]) : null;
+    if (attackerMax !== null && blockerMin !== null) {
+      result.blockPowerGate = { attackerMaxPower: attackerMax, blockerMinPower: blockerMin };
       continue;
     }
 

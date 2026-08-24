@@ -200,6 +200,27 @@ export type CardDefinition = {
   opponentsLockedDuringYourTurn?: boolean;
   /** Voice of Victory / Kutzil: the cast-only half of the Abolisher lock. */
   opponentsCantCastDuringYourTurn?: boolean;
+  /**
+   * Champion of Lambholt, Delney: a blocking restriction decided by POWER.
+   * Neither `cantBlock` (the blocker may still block someone else's
+   * attackers) nor `cantBeBlocked` (only SOME blockers are stopped) can say
+   * this on its own, so it is a static read at block declaration.
+   *
+   * Reads as: a creature this permanent's controller controls that matches
+   * `attackerMaxPower` cannot be blocked by a creature matching the blocker
+   * half. Power is COMPUTED on both sides, so a pump changes the answer.
+   */
+  blockPowerGate?: {
+    /** Delney: only the controller's creatures with power this low or less
+     * are protected. Omitted means every creature they control. */
+    attackerMaxPower?: number;
+    /** Delney: blockers with power at least this are stopped. */
+    blockerMinPower?: number;
+    /** Champion of Lambholt: blockers with power BELOW this permanent's own
+     * are stopped — a live comparison, not a fixed number, which is the
+     * whole card. */
+    blockerBelowSourcePower?: boolean;
+  };
   /** Toski: this creature attacks each combat if able. */
   mustAttack?: boolean;
   /** Narset, Parter of Veils: "each opponent can't draw more than one card
@@ -426,8 +447,9 @@ export type CardDefinition = {
    */
   triggerDoubling?: {
     /** Restrict by the causing event (Panharmonicon "enters", Teysa Karlov
-     * "dies", Isshin "attacks"). Omitted: any trigger (Roaming Throne). */
-    cause?: "enters" | "dies" | "attacks";
+     * "dies", Isshin "attacks", Veyran "casts"). Omitted: any trigger
+     * (Roaming Throne). */
+    cause?: "enters" | "dies" | "attacks" | "casts";
     /** The causing subject must have one of these types (Panharmonicon:
      * artifact or creature; Drivnod: creature). */
     causeTypesAny?: string[];
@@ -438,6 +460,9 @@ export type CardDefinition = {
       subtypesAny?: string[];
       chosenSubtype?: boolean;
       excludeSelf?: boolean;
+      /** Delney: "a creature you control with power 2 or less". Computed
+       * power, so a pump takes the ability back out of range. */
+      maxPower?: number;
     };
   };
   /** "~ enters with X +1/+1 counters on it" (hydras); X from the announced cost. */
@@ -2945,7 +2970,21 @@ export type Keyword =
   | "intimidate"
   | "horsemanship"
   | "shadow"
-  | "skulk";
+  | "skulk"
+  /**
+   * Landwalk (CR 702.14): "can't be blocked as long as defending player
+   * controls a <land>". One union member per printed variant rather than a
+   * parameterised field, so grants, searches, keyword lines and the layer
+   * engine all reach it through the machinery they already have — Trailblazer's
+   * Boots grants one with the same `grant_keyword` an anthem uses.
+   */
+  | "plainswalk"
+  | "islandwalk"
+  | "swampwalk"
+  | "mountainwalk"
+  | "forestwalk"
+  /** "nonbasic landwalk": any land without the basic supertype. */
+  | "nonbasic_landwalk";
 
 export type TriggerEvent =
   | "enter_battlefield"
@@ -3254,6 +3293,13 @@ export type CardTrigger = {
   oncePerTurn?: boolean;
   /** "Whenever one or more …": fire once per simultaneous event batch. */
   oncePerBatch?: boolean;
+  /**
+   * Sheoldred: "At the beginning of each OPPONENT'S upkeep". Fires only on a
+   * turn the watcher's controller is not taking, and the step's player rides
+   * along as the trigger's subject, so "that player" names the one opponent
+   * whose upkeep it is rather than all of them.
+   */
+  opponentsStepOnly?: boolean;
   /** class_level triggers: which level reaching fires this. */
   classLevel?: number;
   /**
@@ -3286,7 +3332,7 @@ export type EngineEvent =
       controllerId: PlayerId;
       amount: number;
     }
-  | { kind: "step_begins"; step: Step }
+  | { kind: "step_begins"; step: Step; playerId: PlayerId }
   | { kind: "class_level"; cardId: CardInstanceId; level: number }
   | { kind: "gains_life"; playerId: PlayerId; amount: number }
   /** Life lost to damage or a lose-life effect (not payments). */
@@ -3356,7 +3402,7 @@ export type TriggerCandidate = {
   subjectAmount?: number;
   /** What caused this trigger, when an event did — read by trigger doublers
    * (Panharmonicon wants "enters", Teysa Karlov "dies", Isshin "attacks"). */
-  causeKind?: "enters" | "dies" | "attacks";
+  causeKind?: "enters" | "dies" | "attacks" | "casts";
 };
 
 /** A required player decision that is not priority (targets, later modes). */

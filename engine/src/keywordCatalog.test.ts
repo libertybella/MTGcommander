@@ -3,6 +3,7 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   CR702_KEYWORD_ABILITIES,
+  CR702_NAME_OF,
   IMPLEMENTED_KEYWORDS,
   keywordCoverage,
   keywordCoverageMarkdown,
@@ -18,7 +19,11 @@ describe("CR 702 keyword catalog", () => {
   it("maps every engine keyword onto a catalog name", () => {
     const names = new Set(CR702_KEYWORD_ABILITIES);
     for (const mapped of Object.values(IMPLEMENTED_KEYWORDS)) {
-      expect(names.has(mapped), `${mapped} missing from CR 702 catalog`).toBe(true);
+      // The engine keeps one union member per landwalk variant, because the
+      // printed labels are what the compiler and the grant grammar read; CR
+      // 702.14 counts them as the single ability they are.
+      const catalogName = CR702_NAME_OF[mapped] ?? mapped;
+      expect(names.has(catalogName), `${mapped} missing from CR 702 catalog`).toBe(true);
     }
   });
 

@@ -870,6 +870,55 @@ more questions it can now ask:
   (Bennie Bracks). Reads the existing per-player `createdTokenThisTurn`
   list, and asks whether the CONTROLLER is in it — an opponent's Treasure
   must not satisfy it.
+- **Landwalk (CR 702.14)** — six Keyword union members (plainswalk,
+  islandwalk, swampwalk, mountainwalk, forestwalk, nonbasic landwalk) rather
+  than one parameterised field, so grants, keyword lines, searches and the
+  layer engine all reach it through machinery that already existed:
+  Trailblazer's Boots grants one with the same `grant_keyword` an anthem
+  uses. `keywordCoverage` folds them back into the single CR 702.14 ability
+  they are.
+
+  Asked of the DEFENDING PLAYER's lands, not of the blocker — an Island
+  anywhere under that player stops every one of their blockers, including the
+  ones that are not lands. Subtypes are read through `cardMatchesSubtype`, so
+  an Urborg'd Island is a Swamp, which is exactly why the printed wording is
+  a type and not a name.
+
+  **Three more hand-written copies of the keyword list went with it.**
+  `KEYWORD_LINE` (which sentences ARE a keyword line), `KEYWORD_GRANTS` (the
+  grant grammar) and the serializer's `KEYWORDS` are all derived from
+  `IMPLEMENTED_KEYWORDS` now, joining `KEYWORD_BY_LABEL` from wave 300. The
+  serializer one was the expensive kind: a definition holding a keyword
+  missing from it compiles with no notes and then cannot LOAD.
+
+- **`blockPowerGate`** — Champion of Lambholt and Delney: a blocking
+  restriction decided by POWER. Neither `cantBlock` (the blocker may still
+  block someone else's attackers) nor `cantBeBlocked` (only SOME blockers are
+  stopped) can say it alone, so it is a static read at block declaration.
+  Power is computed on both sides, so a counter on the Champion moves the
+  wall.
+
+- **`triggerDoubling` widened twice** — `cause: "casts"` for Veyran, and
+  `source.maxPower` for Delney, whose restriction is on the ABILITY'S SOURCE
+  rather than on what caused it.
+
+  Veyran's "or copying" is dropped: a copy is put on the stack and never
+  cast, so this engine has no cast event for it. A doubler firing on copies
+  it cannot see would be worse than one that honestly misses them.
+
+- **`opponentsStepOnly`** — Sheoldred: "At the beginning of each OPPONENT'S
+  upkeep". Neither "your" nor "each", and the step's player now rides on the
+  `step_begins` event as the trigger's SUBJECT, so "that player sacrifices a
+  creature" names the one whose upkeep it is rather than all of them. The
+  edict itself is the `choose_card` machinery the printed edicts already use,
+  aimed at `{ type: "subject_player" }`.
+
+- **`create_token.perSourceCounters` from a dies-trigger** — Chasm Skulker:
+  "X Squid tokens, where X is the number of +1/+1 counters on ~". Readable at
+  all because counters ride the card object through a zone change in this
+  engine, where CR 400.7 would make the graveyard card a new object with
+  none.
+
 - **Evoke (CR 702.74)** — an alternative MANA cost taken in the same one
   direction every other alternative cost here is: only when the printed cost
   is out of reach. Nobody throws away a Mulldrifter they could have kept.

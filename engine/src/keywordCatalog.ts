@@ -62,6 +62,25 @@ export const IMPLEMENTED_KEYWORDS: Record<Keyword, string> = {
   horsemanship: "horsemanship",
   shadow: "shadow",
   skulk: "skulk",
+  // Landwalk variants keep their PRINTED labels here, because this record is
+  // inverted into the label lookup and six entries all reading "landwalk"
+  // would collapse to one. `keywordCoverage` folds them back below.
+  plainswalk: "plainswalk",
+  islandwalk: "islandwalk",
+  swampwalk: "swampwalk",
+  mountainwalk: "mountainwalk",
+  forestwalk: "forestwalk",
+  nonbasic_landwalk: "nonbasic landwalk",
+};
+
+/** Every landwalk variant reports as the one CR 702.14 ability it is. */
+export const CR702_NAME_OF: Record<string, string> = {
+  plainswalk: "landwalk",
+  islandwalk: "landwalk",
+  swampwalk: "landwalk",
+  mountainwalk: "landwalk",
+  forestwalk: "landwalk",
+  "nonbasic landwalk": "landwalk",
 };
 
 /**
@@ -77,7 +96,10 @@ export type KeywordCoverage = {
 };
 
 export function keywordCoverage(): KeywordCoverage {
-  const implemented = new Set([...Object.values(IMPLEMENTED_KEYWORDS), ...EXTRA_IMPLEMENTED]);
+  const implemented = new Set([
+    ...Object.values(IMPLEMENTED_KEYWORDS).map((name) => CR702_NAME_OF[name] ?? name),
+    ...EXTRA_IMPLEMENTED,
+  ]);
   return {
     implemented: CR702_KEYWORD_ABILITIES.filter((name) => implemented.has(name)),
     missing: CR702_KEYWORD_ABILITIES.filter((name) => !implemented.has(name)),

@@ -1,4 +1,5 @@
 import { deriveCharacteristics } from "./characteristics";
+import { IMPLEMENTED_KEYWORDS } from "./keywordCatalog";
 import type {
   ProtectionFrom,
   ActivatedAbility,
@@ -53,28 +54,18 @@ import type {
   ZoneReveal,
 } from "./types";
 
-const KEYWORDS = new Set<Keyword>([
-  "flying",
-  "reach",
-  "haste",
-  "vigilance",
-  "trample",
-  "deathtouch",
-  "lifelink",
-  "first_strike",
-  "double_strike",
-  "menace",
-  "hexproof",
-  "shroud",
-  "indestructible",
-  "flash",
-  "defender",
-  "fear",
-  "intimidate",
-  "horsemanship",
-  "shadow",
-  "skulk",
-]);
+/**
+ * The keywords a saved state may name, DERIVED from the implemented
+ * catalogue rather than listed again. `IMPLEMENTED_KEYWORDS` is a total
+ * `Record<Keyword, string>`, so a new union member is a tsc error there and
+ * this set follows for free.
+ *
+ * This was the sixth hand-written copy of the keyword list in the codebase,
+ * and the drift it caused was the expensive kind: a definition holding a
+ * keyword missing from here compiles with no notes and then cannot LOAD, so
+ * a saved table containing it cannot be reopened.
+ */
+const KEYWORDS = new Set<Keyword>(Object.keys(IMPLEMENTED_KEYWORDS) as Keyword[]);
 
 /**
  * The counted nouns a `modify_pt.per` may name. Written as a total record so
@@ -985,6 +976,31 @@ export function parseGameState(json: string): GameState {
       ...(def.escalate === undefined
         ? {}
         : { escalate: expectString(def.escalate, `definition.${id}.escalate`) }),
+      ...(def.blockPowerGate === undefined || !isRecord(def.blockPowerGate)
+        ? {}
+        : {
+            blockPowerGate: {
+              ...(def.blockPowerGate.attackerMaxPower === undefined
+                ? {}
+                : {
+                    attackerMaxPower: expectNumber(
+                      def.blockPowerGate.attackerMaxPower,
+                      `definition.${id}.blockPowerGate.attackerMaxPower`,
+                    ),
+                  }),
+              ...(def.blockPowerGate.blockerMinPower === undefined
+                ? {}
+                : {
+                    blockerMinPower: expectNumber(
+                      def.blockPowerGate.blockerMinPower,
+                      `definition.${id}.blockPowerGate.blockerMinPower`,
+                    ),
+                  }),
+              ...(def.blockPowerGate.blockerBelowSourcePower === true
+                ? { blockerBelowSourcePower: true }
+                : {}),
+            },
+          }),
       ...(def.topOfLibrary === undefined
         ? {}
         : {
@@ -1068,7 +1084,8 @@ export function parseGameState(json: string): GameState {
                 cause !== undefined &&
                 cause !== "enters" &&
                 cause !== "dies" &&
-                cause !== "attacks"
+                cause !== "attacks" &&
+                cause !== "casts"
               ) {
                 throw new Error(`Invalid definition.${id}.triggerDoubling.cause`);
               }
@@ -1108,6 +1125,14 @@ export function parseGameState(json: string): GameState {
                             }),
                         ...(source.chosenSubtype === true ? { chosenSubtype: true } : {}),
                         ...(source.excludeSelf === true ? { excludeSelf: true } : {}),
+                        ...(source.maxPower === undefined
+                          ? {}
+                          : {
+                              maxPower: expectNumber(
+                                source.maxPower,
+                                `definition.${id}.triggerDoubling.source.maxPower`,
+                              ),
+                            }),
                       },
                     }),
               };
@@ -4620,6 +4645,7 @@ function parseTriggers(value: unknown, label: string): CardTrigger[] {
         ? {}
         : { classLevel: expectNumber(entry.classLevel, `${label}[${index}].classLevel`) }),
       ...(entry.eachPlayersStep === true ? { eachPlayersStep: true } : {}),
+      ...(entry.opponentsStepOnly === true ? { opponentsStepOnly: true } : {}),
       ...(entry.alsoOnCopy === true ? { alsoOnCopy: true } : {}),
       ...(entry.modes === undefined
         ? {}

@@ -156,6 +156,7 @@ export function createCardDefinition(
         | "topOfLibrary"
         | "flashback"
         | "evoke"
+        | "blockPowerGate"
         | "echo"
         | "escalate"
         | "costReductions"
@@ -218,6 +219,7 @@ export function createCardDefinition(
           ...(trigger.oncePerBatch ? { oncePerBatch: true } : {}),
           ...(trigger.classLevel === undefined ? {} : { classLevel: trigger.classLevel }),
           ...(trigger.eachPlayersStep ? { eachPlayersStep: true } : {}),
+          ...(trigger.opponentsStepOnly ? { opponentsStepOnly: true } : {}),
           ...(trigger.alsoOnCopy ? { alsoOnCopy: true } : {}),
           ...(trigger.condition ? { condition: { ...trigger.condition } } : {}),
           ...(trigger.subjectPlayerOpponent ? { subjectPlayerOpponent: true } : {}),
@@ -557,6 +559,7 @@ export function createCardDefinition(
         }
       : {}),
     ...(input.evoke ? { evoke: { manaCost: input.evoke.manaCost } } : {}),
+    ...(input.blockPowerGate ? { blockPowerGate: { ...input.blockPowerGate } } : {}),
     ...(input.echo ? { echo: { manaCost: input.echo.manaCost } } : {}),
     ...(input.escalate ? { escalate: input.escalate } : {}),
     ...(input.topOfLibrary

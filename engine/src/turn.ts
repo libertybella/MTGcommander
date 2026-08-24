@@ -289,7 +289,7 @@ function onEnterStep(state: GameState): GameState {
     }
     const afterDelayedUpkeep = fireDelayedTriggers(state, "upkeep");
     dispatchEventsInPlace(afterDelayedUpkeep, [
-      { kind: "step_begins", step: "upkeep" },
+      { kind: "step_begins", step: "upkeep", playerId: state.turn.activePlayerId },
     ]);
     return afterDelayedUpkeep;
   }
@@ -340,7 +340,9 @@ function onEnterStep(state: GameState): GameState {
               : applyEffect(current, { kind: "move_card", cardId: entry.cardId, toZone: "exile" });
       }
     }
-    dispatchEventsInPlace(current, [{ kind: "step_begins", step: "end" }]);
+    dispatchEventsInPlace(current, [
+      { kind: "step_begins", step: "end", playerId: current.turn.activePlayerId },
+    ]);
     return current;
   }
   if (state.turn.step === "draw") {
@@ -370,10 +372,14 @@ function onEnterStep(state: GameState): GameState {
         count: 1 + extra,
         turnDraw: true,
       });
-      dispatchEventsInPlace(drawn, [{ kind: "step_begins", step: "draw" }]);
+      dispatchEventsInPlace(drawn, [
+        { kind: "step_begins", step: "draw", playerId: drawn.turn.activePlayerId },
+      ]);
       return drawn;
     }
-    dispatchEventsInPlace(state, [{ kind: "step_begins", step: "draw" }]);
+    dispatchEventsInPlace(state, [
+      { kind: "step_begins", step: "draw", playerId: state.turn.activePlayerId },
+    ]);
     return state;
   }
   if (state.turn.step === "precombatMain") {
@@ -383,7 +389,7 @@ function onEnterStep(state: GameState): GameState {
     advanceControlledSagasInPlace(state);
     const afterDelayedMain = fireDelayedTriggers(state, "first_main_phase");
     dispatchEventsInPlace(afterDelayedMain, [
-      { kind: "step_begins", step: "precombatMain" },
+      { kind: "step_begins", step: "precombatMain", playerId: state.turn.activePlayerId },
     ]);
     return afterDelayedMain;
   }

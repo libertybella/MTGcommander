@@ -597,6 +597,14 @@ function triggerDoublingCopies(state: GameState, candidate: TriggerCandidate): n
           continue;
         }
       }
+      // Delney: the ABILITY'S SOURCE has to be small, not the thing that
+      // caused it. Computed, so a pump takes the ability out of range.
+      if (
+        filter.maxPower !== undefined &&
+        creaturePower(state, candidate.cardId) > filter.maxPower
+      ) {
+        continue;
+      }
     }
     copies += 1;
   }
@@ -954,6 +962,12 @@ function triggerMatchesEvent(
     if (!step || event.step !== step) {
       return false;
     }
+    // "At the beginning of EACH OPPONENT'S upkeep" (Sheoldred) is neither
+    // of the two below: it fires on somebody else's turn, and never on the
+    // controller's own.
+    if (trigger.opponentsStepOnly) {
+      return state.turn.activePlayerId !== watcher.controllerId;
+    }
     // "At the beginning of EACH end step" fires on every player's turn;
     // "your" fires only on the controller's own.
     return trigger.eachPlayersStep === true || watcher.controllerId === state.turn.activePlayerId;
@@ -1225,7 +1239,9 @@ export function dispatchEventsInPlace(state: GameState, events: EngineEvent[]): 
             event.kind === "combat_damage_to_player" ||
             event.kind === "deals_damage_to_player" ||
             event.kind === "draws" ||
-            event.kind === "creates_token"
+            event.kind === "creates_token" ||
+            // Sheoldred: "that player" is whose step just began.
+            event.kind === "step_begins"
               ? event.playerId
               : event.kind === "casts" || event.kind === "dies" || event.kind === "sacrifices"
                 ? event.controllerId
@@ -1246,7 +1262,11 @@ export function dispatchEventsInPlace(state: GameState, events: EngineEvent[]): 
           const causeKind =
             event.kind === "enters" || event.kind === "dies" || event.kind === "attacks"
               ? event.kind
-              : undefined;
+              : // Veyran: a cast is a cause a doubler can name, the same way
+                // Panharmonicon names an entry.
+                event.kind === "casts"
+                ? ("casts" as const)
+                : undefined;
           candidates.push({
             cardId: card.id,
             triggerIndex: index,
