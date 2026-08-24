@@ -609,8 +609,25 @@ const SACRIFICE_COST = /Sacrifice (?:~|this land|this creature|this artifact|thi
  * A sacrifice cost's scope, plus an optional count for the Dominus cycle's
  * "Sacrifice two other creatures". Group 1 is the count word when present.
  */
-const SACRIFICE_TYPE_COST =
-  /Sacrifice (?:an? |another |(two|three|four|five|six|seven|eight|nine|ten|\d+) (?:other )?)(black creature|creature or artifact|artifact or creature|creature|artifact|land|Treasure|token|artifacts and\/or creatures|nonland permanents|creatures|artifacts|lands)\b/i;
+/**
+ * Shared with COST_UNIT below rather than written out twice. The pair used
+ * to be two copies, and copies drift: the reader grew a counted form the
+ * SPLITTER refused, so the ability compiled to nothing at all. Anything
+ * added here is added to both halves at once.
+ *
+ * LONGEST FIRST, and it matters twice over. Alternation is first-match, and
+ * the splitter matches a cost up to a delimiter with no word boundary to
+ * save it: a bare "artifacts" placed ahead of "artifacts and/or creatures"
+ * swallows the head of the longer phrase and hands back the wrong scope,
+ * and "Treasure" ahead of "Treasures" leaves an `s` where a comma was due.
+ */
+const SACRIFICE_COUNTS = "two|three|four|five|six|seven|eight|nine|ten|X|\\d+";
+const SACRIFICE_SCOPES =
+  "artifacts and\\/or creatures|nonland permanents|creature or artifact|artifact or creature|black creature|creatures|artifacts|Treasures|creature|artifact|Treasure|lands|land|token";
+const SACRIFICE_TYPE_COST = new RegExp(
+  `Sacrifice (?:an? |another |(${SACRIFICE_COUNTS}) (?:other )?)(${SACRIFICE_SCOPES})\\b`,
+  "i",
+);
 /**
  * "Sacrifice a Goblin" / "Sacrifice a Desert" / "Sacrifice a Food" — the
  * fodder is named by a subtype and no card type appears, so the scope is
@@ -653,8 +670,10 @@ const MILL_COST = /Mill (a|one|two|three|\d+) cards?/i;
 /** Mines of Moria, Drivnod. */
 const EXILE_GRAVEYARD_COST =
   /Exile (a|one|two|three|four|five|\d+) (?:(creature|artifact|land|instant|sorcery) )?cards? from your graveyard/i;
+/** Lion's Eye Diamond: the whole hand, so there is nothing to choose. */
+const DISCARD_HAND_COST = /Discard your hand/i;
 const COST_UNIT =
-  `(?:\\{[^}]+\\})+|Sacrifice (?:~|this land|this creature|this artifact|this permanent)|Sacrifice (?:an? |another )(?:black )?(?:creature or artifact|artifact or creature|creature|artifact|land|Treasure|token)|Sacrifice (?:an? |(?:one|two|three|four|five|\\d+) )[A-Z][a-z]+s?|Sacrifice (?:two|three|four|five|six|seven|eight|nine|ten|\\d+) (?:other )?(?:creatures|artifacts|lands|nonland permanents|artifacts and\\/or creatures)|Exile ~|Exert ~|Pay \\d+ life|Pay life equal to the number of colors in your commanders?['\u2019]? color identity|Tap an untapped (?:legendary )?creature you control|Remove (?:a|an|one|two|three|four|five|six|seven|eight|nine|ten|\\d+) (?:[-+]\\d\\/[-+]\\d|[a-z]+) counters? from ~|Put (?:a|an|one|two|three|\\d+) (?:[-+]\\d\\/[-+]\\d|[a-z]+) counters? on ~|Discard (?:an? (?:${DISCARD_COST_TYPES})? ?card|(?:${DISCARD_COST_COUNTS}) cards)|Mill (?:a|one|two|three|\\d+) cards?|Exile (?:a|one|two|three|four|five|\\d+) (?:(?:creature|artifact|land|instant|sorcery) )?cards? from your graveyard`;
+  `(?:\\{[^}]+\\})+|Sacrifice (?:~|this land|this creature|this artifact|this permanent)|Sacrifice (?:an? |another |(?:${SACRIFICE_COUNTS}) (?:other )?)(?:${SACRIFICE_SCOPES})|Sacrifice (?:an? |(?:one|two|three|four|five|\\d+) )[A-Z][a-z]+s?|Discard your hand|Exile ~|Exert ~|Pay \\d+ life|Pay life equal to the number of colors in your commanders?['\u2019]? color identity|Tap an untapped (?:legendary )?creature you control|Remove (?:a|an|one|two|three|four|five|six|seven|eight|nine|ten|\\d+) (?:[-+]\\d\\/[-+]\\d|[a-z]+) counters? from ~|Put (?:a|an|one|two|three|\\d+) (?:[-+]\\d\\/[-+]\\d|[a-z]+) counters? on ~|Discard (?:an? (?:${DISCARD_COST_TYPES})? ?card|(?:${DISCARD_COST_COUNTS}) cards)|Mill (?:a|one|two|three|\\d+) cards?|Exile (?:a|one|two|three|four|five|\\d+) (?:(?:creature|artifact|land|instant|sorcery) )?cards? from your graveyard`;
 
 function splitAbility(sentence: string): { costText: string; rest: string } | null {
   // "Metalcraft — {T}: …" — the ability word is flavor (Mox Opal).
@@ -699,6 +718,8 @@ function parseAbilityCost(
     | "token";
   sacrificeSubtype?: string;
   sacrificeCount?: number;
+  sacrificeCountFromX?: boolean;
+  discardHandCost?: boolean;
   tapCreature?: boolean;
   /** Relic of Legends: the tapped creature must be legendary. */
   tapCreatureLegendary?: boolean;
@@ -721,9 +742,13 @@ function parseAbilityCost(
     ? null
     : costText.match(SACRIFICE_TYPE_COST);
   const another = /Sacrifice (?:another |(?:two|three) other )/i.test(costText);
-  const sacrificeCount = sacrificeTypeMatch?.[1]
-    ? parseCount(sacrificeTypeMatch[1].toLowerCase())
-    : undefined;
+  // "Sacrifice X Treasures": the count is announced, not printed, so it
+  // becomes a flag rather than a number.
+  const sacrificeCountFromX = /^x$/i.test(sacrificeTypeMatch?.[1] ?? "");
+  const sacrificeCount =
+    sacrificeTypeMatch?.[1] && !sacrificeCountFromX
+      ? parseCount(sacrificeTypeMatch[1].toLowerCase())
+      : undefined;
   // "artifacts and/or creatures" and the bare plural are the counted forms;
   // they map onto the same scopes as their singulars.
   const scopeWord = sacrificeTypeMatch?.[2]
@@ -733,7 +758,7 @@ function parseAbilityCost(
     // The counted forms are printed plural; the scopes are singular. Only
     // "creatures" was folded before, so "Sacrifice two artifacts" carried a
     // scope name no fodder matcher would ever match.
-    .replace(/^(creature|artifact|land)s$/, "$1")
+    .replace(/^(creature|artifact|land|treasure)s$/, "$1")
     // Bolas's Citadel: "ten nonland permanents".
     .replace(/^nonland permanents$/, "nonland_permanent");
   // Only consulted when no card-type scope was found, so "a Treasure" and
@@ -808,6 +833,8 @@ function parseAbilityCost(
         ...(discardMatch[1] ? { types: [discardMatch[1].toLowerCase()] } : {}),
       }
     : undefined;
+  // Lion's Eye Diamond: the whole hand, so it names no count and no type.
+  const discardHandCost = DISCARD_HAND_COST.test(costText);
   const millMatch = costText.match(MILL_COST);
   const millCost = millMatch?.[1] ? parseCount(millMatch[1].toLowerCase()) ?? undefined : undefined;
   const exileMatch = costText.match(EXILE_GRAVEYARD_COST);
@@ -828,6 +855,7 @@ function parseAbilityCost(
     !removeCounterCost &&
     !addCounterCost &&
     !discardCost &&
+    !discardHandCost &&
     millCost === undefined &&
     !exileFromGraveyardCost
   ) {
@@ -839,7 +867,7 @@ function parseAbilityCost(
   if (/\bRemove\b/i.test(costText) && !removeCounterCost) {
     return null;
   }
-  if (/\bDiscard\b/i.test(costText) && !discardCost) {
+  if (/\bDiscard\b/i.test(costText) && !discardCost && !discardHandCost) {
     return null;
   }
   if (/\bMill\b/i.test(costText) && millCost === undefined) {
@@ -885,6 +913,8 @@ function parseAbilityCost(
     ...((sacrificeCount ?? subtypeCount) && (sacrificeCount ?? subtypeCount)! > 1
       ? { sacrificeCount: (sacrificeCount ?? subtypeCount)! }
       : {}),
+    ...(sacrificeCountFromX ? { sacrificeCountFromX: true } : {}),
+    ...(discardHandCost ? { discardHandCost: true } : {}),
     ...(tapCreature ? { tapCreature: true } : {}),
     ...(tapCreatureLegendary ? { tapCreatureLegendary: true } : {}),
     ...(exileSelfCost ? { exileSelf: true } : {}),
@@ -16372,6 +16402,28 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
         });
         continue;
       }
+      // Lion's Eye Diamond: a mana ability with no {T} at all, paid by
+      // sacrificing the source. Nothing about it needs the stack, so it
+      // stays a mana ability — and `noTap` is what says the permanent is
+      // not tapping, which matters because a tap doubler (Mana Reflection)
+      // replaces the amount only for abilities that do.
+      if (
+        add &&
+        !cost.tap &&
+        cost.manaCost === "" &&
+        cost.sacrificeSelf &&
+        !cost.exertSelf &&
+        !cost.lifeCost &&
+        !cost.lifeCostFromCommanderColors
+      ) {
+        result.manaAbilities.push({
+          ...manaAbilityFromAdd(add),
+          sacrificeSelf: true,
+          noTap: true,
+          ...(cost.discardHandCost ? { costDiscardHand: true } : {}),
+        });
+        continue;
+      }
       const levelUp = ability.rest.match(/^Level (\d+)$/i);
       if (levelUp?.[1] && !cost.tap && cost.manaCost !== "") {
         result.activated.push({
@@ -16401,6 +16453,7 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
         ...(cost.sacrificeCost ? { sacrificeCost: cost.sacrificeCost } : {}),
         ...(cost.sacrificeSubtype ? { sacrificeSubtype: cost.sacrificeSubtype } : {}),
         ...(cost.sacrificeCount ? { sacrificeCount: cost.sacrificeCount } : {}),
+        ...(cost.sacrificeCountFromX ? { sacrificeCountFromX: true } : {}),
         ...(cost.removeCounterCost ? { removeCounterCost: cost.removeCounterCost } : {}),
         ...(cost.addCounterCost ? { addCounterCost: cost.addCounterCost } : {}),
         ...(cost.discardCost ? { discardCost: cost.discardCost } : {}),
@@ -16580,6 +16633,21 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
         result.effects = rider.replaces ? [gated] : [...result.effects, gated];
         continue;
       }
+    }
+
+    /**
+     * Lion's Eye Diamond. On paper this line is a RESTRICTION — it stops
+     * the ability being activated while a spell is being cast, which is
+     * the whole reason the card is a puzzle rather than a Black Lotus.
+     * Here it is already true: mana abilities are only ever activated at
+     * priority, never mid-cast, so the engine has no window to forbid.
+     * Consumed as a no-op rather than left to fail the whole card.
+     */
+    if (
+      /^Activate only as an instant$/i.test(sentence) &&
+      (result.manaAbilities.length > 0 || result.activated.length > 0)
+    ) {
+      continue;
     }
 
     if (/^Activate only as a sorcery$/i.test(sentence) && result.activated.length > 0) {

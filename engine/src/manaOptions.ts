@@ -273,6 +273,28 @@ export function manaAbilitiesFor(state: GameState, cardId: CardInstanceId): Mana
   );
 }
 
+/**
+ * Does this mana ability charge something beyond tapping the permanent?
+ *
+ * A costed ability is never auto-tapped and contributes nothing to potential
+ * mana — the auto-tapper would otherwise pay a Springleaf Drum's {1}, or
+ * discard a Lion's Eye Diamond's hand, to buy mana nobody asked for.
+ *
+ * This used to be spelled out at each of its call sites as a chain of
+ * `costMana || costSacrifice || costTapCreature`, and a chain like that is a
+ * hand-written copy of a list: adding a fifth cost means finding all of them,
+ * and the one that is missed silently spends it. One predicate, so a new
+ * cost is opted in once.
+ */
+export function manaAbilityIsCosted(ability: ManaAbility): boolean {
+  return Boolean(
+    ability.costMana ||
+      ability.costSacrifice ||
+      ability.costTapCreature ||
+      ability.costDiscardHand,
+  );
+}
+
 /** Phyrexian Altar-class: the sacrifice-cost ability needs legal fodder. */
 function sacrificeFodderAvailable(
   state: GameState,

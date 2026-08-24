@@ -33,7 +33,7 @@ import { colorsAmongControlled, commanderIdentityColors, manaAbilitiesFor, manaT
 import { abilityLifeCost, colorsOutsideCommanderIdentity } from "./commanderIdentity";
 import { addRestrictedMana, emptyManaPools, manaRiderFires, parseManaCost, payManaCost, restrictionAdmits, type ManaPurpose } from "./mana";
 import { applyStateBasedActionsInPlace } from "./status";
-import { legalActions, sacrificeColorMatches, sacrificeScopeMatches } from "./legalActions";
+import { legalActions, potentialMana, sacrificeColorMatches, sacrificeScopeMatches } from "./legalActions";
 import { applyResolveChooseCard, applyResolveCreatureType, applyResolveDiscardLandOrGraveyard, applyResolveEnterCopy, applyResolveLookAssign, applyResolvePay, applyResolveSearch, applyResolveTriggerMode, legalEnterCopyIds, legalSearchIds, searchMatches } from "./prompt";
 import { parseGameState, serializeGameState } from "./serialize";
 import { fillLibraries } from "./testSupport";
@@ -48289,5 +48289,356 @@ describe("wave 320: noncombat damage, and feeding a monster", () => {
       playerId: "controller",
       scope: "land",
     });
+  });
+});
+
+describe("wave 321: an announced X that buys permanents, and a hand as a cost", () => {
+  const compile = (
+    name: string,
+    typeLine: string,
+    oracleText: string,
+    manaCost = "",
+    pt: [string, string] | null = null,
+  ) =>
+    compileOracleCard({
+      oracleId: name.toLowerCase().replace(/[^a-z]+/g, "-"),
+      name,
+      manaCost,
+      typeLine,
+      power: pt?.[0] ?? null,
+      toughness: pt?.[1] ?? null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  const put = (
+    game: GameState,
+    ownerId: string,
+    definition: CardDefinition,
+    zone: "hand" | "battlefield" = "battlefield",
+  ) => {
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({ definitionId: definition.id, ownerId, zone });
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === ownerId)!.zones[zone].push(card.id);
+    if (zone === "battlefield") {
+      card.summoningSick = false;
+    }
+    return card.id;
+  };
+
+  // ---- Grim Hireling: X in the sacrifice, not in the mana cost ------------
+
+  it("compiles the announced X as a sacrifice count", () => {
+    const compiled = compile(
+      "Grim Hireling",
+      "Creature — Human Rogue",
+      "Whenever a creature you control deals combat damage to a player, create two Treasure tokens.\n{B}, Sacrifice X Treasures: Target creature gets -X/-X until end of turn. Activate only as a sorcery.",
+      "{2}{B}",
+      ["2", "2"],
+    );
+    expect(compiled.notes).toEqual([]);
+    const ability = compiled.definition.activated[0];
+    expect(ability?.sacrificeCost).toBe("treasure");
+    expect(ability?.sacrificeCountFromX).toBe(true);
+    // The {X} is in the SACRIFICE, so the mana cost stays a bare {B} and
+    // `xCost` — how many generic pips X buys — stays zero.
+    expect(ability?.manaCost).toBe("{B}");
+    expect(ability?.xCost).toBeUndefined();
+    expect(ability?.timing).toBe("sorcery");
+    expect(ability?.effects).toEqual([
+      {
+        kind: "pt_until_eot",
+        cardId: { type: "chosen", index: 0 },
+        power: "minus_x",
+        toughness: "minus_x",
+      },
+    ]);
+  });
+
+  it("leaves a printed count printed", () => {
+    // The Dominus cycle's counted sacrifice shares the pattern; only the
+    // literal X becomes a flag.
+    const compiled = compile(
+      "Counted Sacrifice",
+      "Artifact",
+      "{B}, Sacrifice two Treasures: Target creature gets -2/-2 until end of turn.",
+      "{2}",
+    );
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.activated[0]?.sacrificeCount).toBe(2);
+    expect(compiled.definition.activated[0]?.sacrificeCountFromX).toBeUndefined();
+  });
+
+  const hireling = () =>
+    createCardDefinition({
+      name: "Grim Hireling",
+      typeLine: "Creature — Human Rogue",
+      manaCost: "{2}{B}",
+      power: 2,
+      toughness: 2,
+      activated: [
+        {
+          tap: false,
+          manaCost: "{B}",
+          sacrificeCost: "treasure",
+          sacrificeCountFromX: true,
+          timing: "sorcery",
+          effects: [
+            {
+              kind: "pt_until_eot",
+              cardId: { type: "chosen", index: 0 },
+              power: "minus_x",
+              toughness: "minus_x",
+            },
+          ],
+          targetRequirements: [{ kind: "creature" }],
+        },
+      ],
+    });
+
+  const treasure = () =>
+    createCardDefinition({
+      name: "Treasure",
+      typeLine: "Artifact — Treasure",
+      manaAbilities: [
+        {
+          produces: {},
+          producesOptions: [],
+          producesAnyColor: true,
+          damageToController: 0,
+          sacrificeSelf: true,
+        },
+      ],
+    });
+
+  const hirelingBoard = (treasures: number) => {
+    const { game, p1, p2 } = twoPlayers();
+    const hirelingId = put(game, p1.id, hireling());
+    const treasureIds: string[] = [];
+    for (let index = 0; index < treasures; index += 1) {
+      treasureIds.push(put(game, p1.id, treasure()));
+    }
+    const victimId = put(
+      game,
+      p2.id,
+      createCardDefinition({
+        name: "Victim",
+        typeLine: "Creature — Bear",
+        manaCost: "{1}{G}",
+        power: 4,
+        toughness: 4,
+      }),
+    );
+    game.turn.activePlayerId = p1.id;
+    game.turn.phase = "precombatMain";
+    game.turn.step = "precombatMain";
+    game.priorityPlayerId = p1.id;
+    game.players.find((entry) => entry.id === p1.id)!.mana.B = 1;
+    return { game, p1, hirelingId, treasureIds, victimId };
+  };
+
+  const activate = (
+    game: GameState,
+    playerId: string,
+    cardId: string,
+    victimId: string,
+    costSacrificeId: string,
+    xValue: number | undefined,
+  ) =>
+    applyAction(game, {
+      kind: "activate_ability",
+      playerId,
+      cardId,
+      abilityIndex: 0,
+      targets: [{ type: "creature", cardId: victimId }],
+      costSacrificeId,
+      ...(xValue === undefined ? {} : { xValue }),
+    });
+
+  it("eats exactly X Treasures", () => {
+    const { game, p1, hirelingId, treasureIds, victimId } = hirelingBoard(4);
+    const activated = activate(game, p1.id, hirelingId, victimId, treasureIds[0]!, 3);
+    const eaten = treasureIds.filter((id) => activated.cards[id]?.zone !== "battlefield");
+    // One named by the activation, two auto-taken — three, not one and not
+    // all four.
+    expect(eaten).toHaveLength(3);
+  });
+
+  it("shrinks the target by the X it announced", () => {
+    const { game, p1, hirelingId, treasureIds, victimId } = hirelingBoard(4);
+    let state = activate(game, p1.id, hirelingId, victimId, treasureIds[0]!, 3);
+    state = resolveTopOfStack(state);
+    expect(computedCard(state, victimId)?.power).toBe(1);
+    expect(computedCard(state, victimId)?.toughness).toBe(1);
+  });
+
+  it("refuses X of zero", () => {
+    const { game, p1, hirelingId, treasureIds, victimId } = hirelingBoard(4);
+    // Nothing would be sacrificed and nothing would shrink, and the
+    // sacrifice cost has no way to name no victim.
+    expect(() => activate(game, p1.id, hirelingId, victimId, treasureIds[0]!, 0)).toThrow();
+  });
+
+  it("refuses an X the board cannot pay", () => {
+    const { game, p1, hirelingId, treasureIds, victimId } = hirelingBoard(2);
+    // The check runs before any of the cost is paid, so the two Treasures
+    // that WERE there are still there afterwards.
+    expect(() => activate(game, p1.id, hirelingId, victimId, treasureIds[0]!, 3)).toThrow();
+  });
+
+  it("still refuses an X where the cost has none", () => {
+    const { game, p1, hirelingId, treasureIds, victimId } = hirelingBoard(4);
+    const definition = game.definitions[game.cards[hirelingId]!.definitionId]!;
+    delete definition.activated[0]!.sacrificeCountFromX;
+    expect(() => activate(game, p1.id, hirelingId, victimId, treasureIds[0]!, 2)).toThrow(
+      /no X in its cost/i,
+    );
+  });
+
+  // ---- Lion's Eye Diamond -------------------------------------------------
+
+  it("compiles the hand as a cost, and the timing rider as a no-op", () => {
+    const compiled = compile(
+      "Lion's Eye Diamond",
+      "Artifact",
+      "Discard your hand, Sacrifice this artifact: Add three mana of any one color. Activate only as an instant.",
+      "{0}",
+    );
+    expect(compiled.notes).toEqual([]);
+    // A mana ability, not an activated one: nothing about it uses the stack.
+    expect(compiled.definition.activated).toEqual([]);
+    expect(compiled.definition.manaAbilities[0]).toMatchObject({
+      producesAnyColor: true,
+      count: 3,
+      sacrificeSelf: true,
+      costDiscardHand: true,
+      noTap: true,
+    });
+  });
+
+  const diamond = () =>
+    createCardDefinition({
+      name: "Lion's Eye Diamond",
+      typeLine: "Artifact",
+      manaAbilities: [
+        {
+          produces: {},
+          producesOptions: [],
+          producesAnyColor: true,
+          damageToController: 0,
+          count: 3,
+          sacrificeSelf: true,
+          costDiscardHand: true,
+          noTap: true,
+        },
+      ],
+    });
+
+  const diamondBoard = (handSize: number) => {
+    const { game, p1 } = twoPlayers();
+    const diamondId = put(game, p1.id, diamond());
+    const handIds: string[] = [];
+    for (let index = 0; index < handSize; index += 1) {
+      handIds.push(
+        put(
+          game,
+          p1.id,
+          createCardDefinition({
+            name: `Held${index}`,
+            typeLine: "Sorcery",
+            manaCost: "{1}",
+          }),
+          "hand",
+        ),
+      );
+    }
+    game.priorityPlayerId = p1.id;
+    return { game, p1, diamondId, handIds };
+  };
+
+  it("discards the whole hand and sacrifices itself for three", () => {
+    const { game, p1, diamondId, handIds } = diamondBoard(3);
+    const tapped = applyAction(game, {
+      kind: "tap_for_mana",
+      playerId: p1.id,
+      cardId: diamondId,
+      color: "U",
+    });
+    expect(tapped.players.find((entry) => entry.id === p1.id)!.mana.U).toBe(3);
+    expect(tapped.cards[diamondId]?.zone).toBe("graveyard");
+    // The WHOLE hand — not a chosen card, so there is nothing to prompt for.
+    expect(tapped.players.find((entry) => entry.id === p1.id)!.zones.hand).toEqual([]);
+    for (const id of handIds) {
+      expect(tapped.cards[id]?.zone).toBe("graveyard");
+    }
+  });
+
+  it("works with an empty hand, discarding nothing", () => {
+    const { game, p1, diamondId } = diamondBoard(0);
+    const tapped = applyAction(game, {
+      kind: "tap_for_mana",
+      playerId: p1.id,
+      cardId: diamondId,
+      color: "B",
+    });
+    expect(tapped.players.find((entry) => entry.id === p1.id)!.mana.B).toBe(3);
+  });
+
+  it("is never reached for by the auto-tapper", () => {
+    const { game, p1, diamondId } = diamondBoard(3);
+    void diamondId;
+    // A cost this expensive must never be spent to buy mana nobody asked
+    // for. `manaAbilityIsCosted` is what keeps it out, and it is the same
+    // predicate the potential-mana count uses.
+    const potential = potentialMana(game, p1.id);
+    expect(potential.fixed.U).toBe(0);
+    expect(potential.optionSets).toEqual([]);
+  });
+
+  it("keeps every sacrifice scope across the wire", () => {
+    // The parser used to spell these out as a chain and had fallen two
+    // members behind the union, so a Bolas's Citadel-shaped mana ability
+    // came back from the wire FREE.
+    const { game, p1 } = twoPlayers();
+    const definition = createCardDefinition({
+      name: "Wide Altar",
+      typeLine: "Artifact",
+      manaAbilities: [
+        {
+          produces: { B: 1 },
+          producesOptions: [],
+          producesAnyColor: false,
+          damageToController: 0,
+          costSacrifice: "nonland_permanent",
+          noTap: true,
+        },
+        {
+          produces: { R: 1 },
+          producesOptions: [],
+          producesAnyColor: false,
+          damageToController: 0,
+          costSacrifice: "token",
+          noTap: true,
+        },
+      ],
+    });
+    put(game, p1.id, definition);
+    const round = parseGameState(serializeGameState(game));
+    const parsed = round.definitions[definition.id]!;
+    expect(parsed.manaAbilities[0]?.costSacrifice).toBe("nonland_permanent");
+    expect(parsed.manaAbilities[1]?.costSacrifice).toBe("token");
+  });
+
+  it("round trips both new costs", () => {
+    const { game, p1 } = twoPlayers();
+    const hirelingDefinition = hireling();
+    const diamondDefinition = diamond();
+    put(game, p1.id, hirelingDefinition);
+    put(game, p1.id, diamondDefinition);
+    const round = parseGameState(serializeGameState(game));
+    expect(round.definitions[hirelingDefinition.id]?.activated[0]?.sacrificeCountFromX).toBe(true);
+    expect(round.definitions[diamondDefinition.id]?.manaAbilities[0]?.costDiscardHand).toBe(true);
   });
 });

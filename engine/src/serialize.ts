@@ -2835,6 +2835,25 @@ function parseChosenTargets(value: unknown, label: string): ChosenTarget[] {
  * omission there is the expensive kind of drift -- the card compiles with no
  * notes and the definition then fails to LOAD.
  */
+/**
+ * A mana ability's sacrifice-cost scopes. A TOTAL record, not a chain of
+ * `=== "creature" || …`: the chain this replaced had fallen two members
+ * behind the union, so a Bolas's Citadel or Fountainport ability lost its
+ * cost crossing the wire and came back free. A missing key here is a type
+ * error; a missing arm of a chain is a silent one.
+ */
+type ManaCostSacrifice = NonNullable<ManaAbility["costSacrifice"]>;
+const MANA_COST_SACRIFICE_SCOPES: Record<ManaCostSacrifice, true> = {
+  creature: true,
+  artifact: true,
+  creature_or_artifact: true,
+  land: true,
+  treasure: true,
+  nonland_permanent: true,
+  permanent: true,
+  token: true,
+};
+
 const TARGET_KINDS: Record<TargetKind, true> = {
   player: true,
   opponent: true,
@@ -4508,6 +4527,7 @@ function parseActivatedAbilities(value: unknown, label: string): ActivatedAbilit
       ...(entry.sacrificeCount === undefined
         ? {}
         : { sacrificeCount: expectNumber(entry.sacrificeCount, `${label}[${index}].sacrificeCount`) }),
+      ...(entry.sacrificeCountFromX === true ? { sacrificeCountFromX: true } : {}),
       ...(entry.xCost === undefined ? {} : { xCost: expectNumber(entry.xCost, `${label}.xCost`) }),
       ...(entry.requiresCreatedToken === true ? { requiresCreatedToken: true } : {}),
       ...(entry.requiresCondition === undefined
@@ -5560,14 +5580,11 @@ function parseManaAbilities(value: unknown, label: string): ManaAbility[] {
       ...(entry.costMana === undefined
         ? {}
         : { costMana: expectString(entry.costMana, `${label}[${index}].costMana`) }),
-      ...(entry.costSacrifice === "creature" ||
-      entry.costSacrifice === "artifact" ||
-      entry.costSacrifice === "creature_or_artifact" ||
-      entry.costSacrifice === "land" ||
-      entry.costSacrifice === "treasure" ||
-      entry.costSacrifice === "permanent"
-        ? { costSacrifice: entry.costSacrifice }
+      ...(typeof entry.costSacrifice === "string" &&
+      entry.costSacrifice in MANA_COST_SACRIFICE_SCOPES
+        ? { costSacrifice: entry.costSacrifice as ManaCostSacrifice }
         : {}),
+      ...(entry.costDiscardHand === true ? { costDiscardHand: true } : {}),
       ...(isRecord(entry.upgrade)
         ? {
             upgrade: (() => {

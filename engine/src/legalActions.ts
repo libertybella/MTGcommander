@@ -13,7 +13,12 @@ import { emptyManaPool } from "./createGame";
 import { pendingBlockerPlayer } from "./combat";
 import { splitSecondActive, reliefAdjustedCost, affinityArtifactDiscount, activationNonManaPayment, allBattlefieldCreatureCount, altCastPayment, canActivateTapAbility, canPlayLandsFromGraveyard, castCostReduction, castableFromTop, controlsCommander, freeEquipGranted, hasFlashGrant, landDropAllowance, lockedByAbolisher, lockedFromCasting, noncreatureSpellCap, opponentControlsMoreLands, findFreeHandGrantIndex, opponentsCastLockedToHand, permanentsControlledBy, selfDiscountAmount, staticFreeCastCap, topOfLibraryGrant } from "./derived";
 import { canPayManaCost, parseManaCost, type ParsedManaCost } from "./mana";
-import { colorsAmongControlled, manaAbilitiesFor, manaTapOptionsFor } from "./manaOptions";
+import {
+  colorsAmongControlled,
+  manaAbilitiesFor,
+  manaAbilityIsCosted,
+  manaTapOptionsFor,
+} from "./manaOptions";
 import { isMulliganOpen } from "./mulligan";
 import { isOpeningRoll } from "./openingRoll";
 import { isPromptOpen } from "./prompt";
@@ -93,9 +98,7 @@ export function potentialMana(state: GameState, playerId: PlayerId): PotentialMa
     if (
       abilities.length === 1 &&
       abilities[0]!.producesColorsAmong &&
-      !abilities[0]!.costMana &&
-      !abilities[0]!.costSacrifice &&
-      !abilities[0]!.costTapCreature
+      !manaAbilityIsCosted(abilities[0]!)
     ) {
       // Bloom Tender: one of each color among controlled permanents.
       for (const color of colorsAmongControlled(state, playerId, "permanents")) {
@@ -108,9 +111,7 @@ export function potentialMana(state: GameState, playerId: PlayerId): PotentialMa
       !abilities[0]!.producesAnyColor &&
       !abilities[0]!.anyColorAmong &&
       abilities[0]!.producesOptions.length === 0 &&
-      !abilities[0]!.costMana &&
-      !abilities[0]!.costSacrifice &&
-      !abilities[0]!.costTapCreature
+      !manaAbilityIsCosted(abilities[0]!)
     ) {
       for (const color of Object.keys(abilities[0]!.produces) as ManaColor[]) {
         fixed[color] += abilities[0]!.produces[color] ?? 0;
@@ -119,7 +120,7 @@ export function potentialMana(state: GameState, playerId: PlayerId): PotentialMa
     }
     const union = new Set<ManaColor>();
     for (const ability of abilities) {
-      if (ability.costMana || ability.costSacrifice || ability.costTapCreature) {
+      if (manaAbilityIsCosted(ability)) {
         continue; // costed converters add nothing to potential mana
       }
       if (ability.producesColorsAmong) {
@@ -932,7 +933,7 @@ export function autoTapPlan(
       if (ability.sacrificeSelf) {
         return; // never auto-sacrifice a Treasure — tapping it stays a choice
       }
-      if (ability.costMana || ability.costSacrifice || ability.costTapCreature) {
+      if (manaAbilityIsCosted(ability)) {
         return; // costed mana abilities are never auto-tapped
       }
       if (ability.producesColorsAmong) {

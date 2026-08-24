@@ -35,7 +35,7 @@ import { applyManualOverride } from "./override";
 import { applyChooseEnterReplacement, applyChooseTargets, applyResolveChooseCard, applyResolveColor, applyResolveCreatureType, applyResolveDiscard, applyResolveEnterCopy, applyResolveLookAssign, applyResolveOrderTriggers, applyResolvePay, applyResolveScry, applyResolveSearch, applyResolveSurveil, applyResolveTriggerMode, currentPrompt, dropLostPlayerPromptsInPlace, isPromptOpen, applyResolveDiscardLandOrGraveyard } from "./prompt";
 import { manaValueOf } from "./characteristics";
 import { findCardZone, moveCard } from "./zones";
-import type { AdditionalCastCost, CardInstanceId, ChosenTarget, Color, GameAction, GameState, ManaColor, ManaPool, PlayerId } from "./types";
+import type { ActivatedAbility, AdditionalCastCost, CardInstanceId, ChosenTarget, Color, GameAction, GameState, ManaColor, ManaPool, PlayerId } from "./types";
 
 /**
  * Run the mana riders that fired while a cost was paid (Path of Ancestry).
@@ -1465,6 +1465,17 @@ function applyTapForMana(
   if (ability.costSacrifice && costSacrificeId) {
     next = applyEffects(next, [{ kind: "sacrifice", cardId: costSacrificeId }]);
   }
+  // Lion's Eye Diamond: the whole hand, so there is nothing to choose and
+  // nothing to prompt for. Paid before the source is sacrificed only so the
+  // log reads in cost order; neither can fail once we are here.
+  if (ability.costDiscardHand) {
+    for (const discarded of [
+      ...(next.players.find((entry) => entry.id === playerId)?.zones.hand ?? []),
+    ]) {
+      next = moveCard(next, discarded, "graveyard");
+      dispatchEventsInPlace(next, [{ kind: "discards", cardId: discarded, playerId }]);
+    }
+  }
   if (ability.sacrificeSelf) {
     next = applyEffects(next, [{ kind: "sacrifice", cardId }]);
   }
@@ -1484,6 +1495,53 @@ function applyTapForMana(
     ]);
   }
   return next;
+}
+
+/**
+ * How many permanents this activation's sacrifice cost eats. Printed on the
+ * card for the Dominus cycle, announced as X for Grim Hireling — read in one
+ * place so the check that there is enough fodder and the payment that takes
+ * it can never disagree about the number.
+ */
+function abilitySacrificeCount(
+  ability: ActivatedAbility,
+  xValue: number | undefined,
+): number {
+  if (ability.sacrificeCountFromX) {
+    return Math.max(1, xValue ?? 1);
+  }
+  return ability.sacrificeCount ?? 1;
+}
+
+/**
+ * The permanents that could pay the rest of a multi-victim sacrifice cost,
+ * cheapest first. `except` is the one the activation already named, which is
+ * still on the battlefield while the cost is being checked and gone by the
+ * time it is being paid.
+ */
+function sacrificeFodderFor(
+  state: GameState,
+  playerId: PlayerId,
+  cardId: CardInstanceId,
+  ability: ActivatedAbility,
+  except?: CardInstanceId,
+): CardInstanceId[] {
+  return Object.values(state.cards)
+    .filter(
+      (entry) =>
+        entry.zone === "battlefield" &&
+        entry.controllerId === playerId &&
+        entry.id !== cardId &&
+        entry.id !== except &&
+        sacrificeScopeMatches(state, entry.id, ability.sacrificeCost!, cardId) &&
+        // "Sacrifice three Foods": the subtype is the whole filter, and
+        // leaving it out here would auto-eat permanents the cost never
+        // asked for.
+        (ability.sacrificeSubtype === undefined ||
+          cardMatchesSubtype(state, entry.id, ability.sacrificeSubtype)),
+    )
+    .sort((a, b) => creaturePower(state, a.id) - creaturePower(state, b.id))
+    .map((entry) => entry.id);
 }
 
 function applyActivateAbility(
@@ -1600,6 +1658,14 @@ function applyActivateAbility(
       throw new Error("Announce a value for X");
     }
     cost.generic += xValue * ability.xCost;
+  } else if (ability.sacrificeCountFromX) {
+    // Grim Hireling: the {X} is in the sacrifice, not the mana cost, so X
+    // is announced without adding a single generic pip. Zero is refused —
+    // it would sacrifice nothing and pump nothing, and the sacrifice cost
+    // has no way to name no victim.
+    if (xValue === undefined || !Number.isInteger(xValue) || xValue < 1) {
+      throw new Error("Announce a value for X");
+    }
   } else if (xValue !== undefined) {
     throw new Error("That ability has no X in its cost");
   }
@@ -1643,6 +1709,12 @@ function applyActivateAbility(
         !cardMatchesSubtype(state, costSacrificeId, ability.sacrificeSubtype))
     ) {
       throw new Error(`Sacrifice a ${ability.sacrificeCost.replace(/_/g, " ")} to activate this`);
+    }
+    // The activation names one victim and the rest are auto-taken, so the
+    // board has to actually hold them before any of the cost is paid.
+    const due = abilitySacrificeCount(ability, xValue);
+    if (due > 1 && sacrificeFodderFor(state, playerId, cardId, ability, costSacrificeId).length < due - 1) {
+      throw new Error(`Sacrifice ${due} to activate this`);
     }
   } else if (costSacrificeId !== undefined) {
     throw new Error("That ability has no sacrifice cost");
@@ -1719,23 +1791,14 @@ function applyActivateAbility(
     // Sacrificing is part of the cost (paid on activation); the ability
     // itself waits on the stack normally.
     next = applyEffects(next, [{ kind: "sacrifice", cardId: costSacrificeId }]);
-    // The Dominus cycle asks for two or three. The activation names one and
-    // the rest are auto-taken, cheapest first — a documented approximation
-    // of a choice the caller has no way to express.
-    const extra = (ability.sacrificeCount ?? 1) - 1;
+    // The Dominus cycle asks for two or three, Grim Hireling for however
+    // many X was announced as. The activation names one and the rest are
+    // auto-taken, cheapest first — a documented approximation of a choice
+    // the caller has no way to express.
+    const extra = abilitySacrificeCount(ability, xValue) - 1;
     if (extra > 0) {
-      const fodder = Object.values(next.cards)
-        .filter(
-          (entry) =>
-            entry.zone === "battlefield" &&
-            entry.controllerId === playerId &&
-            entry.id !== cardId &&
-            sacrificeScopeMatches(next, entry.id, ability.sacrificeCost!, cardId),
-        )
-        .sort((a, b) => creaturePower(next, a.id) - creaturePower(next, b.id))
-        .slice(0, extra);
-      for (const victim of fodder) {
-        next = applyEffects(next, [{ kind: "sacrifice", cardId: victim.id }]);
+      for (const victim of sacrificeFodderFor(next, playerId, cardId, ability).slice(0, extra)) {
+        next = applyEffects(next, [{ kind: "sacrifice", cardId: victim }]);
       }
     }
   }

@@ -445,6 +445,10 @@ function nextAction(state: GameState, rng: () => number): GameAction | null {
         // above zero could exceed the mana that made it legal — the harness
         // would then be rejecting an action it had just chosen.
         ...(ability?.xCost ? { xValue: 0 } : {}),
+        // Grim Hireling announces X too, but its X buys permanents rather
+        // than pips, so zero is refused. One is the value that is always
+        // affordable: the activation already had to name a victim.
+        ...(ability?.sacrificeCountFromX ? { xValue: 1 } : {}),
       };
     }
     case "mana": {

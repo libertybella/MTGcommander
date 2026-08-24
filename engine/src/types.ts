@@ -4016,6 +4016,15 @@ export type ActivatedAbility = {
   /** The Dominus cycle: "Sacrifice two other creatures" — how many. The
    * activation supplies one and the rest are auto-taken (documented). */
   sacrificeCount?: number;
+  /**
+   * Grim Hireling: "Sacrifice X Treasures". The count is the announced X,
+   * so it cannot be a fixed `sacrificeCount` — and because the {X} is in
+   * the SACRIFICE and not in the mana cost, `xCost` stays 0 while the
+   * activation still has to announce a value. X of at least one is
+   * required: a zero here would sacrifice nothing and do nothing, and the
+   * sacrifice cost has no way to name no victim.
+   */
+  sacrificeCountFromX?: boolean;
   /** Walking Ballista, Dragon's Hoard, Mikaeus: counters come off the source
    * as part of the cost. */
   removeCounterCost?: { counter: string; count: number };
@@ -4220,6 +4229,13 @@ export type ManaAbility = {
   /** Gilded Goose: "Sacrifice a Food". Lowercase subtype the fodder must have,
    * composing with `costSacrifice` rather than growing that union. */
   costSacrificeSubtype?: string;
+  /**
+   * Lion's Eye Diamond: "Discard your hand" is part of the cost. The whole
+   * hand, not a chosen card, so there is nothing to prompt for — but it is
+   * emphatically a cost, which is why `manaAbilityIsCosted` reports it and
+   * the auto-tapper never reaches for it.
+   */
+  costDiscardHand?: boolean;
   /** The ability has no {T} in its cost (usable while tapped, repeatable). */
   noTap?: boolean;
   /** Kami of Whispered Hopes: the amount is the creature's power at tap. */

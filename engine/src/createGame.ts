@@ -345,6 +345,7 @@ export function createCardDefinition(
           ...(ability.sacrificeSelf ? { sacrificeSelf: true } : {}),
           ...(ability.costMana ? { costMana: ability.costMana } : {}),
           ...(ability.costSacrifice ? { costSacrifice: ability.costSacrifice } : {}),
+          ...(ability.costDiscardHand ? { costDiscardHand: true } : {}),
           ...(ability.upgrade
             ? {
                 upgrade: {
@@ -455,6 +456,7 @@ export function createCardDefinition(
             ? { requiresAttackersThisTurn: ability.requiresAttackersThisTurn }
             : {}),
           ...(ability.xCost === undefined ? {} : { xCost: ability.xCost }),
+          ...(ability.sacrificeCountFromX ? { sacrificeCountFromX: true } : {}),
           ...(ability.requiresCreatedToken ? { requiresCreatedToken: true } : {}),
           ...(ability.requiresCondition ? { requiresCondition: ability.requiresCondition } : {}),
           ...(ability.requiresOpponentMoreLands ? { requiresOpponentMoreLands: true } : {}),

@@ -870,6 +870,35 @@ more questions it can now ask:
   (Bennie Bracks). Reads the existing per-player `createdTokenThisTurn`
   list, and asks whether the CONTROLLER is in it — an opponent's Treasure
   must not satisfy it.
+- **`ActivatedAbility.sacrificeCountFromX`** — Grim Hireling's "Sacrifice X
+  Treasures". The {X} is in the SACRIFICE, not in the mana cost, so `xCost`
+  stays zero while the activation still has to announce a value. X of zero
+  is refused: it would sacrifice nothing and shrink nothing, and the
+  sacrifice cost has no way to name no victim.
+
+  The check that the board holds enough fodder and the payment that eats it
+  now read the same two helpers, so they cannot disagree about the number.
+  Folding them together fixed a latent bug in the older counted form: the
+  auto-taken victims ignored `sacrificeSubtype`, so "Sacrifice three Foods"
+  would have eaten two permanents that were not Foods.
+
+- **`ManaAbility.costDiscardHand`** — Lion's Eye Diamond. The whole hand, so
+  there is nothing to choose and nothing to prompt for. "Activate only as an
+  instant" is consumed as a no-op: on paper it forbids activating mid-cast,
+  which is the whole puzzle of the card, and here mana abilities are only
+  ever activated at priority, so there is no window to forbid.
+
+- **`manaAbilityIsCosted`** — one predicate replacing four hand-written
+  copies of `costMana || costSacrifice || costTapCreature`. A chain like
+  that is a list, and the copy that gets missed silently spends the cost:
+  the auto-tapper would have discarded a Lion's Eye Diamond's hand to buy
+  mana nobody asked for.
+
+- **The serializer's mana sacrifice scopes** are now a total record rather
+  than a `===` chain. The chain had fallen two members behind the union, so
+  a Bolas's Citadel- or Fountainport-shaped mana ability lost its cost
+  crossing the wire and came back **free**.
+
 - **`DamageReplacement.noncombatOnly`** — Solphim. The combat step passes
   `isCombat` and every other damage site leaves it out, so a replacement
   carrying this flag simply never fires in combat. That restriction is most
