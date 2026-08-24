@@ -2504,6 +2504,32 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
 
 function compileSimpleClauseInner(sentence: string): SimpleClause | null {
   /**
+   * High Tide: "Until end of turn, whenever a player taps an Island for
+   * mana, that player adds an additional {U}." This is the rule a
+   * permanent carries as `landTapEcho`, with no permanent to carry it —
+   * so it lives on the game for the turn. Note "a PLAYER": it watches
+   * everyone's taps, not just the caster's, which is most of why the card
+   * is played in the first place.
+   */
+  const turnEcho = sentence.match(
+    /^Until end of turn, whenever a player taps an? ([A-Z][a-z]+) for mana, that player adds an additional \{([WUBRGC])\}$/,
+  );
+  if (turnEcho?.[1] && turnEcho[2]) {
+    return {
+      effects: [
+        {
+          kind: "add_turn_mana_echo",
+          echo: {
+            subtype: turnEcho[1].toLowerCase(),
+            addColor: turnEcho[2] as ManaColor,
+          },
+        },
+      ],
+      targetRequirements: [],
+    };
+  }
+
+  /**
    * Archdruid's Charm's first bullet, fused into one clause because the
    * destination depends on WHAT was found and neither half means anything
    * without the other: "Search your library for a creature or land card and

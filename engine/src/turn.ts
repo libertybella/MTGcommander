@@ -444,6 +444,9 @@ function onEnterStep(state: GameState): GameState {
     }
     clearDamageInPlace(state);
     clearCombatFlagsInPlace(state);
+    // High Tide's echo is an "until end of turn" effect too, just one that
+    // lives on the game rather than on a permanent.
+    delete state.turnManaEchoes;
     // CR 514.2: "until end of turn" effects end during cleanup.
     state.activeEffects = state.activeEffects.filter(
       (effect) => effect.duration !== "until_end_of_turn",

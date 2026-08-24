@@ -180,11 +180,16 @@ function applyManaTapEchoes(
   addition: Partial<ManaPool>,
 ): GameState {
   let next = state;
-  for (const echo of Object.values(next.cards)) {
-    if (echo.zone !== "battlefield" || echo.controllerId !== playerId) {
-      continue;
-    }
-    const rule = next.definitions[echo.definitionId]?.landTapEcho;
+  // A permanent's echo only watches ITS controller's taps; High Tide's
+  // watches everyone's, which is why the turn-scoped list is appended here
+  // rather than being modelled as an invisible permanent.
+  const rules = [
+    ...Object.values(next.cards)
+      .filter((echo) => echo.zone === "battlefield" && echo.controllerId === playerId)
+      .map((echo) => next.definitions[echo.definitionId]?.landTapEcho),
+    ...(next.turnManaEchoes ?? []),
+  ];
+  for (const rule of rules) {
     if (!rule) {
       continue;
     }

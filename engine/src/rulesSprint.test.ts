@@ -50631,3 +50631,171 @@ describe("wave 329: a mode may name more than one target", () => {
     });
   });
 });
+
+describe("wave 330: an echo with no permanent to live on", () => {
+  const compile = (name: string, typeLine: string, oracleText: string, manaCost = "") =>
+    compileOracleCard({
+      oracleId: name.toLowerCase().replace(/[^a-z]+/g, "-"),
+      name,
+      manaCost,
+      typeLine,
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  const island = (ownerId: string, game: GameState) => {
+    const definition = createCardDefinition({
+      name: "Island",
+      typeLine: "Basic Land — Island",
+      manaAbilities: [
+        {
+          produces: { U: 1 },
+          producesOptions: [],
+          producesAnyColor: false,
+          damageToController: 0,
+        },
+      ],
+    });
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({
+      definitionId: definition.id,
+      ownerId,
+      zone: "battlefield",
+    });
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === ownerId)!.zones.battlefield.push(card.id);
+    return card.id;
+  };
+
+  const forest = (ownerId: string, game: GameState) => {
+    const definition = createCardDefinition({
+      name: "Forest",
+      typeLine: "Basic Land — Forest",
+      manaAbilities: [
+        {
+          produces: { G: 1 },
+          producesOptions: [],
+          producesAnyColor: false,
+          damageToController: 0,
+        },
+      ],
+    });
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({
+      definitionId: definition.id,
+      ownerId,
+      zone: "battlefield",
+    });
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === ownerId)!.zones.battlefield.push(card.id);
+    return card.id;
+  };
+
+  const highTide = (game: GameState) =>
+    applyEffect(game, {
+      kind: "add_turn_mana_echo",
+      echo: { subtype: "island", addColor: "U" },
+    });
+
+  const tap = (game: GameState, playerId: string, cardId: string) =>
+    applyAction(game, { kind: "tap_for_mana", playerId, cardId });
+
+  it("compiles the turn-scoped echo", () => {
+    const compiled = compile(
+      "High Tide",
+      "Instant",
+      "Until end of turn, whenever a player taps an Island for mana, that player adds an additional {U}.",
+      "{U}",
+    );
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.effects[0]).toEqual({
+      kind: "add_turn_mana_echo",
+      echo: { subtype: "island", addColor: "U" },
+    });
+  });
+
+  it("doubles the caster's Island", () => {
+    const { game, p1 } = twoPlayers();
+    const islandId = island(p1.id, game);
+    game.priorityPlayerId = p1.id;
+    const tapped = tap(highTide(game), p1.id, islandId);
+    expect(tapped.players.find((entry) => entry.id === p1.id)!.mana.U).toBe(2);
+  });
+
+  it("doubles an OPPONENT's Island too", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const theirsId = island(p2.id, game);
+    game.priorityPlayerId = p2.id;
+    const tapped = tap(highTide(game), p2.id, theirsId);
+    // "whenever A PLAYER taps an Island" — a permanent's own echo watches
+    // only its controller, and this one deliberately does not.
+    expect(tapped.players.find((entry) => entry.id === p2.id)!.mana.U).toBe(2);
+    void p1;
+  });
+
+  it("leaves a Forest alone", () => {
+    const { game, p1 } = twoPlayers();
+    const forestId = forest(p1.id, game);
+    game.priorityPlayerId = p1.id;
+    const tapped = tap(highTide(game), p1.id, forestId);
+    expect(tapped.players.find((entry) => entry.id === p1.id)!.mana.G).toBe(1);
+    expect(tapped.players.find((entry) => entry.id === p1.id)!.mana.U).toBe(0);
+  });
+
+  it("stacks with a second copy", () => {
+    const { game, p1 } = twoPlayers();
+    const islandId = island(p1.id, game);
+    game.priorityPlayerId = p1.id;
+    const tapped = tap(highTide(highTide(game)), p1.id, islandId);
+    // Two High Tides is the whole storm deck; they must not collapse into
+    // one flag.
+    expect(tapped.players.find((entry) => entry.id === p1.id)!.mana.U).toBe(3);
+  });
+
+  it("ends with the turn", () => {
+    const { game, p1 } = twoPlayers();
+    const live = highTide(game);
+    expect(live.turnManaEchoes).toHaveLength(1);
+    const swept = { ...live };
+    delete swept.turnManaEchoes;
+    const islandId = island(p1.id, swept);
+    swept.priorityPlayerId = p1.id;
+    expect(tap(swept, p1.id, islandId).players.find((entry) => entry.id === p1.id)!.mana.U).toBe(
+      1,
+    );
+  });
+
+  it("leaves a permanent's own echo watching only its controller", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const monument = createCardDefinition({
+      name: "Forsaken Monument",
+      typeLine: "Legendary Artifact",
+      manaCost: "{5}",
+      landTapEcho: { anyPermanent: true, addColor: "C" },
+    });
+    game.definitions[monument.id] = monument;
+    const card = createCardInstance({
+      definitionId: monument.id,
+      ownerId: p1.id,
+      zone: "battlefield",
+    });
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === p1.id)!.zones.battlefield.push(card.id);
+    const theirsId = island(p2.id, game);
+    game.priorityPlayerId = p2.id;
+    const tapped = tap(game, p2.id, theirsId);
+    // The turn-scoped list must not have widened the permanent case.
+    expect(tapped.players.find((entry) => entry.id === p2.id)!.mana.C).toBe(0);
+  });
+
+  it("round trips the echo list", () => {
+    const { game } = twoPlayers();
+    const live = highTide(game);
+    const round = parseGameState(serializeGameState(live));
+    // Without this a reopened table stops doubling Islands mid-turn.
+    expect(round.turnManaEchoes).toEqual([{ subtype: "island", addColor: "U" }]);
+  });
+});

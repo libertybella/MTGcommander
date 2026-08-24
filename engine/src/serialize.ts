@@ -1,6 +1,7 @@
 import { deriveCharacteristics } from "./characteristics";
 import { IMPLEMENTED_KEYWORDS } from "./keywordCatalog";
 import type {
+  CardDefinition,
   ProtectionFrom,
   ActivatedAbility,
   BoundChooseCardSource,
@@ -193,6 +194,33 @@ function parseManaRider(value: unknown, label: string): ManaRider {
 }
 
 /** One colour letter, validated. */
+/**
+ * A land-tap echo (Forsaken Monument, High Tide). One parser, used by the
+ * definition field, by the effect that installs a turn-scoped one, and by
+ * the game-state list those live in — rather than the same four optional
+ * fields written out at each site, which is how the copies drift.
+ */
+function parseLandTapEcho(
+  value: unknown,
+  label: string,
+): NonNullable<CardDefinition["landTapEcho"]> {
+  if (!isRecord(value)) {
+    throw new Error(`Invalid ${label}`);
+  }
+  return {
+    ...(value.subtype === undefined
+      ? {}
+      : { subtype: expectString(value.subtype, `${label}.subtype`) }),
+    ...(value.anyPermanent === true ? { anyPermanent: true } : {}),
+    ...(value.addColor === undefined
+      ? {}
+      : { addColor: parseManaColor(value.addColor, `${label}.addColor`) }),
+    ...(value.requiresProduced === undefined
+      ? {}
+      : { requiresProduced: parseManaColor(value.requiresProduced, `${label}.requiresProduced`) }),
+  };
+}
+
 function parseColorArray(value: unknown, label: string): Color[] {
   if (!Array.isArray(value)) {
     throw new Error(`Invalid ${label}`);
@@ -1088,20 +1116,7 @@ export function parseGameState(json: string): GameState {
       ...(def.selfIsChosenType === true ? { selfIsChosenType: true } : {}),
       ...(def.landChosenColorBonus === true ? { landChosenColorBonus: true } : {}),
       ...(isRecord(def.landTapEcho)
-        ? {
-            landTapEcho: {
-              ...(def.landTapEcho.subtype === undefined
-                ? {}
-                : { subtype: expectString(def.landTapEcho.subtype, "definition.landTapEcho.subtype") }),
-              ...(def.landTapEcho.anyPermanent === true ? { anyPermanent: true } : {}),
-              ...(def.landTapEcho.addColor === undefined
-                ? {}
-                : { addColor: parseManaColor(def.landTapEcho.addColor, "definition.landTapEcho.addColor") }),
-              ...(def.landTapEcho.requiresProduced === undefined
-                ? {}
-                : { requiresProduced: parseManaColor(def.landTapEcho.requiresProduced, "definition.landTapEcho.requiresProduced") }),
-            },
-          }
+        ? { landTapEcho: parseLandTapEcho(def.landTapEcho, "definition.landTapEcho") }
         : {}),
       ...(def.opponentLandTapsSkipUntap === true ? { opponentLandTapsSkipUntap: true } : {}),
       ...(def.rebound === true ? { rebound: true } : {}),
@@ -1693,6 +1708,15 @@ export function parseGameState(json: string): GameState {
       raw.pendingExtraCombats === undefined
         ? 0
         : expectNumber(raw.pendingExtraCombats, "pendingExtraCombats"),
+    // High Tide's echo is game state, not a permanent: without this a
+    // reopened table stops doubling Islands mid-turn.
+    ...(Array.isArray(raw.turnManaEchoes)
+      ? {
+          turnManaEchoes: raw.turnManaEchoes.map((echo, index) =>
+            parseLandTapEcho(echo, `turnManaEchoes[${index}]`),
+          ),
+        }
+      : {}),
     spellsCastThisTurn:
       raw.spellsCastThisTurn === undefined
         ? 0
@@ -4234,6 +4258,8 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
           ? {}
           : { keywords: parseKeywords(value.keywords, `${label}.keywords`) }),
       };
+    case "add_turn_mana_echo":
+      return { kind, echo: parseLandTapEcho(value.echo, `${label}.echo`) };
     case "choose_from_hand": {
       const destination = value.destination;
       if (destination !== "library_bottom" && destination !== "battlefield") {
@@ -6262,6 +6288,9 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
         ? {}
         : { keywords: parseKeywords(value.keywords, `${label}.keywords`) }),
     };
+  }
+  if (kind === "add_turn_mana_echo") {
+    return { kind, echo: parseLandTapEcho(value.echo, `${label}.echo`) };
   }
   if (kind === "choose_from_hand") {
     const destination = value.destination;

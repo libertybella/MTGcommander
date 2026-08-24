@@ -977,6 +977,13 @@ export type GameState = {
      */
     createdOnTurn: number;
   }>;
+  /**
+   * High Tide: "Until end of turn, whenever a player taps an Island for
+   * mana, that player adds an additional {U}." The same rule a permanent
+   * carries as `landTapEcho`, but with no permanent to carry it — and it
+   * watches EVERY player rather than one controller. Swept at cleanup.
+   */
+  turnManaEchoes?: NonNullable<CardDefinition["landTapEcho"]>[];
   /** Spells cast by anyone this turn — Storm's copy count (CR 702.40). */
   spellsCastThisTurn: number;
   /** Per-player casts this turn (Lotho's second-spell watch). */
@@ -1787,6 +1794,11 @@ export type GameEffect =
       destination: "library_bottom" | "battlefield";
       types?: string[];
       thenDrawPlus?: number;
+    }
+  /** High Tide: a mana echo that lives for the turn, not on a permanent. */
+  | {
+      kind: "add_turn_mana_echo";
+      echo: NonNullable<CardDefinition["landTapEcho"]>;
     }
   | { kind: "mass_reanimate"; playerId: PlayerId }
   /** Splendid Reclamation: every land card in YOUR graveyard returns tapped. */
@@ -3098,6 +3110,10 @@ export type CardEffect =
       destination: "library_bottom" | "battlefield";
       types?: string[];
       thenDrawPlus?: number;
+    }
+  | {
+      kind: "add_turn_mana_echo";
+      echo: NonNullable<CardDefinition["landTapEcho"]>;
     }
   | { kind: "mass_reanimate"; playerId: PlayerSelector }
   /** Splendid Reclamation: every land card in YOUR graveyard returns tapped. */

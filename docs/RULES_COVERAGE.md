@@ -870,6 +870,22 @@ more questions it can now ask:
   (Bennie Bracks). Reads the existing per-player `createdTokenThisTurn`
   list, and asks whether the CONTROLLER is in it — an opponent's Treasure
   must not satisfy it.
+- **`turnManaEchoes`** — High Tide. This is the rule a permanent already
+  carried as `landTapEcho`, with no permanent to carry it, so it lives on
+  the GAME for the turn and is swept at cleanup beside the other
+  until-end-of-turn effects.
+
+  It watches EVERY player's taps, not one controller's — "whenever A
+  PLAYER taps an Island" — and that difference is most of why the card is
+  played. The permanent case keeps its controller filter, with a test
+  saying so. Two copies stack rather than collapsing into a flag, which is
+  the entire storm deck.
+
+  The echo parser is now ONE function shared by the definition field, the
+  effect that installs a turn-scoped echo, and the game-state list they
+  live in, rather than the same four optional fields written out at each
+  site.
+
 - **A MODE MAY NAME MORE THAN ONE TARGET.** The three bullet assemblers
   refused a second targeted sentence outright, with a comment saying a
   second one "would skew chosen indexes" — and `shiftChosen`, the tool that

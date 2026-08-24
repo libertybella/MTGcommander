@@ -2386,6 +2386,8 @@ export function bindCardEffect(
         ...(effect.keywords ? { keywords: [...effect.keywords] } : {}),
       };
     }
+    case "add_turn_mana_echo":
+      return { kind: "add_turn_mana_echo", echo: { ...effect.echo } };
     case "choose_from_hand": {
       const chooser = bindPlayerSelector(state, effect.playerId, context);
       if (!chooser) {
@@ -6048,6 +6050,10 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
         }
         break;
       }
+      case "add_turn_mana_echo":
+        next = cloneGameState(state);
+        next.turnManaEchoes = [...(next.turnManaEchoes ?? []), { ...effect.echo }];
+        break;
       case "choose_from_hand": {
         // "Any number" includes none, so the prompt is pushed even with an
         // empty hand: declining is a real choice and Valakut still draws
