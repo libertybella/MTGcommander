@@ -45244,3 +45244,323 @@ describe("wave 309: a turn counter, a life-loss doubler, and more of that type",
     });
   });
 });
+
+describe("wave 310: the announced X, inside an activated ability", () => {
+  const compile = (
+    name: string,
+    typeLine: string,
+    oracleText: string,
+    manaCost = "",
+    pt: [string, string] | null = null,
+  ) =>
+    compileOracleCard({
+      oracleId: name.toLowerCase().replace(/[^a-z]+/g, "-"),
+      name,
+      manaCost,
+      typeLine,
+      power: pt?.[0] ?? null,
+      toughness: pt?.[1] ?? null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  const put = (game: GameState, ownerId: string, definition: CardDefinition) => {
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({
+      definitionId: definition.id,
+      ownerId,
+      zone: "battlefield",
+    });
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === ownerId)!.zones.battlefield.push(card.id);
+    card.summoningSick = false;
+    return card.id;
+  };
+
+  const bear = (name: string, power = 2, toughness = 2) =>
+    createCardDefinition({
+      name,
+      typeLine: "Creature — Bear",
+      manaCost: "{1}{G}",
+      power,
+      toughness,
+    });
+
+  // ---- Mirror Entity: a SET power and toughness ---------------------------
+
+  it("compiles Mirror Entity as a set, not a bonus", () => {
+    const compiled = compile(
+      "Mirror Entity",
+      "Creature — Shapeshifter",
+      "Changeling\n{X}: Until end of turn, creatures you control have base power and toughness X/X and gain all creature types.",
+      "{1}{W}",
+      ["1", "1"],
+    );
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.activated[0]?.effects[0]).toEqual({
+      kind: "team_set_pt_until_eot",
+      playerId: "controller",
+      power: "x",
+      toughness: "x",
+      allCreatureTypes: true,
+    });
+  });
+
+  it("sets the whole team to X/X regardless of what it printed", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const smallId = put(game, p1.id, bear("Small", 1, 1));
+    const bigId = put(game, p1.id, bear("Big", 7, 7));
+    const theirsId = put(game, p2.id, bear("Theirs", 3, 3));
+    const activated = applyEffects(
+      game,
+      bindCardEffects(
+        game,
+        [
+          {
+            kind: "team_set_pt_until_eot",
+            playerId: "controller",
+            power: "x",
+            toughness: "x",
+            allCreatureTypes: true,
+          },
+        ],
+        { controllerId: p1.id, sourceId: null, xValue: 4 },
+      ),
+    );
+    // A SET, so the 7/7 shrinks — that is the whole reason the card is a
+    // finisher and not an anthem.
+    expect(creaturePower(activated, smallId)).toBe(4);
+    expect(creaturePower(activated, bigId)).toBe(4);
+    // "Creatures YOU control": the other side is untouched.
+    expect(creaturePower(activated, theirsId)).toBe(3);
+  });
+
+  it("gives the team every creature type", () => {
+    const { game, p1 } = twoPlayers();
+    const bearId = put(game, p1.id, bear("Bear"));
+    const activated = applyEffects(
+      game,
+      bindCardEffects(
+        game,
+        [
+          {
+            kind: "team_set_pt_until_eot",
+            playerId: "controller",
+            power: "x",
+            toughness: "x",
+            allCreatureTypes: true,
+          },
+        ],
+        { controllerId: p1.id, sourceId: null, xValue: 2 },
+      ),
+    );
+    expect(cardMatchesSubtype(activated, bearId, "goblin")).toBe(true);
+    expect(cardMatchesSubtype(activated, bearId, "elf")).toBe(true);
+  });
+
+  it("locks the affected set when it resolves", () => {
+    const { game, p1 } = twoPlayers();
+    const beforeId = put(game, p1.id, bear("Before", 1, 1));
+    let state = applyEffects(
+      game,
+      bindCardEffects(
+        game,
+        [
+          {
+            kind: "team_set_pt_until_eot",
+            playerId: "controller",
+            power: "x",
+            toughness: "x",
+          },
+        ],
+        { controllerId: p1.id, sourceId: null, xValue: 5 },
+      ),
+    );
+    const afterId = put(state, p1.id, bear("After", 1, 1));
+    state = { ...state };
+    // CR 611.2c: a creature that arrives afterwards is not made X/X.
+    expect(creaturePower(state, beforeId)).toBe(5);
+    expect(creaturePower(state, afterId)).toBe(1);
+  });
+
+  it("makes everything 0/0 at X=0, which kills the team", () => {
+    const { game, p1 } = twoPlayers();
+    const bearId = put(game, p1.id, bear("Bear"));
+    const activated = applyEffects(
+      game,
+      bindCardEffects(
+        game,
+        [
+          {
+            kind: "team_set_pt_until_eot",
+            playerId: "controller",
+            power: "x",
+            toughness: "x",
+          },
+        ],
+        { controllerId: p1.id, sourceId: null, xValue: 0 },
+      ),
+    );
+    // Announcing zero is legal and lethal; the state-based sweep runs.
+    expect(activated.cards[bearId]?.zone).toBe("graveyard");
+  });
+
+  // ---- The Mycosynth Gardens: mana value EXACTLY X -------------------------
+
+  it("compiles the copy target as an exact mana value", () => {
+    const compiled = compile(
+      "The Mycosynth Gardens",
+      "Legendary Land",
+      "{T}: Add {C}.\n{X}, {T}: ~ becomes a copy of target nontoken artifact you control with mana value X.",
+    );
+    expect(compiled.notes).toEqual([]);
+    const ability = compiled.definition.activated[0];
+    expect(ability?.targetRequirements).toEqual([
+      { kind: "artifact", control: "own", nonTokenOnly: true, manaValueEqualsX: true },
+    ]);
+    expect(ability?.effects[0]).toEqual({
+      kind: "become_copy",
+      cardId: "self",
+      target: { type: "chosen", index: 0 },
+    });
+  });
+
+  const gardens = () =>
+    createCardDefinition({
+      name: "The Mycosynth Gardens",
+      typeLine: "Legendary Land",
+      activated: [
+        {
+          tap: true,
+          manaCost: "",
+          xCost: 1,
+          targetRequirements: [
+            { kind: "artifact", control: "own", nonTokenOnly: true, manaValueEqualsX: true },
+          ],
+          effects: [
+            { kind: "become_copy", cardId: "self", target: { type: "chosen", index: 0 } },
+          ],
+        },
+      ],
+    });
+
+  const gardensBoard = () => {
+    const { game, p1 } = twoPlayers();
+    const gardensId = put(game, p1.id, gardens());
+    const cheapId = put(
+      game,
+      p1.id,
+      createCardDefinition({ name: "Mox", typeLine: "Artifact", manaCost: "{0}" }),
+    );
+    const midId = put(
+      game,
+      p1.id,
+      createCardDefinition({ name: "Signet", typeLine: "Artifact", manaCost: "{2}" }),
+    );
+    game.turn.activePlayerId = p1.id;
+    game.turn.phase = "precombatMain";
+    game.turn.step = "precombatMain";
+    game.priorityPlayerId = p1.id;
+    return { game, p1, gardensId, cheapId, midId };
+  };
+
+  it("copies only an artifact whose mana value is exactly the announced X", () => {
+    const { game, p1, gardensId, midId } = gardensBoard();
+    game.players.find((entry) => entry.id === p1.id)!.mana.C = 2;
+    const activated = applyAction(game, {
+      kind: "activate_ability",
+      playerId: p1.id,
+      cardId: gardensId,
+      abilityIndex: 0,
+      xValue: 2,
+      targets: [{ type: "creature", cardId: midId }],
+    });
+    expect(activated.stack).toHaveLength(1);
+  });
+
+  it("refuses an artifact of a different mana value", () => {
+    const { game, p1, gardensId, cheapId } = gardensBoard();
+    game.players.find((entry) => entry.id === p1.id)!.mana.C = 2;
+    // "With mana value X" is EXACT, not a cap: a {0} Mox is not a legal
+    // target for X=2, which is what a `maxManaValue` reading would allow.
+    expect(() =>
+      applyAction(game, {
+        kind: "activate_ability",
+        playerId: p1.id,
+        cardId: gardensId,
+        abilityIndex: 0,
+        xValue: 2,
+        targets: [{ type: "creature", cardId: cheapId }],
+      }),
+    ).toThrow();
+  });
+
+  it("refuses a token copy", () => {
+    const { game, p1 } = gardensBoard();
+    const tokenDefinition = createCardDefinition({
+      name: "Treasure",
+      typeLine: "Artifact — Treasure Token",
+      manaCost: "",
+    });
+    game.definitions[tokenDefinition.id] = tokenDefinition;
+    const token = createCardInstance({
+      definitionId: tokenDefinition.id,
+      ownerId: p1.id,
+      zone: "battlefield",
+      isToken: true,
+    });
+    game.cards[token.id] = token;
+    game.players.find((entry) => entry.id === p1.id)!.zones.battlefield.push(token.id);
+    expect(
+      isChosenTargetLegal(
+        game,
+        { kind: "artifact", control: "own", nonTokenOnly: true },
+        { type: "creature", cardId: token.id },
+        p1.id,
+      ),
+    ).toBe(false);
+  });
+
+  // ---- the wire ----------------------------------------------------------
+
+  it("round trips the new effect and target flags", () => {
+    const { game, p1 } = twoPlayers();
+    const definition = createCardDefinition({
+      name: "X Omnibus",
+      typeLine: "Legendary Land",
+      activated: [
+        {
+          tap: true,
+          manaCost: "",
+          xCost: 1,
+          targetRequirements: [
+            { kind: "artifact", control: "own", nonTokenOnly: true, manaValueEqualsX: true },
+          ],
+          effects: [
+            {
+              kind: "team_set_pt_until_eot",
+              playerId: "controller",
+              power: "x",
+              toughness: "x",
+              allCreatureTypes: true,
+            },
+          ],
+        },
+      ],
+    });
+    put(game, p1.id, definition);
+    const round = parseGameState(serializeGameState(game));
+    const parsed = round.definitions[definition.id]!;
+    expect(parsed.activated[0]?.targetRequirements).toEqual([
+      { kind: "artifact", control: "own", nonTokenOnly: true, manaValueEqualsX: true },
+    ]);
+    expect(parsed.activated[0]?.effects[0]).toEqual({
+      kind: "team_set_pt_until_eot",
+      playerId: "controller",
+      power: "x",
+      toughness: "x",
+      allCreatureTypes: true,
+    });
+  });
+});

@@ -1219,6 +1219,21 @@ export function bindCardEffect(
       }
       return { kind: "keyword_until_eot", cardId, keyword: effect.keyword };
     }
+    case "team_set_pt_until_eot": {
+      const setPlayerId = bindPlayerSelector(state, effect.playerId, context);
+      if (!setPlayerId) {
+        return null;
+      }
+      // Mirror Entity: the announced X, read as the ability resolves.
+      const announcedX = Math.max(0, context.xValue ?? 0);
+      return {
+        kind: "team_set_pt_until_eot",
+        playerId: setPlayerId,
+        power: effect.power === "x" ? announcedX : effect.power,
+        toughness: effect.toughness === "x" ? announcedX : effect.toughness,
+        ...(effect.allCreatureTypes ? { allCreatureTypes: true } : {}),
+      };
+    }
     case "team_pt_until_eot": {
       const playerId = bindPlayerSelector(state, effect.playerId, context);
       if (!playerId) {
@@ -5206,6 +5221,24 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
           ...(effect.cantBeBlocked ? { cantBeBlocked: true } : {}),
         });
         break;
+      case "team_set_pt_until_eot": {
+        // CR 611.2c: the affected set locks in when the effect is created, so
+        // a creature that arrives afterwards is not made X/X.
+        const team = teamMembers(state, effect.playerId, {});
+        if (team.length === 0) {
+          next = cloneGameState(state);
+          break;
+        }
+        next = pushUntilEotEffect(state, team, {
+          kind: "set_pt",
+          power: effect.power,
+          toughness: effect.toughness,
+        });
+        if (effect.allCreatureTypes) {
+          next = pushUntilEotEffect(next, team, { kind: "all_creature_types" });
+        }
+        break;
+      }
       case "team_pt_until_eot":
         next = applyTeamPtUntilEot(
           state,

@@ -3266,6 +3266,45 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     }
   }
 
+  // Mirror Entity: a SET power and toughness, not a bonus, so the team is
+  // X/X regardless of what it printed — and the announced X is read where
+  // the ability resolves.
+  if (
+    /^Until end of turn, creatures you control have base power and toughness X\/X and gain all creature types$/i.test(
+      sentence,
+    )
+  ) {
+    return {
+      targetRequirements: [],
+      effects: [
+        {
+          kind: "team_set_pt_until_eot",
+          playerId: "controller",
+          power: "x",
+          toughness: "x",
+          allCreatureTypes: true,
+        },
+      ],
+    };
+  }
+
+  // The Mycosynth Gardens: "with mana value X" is EXACTLY the announced X,
+  // resolved where the ability goes on the stack.
+  if (
+    /^~ becomes a copy of target nontoken artifact you control with mana value X$/i.test(
+      sentence,
+    )
+  ) {
+    return {
+      targetRequirements: [
+        { kind: "artifact", control: "own", nonTokenOnly: true, manaValueEqualsX: true },
+      ],
+      effects: [
+        { kind: "become_copy", cardId: "self", target: { type: "chosen", index: 0 } },
+      ],
+    };
+  }
+
   // Shared Animosity: the same scaled pump aimed at the trigger's SUBJECT
   // rather than a target. "It" is the creature that attacked, and it is also
   // the referent the count is measured against.

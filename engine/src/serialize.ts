@@ -2915,6 +2915,8 @@ function parseTargetRequirement(value: unknown, label: string): TargetRequiremen
     ...(value.nonlegendaryOnly === true ? { nonlegendaryOnly: true } : {}),
     ...(value.nontoken === true ? { nontoken: true } : {}),
     ...(value.nonbasicOnly === true ? { nonbasicOnly: true } : {}),
+    ...(value.manaValueEqualsX === true ? { manaValueEqualsX: true } : {}),
+    ...(value.nonTokenOnly === true ? { nonTokenOnly: true } : {}),
     ...(value.attackingOnly === true ? { attackingOnly: true } : {}),
     ...(value.attackingOrBlockingOnly === true ? { attackingOrBlockingOnly: true } : {}),
     ...(value.singleTargetOnly === true ? { singleTargetOnly: true } : {}),
@@ -3837,6 +3839,17 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
         keyword: keyword as Keyword,
       };
     }
+    case "team_set_pt_until_eot":
+      return {
+        kind,
+        playerId: parsePlayerSelector(value.playerId, `${label}.playerId`),
+        power: value.power === "x" ? ("x" as const) : expectNumber(value.power, `${label}.power`),
+        toughness:
+          value.toughness === "x"
+            ? ("x" as const)
+            : expectNumber(value.toughness, `${label}.toughness`),
+        ...(value.allCreatureTypes === true ? { allCreatureTypes: true } : {}),
+      };
     case "team_pt_until_eot": {
       const nonSubtypes = parseStringList(value.nonSubtypes, `${label}.nonSubtypes`);
       return {
@@ -5782,6 +5795,15 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
       kind,
       cardId: expectString(value.cardId, `${label}.cardId`),
       keyword: keyword as Keyword,
+    };
+  }
+  if (kind === "team_set_pt_until_eot") {
+    return {
+      kind,
+      playerId: expectString(value.playerId, `${label}.playerId`),
+      power: expectNumber(value.power, `${label}.power`),
+      toughness: expectNumber(value.toughness, `${label}.toughness`),
+      ...(value.allCreatureTypes === true ? { allCreatureTypes: true } : {}),
     };
   }
   if (kind === "team_pt_until_eot") {

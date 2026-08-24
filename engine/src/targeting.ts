@@ -115,6 +115,9 @@ function violatesCharacteristicFilter(
   if (requirement.attackingOnly && state.cards[cardId]?.attacking !== true) {
     return true;
   }
+  if (requirement.nonTokenOnly && state.cards[cardId]?.isToken === true) {
+    return true;
+  }
   // Blocking is not a flag on the instance the way attacking is: the
   // blocker list is keyed by attacker, so the question is whether this card
   // appears anywhere in it.

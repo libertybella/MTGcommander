@@ -1579,6 +1579,14 @@ export type GameEffect =
   | { kind: "pt_until_eot"; cardId: CardInstanceId; power: number; toughness: number }
   | { kind: "keyword_until_eot"; cardId: CardInstanceId; keyword: Keyword }
   | {
+      kind: "team_set_pt_until_eot";
+      playerId: PlayerId;
+      power: number;
+      toughness: number;
+      /** Mirror Entity: "…and gain all creature types". */
+      allCreatureTypes?: boolean;
+    }
+  | {
       kind: "team_pt_until_eot";
       playerId: PlayerId;
       power: number;
@@ -2115,6 +2123,14 @@ export type TargetRequirement = {
   multicolored?: boolean;
   /** "target nonbasic land" (Wasteland). */
   nonbasicOnly?: boolean;
+  /**
+   * The Mycosynth Gardens: "with mana value X" — EXACTLY the announced X,
+   * not a cap. Resolved into a matching min/max pair where the ability goes
+   * on the stack, which is the only place the announced value is known.
+   */
+  manaValueEqualsX?: boolean;
+  /** "target nontoken artifact you control" (The Mycosynth Gardens). */
+  nonTokenOnly?: boolean;
   /** "target legendary creature" (Shizo). */
   legendaryOnly?: boolean;
   /** Commander's Plate: "Equip commander" — only YOUR commander. */
@@ -2749,6 +2765,14 @@ export type CardEffect =
       per?: DynamicCount;
     }
   | { kind: "keyword_until_eot"; cardId: CardIdSelector; keyword: Keyword }
+  | {
+      kind: "team_set_pt_until_eot";
+      playerId: PlayerSelector;
+      /** Mirror Entity: the announced X, read where the ability resolves. */
+      power: number | "x";
+      toughness: number | "x";
+      allCreatureTypes?: boolean;
+    }
   | {
       kind: "team_pt_until_eot";
       playerId: PlayerSelector;

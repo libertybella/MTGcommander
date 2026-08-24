@@ -870,6 +870,19 @@ more questions it can now ask:
   (Bennie Bracks). Reads the existing per-player `createdTokenThisTurn`
   list, and asks whether the CONTROLLER is in it — an opponent's Treasure
   must not satisfy it.
+- **`team_set_pt_until_eot`** — Mirror Entity. A SET power and toughness
+  (layer 7b), not a bonus, so a 7/7 SHRINKS to X/X — which is the whole
+  reason the card is a finisher and not an anthem. The affected set locks in
+  when the ability resolves (CR 611.2c), so a creature that arrives
+  afterwards is not made X/X. `allCreatureTypes` rides the same effect.
+
+- **`TargetRequirement.manaValueEqualsX`** — The Mycosynth Gardens: "with
+  mana value X" is EXACTLY the announced X, not a cap. Resolved into a
+  matching min/max pair in `putActivatedAbilityOnStack`, which is the only
+  place the announced value is known — `isChosenTargetLegal` is called from a
+  dozen sites that have no idea what was announced. Read as a cap, the
+  Gardens would happily copy a Mox for X=2.
+
 - **`EnterTappedUnless.turn_at_most`** — Starting Town: "unless it's your
   first, second, or third turn of the game". Read against the round counter,
   which advances once per seat cycle — round N is every player's Nth turn, so

@@ -88,9 +88,23 @@ export function putActivatedAbilityOnStack(
   if (modeIndex !== undefined && !abilityMode) {
     throw new Error("That ability has no modes");
   }
-  const requirements = abilityMode
+  const printedRequirements = abilityMode
     ? abilityMode.targetRequirements ?? []
     : ability.targetRequirements;
+  // The Mycosynth Gardens: "with mana value X" is EXACTLY the announced X.
+  // This is the only place that value is known — `isChosenTargetLegal` is
+  // called from a dozen sites that have no idea what was announced — so the
+  // requirement is resolved to a matching min/max pair here.
+  const requirements = printedRequirements.map((requirement) =>
+    requirement.manaValueEqualsX
+      ? {
+          ...requirement,
+          manaValueEqualsX: undefined,
+          maxManaValue: xValue ?? 0,
+          minManaValue: xValue ?? 0,
+        }
+      : requirement,
+  );
   validateChosenTargets(state, requirements, targets, card.controllerId, sourceColorsOf(state, cardId), cardId);
 
   const next = cloneGameState(state);
