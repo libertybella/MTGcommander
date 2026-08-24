@@ -44960,3 +44960,287 @@ describe("wave 308: five readings the grammars could not say", () => {
     expect(round.cards[cardId]?.exileIfLeaves).toBe(true);
   });
 });
+
+describe("wave 309: a turn counter, a life-loss doubler, and more of that type", () => {
+  const compile = (
+    name: string,
+    typeLine: string,
+    oracleText: string,
+    manaCost = "",
+    pt: [string, string] | null = null,
+  ) =>
+    compileOracleCard({
+      oracleId: name.toLowerCase().replace(/[^a-z]+/g, "-"),
+      name,
+      manaCost,
+      typeLine,
+      power: pt?.[0] ?? null,
+      toughness: pt?.[1] ?? null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  const put = (game: GameState, ownerId: string, definition: CardDefinition) => {
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({
+      definitionId: definition.id,
+      ownerId,
+      zone: "battlefield",
+    });
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === ownerId)!.zones.battlefield.push(card.id);
+    card.summoningSick = false;
+    return card.id;
+  };
+
+  // ---- Starting Town: the early-turns land -------------------------------
+
+  it("compiles the ordinal run as a turn cap", () => {
+    const compiled = compile(
+      "Starting Town",
+      "Land",
+      "~ enters tapped unless it's your first, second, or third turn of the game.\n{T}: Add {C}.",
+    );
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.replacements[0]).toEqual({
+      kind: "enters_tapped_unless",
+      unless: { kind: "turn_at_most", count: 3 },
+    });
+  });
+
+  it("enters untapped early and tapped later", () => {
+    const { game, p1 } = twoPlayers();
+    const definition = createCardDefinition({
+      name: "Starting Town",
+      typeLine: "Land",
+      replacements: [
+        { kind: "enters_tapped_unless", unless: { kind: "turn_at_most", count: 3 } },
+      ],
+    });
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({ definitionId: definition.id, ownerId: p1.id, zone: "hand" });
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === p1.id)!.zones.hand.push(card.id);
+
+    game.turn.number = 3;
+    expect(wouldEnterTapped(game, card.id)).toBe(false);
+    game.turn.number = 4;
+    expect(wouldEnterTapped(game, card.id)).toBe(true);
+  });
+
+  // ---- Bloodletter of Aclazotz -------------------------------------------
+
+  it("compiles the life-loss doubler with both restrictions", () => {
+    const compiled = compile(
+      "Bloodletter of Aclazotz",
+      "Legendary Creature — Bat Demon",
+      "Flying\nIf an opponent would lose life during your turn, they lose twice that much life instead.",
+      "{2}{B}",
+      ["4", "4"],
+    );
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.replacements).toEqual([
+      { kind: "double_opponent_life_loss_on_your_turn" },
+    ]);
+  });
+
+  const bloodletter = (game: GameState, ownerId: string) =>
+    put(
+      game,
+      ownerId,
+      createCardDefinition({
+        name: "Bloodletter of Aclazotz",
+        typeLine: "Legendary Creature — Bat Demon",
+        manaCost: "{2}{B}",
+        power: 4,
+        toughness: 4,
+        keywords: ["flying"],
+        replacements: [{ kind: "double_opponent_life_loss_on_your_turn" }],
+      }),
+    );
+
+  it("doubles an opponent's loss on your turn", () => {
+    const { game, p1, p2 } = twoPlayers();
+    bloodletter(game, p1.id);
+    game.turn.activePlayerId = p1.id;
+    const before = game.players.find((entry) => entry.id === p2.id)!.life;
+    const drained = applyEffect(game, { kind: "lose_life", playerId: p2.id, amount: 3 });
+    expect(drained.players.find((entry) => entry.id === p2.id)!.life).toBe(before - 6);
+  });
+
+  it("leaves the controller's own life alone", () => {
+    const { game, p1 } = twoPlayers();
+    bloodletter(game, p1.id);
+    game.turn.activePlayerId = p1.id;
+    const before = game.players.find((entry) => entry.id === p1.id)!.life;
+    const paid = applyEffect(game, { kind: "lose_life", playerId: p1.id, amount: 3 });
+    // "An OPPONENT" — paying life for your own Phyrexian mana is not doubled.
+    expect(paid.players.find((entry) => entry.id === p1.id)!.life).toBe(before - 3);
+  });
+
+  it("does nothing on an opponent's turn", () => {
+    const { game, p1, p2 } = twoPlayers();
+    bloodletter(game, p1.id);
+    game.turn.activePlayerId = p2.id;
+    const before = game.players.find((entry) => entry.id === p2.id)!.life;
+    const drained = applyEffect(game, { kind: "lose_life", playerId: p2.id, amount: 3 });
+    // "DURING YOUR TURN" is half the card.
+    expect(drained.players.find((entry) => entry.id === p2.id)!.life).toBe(before - 3);
+  });
+
+  it("reaches combat damage, because damage causes loss of life", () => {
+    const { game, p1, p2 } = twoPlayers();
+    bloodletter(game, p1.id);
+    const attackerId = put(
+      game,
+      p1.id,
+      createCardDefinition({
+        name: "Attacker",
+        typeLine: "Creature — Bear",
+        manaCost: "{1}{G}",
+        power: 3,
+        toughness: 3,
+      }),
+    );
+    game.turn.activePlayerId = p1.id;
+    game.turn.phase = "combat";
+    game.turn.step = "declareAttackers";
+    const before = game.players.find((entry) => entry.id === p2.id)!.life;
+    let state = declareAttackers(game, p1.id, [{ attackerId, defenderId: p2.id }]);
+    state.turn.step = "declareBlockers";
+    state = declareBlockers(state, p2.id, []);
+    state = applyCombatDamage(state);
+    expect(state.players.find((entry) => entry.id === p2.id)!.life).toBe(before - 6);
+  });
+
+  it("logs the doubled figure, because there was never a smaller loss", () => {
+    const { game, p1, p2 } = twoPlayers();
+    bloodletter(game, p1.id);
+    game.turn.activePlayerId = p1.id;
+    const drained = applyEffect(game, { kind: "lose_life", playerId: p2.id, amount: 2 });
+    const entry = drained.log.filter((line) => line.kind === "life_change").at(-1);
+    expect(entry).toMatchObject({ playerId: p2.id, delta: -4 });
+  });
+
+  // ---- Incubation Druid: more of the SAME type ---------------------------
+
+  it("compiles the upgrade as a same-type multiplier, not a fresh choice", () => {
+    const compiled = compile(
+      "Incubation Druid",
+      "Creature — Elf Druid",
+      "{T}: Add one mana of any type that a land you control could produce. If ~ has a +1/+1 counter on it, add three mana of that type instead.",
+      "{1}{G}",
+      ["0", "3"],
+    );
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.manaAbilities[0]?.upgrade).toEqual({
+      requires: [],
+      selfCounter: "p1p1",
+      sameTypeCount: 3,
+    });
+  });
+
+  const druid = (game: GameState, ownerId: string) =>
+    put(
+      game,
+      ownerId,
+      createCardDefinition({
+        name: "Incubation Druid",
+        typeLine: "Creature — Elf Druid",
+        manaCost: "{1}{G}",
+        power: 0,
+        toughness: 3,
+        manaAbilities: [
+          {
+            produces: {},
+            producesOptions: [],
+            producesAnyColor: true,
+            damageToController: 0,
+            upgrade: { requires: [], selfCounter: "p1p1", sameTypeCount: 3 },
+          },
+        ],
+      }),
+    );
+
+  it("adds one without the counter and three with it", () => {
+    const { game, p1 } = twoPlayers();
+    const druidId = druid(game, p1.id);
+    game.turn.activePlayerId = p1.id;
+    game.turn.phase = "precombatMain";
+    game.turn.step = "precombatMain";
+    game.priorityPlayerId = p1.id;
+
+    const plain = applyAction(game, {
+      kind: "tap_for_mana",
+      playerId: p1.id,
+      cardId: druidId,
+      color: "G",
+    });
+    expect(plain.players.find((entry) => entry.id === p1.id)!.mana.G).toBe(1);
+
+    game.cards[druidId]!.counters["p1p1"] = 3;
+    const adapted = applyAction(game, {
+      kind: "tap_for_mana",
+      playerId: p1.id,
+      cardId: druidId,
+      color: "G",
+    });
+    const pool = adapted.players.find((entry) => entry.id === p1.id)!.mana;
+    // Three of THAT type — never a second colour, which is what `anyColor`
+    // would have offered.
+    expect(pool.G).toBe(3);
+    expect(pool.U).toBe(0);
+  });
+
+  it("leaves Gemstone Caverns on the any-colour upgrade", () => {
+    // The two riders read alike and mean different things: one grants a
+    // choice, the other multiplies one already made.
+    const caverns = compile(
+      "Gemstone Caverns",
+      "Legendary Land",
+      "{T}: Add {C}. If ~ has a luck counter on it, instead add one mana of any color.",
+    );
+    expect(caverns.definition.manaAbilities[0]?.upgrade).toEqual({
+      requires: [],
+      selfCounter: "luck",
+      anyColor: 1,
+    });
+  });
+
+  // ---- the wire ----------------------------------------------------------
+
+  it("round trips all three", () => {
+    const { game, p1 } = twoPlayers();
+    const definition = createCardDefinition({
+      name: "Wave 309 Omnibus",
+      typeLine: "Land",
+      replacements: [
+        { kind: "enters_tapped_unless", unless: { kind: "turn_at_most", count: 3 } },
+        { kind: "double_opponent_life_loss_on_your_turn" },
+      ],
+      manaAbilities: [
+        {
+          produces: {},
+          producesOptions: [],
+          producesAnyColor: true,
+          damageToController: 0,
+          upgrade: { requires: [], selfCounter: "p1p1", sameTypeCount: 3 },
+        },
+      ],
+    });
+    put(game, p1.id, definition);
+    const round = parseGameState(serializeGameState(game));
+    const parsed = round.definitions[definition.id]!;
+    expect(parsed.replacements[0]).toEqual({
+      kind: "enters_tapped_unless",
+      unless: { kind: "turn_at_most", count: 3 },
+    });
+    expect(parsed.replacements[1]).toEqual({ kind: "double_opponent_life_loss_on_your_turn" });
+    expect(parsed.manaAbilities[0]?.upgrade).toEqual({
+      requires: [],
+      selfCounter: "p1p1",
+      sameTypeCount: 3,
+    });
+  });
+});

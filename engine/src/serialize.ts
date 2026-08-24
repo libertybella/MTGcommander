@@ -5000,6 +5000,9 @@ function parseReplacements(value: unknown, label: string): ReplacementEffect[] {
         },
       };
     }
+    if (kind === "double_opponent_life_loss_on_your_turn") {
+      return { kind };
+    }
     if (kind === "double_counters" || kind === "bonus_counters") {
       return {
         kind,
@@ -5056,7 +5059,12 @@ function parseEnterTappedUnless(value: unknown, label: string): EnterTappedUnles
     }
     return { kind, count };
   }
-  if (kind === "basic_lands" || kind === "other_lands_at_most" || kind === "opponents") {
+  if (
+    kind === "basic_lands" ||
+    kind === "other_lands_at_most" ||
+    kind === "opponents" ||
+    kind === "turn_at_most"
+  ) {
     const count = expectNumber(value.count, `${label}.count`);
     if (!Number.isInteger(count) || count < 0) {
       throw new Error(`Invalid ${label}.count`);
@@ -5506,6 +5514,9 @@ function parseManaAbilities(value: unknown, label: string): ManaAbility[] {
                 ...(raw.selfCounter === undefined
                   ? {}
                   : { selfCounter: expectString(raw.selfCounter, `${label2}.selfCounter`) }),
+                ...(raw.sameTypeCount === undefined
+                  ? {}
+                  : { sameTypeCount: expectNumber(raw.sameTypeCount, `${label2}.sameTypeCount`) }),
               };
             })(),
           }

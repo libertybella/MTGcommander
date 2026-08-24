@@ -353,6 +353,9 @@ export function createCardDefinition(
                   ...(ability.upgrade.anyColor !== undefined
                     ? { anyColor: ability.upgrade.anyColor }
                     : {}),
+                  ...(ability.upgrade.sameTypeCount !== undefined
+                    ? { sameTypeCount: ability.upgrade.sameTypeCount }
+                    : {}),
                 },
               }
             : {}),

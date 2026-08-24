@@ -1,7 +1,7 @@
 import { cloneGameState } from "./clone";
 import { characteristicsOf, isCommander, isCreature } from "./cardTypes";
 import { abilitiesRemoved, cardMatchesSubtype, computedCard } from "./characteristicsEngine";
-import { attackLimitFor, blockAllowanceFor, creaturePower, creatureToughness, damageAfterReplacements, permanentsControlledBy } from "./derived";
+import { attackLimitFor, blockAllowanceFor, creaturePower, creatureToughness, damageAfterReplacements, lifeLossAfterReplacements, permanentsControlledBy } from "./derived";
 import { hasKeyword, protectedFromSource } from "./keywords";
 import { canPayManaCost, parseManaCost, payManaCost } from "./mana";
 import { isLiving, nextLivingPlayerId } from "./players";
@@ -652,7 +652,12 @@ function dealDamageToPlayerInPlace(
   // Torbran et al: combat damage takes the same CR 616 replacements. The
   // events carry the modified amount, so "that much damage" riders agree.
   const dealt = damageAfterReplacements(state, sourceId, defenderId, amount);
-  defender.life -= dealt;
+  // Bloodletter of Aclazotz: damage causes loss of life, and the loss is
+  // what the replacement touches. The DAMAGE figure stays as dealt — lifelink
+  // and "was dealt N damage" both read that — while the life actually lost
+  // is the replaced one.
+  const lost = lifeLossAfterReplacements(state, defenderId, dealt);
+  defender.life -= lost;
   collect?.push({
     kind: "combat_damage_to_player",
     cardId: sourceId,
@@ -665,7 +670,7 @@ function dealDamageToPlayerInPlace(
     playerId: defenderId,
     amount: dealt,
   });
-  collect?.push({ kind: "loses_life", playerId: defenderId, amount: dealt });
+  collect?.push({ kind: "loses_life", playerId: defenderId, amount: lost });
   if (isCommander(state, sourceId)) {
     defender.commander.damageReceived[sourceId] =
       (defender.commander.damageReceived[sourceId] ?? 0) + dealt;

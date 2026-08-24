@@ -5,7 +5,7 @@ import { createCardDefinition, createCardInstance } from "./createGame";
 import { characteristicsOf, hasSubtype, hasType, isCreature, isInstantOrSorcery, isLand, isPlaneswalker } from "./cardTypes";
 import { eliminatePlayerInPlace } from "./elimination";
 import { createId } from "./ids";
-import { allBattlefieldCreatureCount, cantLoseGame, creaturePower, creatureToughness, damageAfterReplacements, permanentsControlledBy, playerLifeLocked, playerProtectedFromEverything, wouldSkipDraw } from "./derived";
+import { allBattlefieldCreatureCount, cantLoseGame, creaturePower, creatureToughness, damageAfterReplacements, lifeLossAfterReplacements, permanentsControlledBy, playerLifeLocked, playerProtectedFromEverything, wouldSkipDraw } from "./derived";
 import { hasKeyword, protectedFromSource } from "./keywords";
 import { addMana, tapCard, untapCard } from "./mana";
 import { commanderIdentityColors } from "./manaOptions";
@@ -2384,9 +2384,12 @@ function applyLoseLife(state: GameState, playerId: PlayerId, amount: number): Ga
   if (playerLifeLocked(next, playerId)) {
     return next;
   }
-  requirePlayer(next, playerId).life -= amount;
-  next.log.push({ kind: "life_change", playerId, delta: -amount });
-  dispatchEventsInPlace(next, [{ kind: "loses_life", playerId, amount }]);
+  // Bloodletter of Aclazotz replaces the LOSS, so the doubled figure is what
+  // is logged and what watchers see — there was never a smaller loss.
+  const lost = lifeLossAfterReplacements(next, playerId, amount);
+  requirePlayer(next, playerId).life -= lost;
+  next.log.push({ kind: "life_change", playerId, delta: -lost });
+  dispatchEventsInPlace(next, [{ kind: "loses_life", playerId, amount: lost }]);
   return next;
 }
 

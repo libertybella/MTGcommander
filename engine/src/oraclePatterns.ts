@@ -2003,6 +2003,24 @@ function compileDiscardLandOrGraveyard(sentence: string): ReplacementEffect | nu
 }
 
 function compileEntersTappedUnless(sentence: string): ReplacementEffect | null {
+  // Starting Town: the early-turns land. The printed list is an ordinal run
+  // ("first, second, or third"), so the last ordinal is the cap.
+  const earlyTurn = sentence.match(
+    /^~ enters tapped unless it's your (?:(?:first|second|third|fourth|fifth)(?:, |,? or )?)*?(first|second|third|fourth|fifth) turn of the game$/i,
+  );
+  const ORDINALS: Record<string, number> = {
+    first: 1,
+    second: 2,
+    third: 3,
+    fourth: 4,
+    fifth: 5,
+  };
+  if (earlyTurn?.[1]) {
+    return {
+      kind: "enters_tapped_unless",
+      unless: { kind: "turn_at_most", count: ORDINALS[earlyTurn[1].toLowerCase()]! },
+    };
+  }
   const crowd = sentence.match(/^~ enters tapped unless you have (two|three) or more opponents$/i);
   if (crowd?.[1]) {
     return {
@@ -14769,6 +14787,17 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
       continue;
     }
 
+    // Bloodletter of Aclazotz: the mirror, with both halves restrictions —
+    // an OPPONENT, and only during YOUR turn.
+    if (
+      /^If an opponent would lose life during your turn, they lose twice that much life instead$/i.test(
+        sentence,
+      )
+    ) {
+      result.replacements.push({ kind: "double_opponent_life_loss_on_your_turn" });
+      continue;
+    }
+
     // Teferi's Ageless Insight / Alhammarret's Archive: draw doubling with
     // the draw-step first-card exemption.
     if (
@@ -16317,6 +16346,23 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
         requires: [],
         selfCounter: counterKeyOf(selfCounterUpgrade[1]),
         anyColor: /^one /i.test(selfCounterUpgrade[2]) ? 1 : 2,
+      };
+      continue;
+    }
+
+    // Incubation Druid: "add three mana of THAT type instead" — the same
+    // type the base ability just picked, only more of it. Not `anyColor`,
+    // which offers a fresh choice the printed card does not.
+    const sameTypeUpgrade = sentence.match(
+      /^If ~ has an? ([+-]\d\/[+-]\d|[a-z]+) counter on it, add (two|three|four) mana of that type instead$/i,
+    );
+    const sameTypeAbility = result.manaAbilities[result.manaAbilities.length - 1];
+    const sameTypeAmount = sameTypeUpgrade?.[2] ? parseCount(sameTypeUpgrade[2]) : null;
+    if (sameTypeUpgrade?.[1] && sameTypeAmount && sameTypeAbility) {
+      sameTypeAbility.upgrade = {
+        requires: [],
+        selfCounter: counterKeyOf(sameTypeUpgrade[1]),
+        sameTypeCount: sameTypeAmount,
       };
       continue;
     }

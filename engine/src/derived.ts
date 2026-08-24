@@ -211,6 +211,42 @@ function grantedCostKeyword(
  * holders apply in timestamp order, where the rules let the affected player
  * choose the order. With one holder — the realistic table — the two agree.
  */
+/**
+ * Bloodletter of Aclazotz: life LOSS after replacements. Kept apart from
+ * `damageAfterReplacements` because the printed effect replaces the loss, not
+ * the damage — which is how it reaches a drain, a Phyrexian payment and a
+ * combat strike alike with one rule.
+ *
+ * Called from both places a player's life goes down: the `lose_life` effect
+ * and the combat-damage step, which decrements directly. A doubler honoured
+ * in only one of them would be off by half the game.
+ */
+export function lifeLossAfterReplacements(
+  state: GameState,
+  playerId: PlayerId,
+  amount: number,
+): number {
+  if (amount <= 0) {
+    return amount;
+  }
+  let total = amount;
+  for (const card of Object.values(state.cards)) {
+    if (card.zone !== "battlefield" || abilitiesRemoved(state, card.id)) {
+      continue;
+    }
+    const doubles = (state.definitions[card.definitionId]?.replacements ?? []).filter(
+      (replacement) =>
+        replacement.kind === "double_opponent_life_loss_on_your_turn" &&
+        // "An OPPONENT": the holder's own life is untouched.
+        card.controllerId !== playerId &&
+        // "DURING YOUR TURN": the holder must be the active player.
+        state.turn.activePlayerId === card.controllerId,
+    ).length;
+    total *= 2 ** doubles;
+  }
+  return total;
+}
+
 export function damageAfterReplacements(
   state: GameState,
   sourceId: CardInstanceId | null | undefined,
@@ -1172,6 +1208,12 @@ function unlessSatisfied(
         characteristicsOf(state, entry.id).subtypes.includes(unless.subtype),
     );
     return matching.length >= unless.count;
+  }
+  if (unless.kind === "turn_at_most") {
+    // Starting Town: "your first, second, or third turn of the game". The
+    // round counter advances once per seat cycle, so round N is every
+    // player's Nth turn and the two agree without a per-player tally.
+    return state.turn.number <= unless.count;
   }
   if (unless.kind === "hand_reveals_types") {
     // Documented approximation: the reveal "may" is auto-taken — any matching

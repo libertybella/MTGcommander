@@ -3758,7 +3758,13 @@ export type EnterTappedUnless =
    * enters tapped" (SOI/STX reveal lands). Documented approximation: the
    * reveal "may" is auto-taken whenever the hand holds a matching card.
    */
-  | { kind: "hand_reveals_types"; types: string[] };
+  | { kind: "hand_reveals_types"; types: string[] }
+  /**
+   * Starting Town: "unless it's your first, second, or third turn of the
+   * game". Read against the round counter, which advances once per seat
+   * cycle — so round N is every player's Nth turn, and the two agree.
+   */
+  | { kind: "turn_at_most"; count: number };
 
 /**
  * "Activate only if you control …" / "…and you control a Forest": a gate on
@@ -3972,6 +3978,13 @@ export type ReplacementEffect =
     }
   /** Rhox Faithmender / Boon Reflection: life gained is doubled. */
   | { kind: "double_life_gain" }
+  /**
+   * Bloodletter of Aclazotz: "If an OPPONENT would lose life DURING YOUR
+   * TURN, they lose twice that much instead." Both halves are restrictions:
+   * the controller's own life is untouched, and an opponent's own turn is
+   * safe. Damage causes loss of life, so this reaches combat too.
+   */
+  | { kind: "double_opponent_life_loss_on_your_turn" }
   /** Teferi's Ageless Insight: draws are doubled, except the turn-based
    * first draw of the controller's own draw step. */
   | { kind: "double_draws_except_first" }
@@ -4005,6 +4018,13 @@ export type ManaUpgrade = {
   produces?: Partial<ManaPool>;
   /** Ilysian Caryatid: "add two mana of any one color instead". */
   anyColor?: number;
+  /**
+   * Incubation Druid: "add three mana of THAT type instead" — the same type
+   * the base ability just picked, multiplied. Distinct from `anyColor`,
+   * which offers a fresh choice; here the choice has already been made and
+   * only the amount changes.
+   */
+  sameTypeCount?: number;
 };
 
 export type ManaAbility = {

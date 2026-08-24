@@ -1274,6 +1274,18 @@ function applyTapForMana(
         const picked = (Object.keys(addition) as ManaColor[])[0];
         addition = picked ? { [picked]: ability.upgrade.anyColor } : addition;
       }
+    } else if (ability.upgrade.sameTypeCount !== undefined) {
+      // Incubation Druid: "three mana of THAT type" — the type is already
+      // chosen above and only the amount changes. Unlike `anyColor` this
+      // never offers a fresh choice, which is the difference between
+      // "three of that type" and "three of any one color".
+      const scale = ability.upgrade.sameTypeCount;
+      addition = Object.fromEntries(
+        (Object.entries(addition) as [ManaColor, number][]).map(([color, count]) => [
+          color,
+          count * scale,
+        ]),
+      );
     } else if (ability.upgrade.produces) {
       addition = { ...ability.upgrade.produces };
     }

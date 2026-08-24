@@ -870,6 +870,28 @@ more questions it can now ask:
   (Bennie Bracks). Reads the existing per-player `createdTokenThisTurn`
   list, and asks whether the CONTROLLER is in it — an opponent's Treasure
   must not satisfy it.
+- **`EnterTappedUnless.turn_at_most`** — Starting Town: "unless it's your
+  first, second, or third turn of the game". Read against the round counter,
+  which advances once per seat cycle — round N is every player's Nth turn, so
+  the two agree without a per-player tally.
+
+- **`double_opponent_life_loss_on_your_turn`** — Bloodletter of Aclazotz.
+  Both halves are restrictions: the controller's own life is untouched, and
+  an opponent's own turn is safe.
+
+  It replaces the LOSS, not the damage, which is how one rule reaches a
+  drain, a Phyrexian payment and a combat strike alike. `lifeLossAfterReplacements`
+  is called from BOTH places a player's life goes down — the `lose_life`
+  effect and the combat-damage step, which decrements directly — because a
+  doubler honoured in only one of them would be off by half the game. The
+  DAMAGE figure stays as dealt (lifelink and "was dealt N damage" read that)
+  while the life actually lost is the replaced one.
+
+- **`ManaUpgrade.sameTypeCount`** — Incubation Druid: "add three mana of
+  THAT type instead". Distinct from `anyColor`, which offers a fresh choice;
+  here the choice was already made and only the amount changes. Reading it as
+  `anyColor` would let the Druid make three of a colour it cannot produce.
+
 - **`remove_from_combat`** — Reconnaissance. CR 506.4: out of combat but
   still on the battlefield. Not a tap and not a bounce — the creature deals
   and receives no combat damage, and any "whenever this attacks" trigger that
