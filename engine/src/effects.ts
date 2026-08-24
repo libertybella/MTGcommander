@@ -13,7 +13,7 @@ import { isLiving, livingPlayers, nextLivingPlayerId } from "./players";
 import { isPromptOpen, legalIdsForChooseSources, searchMatches } from "./prompt";
 import { shuffleInPlace } from "./shuffle";
 import { applyStateBasedActionsInPlace } from "./status";
-import { isChosenTargetLegal, legalChoicesForRequirement, sourceColorsOf } from "./targeting";
+import { isChosenTargetLegal, legalChoicesForRequirement, sourceColorsOf, stackObjectRequirements } from "./targeting";
 import { amassArmyTemplate, tokenPresetFor } from "./tokens";
 import { dispatchEventsInPlace, queueEnterBattlefieldTriggersInPlace, triggerConditionHolds } from "./triggers";
 import { countCardPlacements, enterOwnerZone, moveCard, moveCardInPlace, processDiesReturnsInPlace } from "./zones";
@@ -3007,7 +3007,7 @@ function applyCopySpell(
   controllerId: PlayerId,
 ): GameState {
   const entry = state.stack.find((object) => object.id === stackObjectId);
-  if (!entry || entry.kind !== "spell") {
+  if (!entry) {
     return state;
   }
   const next = cloneGameState(state);
@@ -3015,16 +3015,32 @@ function applyCopySpell(
     id: createId("stack"),
     controllerId,
     sourceId: entry.sourceId,
-    kind: "spell",
+    // Strionic Resonator copies an ABILITY, which resolves through the same
+    // path the original would. Everything that says WHICH ability this is
+    // has to ride along, the granted snapshot included — the copy outlives
+    // its source exactly as the original does (CR 113.7a).
+    kind: entry.kind,
     targets: entry.targets.map((target) => ({ ...target })),
     ...(entry.modeIndex !== undefined ? { modeIndex: entry.modeIndex } : {}),
     ...(entry.modeIndexes ? { modeIndexes: [...entry.modeIndexes] } : {}),
     ...(entry.xValue !== undefined ? { xValue: entry.xValue } : {}),
     ...(entry.division ? { division: [...entry.division] } : {}),
+    ...(entry.triggerIndex !== undefined ? { triggerIndex: entry.triggerIndex } : {}),
+    ...(entry.activatedIndex !== undefined ? { activatedIndex: entry.activatedIndex } : {}),
+    ...(entry.loyaltyIndex !== undefined ? { loyaltyIndex: entry.loyaltyIndex } : {}),
+    ...(entry.grantedTrigger ? { grantedTrigger: structuredClone(entry.grantedTrigger) } : {}),
+    ...(entry.grantedActivated
+      ? { grantedActivated: structuredClone(entry.grantedActivated) }
+      : {}),
+    ...(entry.subjectCardId ? { subjectCardId: entry.subjectCardId } : {}),
+    ...(entry.subjectPlayerId ? { subjectPlayerId: entry.subjectPlayerId } : {}),
+    ...(entry.subjectAmount !== undefined ? { subjectAmount: entry.subjectAmount } : {}),
+    ...(entry.sacrificedPower !== undefined ? { sacrificedPower: entry.sacrificedPower } : {}),
     isCopy: true,
   });
-  // Magecraft: "cast or copy" triggers see the copy too.
-  if (entry.sourceId) {
+  // Magecraft: "cast or copy" triggers see the copy too. Only a SPELL is
+  // cast or copied in that sense — an ability copy is neither.
+  if (entry.sourceId && entry.kind === "spell") {
     dispatchEventsInPlace(next, [
       { kind: "copies_spell", cardId: entry.sourceId, controllerId },
     ]);
@@ -4592,21 +4608,15 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
       case "retarget": {
         // Deflecting Swat: the retargeter picks replacement targets via a
         // prompt; the spell's own requirements bound the choices.
+        // Spellskite redirects an ABILITY as readily as a spell, so this
+        // reads whatever is on the stack and asks the shared helper for its
+        // requirements — exactly the question resolution asks.
         const entry = state.stack.find((object) => object.id === effect.stackObjectId);
-        if (!entry || entry.kind !== "spell" || !entry.sourceId) {
+        if (!entry || !entry.sourceId) {
           next = cloneGameState(state);
           break;
         }
-        const spellCard = state.cards[entry.sourceId];
-        const spellDefinition = spellCard ? state.definitions[spellCard.definitionId] : undefined;
-        const requirements =
-          entry.modeIndexes && entry.modeIndexes.length > 0 && spellDefinition?.modes
-            ? entry.modeIndexes.flatMap(
-                (index) => spellDefinition.modes![index]?.targetRequirements ?? [],
-              )
-            : entry.modeIndex !== undefined && spellDefinition?.modes?.[entry.modeIndex]
-              ? spellDefinition.modes[entry.modeIndex]!.targetRequirements
-              : spellDefinition?.targetRequirements ?? [];
+        const requirements = stackObjectRequirements(state, entry);
         next = cloneGameState(state);
         if (requirements.length === 0) {
           break;

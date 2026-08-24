@@ -9,6 +9,7 @@ import type {
   Color,
   GameState,
   PlayerId,
+  StackObject,
   StackObjectId,
   TargetRequirement,
 } from "./types";
@@ -206,6 +207,57 @@ export function sourceColorsOf(state: GameState, sourceId: CardInstanceId | null
 function isLegalSpellTarget(state: GameState, stackObjectId: StackObjectId): boolean {
   const entry = state.stack.find((object) => object.id === stackObjectId);
   return Boolean(entry && entry.kind === "spell");
+}
+
+/**
+ * The target requirements of ANY object on the stack — a spell, an activated
+ * ability, a loyalty ability, or a trigger, modes included.
+ *
+ * The resolver reads the same shapes inline, per stack kind, because it also
+ * needs the ability object itself to bind effects from. This exists so that
+ * `retarget` asks EXACTLY the question resolution asks: a redirect that
+ * computed requirements differently could point a spell at something the
+ * resolver then refuses, and the redirect would report success.
+ */
+export function stackObjectRequirements(
+  state: GameState,
+  entry: StackObject,
+): TargetRequirement[] {
+  const source = entry.sourceId ? state.cards[entry.sourceId] : undefined;
+  const definition = source ? state.definitions[source.definitionId] : undefined;
+  if (entry.kind === "spell") {
+    if (entry.modeIndexes && entry.modeIndexes.length > 0 && definition?.modes) {
+      return entry.modeIndexes.flatMap(
+        (index) => definition.modes![index]?.targetRequirements ?? [],
+      );
+    }
+    if (entry.modeIndex !== undefined && definition?.modes?.[entry.modeIndex]) {
+      return definition.modes[entry.modeIndex]!.targetRequirements;
+    }
+    return definition?.targetRequirements ?? [];
+  }
+  if (entry.activatedIndex !== undefined) {
+    // The snapshot first: a granted ability outlives the grant (CR 113.7a).
+    const ability = entry.grantedActivated ?? definition?.activated[entry.activatedIndex];
+    const mode = entry.modeIndex !== undefined ? ability?.modes?.[entry.modeIndex] : undefined;
+    return mode ? mode.targetRequirements ?? [] : ability?.targetRequirements ?? [];
+  }
+  if (entry.loyaltyIndex !== undefined) {
+    return definition?.loyaltyAbilities?.[entry.loyaltyIndex]?.targetRequirements ?? [];
+  }
+  const trigger = entry.grantedTrigger ?? definition?.triggers[entry.triggerIndex ?? 0];
+  if (entry.modeIndexes && entry.modeIndexes.length > 0 && trigger?.modes) {
+    return entry.modeIndexes.flatMap((index) => trigger.modes![index]?.targetRequirements ?? []);
+  }
+  if (entry.modeIndex !== undefined && trigger?.modes?.[entry.modeIndex]) {
+    return trigger.modes[entry.modeIndex]!.targetRequirements ?? [];
+  }
+  return trigger?.targetRequirements ?? [];
+}
+
+/** Spellskite: any object on the stack, spell or ability alike. */
+function isLegalStackTarget(state: GameState, stackObjectId: StackObjectId): boolean {
+  return state.stack.some((object) => object.id === stackObjectId);
 }
 
 function isArtifactPermanent(state: GameState, cardId: string): boolean {
@@ -636,6 +688,21 @@ export function isChosenTargetLegal(
       isLegalSpellTarget(state, target.stackObjectId) &&
       !isCreatureSpell(state, target.stackObjectId)
     );
+  }
+  if (requirement.kind === "spell_or_ability") {
+    return target.type === "spell" && isLegalStackTarget(state, target.stackObjectId);
+  }
+  if (requirement.kind === "triggered_ability_you_control") {
+    if (target.type !== "spell") {
+      return false;
+    }
+    const entry = state.stack.find((object) => object.id === target.stackObjectId);
+    if (!entry || entry.kind !== "ability" || entry.controllerId !== casterId) {
+      return false;
+    }
+    // A TRIGGERED ability, not an activated or loyalty one: those carry an
+    // index of their own, and a trigger is what is left.
+    return entry.activatedIndex === undefined && entry.loyaltyIndex === undefined;
   }
   if (requirement.kind === "instant_or_sorcery_spell") {
     if (

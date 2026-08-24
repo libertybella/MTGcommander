@@ -46,6 +46,7 @@ import type {
   SearchFilter,
   SpellMode,
   StaticAbility,
+  TargetKind,
   TargetRequirement,
   TokenTemplate,
   TriggerCandidate,
@@ -2804,59 +2805,71 @@ function parseChosenTargets(value: unknown, label: string): ChosenTarget[] {
   return value.map((entry, index) => parseChosenTarget(entry, `${label}[${index}]`));
 }
 
+/**
+ * Every TargetKind a saved state may name. Written as a TOTAL record so that
+ * adding a union member without listing it here is a tsc error: this guard
+ * used to be a forty-line chain of `kind !== "..."` comparisons, and an
+ * omission there is the expensive kind of drift -- the card compiles with no
+ * notes and the definition then fails to LOAD.
+ */
+const TARGET_KINDS: Record<TargetKind, true> = {
+  player: true,
+  opponent: true,
+  creature: true,
+  own_creature: true,
+  permanent: true,
+  creature_or_planeswalker: true,
+  artifact: true,
+  enchantment: true,
+  artifact_or_enchantment: true,
+  creature_or_artifact: true,
+  creature_or_enchantment: true,
+  creature_enchantment_or_planeswalker: true,
+  nonland_permanent: true,
+  noncreature_nonland_permanent: true,
+  own_graveyard_card: true,
+  own_graveyard_creature_card: true,
+  own_graveyard_permanent_card: true,
+  own_graveyard_artifact_card: true,
+  own_graveyard_enchantment_card: true,
+  own_graveyard_land_card: true,
+  own_graveyard_instant_or_sorcery_card: true,
+  own_graveyard_creature_or_planeswalker_card: true,
+  graveyard_creature_card: true,
+  graveyard_card: true,
+  artifact_creature_or_land: true,
+  nonartifact_creature: true,
+  land: true,
+  artifact_enchantment_or_nonbasic_land: true,
+  artifact_enchantment_or_land: true,
+  artifact_creature_enchantment_or_land: true,
+  artifact_creature_or_planeswalker_spell: true,
+  artifact_enchantment_or_planeswalker: true,
+  artifact_creature_or_planeswalker: true,
+  planeswalker: true,
+  commander: true,
+  player_or_creature: true,
+  player_or_planeswalker: true,
+  spell: true,
+  creature_spell: true,
+  noncreature_spell: true,
+  instant_spell: true,
+  instant_or_sorcery_spell: true,
+  enchantment_instant_or_sorcery_spell: true,
+  spell_or_permanent: true,
+  spell_or_ability: true,
+  triggered_ability_you_control: true,
+};
+
 function parseTargetRequirement(value: unknown, label: string): TargetRequirement {
   if (!isRecord(value)) {
     throw new Error(`Invalid ${label}`);
   }
-  const kind = expectString(value.kind, `${label}.kind`);
-  if (
-    kind !== "player" &&
-    kind !== "opponent" &&
-    kind !== "creature" &&
-    kind !== "own_creature" &&
-    kind !== "permanent" &&
-    kind !== "creature_or_planeswalker" &&
-    kind !== "artifact" &&
-    kind !== "enchantment" &&
-    kind !== "artifact_or_enchantment" &&
-    kind !== "creature_or_artifact" &&
-    kind !== "creature_or_enchantment" &&
-    kind !== "creature_enchantment_or_planeswalker" &&
-    kind !== "nonland_permanent" &&
-    kind !== "noncreature_nonland_permanent" &&
-    kind !== "own_graveyard_card" &&
-    kind !== "own_graveyard_creature_card" &&
-    kind !== "own_graveyard_permanent_card" &&
-    kind !== "own_graveyard_artifact_card" &&
-    kind !== "own_graveyard_enchantment_card" &&
-    kind !== "own_graveyard_land_card" &&
-    kind !== "artifact_enchantment_or_land" &&
-    kind !== "artifact_creature_enchantment_or_land" &&
-    kind !== "artifact_enchantment_or_planeswalker" &&
-    kind !== "own_graveyard_instant_or_sorcery_card" &&
-    kind !== "own_graveyard_creature_or_planeswalker_card" &&
-    kind !== "graveyard_creature_card" &&
-    kind !== "graveyard_card" &&
-    kind !== "artifact_creature_or_land" &&
-    kind !== "nonartifact_creature" &&
-    kind !== "player_or_creature" &&
-    kind !== "player_or_planeswalker" &&
-    kind !== "spell" &&
-    kind !== "creature_spell" &&
-    kind !== "noncreature_spell" &&
-    kind !== "instant_or_sorcery_spell" &&
-    kind !== "enchantment_instant_or_sorcery_spell" &&
-    kind !== "artifact_creature_or_planeswalker_spell" &&
-    kind !== "instant_spell" &&
-    kind !== "spell_or_permanent" &&
-    kind !== "land" &&
-    kind !== "artifact_enchantment_or_nonbasic_land" &&
-    kind !== "artifact_creature_or_planeswalker" &&
-    kind !== "planeswalker" &&
-    kind !== "commander"
-  ) {
+  const raw = expectString(value.kind, `${label}.kind`);
+  if (!Object.hasOwn(TARGET_KINDS, raw)) {
     throw new Error(`Invalid ${label}.kind`);
   }
+  const kind = raw as TargetKind;
   const control = value.control;
   if (control !== undefined && control !== "own" && control !== "not_own") {
     throw new Error(`Invalid ${label}.control`);

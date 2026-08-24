@@ -870,6 +870,37 @@ more questions it can now ask:
   (Bennie Bracks). Reads the existing per-player `createdTokenThisTurn`
   list, and asks whether the CONTROLLER is in it — an opponent's Treasure
   must not satisfy it.
+- **An ability on the stack is a targetable object** (CR 113.7) — two target
+  kinds, `spell_or_ability` (Spellskite) and `triggered_ability_you_control`
+  (Strionic Resonator). The second refuses an activated or loyalty ability:
+  those carry an index of their own, and a TRIGGER is what is left.
+
+  Wave 305 left Spellskite alone rather than narrowing it to spells, because
+  half the reason the card sees play is stopping targeted ABILITIES. This is
+  the primitive it was waiting for.
+
+- **`stackObjectRequirements`** — the target requirements of any object on
+  the stack, spell or ability, modes included. The resolver reads the same
+  shapes inline (it also needs the ability object to bind effects from); this
+  exists so `retarget` asks EXACTLY the question resolution asks. A redirect
+  that computed requirements differently could point a spell at something the
+  resolver then refuses — and report success.
+
+- **`copy_spell` copies an ability** — everything that says WHICH ability
+  this is rides along: the trigger or activated index, the granted snapshot
+  (a copy outlives its source exactly as the original does), and the
+  triggering subject card, player and amount. A copy that dropped those would
+  resolve "that creature" and "that much" to nothing.
+
+  Magecraft is NOT fired by an ability copy: only a spell is cast or copied
+  in that sense.
+
+- **The serializer's TargetKind guard is now a total record.** It was a
+  forty-line chain of `kind !== "…"` comparisons — the same drift shape as
+  the keyword lists, with the same failure mode: a card compiles with no
+  notes and its definition then cannot LOAD. Omitting a member is a tsc error
+  now, and this wave's own round-trip test caught the omission first.
+
 - **`creatures_sharing_a_type_with_it`** — Coat of Arms, and its
   `attacking_` sibling for Shared Animosity. Counted against the AFFECTED
   object, the way `auras_attached_to_it` is: "it" is what the ability

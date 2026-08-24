@@ -43776,3 +43776,421 @@ describe("wave 305: changing a target, and counting shared creature types", () =
     ]);
   });
 });
+
+describe("wave 306: an ability on the stack is a target too", () => {
+  const compile = (
+    name: string,
+    typeLine: string,
+    oracleText: string,
+    manaCost = "",
+    pt: [string, string] | null = null,
+  ) =>
+    compileOracleCard({
+      oracleId: name.toLowerCase().replace(/[^a-z]+/g, "-"),
+      name,
+      manaCost,
+      typeLine,
+      power: pt?.[0] ?? null,
+      toughness: pt?.[1] ?? null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  const put = (
+    game: GameState,
+    ownerId: string,
+    definition: CardDefinition,
+    zone: "hand" | "battlefield" = "battlefield",
+  ) => {
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({ definitionId: definition.id, ownerId, zone });
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === ownerId)!.zones[zone].push(card.id);
+    if (zone === "battlefield") {
+      card.summoningSick = false;
+    }
+    return card.id;
+  };
+
+  /** A board with one triggered ability sitting on the stack, controlled by p1. */
+  const abilityOnStack = () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 12);
+    const watcherId = put(
+      game,
+      p1.id,
+      createCardDefinition({
+        name: "Drawer",
+        typeLine: "Creature — Human",
+        manaCost: "{1}{U}",
+        power: 1,
+        toughness: 1,
+        triggers: [
+          {
+            event: "enter_battlefield",
+            watch: "self",
+            effects: [{ kind: "draw", playerId: "controller", count: 1 }],
+            targetRequirements: [],
+          },
+        ],
+      }),
+    );
+    game.turn.activePlayerId = p1.id;
+    game.turn.phase = "precombatMain";
+    game.turn.step = "precombatMain";
+    game.priorityPlayerId = p1.id;
+    game.stack.push({
+      id: "stack:test-ability",
+      controllerId: p1.id,
+      sourceId: watcherId,
+      kind: "ability",
+      triggerIndex: 0,
+      targets: [],
+    });
+    return { game, p1, p2, watcherId, abilityId: "stack:test-ability" };
+  };
+
+  // ---- Targeting an ability -----------------------------------------------
+
+  it("compiles Strionic Resonator and Spellskite whole", () => {
+    const resonator = compile(
+      "Strionic Resonator",
+      "Artifact",
+      "{2}, {T}: Copy target triggered ability you control. You may choose new targets for the copy.",
+      "{2}",
+    );
+    expect(resonator.notes).toEqual([]);
+    expect(resonator.definition.activated[0]?.targetRequirements).toEqual([
+      { kind: "triggered_ability_you_control" },
+    ]);
+    expect(resonator.definition.activated[0]?.effects[0]).toEqual({
+      kind: "copy_spell",
+      target: { type: "chosen", index: 0 },
+    });
+
+    const skite = compile(
+      "Spellskite",
+      "Artifact Creature — Phyrexian Horror",
+      "{U/P}: Change a target of target spell or ability to this creature.",
+      "{2}",
+      ["0", "4"],
+    );
+    expect(skite.notes).toEqual([]);
+    expect(skite.definition.activated[0]?.manaCost).toBe("{U/P}");
+    expect(skite.definition.activated[0]?.targetRequirements).toEqual([
+      { kind: "spell_or_ability" },
+    ]);
+    expect(skite.definition.activated[0]?.effects[0]).toEqual({
+      kind: "retarget",
+      target: { type: "chosen", index: 0 },
+      toSelf: true,
+    });
+  });
+
+  it("accepts an ability as a spell_or_ability target, and a spell too", () => {
+    const { game, p1, abilityId } = abilityOnStack();
+    expect(
+      isChosenTargetLegal(
+        game,
+        { kind: "spell_or_ability" },
+        { type: "spell", stackObjectId: abilityId },
+        p1.id,
+      ),
+    ).toBe(true);
+    // The plain "spell" kind still refuses it, which is why a new kind was
+    // needed rather than a widening.
+    expect(
+      isChosenTargetLegal(
+        game,
+        { kind: "spell" },
+        { type: "spell", stackObjectId: abilityId },
+        p1.id,
+      ),
+    ).toBe(false);
+  });
+
+  it("refuses an ability an opponent controls, and an activated one", () => {
+    const { game, p1, p2, abilityId, watcherId } = abilityOnStack();
+    expect(
+      isChosenTargetLegal(
+        game,
+        { kind: "triggered_ability_you_control" },
+        { type: "spell", stackObjectId: abilityId },
+        p1.id,
+      ),
+    ).toBe(true);
+    // "You control" is a real restriction.
+    expect(
+      isChosenTargetLegal(
+        game,
+        { kind: "triggered_ability_you_control" },
+        { type: "spell", stackObjectId: abilityId },
+        p2.id,
+      ),
+    ).toBe(false);
+    // And a TRIGGERED ability is not an activated one.
+    game.stack.push({
+      id: "stack:test-activated",
+      controllerId: p1.id,
+      sourceId: watcherId,
+      kind: "ability",
+      activatedIndex: 0,
+      targets: [],
+    });
+    expect(
+      isChosenTargetLegal(
+        game,
+        { kind: "triggered_ability_you_control" },
+        { type: "spell", stackObjectId: "stack:test-activated" },
+        p1.id,
+      ),
+    ).toBe(false);
+  });
+
+  it("refuses an object that has already left the stack", () => {
+    const { game, p1, abilityId } = abilityOnStack();
+    const resolved = { ...game, stack: [] };
+    expect(
+      isChosenTargetLegal(
+        resolved,
+        { kind: "spell_or_ability" },
+        { type: "spell", stackObjectId: abilityId },
+        p1.id,
+      ),
+    ).toBe(false);
+  });
+
+  // ---- Copying an ability -------------------------------------------------
+
+  it("copies a triggered ability so it resolves twice", () => {
+    const { game, p1, abilityId } = abilityOnStack();
+    const handBefore = game.players.find((entry) => entry.id === p1.id)!.zones.hand.length;
+    const copied = applyEffects(
+      game,
+      bindCardEffects(game, [{ kind: "copy_spell", target: { type: "chosen", index: 0 } }], {
+        controllerId: p1.id,
+        sourceId: null,
+        targets: [{ type: "spell", stackObjectId: abilityId }],
+        targetRequirements: [{ kind: "triggered_ability_you_control" }],
+      }),
+    );
+    expect(copied.stack).toHaveLength(2);
+    expect(copied.stack[1]?.kind).toBe("ability");
+    expect(copied.stack[1]?.isCopy).toBe(true);
+    // The copy names the same ability, so it resolves to the same thing.
+    expect(copied.stack[1]?.triggerIndex).toBe(0);
+    let state = copied;
+    while (state.stack.length > 0) {
+      state = resolveTopOfStack(state);
+    }
+    expect(state.players.find((entry) => entry.id === p1.id)!.zones.hand.length).toBe(
+      handBefore + 2,
+    );
+  });
+
+  it("carries the trigger's subject onto the copy", () => {
+    const { game, p1, watcherId, abilityId } = abilityOnStack();
+    const live = game.stack.find((entry) => entry.id === abilityId)!;
+    live.subjectCardId = watcherId;
+    live.subjectPlayerId = p1.id;
+    live.subjectAmount = 4;
+    const copied = applyEffects(
+      game,
+      bindCardEffects(game, [{ kind: "copy_spell", target: { type: "chosen", index: 0 } }], {
+        controllerId: p1.id,
+        sourceId: null,
+        targets: [{ type: "spell", stackObjectId: abilityId }],
+        targetRequirements: [{ kind: "triggered_ability_you_control" }],
+      }),
+    );
+    // "That creature", "that player", "that much" all read these; a copy
+    // that dropped them would resolve to nothing.
+    expect(copied.stack[1]).toMatchObject({
+      subjectCardId: watcherId,
+      subjectPlayerId: p1.id,
+      subjectAmount: 4,
+    });
+  });
+
+  it("does not fire magecraft for an ability copy", () => {
+    const { game, p1, abilityId } = abilityOnStack();
+    put(
+      game,
+      p1.id,
+      createCardDefinition({
+        name: "Magecraft Watcher",
+        typeLine: "Creature — Wizard",
+        manaCost: "{1}{R}",
+        power: 1,
+        toughness: 1,
+        triggers: [
+          {
+            event: "cast_spell",
+            watch: "controlled",
+            alsoOnCopy: true,
+            subjectFilter: { typesAny: ["instant", "sorcery"] },
+            effects: [{ kind: "gain_life", playerId: "controller", amount: 1 }],
+            targetRequirements: [],
+          },
+        ],
+      }),
+    );
+    const copied = applyEffects(
+      game,
+      bindCardEffects(game, [{ kind: "copy_spell", target: { type: "chosen", index: 0 } }], {
+        controllerId: p1.id,
+        sourceId: null,
+        targets: [{ type: "spell", stackObjectId: abilityId }],
+        targetRequirements: [{ kind: "triggered_ability_you_control" }],
+      }),
+    );
+    // Only a SPELL is cast or copied in magecraft's sense — the stack grew
+    // by the copy alone, with no magecraft trigger beside it.
+    expect(copied.stack).toHaveLength(2);
+  });
+
+  // ---- Redirecting an ability ---------------------------------------------
+
+  it("redirects a targeted ability onto the source", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const victimId = put(
+      game,
+      p1.id,
+      createCardDefinition({
+        name: "Victim",
+        typeLine: "Creature — Bear",
+        manaCost: "{1}{G}",
+        power: 2,
+        toughness: 2,
+      }),
+    );
+    const pingerId = put(
+      game,
+      p2.id,
+      createCardDefinition({
+        name: "Pinger",
+        typeLine: "Creature — Goblin",
+        manaCost: "{1}{R}",
+        power: 1,
+        toughness: 1,
+        activated: [
+          {
+            tap: true,
+            manaCost: "",
+            effects: [
+              {
+                kind: "deal_damage",
+                sourceId: null,
+                target: { type: "chosen", index: 0 },
+                amount: 1,
+              },
+            ],
+            targetRequirements: [{ kind: "creature" }],
+          },
+        ],
+      }),
+    );
+    const skiteId = put(
+      game,
+      p1.id,
+      createCardDefinition({
+        name: "Spellskite",
+        typeLine: "Artifact Creature — Phyrexian Horror",
+        manaCost: "{2}",
+        power: 0,
+        toughness: 4,
+      }),
+    );
+    game.stack.push({
+      id: "stack:ping",
+      controllerId: p2.id,
+      sourceId: pingerId,
+      kind: "ability",
+      activatedIndex: 0,
+      targets: [{ type: "creature", cardId: victimId }],
+    });
+    const redirected = applyEffects(
+      game,
+      bindCardEffects(
+        game,
+        [{ kind: "retarget", target: { type: "chosen", index: 0 }, toSelf: true }],
+        {
+          controllerId: p1.id,
+          sourceId: skiteId,
+          targets: [{ type: "spell", stackObjectId: "stack:ping" }],
+          targetRequirements: [{ kind: "spell_or_ability" }],
+        },
+      ),
+    );
+    // The ability's requirements come from the ACTIVATED ability, which the
+    // shared helper reads — the same question resolution asks.
+    expect(redirected.stack[0]?.targets).toEqual([{ type: "creature", cardId: skiteId }]);
+  });
+
+  it("leaves an untargeted ability alone", () => {
+    const { game, p1, abilityId } = abilityOnStack();
+    const skiteId = put(
+      game,
+      p1.id,
+      createCardDefinition({
+        name: "Spellskite",
+        typeLine: "Artifact Creature — Phyrexian Horror",
+        manaCost: "{2}",
+        power: 0,
+        toughness: 4,
+      }),
+    );
+    const attempted = applyEffects(
+      game,
+      bindCardEffects(
+        game,
+        [{ kind: "retarget", target: { type: "chosen", index: 0 }, toSelf: true }],
+        {
+          controllerId: p1.id,
+          sourceId: skiteId,
+          targets: [{ type: "spell", stackObjectId: abilityId }],
+          targetRequirements: [{ kind: "spell_or_ability" }],
+        },
+      ),
+    );
+    // Nothing to change: the trigger targets nothing at all.
+    expect(attempted.stack[0]?.targets).toEqual([]);
+    expect(attempted.prompts).toHaveLength(0);
+  });
+
+  // ---- the wire ----------------------------------------------------------
+
+  it("round trips the two new target kinds", () => {
+    const { game, p1 } = twoPlayers();
+    const definition = createCardDefinition({
+      name: "Stack Omnibus",
+      typeLine: "Artifact",
+      manaCost: "{2}",
+      activated: [
+        {
+          tap: true,
+          manaCost: "{2}",
+          effects: [{ kind: "copy_spell", target: { type: "chosen", index: 0 } }],
+          targetRequirements: [{ kind: "triggered_ability_you_control" }],
+        },
+        {
+          tap: false,
+          manaCost: "{U/P}",
+          effects: [
+            { kind: "retarget", target: { type: "chosen", index: 0 }, toSelf: true },
+          ],
+          targetRequirements: [{ kind: "spell_or_ability" }],
+        },
+      ],
+    });
+    put(game, p1.id, definition);
+    const round = parseGameState(serializeGameState(game));
+    const parsed = round.definitions[definition.id]!;
+    expect(parsed.activated[0]?.targetRequirements).toEqual([
+      { kind: "triggered_ability_you_control" },
+    ]);
+    expect(parsed.activated[1]?.targetRequirements).toEqual([{ kind: "spell_or_ability" }]);
+    expect(parsed.activated[1]?.manaCost).toBe("{U/P}");
+  });
+});

@@ -2037,7 +2037,16 @@ export type TargetKind =
   /** Swan Song. */
   | "enchantment_instant_or_sorcery_spell"
   /** Venser, Shaper Savant. */
-  | "spell_or_permanent";
+  | "spell_or_permanent"
+  /**
+   * Spellskite: "target spell or ability". An ability on the stack is an
+   * object like any other (CR 113.7), and half the reason Spellskite sees
+   * play is stopping targeted ABILITIES — a kind narrowed to spells would
+   * compile clean and play wrong.
+   */
+  | "spell_or_ability"
+  /** Strionic Resonator: "target triggered ability you control". */
+  | "triggered_ability_you_control";
 
 export type TargetRequirement = {
   kind: TargetKind;

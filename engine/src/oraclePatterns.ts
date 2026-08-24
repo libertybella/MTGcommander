@@ -5590,6 +5590,26 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     };
   }
 
+  // Strionic Resonator: the same copy, aimed at an ABILITY on the stack.
+  if (/^copy target triggered ability you control$/i.test(sentence)) {
+    return {
+      targetRequirements: [{ kind: "triggered_ability_you_control" }],
+      effects: [{ kind: "copy_spell", target: { type: "chosen", index: 0 } }],
+    };
+  }
+
+  // Spellskite: "a target", not "the target" — any one slot the source fits,
+  // and no single-target restriction. The "may" is the activation itself.
+  if (
+    /^change a target of target spell or ability to ~$/i.test(sentence) ||
+    /^change the target of target spell or ability to ~$/i.test(sentence)
+  ) {
+    return {
+      targetRequirements: [{ kind: "spell_or_ability" }],
+      effects: [{ kind: "retarget", target: { type: "chosen", index: 0 }, toSelf: true }],
+    };
+  }
+
   if (/^copy (?:that spell|it)$/i.test(sentence)) {
     return {
       targetRequirements: [],
