@@ -156,6 +156,7 @@ export function createCardDefinition(
         | "topOfLibrary"
         | "flashback"
         | "evoke"
+        | "splitSecond"
         | "blockPowerGate"
         | "echo"
         | "escalate"
@@ -563,6 +564,7 @@ export function createCardDefinition(
         }
       : {}),
     ...(input.evoke ? { evoke: { manaCost: input.evoke.manaCost } } : {}),
+    ...(input.splitSecond ? { splitSecond: true } : {}),
     ...(input.blockPowerGate ? { blockPowerGate: { ...input.blockPowerGate } } : {}),
     ...(input.echo ? { echo: { manaCost: input.echo.manaCost } } : {}),
     ...(input.escalate ? { escalate: input.escalate } : {}),

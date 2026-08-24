@@ -46681,3 +46681,314 @@ describe("wave 314: triggers that measure their own cause", () => {
     ]);
   });
 });
+
+describe("wave 315: split second, and an edict aimed at a target", () => {
+  const compile = (name: string, typeLine: string, oracleText: string, manaCost = "") =>
+    compileOracleCard({
+      oracleId: name.toLowerCase().replace(/[^a-z]+/g, "-"),
+      name,
+      manaCost,
+      typeLine,
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  const put = (
+    game: GameState,
+    ownerId: string,
+    definition: CardDefinition,
+    zone: "hand" | "battlefield" = "battlefield",
+  ) => {
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({ definitionId: definition.id, ownerId, zone });
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === ownerId)!.zones[zone].push(card.id);
+    if (zone === "battlefield") {
+      card.summoningSick = false;
+    }
+    return card.id;
+  };
+
+  it("compiles split second onto the definition", () => {
+    const compiled = compile(
+      "Krosan Grip",
+      "Instant",
+      "Split second\nDestroy target artifact or enchantment.",
+      "{2}{G}",
+    );
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.splitSecond).toBe(true);
+  });
+
+  /** A board with a split-second spell already on the stack. */
+  const lockedBoard = () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 12);
+    const gripId = put(
+      game,
+      p2.id,
+      createCardDefinition({
+        name: "Krosan Grip",
+        typeLine: "Instant",
+        manaCost: "{2}{G}",
+        splitSecond: true,
+        effects: [],
+      }),
+      "hand",
+    );
+    const responseId = put(
+      game,
+      p1.id,
+      createCardDefinition({
+        name: "Response",
+        typeLine: "Instant",
+        manaCost: "{R}",
+        keywords: ["flash"],
+        effects: [{ kind: "gain_life", playerId: "controller", amount: 1 }],
+      }),
+      "hand",
+    );
+    const rockId = put(
+      game,
+      p1.id,
+      createCardDefinition({
+        name: "Rock",
+        typeLine: "Artifact",
+        manaCost: "{2}",
+        activated: [
+          {
+            tap: true,
+            manaCost: "",
+            effects: [{ kind: "gain_life", playerId: "controller", amount: 1 }],
+            targetRequirements: [],
+          },
+        ],
+      }),
+    );
+    const landId = put(
+      game,
+      p1.id,
+      createCardDefinition({
+        name: "Forest",
+        typeLine: "Basic Land — Forest",
+        manaAbilities: [
+          {
+            produces: { G: 1 },
+            producesOptions: [],
+            producesAnyColor: false,
+            damageToController: 0,
+          },
+        ],
+      }),
+    );
+    game.turn.activePlayerId = p2.id;
+    game.turn.phase = "precombatMain";
+    game.turn.step = "precombatMain";
+    game.priorityPlayerId = p2.id;
+    game.players.find((entry) => entry.id === p2.id)!.mana.G = 1;
+    game.players.find((entry) => entry.id === p2.id)!.mana.C = 2;
+    const cast = applyAction(game, {
+      kind: "cast_spell",
+      playerId: p2.id,
+      cardId: gripId,
+      targets: [],
+    });
+    cast.priorityPlayerId = p1.id;
+    cast.players.find((entry) => entry.id === p1.id)!.mana.R = 1;
+    return { game: cast, p1, p2, responseId, rockId, landId };
+  };
+
+  it("stops an opponent casting a response", () => {
+    const { game, p1, responseId } = lockedBoard();
+    expect(() =>
+      applyAction(game, {
+        kind: "cast_spell",
+        playerId: p1.id,
+        cardId: responseId,
+        targets: [],
+      }),
+    ).toThrow(/split second/i);
+  });
+
+  it("stops a non-mana activated ability", () => {
+    const { game, p1, rockId } = lockedBoard();
+    expect(() =>
+      applyAction(game, {
+        kind: "activate_ability",
+        playerId: p1.id,
+        cardId: rockId,
+        abilityIndex: 0,
+        targets: [],
+      }),
+    ).toThrow(/split second/i);
+  });
+
+  it("still allows a MANA ability, which is the whole exception", () => {
+    const { game, p1, landId } = lockedBoard();
+    const tapped = applyAction(game, {
+      kind: "tap_for_mana",
+      playerId: p1.id,
+      cardId: landId,
+    });
+    expect(tapped.players.find((entry) => entry.id === p1.id)!.mana.G).toBe(1);
+  });
+
+  it("offers neither the cast nor the activation in the legal-action list", () => {
+    const { game, p1, responseId, rockId } = lockedBoard();
+    const actions = legalActions(game, p1.id);
+    // Nothing must be OFFERED that the action path would then refuse.
+    expect(
+      actions.some((action) => action.kind === "cast_spell" && action.cardId === responseId),
+    ).toBe(false);
+    expect(
+      actions.some(
+        (action) => action.kind === "activate_ability" && action.cardId === rockId,
+      ),
+    ).toBe(false);
+  });
+
+  it("lifts the moment the spell leaves the stack", () => {
+    const { game, p1, responseId } = lockedBoard();
+    const resolved = { ...game, stack: [] };
+    resolved.priorityPlayerId = p1.id;
+    const cast = applyAction(resolved, {
+      kind: "cast_spell",
+      playerId: p1.id,
+      cardId: responseId,
+      targets: [],
+    });
+    // Read off the STACK, not latched on the game — so there is no flag to
+    // forget to clear when the spell is countered instead of resolving.
+    expect(cast.stack).toHaveLength(1);
+  });
+
+  it("binds the caster of the split-second spell too", () => {
+    const { game, p2 } = lockedBoard();
+    const secondId = put(
+      game,
+      p2.id,
+      createCardDefinition({
+        name: "Second Spell",
+        typeLine: "Instant",
+        manaCost: "{R}",
+        keywords: ["flash"],
+        effects: [{ kind: "gain_life", playerId: "controller", amount: 1 }],
+      }),
+      "hand",
+    );
+    game.priorityPlayerId = p2.id;
+    game.players.find((entry) => entry.id === p2.id)!.mana.R = 1;
+    // "Players can't cast spells" — the caster is a player.
+    expect(() =>
+      applyAction(game, {
+        kind: "cast_spell",
+        playerId: p2.id,
+        cardId: secondId,
+        targets: [],
+      }),
+    ).toThrow(/split second/i);
+  });
+
+  // ---- Sudden Edict: the same edict, aimed at a target --------------------
+
+  it("compiles a targeted edict beside the subject one", () => {
+    const sudden = compile(
+      "Sudden Edict",
+      "Instant",
+      "Split second\nTarget player sacrifices a creature of their choice.",
+      "{1}{B}",
+    );
+    expect(sudden.notes).toEqual([]);
+    expect(sudden.definition.splitSecond).toBe(true);
+    expect(sudden.definition.targetRequirements).toEqual([{ kind: "player" }]);
+    expect(sudden.definition.effects[0]).toMatchObject({
+      kind: "choose_card",
+      chooserId: { type: "chosen", index: 0 },
+    });
+
+    // Sheoldred's printing names the trigger's SUBJECT instead, and that
+    // reading must not change.
+    const sheoldred = compile(
+      "Sheoldred, Whispering One",
+      "Legendary Creature — Phyrexian Praetor",
+      "At the beginning of each opponent's upkeep, that player sacrifices a creature of their choice.",
+      "{5}{B}{B}",
+    );
+    expect(sheoldred.definition.triggers[0]?.effects[0]).toMatchObject({
+      chooserId: { type: "subject_player" },
+    });
+  });
+
+  it("makes the TARGETED player sacrifice, not the caster", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const mineId = put(
+      game,
+      p1.id,
+      createCardDefinition({
+        name: "Mine",
+        typeLine: "Creature — Bear",
+        manaCost: "{1}{G}",
+        power: 2,
+        toughness: 2,
+      }),
+    );
+    const theirsId = put(
+      game,
+      p2.id,
+      createCardDefinition({
+        name: "Theirs",
+        typeLine: "Creature — Bear",
+        manaCost: "{1}{G}",
+        power: 2,
+        toughness: 2,
+      }),
+    );
+    const resolved = applyEffects(
+      game,
+      bindCardEffects(
+        game,
+        [
+          {
+            kind: "choose_card",
+            chooserId: { type: "chosen", index: 0 },
+            sources: [
+              { playerId: { type: "chosen", index: 0 }, zone: "battlefield", filter: "creature" },
+            ],
+            thenEffects: [{ kind: "sacrifice", cardId: "chosen" }],
+          },
+        ],
+        {
+          controllerId: p1.id,
+          sourceId: null,
+          targets: [{ type: "player", playerId: p2.id }],
+          targetRequirements: [{ kind: "player" }],
+        },
+      ),
+    );
+    const prompt = resolved.prompts.find((entry) => entry.kind === "choose_card");
+    expect(prompt?.kind === "choose_card" && prompt.playerId).toBe(p2.id);
+    // The caster's own creature is never in the pool.
+    const legal =
+      prompt?.kind === "choose_card"
+        ? legalIdsForChooseSources(resolved, prompt.sources)
+        : [];
+    expect(legal).toContain(theirsId);
+    expect(legal).not.toContain(mineId);
+  });
+
+  it("round trips split second", () => {
+    const { game, p1 } = twoPlayers();
+    const definition = createCardDefinition({
+      name: "Krosan Grip",
+      typeLine: "Instant",
+      manaCost: "{2}{G}",
+      splitSecond: true,
+    });
+    put(game, p1.id, definition, "hand");
+    const round = parseGameState(serializeGameState(game));
+    expect(round.definitions[definition.id]?.splitSecond).toBe(true);
+  });
+});

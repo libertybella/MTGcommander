@@ -989,6 +989,7 @@ export function parseGameState(json: string): GameState {
               ),
             },
           }),
+      ...(def.splitSecond === true ? { splitSecond: true } : {}),
       ...(def.escalate === undefined
         ? {}
         : { escalate: expectString(def.escalate, `definition.${id}.escalate`) }),

@@ -11,7 +11,7 @@ import { hasKeyword } from "./keywords";
 import { triggerConditionHolds } from "./triggers";
 import { emptyManaPool } from "./createGame";
 import { pendingBlockerPlayer } from "./combat";
-import { reliefAdjustedCost, affinityArtifactDiscount, activationNonManaPayment, allBattlefieldCreatureCount, altCastPayment, canActivateTapAbility, canPlayLandsFromGraveyard, castCostReduction, castableFromTop, controlsCommander, freeEquipGranted, hasFlashGrant, landDropAllowance, lockedByAbolisher, lockedFromCasting, noncreatureSpellCap, opponentControlsMoreLands, findFreeHandGrantIndex, opponentsCastLockedToHand, permanentsControlledBy, selfDiscountAmount, staticFreeCastCap, topOfLibraryGrant } from "./derived";
+import { splitSecondActive, reliefAdjustedCost, affinityArtifactDiscount, activationNonManaPayment, allBattlefieldCreatureCount, altCastPayment, canActivateTapAbility, canPlayLandsFromGraveyard, castCostReduction, castableFromTop, controlsCommander, freeEquipGranted, hasFlashGrant, landDropAllowance, lockedByAbolisher, lockedFromCasting, noncreatureSpellCap, opponentControlsMoreLands, findFreeHandGrantIndex, opponentsCastLockedToHand, permanentsControlledBy, selfDiscountAmount, staticFreeCastCap, topOfLibraryGrant } from "./derived";
 import { canPayManaCost, parseManaCost, type ParsedManaCost } from "./mana";
 import { colorsAmongControlled, manaAbilitiesFor, manaTapOptionsFor } from "./manaOptions";
 import { isMulliganOpen } from "./mulligan";
@@ -444,6 +444,12 @@ function abilityUsable(
   ability: ActivatedAbility,
   potential: PotentialMana,
 ): boolean {
+  // Split second (CR 702.61): no activated ability that is not a mana
+  // ability, for anyone. Mana abilities come through `producerUsableNow`
+  // and are deliberately untouched.
+  if (splitSecondActive(state)) {
+    return false;
+  }
   const fromZone = ability.zone ?? "battlefield";
   if (card.zone !== fromZone) {
     return false;
@@ -593,7 +599,12 @@ export function legalActions(state: GameState, playerId: PlayerId): LegalAction[
   // Silence adds a cast-only lock for everyone but its caster.
   const silenced = Boolean(state.castLockUntilEot && state.castLockUntilEot !== playerId);
   const abolisherLocked = lockedByAbolisher(state, playerId);
-  const abolished = lockedFromCasting(state, playerId) || silenced;
+  // Split second (CR 702.61) locks every non-mana action for everyone while
+  // the spell is on the stack. Folded into the cast lock and checked again
+  // at each activation below, so nothing is OFFERED that the action path
+  // would then refuse.
+  const splitSecond = splitSecondActive(state);
+  const abolished = lockedFromCasting(state, playerId) || silenced || splitSecond;
   const actions: LegalAction[] = [];
 
   // Drannith Magistrate: only hand casts (land PLAYS from the graveyard

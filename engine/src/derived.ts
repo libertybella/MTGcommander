@@ -899,6 +899,24 @@ export function canPlayLandFromTop(state: GameState, playerId: string, cardId: s
  * that does not name a card gets the unrestricted grants only.
  */
 /**
+ * Split second (CR 702.61): a spell with it is on the stack, so nothing but
+ * a mana ability may be cast or activated.
+ *
+ * Read off the stack rather than latched on the game, because the lock ends
+ * the moment the spell leaves — countered, resolved or otherwise — and a
+ * flag would have to be cleared at every one of those exits.
+ */
+export function splitSecondActive(state: GameState): boolean {
+  return state.stack.some((object) => {
+    if (object.kind !== "spell" || !object.sourceId) {
+      return false;
+    }
+    const card = state.cards[object.sourceId];
+    return card ? state.definitions[card.definitionId]?.splitSecond === true : false;
+  });
+}
+
+/**
  * May this permanent's TAP abilities be activated right now, summoning
  * sickness and all? Haste answers yes; so does Thousand-Year Elixir, which
  * grants the permission for ABILITIES only — a sick creature under it still

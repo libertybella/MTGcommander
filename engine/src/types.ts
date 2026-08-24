@@ -328,6 +328,13 @@ export type CardDefinition = {
    */
   escalate?: string;
   /**
+   * Split second (CR 702.61): while this spell is on the stack, players
+   * can't cast spells or activate abilities that aren't mana abilities.
+   * A property of the SPELL on the stack, so it is read off whatever is
+   * there rather than stored on the game.
+   */
+  splitSecond?: boolean;
+  /**
    * Storm (CR 702.40): casting this copies it once per spell cast before it
    * this turn. Documented approximation: copies are created immediately on
    * cast (not via a stacked trigger) and keep the original's targets.

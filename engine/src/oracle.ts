@@ -246,6 +246,7 @@ function compileOneFace(card: OracleCard, definitionId: string): OracleCompileRe
     ...(compiled.topOfLibrary ? { topOfLibrary: { ...compiled.topOfLibrary } } : {}),
     ...(compiled.flashback ? { flashback: { ...compiled.flashback } } : {}),
     ...(compiled.evoke ? { evoke: { ...compiled.evoke } } : {}),
+    ...(compiled.splitSecond ? { splitSecond: true } : {}),
     ...(compiled.blockPowerGate ? { blockPowerGate: { ...compiled.blockPowerGate } } : {}),
     ...(compiled.echo ? { echo: { ...compiled.echo } } : {}),
     ...(compiled.escalate ? { escalate: compiled.escalate } : {}),

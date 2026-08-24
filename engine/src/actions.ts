@@ -8,7 +8,7 @@ import {
 import { characteristicsOf, isCommander, isCreature, isInstant, isInstantOrSorcery, isLand, isLegendary, isMainPhase } from "./cardTypes";
 import { abilityLifeCost } from "./commanderIdentity";
 import { cloneGameState } from "./clone";
-import { costRelief, affinityArtifactDiscount, allBattlefieldCreatureCount, canActivateTapAbility, canPlayLandFromTop, canPlayLandsFromGraveyard, castCostReduction, castableFromTop, controlsCommander, creaturePower, freeEquipGranted, hasFlashGrant, activationNonManaPayment, altCastPayment, landDropAllowance, manaTapMultiplier, lockedByAbolisher, lockedFromCasting, noncreatureSpellCap, opponentControlsMoreLands, findFreeHandGrantIndex, opponentsCastLockedToHand, selfDiscountAmount, staticFreeCastCap, usesOncePerTurnFreeCast , topOfLibraryGrant } from "./derived";
+import { splitSecondActive, costRelief, affinityArtifactDiscount, allBattlefieldCreatureCount, canActivateTapAbility, canPlayLandFromTop, canPlayLandsFromGraveyard, castCostReduction, castableFromTop, controlsCommander, creaturePower, freeEquipGranted, hasFlashGrant, activationNonManaPayment, altCastPayment, landDropAllowance, manaTapMultiplier, lockedByAbolisher, lockedFromCasting, noncreatureSpellCap, opponentControlsMoreLands, findFreeHandGrantIndex, opponentsCastLockedToHand, selfDiscountAmount, staticFreeCastCap, usesOncePerTurnFreeCast , topOfLibraryGrant } from "./derived";
 import { eliminatePlayerInPlace } from "./elimination";
 import { applyEffects, bindCardEffects, devotionTo } from "./effects";
 import { hasKeyword } from "./keywords";
@@ -306,6 +306,11 @@ function validateCast(
   // Grand Abolisher / Voice of Victory: no casting on the lock's turn.
   if (lockedFromCasting(state, playerId)) {
     throw new Error("An opponent's permanent stops you from casting spells this turn");
+  }
+  // Split second (CR 702.61): nothing but a mana ability, for anyone,
+  // including the caster of the split-second spell itself.
+  if (splitSecondActive(state)) {
+    throw new Error("A spell with split second is on the stack");
   }
   // Silence: everyone but the caster of the lock is shut out this turn.
   if (state.castLockUntilEot && state.castLockUntilEot !== playerId) {
@@ -1569,6 +1574,11 @@ function applyActivateAbility(
   }
   if (ability.tap && !canActivateTapAbility(state, cardId)) {
     throw new Error(`Card ${cardId} has summoning sickness`);
+  }
+  // Split second stops every non-mana activation. The mana-tap path is a
+  // separate entry point and is deliberately left alone.
+  if (splitSecondActive(state)) {
+    throw new Error("A spell with split second is on the stack");
   }
   const player = state.players.find((entry) => entry.id === playerId);
   if (!player) {

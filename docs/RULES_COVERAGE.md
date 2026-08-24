@@ -870,6 +870,21 @@ more questions it can now ask:
   (Bennie Bracks). Reads the existing per-player `createdTokenThisTurn`
   list, and asks whether the CONTROLLER is in it — an opponent's Treasure
   must not satisfy it.
+- **Split second (CR 702.61)** — while the spell is on the stack, no player
+  may cast a spell or activate a non-mana ability, the spell's own caster
+  included. Read off the STACK rather than latched on the game, because the
+  lock ends the moment the spell leaves — countered, resolved or fizzled —
+  and a flag would have to be cleared at every one of those exits.
+
+  Checked in the cast validator, the activation validator, and
+  `abilityUsable`, so nothing is OFFERED that the action path then refuses.
+  Mana abilities come through `producerUsableNow` and are deliberately left
+  alone, which is the whole exception.
+
+- **The edict now aims at a target as well as a subject** — Sudden Edict
+  names "target player"; Sheoldred names the trigger's subject. Same edict,
+  and the referent is the only difference between them.
+
 - **`attackers_against_you_at_least`** — Mangara. Planeswalkers are not
   separate defenders in this engine (every attack names a PLAYER), so "you
   and/or planeswalkers you control" is exactly "you": the two readings agree

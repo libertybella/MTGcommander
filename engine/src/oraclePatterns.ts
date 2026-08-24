@@ -114,6 +114,7 @@ export type CompiledOracleText = {
   topOfLibrary?: TopOfLibraryGrant;
   flashback?: CardDefinition["flashback"];
   evoke?: CardDefinition["evoke"];
+  splitSecond?: boolean;
   blockPowerGate?: CardDefinition["blockPowerGate"];
   echo?: CardDefinition["echo"];
   escalate?: CardDefinition["escalate"];
@@ -7761,22 +7762,23 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
   // player whose step began, not every opponent. The same edict machinery as
   // below, aimed at the trigger's subject.
   const subjectEdict = sentence.match(
-    /^(?:That player|They) sacrifices? a creature(?: of their choice)?$/i,
+    /^(That player|They|Target player) sacrifices? a creature(?: of their choice)?$/i,
   );
-  if (subjectEdict) {
+  if (subjectEdict?.[1]) {
+    // Sudden Edict names a TARGET; Sheoldred's names the trigger's subject.
+    // Same edict, two ways of saying who — so the referent is the only
+    // difference between them.
+    const targeted = /^target player$/i.test(subjectEdict[1]);
+    const who: PlayerSelector = targeted
+      ? { type: "chosen", index: 0 }
+      : { type: "subject_player" };
     return {
-      targetRequirements: [],
+      targetRequirements: targeted ? [{ kind: "player" }] : [],
       effects: [
         {
           kind: "choose_card",
-          chooserId: { type: "subject_player" },
-          sources: [
-            {
-              playerId: { type: "subject_player" },
-              zone: "battlefield",
-              filter: "creature",
-            },
-          ],
+          chooserId: who,
+          sources: [{ playerId: who, zone: "battlefield", filter: "creature" }],
           thenEffects: [{ kind: "sacrifice", cardId: "chosen" }],
         },
       ],
@@ -13156,6 +13158,12 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
 
     if (/^Storm$/i.test(sentence)) {
       result.storm = true;
+      continue;
+    }
+
+    // Split second (CR 702.61).
+    if (/^Split second$/i.test(sentence)) {
+      result.splitSecond = true;
       continue;
     }
 
