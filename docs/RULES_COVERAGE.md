@@ -870,6 +870,23 @@ more questions it can now ask:
   (Bennie Bracks). Reads the existing per-player `createdTokenThisTurn`
   list, and asks whether the CONTROLLER is in it — an opponent's Treasure
   must not satisfy it.
+- **`targetingLifeTax`** — Terror of the Peaks: "Spells your opponents cast
+  that TARGET this permanent cost an additional 3 life to cast." A COST,
+  not a ward trigger. It is paid as the spell is cast, there is no prompt
+  and nothing to decline, and a caster who cannot pay it cannot cast the
+  spell at all (CR 119.4). That is what makes the card hard to remove
+  rather than merely annoying to remove.
+
+  Summed across targets, because two taxing permanents both charge and one
+  spell may aim at both — and silenced by `abilitiesRemoved`, since the tax
+  is a static ability like any other.
+
+- **Terror's damage body** differs from Warstorm Surge's in the DEALER
+  only: "IT deals … ITS power" makes the entering creature both, while
+  "~ deals … THAT CREATURE's power" keeps the source on the permanent with
+  the trigger. A second clause beside the first, with a test pinning
+  Warstorm Surge unchanged.
+
 - **`subject_not_put_by_watcher`** — Kodama of the East Tree's "if it
   wasn't put onto the battlefield with THIS ability". The intervening `if`
   IS the loop guard: without it, one permanent entering chains the whole

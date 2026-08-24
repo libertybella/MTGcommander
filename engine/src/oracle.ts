@@ -209,6 +209,7 @@ function compileOneFace(card: OracleCard, definitionId: string): OracleCompileRe
     ...(compiled.noMaxHandSize ? { noMaxHandSize: true } : {}),
     ...(compiled.landsEnterUntapped ? { landsEnterUntapped: true } : {}),
     ...(compiled.totemArmor ? { totemArmor: true } : {}),
+    ...(compiled.targetingLifeTax ? { targetingLifeTax: compiled.targetingLifeTax } : {}),
     ...(compiled.handSizeEffect ? { handSizeEffect: compiled.handSizeEffect } : {}),
     ...(compiled.opponentsDrawCap === undefined
       ? {}

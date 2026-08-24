@@ -672,6 +672,9 @@ export function parseGameState(json: string): GameState {
       ...(def.noMaxHandSize === true ? { noMaxHandSize: true } : {}),
       ...(def.landsEnterUntapped === true ? { landsEnterUntapped: true } : {}),
       ...(def.totemArmor === true ? { totemArmor: true } : {}),
+      ...(def.targetingLifeTax === undefined
+        ? {}
+        : { targetingLifeTax: expectNumber(def.targetingLifeTax, "definition.targetingLifeTax") }),
       ...(def.handSizeEffect === undefined
         ? {}
         : {

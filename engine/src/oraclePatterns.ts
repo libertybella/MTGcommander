@@ -70,6 +70,7 @@ export type CompiledOracleText = {
   noMaxHandSize?: boolean;
   landsEnterUntapped?: boolean;
   totemArmor?: boolean;
+  targetingLifeTax?: number;
   handSizeEffect?: CardDefinition["handSizeEffect"];
   opponentsDrawCap?: number;
   noncreatureSpellCap?: number;
@@ -4196,6 +4197,28 @@ function compileSimpleClauseInner(sentence: string): SimpleClause | null {
           chooserId: "controller",
           sources: [{ playerId: "controller", zone: "battlefield", filter: "land" }],
           thenEffects: [{ kind: "move_card", cardId: "chosen_card", toZone: "hand" }],
+        },
+      ],
+    };
+  }
+
+  /**
+   * Terror of the Peaks: the same reading, but the DEALER is the permanent
+   * with the trigger rather than the creature that entered. Warstorm Surge
+   * says "it deals … its power"; Terror says "~ deals … that creature's
+   * power", so only the source differs.
+   */
+  if (
+    /^~ deals damage equal to that creature's power to any target$/i.test(sentence)
+  ) {
+    return {
+      targetRequirements: [{ kind: "player_or_creature" }],
+      effects: [
+        {
+          kind: "deal_damage",
+          sourceId: "self",
+          target: { type: "chosen", index: 0 },
+          amount: "subject_power",
         },
       ],
     };
@@ -14993,6 +15016,19 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
         result.notCreatureBelowDevotion = { color, threshold };
         continue;
       }
+    }
+
+    /**
+     * Terror of the Peaks: "Spells your opponents cast that target ~ cost
+     * an additional N life to cast." A cost increase, not a ward trigger:
+     * it is paid as the spell is cast and there is nothing to decline.
+     */
+    const targetTax = sentence.match(
+      /^Spells your opponents cast that target ~ cost an additional (\d+) life to cast$/i,
+    );
+    if (targetTax?.[1]) {
+      result.targetingLifeTax = Number(targetTax[1]);
+      continue;
     }
 
     // Spelunking: the mirror of the enters-tapped statics — it cancels one

@@ -25,6 +25,7 @@ import { characteristicsOf } from "./cardTypes";
 import { keywordCoverage } from "./keywordCatalog";
 import { lookedAtCardIds } from "./prompt";
 import { manaValueOf } from "./characteristics";
+import { targetingLifeTaxFor } from "./derived";
 import { hasKeyword } from "./keywords";
 import { dispatchEventsInPlace, triggerConditionHolds } from "./triggers";
 import { applyCombatDamage, blockRestriction, declareAttackers, declareBlockers } from "./combat";
@@ -51577,5 +51578,211 @@ describe("wave 334: a chain that must not feed itself", () => {
     // The MARK is instance state and must survive too, or a reopened table
     // lets the chain restart.
     expect(round.cards[kodamaId]?.putByAbilityOf).toBe(kodamaId);
+  });
+});
+
+describe("wave 335: a tax you cannot decline", () => {
+  const compile = (
+    name: string,
+    typeLine: string,
+    oracleText: string,
+    manaCost = "",
+    pt: [string, string] | null = null,
+  ) =>
+    compileOracleCard({
+      oracleId: name.toLowerCase().replace(/[^a-z]+/g, "-"),
+      name,
+      manaCost,
+      typeLine,
+      power: pt?.[0] ?? null,
+      toughness: pt?.[1] ?? null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  const put = (
+    game: GameState,
+    ownerId: string,
+    definition: CardDefinition,
+    zone: "hand" | "battlefield" = "battlefield",
+  ) => {
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({ definitionId: definition.id, ownerId, zone });
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === ownerId)!.zones[zone].push(card.id);
+    if (zone === "battlefield") {
+      card.summoningSick = false;
+    }
+    return card.id;
+  };
+
+  const terrorText =
+    "Flying\nSpells your opponents cast that target this creature cost an additional 3 life to cast.\nWhenever another creature you control enters, this creature deals damage equal to that creature's power to any target.";
+
+  it("compiles both halves", () => {
+    const compiled = compile(
+      "Terror of the Peaks",
+      "Legendary Creature — Dragon",
+      terrorText,
+      "{3}{R}{R}",
+      ["5", "4"],
+    );
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.targetingLifeTax).toBe(3);
+    expect(compiled.definition.triggers[0]?.effects[0]).toEqual({
+      kind: "deal_damage",
+      // The DEALER is the Terror, not the creature that entered.
+      sourceId: "self",
+      target: { type: "chosen", index: 0 },
+      amount: "subject_power",
+    });
+  });
+
+  it("leaves Warstorm Surge's reading alone", () => {
+    // "IT deals … ITS power" — the entering creature is both dealer and
+    // amount there. Only the source differs between the two cards.
+    const surge = compile(
+      "Warstorm Surge",
+      "Enchantment",
+      "Whenever a creature you control enters, it deals damage equal to its power to any target.",
+      "{5}{R}",
+    );
+    expect(surge.notes).toEqual([]);
+    expect(surge.definition.triggers[0]?.effects[0]).toMatchObject({ sourceId: null });
+  });
+
+  const terror = (tax = 3) =>
+    createCardDefinition({
+      name: "Terror of the Peaks",
+      typeLine: "Legendary Creature — Dragon",
+      manaCost: "{3}{R}{R}",
+      power: 5,
+      toughness: 4,
+      targetingLifeTax: tax,
+    });
+
+  const shock = () =>
+    createCardDefinition({
+      name: "Shock",
+      typeLine: "Instant",
+      manaCost: "{R}",
+      effects: [
+        {
+          kind: "deal_damage",
+          sourceId: "self",
+          target: { type: "chosen", index: 0 },
+          amount: 2,
+        },
+      ],
+      targetRequirements: [{ kind: "creature" }],
+    });
+
+  const aim = (game: GameState, casterId: string, victimId: string) => {
+    const spellId = put(game, casterId, shock(), "hand");
+    game.players.find((entry) => entry.id === casterId)!.mana.R = 1;
+    game.turn.activePlayerId = casterId;
+    game.turn.phase = "precombatMain";
+    game.turn.step = "precombatMain";
+    game.priorityPlayerId = casterId;
+    return applyAction(game, {
+      kind: "cast_spell",
+      playerId: casterId,
+      cardId: spellId,
+      targets: [{ type: "creature", cardId: victimId }],
+    });
+  };
+
+  it("charges the life as the spell is cast", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const terrorId = put(game, p1.id, terror());
+    const before = game.players.find((entry) => entry.id === p2.id)!.life;
+    const cast = aim(game, p2.id, terrorId);
+    // No prompt: this is a COST, not a ward trigger. There is nothing to
+    // decline, which is why the card is hard to remove rather than merely
+    // annoying to remove.
+    expect(cast.prompts).toEqual([]);
+    expect(cast.stack).toHaveLength(1);
+    expect(cast.players.find((entry) => entry.id === p2.id)!.life).toBe(before - 3);
+  });
+
+  it("does not charge its own controller", () => {
+    const { game, p1 } = twoPlayers();
+    const terrorId = put(game, p1.id, terror());
+    const before = game.players.find((entry) => entry.id === p1.id)!.life;
+    const cast = aim(game, p1.id, terrorId);
+    expect(cast.players.find((entry) => entry.id === p1.id)!.life).toBe(before);
+  });
+
+  it("does not charge for a spell aimed elsewhere", () => {
+    const { game, p1, p2 } = twoPlayers();
+    put(game, p1.id, terror());
+    const otherId = put(
+      game,
+      p1.id,
+      createCardDefinition({
+        name: "Bystander",
+        typeLine: "Creature — Bear",
+        manaCost: "{1}{G}",
+        power: 2,
+        toughness: 2,
+      }),
+    );
+    const before = game.players.find((entry) => entry.id === p2.id)!.life;
+    const cast = aim(game, p2.id, otherId);
+    expect(cast.players.find((entry) => entry.id === p2.id)!.life).toBe(before);
+  });
+
+  it("refuses a caster who cannot pay", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const terrorId = put(game, p1.id, terror());
+    game.players.find((entry) => entry.id === p2.id)!.life = 2;
+    // CR 119.4: life is payable only down to zero, and a cost that cannot
+    // be paid stops the cast.
+    expect(() => aim(game, p2.id, terrorId)).toThrow(/life/i);
+  });
+
+  it("sums two taxing permanents", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const firstId = put(game, p1.id, terror());
+    const secondId = put(game, p1.id, terror(2));
+    expect(
+      targetingLifeTaxFor(game, p2.id, [
+        { type: "creature", cardId: firstId },
+        { type: "creature", cardId: secondId },
+      ]),
+    ).toBe(5);
+  });
+
+  it("charges nothing once the abilities are gone", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const terrorId = put(game, p1.id, terror());
+    put(
+      game,
+      p1.id,
+      createCardDefinition({
+        name: "Humility",
+        typeLine: "Enchantment",
+        manaCost: "{2}{W}{W}",
+        staticAbilities: [
+          {
+            selector: { scope: "all", types: ["creature"] },
+            effect: { kind: "remove_all_abilities" },
+          },
+        ],
+      }),
+    );
+    // The tax is a static ability like any other.
+    expect(
+      targetingLifeTaxFor(game, p2.id, [{ type: "creature", cardId: terrorId }]),
+    ).toBe(0);
+  });
+
+  it("round trips the tax", () => {
+    const { game, p1 } = twoPlayers();
+    const definition = terror();
+    put(game, p1.id, definition);
+    const round = parseGameState(serializeGameState(game));
+    expect(round.definitions[definition.id]?.targetingLifeTax).toBe(3);
   });
 });

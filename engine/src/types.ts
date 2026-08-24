@@ -217,6 +217,14 @@ export type CardDefinition = {
    * to fall behind.
    */
   spellsCantBeCountered?: { types?: string[] };
+  /**
+   * Terror of the Peaks: "Spells your opponents cast that TARGET this
+   * permanent cost an additional N life to cast." A cost increase paid in
+   * life, not a ward trigger — it is paid as the spell is cast and there
+   * is nothing to decline, which is why the card is hard to remove rather
+   * than merely annoying to remove.
+   */
+  targetingLifeTax?: number;
   /** Grand Abolisher: on this permanent's controller's turn, opponents can't
    * cast spells or activate artifact/creature/enchantment abilities. */
   opponentsLockedDuringYourTurn?: boolean;

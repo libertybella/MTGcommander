@@ -8,7 +8,7 @@ import {
 import { characteristicsOf, isCommander, isCreature, isInstant, isInstantOrSorcery, isLand, isLegendary, isMainPhase } from "./cardTypes";
 import { abilityLifeCost } from "./commanderIdentity";
 import { cloneGameState } from "./clone";
-import { splitSecondActive, costRelief, affinityArtifactDiscount, allBattlefieldCreatureCount, canActivateTapAbility, canPlayLandFromTop, canPlayLandsFromGraveyard, castCostReduction, castableFromTop, controlsCommander, creaturePower, freeEquipGranted, hasFlashGrant, activationNonManaPayment, altCastPayment, landDropAllowance, manaTapMultiplier, lockedByAbolisher, lockedFromCasting, noncreatureSpellCap, opponentControlsMoreLands, findFreeHandGrantIndex, opponentsCastLockedToHand, selfDiscountAmount, staticFreeCastCap, usesOncePerTurnFreeCast , topOfLibraryGrant } from "./derived";
+import { targetingLifeTaxFor, splitSecondActive, costRelief, affinityArtifactDiscount, allBattlefieldCreatureCount, canActivateTapAbility, canPlayLandFromTop, canPlayLandsFromGraveyard, castCostReduction, castableFromTop, controlsCommander, creaturePower, freeEquipGranted, hasFlashGrant, activationNonManaPayment, altCastPayment, landDropAllowance, manaTapMultiplier, lockedByAbolisher, lockedFromCasting, noncreatureSpellCap, opponentControlsMoreLands, findFreeHandGrantIndex, opponentsCastLockedToHand, selfDiscountAmount, staticFreeCastCap, usesOncePerTurnFreeCast , topOfLibraryGrant } from "./derived";
 import { eliminatePlayerInPlace } from "./elimination";
 import { applyEffects, bindCardEffects, devotionTo } from "./effects";
 import { hasKeyword } from "./keywords";
@@ -928,6 +928,25 @@ function applyCastSpell(
     if (payer) {
       payer.life -= flashbackLife;
       paid.log.push({ kind: "life_change", playerId, delta: -flashbackLife });
+    }
+  }
+  // Terror of the Peaks: an additional cost in life for each opponent's
+  // permanent this spell targets. Summed rather than taken once, because
+  // two Terrors both tax and one spell may aim at both.
+  const targetingTax = targetingLifeTaxFor(paid, playerId, targets ?? []);
+  if (targetingTax > 0) {
+    // CR 119.4: life may be paid only down to zero, and this is a COST —
+    // a caster who cannot pay it cannot cast the spell at all.
+    const beforeTax = paid.players.find((entry) => entry.id === playerId);
+    if (!beforeTax || beforeTax.life < targetingTax) {
+      throw new Error(`Pay ${targetingTax} life to target that`);
+    }
+  }
+  if (targetingTax > 0) {
+    const payer = paid.players.find((entry) => entry.id === playerId);
+    if (payer) {
+      payer.life -= targetingTax;
+      paid.log.push({ kind: "life_change", playerId, delta: -targetingTax });
     }
   }
   // The alternative cast cost is paid here, alongside the other cost halves

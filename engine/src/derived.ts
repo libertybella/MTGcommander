@@ -10,6 +10,36 @@ import type { ActivatedAbility, AlternativeCastCost, CardDefinition, CardInstanc
  * discover/cascade path needs the same question answered, and two copies of
  * a rule this small is exactly how the two drift apart.
  */
+/**
+ * Terror of the Peaks: the life a spell must pay for the opponents'
+ * permanents it TARGETS. Summed over the targets, because two taxing
+ * permanents both charge and one spell may aim at both.
+ *
+ * A permanent whose abilities have been removed charges nothing — the tax
+ * is a static ability like any other.
+ */
+export function targetingLifeTaxFor(
+  state: GameState,
+  casterId: PlayerId,
+  targets: Array<{ type: string; cardId?: CardInstanceId }>,
+): number {
+  let total = 0;
+  for (const target of targets) {
+    if (!target.cardId) {
+      continue;
+    }
+    const card = state.cards[target.cardId];
+    if (!card || card.zone !== "battlefield" || card.controllerId === casterId) {
+      continue;
+    }
+    if (abilitiesRemoved(state, card.id)) {
+      continue;
+    }
+    total += state.definitions[card.definitionId]?.targetingLifeTax ?? 0;
+  }
+  return total;
+}
+
 export function inSorceryWindow(state: GameState, playerId: PlayerId): boolean {
   return (
     playerId === state.turn.activePlayerId && isMainPhase(state) && state.stack.length === 0
