@@ -47266,3 +47266,284 @@ describe("wave 316: conditions that name a commander, a turn, and a batch", () =
     expect(parsed.triggers[0]?.condition).toEqual({ kind: "controls_commander" });
   });
 });
+
+describe("wave 317: a count plus one, and a toughness read before it dies", () => {
+  const compile = (
+    name: string,
+    typeLine: string,
+    oracleText: string,
+    manaCost = "",
+    pt: [string, string] | null = null,
+  ) =>
+    compileOracleCard({
+      oracleId: name.toLowerCase().replace(/[^a-z]+/g, "-"),
+      name,
+      manaCost,
+      typeLine,
+      power: pt?.[0] ?? null,
+      toughness: pt?.[1] ?? null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  const put = (
+    game: GameState,
+    ownerId: string,
+    definition: CardDefinition,
+    zone: "hand" | "battlefield" = "battlefield",
+  ) => {
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({ definitionId: definition.id, ownerId, zone });
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === ownerId)!.zones[zone].push(card.id);
+    if (zone === "battlefield") {
+      card.summoningSick = false;
+    }
+    return card.id;
+  };
+
+  // ---- Sea Gate Restoration ----------------------------------------------
+
+  it("compiles the draw as a live count plus a flat bonus", () => {
+    const compiled = compile(
+      "Sea Gate Restoration",
+      "Sorcery",
+      "Draw cards equal to the number of cards in your hand plus one. You have no maximum hand size for the rest of the game.",
+      "{4}{U}{U}",
+    );
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.effects[0]).toEqual({
+      kind: "draw",
+      playerId: "controller",
+      count: 1,
+      countFromDynamicPlus: { count: "cards_in_your_hand", plus: 1 },
+    });
+    expect(compiled.definition.effects[1]).toEqual({
+      kind: "grant_no_max_hand_size",
+      playerId: "controller",
+    });
+  });
+
+  it("draws hand size plus one, and one from an empty hand", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 30);
+    const player = game.players.find((entry) => entry.id === p1.id)!;
+    player.zones.hand = [];
+    const empty = bindCardEffects(
+      game,
+      [
+        {
+          kind: "draw",
+          playerId: "controller",
+          count: 1,
+          countFromDynamicPlus: { count: "cards_in_your_hand", plus: 1 },
+        },
+      ],
+      { controllerId: p1.id, sourceId: null },
+    );
+    // The bonus is added AFTER the count, so an empty hand still draws one.
+    expect(empty[0]).toMatchObject({ count: 1 });
+
+    for (let index = 0; index < 3; index += 1) {
+      const spare = createCardDefinition({
+        name: `Spare${index}`,
+        typeLine: "Sorcery",
+        manaCost: "{1}",
+      });
+      game.definitions[spare.id] = spare;
+      const card = createCardInstance({
+        definitionId: spare.id,
+        ownerId: p1.id,
+        zone: "hand",
+      });
+      game.cards[card.id] = card;
+      player.zones.hand.push(card.id);
+    }
+    const full = bindCardEffects(
+      game,
+      [
+        {
+          kind: "draw",
+          playerId: "controller",
+          count: 1,
+          countFromDynamicPlus: { count: "cards_in_your_hand", plus: 1 },
+        },
+      ],
+      { controllerId: p1.id, sourceId: null },
+    );
+    expect(full[0]).toMatchObject({ count: 4 });
+  });
+
+  it("lifts the hand-size cap for the rest of the game", () => {
+    const { game, p1, p2 } = twoPlayers();
+    expect(maxHandSizeOf(game, p1.id)).toBe(7);
+    const granted = applyEffects(
+      game,
+      bindCardEffects(
+        game,
+        [{ kind: "grant_no_max_hand_size", playerId: "controller" }],
+        { controllerId: p1.id, sourceId: null },
+      ),
+    );
+    // A player-level grant: there is no permanent to read it off, and
+    // nothing sweeps it away at cleanup.
+    expect(maxHandSizeOf(granted, p1.id)).toBeNull();
+    expect(maxHandSizeOf(granted, p2.id)).toBe(7);
+  });
+
+  // ---- Noxious Gearhulk ---------------------------------------------------
+
+  it("compiles the destroy and its lifegain rider", () => {
+    const compiled = compile(
+      "Noxious Gearhulk",
+      "Artifact Creature — Horror",
+      "Menace\nWhen ~ enters, you may destroy another target creature. If a creature is destroyed this way, you gain life equal to its toughness.",
+      "{5}{B}",
+      ["5", "4"],
+    );
+    expect(compiled.notes).toEqual([]);
+    const trigger = compiled.definition.triggers[0];
+    expect(trigger?.targetRequirements).toEqual([{ kind: "creature", excludeSource: true }]);
+    expect(trigger?.effects).toEqual([
+      { kind: "move_card", cardId: { type: "chosen", index: 0 }, toZone: "graveyard" },
+      { kind: "gain_life", playerId: "controller", amount: "target_toughness" },
+    ]);
+  });
+
+  it("reads the toughness before the creature dies", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const gearhulkId = put(
+      game,
+      p1.id,
+      createCardDefinition({
+        name: "Noxious Gearhulk",
+        typeLine: "Artifact Creature — Horror",
+        manaCost: "{5}{B}",
+        power: 5,
+        toughness: 4,
+      }),
+    );
+    const victimId = put(
+      game,
+      p2.id,
+      createCardDefinition({
+        name: "Big Victim",
+        typeLine: "Creature — Wurm",
+        manaCost: "{5}{G}",
+        power: 6,
+        toughness: 6,
+      }),
+    );
+    const before = game.players.find((entry) => entry.id === p1.id)!.life;
+    const resolved = applyEffects(
+      game,
+      bindCardEffects(
+        game,
+        [
+          { kind: "move_card", cardId: { type: "chosen", index: 0 }, toZone: "graveyard" },
+          { kind: "gain_life", playerId: "controller", amount: "target_toughness" },
+        ],
+        {
+          controllerId: p1.id,
+          sourceId: gearhulkId,
+          targets: [{ type: "creature", cardId: victimId }],
+          targetRequirements: [{ kind: "creature", excludeSource: true }],
+        },
+      ),
+    );
+    expect(resolved.cards[victimId]?.zone).toBe("graveyard");
+    // Effects bind as a BATCH, so the toughness is read while the creature
+    // is still there. A dead creature has none to read.
+    expect(resolved.players.find((entry) => entry.id === p1.id)!.life).toBe(before + 6);
+  });
+
+  it("reads the COMPUTED toughness, counters and all", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const victimId = put(
+      game,
+      p2.id,
+      createCardDefinition({
+        name: "Grown",
+        typeLine: "Creature — Bear",
+        manaCost: "{1}{G}",
+        power: 2,
+        toughness: 2,
+      }),
+    );
+    game.cards[victimId]!.counters["p1p1"] = 3;
+    const before = game.players.find((entry) => entry.id === p1.id)!.life;
+    const resolved = applyEffects(
+      game,
+      bindCardEffects(
+        game,
+        [{ kind: "gain_life", playerId: "controller", amount: "target_toughness" }],
+        {
+          controllerId: p1.id,
+          sourceId: null,
+          targets: [{ type: "creature", cardId: victimId }],
+          targetRequirements: [{ kind: "creature" }],
+        },
+      ),
+    );
+    expect(resolved.players.find((entry) => entry.id === p1.id)!.life).toBe(before + 5);
+  });
+
+  it("cannot aim the destroy at the Gearhulk itself", () => {
+    const { game, p1 } = twoPlayers();
+    const gearhulkId = put(
+      game,
+      p1.id,
+      createCardDefinition({
+        name: "Noxious Gearhulk",
+        typeLine: "Artifact Creature — Horror",
+        manaCost: "{5}{B}",
+        power: 5,
+        toughness: 4,
+      }),
+    );
+    // "ANOTHER target creature".
+    expect(
+      isChosenTargetLegal(
+        game,
+        { kind: "creature", excludeSource: true },
+        { type: "creature", cardId: gearhulkId },
+        p1.id,
+        undefined,
+        gearhulkId,
+      ),
+    ).toBe(false);
+  });
+
+  it("round trips both new shapes", () => {
+    const { game, p1 } = twoPlayers();
+    const definition = createCardDefinition({
+      name: "Wave 317 Omnibus",
+      typeLine: "Sorcery",
+      manaCost: "{4}{U}{U}",
+      effects: [
+        {
+          kind: "draw",
+          playerId: "controller",
+          count: 1,
+          countFromDynamicPlus: { count: "cards_in_your_hand", plus: 1 },
+        },
+        { kind: "grant_no_max_hand_size", playerId: "controller" },
+        { kind: "gain_life", playerId: "controller", amount: "target_toughness" },
+      ],
+    });
+    put(game, p1.id, definition, "hand");
+    game.noMaxHandSizePlayers = [p1.id];
+    const round = parseGameState(serializeGameState(game));
+    const parsed = round.definitions[definition.id]!;
+    expect(parsed.effects[0]).toMatchObject({
+      countFromDynamicPlus: { count: "cards_in_your_hand", plus: 1 },
+    });
+    expect(parsed.effects[1]).toEqual({
+      kind: "grant_no_max_hand_size",
+      playerId: "controller",
+    });
+    expect(parsed.effects[2]).toMatchObject({ amount: "target_toughness" });
+    expect(round.noMaxHandSizePlayers).toEqual([p1.id]);
+  });
+});

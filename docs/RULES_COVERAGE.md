@@ -870,6 +870,26 @@ more questions it can now ask:
   (Bennie Bracks). Reads the existing per-player `createdTokenThisTurn`
   list, and asks whether the CONTROLLER is in it — an opponent's Treasure
   must not satisfy it.
+- **`draw.countFromDynamicPlus`** — Sea Gate Restoration: "cards equal to
+  the number of cards in your hand PLUS ONE". The bonus is added after the
+  count, so an empty hand still draws one.
+
+- **`grant_no_max_hand_size` / `GameState.noMaxHandSizePlayers`** — "for
+  the rest of the game" is a player-level grant with no permanent behind it,
+  unlike `CardDefinition.noMaxHandSize`, which lasts only while its card is
+  out. Nothing sweeps it at cleanup, which is the difference from the flash
+  grant it sits beside.
+
+- **`gain_life.amount: "target_toughness"`** — Noxious Gearhulk, read at
+  BIND. Effects bind as a batch, so the toughness is taken while the creature
+  is still there; a dead creature has none to read. Computed, so counters
+  count.
+
+  The rider is FUSED onto the destroy it follows (`fuseDestroyLifegainInPlace`).
+  Left as its own sentence it becomes a top-level effect on a permanent card,
+  which is not a place effects run — the same trap Kappa Cannoneer's rider
+  fell into in wave 211, and this wave's own test caught it.
+
 - **`StaticAbility.requiresYourTurn`** — Razorkin Needlehead: "has first
   strike DURING YOUR TURN". A static gated on the turn, not a keyword the
   permanent simply has — it goes away the moment the turn passes, which is

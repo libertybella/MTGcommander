@@ -651,7 +651,9 @@ export function wouldSkipDraw(state: GameState, playerId: string): boolean {
  * against the default seven is exactly zero.
  */
 export function maxHandSizeOf(state: GameState, playerId: string): number | null {
-  let unlimited = false;
+  // Sea Gate Restoration: a grant with no permanent behind it, so it is read
+  // off the game rather than off the battlefield.
+  let unlimited = (state.noMaxHandSizePlayers ?? []).includes(playerId);
   const effects: NonNullable<CardDefinition["handSizeEffect"]>[] = [];
   for (const card of Object.values(state.cards)) {
     if (card.zone !== "battlefield" || abilitiesRemoved(state, card.id)) {

@@ -393,6 +393,16 @@ export function bindCardEffect(
                       ? creaturePower(state, chosen.cardId)
                       : 0;
                   })()
+              : effect.amount === "target_toughness"
+                ? (() => {
+                    // Noxious Gearhulk: toughness read at bind, which is
+                    // BEFORE the sibling destroy applies — effects bind as a
+                    // batch, and a dead creature has no toughness to read.
+                    const chosen = chosenTargetAt(context, 0, state);
+                    return chosen?.type === "creature"
+                      ? creatureToughness(state, chosen.cardId)
+                      : 0;
+                  })()
                 : effect.amount === "sacrificed_power"
                   ? (context.sacrificedPower ?? 0)
                   : effect.amount === "source_power"
@@ -472,7 +482,7 @@ export function bindCardEffect(
       if (!playerId) {
         return null;
       }
-      const { countFromGreatestPower, countPerControlled, countPerOpponent, countFromChosenTypePermanents, perDynamicCount, countFromCounterOnSource, ...drawRest } = effect;
+      const { countFromGreatestPower, countPerControlled, countPerOpponent, countFromDynamicPlus, countFromChosenTypePermanents, perDynamicCount, countFromCounterOnSource, ...drawRest } = effect;
       // The One Ring: one card per burden counter, read off the source as
       // the ability resolves. Zero counters draws nothing rather than one.
       if (countFromCounterOnSource) {
@@ -537,6 +547,17 @@ export function bindCardEffect(
           return null;
         }
         return { ...drawRest, playerId, count };
+      }
+      if (countFromDynamicPlus) {
+        // Sea Gate Restoration: the count is a live board reading PLUS a flat
+        // bonus, so an empty hand still draws the one.
+        const base = dynamicCountOf(
+          state,
+          context.controllerId,
+          countFromDynamicPlus.count,
+          context.sourceId ?? undefined,
+        );
+        return { ...drawRest, playerId, count: base + countFromDynamicPlus.plus };
       }
       if (countPerOpponent) {
         // Cut a Deal: every living opponent drew, so the count is how many
@@ -1423,6 +1444,7 @@ export function bindCardEffect(
       return { kind: "extra_land_drop", playerId };
     }
     case "grant_flash_this_turn":
+    case "grant_no_max_hand_size":
     case "lose_game": {
       const playerId = bindPlayerSelector(state, effect.playerId, context);
       if (!playerId) {
@@ -4356,6 +4378,19 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
         next = cloneGameState(state);
         if (!(next.flashThisTurn ?? []).includes(effect.playerId)) {
           next.flashThisTurn = [...(next.flashThisTurn ?? []), effect.playerId];
+        }
+        break;
+      }
+      case "grant_no_max_hand_size": {
+        // "For the rest of the game": never cleared, unlike the flash grant
+        // above, which the cleanup sweeps.
+        requirePlayer(state, effect.playerId);
+        next = cloneGameState(state);
+        if (!(next.noMaxHandSizePlayers ?? []).includes(effect.playerId)) {
+          next.noMaxHandSizePlayers = [
+            ...(next.noMaxHandSizePlayers ?? []),
+            effect.playerId,
+          ];
         }
         break;
       }

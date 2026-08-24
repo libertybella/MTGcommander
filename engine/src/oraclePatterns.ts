@@ -3290,6 +3290,65 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     }
   }
 
+  // Sea Gate Restoration: a live board reading PLUS a flat bonus, so an
+  // empty hand still draws the one.
+  const drawPlus = sentence.match(
+    /^Draw cards equal to the number of (.+?) plus one$/i,
+  );
+  const drawPlusCount = drawPlus?.[1] ? parseDynamicCount(drawPlus[1]) : null;
+  if (drawPlusCount) {
+    return {
+      targetRequirements: [],
+      effects: [
+        {
+          kind: "draw",
+          playerId: "controller",
+          count: 1,
+          countFromDynamicPlus: { count: drawPlusCount, plus: 1 },
+        },
+      ],
+    };
+  }
+
+  // Sea Gate Restoration's second half. "For the rest of the game" is a
+  // player-level grant: there is no permanent to read it off, unlike
+  // `CardDefinition.noMaxHandSize`, which lasts only while its card is out.
+  if (/^You have no maximum hand size for the rest of the game$/i.test(sentence)) {
+    return {
+      targetRequirements: [],
+      effects: [{ kind: "grant_no_max_hand_size", playerId: "controller" }],
+    };
+  }
+
+  // Noxious Gearhulk: a targeted destroy with a lifegain rider that reads
+  // the victim's toughness BEFORE it dies. The "may" is auto-taken, the same
+  // documented approximation the other may-clauses here make.
+  // The lifegain half is the fused rider (see `fuseDestroyLifegainInPlace`),
+  // and its amount is read at BIND — before the sibling destroy applies,
+  // because effects bind as a batch and a dead creature has no toughness.
+  const mayDestroyAnother = sentence.match(
+    /^(?:you may )?destroy another target creature( and gain life equal to its toughness)?$/i,
+  );
+  if (mayDestroyAnother) {
+    return {
+      targetRequirements: [{ kind: "creature", excludeSource: true }],
+      effects: [
+        { kind: "move_card", cardId: { type: "chosen", index: 0 }, toZone: "graveyard" },
+        ...(mayDestroyAnother[1]
+          ? [
+              {
+                kind: "gain_life" as const,
+                playerId: "controller" as const,
+                amount: "target_toughness" as const,
+              },
+            ]
+          : []),
+      ],
+    };
+  }
+
+
+
   // Razorkin Needlehead: "~ deals N damage to them" — "them" is the player
   // the trigger watched. Damage, not life loss: the source matters, so a
   // damage doubler and a prevention shield both see it.
@@ -8961,6 +9020,33 @@ function fuseItCantBeBlockedInPlace(sentences: string[], lineStart: boolean[]): 
   }
 }
 
+/**
+ * Noxious Gearhulk: "…destroy another target creature. If a creature is
+ * destroyed this way, you gain life equal to its toughness."
+ *
+ * The rider belongs to the trigger body the destroy is in. Left as its own
+ * sentence it becomes a top-level effect on a PERMANENT card, which is not a
+ * place effects run — the same trap Kappa Cannoneer's rider fell into above,
+ * and the reason the fused form is what the clause matches.
+ */
+function fuseDestroyLifegainInPlace(sentences: string[], lineStart: boolean[]): void {
+  for (let index = 0; index + 1 < sentences.length; index += 1) {
+    if (lineStart[index + 1]) {
+      continue;
+    }
+    if (
+      /destroy another target creature$/i.test(sentences[index] ?? "") &&
+      /^If a creature is destroyed this way, you gain life equal to its toughness$/i.test(
+        sentences[index + 1] ?? "",
+      )
+    ) {
+      sentences[index] = `${sentences[index]} and gain life equal to its toughness`;
+      sentences.splice(index + 1, 1);
+      lineStart.splice(index + 1, 1);
+    }
+  }
+}
+
 function fuseMayPayInPlace(sentences: string[], lineStart: boolean[]): void {
   // Mentor of the Meek: "…, you may pay {1}. If you do, draw a card." fuses
   // into one synthetic clause the may_pay parser reads.
@@ -12457,6 +12543,7 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
   expandEntersOrDiesInPlace(sentences, lineStart);
   splitGrantedQuotedTriggerInPlace(sentences, lineStart);
   fuseItCantBeBlockedInPlace(sentences, lineStart);
+  fuseDestroyLifegainInPlace(sentences, lineStart);
   fuseMayPayInPlace(sentences, lineStart);
   fusePactInPlace(sentences, lineStart);
   fuseChooseTargetCreatureInPlace(sentences, lineStart);

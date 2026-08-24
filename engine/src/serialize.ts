@@ -1892,6 +1892,14 @@ export function parseGameState(json: string): GameState {
     ...(raw.flashThisTurn === undefined
       ? {}
       : { flashThisTurn: expectStringArray(raw.flashThisTurn, "flashThisTurn") }),
+    ...(raw.noMaxHandSizePlayers === undefined
+      ? {}
+      : {
+          noMaxHandSizePlayers: expectStringArray(
+            raw.noMaxHandSizePlayers,
+            "noMaxHandSizePlayers",
+          ),
+        }),
     ...(raw.temporaryControl === undefined
       ? {}
       : {
@@ -3052,6 +3060,7 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
           value.amount === "subject_amount" ||
           value.amount === "subject_toughness" ||
           value.amount === "target_power" ||
+          value.amount === "target_toughness" ||
           value.amount === "sacrificed_power"
             ? value.amount
             : expectNumber(value.amount, `${label}.amount`),
@@ -3132,6 +3141,20 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
         })(),
         ...(value.countPerControlled === "creature" ? { countPerControlled: "creature" } : {}),
         ...(value.countPerOpponent === true ? { countPerOpponent: true } : {}),
+        ...(isRecord(value.countFromDynamicPlus)
+          ? {
+              countFromDynamicPlus: {
+                count: parseDynamicCount(
+                  value.countFromDynamicPlus.count,
+                  `${label}.countFromDynamicPlus.count`,
+                ),
+                plus: expectNumber(
+                  value.countFromDynamicPlus.plus,
+                  `${label}.countFromDynamicPlus.plus`,
+                ),
+              },
+            }
+          : {}),
         ...(value.countFromChosenTypePermanents === true
           ? { countFromChosenTypePermanents: true }
           : {}),
@@ -4111,6 +4134,7 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
             }),
       };
     case "lose_game":
+    case "grant_no_max_hand_size":
     case "grant_flash_this_turn":
       return { kind, playerId: parsePlayerSelector(value.playerId, `${label}.playerId`) };
     case "delayed_trigger": {
@@ -6047,7 +6071,8 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
     kind === "extra_land_drop" ||
     kind === "win_game" ||
     kind === "lose_game" ||
-    kind === "grant_flash_this_turn"
+    kind === "grant_flash_this_turn" ||
+    kind === "grant_no_max_hand_size"
   ) {
     return { kind, playerId: expectString(value.playerId, `${label}.playerId`) };
   }

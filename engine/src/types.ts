@@ -1006,6 +1006,13 @@ export type GameState = {
   /** As Foretold: players who already used their once-per-turn free cast.
    * Cleared at untap alongside the other per-turn tallies. */
   freeCastUsedThisTurn?: PlayerId[];
+  /**
+   * Sea Gate Restoration: "You have no maximum hand size FOR THE REST OF THE
+   * GAME." A player-level grant with no source on the battlefield to read,
+   * unlike `CardDefinition.noMaxHandSize`, which lasts only while its
+   * permanent is out.
+   */
+  noMaxHandSizePlayers?: PlayerId[];
   /** Emergence Zone / Borne Upon a Wind: players who may cast at instant
    * speed for the rest of this turn. Cleared at cleanup. The permanent form
    * (Vedalken Orrery) is `CardDefinition.grantsFlash` instead. */
@@ -1699,6 +1706,8 @@ export type GameEffect =
     }
   /** Emergence Zone: the player may cast at instant speed this turn. */
   | { kind: "grant_flash_this_turn"; playerId: PlayerId }
+  /** Sea Gate Restoration: no maximum hand size, for the rest of the game. */
+  | { kind: "grant_no_max_hand_size"; playerId: PlayerId }
   /** Rishkar's Expertise: one free cast from hand, capped by mana value. */
   | { kind: "grant_free_cast_from_hand"; playerId: PlayerId; maxManaValue?: number; count: number }
   | { kind: "commander_to_hand"; playerId: PlayerId }
@@ -2278,6 +2287,9 @@ export type CardEffect =
         | "subject_amount"
         | "subject_toughness"
         | "target_power"
+        /** Noxious Gearhulk: the chosen target's toughness, read at bind —
+         * before the destruction the sibling effect is about to do. */
+        | "target_toughness"
         | "sacrificed_power";
       /** Shamanic Revelation's ferocious half: multiply the amount by the
        * controller's creatures matching the filter, at bind. */
@@ -2368,6 +2380,12 @@ export type CardEffect =
        * Read at bind, after the opponents' draws have resolved.
        */
       countPerOpponent?: boolean;
+      /**
+       * Sea Gate Restoration: "cards equal to the number of cards in your
+       * hand PLUS ONE". The dynamic count sets the base and this is added
+       * on top, after it, so an empty hand still draws one.
+       */
+      countFromDynamicPlus?: { count: DynamicCount; plus: number };
       /** Inspiring Call: multiply the count by a shared dynamic count at bind. */
       perDynamicCount?: DynamicCount;
       /**
@@ -2943,6 +2961,8 @@ export type CardEffect =
     }
   /** Emergence Zone: the player may cast at instant speed this turn. */
   | { kind: "grant_flash_this_turn"; playerId: PlayerSelector }
+  /** Sea Gate Restoration: no maximum hand size, for the rest of the game. */
+  | { kind: "grant_no_max_hand_size"; playerId: PlayerSelector }
   /** Command Beacon: the commander moves from the command zone to hand. */
   /** Rishkar's Expertise: one free cast from hand, capped by mana value.
    * "X or less" (Electrodominance) reads the announced X at bind. */
