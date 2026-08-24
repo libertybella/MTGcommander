@@ -71,6 +71,7 @@ export type CompiledOracleText = {
   landsEnterUntapped?: boolean;
   totemArmor?: boolean;
   targetingLifeTax?: number;
+  opponentsEnterTriggersSuppressed?: boolean;
   handSizeEffect?: CardDefinition["handSizeEffect"];
   opponentsDrawCap?: number;
   noncreatureSpellCap?: number;
@@ -15348,6 +15349,16 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
       continue;
     }
 
+    // Elesh Norn, Mother of Machines: the suppressing half of the pair.
+    if (
+      /^Permanents entering don't cause abilities of permanents your opponents control to trigger$/i.test(
+        sentence,
+      )
+    ) {
+      result.opponentsEnterTriggersSuppressed = true;
+      continue;
+    }
+
     // Spelunking: the mirror of the enters-tapped statics — it cancels one
     // rather than adding one.
     if (/^Lands you control enter untapped$/i.test(sentence)) {
@@ -16192,6 +16203,15 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
         filter = { colors: [colorOf[colorType[1]]!], types: [colorType[2]] };
       } else if (colorOf[what]) {
         filter = { colors: [colorOf[what]!] };
+      } else if (
+        // Nightscape Familiar: "Blue spells AND red spells you cast" — two
+        // colours, either of which qualifies. The head's lazy match leaves
+        // the inner "spells" behind, so it is stripped here rather than in
+        // the pattern, where it would have to be optional twice.
+        /^(?:white|blue|black|red|green) spells and (?:white|blue|black|red|green)$/.test(what)
+      ) {
+        const pair = what.replace(" spells", "").split(" and ");
+        filter = { colors: pair.map((name) => colorOf[name]!) };
       } else if (["artifact", "creature", "enchantment", "instant", "sorcery"].includes(what)) {
         filter = { types: [what] };
       } else if (what === "instant and sorcery") {

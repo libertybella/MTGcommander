@@ -123,6 +123,7 @@ export function createCardDefinition(
         | "landsEnterUntapped"
         | "totemArmor"
         | "targetingLifeTax"
+        | "opponentsEnterTriggersSuppressed"
         | "handSizeEffect"
         | "opponentsDrawCap"
         | "noncreatureSpellCap"
@@ -509,6 +510,9 @@ export function createCardDefinition(
     ...(input.landsEnterUntapped ? { landsEnterUntapped: true } : {}),
     ...(input.totemArmor ? { totemArmor: true } : {}),
     ...(input.targetingLifeTax ? { targetingLifeTax: input.targetingLifeTax } : {}),
+    ...(input.opponentsEnterTriggersSuppressed
+      ? { opponentsEnterTriggersSuppressed: true }
+      : {}),
     ...(input.handSizeEffect
       ? {
           handSizeEffect: {

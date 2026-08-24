@@ -27,7 +27,7 @@ import { lookedAtCardIds } from "./prompt";
 import { manaValueOf } from "./characteristics";
 import { targetingLifeTaxFor } from "./derived";
 import { hasKeyword } from "./keywords";
-import { dispatchEventsInPlace, triggerConditionHolds } from "./triggers";
+import { dispatchEventsInPlace, queueEnterBattlefieldTriggersInPlace, triggerConditionHolds } from "./triggers";
 import { applyCombatDamage, blockRestriction, declareAttackers, declareBlockers } from "./combat";
 import { advanceStep, beginNextLivingTurnInPlace } from "./turn";
 import { colorsAmongControlled, commanderIdentityColors, manaAbilitiesFor, manaTapOptionsFor } from "./manaOptions";
@@ -53634,5 +53634,220 @@ describe("wave 345: two named subtypes, one filter", () => {
     expect(round.definitions[definition.id]?.activated[0]?.targetRequirements[0]).toEqual(
       requirement,
     );
+  });
+});
+
+describe("wave 346: a trigger that never happens, and a discount for two colours", () => {
+  const compile = (
+    name: string,
+    typeLine: string,
+    oracleText: string,
+    manaCost = "",
+    pt: [string, string] | null = null,
+  ) =>
+    compileOracleCard({
+      oracleId: name.toLowerCase().replace(/[^a-z]+/g, "-"),
+      name,
+      manaCost,
+      typeLine,
+      power: pt?.[0] ?? null,
+      toughness: pt?.[1] ?? null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  const put = (game: GameState, ownerId: string, definition: CardDefinition) => {
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({
+      definitionId: definition.id,
+      ownerId,
+      zone: "battlefield",
+    });
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === ownerId)!.zones.battlefield.push(card.id);
+    card.summoningSick = false;
+    return card.id;
+  };
+
+  // ---- Nightscape Familiar -------------------------------------------------
+
+  it("compiles a discount naming two colours", () => {
+    const compiled = compile(
+      "Nightscape Familiar",
+      "Creature — Zombie Frog",
+      "Blue spells and red spells you cast cost {1} less to cast.\n{1}{B}: Regenerate this creature.",
+      "{1}{U}",
+      ["1", "3"],
+    );
+    expect(compiled.notes).toEqual([]);
+    // The reduction's colour list is ANY-of, which is what "blue spells AND
+    // red spells" means: either colour qualifies, not both at once.
+    expect(compiled.definition.costReductions).toEqual([
+      { generic: 1, filter: { colors: ["U", "R"] } },
+    ]);
+  });
+
+  it("leaves the single-colour and type forms alone", () => {
+    const blue = compile(
+      "Blue Only",
+      "Creature — Bear",
+      "Blue spells you cast cost {1} less to cast.",
+      "{1}{U}",
+      ["1", "1"],
+    );
+    expect(blue.definition.costReductions).toEqual([
+      { generic: 1, filter: { colors: ["U"] } },
+    ]);
+    const creature = compile(
+      "Creatures Only",
+      "Creature — Bear",
+      "Creature spells you cast cost {1} less to cast.",
+      "{1}{G}",
+      ["1", "1"],
+    );
+    expect(creature.definition.costReductions).toEqual([
+      { generic: 1, filter: { types: ["creature"] } },
+    ]);
+  });
+
+  // ---- Elesh Norn ----------------------------------------------------------
+
+  it("compiles both halves of Elesh Norn", () => {
+    const compiled = compile(
+      "Elesh Norn, Mother of Machines",
+      "Legendary Creature — Phyrexian Praetor",
+      "Vigilance\nIf a permanent entering causes a triggered ability of a permanent you control to trigger, that ability triggers an additional time.\nPermanents entering don't cause abilities of permanents your opponents control to trigger.",
+      "{4}{W}",
+      ["4", "7"],
+    );
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.triggerDoubling).toBeDefined();
+    expect(compiled.definition.opponentsEnterTriggersSuppressed).toBe(true);
+  });
+
+  const norn = () =>
+    createCardDefinition({
+      name: "Elesh Norn, Mother of Machines",
+      typeLine: "Legendary Creature — Phyrexian Praetor",
+      manaCost: "{4}{W}",
+      power: 4,
+      toughness: 7,
+      opponentsEnterTriggersSuppressed: true,
+    });
+
+  const watcher = () =>
+    createCardDefinition({
+      name: "Enter Watcher",
+      typeLine: "Enchantment",
+      manaCost: "{2}",
+      triggers: [
+        {
+          event: "enter_battlefield",
+          watch: "controlled",
+          effects: [{ kind: "draw", playerId: "controller", count: 1 }],
+          targetRequirements: [],
+        },
+      ],
+    });
+
+  const bear = () =>
+    createCardDefinition({
+      name: "Bear",
+      typeLine: "Creature — Bear",
+      manaCost: "{1}{G}",
+      power: 2,
+      toughness: 2,
+    });
+
+  const entersUnder = (game: GameState, ownerId: string) => {
+    const definition = bear();
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({
+      definitionId: definition.id,
+      ownerId,
+      zone: "battlefield",
+    });
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === ownerId)!.zones.battlefield.push(card.id);
+    const next = cloneForTrigger(game);
+    queueEnterBattlefieldTriggersInPlace(next, card.id);
+    return next;
+  };
+
+  const cloneForTrigger = (game: GameState) =>
+    parseGameState(serializeGameState(game));
+
+  it("silences an opponent's enters trigger entirely", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    put(game, p1.id, norn());
+    put(game, p2.id, watcher());
+    const after = entersUnder(game, p2.id);
+    // "Don't CAUSE to trigger": the ability never exists, so there is
+    // nothing on the stack to counter or answer.
+    expect(after.stack).toHaveLength(0);
+  });
+
+  it("leaves its own controller's trigger alone", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    put(game, p1.id, norn());
+    put(game, p1.id, watcher());
+    const after = entersUnder(game, p1.id);
+    expect(after.stack.length).toBeGreaterThan(0);
+  });
+
+  it("silences nothing without Elesh Norn on the board", () => {
+    const { game, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    put(game, p2.id, watcher());
+    const after = entersUnder(game, p2.id);
+    expect(after.stack.length).toBeGreaterThan(0);
+  });
+
+  it("stops silencing once her abilities are gone", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    put(game, p1.id, norn());
+    put(game, p2.id, watcher());
+    put(
+      game,
+      p1.id,
+      createCardDefinition({
+        name: "Humility",
+        typeLine: "Enchantment",
+        manaCost: "{2}{W}{W}",
+        staticAbilities: [
+          {
+            selector: { scope: "all", types: ["creature"] },
+            effect: { kind: "remove_all_abilities" },
+          },
+        ],
+      }),
+    );
+    const after = entersUnder(game, p2.id);
+    // The suppression is a static ability like any other.
+    expect(after.stack.length).toBeGreaterThan(0);
+  });
+
+  it("round trips both flags", () => {
+    const { game, p1 } = twoPlayers();
+    const definition = norn();
+    put(game, p1.id, definition);
+    const familiar = createCardDefinition({
+      name: "Wave 346 Familiar",
+      typeLine: "Creature — Zombie Frog",
+      manaCost: "{1}{U}",
+      power: 1,
+      toughness: 3,
+      costReductions: [{ generic: 1, filter: { colors: ["U", "R"] } }],
+    });
+    put(game, p1.id, familiar);
+    const round = parseGameState(serializeGameState(game));
+    expect(round.definitions[definition.id]?.opponentsEnterTriggersSuppressed).toBe(true);
+    expect(round.definitions[familiar.id]?.costReductions).toEqual([
+      { generic: 1, filter: { colors: ["U", "R"] } },
+    ]);
   });
 });

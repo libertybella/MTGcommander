@@ -688,6 +688,9 @@ export function parseGameState(json: string): GameState {
       ...(def.targetingLifeTax === undefined
         ? {}
         : { targetingLifeTax: expectNumber(def.targetingLifeTax, "definition.targetingLifeTax") }),
+      ...(def.opponentsEnterTriggersSuppressed === true
+        ? { opponentsEnterTriggersSuppressed: true }
+        : {}),
       ...(def.handSizeEffect === undefined
         ? {}
         : {

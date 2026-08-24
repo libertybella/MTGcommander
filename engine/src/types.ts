@@ -225,6 +225,13 @@ export type CardDefinition = {
    * than merely annoying to remove.
    */
   targetingLifeTax?: number;
+  /**
+   * Elesh Norn, Mother of Machines: "Permanents entering don't cause
+   * abilities of permanents your opponents control to trigger." A
+   * SUPPRESSION rather than a replacement — the ability never triggers at
+   * all, so there is nothing on the stack to answer.
+   */
+  opponentsEnterTriggersSuppressed?: boolean;
   /** Grand Abolisher: on this permanent's controller's turn, opponents can't
    * cast spells or activate artifact/creature/enchantment abilities. */
   opponentsLockedDuringYourTurn?: boolean;

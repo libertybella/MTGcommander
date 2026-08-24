@@ -870,6 +870,18 @@ more questions it can now ask:
   (Bennie Bracks). Reads the existing per-player `createdTokenThisTurn`
   list, and asks whether the CONTROLLER is in it — an opponent's Treasure
   must not satisfy it.
+- **`opponentsEnterTriggersSuppressed`** — Elesh Norn's second half:
+  "Permanents entering don't cause abilities of permanents your opponents
+  control to trigger." A SUPPRESSION, not a replacement: checked where
+  trigger candidates are filtered, so the ability never exists at all and
+  there is nothing on the stack to counter or answer. It is a static
+  ability like any other, so Humility switches it off.
+
+- **A cost reduction naming TWO colours** — Nightscape Familiar's "Blue
+  spells and red spells you cast". The reduction's colour list was already
+  ANY-of (Goblin Anarchomancer's "white or green" relies on it), so only
+  the sentence form was missing.
+
 - **A graveyard target named by SUBTYPE** — Haven of the Spirit Dragon:
   "target Dragon creature card OR Ugin planeswalker card". Both halves name
   a subtype, and there is no Dragon planeswalker or Ugin creature to tell

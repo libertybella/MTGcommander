@@ -517,6 +517,26 @@ function candidateIsQueueable(state: GameState, candidate: TriggerCandidate): bo
   if (!triggerConditionHolds(state, card.controllerId, trigger.condition, candidate.subjectCardId, candidate.cardId)) {
     return false;
   }
+  /**
+   * Elesh Norn, Mother of Machines: an ENTERING permanent causes no
+   * triggered ability of her controller's opponents to trigger at all.
+   * Checked here rather than at the dispatch sites, because "don't cause
+   * to trigger" means the ability never exists — there is nothing to
+   * counter and nothing to answer.
+   */
+  if (trigger.event === "enter_battlefield") {
+    const suppressed = Object.values(state.cards).some(
+      (suppressor) =>
+        suppressor.zone === "battlefield" &&
+        suppressor.controllerId !== card.controllerId &&
+        state.definitions[suppressor.definitionId]?.opponentsEnterTriggersSuppressed ===
+          true &&
+        !abilitiesRemoved(state, suppressor.id),
+    );
+    if (suppressed) {
+      return false;
+    }
+  }
   // A permanent whose abilities were removed (Humility) has no triggers.
   return !abilitiesRemoved(state, card.id);
 }
