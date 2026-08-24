@@ -50225,3 +50225,202 @@ describe("wave 327: any number of cards from your hand", () => {
     });
   });
 });
+
+describe("wave 328: an escalating tally read after it escalates", () => {
+  const compile = (name: string, typeLine: string, oracleText: string, manaCost = "") =>
+    compileOracleCard({
+      oracleId: name.toLowerCase().replace(/[^a-z]+/g, "-"),
+      name,
+      manaCost,
+      typeLine,
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  const put = (game: GameState, ownerId: string, definition: CardDefinition) => {
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({
+      definitionId: definition.id,
+      ownerId,
+      zone: "battlefield",
+    });
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === ownerId)!.zones.battlefield.push(card.id);
+    return card.id;
+  };
+
+  const descentText =
+    "At the beginning of your upkeep, put two descent counters on this enchantment. Then each player creates X Treasure tokens and this enchantment deals X damage to each player, where X is the number of descent counters on this enchantment.";
+
+  it("compiles the whole trigger as one batch", () => {
+    const compiled = compile("Descent into Avernus", "Enchantment", descentText, "{3}{R}");
+    expect(compiled.notes).toEqual([]);
+    const trigger = compiled.definition.triggers[0];
+    expect(trigger?.effects).toEqual([
+      { kind: "add_counter", cardId: "self", counter: "descent", amount: 2 },
+      {
+        kind: "create_token",
+        ownerId: "each_player",
+        name: "Treasure",
+        typeLine: "Artifact — Treasure",
+        count: 0,
+        perSourceCounters: "descent",
+      },
+      {
+        kind: "deal_damage",
+        sourceId: "self",
+        target: { type: "player", playerId: "each_player" },
+        amount: { sourceCounters: "descent" },
+      },
+    ]);
+  });
+
+  const descent = () =>
+    createCardDefinition({
+      name: "Descent into Avernus",
+      typeLine: "Enchantment",
+      manaCost: "{3}{R}",
+      triggers: [
+        {
+          event: "upkeep",
+          effects: [
+            { kind: "add_counter", cardId: "self", counter: "descent", amount: 2 },
+            {
+              kind: "create_token",
+              ownerId: "each_player",
+              name: "Treasure",
+              typeLine: "Artifact — Treasure",
+              count: 0,
+              perSourceCounters: "descent",
+            },
+            {
+              kind: "deal_damage",
+              sourceId: "self",
+              target: { type: "player", playerId: "each_player" },
+              amount: { sourceCounters: "descent" },
+            },
+          ],
+          targetRequirements: [],
+        },
+      ],
+    });
+
+  const fire = (game: GameState, playerId: string, sourceId: string) =>
+    applyEffects(
+      game,
+      bindCardEffects(
+        game,
+        game.definitions[game.cards[sourceId]!.definitionId]!.triggers[0]!.effects,
+        { controllerId: playerId, sourceId },
+      ),
+    );
+
+  it("counts the counters the SAME batch just added", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const descentId = put(game, p1.id, descent());
+    const before = game.players.find((entry) => entry.id === p2.id)!.life;
+    const fired = fire(game, p1.id, descentId);
+    expect(fired.cards[descentId]?.counters["descent"]).toBe(2);
+    // Effects bind as a BATCH, so a bind-time reading would have seen zero
+    // and dealt nothing. On this card the escalation is the whole point.
+    expect(fired.players.find((entry) => entry.id === p2.id)!.life).toBe(before - 2);
+  });
+
+  it("escalates on the second upkeep", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const descentId = put(game, p1.id, descent());
+    let state = fire(game, p1.id, descentId);
+    const afterFirst = state.players.find((entry) => entry.id === p2.id)!.life;
+    state = fire(state, p1.id, descentId);
+    expect(state.cards[descentId]?.counters["descent"]).toBe(4);
+    expect(state.players.find((entry) => entry.id === p2.id)!.life).toBe(afterFirst - 4);
+  });
+
+  it("hits its own controller too", () => {
+    const { game, p1 } = twoPlayers();
+    const descentId = put(game, p1.id, descent());
+    const before = game.players.find((entry) => entry.id === p1.id)!.life;
+    const fired = fire(game, p1.id, descentId);
+    // "each player" — the card is symmetrical, and that is why it is a
+    // clock rather than a win condition.
+    expect(fired.players.find((entry) => entry.id === p1.id)!.life).toBe(before - 2);
+  });
+
+  it("gives every player that many Treasures", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const descentId = put(game, p1.id, descent());
+    const fired = fire(game, p1.id, descentId);
+    for (const playerId of [p1.id, p2.id]) {
+      const treasures = fired.players
+        .find((entry) => entry.id === playerId)!
+        .zones.battlefield.filter(
+          (id) => fired.definitions[fired.cards[id]!.definitionId]?.name === "Treasure",
+        );
+      expect(treasures).toHaveLength(2);
+    }
+  });
+
+  it("deals nothing at all with no counters yet", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const descentId = put(
+      game,
+      p1.id,
+      createCardDefinition({
+        name: "Bare Tally",
+        typeLine: "Enchantment",
+        manaCost: "{3}{R}",
+      }),
+    );
+    const before = game.players.find((entry) => entry.id === p2.id)!.life;
+    const dealt = applyEffects(
+      game,
+      bindCardEffects(
+        game,
+        [
+          {
+            kind: "deal_damage",
+            sourceId: "self",
+            target: { type: "player", playerId: "each_player" },
+            amount: { sourceCounters: "descent" },
+          },
+        ],
+        { controllerId: p1.id, sourceId: descentId },
+      ),
+    );
+    // A tally of zero is no damage, not an error — the effect still binds,
+    // because at bind time the number is simply not known yet.
+    expect(dealt.players.find((entry) => entry.id === p2.id)!.life).toBe(before);
+  });
+
+  it("round trips the tally through both parsers", () => {
+    const { game, p1 } = twoPlayers();
+    const definition = descent();
+    const descentId = put(game, p1.id, definition);
+    const round = parseGameState(serializeGameState(game));
+    expect(round.definitions[definition.id]?.triggers[0]?.effects[2]).toEqual({
+      kind: "deal_damage",
+      sourceId: "self",
+      target: { type: "player", playerId: "each_player" },
+      amount: { sourceCounters: "descent" },
+    });
+    // And the BOUND form, which is where the lookup actually lives.
+    const bound = bindCardEffects(
+      game,
+      [
+        {
+          kind: "deal_damage",
+          sourceId: "self",
+          target: { type: "player", playerId: "controller" },
+          amount: { sourceCounters: "descent" },
+        },
+      ],
+      { controllerId: p1.id, sourceId: descentId },
+    );
+    expect(bound[0]).toMatchObject({
+      amountFromCounters: { cardId: descentId, counter: "descent" },
+    });
+  });
+});

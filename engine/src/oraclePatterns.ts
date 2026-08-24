@@ -2495,6 +2495,42 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
 
 function compileSimpleClauseInner(sentence: string): SimpleClause | null {
   /**
+   * Descent into Avernus's second sentence: two clauses sharing one
+   * "where X is …" tail, which is why they compile together rather than
+   * as two sentences that each lost the tail.
+   *
+   * Both readings happen at APPLY, not at bind. The trigger's FIRST effect
+   * puts two more counters on, and effects bind as a batch — a bind-time
+   * reading would be two short every time, which on this card is the whole
+   * escalation.
+   */
+  const sharedCounterX = sentence.match(
+    /^Each player creates X Treasure tokens and ~ deals X damage to each player, where X is the number of ([a-z]+) counters on ~$/i,
+  );
+  if (sharedCounterX?.[1]) {
+    const counter = sharedCounterX[1].toLowerCase();
+    return {
+      effects: [
+        {
+          kind: "create_token",
+          ownerId: "each_player",
+          name: "Treasure",
+          typeLine: "Artifact — Treasure",
+          count: 0,
+          perSourceCounters: counter,
+        },
+        {
+          kind: "deal_damage",
+          sourceId: "self",
+          target: { type: "player", playerId: "each_player" },
+          amount: { sourceCounters: counter },
+        },
+      ],
+      targetRequirements: [],
+    };
+  }
+
+  /**
    * "Put any number of cards from your hand on the bottom of your library,
    * then draw that many cards plus one" (Valakut Awakening), and "put any
    * number of creature cards from your hand onto the battlefield" (Last

@@ -3396,7 +3396,9 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
                 ? ("subject_amount" as const)
                 : isRecord(value.amount) && typeof value.amount.subtypeCount === "string"
                   ? { subtypeCount: value.amount.subtypeCount }
-                  : expectNumber(value.amount, `${label}.amount`);
+                  : isRecord(value.amount) && typeof value.amount.sourceCounters === "string"
+                    ? { sourceCounters: value.amount.sourceCounters }
+                    : expectNumber(value.amount, `${label}.amount`);
       const gainLife = value.gainLife === true ? { gainLife: true as const } : {};
       if (targetType === "player") {
         return {
@@ -6951,6 +6953,22 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
           ? null
           : expectString(value.sourceId, `${label}.sourceId`),
       amount: expectNumber(value.amount, `${label}.amount`),
+      // Descent into Avernus: without this the tally is lost on the wire
+      // and a reopened game deals the bound zero instead of counting.
+      ...(isRecord(value.amountFromCounters)
+        ? {
+            amountFromCounters: {
+              cardId: expectString(
+                value.amountFromCounters.cardId,
+                `${label}.amountFromCounters.cardId`,
+              ),
+              counter: expectString(
+                value.amountFromCounters.counter,
+                `${label}.amountFromCounters.counter`,
+              ),
+            },
+          }
+        : {}),
       ...(value.gainLife === true ? { gainLife: true } : {}),
       target:
         targetType === "player"

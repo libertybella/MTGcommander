@@ -1267,6 +1267,13 @@ export type GameEffect =
       sourceId: CardInstanceId | null;
       target: EffectTarget;
       amount: number;
+      /**
+       * Descent into Avernus: the amount is a counter tally on `cardId`,
+       * read when the damage is DEALT rather than when the effect binds.
+       * Its sibling `add_counter` has not run at bind time — effects bind
+       * as a batch — so a bind-time reading is always two short.
+       */
+      amountFromCounters?: { cardId: CardInstanceId; counter: string };
       gainLife?: boolean;
     }
   | {
@@ -2460,6 +2467,13 @@ export type CardEffect =
         | "chosen_power"
         | "subject_power"
         | "subject_amount"
+        /**
+         * Descent into Avernus: "X damage … where X is the number of
+         * descent counters on this enchantment". Read at APPLY, not at
+         * bind: the same trigger puts two more counters on first, and the
+         * damage is meant to see them.
+         */
+        | { sourceCounters: string }
         | { subtypeCount: string };
       /** "You gain life equal to the damage dealt this way." */
       gainLife?: boolean;

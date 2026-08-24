@@ -888,14 +888,22 @@ export function bindCardEffect(
                   : 0
                 : effect.amount === "subject_amount"
                   ? context.subjectAmount ?? 0
-                  : typeof effect.amount === "object"
+                  : typeof effect.amount === "object" && "subtypeCount" in effect.amount
                     ? countControlledSubtype(
                         state,
                         context.controllerId,
                         effect.amount.subtypeCount,
                       )
-                    : effect.amount;
-      if (amount <= 0) {
+                    : typeof effect.amount === "object"
+                      ? 0
+                      : effect.amount;
+      // A counter tally is read at APPLY, so a zero here is not "no damage"
+      // yet — the bound effect carries the lookup instead of a number.
+      const fromCounters =
+        typeof effect.amount === "object" && "sourceCounters" in effect.amount
+          ? effect.amount.sourceCounters
+          : null;
+      if (amount <= 0 && !fromCounters) {
         return null;
       }
       if (effect.target.type === "chosen") {
@@ -921,6 +929,9 @@ export function bindCardEffect(
           amount,
           sourceId: boundSourceId,
           target: { type: "player", playerId },
+          ...(fromCounters && boundSourceId
+            ? { amountFromCounters: { cardId: boundSourceId, counter: fromCounters } }
+            : {}),
           ...(effect.gainLife ? { gainLife: true } : {}),
         };
       }
@@ -929,6 +940,9 @@ export function bindCardEffect(
         amount,
         sourceId: boundSourceId,
         target: effect.target,
+        ...(fromCounters && boundSourceId
+          ? { amountFromCounters: { cardId: boundSourceId, counter: fromCounters } }
+          : {}),
         ...(effect.gainLife ? { gainLife: true } : {}),
       };
     }
@@ -967,7 +981,11 @@ export function bindCardEffect(
       // zero makes no tokens rather than one.
       let count: number | undefined =
         printedCount === "x" ? Math.max(0, context.xValue ?? 0) : printedCount;
-      if (count === 0) {
+      // A zero that a DYNAMIC source will replace at apply time is "not
+      // known yet", not "no tokens" — Descent into Avernus prints no count
+      // at all and reads a counter tally its own sibling is still adding to.
+      const dynamicCount = Boolean(perSourceCounters || countFromSourcePower);
+      if (count === 0 && !dynamicCount) {
         return null;
       }
       // Krenko: "where X is the number of Goblins you control".
@@ -2526,7 +2544,25 @@ function applyLoseLife(state: GameState, playerId: PlayerId, amount: number): Ga
   return next;
 }
 
-function applyDealDamage(state: GameState, effect: Extract<GameEffect, { kind: "deal_damage" }>): GameState {
+function applyDealDamage(
+  state: GameState,
+  bound: Extract<GameEffect, { kind: "deal_damage" }>,
+): GameState {
+  // Descent into Avernus: the amount is a counter tally read HERE, after
+  // the sibling that added two more counters has already run.
+  const effect: Extract<GameEffect, { kind: "deal_damage" }> = bound.amountFromCounters
+    ? {
+        ...bound,
+        amount:
+          state.cards[bound.amountFromCounters.cardId]?.counters[
+            bound.amountFromCounters.counter
+          ] ?? 0,
+      }
+    : bound;
+  if (effect.amount <= 0) {
+    // A tally of zero is no damage at all, not an error.
+    return cloneGameState(state);
+  }
   requirePositiveInteger(effect.amount, "damage");
   if (effect.sourceId && !state.cards[effect.sourceId]) {
     throw new Error(`Unknown source ${effect.sourceId}`);
