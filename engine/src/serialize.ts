@@ -4527,6 +4527,7 @@ const TRIGGER_EVENT_NAMES: Record<TriggerEvent, true> = {
   you_sacrifice_token: true,
   becomes_untapped: true,
   becomes_tapped: true,
+  plays_land: true,
   taps_for_mana: true,
   opponent_draws_second: true,
   opponent_draws_except_first: true,

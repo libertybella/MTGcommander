@@ -870,6 +870,21 @@ more questions it can now ask:
   (Bennie Bracks). Reads the existing per-player `createdTokenThisTurn`
   list, and asks whether the CONTROLLER is in it — an opponent's Treasure
   must not satisfy it.
+- **`plays_land` — a land PLAYED is not a land that entered.** A fetched or
+  reanimated land enters and was never played, and the printed wording draws
+  that line deliberately. Dispatched from the one site a land is played from;
+  the land is the subject and the player who played it is the subject player,
+  so "that player" reads correctly.
+
+  **This retires wave 211's refusal.** City of Traitors was left as a
+  deliberate miss there with the note that "when you PLAY another land" is
+  not "when another land enters", and approximating it would sacrifice the
+  City to a fetched land. Landfall still reads the entry, so Lotus Cobra and
+  City of Traitors now watch different events — which is the whole point.
+
+  `excludeSelf` carries "another land": the City playing itself is not
+  another land.
+
 - **`team_set_pt_until_eot`** — Mirror Entity. A SET power and toughness
   (layer 7b), not a bonus, so a 7/7 SHRINKS to X/X — which is the whole
   reason the card is a finisher and not an anthem. The affected set locks in

@@ -1052,6 +1052,10 @@ function applyPlayLand(
     throw new Error(`Unknown player ${playerId}`);
   }
   movedPlayer.landsPlayedThisTurn += 1;
+  // Burgeoning, City of Traitors: PLAYED, which is not the same as entering.
+  // A fetched land enters and was never played, and this is the one site a
+  // land is played from.
+  dispatchEventsInPlace(next, [{ kind: "plays_land", cardId, playerId }]);
   next.passesSinceAction = 0;
   next.priorityPlayerId = playerId;
   return next;

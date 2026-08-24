@@ -3151,6 +3151,14 @@ export type TriggerEvent =
   | "you_sacrifice_token"
   /** Any permanent untapped (Mesmeric Orb). Subject is the permanent. */
   | "becomes_untapped"
+  /**
+   * Burgeoning, City of Traitors: a land was PLAYED, which is not the same
+   * as a land entering. A fetched or reanimated land enters and was never
+   * played, and the printed wording draws that line deliberately — reading
+   * "plays" as "enters" would sacrifice City of Traitors to a Fabled
+   * Passage. Subject is the land; subject player is who played it.
+   */
+  | "plays_land"
   /** Any permanent tapped (City of Brass, Magda). Subject is the permanent. */
   | "becomes_tapped"
   /**
@@ -3523,6 +3531,8 @@ export type EngineEvent =
   | { kind: "untapped"; cardId: CardInstanceId }
   /** A permanent went from untapped to tapped (City of Brass). */
   | { kind: "tapped"; cardId: CardInstanceId }
+  /** Burgeoning: a land was played (not merely put onto the battlefield). */
+  | { kind: "plays_land"; cardId: CardInstanceId; playerId: PlayerId }
   /** Forbidden Orchard: the same tap, but specifically for mana. */
   | { kind: "tapped_for_mana"; cardId: CardInstanceId }
   /** A player searched their library (found or not). */

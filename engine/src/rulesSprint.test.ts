@@ -45564,3 +45564,259 @@ describe("wave 310: the announced X, inside an activated ability", () => {
     });
   });
 });
+
+describe("wave 311: playing a land is not the same as a land entering", () => {
+  const compile = (name: string, typeLine: string, oracleText: string, manaCost = "") =>
+    compileOracleCard({
+      oracleId: name.toLowerCase().replace(/[^a-z]+/g, "-"),
+      name,
+      manaCost,
+      typeLine,
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  const put = (
+    game: GameState,
+    ownerId: string,
+    definition: CardDefinition,
+    zone: "hand" | "battlefield" = "battlefield",
+  ) => {
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({ definitionId: definition.id, ownerId, zone });
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === ownerId)!.zones[zone].push(card.id);
+    if (zone === "battlefield") {
+      card.summoningSick = false;
+    }
+    return card.id;
+  };
+
+  const forest = (name = "Forest") =>
+    createCardDefinition({ name, typeLine: "Basic Land — Forest" });
+
+  const ready = (game: GameState, playerId: string) => {
+    game.turn.activePlayerId = playerId;
+    game.turn.phase = "precombatMain";
+    game.turn.step = "precombatMain";
+    game.priorityPlayerId = playerId;
+  };
+
+  it("compiles both printings of the head", () => {
+    const burgeoning = compile(
+      "Burgeoning",
+      "Enchantment",
+      "Whenever an opponent plays a land, you may put a land card from your hand onto the battlefield.",
+      "{G}",
+    );
+    expect(burgeoning.notes).toEqual([]);
+    expect(burgeoning.definition.triggers[0]).toMatchObject({
+      event: "plays_land",
+      watch: "opponents",
+    });
+
+    const city = compile(
+      "City of Traitors",
+      "Land",
+      "When you play another land, sacrifice ~.\n{T}: Add {C}{C}.",
+    );
+    expect(city.notes).toEqual([]);
+    expect(city.definition.triggers[0]).toMatchObject({
+      event: "plays_land",
+      watch: "controlled",
+      excludeSelf: true,
+    });
+    expect(city.definition.triggers[0]?.effects[0]).toEqual({
+      kind: "sacrifice",
+      cardId: "self",
+    });
+  });
+
+  it("leaves landfall reading the ENTRY, not the play", () => {
+    // The two events have to stay distinct: Lotus Cobra wants a fetched land
+    // and City of Traitors must not see one.
+    const cobra = compile(
+      "Lotus Cobra",
+      "Creature — Snake",
+      "Whenever a land you control enters, create a Treasure token.",
+      "{1}{G}",
+    );
+    expect(cobra.definition.triggers[0]).toMatchObject({ event: "enter_battlefield" });
+  });
+
+  const burgeoningBoard = () => {
+    const { game, p1, p2 } = twoPlayers();
+    put(
+      game,
+      p1.id,
+      createCardDefinition({
+        name: "Burgeoning",
+        typeLine: "Enchantment",
+        manaCost: "{G}",
+        triggers: [
+          {
+            event: "plays_land",
+            watch: "opponents",
+            effects: [{ kind: "gain_life", playerId: "controller", amount: 1 }],
+            targetRequirements: [],
+          },
+        ],
+      }),
+    );
+    return { game, p1, p2 };
+  };
+
+  it("fires when an opponent plays a land", () => {
+    const { game, p1, p2 } = burgeoningBoard();
+    const landId = put(game, p2.id, forest(), "hand");
+    ready(game, p2.id);
+    const played = applyAction(game, { kind: "play_land", playerId: p2.id, cardId: landId });
+    expect(played.stack).toHaveLength(1);
+    expect(played.stack[0]?.subjectPlayerId).toBe(p2.id);
+    expect(p1.id).toBeDefined();
+  });
+
+  it("does not fire when its own controller plays one", () => {
+    const { game, p1 } = burgeoningBoard();
+    const landId = put(game, p1.id, forest(), "hand");
+    ready(game, p1.id);
+    const played = applyAction(game, { kind: "play_land", playerId: p1.id, cardId: landId });
+    expect(played.stack).toHaveLength(0);
+  });
+
+  it("does not fire for a land that merely ENTERS", () => {
+    const { game, p2 } = burgeoningBoard();
+    const landId = put(game, p2.id, forest(), "hand");
+    // A fetched land is put onto the battlefield and was never played. This
+    // is the distinction the whole event exists for.
+    const fetched = moveCard(game, landId, "battlefield");
+    expect(fetched.cards[landId]?.zone).toBe("battlefield");
+    expect(fetched.stack).toHaveLength(0);
+  });
+
+  const cityBoard = () => {
+    const { game, p1 } = twoPlayers();
+    const cityId = put(
+      game,
+      p1.id,
+      createCardDefinition({
+        name: "City of Traitors",
+        typeLine: "Land",
+        triggers: [
+          {
+            event: "plays_land",
+            watch: "controlled",
+            excludeSelf: true,
+            effects: [{ kind: "sacrifice", cardId: "self" }],
+            targetRequirements: [],
+          },
+        ],
+      }),
+    );
+    ready(game, p1.id);
+    return { game, p1, cityId };
+  };
+
+  it("sacrifices the City when its controller plays another land", () => {
+    const { game, p1, cityId } = cityBoard();
+    const landId = put(game, p1.id, forest(), "hand");
+    let state = applyAction(game, { kind: "play_land", playerId: p1.id, cardId: landId });
+    expect(state.stack).toHaveLength(1);
+    while (state.stack.length > 0) {
+      state = resolveTopOfStack(state);
+    }
+    expect(state.cards[cityId]?.zone).toBe("graveyard");
+  });
+
+  it("survives a land that is FETCHED rather than played", () => {
+    const { game, p1, cityId } = cityBoard();
+    const landId = put(game, p1.id, forest(), "hand");
+    // Reading "plays" as "enters" would kill the City here, which is the
+    // exact misreading wave 211 refused to make.
+    const fetched = moveCard(game, landId, "battlefield");
+    expect(fetched.stack).toHaveLength(0);
+    expect(fetched.cards[cityId]?.zone).toBe("battlefield");
+  });
+
+  it("survives an opponent playing a land", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const cityId = put(
+      game,
+      p1.id,
+      createCardDefinition({
+        name: "City of Traitors",
+        typeLine: "Land",
+        triggers: [
+          {
+            event: "plays_land",
+            watch: "controlled",
+            excludeSelf: true,
+            effects: [{ kind: "sacrifice", cardId: "self" }],
+            targetRequirements: [],
+          },
+        ],
+      }),
+    );
+    const landId = put(game, p2.id, forest(), "hand");
+    ready(game, p2.id);
+    const played = applyAction(game, { kind: "play_land", playerId: p2.id, cardId: landId });
+    // "When YOU play another land."
+    expect(played.stack).toHaveLength(0);
+    expect(played.cards[cityId]?.zone).toBe("battlefield");
+  });
+
+  it("does not fire on the City being played itself", () => {
+    const { game, p1 } = twoPlayers();
+    const cityId = put(
+      game,
+      p1.id,
+      createCardDefinition({
+        name: "City of Traitors",
+        typeLine: "Land",
+        triggers: [
+          {
+            event: "plays_land",
+            watch: "controlled",
+            excludeSelf: true,
+            effects: [{ kind: "sacrifice", cardId: "self" }],
+            targetRequirements: [],
+          },
+        ],
+      }),
+      "hand",
+    );
+    ready(game, p1.id);
+    const played = applyAction(game, { kind: "play_land", playerId: p1.id, cardId: cityId });
+    // "ANOTHER land" — the City playing itself is not another land.
+    expect(played.stack).toHaveLength(0);
+    expect(played.cards[cityId]?.zone).toBe("battlefield");
+  });
+
+  it("round trips the event", () => {
+    const { game, p1 } = twoPlayers();
+    const definition = createCardDefinition({
+      name: "Land Watcher",
+      typeLine: "Enchantment",
+      manaCost: "{G}",
+      triggers: [
+        {
+          event: "plays_land",
+          watch: "opponents",
+          excludeSelf: true,
+          effects: [{ kind: "gain_life", playerId: "controller", amount: 1 }],
+          targetRequirements: [],
+        },
+      ],
+    });
+    put(game, p1.id, definition);
+    const round = parseGameState(serializeGameState(game));
+    expect(round.definitions[definition.id]?.triggers[0]).toMatchObject({
+      event: "plays_land",
+      watch: "opponents",
+      excludeSelf: true,
+    });
+  });
+});

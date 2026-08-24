@@ -894,6 +894,27 @@ function triggerMatchesEvent(
     }
     return subjectMatchesFilter(state, event.cardId, trigger.subjectFilter, watcher);
   }
+  if (event.kind === "plays_land") {
+    if (trigger.event !== "plays_land") {
+      return false;
+    }
+    const watch = trigger.watch ?? "controlled";
+    if (watch === "controlled" && event.playerId !== watcher.controllerId) {
+      return false;
+    }
+    if (watch === "opponents" && event.playerId === watcher.controllerId) {
+      return false;
+    }
+    // City of Traitors: "when you play ANOTHER land" — the City itself being
+    // played is not another land.
+    if (trigger.excludeSelf && event.cardId === watcher.id) {
+      return false;
+    }
+    return subjectMatchesFilter(state, event.cardId, trigger.subjectFilter, watcher);
+  }
+  if (trigger.event === "plays_land") {
+    return false;
+  }
   if (event.kind === "tapped_for_mana") {
     // Forbidden Orchard. Only the source itself is ever watched this way in
     // the printed corpus, so "self" is the default and the only reading.
@@ -1274,7 +1295,9 @@ export function dispatchEventsInPlace(state: GameState, events: EngineEvent[]): 
             event.kind === "draws" ||
             event.kind === "creates_token" ||
             // Sheoldred: "that player" is whose step just began.
-            event.kind === "step_begins"
+            event.kind === "step_begins" ||
+            // Burgeoning: "that player" is who played the land.
+            event.kind === "plays_land"
               ? event.playerId
               : event.kind === "casts" || event.kind === "dies" || event.kind === "sacrifices"
                 ? event.controllerId

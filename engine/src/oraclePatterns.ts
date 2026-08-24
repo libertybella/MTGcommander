@@ -9791,6 +9791,20 @@ function parseTriggerHead(head: string): TriggerHead | null {
   ) {
     return { event: "enter_battlefield", watch: "controlled", subjectFilter: { types: ["land"] } };
   }
+  // Burgeoning, City of Traitors: PLAYS a land, which is not the same event.
+  // A fetched land enters and was never played, so reading these as landfall
+  // would sacrifice City of Traitors to a Fabled Passage.
+  const playsLand = text.match(
+    /^When(?:ever)? (you|an opponent|a player) plays? (another )?(?:a )?land$/i,
+  );
+  if (playsLand?.[1]) {
+    const who = playsLand[1].toLowerCase();
+    return {
+      event: "plays_land",
+      watch: who === "you" ? "controlled" : who === "an opponent" ? "opponents" : "any",
+      ...(playsLand[2] ? { excludeSelf: true } : {}),
+    };
+  }
   if (/^Whenever ~ or another creature enters$/i.test(text)) {
     return { event: "enter_battlefield", watch: "any", subjectFilter: { types: ["creature"] } };
   }
