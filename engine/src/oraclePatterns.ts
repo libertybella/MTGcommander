@@ -3077,6 +3077,75 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     };
   }
 
+  // Reconnaissance: out of combat, still on the battlefield. Not a tap and
+  // not a bounce — an attacker removed from combat (CR 506.4) deals and
+  // receives no combat damage, and its attack trigger stays fired.
+  const removeFromCombat = sentence.match(
+    /^Remove (target .+?) from combat and untap it$/i,
+  );
+  const removedTarget = removeFromCombat?.[1]
+    ? parseSimpleTargetPhrase(removeFromCombat[1])
+    : null;
+  if (removedTarget) {
+    return {
+      targetRequirements: [removedTarget],
+      effects: [
+        { kind: "remove_from_combat", cardId: { type: "chosen", index: 0 } },
+        { kind: "untap", cardId: { type: "chosen", index: 0 } },
+      ],
+    };
+  }
+
+  // Liquimetal Torque: "in addition to its other types" is layer 4, so the
+  // permanent keeps what it already is — the target is an artifact creature,
+  // not an artifact.
+  const becomesType = sentence.match(
+    /^(Target .+?) becomes an? ([a-z]+) in addition to its other types until end of turn$/i,
+  );
+  if (becomesType?.[1] && becomesType[2] && TOKEN_CARD_TYPES.includes(becomesType[2].toLowerCase())) {
+    const requirement = parseSimpleTargetPhrase(becomesType[1]);
+    if (requirement) {
+      return {
+        targetRequirements: [requirement],
+        effects: [
+          {
+            kind: "types_until_eot",
+            cardId: { type: "chosen", index: 0 },
+            types: [becomesType[2].toLowerCase()],
+          },
+        ],
+      };
+    }
+  }
+
+  // Rishkar: "on EACH OF up to two target creatures" — two optional slots
+  // and one counter apiece, which is not the same shape as "distribute".
+  const eachOfUpTo = sentence.match(
+    /^Put (.+?) counters? on each of up to (one|two|three) target (.+)$/i,
+  );
+  const eachOfCount = eachOfUpTo?.[2] ? parseCount(eachOfUpTo[2]) : null;
+  if (eachOfUpTo?.[1] && eachOfCount && eachOfUpTo[3]) {
+    const placed = parseCounterList(eachOfUpTo[1]);
+    const singular = eachOfUpTo[3].replace(/s(?= |$)/gi, "");
+    const requirement = parseSimpleTargetPhrase(`target ${singular}`);
+    if (placed && requirement) {
+      return {
+        targetRequirements: Array.from({ length: eachOfCount }, (_, index) => ({
+          ...requirement,
+          ...(index === 0 ? {} : { optional: true as const }),
+        })),
+        effects: Array.from({ length: eachOfCount }, (_, index) =>
+          placed.map((entry) => ({
+            kind: "add_counter" as const,
+            cardId: { type: "chosen" as const, index },
+            counter: entry.counter,
+            amount: entry.amount,
+          })),
+        ).flat(),
+      };
+    }
+  }
+
   // "Exile up to two target artifacts and/or enchantments" (Angel of the
   // Ruins): "up to N" is N OPTIONAL slots, which is a clause-level shape.
   // The noun-phrase parser can only say "up to one", because a phrase is one
@@ -6274,6 +6343,31 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
   // casual table would decline) — a documented approximation.
   // The quoted grant is accepted only for Eldrazi Spawn, whose ability the
   // token preset supplies.
+  // Krenko, Tin Street Kingpin: "a number of … equal to ~'s power". The
+  // count is read when the tokens are CREATED, not when the effect binds —
+  // the sibling "+1/+1 counter on it" has not landed at bind time, and the
+  // swarm would be one Goblin short every single attack.
+  const powerTokens = sentence.match(
+    /^create a number of (\d+)\/(\d+)(?: (?:white|blue|black|red|green|colorless))? ([\w]+) creature tokens equal to ~'s power$/i,
+  );
+  if (powerTokens?.[1] && powerTokens[2] && powerTokens[3]) {
+    const subtype = powerTokens[3].replace(/\b\w/g, (letter) => letter.toUpperCase());
+    return {
+      targetRequirements: [],
+      effects: [
+        {
+          kind: "create_token",
+          ownerId: "controller",
+          name: subtype,
+          typeLine: `Creature — ${subtype} Token`,
+          power: Number(powerTokens[1]),
+          toughness: Number(powerTokens[2]),
+          countFromSourcePower: true,
+        },
+      ],
+    };
+  }
+
   match = sentence.match(
     new RegExp(
       "^(?:You may )?Create (a|an|one|two|three|four|five|six|seven|eight|nine|ten|\\d+|X) " +
@@ -15438,9 +15532,9 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
     }
 
     // Unearth (CR 702.83) lowers to its full rules text as well: a graveyard
-    // activation at sorcery speed whose arrival is hasty and temporary. The
-    // "or if it would leave the battlefield" half of the exile is not modelled
-    // — a documented approximation; the end-step exile is the one that matters.
+    // activation at sorcery speed whose arrival is hasty and temporary. Both
+    // halves of the exile are modelled now: the end-step one, and the shield
+    // that stops a sacrifice from banking the card for next time.
     const unearth = sentence.match(/^Unearth ((?:\{[^}]+\})+)$/i);
     if (unearth?.[1]) {
       let unearthCostOk = true;
@@ -15461,6 +15555,7 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
               toZone: "battlefield",
               gainsHaste: true,
               atEndStep: "exile",
+              exileIfLeaves: true,
             },
           ],
           targetRequirements: [],
@@ -16119,6 +16214,25 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
         );
       if (look?.kind === "look_and_assign") {
         look.exilePlayableThisTurn = true;
+        continue;
+      }
+    }
+
+    // Whip of Erebos: the shield belongs to the reanimation it follows.
+    // Without it the Whip is a repeatable reanimator — sacrifice the creature
+    // in response to the end-step exile and it is back in the graveyard.
+    if (
+      /^If it would leave the battlefield, exile it instead of putting it anywhere else$/i.test(
+        sentence,
+      )
+    ) {
+      const arrivals = [
+        ...(result.activated[result.activated.length - 1]?.effects ?? []),
+        ...result.effects,
+      ].filter((effect) => effect.kind === "move_card" && effect.toZone === "battlefield");
+      const last = arrivals[arrivals.length - 1];
+      if (last?.kind === "move_card") {
+        last.exileIfLeaves = true;
         continue;
       }
     }

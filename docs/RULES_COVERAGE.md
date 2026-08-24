@@ -870,6 +870,38 @@ more questions it can now ask:
   (Bennie Bracks). Reads the existing per-player `createdTokenThisTurn`
   list, and asks whether the CONTROLLER is in it — an opponent's Treasure
   must not satisfy it.
+- **`remove_from_combat`** — Reconnaissance. CR 506.4: out of combat but
+  still on the battlefield. Not a tap and not a bounce — the creature deals
+  and receives no combat damage, and any "whenever this attacks" trigger that
+  already fired stays fired, which is the whole card.
+
+- **`types_until_eot`** — Liquimetal Torque. Layer 4, so "in addition to its
+  other types" really is in addition: the target becomes an artifact
+  CREATURE, not an artifact, which is the difference between a Shatter
+  finding a target and a Shatter finding a blank.
+
+- **"on each of up to two target creatures"** — Rishkar. Two optional slots
+  and one counter APIECE, which is not the same shape as "distribute two
+  counters among" (The Earth Crystal, wave 301): that one divides a fixed
+  pool, this one repeats a fixed amount.
+
+- **`create_token.countFromSourcePower`** — Krenko, Tin Street Kingpin. Read
+  when the tokens are created, not when the effect binds. Effects bind as a
+  BATCH, so the sibling `add_counter` has not run at bind time and a
+  bind-time reading would be one Goblin short on every attack.
+
+- **`move_card.exileIfLeaves`** — Whip of Erebos: "If it would leave the
+  battlefield, exile it instead of putting it anywhere else." Instance state
+  on the arriving permanent, spent the moment it fires, so a second whipping
+  gets a fresh shield and a card that reached exile some other way does not
+  keep one. Without it the Whip is a repeatable reanimator: sacrifice the
+  creature in response to the end-step exile and it is back in the graveyard
+  for next time.
+
+  **This retires wave 209's documented gap.** Unearth prints the same rider
+  and had it recorded as unmodelled; it now carries the shield too, and that
+  wave's test is inverted rather than deleted.
+
 - **`untapDuringEachUntap: "self"`** — Bender's Waterskin is the
   one-permanent form of the Seedborn Muse static, so the sweep over the
   controller's board narrows to the source rather than growing a second

@@ -553,6 +553,7 @@ export function parseGameState(json: string): GameState {
             goadedBy: expectStringArray(card.goadedBy, "card.goadedBy"),
           }),
       ...(card.mustAttackThisTurn === true ? { mustAttackThisTurn: true } : {}),
+      ...(card.exileIfLeaves === true ? { exileIfLeaves: true } : {}),
       ...(card.evoked === true ? { evoked: true } : {}),
       ...(card.echoDue === true ? { echoDue: true } : {}),
       faceDown: card.faceDown === true,
@@ -3356,6 +3357,7 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
         ...(value.perSourceCounters === undefined
           ? {}
           : { perSourceCounters: expectString(value.perSourceCounters, `${label}.perSourceCounters`) }),
+        ...(value.countFromSourcePower === true ? { countFromSourcePower: true } : {}),
         ...(value.entersTappedAttacking === true ? { entersTappedAttacking: true } : {}),
         ...(value.attackingEachOpponent === true ? { attackingEachOpponent: true } : {}),
         ...(isRecord(value.bonusPt)
@@ -3402,6 +3404,7 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
         ...(value.atEndStep === "sacrifice" || value.atEndStep === "exile"
           ? { atEndStep: value.atEndStep }
           : {}),
+        ...(value.exileIfLeaves === true ? { exileIfLeaves: true } : {}),
         ...(value.underControlOf === "controller" ? { underControlOf: "controller" } : {}),
         ...(isRecord(value.withCounter)
           ? {
@@ -3423,10 +3426,17 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
       };
     case "tap":
     case "untap":
+    case "remove_from_combat":
     case "tap_or_untap":
       return {
         kind,
         cardId: parseCardIdSelector(value.cardId, `${label}.cardId`),
+      };
+    case "types_until_eot":
+      return {
+        kind,
+        cardId: parseCardIdSelector(value.cardId, `${label}.cardId`),
+        types: expectStringArray(value.types, `${label}.types`),
       };
     case "mill":
       return {
@@ -6163,6 +6173,7 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
       ...(value.atEndStep === "sacrifice" || value.atEndStep === "exile"
         ? { atEndStep: value.atEndStep }
         : {}),
+      ...(value.exileIfLeaves === true ? { exileIfLeaves: true } : {}),
       ...(value.controllerId === undefined
         ? {}
         : { controllerId: expectString(value.controllerId, `${label}.controllerId`) }),
@@ -6229,8 +6240,21 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
       sourceId: expectString(value.sourceId, `${label}.sourceId`),
     };
   }
-  if (kind === "tap" || kind === "untap" || kind === "tap_or_untap" || kind === "sacrifice") {
+  if (
+    kind === "tap" ||
+    kind === "untap" ||
+    kind === "remove_from_combat" ||
+    kind === "tap_or_untap" ||
+    kind === "sacrifice"
+  ) {
     return { kind, cardId: expectString(value.cardId, `${label}.cardId`) };
+  }
+  if (kind === "types_until_eot") {
+    return {
+      kind,
+      cardId: expectString(value.cardId, `${label}.cardId`),
+      types: expectStringArray(value.types, `${label}.types`),
+    };
   }
   if (kind === "add_counter") {
     return {
@@ -6569,6 +6593,9 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
             },
           }
         : {}),
+      ...(value.countFromPowerOf === undefined
+        ? {}
+        : { countFromPowerOf: expectString(value.countFromPowerOf, `${label}.countFromPowerOf`) }),
       ...(value.entersTappedAttacking === true ? { entersTappedAttacking: true } : {}),
       ...(value.attackingEachOpponent === true ? { attackingEachOpponent: true } : {}),
       ...(isRecord(value.bonusPt)

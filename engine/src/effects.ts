@@ -913,6 +913,7 @@ export function bindCardEffect(
         perControlledSubtype,
         perDiedCreatures,
         perSourceCounters,
+        countFromSourcePower,
         copySelfIfLandsAtLeast,
         countFromSubjectAmount,
         count: printedCount,
@@ -986,6 +987,9 @@ export function bindCardEffect(
           ? { name: tokenRest.name.replace(/~/g, sourceName) }
           : {}),
         ...(count !== undefined ? { count } : {}),
+        ...(countFromSourcePower && context.sourceId
+          ? { countFromPowerOf: context.sourceId }
+          : {}),
         ...(perSourceCounters && context.sourceId
           ? { countFromCounters: { cardId: context.sourceId, counter: perSourceCounters } }
           : {}),
@@ -1004,6 +1008,7 @@ export function bindCardEffect(
         ...(effect.entersTapped ? { entersTapped: true } : {}),
         ...(effect.gainsHaste ? { gainsHaste: true } : {}),
         ...(effect.atEndStep ? { atEndStep: effect.atEndStep } : {}),
+        ...(effect.exileIfLeaves ? { exileIfLeaves: true } : {}),
         ...(effect.underControlOf === "controller"
           ? { controllerId: context.controllerId }
           : {}),
@@ -1026,12 +1031,20 @@ export function bindCardEffect(
     }
     case "tap":
     case "untap":
+    case "remove_from_combat":
     case "tap_or_untap": {
       const cardId = bindCardId(state, effect.cardId, context);
       if (!cardId) {
         return null;
       }
       return { kind: effect.kind, cardId };
+    }
+    case "types_until_eot": {
+      const cardId = bindCardId(state, effect.cardId, context);
+      if (!cardId) {
+        return null;
+      }
+      return { kind: "types_until_eot", cardId, types: [...effect.types] };
     }
     case "all_restrict_until_eot":
       // Nothing to bind: the effect names the whole battlefield.
@@ -3184,7 +3197,13 @@ function applyCreateToken(
   const counterCount = effect.countFromCounters
     ? next.cards[effect.countFromCounters.cardId]?.counters[effect.countFromCounters.counter] ?? 0
     : undefined;
-  if (counterCount === 0) {
+  // Krenko: read HERE, not at bind. The +1/+1 counter his sibling effect put
+  // on him has landed by now; at bind it had not, and the swarm would be one
+  // Goblin short every time.
+  const powerCount = effect.countFromPowerOf
+    ? Math.max(0, creaturePower(next, effect.countFromPowerOf))
+    : undefined;
+  if (counterCount === 0 || powerCount === 0) {
     return next;
   }
   // Adeline: one token per opponent, each attacking THAT opponent. A plain
@@ -3197,7 +3216,8 @@ function applyCreateToken(
     : null;
   const copies = perOpponent
     ? perOpponent.length * tokenDoublingFactor(next, effect.ownerId)
-    : (counterCount ?? effect.count ?? 1) * tokenDoublingFactor(next, effect.ownerId);
+    : (powerCount ?? counterCount ?? effect.count ?? 1) *
+      tokenDoublingFactor(next, effect.ownerId);
   for (let index = 0; index < copies; index += 1) {
     const token = createCardInstance({
       definitionId: definition.id,
@@ -3947,6 +3967,10 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
           }
           if (effect.atEndStep) {
             next.delayedEndStep.push({ cardId: effect.cardId, action: effect.atEndStep });
+          }
+          // Whip of Erebos: the shield rides the arriving permanent.
+          if (effect.exileIfLeaves) {
+            arrived.exileIfLeaves = true;
           }
           // Reanimate: "onto the battlefield under your control" — the card
           // sits in its owner's zone list, but the caster controls it.
@@ -5142,6 +5166,35 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
       case "keyword_until_eot":
         next = applyKeywordUntilEot(state, effect.cardId, effect.keyword);
         break;
+      case "types_until_eot":
+        // Layer 4, so the permanent KEEPS what it already is — Liquimetal
+        // Torque's target is an artifact creature, not an artifact.
+        next = pushUntilEotEffect(state, [effect.cardId], {
+          kind: "add_types",
+          types: [...effect.types],
+          subtypes: [],
+        });
+        break;
+      case "remove_from_combat": {
+        // CR 506.4: out of combat, but still on the battlefield. Any
+        // "whenever this attacks" trigger that already fired stays fired.
+        next = cloneGameState(state);
+        const leaving = next.cards[effect.cardId];
+        if (leaving) {
+          leaving.attacking = false;
+          leaving.blockingAttackerId = null;
+        }
+        if (next.combat) {
+          next.combat.attacks = next.combat.attacks.filter(
+            (attack) => attack.attackerId !== effect.cardId,
+          );
+          for (const [attackerId, blockers] of Object.entries(next.combat.blockers)) {
+            next.combat.blockers[attackerId] = blockers.filter((id) => id !== effect.cardId);
+          }
+          delete next.combat.blockers[effect.cardId];
+        }
+        break;
+      }
       case "restrict_until_eot":
         next = pushUntilEotEffect(state, [effect.cardId], {
           kind: "restrict",

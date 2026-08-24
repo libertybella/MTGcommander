@@ -26790,6 +26790,10 @@ describe("wave 209: coming back, and coming back smaller", () => {
           toZone: "battlefield",
           gainsHaste: true,
           atEndStep: "exile",
+          // Wave 209 left unearth's "or if it would leave the battlefield"
+          // half unmodelled and asserted its absence here. Wave 308 gave
+          // `move_card` the shield, so both halves of the exile are real.
+          exileIfLeaves: true,
         },
       ],
       targetRequirements: [],
@@ -44555,5 +44559,404 @@ describe("wave 307: what untaps, and what a tap sets off", () => {
     expect(parsed.abilityHaste).toBe(true);
     expect(parsed.untapDuringEachUntap).toBe("self");
     expect(parsed.triggers[0]?.event).toBe("taps_for_mana");
+  });
+});
+
+describe("wave 308: five readings the grammars could not say", () => {
+  const compile = (
+    name: string,
+    typeLine: string,
+    oracleText: string,
+    manaCost = "",
+    pt: [string, string] | null = null,
+  ) =>
+    compileOracleCard({
+      oracleId: name.toLowerCase().replace(/[^a-z]+/g, "-"),
+      name,
+      manaCost,
+      typeLine,
+      power: pt?.[0] ?? null,
+      toughness: pt?.[1] ?? null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  const put = (
+    game: GameState,
+    ownerId: string,
+    definition: CardDefinition,
+    zone: "hand" | "battlefield" | "graveyard" = "battlefield",
+  ) => {
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({ definitionId: definition.id, ownerId, zone });
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === ownerId)!.zones[zone].push(card.id);
+    if (zone === "battlefield") {
+      card.summoningSick = false;
+    }
+    return card.id;
+  };
+
+  const bear = (name: string, power = 2, toughness = 2) =>
+    createCardDefinition({
+      name,
+      typeLine: "Creature — Bear",
+      manaCost: "{1}{G}",
+      power,
+      toughness,
+    });
+
+  // ---- Rishkar: up to two targets, one counter each ------------------------
+
+  it("compiles 'each of up to two target creatures' as two optional slots", () => {
+    const compiled = compile(
+      "Rishkar, Peema Renegade",
+      "Legendary Creature — Elf Druid",
+      'When ~ enters, put a +1/+1 counter on each of up to two target creatures.\nEach creature you control with a counter on it has "{T}: Add {G}."',
+      "{2}{G}",
+      ["2", "2"],
+    );
+    expect(compiled.notes).toEqual([]);
+    const trigger = compiled.definition.triggers[0];
+    expect(trigger?.targetRequirements).toEqual([
+      { kind: "creature" },
+      { kind: "creature", optional: true },
+    ]);
+    // ONE counter EACH, not a division: this is not The Earth Crystal.
+    expect(trigger?.effects).toEqual([
+      { kind: "add_counter", cardId: { type: "chosen", index: 0 }, counter: "p1p1", amount: 1 },
+      { kind: "add_counter", cardId: { type: "chosen", index: 1 }, counter: "p1p1", amount: 1 },
+    ]);
+  });
+
+  it("gives one counter each, and copes with only one target chosen", () => {
+    const { game, p1 } = twoPlayers();
+    const firstId = put(game, p1.id, bear("First"));
+    const secondId = put(game, p1.id, bear("Second"));
+    const effects: CardEffect[] = [
+      { kind: "add_counter", cardId: { type: "chosen", index: 0 }, counter: "p1p1", amount: 1 },
+      { kind: "add_counter", cardId: { type: "chosen", index: 1 }, counter: "p1p1", amount: 1 },
+    ];
+    const requirements: TargetRequirement[] = [
+      { kind: "creature" },
+      { kind: "creature", optional: true },
+    ];
+    const both = applyEffects(
+      game,
+      bindCardEffects(game, effects, {
+        controllerId: p1.id,
+        sourceId: null,
+        targets: [
+          { type: "creature", cardId: firstId },
+          { type: "creature", cardId: secondId },
+        ],
+        targetRequirements: requirements,
+      }),
+    );
+    expect(both.cards[firstId]?.counters["p1p1"]).toBe(1);
+    expect(both.cards[secondId]?.counters["p1p1"]).toBe(1);
+
+    const one = applyEffects(
+      game,
+      bindCardEffects(game, effects, {
+        controllerId: p1.id,
+        sourceId: null,
+        targets: [{ type: "creature", cardId: firstId }],
+        targetRequirements: requirements,
+      }),
+    );
+    // The second slot went unfilled, so its counter simply does not happen.
+    expect(one.cards[firstId]?.counters["p1p1"]).toBe(1);
+    expect(one.cards[secondId]?.counters["p1p1"]).toBeUndefined();
+  });
+
+  // ---- Krenko: a count read after the sibling counter lands ---------------
+
+  it("compiles Krenko's swarm as an apply-time power count", () => {
+    const compiled = compile(
+      "Krenko, Tin Street Kingpin",
+      "Legendary Creature — Goblin",
+      "Whenever ~ attacks, put a +1/+1 counter on it, then create a number of 1/1 red Goblin creature tokens equal to ~'s power.",
+      "{2}{R}",
+      ["1", "2"],
+    );
+    expect(compiled.notes).toEqual([]);
+    const trigger = compiled.definition.triggers[0];
+    expect(trigger?.effects[0]).toMatchObject({ kind: "add_counter", counter: "p1p1" });
+    expect(trigger?.effects[1]).toMatchObject({
+      kind: "create_token",
+      name: "Goblin",
+      countFromSourcePower: true,
+    });
+  });
+
+  it("counts the power AFTER the counter, not before", () => {
+    const { game, p1 } = twoPlayers();
+    const krenkoId = put(
+      game,
+      p1.id,
+      createCardDefinition({
+        name: "Krenko, Tin Street Kingpin",
+        typeLine: "Legendary Creature — Goblin",
+        manaCost: "{2}{R}",
+        power: 1,
+        toughness: 2,
+      }),
+    );
+    // Effects bind as a BATCH, so a bind-time reading would see power 1 and
+    // make one Goblin. The printed card makes two.
+    const swarmed = applyEffects(
+      game,
+      bindCardEffects(
+        game,
+        [
+          { kind: "add_counter", cardId: "self", counter: "p1p1", amount: 1 },
+          {
+            kind: "create_token",
+            ownerId: "controller",
+            name: "Goblin",
+            typeLine: "Creature — Goblin Token",
+            power: 1,
+            toughness: 1,
+            countFromSourcePower: true,
+          },
+        ],
+        { controllerId: p1.id, sourceId: krenkoId },
+      ),
+    );
+    expect(swarmed.cards[krenkoId]?.counters["p1p1"]).toBe(1);
+    expect(Object.values(swarmed.cards).filter((card) => card.isToken)).toHaveLength(2);
+  });
+
+  it("makes nothing at zero power", () => {
+    const { game, p1 } = twoPlayers();
+    const wimpId = put(
+      game,
+      p1.id,
+      createCardDefinition({
+        name: "Wimp",
+        typeLine: "Creature — Goblin",
+        manaCost: "{R}",
+        power: 0,
+        toughness: 1,
+      }),
+    );
+    const nothing = applyEffects(
+      game,
+      bindCardEffects(
+        game,
+        [
+          {
+            kind: "create_token",
+            ownerId: "controller",
+            name: "Goblin",
+            typeLine: "Creature — Goblin Token",
+            power: 1,
+            toughness: 1,
+            countFromSourcePower: true,
+          },
+        ],
+        { controllerId: p1.id, sourceId: wimpId },
+      ),
+    );
+    expect(Object.values(nothing.cards).filter((card) => card.isToken)).toHaveLength(0);
+  });
+
+  // ---- Liquimetal Torque: added types, not replaced ----------------------
+
+  it("compiles the added type as a layer-4 until-EOT effect", () => {
+    const compiled = compile(
+      "Liquimetal Torque",
+      "Artifact",
+      "{T}: Add {C}.\n{T}: Target nonland permanent becomes an artifact in addition to its other types until end of turn.",
+      "{2}",
+    );
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.activated[0]?.targetRequirements).toEqual([
+      { kind: "nonland_permanent" },
+    ]);
+    expect(compiled.definition.activated[0]?.effects[0]).toEqual({
+      kind: "types_until_eot",
+      cardId: { type: "chosen", index: 0 },
+      types: ["artifact"],
+    });
+  });
+
+  it("adds the type without taking the old ones away", () => {
+    const { game, p1 } = twoPlayers();
+    const bearId = put(game, p1.id, bear("Bear"));
+    const changed = applyEffects(
+      game,
+      bindCardEffects(
+        game,
+        [{ kind: "types_until_eot", cardId: { type: "chosen", index: 0 }, types: ["artifact"] }],
+        {
+          controllerId: p1.id,
+          sourceId: null,
+          targets: [{ type: "creature", cardId: bearId }],
+          targetRequirements: [{ kind: "nonland_permanent" }],
+        },
+      ),
+    );
+    const types = computedCard(changed, bearId)?.characteristics.types ?? [];
+    // "In addition to its other types" — an artifact CREATURE, not an
+    // artifact, which is the difference between a Shatter and a blank.
+    expect(types).toContain("artifact");
+    expect(types).toContain("creature");
+  });
+
+  // ---- Reconnaissance: out of combat, still on the battlefield ------------
+
+  it("compiles Reconnaissance as removal from combat plus an untap", () => {
+    const compiled = compile(
+      "Reconnaissance",
+      "Enchantment",
+      "{0}: Remove target attacking creature you control from combat and untap it.",
+      "{W}",
+    );
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.activated[0]?.targetRequirements).toEqual([
+      { kind: "creature", control: "own", attackingOnly: true },
+    ]);
+    expect(compiled.definition.activated[0]?.effects).toEqual([
+      { kind: "remove_from_combat", cardId: { type: "chosen", index: 0 } },
+      { kind: "untap", cardId: { type: "chosen", index: 0 } },
+    ]);
+  });
+
+  it("takes the creature out of combat but leaves it on the battlefield", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const attackerId = put(game, p1.id, bear("Scout", 3, 3));
+    game.turn.activePlayerId = p1.id;
+    game.turn.phase = "combat";
+    game.turn.step = "declareAttackers";
+    let state = declareAttackers(game, p1.id, [
+      { attackerId, defenderId: p2.id },
+    ]);
+    expect(state.cards[attackerId]?.attacking).toBe(true);
+    state = applyEffect(state, { kind: "remove_from_combat", cardId: attackerId });
+    expect(state.cards[attackerId]?.attacking).toBe(false);
+    // Not a bounce and not a tap: the creature is still right there.
+    expect(state.cards[attackerId]?.zone).toBe("battlefield");
+    expect(state.combat?.attacks.some((attack) => attack.attackerId === attackerId)).toBe(false);
+  });
+
+  // ---- Whip of Erebos: a shield that stops the rebuy ----------------------
+
+  it("compiles the Whip's leaves-the-battlefield shield", () => {
+    const compiled = compile(
+      "Whip of Erebos",
+      "Legendary Artifact",
+      "Creatures you control have lifelink.\n{2}{B}{B}, {T}: Return target creature card from your graveyard to the battlefield. It gains haste. Exile it at the beginning of the next end step. If it would leave the battlefield, exile it instead of putting it anywhere else. Activate only as a sorcery.",
+      "{2}{B}{B}",
+    );
+    expect(compiled.notes).toEqual([]);
+    const reanimate = compiled.definition.activated[0]?.effects.find(
+      (effect) => effect.kind === "move_card",
+    );
+    expect(reanimate).toMatchObject({
+      kind: "move_card",
+      toZone: "battlefield",
+      gainsHaste: true,
+      atEndStep: "exile",
+      exileIfLeaves: true,
+    });
+  });
+
+  it("exiles the whipped creature instead of letting it die", () => {
+    const { game, p1 } = twoPlayers();
+    const targetId = put(game, p1.id, bear("Reanimated"), "graveyard");
+    const whipped = applyEffect(game, {
+      kind: "move_card",
+      cardId: targetId,
+      toZone: "battlefield",
+      gainsHaste: true,
+      atEndStep: "exile",
+      exileIfLeaves: true,
+    });
+    expect(whipped.cards[targetId]?.zone).toBe("battlefield");
+    expect(whipped.cards[targetId]?.exileIfLeaves).toBe(true);
+    // Sacrificing in response to the end-step exile is the whole rebuy
+    // loop the shield exists to stop.
+    const sacrificed = applyEffect(whipped, { kind: "sacrifice", cardId: targetId });
+    expect(sacrificed.cards[targetId]?.zone).toBe("exile");
+  });
+
+  it("spends the shield, so a second whipping gets a fresh one", () => {
+    const { game, p1 } = twoPlayers();
+    const targetId = put(game, p1.id, bear("Reanimated"), "graveyard");
+    let state = applyEffect(game, {
+      kind: "move_card",
+      cardId: targetId,
+      toZone: "battlefield",
+      exileIfLeaves: true,
+    });
+    state = applyEffect(state, { kind: "sacrifice", cardId: targetId });
+    expect(state.cards[targetId]?.exileIfLeaves).toBeUndefined();
+    // Back from exile some other way: no shield until one is given again.
+    state = moveCard(state, targetId, "battlefield");
+    const died = applyEffect(state, { kind: "sacrifice", cardId: targetId });
+    expect(died.cards[targetId]?.zone).toBe("graveyard");
+  });
+
+  it("leaves an unshielded creature to die normally", () => {
+    const { game, p1 } = twoPlayers();
+    const bearId = put(game, p1.id, bear("Ordinary"));
+    const died = applyEffect(game, { kind: "sacrifice", cardId: bearId });
+    expect(died.cards[bearId]?.zone).toBe("graveyard");
+  });
+
+  // ---- the wire ----------------------------------------------------------
+
+  it("round trips the new effects and the shield", () => {
+    const { game, p1 } = twoPlayers();
+    const definition = createCardDefinition({
+      name: "Reading Omnibus",
+      typeLine: "Artifact",
+      manaCost: "{2}",
+      activated: [
+        {
+          tap: true,
+          manaCost: "",
+          targetRequirements: [{ kind: "nonland_permanent" }],
+          effects: [
+            { kind: "types_until_eot", cardId: { type: "chosen", index: 0 }, types: ["artifact"] },
+            { kind: "remove_from_combat", cardId: { type: "chosen", index: 0 } },
+            {
+              kind: "move_card",
+              cardId: { type: "chosen", index: 0 },
+              toZone: "battlefield",
+              exileIfLeaves: true,
+            },
+            {
+              kind: "create_token",
+              ownerId: "controller",
+              name: "Goblin",
+              typeLine: "Creature — Goblin Token",
+              power: 1,
+              toughness: 1,
+              countFromSourcePower: true,
+            },
+          ],
+        },
+      ],
+    });
+    const cardId = put(game, p1.id, definition);
+    game.cards[cardId]!.exileIfLeaves = true;
+    const round = parseGameState(serializeGameState(game));
+    const parsed = round.definitions[definition.id]!;
+    expect(parsed.activated[0]?.effects[0]).toEqual({
+      kind: "types_until_eot",
+      cardId: { type: "chosen", index: 0 },
+      types: ["artifact"],
+    });
+    expect(parsed.activated[0]?.effects[1]).toEqual({
+      kind: "remove_from_combat",
+      cardId: { type: "chosen", index: 0 },
+    });
+    expect(parsed.activated[0]?.effects[2]).toMatchObject({ exileIfLeaves: true });
+    expect(parsed.activated[0]?.effects[3]).toMatchObject({ countFromSourcePower: true });
+    expect(round.cards[cardId]?.exileIfLeaves).toBe(true);
   });
 });

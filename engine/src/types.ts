@@ -672,6 +672,14 @@ export type CardInstance = {
   /** Bident of Thassa: "attacks this turn if able", with no say in whom. */
   mustAttackThisTurn?: boolean;
   /**
+   * Whip of Erebos: "If it would leave the battlefield, exile it instead of
+   * putting it anywhere else." Instance state, because the shield belongs to
+   * this arrival of this card and not to the card. Without it the Whip is a
+   * repeatable reanimator: sacrifice the creature in response to the
+   * end-step exile and it is back in the graveyard for next time.
+   */
+  exileIfLeaves?: boolean;
+  /**
    * Cast for an evoke cost (CR 702.74b): sacrificed as it enters. Set while
    * the card is a spell on the stack and cleared the moment it is read, so a
    * Mulldrifter later reanimated is not sacrificed for a cost nobody paid.
@@ -1232,6 +1240,13 @@ export type GameEffect =
       entersTapped?: boolean;
       gainsHaste?: boolean;
       atEndStep?: "sacrifice" | "exile";
+      /**
+       * Whip of Erebos: "If it would leave the battlefield, exile it instead
+       * of putting it anywhere else." A shield ON the arriving permanent, so
+       * a sacrifice or a bounce cannot bank the card for later — without it
+       * the Whip is a repeatable reanimator instead of a one-shot.
+       */
+      exileIfLeaves?: boolean;
       /** Battlefield arrivals: the arriving card is controlled by this player. */
       controllerId?: PlayerId;
       /** "…to the battlefield with a -1/-1 counter on it" (Persist). */
@@ -1251,6 +1266,19 @@ export type GameEffect =
     }
   | { kind: "tap"; cardId: CardInstanceId }
   | { kind: "untap"; cardId: CardInstanceId }
+  /**
+   * Reconnaissance: the creature stops attacking but stays on the
+   * battlefield. Not a tap, not a bounce — it is removed from combat
+   * (CR 506.4), so it deals and receives no combat damage and any
+   * "whenever this attacks" trigger that already fired stays fired.
+   */
+  | { kind: "remove_from_combat"; cardId: CardInstanceId }
+  /**
+   * Liquimetal Torque: "becomes an artifact IN ADDITION to its other types
+   * until end of turn". Layer 4, so it stacks with what the permanent
+   * already is rather than replacing it.
+   */
+  | { kind: "types_until_eot"; cardId: CardInstanceId; types: string[] }
   /** "You may tap or untap target creature": toggles the current state — a
    * documented approximation of the choice (Retreat to Coralhelm). */
   | { kind: "tap_or_untap"; cardId: CardInstanceId }
@@ -1275,6 +1303,13 @@ export type GameEffect =
       atEndStep?: "sacrifice" | "exile";
       /** Anim Pakal: count the source's counters when the effect applies. */
       countFromCounters?: { cardId: CardInstanceId; counter: string };
+      /**
+       * Krenko, Tin Street Kingpin: the count is the SOURCE's power, read
+       * when the tokens are created rather than when the effect binds. Its
+       * sibling `add_counter` has not run at bind time — effects bind as a
+       * batch — so a bind-time reading is always one short.
+       */
+      countFromPowerOf?: CardInstanceId;
       /**
        * Urza's Saga's Construct: "this token gets +1/+1 for each artifact
        * you control". The static belongs to the TOKEN, so it rides the
@@ -2306,6 +2341,9 @@ export type CardEffect =
       gainsHaste?: boolean;
       /** "Sacrifice/Exile it at the beginning of the next end step." */
       atEndStep?: "sacrifice" | "exile";
+      /** Whip of Erebos, unearth: "If it would leave the battlefield, exile
+       * it instead of putting it anywhere else." */
+      exileIfLeaves?: boolean;
       /** "onto the battlefield under your control" (Reanimate). */
       underControlOf?: "controller";
       /** "…to the battlefield with a -1/-1 counter on it" (Persist). */
@@ -2319,6 +2357,10 @@ export type CardEffect =
       keepAbilities?: boolean;
     }
   | { kind: "tap"; cardId: CardIdSelector }
+  /** Reconnaissance: out of combat, still on the battlefield. */
+  | { kind: "remove_from_combat"; cardId: CardIdSelector }
+  /** Liquimetal Torque: added card types until end of turn. */
+  | { kind: "types_until_eot"; cardId: CardIdSelector; types: string[] }
   | { kind: "untap"; cardId: CardIdSelector }
   | { kind: "tap_or_untap"; cardId: CardIdSelector }
   | {
@@ -2358,6 +2400,8 @@ export type CardEffect =
       /** Elenda: X tokens where X is the dying subject's power, carried on
        * the dies event and bound from the trigger context. */
       countFromSubjectAmount?: boolean;
+      /** Krenko, Tin Street Kingpin: "equal to ~'s power", read at apply. */
+      countFromSourcePower?: boolean;
       /** Anim Pakal: one token per named counter on the source, counted when
        * the effect applies (after earlier effects in the same batch). */
       perSourceCounters?: string;

@@ -38,6 +38,17 @@ function commanderAwareDestination(
   if ((toZone === "graveyard" || toZone === "exile") && isCommander(state, cardId)) {
     return "command";
   }
+  // Whip of Erebos: the shield belongs to the permanent, and only bites on
+  // the way OFF the battlefield — which is the only place the flag is ever
+  // set. It outranks the graveyard replacements below: both send the card to
+  // exile anyway, so the order is unobservable, but the reason differs.
+  if (
+    toZone !== "exile" &&
+    state.cards[cardId]?.exileIfLeaves === true &&
+    state.cards[cardId]?.zone === "battlefield"
+  ) {
+    return "exile";
+  }
   if (toZone === "graveyard" && graveyardReplacedByExile(state)) {
     // Rest in Peace (CR 614.6): the object never reaches the graveyard, so
     // dies triggers do not fire.
@@ -352,6 +363,12 @@ function applyZoneChangeFlags(
 ): void {
   card.attacking = false;
   card.blockingAttackerId = null;
+  if (toZone !== "battlefield") {
+    // The shield is spent the moment it fires: a card whipped back a second
+    // time gets a second shield, and one that reached exile some other way
+    // must not keep it.
+    delete card.exileIfLeaves;
+  }
   if (toZone === "battlefield") {
     card.summoningSick = true;
     card.damageMarked = 0;
