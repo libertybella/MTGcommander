@@ -55207,3 +55207,218 @@ describe("wave 352: a card type filter on a graveyard target", () => {
     ]);
   });
 });
+
+describe("wave 353: one target phases out, and a land that drops itself", () => {
+  const compile = (name: string, typeLine: string, oracleText: string, manaCost = "") =>
+    compileOracleCard({
+      oracleId: name.toLowerCase().replace(/[^a-z]+/g, "-"),
+      name,
+      manaCost,
+      typeLine,
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  const put = (
+    game: GameState,
+    ownerId: string,
+    definition: CardDefinition,
+    zone: "hand" | "battlefield" = "battlefield",
+  ) => {
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({ definitionId: definition.id, ownerId, zone });
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === ownerId)!.zones[zone].push(card.id);
+    if (zone === "battlefield") {
+      card.summoningSick = false;
+    }
+    return card.id;
+  };
+
+  const body = [
+    "When this land enters, up to one target creature phases out.",
+    "{T}: Add {C}.",
+    "{1}, {T}: Add one mana of any color.",
+    "{4}: Put this card from your hand onto the battlefield.",
+  ].join("\n");
+
+  it("compiles all four of Talon Gates' abilities", () => {
+    const compiled = compile("Talon Gates of Madara", "Land — Gate", body);
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.triggers[0]?.effects).toEqual([
+      { kind: "phase_out", cardIds: [{ type: "chosen", index: 0 }] },
+    ]);
+    expect(compiled.definition.triggers[0]?.targetRequirements).toEqual([
+      { optional: true, kind: "creature" },
+    ]);
+    expect(compiled.definition.manaAbilities).toHaveLength(2);
+    expect(compiled.definition.activated).toEqual([
+      {
+        tap: false,
+        manaCost: "{4}",
+        zone: "hand",
+        effects: [{ kind: "move_card", cardId: "self", toZone: "battlefield" }],
+        targetRequirements: [],
+      },
+    ]);
+  });
+
+  it("reads the required and optional forms apart", () => {
+    const required = compile(
+      "Probe",
+      "Instant",
+      "Target creature phases out.",
+      "{1}{U}",
+    );
+    expect(required.notes).toEqual([]);
+    expect(required.definition.targetRequirements).toEqual([{ kind: "creature" }]);
+    const excluded = compile(
+      "Probe Two",
+      "Instant",
+      "Another target permanent you control phases out.",
+      "{1}{U}",
+    );
+    expect(excluded.definition.targetRequirements).toEqual([
+      { excludeSource: true, control: "own", kind: "permanent" },
+    ]);
+  });
+
+  it("refuses a noun phrase it cannot read", () => {
+    // The grammar declines rather than widening: a phase-out that hits
+    // anything at all is a different card.
+    const compiled = compile("Probe", "Instant", "The moon phases out.", "{1}{U}");
+    expect(compiled.notes.length).toBeGreaterThan(0);
+    expect(compiled.definition.effects).toEqual([]);
+  });
+
+  const bear = (name = "Bear") =>
+    createCardDefinition({
+      name,
+      typeLine: "Creature — Bear",
+      manaCost: "{1}{G}",
+      power: 2,
+      toughness: 2,
+    });
+
+  it("phases the chosen creature out", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const bearId = put(game, p2.id, bear());
+    const after = applyEffects(
+      game,
+      bindCardEffects(
+        game,
+        [{ kind: "phase_out", cardIds: [{ type: "chosen", index: 0 }] }],
+        {
+          controllerId: p1.id,
+          sourceId: null,
+          targets: [{ type: "creature", cardId: bearId }],
+          targetRequirements: [{ kind: "creature" }],
+        },
+      ),
+    );
+    expect(after.cards[bearId]?.phasedOut).toBe(true);
+  });
+
+  it("leaves everything else on the battlefield alone", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const bearId = put(game, p2.id, bear());
+    const otherId = put(game, p2.id, bear("Other"));
+    const after = applyEffects(
+      game,
+      bindCardEffects(
+        game,
+        [{ kind: "phase_out", cardIds: [{ type: "chosen", index: 0 }] }],
+        {
+          controllerId: p1.id,
+          sourceId: null,
+          targets: [{ type: "creature", cardId: bearId }],
+          targetRequirements: [{ kind: "creature" }],
+        },
+      ),
+    );
+    expect(after.cards[otherId]?.phasedOut).toBeFalsy();
+  });
+
+  // ---- The land that drops itself -----------------------------------------
+
+  const gates = () =>
+    createCardDefinition({
+      name: "Talon Gates of Madara",
+      typeLine: "Land — Gate",
+      activated: [
+        {
+          tap: false,
+          manaCost: "{4}",
+          zone: "hand",
+          effects: [{ kind: "move_card", cardId: "self", toZone: "battlefield" }],
+          targetRequirements: [],
+        },
+      ],
+    });
+
+  const mainPhase = (game: GameState, playerId: string) => {
+    game.turn.activePlayerId = playerId;
+    game.turn.phase = "precombatMain";
+    game.turn.step = "precombatMain";
+    game.priorityPlayerId = playerId;
+  };
+
+  it("puts itself onto the battlefield from hand without spending the land drop", () => {
+    const { game, p1 } = twoPlayers();
+    const gatesId = put(game, p1.id, gates(), "hand");
+    mainPhase(game, p1.id);
+    const player = game.players.find((entry) => entry.id === p1.id)!;
+    player.mana.C = 4;
+    const before = player.landsPlayedThisTurn;
+    const after = applyAction(game, {
+      kind: "activate_ability",
+      playerId: p1.id,
+      cardId: gatesId,
+      abilityIndex: 0,
+      targets: [],
+    });
+    const resolved = after.stack.length > 0 ? resolveTopOfStack(after) : after;
+    expect(resolved.cards[gatesId]?.zone).toBe("battlefield");
+    // It is an ABILITY, not a land drop — which is the whole point of the
+    // cycle: the land arrives on a turn the drop is already spent.
+    expect(
+      resolved.players.find((entry) => entry.id === p1.id)!.landsPlayedThisTurn,
+    ).toBe(before);
+  });
+
+  it("is offered from hand and nowhere else", () => {
+    const { game, p1 } = twoPlayers();
+    const gatesId = put(game, p1.id, gates(), "hand");
+    mainPhase(game, p1.id);
+    game.players.find((entry) => entry.id === p1.id)!.mana.C = 4;
+    expect(
+      legalActions(game, p1.id).some(
+        (action) => action.kind === "activate_ability" && action.cardId === gatesId,
+      ),
+    ).toBe(true);
+    const { game: other, p1: q1 } = twoPlayers();
+    const onBoardId = put(other, q1.id, gates());
+    mainPhase(other, q1.id);
+    other.players.find((entry) => entry.id === q1.id)!.mana.C = 4;
+    // A hand ability read from the battlefield would let the land pay {4}
+    // to do nothing, forever.
+    expect(
+      legalActions(other, q1.id).some(
+        (action) => action.kind === "activate_ability" && action.cardId === onBoardId,
+      ),
+    ).toBe(false);
+  });
+
+  it("round trips the hand ability", () => {
+    const { game, p1 } = twoPlayers();
+    const definition = gates();
+    put(game, p1.id, definition, "hand");
+    const round = parseGameState(serializeGameState(game));
+    expect(round.definitions[definition.id]?.activated[0]).toEqual(
+      definition.activated[0],
+    );
+  });
+});

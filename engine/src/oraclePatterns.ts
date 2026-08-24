@@ -5805,6 +5805,21 @@ function compileSimpleClauseInner(sentence: string): SimpleClause | null {
     };
   }
 
+  // Talon Gates of Madara: ONE target phases out, where the clause above
+  // takes any number. The noun phrase goes through the shared grammar, so
+  // "up to one target creature" and "another target permanent you control"
+  // come along for free and an unreadable qualifier is still a clean miss.
+  const phaseOutOne = sentence.match(/^(.+?) phases out$/i);
+  const phasedRequirement = phaseOutOne?.[1]
+    ? parseSimpleTargetPhrase(phaseOutOne[1])
+    : null;
+  if (phasedRequirement) {
+    return {
+      targetRequirements: [phasedRequirement],
+      effects: [{ kind: "phase_out", cardIds: [{ type: "chosen", index: 0 }] }],
+    };
+  }
+
   // Eerie Interlude, fused: every chosen creature blinks home at end step.
   if (/^flicker-delay-mass your creatures$/i.test(sentence)) {
     return {
@@ -17227,6 +17242,34 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
         targetRequirements: [],
       });
       continue;
+    }
+
+    /**
+     * Talon Gates of Madara: "{4}: Put this card from your hand onto the
+     * battlefield." A hand-zone activation, which the engine already runs
+     * end to end — this is the first card that compiles into one. It is an
+     * ABILITY, not a land drop, so it does not spend the turn's land.
+     */
+    const handDrop = sentence.match(
+      /^((?:\{[^}]+\})+): Put this card from your hand onto the battlefield$/i,
+    );
+    if (handDrop?.[1]) {
+      let handDropCostOk = true;
+      try {
+        parseManaCost(handDrop[1]);
+      } catch {
+        handDropCostOk = false;
+      }
+      if (handDropCostOk) {
+        result.activated.push({
+          tap: false,
+          manaCost: handDrop[1],
+          zone: "hand",
+          effects: [{ kind: "move_card", cardId: "self", toZone: "battlefield" }],
+          targetRequirements: [],
+        });
+        continue;
+      }
     }
 
     // Eternalize (CR 702.129) lowers to its full rules text: exile the card

@@ -2277,6 +2277,11 @@ more questions it can now ask:
   `TopOfLibraryGrant.payLifeInsteadOfMana` replaces the cost OUTRIGHT, the
   same way flashback does, and rides the same life-payment path. A cost
   that had merely been reduced would still refuse a caster with no mana.
+- **A land that puts itself onto the battlefield** — Talon Gates of Madara.
+  `ActivatedAbility.zone: "hand"` was already honored by `legalActions` and
+  `applyAction`; this is the first printed card compiling into it. The
+  ability is not a land drop, so it does not spend the turn's land, and it
+  is offered from hand only.
 - **A card type filter on a graveyard target** — Deathrite Shaman.
   `TargetRequirement.requiredTypesAny` is an ANY-of list of card types read
   from the printed characteristics, and it sits beside `requiredSubtypesAny`
