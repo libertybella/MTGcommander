@@ -659,7 +659,12 @@ function dealDamageToPlayerInPlace(
     playerId: defenderId,
     amount: dealt,
   });
-  collect?.push({ kind: "deals_damage_to_player", cardId: sourceId, playerId: defenderId });
+  collect?.push({
+    kind: "deals_damage_to_player",
+    cardId: sourceId,
+    playerId: defenderId,
+    amount: dealt,
+  });
   collect?.push({ kind: "loses_life", playerId: defenderId, amount: dealt });
   if (isCommander(state, sourceId)) {
     defender.commander.damageReceived[sourceId] =

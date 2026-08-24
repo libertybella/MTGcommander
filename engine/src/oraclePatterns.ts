@@ -1452,6 +1452,32 @@ function parseEffectCondition(phrase: string): TriggerCondition | null {
       return { kind: "controls_lands_with_different_names", atLeast };
     }
   }
+  // Windbrisk Heights. The tally the attack step already keeps, summed
+  // across combat phases — which is what the printed "this turn" asks.
+  const attackedWith = text.match(
+    /^you attacked with (\w+) or more creatures this turn$/i,
+  );
+  const attackerCount = attackedWith?.[1] ? parseCount(attackedWith[1]) : null;
+  if (attackerCount) {
+    return { kind: "attacked_with_creatures_this_turn", atLeast: attackerCount };
+  }
+  // Spinerock Knoll. DAMAGE, not life lost, and ANY ONE opponent has to
+  // clear the bar — two opponents on four each is not seven to an opponent.
+  const opponentDamaged = text.match(
+    /^an opponent was dealt (\d+) or more damage this turn$/i,
+  );
+  if (opponentDamaged?.[1]) {
+    return { kind: "opponent_damaged_this_turn", atLeast: Number(opponentDamaged[1]) };
+  }
+  // Shelldock Isle: "A library" is any library at the table, the
+  // controller's own included, which is how the card is normally used.
+  const smallLibrary = text.match(
+    /^a library has (\w+) or fewer cards in it$/i,
+  );
+  const libraryCap = smallLibrary?.[1] ? parseCount(smallLibrary[1]) : null;
+  if (libraryCap !== null) {
+    return { kind: "library_at_most", count: libraryCap };
+  }
   // Mosswort Bridge: "creatures you control have TOTAL power 10 or
   // greater" — the sum, not the greatest single power.
   const totalPower = text.match(
@@ -15981,6 +16007,24 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
         for (const entry of damage) {
           entry.gainLife = true;
         }
+        continue;
+      }
+    }
+
+    // Expressive Iteration: the rider belongs to the LOOK that did the
+    // exiling. Left as its own sentence it would be a top-level effect with
+    // no card to name — and the look is the only thing that knows which card
+    // went to exile. Refused when the look has no exile destination, so a
+    // rider that reads nothing never lands.
+    if (/^You may play the exiled card this turn$/i.test(sentence)) {
+      const look = [...result.effects]
+        .reverse()
+        .find(
+          (effect) =>
+            effect.kind === "look_and_assign" && effect.destinations.includes("exile"),
+        );
+      if (look?.kind === "look_and_assign") {
+        look.exilePlayableThisTurn = true;
         continue;
       }
     }

@@ -195,6 +195,7 @@ function onEnterStep(state: GameState): GameState {
       }
     }
     state.lifeLostByPlayerThisTurn = {};
+    state.damageToPlayerThisTurn = {};
     state.combatPhasesThisTurn = 0;
     // Goad lasts "until your next turn" (CR 701.38), so the active player's
     // own goads expire as their turn begins — every other goader's stay on.

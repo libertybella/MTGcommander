@@ -1741,6 +1741,20 @@ export function parseGameState(json: string): GameState {
             return counts;
           })(),
         }),
+    ...(raw.damageToPlayerThisTurn === undefined
+      ? {}
+      : {
+          damageToPlayerThisTurn: (() => {
+            if (!isRecord(raw.damageToPlayerThisTurn)) {
+              throw new Error("Invalid damageToPlayerThisTurn");
+            }
+            const counts: Record<string, number> = {};
+            for (const [key, entry] of Object.entries(raw.damageToPlayerThisTurn)) {
+              counts[key] = expectNumber(entry, `damageToPlayerThisTurn.${key}`);
+            }
+            return counts;
+          })(),
+        }),
     ...(raw.castLockUntilEot === undefined
       ? {}
       : { castLockUntilEot: expectString(raw.castLockUntilEot, "castLockUntilEot") }),
@@ -2310,6 +2324,7 @@ function parsePrompts(value: unknown, playerIds: Set<string>): PendingPrompt[] {
                 `prompts[${index}].hideawaySourceId`,
               ),
             }),
+        ...(entry.exilePlayableThisTurn === true ? { exilePlayableThisTurn: true } : {}),
         ...(resumeEffects && resumeEffects.length > 0 ? { resumeEffects } : {}),
       };
     }
@@ -3134,6 +3149,7 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
             ? []
             : parseLookDestinations(value.destinations, `${label}.destinations`),
         ...(value.hideawayFromSource === true ? { hideawayFromSource: true } : {}),
+        ...(value.exilePlayableThisTurn === true ? { exilePlayableThisTurn: true } : {}),
         ...(value.countFromDevotion === undefined
           ? {}
           : {
@@ -4771,6 +4787,18 @@ function parseTriggerCondition(value: unknown, label: string): TriggerCondition 
       }
       if (conditionKind === "created_token_this_turn") {
         return { kind: conditionKind };
+      }
+      if (
+        conditionKind === "attacked_with_creatures_this_turn" ||
+        conditionKind === "opponent_damaged_this_turn"
+      ) {
+        return {
+          kind: conditionKind,
+          atLeast: expectNumber(value.atLeast, `${label}.atLeast`),
+        };
+      }
+      if (conditionKind === "library_at_most") {
+        return { kind: conditionKind, count: expectNumber(value.count, `${label}.count`) };
       }
       if (conditionKind === "announced_x_at_least") {
         return {
@@ -6627,6 +6655,7 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
       playerId: expectString(value.playerId, `${label}.playerId`),
       count: expectNumber(value.count, `${label}.count`),
       destinations: parseLookDestinations(value.destinations, `${label}.destinations`),
+      ...(value.exilePlayableThisTurn === true ? { exilePlayableThisTurn: true } : {}),
       ...(value.hideawaySourceId === undefined
         ? {}
         : {
@@ -6635,6 +6664,7 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
               `${label}.hideawaySourceId`,
             ),
           }),
+      ...(value.exilePlayableThisTurn === true ? { exilePlayableThisTurn: true } : {}),
     };
   }
   throw new Error(`Unsupported resume effect ${kind}`);

@@ -870,6 +870,42 @@ more questions it can now ask:
   (Bennie Bracks). Reads the existing per-player `createdTokenThisTurn`
   list, and asks whether the CONTROLLER is in it — an opponent's Treasure
   must not satisfy it.
+- **Hideaway's activation, and the gates it names** — the hideaway half was
+  already here (`hideawayFromSource` records the exiled card ON the
+  permanent, because "the exiled card" has no other referent). What was
+  missing was the activation that plays it back and the conditions it gates
+  on. Three joined the shared condition vocabulary, which trigger heads and
+  activation gates both speak:
+
+  - `attacked_with_creatures_this_turn` — Windbrisk Heights. The same
+    question `ActivatedAbility.requiresAttackersThisTurn` asks for Minas
+    Tirith, in condition form, because a gate synthesized from a printed
+    "if" clause can only speak that language.
+  - `opponent_damaged_this_turn` — Spinerock Knoll. DAMAGE, kept apart from
+    `lifeLostByPlayerThisTurn`: a player who paid life for a painland lost
+    life and was dealt nothing, and the printed gate asks the second
+    question. ANY ONE opponent has to clear the bar — two opponents on four
+    damage each is not seven damage to an opponent.
+  - `library_at_most` — Shelldock Isle. "A library" is any library at the
+    table, the controller's own included, which is how the card is normally
+    turned on.
+
+  A gate that cannot be READ is refused outright and the whole ability stays
+  uncompiled. Dropping it would leave the ability activatable whenever, which
+  is a wrong game rather than a missing one.
+
+- **`GameState.damageToPlayerThisTurn`** — a per-player tally fed from the
+  `deals_damage_to_player` event, which now carries an amount. One event-side
+  tally rather than one per damage site, the same principle the life tallies
+  already use: combat damage, a burn spell and a mass-damage effect are all
+  counted once, in one place.
+
+- **`look_and_assign.exilePlayableThisTurn`** — Expressive Iteration. An
+  impulse window on whichever card the look sent to exile. Distinct from
+  hideaway, which records the card on a PERMANENT for a later activation;
+  this is the caster's own window and expires with the turn. The rider is
+  refused when the look has no exile destination, so it never reads nothing.
+
 - **Landwalk (CR 702.14)** — six Keyword union members (plainswalk,
   islandwalk, swampwalk, mountainwalk, forestwalk, nonbasic landwalk) rather
   than one parameterised field, so grants, keyword lines, searches and the

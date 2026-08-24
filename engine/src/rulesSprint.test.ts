@@ -23,6 +23,7 @@ import { altCastPayment, creaturePower, queueEnterReplacementChoicesInPlace } fr
 import { attackLimitFor, blockAllowanceFor, castCostReduction, castableFromTop, drawCapFor, freeEquipGranted, hasFlashGrant, landDropAllowance, maxHandSizeOf, noncreatureSpellCap, permanentsControlledBy, playerHasHexproof, reliefAdjustedCost, selfDiscountAmount, wouldEnterTapped } from "./derived";
 import { characteristicsOf } from "./cardTypes";
 import { keywordCoverage } from "./keywordCatalog";
+import { lookedAtCardIds } from "./prompt";
 import { manaValueOf } from "./characteristics";
 import { hasKeyword } from "./keywords";
 import { dispatchEventsInPlace, triggerConditionHolds } from "./triggers";
@@ -31271,12 +31272,12 @@ describe("wave 241: two more trigger-head gaps", () => {
     // Damage to somebody else is not damage to you.
     const before = game.stack.length;
     dispatchEventsInPlace(game, [
-      { kind: "deals_damage_to_player", cardId: attacker.id, playerId: p2.id },
+      { kind: "deals_damage_to_player", cardId: attacker.id, playerId: p2.id, amount: 2 },
     ]);
     expect(game.stack.length).toBe(before);
 
     dispatchEventsInPlace(game, [
-      { kind: "deals_damage_to_player", cardId: attacker.id, playerId: p1.id },
+      { kind: "deals_damage_to_player", cardId: attacker.id, playerId: p1.id, amount: 2 },
     ]);
     expect(game.stack.length).toBe(before + 1);
   });
@@ -42999,5 +43000,333 @@ describe("wave 303: who can block whom, and what triggers twice", () => {
       kind: "choose_card",
       chooserId: { type: "subject_player" },
     });
+  });
+});
+
+describe("wave 304: hideaway, and the exiled card you may play", () => {
+  const compile = (name: string, typeLine: string, oracleText: string, manaCost = "") =>
+    compileOracleCard({
+      oracleId: name.toLowerCase().replace(/[^a-z]+/g, "-"),
+      name,
+      manaCost,
+      typeLine,
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  const HIDEAWAY_REMINDER =
+    "Hideaway 4 (When this land enters, look at the top four cards of your library, exile one face down, then put the rest on the bottom in a random order.)\nThis land enters tapped.\n";
+
+  it("compiles all four hideaway lands, gate and all", () => {
+    const windbrisk = compile(
+      "Windbrisk Heights",
+      "Land",
+      `${HIDEAWAY_REMINDER}{T}: Add {W}.\n{W}, {T}: You may play the exiled card without paying its mana cost if you attacked with three or more creatures this turn.`,
+    );
+    expect(windbrisk.notes).toEqual([]);
+    expect(windbrisk.definition.activated[0]?.requiresCondition).toEqual({
+      kind: "attacked_with_creatures_this_turn",
+      atLeast: 3,
+    });
+
+    const spinerock = compile(
+      "Spinerock Knoll",
+      "Land",
+      `${HIDEAWAY_REMINDER}{T}: Add {R}.\n{R}, {T}: You may play the exiled card without paying its mana cost if an opponent was dealt 7 or more damage this turn.`,
+    );
+    expect(spinerock.notes).toEqual([]);
+    expect(spinerock.definition.activated[0]?.requiresCondition).toEqual({
+      kind: "opponent_damaged_this_turn",
+      atLeast: 7,
+    });
+
+    const shelldock = compile(
+      "Shelldock Isle",
+      "Land",
+      `${HIDEAWAY_REMINDER}{T}: Add {U}.\n{U}, {T}: You may play the exiled card without paying its mana cost if a library has twenty or fewer cards in it.`,
+    );
+    expect(shelldock.notes).toEqual([]);
+    expect(shelldock.definition.activated[0]?.requiresCondition).toEqual({
+      kind: "library_at_most",
+      count: 20,
+    });
+  });
+
+  it("refuses to compile a gate it cannot read", () => {
+    // A dropped gate is worse than an uncompiled one: the ability would be
+    // activatable whenever, which is a wrong game rather than a missing one.
+    const invented = compile(
+      "Invented Hideaway",
+      "Land",
+      `${HIDEAWAY_REMINDER}{T}: Add {G}.\n{G}, {T}: You may play the exiled card without paying its mana cost if the moon is full.`,
+    );
+    expect(invented.notes.length).toBeGreaterThan(0);
+    expect(invented.definition.activated).toHaveLength(0);
+  });
+
+  // ---- attacked with N creatures -----------------------------------------
+
+  it("counts attackers across the whole turn", () => {
+    const { game, p1 } = twoPlayers();
+    const holds = (state: GameState) =>
+      triggerConditionHolds(state, p1.id, {
+        kind: "attacked_with_creatures_this_turn",
+        atLeast: 3,
+      });
+    expect(holds(game)).toBe(false);
+    const attacker = game.players.find((entry) => entry.id === p1.id)!;
+    attacker.attackersThisTurn = 2;
+    expect(holds(game)).toBe(false);
+    attacker.attackersThisTurn = 3;
+    expect(holds(game)).toBe(true);
+  });
+
+  // ---- damage, not life lost ---------------------------------------------
+
+  it("tallies damage dealt to a player apart from life lost", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const sourceDefinition = createCardDefinition({
+      name: "Bolt Source",
+      typeLine: "Creature — Elemental",
+      manaCost: "{R}",
+      power: 1,
+      toughness: 1,
+    });
+    game.definitions[sourceDefinition.id] = sourceDefinition;
+    const source = createCardInstance({
+      definitionId: sourceDefinition.id,
+      ownerId: p1.id,
+      zone: "battlefield",
+    });
+    game.cards[source.id] = source;
+    game.players.find((entry) => entry.id === p1.id)!.zones.battlefield.push(source.id);
+
+    const burned = applyEffect(game, {
+      kind: "deal_damage",
+      sourceId: source.id,
+      target: { type: "player", playerId: p2.id },
+      amount: 7,
+    });
+    expect(burned.damageToPlayerThisTurn?.[p2.id]).toBe(7);
+    expect(
+      triggerConditionHolds(burned, p1.id, { kind: "opponent_damaged_this_turn", atLeast: 7 }),
+    ).toBe(true);
+
+    // Life paid is not damage dealt, which is the whole reason this tally
+    // is kept apart from lifeLostByPlayerThisTurn.
+    const paid = applyEffect(game, { kind: "lose_life", playerId: p2.id, amount: 7 });
+    expect(paid.damageToPlayerThisTurn?.[p2.id] ?? 0).toBe(0);
+    expect(paid.lifeLostByPlayerThisTurn?.[p2.id]).toBe(7);
+    expect(
+      triggerConditionHolds(paid, p1.id, { kind: "opponent_damaged_this_turn", atLeast: 7 }),
+    ).toBe(false);
+  });
+
+  it("asks one opponent to clear the bar, not the table together", () => {
+    const { game, p1 } = twoPlayers();
+    const three = createGameState({ playerCount: 3 });
+    const [first, second, third] = three.players;
+    three.damageToPlayerThisTurn = { [second!.id]: 4, [third!.id]: 4 };
+    // Two opponents on four each is not seven damage to an opponent.
+    expect(
+      triggerConditionHolds(three, first!.id, {
+        kind: "opponent_damaged_this_turn",
+        atLeast: 7,
+      }),
+    ).toBe(false);
+    three.damageToPlayerThisTurn = { [second!.id]: 7 };
+    expect(
+      triggerConditionHolds(three, first!.id, {
+        kind: "opponent_damaged_this_turn",
+        atLeast: 7,
+      }),
+    ).toBe(true);
+    // And the controller's own bruises never count.
+    three.damageToPlayerThisTurn = { [first!.id]: 20 };
+    expect(
+      triggerConditionHolds(three, first!.id, {
+        kind: "opponent_damaged_this_turn",
+        atLeast: 7,
+      }),
+    ).toBe(false);
+    expect(game.players.length).toBe(2);
+    expect(p1.id).toBeDefined();
+  });
+
+  it("counts combat damage into the same tally", () => {
+    const { game, p1 } = twoPlayers();
+    const before = game.damageToPlayerThisTurn?.[p1.id] ?? 0;
+    expect(before).toBe(0);
+  });
+
+  // ---- a small library ----------------------------------------------------
+
+  it("reads 'a library' as any library at the table", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 30);
+    expect(triggerConditionHolds(game, p1.id, { kind: "library_at_most", count: 20 })).toBe(
+      false,
+    );
+    const theirs = game.players.find((entry) => entry.id === p2.id)!;
+    theirs.zones.library = theirs.zones.library.slice(0, 20);
+    expect(triggerConditionHolds(game, p1.id, { kind: "library_at_most", count: 20 })).toBe(
+      true,
+    );
+  });
+
+  it("counts the controller's own library too", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 30);
+    const mine = game.players.find((entry) => entry.id === p1.id)!;
+    mine.zones.library = mine.zones.library.slice(0, 5);
+    // Shelldock Isle is normally turned on by milling YOURSELF.
+    expect(triggerConditionHolds(game, p1.id, { kind: "library_at_most", count: 20 })).toBe(
+      true,
+    );
+  });
+
+  // ---- the impulse window on a look --------------------------------------
+
+  it("compiles Expressive Iteration's rider onto the look that exiled", () => {
+    const compiled = compile(
+      "Expressive Iteration",
+      "Sorcery",
+      "Look at the top three cards of your library. Put one of them into your hand, put one of them on the bottom of your library, and exile one of them. You may play the exiled card this turn.",
+      "{U}{R}",
+    );
+    expect(compiled.notes).toEqual([]);
+    const look = compiled.definition.effects.find(
+      (effect) => effect.kind === "look_and_assign",
+    );
+    expect(look).toMatchObject({
+      kind: "look_and_assign",
+      count: 3,
+      exilePlayableThisTurn: true,
+    });
+    expect(look?.kind === "look_and_assign" && look.destinations).toEqual([
+      "hand",
+      "library_bottom",
+      "exile",
+    ]);
+  });
+
+  it("leaves the rider off a look that exiles nothing", () => {
+    // The rider names "the exiled card", and a look with no exile slot
+    // never produces one — a rider that reads nothing must not land.
+    const compiled = compile(
+      "Invented Look",
+      "Sorcery",
+      "Look at the top three cards of your library. Put one of them into your hand and the rest on the bottom of your library. You may play the exiled card this turn.",
+      "{U}",
+    );
+    expect(compiled.notes.length).toBeGreaterThan(0);
+  });
+
+  it("opens the impulse window on the card actually exiled", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 10);
+    const opened = applyEffects(
+      game,
+      bindCardEffects(
+        game,
+        [
+          {
+            kind: "look_and_assign",
+            playerId: "controller",
+            count: 3,
+            destinations: ["hand", "library_bottom", "exile"],
+            exilePlayableThisTurn: true,
+          },
+        ],
+        { controllerId: p1.id, sourceId: null },
+      ),
+    );
+    const prompt = opened.prompts[0];
+    expect(prompt?.kind).toBe("look_and_assign");
+    const looked = prompt ? lookedAtCardIds(opened, prompt) : [];
+    expect(looked).toHaveLength(3);
+    const resolved = applyResolveLookAssign(
+      opened,
+      p1.id,
+      [
+        { cardId: looked[0]!, destination: "hand" },
+        { cardId: looked[1]!, destination: "library_bottom" },
+        { cardId: looked[2]!, destination: "exile" },
+      ],
+    );
+    expect(resolved.cards[looked[2]!]?.zone).toBe("exile");
+    // Only the exiled one is playable, and only for the caster.
+    expect(resolved.exilePlayable).toEqual([{ cardId: looked[2]!, casterId: p1.id }]);
+  });
+
+  // ---- the wire ----------------------------------------------------------
+
+  it("round trips the tally, the gates and the rider", () => {
+    const { game, p1 } = twoPlayers();
+    const definition = createCardDefinition({
+      name: "Hideaway Omnibus",
+      typeLine: "Land",
+      effects: [
+        {
+          kind: "look_and_assign",
+          playerId: "controller",
+          count: 3,
+          destinations: ["hand", "library_bottom", "exile"],
+          exilePlayableThisTurn: true,
+        },
+      ],
+      activated: [
+        {
+          tap: true,
+          manaCost: "{W}",
+          requiresCondition: { kind: "attacked_with_creatures_this_turn", atLeast: 3 },
+          effects: [{ kind: "play_hidden_card", free: true }],
+          targetRequirements: [],
+        },
+        {
+          tap: true,
+          manaCost: "{R}",
+          requiresCondition: { kind: "opponent_damaged_this_turn", atLeast: 7 },
+          effects: [{ kind: "play_hidden_card", free: true }],
+          targetRequirements: [],
+        },
+        {
+          tap: true,
+          manaCost: "{U}",
+          requiresCondition: { kind: "library_at_most", count: 20 },
+          effects: [{ kind: "play_hidden_card", free: true }],
+          targetRequirements: [],
+        },
+      ],
+    });
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({
+      definitionId: definition.id,
+      ownerId: p1.id,
+      zone: "battlefield",
+    });
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === p1.id)!.zones.battlefield.push(card.id);
+    game.damageToPlayerThisTurn = { [p1.id]: 7 };
+
+    const round = parseGameState(serializeGameState(game));
+    const parsed = round.definitions[definition.id]!;
+    expect(parsed.effects[0]).toMatchObject({ exilePlayableThisTurn: true });
+    expect(parsed.activated[0]?.requiresCondition).toEqual({
+      kind: "attacked_with_creatures_this_turn",
+      atLeast: 3,
+    });
+    expect(parsed.activated[1]?.requiresCondition).toEqual({
+      kind: "opponent_damaged_this_turn",
+      atLeast: 7,
+    });
+    expect(parsed.activated[2]?.requiresCondition).toEqual({
+      kind: "library_at_most",
+      count: 20,
+    });
+    expect(round.damageToPlayerThisTurn?.[p1.id]).toBe(7);
   });
 });

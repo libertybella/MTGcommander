@@ -197,6 +197,23 @@ export function triggerConditionHolds(
   if (condition.kind === "created_token_this_turn") {
     return (state.createdTokenThisTurn ?? []).includes(controllerId);
   }
+  if (condition.kind === "attacked_with_creatures_this_turn") {
+    const attacker = state.players.find((player) => player.id === controllerId);
+    return (attacker?.attackersThisTurn ?? 0) >= condition.atLeast;
+  }
+  if (condition.kind === "opponent_damaged_this_turn") {
+    // ANY one opponent clearing the bar is enough; two opponents on four
+    // damage each is not seven damage to an opponent.
+    return state.players.some(
+      (player) =>
+        player.id !== controllerId &&
+        (state.damageToPlayerThisTurn?.[player.id] ?? 0) >= condition.atLeast,
+    );
+  }
+  if (condition.kind === "library_at_most") {
+    // "A library" is any library at the table, including the controller's.
+    return state.players.some((player) => player.zones.library.length <= condition.count);
+  }
   if (condition.kind === "self_counter_count") {
     // Read on the source, as `self_no_counter` is: an absent source reads as
     // zero counters, which is the truthful answer for "fewer than three".
@@ -1212,6 +1229,14 @@ export function dispatchEventsInPlace(state: GameState, events: EngineEvent[]): 
       const lost = state.lifeLostByPlayerThisTurn ?? {};
       lost[event.playerId] = (lost[event.playerId] ?? 0) + event.amount;
       state.lifeLostByPlayerThisTurn = lost;
+    }
+    // Spinerock Knoll: DAMAGE, kept apart from life lost. A player who paid
+    // life for a land has lost life and been dealt nothing, and the printed
+    // gate asks the second question.
+    if (event.kind === "deals_damage_to_player" && event.amount > 0) {
+      const damaged = state.damageToPlayerThisTurn ?? {};
+      damaged[event.playerId] = (damaged[event.playerId] ?? 0) + event.amount;
+      state.damageToPlayerThisTurn = damaged;
     }
   }
   const candidates: TriggerCandidate[] = [];

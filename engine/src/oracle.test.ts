@@ -724,9 +724,13 @@ describe("oracle compile", () => {
         playerId: "controller",
         count: 3,
         destinations: ["hand", "library_bottom", "exile"],
+        // Wave 304: the rider used to be left uncompiled, and this case
+        // asserted that. It rides the look now — the only effect that knows
+        // which card went to exile.
+        exilePlayableThisTurn: true,
       },
     ]);
-    expect(iteration.notes.some((note) => /play the exiled card/i.test(note))).toBe(true);
+    expect(iteration.notes).toEqual([]);
   });
 
   it("compiles Duress, Sign in Blood, Behold, counters, Go for the Throat, battle lands, and begin-combat amass", () => {

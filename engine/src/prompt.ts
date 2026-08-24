@@ -1153,6 +1153,14 @@ export function applyResolveLookAssign(
       moved = moveCard(moved, assignment.cardId, "library", { libraryPosition: "top" });
     } else {
       moved = moveCard(moved, assignment.cardId, "exile");
+      // Expressive Iteration: an impulse window on the card just exiled.
+      // Cleared with the other entries at cleanup.
+      if (prompt.exilePlayableThisTurn) {
+        moved.exilePlayable = [
+          ...(moved.exilePlayable ?? []),
+          { cardId: assignment.cardId, casterId: prompt.playerId },
+        ];
+      }
       // Hideaway: the exiled card is recorded on the permanent that hid
       // it, so its own ability can play that card and no other.
       if (prompt.hideawaySourceId) {

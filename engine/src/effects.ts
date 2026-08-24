@@ -736,6 +736,7 @@ export function bindCardEffect(
         ...(effect.hideawayFromSource && context.sourceId
           ? { hideawaySourceId: context.sourceId }
           : {}),
+        ...(effect.exilePlayableThisTurn ? { exilePlayableThisTurn: true } : {}),
       };
     }
     case "reveal_zone": {
@@ -2389,7 +2390,12 @@ function applyDealDamage(state: GameState, effect: Extract<GameEffect, { kind: "
     let next = applyLoseLife(state, effect.target.playerId, dealt);
     if (effect.sourceId && next.cards[effect.sourceId]) {
       dispatchEventsInPlace(next, [
-        { kind: "deals_damage_to_player", cardId: effect.sourceId, playerId: effect.target.playerId },
+        {
+          kind: "deals_damage_to_player",
+          cardId: effect.sourceId,
+          playerId: effect.target.playerId,
+          amount: dealt,
+        },
       ]);
     }
     next = applyDamageLifegainRider(next, effect);
@@ -3843,6 +3849,7 @@ function applyLookAndAssign(
   count: number,
   destinations: LookDestination[],
   hideawaySourceId?: CardInstanceId,
+  exilePlayableThisTurn?: boolean,
 ): GameState {
   requirePositiveInteger(count, "look count");
   const player = requirePlayer(state, playerId);
@@ -3857,6 +3864,7 @@ function applyLookAndAssign(
     count: looked,
     destinations: destinations.slice(0, Math.max(looked, destinations.length)),
     ...(hideawaySourceId ? { hideawaySourceId } : {}),
+    ...(exilePlayableThisTurn ? { exilePlayableThisTurn: true } : {}),
   });
   return next;
 }
@@ -4633,7 +4641,12 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
           player.life -= effect.amount;
           next.log.push({ kind: "life_change", playerId: player.id, delta: -effect.amount });
           dispatchEventsInPlace(next, [
-            { kind: "deals_damage_to_player", cardId: effect.sourceId, playerId: player.id },
+            {
+              kind: "deals_damage_to_player",
+              cardId: effect.sourceId,
+              playerId: player.id,
+              amount: effect.amount,
+            },
           ]);
         }
         break;
@@ -5522,6 +5535,7 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
           effect.count,
           effect.destinations,
           effect.hideawaySourceId,
+          effect.exilePlayableThisTurn,
         );
         break;
       case "grant_player_shield": {

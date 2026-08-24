@@ -941,6 +941,13 @@ export type GameState = {
    * life total, and gaining life back does not undo having lost it.
    */
   lifeLostByPlayerThisTurn?: Record<PlayerId, number>;
+  /**
+   * Spinerock Knoll: damage dealt to each player this turn. Kept apart from
+   * `lifeLostByPlayerThisTurn` because they are different questions — a
+   * player who paid life for a painland lost life and was dealt nothing.
+   * Cleared with the other per-turn tallies at untap.
+   */
+  damageToPlayerThisTurn?: Record<PlayerId, number>;
   /** Creatures that died this turn (Mahadi's Treasure count). */
   creaturesDiedThisTurn?: number;
   /** Silence: everyone but this player is locked out of casting until end of
@@ -1307,6 +1314,8 @@ export type GameEffect =
       destinations: LookDestination[];
       /** Hideaway: record the exiled card on this permanent. */
       hideawaySourceId?: CardInstanceId;
+      /** Expressive Iteration: the exiled card is playable this turn. */
+      exilePlayableThisTurn?: boolean;
     }
   | { kind: "sacrifice"; cardId: CardInstanceId }
   /** Chrome Mox: exile `cardId` and record it on `sourceId`. */
@@ -2405,6 +2414,8 @@ export type CardEffect =
        * way to say WHICH exiled card is "the exiled card".
        */
       hideawayFromSource?: boolean;
+      /** Expressive Iteration: "You may play the exiled card this turn." */
+      exilePlayableThisTurn?: boolean;
     }
   | { kind: "sacrifice"; cardId: CardIdSelector }
   /**
@@ -3168,6 +3179,19 @@ export type TriggerCondition =
   /** Bennie Bracks: "if you created a token this turn". */
   | { kind: "created_token_this_turn" }
   /**
+   * Windbrisk Heights: "you attacked with N or more creatures this turn".
+   * The same question `ActivatedAbility.requiresAttackersThisTurn` asks for
+   * Minas Tirith, in the shared condition vocabulary — an activation gate
+   * synthesized from a printed "if" clause can only speak this language.
+   */
+  | { kind: "attacked_with_creatures_this_turn"; atLeast: number }
+  /** Spinerock Knoll: "an opponent was dealt N or more damage this turn".
+   * Any ONE opponent has to clear the bar; the totals are not summed. */
+  | { kind: "opponent_damaged_this_turn"; atLeast: number }
+  /** Shelldock Isle: "a library has N or fewer cards in it" — ANY library at
+   * the table, the controller's own included. */
+  | { kind: "library_at_most"; count: number }
+  /**
    * Runaway Steam-Kin: "if this creature has fewer than three +1/+1
    * counters on it". Read on the SOURCE of the trigger, like
    * `self_no_counter`, not on whatever the clause targeted.
@@ -3341,7 +3365,13 @@ export type EngineEvent =
   /** `amount` feeds "that many"/"that much" bodies (Old Gnawbone, Kediss). */
   | { kind: "combat_damage_to_player"; cardId: CardInstanceId; playerId: PlayerId; amount: number }
   /** Any damage (combat or not) a permanent deals to a player. */
-  | { kind: "deals_damage_to_player"; cardId: CardInstanceId; playerId: PlayerId }
+  | {
+      kind: "deals_damage_to_player";
+      cardId: CardInstanceId;
+      playerId: PlayerId;
+      /** Spinerock Knoll asks how MUCH, not merely whether. */
+      amount: number;
+    }
   | {
       kind: "draws";
       playerId: PlayerId;
@@ -3547,6 +3577,10 @@ export type PendingPrompt =
       destinations: LookDestination[];
       /** Hideaway: record the exiled card on this permanent. */
       hideawaySourceId?: CardInstanceId;
+      /** Expressive Iteration: the card sent to exile may be played this
+       * turn. Distinct from hideaway, which records it on a PERMANENT for a
+       * later activation; this is the caster's own impulse window. */
+      exilePlayableThisTurn?: boolean;
       resumeEffects?: GameEffect[];
     }
   | {
