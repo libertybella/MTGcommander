@@ -447,7 +447,9 @@ export function createCardDefinition(
               }
             : {}),
           ...(ability.lifeCost && ability.lifeCost > 0 ? { lifeCost: ability.lifeCost } : {}),
-          ...(ability.timing === "sorcery" ? { timing: "sorcery" as const } : {}),
+          ...(ability.timing === "sorcery" || ability.timing === "your_turn"
+            ? { timing: ability.timing }
+            : {}),
           ...(ability.requiresAttackersThisTurn !== undefined
             ? { requiresAttackersThisTurn: ability.requiresAttackersThisTurn }
             : {}),

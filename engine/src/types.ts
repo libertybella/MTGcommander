@@ -984,6 +984,13 @@ export type GameState = {
    * the listed player may cast or play this turn, paying costs as normal.
    * Cleared at cleanup.
    */
+  /**
+   * Cards a player may PLAY from where they currently are, for a limited
+   * time. Named for the impulse exiles it started as, but Emry grants the
+   * same permission to a card in a GRAVEYARD — so every reader accepts both
+   * zones. The name is kept because it is a serialized field and a rename
+   * would strand saved tables.
+   */
   exilePlayable?: Array<{
     cardId: CardInstanceId;
     casterId: PlayerId;
@@ -4008,8 +4015,12 @@ export type ActivatedAbility = {
    * "{X}{X}" charges the announced X twice (CR 601.2b applies to abilities
    * through CR 602.2b). */
   xCost?: number;
-  /** Class level-up is a sorcery-speed class ability. */
-  timing?: "any" | "sorcery";
+  /**
+   * Class level-up is a sorcery-speed class ability. Wishclaw Talisman adds
+   * "your_turn", which is NOT the same as sorcery timing — it may be
+   * activated in combat, or with the stack full, as long as it is your turn.
+   */
+  timing?: "any" | "sorcery" | "your_turn";
   /** "Activate only if you control a Swamp" — a controlled type/subtype gate. */
   requiresControlled?: ControlledGate;
   /** Minas Tirith: "Activate only if you attacked with two or more creatures

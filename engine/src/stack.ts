@@ -164,7 +164,7 @@ export function putSpellOnStack(
   // Impulse exiles: listed cards may be cast from exile this turn — by the
   // listed caster, who takes control of the spell (Etali steals casts).
   const exileEntry =
-    located?.zone === "exile"
+    located?.zone === "exile" || located?.zone === "graveyard"
       ? state.exilePlayable?.find((entry) => entry.cardId === cardId)
       : undefined;
   const fromExilePlay = Boolean(exileEntry);

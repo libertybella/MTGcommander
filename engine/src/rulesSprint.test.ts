@@ -47547,3 +47547,239 @@ describe("wave 317: a count plus one, and a toughness read before it dies", () =
     expect(round.noMaxHandSizePlayers).toEqual([p1.id]);
   });
 });
+
+describe("wave 318: your turn is not sorcery timing", () => {
+  const compile = (
+    name: string,
+    typeLine: string,
+    oracleText: string,
+    manaCost = "",
+    pt: [string, string] | null = null,
+  ) =>
+    compileOracleCard({
+      oracleId: name.toLowerCase().replace(/[^a-z]+/g, "-"),
+      name,
+      manaCost,
+      typeLine,
+      power: pt?.[0] ?? null,
+      toughness: pt?.[1] ?? null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  const put = (
+    game: GameState,
+    ownerId: string,
+    definition: CardDefinition,
+    zone: "hand" | "battlefield" | "graveyard" = "battlefield",
+  ) => {
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({ definitionId: definition.id, ownerId, zone });
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === ownerId)!.zones[zone].push(card.id);
+    if (zone === "battlefield") {
+      card.summoningSick = false;
+    }
+    return card.id;
+  };
+
+  // ---- Wishclaw Talisman --------------------------------------------------
+
+  it("compiles the handover and the turn restriction", () => {
+    const compiled = compile(
+      "Wishclaw Talisman",
+      "Artifact",
+      "This artifact enters with three wish counters on it.\n{1}, {T}, Remove a wish counter from this artifact: Search your library for a card, put it into your hand, then shuffle. An opponent gains control of this artifact. Activate only during your turn.",
+      "{1}{B}",
+    );
+    expect(compiled.notes).toEqual([]);
+    const ability = compiled.definition.activated[0];
+    // "Your turn" is NOT sorcery timing.
+    expect(ability?.timing).toBe("your_turn");
+    expect(ability?.effects.at(-1)).toEqual({
+      kind: "gain_control",
+      cardId: "self",
+      playerId: "next_opponent",
+    });
+  });
+
+  const wishclaw = () =>
+    createCardDefinition({
+      name: "Wishclaw Talisman",
+      typeLine: "Artifact",
+      manaCost: "{1}{B}",
+      activated: [
+        {
+          tap: true,
+          manaCost: "{1}",
+          timing: "your_turn",
+          removeCounterCost: { counter: "wish", count: 1 },
+          effects: [
+            { kind: "gain_control", cardId: "self", playerId: "next_opponent" },
+          ],
+          targetRequirements: [],
+        },
+      ],
+    });
+
+  it("allows the activation in combat, with the stack full", () => {
+    const { game, p1 } = twoPlayers();
+    const talismanId = put(game, p1.id, wishclaw());
+    game.cards[talismanId]!.counters["wish"] = 3;
+    game.turn.activePlayerId = p1.id;
+    game.turn.phase = "combat";
+    game.turn.step = "declareBlockers";
+    game.priorityPlayerId = p1.id;
+    game.players.find((entry) => entry.id === p1.id)!.mana.C = 1;
+    // Sorcery timing would refuse both of these; "your turn" does not, and
+    // handing the artifact over at instant speed is the whole card.
+    const activated = applyAction(game, {
+      kind: "activate_ability",
+      playerId: p1.id,
+      cardId: talismanId,
+      abilityIndex: 0,
+      targets: [],
+    });
+    expect(activated.stack).toHaveLength(1);
+  });
+
+  it("refuses it on an opponent's turn", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const talismanId = put(game, p1.id, wishclaw());
+    game.cards[talismanId]!.counters["wish"] = 3;
+    game.turn.activePlayerId = p2.id;
+    game.turn.phase = "precombatMain";
+    game.turn.step = "precombatMain";
+    game.priorityPlayerId = p1.id;
+    game.players.find((entry) => entry.id === p1.id)!.mana.C = 1;
+    expect(() =>
+      applyAction(game, {
+        kind: "activate_ability",
+        playerId: p1.id,
+        cardId: talismanId,
+        abilityIndex: 0,
+        targets: [],
+      }),
+    ).toThrow(/during your turn/i);
+  });
+
+  it("does not offer it on an opponent's turn either", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const talismanId = put(game, p1.id, wishclaw());
+    game.cards[talismanId]!.counters["wish"] = 3;
+    game.turn.activePlayerId = p2.id;
+    game.turn.phase = "precombatMain";
+    game.turn.step = "precombatMain";
+    game.priorityPlayerId = p1.id;
+    game.players.find((entry) => entry.id === p1.id)!.mana.C = 1;
+    const offered = legalActions(game, p1.id).filter(
+      (action) => action.kind === "activate_ability" && action.cardId === talismanId,
+    );
+    expect(offered).toHaveLength(0);
+  });
+
+  it("hands the artifact to an opponent", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const talismanId = put(game, p1.id, wishclaw());
+    const handed = applyEffects(
+      game,
+      bindCardEffects(
+        game,
+        [{ kind: "gain_control", cardId: "self", playerId: "next_opponent" }],
+        { controllerId: p1.id, sourceId: talismanId },
+      ),
+    );
+    expect(handed.cards[talismanId]?.controllerId).toBe(p2.id);
+  });
+
+  // ---- Emry: the card is TARGETED, not prompted ---------------------------
+
+  it("compiles Emry's activation with a targeted graveyard card", () => {
+    const compiled = compile(
+      "Emry, Lurker of the Loch",
+      "Legendary Creature — Merfolk Wizard",
+      "Affinity for artifacts\nWhen ~ enters, mill four cards.\n{T}: Choose target artifact card in your graveyard. You may cast that card this turn.",
+      "{2}{U}",
+      ["1", "2"],
+    );
+    expect(compiled.notes).toEqual([]);
+    const ability = compiled.definition.activated[0];
+    expect(ability?.targetRequirements).toEqual([{ kind: "own_graveyard_artifact_card" }]);
+    expect(ability?.effects).toEqual([
+      { kind: "grant_play_chosen", playerId: "controller" },
+    ]);
+  });
+
+  it("makes the targeted card playable, and not for free", () => {
+    const { game, p1 } = twoPlayers();
+    const emryId = put(
+      game,
+      p1.id,
+      createCardDefinition({
+        name: "Emry, Lurker of the Loch",
+        typeLine: "Legendary Creature — Merfolk Wizard",
+        manaCost: "{2}{U}",
+        power: 1,
+        toughness: 2,
+      }),
+    );
+    const relicId = put(
+      game,
+      p1.id,
+      createCardDefinition({ name: "Relic", typeLine: "Artifact", manaCost: "{2}" }),
+      "graveyard",
+    );
+    const granted = applyEffects(
+      game,
+      bindCardEffects(
+        game,
+        [{ kind: "grant_play_chosen", playerId: "controller" }],
+        {
+          controllerId: p1.id,
+          sourceId: emryId,
+          targets: [{ type: "creature", cardId: relicId }],
+          targetRequirements: [{ kind: "own_graveyard_artifact_card" }],
+        },
+      ),
+    );
+    // The permission list is named for the impulse exiles it started as, but
+    // it holds a graveyard card just as happily — the grant is about the
+    // CARD, not the zone it happens to be in.
+    const entry = (granted.exilePlayable ?? []).find((row) => row.cardId === relicId);
+    expect(entry).toBeDefined();
+    // "You still pay its costs" — the permission is not a discount.
+    expect(entry?.freeCast).toBeUndefined();
+  });
+
+  it("still reads a prompt-chosen card, which is how Dauthi Voidwalker works", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const voidedId = put(
+      game,
+      p2.id,
+      createCardDefinition({ name: "Exiled", typeLine: "Sorcery", manaCost: "{1}" }),
+    );
+    const moved = moveCard(game, voidedId, "exile");
+    const granted = applyEffects(
+      moved,
+      bindCardEffects(
+        moved,
+        [{ kind: "grant_play_chosen", playerId: "controller", free: true }],
+        { controllerId: p1.id, sourceId: null, chosenCardId: voidedId },
+      ),
+    );
+    // The prompt path takes precedence over the target fallback, so the
+    // Voidwalker reading is untouched.
+    expect(
+      (granted.exilePlayable ?? []).some((row) => row.cardId === voidedId),
+    ).toBe(true);
+  });
+
+  it("round trips the new timing", () => {
+    const { game, p1 } = twoPlayers();
+    const definition = wishclaw();
+    put(game, p1.id, definition);
+    const round = parseGameState(serializeGameState(game));
+    expect(round.definitions[definition.id]?.activated[0]?.timing).toBe("your_turn");
+  });
+});

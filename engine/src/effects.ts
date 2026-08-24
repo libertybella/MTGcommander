@@ -1872,15 +1872,20 @@ export function bindCardEffect(
     }
     case "grant_play_chosen": {
       const grantTo = bindPlayerSelector(state, effect.playerId, context);
-      // Dauthi Voidwalker: the card the ability just chose. With no choice
-      // recorded there is nothing to make playable.
-      if (!grantTo || !context.chosenCardId) {
+      // Dauthi Voidwalker picks its card through a prompt; Emry TARGETS one,
+      // so the chosen target is the fallback. With neither there is nothing
+      // to make playable.
+      const targeted = chosenTargetAt(context, 0, state);
+      const grantCardId =
+        context.chosenCardId ??
+        (targeted && "cardId" in targeted ? targeted.cardId : undefined);
+      if (!grantTo || !grantCardId) {
         return null;
       }
       return {
         kind: "grant_play_chosen",
         playerId: grantTo,
-        cardId: context.chosenCardId,
+        cardId: grantCardId,
         ...(effect.free ? { free: true } : {}),
       };
     }
@@ -4493,9 +4498,11 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
       }
       case "grant_play_chosen": {
         next = cloneGameState(state);
-        // The card must still be in exile: it is chosen and granted in one
-        // resolution, but anything could have moved it in between.
-        if (next.cards[effect.cardId]?.zone === "exile") {
+        // The card must still be where it was: it is chosen and granted in
+        // one resolution, but anything could have moved it in between.
+        // Emry grants from a GRAVEYARD, Dauthi Voidwalker from exile.
+        const grantZone = next.cards[effect.cardId]?.zone;
+        if (grantZone === "exile" || grantZone === "graveyard") {
           next.exilePlayable = [
             ...(next.exilePlayable ?? []),
             {

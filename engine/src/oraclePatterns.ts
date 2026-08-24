@@ -3290,6 +3290,36 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
     }
   }
 
+  // Emry: the card is TARGETED, not picked from a prompt, so the permission
+  // reads the chosen target. Fused with its permission (see
+  // `fuseChooseGraveyardCastInPlace`) because on a permanent card a
+  // top-level effect never runs.
+  const chooseGraveyardCast = sentence.match(
+    /^Choose target ([a-z]+) card in your graveyard and you may cast that card this turn$/i,
+  );
+  const chooseGraveyardKind = chooseGraveyardCast?.[1]
+    ? GRAVEYARD_HEAD_NOUNS.find(([pattern]) =>
+        pattern.test(`${chooseGraveyardCast[1]} card`),
+      )?.[1]
+    : undefined;
+  if (chooseGraveyardKind) {
+    return {
+      targetRequirements: [{ kind: chooseGraveyardKind }],
+      effects: [{ kind: "grant_play_chosen", playerId: "controller" }],
+    };
+  }
+
+  // Wishclaw Talisman: "AN opponent gains control" — the choice is the
+  // activating player's and there is no field for it, so the next opponent
+  // in turn order is taken. A documented auto-pick; in a two-player game it
+  // is the only opponent, and Wishclaw is a two-player card in practice.
+  if (/^An opponent gains control of ~$/i.test(sentence)) {
+    return {
+      targetRequirements: [],
+      effects: [{ kind: "gain_control", cardId: "self", playerId: "next_opponent" }],
+    };
+  }
+
   // Sea Gate Restoration: a live board reading PLUS a flat bonus, so an
   // empty hand still draws the one.
   const drawPlus = sentence.match(
@@ -9047,6 +9077,28 @@ function fuseDestroyLifegainInPlace(sentences: string[], lineStart: boolean[]): 
   }
 }
 
+/**
+ * Emry: "Choose target artifact card in your graveyard. You may cast that
+ * card this turn." The permission belongs to the activation the choice is
+ * in — left as its own sentence it has no card to name, and on a permanent
+ * card a top-level effect never runs at all.
+ */
+function fuseChooseGraveyardCastInPlace(sentences: string[], lineStart: boolean[]): void {
+  for (let index = 0; index + 1 < sentences.length; index += 1) {
+    if (lineStart[index + 1]) {
+      continue;
+    }
+    if (
+      /Choose target ([a-z]+ )?card in your graveyard$/i.test(sentences[index] ?? "") &&
+      /^You may cast that card this turn$/i.test(sentences[index + 1] ?? "")
+    ) {
+      sentences[index] = `${sentences[index]} and you may cast that card this turn`;
+      sentences.splice(index + 1, 1);
+      lineStart.splice(index + 1, 1);
+    }
+  }
+}
+
 function fuseMayPayInPlace(sentences: string[], lineStart: boolean[]): void {
   // Mentor of the Meek: "…, you may pay {1}. If you do, draw a card." fuses
   // into one synthetic clause the may_pay parser reads.
@@ -12544,6 +12596,7 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
   splitGrantedQuotedTriggerInPlace(sentences, lineStart);
   fuseItCantBeBlockedInPlace(sentences, lineStart);
   fuseDestroyLifegainInPlace(sentences, lineStart);
+  fuseChooseGraveyardCastInPlace(sentences, lineStart);
   fuseMayPayInPlace(sentences, lineStart);
   fusePactInPlace(sentences, lineStart);
   fuseChooseTargetCreatureInPlace(sentences, lineStart);
@@ -16399,6 +16452,16 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
       const last = result.activated[result.activated.length - 1];
       if (last && !last.timing) {
         last.timing = "sorcery";
+        continue;
+      }
+    }
+
+    // Wishclaw Talisman: your turn, but ANY time during it — not sorcery
+    // timing, which would also demand a main phase and an empty stack.
+    if (/^Activate only during your turn$/i.test(sentence) && result.activated.length > 0) {
+      const last = result.activated[result.activated.length - 1];
+      if (last && !last.timing) {
+        last.timing = "your_turn";
         continue;
       }
     }

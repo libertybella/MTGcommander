@@ -457,6 +457,10 @@ function abilityUsable(
   if (fromZone === "battlefield" && abilitiesRemoved(state, card.id)) {
     return false;
   }
+  // Wishclaw Talisman: your turn, but any time during it.
+  if (ability.timing === "your_turn" && playerId !== state.turn.activePlayerId) {
+    return false;
+  }
   if (ability.timing === "sorcery" && !inSorceryWindow(state, playerId)) {
     return false;
   }
@@ -629,7 +633,10 @@ export function legalActions(state: GameState, playerId: PlayerId): LegalAction[
     );
   });
   const exilePlayableIds = (state.exilePlayable ?? [])
-    .filter((entry) => entry.casterId === playerId && state.cards[entry.cardId]?.zone === "exile")
+    .filter((entry) => {
+      const zone = state.cards[entry.cardId]?.zone;
+      return entry.casterId === playerId && (zone === "exile" || zone === "graveyard");
+    })
     .map((entry) => entry.cardId);
   for (const cardId of [
     ...player.zones.hand,

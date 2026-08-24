@@ -870,6 +870,27 @@ more questions it can now ask:
   (Bennie Bracks). Reads the existing per-player `createdTokenThisTurn`
   list, and asks whether the CONTROLLER is in it — an opponent's Treasure
   must not satisfy it.
+- **`ActivatedAbility.timing: "your_turn"`** — Wishclaw Talisman. NOT
+  sorcery timing: it may be activated in combat, or with the stack full, as
+  long as it is your turn. Handing the artifact over at instant speed on
+  somebody else's turn is the whole reason the card is playable, and reading
+  it as sorcery timing would quietly take that away.
+
+  "AN opponent gains control" is a choice the activation has no field for,
+  so the next opponent in turn order is taken — a documented auto-pick, and
+  in a two-player game the only opponent there is.
+
+- **The play-permission list reaches a GRAVEYARD too** — Emry grants what
+  Dauthi Voidwalker grants, from a different zone, so every reader of
+  `exilePlayable` now accepts exile or graveyard. The field keeps its name
+  because it is serialized and a rename would strand saved tables; the
+  comment says what it actually holds.
+
+  Emry TARGETS its card where the Voidwalker prompts for one, so
+  `grant_play_chosen` falls back to the first chosen target when no prompt
+  choice was recorded. The prompt path still wins where both exist, and
+  there is a test for that direction.
+
 - **`draw.countFromDynamicPlus`** — Sea Gate Restoration: "cards equal to
   the number of cards in your hand PLUS ONE". The bonus is added after the
   count, so an empty hand still draws one.

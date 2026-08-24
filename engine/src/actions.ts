@@ -390,10 +390,12 @@ function validateCast(
       : null;
   const viaEscape = escapeExileIds !== null;
   const fromGraveyard = viaFlashback || viaGraveyardGate || viaEscape;
-  // Impulse exiles: listed cards may be cast from exile this turn.
+  // Impulse exiles, and Emry's graveyard grant: listed cards may be cast
+  // from where they are. Both zones, because the permission is about the
+  // CARD rather than the zone it happens to be in.
   const fromExile = Boolean(
     located &&
-      located.zone === "exile" &&
+      (located.zone === "exile" || located.zone === "graveyard") &&
       state.exilePlayable?.some((entry) => entry.cardId === cardId && entry.casterId === playerId),
   );
   if (!fromHand && !fromCommand && !fromLibraryTop && !fromGraveyard && !fromExile) {
@@ -1536,6 +1538,13 @@ function applyActivateAbility(
     if (!isMainPhase(state) || state.stack.length > 0) {
       throw new Error("That ability can only be activated as a sorcery");
     }
+  }
+  // Wishclaw Talisman: "only during your turn" is NOT sorcery timing — it may
+  // be activated in combat, or with the stack full, as long as it is your
+  // turn. Handing the artifact over at instant speed on somebody else's turn
+  // is the whole reason the card is playable.
+  if (ability.timing === "your_turn" && playerId !== state.turn.activePlayerId) {
+    throw new Error("That ability can only be activated during your turn");
   }
   if (
     ability.requiresControlled &&

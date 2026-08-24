@@ -4439,7 +4439,9 @@ function parseActivatedAbilities(value: unknown, label: string): ActivatedAbilit
       ...(entry.lifeCostFromCommanderColors === true
         ? { lifeCostFromCommanderColors: true }
         : {}),
-      ...(entry.timing === "sorcery" ? { timing: "sorcery" as const } : {}),
+      ...(entry.timing === "sorcery" || entry.timing === "your_turn"
+        ? { timing: entry.timing }
+        : {}),
       ...(entry.requiresControlled === undefined
         ? {}
         : {
