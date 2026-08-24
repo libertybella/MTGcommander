@@ -34,7 +34,7 @@ import { abilityLifeCost, colorsOutsideCommanderIdentity } from "./commanderIden
 import { addRestrictedMana, emptyManaPools, manaRiderFires, parseManaCost, payManaCost, restrictionAdmits, type ManaPurpose } from "./mana";
 import { applyStateBasedActionsInPlace } from "./status";
 import { legalActions, potentialMana, sacrificeColorMatches, sacrificeScopeMatches } from "./legalActions";
-import { applyResolveChooseCard, applyResolveCreatureType, applyResolveDiscardLandOrGraveyard, applyResolveEnterCopy, applyResolveLookAssign, applyResolvePay, applyResolveSearch, applyResolveTriggerMode, legalEnterCopyIds, legalSearchIds, searchMatches } from "./prompt";
+import { applyResolveChooseCard, applyResolveChooseFromHand, applyResolveCreatureType, applyResolveDiscardLandOrGraveyard, applyResolveEnterCopy, applyResolveLookAssign, applyResolvePay, applyResolveSearch, applyResolveTriggerMode, legalEnterCopyIds, legalSearchIds, searchMatches } from "./prompt";
 import { parseGameState, serializeGameState } from "./serialize";
 import { fillLibraries } from "./testSupport";
 import { applyKeepHand, beginMulligan, isMulliganOpen } from "./mulligan";
@@ -50009,6 +50009,219 @@ describe("wave 326: a grant that outlives the turn that made it", () => {
       duration: "until_your_next_turn",
       forPlayerId: p1.id,
       createdOnTurn: 5,
+    });
+  });
+});
+
+describe("wave 327: any number of cards from your hand", () => {
+  const compile = (name: string, typeLine: string, oracleText: string, manaCost = "") =>
+    compileOracleCard({
+      oracleId: name.toLowerCase().replace(/[^a-z]+/g, "-"),
+      name,
+      manaCost,
+      typeLine,
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  const hold = (game: GameState, ownerId: string, definitions: CardDefinition[]) => {
+    const player = game.players.find((entry) => entry.id === ownerId)!;
+    const ids: string[] = [];
+    for (const definition of definitions) {
+      game.definitions[definition.id] = definition;
+      const card = createCardInstance({
+        definitionId: definition.id,
+        ownerId,
+        zone: "hand",
+      });
+      game.cards[card.id] = card;
+      player.zones.hand.push(card.id);
+      ids.push(card.id);
+    }
+    return ids;
+  };
+
+  const spell = (name: string) =>
+    createCardDefinition({ name, typeLine: "Sorcery", manaCost: "{2}" });
+  const creature = (name: string) =>
+    createCardDefinition({
+      name,
+      typeLine: "Creature — Bear",
+      manaCost: "{1}{G}",
+      power: 2,
+      toughness: 2,
+    });
+
+  const ask = (
+    game: GameState,
+    playerId: string,
+    effect: Partial<Extract<CardEffect, { kind: "choose_from_hand" }>> = {},
+  ) =>
+    applyEffects(
+      game,
+      bindCardEffects(
+        game,
+        [
+          {
+            kind: "choose_from_hand",
+            playerId: "controller",
+            destination: "library_bottom",
+            ...effect,
+          } as CardEffect,
+        ],
+        { controllerId: playerId, sourceId: null },
+      ),
+    );
+
+  // ---- Compiling -----------------------------------------------------------
+
+  it("compiles Valakut's bottom-then-draw", () => {
+    const compiled = compile(
+      "Valakut Awakening",
+      "Instant",
+      "Put any number of cards from your hand on the bottom of your library, then draw that many cards plus one.",
+      "{2}{R}",
+    );
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.effects[0]).toEqual({
+      kind: "choose_from_hand",
+      playerId: "controller",
+      destination: "library_bottom",
+      thenDrawPlus: 1,
+    });
+  });
+
+  it("compiles Last March's filtered put", () => {
+    const compiled = compile(
+      "Last March of the Ents",
+      "Sorcery",
+      "Draw cards equal to the greatest toughness among creatures you control, then put any number of creature cards from your hand onto the battlefield.",
+      "{6}{G}{G}",
+    );
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.effects[1]).toEqual({
+      kind: "choose_from_hand",
+      playerId: "controller",
+      destination: "battlefield",
+      types: ["creature"],
+    });
+  });
+
+  it("refuses a filter it cannot name", () => {
+    const compiled = compile(
+      "Odd Filter",
+      "Sorcery",
+      "Put any number of zombie cards from your hand onto the battlefield.",
+      "{2}{B}",
+    );
+    // Letting an unreadable filter through would let the player choose
+    // anything at all, which is a wider card than the one printed.
+    expect(compiled.notes.join(" ")).toContain("not compiled");
+  });
+
+  // ---- Choosing ------------------------------------------------------------
+
+  it("asks even with an empty hand", () => {
+    const { game, p1 } = twoPlayers();
+    const asked = ask(game, p1.id, { thenDrawPlus: 1 });
+    // "Any number" includes none, and Valakut still draws its plus-one.
+    expect(asked.prompts[0]).toMatchObject({ kind: "choose_from_hand" });
+  });
+
+  it("bottoms what was chosen and draws that many plus one", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 30);
+    const held = hold(game, p1.id, [spell("A"), spell("B"), spell("C")]);
+    const before = game.players.find((entry) => entry.id === p1.id)!.zones.hand.length;
+    const asked = ask(game, p1.id, { thenDrawPlus: 1 });
+    const resolved = applyResolveChooseFromHand(asked, p1.id, [held[0]!, held[1]!]);
+    expect(resolved.cards[held[0]!]?.zone).toBe("library");
+    expect(resolved.cards[held[1]!]?.zone).toBe("library");
+    expect(resolved.cards[held[2]!]?.zone).toBe("hand");
+    // Two out, three in.
+    expect(resolved.players.find((entry) => entry.id === p1.id)!.zones.hand.length).toBe(
+      before - 2 + 3,
+    );
+  });
+
+  it("draws exactly one for an empty choice", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 30);
+    hold(game, p1.id, [spell("A")]);
+    const before = game.players.find((entry) => entry.id === p1.id)!.zones.hand.length;
+    const asked = ask(game, p1.id, { thenDrawPlus: 1 });
+    const resolved = applyResolveChooseFromHand(asked, p1.id, []);
+    expect(resolved.players.find((entry) => entry.id === p1.id)!.zones.hand.length).toBe(
+      before + 1,
+    );
+  });
+
+  it("puts the chosen creatures onto the battlefield", () => {
+    const { game, p1 } = twoPlayers();
+    const held = hold(game, p1.id, [creature("Ent"), creature("Treefolk")]);
+    const asked = ask(game, p1.id, { destination: "battlefield", types: ["creature"] });
+    const resolved = applyResolveChooseFromHand(asked, p1.id, held);
+    for (const id of held) {
+      expect(resolved.cards[id]?.zone).toBe("battlefield");
+    }
+  });
+
+  it("refuses a card the filter excludes", () => {
+    const { game, p1 } = twoPlayers();
+    const held = hold(game, p1.id, [spell("Not a creature")]);
+    const asked = ask(game, p1.id, { destination: "battlefield", types: ["creature"] });
+    // A filter the caller can ignore is not a filter.
+    expect(() => applyResolveChooseFromHand(asked, p1.id, held)).toThrow();
+  });
+
+  it("refuses a card that is not in hand", () => {
+    const { game, p1 } = twoPlayers();
+    const library = game.players.find((entry) => entry.id === p1.id)!.zones.library;
+    fillLibraries(game, 5);
+    const asked = ask(game, p1.id);
+    expect(() =>
+      applyResolveChooseFromHand(asked, p1.id, [
+        asked.players.find((entry) => entry.id === p1.id)!.zones.library[0]!,
+      ]),
+    ).toThrow();
+    void library;
+  });
+
+  it("refuses the same card twice", () => {
+    const { game, p1 } = twoPlayers();
+    const held = hold(game, p1.id, [spell("A")]);
+    const asked = ask(game, p1.id);
+    // Without this the card is bottomed once and counted twice, so Valakut
+    // draws a card it never paid for.
+    expect(() =>
+      applyResolveChooseFromHand(asked, p1.id, [held[0]!, held[0]!]),
+    ).toThrow();
+  });
+
+  it("refuses a choice made by the wrong player", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const asked = ask(game, p1.id);
+    expect(() => applyResolveChooseFromHand(asked, p2.id, [])).toThrow();
+  });
+
+  it("round trips the prompt", () => {
+    const { game, p1 } = twoPlayers();
+    hold(game, p1.id, [creature("Ent")]);
+    const asked = ask(game, p1.id, {
+      destination: "battlefield",
+      types: ["creature"],
+      thenDrawPlus: 2,
+    });
+    const round = parseGameState(serializeGameState(asked));
+    expect(round.prompts[0]).toEqual({
+      kind: "choose_from_hand",
+      playerId: p1.id,
+      destination: "battlefield",
+      types: ["creature"],
+      thenDrawPlus: 2,
     });
   });
 });

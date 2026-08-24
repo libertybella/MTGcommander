@@ -17,6 +17,7 @@ import {
   isOpeningRoll,
   openingRollPending,
   lookedAtCardIds,
+  characteristicsOf,
   legalChoicesForRequirement,
   legalEnterCopyIds,
   legalIdsForChooseSources,
@@ -964,6 +965,10 @@ export function Battlefield(props: Props) {
     stopPrefs,
     onStopPrefs,
   } = props;
+  // "Put ANY NUMBER of cards from your hand …": the choice is built up by
+  // clicking, then confirmed, because an empty answer is legal and there is
+  // no count that would tell us when the player is finished.
+  const [handPicks, setHandPicks] = useState<string[]>([]);
   const [logOpen, setLogOpen] = useState(false);
   const [hostOpen, setHostOpen] = useState(false);
   const [playerOpen, setPlayerOpen] = useState(false);
@@ -1392,6 +1397,22 @@ export function Battlefield(props: Props) {
     }
     if (prompt?.kind === "choose_discard" && actorId === prompt.playerId && you?.zones.hand.includes(cardId)) {
       send({ kind: "resolve_discard", playerId: actorId, cardIds: [cardId] });
+      return;
+    }
+    if (
+      prompt?.kind === "choose_from_hand" &&
+      actorId === prompt.playerId &&
+      you?.zones.hand.includes(cardId) &&
+      (!prompt.types ||
+        prompt.types.every((type) =>
+          characteristicsOf(state, cardId).types.includes(type),
+        ))
+    ) {
+      // Clicking toggles: a misclick has to be undoable, since nothing is
+      // sent until the choice is confirmed.
+      setHandPicks((picks) =>
+        picks.includes(cardId) ? picks.filter((id) => id !== cardId) : [...picks, cardId],
+      );
       return;
     }
     if (prompt?.kind === "choose_card" && actorId === prompt.playerId) {
@@ -2751,6 +2772,25 @@ export function Battlefield(props: Props) {
             {actorId === prompt.playerId && prompt.kind === "choose_targets" ? (
               <button type="button" className="pass-button" data-testid="choose-target" disabled>
                 Choose a target{forActor}
+              </button>
+            ) : null}
+            {actorId === prompt.playerId && prompt.kind === "choose_from_hand" ? (
+              <button
+                type="button"
+                className="pass-button"
+                data-testid="confirm-hand-picks"
+                onClick={() => {
+                  send({
+                    kind: "resolve_choose_from_hand",
+                    playerId: actorId,
+                    cardIds: handPicks,
+                  });
+                  setHandPicks([]);
+                }}
+              >
+                {handPicks.length === 0
+                  ? "Choose none — click your hand to pick"
+                  : `Confirm ${handPicks.length} card${handPicks.length === 1 ? "" : "s"}`}
               </button>
             ) : null}
             {actorId === prompt.playerId && prompt.kind === "choose_discard" ? (

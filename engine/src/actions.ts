@@ -32,7 +32,7 @@ import { applyBottomCards, applyKeepHand, applyTakeMulligan, isMulliganOpen, rec
 import { applyRollDie } from "./dice";
 import { applyOpeningRoll, isOpeningRoll } from "./openingRoll";
 import { applyManualOverride } from "./override";
-import { applyChooseEnterReplacement, applyChooseTargets, applyResolveChooseCard, applyResolveColor, applyResolveCreatureType, applyResolveDiscard, applyResolveEnterCopy, applyResolveLookAssign, applyResolveOrderTriggers, applyResolvePay, applyResolveScry, applyResolveSearch, applyResolveSurveil, applyResolveTriggerMode, currentPrompt, dropLostPlayerPromptsInPlace, isPromptOpen, applyResolveDiscardLandOrGraveyard } from "./prompt";
+import { applyChooseEnterReplacement, applyChooseTargets, applyResolveChooseCard, applyResolveChooseFromHand, applyResolveColor, applyResolveCreatureType, applyResolveDiscard, applyResolveEnterCopy, applyResolveLookAssign, applyResolveOrderTriggers, applyResolvePay, applyResolveScry, applyResolveSearch, applyResolveSurveil, applyResolveTriggerMode, currentPrompt, dropLostPlayerPromptsInPlace, isPromptOpen, applyResolveDiscardLandOrGraveyard } from "./prompt";
 import { manaValueOf } from "./characteristics";
 import { findCardZone, moveCard } from "./zones";
 import type { ActivatedAbility, AdditionalCastCost, CardInstanceId, ChosenTarget, Color, GameAction, GameState, ManaColor, ManaPool, PlayerId } from "./types";
@@ -2071,6 +2071,15 @@ export function applyAction(
         const prompt = currentPrompt(state);
         const resume = prompt?.kind === "choose_discard" ? prompt.resumeEffects ?? [] : [];
         next = applyResolveDiscard(state, action.playerId, action.cardIds);
+        if (resume.length > 0) {
+          next = applyEffects(next, resume);
+        }
+        break;
+      }
+      case "resolve_choose_from_hand": {
+        const prompt = currentPrompt(state);
+        const resume = prompt?.kind === "choose_from_hand" ? prompt.resumeEffects ?? [] : [];
+        next = applyResolveChooseFromHand(state, action.playerId, action.cardIds);
         if (resume.length > 0) {
           next = applyEffects(next, resume);
         }

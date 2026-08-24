@@ -2367,6 +2367,19 @@ export function bindCardEffect(
         ...(effect.keywords ? { keywords: [...effect.keywords] } : {}),
       };
     }
+    case "choose_from_hand": {
+      const chooser = bindPlayerSelector(state, effect.playerId, context);
+      if (!chooser) {
+        return null;
+      }
+      return {
+        kind: "choose_from_hand",
+        playerId: chooser,
+        destination: effect.destination,
+        ...(effect.types ? { types: [...effect.types] } : {}),
+        ...(effect.thenDrawPlus === undefined ? {} : { thenDrawPlus: effect.thenDrawPlus }),
+      };
+    }
     case "discover": {
       const discoverer = bindPlayerSelector(state, effect.playerId, context);
       if (!discoverer) {
@@ -5995,6 +6008,21 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
         for (const keyword of effect.keywords ?? []) {
           next = pushUntilEotEffect(next, [effect.cardId], { kind: "grant_keyword", keyword });
         }
+        break;
+      }
+      case "choose_from_hand": {
+        // "Any number" includes none, so the prompt is pushed even with an
+        // empty hand: declining is a real choice and Valakut still draws
+        // its plus-one.
+        requirePlayer(state, effect.playerId);
+        next = cloneGameState(state);
+        next.prompts.push({
+          kind: "choose_from_hand",
+          playerId: effect.playerId,
+          destination: effect.destination,
+          ...(effect.types ? { types: [...effect.types] } : {}),
+          ...(effect.thenDrawPlus === undefined ? {} : { thenDrawPlus: effect.thenDrawPlus }),
+        });
         break;
       }
       case "discover":

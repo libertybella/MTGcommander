@@ -2495,6 +2495,43 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
 
 function compileSimpleClauseInner(sentence: string): SimpleClause | null {
   /**
+   * "Put any number of cards from your hand on the bottom of your library,
+   * then draw that many cards plus one" (Valakut Awakening), and "put any
+   * number of creature cards from your hand onto the battlefield" (Last
+   * March of the Ents).
+   *
+   * The draw rides the PROMPT rather than sitting beside it as a second
+   * effect: "that many" is how many the player chooses, and a sibling
+   * effect would have bound its count before the choice was made.
+   */
+  const anyFromHand = sentence.match(
+    /^Put any number of (?:([a-z]+) )?cards from your hand (?:on the bottom of your library|onto the battlefield)(?:, then draw that many cards plus (one|\d+))?$/i,
+  );
+  if (anyFromHand) {
+    const toBattlefield = /onto the battlefield/i.test(sentence);
+    const plusWord = anyFromHand[2]?.toLowerCase();
+    const plus = plusWord === "one" ? 1 : plusWord ? Number(plusWord) : undefined;
+    // A card-type filter this engine cannot name would let a player choose
+    // anything at all, so refuse rather than widen the choice silently.
+    const filter = anyFromHand[1]?.toLowerCase();
+    if (filter && filter !== "creature" && filter !== "land" && filter !== "artifact") {
+      return null;
+    }
+    return {
+      effects: [
+        {
+          kind: "choose_from_hand",
+          playerId: "controller",
+          destination: toBattlefield ? "battlefield" : "library_bottom",
+          ...(filter ? { types: [filter] } : {}),
+          ...(plus === undefined ? {} : { thenDrawPlus: plus }),
+        },
+      ],
+      targetRequirements: [],
+    };
+  }
+
+  /**
    * "~ becomes a 2/2 creature with all creature types until end of turn"
    * (Mutavault) and "Target land you control becomes an X/X Elemental
    * creature with trample and haste until end of turn, where X is the

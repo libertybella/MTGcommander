@@ -1773,6 +1773,14 @@ export type GameEffect =
        */
       toHandAllowed?: boolean;
     }
+  /** Push the "any number of cards from your hand" prompt. */
+  | {
+      kind: "choose_from_hand";
+      playerId: PlayerId;
+      destination: "library_bottom" | "battlefield";
+      types?: string[];
+      thenDrawPlus?: number;
+    }
   | { kind: "mass_reanimate"; playerId: PlayerId }
   /** Splendid Reclamation: every land card in YOUR graveyard returns tapped. */
   | { kind: "return_all_lands"; playerId: PlayerId }
@@ -3067,6 +3075,13 @@ export type CardEffect =
       maxManaValue: number | "below_source";
       toHandAllowed?: boolean;
     }
+  | {
+      kind: "choose_from_hand";
+      playerId: PlayerSelector;
+      destination: "library_bottom" | "battlefield";
+      types?: string[];
+      thenDrawPlus?: number;
+    }
   | { kind: "mass_reanimate"; playerId: PlayerSelector }
   /** Splendid Reclamation: every land card in YOUR graveyard returns tapped. */
   | { kind: "return_all_lands"; playerId: PlayerSelector }
@@ -3915,6 +3930,28 @@ export type PendingPrompt =
       count: number;
       resumeEffects?: GameEffect[];
     }
+  /**
+   * "Put ANY NUMBER of cards from your hand …" — Valakut Awakening, Last
+   * March of the Ents. A SIBLING of `choose_discard` rather than a widening
+   * of it: that prompt is on the cleanup path and on every discard cost,
+   * and the one time a battle-tested path was widened in place here it
+   * broke a working card the same hour.
+   */
+  | {
+      kind: "choose_from_hand";
+      playerId: PlayerId;
+      /** Where the chosen cards go. */
+      destination: "library_bottom" | "battlefield";
+      /** Last March: "any number of CREATURE cards". */
+      types?: string[];
+      /**
+       * Valakut: "then draw THAT MANY cards plus one" — the count is how
+       * many were chosen, which is why the draw happens in the resolver
+       * and not as a sibling effect.
+       */
+      thenDrawPlus?: number;
+      resumeEffects?: GameEffect[];
+    }
   | {
       kind: "choose_card";
       playerId: PlayerId;
@@ -4761,6 +4798,8 @@ export type GameAction =
   | { kind: "resolve_scry"; playerId: PlayerId; bottomIds: CardInstanceId[] }
   | { kind: "resolve_surveil"; playerId: PlayerId; graveyardIds: CardInstanceId[] }
   | { kind: "resolve_discard"; playerId: PlayerId; cardIds: CardInstanceId[] }
+  /** "Any number" — an EMPTY list is a legal answer, not a missing one. */
+  | { kind: "resolve_choose_from_hand"; playerId: PlayerId; cardIds: CardInstanceId[] }
   /** Braids: a null card DECLINES, which an optional choice allows. */
   | { kind: "resolve_choose_card"; playerId: PlayerId; cardId: CardInstanceId | null }
   | { kind: "resolve_enter_copy"; playerId: PlayerId; cardId: CardInstanceId | null }

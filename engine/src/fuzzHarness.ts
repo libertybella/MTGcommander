@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { applyAction } from "./actions";
-import { isCreature } from "./cardTypes";
+import { characteristicsOf, isCreature } from "./cardTypes";
 import {
   activatedOf,
   cardMatchesSubtype,
@@ -193,6 +193,21 @@ function nextAction(state: GameState, rng: () => number): GameAction | null {
           cardIds.push(...hand.splice(index, 1));
         }
         return { kind: "resolve_discard", playerId, cardIds };
+      }
+      case "choose_from_hand": {
+        const player = state.players.find((entry) => entry.id === playerId)!;
+        const legal = player.zones.hand.filter(
+          (cardId) =>
+            !prompt.types ||
+            prompt.types.every((type) =>
+              characteristicsOf(state, cardId).types.includes(type),
+            ),
+        );
+        return {
+          kind: "resolve_choose_from_hand",
+          playerId,
+          cardIds: randomSubset(rng, legal, 0.4),
+        };
       }
       case "choose_card": {
         const legal = legalIdsForChooseSources(state, prompt.sources);

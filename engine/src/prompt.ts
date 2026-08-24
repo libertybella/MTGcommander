@@ -611,6 +611,62 @@ export function applyResolveDiscard(
   return moved;
 }
 
+/**
+ * "Put any number of cards from your hand …" — Valakut Awakening and Last
+ * March of the Ents. An EMPTY choice is legal and is the reason this is not
+ * `choose_discard` with a count: there is no number to satisfy, and Valakut
+ * choosing nothing still draws its plus-one.
+ */
+export function applyResolveChooseFromHand(
+  state: GameState,
+  playerId: PlayerId,
+  cardIds: CardInstanceId[],
+): GameState {
+  const prompt = currentPrompt(state);
+  if (!prompt || prompt.kind !== "choose_from_hand") {
+    throw new Error("No hand choice pending");
+  }
+  requireLiving(state, playerId);
+  if (prompt.playerId !== playerId) {
+    throw new Error("It is not that player's choice");
+  }
+  const player = state.players.find((entry) => entry.id === playerId);
+  const hand = new Set(player?.zones.hand ?? []);
+  if (new Set(cardIds).size !== cardIds.length) {
+    throw new Error("Cannot choose the same card twice");
+  }
+  for (const cardId of cardIds) {
+    if (!hand.has(cardId)) {
+      throw new Error("Can only choose cards from hand");
+    }
+    // Last March: "any number of CREATURE cards". A filter the caller can
+    // ignore is not a filter.
+    if (
+      prompt.types &&
+      !prompt.types.every((type) => characteristicsOf(state, cardId).types.includes(type))
+    ) {
+      throw new Error("That card is not a legal choice");
+    }
+  }
+  let next = cloneGameState(state);
+  next.prompts.shift();
+  for (const cardId of cardIds) {
+    next =
+      prompt.destination === "battlefield"
+        ? moveCard(next, cardId, "battlefield")
+        : moveCard(next, cardId, "library", { libraryPosition: "bottom" });
+  }
+  if (prompt.thenDrawPlus !== undefined) {
+    // "Draw THAT MANY cards plus one" — that many is what was just chosen,
+    // which is why the draw lives here rather than in a sibling effect that
+    // would have bound its count before the choice was made.
+    next = applyEffects(next, [
+      { kind: "draw", playerId, count: cardIds.length + prompt.thenDrawPlus },
+    ]);
+  }
+  return next;
+}
+
 export function applyResolveChooseCard(
   state: GameState,
   playerId: PlayerId,

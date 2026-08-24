@@ -2361,6 +2361,37 @@ function parsePrompts(value: unknown, playerIds: Set<string>): PendingPrompt[] {
         ...(resumeEffects && resumeEffects.length > 0 ? { resumeEffects } : {}),
       };
     }
+    if (kind === "choose_from_hand") {
+      const destination = entry.destination;
+      if (destination !== "library_bottom" && destination !== "battlefield") {
+        throw new Error(`Invalid prompts[${index}].destination`);
+      }
+      const resumeEffects =
+        entry.resumeEffects === undefined
+          ? undefined
+          : parseGameEffects(entry.resumeEffects, `prompts[${index}].resumeEffects`);
+      return {
+        kind,
+        playerId,
+        destination,
+        ...(Array.isArray(entry.types)
+          ? {
+              types: entry.types.map((type, typeIndex) =>
+                expectString(type, `prompts[${index}].types[${typeIndex}]`),
+              ),
+            }
+          : {}),
+        ...(entry.thenDrawPlus === undefined
+          ? {}
+          : {
+              thenDrawPlus: expectNumber(
+                entry.thenDrawPlus,
+                `prompts[${index}].thenDrawPlus`,
+              ),
+            }),
+        ...(resumeEffects && resumeEffects.length > 0 ? { resumeEffects } : {}),
+      };
+    }
     if (kind === "scry" || kind === "surveil" || kind === "choose_discard") {
       const resumeEffects =
         entry.resumeEffects === undefined
@@ -4195,6 +4226,27 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
           ? {}
           : { keywords: parseKeywords(value.keywords, `${label}.keywords`) }),
       };
+    case "choose_from_hand": {
+      const destination = value.destination;
+      if (destination !== "library_bottom" && destination !== "battlefield") {
+        throw new Error(`Invalid ${label}.destination`);
+      }
+      return {
+        kind,
+        playerId: parsePlayerSelector(value.playerId, `${label}.playerId`),
+        destination,
+        ...(Array.isArray(value.types)
+          ? {
+              types: value.types.map((type, index) =>
+                expectString(type, `${label}.types[${index}]`),
+              ),
+            }
+          : {}),
+        ...(value.thenDrawPlus === undefined
+          ? {}
+          : { thenDrawPlus: expectNumber(value.thenDrawPlus, `${label}.thenDrawPlus`) }),
+      };
+    }
     case "discover":
       return {
         kind,
@@ -6200,6 +6252,27 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
         : { keywords: parseKeywords(value.keywords, `${label}.keywords`) }),
     };
   }
+  if (kind === "choose_from_hand") {
+    const destination = value.destination;
+    if (destination !== "library_bottom" && destination !== "battlefield") {
+      throw new Error(`Invalid ${label}.destination`);
+    }
+    return {
+      kind,
+      playerId: expectString(value.playerId, `${label}.playerId`),
+      destination,
+      ...(Array.isArray(value.types)
+        ? {
+            types: value.types.map((type, index) =>
+              expectString(type, `${label}.types[${index}]`),
+            ),
+          }
+        : {}),
+      ...(value.thenDrawPlus === undefined
+        ? {}
+        : { thenDrawPlus: expectNumber(value.thenDrawPlus, `${label}.thenDrawPlus`) }),
+    };
+  }
   if (kind === "discover") {
     return {
       kind,
@@ -7231,7 +7304,7 @@ export function parseGameAction(json: string): GameAction {
       graveyardIds: expectStringArray(raw.graveyardIds, "action.graveyardIds") as CardInstanceId[],
     };
   }
-  if (kind === "resolve_discard") {
+  if (kind === "resolve_discard" || kind === "resolve_choose_from_hand") {
     return {
       kind,
       playerId,

@@ -870,6 +870,25 @@ more questions it can now ask:
   (Bennie Bracks). Reads the existing per-player `createdTokenThisTurn`
   list, and asks whether the CONTROLLER is in it — an opponent's Treasure
   must not satisfy it.
+- **`choose_from_hand`** — "Put ANY NUMBER of cards from your hand …"
+  (Valakut Awakening, Last March of the Ents). A **sibling** of
+  `choose_discard`, not a widening of it: that prompt sits on the cleanup
+  path and on every discard cost, and the one time a battle-tested path was
+  widened in place here it broke a working card the same hour.
+
+  "Any number" includes NONE, which is why it cannot be `choose_discard`
+  with a count — there is no number to satisfy, the prompt is pushed even
+  with an empty hand, and Valakut choosing nothing still draws its
+  plus-one. The client builds the choice by clicking (toggling, so a
+  misclick is undoable) and sends nothing until it is confirmed; the
+  headless auto-answer takes none, the only choice that is always legal.
+
+  The draw rides the PROMPT rather than sitting beside it as a second
+  effect: "draw that many" is how many the player chooses, and a sibling
+  effect would have bound its count before the choice was made. Duplicates
+  are refused — the same card bottomed once and counted twice would draw a
+  card nobody paid for.
+
 - **A loyalty ability's SECOND SENTENCE now stays inside the ability.** The
   rest of the printed LINE belongs to the ability, not to the card. Without
   this, Elspeth's "Those creatures gain flying" landed in

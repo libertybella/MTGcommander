@@ -429,6 +429,16 @@ export class GameHost {
           });
           continue;
         }
+        if (prompt.kind === "choose_from_hand") {
+          // The auto-answer takes NONE, which "any number" allows and which
+          // is the only choice that is always legal.
+          this.apply({
+            kind: "resolve_choose_from_hand",
+            playerId: prompt.playerId,
+            cardIds: [],
+          });
+          continue;
+        }
         if (prompt.kind === "enter_as_copy") {
           const pick = legalEnterCopyIds(this.state, prompt)[0] ?? null;
           this.apply({ kind: "resolve_enter_copy", playerId: prompt.playerId, cardId: pick });
