@@ -50948,3 +50948,165 @@ describe("wave 331: harmonize is two keywords welded together", () => {
     });
   });
 });
+
+describe("wave 332: myriad, read as a keyword because it is granted", () => {
+  const compile = (
+    name: string,
+    typeLine: string,
+    oracleText: string,
+    manaCost = "",
+    pt: [string, string] | null = null,
+  ) =>
+    compileOracleCard({
+      oracleId: name.toLowerCase().replace(/[^a-z]+/g, "-"),
+      name,
+      manaCost,
+      typeLine,
+      power: pt?.[0] ?? null,
+      toughness: pt?.[1] ?? null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  const put = (game: GameState, ownerId: string, definition: CardDefinition) => {
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({
+      definitionId: definition.id,
+      ownerId,
+      zone: "battlefield",
+    });
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === ownerId)!.zones.battlefield.push(card.id);
+    card.summoningSick = false;
+    return card.id;
+  };
+
+  it("compiles the granted form", () => {
+    const compiled = compile(
+      "Blade of Selves",
+      "Artifact — Equipment",
+      "Equipped creature has myriad.\nEquip {3}",
+      "{3}",
+    );
+    expect(compiled.notes).toEqual([]);
+    // The grant table is derived from the keyword list, so a new keyword
+    // becomes grantable without a second list saying so.
+    expect(compiled.definition.staticAbilities[0]?.effect).toEqual({
+      kind: "grant_keyword",
+      keyword: "myriad",
+    });
+  });
+
+  it("counts toward the CR 702 coverage", () => {
+    expect(keywordCoverage().implemented).toContain("myriad");
+  });
+
+  const attacker = (name: string, keywords: Keyword[] = []) =>
+    createCardDefinition({
+      name,
+      typeLine: "Creature — Warrior",
+      manaCost: "{2}{R}",
+      power: 3,
+      toughness: 3,
+      keywords,
+    });
+
+  /** Three players, so "each opponent OTHER than the defender" has a body. */
+  const threeWay = () => {
+    const game = createGameState({ playerCount: 3 });
+    const [p1, p2, p3] = game.players;
+    game.turn.activePlayerId = p1!.id;
+    game.turn.phase = "combat";
+    game.turn.step = "declareAttackers";
+    game.priorityPlayerId = p1!.id;
+    return { game, p1: p1!, p2: p2!, p3: p3! };
+  };
+
+  it("copies the attacker at each other opponent", () => {
+    const { game, p1, p2, p3 } = threeWay();
+    const swordId = put(game, p1.id, attacker("Myriad Warrior", ["myriad"]));
+    const attacked = declareAttackers(game, p1.id, [
+      { attackerId: swordId, defenderId: p2.id },
+    ]);
+    const tokens = attacked.players
+      .find((entry) => entry.id === p1.id)!
+      .zones.battlefield.filter((id) => attacked.cards[id]?.isToken);
+    // Two opponents, one is the defender, so exactly ONE copy.
+    expect(tokens).toHaveLength(1);
+    const copyAttack = attacked.combat!.attacks.find(
+      (attack) => attack.attackerId === tokens[0],
+    );
+    expect(copyAttack?.defenderId).toBe(p3.id);
+    expect(attacked.cards[tokens[0]!]?.tapped).toBe(true);
+    expect(attacked.cards[tokens[0]!]?.attacking).toBe(true);
+  });
+
+  it("makes no copy in a duel", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const swordId = put(game, p1.id, attacker("Myriad Warrior", ["myriad"]));
+    game.turn.activePlayerId = p1.id;
+    game.turn.phase = "combat";
+    game.turn.step = "declareAttackers";
+    game.priorityPlayerId = p1.id;
+    const attacked = declareAttackers(game, p1.id, [
+      { attackerId: swordId, defenderId: p2.id },
+    ]);
+    // The only opponent IS the defending player.
+    expect(attacked.combat!.attacks).toHaveLength(1);
+  });
+
+  it("does not copy the copies", () => {
+    const { game, p1, p2 } = threeWay();
+    const swordId = put(game, p1.id, attacker("Myriad Warrior", ["myriad"]));
+    const attacked = declareAttackers(game, p1.id, [
+      { attackerId: swordId, defenderId: p2.id },
+    ]);
+    // The copies have myriad too. Reading a growing list rather than the
+    // declared snapshot would spawn tokens without end.
+    expect(attacked.combat!.attacks).toHaveLength(2);
+  });
+
+  it("exiles the copies at END OF COMBAT, not the end step", () => {
+    const { game, p1, p2 } = threeWay();
+    const swordId = put(game, p1.id, attacker("Myriad Warrior", ["myriad"]));
+    let state = declareAttackers(game, p1.id, [
+      { attackerId: swordId, defenderId: p2.id },
+    ]);
+    const tokenId = state.players
+      .find((entry) => entry.id === p1.id)!
+      .zones.battlefield.find((id) => state.cards[id]?.isToken)!;
+    expect(state.delayedEndCombat).toContain(tokenId);
+    state = { ...state, turn: { ...state.turn, phase: "combat", step: "combatDamage" } };
+    state = advanceStep(state);
+    expect(state.turn.step).toBe("endCombat");
+    // At the END STEP instead, the tokens would live through the postcombat
+    // main phase, where a sacrifice outlet turns each into value the card
+    // never offers.
+    // A TOKEN that leaves the battlefield ceases to exist (CR 111.7), which
+    // this engine records as "removed" rather than parking it in exile.
+    expect(state.cards[tokenId]?.zone).toBe("removed");
+    expect(state.cards[swordId]?.zone).toBe("battlefield");
+  });
+
+  it("leaves a creature without myriad alone", () => {
+    const { game, p1, p2 } = threeWay();
+    const plainId = put(game, p1.id, attacker("Plain Warrior"));
+    const attacked = declareAttackers(game, p1.id, [
+      { attackerId: plainId, defenderId: p2.id },
+    ]);
+    expect(attacked.combat!.attacks).toHaveLength(1);
+    expect(attacked.delayedEndCombat ?? []).toEqual([]);
+  });
+
+  it("round trips the pending exiles", () => {
+    const { game, p1, p2 } = threeWay();
+    const swordId = put(game, p1.id, attacker("Myriad Warrior", ["myriad"]));
+    const attacked = declareAttackers(game, p1.id, [
+      { attackerId: swordId, defenderId: p2.id },
+    ]);
+    const round = parseGameState(serializeGameState(attacked));
+    // Without this a reopened table keeps the tokens for good.
+    expect(round.delayedEndCombat).toEqual(attacked.delayedEndCombat);
+  });
+});

@@ -423,8 +423,20 @@ function onEnterStep(state: GameState): GameState {
     return applyCombatDamage(state);
   }
   if (state.turn.step === "endCombat") {
-    clearCombatFlagsInPlace(state);
-    return state;
+    // Myriad: "Exile those tokens at end of combat" — before the combat
+    // flags are cleared, because the tokens are still attackers here.
+    const doomed = state.delayedEndCombat ?? [];
+    let ending = state;
+    if (doomed.length > 0) {
+      delete ending.delayedEndCombat;
+      for (const cardId of doomed) {
+        if (ending.cards[cardId]?.zone === "battlefield") {
+          ending = applyEffect(ending, { kind: "move_card", cardId, toZone: "exile" });
+        }
+      }
+    }
+    clearCombatFlagsInPlace(ending);
+    return ending;
   }
   if (state.turn.step === "cleanup") {
     // CR 514.1: the active player discards down to maximum hand size.

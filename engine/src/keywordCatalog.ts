@@ -71,6 +71,7 @@ export const IMPLEMENTED_KEYWORDS: Record<Keyword, string> = {
   mountainwalk: "mountainwalk",
   forestwalk: "forestwalk",
   nonbasic_landwalk: "nonbasic landwalk",
+  myriad: "myriad",
 };
 
 /** Every landwalk variant reports as the one CR 702.14 ability it is. */

@@ -995,6 +995,13 @@ export type GameState = {
    * watches EVERY player rather than one controller. Swept at cleanup.
    */
   turnManaEchoes?: NonNullable<CardDefinition["landTapEcho"]>[];
+  /**
+   * Myriad's tokens are exiled at END OF COMBAT, not at the end step. The
+   * difference is the card: at the end step they would survive the
+   * postcombat main phase, where a sacrifice outlet turns each of them
+   * into value the printed card never offers.
+   */
+  delayedEndCombat?: CardInstanceId[];
   /** Spells cast by anyone this turn — Storm's copy count (CR 702.40). */
   spellsCastThisTurn: number;
   /** Per-player casts this turn (Lotho's second-spell watch). */
@@ -1867,6 +1874,10 @@ export type GameEffect =
       count?: number;
       gainsHaste?: boolean;
       atEndStep?: "sacrifice" | "exile";
+      /** Myriad: the token enters tapped and attacking THIS player. */
+      attackingPlayerId?: PlayerId;
+      /** Myriad: exiled when combat ends, not at the end step. */
+      atEndCombat?: "exile";
       setPt?: { power: number; toughness: number };
       /** Eternalize: the copy is black and a Zombie on top of its own types. */
       setColors?: Color[];
@@ -3386,7 +3397,10 @@ export type Keyword =
   | "mountainwalk"
   | "forestwalk"
   /** "nonbasic landwalk": any land without the basic supertype. */
-  | "nonbasic_landwalk";
+  | "nonbasic_landwalk"
+  /** Myriad (CR 702.115) — Blade of Selves grants it, so it is a keyword
+   * the combat step reads rather than a printed trigger. */
+  | "myriad";
 
 export type TriggerEvent =
   | "enter_battlefield"

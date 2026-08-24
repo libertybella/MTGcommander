@@ -2076,6 +2076,15 @@ export function parseGameState(json: string): GameState {
               };
             });
           })(),
+    // Myriad's tokens: without this a reopened table keeps them for good.
+    ...(Array.isArray(raw.delayedEndCombat)
+      ? {
+          delayedEndCombat: expectStringArray(
+            raw.delayedEndCombat,
+            "delayedEndCombat",
+          ) as CardInstanceId[],
+        }
+      : {}),
     delayedEndStep:
       raw.delayedEndStep === undefined
         ? []

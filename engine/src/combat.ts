@@ -2,6 +2,7 @@ import { cloneGameState } from "./clone";
 import { characteristicsOf, isCommander, isCreature } from "./cardTypes";
 import { abilitiesRemoved, cardMatchesSubtype, computedCard } from "./characteristicsEngine";
 import { attackLimitFor, blockAllowanceFor, creaturePower, creatureToughness, damageAfterReplacements, lifeLossAfterReplacements, permanentsControlledBy } from "./derived";
+import { applyEffect } from "./effects";
 import { hasKeyword, protectedFromSource } from "./keywords";
 import { canPayManaCost, parseManaCost, payManaCost } from "./mana";
 import { isLiving, nextLivingPlayerId } from "./players";
@@ -326,12 +327,51 @@ export function declareAttackers(state: GameState, playerId: PlayerId, attacks: 
   if (tappedEvents.length > 0) {
     dispatchEventsInPlace(next, tappedEvents);
   }
+  /**
+   * Myriad (CR 702.115). Read as a KEYWORD here rather than compiled as a
+   * printed trigger, because Blade of Selves GRANTS it — a trigger on the
+   * definition would never reach an equipped creature that has no myriad
+   * of its own.
+   *
+   * The copies are made from the declared attackers snapshot rather than
+   * from `combat.attacks` as it grows, or each new token would itself be
+   * an attacker the loop then copies, without end.
+   */
+  let withMyriad = next;
+  const declared = [...combat.attacks];
+  for (const attack of declared) {
+    if (!hasKeyword(withMyriad, attack.attackerId, "myriad")) {
+      continue;
+    }
+    const controllerId = withMyriad.cards[attack.attackerId]?.controllerId;
+    if (!controllerId) {
+      continue;
+    }
+    for (const other of withMyriad.players) {
+      // "For each opponent OTHER THAN the defending player" — the original
+      // is already attacking that one.
+      if (other.lost || other.id === controllerId || other.id === attack.defenderId) {
+        continue;
+      }
+      withMyriad = applyEffect(withMyriad, {
+        kind: "copy_token",
+        ownerId: controllerId,
+        ofCardId: attack.attackerId,
+        attackingPlayerId: other.id,
+        atEndCombat: "exile",
+      });
+    }
+  }
+  next = withMyriad;
   next.passesSinceAction = 0;
   next.priorityPlayerId = next.turn.activePlayerId;
-  if (combat.attacks.length > 0) {
+  if (next.combat && next.combat.attacks.length > 0) {
     dispatchEventsInPlace(
       next,
-      combat.attacks.map((attack) => ({ kind: "attacks" as const, cardId: attack.attackerId })),
+      next.combat.attacks.map((attack) => ({
+        kind: "attacks" as const,
+        cardId: attack.attackerId,
+      })),
     );
   }
   return next;

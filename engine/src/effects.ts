@@ -3779,6 +3779,8 @@ function applyCopyToken(
     setColors?: Color[];
     addSubtypes?: string[];
     notLegendary?: boolean;
+    attackingPlayerId?: PlayerId;
+    atEndCombat?: "exile";
   },
 ): GameState {
   requirePlayer(state, ownerId);
@@ -3847,6 +3849,21 @@ function applyCopyToken(
     }
     if (opts?.atEndStep) {
       next.delayedEndStep.push({ cardId: token.id, action: opts.atEndStep });
+    }
+    // Myriad: the copy arrives already attacking the named opponent, which
+    // is the whole mechanic — a token that merely entered would be a
+    // creature with summoning sickness and nothing to do.
+    if (opts?.attackingPlayerId && next.combat?.attackersDeclared) {
+      token.tapped = true;
+      token.attacking = true;
+      token.summoningSick = false;
+      next.combat.attacks.push({
+        attackerId: token.id,
+        defenderId: opts.attackingPlayerId,
+      });
+    }
+    if (opts?.atEndCombat) {
+      next.delayedEndCombat = [...(next.delayedEndCombat ?? []), token.id];
     }
     owner.zones.battlefield.push(token.id);
     queueEnterBattlefieldTriggersInPlace(next, token.id);

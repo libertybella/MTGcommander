@@ -870,6 +870,21 @@ more questions it can now ask:
   (Bennie Bracks). Reads the existing per-player `createdTokenThisTurn`
   list, and asks whether the CONTROLLER is in it — an opponent's Treasure
   must not satisfy it.
+- **Myriad (CR 702.115)** — Blade of Selves. Read as a KEYWORD in the
+  declare-attackers step rather than compiled as a printed trigger,
+  because the card GRANTS it: a trigger on the definition would never
+  reach an equipped creature that has no myriad of its own. Thirteenth CR
+  702 keyword.
+
+  The copies are made from the DECLARED ATTACKERS SNAPSHOT, not from the
+  live attack list. The copies have myriad too, so reading a growing list
+  would spawn tokens without end — there is a test pinning the count.
+
+- **`delayedEndCombat`** — exile at END OF COMBAT, which the engine had no
+  hook for. The difference from the existing end-STEP delay is the card:
+  tokens that survived into the postcombat main phase would each become
+  value for a sacrifice outlet that the printed card never offers.
+
 - **Harmonize (CR 702.184)** — Nature's Rhythm. Two keywords the engine
   already had, welded together: cast it from your GRAVEYARD for the
   harmonize cost, which is flashback (exile rider and all), and tap
