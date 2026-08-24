@@ -2455,6 +2455,13 @@ export type TargetRequirement = {
    */
   requiredSubtypesAny?: string[];
   /**
+   * Deathrite Shaman: "target LAND card from a graveyard", "target INSTANT
+   * OR SORCERY card". ANY of these card types matches. A filter rather than
+   * another `..._card` union member, because the graveyard family already
+   * spells eight of those out and each one has to be handled by hand.
+   */
+  requiredTypesAny?: string[];
+  /**
    * Siren Stormtamer: "target spell or ability THAT TARGETS YOU OR A
    * CREATURE YOU CONTROL". A constraint on the stack object's own targets,
    * not on the object itself — and the whole card, since without it the

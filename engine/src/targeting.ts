@@ -159,6 +159,17 @@ function violatesCharacteristicFilter(
   ) {
     return true;
   }
+  // Deathrite Shaman: "target land card from a graveyard" — ANY of the
+  // listed card types, read from the printed characteristics.
+  if (
+    requirement.requiredTypesAny &&
+    requirement.requiredTypesAny.length > 0 &&
+    !requirement.requiredTypesAny.some((type) =>
+      characteristicsOf(state, cardId).types.includes(type),
+    )
+  ) {
+    return true;
+  }
   // "target non-Dragon creature card" (Junji).
   if (
     (requirement.excludedSubtypes ?? []).some((subtype) =>
@@ -417,18 +428,26 @@ export function isChosenTargetLegal(
       card &&
         card.zone === "graveyard" &&
         characteristicsOf(state, target.cardId).types.includes("creature") &&
-        // "target non-Dragon creature card" (Junji).
-        !(requirement.excludedSubtypes ?? []).some((subtype) =>
-          cardMatchesSubtype(state, target.cardId, subtype),
-        ),
+        !violatesManaValueFilter(state, target.cardId, requirement) &&
+        // Every other adjective too, not just the one excluded subtype this
+        // used to spell out by hand — the same fix the own_ family below
+        // already carries.
+        !violatesCharacteristicFilter(state, target.cardId, requirement),
     );
   }
-  // "target card from a graveyard" (Noxious Revival).
+  // "target card from a graveyard" (Noxious Revival), and every type-filtered
+  // form of it (Deathrite Shaman).
   if (requirement.kind === "graveyard_card") {
     if (target.type !== "creature") {
       return false;
     }
-    return state.cards[target.cardId]?.zone === "graveyard";
+    if (state.cards[target.cardId]?.zone !== "graveyard") {
+      return false;
+    }
+    if (violatesManaValueFilter(state, target.cardId, requirement)) {
+      return false;
+    }
+    return !violatesCharacteristicFilter(state, target.cardId, requirement);
   }
   if (
     requirement.kind === "own_graveyard_card" ||

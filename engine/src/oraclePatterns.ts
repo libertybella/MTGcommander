@@ -2557,6 +2557,41 @@ function denyRegenerationInPlace(effects: CardEffect[]): void {
   }
 }
 
+/**
+ * "target card from a graveyard", and every type-qualified form of it.
+ * The type words are a table rather than a regex alternation so an unknown
+ * qualifier declines the whole phrase instead of quietly compiling to the
+ * unfiltered target — which would be a Deathrite Shaman that eats anything.
+ */
+const GRAVEYARD_TARGET_TYPES: Record<string, string[]> = {
+  land: ["land"],
+  creature: ["creature"],
+  artifact: ["artifact"],
+  enchantment: ["enchantment"],
+  planeswalker: ["planeswalker"],
+  instant: ["instant"],
+  sorcery: ["sorcery"],
+  "instant or sorcery": ["instant", "sorcery"],
+  "artifact or creature": ["artifact", "creature"],
+  "creature or artifact": ["creature", "artifact"],
+  "creature or planeswalker": ["creature", "planeswalker"],
+};
+
+function graveyardCardTarget(phrase: string): TargetRequirement | null {
+  const match = phrase.match(/^(?:(.+?) )?card from (a|your) graveyard$/i);
+  if (!match?.[2]) {
+    return null;
+  }
+  const types = match[1] ? GRAVEYARD_TARGET_TYPES[match[1].toLowerCase()] : [];
+  if (!types) {
+    return null;
+  }
+  return {
+    kind: /^your$/i.test(match[2]) ? "own_graveyard_card" : "graveyard_card",
+    ...(types.length > 0 ? { requiredTypesAny: types } : {}),
+  };
+}
+
 function compileSimpleClause(sentence: string): SimpleClause | null {
   const clause = compileSimpleClauseInner(sentence);
   if (clause) {
@@ -4912,10 +4947,14 @@ function compileSimpleClauseInner(sentence: string): SimpleClause | null {
     };
   }
 
-  // Return to Nature's third bullet.
-  if (/^Exile target card from a graveyard$/i.test(sentence)) {
+  // Return to Nature's third bullet, and Deathrite Shaman's three.
+  const graveyardExile = sentence.match(/^Exile target (.+)$/i);
+  const exiledFromGraveyard = graveyardExile?.[1]
+    ? graveyardCardTarget(graveyardExile[1])
+    : null;
+  if (exiledFromGraveyard) {
     return {
-      targetRequirements: [{ kind: "graveyard_card" }],
+      targetRequirements: [exiledFromGraveyard],
       effects: [{ kind: "move_card", cardId: { type: "chosen", index: 0 }, toZone: "exile" }],
     };
   }

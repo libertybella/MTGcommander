@@ -2277,6 +2277,14 @@ more questions it can now ask:
   `TopOfLibraryGrant.payLifeInsteadOfMana` replaces the cost OUTRIGHT, the
   same way flashback does, and rides the same life-payment path. A cost
   that had merely been reduced would still refuse a caster with no mana.
+- **A card type filter on a graveyard target** — Deathrite Shaman.
+  `TargetRequirement.requiredTypesAny` is an ANY-of list of card types read
+  from the printed characteristics, and it sits beside `requiredSubtypesAny`
+  rather than adding more `own_graveyard_*_card` union members (there are
+  already eight, each handled by hand). The compiler reads the type words
+  from a table, so an unrecognised qualifier declines the phrase instead of
+  compiling the unfiltered target. Deathrite's first ability targets, so it
+  is not a mana ability (CR 605.1a) and uses the stack like the other two.
 - **Coven gating a top-of-library grant** (CR 702.145) — Augur of Autumn.
   `hasCoven` counts DISTINCT powers among the creatures you control, not
   creatures: three 2/2s do not turn it on, and the powers are read live

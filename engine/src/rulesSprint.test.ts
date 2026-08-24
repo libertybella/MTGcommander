@@ -54992,3 +54992,218 @@ describe("wave 351: a denial the shield has to hear", () => {
     );
   });
 });
+
+describe("wave 352: a card type filter on a graveyard target", () => {
+  const compile = (
+    name: string,
+    typeLine: string,
+    oracleText: string,
+    manaCost = "",
+    pt: [string, string] | null = null,
+  ) =>
+    compileOracleCard({
+      oracleId: name.toLowerCase().replace(/[^a-z]+/g, "-"),
+      name,
+      manaCost,
+      typeLine,
+      power: pt?.[0] ?? null,
+      toughness: pt?.[1] ?? null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  const bury = (
+    game: GameState,
+    ownerId: string,
+    name: string,
+    typeLine: string,
+    manaCost = typeLine.includes("Land") ? "" : "{2}",
+  ) => {
+    const definition = createCardDefinition({
+      name,
+      typeLine,
+      manaCost,
+      ...(typeLine.includes("Creature") ? { power: 2, toughness: 2 } : {}),
+    });
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({
+      definitionId: definition.id,
+      ownerId,
+      zone: "graveyard",
+    });
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === ownerId)!.zones.graveyard.push(card.id);
+    return card.id;
+  };
+
+  it("compiles all three of Deathrite Shaman's abilities", () => {
+    const compiled = compile(
+      "Deathrite Shaman",
+      "Creature — Elf Shaman",
+      [
+        "{T}: Exile target land card from a graveyard. Add one mana of any color.",
+        "{B}, {T}: Exile target instant or sorcery card from a graveyard. Each opponent loses 2 life.",
+        "{G}, {T}: Exile target creature card from a graveyard. You gain 2 life.",
+      ].join("\n"),
+      "{B/G}",
+      ["1", "2"],
+    );
+    expect(compiled.notes).toEqual([]);
+    expect(
+      compiled.definition.activated.map((ability) => ability.targetRequirements),
+    ).toEqual([
+      [{ kind: "graveyard_card", requiredTypesAny: ["land"] }],
+      [{ kind: "graveyard_card", requiredTypesAny: ["instant", "sorcery"] }],
+      [{ kind: "graveyard_card", requiredTypesAny: ["creature"] }],
+    ]);
+    // The first ability TARGETS, so it is not a mana ability (CR 605.1a) —
+    // it belongs on the stack with the other two.
+    expect(compiled.definition.manaAbilities).toEqual([]);
+  });
+
+  it("leaves the unfiltered form unfiltered and refuses an unknown qualifier", () => {
+    const plain = compile("Return to Nature", "Instant", "Exile target card from a graveyard.");
+    expect(plain.notes).toEqual([]);
+    expect(plain.definition.targetRequirements).toEqual([{ kind: "graveyard_card" }]);
+    // A qualifier the table does not know must decline the whole phrase.
+    // Falling through to the unfiltered target would compile a strictly
+    // better card than the one printed.
+    const unknown = compile("Probe", "Instant", "Exile target Zombie card from a graveyard.");
+    expect(unknown.notes.length).toBeGreaterThan(0);
+    expect(unknown.definition.targetRequirements).toEqual([]);
+  });
+
+  it("reads 'from your graveyard' as your graveyard", () => {
+    const compiled = compile(
+      "Probe",
+      "Instant",
+      "Exile target creature card from your graveyard.",
+    );
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.targetRequirements).toEqual([
+      { kind: "own_graveyard_card", requiredTypesAny: ["creature"] },
+    ]);
+  });
+
+  const landFilter: TargetRequirement = {
+    kind: "graveyard_card",
+    requiredTypesAny: ["land"],
+  };
+  const spellFilter: TargetRequirement = {
+    kind: "graveyard_card",
+    requiredTypesAny: ["instant", "sorcery"],
+  };
+
+  it("accepts only the named type, in anyone's graveyard", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const mineId = bury(game, p1.id, "My Forest", "Land — Forest");
+    const theirsId = bury(game, p2.id, "Their Island", "Land — Island");
+    const bearId = bury(game, p1.id, "Bear", "Creature — Bear");
+    // "From A graveyard" — every graveyard, which is most of what makes the
+    // Shaman what it is.
+    expect(isChosenTargetLegal(game, landFilter, { type: "creature", cardId: mineId }, p1.id)).toBe(
+      true,
+    );
+    expect(
+      isChosenTargetLegal(game, landFilter, { type: "creature", cardId: theirsId }, p1.id),
+    ).toBe(true);
+    expect(isChosenTargetLegal(game, landFilter, { type: "creature", cardId: bearId }, p1.id)).toBe(
+      false,
+    );
+  });
+
+  it("accepts either type in an any-of list", () => {
+    const { game, p1 } = twoPlayers();
+    const boltId = bury(game, p1.id, "Bolt", "Instant");
+    const wrathId = bury(game, p1.id, "Wrath", "Sorcery");
+    const bearId = bury(game, p1.id, "Bear", "Creature — Bear");
+    expect(isChosenTargetLegal(game, spellFilter, { type: "creature", cardId: boltId }, p1.id)).toBe(
+      true,
+    );
+    expect(
+      isChosenTargetLegal(game, spellFilter, { type: "creature", cardId: wrathId }, p1.id),
+    ).toBe(true);
+    expect(isChosenTargetLegal(game, spellFilter, { type: "creature", cardId: bearId }, p1.id)).toBe(
+      false,
+    );
+  });
+
+  it("does not reach a land on the battlefield", () => {
+    const { game, p1 } = twoPlayers();
+    const definition = createCardDefinition({ name: "Forest", typeLine: "Basic Land — Forest" });
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({
+      definitionId: definition.id,
+      ownerId: p1.id,
+      zone: "battlefield",
+    });
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === p1.id)!.zones.battlefield.push(card.id);
+    // The type filter must not loosen the zone the kind already fixed.
+    expect(isChosenTargetLegal(game, landFilter, { type: "creature", cardId: card.id }, p1.id)).toBe(
+      false,
+    );
+  });
+
+  it("offers only the matching cards", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const mineId = bury(game, p1.id, "My Forest", "Land — Forest");
+    const theirsId = bury(game, p2.id, "Their Island", "Land — Island");
+    bury(game, p1.id, "Bear", "Creature — Bear");
+    bury(game, p2.id, "Bolt", "Instant");
+    const legal = legalChoicesForRequirement(game, landFilter, p1.id).map((target) =>
+      "cardId" in target ? target.cardId : null,
+    );
+    expect(legal.sort()).toEqual([mineId, theirsId].sort());
+  });
+
+  it("makes the adjectives on a graveyard target bite", () => {
+    const { game, p1 } = twoPlayers();
+    const cheapId = bury(game, p1.id, "Bolt", "Instant");
+    const dearId = bury(game, p1.id, "Big Spell", "Sorcery", "{6}");
+    const capped: TargetRequirement = { kind: "graveyard_card", maxManaValue: 2 };
+    // `graveyard_card` used to check the zone and nothing else, so every
+    // adjective parsed onto it was decoration.
+    expect(isChosenTargetLegal(game, capped, { type: "creature", cardId: cheapId }, p1.id)).toBe(
+      true,
+    );
+    expect(isChosenTargetLegal(game, capped, { type: "creature", cardId: dearId }, p1.id)).toBe(
+      false,
+    );
+  });
+
+  it("round trips the filter", () => {
+    const { game, p1 } = twoPlayers();
+    const definition = createCardDefinition({
+      name: "Wave 352 Shaman",
+      typeLine: "Creature — Elf Shaman",
+      manaCost: "{B/G}",
+      power: 1,
+      toughness: 2,
+      activated: [
+        {
+          tap: true,
+          manaCost: "",
+          effects: [
+            { kind: "move_card", cardId: { type: "chosen", index: 0 }, toZone: "exile" },
+          ],
+          targetRequirements: [landFilter],
+        },
+      ],
+    });
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({
+      definitionId: definition.id,
+      ownerId: p1.id,
+      zone: "battlefield",
+    });
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === p1.id)!.zones.battlefield.push(card.id);
+    const round = parseGameState(serializeGameState(game));
+    // Losing the list on the wire turns the Shaman into "exile any card".
+    expect(round.definitions[definition.id]?.activated[0]?.targetRequirements).toEqual([
+      landFilter,
+    ]);
+  });
+});

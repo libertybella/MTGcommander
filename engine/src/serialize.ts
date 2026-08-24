@@ -3101,6 +3101,14 @@ function parseTargetRequirement(value: unknown, label: string): TargetRequiremen
           ),
         }
       : {}),
+    ...(Array.isArray(value.requiredTypesAny)
+      ? {
+          requiredTypesAny: expectStringArray(
+            value.requiredTypesAny,
+            `${label}.requiredTypesAny`,
+          ),
+        }
+      : {}),
     ...(value.targetsYouOrYours === true ? { targetsYouOrYours: true } : {}),
     ...(value.maxManaValueX === true ? { maxManaValueX: true } : {}),
     ...(value.distinctManaValues === true ? { distinctManaValues: true } : {}),
