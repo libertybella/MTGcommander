@@ -495,7 +495,7 @@ export function bindCardEffect(
       if (!playerId) {
         return null;
       }
-      const { countFromGreatestPower, countPerControlled, countPerOpponent, countFromDynamicPlus, countFromChosenTypePermanents, perDynamicCount, countFromCounterOnSource, ...drawRest } = effect;
+      const { countFromGreatestPower, countPerControlled, countPerOpponent, countFromDynamicPlus, countFromChosenTypePermanents, perDynamicCount, countFromCounterOnSource, countFromCreaturesDied, ...drawRest } = effect;
       // The One Ring: one card per burden counter, read off the source as
       // the ability resolves. Zero counters draws nothing rather than one.
       if (countFromCounterOnSource) {
@@ -578,6 +578,15 @@ export function bindCardEffect(
         const count = livingPlayers(state).filter(
           (player) => player.id !== context.controllerId,
         ).length;
+        if (count === 0) {
+          return null;
+        }
+        return { ...drawRest, playerId, count };
+      }
+      if (countFromCreaturesDied) {
+        // Spymaster's Vault: the tally is game state, and nothing in this
+        // batch changes it, so bind time is as good as apply time.
+        const count = state.creaturesDiedThisTurn ?? 0;
         if (count === 0) {
           return null;
         }
@@ -711,10 +720,16 @@ export function bindCardEffect(
       const conniveTarget = effect.conniveCounterOn
         ? bindCardId(state, effect.conniveCounterOn, context)
         : null;
+      const discardCount = effect.countFromCreaturesDied
+        ? state.creaturesDiedThisTurn ?? 0
+        : effect.count;
+      if (discardCount <= 0) {
+        return null;
+      }
       return {
         kind: "discard",
         playerId,
-        count: effect.count,
+        count: discardCount,
         ...(conniveTarget ? { conniveCounterOn: conniveTarget } : {}),
       };
     }

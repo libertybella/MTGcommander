@@ -870,6 +870,18 @@ more questions it can now ask:
   (Bennie Bracks). Reads the existing per-player `createdTokenThisTurn`
   list, and asks whether the CONTROLLER is in it — an opponent's Treasure
   must not satisfy it.
+- **Connive X** — Spymaster's Vault: "Target creature you control connives
+  X, where X is the number of creatures that died this turn." The same
+  three clauses as the plain form (CR 702.148: draw X, discard X, a +1/+1
+  counter per NONLAND card discarded), with two differences that are the
+  card: the count is read off the died-this-turn tally, and the counters
+  land on the TARGET rather than on the source.
+
+  The count is read at BIND, unlike the counter tallies in wave 328 — the
+  discard beside it does not change how many creatures have died, so there
+  is nothing to wait for. Connive 0 binds to nothing at all, which is what
+  drawing and discarding zero comes to.
+
 - **`targetsYouOrYours`** — Siren Stormtamer: "target spell or ability THAT
   TARGETS you or a creature you control". A constraint on what the stack
   object is itself aiming at, read off its own targets — not on the object.

@@ -2669,6 +2669,12 @@ export type CardEffect =
       /** Shamanic Revelation: one card per controlled creature at bind. */
       countPerControlled?: "creature";
       /**
+       * Spymaster's Vault: "X, where X is the number of creatures that
+       * died this turn". Read at BIND — the tally is game state that the
+       * discard beside it does not change.
+       */
+      countFromCreaturesDied?: boolean;
+      /**
        * Cut a Deal: "a card for each opponent who drew a card this way" —
        * every living opponent drew, so the count is how many there are.
        * Read at bind, after the opponents' draws have resolved.
@@ -2831,6 +2837,8 @@ export type CardEffect =
       playerId: PlayerSelector;
       count: number;
       conniveCounterOn?: CardIdSelector;
+      /** Spymaster's Vault: connive X discards X, read the same way. */
+      countFromCreaturesDied?: boolean;
     }
   /** Gamble: "discard a card at random". */
   | { kind: "discard_random"; playerId: PlayerSelector; count: number }

@@ -3330,6 +3330,7 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
           };
         })(),
         ...(value.countPerControlled === "creature" ? { countPerControlled: "creature" } : {}),
+        ...(value.countFromCreaturesDied === true ? { countFromCreaturesDied: true } : {}),
         ...(value.countPerOpponent === true ? { countPerOpponent: true } : {}),
         ...(isRecord(value.countFromDynamicPlus)
           ? {
@@ -3707,6 +3708,7 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
         kind,
         playerId: parsePlayerSelector(value.playerId, `${label}.playerId`),
         count: expectNumber(value.count, `${label}.count`),
+        ...(value.countFromCreaturesDied === true ? { countFromCreaturesDied: true } : {}),
         ...(value.conniveCounterOn === undefined
           ? {}
           : {

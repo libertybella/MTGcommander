@@ -5194,6 +5194,34 @@ function compileSimpleClauseInner(sentence: string): SimpleClause | null {
   // Connive N (CR 702.148): draw N, discard N, and a +1/+1 counter for
   // each NONLAND card discarded that way. The third clause rides the
   // discard because its count is only known once the discard has run.
+  /**
+   * Spymaster's Vault: "Target creature you control connives X, where X is
+   * the number of creatures that died this turn." Connive X is draw X,
+   * discard X, and a +1/+1 counter per NONLAND card discarded (CR 702.148)
+   * — the same three clauses as the plain form, with the count read off
+   * the tally and the counters landing on the TARGET rather than the
+   * source.
+   */
+  if (
+    /^Target creature you control connives X, where X is the number of creatures that died this turn$/i.test(
+      sentence,
+    )
+  ) {
+    return {
+      targetRequirements: [{ kind: "creature", control: "own" }],
+      effects: [
+        { kind: "draw", playerId: "controller", count: 0, countFromCreaturesDied: true },
+        {
+          kind: "discard",
+          playerId: "controller",
+          count: 0,
+          countFromCreaturesDied: true,
+          conniveCounterOn: { type: "chosen", index: 0 },
+        },
+      ],
+    };
+  }
+
   const connives = sentence.match(/^~ connives$/i);
   if (connives) {
     return {

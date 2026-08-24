@@ -54312,3 +54312,198 @@ describe("wave 348: countering only what is aimed at you", () => {
     );
   });
 });
+
+describe("wave 349: connive X, counted off the graveyard", () => {
+  const compile = (name: string, typeLine: string, oracleText: string, manaCost = "") =>
+    compileOracleCard({
+      oracleId: name.toLowerCase().replace(/[^a-z]+/g, "-"),
+      name,
+      manaCost,
+      typeLine,
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  const put = (
+    game: GameState,
+    ownerId: string,
+    definition: CardDefinition,
+    zone: "hand" | "battlefield" = "battlefield",
+  ) => {
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({ definitionId: definition.id, ownerId, zone });
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === ownerId)!.zones[zone].push(card.id);
+    if (zone === "battlefield") {
+      card.summoningSick = false;
+    }
+    return card.id;
+  };
+
+  it("compiles the three clauses of connive X", () => {
+    const compiled = compile(
+      "Spymaster's Vault",
+      "Land",
+      "{T}: Add {B}.\n{B}, {T}: Target creature you control connives X, where X is the number of creatures that died this turn.",
+    );
+    expect(compiled.notes).toEqual([]);
+    // CR 702.148: draw X, discard X, then a +1/+1 counter per NONLAND card
+    // discarded — and here the counters land on the TARGET, not the source.
+    expect(compiled.definition.activated[0]?.targetRequirements).toEqual([
+      { kind: "creature", control: "own" },
+    ]);
+    expect(compiled.definition.activated[0]?.effects).toEqual([
+      { kind: "draw", playerId: "controller", count: 0, countFromCreaturesDied: true },
+      {
+        kind: "discard",
+        playerId: "controller",
+        count: 0,
+        countFromCreaturesDied: true,
+        conniveCounterOn: { type: "chosen", index: 0 },
+      },
+    ]);
+  });
+
+  it("leaves the plain self form alone", () => {
+    const compiled = compile(
+      "Plain Conniver",
+      "Creature — Rogue",
+      "Whenever this creature attacks, this creature connives.",
+      "{1}{U}",
+    );
+    // The local helper leaves power/toughness unset, so the only note is
+    // about that — nothing here is about connive.
+    expect(compiled.notes.join(" ")).not.toContain("connive");
+    expect(compiled.definition.triggers[0]?.effects).toEqual([
+      { kind: "draw", playerId: "controller", count: 1 },
+      { kind: "discard", playerId: "controller", count: 1, conniveCounterOn: "self" },
+    ]);
+  });
+
+  const bear = (name: string) =>
+    createCardDefinition({
+      name,
+      typeLine: "Creature — Bear",
+      manaCost: "{1}{G}",
+      power: 2,
+      toughness: 2,
+    });
+
+  const conniveX = (game: GameState, playerId: string, targetId: string) =>
+    bindCardEffects(
+      game,
+      [
+        { kind: "draw", playerId: "controller", count: 0, countFromCreaturesDied: true },
+        {
+          kind: "discard",
+          playerId: "controller",
+          count: 0,
+          countFromCreaturesDied: true,
+          conniveCounterOn: { type: "chosen", index: 0 },
+        },
+      ],
+      {
+        controllerId: playerId,
+        sourceId: null,
+        targets: [{ type: "creature", cardId: targetId }],
+        targetRequirements: [{ kind: "creature", control: "own" }],
+      },
+    );
+
+  it("counts the creatures that died this turn", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const targetId = put(game, p1.id, bear("Target"));
+    game.creaturesDiedThisTurn = 3;
+    const bound = conniveX(game, p1.id, targetId);
+    expect(bound[0]).toMatchObject({ kind: "draw", count: 3 });
+    expect(bound[1]).toMatchObject({ kind: "discard", count: 3 });
+  });
+
+  it("does nothing when nothing has died", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const targetId = put(game, p1.id, bear("Target"));
+    game.creaturesDiedThisTurn = 0;
+    // Connive 0 draws nothing and discards nothing; the ability resolves
+    // and does exactly that.
+    expect(conniveX(game, p1.id, targetId)).toEqual([]);
+  });
+
+  it("puts the counters on the TARGET, not the source", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const sourceId = put(game, p1.id, bear("Source"));
+    const targetId = put(game, p1.id, bear("Target"));
+    game.creaturesDiedThisTurn = 1;
+    const bound = bindCardEffects(
+      game,
+      [
+        {
+          kind: "discard",
+          playerId: "controller",
+          count: 0,
+          countFromCreaturesDied: true,
+          conniveCounterOn: { type: "chosen", index: 0 },
+        },
+      ],
+      {
+        controllerId: p1.id,
+        sourceId,
+        targets: [{ type: "creature", cardId: targetId }],
+        targetRequirements: [{ kind: "creature", control: "own" }],
+      },
+    );
+    expect(bound[0]).toMatchObject({ conniveCounterOn: targetId });
+  });
+
+  it("draws and discards the counted number", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const targetId = put(game, p1.id, bear("Target"));
+    for (let index = 0; index < 3; index += 1) {
+      put(game, p1.id, bear(`Held${index}`), "hand");
+    }
+    game.creaturesDiedThisTurn = 2;
+    const player = game.players.find((entry) => entry.id === p1.id)!;
+    const handBefore = player.zones.hand.length;
+    const resolved = applyEffects(game, conniveX(game, p1.id, targetId));
+    const after = resolved.players.find((entry) => entry.id === p1.id)!;
+    // Two in, two out.
+    expect(after.zones.hand.length).toBe(handBefore);
+    expect(resolved.cards[targetId]?.counters["p1p1"]).toBe(2);
+  });
+
+  it("round trips both counted halves", () => {
+    const { game, p1 } = twoPlayers();
+    const definition = createCardDefinition({
+      name: "Wave 349 Vault",
+      typeLine: "Land",
+      activated: [
+        {
+          tap: true,
+          manaCost: "{B}",
+          effects: [
+            { kind: "draw", playerId: "controller", count: 0, countFromCreaturesDied: true },
+            {
+              kind: "discard",
+              playerId: "controller",
+              count: 0,
+              countFromCreaturesDied: true,
+              conniveCounterOn: { type: "chosen", index: 0 },
+            },
+          ],
+          targetRequirements: [{ kind: "creature", control: "own" }],
+        },
+      ],
+    });
+    put(game, p1.id, definition);
+    const round = parseGameState(serializeGameState(game));
+    expect(round.definitions[definition.id]?.activated[0]?.effects).toEqual(
+      definition.activated[0]!.effects,
+    );
+  });
+});
