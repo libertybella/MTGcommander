@@ -35765,13 +35765,32 @@ describe("wave 271: two triggers sharing one body", () => {
     expect(compiled.definition.effects).toEqual([]);
   });
 
-  it("refuses a dual head whose second half it cannot read", () => {
+  it("splits a dual head once both halves read", () => {
+    // This USED to be the refusal case: the second head would not parse, so
+    // the whole card was an honest miss. Wave 337 taught the cast head the
+    // mana-value qualifier the ENTERS head already knew, and the split the
+    // wave-264 splitter always wanted now happens. Inverted rather than
+    // deleted — the point it was making is that the second half must not be
+    // silently dropped, and it still is not.
     const compiled = compile(
       "When ~ enters and whenever you cast a spell with mana value 5 or greater, draw a card.",
     );
-    // The old ETB branch matched "and whenever …" and threw it away, so this
-    // compiled CLEAN with one trigger and did half of what it says. An
-    // honest miss is strictly better than a card that scores and lies.
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.triggers).toHaveLength(2);
+    expect(compiled.definition.triggers[0]?.event).toBe("enter_battlefield");
+    expect(compiled.definition.triggers[1]).toMatchObject({
+      event: "cast_spell",
+      watch: "controlled",
+      subjectFilter: { minManaValue: 5 },
+    });
+  });
+
+  it("still refuses a dual head whose second half it cannot read", () => {
+    const compiled = compile(
+      "When ~ enters and whenever the sun rises over Dominaria, draw a card.",
+    );
+    // Reading just the first half would compile CLEAN and do half of what
+    // the card says. An honest miss is strictly better.
     expect(compiled.notes.length).toBeGreaterThan(0);
     expect(compiled.definition.triggers).toHaveLength(0);
   });
@@ -51980,5 +51999,187 @@ describe("wave 336: a permanent that blinks itself, and comes back tapped", () =
     // The pending return is game state: without it a reopened table brings
     // the card back UNTAPPED and the drawback is gone.
     expect(round.delayedEndStep[0]).toMatchObject({ returnsTapped: true });
+  });
+});
+
+describe("wave 337: a qualifier one head knew and its sibling did not", () => {
+  const compile = (name: string, typeLine: string, oracleText: string, manaCost = "") =>
+    compileOracleCard({
+      oracleId: name.toLowerCase().replace(/[^a-z]+/g, "-"),
+      name,
+      manaCost,
+      typeLine,
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  it("compiles Up the Beanstalk as two triggers sharing one body", () => {
+    const compiled = compile(
+      "Up the Beanstalk",
+      "Enchantment",
+      "When this enchantment enters and whenever you cast a spell with mana value 5 or greater, draw a card.",
+      "{1}{G}",
+    );
+    expect(compiled.notes).toEqual([]);
+    // CR 603.1: one printed line, two triggered abilities.
+    expect(compiled.definition.triggers).toHaveLength(2);
+    expect(compiled.definition.triggers[0]).toMatchObject({
+      event: "enter_battlefield",
+    });
+    expect(compiled.definition.triggers[1]).toMatchObject({
+      event: "cast_spell",
+      watch: "controlled",
+      subjectFilter: { minManaValue: 5 },
+    });
+    // The body is the SAME on both.
+    expect(compiled.definition.triggers[0]?.effects).toEqual(
+      compiled.definition.triggers[1]?.effects,
+    );
+  });
+
+  it("reads the qualifier on its own", () => {
+    const compiled = compile(
+      "Big Spell Watcher",
+      "Enchantment",
+      "Whenever you cast a spell with mana value 5 or greater, draw a card.",
+      "{1}{G}",
+    );
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.triggers[0]?.subjectFilter).toEqual({ minManaValue: 5 });
+  });
+
+  it("reads the other bound, and the other watcher", () => {
+    const compiled = compile(
+      "Small Spell Watcher",
+      "Enchantment",
+      "Whenever an opponent casts a spell with mana value 3 or less, draw a card.",
+      "{1}{U}",
+    );
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.triggers[0]).toMatchObject({
+      watch: "opponents",
+      subjectFilter: { maxManaValue: 3 },
+    });
+  });
+
+  it("keeps the qualifier alongside a type descriptor", () => {
+    const compiled = compile(
+      "Typed Watcher",
+      "Enchantment",
+      "Whenever you cast a creature spell with mana value 5 or greater, draw a card.",
+      "{1}{G}",
+    );
+    expect(compiled.notes).toEqual([]);
+    // The descriptor is a PREFIX and the qualifier a SUFFIX; both must land.
+    expect(compiled.definition.triggers[0]?.subjectFilter).toEqual({
+      types: ["creature"],
+      minManaValue: 5,
+    });
+  });
+
+  it("leaves an unqualified cast head unqualified", () => {
+    const compiled = compile(
+      "Plain Watcher",
+      "Enchantment",
+      "Whenever you cast a spell, draw a card.",
+      "{1}{U}",
+    );
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.triggers[0]?.subjectFilter).toBeUndefined();
+  });
+
+  it("matches what the ENTERS head already read", () => {
+    // The asymmetry this wave closed: the same qualifier, the same filter.
+    const entering = compile(
+      "Entry Watcher",
+      "Enchantment",
+      "Whenever another creature you control with mana value 3 or greater enters, draw a card.",
+      "{1}{G}",
+    );
+    const casting = compile(
+      "Cast Watcher",
+      "Enchantment",
+      "Whenever you cast a creature spell with mana value 3 or greater, draw a card.",
+      "{1}{G}",
+    );
+    expect(entering.notes).toEqual([]);
+    expect(casting.notes).toEqual([]);
+    expect(entering.definition.triggers[0]?.subjectFilter?.minManaValue).toBe(3);
+    expect(casting.definition.triggers[0]?.subjectFilter?.minManaValue).toBe(3);
+  });
+
+  it("fires on the big spell and not the small one", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 30);
+    const watcher = createCardDefinition({
+      name: "Up the Beanstalk",
+      typeLine: "Enchantment",
+      manaCost: "{1}{G}",
+      triggers: [
+        {
+          event: "cast_spell",
+          watch: "controlled",
+          subjectFilter: { minManaValue: 5 },
+          effects: [{ kind: "draw", playerId: "controller", count: 1 }],
+          targetRequirements: [],
+        },
+      ],
+    });
+    game.definitions[watcher.id] = watcher;
+    const card = createCardInstance({
+      definitionId: watcher.id,
+      ownerId: p1.id,
+      zone: "battlefield",
+    });
+    game.cards[card.id] = card;
+    const player = game.players.find((entry) => entry.id === p1.id)!;
+    player.zones.battlefield.push(card.id);
+
+    const spellOf = (manaCost: string) => {
+      const definition = createCardDefinition({
+        name: `Spell ${manaCost}`,
+        // Instants: a sorcery could not be cast with the first still on
+        // the stack, and the point here is two casts in a row.
+        typeLine: "Instant",
+        manaCost,
+        effects: [{ kind: "gain_life", playerId: "controller", amount: 1 }],
+      });
+      game.definitions[definition.id] = definition;
+      const instance = createCardInstance({
+        definitionId: definition.id,
+        ownerId: p1.id,
+        zone: "hand",
+      });
+      game.cards[instance.id] = instance;
+      player.zones.hand.push(instance.id);
+      return instance.id;
+    };
+    const bigId = spellOf("{5}");
+    const smallId = spellOf("{1}");
+    game.turn.activePlayerId = p1.id;
+    game.turn.phase = "precombatMain";
+    game.turn.step = "precombatMain";
+    game.priorityPlayerId = p1.id;
+    player.mana = { ...player.mana, C: 6 };
+
+    const small = applyAction(game, {
+      kind: "cast_spell",
+      playerId: p1.id,
+      cardId: smallId,
+      targets: [],
+    });
+    expect(small.stack).toHaveLength(1);
+
+    const big = applyAction(small, {
+      kind: "cast_spell",
+      playerId: p1.id,
+      cardId: bigId,
+      targets: [],
+    });
+    // One spell, one trigger: the {1} did not qualify.
+    expect(big.stack.filter((entry) => entry.kind === "ability")).toHaveLength(1);
   });
 });

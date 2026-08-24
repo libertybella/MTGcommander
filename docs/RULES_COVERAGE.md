@@ -870,6 +870,19 @@ more questions it can now ask:
   (Bennie Bracks). Reads the existing per-player `createdTokenThisTurn`
   list, and asks whether the CONTROLLER is in it — an opponent's Treasure
   must not satisfy it.
+- **A cast head reads the mana-value qualifier the ENTERS head already
+  knew.** "Whenever another creature you control WITH MANA VALUE 3 OR
+  GREATER enters" parsed; "whenever you cast a spell with mana value 5 or
+  greater" did not. A parser asymmetry, not a missing feature — the
+  descriptor before "spell" is a PREFIX and the qualifier a SUFFIX, and
+  only the prefix was being read.
+
+  That one gap is why **Up the Beanstalk** would not compile at all. The
+  wave-264 dual-head splitter was already correct and already wanted to
+  split it; it declined only because the second head would not parse. With
+  the qualifier read, the card becomes what CR 603.1 says it is: one
+  printed line, TWO triggered abilities sharing a body.
+
 - **A permanent that blinks ITSELF** — Nezahal. The existing delayed blink
   reads a chosen target; Nezahal has none, so `exile_return_end_step` gained
   a `self` form that reads the source instead. The targeted form keeps its

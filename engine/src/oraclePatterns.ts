@@ -10846,16 +10846,33 @@ function parseTriggerHead(head: string): TriggerHead | null {
   }
   // One cast-trigger grammar: who is watched, and what the spell has to be.
   // Every "Whenever <someone> casts a <descriptor> spell" head lands here.
+  /**
+   * The descriptor before "spell" is a PREFIX ("a noncreature spell"), but
+   * a mana-value qualifier trails it ("a spell with mana value 5 or
+   * greater"). The ENTERS head already read that suffix and this one did
+   * not — a parser asymmetry, not a missing feature, and the reason Up the
+   * Beanstalk's second head would not parse at all.
+   */
   const castHead = text.match(
-    /^Whenever (you|an opponent|a player|each player) casts? an? (.+? )?spell$/i,
+    /^Whenever (you|an opponent|a player|each player) casts? an? (.+? )?spell(?: with mana value (\d+) or (less|greater))?$/i,
   );
   const castFilter = castHead ? parseSpellDescriptor(castHead[2]?.trim() ?? "") : null;
   if (castHead?.[1] && castFilter) {
     const who = castHead[1].toLowerCase();
+    const bound = castHead[3] ? Number(castHead[3]) : undefined;
+    const filter = {
+      ...castFilter,
+      ...(bound !== undefined && /^less$/i.test(castHead[4] ?? "")
+        ? { maxManaValue: bound }
+        : {}),
+      ...(bound !== undefined && /^greater$/i.test(castHead[4] ?? "")
+        ? { minManaValue: bound }
+        : {}),
+    };
     return {
       event: "cast_spell",
       watch: who === "you" ? "controlled" : who === "an opponent" ? "opponents" : "any",
-      ...(Object.keys(castFilter).length > 0 ? { subjectFilter: castFilter } : {}),
+      ...(Object.keys(filter).length > 0 ? { subjectFilter: filter } : {}),
     };
   }
   if (/^Whenever enchanted creature deals damage to an opponent$/i.test(text)) {
