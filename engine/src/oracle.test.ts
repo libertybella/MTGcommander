@@ -332,7 +332,7 @@ describe("oracle compile", () => {
     expect(sage.definition.triggers).toEqual([
       {
         event: "enter_battlefield",
-        effects: [{ kind: "move_card", cardId: { type: "chosen", index: 0 }, toZone: "graveyard" }],
+        effects: [{ kind: "move_card", cardId: { type: "chosen", index: 0 }, toZone: "graveyard", destroy: true }],
         targetRequirements: [{ kind: "creature" }],
       },
     ]);

@@ -365,6 +365,14 @@ export type CardDefinition = {
    * adding one, so it is checked after them and wins.
    */
   landsEnterUntapped?: boolean;
+  /**
+   * Totem armor / umbra armor (CR 702.87) — Bear Umbra. On the AURA, not on
+   * what it enchants: "if enchanted permanent would be destroyed, instead
+   * remove all damage from it and destroy this Aura." Read by
+   * `destroyPermanentInPlace`, which is the single place a destruction can
+   * be replaced, so it applies to a Wrath and to lethal damage alike.
+   */
+  totemArmor?: boolean;
   /** "You may cast spells as though they had flash" (Vedalken Orrery). */
   /** Convoke (CR 702.51): tap creatures to help pay. */
   convoke?: boolean;
@@ -1274,6 +1282,13 @@ export type GameEffect =
        * the Whip is a repeatable reanimator instead of a one-shot.
        */
       exileIfLeaves?: boolean;
+      /**
+       * This move is a DESTRUCTION (CR 701.7), not just a trip to the
+       * graveyard. Indestructible stops it and totem armor replaces it;
+       * a bounce, a tuck, a sacrifice and an exile all leave it off. The
+       * word in the oracle text is what sets it.
+       */
+      destroy?: boolean;
       /** Battlefield arrivals: the arriving card is controlled by this player. */
       controllerId?: PlayerId;
       /** "…to the battlefield with a -1/-1 counter on it" (Persist). */
@@ -2439,6 +2454,13 @@ export type CardEffect =
       /** Whip of Erebos, unearth: "If it would leave the battlefield, exile
        * it instead of putting it anywhere else." */
       exileIfLeaves?: boolean;
+      /**
+       * This move is a DESTRUCTION (CR 701.7), not just a trip to the
+       * graveyard. Indestructible stops it and totem armor replaces it;
+       * a bounce, a tuck, a sacrifice and an exile all leave it off. The
+       * word in the oracle text is what sets it.
+       */
+      destroy?: boolean;
       /** "onto the battlefield under your control" (Reanimate). */
       underControlOf?: "controller";
       /** "…to the battlefield with a -1/-1 counter on it" (Persist). */

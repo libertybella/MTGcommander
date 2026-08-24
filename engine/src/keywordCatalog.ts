@@ -87,7 +87,7 @@ export const CR702_NAME_OF: Record<string, string> = {
  * Parameterized keywords implemented as definition fields rather than
  * Keyword union members (ward: number, protectionFrom: Color[]).
  */
-export const EXTRA_IMPLEMENTED: string[] = ["ward", "protection"];
+export const EXTRA_IMPLEMENTED: string[] = ["ward", "protection", "totem armor"];
 
 export type KeywordCoverage = {
   implemented: string[];

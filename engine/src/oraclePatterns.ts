@@ -66,6 +66,7 @@ export type CompiledOracleText = {
   loyaltyAbilities?: LoyaltyAbility[];
   noMaxHandSize?: boolean;
   landsEnterUntapped?: boolean;
+  totemArmor?: boolean;
   handSizeEffect?: CardDefinition["handSizeEffect"];
   opponentsDrawCap?: number;
   noncreatureSpellCap?: number;
@@ -2451,7 +2452,46 @@ function parseDelayedTiming(
 
 const DELAYED_TIMING = String.raw`your next upkeep|your next main phase|the next turn['\u2019]s upkeep`;
 
+/**
+ * Mark every graveyard-bound move a DESTROY sentence produced as an actual
+ * destruction (CR 701.7), so indestructible stops it and totem armor
+ * replaces it.
+ *
+ * This is done once, here, rather than at each of the twenty-odd clauses
+ * that read the word: those are a list, and a list written out by hand is a
+ * list that falls behind. The engine spent a long time with the SWEEPS
+ * checking indestructible and "Destroy target creature" not checking it, so
+ * a Blightsteel Colossus died to a Beast Within.
+ *
+ * A move to any other zone is untouched — exile, bounce and tuck are not
+ * destructions and are not stopped by any of this. Neither is a sacrifice,
+ * which is its own effect kind and never comes through here.
+ */
+function markDestructionsInPlace(sentence: string, effects: CardEffect[]): void {
+  if (!/\bdestroy(s|ed)?\b/i.test(sentence)) {
+    return;
+  }
+  for (const effect of effects) {
+    if (effect.kind === "move_card" && effect.toZone === "graveyard") {
+      effect.destroy = true;
+    } else if (effect.kind === "if_condition") {
+      markDestructionsInPlace(sentence, effect.then);
+      if (effect.otherwise) {
+        markDestructionsInPlace(sentence, effect.otherwise);
+      }
+    }
+  }
+}
+
 function compileSimpleClause(sentence: string): SimpleClause | null {
+  const clause = compileSimpleClauseInner(sentence);
+  if (clause) {
+    markDestructionsInPlace(sentence, clause.effects);
+  }
+  return clause;
+}
+
+function compileSimpleClauseInner(sentence: string): SimpleClause | null {
   // "At the beginning of your next upkeep, …" — a delayed triggered
   // ability (CR 603.7) created by THIS spell, not a trigger on a
   // permanent, which is why the permanent trigger head ("of your upkeep",
@@ -14473,6 +14513,23 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
     // rather than adding one.
     if (/^Lands you control enter untapped$/i.test(sentence)) {
       result.landsEnterUntapped = true;
+      continue;
+    }
+
+    /**
+     * Totem armor (CR 702.87), printed as "Umbra armor" on the Bear Umbra
+     * cycle's newer wordings and reminded as the full sentence on the
+     * older ones. Both spellings, and the reminder text, name the same
+     * ability — so all three land on the same flag rather than the
+     * reminder falling through as uncompiled text.
+     */
+    if (
+      /^(?:Totem|Umbra) armor$/i.test(sentence) ||
+      /^If enchanted (?:creature|permanent) would be destroyed, instead remove all damage from it and destroy (?:this Aura|~)$/i.test(
+        sentence,
+      )
+    ) {
+      result.totemArmor = true;
       continue;
     }
 

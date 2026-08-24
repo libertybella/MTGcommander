@@ -12,7 +12,7 @@ import { commanderIdentityColors } from "./manaOptions";
 import { isLiving, livingPlayers, nextLivingPlayerId } from "./players";
 import { isPromptOpen, legalIdsForChooseSources, searchMatches } from "./prompt";
 import { shuffleInPlace } from "./shuffle";
-import { applyStateBasedActionsInPlace } from "./status";
+import { applyStateBasedActionsInPlace, destroyPermanentInPlace } from "./status";
 import { isChosenTargetLegal, legalChoicesForRequirement, sourceColorsOf, stackObjectRequirements } from "./targeting";
 import { amassArmyTemplate, tokenPresetFor } from "./tokens";
 import { dispatchEventsInPlace, queueEnterBattlefieldTriggersInPlace, triggerConditionHolds } from "./triggers";
@@ -1041,6 +1041,7 @@ export function bindCardEffect(
         ...(effect.gainsHaste ? { gainsHaste: true } : {}),
         ...(effect.atEndStep ? { atEndStep: effect.atEndStep } : {}),
         ...(effect.exileIfLeaves ? { exileIfLeaves: true } : {}),
+        ...(effect.destroy ? { destroy: true } : {}),
         ...(effect.underControlOf === "controller"
           ? { controllerId: context.controllerId }
           : {}),
@@ -3880,18 +3881,20 @@ function applyDestroyAll(
     .filter(
       (card) => !effect.coloredOnly || characteristicsOf(next, card.id).colors.length > 0,
     )
-    // Exiling sweeps are not "destroy", so indestructible does not save; nor
-    // is a sacrifice a destruction.
-    .filter(
-      (card) =>
-        effect.toZone === "exile" ||
-        effect.asSacrifice === true ||
-        !hasKeyword(next, card.id, "indestructible"),
-    )
     .map((card) => card.id);
   const collectDies: EngineEvent[] = [];
+  // An exiling sweep and a sacrificing sweep are NOT destructions: neither
+  // indestructible nor totem armor stops one, and All Is Dust is the whole
+  // reason that distinction is worth keeping. A destroying sweep goes
+  // through the same chokepoint a targeted "Destroy" does, which is what
+  // lets one Umbra eat a Wrath.
+  const isDestruction = effect.toZone !== "exile" && effect.asSacrifice !== true;
   for (const cardId of doomed) {
-    moveCardInPlace(next, cardId, effect.toZone ?? "graveyard", { collectDies });
+    if (isDestruction) {
+      destroyPermanentInPlace(next, cardId, collectDies);
+    } else {
+      moveCardInPlace(next, cardId, effect.toZone ?? "graveyard", { collectDies });
+    }
   }
   if (collectDies.length > 0) {
     dispatchEventsInPlace(next, collectDies);
@@ -4032,6 +4035,21 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
         next = applySurveil(state, effect.playerId, effect.count);
         break;
       case "move_card": {
+        // "Destroy target creature" is a destruction, and the single
+        // chokepoint is what indestructible and totem armor hang off. The
+        // targeted form used to move the card straight to the graveyard
+        // while only the SWEEPS checked indestructible, so a Darksteel
+        // Colossus died to Beast Within.
+        if (effect.destroy) {
+          next = cloneGameState(state);
+          const collectDies: EngineEvent[] = [];
+          destroyPermanentInPlace(next, effect.cardId, collectDies);
+          if (collectDies.length > 0) {
+            dispatchEventsInPlace(next, collectDies);
+            processDiesReturnsInPlace(next, collectDies);
+          }
+          break;
+        }
         next = moveCard(state, effect.cardId, effect.toZone, {
           libraryPosition: effect.libraryPosition,
         });

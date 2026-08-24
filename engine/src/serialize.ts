@@ -635,6 +635,7 @@ export function parseGameState(json: string): GameState {
       ...(def.ward === undefined ? {} : { ward: expectNumber(def.ward, "definition.ward") }),
       ...(def.noMaxHandSize === true ? { noMaxHandSize: true } : {}),
       ...(def.landsEnterUntapped === true ? { landsEnterUntapped: true } : {}),
+      ...(def.totemArmor === true ? { totemArmor: true } : {}),
       ...(def.handSizeEffect === undefined
         ? {}
         : {
@@ -3465,6 +3466,7 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
           ? { atEndStep: value.atEndStep }
           : {}),
         ...(value.exileIfLeaves === true ? { exileIfLeaves: true } : {}),
+        ...(value.destroy === true ? { destroy: true } : {}),
         ...(value.underControlOf === "controller" ? { underControlOf: "controller" } : {}),
         ...(isRecord(value.withCounter)
           ? {
@@ -6295,6 +6297,7 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
         ? { atEndStep: value.atEndStep }
         : {}),
       ...(value.exileIfLeaves === true ? { exileIfLeaves: true } : {}),
+      ...(value.destroy === true ? { destroy: true } : {}),
       ...(value.controllerId === undefined
         ? {}
         : { controllerId: expectString(value.controllerId, `${label}.controllerId`) }),

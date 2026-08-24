@@ -870,6 +870,30 @@ more questions it can now ask:
   (Bennie Bracks). Reads the existing per-player `createdTokenThisTurn`
   list, and asks whether the CONTROLLER is in it — an opponent's Treasure
   must not satisfy it.
+- **Destruction is now a distinct thing from a trip to the graveyard.**
+  `destroyPermanentInPlace` (CR 701.7) is the single chokepoint every
+  destruction goes through, and it is where indestructible and totem armor
+  live.
+
+  This started as a **live correctness bug**: the SWEEPS checked
+  indestructible and the targeted form did not, so "Destroy target
+  permanent" killed a Darksteel Colossus. Anything that compiled to
+  `move_card` -> graveyard simply moved the card.
+
+  The flag is set by ONE pass over each compiled sentence rather than at
+  the twenty-odd clauses that read the word "destroy" — those are a
+  hand-written list, and this defect is what a hand-written list looks like
+  once it falls behind. A bounce, a tuck, an exile and a sacrifice are
+  untouched: none of them is a destruction, and All Is Dust is exactly the
+  card that depends on the difference.
+
+- **Totem armor** (CR 702.87) — Bear Umbra, printed as "Umbra armor". On
+  the AURA, not on what it enchants. Because the destruction chokepoint is
+  singular, one Umbra eats a targeted Murder and a Wrath and a lethal
+  combat-damage sweep without three code paths. Indestructible is checked
+  FIRST, so a creature that was never going to be destroyed does not spend
+  the Umbra (CR 702.87b). The engine's twelfth CR 702 keyword.
+
 - **`ActivatedAbility.sacrificeCountFromX`** — Grim Hireling's "Sacrifice X
   Treasures". The {X} is in the SACRIFICE, not in the mana cost, so `xCost`
   stays zero while the activation still has to announce a value. X of zero

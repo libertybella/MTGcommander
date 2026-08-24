@@ -4392,7 +4392,7 @@ describe("wave 47: token riders and draw doubling", () => {
     expect(pongify.notes).toEqual([]);
     expect(pongify.definition.targetRequirements).toEqual([{ kind: "creature" }]);
     expect(pongify.definition.effects).toEqual([
-      { kind: "move_card", cardId: { type: "chosen", index: 0 }, toZone: "graveyard" },
+      { kind: "move_card", cardId: { type: "chosen", index: 0 }, toZone: "graveyard", destroy: true },
       {
         kind: "create_token",
         ownerId: { type: "chosen_controller", index: 0 },
@@ -27694,10 +27694,10 @@ describe("wave 216: four targets at once, and a sweep that is a sacrifice", () =
     // Each destruction points at its OWN slot; sharing an index would send
     // all four at whatever the first one picked.
     expect(decimate.definition.effects).toEqual([
-      { kind: "move_card", cardId: { type: "chosen", index: 0 }, toZone: "graveyard" },
-      { kind: "move_card", cardId: { type: "chosen", index: 1 }, toZone: "graveyard" },
-      { kind: "move_card", cardId: { type: "chosen", index: 2 }, toZone: "graveyard" },
-      { kind: "move_card", cardId: { type: "chosen", index: 3 }, toZone: "graveyard" },
+      { kind: "move_card", cardId: { type: "chosen", index: 0 }, toZone: "graveyard", destroy: true },
+      { kind: "move_card", cardId: { type: "chosen", index: 1 }, toZone: "graveyard", destroy: true },
+      { kind: "move_card", cardId: { type: "chosen", index: 2 }, toZone: "graveyard", destroy: true },
+      { kind: "move_card", cardId: { type: "chosen", index: 3 }, toZone: "graveyard", destroy: true },
     ]);
   });
 
@@ -37697,7 +37697,7 @@ describe("wave 282: an overload cost in different colours", () => {
     // approximated away. If regeneration ever lands, this becomes a real flag.
     expect(compiled.notes).toEqual([]);
     expect(compiled.definition.effects).toEqual([
-      { kind: "move_card", cardId: { type: "chosen", index: 0 }, toZone: "graveyard" },
+      { kind: "move_card", cardId: { type: "chosen", index: 0 }, toZone: "graveyard", destroy: true },
     ]);
   });
 });
@@ -47406,7 +47406,7 @@ describe("wave 317: a count plus one, and a toughness read before it dies", () =
     const trigger = compiled.definition.triggers[0];
     expect(trigger?.targetRequirements).toEqual([{ kind: "creature", excludeSource: true }]);
     expect(trigger?.effects).toEqual([
-      { kind: "move_card", cardId: { type: "chosen", index: 0 }, toZone: "graveyard" },
+      { kind: "move_card", cardId: { type: "chosen", index: 0 }, toZone: "graveyard", destroy: true },
       { kind: "gain_life", playerId: "controller", amount: "target_toughness" },
     ]);
   });
@@ -48640,5 +48640,258 @@ describe("wave 321: an announced X that buys permanents, and a hand as a cost", 
     const round = parseGameState(serializeGameState(game));
     expect(round.definitions[hirelingDefinition.id]?.activated[0]?.sacrificeCountFromX).toBe(true);
     expect(round.definitions[diamondDefinition.id]?.manaAbilities[0]?.costDiscardHand).toBe(true);
+  });
+});
+
+describe("wave 322: destroy is a thing that can be stopped", () => {
+  const compile = (name: string, typeLine: string, oracleText: string, manaCost = "") =>
+    compileOracleCard({
+      oracleId: name.toLowerCase().replace(/[^a-z]+/g, "-"),
+      name,
+      manaCost,
+      typeLine,
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  const put = (game: GameState, ownerId: string, definition: CardDefinition) => {
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({
+      definitionId: definition.id,
+      ownerId,
+      zone: "battlefield",
+    });
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === ownerId)!.zones.battlefield.push(card.id);
+    card.summoningSick = false;
+    return card.id;
+  };
+
+  const colossus = () =>
+    createCardDefinition({
+      name: "Darksteel Colossus",
+      typeLine: "Artifact Creature — Golem",
+      manaCost: "{11}",
+      power: 11,
+      toughness: 11,
+      keywords: ["indestructible"],
+    });
+
+  const bear = () =>
+    createCardDefinition({
+      name: "Bear",
+      typeLine: "Creature — Bear",
+      manaCost: "{1}{G}",
+      power: 2,
+      toughness: 2,
+    });
+
+  const destroy = (game: GameState, controllerId: string, victimId: string) =>
+    applyEffects(
+      game,
+      bindCardEffects(
+        game,
+        [{ kind: "move_card", cardId: { type: "chosen", index: 0 }, toZone: "graveyard", destroy: true }],
+        {
+          controllerId,
+          sourceId: null,
+          targets: [{ type: "creature", cardId: victimId }],
+          targetRequirements: [{ kind: "creature" }],
+        },
+      ),
+    );
+
+  // ---- The bug: targeted destroy ignored indestructible -------------------
+
+  it("compiles a targeted destroy as a destruction", () => {
+    const compiled = compile("Beast Within", "Instant", "Destroy target permanent.", "{2}{G}");
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.effects[0]).toMatchObject({
+      kind: "move_card",
+      toZone: "graveyard",
+      destroy: true,
+    });
+  });
+
+  it("leaves an exile, a bounce and a tuck alone", () => {
+    // None of these are destructions, and none of them may start being
+    // stopped by indestructible.
+    for (const [text, toZone] of [
+      ["Exile target creature.", "exile"],
+      ["Return target creature to its owner's hand.", "hand"],
+    ] as const) {
+      const compiled = compile("Removal", "Instant", text, "{1}{W}");
+      expect(compiled.notes).toEqual([]);
+      expect(compiled.definition.effects[0]).toMatchObject({ toZone });
+      expect(
+        compiled.definition.effects[0]!.kind === "move_card" &&
+          compiled.definition.effects[0]!.destroy,
+      ).toBeFalsy();
+    }
+  });
+
+  it("cannot destroy an indestructible creature", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const colossusId = put(game, p2.id, colossus());
+    const resolved = destroy(game, p1.id, colossusId);
+    // The sweeps checked this and the targeted form did not, so a Darksteel
+    // Colossus used to die to a Beast Within.
+    expect(resolved.cards[colossusId]?.zone).toBe("battlefield");
+  });
+
+  it("still destroys a creature that is merely large", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const bearId = put(game, p2.id, bear());
+    expect(destroy(game, p1.id, bearId).cards[bearId]?.zone).toBe("graveyard");
+  });
+
+  it("still EXILES an indestructible creature", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const colossusId = put(game, p2.id, colossus());
+    const resolved = applyEffects(
+      game,
+      bindCardEffects(
+        game,
+        [{ kind: "move_card", cardId: { type: "chosen", index: 0 }, toZone: "exile" }],
+        {
+          controllerId: p1.id,
+          sourceId: null,
+          targets: [{ type: "creature", cardId: colossusId }],
+          targetRequirements: [{ kind: "creature" }],
+        },
+      ),
+    );
+    expect(resolved.cards[colossusId]?.zone).toBe("exile");
+  });
+
+  // ---- Totem armor --------------------------------------------------------
+
+  it("compiles both spellings of the keyword, and the reminder", () => {
+    for (const line of [
+      "Umbra armor",
+      "Totem armor",
+      "If enchanted creature would be destroyed, instead remove all damage from it and destroy this Aura",
+    ]) {
+      const compiled = compile(
+        "Bear Umbra",
+        "Enchantment — Aura",
+        `Enchant creature\nEnchanted creature gets +2/+2.\n${line}.`,
+        "{2}{G}",
+      );
+      expect(compiled.notes).toEqual([]);
+      expect(compiled.definition.totemArmor).toBe(true);
+    }
+  });
+
+  const umbra = () =>
+    createCardDefinition({
+      name: "Bear Umbra",
+      typeLine: "Enchantment — Aura",
+      manaCost: "{2}{G}",
+      enchant: "creature",
+      totemArmor: true,
+    });
+
+  const enchanted = () => {
+    const { game, p1, p2 } = twoPlayers();
+    const bearId = put(game, p1.id, bear());
+    const umbraId = put(game, p1.id, umbra());
+    game.cards[umbraId]!.attachedTo = bearId;
+    return { game, p1, p2, bearId, umbraId };
+  };
+
+  it("eats the destruction and dies in the creature's place", () => {
+    const { game, p2, bearId, umbraId } = enchanted();
+    const resolved = destroy(game, p2.id, bearId);
+    expect(resolved.cards[bearId]?.zone).toBe("battlefield");
+    expect(resolved.cards[umbraId]?.zone).toBe("graveyard");
+  });
+
+  it("eats a wrath the same way", () => {
+    const { game, bearId, umbraId } = enchanted();
+    // The sweep and the targeted form share one chokepoint, so one Umbra
+    // eats a Day of Judgment without a second code path.
+    const resolved = applyEffect(game, { kind: "destroy_all", what: "creatures" });
+    expect(resolved.cards[bearId]?.zone).toBe("battlefield");
+    expect(resolved.cards[umbraId]?.zone).toBe("graveyard");
+  });
+
+  it("does not eat an EXILING sweep", () => {
+    const { game, bearId, umbraId } = enchanted();
+    // All Is Dust exiles, and exile is not destruction, so the Umbra never
+    // gets the chance to intervene and the creature goes.
+    const resolved = applyEffect(game, {
+      kind: "destroy_all",
+      what: "creatures",
+      toZone: "exile",
+    });
+    expect(resolved.cards[bearId]?.zone).toBe("exile");
+    // The Aura then dies too — but as a LOOSE Aura with nothing to enchant
+    // (CR 704.5m), which is a different death entirely.
+    expect(resolved.cards[umbraId]?.zone).toBe("graveyard");
+  });
+
+  it("saves the creature from lethal damage and clears the damage", () => {
+    const { game, bearId, umbraId } = enchanted();
+    game.cards[bearId]!.damageMarked = 9;
+    applyStateBasedActionsInPlace(game);
+    const swept = game;
+    expect(swept.cards[bearId]?.zone).toBe("battlefield");
+    expect(swept.cards[umbraId]?.zone).toBe("graveyard");
+    // "Remove all damage from it" — without this the creature is lethally
+    // damaged forever and the next sweep kills it anyway.
+    expect(swept.cards[bearId]?.damageMarked).toBe(0);
+  });
+
+  it("is spent once, so the second destruction lands", () => {
+    const { game, p2, bearId, umbraId } = enchanted();
+    let state = destroy(game, p2.id, bearId);
+    expect(state.cards[umbraId]?.zone).toBe("graveyard");
+    state = destroy(state, p2.id, bearId);
+    expect(state.cards[bearId]?.zone).toBe("graveyard");
+  });
+
+  it("is not reached when the creature is already indestructible", () => {
+    const { game, p1, p2, bearId, umbraId } = enchanted();
+    void p1;
+    game.cards[bearId]!.counters["indestructible"] = 1;
+    const resolved = destroy(game, p2.id, bearId);
+    // CR 702.87b: a permanent that is never destroyed never reaches the
+    // replacement, so the Umbra is still there for a later Wrath.
+    expect(resolved.cards[bearId]?.zone).toBe("battlefield");
+    expect(resolved.cards[umbraId]?.zone).toBe("battlefield");
+  });
+
+  it("does not save a creature from a SACRIFICE", () => {
+    const { game, bearId, umbraId } = enchanted();
+    const resolved = applyEffect(game, { kind: "sacrifice", cardId: bearId });
+    expect(resolved.cards[bearId]?.zone).toBe("graveyard");
+    expect(resolved.cards[umbraId]?.zone).toBe("graveyard");
+  });
+
+  it("counts toward the CR 702 keyword coverage", () => {
+    expect(keywordCoverage().implemented).toContain("totem armor");
+  });
+
+  it("round trips the keyword and the destroy flag", () => {
+    const { game, p1 } = twoPlayers();
+    const definition = createCardDefinition({
+      name: "Wave 322 Umbra",
+      typeLine: "Enchantment — Aura",
+      manaCost: "{2}{G}",
+      enchant: "creature",
+      totemArmor: true,
+      effects: [
+        { kind: "move_card", cardId: { type: "chosen", index: 0 }, toZone: "graveyard", destroy: true },
+      ],
+    });
+    put(game, p1.id, definition);
+    const round = parseGameState(serializeGameState(game));
+    const parsed = round.definitions[definition.id]!;
+    expect(parsed.totemArmor).toBe(true);
+    expect(parsed.effects[0]).toMatchObject({ destroy: true });
   });
 });

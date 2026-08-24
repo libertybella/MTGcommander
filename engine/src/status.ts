@@ -6,7 +6,7 @@ import { eliminatePlayerInPlace } from "./elimination";
 import { isLiving, livingPlayerCount, nextLivingPlayerId, winnerId } from "./players";
 import { dispatchEventsInPlace } from "./triggers";
 import { moveCardInPlace, processDiesReturnsInPlace } from "./zones";
-import type { EngineEvent, GameState } from "./types";
+import type { CardInstanceId, EngineEvent, GameState } from "./types";
 
 function shouldLose(state: GameState, player: GameState["players"][number]): boolean {
   // Platinum Angel vetoes the loss itself, not the cause: the player stays
@@ -55,14 +55,62 @@ function destroyZeroToughnessInPlace(state: GameState, collectDies: EngineEvent[
   return changed;
 }
 
+/**
+ * CR 701.7 — DESTROY a permanent, as opposed to any other trip to the
+ * graveyard. Every destruction in the engine goes through here, because the
+ * two things that stop one are easy to write in one place and easy to forget
+ * everywhere else: for a long time the sweeps checked indestructible and
+ * "Destroy target creature" did not, so a Blightsteel Colossus died to Beast
+ * Within.
+ *
+ * A sacrifice, a bounce, a tuck and a 0-toughness state-based death are NOT
+ * destructions and must not call this — none of them are stopped by
+ * indestructible, and CR 704.5f puts a 0-toughness creature into the
+ * graveyard without ever using the word.
+ *
+ * Returns whether the permanent actually died.
+ */
+export function destroyPermanentInPlace(
+  state: GameState,
+  cardId: CardInstanceId,
+  collectDies: EngineEvent[],
+): boolean {
+  const card = state.cards[cardId];
+  if (!card || card.zone !== "battlefield") {
+    return false;
+  }
+  // Indestructible is checked BEFORE totem armor: a permanent that is never
+  // destroyed never reaches the replacement, so the Umbra is not consumed
+  // (CR 702.87b).
+  if (hasKeyword(state, cardId, "indestructible")) {
+    return false;
+  }
+  // Totem armor (CR 702.87a): the Aura dies instead and the damage comes
+  // off. Auras are checked oldest-first so that with two Umbras on one
+  // creature the second one is still there for the next destruction.
+  const umbra = Object.values(state.cards)
+    .filter(
+      (entry) =>
+        entry.zone === "battlefield" &&
+        entry.attachedTo === cardId &&
+        state.definitions[entry.definitionId]?.totemArmor === true,
+    )
+    .sort((a, b) => a.timestamp - b.timestamp)[0];
+  if (umbra) {
+    card.damageMarked = 0;
+    card.deathtouched = false;
+    moveCardInPlace(state, umbra.id, "graveyard", { collectDies });
+    return false;
+  }
+  moveCardInPlace(state, cardId, "graveyard", { collectDies });
+  return true;
+}
+
 /** CR 704.5g/h: lethal marked damage, or any deathtouch damage, destroys. */
 function destroyLethalDamageInPlace(state: GameState, collectDies: EngineEvent[]): boolean {
   let changed = false;
   for (const card of Object.values(state.cards)) {
     if (card.zone !== "battlefield" || card.phasedOut || !isCreature(state, card.id)) {
-      continue;
-    }
-    if (hasKeyword(state, card.id, "indestructible")) {
       continue;
     }
     const toughness = creatureToughness(state, card.id);
@@ -72,8 +120,13 @@ function destroyLethalDamageInPlace(state: GameState, collectDies: EngineEvent[]
     if (!lethal) {
       continue;
     }
-    moveCardInPlace(state, card.id, "graveyard", { collectDies });
-    changed = true;
+    if (destroyPermanentInPlace(state, card.id, collectDies)) {
+      changed = true;
+    } else if (state.cards[card.id]?.damageMarked === 0) {
+      // Totem armor took the hit: the damage is gone, so the sweep has to
+      // run again rather than seeing the same lethal creature forever.
+      changed = true;
+    }
   }
   return changed;
 }
