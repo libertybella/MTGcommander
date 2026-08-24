@@ -7532,6 +7532,30 @@ function compileSimpleClauseInner(sentence: string): SimpleClause | null {
     };
   }
 
+  /**
+   * Buster Sword: the same free cast, capped by THAT DAMAGE rather than by
+   * a printed number or an announced X. A second pattern beside the one
+   * below rather than a widening of it, so no card that already compiles
+   * can move.
+   */
+  if (
+    /^You may cast a spell from your hand with mana value less than or equal to that damage without paying its mana cost$/i.test(
+      sentence,
+    )
+  ) {
+    return {
+      targetRequirements: [],
+      effects: [
+        {
+          kind: "grant_free_cast_from_hand",
+          playerId: "controller",
+          maxManaValue: "subject_amount",
+          count: 1,
+        },
+      ],
+    };
+  }
+
   // Rishkar's Expertise / Electrodominance: one free cast out of hand.
   const freeHandCast = sentence.match(
     /^You may cast a spell with mana value (X|\d+) or less from your hand without paying its mana cost$/i,

@@ -51110,3 +51110,173 @@ describe("wave 332: myriad, read as a keyword because it is granted", () => {
     expect(round.delayedEndCombat).toEqual(attacked.delayedEndCombat);
   });
 });
+
+describe("wave 333: a free cast capped by the damage that earned it", () => {
+  const compile = (name: string, typeLine: string, oracleText: string, manaCost = "") =>
+    compileOracleCard({
+      oracleId: name.toLowerCase().replace(/[^a-z]+/g, "-"),
+      name,
+      manaCost,
+      typeLine,
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  it("compiles the whole sword", () => {
+    const compiled = compile(
+      "Buster Sword",
+      "Legendary Artifact — Equipment",
+      "Equipped creature gets +3/+2.\nWhenever equipped creature deals combat damage to a player, draw a card, then you may cast a spell from your hand with mana value less than or equal to that damage without paying its mana cost.\nEquip {2}",
+      "{3}",
+    );
+    expect(compiled.notes).toEqual([]);
+    const trigger = compiled.definition.triggers[0];
+    expect(trigger?.effects).toEqual([
+      { kind: "draw", playerId: "controller", count: 1 },
+      {
+        kind: "grant_free_cast_from_hand",
+        playerId: "controller",
+        maxManaValue: "subject_amount",
+        count: 1,
+      },
+    ]);
+  });
+
+  it("leaves the printed and announced caps alone", () => {
+    // Electrodominance reads X, Rishkar's Expertise reads a number. The
+    // new pattern sits beside them rather than widening either.
+    const electro = compile(
+      "Electrodominance",
+      "Instant",
+      "You may cast a spell with mana value X or less from your hand without paying its mana cost.",
+      "{X}{B}{R}",
+    );
+    expect(electro.notes).toEqual([]);
+    expect(electro.definition.effects[0]).toMatchObject({ maxManaValue: "x" });
+  });
+
+  const grant = (game: GameState, playerId: string, damage: number) =>
+    applyEffects(
+      game,
+      bindCardEffects(
+        game,
+        [
+          {
+            kind: "grant_free_cast_from_hand",
+            playerId: "controller",
+            maxManaValue: "subject_amount",
+            count: 1,
+          },
+        ],
+        { controllerId: playerId, sourceId: null, subjectAmount: damage },
+      ),
+    );
+
+  it("caps the free cast at the damage dealt", () => {
+    const { game, p1 } = twoPlayers();
+    const granted = grant(game, p1.id, 5);
+    expect(granted.freeCastFromHand).toEqual([
+      { casterId: p1.id, maxManaValue: 5, remaining: 1 },
+    ]);
+  });
+
+  const hold = (game: GameState, ownerId: string, manaCost: string) => {
+    const definition = createCardDefinition({
+      name: `Spell ${manaCost}`,
+      typeLine: "Sorcery",
+      manaCost,
+      effects: [{ kind: "draw", playerId: "controller", count: 1 }],
+    });
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({ definitionId: definition.id, ownerId, zone: "hand" });
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === ownerId)!.zones.hand.push(card.id);
+    return card.id;
+  };
+
+  it("lets a spell within the cap be cast for nothing", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const spellId = hold(game, p1.id, "{4}");
+    const granted = grant(game, p1.id, 5);
+    granted.turn.activePlayerId = p1.id;
+    granted.turn.phase = "precombatMain";
+    granted.turn.step = "precombatMain";
+    granted.priorityPlayerId = p1.id;
+    // No mana at all in the pool: the grant is paying.
+    const casted = applyAction(granted, {
+      kind: "cast_spell",
+      playerId: p1.id,
+      cardId: spellId,
+      targets: [],
+    });
+    expect(casted.stack).toHaveLength(1);
+  });
+
+  it("refuses a spell above the cap", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const spellId = hold(game, p1.id, "{6}");
+    const granted = grant(game, p1.id, 5);
+    granted.turn.activePlayerId = p1.id;
+    granted.turn.phase = "precombatMain";
+    granted.turn.step = "precombatMain";
+    granted.priorityPlayerId = p1.id;
+    // "less than or equal to THAT DAMAGE" — six is not five.
+    expect(() =>
+      applyAction(granted, {
+        kind: "cast_spell",
+        playerId: p1.id,
+        cardId: spellId,
+        targets: [],
+      }),
+    ).toThrow();
+  });
+
+  it("grants nothing useful when no damage was dealt", () => {
+    const { game, p1 } = twoPlayers();
+    const granted = grant(game, p1.id, 0);
+    // A cap of zero still admits a zero-cost spell, which is exactly what
+    // zero damage should buy.
+    expect(granted.freeCastFromHand?.[0]?.maxManaValue).toBe(0);
+  });
+
+  it("round trips the unbound cap", () => {
+    const { game, p1 } = twoPlayers();
+    const definition = createCardDefinition({
+      name: "Wave 333 Sword",
+      typeLine: "Artifact — Equipment",
+      manaCost: "{3}",
+      triggers: [
+        {
+          event: "deals_combat_damage_to_player",
+          watch: "attached",
+          effects: [
+            {
+              kind: "grant_free_cast_from_hand",
+              playerId: "controller",
+              maxManaValue: "subject_amount",
+              count: 1,
+            },
+          ],
+          targetRequirements: [],
+        },
+      ],
+    });
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({
+      definitionId: definition.id,
+      ownerId: p1.id,
+      zone: "battlefield",
+    });
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === p1.id)!.zones.battlefield.push(card.id);
+    const round = parseGameState(serializeGameState(game));
+    expect(round.definitions[definition.id]?.triggers[0]?.effects[0]).toMatchObject({
+      maxManaValue: "subject_amount",
+    });
+  });
+});

@@ -1513,8 +1513,14 @@ export function bindCardEffect(
         return null;
       }
       // Electrodominance: "mana value X or less" reads the announced X.
+      // Buster Sword: "less than or equal to THAT DAMAGE" reads the amount
+      // the trigger carried, which is only known once the damage landed.
       const cap =
-        effect.maxManaValue === "x" ? context.xValue ?? 0 : effect.maxManaValue;
+        effect.maxManaValue === "x"
+          ? context.xValue ?? 0
+          : effect.maxManaValue === "subject_amount"
+            ? Math.max(0, context.subjectAmount ?? 0)
+            : effect.maxManaValue;
       return {
         kind: "grant_free_cast_from_hand",
         playerId,

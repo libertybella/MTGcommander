@@ -4361,7 +4361,11 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
           ? {}
           : {
               maxManaValue:
-                cap === "x" ? ("x" as const) : expectNumber(cap, `${label}.maxManaValue`),
+                cap === "x"
+                  ? ("x" as const)
+                  : cap === "subject_amount"
+                    ? ("subject_amount" as const)
+                    : expectNumber(cap, `${label}.maxManaValue`),
             }),
         count: expectNumber(value.count, `${label}.count`),
       };

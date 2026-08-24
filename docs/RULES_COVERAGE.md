@@ -870,6 +870,14 @@ more questions it can now ask:
   (Bennie Bracks). Reads the existing per-player `createdTokenThisTurn`
   list, and asks whether the CONTROLLER is in it — an opponent's Treasure
   must not satisfy it.
+- **A free hand-cast capped by `subject_amount`** — Buster Sword: "cast a
+  spell from your hand with mana value less than or equal to THAT DAMAGE".
+  The grant, the cap and the payment path all already existed; only the
+  cap's SOURCE was new, and it reads where every other `subject_amount`
+  does. Added as a second pattern beside the printed-number and announced-X
+  forms rather than a widening of either, so no card that already compiles
+  could move.
+
 - **Myriad (CR 702.115)** — Blade of Selves. Read as a KEYWORD in the
   declare-attackers step rather than compiled as a printed trigger,
   because the card GRANTS it: a trigger on the definition would never

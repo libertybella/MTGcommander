@@ -3184,7 +3184,12 @@ export type CardEffect =
   | {
       kind: "grant_free_cast_from_hand";
       playerId: PlayerSelector;
-      maxManaValue?: number | "x";
+      /**
+       * "subject_amount": Buster Sword's cap is THAT DAMAGE — the amount
+       * the trigger itself carried, which is only known once the combat
+       * damage has been dealt.
+       */
+      maxManaValue?: number | "x" | "subject_amount";
       count: number;
     }
   | { kind: "commander_to_hand"; playerId: PlayerSelector }
