@@ -2511,6 +2511,17 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
 
 function compileSimpleClauseInner(sentence: string): SimpleClause | null {
   /**
+   * Portal to Phyrexia's rider: "It's a Phyrexian in addition to its other
+   * types." A characteristic the reanimated permanent keeps for as long as
+   * it is on the battlefield — "in addition to" is the whole of it, so the
+   * type is ADDED and nothing the card already was is lost.
+   *
+   * "It" is the card the previous sentence put onto the battlefield, which
+   * is the first chosen target; a clause with no targets of its own keeps
+   * that index.
+   */
+
+  /**
    * Kodama of the East Tree: "you may put a permanent card with equal or
    * lesser mana value from your hand onto the battlefield." The cap is the
    * mana value of the permanent whose entry triggered this, so it is
@@ -7955,11 +7966,12 @@ function compileSimpleClauseInner(sentence: string): SimpleClause | null {
   }
 
   // Reanimate: steal from ANY graveyard; the life clause follows separately.
-  if (
-    /^Put target creature card from a graveyard onto the battlefield under your control$/i.test(
-      sentence,
-    )
-  ) {
+  // Portal to Phyrexia fuses its type rider onto the end of this, because
+  // on a PERMANENT a rider left as its own sentence never runs.
+  const reanimateAny = sentence.match(
+    /^Put target creature card from a graveyard onto the battlefield under your control(?:, then it becomes a ([A-Z][a-z]+) in addition)?$/i,
+  );
+  if (reanimateAny) {
     return {
       targetRequirements: [{ kind: "graveyard_creature_card" }],
       effects: [
@@ -7969,6 +7981,15 @@ function compileSimpleClauseInner(sentence: string): SimpleClause | null {
           toZone: "battlefield",
           underControlOf: "controller",
         },
+        ...(reanimateAny[1]
+          ? [
+              {
+                kind: "add_subtypes" as const,
+                cardId: { type: "chosen" as const, index: 0 },
+                subtypes: [reanimateAny[1].toLowerCase()],
+              },
+            ]
+          : []),
       ],
     };
   }
@@ -9627,6 +9648,29 @@ function fuseItCantBeBlockedInPlace(sentences: string[], lineStart: boolean[]): 
  * place effects run — the same trap Kappa Cannoneer's rider fell into above,
  * and the reason the fused form is what the clause matches.
  */
+/**
+ * Portal to Phyrexia: "…onto the battlefield under your control." + "It's a
+ * Phyrexian in addition to its other types." The rider belongs to the
+ * trigger that put the card down. Left as its own sentence it lands in
+ * `definition.effects`, which a PERMANENT never runs — the card compiles
+ * with zero notes and the type is never added.
+ */
+function fuseInAdditionTypeInPlace(sentences: string[], lineStart: boolean[]): void {
+  for (let index = 0; index + 1 < sentences.length; index += 1) {
+    if (lineStart[index + 1]) {
+      continue;
+    }
+    const rider = sentences[index + 1]?.match(
+      /^It's an? ([A-Z][a-z]+) in addition to its other types$/,
+    );
+    if (rider?.[1] && /onto the battlefield/i.test(sentences[index] ?? "")) {
+      sentences[index] = `${sentences[index]}, then it becomes a ${rider[1]} in addition`;
+      sentences.splice(index + 1, 1);
+      lineStart.splice(index + 1, 1);
+    }
+  }
+}
+
 function fuseDestroyLifegainInPlace(sentences: string[], lineStart: boolean[]): void {
   for (let index = 0; index + 1 < sentences.length; index += 1) {
     if (lineStart[index + 1]) {
@@ -13285,6 +13329,7 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
   splitGrantedQuotedTriggerInPlace(sentences, lineStart);
   fuseItCantBeBlockedInPlace(sentences, lineStart);
   fuseDestroyLifegainInPlace(sentences, lineStart);
+  fuseInAdditionTypeInPlace(sentences, lineStart);
   fuseChooseGraveyardCastInPlace(sentences, lineStart);
   fusePutLandRiderInPlace(sentences, lineStart);
   fuseMayPayInPlace(sentences, lineStart);

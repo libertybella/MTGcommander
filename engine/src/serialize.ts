@@ -594,6 +594,11 @@ export function parseGameState(json: string): GameState {
       ...(card.exileIfLeaves === true ? { exileIfLeaves: true } : {}),
       // Kodama's mark is instance state: without it a reopened table lets
       // the chain restart off a permanent the ability already placed.
+      ...(Array.isArray(card.addedSubtypes)
+        ? {
+            addedSubtypes: expectStringArray(card.addedSubtypes, "card.addedSubtypes"),
+          }
+        : {}),
       ...(card.putByAbilityOf === undefined
         ? {}
         : { putByAbilityOf: expectString(card.putByAbilityOf, "card.putByAbilityOf") }),
@@ -4334,6 +4339,12 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
             : expectNumber(value.maxManaValue, `${label}.maxManaValue`),
         ...(value.toHandAllowed === true ? { toHandAllowed: true } : {}),
       };
+    case "add_subtypes":
+      return {
+        kind,
+        cardId: parseCardIdSelector(value.cardId, `${label}.cardId`),
+        subtypes: expectStringArray(value.subtypes, `${label}.subtypes`),
+      };
     case "mass_reanimate":
     case "return_all_lands":
       return { kind, playerId: parsePlayerSelector(value.playerId, `${label}.playerId`) };
@@ -6367,6 +6378,13 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
       playerId: expectString(value.playerId, `${label}.playerId`),
       maxManaValue: expectNumber(value.maxManaValue, `${label}.maxManaValue`),
       ...(value.toHandAllowed === true ? { toHandAllowed: true } : {}),
+    };
+  }
+  if (kind === "add_subtypes") {
+    return {
+      kind,
+      cardId: expectString(value.cardId, `${label}.cardId`),
+      subtypes: expectStringArray(value.subtypes, `${label}.subtypes`),
     };
   }
   if (kind === "mass_reanimate" || kind === "return_all_lands") {

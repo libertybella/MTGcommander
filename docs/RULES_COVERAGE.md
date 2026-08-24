@@ -870,6 +870,22 @@ more questions it can now ask:
   (Bennie Bracks). Reads the existing per-player `createdTokenThisTurn`
   list, and asks whether the CONTROLLER is in it — an opponent's Treasure
   must not satisfy it.
+- **`CardInstance.addedSubtypes`** — Portal to Phyrexia: "It's a Phyrexian
+  in addition to its other types." A characteristic the PERMANENT keeps for
+  as long as it is on the battlefield, so it rides the instance rather than
+  an `activeEffects` entry — that list only knows durations that END, and
+  this one does not.
+
+  "In addition to" is the whole of it: the type is added and nothing the
+  card already was is lost, including Metallic Mimic's chosen type, which
+  now shares the same computed list.
+
+  The rider is FUSED onto the reanimate sentence. Written as its own clause
+  it landed in `definition.effects` — which a PERMANENT never runs — and the
+  card compiled with zero notes while the type was never added. That is the
+  wave 317-319 trap, and this wave walked straight into it before its own
+  test caught it.
+
 - **"IT" IS THE TRIGGER'S SUBJECT, NOT THE WATCHER.** The dies-return
   clause bound `self` — the SOURCE — for both "When ~ dies, return it" and
   "Whenever a creature you control dies, return it". Under the first head

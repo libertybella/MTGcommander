@@ -52378,3 +52378,168 @@ describe("wave 338: 'it' is the subject, not the watcher", () => {
     ]);
   });
 });
+
+describe("wave 339: a type the permanent keeps for as long as it is there", () => {
+  const compile = (name: string, typeLine: string, oracleText: string, manaCost = "") =>
+    compileOracleCard({
+      oracleId: name.toLowerCase().replace(/[^a-z]+/g, "-"),
+      name,
+      manaCost,
+      typeLine,
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  const put = (
+    game: GameState,
+    ownerId: string,
+    definition: CardDefinition,
+    zone: "battlefield" | "graveyard" = "battlefield",
+  ) => {
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({ definitionId: definition.id, ownerId, zone });
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === ownerId)!.zones[zone].push(card.id);
+    return card.id;
+  };
+
+  it("compiles Portal to Phyrexia's rider onto the reanimated card", () => {
+    const compiled = compile(
+      "Portal to Phyrexia",
+      "Legendary Artifact",
+      "When this artifact enters, each opponent sacrifices three creatures of their choice.\nAt the beginning of your upkeep, put target creature card from a graveyard onto the battlefield under your control. It's a Phyrexian in addition to its other types.",
+      "{9}",
+    );
+    expect(compiled.notes).toEqual([]);
+    const upkeep = compiled.definition.triggers.find((entry) => entry.event === "upkeep");
+    // "IT" is the card the previous sentence put down — the first chosen
+    // target, and a rider with no targets of its own keeps that index.
+    expect(upkeep?.effects.at(-1)).toEqual({
+      kind: "add_subtypes",
+      cardId: { type: "chosen", index: 0 },
+      subtypes: ["phyrexian"],
+    });
+  });
+
+  const bear = () =>
+    createCardDefinition({
+      name: "Bear",
+      typeLine: "Creature — Bear",
+      manaCost: "{1}{G}",
+      power: 2,
+      toughness: 2,
+    });
+
+  it("adds the type without losing the printed ones", () => {
+    const { game, p1 } = twoPlayers();
+    const bearId = put(game, p1.id, bear());
+    expect(cardMatchesSubtype(game, bearId, "bear")).toBe(true);
+    const gained = applyEffect(game, {
+      kind: "add_subtypes",
+      cardId: bearId,
+      subtypes: ["phyrexian"],
+    });
+    // "IN ADDITION to its other types" — the Bear is still a Bear.
+    expect(cardMatchesSubtype(gained, bearId, "phyrexian")).toBe(true);
+    expect(cardMatchesSubtype(gained, bearId, "bear")).toBe(true);
+  });
+
+  it("does not stack the same type twice", () => {
+    const { game, p1 } = twoPlayers();
+    const bearId = put(game, p1.id, bear());
+    let state = applyEffect(game, {
+      kind: "add_subtypes",
+      cardId: bearId,
+      subtypes: ["phyrexian"],
+    });
+    state = applyEffect(state, {
+      kind: "add_subtypes",
+      cardId: bearId,
+      subtypes: ["phyrexian"],
+    });
+    expect(state.cards[bearId]?.addedSubtypes).toEqual(["phyrexian"]);
+  });
+
+  it("survives the turn, because it is not an until-end-of-turn effect", () => {
+    const { game, p1 } = twoPlayers();
+    const bearId = put(game, p1.id, bear());
+    const gained = applyEffect(game, {
+      kind: "add_subtypes",
+      cardId: bearId,
+      subtypes: ["phyrexian"],
+    });
+    // The type rides the INSTANCE rather than `activeEffects`, which only
+    // knows durations that end. Sweeping that list changes nothing here.
+    const swept = {
+      ...gained,
+      activeEffects: gained.activeEffects.filter(
+        (entry) => entry.duration !== "until_end_of_turn",
+      ),
+    };
+    expect(cardMatchesSubtype(swept, bearId, "phyrexian")).toBe(true);
+  });
+
+  it("leaves Metallic Mimic's chosen type working", () => {
+    const { game, p1 } = twoPlayers();
+    const mimicId = put(
+      game,
+      p1.id,
+      createCardDefinition({
+        name: "Metallic Mimic",
+        typeLine: "Artifact Creature — Shapeshifter",
+        manaCost: "{2}",
+        power: 1,
+        toughness: 1,
+        selfIsChosenType: true,
+      }),
+    );
+    game.cards[mimicId]!.chosenCreatureType = "goblin";
+    // The two additions now share one list; neither may swallow the other.
+    expect(cardMatchesSubtype(game, mimicId, "goblin")).toBe(true);
+    expect(cardMatchesSubtype(game, mimicId, "shapeshifter")).toBe(true);
+    const gained = applyEffect(game, {
+      kind: "add_subtypes",
+      cardId: mimicId,
+      subtypes: ["phyrexian"],
+    });
+    expect(cardMatchesSubtype(gained, mimicId, "goblin")).toBe(true);
+    expect(cardMatchesSubtype(gained, mimicId, "phyrexian")).toBe(true);
+  });
+
+  it("round trips both the effect and the instance", () => {
+    const { game, p1 } = twoPlayers();
+    const definition = createCardDefinition({
+      name: "Wave 339 Portal",
+      typeLine: "Legendary Artifact",
+      manaCost: "{9}",
+      triggers: [
+        {
+          event: "upkeep",
+          effects: [
+            {
+              kind: "add_subtypes",
+              cardId: { type: "chosen", index: 0 },
+              subtypes: ["phyrexian"],
+            },
+          ],
+          targetRequirements: [{ kind: "graveyard_creature_card" }],
+        },
+      ],
+    });
+    put(game, p1.id, definition);
+    const bearId = put(game, p1.id, bear());
+    game.cards[bearId]!.addedSubtypes = ["phyrexian"];
+    const round = parseGameState(serializeGameState(game));
+    expect(round.definitions[definition.id]?.triggers[0]?.effects[0]).toEqual({
+      kind: "add_subtypes",
+      cardId: { type: "chosen", index: 0 },
+      subtypes: ["phyrexian"],
+    });
+    // The instance half matters more: without it a reopened table forgets
+    // what the permanent became.
+    expect(round.cards[bearId]?.addedSubtypes).toEqual(["phyrexian"]);
+  });
+});

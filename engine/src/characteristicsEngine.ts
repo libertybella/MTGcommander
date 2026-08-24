@@ -220,10 +220,16 @@ function baseComputed(state: GameState, card: CardInstance): ComputedCard {
       // Metallic Mimic: "~ is the chosen type in addition to its other
       // types" folds the entry choice into the computed subtypes, so every
       // subtype query (lords, tribal counts, chosen-type watchers) sees it.
-      subtypes:
-        definition?.selfIsChosenType && card.chosenCreatureType
-          ? [...printed.subtypes, card.chosenCreatureType]
-          : [...printed.subtypes],
+      subtypes: [
+        ...printed.subtypes,
+        // Metallic Mimic: "~ is the chosen type in addition to its other
+        // types" folds the entry choice in, so every subtype query sees it.
+        ...(definition?.selfIsChosenType && card.chosenCreatureType
+          ? [card.chosenCreatureType]
+          : []),
+        // Portal to Phyrexia: a type the permanent picked up on the way in.
+        ...(card.addedSubtypes ?? []),
+      ],
       colors: [...printed.colors],
       manaValue: printed.manaValue,
     },

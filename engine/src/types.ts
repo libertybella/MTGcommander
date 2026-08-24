@@ -684,6 +684,13 @@ export type CardInstance = {
    * permanent entering chains the player's whole hand onto the battlefield
    * — a far stronger card than the printed one.
    */
+  /**
+   * Portal to Phyrexia: "It's a Phyrexian in addition to its other types."
+   * A characteristic the PERMANENT carries for as long as it is on the
+   * battlefield, so it rides the instance rather than an `activeEffects`
+   * entry — that list only knows durations that end.
+   */
+  addedSubtypes?: string[];
   putByAbilityOf?: CardInstanceId;
   /** Damaged by a deathtouch source this turn (CR 704.5h). */
   deathtouched: boolean;
@@ -1849,6 +1856,8 @@ export type GameEffect =
       kind: "add_turn_mana_echo";
       echo: NonNullable<CardDefinition["landTapEcho"]>;
     }
+  /** Portal to Phyrexia: the reanimated card gains a creature type. */
+  | { kind: "add_subtypes"; cardId: CardInstanceId; subtypes: string[] }
   | { kind: "mass_reanimate"; playerId: PlayerId }
   /** Splendid Reclamation: every land card in YOUR graveyard returns tapped. */
   | { kind: "return_all_lands"; playerId: PlayerId }
@@ -3179,6 +3188,7 @@ export type CardEffect =
       kind: "add_turn_mana_echo";
       echo: NonNullable<CardDefinition["landTapEcho"]>;
     }
+  | { kind: "add_subtypes"; cardId: CardIdSelector; subtypes: string[] }
   | { kind: "mass_reanimate"; playerId: PlayerSelector }
   /** Splendid Reclamation: every land card in YOUR graveyard returns tapped. */
   | { kind: "return_all_lands"; playerId: PlayerSelector }

@@ -2455,6 +2455,12 @@ export function bindCardEffect(
     // yields a LIST of effects and this function returns one.
     case "if_condition":
       return null;
+    case "add_subtypes": {
+      const gainerId = bindCardId(state, effect.cardId, context);
+      return gainerId
+        ? { kind: "add_subtypes", cardId: gainerId, subtypes: [...effect.subtypes] }
+        : null;
+    }
     default: {
       const exhaustive: never = effect;
       throw new Error(`Unknown card effect ${(exhaustive as CardEffect).kind}`);
@@ -6127,6 +6133,21 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
       case "phase_out":
         next = applyPhaseOut(state, effect.cardIds);
         break;
+      case "add_subtypes": {
+        // Portal to Phyrexia: the type rides the PERMANENT, so it goes on
+        // the instance. Duplicates are skipped rather than stacked — two
+        // Phyrexians is the same one type twice.
+        next = cloneGameState(state);
+        const gaining = next.cards[effect.cardId];
+        if (gaining) {
+          const existing = gaining.addedSubtypes ?? [];
+          gaining.addedSubtypes = [
+            ...existing,
+            ...effect.subtypes.filter((subtype) => !existing.includes(subtype)),
+          ];
+        }
+        break;
+      }
       default: {
         const exhaustive: never = effect;
         throw new Error(`Unknown effect ${(exhaustive as GameEffect).kind}`);
