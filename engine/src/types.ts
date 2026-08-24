@@ -1890,7 +1890,15 @@ export type GameEffect =
   /** Rishkar's Expertise: one free cast from hand, capped by mana value. */
   | { kind: "grant_free_cast_from_hand"; playerId: PlayerId; maxManaValue?: number; count: number }
   | { kind: "commander_to_hand"; playerId: PlayerId }
-  | { kind: "opponents_lose_keywords_until_eot"; playerId: PlayerId; keywords: Keyword[] }
+  | {
+      kind: "opponents_lose_keywords_until_eot";
+      playerId: PlayerId;
+      keywords: Keyword[];
+      /** Arcane Lighthouse: CREATURES, where Shadowspear says permanents. */
+      creaturesOnly?: boolean;
+      /** Arcane Lighthouse: "…and can't HAVE hexproof or shroud". */
+      alsoLock?: boolean;
+    }
   | {
       kind: "search_library";
       playerId: PlayerId;
@@ -3246,7 +3254,18 @@ export type CardEffect =
     }
   | { kind: "commander_to_hand"; playerId: PlayerSelector }
   /** Shadowspear: opponents' permanents drop the listed keywords this turn. */
-  | { kind: "opponents_lose_keywords_until_eot"; keywords: Keyword[] }
+  | {
+      kind: "opponents_lose_keywords_until_eot";
+      keywords: Keyword[];
+      /** Arcane Lighthouse: CREATURES, where Shadowspear says permanents. */
+      creaturesOnly?: boolean;
+      /**
+       * Arcane Lighthouse: "…and can't HAVE hexproof or shroud". Without the
+       * lock, a static that grants hexproof re-grants it in the same layer
+       * and the ability does nothing at all.
+       */
+      alsoLock?: boolean;
+    }
   | {
       kind: "search_library";
       /** Archdruid's Charm: a land goes to the battlefield tapped instead. */

@@ -4583,7 +4583,12 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
       };
     }
     case "opponents_lose_keywords_until_eot":
-      return { kind, keywords: parseKeywords(value.keywords, `${label}.keywords`) };
+      return {
+        kind,
+        keywords: parseKeywords(value.keywords, `${label}.keywords`),
+        ...(value.creaturesOnly === true ? { creaturesOnly: true } : {}),
+        ...(value.alsoLock === true ? { alsoLock: true } : {}),
+      };
     default:
       throw new Error(`Unknown effect kind ${kind}`);
   }
@@ -6572,6 +6577,8 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
       kind,
       playerId: expectString(value.playerId, `${label}.playerId`),
       keywords: parseKeywords(value.keywords, `${label}.keywords`),
+      ...(value.creaturesOnly === true ? { creaturesOnly: true } : {}),
+      ...(value.alsoLock === true ? { alsoLock: true } : {}),
     };
   }
   if (kind === "move_card") {

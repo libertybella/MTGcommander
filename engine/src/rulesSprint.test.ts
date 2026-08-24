@@ -52543,3 +52543,184 @@ describe("wave 339: a type the permanent keeps for as long as it is there", () =
     expect(round.cards[bearId]?.addedSubtypes).toEqual(["phyrexian"]);
   });
 });
+
+describe("wave 340: losing a keyword is not enough if it can be given back", () => {
+  const compile = (name: string, typeLine: string, oracleText: string, manaCost = "") =>
+    compileOracleCard({
+      oracleId: name.toLowerCase().replace(/[^a-z]+/g, "-"),
+      name,
+      manaCost,
+      typeLine,
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  const put = (game: GameState, ownerId: string, definition: CardDefinition) => {
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({
+      definitionId: definition.id,
+      ownerId,
+      zone: "battlefield",
+    });
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === ownerId)!.zones.battlefield.push(card.id);
+    card.summoningSick = false;
+    return card.id;
+  };
+
+  it("compiles Arcane Lighthouse with both halves", () => {
+    const compiled = compile(
+      "Arcane Lighthouse",
+      "Land",
+      "{T}: Add {C}.\n{1}, {T}: Until end of turn, creatures your opponents control lose hexproof and shroud and can't have hexproof or shroud.",
+    );
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.activated[0]?.effects[0]).toEqual({
+      kind: "opponents_lose_keywords_until_eot",
+      keywords: ["hexproof", "shroud"],
+      creaturesOnly: true,
+      alsoLock: true,
+    });
+  });
+
+  it("leaves Shadowspear reading permanents, and not locking", () => {
+    const shadowspear = compile(
+      "Shadowspear",
+      "Legendary Artifact — Equipment",
+      "Equipped creature gets +1/+1 and has trample and lifelink.\n{1}: Permanents your opponents control lose hexproof and indestructible until end of turn.\nEquip {3}",
+      "{1}",
+    );
+    expect(shadowspear.notes).toEqual([]);
+    const effect = shadowspear.definition.activated[0]?.effects[0];
+    // Shadowspear names PERMANENTS and does not say "can't have".
+    expect(effect).toMatchObject({ keywords: ["hexproof", "indestructible"] });
+    expect(effect?.kind === "opponents_lose_keywords_until_eot" && effect.creaturesOnly).toBeUndefined();
+    expect(effect?.kind === "opponents_lose_keywords_until_eot" && effect.alsoLock).toBeUndefined();
+  });
+
+  it("refuses a card whose two lists disagree", () => {
+    const compiled = compile(
+      "Mismatched",
+      "Land",
+      "{1}, {T}: Until end of turn, creatures your opponents control lose hexproof and shroud and can't have flying or trample.",
+    );
+    // Removing one set and locking another is not something this shape can
+    // say, so a clean miss beats a guess.
+    expect(compiled.notes.join(" ")).toContain("not compiled");
+  });
+
+  // ---- Playing -------------------------------------------------------------
+
+  const hexproofBear = (name: string) =>
+    createCardDefinition({
+      name,
+      typeLine: "Creature — Bear",
+      manaCost: "{1}{G}",
+      power: 2,
+      toughness: 2,
+      keywords: ["hexproof"],
+    });
+
+  const strip = (game: GameState, playerId: string, lock: boolean) =>
+    applyEffect(game, {
+      kind: "opponents_lose_keywords_until_eot",
+      playerId,
+      keywords: ["hexproof", "shroud"],
+      creaturesOnly: true,
+      ...(lock ? { alsoLock: true } : {}),
+    });
+
+  it("strips hexproof from an opponent's creature", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const theirsId = put(game, p2.id, hexproofBear("Theirs"));
+    expect(hasKeyword(game, theirsId, "hexproof")).toBe(true);
+    expect(hasKeyword(strip(game, p1.id, true), theirsId, "hexproof")).toBe(false);
+  });
+
+  it("leaves the activating player's own creature alone", () => {
+    const { game, p1 } = twoPlayers();
+    const mineId = put(game, p1.id, hexproofBear("Mine"));
+    expect(hasKeyword(strip(game, p1.id, true), mineId, "hexproof")).toBe(true);
+  });
+
+  it("does not touch an opponent's NONCREATURE permanent", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const rockId = put(
+      game,
+      p2.id,
+      createCardDefinition({
+        name: "Warded Rock",
+        typeLine: "Artifact",
+        manaCost: "{2}",
+        keywords: ["hexproof"],
+      }),
+    );
+    // "CREATURES your opponents control" — Shadowspear says permanents and
+    // this deliberately does not.
+    expect(hasKeyword(strip(game, p1.id, true), rockId, "hexproof")).toBe(true);
+  });
+
+  it("records the LOCK, which plain removal does not", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const theirsId = put(game, p2.id, hexproofBear("Theirs"));
+
+    // Both readings strip the keyword here — this engine's removal already
+    // wins the layer against the grants on the board. The difference the
+    // printed "can't HAVE hexproof" buys is the LOCK, which is what keeps
+    // a later grant from putting it back, so that is what is asserted
+    // rather than a layer-ordering claim this fixture cannot show.
+    const unlocked = strip(game, p1.id, false);
+    expect(computedCard(unlocked, theirsId)?.lockedKeywords).toEqual([]);
+
+    const locked = strip(game, p1.id, true);
+    expect(computedCard(locked, theirsId)?.lockedKeywords).toEqual(["hexproof", "shroud"]);
+    expect(hasKeyword(locked, theirsId, "hexproof")).toBe(false);
+  });
+
+  it("wears off at cleanup", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const theirsId = put(game, p2.id, hexproofBear("Theirs"));
+    const stripped = strip(game, p1.id, true);
+    const swept = {
+      ...stripped,
+      activeEffects: stripped.activeEffects.filter(
+        (entry) => entry.duration !== "until_end_of_turn",
+      ),
+    };
+    expect(hasKeyword(swept, theirsId, "hexproof")).toBe(true);
+  });
+
+  it("round trips both flags", () => {
+    const { game, p1 } = twoPlayers();
+    const definition = createCardDefinition({
+      name: "Wave 340 Lighthouse",
+      typeLine: "Land",
+      activated: [
+        {
+          tap: true,
+          manaCost: "{1}",
+          effects: [
+            {
+              kind: "opponents_lose_keywords_until_eot",
+              keywords: ["hexproof", "shroud"],
+              creaturesOnly: true,
+              alsoLock: true,
+            },
+          ],
+          targetRequirements: [],
+        },
+      ],
+    });
+    put(game, p1.id, definition);
+    const round = parseGameState(serializeGameState(game));
+    expect(round.definitions[definition.id]?.activated[0]?.effects[0]).toEqual({
+      kind: "opponents_lose_keywords_until_eot",
+      keywords: ["hexproof", "shroud"],
+      creaturesOnly: true,
+      alsoLock: true,
+    });
+  });
+});

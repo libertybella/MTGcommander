@@ -870,6 +870,21 @@ more questions it can now ask:
   (Bennie Bracks). Reads the existing per-player `createdTokenThisTurn`
   list, and asks whether the CONTROLLER is in it — an opponent's Treasure
   must not satisfy it.
+- **Arcane Lighthouse: losing a keyword is not enough if it can be given
+  back.** The removal already existed as Shadowspear's
+  `opponents_lose_keywords_until_eot`; this narrows it to CREATURES (where
+  Shadowspear names permanents — a whole board's worth of difference) and
+  adds the LOCK that "and can't HAVE hexproof or shroud" is printed for.
+
+  The two keyword lists must AGREE. A card that removed one set and locked
+  another is something this shape cannot say, so it is a clean miss rather
+  than a guess.
+
+  Worth recording honestly: in this engine the removal already beats the
+  grants on the board on timestamp, so the wave's test asserts what the
+  lock actually RECORDS rather than a layer-ordering claim the fixture
+  could not demonstrate.
+
 - **`CardInstance.addedSubtypes`** — Portal to Phyrexia: "It's a Phyrexian
   in addition to its other types." A characteristic the PERMANENT keeps for
   as long as it is on the battlefield, so it rides the instance rather than

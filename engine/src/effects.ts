@@ -1554,6 +1554,8 @@ export function bindCardEffect(
         kind: "opponents_lose_keywords_until_eot",
         playerId: context.controllerId,
         keywords: [...effect.keywords],
+        ...(effect.creaturesOnly ? { creaturesOnly: true } : {}),
+        ...(effect.alsoLock ? { alsoLock: true } : {}),
       };
     case "drain_opponents": {
       const playerId = bindPlayerSelector(state, effect.playerId, context);
@@ -4949,16 +4951,29 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
         const struck = Object.values(state.cards)
           .filter(
             (card) =>
-              card.zone === "battlefield" && card.controllerId !== effect.playerId,
+              card.zone === "battlefield" &&
+              card.controllerId !== effect.playerId &&
+              // Arcane Lighthouse names CREATURES; Shadowspear names every
+              // permanent, and the difference is a whole board's worth.
+              (!effect.creaturesOnly || isCreature(state, card.id)),
           )
           .map((card) => card.id);
-        next =
-          struck.length === 0
-            ? cloneGameState(state)
-            : pushUntilEotEffect(state, struck, {
-                kind: "remove_keywords",
-                keywords: [...effect.keywords],
-              });
+        next = struck.length === 0 ? cloneGameState(state) : state;
+        if (struck.length > 0) {
+          next = pushUntilEotEffect(next, struck, {
+            kind: "remove_keywords",
+            keywords: [...effect.keywords],
+          });
+          // "…and CAN'T HAVE hexproof or shroud": without the lock, a static
+          // that grants hexproof re-grants it in the same layer and the
+          // ability does nothing at all.
+          if (effect.alsoLock) {
+            next = pushUntilEotEffect(next, struck, {
+              kind: "lock_keywords",
+              keywords: [...effect.keywords],
+            });
+          }
+        }
         break;
       }
       case "commander_to_hand": {

@@ -7323,6 +7323,45 @@ function compileSimpleClauseInner(sentence: string): SimpleClause | null {
     };
   }
 
+  /**
+   * Arcane Lighthouse: the same removal, narrowed to CREATURES, with the
+   * duration FRONTED and a "can't have" half. That last part is the card:
+   * without the lock a static that grants hexproof re-grants it in the
+   * same layer and the ability does nothing at all.
+   *
+   * The two keyword lists must AGREE. A card that removed one set and
+   * locked another would be something this shape cannot say, so it is a
+   * clean miss rather than a guess.
+   */
+  const loseAndLock = sentence.match(
+    /^Until end of turn, creatures your opponents control lose ([a-z]+) and ([a-z]+) and can't have ([a-z]+) or ([a-z]+)$/i,
+  );
+  if (loseAndLock) {
+    const lost = [loseAndLock[1], loseAndLock[2]].map((name) =>
+      KEYWORD_GRANTS[name!.trim().toLowerCase()],
+    );
+    const locked = [loseAndLock[3], loseAndLock[4]].map((name) =>
+      KEYWORD_GRANTS[name!.trim().toLowerCase()],
+    );
+    if (
+      lost.every((keyword): keyword is Keyword => Boolean(keyword)) &&
+      lost.length === locked.length &&
+      lost.every((keyword, index) => keyword === locked[index])
+    ) {
+      return {
+        targetRequirements: [],
+        effects: [
+          {
+            kind: "opponents_lose_keywords_until_eot",
+            keywords: lost,
+            creaturesOnly: true,
+            alsoLock: true,
+          },
+        ],
+      };
+    }
+  }
+
   // Shadowspear.
   match = sentence.match(
     /^Permanents your opponents control lose ([a-z ]+?) and ([a-z ]+?) until end of turn$/i,
