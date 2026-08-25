@@ -69067,3 +69067,219 @@ describe("wave 413: Beseech the Mirror", () => {
     });
   });
 });
+
+describe("wave 414: Necromancy", () => {
+  const compile = (name: string, typeLine: string, oracleText: string, manaCost = "") =>
+    compileOracleCard({
+      oracleId: name.toLowerCase().replace(/[^a-z]+/g, "-"),
+      name,
+      manaCost,
+      typeLine,
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  const necromancyText =
+    "You may cast this spell as though it had flash. If you cast it any time a sorcery couldn't have been cast, the controller of the permanent it becomes sacrifices it at the beginning of the next cleanup step.\nWhen Necromancy enters, if it's on the battlefield, it becomes an Aura with \"enchant creature put onto the battlefield with Necromancy.\" Put target creature card from a graveyard onto the battlefield under your control and attach Necromancy to it.\nWhen Necromancy leaves the battlefield, that creature's controller sacrifices it.";
+
+  it("compiles all four of Necromancy's lines", () => {
+    const compiled = compile("Necromancy", "Enchantment", necromancyText, "{2}{B}");
+    expect(compiled.notes).toEqual([]);
+    // Printed as a plain enchantment that BECOMES an Aura; Animate Dead is
+    // printed as an Aura that rewrites its own enchant clause. Same two
+    // fields either way.
+    expect(compiled.definition.enchant).toBe("creature");
+    expect(compiled.definition.reanimateOnEnter).toBe(true);
+    expect(compiled.definition.targetRequirements).toEqual([
+      { kind: "graveyard_creature_card" },
+    ]);
+    expect(compiled.definition.keywords).toContain("flash");
+    expect(compiled.definition.sacrificeIfCastAtInstantSpeed).toBe(true);
+    expect(compiled.definition.triggers[0]).toMatchObject({
+      event: "leaves_battlefield",
+      watch: "self",
+      effects: [{ kind: "sacrifice", cardId: "reanimated" }],
+    });
+  });
+
+  it("leaves Animate Dead exactly as it was", () => {
+    const compiled = compile(
+      "Animate Dead",
+      "Enchantment — Aura",
+      'Enchant creature card in a graveyard\nWhen Animate Dead enters, if it\'s on the battlefield, it loses "enchant creature card in a graveyard" and gains "enchant creature put onto the battlefield with Animate Dead." Return enchanted creature card to the battlefield under your control and attach Animate Dead to it.\nEnchanted creature gets -1/-0.',
+      "{1}{B}",
+    );
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.reanimateOnEnter).toBe(true);
+    // No flash, and nothing sacrifices it at cleanup — that is the whole
+    // difference between the two cards.
+    expect(compiled.definition.keywords).not.toContain("flash");
+    expect(compiled.definition.sacrificeIfCastAtInstantSpeed).toBeUndefined();
+  });
+
+  // ---- The price of the flash --------------------------------------------
+
+  const necromancy = () =>
+    createCardDefinition({
+      name: "Necromancy",
+      typeLine: "Enchantment",
+      manaCost: "{2}{B}",
+      keywords: ["flash"],
+      enchant: "creature",
+      reanimateOnEnter: true,
+      sacrificeIfCastAtInstantSpeed: true,
+      targetRequirements: [{ kind: "graveyard_creature_card" }],
+      triggers: [
+        {
+          event: "leaves_battlefield",
+          watch: "self",
+          effects: [{ kind: "sacrifice", cardId: "reanimated" }],
+          targetRequirements: [],
+        },
+      ],
+    });
+
+  const putIn = (
+    game: GameState,
+    ownerId: string,
+    definition: CardDefinition,
+    zone: "hand" | "graveyard" | "battlefield",
+  ) => {
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({ definitionId: definition.id, ownerId, zone });
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === ownerId)!.zones[zone].push(card.id);
+    return card.id;
+  };
+
+  const bear = (name: string) =>
+    createCardDefinition({
+      name,
+      typeLine: "Creature — Bear",
+      manaCost: "{1}{G}",
+      power: 2,
+      toughness: 2,
+    });
+
+  const castAt = (
+    game: GameState,
+    playerId: string,
+    necroId: string,
+    corpseId: string,
+    step: "precombatMain" | "upkeep",
+  ) => {
+    game.turn.activePlayerId = playerId;
+    game.turn.phase = step === "upkeep" ? "beginning" : "precombatMain";
+    game.turn.step = step;
+    game.priorityPlayerId = playerId;
+    game.players.find((entry) => entry.id === playerId)!.mana.B = 5;
+    return applyAction(game, {
+      kind: "cast_spell",
+      playerId,
+      cardId: necroId,
+      targets: [{ type: "creature", cardId: corpseId }],
+    });
+  };
+
+  it("marks a cast made when a sorcery could not have been", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const necroId = putIn(game, p1.id, necromancy(), "hand");
+    const corpseId = putIn(game, p1.id, bear("Buried Bear"), "graveyard");
+    const after = castAt(game, p1.id, necroId, corpseId, "upkeep");
+    // The question is only answerable while the cast is happening; by
+    // cleanup the phase and the stack have both moved on.
+    expect(after.cards[necroId]?.sacrificeAtNextCleanup).toBe(true);
+  });
+
+  it("marks nothing when cast in a main phase", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const necroId = putIn(game, p1.id, necromancy(), "hand");
+    const corpseId = putIn(game, p1.id, bear("Buried Bear"), "graveyard");
+    const after = castAt(game, p1.id, necroId, corpseId, "precombatMain");
+    expect(after.cards[necroId]?.sacrificeAtNextCleanup).toBeUndefined();
+  });
+
+  const runToCleanup = (game: GameState) => {
+    let after: GameState = { ...game, turn: { ...game.turn, phase: "ending", step: "end" } };
+    after = advanceStep(after);
+    expect(after.turn.step).toBe("cleanup");
+    return after;
+  };
+
+  it("sacrifices the marked permanent at the next cleanup", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const necroId = putIn(game, p1.id, necromancy(), "battlefield");
+    game.cards[necroId]!.sacrificeAtNextCleanup = true;
+    const after = runToCleanup(game);
+    expect(after.cards[necroId]?.zone).toBe("graveyard");
+  });
+
+  it("leaves an unmarked one alone", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const necroId = putIn(game, p1.id, necromancy(), "hand");
+    const corpseId = putIn(game, p1.id, bear("Buried Bear"), "graveyard");
+    const cast = resolveTopOfStack(castAt(game, p1.id, necroId, corpseId, "precombatMain"));
+    const after = runToCleanup(cast);
+    expect(after.cards[necroId]?.zone).toBe("battlefield");
+    expect(after.cards[corpseId]?.zone).toBe("battlefield");
+  });
+
+  it("only does it once", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const necroId = putIn(game, p1.id, necromancy(), "battlefield");
+    game.cards[necroId]!.sacrificeAtNextCleanup = true;
+    const after = runToCleanup(game);
+    // The mark is spent, not standing — a card that came back somehow is
+    // not owed a second sacrifice.
+    expect(after.cards[necroId]?.sacrificeAtNextCleanup).toBeUndefined();
+  });
+
+  // ---- The reanimation ----------------------------------------------------
+
+  it("brings the creature back and attaches to it", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const necroId = putIn(game, p1.id, necromancy(), "hand");
+    const corpseId = putIn(game, p1.id, bear("Buried Bear"), "graveyard");
+    const after = resolveTopOfStack(castAt(game, p1.id, necroId, corpseId, "precombatMain"));
+    expect(after.cards[corpseId]?.zone).toBe("battlefield");
+    expect(after.cards[corpseId]?.controllerId).toBe(p1.id);
+    expect(after.cards[necroId]?.attachedTo).toBe(corpseId);
+  });
+
+  it("takes the creature with it when it goes", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const necroId = putIn(game, p1.id, necromancy(), "hand");
+    const corpseId = putIn(game, p1.id, bear("Buried Bear"), "graveyard");
+    let after = resolveTopOfStack(castAt(game, p1.id, necroId, corpseId, "precombatMain"));
+    after = applyEffect(after, { kind: "move_card", cardId: necroId, toZone: "graveyard" });
+    // The trigger goes on the stack like any other; the creature dies when
+    // it resolves.
+    while (after.stack.length > 0) {
+      after = resolveTopOfStack(after);
+    }
+    expect(after.cards[corpseId]?.zone).toBe("graveyard");
+  });
+
+  it("round trips the flag and the mark", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const definition = necromancy();
+    const necroId = putIn(game, p1.id, definition, "battlefield");
+    game.cards[necroId]!.sacrificeAtNextCleanup = true;
+    const round = parseGameState(serializeGameState(game));
+    // Dropped on the wire it is Animate Dead with flash and no drawback,
+    // which is a card nobody printed.
+    expect(round.definitions[definition.id]?.sacrificeIfCastAtInstantSpeed).toBe(true);
+    expect(round.cards[necroId]?.sacrificeAtNextCleanup).toBe(true);
+  });
+});

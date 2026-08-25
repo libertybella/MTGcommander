@@ -8,7 +8,7 @@ import {
 import { characteristicsOf, hasType, isCommander, isCreature, isInstant, isInstantOrSorcery, isLand, isLegendary, isMainPhase } from "./cardTypes";
 import { abilityLifeCost } from "./commanderIdentity";
 import { cloneGameState } from "./clone";
-import { applyPhyrexianColorGrants, retraceReaches, targetingLifeTaxFor, splitSecondActive, costRelief, affinityArtifactDiscount, allBattlefieldCreatureCount, canActivateTapAbility, canPlayLandFromTop, canPlayLandsFromGraveyard, castCostReduction, castableFromTop, controlsCommander, creaturePower, freeEquipGranted, hasFlashGrant, activationNonManaPayment, altCastPayment, landDropAllowance, manaTapMultiplier, lockedByAbolisher, lockedFromCasting, noncreatureSpellCap, opponentControlsMoreLands, findFreeHandGrantIndex, opponentsCastLockedToHand, selfDiscountAmount, staticFreeCastCap, usesOncePerTurnFreeCast , topOfLibraryGrant } from "./derived";
+import { applyPhyrexianColorGrants, inSorceryWindow, retraceReaches, targetingLifeTaxFor, splitSecondActive, costRelief, affinityArtifactDiscount, allBattlefieldCreatureCount, canActivateTapAbility, canPlayLandFromTop, canPlayLandsFromGraveyard, castCostReduction, castableFromTop, controlsCommander, creaturePower, freeEquipGranted, hasFlashGrant, activationNonManaPayment, altCastPayment, landDropAllowance, manaTapMultiplier, lockedByAbolisher, lockedFromCasting, noncreatureSpellCap, opponentControlsMoreLands, findFreeHandGrantIndex, opponentsCastLockedToHand, selfDiscountAmount, staticFreeCastCap, usesOncePerTurnFreeCast , topOfLibraryGrant } from "./derived";
 import { eliminatePlayerInPlace } from "./elimination";
 import { applyEffects, bindCardEffects, devotionTo } from "./effects";
 import { hasKeyword } from "./keywords";
@@ -1040,6 +1040,19 @@ function applyCastSpell(
       : undefined;
   if (additional?.sacrifice && costSacrificeId) {
     paid = applyEffects(paid, [{ kind: "sacrifice", cardId: costSacrificeId }]);
+  }
+  // Necromancy: whether a sorcery COULD have been cast is a question only
+  // answerable now, while the cast is happening — by cleanup the phase,
+  // the stack and the priority have all moved on.
+  if (definition?.sacrificeIfCastAtInstantSpeed) {
+    const spell = paid.cards[cardId];
+    if (spell) {
+      if (inSorceryWindow(state, playerId)) {
+        delete spell.sacrificeAtNextCleanup;
+      } else {
+        spell.sacrificeAtNextCleanup = true;
+      }
+    }
   }
   // Bargain: the flag rides the CARD while it is a spell, the way
   // `manaSpentToCast` does — the stack entry is gone by the time the

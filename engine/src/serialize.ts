@@ -631,6 +631,7 @@ export function parseGameState(json: string): GameState {
             ),
           }),
       ...(card.bargainedThisCast === true ? { bargainedThisCast: true } : {}),
+      ...(card.sacrificeAtNextCleanup === true ? { sacrificeAtNextCleanup: true } : {}),
       ...(isRecord(card.manaSpentToCast)
         ? { manaSpentToCast: parseMana(card.manaSpentToCast, "card.manaSpentToCast") }
         : {}),
@@ -1351,6 +1352,9 @@ export function parseGameState(json: string): GameState {
             })(),
           }),
       ...(def.bargain === true ? { bargain: true } : {}),
+      ...(def.sacrificeIfCastAtInstantSpeed === true
+        ? { sacrificeIfCastAtInstantSpeed: true }
+        : {}),
       ...(def.additionalCost === undefined
         ? {}
         : {

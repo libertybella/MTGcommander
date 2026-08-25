@@ -149,6 +149,13 @@ function compileOneFace(card: OracleCard, definitionId: string): OracleCompileRe
   const power = parseStat(card.power);
   const toughness = parseStat(card.toughness);
   const compiled = compileOracleText(card, keywords);
+  // Necromancy: a keyword the TEXT grants itself, rather than one printed
+  // on the card or found by the first-line scan.
+  for (const extra of compiled.extraKeywords ?? []) {
+    if (!keywords.includes(extra)) {
+      keywords.push(extra);
+    }
+  }
 
   notes.push(...compiled.notes);
 
@@ -278,6 +285,9 @@ function compileOneFace(card: OracleCard, definitionId: string): OracleCompileRe
     ...(compiled.grantsCostKeyword ? { grantsCostKeyword: compiled.grantsCostKeyword } : {}),
     ...(compiled.grantsFlash ? { grantsFlash: true } : {}),
     ...(compiled.bargain ? { bargain: true } : {}),
+    ...(compiled.sacrificeIfCastAtInstantSpeed
+      ? { sacrificeIfCastAtInstantSpeed: true }
+      : {}),
     ...(compiled.controlsOpponentSearches ? { controlsOpponentSearches: true } : {}),
     ...(compiled.grantsFlashFor ? { grantsFlashFor: compiled.grantsFlashFor } : {}),
     ...(compiled.castFreeFromHand ? { castFreeFromHand: compiled.castFreeFromHand } : {}),

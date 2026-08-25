@@ -520,6 +520,20 @@ function onEnterStep(state: GameState): GameState {
     return ending;
   }
   if (state.turn.step === "cleanup") {
+    // Necromancy: cast when a sorcery could not have been, it is sacrificed
+    // at the beginning of the NEXT cleanup — the first one after the cast,
+    // whoever's turn it is.
+    const doomedAtCleanup = Object.values(state.cards)
+      .filter((card) => card.zone === "battlefield" && card.sacrificeAtNextCleanup)
+      .map((card) => card.id);
+    if (doomedAtCleanup.length > 0) {
+      let sacrificed: GameState = state;
+      for (const cardId of doomedAtCleanup) {
+        delete sacrificed.cards[cardId]!.sacrificeAtNextCleanup;
+        sacrificed = applyEffect(sacrificed, { kind: "sacrifice", cardId });
+      }
+      state = sacrificed;
+    }
     // CR 514.1: the active player discards down to maximum hand size.
     const active = state.players.find((player) => player.id === state.turn.activePlayerId);
     if (active && !active.lost) {

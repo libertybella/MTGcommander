@@ -223,6 +223,7 @@ export function createCardDefinition(
         | "opponentArtifactsEnterTapped"
         | "additionalCost"
         | "bargain"
+        | "sacrificeIfCastAtInstantSpeed"
         | "attackTax"
         | "dynamicPt"
         | "bonusPt"
@@ -655,6 +656,7 @@ export function createCardDefinition(
     ...(input.opponentArtifactsEnterTapped ? { opponentArtifactsEnterTapped: true } : {}),
     ...(input.ascend ? { ascend: true } : {}),
     ...(input.bargain ? { bargain: true } : {}),
+    ...(input.sacrificeIfCastAtInstantSpeed ? { sacrificeIfCastAtInstantSpeed: true } : {}),
     ...(input.additionalCost ? { additionalCost: { ...input.additionalCost } } : {}),
     ...(input.attackTax ? { attackTax: { ...input.attackTax } } : {}),
     ...(input.dynamicPt

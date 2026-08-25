@@ -44,6 +44,14 @@ import { mergeProtection } from "./characteristicsEngine";
 import type { OracleCard } from "./oracle";
 
 export type CompiledOracleText = {
+  /**
+   * Necromancy: "You may cast this spell as though it had flash." Keywords
+   * normally come from the printed list or a scan of the first printed
+   * line, and neither is a promise — the scan finds this one only because
+   * the word happens to sit on line one. Stated here so the card says what
+   * it means rather than getting it by accident.
+   */
+  extraKeywords?: Keyword[];
   effects: CardEffect[];
   targetRequirements: TargetRequirement[];
   activated: ActivatedAbility[];
@@ -67,6 +75,7 @@ export type CompiledOracleText = {
   /** Taken from the definition so the two cannot drift apart. */
   enchant?: CardDefinition["enchant"];
   reanimateOnEnter?: boolean;
+  sacrificeIfCastAtInstantSpeed?: boolean;
   grantsEscape?: { exileOther: number };
   copySelfWhenCastFromGraveyard?: boolean;
   cascade?: number;
@@ -16087,6 +16096,58 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
       )
     ) {
       result.reanimateOnEnter = true;
+      continue;
+    }
+
+    /**
+     * Necromancy says the same thing from the other end. Animate Dead is
+     * printed as an Aura that rewrites its own enchant clause; Necromancy
+     * is printed as a plain enchantment that BECOMES one. Both end up
+     * attached to a creature card they put onto the battlefield, so both
+     * compile to the same pair of fields — including the enchant clause,
+     * which Necromancy never prints because it does not start with one.
+     *
+     * Approximation, documented: the reanimation happens as the spell
+     * resolves rather than off an enters trigger, which is the shape
+     * `reanimateOnEnter` already has and the reason it has it — a loose
+     * Aura dies to a state-based action, and the gap between entering and
+     * attaching would be exactly that.
+     */
+    if (
+      /^When ~ enters, if it['’]s on the battlefield, it becomes an Aura with "enchant creature put onto the battlefield with ~\." Put target creature card from a graveyard onto the battlefield under your control and attach ~ to it$/i.test(
+        sentence,
+      )
+    ) {
+      result.enchant = "creature";
+      result.reanimateOnEnter = true;
+      if (
+        !result.targetRequirements.some(
+          (requirement) => requirement.kind === "graveyard_creature_card",
+        )
+      ) {
+        result.targetRequirements.push({ kind: "graveyard_creature_card" });
+      }
+      continue;
+    }
+
+    // Necromancy's flash clause. The keyword is already on the card by the
+    // time this runs; what is missing is that the SENTENCE was never
+    // consumed, which left the whole card a miss over a line that had
+    // already taken effect.
+    if (/^You may cast this spell as though it had flash$/i.test(sentence)) {
+      result.extraKeywords = [...(result.extraKeywords ?? []), "flash"];
+      continue;
+    }
+
+    // The price of that flash. Without this line Necromancy is Animate
+    // Dead that can also be cast on an opponent's turn, which is a
+    // materially stronger card than the one printed.
+    if (
+      /^If you cast it any time a sorcery couldn't have been cast, the controller of the permanent it becomes sacrifices it at the beginning of the next cleanup step$/i.test(
+        sentence,
+      )
+    ) {
+      result.sacrificeIfCastAtInstantSpeed = true;
       continue;
     }
 

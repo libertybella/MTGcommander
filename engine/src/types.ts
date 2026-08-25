@@ -171,6 +171,14 @@ export type CardDefinition = {
    */
   reanimateOnEnter?: boolean;
   /**
+   * Necromancy: "If you cast it any time a sorcery couldn't have been cast,
+   * the controller of the permanent it becomes sacrifices it at the
+   * beginning of the next cleanup step." The only thing that stops the card
+   * being strictly better than Animate Dead, and the only reason anyone
+   * casts it at instant speed on purpose.
+   */
+  sacrificeIfCastAtInstantSpeed?: boolean;
+  /**
    * Sevinne's Reclamation: "If this spell was cast from a graveyard, you
    * may copy this spell and may choose a new target for the copy." The
    * spell has already left the stack by the time its effects bind, so the
@@ -810,6 +818,13 @@ export type CardInstance = {
    * bargained then.
    */
   bargainedThisCast?: boolean;
+  /**
+   * Necromancy: this cast happened when a sorcery could not have been, so
+   * the permanent it becomes is sacrificed at the next cleanup. Set while
+   * it is a spell and read once it is a permanent, which is why it rides
+   * the instance rather than the stack entry.
+   */
+  sacrificeAtNextCleanup?: boolean;
   /**
    * Opal Palace: counters this card is owed AS it enters, recorded while
    * it is still a spell. Read once and cleared, like `manaSpentToCast` —
