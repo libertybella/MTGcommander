@@ -2488,6 +2488,25 @@ function parsePrompts(value: unknown, playerIds: Set<string>): PendingPrompt[] {
         sourceId: expectString(entry.sourceId, `prompts[${index}].sourceId`),
       };
     }
+    if (kind === "exile_until_taken") {
+      return {
+        kind,
+        playerId,
+        cardId: expectString(entry.cardId, `prompts[${index}].cardId`),
+        exiledThisWay: expectStringArray(
+          entry.exiledThisWay,
+          `prompts[${index}].exiledThisWay`,
+        ),
+        ...(entry.resumeEffects === undefined
+          ? {}
+          : {
+              resumeEffects: parseGameEffects(
+                entry.resumeEffects,
+                `prompts[${index}].resumeEffects`,
+              ),
+            }),
+      };
+    }
     if (kind === "punisher_choice") {
       return {
         kind,
@@ -4696,6 +4715,8 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
         subtype: expectString(value.subtype, `${label}.subtype`),
         rider: parseCardEffects(value.rider, `${label}.rider`),
       };
+    case "exile_until_taken":
+      return { kind, playerId: parsePlayerSelector(value.playerId, `${label}.playerId`) };
     case "punisher_choice":
       return {
         kind,
@@ -6914,6 +6935,9 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
       amount: expectNumber(value.amount, `${label}.amount`),
     };
   }
+  if (kind === "exile_until_taken") {
+    return { kind, playerId: expectString(value.playerId, `${label}.playerId`) };
+  }
   if (kind === "punisher_choice") {
     return {
       kind,
@@ -8245,6 +8269,9 @@ export function parseGameAction(json: string): GameAction {
       playerId,
       pay: raw.pay === true,
     };
+  }
+  if (kind === "resolve_exile_until_taken") {
+    return { kind, playerId, take: raw.take === true };
   }
   if (kind === "resolve_punisher") {
     return { kind, playerId, take: raw.take === true };

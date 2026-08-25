@@ -3,7 +3,7 @@ import { cloneGameState } from "./clone";
 // Deferred call only (decline path) — the effects/prompt import cycle is benign.
 import { cardMatchesSubtype, grantedTriggerSpread, triggersOf } from "./characteristicsEngine";
 import { characteristicsOf, isCreature, isLand as cardIsLand, isPlaneswalker } from "./cardTypes";
-import { applyEffects, bindCardEffects, drawWithoutReplacement, grantProtectionUntilEot } from "./effects";
+import { applyEffects, bindCardEffects, drawWithoutReplacement, exileUntilTakenStep, grantProtectionUntilEot } from "./effects";
 import { payManaCost, tapForMana } from "./mana";
 import { manaAbilitiesFor, manaTapOptionsFor } from "./manaOptions";
 import { isLiving, requireLiving } from "./players";
@@ -353,6 +353,48 @@ export function applyResolveCreatureType(
       if (count > 0) {
         card.counters[perType] = (card.counters[perType] ?? 0) + count;
       }
+    }
+  }
+  return next;
+}
+
+/**
+ * Tainted Pact, one answer. Taking the card ends the loop; declining takes
+ * another turn of it, which may end on the name clash instead.
+ *
+ * Declining is a real choice and not a formality: the card is played to
+ * dig past what you do not want, and auto-taking the first legal card is
+ * the whole reason this needed a prompt.
+ */
+export function applyResolveExileUntilTaken(
+  state: GameState,
+  playerId: PlayerId,
+  take: boolean,
+): GameState {
+  const prompt = currentPrompt(state);
+  if (!prompt || prompt.kind !== "exile_until_taken") {
+    throw new Error("No exile-until choice pending");
+  }
+  requireLiving(state, playerId);
+  if (prompt.playerId !== playerId) {
+    throw new Error("It is not that player's choice");
+  }
+  let next = cloneGameState(state);
+  next.prompts.shift();
+  if (take) {
+    next = moveCard(next, prompt.cardId, "hand");
+  } else {
+    next = exileUntilTakenStep(next, playerId, prompt.exiledThisWay);
+  }
+  const resume = prompt.resumeEffects;
+  if (resume && resume.length > 0 && next.prompts.length === 0) {
+    next = applyEffects(next, resume);
+  } else if (resume && resume.length > 0) {
+    // The loop is still going, so the rest of the card rides the prompt it
+    // just made rather than running between two turns of it.
+    const pending = next.prompts[next.prompts.length - 1];
+    if (pending && pending.kind === "exile_until_taken") {
+      pending.resumeEffects = resume;
     }
   }
   return next;

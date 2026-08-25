@@ -35,7 +35,7 @@ import { abilityLifeCost, colorsOutsideCommanderIdentity } from "./commanderIden
 import { addRestrictedMana, emptyManaPools, manaRiderFires, parseManaCost, payManaCost, restrictionAdmits, type ManaPurpose } from "./mana";
 import { applyStateBasedActionsInPlace } from "./status";
 import { legalActions, potentialMana, sacrificeColorMatches, sacrificeScopeMatches } from "./legalActions";
-import { applyResolveCardName, applyResolveChoosePile, applyResolveDredge, applyResolvePunisher, applyResolveDividePiles, applyResolveTapOwnForX, applyResolveTemptingOffer, applyResolveChooseCard, applyResolveChooseFromHand, applyResolveCreatureType, applyResolveDiscardLandOrGraveyard, applyResolveEnterCopy, applyResolveLookAssign, applyResolvePay, applyResolveSearch, applyResolveTriggerMode, legalEnterCopyIds, legalSearchIds, searchMatches } from "./prompt";
+import { applyResolveCardName, applyResolveChoosePile, applyResolveDredge, applyResolveExileUntilTaken, applyResolvePunisher, applyResolveDividePiles, applyResolveTapOwnForX, applyResolveTemptingOffer, applyResolveChooseCard, applyResolveChooseFromHand, applyResolveCreatureType, applyResolveDiscardLandOrGraveyard, applyResolveEnterCopy, applyResolveLookAssign, applyResolvePay, applyResolveSearch, applyResolveTriggerMode, legalEnterCopyIds, legalSearchIds, searchMatches } from "./prompt";
 import { parseGameState, serializeGameState } from "./serialize";
 import { fillLibraries } from "./testSupport";
 import { applyKeepHand, beginMulligan, isMulliganOpen } from "./mulligan";
@@ -64112,5 +64112,218 @@ describe("wave 392: the punisher choice", () => {
     expect(
       finished.players.find((entry) => entry.id === p1.id)!.zones.hand.length,
     ).toBeGreaterThan(0);
+  });
+});
+
+describe("wave 393: Tainted Pact, exile until you take one", () => {
+  const compile = (name: string, typeLine: string, oracleText: string, manaCost = "") =>
+    compileOracleCard({
+      oracleId: name.toLowerCase().replace(/[^a-z]+/g, "-"),
+      name,
+      manaCost,
+      typeLine,
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  const put = (game: GameState, ownerId: string, definition: CardDefinition) => {
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({ definitionId: definition.id, ownerId, zone: "library" });
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === ownerId)!.zones.library.push(card.id);
+    return card.id;
+  };
+
+  const pactText =
+    "Exile the top card of your library. You may put that card into your hand unless it has the same name as another card exiled this way. Repeat this process until you put a card into your hand or you exile two cards with the same name, whichever comes first.";
+
+  it("compiles the three sentences as one loop", () => {
+    const compiled = compile("Tainted Pact", "Instant", pactText, "{1}{B}");
+    expect(compiled.notes).toEqual([]);
+    // None of the three is an effect on its own: the offer names the card
+    // the first exiled, and the repeat names the whole thing.
+    expect(compiled.definition.effects).toEqual([
+      { kind: "exile_until_taken", playerId: "controller" },
+    ]);
+  });
+
+  // ---- The loop ----------------------------------------------------------
+
+  const spell = (name: string) =>
+    createCardDefinition({ name, typeLine: "Instant", manaCost: "{R}" });
+
+  const pact = (game: GameState, playerId: string) =>
+    applyEffects(
+      game,
+      bindCardEffects(game, [{ kind: "exile_until_taken", playerId: "controller" }], {
+        controllerId: playerId,
+        sourceId: null,
+        targets: [],
+        targetRequirements: [],
+      }),
+    );
+
+  const offered = (game: GameState) => {
+    const prompt = game.prompts[0];
+    if (prompt?.kind !== "exile_until_taken") {
+      throw new Error("expected an exile-until choice");
+    }
+    return prompt;
+  };
+
+  it("exiles the top card and offers it", () => {
+    const { game, p1 } = twoPlayers();
+    const firstId = put(game, p1.id, spell("First"));
+    put(game, p1.id, spell("Second"));
+    const after = pact(game, p1.id);
+    expect(after.cards[firstId]?.zone).toBe("exile");
+    expect(offered(after).cardId).toBe(firstId);
+    expect(offered(after).exiledThisWay).toEqual([firstId]);
+  });
+
+  it("takes the card and stops", () => {
+    const { game, p1 } = twoPlayers();
+    const firstId = put(game, p1.id, spell("First"));
+    const secondId = put(game, p1.id, spell("Second"));
+    const after = applyResolveExileUntilTaken(pact(game, p1.id), p1.id, true);
+    expect(after.cards[firstId]?.zone).toBe("hand");
+    expect(after.prompts).toHaveLength(0);
+    // The loop stopped: the second card was never touched.
+    expect(after.cards[secondId]?.zone).toBe("library");
+  });
+
+  it("keeps digging when the card is declined", () => {
+    const { game, p1 } = twoPlayers();
+    const firstId = put(game, p1.id, spell("First"));
+    const secondId = put(game, p1.id, spell("Second"));
+    put(game, p1.id, spell("Third"));
+    const after = applyResolveExileUntilTaken(pact(game, p1.id), p1.id, false);
+    // Declining is a real choice, not a formality: the card is played to
+    // dig PAST what you do not want.
+    expect(after.cards[firstId]?.zone).toBe("exile");
+    expect(after.cards[secondId]?.zone).toBe("exile");
+    expect(offered(after).cardId).toBe(secondId);
+    expect(offered(after).exiledThisWay).toEqual([firstId, secondId]);
+  });
+
+  it("stops dead on a second card with the same name", () => {
+    const { game, p1 } = twoPlayers();
+    const firstId = put(game, p1.id, spell("Swamp Thing"));
+    const twinId = put(game, p1.id, spell("Swamp Thing"));
+    const deepId = put(game, p1.id, spell("Never Reached"));
+    let after = pact(game, p1.id);
+    after = applyResolveExileUntilTaken(after, p1.id, false);
+    // "…or you exile two cards with the same name, whichever comes first."
+    // The twin stays in exile, nothing is taken, and the loop is over.
+    expect(after.prompts).toHaveLength(0);
+    expect(after.cards[firstId]?.zone).toBe("exile");
+    expect(after.cards[twinId]?.zone).toBe("exile");
+    expect(after.cards[deepId]?.zone).toBe("library");
+    expect(after.players.find((entry) => entry.id === p1.id)!.zones.hand).toHaveLength(0);
+  });
+
+  it("compares only against what THIS loop exiled", () => {
+    const { game, p1 } = twoPlayers();
+    // A card of the same name already sitting in exile from something else.
+    const strangerDefinition = spell("Swamp Thing");
+    game.definitions[strangerDefinition.id] = strangerDefinition;
+    const stranger = createCardInstance({
+      definitionId: strangerDefinition.id,
+      ownerId: p1.id,
+      zone: "exile",
+    });
+    game.cards[stranger.id] = stranger;
+    game.players.find((entry) => entry.id === p1.id)!.zones.exile.push(stranger.id);
+    const firstId = put(game, p1.id, spell("Swamp Thing"));
+    const after = pact(game, p1.id);
+    // "Another card exiled THIS WAY" — the one already there is somebody
+    // else's business, so the offer still happens.
+    expect(offered(after).cardId).toBe(firstId);
+  });
+
+  it("ends quietly on an empty library", () => {
+    const { game, p1 } = twoPlayers();
+    const after = pact(game, p1.id);
+    expect(after.prompts).toHaveLength(0);
+    expect(after.players.find((entry) => entry.id === p1.id)!.zones.hand).toHaveLength(0);
+  });
+
+  it("digs the whole library away when nothing is ever taken", () => {
+    const { game, p1 } = twoPlayers();
+    for (let i = 0; i < 4; i += 1) {
+      put(game, p1.id, spell(`Unique ${i}`));
+    }
+    let after = pact(game, p1.id);
+    for (let guard = 0; guard < 6 && after.prompts.length > 0; guard += 1) {
+      after = applyResolveExileUntilTaken(after, p1.id, false);
+    }
+    // Four distinct names, all declined: the library is gone and the loop
+    // ended because there was nothing left to exile.
+    expect(after.players.find((entry) => entry.id === p1.id)!.zones.library).toHaveLength(0);
+    expect(after.players.find((entry) => entry.id === p1.id)!.zones.exile).toHaveLength(4);
+    expect(after.prompts).toHaveLength(0);
+  });
+
+  it("refuses an answer from the wrong player", () => {
+    const { game, p1, p2 } = twoPlayers();
+    put(game, p1.id, spell("First"));
+    const asked = pact(game, p1.id);
+    expect(() => applyResolveExileUntilTaken(asked, p2.id, true)).toThrow();
+  });
+
+  it("resumes the rest of the card only once the loop ends", () => {
+    const { game, p1 } = twoPlayers();
+    put(game, p1.id, spell("First"));
+    put(game, p1.id, spell("Second"));
+    const before = game.players.find((entry) => entry.id === p1.id)!.life;
+    let after = applyEffects(
+      game,
+      bindCardEffects(
+        game,
+        [
+          { kind: "exile_until_taken", playerId: "controller" },
+          { kind: "gain_life", playerId: "controller", amount: 2 },
+        ],
+        { controllerId: p1.id, sourceId: null, targets: [], targetRequirements: [] },
+      ),
+    );
+    expect(after.players.find((entry) => entry.id === p1.id)!.life).toBe(before);
+    // Declining takes another turn of the loop; the life gain waits rather
+    // than running between two exiles.
+    after = applyResolveExileUntilTaken(after, p1.id, false);
+    expect(after.players.find((entry) => entry.id === p1.id)!.life).toBe(before);
+    after = applyResolveExileUntilTaken(after, p1.id, true);
+    expect(after.players.find((entry) => entry.id === p1.id)!.life).toBe(before + 2);
+  });
+
+  it("round trips the loop mid-flight", () => {
+    const { game, p1 } = twoPlayers();
+    const definition = createCardDefinition({
+      name: "Wave 393 Pact",
+      typeLine: "Instant",
+      manaCost: "{1}{B}",
+      effects: [{ kind: "exile_until_taken", playerId: "controller" }],
+    });
+    game.definitions[definition.id] = definition;
+    const firstId = put(game, p1.id, spell("First"));
+    const secondId = put(game, p1.id, spell("Second"));
+    const mid = applyResolveExileUntilTaken(pact(game, p1.id), p1.id, false);
+    const round = parseGameState(serializeGameState(mid));
+    const prompt = round.prompts[0];
+    if (prompt?.kind !== "exile_until_taken") {
+      throw new Error("expected an exile-until choice");
+    }
+    // The exiled list has to survive: dropped, the name check compares
+    // against nothing and the loop never stops on a duplicate.
+    expect(prompt.exiledThisWay).toEqual([firstId, secondId]);
+    expect(prompt.cardId).toBe(secondId);
+    expect(round.definitions[definition.id]?.effects).toEqual([
+      { kind: "exile_until_taken", playerId: "controller" },
+    ]);
+    const finished = applyResolveExileUntilTaken(round, p1.id, true);
+    expect(finished.cards[secondId]?.zone).toBe("hand");
   });
 });

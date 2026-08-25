@@ -1704,6 +1704,10 @@ export function bindCardEffect(
         rider: effect.rider.map((one) => ({ ...one })),
       };
     }
+    case "exile_until_taken": {
+      const playerId = bindPlayerSelector(state, effect.playerId, context);
+      return playerId ? { kind: "exile_until_taken", playerId } : null;
+    }
     case "punisher_choice": {
       const chooserId = bindPlayerSelector(state, effect.chooserId, context);
       if (!chooserId || chooserId === context.controllerId) {
@@ -2920,6 +2924,45 @@ function applyLoseLife(state: GameState, playerId: PlayerId, amount: number): Ga
   requirePlayer(next, playerId).life -= lost;
   next.log.push({ kind: "life_change", playerId, delta: -lost });
   dispatchEventsInPlace(next, [{ kind: "loses_life", playerId, amount: lost }]);
+  return next;
+}
+
+/**
+ * One turn of Tainted Pact's loop: exile the top card, then either stop —
+ * because its name matches one already exiled this way, or because the
+ * library is empty — or offer it.
+ *
+ * Exported so the resolver can take the next turn without duplicating the
+ * name check, which is the rule the card hinges on.
+ */
+export function exileUntilTakenStep(
+  state: GameState,
+  playerId: PlayerId,
+  exiledThisWay: CardInstanceId[],
+): GameState {
+  const player = state.players.find((entry) => entry.id === playerId);
+  const topId = player?.zones.library[0];
+  if (!topId) {
+    // "Repeat this process until…": an empty library simply ends it.
+    return cloneGameState(state);
+  }
+  let next = moveCard(state, topId, "exile");
+  const nameOf = (cardId: CardInstanceId) =>
+    next.definitions[next.cards[cardId]?.definitionId ?? ""]?.name ?? "";
+  const clash = exiledThisWay.some((cardId) => nameOf(cardId) === nameOf(topId));
+  const seen = [...exiledThisWay, topId];
+  if (clash || !isLiving(next, playerId)) {
+    // "…or you exile two cards with the same name, whichever comes first."
+    // The second copy stays in exile and nothing is taken.
+    return next;
+  }
+  next = cloneGameState(next);
+  next.prompts.push({
+    kind: "exile_until_taken",
+    playerId,
+    cardId: topId,
+    exiledThisWay: seen,
+  });
   return next;
 }
 
@@ -6936,6 +6979,9 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
         });
         break;
       }
+      case "exile_until_taken":
+        next = exileUntilTakenStep(state, effect.playerId, []);
+        break;
       case "punisher_choice": {
         next = cloneGameState(state);
         if (!isLiving(next, effect.chooserId)) {
@@ -7120,6 +7166,7 @@ export function applyEffects(state: GameState, effects: GameEffect[]): GameState
         prompt.kind === "tap_own_for_x" ||
         prompt.kind === "replace_draw_with_dredge" ||
         prompt.kind === "punisher_choice" ||
+        prompt.kind === "exile_until_taken" ||
         prompt.kind === "divide_piles")
     ) {
       const remaining = effects.slice(index + 1);

@@ -5547,6 +5547,13 @@ function compileSimpleClauseInner(sentence: string): SimpleClause | null {
    * clause: "you may tap X untapped Myr you control to do: <rider>", where
    * X is however many were tapped and the rider reads it.
    */
+  if (/^exile until taken$/i.test(sentence)) {
+    return {
+      targetRequirements: [],
+      effects: [{ kind: "exile_until_taken", playerId: "controller" }],
+    };
+  }
+
   const punisher = sentence.match(/^punisher offer: (.+?) else: (.+)$/i);
   if (punisher?.[1] && punisher[2]) {
     const taken = compileSimpleClause(
@@ -10371,6 +10378,30 @@ function compileDigUntilClause(sentence: string): CardEffect[] | null {
  * offer would be an effect with no consequence and the punishment an
  * effect with no condition.
  */
+/**
+ * Tainted Pact prints its loop as three sentences: the exile, the offer
+ * with its name clause, and the repeat. Fused, because none of them is an
+ * effect on its own — the offer names the card the first exiled, and the
+ * repeat names the whole thing.
+ */
+function fuseExileUntilTakenInPlace(sentences: string[], lineStart: boolean[]): void {
+  for (let index = 0; index + 2 < sentences.length; index += 1) {
+    const first = /^Exile the top card of your library$/i.test(sentences[index] ?? "");
+    const offer = /^You may put that card into your hand unless it has the same name as another card exiled this way$/i.test(
+      sentences[index + 1] ?? "",
+    );
+    const repeat = /^Repeat this process until you put a card into your hand or you exile two cards with the same name(?:, whichever comes first)?$/i.test(
+      sentences[index + 2] ?? "",
+    );
+    if (!first || !offer || !repeat) {
+      continue;
+    }
+    sentences[index] = "exile until taken";
+    sentences.splice(index + 1, 2);
+    lineStart.splice(index + 1, 2);
+  }
+}
+
 function fusePunisherInPlace(sentences: string[], lineStart: boolean[]): void {
   for (let index = 0; index + 1 < sentences.length; index += 1) {
     if (lineStart[index + 1]) {
@@ -14994,6 +15025,7 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
   fuseInAdditionTypeInPlace(sentences, lineStart);
   fuseChooseGraveyardCastInPlace(sentences, lineStart);
   fusePutLandRiderInPlace(sentences, lineStart);
+  fuseExileUntilTakenInPlace(sentences, lineStart);
   fusePunisherInPlace(sentences, lineStart);
   fuseTapForXInPlace(sentences, lineStart);
   fuseTemptingOfferInPlace(sentences, lineStart);

@@ -159,6 +159,9 @@ function nextAction(state: GameState, rng: () => number): GameAction | null {
           playerId,
           discard: rng() < 0.5,
         };
+      case "exile_until_taken":
+        // Both: taking ends the loop, declining takes another turn of it.
+        return { kind: "resolve_exile_until_taken", playerId, take: rng() < 0.5 };
       case "punisher_choice":
         // Both branches, since both are the card.
         return { kind: "resolve_punisher", playerId, take: rng() < 0.5 };

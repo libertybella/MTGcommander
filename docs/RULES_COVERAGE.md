@@ -3015,6 +3015,7 @@ ends. Every printed card of this shape asks about the current turn.
 - **Splice onto Arcane** (CR 702.47) for splices that need no targets: the card is revealed from hand and stays there, its cost joins the Arcane spell's in one payment, and its effects resolve after the spell's own.
 - **Dredge** (CR 702.52) as a real draw replacement: the offer precedes the draw, one draw at a time, and declining draws without re-offering. Legal with a library too short to draw safely; illegal with fewer cards than the dredge number.
 - **The punisher choice** (Combustible Gearhulk): an opponent picks which of two branches happens, both real, with the branches bound at answer time so "that player" is the one who chose. Damage "equal to the total mana value of those cards" reads the set the sibling mill just made.
+- **Tainted Pact's loop**: exile the top card and offer it, stopping on a take or on a second card sharing a name with one this loop already exiled. Declining is a real choice and takes another turn.
 - A seeded random-game fuzzer asserts zone integrity and serialize round-trips after every action (CI: 6 games; 500-game burn-ins gate checkpoint tags — they have caught two real livelocks and the trigger-batching bug).
 
 ## Documented gaps (intentional, in plan order)

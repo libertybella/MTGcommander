@@ -1994,6 +1994,7 @@ export type GameEffect =
       ifTaken: CardEffect[];
       ifDeclined: CardEffect[];
     }
+  | { kind: "exile_until_taken"; playerId: PlayerId }
   | {
       kind: "divide_into_piles";
       playerId: PlayerId;
@@ -3547,6 +3548,16 @@ export type CardEffect =
       ifDeclined: CardEffect[];
     }
   /**
+   * Tainted Pact. Exile the top card; if its name matches one already
+   * exiled this way the whole thing stops; otherwise the caster MAY take
+   * it, and taking it stops too.
+   *
+   * A loop with a decision in it, which is why it needed the prompt
+   * machinery: auto-taking the first legal card is materially wrong, since
+   * the card is played to dig PAST what you do not want.
+   */
+  | { kind: "exile_until_taken"; playerId: PlayerSelector }
+  /**
    * Myr Battlesphere: "you may tap X untapped Myr you control. If you do,
    * this gets +X/+0 and deals X damage to the player it's attacking."
    *
@@ -4758,6 +4769,18 @@ export type PendingPrompt =
    * opponents one at a time; `accepted` is how many have said yes so far,
    * and the controller repeats their action that many times at the end.
    */
+  /**
+   * Tainted Pact, mid-loop: `cardId` is the card just exiled and offered,
+   * and `exiledThisWay` is everything the loop has exiled so far — the
+   * name check compares against that list, not against exile at large.
+   */
+  | {
+      kind: "exile_until_taken";
+      playerId: PlayerId;
+      cardId: CardInstanceId;
+      exiledThisWay: CardInstanceId[];
+      resumeEffects?: GameEffect[];
+    }
   /** The punisher choice: this player picks which branch happens. */
   | {
       kind: "punisher_choice";
@@ -5842,6 +5865,7 @@ export type GameAction =
   /** `cardId` null takes the draw; otherwise that card is dredged. */
   | { kind: "resolve_dredge"; playerId: PlayerId; cardId: CardInstanceId | null }
   | { kind: "resolve_punisher"; playerId: PlayerId; take: boolean }
+  | { kind: "resolve_exile_until_taken"; playerId: PlayerId; take: boolean }
   | { kind: "resolve_color"; playerId: PlayerId; color: Color }
   | { kind: "resolve_scry"; playerId: PlayerId; bottomIds: CardInstanceId[] }
   | { kind: "resolve_surveil"; playerId: PlayerId; graveyardIds: CardInstanceId[] }

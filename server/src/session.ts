@@ -464,6 +464,17 @@ export class GameHost {
           });
           continue;
         }
+        if (prompt.kind === "exile_until_taken") {
+          // A documented auto-take: an absent player TAKES the card. The
+          // alternative digs their own library away for a choice nobody is
+          // there to make.
+          this.apply({
+            kind: "resolve_exile_until_taken",
+            playerId: prompt.playerId,
+            take: true,
+          });
+          continue;
+        }
         if (prompt.kind === "punisher_choice") {
           // A documented auto-take: an absent player DECLINES. Every card
           // in this shape prints the refusal as the punishing branch, and

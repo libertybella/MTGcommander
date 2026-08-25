@@ -2036,6 +2036,10 @@ export function Battlefield(props: Props) {
               ? actorId === prompt.playerId
                 ? "Choose a mode you have not already chosen this turn."
                 : `Waiting for ${chooser?.displayName ?? "a player"} to choose a mode.`
+              : prompt.kind === "exile_until_taken"
+              ? actorId === prompt.playerId
+                ? "Take this card, or exile the next one."
+                : `Waiting for ${chooser?.displayName ?? "a player"} to dig.`
               : prompt.kind === "punisher_choice"
               ? actorId === prompt.playerId
                 ? "Take the offer, or refuse it and take what follows."
@@ -2664,6 +2668,26 @@ export function Battlefield(props: Props) {
                   {prompt.kind === "pay_or_counter" ? "Decline (countered)" : "Decline"}
                 </button>
               </>
+            ) : null}
+            {actorId === prompt.playerId && prompt.kind === "exile_until_taken" ? (
+              <div className="look-row" data-testid="exile-until-taken">
+                <button
+                  type="button"
+                  onClick={() =>
+                    send({ kind: "resolve_exile_until_taken", playerId: actorId, take: true })
+                  }
+                >
+                  {`Take ${definition(state, prompt.cardId)?.name ?? "it"}`}
+                </button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    send({ kind: "resolve_exile_until_taken", playerId: actorId, take: false })
+                  }
+                >
+                  Keep digging
+                </button>
+              </div>
             ) : null}
             {actorId === prompt.playerId && prompt.kind === "punisher_choice" ? (
               <div className="look-row" data-testid="punisher-choice">
