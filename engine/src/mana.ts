@@ -2,6 +2,7 @@ import { cloneGameState } from "./clone";
 import { emptyManaPool } from "./createGame";
 import type {
   CardInstanceId,
+  Color,
   GameState,
   ManaColor,
   ManaPool,
@@ -292,6 +293,8 @@ export type ManaPurpose = {
   colorless: boolean;
   /** Changeling: counts as every creature type. */
   changeling?: boolean;
+  /** The spell's own colours (Throne of Eldraine reads them). */
+  colors?: Color[];
   /** True when this is an activated ability rather than a cast spell. */
   isAbility: boolean;
   /** Opal Palace: the spell being paid for is its caster's commander. */
@@ -303,6 +306,7 @@ export function restrictionAdmits(
   entry: RestrictedMana,
   purpose: ManaPurpose | undefined,
   chosenSubtypeOf: (sourceId: CardInstanceId) => string | null,
+  chosenColorOf: (sourceId: CardInstanceId) => Color | null = () => null,
 ): boolean {
   const rule = entry.restriction;
   // An unrestricted tag is in this pool to be WATCHED, not to be limited.
@@ -337,6 +341,15 @@ export function restrictionAdmits(
       return false;
     }
   }
+  if (rule.monocoloredChosenColor) {
+    const chosen = chosenColorOf(entry.sourceId);
+    const colors = purpose.colors ?? [];
+    // Monocolored means exactly one, so a colourless spell fails this as
+    // surely as a gold one does.
+    if (!chosen || colors.length !== 1 || colors[0] !== chosen) {
+      return false;
+    }
+  }
   return true;
 }
 
@@ -356,8 +369,11 @@ export function manaRiderFires(
     return false;
   }
   if (
-    !restrictionAdmits({ ...entry, restriction: rider.when }, purpose, (sourceId) =>
-      state.cards[sourceId]?.chosenCreatureType ?? null,
+    !restrictionAdmits(
+      { ...entry, restriction: rider.when },
+      purpose,
+      (sourceId) => state.cards[sourceId]?.chosenCreatureType ?? null,
+      (sourceId) => state.cards[sourceId]?.chosenColor ?? null,
     )
   ) {
     return false;
@@ -400,8 +416,11 @@ export function usableRestrictedMana(
   const pool = { W: 0, U: 0, B: 0, R: 0, G: 0, C: 0 };
   for (const entry of player?.restrictedMana ?? []) {
     if (
-      restrictionAdmits(entry, purpose, (sourceId) =>
-        state.cards[sourceId]?.chosenCreatureType ?? null,
+      restrictionAdmits(
+        entry,
+        purpose,
+        (sourceId) => state.cards[sourceId]?.chosenCreatureType ?? null,
+        (sourceId) => state.cards[sourceId]?.chosenColor ?? null,
       )
     ) {
       pool[entry.color] += entry.amount;
@@ -482,8 +501,11 @@ export function payManaCost(
         continue;
       }
       if (
-        !restrictionAdmits(entry, purpose, (sourceId) =>
-          next.cards[sourceId]?.chosenCreatureType ?? null,
+        !restrictionAdmits(
+          entry,
+          purpose,
+          (sourceId) => next.cards[sourceId]?.chosenCreatureType ?? null,
+          (sourceId) => next.cards[sourceId]?.chosenColor ?? null,
         )
       ) {
         continue;

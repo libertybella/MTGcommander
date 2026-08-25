@@ -416,6 +416,7 @@ export function createCardDefinition(
               }
             : {}),
           ...(ability.lifeCost && ability.lifeCost > 0 ? { lifeCost: ability.lifeCost } : {}),
+          ...(ability.payWithChosenColorOnly ? { payWithChosenColorOnly: true } : {}),
           ...(ability.timing === "sorcery" || ability.timing === "your_turn"
             ? { timing: ability.timing }
             : {}),

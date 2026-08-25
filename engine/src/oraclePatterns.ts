@@ -298,6 +298,14 @@ function parseSpendRestriction(tail: string): ManaRestriction | null {
     chosenSubtype = true;
     phrase = chosen[1].trim();
   }
+  // Throne of Eldraine: "…monocolored spells of THAT COLOR", the colour
+  // picked as it entered.
+  let chosenColorTail = false;
+  const ofThatColor = phrase.match(/^(.*?) of that color$/);
+  if (ofThatColor?.[1]) {
+    chosenColorTail = true;
+    phrase = ofThatColor[1].trim();
+  }
   const noun = phrase.match(/^(.*?) spells?$/);
   if (!noun?.[1]) {
     return null;
@@ -314,9 +322,14 @@ function parseSpendRestriction(tail: string): ManaRestriction | null {
     } else if (word === "legendary") {
       restriction.legendary = true;
     } else if (word === "monocolored") {
-      // Monocolour is not a filter this engine can express; refuse rather
-      // than compile a restriction that would admit anything.
-      return null;
+      // Monocolour ALONE is still not a filter this engine can express, and
+      // a restriction that admits anything is worse than a miss. Paired
+      // with "of that color" it is exactly expressible: one colour, and
+      // that colour the producer's.
+      if (!chosenColorTail) {
+        return null;
+      }
+      restriction.monocoloredChosenColor = true;
     } else if (SEARCH_CARD_TYPES.has(word)) {
       restriction.types = [...(restriction.types ?? []), word];
     } else if (/^[a-z][a-z-]*$/.test(word)) {
@@ -2341,6 +2354,7 @@ function manaAbilityFromAdd(add: AddManaResult): ManaAbility {
       producesAnyColor: false,
       damageToController: 0,
       producesChosenColor: true,
+      ...(add.count && add.count > 1 ? { count: add.count } : {}),
     };
   }
   return {
@@ -2368,7 +2382,7 @@ type AddManaResult =
       kind: "any_color_among";
       scope: NonNullable<ManaAbility["anyColorAmong"]>;
     }
-  | { kind: "chosen_color" }
+  | { kind: "chosen_color"; count?: number }
   | { kind: "colors_among"; scope: "permanents" }
   | { kind: "or"; colors: ManaColor[] };
 
@@ -2397,9 +2411,16 @@ function parseAddMana(rest: string): AddManaResult | null {
   if (/^Add one mana of any type that a land you control could produce$/i.test(text)) {
     return { kind: "any_color_among", scope: "your_lands" };
   }
-  // Heraldic Banner: the color picked as the source entered.
-  if (/^Add one mana of the chosen color$/i.test(text)) {
-    return { kind: "chosen_color" };
+  // Heraldic Banner: the color picked as the source entered. Throne of
+  // Eldraine adds FOUR of it, which is the same ability with a count.
+  const chosenColorAdd = text.match(
+    /^Add (one|two|three|four|five|\d+) mana of the chosen color$/i,
+  );
+  if (chosenColorAdd?.[1]) {
+    const count = parseCount(chosenColorAdd[1]);
+    if (count) {
+      return { kind: "chosen_color", count };
+    }
   }
   // Command Tower / Arcane Signet: the color picker is limited to the
   // controller's commanders' color identity, read from the board at tap time.
@@ -20401,6 +20422,21 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
       (result.manaAbilities.length > 0 || result.activated.length > 0)
     ) {
       continue;
+    }
+
+    // Throne of Eldraine: a colour restriction on the ACTIVATION cost,
+    // which rides the ability the way its timing riders do. Left as its own
+    // sentence it lands in `definition.effects`, which a permanent never
+    // runs, and the ability is payable in any colour.
+    if (
+      /^Spend only mana of the chosen color to activate this ability$/i.test(sentence) &&
+      result.activated.length > 0
+    ) {
+      const last = result.activated[result.activated.length - 1];
+      if (last && !last.payWithChosenColorOnly) {
+        last.payWithChosenColorOnly = true;
+        continue;
+      }
     }
 
     if (/^Activate only as a sorcery$/i.test(sentence) && result.activated.length > 0) {

@@ -668,6 +668,9 @@ export function manaPurposeForSpell(
     subtypes: traits.subtypes,
     supertypes: traits.supertypes,
     colorless: traits.colors.length === 0,
+    // Throne of Eldraine asks whether the spell is MONOCOLORED and which
+    // colour it is, which "colorless" alone cannot answer.
+    colors: [...traits.colors],
     // A changeling is every creature type, so any chosen-type restriction
     // admits it (CR 702.73a).
     changeling: definition.changeling === true,
@@ -1848,6 +1851,19 @@ function applyActivateAbility(
   // K'rrik says "in a COST", which is every cost its controller pays —
   // activations included, not only spells.
   applyPhyrexianColorGrants(state, playerId, cost);
+  // Throne of Eldraine: "Spend only mana of the chosen color to activate
+  // this ability." Generic that only one colour may pay IS a pip of that
+  // colour, so the restriction is the cost rewritten. With no colour
+  // chosen the ability cannot be paid for at all, which is the honest
+  // reading of a restriction naming a choice that was never made.
+  if (ability.payWithChosenColorOnly) {
+    const chosen = state.cards[cardId]?.chosenColor ?? null;
+    if (!chosen) {
+      throw new Error("No color has been chosen for that ability");
+    }
+    cost[chosen] += cost.generic;
+    cost.generic = 0;
+  }
   // {X} in an activation cost is announced the same way a spell's is.
   if (ability.xCost) {
     if (xValue === undefined || !Number.isInteger(xValue) || xValue < 0) {

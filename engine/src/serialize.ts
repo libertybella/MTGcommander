@@ -172,6 +172,7 @@ function parseManaRestriction(value: unknown, label: string): ManaRestriction {
   return {
     ...(types.length > 0 ? { types } : {}),
     ...(value.chosenSubtype === true ? { chosenSubtype: true } : {}),
+    ...(value.monocoloredChosenColor === true ? { monocoloredChosenColor: true } : {}),
     ...(value.subtype === undefined
       ? {}
       : { subtype: expectString(value.subtype, `${label}.subtype`) }),
@@ -5470,6 +5471,7 @@ function parseActivatedAbilities(value: unknown, label: string): ActivatedAbilit
       ...(entry.timing === "sorcery" || entry.timing === "your_turn"
         ? { timing: entry.timing }
         : {}),
+      ...(entry.payWithChosenColorOnly === true ? { payWithChosenColorOnly: true } : {}),
       ...(entry.requiresControlled === undefined
         ? {}
         : {

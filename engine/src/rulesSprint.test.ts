@@ -68563,3 +68563,256 @@ describe("wave 411: Promise of Loyalty", () => {
     expect(() => swingAt(round, p2.id, theirsId, p1.id)).toThrow();
   });
 });
+
+describe("wave 412: Throne of Eldraine", () => {
+  const compile = (name: string, typeLine: string, oracleText: string, manaCost = "") =>
+    compileOracleCard({
+      oracleId: name.toLowerCase().replace(/[^a-z]+/g, "-"),
+      name,
+      manaCost,
+      typeLine,
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  const throneText =
+    "As Throne of Eldraine enters, choose a color.\n{T}: Add four mana of the chosen color. Spend this mana only to cast monocolored spells of that color.\n{3}, {T}: Draw two cards. Spend only mana of the chosen color to activate this ability.";
+
+  it("compiles all three of the Throne's lines", () => {
+    const compiled = compile("Throne of Eldraine", "Legendary Artifact", throneText, "{4}");
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.manaAbilities[0]).toMatchObject({
+      producesChosenColor: true,
+      count: 4,
+      spendOnly: { monocoloredChosenColor: true },
+    });
+    expect(compiled.definition.activated[0]).toMatchObject({
+      tap: true,
+      manaCost: "{3}",
+      payWithChosenColorOnly: true,
+    });
+  });
+
+  it("still refuses a bare monocolored restriction", () => {
+    const compiled = compile(
+      "Bare Mono",
+      "Land",
+      "{T}: Add one mana of any color. Spend this mana only to cast monocolored spells.",
+    );
+    // Monocolour ALONE names no colour to check against, and a restriction
+    // that admits everything is worse than a miss.
+    expect(compiled.notes).not.toEqual([]);
+  });
+
+  // ---- The spend restriction ---------------------------------------------
+
+  const throne = () =>
+    createCardDefinition({
+      name: "Throne of Eldraine",
+      typeLine: "Legendary Artifact",
+      manaCost: "{4}",
+      manaAbilities: [
+        {
+          produces: {},
+          producesOptions: [],
+          producesAnyColor: false,
+          damageToController: 0,
+          producesChosenColor: true,
+          count: 4,
+          spendOnly: { monocoloredChosenColor: true },
+        },
+      ],
+      activated: [
+        {
+          tap: true,
+          manaCost: "{3}",
+          effects: [{ kind: "draw", playerId: "controller", count: 2 }],
+          targetRequirements: [],
+          payWithChosenColorOnly: true,
+        },
+      ],
+    });
+
+  const put = (game: GameState, ownerId: string, definition: CardDefinition) => {
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({
+      definitionId: definition.id,
+      ownerId,
+      zone: "battlefield",
+    });
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === ownerId)!.zones.battlefield.push(card.id);
+    card.summoningSick = false;
+    return card.id;
+  };
+
+  const spellIn = (game: GameState, ownerId: string, name: string, manaCost: string) => {
+    const definition = createCardDefinition({
+      name,
+      typeLine: "Creature — Bear",
+      manaCost,
+      power: 2,
+      toughness: 2,
+    });
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({ definitionId: definition.id, ownerId, zone: "hand" });
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === ownerId)!.zones.hand.push(card.id);
+    return card.id;
+  };
+
+  const ready = (game: GameState, playerId: string) => {
+    game.turn.activePlayerId = playerId;
+    game.turn.phase = "precombatMain";
+    game.turn.step = "precombatMain";
+    game.priorityPlayerId = playerId;
+  };
+
+  const tapThrone = (game: GameState, playerId: string, throneId: string) => {
+    ready(game, playerId);
+    return applyAction(game, {
+      kind: "tap_for_mana",
+      playerId,
+      cardId: throneId,
+      manaIndex: 0,
+    });
+  };
+
+  it("adds four of the chosen colour, restricted", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const throneId = put(game, p1.id, throne());
+    game.cards[throneId]!.chosenColor = "U";
+    const after = tapThrone(game, p1.id, throneId);
+    const restricted = after.players.find((entry) => entry.id === p1.id)!.restrictedMana ?? [];
+    expect(restricted).toHaveLength(1);
+    expect(restricted[0]).toMatchObject({ color: "U", amount: 4 });
+    // Restricted, not free: none of it is in the open pool.
+    expect(after.players.find((entry) => entry.id === p1.id)!.mana.U).toBe(0);
+  });
+
+  it("pays for a monocoloured spell of that colour", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const throneId = put(game, p1.id, throne());
+    game.cards[throneId]!.chosenColor = "U";
+    const bearId = spellIn(game, p1.id, "Blue Bear", "{2}{U}");
+    let after = tapThrone(game, p1.id, throneId);
+    ready(after, p1.id);
+    after = applyAction(after, {
+      kind: "cast_spell",
+      playerId: p1.id,
+      cardId: bearId,
+      targets: [],
+    });
+    expect(after.stack).toHaveLength(1);
+  });
+
+  it("refuses a spell of a different colour", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const throneId = put(game, p1.id, throne());
+    game.cards[throneId]!.chosenColor = "U";
+    const bearId = spellIn(game, p1.id, "Red Bear", "{2}{R}");
+    const after = tapThrone(game, p1.id, throneId);
+    ready(after, p1.id);
+    expect(() =>
+      applyAction(after, { kind: "cast_spell", playerId: p1.id, cardId: bearId, targets: [] }),
+    ).toThrow();
+  });
+
+  it("refuses a gold spell that contains the colour", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const throneId = put(game, p1.id, throne());
+    game.cards[throneId]!.chosenColor = "U";
+    const bearId = spellIn(game, p1.id, "Gold Bear", "{1}{U}{R}");
+    const after = tapThrone(game, p1.id, throneId);
+    ready(after, p1.id);
+    // MONOcolored: exactly one colour, so a two-colour spell is out even
+    // though one of its colours matches.
+    expect(() =>
+      applyAction(after, { kind: "cast_spell", playerId: p1.id, cardId: bearId, targets: [] }),
+    ).toThrow();
+  });
+
+  it("refuses a colourless spell", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const throneId = put(game, p1.id, throne());
+    game.cards[throneId]!.chosenColor = "U";
+    const bearId = spellIn(game, p1.id, "Grey Bear", "{3}");
+    const after = tapThrone(game, p1.id, throneId);
+    ready(after, p1.id);
+    // Colourless is not one colour; it is none.
+    expect(() =>
+      applyAction(after, { kind: "cast_spell", playerId: p1.id, cardId: bearId, targets: [] }),
+    ).toThrow();
+  });
+
+  // ---- The activation cost ------------------------------------------------
+
+  const activateDraw = (game: GameState, playerId: string, throneId: string) => {
+    ready(game, playerId);
+    return applyAction(game, {
+      kind: "activate_ability",
+      playerId,
+      cardId: throneId,
+      abilityIndex: 0,
+      targets: [],
+    });
+  };
+
+  it("takes the {3} in the chosen colour only", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const throneId = put(game, p1.id, throne());
+    game.cards[throneId]!.chosenColor = "U";
+    game.players.find((entry) => entry.id === p1.id)!.mana.U = 3;
+    const after = activateDraw(game, p1.id, throneId);
+    expect(after.players.find((entry) => entry.id === p1.id)!.mana.U).toBe(0);
+  });
+
+  it("refuses three mana of the wrong colour", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const throneId = put(game, p1.id, throne());
+    game.cards[throneId]!.chosenColor = "U";
+    const player = game.players.find((entry) => entry.id === p1.id)!;
+    player.mana.R = 3;
+    player.mana.C = 3;
+    // "Spend ONLY mana of the chosen color" — a generic pip that one
+    // colour must pay is a pip of that colour.
+    expect(() => activateDraw(game, p1.id, throneId)).toThrow();
+  });
+
+  it("refuses the activation when no colour was chosen", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const throneId = put(game, p1.id, throne());
+    game.players.find((entry) => entry.id === p1.id)!.mana.U = 5;
+    expect(() => activateDraw(game, p1.id, throneId)).toThrow();
+  });
+
+  it("round trips the restriction and the activation colour", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const definition = throne();
+    const throneId = put(game, p1.id, definition);
+    game.cards[throneId]!.chosenColor = "U";
+    const round = parseGameState(serializeGameState(tapThrone(game, p1.id, throneId)));
+    // Dropped on the wire the Throne makes four unrestricted mana and
+    // draws two cards for any three, which is a different card entirely.
+    expect(round.definitions[definition.id]?.manaAbilities[0]?.spendOnly).toEqual({
+      monocoloredChosenColor: true,
+    });
+    expect(round.definitions[definition.id]?.activated[0]?.payWithChosenColorOnly).toBe(true);
+    expect(round.players.find((entry) => entry.id === p1.id)!.restrictedMana?.[0]).toMatchObject({
+      color: "U",
+      amount: 4,
+    });
+  });
+});

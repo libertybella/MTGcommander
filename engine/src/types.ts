@@ -2773,6 +2773,13 @@ export type ManaRestriction = {
   chosenSubtype?: boolean;
   /** …and this literal subtype (Eldrazi Temple). */
   subtype?: string;
+  /**
+   * Throne of Eldraine: "…only to cast MONOCOLORED spells of that color".
+   * Two conditions in one phrase and both are about the spell's colours
+   * rather than its types — exactly one colour, and that colour the one
+   * the producer chose as it entered.
+   */
+  monocoloredChosenColor?: boolean;
   /** …and be legendary (Delighted Halfling). */
   legendary?: boolean;
   /** Opal Palace: "…to cast your commander". Only ever a rider condition,
@@ -5494,6 +5501,13 @@ export type ActivatedAbility = {
    * activated in combat, or with the stack full, as long as it is your turn.
    */
   timing?: "any" | "sorcery" | "your_turn";
+  /**
+   * Throne of Eldraine: "Spend only mana of the chosen color to activate
+   * this ability." The generic in the printed cost becomes pips of that
+   * colour when the ability is activated, which is what the sentence
+   * means and leaves the mana core alone.
+   */
+  payWithChosenColorOnly?: boolean;
   /** "Activate only if you control a Swamp" — a controlled type/subtype gate. */
   requiresControlled?: ControlledGate;
   /** Minas Tirith: "Activate only if you attacked with two or more creatures
