@@ -8695,6 +8695,36 @@ function compileSimpleClauseInner(sentence: string): SimpleClause | null {
     };
   }
 
+  /**
+   * Life from the Loam, Sanguine Indulgence: "Return up to N target <X>
+   * cards from your graveyard to your hand."
+   *
+   * The capped-count targeting already works — "destroy up to two target
+   * artifacts" has for waves — and it is one optional requirement per slot.
+   * Only this graveyard clause had never learned to read a count, so this
+   * is the same grammar with one.
+   */
+  const upToYard = sentence.match(
+    /^(?:you may )?Return up to (\w+) target (.+?) cards? from your graveyard to your hand$/i,
+  );
+  const upToCount = upToYard?.[1] ? parseCount(upToYard[1]) : null;
+  const upToTarget = upToYard?.[2] ? parseGraveyardTargetPhrase(`${upToYard[2]} card`) : null;
+  if (upToCount && upToTarget && upToCount > 0) {
+    return {
+      // One slot per card, each leavable empty: "up to three" is three
+      // optional targets, not one target chosen three times.
+      targetRequirements: Array.from({ length: upToCount }, () => ({
+        ...upToTarget,
+        optional: true,
+      })),
+      effects: Array.from({ length: upToCount }, (_, index) => ({
+        kind: "move_card" as const,
+        cardId: { type: "chosen" as const, index },
+        toZone: "hand" as const,
+      })),
+    };
+  }
+
   // Regrowth / Zombify / Unearth / Sun Titan / Goblin Engineer: one grammar
   // for the graveyard noun phrase and its destination.
   match = sentence.match(

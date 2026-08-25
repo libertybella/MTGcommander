@@ -63487,3 +63487,197 @@ describe("wave 389: splice onto Arcane", () => {
     expect(resolved.players.find((entry) => entry.id === p1.id)!.mana.R).toBe(3);
   });
 });
+
+describe("wave 390: returning up to N cards from your graveyard", () => {
+  const compile = (name: string, typeLine: string, oracleText: string, manaCost = "") =>
+    compileOracleCard({
+      oracleId: name.toLowerCase().replace(/[^a-z]+/g, "-"),
+      name,
+      manaCost,
+      typeLine,
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  const put = (
+    game: GameState,
+    ownerId: string,
+    definition: CardDefinition,
+    zone: "graveyard" | "hand" = "graveyard",
+  ) => {
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({ definitionId: definition.id, ownerId, zone });
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === ownerId)!.zones[zone].push(card.id);
+    return card.id;
+  };
+
+  it("compiles one slot per card, each leavable empty", () => {
+    const compiled = compile(
+      "Life from the Loam",
+      "Sorcery",
+      "Return up to three target land cards from your graveyard to your hand.",
+      "{1}{G}",
+    );
+    expect(compiled.notes).toEqual([]);
+    // "Up to three" is three optional targets, not one target taken three
+    // times: the caster may return one, two, three or none.
+    expect(compiled.definition.targetRequirements).toEqual([
+      { kind: "own_graveyard_land_card", optional: true },
+      { kind: "own_graveyard_land_card", optional: true },
+      { kind: "own_graveyard_land_card", optional: true },
+    ]);
+    expect(compiled.definition.effects).toEqual([
+      { kind: "move_card", cardId: { type: "chosen", index: 0 }, toZone: "hand" },
+      { kind: "move_card", cardId: { type: "chosen", index: 1 }, toZone: "hand" },
+      { kind: "move_card", cardId: { type: "chosen", index: 2 }, toZone: "hand" },
+    ]);
+  });
+
+  it("reads the filter, not just the count", () => {
+    const compiled = compile(
+      "Soul Salvage",
+      "Sorcery",
+      "Return up to two target creature cards from your graveyard to your hand.",
+      "{2}{B}",
+    );
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.targetRequirements).toEqual([
+      { kind: "own_graveyard_creature_card", optional: true },
+      { kind: "own_graveyard_creature_card", optional: true },
+    ]);
+  });
+
+  it("leaves the single-target form exactly as it was", () => {
+    const compiled = compile(
+      "Regrowth",
+      "Sorcery",
+      "Return target card from your graveyard to your hand.",
+      "{1}{G}",
+    );
+    expect(compiled.notes).toEqual([]);
+    // No `optional`: "target card" must be chosen, and a spell with no
+    // legal target does not resolve at all.
+    expect(compiled.definition.targetRequirements).toEqual([{ kind: "own_graveyard_card" }]);
+  });
+
+  // ---- Choosing them -----------------------------------------------------
+
+  const loam = () =>
+    createCardDefinition({
+      name: "Life from the Loam",
+      typeLine: "Sorcery",
+      manaCost: "{1}{G}",
+      targetRequirements: [
+        { kind: "own_graveyard_land_card", optional: true },
+        { kind: "own_graveyard_land_card", optional: true },
+        { kind: "own_graveyard_land_card", optional: true },
+      ],
+      effects: [
+        { kind: "move_card", cardId: { type: "chosen", index: 0 }, toZone: "hand" },
+        { kind: "move_card", cardId: { type: "chosen", index: 1 }, toZone: "hand" },
+        { kind: "move_card", cardId: { type: "chosen", index: 2 }, toZone: "hand" },
+      ],
+    });
+
+  const forest = (name: string) =>
+    createCardDefinition({ name, typeLine: "Basic Land — Forest" });
+  const bear = (name: string) =>
+    createCardDefinition({
+      name,
+      typeLine: "Creature — Bear",
+      manaCost: "{1}{G}",
+      power: 2,
+      toughness: 2,
+    });
+
+  const castWith = (game: GameState, playerId: string, cardId: string, targets: string[]) => {
+    game.turn.activePlayerId = playerId;
+    game.turn.phase = "precombatMain";
+    game.turn.step = "precombatMain";
+    game.priorityPlayerId = playerId;
+    game.players.find((entry) => entry.id === playerId)!.mana.G = 2;
+    return resolveTopOfStack(
+      applyAction(game, {
+        kind: "cast_spell",
+        playerId,
+        cardId,
+        targets: targets.map((target) => ({ type: "creature" as const, cardId: target })),
+      }),
+    );
+  };
+
+  it("returns all three when three are chosen", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const loamId = put(game, p1.id, loam(), "hand");
+    const first = put(game, p1.id, forest("Forest A"));
+    const second = put(game, p1.id, forest("Forest B"));
+    const third = put(game, p1.id, forest("Forest C"));
+    const after = castWith(game, p1.id, loamId, [first, second, third]);
+    const hand = after.players.find((entry) => entry.id === p1.id)!.zones.hand;
+    expect(hand).toContain(first);
+    expect(hand).toContain(second);
+    expect(hand).toContain(third);
+  });
+
+  it("returns fewer when fewer are chosen", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const loamId = put(game, p1.id, loam(), "hand");
+    const first = put(game, p1.id, forest("Forest A"));
+    const second = put(game, p1.id, forest("Forest B"));
+    const after = castWith(game, p1.id, loamId, [first]);
+    const owner = after.players.find((entry) => entry.id === p1.id)!;
+    expect(owner.zones.hand).toContain(first);
+    // The slots left empty return nothing; the second Forest stays put.
+    expect(owner.zones.graveyard).toContain(second);
+  });
+
+  it("casts with none chosen at all", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const loamId = put(game, p1.id, loam(), "hand");
+    const buried = put(game, p1.id, forest("Forest A"));
+    const after = castWith(game, p1.id, loamId, []);
+    // Every slot is optional, so the spell is castable with an empty
+    // graveyard and simply does nothing.
+    expect(after.cards[loamId]?.zone).toBe("graveyard");
+    expect(after.players.find((entry) => entry.id === p1.id)!.zones.graveyard).toContain(buried);
+  });
+
+  it("refuses a card the filter does not name", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const loamId = put(game, p1.id, loam(), "hand");
+    const bearId = put(game, p1.id, bear("Bear"));
+    expect(() => castWith(game, p1.id, loamId, [bearId])).toThrow();
+  });
+
+  it("refuses the same card in two slots", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const loamId = put(game, p1.id, loam(), "hand");
+    const forestId = put(game, p1.id, forest("Forest A"));
+    // CR 601.2c: the same object cannot be chosen for two target slots.
+    expect(() => castWith(game, p1.id, loamId, [forestId, forestId])).toThrow();
+  });
+
+  it("round trips the slots and their effects", () => {
+    const { game, p1 } = twoPlayers();
+    const definition = loam();
+    put(game, p1.id, definition, "hand");
+    const round = parseGameState(serializeGameState(game));
+    // Dropped on the wire this is a spell that returns one land, which is
+    // a materially smaller card.
+    expect(round.definitions[definition.id]?.targetRequirements).toHaveLength(3);
+    expect(round.definitions[definition.id]?.effects).toHaveLength(3);
+    expect(round.definitions[definition.id]?.targetRequirements[2]).toEqual({
+      kind: "own_graveyard_land_card",
+      optional: true,
+    });
+  });
+});
