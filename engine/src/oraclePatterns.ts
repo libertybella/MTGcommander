@@ -10664,6 +10664,7 @@ type TriggerHead = Pick<
   | "alsoOnCopy"
   | "classLevel"
   | "condition"
+  | "onSelfCast"
 > & {
   /** "enters or attacks": emit a sibling trigger for each extra event. */
   extraEvents?: CardTrigger["event"][];
@@ -10680,6 +10681,12 @@ function parseTriggerHead(head: string): TriggerHead | null {
     return null;
   }
   const text = head.replace(ABILITY_WORD_PREFIX, "").trim();
+  // "When you cast this spell" (CR 603.2c): the watcher is the spell being
+  // cast, not a permanent watching the table. Its own flag, because every
+  // other cast head watches somebody else's spells.
+  if (/^When you cast this spell$/i.test(text)) {
+    return { event: "cast_spell", watch: "self", onSelfCast: true };
+  }
   if (/^Whenever you cast or copy an instant or sorcery spell$/i.test(text)) {
     return {
       event: "cast_spell",

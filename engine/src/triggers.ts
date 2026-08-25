@@ -1343,6 +1343,12 @@ export function dispatchEventsInPlace(state: GameState, events: EngineEvent[]): 
       if ((trigger.fromGraveyard === true) !== watchingFromGraveyard) {
         continue;
       }
+      // A cast trigger has its own pass below. Without this it would also
+      // fire from the battlefield, where the permanent would answer every
+      // spell anyone casts.
+      if (trigger.onSelfCast === true) {
+        continue;
+      }
       // A trigger fires once for EACH matching event in the batch — a board
       // wipe drains Blood Artist once per death, not once total. "One or
       // more" heads fire once per batch instead.
@@ -1427,6 +1433,30 @@ export function dispatchEventsInPlace(state: GameState, events: EngineEvent[]): 
     const dead = state.cards[event.cardId];
     if (dead && dead.zone !== "battlefield") {
       consider(dead);
+    }
+  }
+  // "When you cast this spell": the watcher IS the spell, which is on the
+  // stack and so invisible to both passes above. One pass per cast event,
+  // considering that one card and only its cast triggers.
+  for (const event of events) {
+    if (event.kind !== "casts") {
+      continue;
+    }
+    const cast = state.cards[event.cardId];
+    if (!cast) {
+      continue;
+    }
+    const castTriggers = triggersOf(state, cast.id, computedById);
+    for (let index = 0; index < castTriggers.length; index += 1) {
+      if (castTriggers[index]?.onSelfCast !== true) {
+        continue;
+      }
+      candidates.push({
+        cardId: cast.id,
+        triggerIndex: index,
+        subjectCardId: cast.id,
+        subjectPlayerId: event.controllerId,
+      });
     }
   }
   queueSimultaneousTriggersInPlace(state, candidates);

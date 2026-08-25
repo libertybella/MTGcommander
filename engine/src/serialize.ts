@@ -5074,6 +5074,7 @@ function parseTriggers(value: unknown, label: string): CardTrigger[] {
       event,
       ...(watch === undefined ? {} : { watch }),
       ...(entry.fromGraveyard === true ? { fromGraveyard: true } : {}),
+      ...(entry.onSelfCast === true ? { onSelfCast: true } : {}),
       ...(entry.excludeSelf === true ? { excludeSelf: true } : {}),
       ...(entry.oncePerTurn === true ? { oncePerTurn: true } : {}),
       ...(entry.oncePerBatch === true ? { oncePerBatch: true } : {}),

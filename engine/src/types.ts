@@ -3887,6 +3887,14 @@ export type CardTrigger = {
    * nothing else, so without this the trigger compiles and never fires.
    */
   fromGraveyard?: boolean;
+  /**
+   * "When you cast this spell" (CR 603.2c): the trigger fires from the
+   * STACK, on the object being cast, and goes on the stack above it so it
+   * resolves first. Its own pass in the dispatcher, because the ordinary
+   * passes walk the battlefield and the graveyard and a spell is in
+   * neither.
+   */
+  onSelfCast?: boolean;
   /** "another creature": the event subject may not be the source itself. */
   excludeSelf?: boolean;
   /** "deals damage to an opponent": the damaged player must not be the

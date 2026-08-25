@@ -56011,3 +56011,249 @@ describe("wave 356: a static that SETS what a permanent is", () => {
     });
   });
 });
+
+describe('wave 357: "When you cast this spell"', () => {
+  const compile = (
+    name: string,
+    typeLine: string,
+    oracleText: string,
+    manaCost = "",
+    pt: [string, string] | null = null,
+  ) =>
+    compileOracleCard({
+      oracleId: name.toLowerCase().replace(/[^a-z]+/g, "-"),
+      name,
+      manaCost,
+      typeLine,
+      power: pt?.[0] ?? null,
+      toughness: pt?.[1] ?? null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  const put = (
+    game: GameState,
+    ownerId: string,
+    definition: CardDefinition,
+    zone: "hand" | "battlefield" = "battlefield",
+  ) => {
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({ definitionId: definition.id, ownerId, zone });
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === ownerId)!.zones[zone].push(card.id);
+    if (zone === "battlefield") {
+      card.summoningSick = false;
+    }
+    return card.id;
+  };
+
+  it("compiles the cast trigger", () => {
+    const compiled = compile(
+      "Kozilek, Butcher of Truth",
+      "Legendary Creature — Eldrazi",
+      "When you cast this spell, draw four cards.",
+      "{10}",
+      ["12", "12"],
+    );
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.triggers[0]).toEqual({
+      event: "cast_spell",
+      watch: "self",
+      onSelfCast: true,
+      effects: [{ kind: "draw", playerId: "controller", count: 4 }],
+      targetRequirements: [],
+    });
+  });
+
+  it("keeps the watching form apart from it", () => {
+    const compiled = compile(
+      "Guttersnipe",
+      "Creature — Goblin Shaman",
+      "Whenever you cast an instant or sorcery spell, this creature deals 2 damage to each opponent.",
+      "{2}{R}",
+      ["2", "2"],
+    );
+    expect(compiled.notes).toEqual([]);
+    // A permanent watching the table, not a spell watching itself.
+    expect(compiled.definition.triggers[0]?.onSelfCast).toBeUndefined();
+    expect(compiled.definition.triggers[0]?.watch).toBe("controlled");
+  });
+
+  const caster = (game: GameState, playerId: string) => {
+    game.turn.activePlayerId = playerId;
+    game.turn.phase = "precombatMain";
+    game.turn.step = "precombatMain";
+    game.priorityPlayerId = playerId;
+  };
+
+  const kozilek = () =>
+    createCardDefinition({
+      name: "Kozilek, Butcher of Truth",
+      typeLine: "Legendary Creature — Eldrazi",
+      manaCost: "{2}",
+      power: 12,
+      toughness: 12,
+      triggers: [
+        {
+          event: "cast_spell",
+          watch: "self",
+          onSelfCast: true,
+          effects: [{ kind: "draw", playerId: "controller", count: 4 }],
+          targetRequirements: [],
+        },
+      ],
+    });
+
+  it("fires on the way to the stack, above the spell", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const cardId = put(game, p1.id, kozilek(), "hand");
+    caster(game, p1.id);
+    game.players.find((entry) => entry.id === p1.id)!.mana.C = 2;
+    const cast = applyAction(game, {
+      kind: "cast_spell",
+      playerId: p1.id,
+      cardId,
+      targets: [],
+    });
+    // The spell is underneath and the trigger is on top, so the cards are
+    // drawn before the Eldrazi resolves (CR 603.2c).
+    expect(cast.stack).toHaveLength(2);
+    expect(cast.stack[0]?.sourceId).toBe(cardId);
+    expect(cast.stack[1]?.kind).toBe("ability");
+    expect(cast.stack[1]?.sourceId).toBe(cardId);
+    const before = cast.players.find((entry) => entry.id === p1.id)!.zones.hand.length;
+    const resolved = resolveTopOfStack(cast);
+    expect(resolved.players.find((entry) => entry.id === p1.id)!.zones.hand.length).toBe(
+      before + 4,
+    );
+    // The spell is still there to resolve after it.
+    expect(resolved.stack).toHaveLength(1);
+  });
+
+  it("does not fire from the battlefield", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    put(game, p1.id, kozilek());
+    const bolt = createCardDefinition({
+      name: "Bolt",
+      typeLine: "Instant",
+      manaCost: "{R}",
+      effects: [{ kind: "draw", playerId: "controller", count: 1 }],
+    });
+    const spellId = put(game, p1.id, bolt, "hand");
+    caster(game, p1.id);
+    game.players.find((entry) => entry.id === p1.id)!.mana.R = 1;
+    const cast = applyAction(game, {
+      kind: "cast_spell",
+      playerId: p1.id,
+      cardId: spellId,
+      targets: [],
+    });
+    // Without the zone gate the Eldrazi on the battlefield would answer
+    // every spell anyone casts, which is a much better card.
+    expect(cast.stack).toHaveLength(1);
+  });
+
+  it("does not fire for an opponent's spell", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    put(game, p1.id, kozilek(), "hand");
+    const bolt = createCardDefinition({
+      name: "Bolt",
+      typeLine: "Instant",
+      manaCost: "{R}",
+      effects: [{ kind: "draw", playerId: "controller", count: 1 }],
+    });
+    const spellId = put(game, p2.id, bolt, "hand");
+    caster(game, p2.id);
+    game.players.find((entry) => entry.id === p2.id)!.mana.R = 1;
+    const cast = applyAction(game, {
+      kind: "cast_spell",
+      playerId: p2.id,
+      cardId: spellId,
+      targets: [],
+    });
+    expect(cast.stack).toHaveLength(1);
+  });
+
+  it("takes its own targets, chosen as the trigger goes on the stack", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const victimId = put(
+      game,
+      p2.id,
+      createCardDefinition({
+        name: "Bear",
+        typeLine: "Creature — Bear",
+        manaCost: "{1}{G}",
+        power: 2,
+        toughness: 2,
+      }),
+    );
+    const ulamog = createCardDefinition({
+      name: "Ulamog, the Infinite Gyre",
+      typeLine: "Legendary Creature — Eldrazi",
+      manaCost: "{2}",
+      power: 10,
+      toughness: 10,
+      triggers: [
+        {
+          event: "cast_spell",
+          watch: "self",
+          onSelfCast: true,
+          effects: [
+            {
+              kind: "move_card",
+              cardId: { type: "chosen", index: 0 },
+              toZone: "graveyard",
+              destroy: true,
+            },
+          ],
+          targetRequirements: [{ kind: "permanent" }],
+        },
+      ],
+    });
+    const cardId = put(game, p1.id, ulamog, "hand");
+    caster(game, p1.id);
+    game.players.find((entry) => entry.id === p1.id)!.mana.C = 2;
+    const cast = applyAction(game, {
+      kind: "cast_spell",
+      playerId: p1.id,
+      cardId,
+      targets: [],
+    });
+    // A targeted trigger pauses for its targets before it stacks, the same
+    // way every other targeted trigger does — the spell is on the stack
+    // underneath, waiting.
+    expect(cast.stack).toHaveLength(1);
+    const prompt = cast.prompts[0];
+    expect(prompt?.kind).toBe("choose_targets");
+    if (prompt?.kind !== "choose_targets") {
+      throw new Error("expected a target prompt");
+    }
+    expect(prompt.origin).toBe("trigger");
+    expect(prompt.sourceId).toBe(cardId);
+    const answered = applyAction(cast, {
+      kind: "choose_targets",
+      playerId: p1.id,
+      targets: [{ type: "creature", cardId: victimId }],
+    });
+    expect(answered.stack).toHaveLength(2);
+    const resolved = resolveTopOfStack(answered);
+    // The trigger resolves first and the Bear is gone before the Eldrazi
+    // ever arrives.
+    expect(resolved.cards[victimId]?.zone).toBe("graveyard");
+    expect(resolved.stack).toHaveLength(1);
+  });
+
+  it("round trips the flag", () => {
+    const { game, p1 } = twoPlayers();
+    const definition = kozilek();
+    put(game, p1.id, definition, "hand");
+    const round = parseGameState(serializeGameState(game));
+    // Dropped on the wire, the trigger falls back to a battlefield watcher
+    // and answers every spell in the game.
+    expect(round.definitions[definition.id]?.triggers[0]?.onSelfCast).toBe(true);
+  });
+});
