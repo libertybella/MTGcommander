@@ -2277,6 +2277,17 @@ more questions it can now ask:
   `TopOfLibraryGrant.payLifeInsteadOfMana` replaces the cost OUTRIGHT, the
   same way flashback does, and rides the same life-payment path. A cost
   that had merely been reduced would still refuse a caster with no mana.
+- **The hand-authored override registry is down to ONE card** (Brainstorm).
+  An override shadows the compiler completely, and the compile-rate metric
+  counts an overridden card as full by construction — so a stale entry is
+  invisible in two places at once and nothing expires on its own. Of the 21
+  retired in wave 363, fourteen were approximations that played a stronger
+  card than the printed one: Exotic Orchard and Fellwar Stone tapping for
+  any colour rather than what an opponent's lands could make, nine filter
+  lands tapping for coloured mana without paying the filter, Solemn
+  Simulacrum's optional death-draw made mandatory, Eternal Witness's
+  targeted return made an untargeted choice. Each was honest when written
+  and wrong by the time it was removed.
 - **"If you do, …" after a "you may"** — the rider joins the trigger or
   activated ability it follows, rather than stranding in `definition.effects`
   where a permanent never runs it. A documented approximation: optional
