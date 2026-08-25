@@ -299,6 +299,7 @@ function compileOneFace(card: OracleCard, definitionId: string): OracleCompileRe
       ? { openingHandStart: compiled.openingHandStart }
       : {}),
     ...(compiled.castFromGraveyard ? { castFromGraveyard: { ...compiled.castFromGraveyard } } : {}),
+    ...(compiled.castFromExile ? { castFromExile: true } : {}),
     ...(compiled.ascend ? { ascend: true } : {}),
     ...(compiled.abilityHaste ? { abilityHaste: true } : {}),
     ...(compiled.untapDuringEachUntap

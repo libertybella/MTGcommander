@@ -1432,6 +1432,7 @@ export function parseGameState(json: string): GameState {
           }
         : {}),
       ...(def.ascend === true ? { ascend: true } : {}),
+      ...(def.castFromExile === true ? { castFromExile: true } : {}),
       ...(def.castFromGraveyard === undefined
         ? {}
         : {

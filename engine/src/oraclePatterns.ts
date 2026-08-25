@@ -129,6 +129,7 @@ export type CompiledOracleText = {
   openingHandStart?: { counter: string; exileFromHand: number };
   saga?: { chapters: CardEffect[][] };
   castFromGraveyard?: { types?: string[]; subtypes?: string[] };
+  castFromExile?: boolean;
   ascend?: boolean;
   untapDuringEachUntap?: CardDefinition["untapDuringEachUntap"];
   abilityHaste?: boolean;
@@ -18342,6 +18343,22 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
       result.castFromGraveyard = SEARCH_CARD_TYPES.has(word)
         ? { types: [word] }
         : { subtypes: [word] };
+      continue;
+    }
+
+    // Squee, the Immortal: an ungated recast from graveyard AND exile. Both
+    // zones, no condition — set whichever halves the sentence names, so
+    // "from your graveyard" alone and "from exile" alone each land too.
+    const ungatedRecast = sentence.match(
+      /^You may cast (?:~|this card)(?: from your graveyard)?(?: or)?(?: from exile)?$/i,
+    );
+    if (ungatedRecast && /graveyard|exile/i.test(sentence)) {
+      if (/graveyard/i.test(sentence)) {
+        result.castFromGraveyard = {};
+      }
+      if (/exile/i.test(sentence)) {
+        result.castFromExile = true;
+      }
       continue;
     }
 

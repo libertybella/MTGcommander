@@ -3050,3 +3050,4 @@ ends. Every printed card of this shape asks about the current turn.
 - Old-templating X spells (original Fireball's surcharge); commander color identity is not enforced.
 - Loyalty abilities are once per turn per walker; combat damage cannot yet be redirected to planeswalkers.
 - Manual override remains for everything above — its per-game usage count is the coverage metric.
+- Ungated recast permissions: cast from your graveyard with no condition (`castFromGraveyard: {}`) and cast from exile (`castFromExile`), for the printed cost — Squee, the Immortal. Distinct from Gravecrawler's gated graveyard cast and from the per-instance impulse/foretell exile grant.

@@ -449,7 +449,15 @@ function validateCast(
       (located.zone === "exile" || located.zone === "graveyard") &&
       state.exilePlayable?.some((entry) => entry.cardId === cardId && entry.casterId === playerId),
   );
-  if (!fromHand && !fromCommand && !fromLibraryTop && !fromGraveyard && !fromExile) {
+  // Squee, the Immortal: a standing permission to cast from exile for the
+  // printed cost, with no grant on the instance — the card itself carries it.
+  const viaExileStanding = Boolean(
+    located &&
+      located.zone === "exile" &&
+      located.playerId === playerId &&
+      definition.castFromExile === true,
+  );
+  if (!fromHand && !fromCommand && !fromLibraryTop && !fromGraveyard && !fromExile && !viaExileStanding) {
     throw new Error(`Card ${cardId} must be in the player's hand`);
   }
 

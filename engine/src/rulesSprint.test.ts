@@ -69832,3 +69832,155 @@ describe("wave 416: Springheart Nantuko", () => {
     expect(characteristicsOf(round, nantukoId).types.includes("creature")).toBe(false);
   });
 });
+
+describe("wave 417: Squee, the Immortal", () => {
+  const compile = (name: string, typeLine: string, oracleText: string, manaCost = "") =>
+    compileOracleCard({
+      oracleId: name.toLowerCase().replace(/[^a-z]+/g, "-"),
+      name,
+      manaCost,
+      typeLine,
+      power: "1",
+      toughness: "1",
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  it("compiles the ungated recast from both zones", () => {
+    const compiled = compile(
+      "Squee, the Immortal",
+      "Legendary Creature — Goblin",
+      "You may cast this card from your graveyard or from exile.",
+      "{2}{R}",
+    );
+    expect(compiled.notes).toEqual([]);
+    // castFromGraveyard: {} is the UNCONDITIONAL gate — Gravecrawler's is
+    // {types}/{subtypes}, which demands a matching permanent.
+    expect(compiled.definition.castFromGraveyard).toEqual({});
+    expect(compiled.definition.castFromExile).toBe(true);
+  });
+
+  it("leaves Gravecrawler's gated recast exactly as it was", () => {
+    const compiled = compile(
+      "Gravecrawler",
+      "Creature — Zombie",
+      "Gravecrawler can't block.\nYou may cast Gravecrawler from your graveyard as long as you control a Zombie.",
+      "{B}",
+    );
+    // A named condition, not the empty gate — and no permission to cast from
+    // exile, which is the whole difference between the two cards.
+    expect(compiled.definition.castFromGraveyard).toEqual({ subtypes: ["zombie"] });
+    expect(compiled.definition.castFromExile).toBeUndefined();
+  });
+
+  // ---- Casting it ---------------------------------------------------------
+
+  const squee = () =>
+    createCardDefinition({
+      name: "Squee, the Immortal",
+      typeLine: "Legendary Creature — Goblin",
+      manaCost: "{2}{R}",
+      power: 1,
+      toughness: 1,
+      castFromGraveyard: {},
+      castFromExile: true,
+    });
+
+  const putIn = (
+    game: GameState,
+    ownerId: string,
+    definition: CardDefinition,
+    zone: "graveyard" | "exile" | "hand",
+  ) => {
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({ definitionId: definition.id, ownerId, zone });
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === ownerId)!.zones[zone].push(card.id);
+    return card.id;
+  };
+
+  const ready = (game: GameState, playerId: string) => {
+    game.turn.activePlayerId = playerId;
+    game.turn.phase = "precombatMain";
+    game.turn.step = "precombatMain";
+    game.priorityPlayerId = playerId;
+    game.players.find((entry) => entry.id === playerId)!.mana.R = 5;
+  };
+
+  it("offers and casts Squee from the graveyard, ungated", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const squeeId = putIn(game, p1.id, squee(), "graveyard");
+    ready(game, p1.id);
+    // No Zombie, no anything — the empty gate asks for nothing.
+    const offered = legalActions(game, p1.id).some(
+      (action) => action.kind === "cast_spell" && action.cardId === squeeId,
+    );
+    expect(offered).toBe(true);
+    const after = resolveTopOfStack(
+      applyAction(game, { kind: "cast_spell", playerId: p1.id, cardId: squeeId, targets: [] }),
+    );
+    expect(after.cards[squeeId]?.zone).toBe("battlefield");
+  });
+
+  it("offers and casts Squee from exile", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const squeeId = putIn(game, p1.id, squee(), "exile");
+    ready(game, p1.id);
+    const offered = legalActions(game, p1.id).some(
+      (action) => action.kind === "cast_spell" && action.cardId === squeeId,
+    );
+    expect(offered).toBe(true);
+    const after = resolveTopOfStack(
+      applyAction(game, { kind: "cast_spell", playerId: p1.id, cardId: squeeId, targets: [] }),
+    );
+    expect(after.cards[squeeId]?.zone).toBe("battlefield");
+  });
+
+  it("charges the printed cost from exile, not a free cast", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const squeeId = putIn(game, p1.id, squee(), "exile");
+    ready(game, p1.id);
+    const after = applyAction(game, {
+      kind: "cast_spell",
+      playerId: p1.id,
+      cardId: squeeId,
+      targets: [],
+    });
+    // {2}{R} paid out of five red: two left.
+    expect(after.players.find((entry) => entry.id === p1.id)!.mana.R).toBe(2);
+  });
+
+  it("refuses an ordinary creature cast from exile", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const plain = createCardDefinition({
+      name: "Plain Goblin",
+      typeLine: "Creature — Goblin",
+      manaCost: "{2}{R}",
+      power: 1,
+      toughness: 1,
+    });
+    const plainId = putIn(game, p1.id, plain, "exile");
+    ready(game, p1.id);
+    // Without the standing permission, exile is a closed zone.
+    expect(() =>
+      applyAction(game, { kind: "cast_spell", playerId: p1.id, cardId: plainId, targets: [] }),
+    ).toThrow();
+  });
+
+  it("round trips both permissions", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const definition = squee();
+    putIn(game, p1.id, definition, "graveyard");
+    const round = parseGameState(serializeGameState(game));
+    // Dropped on the wire it is a plain 1/1 that never comes back, which is
+    // the opposite of the card's entire point.
+    expect(round.definitions[definition.id]?.castFromGraveyard).toEqual({});
+    expect(round.definitions[definition.id]?.castFromExile).toBe(true);
+  });
+});

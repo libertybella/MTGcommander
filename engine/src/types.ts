@@ -755,6 +755,9 @@ export type CardDefinition = {
   /** Gravecrawler: castable from the graveyard while the controller controls
    * a matching permanent. Resolves normally (a creature enters play). */
   castFromGraveyard?: { types?: string[]; subtypes?: string[] };
+  /** Squee, the Immortal: castable from EXILE (and, with castFromGraveyard,
+   * from the graveyard) with no gate — whoever exiled it, it comes back. */
+  castFromExile?: boolean;
   /** Ascend: while this is on the battlefield, controlling ten or more
    * permanents grants the city's blessing (checked in the SBA sweep). */
   ascend?: boolean;

@@ -216,6 +216,7 @@ export function createCardDefinition(
         | "openingHandStart"
         | "saga"
         | "castFromGraveyard"
+        | "castFromExile"
         | "ascend"
         | "untapDuringEachUntap"
         | "abilityHaste"
@@ -649,6 +650,7 @@ export function createCardDefinition(
           },
         }
       : {}),
+    ...(input.castFromExile ? { castFromExile: true } : {}),
     ...(input.abilityHaste ? { abilityHaste: true } : {}),
     ...(input.untapDuringEachUntap
       ? { untapDuringEachUntap: input.untapDuringEachUntap }

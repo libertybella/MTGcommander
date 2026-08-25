@@ -195,6 +195,11 @@ export function putSpellOnStack(
       ? state.exilePlayable?.find((entry) => entry.cardId === cardId)
       : undefined;
   const fromExilePlay = Boolean(exileEntry);
+  // Squee, the Immortal: a standing permission to cast from exile, written on
+  // the card rather than granted to the instance.
+  const fromExileStanding =
+    located?.zone === "exile" &&
+    state.definitions[state.cards[cardId]?.definitionId ?? ""]?.castFromExile === true;
   // Underworld Breach: escape is granted by a PERMANENT, not written on the
   // card, so this gate has to look at the board. The cast action validates
   // and pays for it; without the same reading here the spell would be paid
@@ -222,7 +227,8 @@ export function putSpellOnStack(
       !fromGraveyardGate &&
       !fromEscape &&
       !fromRetrace &&
-      !fromExilePlay)
+      !fromExilePlay &&
+      !fromExileStanding)
   ) {
     throw new Error(`Card ${cardId} must be in hand to put on the stack`);
   }

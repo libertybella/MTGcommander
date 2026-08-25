@@ -672,11 +672,20 @@ export function legalActions(state: GameState, playerId: PlayerId): LegalAction[
       return entry.casterId === playerId && (zone === "exile" || zone === "graveyard");
     })
     .map((entry) => entry.cardId);
+  // Squee, the Immortal: a standing permission to cast from exile, whoever
+  // exiled it — unlike exilePlayable, which is a per-instance grant.
+  const exileCastIds = player.zones.exile.filter((cardId) => {
+    const definition = state.cards[cardId]
+      ? state.definitions[state.cards[cardId]!.definitionId]
+      : undefined;
+    return definition?.castFromExile === true;
+  });
   for (const cardId of [
     ...player.zones.hand,
     ...graveyardLandIds,
     ...(handOnly ? [] : flashbackIds.filter((id) => !graveyardLandIds.includes(id))),
     ...(handOnly ? [] : exilePlayableIds),
+    ...(handOnly ? [] : exileCastIds),
   ]) {
     const card = state.cards[cardId];
     const definition = card ? state.definitions[card.definitionId] : undefined;
