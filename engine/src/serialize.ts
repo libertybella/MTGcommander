@@ -1544,6 +1544,9 @@ export function parseGameState(json: string): GameState {
         ? {}
         : { hexproofFrom: parseColorArray(def.hexproofFrom, `definition.${id}.hexproofFrom`) }),
       ...(def.retrace === true ? { retrace: true } : {}),
+      ...(def.dredge === undefined
+        ? {}
+        : { dredge: expectNumber(def.dredge, `definition.${id}.dredge`) }),
       ...(isRecord(def.spliceOntoArcane)
         ? {
             spliceOntoArcane: {
@@ -2483,6 +2486,23 @@ function parsePrompts(value: unknown, playerIds: Set<string>): PendingPrompt[] {
         kind,
         playerId,
         sourceId: expectString(entry.sourceId, `prompts[${index}].sourceId`),
+      };
+    }
+    if (kind === "replace_draw_with_dredge") {
+      return {
+        kind,
+        playerId,
+        cardIds: expectStringArray(entry.cardIds, `prompts[${index}].cardIds`),
+        remaining: expectNumber(entry.remaining, `prompts[${index}].remaining`),
+        ...(entry.turnDraw === true ? { turnDraw: true } : {}),
+        ...(entry.resumeEffects === undefined
+          ? {}
+          : {
+              resumeEffects: parseGameEffects(
+                entry.resumeEffects,
+                `prompts[${index}].resumeEffects`,
+              ),
+            }),
       };
     }
     if (kind === "tap_own_for_x") {
@@ -8182,6 +8202,13 @@ export function parseGameAction(json: string): GameAction {
       kind,
       playerId,
       pay: raw.pay === true,
+    };
+  }
+  if (kind === "resolve_dredge") {
+    return {
+      kind,
+      playerId,
+      cardId: raw.cardId === null ? null : expectString(raw.cardId, "action.cardId"),
     };
   }
   if (kind === "resolve_tap_own_for_x") {

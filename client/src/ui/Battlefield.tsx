@@ -2036,6 +2036,10 @@ export function Battlefield(props: Props) {
               ? actorId === prompt.playerId
                 ? "Choose a mode you have not already chosen this turn."
                 : `Waiting for ${chooser?.displayName ?? "a player"} to choose a mode.`
+              : prompt.kind === "replace_draw_with_dredge"
+              ? actorId === prompt.playerId
+                ? "Dredge instead of drawing, or take the draw."
+                : `Waiting for ${chooser?.displayName ?? "a player"} to dredge or draw.`
               : prompt.kind === "tap_own_for_x"
               ? actorId === prompt.playerId
                 ? "Tap any number of them. However many you tap is X."
@@ -2656,6 +2660,29 @@ export function Battlefield(props: Props) {
                   {prompt.kind === "pay_or_counter" ? "Decline (countered)" : "Decline"}
                 </button>
               </>
+            ) : null}
+            {actorId === prompt.playerId && prompt.kind === "replace_draw_with_dredge" ? (
+              <div className="look-row" data-testid="dredge-picker">
+                {prompt.cardIds.map((cardId) => (
+                  <button
+                    key={cardId}
+                    type="button"
+                    onClick={() =>
+                      send({ kind: "resolve_dredge", playerId: actorId, cardId })
+                    }
+                  >
+                    {`Dredge ${definition(state, cardId)?.name ?? "a card"}`}
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  className="pass-button"
+                  data-testid="decline-dredge"
+                  onClick={() => send({ kind: "resolve_dredge", playerId: actorId, cardId: null })}
+                >
+                  Draw instead
+                </button>
+              </div>
             ) : null}
             {actorId === prompt.playerId && prompt.kind === "tap_own_for_x" ? (
               <div className="look-row" data-testid="tap-for-x">

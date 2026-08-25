@@ -3,7 +3,7 @@ import { cloneGameState } from "./clone";
 // Deferred call only (decline path) — the effects/prompt import cycle is benign.
 import { cardMatchesSubtype, grantedTriggerSpread, triggersOf } from "./characteristicsEngine";
 import { characteristicsOf, isCreature, isLand as cardIsLand, isPlaneswalker } from "./cardTypes";
-import { applyEffects, bindCardEffects, grantProtectionUntilEot } from "./effects";
+import { applyEffects, bindCardEffects, drawWithoutReplacement, grantProtectionUntilEot } from "./effects";
 import { payManaCost, tapForMana } from "./mana";
 import { manaAbilitiesFor, manaTapOptionsFor } from "./manaOptions";
 import { isLiving, requireLiving } from "./players";
@@ -354,6 +354,53 @@ export function applyResolveCreatureType(
         card.counters[perType] = (card.counters[perType] ?? 0) + count;
       }
     }
+  }
+  return next;
+}
+
+/**
+ * Dredge (CR 702.52). Answering with no card takes the draw; answering
+ * with one mills that card's dredge number and returns it to hand INSTEAD
+ * of drawing.
+ *
+ * The draws still owed are re-issued afterwards rather than run here, so a
+ * second dredge is offered for the second card of a Divination.
+ */
+export function applyResolveDredge(
+  state: GameState,
+  playerId: PlayerId,
+  cardId: CardInstanceId | null,
+): GameState {
+  const prompt = currentPrompt(state);
+  if (!prompt || prompt.kind !== "replace_draw_with_dredge") {
+    throw new Error("No dredge choice pending");
+  }
+  requireLiving(state, playerId);
+  if (prompt.playerId !== playerId) {
+    throw new Error("It is not that player's choice");
+  }
+  if (cardId !== null && !prompt.cardIds.includes(cardId)) {
+    throw new Error("That card cannot be dredged");
+  }
+  let next = cloneGameState(state);
+  next.prompts.shift();
+  if (cardId === null) {
+    // NOT through the draw effect: that offers the replacement again, and
+    // a player who just declined it would be asked for ever.
+    next = drawWithoutReplacement(next, playerId, 1, prompt.turnDraw);
+  } else {
+    const dredge = next.definitions[next.cards[cardId]?.definitionId ?? ""]?.dredge ?? 0;
+    next = applyEffects(next, [{ kind: "mill", playerId, count: dredge }]);
+    next = moveCard(next, cardId, "hand");
+  }
+  if (prompt.remaining > 0) {
+    // Re-issued rather than looped: this goes back through the draw effect,
+    // which offers the replacement again for the next card.
+    next = applyEffects(next, [{ kind: "draw", playerId, count: prompt.remaining }]);
+  }
+  const resume = prompt.resumeEffects;
+  if (resume && resume.length > 0) {
+    next = applyEffects(next, resume);
   }
   return next;
 }

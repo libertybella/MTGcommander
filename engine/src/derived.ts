@@ -697,6 +697,25 @@ export function retraceReaches(
   return false;
 }
 
+/**
+ * The cards in this player's graveyard that could replace a draw right now
+ * (CR 702.52a): they have dredge, and the library holds at least that many
+ * cards to mill.
+ *
+ * A library too short for the DRAW does not matter — replacing a draw that
+ * would deck you is the whole reason the keyword exists.
+ */
+export function dredgeableCardIds(state: GameState, playerId: PlayerId): CardInstanceId[] {
+  const player = state.players.find((entry) => entry.id === playerId);
+  if (!player) {
+    return [];
+  }
+  return player.zones.graveyard.filter((cardId) => {
+    const dredge = state.definitions[state.cards[cardId]?.definitionId ?? ""]?.dredge;
+    return dredge !== undefined && dredge > 0 && player.zones.library.length >= dredge;
+  });
+}
+
 export function playerHasHexproof(state: GameState, playerId: string): boolean {
   return Object.values(state.cards).some(
     (card) =>

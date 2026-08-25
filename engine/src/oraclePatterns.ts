@@ -61,6 +61,7 @@ export type CompiledOracleText = {
   hexproofFrom?: Color[];
   retrace?: boolean;
   spliceOntoArcane?: { manaCost: string };
+  dredge?: number;
   grantsRetrace?: { filter: SearchFilter; onlyYourTurn?: boolean };
   /** Taken from the definition so the two cannot drift apart. */
   enchant?: CardDefinition["enchant"];
@@ -15047,6 +15048,16 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
     if (/^cascade(?:, cascade)*$/i.test(sentence)) {
       result.cascade = (result.cascade ?? 0) + sentence.split(",").length;
       continue;
+    }
+
+    // Dredge N (CR 702.52) as a printed keyword line.
+    const dredgeLine = sentence.match(/^Dredge (\d+)$/i);
+    if (dredgeLine?.[1]) {
+      const amount = Number(dredgeLine[1]);
+      if (amount > 0) {
+        result.dredge = amount;
+        continue;
+      }
     }
 
     // Splice onto Arcane (CR 702.47).

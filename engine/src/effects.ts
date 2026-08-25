@@ -5,7 +5,7 @@ import { createCardDefinition, createCardInstance } from "./createGame";
 import { characteristicsOf, hasSubtype, hasType, isCreature, isInstantOrSorcery, isLand, isPlaneswalker } from "./cardTypes";
 import { eliminatePlayerInPlace } from "./elimination";
 import { createId } from "./ids";
-import { allBattlefieldCreatureCount, cantLoseGame, inSorceryWindow, creaturePower, creatureToughness, damageAfterReplacements, lifeLossAfterReplacements, permanentsControlledBy, playerLifeLocked, playerProtectedFromEverything, wouldSkipDraw } from "./derived";
+import { allBattlefieldCreatureCount, cantLoseGame, dredgeableCardIds, inSorceryWindow, creaturePower, creatureToughness, damageAfterReplacements, lifeLossAfterReplacements, permanentsControlledBy, playerLifeLocked, playerProtectedFromEverything, wouldSkipDraw } from "./derived";
 import { hasKeyword, protectedFromSource } from "./keywords";
 import { addMana, tapCard, untapCard } from "./mana";
 import { commanderIdentityColors } from "./manaOptions";
@@ -3097,6 +3097,21 @@ function drawFactor(state: GameState, playerId: PlayerId): number {
   return factor;
 }
 
+/**
+ * The draw a declined dredge takes. Exported so the dredge resolver can
+ * reach it WITHOUT going back through the draw effect — that path offers
+ * the replacement again, and a player who just declined it would be asked
+ * for ever and never draw.
+ */
+export function drawWithoutReplacement(
+  state: GameState,
+  playerId: PlayerId,
+  count: number,
+  turnDraw?: boolean,
+): GameState {
+  return applyDraw(state, playerId, count, false, turnDraw);
+}
+
 function applyDraw(
   state: GameState,
   playerId: PlayerId,
@@ -4733,6 +4748,25 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
               effect.countFromCounterOnSource.counter
             ] ?? 0
           : effect.count;
+        // Dredge (CR 702.52): the draw is REPLACED, so the offer comes
+        // before it happens rather than after. One draw at a time — the
+        // rest of the count is re-issued once this one is answered, so a
+        // second dredge can replace it too.
+        const dredgeable =
+          drawCount > 0 && !wouldSkipDraw(state, effect.playerId)
+            ? dredgeableCardIds(state, effect.playerId)
+            : [];
+        if (dredgeable.length > 0 && isLiving(state, effect.playerId)) {
+          next = cloneGameState(state);
+          next.prompts.push({
+            kind: "replace_draw_with_dredge",
+            playerId: effect.playerId,
+            cardIds: dredgeable,
+            remaining: drawCount - 1,
+            ...(effect.turnDraw ? { turnDraw: true } : {}),
+          });
+          break;
+        }
         next =
           drawCount > 0
             ? applyDraw(state, effect.playerId, drawCount, effect.optional, effect.turnDraw)
@@ -7035,6 +7069,7 @@ export function applyEffects(state: GameState, effects: GameEffect[]): GameState
         prompt.kind === "choose_card_name" ||
         prompt.kind === "tempting_offer" ||
         prompt.kind === "tap_own_for_x" ||
+        prompt.kind === "replace_draw_with_dredge" ||
         prompt.kind === "divide_piles")
     ) {
       const remaining = effects.slice(index + 1);

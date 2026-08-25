@@ -35,7 +35,7 @@ import { abilityLifeCost, colorsOutsideCommanderIdentity } from "./commanderIden
 import { addRestrictedMana, emptyManaPools, manaRiderFires, parseManaCost, payManaCost, restrictionAdmits, type ManaPurpose } from "./mana";
 import { applyStateBasedActionsInPlace } from "./status";
 import { legalActions, potentialMana, sacrificeColorMatches, sacrificeScopeMatches } from "./legalActions";
-import { applyResolveCardName, applyResolveChoosePile, applyResolveDividePiles, applyResolveTapOwnForX, applyResolveTemptingOffer, applyResolveChooseCard, applyResolveChooseFromHand, applyResolveCreatureType, applyResolveDiscardLandOrGraveyard, applyResolveEnterCopy, applyResolveLookAssign, applyResolvePay, applyResolveSearch, applyResolveTriggerMode, legalEnterCopyIds, legalSearchIds, searchMatches } from "./prompt";
+import { applyResolveCardName, applyResolveChoosePile, applyResolveDredge, applyResolveDividePiles, applyResolveTapOwnForX, applyResolveTemptingOffer, applyResolveChooseCard, applyResolveChooseFromHand, applyResolveCreatureType, applyResolveDiscardLandOrGraveyard, applyResolveEnterCopy, applyResolveLookAssign, applyResolvePay, applyResolveSearch, applyResolveTriggerMode, legalEnterCopyIds, legalSearchIds, searchMatches } from "./prompt";
 import { parseGameState, serializeGameState } from "./serialize";
 import { fillLibraries } from "./testSupport";
 import { applyKeepHand, beginMulligan, isMulliganOpen } from "./mulligan";
@@ -63679,5 +63679,200 @@ describe("wave 390: returning up to N cards from your graveyard", () => {
       kind: "own_graveyard_land_card",
       optional: true,
     });
+  });
+});
+
+describe("wave 391: dredge", () => {
+  const compile = (name: string, typeLine: string, oracleText: string, manaCost = "") =>
+    compileOracleCard({
+      oracleId: name.toLowerCase().replace(/[^a-z]+/g, "-"),
+      name,
+      manaCost,
+      typeLine,
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  const put = (
+    game: GameState,
+    ownerId: string,
+    definition: CardDefinition,
+    zone: "graveyard" | "hand" | "library" = "graveyard",
+  ) => {
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({ definitionId: definition.id, ownerId, zone });
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === ownerId)!.zones[zone].push(card.id);
+    return card.id;
+  };
+
+  it("compiles Life from the Loam, both halves", () => {
+    const compiled = compile(
+      "Life from the Loam",
+      "Sorcery",
+      "Return up to three target land cards from your graveyard to your hand.\nDredge 3",
+      "{1}{G}",
+    );
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.dredge).toBe(3);
+    expect(compiled.definition.targetRequirements).toHaveLength(3);
+  });
+
+  // ---- The replacement ---------------------------------------------------
+
+  const loam = () =>
+    createCardDefinition({
+      name: "Life from the Loam",
+      typeLine: "Sorcery",
+      manaCost: "{1}{G}",
+      dredge: 3,
+      effects: [],
+    });
+
+  const filler = (name: string) =>
+    createCardDefinition({ name, typeLine: "Instant", manaCost: "{R}" });
+
+  const draw = (game: GameState, playerId: string, count = 1) =>
+    applyEffects(game, [{ kind: "draw", playerId, count }]);
+
+  const dredgePrompt = (game: GameState) => {
+    const prompt = game.prompts[0];
+    if (prompt?.kind !== "replace_draw_with_dredge") {
+      throw new Error("expected a dredge choice");
+    }
+    return prompt;
+  };
+
+  it("offers the replacement before the draw happens", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 10);
+    const loamId = put(game, p1.id, loam());
+    const before = game.players.find((entry) => entry.id === p1.id)!;
+    const library = before.zones.library.length;
+    const hand = before.zones.hand.length;
+    const after = draw(game, p1.id);
+    expect(dredgePrompt(after).cardIds).toEqual([loamId]);
+    // Nothing has moved: the draw is REPLACED, so it waits on the answer.
+    const owner = after.players.find((entry) => entry.id === p1.id)!;
+    expect(owner.zones.library).toHaveLength(library);
+    expect(owner.zones.hand).toHaveLength(hand);
+  });
+
+  it("mills the dredge number and takes the card instead", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 10);
+    const loamId = put(game, p1.id, loam());
+    const before = game.players.find((entry) => entry.id === p1.id)!.zones.library.length;
+    const after = applyResolveDredge(draw(game, p1.id), p1.id, loamId);
+    const owner = after.players.find((entry) => entry.id === p1.id)!;
+    expect(owner.zones.hand).toContain(loamId);
+    // Three milled, and NOT drawn: the library is three shorter, not four.
+    expect(owner.zones.library).toHaveLength(before - 3);
+  });
+
+  it("takes the draw when the answer is none", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 10);
+    const loamId = put(game, p1.id, loam());
+    const before = game.players.find((entry) => entry.id === p1.id)!.zones.library.length;
+    const after = applyResolveDredge(draw(game, p1.id), p1.id, null);
+    const owner = after.players.find((entry) => entry.id === p1.id)!;
+    expect(owner.zones.library).toHaveLength(before - 1);
+    expect(owner.zones.graveyard).toContain(loamId);
+  });
+
+  it("offers again for the second card of a two-card draw", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 10);
+    const loamId = put(game, p1.id, loam());
+    const secondId = put(game, p1.id, loam());
+    let after = draw(game, p1.id, 2);
+    expect(dredgePrompt(after).remaining).toBe(1);
+    after = applyResolveDredge(after, p1.id, loamId);
+    // One draw at a time: the second is re-issued and offered again, with
+    // the dredger that is left.
+    expect(dredgePrompt(after).cardIds).toEqual([secondId]);
+    expect(dredgePrompt(after).remaining).toBe(0);
+  });
+
+  it("does not offer with a library shorter than the dredge number", () => {
+    const { game, p1 } = twoPlayers();
+    put(game, p1.id, loam());
+    for (let i = 0; i < 2; i += 1) {
+      put(game, p1.id, filler(`Filler ${i}`), "library");
+    }
+    const after = draw(game, p1.id);
+    // CR 702.52a: two cards is not enough to dredge 3, so the draw happens
+    // normally.
+    expect(after.prompts).toHaveLength(0);
+    expect(after.players.find((entry) => entry.id === p1.id)!.zones.library).toHaveLength(1);
+  });
+
+  it("DOES offer when the library is too short to draw safely", () => {
+    const { game, p1 } = twoPlayers();
+    const loamId = put(game, p1.id, loam());
+    for (let i = 0; i < 3; i += 1) {
+      put(game, p1.id, filler(`Filler ${i}`), "library");
+    }
+    const after = draw(game, p1.id);
+    // Three cards is exactly enough to dredge, and replacing a draw that
+    // would soon deck you is the whole reason the keyword exists.
+    expect(dredgePrompt(after).cardIds).toEqual([loamId]);
+  });
+
+  it("does not offer for a card without dredge", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 10);
+    put(game, p1.id, filler("Plain"));
+    const after = draw(game, p1.id);
+    expect(after.prompts).toHaveLength(0);
+  });
+
+  it("refuses a card that was not offered, and the wrong player", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 10);
+    put(game, p1.id, loam());
+    const strangerId = put(game, p2.id, loam());
+    const asked = draw(game, p1.id);
+    expect(() => applyResolveDredge(asked, p1.id, strangerId)).toThrow();
+    expect(() => applyResolveDredge(asked, p2.id, null)).toThrow();
+  });
+
+  it("resumes the rest of the card after the answer", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 10);
+    const loamId = put(game, p1.id, loam());
+    const before = game.players.find((entry) => entry.id === p1.id)!.life;
+    let after = applyEffects(game, [
+      { kind: "draw", playerId: p1.id, count: 1 },
+      { kind: "gain_life", playerId: p1.id, amount: 2 },
+    ]);
+    // The life gain waits on the replacement rather than jumping it.
+    expect(after.players.find((entry) => entry.id === p1.id)!.life).toBe(before);
+    after = applyResolveDredge(after, p1.id, loamId);
+    expect(after.players.find((entry) => entry.id === p1.id)!.life).toBe(before + 2);
+  });
+
+  it("round trips the keyword and the pending replacement", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 10);
+    const definition = loam();
+    const loamId = put(game, p1.id, definition);
+    const asked = draw(game, p1.id, 2);
+    const round = parseGameState(serializeGameState(asked));
+    expect(round.definitions[definition.id]?.dredge).toBe(3);
+    const prompt = round.prompts[0];
+    if (prompt?.kind !== "replace_draw_with_dredge") {
+      throw new Error("expected a dredge choice");
+    }
+    // The owed draws have to survive: dropped, the second card of a
+    // Divination is never drawn at all.
+    expect(prompt.remaining).toBe(1);
+    expect(prompt.cardIds).toEqual([loamId]);
+    const finished = applyResolveDredge(round, p1.id, loamId);
+    expect(finished.players.find((entry) => entry.id === p1.id)!.zones.hand).toContain(loamId);
   });
 });

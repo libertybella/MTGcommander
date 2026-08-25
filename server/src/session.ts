@@ -464,6 +464,13 @@ export class GameHost {
           });
           continue;
         }
+        if (prompt.kind === "replace_draw_with_dredge") {
+          // A documented auto-take: an absent player DRAWS. Dredging is a
+          // deckbuilding decision about what they want in hand, and
+          // choosing it for them mills a library they may need.
+          this.apply({ kind: "resolve_dredge", playerId: prompt.playerId, cardId: null });
+          continue;
+        }
         if (prompt.kind === "tap_own_for_x") {
           // A documented auto-take: tap them all. Every printed card in
           // this shape pays off per creature tapped, and an absent player

@@ -131,6 +131,7 @@ export function createCardDefinition(
         | "hexproofFrom"
         | "retrace"
         | "spliceOntoArcane"
+        | "dredge"
         | "grantsRetrace"
         | "enchant"
         | "reanimateOnEnter"
@@ -609,6 +610,7 @@ export function createCardDefinition(
     ...(input.spliceOntoArcane
       ? { spliceOntoArcane: { ...input.spliceOntoArcane } }
       : {}),
+    ...(input.dredge ? { dredge: input.dredge } : {}),
     ...(input.grantsRetrace
       ? {
           grantsRetrace: {

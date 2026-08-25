@@ -159,6 +159,14 @@ function nextAction(state: GameState, rng: () => number): GameAction | null {
           playerId,
           discard: rng() < 0.5,
         };
+      case "replace_draw_with_dredge":
+        // Both branches: taking the draw and replacing it, so a deck with
+        // a dredger walks each one.
+        return {
+          kind: "resolve_dredge",
+          playerId,
+          cardId: rng() < 0.5 ? prompt.cardIds[0] ?? null : null,
+        };
       case "tap_own_for_x": {
         // Any subset, including none — "you MAY tap X" and X may be zero.
         const tapped = prompt.cardIds.filter(() => rng() < 0.5);

@@ -408,6 +408,17 @@ export type CardDefinition = {
    */
   spliceOntoArcane?: { manaCost: string };
   /**
+   * Dredge N (CR 702.52): if you would draw a card, you may instead mill N
+   * and return this card from your graveyard to your hand.
+   *
+   * A REPLACEMENT, which is why this waited for the prompt machinery.
+   * Dredging every draw automatically plays a materially different card —
+   * a Life from the Loam player dredges when they want lands and draws
+   * when they want cards — and never dredging makes the keyword
+   * decoration.
+   */
+  dredge?: number;
+  /**
    * Six, Deeproot Historian: a permanent granting retrace to cards in its
    * controller's graveyard. Looked up rather than read off the card being
    * cast, the same way `grantsEscape` is.
@@ -4717,6 +4728,19 @@ export type PendingPrompt =
    * opponents one at a time; `accepted` is how many have said yes so far,
    * and the controller repeats their action that many times at the end.
    */
+  /**
+   * Dredge: a draw about to happen, and the cards in this player's
+   * graveyard that could replace it. Answering with none takes the draw.
+   */
+  | {
+      kind: "replace_draw_with_dredge";
+      playerId: PlayerId;
+      cardIds: CardInstanceId[];
+      /** Draws still owed after this one, re-issued once it is answered. */
+      remaining: number;
+      turnDraw?: boolean;
+      resumeEffects?: GameEffect[];
+    }
   /** Myr Battlesphere: choose which of your untapped Myr to tap. The
    * answer is a set of cards, and its SIZE is the X the rider reads. */
   | {
@@ -5775,6 +5799,8 @@ export type GameAction =
   | { kind: "resolve_choose_pile"; playerId: PlayerId; takeFirst: boolean }
   | { kind: "resolve_tempting_offer"; playerId: PlayerId; accept: boolean }
   | { kind: "resolve_tap_own_for_x"; playerId: PlayerId; cardIds: CardInstanceId[] }
+  /** `cardId` null takes the draw; otherwise that card is dredged. */
+  | { kind: "resolve_dredge"; playerId: PlayerId; cardId: CardInstanceId | null }
   | { kind: "resolve_color"; playerId: PlayerId; color: Color }
   | { kind: "resolve_scry"; playerId: PlayerId; bottomIds: CardInstanceId[] }
   | { kind: "resolve_surveil"; playerId: PlayerId; graveyardIds: CardInstanceId[] }
