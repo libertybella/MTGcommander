@@ -1480,6 +1480,9 @@ export function applyResolveSearch(
   }
   let next = cloneGameState(state);
   next.prompts.shift();
+  // Beseech the Mirror: "the exiled card" is named by a LATER effect, and
+  // by then this prompt is gone. Recorded the way the milled list is.
+  next.lastSearchedCardIds = [...cardIds];
   if (prompt.destination === "library_top") {
     // Vampiric Tutor: shuffle the rest, then the chosen card goes on top.
     const player = next.players.find((entry) => entry.id === searchedId);

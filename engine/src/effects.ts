@@ -2884,6 +2884,24 @@ export function bindCardEffect(
           );
       return cardIds.length > 0 ? { kind: "regenerate", cardIds } : null;
     }
+    case "searched_free_or_hand": {
+      const searcherId = bindPlayerSelector(state, effect.playerId, context);
+      if (!searcherId) {
+        return null;
+      }
+      // "If this spell WAS BARGAINED" — read here, while the card is still
+      // a spell on the stack carrying the flag. The search between the
+      // cast and this effect is a prompt, and by the time it is answered
+      // the spell has finished resolving.
+      return {
+        kind: "searched_free_or_hand",
+        playerId: searcherId,
+        maxManaValue: effect.maxManaValue,
+        bargained: context.sourceId
+          ? state.cards[context.sourceId]?.bargainedThisCast === true
+          : false,
+      };
+    }
     case "ban_attacks_while_counter": {
       const playerId = bindPlayerSelector(state, effect.playerId, context);
       if (!playerId) {
@@ -7542,6 +7560,28 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
       case "mill_and_dig_free":
         next = applyMillAndDigFree(state, effect.playerId, effect.excludedName);
         break;
+      case "searched_free_or_hand": {
+        next = cloneGameState(state);
+        for (const cardId of next.lastSearchedCardIds ?? []) {
+          if (next.cards[cardId]?.zone !== "exile") {
+            continue;
+          }
+          const manaValue =
+            next.definitions[next.cards[cardId]!.definitionId]?.characteristics.manaValue ?? 0;
+          if (effect.bargained && manaValue <= effect.maxManaValue) {
+            next.exilePlayable = [
+              ...(next.exilePlayable ?? []).filter((entry) => entry.cardId !== cardId),
+              { cardId, casterId: effect.playerId, freeCast: true },
+            ];
+            continue;
+          }
+          // Not bargained, or too expensive to be given away: the card the
+          // search exiled face down simply arrives in hand, which is what
+          // makes the unbargained card an ordinary tutor.
+          next = moveCard(next, cardId, "hand");
+        }
+        break;
+      }
       case "ban_attacks_while_counter": {
         next = cloneGameState(state);
         const bans = next.counterAttackBans ?? [];

@@ -690,6 +690,12 @@ export type CardDefinition = {
   /** "As an additional cost to cast this spell, …" (Deadly Dispute). */
   additionalCost?: AdditionalCastCost;
   /**
+   * Bargain (CR 702.166): "You may sacrifice an artifact, enchantment, or
+   * token as you cast this spell." OPTIONAL, which is why it is not an
+   * `additionalCost` — that one is owed, and this one is offered.
+   */
+  bargain?: boolean;
+  /**
    * Pillow forts: creatures can't attack this permanent's controller unless
    * their controller pays, per attacking creature, `generic` mana (Propaganda),
    * X = the defender's enchantment count (Sphere of Safety), and/or `lifePer`
@@ -796,6 +802,14 @@ export type CardInstance = {
    * reanimated Ardenvale Paladin nothing.
    */
   manaSpentToCast?: ManaPool;
+  /**
+   * Bargain (CR 702.166): the optional additional cost was paid for this
+   * cast. Rides the instance while the card is a spell, exactly as
+   * `manaSpentToCast` does — the stack entry is gone by the time anything
+   * asks, and a card that resolves and is cast again later was not
+   * bargained then.
+   */
+  bargainedThisCast?: boolean;
   /**
    * Opal Palace: counters this card is owed AS it enters, recorded while
    * it is still a spell. Read once and cleared, like `manaSpentToCast` —
@@ -1280,6 +1294,13 @@ export type GameState = {
    */
   lastMilledCardIds?: CardInstanceId[];
   /**
+   * Beseech the Mirror: "the exiled card" is the one the search just found,
+   * and by the time the follow-up runs the search is a resolved prompt with
+   * nothing left to point at. Recorded the same way the milled list is, and
+   * for the same reason.
+   */
+  lastSearchedCardIds?: CardInstanceId[];
+  /**
    * The card name most recently named by a "choose a card name" prompt.
    * On the state rather than in a bind context because the prompt is
    * answered across a client round trip, and because the effects that read
@@ -1551,7 +1572,14 @@ export type SearchFilter = {
   anyOf?: SearchFilter[];
 };
 
-export type SearchDestination = "hand" | "battlefield" | "graveyard" | "library_top";
+export type SearchDestination =
+  | "hand"
+  | "battlefield"
+  | "graveyard"
+  /** Beseech the Mirror: the find is exiled and a later effect decides
+   * where it goes from there. */
+  | "exile"
+  | "library_top";
 
 export type CardFilter =
   | "any"
@@ -2003,6 +2031,26 @@ export type GameEffect =
   | { kind: "copy_spell"; stackObjectId: StackObjectId; controllerId: PlayerId }
   /** Mindbreak Trap — see the definition form for why this is not a counter. */
   | { kind: "exile_spell"; stackObjectId: StackObjectId }
+  /**
+   * Beseech the Mirror's payoff, as one effect because it is one decision
+   * about one card: whatever the search just exiled either becomes free to
+   * cast — if the spell was bargained and the card is cheap enough — or
+   * goes to its searcher's hand.
+   *
+   * The permission is a GRANT rather than a prompt, the shape this engine
+   * uses wherever a "may cast" would otherwise need client, bot and fuzz
+   * answer paths. Documented approximation: a granted card that is never
+   * cast stays in exile instead of reaching hand at the end of the
+   * resolution, which is strictly worse for its controller than the
+   * printed card and never better.
+   */
+  | {
+      kind: "searched_free_or_hand";
+      playerId: PlayerId;
+      maxManaValue: number;
+      /** Read at BIND, while the card is still a spell carrying the flag. */
+      bargained: boolean;
+    }
   | {
       kind: "extra_combat";
       /**
@@ -3648,6 +3696,8 @@ export type CardEffect =
   /** Tree of Perdition: swap the target's life with the source's toughness. */
   | { kind: "exchange_life_toughness"; playerId: PlayerSelector }
   | { kind: "copy_spell"; target: ChosenTargetRef }
+  /** Beseech the Mirror — see the bound form. */
+  | { kind: "searched_free_or_hand"; playerId: PlayerSelector; maxManaValue: number }
   /**
    * Mindbreak Trap: exiling a spell REMOVES it from the stack without
    * countering it (CR 701.11). Deliberately not `counter_spell` with

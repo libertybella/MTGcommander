@@ -222,6 +222,7 @@ export function createCardDefinition(
         | "opponentCreaturesEnterTapped"
         | "opponentArtifactsEnterTapped"
         | "additionalCost"
+        | "bargain"
         | "attackTax"
         | "dynamicPt"
         | "bonusPt"
@@ -653,6 +654,7 @@ export function createCardDefinition(
     ...(input.opponentCreaturesEnterTapped ? { opponentCreaturesEnterTapped: true } : {}),
     ...(input.opponentArtifactsEnterTapped ? { opponentArtifactsEnterTapped: true } : {}),
     ...(input.ascend ? { ascend: true } : {}),
+    ...(input.bargain ? { bargain: true } : {}),
     ...(input.additionalCost ? { additionalCost: { ...input.additionalCost } } : {}),
     ...(input.attackTax ? { attackTax: { ...input.attackTax } } : {}),
     ...(input.dynamicPt

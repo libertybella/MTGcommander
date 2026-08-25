@@ -68816,3 +68816,254 @@ describe("wave 412: Throne of Eldraine", () => {
     });
   });
 });
+
+describe("wave 413: Beseech the Mirror", () => {
+  const compile = (name: string, typeLine: string, oracleText: string, manaCost = "") =>
+    compileOracleCard({
+      oracleId: name.toLowerCase().replace(/[^a-z]+/g, "-"),
+      name,
+      manaCost,
+      typeLine,
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  const beseechText =
+    "Bargain (You may sacrifice an artifact, enchantment, or token as you cast this spell.)\nSearch your library for a card, exile it face down, then shuffle. If this spell was bargained, you may cast the exiled card without paying its mana cost if that spell's mana value is 4 or less. Put the exiled card into your hand if it wasn't cast this way.";
+
+  it("compiles the keyword and the three sentences after it", () => {
+    const compiled = compile("Beseech the Mirror", "Sorcery", beseechText, "{1}{B}{B}");
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.bargain).toBe(true);
+    expect(compiled.definition.effects).toEqual([
+      {
+        kind: "search_library",
+        playerId: "controller",
+        filter: {},
+        destination: "exile",
+        count: 1,
+      },
+      { kind: "searched_free_or_hand", playerId: "controller", maxManaValue: 4 },
+    ]);
+  });
+
+  // ---- The optional cost --------------------------------------------------
+
+  const beseech = () =>
+    createCardDefinition({
+      name: "Beseech the Mirror",
+      typeLine: "Sorcery",
+      manaCost: "{1}{B}{B}",
+      bargain: true,
+      effects: [
+        {
+          kind: "search_library",
+          playerId: "controller",
+          filter: {},
+          destination: "exile",
+          count: 1,
+        },
+        { kind: "searched_free_or_hand", playerId: "controller", maxManaValue: 4 },
+      ],
+    });
+
+  const putIn = (
+    game: GameState,
+    ownerId: string,
+    definition: CardDefinition,
+    zone: "battlefield" | "hand" | "library",
+  ) => {
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({ definitionId: definition.id, ownerId, zone });
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === ownerId)!.zones[zone].push(card.id);
+    if (zone === "battlefield") {
+      card.summoningSick = false;
+    }
+    return card.id;
+  };
+
+  const rock = () => createCardDefinition({ name: "A Rock", typeLine: "Artifact", manaCost: "{2}" });
+  const bear = (name: string, manaCost: string) =>
+    createCardDefinition({
+      name,
+      typeLine: "Creature — Bear",
+      manaCost,
+      power: 2,
+      toughness: 2,
+    });
+
+  const castBeseech = (
+    game: GameState,
+    playerId: string,
+    beseechId: string,
+    costSacrificeId?: string,
+  ) => {
+    game.turn.activePlayerId = playerId;
+    game.turn.phase = "precombatMain";
+    game.turn.step = "precombatMain";
+    game.priorityPlayerId = playerId;
+    game.players.find((entry) => entry.id === playerId)!.mana.B = 5;
+    return applyAction(game, {
+      kind: "cast_spell",
+      playerId,
+      cardId: beseechId,
+      targets: [],
+      ...(costSacrificeId ? { costSacrificeId } : {}),
+    });
+  };
+
+  it("takes an artifact for the bargain and marks the spell", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const beseechId = putIn(game, p1.id, beseech(), "hand");
+    const rockId = putIn(game, p1.id, rock(), "battlefield");
+    const after = castBeseech(game, p1.id, beseechId, rockId);
+    expect(after.cards[rockId]?.zone).toBe("graveyard");
+    // The flag rides the CARD while it is a spell; the stack entry is gone
+    // by the time the search's follow-up asks.
+    expect(after.cards[beseechId]?.bargainedThisCast).toBe(true);
+  });
+
+  it("casts perfectly well with nothing sacrificed", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const beseechId = putIn(game, p1.id, beseech(), "hand");
+    const after = castBeseech(game, p1.id, beseechId);
+    expect(after.stack).toHaveLength(1);
+    // "You MAY sacrifice" — an optional cost, not a debt.
+    expect(after.cards[beseechId]?.bargainedThisCast).toBeUndefined();
+  });
+
+  it("refuses a creature as bargain fodder", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const beseechId = putIn(game, p1.id, beseech(), "hand");
+    const bearId = putIn(game, p1.id, bear("Not Fodder", "{1}{G}"), "battlefield");
+    expect(() => castBeseech(game, p1.id, beseechId, bearId)).toThrow();
+  });
+
+  it("takes a token of any type", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const beseechId = putIn(game, p1.id, beseech(), "hand");
+    const tokenId = putIn(game, p1.id, bear("A Token", "{1}{G}"), "battlefield");
+    game.cards[tokenId]!.isToken = true;
+    const after = castBeseech(game, p1.id, beseechId, tokenId);
+    // A creature TOKEN is fodder where a creature card is not — the
+    // keyword lists three things and one of them is a card's status.
+    expect(after.cards[beseechId]?.bargainedThisCast).toBe(true);
+  });
+
+  // ---- The payoff ---------------------------------------------------------
+
+  const resolveWith = (
+    game: GameState,
+    playerId: string,
+    beseechId: string,
+    tutorId: string,
+    bargainId?: string,
+  ) => {
+    let after = resolveTopOfStack(castBeseech(game, playerId, beseechId, bargainId));
+    if (after.prompts[0]?.kind === "search_library") {
+      after = applyAction(after, {
+        kind: "resolve_search",
+        playerId,
+        cardIds: [tutorId],
+      });
+    }
+    return after;
+  };
+
+  it("hands the card over when the spell was not bargained", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const beseechId = putIn(game, p1.id, beseech(), "hand");
+    const prizeId = putIn(game, p1.id, bear("The Prize", "{1}{G}"), "library");
+    const after = resolveWith(game, p1.id, beseechId, prizeId);
+    // Without the bargain it is an ordinary tutor: exiled face down and
+    // then straight into hand.
+    expect(after.cards[prizeId]?.zone).toBe("hand");
+    expect(after.exilePlayable ?? []).toHaveLength(0);
+  });
+
+  it("makes a cheap card free when it was bargained", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const beseechId = putIn(game, p1.id, beseech(), "hand");
+    const rockId = putIn(game, p1.id, rock(), "battlefield");
+    const prizeId = putIn(game, p1.id, bear("The Prize", "{1}{G}"), "library");
+    const after = resolveWith(game, p1.id, beseechId, prizeId, rockId);
+    expect(after.cards[prizeId]?.zone).toBe("exile");
+    expect(after.exilePlayable?.[0]).toMatchObject({
+      cardId: prizeId,
+      casterId: p1.id,
+      freeCast: true,
+    });
+  });
+
+  it("hands over a card too expensive to give away", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const beseechId = putIn(game, p1.id, beseech(), "hand");
+    const rockId = putIn(game, p1.id, rock(), "battlefield");
+    const bigId = putIn(game, p1.id, bear("Five Drop", "{4}{G}"), "library");
+    const after = resolveWith(game, p1.id, beseechId, bigId, rockId);
+    // Mana value five: bargained or not, this one goes to hand.
+    expect(after.cards[bigId]?.zone).toBe("hand");
+    expect(after.exilePlayable ?? []).toHaveLength(0);
+  });
+
+  it("really lets the free card be cast for nothing", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const beseechId = putIn(game, p1.id, beseech(), "hand");
+    const rockId = putIn(game, p1.id, rock(), "battlefield");
+    const prizeId = putIn(game, p1.id, bear("The Prize", "{1}{G}"), "library");
+    let after = resolveWith(game, p1.id, beseechId, prizeId, rockId);
+    after.turn.activePlayerId = p1.id;
+    after.turn.phase = "precombatMain";
+    after.turn.step = "precombatMain";
+    after.priorityPlayerId = p1.id;
+    // No green mana anywhere, and it still casts.
+    after.players.find((entry) => entry.id === p1.id)!.mana = {
+      W: 0,
+      U: 0,
+      B: 0,
+      R: 0,
+      G: 0,
+      C: 0,
+    };
+    after = resolveTopOfStack(
+      applyAction(after, {
+        kind: "cast_spell",
+        playerId: p1.id,
+        cardId: prizeId,
+        targets: [],
+      }),
+    );
+    expect(after.cards[prizeId]?.zone).toBe("battlefield");
+  });
+
+  it("round trips the keyword, the flag and the payoff", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const definition = beseech();
+    const beseechId = putIn(game, p1.id, definition, "hand");
+    const rockId = putIn(game, p1.id, rock(), "battlefield");
+    const cast = castBeseech(game, p1.id, beseechId, rockId);
+    const round = parseGameState(serializeGameState(cast));
+    // Dropped on the wire the sacrifice bought nothing and the card is a
+    // three-mana Demonic Tutor.
+    expect(round.definitions[definition.id]?.bargain).toBe(true);
+    expect(round.cards[beseechId]?.bargainedThisCast).toBe(true);
+    expect(round.definitions[definition.id]?.effects[1]).toEqual({
+      kind: "searched_free_or_hand",
+      playerId: "controller",
+      maxManaValue: 4,
+    });
+  });
+});

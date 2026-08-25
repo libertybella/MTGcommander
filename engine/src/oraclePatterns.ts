@@ -110,6 +110,7 @@ export type CompiledOracleText = {
   delve?: boolean;
   grantsCostKeyword?: { keyword: "convoke" | "improvise"; types?: string[]; nonTypes?: string[] };
   grantsFlash?: boolean;
+  bargain?: boolean;
   controlsOpponentSearches?: boolean;
   grantsFlashFor?: { types?: string[]; subtypesAny?: string[]; nonTypes?: string[] };
   castFreeFromHand?: CardDefinition["castFreeFromHand"];
@@ -7607,6 +7608,32 @@ function compileSimpleClauseInner(sentence: string): SimpleClause | null {
     };
   }
 
+  // Beseech the Mirror (fused by fuseBargainTutorInPlace). The search
+  // exiles what it finds, and the sentence after it decides where that
+  // card goes — free to cast if the spell was bargained and it is cheap
+  // enough, otherwise into hand, which is what makes the unbargained card
+  // an ordinary tutor.
+  const bargainTutor = sentence.match(/^bargain-tutor free up to (\d+)$/i);
+  if (bargainTutor?.[1]) {
+    return {
+      targetRequirements: [],
+      effects: [
+        {
+          kind: "search_library",
+          playerId: "controller",
+          filter: {},
+          destination: "exile",
+          count: 1,
+        },
+        {
+          kind: "searched_free_or_hand",
+          playerId: "controller",
+          maxManaValue: Number(bargainTutor[1]),
+        },
+      ],
+    };
+  }
+
   // Promise of Loyalty (fused by fusePromiseOfLoyaltyInPlace). Liliana's
   // keep-one-sacrifice-the-rest shape one player wider, with a counter on
   // the survivor and a rule that reads it afterwards.
@@ -10985,6 +11012,40 @@ function fusePilesInPlace(sentences: string[], lineStart: boolean[]): void {
  * what marks them — so the two are one clause. Read alone the second names
  * a set nothing has made.
  */
+/**
+ * Beseech the Mirror: "Search your library for a card, exile it face down,
+ * then shuffle." + "If this spell was bargained, you may cast the exiled
+ * card without paying its mana cost if that spell's mana value is 4 or
+ * less." + "Put the exiled card into your hand if it wasn't cast this way."
+ *
+ * Three sentences about one card, and the last two both name it as "the
+ * exiled card" — a thing only the first makes. Fused because the payoff is
+ * one decision and reading them apart would leave two clauses pointing at
+ * nothing.
+ */
+function fuseBargainTutorInPlace(sentences: string[], lineStart: boolean[]): void {
+  for (let index = 0; index + 2 < sentences.length; index += 1) {
+    if (lineStart[index + 1] || lineStart[index + 2]) {
+      continue;
+    }
+    const cap = sentences[index + 1]?.match(
+      /^If this spell was bargained, you may cast the exiled card without paying its mana cost if that spell's mana value is (\d+) or less$/i,
+    );
+    if (
+      /^Search your library for a card, exile it face down, then shuffle$/i.test(
+        sentences[index] ?? "",
+      ) &&
+      cap?.[1] &&
+      /^Put the exiled card into your hand if it wasn't cast this way$/i.test(
+        sentences[index + 2] ?? "",
+      )
+    ) {
+      sentences.splice(index, 3, `bargain-tutor free up to ${cap[1]}`);
+      lineStart.splice(index + 1, 2);
+    }
+  }
+}
+
 function fusePromiseOfLoyaltyInPlace(sentences: string[], lineStart: boolean[]): void {
   for (let index = 0; index + 1 < sentences.length; index += 1) {
     if (lineStart[index + 1]) {
@@ -15738,6 +15799,7 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
   fuseTapForXInPlace(sentences, lineStart);
   fuseTemptingOfferInPlace(sentences, lineStart);
   fusePilesInPlace(sentences, lineStart);
+  fuseBargainTutorInPlace(sentences, lineStart);
   fusePromiseOfLoyaltyInPlace(sentences, lineStart);
   fuseChainOfVaporInPlace(sentences, lineStart);
   fuseTrickeryInPlace(sentences, lineStart);
@@ -17964,6 +18026,14 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
 
     if (/^You may cast spells as though they had flash$/i.test(sentence)) {
       result.grantsFlash = true;
+      continue;
+    }
+
+    // Bargain (CR 702.166). A keyword line on its own; the reminder text
+    // beside it is already stripped, and what it costs is fixed by the
+    // rules rather than printed per card.
+    if (/^Bargain$/i.test(sentence)) {
+      result.bargain = true;
       continue;
     }
 

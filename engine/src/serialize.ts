@@ -630,6 +630,7 @@ export function parseGameState(json: string): GameState {
               "card.bonusEnterCounters",
             ),
           }),
+      ...(card.bargainedThisCast === true ? { bargainedThisCast: true } : {}),
       ...(isRecord(card.manaSpentToCast)
         ? { manaSpentToCast: parseMana(card.manaSpentToCast, "card.manaSpentToCast") }
         : {}),
@@ -1349,6 +1350,7 @@ export function parseGameState(json: string): GameState {
               };
             })(),
           }),
+      ...(def.bargain === true ? { bargain: true } : {}),
       ...(def.additionalCost === undefined
         ? {}
         : {
@@ -1965,6 +1967,14 @@ export function parseGameState(json: string): GameState {
       ? {}
       : {
           lastChosenCardName: expectString(raw.lastChosenCardName, "lastChosenCardName"),
+        }),
+    ...(raw.lastSearchedCardIds === undefined
+      ? {}
+      : {
+          lastSearchedCardIds: expectStringArray(
+            raw.lastSearchedCardIds,
+            "lastSearchedCardIds",
+          ),
         }),
     ...(raw.lastMilledCardIds === undefined
       ? {}
@@ -3213,6 +3223,7 @@ function parseSearchDestination(value: unknown, label: string): SearchDestinatio
     destination !== "hand" &&
     destination !== "battlefield" &&
     destination !== "graveyard" &&
+    destination !== "exile" &&
     destination !== "library_top"
   ) {
     throw new Error(`Invalid ${label}`);
@@ -5074,6 +5085,12 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
         kind,
         counter: expectString(value.counter, `${label}.counter`),
         playerId: parsePlayerSelector(value.playerId, `${label}.playerId`),
+      };
+    case "searched_free_or_hand":
+      return {
+        kind,
+        playerId: parsePlayerSelector(value.playerId, `${label}.playerId`),
+        maxManaValue: expectNumber(value.maxManaValue, `${label}.maxManaValue`),
       };
     case "look_top_card":
       return {
@@ -7363,6 +7380,14 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
       kind,
       counter: expectString(value.counter, `${label}.counter`),
       playerId: expectString(value.playerId, `${label}.playerId`),
+    };
+  }
+  if (kind === "searched_free_or_hand") {
+    return {
+      kind,
+      playerId: expectString(value.playerId, `${label}.playerId`),
+      maxManaValue: expectNumber(value.maxManaValue, `${label}.maxManaValue`),
+      bargained: value.bargained === true,
     };
   }
   if (kind === "sacrifice_others_of_type") {

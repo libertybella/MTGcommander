@@ -261,7 +261,9 @@ export function sacrificeScopeMatches(
     | "another_creature_or_artifact"
     | "permanent"
     | "nonland_permanent"
-    | "token",
+    | "token"
+    /** Bargain (CR 702.166): any of the three, and a token of any type. */
+    | "artifact_enchantment_or_token",
   sourceId?: CardInstanceId,
 ): boolean {
   const traits = state.definitions[state.cards[cardId]?.definitionId ?? ""]?.characteristics;
@@ -279,6 +281,13 @@ export function sacrificeScopeMatches(
   // Fountainport: any token, whatever it is a token of.
   if (scope === "token") {
     return state.cards[cardId]?.isToken === true;
+  }
+  if (scope === "artifact_enchantment_or_token") {
+    return (
+      types.includes("artifact") ||
+      types.includes("enchantment") ||
+      state.cards[cardId]?.isToken === true
+    );
   }
   if (scope === "creature") {
     return types.includes("creature");

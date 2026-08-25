@@ -775,6 +775,18 @@ function applyCastSpell(
         `Sacrifice a ${additional.sacrificeColor ? `${additional.sacrificeColor} ` : ""}${additional.sacrifice.replace(/_/g, " ")} to cast this`,
       );
     }
+  } else if (costSacrificeId !== undefined && definition?.bargain) {
+    // Bargain (CR 702.166): OPTIONAL, so an id here is an offer rather
+    // than a debt. What it names still has to be legal fodder.
+    const bargained = faced.cards[costSacrificeId];
+    if (
+      !bargained ||
+      bargained.zone !== "battlefield" ||
+      bargained.controllerId !== playerId ||
+      !sacrificeScopeMatches(faced, costSacrificeId, "artifact_enchantment_or_token")
+    ) {
+      throw new Error("Bargain sacrifices an artifact, enchantment, or token you control");
+    }
   } else if (costSacrificeId !== undefined) {
     throw new Error("That spell has no sacrifice cost");
   }
@@ -1028,6 +1040,23 @@ function applyCastSpell(
       : undefined;
   if (additional?.sacrifice && costSacrificeId) {
     paid = applyEffects(paid, [{ kind: "sacrifice", cardId: costSacrificeId }]);
+  }
+  // Bargain: the flag rides the CARD while it is a spell, the way
+  // `manaSpentToCast` does — the stack entry is gone by the time the
+  // spell's own effects ask, and a card cast again later was not
+  // bargained then.
+  if (definition?.bargain) {
+    const spell = paid.cards[cardId];
+    if (spell) {
+      if (!additional?.sacrifice && costSacrificeId) {
+        paid = applyEffects(paid, [{ kind: "sacrifice", cardId: costSacrificeId }]);
+      }
+      if (costSacrificeId) {
+        paid.cards[cardId]!.bargainedThisCast = true;
+      } else {
+        delete paid.cards[cardId]!.bargainedThisCast;
+      }
+    }
   }
   for (const discardId of costDiscardIds ?? []) {
     paid = moveCard(paid, discardId, "graveyard");
