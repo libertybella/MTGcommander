@@ -5418,6 +5418,10 @@ export type TopOfLibraryGrant = {
   castTypesAny?: string[];
   /** Mystic Forge: "…and colorless spells". */
   castColorless?: boolean;
+  /** Glarb, Calamity's Augur: "cast spells with mana value 4 or greater".
+   * Gates the CAST path only — lands (mana value 0) stay playable, matching
+   * the "play lands AND cast spells with mana value N or greater" parse. */
+  castMinManaValue?: number;
   /** Realmwalker: "creature spells of the chosen type", read from the
    * granting card's chosen creature type. */
   castChosenType?: boolean;

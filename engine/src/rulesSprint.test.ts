@@ -70361,3 +70361,106 @@ describe("wave 420: Nether Traitor", () => {
     });
   });
 });
+
+describe("wave 421: Glarb, Calamity's Augur", () => {
+  const compile = (name: string, typeLine: string, oracleText: string, manaCost = "") =>
+    compileOracleCard({
+      oracleId: name.toLowerCase().replace(/[^a-z]+/g, "-"),
+      name,
+      manaCost,
+      typeLine,
+      power: "1",
+      toughness: "5",
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  const glarbText =
+    "You may look at the top card of your library any time.\nYou may play lands and cast spells with mana value 4 or greater from the top of your library.";
+
+  it("compiles the mana-value-gated top-of-library grant", () => {
+    const compiled = compile("Glarb, Calamity's Augur", "Legendary Creature — Frog Detective", glarbText, "{B}{G}{U}");
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.topOfLibrary).toMatchObject({
+      look: true,
+      playLands: true,
+      castAll: true,
+      castMinManaValue: 4,
+    });
+  });
+
+  it("leaves the unfiltered grant where it was", () => {
+    const compiled = compile("Future Frog", "Creature — Frog", "You may play lands and cast spells from the top of your library.", "{2}{U}");
+    expect(compiled.definition.topOfLibrary).toMatchObject({ playLands: true, castAll: true });
+    expect(compiled.definition.topOfLibrary?.castMinManaValue).toBeUndefined();
+  });
+
+  const glarb = () =>
+    createCardDefinition({
+      name: "Glarb, Calamity's Augur",
+      typeLine: "Legendary Creature — Frog Detective",
+      manaCost: "{B}{G}{U}",
+      power: 1,
+      toughness: 5,
+      topOfLibrary: { look: true, playLands: true, castAll: true, castMinManaValue: 4 },
+    });
+
+  const put = (game: GameState, ownerId: string, definition: CardDefinition, zone: "battlefield" | "library") => {
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({ definitionId: definition.id, ownerId, zone });
+    game.cards[card.id] = card;
+    const list = game.players.find((entry) => entry.id === ownerId)!.zones[zone];
+    if (zone === "library") {
+      list.unshift(card.id);
+    } else {
+      list.push(card.id);
+      card.summoningSick = false;
+    }
+    return card.id;
+  };
+
+  const spell = (mv: number) =>
+    createCardDefinition({
+      name: `MV${mv} Spell`,
+      typeLine: "Sorcery",
+      manaCost: `{${mv}}`,
+      effects: [{ kind: "draw", playerId: "controller", count: 1 }],
+    });
+
+  it("casts a mana-value-4 spell off the top", () => {
+    const { game, p1 } = twoPlayers();
+    // Clear p1's library so we control the top card.
+    game.players.find((entry) => entry.id === p1.id)!.zones.library = [];
+    put(game, p1.id, glarb(), "battlefield");
+    const topId = put(game, p1.id, spell(4), "library");
+    expect(castableFromTop(game, p1.id, topId)).toBe(true);
+  });
+
+  it("REFUSES a cheap spell off the top — the mana-value floor", () => {
+    const { game, p1 } = twoPlayers();
+    game.players.find((entry) => entry.id === p1.id)!.zones.library = [];
+    put(game, p1.id, glarb(), "battlefield");
+    const topId = put(game, p1.id, spell(3), "library");
+    // Mana value 3 is below the floor: Glarb cannot cast it from the top.
+    expect(castableFromTop(game, p1.id, topId)).toBe(false);
+  });
+
+  it("still plays a land off the top, floor or no floor", () => {
+    const { game, p1 } = twoPlayers();
+    game.players.find((entry) => entry.id === p1.id)!.zones.library = [];
+    put(game, p1.id, glarb(), "battlefield");
+    const landDef = createCardDefinition({ name: "Island", typeLine: "Basic Land — Island" });
+    const topId = put(game, p1.id, landDef, "library");
+    // A land has mana value 0, but the floor gates spells, not lands.
+    expect(canPlayLandFromTop(game, p1.id, topId)).toBe(true);
+  });
+
+  it("round trips the mana-value floor", () => {
+    const { game, p1 } = twoPlayers();
+    const definition = glarb();
+    put(game, p1.id, definition, "battlefield");
+    const round = parseGameState(serializeGameState(game));
+    expect(round.definitions[definition.id]?.topOfLibrary?.castMinManaValue).toBe(4);
+  });
+});

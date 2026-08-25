@@ -18532,6 +18532,21 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
       continue;
     }
 
+    // Glarb, Calamity's Augur: the same grant, but the cast half only reaches
+    // spells of mana value N or greater. Lands stay unconditional.
+    const topBigCast = sentence.match(
+      /^You may play lands and cast spells with mana value (\d+) or greater from the top of your library$/i,
+    );
+    if (topBigCast?.[1]) {
+      result.topOfLibrary = {
+        ...(result.topOfLibrary ?? {}),
+        playLands: true,
+        castAll: true,
+        castMinManaValue: Number(topBigCast[1]),
+      };
+      continue;
+    }
+
     if (/^You may play lands from the top of your library$/i.test(sentence)) {
       result.topOfLibrary = { ...(result.topOfLibrary ?? {}), playLands: true };
       continue;

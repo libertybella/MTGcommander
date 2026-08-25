@@ -1179,6 +1179,9 @@ export function parseGameState(json: string): GameState {
                 ...(grant.playLands === true ? { playLands: true } : {}),
                 ...(grant.castAll === true ? { castAll: true } : {}),
                 ...(grant.castColorless === true ? { castColorless: true } : {}),
+                ...(typeof grant.castMinManaValue === "number"
+                  ? { castMinManaValue: grant.castMinManaValue }
+                  : {}),
                 ...(grant.castChosenType === true ? { castChosenType: true } : {}),
                 ...(grant.castRequiresCoven === true ? { castRequiresCoven: true } : {}),
                 ...(grant.payLifeInsteadOfMana === true

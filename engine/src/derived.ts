@@ -1012,12 +1012,18 @@ export function topOfLibraryGrant(
   castTypesAny: string[];
   castSubtypesAny: string[];
   payLifeInsteadOfMana: boolean;
+  castMinManaValue?: number;
 } | null {
   let look = false;
   let playLands = false;
   let castAll = false;
   let castColorless = false;
   let payLifeInsteadOfMana = false;
+  // Glarb's mana-value floor. Two grants combine to the more permissive:
+  // an unrestricted castAll removes the floor entirely; otherwise the floor
+  // is the lowest any restricted grant imposes.
+  let castAllUnrestricted = false;
+  let castMin: number | undefined;
   const castTypes = new Set<string>();
   const castSubtypes = new Set<string>();
   for (const card of Object.values(state.cards)) {
@@ -1040,6 +1046,13 @@ export function topOfLibraryGrant(
     look = look || grant.look === true;
     playLands = playLands || grant.playLands === true;
     castAll = castAll || (mayCast && grant.castAll === true);
+    if (mayCast && grant.castAll === true) {
+      if (typeof grant.castMinManaValue === "number") {
+        castMin = castMin === undefined ? grant.castMinManaValue : Math.min(castMin, grant.castMinManaValue);
+      } else {
+        castAllUnrestricted = true;
+      }
+    }
     castColorless = castColorless || (mayCast && grant.castColorless === true);
     payLifeInsteadOfMana =
       payLifeInsteadOfMana || grant.payLifeInsteadOfMana === true;
@@ -1065,6 +1078,7 @@ export function topOfLibraryGrant(
     payLifeInsteadOfMana,
     castTypesAny: [...castTypes],
     castSubtypesAny: [...castSubtypes],
+    ...(castAllUnrestricted || castMin === undefined ? {} : { castMinManaValue: castMin }),
   };
 }
 
@@ -1081,6 +1095,13 @@ export function castableFromTop(state: GameState, playerId: string, cardId: stri
   }
   const grant = topOfLibraryGrant(state, playerId);
   if (!grant) {
+    return false;
+  }
+  // Glarb: the cast half only reaches spells of mana value N or greater.
+  if (
+    grant.castMinManaValue !== undefined &&
+    definition.characteristics.manaValue < grant.castMinManaValue
+  ) {
     return false;
   }
   return (
