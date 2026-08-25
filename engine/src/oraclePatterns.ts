@@ -7893,6 +7893,28 @@ function compileSimpleClauseInner(sentence: string): SimpleClause | null {
     }
   }
 
+  // Etali, Primal Conqueror (fused by fuseDigUntilNonlandInPlace): the same
+  // grant as the Storm below, over a dig rather than one card each. Only the
+  // nonland cards are castable — the lands passed on the way stay exiled.
+  if (
+    /^each player digs to a nonland card, then you may cast any number of those nonland cards without paying their mana costs$/i.test(
+      sentence,
+    )
+  ) {
+    return {
+      targetRequirements: [],
+      effects: [
+        {
+          kind: "exile_top_play",
+          playerId: "each_player",
+          count: 1,
+          freeCast: true,
+          untilNonland: true,
+        },
+      ],
+    };
+  }
+
   // Etali: everyone's top card, castable free this turn.
   if (
     /^exile the top card of each player's library, then you may cast any number of spells from among (?:those cards|them) without paying their mana costs?$/i.test(
@@ -10672,6 +10694,39 @@ function fusePilesInPlace(sentences: string[], lineStart: boolean[]): void {
       `${head[1]}divide the top ${count} into two piles, taking one into your ${take[1].toLowerCase()} and leaving the other into your ${take[2].toLowerCase()}`;
     sentences.splice(index + 1, 2);
     lineStart.splice(index + 1, 2);
+  }
+}
+
+/**
+ * Etali, Primal Conqueror: "…each player exiles cards from the top of their
+ * library until they exile a nonland card." + "You may cast any number of
+ * spells from among the nonland cards exiled this way without paying their
+ * mana costs."
+ *
+ * The permission names the cards the dig turned up, so it has to be part of
+ * that clause — read on its own it has no set to draw from. Etali, Primal
+ * STORM prints the identical grant as one sentence with a `then`, which is
+ * the form the reader below already knows.
+ */
+function fuseDigUntilNonlandInPlace(sentences: string[], lineStart: boolean[]): void {
+  for (let index = 0; index + 1 < sentences.length; index += 1) {
+    if (lineStart[index + 1]) {
+      continue;
+    }
+    const head = sentences[index]?.match(
+      /^(.*?)each player exiles cards from the top of their library until they exile a nonland card$/i,
+    );
+    const grant =
+      /^You may cast any number of spells from among the nonland cards exiled this way without paying their mana costs?$/i.test(
+        sentences[index + 1] ?? "",
+      );
+    if (head?.[1] === undefined || !grant) {
+      continue;
+    }
+    sentences[index] =
+      `${head[1]}each player digs to a nonland card, then you may cast any number of those nonland cards without paying their mana costs`;
+    sentences.splice(index + 1, 1);
+    lineStart.splice(index + 1, 1);
   }
 }
 
@@ -15224,6 +15279,7 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
   fuseTapForXInPlace(sentences, lineStart);
   fuseTemptingOfferInPlace(sentences, lineStart);
   fusePilesInPlace(sentences, lineStart);
+  fuseDigUntilNonlandInPlace(sentences, lineStart);
   fuseDigUntilInPlace(sentences, lineStart);
   fuseMayPayInPlace(sentences, lineStart);
   fusePactInPlace(sentences, lineStart);

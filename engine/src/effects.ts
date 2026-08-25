@@ -2546,6 +2546,7 @@ export function bindCardEffect(
         count: effect.count,
         ...(effect.freeCast ? { freeCast: true } : {}),
         ...(effect.untilEndOfNextTurn ? { untilEndOfNextTurn: true } : {}),
+        ...(effect.untilNonland ? { untilNonland: true } : {}),
       };
     }
     case "exile_return_end_step": {
@@ -6719,7 +6720,21 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
         if (!impulsed) {
           throw new Error(`Unknown player ${effect.playerId}`);
         }
-        const tops = impulsed.zones.library.slice(0, effect.count);
+        // Etali, Primal Conqueror digs instead of counting: exile from the
+        // top until a NONLAND card is exiled, that card included. An
+        // all-land library exiles itself and grants nothing.
+        const tops = effect.untilNonland
+          ? (() => {
+              const dug: CardInstanceId[] = [];
+              for (const cardId of impulsed.zones.library) {
+                dug.push(cardId);
+                if (!characteristicsOf(next, cardId).types.includes("land")) {
+                  break;
+                }
+              }
+              return dug;
+            })()
+          : impulsed.zones.library.slice(0, effect.count);
         // Atsushi: "until the end of your next turn" — the grant survives
         // cleanups until the caster's own cleanup has run this many times.
         const remainingOwnCleanups = effect.untilEndOfNextTurn
@@ -6728,7 +6743,16 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
             : 1
           : undefined;
         for (const cardId of tops) {
+          const grantable =
+            !effect.untilNonland ||
+            !characteristicsOf(next, cardId).types.includes("land");
           moveCardInPlace(next, cardId, "exile");
+          if (!grantable) {
+            // "The NONLAND cards exiled this way." A land turned up on the
+            // way is exiled and stays there; granting it would hand Etali's
+            // controller everyone's land drop.
+            continue;
+          }
           const grants = next.exilePlayable ?? [];
           grants.push({
             cardId,

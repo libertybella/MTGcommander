@@ -4470,6 +4470,7 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
         count: expectNumber(value.count, `${label}.count`),
         ...(value.freeCast === true ? { freeCast: true } : {}),
         ...(value.untilEndOfNextTurn === true ? { untilEndOfNextTurn: true } : {}),
+        ...(value.untilNonland === true ? { untilNonland: true } : {}),
       };
     case "exile_return_end_step":
       return {
@@ -7902,6 +7903,7 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
       count: expectNumber(value.count, `${label}.count`),
       ...(value.freeCast === true ? { freeCast: true } : {}),
       ...(value.untilEndOfNextTurn === true ? { untilEndOfNextTurn: true } : {}),
+      ...(value.untilNonland === true ? { untilNonland: true } : {}),
     };
   }
   if (kind === "exile_return_end_step") {

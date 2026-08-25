@@ -66029,3 +66029,259 @@ describe("wave 401: poison counters as an effect", () => {
     ]);
   });
 });
+
+describe("wave 402: Etali, Primal Conqueror", () => {
+  const compile = (
+    name: string,
+    typeLine: string,
+    oracleText: string,
+    manaCost = "",
+    pt: [string, string] | null = null,
+  ) =>
+    compileOracleCard({
+      oracleId: name.toLowerCase().replace(/[^a-z]+/g, "-"),
+      name,
+      manaCost,
+      typeLine,
+      power: pt?.[0] ?? null,
+      toughness: pt?.[1] ?? null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  const conquerorText =
+    "Trample\nWhen Etali enters, each player exiles cards from the top of their library until they exile a nonland card. You may cast any number of spells from among the nonland cards exiled this way without paying their mana costs.\n{9}{G/P}: Transform Etali. Activate only as a sorcery.";
+
+  it("compiles all three of Etali, Primal Conqueror's lines", () => {
+    const compiled = compile(
+      "Etali, Primal Conqueror",
+      "Legendary Creature — Elder Dinosaur",
+      conquerorText,
+      "{5}{R}{R}",
+      ["7", "7"],
+    );
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.triggers[0]?.effects).toEqual([
+      {
+        kind: "exile_top_play",
+        playerId: "each_player",
+        count: 1,
+        freeCast: true,
+        untilNonland: true,
+      },
+    ]);
+    expect(compiled.definition.activated[0]).toMatchObject({
+      manaCost: "{9}{G/P}",
+      timing: "sorcery",
+      effects: [{ kind: "transform", cardId: "self" }],
+    });
+  });
+
+  it("leaves Etali, Primal Storm taking exactly one card each", () => {
+    const compiled = compile(
+      "Etali, Primal Storm",
+      "Legendary Creature — Elder Dinosaur",
+      "Whenever Etali attacks, exile the top card of each player's library, then you may cast any number of spells from among those cards without paying their mana costs.",
+      "{4}{R}{R}",
+      ["6", "6"],
+    );
+    // The Storm does not dig — one card each, land or not.
+    expect(compiled.definition.triggers[0]?.effects).toEqual([
+      { kind: "exile_top_play", playerId: "each_player", count: 1, freeCast: true },
+    ]);
+  });
+
+  // ---- The dig -----------------------------------------------------------
+
+  const forest = (game: GameState) => {
+    const definition = createCardDefinition({ name: "Forest", typeLine: "Basic Land — Forest" });
+    game.definitions[definition.id] = definition;
+    return definition;
+  };
+
+  const bear = (game: GameState, name: string) => {
+    const definition = createCardDefinition({
+      name,
+      typeLine: "Creature — Bear",
+      manaCost: "{1}{G}",
+      power: 2,
+      toughness: 2,
+    });
+    game.definitions[definition.id] = definition;
+    return definition;
+  };
+
+  /** Stack a player's library top-down from the given definitions. */
+  const stackLibrary = (game: GameState, playerId: string, definitions: CardDefinition[]) => {
+    const player = game.players.find((entry) => entry.id === playerId)!;
+    player.zones.library = [];
+    const ids: string[] = [];
+    for (const definition of definitions) {
+      const card = createCardInstance({
+        definitionId: definition.id,
+        ownerId: playerId,
+        zone: "library",
+      });
+      game.cards[card.id] = card;
+      player.zones.library.push(card.id);
+      ids.push(card.id);
+    }
+    return ids;
+  };
+
+  const dig = (game: GameState, playerId: string) =>
+    applyEffects(
+      game,
+      bindCardEffects(
+        game,
+        [
+          {
+            kind: "exile_top_play",
+            playerId: "each_player",
+            count: 1,
+            freeCast: true,
+            untilNonland: true,
+          },
+        ],
+        { controllerId: playerId, sourceId: null, targets: [], targetRequirements: [] },
+      ),
+    );
+
+  const grantFor = (game: GameState, cardId: string) =>
+    (game.exilePlayable ?? []).find((entry) => entry.cardId === cardId);
+
+  it("digs past the lands and stops on the first nonland card", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const [firstLandId, secondLandId, bearId, deeperId] = stackLibrary(game, p1.id, [
+      forest(game),
+      forest(game),
+      bear(game, "The Prize"),
+      bear(game, "Too Deep"),
+    ]);
+    const after = dig(game, p1.id);
+    expect(after.cards[firstLandId!]?.zone).toBe("exile");
+    expect(after.cards[secondLandId!]?.zone).toBe("exile");
+    expect(after.cards[bearId!]?.zone).toBe("exile");
+    // The dig stops ON the nonland card, so the next one is untouched.
+    expect(after.cards[deeperId!]?.zone).toBe("library");
+  });
+
+  it("grants only the nonland card, and grants it free", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const [landId, bearId] = stackLibrary(game, p1.id, [forest(game), bear(game, "The Prize")]);
+    const after = dig(game, p1.id);
+    expect(grantFor(after, bearId!)).toMatchObject({ casterId: p1.id, freeCast: true });
+    // "The NONLAND cards exiled this way" — granting the land too would
+    // hand Etali's controller everyone's land drop.
+    expect(grantFor(after, landId!)).toBeUndefined();
+  });
+
+  it("digs each player's library and gives every prize to the caster", () => {
+    const game = createGameState({ playerCount: 3 });
+    const [p1, p2, p3] = game.players;
+    if (!p1 || !p2 || !p3) {
+      throw new Error("need three players");
+    }
+    const [, mineId] = stackLibrary(game, p1.id, [forest(game), bear(game, "Mine")]);
+    const [theirsId] = stackLibrary(game, p2.id, [bear(game, "Theirs")]);
+    const [, , thirdId] = stackLibrary(game, p3.id, [
+      forest(game),
+      forest(game),
+      bear(game, "Third Seat"),
+    ]);
+    const after = dig(game, p1.id);
+    // Each player digs their own library; ETALI'S CONTROLLER casts all of it.
+    for (const cardId of [mineId!, theirsId!, thirdId!]) {
+      expect(after.cards[cardId]?.zone).toBe("exile");
+      expect(grantFor(after, cardId)).toMatchObject({ casterId: p1.id, freeCast: true });
+    }
+  });
+
+  it("exiles an all-land library and grants nothing", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const landIds = stackLibrary(game, p1.id, [forest(game), forest(game), forest(game)]);
+    const after = dig(game, p1.id);
+    for (const landId of landIds) {
+      expect(after.cards[landId]?.zone).toBe("exile");
+      expect(grantFor(after, landId)).toBeUndefined();
+    }
+    expect(after.players.find((entry) => entry.id === p1.id)!.zones.library).toEqual([]);
+  });
+
+  it("takes just the one card when the top is already nonland", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const [bearId, nextId] = stackLibrary(game, p1.id, [
+      bear(game, "Right There"),
+      bear(game, "Untouched"),
+    ]);
+    const after = dig(game, p1.id);
+    expect(after.cards[bearId!]?.zone).toBe("exile");
+    expect(after.cards[nextId!]?.zone).toBe("library");
+  });
+
+  it("really lets the caster cast the prize for nothing", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    const [, theirsId] = stackLibrary(game, p2.id, [forest(game), bear(game, "Their Bear")]);
+    stackLibrary(game, p1.id, [forest(game)]);
+    let after = dig(game, p1.id);
+    after.turn.activePlayerId = p1.id;
+    after.turn.phase = "precombatMain";
+    after.turn.step = "precombatMain";
+    after.priorityPlayerId = p1.id;
+    // No mana at all: the grant has to be paying for it.
+    after = applyAction(after, {
+      kind: "cast_spell",
+      playerId: p1.id,
+      cardId: theirsId!,
+      targets: [],
+    });
+    after = resolveTopOfStack(after);
+    expect(after.cards[theirsId!]?.zone).toBe("battlefield");
+    expect(after.cards[theirsId!]?.controllerId).toBe(p1.id);
+  });
+
+  it("round trips the dig flag", () => {
+    const { game } = twoPlayers();
+    fillLibraries(game, 20);
+    const definition = createCardDefinition({
+      name: "Wave 402 Conqueror",
+      typeLine: "Legendary Creature — Elder Dinosaur",
+      manaCost: "{5}{R}{R}",
+      power: 7,
+      toughness: 7,
+      triggers: [
+        {
+          event: "enter_battlefield",
+          watch: "self",
+          effects: [
+            {
+              kind: "exile_top_play",
+              playerId: "each_player",
+              count: 1,
+              freeCast: true,
+              untilNonland: true,
+            },
+          ],
+          targetRequirements: [],
+        },
+      ],
+    });
+    game.definitions[definition.id] = definition;
+    const round = parseGameState(serializeGameState(game));
+    // Dropped on the wire the Conqueror takes one card each and becomes
+    // the Storm, which is a materially weaker card.
+    expect(round.definitions[definition.id]?.triggers[0]?.effects[0]).toEqual({
+      kind: "exile_top_play",
+      playerId: "each_player",
+      count: 1,
+      freeCast: true,
+      untilNonland: true,
+    });
+  });
+});

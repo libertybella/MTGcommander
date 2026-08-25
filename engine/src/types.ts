@@ -2124,6 +2124,10 @@ export type GameEffect =
       untilEndOfNextTurn?: boolean;
       count: number;
       freeCast?: boolean;
+      /** Etali, Primal Conqueror: dig until a NONLAND card is exiled rather
+       * than taking a fixed count. The lands passed on the way are exiled
+       * too but stay uncastable — the card grants "the nonland cards". */
+      untilNonland?: boolean;
     }
   /** Charming Prince: exile now, return at the next end step. */
   | {
@@ -3732,10 +3736,13 @@ export type CardEffect =
   | {
       kind: "exile_top_play";
       playerId: PlayerSelector;
+      /** Ignored when `untilNonland` is set: the dig decides how many. */
       count: number;
       freeCast?: boolean;
       /** Atsushi: playable "until the end of your next turn". */
       untilEndOfNextTurn?: boolean;
+      /** Etali, Primal Conqueror — see the bound form. */
+      untilNonland?: boolean;
     }
   /** Charming Prince: exile the target; it returns to the battlefield under
    * the effect controller's control at the beginning of the next end step. */
