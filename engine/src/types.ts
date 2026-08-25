@@ -1816,7 +1816,17 @@ export type GameEffect =
   /** Adapt (CR 701.46): N +1/+1 counters if it has none. */
   | { kind: "adapt"; cardId: CardInstanceId; amount: number }
   | { kind: "populate"; playerId: PlayerId }
-  | { kind: "proliferate"; playerId: PlayerId }
+  /**
+   * Ripples of Potential: "then choose any number of permanents you control
+   * that had a counter put on them THIS WAY. Those permanents phase out."
+   * That set exists for one instant, inside the proliferate that made it,
+   * and no sibling effect can see it — so the phase-out rides the same
+   * effect rather than reading a sibling's leavings off the state.
+   *
+   * "Any number" is a documented AUTO-TAKE, like the proliferate's own
+   * choice above it: every permanent it touched phases out.
+   */
+  | { kind: "proliferate"; playerId: PlayerId; thenPhaseOutTouched?: boolean }
   | {
       kind: "restrict_until_eot";
       cardId: CardInstanceId;
@@ -3268,7 +3278,8 @@ export type CardEffect =
   /** Adapt (Evolution Witness). */
   | { kind: "adapt"; cardId: CardIdSelector; amount: number }
   | { kind: "populate"; playerId: PlayerSelector }
-  | { kind: "proliferate"; playerId: PlayerSelector }
+  /** Ripples of Potential — see the bound form for why the two are one effect. */
+  | { kind: "proliferate"; playerId: PlayerSelector; thenPhaseOutTouched?: boolean }
   | {
       kind: "restrict_until_eot";
       cardId: CardIdSelector;

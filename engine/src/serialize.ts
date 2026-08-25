@@ -4023,6 +4023,11 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
           : { otherwise: parseCardEffects(value.otherwise, `${label}.otherwise`) }),
       };
     case "proliferate":
+      return {
+        kind,
+        playerId: parsePlayerSelector(value.playerId, `${label}.playerId`),
+        ...(value.thenPhaseOutTouched === true ? { thenPhaseOutTouched: true } : {}),
+      };
     case "populate":
       return { kind, playerId: parsePlayerSelector(value.playerId, `${label}.playerId`) };
     case "exile_top_play":
@@ -7186,7 +7191,14 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
       counter: expectString(value.counter, `${label}.counter`),
     };
   }
-  if (kind === "proliferate" || kind === "populate") {
+  if (kind === "proliferate") {
+    return {
+      kind,
+      playerId: expectString(value.playerId, `${label}.playerId`),
+      ...(value.thenPhaseOutTouched === true ? { thenPhaseOutTouched: true } : {}),
+    };
+  }
+  if (kind === "populate") {
     return { kind, playerId: expectString(value.playerId, `${label}.playerId`) };
   }
   if (kind === "exile_top_play") {

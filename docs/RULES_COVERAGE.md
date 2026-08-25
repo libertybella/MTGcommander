@@ -2277,6 +2277,11 @@ more questions it can now ask:
   `TopOfLibraryGrant.payLifeInsteadOfMana` replaces the cost OUTRIGHT, the
   same way flashback does, and rides the same life-payment path. A cost
   that had merely been reduced would still refuse a caster with no mana.
+- **"Permanents that had a counter put on them this way"** — Ripples of
+  Potential. That set exists only inside the proliferate that made it, so
+  the phase-out is a rider on the same effect rather than a separate one
+  reading state left behind. "Any number" is auto-taken: everything it fed
+  phases out. A -1/-1 counter is not fed, so its permanent does not phase.
 - **Exiling a spell** (CR 701.11) — Mindbreak Trap. `exile_spell` removes a
   spell from the stack WITHOUT countering it, so "can't be countered" does
   not stop it; that is deliberately not `counter_spell` with `exileInstead`,

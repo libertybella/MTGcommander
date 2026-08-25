@@ -2395,7 +2395,11 @@ export function bindCardEffect(
       if (!playerId) {
         return null;
       }
-      return { kind: "proliferate", playerId };
+      return {
+        kind: "proliferate",
+        playerId,
+        ...(effect.thenPhaseOutTouched ? { thenPhaseOutTouched: true } : {}),
+      };
     }
     case "untap_all": {
       const playerId = bindPlayerSelector(state, effect.playerId, context);
@@ -5657,17 +5661,28 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
         // has counters, skipping -1/-1 counters, opponents' permanents, and
         // players. Doublers apply per counter kind.
         next = cloneGameState(state);
+        const touched: CardInstanceId[] = [];
         for (const card of Object.values(next.cards)) {
           if (card.zone !== "battlefield" || card.controllerId !== effect.playerId) {
             continue;
           }
+          let gained = false;
           for (const counter of Object.keys(card.counters)) {
             if (counter === "m1m1" || (card.counters[counter] ?? 0) <= 0) {
               continue;
             }
             card.counters[counter] =
               (card.counters[counter] ?? 0) + counterBatchAmount(next, card.id, counter, 1);
+            gained = true;
           }
+          if (gained) {
+            touched.push(card.id);
+          }
+        }
+        // Ripples of Potential: the set of permanents this proliferate just
+        // fed is known HERE and nowhere else.
+        if (effect.thenPhaseOutTouched && touched.length > 0) {
+          next = applyPhaseOut(next, touched);
         }
         break;
       }

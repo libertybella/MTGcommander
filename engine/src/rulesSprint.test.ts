@@ -58819,3 +58819,145 @@ describe("wave 371: exiling a spell is not countering it", () => {
     ]);
   });
 });
+
+describe("wave 372: proliferate, and phasing out what it fed", () => {
+  const compile = (name: string, typeLine: string, oracleText: string, manaCost = "") =>
+    compileOracleCard({
+      oracleId: name.toLowerCase().replace(/[^a-z]+/g, "-"),
+      name,
+      manaCost,
+      typeLine,
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  const put = (game: GameState, ownerId: string, definition: CardDefinition) => {
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({
+      definitionId: definition.id,
+      ownerId,
+      zone: "battlefield",
+    });
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === ownerId)!.zones.battlefield.push(card.id);
+    card.summoningSick = false;
+    return card.id;
+  };
+
+  it("compiles Ripples of Potential as one effect", () => {
+    const compiled = compile(
+      "Ripples of Potential",
+      "Instant",
+      "Proliferate, then choose any number of permanents you control that had a counter put on them this way. Those permanents phase out.",
+      "{1}{U}",
+    );
+    expect(compiled.notes).toEqual([]);
+    // One effect, not two: the set the phase-out names exists only inside
+    // the proliferate that made it.
+    expect(compiled.definition.effects).toEqual([
+      { kind: "proliferate", playerId: "controller", thenPhaseOutTouched: true },
+    ]);
+  });
+
+  it("leaves a plain proliferate plain", () => {
+    const compiled = compile("Contagion Clasp", "Artifact", "Proliferate.", "{2}");
+    expect(compiled.definition.effects).toEqual([
+      { kind: "proliferate", playerId: "controller" },
+    ]);
+  });
+
+  const bear = (name: string) =>
+    createCardDefinition({
+      name,
+      typeLine: "Creature — Bear",
+      manaCost: "{1}{G}",
+      power: 2,
+      toughness: 2,
+    });
+
+  const ripple = (game: GameState, playerId: string) =>
+    applyEffects(
+      game,
+      bindCardEffects(
+        game,
+        [{ kind: "proliferate", playerId: "controller", thenPhaseOutTouched: true }],
+        { controllerId: playerId, sourceId: null, targets: [], targetRequirements: [] },
+      ),
+    );
+
+  it("phases out exactly what it fed", () => {
+    const { game, p1 } = twoPlayers();
+    const countedId = put(game, p1.id, bear("Counted"));
+    const bareId = put(game, p1.id, bear("Bare"));
+    game.cards[countedId]!.counters["p1p1"] = 1;
+    const after = ripple(game, p1.id);
+    // The one with a counter got another and phased out; the one without
+    // was never touched, so it stays.
+    expect(after.cards[countedId]?.counters["p1p1"]).toBe(2);
+    expect(after.cards[countedId]?.phasedOut).toBe(true);
+    expect(after.cards[bareId]?.phasedOut).toBeFalsy();
+  });
+
+  it("leaves an opponent's counters alone, and their permanents", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const theirsId = put(game, p2.id, bear("Theirs"));
+    game.cards[theirsId]!.counters["p1p1"] = 1;
+    const after = ripple(game, p1.id);
+    expect(after.cards[theirsId]?.counters["p1p1"]).toBe(1);
+    expect(after.cards[theirsId]?.phasedOut).toBeFalsy();
+  });
+
+  it("does not feed or phase a -1/-1 counter", () => {
+    const { game, p1 } = twoPlayers();
+    const shrunkId = put(game, p1.id, bear("Shrunk"));
+    game.cards[shrunkId]!.counters["m1m1"] = 1;
+    const after = ripple(game, p1.id);
+    // Proliferate skips -1/-1 counters here, so nothing was put on this
+    // permanent "this way" and it does not phase out either.
+    expect(after.cards[shrunkId]?.counters["m1m1"]).toBe(1);
+    expect(after.cards[shrunkId]?.phasedOut).toBeFalsy();
+  });
+
+  it("phases nothing when there is nothing to proliferate", () => {
+    const { game, p1 } = twoPlayers();
+    const bareId = put(game, p1.id, bear("Bare"));
+    const after = ripple(game, p1.id);
+    expect(after.cards[bareId]?.phasedOut).toBeFalsy();
+  });
+
+  it("a plain proliferate phases nothing at all", () => {
+    const { game, p1 } = twoPlayers();
+    const countedId = put(game, p1.id, bear("Counted"));
+    game.cards[countedId]!.counters["p1p1"] = 1;
+    const after = applyEffects(
+      game,
+      bindCardEffects(game, [{ kind: "proliferate", playerId: "controller" }], {
+        controllerId: p1.id,
+        sourceId: null,
+        targets: [],
+        targetRequirements: [],
+      }),
+    );
+    expect(after.cards[countedId]?.counters["p1p1"]).toBe(2);
+    expect(after.cards[countedId]?.phasedOut).toBeFalsy();
+  });
+
+  it("round trips the rider", () => {
+    const { game, p1 } = twoPlayers();
+    const definition = createCardDefinition({
+      name: "Wave 372 Ripples",
+      typeLine: "Instant",
+      manaCost: "{1}{U}",
+      effects: [{ kind: "proliferate", playerId: "controller", thenPhaseOutTouched: true }],
+    });
+    put(game, p1.id, definition);
+    const round = parseGameState(serializeGameState(game));
+    // Dropped on the wire this is a bare proliferate, which is half a card.
+    expect(round.definitions[definition.id]?.effects).toEqual([
+      { kind: "proliferate", playerId: "controller", thenPhaseOutTouched: true },
+    ]);
+  });
+});

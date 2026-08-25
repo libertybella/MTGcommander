@@ -6526,6 +6526,20 @@ function compileSimpleClauseInner(sentence: string): SimpleClause | null {
     };
   }
 
+  /**
+   * Ripples of Potential, once the fuser has joined its two sentences. The
+   * phase-out rides the proliferate because the set it names — permanents
+   * that got a counter THIS WAY — exists only inside that effect.
+   */
+  if (/^ripples-proliferate-phase$/i.test(sentence)) {
+    return {
+      targetRequirements: [],
+      effects: [
+        { kind: "proliferate", playerId: "controller", thenPhaseOutTouched: true },
+      ],
+    };
+  }
+
   if (/^untap ~$/i.test(sentence)) {
     return {
       targetRequirements: [],
@@ -10156,6 +10170,32 @@ function fuseRepeatXInPlace(sentences: string[], lineStart: boolean[]): void {
  * to a marker, rather than trying to read an arbitrary token out of an
  * arbitrary rider.
  */
+/**
+ * Ripples of Potential prints its proliferate and the phase-out it feeds as
+ * two sentences. They are collapsed to a marker because the second cannot
+ * be read on its own — "those permanents" names a set that only the first
+ * one knows.
+ */
+function fuseRipplesInPlace(sentences: string[], lineStart: boolean[]): void {
+  for (let index = 0; index + 1 < sentences.length; index += 1) {
+    if (lineStart[index + 1] || !sentences[index] || !sentences[index + 1]) {
+      continue;
+    }
+    if (
+      !/^Proliferate, then choose any number of permanents you control that had a counter put on them this way$/i.test(
+        sentences[index]!,
+      )
+    ) {
+      continue;
+    }
+    if (!/^Those permanents phase out$/i.test(sentences[index + 1]!)) {
+      continue;
+    }
+    sentences.splice(index, 2, "ripples-proliferate-phase");
+    lineStart.splice(index + 1, 1);
+  }
+}
+
 function fuseInkshieldInPlace(sentences: string[], lineStart: boolean[]): void {
   for (let index = 0; index + 1 < sentences.length; index += 1) {
     if (lineStart[index + 1] || !sentences[index] || !sentences[index + 1]) {
@@ -14167,6 +14207,7 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
   fuseSearchPutInPlace(sentences, lineStart);
   fuseSawInHalfInPlace(sentences, lineStart);
   fuseInkshieldInPlace(sentences, lineStart);
+  fuseRipplesInPlace(sentences, lineStart);
   // A printed line is an ability, so these mark where the current line's
   // output begins. Riders that reach BACKWARD — the regeneration denial
   // below — use them to stop at the line they were printed on.
