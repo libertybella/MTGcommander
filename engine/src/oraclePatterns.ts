@@ -3669,7 +3669,7 @@ function compileSimpleClauseInner(sentence: string): SimpleClause | null {
   // "When ~ dies, return it to the battlefield tapped under its owner's
   // control [with a +1/+1 counter on it]."
   const selfReturn = sentence.match(
-    /^return (it|~) to the battlefield( tapped)?(?: under its owner's control)?(?: with an? ([+\w/]+) counter on it)?$/i,
+    /^return (it|~) to the battlefield( tapped)?( and transformed)?(?: under its owner's control)?(?: with an? ([+\w/]+) counter on it)?$/i,
   );
   if (selfReturn?.[1]) {
     /**
@@ -3681,7 +3681,7 @@ function compileSimpleClauseInner(sentence: string): SimpleClause | null {
      * `~` still means the source, because that is what the word says.
      */
     const returned = /^~$/.test(selfReturn[1]) ? ("self" as const) : ("subject_card" as const);
-    const counter = selfReturn[3] ? counterKeyOf(selfReturn[3]) : null;
+    const counter = selfReturn[4] ? counterKeyOf(selfReturn[4]) : null;
     return {
       targetRequirements: [],
       effects: [
@@ -3690,6 +3690,9 @@ function compileSimpleClauseInner(sentence: string): SimpleClause | null {
           cardId: returned,
           toZone: "battlefield",
           ...(selfReturn[2] ? { entersTapped: true } : {}),
+          // Ojer Taq: it arrives on its other face, rather than arriving
+          // and then turning over.
+          ...(selfReturn[3] ? { transformed: true } : {}),
         },
         ...(counter
           ? [{ kind: "add_counter" as const, cardId: returned, counter, amount: 1 }]
@@ -16881,6 +16884,26 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
       )
     ) {
       result.replacements.push({ kind: "double_tokens" });
+      continue;
+    }
+
+    /**
+     * Ojer Taq: the same replacement, tripled and narrowed to CREATURE
+     * tokens. Multipliers compound (CR 614.1c), so beside a Doubling Season
+     * this is six — which falls out of the shared factor rather than
+     * needing to be spelled.
+     */
+    const tokenMultiplier = sentence.match(
+      /^If one or more (creature )?tokens would be created under your control, (twice|three times|four times) that many of those tokens are created instead$/i,
+    );
+    if (tokenMultiplier?.[2]) {
+      const word = tokenMultiplier[2].toLowerCase();
+      const multiplier = word === "twice" ? 2 : word === "three times" ? 3 : 4;
+      result.replacements.push({
+        kind: "double_tokens",
+        ...(multiplier === 2 ? {} : { multiplier }),
+        ...(tokenMultiplier[1] ? { creaturesOnly: true } : {}),
+      });
       continue;
     }
 

@@ -57919,3 +57919,284 @@ describe("wave 367: a search sized by what the cost ate", () => {
     });
   });
 });
+
+describe("wave 368: tripled tokens, and a return that arrives transformed", () => {
+  const compile = (
+    name: string,
+    typeLine: string,
+    oracleText: string,
+    manaCost = "",
+    pt: [string, string] | null = null,
+  ) =>
+    compileOracleCard({
+      oracleId: name.toLowerCase().replace(/[^a-z]+/g, "-"),
+      name,
+      manaCost,
+      typeLine,
+      power: pt?.[0] ?? null,
+      toughness: pt?.[1] ?? null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  const put = (game: GameState, ownerId: string, definition: CardDefinition) => {
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({
+      definitionId: definition.id,
+      ownerId,
+      zone: "battlefield",
+    });
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === ownerId)!.zones.battlefield.push(card.id);
+    card.summoningSick = false;
+    return card.id;
+  };
+
+  it("compiles the tripler and the plain doubler apart", () => {
+    const taq = compile(
+      "Ojer Taq, Deepest Foundation",
+      "Legendary Creature — God",
+      "If one or more creature tokens would be created under your control, three times that many of those tokens are created instead.",
+      "{3}{W}{W}",
+      ["5", "4"],
+    );
+    expect(taq.notes).toEqual([]);
+    expect(taq.definition.replacements).toEqual([
+      { kind: "double_tokens", multiplier: 3, creaturesOnly: true },
+    ]);
+    const procession = compile(
+      "Anointed Procession",
+      "Enchantment",
+      "If one or more tokens would be created under your control, twice that many of those tokens are created instead.",
+      "{3}{W}",
+    );
+    // The plain doubler keeps its bare shape — two is the default.
+    expect(procession.definition.replacements).toEqual([{ kind: "double_tokens" }]);
+  });
+
+  const tripler = () =>
+    createCardDefinition({
+      name: "Ojer Taq, Deepest Foundation",
+      typeLine: "Legendary Creature — God",
+      manaCost: "{3}{W}{W}",
+      power: 5,
+      toughness: 4,
+      replacements: [{ kind: "double_tokens", multiplier: 3, creaturesOnly: true }],
+    });
+
+  const doubler = () =>
+    createCardDefinition({
+      name: "Anointed Procession",
+      typeLine: "Enchantment",
+      manaCost: "{3}{W}",
+      replacements: [{ kind: "double_tokens" }],
+    });
+
+  const makeSoldier = (game: GameState, playerId: string) =>
+    applyEffects(
+      game,
+      bindCardEffects(
+        game,
+        [
+          {
+            kind: "create_token",
+            ownerId: "controller",
+            name: "Soldier",
+            typeLine: "Creature — Soldier Token",
+            power: 1,
+            toughness: 1,
+          },
+        ],
+        { controllerId: playerId, sourceId: null, targets: [], targetRequirements: [] },
+      ),
+    );
+
+  const countTokens = (game: GameState, playerId: string) =>
+    Object.values(game.cards).filter(
+      (card) => card.isToken && card.controllerId === playerId && card.zone === "battlefield",
+    ).length;
+
+  it("triples a creature token", () => {
+    const { game, p1 } = twoPlayers();
+    put(game, p1.id, tripler());
+    expect(countTokens(makeSoldier(game, p1.id), p1.id)).toBe(3);
+  });
+
+  it("compounds with a doubler", () => {
+    const { game, p1 } = twoPlayers();
+    put(game, p1.id, tripler());
+    put(game, p1.id, doubler());
+    // CR 614.1c: they multiply, they do not add.
+    expect(countTokens(makeSoldier(game, p1.id), p1.id)).toBe(6);
+  });
+
+  it("leaves a noncreature token alone", () => {
+    const { game, p1 } = twoPlayers();
+    put(game, p1.id, tripler());
+    const after = applyEffects(
+      game,
+      bindCardEffects(
+        game,
+        [
+          {
+            kind: "create_token",
+            ownerId: "controller",
+            name: "Treasure",
+            typeLine: "Artifact — Treasure Token",
+          },
+        ],
+        { controllerId: p1.id, sourceId: null, targets: [], targetRequirements: [] },
+      ),
+    );
+    // "Creature tokens" — a Treasure is not one, and the old shared factor
+    // had no way to say so.
+    expect(countTokens(after, p1.id)).toBe(1);
+  });
+
+  it("does nothing for an opponent's tokens", () => {
+    const { game, p1, p2 } = twoPlayers();
+    put(game, p1.id, tripler());
+    expect(countTokens(makeSoldier(game, p2.id), p2.id)).toBe(1);
+  });
+
+  // ---- Returning transformed ----------------------------------------------
+
+  it("compiles the transformed return", () => {
+    const compiled = compile(
+      "Ojer Taq, Deepest Foundation",
+      "Legendary Creature — God",
+      "When this creature dies, return it to the battlefield tapped and transformed under its owner's control.",
+      "{3}{W}{W}",
+      ["5", "4"],
+    );
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.triggers[0]?.effects[0]).toEqual({
+      kind: "move_card",
+      cardId: "subject_card",
+      toZone: "battlefield",
+      entersTapped: true,
+      transformed: true,
+    });
+  });
+
+  it("arrives on the other face, tapped", () => {
+    const { game, p1 } = twoPlayers();
+    const back = createCardDefinition({
+      name: "Temple of Civilization",
+      typeLine: "Legendary Land",
+    });
+    const front = createCardDefinition({
+      name: "Ojer Taq, Deepest Foundation",
+      typeLine: "Legendary Creature — God",
+      manaCost: "{3}{W}{W}",
+      power: 5,
+      toughness: 4,
+    });
+    front.otherFaceId = back.id;
+    back.otherFaceId = front.id;
+    game.definitions[back.id] = back;
+    const cardId = put(game, p1.id, front);
+    const buried = moveCard(game, cardId, "graveyard");
+    const after = applyEffects(
+      buried,
+      bindCardEffects(
+        buried,
+        [
+          {
+            kind: "move_card",
+            cardId: "subject_card",
+            toZone: "battlefield",
+            entersTapped: true,
+            transformed: true,
+          },
+        ],
+        {
+          controllerId: p1.id,
+          sourceId: cardId,
+          subjectCardId: cardId,
+          targets: [],
+          targetRequirements: [],
+        },
+      ),
+    );
+    expect(after.cards[cardId]?.zone).toBe("battlefield");
+    expect(after.cards[cardId]?.tapped).toBe(true);
+    // It ARRIVES transformed: nothing ever sees the front face enter.
+    expect(after.definitions[after.cards[cardId]!.definitionId]?.name).toBe(
+      "Temple of Civilization",
+    );
+  });
+
+  it("returns the front face when the card has no other one", () => {
+    const { game, p1 } = twoPlayers();
+    const lonely = createCardDefinition({
+      name: "Lonely Bear",
+      typeLine: "Creature — Bear",
+      manaCost: "{1}{G}",
+      power: 2,
+      toughness: 2,
+    });
+    const cardId = put(game, p1.id, lonely);
+    const buried = moveCard(game, cardId, "graveyard");
+    const after = applyEffects(
+      buried,
+      bindCardEffects(
+        buried,
+        [
+          {
+            kind: "move_card",
+            cardId: "subject_card",
+            toZone: "battlefield",
+            transformed: true,
+          },
+        ],
+        {
+          controllerId: p1.id,
+          sourceId: cardId,
+          subjectCardId: cardId,
+          targets: [],
+          targetRequirements: [],
+        },
+      ),
+    );
+    // No back face to turn to, so it simply comes back as itself rather
+    // than throwing or vanishing.
+    expect(after.definitions[after.cards[cardId]!.definitionId]?.name).toBe("Lonely Bear");
+  });
+
+  it("round trips both new fields", () => {
+    const { game, p1 } = twoPlayers();
+    const definition = createCardDefinition({
+      name: "Wave 368 God",
+      typeLine: "Legendary Creature — God",
+      manaCost: "{3}{W}{W}",
+      power: 5,
+      toughness: 4,
+      replacements: [{ kind: "double_tokens", multiplier: 3, creaturesOnly: true }],
+      triggers: [
+        {
+          event: "dies",
+          effects: [
+            {
+              kind: "move_card",
+              cardId: "subject_card",
+              toZone: "battlefield",
+              entersTapped: true,
+              transformed: true,
+            },
+          ],
+          targetRequirements: [],
+        },
+      ],
+    });
+    put(game, p1.id, definition);
+    const round = parseGameState(serializeGameState(game));
+    expect(round.definitions[definition.id]?.replacements).toEqual([
+      { kind: "double_tokens", multiplier: 3, creaturesOnly: true },
+    ]);
+    expect(round.definitions[definition.id]?.triggers[0]?.effects[0]).toMatchObject({
+      transformed: true,
+    });
+  });
+});

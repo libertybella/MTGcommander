@@ -1440,6 +1440,12 @@ export type GameEffect =
        * scopes to one ability, and it never spends a shield it denies.
        */
       denyRegeneration?: boolean;
+      /**
+       * Ojer Taq: "return it to the battlefield tapped and TRANSFORMED".
+       * The card arrives on its other face, which is a different thing from
+       * transforming it afterwards — nothing sees the front face enter.
+       */
+      transformed?: boolean;
       /** Kodama: mark the arriving permanent as put by THIS ability. */
       putByAbilityOf?: CardInstanceId;
       /** Battlefield arrivals: the arriving card is controlled by this player. */
@@ -2802,6 +2808,12 @@ export type CardEffect =
        * scopes to one ability, and it never spends a shield it denies.
        */
       denyRegeneration?: boolean;
+      /**
+       * Ojer Taq: "return it to the battlefield tapped and TRANSFORMED".
+       * The card arrives on its other face, which is a different thing from
+       * transforming it afterwards — nothing sees the front face enter.
+       */
+      transformed?: boolean;
       /**
        * Kodama: mark the arriving permanent as put by this ability. A
        * BOOLEAN here and an id on the bound form — the definition does not
@@ -4687,9 +4699,13 @@ export type ReplacementEffect =
   | { kind: "self_to_library_shuffled" }
   /** Laboratory Maniac: the empty-library draw wins instead of losing. */
   | { kind: "empty_draw_wins" }
-  /** Anointed Procession / Doubling Season: tokens created under the
-   * controller's control are doubled. */
-  | { kind: "double_tokens" }
+  /**
+   * Anointed Procession / Doubling Season: tokens created under the
+   * controller's control are doubled. Ojer Taq TRIPLES, and only creature
+   * tokens — one shape rather than a second replacement kind, because
+   * multiple multipliers multiply together either way (CR 614.1c).
+   */
+  | { kind: "double_tokens"; multiplier?: number; creaturesOnly?: boolean }
   /** Doubling Season / Branching Evolution: counters put on permanents the
    * controller controls are doubled; optional counter/creature restriction. */
   | {

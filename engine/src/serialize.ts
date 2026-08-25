@@ -3677,6 +3677,7 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
         ...(value.putByAbilityOf === true ? { putByAbilityOf: true } : {}),
         ...(value.destroy === true ? { destroy: true } : {}),
         ...(value.denyRegeneration === true ? { denyRegeneration: true } : {}),
+        ...(value.transformed === true ? { transformed: true } : {}),
         ...(value.underControlOf === "controller" ? { underControlOf: "controller" } : {}),
         ...(isRecord(value.withCounter)
           ? {
@@ -5386,11 +5387,19 @@ function parseReplacements(value: unknown, label: string): ReplacementEffect[] {
       kind === "self_to_library_shuffled" ||
       kind === "opponents_graveyard_to_void_exile" ||
       kind === "empty_draw_wins" ||
-      kind === "double_tokens" ||
       kind === "double_life_gain" ||
       kind === "double_draws_except_first"
     ) {
       return { kind };
+    }
+    if (kind === "double_tokens") {
+      return {
+        kind,
+        ...(entry.multiplier === undefined
+          ? {}
+          : { multiplier: expectNumber(entry.multiplier, `${label}[${index}].multiplier`) }),
+        ...(entry.creaturesOnly === true ? { creaturesOnly: true } : {}),
+      };
     }
     if (kind === "tokens_one_of_each") {
       return {
@@ -6780,6 +6789,7 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
         : { putByAbilityOf: expectString(value.putByAbilityOf, `${label}.putByAbilityOf`) }),
       ...(value.destroy === true ? { destroy: true } : {}),
       ...(value.denyRegeneration === true ? { denyRegeneration: true } : {}),
+      ...(value.transformed === true ? { transformed: true } : {}),
       ...(value.controllerId === undefined
         ? {}
         : { controllerId: expectString(value.controllerId, `${label}.controllerId`) }),

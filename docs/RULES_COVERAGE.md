@@ -2277,6 +2277,14 @@ more questions it can now ask:
   `TopOfLibraryGrant.payLifeInsteadOfMana` replaces the cost OUTRIGHT, the
   same way flashback does, and rides the same life-payment path. A cost
   that had merely been reduced would still refuse a caster with no mana.
+- **Token multipliers beyond doubling** — Ojer Taq. `double_tokens` carries
+  a `multiplier` and an optional `creaturesOnly` scope; multipliers compound
+  (CR 614.1c), so a tripler beside a doubler is six. The shared factor asks
+  the caller whether the token being made is a creature, because a Treasure
+  is not.
+- **"Return it transformed"** — Ojer Taq. `move_card.transformed` brings the
+  card back on its other face as it arrives, so nothing sees the front face
+  enter. With no other face it returns as itself.
 - **A search sized by an additional cost** — Eldritch Evolution.
   `SearchFilter.maxManaValuePlusSacrificed` is the printed offset; the rest
   comes from `sacrificedManaValue`, captured when the sacrifice cost was

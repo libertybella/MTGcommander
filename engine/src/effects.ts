@@ -1108,6 +1108,7 @@ export function bindCardEffect(
         toZone: effect.toZone,
         libraryPosition: effect.libraryPosition,
         ...(effect.entersTapped ? { entersTapped: true } : {}),
+        ...(effect.transformed ? { transformed: true } : {}),
         ...(effect.gainsHaste ? { gainsHaste: true } : {}),
         ...(effect.atEndStep ? { atEndStep: effect.atEndStep } : {}),
         ...(effect.exileIfLeaves ? { exileIfLeaves: true } : {}),
@@ -3109,7 +3110,16 @@ function applySacrifice(state: GameState, cardId: CardInstanceId): GameState {
 }
 
 /** Anointed Procession / Doubling Season: 2^n for n token doublers. */
-export function tokenDoublingFactor(state: GameState, ownerId: PlayerId): number {
+export function tokenDoublingFactor(
+  state: GameState,
+  ownerId: PlayerId,
+  /**
+   * Ojer Taq multiplies CREATURE tokens only, so the caller has to say what
+   * it is making. Required rather than defaulted: a Clue is not a creature,
+   * and a default either way would be wrong for half the callers.
+   */
+  creatureToken: boolean,
+): number {
   let factor = 1;
   for (const card of Object.values(state.cards)) {
     if (card.zone !== "battlefield" || card.controllerId !== ownerId) {
@@ -3117,13 +3127,22 @@ export function tokenDoublingFactor(state: GameState, ownerId: PlayerId): number
     }
     // Cheap definition check first — abilitiesRemoved runs a layer pass, so
     // only pay for it on actual doublers (burn-time hot path).
-    const doubles = (state.definitions[card.definitionId]?.replacements ?? []).filter(
+    const doublers = (state.definitions[card.definitionId]?.replacements ?? []).filter(
       (replacement) => replacement.kind === "double_tokens",
-    ).length;
-    if (doubles === 0 || abilitiesRemoved(state, card.id)) {
+    );
+    if (doublers.length === 0 || abilitiesRemoved(state, card.id)) {
       continue;
     }
-    factor *= 2 ** doubles;
+    for (const doubler of doublers) {
+      if (doubler.kind !== "double_tokens") {
+        continue;
+      }
+      if (doubler.creaturesOnly === true && !creatureToken) {
+        continue;
+      }
+      // They compound: Ojer Taq beside a Doubling Season is six.
+      factor *= doubler.multiplier ?? 2;
+    }
   }
   return factor;
 }
@@ -3568,10 +3587,11 @@ function applyCreateToken(
         .filter((player) => player.id !== effect.ownerId)
         .map((player) => player.id)
     : null;
+  const makesCreature = definition.characteristics.types.includes("creature");
   const copies = perOpponent
-    ? perOpponent.length * tokenDoublingFactor(next, effect.ownerId)
+    ? perOpponent.length * tokenDoublingFactor(next, effect.ownerId, makesCreature)
     : (powerCount ?? counterCount ?? effect.count ?? 1) *
-      tokenDoublingFactor(next, effect.ownerId);
+      tokenDoublingFactor(next, effect.ownerId, makesCreature);
   for (let index = 0; index < copies; index += 1) {
     const token = createCardInstance({
       definitionId: definition.id,
@@ -4003,7 +4023,13 @@ function applyCopyToken(
     throw new Error(`Unknown player ${ownerId}`);
   }
   // Token copies are created tokens too — doublers apply (CR 614.1c).
-  const copies = (opts?.count ?? 1) * tokenDoublingFactor(next, ownerId);
+  const copies =
+    (opts?.count ?? 1) *
+    tokenDoublingFactor(
+      next,
+      ownerId,
+      next.definitions[copyDefinitionId]?.characteristics.types.includes("creature") ?? false,
+    );
   for (let index = 0; index < copies; index += 1) {
     const token = createCardInstance({
       definitionId: copyDefinitionId,
@@ -4446,6 +4472,14 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
         if (arrived?.zone === "battlefield") {
           if (effect.entersTapped) {
             arrived.tapped = true;
+          }
+          // Ojer Taq: it ARRIVES transformed, rather than arriving and then
+          // turning over — so nothing ever sees the front face enter.
+          if (effect.transformed) {
+            const otherFaceId = next.definitions[arrived.definitionId]?.otherFaceId;
+            if (otherFaceId && next.definitions[otherFaceId]) {
+              arrived.definitionId = otherFaceId;
+            }
           }
           // "It gains haste": mechanically, no summoning sickness this turn.
           if (effect.gainsHaste) {
