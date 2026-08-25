@@ -4998,6 +4998,34 @@ function compileSimpleClauseInner(sentence: string): SimpleClause | null {
   }
 
   /**
+   * Approach of the Second Sun, once the fuser has joined its two halves.
+   * The win reads the per-name game tally and the zone the spell was cast
+   * from; the else-branch puts the card back seventh from the top, which is
+   * the one numeric library position any card names.
+   */
+  if (/^approach-second-sun$/i.test(sentence)) {
+    return {
+      targetRequirements: [],
+      effects: [
+        {
+          kind: "if_condition",
+          condition: { kind: "cast_from_hand_and_another_named_this_game" },
+          then: [{ kind: "win_game", playerId: "controller" }],
+          otherwise: [
+            {
+              kind: "move_card",
+              cardId: "self",
+              toZone: "library",
+              libraryPosition: { fromTop: 7 },
+            },
+            { kind: "gain_life", playerId: "controller", amount: 7 },
+          ],
+        },
+      ],
+    };
+  }
+
+  /**
    * Saw in Half's rider, once the fuser has joined it to the destruction it
    * follows. Two halves that pull in opposite directions: the halved P/T is
    * measured at BIND, while the creature is still on the battlefield to be
@@ -10182,6 +10210,35 @@ function fuseRepeatXInPlace(sentences: string[], lineStart: boolean[]): void {
  * names the offer above it. Collapsed to a marker the clause below builds
  * the whole attack trigger from.
  */
+/**
+ * Approach of the Second Sun prints its win and its consolation as two
+ * sentences joined by "Otherwise". Neither reads alone — the second is the
+ * else-branch of the first — so both collapse to one marker.
+ */
+function fuseApproachInPlace(sentences: string[], lineStart: boolean[]): void {
+  for (let index = 0; index + 1 < sentences.length; index += 1) {
+    if (lineStart[index + 1] || !sentences[index] || !sentences[index + 1]) {
+      continue;
+    }
+    if (
+      !/^If this spell was cast from your hand and you've cast another spell named (?:~|Approach of the Second Sun) this game, you win the game$/i.test(
+        sentences[index]!,
+      )
+    ) {
+      continue;
+    }
+    if (
+      !/^Otherwise, put (?:~|Approach of the Second Sun) into its owner's library seventh from the top and you gain 7 life$/i.test(
+        sentences[index + 1]!,
+      )
+    ) {
+      continue;
+    }
+    sentences.splice(index, 2, "approach-second-sun");
+    lineStart.splice(index + 1, 1);
+  }
+}
+
 function fuseExertInPlace(sentences: string[], lineStart: boolean[]): void {
   for (let index = 0; index + 1 < sentences.length; index += 1) {
     if (lineStart[index + 1] || !sentences[index] || !sentences[index + 1]) {
@@ -14239,6 +14296,7 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
   fuseInkshieldInPlace(sentences, lineStart);
   fuseRipplesInPlace(sentences, lineStart);
   fuseExertInPlace(sentences, lineStart);
+  fuseApproachInPlace(sentences, lineStart);
   // A printed line is an ability, so these mark where the current line's
   // output begins. Riders that reach BACKWARD — the regeneration denial
   // below — use them to stop at the line they were printed on.

@@ -2277,6 +2277,14 @@ more questions it can now ask:
   `TopOfLibraryGrant.payLifeInsteadOfMana` replaces the cost OUTRIGHT, the
   same way flashback does, and rides the same life-payment path. A cost
   that had merely been reduced would still refuse a caster with no mana.
+- **A cast tally by name, for the game** — Approach of the Second Sun.
+  `spellsCastByNameThisGame` is the one per-state tally that never resets,
+  and it counts the current cast, so "another spell named this" is two.
+  `CardInstance.castFromZone` records where a spell was cast from, on the
+  card rather than the stack entry, because the question is asked while the
+  spell resolves and the entry is already gone.
+- **A numeric library position** — `LibraryPosition` accepts `{ fromTop: n }`,
+  one-based; a library shorter than that takes the card on the bottom.
 - **Exert** (CR 701.39) — Combat Celebrant. One flag answers both halves:
   it gates "hasn't been exerted this turn" and it makes the creature miss
   its controller's next untap step, which is also the step that clears it.

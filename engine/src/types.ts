@@ -16,6 +16,12 @@ export type ManaPool = {
   C: number;
 };
 
+/**
+ * Where a card lands when it goes to a library. Approach of the Second Sun
+ * is the one card that names a NUMBER — "seventh from the top", one-based.
+ */
+export type LibraryPosition = "top" | "bottom" | "shuffled" | { fromTop: number };
+
 export type ZoneName =
   | "library"
   | "hand"
@@ -686,6 +692,13 @@ export type CardInstance = {
    * that untap step, which is also the step it makes the creature miss.
    */
   exertedThisTurn?: boolean;
+  /**
+   * Approach of the Second Sun: the zone this card was last cast FROM.
+   * Kept on the instance rather than the stack object, because the
+   * question is asked while the spell resolves and the stack entry is
+   * already gone by then.
+   */
+  castFromZone?: ZoneName;
   counters: Record<string, number>;
   /**
    * CR 702.26: a phased-out permanent is treated as though it did not
@@ -1085,6 +1098,12 @@ export type GameState = {
   spellsCastThisTurn: number;
   /** Per-player casts this turn (Lotho's second-spell watch). */
   spellsCastByPlayerThisTurn?: Record<PlayerId, number>;
+  /**
+   * Approach of the Second Sun: per-player casts BY NAME, for the whole
+   * GAME rather than the turn — the only tally on this state that never
+   * resets, because the card asks about the whole game.
+   */
+  spellsCastByNameThisGame?: Record<PlayerId, Record<string, number>>;
   /** Esper Sentinel: per-player noncreature casts this turn. */
   noncreatureSpellsCastByPlayerThisTurn?: Record<PlayerId, number>;
   /** Idol of Oblivion: players who created a token this turn. */
@@ -1436,7 +1455,7 @@ export type GameEffect =
       kind: "move_card";
       cardId: CardInstanceId;
       toZone: Exclude<ZoneName, "stack">;
-      libraryPosition?: "top" | "bottom" | "shuffled";
+      libraryPosition?: LibraryPosition;
       entersTapped?: boolean;
       gainsHaste?: boolean;
       atEndStep?: "sacrifice" | "exile";
@@ -2840,7 +2859,7 @@ export type CardEffect =
       kind: "move_card";
       cardId: CardIdSelector;
       toZone: Exclude<ZoneName, "stack">;
-      libraryPosition?: "top" | "bottom" | "shuffled";
+      libraryPosition?: LibraryPosition;
       /** Battlefield arrivals only: the card enters tapped. */
       entersTapped?: boolean;
       /** Battlefield arrivals: "It gains haste" riders. */
@@ -3972,6 +3991,13 @@ export type TriggerCondition =
    * The same flag the untap step spends, asked before it is set.
    */
   | { kind: "self_not_exerted_this_turn" }
+  /**
+   * Approach of the Second Sun: "if this spell was cast from your hand AND
+   * you've cast another spell named this one this game". Both halves at
+   * once, because neither is worth a condition on its own and the card
+   * asks them together.
+   */
+  | { kind: "cast_from_hand_and_another_named_this_game" }
   /** Glint-Horn Buccaneer: "Activate only if this creature is attacking." */
   | { kind: "self_attacking" }
   | { kind: "graveyard_cards_at_least"; count: number }

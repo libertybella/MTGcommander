@@ -221,6 +221,10 @@ export function putSpellOnStack(
         : definition?.targetRequirements ?? [];
   validateChosenTargets(state, requirements, targets, card.controllerId, sourceColorsOf(state, cardId), cardId);
 
+  // Approach of the Second Sun: where it was cast FROM, read before the
+  // card leaves that zone and kept on the instance, because by the time
+  // the spell resolves the stack entry is gone.
+  const castFromZone = state.cards[cardId]?.zone;
   let next = cloneGameState(state);
   next = removeCardFromCurrentZone(next, cardId);
   const moved = next.cards[cardId];
@@ -228,6 +232,20 @@ export function putSpellOnStack(
     throw new Error(`Card ${cardId} missing after leaving hand`);
   }
   moved.zone = "stack";
+  if (castFromZone) {
+    moved.castFromZone = castFromZone;
+  }
+  // Approach of the Second Sun again: a per-name tally for the whole game.
+  // Counted here, so the current cast is already in it — "ANOTHER spell
+  // named this" is therefore two, not one.
+  const castName = state.definitions[moved.definitionId]?.name;
+  if (castName) {
+    const byPlayer = { ...(next.spellsCastByNameThisGame ?? {}) };
+    const forPlayer = { ...(byPlayer[moved.controllerId] ?? {}) };
+    forPlayer[castName] = (forPlayer[castName] ?? 0) + 1;
+    byPlayer[moved.controllerId] = forPlayer;
+    next.spellsCastByNameThisGame = byPlayer;
+  }
   if (exileEntry) {
     moved.controllerId = exileEntry.casterId;
   }

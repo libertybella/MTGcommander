@@ -11,6 +11,7 @@ import type {
   CardInstanceId,
   EngineEvent,
   GameState,
+  LibraryPosition,
   PlayerState,
   PlayerZones,
   ZoneName,
@@ -128,7 +129,7 @@ function graveyardReplacedByExile(state: GameState): boolean {
 export type MoveCardOptions = {
   /** Library only: index 0 is the top. Defaults to top when moving onto the
    * library; "shuffled" shuffles the whole library after inserting. */
-  libraryPosition?: "top" | "bottom" | "shuffled";
+  libraryPosition?: LibraryPosition;
   /**
    * Collect dies events here instead of dispatching them immediately.
    * State-based sweeps use this so simultaneous deaths reach watchers as
@@ -472,9 +473,17 @@ function insertIntoZone(
   player: PlayerState,
   zone: keyof PlayerZones,
   cardId: CardInstanceId,
-  libraryPosition: "top" | "bottom" | "shuffled",
+  libraryPosition: LibraryPosition,
 ): void {
   if (zone === "library") {
+    // Approach of the Second Sun: "seventh from the top". One-based, and a
+    // library shorter than that simply takes it on the bottom — which is
+    // where seventh-from-the-top is when you have six cards.
+    if (typeof libraryPosition === "object") {
+      const index = Math.max(0, libraryPosition.fromTop - 1);
+      player.zones.library.splice(Math.min(index, player.zones.library.length), 0, cardId);
+      return;
+    }
     if (libraryPosition === "bottom") {
       player.zones.library.push(cardId);
     } else {

@@ -28,6 +28,7 @@ import type {
   GameEvent,
   GameLogEntry,
   GameState,
+  LibraryPosition,
   LookDestination,
   ManualOverrideChange,
   Keyword,
@@ -591,6 +592,9 @@ export function parseGameState(json: string): GameState {
       loyaltyActivatedThisTurn: card.loyaltyActivatedThisTurn === true,
       ...(card.skipNextUntap === true ? { skipNextUntap: true } : {}),
       ...(card.exertedThisTurn === true ? { exertedThisTurn: true } : {}),
+      ...(typeof card.castFromZone === "string"
+        ? { castFromZone: card.castFromZone as ZoneName }
+        : {}),
       ...(card.goadedBy === undefined
         ? {}
         : {
@@ -1783,6 +1787,30 @@ export function parseGameState(json: string): GameState {
               counts[key] = expectNumber(entry, `spellsCastByPlayerThisTurn.${key}`);
             }
             return counts;
+          })(),
+        }),
+    ...(raw.spellsCastByNameThisGame === undefined
+      ? {}
+      : {
+          spellsCastByNameThisGame: (() => {
+            if (!isRecord(raw.spellsCastByNameThisGame)) {
+              throw new Error("Invalid spellsCastByNameThisGame");
+            }
+            const byPlayer: Record<string, Record<string, number>> = {};
+            for (const [playerId, names] of Object.entries(raw.spellsCastByNameThisGame)) {
+              if (!isRecord(names)) {
+                throw new Error(`Invalid spellsCastByNameThisGame.${playerId}`);
+              }
+              const counts: Record<string, number> = {};
+              for (const [name, entry] of Object.entries(names)) {
+                counts[name] = expectNumber(
+                  entry,
+                  `spellsCastByNameThisGame.${playerId}.${name}`,
+                );
+              }
+              byPlayer[playerId] = counts;
+            }
+            return byPlayer;
           })(),
         }),
     ...(raw.noncreatureSpellsCastByPlayerThisTurn === undefined
@@ -3692,8 +3720,18 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
       if (toZone === "stack" || !ZONE_KEYS.includes(toZone as (typeof ZONE_KEYS)[number])) {
         throw new Error(`Invalid ${label}.toZone`);
       }
-      const libraryPosition = value.libraryPosition;
-      if (libraryPosition !== undefined && libraryPosition !== "top" && libraryPosition !== "bottom" && libraryPosition !== "shuffled") {
+      // Approach of the Second Sun: "seventh from the top" is the one
+      // numeric position any card names.
+      const libraryPosition: LibraryPosition | undefined = isRecord(value.libraryPosition)
+        ? { fromTop: expectNumber(value.libraryPosition.fromTop, `${label}.libraryPosition.fromTop`) }
+        : (value.libraryPosition as LibraryPosition | undefined);
+      if (
+        libraryPosition !== undefined &&
+        typeof libraryPosition !== "object" &&
+        libraryPosition !== "top" &&
+        libraryPosition !== "bottom" &&
+        libraryPosition !== "shuffled"
+      ) {
         throw new Error(`Invalid ${label}.libraryPosition`);
       }
       return {
@@ -5331,7 +5369,8 @@ function parseTriggerCondition(value: unknown, label: string): TriggerCondition 
       }
       if (
         conditionKind === "created_token_this_turn" ||
-        conditionKind === "self_not_exerted_this_turn"
+        conditionKind === "self_not_exerted_this_turn" ||
+        conditionKind === "cast_from_hand_and_another_named_this_game"
       ) {
         return { kind: conditionKind };
       }

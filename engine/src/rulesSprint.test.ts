@@ -59153,3 +59153,186 @@ describe("wave 373: exert, and the untap step it costs", () => {
     });
   });
 });
+
+describe("wave 374: the second sun", () => {
+  const compile = (name: string, typeLine: string, oracleText: string, manaCost = "") =>
+    compileOracleCard({
+      oracleId: name.toLowerCase().replace(/[^a-z]+/g, "-"),
+      name,
+      manaCost,
+      typeLine,
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  const put = (
+    game: GameState,
+    ownerId: string,
+    definition: CardDefinition,
+    zone: "hand" | "library" | "graveyard" = "hand",
+  ) => {
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({ definitionId: definition.id, ownerId, zone });
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === ownerId)!.zones[zone].push(card.id);
+    return card.id;
+  };
+
+  const approachText =
+    "If this spell was cast from your hand and you've cast another spell named Approach of the Second Sun this game, you win the game. Otherwise, put Approach of the Second Sun into its owner's library seventh from the top and you gain 7 life.";
+
+  it("compiles the win and its consolation as one branch", () => {
+    const compiled = compile(
+      "Approach of the Second Sun",
+      "Sorcery",
+      approachText,
+      "{5}{W}{W}",
+    );
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.effects).toEqual([
+      {
+        kind: "if_condition",
+        condition: { kind: "cast_from_hand_and_another_named_this_game" },
+        then: [{ kind: "win_game", playerId: "controller" }],
+        otherwise: [
+          {
+            kind: "move_card",
+            cardId: "self",
+            toZone: "library",
+            libraryPosition: { fromTop: 7 },
+          },
+          { kind: "gain_life", playerId: "controller", amount: 7 },
+        ],
+      },
+    ]);
+  });
+
+  const approach = () =>
+    createCardDefinition({
+      name: "Approach of the Second Sun",
+      typeLine: "Sorcery",
+      manaCost: "{5}{W}{W}",
+      effects: [
+        {
+          kind: "if_condition",
+          condition: { kind: "cast_from_hand_and_another_named_this_game" },
+          then: [{ kind: "win_game", playerId: "controller" }],
+          otherwise: [
+            {
+              kind: "move_card",
+              cardId: "self",
+              toZone: "library",
+              libraryPosition: { fromTop: 7 },
+            },
+            { kind: "gain_life", playerId: "controller", amount: 7 },
+          ],
+        },
+      ],
+    });
+
+  const cast = (game: GameState, playerId: string, cardId: string) => {
+    game.turn.activePlayerId = playerId;
+    game.turn.phase = "precombatMain";
+    game.turn.step = "precombatMain";
+    game.priorityPlayerId = playerId;
+    const player = game.players.find((entry) => entry.id === playerId)!;
+    player.mana.W = 2;
+    player.mana.C = 5;
+    return applyAction(game, { kind: "cast_spell", playerId, cardId, targets: [] });
+  };
+
+  it("gains 7 and goes seventh from the top the first time", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    const cardId = put(game, p1.id, approach());
+    const before = game.players.find((entry) => entry.id === p1.id)!.life;
+    const resolved = resolveTopOfStack(cast(game, p1.id, cardId));
+    const owner = resolved.players.find((entry) => entry.id === p1.id)!;
+    expect(owner.life).toBe(before + 7);
+    // Seventh from the top is index six, one-based counting.
+    expect(owner.zones.library[6]).toBe(cardId);
+    expect(resolved.players.find((entry) => entry.id === p2.id)!.lost).toBeFalsy();
+  });
+
+  it("wins the second time it is cast from hand", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    const firstId = put(game, p1.id, approach());
+    const first = resolveTopOfStack(cast(game, p1.id, firstId));
+    // Cast a second copy from hand.
+    const secondId = put(first, p1.id, approach());
+    const second = resolveTopOfStack(cast(first, p1.id, secondId));
+    expect(second.players.find((entry) => entry.id === p2.id)!.lost).toBe(true);
+  });
+
+  it("refuses the win for a spell cast from anywhere but the hand", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const cardId = put(game, p1.id, approach());
+    // Two in the tally, so only the ZONE is left to decide it.
+    game.spellsCastByNameThisGame = {
+      [p1.id]: { "Approach of the Second Sun": 2 },
+    };
+    const condition = { kind: "cast_from_hand_and_another_named_this_game" } as const;
+    game.cards[cardId]!.castFromZone = "hand";
+    expect(triggerConditionHolds(game, p1.id, condition, undefined, cardId)).toBe(true);
+    // Flashed back out of the graveyard, it is a very different card.
+    game.cards[cardId]!.castFromZone = "graveyard";
+    expect(triggerConditionHolds(game, p1.id, condition, undefined, cardId)).toBe(false);
+    // And a first copy, however it was cast, is not "another".
+    game.cards[cardId]!.castFromZone = "hand";
+    game.spellsCastByNameThisGame = {
+      [p1.id]: { "Approach of the Second Sun": 1 },
+    };
+    expect(triggerConditionHolds(game, p1.id, condition, undefined, cardId)).toBe(false);
+  });
+
+  it("counts by name, per player, for the whole game", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    const mineId = put(game, p1.id, approach());
+    const afterMine = resolveTopOfStack(cast(game, p1.id, mineId));
+    expect(
+      afterMine.spellsCastByNameThisGame?.[p1.id]?.["Approach of the Second Sun"],
+    ).toBe(1);
+    // An opponent casting their own copy does not help.
+    const theirsId = put(afterMine, p2.id, approach());
+    const afterTheirs = cast(afterMine, p2.id, theirsId);
+    expect(
+      afterTheirs.spellsCastByNameThisGame?.[p1.id]?.["Approach of the Second Sun"],
+    ).toBe(1);
+    expect(
+      afterTheirs.spellsCastByNameThisGame?.[p2.id]?.["Approach of the Second Sun"],
+    ).toBe(1);
+  });
+
+  it("puts it on the bottom when the library is shorter than seven", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 3);
+    const cardId = put(game, p1.id, approach());
+    const resolved = resolveTopOfStack(cast(game, p1.id, cardId));
+    const library = resolved.players.find((entry) => entry.id === p1.id)!.zones.library;
+    // Seventh from the top of a four-card library is the bottom of it.
+    expect(library[library.length - 1]).toBe(cardId);
+  });
+
+  it("round trips the tally, the cast zone and the position", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const definition = approach();
+    const cardId = put(game, p1.id, definition);
+    const afterCast = cast(game, p1.id, cardId);
+    const round = parseGameState(serializeGameState(afterCast));
+    expect(round.spellsCastByNameThisGame?.[p1.id]?.["Approach of the Second Sun"]).toBe(1);
+    expect(round.cards[cardId]?.castFromZone).toBe("hand");
+    const branch = round.definitions[definition.id]?.effects[0];
+    expect(branch?.kind).toBe("if_condition");
+    if (branch?.kind !== "if_condition") {
+      throw new Error("expected a branch");
+    }
+    expect(branch.otherwise?.[0]).toMatchObject({ libraryPosition: { fromTop: 7 } });
+  });
+});

@@ -4533,9 +4533,20 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
           }
           break;
         }
-        next = moveCard(state, effect.cardId, effect.toZone, {
-          libraryPosition: effect.libraryPosition,
-        });
+        /**
+         * Approach of the Second Sun moves ITSELF while it is still on the
+         * stack, and the stack is not a player zone — so a card leaving it
+         * goes through `enterOwnerZone`, the same path a countered spell
+         * takes. Anywhere else this is an ordinary move.
+         */
+        next =
+          state.cards[effect.cardId]?.zone === "stack"
+            ? enterOwnerZone(state, effect.cardId, effect.toZone, {
+                libraryPosition: effect.libraryPosition,
+              })
+            : moveCard(state, effect.cardId, effect.toZone, {
+                libraryPosition: effect.libraryPosition,
+              });
         const arrived = next.cards[effect.cardId];
         if (arrived?.zone === "battlefield") {
           if (effect.entersTapped) {

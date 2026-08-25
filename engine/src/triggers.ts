@@ -191,6 +191,18 @@ export function triggerConditionHolds(
   if (condition.kind === "drew_cards_this_turn") {
     return (state.drawsByPlayerThisTurn?.[controllerId] ?? 0) > condition.moreThan;
   }
+  if (condition.kind === "cast_from_hand_and_another_named_this_game") {
+    const source = watcherId ? state.cards[watcherId] : undefined;
+    if (!source || source.castFromZone !== "hand") {
+      return false;
+    }
+    const name = state.definitions[source.definitionId]?.name;
+    if (!name) {
+      return false;
+    }
+    // The tally counts THIS cast too, so "another" is two.
+    return (state.spellsCastByNameThisGame?.[controllerId]?.[name] ?? 0) >= 2;
+  }
   if (condition.kind === "self_not_exerted_this_turn") {
     // The WATCHER, not the subject: "this creature hasn't been exerted",
     // and under an attacks trigger those are the same card anyway.
