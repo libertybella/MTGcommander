@@ -857,6 +857,7 @@ export function bindCardEffect(
               ? { sharesTypes: characteristicsOf(state, context.chosenCardId).types }
               : {}),
             ...(source.drawnThisTurn ? { drawnThisTurn: true } : {}),
+            ...(source.milledThisWay ? { milledThisWay: true } : {}),
             // Kodama: "with equal or lesser mana value" — the cap comes from
             // the permanent whose entry triggered this, so it is resolved
             // here rather than printed.
@@ -885,6 +886,9 @@ export function bindCardEffect(
                   ? { excludeCardId: context.chosenCardId }
                   : {}),
                 ...(source.drawnThisTurn ? { drawnThisTurn: true } : {}),
+                // A FLAG, not a resolved list: the mill that makes "them" is
+                // a sibling in this same bind batch and has not run yet.
+                ...(source.milledThisWay ? { milledThisWay: true } : {}),
                 ...(source.hasVoidCounter ? { hasVoidCounter: true } : {}),
                 // Braids: the chosen card is about to be sacrificed, so its
                 // types are read HERE and carried as a concrete list.
@@ -3097,14 +3101,21 @@ function applyMill(state: GameState, playerId: PlayerId, count: number): GameSta
   requirePositiveInteger(count, "mill count");
   requirePlayer(state, playerId);
   let next = state;
+  // "…from among them" names exactly these cards, and a later effect — or a
+  // prompt answered after a client round trip — is what reads the list.
+  // Overwritten by every mill, which is the whole meaning of "them".
+  const milled: CardInstanceId[] = [];
   for (let i = 0; i < count; i += 1) {
     const current = next.players.find((entry) => entry.id === playerId);
     const top = current?.zones.library[0];
     if (!top) {
-      return next === state ? cloneGameState(state) : next;
+      break;
     }
+    milled.push(top);
     next = moveCard(next, top, "graveyard");
   }
+  next = next === state ? cloneGameState(state) : next;
+  next.lastMilledCardIds = milled;
   return next;
 }
 

@@ -571,6 +571,11 @@ export function legalIdsForChooseSources(
       ) {
         continue;
       }
+      // "…from among them": the cards this mill made, and nothing else in
+      // a graveyard that may already have held a hundred of them.
+      if (source.milledThisWay && !(state.lastMilledCardIds ?? []).includes(cardId)) {
+        continue;
+      }
       // Kodama: "with equal or lesser mana value". A cap the caller can
       // ignore is not a cap.
       if (

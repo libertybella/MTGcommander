@@ -9,6 +9,7 @@ import type {
   TopOfLibraryGrant,
   CardDefinition,
   CardEffect,
+  CardFilter,
   ControlAllScope,
   CardTrigger,
   ChooseCardSource,
@@ -5457,6 +5458,11 @@ function compileSimpleClauseInner(sentence: string): SimpleClause | null {
   // Curse of the Swine's first half compiles with its rider (see the pair
   // handler in the main loop); a bare variable exile also lands here.
 
+  const amongMilled = compileFromAmongMilled(sentence);
+  if (amongMilled) {
+    return { targetRequirements: [], effects: amongMilled };
+  }
+
   // Mentor of the Meek: the fused "you may pay {1} to do: draw a card".
   // Call of the Ring pays in life instead, and Ripples of Undeath in both.
   const mayPayDo = sentence.match(
@@ -10713,6 +10719,54 @@ function fusePutLandRiderInPlace(sentences: string[], lineStart: boolean[]): voi
 
 /** One mana pip, as regex source: the Bash-safe way to spell `\\{[^}]+\\}`
  * in a string the several may-pay readers below share. */
+/**
+ * The filters the "from among them" cluster actually names. Written out
+ * rather than shared with a general noun reader because the list is short
+ * and a wrong filter here silently offers the wrong cards.
+ */
+const AMONG_MILLED_FILTERS: Record<string, CardFilter> = {
+  "": "any",
+  land: "land",
+  creature: "creature",
+  permanent: "permanent",
+  artifact: "artifact",
+  enchantment: "enchantment",
+};
+
+/**
+ * "You may put a land card from among them into your hand." — "them" is the
+ * set the mill in the same ability just made, read at prompt time through
+ * `milledThisWay`.
+ */
+function compileFromAmongMilled(sentence: string): CardEffect[] | null {
+  const match = sentence.match(
+    /^(You may put|Put) (?:an? )?([a-z]+ )?card from among (?:them|those cards) into your hand$/i,
+  );
+  if (!match) {
+    return null;
+  }
+  const filter = AMONG_MILLED_FILTERS[(match[2] ?? "").trim().toLowerCase()];
+  if (!filter) {
+    return null;
+  }
+  return [
+    {
+      kind: "choose_card",
+      chooserId: "controller",
+      ...(/^you may/i.test(match[1] ?? "") ? { optional: true } : {}),
+      sources: [
+        {
+          playerId: "controller",
+          zone: "graveyard",
+          filter,
+          milledThisWay: true,
+        },
+      ],
+      thenEffects: [{ kind: "move_card", cardId: "chosen_card", toZone: "hand" }],
+    },
+  ];
+}
+
 const DIGITS = "\\d+";
 const MANA_PIP_SOURCE = "\\{[^}]+\\}";
 
@@ -10727,7 +10781,7 @@ function fuseMayPayInPlace(sentences: string[], lineStart: boolean[]): void {
     // cost with two halves (Ripples of Undeath).
     const head = sentences[index]?.match(
       new RegExp(
-        "^(.+, you may pay (?:(?:" +
+        "^(.+, (?:then )?you may pay (?:(?:" +
           MANA_PIP_SOURCE +
           ")+(?: and " + DIGITS + " life)?|" + DIGITS + " life))$",
         "i",
@@ -18571,6 +18625,28 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
         index += 1;
       }
       continue;
+    }
+
+    // "Mill three cards. You may put a land card from among them into your
+    // hand." — a sentence of its own, but "them" belongs to the mill in the
+    // sentence before it, so it joins that ability rather than becoming a
+    // spell effect beside it.
+    const amongMilledRider = compileFromAmongMilled(sentence);
+    if (amongMilledRider) {
+      const lastTrigger = result.triggers[result.triggers.length - 1];
+      const lastActivated = result.activated[result.activated.length - 1];
+      const host =
+        result.effects.length > 0
+          ? result.effects
+          : lastActivated && result.activated.length > 0
+            ? lastActivated.effects
+            : lastTrigger
+              ? lastTrigger.effects
+              : null;
+      if (host && host.some((entry) => entry.kind === "mill")) {
+        host.push(...amongMilledRider);
+        continue;
+      }
     }
 
     // Karlach: "They gain first strike until end of turn" after an attack

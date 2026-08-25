@@ -1143,6 +1143,14 @@ export type GameState = {
    * GAME rather than the turn — the only tally on this state that never
    * resets, because the card asks about the whole game.
    */
+  /**
+   * The cards the most recent mill put into a graveyard, in the order they
+   * went. "You may put a land card from among them into your hand" reads
+   * this — a referent rather than a fold, because Ripples of Undeath puts
+   * an optional payment between the mill and the take and the take happens
+   * when that PROMPT is answered.
+   */
+  lastMilledCardIds?: CardInstanceId[];
   spellsCastByNameThisGame?: Record<PlayerId, Record<string, number>>;
   /** Esper Sentinel: per-player noncreature casts this turn. */
   noncreatureSpellsCastByPlayerThisTurn?: Record<PlayerId, number>;
@@ -1409,6 +1417,13 @@ export type ChooseCardSource = {
   /** Sylvan Library: only cards drawn THIS turn are eligible. */
   drawnThisTurn?: boolean;
   /**
+   * "…from among them": only the cards the most recent mill put here. Kept
+   * as a FLAG rather than resolved to ids at bind time, because effects
+   * bind as a batch — at bind time the mill in the same batch has not run
+   * and the list still holds the previous one's cards.
+   */
+  milledThisWay?: boolean;
+  /**
    * Sylvan Library chooses two cards, one after the other. Without this the
    * second choice could name the first again — paying life leaves that card
    * in hand, still drawn this turn, still legal.
@@ -1439,6 +1454,8 @@ export type BoundChooseCardSource = {
   hasVoidCounter?: boolean;
   /** The bound half of `ChooseCardSource.drawnThisTurn`. */
   drawnThisTurn?: boolean;
+  /** The bound half of `ChooseCardSource.milledThisWay`, still a flag. */
+  milledThisWay?: boolean;
   /** The bound half of `ChooseCardSource.excludeSelf`. */
   excludeCardId?: CardInstanceId;
   /** The bound half of `ChooseCardSource.greatestManaValue`. */

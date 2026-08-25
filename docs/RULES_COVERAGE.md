@@ -3001,6 +3001,7 @@ ends. Every printed card of this shape asks about the current turn.
 - **The Ring tempts you** (CR 701.52) in all four tiers, derived onto the Ring-bearer by the layer engine rather than held on a permanent, so the emblem follows the bearer and a later bearer inherits every tier already earned. Choosing the bearer is an auto-take (keep yours, else the greatest power).
 - **What mana was spent to cast a card** is recorded per colour as the cost is paid (measured by diffing the pool, not read off the cost string) and read once as the permanent enters. Adamant gates its enters-with counter on it; "if no mana was spent to cast it" reads it off the triggering spell.
 - An optional rider's cost may be **mana, life, or both at once** ("you may pay {1} and 3 life. If you do, ..."), paid through one prompt — a player who can afford one half and not the other has not paid it.
+- **"…from among them"** after a mill: the set is recorded on the state and read when the prompt is answered, so the choice is restricted to the cards that mill made rather than the whole graveyard.
 - A seeded random-game fuzzer asserts zone integrity and serialize round-trips after every action (CI: 6 games; 500-game burn-ins gate checkpoint tags — they have caught two real livelocks and the trigger-batching bug).
 
 ## Documented gaps (intentional, in plan order)

@@ -60245,3 +60245,269 @@ describe("wave 377: paying life for an optional rider", () => {
     });
   });
 });
+
+describe("wave 378: 'from among them' — the cards a mill just made", () => {
+  const compile = (name: string, typeLine: string, oracleText: string, manaCost = "") =>
+    compileOracleCard({
+      oracleId: name.toLowerCase().replace(/[^a-z]+/g, "-"),
+      name,
+      manaCost,
+      typeLine,
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  const put = (
+    game: GameState,
+    ownerId: string,
+    definition: CardDefinition,
+    zone: "battlefield" | "graveyard" | "library" = "battlefield",
+  ) => {
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({ definitionId: definition.id, ownerId, zone });
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === ownerId)!.zones[zone].push(card.id);
+    if (zone === "battlefield") {
+      card.summoningSick = false;
+    }
+    return card.id;
+  };
+
+  const ripplesText =
+    "At the beginning of your first main phase, mill three cards, then you may pay {1} and 3 life. If you do, put a card from among those cards into your hand.";
+
+  it("compiles Ripples of Undeath as one trigger in three steps", () => {
+    const compiled = compile("Ripples of Undeath", "Enchantment", ripplesText, "{1}{B}");
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.triggers[0]).toEqual({
+      event: "first_main_phase",
+      effects: [
+        { kind: "mill", playerId: "controller", count: 3 },
+        {
+          kind: "may_pay",
+          playerId: "controller",
+          cost: "{1}",
+          life: 3,
+          effects: [
+            {
+              kind: "choose_card",
+              chooserId: "controller",
+              sources: [
+                {
+                  playerId: "controller",
+                  zone: "graveyard",
+                  filter: "any",
+                  milledThisWay: true,
+                },
+              ],
+              thenEffects: [{ kind: "move_card", cardId: "chosen_card", toZone: "hand" }],
+            },
+          ],
+        },
+      ],
+      targetRequirements: [],
+    });
+  });
+
+  it("joins the take to the mill when they are separate sentences", () => {
+    const compiled = compile(
+      "Ostrich Horse",
+      "Enchantment",
+      "At the beginning of your upkeep, mill three cards. You may put a land card from among them into your hand.",
+      "{1}{G}",
+    );
+    expect(compiled.notes).toEqual([]);
+    // ONE ability, not two: "them" has no meaning beside the mill that
+    // made it, and a second trigger would offer the whole graveyard.
+    expect(compiled.definition.triggers).toHaveLength(1);
+    expect(compiled.definition.triggers[0]?.effects[1]).toMatchObject({
+      kind: "choose_card",
+      optional: true,
+      sources: [{ filter: "land", milledThisWay: true }],
+    });
+  });
+
+  it("refuses a filter it cannot spell", () => {
+    const compiled = compile(
+      "Odd Taste",
+      "Enchantment",
+      "At the beginning of your upkeep, mill three cards. You may put a Hero card from among them into your hand.",
+      "{1}{G}",
+    );
+    // A note rather than a wrong filter: offering the wrong cards is a
+    // different card, and this one would offer every card milled.
+    expect(compiled.notes).toHaveLength(1);
+    expect(compiled.definition.triggers[0]?.effects).toHaveLength(1);
+  });
+
+  // ---- The referent -----------------------------------------------------
+
+  const spell = (name: string, typeLine = "Instant") =>
+    createCardDefinition({ name, typeLine, manaCost: "{R}" });
+
+  const forest = (name: string) =>
+    createCardDefinition({ name, typeLine: "Basic Land — Forest" });
+
+  const millThenChoose = (
+    game: GameState,
+    playerId: string,
+    count: number,
+    filter: "any" | "land",
+  ) =>
+    applyEffects(
+      game,
+      bindCardEffects(
+        game,
+        [
+          { kind: "mill", playerId: "controller", count },
+          {
+            kind: "choose_card",
+            chooserId: "controller",
+            sources: [
+              { playerId: "controller", zone: "graveyard", filter, milledThisWay: true },
+            ],
+            thenEffects: [{ kind: "move_card", cardId: "chosen_card", toZone: "hand" }],
+          },
+        ],
+        { controllerId: playerId, sourceId: null, targets: [], targetRequirements: [] },
+      ),
+    );
+
+  it("offers only what this mill put there", () => {
+    const { game, p1 } = twoPlayers();
+    // Something that was already in the graveyard before any of this.
+    const oldId = put(game, p1.id, spell("Old News"), "graveyard");
+    const firstId = put(game, p1.id, spell("First"), "library");
+    const secondId = put(game, p1.id, spell("Second"), "library");
+    const deepId = put(game, p1.id, spell("Deep"), "library");
+    const after = millThenChoose(game, p1.id, 2, "any");
+    expect(after.lastMilledCardIds).toEqual([firstId, secondId]);
+    const prompt = after.prompts[0];
+    expect(prompt?.kind).toBe("choose_card");
+    if (prompt?.kind !== "choose_card") {
+      throw new Error("expected a choice");
+    }
+    const legal = legalIdsForChooseSources(after, prompt.sources);
+    expect(legal.sort()).toEqual([firstId, secondId].sort());
+    expect(legal).not.toContain(oldId);
+    expect(legal).not.toContain(deepId);
+  });
+
+  it("reads the list at APPLY, not at bind", () => {
+    const { game, p1 } = twoPlayers();
+    // A previous mill left its own list behind.
+    game.lastMilledCardIds = [put(game, p1.id, spell("Stale"), "graveyard")];
+    const freshId = put(game, p1.id, spell("Fresh"), "library");
+    const after = millThenChoose(game, p1.id, 1, "any");
+    const prompt = after.prompts[0];
+    if (prompt?.kind !== "choose_card") {
+      throw new Error("expected a choice");
+    }
+    // Effects bind as a batch: the mill that makes "them" had not run when
+    // the choice bound, so resolving the list there would name the stale
+    // one and offer a card this ability never touched.
+    expect(legalIdsForChooseSources(after, prompt.sources)).toEqual([freshId]);
+  });
+
+  it("narrows by filter within what was milled", () => {
+    const { game, p1 } = twoPlayers();
+    const landId = put(game, p1.id, forest("Milled Forest"), "library");
+    const spellId = put(game, p1.id, spell("Milled Bolt"), "library");
+    // A land already in the graveyard is the right TYPE and the wrong set.
+    const oldLandId = put(game, p1.id, forest("Old Forest"), "graveyard");
+    const after = millThenChoose(game, p1.id, 2, "land");
+    const prompt = after.prompts[0];
+    if (prompt?.kind !== "choose_card") {
+      throw new Error("expected a choice");
+    }
+    const legal = legalIdsForChooseSources(after, prompt.sources);
+    expect(legal).toEqual([landId]);
+    expect(legal).not.toContain(spellId);
+    expect(legal).not.toContain(oldLandId);
+  });
+
+  it("records only what a short library could give", () => {
+    const { game, p1 } = twoPlayers();
+    const onlyId = put(game, p1.id, spell("Only"), "library");
+    const after = millThenChoose(game, p1.id, 3, "any");
+    // Milling three off a one-card library mills one, and "them" is that
+    // one card rather than three.
+    expect(after.lastMilledCardIds).toEqual([onlyId]);
+  });
+
+  it("takes the chosen card to hand", () => {
+    const { game, p1 } = twoPlayers();
+    const firstId = put(game, p1.id, spell("First"), "library");
+    put(game, p1.id, spell("Second"), "library");
+    let after = millThenChoose(game, p1.id, 2, "any");
+    const resolved = applyResolveChooseCard(after, p1.id, firstId);
+    after = applyEffects(
+      resolved.next,
+      bindCardEffects(resolved.next, resolved.thenEffects, {
+        controllerId: p1.id,
+        sourceId: null,
+        chosenCardId: resolved.cardId ?? undefined,
+        targets: [],
+        targetRequirements: [],
+      }),
+    );
+    expect(after.players.find((entry) => entry.id === p1.id)!.zones.hand).toContain(firstId);
+  });
+
+  it("survives the wire, because the prompt is answered across it", () => {
+    const { game, p1 } = twoPlayers();
+    const firstId = put(game, p1.id, spell("First"), "library");
+    const after = millThenChoose(game, p1.id, 1, "any");
+    const round = parseGameState(serializeGameState(after));
+    expect(round.lastMilledCardIds).toEqual([firstId]);
+    const prompt = round.prompts[0];
+    if (prompt?.kind !== "choose_card") {
+      throw new Error("expected a choice");
+    }
+    // Dropped on the wire the flag would offer the whole graveyard, which
+    // on a long game is a materially better card.
+    expect(prompt.sources[0]?.milledThisWay).toBe(true);
+    expect(legalIdsForChooseSources(round, prompt.sources)).toEqual([firstId]);
+  });
+
+  it("round trips the definition's source flag", () => {
+    const { game, p1 } = twoPlayers();
+    const definition = createCardDefinition({
+      name: "Wave 378 Ripples",
+      typeLine: "Enchantment",
+      manaCost: "{1}{B}",
+      triggers: [
+        {
+          event: "first_main_phase",
+          effects: [
+            { kind: "mill", playerId: "controller", count: 3 },
+            {
+              kind: "choose_card",
+              chooserId: "controller",
+              sources: [
+                {
+                  playerId: "controller",
+                  zone: "graveyard",
+                  filter: "any",
+                  milledThisWay: true,
+                },
+              ],
+              thenEffects: [{ kind: "move_card", cardId: "chosen_card", toZone: "hand" }],
+            },
+          ],
+          targetRequirements: [],
+        },
+      ],
+    });
+    put(game, p1.id, definition);
+    const round = parseGameState(serializeGameState(game));
+    const effect = round.definitions[definition.id]?.triggers[0]?.effects[1];
+    expect(effect).toMatchObject({
+      kind: "choose_card",
+      sources: [{ milledThisWay: true }],
+    });
+  });
+});

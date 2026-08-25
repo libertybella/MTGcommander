@@ -1818,6 +1818,14 @@ export function parseGameState(json: string): GameState {
             return counts;
           })(),
         }),
+    // The prompt that reads this is answered across a client round trip, so
+    // the list has to survive the wire or "from among them" silently offers
+    // the whole graveyard.
+    ...(raw.lastMilledCardIds === undefined
+      ? {}
+      : {
+          lastMilledCardIds: expectStringArray(raw.lastMilledCardIds, "lastMilledCardIds"),
+        }),
     ...(raw.spellsCastByNameThisGame === undefined
       ? {}
       : {
@@ -2930,6 +2938,7 @@ function parseChooseCardSources(value: unknown, label: string): ChooseCardSource
       filter: parseCardFilter(entry.filter, `${label}[${index}].filter`),
       ...(entry.excludeSelf === true ? { excludeSelf: true } : {}),
       ...(entry.drawnThisTurn === true ? { drawnThisTurn: true } : {}),
+      ...(entry.milledThisWay === true ? { milledThisWay: true } : {}),
       ...(entry.hasVoidCounter === true ? { hasVoidCounter: true } : {}),
       ...(Array.isArray(entry.sharesTypes)
         ? { sharesTypes: parseStringList(entry.sharesTypes, `${label}[${index}].sharesTypes`) }
@@ -2973,6 +2982,7 @@ function parseBoundChooseSources(
         ? { excludeCardId: entry.excludeCardId }
         : {}),
       ...(entry.drawnThisTurn === true ? { drawnThisTurn: true } : {}),
+      ...(entry.milledThisWay === true ? { milledThisWay: true } : {}),
       ...(entry.hasVoidCounter === true ? { hasVoidCounter: true } : {}),
       ...(Array.isArray(entry.sharesTypes)
         ? { sharesTypes: parseStringList(entry.sharesTypes, `${label}[${index}].sharesTypes`) }
@@ -7531,6 +7541,7 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
             ? { excludeCardId: entry.excludeCardId }
             : {}),
           ...(entry.drawnThisTurn === true ? { drawnThisTurn: true } : {}),
+      ...(entry.milledThisWay === true ? { milledThisWay: true } : {}),
           ...(entry.hasVoidCounter === true ? { hasVoidCounter: true } : {}),
           ...(Array.isArray(entry.sharesTypes)
             ? {
