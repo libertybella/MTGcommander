@@ -1527,11 +1527,10 @@ export function parseGameState(json: string): GameState {
       ...(def.copySelfWhenCastFromGraveyard === true
         ? { copySelfWhenCastFromGraveyard: true }
         : {}),
-      ...(def.enchant === "creature" ||
-      def.enchant === "land" ||
-      def.enchant === "creature_or_planeswalker_own"
-        ? { enchant: def.enchant }
-        : {}),
+      // Total record, not a chain of `===`: an unlisted member silently
+      // dropped the Aura's whole enchant line on the wire, which turns an
+      // Aura into a permanent nothing can un-attach.
+      ...(isEnchantRestriction(def.enchant) ? { enchant: def.enchant } : {}),
       ...(def.chooseColorOnEnter === true ? { chooseColorOnEnter: true } : {}),
       ...(def.chooseColorExcludes === undefined
         ? {}
@@ -5635,6 +5634,24 @@ function parseProtectionFrom(value: unknown, label: string): ProtectionFrom {
   };
 }
 
+function isEnchantRestriction(
+  value: unknown,
+): value is NonNullable<CardDefinition["enchant"]> {
+  return (
+    typeof value === "string" &&
+    Object.prototype.hasOwnProperty.call(ENCHANT_RESTRICTIONS, value)
+  );
+}
+
+const ENCHANT_RESTRICTIONS: Record<NonNullable<CardDefinition["enchant"]>, true> = {
+  creature: true,
+  land: true,
+  creature_or_planeswalker_own: true,
+  creature_land_or_planeswalker: true,
+  permanent: true,
+  artifact_own: true,
+};
+
 function parseContinuousEffectData(value: unknown, label: string): ContinuousEffectData {
   if (!isRecord(value)) {
     throw new Error(`Invalid ${label}`);
@@ -5645,6 +5662,16 @@ function parseContinuousEffectData(value: unknown, label: string): ContinuousEff
       kind,
       types: parseStringList(value.types, `${label}.types`),
       subtypes: parseStringList(value.subtypes, `${label}.subtypes`),
+    };
+  }
+  if (kind === "set_types") {
+    const subtypes = value.subtypes === undefined
+      ? []
+      : parseStringList(value.subtypes, `${label}.subtypes`);
+    return {
+      kind,
+      types: parseStringList(value.types, `${label}.types`),
+      ...(subtypes.length > 0 ? { subtypes } : {}),
     };
   }
   if (kind === "all_creature_types") {

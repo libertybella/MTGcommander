@@ -55811,3 +55811,203 @@ describe("wave 355: a dig on arrival, and a permanent that turns over", () => {
     ]);
   });
 });
+
+describe("wave 356: a static that SETS what a permanent is", () => {
+  const compile = (name: string, typeLine: string, oracleText: string, manaCost = "") =>
+    compileOracleCard({
+      oracleId: name.toLowerCase().replace(/[^a-z]+/g, "-"),
+      name,
+      manaCost,
+      typeLine,
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  const put = (game: GameState, ownerId: string, definition: CardDefinition) => {
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({
+      definitionId: definition.id,
+      ownerId,
+      zone: "battlefield",
+    });
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === ownerId)!.zones.battlefield.push(card.id);
+    card.summoningSick = false;
+    return card.id;
+  };
+
+  it("compiles Imprisoned in the Moon", () => {
+    const compiled = compile(
+      "Imprisoned in the Moon",
+      "Enchantment — Aura",
+      'Enchant creature, land, or planeswalker\nEnchanted permanent is a colorless land with "{T}: Add {C}" and loses all other card types and abilities.',
+      "{1}{U}",
+    );
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.enchant).toBe("creature_land_or_planeswalker");
+    expect(compiled.definition.staticAbilities.map((ability) => ability.effect)).toEqual([
+      { kind: "set_types", types: ["land"] },
+      { kind: "set_colors", colors: [] },
+      { kind: "remove_all_abilities" },
+      {
+        kind: "grant_mana_ability",
+        ability: {
+          produces: { C: 1 },
+          producesOptions: [],
+          producesAnyColor: false,
+          damageToController: 0,
+        },
+      },
+    ]);
+  });
+
+  it("compiles Song of the Dryads, which keeps its abilities", () => {
+    const compiled = compile(
+      "Song of the Dryads",
+      "Enchantment — Aura",
+      "Enchant permanent\nEnchanted permanent is a colorless Forest land.",
+      "{2}{G}",
+    );
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.enchant).toBe("permanent");
+    // No "loses all other abilities" on this one, so no removal — the card
+    // says what it says.
+    expect(compiled.definition.staticAbilities.map((ability) => ability.effect)).toEqual([
+      { kind: "set_types", types: ["land"], subtypes: ["forest"] },
+      { kind: "set_colors", colors: [] },
+    ]);
+  });
+
+  const moon = () =>
+    createCardDefinition({
+      name: "Imprisoned in the Moon",
+      typeLine: "Enchantment — Aura",
+      manaCost: "{1}{U}",
+      enchant: "creature_land_or_planeswalker",
+      staticAbilities: [
+        { selector: { scope: "attached" }, effect: { kind: "set_types", types: ["land"] } },
+        { selector: { scope: "attached" }, effect: { kind: "set_colors", colors: [] } },
+        { selector: { scope: "attached" }, effect: { kind: "remove_all_abilities" } },
+        {
+          selector: { scope: "attached" },
+          effect: {
+            kind: "grant_mana_ability",
+            ability: {
+              produces: { C: 1 },
+              producesOptions: [],
+              producesAnyColor: false,
+              damageToController: 0,
+            },
+          },
+        },
+      ],
+    });
+
+  const dragon = () =>
+    createCardDefinition({
+      name: "Flying Dragon",
+      typeLine: "Creature — Dragon",
+      manaCost: "{4}{R}{R}",
+      power: 5,
+      toughness: 5,
+      keywords: ["flying"],
+    });
+
+  const imprison = (game: GameState, playerId: string, hostId: string) => {
+    const auraId = put(game, playerId, moon());
+    game.cards[auraId]!.attachedTo = hostId;
+    return auraId;
+  };
+
+  it("stops the creature being a creature at all", () => {
+    const { game, p1 } = twoPlayers();
+    const hostId = put(game, p1.id, dragon());
+    expect(characteristicsOf(game, hostId).types.includes("creature")).toBe(true);
+    imprison(game, p1.id, hostId);
+    // Layer 4 REPLACES: adding "land" would leave a 5/5 flying land that
+    // still attacks, which is the opposite of what the card does.
+    expect(characteristicsOf(game, hostId).types.includes("creature")).toBe(false);
+    expect(characteristicsOf(game, hostId).types).toEqual(["land"]);
+    expect(characteristicsOf(game, hostId).colors).toEqual([]);
+  });
+
+  it("takes the printed subtypes with the printed types", () => {
+    const { game, p1 } = twoPlayers();
+    const hostId = put(game, p1.id, dragon());
+    imprison(game, p1.id, hostId);
+    // A Dragon that becomes a land is not a land Dragon.
+    expect(characteristicsOf(game, hostId).subtypes).toEqual([]);
+  });
+
+  it("takes the abilities and leaves the granted one", () => {
+    const { game, p1 } = twoPlayers();
+    const hostId = put(game, p1.id, dragon());
+    imprison(game, p1.id, hostId);
+    expect(hasKeyword(game, hostId, "flying")).toBe(false);
+    // The grant is pushed after the removal in the same layer, so the
+    // printed abilities go and this one stays — which is the card.
+    expect(manaAbilitiesFor(game, hostId).length).toBe(1);
+  });
+
+  it("keeps its own host legal after turning it into a land", () => {
+    const { game, p1 } = twoPlayers();
+    const hostId = put(game, p1.id, dragon());
+    const auraId = imprison(game, p1.id, hostId);
+    applyStateBasedActionsInPlace(game);
+    // The Aura's own effect stops the host being a creature. An "Enchant
+    // creature" restriction would send the Aura to the graveyard on the
+    // next state-based check and give the Dragon straight back.
+    expect(game.cards[auraId]?.zone).toBe("battlefield");
+    expect(game.cards[hostId]?.zone).toBe("battlefield");
+  });
+
+  it("comes off when the Aura goes", () => {
+    const { game, p1 } = twoPlayers();
+    const hostId = put(game, p1.id, dragon());
+    const auraId = imprison(game, p1.id, hostId);
+    expect(characteristicsOf(game, hostId).types.includes("creature")).toBe(false);
+    const after = moveCard(game, auraId, "graveyard");
+    expect(characteristicsOf(after, hostId).types.includes("creature")).toBe(true);
+    expect(hasKeyword(after, hostId, "flying")).toBe(true);
+  });
+
+  it("names a subtype when the card does", () => {
+    const { game, p1 } = twoPlayers();
+    const hostId = put(game, p1.id, dragon());
+    const song = createCardDefinition({
+      name: "Song of the Dryads",
+      typeLine: "Enchantment — Aura",
+      manaCost: "{2}{G}",
+      enchant: "permanent",
+      staticAbilities: [
+        {
+          selector: { scope: "attached" },
+          effect: { kind: "set_types", types: ["land"], subtypes: ["forest"] },
+        },
+      ],
+    });
+    const auraId = put(game, p1.id, song);
+    game.cards[auraId]!.attachedTo = hostId;
+    expect(characteristicsOf(game, hostId).types).toEqual(["land"]);
+    expect(characteristicsOf(game, hostId).subtypes).toEqual(["forest"]);
+  });
+
+  it("round trips the effect and the enchant line", () => {
+    const { game, p1 } = twoPlayers();
+    const definition = moon();
+    put(game, p1.id, definition);
+    const round = parseGameState(serializeGameState(game));
+    // The enchant line used to be written through a chain of `===`, so an
+    // unlisted restriction dropped it and left an Aura nothing detaches.
+    expect(round.definitions[definition.id]?.enchant).toBe(
+      "creature_land_or_planeswalker",
+    );
+    expect(round.definitions[definition.id]?.staticAbilities[0]?.effect).toEqual({
+      kind: "set_types",
+      types: ["land"],
+    });
+  });
+});

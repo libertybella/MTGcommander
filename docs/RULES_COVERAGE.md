@@ -2277,6 +2277,13 @@ more questions it can now ask:
   `TopOfLibraryGrant.payLifeInsteadOfMana` replaces the cost OUTRIGHT, the
   same way flashback does, and rides the same life-payment path. A cost
   that had merely been reduced would still refuse a caster with no mana.
+- **A static that SETS types** (layer 4) — Imprisoned in the Moon, Song of
+  the Dryads. `set_types` replaces the printed types and subtypes where
+  `add_types` adds to them; "loses all other card types" is the whole of
+  both cards. Aura host legality (CR 704.5m) reads a total record of enchant
+  restrictions, so an Aura whose own effect changes what its host IS stays
+  attached — Imprisoned in the Moon enchants "creature, land, or
+  planeswalker" precisely so it survives turning its host into a land.
 - **Transform** as an effect — Growing Rites of Itlimoc, Ojer Taq. "Transform
   this permanent" swaps the instance to its `otherFaceId`, from a trigger
   body or an activation. The apply path predates any clause reaching it.

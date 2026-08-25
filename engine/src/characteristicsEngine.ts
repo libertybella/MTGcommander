@@ -96,6 +96,7 @@ const KEYWORD_COUNTERS: Keyword[] = ["indestructible", "flying"];
 
 const LAYER_OF: Record<ContinuousEffectData["kind"], number> = {
   add_types: 4,
+  set_types: 4,
   all_creature_types: 4,
   set_colors: 5,
   grant_keyword: 6,
@@ -958,6 +959,14 @@ function applyInstance(
             computed.characteristics.subtypes.push(subtype);
           }
         }
+        break;
+      }
+      case "set_types": {
+        // Replaces, where `add_types` above adds. Subtypes go with the
+        // types they belonged to: a creature that becomes a land is not a
+        // land Goblin.
+        computed.characteristics.types = [...effect.types];
+        computed.characteristics.subtypes = [...(effect.subtypes ?? [])];
         break;
       }
       case "set_colors":

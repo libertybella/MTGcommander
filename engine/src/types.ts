@@ -133,7 +133,19 @@ export type CardDefinition = {
    */
   protectionFrom?: ProtectionFrom;
   /** Aura: cast targeting a creature; enters attached (CR 303.4). */
-  enchant?: "creature" | "land" | "creature_or_planeswalker_own";
+  /**
+   * The Aura's "Enchant …" line. Imprisoned in the Moon is
+   * `creature_land_or_planeswalker`; every member has to be readable as a
+   * host test, which `AURA_HOSTS` in status.ts makes a total record so a
+   * new member cannot be added without one.
+   */
+  enchant?:
+    | "creature"
+    | "land"
+    | "creature_or_planeswalker_own"
+    | "creature_land_or_planeswalker"
+    | "permanent"
+    | "artifact_own";
   /**
    * Animate Dead: the Aura is cast on a creature card in a GRAVEYARD, and
    * that card is put onto the battlefield under this spell's controller
@@ -4827,6 +4839,14 @@ export type ProtectionFrom = {
 /** What a continuous effect does, in CR 613 layer order (derived from kind). */
 export type ContinuousEffectData =
   | { kind: "add_types"; types: string[]; subtypes: string[] } // layer 4
+  /**
+   * Imprisoned in the Moon, Song of the Dryads: the permanent IS a land,
+   * rather than being a land as well. Layer 4 like `add_types`, but it
+   * REPLACES the printed types instead of adding to them — "and loses all
+   * other card types" is the whole of both cards, and adding would leave a
+   * creature that is also a land, still able to attack.
+   */
+  | { kind: "set_types"; types: string[]; subtypes?: string[] } // layer 4
   /** layer 4: Maskwood Nexus — the affected are every creature type. */
   | { kind: "all_creature_types" }
   | { kind: "set_colors"; colors: Color[] } // layer 5

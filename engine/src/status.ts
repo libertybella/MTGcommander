@@ -1,4 +1,4 @@
-import { isCreature, isLand, isPlaneswalker } from "./cardTypes";
+import { characteristicsOf, isCreature, isLand, isPlaneswalker } from "./cardTypes";
 import { COMMANDER_DAMAGE_TO_LOSE } from "./cardTypes";
 import { cantLoseGame, creatureToughness, permanentsControlledBy } from "./derived";
 import { hasKeyword } from "./keywords";
@@ -6,7 +6,31 @@ import { eliminatePlayerInPlace } from "./elimination";
 import { isLiving, livingPlayerCount, nextLivingPlayerId, winnerId } from "./players";
 import { dispatchEventsInPlace } from "./triggers";
 import { moveCardInPlace, processDiesReturnsInPlace } from "./zones";
-import type { CardInstanceId, EngineEvent, GameState } from "./types";
+import type { CardDefinition, CardInstanceId, EngineEvent, GameState } from "./types";
+
+/**
+ * "Enchant <thing>" as a host test (CR 704.5m). A TOTAL record rather than
+ * the ternary chain this used to be: the chain fell through to "is it a
+ * creature" for anything it did not name, so a new restriction would have
+ * silently made every Aura a creature Aura for state-based purposes.
+ */
+const AURA_HOSTS: Record<
+  NonNullable<CardDefinition["enchant"]>,
+  (state: GameState, cardId: CardInstanceId, auraControllerId: string) => boolean
+> = {
+  creature: (state, cardId) => isCreature(state, cardId),
+  land: (state, cardId) => isLand(state, cardId),
+  creature_or_planeswalker_own: (state, cardId) =>
+    isCreature(state, cardId) || isPlaneswalker(state, cardId),
+  creature_land_or_planeswalker: (state, cardId) =>
+    isCreature(state, cardId) || isLand(state, cardId) || isPlaneswalker(state, cardId),
+  // Song of the Dryads: anything on the battlefield is a permanent, and the
+  // caller has already checked the zone.
+  permanent: () => true,
+  artifact_own: (state, cardId, auraControllerId) =>
+    characteristicsOf(state, cardId).types.includes("artifact") &&
+    state.cards[cardId]?.controllerId === auraControllerId,
+};
 
 function shouldLose(state: GameState, player: GameState["players"][number]): boolean {
   // Platinum Angel vetoes the loss itself, not the cause: the player stays
@@ -214,14 +238,12 @@ function attachmentLegalityInPlace(state: GameState, collectDies: EngineEvent[])
       continue;
     }
     const host = card.attachedTo ? state.cards[card.attachedTo] : undefined;
+    const hostTest = definition?.enchant ? AURA_HOSTS[definition.enchant] : null;
     const hostLegal = Boolean(
       host &&
         host.zone === "battlefield" &&
-        (definition?.enchant === "land"
-          ? isLand(state, host.id)
-          : definition?.enchant === "creature_or_planeswalker_own"
-            ? isCreature(state, host.id) || isPlaneswalker(state, host.id)
-            : isCreature(state, host.id)),
+        // Equipment has no `enchant` line and always wants a creature.
+        (hostTest ? hostTest(state, host.id, card.controllerId) : isCreature(state, host.id)),
     );
     if (hostLegal) {
       continue;

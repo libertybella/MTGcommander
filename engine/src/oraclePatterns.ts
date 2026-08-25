@@ -57,7 +57,8 @@ export type CompiledOracleText = {
   wardLife?: number;
   modes?: SpellMode[];
   protectionFrom?: ProtectionFrom;
-  enchant?: "creature" | "land" | "creature_or_planeswalker_own";
+  /** Taken from the definition so the two cannot drift apart. */
+  enchant?: CardDefinition["enchant"];
   reanimateOnEnter?: boolean;
   grantsEscape?: { exileOther: number };
   copySelfWhenCastFromGraveyard?: boolean;
@@ -14008,6 +14009,85 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
           },
         ],
       });
+      continue;
+    }
+
+    // Imprisoned in the Moon: three permanent types in one enchant line.
+    if (/^Enchant creature, land, or planeswalker$/i.test(sentence)) {
+      result.enchant = "creature_land_or_planeswalker";
+      if (!result.targetRequirements.some((requirement) => requirement.kind === "permanent")) {
+        result.targetRequirements.push({
+          kind: "permanent",
+          requiredTypesAny: ["creature", "land", "planeswalker"],
+        });
+      }
+      continue;
+    }
+
+    // Song of the Dryads: an Aura that takes anything at all.
+    if (/^Enchant permanent$/i.test(sentence)) {
+      result.enchant = "permanent";
+      if (!result.targetRequirements.some((requirement) => requirement.kind === "permanent")) {
+        result.targetRequirements.push({ kind: "permanent" });
+      }
+      continue;
+    }
+
+    // Mechanized Production: an Aura restricted to your own artifacts.
+    if (/^Enchant artifact you control$/i.test(sentence)) {
+      result.enchant = "artifact_own";
+      if (!result.targetRequirements.some((requirement) => requirement.kind === "artifact")) {
+        result.targetRequirements.push({ kind: "artifact", control: "own" });
+      }
+      continue;
+    }
+
+    /**
+     * Imprisoned in the Moon and Song of the Dryads: the enchanted permanent
+     * IS something else now. Layer 4 SETS the types (a creature that also
+     * became a land would still attack), layer 5 sets the colours, and the
+     * ability clause is read here rather than assumed — "loses all other
+     * card types and abilities" and "is a colorless Forest land" are the
+     * same sentence shape with different tails.
+     */
+    const becomes = sentence.match(
+      /^Enchanted permanent is a colorless (?:(Plains|Island|Swamp|Mountain|Forest) )?land(?: with "\{T\}: Add \{C\}")?( and loses all other card types and abilities)?$/i,
+    );
+    if (becomes) {
+      const abilities: StaticAbility[] = [
+        {
+          selector: { scope: "attached" },
+          effect: {
+            kind: "set_types",
+            types: ["land"],
+            ...(becomes[1] ? { subtypes: [becomes[1].toLowerCase()] } : {}),
+          },
+        },
+        { selector: { scope: "attached" }, effect: { kind: "set_colors", colors: [] } },
+      ];
+      if (becomes[2]) {
+        abilities.push({
+          selector: { scope: "attached" },
+          effect: { kind: "remove_all_abilities" },
+        });
+      }
+      if (/with "\{T\}: Add \{C\}"/i.test(sentence)) {
+        // Granted AFTER the removal, in the same layer: the printed
+        // abilities go and this one stays, which is what the card says.
+        abilities.push({
+          selector: { scope: "attached" },
+          effect: {
+            kind: "grant_mana_ability",
+            ability: {
+              produces: { C: 1 },
+              producesOptions: [],
+              producesAnyColor: false,
+              damageToController: 0,
+            },
+          },
+        });
+      }
+      result.staticAbilities.push(...abilities);
       continue;
     }
 
