@@ -204,6 +204,7 @@ function compileOneFace(card: OracleCard, definitionId: string): OracleCompileRe
     ...(compiled.retrace ? { retrace: true } : {}),
     ...(compiled.spliceOntoArcane ? { spliceOntoArcane: compiled.spliceOntoArcane } : {}),
     ...(compiled.dredge ? { dredge: compiled.dredge } : {}),
+    ...(compiled.opponentsSkipExtraTurns ? { opponentsSkipExtraTurns: true } : {}),
     ...(compiled.grantsRetrace ? { grantsRetrace: compiled.grantsRetrace } : {}),
     ...(compiled.enchant ? { enchant: compiled.enchant } : {}),
     ...(compiled.grantsEscape ? { grantsEscape: compiled.grantsEscape } : {}),

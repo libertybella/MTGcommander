@@ -61,6 +61,7 @@ export type CompiledOracleText = {
   hexproofFrom?: Color[];
   retrace?: boolean;
   spliceOntoArcane?: { manaCost: string };
+  opponentsSkipExtraTurns?: boolean;
   dredge?: number;
   grantsRetrace?: { filter: SearchFilter; onlyYourTurn?: boolean };
   /** Taken from the definition so the two cannot drift apart. */
@@ -10403,6 +10404,25 @@ function compileDigUntilClause(sentence: string): CardEffect[] | null {
  * effect on its own — the offer names the card the first exiled, and the
  * repeat names the whole thing.
  */
+/**
+ * Trouble in Pairs prints a trigger head with two commas in it, and the
+ * general splitter that finds a head takes everything up to the FIRST
+ * comma — load-bearing for hundreds of cards, so it is not widened here.
+ *
+ * The head is rewritten to a comma-free token instead, which the head
+ * reader then matches exactly. A synthetic token rather than a general
+ * grammar because this is one printed sentence, and inventing a grammar
+ * for it would claim sentences nobody has written.
+ */
+function fuseCommaHeadInPlace(sentences: string[]): void {
+  for (let index = 0; index < sentences.length; index += 1) {
+    sentences[index] = sentences[index]!.replace(
+      /^Whenever an opponent attacks you with two or more creatures, draws their second card each turn, or casts their second spell each turn, /i,
+      "Whenever an opponent troubles you in pairs, ",
+    );
+  }
+}
+
 function fuseExileUntilTakenInPlace(sentences: string[], lineStart: boolean[]): void {
   for (let index = 0; index + 2 < sentences.length; index += 1) {
     const first = /^Exile the top card of your library$/i.test(sentences[index] ?? "");
@@ -11878,6 +11898,7 @@ type TriggerHead = Pick<
 > & {
   /** "enters or attacks": emit a sibling trigger for each extra event. */
   extraEvents?: CardTrigger["event"][];
+  minAttackers?: number;
 };
 
 /** "Whenever another creature dies" → dies / any / excludeSelf, and friends. */
@@ -12422,6 +12443,21 @@ function parseTriggerHead(head: string): TriggerHead | null {
       ...(/^enchanted player's$/i.test(stepHead[1]) ? { enchantedPlayersStep: true } : {}),
     };
   }
+  /**
+   * Trouble in Pairs. One head firing on three unrelated events, which the
+   * trigger reader already expands into three abilities — the two "second
+   * thing each turn" halves have existed for waves, and only the attack
+   * count was missing.
+   */
+  if (/^Whenever an opponent troubles you in pairs$/i.test(text)) {
+    return {
+      event: "player_attacked",
+      watch: "opponents",
+      minAttackers: 2,
+      extraEvents: ["opponent_draws_second", "casts_second_spell"],
+    };
+  }
+
   // Curses. One trigger for the attack, not one per attacker.
   if (/^Whenever enchanted player is attacked$/i.test(text)) {
     return { event: "player_attacked" };
@@ -15044,6 +15080,7 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
   fuseInAdditionTypeInPlace(sentences, lineStart);
   fuseChooseGraveyardCastInPlace(sentences, lineStart);
   fusePutLandRiderInPlace(sentences, lineStart);
+  fuseCommaHeadInPlace(sentences);
   fuseExileUntilTakenInPlace(sentences, lineStart);
   fusePunisherInPlace(sentences, lineStart);
   fuseTapForXInPlace(sentences, lineStart);
@@ -15176,6 +15213,18 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
      */
     if (/^cascade(?:, cascade)*$/i.test(sentence)) {
       result.cascade = (result.cascade ?? 0) + sentence.split(",").length;
+      continue;
+    }
+
+    // Trouble in Pairs, Stranglehold. A STATIC: it is true for as long as
+    // the permanent is there, and a permanent's `effects` never run, so
+    // compiling it as one would deny nothing at all.
+    if (
+      /^If an opponent would begin an extra turn, that player skips that turn instead$/i.test(
+        sentence,
+      )
+    ) {
+      result.opponentsSkipExtraTurns = true;
       continue;
     }
 

@@ -3017,6 +3017,7 @@ ends. Every printed card of this shape asks about the current turn.
 - **The punisher choice** (Combustible Gearhulk): an opponent picks which of two branches happens, both real, with the branches bound at answer time so "that player" is the one who chose. Damage "equal to the total mana value of those cards" reads the set the sibling mill just made.
 - **Tainted Pact's loop**: exile the top card and offer it, stopping on a take or on a second card sharing a name with one this loop already exiled. Declining is a real choice and takes another turn.
 - **Extra turns**, queued in the order they resolve and taken before play passes round the table, with a per-player denial (Stranglehold, Trouble in Pairs) that throws an owed turn away. An extra turn does not count as a new round.
+- "Whenever an opponent attacks **you** with two or more creatures": the attack event carries how many came, and a count on the trigger tells this reading apart from a Curse watching the player it enchants.
 - A seeded random-game fuzzer asserts zone integrity and serialize round-trips after every action (CI: 6 games; 500-game burn-ins gate checkpoint tags — they have caught two real livelocks and the trigger-batching bug).
 
 ## Documented gaps (intentional, in plan order)

@@ -64498,3 +64498,252 @@ describe("wave 394: extra turns", () => {
     expect(round.turn.activePlayerId).toBe(p1.id);
   });
 });
+
+describe("wave 395: Trouble in Pairs", () => {
+  const compile = (name: string, typeLine: string, oracleText: string, manaCost = "") =>
+    compileOracleCard({
+      oracleId: name.toLowerCase().replace(/[^a-z]+/g, "-"),
+      name,
+      manaCost,
+      typeLine,
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  const put = (game: GameState, ownerId: string, definition: CardDefinition) => {
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({
+      definitionId: definition.id,
+      ownerId,
+      zone: "battlefield",
+    });
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === ownerId)!.zones.battlefield.push(card.id);
+    card.summoningSick = false;
+    return card.id;
+  };
+
+  const troubleText =
+    "If an opponent would begin an extra turn, that player skips that turn instead.\nWhenever an opponent attacks you with two or more creatures, draws their second card each turn, or casts their second spell each turn, draw a card.";
+
+  it("compiles the denial as a STATIC, not a spell effect", () => {
+    const compiled = compile("Trouble in Pairs", "Enchantment", troubleText, "{3}{W}{B}");
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.opponentsSkipExtraTurns).toBe(true);
+    // A permanent's `effects` never run, so compiling the denial as one
+    // would have been a card that looks clean and denies nothing.
+    expect(compiled.definition.effects).toEqual([]);
+  });
+
+  it("compiles one head into three triggers", () => {
+    const compiled = compile("Trouble in Pairs", "Enchantment", troubleText, "{3}{W}{B}");
+    expect(compiled.definition.triggers.map((entry) => entry.event)).toEqual([
+      "player_attacked",
+      "opponent_draws_second",
+      "casts_second_spell",
+    ]);
+    expect(compiled.definition.triggers[0]?.minAttackers).toBe(2);
+  });
+
+  // ---- The attack half ---------------------------------------------------
+
+  const trouble = () =>
+    createCardDefinition({
+      name: "Trouble in Pairs",
+      typeLine: "Enchantment",
+      manaCost: "{3}{W}{B}",
+      opponentsSkipExtraTurns: true,
+      triggers: [
+        {
+          event: "player_attacked",
+          watch: "opponents",
+          minAttackers: 2,
+          effects: [{ kind: "draw", playerId: "controller", count: 1 }],
+          targetRequirements: [],
+        },
+      ],
+    });
+
+  const bear = (name: string) =>
+    createCardDefinition({
+      name,
+      typeLine: "Creature — Bear",
+      manaCost: "{1}{G}",
+      power: 2,
+      toughness: 2,
+    });
+
+  const threeWay = () => {
+    const game = createGameState({ playerCount: 3 });
+    const [p1, p2, p3] = game.players;
+    if (!p1 || !p2 || !p3) {
+      throw new Error("need three players");
+    }
+    fillLibraries(game, 40);
+    return { game, p1, p2, p3 };
+  };
+
+  const attackWith = (
+    game: GameState,
+    playerId: string,
+    attacks: { attackerId: string; defenderId: string }[],
+  ) => {
+    game.turn.activePlayerId = playerId;
+    game.turn.phase = "combat";
+    game.turn.step = "declareAttackers";
+    game.priorityPlayerId = playerId;
+    return declareAttackers(game, playerId, attacks);
+  };
+
+  it("fires when two creatures come at you", () => {
+    const { game, p1, p2 } = threeWay();
+    put(game, p1.id, trouble());
+    const firstId = put(game, p2.id, bear("A"));
+    const secondId = put(game, p2.id, bear("B"));
+    const before = game.players.find((entry) => entry.id === p1.id)!.zones.hand.length;
+    let after = attackWith(game, p2.id, [
+      { attackerId: firstId, defenderId: p1.id },
+      { attackerId: secondId, defenderId: p1.id },
+    ]);
+    while (after.stack.length > 0) {
+      after = resolveTopOfStack(after);
+    }
+    expect(after.players.find((entry) => entry.id === p1.id)!.zones.hand).toHaveLength(
+      before + 1,
+    );
+  });
+
+  it("does not fire for a single attacker", () => {
+    const { game, p1, p2 } = threeWay();
+    put(game, p1.id, trouble());
+    const loneId = put(game, p2.id, bear("A"));
+    const before = game.players.find((entry) => entry.id === p1.id)!.zones.hand.length;
+    let after = attackWith(game, p2.id, [{ attackerId: loneId, defenderId: p1.id }]);
+    while (after.stack.length > 0) {
+      after = resolveTopOfStack(after);
+    }
+    expect(after.players.find((entry) => entry.id === p1.id)!.zones.hand).toHaveLength(before);
+  });
+
+  it("draws once for the attack, not once per attacker", () => {
+    const { game, p1, p2 } = threeWay();
+    put(game, p1.id, trouble());
+    const ids = [put(game, p2.id, bear("A")), put(game, p2.id, bear("B")), put(game, p2.id, bear("C"))];
+    const before = game.players.find((entry) => entry.id === p1.id)!.zones.hand.length;
+    let after = attackWith(
+      game,
+      p2.id,
+      ids.map((attackerId) => ({ attackerId, defenderId: p1.id })),
+    );
+    while (after.stack.length > 0) {
+      after = resolveTopOfStack(after);
+    }
+    expect(after.players.find((entry) => entry.id === p1.id)!.zones.hand).toHaveLength(
+      before + 1,
+    );
+  });
+
+  it("ignores an attack on somebody else", () => {
+    const { game, p1, p2, p3 } = threeWay();
+    put(game, p1.id, trouble());
+    const firstId = put(game, p2.id, bear("A"));
+    const secondId = put(game, p2.id, bear("B"));
+    const before = game.players.find((entry) => entry.id === p1.id)!.zones.hand.length;
+    let after = attackWith(game, p2.id, [
+      { attackerId: firstId, defenderId: p3.id },
+      { attackerId: secondId, defenderId: p3.id },
+    ]);
+    while (after.stack.length > 0) {
+      after = resolveTopOfStack(after);
+    }
+    expect(after.players.find((entry) => entry.id === p1.id)!.zones.hand).toHaveLength(before);
+  });
+
+  it("does not read a Curse's half of the same event", () => {
+    const { game, p1, p2, p3 } = threeWay();
+    // A Curse watches the player it is attached to; Trouble in Pairs
+    // watches its own controller. Both read `player_attacked`, and the
+    // count is what tells them apart.
+    const curseId = put(
+      game,
+      p1.id,
+      createCardDefinition({
+        name: "Curse",
+        typeLine: "Enchantment — Aura Curse",
+        manaCost: "{W}",
+        enchant: "player",
+        triggers: [
+          {
+            event: "player_attacked",
+            effects: [{ kind: "draw", playerId: "controller", count: 1 }],
+            targetRequirements: [],
+          },
+        ],
+      }),
+    );
+    game.cards[curseId]!.attachedToPlayer = p3.id;
+    put(game, p1.id, trouble());
+    const firstId = put(game, p2.id, bear("A"));
+    const secondId = put(game, p2.id, bear("B"));
+    const before = game.players.find((entry) => entry.id === p1.id)!.zones.hand.length;
+    let after = attackWith(game, p2.id, [
+      { attackerId: firstId, defenderId: p3.id },
+      { attackerId: secondId, defenderId: p3.id },
+    ]);
+    while (after.stack.length > 0) {
+      after = resolveTopOfStack(after);
+    }
+    // p3 was attacked: the Curse fires, Trouble in Pairs does not.
+    expect(after.players.find((entry) => entry.id === p1.id)!.zones.hand).toHaveLength(
+      before + 1,
+    );
+  });
+
+  // ---- The denial --------------------------------------------------------
+
+  it("skips an opponent's extra turn while it is on the battlefield", () => {
+    const { game, p1, p2, p3 } = threeWay();
+    put(game, p1.id, trouble());
+    game.turn.activePlayerId = p2.id;
+    const after = applyEffects(game, [{ kind: "extra_turn", playerId: p2.id }]);
+    beginNextLivingTurnInPlace(after);
+    expect(after.turn.activePlayerId).toBe(p3.id);
+  });
+
+  it("leaves its OWN controller's extra turn alone", () => {
+    const { game, p1 } = threeWay();
+    put(game, p1.id, trouble());
+    game.turn.activePlayerId = p1.id;
+    const after = applyEffects(game, [{ kind: "extra_turn", playerId: p1.id }]);
+    beginNextLivingTurnInPlace(after);
+    // "If an OPPONENT would begin an extra turn": its controller is not
+    // their own opponent.
+    expect(after.turn.activePlayerId).toBe(p1.id);
+  });
+
+  it("stops denying once it leaves", () => {
+    const { game, p1, p2 } = threeWay();
+    const troubleId = put(game, p1.id, trouble());
+    game.turn.activePlayerId = p2.id;
+    const after = applyEffects(game, [{ kind: "extra_turn", playerId: p2.id }]);
+    // A static, asked as the turn would begin rather than recorded when
+    // the enchantment arrived.
+    const gone = applyEffect(after, { kind: "sacrifice", cardId: troubleId });
+    beginNextLivingTurnInPlace(gone);
+    expect(gone.turn.activePlayerId).toBe(p2.id);
+  });
+
+  it("round trips the static and the attack count", () => {
+    const { game, p1 } = threeWay();
+    const definition = trouble();
+    put(game, p1.id, definition);
+    const round = parseGameState(serializeGameState(game));
+    // Dropped on the wire, the denial is gone and the attack trigger fires
+    // for a single creature — two different cards.
+    expect(round.definitions[definition.id]?.opponentsSkipExtraTurns).toBe(true);
+    expect(round.definitions[definition.id]?.triggers[0]?.minAttackers).toBe(2);
+  });
+});

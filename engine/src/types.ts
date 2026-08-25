@@ -329,6 +329,16 @@ export type CardDefinition = {
    */
   controllerHexproof?: boolean;
   /**
+   * Trouble in Pairs, Stranglehold: "if an OPPONENT would begin an extra
+   * turn, that player skips that turn instead."
+   *
+   * A STATIC on the permanent rather than a one-shot effect, because it is
+   * true for as long as the permanent is there — and a permanent's
+   * `effects` never run at all, so compiling it as one would have been a
+   * card that looks clean and denies nothing.
+   */
+  opponentsSkipExtraTurns?: boolean;
+  /**
    * Crawlspace: "No more than two creatures can attack you each combat."
    * The cap protects this permanent's CONTROLLER — the printed text says
    * "you" — so it is read off the defending player's own battlefield.
@@ -4609,6 +4619,14 @@ export type CardTrigger = {
   /** Curses: "at the beginning of ENCHANTED PLAYER'S upkeep" — the step
    * belongs to whoever this Aura is attached to, not to its controller. */
   enchantedPlayersStep?: boolean;
+  /**
+   * Trouble in Pairs: "whenever an opponent attacks YOU with two or more
+   * creatures". Its presence also switches the `player_attacked` matcher
+   * from the Curse reading (the enchanted player was attacked) to this one
+   * (the watcher's controller was) — the two cards want different halves
+   * of the same event, and an implicit rule would be guesswork.
+   */
+  minAttackers?: number;
   /** class_level triggers: which level reaching fires this. */
   classLevel?: number;
   /**
@@ -4637,7 +4655,13 @@ export type EngineEvent =
   /** Curse of Opulence: one event per player attacked this combat, no
    * matter how many creatures came at them. A separate event from
    * `attacks`, which is one per CREATURE. */
-  | { kind: "player_attacked"; playerId: PlayerId; attackingPlayerId: PlayerId }
+  | {
+      kind: "player_attacked";
+      playerId: PlayerId;
+      attackingPlayerId: PlayerId;
+      /** How many creatures came at them, for "with two or more". */
+      attackerCount: number;
+    }
   /** A card reached a graveyard from any zone at all (Kozilek). */
   | { kind: "put_into_graveyard"; cardId: CardInstanceId }
   /** Call of the Ring: a player named a creature as their Ring-bearer. */

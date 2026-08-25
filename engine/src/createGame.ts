@@ -132,6 +132,7 @@ export function createCardDefinition(
         | "retrace"
         | "spliceOntoArcane"
         | "dredge"
+        | "opponentsSkipExtraTurns"
         | "grantsRetrace"
         | "enchant"
         | "reanimateOnEnter"
@@ -611,6 +612,7 @@ export function createCardDefinition(
       ? { spliceOntoArcane: { ...input.spliceOntoArcane } }
       : {}),
     ...(input.dredge ? { dredge: input.dredge } : {}),
+    ...(input.opponentsSkipExtraTurns ? { opponentsSkipExtraTurns: true } : {}),
     ...(input.grantsRetrace
       ? {
           grantsRetrace: {

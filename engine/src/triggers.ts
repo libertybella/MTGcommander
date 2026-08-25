@@ -1164,6 +1164,16 @@ function triggerMatchesEvent(
     if (trigger.event !== "player_attacked") {
       return false;
     }
+    // Trouble in Pairs: "an opponent attacks YOU with two or more
+    // creatures". A count makes this the watcher's controller rather than
+    // the enchanted player, which is the Curse reading below.
+    if (trigger.minAttackers !== undefined) {
+      return (
+        event.playerId === watcher.controllerId &&
+        event.attackingPlayerId !== watcher.controllerId &&
+        event.attackerCount >= trigger.minAttackers
+      );
+    }
     // Curses watch the player they are attached to, and nobody else.
     return watcher.attachedToPlayer === event.playerId;
   }

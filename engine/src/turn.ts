@@ -142,6 +142,21 @@ function assignNextPlayerTurn(state: GameState, nextId: PlayerId): void {
  * means the turn happened and was skipped, not that it was never owed.
  * Skipping it here also means a second owed turn is still theirs.
  */
+/**
+ * Is any permanent on the battlefield denying this player's extra turns?
+ * A static, so it is asked as the turn would begin rather than recorded
+ * when the denier arrived — a Trouble in Pairs that leaves stops denying.
+ */
+function extraTurnDeniedBy(state: GameState, playerId: PlayerId): boolean {
+  return Object.values(state.cards).some(
+    (card) =>
+      card.zone === "battlefield" &&
+      card.controllerId !== playerId &&
+      !abilitiesRemoved(state, card.id) &&
+      state.definitions[card.definitionId]?.opponentsSkipExtraTurns === true,
+  );
+}
+
 function takeNextTurnPlayerId(state: GameState): PlayerId {
   const queued = state.pendingExtraTurns ?? [];
   for (let index = 0; index < queued.length; index += 1) {
@@ -150,7 +165,7 @@ function takeNextTurnPlayerId(state: GameState): PlayerId {
     if (!isLiving(state, owed)) {
       continue;
     }
-    if ((state.extraTurnsDenied ?? []).includes(owed)) {
+    if ((state.extraTurnsDenied ?? []).includes(owed) || extraTurnDeniedBy(state, owed)) {
       continue;
     }
     state.pendingExtraTurns = rest.length > 0 ? rest : undefined;

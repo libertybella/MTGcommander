@@ -1544,6 +1544,7 @@ export function parseGameState(json: string): GameState {
         ? {}
         : { hexproofFrom: parseColorArray(def.hexproofFrom, `definition.${id}.hexproofFrom`) }),
       ...(def.retrace === true ? { retrace: true } : {}),
+      ...(def.opponentsSkipExtraTurns === true ? { opponentsSkipExtraTurns: true } : {}),
       ...(def.dredge === undefined
         ? {}
         : { dredge: expectNumber(def.dredge, `definition.${id}.dredge`) }),
@@ -5656,6 +5657,9 @@ function parseTriggers(value: unknown, label: string): CardTrigger[] {
       ...(entry.oncePerTurn === true ? { oncePerTurn: true } : {}),
       ...(entry.modesOncePerTurn === true ? { modesOncePerTurn: true } : {}),
       ...(entry.enchantedPlayersStep === true ? { enchantedPlayersStep: true } : {}),
+      ...(entry.minAttackers === undefined
+        ? {}
+        : { minAttackers: expectNumber(entry.minAttackers, "trigger.minAttackers") }),
       ...(entry.oncePerBatch === true ? { oncePerBatch: true } : {}),
       ...(entry.classLevel === undefined
         ? {}
