@@ -63,6 +63,9 @@ export function triggerConditionHolds(
   if (!condition) {
     return true;
   }
+  if (condition.kind === "no_spells_cast_this_turn") {
+    return (state.spellsCastByPlayerThisTurn?.[controllerId] ?? 0) === 0;
+  }
   if (condition.kind === "opponent_cast_color_this_turn") {
     const byPlayer = state.spellColorsCastByPlayerThisTurn ?? {};
     return state.players.some(

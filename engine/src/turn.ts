@@ -620,6 +620,9 @@ function onEnterStep(state: GameState): GameState {
     if (state.castLockUntilEot) {
       delete state.castLockUntilEot;
     }
+    if (state.selfCastLockUntilEot) {
+      delete state.selfCastLockUntilEot;
+    }
     if (state.noncreatureCastLockUntilEot) {
       delete state.noncreatureCastLockUntilEot;
     }

@@ -350,6 +350,10 @@ function validateCast(
     throw new Error("A spell with split second is on the stack");
   }
   // Silence: everyone but the caster of the lock is shut out this turn.
+  // Conduit of Worlds: this player spent their one spell for the turn.
+  if ((state.selfCastLockUntilEot ?? []).includes(playerId)) {
+    throw new Error("You can't cast additional spells this turn");
+  }
   if (state.castLockUntilEot && state.castLockUntilEot !== playerId) {
     throw new Error("You can't cast spells this turn");
   }
@@ -1122,6 +1126,18 @@ function applyCastSpell(
     );
   }
   let stacked = putSpellOnStack(paid, cardId, targets ?? [], modeIndex, xValue, division, modeIndexes, sacrificedPower, sacrificedManaValue);
+  // Conduit of Worlds: the lock rides the GRANT, so it fires here — when
+  // the granted card is actually cast — rather than when the ability
+  // resolved. Declining the cast costs nothing.
+  if (
+    (paid.exilePlayable ?? []).some(
+      (entry) =>
+        entry.cardId === cardId && entry.casterId === playerId && entry.locksCastingAfter,
+    ) &&
+    !(stacked.selfCastLockUntilEot ?? []).includes(playerId)
+  ) {
+    stacked.selfCastLockUntilEot = [...(stacked.selfCastLockUntilEot ?? []), playerId];
+  }
   // The spliced cards are recorded on the SPELL, not moved: they were
   // revealed from hand and that is where they stay.
   if (splices.length > 0) {

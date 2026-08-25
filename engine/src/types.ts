@@ -1319,6 +1319,12 @@ export type GameState = {
    * casting NONCREATURE spells until end of turn. Cleared at cleanup. */
   noncreatureCastLockUntilEot?: PlayerId;
   /**
+   * Conduit of Worlds: players who may not cast any more spells this turn.
+   * The inverse of `castLockUntilEot`, which locks everyone EXCEPT one —
+   * this locks the listed players themselves. Cleared at cleanup.
+   */
+  selfCastLockUntilEot?: PlayerId[];
+  /**
    * Impulse exiles (Ragavan, Professional Face-Breaker): cards in exile that
    * the listed player may cast or play this turn, paying costs as normal.
    * Cleared at cleanup.
@@ -1338,6 +1344,12 @@ export type GameState = {
      * decremented at the caster's own cleanups, dropped at 0. Entries
      * without it clear at every cleanup as before. */
     remainingOwnCleanups?: number;
+    /**
+     * Conduit of Worlds: casting THIS card locks its caster out of further
+     * spells this turn. The lock rides the grant rather than the ability,
+     * because "if you do" means declining the cast costs nothing.
+     */
+    locksCastingAfter?: boolean;
   }>;
   /** Rebound: cards waiting in exile to be offered free at the caster's
    * next upkeep. */
@@ -2027,6 +2039,12 @@ export type GameEffect =
   | { kind: "exile_until_taken"; playerId: PlayerId }
   | { kind: "extra_turn"; playerId: PlayerId }
   | { kind: "commander_cast_counters"; cardId: CardInstanceId }
+  | {
+      kind: "grant_cast_this_turn";
+      cardId: CardInstanceId;
+      playerId: PlayerId;
+      locksCastingAfter?: boolean;
+    }
   | { kind: "deny_extra_turns"; playerId: PlayerId }
   | {
       kind: "divide_into_piles";
@@ -3600,6 +3618,16 @@ export type CardEffect =
    * counter for each time it has been cast from the command zone.
    */
   | { kind: "commander_cast_counters"; cardId: CardIdSelector }
+  /**
+   * Conduit of Worlds: "you may cast that card" — one named card in a
+   * graveyard becomes castable this turn, paying its costs as normal.
+   */
+  | {
+      kind: "grant_cast_this_turn";
+      cardId: CardIdSelector;
+      playerId: PlayerSelector;
+      locksCastingAfter?: boolean;
+    }
   /** Trouble in Pairs, Stranglehold: that player's extra turns are skipped. */
   | { kind: "deny_extra_turns"; playerId: PlayerSelector }
   /**
@@ -4317,6 +4345,8 @@ export type TriggerCondition =
    * what a copy, a cascade and a {0} cost all are.
    */
   | { kind: "no_mana_spent_to_cast" }
+  /** Conduit of Worlds: "if you haven't cast a spell this turn". */
+  | { kind: "no_spells_cast_this_turn" }
   /** Veil of Summer, Refraction Trap: "if an opponent has cast a blue or
    * black spell this turn". Any ONE opponent, in any of the colours. */
   | { kind: "opponent_cast_color_this_turn"; colors: Color[] }

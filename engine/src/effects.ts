@@ -1712,6 +1712,19 @@ export function bindCardEffect(
       const cardId = bindCardId(state, effect.cardId, context);
       return cardId ? { kind: "commander_cast_counters", cardId } : null;
     }
+    case "grant_cast_this_turn": {
+      const cardId = bindCardId(state, effect.cardId, context);
+      const playerId = bindPlayerSelector(state, effect.playerId, context);
+      if (!cardId || !playerId) {
+        return null;
+      }
+      return {
+        kind: "grant_cast_this_turn",
+        cardId,
+        playerId,
+        ...(effect.locksCastingAfter ? { locksCastingAfter: true } : {}),
+      };
+    }
     case "extra_turn":
     case "deny_extra_turns": {
       const playerId = bindPlayerSelector(state, effect.playerId, context);
@@ -6990,6 +7003,19 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
       }
       case "exile_until_taken":
         next = exileUntilTakenStep(state, effect.playerId, []);
+        break;
+      case "grant_cast_this_turn":
+        next = cloneGameState(state);
+        // The same list impulse exiles use: it already admits a card in a
+        // GRAVEYARD as well as one in exile, which is where this one is.
+        next.exilePlayable = [
+          ...(next.exilePlayable ?? []),
+          {
+            cardId: effect.cardId,
+            casterId: effect.playerId,
+            ...(effect.locksCastingAfter ? { locksCastingAfter: true } : {}),
+          },
+        ];
         break;
       case "commander_cast_counters": {
         next = cloneGameState(state);

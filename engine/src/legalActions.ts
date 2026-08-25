@@ -605,7 +605,12 @@ export function legalActions(state: GameState, playerId: PlayerId): LegalAction[
   const flashGrant = hasFlashGrant(state, playerId);
   // Grand Abolisher: no casts, no battlefield a/c/e activations, this turn.
   // Silence adds a cast-only lock for everyone but its caster.
-  const silenced = Boolean(state.castLockUntilEot && state.castLockUntilEot !== playerId);
+  const silenced =
+    Boolean(state.castLockUntilEot && state.castLockUntilEot !== playerId) ||
+    // Conduit of Worlds: this player spent their one spell for the turn.
+    // The same gate the cast path enforces, so the UI never offers a spell
+    // the engine then refuses.
+    (state.selfCastLockUntilEot ?? []).includes(playerId);
   const abolisherLocked = lockedByAbolisher(state, playerId);
   // Split second (CR 702.61) locks every non-mana action for everyone while
   // the spell is on the stack. Folded into the cast lock and checked again

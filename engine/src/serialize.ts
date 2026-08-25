@@ -2027,6 +2027,14 @@ export function parseGameState(json: string): GameState {
             return counts;
           })(),
         }),
+    ...(raw.selfCastLockUntilEot === undefined
+      ? {}
+      : {
+          selfCastLockUntilEot: expectStringArray(
+            raw.selfCastLockUntilEot,
+            "selfCastLockUntilEot",
+          ),
+        }),
     ...(raw.castLockUntilEot === undefined
       ? {}
       : { castLockUntilEot: expectString(raw.castLockUntilEot, "castLockUntilEot") }),
@@ -2053,6 +2061,7 @@ export function parseGameState(json: string): GameState {
                 cardId: expectString(entry.cardId, `exilePlayable[${index}].cardId`),
                 casterId: expectString(entry.casterId, `exilePlayable[${index}].casterId`),
                 ...(entry.freeCast === true ? { freeCast: true } : {}),
+                ...(entry.locksCastingAfter === true ? { locksCastingAfter: true } : {}),
                 ...(entry.remainingOwnCleanups === undefined
                   ? {}
                   : {
@@ -4737,6 +4746,13 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
       return { kind, playerId: parsePlayerSelector(value.playerId, `${label}.playerId`) };
     case "commander_cast_counters":
       return { kind, cardId: parseCardIdSelector(value.cardId, `${label}.cardId`) };
+    case "grant_cast_this_turn":
+      return {
+        kind,
+        cardId: parseCardIdSelector(value.cardId, `${label}.cardId`),
+        playerId: parsePlayerSelector(value.playerId, `${label}.playerId`),
+        ...(value.locksCastingAfter === true ? { locksCastingAfter: true } : {}),
+      };
     case "punisher_choice":
       return {
         kind,
@@ -5746,6 +5762,7 @@ function parseTriggerCondition(value: unknown, label: string): TriggerCondition 
       if (
         conditionKind === "greatest_artifact_mana_value" ||
         conditionKind === "no_mana_spent_to_cast" ||
+        conditionKind === "no_spells_cast_this_turn" ||
         conditionKind === "opponent_controls_more_lands" ||
         conditionKind === "subject_name_unique" ||
         conditionKind === "subject_not_put_by_watcher" ||
@@ -6963,6 +6980,14 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
   }
   if (kind === "commander_cast_counters") {
     return { kind, cardId: expectString(value.cardId, `${label}.cardId`) };
+  }
+  if (kind === "grant_cast_this_turn") {
+    return {
+      kind,
+      cardId: expectString(value.cardId, `${label}.cardId`),
+      playerId: expectString(value.playerId, `${label}.playerId`),
+      ...(value.locksCastingAfter === true ? { locksCastingAfter: true } : {}),
+    };
   }
   if (kind === "punisher_choice") {
     return {

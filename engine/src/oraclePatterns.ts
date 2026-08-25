@@ -5567,6 +5567,30 @@ function compileSimpleClauseInner(sentence: string): SimpleClause | null {
     };
   }
 
+  if (/^conduit a nonland permanent card from your graveyard$/i.test(sentence)) {
+    return {
+      targetRequirements: [
+        // A permanent card that is not a land: the graveyard kind already
+        // means permanent, and the exclusion is what "nonland" adds.
+        { kind: "own_graveyard_permanent_card", excludedTypes: ["land"] },
+      ],
+      effects: [
+        {
+          kind: "if_condition",
+          condition: { kind: "no_spells_cast_this_turn" },
+          then: [
+            {
+              kind: "grant_cast_this_turn",
+              cardId: { type: "chosen", index: 0 },
+              playerId: "controller",
+              locksCastingAfter: true,
+            },
+          ],
+        },
+      ],
+    };
+  }
+
   if (/^exile until taken$/i.test(sentence)) {
     return {
       targetRequirements: [],
@@ -10414,6 +10438,31 @@ function compileDigUntilClause(sentence: string): CardEffect[] | null {
  * grammar because this is one printed sentence, and inventing a grammar
  * for it would claim sentences nobody has written.
  */
+/**
+ * Conduit of Worlds prints one ability as three sentences: the target, the
+ * gated offer, and the price of taking it. Fused, because the offer names
+ * the card the first chose and the price names the offer.
+ */
+function fuseConduitInPlace(sentences: string[], lineStart: boolean[]): void {
+  for (let index = 0; index + 2 < sentences.length; index += 1) {
+    const head = sentences[index]?.match(
+      /^(.*?)Choose target nonland permanent card in your graveyard$/i,
+    );
+    const offer = /^If you haven't cast a spell this turn, you may cast that card$/i.test(
+      sentences[index + 1] ?? "",
+    );
+    const price = /^If you do, you can't cast additional spells this turn$/i.test(
+      sentences[index + 2] ?? "",
+    );
+    if (head?.[1] === undefined || !offer || !price) {
+      continue;
+    }
+    sentences[index] = `${head[1]}conduit a nonland permanent card from your graveyard`;
+    sentences.splice(index + 1, 2);
+    lineStart.splice(index + 1, 2);
+  }
+}
+
 function fuseCommaHeadInPlace(sentences: string[]): void {
   for (let index = 0; index < sentences.length; index += 1) {
     sentences[index] = sentences[index]!.replace(
@@ -15080,6 +15129,7 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
   fuseInAdditionTypeInPlace(sentences, lineStart);
   fuseChooseGraveyardCastInPlace(sentences, lineStart);
   fusePutLandRiderInPlace(sentences, lineStart);
+  fuseConduitInPlace(sentences, lineStart);
   fuseCommaHeadInPlace(sentences);
   fuseExileUntilTakenInPlace(sentences, lineStart);
   fusePunisherInPlace(sentences, lineStart);

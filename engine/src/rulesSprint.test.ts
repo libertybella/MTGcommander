@@ -64921,3 +64921,219 @@ describe("wave 396: Opal Palace", () => {
     expect(counters(after, commanderId)).toBe(1);
   });
 });
+
+describe("wave 397: Conduit of Worlds", () => {
+  const compile = (name: string, typeLine: string, oracleText: string, manaCost = "") =>
+    compileOracleCard({
+      oracleId: name.toLowerCase().replace(/[^a-z]+/g, "-"),
+      name,
+      manaCost,
+      typeLine,
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  const put = (
+    game: GameState,
+    ownerId: string,
+    definition: CardDefinition,
+    zone: "battlefield" | "graveyard" | "hand" = "graveyard",
+  ) => {
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({ definitionId: definition.id, ownerId, zone });
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === ownerId)!.zones[zone].push(card.id);
+    if (zone === "battlefield") {
+      card.summoningSick = false;
+    }
+    return card.id;
+  };
+
+  const conduitText =
+    "{T}: Choose target nonland permanent card in your graveyard. If you haven't cast a spell this turn, you may cast that card. If you do, you can't cast additional spells this turn.\nActivate only as a sorcery.";
+
+  it("compiles three sentences as one ability", () => {
+    const compiled = compile("Conduit of Worlds", "Artifact", conduitText, "{3}");
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.activated[0]?.timing).toBe("sorcery");
+    expect(compiled.definition.activated[0]?.targetRequirements).toEqual([
+      { kind: "own_graveyard_permanent_card", excludedTypes: ["land"] },
+    ]);
+    // The lock rides the GRANT, not the ability: "if you do" means
+    // declining the cast costs nothing.
+    expect(compiled.definition.activated[0]?.effects).toEqual([
+      {
+        kind: "if_condition",
+        condition: { kind: "no_spells_cast_this_turn" },
+        then: [
+          {
+            kind: "grant_cast_this_turn",
+            cardId: { type: "chosen", index: 0 },
+            playerId: "controller",
+            locksCastingAfter: true,
+          },
+        ],
+      },
+    ]);
+  });
+
+  // ---- The grant ---------------------------------------------------------
+
+  const bear = (name: string) =>
+    createCardDefinition({
+      name,
+      typeLine: "Creature — Bear",
+      manaCost: "{1}{G}",
+      power: 2,
+      toughness: 2,
+    });
+
+  const spell = (name: string) =>
+    createCardDefinition({ name, typeLine: "Instant", manaCost: "{R}" });
+
+  const grantFor = (game: GameState, playerId: string, cardId: string) =>
+    applyEffects(
+      game,
+      bindCardEffects(
+        game,
+        [
+          {
+            kind: "grant_cast_this_turn",
+            cardId,
+            playerId: "controller",
+            locksCastingAfter: true,
+          },
+        ],
+        { controllerId: playerId, sourceId: null, targets: [], targetRequirements: [] },
+      ),
+    );
+
+  const ready = (game: GameState, playerId: string) => {
+    game.turn.activePlayerId = playerId;
+    game.turn.phase = "precombatMain";
+    game.turn.step = "precombatMain";
+    game.priorityPlayerId = playerId;
+    const player = game.players.find((entry) => entry.id === playerId)!;
+    player.mana.G = 5;
+    player.mana.R = 5;
+    player.mana.C = 5;
+  };
+
+  it("lets the named card be cast out of the graveyard", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const bearId = put(game, p1.id, bear("Buried Bear"));
+    const after = grantFor(game, p1.id, bearId);
+    ready(after, p1.id);
+    const cast = applyAction(after, {
+      kind: "cast_spell",
+      playerId: p1.id,
+      cardId: bearId,
+      targets: [],
+    });
+    expect(cast.cards[bearId]?.zone).toBe("stack");
+  });
+
+  it("locks the caster out of further spells once it is cast", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const bearId = put(game, p1.id, bear("Buried Bear"));
+    const otherId = put(game, p1.id, spell("Something Else"), "hand");
+    const after = grantFor(game, p1.id, bearId);
+    ready(after, p1.id);
+    const cast = applyAction(after, {
+      kind: "cast_spell",
+      playerId: p1.id,
+      cardId: bearId,
+      targets: [],
+    });
+    expect(cast.selfCastLockUntilEot).toEqual([p1.id]);
+    const resolved = resolveTopOfStack(cast);
+    ready(resolved, p1.id);
+    expect(() =>
+      applyAction(resolved, { kind: "cast_spell", playerId: p1.id, cardId: otherId, targets: [] }),
+    ).toThrow();
+  });
+
+  it("costs nothing when the cast is declined", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const bearId = put(game, p1.id, bear("Buried Bear"));
+    const otherId = put(game, p1.id, spell("Something Else"), "hand");
+    const after = grantFor(game, p1.id, bearId);
+    ready(after, p1.id);
+    // The grant alone locks nothing: "if you do".
+    expect(after.selfCastLockUntilEot).toBeUndefined();
+    expect(() =>
+      applyAction(after, { kind: "cast_spell", playerId: p1.id, cardId: otherId, targets: [] }),
+    ).not.toThrow();
+  });
+
+  it("does not offer a spell the cast path would refuse", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const otherId = put(game, p1.id, spell("Something Else"), "hand");
+    ready(game, p1.id);
+    expect(
+      legalActions(game, p1.id).some(
+        (action) => action.kind === "cast_spell" && action.cardId === otherId,
+      ),
+    ).toBe(true);
+    const locked: GameState = { ...game, selfCastLockUntilEot: [p1.id] };
+    expect(
+      legalActions(locked, p1.id).some(
+        (action) => action.kind === "cast_spell" && action.cardId === otherId,
+      ),
+    ).toBe(false);
+  });
+
+  it("locks only the player who cast it", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    const theirsId = put(game, p2.id, spell("Their Spell"), "hand");
+    const locked: GameState = { ...game, selfCastLockUntilEot: [p1.id] };
+    ready(locked, p2.id);
+    expect(() =>
+      applyAction(locked, { kind: "cast_spell", playerId: p2.id, cardId: theirsId, targets: [] }),
+    ).not.toThrow();
+  });
+
+  it("wears off at cleanup", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    let after: GameState = { ...game, selfCastLockUntilEot: [p1.id] };
+    after = { ...after, turn: { ...after.turn, phase: "ending", step: "end" } };
+    after = advanceStep(after);
+    expect(after.turn.step).toBe("cleanup");
+    expect(after.selfCastLockUntilEot).toBeUndefined();
+  });
+
+  it("holds the gate: no grant once a spell has been cast", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const condition = { kind: "no_spells_cast_this_turn" as const };
+    expect(triggerConditionHolds(game, p1.id, condition)).toBe(true);
+    const cast: GameState = { ...game, spellsCastByPlayerThisTurn: { [p1.id]: 1 } };
+    expect(triggerConditionHolds(cast, p1.id, condition)).toBe(false);
+  });
+
+  it("round trips the grant, its rider and the lock", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const bearId = put(game, p1.id, bear("Buried Bear"));
+    let after = grantFor(game, p1.id, bearId);
+    after = { ...after, selfCastLockUntilEot: [p1.id] };
+    const round = parseGameState(serializeGameState(after));
+    // Dropped on the wire the Conduit is a free Regrowth every turn, which
+    // is a materially stronger card.
+    expect(round.exilePlayable?.[0]).toMatchObject({
+      cardId: bearId,
+      casterId: p1.id,
+      locksCastingAfter: true,
+    });
+    expect(round.selfCastLockUntilEot).toEqual([p1.id]);
+  });
+});

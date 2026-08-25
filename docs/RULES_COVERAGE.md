@@ -3019,6 +3019,7 @@ ends. Every printed card of this shape asks about the current turn.
 - **Extra turns**, queued in the order they resolve and taken before play passes round the table, with a per-player denial (Stranglehold, Trouble in Pairs) that throws an owed turn away. An extra turn does not count as a new round.
 - "Whenever an opponent attacks **you** with two or more creatures": the attack event carries how many came, and a count on the trigger tells this reading apart from a Curse watching the player it enchants.
 - **Opal Palace**: mana tagged so a rider can watch it being spent on your commander, giving counters as that commander ENTERS equal to the times it has been cast from the command zone — the resolving cast included.
+- **Conduit of Worlds**: one named graveyard card becomes castable this turn, and casting it locks its caster out of further spells — a self-lock, distinct from Silence locking everyone else.
 - A seeded random-game fuzzer asserts zone integrity and serialize round-trips after every action (CI: 6 games; 500-game burn-ins gate checkpoint tags — they have caught two real livelocks and the trigger-batching bug).
 
 ## Documented gaps (intentional, in plan order)
