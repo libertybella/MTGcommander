@@ -65749,3 +65749,283 @@ describe("wave 400: Valley Floodcaller", () => {
     });
   });
 });
+
+describe("wave 401: poison counters as an effect", () => {
+  const compile = (
+    name: string,
+    typeLine: string,
+    oracleText: string,
+    manaCost = "",
+    pt: [string, string] | null = null,
+  ) =>
+    compileOracleCard({
+      oracleId: name.toLowerCase().replace(/[^a-z]+/g, "-"),
+      name,
+      manaCost,
+      typeLine,
+      power: pt?.[0] ?? null,
+      toughness: pt?.[1] ?? null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  const put = (game: GameState, ownerId: string, definition: CardDefinition) => {
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({
+      definitionId: definition.id,
+      ownerId,
+      zone: "battlefield",
+    });
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === ownerId)!.zones.battlefield.push(card.id);
+    card.summoningSick = false;
+    return card.id;
+  };
+
+  const poisonOf = (game: GameState, playerId: string) =>
+    game.players.find((entry) => entry.id === playerId)!.poisonCounters;
+
+  const sicknessText =
+    "Trample, indestructible\nWhenever Etali deals combat damage to a player, they get that many poison counters.";
+  const moxText = "{T}: Add one mana of any color. You get two poison counters.";
+
+  // ---- Compiling ---------------------------------------------------------
+
+  it("compiles Etali, Primal Sickness's back face", () => {
+    const compiled = compile(
+      "Etali, Primal Sickness",
+      "Legendary Creature — Phyrexian Elder Dinosaur",
+      sicknessText,
+      "",
+      ["11", "11"],
+    );
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.triggers[0]?.effects).toEqual([
+      {
+        kind: "add_poison",
+        playerId: { type: "subject_player" },
+        amount: "subject_amount",
+      },
+    ]);
+  });
+
+  it("compiles Prologue to Phyresis", () => {
+    const compiled = compile(
+      "Prologue to Phyresis",
+      "Instant",
+      "Each opponent gets a poison counter.\nDraw a card.",
+      "{1}{B}",
+    );
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.effects).toEqual([
+      { kind: "add_poison", playerId: "each_opponent", amount: 1 },
+      { kind: "draw", playerId: "controller", count: 1 },
+    ]);
+  });
+
+  it("compiles the targeted and the reflexive forms", () => {
+    expect(
+      compile("Aim", "Sorcery", "Target player gets three poison counters.", "{2}{B}").definition,
+    ).toMatchObject({
+      targetRequirements: [{ kind: "player" }],
+      effects: [{ kind: "add_poison", playerId: { type: "chosen", index: 0 }, amount: 3 }],
+    });
+    expect(
+      compile("Cost", "Sorcery", "You get two poison counters.", "{B}").definition.effects,
+    ).toEqual([{ kind: "add_poison", playerId: "controller", amount: 2 }]);
+  });
+
+  it("keeps Mox Poison's counters on the mana ability, not at top level", () => {
+    const compiled = compile("Mox Poison", "Artifact", moxText, "{0}");
+    expect(compiled.notes).toEqual([]);
+    // Parked in `definition.effects` a PERMANENT never runs it, and the
+    // card compiles with no notes as a free Mox — the same trap Pristine
+    // Talisman's life rider sits one field above in the type.
+    expect(compiled.definition.effects).toEqual([]);
+    expect(compiled.definition.manaAbilities[0]?.poisonToController).toBe(2);
+  });
+
+  // ---- Getting them ------------------------------------------------------
+
+  const poison = (
+    game: GameState,
+    playerId: string,
+    effect: CardEffect,
+    context: { subjectPlayerId?: string; subjectAmount?: number } = {},
+  ) =>
+    applyEffects(
+      game,
+      bindCardEffects(game, [effect], {
+        controllerId: playerId,
+        sourceId: null,
+        targets: [],
+        targetRequirements: [],
+        ...context,
+      }),
+    );
+
+  it("gives one to each opponent and none to the caster", () => {
+    const game = createGameState({ playerCount: 3 });
+    const [p1, p2, p3] = game.players;
+    if (!p1 || !p2 || !p3) {
+      throw new Error("need three players");
+    }
+    const after = poison(game, p1.id, {
+      kind: "add_poison",
+      playerId: "each_opponent",
+      amount: 1,
+    });
+    expect(poisonOf(after, p2.id)).toBe(1);
+    expect(poisonOf(after, p3.id)).toBe(1);
+    expect(poisonOf(after, p1.id)).toBe(0);
+  });
+
+  it("reads 'that many' off the trigger", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const after = poison(
+      game,
+      p1.id,
+      { kind: "add_poison", playerId: { type: "subject_player" }, amount: "subject_amount" },
+      { subjectPlayerId: p2.id, subjectAmount: 6 },
+    );
+    expect(poisonOf(after, p2.id)).toBe(6);
+  });
+
+  it("gives nothing when the trigger carried no amount", () => {
+    const { game, p1, p2 } = twoPlayers();
+    // An unbound "that many" is the absence of a number, not the number
+    // one — a trigger that carried nothing poisons for nothing.
+    const after = poison(
+      game,
+      p1.id,
+      { kind: "add_poison", playerId: { type: "subject_player" }, amount: "subject_amount" },
+      { subjectPlayerId: p2.id },
+    );
+    expect(poisonOf(after, p2.id)).toBe(0);
+    expect(after.log.some((entry) => entry.kind === "poison_change")).toBe(false);
+  });
+
+  it("logs the counters, because nothing else shows them arriving", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const after = poison(
+      game,
+      p1.id,
+      { kind: "add_poison", playerId: { type: "subject_player" }, amount: 2 },
+      { subjectPlayerId: p2.id },
+    );
+    expect(after.log.filter((entry) => entry.kind === "poison_change")).toEqual([
+      { kind: "poison_change", playerId: p2.id, delta: 2 },
+    ]);
+  });
+
+  it("loses the game at ten and not at nine", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    const nine = poison(game, p1.id, { kind: "add_poison", playerId: p2.id, amount: 9 });
+    applyStateBasedActionsInPlace(nine);
+    expect(nine.players.find((entry) => entry.id === p2.id)!.lost).toBe(false);
+    const ten = poison(nine, p1.id, { kind: "add_poison", playerId: p2.id, amount: 1 });
+    applyStateBasedActionsInPlace(ten);
+    // CR 104.3c. Ten is ten however they arrived, and unlike life there is
+    // no gaining them back.
+    expect(ten.players.find((entry) => entry.id === p2.id)!.lost).toBe(true);
+  });
+
+  // ---- Etali swinging ----------------------------------------------------
+
+  it("poisons for the combat damage it actually dealt", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    const compiled = compile(
+      "Etali, Primal Sickness",
+      "Legendary Creature — Phyrexian Elder Dinosaur",
+      sicknessText,
+      "",
+      ["11", "11"],
+    );
+    const etaliId = put(game, p1.id, compiled.definition);
+    game.turn.activePlayerId = p1.id;
+    game.turn.phase = "combat";
+    game.turn.step = "declareAttackers";
+    game.priorityPlayerId = p1.id;
+    let after = applyCombatDamage(
+      declareAttackers(game, p1.id, [{ attackerId: etaliId, defenderId: p2.id }]),
+    );
+    while (after.stack.length > 0) {
+      after = resolveTopOfStack(after);
+    }
+    // Eleven poison counters is over the line all by itself.
+    expect(poisonOf(after, p2.id)).toBe(11);
+  });
+
+  it("gives the Mox's poison on activation", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const compiled = compile("Mox Poison", "Artifact", moxText, "{0}");
+    const moxId = put(game, p1.id, compiled.definition);
+    game.turn.activePlayerId = p1.id;
+    game.turn.phase = "precombatMain";
+    game.turn.step = "precombatMain";
+    game.priorityPlayerId = p1.id;
+    const after = applyAction(game, {
+      kind: "tap_for_mana",
+      playerId: p1.id,
+      cardId: moxId,
+      manaIndex: 0,
+      color: "B",
+    });
+    expect(after.players.find((entry) => entry.id === p1.id)!.mana.B).toBe(1);
+    // The poison is the PRICE of the mana, so it arrives with it.
+    expect(poisonOf(after, p1.id)).toBe(2);
+  });
+
+  // ---- The wire ----------------------------------------------------------
+
+  it("round trips the effect, the mana rider and the log", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    const definition = createCardDefinition({
+      name: "Wave 401 Poisoner",
+      typeLine: "Artifact",
+      manaCost: "{0}",
+      manaAbilities: [
+        {
+          produces: {},
+          producesOptions: [],
+          producesAnyColor: true,
+          damageToController: 0,
+          poisonToController: 2,
+        },
+      ],
+      triggers: [
+        {
+          event: "deals_combat_damage_to_player",
+          watch: "self",
+          effects: [
+            {
+              kind: "add_poison",
+              playerId: { type: "subject_player" },
+              amount: "subject_amount",
+            },
+          ],
+          targetRequirements: [],
+        },
+      ],
+    });
+    put(game, p1.id, definition);
+    const poisoned = poison(game, p1.id, { kind: "add_poison", playerId: p2.id, amount: 3 });
+    const round = parseGameState(serializeGameState(poisoned));
+    // Dropped on the wire the Mox is free and Etali is a vanilla 11/11.
+    expect(round.definitions[definition.id]?.manaAbilities[0]?.poisonToController).toBe(2);
+    expect(round.definitions[definition.id]?.triggers[0]?.effects[0]).toEqual({
+      kind: "add_poison",
+      playerId: { type: "subject_player" },
+      amount: "subject_amount",
+    });
+    expect(round.players.find((entry) => entry.id === p2.id)!.poisonCounters).toBe(3);
+    expect(round.log.filter((entry) => entry.kind === "poison_change")).toEqual([
+      { kind: "poison_change", playerId: p2.id, delta: 3 },
+    ]);
+  });
+});

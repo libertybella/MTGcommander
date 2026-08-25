@@ -3761,6 +3761,38 @@ function compileSimpleClauseInner(sentence: string): SimpleClause | null {
     };
   }
 
+  /**
+   * "Gets a poison counter" — the only clause on any of these cards, whoever
+   * gets them. "They" and "that player" are the trigger's subject; "that
+   * many" is the amount it carried, which for Etali, Primal Sickness is the
+   * combat damage it just dealt.
+   */
+  const poison = sentence.match(
+    /^(you|each opponent|each player|target player|that player|they) gets? (a|an|one|two|three|four|five|six|seven|eight|nine|ten|\d+|that many) poison counters?$/i,
+  );
+  if (poison?.[1] && poison[2]) {
+    const who = poison[1].toLowerCase();
+    const amount = /^that many$/i.test(poison[2])
+      ? ("subject_amount" as const)
+      : parseCount(poison[2]);
+    const playerId =
+      who === "you"
+        ? ("controller" as const)
+        : who === "each opponent"
+          ? ("each_opponent" as const)
+          : who === "each player"
+            ? ("each_player" as const)
+            : who === "target player"
+              ? ({ type: "chosen", index: 0 } as const)
+              : ({ type: "subject_player" } as const);
+    if (amount) {
+      return {
+        targetRequirements: who === "target player" ? [{ kind: "player" as const }] : [],
+        effects: [{ kind: "add_poison", playerId, amount }],
+      };
+    }
+  }
+
   if (/^Exile ~$/i.test(sentence)) {
     return {
       targetRequirements: [],
@@ -15245,6 +15277,25 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
       const gained = parseCount(manaLifeRider[1]);
       if (gained) {
         riddenMana.gainLifeToController = gained;
+        continue;
+      }
+    }
+
+    // Mox Poison: the same shape, and the same trap — the poison is the
+    // PRICE of the mana, so parked at top level the card is a free Mox.
+    const manaPoisonRider = sentence.match(
+      /^You get (a|an|one|two|three|\d+) poison counters?$/i,
+    );
+    if (
+      manaPoisonRider?.[1] &&
+      riddenMana &&
+      index > 0 &&
+      !lineStart[index] &&
+      riddenMana.poisonToController === undefined
+    ) {
+      const got = parseCount(manaPoisonRider[1]);
+      if (got) {
+        riddenMana.poisonToController = got;
         continue;
       }
     }

@@ -249,6 +249,9 @@ function expandEachOpponent(
     effect.kind === "draw" ||
     effect.kind === "add_mana" ||
     effect.kind === "mill" ||
+    // "Each opponent gets a poison counter" (Prologue to Phyresis) is one
+    // clause and one counter per player.
+    effect.kind === "add_poison" ||
     effect.kind === "discard" ||
     effect.kind === "team_pt_until_eot" ||
     effect.kind === "exile_top_play" ||
@@ -404,6 +407,20 @@ export function bindCardEffect(
   context: BindEffectContext,
 ): GameEffect | null {
   switch (effect.kind) {
+    case "add_poison": {
+      const playerId = bindPlayerSelector(state, effect.playerId, context);
+      if (!playerId) {
+        return null;
+      }
+      const amount =
+        effect.amount === "subject_amount" ? (context.subjectAmount ?? 0) : effect.amount;
+      // Etali, Primal Sickness poisons for the damage it dealt; a trigger
+      // that carried no amount poisons for nothing rather than for one.
+      if (amount <= 0) {
+        return null;
+      }
+      return { kind: "add_poison", playerId, amount };
+    }
     case "gain_life":
     case "lose_life": {
       const playerId = bindPlayerSelector(state, effect.playerId, context);
@@ -2949,6 +2966,20 @@ function applyGainLife(state: GameState, playerId: PlayerId, amount: number): Ga
   return next;
 }
 
+/**
+ * CR 104.3c. Unlike life there is no gaining them back, and no replacement
+ * effect in this engine touches them — so unlike `applyLoseLife` there is
+ * nothing to run the amount through. `shouldLose` reads the total, so the
+ * state-based check that follows this is what ends the game at ten.
+ */
+function applyAddPoison(state: GameState, playerId: PlayerId, amount: number): GameState {
+  requirePositiveInteger(amount, "poison counters");
+  const next = cloneGameState(state);
+  requirePlayer(next, playerId).poisonCounters += amount;
+  next.log.push({ kind: "poison_change", playerId, delta: amount });
+  return next;
+}
+
 function applyLoseLife(state: GameState, playerId: PlayerId, amount: number): GameState {
   requirePositiveInteger(amount, "life loss");
   const next = cloneGameState(state);
@@ -4886,6 +4917,9 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
         break;
       case "lose_life":
         next = applyLoseLife(state, effect.playerId, effect.amount);
+        break;
+      case "add_poison":
+        next = applyAddPoison(state, effect.playerId, effect.amount);
         break;
       case "deal_damage":
         next = applyDealDamage(state, effect);

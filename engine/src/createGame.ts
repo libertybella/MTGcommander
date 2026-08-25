@@ -300,6 +300,9 @@ export function createCardDefinition(
           producesOptions: [...ability.producesOptions],
           producesAnyColor: ability.producesAnyColor,
           damageToController: ability.damageToController,
+          ...(ability.poisonToController === undefined
+            ? {}
+            : { poisonToController: ability.poisonToController }),
           ...(ability.gainLifeToController === undefined
             ? {}
             : { gainLifeToController: ability.gainLifeToController }),

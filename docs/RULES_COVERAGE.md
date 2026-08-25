@@ -3022,6 +3022,7 @@ ends. Every printed card of this shape asks about the current turn.
 - **Conduit of Worlds**: one named graveyard card becomes castable this turn, and casting it locks its caster out of further spells — a self-lock, distinct from Silence locking everyone else.
 - **Casting a free copy of a card** that is not on the stack (Isochron Scepter): the card never moves, the copy chooses its own targets, and no cast triggers fire.
 - A team effect naming **several subtypes** matches any of them, and "untap them" after such a pump untaps only those. Flash may be granted to a class of spells by the types they do NOT have.
+- **Poison counters as an effect**: "gets a poison counter" for you, each opponent, each player, a target player, or the trigger's subject, with "that many" reading the amount the trigger carried (Etali, Primal Sickness poisons for the combat damage it just dealt). Ten still ends the game through the existing state-based check, and each arrival is logged — nothing else on screen shows them coming. On a mana ability the counters ride the ability itself (`poisonToController`, beside Pristine Talisman's `gainLifeToController`), because a top-level effect on a permanent never runs and Mox Poison would otherwise be a free Mox.
 - A seeded random-game fuzzer asserts zone integrity and serialize round-trips after every action (CI: 6 games; 500-game burn-ins gate checkpoint tags — they have caught two real livelocks and the trigger-batching bug).
 
 ## Documented gaps (intentional, in plan order)
@@ -3030,7 +3031,7 @@ ends. Every printed card of this shape asks about the current turn.
 - CR 616 replacement-ordering choice; damage prevention/redirection shields; token-doubling replacements (Anointed Procession).
 - Casting face-down (morph); adventures/split cards; sagas; day/night automation (transform exists as an effect).
 - Damage-assignment order is blocker-list order; attack requirements ("must attack") and cost-to-attack effects.
-- Landwalk and other parameterized evasion; poison/infect; damage-dealt triggers (Curiosity).
+- Landwalk and other parameterized evasion; toxic (poison counters and infect are in); damage-dealt triggers (Curiosity).
 - Old-templating X spells (original Fireball's surcharge); commander color identity is not enforced.
 - Loyalty abilities are once per turn per walker; combat damage cannot yet be redirected to planeswalkers.
 - Manual override remains for everything above — its per-game usage count is the coverage metric.

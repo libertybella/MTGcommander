@@ -432,6 +432,12 @@ function formatLogEntry(state: GameState, entry: GameLogEntry): string {
     const delta = entry.delta > 0 ? `+${entry.delta}` : `${entry.delta}`;
     return `${name} life ${delta}`;
   }
+  if (entry.kind === "poison_change") {
+    const player = state.players.find((item) => item.id === entry.playerId);
+    const name = player?.displayName ?? entry.playerId;
+    const total = player?.poisonCounters ?? 0;
+    return `${name} +${entry.delta} poison (${total})`;
+  }
   if (entry.kind === "override") {
     const player = state.players.find((item) => item.id === entry.playerId);
     const name = player?.displayName ?? entry.playerId;

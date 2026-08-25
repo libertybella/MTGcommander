@@ -1664,6 +1664,11 @@ function applyTapForMana(
       { kind: "gain_life", playerId, amount: ability.gainLifeToController },
     ]);
   }
+  if (ability.poisonToController && ability.poisonToController > 0) {
+    next = applyEffects(next, [
+      { kind: "add_poison", playerId, amount: ability.poisonToController },
+    ]);
+  }
   return next;
 }
 

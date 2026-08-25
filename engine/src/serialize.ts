@@ -3737,6 +3737,15 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
           : {}),
         ...(value.perSpellsCastThisTurn === true ? { perSpellsCastThisTurn: true } : {}),
       };
+    case "add_poison":
+      return {
+        kind,
+        playerId: parsePlayerSelector(value.playerId, `${label}.playerId`),
+        amount:
+          value.amount === "subject_amount"
+            ? value.amount
+            : expectNumber(value.amount, `${label}.amount`),
+      };
     case "lose_life":
       return {
         kind,
@@ -6569,6 +6578,14 @@ function parseManaAbilities(value: unknown, label: string): ManaAbility[] {
         entry.damageToController === undefined
           ? 0
           : expectNumber(entry.damageToController, `${label}[${index}].damageToController`),
+      ...(entry.poisonToController === undefined
+        ? {}
+        : {
+            poisonToController: expectNumber(
+              entry.poisonToController,
+              `${label}[${index}].poisonToController`,
+            ),
+          }),
       ...(entry.gainLifeToController === undefined
         ? {}
         : {
@@ -6713,7 +6730,7 @@ function parseLog(value: unknown): GameLogEntry[] {
       throw new Error(`Invalid log[${index}]`);
     }
     const kind = expectString(entry.kind, `log[${index}].kind`);
-    if (kind === "life_change") {
+    if (kind === "life_change" || kind === "poison_change") {
       return {
         kind,
         playerId: expectString(entry.playerId, `log[${index}].playerId`),
@@ -6839,7 +6856,7 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
       count: expectNumber(value.count, `${label}.count`),
     };
   }
-  if (kind === "gain_life" || kind === "lose_life") {
+  if (kind === "gain_life" || kind === "lose_life" || kind === "add_poison") {
     return {
       kind,
       playerId: expectString(value.playerId, `${label}.playerId`),

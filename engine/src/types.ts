@@ -1629,6 +1629,7 @@ export type TokenTemplate = {
 export type GameEffect =
   | { kind: "gain_life"; playerId: PlayerId; amount: number }
   | { kind: "lose_life"; playerId: PlayerId; amount: number }
+  | { kind: "add_poison"; playerId: PlayerId; amount: number }
   | {
       kind: "deal_damage";
       sourceId: CardInstanceId | null;
@@ -3059,6 +3060,20 @@ export type CardEffectTarget =
  * Definition-stored effect data. Bound to concrete GameEffect values on resolve.
  */
 export type CardEffect =
+  | {
+      /**
+       * CR 122 / 104.3c. Poison counters are not life: nothing gains them
+       * back, no replacement effect in this engine touches them, and ten
+       * of them end the game. The only way to get one before this was
+       * infect combat damage, which is why 86 printed cards that hand them
+       * out directly had nowhere to compile to.
+       */
+      kind: "add_poison";
+      playerId: PlayerSelector;
+      /** "That many" — the damage the trigger just carried (Etali, Primal
+       * Sickness), read from the trigger subject at bind. */
+      amount: number | "subject_amount";
+    }
   | {
       kind: "gain_life";
       playerId: PlayerSelector;
@@ -5514,6 +5529,14 @@ export type ManaAbility = {
    * spell resolves by entering the battlefield.
    */
   gainLifeToController?: number;
+  /**
+   * Mox Poison: "{T}: Add one mana of any color. You get two poison
+   * counters." The same trap as `gainLifeToController` one field up — the
+   * cost of the mana is part of the mana ability, and left as its own
+   * sentence it lands in `definition.effects`, which a permanent never
+   * runs. The card would compile with no notes and be a free Mox.
+   */
+  poisonToController?: number;
   /** Arena of Glory: exerting the land is part of the mana ability's cost. */
   exertSelf?: boolean;
   /** Path of Ancestry: a rider watching where this mana is spent. */
@@ -5847,6 +5870,14 @@ export type GameLogEntry =
     }
   | {
       kind: "life_change";
+      playerId: PlayerId;
+      delta: number;
+    }
+  | {
+      // Ten of them lose the game and there is no gaining them back, so a
+      // poison counter arriving unannounced is the one counter a player
+      // most needs to see.
+      kind: "poison_change";
       playerId: PlayerId;
       delta: number;
     }
