@@ -578,7 +578,14 @@ export type CardDefinition = {
   entersWithXCounterKind?: string;
   /** Kalonian Hydra: "~ enters with four +1/+1 counters on it" — a fixed
    * count, unlike the announced-X form above. */
-  entersWithCounters?: { counter: string; count: number };
+  entersWithCounters?: {
+    counter: string;
+    count: number;
+    /** Adamant: the counter arrives only if the spell was paid for in the
+     * named colour. Gated here rather than as an enters trigger, because
+     * CR 121.6 says the counter was never not there. */
+    ifManaSpent?: { atLeast: number; color?: Color };
+  };
   /**
    * Clone family: "You may have ~ enter as a copy of …". Documented
    * approximation: the choice is prompted just after entry (not applied as a
@@ -699,6 +706,17 @@ export type CardInstance = {
    * already gone by then.
    */
   castFromZone?: ZoneName;
+  /**
+   * What mana was actually spent to cast this card, per colour, recorded as
+   * the cost is paid because nothing downstream can reconstruct it: an
+   * alternative cost, a cascade, "without paying its mana cost" and a plain
+   * {0} cost all spend nothing and none of them look alike afterwards.
+   *
+   * Read once and cleared, the way `evoked` is — a permanent that reaches
+   * the battlefield without being cast has no record, so adamant gives a
+   * reanimated Ardenvale Paladin nothing.
+   */
+  manaSpentToCast?: ManaPool;
   counters: Record<string, number>;
   /**
    * CR 702.26: a phased-out permanent is treated as though it did not
@@ -3948,6 +3966,15 @@ export type TriggerCondition =
   /** Guardian Project: the subject's name matches no other controlled
    * creature and no creature card in the controller's graveyard. */
   | { kind: "subject_name_unique" }
+  /**
+   * Boromir, Nix, Roiling Vortex: "if no mana was spent to cast it". Reads
+   * the SUBJECT spell's record, so an absent record is no mana — which is
+   * what a copy, a cascade and a {0} cost all are.
+   */
+  | { kind: "no_mana_spent_to_cast" }
+  /** Opus and friends: "if at least four mana was spent to cast it", and
+   * with a colour, adamant's "at least three white mana". */
+  | { kind: "mana_spent_to_cast"; atLeast: number; color?: Color }
   /** Garruk's Uprising: "if you control a creature with power N or greater". */
   | { kind: "controls_power_at_least"; power: number }
   /**

@@ -59679,3 +59679,363 @@ describe("wave 375: the Ring tempts you, all four tiers", () => {
     expect(bound).toEqual([{ kind: "sacrifice_blocker_at_end_of_combat", cardId: bearerId }]);
   });
 });
+
+describe("wave 376: what mana was actually spent to cast it", () => {
+  const compile = (
+    name: string,
+    typeLine: string,
+    oracleText: string,
+    manaCost = "",
+    pt: [string, string] | null = null,
+  ) =>
+    compileOracleCard({
+      oracleId: name.toLowerCase().replace(/[^a-z]+/g, "-"),
+      name,
+      manaCost,
+      typeLine,
+      power: pt?.[0] ?? null,
+      toughness: pt?.[1] ?? null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  const put = (
+    game: GameState,
+    ownerId: string,
+    definition: CardDefinition,
+    zone: "hand" | "battlefield" | "graveyard" = "hand",
+  ) => {
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({ definitionId: definition.id, ownerId, zone });
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === ownerId)!.zones[zone].push(card.id);
+    if (zone === "battlefield") {
+      card.summoningSick = false;
+    }
+    return card.id;
+  };
+
+  it("compiles Boromir's hoser", () => {
+    const compiled = compile(
+      "Boromir, Warden of the Tower",
+      "Legendary Creature — Human Soldier",
+      "Vigilance\nWhenever an opponent casts a spell, if no mana was spent to cast it, counter that spell.",
+      "{2}{W}",
+      ["3", "4"],
+    );
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.triggers[0]).toEqual({
+      event: "cast_spell",
+      watch: "opponents",
+      condition: { kind: "no_mana_spent_to_cast" },
+      effects: [{ kind: "counter_subject_spell" }],
+      targetRequirements: [],
+    });
+  });
+
+  it("compiles adamant as a gate on the counter, not a trigger", () => {
+    const compiled = compile(
+      "Ardenvale Paladin",
+      "Creature — Human Knight",
+      "Adamant — If at least three white mana was spent to cast this spell, this creature enters with a +1/+1 counter on it.",
+      "{4}{W}",
+      ["3", "3"],
+    );
+    expect(compiled.notes).toEqual([]);
+    // CR 121.6: the counter was never not there, so this cannot be an
+    // enters trigger that adds one afterwards.
+    expect(compiled.definition.triggers).toEqual([]);
+    expect(compiled.definition.entersWithCounters).toEqual({
+      counter: "p1p1",
+      count: 1,
+      ifManaSpent: { atLeast: 3, color: "W" },
+    });
+  });
+
+  it("leaves an ungated enters-with alone", () => {
+    const compiled = compile(
+      "Plain Walker",
+      "Creature — Human",
+      "This creature enters with a +1/+1 counter on it.",
+      "{1}{G}",
+      ["1", "1"],
+    );
+    expect(compiled.definition.entersWithCounters).toEqual({ counter: "p1p1", count: 1 });
+  });
+
+  it("fuses the Opus rider onto the trigger that owns 'that spell'", () => {
+    const compiled = compile(
+      "Muse Seeker",
+      "Creature — Otter Wizard",
+      "Whenever you cast an instant or sorcery spell, this creature gets +1/+1 until end of turn. If five or more mana was spent to cast that spell, draw a card.",
+      "{1}{U}",
+      ["1", "2"],
+    );
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.triggers).toHaveLength(1);
+    expect(compiled.definition.triggers[0]?.effects[1]).toEqual({
+      kind: "if_condition",
+      condition: { kind: "mana_spent_to_cast", atLeast: 5 },
+      then: [{ kind: "draw", playerId: "controller", count: 1 }],
+    });
+    // Nothing stranded: a creature's `effects` never run.
+    expect(compiled.definition.effects).toEqual([]);
+  });
+
+  it("refuses a mana-spent rider it cannot place", () => {
+    const compiled = compile(
+      "Nowhere To Go",
+      "Creature — Human",
+      "When this creature enters, draw a card.\nIf five or more mana was spent to cast this spell, draw another card.",
+      "{1}{U}",
+      ["1", "1"],
+    );
+    // A NOTE rather than a spell effect on a creature. `definition.effects`
+    // is what a spell does as it resolves, and this one resolves by
+    // entering the battlefield — the rider would never run.
+    expect(compiled.notes).toHaveLength(1);
+    expect(compiled.definition.effects).toEqual([]);
+  });
+
+  // ---- The record itself -------------------------------------------------
+
+  const bolt = (name: string, manaCost: string) =>
+    createCardDefinition({
+      name,
+      typeLine: "Instant",
+      manaCost,
+      effects: [{ kind: "gain_life", playerId: "controller", amount: 1 }],
+    });
+
+  const castWith = (
+    game: GameState,
+    playerId: string,
+    cardId: string,
+    mana: Partial<Record<"W" | "U" | "B" | "R" | "G" | "C", number>>,
+  ) => {
+    game.turn.activePlayerId = playerId;
+    game.turn.phase = "precombatMain";
+    game.turn.step = "precombatMain";
+    game.priorityPlayerId = playerId;
+    const player = game.players.find((entry) => entry.id === playerId)!;
+    for (const [color, amount] of Object.entries(mana)) {
+      player.mana[color as "W"] = amount;
+    }
+    return applyAction(game, { kind: "cast_spell", playerId, cardId, targets: [] });
+  };
+
+  it("records the colours actually spent, not the cost that was owed", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const cardId = put(game, p1.id, bolt("Three White", "{2}{W}"));
+    const after = castWith(game, p1.id, cardId, { W: 3 });
+    // The generic half was paid in white, so three white mana was spent —
+    // which is exactly the question adamant asks and the cost string
+    // cannot answer.
+    expect(after.cards[cardId]?.manaSpentToCast).toEqual({
+      W: 3,
+      U: 0,
+      B: 0,
+      R: 0,
+      G: 0,
+      C: 0,
+    });
+  });
+
+  it("records nothing for a spell that costs nothing", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const cardId = put(game, p1.id, bolt("Free", ""));
+    const after = castWith(game, p1.id, cardId, {});
+    expect(after.cards[cardId]?.manaSpentToCast).toEqual({
+      W: 0,
+      U: 0,
+      B: 0,
+      R: 0,
+      G: 0,
+      C: 0,
+    });
+  });
+
+  // ---- Boromir --------------------------------------------------------
+
+  const boromir = () =>
+    createCardDefinition({
+      name: "Boromir, Warden of the Tower",
+      typeLine: "Legendary Creature — Human Soldier",
+      manaCost: "{2}{W}",
+      power: 3,
+      toughness: 4,
+      triggers: [
+        {
+          event: "cast_spell",
+          watch: "opponents",
+          condition: { kind: "no_mana_spent_to_cast" },
+          effects: [{ kind: "counter_subject_spell" }],
+          targetRequirements: [],
+        },
+      ],
+    });
+
+  it("counters an opponent's free spell", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    put(game, p1.id, boromir(), "battlefield");
+    const freeId = put(game, p2.id, bolt("Free Spell", ""));
+    let after = castWith(game, p2.id, freeId, {});
+    while (after.stack.length > 0) {
+      after = resolveTopOfStack(after);
+    }
+    expect(after.cards[freeId]?.zone).toBe("graveyard");
+    // Countered, not resolved: the life gain never happened.
+    expect(after.players.find((entry) => entry.id === p2.id)!.life).toBe(
+      game.players.find((entry) => entry.id === p2.id)!.life,
+    );
+  });
+
+  it("lets a spell that was paid for through", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    put(game, p1.id, boromir(), "battlefield");
+    const paidId = put(game, p2.id, bolt("Paid Spell", "{R}"));
+    const before = game.players.find((entry) => entry.id === p2.id)!.life;
+    let after = castWith(game, p2.id, paidId, { R: 1 });
+    while (after.stack.length > 0) {
+      after = resolveTopOfStack(after);
+    }
+    expect(after.players.find((entry) => entry.id === p2.id)!.life).toBe(before + 1);
+  });
+
+  it("does not counter its own controller's free spell", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    put(game, p1.id, boromir(), "battlefield");
+    const freeId = put(game, p1.id, bolt("My Free Spell", ""));
+    const before = game.players.find((entry) => entry.id === p1.id)!.life;
+    let after = castWith(game, p1.id, freeId, {});
+    while (after.stack.length > 0) {
+      after = resolveTopOfStack(after);
+    }
+    expect(after.players.find((entry) => entry.id === p1.id)!.life).toBe(before + 1);
+  });
+
+  // ---- Adamant ----------------------------------------------------------
+
+  const paladin = () =>
+    createCardDefinition({
+      name: "Ardenvale Paladin",
+      typeLine: "Creature — Human Knight",
+      manaCost: "{4}{W}",
+      power: 3,
+      toughness: 3,
+      entersWithCounters: { counter: "p1p1", count: 1, ifManaSpent: { atLeast: 3, color: "W" } },
+    });
+
+  const counters = (game: GameState, cardId: string) =>
+    game.cards[cardId]?.counters["p1p1"] ?? 0;
+
+  it("gives the counter when three white mana paid for it", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const cardId = put(game, p1.id, paladin());
+    const after = resolveTopOfStack(castWith(game, p1.id, cardId, { W: 5 }));
+    expect(counters(after, cardId)).toBe(1);
+  });
+
+  it("withholds it when only two white mana did", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const cardId = put(game, p1.id, paladin());
+    const after = resolveTopOfStack(castWith(game, p1.id, cardId, { W: 2, C: 3 }));
+    // Five mana, one white pip, two white in the pool — the card asks about
+    // the mana that was actually spent, and three of it was colourless.
+    expect(counters(after, cardId)).toBe(0);
+  });
+
+  it("withholds it from a permanent that was never cast", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const cardId = put(game, p1.id, paladin(), "graveyard");
+    const after = applyEffect(game, {
+      kind: "move_card",
+      cardId,
+      toZone: "battlefield",
+    });
+    // Reanimation spends no mana on the creature, so adamant is not met.
+    expect(after.cards[cardId]?.zone).toBe("battlefield");
+    expect(counters(after, cardId)).toBe(0);
+  });
+
+  it("clears the record as the permanent enters, so a second trip is honest", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const cardId = put(game, p1.id, paladin());
+    let after = resolveTopOfStack(castWith(game, p1.id, cardId, { W: 5 }));
+    expect(counters(after, cardId)).toBe(1);
+    expect(after.cards[cardId]?.manaSpentToCast).toBeUndefined();
+    after = applyEffect(after, { kind: "sacrifice", cardId });
+    expect(after.cards[cardId]?.manaSpentToCast).toBeUndefined();
+    after = applyEffect(after, { kind: "move_card", cardId, toZone: "battlefield" });
+    // Back from the graveyard on someone else's mana, so adamant adds
+    // NOTHING on this trip — the count is the one it already had rather
+    // than two. (That it kept the first counter through the graveyard at
+    // all is a separate CR 121.3 divergence, not this card's doing.)
+    expect(counters(after, cardId)).toBe(1);
+  });
+
+  it("round trips the record, the gate and both conditions", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const paladinDefinition = paladin();
+    const paladinId = put(game, p1.id, paladinDefinition);
+    const boromirDefinition = boromir();
+    put(game, p1.id, boromirDefinition, "battlefield");
+    const seeker = createCardDefinition({
+      name: "Wave 376 Seeker",
+      typeLine: "Creature — Otter Wizard",
+      manaCost: "{1}{U}",
+      power: 1,
+      toughness: 2,
+      triggers: [
+        {
+          event: "cast_spell",
+          watch: "controlled",
+          effects: [
+            {
+              kind: "if_condition",
+              condition: { kind: "mana_spent_to_cast", atLeast: 5 },
+              then: [{ kind: "draw", playerId: "controller", count: 1 }],
+            },
+          ],
+          targetRequirements: [],
+        },
+      ],
+    });
+    put(game, p1.id, seeker, "battlefield");
+    // Cast the Paladin but leave it on the stack, where the record lives.
+    const cast = castWith(game, p1.id, paladinId, { W: 5 });
+    const round = parseGameState(serializeGameState(cast));
+    expect(round.cards[paladinId]?.manaSpentToCast).toEqual({
+      W: 5,
+      U: 0,
+      B: 0,
+      R: 0,
+      G: 0,
+      C: 0,
+    });
+    expect(round.definitions[paladinDefinition.id]?.entersWithCounters).toEqual({
+      counter: "p1p1",
+      count: 1,
+      ifManaSpent: { atLeast: 3, color: "W" },
+    });
+    expect(round.definitions[boromirDefinition.id]?.triggers[0]?.condition).toEqual({
+      kind: "no_mana_spent_to_cast",
+    });
+    expect(round.definitions[seeker.id]?.triggers[0]?.effects[0]).toEqual({
+      kind: "if_condition",
+      condition: { kind: "mana_spent_to_cast", atLeast: 5 },
+      then: [{ kind: "draw", playerId: "controller", count: 1 }],
+    });
+  });
+});

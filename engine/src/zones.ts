@@ -12,6 +12,7 @@ import type {
   EngineEvent,
   GameState,
   LibraryPosition,
+  ManaColor,
   PlayerState,
   PlayerZones,
   ZoneName,
@@ -410,6 +411,28 @@ function onEnterBattlefieldInPlace(state: GameState, cardId: CardInstanceId): vo
   }
 }
 
+/**
+ * Adamant's gate (CR 702.xx has no number for it; it is an ability word).
+ * A permanent that was NOT cast has no record and so admits nothing — a
+ * reanimated Ardenvale Paladin comes back without its counter.
+ */
+export function manaSpendAdmits(
+  card: CardInstance,
+  gate: { atLeast: number; color?: ManaColor } | undefined,
+): boolean {
+  if (!gate) {
+    return true;
+  }
+  const spent = card.manaSpentToCast;
+  if (!spent) {
+    return false;
+  }
+  const amount = gate.color
+    ? spent[gate.color]
+    : spent.W + spent.U + spent.B + spent.R + spent.G + spent.C;
+  return amount >= gate.atLeast;
+}
+
 function applyZoneChangeFlags(
   state: GameState,
   card: CardInstance,
@@ -448,11 +471,19 @@ function applyZoneChangeFlags(
     // add_counter effect, so it is on the permanent the moment anything looks
     // (CR 121.6: they were never not there).
     const entering = definition?.entersWithCounters;
-    if (entering) {
+    if (entering && manaSpendAdmits(card, entering.ifManaSpent)) {
       card.counters[entering.counter] =
         (card.counters[entering.counter] ?? 0) + entering.count;
     }
+    // Read once and cleared, like `evoked`: the record answered adamant's
+    // question and a permanent on the battlefield is no longer a spell.
+    delete card.manaSpentToCast;
   } else {
+    // A spell that was countered, or a card that simply moved, carries no
+    // useful record — and a stale one would answer adamant on the way back.
+    // The stack is not one of these zones, so putting a spell on the stack
+    // does not come through here and the record survives to be read.
+    delete card.manaSpentToCast;
     card.damageMarked = 0;
     card.tapped = false;
     card.classLevel = 0;

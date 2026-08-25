@@ -63,6 +63,22 @@ export function triggerConditionHolds(
   if (!condition) {
     return true;
   }
+  if (condition.kind === "no_mana_spent_to_cast" || condition.kind === "mana_spent_to_cast") {
+    // The subject is the spell the trigger is watching. An ABSENT record is
+    // no mana spent, not an unknown: a cascade, a copy and "without paying
+    // its mana cost" all arrive that way, and they are the whole point of
+    // the cards that ask.
+    const subject = subjectCardId ? state.cards[subjectCardId] : undefined;
+    const spent = subject?.manaSpentToCast;
+    const total = spent
+      ? spent.W + spent.U + spent.B + spent.R + spent.G + spent.C
+      : 0;
+    if (condition.kind === "no_mana_spent_to_cast") {
+      return total === 0;
+    }
+    const amount = condition.color ? spent?.[condition.color] ?? 0 : total;
+    return amount >= condition.atLeast;
+  }
   if (condition.kind === "subject_name_unique") {
     // Guardian Project: no other controlled creature and no creature card in
     // the controller's graveyard shares the subject's name.

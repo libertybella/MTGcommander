@@ -2999,6 +2999,7 @@ ends. Every printed card of this shape asks about the current turn.
 - WebSocket tables issue **seat tokens** on first claim; rejoining a claimed seat requires the token, auto-assignment skips claimed seats, **spectators** join seatless with all hidden zones redacted, and a mismatched engine version is refused cleanly.
 - Clickable phase ladder for stops, full control, and yield mode; the order-triggers and pay-or-counter prompts render in the client; state-based fast-forwards (`advance_step`/`advance_turn`) are logged as table overrides naming discarded stack objects.
 - **The Ring tempts you** (CR 701.52) in all four tiers, derived onto the Ring-bearer by the layer engine rather than held on a permanent, so the emblem follows the bearer and a later bearer inherits every tier already earned. Choosing the bearer is an auto-take (keep yours, else the greatest power).
+- **What mana was spent to cast a card** is recorded per colour as the cost is paid (measured by diffing the pool, not read off the cost string) and read once as the permanent enters. Adamant gates its enters-with counter on it; "if no mana was spent to cast it" reads it off the triggering spell.
 - A seeded random-game fuzzer asserts zone integrity and serialize round-trips after every action (CI: 6 games; 500-game burn-ins gate checkpoint tags — they have caught two real livelocks and the trigger-batching bug).
 
 ## Documented gaps (intentional, in plan order)

@@ -13,7 +13,7 @@ import { eliminatePlayerInPlace } from "./elimination";
 import { applyEffects, bindCardEffects, devotionTo } from "./effects";
 import { hasKeyword } from "./keywords";
 import { controlsMatching, sacrificeColorMatches, sacrificeScopeMatches } from "./legalActions";
-import { addMana, addRestrictedMana, canPayManaCost, parseManaCost, payManaCost, poolWith, tapCard, tapForMana, usableRestrictedMana, type ManaPurpose } from "./mana";
+import { addMana, addRestrictedMana, canPayManaCost, manaSpentBetween, parseManaCost, payManaCost, poolWith, tapCard, tapForMana, totalManaAvailable, usableRestrictedMana, type ManaPurpose } from "./mana";
 import { colorsAmongControlled, manaAbilityAmount, manaAbilitiesFor, manaTapOptionsFor } from "./manaOptions";
 import { createId } from "./ids";
 import { isLiving, livingPlayerCount, requireLiving } from "./players";
@@ -894,7 +894,16 @@ function applyCastSpell(
         castFromGraveyard,
       )
     : null;
+  // What this cast actually SPENDS, measured across the payment rather than
+  // read off the cost string: adamant, Opus and Boromir all ask about mana
+  // that left the pool, and a reduction, convoke, a Phyrexian pip or an
+  // alternative cost each make the cost and the spend different numbers.
+  const poolBefore = totalManaAvailable(faced, playerId);
   let paid = payManaCost(faced, playerId, cost, manaPurposeForSpell(faced, cardId));
+  const spent = manaSpentBetween(poolBefore, totalManaAvailable(paid, playerId));
+  if (paid.cards[cardId]) {
+    paid.cards[cardId]!.manaSpentToCast = spent;
+  }
   if (relief) {
     for (const tapId of relief.tapIds) {
       paid = tapCard(paid, tapId);

@@ -1518,6 +1518,46 @@ function compileBackReferenceClause(sentence: string): CardEffect[] | null {
  * "Activate only if …". Anything unrecognised is null, which keeps the
  * clause a clean miss rather than an ungated effect.
  */
+const SPENT_WORDS: Record<string, number> = {
+  one: 1,
+  two: 2,
+  three: 3,
+  four: 4,
+  five: 5,
+  six: 6,
+  seven: 7,
+  eight: 8,
+};
+
+const SPENT_COLORS: Record<string, Color> = {
+  white: "W",
+  blue: "U",
+  black: "B",
+  red: "R",
+  green: "G",
+};
+
+/**
+ * "at least three white mana was spent" / "five or more mana was spent".
+ * One reader for both, because adamant and Opus ask the same question and
+ * only differ on whether a colour is named.
+ */
+function parseManaSpentGate(text: string): { atLeast: number; color?: Color } | null {
+  const match = text.match(
+    /^(?:at least|(\d+|one|two|three|four|five|six|seven|eight) or more) ?(\d+|one|two|three|four|five|six|seven|eight)? ?(white|blue|black|red|green)? mana was spent$/i,
+  );
+  if (!match) {
+    return null;
+  }
+  const word = (match[1] ?? match[2] ?? "").toLowerCase();
+  const atLeast = SPENT_WORDS[word] ?? Number(word);
+  if (!Number.isFinite(atLeast) || atLeast <= 0) {
+    return null;
+  }
+  const color = match[3] ? SPENT_COLORS[match[3].toLowerCase()] : undefined;
+  return color ? { atLeast, color } : { atLeast };
+}
+
 function parseEffectCondition(phrase: string): TriggerCondition | null {
   const text = phrase.trim().replace(/^if\s+/i, "");
   const power = text.match(/^you control a creature with power (\d+) or greater$/i);
@@ -1762,6 +1802,16 @@ function parseEffectCondition(phrase: string): TriggerCondition | null {
     )
   ) {
     return { kind: "subject_name_unique" };
+  }
+  // Boromir, Nix, Roiling Vortex: the free-spell hosers.
+  if (/^no mana was spent to cast (?:it|that spell|this spell)$/i.test(text)) {
+    return { kind: "no_mana_spent_to_cast" };
+  }
+  const spentGate = parseManaSpentGate(
+    text.replace(/ to cast (?:it|that spell|this spell)$/i, ""),
+  );
+  if (spentGate) {
+    return { kind: "mana_spent_to_cast", ...spentGate };
   }
   // Kodama of the East Tree: the loop guard, read as an ordinary
   // intervening `if` because that is exactly what it is.
@@ -15389,13 +15439,21 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
       result.entersWithXCounterKind = counterKeyOf(kickedCounters[1]);
       continue;
     }
-    // The fixed-count form: "enters with four +1/+1 counters on it".
-    const entersCounters = sentence.match(/^~ enters with (.+?) counters? on it$/i);
+    // The fixed-count form: "enters with four +1/+1 counters on it", and
+    // adamant's gated form, which is the same clause behind an `if`.
+    const adamant = sentence.match(
+      /^If (.+?) to cast this spell, (~ enters with .+? counters? on it)$/i,
+    );
+    const entersCounters = (adamant?.[2] ?? sentence).match(
+      /^~ enters with (.+?) counters? on it$/i,
+    );
     const enteringList = entersCounters?.[1] ? parseCounterList(entersCounters[1]) : null;
-    if (enteringList && enteringList.length === 1) {
+    const adamantGate = adamant?.[1] ? parseManaSpentGate(adamant[1]) : null;
+    if (enteringList && enteringList.length === 1 && (!adamant || adamantGate)) {
       result.entersWithCounters = {
         counter: enteringList[0]!.counter,
         count: enteringList[0]!.amount,
+        ...(adamantGate ? { ifManaSpent: adamantGate } : {}),
       };
       continue;
     }
@@ -18555,6 +18613,42 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
       }
     }
 
+    /**
+     * Opus: "…, this creature gets +1/+1 until end of turn. If five or more
+     * mana was spent to cast that spell, draw a card."
+     *
+     * "That spell" is the one the PREVIOUS sentence's trigger watched, so
+     * the rider belongs to that trigger. Left to the general rider handler
+     * below it would become a spell effect, and a creature's spell effects
+     * never run — the card would compile clean and do half of what it says.
+     */
+    const spentRider = sentence.match(
+      /^If (.+? mana was spent) to cast (?:that spell|it), (?:then )?(.+)$/i,
+    );
+    const spentRiderGate = spentRider?.[1] ? parseManaSpentGate(spentRider[1]) : null;
+    if (spentRiderGate && spentRider?.[2]) {
+      const host = result.triggers[result.triggers.length - 1];
+      const clause = compileSimpleClause(
+        spentRider[2].charAt(0).toUpperCase() + spentRider[2].slice(1),
+      );
+      if (
+        host?.event === "cast_spell" &&
+        clause &&
+        !clause.leftover &&
+        clause.targetRequirements.length === 0
+      ) {
+        host.effects = [
+          ...host.effects,
+          {
+            kind: "if_condition",
+            condition: { kind: "mana_spent_to_cast", ...spentRiderGate },
+            then: clause.effects,
+          },
+        ];
+        continue;
+      }
+    }
+
     // Ability-word riders: "<effect> instead if <condition>" (Cabal Ritual,
     // Tragic Slip) and "If <condition>, [instead ]<effect>" (Dispatch,
     // Stubborn Denial). "Instead" replaces what the card has said so far;
@@ -18586,7 +18680,19 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
               replaces: false,
             }
           : null;
-    if (rider) {
+    // A card with no spell effects has nowhere for an ADDING rider to go:
+    // `definition.effects` is what a spell does as it resolves, and a
+    // permanent resolves by entering the battlefield. The mana-spent
+    // vocabulary is new enough to be held to this, so a rider the fuser
+    // above could not place is left UNCOMPILED — a note rather than a card
+    // that compiles clean and does half of what it says.
+    const strandedSpentRider =
+      rider !== null &&
+      result.effects.length === 0 &&
+      parseManaSpentGate(
+        rider.condition.replace(/ to cast (?:that spell|it|this spell)$/i, ""),
+      ) !== null;
+    if (rider && !strandedSpentRider) {
       const condition = parseEffectCondition(rider.condition);
       const body = rider.body.replace(/\s+instead$/i, "");
       const backReference =

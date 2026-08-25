@@ -415,6 +415,37 @@ export function poolWith(base: ManaPool, extra: ManaPool): ManaPool {
   };
 }
 
+/**
+ * Everything a player could spend right now: the open pool plus every
+ * restricted pile, summed per colour. Diffing this across a payment is the
+ * only honest way to learn what was SPENT — the cost string says what was
+ * owed, and reductions, convoke, Phyrexian pips and alternative costs all
+ * make those two different numbers.
+ */
+export function totalManaAvailable(state: GameState, playerId: PlayerId): ManaPool {
+  const player = state.players.find((entry) => entry.id === playerId);
+  const pool = { W: 0, U: 0, B: 0, R: 0, G: 0, C: 0 };
+  if (!player) {
+    return pool;
+  }
+  for (const color of MANA_COLORS) {
+    pool[color] = player.mana[color];
+  }
+  for (const entry of player.restrictedMana ?? []) {
+    pool[entry.color] += entry.amount;
+  }
+  return pool;
+}
+
+/** What the payment between two states took out of the pool, per colour. */
+export function manaSpentBetween(before: ManaPool, after: ManaPool): ManaPool {
+  const spent = { W: 0, U: 0, B: 0, R: 0, G: 0, C: 0 };
+  for (const color of MANA_COLORS) {
+    spent[color] = Math.max(0, before[color] - after[color]);
+  }
+  return spent;
+}
+
 export function payManaCost(
   state: GameState,
   playerId: PlayerId,

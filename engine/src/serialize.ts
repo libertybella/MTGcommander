@@ -371,6 +371,18 @@ function expectStringArray(value: unknown, label: string): string[] {
   return value;
 }
 
+/** Adamant's gate on `entersWithCounters`, and nothing else yet. */
+function parseManaSpentGate(
+  value: Record<string, unknown>,
+  label: string,
+): { atLeast: number; color?: Color } {
+  const color = value.color === undefined ? undefined : parseColor(value.color, `${label}.color`);
+  return {
+    atLeast: expectNumber(value.atLeast, `${label}.atLeast`),
+    ...(color ? { color } : {}),
+  };
+}
+
 function parseMana(value: unknown, label: string): ManaPool {
   if (!isRecord(value)) {
     throw new Error(`Invalid ${label}`);
@@ -598,6 +610,9 @@ export function parseGameState(json: string): GameState {
       loyaltyActivatedThisTurn: card.loyaltyActivatedThisTurn === true,
       ...(card.skipNextUntap === true ? { skipNextUntap: true } : {}),
       ...(card.exertedThisTurn === true ? { exertedThisTurn: true } : {}),
+      ...(isRecord(card.manaSpentToCast)
+        ? { manaSpentToCast: parseMana(card.manaSpentToCast, "card.manaSpentToCast") }
+        : {}),
       ...(typeof card.castFromZone === "string"
         ? { castFromZone: card.castFromZone as ZoneName }
         : {}),
@@ -1247,6 +1262,14 @@ export function parseGameState(json: string): GameState {
             entersWithCounters: {
               counter: expectString(def.entersWithCounters.counter, "entersWithCounters.counter"),
               count: expectNumber(def.entersWithCounters.count, "entersWithCounters.count"),
+              ...(isRecord(def.entersWithCounters.ifManaSpent)
+                ? {
+                    ifManaSpent: parseManaSpentGate(
+                      def.entersWithCounters.ifManaSpent,
+                      "entersWithCounters.ifManaSpent",
+                    ),
+                  }
+                : {}),
             },
           }
         : {}),
@@ -5315,8 +5338,17 @@ function parseTriggerCondition(value: unknown, label: string): TriggerCondition 
         value.kind,
         `${label}.kind`,
       );
+      if (conditionKind === "mana_spent_to_cast") {
+        const color = value.color === undefined ? undefined : parseColor(value.color, `${label}.color`);
+        return {
+          kind: conditionKind,
+          atLeast: expectNumber(value.atLeast, `${label}.atLeast`),
+          ...(color ? { color } : {}),
+        };
+      }
       if (
         conditionKind === "greatest_artifact_mana_value" ||
+        conditionKind === "no_mana_spent_to_cast" ||
         conditionKind === "opponent_controls_more_lands" ||
         conditionKind === "subject_name_unique" ||
         conditionKind === "subject_not_put_by_watcher" ||
