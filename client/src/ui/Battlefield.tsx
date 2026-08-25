@@ -2036,6 +2036,10 @@ export function Battlefield(props: Props) {
               ? actorId === prompt.playerId
                 ? "Choose a mode you have not already chosen this turn."
                 : `Waiting for ${chooser?.displayName ?? "a player"} to choose a mode.`
+              : prompt.kind === "tap_own_for_x"
+              ? actorId === prompt.playerId
+                ? "Tap any number of them. However many you tap is X."
+                : `Waiting for ${chooser?.displayName ?? "a player"} to tap.`
               : prompt.kind === "tempting_offer"
               ? actorId === prompt.playerId
                 ? "Take the tempting offer? Doing so lets its controller repeat theirs."
@@ -2652,6 +2656,42 @@ export function Battlefield(props: Props) {
                   {prompt.kind === "pay_or_counter" ? "Decline (countered)" : "Decline"}
                 </button>
               </>
+            ) : null}
+            {actorId === prompt.playerId && prompt.kind === "tap_own_for_x" ? (
+              <div className="look-row" data-testid="tap-for-x">
+                {prompt.cardIds.map((cardId) => (
+                  <button
+                    key={cardId}
+                    type="button"
+                    className={pilePicks.includes(cardId) ? "selected" : undefined}
+                    onClick={() =>
+                      setPilePicks((picks) =>
+                        picks.includes(cardId)
+                          ? picks.filter((id) => id !== cardId)
+                          : [...picks, cardId],
+                      )
+                    }
+                  >
+                    {definition(state, cardId)?.name ?? "a permanent"}
+                    {pilePicks.includes(cardId) ? " ●" : ""}
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  className="pass-button"
+                  data-testid="confirm-tap-for-x"
+                  onClick={() => {
+                    send({
+                      kind: "resolve_tap_own_for_x",
+                      playerId: actorId,
+                      cardIds: pilePicks,
+                    });
+                    setPilePicks([]);
+                  }}
+                >
+                  {`Tap ${pilePicks.length}`}
+                </button>
+              </div>
             ) : null}
             {actorId === prompt.playerId && prompt.kind === "tempting_offer" ? (
               <div className="look-row" data-testid="tempting-offer">

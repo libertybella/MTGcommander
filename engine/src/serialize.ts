@@ -2472,6 +2472,26 @@ function parsePrompts(value: unknown, playerIds: Set<string>): PendingPrompt[] {
         sourceId: expectString(entry.sourceId, `prompts[${index}].sourceId`),
       };
     }
+    if (kind === "tap_own_for_x") {
+      return {
+        kind,
+        playerId,
+        sourceId:
+          entry.sourceId === null
+            ? null
+            : expectString(entry.sourceId, `prompts[${index}].sourceId`),
+        cardIds: expectStringArray(entry.cardIds, `prompts[${index}].cardIds`),
+        rider: parseCardEffects(entry.rider, `prompts[${index}].rider`),
+        ...(entry.resumeEffects === undefined
+          ? {}
+          : {
+              resumeEffects: parseGameEffects(
+                entry.resumeEffects,
+                `prompts[${index}].resumeEffects`,
+              ),
+            }),
+      };
+    }
     if (kind === "tempting_offer") {
       return {
         kind,
@@ -4612,6 +4632,13 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
         kind,
         playerId: parsePlayerSelector(value.playerId, `${label}.playerId`),
         action: parseCardEffects(value.action, `${label}.action`),
+      };
+    case "tap_own_for_x":
+      return {
+        kind,
+        playerId: parsePlayerSelector(value.playerId, `${label}.playerId`),
+        subtype: expectString(value.subtype, `${label}.subtype`),
+        rider: parseCardEffects(value.rider, `${label}.rider`),
       };
     case "divide_into_piles":
       return {
@@ -6824,6 +6851,16 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
       amount: expectNumber(value.amount, `${label}.amount`),
     };
   }
+  if (kind === "tap_own_for_x") {
+    return {
+      kind,
+      playerId: expectString(value.playerId, `${label}.playerId`),
+      sourceId: value.sourceId === null ? null : expectString(value.sourceId, `${label}.sourceId`),
+      subtype: expectString(value.subtype, `${label}.subtype`),
+      // Still card effects: X is not known until the choice is answered.
+      rider: parseCardEffects(value.rider, `${label}.rider`),
+    };
+  }
   if (kind === "tempting_offer") {
     return {
       kind,
@@ -8130,6 +8167,9 @@ export function parseGameAction(json: string): GameAction {
       playerId,
       pay: raw.pay === true,
     };
+  }
+  if (kind === "resolve_tap_own_for_x") {
+    return { kind, playerId, cardIds: expectStringArray(raw.cardIds, "action.cardIds") };
   }
   if (kind === "resolve_tempting_offer") {
     return { kind, playerId, accept: raw.accept === true };

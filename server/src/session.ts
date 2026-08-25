@@ -464,6 +464,17 @@ export class GameHost {
           });
           continue;
         }
+        if (prompt.kind === "tap_own_for_x") {
+          // A documented auto-take: tap them all. Every printed card in
+          // this shape pays off per creature tapped, and an absent player
+          // tapping none would throw the trigger away.
+          this.apply({
+            kind: "resolve_tap_own_for_x",
+            playerId: prompt.playerId,
+            cardIds: [...prompt.cardIds],
+          });
+          continue;
+        }
         if (prompt.kind === "tempting_offer") {
           // A documented auto-take: an absent player ACCEPTS. Every printed
           // tempting offer gives the taker something, and declining on

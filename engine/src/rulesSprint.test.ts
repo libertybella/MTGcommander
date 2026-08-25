@@ -35,7 +35,7 @@ import { abilityLifeCost, colorsOutsideCommanderIdentity } from "./commanderIden
 import { addRestrictedMana, emptyManaPools, manaRiderFires, parseManaCost, payManaCost, restrictionAdmits, type ManaPurpose } from "./mana";
 import { applyStateBasedActionsInPlace } from "./status";
 import { legalActions, potentialMana, sacrificeColorMatches, sacrificeScopeMatches } from "./legalActions";
-import { applyResolveCardName, applyResolveChoosePile, applyResolveDividePiles, applyResolveTemptingOffer, applyResolveChooseCard, applyResolveChooseFromHand, applyResolveCreatureType, applyResolveDiscardLandOrGraveyard, applyResolveEnterCopy, applyResolveLookAssign, applyResolvePay, applyResolveSearch, applyResolveTriggerMode, legalEnterCopyIds, legalSearchIds, searchMatches } from "./prompt";
+import { applyResolveCardName, applyResolveChoosePile, applyResolveDividePiles, applyResolveTapOwnForX, applyResolveTemptingOffer, applyResolveChooseCard, applyResolveChooseFromHand, applyResolveCreatureType, applyResolveDiscardLandOrGraveyard, applyResolveEnterCopy, applyResolveLookAssign, applyResolvePay, applyResolveSearch, applyResolveTriggerMode, legalEnterCopyIds, legalSearchIds, searchMatches } from "./prompt";
 import { parseGameState, serializeGameState } from "./serialize";
 import { fillLibraries } from "./testSupport";
 import { applyKeepHand, beginMulligan, isMulliganOpen } from "./mulligan";
@@ -63012,5 +63012,272 @@ describe("wave 387: Auras that enchant a player", () => {
     expect(round.cards[curseId]?.attachedToPlayer).toBe(p2.id);
     expect(round.definitions[definition.id]?.enchant).toBe("player");
     expect(round.definitions[definition.id]?.triggers[0]?.enchantedPlayersStep).toBe(true);
+  });
+});
+
+describe("wave 388: tapping X of your own, for X", () => {
+  const compile = (
+    name: string,
+    typeLine: string,
+    oracleText: string,
+    manaCost = "",
+    pt: [string, string] | null = null,
+  ) =>
+    compileOracleCard({
+      oracleId: name.toLowerCase().replace(/[^a-z]+/g, "-"),
+      name,
+      manaCost,
+      typeLine,
+      power: pt?.[0] ?? null,
+      toughness: pt?.[1] ?? null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  const put = (game: GameState, ownerId: string, definition: CardDefinition) => {
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({
+      definitionId: definition.id,
+      ownerId,
+      zone: "battlefield",
+    });
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === ownerId)!.zones.battlefield.push(card.id);
+    card.summoningSick = false;
+    return card.id;
+  };
+
+  const battlesphereText =
+    "When Myr Battlesphere enters, create four 1/1 colorless Myr artifact creature tokens.\nWhenever Myr Battlesphere attacks, you may tap X untapped Myr you control. If you do, Myr Battlesphere gets +X/+0 until end of turn and deals X damage to the player or planeswalker it's attacking.";
+
+  it("compiles Myr Battlesphere's attack trigger as one clause", () => {
+    const compiled = compile(
+      "Myr Battlesphere",
+      "Artifact Creature — Myr Construct",
+      battlesphereText,
+      "{7}",
+      ["4", "7"],
+    );
+    expect(compiled.notes).toEqual([]);
+    // The rider is carried UNBOUND inside the tap: every X in it is the
+    // count the choice produces, which does not exist yet.
+    expect(compiled.definition.triggers[1]?.effects).toEqual([
+      {
+        kind: "tap_own_for_x",
+        playerId: "controller",
+        subtype: "myr",
+        rider: [
+          { kind: "pt_until_eot", cardId: "self", power: "x", toughness: 0 },
+          {
+            kind: "deal_damage",
+            sourceId: "self",
+            target: { type: "player", playerId: "defending_player" },
+            amount: "x",
+          },
+        ],
+      },
+    ]);
+  });
+
+  // ---- The choice --------------------------------------------------------
+
+  const battlesphere = () =>
+    createCardDefinition({
+      name: "Myr Battlesphere",
+      typeLine: "Artifact Creature — Myr Construct",
+      manaCost: "{7}",
+      power: 4,
+      toughness: 7,
+      triggers: [
+        {
+          event: "attacks",
+          watch: "self",
+          effects: [
+            {
+              kind: "tap_own_for_x",
+              playerId: "controller",
+              subtype: "myr",
+              rider: [
+                { kind: "pt_until_eot", cardId: "self", power: "x", toughness: 0 },
+                {
+                  kind: "deal_damage",
+                  sourceId: "self",
+                  target: { type: "player", playerId: "defending_player" },
+                  amount: "x",
+                },
+              ],
+            },
+          ],
+          targetRequirements: [],
+        },
+      ],
+    });
+
+  const myr = (name: string) =>
+    createCardDefinition({
+      name,
+      typeLine: "Artifact Creature — Myr",
+      manaCost: "{2}",
+      power: 1,
+      toughness: 1,
+    });
+
+  const attackWith = (game: GameState, playerId: string, cardId: string, defenderId: string) => {
+    game.turn.activePlayerId = playerId;
+    game.turn.phase = "combat";
+    game.turn.step = "declareAttackers";
+    game.priorityPlayerId = playerId;
+    return declareAttackers(game, playerId, [{ attackerId: cardId, defenderId }]);
+  };
+
+  const askedPrompt = (game: GameState) => {
+    const prompt = game.prompts[0];
+    if (prompt?.kind !== "tap_own_for_x") {
+      throw new Error("expected a tap choice");
+    }
+    return prompt;
+  };
+
+  it("offers every untapped Myr except the attacker itself", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    const sphereId = put(game, p1.id, battlesphere());
+    const firstId = put(game, p1.id, myr("Myr A"));
+    const secondId = put(game, p1.id, myr("Myr B"));
+    const tappedId = put(game, p1.id, myr("Myr C"));
+    game.cards[tappedId]!.tapped = true;
+    let after = attackWith(game, p1.id, sphereId, p2.id);
+    while (after.stack.length > 0) {
+      after = resolveTopOfStack(after);
+    }
+    const prompt = askedPrompt(after);
+    // A tapped one is not untapped, and the Battlesphere is attacking.
+    expect(prompt.cardIds.sort()).toEqual([firstId, secondId].sort());
+  });
+
+  it("makes X the number tapped, and feeds it to both halves", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    const sphereId = put(game, p1.id, battlesphere());
+    const firstId = put(game, p1.id, myr("Myr A"));
+    const secondId = put(game, p1.id, myr("Myr B"));
+    const before = game.players.find((entry) => entry.id === p2.id)!.life;
+    let after = attackWith(game, p1.id, sphereId, p2.id);
+    while (after.stack.length > 0) {
+      after = resolveTopOfStack(after);
+    }
+    after = applyResolveTapOwnForX(after, p1.id, [firstId, secondId]);
+    expect(after.cards[firstId]?.tapped).toBe(true);
+    expect(after.cards[secondId]?.tapped).toBe(true);
+    expect(creaturePower(after, sphereId)).toBe(6);
+    expect(after.players.find((entry) => entry.id === p2.id)!.life).toBe(before - 2);
+  });
+
+  it("takes a smaller X just as happily", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    const sphereId = put(game, p1.id, battlesphere());
+    const firstId = put(game, p1.id, myr("Myr A"));
+    put(game, p1.id, myr("Myr B"));
+    const before = game.players.find((entry) => entry.id === p2.id)!.life;
+    let after = attackWith(game, p1.id, sphereId, p2.id);
+    while (after.stack.length > 0) {
+      after = resolveTopOfStack(after);
+    }
+    after = applyResolveTapOwnForX(after, p1.id, [firstId]);
+    expect(creaturePower(after, sphereId)).toBe(5);
+    expect(after.players.find((entry) => entry.id === p2.id)!.life).toBe(before - 1);
+  });
+
+  it("does nothing at all for zero", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    const sphereId = put(game, p1.id, battlesphere());
+    put(game, p1.id, myr("Myr A"));
+    const before = game.players.find((entry) => entry.id === p2.id)!.life;
+    let after = attackWith(game, p1.id, sphereId, p2.id);
+    while (after.stack.length > 0) {
+      after = resolveTopOfStack(after);
+    }
+    // "You MAY tap X": declining is tapping none, and the rider is skipped
+    // rather than run for nothing.
+    after = applyResolveTapOwnForX(after, p1.id, []);
+    expect(creaturePower(after, sphereId)).toBe(4);
+    expect(after.players.find((entry) => entry.id === p2.id)!.life).toBe(before);
+  });
+
+  it("does not ask when there is nothing to tap", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    const sphereId = put(game, p1.id, battlesphere());
+    let after = attackWith(game, p1.id, sphereId, p2.id);
+    while (after.stack.length > 0) {
+      after = resolveTopOfStack(after);
+    }
+    expect(after.prompts).toHaveLength(0);
+  });
+
+  it("refuses a permanent it never offered", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    const sphereId = put(game, p1.id, battlesphere());
+    put(game, p1.id, myr("Myr A"));
+    const theirsId = put(game, p2.id, myr("Their Myr"));
+    let after = attackWith(game, p1.id, sphereId, p2.id);
+    while (after.stack.length > 0) {
+      after = resolveTopOfStack(after);
+    }
+    expect(() => applyResolveTapOwnForX(after, p1.id, [theirsId])).toThrow();
+    expect(() => applyResolveTapOwnForX(after, p2.id, [])).toThrow();
+  });
+
+  it("hits the player it is attacking, not its controller", () => {
+    const game = createGameState({ playerCount: 3 });
+    const [p1, p2, p3] = game.players;
+    if (!p1 || !p2 || !p3) {
+      throw new Error("need three players");
+    }
+    fillLibraries(game, 20);
+    const sphereId = put(game, p1.id, battlesphere());
+    const myrId = put(game, p1.id, myr("Myr A"));
+    const startingLife = game.players.find((entry) => entry.id === p3.id)!.life;
+    let after = attackWith(game, p1.id, sphereId, p3.id);
+    while (after.stack.length > 0) {
+      after = resolveTopOfStack(after);
+    }
+    after = applyResolveTapOwnForX(after, p1.id, [myrId]);
+    // The defending player is read off the combat record, which is what
+    // makes it right in a pod where there are two of them.
+    expect(after.players.find((entry) => entry.id === p3.id)!.life).toBe(startingLife - 1);
+    expect(after.players.find((entry) => entry.id === p2.id)!.life).toBe(startingLife);
+    expect(after.players.find((entry) => entry.id === p1.id)!.life).toBe(startingLife);
+  });
+
+  it("round trips the offer and its unbound rider", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    const definition = battlesphere();
+    const sphereId = put(game, p1.id, definition);
+    const myrId = put(game, p1.id, myr("Myr A"));
+    let after = attackWith(game, p1.id, sphereId, p2.id);
+    while (after.stack.length > 0) {
+      after = resolveTopOfStack(after);
+    }
+    const round = parseGameState(serializeGameState(after));
+    const prompt = round.prompts[0];
+    if (prompt?.kind !== "tap_own_for_x") {
+      throw new Error("expected a tap choice");
+    }
+    // The rider has to survive unbound: dropped, the Battlesphere taps its
+    // Myr for nothing at all.
+    expect(prompt.cardIds).toEqual([myrId]);
+    expect(prompt.rider).toHaveLength(2);
+    expect(round.definitions[definition.id]?.triggers[0]?.effects[0]).toMatchObject({
+      kind: "tap_own_for_x",
+      subtype: "myr",
+    });
+    const finished = applyResolveTapOwnForX(round, p1.id, [myrId]);
+    expect(creaturePower(finished, sphereId)).toBe(5);
   });
 });

@@ -159,6 +159,11 @@ function nextAction(state: GameState, rng: () => number): GameAction | null {
           playerId,
           discard: rng() < 0.5,
         };
+      case "tap_own_for_x": {
+        // Any subset, including none — "you MAY tap X" and X may be zero.
+        const tapped = prompt.cardIds.filter(() => rng() < 0.5);
+        return { kind: "resolve_tap_own_for_x", playerId, cardIds: tapped };
+      }
       case "tempting_offer":
         return { kind: "resolve_tempting_offer", playerId, accept: rng() < 0.5 };
       case "divide_piles": {

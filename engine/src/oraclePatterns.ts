@@ -5540,6 +5540,66 @@ function compileSimpleClauseInner(sentence: string): SimpleClause | null {
     return { targetRequirements: [], effects: digClause };
   }
 
+  /**
+   * Myr Battlesphere. Two sentences fused by the loop below into one
+   * clause: "you may tap X untapped Myr you control to do: <rider>", where
+   * X is however many were tapped and the rider reads it.
+   */
+  const tapForX = sentence.match(
+    /^you may tap X untapped ([A-Z][a-z]+) you control to do: (.+)$/i,
+  );
+  if (tapForX?.[1] && tapForX[2]) {
+    const inner = compileSimpleClause(
+      tapForX[2].charAt(0).toUpperCase() + tapForX[2].slice(1),
+    );
+    if (inner && !inner.leftover && inner.targetRequirements.length === 0) {
+      return {
+        targetRequirements: [],
+        effects: [
+          {
+            kind: "tap_own_for_x",
+            playerId: "controller",
+            subtype: tapForX[1].toLowerCase(),
+            rider: inner.effects,
+          },
+        ],
+      };
+    }
+  }
+
+  /**
+   * "…deals X damage to the player or planeswalker it's attacking." The
+   * defending player is read off the combat record at bind, which is what
+   * makes it right in a pod where there are three of them.
+   *
+   * Documented narrowing: a creature attacking a PLANESWALKER hits its
+   * controller here, because the effect addresses a player and the combat
+   * record's defender is one.
+   */
+  // The subject is optional: a compound clause splits "~ gets +X/+0 and
+  // deals X damage to …" and hands this half over without it.
+  const attackedDamage = sentence.match(
+    /^(?:~ )?deals (\w+) damage to the player or planeswalker it's attacking$/i,
+  );
+  const attackedAmount = attackedDamage?.[1]
+    ? /^x$/i.test(attackedDamage[1])
+      ? ("x" as const)
+      : parseCount(attackedDamage[1])
+    : null;
+  if (attackedAmount) {
+    return {
+      targetRequirements: [],
+      effects: [
+        {
+          kind: "deal_damage",
+          sourceId: "self",
+          target: { type: "player", playerId: "defending_player" },
+          amount: attackedAmount,
+        },
+      ],
+    };
+  }
+
   const amongMilled = compileFromAmongMilled(sentence);
   if (amongMilled) {
     return { targetRequirements: [], effects: amongMilled };
@@ -10216,6 +10276,30 @@ function compileDigUntilClause(sentence: string): CardEffect[] | null {
  * note, because dropping text that turned out to matter is how a card
  * compiles clean and plays wrong.
  */
+/**
+ * Myr Battlesphere: "…, you may tap X untapped Myr you control." / "If you
+ * do, ~ gets +X/+0 until end of turn and deals X damage to the player it's
+ * attacking." Fused, because the rider's every X is the count the first
+ * sentence produced.
+ */
+function fuseTapForXInPlace(sentences: string[], lineStart: boolean[]): void {
+  for (let index = 0; index + 1 < sentences.length; index += 1) {
+    if (lineStart[index + 1]) {
+      continue;
+    }
+    const head = sentences[index]?.match(
+      /^(.+, )you may tap X untapped ([A-Z][a-z]+) you control$/,
+    );
+    const rider = sentences[index + 1]?.match(/^If you do, (.+)$/i);
+    if (!head?.[1] || !head[2] || !rider?.[1]) {
+      continue;
+    }
+    sentences[index] = `${head[1]}you may tap X untapped ${head[2]} you control to do: ${rider[1]}`;
+    sentences.splice(index + 1, 1);
+    lineStart.splice(index + 1, 1);
+  }
+}
+
 function fuseTemptingOfferInPlace(sentences: string[], lineStart: boolean[]): void {
   for (let index = 0; index + 2 < sentences.length; index += 1) {
     const head = sentences[index]?.match(/^Tempting offer\s*[—-]\s*(.+)$/i);
@@ -14801,6 +14885,7 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
   fuseInAdditionTypeInPlace(sentences, lineStart);
   fuseChooseGraveyardCastInPlace(sentences, lineStart);
   fusePutLandRiderInPlace(sentences, lineStart);
+  fuseTapForXInPlace(sentences, lineStart);
   fuseTemptingOfferInPlace(sentences, lineStart);
   fusePilesInPlace(sentences, lineStart);
   fuseDigUntilInPlace(sentences, lineStart);

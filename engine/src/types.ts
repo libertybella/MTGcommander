@@ -1953,6 +1953,13 @@ export type GameEffect =
       action: CardEffect[];
     }
   | {
+      kind: "tap_own_for_x";
+      playerId: PlayerId;
+      sourceId: CardInstanceId | null;
+      subtype: string;
+      rider: CardEffect[];
+    }
+  | {
       kind: "divide_into_piles";
       playerId: PlayerId;
       dividerId: PlayerId;
@@ -3485,6 +3492,21 @@ export type CardEffect =
   | { kind: "exile_top"; playerId: PlayerSelector; count: number }
   | { kind: "choose_card_name"; playerId: PlayerSelector; onSelf?: boolean }
   | { kind: "tempting_offer"; playerId: PlayerSelector; action: CardEffect[] }
+  /**
+   * Myr Battlesphere: "you may tap X untapped Myr you control. If you do,
+   * this gets +X/+0 and deals X damage to the player it's attacking."
+   *
+   * X is chosen by the player and then FEEDS what follows, so the rider
+   * cannot be bound before the choice — it is carried unbound and rebound
+   * once the count is known, with `x` standing for however many were
+   * tapped.
+   */
+  | {
+      kind: "tap_own_for_x";
+      playerId: PlayerSelector;
+      subtype: string;
+      rider: CardEffect[];
+    }
   | {
       kind: "divide_into_piles";
       playerId: PlayerSelector;
@@ -4682,6 +4704,16 @@ export type PendingPrompt =
    * opponents one at a time; `accepted` is how many have said yes so far,
    * and the controller repeats their action that many times at the end.
    */
+  /** Myr Battlesphere: choose which of your untapped Myr to tap. The
+   * answer is a set of cards, and its SIZE is the X the rider reads. */
+  | {
+      kind: "tap_own_for_x";
+      playerId: PlayerId;
+      sourceId: CardInstanceId | null;
+      cardIds: CardInstanceId[];
+      rider: CardEffect[];
+      resumeEffects?: GameEffect[];
+    }
   | {
       kind: "tempting_offer";
       playerId: PlayerId;
@@ -5726,6 +5758,7 @@ export type GameAction =
   | { kind: "resolve_divide_piles"; playerId: PlayerId; cardIds: CardInstanceId[] }
   | { kind: "resolve_choose_pile"; playerId: PlayerId; takeFirst: boolean }
   | { kind: "resolve_tempting_offer"; playerId: PlayerId; accept: boolean }
+  | { kind: "resolve_tap_own_for_x"; playerId: PlayerId; cardIds: CardInstanceId[] }
   | { kind: "resolve_color"; playerId: PlayerId; color: Color }
   | { kind: "resolve_scry"; playerId: PlayerId; bottomIds: CardInstanceId[] }
   | { kind: "resolve_surveil"; playerId: PlayerId; graveyardIds: CardInstanceId[] }

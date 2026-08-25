@@ -1683,6 +1683,21 @@ export function bindCardEffect(
       }
       return { kind: "drain_opponents", playerId, amount };
     }
+    case "tap_own_for_x": {
+      const playerId = bindPlayerSelector(state, effect.playerId, context);
+      if (!playerId) {
+        return null;
+      }
+      return {
+        kind: "tap_own_for_x",
+        playerId,
+        sourceId: context.sourceId ?? null,
+        subtype: effect.subtype,
+        // Unbound: X is not known until the choice is made, and every
+        // effect in here reads it.
+        rider: effect.rider.map((one) => ({ ...one })),
+      };
+    }
     case "tempting_offer": {
       const playerId = bindPlayerSelector(state, effect.playerId, context);
       if (!playerId) {
@@ -6827,6 +6842,32 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
         });
         break;
       }
+      case "tap_own_for_x": {
+        next = cloneGameState(state);
+        const eligible = Object.values(next.cards)
+          .filter(
+            (card) =>
+              card.zone === "battlefield" &&
+              card.controllerId === effect.playerId &&
+              !card.tapped &&
+              card.id !== effect.sourceId &&
+              cardMatchesSubtype(next, card.id, effect.subtype),
+          )
+          .map((card) => card.id);
+        // "You MAY tap X": with none to tap the offer is empty, and X would
+        // be zero anyway, so nothing is asked.
+        if (eligible.length === 0 || !isLiving(next, effect.playerId)) {
+          break;
+        }
+        next.prompts.push({
+          kind: "tap_own_for_x",
+          playerId: effect.playerId,
+          sourceId: effect.sourceId,
+          cardIds: eligible,
+          rider: effect.rider.map((one) => ({ ...one })),
+        });
+        break;
+      }
       case "tempting_offer": {
         // The controller acts first, then the offer goes round. Their own
         // copy is applied here rather than being left to the chain, so the
@@ -6993,6 +7034,7 @@ export function applyEffects(state: GameState, effects: GameEffect[]): GameState
         prompt.kind === "pay_or_effect" ||
         prompt.kind === "choose_card_name" ||
         prompt.kind === "tempting_offer" ||
+        prompt.kind === "tap_own_for_x" ||
         prompt.kind === "divide_piles")
     ) {
       const remaining = effects.slice(index + 1);

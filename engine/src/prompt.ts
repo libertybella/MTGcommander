@@ -359,6 +359,62 @@ export function applyResolveCreatureType(
 }
 
 /**
+ * Myr Battlesphere: which of your untapped Myr to tap. The SIZE of the
+ * answer is the X the rider reads, so the rider is bound here — after the
+ * choice — rather than in the batch that offered it.
+ *
+ * Choosing none is legal: "you MAY tap X", and X is then zero, so the
+ * rider is skipped entirely rather than run for nothing.
+ */
+export function applyResolveTapOwnForX(
+  state: GameState,
+  playerId: PlayerId,
+  cardIds: CardInstanceId[],
+): GameState {
+  const prompt = currentPrompt(state);
+  if (!prompt || prompt.kind !== "tap_own_for_x") {
+    throw new Error("No tap choice pending");
+  }
+  requireLiving(state, playerId);
+  if (prompt.playerId !== playerId) {
+    throw new Error("It is not that player's choice");
+  }
+  const offered = new Set(prompt.cardIds);
+  const seen = new Set<CardInstanceId>();
+  for (const cardId of cardIds) {
+    if (!offered.has(cardId) || seen.has(cardId)) {
+      throw new Error("That permanent is not one of the ones offered");
+    }
+    seen.add(cardId);
+  }
+  let next = cloneGameState(state);
+  next.prompts.shift();
+  for (const cardId of cardIds) {
+    const card = next.cards[cardId];
+    if (card && card.zone === "battlefield") {
+      card.tapped = true;
+    }
+  }
+  if (cardIds.length > 0) {
+    next = applyEffects(
+      next,
+      bindCardEffects(next, prompt.rider, {
+        controllerId: playerId,
+        sourceId: prompt.sourceId,
+        xValue: cardIds.length,
+        targets: [],
+        targetRequirements: [],
+      }),
+    );
+  }
+  const resume = prompt.resumeEffects;
+  if (resume && resume.length > 0) {
+    next = applyEffects(next, resume);
+  }
+  return next;
+}
+
+/**
  * One opponent's answer to a tempting offer. Accepting applies the action
  * bound to THEM, then the chain moves to the next opponent; when the last
  * has answered, the controller repeats their action once per acceptance.
