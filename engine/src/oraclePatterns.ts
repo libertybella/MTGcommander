@@ -10968,8 +10968,42 @@ function parseSearchNounPhrase(
 }
 
 /** "a noncreature, nonland card" / "a non-Human creature card" and friends. */
+/**
+ * "…with mana value less than or equal to the number of lands you control."
+ * A board count where the other caps are a printed number or an announced X,
+ * so it stays a DynamicCount on the filter and resolves when the effect
+ * binds. Only the nouns DynamicCount already names are accepted — an unknown
+ * one refuses the whole descriptor rather than quietly dropping the cap,
+ * which would make the card strictly better than it prints.
+ */
+const DIG_CAP_COUNTS: Record<string, DynamicCount> = {
+  lands: "lands_you_control",
+  creatures: "creatures_you_control",
+  artifacts: "artifacts_you_control",
+  enchantments: "enchantments_you_control",
+  permanents: "permanents_you_control",
+  plains: "plains_you_control",
+  islands: "islands_you_control",
+  swamps: "swamps_you_control",
+  mountains: "mountains_you_control",
+  forests: "forests_you_control",
+};
+
 function parseDigDescriptor(descriptor: string): SearchFilter | null {
-  const parts = descriptor.toLowerCase().replace(/,/g, " ").split(/\s+/).filter(Boolean);
+  let text = descriptor;
+  let dynamicCap: DynamicCount | undefined;
+  const cap = text.match(
+    /^(.*?) with mana value (?:less than or equal to|no greater than) the number of ([a-z]+) you control$/i,
+  );
+  if (cap?.[1] !== undefined && cap[2]) {
+    const counted = DIG_CAP_COUNTS[cap[2].toLowerCase()];
+    if (!counted) {
+      return null;
+    }
+    dynamicCap = counted;
+    text = cap[1];
+  }
+  const parts = text.toLowerCase().replace(/,/g, " ").split(/\s+/).filter(Boolean);
   const nonTypes: string[] = [];
   const nonSubtypes: string[] = [];
   const rest: string[] = [];
@@ -10991,6 +11025,7 @@ function parseDigDescriptor(descriptor: string): SearchFilter | null {
     ...base,
     ...(nonTypes.length > 0 ? { nonTypes } : {}),
     ...(nonSubtypes.length > 0 ? { nonSubtypes } : {}),
+    ...(dynamicCap ? { maxManaValueFrom: dynamicCap } : {}),
   };
 }
 
@@ -11251,7 +11286,13 @@ function fuseDigSentencesInPlace(sentences: string[], lineStart: boolean[]): voi
     const toHand = mid.match(
       /^You may (?:reveal|put) an? (.+?) card from among them (?:and put it )?into your hand$/i,
     );
-    const toField = mid.match(/^You may put an? (.+?) card from among them onto the battlefield( tapped)?$/i);
+    // Two printed wordings, exactly as the hand half above already reads
+    // both. The descriptor runs to "from among them" rather than stopping
+    // at "card", because Loot, Exuberant Explorer hangs a mana-value cap
+    // off the far side of that word.
+    const toField = mid.match(
+      /^You may (?:reveal|put) an? (.+?) from among them (?:and put it )?onto the battlefield( tapped)?$/i,
+    );
     const descriptor = toHand?.[1] ?? toField?.[1];
     if (!descriptor) {
       continue;

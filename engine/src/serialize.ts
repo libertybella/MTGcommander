@@ -3098,6 +3098,9 @@ function parseSearchFilter(value: unknown, label: string): SearchFilter {
       ? {}
       : { maxManaValue: expectNumber(value.maxManaValue, `${label}.maxManaValue`) }),
     ...(value.maxManaValueX === true ? { maxManaValueX: true } : {}),
+    ...(isDynamicCount(value.maxManaValueFrom)
+      ? { maxManaValueFrom: value.maxManaValueFrom }
+      : {}),
     ...(value.nameIsChosen === true ? { nameIsChosen: true } : {}),
     ...(value.maxManaValuePlusSacrificed === undefined
       ? {}

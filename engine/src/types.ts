@@ -1472,6 +1472,14 @@ export type SearchFilter = {
    * X when the effect binds (Green Sun's Zenith). */
   maxManaValueX?: boolean;
   /**
+   * Loot, Exuberant Explorer: "with mana value less than or equal to the
+   * number of lands you control". A BOARD count rather than a printed
+   * number or an announced X, resolved to `maxManaValue` at bind — the
+   * same moment the other two caps resolve, and before any sibling effect
+   * in the batch can change the board out from under it.
+   */
+  maxManaValueFrom?: DynamicCount;
+  /**
    * Eldritch Evolution: "mana value X or less, where X is N plus the
    * sacrificed creature's mana value". The number here is that N; the rest
    * comes from the cost that was already paid.

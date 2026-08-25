@@ -40,6 +40,7 @@ import type {
   PlayerId,
   PlayerSelector,
   PlayerState,
+  SearchFilter,
   StackObjectId,
   SubjectPlayerRef,
   TargetRequirement,
@@ -63,6 +64,40 @@ export type BindEffectContext = {
   /** Eldritch Evolution: the mana value of that same sacrificed creature. */
   sacrificedManaValue?: number;
 };
+
+/**
+ * The caps on a SearchFilter that are not a printed number: the announced X,
+ * X plus what the cost ate, and a board count. All three resolve at BIND, so
+ * everything downstream sees a plain `maxManaValue`.
+ *
+ * One function rather than a copy per call site. There were two copies and a
+ * third site that spread the filter through untouched, so a `maxManaValueX`
+ * on a `dig_top` would have reached the table unresolved and matched nothing.
+ */
+function resolveFilterCaps(
+  state: GameState,
+  filter: SearchFilter,
+  context: BindEffectContext,
+): SearchFilter {
+  const { maxManaValueX, maxManaValuePlusSacrificed, maxManaValueFrom, ...rest } = filter;
+  return {
+    ...rest,
+    ...(maxManaValueX ? { maxManaValue: context.xValue ?? 0 } : {}),
+    ...(maxManaValuePlusSacrificed !== undefined
+      ? { maxManaValue: maxManaValuePlusSacrificed + (context.sacrificedManaValue ?? 0) }
+      : {}),
+    ...(maxManaValueFrom !== undefined
+      ? {
+          maxManaValue: dynamicCountOf(
+            state,
+            context.controllerId,
+            maxManaValueFrom,
+            context.sourceId ?? undefined,
+          ),
+        }
+      : {}),
+  };
+}
 
 function nextOpponentId(state: GameState, controllerId: PlayerId): PlayerId {
   return nextLivingPlayerId(state, controllerId);
@@ -1822,20 +1857,10 @@ export function bindCardEffect(
       // The same X resolution the search filter gets, for the same reason:
       // "until you reveal a nonland card with mana value X or less" reads
       // the announced X, which only exists once the spell is on the stack.
-      const { maxManaValueX, maxManaValuePlusSacrificed, ...digRest } = effect.filter;
       return {
         kind: "dig_until",
         playerId,
-        filter: {
-          ...digRest,
-          ...(maxManaValueX ? { maxManaValue: context.xValue ?? 0 } : {}),
-          ...(maxManaValuePlusSacrificed !== undefined
-            ? {
-                maxManaValue:
-                  maxManaValuePlusSacrificed + (context.sacrificedManaValue ?? 0),
-              }
-            : {}),
-        },
+        filter: resolveFilterCaps(state, effect.filter, context),
         found: effect.found,
         rest: effect.rest,
         ...(effect.optional ? { optional: true } : {}),
@@ -1846,21 +1871,10 @@ export function bindCardEffect(
       if (!playerId) {
         return null;
       }
-      const { maxManaValueX, maxManaValuePlusSacrificed, ...filterRest } = effect.filter;
       return {
         kind: "search_library",
         playerId,
-        filter: {
-          ...filterRest,
-          ...(maxManaValueX ? { maxManaValue: context.xValue ?? 0 } : {}),
-          // Eldritch Evolution: the cap is N plus what the cost ate.
-          ...(maxManaValuePlusSacrificed !== undefined
-            ? {
-                maxManaValue:
-                  maxManaValuePlusSacrificed + (context.sacrificedManaValue ?? 0),
-              }
-            : {}),
-        },
+        filter: resolveFilterCaps(state, effect.filter, context),
         destination: effect.destination,
         // Traverse the Outlands: X = greatest power, read at bind.
         count: effect.countFromGreatestPower
@@ -2498,7 +2512,7 @@ export function bindCardEffect(
         kind: "dig_top",
         playerId,
         count: effect.count,
-        filter: { ...effect.filter },
+        filter: resolveFilterCaps(state, effect.filter, context),
         destination: effect.destination,
         ...(effect.restTo ? { restTo: effect.restTo } : {}),
       };

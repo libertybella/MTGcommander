@@ -66285,3 +66285,242 @@ describe("wave 402: Etali, Primal Conqueror", () => {
     });
   });
 });
+
+describe("wave 403: Loot, Exuberant Explorer", () => {
+  const compile = (
+    name: string,
+    typeLine: string,
+    oracleText: string,
+    manaCost = "",
+    pt: [string, string] | null = null,
+  ) =>
+    compileOracleCard({
+      oracleId: name.toLowerCase().replace(/[^a-z]+/g, "-"),
+      name,
+      manaCost,
+      typeLine,
+      power: pt?.[0] ?? null,
+      toughness: pt?.[1] ?? null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  const lootText =
+    "You may play an additional land on each of your turns.\n{4}{G}{G}, {T}: Look at the top six cards of your library. You may reveal a creature card with mana value less than or equal to the number of lands you control from among them and put it onto the battlefield. Put the rest on the bottom in a random order.";
+
+  it("compiles both of Loot's lines", () => {
+    const compiled = compile(
+      "Loot, Exuberant Explorer",
+      "Legendary Creature — Beast Noble",
+      lootText,
+      "{2}{G}",
+      ["3", "3"],
+    );
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.activated[0]).toMatchObject({
+      tap: true,
+      manaCost: "{4}{G}{G}",
+      effects: [
+        {
+          kind: "dig_top",
+          playerId: "controller",
+          count: 6,
+          filter: { types: ["creature"], maxManaValueFrom: "lands_you_control" },
+          destination: "battlefield",
+        },
+      ],
+    });
+  });
+
+  it("leaves the uncapped dig exactly as it was", () => {
+    const compiled = compile(
+      "Plain Dig",
+      "Sorcery",
+      "Look at the top five cards of your library. You may put a creature card from among them onto the battlefield. Put the rest on the bottom in a random order.",
+      "{3}{G}",
+    );
+    expect(compiled.definition.effects).toEqual([
+      {
+        kind: "dig_top",
+        playerId: "controller",
+        count: 5,
+        filter: { types: ["creature"] },
+        destination: "battlefield",
+      },
+    ]);
+  });
+
+  it("refuses a cap it cannot count", () => {
+    const compiled = compile(
+      "Unknown Cap",
+      "Sorcery",
+      "Look at the top five cards of your library. You may reveal a creature card with mana value less than or equal to the number of Unicorns you control from among them and put it onto the battlefield. Put the rest on the bottom in a random order.",
+      "{3}{G}",
+    );
+    // Dropping a cap it cannot read would make the card strictly better
+    // than it prints, so the whole descriptor is refused instead.
+    expect(compiled.notes).not.toEqual([]);
+    expect(compiled.definition.effects).toEqual([]);
+  });
+
+  // ---- The cap at the table ----------------------------------------------
+
+  const creature = (game: GameState, name: string, manaCost: string) => {
+    const definition = createCardDefinition({
+      name,
+      typeLine: "Creature — Bear",
+      manaCost,
+      power: 2,
+      toughness: 2,
+    });
+    game.definitions[definition.id] = definition;
+    return definition;
+  };
+
+  const stackLibrary = (game: GameState, playerId: string, definitions: CardDefinition[]) => {
+    const player = game.players.find((entry) => entry.id === playerId)!;
+    player.zones.library = [];
+    const ids: string[] = [];
+    for (const definition of definitions) {
+      const card = createCardInstance({
+        definitionId: definition.id,
+        ownerId: playerId,
+        zone: "library",
+      });
+      game.cards[card.id] = card;
+      player.zones.library.push(card.id);
+      ids.push(card.id);
+    }
+    return ids;
+  };
+
+  const digSix = (game: GameState, playerId: string) =>
+    applyEffects(
+      game,
+      bindCardEffects(
+        game,
+        [
+          {
+            kind: "dig_top",
+            playerId: "controller",
+            count: 6,
+            filter: { types: ["creature"], maxManaValueFrom: "lands_you_control" },
+            destination: "battlefield",
+          },
+        ],
+        { controllerId: playerId, sourceId: null, targets: [], targetRequirements: [] },
+      ),
+    );
+
+  it("takes nothing when the board cannot pay for it", () => {
+    const { game, p1 } = twoPlayers();
+    const [bigId] = stackLibrary(game, p1.id, [creature(game, "Six Drop", "{5}{G}")]);
+    addLandsInPlay(game, game.players[0]!, 3);
+    const after = digSix(game, p1.id);
+    // Three lands, a six-drop: the cap is a real gate, not decoration.
+    expect(after.cards[bigId!]?.zone).toBe("library");
+  });
+
+  it("takes it once the lands are there", () => {
+    const { game, p1 } = twoPlayers();
+    const [bigId] = stackLibrary(game, p1.id, [creature(game, "Six Drop", "{5}{G}")]);
+    addLandsInPlay(game, game.players[0]!, 6);
+    const after = digSix(game, p1.id);
+    expect(after.cards[bigId!]?.zone).toBe("battlefield");
+  });
+
+  it("skips the one it cannot afford and takes the one it can", () => {
+    const { game, p1 } = twoPlayers();
+    const [bigId, smallId] = stackLibrary(game, p1.id, [
+      creature(game, "Six Drop", "{5}{G}"),
+      creature(game, "Two Drop", "{1}{G}"),
+    ]);
+    addLandsInPlay(game, game.players[0]!, 3);
+    const after = digSix(game, p1.id);
+    expect(after.cards[bigId!]?.zone).toBe("library");
+    expect(after.cards[smallId!]?.zone).toBe("battlefield");
+  });
+
+  it("counts the digger's own lands, not the table's", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const [bigId] = stackLibrary(game, p1.id, [creature(game, "Six Drop", "{5}{G}")]);
+    addLandsInPlay(game, game.players[0]!, 2);
+    addLandsInPlay(game, game.players[1]!, 8);
+    void p2;
+    const after = digSix(game, p1.id);
+    expect(after.cards[bigId!]?.zone).toBe("library");
+  });
+
+  // ---- The shared resolver ------------------------------------------------
+
+  it("resolves the announced X on a dig too", () => {
+    const { game, p1 } = twoPlayers();
+    const [bigId, smallId] = stackLibrary(game, p1.id, [
+      creature(game, "Four Drop", "{3}{G}"),
+      creature(game, "One Drop", "{G}"),
+    ]);
+    const after = applyEffects(
+      game,
+      bindCardEffects(
+        game,
+        [
+          {
+            kind: "dig_top",
+            playerId: "controller",
+            count: 6,
+            filter: { types: ["creature"], maxManaValueX: true },
+            destination: "battlefield",
+          },
+        ],
+        {
+          controllerId: p1.id,
+          sourceId: null,
+          targets: [],
+          targetRequirements: [],
+          xValue: 1,
+        },
+      ),
+    );
+    // The dig used to spread its filter through untouched, so an X cap
+    // reached the table unresolved and matched nothing at all.
+    expect(after.cards[bigId!]?.zone).toBe("library");
+    expect(after.cards[smallId!]?.zone).toBe("battlefield");
+  });
+
+  it("round trips the dynamic cap", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const definition = createCardDefinition({
+      name: "Wave 403 Explorer",
+      typeLine: "Legendary Creature — Beast Noble",
+      manaCost: "{2}{G}",
+      power: 3,
+      toughness: 3,
+      activated: [
+        {
+          tap: true,
+          manaCost: "{4}{G}{G}",
+          effects: [
+            {
+              kind: "dig_top",
+              playerId: "controller",
+              count: 6,
+              filter: { types: ["creature"], maxManaValueFrom: "lands_you_control" },
+              destination: "battlefield",
+            },
+          ],
+          targetRequirements: [],
+        },
+      ],
+    });
+    game.definitions[definition.id] = definition;
+    void p1;
+    const round = parseGameState(serializeGameState(game));
+    // Dropped on the wire the cap is gone and the ability puts ANY creature
+    // onto the battlefield for six mana.
+    expect(round.definitions[definition.id]?.activated[0]?.effects[0]).toMatchObject({
+      filter: { types: ["creature"], maxManaValueFrom: "lands_you_control" },
+    });
+  });
+});
