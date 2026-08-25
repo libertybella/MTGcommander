@@ -4432,6 +4432,20 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
       return {
         kind,
         playerId: parsePlayerSelector(value.playerId, `${label}.playerId`),
+        ...(isRecord(value.ifSameNameCount)
+          ? {
+              ifSameNameCount: {
+                type: expectString(
+                  value.ifSameNameCount.type,
+                  `${label}.ifSameNameCount.type`,
+                ),
+                atLeast: expectNumber(
+                  value.ifSameNameCount.atLeast,
+                  `${label}.ifSameNameCount.atLeast`,
+                ),
+              },
+            }
+          : {}),
         ...(value.ifDevotionAtLeastLibrary === undefined
           ? {}
           : {

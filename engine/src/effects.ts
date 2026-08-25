@@ -1555,7 +1555,13 @@ export function bindCardEffect(
           return null;
         }
       }
-      return { kind: effect.kind, playerId };
+      return {
+        kind: effect.kind,
+        playerId,
+        ...(effect.ifSameNameCount
+          ? { ifSameNameCount: { ...effect.ifSameNameCount } }
+          : {}),
+      };
     }
     case "delayed_trigger": {
       // The body is bound HERE, as the creating spell resolves, because
@@ -4831,6 +4837,30 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
         // CR 104.2a: winning is expressed as everyone else losing, which is
         // the same shape Laboratory Maniac already uses.
         requirePlayer(state, effect.playerId);
+        // Mechanized Production counts HERE, after the sibling that made
+        // the eighth token has already applied.
+        if (effect.ifSameNameCount) {
+          const { type, atLeast } = effect.ifSameNameCount;
+          const byName = new Map<string, number>();
+          for (const card of Object.values(state.cards)) {
+            if (card.zone !== "battlefield" || card.controllerId !== effect.playerId) {
+              continue;
+            }
+            if (!characteristicsOf(state, card.id).types.includes(type)) {
+              continue;
+            }
+            const printedName = state.definitions[card.definitionId]?.name;
+            if (!printedName) {
+              continue;
+            }
+            byName.set(printedName, (byName.get(printedName) ?? 0) + 1);
+          }
+          const best = Math.max(0, ...byName.values());
+          if (best < atLeast) {
+            next = cloneGameState(state);
+            break;
+          }
+        }
         next = cloneGameState(state);
         for (const other of next.players) {
           // A player who cannot lose is not eliminated by someone else's

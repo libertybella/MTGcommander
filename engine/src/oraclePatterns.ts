@@ -4957,6 +4957,36 @@ function compileSimpleClauseInner(sentence: string): SimpleClause | null {
   }
 
   /**
+   * Mechanized Production's upkeep body. The copy is of the ENCHANTED
+   * permanent, which the copy selector already reaches as `"host"`, and the
+   * win is counted at APPLY — the token this same ability just made is one
+   * of the eight, so a bind-time count would always be one short.
+   */
+  const massProduction = sentence.match(
+    /^create a token that's a copy of enchanted (artifact|creature|permanent), then if you control ([a-z]+) or more (artifact|creature|permanent)s with the same name as one another, you win the game$/i,
+  );
+  if (
+    massProduction?.[1] &&
+    massProduction[2] &&
+    massProduction[3]?.toLowerCase() === massProduction[1].toLowerCase()
+  ) {
+    const atLeast = parseCount(massProduction[2]);
+    if (atLeast) {
+      return {
+        targetRequirements: [],
+        effects: [
+          { kind: "copy_token", ownerId: "controller", ofCardId: "host" },
+          {
+            kind: "win_game",
+            playerId: "controller",
+            ifSameNameCount: { type: massProduction[1].toLowerCase(), atLeast },
+          },
+        ],
+      };
+    }
+  }
+
+  /**
    * Torment of Hailfire, once the fuser has joined the head to its process.
    * The body compiles on its own, so this only wraps it — an inner clause
    * that needs targets is refused, because the repetitions would all aim

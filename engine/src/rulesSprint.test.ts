@@ -56843,3 +56843,226 @@ describe("wave 360: repeat X times, and a choice across two zones", () => {
     ]);
   });
 });
+
+describe("wave 361: a copy of the enchanted thing, and a win counted on names", () => {
+  const compile = (name: string, typeLine: string, oracleText: string, manaCost = "") =>
+    compileOracleCard({
+      oracleId: name.toLowerCase().replace(/[^a-z]+/g, "-"),
+      name,
+      manaCost,
+      typeLine,
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  const put = (game: GameState, ownerId: string, definition: CardDefinition) => {
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({
+      definitionId: definition.id,
+      ownerId,
+      zone: "battlefield",
+    });
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === ownerId)!.zones.battlefield.push(card.id);
+    card.summoningSick = false;
+    return card.id;
+  };
+
+  it("compiles Mechanized Production", () => {
+    const compiled = compile(
+      "Mechanized Production",
+      "Enchantment — Aura",
+      "Enchant artifact you control\nAt the beginning of your upkeep, create a token that's a copy of enchanted artifact. Then if you control eight or more artifacts with the same name as one another, you win the game.",
+      "{3}{U}",
+    );
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.enchant).toBe("artifact_own");
+    expect(compiled.definition.triggers[0]).toEqual({
+      event: "upkeep",
+      effects: [
+        { kind: "copy_token", ownerId: "controller", ofCardId: "host" },
+        {
+          kind: "win_game",
+          playerId: "controller",
+          ifSameNameCount: { type: "artifact", atLeast: 8 },
+        },
+      ],
+      targetRequirements: [],
+    });
+  });
+
+  it("refuses a sentence whose two nouns disagree", () => {
+    // "a copy of enchanted artifact … eight or more CREATURES" is not a
+    // card, and reading it as one would count the wrong pile.
+    const compiled = compile(
+      "Probe",
+      "Enchantment — Aura",
+      "Enchant artifact you control\nAt the beginning of your upkeep, create a token that's a copy of enchanted artifact. Then if you control eight or more creatures with the same name as one another, you win the game.",
+      "{3}{U}",
+    );
+    expect(compiled.notes.length).toBeGreaterThan(0);
+  });
+
+  const widget = (name: string) =>
+    createCardDefinition({ name, typeLine: "Artifact", manaCost: "{2}" });
+
+  const aura = () =>
+    createCardDefinition({
+      name: "Mechanized Production",
+      typeLine: "Enchantment — Aura",
+      manaCost: "{3}{U}",
+      enchant: "artifact_own",
+    });
+
+  const stock = (game: GameState, playerId: string, name: string, count: number) => {
+    const ids: string[] = [];
+    for (let index = 0; index < count; index += 1) {
+      ids.push(put(game, playerId, widget(name)));
+    }
+    return ids;
+  };
+
+  it("copies the ENCHANTED artifact, not the Aura", () => {
+    const { game, p1 } = twoPlayers();
+    const hostId = put(game, p1.id, widget("Widget"));
+    const auraId = put(game, p1.id, aura());
+    game.cards[auraId]!.attachedTo = hostId;
+    const after = applyEffects(
+      game,
+      bindCardEffects(game, [{ kind: "copy_token", ownerId: "controller", ofCardId: "host" }], {
+        controllerId: p1.id,
+        sourceId: auraId,
+        targets: [],
+        targetRequirements: [],
+      }),
+    );
+    const tokens = Object.values(after.cards).filter((card) => card.isToken);
+    expect(tokens).toHaveLength(1);
+    expect(after.definitions[tokens[0]!.definitionId]?.name).toBe("Widget");
+  });
+
+  const winCheck = {
+    kind: "win_game" as const,
+    playerId: "controller" as const,
+    ifSameNameCount: { type: "artifact", atLeast: 8 },
+  };
+
+  it("does not win on seven", () => {
+    const { game, p1, p2 } = twoPlayers();
+    stock(game, p1.id, "Widget", 7);
+    const after = applyEffects(
+      game,
+      bindCardEffects(game, [winCheck], {
+        controllerId: p1.id,
+        sourceId: null,
+        targets: [],
+        targetRequirements: [],
+      }),
+    );
+    expect(after.players.find((entry) => entry.id === p2.id)!.lost).toBeFalsy();
+  });
+
+  it("wins on eight with the same name", () => {
+    const { game, p1, p2 } = twoPlayers();
+    stock(game, p1.id, "Widget", 8);
+    const after = applyEffects(
+      game,
+      bindCardEffects(game, [winCheck], {
+        controllerId: p1.id,
+        sourceId: null,
+        targets: [],
+        targetRequirements: [],
+      }),
+    );
+    expect(after.players.find((entry) => entry.id === p2.id)!.lost).toBe(true);
+  });
+
+  it("counts one NAME, not eight artifacts", () => {
+    const { game, p1, p2 } = twoPlayers();
+    stock(game, p1.id, "Widget", 4);
+    stock(game, p1.id, "Gadget", 4);
+    const after = applyEffects(
+      game,
+      bindCardEffects(game, [winCheck], {
+        controllerId: p1.id,
+        sourceId: null,
+        targets: [],
+        targetRequirements: [],
+      }),
+    );
+    // Eight artifacts, but no eight of a kind — "with the same name as one
+    // another" is the whole difficulty of the card.
+    expect(after.players.find((entry) => entry.id === p2.id)!.lost).toBeFalsy();
+  });
+
+  it("does not count an opponent's copies", () => {
+    const { game, p1, p2 } = twoPlayers();
+    stock(game, p1.id, "Widget", 4);
+    stock(game, p2.id, "Widget", 4);
+    const after = applyEffects(
+      game,
+      bindCardEffects(game, [winCheck], {
+        controllerId: p1.id,
+        sourceId: null,
+        targets: [],
+        targetRequirements: [],
+      }),
+    );
+    expect(after.players.find((entry) => entry.id === p2.id)!.lost).toBeFalsy();
+  });
+
+  it("counts the token this same ability just made", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const hostId = put(game, p1.id, widget("Widget"));
+    stock(game, p1.id, "Widget", 6);
+    const auraId = put(game, p1.id, aura());
+    game.cards[auraId]!.attachedTo = hostId;
+    // Seven on the board; the copy makes the eighth. Effects bind as a
+    // batch, so a bind-time count would see seven and never win.
+    const after = applyEffects(
+      game,
+      bindCardEffects(
+        game,
+        [{ kind: "copy_token", ownerId: "controller", ofCardId: "host" }, winCheck],
+        { controllerId: p1.id, sourceId: auraId, targets: [], targetRequirements: [] },
+      ),
+    );
+    expect(after.players.find((entry) => entry.id === p2.id)!.lost).toBe(true);
+  });
+
+  it("round trips the condition", () => {
+    const { game, p1 } = twoPlayers();
+    const definition = createCardDefinition({
+      name: "Wave 361 Production",
+      typeLine: "Enchantment — Aura",
+      manaCost: "{3}{U}",
+      enchant: "artifact_own",
+      triggers: [
+        {
+          event: "upkeep",
+          effects: [
+            { kind: "copy_token", ownerId: "controller", ofCardId: "host" },
+            {
+              kind: "win_game",
+              playerId: "controller",
+              ifSameNameCount: { type: "artifact", atLeast: 8 },
+            },
+          ],
+          targetRequirements: [],
+        },
+      ],
+    });
+    put(game, p1.id, definition);
+    const round = parseGameState(serializeGameState(game));
+    // A condition dropped on the wire is a card that wins on the first
+    // upkeep, which is a rather different game.
+    expect(round.definitions[definition.id]?.triggers[0]?.effects[1]).toEqual({
+      kind: "win_game",
+      playerId: "controller",
+      ifSameNameCount: { type: "artifact", atLeast: 8 },
+    });
+  });
+});

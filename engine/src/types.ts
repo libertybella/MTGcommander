@@ -1934,7 +1934,18 @@ export type GameEffect =
   | { kind: "prevent_combat_for"; cardId: CardInstanceId }
   | { kind: "extra_land_drop"; playerId: PlayerId }
   /** "You win the game": every other player loses (CR 104.2a). */
-  | { kind: "win_game"; playerId: PlayerId }
+  | {
+      kind: "win_game";
+      playerId: PlayerId;
+      /**
+       * Mechanized Production: "if you control eight or more artifacts with
+       * the same name as one another". Carried to APPLY rather than settled
+       * at bind, because the token this very ability creates is one of the
+       * eight — effects bind as a batch, so a bind-time count is always one
+       * short.
+       */
+      ifSameNameCount?: { type: string; atLeast: number };
+    }
   /** "You lose the game" (Pact of Negation's unpaid upkeep). */
   | { kind: "lose_game"; playerId: PlayerId }
   /** Teferi's Protection, The One Ring: a shield until your next turn. */
@@ -3369,6 +3380,8 @@ export type CardEffect =
   | {
       kind: "win_game";
       playerId: PlayerSelector;
+      /** Mechanized Production — see the bound form for why it is not read here. */
+      ifSameNameCount?: { type: string; atLeast: number };
       /**
        * Thassa's Oracle: "If X is greater than or equal to the number of
        * cards in your library, you win the game", X being devotion to this
@@ -3453,7 +3466,14 @@ export type CardEffect =
   | {
       kind: "copy_token";
       ownerId: PlayerSelector;
-      ofCardId: ChosenTargetRef | CardInstanceId | "self";
+      /**
+       * `"host"` is the ATTACHED permanent — Helm of the Host's equipped
+       * creature, Mechanized Production's enchanted artifact — read through
+       * the same `attachedTo` field. The binder has always handled it; the
+       * type did not say so, and `CardInstanceId` being a string is the
+       * only reason that compiled.
+       */
+      ofCardId: ChosenTargetRef | CardInstanceId | "self" | "host";
       /** "create five of those tokens" (kicked Rite of Replication). */
       count?: number;
       /** "It gains haste" / delayed end-step riders (Jaxis-class shells). */

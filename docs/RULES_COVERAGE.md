@@ -2277,6 +2277,11 @@ more questions it can now ask:
   `TopOfLibraryGrant.payLifeInsteadOfMana` replaces the cost OUTRIGHT, the
   same way flashback does, and rides the same life-payment path. A cost
   that had merely been reduced would still refuse a caster with no mana.
+- **A win counted on shared names** — Mechanized Production.
+  `win_game.ifSameNameCount` counts the largest group of same-named
+  permanents of a type the player controls, and is evaluated at APPLY: the
+  token the same ability just created is one of the eight, and effects bind
+  as a batch. Eight artifacts across two names does not win.
 - **"Repeat the following process X times"** — Torment of Hailfire.
   `repeat_x_times` expands at bind, where the announced X lives, binding the
   inner effects once per repetition so an each-opponent choice inside is
