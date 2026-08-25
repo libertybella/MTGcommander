@@ -129,6 +129,8 @@ export function createCardDefinition(
         | "modes"
         | "protectionFrom"
         | "hexproofFrom"
+        | "retrace"
+        | "grantsRetrace"
         | "enchant"
         | "reanimateOnEnter"
         | "copySelfWhenCastFromGraveyard"
@@ -602,6 +604,15 @@ export function createCardDefinition(
     ...(input.entersWithCounters ? { entersWithCounters: { ...input.entersWithCounters } } : {}),
     ...(input.enterAsCopy ? { enterAsCopy: { ...input.enterAsCopy } } : {}),
     ...(input.grantsEscape ? { grantsEscape: { ...input.grantsEscape } } : {}),
+    ...(input.retrace ? { retrace: true } : {}),
+    ...(input.grantsRetrace
+      ? {
+          grantsRetrace: {
+            filter: { ...input.grantsRetrace.filter },
+            ...(input.grantsRetrace.onlyYourTurn ? { onlyYourTurn: true } : {}),
+          },
+        }
+      : {}),
     ...(input.playLandsFromGraveyard ? { playLandsFromGraveyard: true } : {}),
     ...(input.leyline ? { leyline: true } : {}),
     ...(input.saga

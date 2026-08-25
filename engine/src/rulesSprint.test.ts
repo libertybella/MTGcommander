@@ -19,7 +19,7 @@ import {
 } from "./index";
 import { activatedOf, cardMatchesSubtype, computedCard, dynamicCountOf, mergeProtection, triggersOf } from "./characteristicsEngine";
 import { mostCommonControlledCreatureType } from "./effects";
-import { altCastPayment, canPlayLandFromTop, creaturePower, creatureToughness, hasCoven, queueEnterReplacementChoicesInPlace, topOfLibraryGrant } from "./derived";
+import { altCastPayment, canPlayLandFromTop, retraceReaches, creaturePower, creatureToughness, hasCoven, queueEnterReplacementChoicesInPlace, topOfLibraryGrant } from "./derived";
 import { attackLimitFor, blockAllowanceFor, castCostReduction, castableFromTop, drawCapFor, freeEquipGranted, hasFlashGrant, landDropAllowance, maxHandSizeOf, noncreatureSpellCap, permanentsControlledBy, playerHasHexproof, reliefAdjustedCost, selfDiscountAmount, wouldEnterTapped } from "./derived";
 import { characteristicsOf } from "./cardTypes";
 import { keywordCoverage } from "./keywordCatalog";
@@ -62456,5 +62456,268 @@ describe("wave 385: tempting offer", () => {
       .zones.battlefield.find((cardId) => finished.cards[cardId]?.counters["p1p1"]);
     expect(mineId).toBeDefined();
     expect(counters(finished, mineId!)).toBe(2);
+  });
+});
+
+describe("wave 386: retrace", () => {
+  const compile = (
+    name: string,
+    typeLine: string,
+    oracleText: string,
+    manaCost = "",
+    pt: [string, string] | null = null,
+  ) =>
+    compileOracleCard({
+      oracleId: name.toLowerCase().replace(/[^a-z]+/g, "-"),
+      name,
+      manaCost,
+      typeLine,
+      power: pt?.[0] ?? null,
+      toughness: pt?.[1] ?? null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  const put = (
+    game: GameState,
+    ownerId: string,
+    definition: CardDefinition,
+    zone: "hand" | "graveyard" | "battlefield" = "hand",
+  ) => {
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({ definitionId: definition.id, ownerId, zone });
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === ownerId)!.zones[zone].push(card.id);
+    if (zone === "battlefield") {
+      card.summoningSick = false;
+    }
+    return card.id;
+  };
+
+  it("reads the printed keyword", () => {
+    const compiled = compile(
+      "Oona's Grace",
+      "Instant",
+      "Target player draws a card.\nRetrace",
+      "{2}{U}",
+    );
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.retrace).toBe(true);
+  });
+
+  it("reads Six's grant, with its turn gate", () => {
+    const compiled = compile(
+      "Six",
+      "Legendary Creature — Treefolk Spirit",
+      "Reach\nDuring your turn, nonland permanent cards in your graveyard have retrace.",
+      "{2}{B}{G}",
+      ["3", "4"],
+    );
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.grantsRetrace).toEqual({
+      // Not a card type: a nonland permanent card is everything that is
+      // not a land, an instant or a sorcery.
+      filter: { nonTypes: ["land", "instant", "sorcery"] },
+      onlyYourTurn: true,
+    });
+  });
+
+  it("reads an ungated grant without the gate", () => {
+    const compiled = compile(
+      "Deeproot Historian",
+      "Creature — Merfolk Druid",
+      "Merfolk and Druid cards in your graveyard have retrace.",
+      "{2}{G}",
+      ["3", "3"],
+    );
+    expect(compiled.definition.grantsRetrace?.onlyYourTurn).toBeUndefined();
+  });
+
+  // ---- Casting it --------------------------------------------------------
+
+  const jab = (retrace = true) =>
+    createCardDefinition({
+      name: "Flame Jab",
+      typeLine: "Sorcery",
+      manaCost: "{R}",
+      ...(retrace ? { retrace: true } : {}),
+      effects: [{ kind: "gain_life", playerId: "controller", amount: 1 }],
+    });
+
+  const mountain = () =>
+    createCardDefinition({ name: "Mountain", typeLine: "Basic Land — Mountain" });
+
+  const readyToCast = (game: GameState, playerId: string) => {
+    game.turn.activePlayerId = playerId;
+    game.turn.phase = "precombatMain";
+    game.turn.step = "precombatMain";
+    game.priorityPlayerId = playerId;
+    game.players.find((entry) => entry.id === playerId)!.mana.R = 2;
+  };
+
+  it("casts from the graveyard by discarding a land", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const jabId = put(game, p1.id, jab(), "graveyard");
+    const landId = put(game, p1.id, mountain(), "hand");
+    readyToCast(game, p1.id);
+    const after = applyAction(game, {
+      kind: "cast_spell",
+      playerId: p1.id,
+      cardId: jabId,
+      targets: [],
+    });
+    expect(after.cards[jabId]?.zone).toBe("stack");
+    expect(after.cards[landId]?.zone).toBe("graveyard");
+  });
+
+  it("goes BACK to the graveyard, unlike flashback", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const jabId = put(game, p1.id, jab(), "graveyard");
+    put(game, p1.id, mountain(), "hand");
+    readyToCast(game, p1.id);
+    const resolved = resolveTopOfStack(
+      applyAction(game, { kind: "cast_spell", playerId: p1.id, cardId: jabId, targets: [] }),
+    );
+    // The whole card on Raven's Crime: it is back, and another land buys
+    // another cast. Flashback would have exiled it.
+    expect(resolved.cards[jabId]?.zone).toBe("graveyard");
+    expect(
+      resolved.players.find((entry) => entry.id === p1.id)!.zones.exile,
+    ).not.toContain(jabId);
+  });
+
+  it("refuses the cast with no land in hand", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const jabId = put(game, p1.id, jab(), "graveyard");
+    put(game, p1.id, jab(), "hand");
+    readyToCast(game, p1.id);
+    expect(() =>
+      applyAction(game, { kind: "cast_spell", playerId: p1.id, cardId: jabId, targets: [] }),
+    ).toThrow();
+  });
+
+  it("does not offer the cast with no land to pay it", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const jabId = put(game, p1.id, jab(), "graveyard");
+    readyToCast(game, p1.id);
+    const offered = legalActions(game, p1.id).some(
+      (action) => action.kind === "cast_spell" && action.cardId === jabId,
+    );
+    // An offer the cast would refuse is how the two drift apart, so the
+    // same reader answers both.
+    expect(offered).toBe(false);
+    put(game, p1.id, mountain(), "hand");
+    expect(
+      legalActions(game, p1.id).some(
+        (action) => action.kind === "cast_spell" && action.cardId === jabId,
+      ),
+    ).toBe(true);
+  });
+
+  it("leaves a card without retrace in the graveyard", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const jabId = put(game, p1.id, jab(false), "graveyard");
+    put(game, p1.id, mountain(), "hand");
+    readyToCast(game, p1.id);
+    expect(() =>
+      applyAction(game, { kind: "cast_spell", playerId: p1.id, cardId: jabId, targets: [] }),
+    ).toThrow();
+  });
+
+  // ---- The grant ---------------------------------------------------------
+
+  const six = () =>
+    createCardDefinition({
+      name: "Six",
+      typeLine: "Legendary Creature — Treefolk Spirit",
+      manaCost: "{2}{B}{G}",
+      power: 3,
+      toughness: 4,
+      grantsRetrace: {
+        filter: { nonTypes: ["land", "instant", "sorcery"] },
+        onlyYourTurn: true,
+      },
+    });
+
+  const bear = () =>
+    createCardDefinition({
+      name: "Bear",
+      typeLine: "Creature — Bear",
+      manaCost: "{1}{G}",
+      power: 2,
+      toughness: 2,
+    });
+
+  it("grants retrace to what the filter names", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    put(game, p1.id, six(), "battlefield");
+    const bearId = put(game, p1.id, bear(), "graveyard");
+    const jabId = put(game, p1.id, jab(false), "graveyard");
+    game.turn.activePlayerId = p1.id;
+    // A creature card is a nonland permanent card; a sorcery is not.
+    expect(retraceReaches(game, p1.id, bearId)).toBe(true);
+    expect(retraceReaches(game, p1.id, jabId)).toBe(false);
+  });
+
+  it("honours the turn gate", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    put(game, p1.id, six(), "battlefield");
+    const bearId = put(game, p1.id, bear(), "graveyard");
+    game.turn.activePlayerId = p2.id;
+    // "During YOUR turn" is the difference between a Raven's Crime every
+    // turn and one only on yours.
+    expect(retraceReaches(game, p1.id, bearId)).toBe(false);
+    game.turn.activePlayerId = p1.id;
+    expect(retraceReaches(game, p1.id, bearId)).toBe(true);
+  });
+
+  it("does not lend the grant to an opponent's graveyard", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    put(game, p1.id, six(), "battlefield");
+    const theirsId = put(game, p2.id, bear(), "graveyard");
+    game.turn.activePlayerId = p2.id;
+    expect(retraceReaches(game, p2.id, theirsId)).toBe(false);
+  });
+
+  it("casts a granted retrace, land and all", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    put(game, p1.id, six(), "battlefield");
+    const bearId = put(game, p1.id, bear(), "graveyard");
+    const landId = put(game, p1.id, mountain(), "hand");
+    readyToCast(game, p1.id);
+    game.players.find((entry) => entry.id === p1.id)!.mana.G = 2;
+    const after = applyAction(game, {
+      kind: "cast_spell",
+      playerId: p1.id,
+      cardId: bearId,
+      targets: [],
+    });
+    expect(after.cards[bearId]?.zone).toBe("stack");
+    expect(after.cards[landId]?.zone).toBe("graveyard");
+  });
+
+  it("round trips the keyword and the grant", () => {
+    const { game, p1 } = twoPlayers();
+    const jabDefinition = jab();
+    put(game, p1.id, jabDefinition, "graveyard");
+    const sixDefinition = six();
+    put(game, p1.id, sixDefinition, "battlefield");
+    const round = parseGameState(serializeGameState(game));
+    expect(round.definitions[jabDefinition.id]?.retrace).toBe(true);
+    // Dropped on the wire, Six is a 3/4 reach body and nothing else.
+    expect(round.definitions[sixDefinition.id]?.grantsRetrace).toEqual({
+      filter: { nonTypes: ["land", "instant", "sorcery"] },
+      onlyYourTurn: true,
+    });
   });
 });

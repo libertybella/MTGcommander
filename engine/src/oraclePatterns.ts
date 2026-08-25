@@ -59,6 +59,8 @@ export type CompiledOracleText = {
   modes?: SpellMode[];
   protectionFrom?: ProtectionFrom;
   hexproofFrom?: Color[];
+  retrace?: boolean;
+  grantsRetrace?: { filter: SearchFilter; onlyYourTurn?: boolean };
   /** Taken from the definition so the two cannot drift apart. */
   enchant?: CardDefinition["enchant"];
   reanimateOnEnter?: boolean;
@@ -14920,6 +14922,36 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
      */
     if (/^cascade(?:, cascade)*$/i.test(sentence)) {
       result.cascade = (result.cascade ?? 0) + sentence.split(",").length;
+      continue;
+    }
+
+    // Retrace (CR 702.81) as a printed keyword line.
+    if (/^Retrace$/i.test(sentence)) {
+      result.retrace = true;
+      continue;
+    }
+    // Six, Deeproot Historian: the grant. "During your turn" is Six's, and
+    // it is the difference between a Raven's Crime every turn and one only
+    // on yours.
+    const retraceGrant = sentence.match(
+      /^(?:During your turn, )?(.+?) cards? in your graveyard have retrace$/i,
+    );
+    if (retraceGrant?.[1]) {
+      // "Nonland permanent card" is not a card type the search reader
+      // knows: it is everything that is not a land, an instant or a
+      // sorcery, which is what makes Six's grant reach a creature card and
+      // not a Raven's Crime.
+      const filter = /^nonland permanent$/i.test(retraceGrant[1].trim())
+        ? { nonTypes: ["land", "instant", "sorcery"] }
+        : parseSearchDescriptor(`a ${retraceGrant[1]} card`);
+      if (filter) {
+        result.grantsRetrace = {
+          filter,
+          ...(/^During your turn,/i.test(sentence) ? { onlyYourTurn: true } : {}),
+        };
+        continue;
+      }
+      result.leftover.push(sentence);
       continue;
     }
 

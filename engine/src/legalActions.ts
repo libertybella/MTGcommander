@@ -11,7 +11,7 @@ import { hasKeyword } from "./keywords";
 import { triggerConditionHolds } from "./triggers";
 import { emptyManaPool } from "./createGame";
 import { pendingBlockerPlayer } from "./combat";
-import { inSorceryWindow, splitSecondActive, reliefAdjustedCost, affinityArtifactDiscount, activationNonManaPayment, allBattlefieldCreatureCount, altCastPayment, canActivateTapAbility, canPlayLandsFromGraveyard, castCostReduction, castableFromTop, controlsCommander, freeEquipGranted, hasFlashGrant, landDropAllowance, lockedByAbolisher, lockedFromCasting, noncreatureSpellCap, opponentControlsMoreLands, findFreeHandGrantIndex, opponentsCastLockedToHand, permanentsControlledBy, selfDiscountAmount, staticFreeCastCap, topOfLibraryGrant } from "./derived";
+import { inSorceryWindow, retraceReaches, splitSecondActive, reliefAdjustedCost, affinityArtifactDiscount, activationNonManaPayment, allBattlefieldCreatureCount, altCastPayment, canActivateTapAbility, canPlayLandsFromGraveyard, castCostReduction, castableFromTop, controlsCommander, freeEquipGranted, hasFlashGrant, landDropAllowance, lockedByAbolisher, lockedFromCasting, noncreatureSpellCap, opponentControlsMoreLands, findFreeHandGrantIndex, opponentsCastLockedToHand, permanentsControlledBy, selfDiscountAmount, staticFreeCastCap, topOfLibraryGrant } from "./derived";
 import { canPayManaCost, parseManaCost, type ParsedManaCost } from "./mana";
 import {
   colorsAmongControlled,
@@ -626,12 +626,21 @@ export function legalActions(state: GameState, playerId: PlayerId): LegalAction[
         return definition?.characteristics.types.includes("land") === true;
       })
     : [];
+  // Retrace needs a land in hand to discard; without one the card is not
+  // castable from the graveyard at all, so it is not offered.
+  const hasLandInHand = player.zones.hand.some((cardId) => {
+    const definition = state.cards[cardId]
+      ? state.definitions[state.cards[cardId]!.definitionId]
+      : undefined;
+    return definition?.characteristics.types.includes("land") === true;
+  });
   const flashbackIds = player.zones.graveyard.filter((cardId) => {
     const definition = state.cards[cardId]
       ? state.definitions[state.cards[cardId]!.definitionId]
       : undefined;
     return Boolean(
       definition?.flashback ||
+        (hasLandInHand && retraceReaches(state, playerId, cardId)) ||
         (definition?.castFromGraveyard &&
           controlsMatching(state, playerId, definition.castFromGraveyard)),
     );
@@ -703,6 +712,21 @@ export function legalActions(state: GameState, playerId: PlayerId): LegalAction[
             faceIndex: face.faceIndex,
             fromCommand: false,
           });
+        }
+        // Retrace: the printed cost plus a land from hand, which the
+        // graveyard filter above already checked is there.
+        if (
+          !flashback &&
+          retraceReaches(state, playerId, cardId) &&
+          castableFace(state, playerId, face.definition, potential, 0, undefined, flashGrant)
+        ) {
+          actions.push({
+            kind: "cast_spell",
+            cardId,
+            faceIndex: face.faceIndex,
+            fromCommand: false,
+          });
+          continue;
         }
         // Gravecrawler: a gated normal cast for the printed cost.
         if (

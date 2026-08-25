@@ -1,6 +1,7 @@
 import { characteristicsOf, isBasic, isCommander, isCreature, isLand, isLegendary, isMainPhase } from "./cardTypes";
 import { abilitiesRemoved, cardMatchesSubtype, computedCard, controlsGate, dynamicCountOf } from "./characteristicsEngine";
 import { canPayManaCost, type ParsedManaCost } from "./mana";
+import { searchMatches } from "./prompt";
 import { triggerConditionHolds } from "./triggers";
 import type { ActivatedAbility, AlternativeCastCost, CardDefinition, CardInstance, CardInstanceId, Color, EnterTappedUnless, GameState, ManaPool, PlayerId } from "./types";
 
@@ -659,6 +660,43 @@ export function attackLimitFor(state: GameState, playerId: string): number | nul
  * Shalai: does this player have hexproof? Read through `abilitiesRemoved`,
  * so a silenced Shalai stops protecting.
  */
+/**
+ * Does retrace reach this card in this player's graveyard? Printed on the
+ * card, or granted by a permanent they control (Six, Deeproot Historian).
+ *
+ * Shared with the cast path rather than written twice: an offer the cast
+ * refuses, or a cast the offer never makes, is exactly how the two drift.
+ */
+export function retraceReaches(
+  state: GameState,
+  playerId: PlayerId,
+  cardId: CardInstanceId,
+): boolean {
+  const definition = state.definitions[state.cards[cardId]?.definitionId ?? ""];
+  if (!definition) {
+    return false;
+  }
+  if (definition.retrace === true) {
+    return true;
+  }
+  for (const permanent of Object.values(state.cards)) {
+    if (permanent.zone !== "battlefield" || permanent.controllerId !== playerId) {
+      continue;
+    }
+    const grant = state.definitions[permanent.definitionId]?.grantsRetrace;
+    if (!grant) {
+      continue;
+    }
+    if (grant.onlyYourTurn && state.turn.activePlayerId !== playerId) {
+      continue;
+    }
+    if (searchMatches(state, cardId, grant.filter)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 export function playerHasHexproof(state: GameState, playerId: string): boolean {
   return Object.values(state.cards).some(
     (card) =>

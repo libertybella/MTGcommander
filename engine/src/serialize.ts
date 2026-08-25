@@ -1540,6 +1540,18 @@ export function parseGameState(json: string): GameState {
       ...(def.hexproofFrom === undefined
         ? {}
         : { hexproofFrom: parseColorArray(def.hexproofFrom, `definition.${id}.hexproofFrom`) }),
+      ...(def.retrace === true ? { retrace: true } : {}),
+      ...(isRecord(def.grantsRetrace)
+        ? {
+            grantsRetrace: {
+              filter: parseSearchFilter(
+                def.grantsRetrace.filter,
+                `definition.${id}.grantsRetrace.filter`,
+              ),
+              ...(def.grantsRetrace.onlyYourTurn === true ? { onlyYourTurn: true } : {}),
+            },
+          }
+        : {}),
       ...(def.protectionFrom === undefined
         ? {}
         : {

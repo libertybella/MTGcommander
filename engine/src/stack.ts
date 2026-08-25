@@ -8,7 +8,7 @@ import {
   computedCard,
   grantedActivatedSpread,
 } from "./characteristicsEngine";
-import { castableFromTop } from "./derived";
+import { castableFromTop, retraceReaches } from "./derived";
 import { controlsMatching } from "./legalActions";
 import { enterOwnerZone, findCardZone, moveCard, removeCardFromCurrentZone } from "./zones";
 import { applyEffects, bindCardEffects } from "./effects";
@@ -200,6 +200,11 @@ export function putSpellOnStack(
         permanent.controllerId === located.playerId &&
         Boolean(state.definitions[permanent.definitionId]?.grantsEscape),
     );
+  // Retrace: a graveyard cast with no exile rider, so the card comes back
+  // here when it resolves and can be cast again for another land.
+  const fromRetrace =
+    located?.zone === "graveyard" &&
+    retraceReaches(state, located.playerId, cardId);
   if (
     !located ||
     (located.zone !== "hand" &&
@@ -208,6 +213,7 @@ export function putSpellOnStack(
       !fromFlashback &&
       !fromGraveyardGate &&
       !fromEscape &&
+      !fromRetrace &&
       !fromExilePlay)
   ) {
     throw new Error(`Card ${cardId} must be in hand to put on the stack`);

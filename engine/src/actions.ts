@@ -8,7 +8,7 @@ import {
 import { characteristicsOf, isCommander, isCreature, isInstant, isInstantOrSorcery, isLand, isLegendary, isMainPhase } from "./cardTypes";
 import { abilityLifeCost } from "./commanderIdentity";
 import { cloneGameState } from "./clone";
-import { applyPhyrexianColorGrants, targetingLifeTaxFor, splitSecondActive, costRelief, affinityArtifactDiscount, allBattlefieldCreatureCount, canActivateTapAbility, canPlayLandFromTop, canPlayLandsFromGraveyard, castCostReduction, castableFromTop, controlsCommander, creaturePower, freeEquipGranted, hasFlashGrant, activationNonManaPayment, altCastPayment, landDropAllowance, manaTapMultiplier, lockedByAbolisher, lockedFromCasting, noncreatureSpellCap, opponentControlsMoreLands, findFreeHandGrantIndex, opponentsCastLockedToHand, selfDiscountAmount, staticFreeCastCap, usesOncePerTurnFreeCast , topOfLibraryGrant } from "./derived";
+import { applyPhyrexianColorGrants, retraceReaches, targetingLifeTaxFor, splitSecondActive, costRelief, affinityArtifactDiscount, allBattlefieldCreatureCount, canActivateTapAbility, canPlayLandFromTop, canPlayLandsFromGraveyard, castCostReduction, castableFromTop, controlsCommander, creaturePower, freeEquipGranted, hasFlashGrant, activationNonManaPayment, altCastPayment, landDropAllowance, manaTapMultiplier, lockedByAbolisher, lockedFromCasting, noncreatureSpellCap, opponentControlsMoreLands, findFreeHandGrantIndex, opponentsCastLockedToHand, selfDiscountAmount, staticFreeCastCap, usesOncePerTurnFreeCast , topOfLibraryGrant } from "./derived";
 import { eliminatePlayerInPlace } from "./elimination";
 import { applyEffects, bindCardEffects, devotionTo } from "./effects";
 import { hasKeyword } from "./keywords";
@@ -50,6 +50,36 @@ import type { ActivatedAbility, AdditionalCastCost, CardInstanceId, ChosenTarget
  * approximation `altCastPayment` already makes — a player exiling for
  * escape reaches for their spent lands and cantrips first.
  */
+/**
+ * Retrace (CR 702.81): the land card discarded to cast this from the
+ * graveyard, or null when retrace does not reach this card or the hand
+ * holds no land.
+ *
+ * The land is AUTO-PICKED — the first one in hand — which is the same
+ * documented approximation `escapeExilePayment` and `altCastPayment` make.
+ * A retrace player is discarding a land they were never going to play.
+ *
+ * Both sources are read here: the card's own printed retrace, and a
+ * permanent granting it to what is in the graveyard (Six, Deeproot
+ * Historian). A granted retrace is not on the card being cast, so it has
+ * to be looked up rather than read off the definition.
+ */
+function retracePayment(
+  state: GameState,
+  playerId: PlayerId,
+  cardId: CardInstanceId,
+): CardInstanceId | null {
+  const definition = state.definitions[state.cards[cardId]?.definitionId ?? ""];
+  if (!definition) {
+    return null;
+  }
+  if (!retraceReaches(state, playerId, cardId)) {
+    return null;
+  }
+  const hand = state.players.find((entry) => entry.id === playerId)?.zones.hand ?? [];
+  return hand.find((entry) => isLand(state, entry)) ?? null;
+}
+
 function escapeExilePayment(
   state: GameState,
   playerId: PlayerId,
@@ -301,6 +331,8 @@ function validateCast(
   altCost?: { life: number; exileIds: CardInstanceId[]; sacrificeId?: CardInstanceId };
   /** Underworld Breach: the OTHER graveyard cards escape exiles as a cost. */
   escapeExileIds?: CardInstanceId[];
+  /** Retrace (CR 702.81): the land discarded to cast this from the yard. */
+  retraceLandId?: CardInstanceId;
   /** Evoke (CR 702.74): the alternative cost was taken, so the permanent is
    * sacrificed as it enters. */
   viaEvoke?: boolean;
@@ -394,7 +426,15 @@ function validateCast(
       ? escapeExilePayment(state, playerId, cardId)
       : null;
   const viaEscape = escapeExileIds !== null;
-  const fromGraveyard = viaFlashback || viaGraveyardGate || viaEscape;
+  // Retrace: the land is discarded beside the printed cost, and the card
+  // goes back to the GRAVEYARD when it resolves rather than exiling —
+  // which is why it is not folded in with flashback.
+  const retraceLandId =
+    located?.zone === "graveyard" && located.playerId === playerId
+      ? retracePayment(state, playerId, cardId)
+      : null;
+  const viaRetrace = retraceLandId !== null;
+  const fromGraveyard = viaFlashback || viaGraveyardGate || viaEscape || viaRetrace;
   // Impulse exiles, and Emry's graveyard grant: listed cards may be cast
   // from where they are. Both zones, because the permission is about the
   // CARD rather than the zone it happens to be in.
@@ -562,6 +602,7 @@ function validateCast(
           flashbackLife,
           viaEvoke: true,
           ...(escapeExileIds && escapeExileIds.length > 0 ? { escapeExileIds } : {}),
+          ...(retraceLandId ? { retraceLandId } : {}),
         };
       }
     }
@@ -579,6 +620,7 @@ function validateCast(
       flashbackLife,
       altCost: { life: definition.altCost?.life ?? 0, ...payment },
       ...(escapeExileIds && escapeExileIds.length > 0 ? { escapeExileIds } : {}),
+      ...(retraceLandId ? { retraceLandId } : {}),
     };
   }
 
@@ -587,6 +629,7 @@ function validateCast(
     fromCommand,
     flashbackLife,
     ...(escapeExileIds && escapeExileIds.length > 0 ? { escapeExileIds } : {}),
+    ...(retraceLandId ? { retraceLandId } : {}),
     ...(flashbackSacrificeIds ? { flashbackSacrificeIds } : {}),
   };
 }
@@ -671,6 +714,7 @@ function applyCastSpell(
     flashbackLife,
     altCost,
     escapeExileIds,
+    retraceLandId,
     viaEvoke,
     flashbackSacrificeIds,
   } = validateCast(
@@ -986,6 +1030,11 @@ function applyCastSpell(
     if (altCost.sacrificeId) {
       paid = applyEffects(paid, [{ kind: "sacrifice", cardId: altCost.sacrificeId }]);
     }
+  }
+  // Retrace's land, discarded beside the other cost halves.
+  if (retraceLandId) {
+    paid = moveCard(paid, retraceLandId, "graveyard");
+    dispatchEventsInPlace(paid, [{ kind: "discards", cardId: retraceLandId, playerId }]);
   }
   // Underworld Breach: escape's other half. Exiled BEFORE the spell leaves
   // the graveyard, so the count it was chosen against still holds.

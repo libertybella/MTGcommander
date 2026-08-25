@@ -385,6 +385,27 @@ export type CardDefinition = {
    */
   evoke?: { manaCost: string };
   /**
+   * Retrace (CR 702.81): cast this from your graveyard by discarding a land
+   * card in addition to paying its other costs.
+   *
+   * NOT a flashback variant, and the difference is the whole card on
+   * Raven's Crime: a retraced spell goes back to the GRAVEYARD when it
+   * resolves, so it can be cast again for another land, where flashback
+   * exiles it after one use.
+   */
+  retrace?: boolean;
+  /**
+   * Six, Deeproot Historian: a permanent granting retrace to cards in its
+   * controller's graveyard. Looked up rather than read off the card being
+   * cast, the same way `grantsEscape` is.
+   */
+  grantsRetrace?: {
+    /** Six: "nonland permanent cards"; Deeproot Historian names subtypes. */
+    filter: SearchFilter;
+    /** Six: "during your turn". */
+    onlyYourTurn?: boolean;
+  };
+  /**
    * Echo (CR 702.29): at the controller's first upkeep after this came
    * under their control, sacrifice it unless they pay this cost. Only the
    * mana form is read; "Echo—Sacrifice a creature" would need a cost the
