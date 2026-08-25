@@ -2277,6 +2277,9 @@ more questions it can now ask:
   `TopOfLibraryGrant.payLifeInsteadOfMana` replaces the cost OUTRIGHT, the
   same way flashback does, and rides the same life-payment path. A cost
   that had merely been reduced would still refuse a caster with no mana.
+- **Transform** as an effect — Growing Rites of Itlimoc, Ojer Taq. "Transform
+  this permanent" swaps the instance to its `otherFaceId`, from a trigger
+  body or an activation. The apply path predates any clause reaching it.
 - **Abilities that work from the graveyard** (CR 113.6d) — Bloodghast,
   Silversmote Ghoul. `CardTrigger.fromGraveyard` gates the watcher's zone in
   both directions: a card in the graveyard fires only the triggers that say

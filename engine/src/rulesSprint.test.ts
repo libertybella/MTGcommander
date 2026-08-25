@@ -55644,3 +55644,170 @@ describe("wave 354: an ability that works from the graveyard", () => {
     ).toBe(10);
   });
 });
+
+describe("wave 355: a dig on arrival, and a permanent that turns over", () => {
+  const compile = (name: string, typeLine: string, oracleText: string, manaCost = "") =>
+    compileOracleCard({
+      oracleId: name.toLowerCase().replace(/[^a-z]+/g, "-"),
+      name,
+      manaCost,
+      typeLine,
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  const put = (game: GameState, ownerId: string, definition: CardDefinition) => {
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({
+      definitionId: definition.id,
+      ownerId,
+      zone: "battlefield",
+    });
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === ownerId)!.zones.battlefield.push(card.id);
+    card.summoningSick = false;
+    return card.id;
+  };
+
+  const rites = [
+    "When this enchantment enters, look at the top four cards of your library. You may reveal a creature card from among them and put it into your hand. Put the rest on the bottom of your library in a random order.",
+    "At the beginning of your end step, if you control four or more creatures, transform this enchantment.",
+  ].join("\n");
+
+  it("compiles the dig inside the arrival trigger", () => {
+    const compiled = compile(
+      "Growing Rites of Itlimoc",
+      "Legendary Enchantment",
+      rites,
+      "{2}{G}",
+    );
+    expect(compiled.notes).toEqual([]);
+    // The fuser only accepted an activation-cost prefix, so a permanent
+    // doing this on arrival split into three sentences and compiled none.
+    expect(compiled.definition.triggers[0]).toEqual({
+      event: "enter_battlefield",
+      effects: [
+        {
+          kind: "dig_top",
+          playerId: "controller",
+          count: 4,
+          filter: { types: ["creature"] },
+          destination: "hand",
+        },
+      ],
+      targetRequirements: [],
+    });
+  });
+
+  it("compiles the transform with its intervening if", () => {
+    const compiled = compile(
+      "Growing Rites of Itlimoc",
+      "Legendary Enchantment",
+      rites,
+      "{2}{G}",
+    );
+    expect(compiled.definition.triggers[1]).toEqual({
+      event: "end_step",
+      condition: { kind: "controls_count", what: "creature", atLeast: 4 },
+      effects: [{ kind: "transform", cardId: "self" }],
+      targetRequirements: [],
+    });
+  });
+
+  it("still reads the plain spell form of the dig", () => {
+    const compiled = compile(
+      "Commune with Nature",
+      "Sorcery",
+      "Look at the top five cards of your library. You may reveal a creature card from among them and put it into your hand. Put the rest on the bottom of your library in a random order.",
+      "{G}",
+    );
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.effects).toEqual([
+      {
+        kind: "dig_top",
+        playerId: "controller",
+        count: 5,
+        filter: { types: ["creature"] },
+        destination: "hand",
+      },
+    ]);
+  });
+
+  it("does not fuse a dig across a printed line", () => {
+    const compiled = compile(
+      "Probe",
+      "Enchantment",
+      [
+        "When this enchantment enters, look at the top four cards of your library.",
+        "You may reveal a creature card from among them and put it into your hand.",
+        "Put the rest on the bottom of your library in a random order.",
+      ].join("\n"),
+      "{2}{G}",
+    );
+    // Three separate abilities, not one dig. Fusing across a line boundary
+    // would invent a card nobody printed.
+    expect(compiled.notes.length).toBeGreaterThan(0);
+  });
+
+  it("compiles transform from an activation, with both riders", () => {
+    const compiled = compile(
+      "Temple of Civilization",
+      "Legendary Land",
+      "{T}: Add {W}.\n{2}{W}, {T}: Transform this land. Activate only if you attacked with three or more creatures this turn and only as a sorcery.",
+      "",
+    );
+    expect(compiled.notes).toEqual([]);
+    const ability = compiled.definition.activated[0];
+    expect(ability?.effects).toEqual([{ kind: "transform", cardId: "self" }]);
+    // Both halves of the compound rider land, not just the first.
+    expect(ability?.requiresAttackersThisTurn).toBe(3);
+    expect(ability?.timing).toBe("sorcery");
+  });
+
+  it("turns the permanent over at the table", () => {
+    const { game, p1 } = twoPlayers();
+    const back = createCardDefinition({
+      name: "Itlimoc, Cradle of the Sun",
+      typeLine: "Legendary Land",
+    });
+    const front = createCardDefinition({
+      name: "Growing Rites of Itlimoc",
+      typeLine: "Legendary Enchantment",
+      manaCost: "{2}{G}",
+    });
+    front.otherFaceId = back.id;
+    back.otherFaceId = front.id;
+    game.definitions[back.id] = back;
+    const cardId = put(game, p1.id, front);
+    const after = applyEffect(game, { kind: "transform", cardId });
+    expect(after.cards[cardId]?.definitionId).toBe(back.id);
+    expect(after.definitions[after.cards[cardId]!.definitionId]?.name).toBe(
+      "Itlimoc, Cradle of the Sun",
+    );
+  });
+
+  it("round trips the transform effect", () => {
+    const { game, p1 } = twoPlayers();
+    const definition = createCardDefinition({
+      name: "Wave 355 Rites",
+      typeLine: "Legendary Enchantment",
+      manaCost: "{2}{G}",
+      triggers: [
+        {
+          event: "end_step",
+          condition: { kind: "controls_count", what: "creature", atLeast: 4 },
+          effects: [{ kind: "transform", cardId: "self" }],
+          targetRequirements: [],
+        },
+      ],
+    });
+    put(game, p1.id, definition);
+    const round = parseGameState(serializeGameState(game));
+    expect(round.definitions[definition.id]?.triggers[0]?.effects).toEqual([
+      { kind: "transform", cardId: "self" },
+    ]);
+  });
+});

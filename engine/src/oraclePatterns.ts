@@ -5813,6 +5813,22 @@ function compileSimpleClauseInner(sentence: string): SimpleClause | null {
     };
   }
 
+  /**
+   * Growing Rites of Itlimoc, Ojer Taq: "Transform this permanent", from a
+   * trigger body or from an activation. The effect had an apply path, a
+   * binder and a serializer already; nothing had ever compiled into it.
+   */
+  if (
+    /^Transform (?:~|this (?:card|creature|enchantment|artifact|land|permanent|token))$/i.test(
+      sentence,
+    )
+  ) {
+    return {
+      targetRequirements: [],
+      effects: [{ kind: "transform", cardId: "self" }],
+    };
+  }
+
   // Talon Gates of Madara: ONE target phases out, where the clause above
   // takes any number. The noun phrase goes through the shared grammar, so
   // "up to one target creature" and "another target permanent you control"
@@ -9817,13 +9833,40 @@ function parseDigDescriptor(descriptor: string): SearchFilter | null {
  * clause compiler can parse: "Dig N for <descriptor> to <destination>".
  * Preserves any activation-cost prefix on the first sentence.
  */
+/**
+ * Ojer Taq: "Activate only if you attacked with three or more creatures this
+ * turn AND ONLY AS A SORCERY." Both riders already exist on their own, so
+ * the compound is split into the two the readers know rather than given a
+ * third parser that would have to repeat one of them.
+ */
+function splitActivationRidersInPlace(sentences: string[], lineStart: boolean[]): void {
+  for (let index = 0; index < sentences.length; index += 1) {
+    const compound = sentences[index]!.match(
+      /^(Activate only .+?) and only as (?:a|an) (sorcery|instant)$/i,
+    );
+    if (!compound?.[1] || !compound[2]) {
+      continue;
+    }
+    const timing = /^instant$/i.test(compound[2])
+      ? "Activate only as an instant"
+      : "Activate only as a sorcery";
+    sentences.splice(index, 1, compound[1], timing);
+    lineStart.splice(index + 1, 0, false);
+  }
+}
+
 function fuseDigSentencesInPlace(sentences: string[], lineStart: boolean[]): void {
   for (let index = 0; index + 2 < sentences.length; index += 1) {
     if (lineStart[index + 1] || lineStart[index + 2]) {
       continue;
     }
+    // The prefix is an activation cost ("{2}, {T}: Look at …") or a TRIGGER
+    // HEAD ("When this enchantment enters, look at …"). Without the second,
+    // the fuser ran over every printed spell and skipped every permanent
+    // that does the same thing on arrival — the dig sentences then split
+    // three ways and none of them compiled.
     const look = sentences[index]!.match(
-      /^(.*: )?(Look at|Reveal) the top (two|three|four|five|six|seven|eight|\d+) cards of your library$/i,
+      /^(.*: |(?:When|Whenever|At)\b.*?, )?(Look at|Reveal) the top (two|three|four|five|six|seven|eight|\d+) cards of your library$/i,
     );
     if (!look?.[3]) {
       continue;
@@ -13736,6 +13779,7 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
   fuseMoxDiamondInPlace(sentences, lineStart);
   fuseMaySacrificeInPlace(sentences, lineStart);
   fuseNecroTopInPlace(sentences, lineStart);
+  splitActivationRidersInPlace(sentences, lineStart);
   // A printed line is an ability, so these mark where the current line's
   // output begins. Riders that reach BACKWARD — the regeneration denial
   // below — use them to stop at the line they were printed on.
