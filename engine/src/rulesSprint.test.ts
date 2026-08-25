@@ -57066,3 +57066,216 @@ describe("wave 361: a copy of the enchanted thing, and a win counted on names", 
     });
   });
 });
+
+describe("wave 362: a graveyard watched from across the table", () => {
+  const compile = (name: string, typeLine: string, oracleText: string, manaCost = "") =>
+    compileOracleCard({
+      oracleId: name.toLowerCase().replace(/[^a-z]+/g, "-"),
+      name,
+      manaCost,
+      typeLine,
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  const put = (
+    game: GameState,
+    ownerId: string,
+    definition: CardDefinition,
+    zone: "battlefield" | "hand" = "battlefield",
+  ) => {
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({ definitionId: definition.id, ownerId, zone });
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === ownerId)!.zones[zone].push(card.id);
+    if (zone === "battlefield") {
+      card.summoningSick = false;
+    }
+    return card.id;
+  };
+
+  const ascensionText = [
+    "At the beginning of each end step, if an opponent lost 2 or more life this turn, you may put a quest counter on Bloodchief Ascension.",
+    "Whenever a card is put into an opponent's graveyard from anywhere, if Bloodchief Ascension has three or more quest counters on it, you may have that player lose 2 life. If you do, you gain 2 life.",
+  ].join("\n");
+
+  it("compiles both halves of Bloodchief Ascension", () => {
+    const compiled = compile(
+      "Bloodchief Ascension",
+      "Enchantment",
+      ascensionText,
+      "{B}",
+    );
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.triggers[0]).toEqual({
+      event: "end_step",
+      eachPlayersStep: true,
+      condition: { kind: "opponent_lost_life_this_turn", atLeast: 2 },
+      effects: [{ kind: "add_counter", cardId: "self", counter: "quest", amount: 1 }],
+      targetRequirements: [],
+    });
+    expect(compiled.definition.triggers[1]).toEqual({
+      event: "put_into_graveyard",
+      watch: "opponents",
+      condition: {
+        kind: "self_counter_count",
+        counter: "quest",
+        comparison: "at_least",
+        count: 3,
+      },
+      // "If you do" joins the ability it follows: the engine auto-takes the
+      // "may", so the antecedent always holds.
+      effects: [
+        { kind: "lose_life", playerId: { type: "subject_player" }, amount: 2 },
+        { kind: "gain_life", playerId: "controller", amount: 2 },
+      ],
+      targetRequirements: [],
+    });
+  });
+
+  const ascension = () =>
+    createCardDefinition({
+      name: "Bloodchief Ascension",
+      typeLine: "Enchantment",
+      manaCost: "{B}",
+      triggers: [
+        {
+          event: "put_into_graveyard",
+          watch: "opponents",
+          condition: {
+            kind: "self_counter_count",
+            counter: "quest",
+            comparison: "at_least",
+            count: 3,
+          },
+          effects: [
+            { kind: "lose_life", playerId: { type: "subject_player" }, amount: 2 },
+            { kind: "gain_life", playerId: "controller", amount: 2 },
+          ],
+          targetRequirements: [],
+        },
+      ],
+    });
+
+  const bear = (name = "Bear") =>
+    createCardDefinition({
+      name,
+      typeLine: "Creature — Bear",
+      manaCost: "{1}{G}",
+      power: 2,
+      toughness: 2,
+    });
+
+  it("watches an opponent's graveyard and not its own controller's", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const ascensionId = put(game, p1.id, ascension());
+    game.cards[ascensionId]!.counters["quest"] = 3;
+    const mineId = put(game, p1.id, bear("Mine"));
+    const theirsId = put(game, p2.id, bear("Theirs"));
+    expect(moveCard(game, mineId, "graveyard").stack).toHaveLength(0);
+    expect(moveCard(game, theirsId, "graveyard").stack.length).toBeGreaterThan(0);
+  });
+
+  it("counts a creature dying, not only a mill", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const ascensionId = put(game, p1.id, ascension());
+    game.cards[ascensionId]!.counters["quest"] = 3;
+    const theirsId = put(game, p2.id, bear("Theirs"));
+    // Syr Konrad's event is "from anywhere BUT the battlefield" — reading
+    // this card through that one would miss every death.
+    const dead = moveCard(game, theirsId, "graveyard");
+    expect(dead.stack.length).toBeGreaterThan(0);
+    const resolved = resolveTopOfStack(dead);
+    const before = game.players.find((entry) => entry.id === p2.id)!.life;
+    expect(resolved.players.find((entry) => entry.id === p2.id)!.life).toBe(before - 2);
+    expect(resolved.players.find((entry) => entry.id === p1.id)!.life).toBe(
+      game.players.find((entry) => entry.id === p1.id)!.life + 2,
+    );
+  });
+
+  it("stays quiet below three quest counters", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const ascensionId = put(game, p1.id, ascension());
+    game.cards[ascensionId]!.counters["quest"] = 2;
+    const theirsId = put(game, p2.id, bear("Theirs"));
+    expect(moveCard(game, theirsId, "graveyard").stack).toHaveLength(0);
+  });
+
+  it("reads the quest counter on ANY opponent's card reaching a graveyard", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const ascensionId = put(game, p1.id, ascension());
+    game.cards[ascensionId]!.counters["quest"] = 3;
+    const heldId = put(game, p2.id, bear("Held"), "hand");
+    // Discarded, not killed — the same event, which is the point of
+    // "from anywhere".
+    expect(moveCard(game, heldId, "graveyard").stack.length).toBeGreaterThan(0);
+  });
+
+  // ---- The condition on its own -------------------------------------------
+
+  const counterTrigger = (): CardDefinition =>
+    createCardDefinition({
+      name: "Quest Watcher",
+      typeLine: "Enchantment",
+      manaCost: "{B}",
+      triggers: [
+        {
+          event: "end_step",
+          eachPlayersStep: true,
+          condition: { kind: "opponent_lost_life_this_turn", atLeast: 2 },
+          effects: [{ kind: "add_counter", cardId: "self", counter: "quest", amount: 1 }],
+          targetRequirements: [],
+        },
+      ],
+    });
+
+  it("asks whether an OPPONENT lost the life, not the controller", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const watcherId = put(game, p1.id, counterTrigger());
+    const trigger = game.definitions[game.cards[watcherId]!.definitionId]!.triggers[0]!;
+    expect(triggerConditionHolds(game, p1.id, trigger.condition, undefined, watcherId)).toBe(
+      false,
+    );
+    game.lifeLostByPlayerThisTurn = { [p1.id]: 5 };
+    // The controller bleeding is not the question.
+    expect(triggerConditionHolds(game, p1.id, trigger.condition, undefined, watcherId)).toBe(
+      false,
+    );
+    game.lifeLostByPlayerThisTurn = { [p2.id]: 2 };
+    expect(triggerConditionHolds(game, p1.id, trigger.condition, undefined, watcherId)).toBe(
+      true,
+    );
+  });
+
+  it("needs the whole bar, not a scratch", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const watcherId = put(game, p1.id, counterTrigger());
+    const trigger = game.definitions[game.cards[watcherId]!.definitionId]!.triggers[0]!;
+    game.lifeLostByPlayerThisTurn = { [p2.id]: 1 };
+    expect(triggerConditionHolds(game, p1.id, trigger.condition, undefined, watcherId)).toBe(
+      false,
+    );
+  });
+
+  it("round trips both new pieces", () => {
+    const { game, p1 } = twoPlayers();
+    const definition = ascension();
+    definition.triggers.push({
+      event: "end_step",
+      eachPlayersStep: true,
+      condition: { kind: "opponent_lost_life_this_turn", atLeast: 2 },
+      effects: [{ kind: "add_counter", cardId: "self", counter: "quest", amount: 1 }],
+      targetRequirements: [],
+    });
+    put(game, p1.id, definition);
+    const round = parseGameState(serializeGameState(game));
+    expect(round.definitions[definition.id]?.triggers[0]?.watch).toBe("opponents");
+    expect(round.definitions[definition.id]?.triggers[1]?.condition).toEqual({
+      kind: "opponent_lost_life_this_turn",
+      atLeast: 2,
+    });
+  });
+});

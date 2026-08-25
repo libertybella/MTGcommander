@@ -5222,7 +5222,10 @@ function parseTriggerCondition(value: unknown, label: string): TriggerCondition 
       if (conditionKind === "drew_cards_this_turn") {
         return { kind: conditionKind, moreThan: expectNumber(value.moreThan, `${label}.moreThan`) };
       }
-      if (conditionKind === "gained_life_this_turn") {
+      if (
+        conditionKind === "gained_life_this_turn" ||
+        conditionKind === "opponent_lost_life_this_turn"
+      ) {
         return {
           kind: conditionKind,
           atLeast: expectNumber(value.atLeast, `${label}.atLeast`),

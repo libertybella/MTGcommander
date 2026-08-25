@@ -3868,6 +3868,13 @@ export type TriggerCondition =
    * actually gained, so a doubler's extra half counts — CR 118.3 makes the
    * replaced amount the amount gained. */
   | { kind: "gained_life_this_turn"; atLeast: number }
+  /**
+   * Bloodchief Ascension: "if an OPPONENT lost 2 or more life this turn" —
+   * any one opponent, off the same per-player tally Wound Reflection keeps.
+   * Not the change in a life total: losing 2 and gaining 2 back still
+   * counts as having lost 2.
+   */
+  | { kind: "opponent_lost_life_this_turn"; atLeast: number }
   /** Bennie Bracks: "if you created a token this turn". */
   | { kind: "created_token_this_turn" }
   /**

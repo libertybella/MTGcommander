@@ -194,6 +194,15 @@ export function triggerConditionHolds(
   if (condition.kind === "gained_life_this_turn") {
     return (state.lifeGainedByPlayerThisTurn?.[controllerId] ?? 0) >= condition.atLeast;
   }
+  if (condition.kind === "opponent_lost_life_this_turn") {
+    const lost = state.lifeLostByPlayerThisTurn ?? {};
+    return state.players.some(
+      (player) =>
+        player.id !== controllerId &&
+        !player.lost &&
+        (lost[player.id] ?? 0) >= condition.atLeast,
+    );
+  }
   if (condition.kind === "controls_commander") {
     const holder = state.players.find((player) => player.id === controllerId);
     return (holder?.commander.commanderIds ?? []).some(
@@ -1007,9 +1016,21 @@ function triggerMatchesEvent(
     if (trigger.event !== "put_into_graveyard") {
       return false;
     }
-    return (trigger.watch ?? "self") === "self"
-      ? event.cardId === watcher.id
-      : subjectMatchesFilter(state, event.cardId, trigger.subjectFilter, watcher);
+    const graveyardWatch = trigger.watch ?? "self";
+    if (graveyardWatch === "self") {
+      return event.cardId === watcher.id;
+    }
+    // Bloodchief Ascension: "into an OPPONENT'S graveyard". The card is
+    // already there, so the graveyard it reached is its owner's — which is
+    // the question the card asks, not who controlled it last.
+    const ownerId = state.cards[event.cardId]?.ownerId;
+    if (graveyardWatch === "opponents" && ownerId === watcher.controllerId) {
+      return false;
+    }
+    if (graveyardWatch === "controlled" && ownerId !== watcher.controllerId) {
+      return false;
+    }
+    return subjectMatchesFilter(state, event.cardId, trigger.subjectFilter, watcher);
   }
   if (trigger.event === "put_into_graveyard") {
     return false;

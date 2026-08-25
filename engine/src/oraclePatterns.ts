@@ -1665,6 +1665,17 @@ function parseEffectCondition(phrase: string): TriggerCondition | null {
       return { kind: "gained_life_this_turn", atLeast };
     }
   }
+  // Bloodchief Ascension: the same question about somebody else, and ANY
+  // one of them satisfies it.
+  const opponentLostLife = text.match(
+    /^an opponent lost (?:([\w-]+) or more )?life this turn$/i,
+  );
+  if (opponentLostLife) {
+    const atLeast = opponentLostLife[1] ? parseCount(opponentLostLife[1]) : 1;
+    if (atLeast) {
+      return { kind: "opponent_lost_life_this_turn", atLeast };
+    }
+  }
   if (/^you created a token this turn$/i.test(text)) {
     return { kind: "created_token_this_turn" };
   }
@@ -10797,6 +10808,14 @@ function parseTriggerHead(head: string): TriggerHead | null {
   if (/^When you cast this spell$/i.test(text)) {
     return { event: "cast_spell", watch: "self", onSelfCast: true };
   }
+  // Bloodchief Ascension. "From anywhere" is the wave-359 superset, not Syr
+  // Konrad's "from anywhere but the battlefield" — a creature of theirs
+  // dying counts, and that is most of what the card does.
+  if (
+    /^Whenever a card is put into an opponent's graveyard from anywhere$/i.test(text)
+  ) {
+    return { event: "put_into_graveyard", watch: "opponents" };
+  }
   if (/^Whenever you cast or copy an instant or sorcery spell$/i.test(text)) {
     return {
       event: "cast_spell",
@@ -18045,6 +18064,27 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
       }
       if (lastTrigger) {
         lastTrigger.effects.push({ kind: "extra_combat" });
+        continue;
+      }
+    }
+
+    /**
+     * "If you do, <clause>" following a "you may" on the SAME printed line.
+     * The engine auto-takes optional effects, so the antecedent always
+     * holds and the rider simply joins the ability it follows — a
+     * DOCUMENTED approximation, and the only one available while "may" is
+     * an auto-take. It rides the last trigger or activated ability, so it
+     * lands where the "may" did rather than in `definition.effects`, where
+     * a permanent would never run it.
+     */
+    const ifYouDo = index > 0 && !lineStart[index] ? sentence.match(/^If you do, (.+)$/i) : null;
+    if (ifYouDo?.[1]) {
+      const lastTrigger = result.triggers[result.triggers.length - 1];
+      const lastActivated = result.activated[result.activated.length - 1];
+      const host = lastTrigger?.effects ?? lastActivated?.effects ?? null;
+      const rider = host ? compileSimpleClause(ifYouDo[1]) : null;
+      if (host && rider && !rider.leftover && rider.targetRequirements.length === 0) {
+        host.push(...rider.effects);
         continue;
       }
     }

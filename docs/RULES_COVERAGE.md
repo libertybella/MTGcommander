@@ -2277,6 +2277,12 @@ more questions it can now ask:
   `TopOfLibraryGrant.payLifeInsteadOfMana` replaces the cost OUTRIGHT, the
   same way flashback does, and rides the same life-payment path. A cost
   that had merely been reduced would still refuse a caster with no mana.
+- **"If you do, …" after a "you may"** — the rider joins the trigger or
+  activated ability it follows, rather than stranding in `definition.effects`
+  where a permanent never runs it. A documented approximation: optional
+  effects are auto-taken, so the antecedent always holds. A "may" the engine
+  declines for its own reasons (a draw that would deck you) still runs the
+  rider.
 - **A win counted on shared names** — Mechanized Production.
   `win_game.ifSameNameCount` counts the largest group of same-named
   permanents of a type the player controls, and is evaluated at APPLY: the
