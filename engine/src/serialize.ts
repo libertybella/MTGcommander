@@ -3577,6 +3577,7 @@ const TARGET_KINDS: Record<TargetKind, true> = {
   spell_or_permanent: true,
   spell_or_ability: true,
   triggered_ability_you_control: true,
+  instant_sorcery_or_ability: true,
 };
 
 function parseTargetRequirement(value: unknown, label: string): TargetRequirement {

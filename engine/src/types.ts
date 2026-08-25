@@ -3011,7 +3011,14 @@ export type TargetKind =
    */
   | "spell_or_ability"
   /** Strionic Resonator: "target triggered ability you control". */
-  | "triggered_ability_you_control";
+  | "triggered_ability_you_control"
+  /**
+   * Return the Favor: "target instant spell, sorcery spell, activated
+   * ability, or triggered ability". `spell_or_ability` is one step too
+   * wide — it would let the copy take a creature spell, which the card
+   * does not offer.
+   */
+  | "instant_sorcery_or_ability";
 
 export type TargetRequirement = {
   kind: TargetKind;

@@ -69283,3 +69283,255 @@ describe("wave 414: Necromancy", () => {
     expect(round.cards[necroId]?.sacrificeAtNextCleanup).toBe(true);
   });
 });
+
+describe("wave 415: Return the Favor", () => {
+  const compile = (name: string, typeLine: string, oracleText: string, manaCost = "") =>
+    compileOracleCard({
+      oracleId: name.toLowerCase().replace(/[^a-z]+/g, "-"),
+      name,
+      manaCost,
+      typeLine,
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  const favorText =
+    "Spree (Choose one or more additional costs.)\n+ {1} — Copy target instant spell, sorcery spell, activated ability, or triggered ability. You may choose new targets for the copy.\n+ {1} — Change the target of target spell or ability with a single target.";
+
+  it("compiles both Spree modes, riders and all", () => {
+    const compiled = compile("Return the Favor", "Instant", favorText, "{U}");
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.modeChoice).toEqual({ min: 1, max: 2 });
+    // The copy mode's bullet runs to a second sentence on the same printed
+    // line, which the Spree reader used to refuse outright.
+    expect(compiled.definition.modes?.[0]).toMatchObject({
+      extraCost: "{1}",
+      effects: [{ kind: "copy_spell", target: { type: "chosen", index: 0 } }],
+      targetRequirements: [{ kind: "instant_sorcery_or_ability" }],
+    });
+    expect(compiled.definition.modes?.[1]).toMatchObject({
+      extraCost: "{1}",
+      effects: [{ kind: "retarget", target: { type: "chosen", index: 0 } }],
+    });
+  });
+
+  it("leaves the narrower copy target where it was", () => {
+    const compiled = compile(
+      "Plain Copy",
+      "Instant",
+      "Copy target instant or sorcery spell. You may choose new targets for the copy.",
+      "{1}{U}",
+    );
+    // "Instant or sorcery spell" reaches no ability, and must not start to.
+    expect(compiled.definition.targetRequirements).toEqual([
+      { kind: "instant_or_sorcery_spell" },
+    ]);
+  });
+
+  // ---- What the wider target admits --------------------------------------
+
+  const put = (
+    game: GameState,
+    ownerId: string,
+    definition: CardDefinition,
+    zone: "hand" | "battlefield" = "hand",
+  ) => {
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({ definitionId: definition.id, ownerId, zone });
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === ownerId)!.zones[zone].push(card.id);
+    if (zone === "battlefield") {
+      card.summoningSick = false;
+    }
+    return card.id;
+  };
+
+  const bolt = () =>
+    createCardDefinition({
+      name: "Lightning Bolt",
+      typeLine: "Instant",
+      manaCost: "{R}",
+      targetRequirements: [{ kind: "creature" }],
+      effects: [
+        { kind: "deal_damage", sourceId: "self", target: { type: "chosen", index: 0 }, amount: 3 },
+      ],
+    });
+
+  const bear = (name: string) =>
+    createCardDefinition({
+      name,
+      typeLine: "Creature — Bear",
+      manaCost: "{1}{G}",
+      power: 2,
+      toughness: 2,
+    });
+
+  const stackSpell = (game: GameState, playerId: string, cardId: string) => {
+    const id = "stack-object-under-test";
+    game.stack.push({
+      id,
+      sourceId: cardId,
+      controllerId: playerId,
+      kind: "spell",
+      targets: [],
+    });
+    game.cards[cardId]!.zone = "stack";
+    return id;
+  };
+
+  const stackAbility = (game: GameState, playerId: string, cardId: string) => {
+    const id = "stack-ability-under-test";
+    game.stack.push({
+      id,
+      sourceId: cardId,
+      controllerId: playerId,
+      kind: "ability",
+      targets: [],
+    });
+    return id;
+  };
+
+  const requirement: TargetRequirement = { kind: "instant_sorcery_or_ability" };
+
+  it("takes an instant on the stack", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const boltId = put(game, p1.id, bolt());
+    const stackId = stackSpell(game, p1.id, boltId);
+    expect(
+      isChosenTargetLegal(game, requirement, { type: "spell", stackObjectId: stackId }, p1.id),
+    ).toBe(true);
+  });
+
+  it("takes an ability on the stack", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const sourceId = put(game, p1.id, bear("Some Permanent"), "battlefield");
+    const stackId = stackAbility(game, p1.id, sourceId);
+    // The whole reason the card names four things: an ability is a legal
+    // copy target for it and not for an ordinary Fork.
+    expect(
+      isChosenTargetLegal(game, requirement, { type: "spell", stackObjectId: stackId }, p1.id),
+    ).toBe(true);
+  });
+
+  it("refuses a creature spell", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const bearId = put(game, p1.id, bear("A Bear"));
+    const stackId = stackSpell(game, p1.id, bearId);
+    // `spell_or_ability` would have taken this, and the card does not
+    // offer it.
+    expect(
+      isChosenTargetLegal(game, requirement, { type: "spell", stackObjectId: stackId }, p1.id),
+    ).toBe(false);
+  });
+
+  it("offers stack objects rather than players and creatures", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const boltId = put(game, p1.id, bolt());
+    const stackId = stackSpell(game, p1.id, boltId);
+    put(game, p1.id, bear("On The Board"), "battlefield");
+    const choices = legalChoicesForRequirement(game, requirement, p1.id);
+    expect(choices).toEqual([{ type: "spell", stackObjectId: stackId }]);
+  });
+
+  // ---- Casting it ---------------------------------------------------------
+
+  const favor = () =>
+    createCardDefinition({
+      name: "Return the Favor",
+      typeLine: "Instant",
+      manaCost: "{U}",
+      modeChoice: { min: 1, max: 2 },
+      modes: [
+        {
+          label: "copy",
+          extraCost: "{1}",
+          effects: [{ kind: "copy_spell", target: { type: "chosen", index: 0 } }],
+          targetRequirements: [{ kind: "instant_sorcery_or_ability" }],
+        },
+        {
+          label: "retarget",
+          extraCost: "{1}",
+          effects: [{ kind: "retarget", target: { type: "chosen", index: 0 } }],
+          targetRequirements: [{ kind: "spell_or_ability" }],
+        },
+      ],
+    });
+
+  const castFavor = (
+    game: GameState,
+    playerId: string,
+    favorId: string,
+    modeIndexes: number[],
+    stackId: string,
+    mana: number,
+  ) => {
+    game.turn.activePlayerId = playerId;
+    game.turn.phase = "precombatMain";
+    game.turn.step = "precombatMain";
+    game.priorityPlayerId = playerId;
+    game.players.find((entry) => entry.id === playerId)!.mana.U = mana;
+    return applyAction(game, {
+      kind: "cast_spell",
+      playerId,
+      cardId: favorId,
+      modeIndexes,
+      targets: modeIndexes.map(() => ({ type: "spell" as const, stackObjectId: stackId })),
+    });
+  };
+
+  it("charges the printed cost plus one mode", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const favorId = put(game, p1.id, favor());
+    const boltId = put(game, p1.id, bolt());
+    const stackId = stackSpell(game, p1.id, boltId);
+    const after = castFavor(game, p1.id, favorId, [0], stackId, 2);
+    // {U} printed plus {1} for the mode.
+    expect(after.players.find((entry) => entry.id === p1.id)!.mana.U).toBe(0);
+  });
+
+  it("charges for both modes when both are chosen", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const favorId = put(game, p1.id, favor());
+    const boltId = put(game, p1.id, bolt());
+    const stackId = stackSpell(game, p1.id, boltId);
+    // Two mana is enough for one mode and not for two.
+    expect(() => castFavor(game, p1.id, favorId, [0, 1], stackId, 2)).toThrow();
+    const after = castFavor(game, p1.id, favorId, [0, 1], stackId, 3);
+    expect(after.players.find((entry) => entry.id === p1.id)!.mana.U).toBe(0);
+  });
+
+  it("copies the spell it was aimed at", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const favorId = put(game, p1.id, favor());
+    const boltId = put(game, p1.id, bolt());
+    const stackId = stackSpell(game, p1.id, boltId);
+    const after = resolveTopOfStack(castFavor(game, p1.id, favorId, [0], stackId, 2));
+    // The original plus its copy.
+    expect(after.stack.filter((entry) => entry.sourceId === boltId)).toHaveLength(2);
+  });
+
+  it("round trips the modes and the wider target", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const definition = favor();
+    put(game, p1.id, definition);
+    const round = parseGameState(serializeGameState(game));
+    // Dropped on the wire the modes cost nothing and the copy cannot see
+    // an ability, which is most of the card.
+    expect(round.definitions[definition.id]?.modeChoice).toEqual({ min: 1, max: 2 });
+    expect(round.definitions[definition.id]?.modes?.[0]?.extraCost).toBe("{1}");
+    expect(round.definitions[definition.id]?.modes?.[0]?.targetRequirements).toEqual([
+      { kind: "instant_sorcery_or_ability" },
+    ]);
+  });
+});

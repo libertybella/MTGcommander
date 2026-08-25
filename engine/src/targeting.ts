@@ -753,6 +753,22 @@ export function isChosenTargetLegal(
       !isCreatureSpell(state, target.stackObjectId)
     );
   }
+  if (requirement.kind === "instant_sorcery_or_ability") {
+    if (target.type !== "spell" || !isLegalStackTarget(state, target.stackObjectId)) {
+      return false;
+    }
+    const entry = state.stack.find((object) => object.id === target.stackObjectId);
+    if (!entry) {
+      return false;
+    }
+    // An ability on the stack is always fair game; a SPELL has to be an
+    // instant or a sorcery, which is the half `spell_or_ability` does not
+    // narrow.
+    if (entry.kind !== "spell") {
+      return true;
+    }
+    return isInstantOrSorcerySpell(state, target.stackObjectId);
+  }
   if (requirement.kind === "spell_or_ability") {
     if (target.type !== "spell" || !isLegalStackTarget(state, target.stackObjectId)) {
       return false;
@@ -1035,6 +1051,17 @@ export function legalChoicesForRequirement(
   ) {
     return state.stack
       .filter((entry) => entry.kind === "spell")
+      .map((entry) => ({ type: "spell" as const, stackObjectId: entry.id }))
+      .filter((choice) => isChosenTargetLegal(state, requirement, choice, casterId));
+  }
+  // Return the Favor and Spellskite: the pool is every stack object, not
+  // only the spells — an ability is exactly what these are printed to
+  // reach, and the legality check narrows from there.
+  if (
+    requirement.kind === "spell_or_ability" ||
+    requirement.kind === "instant_sorcery_or_ability"
+  ) {
+    return state.stack
       .map((entry) => ({ type: "spell" as const, stackObjectId: entry.id }))
       .filter((choice) => isChosenTargetLegal(state, requirement, choice, casterId));
   }

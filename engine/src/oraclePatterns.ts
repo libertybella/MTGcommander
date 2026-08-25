@@ -7774,6 +7774,20 @@ function compileSimpleClauseInner(sentence: string): SimpleClause | null {
     };
   }
 
+  // Return the Favor: a copy that reaches an ability as well as a spell,
+  // but only the two spell types it lists — `spell_or_ability` would also
+  // take a creature spell, which the card does not offer.
+  if (
+    /^copy target instant spell, sorcery spell, activated ability, or triggered ability$/i.test(
+      sentence,
+    )
+  ) {
+    return {
+      targetRequirements: [{ kind: "instant_sorcery_or_ability" }],
+      effects: [{ kind: "copy_spell", target: { type: "chosen", index: 0 } }],
+    };
+  }
+
   // Strionic Resonator: the same copy, aimed at an ABILITY on the stack.
   if (/^copy target triggered ability you control$/i.test(sentence)) {
     return {
@@ -16943,23 +16957,41 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
         if (!bullet?.[1] || !bullet[2]) {
           break;
         }
-        // Multi-sentence bullets (riders on the same line) are not supported.
-        if (cursor + 1 < sentences.length && !lineStart[cursor + 1]) {
-          failed = true;
-          break;
-        }
         const clause = compileSimpleClause(bullet[2].trim());
         if (!clause || clause.leftover) {
           failed = true;
           break;
         }
+        // A bullet may carry riders on the same printed line — Return the
+        // Favor's copy mode ends "You may choose new targets for the copy."
+        // Each has to compile in its own right; one that does not fails the
+        // whole card, because a Spree missing an option is a card that
+        // quietly offers less than it prints.
+        const modeEffects = [...clause.effects];
+        const modeRequirements = [...clause.targetRequirements];
+        let riderLabel = "";
+        let riderCursor = cursor + 1;
+        while (riderCursor < sentences.length && !lineStart[riderCursor]) {
+          const rider = compileSimpleClause(sentences[riderCursor]!.trim());
+          if (!rider || rider.leftover) {
+            failed = true;
+            break;
+          }
+          modeEffects.push(...rider.effects);
+          modeRequirements.push(...rider.targetRequirements);
+          riderLabel += `. ${sentences[riderCursor]!.trim()}`;
+          riderCursor += 1;
+        }
+        if (failed) {
+          break;
+        }
         spreeModes.push({
-          label: `+ ${bullet[1]} — ${bullet[2].trim()}`,
+          label: `+ ${bullet[1]} — ${bullet[2].trim()}${riderLabel}`,
           extraCost: bullet[1],
-          effects: clause.effects,
-          targetRequirements: clause.targetRequirements,
+          effects: modeEffects,
+          targetRequirements: modeRequirements,
         });
-        cursor += 1;
+        cursor = riderCursor;
       }
       if (!failed && spreeModes.length >= 2) {
         result.modes = spreeModes;
