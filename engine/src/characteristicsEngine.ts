@@ -75,6 +75,13 @@ export type ComputedCard = {
   cantBeBlocked: boolean;
   /** Printed protection plus layer-6 grants (Akroma's Will). */
   protectionFrom: ProtectionFrom;
+  /**
+   * Printed "Hexproof from black" plus layer-6 grants. Kept apart from
+   * `protectionFrom` because the two are not the same shield: hexproof
+   * from a colour stops that colour TARGETING this permanent and nothing
+   * else — no damage prevention, no blocking restriction, no Aura ban.
+   */
+  hexproofFrom: Color[];
   /** Printed ward plus layer-6 grants (Lavaspur Boots); 0 means none. */
   ward: number;
   /** Ward paid in life (CR 702.21b), taxed separately from `ward`. */
@@ -107,6 +114,7 @@ const LAYER_OF: Record<ContinuousEffectData["kind"], number> = {
   set_colors: 5,
   grant_keyword: 6,
   grant_protection: 6,
+  grant_hexproof_from: 6,
   grant_ward: 6,
   grant_ward_life: 6,
   remove_keywords: 6,
@@ -186,6 +194,7 @@ function baseComputed(state: GameState, card: CardInstance): ComputedCard {
       cantBlock: false,
       cantBeBlocked: false,
       protectionFrom: {},
+      hexproofFrom: [],
       ward: 0,
       wardLife: 0,
       goadedBy: [...(card.goadedBy ?? [])],
@@ -264,6 +273,7 @@ function baseComputed(state: GameState, card: CardInstance): ComputedCard {
     cantBlock: false,
     cantBeBlocked: false,
     protectionFrom: { ...(definition?.protectionFrom ?? {}) },
+    hexproofFrom: [...(definition?.hexproofFrom ?? [])],
     ward: definition?.ward ?? 0,
     wardLife: definition?.wardLife ?? 0,
     // The instance's own record is the base; statics add to it in layer 6.
@@ -981,6 +991,15 @@ function applyInstance(
       case "grant_keyword":
         if (!computed.keywords.includes(effect.keyword)) {
           computed.keywords.push(effect.keyword);
+        }
+        break;
+      case "grant_hexproof_from":
+        // Merged as a set, not assigned: two grants of different colours
+        // are two shields, and a last-writer-wins assignment would drop one.
+        for (const color of effect.colors) {
+          if (!computed.hexproofFrom.includes(color)) {
+            computed.hexproofFrom.push(color);
+          }
         }
         break;
       case "grant_protection": {

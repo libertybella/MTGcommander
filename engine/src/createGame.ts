@@ -128,6 +128,7 @@ export function createCardDefinition(
         | "wardLife"
         | "modes"
         | "protectionFrom"
+        | "hexproofFrom"
         | "enchant"
         | "reanimateOnEnter"
         | "copySelfWhenCastFromGraveyard"
@@ -424,6 +425,9 @@ export function createCardDefinition(
     imageUrl: input.imageUrl ?? "",
     ...(input.ward && input.ward > 0 ? { ward: input.ward } : {}),
     ...(input.wardLife && input.wardLife > 0 ? { wardLife: input.wardLife } : {}),
+    ...(input.hexproofFrom && input.hexproofFrom.length > 0
+      ? { hexproofFrom: [...input.hexproofFrom] }
+      : {}),
     ...(input.protectionFrom && Object.keys(input.protectionFrom).length > 0
       ? { protectionFrom: copyProtection(input.protectionFrom) }
       : {}),

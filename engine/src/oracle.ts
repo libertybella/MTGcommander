@@ -198,6 +198,9 @@ function compileOneFace(card: OracleCard, definitionId: string): OracleCompileRe
     ...(compiled.protectionFrom && Object.keys(compiled.protectionFrom).length > 0
       ? { protectionFrom: compiled.protectionFrom }
       : {}),
+    ...(compiled.hexproofFrom && compiled.hexproofFrom.length > 0
+      ? { hexproofFrom: compiled.hexproofFrom }
+      : {}),
     ...(compiled.enchant ? { enchant: compiled.enchant } : {}),
     ...(compiled.grantsEscape ? { grantsEscape: compiled.grantsEscape } : {}),
     ...(compiled.reanimateOnEnter ? { reanimateOnEnter: true } : {}),

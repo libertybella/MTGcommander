@@ -58,6 +58,7 @@ export type CompiledOracleText = {
   wardLife?: number;
   modes?: SpellMode[];
   protectionFrom?: ProtectionFrom;
+  hexproofFrom?: Color[];
   /** Taken from the definition so the two cannot drift apart. */
   enchant?: CardDefinition["enchant"];
   reanimateOnEnter?: boolean;
@@ -589,7 +590,9 @@ export function splitOracleSentencesByLine(card: OracleCard): string[][] {
  * keyword — it carries a quality, so it comes back here to be stored.
  * Returns null when any conjunct is neither, which keeps the line a miss.
  */
-function readKeywordLine(sentence: string): { protection: ProtectionFrom | null } | null {
+function readKeywordLine(
+  sentence: string,
+): { protection: ProtectionFrom | null; hexproofFrom: Color[] } | null {
   // Case is preserved for the protection parts: "from Humans" is a subtype
   // and "from creatures" is a card type, told apart by capitalisation alone.
   const parts = sentence
@@ -600,8 +603,22 @@ function readKeywordLine(sentence: string): { protection: ProtectionFrom | null 
     return null;
   }
   let protection: ProtectionFrom | null = null;
+  const hexproofFrom: Color[] = [];
   for (const part of parts) {
     if (KEYWORD_LINE.has(part.toLowerCase())) {
+      continue;
+    }
+    // Sporeweb Weaver prints "Reach, hexproof from blue" as one line, so
+    // the colour shield has to be a member here and not only a line of its
+    // own — otherwise the reach is lost with it.
+    const hexproofPart = part.match(/^hexproof from (.+)$/i);
+    const shieldColors = hexproofPart?.[1] ? parseColorQualityList(hexproofPart[1]) : null;
+    if (shieldColors) {
+      for (const color of shieldColors) {
+        if (!hexproofFrom.includes(color)) {
+          hexproofFrom.push(color);
+        }
+      }
       continue;
     }
     const from = /^protection from /i.test(part) ? parseProtectionPhrase(part) : null;
@@ -610,7 +627,7 @@ function readKeywordLine(sentence: string): { protection: ProtectionFrom | null 
     }
     protection = mergeProtection(protection ?? {}, from);
   }
-  return { protection };
+  return { protection, hexproofFrom };
 }
 
 const SACRIFICE_COST = /Sacrifice (?:~|this land|this creature|this artifact|this permanent)/i;
@@ -9943,6 +9960,36 @@ function compileUntilEotGrant(sentence: string): SimpleClause | null {
     if (!gains?.[1]) {
       return null;
     }
+    // "protection from black and from red" is ONE grant naming two colours,
+    // so it is peeled before the Oxford-list split below — that split would
+    // read the second colour as a keyword named "from red".
+    const colorShield = gains[1].match(/^(protection|hexproof) from (.+)$/i);
+    const shieldColors = colorShield?.[2] ? parseColorQualityList(colorShield[2]) : null;
+    if (colorShield?.[1] && shieldColors) {
+      const hexproof = /^hexproof$/i.test(colorShield[1]);
+      if (subject.how === "team") {
+        // Only protection has a team form today; a team hexproof-from grant
+        // is Veil of Summer's, and it needs the player scope beside it.
+        if (hexproof) {
+          return null;
+        }
+        effects.push({
+          kind: "team_protection_until_eot",
+          playerId: subject.playerId,
+          colors: shieldColors,
+        });
+        continue;
+      }
+      if (subject.how === "all" || !cardId) {
+        return null;
+      }
+      effects.push({
+        kind: hexproof ? "hexproof_from_until_eot" : "protection_until_eot",
+        cardId,
+        colors: shieldColors,
+      });
+      continue;
+    }
     const names = gains[1]
       .split(/,\s*(?:and\s+)?|\s+and\s+/)
       .map((name) => name.trim().toLowerCase())
@@ -12465,6 +12512,35 @@ function compileSelfGrant(body: string): StaticAbility[] | null {
  *
  * Refuses any conjunct it cannot read: half a protection is not protection.
  */
+/**
+ * "black", "black and from red", "white and from black" — the colour list
+ * a protection or hexproof phrase names. Null when any word is not a
+ * plain colour, so "protection from everything" and "from creatures" fall
+ * through to the readers that own them.
+ */
+function parseColorQualityList(body: string): Color[] | null {
+  const parts = body
+    .trim()
+    .replace(/\.$/, "")
+    .split(/\s*,\s*(?:and\s+)?(?:from\s+)?|\s+and\s+(?:from\s+)?/i)
+    .map((part) => part.trim().toLowerCase())
+    .filter(Boolean);
+  if (parts.length === 0) {
+    return null;
+  }
+  const colors: Color[] = [];
+  for (const part of parts) {
+    const color = COLOR_WORDS[part];
+    if (!color) {
+      return null;
+    }
+    if (!colors.includes(color)) {
+      colors.push(color);
+    }
+  }
+  return colors;
+}
+
 function parseProtectionPhrase(phrase: string): ProtectionFrom | null {
   const body = phrase.trim().replace(/^protection from\s+/i, "");
   if (body === phrase.trim()) {
@@ -14533,6 +14609,14 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
       if (keywordLine.protection) {
         result.protectionFrom = mergeProtection(result.protectionFrom ?? {}, keywordLine.protection);
       }
+      if (keywordLine.hexproofFrom.length > 0) {
+        result.hexproofFrom = [
+          ...(result.hexproofFrom ?? []),
+          ...keywordLine.hexproofFrom.filter(
+            (color) => !(result.hexproofFrom ?? []).includes(color),
+          ),
+        ];
+      }
       continue;
     }
 
@@ -15090,6 +15174,21 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
           effects,
           targetRequirements: requirements,
         });
+        continue;
+      }
+      result.leftover.push(sentence);
+      continue;
+    }
+
+    // Knight of Grace: "Hexproof from black" as a printed ability line.
+    const printedHexproofFrom = sentence.match(/^Hexproof from (.+)$/i);
+    if (printedHexproofFrom?.[1]) {
+      const colors = parseColorQualityList(printedHexproofFrom[1]);
+      if (colors) {
+        result.hexproofFrom = [
+          ...(result.hexproofFrom ?? []),
+          ...colors.filter((color) => !(result.hexproofFrom ?? []).includes(color)),
+        ];
         continue;
       }
       result.leftover.push(sentence);

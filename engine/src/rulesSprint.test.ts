@@ -60511,3 +60511,340 @@ describe("wave 378: 'from among them' — the cards a mill just made", () => {
     });
   });
 });
+
+describe("wave 379: protection and hexproof FROM a named colour", () => {
+  const compile = (
+    name: string,
+    typeLine: string,
+    oracleText: string,
+    manaCost = "",
+    pt: [string, string] | null = null,
+  ) =>
+    compileOracleCard({
+      oracleId: name.toLowerCase().replace(/[^a-z]+/g, "-"),
+      name,
+      manaCost,
+      typeLine,
+      power: pt?.[0] ?? null,
+      toughness: pt?.[1] ?? null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  const put = (game: GameState, ownerId: string, definition: CardDefinition) => {
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({
+      definitionId: definition.id,
+      ownerId,
+      zone: "battlefield",
+    });
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === ownerId)!.zones.battlefield.push(card.id);
+    card.summoningSick = false;
+    return card.id;
+  };
+
+  it("reads the printed line", () => {
+    const compiled = compile(
+      "Knight of Grace",
+      "Creature — Human Knight",
+      "First strike\nHexproof from black",
+      "{1}{W}",
+      ["2", "2"],
+    );
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.hexproofFrom).toEqual(["B"]);
+    expect(compiled.definition.keywords).toContain("first_strike");
+  });
+
+  it("reads it inside a keyword line without losing the rest", () => {
+    const compiled = compile(
+      "Sporeweb Weaver",
+      "Creature — Spider",
+      "Reach, hexproof from blue",
+      "{1}{G}{G}",
+      ["1", "4"],
+    );
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.hexproofFrom).toEqual(["U"]);
+    // Dropping the line whole would have taken the reach with it.
+    expect(compiled.definition.keywords).toContain("reach");
+  });
+
+  it("reads two colours on one line", () => {
+    const compiled = compile(
+      "Raddic",
+      "Legendary Creature — Spirit Knight",
+      "Hexproof from white and from black",
+      "{2}{W}",
+      ["2", "3"],
+    );
+    expect(compiled.definition.hexproofFrom).toEqual(["W", "B"]);
+  });
+
+  it("compiles the targeted protection grant", () => {
+    const compiled = compile(
+      "Crimson Acolyte",
+      "Creature — Human Cleric",
+      "Protection from red\n{W}: Target creature gains protection from red until end of turn.",
+      "{1}{W}",
+      ["1", "1"],
+    );
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.protectionFrom).toEqual({ colors: ["R"] });
+    expect(compiled.definition.activated[0]?.effects).toEqual([
+      { kind: "protection_until_eot", cardId: { type: "chosen", index: 0 }, colors: ["R"] },
+    ]);
+  });
+
+  it("keeps a two-colour grant as ONE grant", () => {
+    const compiled = compile(
+      "Questing Phelddagrif",
+      "Legendary Creature — Phelddagrif",
+      "{W}: This creature gains protection from black and from red until end of turn.",
+      "{2}{G}{U}{W}",
+      ["4", "4"],
+    );
+    // Split on the "and" this would read "from red" as a keyword and refuse
+    // the whole ability.
+    expect(compiled.definition.activated[0]?.effects).toEqual([
+      { kind: "protection_until_eot", cardId: "self", colors: ["B", "R"] },
+    ]);
+  });
+
+  it("compiles the team form", () => {
+    const compiled = compile(
+      "Team Shield",
+      "Instant",
+      "Creatures you control gain protection from blue until end of turn.",
+      "{1}{W}",
+    );
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.effects).toEqual([
+      { kind: "team_protection_until_eot", playerId: "controller", colors: ["U"] },
+    ]);
+  });
+
+  // ---- Hexproof from a colour is not protection from it -----------------
+
+  const knight = (name: string, colors: Color[]) =>
+    createCardDefinition({
+      name,
+      typeLine: "Creature — Human Knight",
+      manaCost: "{1}{W}",
+      power: 2,
+      toughness: 2,
+      hexproofFrom: colors,
+    });
+
+  const canTarget = (
+    game: GameState,
+    casterId: string,
+    targetId: string,
+    sourceColors: Color[],
+  ) =>
+    isChosenTargetLegal(
+      game,
+      { kind: "creature" },
+      { type: "creature", cardId: targetId },
+      casterId,
+      sourceColors,
+    );
+
+  it("stops an opponent's spell of that colour", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const knightId = put(game, p1.id, knight("Knight of Grace", ["B"]));
+    expect(canTarget(game, p2.id, knightId, ["B"])).toBe(false);
+    // Any other colour is somebody else's problem.
+    expect(canTarget(game, p2.id, knightId, ["R"])).toBe(true);
+    expect(canTarget(game, p2.id, knightId, ["W", "G"])).toBe(true);
+  });
+
+  it("does not stop its own controller", () => {
+    const { game, p1 } = twoPlayers();
+    const knightId = put(game, p1.id, knight("Knight of Grace", ["B"]));
+    // CR 702.11b: hexproof stops opponents. A controller who wants to aim
+    // their own black spell at it still can.
+    expect(canTarget(game, p1.id, knightId, ["B"])).toBe(true);
+  });
+
+  it("is NOT protection: a black creature still blocks it", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const knightId = put(game, p1.id, knight("Knight of Grace", ["B"]));
+    const blockerId = put(
+      game,
+      p2.id,
+      createCardDefinition({
+        name: "Black Bear",
+        typeLine: "Creature — Bear",
+        manaCost: "{1}{B}",
+        power: 2,
+        toughness: 2,
+      }),
+    );
+    game.cards[knightId]!.attacking = true;
+    // Protection from black would forbid this block. Hexproof from black
+    // stops targeting and nothing else, which is the whole difference.
+    expect(blockRestriction(game, knightId, blockerId)).toBeNull();
+  });
+
+  it("protection from a colour DOES forbid that block", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const attackerId = put(
+      game,
+      p1.id,
+      createCardDefinition({
+        name: "Warded Knight",
+        typeLine: "Creature — Human Knight",
+        manaCost: "{1}{W}",
+        power: 2,
+        toughness: 2,
+        protectionFrom: { colors: ["B"] },
+      }),
+    );
+    const blockerId = put(
+      game,
+      p2.id,
+      createCardDefinition({
+        name: "Black Bear",
+        typeLine: "Creature — Bear",
+        manaCost: "{1}{B}",
+        power: 2,
+        toughness: 2,
+      }),
+    );
+    game.cards[attackerId]!.attacking = true;
+    expect(blockRestriction(game, attackerId, blockerId)).not.toBeNull();
+  });
+
+  // ---- The granted forms -------------------------------------------------
+
+  const grant = (game: GameState, playerId: string, effect: CardEffect) =>
+    applyEffects(
+      game,
+      bindCardEffects(game, [effect], {
+        controllerId: playerId,
+        sourceId: null,
+        targets: [],
+        targetRequirements: [],
+      }),
+    );
+
+  const bear = (name: string) =>
+    createCardDefinition({
+      name,
+      typeLine: "Creature — Bear",
+      manaCost: "{1}{G}",
+      power: 2,
+      toughness: 2,
+    });
+
+  it("grants hexproof from a colour until end of turn", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const bearId = put(game, p1.id, bear("Plain Bear"));
+    expect(canTarget(game, p2.id, bearId, ["U"])).toBe(true);
+    const after = grant(game, p1.id, {
+      kind: "hexproof_from_until_eot",
+      cardId: bearId,
+      colors: ["U"],
+    });
+    expect(computedCard(after, bearId)?.hexproofFrom).toEqual(["U"]);
+    expect(canTarget(after, p2.id, bearId, ["U"])).toBe(false);
+    expect(canTarget(after, p2.id, bearId, ["B"])).toBe(true);
+  });
+
+  it("grants protection from a colour until end of turn", () => {
+    const { game, p1 } = twoPlayers();
+    const bearId = put(game, p1.id, bear("Plain Bear"));
+    const after = grant(game, p1.id, {
+      kind: "protection_until_eot",
+      cardId: bearId,
+      colors: ["R"],
+    });
+    expect(computedCard(after, bearId)?.protectionFrom).toMatchObject({ colors: ["R"] });
+  });
+
+  it("merges two grants rather than replacing one with the other", () => {
+    const { game, p1 } = twoPlayers();
+    const bearId = put(game, p1.id, bear("Plain Bear"));
+    let after = grant(game, p1.id, {
+      kind: "hexproof_from_until_eot",
+      cardId: bearId,
+      colors: ["U"],
+    });
+    after = grant(after, p1.id, {
+      kind: "hexproof_from_until_eot",
+      cardId: bearId,
+      colors: ["B"],
+    });
+    // Two shields, not the second one instead of the first.
+    expect(computedCard(after, bearId)?.hexproofFrom.sort()).toEqual(["B", "U"]);
+  });
+
+  it("merges the grant with what was printed", () => {
+    const { game, p1 } = twoPlayers();
+    const knightId = put(game, p1.id, knight("Knight of Grace", ["B"]));
+    const after = grant(game, p1.id, {
+      kind: "hexproof_from_until_eot",
+      cardId: knightId,
+      colors: ["R"],
+    });
+    expect(computedCard(after, knightId)?.hexproofFrom.sort()).toEqual(["B", "R"]);
+  });
+
+  it("wears off at cleanup, while the printed one does not", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    const bearId = put(game, p1.id, bear("Plain Bear"));
+    const knightId = put(game, p1.id, knight("Knight of Grace", ["B"]));
+    let after = grant(game, p1.id, {
+      kind: "hexproof_from_until_eot",
+      cardId: bearId,
+      colors: ["U"],
+    });
+    after = { ...after, turn: { ...after.turn, phase: "ending", step: "end" } };
+    // CR 514.2: "until end of turn" ends at cleanup, and the engine is what
+    // has to end it — filtering the list by hand would test the test.
+    after = advanceStep(after);
+    expect(after.turn.step).toBe("cleanup");
+    expect(computedCard(after, bearId)?.hexproofFrom).toEqual([]);
+    expect(canTarget(after, p2.id, bearId, ["U"])).toBe(true);
+    expect(computedCard(after, knightId)?.hexproofFrom).toEqual(["B"]);
+  });
+
+  it("round trips the printed shield and both grants", () => {
+    const { game, p1 } = twoPlayers();
+    const knightDefinition = knight("Wave 379 Knight", ["B", "W"]);
+    put(game, p1.id, knightDefinition);
+    const acolyte = createCardDefinition({
+      name: "Wave 379 Acolyte",
+      typeLine: "Creature — Human Cleric",
+      manaCost: "{1}{W}",
+      power: 1,
+      toughness: 1,
+      activated: [
+        {
+          tap: false,
+          manaCost: "{W}",
+          effects: [
+            {
+              kind: "protection_until_eot",
+              cardId: { type: "chosen", index: 0 },
+              colors: ["R"],
+            },
+            { kind: "hexproof_from_until_eot", cardId: "self", colors: ["U"] },
+          ],
+          targetRequirements: [{ kind: "creature" }],
+        },
+      ],
+    });
+    put(game, p1.id, acolyte);
+    const round = parseGameState(serializeGameState(game));
+    expect(round.definitions[knightDefinition.id]?.hexproofFrom).toEqual(["B", "W"]);
+    expect(round.definitions[acolyte.id]?.activated[0]?.effects).toEqual([
+      { kind: "protection_until_eot", cardId: { type: "chosen", index: 0 }, colors: ["R"] },
+      { kind: "hexproof_from_until_eot", cardId: "self", colors: ["U"] },
+    ]);
+  });
+});

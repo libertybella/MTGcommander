@@ -76,6 +76,35 @@ export function protectedFromTraits(
  * `fallbackColors` covers the callers that only have a colour list (a spell
  * whose card has already left the stack).
  */
+/**
+ * "Hexproof from black" (CR 702.11e). Unlike protection this ONLY stops
+ * targeting, and like plain hexproof it only stops opponents — so the
+ * caller passes the caster and the check is skipped for the permanent's
+ * own controller.
+ *
+ * The source's computed colours are used when there is a source; a spell
+ * that has already left the stack falls back to the colours the caller
+ * carried, exactly as `protectedFromSource` does.
+ */
+export function hexproofFromSource(
+  state: GameState,
+  protectedId: CardInstanceId,
+  sourceId: CardInstanceId | null,
+  fallbackColors?: Color[],
+): boolean {
+  const shield = computedCard(state, protectedId)?.hexproofFrom ?? [];
+  if (shield.length === 0) {
+    return false;
+  }
+  const source = sourceId ? state.cards[sourceId] : undefined;
+  const colors = source
+    ? computedCard(state, sourceId!)?.characteristics.colors ??
+      state.definitions[source.definitionId]?.characteristics.colors ??
+      []
+    : fallbackColors ?? [];
+  return colors.some((color) => shield.includes(color));
+}
+
 export function protectedFromSource(
   state: GameState,
   protectedId: CardInstanceId,

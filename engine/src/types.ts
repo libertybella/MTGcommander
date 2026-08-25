@@ -138,6 +138,13 @@ export type CardDefinition = {
    * or blocked by sources this matches.
    */
   protectionFrom?: ProtectionFrom;
+  /**
+   * Knight of Grace: "Hexproof from black". NOT protection from black —
+   * it stops opponents' black spells and abilities TARGETING this
+   * permanent and nothing else, so a black creature still blocks it, a
+   * black spell still kills it, and a black Aura still lands on it.
+   */
+  hexproofFrom?: Color[];
   /** Aura: cast targeting a creature; enters attached (CR 303.4). */
   /**
    * The Aura's "Enchant …" line. Imprisoned in the Moon is
@@ -1993,6 +2000,9 @@ export type GameEffect =
       minPower?: number;
     }
   | { kind: "team_protection_until_eot"; playerId: PlayerId; colors: Color[] }
+  /** "Target creature gains protection from red until end of turn." */
+  | { kind: "protection_until_eot"; cardId: CardInstanceId; colors: Color[] }
+  | { kind: "hexproof_from_until_eot"; cardId: CardInstanceId; colors: Color[] }
   | {
       kind: "all_pt_until_eot";
       power: number;
@@ -3475,6 +3485,8 @@ export type CardEffect =
     }
   /** "Creatures you control gain protection from each color" (Akroma's Will). */
   | { kind: "team_protection_until_eot"; playerId: PlayerSelector; colors: Color[] }
+  | { kind: "protection_until_eot"; cardId: CardIdSelector; colors: Color[] }
+  | { kind: "hexproof_from_until_eot"; cardId: CardIdSelector; colors: Color[] }
   /** "All creatures get -X/-X until end of turn" (Toxic Deluge). */
   | {
       kind: "all_pt_until_eot";
@@ -5202,6 +5214,9 @@ export type ContinuousEffectData =
   | { kind: "grant_keyword"; keyword: Keyword } // layer 6
   /** layer 6: "gain protection from each color" (Akroma's Will). */
   | { kind: "grant_protection"; from: ProtectionFrom }
+  /** "gains hexproof from black until end of turn" — layer 6, beside the
+   * protection grant it is deliberately not. */
+  | { kind: "grant_hexproof_from"; colors: Color[] }
   /** layer 6: "has ward {2}" (Lavaspur Boots). The highest granted amount
    * wins over the printed one rather than stacking — CR 702.21c makes
    * multiple ward abilities trigger separately, which the pay-or-counter

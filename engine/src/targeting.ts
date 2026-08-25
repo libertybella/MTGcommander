@@ -1,7 +1,7 @@
 import { characteristicsOf, isCommander, isCreature, isPlaneswalker } from "./cardTypes";
 import { cardMatchesSubtype } from "./characteristicsEngine";
 import { creaturePower, playerHasHexproof, playerProtectedFromEverything } from "./derived";
-import { hasKeyword, protectedFromSource } from "./keywords";
+import { hasKeyword, hexproofFromSource, protectedFromSource } from "./keywords";
 import { isLiving, livingPlayers } from "./players";
 import type {
   CardInstanceId,
@@ -57,6 +57,15 @@ function isLegalCreatureTarget(
     casterId &&
     hasKeyword(state, cardId, "hexproof") &&
     casterId !== card.controllerId
+  ) {
+    return false;
+  }
+  // Knight of Grace: hexproof from black stops an opponent's black spell
+  // TARGETING it, and stops nothing else about that spell.
+  if (
+    casterId &&
+    casterId !== card.controllerId &&
+    hexproofFromSource(state, cardId, sourceId ?? null, sourceColors)
   ) {
     return false;
   }
@@ -404,6 +413,13 @@ export function isChosenTargetLegal(
       casterId &&
       hasKeyword(state, target.cardId, "hexproof") &&
       casterId !== card.controllerId
+    ) {
+      return false;
+    }
+    if (
+      casterId &&
+      casterId !== card.controllerId &&
+      hexproofFromSource(state, target.cardId, sourceId ?? null, sourceColors)
     ) {
       return false;
     }

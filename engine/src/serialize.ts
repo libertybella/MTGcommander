@@ -1534,6 +1534,9 @@ export function parseGameState(json: string): GameState {
               });
             })(),
           }),
+      ...(def.hexproofFrom === undefined
+        ? {}
+        : { hexproofFrom: parseColorArray(def.hexproofFrom, `definition.${id}.hexproofFrom`) }),
       ...(def.protectionFrom === undefined
         ? {}
         : {
@@ -4330,6 +4333,13 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
           : { minPower: expectNumber(value.minPower, `${label}.minPower`) }),
       };
     }
+    case "protection_until_eot":
+    case "hexproof_from_until_eot":
+      return {
+        kind,
+        cardId: parseCardIdSelector(value.cardId, `${label}.cardId`),
+        colors: parseColorArray(value.colors, `${label}.colors`),
+      };
     case "team_protection_until_eot": {
       if (!Array.isArray(value.colors)) {
         throw new Error(`Invalid ${label}.colors`);
@@ -5950,6 +5960,9 @@ function parseContinuousEffectData(value: unknown, label: string): ContinuousEff
   if (kind === "grant_protection") {
     return { kind, from: parseProtectionFrom(value.from, `${label}.from`) };
   }
+  if (kind === "grant_hexproof_from") {
+    return { kind, colors: parseColorArray(value.colors, `${label}.colors`) };
+  }
   if (kind === "grant_activated") {
     const parsed = parseActivatedAbilities([value.ability], `${label}.ability`);
     if (!parsed[0]) {
@@ -6489,6 +6502,13 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
       ...(value.minPower === undefined
         ? {}
         : { minPower: expectNumber(value.minPower, `${label}.minPower`) }),
+    };
+  }
+  if (kind === "protection_until_eot" || kind === "hexproof_from_until_eot") {
+    return {
+      kind,
+      cardId: expectString(value.cardId, `${label}.cardId`),
+      colors: parseColorArray(value.colors, `${label}.colors`),
     };
   }
   if (kind === "team_protection_until_eot") {

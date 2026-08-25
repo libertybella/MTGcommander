@@ -1441,6 +1441,14 @@ export function bindCardEffect(
       }
       return { kind: "team_protection_until_eot", playerId, colors: [...effect.colors] };
     }
+    case "protection_until_eot":
+    case "hexproof_from_until_eot": {
+      const cardId = bindCardId(state, effect.cardId, context);
+      if (!cardId) {
+        return null;
+      }
+      return { kind: effect.kind, cardId, colors: [...effect.colors] };
+    }
     case "all_pt_until_eot": {
       const power = effect.power === "-x" ? -(context.xValue ?? 0) : effect.power;
       const toughness = effect.toughness === "-x" ? -(context.xValue ?? 0) : effect.toughness;
@@ -6098,6 +6106,18 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
           nonSubtypes: effect.nonSubtypes,
           minPower: effect.minPower,
           untilYourNextTurn: effect.untilYourNextTurn,
+        });
+        break;
+      case "protection_until_eot":
+        next = pushUntilEotEffect(state, [effect.cardId], {
+          kind: "grant_protection",
+          from: { colors: [...effect.colors] },
+        });
+        break;
+      case "hexproof_from_until_eot":
+        next = pushUntilEotEffect(state, [effect.cardId], {
+          kind: "grant_hexproof_from",
+          colors: [...effect.colors],
         });
         break;
       case "team_protection_until_eot": {

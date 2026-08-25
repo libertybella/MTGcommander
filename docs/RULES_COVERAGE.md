@@ -3002,6 +3002,7 @@ ends. Every printed card of this shape asks about the current turn.
 - **What mana was spent to cast a card** is recorded per colour as the cost is paid (measured by diffing the pool, not read off the cost string) and read once as the permanent enters. Adamant gates its enters-with counter on it; "if no mana was spent to cast it" reads it off the triggering spell.
 - An optional rider's cost may be **mana, life, or both at once** ("you may pay {1} and 3 life. If you do, ..."), paid through one prompt — a player who can afford one half and not the other has not paid it.
 - **"…from among them"** after a mill: the set is recorded on the state and read when the prompt is answered, so the choice is restricted to the cards that mill made rather than the whole graveyard.
+- **Hexproof from a colour** (CR 702.11e), printed or granted until end of turn, kept distinct from protection: it stops an opponent's spell of that colour targeting the permanent and nothing else. Protection from a named colour is grantable to a target, to yourself, or to your team.
 - A seeded random-game fuzzer asserts zone integrity and serialize round-trips after every action (CI: 6 games; 500-game burn-ins gate checkpoint tags — they have caught two real livelocks and the trigger-batching bug).
 
 ## Documented gaps (intentional, in plan order)
