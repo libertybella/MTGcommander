@@ -1659,6 +1659,14 @@ export function parseGameState(json: string): GameState {
         : {
             sacrificedPower: expectNumber(entry.sacrificedPower, `stack[${index}].sacrificedPower`),
           }),
+      ...(entry.sacrificedManaValue === undefined
+        ? {}
+        : {
+            sacrificedManaValue: expectNumber(
+              entry.sacrificedManaValue,
+              `stack[${index}].sacrificedManaValue`,
+            ),
+          }),
       ...(entry.modeIndex === undefined
         ? {}
         : { modeIndex: expectNumber(entry.modeIndex, `stack[${index}].modeIndex`) }),
@@ -2670,6 +2678,14 @@ function parseSearchFilter(value: unknown, label: string): SearchFilter {
       ? {}
       : { maxManaValue: expectNumber(value.maxManaValue, `${label}.maxManaValue`) }),
     ...(value.maxManaValueX === true ? { maxManaValueX: true } : {}),
+    ...(value.maxManaValuePlusSacrificed === undefined
+      ? {}
+      : {
+          maxManaValuePlusSacrificed: expectNumber(
+            value.maxManaValuePlusSacrificed,
+            `${label}.maxManaValuePlusSacrificed`,
+          ),
+        }),
     ...(value.maxToughness === undefined
       ? {}
       : { maxToughness: expectNumber(value.maxToughness, `${label}.maxToughness`) }),
@@ -3115,6 +3131,14 @@ function parseTargetRequirement(value: unknown, label: string): TargetRequiremen
       : {}),
     ...(value.targetsYouOrYours === true ? { targetsYouOrYours: true } : {}),
     ...(value.maxManaValueX === true ? { maxManaValueX: true } : {}),
+    ...(value.maxManaValuePlusSacrificed === undefined
+      ? {}
+      : {
+          maxManaValuePlusSacrificed: expectNumber(
+            value.maxManaValuePlusSacrificed,
+            `${label}.maxManaValuePlusSacrificed`,
+          ),
+        }),
     ...(value.distinctManaValues === true ? { distinctManaValues: true } : {}),
     ...(value.optional === true ? { optional: true } : {}),
     ...(excludeColors.length > 0 ? { excludeColors } : {}),

@@ -909,6 +909,11 @@ function applyCastSpell(
   // Fling: capture the sacrificed creature's power before it dies.
   const sacrificedPower =
     additional?.sacrifice && costSacrificeId ? creaturePower(paid, costSacrificeId) : undefined;
+  // Eldritch Evolution: and its mana value, which the search's cap adds to.
+  const sacrificedManaValue =
+    additional?.sacrifice && costSacrificeId
+      ? characteristicsOf(paid, costSacrificeId).manaValue
+      : undefined;
   if (additional?.sacrifice && costSacrificeId) {
     paid = applyEffects(paid, [{ kind: "sacrifice", cardId: costSacrificeId }]);
   }
@@ -1021,7 +1026,7 @@ function applyCastSpell(
       (_, index) => index !== nextGrantIndex,
     );
   }
-  let stacked = putSpellOnStack(paid, cardId, targets ?? [], modeIndex, xValue, division, modeIndexes, sacrificedPower);
+  let stacked = putSpellOnStack(paid, cardId, targets ?? [], modeIndex, xValue, division, modeIndexes, sacrificedPower, sacrificedManaValue);
   if (nextGrant?.cantBeCountered) {
     const top = stacked.stack[stacked.stack.length - 1];
     if (top) {

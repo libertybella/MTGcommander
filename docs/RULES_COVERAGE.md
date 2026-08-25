@@ -2277,6 +2277,13 @@ more questions it can now ask:
   `TopOfLibraryGrant.payLifeInsteadOfMana` replaces the cost OUTRIGHT, the
   same way flashback does, and rides the same life-payment path. A cost
   that had merely been reduced would still refuse a caster with no mana.
+- **A search sized by an additional cost** — Eldritch Evolution.
+  `SearchFilter.maxManaValuePlusSacrificed` is the printed offset; the rest
+  comes from `sacrificedManaValue`, captured when the sacrifice cost was
+  paid and carried on the stack, because by bind time the creature is in a
+  graveyard and nothing remembers which one it was. Kept separate from
+  Fling's `sacrificedPower`: power must be read before death (a pump ends
+  with it), mana value need not be.
 - **"Shuffle it into its owner's library instead"** — Blightsteel Colossus,
   Progenitus, Darksteel Colossus. A replacement on the CARD, so it applies
   from every zone (countered on the stack, discarded from hand), and the

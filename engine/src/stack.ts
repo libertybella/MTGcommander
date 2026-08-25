@@ -84,6 +84,7 @@ export function putActivatedAbilityOnStack(
   modeIndex?: number,
   sacrificedPower?: number,
   xValue?: number,
+  sacrificedManaValue?: number,
 ): GameState {
   const card = state.cards[cardId];
   if (!card) {
@@ -136,6 +137,7 @@ export function putActivatedAbilityOnStack(
     ...(modeIndex !== undefined ? { modeIndex } : {}),
     // Altar of Dementia: the sacrificed cost-creature's power.
     ...(sacrificedPower !== undefined ? { sacrificedPower } : {}),
+    ...(sacrificedManaValue !== undefined ? { sacrificedManaValue } : {}),
     ...(xValue !== undefined ? { xValue } : {}),
   });
   next.passesSinceAction = 0;
@@ -153,6 +155,7 @@ export function putSpellOnStack(
   division?: number[],
   modeIndexes?: number[],
   sacrificedPower?: number,
+  sacrificedManaValue?: number,
 ): GameState {
   const card = state.cards[cardId];
   if (!card) {
@@ -239,6 +242,7 @@ export function putSpellOnStack(
     ...(modeIndexes && modeIndexes.length > 0 ? { modeIndexes: [...modeIndexes] } : {}),
     ...(xValue !== undefined ? { xValue } : {}),
     ...(sacrificedPower !== undefined ? { sacrificedPower } : {}),
+    ...(sacrificedManaValue !== undefined ? { sacrificedManaValue } : {}),
     ...(division !== undefined ? { division: [...division] } : {}),
     ...(fromFlashback ? { fromGraveyard: true } : {}),
   });
@@ -364,6 +368,9 @@ export function resolveTopOfStack(state: GameState): GameState {
           targetRequirements: requirements,
           // Altar of Dementia: the sacrificed cost-creature's power.
           ...(top.sacrificedPower !== undefined ? { sacrificedPower: top.sacrificedPower } : {}),
+          ...(top.sacrificedManaValue !== undefined
+            ? { sacrificedManaValue: top.sacrificedManaValue }
+            : {}),
           // Kessig Wolf Run: the X announced when the ability was activated.
           ...(top.xValue !== undefined ? { xValue: top.xValue } : {}),
         });
@@ -527,6 +534,9 @@ export function resolveTopOfStack(state: GameState): GameState {
         targetRequirements: requirements,
         xValue: top.xValue,
         ...(top.sacrificedPower !== undefined ? { sacrificedPower: top.sacrificedPower } : {}),
+        ...(top.sacrificedManaValue !== undefined
+          ? { sacrificedManaValue: top.sacrificedManaValue }
+          : {}),
       });
       next = applyEffects(next, bound);
     }

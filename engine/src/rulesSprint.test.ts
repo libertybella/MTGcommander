@@ -57719,3 +57719,203 @@ describe("wave 366: shuffled back instead of dying", () => {
     ]);
   });
 });
+
+describe("wave 367: a search sized by what the cost ate", () => {
+  const compile = (name: string, typeLine: string, oracleText: string, manaCost = "") =>
+    compileOracleCard({
+      oracleId: name.toLowerCase().replace(/[^a-z]+/g, "-"),
+      name,
+      manaCost,
+      typeLine,
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  const put = (
+    game: GameState,
+    ownerId: string,
+    definition: CardDefinition,
+    zone: "battlefield" | "hand" | "library" = "battlefield",
+  ) => {
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({ definitionId: definition.id, ownerId, zone });
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === ownerId)!.zones[zone].push(card.id);
+    if (zone === "battlefield") {
+      card.summoningSick = false;
+    }
+    return card.id;
+  };
+
+  const evolutionText = [
+    "As an additional cost to cast this spell, sacrifice a creature.",
+    "Search your library for a creature card with mana value X or less, where X is 2 plus the sacrificed creature's mana value. Put that card onto the battlefield, then shuffle.",
+    "Exile Eldritch Evolution.",
+  ].join("\n");
+
+  it("compiles the whole card", () => {
+    const compiled = compile("Eldritch Evolution", "Sorcery", evolutionText, "{1}{G}");
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.effects[0]).toEqual({
+      kind: "search_library",
+      playerId: "controller",
+      filter: { types: ["creature"], maxManaValuePlusSacrificed: 2 },
+      destination: "battlefield",
+      count: 1,
+    });
+  });
+
+  it("joins the search to its destination without swallowing a rider", () => {
+    // Neoform's destination sentence carries "with an additional +1/+1
+    // counter on it". Fusing that away would drop the counter in silence,
+    // so the fuser only takes the bare form and this still misses.
+    const neoform = compile(
+      "Neoform",
+      "Sorcery",
+      "As an additional cost to cast this spell, sacrifice a creature.\nSearch your library for a creature card with mana value equal to 1 plus the sacrificed creature's mana value, put that card onto the battlefield with an additional +1/+1 counter on it, then shuffle.",
+      "{G}{U}",
+    );
+    expect(neoform.notes.length).toBeGreaterThan(0);
+  });
+
+  const creature = (name: string, manaCost: string, power = 2) =>
+    createCardDefinition({
+      name,
+      typeLine: "Creature — Bear",
+      manaCost,
+      power,
+      toughness: 2,
+    });
+
+  const bindSearch = (game: GameState, playerId: string, sacrificedManaValue?: number) =>
+    bindCardEffects(
+      game,
+      [
+        {
+          kind: "search_library",
+          playerId: "controller",
+          filter: { types: ["creature"], maxManaValuePlusSacrificed: 2 },
+          destination: "battlefield",
+          count: 1,
+        },
+      ],
+      {
+        controllerId: playerId,
+        sourceId: null,
+        targets: [],
+        targetRequirements: [],
+        ...(sacrificedManaValue === undefined ? {} : { sacrificedManaValue }),
+      },
+    );
+
+  it("adds the offset to what was sacrificed", () => {
+    const { game, p1 } = twoPlayers();
+    const bound = bindSearch(game, p1.id, 3);
+    expect(bound[0]).toMatchObject({ filter: { maxManaValue: 5 } });
+  });
+
+  it("is just the offset when nothing was sacrificed", () => {
+    const { game, p1 } = twoPlayers();
+    // A search bound with no sacrifice behind it caps at the printed
+    // offset rather than at infinity, which is the safe way round.
+    expect(bindSearch(game, p1.id)[0]).toMatchObject({ filter: { maxManaValue: 2 } });
+  });
+
+  it("offers only what the cap allows", () => {
+    const { game, p1 } = twoPlayers();
+    const cheapId = put(game, p1.id, creature("Cheap", "{2}"), "library");
+    const exactId = put(game, p1.id, creature("Exact", "{5}"), "library");
+    const dearId = put(game, p1.id, creature("Dear", "{6}"), "library");
+    const bound = bindSearch(game, p1.id, 3);
+    const first = bound[0];
+    if (first?.kind !== "search_library") {
+      throw new Error("expected a search");
+    }
+    const searched = applyEffects(game, [first]);
+    const prompt = searched.prompts[0];
+    expect(prompt?.kind).toBe("search_library");
+    if (prompt?.kind !== "search_library") {
+      throw new Error("expected a search prompt");
+    }
+    const legal = legalSearchIds(searched, prompt);
+    expect(legal).toContain(cheapId);
+    // Five is 2 plus 3, and "or less" includes it.
+    expect(legal).toContain(exactId);
+    expect(legal).not.toContain(dearId);
+  });
+
+  it("carries the sacrificed mana value from the cost to the search", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 5);
+    const fodderId = put(game, p1.id, creature("Fodder", "{3}{G}"));
+    const targetId = put(game, p1.id, creature("Target", "{6}"), "library");
+    const evolution = createCardDefinition({
+      name: "Eldritch Evolution",
+      typeLine: "Sorcery",
+      manaCost: "{1}{G}",
+      additionalCost: { sacrifice: "creature" },
+      effects: [
+        {
+          kind: "search_library",
+          playerId: "controller",
+          filter: { types: ["creature"], maxManaValuePlusSacrificed: 2 },
+          destination: "battlefield",
+          count: 1,
+        },
+      ],
+    });
+    const spellId = put(game, p1.id, evolution, "hand");
+    game.turn.activePlayerId = p1.id;
+    game.turn.phase = "precombatMain";
+    game.turn.step = "precombatMain";
+    game.priorityPlayerId = p1.id;
+    const player = game.players.find((entry) => entry.id === p1.id)!;
+    player.mana.G = 1;
+    player.mana.C = 1;
+    const cast = applyAction(game, {
+      kind: "cast_spell",
+      playerId: p1.id,
+      cardId: spellId,
+      targets: [],
+      costSacrificeId: fodderId,
+    });
+    // The fodder is a four-drop, so the cap is six and the Target qualifies.
+    // By bind time the creature is in the graveyard and nothing remembers
+    // which one it was, which is why the value rides the stack.
+    expect(cast.stack[0]?.sacrificedManaValue).toBe(4);
+    const resolved = resolveTopOfStack(cast);
+    const prompt = resolved.prompts[0];
+    expect(prompt?.kind).toBe("search_library");
+    if (prompt?.kind !== "search_library") {
+      throw new Error("expected a search prompt");
+    }
+    expect(legalSearchIds(resolved, prompt)).toContain(targetId);
+  });
+
+  it("round trips both halves", () => {
+    const { game, p1 } = twoPlayers();
+    const definition = createCardDefinition({
+      name: "Wave 367 Evolution",
+      typeLine: "Sorcery",
+      manaCost: "{1}{G}",
+      effects: [
+        {
+          kind: "search_library",
+          playerId: "controller",
+          filter: { types: ["creature"], maxManaValuePlusSacrificed: 2 },
+          destination: "battlefield",
+          count: 1,
+        },
+      ],
+    });
+    put(game, p1.id, definition, "hand");
+    const round = parseGameState(serializeGameState(game));
+    // Dropped on the wire, the cap becomes "any creature at all".
+    expect(round.definitions[definition.id]?.effects[0]).toMatchObject({
+      filter: { maxManaValuePlusSacrificed: 2 },
+    });
+  });
+});

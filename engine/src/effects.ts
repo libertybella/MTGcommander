@@ -60,6 +60,8 @@ export type BindEffectContext = {
   subjectAmount?: number;
   /** Fling: the power of the creature sacrificed as a cast cost. */
   sacrificedPower?: number;
+  /** Eldritch Evolution: the mana value of that same sacrificed creature. */
+  sacrificedManaValue?: number;
 };
 
 function nextOpponentId(state: GameState, controllerId: PlayerId): PlayerId {
@@ -1637,13 +1639,20 @@ export function bindCardEffect(
       if (!playerId) {
         return null;
       }
-      const { maxManaValueX, ...filterRest } = effect.filter;
+      const { maxManaValueX, maxManaValuePlusSacrificed, ...filterRest } = effect.filter;
       return {
         kind: "search_library",
         playerId,
         filter: {
           ...filterRest,
           ...(maxManaValueX ? { maxManaValue: context.xValue ?? 0 } : {}),
+          // Eldritch Evolution: the cap is N plus what the cost ate.
+          ...(maxManaValuePlusSacrificed !== undefined
+            ? {
+                maxManaValue:
+                  maxManaValuePlusSacrificed + (context.sacrificedManaValue ?? 0),
+              }
+            : {}),
         },
         destination: effect.destination,
         // Traverse the Outlands: X = greatest power, read at bind.

@@ -918,6 +918,14 @@ export type StackObject = {
   xValue?: number;
   /** Fling: the power of the creature sacrificed as a cast cost. */
   sacrificedPower?: number;
+  /**
+   * Eldritch Evolution: the sacrificed creature's MANA VALUE, kept apart
+   * from its power above because the two are captured for different
+   * reasons. Power has to be read before the creature dies, since a pump
+   * ends with it; mana value is the same in the graveyard, and is carried
+   * only because by bind time nothing remembers WHICH creature it was.
+   */
+  sacrificedManaValue?: number;
   /** Damage split for divided-damage spells; aligns with `targets`. */
   division?: number[];
   /**
@@ -1226,6 +1234,12 @@ export type SearchFilter = {
   /** "with mana value X or less": resolved to maxManaValue from the announced
    * X when the effect binds (Green Sun's Zenith). */
   maxManaValueX?: boolean;
+  /**
+   * Eldritch Evolution: "mana value X or less, where X is N plus the
+   * sacrificed creature's mana value". The number here is that N; the rest
+   * comes from the cost that was already paid.
+   */
+  maxManaValuePlusSacrificed?: number;
   /** "with toughness 2 or less" (Recruiter of the Guard). Printed toughness. */
   maxToughness?: number;
   /** "with power 2 or less" (Imperial Recruiter). Printed power. */

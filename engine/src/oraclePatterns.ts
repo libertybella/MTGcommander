@@ -4968,6 +4968,33 @@ function compileSimpleClauseInner(sentence: string): SimpleClause | null {
   }
 
   /**
+   * Eldritch Evolution. The cap is read from the creature the ADDITIONAL
+   * COST already ate — captured on the stack when the cost was paid,
+   * because by the time this binds nothing remembers which creature it
+   * was. Only the offset is printed here.
+   */
+  const evolution = sentence.match(
+    /^Search your library for a creature card with mana value X or less, where X is ([a-z0-9]+) plus the sacrificed creature's mana value(?:, put that card onto the battlefield, then shuffle)?$/i,
+  );
+  if (evolution?.[1]) {
+    const offset = parseCount(evolution[1]);
+    if (offset !== null && offset !== undefined) {
+      return {
+        targetRequirements: [],
+        effects: [
+          {
+            kind: "search_library",
+            playerId: "controller",
+            filter: { types: ["creature"], maxManaValuePlusSacrificed: offset },
+            destination: "battlefield",
+            count: 1,
+          },
+        ],
+      };
+    }
+  }
+
+  /**
    * Brainstorm, and the fourteen other printings of its sentence. The cards
    * go back ONE AT A TIME — "in any order" is the order you pick them, and
    * `choose_card` picks one card — so N picks are emitted rather than one
@@ -10015,6 +10042,38 @@ function fuseRepeatXInPlace(sentences: string[], lineStart: boolean[]): void {
   }
 }
 
+/**
+ * Eldritch Evolution prints its search and its destination as two
+ * sentences, where most cards run them together with a comma. The comma
+ * form is what every search clause reads, so the two are joined rather
+ * than every one of those clauses learning a second shape.
+ */
+function fuseSearchPutInPlace(sentences: string[], lineStart: boolean[]): void {
+  for (let index = 0; index + 1 < sentences.length; index += 1) {
+    if (lineStart[index + 1] || !sentences[index] || !sentences[index + 1]) {
+      continue;
+    }
+    if (!/^Search your library for /i.test(sentences[index]!)) {
+      continue;
+    }
+    // Only the bare destination sentence. Anything carrying a rider of its
+    // own ("with an additional +1/+1 counter") is left alone, because the
+    // joined clause would silently drop it.
+    const put = sentences[index + 1]!.match(
+      /^Put that card (onto the battlefield(?: tapped)?|into your hand), then shuffle$/i,
+    );
+    if (!put?.[1]) {
+      continue;
+    }
+    sentences.splice(
+      index,
+      2,
+      `${sentences[index]!}, put that card ${put[1].toLowerCase()}, then shuffle`,
+    );
+    lineStart.splice(index + 1, 1);
+  }
+}
+
 function fuseDigSentencesInPlace(sentences: string[], lineStart: boolean[]): void {
   for (let index = 0; index + 2 < sentences.length; index += 1) {
     if (lineStart[index + 1] || lineStart[index + 2]) {
@@ -13956,6 +14015,7 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
   fuseNecroTopInPlace(sentences, lineStart);
   splitActivationRidersInPlace(sentences, lineStart);
   fuseRepeatXInPlace(sentences, lineStart);
+  fuseSearchPutInPlace(sentences, lineStart);
   // A printed line is an ability, so these mark where the current line's
   // output begins. Riders that reach BACKWARD — the regeneration denial
   // below — use them to stop at the line they were printed on.
