@@ -6658,6 +6658,7 @@ function parseManaAbilities(value: unknown, label: string): ManaAbility[] {
         : {}),
       ...(entry.countFromEnchantments === true ? { countFromEnchantments: true } : {}),
       ...(entry.costTapCreature === true ? { costTapCreature: true } : {}),
+      ...(entry.costTapArtifact === true ? { costTapArtifact: true } : {}),
       ...(entry.costTapCreatureLegendary === true ? { costTapCreatureLegendary: true } : {}),
       ...(entry.requiresCondition === undefined
         ? {}

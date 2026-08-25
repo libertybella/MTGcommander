@@ -66751,3 +66751,235 @@ describe("wave 404: Sword of Hearth and Home", () => {
     expect(round.definitions[definition.id]?.triggers[0]?.effects).toHaveLength(2);
   });
 });
+
+describe("wave 405: Urza, Lord High Artificer", () => {
+  const compile = (
+    name: string,
+    typeLine: string,
+    oracleText: string,
+    manaCost = "",
+    pt: [string, string] | null = null,
+  ) =>
+    compileOracleCard({
+      oracleId: name.toLowerCase().replace(/[^a-z]+/g, "-"),
+      name,
+      manaCost,
+      typeLine,
+      power: pt?.[0] ?? null,
+      toughness: pt?.[1] ?? null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  const put = (game: GameState, ownerId: string, definition: CardDefinition) => {
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({
+      definitionId: definition.id,
+      ownerId,
+      zone: "battlefield",
+    });
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === ownerId)!.zones.battlefield.push(card.id);
+    card.summoningSick = false;
+    return card.id;
+  };
+
+  const urzaText =
+    'When Urza enters, create a 0/0 colorless Construct artifact creature token with "This token gets +1/+1 for each artifact you control."\nTap an untapped artifact you control: Add {U}.\n{5}: Shuffle your library, then exile the top card. Until end of turn, you may play that card without paying its mana cost.';
+
+  it("compiles all three of Urza's lines", () => {
+    const compiled = compile(
+      "Urza, Lord High Artificer",
+      "Legendary Creature — Human Artificer",
+      urzaText,
+      "{2}{U}{U}",
+      ["1", "4"],
+    );
+    expect(compiled.notes).toEqual([]);
+    // The same Construct Urza's Saga makes — the Saga nests it in single
+    // quotes because it is already inside a quoted ability, and this one
+    // prints plain double quotes.
+    expect(compiled.definition.triggers[0]?.effects[0]).toMatchObject({
+      kind: "create_token",
+      name: "Construct",
+      power: 0,
+      toughness: 0,
+      bonusPt: { power: 1, toughness: 1, per: "artifacts_you_control" },
+    });
+    expect(compiled.definition.manaAbilities[0]).toMatchObject({
+      produces: { U: 1 },
+      costTapArtifact: true,
+      noTap: true,
+    });
+    expect(compiled.definition.activated[0]?.effects).toEqual([
+      { kind: "shuffle_zones_into_library", playerId: "controller", zones: [] },
+      { kind: "exile_top_play", playerId: "controller", count: 1, freeCast: true },
+    ]);
+  });
+
+  it("leaves the paying impulse paying", () => {
+    const compiled = compile(
+      "Plain Impulse",
+      "Creature — Human",
+      "{T}: Exile the top card of your library. You may play it this turn.",
+      "{2}",
+      ["1", "1"],
+    );
+    // No shuffle, no freeCast: the card still costs its mana.
+    expect(compiled.definition.activated[0]?.effects).toEqual([
+      { kind: "exile_top_play", playerId: "controller", count: 1 },
+    ]);
+  });
+
+  // ---- The mana ability --------------------------------------------------
+
+  const artifact = (name: string) =>
+    createCardDefinition({ name, typeLine: "Artifact", manaCost: "{1}" });
+  const bear = (name: string) =>
+    createCardDefinition({
+      name,
+      typeLine: "Creature — Bear",
+      manaCost: "{1}{G}",
+      power: 2,
+      toughness: 2,
+    });
+
+  const urza = () =>
+    createCardDefinition({
+      name: "Urza, Lord High Artificer",
+      typeLine: "Legendary Creature — Human Artificer",
+      manaCost: "{2}{U}{U}",
+      power: 1,
+      toughness: 4,
+      manaAbilities: [
+        {
+          produces: { U: 1 },
+          producesOptions: [],
+          producesAnyColor: false,
+          damageToController: 0,
+          costTapArtifact: true,
+          noTap: true,
+        },
+      ],
+    });
+
+  const ready = (game: GameState, playerId: string) => {
+    game.turn.activePlayerId = playerId;
+    game.turn.phase = "precombatMain";
+    game.turn.step = "precombatMain";
+    game.priorityPlayerId = playerId;
+  };
+
+  it("taps an artifact for blue and leaves Urza untapped", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const urzaId = put(game, p1.id, urza());
+    const artifactId = put(game, p1.id, artifact("A Rock"));
+    ready(game, p1.id);
+    const after = applyAction(game, {
+      kind: "tap_for_mana",
+      playerId: p1.id,
+      cardId: urzaId,
+      manaIndex: 0,
+      costTapId: artifactId,
+    });
+    expect(after.players.find((entry) => entry.id === p1.id)!.mana.U).toBe(1);
+    expect(after.cards[artifactId]?.tapped).toBe(true);
+    // The printed cost has no {T}, so Urza himself does not tap and the
+    // ability is repeatable for as many artifacts as there are.
+    expect(after.cards[urzaId]?.tapped).toBe(false);
+  });
+
+  it("refuses a creature for an artifact tap cost", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const urzaId = put(game, p1.id, urza());
+    const bearId = put(game, p1.id, bear("Not An Artifact"));
+    ready(game, p1.id);
+    expect(() =>
+      applyAction(game, {
+        kind: "tap_for_mana",
+        playerId: p1.id,
+        cardId: urzaId,
+        manaIndex: 0,
+        costTapId: bearId,
+      }),
+    ).toThrow();
+  });
+
+  it("offers nothing when every artifact is already tapped", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const urzaId = put(game, p1.id, urza());
+    const artifactId = put(game, p1.id, artifact("A Rock"));
+    game.cards[artifactId]!.tapped = true;
+    ready(game, p1.id);
+    expect(manaAbilitiesFor(game, urzaId)).toHaveLength(0);
+  });
+
+  // ---- The {5} ability ---------------------------------------------------
+
+  it("shuffles before it exiles, and the card is free", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const before = [...game.players.find((entry) => entry.id === p1.id)!.zones.library];
+    const after = applyEffects(
+      game,
+      bindCardEffects(
+        game,
+        [
+          { kind: "shuffle_zones_into_library", playerId: "controller", zones: [] },
+          { kind: "exile_top_play", playerId: "controller", count: 1, freeCast: true },
+        ],
+        { controllerId: p1.id, sourceId: null, targets: [], targetRequirements: [] },
+      ),
+    );
+    const library = after.players.find((entry) => entry.id === p1.id)!.zones.library;
+    // Same cards, one fewer: nothing left the library but the exiled top.
+    expect(library).toHaveLength(before.length - 1);
+    expect(before).toEqual(expect.arrayContaining(library));
+    const exiled = before.find((cardId) => !library.includes(cardId))!;
+    expect(after.cards[exiled]?.zone).toBe("exile");
+    expect(after.exilePlayable?.[0]).toMatchObject({
+      cardId: exiled,
+      casterId: p1.id,
+      freeCast: true,
+    });
+  });
+
+  it("a bare shuffle moves nothing between zones", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const graveyardId = put(game, p1.id, bear("In The Yard"));
+    const buried = moveCard(game, graveyardId, "graveyard");
+    const handSize = buried.players.find((entry) => entry.id === p1.id)!.zones.hand.length;
+    const after = applyEffects(
+      buried,
+      bindCardEffects(
+        buried,
+        [{ kind: "shuffle_zones_into_library", playerId: "controller", zones: [] }],
+        { controllerId: p1.id, sourceId: null, targets: [], targetRequirements: [] },
+      ),
+    );
+    const shuffled = after.players.find((entry) => entry.id === p1.id)!;
+    // An empty zone list is a BARE shuffle — the graveyard and hand stay
+    // exactly where they were.
+    expect(shuffled.zones.graveyard).toContain(graveyardId);
+    expect(shuffled.zones.hand).toHaveLength(handSize);
+  });
+
+  it("round trips the artifact tap cost", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const definition = urza();
+    put(game, p1.id, definition);
+    const round = parseGameState(serializeGameState(game));
+    // Dropped on the wire the ability has no cost at all and adds {U} at
+    // will, which is not a card anyone printed.
+    expect(round.definitions[definition.id]?.manaAbilities[0]).toMatchObject({
+      costTapArtifact: true,
+      noTap: true,
+    });
+  });
+});

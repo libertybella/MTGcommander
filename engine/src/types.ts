@@ -5612,6 +5612,14 @@ export type ManaAbility = {
   costTapCreature?: boolean;
   /** Relic of Legends: the creature tapped for the cost must be legendary. */
   costTapCreatureLegendary?: boolean;
+  /**
+   * Urza, Lord High Artificer: "Tap an untapped ARTIFACT you control: Add
+   * {U}." The same cost one card type over. Every site reads it through
+   * `manaAbilityTapCost` rather than testing the two flags itself — a
+   * hand-written pair of tests is how one of them ends up unchecked, and
+   * an unchecked tap cost is a mana ability that costs nothing.
+   */
+  costTapArtifact?: boolean;
   /** "Activate only if <condition>" on a mana ability (Shrine of the
    * Forsaken Gods) — the same vocabulary the activated form uses. */
   requiresCondition?: TriggerCondition;

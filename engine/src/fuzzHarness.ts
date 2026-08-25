@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { applyAction } from "./actions";
-import { characteristicsOf, isCreature } from "./cardTypes";
+import { characteristicsOf, hasType, isCreature } from "./cardTypes";
 import {
   activatedOf,
   cardMatchesSubtype,
@@ -11,7 +11,7 @@ import { controlsCommander } from "./derived";
 import { hasKeyword } from "./keywords";
 import { legalActions, sacrificeColorMatches, sacrificeScopeMatches } from "./legalActions";
 import { canPayManaCost } from "./mana";
-import { manaAbilitiesFor, manaTapOptionsFor } from "./manaOptions";
+import { manaAbilitiesFor, manaAbilityTapCost, manaTapOptionsFor } from "./manaOptions";
 import { isMulliganOpen } from "./mulligan";
 import { isOpeningRoll, openingRollPending } from "./openingRoll";
 import { isLiving, livingPlayerCount } from "./players";
@@ -538,11 +538,14 @@ function nextAction(state: GameState, rng: () => number): GameAction | null {
         costSacrificeId = pick(rng, fodder);
       }
       let costTapId: string | undefined;
-      if (ability.costTapCreature) {
+      const tapCost = manaAbilityTapCost(ability);
+      if (tapCost) {
         const player = state.players.find((entry) => entry.id === playerId)!;
         const fodder = player.zones.battlefield.filter(
           (id) =>
-            id !== action.cardId && !state.cards[id]?.tapped && isCreature(state, id),
+            id !== action.cardId &&
+            !state.cards[id]?.tapped &&
+            hasType(state, id, tapCost.type),
         );
         if (fodder.length === 0) {
           return { kind: "pass_priority", playerId };

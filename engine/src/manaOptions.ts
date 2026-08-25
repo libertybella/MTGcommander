@@ -159,14 +159,16 @@ function manaGateSatisfied(
   ) {
     return false;
   }
-  // Springleaf Drum: the cost needs an untapped controlled creature.
-  if (ability.costTapCreature) {
+  // Springleaf Drum, Urza: the cost needs an untapped controlled permanent
+  // of the named type.
+  const tapCost = manaAbilityTapCost(ability);
+  if (tapCost) {
     const fodder = Object.values(state.cards).some(
       (card) =>
         card.zone === "battlefield" &&
         card.controllerId === controllerId &&
         !card.tapped &&
-        (computedCard(state, card.id)?.characteristics.types ?? []).includes("creature"),
+        (computedCard(state, card.id)?.characteristics.types ?? []).includes(tapCost.type),
     );
     if (!fodder) {
       return false;
@@ -290,9 +292,27 @@ export function manaAbilityIsCosted(ability: ManaAbility): boolean {
   return Boolean(
     ability.costMana ||
       ability.costSacrifice ||
-      ability.costTapCreature ||
+      manaAbilityTapCost(ability) ||
       ability.costDiscardHand,
   );
+}
+
+/**
+ * The "tap another untapped permanent you control" cost, as one reading.
+ * Springleaf Drum wants a creature, Urza wants an artifact, Relic of Legends
+ * wants a legendary creature. Every consumer asks here, so adding a third
+ * type is one line rather than a hunt for the sites that test the flags.
+ */
+export function manaAbilityTapCost(
+  ability: ManaAbility,
+): { type: "creature" | "artifact"; legendaryOnly: boolean } | null {
+  if (ability.costTapCreature) {
+    return { type: "creature", legendaryOnly: ability.costTapCreatureLegendary === true };
+  }
+  if (ability.costTapArtifact) {
+    return { type: "artifact", legendaryOnly: false };
+  }
+  return null;
 }
 
 /** Phyrexian Altar-class: the sacrifice-cost ability needs legal fodder. */

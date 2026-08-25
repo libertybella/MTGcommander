@@ -673,6 +673,8 @@ const SACRIFICE_SUBTYPE_COST =
 const LIFE_COST = /Pay (\d+) life/i;
 /** Springleaf Drum, and Relic of Legends' legendary-only variant. */
 const TAP_CREATURE_COST = /Tap an untapped (legendary )?creature you control/i;
+/** Urza, Lord High Artificer: the same cost, one card type over. */
+const TAP_ARTIFACT_COST = /Tap an untapped artifact you control/i;
 /** Walking Ballista, Dragon's Hoard, Mikaeus: counters come off as a cost. */
 const REMOVE_COUNTER_COST =
   /Remove (a|an|one|two|three|four|five|six|seven|eight|nine|ten|\d+) ([-+]\d\/[-+]\d|[a-z]+) counters? from ~/i;
@@ -704,7 +706,7 @@ const EXILE_GRAVEYARD_COST =
 /** Lion's Eye Diamond: the whole hand, so there is nothing to choose. */
 const DISCARD_HAND_COST = /Discard your hand/i;
 const COST_UNIT =
-  `(?:\\{[^}]+\\})+|Sacrifice (?:~|this land|this creature|this artifact|this permanent)|Sacrifice (?:an? |another |(?:${SACRIFICE_COUNTS}) (?:other )?)(?:${SACRIFICE_SCOPES})|Sacrifice (?:an? |(?:one|two|three|four|five|\\d+) )[A-Z][a-z]+s?|Discard your hand|Exile ~|Exert ~|Pay \\d+ life|Pay life equal to the number of colors in your commanders?['\u2019]? color identity|Tap an untapped (?:legendary )?creature you control|Remove (?:a|an|one|two|three|four|five|six|seven|eight|nine|ten|\\d+) (?:[-+]\\d\\/[-+]\\d|[a-z]+) counters? from ~|Put (?:a|an|one|two|three|\\d+) (?:[-+]\\d\\/[-+]\\d|[a-z]+) counters? on ~|Discard (?:an? (?:${DISCARD_COST_TYPES})? ?card|(?:${DISCARD_COST_COUNTS}) cards)|Mill (?:a|one|two|three|\\d+) cards?|Exile (?:a|one|two|three|four|five|\\d+) (?:(?:creature|artifact|land|instant|sorcery) )?cards? from your graveyard`;
+  `(?:\\{[^}]+\\})+|Sacrifice (?:~|this land|this creature|this artifact|this permanent)|Sacrifice (?:an? |another |(?:${SACRIFICE_COUNTS}) (?:other )?)(?:${SACRIFICE_SCOPES})|Sacrifice (?:an? |(?:one|two|three|four|five|\\d+) )[A-Z][a-z]+s?|Discard your hand|Exile ~|Exert ~|Pay \\d+ life|Pay life equal to the number of colors in your commanders?['\u2019]? color identity|Tap an untapped (?:legendary )?creature you control|Tap an untapped artifact you control|Remove (?:a|an|one|two|three|four|five|six|seven|eight|nine|ten|\\d+) (?:[-+]\\d\\/[-+]\\d|[a-z]+) counters? from ~|Put (?:a|an|one|two|three|\\d+) (?:[-+]\\d\\/[-+]\\d|[a-z]+) counters? on ~|Discard (?:an? (?:${DISCARD_COST_TYPES})? ?card|(?:${DISCARD_COST_COUNTS}) cards)|Mill (?:a|one|two|three|\\d+) cards?|Exile (?:a|one|two|three|four|five|\\d+) (?:(?:creature|artifact|land|instant|sorcery) )?cards? from your graveyard`;
 
 function splitAbility(sentence: string): { costText: string; rest: string } | null {
   // "Metalcraft — {T}: …" — the ability word is flavor (Mox Opal).
@@ -754,6 +756,8 @@ function parseAbilityCost(
   tapCreature?: boolean;
   /** Relic of Legends: the tapped creature must be legendary. */
   tapCreatureLegendary?: boolean;
+  /** Urza, Lord High Artificer. */
+  tapArtifact?: boolean;
   /** Nyx Weaver: exiling the source pays for it. */
   exertSelf?: boolean;
   exileSelf?: boolean;
@@ -768,6 +772,7 @@ function parseAbilityCost(
   const tapCreatureMatch = costText.match(TAP_CREATURE_COST);
   const tapCreature = tapCreatureMatch !== null;
   const tapCreatureLegendary = Boolean(tapCreatureMatch?.[1]);
+  const tapArtifact = TAP_ARTIFACT_COST.test(costText);
   const sacrificeSelf = SACRIFICE_COST.test(costText);
   const sacrificeTypeMatch = SACRIFICE_COST.test(costText)
     ? null
@@ -883,6 +888,7 @@ function parseAbilityCost(
     !lifeCostFromCommanderColors &&
     !sacrificeCost &&
     !tapCreature &&
+    !tapArtifact &&
     !removeCounterCost &&
     !addCounterCost &&
     !discardCost &&
@@ -948,6 +954,7 @@ function parseAbilityCost(
     ...(discardHandCost ? { discardHandCost: true } : {}),
     ...(tapCreature ? { tapCreature: true } : {}),
     ...(tapCreatureLegendary ? { tapCreatureLegendary: true } : {}),
+    ...(tapArtifact ? { tapArtifact: true } : {}),
     ...(exileSelfCost ? { exileSelf: true } : {}),
     ...(removeCounterCost ? { removeCounterCost } : {}),
     ...(addCounterCost ? { addCounterCost } : {}),
@@ -7949,16 +7956,30 @@ function compileSimpleClauseInner(sentence: string): SimpleClause | null {
 
   // Impulse exiles (fused by fuseExilePlayInPlace): cast/play this turn,
   // paying costs as normal.
-  match = sentence.match(/^impulse(?: (\d+))?( extended)? from your library$/i);
+  match = sentence.match(
+    /^(shuffle then )?impulse(?: (\d+))?( extended)?( free)? from your library$/i,
+  );
   if (match) {
     return {
       targetRequirements: [],
       effects: [
+        // An empty zone list is a bare shuffle: nothing moves and the
+        // library is shuffled once, which is what the printed word asks.
+        ...(match[1]
+          ? [
+              {
+                kind: "shuffle_zones_into_library" as const,
+                playerId: "controller" as const,
+                zones: [],
+              },
+            ]
+          : []),
         {
           kind: "exile_top_play",
           playerId: "controller",
-          count: match[1] ? Number(match[1]) : 1,
-          ...(match[2] ? { untilEndOfNextTurn: true } : {}),
+          count: match[2] ? Number(match[2]) : 1,
+          ...(match[3] ? { untilEndOfNextTurn: true } : {}),
+          ...(match[4] ? { freeCast: true } : {}),
         },
       ],
     };
@@ -8134,7 +8155,7 @@ function compileSimpleClauseInner(sentence: string): SimpleClause | null {
   // own. The static belongs to the TOKEN, not to whatever made it, so it
   // rides the create_token effect onto the token's definition.
   const tokenWithStatic = sentence.match(
-    /^Create (.+? token) with ['‘“](?:This token|~) gets \+(\d+)\/\+(\d+) for each (.+?)\.?['’”]\.?$/i,
+    /^Create (.+? token) with ['‘“"](?:This token|~) gets \+(\d+)\/\+(\d+) for each (.+?)\.?['’”"]\.?$/i,
   );
   if (tokenWithStatic?.[1] && tokenWithStatic[2] && tokenWithStatic[3] && tokenWithStatic[4]) {
     const per = parseDynamicCount(tokenWithStatic[4]);
@@ -12152,6 +12173,22 @@ function fuseExilePlayInPlace(sentences: string[], lineStart: boolean[]): void {
       const count = own[2]!.toLowerCase() === "card" ? 1 : parseCount(own[2]!.split(" ")[0]!) ?? 1;
       const suffix = count === 1 ? "" : ` ${count}`;
       sentences.splice(index, 2, `${own[1] ?? ""}impulse${suffix} extended from your library`);
+      lineStart.splice(index + 1, 1);
+      continue;
+    }
+    // Urza, Lord High Artificer: the shuffle is what makes the exile
+    // random, so it belongs to the same ability rather than being dropped —
+    // without it he exiles a card its controller already knows.
+    const shuffled = sentences[index]!.match(
+      /^(.*)Shuffle your library, then exile the top card$/i,
+    );
+    if (
+      shuffled &&
+      /^Until end of turn, you may play (?:it|that card) without paying its mana costs?$/i.test(
+        sentences[index + 1]!,
+      )
+    ) {
+      sentences.splice(index, 2, `${shuffled[1] ?? ""}shuffle then impulse free from your library`);
       lineStart.splice(index + 1, 1);
       continue;
     }
@@ -19560,19 +19597,23 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
         continue;
       }
       const add = parseAddMana(ability.rest);
-      // Relic of Legends taps a creature INSTEAD of itself, so the ability
-      // has no {T} of its own — the creature tap is the whole cost.
+      // Relic of Legends and Urza tap ANOTHER permanent instead of
+      // themselves, so the ability has no {T} of its own — and without
+      // `noTap` the source was tapped anyway, quietly turning a repeatable
+      // ability into a once-per-turn one.
       if (
         add &&
-        (cost.tap || cost.tapCreature) &&
+        (cost.tap || cost.tapCreature || cost.tapArtifact) &&
         (cost.manaCost === "" || cost.exertSelf)
       ) {
         result.manaAbilities.push({
           ...manaAbilityFromAdd(add),
           ...(cost.tapCreature ? { costTapCreature: true } : {}),
+          ...(cost.tapArtifact ? { costTapArtifact: true } : {}),
           ...(cost.tapCreatureLegendary ? { costTapCreatureLegendary: true } : {}),
           ...(cost.exertSelf ? { exertSelf: true } : {}),
           ...(cost.exertSelf && cost.manaCost ? { costMana: cost.manaCost } : {}),
+          ...(cost.tap ? {} : { noTap: true }),
         });
         continue;
       }

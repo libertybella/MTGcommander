@@ -5,7 +5,7 @@ import {
   cardMatchesSubtype,
   controlsGate,
 } from "./characteristicsEngine";
-import { characteristicsOf, isCommander, isCreature, isInstant, isInstantOrSorcery, isLand, isLegendary, isMainPhase } from "./cardTypes";
+import { characteristicsOf, hasType, isCommander, isCreature, isInstant, isInstantOrSorcery, isLand, isLegendary, isMainPhase } from "./cardTypes";
 import { abilityLifeCost } from "./commanderIdentity";
 import { cloneGameState } from "./clone";
 import { applyPhyrexianColorGrants, retraceReaches, targetingLifeTaxFor, splitSecondActive, costRelief, affinityArtifactDiscount, allBattlefieldCreatureCount, canActivateTapAbility, canPlayLandFromTop, canPlayLandsFromGraveyard, castCostReduction, castableFromTop, controlsCommander, creaturePower, freeEquipGranted, hasFlashGrant, activationNonManaPayment, altCastPayment, landDropAllowance, manaTapMultiplier, lockedByAbolisher, lockedFromCasting, noncreatureSpellCap, opponentControlsMoreLands, findFreeHandGrantIndex, opponentsCastLockedToHand, selfDiscountAmount, staticFreeCastCap, usesOncePerTurnFreeCast , topOfLibraryGrant } from "./derived";
@@ -14,7 +14,7 @@ import { applyEffects, bindCardEffects, devotionTo } from "./effects";
 import { hasKeyword } from "./keywords";
 import { controlsMatching, sacrificeColorMatches, sacrificeScopeMatches } from "./legalActions";
 import { addMana, addRestrictedMana, canPayManaCost, manaSpentBetween, parseManaCost, payManaCost, poolWith, tapCard, tapForMana, totalManaAvailable, usableRestrictedMana, type ManaPurpose } from "./mana";
-import { colorsAmongControlled, manaAbilityAmount, manaAbilitiesFor, manaTapOptionsFor } from "./manaOptions";
+import { colorsAmongControlled, manaAbilityAmount, manaAbilityTapCost, manaAbilitiesFor, manaTapOptionsFor } from "./manaOptions";
 import { createId } from "./ids";
 import { isLiving, livingPlayerCount, requireLiving } from "./players";
 import { passPriority, putActivatedAbilityOnStack, putSpellOnStack, resolveTopOfStack } from "./stack";
@@ -1527,7 +1527,8 @@ function applyTapForMana(
   }
   // Springleaf Drum: tapping a chosen untapped creature is part of the cost.
   // Summoning sickness doesn't apply — the cost is not that creature's {T}.
-  if (ability.costTapCreature) {
+  const tapCost = manaAbilityTapCost(ability);
+  if (tapCost) {
     const fodder = costTapId ? base.cards[costTapId] : undefined;
     if (
       !costTapId ||
@@ -1536,16 +1537,18 @@ function applyTapForMana(
       fodder.zone !== "battlefield" ||
       fodder.controllerId !== playerId ||
       fodder.tapped ||
-      !isCreature(base, costTapId) ||
+      !hasType(base, costTapId, tapCost.type) ||
       // Relic of Legends: only a legendary creature pays this one.
-      (ability.costTapCreatureLegendary === true && !isLegendary(base, costTapId))
+      (tapCost.legendaryOnly && !isLegendary(base, costTapId))
     ) {
-      throw new Error("Tap an untapped creature you control to use that mana ability");
+      throw new Error(
+        `Tap an untapped ${tapCost.type} you control to use that mana ability`,
+      );
     }
   } else if (costTapId !== undefined) {
-    throw new Error("That mana ability has no tap-a-creature cost");
+    throw new Error("That mana ability has no tap-a-permanent cost");
   }
-  if (ability.costTapCreature && costTapId) {
+  if (tapCost && costTapId) {
     base = tapCard(base, costTapId);
     dispatchEventsInPlace(base, [{ kind: "tapped", cardId: costTapId }]);
   }
