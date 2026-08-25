@@ -24,19 +24,11 @@ function oracle(name: string, typeLine = "Artifact", oracleText = ""): OracleCar
  * in two places at once.
  */
 describe("hand-authored registry", () => {
-  it("holds only what the compiler still cannot read", () => {
-    // Wave 363 took this from 22 entries to 1. If it grows again, each new
-    // entry needs its own reason, and the reason has to expire.
-    expect(overriddenCardNames()).toEqual([expect.stringContaining("brainstorm")]);
-  });
-
-  it("Brainstorm draws three and puts two back on top", () => {
-    const definition = cardOverrideFor(oracle("Brainstorm", "Instant"));
-    expect(definition).not.toBeNull();
-    expect(definition?.effects[0]).toMatchObject({ kind: "draw", count: 3 });
-    // Two sequential hand picks: "in any order" is the order you pick them.
-    expect(definition?.effects[1]).toMatchObject({ kind: "choose_card" });
-    expect(definition?.effects[2]).toMatchObject({ kind: "choose_card" });
+  it("is EMPTY, and the mechanism is kept for the next card that needs it", () => {
+    // 22 entries before wave 363, one after it, none after wave 364. An
+    // addition here should be a deliberate act with its own test and its
+    // own expiry — nothing in the registry expires on its own.
+    expect(overriddenCardNames()).toEqual([]);
   });
 
   it("has nothing to say about a card the compiler reads", () => {
@@ -45,7 +37,7 @@ describe("hand-authored registry", () => {
 });
 
 /**
- * The cards wave 363 handed back to the compiler. Each of these was an
+ * The cards waves 363 and 364 handed back to the compiler. Each was an
  * override until the compiler could do better, and in every case below the
  * override was a DOCUMENTED APPROXIMATION that played a stronger card than
  * the printed one. These assert the difference, so nobody re-adds them.
@@ -141,6 +133,21 @@ describe("retired overrides now read by the compiler", () => {
     expect(out.definition.triggers[0]?.targetRequirements).toEqual([
       { kind: "own_graveyard_card" },
     ]);
+  });
+
+  it("Brainstorm draws three and puts two back one at a time", () => {
+    const out = compiled(
+      "Brainstorm",
+      "Instant",
+      "Draw three cards, then put two cards from your hand on top of your library in any order.",
+      "{U}",
+    );
+    expect(out.notes).toEqual([]);
+    expect(out.definition.effects[0]).toMatchObject({ kind: "draw", count: 3 });
+    // "In any order" IS the order you pick them, so two single picks.
+    expect(out.definition.effects[1]).toMatchObject({ kind: "choose_card" });
+    expect(out.definition.effects[2]).toMatchObject({ kind: "choose_card" });
+    expect(out.definition.effects).toHaveLength(3);
   });
 
   it("still reads the plain ones it always did", () => {

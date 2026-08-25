@@ -4968,6 +4968,44 @@ function compileSimpleClauseInner(sentence: string): SimpleClause | null {
   }
 
   /**
+   * Brainstorm, and the fourteen other printings of its sentence. The cards
+   * go back ONE AT A TIME — "in any order" is the order you pick them, and
+   * `choose_card` picks one card — so N picks are emitted rather than one
+   * choice of N. The last override in the registry was exactly this list;
+   * the difficulty was never the vocabulary, only reading the sentence.
+   */
+  const drawThenTop = sentence.match(
+    /^Draw ([a-z]+) cards?, then put ([a-z]+) cards? from your hand on top of your library(?: in any order)?$/i,
+  );
+  if (drawThenTop?.[1] && drawThenTop[2]) {
+    const drawn = parseCount(drawThenTop[1]);
+    const returned = parseCount(drawThenTop[2]);
+    if (drawn && returned) {
+      return {
+        targetRequirements: [],
+        effects: [
+          { kind: "draw", playerId: "controller", count: drawn },
+          ...Array.from({ length: returned }, () => ({
+            kind: "choose_card" as const,
+            chooserId: "controller" as const,
+            sources: [
+              { playerId: "controller" as const, zone: "hand" as const, filter: "any" as const },
+            ],
+            thenEffects: [
+              {
+                kind: "move_card" as const,
+                cardId: "chosen_card" as const,
+                toZone: "library" as const,
+                libraryPosition: "top" as const,
+              },
+            ],
+          })),
+        ],
+      };
+    }
+  }
+
+  /**
    * Mechanized Production's upkeep body. The copy is of the ENCHANTED
    * permanent, which the copy selector already reaches as `"host"`, and the
    * win is counted at APPLY — the token this same ability just made is one

@@ -2277,7 +2277,9 @@ more questions it can now ask:
   `TopOfLibraryGrant.payLifeInsteadOfMana` replaces the cost OUTRIGHT, the
   same way flashback does, and rides the same life-payment path. A cost
   that had merely been reduced would still refuse a caster with no mana.
-- **The hand-authored override registry is down to ONE card** (Brainstorm).
+- **The hand-authored override registry is EMPTY.** The mechanism is kept
+  for the next card the compiler genuinely cannot read; the test asserts the
+  map holds nothing, so an addition is a deliberate act.
   An override shadows the compiler completely, and the compile-rate metric
   counts an overridden card as full by construction — so a stale entry is
   invisible in two places at once and nothing expires on its own. Of the 21
