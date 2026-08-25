@@ -58616,3 +58616,206 @@ describe("wave 370: a fog for one player, and what it stopped", () => {
     });
   });
 });
+
+describe("wave 371: exiling a spell is not countering it", () => {
+  const compile = (name: string, typeLine: string, oracleText: string, manaCost = "") =>
+    compileOracleCard({
+      oracleId: name.toLowerCase().replace(/[^a-z]+/g, "-"),
+      name,
+      manaCost,
+      typeLine,
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  const put = (
+    game: GameState,
+    ownerId: string,
+    definition: CardDefinition,
+    zone: "hand" | "battlefield" = "hand",
+  ) => {
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({ definitionId: definition.id, ownerId, zone });
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === ownerId)!.zones[zone].push(card.id);
+    if (zone === "battlefield") {
+      card.summoningSick = false;
+    }
+    return card.id;
+  };
+
+  const trapText =
+    "If an opponent cast three or more spells this turn, you may pay {0} rather than pay this spell's mana cost.\nExile any number of target spells.";
+
+  it("compiles Mindbreak Trap", () => {
+    const compiled = compile("Mindbreak Trap", "Instant — Trap", trapText, "{2}{U}{U}");
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.altCost).toEqual({ opponentSpellsThisTurn: 3 });
+    expect(compiled.definition.targetRequirements).toEqual([
+      { kind: "spell", variable: true },
+    ]);
+    expect(compiled.definition.effects).toEqual([
+      { kind: "exile_spell", target: "all_chosen" },
+    ]);
+  });
+
+  it("leaves Force of Negation's exiling COUNTER alone", () => {
+    const compiled = compile(
+      "Force of Negation",
+      "Instant",
+      "If it's not your turn, you may exile a blue card from your hand rather than pay this spell's mana cost.\nCounter target noncreature spell. If that spell is countered this way, exile it instead of putting it into its owner's graveyard.",
+      "{1}{U}{U}",
+    );
+    expect(compiled.notes).toEqual([]);
+    // That card COUNTERS and exiles the remains; this wave's effect exiles
+    // without countering. They are different things and stay so.
+    expect(compiled.definition.effects[0]).toMatchObject({ kind: "counter_spell" });
+  });
+
+  const bolt = (name = "Bolt", extra = {}) =>
+    createCardDefinition({
+      name,
+      typeLine: "Instant",
+      manaCost: "{R}",
+      effects: [{ kind: "draw", playerId: "controller", count: 1 }],
+      ...extra,
+    });
+
+  const castBy = (game: GameState, playerId: string, definition: CardDefinition) => {
+    const cardId = put(game, playerId, definition);
+    game.turn.activePlayerId = playerId;
+    game.turn.phase = "precombatMain";
+    game.turn.step = "precombatMain";
+    game.priorityPlayerId = playerId;
+    game.players.find((entry) => entry.id === playerId)!.mana.R = 1;
+    return { next: applyAction(game, { kind: "cast_spell", playerId, cardId, targets: [] }), cardId };
+  };
+
+  it("exiles a spell off the stack", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    const { next: cast, cardId } = castBy(game, p2.id, bolt());
+    expect(cast.stack).toHaveLength(1);
+    const after = applyEffect(cast, {
+      kind: "exile_spell",
+      stackObjectId: cast.stack[0]!.id,
+    });
+    expect(after.stack).toHaveLength(0);
+    expect(after.players.find((entry) => entry.id === p2.id)!.zones.exile).toContain(cardId);
+    expect(after.players.find((entry) => entry.id === p2.id)!.zones.graveyard).not.toContain(
+      cardId,
+    );
+    void p1;
+  });
+
+  it("exiles a spell that CANNOT be countered", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    const { next: cast, cardId } = castBy(
+      game,
+      p2.id,
+      bolt("Uncounterable Bolt", { cantBeCountered: true }),
+    );
+    const stackObjectId = cast.stack[0]!.id;
+    // A counter bounces off it...
+    const countered = applyEffect(cast, { kind: "counter_spell", stackObjectId });
+    expect(countered.stack).toHaveLength(1);
+    // ...and exiling does not, which is the whole reason the card is played.
+    const exiled = applyEffect(cast, { kind: "exile_spell", stackObjectId });
+    expect(exiled.stack).toHaveLength(0);
+    expect(exiled.players.find((entry) => entry.id === p2.id)!.zones.exile).toContain(cardId);
+    void p1;
+  });
+
+  it("takes any number of spells at once", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    const first = castBy(game, p2.id, bolt("First"));
+    const second = castBy(first.next, p2.id, bolt("Second"));
+    expect(second.next.stack).toHaveLength(2);
+    const after = applyEffects(
+      second.next,
+      bindCardEffects(second.next, [{ kind: "exile_spell", target: "all_chosen" }], {
+        controllerId: p1.id,
+        sourceId: null,
+        targets: second.next.stack.map((entry) => ({
+          type: "spell" as const,
+          stackObjectId: entry.id,
+        })),
+        targetRequirements: [{ kind: "spell", variable: true }],
+      }),
+    );
+    expect(after.stack).toHaveLength(0);
+  });
+
+  // ---- The free cast -------------------------------------------------------
+
+  const trap = () =>
+    createCardDefinition({
+      name: "Mindbreak Trap",
+      typeLine: "Instant — Trap",
+      manaCost: "{2}{U}{U}",
+      altCost: { opponentSpellsThisTurn: 3 },
+      effects: [{ kind: "exile_spell", target: "all_chosen" }],
+      targetRequirements: [{ kind: "spell", variable: true }],
+    });
+
+  it("is free only once an opponent has cast enough", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const trapId = put(game, p1.id, trap());
+    game.turn.activePlayerId = p2.id;
+    game.turn.phase = "precombatMain";
+    game.turn.step = "precombatMain";
+    game.priorityPlayerId = p1.id;
+    expect(altCastPayment(game, p1.id, trap().altCost!, trapId)).toBeNull();
+    game.spellsCastByPlayerThisTurn = { [p2.id]: 2 };
+    expect(altCastPayment(game, p1.id, trap().altCost!, trapId)).toBeNull();
+    game.spellsCastByPlayerThisTurn = { [p2.id]: 3 };
+    expect(altCastPayment(game, p1.id, trap().altCost!, trapId)).not.toBeNull();
+  });
+
+  it("counts ONE opponent, not the table between them", () => {
+    const game = createGameState({ playerCount: 3 });
+    const [p1, p2, p3] = game.players;
+    if (!p1 || !p2 || !p3) {
+      throw new Error("need three players");
+    }
+    const trapId = put(game, p1.id, trap());
+    game.turn.activePlayerId = p2.id;
+    game.turn.phase = "precombatMain";
+    game.turn.step = "precombatMain";
+    game.priorityPlayerId = p1.id;
+    // Two apiece is four between them and still not a storm turn.
+    game.spellsCastByPlayerThisTurn = { [p2.id]: 2, [p3.id]: 2 };
+    expect(altCastPayment(game, p1.id, trap().altCost!, trapId)).toBeNull();
+    game.spellsCastByPlayerThisTurn = { [p2.id]: 3, [p3.id]: 0 };
+    expect(altCastPayment(game, p1.id, trap().altCost!, trapId)).not.toBeNull();
+  });
+
+  it("does not count the caster's own spells", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const trapId = put(game, p1.id, trap());
+    game.turn.activePlayerId = p2.id;
+    game.turn.phase = "precombatMain";
+    game.turn.step = "precombatMain";
+    game.priorityPlayerId = p1.id;
+    game.spellsCastByPlayerThisTurn = { [p1.id]: 9 };
+    expect(altCastPayment(game, p1.id, trap().altCost!, trapId)).toBeNull();
+  });
+
+  it("round trips both new pieces", () => {
+    const { game, p1 } = twoPlayers();
+    const definition = trap();
+    put(game, p1.id, definition);
+    const round = parseGameState(serializeGameState(game));
+    expect(round.definitions[definition.id]?.altCost).toEqual({
+      opponentSpellsThisTurn: 3,
+    });
+    expect(round.definitions[definition.id]?.effects).toEqual([
+      { kind: "exile_spell", target: "all_chosen" },
+    ]);
+  });
+});

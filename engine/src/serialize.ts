@@ -794,6 +794,14 @@ export function parseGameState(json: string): GameState {
       ...(isRecord(def.altCost)
         ? {
             altCost: {
+              ...(def.altCost.opponentSpellsThisTurn === undefined
+                ? {}
+                : {
+                    opponentSpellsThisTurn: expectNumber(
+                      def.altCost.opponentSpellsThisTurn,
+                      `definition.${id}.altCost.opponentSpellsThisTurn`,
+                    ),
+                  }),
               ...(def.altCost.onlyOnOpponentsTurn === true
                 ? { onlyOnOpponentsTurn: true }
                 : {}),
@@ -4060,6 +4068,13 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
         ...(value.cantBlock === true ? { cantBlock: true } : {}),
         ...(value.cantBeBlocked === true ? { cantBeBlocked: true } : {}),
       };
+    case "exile_spell":
+      // Its own case, not folded into the group below: only this one takes
+      // "any number of target spells", and only that group carries
+      // counter_spell's `exileInstead`.
+      return value.target === "all_chosen"
+        ? { kind, target: "all_chosen" }
+        : { kind, target: parseChosenTargetRef(value.target, `${label}.target`) };
     case "grant_protection_choice":
     case "counter_spell":
     case "copy_spell": {
@@ -7003,6 +7018,12 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
       kind,
       stackObjectId: expectString(value.stackObjectId, `${label}.stackObjectId`),
       controllerId: expectString(value.controllerId, `${label}.controllerId`),
+    };
+  }
+  if (kind === "exile_spell") {
+    return {
+      kind,
+      stackObjectId: expectString(value.stackObjectId, `${label}.stackObjectId`),
     };
   }
   if (kind === "extra_combat") {

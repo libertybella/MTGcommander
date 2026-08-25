@@ -1693,6 +1693,8 @@ export type GameEffect =
   | { kind: "exchange_life_toughness"; playerId: PlayerId; sourceId: CardInstanceId }
   | { kind: "counter_unless_pays"; stackObjectId: StackObjectId; cost: string }
   | { kind: "copy_spell"; stackObjectId: StackObjectId; controllerId: PlayerId }
+  /** Mindbreak Trap — see the definition form for why this is not a counter. */
+  | { kind: "exile_spell"; stackObjectId: StackObjectId }
   | { kind: "extra_combat" }
   | { kind: "untap_all"; playerId: PlayerId; what: "creature" | "land" | "attacking" | "nonland" }
   /** Cryptic Command: "Tap all creatures your opponents control." */
@@ -3138,6 +3140,13 @@ export type CardEffect =
   /** Tree of Perdition: swap the target's life with the source's toughness. */
   | { kind: "exchange_life_toughness"; playerId: PlayerSelector }
   | { kind: "copy_spell"; target: ChosenTargetRef }
+  /**
+   * Mindbreak Trap: exiling a spell REMOVES it from the stack without
+   * countering it (CR 701.11). Deliberately not `counter_spell` with
+   * `exileInstead`: that path refuses a spell that can't be countered, and
+   * beating those is the whole reason this card is played.
+   */
+  | { kind: "exile_spell"; target: ChosenTargetRef | "all_chosen" }
   | { kind: "extra_combat" }
   | {
       kind: "untap_all";
@@ -4581,6 +4590,13 @@ export type AlternativeCastCost = {
    * could also fire on your own turn is a different, better card.
    */
   onlyOnOpponentsTurn?: boolean;
+  /**
+   * Mindbreak Trap: "If an opponent cast three or more spells this turn."
+   * ANY one opponent, off the per-player tally the engine already keeps —
+   * a trap that fired on the table's combined total would go off far too
+   * often in a four-player game.
+   */
+  opponentSpellsThisTurn?: number;
 };
 
 export type ControlledGate = {

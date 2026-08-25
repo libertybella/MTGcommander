@@ -272,6 +272,13 @@ function expandEachOpponent(
       .filter((target) => target.type === "creature")
       .map((target) => ({ ...effect, cardId: target.cardId }));
   }
+  // Mindbreak Trap: "any number of target spells", the same shape one
+  // layer over — a spell target rather than a card one.
+  if (effect.kind === "exile_spell" && effect.target === "all_chosen") {
+    return (chosenTargets ?? [])
+      .filter((target) => target.type === "spell")
+      .map((target) => ({ ...effect, target: { type: "chosen" as const, index: 0 }, stackObjectId: target.stackObjectId }));
+  }
   if (effect.kind === "choose_card") {
     const players = eachOf(effect.chooserId);
     if (players) {
@@ -2112,6 +2119,22 @@ export function bindCardEffect(
         return null;
       }
       return { kind: "copy_spell", stackObjectId: chosen.stackObjectId, controllerId: context.controllerId };
+    }
+    case "exile_spell": {
+      // The expansion above already resolved an `all_chosen` list into one
+      // effect per spell, each carrying its own stack object.
+      const carried = (effect as { stackObjectId?: StackObjectId }).stackObjectId;
+      if (carried) {
+        return { kind: "exile_spell", stackObjectId: carried };
+      }
+      if (effect.target === "all_chosen") {
+        return null;
+      }
+      const chosenSpell = chosenTargetAt(context, effect.target.index, state);
+      if (!chosenSpell || chosenSpell.type !== "spell") {
+        return null;
+      }
+      return { kind: "exile_spell", stackObjectId: chosenSpell.stackObjectId };
     }
     case "extra_combat":
       return { kind: "extra_combat" };
@@ -4754,6 +4777,28 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
       case "counter_unless_pays":
         next = applyCounterUnlessPays(state, effect.stackObjectId, effect.cost);
         break;
+      case "exile_spell": {
+        /**
+         * CR 701.11: exiling a spell removes it from the stack WITHOUT
+         * countering it, so nothing here asks whether it could be
+         * countered — which is the whole reason this is not `counter_spell`
+         * with `exileInstead`.
+         */
+        next = cloneGameState(state);
+        const exiledIndex = next.stack.findIndex((entry) => entry.id === effect.stackObjectId);
+        if (exiledIndex === -1) {
+          break;
+        }
+        const [removedSpell] = next.stack.splice(exiledIndex, 1);
+        // A copy is not a card; it simply ceases to exist (CR 707.10a).
+        if (removedSpell?.isCopy || !removedSpell?.sourceId) {
+          break;
+        }
+        if (next.cards[removedSpell.sourceId]?.zone === "stack") {
+          next = enterOwnerZone(next, removedSpell.sourceId, "exile");
+        }
+        break;
+      }
       case "copy_spell":
         next = applyCopySpell(state, effect.stackObjectId, effect.controllerId);
         break;

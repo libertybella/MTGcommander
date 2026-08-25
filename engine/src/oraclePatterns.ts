@@ -1151,6 +1151,15 @@ function parseAlternativeCastCost(sentence: string): AlternativeCastCost | null 
     const inner = parseAlternativeCastCost(notYourTurn[1].trim());
     return inner ? { ...inner, onlyOnOpponentsTurn: true } : null;
   }
+  // Mindbreak Trap, and the rest of the trap cycle: a free cast gated on
+  // what an OPPONENT did this turn.
+  const trap = sentence.match(
+    /^If an opponent cast ([a-z]+) or more spells this turn, you may pay \{0\} rather than pay this spell's mana cost$/i,
+  );
+  if (trap?.[1]) {
+    const threshold = parseCount(trap[1]);
+    return threshold ? { opponentSpellsThisTurn: threshold } : null;
+  }
   const match = sentence.match(
     /^(?:If you control an? ([A-Z][a-z]+), )?you may (.+) rather than pay this spell's mana cost$/i,
   );
@@ -4541,6 +4550,24 @@ function compileSimpleClauseInner(sentence: string): SimpleClause | null {
   }
 
   // Mental Misstep ({U/P} pays as plain {U}, documented).
+  /**
+   * Mindbreak Trap. Exiling a spell is NOT countering it (CR 701.11), which
+   * is the whole reason the card beats a storm turn full of uncounterable
+   * spells — so this is `exile_spell`, not a counter that happens to exile.
+   */
+  if (/^Exile any number of target spells$/i.test(sentence)) {
+    return {
+      targetRequirements: [{ kind: "spell", variable: true }],
+      effects: [{ kind: "exile_spell", target: "all_chosen" }],
+    };
+  }
+  if (/^Exile target spell$/i.test(sentence)) {
+    return {
+      targetRequirements: [{ kind: "spell" }],
+      effects: [{ kind: "exile_spell", target: { type: "chosen", index: 0 } }],
+    };
+  }
+
   const counterMv = sentence.match(/^Counter target spell with mana value (\d+)$/i);
   if (counterMv?.[1]) {
     const mv = Number(counterMv[1]);

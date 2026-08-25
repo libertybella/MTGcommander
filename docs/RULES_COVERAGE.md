@@ -2277,6 +2277,14 @@ more questions it can now ask:
   `TopOfLibraryGrant.payLifeInsteadOfMana` replaces the cost OUTRIGHT, the
   same way flashback does, and rides the same life-payment path. A cost
   that had merely been reduced would still refuse a caster with no mana.
+- **Exiling a spell** (CR 701.11) — Mindbreak Trap. `exile_spell` removes a
+  spell from the stack WITHOUT countering it, so "can't be countered" does
+  not stop it; that is deliberately not `counter_spell` with `exileInstead`,
+  which does check. "Any number of target spells" is a variable requirement
+  expanded per chosen spell.
+- **A free cast gated on an opponent's spell count** — Mindbreak Trap.
+  `altCost.opponentSpellsThisTurn` asks about any ONE opponent, not the
+  table's combined total.
 - **A fog for one player, and the damage it prevented** — Inkshield.
   `combatDamageShields` prevents at the damage site rather than
   short-circuiting the whole step, so it can be scoped to one player and can

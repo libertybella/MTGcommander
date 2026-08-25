@@ -448,6 +448,23 @@ export function altCastPayment(
   if (cost.onlyOnOpponentsTurn && state.turn.activePlayerId === playerId) {
     return null;
   }
+  /**
+   * Mindbreak Trap: "if an OPPONENT cast three or more spells this turn."
+   * Any one opponent, off the per-player tally — a trap gated on the
+   * table's combined total would go off far too often at four players.
+   */
+  if (cost.opponentSpellsThisTurn !== undefined) {
+    const cast = state.spellsCastByPlayerThisTurn ?? {};
+    const reached = state.players.some(
+      (entry) =>
+        entry.id !== playerId &&
+        !entry.lost &&
+        (cast[entry.id] ?? 0) >= cost.opponentSpellsThisTurn!,
+    );
+    if (!reached) {
+      return null;
+    }
+  }
   // CR 118.4: a cost that would reduce life to zero or below cannot be paid.
   if (cost.life !== undefined && player.life <= cost.life) {
     return null;
