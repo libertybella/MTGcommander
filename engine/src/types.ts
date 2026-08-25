@@ -2102,6 +2102,29 @@ export type GameEffect =
        */
       toHandAllowed?: boolean;
     }
+  /**
+   * "Reveal cards from the top of your library until you reveal a creature
+   * card. Put that card onto the battlefield and the rest on the bottom of
+   * your library in a random order."
+   *
+   * The same walk `discover` does, with the stop generalised from cascade's
+   * hard-wired "nonland card cheap enough" to a `SearchFilter` — which is
+   * what brings the mana-value caps along without a second field — and both
+   * destinations spelled out, because the cards disagree about them: the
+   * rest go to the bottom, or to the graveyard, or into exile.
+   *
+   * Running out of library is not a failure. Everything revealed goes to
+   * `rest` and nothing is found, which is what the printed cards say.
+   */
+  | {
+      kind: "dig_until";
+      playerId: PlayerId;
+      filter: SearchFilter;
+      found: "hand" | "battlefield" | "battlefield_tapped" | "graveyard" | "exile";
+      rest: "library_bottom_random" | "library_bottom" | "graveyard" | "exile";
+      /** "You MAY put that card onto the battlefield" (Hei Bai). */
+      optional?: boolean;
+    }
   /** Push the "any number of cards from your hand" prompt. */
   | {
       kind: "choose_from_hand";
@@ -3528,6 +3551,14 @@ export type CardEffect =
       includePlayer?: boolean;
     }
   | { kind: "spells_uncounterable_this_turn"; playerId: PlayerSelector }
+  | {
+      kind: "dig_until";
+      playerId: PlayerSelector;
+      filter: SearchFilter;
+      found: "hand" | "battlefield" | "battlefield_tapped" | "graveyard" | "exile";
+      rest: "library_bottom_random" | "library_bottom" | "graveyard" | "exile";
+      optional?: boolean;
+    }
   /** "All creatures get -X/-X until end of turn" (Toxic Deluge). */
   | {
       kind: "all_pt_until_eot";

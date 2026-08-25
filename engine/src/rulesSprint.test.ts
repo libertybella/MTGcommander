@@ -40,7 +40,7 @@ import { parseGameState, serializeGameState } from "./serialize";
 import { fillLibraries } from "./testSupport";
 import { applyKeepHand, beginMulligan, isMulliganOpen } from "./mulligan";
 import { advanceSteps } from "./turn";
-import type { CardDefinition, CardEffect, Color, GameEffect, GameState, Keyword, ManaRider, PlayerState, Step, TargetRequirement } from "./types";
+import type { CardDefinition, CardEffect, Color, GameEffect, GameState, Keyword, ManaRider, PlayerState, SearchFilter, Step, TargetRequirement } from "./types";
 
 function twoPlayers() {
   const game = createGameState({ playerCount: 2 });
@@ -61187,5 +61187,245 @@ describe("wave 380: Veil of Summer, and the turn-long shields", () => {
     // played against a targeted removal spell.
     expect(canTargetPlayer(round, p2.id, p1.id, ["B"])).toBe(false);
     expect(round.definitions[definition.id]?.effects).toEqual(definition.effects);
+  });
+});
+
+describe("wave 381: digging the top of a library until a card matches", () => {
+  const compile = (
+    name: string,
+    typeLine: string,
+    oracleText: string,
+    manaCost = "",
+    pt: [string, string] | null = null,
+  ) =>
+    compileOracleCard({
+      oracleId: name.toLowerCase().replace(/[^a-z]+/g, "-"),
+      name,
+      manaCost,
+      typeLine,
+      power: pt?.[0] ?? null,
+      toughness: pt?.[1] ?? null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  const put = (
+    game: GameState,
+    ownerId: string,
+    definition: CardDefinition,
+    zone: "battlefield" | "library" = "library",
+  ) => {
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({ definitionId: definition.id, ownerId, zone });
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === ownerId)!.zones[zone].push(card.id);
+    return card.id;
+  };
+
+  it("compiles Hermit Druid: the dig lives inside an activated ability", () => {
+    const compiled = compile(
+      "Hermit Druid",
+      "Creature — Human Druid",
+      "{G}, {T}: Reveal cards from the top of your library until you reveal a basic land card. Put that card into your hand and all other cards revealed this way into your graveyard.",
+      "{1}{G}",
+      ["1", "1"],
+    );
+    expect(compiled.notes).toEqual([]);
+    // Every printed card in this cluster puts the dig inside a trigger or an
+    // activation, so the pair fuses into one clause rather than being read
+    // at the top level where no real card has it.
+    expect(compiled.definition.activated[0]?.effects).toEqual([
+      {
+        kind: "dig_until",
+        playerId: "controller",
+        filter: { supertypes: ["basic"], types: ["land"] },
+        found: "hand",
+        rest: "graveyard",
+      },
+    ]);
+  });
+
+  it("compiles the bottom-in-a-random-order form inside a trigger", () => {
+    const compiled = compile(
+      "Clifftop Lookout",
+      "Creature — Dwarf Scout",
+      "When this creature enters, reveal cards from the top of your library until you reveal a land card. Put that card onto the battlefield tapped and the rest on the bottom of your library in a random order.",
+      "{2}{R}",
+      ["2", "2"],
+    );
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.triggers[0]?.effects).toEqual([
+      {
+        kind: "dig_until",
+        playerId: "controller",
+        filter: { types: ["land"] },
+        found: "battlefield_tapped",
+        rest: "library_bottom_random",
+      },
+    ]);
+  });
+
+  it("refuses a placement it cannot read, rather than digging blind", () => {
+    const compiled = compile(
+      "Treasure Hunt",
+      "Sorcery",
+      "Reveal cards from the top of your library until you reveal a nonland card, then put all cards revealed this way into your hand.",
+      "{1}{U}",
+    );
+    // No "that card" and no "rest": every card goes to hand, which this
+    // effect cannot say. A note beats a dig that keeps the wrong cards.
+    expect(compiled.notes).toHaveLength(1);
+    expect(compiled.definition.effects).toEqual([]);
+  });
+
+  // ---- The walk ---------------------------------------------------------
+
+  const spell = (name: string) =>
+    createCardDefinition({ name, typeLine: "Instant", manaCost: "{R}" });
+  const forest = (name: string) =>
+    createCardDefinition({ name, typeLine: "Basic Land — Forest" });
+  const bear = (name: string) =>
+    createCardDefinition({
+      name,
+      typeLine: "Creature — Bear",
+      manaCost: "{1}{G}",
+      power: 2,
+      toughness: 2,
+    });
+
+  const dig = (
+    game: GameState,
+    playerId: string,
+    filter: SearchFilter,
+    found: "hand" | "battlefield" | "battlefield_tapped" | "graveyard" | "exile",
+    rest: "library_bottom_random" | "library_bottom" | "graveyard" | "exile",
+  ) =>
+    applyEffects(
+      game,
+      bindCardEffects(game, [{ kind: "dig_until", playerId: "controller", filter, found, rest }], {
+        controllerId: playerId,
+        sourceId: null,
+        targets: [],
+        targetRequirements: [],
+      }),
+    );
+
+  const zoneOf = (game: GameState, cardId: string) => game.cards[cardId]?.zone;
+
+  it("stops at the first match and places both halves", () => {
+    const { game, p1 } = twoPlayers();
+    const firstId = put(game, p1.id, spell("Passed One"));
+    const secondId = put(game, p1.id, spell("Passed Two"));
+    const landId = put(game, p1.id, forest("Found"));
+    const deepId = put(game, p1.id, forest("Never Reached"));
+    const after = dig(game, p1.id, { types: ["land"] }, "hand", "graveyard");
+    expect(zoneOf(after, landId)).toBe("hand");
+    expect(zoneOf(after, firstId)).toBe("graveyard");
+    expect(zoneOf(after, secondId)).toBe("graveyard");
+    // The walk STOPS: a second land deeper down is untouched.
+    expect(zoneOf(after, deepId)).toBe("library");
+  });
+
+  it("takes the match itself out of 'the rest'", () => {
+    const { game, p1 } = twoPlayers();
+    const landId = put(game, p1.id, forest("Found"));
+    const after = dig(game, p1.id, { types: ["land"] }, "hand", "graveyard");
+    // The found card is revealed this way too; sending it to `rest` as well
+    // would bury the card the spell was cast for.
+    expect(zoneOf(after, landId)).toBe("hand");
+    expect(
+      after.players.find((entry) => entry.id === p1.id)!.zones.graveyard,
+    ).toHaveLength(0);
+  });
+
+  it("puts the match onto the battlefield tapped when asked", () => {
+    const { game, p1 } = twoPlayers();
+    const landId = put(game, p1.id, forest("Found"));
+    const after = dig(game, p1.id, { types: ["land"] }, "battlefield_tapped", "graveyard");
+    expect(zoneOf(after, landId)).toBe("battlefield");
+    expect(after.cards[landId]?.tapped).toBe(true);
+  });
+
+  it("leaves it untapped when that is what the card says", () => {
+    const { game, p1 } = twoPlayers();
+    const bearId = put(game, p1.id, bear("Found"));
+    const after = dig(game, p1.id, { types: ["creature"] }, "battlefield", "library_bottom");
+    expect(zoneOf(after, bearId)).toBe("battlefield");
+    expect(after.cards[bearId]?.tapped).toBeFalsy();
+  });
+
+  it("empties the library rather than looping when nothing matches", () => {
+    const { game, p1 } = twoPlayers();
+    const firstId = put(game, p1.id, spell("One"));
+    const secondId = put(game, p1.id, spell("Two"));
+    const after = dig(game, p1.id, { types: ["land"] }, "hand", "graveyard");
+    // Running out is not a failure: everything revealed goes to `rest` and
+    // nothing is found, which is what the printed cards say.
+    expect(after.players.find((entry) => entry.id === p1.id)!.zones.library).toHaveLength(0);
+    expect(zoneOf(after, firstId)).toBe("graveyard");
+    expect(zoneOf(after, secondId)).toBe("graveyard");
+    expect(after.players.find((entry) => entry.id === p1.id)!.zones.hand).toHaveLength(0);
+  });
+
+  it("bottoms the rest, keeping them under what was already there", () => {
+    const { game, p1 } = twoPlayers();
+    const passedId = put(game, p1.id, spell("Passed"));
+    put(game, p1.id, forest("Found"));
+    const deepId = put(game, p1.id, spell("Deep"));
+    const after = dig(game, p1.id, { types: ["land"] }, "hand", "library_bottom");
+    const library = after.players.find((entry) => entry.id === p1.id)!.zones.library;
+    expect(library[0]).toBe(deepId);
+    expect(library[library.length - 1]).toBe(passedId);
+  });
+
+  it("matches on the whole filter, not the card type alone", () => {
+    const { game, p1 } = twoPlayers();
+    const plainId = put(game, p1.id, forest("Nonbasic Look-Alike"));
+    game.definitions[game.cards[plainId]!.definitionId]!.characteristics.supertypes = [];
+    const basicId = put(game, p1.id, forest("Real Basic"));
+    const after = dig(game, p1.id, { supertypes: ["basic"], types: ["land"] }, "hand", "graveyard");
+    expect(zoneOf(after, basicId)).toBe("hand");
+    expect(zoneOf(after, plainId)).toBe("graveyard");
+  });
+
+  it("round trips the filter and both destinations", () => {
+    const { game, p1 } = twoPlayers();
+    const definition = createCardDefinition({
+      name: "Wave 381 Druid",
+      typeLine: "Creature — Human Druid",
+      manaCost: "{1}{G}",
+      power: 1,
+      toughness: 1,
+      activated: [
+        {
+          tap: true,
+          manaCost: "{G}",
+          effects: [
+            {
+              kind: "dig_until",
+              playerId: "controller",
+              filter: { supertypes: ["basic"], types: ["land"] },
+              found: "hand",
+              rest: "graveyard",
+            },
+          ],
+          targetRequirements: [],
+        },
+      ],
+    });
+    put(game, p1.id, definition, "battlefield");
+    const round = parseGameState(serializeGameState(game));
+    // Both destinations, because a dig that bottoms what Hermit Druid buries
+    // is a different card entirely.
+    expect(round.definitions[definition.id]?.activated[0]?.effects).toEqual([
+      {
+        kind: "dig_until",
+        playerId: "controller",
+        filter: { supertypes: ["basic"], types: ["land"] },
+        found: "hand",
+        rest: "graveyard",
+      },
+    ]);
   });
 });

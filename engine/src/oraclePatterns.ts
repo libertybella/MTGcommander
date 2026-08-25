@@ -5487,6 +5487,11 @@ function compileSimpleClauseInner(sentence: string): SimpleClause | null {
   // Curse of the Swine's first half compiles with its rider (see the pair
   // handler in the main loop); a bare variable exile also lands here.
 
+  const digClause = compileDigUntilClause(sentence);
+  if (digClause) {
+    return { targetRequirements: [], effects: digClause };
+  }
+
   const amongMilled = compileFromAmongMilled(sentence);
   if (amongMilled) {
     return { targetRequirements: [], effects: amongMilled };
@@ -10074,6 +10079,82 @@ function compileUntilEotGrant(sentence: string): SimpleClause | null {
   };
 }
 
+/**
+ * "Put that card into your hand and the rest on the bottom of your library
+ * in a random order." — the second half of every dig sentence. Written out
+ * rather than inferred, because the cards disagree about both halves and a
+ * wrong destination is a different card.
+ */
+const DIG_FOUND: Record<string, "hand" | "battlefield" | "battlefield_tapped" | "graveyard" | "exile"> = {
+  "into your hand": "hand",
+  "onto the battlefield": "battlefield",
+  "onto the battlefield tapped": "battlefield_tapped",
+  "into your graveyard": "graveyard",
+  "into exile": "exile",
+};
+
+const DIG_REST: Record<string, "library_bottom_random" | "library_bottom" | "graveyard" | "exile"> = {
+  "on the bottom of your library in a random order": "library_bottom_random",
+  "on the bottom of your library in any order": "library_bottom",
+  "on the bottom of your library": "library_bottom",
+  "into your graveyard": "graveyard",
+  "into exile": "exile",
+};
+
+/**
+ * "Reveal cards from the top of your library until you reveal a creature
+ * card. Put that card onto the battlefield and the rest on the bottom of
+ * your library in a random order."
+ *
+ * Read as ONE clause, because the second sentence names "that card" and
+ * "the rest" and neither means anything without the walk that made them.
+ * The fuser below joins the pair into this synthetic form, so the clause
+ * is reachable wherever a clause is — at the top level of a spell, inside
+ * a trigger body, and inside an activated ability. Every printed card in
+ * this cluster puts it in one of the latter two.
+ */
+function compileDigUntilClause(sentence: string): CardEffect[] | null {
+  const match = sentence.match(
+    /^dig from the top for (.+?), putting it (.+?) and the rest (.+?)$/i,
+  );
+  if (!match?.[1] || !match[2] || !match[3]) {
+    return null;
+  }
+  const filter = parseSearchDescriptor(match[1]);
+  const found = DIG_FOUND[match[2].trim().toLowerCase()];
+  const rest = DIG_REST[match[3].trim().toLowerCase().replace(/\.$/, "")];
+  if (!filter || !found || !rest) {
+    return null;
+  }
+  return [{ kind: "dig_until", playerId: "controller", filter, found, rest }];
+}
+
+/**
+ * The pair, joined. A tail this cannot read leaves both sentences alone, so
+ * an unreadable placement is a note rather than a card that digs and then
+ * silently keeps everything.
+ */
+function fuseDigUntilInPlace(sentences: string[], lineStart: boolean[]): void {
+  for (let index = 0; index + 1 < sentences.length; index += 1) {
+    if (lineStart[index + 1]) {
+      continue;
+    }
+    const head = sentences[index]?.match(
+      /^(.*?)reveal cards from the top of your library until you reveal (an? [^,]+?)$/i,
+    );
+    const tail = sentences[index + 1]?.match(
+      /^Put that card (.+?) and (?:all other cards revealed this way|the rest) (.+?)$/i,
+    );
+    if (!head || head[1] === undefined || !head[2] || !tail?.[1] || !tail[2]) {
+      continue;
+    }
+    sentences[index] =
+      `${head[1]}dig from the top for ${head[2]}, putting it ${tail[1]} and the rest ${tail[2]}`;
+    sentences.splice(index + 1, 1);
+    lineStart.splice(index + 1, 1);
+  }
+}
+
 const SEARCH_CARD_TYPES = new Set([
   "artifact",
   "creature",
@@ -14548,6 +14629,7 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
   fuseInAdditionTypeInPlace(sentences, lineStart);
   fuseChooseGraveyardCastInPlace(sentences, lineStart);
   fusePutLandRiderInPlace(sentences, lineStart);
+  fuseDigUntilInPlace(sentences, lineStart);
   fuseMayPayInPlace(sentences, lineStart);
   fusePactInPlace(sentences, lineStart);
   fuseChooseTargetCreatureInPlace(sentences, lineStart);

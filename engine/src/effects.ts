@@ -1670,6 +1670,33 @@ export function bindCardEffect(
       }
       return { kind: "drain_opponents", playerId, amount };
     }
+    case "dig_until": {
+      const playerId = bindPlayerSelector(state, effect.playerId, context);
+      if (!playerId) {
+        return null;
+      }
+      // The same X resolution the search filter gets, for the same reason:
+      // "until you reveal a nonland card with mana value X or less" reads
+      // the announced X, which only exists once the spell is on the stack.
+      const { maxManaValueX, maxManaValuePlusSacrificed, ...digRest } = effect.filter;
+      return {
+        kind: "dig_until",
+        playerId,
+        filter: {
+          ...digRest,
+          ...(maxManaValueX ? { maxManaValue: context.xValue ?? 0 } : {}),
+          ...(maxManaValuePlusSacrificed !== undefined
+            ? {
+                maxManaValue:
+                  maxManaValuePlusSacrificed + (context.sacrificedManaValue ?? 0),
+              }
+            : {}),
+        },
+        found: effect.found,
+        rest: effect.rest,
+        ...(effect.optional ? { optional: true } : {}),
+      };
+    }
     case "search_library": {
       const playerId = bindPlayerSelector(state, effect.playerId, context);
       if (!playerId) {
@@ -4488,6 +4515,79 @@ function applyLookAndAssign(
  * shuffle: the cards are hidden either way, and this engine has no seeded
  * randomness a replay could reproduce.
  */
+/**
+ * Walk the top of a library until a card matches, then place the match and
+ * everything passed over. The two destinations are separate because the
+ * printed cards disagree: Hermit Druid buries the rest, Lukka bottoms them
+ * in a random order, Demonic Consultation exiles them.
+ *
+ * An empty library is not a failure. Everything revealed goes to `rest` and
+ * nothing is found — which is exactly what the cards say happens.
+ */
+function applyDigUntil(
+  state: GameState,
+  effect: Extract<GameEffect, { kind: "dig_until" }>,
+): GameState {
+  requirePlayer(state, effect.playerId);
+  const next = cloneGameState(state);
+  const player = next.players.find((entry) => entry.id === effect.playerId)!;
+  const revealed: CardInstanceId[] = [];
+  let found: CardInstanceId | null = null;
+  while (player.zones.library.length > 0 && found === null) {
+    const cardId = player.zones.library[0]!;
+    // Taken out of the library one at a time, so a card that matches is
+    // still findable by the filter after the rest have moved.
+    moveCardInPlace(next, cardId, "exile");
+    revealed.push(cardId);
+    if (searchMatches(next, cardId, effect.filter)) {
+      found = cardId;
+    }
+  }
+  const place = (cardId: CardInstanceId, where: string) => {
+    switch (where) {
+      case "hand":
+        moveCardInPlace(next, cardId, "hand");
+        break;
+      case "battlefield":
+      case "battlefield_tapped":
+        moveCardInPlace(next, cardId, "battlefield");
+        if (where === "battlefield_tapped" && next.cards[cardId]) {
+          next.cards[cardId]!.tapped = true;
+        }
+        break;
+      case "graveyard":
+        moveCardInPlace(next, cardId, "graveyard");
+        break;
+      case "library_bottom":
+        moveCardInPlace(next, cardId, "library", { libraryPosition: "bottom" });
+        break;
+      case "library_bottom_random":
+        moveCardInPlace(next, cardId, "library", { libraryPosition: "bottom" });
+        break;
+      default:
+        break;
+    }
+  };
+  // The rest first, so "the rest" never includes the match and a found card
+  // sent to the bottom cannot be walked over twice.
+  const rest = revealed.filter((cardId) => cardId !== found);
+  for (const cardId of rest) {
+    place(cardId, effect.rest);
+  }
+  // "In a random order": the tail that just went to the bottom is shuffled
+  // among ITSELF, not into the library — the same shape the bottoming
+  // sibling above this function already uses.
+  if (effect.rest === "library_bottom_random" && rest.length > 1) {
+    const tail = player.zones.library.splice(player.zones.library.length - rest.length);
+    shuffleInPlace(tail);
+    player.zones.library.push(...tail);
+  }
+  if (found !== null) {
+    place(found, effect.found);
+  }
+  return next;
+}
+
 function applyDiscover(
   state: GameState,
   effect: Extract<GameEffect, { kind: "discover" }>,
@@ -6669,6 +6769,9 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
         });
         break;
       }
+      case "dig_until":
+        next = applyDigUntil(state, effect);
+        break;
       case "discover":
         next = applyDiscover(state, effect);
         break;

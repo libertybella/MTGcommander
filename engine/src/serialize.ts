@@ -2791,6 +2791,27 @@ function parseTriggerGroups(
   });
 }
 
+/**
+ * The dig's two destinations, as runtime sets: a string union cannot check
+ * itself off the wire, and a bad one here silently sends cards somewhere
+ * the printed card never mentions.
+ */
+type DigFound = Extract<CardEffect, { kind: "dig_until" }>["found"];
+type DigRest = Extract<CardEffect, { kind: "dig_until" }>["rest"];
+const DIG_FOUND_ZONES = new Set<string>([
+  "hand",
+  "battlefield",
+  "battlefield_tapped",
+  "graveyard",
+  "exile",
+]);
+const DIG_REST_ZONES = new Set<string>([
+  "library_bottom_random",
+  "library_bottom",
+  "graveyard",
+  "exile",
+]);
+
 function parseSearchFilter(value: unknown, label: string): SearchFilter {
   if (!isRecord(value)) {
     throw new Error(`Invalid ${label}`);
@@ -4452,6 +4473,24 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
                 })()
               : expectNumber(value.amount, `${label}.amount`),
       };
+    case "dig_until": {
+      const digFound = expectString(value.found, `${label}.found`);
+      const digRest = expectString(value.rest, `${label}.rest`);
+      if (!DIG_FOUND_ZONES.has(digFound)) {
+        throw new Error(`Invalid ${label}.found`);
+      }
+      if (!DIG_REST_ZONES.has(digRest)) {
+        throw new Error(`Invalid ${label}.rest`);
+      }
+      return {
+        kind,
+        playerId: parsePlayerSelector(value.playerId, `${label}.playerId`),
+        filter: parseSearchFilter(value.filter, `${label}.filter`),
+        found: digFound as DigFound,
+        rest: digRest as DigRest,
+        ...(value.optional === true ? { optional: true } : {}),
+      };
+    }
     case "search_library":
       return {
         kind,
@@ -6630,6 +6669,24 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
       kind,
       playerId: expectString(value.playerId, `${label}.playerId`),
       amount: expectNumber(value.amount, `${label}.amount`),
+    };
+  }
+  if (kind === "dig_until") {
+    const digFound = expectString(value.found, `${label}.found`);
+    const digRest = expectString(value.rest, `${label}.rest`);
+    if (!DIG_FOUND_ZONES.has(digFound)) {
+      throw new Error(`Invalid ${label}.found`);
+    }
+    if (!DIG_REST_ZONES.has(digRest)) {
+      throw new Error(`Invalid ${label}.rest`);
+    }
+    return {
+      kind,
+      playerId: expectString(value.playerId, `${label}.playerId`),
+      filter: parseSearchFilter(value.filter, `${label}.filter`),
+      found: digFound as DigFound,
+      rest: digRest as DigRest,
+      ...(value.optional === true ? { optional: true } : {}),
     };
   }
   if (kind === "search_library") {
