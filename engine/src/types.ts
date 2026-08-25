@@ -398,6 +398,16 @@ export type CardDefinition = {
    */
   retrace?: boolean;
   /**
+   * Splice onto Arcane (CR 702.47): as an Arcane spell is cast, this may
+   * be REVEALED from hand and its splice cost paid to add its effects to
+   * that spell.
+   *
+   * Revealed, not cast. The card stays in hand, so countering the spell
+   * does not touch it and it can be spliced again next turn — which is the
+   * whole reason these cards see play.
+   */
+  spliceOntoArcane?: { manaCost: string };
+  /**
    * Six, Deeproot Historian: a permanent granting retrace to cards in its
    * controller's graveyard. Looked up rather than read off the card being
    * cast, the same way `grantsEscape` is.
@@ -1017,6 +1027,9 @@ export type StackObject = {
    * only because by bind time nothing remembers WHICH creature it was.
    */
   sacrificedManaValue?: number;
+  /** Splice onto Arcane: the cards whose effects joined this spell. They
+   * are in their owner's HAND, not on the stack. */
+  splicedFrom?: CardInstanceId[];
   /** Damage split for divided-damage spells; aligns with `targets`. */
   division?: number[];
   /**
@@ -5694,6 +5707,9 @@ export type GameAction =
       costSacrificeId?: CardInstanceId;
       /** Cards discarded for an additional cast cost. */
       costDiscardIds?: CardInstanceId[];
+      /** Splice onto Arcane: cards revealed from hand whose splice costs
+       * are paid with this spell's own, and whose effects join it. */
+      spliceCardIds?: CardInstanceId[];
     }
   | { kind: "play_land"; playerId: PlayerId; cardId: CardInstanceId; faceIndex?: number }
   | {

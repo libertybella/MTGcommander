@@ -535,7 +535,14 @@ export function resolveTopOfStack(state: GameState): GameState {
   const mode =
     top.modeIndex !== undefined ? definition?.modes?.[top.modeIndex] : undefined;
   const requirements = mode ? mode.targetRequirements : definition?.targetRequirements ?? [];
-  const effects = mode ? mode.effects : definition?.effects ?? [];
+  const printed = mode ? mode.effects : definition?.effects ?? [];
+  // Splice onto Arcane: the revealed cards' effects join this spell's,
+  // after them, in the order they were spliced (CR 702.47a).
+  const spliced = (top.splicedFrom ?? []).flatMap((spliceId) => {
+    const spliceDefinition = next.definitions[next.cards[spliceId]?.definitionId ?? ""];
+    return spliceDefinition?.effects ?? [];
+  });
+  const effects = spliced.length > 0 ? [...printed, ...spliced] : printed;
   const shouldResolveEffects =
     effects.length > 0 &&
     hasLegalTargetRemaining(next, requirements, top.targets, top.controllerId, sourceColorsOf(next, top.sourceId), top.sourceId);

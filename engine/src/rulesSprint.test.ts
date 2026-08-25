@@ -63281,3 +63281,209 @@ describe("wave 388: tapping X of your own, for X", () => {
     expect(creaturePower(finished, sphereId)).toBe(5);
   });
 });
+
+describe("wave 389: splice onto Arcane", () => {
+  const compile = (name: string, typeLine: string, oracleText: string, manaCost = "") =>
+    compileOracleCard({
+      oracleId: name.toLowerCase().replace(/[^a-z]+/g, "-"),
+      name,
+      manaCost,
+      typeLine,
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  const put = (
+    game: GameState,
+    ownerId: string,
+    definition: CardDefinition,
+    zone: "hand" | "graveyard" = "hand",
+  ) => {
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({ definitionId: definition.id, ownerId, zone });
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === ownerId)!.zones[zone].push(card.id);
+    return card.id;
+  };
+
+  it("compiles Desperate Ritual", () => {
+    const compiled = compile(
+      "Desperate Ritual",
+      "Instant — Arcane",
+      "Add {R}{R}{R}.\nSplice onto Arcane {1}{R}",
+      "{1}{R}",
+    );
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.spliceOntoArcane).toEqual({ manaCost: "{1}{R}" });
+    expect(compiled.definition.effects).toEqual([
+      { kind: "add_mana", playerId: "controller", mana: { R: 3 } },
+    ]);
+  });
+
+  // ---- Splicing it -------------------------------------------------------
+
+  const ritual = () =>
+    createCardDefinition({
+      name: "Desperate Ritual",
+      typeLine: "Instant — Arcane",
+      manaCost: "{1}{R}",
+      spliceOntoArcane: { manaCost: "{1}{R}" },
+      effects: [{ kind: "add_mana", playerId: "controller", mana: { R: 3 } }],
+    });
+
+  const arcaneDraw = () =>
+    createCardDefinition({
+      name: "Kodama's Reach",
+      typeLine: "Sorcery — Arcane",
+      manaCost: "{R}",
+      effects: [{ kind: "draw", playerId: "controller", count: 1 }],
+    });
+
+  const plainDraw = () =>
+    createCardDefinition({
+      name: "Plain Sorcery",
+      typeLine: "Sorcery",
+      manaCost: "{R}",
+      effects: [{ kind: "draw", playerId: "controller", count: 1 }],
+    });
+
+  const readyToCast = (game: GameState, playerId: string, red: number) => {
+    game.turn.activePlayerId = playerId;
+    game.turn.phase = "precombatMain";
+    game.turn.step = "precombatMain";
+    game.priorityPlayerId = playerId;
+    game.players.find((entry) => entry.id === playerId)!.mana.R = red;
+  };
+
+  const cast = (
+    game: GameState,
+    playerId: string,
+    cardId: string,
+    spliceCardIds?: string[],
+  ) =>
+    applyAction(game, {
+      kind: "cast_spell",
+      playerId,
+      cardId,
+      targets: [],
+      ...(spliceCardIds ? { spliceCardIds } : {}),
+    });
+
+  it("adds the spliced effects to the spell", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const spellId = put(game, p1.id, arcaneDraw());
+    const ritualId = put(game, p1.id, ritual());
+    readyToCast(game, p1.id, 3);
+    const resolved = resolveTopOfStack(cast(game, p1.id, spellId, [ritualId]));
+    const owner = resolved.players.find((entry) => entry.id === p1.id)!;
+    // The draw AND the three red mana, from one spell.
+    expect(owner.mana.R).toBe(3);
+  });
+
+  it("leaves the spliced card in HAND", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const spellId = put(game, p1.id, arcaneDraw());
+    const ritualId = put(game, p1.id, ritual());
+    readyToCast(game, p1.id, 3);
+    const resolved = resolveTopOfStack(cast(game, p1.id, spellId, [ritualId]));
+    // Revealed, not cast. This is the whole reason the cards see play: a
+    // counterspell on the Arcane spell never touches it, and it can be
+    // spliced again next turn.
+    expect(resolved.cards[ritualId]?.zone).toBe("hand");
+    expect(resolved.cards[spellId]?.zone).toBe("graveyard");
+  });
+
+  it("charges the splice cost alongside the spell's own", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const spellId = put(game, p1.id, arcaneDraw());
+    const ritualId = put(game, p1.id, ritual());
+    // {R} for the spell and {1}{R} for the splice is three mana; two is not
+    // enough, and one payment covers both halves.
+    readyToCast(game, p1.id, 2);
+    expect(() => cast(game, p1.id, spellId, [ritualId])).toThrow();
+    readyToCast(game, p1.id, 3);
+    expect(() => cast(game, p1.id, spellId, [ritualId])).not.toThrow();
+  });
+
+  it("refuses to splice onto a spell that is not Arcane", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const spellId = put(game, p1.id, plainDraw());
+    const ritualId = put(game, p1.id, ritual());
+    readyToCast(game, p1.id, 5);
+    expect(() => cast(game, p1.id, spellId, [ritualId])).toThrow();
+  });
+
+  it("refuses a card without splice, and one outside the hand", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const spellId = put(game, p1.id, arcaneDraw());
+    const plainId = put(game, p1.id, plainDraw());
+    const buriedId = put(game, p1.id, ritual(), "graveyard");
+    readyToCast(game, p1.id, 5);
+    expect(() => cast(game, p1.id, spellId, [plainId])).toThrow();
+    expect(() => cast(game, p1.id, spellId, [buriedId])).toThrow();
+  });
+
+  it("refuses to splice a card onto itself", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const ritualId = put(game, p1.id, ritual());
+    readyToCast(game, p1.id, 5);
+    expect(() => cast(game, p1.id, ritualId, [ritualId])).toThrow();
+  });
+
+  it("splices two cards onto one spell", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const spellId = put(game, p1.id, arcaneDraw());
+    const firstId = put(game, p1.id, ritual());
+    const secondId = put(game, p1.id, ritual());
+    readyToCast(game, p1.id, 5);
+    const resolved = resolveTopOfStack(cast(game, p1.id, spellId, [firstId, secondId]));
+    const owner = resolved.players.find((entry) => entry.id === p1.id)!;
+    // Six red mana: both splices resolved, and both cards are still in hand.
+    expect(owner.mana.R).toBe(6);
+    expect(resolved.cards[firstId]?.zone).toBe("hand");
+    expect(resolved.cards[secondId]?.zone).toBe("hand");
+  });
+
+  it("survives the spell being countered, because it was never cast", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const spellId = put(game, p1.id, arcaneDraw());
+    const ritualId = put(game, p1.id, ritual());
+    readyToCast(game, p1.id, 3);
+    const stacked = cast(game, p1.id, spellId, [ritualId]);
+    const countered = applyEffect(stacked, {
+      kind: "counter_spell",
+      stackObjectId: stacked.stack[0]!.id,
+    });
+    expect(countered.cards[spellId]?.zone).toBe("graveyard");
+    expect(countered.cards[ritualId]?.zone).toBe("hand");
+    expect(countered.players.find((entry) => entry.id === p1.id)!.mana.R).toBe(0);
+  });
+
+  it("round trips the keyword and the splices on the stack", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const spellId = put(game, p1.id, arcaneDraw());
+    const definition = ritual();
+    const ritualId = put(game, p1.id, definition);
+    readyToCast(game, p1.id, 3);
+    const stacked = cast(game, p1.id, spellId, [ritualId]);
+    const round = parseGameState(serializeGameState(stacked));
+    // Dropped on the wire the spell resolves as its printed self and the
+    // splice cost was paid for nothing.
+    expect(round.stack[0]?.splicedFrom).toEqual([ritualId]);
+    expect(round.definitions[definition.id]?.spliceOntoArcane).toEqual({ manaCost: "{1}{R}" });
+    const resolved = resolveTopOfStack(round);
+    expect(resolved.players.find((entry) => entry.id === p1.id)!.mana.R).toBe(3);
+  });
+});

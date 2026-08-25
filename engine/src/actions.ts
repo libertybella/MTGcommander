@@ -705,6 +705,7 @@ function applyCastSpell(
   division: number[] | undefined,
   costSacrificeId: CardInstanceId | undefined,
   costDiscardIds: CardInstanceId[] | undefined,
+  spliceCardIds: CardInstanceId[] | undefined,
 ): GameState {
   requirePlaying(state);
   const faced = applyChosenFace(state, cardId, faceIndex);
@@ -769,6 +770,38 @@ function applyCastSpell(
     const player = faced.players.find((entry) => entry.id === playerId);
     if (!player || player.life <= additional.life) {
       throw new Error(`Pay ${additional.life} life to cast this`);
+    }
+  }
+  /**
+   * Splice onto Arcane (CR 702.47). Each named card is REVEALED from hand
+   * and never cast, so it stays where it is; only its cost joins this
+   * spell's. Priced HERE, with the rest of the cost, because one payment
+   * covers all of it — priced after the payment it would be free.
+   */
+  const splices = spliceCardIds ?? [];
+  if (splices.length > 0) {
+    const spliceHand = faced.players.find((entry) => entry.id === playerId)?.zones.hand ?? [];
+    if (!characteristicsOf(faced, cardId).subtypes.includes("arcane")) {
+      throw new Error("Only an Arcane spell can be spliced onto");
+    }
+    const seenSplices = new Set<CardInstanceId>();
+    for (const spliceId of splices) {
+      const spliceDefinition = faced.definitions[faced.cards[spliceId]?.definitionId ?? ""];
+      if (
+        !spliceHand.includes(spliceId) ||
+        spliceId === cardId ||
+        seenSplices.has(spliceId) ||
+        !spliceDefinition?.spliceOntoArcane
+      ) {
+        throw new Error(`Card ${spliceId} cannot be spliced onto this spell`);
+      }
+      seenSplices.add(spliceId);
+      const spliceCost = parseManaCost(spliceDefinition.spliceOntoArcane.manaCost);
+      cost.generic += spliceCost.generic;
+      for (const color of ["W", "U", "B", "R", "G", "C"] as const) {
+        cost[color] += spliceCost[color];
+      }
+      cost.hybrid.push(...spliceCost.hybrid);
     }
   }
   // "As an additional cost…, pay {2}": added to the spell's cost rather than
@@ -1085,6 +1118,14 @@ function applyCastSpell(
     );
   }
   let stacked = putSpellOnStack(paid, cardId, targets ?? [], modeIndex, xValue, division, modeIndexes, sacrificedPower, sacrificedManaValue);
+  // The spliced cards are recorded on the SPELL, not moved: they were
+  // revealed from hand and that is where they stay.
+  if (splices.length > 0) {
+    const spell = stacked.stack[stacked.stack.length - 1];
+    if (spell) {
+      spell.splicedFrom = [...splices];
+    }
+  }
   if (nextGrant?.cantBeCountered) {
     const top = stacked.stack[stacked.stack.length - 1];
     if (top) {
@@ -2055,6 +2096,7 @@ export function applyAction(
           action.division,
           action.costSacrificeId,
           action.costDiscardIds,
+          action.spliceCardIds,
         );
         break;
       case "play_land":

@@ -1544,6 +1544,16 @@ export function parseGameState(json: string): GameState {
         ? {}
         : { hexproofFrom: parseColorArray(def.hexproofFrom, `definition.${id}.hexproofFrom`) }),
       ...(def.retrace === true ? { retrace: true } : {}),
+      ...(isRecord(def.spliceOntoArcane)
+        ? {
+            spliceOntoArcane: {
+              manaCost: expectString(
+                def.spliceOntoArcane.manaCost,
+                `definition.${id}.spliceOntoArcane.manaCost`,
+              ),
+            },
+          }
+        : {}),
       ...(isRecord(def.grantsRetrace)
         ? {
             grantsRetrace: {
@@ -1722,6 +1732,9 @@ export function parseGameState(json: string): GameState {
         : {
             sacrificedPower: expectNumber(entry.sacrificedPower, `stack[${index}].sacrificedPower`),
           }),
+      ...(Array.isArray(entry.splicedFrom)
+        ? { splicedFrom: expectStringArray(entry.splicedFrom, `stack[${index}].splicedFrom`) }
+        : {}),
       ...(entry.sacrificedManaValue === undefined
         ? {}
         : {
@@ -8083,6 +8096,9 @@ export function parseGameAction(json: string): GameAction {
               );
             })(),
           }),
+      ...(raw.spliceCardIds === undefined
+        ? {}
+        : { spliceCardIds: expectStringArray(raw.spliceCardIds, "action.spliceCardIds") }),
     };
   }
   if (kind === "declare_attackers") {

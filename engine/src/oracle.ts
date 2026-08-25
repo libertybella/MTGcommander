@@ -202,6 +202,7 @@ function compileOneFace(card: OracleCard, definitionId: string): OracleCompileRe
       ? { hexproofFrom: compiled.hexproofFrom }
       : {}),
     ...(compiled.retrace ? { retrace: true } : {}),
+    ...(compiled.spliceOntoArcane ? { spliceOntoArcane: compiled.spliceOntoArcane } : {}),
     ...(compiled.grantsRetrace ? { grantsRetrace: compiled.grantsRetrace } : {}),
     ...(compiled.enchant ? { enchant: compiled.enchant } : {}),
     ...(compiled.grantsEscape ? { grantsEscape: compiled.grantsEscape } : {}),

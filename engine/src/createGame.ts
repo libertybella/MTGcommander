@@ -130,6 +130,7 @@ export function createCardDefinition(
         | "protectionFrom"
         | "hexproofFrom"
         | "retrace"
+        | "spliceOntoArcane"
         | "grantsRetrace"
         | "enchant"
         | "reanimateOnEnter"
@@ -605,6 +606,9 @@ export function createCardDefinition(
     ...(input.enterAsCopy ? { enterAsCopy: { ...input.enterAsCopy } } : {}),
     ...(input.grantsEscape ? { grantsEscape: { ...input.grantsEscape } } : {}),
     ...(input.retrace ? { retrace: true } : {}),
+    ...(input.spliceOntoArcane
+      ? { spliceOntoArcane: { ...input.spliceOntoArcane } }
+      : {}),
     ...(input.grantsRetrace
       ? {
           grantsRetrace: {

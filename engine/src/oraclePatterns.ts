@@ -60,6 +60,7 @@ export type CompiledOracleText = {
   protectionFrom?: ProtectionFrom;
   hexproofFrom?: Color[];
   retrace?: boolean;
+  spliceOntoArcane?: { manaCost: string };
   grantsRetrace?: { filter: SearchFilter; onlyYourTurn?: boolean };
   /** Taken from the definition so the two cannot drift apart. */
   enchant?: CardDefinition["enchant"];
@@ -15016,6 +15017,21 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
     if (/^cascade(?:, cascade)*$/i.test(sentence)) {
       result.cascade = (result.cascade ?? 0) + sentence.split(",").length;
       continue;
+    }
+
+    // Splice onto Arcane (CR 702.47).
+    const splice = sentence.match(/^Splice onto Arcane ((?:\{[^}]+\})+)$/i);
+    if (splice?.[1]) {
+      let spliceCostOk = true;
+      try {
+        parseManaCost(splice[1]);
+      } catch {
+        spliceCostOk = false;
+      }
+      if (spliceCostOk) {
+        result.spliceOntoArcane = { manaCost: splice[1] };
+        continue;
+      }
     }
 
     // Retrace (CR 702.81) as a printed keyword line.
