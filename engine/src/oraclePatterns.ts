@@ -4956,6 +4956,66 @@ function compileSimpleClauseInner(sentence: string): SimpleClause | null {
     };
   }
 
+  /**
+   * Torment of Hailfire, once the fuser has joined the head to its process.
+   * The body compiles on its own, so this only wraps it — an inner clause
+   * that needs targets is refused, because the repetitions would all aim
+   * at one set of targets chosen once.
+   */
+  const repeatX = sentence.match(/^Repeat-X (.+)$/);
+  if (repeatX?.[1]) {
+    const inner = compileSimpleClause(repeatX[1]);
+    if (inner && !inner.leftover && inner.targetRequirements.length === 0) {
+      return {
+        targetRequirements: [],
+        effects: [{ kind: "repeat_x_times", effects: inner.effects }],
+      };
+    }
+    return null;
+  }
+
+  /**
+   * "Each opponent loses N life unless that player sacrifices X or discards
+   * a card" — the Braids shape: ONE choice over a pool spanning two zones,
+   * `optional` so it can be declined, and the life loss as the punisher for
+   * declining. The chosen card leaves the way its zone says, which is why
+   * the sacrifice is not a plain `sacrifice`.
+   */
+  const hailfire = sentence.match(
+    /^Each opponent loses (\w+) life unless that player sacrifices a (nonland permanent|creature|permanent) of their choice or discards a card$/i,
+  );
+  if (hailfire?.[1] && hailfire[2]) {
+    const life = parseCount(hailfire[1]);
+    const filter =
+      hailfire[2].toLowerCase() === "nonland permanent"
+        ? ("nonland" as const)
+        : hailfire[2].toLowerCase() === "creature"
+          ? ("creature" as const)
+          : ("any" as const);
+    if (life) {
+      return {
+        targetRequirements: [],
+        effects: [
+          {
+            kind: "choose_card",
+            chooserId: "each_opponent",
+            sources: [
+              { playerId: "each_opponent", zone: "battlefield", filter },
+              { playerId: "each_opponent", zone: "hand", filter: "any" },
+            ],
+            optional: true,
+            thenEffects: [
+              { kind: "sacrifice_or_discard_chosen", cardId: "chosen_card" },
+            ],
+            thenEffectsIfNone: [
+              { kind: "lose_life", playerId: { type: "subject_player" }, amount: life },
+            ],
+          },
+        ],
+      };
+    }
+  }
+
   // Return to Nature's third bullet, and Deathrite Shaman's three.
   const graveyardExile = sentence.match(/^Exile target (.+)$/i);
   const exiledFromGraveyard = graveyardExile?.[1]
@@ -9856,6 +9916,26 @@ function splitActivationRidersInPlace(sentences: string[], lineStart: boolean[])
   }
 }
 
+/**
+ * Torment of Hailfire: "Repeat the following process X times." The process
+ * is the NEXT sentence on the same line, so the two are fused into one
+ * clause rather than the head being read as an effect of its own — on its
+ * own it means nothing, and left behind it is a note on a card that
+ * otherwise compiles.
+ */
+function fuseRepeatXInPlace(sentences: string[], lineStart: boolean[]): void {
+  for (let index = 0; index + 1 < sentences.length; index += 1) {
+    if (lineStart[index + 1] || !sentences[index + 1]) {
+      continue;
+    }
+    if (!/^Repeat the following process X times$/i.test(sentences[index]!)) {
+      continue;
+    }
+    sentences.splice(index, 2, `Repeat-X ${sentences[index + 1]!}`);
+    lineStart.splice(index + 1, 1);
+  }
+}
+
 function fuseDigSentencesInPlace(sentences: string[], lineStart: boolean[]): void {
   for (let index = 0; index + 2 < sentences.length; index += 1) {
     if (lineStart[index + 1] || lineStart[index + 2]) {
@@ -13788,6 +13868,7 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
   fuseMaySacrificeInPlace(sentences, lineStart);
   fuseNecroTopInPlace(sentences, lineStart);
   splitActivationRidersInPlace(sentences, lineStart);
+  fuseRepeatXInPlace(sentences, lineStart);
   // A printed line is an ability, so these mark where the current line's
   // output begins. Riders that reach BACKWARD — the regeneration denial
   // below — use them to stop at the line they were printed on.

@@ -56656,3 +56656,190 @@ describe("wave 359: put into a graveyard from ANYWHERE", () => {
     expect(round.definitions[definition.id]?.triggers[0]).toEqual(shuffleBack);
   });
 });
+
+describe("wave 360: repeat X times, and a choice across two zones", () => {
+  const compile = (name: string, typeLine: string, oracleText: string, manaCost = "") =>
+    compileOracleCard({
+      oracleId: name.toLowerCase().replace(/[^a-z]+/g, "-"),
+      name,
+      manaCost,
+      typeLine,
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  const put = (
+    game: GameState,
+    ownerId: string,
+    definition: CardDefinition,
+    zone: "battlefield" | "hand" = "battlefield",
+  ) => {
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({ definitionId: definition.id, ownerId, zone });
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === ownerId)!.zones[zone].push(card.id);
+    if (zone === "battlefield") {
+      card.summoningSick = false;
+    }
+    return card.id;
+  };
+
+  const hailfireBody = {
+    kind: "choose_card" as const,
+    chooserId: "each_opponent" as const,
+    sources: [
+      { playerId: "each_opponent" as const, zone: "battlefield" as const, filter: "nonland" as const },
+      { playerId: "each_opponent" as const, zone: "hand" as const, filter: "any" as const },
+    ],
+    optional: true,
+    thenEffects: [
+      { kind: "sacrifice_or_discard_chosen" as const, cardId: "chosen_card" as const },
+    ],
+    thenEffectsIfNone: [
+      {
+        kind: "lose_life" as const,
+        playerId: { type: "subject_player" as const },
+        amount: 3,
+      },
+    ],
+  };
+
+  it("compiles the whole card", () => {
+    const compiled = compile(
+      "Torment of Hailfire",
+      "Sorcery",
+      "Repeat the following process X times. Each opponent loses 3 life unless that player sacrifices a nonland permanent of their choice or discards a card.",
+      "{X}{B}{B}",
+    );
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.effects).toEqual([
+      { kind: "repeat_x_times", effects: [hailfireBody] },
+    ]);
+  });
+
+  it("refuses to wrap a process that needs targets", () => {
+    // Every repetition would aim at the one set of targets chosen once,
+    // which is a different card from the one printed.
+    const compiled = compile(
+      "Probe",
+      "Sorcery",
+      "Repeat the following process X times. Destroy target creature.",
+      "{X}{B}",
+    );
+    expect(compiled.notes.length).toBeGreaterThan(0);
+  });
+
+  const bind = (game: GameState, playerId: string, xValue: number) =>
+    bindCardEffects(game, [{ kind: "repeat_x_times", effects: [hailfireBody] }], {
+      controllerId: playerId,
+      sourceId: null,
+      targets: [],
+      targetRequirements: [],
+      xValue,
+    });
+
+  it("expands to one process per point of X", () => {
+    const { game, p1 } = twoPlayers();
+    expect(bind(game, p1.id, 3)).toHaveLength(3);
+    expect(bind(game, p1.id, 1)).toHaveLength(1);
+  });
+
+  it("does nothing at all for X of zero", () => {
+    const { game, p1 } = twoPlayers();
+    expect(bind(game, p1.id, 0)).toEqual([]);
+  });
+
+  it("expands per opponent as well as per repetition", () => {
+    const game = createGameState({ playerCount: 3 });
+    const p1 = game.players[0]!;
+    // Two opponents, twice round: four choices, each one somebody's.
+    expect(bind(game, p1.id, 2)).toHaveLength(4);
+  });
+
+  const bear = (name = "Bear") =>
+    createCardDefinition({
+      name,
+      typeLine: "Creature — Bear",
+      manaCost: "{1}{G}",
+      power: 2,
+      toughness: 2,
+    });
+
+  const forest = (name = "Forest") =>
+    createCardDefinition({ name, typeLine: "Basic Land — Forest" });
+
+  it("offers nonland permanents and any card in hand", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const bearId = put(game, p2.id, bear());
+    const landId = put(game, p2.id, forest());
+    const heldLandId = put(game, p2.id, forest("Held Forest"), "hand");
+    const bound = bind(game, p1.id, 1);
+    const first = bound[0];
+    if (first?.kind !== "choose_card") {
+      throw new Error("expected a choose_card");
+    }
+    const legal = legalIdsForChooseSources(game, first.sources);
+    expect(legal).toContain(bearId);
+    // A land on the battlefield is not a nonland permanent...
+    expect(legal).not.toContain(landId);
+    // ...but a land card in hand is still a card, and discarding it is one
+    // of the two things the card offers.
+    expect(legal).toContain(heldLandId);
+  });
+
+  it("takes 3 life from an opponent with nothing to give", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const before = game.players.find((entry) => entry.id === p2.id)!.life;
+    const after = applyEffects(game, bind(game, p1.id, 2));
+    // An empty board and an empty hand: the punisher is the whole card.
+    expect(after.players.find((entry) => entry.id === p2.id)!.life).toBe(before - 6);
+  });
+
+  it("leaves the caster alone", () => {
+    const { game, p1, p2 } = twoPlayers();
+    put(game, p1.id, bear("Mine"));
+    const before = game.players.find((entry) => entry.id === p1.id)!.life;
+    const after = applyEffects(game, bind(game, p1.id, 2));
+    expect(after.players.find((entry) => entry.id === p1.id)!.life).toBe(before);
+    expect(after.players.find((entry) => entry.id === p2.id)!.life).toBeLessThan(
+      game.players.find((entry) => entry.id === p2.id)!.life,
+    );
+  });
+
+  it("sacrifices from the battlefield and discards from the hand", () => {
+    const { game, p2 } = twoPlayers();
+    const bearId = put(game, p2.id, bear());
+    const heldId = put(game, p2.id, bear("Held"), "hand");
+    const sacrificed = applyEffect(game, {
+      kind: "sacrifice_or_discard_chosen",
+      cardId: bearId,
+    });
+    expect(sacrificed.cards[bearId]?.zone).toBe("graveyard");
+    const discarded = applyEffect(game, {
+      kind: "sacrifice_or_discard_chosen",
+      cardId: heldId,
+    });
+    expect(discarded.cards[heldId]?.zone).toBe("graveyard");
+    // Both end in the graveyard, and they are not the same event on the
+    // way there — which is why this is not a plain `sacrifice`.
+    expect(discarded.players.find((entry) => entry.id === p2.id)!.zones.hand).toEqual([]);
+  });
+
+  it("round trips the repeat and the choice", () => {
+    const { game, p1 } = twoPlayers();
+    const definition = createCardDefinition({
+      name: "Wave 360 Torment",
+      typeLine: "Sorcery",
+      manaCost: "{X}{B}{B}",
+      effects: [{ kind: "repeat_x_times", effects: [hailfireBody] }],
+    });
+    put(game, p1.id, definition, "hand");
+    const round = parseGameState(serializeGameState(game));
+    expect(round.definitions[definition.id]?.effects).toEqual([
+      { kind: "repeat_x_times", effects: [hailfireBody] },
+    ]);
+  });
+});

@@ -3772,10 +3772,16 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
           : {}),
       };
     case "sacrifice":
+    case "sacrifice_or_discard_chosen":
     case "imprint":
       return {
         kind,
         cardId: parseCardIdSelector(value.cardId, `${label}.cardId`),
+      };
+    case "repeat_x_times":
+      return {
+        kind,
+        effects: parseCardEffects(value.effects, `${label}.effects`),
       };
     case "add_counter":
       return {

@@ -1553,6 +1553,12 @@ export type GameEffect =
       exilePlayableThisTurn?: boolean;
     }
   | { kind: "sacrifice"; cardId: CardInstanceId }
+  /**
+   * Torment of Hailfire: the chosen card came from a pool spanning the
+   * battlefield AND the hand, so how it leaves depends on where it was.
+   * Read at APPLY, because the choice happens between bind and here.
+   */
+  | { kind: "sacrifice_or_discard_chosen"; cardId: CardInstanceId }
   /** Chrome Mox: exile `cardId` and record it on `sourceId`. */
   | { kind: "imprint"; cardId: CardInstanceId; sourceId: CardInstanceId }
   | {
@@ -2951,6 +2957,14 @@ export type CardEffect =
       exilePlayableThisTurn?: boolean;
     }
   | { kind: "sacrifice"; cardId: CardIdSelector }
+  /** Torment of Hailfire — see the bound form for why this is not `sacrifice`. */
+  | { kind: "sacrifice_or_discard_chosen"; cardId: CardIdSelector }
+  /**
+   * Torment of Hailfire: "Repeat the following process X times." Expanded at
+   * BIND, where the announced X lives — the inner effects are bound once per
+   * repetition, so an each-opponent choice inside is made afresh each time.
+   */
+  | { kind: "repeat_x_times"; effects: CardEffect[] }
   /**
    * Chrome Mox: exile the chosen card and record it on the SOURCE, so
    * the source's own abilities can read it. Exiling it with a plain

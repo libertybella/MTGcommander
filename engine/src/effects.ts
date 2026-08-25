@@ -1187,6 +1187,17 @@ export function bindCardEffect(
       }
       return { kind: "sacrifice", cardId };
     }
+    case "sacrifice_or_discard_chosen": {
+      const cardId = bindCardId(state, effect.cardId, context);
+      if (!cardId) {
+        return null;
+      }
+      return { kind: "sacrifice_or_discard_chosen", cardId };
+    }
+    case "repeat_x_times":
+      // Expanded in `bindCardEffects` before it ever reaches here, where the
+      // whole list is in scope and the repetitions can be flattened into it.
+      return null;
     case "double_all_counters": {
       const doubled = effect.allChosen
         ? (context.targets ?? [])
@@ -2550,6 +2561,19 @@ export function bindCardEffects(
   context: BindEffectContext,
 ): GameEffect[] {
   return effects.flatMap((effect) => {
+    /**
+     * "Repeat the following process X times." Expanded HERE rather than at
+     * apply, because the announced X lives in this context — and the inner
+     * effects are bound once per repetition, so an each-opponent choice
+     * inside is a fresh choice each time round rather than one choice
+     * applied X times.
+     */
+    if (effect.kind === "repeat_x_times") {
+      const times = Math.max(0, context.xValue ?? 0);
+      return Array.from({ length: times }, () =>
+        bindCardEffects(state, effect.effects, context),
+      ).flat();
+    }
     // An ability-word rider picks one of its two branches here, which for a
     // spell is its resolution — the point the printed card checks.
     if (effect.kind === "if_condition") {
@@ -4521,6 +4545,31 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
       case "sacrifice":
         next = applySacrifice(state, effect.cardId);
         break;
+      case "sacrifice_or_discard_chosen": {
+        // Where the card is decides how it leaves, and the two are not the
+        // same event: a sacrifice feeds sacrifice-watchers and a discard
+        // feeds discard-watchers. Read now, because the choice was made
+        // after this effect bound.
+        const chosen = state.cards[effect.cardId];
+        if (!chosen) {
+          next = cloneGameState(state);
+          break;
+        }
+        if (chosen.zone === "battlefield") {
+          next = applySacrifice(state, effect.cardId);
+          break;
+        }
+        if (chosen.zone === "hand") {
+          const owner = chosen.controllerId;
+          next = moveCard(state, effect.cardId, "graveyard");
+          dispatchEventsInPlace(next, [
+            { kind: "discards", playerId: owner, cardId: effect.cardId },
+          ]);
+          break;
+        }
+        next = cloneGameState(state);
+        break;
+      }
       case "add_counter":
         next = applyAddCounter(state, effect.cardId, effect.counter, effect.amount);
         break;

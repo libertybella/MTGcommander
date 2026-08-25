@@ -2277,6 +2277,18 @@ more questions it can now ask:
   `TopOfLibraryGrant.payLifeInsteadOfMana` replaces the cost OUTRIGHT, the
   same way flashback does, and rides the same life-payment path. A cost
   that had merely been reduced would still refuse a caster with no mana.
+- **"Repeat the following process X times"** — Torment of Hailfire.
+  `repeat_x_times` expands at bind, where the announced X lives, binding the
+  inner effects once per repetition so an each-opponent choice inside is
+  made afresh each time. A process that needs targets is refused: the
+  repetitions would all aim at one set chosen once.
+- **A punisher choice across two zones** — Torment of Hailfire. "Loses N life
+  unless that player sacrifices a nonland permanent OR discards a card" is
+  one `choose_card` over a pool spanning the battlefield and the hand, with
+  the life loss as `thenEffectsIfNone`. The chosen card leaves by
+  `sacrifice_or_discard_chosen`, which reads its zone at apply and fires the
+  matching event — a sacrifice and a discard are not the same thing to the
+  watchers, even though both end in the graveyard.
 - **"Put into a graveyard from anywhere"** — Kozilek, Ulamog. A distinct
   event from `dies` (battlefield only) and from Syr Konrad's
   `put_in_graveyard_from_elsewhere` (everything but the battlefield), because
