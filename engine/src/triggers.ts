@@ -776,6 +776,12 @@ function subjectMatchesFilter(
     return true;
   }
   const traits = characteristicsOf(state, subjectId);
+  if (
+    filter.ownedByYou &&
+    (!watcher || state.cards[subjectId]?.ownerId !== watcher.controllerId)
+  ) {
+    return false;
+  }
   if (filter.chosenSubtype) {
     const chosen = watcher?.chosenCreatureType;
     if (!chosen || !cardMatchesSubtype(state, subjectId, chosen)) {

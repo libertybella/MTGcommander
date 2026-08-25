@@ -2764,6 +2764,16 @@ function compileSimpleClause(sentence: string): SimpleClause | null {
 }
 
 function compileSimpleClauseInner(sentence: string): SimpleClause | null {
+  // Nether Traitor / Bloodghast: the recursion payoff — this card comes back
+  // from the graveyard where it is, no target. Reached through a may_pay
+  // ("you may pay {B}. If you do, return this card ..."), so it compiles as
+  // a bare clause with no targets of its own.
+  if (/^Return this card from your graveyard to the battlefield$/i.test(sentence)) {
+    return {
+      targetRequirements: [],
+      effects: [{ kind: "move_card", cardId: "self", toZone: "battlefield" }],
+    };
+  }
   /**
    * Siren Stormtamer, and the plain form beside it. "That targets you or a
    * creature you control" is a constraint on what the STACK OBJECT is
@@ -12633,6 +12643,7 @@ type TriggerHead = Pick<
   | "subjectFilter"
   | "subjectPlayerOpponent"
   | "noncombatOnly"
+  | "fromGraveyard"
   | "oncePerTurn"
   | "oncePerBatch"
   | "alsoOnCopy"
@@ -12824,6 +12835,22 @@ function parseTriggerHead(head: string): TriggerHead | null {
   }
   if (/^Whenever another creature dies$/i.test(text)) {
     return { event: "dies", watch: "any", excludeSelf: true, subjectFilter: { types: ["creature"] } };
+  }
+  // Nether Traitor: "put into YOUR graveyard from the battlefield" is a death
+  // that lands in the watcher's graveyard — a creature the watcher owned. The
+  // ability functions from the GRAVEYARD (CR 603.10), which is the only place
+  // its "return this card from your graveyard" payoff can do anything, so it
+  // must fire from there and never from the battlefield.
+  if (
+    /^Whenever another creature is put into your graveyard from the battlefield$/i.test(text)
+  ) {
+    return {
+      event: "dies",
+      watch: "any",
+      excludeSelf: true,
+      fromGraveyard: true,
+      subjectFilter: { types: ["creature"], ownedByYou: true },
+    };
   }
   // Mystic Sanctuary: "When ~ enters untapped". The event is the ordinary
   // battlefield entry; "untapped" is an intervening condition read on the

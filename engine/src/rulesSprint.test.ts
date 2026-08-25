@@ -70206,3 +70206,158 @@ describe("wave 419: Niv-Mizzet, Visionary", () => {
     });
   });
 });
+
+describe("wave 420: Nether Traitor", () => {
+  const compile = (name: string, typeLine: string, oracleText: string, manaCost = "") =>
+    compileOracleCard({
+      oracleId: name.toLowerCase().replace(/[^a-z]+/g, "-"),
+      name,
+      manaCost,
+      typeLine,
+      power: "1",
+      toughness: "1",
+      printedKeywords: ["Haste", "Shadow"],
+      imageUrl: "",
+      oracleText,
+    });
+
+  const ntText =
+    "Haste\nShadow (This creature can block or be blocked by only creatures with shadow.)\nWhenever another creature is put into your graveyard from the battlefield, you may pay {B}. If you do, return this card from your graveyard to the battlefield.";
+
+  it("compiles the graveyard-active recursion trigger", () => {
+    const compiled = compile("Nether Traitor", "Creature — Imp", ntText, "{B}{B}");
+    expect(compiled.notes).toEqual([]);
+    const trigger = compiled.definition.triggers[0];
+    expect(trigger).toMatchObject({
+      event: "dies",
+      watch: "any",
+      excludeSelf: true,
+      // It functions from the graveyard, and only there — CR 603.10.
+      fromGraveyard: true,
+      subjectFilter: { types: ["creature"], ownedByYou: true },
+      effects: [
+        {
+          kind: "may_pay",
+          cost: "{B}",
+          effects: [{ kind: "move_card", cardId: "self", toZone: "battlefield" }],
+        },
+      ],
+    });
+  });
+
+  const traitor = () =>
+    createCardDefinition({
+      name: "Nether Traitor",
+      typeLine: "Creature — Imp",
+      manaCost: "{B}{B}",
+      power: 1,
+      toughness: 1,
+      keywords: ["haste"],
+      triggers: [
+        {
+          event: "dies",
+          watch: "any",
+          excludeSelf: true,
+          fromGraveyard: true,
+          subjectFilter: { types: ["creature"], ownedByYou: true },
+          effects: [
+            {
+              kind: "may_pay",
+              playerId: "controller",
+              cost: "{B}",
+              effects: [{ kind: "move_card", cardId: "self", toZone: "battlefield" }],
+            },
+          ],
+          targetRequirements: [],
+        },
+      ],
+    });
+
+  const bear = (name: string) =>
+    createCardDefinition({ name, typeLine: "Creature — Bear", manaCost: "{1}{G}", power: 2, toughness: 2 });
+
+  const putIn = (
+    game: GameState,
+    ownerId: string,
+    definition: CardDefinition,
+    zone: "graveyard" | "battlefield",
+  ) => {
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({ definitionId: definition.id, ownerId, zone });
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === ownerId)!.zones[zone].push(card.id);
+    if (zone === "battlefield") {
+      card.summoningSick = false;
+    }
+    return card.id;
+  };
+
+  const killAndDispatch = (game: GameState, victimId: string) => {
+    const after = structuredClone(game);
+    const events: EngineEvent[] = [];
+    destroyPermanentInPlace(after, victimId, events);
+    dispatchEventsInPlace(after, events);
+    return after;
+  };
+
+  it("comes back from the graveyard when another owned creature dies and {B} is paid", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const traitorId = putIn(game, p1.id, traitor(), "graveyard");
+    const bearId = putIn(game, p1.id, bear("Sacrifice Fuel"), "battlefield");
+    game.players.find((entry) => entry.id === p1.id)!.mana.B = 3;
+    let after = killAndDispatch(game, bearId);
+    // The graveyard trigger is on the stack; resolving it offers the pay.
+    expect(after.stack.length).toBeGreaterThan(0);
+    after = resolveTopOfStack(after);
+    expect(after.prompts[0]?.kind).toBe("pay_or_effect");
+    after = applyResolvePay(after, p1.id, true);
+    expect(after.cards[traitorId]?.zone).toBe("battlefield");
+  });
+
+  it("stays dead when the payment is declined", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const traitorId = putIn(game, p1.id, traitor(), "graveyard");
+    const bearId = putIn(game, p1.id, bear("Sacrifice Fuel"), "battlefield");
+    game.players.find((entry) => entry.id === p1.id)!.mana.B = 3;
+    let after = killAndDispatch(game, bearId);
+    after = resolveTopOfStack(after);
+    after = applyResolvePay(after, p1.id, false);
+    expect(after.cards[traitorId]?.zone).toBe("graveyard");
+  });
+
+  it("does NOT fire from the battlefield — the ability lives in the graveyard", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    // Traitor on the board this time; another creature dies.
+    putIn(game, p1.id, traitor(), "battlefield");
+    const bearId = putIn(game, p1.id, bear("Sacrifice Fuel"), "battlefield");
+    const after = killAndDispatch(game, bearId);
+    // A graveyard ability does nothing from the battlefield: no trigger.
+    expect(after.stack).toHaveLength(0);
+    expect(after.prompts).toHaveLength(0);
+  });
+
+  it("ignores a creature its controller does not own", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    putIn(game, p1.id, traitor(), "graveyard");
+    // p2 owns this creature; it lands in p2's graveyard, not p1's.
+    const foreignId = putIn(game, p2.id, bear("Not Yours"), "battlefield");
+    const after = killAndDispatch(game, foreignId);
+    expect(after.stack).toHaveLength(0);
+  });
+
+  it("round trips the graveyard and owner flags", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const definition = traitor();
+    putIn(game, p1.id, definition, "graveyard");
+    const round = parseGameState(serializeGameState(game));
+    expect(round.definitions[definition.id]?.triggers[0]).toMatchObject({
+      fromGraveyard: true,
+      subjectFilter: { ownedByYou: true },
+    });
+  });
+});

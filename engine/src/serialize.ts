@@ -5734,6 +5734,7 @@ function parseTriggers(value: unknown, label: string): CardTrigger[] {
               ...(entry.subjectFilter.manaValueBelowWatcherPower === true
                 ? { manaValueBelowWatcherPower: true }
                 : {}),
+              ...(entry.subjectFilter.ownedByYou === true ? { ownedByYou: true } : {}),
               ...(entry.subjectFilter.counterName === undefined
                 ? {}
                 : {

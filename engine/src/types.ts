@@ -4883,6 +4883,10 @@ export type CardTrigger = {
     /** Pollywog Prodigy: the cast subject's mana value undercuts the
      * watcher's power. */
     manaValueBelowWatcherPower?: boolean;
+    /** Nether Traitor: "put into YOUR graveyard from the battlefield" — the
+     * dying card must be owned by the watcher's controller, since a card
+     * lands in its OWNER's graveyard. */
+    ownedByYou?: boolean;
     /** counter_added triggers: only this counter name fires it. */
     counterName?: string;
     /** "a colorless spell" / "another colorless creature" (Glaring

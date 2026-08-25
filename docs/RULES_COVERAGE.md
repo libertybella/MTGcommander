@@ -3054,3 +3054,4 @@ ends. Every printed card of this shape asks about the current turn.
 
 - Regenerate target artifact (Welding Jar), alongside the existing regenerate-target-creature — a regeneration shield on a non-creature permanent.
 - Noncombat-damage triggers: "a source you control deals noncombat damage to an opponent" draws that many (Niv-Mizzet, Visionary), via a `noncombatOnly` flag that skips the combat step's firing of the shared deals_damage_to_player event.
+- Graveyard-active recursion: "whenever another creature is put into your graveyard from the battlefield, you may pay {B}: return this card from your graveyard to the battlefield" (Nether Traitor), via a `fromGraveyard` trigger, a `subjectFilter.ownedByYou` owner gate, and a self-reanimate move_card.
