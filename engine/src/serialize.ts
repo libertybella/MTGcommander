@@ -4552,6 +4552,7 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
         : { kind, target: parseChosenTargetRef(value.target, `${label}.target`) };
     case "grant_protection_choice":
     case "counter_spell":
+    case "mill_and_dig_free":
     case "copy_spell": {
       if (!isRecord(value.target)) {
         throw new Error(`Invalid ${label}.target`);
@@ -7724,6 +7725,13 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
       kind,
       stackObjectId: expectString(value.stackObjectId, `${label}.stackObjectId`),
       ...(value.exileInstead === true ? { exileInstead: true } : {}),
+    };
+  }
+  if (kind === "mill_and_dig_free") {
+    return {
+      kind,
+      playerId: expectString(value.playerId, `${label}.playerId`),
+      excludedName: expectString(value.excludedName, `${label}.excludedName`),
     };
   }
   if (kind === "bounce_spell_or_permanent") {

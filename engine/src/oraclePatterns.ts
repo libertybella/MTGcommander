@@ -7582,6 +7582,14 @@ function compileSimpleClauseInner(sentence: string): SimpleClause | null {
     };
   }
 
+  // Tibalt's Trickery (fused by fuseTrickeryInPlace).
+  if (/^trickery the countered spell's controller$/i.test(sentence)) {
+    return {
+      targetRequirements: [],
+      effects: [{ kind: "mill_and_dig_free", target: { type: "chosen", index: 0 } }],
+    };
+  }
+
   // Moraug (fused by fuseExtraCombatUntapInPlace): the untap belongs to the
   // added combat, not to the trigger that made it.
   if (
@@ -10860,6 +10868,36 @@ function fusePilesInPlace(sentences: string[], lineStart: boolean[]): void {
  * phase, and untapping early would let the controller tap for mana there
  * and still attack with everything.
  */
+/**
+ * Tibalt's Trickery's four sentences after the counter. They say one thing
+ * between them and not one of them means anything alone: "that many" is the
+ * random number the first picked, "that spell" is the one the counter is
+ * taking away, and "they" is its controller. Fused into a single clause
+ * because everything they name is read at the same instant.
+ */
+function fuseTrickeryInPlace(sentences: string[], lineStart: boolean[]): void {
+  for (let index = 0; index + 3 < sentences.length; index += 1) {
+    if (lineStart[index + 1] || lineStart[index + 2] || lineStart[index + 3]) {
+      continue;
+    }
+    if (
+      /^Choose 1, 2, or 3 at random$/i.test(sentences[index] ?? "") &&
+      /^Its controller mills that many cards, then exiles cards from the top of their library until they exile a nonland card with a different name than that spell$/i.test(
+        sentences[index + 1] ?? "",
+      ) &&
+      /^They may cast that card without paying its mana costs?$/i.test(
+        sentences[index + 2] ?? "",
+      ) &&
+      /^Then they put the exiled cards on the bottom of their library in a random order$/i.test(
+        sentences[index + 3] ?? "",
+      )
+    ) {
+      sentences.splice(index, 4, "trickery the countered spell's controller");
+      lineStart.splice(index + 1, 3);
+    }
+  }
+}
+
 function fuseExtraCombatUntapInPlace(sentences: string[], lineStart: boolean[]): void {
   for (let index = 0; index + 1 < sentences.length; index += 1) {
     if (lineStart[index + 1]) {
@@ -15551,6 +15589,7 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
   fuseTapForXInPlace(sentences, lineStart);
   fuseTemptingOfferInPlace(sentences, lineStart);
   fusePilesInPlace(sentences, lineStart);
+  fuseTrickeryInPlace(sentences, lineStart);
   fuseExtraCombatUntapInPlace(sentences, lineStart);
   fuseEachGraveyardReanimateInPlace(sentences, lineStart);
   fuseBlinkAndFetchInPlace(sentences, lineStart);

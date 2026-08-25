@@ -2884,6 +2884,25 @@ export function bindCardEffect(
           );
       return cardIds.length > 0 ? { kind: "regenerate", cardIds } : null;
     }
+    case "mill_and_dig_free": {
+      // Read NOW, while the spell is still on the stack: the sibling
+      // counter in this same batch is about to take it away.
+      const chosen = chosenTargetAt(context, effect.target.index, state);
+      if (chosen?.type !== "spell") {
+        return null;
+      }
+      const entry = state.stack.find((object) => object.id === chosen.stackObjectId);
+      if (!entry) {
+        return null;
+      }
+      const source = entry.sourceId ? state.cards[entry.sourceId] : undefined;
+      const name = source ? state.definitions[source.definitionId]?.name ?? "" : "";
+      return {
+        kind: "mill_and_dig_free",
+        playerId: entry.controllerId,
+        excludedName: name,
+      };
+    }
           default: {
     const exhaustive: never = effect;
       throw new Error(`Unknown card effect ${(exhaustive as CardEffect).kind}`);
@@ -3485,6 +3504,67 @@ function applyDiscard(
 }
 
 /** Gamble: "discard a card at random" (tests mock Math.random). */
+/**
+ * Tibalt's Trickery's second half. "Choose 1, 2, or 3 at random" is a real
+ * die roll — the whole reason the card is played is that the outcome is not
+ * chosen — and the dig walks past lands and past anything sharing the
+ * countered spell's name. Everything exiled that is not the find goes to
+ * the bottom in a random order, which is what stops it being a tutor.
+ */
+function applyMillAndDigFree(
+  state: GameState,
+  playerId: PlayerId,
+  excludedName: string,
+): GameState {
+  requirePlayer(state, playerId);
+  const milled = 1 + Math.floor(Math.random() * 3);
+  let next = applyMill(state, playerId, milled);
+  const exiled: CardInstanceId[] = [];
+  let found: CardInstanceId | null = null;
+  for (;;) {
+    const library = next.players.find((entry) => entry.id === playerId)?.zones.library ?? [];
+    const top = library[0];
+    if (!top) {
+      break;
+    }
+    const characteristics = characteristicsOf(next, top);
+    const name = state.definitions[next.cards[top]?.definitionId ?? ""]?.name ?? "";
+    next = moveCard(next, top, "exile");
+    exiled.push(top);
+    if (!characteristics.types.includes("land") && name !== excludedName) {
+      found = top;
+      break;
+    }
+  }
+  if (found) {
+    const grants = next.exilePlayable ?? [];
+    grants.push({ cardId: found, casterId: playerId, freeCast: true });
+    next.exilePlayable = grants;
+  }
+  // "Then they put the exiled cards on the bottom of their library in a
+  // random order" — the find included, if it is not cast first. It stays
+  // in exile while the grant lives; the rest go back now.
+  const rest = exiled.filter((cardId) => cardId !== found);
+  if (rest.length > 0) {
+    next = cloneGameState(next);
+    const player = next.players.find((entry) => entry.id === playerId);
+    if (player) {
+      const shuffled = [...rest];
+      shuffleInPlace(shuffled);
+      for (const cardId of shuffled) {
+        const card = next.cards[cardId];
+        if (!card || card.zone !== "exile") {
+          continue;
+        }
+        card.zone = "library";
+        player.zones.exile = player.zones.exile.filter((id) => id !== cardId);
+        player.zones.library.push(cardId);
+      }
+    }
+  }
+  return next;
+}
+
 function applyDiscardRandom(state: GameState, playerId: PlayerId, count: number): GameState {
   requirePositiveInteger(count, "discard count");
   requirePlayer(state, playerId);
@@ -7452,6 +7532,9 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
         }
         break;
       }
+      case "mill_and_dig_free":
+        next = applyMillAndDigFree(state, effect.playerId, effect.excludedName);
+        break;
               default: {
       const exhaustive: never = effect;
         throw new Error(`Unknown effect ${(exhaustive as GameEffect).kind}`);

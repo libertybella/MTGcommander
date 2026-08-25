@@ -67840,3 +67840,212 @@ describe("wave 408: Moraug, Fury of Akoum", () => {
     });
   });
 });
+
+describe("wave 409: Tibalt's Trickery", () => {
+  const compile = (name: string, typeLine: string, oracleText: string, manaCost = "") =>
+    compileOracleCard({
+      oracleId: name.toLowerCase().replace(/[^a-z]+/g, "-"),
+      name,
+      manaCost,
+      typeLine,
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  const trickeryText =
+    "Counter target spell. Choose 1, 2, or 3 at random. Its controller mills that many cards, then exiles cards from the top of their library until they exile a nonland card with a different name than that spell. They may cast that card without paying its mana cost. Then they put the exiled cards on the bottom of their library in a random order.";
+
+  it("compiles the whole card as a counter and one fused clause", () => {
+    const compiled = compile("Tibalt's Trickery", "Instant", trickeryText, "{1}{R}");
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.targetRequirements).toEqual([{ kind: "spell" }]);
+    expect(compiled.definition.effects).toEqual([
+      { kind: "counter_spell", target: { type: "chosen", index: 0 } },
+      { kind: "mill_and_dig_free", target: { type: "chosen", index: 0 } },
+    ]);
+  });
+
+  // ---- The dig ------------------------------------------------------------
+
+  const spell = (game: GameState, name: string, typeLine = "Instant") => {
+    const definition = createCardDefinition({ name, typeLine, manaCost: "{1}{U}" });
+    game.definitions[definition.id] = definition;
+    return definition;
+  };
+
+  const forest = (game: GameState) => {
+    const definition = createCardDefinition({ name: "Forest", typeLine: "Basic Land — Forest" });
+    game.definitions[definition.id] = definition;
+    return definition;
+  };
+
+  const stackLibrary = (game: GameState, playerId: string, definitions: CardDefinition[]) => {
+    const player = game.players.find((entry) => entry.id === playerId)!;
+    player.zones.library = [];
+    const ids: string[] = [];
+    for (const definition of definitions) {
+      const card = createCardInstance({
+        definitionId: definition.id,
+        ownerId: playerId,
+        zone: "library",
+      });
+      game.cards[card.id] = card;
+      player.zones.library.push(card.id);
+      ids.push(card.id);
+    }
+    return ids;
+  };
+
+  const digFor = (game: GameState, _casterId: string, victimId: string, excludedName: string) =>
+    applyEffects(game, [{ kind: "mill_and_dig_free", playerId: victimId, excludedName }]);
+
+  it("stops on a nonland card and makes it free to cast", () => {
+    const { game, p1, p2 } = twoPlayers();
+    // Twenty cards deep so the random 1-3 mill cannot empty it.
+    const ids = stackLibrary(game, p2.id, [
+      ...Array.from({ length: 20 }, () => forest(game)),
+      spell(game, "The Prize"),
+      spell(game, "Too Deep"),
+    ]);
+    const after = digFor(game, p1.id, p2.id, "Something Else");
+    const prizeId = ids[20]!;
+    expect(after.cards[prizeId]?.zone).toBe("exile");
+    // The victim casts it, not the caster of the Trickery.
+    expect(after.exilePlayable?.[0]).toMatchObject({
+      cardId: prizeId,
+      casterId: p2.id,
+      freeCast: true,
+    });
+    expect(after.cards[ids[21]!]?.zone).toBe("library");
+  });
+
+  it("walks past a card sharing the countered spell's name", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const ids = stackLibrary(game, p2.id, [
+      ...Array.from({ length: 20 }, () => forest(game)),
+      spell(game, "Named Twice"),
+      spell(game, "Something Else"),
+    ]);
+    const after = digFor(game, p1.id, p2.id, "Named Twice");
+    // The whole point of the card: the copy of what was countered does not
+    // count, or the Trickery would just give the spell back.
+    expect(after.exilePlayable?.[0]?.cardId).toBe(ids[21]);
+  });
+
+  it("puts everything else back on the bottom, not in the graveyard", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const ids = stackLibrary(game, p2.id, [
+      ...Array.from({ length: 20 }, () => forest(game)),
+      spell(game, "The Prize"),
+      ...Array.from({ length: 5 }, () => forest(game)),
+    ]);
+    const after = digFor(game, p1.id, p2.id, "Something Else");
+    const library = after.players.find((entry) => entry.id === p2.id)!.zones.library;
+    const prizeId = ids[20]!;
+    // Only the find stays exiled; the lands walked past go back under.
+    for (const cardId of ids) {
+      const zone = after.cards[cardId]?.zone;
+      if (cardId === prizeId) {
+        expect(zone).toBe("exile");
+        continue;
+      }
+      expect(zone === "library" || zone === "graveyard").toBe(true);
+    }
+    expect(library.length).toBeGreaterThan(0);
+  });
+
+  it("mills between one and three, never none and never four", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const seen = new Set<number>();
+    for (let attempt = 0; attempt < 40; attempt += 1) {
+      const fresh = twoPlayers();
+      stackLibrary(fresh.game, fresh.p2.id, [
+        ...Array.from({ length: 20 }, () => forest(fresh.game)),
+        spell(fresh.game, "The Prize"),
+      ]);
+      const after = digFor(fresh.game, fresh.p1.id, fresh.p2.id, "Something Else");
+      const milled = after.players.find((entry) => entry.id === fresh.p2.id)!.zones.graveyard
+        .length;
+      seen.add(milled);
+    }
+    for (const milled of seen) {
+      expect(milled).toBeGreaterThanOrEqual(1);
+      expect(milled).toBeLessThanOrEqual(3);
+    }
+    // Forty rolls of a three-sided die: all three faces, or the "random"
+    // in "Choose 1, 2, or 3 at random" is not random at all.
+    expect(seen.size).toBe(3);
+    void game;
+    void p1;
+    void p2;
+  });
+
+  it("grants nothing when the library holds only lands", () => {
+    const { game, p1, p2 } = twoPlayers();
+    stackLibrary(game, p2.id, Array.from({ length: 8 }, () => forest(game)));
+    const after = digFor(game, p1.id, p2.id, "Something Else");
+    expect(after.exilePlayable ?? []).toHaveLength(0);
+  });
+
+  // ---- Reading the spell before it is gone --------------------------------
+
+  it("reads the countered spell at BIND, not after the counter", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    const definition = spell(game, "Their Spell");
+    const card = createCardInstance({ definitionId: definition.id, ownerId: p2.id, zone: "stack" });
+    game.cards[card.id] = card;
+    const stackObjectId = "stack-object-1";
+    game.stack.push({
+      id: stackObjectId,
+      sourceId: card.id,
+      controllerId: p2.id,
+      kind: "spell",
+      targets: [],
+    });
+    const bound = bindCardEffects(
+      game,
+      [
+        { kind: "counter_spell", target: { type: "chosen", index: 0 } },
+        { kind: "mill_and_dig_free", target: { type: "chosen", index: 0 } },
+      ],
+      {
+        controllerId: p1.id,
+        sourceId: null,
+        targets: [{ type: "spell", stackObjectId }],
+        targetRequirements: [{ kind: "spell" }],
+      },
+    );
+    // Both effects bind while the spell is still on the stack. Read at
+    // apply, the second one would find a graveyard card with no controller
+    // and no name to exclude.
+    expect(bound[1]).toEqual({
+      kind: "mill_and_dig_free",
+      playerId: p2.id,
+      excludedName: "Their Spell",
+    });
+  });
+
+  it("round trips the fused effect", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const definition = createCardDefinition({
+      name: "Wave 409 Trickery",
+      typeLine: "Instant",
+      manaCost: "{1}{R}",
+      targetRequirements: [{ kind: "spell" }],
+      effects: [
+        { kind: "counter_spell", target: { type: "chosen", index: 0 } },
+        { kind: "mill_and_dig_free", target: { type: "chosen", index: 0 } },
+      ],
+    });
+    game.definitions[definition.id] = definition;
+    void p1;
+    const round = parseGameState(serializeGameState(game));
+    // Dropped on the wire the card is a two-mana Cancel.
+    expect(round.definitions[definition.id]?.effects).toEqual(definition.effects);
+  });
+});

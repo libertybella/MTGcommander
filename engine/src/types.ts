@@ -1961,6 +1961,21 @@ export type GameEffect =
   | { kind: "double_counters_on"; cardId: CardInstanceId; counter: string }
   | { kind: "double_all_counters"; cardIds: CardInstanceId[] }
   | {
+      /**
+       * Tibalt's Trickery: the whole second half of the card, as one
+       * effect. Everything it says about "that spell" — whose it is, what
+       * it is called — is read at BIND, because effects bind as a batch
+       * and by the time this applies the sibling counter has already put
+       * the spell in a graveyard, where it has neither a controller nor a
+       * stack entry left to read.
+       */
+      kind: "mill_and_dig_free";
+      /** The countered spell's controller: they mill, they dig, they cast. */
+      playerId: PlayerId;
+      /** The countered spell's name, which the find must NOT share. */
+      excludedName: string;
+    }
+  | {
       kind: "counter_spell";
       stackObjectId: StackObjectId;
       /**
@@ -3605,6 +3620,8 @@ export type CardEffect =
       /** Force of Negation: "exile it instead". */
       exileInstead?: boolean;
     }
+  /** Tibalt's Trickery — see the bound form for why it is one effect. */
+  | { kind: "mill_and_dig_free"; target: ChosenTargetRef }
   | { kind: "counter_unless_pays"; target: ChosenTargetRef; cost: string }
   /** Venser: bounce a spell (off the stack) or a permanent to its owner's hand. */
   | { kind: "bounce_spell_or_permanent"; target: ChosenTargetRef }
