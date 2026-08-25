@@ -486,6 +486,10 @@ function onEnterStep(state: GameState): GameState {
     if (state.preventCombatFor && state.preventCombatFor.length > 0) {
       state.preventCombatFor = [];
     }
+    // Inkshield's shield is "this turn" like every other fog.
+    if (state.combatDamageShields && state.combatDamageShields.length > 0) {
+      state.combatDamageShields = [];
+    }
     if (state.flashThisTurn && state.flashThisTurn.length > 0) {
       state.flashThisTurn = [];
     }

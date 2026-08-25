@@ -2277,6 +2277,13 @@ more questions it can now ask:
   `TopOfLibraryGrant.payLifeInsteadOfMana` replaces the cost OUTRIGHT, the
   same way flashback does, and rides the same life-payment path. A cost
   that had merely been reduced would still refuse a caster with no mana.
+- **A fog for one player, and the damage it prevented** — Inkshield.
+  `combatDamageShields` prevents at the damage site rather than
+  short-circuiting the whole step, so it can be scoped to one player and can
+  count what it stopped. Prevented damage was never dealt: no life loss, no
+  poison, no lifelink, no commander damage, no damage events. The token
+  rider is paid once after both strike steps, so two attackers held off by
+  one shield make one pile.
 - **"Half its power, round up" and "if it dies this way"** — Saw in Half.
   The halving resolves at BIND (effects bind as a batch, so that is the last
   moment the creature is on the battlefield to measure) and the death check

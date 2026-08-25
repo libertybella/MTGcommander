@@ -6447,6 +6447,44 @@ function compileSimpleClauseInner(sentence: string): SimpleClause | null {
     return { targetRequirements: [], effects: [{ kind: "fog" }] };
   }
 
+  /**
+   * Inkshield, once the fuser has joined the shield to its token rider. One
+   * player's fog rather than the table's, and it counts what it stopped —
+   * the tokens are made off exactly that number.
+   */
+  if (/^inkshield-fog$/i.test(sentence)) {
+    return {
+      targetRequirements: [],
+      effects: [
+        {
+          kind: "fog",
+          forPlayerId: "controller",
+          tokenPerDamage: {
+            kind: "create_token",
+            ownerId: "controller",
+            name: "Inkling",
+            typeLine: "Creature — Inkling Token",
+            power: 2,
+            toughness: 1,
+            colors: ["W", "B"],
+            keywords: ["flying"],
+          },
+        },
+      ],
+    };
+  }
+
+  // A personal fog on its own, which is the half of Inkshield every other
+  // card in that family prints alone.
+  if (
+    /^prevent all combat damage that would be dealt to you this turn$/i.test(sentence)
+  ) {
+    return {
+      targetRequirements: [],
+      effects: [{ kind: "fog", forPlayerId: "controller" }],
+    };
+  }
+
   // Documented auto-take: "you may destroy/exile target X" compiles as the
   // mandatory form — trigger targeting already skips with no legal target.
   const mayTargeted = sentence.match(/^you may (destroy|exile) target (.+)$/i);
@@ -10084,6 +10122,37 @@ function fuseRepeatXInPlace(sentences: string[], lineStart: boolean[]): void {
  * a marker the clause below reads, which keeps the shape of the card in the
  * fuser and the meaning in the clause.
  */
+/**
+ * Inkshield prints its shield and the tokens it pays out as two sentences.
+ * The token spec is printed in full in the second, and the clause below
+ * carries it — so the fuser only recognises the exact pair and collapses it
+ * to a marker, rather than trying to read an arbitrary token out of an
+ * arbitrary rider.
+ */
+function fuseInkshieldInPlace(sentences: string[], lineStart: boolean[]): void {
+  for (let index = 0; index + 1 < sentences.length; index += 1) {
+    if (lineStart[index + 1] || !sentences[index] || !sentences[index + 1]) {
+      continue;
+    }
+    if (
+      !/^Prevent all combat damage that would be dealt to you this turn$/i.test(
+        sentences[index]!,
+      )
+    ) {
+      continue;
+    }
+    if (
+      !/^For each 1 damage prevented this way, create a 2\/1 white and black Inkling creature token with flying$/i.test(
+        sentences[index + 1]!,
+      )
+    ) {
+      continue;
+    }
+    sentences.splice(index, 2, "inkshield-fog");
+    lineStart.splice(index + 1, 1);
+  }
+}
+
 function fuseSawInHalfInPlace(sentences: string[], lineStart: boolean[]): void {
   for (let index = 0; index + 1 < sentences.length; index += 1) {
     if (lineStart[index + 1] || !sentences[index] || !sentences[index + 1]) {
@@ -14070,6 +14139,7 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
   fuseRepeatXInPlace(sentences, lineStart);
   fuseSearchPutInPlace(sentences, lineStart);
   fuseSawInHalfInPlace(sentences, lineStart);
+  fuseInkshieldInPlace(sentences, lineStart);
   // A printed line is an ability, so these mark where the current line's
   // output begins. Riders that reach BACKWARD — the regeneration denial
   // below — use them to stop at the line they were printed on.

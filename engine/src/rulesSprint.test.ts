@@ -58396,3 +58396,223 @@ describe("wave 369: halved before, counted after", () => {
     });
   });
 });
+
+describe("wave 370: a fog for one player, and what it stopped", () => {
+  const compile = (name: string, typeLine: string, oracleText: string, manaCost = "") =>
+    compileOracleCard({
+      oracleId: name.toLowerCase().replace(/[^a-z]+/g, "-"),
+      name,
+      manaCost,
+      typeLine,
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  const put = (game: GameState, ownerId: string, definition: CardDefinition) => {
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({
+      definitionId: definition.id,
+      ownerId,
+      zone: "battlefield",
+    });
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === ownerId)!.zones.battlefield.push(card.id);
+    card.summoningSick = false;
+    return card.id;
+  };
+
+  const inkshieldText =
+    "Prevent all combat damage that would be dealt to you this turn. For each 1 damage prevented this way, create a 2/1 white and black Inkling creature token with flying.";
+
+  it("compiles Inkshield", () => {
+    const compiled = compile("Inkshield", "Instant", inkshieldText, "{2}{W}{B}");
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.effects).toEqual([
+      {
+        kind: "fog",
+        forPlayerId: "controller",
+        tokenPerDamage: {
+          kind: "create_token",
+          ownerId: "controller",
+          name: "Inkling",
+          typeLine: "Creature — Inkling Token",
+          power: 2,
+          toughness: 1,
+          colors: ["W", "B"],
+          keywords: ["flying"],
+        },
+      },
+    ]);
+  });
+
+  it("still reads a plain table-wide fog", () => {
+    const compiled = compile(
+      "Fog",
+      "Instant",
+      "Prevent all combat damage that would be dealt this turn.",
+      "{G}",
+    );
+    expect(compiled.definition.effects).toEqual([{ kind: "fog" }]);
+  });
+
+  const bear = (name: string, power: number) =>
+    createCardDefinition({
+      name,
+      typeLine: "Creature — Bear",
+      manaCost: "{2}{G}",
+      power,
+      toughness: 3,
+    });
+
+  const shieldFor = (game: GameState, playerId: string, withTokens: boolean) =>
+    applyEffects(
+      game,
+      bindCardEffects(
+        game,
+        [
+          {
+            kind: "fog",
+            forPlayerId: "controller",
+            ...(withTokens
+              ? {
+                  tokenPerDamage: {
+                    kind: "create_token" as const,
+                    ownerId: "controller" as const,
+                    name: "Inkling",
+                    typeLine: "Creature — Inkling Token",
+                    power: 2,
+                    toughness: 1,
+                    colors: ["W" as const, "B" as const],
+                    keywords: ["flying" as const],
+                  },
+                }
+              : {}),
+          },
+        ],
+        { controllerId: playerId, sourceId: null, targets: [], targetRequirements: [] },
+      ),
+    );
+
+  const swing = (game: GameState, attackerId: string, playerId: string, defenderId: string) => {
+    game.turn.activePlayerId = playerId;
+    game.turn.phase = "combat";
+    game.turn.step = "declareAttackers";
+    game.priorityPlayerId = playerId;
+    return applyCombatDamage(declareAttackers(game, playerId, [{ attackerId, defenderId }]));
+  };
+
+  const tokensOf = (game: GameState, playerId: string) =>
+    Object.values(game.cards).filter(
+      (card) => card.isToken && card.controllerId === playerId && card.zone === "battlefield",
+    );
+
+  it("takes no life, and makes one token per point", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const attackerId = put(game, p1.id, bear("Attacker", 5));
+    const shielded = shieldFor(game, p2.id, true);
+    const before = shielded.players.find((entry) => entry.id === p2.id)!.life;
+    const after = swing(shielded, attackerId, p1.id, p2.id);
+    expect(after.players.find((entry) => entry.id === p2.id)!.life).toBe(before);
+    expect(tokensOf(after, p2.id)).toHaveLength(5);
+  });
+
+  it("shields only the player it was cast for", () => {
+    const game = createGameState({ playerCount: 3 });
+    const [p1, p2, p3] = game.players;
+    if (!p1 || !p2 || !p3) {
+      throw new Error("need three players");
+    }
+    const attackerId = put(game, p1.id, bear("Attacker", 4));
+    const shielded = shieldFor(game, p2.id, true);
+    const before = shielded.players.find((entry) => entry.id === p3.id)!.life;
+    const after = swing(shielded, attackerId, p1.id, p3.id);
+    // p2 put up the shield; p3 is on their own.
+    expect(after.players.find((entry) => entry.id === p3.id)!.life).toBe(before - 4);
+    expect(tokensOf(after, p2.id)).toHaveLength(0);
+  });
+
+  it("makes no tokens when nothing was prevented", () => {
+    const { game, p1, p2 } = twoPlayers();
+    put(game, p1.id, bear("Idle", 4));
+    const shielded = shieldFor(game, p2.id, true);
+    // Nobody attacked, so the shield stopped nothing and owes nothing.
+    expect(tokensOf(applyCombatDamage(shielded), p2.id)).toHaveLength(0);
+  });
+
+  it("works as a bare personal fog with no tokens at all", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const attackerId = put(game, p1.id, bear("Attacker", 3));
+    const shielded = shieldFor(game, p2.id, false);
+    const before = shielded.players.find((entry) => entry.id === p2.id)!.life;
+    const after = swing(shielded, attackerId, p1.id, p2.id);
+    expect(after.players.find((entry) => entry.id === p2.id)!.life).toBe(before);
+    expect(tokensOf(after, p2.id)).toHaveLength(0);
+  });
+
+  it("gains the attacker no lifelink from damage that never landed", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const attackerId = put(
+      game,
+      p1.id,
+      createCardDefinition({
+        name: "Lifelinker",
+        typeLine: "Creature — Bear",
+        manaCost: "{2}{G}",
+        power: 4,
+        toughness: 3,
+        keywords: ["lifelink"],
+      }),
+    );
+    const shielded = shieldFor(game, p2.id, true);
+    const before = shielded.players.find((entry) => entry.id === p1.id)!.life;
+    const after = swing(shielded, attackerId, p1.id, p2.id);
+    // Prevented damage was never dealt, so there is nothing to link from.
+    expect(after.players.find((entry) => entry.id === p1.id)!.life).toBe(before);
+  });
+
+  it("tallies one pile across first strike and normal damage", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const firstStriker = put(
+      game,
+      p1.id,
+      createCardDefinition({
+        name: "Striker",
+        typeLine: "Creature — Bear",
+        manaCost: "{2}{W}",
+        power: 2,
+        toughness: 2,
+        keywords: ["first_strike"],
+      }),
+    );
+    const plainAttacker = put(game, p1.id, bear("Plain", 3));
+    const shielded = shieldFor(game, p2.id, true);
+    shielded.turn.activePlayerId = p1.id;
+    shielded.turn.phase = "combat";
+    shielded.turn.step = "declareAttackers";
+    shielded.priorityPlayerId = p1.id;
+    const declared = declareAttackers(shielded, p1.id, [
+      { attackerId: firstStriker, defenderId: p2.id },
+      { attackerId: plainAttacker, defenderId: p2.id },
+    ]);
+    const after = applyCombatDamage(declared);
+    // Two strike steps, one payout: five points, five Inklings.
+    expect(tokensOf(after, p2.id)).toHaveLength(5);
+  });
+
+  it("round trips the shield", () => {
+    const { game, p1 } = twoPlayers();
+    const shielded = shieldFor(game, p1.id, true);
+    const round = parseGameState(serializeGameState(shielded));
+    expect(round.combatDamageShields?.[0]).toMatchObject({
+      playerId: p1.id,
+      prevented: 0,
+    });
+    expect(round.combatDamageShields?.[0]?.tokenPerDamage).toMatchObject({
+      kind: "create_token",
+      name: "Inkling",
+    });
+  });
+});

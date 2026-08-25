@@ -1973,6 +1973,30 @@ export function parseGameState(json: string): GameState {
     ...(raw.preventCombatFor === undefined
       ? {}
       : { preventCombatFor: expectStringArray(raw.preventCombatFor, "preventCombatFor") }),
+    ...(Array.isArray(raw.combatDamageShields)
+      ? {
+          combatDamageShields: raw.combatDamageShields.map((entry, index) => {
+            if (!isRecord(entry)) {
+              throw new Error(`Invalid combatDamageShields[${index}]`);
+            }
+            return {
+              playerId: expectString(entry.playerId, `combatDamageShields[${index}].playerId`),
+              prevented: expectNumber(
+                entry.prevented,
+                `combatDamageShields[${index}].prevented`,
+              ),
+              ...(isRecord(entry.tokenPerDamage)
+                ? {
+                    tokenPerDamage: parseGameEffect(
+                      entry.tokenPerDamage,
+                      `combatDamageShields[${index}].tokenPerDamage`,
+                    ) as Extract<GameEffect, { kind: "create_token" }>,
+                  }
+                : {}),
+            };
+          }),
+        }
+      : {}),
     ...(raw.flashThisTurn === undefined
       ? {}
       : { flashThisTurn: expectStringArray(raw.flashThisTurn, "flashThisTurn") }),
@@ -3863,8 +3887,22 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
     case "copy_subject_spell":
     case "counter_subject_spell":
     case "extra_combat":
-    case "fog":
       return { kind };
+    case "fog":
+      return {
+        kind,
+        ...(value.forPlayerId === undefined
+          ? {}
+          : { forPlayerId: parsePlayerSelector(value.forPlayerId, `${label}.forPlayerId`) }),
+        ...(isRecord(value.tokenPerDamage)
+          ? {
+              tokenPerDamage: parseCardEffect(
+                value.tokenPerDamage,
+                `${label}.tokenPerDamage`,
+              ) as Extract<CardEffect, { kind: "create_token" }>,
+            }
+          : {}),
+      };
     case "windfall":
       return {
         kind,
@@ -6967,8 +7005,24 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
       controllerId: expectString(value.controllerId, `${label}.controllerId`),
     };
   }
-  if (kind === "extra_combat" || kind === "fog") {
+  if (kind === "extra_combat") {
     return { kind };
+  }
+  if (kind === "fog") {
+    return {
+      kind,
+      ...(value.forPlayerId === undefined
+        ? {}
+        : { forPlayerId: expectString(value.forPlayerId, `${label}.forPlayerId`) }),
+      ...(isRecord(value.tokenPerDamage)
+        ? {
+            tokenPerDamage: parseGameEffect(
+              value.tokenPerDamage,
+              `${label}.tokenPerDamage`,
+            ) as Extract<GameEffect, { kind: "create_token" }>,
+          }
+        : {}),
+    };
   }
   if (kind === "windfall") {
     return {

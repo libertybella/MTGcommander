@@ -689,6 +689,17 @@ function dealDamageToPlayerInPlace(
   if (!defender) {
     return;
   }
+  /**
+   * Inkshield: this player's own fog. The damage is PREVENTED, so nothing
+   * downstream happens at all — no life loss, no poison, no lifelink, no
+   * commander damage, and no damage events, because the damage was never
+   * dealt. The tally is what the tokens are counted off.
+   */
+  const shield = state.combatDamageShields?.find((entry) => entry.playerId === defenderId);
+  if (shield) {
+    shield.prevented += amount;
+    return;
+  }
   // Torbran et al: combat damage takes the same CR 616 replacements. The
   // events carry the modified amount, so "that much damage" riders agree.
   const dealt = damageAfterReplacements(state, sourceId, defenderId, amount, true);
@@ -871,5 +882,38 @@ export function applyCombatDamage(state: GameState): GameState {
   next = destroyLethalCreatures(next);
   dealCombatDamageInPlace(next, "normal");
   applyStateBasedActionsInPlace(next);
-  return destroyLethalCreatures(next);
+  next = destroyLethalCreatures(next);
+  return payOutDamageShields(next);
+}
+
+/**
+ * Inkshield: "for each 1 damage prevented this way, create a token". Paid
+ * out once both strike steps are done, so a first-striker and a normal
+ * attacker held off by the same shield make one pile of tokens rather than
+ * two. A shield with nothing to make is left alone.
+ */
+function payOutDamageShields(state: GameState): GameState {
+  const owing = (state.combatDamageShields ?? []).filter(
+    (shield) => shield.tokenPerDamage !== undefined && shield.prevented > 0,
+  );
+  if (owing.length === 0) {
+    return state;
+  }
+  let next = state;
+  for (const shield of owing) {
+    const template = shield.tokenPerDamage;
+    if (!template) {
+      continue;
+    }
+    next = applyEffect(next, { ...template, count: shield.prevented });
+    const paid = next.combatDamageShields?.find(
+      (entry) => entry.playerId === shield.playerId,
+    );
+    if (paid) {
+      // Paid once. The shield stays up for the rest of the turn, and what
+      // it stops later is a fresh tally.
+      paid.prevented = 0;
+    }
+  }
+  return next;
 }

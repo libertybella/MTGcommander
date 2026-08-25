@@ -1140,6 +1140,19 @@ export type GameState = {
   combatPhasesThisTurn?: number;
   /** Fog: no combat damage is dealt for the rest of this turn. */
   preventCombatDamage: boolean;
+  /**
+   * Inkshield: "prevent all combat damage that would be dealt to YOU this
+   * turn". A per-player shield rather than the table-wide flag above, and it
+   * counts what it stopped — the tokens are made off exactly that number, so
+   * the tally IS the card. Cleared at cleanup with the rest of the per-turn
+   * state.
+   */
+  combatDamageShields?: Array<{
+    playerId: PlayerId;
+    prevented: number;
+    /** The token made per point prevented, applied once combat damage is done. */
+    tokenPerDamage?: Extract<GameEffect, { kind: "create_token" }>;
+  }>;
   /** Maze of Ith: creatures whose combat damage (dealt and received) is
    * prevented this turn. Cleared at cleanup. */
   preventCombatFor?: CardInstanceId[];
@@ -1716,7 +1729,16 @@ export type GameEffect =
   /** Karlach: "They gain first strike until end of turn" on all attackers. */
   | { kind: "attackers_gain_keyword_until_eot"; keyword: Keyword }
   | { kind: "untap_lands_up_to"; playerId: PlayerId; count: number }
-  | { kind: "fog" }
+  /**
+   * Inkshield: the shield belongs to ONE player, and counts what it stopped
+   * so the token rider can read it. Absent means the table-wide fog every
+   * other card prints.
+   */
+  | {
+      kind: "fog";
+      forPlayerId?: PlayerId;
+      tokenPerDamage?: Extract<GameEffect, { kind: "create_token" }>;
+    }
   /** Mystic Forge: exile the top card(s) of the player's library. */
   | { kind: "exile_top"; playerId: PlayerId; count: number }
   /** Necropotence: exile the top card; it comes to hand at the next end
@@ -3155,7 +3177,16 @@ export type CardEffect =
     }
   | { kind: "attackers_gain_keyword_until_eot"; keyword: Keyword }
   | { kind: "untap_lands_up_to"; playerId: PlayerSelector; count: number }
-  | { kind: "fog" }
+  /**
+   * Inkshield: the shield belongs to ONE player, and counts what it stopped
+   * so the token rider can read it. Absent means the table-wide fog every
+   * other card prints.
+   */
+  | {
+      kind: "fog";
+      forPlayerId?: PlayerSelector;
+      tokenPerDamage?: Extract<CardEffect, { kind: "create_token" }>;
+    }
   /** Mystic Forge: exile the top card(s) of the player's library. */
   | { kind: "exile_top"; playerId: PlayerSelector; count: number }
   /** Necropotence: exile the top card; to hand at the next end step. */

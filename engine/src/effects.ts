@@ -2115,8 +2115,23 @@ export function bindCardEffect(
     }
     case "extra_combat":
       return { kind: "extra_combat" };
-    case "fog":
-      return { kind: "fog" };
+    case "fog": {
+      if (!effect.forPlayerId) {
+        return { kind: "fog" };
+      }
+      const shieldedId = bindPlayerSelector(state, effect.forPlayerId, context);
+      if (!shieldedId) {
+        return null;
+      }
+      const template = effect.tokenPerDamage
+        ? bindCardEffect(state, effect.tokenPerDamage, context)
+        : null;
+      return {
+        kind: "fog",
+        forPlayerId: shieldedId,
+        ...(template?.kind === "create_token" ? { tokenPerDamage: template } : {}),
+      };
+    }
     case "windfall":
       return { kind: "windfall", ...(effect.drawCount ? { drawCount: effect.drawCount } : {}) };
     case "exile_top": {
@@ -4749,7 +4764,19 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
       }
       case "fog": {
         next = cloneGameState(state);
-        next.preventCombatDamage = true;
+        if (!effect.forPlayerId) {
+          next.preventCombatDamage = true;
+          break;
+        }
+        // One player's shield, with room for the tally the token rider reads.
+        next.combatDamageShields = [
+          ...(next.combatDamageShields ?? []),
+          {
+            playerId: effect.forPlayerId,
+            prevented: 0,
+            ...(effect.tokenPerDamage ? { tokenPerDamage: effect.tokenPerDamage } : {}),
+          },
+        ];
         break;
       }
       case "overload_each": {
