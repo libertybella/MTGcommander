@@ -2884,6 +2884,13 @@ export function bindCardEffect(
           );
       return cardIds.length > 0 ? { kind: "regenerate", cardIds } : null;
     }
+    case "ban_attacks_while_counter": {
+      const playerId = bindPlayerSelector(state, effect.playerId, context);
+      if (!playerId) {
+        return null;
+      }
+      return { kind: "ban_attacks_while_counter", counter: effect.counter, playerId };
+    }
     case "mill_and_dig_free": {
       // Read NOW, while the spell is still on the stack: the sibling
       // counter in this same batch is about to take it away.
@@ -7535,6 +7542,23 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
       case "mill_and_dig_free":
         next = applyMillAndDigFree(state, effect.playerId, effect.excludedName);
         break;
+      case "ban_attacks_while_counter": {
+        next = cloneGameState(state);
+        const bans = next.counterAttackBans ?? [];
+        // One entry per (counter, player). A second Promise for the same
+        // player adds nothing: the rule is already in force, and the
+        // counters are what decide who it touches.
+        if (
+          !bans.some(
+            (ban) =>
+              ban.counter === effect.counter && ban.protectedPlayerId === effect.playerId,
+          )
+        ) {
+          bans.push({ counter: effect.counter, protectedPlayerId: effect.playerId });
+        }
+        next.counterAttackBans = bans;
+        break;
+      }
               default: {
       const exhaustive: never = effect;
         throw new Error(`Unknown effect ${(exhaustive as GameEffect).kind}`);

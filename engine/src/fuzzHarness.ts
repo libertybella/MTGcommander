@@ -7,6 +7,7 @@ import {
   computedCard,
   triggersOf,
 } from "./characteristicsEngine";
+import { attackBannedByCounter } from "./combat";
 import { controlsCommander } from "./derived";
 import { hasKeyword } from "./keywords";
 import { legalActions, sacrificeColorMatches, sacrificeScopeMatches } from "./legalActions";
@@ -354,7 +355,10 @@ function nextAction(state: GameState, rng: () => number): GameAction | null {
     }
     const attacks = chosen.map((card) => {
       const goaders = computedCard(state, card.id)?.goadedBy ?? [];
-      const allowed = defenders.filter((player) => !goaders.includes(player.id));
+      const allowed = defenders.filter(
+        (player) =>
+          !goaders.includes(player.id) && !attackBannedByCounter(state, card.id, player.id),
+      );
       return {
         attackerId: card.id,
         defenderId: pick(rng, allowed.length > 0 ? allowed : defenders).id,

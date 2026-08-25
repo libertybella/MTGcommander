@@ -53141,7 +53141,11 @@ describe("wave 343: the choice names what to keep", () => {
       thenEffects: [
         {
           kind: "sacrifice_others_of_type",
-          playerId: "each_opponent",
+          // Wave 411 changed this from "each_opponent". thenEffects bind
+          // ONE prompt at a time, and an unexpanded each-selector throws
+          // there — the ultimate crashed the moment it resolved, which
+          // nothing that only compiles or loads a card could see.
+          playerId: { type: "subject_player" },
           cardType: "artifact",
         },
       ],
@@ -68270,5 +68274,292 @@ describe("wave 410: Chain of Vapor", () => {
     const round = parseGameState(serializeGameState(game));
     // Dropped on the wire the card is a one-mana Unsummon.
     expect(round.definitions[definition.id]?.effects).toEqual(definition.effects);
+  });
+});
+
+describe("wave 411: Promise of Loyalty", () => {
+  const compile = (name: string, typeLine: string, oracleText: string, manaCost = "") =>
+    compileOracleCard({
+      oracleId: name.toLowerCase().replace(/[^a-z]+/g, "-"),
+      name,
+      manaCost,
+      typeLine,
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  const promiseText =
+    "Each player puts a vow counter on a creature they control and sacrifices the rest. Each of those creatures can't attack you or planeswalkers you control for as long as it has a vow counter on it.";
+
+  it("compiles as a keep-one edict plus a rule that reads the counter", () => {
+    const compiled = compile("Promise of Loyalty", "Sorcery", promiseText, "{3}{W}{W}");
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.effects[0]).toMatchObject({
+      kind: "choose_card",
+      chooserId: "each_player",
+      thenEffects: [
+        { kind: "add_counter", cardId: "chosen_card", counter: "vow", amount: 1 },
+        {
+              kind: "sacrifice_others_of_type",
+              playerId: { type: "subject_player" },
+              cardType: "creature",
+            },
+      ],
+      thenEffectsIfNone: [],
+    });
+    expect(compiled.definition.effects[1]).toEqual({
+      kind: "ban_attacks_while_counter",
+      counter: "vow",
+      playerId: "controller",
+    });
+  });
+
+  // ---- The edict ----------------------------------------------------------
+
+  const bear = (game: GameState, name: string) => {
+    const definition = createCardDefinition({
+      name,
+      typeLine: "Creature — Bear",
+      manaCost: "{1}{G}",
+      power: 2,
+      toughness: 2,
+    });
+    game.definitions[definition.id] = definition;
+    return definition;
+  };
+
+  const put = (game: GameState, ownerId: string, definition: CardDefinition) => {
+    const card = createCardInstance({
+      definitionId: definition.id,
+      ownerId,
+      zone: "battlefield",
+    });
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === ownerId)!.zones.battlefield.push(card.id);
+    card.summoningSick = false;
+    return card.id;
+  };
+
+  const promise = () =>
+    createCardDefinition({
+      name: "Promise of Loyalty",
+      typeLine: "Sorcery",
+      manaCost: "{3}{W}{W}",
+      effects: [
+        {
+          kind: "choose_card",
+          chooserId: "each_player",
+          sources: [{ playerId: "each_player", zone: "battlefield", filter: "creature" }],
+          thenEffects: [
+            { kind: "add_counter", cardId: "chosen_card", counter: "vow", amount: 1 },
+            {
+              kind: "sacrifice_others_of_type",
+              playerId: { type: "subject_player" },
+              cardType: "creature",
+            },
+          ],
+          thenEffectsIfNone: [],
+        },
+        { kind: "ban_attacks_while_counter", counter: "vow", playerId: "controller" },
+      ],
+    });
+
+  const resolvePromise = (game: GameState, casterId: string, keep: Record<string, string>) => {
+    let after = applyEffects(
+      game,
+      bindCardEffects(game, promise().effects, {
+        controllerId: casterId,
+        sourceId: null,
+        targets: [],
+        targetRequirements: [],
+      }),
+    );
+    let guard = 0;
+    while (after.prompts[0]?.kind === "choose_card" && guard < 8) {
+      const chooserId = after.prompts[0].playerId;
+      after = applyAction(after, {
+        kind: "resolve_choose_card",
+        playerId: chooserId,
+        cardId: keep[chooserId] ?? null,
+      });
+      guard += 1;
+    }
+    return after;
+  };
+
+  it("keeps the one each player named and sacrifices their others", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    const mineKeptId = put(game, p1.id, bear(game, "My Keeper"));
+    const mineLostId = put(game, p1.id, bear(game, "My Loss"));
+    const theirsKeptId = put(game, p2.id, bear(game, "Their Keeper"));
+    const theirsLostId = put(game, p2.id, bear(game, "Their Loss"));
+    const after = resolvePromise(game, p1.id, {
+      [p1.id]: mineKeptId,
+      [p2.id]: theirsKeptId,
+    });
+    expect(after.cards[mineKeptId]?.zone).toBe("battlefield");
+    expect(after.cards[theirsKeptId]?.zone).toBe("battlefield");
+    // Each player sacrifices THEIR OWN rest, which is why the sacrifice
+    // rides the choice rather than the spell.
+    expect(after.cards[mineLostId]?.zone).toBe("graveyard");
+    expect(after.cards[theirsLostId]?.zone).toBe("graveyard");
+  });
+
+  it("puts the vow on the survivor", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    const keptId = put(game, p2.id, bear(game, "Their Keeper"));
+    const after = resolvePromise(game, p1.id, { [p2.id]: keptId });
+    expect(after.cards[keptId]?.counters["vow"]).toBe(1);
+  });
+
+  // ---- The vow ------------------------------------------------------------
+
+  const swingAt = (game: GameState, playerId: string, attackerId: string, defenderId: string) => {
+    game.turn.activePlayerId = playerId;
+    game.turn.phase = "combat";
+    game.turn.step = "declareAttackers";
+    game.priorityPlayerId = playerId;
+    return declareAttackers(game, playerId, [{ attackerId, defenderId }]);
+  };
+
+  it("stops a vowed creature attacking the caster", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    const theirsId = put(game, p2.id, bear(game, "Vowed"));
+    const after = resolvePromise(game, p1.id, { [p2.id]: theirsId });
+    expect(() => swingAt(after, p2.id, theirsId, p1.id)).toThrow();
+  });
+
+  it("lets it attack somebody else", () => {
+    const game = createGameState({ playerCount: 3 });
+    const [p1, p2, p3] = game.players;
+    if (!p1 || !p2 || !p3) {
+      throw new Error("need three players");
+    }
+    fillLibraries(game, 20);
+    const theirsId = put(game, p2.id, bear(game, "Vowed"));
+    const after = resolvePromise(game, p1.id, { [p2.id]: theirsId });
+    // "Can't attack YOU" — everyone else is fair game, which is most of
+    // why the card is played in a four-player game.
+    expect(() => swingAt(after, p2.id, theirsId, p3.id)).not.toThrow();
+  });
+
+  it("lets a creature with no vow attack the caster", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    const vowedId = put(game, p2.id, bear(game, "Vowed"));
+    let after = resolvePromise(game, p1.id, { [p2.id]: vowedId });
+    const freshId = put(after, p2.id, bear(after, "Arrived Later"));
+    // The ban reads the COUNTER, so a creature cast afterwards is free.
+    expect(() => swingAt(after, p2.id, freshId, p1.id)).not.toThrow();
+    void after;
+  });
+
+  it("ends when the counter comes off", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    const theirsId = put(game, p2.id, bear(game, "Vowed"));
+    let after = resolvePromise(game, p1.id, { [p2.id]: theirsId });
+    expect(() => swingAt(after, p2.id, theirsId, p1.id)).toThrow();
+    after = applyEffect(after, {
+      kind: "remove_counter",
+      cardId: theirsId,
+      counter: "vow",
+      amount: 1,
+    });
+    // "For as long as it has a vow counter on it" — not until end of turn,
+    // and not for the rest of the game.
+    expect(() => swingAt(after, p2.id, theirsId, p1.id)).not.toThrow();
+  });
+
+  it("survives the turn, which an until-end-of-turn effect would not", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    const theirsId = put(game, p2.id, bear(game, "Vowed"));
+    let after = resolvePromise(game, p1.id, { [p2.id]: theirsId });
+    after = { ...after, turn: { ...after.turn, phase: "ending", step: "end" } };
+    after = advanceStep(after);
+    expect(after.turn.step).toBe("cleanup");
+    expect(() => swingAt(after, p2.id, theirsId, p1.id)).toThrow();
+  });
+
+  /**
+   * Found while wiring the same machinery. Liliana, Dreadhorde General's -9
+   * compiles its follow-up sacrifice with an each-opponent selector, and
+   * thenEffects bind ONE prompt at a time — so the selector reached bind
+   * unexpanded and threw. The ability crashed the moment it resolved, and
+   * nothing loaded or typechecked could see it.
+   */
+  it("resolves Liliana's -9 without throwing, one keeper per player", () => {
+    const game = createGameState({ playerCount: 3 });
+    const [p1, p2, p3] = game.players;
+    if (!p1 || !p2 || !p3) {
+      throw new Error("need three players");
+    }
+    fillLibraries(game, 20);
+    const theirsKeptId = put(game, p2.id, bear(game, "Their Keeper"));
+    const theirsLostId = put(game, p2.id, bear(game, "Their Loss"));
+    const thirdKeptId = put(game, p3.id, bear(game, "Third Keeper"));
+    const thirdLostId = put(game, p3.id, bear(game, "Third Loss"));
+    const mineId = put(game, p1.id, bear(game, "Mine"));
+    let after = applyEffects(
+      game,
+      bindCardEffects(
+        game,
+        [
+          {
+            kind: "choose_card",
+            chooserId: "each_opponent",
+            sources: [{ playerId: "each_opponent", zone: "battlefield", filter: "creature" }],
+            thenEffects: [
+              {
+                kind: "sacrifice_others_of_type",
+                playerId: { type: "subject_player" },
+                cardType: "creature",
+              },
+            ],
+            thenEffectsIfNone: [],
+          },
+        ],
+        { controllerId: p1.id, sourceId: null, targets: [], targetRequirements: [] },
+      ),
+    );
+    const keep: Record<string, string> = {
+      [p2.id]: theirsKeptId,
+      [p3.id]: thirdKeptId,
+    };
+    let guard = 0;
+    while (after.prompts[0]?.kind === "choose_card" && guard < 8) {
+      const chooserId = after.prompts[0].playerId;
+      after = applyAction(after, {
+        kind: "resolve_choose_card",
+        playerId: chooserId,
+        cardId: keep[chooserId] ?? null,
+      });
+      guard += 1;
+    }
+    expect(after.cards[theirsKeptId]?.zone).toBe("battlefield");
+    expect(after.cards[thirdKeptId]?.zone).toBe("battlefield");
+    expect(after.cards[theirsLostId]?.zone).toBe("graveyard");
+    expect(after.cards[thirdLostId]?.zone).toBe("graveyard");
+    // "Each OPPONENT" — Liliana's controller keeps everything.
+    expect(after.cards[mineId]?.zone).toBe("battlefield");
+  });
+
+  it("round trips the ban", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    const theirsId = put(game, p2.id, bear(game, "Vowed"));
+    const after = resolvePromise(game, p1.id, { [p2.id]: theirsId });
+    const round = parseGameState(serializeGameState(after));
+    // Dropped on the wire the vow counter is decoration and the creature
+    // walks straight back at the player it was promised to.
+    expect(round.counterAttackBans).toEqual([{ counter: "vow", protectedPlayerId: p1.id }]);
+    expect(() => swingAt(round, p2.id, theirsId, p1.id)).toThrow();
   });
 });

@@ -2833,7 +2833,11 @@ function compileSimpleClauseInner(sentence: string): SimpleClause | null {
         thenEffects: [
           {
             kind: "sacrifice_others_of_type" as const,
-            playerId: "each_opponent" as const,
+            // The player who ANSWERED, not an each-selector: thenEffects
+            // bind one prompt at a time, and an unexpanded each-selector
+            // throws there. It also has to be per-player for the rules —
+            // one keeper each, and each player loses only their own rest.
+            playerId: { type: "subject_player" } as const,
             cardType,
           },
         ],
@@ -7582,6 +7586,39 @@ function compileSimpleClauseInner(sentence: string): SimpleClause | null {
     };
   }
 
+  // Promise of Loyalty (fused by fusePromiseOfLoyaltyInPlace). Liliana's
+  // keep-one-sacrifice-the-rest shape one player wider, with a counter on
+  // the survivor and a rule that reads it afterwards.
+  const vowEdict = sentence.match(/^vow-edict on a ([a-z]+) counter$/i);
+  if (vowEdict?.[1]) {
+    const counter = vowEdict[1].toLowerCase();
+    return {
+      targetRequirements: [],
+      effects: [
+        {
+          kind: "choose_card",
+          chooserId: "each_player",
+          sources: [{ playerId: "each_player", zone: "battlefield", filter: "creature" }],
+          thenEffects: [
+            { kind: "add_counter", cardId: "chosen_card", counter, amount: 1 },
+            // The player who answered. "Controller" is the SPELL's
+            // controller, which would make everyone else's choice sacrifice
+            // the caster's board instead of their own.
+            {
+              kind: "sacrifice_others_of_type",
+              playerId: { type: "subject_player" },
+              cardType: "creature",
+            },
+          ],
+          // Controlling no creature is not a decline: there is nothing to
+          // keep and nothing to lose.
+          thenEffectsIfNone: [],
+        },
+        { kind: "ban_attacks_while_counter", counter, playerId: "controller" },
+      ],
+    };
+  }
+
   // Chain of Vapor (fused by fuseChainOfVaporInPlace). Every piece of this
   // already existed: an optional choice over one player's lands, and the
   // free copy Isochron Scepter makes — which already asks the copy for its
@@ -10917,6 +10954,35 @@ function fusePilesInPlace(sentences: string[], lineStart: boolean[]): void {
  * one they are both part of. Fused because neither reads alone — and because
  * the offer and the copy are one decision, not two.
  */
+/**
+ * Promise of Loyalty: "Each player puts a vow counter on a creature they
+ * control and sacrifices the rest." + "Each of those creatures can't attack
+ * you or planeswalkers you control for as long as it has a vow counter on
+ * it."
+ *
+ * "Those creatures" are the ones the first sentence spared, and the vow is
+ * what marks them — so the two are one clause. Read alone the second names
+ * a set nothing has made.
+ */
+function fusePromiseOfLoyaltyInPlace(sentences: string[], lineStart: boolean[]): void {
+  for (let index = 0; index + 1 < sentences.length; index += 1) {
+    if (lineStart[index + 1]) {
+      continue;
+    }
+    const head = sentences[index]?.match(
+      /^Each player puts an? ([a-z]+) counter on a creature they control and sacrifices the rest$/i,
+    );
+    const ban = sentences[index + 1]?.match(
+      /^Each of those creatures can't attack you or planeswalkers you control for as long as it has an? ([a-z]+) counter on it$/i,
+    );
+    if (!head?.[1] || !ban?.[1] || head[1].toLowerCase() !== ban[1].toLowerCase()) {
+      continue;
+    }
+    sentences.splice(index, 2, `vow-edict on a ${head[1].toLowerCase()} counter`);
+    lineStart.splice(index + 1, 1);
+  }
+}
+
 function fuseChainOfVaporInPlace(sentences: string[], lineStart: boolean[]): void {
   for (let index = 0; index + 2 < sentences.length; index += 1) {
     if (lineStart[index + 1] || lineStart[index + 2]) {
@@ -15651,6 +15717,7 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
   fuseTapForXInPlace(sentences, lineStart);
   fuseTemptingOfferInPlace(sentences, lineStart);
   fusePilesInPlace(sentences, lineStart);
+  fusePromiseOfLoyaltyInPlace(sentences, lineStart);
   fuseChainOfVaporInPlace(sentences, lineStart);
   fuseTrickeryInPlace(sentences, lineStart);
   fuseExtraCombatUntapInPlace(sentences, lineStart);

@@ -1861,6 +1861,27 @@ export function parseGameState(json: string): GameState {
             "pendingExtraCombatUntaps",
           ),
         }),
+    ...(raw.counterAttackBans === undefined
+      ? {}
+      : {
+          counterAttackBans: (() => {
+            if (!Array.isArray(raw.counterAttackBans)) {
+              throw new Error("Invalid counterAttackBans");
+            }
+            return raw.counterAttackBans.map((entry, index) => {
+              if (!isRecord(entry)) {
+                throw new Error(`Invalid counterAttackBans[${index}]`);
+              }
+              return {
+                counter: expectString(entry.counter, `counterAttackBans[${index}].counter`),
+                protectedPlayerId: expectString(
+                  entry.protectedPlayerId,
+                  `counterAttackBans[${index}].protectedPlayerId`,
+                ),
+              };
+            });
+          })(),
+        }),
     pendingExtraCombats:
       raw.pendingExtraCombats === undefined
         ? 0
@@ -5047,6 +5068,12 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
         playerId: parsePlayerSelector(value.playerId, `${label}.playerId`),
         cardType: expectString(value.cardType, `${label}.cardType`),
       };
+    case "ban_attacks_while_counter":
+      return {
+        kind,
+        counter: expectString(value.counter, `${label}.counter`),
+        playerId: parsePlayerSelector(value.playerId, `${label}.playerId`),
+      };
     case "look_top_card":
       return {
         kind,
@@ -7328,6 +7355,13 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
   }
   if (kind === "regenerate") {
     return { kind, cardIds: expectStringArray(value.cardIds, `${label}.cardIds`) };
+  }
+  if (kind === "ban_attacks_while_counter") {
+    return {
+      kind,
+      counter: expectString(value.counter, `${label}.counter`),
+      playerId: expectString(value.playerId, `${label}.playerId`),
+    };
   }
   if (kind === "sacrifice_others_of_type") {
     return {

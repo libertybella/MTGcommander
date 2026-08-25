@@ -1391,6 +1391,14 @@ export type GameState = {
    * landfalls owe two untaps.
    */
   pendingExtraCombatUntaps?: number;
+  /**
+   * Promise of Loyalty: "can't attack you or planeswalkers you control for
+   * as long as it has a vow counter on it". The sorcery is gone, so the
+   * rule has no permanent to live on; it is keyed to a COUNTER and a
+   * player, and it ends when the counter comes off rather than at any
+   * point in the turn — which is why it is not an `activeEffects` entry.
+   */
+  counterAttackBans?: Array<{ counter: string; protectedPlayerId: PlayerId }>;
   /** Combat phases begun this turn (Karlach's first-combat condition). */
   combatPhasesThisTurn?: number;
   /** Fog: no combat damage is dealt for the rest of this turn. */
@@ -2419,6 +2427,11 @@ export type GameEffect =
    * inverse of every other "of their choice" sacrifice here, so the
    * keeper rides the effect and everything else of that type goes.
    */
+  | {
+      kind: "ban_attacks_while_counter";
+      counter: string;
+      playerId: PlayerId;
+    }
   | {
       kind: "sacrifice_others_of_type";
       playerId: PlayerId;
@@ -4053,6 +4066,8 @@ export type CardEffect =
       allControlled?: boolean;
     }
   | { kind: "sacrifice_others_of_type"; playerId: PlayerSelector; cardType: string }
+  /** Promise of Loyalty — see `counterAttackBans` for why it is game-level. */
+  | { kind: "ban_attacks_while_counter"; counter: string; playerId: PlayerSelector }
   | { kind: "mass_reanimate"; playerId: PlayerSelector }
   /** Splendid Reclamation: every land card in YOUR graveyard returns tapped. */
   | { kind: "return_all_lands"; playerId: PlayerSelector }

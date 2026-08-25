@@ -100,6 +100,23 @@ export function clearDamageInPlace(state: GameState): void {
   }
 }
 
+/**
+ * Promise of Loyalty: a creature carrying a vow counter cannot attack the
+ * player the vow was made to. Exported because the attacker pickers have to
+ * agree with the validator — one that offers an attack the other refuses is
+ * a hang, not a rules bug.
+ */
+export function attackBannedByCounter(
+  state: GameState,
+  attackerId: CardInstanceId,
+  defenderId: PlayerId,
+): boolean {
+  const counters = state.cards[attackerId]?.counters ?? {};
+  return (state.counterAttackBans ?? []).some(
+    (ban) => ban.protectedPlayerId === defenderId && (counters[ban.counter] ?? 0) > 0,
+  );
+}
+
 function assertLegalAttacker(
   state: GameState,
   playerId: PlayerId,
@@ -127,6 +144,12 @@ function assertLegalAttacker(
   }
   if (defenderId === playerId) {
     throw new Error("A player cannot attack themselves");
+  }
+  // Promise of Loyalty: the vow holds for as long as the counter is on the
+  // creature, so it is read off the card here rather than from any list of
+  // affected permanents fixed when the spell resolved.
+  if (attackBannedByCounter(state, attackerId, defenderId)) {
+    throw new Error(`Card ${attackerId} cannot attack that player`);
   }
   if (!state.players.some((player) => player.id === defenderId)) {
     throw new Error(`Unknown player ${defenderId}`);
