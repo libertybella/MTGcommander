@@ -65533,3 +65533,219 @@ describe("wave 399: Mizzix's Mastery", () => {
     ]);
   });
 });
+
+describe("wave 400: Valley Floodcaller", () => {
+  const compile = (
+    name: string,
+    typeLine: string,
+    oracleText: string,
+    manaCost = "",
+    pt: [string, string] | null = null,
+  ) =>
+    compileOracleCard({
+      oracleId: name.toLowerCase().replace(/[^a-z]+/g, "-"),
+      name,
+      manaCost,
+      typeLine,
+      power: pt?.[0] ?? null,
+      toughness: pt?.[1] ?? null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  const put = (game: GameState, ownerId: string, definition: CardDefinition) => {
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({
+      definitionId: definition.id,
+      ownerId,
+      zone: "battlefield",
+    });
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === ownerId)!.zones.battlefield.push(card.id);
+    card.summoningSick = false;
+    return card.id;
+  };
+
+  const floodcallerText =
+    "You may cast noncreature spells as though they had flash.\nWhenever you cast a noncreature spell, Birds, Frogs, Otters, and Rats you control get +1/+1 until end of turn. Untap them.";
+
+  it("compiles all three of Valley Floodcaller's lines", () => {
+    const compiled = compile(
+      "Valley Floodcaller",
+      "Creature — Otter Wizard",
+      floodcallerText,
+      "{1}{U}",
+      ["1", "3"],
+    );
+    expect(compiled.notes).toEqual([]);
+    // "Noncreature" is a type the spell must NOT have, where the narrow
+    // grant beside it lists ones it must.
+    expect(compiled.definition.grantsFlashFor).toEqual({ nonTypes: ["creature"] });
+    expect(compiled.definition.triggers[0]?.effects).toEqual([
+      {
+        kind: "team_pt_until_eot",
+        playerId: "controller",
+        power: 1,
+        toughness: 1,
+        subtypes: ["bird", "frog", "otter", "rat"],
+      },
+      {
+        kind: "untap_all",
+        playerId: "controller",
+        what: "creature",
+        subtypes: ["bird", "frog", "otter", "rat"],
+      },
+    ]);
+  });
+
+  it("leaves the single-subtype pump as it was", () => {
+    const compiled = compile(
+      "One Tribe",
+      "Creature — Otter",
+      "Whenever you cast a noncreature spell, Birds you control get +1/+1 until end of turn.",
+      "{1}{U}",
+      ["1", "1"],
+    );
+    expect(compiled.definition.triggers[0]?.effects[0]).toMatchObject({
+      subtypes: ["bird"],
+    });
+  });
+
+  // ---- The flash grant ---------------------------------------------------
+
+  const floodcaller = () =>
+    createCardDefinition({
+      name: "Valley Floodcaller",
+      typeLine: "Creature — Otter Wizard",
+      manaCost: "{1}{U}",
+      power: 1,
+      toughness: 3,
+      grantsFlashFor: { nonTypes: ["creature"] },
+    });
+
+  const instantCard = () =>
+    createCardDefinition({ name: "An Instant", typeLine: "Instant", manaCost: "{U}" });
+  const creatureCard = (name: string, subtype: string) =>
+    createCardDefinition({
+      name,
+      typeLine: `Creature — ${subtype}`,
+      manaCost: "{1}{U}",
+      power: 1,
+      toughness: 1,
+    });
+
+  it("grants flash to a noncreature spell and not to a creature", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    put(game, p1.id, floodcaller());
+    const instantId = put(game, p1.id, instantCard());
+    const bearId = put(game, p1.id, creatureCard("Bear", "Bear"));
+    expect(hasFlashGrant(game, p1.id, instantId)).toBe(true);
+    // A creature spell is exactly what "noncreature" excludes.
+    expect(hasFlashGrant(game, p1.id, bearId)).toBe(false);
+  });
+
+  // ---- The pump and the untap -------------------------------------------
+
+  const pumpThem = (game: GameState, playerId: string) =>
+    applyEffects(
+      game,
+      bindCardEffects(
+        game,
+        [
+          {
+            kind: "team_pt_until_eot",
+            playerId: "controller",
+            power: 1,
+            toughness: 1,
+            subtypes: ["bird", "frog", "otter", "rat"],
+          },
+          {
+            kind: "untap_all",
+            playerId: "controller",
+            what: "creature",
+            subtypes: ["bird", "frog", "otter", "rat"],
+          },
+        ],
+        { controllerId: playerId, sourceId: null, targets: [], targetRequirements: [] },
+      ),
+    );
+
+  it("untaps only the creatures the pump named", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const otterId = put(game, p1.id, creatureCard("An Otter", "Otter"));
+    const ratId = put(game, p1.id, creatureCard("A Rat", "Rat"));
+    const bearId = put(game, p1.id, creatureCard("A Bear", "Bear"));
+    for (const id of [otterId, ratId, bearId]) {
+      game.cards[id]!.tapped = true;
+    }
+    const after = pumpThem(game, p1.id);
+    expect(after.cards[otterId]?.tapped).toBe(false);
+    expect(after.cards[ratId]?.tapped).toBe(false);
+    // "Untap THEM" is the creatures the sentence before it pumped, not
+    // every creature its controller has.
+    expect(after.cards[bearId]?.tapped).toBe(true);
+  });
+
+  it("pumps all four named subtypes and nothing else", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const birdId = put(game, p1.id, creatureCard("A Bird", "Bird"));
+    const frogId = put(game, p1.id, creatureCard("A Frog", "Frog"));
+    const bearId = put(game, p1.id, creatureCard("A Bear", "Bear"));
+    const after = pumpThem(game, p1.id);
+    expect(creaturePower(after, birdId)).toBe(2);
+    expect(creaturePower(after, frogId)).toBe(2);
+    expect(creaturePower(after, bearId)).toBe(1);
+  });
+
+  it("leaves an opponent's Otter alone", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    const theirsId = put(game, p2.id, creatureCard("Their Otter", "Otter"));
+    game.cards[theirsId]!.tapped = true;
+    const after = pumpThem(game, p1.id);
+    expect(after.cards[theirsId]?.tapped).toBe(true);
+    expect(creaturePower(after, theirsId)).toBe(1);
+  });
+
+  it("round trips the grant scope and the narrowed untap", () => {
+    const { game, p1 } = twoPlayers();
+    const definition = createCardDefinition({
+      name: "Wave 400 Floodcaller",
+      typeLine: "Creature — Otter Wizard",
+      manaCost: "{1}{U}",
+      power: 1,
+      toughness: 3,
+      grantsFlashFor: { nonTypes: ["creature"] },
+      triggers: [
+        {
+          event: "cast_spell",
+          watch: "controlled",
+          subjectFilter: { nonTypes: ["creature"] },
+          effects: [
+            {
+              kind: "untap_all",
+              playerId: "controller",
+              what: "creature",
+              subtypes: ["otter"],
+            },
+          ],
+          targetRequirements: [],
+        },
+      ],
+    });
+    put(game, p1.id, definition);
+    const round = parseGameState(serializeGameState(game));
+    // Dropped on the wire the grant covers every spell and the untap the
+    // whole board — two different cards.
+    expect(round.definitions[definition.id]?.grantsFlashFor).toEqual({
+      nonTypes: ["creature"],
+    });
+    expect(round.definitions[definition.id]?.triggers[0]?.effects[0]).toMatchObject({
+      subtypes: ["otter"],
+    });
+  });
+});

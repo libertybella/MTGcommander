@@ -1185,6 +1185,10 @@ export function hasFlashGrant(state: GameState, playerId: string, cardId?: strin
     if (scope.types && !scope.types.every((type) => traits.types.includes(type))) {
       return false;
     }
+    // "Noncreature spells": a type the spell must NOT have.
+    if (scope.nonTypes?.some((type) => traits.types.includes(type))) {
+      return false;
+    }
     if (
       scope.subtypesAny &&
       !scope.subtypesAny.some((subtype) => cardMatchesSubtype(state, cardId, subtype))

@@ -523,7 +523,9 @@ export type CardDefinition = {
   /** Sigarda's Aid, Shimmer Myr: the grant covers only some spells. Kept
    * narrower than a full subject filter because derived.ts cannot reach the
    * trigger matcher without closing an import cycle. */
-  grantsFlashFor?: { types?: string[]; subtypesAny?: string[] };
+  /** Valley Floodcaller: "noncreature spells" is a type the spell must NOT
+   * have, where `types` lists ones it must. */
+  grantsFlashFor?: { types?: string[]; subtypesAny?: string[]; nonTypes?: string[] };
   /** Omniscience: the controller casts from hand without paying mana costs.
    * As Foretold adds a per-turn limit and a counter-derived cap. */
   castFreeFromHand?: {
@@ -1938,6 +1940,8 @@ export type GameEffect =
   | {
       kind: "untap_all";
       playerId: PlayerId;
+      /** Valley Floodcaller: only these subtypes. */
+      subtypes?: string[];
       what: "creature" | "land" | "attacking" | "nonland";
       /** Combat Celebrant: "all OTHER creatures you control". */
       excludeSource?: boolean;
@@ -3538,6 +3542,9 @@ export type CardEffect =
       what: "creature" | "land" | "attacking" | "nonland";
       /** Combat Celebrant: "all OTHER creatures you control". */
       excludeSource?: boolean;
+      /** Valley Floodcaller: "Untap them" — only the subtypes the sentence
+       * before it named, not every creature. */
+      subtypes?: string[];
     }
   /** Combat Celebrant — see the bound form. */
   | { kind: "exert"; cardId: CardIdSelector }

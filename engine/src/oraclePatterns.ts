@@ -110,7 +110,7 @@ export type CompiledOracleText = {
   delve?: boolean;
   grantsCostKeyword?: { keyword: "convoke" | "improvise"; types?: string[]; nonTypes?: string[] };
   grantsFlash?: boolean;
-  grantsFlashFor?: { types?: string[]; subtypesAny?: string[] };
+  grantsFlashFor?: { types?: string[]; subtypesAny?: string[]; nonTypes?: string[] };
   castFreeFromHand?: CardDefinition["castFreeFromHand"];
   attackTax?: { generic?: number; perEnchantment?: boolean; lifePer?: number };
   leyline?: boolean;
@@ -10115,6 +10115,19 @@ function parseEotSubject(phrase: string): EotSubject | null {
   if (tribal?.[1]) {
     return { how: "team", playerId: "controller", subtypes: [tribal[1].toLowerCase()] };
   }
+  // Valley Floodcaller: "Birds, Frogs, Otters, and Rats you control". The
+  // effect has carried a subtype LIST all along; only the reader above
+  // stopped at one.
+  const tribalList = rest.match(/^((?:[A-Z][a-z]+s, )+(?:and )?[A-Z][a-z]+s) you control$/);
+  if (tribalList?.[1]) {
+    const subtypes = tribalList[1]
+      .split(/,\s*(?:and\s+)?|\s+and\s+/)
+      .map((word) => word.trim().replace(/s$/, "").toLowerCase())
+      .filter(Boolean);
+    if (subtypes.length >= 2) {
+      return { how: "team", playerId: "controller", subtypes };
+    }
+  }
   // Lord of the Accursed: "All Zombies" — everyone's, so it stays a team
   // effect on the controller only. That is a documented narrowing: the
   // printed card pumps opponents' Zombies too, which no team effect models.
@@ -17382,6 +17395,15 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
       continue;
     }
     // Sigarda's Aid, Shimmer Myr: the same grant narrowed to some spells.
+    // Valley Floodcaller: "noncreature spells" is a type the spell must
+    // NOT have, where the narrow grant below lists ones it must.
+    const nonTypeFlash = sentence.match(
+      /^You may cast non([a-z]+) spells as though they had flash$/i,
+    );
+    if (nonTypeFlash?.[1] && SPELL_CARD_TYPES.has(nonTypeFlash[1].toLowerCase())) {
+      result.grantsFlashFor = { nonTypes: [nonTypeFlash[1].toLowerCase()] };
+      continue;
+    }
     const narrowFlash = sentence.match(
       /^You may cast ([A-Za-z ]+?) spells as though they had flash$/i,
     );
@@ -19532,6 +19554,25 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
           host.effects = [...host.effects, ...(repeated as CardEffect[])];
           continue;
         }
+      }
+    }
+
+    /**
+     * Valley Floodcaller: "Untap them." — the creatures the sentence
+     * before it pumped, so it joins that trigger and carries the same
+     * subtypes rather than untapping the whole board.
+     */
+    if (/^Untap them$/i.test(sentence)) {
+      const pumped = result.triggers[result.triggers.length - 1];
+      const pump = pumped?.effects[pumped.effects.length - 1];
+      if (pump?.kind === "team_pt_until_eot" && pump.subtypes && pump.subtypes.length > 0) {
+        pumped!.effects.push({
+          kind: "untap_all",
+          playerId: pump.playerId,
+          what: "creature",
+          subtypes: [...pump.subtypes],
+        });
+        continue;
       }
     }
 

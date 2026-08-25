@@ -2598,6 +2598,7 @@ export function bindCardEffect(
         ...(effect.excludeSource && context.sourceId
           ? { excludeSource: true, sourceId: context.sourceId }
           : {}),
+        ...(effect.subtypes ? { subtypes: [...effect.subtypes] } : {}),
       };
     }
     case "exert": {
@@ -4217,9 +4218,15 @@ function teamMembers(
         (options.scope === "permanents" || isCreature(state, card.id)) &&
         // Lathliss: "Dragons you control" — through the shared matcher, so a
         // changeling counts.
-        (options.subtypes ?? []).every((subtype) =>
-          cardMatchesSubtype(state, card.id, subtype),
-        ) &&
+        //
+        // A LIST is any-of, not all-of: Valley Floodcaller's "Birds, Frogs,
+        // Otters, and Rats you control" would name nothing at all read the
+        // other way, since no creature is all four. Every producer before
+        // it built a one-element list, where the two readings agree.
+        ((options.subtypes ?? []).length === 0 ||
+          (options.subtypes ?? []).some((subtype) =>
+            cardMatchesSubtype(state, card.id, subtype),
+          )) &&
         !(options.nonSubtypes ?? []).some((subtype) =>
           cardMatchesSubtype(state, card.id, subtype),
         ) &&
@@ -6308,6 +6315,14 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
             : null;
         for (const card of Object.values(next.cards)) {
           if (effect.excludeSource && card.id === effect.sourceId) {
+            continue;
+          }
+          // Valley Floodcaller: "untap THEM" is the creatures the pump
+          // named, not every creature its controller has.
+          if (
+            effect.subtypes &&
+            !effect.subtypes.some((subtype) => cardMatchesSubtype(next, card.id, subtype))
+          ) {
             continue;
           }
           if (

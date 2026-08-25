@@ -3021,6 +3021,7 @@ ends. Every printed card of this shape asks about the current turn.
 - **Opal Palace**: mana tagged so a rider can watch it being spent on your commander, giving counters as that commander ENTERS equal to the times it has been cast from the command zone — the resolving cast included.
 - **Conduit of Worlds**: one named graveyard card becomes castable this turn, and casting it locks its caster out of further spells — a self-lock, distinct from Silence locking everyone else.
 - **Casting a free copy of a card** that is not on the stack (Isochron Scepter): the card never moves, the copy chooses its own targets, and no cast triggers fire.
+- A team effect naming **several subtypes** matches any of them, and "untap them" after such a pump untaps only those. Flash may be granted to a class of spells by the types they do NOT have.
 - A seeded random-game fuzzer asserts zone integrity and serialize round-trips after every action (CI: 6 games; 500-game burn-ins gate checkpoint tags — they have caught two real livelocks and the trigger-batching bug).
 
 ## Documented gaps (intentional, in plan order)

@@ -1005,6 +1005,14 @@ export function parseGameState(json: string): GameState {
                       "grantsFlashFor.subtypesAny",
                     ),
                   }),
+              ...(def.grantsFlashFor.nonTypes === undefined
+                ? {}
+                : {
+                    nonTypes: parseStringList(
+                      def.grantsFlashFor.nonTypes,
+                      "grantsFlashFor.nonTypes",
+                    ),
+                  }),
             },
           }
         : {}),
@@ -4364,6 +4372,9 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
         playerId: parsePlayerSelector(value.playerId, `${label}.playerId`),
         what,
         ...(value.excludeSource === true ? { excludeSource: true } : {}),
+        ...(value.subtypes === undefined
+          ? {}
+          : { subtypes: parseStringList(value.subtypes, `${label}.subtypes`) }),
       };
     }
     case "exert":
@@ -7786,6 +7797,9 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
       playerId: expectString(value.playerId, `${label}.playerId`),
       what,
       ...(value.excludeSource === true ? { excludeSource: true } : {}),
+      ...(value.subtypes === undefined
+        ? {}
+        : { subtypes: parseStringList(value.subtypes, `${label}.subtypes`) }),
       ...(value.sourceId === undefined
         ? {}
         : { sourceId: expectString(value.sourceId, `${label}.sourceId`) }),
