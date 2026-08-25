@@ -271,7 +271,7 @@ describe("deck import", () => {
       name: "Lightning Bolt",
       manaCost: "{R}",
       typeLine: "Instant",
-      oracleText: "The Ring tempts you.",
+      oracleText: "Blorptangle the wugglefish sideways for as long as you gyre.",
       power: null,
       toughness: null,
       printedKeywords: [],

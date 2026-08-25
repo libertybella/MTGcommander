@@ -439,10 +439,20 @@ function onEnterStep(state: GameState): GameState {
     let ending = state;
     if (doomed.length > 0) {
       delete ending.delayedEndCombat;
-      for (const cardId of doomed) {
-        if (ending.cards[cardId]?.zone === "battlefield") {
-          ending = applyEffect(ending, { kind: "move_card", cardId, toZone: "exile" });
+      for (const entry of doomed) {
+        if (ending.cards[entry.cardId]?.zone !== "battlefield") {
+          continue;
         }
+        // A sacrifice and an exile are not the same event to anything
+        // watching, which is why the entry says which one it is.
+        ending =
+          entry.action === "sacrifice"
+            ? applyEffect(ending, { kind: "sacrifice", cardId: entry.cardId })
+            : applyEffect(ending, {
+                kind: "move_card",
+                cardId: entry.cardId,
+                toZone: "exile",
+              });
       }
     }
     clearCombatFlagsInPlace(ending);

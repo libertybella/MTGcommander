@@ -427,6 +427,12 @@ function parsePlayer(value: unknown): PlayerState {
       value.poisonCounters === undefined
         ? 0
         : expectNumber(value.poisonCounters, "player.poisonCounters"),
+    ...(value.ringTempts === undefined
+      ? {}
+      : { ringTempts: expectNumber(value.ringTempts, "player.ringTempts") }),
+    ...(value.ringBearerId === undefined
+      ? {}
+      : { ringBearerId: expectString(value.ringBearerId, "player.ringBearerId") }),
     mana: parseMana(value.mana, "player.mana"),
     zones,
     commander: {
@@ -2178,12 +2184,23 @@ export function parseGameState(json: string): GameState {
             });
           })(),
     // Myriad's tokens: without this a reopened table keeps them for good.
+    // The Ring's third tier puts a SACRIFICE in the same list, so each entry
+    // says which it is.
     ...(Array.isArray(raw.delayedEndCombat)
       ? {
-          delayedEndCombat: expectStringArray(
-            raw.delayedEndCombat,
-            "delayedEndCombat",
-          ) as CardInstanceId[],
+          delayedEndCombat: raw.delayedEndCombat.map((entry, index) => {
+            if (!isRecord(entry)) {
+              throw new Error(`Invalid delayedEndCombat[${index}]`);
+            }
+            const action = expectString(entry.action, `delayedEndCombat[${index}].action`);
+            if (action !== "exile" && action !== "sacrifice") {
+              throw new Error(`Invalid delayedEndCombat[${index}].action`);
+            }
+            return {
+              cardId: expectString(entry.cardId, `delayedEndCombat[${index}].cardId`),
+              action,
+            };
+          }),
         }
       : {}),
     delayedEndStep:
@@ -4068,6 +4085,10 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
           ? {}
           : { otherwise: parseCardEffects(value.otherwise, `${label}.otherwise`) }),
       };
+    case "ring_tempts":
+      return { kind, playerId: parsePlayerSelector(value.playerId, `${label}.playerId`) };
+    case "sacrifice_blocker_at_end_of_combat":
+      return { kind };
     case "proliferate":
       return {
         kind,
@@ -5037,6 +5058,8 @@ const TRIGGER_EVENT_NAMES: Record<TriggerEvent, true> = {
   dies: true,
   leaves_battlefield: true,
   put_into_graveyard: true,
+  chooses_ring_bearer: true,
+  becomes_blocked: true,
   attacks: true,
   upkeep: true,
   end_step: true,
@@ -7251,6 +7274,12 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
       playerId: expectString(value.playerId, `${label}.playerId`),
       counter: expectString(value.counter, `${label}.counter`),
     };
+  }
+  if (kind === "ring_tempts") {
+    return { kind, playerId: expectString(value.playerId, `${label}.playerId`) };
+  }
+  if (kind === "sacrifice_blocker_at_end_of_combat") {
+    return { kind, cardId: expectString(value.cardId, `${label}.cardId`) };
   }
   if (kind === "proliferate") {
     return {

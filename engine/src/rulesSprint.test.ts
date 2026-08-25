@@ -51133,7 +51133,9 @@ describe("wave 332: myriad, read as a keyword because it is granted", () => {
     const tokenId = state.players
       .find((entry) => entry.id === p1.id)!
       .zones.battlefield.find((id) => state.cards[id]?.isToken)!;
-    expect(state.delayedEndCombat).toContain(tokenId);
+    // The delayed list carries the ACTION as well as the card: myriad exiles
+    // its tokens, where the Ring's tier three sacrifices a blocker.
+    expect(state.delayedEndCombat).toContainEqual({ cardId: tokenId, action: "exile" });
     state = { ...state, turn: { ...state.turn, phase: "combat", step: "combatDamage" } };
     state = advanceStep(state);
     expect(state.turn.step).toBe("endCombat");
@@ -59334,5 +59336,346 @@ describe("wave 374: the second sun", () => {
       throw new Error("expected a branch");
     }
     expect(branch.otherwise?.[0]).toMatchObject({ libraryPosition: { fromTop: 7 } });
+  });
+});
+
+describe("wave 375: the Ring tempts you, all four tiers", () => {
+  const compile = (name: string, typeLine: string, oracleText: string, manaCost = "") =>
+    compileOracleCard({
+      oracleId: name.toLowerCase().replace(/[^a-z]+/g, "-"),
+      name,
+      manaCost,
+      typeLine,
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  const put = (game: GameState, ownerId: string, definition: CardDefinition) => {
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({
+      definitionId: definition.id,
+      ownerId,
+      zone: "battlefield",
+    });
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === ownerId)!.zones.battlefield.push(card.id);
+    card.summoningSick = false;
+    return card.id;
+  };
+
+  const creature = (name: string, power: number, toughness = 4) =>
+    createCardDefinition({
+      name,
+      typeLine: "Creature — Human Soldier",
+      manaCost: "{1}{W}",
+      power,
+      toughness,
+    });
+
+  const tempt = (game: GameState, playerId: string, times = 1) => {
+    let next: GameState = game;
+    for (let i = 0; i < times; i += 1) {
+      next = applyEffects(
+        next,
+        bindCardEffects(next, [{ kind: "ring_tempts", playerId: "controller" }], {
+          controllerId: playerId,
+          sourceId: null,
+          targets: [],
+          targetRequirements: [],
+        }),
+      );
+    }
+    return next;
+  };
+
+  const bearerOf = (game: GameState, playerId: string) =>
+    game.players.find((entry) => entry.id === playerId)!.ringBearerId;
+
+  const grantedEvents = (game: GameState, cardId: string) =>
+    (computedCard(game, cardId)?.grantedTriggers ?? []).map((entry) => entry.event);
+
+  it("compiles Fiery Inscription's one sentence", () => {
+    const compiled = compile(
+      "Fiery Inscription",
+      "Enchantment",
+      "When this enchantment enters, the Ring tempts you.",
+      "{1}{R}",
+    );
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.triggers[0]).toEqual({
+      event: "enter_battlefield",
+      effects: [{ kind: "ring_tempts", playerId: "controller" }],
+      targetRequirements: [],
+    });
+  });
+
+  it("counts the tempt and takes the biggest creature as bearer", () => {
+    const { game, p1 } = twoPlayers();
+    const smallId = put(game, p1.id, creature("Squire", 1));
+    const bigId = put(game, p1.id, creature("Champion", 5));
+    const after = tempt(game, p1.id);
+    expect(after.players.find((entry) => entry.id === p1.id)!.ringTempts).toBe(1);
+    // A documented auto-take: the emblem rewards attacking and connecting,
+    // so the biggest body is the one that uses it.
+    expect(bearerOf(after, p1.id)).toBe(bigId);
+    void smallId;
+  });
+
+  it("counts a tempt with no creatures, and names no bearer", () => {
+    const { game, p1 } = twoPlayers();
+    const after = tempt(game, p1.id);
+    expect(after.players.find((entry) => entry.id === p1.id)!.ringTempts).toBe(1);
+    // The tempt still happened. Reaching tier three before any creature does
+    // is a real board state, not a skipped tempt.
+    expect(bearerOf(after, p1.id)).toBeUndefined();
+  });
+
+  it("keeps the bearer it already has, even when something bigger arrives", () => {
+    const { game, p1 } = twoPlayers();
+    const firstId = put(game, p1.id, creature("Squire", 1));
+    let after = tempt(game, p1.id);
+    expect(bearerOf(after, p1.id)).toBe(firstId);
+    put(after, p1.id, creature("Champion", 5));
+    after = tempt(after, p1.id);
+    // "If you don't have a Ring-bearer, choose one" — you have one, so the
+    // second tempt only raises the tier.
+    expect(bearerOf(after, p1.id)).toBe(firstId);
+    expect(after.players.find((entry) => entry.id === p1.id)!.ringTempts).toBe(2);
+  });
+
+  it("chooses again once the bearer is gone", () => {
+    const { game, p1 } = twoPlayers();
+    const firstId = put(game, p1.id, creature("Squire", 1));
+    let after = tempt(game, p1.id);
+    after = applyEffect(after, { kind: "sacrifice", cardId: firstId });
+    const secondId = put(after, p1.id, creature("Champion", 5));
+    after = tempt(after, p1.id);
+    expect(bearerOf(after, p1.id)).toBe(secondId);
+  });
+
+  it("does not hand an opponent's creature the Ring", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const theirsId = put(game, p2.id, creature("Their Giant", 9));
+    const mineId = put(game, p1.id, creature("My Squire", 1));
+    const after = tempt(game, p1.id);
+    expect(bearerOf(after, p1.id)).toBe(mineId);
+    void theirsId;
+  });
+
+  // ---- Tier one: legendary, and blocked only by lesser power -------------
+
+  it("makes the bearer legendary and stops the bigger blocker", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const bearerId = put(game, p1.id, creature("Bearer", 3));
+    const bigId = put(game, p2.id, creature("Big Blocker", 4));
+    const evenId = put(game, p2.id, creature("Even Blocker", 3));
+    const after = tempt(game, p1.id);
+    const computed = computedCard(after, bearerId);
+    expect(computed?.characteristics.supertypes).toContain("legendary");
+    expect(computed?.ringBearer).toBe(true);
+    expect(blockRestriction(after, bearerId, bigId)).not.toBeNull();
+    // GREATER power, not equal: a three blocks a three all day.
+    expect(blockRestriction(after, bearerId, evenId)).toBeNull();
+  });
+
+  it("leaves a creature that is not the bearer blockable by anything", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const bearerId = put(game, p1.id, creature("Bearer", 5));
+    const otherId = put(game, p1.id, creature("Other", 1));
+    const bigId = put(game, p2.id, creature("Big Blocker", 4));
+    const after = tempt(game, p1.id);
+    expect(bearerOf(after, p1.id)).toBe(bearerId);
+    expect(blockRestriction(after, otherId, bigId)).toBeNull();
+  });
+
+  // ---- The tiers switch on one at a time, and stay on --------------------
+
+  it("adds one ability per tempt and keeps the earlier ones", () => {
+    const { game, p1 } = twoPlayers();
+    const bearerId = put(game, p1.id, creature("Bearer", 3));
+    let after = tempt(game, p1.id);
+    expect(grantedEvents(after, bearerId)).toEqual([]);
+    after = tempt(after, p1.id);
+    expect(grantedEvents(after, bearerId)).toEqual(["attacks"]);
+    after = tempt(after, p1.id);
+    expect(grantedEvents(after, bearerId)).toEqual(["attacks", "becomes_blocked"]);
+    after = tempt(after, p1.id);
+    expect(grantedEvents(after, bearerId)).toEqual([
+      "attacks",
+      "becomes_blocked",
+      "deals_combat_damage_to_player",
+    ]);
+  });
+
+  it("gives a fifth tempt nothing more", () => {
+    const { game, p1 } = twoPlayers();
+    const bearerId = put(game, p1.id, creature("Bearer", 3));
+    const after = tempt(game, p1.id, 5);
+    expect(after.players.find((entry) => entry.id === p1.id)!.ringTempts).toBe(5);
+    expect(grantedEvents(after, bearerId)).toHaveLength(3);
+  });
+
+  it("moves the whole emblem when the bearer changes", () => {
+    const { game, p1 } = twoPlayers();
+    const firstId = put(game, p1.id, creature("First", 3));
+    let after = tempt(game, p1.id, 4);
+    expect(grantedEvents(after, firstId)).toHaveLength(3);
+    after = applyEffect(after, { kind: "sacrifice", cardId: firstId });
+    const secondId = put(after, p1.id, creature("Second", 3));
+    // Not a new emblem at tier one: the tempts already happened, so the new
+    // bearer picks up all four abilities the moment it takes the Ring.
+    after = tempt(after, p1.id);
+    expect(grantedEvents(after, secondId)).toHaveLength(3);
+  });
+
+  // ---- Tier two: attacking draws and discards ----------------------------
+
+  const attackWith = (game: GameState, playerId: string, cardId: string, defenderId: string) => {
+    game.turn.activePlayerId = playerId;
+    game.turn.phase = "combat";
+    game.turn.step = "declareAttackers";
+    game.priorityPlayerId = playerId;
+    return declareAttackers(game, playerId, [{ attackerId: cardId, defenderId }]);
+  };
+
+  it("draws and discards when the bearer attacks at tier two", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    const bearerId = put(game, p1.id, creature("Bearer", 3));
+    let after = tempt(game, p1.id, 2);
+    const before = after.players.find((entry) => entry.id === p1.id)!.zones.hand.length;
+    after = attackWith(after, p1.id, bearerId, p2.id);
+    expect(after.stack).toHaveLength(1);
+    after = resolveTopOfStack(after);
+    const hand = after.players.find((entry) => entry.id === p1.id)!.zones.hand;
+    // One in, one out: the hand is the same size and the graveyard is one
+    // deeper, which is the whole ability.
+    expect(hand).toHaveLength(before);
+    expect(after.players.find((entry) => entry.id === p1.id)!.zones.graveyard).toHaveLength(1);
+  });
+
+  it("does not draw at tier one", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    const bearerId = put(game, p1.id, creature("Bearer", 3));
+    let after = tempt(game, p1.id);
+    after = attackWith(after, p1.id, bearerId, p2.id);
+    expect(after.stack).toHaveLength(0);
+  });
+
+  // ---- Tier three: the blocker is sacrificed at end of combat ------------
+
+  it("sacrifices the blocker at END OF COMBAT, not immediately", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    const bearerId = put(game, p1.id, creature("Bearer", 3));
+    const blockerId = put(game, p2.id, creature("Chump", 1));
+    let after = tempt(game, p1.id, 3);
+    after = attackWith(after, p1.id, bearerId, p2.id);
+    // Tier two's attack trigger is on the stack first; clear it.
+    while (after.stack.length > 0) {
+      after = resolveTopOfStack(after);
+    }
+    after = { ...after, turn: { ...after.turn, step: "declareBlockers" } };
+    after = declareBlockers(after, p2.id, [{ blockerId, attackerId: bearerId }]);
+    while (after.stack.length > 0) {
+      after = resolveTopOfStack(after);
+    }
+    // Still there: it blocks, it deals its damage, and only then dies.
+    expect(after.cards[blockerId]?.zone).toBe("battlefield");
+    expect(after.delayedEndCombat).toContainEqual({
+      cardId: blockerId,
+      action: "sacrifice",
+    });
+    after = { ...after, turn: { ...after.turn, phase: "combat", step: "combatDamage" } };
+    after = advanceStep(after);
+    expect(after.turn.step).toBe("endCombat");
+    expect(after.cards[blockerId]?.zone).toBe("graveyard");
+  });
+
+  it("leaves the blocker alive at tier two", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    const bearerId = put(game, p1.id, creature("Bearer", 3));
+    const blockerId = put(game, p2.id, creature("Chump", 1));
+    let after = tempt(game, p1.id, 2);
+    after = attackWith(after, p1.id, bearerId, p2.id);
+    while (after.stack.length > 0) {
+      after = resolveTopOfStack(after);
+    }
+    after = { ...after, turn: { ...after.turn, step: "declareBlockers" } };
+    after = declareBlockers(after, p2.id, [{ blockerId, attackerId: bearerId }]);
+    expect(after.delayedEndCombat ?? []).toHaveLength(0);
+  });
+
+  // ---- Tier four: each opponent loses 3 ---------------------------------
+
+  it("drains every opponent when the bearer connects at tier four", () => {
+    const game = createGameState({ playerCount: 3 });
+    const [p1, p2, p3] = game.players;
+    if (!p1 || !p2 || !p3) {
+      throw new Error("need three players");
+    }
+    fillLibraries(game, 20);
+    const bearerId = put(game, p1.id, creature("Bearer", 3));
+    let after = tempt(game, p1.id, 4);
+    const startingLife = after.players.find((entry) => entry.id === p2.id)!.life;
+    after = attackWith(after, p1.id, bearerId, p2.id);
+    while (after.stack.length > 0) {
+      after = resolveTopOfStack(after);
+    }
+    after = { ...after, turn: { ...after.turn, step: "combatDamage" } };
+    after = applyCombatDamage(after);
+    while (after.stack.length > 0) {
+      after = resolveTopOfStack(after);
+    }
+    const life = (id: string) => after.players.find((entry) => entry.id === id)!.life;
+    // The defending player takes the three power AND the three from the
+    // Ring; the player who was never attacked takes the three anyway.
+    expect(life(p2.id)).toBe(startingLife - 3 - 3);
+    expect(life(p3.id)).toBe(startingLife - 3);
+    expect(life(p1.id)).toBe(startingLife);
+  });
+
+  it("round trips the tempts, the bearer and both new effects", () => {
+    const { game, p1 } = twoPlayers();
+    const bearerId = put(game, p1.id, creature("Bearer", 3));
+    const definition = createCardDefinition({
+      name: "Wave 375 Inscription",
+      typeLine: "Enchantment",
+      manaCost: "{1}{R}",
+      triggers: [
+        {
+          event: "enter_battlefield",
+          watch: "self",
+          effects: [{ kind: "ring_tempts", playerId: "controller" }],
+          targetRequirements: [],
+        },
+      ],
+    });
+    put(game, p1.id, definition);
+    const after = tempt(game, p1.id, 3);
+    const round = parseGameState(serializeGameState(after));
+    const player = round.players.find((entry) => entry.id === p1.id)!;
+    // Dropped on the wire, the bearer keeps the Ring but loses every tier of
+    // it, which is a materially different board.
+    expect(player.ringTempts).toBe(3);
+    expect(player.ringBearerId).toBe(bearerId);
+    expect(grantedEvents(round, bearerId)).toEqual(["attacks", "becomes_blocked"]);
+    expect(round.definitions[definition.id]?.triggers[0]?.effects[0]).toEqual({
+      kind: "ring_tempts",
+      playerId: "controller",
+    });
+    const bound = bindCardEffects(after, [{ kind: "sacrifice_blocker_at_end_of_combat" }], {
+      controllerId: p1.id,
+      sourceId: bearerId,
+      subjectCardId: bearerId,
+      targets: [],
+      targetRequirements: [],
+    });
+    expect(bound).toEqual([{ kind: "sacrifice_blocker_at_end_of_combat", cardId: bearerId }]);
   });
 });

@@ -53,6 +53,12 @@ export type ComputedCard = {
    */
   grantedTriggers: CardTrigger[];
   /**
+   * The Ring's emblem is on this creature. Read by the blocking rules for
+   * tier one — "can't be blocked by creatures with greater power" — which
+   * is a restriction rather than an ability and so has nowhere else to go.
+   */
+  ringBearer?: boolean;
+  /**
    * Activated abilities granted by statics (Bootleggers' Stash). Read them
    * with `activatedOf`, which appends them after the printed ones.
    */
@@ -1164,6 +1170,8 @@ function computeAll(state: GameState): Record<CardInstanceId, ComputedCard> {
     );
   }
 
+  applyRingBearerAbilitiesInPlace(state, computedById);
+
   // Layer 7d: +1/+1 and -1/-1 counters net out.
   for (const card of Object.values(state.cards)) {
     const computed = computedById[card.id]!;
@@ -1172,6 +1180,68 @@ function computeAll(state: GameState): Record<CardInstanceId, ComputedCard> {
     computed.toughness = netted.toughness;
   }
   return computedById;
+}
+
+/**
+ * The Ring's emblem (CR 701.52b-e). Its four abilities are all about the
+ * Ring-bearer and switch on cumulatively as their controller is tempted,
+ * so they are DERIVED onto that one creature here rather than living on a
+ * permanent — there is no permanent. Being granted through the ordinary
+ * `grantedTriggers` channel means the stack, the prompts, the fuzzer and
+ * the client all reach them with the machinery they already have.
+ *
+ * The emblem is not an ability of the bearer, so `abilitiesRemoved` does
+ * not silence it: Humility takes the creature's abilities, not the Ring's.
+ */
+function applyRingBearerAbilitiesInPlace(
+  state: GameState,
+  computedById: Record<CardInstanceId, ComputedCard>,
+): void {
+  for (const player of state.players) {
+    const tempts = player.ringTempts ?? 0;
+    const bearerId = player.ringBearerId;
+    if (tempts < 1 || !bearerId) {
+      continue;
+    }
+    const bearer = state.cards[bearerId];
+    const computed = computedById[bearerId];
+    if (!bearer || !computed || bearer.zone !== "battlefield") {
+      continue;
+    }
+    // Tier one: "your Ring-bearer is legendary and can't be blocked by
+    // creatures with greater power."
+    if (!computed.characteristics.supertypes.includes("legendary")) {
+      computed.characteristics.supertypes.push("legendary");
+    }
+    computed.ringBearer = true;
+    if (tempts >= 2) {
+      computed.grantedTriggers.push({
+        event: "attacks",
+        watch: "self",
+        effects: [
+          { kind: "draw", playerId: "controller", count: 1 },
+          { kind: "discard", playerId: "controller", count: 1 },
+        ],
+        targetRequirements: [],
+      });
+    }
+    if (tempts >= 3) {
+      computed.grantedTriggers.push({
+        event: "becomes_blocked",
+        watch: "self",
+        effects: [{ kind: "sacrifice_blocker_at_end_of_combat" }],
+        targetRequirements: [],
+      });
+    }
+    if (tempts >= 4) {
+      computed.grantedTriggers.push({
+        event: "deals_combat_damage_to_player",
+        watch: "self",
+        effects: [{ kind: "lose_life", playerId: "each_opponent", amount: 3 }],
+        targetRequirements: [],
+      });
+    }
+  }
 }
 
 /**

@@ -6547,6 +6547,15 @@ function compileSimpleClauseInner(sentence: string): SimpleClause | null {
     return compileSimpleClause(`${mayTargeted[1]} target ${mayTargeted[2]}`);
   }
 
+  // The Ring tempts you (CR 701.52). One sentence, four cumulative
+  // abilities — see `applyRingBearerAbilitiesInPlace`.
+  if (/^the Ring tempts you$/i.test(sentence)) {
+    return {
+      targetRequirements: [],
+      effects: [{ kind: "ring_tempts", playerId: "controller" }],
+    };
+  }
+
   if (/^proliferate$/i.test(sentence)) {
     return {
       targetRequirements: [],
@@ -11188,6 +11197,11 @@ function parseTriggerHead(head: string): TriggerHead | null {
     /^Whenever a card is put into an opponent's graveyard from anywhere$/i.test(text)
   ) {
     return { event: "put_into_graveyard", watch: "opponents" };
+  }
+  // Call of the Ring: the tempt itself dispatches this when it names a
+  // bearer, so a tempt that changes nothing fires nothing.
+  if (/^Whenever you choose a creature as your Ring-bearer$/i.test(text)) {
+    return { event: "chooses_ring_bearer" };
   }
   if (/^Whenever you cast or copy an instant or sorcery spell$/i.test(text)) {
     return {

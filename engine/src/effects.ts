@@ -2421,6 +2421,19 @@ export function bindCardEffect(
       const exertId = bindCardId(state, effect.cardId, context);
       return exertId ? { kind: "exert", cardId: exertId } : null;
     }
+    case "ring_tempts": {
+      const temptedId = bindPlayerSelector(state, effect.playerId, context);
+      return temptedId ? { kind: "ring_tempts", playerId: temptedId } : null;
+    }
+    case "sacrifice_blocker_at_end_of_combat": {
+      // The blocker is the trigger's subject: "whenever your Ring-bearer
+      // becomes blocked by a creature, THAT creature's controller
+      // sacrifices it".
+      const blockerId = context.subjectCardId;
+      return blockerId
+        ? { kind: "sacrifice_blocker_at_end_of_combat", cardId: blockerId }
+        : null;
+    }
     case "tap_all": {
       const playerId = bindPlayerSelector(state, effect.playerId, context);
       if (!playerId) {
@@ -4127,7 +4140,10 @@ function applyCopyToken(
       });
     }
     if (opts?.atEndCombat) {
-      next.delayedEndCombat = [...(next.delayedEndCombat ?? []), token.id];
+      next.delayedEndCombat = [
+        ...(next.delayedEndCombat ?? []),
+        { cardId: token.id, action: "exile" },
+      ];
     }
     owner.zones.battlefield.push(token.id);
     queueEnterBattlefieldTriggersInPlace(next, token.id);
@@ -5827,6 +5843,57 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
           const by = card.goadedBy ?? [];
           if (!by.includes(effect.byPlayerId)) {
             card.goadedBy = [...by, effect.byPlayerId];
+          }
+        }
+        break;
+      }
+      case "sacrifice_blocker_at_end_of_combat": {
+        next = cloneGameState(state);
+        if (next.cards[effect.cardId]?.zone === "battlefield") {
+          next.delayedEndCombat = [
+            ...(next.delayedEndCombat ?? []),
+            { cardId: effect.cardId, action: "sacrifice" },
+          ];
+        }
+        break;
+      }
+      case "ring_tempts": {
+        /**
+         * CR 701.52. Two things happen: the tempt count goes up, and the
+         * player chooses a Ring-bearer. The choice is a DOCUMENTED
+         * AUTO-TAKE — keep the creature already carrying it if it is still
+         * yours, otherwise take the biggest, which is what the emblem's
+         * abilities all reward. Controlling no creatures is not a failure:
+         * the tempt still counts and the Ring simply has no bearer yet.
+         */
+        next = cloneGameState(state);
+        const tempted = next.players.find((entry) => entry.id === effect.playerId);
+        if (!tempted) {
+          break;
+        }
+        tempted.ringTempts = (tempted.ringTempts ?? 0) + 1;
+        const current = tempted.ringBearerId ? next.cards[tempted.ringBearerId] : undefined;
+        const keeps =
+          current?.zone === "battlefield" &&
+          current.controllerId === effect.playerId &&
+          isCreature(next, current.id);
+        if (!keeps) {
+          const candidates = Object.values(next.cards)
+            .filter(
+              (card) =>
+                card.zone === "battlefield" &&
+                card.controllerId === effect.playerId &&
+                isCreature(next, card.id),
+            )
+            .sort((a, b) => creaturePower(next, b.id) - creaturePower(next, a.id));
+          const chosen = candidates[0];
+          if (chosen) {
+            tempted.ringBearerId = chosen.id;
+            dispatchEventsInPlace(next, [
+              { kind: "chooses_ring_bearer", playerId: effect.playerId, cardId: chosen.id },
+            ]);
+          } else {
+            delete tempted.ringBearerId;
           }
         }
         break;

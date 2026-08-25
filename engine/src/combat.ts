@@ -478,6 +478,18 @@ export function blockRestriction(
   if (computedCard(state, blockerId)?.cantBlock) {
     return `Card ${blockerId} cannot block`;
   }
+  /**
+   * The Ring's first tier (CR 701.52b): "your Ring-bearer can't be blocked
+   * by creatures with greater power." Equal power blocks fine — it is
+   * GREATER, which is what makes the tier a soft evasion rather than a
+   * hard one.
+   */
+  if (
+    computedCard(state, attackerId)?.ringBearer === true &&
+    creaturePower(state, blockerId) > creaturePower(state, attackerId)
+  ) {
+    return `Card ${blockerId} has greater power than the Ring-bearer`;
+  }
   const blockerTraits = characteristicsOf(state, blockerId);
   const isArtifact = blockerTraits.types.includes("artifact");
   if (
@@ -631,6 +643,19 @@ export function declareBlockers(
   nextCombat.declaredBlockersFor.push(defenderId);
   next.passesSinceAction = 0;
   next.priorityPlayerId = priorityForStep(next);
+  // The Ring's third tier: "whenever your Ring-bearer becomes blocked by a
+  // creature". Once per blocking creature, and the BLOCKER is the subject,
+  // because the ability is about that creature's controller.
+  if (blocks.length > 0) {
+    dispatchEventsInPlace(
+      next,
+      blocks.map((block) => ({
+        kind: "becomes_blocked" as const,
+        cardId: block.attackerId,
+        blockerId: block.blockerId,
+      })),
+    );
+  }
   return next;
 }
 

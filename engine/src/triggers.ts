@@ -1029,6 +1029,24 @@ function triggerMatchesEvent(
   // Kozilek, Ulamog: a graveyard arrival from ANY zone, the battlefield
   // included — so this event accompanies `dies` rather than replacing it,
   // and both have to be answered here or one card sees both.
+  /**
+   * The Ring's third tier. The watcher is the ATTACKER that got blocked;
+   * the subject handed on is the BLOCKER, because the ability is about
+   * that creature's controller sacrificing it.
+   */
+  if (event.kind === "becomes_blocked") {
+    return trigger.event === "becomes_blocked" && event.cardId === watcher.id;
+  }
+  if (trigger.event === "becomes_blocked") {
+    return false;
+  }
+  // Call of the Ring: "whenever you choose a creature as your Ring-bearer".
+  if (event.kind === "chooses_ring_bearer") {
+    return trigger.event === "chooses_ring_bearer" && event.playerId === watcher.controllerId;
+  }
+  if (trigger.event === "chooses_ring_bearer") {
+    return false;
+  }
   if (event.kind === "put_into_graveyard") {
     if (trigger.event !== "put_into_graveyard") {
       return false;
@@ -1422,7 +1440,17 @@ export function dispatchEventsInPlace(state: GameState, events: EngineEvent[]): 
         }
         if (triggerMatchesEvent(state, card, trigger, event)) {
           firedThisBatch = true;
-          const subjectCardId = "cardId" in event ? event.cardId : undefined;
+          /**
+           * The Ring's third tier: the event names the ATTACKER (that is
+           * whose ability it is), but "that creature" in the body is the
+           * BLOCKER, so that is what the subject carries.
+           */
+          const subjectCardId =
+            event.kind === "becomes_blocked"
+              ? event.blockerId
+              : "cardId" in event
+                ? event.cardId
+                : undefined;
           const subjectPlayerId =
             event.kind === "gains_life" ||
             event.kind === "loses_life" ||

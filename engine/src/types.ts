@@ -849,6 +849,19 @@ export type PlayerState = {
    * removes one yet.
    */
   poisonCounters: number;
+  /**
+   * The Ring (CR 701.52). How many times this player has been tempted; the
+   * emblem's four abilities switch on cumulatively at 1, 2, 3 and 4, and
+   * further tempts add nothing but a fresh Ring-bearer choice.
+   */
+  ringTempts?: number;
+  /**
+   * The creature carrying the Ring. Every one of the emblem's abilities is
+   * about this creature, so it is a designation on the PLAYER rather than
+   * a mark on the card — the Ring survives the bearer dying, and the next
+   * tempt simply names a new one.
+   */
+  ringBearerId?: CardInstanceId;
   /** Lands played this turn. Resets on that player's untap. */
   landsPlayedThisTurn: number;
   /** Explore: one-shot extra land drops granted this turn. Reset with the
@@ -1093,7 +1106,16 @@ export type GameState = {
    * postcombat main phase, where a sacrifice outlet turns each of them
    * into value the printed card never offers.
    */
-  delayedEndCombat?: CardInstanceId[];
+  delayedEndCombat?: Array<{
+    cardId: CardInstanceId;
+    /**
+     * Myriad exiles its tokens; the Ring's third tier SACRIFICES the
+     * blocker, which is a different event to everything watching. One list
+     * with an action, rather than two lists that would have to be swept in
+     * a defined order.
+     */
+    action: "exile" | "sacrifice";
+  }>;
   /** Spells cast by anyone this turn — Storm's copy count (CR 702.40). */
   spellsCastThisTurn: number;
   /** Per-player casts this turn (Lotho's second-spell watch). */
@@ -1732,6 +1754,14 @@ export type GameEffect =
     }
   /** Combat Celebrant: mark the source exerted (CR 701.39). */
   | { kind: "exert"; cardId: CardInstanceId }
+  /** The Ring tempts you — see the definition form. */
+  | { kind: "ring_tempts"; playerId: PlayerId }
+  /**
+   * The Ring's third tier: "that creature's controller sacrifices it at
+   * end of combat." The blocker is the trigger's SUBJECT, so it is bound
+   * from there rather than named here.
+   */
+  | { kind: "sacrifice_blocker_at_end_of_combat"; cardId: CardInstanceId }
   /** Cryptic Command: "Tap all creatures your opponents control." */
   | { kind: "tap_all"; playerId: PlayerId; what: "creature" | "land" }
   /**
@@ -3202,6 +3232,10 @@ export type CardEffect =
     }
   /** Combat Celebrant — see the bound form. */
   | { kind: "exert"; cardId: CardIdSelector }
+  /** The Ring tempts you (CR 701.52): one more tempt, and a Ring-bearer. */
+  | { kind: "ring_tempts"; playerId: PlayerSelector }
+  /** The Ring's third tier — see the bound form. */
+  | { kind: "sacrifice_blocker_at_end_of_combat" }
   | { kind: "tap_all"; playerId: PlayerSelector; what: "creature" | "land" }
   | { kind: "goad"; target: ChosenTargetRef }
   | { kind: "goad_all" }
@@ -3824,6 +3858,10 @@ export type TriggerEvent =
    * exactly what the shuffle-back is there to undo.
    */
   | "put_into_graveyard"
+  /** Call of the Ring: "whenever you choose a creature as your Ring-bearer". */
+  | "chooses_ring_bearer"
+  /** The Ring's third tier: "whenever your Ring-bearer becomes blocked". */
+  | "becomes_blocked"
   | "attacks"
   | "upkeep"
   | "end_step"
@@ -4237,6 +4275,10 @@ export type EngineEvent =
   | { kind: "attacks"; cardId: CardInstanceId }
   /** A card reached a graveyard from any zone at all (Kozilek). */
   | { kind: "put_into_graveyard"; cardId: CardInstanceId }
+  /** Call of the Ring: a player named a creature as their Ring-bearer. */
+  | { kind: "chooses_ring_bearer"; playerId: PlayerId; cardId: CardInstanceId }
+  /** The Ring's third tier: an attacker was blocked by this creature. */
+  | { kind: "becomes_blocked"; cardId: CardInstanceId; blockerId: CardInstanceId }
   /** A permanent left the battlefield carrying +1/+1 counters — only
    * dispatched when it had any; amount is the p1p1 total (The Ozolith's
    * documented approximation: other counter kinds don't transfer). */
