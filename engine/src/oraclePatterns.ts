@@ -5487,6 +5487,23 @@ function compileSimpleClauseInner(sentence: string): SimpleClause | null {
   // Curse of the Swine's first half compiles with its rider (see the pair
   // handler in the main loop); a bare variable exile also lands here.
 
+  const tempting = sentence.match(/^tempting offer to: (.+)$/i);
+  if (tempting?.[1]) {
+    const inner = compileSimpleClause(
+      tempting[1].charAt(0).toUpperCase() + tempting[1].slice(1),
+    );
+    // No targets: an offer whose action names a target would have every
+    // opponent acting on the CONTROLLER's chosen permanent, which is a
+    // different card (Tempt with Reflections really does that, and is not
+    // this shape).
+    if (inner && !inner.leftover && inner.targetRequirements.length === 0) {
+      return {
+        targetRequirements: [],
+        effects: [{ kind: "tempting_offer", playerId: "controller", action: inner.effects }],
+      };
+    }
+  }
+
   const piles = sentence.match(
     /^divide the top (\d+) into two piles, taking one into your (hand|graveyard) and leaving the other into your (hand|graveyard)$/i,
   );
@@ -10186,6 +10203,52 @@ function compileDigUntilClause(sentence: string): CardEffect[] | null {
  * first produced and the third names piles the second made — read apart,
  * each is an effect with no referent.
  */
+/**
+ * Tempting offer. Four sentences saying one thing three times: the action,
+ * the same action offered to each opponent, the same action repeated per
+ * acceptance, and on Tempt with Discovery a shuffle for everyone who
+ * searched.
+ *
+ * The restatements are CHECKED before being dropped, not assumed. A card
+ * whose second sentence says something else keeps all four and stays a
+ * note, because dropping text that turned out to matter is how a card
+ * compiles clean and plays wrong.
+ */
+function fuseTemptingOfferInPlace(sentences: string[], lineStart: boolean[]): void {
+  for (let index = 0; index + 2 < sentences.length; index += 1) {
+    const head = sentences[index]?.match(/^Tempting offer\s*[—-]\s*(.+)$/i);
+    if (!head?.[1]) {
+      continue;
+    }
+    const offered = /^Each opponent may /i.test(sentences[index + 1] ?? "");
+    const repeated = /^For each opponent who /i.test(sentences[index + 2] ?? "");
+    if (!offered || !repeated) {
+      continue;
+    }
+    // "and put it onto the battlefield" is the same clause the search
+    // reader already knows as ", put it onto the battlefield".
+    let action = head[1].replace(
+      / and put it onto the battlefield/i,
+      ", put it onto the battlefield",
+    );
+    let drop = 2;
+    // Tempt with Discovery's trailing shuffle is one sentence covering
+    // every search the offer made, so it becomes part of the action each
+    // searcher performs rather than a separate effect with no subject.
+    if (
+      /^Then each player who searched a library this way shuffles$/i.test(
+        sentences[index + 3] ?? "",
+      )
+    ) {
+      drop = 3;
+      action = `${action.replace(/\.$/, "")}, then shuffle`;
+    }
+    sentences[index] = `tempting offer to: ${action}`;
+    sentences.splice(index + 1, drop);
+    lineStart.splice(index + 1, drop);
+  }
+}
+
 function fusePilesInPlace(sentences: string[], lineStart: boolean[]): void {
   for (let index = 0; index + 2 < sentences.length; index += 1) {
     if (lineStart[index + 1] || lineStart[index + 2]) {
@@ -14728,6 +14791,7 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
   fuseInAdditionTypeInPlace(sentences, lineStart);
   fuseChooseGraveyardCastInPlace(sentences, lineStart);
   fusePutLandRiderInPlace(sentences, lineStart);
+  fuseTemptingOfferInPlace(sentences, lineStart);
   fusePilesInPlace(sentences, lineStart);
   fuseDigUntilInPlace(sentences, lineStart);
   fuseMayPayInPlace(sentences, lineStart);

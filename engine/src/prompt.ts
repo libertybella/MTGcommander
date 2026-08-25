@@ -3,7 +3,7 @@ import { cloneGameState } from "./clone";
 // Deferred call only (decline path) — the effects/prompt import cycle is benign.
 import { cardMatchesSubtype, grantedTriggerSpread, triggersOf } from "./characteristicsEngine";
 import { characteristicsOf, isCreature, isLand as cardIsLand, isPlaneswalker } from "./cardTypes";
-import { applyEffects, grantProtectionUntilEot } from "./effects";
+import { applyEffects, bindCardEffects, grantProtectionUntilEot } from "./effects";
 import { payManaCost, tapForMana } from "./mana";
 import { manaAbilitiesFor, manaTapOptionsFor } from "./manaOptions";
 import { isLiving, requireLiving } from "./players";
@@ -354,6 +354,82 @@ export function applyResolveCreatureType(
         card.counters[perType] = (card.counters[perType] ?? 0) + count;
       }
     }
+  }
+  return next;
+}
+
+/**
+ * One opponent's answer to a tempting offer. Accepting applies the action
+ * bound to THEM, then the chain moves to the next opponent; when the last
+ * has answered, the controller repeats their action once per acceptance.
+ *
+ * The continuation prompt is queued AFTER whatever the acceptance pushed —
+ * Tempt with Discovery's search opens a prompt of its own, and it has to be
+ * answered before the next opponent is asked. Prompts are first-in first-
+ * out, so appending is what puts them in that order.
+ */
+export function applyResolveTemptingOffer(
+  state: GameState,
+  playerId: PlayerId,
+  accept: boolean,
+): GameState {
+  const prompt = currentPrompt(state);
+  if (!prompt || prompt.kind !== "tempting_offer") {
+    throw new Error("No tempting offer pending");
+  }
+  requireLiving(state, playerId);
+  if (prompt.playerId !== playerId) {
+    throw new Error("It is not that player's choice");
+  }
+  let next = cloneGameState(state);
+  next.prompts.shift();
+  if (accept) {
+    next = applyEffects(
+      next,
+      bindCardEffects(next, prompt.action, {
+        controllerId: playerId,
+        sourceId: null,
+        targets: [],
+        targetRequirements: [],
+      }),
+    );
+  }
+  const accepted = prompt.accepted + (accept ? 1 : 0);
+  const nextOpponent = prompt.remaining[0];
+  if (nextOpponent) {
+    next = cloneGameState(next);
+    next.prompts.push({
+      kind: "tempting_offer",
+      playerId: nextOpponent,
+      controllerId: prompt.controllerId,
+      remaining: prompt.remaining.slice(1),
+      accepted,
+      action: prompt.action.map((one) => ({ ...one })),
+      ...(prompt.resumeEffects ? { resumeEffects: prompt.resumeEffects } : {}),
+    });
+    return next;
+  }
+  // Every repeat in ONE list rather than a loop: the parking-and-resuming
+  // in applyEffects then handles an action that opens a prompt each time,
+  // which a loop would silently stack on top of an unanswered one.
+  const repeats: CardEffect[] = [];
+  for (let index = 0; index < accepted; index += 1) {
+    repeats.push(...prompt.action.map((one) => ({ ...one })));
+  }
+  if (repeats.length > 0) {
+    next = applyEffects(
+      next,
+      bindCardEffects(next, repeats, {
+        controllerId: prompt.controllerId,
+        sourceId: null,
+        targets: [],
+        targetRequirements: [],
+      }),
+    );
+  }
+  const resume = prompt.resumeEffects;
+  if (resume && resume.length > 0) {
+    next = applyEffects(next, resume);
   }
   return next;
 }

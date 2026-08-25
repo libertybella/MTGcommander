@@ -35,7 +35,7 @@ import { abilityLifeCost, colorsOutsideCommanderIdentity } from "./commanderIden
 import { addRestrictedMana, emptyManaPools, manaRiderFires, parseManaCost, payManaCost, restrictionAdmits, type ManaPurpose } from "./mana";
 import { applyStateBasedActionsInPlace } from "./status";
 import { legalActions, potentialMana, sacrificeColorMatches, sacrificeScopeMatches } from "./legalActions";
-import { applyResolveCardName, applyResolveChoosePile, applyResolveDividePiles, applyResolveChooseCard, applyResolveChooseFromHand, applyResolveCreatureType, applyResolveDiscardLandOrGraveyard, applyResolveEnterCopy, applyResolveLookAssign, applyResolvePay, applyResolveSearch, applyResolveTriggerMode, legalEnterCopyIds, legalSearchIds, searchMatches } from "./prompt";
+import { applyResolveCardName, applyResolveChoosePile, applyResolveDividePiles, applyResolveTemptingOffer, applyResolveChooseCard, applyResolveChooseFromHand, applyResolveCreatureType, applyResolveDiscardLandOrGraveyard, applyResolveEnterCopy, applyResolveLookAssign, applyResolvePay, applyResolveSearch, applyResolveTriggerMode, legalEnterCopyIds, legalSearchIds, searchMatches } from "./prompt";
 import { parseGameState, serializeGameState } from "./serialize";
 import { fillLibraries } from "./testSupport";
 import { applyKeepHand, beginMulligan, isMulliganOpen } from "./mulligan";
@@ -62133,5 +62133,328 @@ describe("wave 384: a modal that remembers what it already chose", () => {
     // which on Monument to Endurance is nine life a turn instead of three.
     expect(modePrompt(round).spentModes).toEqual([2]);
     expect(() => applyResolveTriggerMode(round, p1.id, 2)).toThrow();
+  });
+});
+
+describe("wave 385: tempting offer", () => {
+  const compile = (name: string, typeLine: string, oracleText: string, manaCost = "") =>
+    compileOracleCard({
+      oracleId: name.toLowerCase().replace(/[^a-z]+/g, "-"),
+      name,
+      manaCost,
+      typeLine,
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  const put = (
+    game: GameState,
+    ownerId: string,
+    definition: CardDefinition,
+    zone: "battlefield" | "library" = "library",
+  ) => {
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({ definitionId: definition.id, ownerId, zone });
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === ownerId)!.zones[zone].push(card.id);
+    if (zone === "battlefield") {
+      card.summoningSick = false;
+    }
+    return card.id;
+  };
+
+  const discoveryText =
+    "Tempting offer — Search your library for a land card and put it onto the battlefield. Each opponent may search their library for a land card and put it onto the battlefield. For each opponent who searches a library this way, search your library for a land card and put it onto the battlefield. Then each player who searched a library this way shuffles.";
+
+  it("compiles Tempt with Discovery's four sentences as one offer", () => {
+    const compiled = compile("Tempt with Discovery", "Sorcery", discoveryText, "{3}{G}");
+    expect(compiled.notes).toEqual([]);
+    // The action is stored ONCE. The other three sentences restate it, and
+    // the trailing shuffle belongs to each search rather than being an
+    // effect with no subject.
+    expect(compiled.definition.effects).toEqual([
+      {
+        kind: "tempting_offer",
+        playerId: "controller",
+        action: [
+          {
+            kind: "search_library",
+            playerId: "controller",
+            filter: { types: ["land"] },
+            destination: "battlefield",
+            count: 1,
+          },
+        ],
+      },
+    ]);
+  });
+
+  it("compiles Tempt with Glory", () => {
+    const compiled = compile(
+      "Tempt with Glory",
+      "Sorcery",
+      "Tempting offer — Put a +1/+1 counter on each creature you control. Each opponent may put a +1/+1 counter on each creature they control. For each opponent who does, put a +1/+1 counter on each creature you control.",
+      "{4}{W}",
+    );
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.effects[0]).toMatchObject({ kind: "tempting_offer" });
+  });
+
+  it("keeps every sentence when the restatement is not one", () => {
+    const compiled = compile(
+      "Not An Offer",
+      "Sorcery",
+      "Tempting offer — Put a +1/+1 counter on each creature you control. Each opponent draws a card. For each opponent who does, put a +1/+1 counter on each creature you control.",
+      "{4}{W}",
+    );
+    // The middle sentence is not the same action offered, so nothing is
+    // dropped and the card stays a note. Dropping text that turned out to
+    // matter is how a card compiles clean and plays wrong.
+    expect(compiled.notes.length).toBeGreaterThan(0);
+  });
+
+  // ---- The chain ---------------------------------------------------------
+
+  const bear = (name: string) =>
+    createCardDefinition({
+      name,
+      typeLine: "Creature — Bear",
+      manaCost: "{1}{G}",
+      power: 2,
+      toughness: 2,
+    });
+
+  const counters = (game: GameState, cardId: string) =>
+    game.cards[cardId]?.counters["p1p1"] ?? 0;
+
+  const offer = (game: GameState, playerId: string) =>
+    applyEffects(
+      game,
+      bindCardEffects(
+        game,
+        [
+          {
+            kind: "tempting_offer",
+            playerId: "controller",
+            action: [
+              {
+                kind: "counter_on_each_creature",
+                counter: "p1p1",
+                amount: 1,
+                controlledOnly: true,
+              },
+            ],
+          },
+        ],
+        { controllerId: playerId, sourceId: null, targets: [], targetRequirements: [] },
+      ),
+    );
+
+  const threeWay = () => {
+    const game = createGameState({ playerCount: 3 });
+    const [p1, p2, p3] = game.players;
+    if (!p1 || !p2 || !p3) {
+      throw new Error("need three players");
+    }
+    return { game, p1, p2, p3 };
+  };
+
+  it("acts once for the controller before anyone answers", () => {
+    const { game, p1, p2, p3 } = threeWay();
+    const mineId = put(game, p1.id, bear("Mine"), "battlefield");
+    const after = offer(game, p1.id);
+    expect(counters(after, mineId)).toBe(1);
+    // And then asks the opponents, one at a time, in turn order.
+    expect(after.prompts[0]?.kind).toBe("tempting_offer");
+    expect(after.prompts[0]?.playerId).toBe(p2.id);
+    void p3;
+  });
+
+  it("gives an accepting opponent the same thing, for themselves", () => {
+    const { game, p1, p2, p3 } = threeWay();
+    const mineId = put(game, p1.id, bear("Mine"), "battlefield");
+    const theirsId = put(game, p2.id, bear("Theirs"), "battlefield");
+    let after = offer(game, p1.id);
+    after = applyResolveTemptingOffer(after, p2.id, true);
+    // Their creature, not the controller's: the action is rebound, which is
+    // the entire mechanic.
+    expect(counters(after, theirsId)).toBe(1);
+    expect(counters(after, mineId)).toBe(1);
+    void p3;
+  });
+
+  it("repeats the controller's action once per acceptance", () => {
+    const { game, p1, p2, p3 } = threeWay();
+    const mineId = put(game, p1.id, bear("Mine"), "battlefield");
+    put(game, p2.id, bear("Theirs"), "battlefield");
+    put(game, p3.id, bear("Third"), "battlefield");
+    let after = offer(game, p1.id);
+    after = applyResolveTemptingOffer(after, p2.id, true);
+    after = applyResolveTemptingOffer(after, p3.id, true);
+    // One for casting it, one for each of the two who took the offer.
+    expect(counters(after, mineId)).toBe(3);
+  });
+
+  it("counts only the opponents who accepted", () => {
+    const { game, p1, p2, p3 } = threeWay();
+    const mineId = put(game, p1.id, bear("Mine"), "battlefield");
+    const theirsId = put(game, p2.id, bear("Theirs"), "battlefield");
+    const thirdId = put(game, p3.id, bear("Third"), "battlefield");
+    let after = offer(game, p1.id);
+    after = applyResolveTemptingOffer(after, p2.id, false);
+    after = applyResolveTemptingOffer(after, p3.id, true);
+    expect(counters(after, mineId)).toBe(2);
+    expect(counters(after, theirsId)).toBe(0);
+    expect(counters(after, thirdId)).toBe(1);
+  });
+
+  it("gives nothing extra when everyone declines", () => {
+    const { game, p1, p2, p3 } = threeWay();
+    const mineId = put(game, p1.id, bear("Mine"), "battlefield");
+    let after = offer(game, p1.id);
+    after = applyResolveTemptingOffer(after, p2.id, false);
+    after = applyResolveTemptingOffer(after, p3.id, false);
+    expect(counters(after, mineId)).toBe(1);
+    expect(after.prompts).toHaveLength(0);
+  });
+
+  it("refuses an answer from the wrong player", () => {
+    const { game, p1, p2, p3 } = threeWay();
+    put(game, p1.id, bear("Mine"), "battlefield");
+    const after = offer(game, p1.id);
+    // The chain asks one opponent at a time, and it is p2's turn — the
+    // third opponent may not answer early and the controller may not
+    // answer for them.
+    expect(after.prompts[0]?.playerId).toBe(p2.id);
+    expect(() => applyResolveTemptingOffer(after, p3.id, true)).toThrow();
+    expect(() => applyResolveTemptingOffer(after, p1.id, true)).toThrow();
+  });
+
+  it("still acts for the controller with no opponents to ask", () => {
+    const { game, p1 } = twoPlayers();
+    const mineId = put(game, p1.id, bear("Mine"), "battlefield");
+    game.players.find((entry) => entry.id !== p1.id)!.lost = true;
+    const after = offer(game, p1.id);
+    expect(counters(after, mineId)).toBe(1);
+    expect(after.prompts).toHaveLength(0);
+  });
+
+  it("waits for a search the acceptance opened before asking the next", () => {
+    const { game, p1, p2, p3 } = threeWay();
+    fillLibraries(game, 10);
+    const searchOffer = applyEffects(
+      game,
+      bindCardEffects(
+        game,
+        [
+          {
+            kind: "tempting_offer",
+            playerId: "controller",
+            action: [
+              {
+                kind: "search_library",
+                playerId: "controller",
+                filter: { types: ["land"] },
+                destination: "battlefield",
+                count: 1,
+              },
+            ],
+          },
+        ],
+        { controllerId: p1.id, sourceId: null, targets: [], targetRequirements: [] },
+      ),
+    );
+    // The controller's own search is asked first, and the offer chain is
+    // queued behind it rather than jumping the queue.
+    expect(searchOffer.prompts[0]?.kind).toBe("search_library");
+    const afterMine = applyResolveSearch(searchOffer, p1.id, []);
+    expect(afterMine.prompts[0]?.kind).toBe("tempting_offer");
+    const accepted = applyResolveTemptingOffer(afterMine, p2.id, true);
+    // Their search comes BEFORE the next opponent is asked: prompts are
+    // first-in first-out and the continuation is appended after it.
+    expect(accepted.prompts[0]?.kind).toBe("search_library");
+    expect(accepted.prompts[0]?.playerId).toBe(p2.id);
+    expect(accepted.prompts[1]?.kind).toBe("tempting_offer");
+    expect(accepted.prompts[1]?.playerId).toBe(p3.id);
+  });
+
+  it("resumes the rest of the card once the chain is done", () => {
+    const { game, p1, p2, p3 } = threeWay();
+    put(game, p1.id, bear("Mine"), "battlefield");
+    const before = game.players.find((entry) => entry.id === p1.id)!.life;
+    let after = applyEffects(
+      game,
+      bindCardEffects(
+        game,
+        [
+          {
+            kind: "tempting_offer",
+            playerId: "controller",
+            action: [
+              {
+                kind: "counter_on_each_creature",
+                counter: "p1p1",
+                amount: 1,
+                controlledOnly: true,
+              },
+            ],
+          },
+          { kind: "gain_life", playerId: "controller", amount: 3 },
+        ],
+        { controllerId: p1.id, sourceId: null, targets: [], targetRequirements: [] },
+      ),
+    );
+    expect(after.players.find((entry) => entry.id === p1.id)!.life).toBe(before);
+    after = applyResolveTemptingOffer(after, p2.id, false);
+    expect(after.players.find((entry) => entry.id === p1.id)!.life).toBe(before);
+    after = applyResolveTemptingOffer(after, p3.id, false);
+    expect(after.players.find((entry) => entry.id === p1.id)!.life).toBe(before + 3);
+  });
+
+  it("round trips the offer and the chain mid-flight", () => {
+    const { game, p1, p2, p3 } = threeWay();
+    put(game, p1.id, bear("Mine"), "battlefield");
+    put(game, p2.id, bear("Theirs"), "battlefield");
+    const definition = createCardDefinition({
+      name: "Wave 385 Temptation",
+      typeLine: "Sorcery",
+      manaCost: "{4}{W}",
+      effects: [
+        {
+          kind: "tempting_offer",
+          playerId: "controller",
+          action: [
+            {
+              kind: "counter_on_each_creature",
+              counter: "p1p1",
+              amount: 1,
+              controlledOnly: true,
+            },
+          ],
+        },
+      ],
+    });
+    put(game, p1.id, definition);
+    const mid = applyResolveTemptingOffer(offer(game, p1.id), p2.id, true);
+    const round = parseGameState(serializeGameState(mid));
+    const prompt = round.prompts[0];
+    if (prompt?.kind !== "tempting_offer") {
+      throw new Error("expected an offer");
+    }
+    // The tally has to survive: dropped, the controller repeats nothing and
+    // the opponents' acceptances buy them a free land each.
+    expect(prompt.accepted).toBe(1);
+    expect(prompt.playerId).toBe(p3.id);
+    expect(prompt.controllerId).toBe(p1.id);
+    expect(round.definitions[definition.id]?.effects).toEqual(definition.effects);
+    const finished = applyResolveTemptingOffer(round, p3.id, false);
+    const mineId = finished.players
+      .find((entry) => entry.id === p1.id)!
+      .zones.battlefield.find((cardId) => finished.cards[cardId]?.counters["p1p1"]);
+    expect(mineId).toBeDefined();
+    expect(counters(finished, mineId!)).toBe(2);
   });
 });

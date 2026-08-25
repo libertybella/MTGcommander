@@ -1907,6 +1907,20 @@ export type GameEffect =
    * then takes one of them. The whole card is the tension between those
    * two, so neither may be auto-taken by the other.
    */
+  /**
+   * Tempting offer (CR 702.x has no number; it is an ability word). You do
+   * a thing, each opponent may do the same thing FOR THEMSELVES, and for
+   * each who did you do it again.
+   *
+   * The action is carried UNBOUND, because rebinding it to a different
+   * player is the entire mechanic — a bound copy would have every opponent
+   * searching the controller's library.
+   */
+  | {
+      kind: "tempting_offer";
+      playerId: PlayerId;
+      action: CardEffect[];
+    }
   | {
       kind: "divide_into_piles";
       playerId: PlayerId;
@@ -3428,6 +3442,7 @@ export type CardEffect =
   /** Mystic Forge: exile the top card(s) of the player's library. */
   | { kind: "exile_top"; playerId: PlayerSelector; count: number }
   | { kind: "choose_card_name"; playerId: PlayerSelector; onSelf?: boolean }
+  | { kind: "tempting_offer"; playerId: PlayerSelector; action: CardEffect[] }
   | {
       kind: "divide_into_piles";
       playerId: PlayerSelector;
@@ -4610,6 +4625,20 @@ export type PendingPrompt =
       sourceId: CardInstanceId;
     }
   /**
+   * One opponent's turn to accept a tempting offer. The chain walks the
+   * opponents one at a time; `accepted` is how many have said yes so far,
+   * and the controller repeats their action that many times at the end.
+   */
+  | {
+      kind: "tempting_offer";
+      playerId: PlayerId;
+      controllerId: PlayerId;
+      remaining: PlayerId[];
+      accepted: number;
+      action: CardEffect[];
+      resumeEffects?: GameEffect[];
+    }
+  /**
    * The divider's half. `cardIds` is everything revealed; the answer says
    * which of them form the first pile, and the rest are the second.
    */
@@ -5643,6 +5672,7 @@ export type GameAction =
   | { kind: "resolve_card_name"; playerId: PlayerId; cardName: string }
   | { kind: "resolve_divide_piles"; playerId: PlayerId; cardIds: CardInstanceId[] }
   | { kind: "resolve_choose_pile"; playerId: PlayerId; takeFirst: boolean }
+  | { kind: "resolve_tempting_offer"; playerId: PlayerId; accept: boolean }
   | { kind: "resolve_color"; playerId: PlayerId; color: Color }
   | { kind: "resolve_scry"; playerId: PlayerId; bottomIds: CardInstanceId[] }
   | { kind: "resolve_surveil"; playerId: PlayerId; graveyardIds: CardInstanceId[] }

@@ -2036,6 +2036,10 @@ export function Battlefield(props: Props) {
               ? actorId === prompt.playerId
                 ? "Choose a mode you have not already chosen this turn."
                 : `Waiting for ${chooser?.displayName ?? "a player"} to choose a mode.`
+              : prompt.kind === "tempting_offer"
+              ? actorId === prompt.playerId
+                ? "Take the tempting offer? Doing so lets its controller repeat theirs."
+                : `Waiting for ${chooser?.displayName ?? "a player"} to answer the offer.`
               : prompt.kind === "divide_piles"
               ? actorId === prompt.playerId
                 ? "Separate the revealed cards into two piles."
@@ -2648,6 +2652,26 @@ export function Battlefield(props: Props) {
                   {prompt.kind === "pay_or_counter" ? "Decline (countered)" : "Decline"}
                 </button>
               </>
+            ) : null}
+            {actorId === prompt.playerId && prompt.kind === "tempting_offer" ? (
+              <div className="look-row" data-testid="tempting-offer">
+                <button
+                  type="button"
+                  onClick={() =>
+                    send({ kind: "resolve_tempting_offer", playerId: actorId, accept: true })
+                  }
+                >
+                  Accept
+                </button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    send({ kind: "resolve_tempting_offer", playerId: actorId, accept: false })
+                  }
+                >
+                  Decline
+                </button>
+              </div>
             ) : null}
             {actorId === prompt.playerId && prompt.kind === "divide_piles" ? (
               <div className="look-row" data-testid="pile-divider">

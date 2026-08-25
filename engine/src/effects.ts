@@ -1670,6 +1670,15 @@ export function bindCardEffect(
       }
       return { kind: "drain_opponents", playerId, amount };
     }
+    case "tempting_offer": {
+      const playerId = bindPlayerSelector(state, effect.playerId, context);
+      if (!playerId) {
+        return null;
+      }
+      // The action stays UNBOUND: every player who takes the offer does it
+      // to their OWN library, graveyard and board.
+      return { kind: "tempting_offer", playerId, action: effect.action.map((one) => ({ ...one })) };
+    }
     case "divide_into_piles": {
       const playerId = bindPlayerSelector(state, effect.playerId, context);
       const dividerId = bindPlayerSelector(state, effect.dividerId, context);
@@ -6805,6 +6814,36 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
         });
         break;
       }
+      case "tempting_offer": {
+        // The controller acts first, then the offer goes round. Their own
+        // copy is applied here rather than being left to the chain, so the
+        // card does its thing even in a game where every opponent has lost.
+        next = applyEffects(
+          state,
+          bindCardEffects(state, effect.action, {
+            controllerId: effect.playerId,
+            sourceId: null,
+            targets: [],
+            targetRequirements: [],
+          }),
+        );
+        const opponents = livingPlayers(next)
+          .map((entry) => entry.id)
+          .filter((id) => id !== effect.playerId);
+        const firstOpponent = opponents[0];
+        if (firstOpponent) {
+          next = cloneGameState(next);
+          next.prompts.push({
+            kind: "tempting_offer",
+            playerId: firstOpponent,
+            controllerId: effect.playerId,
+            remaining: opponents.slice(1),
+            accepted: 0,
+            action: effect.action.map((one) => ({ ...one })),
+          });
+        }
+        break;
+      }
       case "divide_into_piles": {
         next = cloneGameState(state);
         const revealer = next.players.find((entry) => entry.id === effect.playerId);
@@ -6940,6 +6979,7 @@ export function applyEffects(state: GameState, effects: GameEffect[]): GameState
         prompt.kind === "pay_or_counter" ||
         prompt.kind === "pay_or_effect" ||
         prompt.kind === "choose_card_name" ||
+        prompt.kind === "tempting_offer" ||
         prompt.kind === "divide_piles")
     ) {
       const remaining = effects.slice(index + 1);

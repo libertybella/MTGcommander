@@ -464,6 +464,18 @@ export class GameHost {
           });
           continue;
         }
+        if (prompt.kind === "tempting_offer") {
+          // A documented auto-take: an absent player ACCEPTS. Every printed
+          // tempting offer gives the taker something, and declining on
+          // their behalf would hand the controller a cheaper card than the
+          // one they cast.
+          this.apply({
+            kind: "resolve_tempting_offer",
+            playerId: prompt.playerId,
+            accept: true,
+          });
+          continue;
+        }
         if (prompt.kind === "divide_piles") {
           // A documented auto-take for an absent divider: everything in the
           // first pile, nothing in the second. Splitting it "fairly" would

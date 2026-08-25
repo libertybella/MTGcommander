@@ -32,7 +32,7 @@ import { applyBottomCards, applyKeepHand, applyTakeMulligan, isMulliganOpen, rec
 import { applyRollDie } from "./dice";
 import { applyOpeningRoll, isOpeningRoll } from "./openingRoll";
 import { applyManualOverride } from "./override";
-import { applyChooseEnterReplacement, applyChooseTargets, applyResolveChooseCard, applyResolveChooseFromHand, applyResolveCardName, applyResolveChoosePile, applyResolveColor, applyResolveCreatureType, applyResolveDividePiles, applyResolveDiscard, applyResolveEnterCopy, applyResolveLookAssign, applyResolveOrderTriggers, applyResolvePay, applyResolveScry, applyResolveSearch, applyResolveSurveil, applyResolveTriggerMode, currentPrompt, dropLostPlayerPromptsInPlace, isPromptOpen, applyResolveDiscardLandOrGraveyard } from "./prompt";
+import { applyChooseEnterReplacement, applyChooseTargets, applyResolveChooseCard, applyResolveChooseFromHand, applyResolveCardName, applyResolveChoosePile, applyResolveColor, applyResolveCreatureType, applyResolveDividePiles, applyResolveTemptingOffer, applyResolveDiscard, applyResolveEnterCopy, applyResolveLookAssign, applyResolveOrderTriggers, applyResolvePay, applyResolveScry, applyResolveSearch, applyResolveSurveil, applyResolveTriggerMode, currentPrompt, dropLostPlayerPromptsInPlace, isPromptOpen, applyResolveDiscardLandOrGraveyard } from "./prompt";
 import { manaValueOf } from "./characteristics";
 import { findCardZone, moveCard } from "./zones";
 import type { ActivatedAbility, AdditionalCastCost, CardInstanceId, ChosenTarget, Color, GameAction, GameState, ManaColor, ManaPool, PlayerId } from "./types";
@@ -2107,6 +2107,9 @@ export function applyAction(
         break;
       case "resolve_choose_pile":
         next = applyResolveChoosePile(state, action.playerId, action.takeFirst);
+        break;
+      case "resolve_tempting_offer":
+        next = applyResolveTemptingOffer(state, action.playerId, action.accept);
         break;
       case "resolve_color":
         next = applyResolveColor(state, action.playerId, action.color);

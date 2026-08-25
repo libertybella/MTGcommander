@@ -159,6 +159,8 @@ function nextAction(state: GameState, rng: () => number): GameAction | null {
           playerId,
           discard: rng() < 0.5,
         };
+      case "tempting_offer":
+        return { kind: "resolve_tempting_offer", playerId, accept: rng() < 0.5 };
       case "divide_piles": {
         // Split roughly in half at random, which walks both an even split
         // and the lopsided ones including an empty pile.

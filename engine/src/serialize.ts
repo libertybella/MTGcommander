@@ -2457,6 +2457,24 @@ function parsePrompts(value: unknown, playerIds: Set<string>): PendingPrompt[] {
         sourceId: expectString(entry.sourceId, `prompts[${index}].sourceId`),
       };
     }
+    if (kind === "tempting_offer") {
+      return {
+        kind,
+        playerId,
+        controllerId: expectString(entry.controllerId, `prompts[${index}].controllerId`),
+        remaining: expectStringArray(entry.remaining, `prompts[${index}].remaining`),
+        accepted: expectNumber(entry.accepted, `prompts[${index}].accepted`),
+        action: parseCardEffects(entry.action, `prompts[${index}].action`),
+        ...(entry.resumeEffects === undefined
+          ? {}
+          : {
+              resumeEffects: parseGameEffects(
+                entry.resumeEffects,
+                `prompts[${index}].resumeEffects`,
+              ),
+            }),
+      };
+    }
     if (kind === "divide_piles") {
       return {
         kind,
@@ -4573,6 +4591,12 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
         kind,
         playerId: parsePlayerSelector(value.playerId, `${label}.playerId`),
         ...(value.onSelf === true ? { onSelf: true } : {}),
+      };
+    case "tempting_offer":
+      return {
+        kind,
+        playerId: parsePlayerSelector(value.playerId, `${label}.playerId`),
+        action: parseCardEffects(value.action, `${label}.action`),
       };
     case "divide_into_piles":
       return {
@@ -6782,6 +6806,15 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
       amount: expectNumber(value.amount, `${label}.amount`),
     };
   }
+  if (kind === "tempting_offer") {
+    return {
+      kind,
+      playerId: expectString(value.playerId, `${label}.playerId`),
+      // Still card effects, not game effects: the whole point is that they
+      // are rebound to whoever takes the offer.
+      action: parseCardEffects(value.action, `${label}.action`),
+    };
+  }
   if (kind === "divide_into_piles") {
     return {
       kind,
@@ -8079,6 +8112,9 @@ export function parseGameAction(json: string): GameAction {
       playerId,
       pay: raw.pay === true,
     };
+  }
+  if (kind === "resolve_tempting_offer") {
+    return { kind, playerId, accept: raw.accept === true };
   }
   if (kind === "resolve_divide_piles") {
     return { kind, playerId, cardIds: expectStringArray(raw.cardIds, "action.cardIds") };
