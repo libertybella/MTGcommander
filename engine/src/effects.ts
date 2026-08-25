@@ -1670,6 +1670,23 @@ export function bindCardEffect(
       }
       return { kind: "drain_opponents", playerId, amount };
     }
+    case "divide_into_piles": {
+      const playerId = bindPlayerSelector(state, effect.playerId, context);
+      const dividerId = bindPlayerSelector(state, effect.dividerId, context);
+      // Both halves or neither: with no opponent to divide, there is no
+      // card here at all rather than a free look at five.
+      if (!playerId || !dividerId || dividerId === playerId) {
+        return null;
+      }
+      return {
+        kind: "divide_into_piles",
+        playerId,
+        dividerId,
+        count: effect.count,
+        taken: effect.taken,
+        left: effect.left,
+      };
+    }
     case "choose_card_name": {
       const playerId = bindPlayerSelector(state, effect.playerId, context);
       if (!playerId) {
@@ -6788,6 +6805,23 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
         });
         break;
       }
+      case "divide_into_piles": {
+        next = cloneGameState(state);
+        const revealer = next.players.find((entry) => entry.id === effect.playerId);
+        const revealed = (revealer?.zones.library ?? []).slice(0, effect.count);
+        if (revealed.length === 0 || !isLiving(next, effect.dividerId)) {
+          break;
+        }
+        next.prompts.push({
+          kind: "divide_piles",
+          playerId: effect.dividerId,
+          cardIds: revealed,
+          chooserId: effect.playerId,
+          taken: effect.taken,
+          left: effect.left,
+        });
+        break;
+      }
       case "choose_card_name":
         next = cloneGameState(state);
         if (isLiving(next, effect.playerId)) {
@@ -6905,7 +6939,8 @@ export function applyEffects(state: GameState, effects: GameEffect[]): GameState
         prompt.kind === "search_library" ||
         prompt.kind === "pay_or_counter" ||
         prompt.kind === "pay_or_effect" ||
-        prompt.kind === "choose_card_name")
+        prompt.kind === "choose_card_name" ||
+        prompt.kind === "divide_piles")
     ) {
       const remaining = effects.slice(index + 1);
       if (remaining.length > 0) {

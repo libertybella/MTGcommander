@@ -10,7 +10,7 @@ import { isLiving, requireLiving } from "./players";
 import { shuffleInPlace } from "./shuffle";
 import { hasAnyLegalTargetSet, validateChosenTargets } from "./targeting";
 import { dispatchEventsInPlace, processTriggerGroupsInPlace, queueDefinitionTriggerInPlace } from "./triggers";
-import { enterOwnerZoneInPlace, moveCard } from "./zones";
+import { enterOwnerZoneInPlace, moveCard, moveCardInPlace } from "./zones";
 import type {
   BoundChooseCardSource,
   CardEffect,
@@ -339,6 +339,89 @@ export function applyResolveCreatureType(
         card.counters[perType] = (card.counters[perType] ?? 0) + count;
       }
     }
+  }
+  return next;
+}
+
+/**
+ * The divider's answer: which of the revealed cards form the FIRST pile.
+ * Everything else is the second. Either pile may be empty — "separates
+ * them into two piles" permits it, and an empty pile is the whole bluff on
+ * a Fact or Fiction that revealed one card worth having.
+ *
+ * This prompt belongs to an OPPONENT of the ability's controller, and the
+ * one it queues belongs back to the controller. That handoff is the card.
+ */
+export function applyResolveDividePiles(
+  state: GameState,
+  playerId: PlayerId,
+  cardIds: CardInstanceId[],
+): GameState {
+  const prompt = currentPrompt(state);
+  if (!prompt || prompt.kind !== "divide_piles") {
+    throw new Error("No pile division pending");
+  }
+  requireLiving(state, playerId);
+  if (prompt.playerId !== playerId) {
+    throw new Error("It is not that player's choice");
+  }
+  const revealed = new Set(prompt.cardIds);
+  const first: CardInstanceId[] = [];
+  const seen = new Set<CardInstanceId>();
+  for (const cardId of cardIds) {
+    if (!revealed.has(cardId)) {
+      throw new Error("That card was not revealed");
+    }
+    if (seen.has(cardId)) {
+      throw new Error("That card is already in a pile");
+    }
+    seen.add(cardId);
+    first.push(cardId);
+  }
+  const second = prompt.cardIds.filter((cardId) => !seen.has(cardId));
+  const next = cloneGameState(state);
+  next.prompts.shift();
+  next.prompts.unshift({
+    kind: "choose_pile",
+    playerId: prompt.chooserId,
+    first,
+    second,
+    taken: prompt.taken,
+    left: prompt.left,
+    ...(prompt.resumeEffects ? { resumeEffects: prompt.resumeEffects } : {}),
+  });
+  return next;
+}
+
+/** The controller's answer: take the first pile, or the second. */
+export function applyResolveChoosePile(
+  state: GameState,
+  playerId: PlayerId,
+  takeFirst: boolean,
+): GameState {
+  const prompt = currentPrompt(state);
+  if (!prompt || prompt.kind !== "choose_pile") {
+    throw new Error("No pile choice pending");
+  }
+  requireLiving(state, playerId);
+  if (prompt.playerId !== playerId) {
+    throw new Error("It is not that player's choice");
+  }
+  let next = cloneGameState(state);
+  next.prompts.shift();
+  const taken = takeFirst ? prompt.first : prompt.second;
+  const left = takeFirst ? prompt.second : prompt.first;
+  // The taken pile first, so a card in both lists could never be moved
+  // twice — the divider cannot put one there, and this makes it not matter.
+  for (const cardId of taken) {
+    moveCardInPlace(next, cardId, prompt.taken);
+  }
+  for (const cardId of left) {
+    moveCardInPlace(next, cardId, prompt.left);
+  }
+  const resume = prompt.resumeEffects;
+  if (resume && resume.length > 0) {
+    next = applyEffects(next, resume);
   }
   return next;
 }

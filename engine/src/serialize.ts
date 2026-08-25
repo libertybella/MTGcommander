@@ -2441,6 +2441,42 @@ function parsePrompts(value: unknown, playerIds: Set<string>): PendingPrompt[] {
         sourceId: expectString(entry.sourceId, `prompts[${index}].sourceId`),
       };
     }
+    if (kind === "divide_piles") {
+      return {
+        kind,
+        playerId,
+        cardIds: expectStringArray(entry.cardIds, `prompts[${index}].cardIds`),
+        chooserId: expectString(entry.chooserId, `prompts[${index}].chooserId`),
+        taken: parsePileZone(entry.taken, `prompts[${index}].taken`),
+        left: parsePileZone(entry.left, `prompts[${index}].left`),
+        ...(entry.resumeEffects === undefined
+          ? {}
+          : {
+              resumeEffects: parseGameEffects(
+                entry.resumeEffects,
+                `prompts[${index}].resumeEffects`,
+              ),
+            }),
+      };
+    }
+    if (kind === "choose_pile") {
+      return {
+        kind,
+        playerId,
+        first: expectStringArray(entry.first, `prompts[${index}].first`),
+        second: expectStringArray(entry.second, `prompts[${index}].second`),
+        taken: parsePileZone(entry.taken, `prompts[${index}].taken`),
+        left: parsePileZone(entry.left, `prompts[${index}].left`),
+        ...(entry.resumeEffects === undefined
+          ? {}
+          : {
+              resumeEffects: parseGameEffects(
+                entry.resumeEffects,
+                `prompts[${index}].resumeEffects`,
+              ),
+            }),
+      };
+    }
     if (kind === "choose_card_name") {
       return {
         kind,
@@ -2836,6 +2872,16 @@ const DIG_REST_ZONES = new Set<string>([
   "graveyard",
   "exile",
 ]);
+
+const PILE_ZONES = new Set<string>(["hand", "graveyard"]);
+
+function parsePileZone(value: unknown, label: string): "hand" | "graveyard" {
+  const zone = expectString(value, label);
+  if (!PILE_ZONES.has(zone)) {
+    throw new Error(`Invalid ${label}`);
+  }
+  return zone as "hand" | "graveyard";
+}
 
 function parseSearchFilter(value: unknown, label: string): SearchFilter {
   if (!isRecord(value)) {
@@ -4504,6 +4550,15 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
         kind,
         playerId: parsePlayerSelector(value.playerId, `${label}.playerId`),
         ...(value.onSelf === true ? { onSelf: true } : {}),
+      };
+    case "divide_into_piles":
+      return {
+        kind,
+        playerId: parsePlayerSelector(value.playerId, `${label}.playerId`),
+        dividerId: parsePlayerSelector(value.dividerId, `${label}.dividerId`),
+        count: expectNumber(value.count, `${label}.count`),
+        taken: parsePileZone(value.taken, `${label}.taken`),
+        left: parsePileZone(value.left, `${label}.left`),
       };
     case "dig_until": {
       const digFound = expectString(value.found, `${label}.found`);
@@ -6703,6 +6758,16 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
       amount: expectNumber(value.amount, `${label}.amount`),
     };
   }
+  if (kind === "divide_into_piles") {
+    return {
+      kind,
+      playerId: expectString(value.playerId, `${label}.playerId`),
+      dividerId: expectString(value.dividerId, `${label}.dividerId`),
+      count: expectNumber(value.count, `${label}.count`),
+      taken: parsePileZone(value.taken, `${label}.taken`),
+      left: parsePileZone(value.left, `${label}.left`),
+    };
+  }
   if (kind === "choose_card_name") {
     return {
       kind,
@@ -7990,6 +8055,12 @@ export function parseGameAction(json: string): GameAction {
       playerId,
       pay: raw.pay === true,
     };
+  }
+  if (kind === "resolve_divide_piles") {
+    return { kind, playerId, cardIds: expectStringArray(raw.cardIds, "action.cardIds") };
+  }
+  if (kind === "resolve_choose_pile") {
+    return { kind, playerId, takeFirst: raw.takeFirst === true };
   }
   if (kind === "resolve_card_name") {
     return { kind, playerId, cardName: expectString(raw.cardName, "action.cardName") };

@@ -457,6 +457,28 @@ export class GameHost {
           });
           continue;
         }
+        if (prompt.kind === "divide_piles") {
+          // A documented auto-take for an absent divider: everything in the
+          // first pile, nothing in the second. Splitting it "fairly" would
+          // be the engine playing the card, and this at least is a legal
+          // division a real player sometimes makes.
+          this.apply({
+            kind: "resolve_divide_piles",
+            playerId: prompt.playerId,
+            cardIds: [...prompt.cardIds],
+          });
+          continue;
+        }
+        if (prompt.kind === "choose_pile") {
+          // The bigger pile, ties to the first. An absent chooser taking
+          // the empty one would throw the card away.
+          this.apply({
+            kind: "resolve_choose_pile",
+            playerId: prompt.playerId,
+            takeFirst: prompt.first.length >= prompt.second.length,
+          });
+          continue;
+        }
         if (prompt.kind === "choose_card_name") {
           // A documented auto-take for an unseated player: name the top card
           // of their own library. Any name is legal, and naming one they do

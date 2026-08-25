@@ -1896,6 +1896,22 @@ export type GameEffect =
    * names would delete the line the card is played for.
    */
   | { kind: "choose_card_name"; playerId: PlayerId; sourceId?: CardInstanceId }
+  /**
+   * Fact or Fiction. Two decisions belonging to two DIFFERENT players: an
+   * opponent divides the revealed cards into two piles, and the controller
+   * then takes one of them. The whole card is the tension between those
+   * two, so neither may be auto-taken by the other.
+   */
+  | {
+      kind: "divide_into_piles";
+      playerId: PlayerId;
+      dividerId: PlayerId;
+      count: number;
+      /** Where the pile the controller takes goes. */
+      taken: "hand" | "graveyard";
+      /** Where the pile they leave goes. */
+      left: "hand" | "graveyard";
+    }
   /** Necropotence: exile the top card; it comes to hand at the next end
    * step (the face-down detail and "your" end step are documented
    * approximations). */
@@ -3407,6 +3423,14 @@ export type CardEffect =
   /** Mystic Forge: exile the top card(s) of the player's library. */
   | { kind: "exile_top"; playerId: PlayerSelector; count: number }
   | { kind: "choose_card_name"; playerId: PlayerSelector; onSelf?: boolean }
+  | {
+      kind: "divide_into_piles";
+      playerId: PlayerSelector;
+      dividerId: PlayerSelector;
+      count: number;
+      taken: "hand" | "graveyard";
+      left: "hand" | "graveyard";
+    }
   /** Necropotence: exile the top card; to hand at the next end step. */
   | { kind: "exile_top_to_hand"; playerId: PlayerSelector }
   /** Living Death: everyone swaps graveyard creatures with board creatures. */
@@ -4573,6 +4597,30 @@ export type PendingPrompt =
       playerId: PlayerId;
       sourceId: CardInstanceId;
     }
+  /**
+   * The divider's half. `cardIds` is everything revealed; the answer says
+   * which of them form the first pile, and the rest are the second.
+   */
+  | {
+      kind: "divide_piles";
+      playerId: PlayerId;
+      cardIds: CardInstanceId[];
+      /** The controller, who picks a pile once these are drawn. */
+      chooserId: PlayerId;
+      taken: "hand" | "graveyard";
+      left: "hand" | "graveyard";
+      resumeEffects?: GameEffect[];
+    }
+  /** The controller's half: take the first pile or the second. */
+  | {
+      kind: "choose_pile";
+      playerId: PlayerId;
+      first: CardInstanceId[];
+      second: CardInstanceId[];
+      taken: "hand" | "graveyard";
+      left: "hand" | "graveyard";
+      resumeEffects?: GameEffect[];
+    }
   | {
       kind: "choose_card_name";
       playerId: PlayerId;
@@ -5577,6 +5625,8 @@ export type GameAction =
   | { kind: "choose_discard_land_or_graveyard"; playerId: PlayerId; discard: boolean }
   | { kind: "resolve_creature_type"; playerId: PlayerId; creatureType: string }
   | { kind: "resolve_card_name"; playerId: PlayerId; cardName: string }
+  | { kind: "resolve_divide_piles"; playerId: PlayerId; cardIds: CardInstanceId[] }
+  | { kind: "resolve_choose_pile"; playerId: PlayerId; takeFirst: boolean }
   | { kind: "resolve_color"; playerId: PlayerId; color: Color }
   | { kind: "resolve_scry"; playerId: PlayerId; bottomIds: CardInstanceId[] }
   | { kind: "resolve_surveil"; playerId: PlayerId; graveyardIds: CardInstanceId[] }

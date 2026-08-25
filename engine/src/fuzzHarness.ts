@@ -159,6 +159,14 @@ function nextAction(state: GameState, rng: () => number): GameAction | null {
           playerId,
           discard: rng() < 0.5,
         };
+      case "divide_piles": {
+        // Split roughly in half at random, which walks both an even split
+        // and the lopsided ones including an empty pile.
+        const half = prompt.cardIds.filter(() => rng() < 0.5);
+        return { kind: "resolve_divide_piles", playerId, cardIds: half };
+      }
+      case "choose_pile":
+        return { kind: "resolve_choose_pile", playerId, takeFirst: rng() < 0.5 };
       case "choose_card_name":
         // Two of these are names the fuzzer's decks really carry and two
         // are not, so both branches of Demonic Consultation get walked.

@@ -5487,6 +5487,28 @@ function compileSimpleClauseInner(sentence: string): SimpleClause | null {
   // Curse of the Swine's first half compiles with its rider (see the pair
   // handler in the main loop); a bare variable exile also lands here.
 
+  const piles = sentence.match(
+    /^divide the top (\d+) into two piles, taking one into your (hand|graveyard) and leaving the other into your (hand|graveyard)$/i,
+  );
+  if (piles?.[1] && piles[2] && piles[3]) {
+    return {
+      targetRequirements: [],
+      effects: [
+        {
+          kind: "divide_into_piles",
+          playerId: "controller",
+          // "An opponent" — the controller picks which one. Documented
+          // approximation: the next opponent in turn order divides, which
+          // is exact in a two-player game and a fixed choice in a pod.
+          dividerId: "next_opponent",
+          count: Number(piles[1]),
+          taken: piles[2].toLowerCase() as "hand" | "graveyard",
+          left: piles[3].toLowerCase() as "hand" | "graveyard",
+        },
+      ],
+    };
+  }
+
   if (/^Choose a card name$/i.test(sentence)) {
     return {
       targetRequirements: [],
@@ -10158,6 +10180,37 @@ function compileDigUntilClause(sentence: string): CardEffect[] | null {
  * an unreadable placement is a note rather than a card that digs and then
  * silently keeps everything.
  */
+/**
+ * Fact or Fiction prints three sentences for one decision: the reveal, the
+ * division, and the taking. Fused, because the middle one names cards the
+ * first produced and the third names piles the second made — read apart,
+ * each is an effect with no referent.
+ */
+function fusePilesInPlace(sentences: string[], lineStart: boolean[]): void {
+  for (let index = 0; index + 2 < sentences.length; index += 1) {
+    if (lineStart[index + 1] || lineStart[index + 2]) {
+      continue;
+    }
+    const head = sentences[index]?.match(
+      /^(.*?)[Rr]eveal the top (\w+) cards? of your library$/,
+    );
+    const divide = /^An opponent separates (?:those cards|them) into two piles$/i.test(
+      sentences[index + 1] ?? "",
+    );
+    const take = sentences[index + 2]?.match(
+      /^Put one pile into your (hand|graveyard) and the other into your (hand|graveyard)$/i,
+    );
+    const count = head?.[2] ? parseCount(head[2]) : null;
+    if (head?.[1] === undefined || !count || !divide || !take?.[1] || !take[2]) {
+      continue;
+    }
+    sentences[index] =
+      `${head[1]}divide the top ${count} into two piles, taking one into your ${take[1].toLowerCase()} and leaving the other into your ${take[2].toLowerCase()}`;
+    sentences.splice(index + 1, 2);
+    lineStart.splice(index + 1, 2);
+  }
+}
+
 function fuseDigUntilInPlace(sentences: string[], lineStart: boolean[]): void {
   for (let index = 0; index + 1 < sentences.length; index += 1) {
     if (lineStart[index + 1]) {
@@ -14667,6 +14720,7 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
   fuseInAdditionTypeInPlace(sentences, lineStart);
   fuseChooseGraveyardCastInPlace(sentences, lineStart);
   fusePutLandRiderInPlace(sentences, lineStart);
+  fusePilesInPlace(sentences, lineStart);
   fuseDigUntilInPlace(sentences, lineStart);
   fuseMayPayInPlace(sentences, lineStart);
   fusePactInPlace(sentences, lineStart);

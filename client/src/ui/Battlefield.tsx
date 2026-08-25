@@ -969,6 +969,9 @@ export function Battlefield(props: Props) {
   // clicking, then confirmed, because an empty answer is legal and there is
   // no count that would tell us when the player is finished.
   const [handPicks, setHandPicks] = useState<string[]>([]);
+  // The first pile, built by clicking the revealed cards. Nothing is sent
+  // until it is confirmed, so a misclick is undoable.
+  const [pilePicks, setPilePicks] = useState<string[]>([]);
   const [logOpen, setLogOpen] = useState(false);
   const [hostOpen, setHostOpen] = useState(false);
   const [playerOpen, setPlayerOpen] = useState(false);
@@ -2029,6 +2032,14 @@ export function Battlefield(props: Props) {
               ? actorId === prompt.playerId
                 ? `Pay ${prompt.amount} life or have ${definition(state, prompt.sourceId)?.name ?? "this land"} enter tapped.`
                 : `Waiting for ${chooser?.displayName ?? "a player"} to pay life or enter tapped.`
+              : prompt.kind === "divide_piles"
+              ? actorId === prompt.playerId
+                ? "Separate the revealed cards into two piles."
+                : `Waiting for ${chooser?.displayName ?? "a player"} to divide the piles.`
+              : prompt.kind === "choose_pile"
+              ? actorId === prompt.playerId
+                ? "Take one of the two piles."
+                : `Waiting for ${chooser?.displayName ?? "a player"} to take a pile.`
               : prompt.kind === "choose_card_name"
               ? actorId === prompt.playerId
                 ? "Name a card. Any name is legal, including one you do not own."
@@ -2633,6 +2644,63 @@ export function Battlefield(props: Props) {
                   {prompt.kind === "pay_or_counter" ? "Decline (countered)" : "Decline"}
                 </button>
               </>
+            ) : null}
+            {actorId === prompt.playerId && prompt.kind === "divide_piles" ? (
+              <div className="look-row" data-testid="pile-divider">
+                {prompt.cardIds.map((cardId) => (
+                  <button
+                    key={cardId}
+                    type="button"
+                    className={pilePicks.includes(cardId) ? "selected" : undefined}
+                    onClick={() =>
+                      setPilePicks((picks) =>
+                        picks.includes(cardId)
+                          ? picks.filter((id) => id !== cardId)
+                          : [...picks, cardId],
+                      )
+                    }
+                  >
+                    {definition(state, cardId)?.name ?? "a card"}
+                    {pilePicks.includes(cardId) ? " ●" : ""}
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  className="pass-button"
+                  data-testid="confirm-piles"
+                  onClick={() => {
+                    send({
+                      kind: "resolve_divide_piles",
+                      playerId: actorId,
+                      cardIds: pilePicks,
+                    });
+                    setPilePicks([]);
+                  }}
+                >
+                  {`Confirm — ${pilePicks.length} in the first pile`}
+                </button>
+              </div>
+            ) : null}
+            {actorId === prompt.playerId && prompt.kind === "choose_pile" ? (
+              <div className="look-row" data-testid="pile-picker">
+                {([true, false] as const).map((takeFirst) => {
+                  const pile = takeFirst ? prompt.first : prompt.second;
+                  const names = pile
+                    .map((cardId) => definition(state, cardId)?.name ?? "a card")
+                    .join(", ");
+                  return (
+                    <button
+                      key={String(takeFirst)}
+                      type="button"
+                      onClick={() =>
+                        send({ kind: "resolve_choose_pile", playerId: actorId, takeFirst })
+                      }
+                    >
+                      {pile.length === 0 ? "Empty pile" : names}
+                    </button>
+                  );
+                })}
+              </div>
             ) : null}
             {actorId === prompt.playerId && prompt.kind === "choose_card_name" ? (
               <div className="look-row" data-testid="card-name-picker">

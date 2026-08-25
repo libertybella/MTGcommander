@@ -35,7 +35,7 @@ import { abilityLifeCost, colorsOutsideCommanderIdentity } from "./commanderIden
 import { addRestrictedMana, emptyManaPools, manaRiderFires, parseManaCost, payManaCost, restrictionAdmits, type ManaPurpose } from "./mana";
 import { applyStateBasedActionsInPlace } from "./status";
 import { legalActions, potentialMana, sacrificeColorMatches, sacrificeScopeMatches } from "./legalActions";
-import { applyResolveCardName, applyResolveChooseCard, applyResolveChooseFromHand, applyResolveCreatureType, applyResolveDiscardLandOrGraveyard, applyResolveEnterCopy, applyResolveLookAssign, applyResolvePay, applyResolveSearch, applyResolveTriggerMode, legalEnterCopyIds, legalSearchIds, searchMatches } from "./prompt";
+import { applyResolveCardName, applyResolveChoosePile, applyResolveDividePiles, applyResolveChooseCard, applyResolveChooseFromHand, applyResolveCreatureType, applyResolveDiscardLandOrGraveyard, applyResolveEnterCopy, applyResolveLookAssign, applyResolvePay, applyResolveSearch, applyResolveTriggerMode, legalEnterCopyIds, legalSearchIds, searchMatches } from "./prompt";
 import { parseGameState, serializeGameState } from "./serialize";
 import { fillLibraries } from "./testSupport";
 import { applyKeepHand, beginMulligan, isMulliganOpen } from "./mulligan";
@@ -61655,5 +61655,247 @@ describe("wave 382: naming a card, and Demonic Consultation", () => {
       (cardId) => finished.definitions[finished.cards[cardId]!.definitionId]?.name === "Filler 7",
     );
     expect(wanted).toBeDefined();
+  });
+});
+
+describe("wave 383: two piles, divided by one player and chosen by another", () => {
+  const compile = (name: string, typeLine: string, oracleText: string, manaCost = "") =>
+    compileOracleCard({
+      oracleId: name.toLowerCase().replace(/[^a-z]+/g, "-"),
+      name,
+      manaCost,
+      typeLine,
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  const put = (game: GameState, ownerId: string, definition: CardDefinition) => {
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({ definitionId: definition.id, ownerId, zone: "library" });
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === ownerId)!.zones.library.push(card.id);
+    return card.id;
+  };
+
+  const factOrFictionText =
+    "Reveal the top five cards of your library. An opponent separates those cards into two piles. Put one pile into your hand and the other into your graveyard.";
+
+  it("compiles Fact or Fiction's three sentences as one decision", () => {
+    const compiled = compile("Fact or Fiction", "Instant", factOrFictionText, "{3}{U}");
+    expect(compiled.notes).toEqual([]);
+    // One effect, not three: the division names cards the reveal produced
+    // and the taking names piles the division made.
+    expect(compiled.definition.effects).toEqual([
+      {
+        kind: "divide_into_piles",
+        playerId: "controller",
+        dividerId: "next_opponent",
+        count: 5,
+        taken: "hand",
+        left: "graveyard",
+      },
+    ]);
+  });
+
+  // ---- The handoff -------------------------------------------------------
+
+  const spell = (name: string) =>
+    createCardDefinition({ name, typeLine: "Instant", manaCost: "{R}" });
+
+  const stack = (game: GameState, playerId: string, names: string[]) =>
+    names.map((name) => put(game, playerId, spell(name)));
+
+  const reveal = (game: GameState, playerId: string, count = 5) =>
+    applyEffects(
+      game,
+      bindCardEffects(
+        game,
+        [
+          {
+            kind: "divide_into_piles",
+            playerId: "controller",
+            dividerId: "next_opponent",
+            count,
+            taken: "hand",
+            left: "graveyard",
+          },
+        ],
+        { controllerId: playerId, sourceId: null, targets: [], targetRequirements: [] },
+      ),
+    );
+
+  it("asks the OPPONENT to divide and the controller to choose", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const ids = stack(game, p1.id, ["A", "B", "C", "D", "E"]);
+    const asked = reveal(game, p1.id);
+    const first = asked.prompts[0];
+    expect(first?.kind).toBe("divide_piles");
+    // The division belongs to an opponent. This is the only prompt in the
+    // engine that hands a decision to someone other than the ability's
+    // controller and then hands the next one back.
+    expect(first?.playerId).toBe(p2.id);
+    const divided = applyResolveDividePiles(asked, p2.id, ids.slice(0, 2));
+    const second = divided.prompts[0];
+    expect(second?.kind).toBe("choose_pile");
+    expect(second?.playerId).toBe(p1.id);
+  });
+
+  it("puts the taken pile in hand and the other in the graveyard", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const ids = stack(game, p1.id, ["A", "B", "C", "D", "E"]);
+    const asked = reveal(game, p1.id);
+    const divided = applyResolveDividePiles(asked, p2.id, [ids[0]!, ids[1]!]);
+    const after = applyResolveChoosePile(divided, p1.id, true);
+    const owner = after.players.find((entry) => entry.id === p1.id)!;
+    expect(owner.zones.hand.sort()).toEqual([ids[0]!, ids[1]!].sort());
+    expect(owner.zones.graveyard.sort()).toEqual([ids[2]!, ids[3]!, ids[4]!].sort());
+    expect(owner.zones.library).toHaveLength(0);
+  });
+
+  it("takes the other pile just as happily", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const ids = stack(game, p1.id, ["A", "B", "C", "D", "E"]);
+    const asked = reveal(game, p1.id);
+    const divided = applyResolveDividePiles(asked, p2.id, [ids[0]!, ids[1]!]);
+    const after = applyResolveChoosePile(divided, p1.id, false);
+    const owner = after.players.find((entry) => entry.id === p1.id)!;
+    expect(owner.zones.hand.sort()).toEqual([ids[2]!, ids[3]!, ids[4]!].sort());
+    expect(owner.zones.graveyard.sort()).toEqual([ids[0]!, ids[1]!].sort());
+  });
+
+  it("allows an empty pile, which is the whole bluff", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const ids = stack(game, p1.id, ["A", "B", "C", "D", "E"]);
+    const asked = reveal(game, p1.id);
+    // "Separates them into two piles" permits one of them to be empty, and
+    // a divider who sees one card worth having says so this way.
+    const divided = applyResolveDividePiles(asked, p2.id, []);
+    const after = applyResolveChoosePile(divided, p1.id, false);
+    const owner = after.players.find((entry) => entry.id === p1.id)!;
+    expect(owner.zones.hand.sort()).toEqual([...ids].sort());
+    expect(owner.zones.graveyard).toHaveLength(0);
+  });
+
+  it("refuses a division naming a card that was not revealed", () => {
+    const { game, p1, p2 } = twoPlayers();
+    stack(game, p1.id, ["A", "B", "C", "D", "E"]);
+    const strangerId = put(game, p2.id, spell("Not Revealed"));
+    const asked = reveal(game, p1.id);
+    expect(() => applyResolveDividePiles(asked, p2.id, [strangerId])).toThrow();
+  });
+
+  it("refuses the same card in a pile twice", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const ids = stack(game, p1.id, ["A", "B", "C", "D", "E"]);
+    const asked = reveal(game, p1.id);
+    expect(() => applyResolveDividePiles(asked, p2.id, [ids[0]!, ids[0]!])).toThrow();
+  });
+
+  it("refuses each half from the wrong player", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const ids = stack(game, p1.id, ["A", "B", "C", "D", "E"]);
+    const asked = reveal(game, p1.id);
+    // The controller may not divide their own piles...
+    expect(() => applyResolveDividePiles(asked, p1.id, ids.slice(0, 2))).toThrow();
+    const divided = applyResolveDividePiles(asked, p2.id, ids.slice(0, 2));
+    // ...and the divider may not then choose which one to hand over.
+    expect(() => applyResolveChoosePile(divided, p2.id, true)).toThrow();
+  });
+
+  it("reveals only what a short library holds", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const ids = stack(game, p1.id, ["A", "B"]);
+    const asked = reveal(game, p1.id);
+    const prompt = asked.prompts[0];
+    if (prompt?.kind !== "divide_piles") {
+      throw new Error("expected a division");
+    }
+    expect(prompt.cardIds).toEqual(ids);
+    void p2;
+  });
+
+  it("does nothing at all with an empty library", () => {
+    const { game, p1 } = twoPlayers();
+    const after = reveal(game, p1.id);
+    expect(after.prompts).toHaveLength(0);
+  });
+
+  it("resumes the rest of the card after both answers", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const ids = stack(game, p1.id, ["A", "B", "C"]);
+    const before = game.players.find((entry) => entry.id === p1.id)!.life;
+    const asked = applyEffects(
+      game,
+      bindCardEffects(
+        game,
+        [
+          {
+            kind: "divide_into_piles",
+            playerId: "controller",
+            dividerId: "next_opponent",
+            count: 3,
+            taken: "hand",
+            left: "graveyard",
+          },
+          { kind: "gain_life", playerId: "controller", amount: 2 },
+        ],
+        { controllerId: p1.id, sourceId: null, targets: [], targetRequirements: [] },
+      ),
+    );
+    // The life gain waits: the batch parked it on the first prompt, and the
+    // second inherits it, so it runs once both answers are in.
+    expect(asked.players.find((entry) => entry.id === p1.id)!.life).toBe(before);
+    const divided = applyResolveDividePiles(asked, p2.id, [ids[0]!]);
+    expect(divided.players.find((entry) => entry.id === p1.id)!.life).toBe(before);
+    const after = applyResolveChoosePile(divided, p1.id, true);
+    expect(after.players.find((entry) => entry.id === p1.id)!.life).toBe(before + 2);
+  });
+
+  it("round trips both prompts and the effect", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const ids = stack(game, p1.id, ["A", "B", "C"]);
+    const definition = createCardDefinition({
+      name: "Wave 383 Fiction",
+      typeLine: "Instant",
+      manaCost: "{3}{U}",
+      effects: [
+        {
+          kind: "divide_into_piles",
+          playerId: "controller",
+          dividerId: "next_opponent",
+          count: 5,
+          taken: "hand",
+          left: "graveyard",
+        },
+      ],
+    });
+    game.definitions[definition.id] = definition;
+    const asked = reveal(game, p1.id, 3);
+    const dividedRound = parseGameState(serializeGameState(asked));
+    const first = dividedRound.prompts[0];
+    expect(first?.kind).toBe("divide_piles");
+    if (first?.kind !== "divide_piles") {
+      throw new Error("expected a division");
+    }
+    // The chooser has to survive the wire, or the second prompt goes to
+    // whoever happens to be asked and the card hands itself over.
+    expect(first.chooserId).toBe(p1.id);
+    const chosenRound = parseGameState(
+      serializeGameState(applyResolveDividePiles(dividedRound, p2.id, [ids[0]!])),
+    );
+    const second = chosenRound.prompts[0];
+    if (second?.kind !== "choose_pile") {
+      throw new Error("expected a pile choice");
+    }
+    expect(second.first).toEqual([ids[0]!]);
+    expect(second.second.sort()).toEqual([ids[1]!, ids[2]!].sort());
+    expect(round(definition)).toEqual(definition.effects);
+    function round(entry: CardDefinition) {
+      const state = parseGameState(serializeGameState(game));
+      return state.definitions[entry.id]?.effects;
+    }
   });
 });
