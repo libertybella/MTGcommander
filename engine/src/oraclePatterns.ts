@@ -5567,6 +5567,17 @@ function compileSimpleClauseInner(sentence: string): SimpleClause | null {
     };
   }
 
+  if (/^cast a free copy of the exiled card$/i.test(sentence)) {
+    return {
+      targetRequirements: [],
+      // "The exiled card" is whatever this permanent imprinted; the copy
+      // takes its own targets when it stacks.
+      effects: [
+        { kind: "cast_free_copy", cardId: "imprinted", playerId: "controller" },
+      ],
+    };
+  }
+
   if (/^conduit a nonland permanent card from your graveyard$/i.test(sentence)) {
     return {
       targetRequirements: [
@@ -10443,6 +10454,29 @@ function compileDigUntilClause(sentence: string): CardEffect[] | null {
  * gated offer, and the price of taking it. Fused, because the offer names
  * the card the first chose and the price names the offer.
  */
+/**
+ * Isochron Scepter: "You may copy the exiled card." / "If you do, you may
+ * cast the copy without paying its mana cost." Fused, because the second
+ * names the copy the first made and neither is an effect on its own.
+ */
+function fuseFreeCopyInPlace(sentences: string[], lineStart: boolean[]): void {
+  for (let index = 0; index + 1 < sentences.length; index += 1) {
+    if (lineStart[index + 1]) {
+      continue;
+    }
+    const head = sentences[index]?.match(/^(.*?)You may copy the exiled card$/i);
+    const rider = /^If you do, you may cast the copy without paying its mana cost$/i.test(
+      sentences[index + 1] ?? "",
+    );
+    if (head?.[1] === undefined || !rider) {
+      continue;
+    }
+    sentences[index] = `${head[1]}cast a free copy of the exiled card`;
+    sentences.splice(index + 1, 1);
+    lineStart.splice(index + 1, 1);
+  }
+}
+
 function fuseConduitInPlace(sentences: string[], lineStart: boolean[]): void {
   for (let index = 0; index + 2 < sentences.length; index += 1) {
     const head = sentences[index]?.match(
@@ -15129,6 +15163,7 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
   fuseInAdditionTypeInPlace(sentences, lineStart);
   fuseChooseGraveyardCastInPlace(sentences, lineStart);
   fusePutLandRiderInPlace(sentences, lineStart);
+  fuseFreeCopyInPlace(sentences, lineStart);
   fuseConduitInPlace(sentences, lineStart);
   fuseCommaHeadInPlace(sentences);
   fuseExileUntilTakenInPlace(sentences, lineStart);
@@ -15774,6 +15809,39 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
     // nonland card from your hand." The ability word is flavour (CR
     // 207.2c); the exile is what matters, and it must be recorded ON the
     // source, since the mana ability reads the exiled card's colours.
+    /**
+     * Isochron Scepter: the same ability word, an instant with a printed
+     * mana cap. Its activated half copies whatever ends up here, so the
+     * filter has to be right — an imprinted Cultivate would be a card
+     * nobody printed.
+     */
+    const imprintCapped = sentence.match(
+      /^Imprint\s*[\u2014-]\s*When ~ enters, you may exile an instant card with mana value (\d+) or less from your hand$/i,
+    );
+    if (imprintCapped?.[1]) {
+      result.triggers.push({
+        event: "enter_battlefield",
+        effects: [
+          {
+            kind: "choose_card",
+            chooserId: "controller",
+            optional: true,
+            sources: [
+              {
+                playerId: "controller",
+                zone: "hand",
+                filter: "instant",
+                maxManaValue: Number(imprintCapped[1]),
+              },
+            ],
+            thenEffects: [{ kind: "imprint", cardId: "chosen_card" }],
+          },
+        ],
+        targetRequirements: [],
+      });
+      continue;
+    }
+
     const imprintEtb = sentence.match(
       /^Imprint\s*[\u2014-]\s*When ~ enters, you may exile an? (nonartifact, nonland|noncreature, nonland) card from your hand$/i,
     );

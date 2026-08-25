@@ -1525,6 +1525,8 @@ export type CardFilter =
   | "permanent"
   /** Liliana's -9 asks for one of EACH permanent type, so all six exist. */
   | "enchantment"
+  /** Isochron Scepter: "an instant card … from your hand". */
+  | "instant"
   | "battle";
 
 /** What a Clone-style permanent may enter as a copy of. */
@@ -1564,6 +1566,9 @@ export type ChooseCardSource = {
   maxManaValueOfSubject?: boolean;
   /** Sylvan Library: only cards drawn THIS turn are eligible. */
   drawnThisTurn?: boolean;
+  /** Isochron Scepter: "…with mana value 2 or less". A printed cap, unlike
+   * `maxManaValueOfSubject` which is read off a trigger's subject. */
+  maxManaValue?: number;
   /**
    * "…from among them": only the cards the most recent mill put here. Kept
    * as a FLAG rather than resolved to ids at bind time, because effects
@@ -2045,6 +2050,7 @@ export type GameEffect =
       playerId: PlayerId;
       locksCastingAfter?: boolean;
     }
+  | { kind: "cast_free_copy"; cardId: CardInstanceId; playerId: PlayerId }
   | { kind: "deny_extra_turns"; playerId: PlayerId }
   | {
       kind: "divide_into_piles";
@@ -3628,6 +3634,12 @@ export type CardEffect =
       playerId: PlayerSelector;
       locksCastingAfter?: boolean;
     }
+  /**
+   * Isochron Scepter: copy a CARD that is not on the stack and cast the
+   * copy for free. The card itself never moves — it stays imprinted, which
+   * is the whole reason the Scepter is played.
+   */
+  | { kind: "cast_free_copy"; cardId: CardIdSelector; playerId: PlayerSelector }
   /** Trouble in Pairs, Stranglehold: that player's extra turns are skipped. */
   | { kind: "deny_extra_turns"; playerId: PlayerSelector }
   /**
@@ -4825,7 +4837,11 @@ export type PendingPrompt =
       sourceId: CardInstanceId;
       /** trigger: a queued trigger needs targets before it stacks.
        * retarget: Deflecting Swat replaces a stack spell's targets. */
-      origin: "trigger" | "retarget";
+      /** free_copy: Isochron Scepter's copy of an imprinted card needs its
+       * own targets, and the card being copied is not on the stack. */
+      origin: "trigger" | "retarget" | "free_copy";
+      /** free_copy: the card the copy is OF. It stays where it is. */
+      copyOfCardId?: CardInstanceId;
       triggerIndex?: number;
       /** Modal trigger: the chosen mode whose targets these are. */
       modeIndex?: number;

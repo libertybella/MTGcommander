@@ -2936,7 +2936,7 @@ function parsePrompts(value: unknown, playerIds: Set<string>): PendingPrompt[] {
       throw new Error(`Invalid prompts[${index}].kind`);
     }
     const origin = expectString(entry.origin, `prompts[${index}].origin`);
-    if (origin !== "trigger" && origin !== "retarget") {
+    if (origin !== "trigger" && origin !== "retarget" && origin !== "free_copy") {
       throw new Error(`Invalid prompts[${index}].origin`);
     }
     return {
@@ -2953,6 +2953,9 @@ function parsePrompts(value: unknown, playerIds: Set<string>): PendingPrompt[] {
       ...(entry.stackObjectId === undefined
         ? {}
         : { stackObjectId: expectString(entry.stackObjectId, `prompts[${index}].stackObjectId`) }),
+      ...(entry.copyOfCardId === undefined
+        ? {}
+        : { copyOfCardId: expectString(entry.copyOfCardId, `prompts[${index}].copyOfCardId`) }),
       requirements: parseTargetRequirements(entry.requirements, `prompts[${index}].requirements`),
       ...(entry.subjectCardId === undefined
         ? {}
@@ -3211,6 +3214,7 @@ const CARD_FILTERS: Record<CardFilter, true> = {
   permanent: true,
   enchantment: true,
   battle: true,
+  instant: true,
 };
 
 function parseCardFilter(value: unknown, label: string): CardFilter {
@@ -3240,6 +3244,9 @@ function parseChooseCardSources(value: unknown, label: string): ChooseCardSource
       ...(entry.excludeSelf === true ? { excludeSelf: true } : {}),
       ...(entry.drawnThisTurn === true ? { drawnThisTurn: true } : {}),
       ...(entry.milledThisWay === true ? { milledThisWay: true } : {}),
+      ...(entry.maxManaValue === undefined
+        ? {}
+        : { maxManaValue: expectNumber(entry.maxManaValue, "chooseSource.maxManaValue") }),
       ...(entry.hasVoidCounter === true ? { hasVoidCounter: true } : {}),
       ...(Array.isArray(entry.sharesTypes)
         ? { sharesTypes: parseStringList(entry.sharesTypes, `${label}[${index}].sharesTypes`) }
@@ -3284,6 +3291,9 @@ function parseBoundChooseSources(
         : {}),
       ...(entry.drawnThisTurn === true ? { drawnThisTurn: true } : {}),
       ...(entry.milledThisWay === true ? { milledThisWay: true } : {}),
+      ...(entry.maxManaValue === undefined
+        ? {}
+        : { maxManaValue: expectNumber(entry.maxManaValue, "chooseSource.maxManaValue") }),
       ...(entry.hasVoidCounter === true ? { hasVoidCounter: true } : {}),
       ...(Array.isArray(entry.sharesTypes)
         ? { sharesTypes: parseStringList(entry.sharesTypes, `${label}[${index}].sharesTypes`) }
@@ -4746,6 +4756,12 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
       return { kind, playerId: parsePlayerSelector(value.playerId, `${label}.playerId`) };
     case "commander_cast_counters":
       return { kind, cardId: parseCardIdSelector(value.cardId, `${label}.cardId`) };
+    case "cast_free_copy":
+      return {
+        kind,
+        cardId: parseCardIdSelector(value.cardId, `${label}.cardId`),
+        playerId: parsePlayerSelector(value.playerId, `${label}.playerId`),
+      };
     case "grant_cast_this_turn":
       return {
         kind,
@@ -6981,6 +6997,13 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
   if (kind === "commander_cast_counters") {
     return { kind, cardId: expectString(value.cardId, `${label}.cardId`) };
   }
+  if (kind === "cast_free_copy") {
+    return {
+      kind,
+      cardId: expectString(value.cardId, `${label}.cardId`),
+      playerId: expectString(value.playerId, `${label}.playerId`),
+    };
+  }
   if (kind === "grant_cast_this_turn") {
     return {
       kind,
@@ -8044,6 +8067,9 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
             : {}),
           ...(entry.drawnThisTurn === true ? { drawnThisTurn: true } : {}),
       ...(entry.milledThisWay === true ? { milledThisWay: true } : {}),
+      ...(entry.maxManaValue === undefined
+        ? {}
+        : { maxManaValue: expectNumber(entry.maxManaValue, "chooseSource.maxManaValue") }),
           ...(entry.hasVoidCounter === true ? { hasVoidCounter: true } : {}),
           ...(Array.isArray(entry.sharesTypes)
             ? {

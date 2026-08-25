@@ -3,7 +3,7 @@ import { cloneGameState } from "./clone";
 // Deferred call only (decline path) — the effects/prompt import cycle is benign.
 import { cardMatchesSubtype, grantedTriggerSpread, triggersOf } from "./characteristicsEngine";
 import { characteristicsOf, isCreature, isLand as cardIsLand, isPlaneswalker } from "./cardTypes";
-import { applyEffects, bindCardEffects, drawWithoutReplacement, exileUntilTakenStep, grantProtectionUntilEot } from "./effects";
+import { applyEffects, bindCardEffects, drawWithoutReplacement, exileUntilTakenStep, grantProtectionUntilEot, pushFreeCopyOnStack } from "./effects";
 import { payManaCost, tapForMana } from "./mana";
 import { manaAbilitiesFor, manaTapOptionsFor } from "./manaOptions";
 import { isLiving, requireLiving } from "./players";
@@ -61,6 +61,13 @@ export function applyChooseTargets(
 
   if (!hasAnyLegalTargetSet(next, prompt.requirements, playerId)) {
     return next;
+  }
+
+  // Isochron Scepter: the copy takes the targets just chosen and goes
+  // straight onto the stack. The card it copies is untouched.
+  if (prompt.origin === "free_copy" && prompt.copyOfCardId) {
+    validateChosenTargets(next, prompt.requirements, targets, playerId);
+    return pushFreeCopyOnStack(next, prompt.copyOfCardId, playerId, targets);
   }
 
   // Deflecting Swat: replace the stack spell's targets in place.
@@ -883,7 +890,7 @@ function cardMatchesFilter(
       (type) => types.includes(type),
     );
   }
-  if (filter === "enchantment" || filter === "battle") {
+  if (filter === "enchantment" || filter === "battle" || filter === "instant") {
     return types.includes(filter);
   }
   if (filter === "land") {

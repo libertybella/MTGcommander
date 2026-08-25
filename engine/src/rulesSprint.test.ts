@@ -35,7 +35,7 @@ import { abilityLifeCost, colorsOutsideCommanderIdentity } from "./commanderIden
 import { addRestrictedMana, emptyManaPools, manaRiderFires, parseManaCost, payManaCost, restrictionAdmits, type ManaPurpose } from "./mana";
 import { applyStateBasedActionsInPlace } from "./status";
 import { legalActions, potentialMana, sacrificeColorMatches, sacrificeScopeMatches } from "./legalActions";
-import { applyResolveCardName, applyResolveChoosePile, applyResolveDredge, applyResolveExileUntilTaken, applyResolvePunisher, applyResolveDividePiles, applyResolveTapOwnForX, applyResolveTemptingOffer, applyResolveChooseCard, applyResolveChooseFromHand, applyResolveCreatureType, applyResolveDiscardLandOrGraveyard, applyResolveEnterCopy, applyResolveLookAssign, applyResolvePay, applyResolveSearch, applyResolveTriggerMode, legalEnterCopyIds, legalSearchIds, searchMatches } from "./prompt";
+import { applyChooseTargets, applyResolveCardName, applyResolveChoosePile, applyResolveDredge, applyResolveExileUntilTaken, applyResolvePunisher, applyResolveDividePiles, applyResolveTapOwnForX, applyResolveTemptingOffer, applyResolveChooseCard, applyResolveChooseFromHand, applyResolveCreatureType, applyResolveDiscardLandOrGraveyard, applyResolveEnterCopy, applyResolveLookAssign, applyResolvePay, applyResolveSearch, applyResolveTriggerMode, legalEnterCopyIds, legalSearchIds, searchMatches } from "./prompt";
 import { parseGameState, serializeGameState } from "./serialize";
 import { fillLibraries } from "./testSupport";
 import { applyKeepHand, beginMulligan, isMulliganOpen } from "./mulligan";
@@ -65135,5 +65135,208 @@ describe("wave 397: Conduit of Worlds", () => {
       locksCastingAfter: true,
     });
     expect(round.selfCastLockUntilEot).toEqual([p1.id]);
+  });
+});
+
+describe("wave 398: casting a free copy of a card", () => {
+  const compile = (name: string, typeLine: string, oracleText: string, manaCost = "") =>
+    compileOracleCard({
+      oracleId: name.toLowerCase().replace(/[^a-z]+/g, "-"),
+      name,
+      manaCost,
+      typeLine,
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  const put = (
+    game: GameState,
+    ownerId: string,
+    definition: CardDefinition,
+    zone: "battlefield" | "hand" | "exile" = "battlefield",
+  ) => {
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({ definitionId: definition.id, ownerId, zone });
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === ownerId)!.zones[zone].push(card.id);
+    if (zone === "battlefield") {
+      card.summoningSick = false;
+    }
+    return card.id;
+  };
+
+  const scepterText =
+    "Imprint — When Isochron Scepter enters, you may exile an instant card with mana value 2 or less from your hand.\n{2}, {T}: You may copy the exiled card. If you do, you may cast the copy without paying its mana cost.";
+
+  it("compiles both halves of Isochron Scepter", () => {
+    const compiled = compile("Isochron Scepter", "Artifact", scepterText, "{2}");
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.triggers[0]?.effects[0]).toMatchObject({
+      kind: "choose_card",
+      optional: true,
+      sources: [{ zone: "hand", filter: "instant", maxManaValue: 2 }],
+    });
+    expect(compiled.definition.activated[0]?.effects).toEqual([
+      { kind: "cast_free_copy", cardId: "imprinted", playerId: "controller" },
+    ]);
+  });
+
+  // ---- The copy ----------------------------------------------------------
+
+  const bolt = () =>
+    createCardDefinition({
+      name: "Lightning Bolt",
+      typeLine: "Instant",
+      manaCost: "{R}",
+      effects: [
+        {
+          kind: "deal_damage",
+          sourceId: "self",
+          target: { type: "chosen", index: 0 },
+          amount: 3,
+        },
+      ],
+      targetRequirements: [{ kind: "creature" }],
+    });
+
+  const ritual = () =>
+    createCardDefinition({
+      name: "Dark Ritual",
+      typeLine: "Instant",
+      manaCost: "{B}",
+      effects: [{ kind: "add_mana", playerId: "controller", mana: { B: 3 } }],
+    });
+
+  const bear = (name: string) =>
+    createCardDefinition({
+      name,
+      typeLine: "Creature — Bear",
+      manaCost: "{1}{G}",
+      power: 2,
+      toughness: 2,
+    });
+
+  const copyOf = (game: GameState, playerId: string, cardId: string) =>
+    applyEffects(
+      game,
+      bindCardEffects(
+        game,
+        [{ kind: "cast_free_copy", cardId, playerId: "controller" }],
+        { controllerId: playerId, sourceId: null, targets: [], targetRequirements: [] },
+      ),
+    );
+
+  it("puts a copy on the stack without moving the card", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const ritualId = put(game, p1.id, ritual(), "exile");
+    const after = copyOf(game, p1.id, ritualId);
+    expect(after.stack).toHaveLength(1);
+    expect(after.stack[0]?.isCopy).toBe(true);
+    expect(after.stack[0]?.sourceId).toBe(ritualId);
+    // The card never moves. That is the whole reason the Scepter is
+    // played: it copies the same card again next turn.
+    expect(after.cards[ritualId]?.zone).toBe("exile");
+  });
+
+  it("resolves the copy, and the card is still there", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const ritualId = put(game, p1.id, ritual(), "exile");
+    const after = resolveTopOfStack(copyOf(game, p1.id, ritualId));
+    expect(after.players.find((entry) => entry.id === p1.id)!.mana.B).toBe(3);
+    expect(after.cards[ritualId]?.zone).toBe("exile");
+  });
+
+  it("copies the same card again", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const ritualId = put(game, p1.id, ritual(), "exile");
+    let after = resolveTopOfStack(copyOf(game, p1.id, ritualId));
+    after = resolveTopOfStack(copyOf(after, p1.id, ritualId));
+    expect(after.players.find((entry) => entry.id === p1.id)!.mana.B).toBe(6);
+  });
+
+  it("asks the copy for its own targets", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    const boltId = put(game, p1.id, bolt(), "exile");
+    const theirsId = put(game, p2.id, bear("Theirs"));
+    const asked = copyOf(game, p1.id, boltId);
+    const prompt = asked.prompts[0];
+    expect(prompt?.kind).toBe("choose_targets");
+    if (prompt?.kind !== "choose_targets") {
+      throw new Error("expected a target choice");
+    }
+    // A Scepter with Bolt imprinted picks a new creature every activation,
+    // and the card being copied is not on the stack — so the prompt names
+    // the card rather than a trigger index.
+    expect(prompt.origin).toBe("free_copy");
+    expect(prompt.copyOfCardId).toBe(boltId);
+    expect(asked.stack).toHaveLength(0);
+    const stacked = applyChooseTargets(asked, p1.id, [
+      { type: "creature", cardId: theirsId },
+    ]);
+    expect(stacked.stack).toHaveLength(1);
+    expect(stacked.stack[0]?.targets).toEqual([{ type: "creature", cardId: theirsId }]);
+    const resolved = resolveTopOfStack(stacked);
+    expect(resolved.cards[theirsId]?.zone).toBe("graveyard");
+  });
+
+  it("lets each copy choose a different target", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    const boltId = put(game, p1.id, bolt(), "exile");
+    const firstId = put(game, p2.id, bear("First"));
+    const secondId = put(game, p2.id, bear("Second"));
+    let after = applyChooseTargets(copyOf(game, p1.id, boltId), p1.id, [
+      { type: "creature", cardId: firstId },
+    ]);
+    after = resolveTopOfStack(after);
+    after = applyChooseTargets(copyOf(after, p1.id, boltId), p1.id, [
+      { type: "creature", cardId: secondId },
+    ]);
+    after = resolveTopOfStack(after);
+    expect(after.cards[firstId]?.zone).toBe("graveyard");
+    expect(after.cards[secondId]?.zone).toBe("graveyard");
+  });
+
+  it("does nothing with nothing imprinted", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const scepterId = put(
+      game,
+      p1.id,
+      createCardDefinition({ name: "Empty Scepter", typeLine: "Artifact", manaCost: "{2}" }),
+    );
+    const after = applyEffects(
+      game,
+      bindCardEffects(
+        game,
+        [{ kind: "cast_free_copy", cardId: "imprinted", playerId: "controller" }],
+        { controllerId: p1.id, sourceId: scepterId, targets: [], targetRequirements: [] },
+      ),
+    );
+    expect(after.stack).toHaveLength(0);
+    expect(after.prompts).toHaveLength(0);
+  });
+
+  it("round trips a pending copy's target prompt", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const boltId = put(game, p1.id, bolt(), "exile");
+    const asked = copyOf(game, p1.id, boltId);
+    const round = parseGameState(serializeGameState(asked));
+    const prompt = round.prompts[0];
+    if (prompt?.kind !== "choose_targets") {
+      throw new Error("expected a target choice");
+    }
+    // Dropped on the wire the prompt has no card to copy and the
+    // activation is two mana for nothing.
+    expect(prompt.origin).toBe("free_copy");
+    expect(prompt.copyOfCardId).toBe(boltId);
   });
 });

@@ -871,6 +871,9 @@ export function bindCardEffect(
               : {}),
             ...(source.drawnThisTurn ? { drawnThisTurn: true } : {}),
             ...(source.milledThisWay ? { milledThisWay: true } : {}),
+            ...(source.maxManaValue === undefined
+              ? {}
+              : { maxManaValue: source.maxManaValue }),
             // Kodama: "with equal or lesser mana value" — the cap comes from
             // the permanent whose entry triggered this, so it is resolved
             // here rather than printed.
@@ -902,6 +905,10 @@ export function bindCardEffect(
                 // A FLAG, not a resolved list: the mill that makes "them" is
                 // a sibling in this same bind batch and has not run yet.
                 ...(source.milledThisWay ? { milledThisWay: true } : {}),
+                // A printed cap, so it carries straight through.
+                ...(source.maxManaValue === undefined
+                  ? {}
+                  : { maxManaValue: source.maxManaValue }),
                 ...(source.hasVoidCounter ? { hasVoidCounter: true } : {}),
                 // Braids: the chosen card is about to be sacrificed, so its
                 // types are read HERE and carried as a concrete list.
@@ -1711,6 +1718,13 @@ export function bindCardEffect(
     case "commander_cast_counters": {
       const cardId = bindCardId(state, effect.cardId, context);
       return cardId ? { kind: "commander_cast_counters", cardId } : null;
+    }
+    case "cast_free_copy": {
+      const copyOf = bindCardId(state, effect.cardId, context);
+      const caster = bindPlayerSelector(state, effect.playerId, context);
+      return copyOf && caster
+        ? { kind: "cast_free_copy", cardId: copyOf, playerId: caster }
+        : null;
     }
     case "grant_cast_this_turn": {
       const cardId = bindCardId(state, effect.cardId, context);
@@ -3715,6 +3729,34 @@ function applyCounterSpell(
  * new targets for the copy" is auto-declined — keeping the original targets is
  * always a legal choice for that "may".
  */
+/**
+ * Isochron Scepter: a copy of a card, put straight onto the stack. The
+ * card itself is untouched — it stays imprinted and can be copied again
+ * next turn, which is the whole reason the Scepter is played.
+ *
+ * A copy is not cast from anywhere, so nothing here moves a card between
+ * zones and no cast triggers fire (CR 707.10a).
+ */
+export function pushFreeCopyOnStack(
+  state: GameState,
+  cardId: CardInstanceId,
+  controllerId: PlayerId,
+  targets: ChosenTarget[],
+): GameState {
+  const next = cloneGameState(state);
+  next.stack.push({
+    id: createId("stack"),
+    controllerId,
+    sourceId: cardId,
+    kind: "spell",
+    isCopy: true,
+    targets: targets.map((target) => ({ ...target })),
+  });
+  next.passesSinceAction = 0;
+  next.priorityPlayerId = controllerId;
+  return next;
+}
+
 function applyCopySpell(
   state: GameState,
   stackObjectId: StackObjectId,
@@ -7004,6 +7046,34 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
       case "exile_until_taken":
         next = exileUntilTakenStep(state, effect.playerId, []);
         break;
+      case "cast_free_copy": {
+        next = cloneGameState(state);
+        const copied = next.cards[effect.cardId];
+        const copiedDefinition = copied
+          ? next.definitions[copied.definitionId]
+          : undefined;
+        if (!copied || !copiedDefinition || !isLiving(next, effect.playerId)) {
+          break;
+        }
+        const requirements = copiedDefinition.targetRequirements ?? [];
+        if (requirements.length > 0) {
+          // A Scepter with Counterspell imprinted picks a new spell every
+          // activation, so the copy chooses its own targets before it
+          // stacks — the card being copied is not on the stack, so the
+          // prompt names it rather than a trigger index.
+          next.prompts.push({
+            kind: "choose_targets",
+            playerId: effect.playerId,
+            sourceId: effect.cardId,
+            origin: "free_copy",
+            copyOfCardId: effect.cardId,
+            requirements: requirements.map((requirement) => ({ ...requirement })),
+          });
+          break;
+        }
+        next = pushFreeCopyOnStack(next, effect.cardId, effect.playerId, []);
+        break;
+      }
       case "grant_cast_this_turn":
         next = cloneGameState(state);
         // The same list impulse exiles use: it already admits a card in a
