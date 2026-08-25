@@ -4880,6 +4880,7 @@ const TRIGGER_EVENT_NAMES: Record<TriggerEvent, true> = {
   begin_combat: true,
   dies: true,
   leaves_battlefield: true,
+  put_into_graveyard: true,
   attacks: true,
   upkeep: true,
   end_step: true,

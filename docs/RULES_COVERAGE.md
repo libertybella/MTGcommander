@@ -2277,6 +2277,16 @@ more questions it can now ask:
   `TopOfLibraryGrant.payLifeInsteadOfMana` replaces the cost OUTRIGHT, the
   same way flashback does, and rides the same life-payment path. A cost
   that had merely been reduced would still refuse a caster with no mana.
+- **"Put into a graveyard from anywhere"** — Kozilek, Ulamog. A distinct
+  event from `dies` (battlefield only) and from Syr Konrad's
+  `put_in_graveyard_from_elsewhere` (everything but the battlefield), because
+  it is the superset of both and the other two mean what they say. It is
+  dispatched from the stack-exit path as well as the player-zone one, so a
+  COUNTERED spell fires it — which is the case these cards are printed for.
+  The watcher is the card itself, already in the graveyard, so it rides the
+  graveyard pass; "its OWNER shuffles" uses a `source_owner` selector,
+  because `controllerId` survives a zone change and a stolen permanent
+  still goes home to its owner's library.
 - **Annihilator N** (CR 702.85) — lowered to its rules text: an attack
   trigger emitting N single `choose_card` sacrifices, chosen by the
   `defending_player`. That selector is read off the combat record at bind

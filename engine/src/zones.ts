@@ -244,6 +244,22 @@ export function enterOwnerZoneInPlace(
       { kind: "leaves_battlefield", cardId, controllerId: diedControllerId, amount: leftCounters },
     ]);
   }
+  // The other half of "from ANYWHERE": this function is the path a card
+  // takes when it leaves the STACK — countered, or fizzled — and the one
+  // in `moveCardInPlace` never sees that. The two are disjoint (this one
+  // refuses a card already in a player zone), so no card is told twice.
+  //
+  // It rides `collectDies` when the caller is batching, for the same reason
+  // `dies` does: a wipe dispatches every death as ONE batch (CR 603.10a),
+  // and dispatching mid-sweep would fire the watchers a permanent at a time.
+  if (destination === "graveyard") {
+    const arrival: EngineEvent = { kind: "put_into_graveyard", cardId };
+    if (options.collectDies) {
+      options.collectDies.push(arrival);
+    } else {
+      dispatchEventsInPlace(state, [arrival]);
+    }
+  }
   if (fromZone === "battlefield" && destination === "graveyard") {
     const event: EngineEvent = {
       kind: "dies",
@@ -552,6 +568,18 @@ export function moveCardInPlace(
   // battlefield, and departures from any graveyard.
   if (located.zone !== "battlefield" && destination === "graveyard") {
     dispatchEventsInPlace(state, [{ kind: "put_in_graveyard_from_elsewhere", cardId }]);
+  }
+  // Kozilek, Ulamog: "from ANYWHERE" is the superset of that one and of
+  // `dies` — the battlefield included. Kept as its own event rather than
+  // widening Syr Konrad's, which means the other thing on purpose. Batched
+  // with the deaths when the caller is collecting them.
+  if (located.zone !== "graveyard" && destination === "graveyard") {
+    const arrival: EngineEvent = { kind: "put_into_graveyard", cardId };
+    if (options.collectDies) {
+      options.collectDies.push(arrival);
+    } else {
+      dispatchEventsInPlace(state, [arrival]);
+    }
   }
   if (located.zone === "graveyard" && destination !== "graveyard") {
     dispatchEventsInPlace(state, [{ kind: "leaves_graveyard", cardId, ownerId: owner.id }]);

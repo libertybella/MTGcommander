@@ -2572,7 +2572,14 @@ export type RelativePlayer =
    * COMBAT RECORD at bind — which is also what makes it right in a
    * multiplayer game, where "the defending player" is one of three.
    */
-  | "defending_player";
+  | "defending_player"
+  /**
+   * Kozilek: "its OWNER shuffles their graveyard". Owner, not controller —
+   * a card stolen and then killed still shuffles into the library of the
+   * player who brought it, and `controllerId` is not reset on a zone
+   * change, so the two really do come apart.
+   */
+  | "source_owner";
 /** The controller of the Nth chosen target (Beast Within). */
 export type ChosenControllerRef = { type: "chosen_controller"; index: number };
 /** The owner of the Nth chosen target (Chaos Warp). */
@@ -3626,6 +3633,14 @@ export type TriggerEvent =
   | "dies"
   /** The Ozolith: a counter-carrying permanent left the battlefield. */
   | "leaves_battlefield"
+  /**
+   * Kozilek, Ulamog: "put into a graveyard FROM ANYWHERE" — the battlefield,
+   * the stack (countered), the library (milled), the hand (discarded). A
+   * superset of `dies`, and the difference is the whole point of the cards
+   * that print it: answering one of them by countering or milling it is
+   * exactly what the shuffle-back is there to undo.
+   */
+  | "put_into_graveyard"
   | "attacks"
   | "upkeep"
   | "end_step"
@@ -4018,6 +4033,8 @@ export type EngineEvent =
       powerAtDeath?: number;
     }
   | { kind: "attacks"; cardId: CardInstanceId }
+  /** A card reached a graveyard from any zone at all (Kozilek). */
+  | { kind: "put_into_graveyard"; cardId: CardInstanceId }
   /** A permanent left the battlefield carrying +1/+1 counters — only
    * dispatched when it had any; amount is the p1p1 total (The Ozolith's
    * documented approximation: other counter kinds don't transfer). */

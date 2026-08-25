@@ -56470,3 +56470,189 @@ describe("wave 358: annihilator, and who the defending player is", () => {
     ]);
   });
 });
+
+describe("wave 359: put into a graveyard from ANYWHERE", () => {
+  const compile = (
+    name: string,
+    typeLine: string,
+    oracleText: string,
+    manaCost = "",
+    pt: [string, string] | null = null,
+  ) =>
+    compileOracleCard({
+      oracleId: name.toLowerCase().replace(/[^a-z]+/g, "-"),
+      name,
+      manaCost,
+      typeLine,
+      power: pt?.[0] ?? null,
+      toughness: pt?.[1] ?? null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  const shuffleBack = {
+    event: "put_into_graveyard" as const,
+    watch: "self" as const,
+    fromGraveyard: true,
+    effects: [
+      {
+        kind: "shuffle_zones_into_library" as const,
+        playerId: "source_owner" as const,
+        zones: ["graveyard" as const],
+      },
+    ],
+    targetRequirements: [],
+  };
+
+  const put = (
+    game: GameState,
+    ownerId: string,
+    definition: CardDefinition,
+    zone: "battlefield" | "library" | "hand" = "battlefield",
+  ) => {
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({ definitionId: definition.id, ownerId, zone });
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === ownerId)!.zones[zone].push(card.id);
+    if (zone === "battlefield") {
+      card.summoningSick = false;
+    }
+    return card.id;
+  };
+
+  it("compiles the shuffle-back", () => {
+    const compiled = compile(
+      "Kozilek, Butcher of Truth",
+      "Legendary Creature — Eldrazi",
+      "When this creature is put into a graveyard from anywhere, its owner shuffles their graveyard into their library.",
+      "{10}",
+      ["12", "12"],
+    );
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.triggers[0]).toEqual(shuffleBack);
+  });
+
+  const titan = () =>
+    createCardDefinition({
+      name: "Kozilek, Butcher of Truth",
+      typeLine: "Legendary Creature — Eldrazi",
+      manaCost: "{10}",
+      power: 12,
+      toughness: 12,
+      triggers: [shuffleBack],
+    });
+
+  const junk = (name: string) =>
+    createCardDefinition({
+      name,
+      typeLine: "Creature — Bear",
+      manaCost: "{1}{G}",
+      power: 2,
+      toughness: 2,
+    });
+
+  const settle = (game: GameState) => {
+    let state = game;
+    while (state.stack.length > 0) {
+      state = resolveTopOfStack(state);
+    }
+    return state;
+  };
+
+  it("fires when it dies", () => {
+    const { game, p1 } = twoPlayers();
+    const junkId = put(game, p1.id, junk("Old Bear"));
+    const titanId = put(game, p1.id, titan());
+    const dead = moveCard(moveCard(game, junkId, "graveyard"), titanId, "graveyard");
+    const settled = settle(dead);
+    const player = settled.players.find((entry) => entry.id === p1.id)!;
+    expect(player.zones.graveyard).toEqual([]);
+    expect(player.zones.library).toContain(titanId);
+    expect(player.zones.library).toContain(junkId);
+  });
+
+  it("fires when it is countered on the stack", () => {
+    const { game, p1 } = twoPlayers();
+    const titanId = put(game, p1.id, titan(), "hand");
+    game.turn.activePlayerId = p1.id;
+    game.turn.phase = "precombatMain";
+    game.turn.step = "precombatMain";
+    game.priorityPlayerId = p1.id;
+    game.players.find((entry) => entry.id === p1.id)!.mana.C = 10;
+    const cast = applyAction(game, {
+      kind: "cast_spell",
+      playerId: p1.id,
+      cardId: titanId,
+      targets: [],
+    });
+    expect(cast.stack).toHaveLength(1);
+    // The whole reason the card prints this: answering it on the stack is
+    // not an answer. A `dies` trigger never sees this at all, and neither
+    // does Syr Konrad's "from anywhere but the battlefield" — that one
+    // would, but it is a different card's event and means the other thing.
+    const countered = settle(
+      applyEffect(cast, { kind: "counter_spell", stackObjectId: cast.stack[0]!.id }),
+    );
+    const player = countered.players.find((entry) => entry.id === p1.id)!;
+    expect(player.zones.graveyard).toEqual([]);
+    expect(player.zones.library).toContain(titanId);
+  });
+
+  it("fires when it is milled out of the library", () => {
+    const { game, p1 } = twoPlayers();
+    const titanId = put(game, p1.id, titan(), "library");
+    const milled = settle(moveCard(game, titanId, "graveyard"));
+    const player = milled.players.find((entry) => entry.id === p1.id)!;
+    expect(player.zones.graveyard).toEqual([]);
+    expect(player.zones.library).toContain(titanId);
+  });
+
+  it("fires when it is discarded", () => {
+    const { game, p1 } = twoPlayers();
+    const titanId = put(game, p1.id, titan(), "hand");
+    const discarded = settle(moveCard(game, titanId, "graveyard"));
+    expect(
+      discarded.players.find((entry) => entry.id === p1.id)!.zones.graveyard,
+    ).toEqual([]);
+  });
+
+  it("does not fire for anything else reaching a graveyard", () => {
+    const { game, p1 } = twoPlayers();
+    put(game, p1.id, titan(), "hand");
+    const junkId = put(game, p1.id, junk("Bear"));
+    const after = moveCard(game, junkId, "graveyard");
+    // The Eldrazi is watching for ITSELF; the Bear's death is not its
+    // business, and the Bear stays where it landed.
+    expect(after.stack).toHaveLength(0);
+    expect(after.players.find((entry) => entry.id === p1.id)!.zones.graveyard).toEqual([
+      junkId,
+    ]);
+  });
+
+  it("shuffles the OWNER's graveyard, not the controller's", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const theirJunkId = put(game, p2.id, junk("Their Bear"));
+    const titanId = put(game, p1.id, titan());
+    // Stolen: p2 controls it, p1 still owns it. `controllerId` is not reset
+    // by a zone change, so "its owner" and "its controller" really do come
+    // apart here.
+    game.cards[titanId]!.controllerId = p2.id;
+    const dead = settle(
+      moveCard(moveCard(game, theirJunkId, "graveyard"), titanId, "graveyard"),
+    );
+    const owner = dead.players.find((entry) => entry.id === p1.id)!;
+    const thief = dead.players.find((entry) => entry.id === p2.id)!;
+    expect(owner.zones.library).toContain(titanId);
+    // The thief's graveyard is untouched: it was never this card's.
+    expect(thief.zones.graveyard).toEqual([theirJunkId]);
+  });
+
+  it("round trips the trigger", () => {
+    const { game, p1 } = twoPlayers();
+    const definition = titan();
+    put(game, p1.id, definition);
+    const round = parseGameState(serializeGameState(game));
+    expect(round.definitions[definition.id]?.triggers[0]).toEqual(shuffleBack);
+  });
+});

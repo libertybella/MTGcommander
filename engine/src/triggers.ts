@@ -1000,6 +1000,20 @@ function triggerMatchesEvent(
   if (trigger.event === "graveyard_from_elsewhere") {
     return false;
   }
+  // Kozilek, Ulamog: a graveyard arrival from ANY zone, the battlefield
+  // included — so this event accompanies `dies` rather than replacing it,
+  // and both have to be answered here or one card sees both.
+  if (event.kind === "put_into_graveyard") {
+    if (trigger.event !== "put_into_graveyard") {
+      return false;
+    }
+    return (trigger.watch ?? "self") === "self"
+      ? event.cardId === watcher.id
+      : subjectMatchesFilter(state, event.cardId, trigger.subjectFilter, watcher);
+  }
+  if (trigger.event === "put_into_graveyard") {
+    return false;
+  }
   if (event.kind === "leaves_graveyard") {
     return (
       trigger.event === "leaves_your_graveyard" &&
@@ -1240,6 +1254,17 @@ function triggerMatchesEvent(
     return subjectMatchesFilter(state, event.cardId, trigger.subjectFilter, watcher);
   }
   if (trigger.event === "cast_spell") {
+    return false;
+  }
+  /**
+   * Everything below reads `event.cardId` as the subject of an enters /
+   * dies / attacks event. An event kind that reached here without being
+   * one of those three has no business being matched by cardId — it would
+   * fire every dies-watcher a second time, which is exactly what a new
+   * event kind did on the way in. Fail CLOSED: an unhandled kind matches
+   * nothing rather than matching everything with the right id.
+   */
+  if (event.kind !== "enters" && event.kind !== "dies" && event.kind !== "attacks") {
     return false;
   }
   if (

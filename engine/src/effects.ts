@@ -104,6 +104,9 @@ function bindPlayerSelector(
     }
     return chosen.playerId;
   }
+  if (selector === "source_owner") {
+    return context.sourceId ? (state.cards[context.sourceId]?.ownerId ?? null) : null;
+  }
   if (selector === "defending_player") {
     // Read from the combat record rather than the event: an attack trigger
     // knows its attacker and nothing else, and in a multiplayer game the

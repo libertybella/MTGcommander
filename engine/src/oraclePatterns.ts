@@ -17435,6 +17435,35 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
     }
 
     /**
+     * Kozilek, Ulamog: "when this is put into a graveyard FROM ANYWHERE".
+     * A superset of dies — the stack, the library and the hand all count —
+     * and the difference is the card: answering one of these by countering
+     * or milling it is exactly what the shuffle undoes. The watcher is the
+     * card itself, which is in the graveyard by the time the event goes
+     * out, so it rides wave 354's graveyard pass.
+     */
+    if (
+      /^When (?:~|this card|this creature|this permanent) is put into a graveyard from anywhere, its owner shuffles their graveyard into their library$/i.test(
+        sentence,
+      )
+    ) {
+      result.triggers.push({
+        event: "put_into_graveyard",
+        watch: "self",
+        fromGraveyard: true,
+        effects: [
+          {
+            kind: "shuffle_zones_into_library",
+            playerId: "source_owner",
+            zones: ["graveyard"],
+          },
+        ],
+        targetRequirements: [],
+      });
+      continue;
+    }
+
+    /**
      * Annihilator N (CR 702.85) lowers to its full rules text: an attack
      * trigger whose sacrifice belongs to the DEFENDING player, not to the
      * attacker's controller.
