@@ -60039,3 +60039,209 @@ describe("wave 376: what mana was actually spent to cast it", () => {
     });
   });
 });
+
+describe("wave 377: paying life for an optional rider", () => {
+  const compile = (name: string, typeLine: string, oracleText: string, manaCost = "") =>
+    compileOracleCard({
+      oracleId: name.toLowerCase().replace(/[^a-z]+/g, "-"),
+      name,
+      manaCost,
+      typeLine,
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  const put = (game: GameState, ownerId: string, definition: CardDefinition) => {
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({
+      definitionId: definition.id,
+      ownerId,
+      zone: "battlefield",
+    });
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === ownerId)!.zones.battlefield.push(card.id);
+    card.summoningSick = false;
+    return card.id;
+  };
+
+  it("compiles Call of the Ring, both halves", () => {
+    const compiled = compile(
+      "Call of the Ring",
+      "Enchantment",
+      "At the beginning of your upkeep, the Ring tempts you.\nWhenever you choose a creature as your Ring-bearer, you may pay 2 life. If you do, draw a card.",
+      "{1}{B}",
+    );
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.triggers[1]).toEqual({
+      event: "chooses_ring_bearer",
+      effects: [
+        {
+          kind: "may_pay",
+          playerId: "controller",
+          cost: "",
+          life: 2,
+          effects: [{ kind: "draw", playerId: "controller", count: 1 }],
+        },
+      ],
+      targetRequirements: [],
+    });
+  });
+
+  it("compiles a cost with both halves", () => {
+    const compiled = compile(
+      "Two Halves",
+      "Enchantment",
+      "At the beginning of your upkeep, you may pay {2}{B} and 3 life. If you do, draw a card.",
+      "{1}{B}",
+    );
+    expect(compiled.notes).toEqual([]);
+    // ONE optional cost with two halves, not two offers: a player who can
+    // pay the mana but not the life has not paid it.
+    expect(compiled.definition.triggers[0]?.effects).toEqual([
+      {
+        kind: "may_pay",
+        playerId: "controller",
+        cost: "{2}{B}",
+        life: 3,
+        effects: [{ kind: "draw", playerId: "controller", count: 1 }],
+      },
+    ]);
+  });
+
+  it("leaves a mana-only offer without a life half", () => {
+    const compiled = compile(
+      "Mana Only",
+      "Enchantment",
+      "At the beginning of your upkeep, you may pay {1}. If you do, draw a card.",
+      "{3}{W}",
+    );
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.triggers[0]?.effects[0]).toEqual({
+      kind: "may_pay",
+      playerId: "controller",
+      cost: "{1}",
+      effects: [{ kind: "draw", playerId: "controller", count: 1 }],
+    });
+  });
+
+  // ---- Paying it -------------------------------------------------------
+
+  const offer = (
+    game: GameState,
+    playerId: string,
+    cost: string,
+    life: number | undefined,
+  ) =>
+    applyEffects(
+      game,
+      bindCardEffects(
+        game,
+        [
+          {
+            kind: "may_pay",
+            playerId: "controller",
+            cost,
+            ...(life === undefined ? {} : { life }),
+            effects: [{ kind: "draw", playerId: "controller", count: 1 }],
+          },
+        ],
+        { controllerId: playerId, sourceId: null, targets: [], targetRequirements: [] },
+      ),
+    );
+
+  const lifeOf = (game: GameState, playerId: string) =>
+    game.players.find((entry) => entry.id === playerId)!.life;
+  const handOf = (game: GameState, playerId: string) =>
+    game.players.find((entry) => entry.id === playerId)!.zones.hand.length;
+
+  it("takes the life and gives the card", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const before = { life: lifeOf(game, p1.id), hand: handOf(game, p1.id) };
+    const asked = offer(game, p1.id, "", 2);
+    const after = applyResolvePay(asked, p1.id, true);
+    expect(lifeOf(after, p1.id)).toBe(before.life - 2);
+    expect(handOf(after, p1.id)).toBe(before.hand + 1);
+  });
+
+  it("declining costs nothing and gives nothing", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const before = { life: lifeOf(game, p1.id), hand: handOf(game, p1.id) };
+    const after = applyResolvePay(offer(game, p1.id, "", 2), p1.id, false);
+    expect(lifeOf(after, p1.id)).toBe(before.life);
+    expect(handOf(after, p1.id)).toBe(before.hand);
+  });
+
+  it("refuses a payment the player cannot afford", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    game.players.find((entry) => entry.id === p1.id)!.life = 1;
+    const asked = offer(game, p1.id, "", 2);
+    // CR 119.4: life is payable only down to zero, so this offer is not
+    // one this player has.
+    expect(() => applyResolvePay(asked, p1.id, true)).toThrow();
+  });
+
+  it("takes BOTH halves when the cost has both", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const player = game.players.find((entry) => entry.id === p1.id)!;
+    player.mana.B = 1;
+    player.mana.C = 2;
+    const before = { life: player.life, hand: player.zones.hand.length };
+    const after = applyResolvePay(offer(game, p1.id, "{2}{B}", 3), p1.id, true);
+    const paid = after.players.find((entry) => entry.id === p1.id)!;
+    expect(paid.life).toBe(before.life - 3);
+    expect(paid.mana).toEqual({ W: 0, U: 0, B: 0, R: 0, G: 0, C: 0 });
+    expect(paid.zones.hand).toHaveLength(before.hand + 1);
+  });
+
+  it("leaves the life alone when only mana is asked for", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const player = game.players.find((entry) => entry.id === p1.id)!;
+    player.mana.C = 1;
+    const before = player.life;
+    const after = applyResolvePay(offer(game, p1.id, "{1}", undefined), p1.id, true);
+    expect(lifeOf(after, p1.id)).toBe(before);
+  });
+
+  it("round trips both halves of the cost", () => {
+    const { game, p1 } = twoPlayers();
+    const definition = createCardDefinition({
+      name: "Wave 377 Offer",
+      typeLine: "Enchantment",
+      manaCost: "{1}{B}",
+      triggers: [
+        {
+          event: "upkeep",
+          effects: [
+            {
+              kind: "may_pay",
+              playerId: "controller",
+              cost: "{2}{B}",
+              life: 3,
+              effects: [{ kind: "draw", playerId: "controller", count: 1 }],
+            },
+          ],
+          targetRequirements: [],
+        },
+      ],
+    });
+    put(game, p1.id, definition);
+    const round = parseGameState(serializeGameState(game));
+    // Dropping the life half on the wire would hand out the card for the
+    // mana alone, which is a materially cheaper offer.
+    expect(round.definitions[definition.id]?.triggers[0]?.effects[0]).toEqual({
+      kind: "may_pay",
+      playerId: "controller",
+      cost: "{2}{B}",
+      life: 3,
+      effects: [{ kind: "draw", playerId: "controller", count: 1 }],
+    });
+  });
+});

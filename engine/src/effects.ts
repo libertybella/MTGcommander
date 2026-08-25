@@ -1869,6 +1869,7 @@ export function bindCardEffect(
         kind: "may_pay",
         playerId,
         cost: effect.cost,
+        ...(effect.life === undefined ? {} : { life: effect.life }),
         effects: bindCardEffects(state, effect.effects, context),
       };
     }
@@ -6489,6 +6490,7 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
             kind: "pay_or_effect",
             playerId: effect.playerId,
             cost: effect.cost,
+            ...(effect.life === undefined ? {} : { life: effect.life }),
             thenEffects: effect.effects.map((entry) => ({ ...entry })),
             sourceId: null,
             whenPaid: true,

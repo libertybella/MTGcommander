@@ -4797,11 +4797,17 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
           : { life: expectNumber(value.life, `${label}.life`) }),
         effects: parseCardEffects(value.effects, `${label}.effects`),
       };
+    // Grouped with `unless_pays` above: both carry a mana half that may be
+    // empty and an optional life half, and reading them apart is what let
+    // the life cost fall off `may_pay` in the first place.
     case "may_pay":
       return {
         kind,
         playerId: parsePlayerSelector(value.playerId, `${label}.playerId`),
-        cost: expectString(value.cost, `${label}.cost`),
+        cost: expectString(value.cost, `${label}.cost`, value.life !== undefined),
+        ...(value.life === undefined
+          ? {}
+          : { life: expectNumber(value.life, `${label}.life`) }),
         effects: parseCardEffects(value.effects, `${label}.effects`),
       };
     case "damage_all":
@@ -6874,9 +6880,9 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
       kind,
       playerId: expectString(value.playerId, `${label}.playerId`),
       cost: expectString(value.cost, `${label}.cost`, value.life !== undefined),
-      // Only unless_pays carries a life cost, but parsing it for both is
-      // harmless and keeps the two from drifting apart the way the grouped
-      // returns elsewhere in this file already have.
+      // Both carry a life cost now — Call of the Ring pays for its draw
+      // that way. Parsing it for both is what kept these two from drifting
+      // apart when it arrived.
       ...(value.life === undefined
         ? {}
         : { life: expectNumber(value.life, `${label}.life`) }),

@@ -2277,7 +2277,9 @@ export type GameEffect =
       scope: "land";
     }
   /** "You may pay {N}. If you do, …" — paying causes the effects. */
-  | { kind: "may_pay"; playerId: PlayerId; cost: string; effects: GameEffect[] }
+  /** `cost` may be empty and `life` set, or both — Ripples of Undeath asks
+   * for "{1} and 3 life", which is one optional cost with two halves. */
+  | { kind: "may_pay"; playerId: PlayerId; cost: string; life?: number; effects: GameEffect[] }
   /** Blasphemous Act: damage every creature (and optionally player) at once. */
   | {
       kind: "damage_all";
@@ -3792,7 +3794,7 @@ export type CardEffect =
       playerId: PlayerSelector;
       scope: "land";
     }
-  | { kind: "may_pay"; playerId: PlayerSelector; cost: string; effects: CardEffect[] }
+  | { kind: "may_pay"; playerId: PlayerSelector; cost: string; life?: number; effects: CardEffect[] }
   | {
       kind: "damage_all";
       sourceId: CardInstanceId | "self" | null;

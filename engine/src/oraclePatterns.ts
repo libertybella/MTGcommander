@@ -5458,16 +5458,31 @@ function compileSimpleClauseInner(sentence: string): SimpleClause | null {
   // handler in the main loop); a bare variable exile also lands here.
 
   // Mentor of the Meek: the fused "you may pay {1} to do: draw a card".
-  const mayPayDo = sentence.match(/^you may pay ((?:\{[^}]+\})+) to do: (.+)$/i);
-  if (mayPayDo?.[1] && mayPayDo[2]) {
+  // Call of the Ring pays in life instead, and Ripples of Undeath in both.
+  const mayPayDo = sentence.match(
+    new RegExp(
+      "^you may pay ((?:" +
+        MANA_PIP_SOURCE +
+        ")+)?(?: ?and )?(?:(" + DIGITS + ") life)? to do: (.+)$",
+      "i",
+    ),
+  );
+  if (mayPayDo && (mayPayDo[1] || mayPayDo[2]) && mayPayDo[3]) {
     const inner = compileSimpleClause(
-      mayPayDo[2].charAt(0).toUpperCase() + mayPayDo[2].slice(1),
+      mayPayDo[3].charAt(0).toUpperCase() + mayPayDo[3].slice(1),
     );
     if (inner && !inner.leftover && inner.targetRequirements.length === 0) {
+      const life = mayPayDo[2] ? Number(mayPayDo[2]) : undefined;
       return {
         targetRequirements: [],
         effects: [
-          { kind: "may_pay", playerId: "controller", cost: mayPayDo[1], effects: inner.effects },
+          {
+            kind: "may_pay",
+            playerId: "controller",
+            cost: mayPayDo[1] ?? "",
+            ...(life === undefined ? {} : { life }),
+            effects: inner.effects,
+          },
         ],
       };
     }
@@ -10696,6 +10711,11 @@ function fusePutLandRiderInPlace(sentences: string[], lineStart: boolean[]): voi
   }
 }
 
+/** One mana pip, as regex source: the Bash-safe way to spell `\\{[^}]+\\}`
+ * in a string the several may-pay readers below share. */
+const DIGITS = "\\d+";
+const MANA_PIP_SOURCE = "\\{[^}]+\\}";
+
 function fuseMayPayInPlace(sentences: string[], lineStart: boolean[]): void {
   // Mentor of the Meek: "…, you may pay {1}. If you do, draw a card." fuses
   // into one synthetic clause the may_pay parser reads.
@@ -10703,7 +10723,16 @@ function fuseMayPayInPlace(sentences: string[], lineStart: boolean[]): void {
     if (lineStart[index + 1]) {
       continue;
     }
-    const head = sentences[index]?.match(/^(.+, you may pay (?:\{[^}]+\})+)$/i);
+    // Three cost shapes: mana, life, or "{1} and 3 life" — one optional
+    // cost with two halves (Ripples of Undeath).
+    const head = sentences[index]?.match(
+      new RegExp(
+        "^(.+, you may pay (?:(?:" +
+          MANA_PIP_SOURCE +
+          ")+(?: and " + DIGITS + " life)?|" + DIGITS + " life))$",
+        "i",
+      ),
+    );
     const rider = sentences[index + 1]?.match(/^If you do, (.+)$/i);
     if (!head?.[1] || !rider?.[1]) {
       continue;

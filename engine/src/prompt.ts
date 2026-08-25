@@ -1171,9 +1171,14 @@ export function applyResolvePay(
     }
     next = tapForMana(next, tap.cardId, addition);
   }
+  // Both halves, not one or the other: Ripples of Undeath asks for "{1} and
+  // 3 life", and Sylvan Library asks for life with an empty mana cost.
+  if (prompt.cost !== "") {
+    next = payManaCost(next, playerId, prompt.cost);
+  }
   if (prompt.life !== undefined) {
-    // Sylvan Library: paid from life, not mana. Declining is the other
-    // branch, so a player who cannot afford it must take that instead.
+    // Paid from life, not mana. Declining is the other branch, so a player
+    // who cannot afford it must take that instead.
     const payer = next.players.find((entry) => entry.id === playerId);
     if (!payer || payer.life < prompt.life) {
       throw new Error("Not enough life to pay");
@@ -1182,8 +1187,6 @@ export function applyResolvePay(
     dispatchEventsInPlace(next, [
       { kind: "loses_life", playerId, amount: prompt.life },
     ]);
-  } else {
-    next = payManaCost(next, playerId, prompt.cost);
   }
   if (prompt.kind === "pay_or_effect" && prompt.whenPaid) {
     next = applyEffects(next, prompt.thenEffects);
