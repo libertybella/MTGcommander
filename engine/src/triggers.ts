@@ -1331,10 +1331,18 @@ export function dispatchEventsInPlace(state: GameState, events: EngineEvent[]): 
   // Computed once for the whole sweep: `triggersOf` would otherwise run the
   // layer engine per battlefield card.
   const computedById = computedCards(state);
-  const consider = (card: CardInstance) => {
+  const consider = (card: CardInstance, watchingFromGraveyard = false) => {
     const triggers = triggersOf(state, card.id, computedById);
     for (let index = 0; index < triggers.length; index += 1) {
       const trigger = triggers[index]!;
+      // The zone has to match both ways (CR 113.6d). A card in the graveyard
+      // watches with the abilities that SAY they work there and nothing else
+      // — a dies trigger does not fire again for every later death — and a
+      // graveyard ability does nothing from the battlefield, where what it
+      // says is not possible.
+      if ((trigger.fromGraveyard === true) !== watchingFromGraveyard) {
+        continue;
+      }
       // A trigger fires once for EACH matching event in the batch — a board
       // wipe drains Blood Artist once per death, not once total. "One or
       // more" heads fire once per batch instead.
@@ -1397,6 +1405,10 @@ export function dispatchEventsInPlace(state: GameState, events: EngineEvent[]): 
   for (const card of Object.values(state.cards)) {
     if (card.zone === "battlefield" && !abilitiesRemoved(state, card.id)) {
       consider(card);
+    } else if (card.zone === "graveyard") {
+      // Humility and its kin are battlefield statics, so a card in the
+      // graveyard is never silenced by one.
+      consider(card, true);
     }
   }
   // A permanent that has left still gets to see its own departure (CR

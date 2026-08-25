@@ -3868,6 +3868,13 @@ export type CardTrigger = {
    * the beginning of the controller's own step and ignore `watch`.
    */
   watch?: "self" | "controlled" | "opponents" | "any" | "attached";
+  /**
+   * Bloodghast, Silversmote Ghoul: the ability works while this card is in
+   * its owner's GRAVEYARD (CR 113.6d), which is the only place it can do
+   * what it says. The dispatcher considers battlefield permanents and
+   * nothing else, so without this the trigger compiles and never fires.
+   */
+  fromGraveyard?: boolean;
   /** "another creature": the event subject may not be the source itself. */
   excludeSelf?: boolean;
   /** "deals damage to an opponent": the damaged player must not be the
@@ -4913,6 +4920,13 @@ export type StaticAbility = {
   requiresDelirium?: boolean;
   /** Serra Ascendant: "As long as you have 30 or more life". */
   requiresLife?: number;
+  /**
+   * Bloodghast: "as long as an OPPONENT has 10 or less life". The mirror of
+   * `requiresLife` in both directions at once — someone else's life, and a
+   * ceiling rather than a floor — so it is its own gate rather than a sign
+   * flip on that one.
+   */
+  requiresOpponentLifeAtMost?: number;
   /**
    * Razorkin Needlehead: "has first strike DURING YOUR TURN". A static that
    * is only live while its controller is the active player — not a keyword

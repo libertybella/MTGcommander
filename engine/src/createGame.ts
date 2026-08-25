@@ -4,6 +4,7 @@ import type {
   ProtectionFrom,
   CardDefinition,
   CardInstance,
+  CardTrigger,
   Color,
   ControlledGate,
   GameState,
@@ -81,6 +82,21 @@ export function emptyPlayerZones(): PlayerZones {
     exile: [],
     command: [],
     removed: [],
+  };
+}
+
+function copySubjectFilter(
+  filter: NonNullable<CardTrigger["subjectFilter"]>,
+): NonNullable<CardTrigger["subjectFilter"]> {
+  return {
+    ...filter,
+    ...(filter.types ? { types: [...filter.types] } : {}),
+    ...(filter.typesAny ? { typesAny: [...filter.typesAny] } : {}),
+    ...(filter.nonTypes ? { nonTypes: [...filter.nonTypes] } : {}),
+    ...(filter.subtypes ? { subtypes: [...filter.subtypes] } : {}),
+    ...(filter.subtypesAny ? { subtypesAny: [...filter.subtypesAny] } : {}),
+    ...(filter.nonSubtypes ? { nonSubtypes: [...filter.nonSubtypes] } : {}),
+    ...(filter.colors ? { colors: [...filter.colors] } : {}),
   };
 }
 
@@ -222,81 +238,16 @@ export function createCardDefinition(
     keywords: input.keywords ? [...input.keywords] : [],
     triggers: input.triggers
       ? input.triggers.map((trigger) => ({
-          event: trigger.event,
-          ...(trigger.watch ? { watch: trigger.watch } : {}),
-          ...(trigger.excludeSelf ? { excludeSelf: true } : {}),
-          ...(trigger.oncePerTurn ? { oncePerTurn: true } : {}),
-          ...(trigger.oncePerBatch ? { oncePerBatch: true } : {}),
-          ...(trigger.classLevel === undefined ? {} : { classLevel: trigger.classLevel }),
-          ...(trigger.eachPlayersStep ? { eachPlayersStep: true } : {}),
-          ...(trigger.opponentsStepOnly ? { opponentsStepOnly: true } : {}),
-          ...(trigger.alsoOnCopy ? { alsoOnCopy: true } : {}),
+          // Copied WHOLE. A field-by-field rebuild here drops any trigger
+          // flag added later, in silence and while typechecking — this list
+          // ate `fromGraveyard` the same afternoon it was written, which is
+          // the fourth time the same defect has eaten the same wave's flag.
+          // Only the nested objects and arrays are rebuilt, so the copy
+          // stays deep.
+          ...trigger,
           ...(trigger.condition ? { condition: { ...trigger.condition } } : {}),
-          ...(trigger.subjectPlayerOpponent ? { subjectPlayerOpponent: true } : {}),
-          ...(trigger.subjectPlayerSelf ? { subjectPlayerSelf: true } : {}),
-          ...(trigger.attacksAlone ? { attacksAlone: true } : {}),
           ...(trigger.subjectFilter
-            ? {
-                subjectFilter: {
-                  ...(trigger.subjectFilter.types ? { types: [...trigger.subjectFilter.types] } : {}),
-                  ...(trigger.subjectFilter.subtypes
-                    ? { subtypes: [...trigger.subjectFilter.subtypes] }
-                    : {}),
-                  ...(trigger.subjectFilter.subtypesAny
-                    ? { subtypesAny: [...trigger.subjectFilter.subtypesAny] }
-                    : {}),
-                  ...(trigger.subjectFilter.typesAny
-                    ? { typesAny: [...trigger.subjectFilter.typesAny] }
-                    : {}),
-                  ...(trigger.subjectFilter.nonTypes
-                    ? { nonTypes: [...trigger.subjectFilter.nonTypes] }
-                    : {}),
-                  ...(trigger.subjectFilter.chosenSubtype ? { chosenSubtype: true } : {}),
-                  ...(trigger.subjectFilter.nonToken ? { nonToken: true } : {}),
-                  ...(trigger.subjectFilter.tokenOnly ? { tokenOnly: true } : {}),
-                  ...(trigger.subjectFilter.nonSubtypes
-                    ? { nonSubtypes: [...trigger.subjectFilter.nonSubtypes] }
-                    : {}),
-                  ...(trigger.subjectFilter.minPower !== undefined
-                    ? { minPower: trigger.subjectFilter.minPower }
-                    : {}),
-                  ...(trigger.subjectFilter.maxPower !== undefined
-                    ? { maxPower: trigger.subjectFilter.maxPower }
-                    : {}),
-                  ...(trigger.subjectFilter.greaterPtThanWatcher
-                    ? { greaterPtThanWatcher: true }
-                    : {}),
-                  ...(trigger.subjectFilter.manaValueBelowWatcherPower
-                    ? { manaValueBelowWatcherPower: true }
-                    : {}),
-                  ...(trigger.subjectFilter.counterName
-                    ? { counterName: trigger.subjectFilter.counterName }
-                    : {}),
-                  ...(trigger.subjectFilter.colorless ? { colorless: true } : {}),
-                  ...(trigger.subjectFilter.historic ? { historic: true } : {}),
-                  ...(trigger.subjectFilter.legendary ? { legendary: true } : {}),
-                  ...(trigger.subjectFilter.commanderOnly ? { commanderOnly: true } : {}),
-                  ...(trigger.subjectFilter.enteredTapped ? { enteredTapped: true } : {}),
-                  ...(trigger.subjectFilter.attacking ? { attacking: true } : {}),
-                  ...(trigger.subjectFilter.modified ? { modified: true } : {}),
-                  ...(trigger.subjectFilter.minManaValue === undefined
-                    ? {}
-                    : { minManaValue: trigger.subjectFilter.minManaValue }),
-                  ...(trigger.subjectFilter.withKeyword
-                    ? { withKeyword: trigger.subjectFilter.withKeyword }
-                    : {}),
-                  ...(trigger.subjectFilter.withoutKeyword
-                    ? { withoutKeyword: trigger.subjectFilter.withoutKeyword }
-                    : {}),
-                  ...(trigger.subjectFilter.powerAboveBase ? { powerAboveBase: true } : {}),
-                  ...(trigger.subjectFilter.colors
-                    ? { colors: [...trigger.subjectFilter.colors] }
-                    : {}),
-                  ...(trigger.subjectFilter.maxManaValue !== undefined
-                    ? { maxManaValue: trigger.subjectFilter.maxManaValue }
-                    : {}),
-                },
-              }
+            ? { subjectFilter: copySubjectFilter(trigger.subjectFilter) }
             : {}),
           effects: trigger.effects.map((effect) => ({ ...effect })),
           targetRequirements: (trigger.targetRequirements ?? []).map((requirement) => ({
@@ -319,21 +270,19 @@ export function createCardDefinition(
     replacements: input.replacements ? input.replacements.map((replacement) => ({ ...replacement })) : [],
     staticAbilities: input.staticAbilities
       ? input.staticAbilities.map((ability) => ({
+          // Copied whole, for the reason the triggers above are.
+          ...ability,
           selector: { ...ability.selector },
           effect: { ...ability.effect },
-          ...(ability.fromGraveyard ? { fromGraveyard: true } : {}),
           ...(ability.requiresControlled
             ? { requiresControlled: copyControlledGate(ability.requiresControlled) }
             : {}),
           ...(ability.requiresCounters
             ? { requiresCounters: { ...ability.requiresCounters } }
             : {}),
-          ...(ability.requiresDelirium ? { requiresDelirium: true } : {}),
           ...(ability.requiresControlledBelow
             ? { requiresControlledBelow: { ...ability.requiresControlledBelow } }
             : {}),
-          ...(ability.requiresYourTurn ? { requiresYourTurn: true } : {}),
-          ...(ability.requiresLife !== undefined ? { requiresLife: ability.requiresLife } : {}),
         }))
       : [],
     produces: input.produces ? { ...input.produces } : {},

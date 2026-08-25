@@ -2277,6 +2277,17 @@ more questions it can now ask:
   `TopOfLibraryGrant.payLifeInsteadOfMana` replaces the cost OUTRIGHT, the
   same way flashback does, and rides the same life-payment path. A cost
   that had merely been reduced would still refuse a caster with no mana.
+- **Abilities that work from the graveyard** (CR 113.6d) — Bloodghast,
+  Silversmote Ghoul. `CardTrigger.fromGraveyard` gates the watcher's zone in
+  both directions: a card in the graveyard fires only the triggers that say
+  they work there, and those fire only from there. The flag is derived — a
+  trigger that returns its own card to the battlefield can be watching from
+  nowhere else — with `dies` and `leaves_battlefield` excluded, because
+  persist and undying are battlefield triggers reading last-known
+  information (CR 603.10a) through the dispatcher's separate look-back pass.
+  The printed "you may" on a self-return is a documented AUTO-TAKE: the
+  engine always returns the card. Declining is a real choice on paper — a
+  card kept back for delirium — and is not modelled.
 - **A land that puts itself onto the battlefield** — Talon Gates of Madara.
   `ActivatedAbility.zone: "hand"` was already honored by `legalActions` and
   `applyAction`; this is the first printed card compiling into it. The

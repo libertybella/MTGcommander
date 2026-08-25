@@ -55422,3 +55422,225 @@ describe("wave 353: one target phases out, and a land that drops itself", () => 
     );
   });
 });
+
+describe("wave 354: an ability that works from the graveyard", () => {
+  const compile = (
+    name: string,
+    typeLine: string,
+    oracleText: string,
+    manaCost = "",
+    pt: [string, string] | null = null,
+  ) =>
+    compileOracleCard({
+      oracleId: name.toLowerCase().replace(/[^a-z]+/g, "-"),
+      name,
+      manaCost,
+      typeLine,
+      power: pt?.[0] ?? null,
+      toughness: pt?.[1] ?? null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  const put = (
+    game: GameState,
+    ownerId: string,
+    definition: CardDefinition,
+    zone: "graveyard" | "battlefield" = "battlefield",
+  ) => {
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({ definitionId: definition.id, ownerId, zone });
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === ownerId)!.zones[zone].push(card.id);
+    if (zone === "battlefield") {
+      card.summoningSick = false;
+    }
+    return card.id;
+  };
+
+  const body = [
+    "This creature can't block.",
+    "This creature has haste as long as an opponent has 10 or less life.",
+    "Landfall — Whenever a land you control enters, you may return this card from your graveyard to the battlefield.",
+  ].join("\n");
+
+  it("compiles all three of Bloodghast's abilities", () => {
+    const compiled = compile("Bloodghast", "Creature — Vampire Spirit", body, "{B}{B}", [
+      "2",
+      "1",
+    ]);
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.triggers).toEqual([
+      {
+        event: "enter_battlefield",
+        watch: "controlled",
+        subjectFilter: { types: ["land"] },
+        // The printed "you may" is a documented auto-take: `move_card` has
+        // no optional flag, and a flag nothing reads is decoration.
+        effects: [{ kind: "move_card", cardId: "self", toZone: "battlefield" }],
+        targetRequirements: [],
+        fromGraveyard: true,
+      },
+    ]);
+    expect(compiled.definition.staticAbilities).toContainEqual({
+      selector: { scope: "self" },
+      effect: { kind: "grant_keyword", keyword: "haste" },
+      requiresOpponentLifeAtMost: 10,
+    });
+  });
+
+  it("marks a self-return trigger even without the permission", () => {
+    // Silversmote Ghoul: this compiled with zero notes and never fired, for
+    // as long as the dispatcher only ever looked at the battlefield.
+    const compiled = compile(
+      "Silversmote Ghoul",
+      "Creature — Zombie",
+      "At the beginning of your end step, if you gained 3 or more life this turn, return this card from your graveyard to the battlefield tapped.",
+      "{1}{B}",
+      ["2", "1"],
+    );
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.triggers[0]?.fromGraveyard).toBe(true);
+  });
+
+  const ghast = () =>
+    createCardDefinition({
+      name: "Bloodghast",
+      typeLine: "Creature — Vampire Spirit",
+      manaCost: "{B}{B}",
+      power: 2,
+      toughness: 1,
+      triggers: [
+        {
+          event: "enter_battlefield",
+          watch: "controlled",
+          subjectFilter: { types: ["land"] },
+          effects: [{ kind: "move_card", cardId: "self", toZone: "battlefield" }],
+          targetRequirements: [],
+          fromGraveyard: true,
+        },
+      ],
+      staticAbilities: [
+        {
+          selector: { scope: "self" },
+          effect: { kind: "grant_keyword", keyword: "haste" },
+          requiresOpponentLifeAtMost: 10,
+        },
+      ],
+    });
+
+  const landfall = (game: GameState, ownerId: string) => {
+    const forest = createCardDefinition({ name: "Forest", typeLine: "Basic Land — Forest" });
+    game.definitions[forest.id] = forest;
+    const card = createCardInstance({
+      definitionId: forest.id,
+      ownerId,
+      zone: "battlefield",
+    });
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === ownerId)!.zones.battlefield.push(card.id);
+    const next = parseGameState(serializeGameState(game));
+    queueEnterBattlefieldTriggersInPlace(next, card.id);
+    return next;
+  };
+
+  it("fires from the graveyard and comes back", () => {
+    const { game, p1 } = twoPlayers();
+    const ghastId = put(game, p1.id, ghast(), "graveyard");
+    const queued = landfall(game, p1.id);
+    expect(queued.stack.length).toBeGreaterThan(0);
+    const resolved = resolveTopOfStack(queued);
+    expect(resolved.cards[ghastId]?.zone).toBe("battlefield");
+  });
+
+  it("does nothing for an opponent's land", () => {
+    const { game, p1, p2 } = twoPlayers();
+    put(game, p1.id, ghast(), "graveyard");
+    const queued = landfall(game, p2.id);
+    // "A land YOU control" — the watcher's controller, read from the
+    // graveyard the same way it is read from the battlefield.
+    expect(queued.stack).toHaveLength(0);
+  });
+
+  it("does not fire from the battlefield", () => {
+    const { game, p1 } = twoPlayers();
+    put(game, p1.id, ghast());
+    const queued = landfall(game, p1.id);
+    // The ability says "from your graveyard". From play there is nothing
+    // for it to do, and a trigger that resolves to nothing is still a
+    // trigger someone has to answer.
+    expect(queued.stack).toHaveLength(0);
+  });
+
+  it("leaves ordinary triggers in the graveyard silent", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const watcher = createCardDefinition({
+      name: "Ordinary Watcher",
+      typeLine: "Creature — Bear",
+      manaCost: "{1}{G}",
+      power: 2,
+      toughness: 2,
+      triggers: [
+        {
+          event: "enter_battlefield",
+          watch: "controlled",
+          effects: [{ kind: "draw", playerId: "controller", count: 1 }],
+          targetRequirements: [],
+        },
+      ],
+    });
+    put(game, p1.id, watcher, "graveyard");
+    const queued = landfall(game, p1.id);
+    // Without the zone gate every dead permanent keeps watching the game.
+    expect(queued.stack).toHaveLength(0);
+  });
+
+  it("gives haste only while an opponent is low", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const ghastId = put(game, p1.id, ghast());
+    game.cards[ghastId]!.summoningSick = true;
+    expect(hasKeyword(game, ghastId, "haste")).toBe(false);
+    game.players.find((entry) => entry.id === p2.id)!.life = 10;
+    expect(hasKeyword(game, ghastId, "haste")).toBe(true);
+    game.players.find((entry) => entry.id === p2.id)!.life = 11;
+    expect(hasKeyword(game, ghastId, "haste")).toBe(false);
+  });
+
+  it("does not read the controller's own life as an opponent's", () => {
+    const { game, p1 } = twoPlayers();
+    const ghastId = put(game, p1.id, ghast());
+    game.players.find((entry) => entry.id === p1.id)!.life = 1;
+    // "An OPPONENT has 10 or less life" — being low yourself is not it.
+    expect(hasKeyword(game, ghastId, "haste")).toBe(false);
+  });
+
+  it("does not mark persist as a graveyard ability", () => {
+    const compiled = compile(
+      "Glen Elendra Archmage",
+      "Creature — Faerie Wizard",
+      "Flying\nPersist",
+      "{3}{U}",
+      ["2", "2"],
+    );
+    // Persist returns the card too, but it is a battlefield trigger reading
+    // last-known information about its own death (CR 603.10a) — the
+    // dispatcher has its own look-back pass, and marking it would take it
+    // out of that pass and break the card.
+    expect(compiled.definition.triggers[0]?.event).toBe("dies");
+    expect(compiled.definition.triggers[0]?.fromGraveyard).toBeUndefined();
+  });
+
+  it("round trips both the flag and the gate", () => {
+    const { game, p1 } = twoPlayers();
+    const definition = ghast();
+    put(game, p1.id, definition, "graveyard");
+    const round = parseGameState(serializeGameState(game));
+    // Losing either on the wire is a card that compiles and does nothing.
+    expect(round.definitions[definition.id]?.triggers[0]?.fromGraveyard).toBe(true);
+    expect(
+      round.definitions[definition.id]?.staticAbilities[0]?.requiresOpponentLifeAtMost,
+    ).toBe(10);
+  });
+});

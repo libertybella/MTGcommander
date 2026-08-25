@@ -4928,9 +4928,17 @@ function compileSimpleClauseInner(sentence: string): SimpleClause | null {
     }
   }
 
-  // Reassembling Skeleton's self-reanimation body.
+  /**
+   * Reassembling Skeleton's self-reanimation body, and Bloodghast's, which
+   * is the same clause with a permission in front of it.
+   *
+   * The permission is a DOCUMENTED AUTO-TAKE: `move_card` carries no
+   * optional flag, and inventing one that nothing reads would be decoration.
+   * Declining a free return from the graveyard is a real choice on paper —
+   * a card kept back for delirium — and it is not modelled here.
+   */
   const boneReturn = sentence.match(
-    /^Return (?:~|this card) from your graveyard to (the battlefield|your hand)( tapped)?$/i,
+    /^(?:You may )?[Rr]eturn (?:~|this card) from your graveyard to (the battlefield|your hand)( tapped)?$/i,
   );
   if (boneReturn?.[1]) {
     const toHand = /^your hand$/i.test(boneReturn[1]);
@@ -12341,9 +12349,19 @@ function readGrantParts(split: string[]): ContinuousEffectData[] | null {
  * cases; this is the general fallback.
  */
 function compileStaticGrant(sentence: string): StaticAbility[] | null {
+  // Bloodghast prints the same conditional the other way round — the grant
+  // first, the condition trailing — so it is rewritten into the one form
+  // below rather than given a parser of its own. Sentences that already
+  // lead with the condition keep their own comma split.
+  const trailing = /^As long as /i.test(sentence)
+    ? null
+    : sentence.match(/^(.+?) as long as (.+)$/i);
+  const normalized = trailing?.[1] && trailing[2]
+    ? `As long as ${trailing[2]}, ${trailing[1]}`
+    : sentence;
   // "As long as <condition>, <grant>": peel the condition, compile the grant,
   // and hang the condition on every ability it produced.
-  const conditional = sentence.match(/^As long as (.+?), (.+)$/i);
+  const conditional = normalized.match(/^As long as (.+?), (.+)$/i);
   if (conditional?.[1] && conditional[2]) {
     const phrase = conditional[1].trim();
     let body = conditional[2].trim();
@@ -12382,6 +12400,19 @@ function compileStaticGrant(sentence: string): StaticAbility[] | null {
         ? gated.map((ability) => ({
             ...ability,
             requiresControlled: { types: [noun], atLeast },
+          }))
+        : null;
+    }
+    // Bloodghast: the same shape pointed the other way — an OPPONENT, and a
+    // ceiling rather than a floor.
+    const opponentLife = phrase.match(/^an opponent has (\d+) or less life$/i);
+    if (opponentLife?.[1]) {
+      const gatedBody = body.replace(/^~\s+/, "~ ");
+      const grants = compileSelfGrant(gatedBody) ?? compileStaticGrant(gatedBody);
+      return grants
+        ? grants.map((ability) => ({
+            ...ability,
+            requiresOpponentLifeAtMost: Number(opponentLife[1]),
           }))
         : null;
     }
@@ -18377,6 +18408,34 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
       result.targetRequirements = [];
     } else {
       result.leftover.push(`Offspring ${offspringCost}`);
+    }
+  }
+
+  /**
+   * A trigger that returns its own card to the battlefield can only be
+   * watching from the graveyard — there is nowhere else the card could be
+   * for the sentence to mean anything. Derived here rather than set at each
+   * clause because the clause hands back effects and never sees the trigger
+   * it will be hung on, and a trigger that compiles clean and never fires
+   * is worse than one that misses (Silversmote Ghoul was exactly that).
+   */
+  for (const trigger of result.triggers) {
+    // Persist and undying are NOT graveyard abilities: they are battlefield
+    // triggers reading last-known information about their own departure
+    // (CR 603.10a), and the dispatcher has a separate look-back pass for
+    // them. Marking those would take them out of it.
+    if (trigger.event === "dies" || trigger.event === "leaves_battlefield") {
+      continue;
+    }
+    if (
+      trigger.effects.some(
+        (effect) =>
+          effect.kind === "move_card" &&
+          effect.cardId === "self" &&
+          effect.toZone === "battlefield",
+      )
+    ) {
+      trigger.fromGraveyard = true;
     }
   }
 

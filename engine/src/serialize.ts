@@ -5074,6 +5074,7 @@ function parseTriggers(value: unknown, label: string): CardTrigger[] {
     return {
       event,
       ...(watch === undefined ? {} : { watch }),
+      ...(entry.fromGraveyard === true ? { fromGraveyard: true } : {}),
       ...(entry.excludeSelf === true ? { excludeSelf: true } : {}),
       ...(entry.oncePerTurn === true ? { oncePerTurn: true } : {}),
       ...(entry.oncePerBatch === true ? { oncePerBatch: true } : {}),
@@ -5787,6 +5788,14 @@ function parseStaticAbilities(
             }),
         ...(entry.requiresDelirium === true ? { requiresDelirium: true } : {}),
         ...(entry.requiresYourTurn === true ? { requiresYourTurn: true } : {}),
+        ...(entry.requiresOpponentLifeAtMost === undefined
+          ? {}
+          : {
+              requiresOpponentLifeAtMost: expectNumber(
+                entry.requiresOpponentLifeAtMost,
+                `${label}[${index}].requiresOpponentLifeAtMost`,
+              ),
+            }),
         ...(entry.requiresLife === undefined
           ? {}
           : { requiresLife: expectNumber(entry.requiresLife, `${label}[${index}].requiresLife`) }),

@@ -895,6 +895,17 @@ function collectInstances(state: GameState): EffectInstance[] {
           continue;
         }
       }
+      // Bloodghast: "as long as an opponent has 10 or less life" — ANY one
+      // opponent, and a player who has lost is not one of them.
+      if (ability.requiresOpponentLifeAtMost !== undefined) {
+        const bar = ability.requiresOpponentLifeAtMost;
+        const anyLow = state.players.some(
+          (entry) => entry.id !== card.controllerId && !entry.lost && entry.life <= bar,
+        );
+        if (!anyLow) {
+          continue;
+        }
+      }
       instances.push({
         sourceId: card.id,
         selector: ability.selector,
