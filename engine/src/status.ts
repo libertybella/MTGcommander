@@ -1,5 +1,5 @@
 import { characteristicsOf, isCreature, isLand, isPlaneswalker } from "./cardTypes";
-import { COMMANDER_DAMAGE_TO_LOSE } from "./cardTypes";
+import { COMMANDER_DAMAGE_TO_LOSE, POISON_COUNTERS_TO_LOSE } from "./cardTypes";
 import { cantLoseGame, creatureToughness, permanentsControlledBy } from "./derived";
 import { hasKeyword } from "./keywords";
 import { eliminatePlayerInPlace } from "./elimination";
@@ -43,6 +43,11 @@ function shouldLose(state: GameState, player: GameState["players"][number]): boo
     return true;
   }
   if (player.life <= 0) {
+    return true;
+  }
+  // CR 104.3c. Ten is ten however they arrived, and unlike life there is no
+  // gaining them back.
+  if (player.poisonCounters >= POISON_COUNTERS_TO_LOSE) {
     return true;
   }
   return Object.values(player.commander.damageReceived).some(

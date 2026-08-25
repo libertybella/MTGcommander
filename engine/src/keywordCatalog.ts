@@ -42,6 +42,7 @@ export const CR702_KEYWORD_ABILITIES: string[] = [
  * must appear here; the coverage report divides this by the full list.
  */
 export const IMPLEMENTED_KEYWORDS: Record<Keyword, string> = {
+  infect: "infect",
   flying: "flying",
   reach: "reach",
   haste: "haste",

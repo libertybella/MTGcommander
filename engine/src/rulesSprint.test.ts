@@ -17478,16 +17478,30 @@ describe("wave 147: overruns, safekeeping, and last stands", () => {
       keyword: "shroud",
     });
 
-    // A predicate with any unknown conjunct compiles to nothing, rather than
-    // half the card: "infect" is not a supported keyword.
+    /**
+     * This asserted the opposite until wave 365: a predicate with an unknown
+     * conjunct compiles to NOTHING rather than half the card, and "infect"
+     * used to be the unknown one. Infect is a real keyword now, so the whole
+     * sentence reads — the refusal rule is unchanged and still tested below.
+     */
     const hordes = compile(
       "Triumph of the Hordes",
       "{3}{G}",
       "Sorcery",
       "Until end of turn, creatures you control get +1/+1 and gain trample and infect.",
     );
-    expect(hordes.notes).not.toEqual([]);
-    expect(hordes.definition.effects).toEqual([]);
+    expect(hordes.notes).toEqual([]);
+    expect(hordes.definition.effects.length).toBeGreaterThan(0);
+
+    // The rule itself: a conjunct the grammar does not know still refuses.
+    const unknown = compile(
+      "Probe",
+      "{3}{G}",
+      "Sorcery",
+      "Until end of turn, creatures you control get +1/+1 and gain trample and wobble.",
+    );
+    expect(unknown.notes).not.toEqual([]);
+    expect(unknown.definition.effects).toEqual([]);
   });
 
   it("pumps the team and the target for exactly one turn", () => {
@@ -57277,5 +57291,233 @@ describe("wave 362: a graveyard watched from across the table", () => {
       kind: "opponent_lost_life_this_turn",
       atLeast: 2,
     });
+  });
+});
+
+describe("wave 365: infect, and poison counters", () => {
+  const compile = (
+    name: string,
+    typeLine: string,
+    oracleText: string,
+    manaCost = "",
+    pt: [string, string] | null = null,
+    printedKeywords: string[] = [],
+  ) =>
+    compileOracleCard({
+      oracleId: name.toLowerCase().replace(/[^a-z]+/g, "-"),
+      name,
+      manaCost,
+      typeLine,
+      power: pt?.[0] ?? null,
+      toughness: pt?.[1] ?? null,
+      printedKeywords,
+      imageUrl: "",
+      oracleText,
+    });
+
+  const put = (game: GameState, ownerId: string, definition: CardDefinition) => {
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({
+      definitionId: definition.id,
+      ownerId,
+      zone: "battlefield",
+    });
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === ownerId)!.zones.battlefield.push(card.id);
+    card.summoningSick = false;
+    return card.id;
+  };
+
+  it("reads infect off a printed keyword line", () => {
+    const compiled = compile(
+      "Triumph Probe",
+      "Creature — Phyrexian Horror",
+      "Trample, infect",
+      "{4}",
+      ["3", "3"],
+      ["Trample", "Infect"],
+    );
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.keywords).toContain("infect");
+  });
+
+  const infector = (name = "Infector", power = 3) =>
+    createCardDefinition({
+      name,
+      typeLine: "Creature — Phyrexian Horror",
+      manaCost: "{3}",
+      power,
+      toughness: 3,
+      keywords: ["infect"],
+    });
+
+  const plain = (name = "Bear", power = 3) =>
+    createCardDefinition({
+      name,
+      typeLine: "Creature — Bear",
+      manaCost: "{2}{G}",
+      power,
+      toughness: 3,
+    });
+
+  const swing = (game: GameState, attackerId: string, playerId: string, defenderId: string) => {
+    game.turn.activePlayerId = playerId;
+    game.turn.phase = "combat";
+    game.turn.step = "declareAttackers";
+    game.priorityPlayerId = playerId;
+    const declared = declareAttackers(game, playerId, [{ attackerId, defenderId }]);
+    return applyCombatDamage(declared);
+  };
+
+  it("poisons a player instead of taking their life", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const attackerId = put(game, p1.id, infector());
+    const before = game.players.find((entry) => entry.id === p2.id)!.life;
+    const after = swing(game, attackerId, p1.id, p2.id);
+    const defender = after.players.find((entry) => entry.id === p2.id)!;
+    // CR 702.90a: no life is lost at all. A player on 40 with nine poison
+    // is one hit from dead and looks perfectly healthy.
+    expect(defender.life).toBe(before);
+    expect(defender.poisonCounters).toBe(3);
+  });
+
+  it("leaves an ordinary attacker taking life as usual", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const attackerId = put(game, p1.id, plain());
+    const before = game.players.find((entry) => entry.id === p2.id)!.life;
+    const after = swing(game, attackerId, p1.id, p2.id);
+    const defender = after.players.find((entry) => entry.id === p2.id)!;
+    expect(defender.life).toBe(before - 3);
+    expect(defender.poisonCounters).toBe(0);
+  });
+
+  it("puts -1/-1 counters on a creature rather than marking damage", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const attackerId = put(game, p1.id, infector());
+    const blockerId = put(game, p2.id, plain("Blocker", 1));
+    game.turn.activePlayerId = p1.id;
+    game.turn.phase = "combat";
+    game.turn.step = "declareAttackers";
+    game.priorityPlayerId = p1.id;
+    const declared = declareAttackers(game, p1.id, [
+      { attackerId, defenderId: p2.id },
+    ]);
+    declared.turn.step = "declareBlockers";
+    const blocked = declareBlockers(declared, p2.id, [
+      { blockerId, attackerId },
+    ]);
+    const after = applyCombatDamage(blocked);
+    // CR 702.90b. The blocker is a 3/3 taking 3: three -1/-1 counters make
+    // it a 0/0 and it dies to a state-based action — but the difference
+    // from marked damage is that this does not wear off at cleanup, and a
+    // survivor stays shrunk.
+    expect(after.cards[blockerId]?.zone).toBe("graveyard");
+    expect(after.cards[attackerId]?.damageMarked).toBe(1);
+    expect(after.cards[attackerId]?.counters["m1m1"] ?? 0).toBe(0);
+  });
+
+  it("shrinks a survivor for good", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const sourceId = put(game, p1.id, infector("Small Infector", 1));
+    const victimId = put(game, p2.id, plain("Victim", 3));
+    const after = applyEffects(
+      game,
+      bindCardEffects(
+        game,
+        [
+          {
+            kind: "deal_damage",
+            sourceId: "self",
+            target: { type: "chosen", index: 0 },
+            amount: 1,
+          },
+        ],
+        {
+          controllerId: p1.id,
+          sourceId,
+          targets: [{ type: "creature", cardId: victimId }],
+          targetRequirements: [{ kind: "creature" }],
+        },
+      ),
+    );
+    expect(after.cards[victimId]?.counters["m1m1"]).toBe(1);
+    expect(after.cards[victimId]?.damageMarked).toBe(0);
+    expect(creaturePower(after, victimId)).toBe(2);
+  });
+
+  it("poisons on noncombat damage too", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const sourceId = put(game, p1.id, infector());
+    const before = game.players.find((entry) => entry.id === p2.id)!.life;
+    const after = applyEffects(
+      game,
+      bindCardEffects(
+        game,
+        [
+          {
+            kind: "deal_damage",
+            sourceId: "self",
+            target: { type: "player", playerId: p2.id },
+            amount: 2,
+          },
+        ],
+        { controllerId: p1.id, sourceId, targets: [], targetRequirements: [] },
+      ),
+    );
+    expect(after.players.find((entry) => entry.id === p2.id)!.life).toBe(before);
+    expect(after.players.find((entry) => entry.id === p2.id)!.poisonCounters).toBe(2);
+  });
+
+  it("still gains life for a lifelinking infector", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const attackerId = put(
+      game,
+      p1.id,
+      createCardDefinition({
+        name: "Lifelinking Infector",
+        typeLine: "Creature — Phyrexian Horror",
+        manaCost: "{3}",
+        power: 3,
+        toughness: 3,
+        keywords: ["infect", "lifelink"],
+      }),
+    );
+    const before = game.players.find((entry) => entry.id === p1.id)!.life;
+    const after = swing(game, attackerId, p1.id, p2.id);
+    // The damage was dealt; only what it did to the player changed.
+    expect(after.players.find((entry) => entry.id === p1.id)!.life).toBe(before + 3);
+    expect(after.players.find((entry) => entry.id === p2.id)!.poisonCounters).toBe(3);
+  });
+
+  it("loses the game at ten poison counters", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const victim = game.players.find((entry) => entry.id === p2.id)!;
+    victim.poisonCounters = 9;
+    applyStateBasedActionsInPlace(game);
+    expect(game.players.find((entry) => entry.id === p2.id)!.lost).toBeFalsy();
+    game.players.find((entry) => entry.id === p2.id)!.poisonCounters = 10;
+    applyStateBasedActionsInPlace(game);
+    // CR 104.3c — and at 40 life, which is the point.
+    expect(game.players.find((entry) => entry.id === p2.id)!.lost).toBe(true);
+    expect(game.players.find((entry) => entry.id === p1.id)!.lost).toBeFalsy();
+  });
+
+  it("round trips the counter", () => {
+    const { game, p1 } = twoPlayers();
+    game.players.find((entry) => entry.id === p1.id)!.poisonCounters = 4;
+    const round = parseGameState(serializeGameState(game));
+    expect(round.players.find((entry) => entry.id === p1.id)?.poisonCounters).toBe(4);
+  });
+
+  it("reads a state written before poison existed as unpoisoned", () => {
+    const { game, p1 } = twoPlayers();
+    const raw = JSON.parse(serializeGameState(game)) as {
+      players: Array<Record<string, unknown>>;
+    };
+    for (const player of raw.players) {
+      delete player.poisonCounters;
+    }
+    const round = parseGameState(JSON.stringify(raw));
+    expect(round.players.find((entry) => entry.id === p1.id)?.poisonCounters).toBe(0);
   });
 });

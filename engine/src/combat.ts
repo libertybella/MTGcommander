@@ -696,7 +696,17 @@ function dealDamageToPlayerInPlace(
   // what the replacement touches. The DAMAGE figure stays as dealt — lifelink
   // and "was dealt N damage" both read that — while the life actually lost
   // is the replaced one.
-  const lost = lifeLossAfterReplacements(state, defenderId, dealt);
+  /**
+   * Infect (CR 702.90a): the player takes POISON COUNTERS and loses no life
+   * at all. Everything else about the damage still happened — lifelink
+   * still gains, the damage events still carry `dealt`, and a commander
+   * still tallies commander damage — so only the life loss is replaced.
+   */
+  const poisons = hasKeyword(state, sourceId, "infect");
+  const lost = poisons ? 0 : lifeLossAfterReplacements(state, defenderId, dealt);
+  if (poisons) {
+    defender.poisonCounters += dealt;
+  }
   defender.life -= lost;
   collect?.push({
     kind: "combat_damage_to_player",
@@ -742,7 +752,13 @@ function markCreatureDamageInPlace(
     return;
   }
   const dealt = damageAfterReplacements(state, sourceId, target.controllerId, amount, true);
-  target.damageMarked += dealt;
+  // Infect (CR 702.90b): -1/-1 counters rather than marked damage, which is
+  // why it kills through a lifegain fog and does not wear off at cleanup.
+  if (hasKeyword(state, sourceId, "infect")) {
+    target.counters["m1m1"] = (target.counters["m1m1"] ?? 0) + dealt;
+  } else {
+    target.damageMarked += dealt;
+  }
   if (hasKeyword(state, sourceId, "deathtouch")) {
     target.deathtouched = true;
   }
@@ -776,6 +792,16 @@ export function dealCombatDamageInPlace(
       state.preventCombatFor?.includes(id) === true;
     const attackerDeals =
       dealsInStrike(state, attack.attackerId, strike) && !shielded(attack.attackerId);
+    /**
+     * Combat damage is dealt SIMULTANEOUSLY (CR 510.2), so every blocker's
+     * power is locked here, before the attacker's damage is applied. With
+     * ordinary damage the distinction never showed — marked damage does not
+     * change power — but INFECT puts -1/-1 counters on, and a blocker that
+     * had already shrunk would deal less back than it does on the table.
+     */
+    const blockerPower = new Map<CardInstanceId, number>(
+      blockerIds.map((id) => [id, creaturePower(state, id)]),
+    );
 
     if (!wasBlocked) {
       if (attackerDeals) {
@@ -824,7 +850,7 @@ export function dealCombatDamageInPlace(
       markCreatureDamageInPlace(
         state,
         attack.attackerId,
-        creaturePower(state, blockerId),
+        blockerPower.get(blockerId) ?? creaturePower(state, blockerId),
         blockerId,
       );
     }

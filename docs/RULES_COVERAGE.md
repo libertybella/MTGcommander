@@ -2277,6 +2277,13 @@ more questions it can now ask:
   `TopOfLibraryGrant.payLifeInsteadOfMana` replaces the cost OUTRIGHT, the
   same way flashback does, and rides the same life-payment path. A cost
   that had merely been reduced would still refuse a caster with no mana.
+- **Infect** (CR 702.90) and **poison counters** (CR 104.3c). Damage from an
+  infect source gives a player poison counters instead of costing life, and
+  gives a creature -1/-1 counters instead of marked damage — so it kills
+  through a lifegain fog and a survivor stays shrunk. Lifelink still gains
+  and the damage events still carry the amount: the damage happened, only
+  what it did changed. Ten poison counters lose the game at any life total.
+  Nothing in this engine removes a poison counter yet.
 - **The hand-authored override registry is EMPTY.** The mechanism is kept
   for the next card the compiler genuinely cannot read; the test asserts the
   map holds nothing, so an addition is a deliberate act.

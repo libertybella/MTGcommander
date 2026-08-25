@@ -421,6 +421,11 @@ function parsePlayer(value: unknown): PlayerState {
     id: expectString(value.id, "player.id"),
     displayName: expectString(value.displayName, "player.displayName"),
     life: expectNumber(value.life, "player.life"),
+    // Absent on a state written before infect existed: nobody was poisoned.
+    poisonCounters:
+      value.poisonCounters === undefined
+        ? 0
+        : expectNumber(value.poisonCounters, "player.poisonCounters"),
     mana: parseMana(value.mana, "player.mana"),
     zones,
     commander: {

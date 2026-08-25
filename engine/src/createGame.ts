@@ -697,6 +697,7 @@ function createPlayer(displayName: string): PlayerState {
     id: createId("player"),
     displayName,
     life: 40,
+    poisonCounters: 0,
     mana: emptyManaPool(),
     zones: emptyPlayerZones(),
     commander: {

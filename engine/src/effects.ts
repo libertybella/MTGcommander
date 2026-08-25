@@ -2728,7 +2728,21 @@ function applyDealDamage(
       effect.target.playerId,
       effect.amount,
     );
-    let next = applyLoseLife(state, effect.target.playerId, dealt);
+    // Infect (CR 702.90a): poison counters rather than life loss. The
+    // damage events below still carry `dealt`, because the damage happened.
+    const infects =
+      effect.sourceId !== undefined &&
+      effect.sourceId !== null &&
+      state.cards[effect.sourceId] !== undefined &&
+      hasKeyword(state, effect.sourceId, "infect");
+    const damagedPlayerId = effect.target.playerId;
+    let next = infects ? cloneGameState(state) : applyLoseLife(state, damagedPlayerId, dealt);
+    if (infects) {
+      const poisoned = next.players.find((entry) => entry.id === damagedPlayerId);
+      if (poisoned) {
+        poisoned.poisonCounters += dealt;
+      }
+    }
     if (effect.sourceId && next.cards[effect.sourceId]) {
       dispatchEventsInPlace(next, [
         {
@@ -2779,7 +2793,12 @@ function applyDealDamage(
       return applyDamageLifegainRider(next, effect);
     }
   }
-  damaged.damageMarked += dealt;
+  // Infect (CR 702.90b): -1/-1 counters rather than marked damage.
+  if (effect.sourceId && hasKeyword(next, effect.sourceId, "infect")) {
+    damaged.counters["m1m1"] = (damaged.counters["m1m1"] ?? 0) + dealt;
+  } else {
+    damaged.damageMarked += dealt;
+  }
   if (effect.sourceId && hasKeyword(next, effect.sourceId, "deathtouch")) {
     damaged.deathtouched = true;
   }

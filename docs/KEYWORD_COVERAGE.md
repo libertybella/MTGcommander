@@ -3,7 +3,7 @@
 Generated from `engine/src/keywordCatalog.ts` — do not edit by hand.
 Regenerate with: `UPDATE_COVERAGE=1 npx vitest run engine/src/keywordCatalog.test.ts`
 
-**25 of 176** keyword abilities implemented.
+**26 of 176** keyword abilities implemented.
 
 ## Implemented
 
@@ -29,6 +29,7 @@ Regenerate with: `UPDATE_COVERAGE=1 npx vitest run engine/src/keywordCatalog.tes
 - [x] horsemanship
 - [x] fear
 - [x] totem armor
+- [x] infect
 - [x] menace
 - [x] myriad
 - [x] skulk
@@ -101,7 +102,6 @@ Regenerate with: `UPDATE_COVERAGE=1 npx vitest run engine/src/keywordCatalog.tes
 - [ ] annihilator
 - [ ] level up
 - [ ] rebound
-- [ ] infect
 - [ ] battle cry
 - [ ] living weapon
 - [ ] undying

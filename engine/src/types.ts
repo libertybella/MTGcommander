@@ -823,6 +823,12 @@ export type PlayerState = {
   zones: PlayerZones;
   commander: CommanderState;
   lost: boolean;
+  /**
+   * Poison counters (CR 122.1a). Ten of them lose the game (CR 104.3c),
+   * and unlike life they only ever go up here — nothing in this engine
+   * removes one yet.
+   */
+  poisonCounters: number;
   /** Lands played this turn. Resets on that player's untap. */
   landsPlayedThisTurn: number;
   /** Explore: one-shot extra land drops granted this turn. Reset with the
@@ -3659,7 +3665,15 @@ export type Keyword =
   | "nonbasic_landwalk"
   /** Myriad (CR 702.115) — Blade of Selves grants it, so it is a keyword
    * the combat step reads rather than a printed trigger. */
-  | "myriad";
+  | "myriad"
+  /**
+   * Infect (CR 702.90): damage this source deals is not damage in the
+   * ordinary sense. A player takes POISON COUNTERS instead of losing life,
+   * and a creature takes -1/-1 COUNTERS instead of marked damage — which is
+   * why an infect creature kills through a fog of lifegain and why its
+   * damage does not wear off at cleanup.
+   */
+  | "infect";
 
 export type TriggerEvent =
   | "enter_battlefield"

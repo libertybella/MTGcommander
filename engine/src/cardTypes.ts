@@ -79,6 +79,9 @@ export function isMainPhase(state: GameState): boolean {
   return state.turn.phase === "precombatMain" || state.turn.phase === "postcombatMain";
 }
 
+/** CR 104.3c: ten poison counters lose the game. */
+export const POISON_COUNTERS_TO_LOSE = 10;
+
 export const COMMANDER_DAMAGE_TO_LOSE = 21;
 
 export function isCommander(state: GameState, cardId: CardInstanceId): boolean {
