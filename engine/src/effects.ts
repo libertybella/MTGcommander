@@ -2097,6 +2097,26 @@ export function bindCardEffect(
         cost: effect.cost,
         ...(effect.life === undefined ? {} : { life: effect.life }),
         effects: bindCardEffects(state, effect.effects, context),
+        // "If this permanent is attached to a creature you control" —
+        // asked here, where the source is in hand. By the time the prompt
+        // is answered the trigger has finished resolving.
+        ...(effect.requiresHostCreature &&
+        !(() => {
+          const hostId = context.sourceId
+            ? state.cards[context.sourceId]?.attachedTo ?? null
+            : null;
+          return (
+            hostId !== null &&
+            state.cards[hostId]?.zone === "battlefield" &&
+            state.cards[hostId]?.controllerId === playerId &&
+            isCreature(state, hostId)
+          );
+        })()
+          ? { hostMissing: true }
+          : {}),
+        ...(effect.elseEffects
+          ? { elseEffects: bindCardEffects(state, effect.elseEffects, context) }
+          : {}),
       };
     }
     case "damage_all": {
@@ -7183,6 +7203,16 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
       }
       case "may_pay": {
         next = cloneGameState(state);
+        // Springheart Nantuko: "you may pay {1}{G} IF this permanent is
+        // attached to a creature you control." With no host there is no
+        // offer at all — and not offering is one of the two ways not to
+        // pay, so the else-branch still happens.
+        if (effect.hostMissing === true) {
+          if (effect.elseEffects && effect.elseEffects.length > 0) {
+            next = applyEffects(next, effect.elseEffects);
+          }
+          break;
+        }
         if (isLiving(next, effect.playerId)) {
           next.prompts.push({
             kind: "pay_or_effect",
@@ -7192,6 +7222,9 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
             thenEffects: effect.effects.map((entry) => ({ ...entry })),
             sourceId: null,
             whenPaid: true,
+            ...(effect.elseEffects
+              ? { elseEffects: effect.elseEffects.map((entry) => ({ ...entry })) }
+              : {}),
           });
         }
         break;

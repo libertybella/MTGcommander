@@ -69535,3 +69535,300 @@ describe("wave 415: Return the Favor", () => {
     ]);
   });
 });
+
+describe("wave 416: Springheart Nantuko", () => {
+  const compile = (
+    name: string,
+    typeLine: string,
+    oracleText: string,
+    manaCost = "",
+    pt: [string, string] | null = null,
+  ) =>
+    compileOracleCard({
+      oracleId: name.toLowerCase().replace(/[^a-z]+/g, "-"),
+      name,
+      manaCost,
+      typeLine,
+      power: pt?.[0] ?? null,
+      toughness: pt?.[1] ?? null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  const springheartText =
+    "Bestow {1}{G}\nEnchanted creature gets +1/+1.\nLandfall — Whenever a land you control enters, you may pay {1}{G} if this permanent is attached to a creature you control. If you do, create a token that's a copy of that creature. If you didn't create a token this way, create a 1/1 green Insect creature token.";
+
+  it("compiles all three of Springheart's lines", () => {
+    const compiled = compile(
+      "Springheart Nantuko",
+      "Enchantment Creature — Insect Monk",
+      springheartText,
+      "{1}{G}",
+      ["1", "1"],
+    );
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.bestow).toEqual({ manaCost: "{1}{G}" });
+    expect(compiled.definition.staticAbilities[0]?.effect).toEqual({
+      kind: "modify_pt",
+      power: 1,
+      toughness: 1,
+    });
+    expect(compiled.definition.triggers[0]?.effects[0]).toMatchObject({
+      kind: "may_pay",
+      cost: "{1}{G}",
+      requiresHostCreature: true,
+      effects: [{ kind: "copy_token", ownerId: "controller", ofCardId: "host" }],
+    });
+  });
+
+  // ---- Bestow as a cast ---------------------------------------------------
+
+  const nantuko = () =>
+    createCardDefinition({
+      name: "Springheart Nantuko",
+      typeLine: "Enchantment Creature — Insect Monk",
+      manaCost: "{1}{G}",
+      power: 1,
+      toughness: 1,
+      bestow: { manaCost: "{1}{G}" },
+      staticAbilities: [
+        {
+          selector: { scope: "attached" },
+          effect: { kind: "modify_pt", power: 1, toughness: 1 },
+        },
+      ],
+    });
+
+  const bear = (name: string) =>
+    createCardDefinition({
+      name,
+      typeLine: "Creature — Bear",
+      manaCost: "{1}{G}",
+      power: 2,
+      toughness: 2,
+    });
+
+  const putIn = (
+    game: GameState,
+    ownerId: string,
+    definition: CardDefinition,
+    zone: "hand" | "battlefield",
+  ) => {
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({ definitionId: definition.id, ownerId, zone });
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === ownerId)!.zones[zone].push(card.id);
+    if (zone === "battlefield") {
+      card.summoningSick = false;
+    }
+    return card.id;
+  };
+
+  const ready = (game: GameState, playerId: string) => {
+    game.turn.activePlayerId = playerId;
+    game.turn.phase = "precombatMain";
+    game.turn.step = "precombatMain";
+    game.priorityPlayerId = playerId;
+    game.players.find((entry) => entry.id === playerId)!.mana.G = 5;
+  };
+
+  const castBestowed = (
+    game: GameState,
+    playerId: string,
+    nantukoId: string,
+    hostId: string,
+  ) => {
+    ready(game, playerId);
+    return resolveTopOfStack(
+      applyAction(game, {
+        kind: "cast_spell",
+        playerId,
+        cardId: nantukoId,
+        bestow: true,
+        targets: [{ type: "creature", cardId: hostId }],
+      }),
+    );
+  };
+
+  it("offers both casts while a creature is out", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const nantukoId = putIn(game, p1.id, nantuko(), "hand");
+    putIn(game, p1.id, bear("A Host"), "battlefield");
+    ready(game, p1.id);
+    const casts = legalActions(game, p1.id).filter(
+      (action) => action.kind === "cast_spell" && action.cardId === nantukoId,
+    );
+    // Two offers for one card: the creature and the Aura. For this card
+    // they cost the same, which is why it can never be an auto-take.
+    expect(casts).toHaveLength(2);
+    expect(casts.some((action) => action.kind === "cast_spell" && action.bestow)).toBe(true);
+  });
+
+  it("offers only the creature cast with nothing to enchant", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const nantukoId = putIn(game, p1.id, nantuko(), "hand");
+    ready(game, p1.id);
+    const casts = legalActions(game, p1.id).filter(
+      (action) => action.kind === "cast_spell" && action.cardId === nantukoId,
+    );
+    expect(casts).toHaveLength(1);
+    expect(casts[0]?.kind === "cast_spell" && casts[0].bestow).toBeFalsy();
+  });
+
+  it("enters attached, as an Aura and not a creature", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const nantukoId = putIn(game, p1.id, nantuko(), "hand");
+    const hostId = putIn(game, p1.id, bear("A Host"), "battlefield");
+    const after = castBestowed(game, p1.id, nantukoId, hostId);
+    expect(after.cards[nantukoId]?.zone).toBe("battlefield");
+    expect(after.cards[nantukoId]?.attachedTo).toBe(hostId);
+    expect(after.cards[nantukoId]?.bestowed).toBe(true);
+    // Not a creature while attached: it does not attack, does not block,
+    // and no lord counts it.
+    expect(characteristicsOf(after, nantukoId).types.includes("creature")).toBe(false);
+    expect(cardMatchesSubtype(after, nantukoId, "aura")).toBe(true);
+    // And the static it carries is live.
+    expect(creaturePower(after, hostId)).toBe(3);
+  });
+
+  it("becomes a creature again when its host leaves", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const nantukoId = putIn(game, p1.id, nantuko(), "hand");
+    const hostId = putIn(game, p1.id, bear("A Host"), "battlefield");
+    let after = castBestowed(game, p1.id, nantukoId, hostId);
+    after = applyEffect(after, { kind: "move_card", cardId: hostId, toZone: "graveyard" });
+    applyStateBasedActionsInPlace(after);
+    // CR 702.103e: it does NOT die with its host. It comes loose and is a
+    // creature, which is the whole reason bestow is worth paying for.
+    expect(after.cards[nantukoId]?.zone).toBe("battlefield");
+    expect(after.cards[nantukoId]?.attachedTo).toBeNull();
+    expect(after.cards[nantukoId]?.bestowed).toBeUndefined();
+    expect(characteristicsOf(after, nantukoId).types.includes("creature")).toBe(true);
+  });
+
+  it("is an ordinary creature when cast for its printed cost", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const nantukoId = putIn(game, p1.id, nantuko(), "hand");
+    ready(game, p1.id);
+    const after = resolveTopOfStack(
+      applyAction(game, { kind: "cast_spell", playerId: p1.id, cardId: nantukoId, targets: [] }),
+    );
+    expect(characteristicsOf(after, nantukoId).types.includes("creature")).toBe(true);
+    expect(after.cards[nantukoId]?.bestowed).toBeUndefined();
+  });
+
+  it("refuses a bestow cast on a card with no bestow cost", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const bearId = putIn(game, p1.id, bear("Just A Bear"), "hand");
+    const hostId = putIn(game, p1.id, bear("A Host"), "battlefield");
+    ready(game, p1.id);
+    expect(() =>
+      applyAction(game, {
+        kind: "cast_spell",
+        playerId: p1.id,
+        cardId: bearId,
+        bestow: true,
+        targets: [{ type: "creature", cardId: hostId }],
+      }),
+    ).toThrow();
+  });
+
+  // ---- The landfall offer -------------------------------------------------
+
+  const landfall = (game: GameState, playerId: string, sourceId: string) =>
+    applyEffects(
+      game,
+      bindCardEffects(
+        game,
+        [
+          {
+            kind: "may_pay",
+            playerId: "controller",
+            cost: "{1}{G}",
+            requiresHostCreature: true,
+            effects: [{ kind: "copy_token", ownerId: "controller", ofCardId: "host" }],
+            elseEffects: [
+              {
+                kind: "create_token",
+                ownerId: "controller",
+                name: "Insect",
+                typeLine: "Creature — Insect Token",
+                power: 1,
+                toughness: 1,
+                colors: ["G"],
+              },
+            ],
+          },
+        ],
+        { controllerId: playerId, sourceId, targets: [], targetRequirements: [] },
+      ),
+    );
+
+  const tokensOf = (game: GameState, playerId: string) =>
+    Object.values(game.cards).filter(
+      (card) => card.isToken && card.controllerId === playerId && card.zone === "battlefield",
+    );
+
+  it("makes the Insect outright when there is no host", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const nantukoId = putIn(game, p1.id, nantuko(), "battlefield");
+    const after = landfall(game, p1.id, nantukoId);
+    // Unattached, the offer never happens — and not offering is one of the
+    // two ways not to make a token this way.
+    expect(after.prompts).toHaveLength(0);
+    expect(tokensOf(after, p1.id)).toHaveLength(1);
+  });
+
+  it("copies the host when the payment is made", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const nantukoId = putIn(game, p1.id, nantuko(), "hand");
+    const hostId = putIn(game, p1.id, bear("A Host"), "battlefield");
+    let after = castBestowed(game, p1.id, nantukoId, hostId);
+    after.players.find((entry) => entry.id === p1.id)!.mana.G = 5;
+    after = landfall(after, p1.id, nantukoId);
+    expect(after.prompts[0]?.kind).toBe("pay_or_effect");
+    after = applyResolvePay(after, p1.id, true);
+    const tokens = tokensOf(after, p1.id);
+    expect(tokens).toHaveLength(1);
+    // A copy of the HOST, not an Insect.
+    expect(after.definitions[tokens[0]!.definitionId]?.name).toBe("A Host");
+  });
+
+  it("makes the Insect when the payment is declined", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const nantukoId = putIn(game, p1.id, nantuko(), "hand");
+    const hostId = putIn(game, p1.id, bear("A Host"), "battlefield");
+    let after = castBestowed(game, p1.id, nantukoId, hostId);
+    after.players.find((entry) => entry.id === p1.id)!.mana.G = 5;
+    after = landfall(after, p1.id, nantukoId);
+    after = applyResolvePay(after, p1.id, false);
+    const tokens = tokensOf(after, p1.id);
+    expect(tokens).toHaveLength(1);
+    expect(after.definitions[tokens[0]!.definitionId]?.name).toBe("Insect");
+  });
+
+  it("round trips the keyword, the mark and both branches", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const definition = nantuko();
+    const nantukoId = putIn(game, p1.id, definition, "hand");
+    const hostId = putIn(game, p1.id, bear("A Host"), "battlefield");
+    const after = castBestowed(game, p1.id, nantukoId, hostId);
+    const round = parseGameState(serializeGameState(after));
+    // Dropped on the wire it is a 1/1 creature sitting next to the bear it
+    // was supposed to be enchanting.
+    expect(round.definitions[definition.id]?.bestow).toEqual({ manaCost: "{1}{G}" });
+    expect(round.cards[nantukoId]?.bestowed).toBe(true);
+    expect(characteristicsOf(round, nantukoId).types.includes("creature")).toBe(false);
+  });
+});

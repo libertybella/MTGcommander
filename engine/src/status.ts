@@ -240,6 +240,26 @@ function attachmentLegalityInPlace(state: GameState, collectDies: EngineEvent[])
       continue;
     }
     const definition = state.definitions[card.definitionId];
+    // Bestow (CR 702.103e): a bestowed permanent whose host is gone does not
+    // die with it — it stops being an Aura and becomes the creature it was
+    // printed as. Checked before the Aura rule, because it is an exception
+    // to exactly that rule.
+    if (card.bestowed) {
+      const bestowHost = card.attachedTo ? state.cards[card.attachedTo] : undefined;
+      // The link may already be gone — a permanent leaving takes its
+      // attachments' `attachedTo` with it — so a missing host and an
+      // illegal one are the same answer here.
+      if (
+        !bestowHost ||
+        bestowHost.zone !== "battlefield" ||
+        !isCreature(state, bestowHost.id)
+      ) {
+        card.attachedTo = null;
+        delete card.bestowed;
+        changed = true;
+      }
+      continue;
+    }
     const isAura = Boolean(definition?.enchant);
     const isEquipment = definition?.characteristics.subtypes.includes("equipment") ?? false;
     if (!isAura && !isEquipment) {

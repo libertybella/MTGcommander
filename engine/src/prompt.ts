@@ -1588,7 +1588,15 @@ export function applyResolvePay(
   next.prompts.shift();
   if (!pay) {
     if (prompt.kind === "pay_or_effect") {
-      return prompt.whenPaid ? next : applyEffects(next, prompt.thenEffects);
+      // Springheart Nantuko: declining is a real branch, not just an
+      // absence. `whenPaid` prompts run `thenEffects` only on payment, and
+      // `elseEffects` is what they owe on the other side.
+      if (prompt.whenPaid) {
+        return prompt.elseEffects && prompt.elseEffects.length > 0
+          ? applyEffects(next, prompt.elseEffects)
+          : next;
+      }
+      return applyEffects(next, prompt.thenEffects);
     }
     const index = next.stack.findIndex((entry) => entry.id === prompt.stackObjectId);
     if (index !== -1) {

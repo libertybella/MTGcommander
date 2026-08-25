@@ -632,6 +632,7 @@ export function parseGameState(json: string): GameState {
           }),
       ...(card.bargainedThisCast === true ? { bargainedThisCast: true } : {}),
       ...(card.sacrificeAtNextCleanup === true ? { sacrificeAtNextCleanup: true } : {}),
+      ...(card.bestowed === true ? { bestowed: true } : {}),
       ...(isRecord(card.manaSpentToCast)
         ? { manaSpentToCast: parseMana(card.manaSpentToCast, "card.manaSpentToCast") }
         : {}),
@@ -1352,6 +1353,9 @@ export function parseGameState(json: string): GameState {
             })(),
           }),
       ...(def.bargain === true ? { bargain: true } : {}),
+      ...(isRecord(def.bestow)
+        ? { bestow: { manaCost: expectString(def.bestow.manaCost, "definition.bestow.manaCost") } }
+        : {}),
       ...(def.sacrificeIfCastAtInstantSpeed === true
         ? { sacrificeIfCastAtInstantSpeed: true }
         : {}),
@@ -2878,6 +2882,14 @@ function parsePrompts(value: unknown, playerIds: Set<string>): PendingPrompt[] {
             ? null
             : expectString(entry.sourceId, `prompts[${index}].sourceId`),
         ...(entry.whenPaid === true ? { whenPaid: true } : {}),
+        ...(entry.elseEffects === undefined
+          ? {}
+          : {
+              elseEffects: parseGameEffects(
+                entry.elseEffects,
+                `prompts[${index}].elseEffects`,
+              ),
+            }),
         ...(resumeEffects && resumeEffects.length > 0 ? { resumeEffects } : {}),
       };
     }
@@ -5335,6 +5347,10 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
           ? {}
           : { life: expectNumber(value.life, `${label}.life`) }),
         effects: parseCardEffects(value.effects, `${label}.effects`),
+        ...(value.requiresHostCreature === true ? { requiresHostCreature: true } : {}),
+        ...(value.elseEffects === undefined
+          ? {}
+          : { elseEffects: parseCardEffects(value.elseEffects, `${label}.elseEffects`) }),
       };
     case "damage_all":
       return {
@@ -7569,6 +7585,10 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
         ? {}
         : { life: expectNumber(value.life, `${label}.life`) }),
       effects: parseGameEffects(value.effects, `${label}.effects`),
+      ...(kind === "may_pay" && value.hostMissing === true ? { hostMissing: true } : {}),
+      ...(kind === "may_pay" && value.elseEffects !== undefined
+        ? { elseEffects: parseGameEffects(value.elseEffects, `${label}.elseEffects`) }
+        : {}),
     };
   }
   if (kind === "damage_all") {

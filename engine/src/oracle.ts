@@ -285,6 +285,7 @@ function compileOneFace(card: OracleCard, definitionId: string): OracleCompileRe
     ...(compiled.grantsCostKeyword ? { grantsCostKeyword: compiled.grantsCostKeyword } : {}),
     ...(compiled.grantsFlash ? { grantsFlash: true } : {}),
     ...(compiled.bargain ? { bargain: true } : {}),
+    ...(compiled.bestow ? { bestow: { ...compiled.bestow } } : {}),
     ...(compiled.sacrificeIfCastAtInstantSpeed
       ? { sacrificeIfCastAtInstantSpeed: true }
       : {}),

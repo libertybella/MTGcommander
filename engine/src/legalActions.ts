@@ -45,7 +45,14 @@ import type {
  * not count as meaningful (nobody stops a game to float mana).
  */
 export type LegalAction =
-  | { kind: "cast_spell"; cardId: CardInstanceId; faceIndex: number; fromCommand: boolean }
+  | {
+      kind: "cast_spell";
+      cardId: CardInstanceId;
+      faceIndex: number;
+      fromCommand: boolean;
+      /** Bestow (CR 702.103): the same card offered as an Aura instead. */
+      bestow?: boolean;
+    }
   | { kind: "play_land"; cardId: CardInstanceId; faceIndex: number }
   | { kind: "activate_ability"; cardId: CardInstanceId; abilityIndex: number }
   | { kind: "mana"; cardId: CardInstanceId }
@@ -773,6 +780,26 @@ export function legalActions(state: GameState, playerId: PlayerId): LegalAction[
         )
       ) {
         actions.push({ kind: "cast_spell", cardId, faceIndex: face.faceIndex, fromCommand: false });
+        // Bestow: a SECOND offer for the same card, because casting it as
+        // an Aura is a different spell with a different cost and a target.
+        // Both are worth having — for Springheart Nantuko they cost the
+        // same — so this is a choice, never an auto-take like evoke.
+        if (
+          face.definition.bestow &&
+          card.zone === "hand" &&
+          Object.values(state.cards).some(
+            (candidate) =>
+              candidate.zone === "battlefield" && isCreature(state, candidate.id),
+          )
+        ) {
+          actions.push({
+            kind: "cast_spell",
+            cardId,
+            faceIndex: face.faceIndex,
+            fromCommand: false,
+            bestow: true,
+          });
+        }
       }
     }
     for (const [abilityIndex, ability] of definition.activated.entries()) {

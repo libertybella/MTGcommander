@@ -23,6 +23,7 @@ import type {
   GameState,
   PlayerId,
   StackObjectId,
+  TargetRequirement,
   ZoneName,
 } from "./types";
 
@@ -146,6 +147,13 @@ export function putActivatedAbilityOnStack(
   return next;
 }
 
+/**
+ * Bestow (CR 702.103): the spell is an Aura spell, so it targets a creature —
+ * a requirement the printed card, which is a creature, does not carry. Named
+ * once so the cast check and the resolution fizzle-check cannot drift apart.
+ */
+const BESTOW_REQUIREMENTS: TargetRequirement[] = [{ kind: "creature" }];
+
 export function putSpellOnStack(
   state: GameState,
   cardId: CardInstanceId,
@@ -219,8 +227,11 @@ export function putSpellOnStack(
     throw new Error(`Card ${cardId} must be in hand to put on the stack`);
   }
   const definition = state.definitions[card.definitionId];
-  const requirements =
-    modeIndexes && modeIndexes.length > 0 && definition?.modes
+  const requirements = card.bestowed
+    ? // Bestow: cast as an AURA spell, which targets the creature it will
+      // enchant. The printed card is a creature and has no target at all.
+      BESTOW_REQUIREMENTS
+    : modeIndexes && modeIndexes.length > 0 && definition?.modes
       ? modeIndexes.flatMap((index) => definition.modes![index]?.targetRequirements ?? [])
       : modeIndex !== undefined && definition?.modes?.[modeIndex]
         ? definition.modes[modeIndex]!.targetRequirements
@@ -534,7 +545,11 @@ export function resolveTopOfStack(state: GameState): GameState {
   }
   const mode =
     top.modeIndex !== undefined ? definition?.modes?.[top.modeIndex] : undefined;
-  const requirements = mode ? mode.targetRequirements : definition?.targetRequirements ?? [];
+  const requirements = next.cards[top.sourceId]?.bestowed
+    ? BESTOW_REQUIREMENTS
+    : mode
+      ? mode.targetRequirements
+      : definition?.targetRequirements ?? [];
   const printed = mode ? mode.effects : definition?.effects ?? [];
   // Splice onto Arcane: the revealed cards' effects join this spell's,
   // after them, in the order they were spliced (CR 702.47a).
@@ -636,12 +651,16 @@ export function resolveTopOfStack(state: GameState): GameState {
     : "battlefield";
   let attachTo: CardInstanceId | null = null;
   let attachToPlayer: PlayerId | null = null;
-  if (definition?.enchant && destination === "battlefield") {
+  // Bestow: the permanent enters attached, exactly as an Aura does, and
+  // fizzles to the graveyard if its host is gone — CR 702.103c, which is
+  // the same rule an Aura spell follows.
+  const bestowing = next.cards[top.sourceId]?.bestowed === true;
+  if ((definition?.enchant || bestowing) && destination === "battlefield") {
     // An Aura enters attached to its target; with no legal target left, the
     // spell fizzled and the card goes to the graveyard instead (CR 303.4).
     const target = top.targets[0];
     if (
-      definition.enchant === "player" &&
+      definition?.enchant === "player" &&
       target?.type === "player" &&
       hasLegalTargetRemaining(next, requirements, top.targets, top.controllerId, sourceColorsOf(next, top.sourceId), top.sourceId)
     ) {

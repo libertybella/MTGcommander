@@ -169,6 +169,16 @@ export function mergeProtection(a: ProtectionFrom, b: ProtectionFrom): Protectio
   };
 }
 
+/**
+ * Bestow (CR 702.103): a permanent cast for its bestow cost is an AURA for
+ * as long as it stays attached, and the creature it is printed as the moment
+ * it comes loose. A per-instance type change, so it belongs here beside the
+ * face-down one rather than in any layer a static could reach.
+ */
+function bestowedAsAura(card: CardInstance): boolean {
+  return card.bestowed === true && card.attachedTo !== null && card.zone === "battlefield";
+}
+
 function baseComputed(state: GameState, card: CardInstance): ComputedCard {
   // A face-down permanent is a 2/2 colorless creature with no name, types,
   // or abilities (CR 708.2). Its printed card is hidden information.
@@ -230,9 +240,13 @@ function baseComputed(state: GameState, card: CardInstance): ComputedCard {
   return {
     characteristics: {
       supertypes: [...printed.supertypes],
-      types: gateHolds
-        ? printed.types.filter((type) => type !== "creature")
-        : [...printed.types],
+      // Bestow: attached, it is an Aura and not a creature — so it does not
+      // attack, does not block, is not counted by a lord, and is not hit by
+      // a board wipe. Every one of those follows from this line.
+      types:
+        gateHolds || bestowedAsAura(card)
+          ? printed.types.filter((type) => type !== "creature")
+          : [...printed.types],
       // Metallic Mimic: "~ is the chosen type in addition to its other
       // types" folds the entry choice into the computed subtypes, so every
       // subtype query (lords, tribal counts, chosen-type watchers) sees it.
@@ -245,6 +259,8 @@ function baseComputed(state: GameState, card: CardInstance): ComputedCard {
           : []),
         // Portal to Phyrexia: a type the permanent picked up on the way in.
         ...(card.addedSubtypes ?? []),
+        // …and an Aura is what a bestowed permanent is while it is attached.
+        ...(bestowedAsAura(card) && !printed.subtypes.includes("aura") ? ["aura"] : []),
       ],
       colors: [...printed.colors],
       manaValue: printed.manaValue,

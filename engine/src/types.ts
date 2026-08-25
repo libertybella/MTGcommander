@@ -704,6 +704,13 @@ export type CardDefinition = {
    */
   bargain?: boolean;
   /**
+   * Bestow (CR 702.103): an alternative cost that casts this creature as an
+   * Aura enchanting a creature. It is an Aura for as long as it stays
+   * attached and becomes a creature again the moment its host leaves — a
+   * per-INSTANCE type change, which is why nothing here says `enchant`.
+   */
+  bestow?: { manaCost: string };
+  /**
    * Pillow forts: creatures can't attack this permanent's controller unless
    * their controller pays, per attacking creature, `generic` mana (Propaganda),
    * X = the defender's enchantment count (Sphere of Safety), and/or `lifePer`
@@ -818,6 +825,12 @@ export type CardInstance = {
    * bargained then.
    */
   bargainedThisCast?: boolean;
+  /**
+   * Bestow: this permanent was cast for its bestow cost, so while it is
+   * attached it is an Aura and not a creature. Cleared when its host
+   * leaves, which is the moment it becomes a creature.
+   */
+  bestowed?: boolean;
   /**
    * Necromancy: this cast happened when a sorcery could not have been, so
    * the permanent it becomes is sacrificed at the next cleanup. Set while
@@ -2710,7 +2723,26 @@ export type GameEffect =
   /** "You may pay {N}. If you do, …" — paying causes the effects. */
   /** `cost` may be empty and `life` set, or both — Ripples of Undeath asks
    * for "{1} and 3 life", which is one optional cost with two halves. */
-  | { kind: "may_pay"; playerId: PlayerId; cost: string; life?: number; effects: GameEffect[] }
+  | {
+      kind: "may_pay";
+      playerId: PlayerId;
+      cost: string;
+      life?: number;
+      effects: GameEffect[];
+      /**
+       * Springheart Nantuko: "if this permanent is attached to a creature
+       * you control" — resolved at BIND, where the source is known, into
+       * whether the offer happens at all. With no host there is no offer,
+       * and not offering is one of the two ways not to pay, so the
+       * else-branch still runs.
+       */
+      hostMissing?: boolean;
+      /**
+       * "If you didn't create a token this way…" — one branch covering
+       * both ways not to: declining, and having nothing to attach to.
+       */
+      elseEffects?: GameEffect[];
+    }
   /** Blasphemous Act: damage every creature (and optionally player) at once. */
   | {
       kind: "damage_all";
@@ -4391,7 +4423,16 @@ export type CardEffect =
       playerId: PlayerSelector;
       scope: "land";
     }
-  | { kind: "may_pay"; playerId: PlayerSelector; cost: string; life?: number; effects: CardEffect[] }
+  | {
+      kind: "may_pay";
+      playerId: PlayerSelector;
+      cost: string;
+      life?: number;
+      effects: CardEffect[];
+      /** Springheart Nantuko — see the bound form. */
+      requiresHostCreature?: boolean;
+      elseEffects?: CardEffect[];
+    }
   | {
       kind: "damage_all";
       sourceId: CardInstanceId | "self" | null;
@@ -5231,6 +5272,13 @@ export type PendingPrompt =
       thenEffects: GameEffect[];
       sourceId: CardInstanceId | null;
       whenPaid?: boolean;
+      /**
+       * Springheart Nantuko: "If you didn't create a token this way, create
+       * a 1/1 green Insect." What happens when the payment is DECLINED,
+       * beside `thenEffects` for when it is made — the two are different
+       * things and the same prompt owes both.
+       */
+      elseEffects?: GameEffect[];
       resumeEffects?: GameEffect[];
     }
   | {
@@ -6149,6 +6197,13 @@ export type GameAction =
       xValue?: number;
       /** Damage split for divided-damage spells; aligns with `targets`. */
       division?: number[];
+      /**
+       * Bestow (CR 702.103): cast this creature as an Aura for its bestow
+       * cost. A choice at cast time, not an auto-take like evoke — the two
+       * modes are both worth having, and for Springheart Nantuko they cost
+       * exactly the same.
+       */
+      bestow?: boolean;
       /** Permanent sacrificed for an additional cast cost (Deadly Dispute). */
       costSacrificeId?: CardInstanceId;
       /** Cards discarded for an additional cast cost. */

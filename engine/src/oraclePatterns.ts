@@ -120,6 +120,7 @@ export type CompiledOracleText = {
   grantsCostKeyword?: { keyword: "convoke" | "improvise"; types?: string[]; nonTypes?: string[] };
   grantsFlash?: boolean;
   bargain?: boolean;
+  bestow?: { manaCost: string };
   controlsOpponentSearches?: boolean;
   grantsFlashFor?: { types?: string[]; subtypesAny?: string[]; nonTypes?: string[] };
   castFreeFromHand?: CardDefinition["castFreeFromHand"];
@@ -18073,6 +18074,56 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
       result.opponentCreaturesEnterTapped = true;
       result.opponentArtifactsEnterTapped = true;
       continue;
+    }
+
+    // Bestow (CR 702.103). The cost is all the keyword needs: what it
+    // DOES is fixed by the rules, and the card never says it.
+    const bestowLine = sentence.match(/^Bestow ((?:\{[^}]+\})+)$/i);
+    if (bestowLine?.[1]) {
+      result.bestow = { manaCost: bestowLine[1] };
+      continue;
+    }
+
+    /**
+     * Springheart Nantuko's landfall body: three sentences and one
+     * decision. The offer is gated on having a host, the payment copies
+     * that host, and "if you didn't create a token this way" is the other
+     * branch — which covers declining and having no host alike, because
+     * neither made a token.
+     */
+    const springheart = sentence.match(
+      /^Whenever a land you control enters, you may pay ((?:\{[^}]+\})+) if ~ is attached to a creature you control$/i,
+    );
+    if (springheart?.[1]) {
+      const paidLine = sentences[index + 1]?.match(
+        /^If you do, create a token that's a copy of that creature$/i,
+      );
+      const elseLine = sentences[index + 2]?.match(
+        /^If you didn't create a token this way, (.+)$/i,
+      );
+      const elseClause = elseLine?.[1] ? compileSimpleClause(elseLine[1].trim()) : null;
+      if (paidLine && elseClause && !elseClause.leftover && elseClause.targetRequirements.length === 0) {
+        result.triggers.push({
+          event: "enter_battlefield",
+          watch: "controlled",
+          subjectFilter: { types: ["land"] },
+          effects: [
+            {
+              kind: "may_pay",
+              playerId: "controller",
+              cost: springheart[1],
+              requiresHostCreature: true,
+              // "That creature" is the one this permanent is attached to,
+              // which `host` already names.
+              effects: [{ kind: "copy_token", ownerId: "controller", ofCardId: "host" }],
+              elseEffects: elseClause.effects,
+            },
+          ],
+          targetRequirements: [],
+        });
+        index += 2;
+        continue;
+      }
     }
 
     // Extort (CR 702.100): a cast trigger with an optional {W/B} drain.

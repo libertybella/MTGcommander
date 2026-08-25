@@ -324,6 +324,8 @@ function validateCast(
   playerId: PlayerId,
   cardId: CardInstanceId,
   modeIndexes: number[] = [],
+  /** Bestow (CR 702.103): cast as an Aura, for the bestow cost. */
+  bestow = false,
 ): {
   cost: ReturnType<typeof parseManaCost>;
   fromCommand: boolean;
@@ -521,8 +523,13 @@ function validateCast(
   const overloadSwap = modeIndexes
     .map((chosen) => definition.modes?.[chosen]?.replacesCost)
     .find((entry): entry is string => typeof entry === "string");
+  if (bestow && !definition.bestow) {
+    throw new Error("That spell has no bestow cost");
+  }
   const cost = parseManaCost(
-    freeExileCast || freeHandCast
+    bestow && definition.bestow
+      ? definition.bestow.manaCost
+      : freeExileCast || freeHandCast
       ? ""
       : overloadSwap
         ? overloadSwap
@@ -732,9 +739,19 @@ function applyCastSpell(
   costSacrificeId: CardInstanceId | undefined,
   costDiscardIds: CardInstanceId[] | undefined,
   spliceCardIds: CardInstanceId[] | undefined,
+  bestow: boolean | undefined,
 ): GameState {
   requirePlaying(state);
-  const faced = applyChosenFace(state, cardId, faceIndex);
+  // Bestow: marked BEFORE the cost is worked out, because everything after
+  // this — the cost, the target requirement, what the permanent is when it
+  // arrives — reads the mark rather than being told again. Cloned first:
+  // `applyChosenFace` hands back the caller's own state when there is no
+  // face to choose, and a cast that then throws must leave nothing behind.
+  const beforeFace = bestow ? cloneGameState(state) : state;
+  if (bestow && beforeFace.cards[cardId]) {
+    beforeFace.cards[cardId]!.bestowed = true;
+  }
+  const faced = applyChosenFace(beforeFace, cardId, faceIndex);
   const {
     cost,
     fromCommand,
@@ -749,6 +766,7 @@ function applyCastSpell(
     playerId,
     cardId,
     modeIndexes ?? (modeIndex !== undefined ? [modeIndex] : []),
+    bestow === true,
   );
   const card = faced.cards[cardId];
   const definition = card ? faced.definitions[card.definitionId] : undefined;
@@ -982,7 +1000,9 @@ function applyCastSpell(
     }
     validateChosenTargets(
       faced,
-      definition?.targetRequirements ?? [],
+      // Bestow: an Aura spell, so it targets the creature it will enchant —
+      // a requirement the printed creature card does not carry.
+      bestow ? [{ kind: "creature" }] : definition?.targetRequirements ?? [],
       targets ?? [],
       playerId,
       definition?.characteristics.colors,
@@ -2198,6 +2218,7 @@ export function applyAction(
           action.costSacrificeId,
           action.costDiscardIds,
           action.spliceCardIds,
+          action.bestow,
         );
         break;
       case "play_land":
