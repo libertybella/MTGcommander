@@ -2684,7 +2684,15 @@ const GRAVEYARD_TARGET_TYPES: Record<string, string[]> = {
 };
 
 function graveyardCardTarget(phrase: string): TargetRequirement | null {
-  const match = phrase.match(/^(?:(.+?) )?card from (a|your) graveyard$/i);
+  // Mizzix's Mastery writes the same target the other way round: "card
+  // that's an instant or sorcery" rather than "instant or sorcery card".
+  // Normalised here so one reader answers both, instead of a second
+  // grammar that would drift from this one.
+  const rephrased = phrase.replace(
+    /^card that's (?:an?|the) (.+?) from (a|your) graveyard$/i,
+    "$1 card from $2 graveyard",
+  );
+  const match = rephrased.match(/^(?:(.+?) )?card from (a|your) graveyard$/i);
   if (!match?.[2]) {
     return null;
   }
@@ -19524,6 +19532,35 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
           host.effects = [...host.effects, ...(repeated as CardEffect[])];
           continue;
         }
+      }
+    }
+
+    /**
+     * Mizzix's Mastery: "For each card exiled this way, copy it, and you
+     * may cast the copy without paying its mana cost."
+     *
+     * Folded onto the exile before it, because "that way" is that exile.
+     * Under overload the same fold runs once per card, since the overload
+     * expansion re-binds the chosen ref per object.
+     */
+    if (
+      /^For each card exiled this way, copy it, and you may cast the copy without paying its mana cost$/i.test(
+        sentence,
+      )
+    ) {
+      const exiling = result.effects[result.effects.length - 1];
+      if (
+        exiling?.kind === "move_card" &&
+        exiling.toZone === "exile" &&
+        typeof exiling.cardId === "object" &&
+        exiling.cardId.type === "chosen"
+      ) {
+        result.effects.push({
+          kind: "cast_free_copy",
+          cardId: { type: "chosen", index: exiling.cardId.index },
+          playerId: "controller",
+        });
+        continue;
       }
     }
 

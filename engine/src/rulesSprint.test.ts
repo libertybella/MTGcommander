@@ -65340,3 +65340,196 @@ describe("wave 398: casting a free copy of a card", () => {
     expect(prompt.copyOfCardId).toBe(boltId);
   });
 });
+
+describe("wave 399: Mizzix's Mastery", () => {
+  const compile = (name: string, typeLine: string, oracleText: string, manaCost = "") =>
+    compileOracleCard({
+      oracleId: name.toLowerCase().replace(/[^a-z]+/g, "-"),
+      name,
+      manaCost,
+      typeLine,
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  const put = (
+    game: GameState,
+    ownerId: string,
+    definition: CardDefinition,
+    zone: "graveyard" | "hand" | "battlefield" = "graveyard",
+  ) => {
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({ definitionId: definition.id, ownerId, zone });
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === ownerId)!.zones[zone].push(card.id);
+    if (zone === "battlefield") {
+      card.summoningSick = false;
+    }
+    return card.id;
+  };
+
+  const masteryText =
+    "Exile target card that's an instant or sorcery from your graveyard. For each card exiled this way, copy it, and you may cast the copy without paying its mana cost.\nOverload {5}{R}{R}{R}";
+
+  it("reads the target written the other way round", () => {
+    const compiled = compile("Mizzix's Mastery", "Sorcery", masteryText, "{2}{R}");
+    expect(compiled.notes).toEqual([]);
+    // "Card that's an instant or sorcery" is the same target the reader
+    // already knew as "instant or sorcery card".
+    expect(compiled.definition.modes?.[0]?.targetRequirements).toEqual([
+      { kind: "own_graveyard_card", requiredTypesAny: ["instant", "sorcery"] },
+    ]);
+  });
+
+  it("folds the copy onto the exile", () => {
+    const compiled = compile("Mizzix's Mastery", "Sorcery", masteryText, "{2}{R}");
+    expect(compiled.definition.modes?.[0]?.effects).toEqual([
+      { kind: "move_card", cardId: { type: "chosen", index: 0 }, toZone: "exile" },
+      {
+        kind: "cast_free_copy",
+        cardId: { type: "chosen", index: 0 },
+        playerId: "controller",
+      },
+    ]);
+  });
+
+  it("keeps the overload mode", () => {
+    const compiled = compile("Mizzix's Mastery", "Sorcery", masteryText, "{2}{R}");
+    const overload = compiled.definition.modes?.[1];
+    expect(overload?.replacesCost).toBe("{5}{R}{R}{R}");
+    expect(overload?.effects[0]).toMatchObject({ kind: "overload_each" });
+  });
+
+  // ---- Casting it --------------------------------------------------------
+
+  const ritual = (name: string) =>
+    createCardDefinition({
+      name,
+      typeLine: "Instant",
+      manaCost: "{B}",
+      effects: [{ kind: "add_mana", playerId: "controller", mana: { B: 3 } }],
+    });
+
+  const bear = (name: string) =>
+    createCardDefinition({
+      name,
+      typeLine: "Creature — Bear",
+      manaCost: "{1}{G}",
+      power: 2,
+      toughness: 2,
+    });
+
+  const mastery = () =>
+    createCardDefinition({
+      name: "Mizzix's Mastery",
+      typeLine: "Sorcery",
+      manaCost: "{2}{R}",
+      targetRequirements: [
+        { kind: "own_graveyard_card", requiredTypesAny: ["instant", "sorcery"] },
+      ],
+      effects: [
+        { kind: "move_card", cardId: { type: "chosen", index: 0 }, toZone: "exile" },
+        {
+          kind: "cast_free_copy",
+          cardId: { type: "chosen", index: 0 },
+          playerId: "controller",
+        },
+      ],
+    });
+
+  const castAt = (game: GameState, playerId: string, cardId: string, targetId: string) => {
+    game.turn.activePlayerId = playerId;
+    game.turn.phase = "precombatMain";
+    game.turn.step = "precombatMain";
+    game.priorityPlayerId = playerId;
+    game.players.find((entry) => entry.id === playerId)!.mana.R = 5;
+    return applyAction(game, {
+      kind: "cast_spell",
+      playerId,
+      cardId,
+      targets: [{ type: "creature", cardId: targetId }],
+    });
+  };
+
+  it("exiles the card and casts a copy of it", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const masteryId = put(game, p1.id, mastery(), "hand");
+    const ritualId = put(game, p1.id, ritual("Dark Ritual"));
+    let after = resolveTopOfStack(castAt(game, p1.id, masteryId, ritualId));
+    expect(after.cards[ritualId]?.zone).toBe("exile");
+    // The copy is on the stack; resolving it gives the mana.
+    expect(after.stack).toHaveLength(1);
+    expect(after.stack[0]?.isCopy).toBe(true);
+    after = resolveTopOfStack(after);
+    expect(after.players.find((entry) => entry.id === p1.id)!.mana.B).toBe(3);
+    // And the card stays exiled — the copy was what resolved.
+    expect(after.cards[ritualId]?.zone).toBe("exile");
+  });
+
+  it("refuses a graveyard card that is not an instant or sorcery", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const masteryId = put(game, p1.id, mastery(), "hand");
+    const bearId = put(game, p1.id, bear("Buried Bear"));
+    expect(() => castAt(game, p1.id, masteryId, bearId)).toThrow();
+  });
+
+  it("overload copies every one of them", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const firstId = put(game, p1.id, ritual("Ritual A"));
+    const secondId = put(game, p1.id, ritual("Ritual B"));
+    put(game, p1.id, bear("Not A Spell"));
+    let after = applyEffects(
+      game,
+      bindCardEffects(
+        game,
+        [
+          {
+            kind: "overload_each",
+            requirement: {
+              kind: "own_graveyard_card",
+              requiredTypesAny: ["instant", "sorcery"],
+            },
+            effects: [
+              { kind: "move_card", cardId: { type: "chosen", index: 0 }, toZone: "exile" },
+              {
+                kind: "cast_free_copy",
+                cardId: { type: "chosen", index: 0 },
+                playerId: "controller",
+              },
+            ],
+          },
+        ],
+        { controllerId: p1.id, sourceId: null, targets: [], targetRequirements: [] },
+      ),
+    );
+    // Both rituals exiled, both copied; the Bear was never eligible.
+    expect(after.cards[firstId]?.zone).toBe("exile");
+    expect(after.cards[secondId]?.zone).toBe("exile");
+    expect(after.stack).toHaveLength(2);
+    while (after.stack.length > 0) {
+      after = resolveTopOfStack(after);
+    }
+    expect(after.players.find((entry) => entry.id === p1.id)!.mana.B).toBe(6);
+  });
+
+  it("round trips both modes", () => {
+    const { game, p1 } = twoPlayers();
+    const definition = mastery();
+    put(game, p1.id, definition, "hand");
+    const round = parseGameState(serializeGameState(game));
+    expect(round.definitions[definition.id]?.effects).toEqual([
+      { kind: "move_card", cardId: { type: "chosen", index: 0 }, toZone: "exile" },
+      {
+        kind: "cast_free_copy",
+        cardId: { type: "chosen", index: 0 },
+        playerId: "controller",
+      },
+    ]);
+  });
+});
