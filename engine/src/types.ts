@@ -762,6 +762,13 @@ export type CardInstance = {
   tapped: boolean;
   damageMarked: number;
   attacking: boolean;
+  /**
+   * Moraug: "for each time IT has attacked this turn" — a COUNT on the
+   * card, not the player's `attackedThisTurn` boolean, because extra
+   * combats let the same creature attack more than once and the whole card
+   * is that number. Cleared when a new turn begins.
+   */
+  timesAttackedThisTurn?: number;
   blockingAttackerId: CardInstanceId | null;
   summoningSick: boolean;
   /**
@@ -1377,6 +1384,13 @@ export type GameState = {
   /** Rebound: cards waiting in exile to be offered free at the caster's
    * next upkeep. */
   pendingRebounds?: Array<{ cardId: CardInstanceId; casterId: PlayerId }>;
+  /**
+   * Moraug: added combats that will untap the active player's creatures as
+   * they begin. A COUNT beside `pendingExtraCombats` rather than a flag on
+   * each queued combat, because the queue is itself only a count — two
+   * landfalls owe two untaps.
+   */
+  pendingExtraCombatUntaps?: number;
   /** Combat phases begun this turn (Karlach's first-combat condition). */
   combatPhasesThisTurn?: number;
   /** Fog: no combat damage is dealt for the rest of this turn. */
@@ -1966,7 +1980,17 @@ export type GameEffect =
   | { kind: "copy_spell"; stackObjectId: StackObjectId; controllerId: PlayerId }
   /** Mindbreak Trap — see the definition form for why this is not a counter. */
   | { kind: "exile_spell"; stackObjectId: StackObjectId }
-  | { kind: "extra_combat" }
+  | {
+      kind: "extra_combat";
+      /**
+       * Moraug: "At the beginning of that combat, untap all creatures you
+       * control." The untap belongs to the added combat, not to the trigger
+       * that made it — untapping when the trigger resolves would let the
+       * controller tap for mana in the main phase afterwards and still
+       * attack with everything, which is stronger than the printed card.
+       */
+      untapAtBeginning?: boolean;
+    }
   | {
       kind: "untap_all";
       playerId: PlayerId;
@@ -2674,6 +2698,10 @@ export type DynamicCount =
   /** Fists of Flame. A TALLY, not a hand count: cards drawn and then
    * discarded still counted, and the draw that is part of the same spell
    * has already happened by the time the count is read. */
+  /** Moraug: attacks made by the AFFECTED card this turn — the layer
+   * engine passes that card as the source, which is what lets one static
+   * give a different bonus to each creature. */
+  | "times_it_has_attacked_this_turn"
   | "cards_drawn_this_turn"
   /**
    * Coat of Arms: "each OTHER creature on the battlefield that shares at
@@ -3590,7 +3618,17 @@ export type CardEffect =
    * beating those is the whole reason this card is played.
    */
   | { kind: "exile_spell"; target: ChosenTargetRef | "all_chosen" }
-  | { kind: "extra_combat" }
+  | {
+      kind: "extra_combat";
+      /**
+       * Moraug: "At the beginning of that combat, untap all creatures you
+       * control." The untap belongs to the added combat, not to the trigger
+       * that made it — untapping when the trigger resolves would let the
+       * controller tap for mana in the main phase afterwards and still
+       * attack with everything, which is stronger than the printed card.
+       */
+      untapAtBeginning?: boolean;
+    }
   | {
       kind: "untap_all";
       playerId: PlayerSelector;

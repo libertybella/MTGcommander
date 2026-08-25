@@ -327,6 +327,12 @@ export function dynamicCountOf(
       ),
     ).length;
   }
+  // Moraug: attacks made by the object the ability AFFECTS. Read off that
+  // card, the same way the attachment counts below are — which is what
+  // makes one static hand each creature a different bonus.
+  if (count === "times_it_has_attacked_this_turn") {
+    return sourceId ? state.cards[sourceId]?.timesAttackedThisTurn ?? 0 : 0;
+  }
   // Kor Spiritdancer / Thran Power Suit: attachments ON the source. Printed
   // types, like the rest of this function — the layer engine cannot read its
   // own output here.

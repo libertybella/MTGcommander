@@ -242,6 +242,9 @@ function onEnterStep(state: GameState): GameState {
     state.modesChosenThisTurn = {};
     // Unused extra combats do not carry across turns.
     state.pendingExtraCombats = 0;
+    if (state.pendingExtraCombatUntaps) {
+      delete state.pendingExtraCombatUntaps;
+    }
     state.spellsCastThisTurn = 0;
     state.spellsCastByPlayerThisTurn = {};
     state.spellColorsCastByPlayerThisTurn = {};
@@ -255,6 +258,12 @@ function onEnterStep(state: GameState): GameState {
     for (const card of Object.values(state.cards)) {
       if (card.phasedOut && card.controllerId === activeId) {
         delete card.phasedOut;
+      }
+      // "This turn" is the whole turn for every card, not just the active
+      // player's — a creature that attacked on someone else's turn under a
+      // Kismet effect still stops counting when the turn ends.
+      if (card.timesAttackedThisTurn !== undefined) {
+        delete card.timesAttackedThisTurn;
       }
     }
     state.lifeLostByPlayerThisTurn = {};
@@ -671,6 +680,22 @@ export function advanceStep(state: GameState): GameState {
   // re-enter combat; the sequence then flows into another main phase.
   if (next.turn.step === "postcombatMain" && next.pendingExtraCombats > 0) {
     next.pendingExtraCombats -= 1;
+    // Moraug: "At the beginning of that combat, untap all creatures you
+    // control." Here, as the added combat starts, rather than when the
+    // trigger resolved — the main phase in between is exactly the window
+    // the card does not give you.
+    if ((next.pendingExtraCombatUntaps ?? 0) > 0) {
+      next.pendingExtraCombatUntaps = (next.pendingExtraCombatUntaps ?? 0) - 1;
+      for (const card of Object.values(next.cards)) {
+        if (
+          card.zone === "battlefield" &&
+          card.controllerId === next.turn.activePlayerId &&
+          isCreature(next, card.id)
+        ) {
+          card.tapped = false;
+        }
+      }
+    }
     next.turn.phase = "combat";
     next.turn.step = "beginCombat";
     const reentered = onEnterStep(next);

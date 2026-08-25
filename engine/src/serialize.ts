@@ -77,6 +77,7 @@ const KEYWORDS = new Set<Keyword>(Object.keys(IMPLEMENTED_KEYWORDS) as Keyword[]
  * Spiritdancer's `auras_attached_to_it` therefore failed to deserialize.
  */
 const DYNAMIC_COUNT_KEYS: Record<DynamicCount, true> = {
+  times_it_has_attacked_this_turn: true,
   lands_you_control: true,
   creatures_you_control: true,
   artifacts_you_control: true,
@@ -305,6 +306,7 @@ function parseTeamPtTerm(
  * here rather than a save file that will not open.
  */
 const DYNAMIC_COUNTS_BY_NAME: Record<DynamicCount, true> = {
+  times_it_has_attacked_this_turn: true,
   lands_you_control: true,
   creatures_you_control: true,
   artifacts_you_control: true,
@@ -562,6 +564,14 @@ export function parseGameState(json: string): GameState {
       damageMarked:
         card.damageMarked === undefined ? 0 : expectNumber(card.damageMarked, "card.damageMarked"),
       attacking: card.attacking === true,
+      ...(card.timesAttackedThisTurn === undefined
+        ? {}
+        : {
+            timesAttackedThisTurn: expectNumber(
+              card.timesAttackedThisTurn,
+              "card.timesAttackedThisTurn",
+            ),
+          }),
       blockingAttackerId:
         card.blockingAttackerId === undefined || card.blockingAttackerId === null
           ? null
@@ -1843,6 +1853,14 @@ export function parseGameState(json: string): GameState {
     nextTimestamp:
       raw.nextTimestamp === undefined ? 1 : expectNumber(raw.nextTimestamp, "nextTimestamp"),
     oncePerTurnFired: parseStringList(raw.oncePerTurnFired, "oncePerTurnFired"),
+    ...(raw.pendingExtraCombatUntaps === undefined
+      ? {}
+      : {
+          pendingExtraCombatUntaps: expectNumber(
+            raw.pendingExtraCombatUntaps,
+            "pendingExtraCombatUntaps",
+          ),
+        }),
     pendingExtraCombats:
       raw.pendingExtraCombats === undefined
         ? 0
@@ -4327,8 +4345,12 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
       };
     case "copy_subject_spell":
     case "counter_subject_spell":
-    case "extra_combat":
       return { kind };
+    case "extra_combat":
+      return {
+        kind,
+        ...(value.untapAtBeginning === true ? { untapAtBeginning: true } : {}),
+      };
     case "fog":
       return {
         kind,
@@ -7736,7 +7758,10 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
     };
   }
   if (kind === "extra_combat") {
-    return { kind };
+    return {
+      kind,
+      ...(value.untapAtBeginning === true ? { untapAtBeginning: true } : {}),
+    };
   }
   if (kind === "fog") {
     return {

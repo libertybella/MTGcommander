@@ -2371,7 +2371,10 @@ export function bindCardEffect(
       return { kind: "exile_spell", stackObjectId: chosenSpell.stackObjectId };
     }
     case "extra_combat":
-      return { kind: "extra_combat" };
+      return {
+        kind: "extra_combat",
+        ...(effect.untapAtBeginning ? { untapAtBeginning: true } : {}),
+      };
     case "fog": {
       if (!effect.forPlayerId) {
         return { kind: "fog" };
@@ -5347,6 +5350,9 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
       case "extra_combat": {
         next = cloneGameState(state);
         next.pendingExtraCombats += 1;
+        if (effect.untapAtBeginning) {
+          next.pendingExtraCombatUntaps = (next.pendingExtraCombatUntaps ?? 0) + 1;
+        }
         break;
       }
       case "fog": {

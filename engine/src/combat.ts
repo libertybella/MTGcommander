@@ -319,6 +319,9 @@ export function declareAttackers(state: GameState, playerId: PlayerId, attacks: 
   for (const attack of combat.attacks) {
     const card = requireCard(next, attack.attackerId);
     card.attacking = true;
+    // Moraug counts attacks per CARD: extra combats let the same creature
+    // attack twice, and the second one is worth another +1/+0.
+    card.timesAttackedThisTurn = (card.timesAttackedThisTurn ?? 0) + 1;
     if (!hasKeyword(next, attack.attackerId, "vigilance")) {
       card.tapped = true;
       tappedEvents.push({ kind: "tapped", cardId: attack.attackerId });

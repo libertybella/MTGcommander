@@ -343,6 +343,9 @@ function parseSpendRestriction(tail: string): ManaRestriction | null {
  * so a new count is a row rather than a branch.
  */
 const DYNAMIC_COUNTS: [RegExp, DynamicCount][] = [
+  // Moraug: "for each time IT has attacked this turn" — counted on the
+  // creature the buff lands on, not on the source.
+  [/^time it has attacked this turn$/i, "times_it_has_attacked_this_turn"],
   [/^lands? you control$/i, "lands_you_control"],
   [/^creatures? you control$/i, "creatures_you_control"],
   [/^artifacts? you control$/i, "artifacts_you_control"],
@@ -1714,7 +1717,12 @@ function parseEffectCondition(phrase: string): TriggerCondition | null {
   if (aimedCount) {
     return { kind: "attackers_against_you_at_least", count: aimedCount };
   }
-  if (/^you cast this spell during your main phase$/i.test(text)) {
+  if (
+    /^you cast this spell during your main phase$/i.test(text) ||
+    // Moraug's landfall gate. Same rule, read off a trigger rather than
+    // off a cast.
+    /^it's your main phase$/i.test(text)
+  ) {
     return { kind: "own_main_phase" };
   }
   if (/^you have (\d+) or more life$/i.test(text)) {
@@ -7564,11 +7572,26 @@ function compileSimpleClauseInner(sentence: string): SimpleClause | null {
   if (
     /^after this (?:main )?phase, there is an additional combat phase(?: followed by an additional main phase)?$/i.test(
       sentence,
-    )
+    ) ||
+    // Moraug prints the same rule the other way round.
+    /^there'?s an additional combat phase after this phase$/i.test(sentence)
   ) {
     return {
       targetRequirements: [],
       effects: [{ kind: "extra_combat" }],
+    };
+  }
+
+  // Moraug (fused by fuseExtraCombatUntapInPlace): the untap belongs to the
+  // added combat, not to the trigger that made it.
+  if (
+    /^there'?s an additional combat phase after this phase, untapping at its beginning$/i.test(
+      sentence,
+    )
+  ) {
+    return {
+      targetRequirements: [],
+      effects: [{ kind: "extra_combat", untapAtBeginning: true }],
     };
   }
 
@@ -10827,6 +10850,38 @@ function fusePilesInPlace(sentences: string[], lineStart: boolean[]): void {
  * "Those cards" is the set the first sentence collected, so the two are one
  * clause. Read alone the second names a pile nothing has gathered.
  */
+/**
+ * Moraug: "…there's an additional combat phase after this phase." + "At the
+ * beginning of that combat, untap all creatures you control."
+ *
+ * "That combat" is the one the sentence before it made, so the untap has
+ * nowhere else to attach — and it must NOT become an untap that happens
+ * now. Between the trigger resolving and the added combat there is a main
+ * phase, and untapping early would let the controller tap for mana there
+ * and still attack with everything.
+ */
+function fuseExtraCombatUntapInPlace(sentences: string[], lineStart: boolean[]): void {
+  for (let index = 0; index + 1 < sentences.length; index += 1) {
+    if (lineStart[index + 1]) {
+      continue;
+    }
+    const head = sentences[index]?.match(
+      /^(.*?)there'?s an additional combat phase after this phase$/i,
+    );
+    const untap =
+      /^At the beginning of that combat, untap all creatures you control$/i.test(
+        sentences[index + 1] ?? "",
+      );
+    if (head?.[1] === undefined || !untap) {
+      continue;
+    }
+    sentences[index] =
+      `${head[1]}there's an additional combat phase after this phase, untapping at its beginning`;
+    sentences.splice(index + 1, 1);
+    lineStart.splice(index + 1, 1);
+  }
+}
+
 function fuseEachGraveyardReanimateInPlace(sentences: string[], lineStart: boolean[]): void {
   for (let index = 0; index + 1 < sentences.length; index += 1) {
     if (lineStart[index + 1]) {
@@ -15496,6 +15551,7 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
   fuseTapForXInPlace(sentences, lineStart);
   fuseTemptingOfferInPlace(sentences, lineStart);
   fusePilesInPlace(sentences, lineStart);
+  fuseExtraCombatUntapInPlace(sentences, lineStart);
   fuseEachGraveyardReanimateInPlace(sentences, lineStart);
   fuseBlinkAndFetchInPlace(sentences, lineStart);
   fuseDigUntilNonlandInPlace(sentences, lineStart);

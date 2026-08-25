@@ -67573,3 +67573,270 @@ describe("wave 407: Opposition Agent", () => {
     });
   });
 });
+
+describe("wave 408: Moraug, Fury of Akoum", () => {
+  const compile = (
+    name: string,
+    typeLine: string,
+    oracleText: string,
+    manaCost = "",
+    pt: [string, string] | null = null,
+  ) =>
+    compileOracleCard({
+      oracleId: name.toLowerCase().replace(/[^a-z]+/g, "-"),
+      name,
+      manaCost,
+      typeLine,
+      power: pt?.[0] ?? null,
+      toughness: pt?.[1] ?? null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  const put = (game: GameState, ownerId: string, definition: CardDefinition) => {
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({
+      definitionId: definition.id,
+      ownerId,
+      zone: "battlefield",
+    });
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === ownerId)!.zones.battlefield.push(card.id);
+    card.summoningSick = false;
+    return card.id;
+  };
+
+  const moraugText =
+    "Each creature you control gets +1/+0 for each time it has attacked this turn.\nLandfall — Whenever a land you control enters, if it's your main phase, there's an additional combat phase after this phase. At the beginning of that combat, untap all creatures you control.";
+
+  it("compiles both of Moraug's lines", () => {
+    const compiled = compile(
+      "Moraug, Fury of Akoum",
+      "Legendary Creature — Minotaur Warrior",
+      moraugText,
+      "{5}{R}",
+      ["6", "6"],
+    );
+    expect(compiled.notes).toEqual([]);
+    // One static, a different bonus per creature: the count is read off the
+    // creature the buff lands on.
+    expect(compiled.definition.staticAbilities[0]?.effect).toEqual({
+      kind: "modify_pt",
+      power: 1,
+      toughness: 0,
+      per: "times_it_has_attacked_this_turn",
+    });
+    expect(compiled.definition.triggers[0]).toMatchObject({
+      event: "enter_battlefield",
+      watch: "controlled",
+      subjectFilter: { types: ["land"] },
+      condition: { kind: "own_main_phase" },
+      effects: [{ kind: "extra_combat", untapAtBeginning: true }],
+    });
+  });
+
+  it("leaves Aggravated Assault's wording untouched", () => {
+    const compiled = compile(
+      "Aggravated Assault",
+      "Enchantment",
+      "{3}{R}{R}: Untap all creatures you control. After this phase, there is an additional combat phase.",
+      "{2}{R}",
+    );
+    expect(compiled.notes).toEqual([]);
+    // The Assault untaps NOW and adds a combat; no rider on the combat.
+    expect(compiled.definition.activated[0]?.effects).toEqual([
+      { kind: "untap_all", playerId: "controller", what: "creature" },
+      { kind: "extra_combat" },
+    ]);
+  });
+
+  // ---- The per-card tally -------------------------------------------------
+
+  const bear = (name: string) =>
+    createCardDefinition({
+      name,
+      typeLine: "Creature — Bear",
+      manaCost: "{1}{G}",
+      power: 2,
+      toughness: 2,
+    });
+
+  const moraug = () =>
+    createCardDefinition({
+      name: "Moraug, Fury of Akoum",
+      typeLine: "Legendary Creature — Minotaur Warrior",
+      manaCost: "{5}{R}",
+      power: 6,
+      toughness: 6,
+      staticAbilities: [
+        {
+          selector: { scope: "controlled", types: ["creature"] },
+          effect: {
+            kind: "modify_pt",
+            power: 1,
+            toughness: 0,
+            per: "times_it_has_attacked_this_turn",
+          },
+        },
+      ],
+    });
+
+  const addExtraCombat = (game: GameState, playerId: string, untapAtBeginning: boolean) =>
+    applyEffects(
+      game,
+      bindCardEffects(
+        game,
+        [{ kind: "extra_combat", ...(untapAtBeginning ? { untapAtBeginning: true } : {}) }],
+        { controllerId: playerId, sourceId: null, targets: [], targetRequirements: [] },
+      ),
+    );
+
+  const swingWith = (game: GameState, playerId: string, attackerId: string, defenderId: string) => {
+    game.turn.activePlayerId = playerId;
+    game.turn.phase = "combat";
+    game.turn.step = "declareAttackers";
+    game.priorityPlayerId = playerId;
+    return declareAttackers(game, playerId, [{ attackerId, defenderId }]);
+  };
+
+  it("counts attacks on the card, not on the player", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    const swingerId = put(game, p1.id, bear("Swinger"));
+    const homebodyId = put(game, p1.id, bear("Homebody"));
+    const after = swingWith(game, p1.id, swingerId, p2.id);
+    expect(after.cards[swingerId]?.timesAttackedThisTurn).toBe(1);
+    // The one that stayed home has no tally at all.
+    expect(after.cards[homebodyId]?.timesAttackedThisTurn).toBeUndefined();
+  });
+
+  it("gives each creature a bonus of its own", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    put(game, p1.id, moraug());
+    const swingerId = put(game, p1.id, bear("Swinger"));
+    const homebodyId = put(game, p1.id, bear("Homebody"));
+    const after = swingWith(game, p1.id, swingerId, p2.id);
+    // One static, two different answers — the count reads the AFFECTED
+    // card, which is the whole of this card.
+    expect(creaturePower(after, swingerId)).toBe(3);
+    expect(creaturePower(after, homebodyId)).toBe(2);
+  });
+
+  it("stacks across a second attack in the same turn", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    put(game, p1.id, moraug());
+    const swingerId = put(game, p1.id, bear("Swinger"));
+    let after = swingWith(game, p1.id, swingerId, p2.id);
+    // Through a REAL added combat, which is the only way a creature
+    // attacks twice — and the untap at its beginning is what lets it.
+    // Walked step by step rather than jumped, because end of combat is
+    // where the attacker flags are cleared.
+    after = addExtraCombat(after, p1.id, true);
+    let guard = 0;
+    while (after.turn.step !== "postcombatMain" && guard < 12) {
+      after = advanceStep(after);
+      guard += 1;
+    }
+    after = advanceStep(after);
+    expect(after.turn.step).toBe("beginCombat");
+    after = swingWith(after, p1.id, swingerId, p2.id);
+    expect(after.cards[swingerId]?.timesAttackedThisTurn).toBe(2);
+    expect(creaturePower(after, swingerId)).toBe(4);
+  });
+
+  it("leaves an opponent's attacker alone", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    put(game, p1.id, moraug());
+    const theirsId = put(game, p2.id, bear("Theirs"));
+    const after = swingWith(game, p2.id, theirsId, p1.id);
+    expect(after.cards[theirsId]?.timesAttackedThisTurn).toBe(1);
+    // "Each creature YOU control" — Moraug's controller, not the attacker's.
+    expect(creaturePower(after, theirsId)).toBe(2);
+  });
+
+  it("forgets the tally when a new turn begins", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    const swingerId = put(game, p1.id, bear("Swinger"));
+    const after = swingWith(game, p1.id, swingerId, p2.id);
+    expect(after.cards[swingerId]?.timesAttackedThisTurn).toBe(1);
+    beginNextLivingTurnInPlace(after);
+    expect(after.cards[swingerId]?.timesAttackedThisTurn).toBeUndefined();
+  });
+
+  // ---- The untap belongs to the added combat ------------------------------
+
+  it("does not untap when the trigger resolves", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const tappedId = put(game, p1.id, bear("Tapped Out"));
+    game.cards[tappedId]!.tapped = true;
+    const after = addExtraCombat(game, p1.id, true);
+    // Between here and the added combat sits a main phase. Untapping now
+    // would let the controller tap for mana there and still attack.
+    expect(after.cards[tappedId]?.tapped).toBe(true);
+    expect(after.pendingExtraCombatUntaps).toBe(1);
+  });
+
+  it("untaps as the added combat begins", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const tappedId = put(game, p1.id, bear("Tapped Out"));
+    let after = addExtraCombat(game, p1.id, true);
+    after.cards[tappedId]!.tapped = true;
+    after.turn.activePlayerId = p1.id;
+    after = { ...after, turn: { ...after.turn, phase: "postcombatMain", step: "postcombatMain" } };
+    after = advanceStep(after);
+    expect(after.turn.step).toBe("beginCombat");
+    expect(after.cards[tappedId]?.tapped).toBe(false);
+    expect(after.pendingExtraCombatUntaps).toBe(0);
+  });
+
+  it("adds a combat without untapping when nothing asked for it", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const tappedId = put(game, p1.id, bear("Tapped Out"));
+    let after = addExtraCombat(game, p1.id, false);
+    after.cards[tappedId]!.tapped = true;
+    after.turn.activePlayerId = p1.id;
+    after = { ...after, turn: { ...after.turn, phase: "postcombatMain", step: "postcombatMain" } };
+    after = advanceStep(after);
+    expect(after.turn.step).toBe("beginCombat");
+    // Aggravated Assault untapped when it resolved; it owes nothing here.
+    expect(after.cards[tappedId]?.tapped).toBe(true);
+  });
+
+  it("leaves an opponent's creatures tapped", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    const theirsId = put(game, p2.id, bear("Theirs"));
+    let after = addExtraCombat(game, p1.id, true);
+    after.cards[theirsId]!.tapped = true;
+    after.turn.activePlayerId = p1.id;
+    after = { ...after, turn: { ...after.turn, phase: "postcombatMain", step: "postcombatMain" } };
+    after = advanceStep(after);
+    expect(after.cards[theirsId]?.tapped).toBe(true);
+  });
+
+  it("round trips the tally, the rider and the owed untap", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    const definition = moraug();
+    put(game, p1.id, definition);
+    const swingerId = put(game, p1.id, bear("Swinger"));
+    let after = swingWith(game, p1.id, swingerId, p2.id);
+    after = addExtraCombat(after, p1.id, true);
+    const round = parseGameState(serializeGameState(after));
+    // Dropped on the wire every creature is a plain 2/2 and the added
+    // combat arrives with a tapped board.
+    expect(round.cards[swingerId]?.timesAttackedThisTurn).toBe(1);
+    expect(round.pendingExtraCombatUntaps).toBe(1);
+    expect(round.definitions[definition.id]?.staticAbilities[0]?.effect).toMatchObject({
+      per: "times_it_has_attacked_this_turn",
+    });
+  });
+});
