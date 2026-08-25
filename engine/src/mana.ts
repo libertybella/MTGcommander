@@ -294,6 +294,8 @@ export type ManaPurpose = {
   changeling?: boolean;
   /** True when this is an activated ability rather than a cast spell. */
   isAbility: boolean;
+  /** Opal Palace: the spell being paid for is its caster's commander. */
+  commanderSpell?: boolean;
 };
 
 /** May this tagged mana pay for this purpose? */
@@ -358,6 +360,11 @@ export function manaRiderFires(
       state.cards[sourceId]?.chosenCreatureType ?? null,
     )
   ) {
+    return false;
+  }
+  // Opal Palace: "…to cast your commander". The purpose carries whether
+  // the spell being paid for is one.
+  if (rider.when.commanderSpell && purpose.commanderSpell !== true) {
     return false;
   }
   if (!rider.when.sharesCreatureTypeWithCommander) {

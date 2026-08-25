@@ -475,6 +475,13 @@ function applyZoneChangeFlags(
       card.counters[entering.counter] =
         (card.counters[entering.counter] ?? 0) + entering.count;
     }
+    // Opal Palace: recorded while the commander was still a spell, and
+    // applied HERE so the counters are on it the moment anything looks
+    // (CR 121.6) rather than added once it has already arrived.
+    if (card.bonusEnterCounters && card.bonusEnterCounters > 0) {
+      card.counters["p1p1"] = (card.counters["p1p1"] ?? 0) + card.bonusEnterCounters;
+    }
+    delete card.bonusEnterCounters;
     // Read once and cleared, like `evoked`: the record answered adamant's
     // question and a permanent on the battlefield is no longer a spell.
     delete card.manaSpentToCast;
@@ -484,6 +491,7 @@ function applyZoneChangeFlags(
     // The stack is not one of these zones, so putting a spell on the stack
     // does not come through here and the record survives to be read.
     delete card.manaSpentToCast;
+    delete card.bonusEnterCounters;
     card.damageMarked = 0;
     card.tapped = false;
     card.classLevel = 0;

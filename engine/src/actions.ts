@@ -653,6 +653,10 @@ export function manaPurposeForSpell(
     // admits it (CR 702.73a).
     changeling: definition.changeling === true,
     isAbility: false,
+    // Opal Palace: whether this is the caster's own commander, read off
+    // the card rather than the zone — a commander cast from hand is still
+    // a commander spell, and its rider still fires.
+    ...(isCommander(state, cardId) ? { commanderSpell: true } : {}),
   };
 }
 

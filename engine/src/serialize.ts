@@ -175,6 +175,7 @@ function parseManaRestriction(value: unknown, label: string): ManaRestriction {
       ? {}
       : { subtype: expectString(value.subtype, `${label}.subtype`) }),
     ...(value.legendary === true ? { legendary: true } : {}),
+    ...(value.commanderSpell === true ? { commanderSpell: true } : {}),
     ...(value.colorless === true ? { colorless: true } : {}),
     ...(value.allowsAbilities === true ? { allowsAbilities: true } : {}),
     ...(value.unrestricted === true ? { unrestricted: true } : {}),
@@ -610,6 +611,14 @@ export function parseGameState(json: string): GameState {
       loyaltyActivatedThisTurn: card.loyaltyActivatedThisTurn === true,
       ...(card.skipNextUntap === true ? { skipNextUntap: true } : {}),
       ...(card.exertedThisTurn === true ? { exertedThisTurn: true } : {}),
+      ...(card.bonusEnterCounters === undefined
+        ? {}
+        : {
+            bonusEnterCounters: expectNumber(
+              card.bonusEnterCounters,
+              "card.bonusEnterCounters",
+            ),
+          }),
       ...(isRecord(card.manaSpentToCast)
         ? { manaSpentToCast: parseMana(card.manaSpentToCast, "card.manaSpentToCast") }
         : {}),
@@ -4726,6 +4735,8 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
     case "extra_turn":
     case "deny_extra_turns":
       return { kind, playerId: parsePlayerSelector(value.playerId, `${label}.playerId`) };
+    case "commander_cast_counters":
+      return { kind, cardId: parseCardIdSelector(value.cardId, `${label}.cardId`) };
     case "punisher_choice":
       return {
         kind,
@@ -6949,6 +6960,9 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
   }
   if (kind === "exile_until_taken" || kind === "extra_turn" || kind === "deny_extra_turns") {
     return { kind, playerId: expectString(value.playerId, `${label}.playerId`) };
+  }
+  if (kind === "commander_cast_counters") {
+    return { kind, cardId: expectString(value.cardId, `${label}.cardId`) };
   }
   if (kind === "punisher_choice") {
     return {

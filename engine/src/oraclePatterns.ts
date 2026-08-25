@@ -19720,6 +19720,24 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
       }
     }
 
+    // Opal Palace. Like Path of Ancestry this is NOT a restriction — the
+    // mana pays for anything — so it rides the tagged pool purely so the
+    // spend can be watched.
+    if (
+      /^If you spend this mana to cast your commander, it enters with a number of additional \+1\/\+1 counters on it equal to the number of times it's been cast from the command zone this game$/i.test(
+        sentence,
+      )
+    ) {
+      const palaceMana = result.manaAbilities[result.manaAbilities.length - 1];
+      if (palaceMana && !palaceMana.rider) {
+        palaceMana.rider = {
+          when: { unrestricted: true, commanderSpell: true },
+          effects: [{ kind: "commander_cast_counters", cardId: "subject_card" }],
+        };
+        continue;
+      }
+    }
+
     // Path of Ancestry: "When that mana is spent to cast a creature spell
     // that shares a creature type with your commander, scry 1." This is
     // NOT a restriction — the mana pays for anything — so it rides the

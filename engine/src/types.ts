@@ -779,6 +779,13 @@ export type CardInstance = {
    * reanimated Ardenvale Paladin nothing.
    */
   manaSpentToCast?: ManaPool;
+  /**
+   * Opal Palace: counters this card is owed AS it enters, recorded while
+   * it is still a spell. Read once and cleared, like `manaSpentToCast` —
+   * they have to be on the permanent the moment anything looks (CR 121.6),
+   * which is why they are not simply added after it arrives.
+   */
+  bonusEnterCounters?: number;
   counters: Record<string, number>;
   /**
    * CR 702.26: a phased-out permanent is treated as though it did not
@@ -2019,6 +2026,7 @@ export type GameEffect =
     }
   | { kind: "exile_until_taken"; playerId: PlayerId }
   | { kind: "extra_turn"; playerId: PlayerId }
+  | { kind: "commander_cast_counters"; cardId: CardInstanceId }
   | { kind: "deny_extra_turns"; playerId: PlayerId }
   | {
       kind: "divide_into_piles";
@@ -2642,6 +2650,9 @@ export type ManaRestriction = {
   subtype?: string;
   /** …and be legendary (Delighted Halfling). */
   legendary?: boolean;
+  /** Opal Palace: "…to cast your commander". Only ever a rider condition,
+   * never a restriction — the Palace's mana pays for anything. */
+  commanderSpell?: boolean;
   /** …and have no colours (Eldrazi Temple). */
   colorless?: boolean;
   /** May it also pay for activated abilities of matching permanents? */
@@ -3584,6 +3595,11 @@ export type CardEffect =
   | { kind: "exile_until_taken"; playerId: PlayerSelector }
   /** "Take an extra turn after this one." */
   | { kind: "extra_turn"; playerId: PlayerSelector }
+  /**
+   * Opal Palace: the commander spell this mana paid for enters with a
+   * counter for each time it has been cast from the command zone.
+   */
+  | { kind: "commander_cast_counters"; cardId: CardIdSelector }
   /** Trouble in Pairs, Stranglehold: that player's extra turns are skipped. */
   | { kind: "deny_extra_turns"; playerId: PlayerSelector }
   /**

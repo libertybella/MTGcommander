@@ -64747,3 +64747,177 @@ describe("wave 395: Trouble in Pairs", () => {
     expect(round.definitions[definition.id]?.triggers[0]?.minAttackers).toBe(2);
   });
 });
+
+describe("wave 396: Opal Palace", () => {
+  const compile = (name: string, typeLine: string, oracleText: string, manaCost = "") =>
+    compileOracleCard({
+      oracleId: name.toLowerCase().replace(/[^a-z]+/g, "-"),
+      name,
+      manaCost,
+      typeLine,
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  const palaceText =
+    "{T}: Add {C}.\n{1}, {T}: Add one mana of any color in your commander's color identity. If you spend this mana to cast your commander, it enters with a number of additional +1/+1 counters on it equal to the number of times it's been cast from the command zone this game.";
+
+  it("compiles the counters as a rider on the mana, not a restriction", () => {
+    const compiled = compile("Opal Palace", "Land", palaceText);
+    expect(compiled.notes).toEqual([]);
+    const rider = compiled.definition.manaAbilities[1]?.rider;
+    // The Palace's mana pays for anything; the rider only watches where it
+    // goes, which is why `unrestricted` rides beside the condition.
+    expect(rider?.when).toEqual({ unrestricted: true, commanderSpell: true });
+    expect(rider?.effects).toEqual([
+      { kind: "commander_cast_counters", cardId: "subject_card" },
+    ]);
+  });
+
+  // ---- The counters ------------------------------------------------------
+
+  const commander = () =>
+    createCardDefinition({
+      name: "Wave 396 Commander",
+      typeLine: "Legendary Creature — Human Wizard",
+      manaCost: "{1}{G}",
+      power: 2,
+      toughness: 2,
+    });
+
+  const seat = (game: GameState, playerId: string, definition: CardDefinition) => {
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({ definitionId: definition.id, ownerId: playerId, zone: "command" });
+    game.cards[card.id] = card;
+    const player = game.players.find((entry) => entry.id === playerId)!;
+    player.zones.command.push(card.id);
+    player.commander.commanderIds = [...player.commander.commanderIds, card.id];
+    return card.id;
+  };
+
+  const castFromCommand = (game: GameState, playerId: string, cardId: string) => {
+    game.turn.activePlayerId = playerId;
+    game.turn.phase = "precombatMain";
+    game.turn.step = "precombatMain";
+    game.priorityPlayerId = playerId;
+    const player = game.players.find((entry) => entry.id === playerId)!;
+    player.mana.G = 10;
+    player.mana.C = 10;
+    // The Palace's own mana, tagged so its rider can watch the spend.
+    player.restrictedMana = [
+      {
+        color: "G",
+        amount: 1,
+        restriction: { unrestricted: true },
+        sourceId: cardId,
+        rider: {
+          when: { unrestricted: true, commanderSpell: true },
+          effects: [{ kind: "commander_cast_counters", cardId: "subject_card" }],
+        },
+      },
+    ];
+    return applyAction(game, { kind: "cast_spell", playerId, cardId, targets: [] });
+  };
+
+  const counters = (game: GameState, cardId: string) =>
+    game.cards[cardId]?.counters["p1p1"] ?? 0;
+
+  it("gives ONE counter on the first cast", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const commanderId = seat(game, p1.id, commander());
+    const after = resolveTopOfStack(castFromCommand(game, p1.id, commanderId));
+    // The commander was cast to get onto the stack, and that cast is
+    // complete before the replacement applies as it enters — so "the
+    // number of times it's been cast from the command zone this game"
+    // includes it.
+    expect(counters(after, commanderId)).toBe(1);
+  });
+
+  it("gives two on the second cast", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const commanderId = seat(game, p1.id, commander());
+    let after = resolveTopOfStack(castFromCommand(game, p1.id, commanderId));
+    // Back to the command zone and cast again.
+    after = applyEffect(after, { kind: "move_card", cardId: commanderId, toZone: "command" });
+    const recast = castFromCommand(after, p1.id, commanderId);
+    // TWO this time: one previous cast plus the one resolving.
+    expect(recast.cards[commanderId]?.bonusEnterCounters).toBe(2);
+    after = resolveTopOfStack(recast);
+    // Three on the permanent, not two — it kept the first counter through
+    // the command zone. That is the CR 121.3 divergence flagged in wave
+    // 376 (counters are not cleared when a permanent leaves), not this
+    // card's doing, and it is what makes the total look one high.
+    expect(counters(after, commanderId)).toBe(3);
+  });
+
+  it("puts the counters on as it ENTERS, not after", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const commanderId = seat(game, p1.id, commander());
+    const cast = castFromCommand(game, p1.id, commanderId);
+    // Recorded while it is still a spell, so the permanent has them the
+    // moment anything looks (CR 121.6).
+    expect(cast.cards[commanderId]?.bonusEnterCounters).toBe(1);
+    const after = resolveTopOfStack(cast);
+    expect(counters(after, commanderId)).toBe(1);
+    // Read once and cleared.
+    expect(after.cards[commanderId]?.bonusEnterCounters).toBeUndefined();
+  });
+
+  it("gives nothing when the mana went somewhere else", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const commanderId = seat(game, p1.id, commander());
+    const otherDefinition = createCardDefinition({
+      name: "Just A Bear",
+      typeLine: "Creature — Bear",
+      manaCost: "{1}{G}",
+      power: 2,
+      toughness: 2,
+    });
+    game.definitions[otherDefinition.id] = otherDefinition;
+    const bear = createCardInstance({
+      definitionId: otherDefinition.id,
+      ownerId: p1.id,
+      zone: "hand",
+    });
+    game.cards[bear.id] = bear;
+    game.players.find((entry) => entry.id === p1.id)!.zones.hand.push(bear.id);
+    const after = resolveTopOfStack(castFromCommand(game, p1.id, bear.id));
+    expect(counters(after, bear.id)).toBe(0);
+    void commanderId;
+  });
+
+  it("clears the record if the spell never arrives", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const commanderId = seat(game, p1.id, commander());
+    const cast = castFromCommand(game, p1.id, commanderId);
+    const countered = applyEffect(cast, {
+      kind: "counter_spell",
+      stackObjectId: cast.stack[0]!.id,
+    });
+    // A countered commander goes to the graveyard with no record left on
+    // it, so reanimating it later gives nothing.
+    expect(countered.cards[commanderId]?.bonusEnterCounters).toBeUndefined();
+  });
+
+  it("round trips the rider and the pending counters", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const definition = commander();
+    const commanderId = seat(game, p1.id, definition);
+    const cast = castFromCommand(game, p1.id, commanderId);
+    const round = parseGameState(serializeGameState(cast));
+    // Dropped on the wire the commander enters as a plain 2/2 and the
+    // Palace was a Wastes that cost an extra mana.
+    expect(round.cards[commanderId]?.bonusEnterCounters).toBe(1);
+    const after = resolveTopOfStack(round);
+    expect(counters(after, commanderId)).toBe(1);
+  });
+});

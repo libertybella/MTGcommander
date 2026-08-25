@@ -1708,6 +1708,10 @@ export function bindCardEffect(
       const playerId = bindPlayerSelector(state, effect.playerId, context);
       return playerId ? { kind: "exile_until_taken", playerId } : null;
     }
+    case "commander_cast_counters": {
+      const cardId = bindCardId(state, effect.cardId, context);
+      return cardId ? { kind: "commander_cast_counters", cardId } : null;
+    }
     case "extra_turn":
     case "deny_extra_turns": {
       const playerId = bindPlayerSelector(state, effect.playerId, context);
@@ -6987,6 +6991,35 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
       case "exile_until_taken":
         next = exileUntilTakenStep(state, effect.playerId, []);
         break;
+      case "commander_cast_counters": {
+        next = cloneGameState(state);
+        const spell = next.cards[effect.cardId];
+        const caster = spell
+          ? next.players.find((entry) => entry.id === spell.controllerId)
+          : undefined;
+        if (spell && caster) {
+          /**
+           * "…equal to the number of times it's been cast from the command
+           * zone this game."
+           *
+           * The tax is two per PREVIOUS cast and is bumped after the mana
+           * riders drain, so `tax / 2` is the casts before this one. The
+           * count the card asks for includes the cast that is resolving —
+           * the commander was cast to get onto the stack, and that cast is
+           * complete before the replacement applies as it enters — so a
+           * first cast gives one counter.
+           *
+           * The plus-one is named rather than inlined: it is the whole
+           * rules question this card was parked on, and a reviewer who
+           * reads it the other way changes this line alone.
+           */
+          const castsBefore = Math.floor(caster.commander.tax / 2);
+          const includesThisCast = 1;
+          spell.bonusEnterCounters =
+            (spell.bonusEnterCounters ?? 0) + castsBefore + includesThisCast;
+        }
+        break;
+      }
       case "extra_turn":
         next = cloneGameState(state);
         // Appended: two of these in one turn are two turns in a row, in
