@@ -2815,6 +2815,13 @@ function compileSimpleClauseInner(sentence: string): SimpleClause | null {
       effects: [{ kind: "regenerate", cardId: { type: "chosen", index: 0 } }],
     };
   }
+  // Welding Jar: a regeneration shield for an artifact rather than a creature.
+  if (/^Regenerate target artifact$/i.test(sentence)) {
+    return {
+      targetRequirements: [{ kind: "artifact" }],
+      effects: [{ kind: "regenerate", cardId: { type: "chosen", index: 0 } }],
+    };
+  }
   if (/^Regenerate ~$/i.test(sentence)) {
     return {
       targetRequirements: [],

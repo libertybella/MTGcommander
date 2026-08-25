@@ -33,14 +33,14 @@ import { advanceStep, beginNextLivingTurnInPlace } from "./turn";
 import { colorsAmongControlled, commanderIdentityColors, manaAbilitiesFor, manaTapOptionsFor } from "./manaOptions";
 import { abilityLifeCost, colorsOutsideCommanderIdentity } from "./commanderIdentity";
 import { addRestrictedMana, emptyManaPools, manaRiderFires, parseManaCost, payManaCost, restrictionAdmits, type ManaPurpose } from "./mana";
-import { applyStateBasedActionsInPlace } from "./status";
+import { applyStateBasedActionsInPlace, destroyPermanentInPlace } from "./status";
 import { legalActions, potentialMana, sacrificeColorMatches, sacrificeScopeMatches } from "./legalActions";
 import { applyChooseTargets, applyResolveCardName, applyResolveChoosePile, applyResolveDredge, applyResolveExileUntilTaken, applyResolvePunisher, applyResolveDividePiles, applyResolveTapOwnForX, applyResolveTemptingOffer, applyResolveChooseCard, applyResolveChooseFromHand, applyResolveCreatureType, applyResolveDiscardLandOrGraveyard, applyResolveEnterCopy, applyResolveLookAssign, applyResolvePay, applyResolveSearch, applyResolveTriggerMode, legalEnterCopyIds, legalSearchIds, searchMatches } from "./prompt";
 import { parseGameState, serializeGameState } from "./serialize";
 import { fillLibraries } from "./testSupport";
 import { applyKeepHand, beginMulligan, isMulliganOpen } from "./mulligan";
 import { advanceSteps } from "./turn";
-import type { CardDefinition, CardEffect, Color, GameEffect, GameState, Keyword, ManaRider, PlayerState, SearchFilter, Step, TargetRequirement } from "./types";
+import type { CardDefinition, CardEffect, Color, EngineEvent, GameEffect, GameState, Keyword, ManaRider, PlayerState, SearchFilter, Step, TargetRequirement } from "./types";
 
 function twoPlayers() {
   const game = createGameState({ playerCount: 2 });
@@ -69982,5 +69982,106 @@ describe("wave 417: Squee, the Immortal", () => {
     // the opposite of the card's entire point.
     expect(round.definitions[definition.id]?.castFromGraveyard).toEqual({});
     expect(round.definitions[definition.id]?.castFromExile).toBe(true);
+  });
+});
+
+describe("wave 418: Welding Jar", () => {
+  const compile = (name: string, typeLine: string, oracleText: string, manaCost = "") =>
+    compileOracleCard({
+      oracleId: name.toLowerCase().replace(/[^a-z]+/g, "-"),
+      name,
+      manaCost,
+      typeLine,
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  it("compiles the sacrifice-for-regeneration ability", () => {
+    const compiled = compile("Welding Jar", "Artifact", "Sacrifice this artifact: Regenerate target artifact.", "{0}");
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.activated[0]).toMatchObject({
+      sacrificeSelf: true,
+      manaCost: "",
+      targetRequirements: [{ kind: "artifact" }],
+      effects: [{ kind: "regenerate", cardId: { type: "chosen", index: 0 } }],
+    });
+  });
+
+  it("leaves 'Regenerate target creature' where it was", () => {
+    const compiled = compile("Regen Bear", "Creature — Bear", "{G}: Regenerate target creature.", "{1}{G}");
+    // The artifact handler must not have widened the creature one.
+    expect(compiled.definition.activated[0]?.targetRequirements).toEqual([{ kind: "creature" }]);
+  });
+
+  const jar = () =>
+    createCardDefinition({
+      name: "Welding Jar",
+      typeLine: "Artifact",
+      manaCost: "{0}",
+      activated: [
+        {
+          tap: false,
+          manaCost: "",
+          effects: [{ kind: "regenerate", cardId: { type: "chosen", index: 0 } }],
+          targetRequirements: [{ kind: "artifact" }],
+          sacrificeSelf: true,
+        },
+      ],
+    });
+
+  const rock = (name: string) =>
+    createCardDefinition({ name, typeLine: "Artifact", manaCost: "{2}" });
+
+  const put = (game: GameState, ownerId: string, definition: CardDefinition) => {
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({ definitionId: definition.id, ownerId, zone: "battlefield" });
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === ownerId)!.zones.battlefield.push(card.id);
+    card.summoningSick = false;
+    return card.id;
+  };
+
+  it("sacrifices itself and shields the artifact from the next destruction", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const jarId = put(game, p1.id, jar());
+    const targetId = put(game, p1.id, rock("Precious Cog"));
+    game.turn.activePlayerId = p1.id;
+    game.turn.phase = "precombatMain";
+    game.turn.step = "precombatMain";
+    game.priorityPlayerId = p1.id;
+    const after = applyAction(game, {
+      kind: "activate_ability",
+      playerId: p1.id,
+      cardId: jarId,
+      abilityIndex: 0,
+      targets: [{ type: "creature", cardId: targetId }],
+    });
+    // The Jar ate itself paying the cost.
+    expect(after.cards[jarId]?.zone).toBe("graveyard");
+    expect(after.cards[targetId]?.regenerationShields).toBe(1);
+
+    // Now destroy the cog: the shield replaces it, and it stays.
+    const events: EngineEvent[] = [];
+    const survived = !destroyPermanentInPlace(after, targetId, events);
+    expect(survived).toBe(true);
+    expect(after.cards[targetId]?.zone).toBe("battlefield");
+    expect(after.cards[targetId]?.regenerationShields).toBe(0);
+    expect(after.cards[targetId]?.tapped).toBe(true);
+  });
+
+  it("round trips the ability", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const definition = jar();
+    put(game, p1.id, definition);
+    const round = parseGameState(serializeGameState(game));
+    expect(round.definitions[definition.id]?.activated[0]).toMatchObject({
+      sacrificeSelf: true,
+      targetRequirements: [{ kind: "artifact" }],
+    });
   });
 });
