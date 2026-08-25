@@ -2565,7 +2565,14 @@ export type RelativePlayer =
   | "next_opponent"
   | "each_opponent"
   | "each_other_opponent"
-  | "each_player";
+  | "each_player"
+  /**
+   * Annihilator (CR 702.85): the player the source is attacking. The
+   * `attacks` event carries only the attacker, so this is read off the
+   * COMBAT RECORD at bind — which is also what makes it right in a
+   * multiplayer game, where "the defending player" is one of three.
+   */
+  | "defending_player";
 /** The controller of the Nth chosen target (Beast Within). */
 export type ChosenControllerRef = { type: "chosen_controller"; index: number };
 /** The owner of the Nth chosen target (Chaos Warp). */

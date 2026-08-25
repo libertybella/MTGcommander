@@ -56257,3 +56257,216 @@ describe('wave 357: "When you cast this spell"', () => {
     expect(round.definitions[definition.id]?.triggers[0]?.onSelfCast).toBe(true);
   });
 });
+
+describe("wave 358: annihilator, and who the defending player is", () => {
+  const compile = (
+    name: string,
+    typeLine: string,
+    oracleText: string,
+    manaCost = "",
+    pt: [string, string] | null = null,
+  ) =>
+    compileOracleCard({
+      oracleId: name.toLowerCase().replace(/[^a-z]+/g, "-"),
+      name,
+      manaCost,
+      typeLine,
+      power: pt?.[0] ?? null,
+      toughness: pt?.[1] ?? null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  const put = (game: GameState, ownerId: string, definition: CardDefinition) => {
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({
+      definitionId: definition.id,
+      ownerId,
+      zone: "battlefield",
+    });
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === ownerId)!.zones.battlefield.push(card.id);
+    card.summoningSick = false;
+    return card.id;
+  };
+
+  const sacrificeOne = {
+    kind: "choose_card" as const,
+    chooserId: "defending_player" as const,
+    sources: [
+      {
+        playerId: "defending_player" as const,
+        zone: "battlefield" as const,
+        filter: "permanent" as const,
+      },
+    ],
+    thenEffects: [{ kind: "sacrifice" as const, cardId: "chosen_card" as const }],
+  };
+
+  it("lowers the keyword to its rules text", () => {
+    const compiled = compile(
+      "Artisan of Kozilek",
+      "Creature — Eldrazi",
+      "Annihilator 2",
+      "{9}",
+      ["10", "9"],
+    );
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.triggers[0]).toEqual({
+      event: "attacks",
+      watch: "self",
+      // N single sacrifices, because `choose_card` picks one card.
+      effects: [sacrificeOne, sacrificeOne],
+      targetRequirements: [],
+    });
+  });
+
+  it("counts up with the number printed", () => {
+    const compiled = compile(
+      "Ulamog",
+      "Creature — Eldrazi",
+      "Annihilator 4",
+      "{11}",
+      ["11", "11"],
+    );
+    expect(compiled.definition.triggers[0]?.effects).toHaveLength(4);
+  });
+
+  const eldrazi = (name = "Eldrazi", count = 2) =>
+    createCardDefinition({
+      name,
+      typeLine: "Creature — Eldrazi",
+      manaCost: "{9}",
+      power: 10,
+      toughness: 9,
+      triggers: [
+        {
+          event: "attacks",
+          watch: "self",
+          effects: Array.from({ length: count }, () => sacrificeOne),
+          targetRequirements: [],
+        },
+      ],
+    });
+
+  const bear = (name = "Bear") =>
+    createCardDefinition({
+      name,
+      typeLine: "Creature — Bear",
+      manaCost: "{1}{G}",
+      power: 2,
+      toughness: 2,
+    });
+
+  const attack = (game: GameState, attackerId: string, playerId: string, defenderId: string) => {
+    game.turn.activePlayerId = playerId;
+    game.turn.phase = "combat";
+    game.turn.step = "declareAttackers";
+    game.priorityPlayerId = playerId;
+    return declareAttackers(game, playerId, [{ attackerId, defenderId }]);
+  };
+
+  it("makes the DEFENDING player sacrifice, not the attacker's controller", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const attackerId = put(game, p1.id, eldrazi());
+    const bound = bindCardEffects(game, [sacrificeOne], {
+      controllerId: p1.id,
+      sourceId: attackerId,
+      targets: [],
+      targetRequirements: [],
+    });
+    // No combat record yet, so there is no defending player and the effect
+    // binds to nothing rather than falling back on the controller.
+    expect(bound).toEqual([]);
+    const declared = attack(game, attackerId, p1.id, p2.id);
+    const inCombat = bindCardEffects(declared, [sacrificeOne], {
+      controllerId: p1.id,
+      sourceId: attackerId,
+      targets: [],
+      targetRequirements: [],
+    });
+    expect(inCombat[0]).toMatchObject({ kind: "choose_card", chooserId: p2.id });
+  });
+
+  it("asks the player actually being attacked, in a three-way game", () => {
+    const game = createGameState({ playerCount: 3 });
+    const [p1, p2, p3] = game.players;
+    if (!p1 || !p2 || !p3) {
+      throw new Error("need three players");
+    }
+    const attackerId = put(game, p1.id, eldrazi());
+    const declared = attack(game, attackerId, p1.id, p3.id);
+    const bound = bindCardEffects(declared, [sacrificeOne], {
+      controllerId: p1.id,
+      sourceId: attackerId,
+      targets: [],
+      targetRequirements: [],
+    });
+    // "The defending player" is one of two here, and the attacker already
+    // chose which — reading it off the combat record is the only way to
+    // know, because the attacks event carries the attacker alone.
+    expect(bound[0]).toMatchObject({ chooserId: p3.id });
+    expect(bound[0]).not.toMatchObject({ chooserId: p2.id });
+  });
+
+  it("offers the defender's permanents and nobody else's", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const attackerId = put(game, p1.id, eldrazi());
+    const theirsId = put(game, p2.id, bear("Theirs"));
+    put(game, p1.id, bear("Mine"));
+    const declared = attack(game, attackerId, p1.id, p2.id);
+    const bound = bindCardEffects(declared, [sacrificeOne], {
+      controllerId: p1.id,
+      sourceId: attackerId,
+      targets: [],
+      targetRequirements: [],
+    });
+    const first = bound[0];
+    expect(first?.kind).toBe("choose_card");
+    if (first?.kind !== "choose_card") {
+      throw new Error("expected a choose_card");
+    }
+    const legal = legalIdsForChooseSources(declared, first.sources);
+    expect(legal).toContain(theirsId);
+    // The attacker's own board is not on offer.
+    expect(legal.some((id) => declared.cards[id]?.controllerId === p1.id)).toBe(false);
+  });
+
+  it("takes lands as readily as creatures", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const attackerId = put(game, p1.id, eldrazi());
+    const landId = put(
+      game,
+      p2.id,
+      createCardDefinition({ name: "Forest", typeLine: "Basic Land — Forest" }),
+    );
+    const declared = attack(game, attackerId, p1.id, p2.id);
+    const bound = bindCardEffects(declared, [sacrificeOne], {
+      controllerId: p1.id,
+      sourceId: attackerId,
+      targets: [],
+      targetRequirements: [],
+    });
+    const first = bound[0];
+    if (first?.kind !== "choose_card") {
+      throw new Error("expected a choose_card");
+    }
+    // "Permanents", not creatures — taking the lands is most of what the
+    // keyword does.
+    expect(legalIdsForChooseSources(declared, first.sources)).toContain(landId);
+  });
+
+  it("round trips the selector", () => {
+    const { game, p1 } = twoPlayers();
+    const definition = eldrazi("Wave 358 Eldrazi");
+    put(game, p1.id, definition);
+    const round = parseGameState(serializeGameState(game));
+    // A selector lost on the wire falls back to a literal player id that
+    // matches nobody, and the keyword quietly does nothing.
+    expect(round.definitions[definition.id]?.triggers[0]?.effects).toEqual([
+      sacrificeOne,
+      sacrificeOne,
+    ]);
+  });
+});

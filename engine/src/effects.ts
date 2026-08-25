@@ -104,6 +104,16 @@ function bindPlayerSelector(
     }
     return chosen.playerId;
   }
+  if (selector === "defending_player") {
+    // Read from the combat record rather than the event: an attack trigger
+    // knows its attacker and nothing else, and in a multiplayer game the
+    // defender is a real choice somebody already made.
+    const attackerId = context.sourceId;
+    return attackerId
+      ? (state.combat?.attacks.find((attack) => attack.attackerId === attackerId)
+          ?.defenderId ?? null)
+      : null;
+  }
   return bindPlayer(state, selector, context.controllerId);
 }
 

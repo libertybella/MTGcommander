@@ -17434,6 +17434,43 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
       }
     }
 
+    /**
+     * Annihilator N (CR 702.85) lowers to its full rules text: an attack
+     * trigger whose sacrifice belongs to the DEFENDING player, not to the
+     * attacker's controller.
+     *
+     * Emitted as N single sacrifices rather than one choice of N, because
+     * `choose_card` picks one card and nothing here counts. The two come
+     * out the same: the choices are all made during one resolution, so the
+     * deaths batch together for dies-watchers, and a player holding fewer
+     * than N permanents loses all of them, which is what "sacrifices N"
+     * means when N is more than they have.
+     */
+    const annihilator = sentence.match(/^Annihilator (\w+)$/i);
+    if (annihilator?.[1]) {
+      const annihilatorCount = parseCount(annihilator[1]);
+      if (annihilatorCount) {
+        result.triggers.push({
+          event: "attacks",
+          watch: "self",
+          effects: Array.from({ length: annihilatorCount }, () => ({
+            kind: "choose_card" as const,
+            chooserId: "defending_player" as const,
+            sources: [
+              {
+                playerId: "defending_player" as const,
+                zone: "battlefield" as const,
+                filter: "permanent" as const,
+              },
+            ],
+            thenEffects: [{ kind: "sacrifice" as const, cardId: "chosen_card" as const }],
+          })),
+          targetRequirements: [],
+        });
+        continue;
+      }
+    }
+
     // Eternalize (CR 702.129) lowers to its full rules text: exile the card
     // from the graveyard and get a 4/4 black Zombie copy of it, which keeps
     // its name and abilities and loses only its mana cost and its size.

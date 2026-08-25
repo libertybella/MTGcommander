@@ -2277,6 +2277,14 @@ more questions it can now ask:
   `TopOfLibraryGrant.payLifeInsteadOfMana` replaces the cost OUTRIGHT, the
   same way flashback does, and rides the same life-payment path. A cost
   that had merely been reduced would still refuse a caster with no mana.
+- **Annihilator N** (CR 702.85) — lowered to its rules text: an attack
+  trigger emitting N single `choose_card` sacrifices, chosen by the
+  `defending_player`. That selector is read off the combat record at bind
+  rather than from the event, which carries only the attacker; at four
+  players the defender is a choice the attacker already made. N single
+  choices rather than one choice of N: they happen in one resolution, so
+  deaths still batch for dies-watchers, and a defender with fewer than N
+  permanents loses all of them.
 - **"When you cast this spell"** (CR 603.2c) — `CardTrigger.onSelfCast`. The
   watcher is the object being cast, which sits on the stack, so it gets its
   own dispatcher pass beside the battlefield and graveyard ones. The trigger
