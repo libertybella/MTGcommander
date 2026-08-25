@@ -1060,6 +1060,11 @@ export type GameState = {
   /** `${cardId}:${triggerIndex}` keys for once-per-turn triggers already fired. */
   oncePerTurnFired: string[];
   /**
+   * Which modes each once-per-turn modal trigger has already taken this
+   * turn, keyed `${cardId}:${triggerIndex}`. Cleared with the turn.
+   */
+  modesChosenThisTurn?: Record<string, number[]>;
+  /**
    * Extra combat phases owed this turn (Aggravated Assault, Seize the Day).
    * Consumed as the postcombat main phase ends: the turn re-enters combat,
    * which naturally flows into another main phase.
@@ -4313,6 +4318,13 @@ export type CardTrigger = {
    * modal trigger written before these asked for.
    */
   modeChoice?: { min: number; max: number };
+  /**
+   * Gala Greeters, Monument to Endurance: "choose one that hasn't been
+   * chosen this turn". The memory is keyed per SOURCE and per trigger
+   * index, not per card — two copies of Gala Greeters each track their
+   * own, and a permanent with two modal triggers tracks them apart.
+   */
+  modesOncePerTurn?: boolean;
   modes?: SpellMode[];
   /**
    * Which objects' events fire this trigger (enter_battlefield, dies,
@@ -4644,6 +4656,10 @@ export type PendingPrompt =
       playerId: PlayerId;
       sourceId: CardInstanceId;
       triggerIndex: number;
+      /** The modes this trigger has already taken this turn, which it may
+       * not take again. Carried on the prompt so the client can grey them
+       * and the resolver can refuse them without recomputing the key. */
+      spentModes?: number[];
       /** Absent means exactly one. */
       modeChoice?: { min: number; max: number };
       subjectCardId?: CardInstanceId;

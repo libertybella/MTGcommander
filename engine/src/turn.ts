@@ -189,6 +189,7 @@ function onEnterStep(state: GameState): GameState {
     }
     // "Only once each turn" abilities reset when a new turn begins.
     state.oncePerTurnFired = [];
+    state.modesChosenThisTurn = {};
     // Unused extra combats do not carry across turns.
     state.pendingExtraCombats = 0;
     state.spellsCastThisTurn = 0;

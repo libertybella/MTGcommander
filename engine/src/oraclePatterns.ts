@@ -14342,7 +14342,7 @@ function parseSimpleTriggerHead(text: string): TriggerHead | null {
 function extractTriggerModalModes(card: OracleCard): TriggerModalExtraction | null {
   const lines = stripReminderText(card.oracleText).replace(/\r/g, "").split("\n");
   const headIndex = lines.findIndex((line) =>
-    /^(?:Landfall\s*[\u2014-]\s*)?(?:When(?:ever)?|At the beginning of) .+, choose (one|one or more|up to one|up to two|two)\s*[\u2014-]\s*$/i.test(
+    /^(?:Landfall\s*[\u2014-]\s*)?(?:When(?:ever)?|At the beginning of) .+, choose (one|one or more|up to one|up to two|two)(?: that hasn't been chosen this turn)?\s*[\u2014-]?\s*$/i.test(
       line.trim(),
     ),
   );
@@ -14355,8 +14355,12 @@ function extractTriggerModalModes(card: OracleCard): TriggerModalExtraction | nu
   const headCount =
     lines[headIndex]!
       .trim()
-      .match(/,\s*choose (one or more|up to one|up to two|two|one)\s*[\u2014-]\s*$/i)?.[1]
+      .match(
+        /,\s*choose (one or more|up to one|up to two|two|one)(?: that hasn't been chosen this turn)?\s*[\u2014-]?\s*$/i,
+      )?.[1]
       ?.toLowerCase() ?? "one";
+  // Gala Greeters and friends: the same modal trigger, with a memory.
+  const modesOncePerTurn = /that hasn't been chosen this turn/i.test(lines[headIndex]!);
   const bullets: string[] = [];
   let end = headIndex + 1;
   while (end < lines.length && lines[end]!.trim().startsWith("•")) {
@@ -14379,7 +14383,10 @@ function extractTriggerModalModes(card: OracleCard): TriggerModalExtraction | nu
   const shortName = frontName.split(",")[0]!;
   const headText = lines[headIndex]!
     .trim()
-    .replace(/,\s*choose (?:one or more|up to one|up to two|two|one)\s*[\u2014-]\s*$/i, "")
+    .replace(
+      /,\s*choose (?:one or more|up to one|up to two|two|one)(?: that hasn't been chosen this turn)?\s*[\u2014-]?\s*$/i,
+      "",
+    )
     .replace(/\bthis creature\b/gi, "~")
     .replace(new RegExp(`\\b${frontName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "g"), "~")
     // Legend short names ("When Atsushi dies").
@@ -14438,6 +14445,7 @@ function extractTriggerModalModes(card: OracleCard): TriggerModalExtraction | nu
     trigger: {
       ...headRest,
       modes,
+      ...(modesOncePerTurn ? { modesOncePerTurn: true } : {}),
       ...(headCount === "one"
         ? {}
         : {

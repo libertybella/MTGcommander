@@ -61899,3 +61899,239 @@ describe("wave 383: two piles, divided by one player and chosen by another", () 
     }
   });
 });
+
+describe("wave 384: a modal that remembers what it already chose", () => {
+  const compile = (
+    name: string,
+    typeLine: string,
+    oracleText: string,
+    manaCost = "",
+    pt: [string, string] | null = null,
+  ) =>
+    compileOracleCard({
+      oracleId: name.toLowerCase().replace(/[^a-z]+/g, "-"),
+      name,
+      manaCost,
+      typeLine,
+      power: pt?.[0] ?? null,
+      toughness: pt?.[1] ?? null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  const put = (game: GameState, ownerId: string, definition: CardDefinition) => {
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({
+      definitionId: definition.id,
+      ownerId,
+      zone: "battlefield",
+    });
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === ownerId)!.zones.battlefield.push(card.id);
+    card.summoningSick = false;
+    return card.id;
+  };
+
+  const monumentText =
+    "Whenever you discard a card, choose one that hasn't been chosen this turn —\n• Draw a card.\n• Create a Treasure token.\n• Each opponent loses 3 life.";
+
+  it("compiles Monument to Endurance with the memory flag", () => {
+    const compiled = compile("Monument to Endurance", "Artifact", monumentText, "{2}{B}");
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.triggers[0]?.modesOncePerTurn).toBe(true);
+    expect(compiled.definition.triggers[0]?.modes).toHaveLength(3);
+  });
+
+  it("leaves a plain modal trigger without one", () => {
+    const compiled = compile(
+      "Plain Modal",
+      "Artifact",
+      "Whenever you discard a card, choose one —\n• Draw a card.\n• Create a Treasure token.",
+      "{2}{B}",
+    );
+    expect(compiled.notes).toEqual([]);
+    // A card that may repeat a mode must not be given a memory it does not
+    // have; the flag is absent rather than false.
+    expect(compiled.definition.triggers[0]?.modesOncePerTurn).toBeUndefined();
+  });
+
+  // ---- The memory --------------------------------------------------------
+
+  const monument = (name = "Monument to Endurance", oncePerTurn = true) =>
+    createCardDefinition({
+      name,
+      typeLine: "Artifact",
+      manaCost: "{2}{B}",
+      triggers: [
+        {
+          event: "discards",
+          watch: "controlled",
+          ...(oncePerTurn ? { modesOncePerTurn: true } : {}),
+          modes: [
+            {
+              label: "Draw a card",
+              effects: [{ kind: "draw", playerId: "controller", count: 1 }],
+              targetRequirements: [],
+            },
+            {
+              label: "Gain 2 life",
+              effects: [{ kind: "gain_life", playerId: "controller", amount: 2 }],
+              targetRequirements: [],
+            },
+            {
+              label: "Each opponent loses 3 life",
+              effects: [{ kind: "lose_life", playerId: "each_opponent", amount: 3 }],
+              targetRequirements: [],
+            },
+          ],
+          effects: [],
+          targetRequirements: [],
+        },
+      ],
+    });
+
+  const discardOne = (game: GameState, playerId: string) => {
+    const hand = game.players.find((entry) => entry.id === playerId)!.zones.hand;
+    const cardId = hand[0];
+    if (!cardId) {
+      throw new Error("need a card to discard");
+    }
+    return applyEffects(
+      game,
+      bindCardEffects(game, [{ kind: "discard", playerId: "controller", count: 1 }], {
+        controllerId: playerId,
+        sourceId: null,
+        targets: [],
+        targetRequirements: [],
+      }),
+    );
+  };
+
+  const drawInto = (game: GameState, playerId: string, count: number) => {
+    let next = game;
+    for (let i = 0; i < count; i += 1) {
+      next = applyEffect(next, { kind: "draw", playerId, count: 1 });
+    }
+    return next;
+  };
+
+  const modePrompt = (game: GameState) => {
+    const prompt = game.prompts[0];
+    if (prompt?.kind !== "choose_trigger_mode") {
+      throw new Error("expected a mode choice");
+    }
+    return prompt;
+  };
+
+  it("offers everything the first time and remembers what was taken", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 30);
+    put(game, p1.id, monument());
+    let after = drawInto(game, p1.id, 4);
+    after = discardOne(after, p1.id);
+    expect(modePrompt(after).spentModes).toBeUndefined();
+    after = applyResolveTriggerMode(after, p1.id, 1);
+    expect(after.modesChosenThisTurn?.[Object.keys(after.modesChosenThisTurn ?? {})[0]!]).toEqual([
+      1,
+    ]);
+  });
+
+  it("refuses a mode it already took this turn", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 30);
+    put(game, p1.id, monument());
+    let after = drawInto(game, p1.id, 4);
+    after = applyResolveTriggerMode(discardOne(after, p1.id), p1.id, 1);
+    after = discardOne(after, p1.id);
+    expect(modePrompt(after).spentModes).toEqual([1]);
+    expect(() => applyResolveTriggerMode(after, p1.id, 1)).toThrow();
+    // The other two are still there.
+    const taken = applyResolveTriggerMode(after, p1.id, 0);
+    expect(taken.prompts).toHaveLength(0);
+  });
+
+  it("stops triggering once every mode is spent", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 30);
+    put(game, p1.id, monument());
+    let after = drawInto(game, p1.id, 6);
+    for (const mode of [0, 1, 2]) {
+      after = applyResolveTriggerMode(discardOne(after, p1.id), p1.id, mode);
+    }
+    after = discardOne(after, p1.id);
+    // The fourth discard offers nothing rather than an empty choice: with
+    // no unchosen mode left the trigger simply does not happen.
+    expect(after.prompts).toHaveLength(0);
+  });
+
+  it("forgets it all when the turn does", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 30);
+    put(game, p1.id, monument());
+    let after = drawInto(game, p1.id, 6);
+    after = applyResolveTriggerMode(discardOne(after, p1.id), p1.id, 2);
+    beginNextLivingTurnInPlace(after);
+    expect(after.modesChosenThisTurn).toEqual({});
+    after = discardOne(after, p1.id);
+    expect(modePrompt(after).spentModes).toBeUndefined();
+  });
+
+  it("tracks two copies apart", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 30);
+    const firstId = put(game, p1.id, monument("Monument A"));
+    const secondId = put(game, p1.id, monument("Monument B"));
+    let after = drawInto(game, p1.id, 6);
+    after = discardOne(after, p1.id);
+    // Two triggers, one per Monument, so the batch may ask for an order
+    // first. Answer whatever is on top until both modes are in.
+    for (let guard = 0; guard < 6 && after.prompts.length > 0; guard += 1) {
+      const prompt = after.prompts[0]!;
+      if (prompt.kind === "choose_trigger_mode") {
+        after = applyResolveTriggerMode(after, p1.id, 0);
+      } else if (prompt.kind === "order_triggers") {
+        after = applyResolveOrderTriggers(
+          after,
+          p1.id,
+          prompt.entries.map((_, index) => index),
+        );
+      } else {
+        break;
+      }
+    }
+    // Keyed per SOURCE: each copy spent its own mode 0, and neither spent
+    // the other's.
+    expect(after.modesChosenThisTurn?.[`${firstId}:0`]).toEqual([0]);
+    expect(after.modesChosenThisTurn?.[`${secondId}:0`]).toEqual([0]);
+  });
+
+  it("leaves a plain modal free to repeat", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 30);
+    put(game, p1.id, monument("Plain Modal", false));
+    let after = drawInto(game, p1.id, 6);
+    after = applyResolveTriggerMode(discardOne(after, p1.id), p1.id, 1);
+    after = discardOne(after, p1.id);
+    expect(modePrompt(after).spentModes).toBeUndefined();
+    // The same mode again, which the memory would have refused.
+    expect(() => applyResolveTriggerMode(after, p1.id, 1)).not.toThrow();
+    expect(after.modesChosenThisTurn ?? {}).toEqual({});
+  });
+
+  it("round trips the flag, the memory and the prompt", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 30);
+    const definition = monument("Wave 384 Monument");
+    put(game, p1.id, definition);
+    let after = drawInto(game, p1.id, 6);
+    after = applyResolveTriggerMode(discardOne(after, p1.id), p1.id, 2);
+    after = discardOne(after, p1.id);
+    const round = parseGameState(serializeGameState(after));
+    expect(round.definitions[definition.id]?.triggers[0]?.modesOncePerTurn).toBe(true);
+    // Dropped on the wire the trigger would offer a mode it already gave,
+    // which on Monument to Endurance is nine life a turn instead of three.
+    expect(modePrompt(round).spentModes).toEqual([2]);
+    expect(() => applyResolveTriggerMode(round, p1.id, 2)).toThrow();
+  });
+});

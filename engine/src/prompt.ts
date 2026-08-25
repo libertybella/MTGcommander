@@ -125,10 +125,25 @@ export function applyResolveTriggerMode(
   if (picked.some((index) => !trigger?.modes?.[index])) {
     throw new Error("Choose one of the trigger's modes");
   }
+  // "…that hasn't been chosen this turn": the memory is on the prompt, so
+  // this refuses a repeat without recomputing the key.
+  const spent = prompt.spentModes ?? [];
+  if (picked.some((index) => spent.includes(index))) {
+    throw new Error("That mode was already chosen this turn");
+  }
   const modeIndex = picked[0];
   const mode = modeIndex === undefined ? undefined : trigger?.modes?.[modeIndex];
   const next = cloneGameState(state);
   next.prompts.shift();
+  // Recorded whether or not the mode resolves into anything: what the card
+  // asks is what was CHOSEN, and a mode chosen with no legal target has
+  // still been chosen.
+  if (trigger?.modesOncePerTurn && picked.length > 0) {
+    const key = `${prompt.sourceId}:${prompt.triggerIndex}`;
+    const taken = next.modesChosenThisTurn ?? {};
+    taken[key] = [...(taken[key] ?? []), ...picked];
+    next.modesChosenThisTurn = taken;
+  }
   // "Up to one" with none picked: the trigger simply does nothing.
   if (picked.length === 0 || !mode || modeIndex === undefined) {
     next.passesSinceAction = 0;

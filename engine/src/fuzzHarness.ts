@@ -244,10 +244,16 @@ function nextAction(state: GameState, rng: () => number): GameAction | null {
         const modes = source
           ? triggersOf(state, prompt.sourceId)[prompt.triggerIndex]?.modes ?? []
           : [];
+        // A mode already taken this turn is refused, so only what is left
+        // is a choice. Picking blindly would throw on the second trigger of
+        // every once-per-turn modal and report a false failure.
+        const spent = new Set(prompt.spentModes ?? []);
+        const order = modes
+          .map((_, index) => index)
+          .filter((index) => !spent.has(index));
         const bounds = prompt.modeChoice ?? { min: 1, max: 1 };
-        const cap = Math.min(bounds.max, modes.length);
+        const cap = Math.min(bounds.max, order.length);
         const take = bounds.min + Math.floor(rng() * (cap - bounds.min + 1));
-        const order = modes.map((_, index) => index);
         return {
           kind: "resolve_trigger_mode",
           playerId,

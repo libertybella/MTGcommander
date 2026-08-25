@@ -1849,6 +1849,22 @@ export function parseGameState(json: string): GameState {
     // The prompt that reads this is answered across a client round trip, so
     // the list has to survive the wire or "from among them" silently offers
     // the whole graveyard.
+    ...(raw.modesChosenThisTurn === undefined
+      ? {}
+      : {
+          modesChosenThisTurn: (() => {
+            if (!isRecord(raw.modesChosenThisTurn)) {
+              throw new Error("Invalid modesChosenThisTurn");
+            }
+            const taken: Record<string, number[]> = {};
+            for (const [key, entry] of Object.entries(raw.modesChosenThisTurn)) {
+              taken[key] = expectList(entry, `modesChosenThisTurn.${key}`).map((mode, at) =>
+                expectNumber(mode, `modesChosenThisTurn.${key}[${at}]`),
+              );
+            }
+            return taken;
+          })(),
+        }),
     ...(raw.lastChosenCardName === undefined
       ? {}
       : {
@@ -2525,6 +2541,13 @@ function parsePrompts(value: unknown, playerIds: Set<string>): PendingPrompt[] {
         playerId,
         sourceId: expectString(entry.sourceId, `prompts[${index}].sourceId`),
         triggerIndex: expectNumber(entry.triggerIndex, `prompts[${index}].triggerIndex`),
+        ...(entry.spentModes === undefined
+          ? {}
+          : {
+              spentModes: expectList(entry.spentModes, `prompts[${index}].spentModes`).map(
+                (mode, at) => expectNumber(mode, `prompts[${index}].spentModes[${at}]`),
+              ),
+            }),
         ...(isRecord(entry.modeChoice)
           ? {
               modeChoice: {
@@ -5472,6 +5495,7 @@ function parseTriggers(value: unknown, label: string): CardTrigger[] {
       ...(entry.onSelfCast === true ? { onSelfCast: true } : {}),
       ...(entry.excludeSelf === true ? { excludeSelf: true } : {}),
       ...(entry.oncePerTurn === true ? { oncePerTurn: true } : {}),
+      ...(entry.modesOncePerTurn === true ? { modesOncePerTurn: true } : {}),
       ...(entry.oncePerBatch === true ? { oncePerBatch: true } : {}),
       ...(entry.classLevel === undefined
         ? {}

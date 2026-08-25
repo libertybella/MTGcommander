@@ -482,11 +482,21 @@ export function queueDefinitionTriggerInPlace(
   // "…, choose one —" triggers: the controller picks the mode before the
   // ability stacks; targets (if the mode has any) are chosen after.
   if (trigger.modes && trigger.modes.length > 0) {
+    // "…that hasn't been chosen this turn". With every mode already spent
+    // the trigger does NOTHING rather than offering a choice with no
+    // answers — which is what the fourth Pirate attack does.
+    const spentModes = trigger.modesOncePerTurn
+      ? state.modesChosenThisTurn?.[`${cardId}:${index}`] ?? []
+      : [];
+    if (trigger.modesOncePerTurn && spentModes.length >= trigger.modes.length) {
+      return false;
+    }
     state.prompts.push({
       kind: "choose_trigger_mode",
       playerId: card.controllerId,
       sourceId: cardId,
       triggerIndex: index,
+      ...(spentModes.length > 0 ? { spentModes: [...spentModes] } : {}),
       ...(trigger.modeChoice ? { modeChoice: { ...trigger.modeChoice } } : {}),
       ...(subject?.cardId ? { subjectCardId: subject.cardId } : {}),
       ...(subject?.playerId ? { subjectPlayerId: subject.playerId } : {}),

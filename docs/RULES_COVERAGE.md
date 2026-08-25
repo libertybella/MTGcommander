@@ -3007,6 +3007,7 @@ ends. Every printed card of this shape asks about the current turn.
 - **Digging the top of a library until a card matches a filter**, with the match and the cards passed over going to separately named zones (hand/battlefield/tapped/graveyard/exile, and bottom-in-a-random-order/graveyard/exile). Running out of library finds nothing and buries what was revealed, as printed.
 - **Naming a card** — free text, any name, including one that appears nowhere in the game (Demonic Consultation exiling its own library depends on it). The effects that read the name were bound before it existed, so they are parked on the prompt and resumed, and read it at apply.
 - **Two piles** (Fact or Fiction): an opponent divides the revealed cards and the controller takes one pile. Two prompts belonging to two different players, with the rest of the card parked until both answer; an empty pile is legal.
+- **"Choose one that hasn't been chosen this turn"**: a modal trigger with a per-source, per-trigger memory of the modes it already took. With every mode spent the trigger does not happen at all.
 - A seeded random-game fuzzer asserts zone integrity and serialize round-trips after every action (CI: 6 games; 500-game burn-ins gate checkpoint tags — they have caught two real livelocks and the trigger-batching bug).
 
 ## Documented gaps (intentional, in plan order)

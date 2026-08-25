@@ -2032,6 +2032,10 @@ export function Battlefield(props: Props) {
               ? actorId === prompt.playerId
                 ? `Pay ${prompt.amount} life or have ${definition(state, prompt.sourceId)?.name ?? "this land"} enter tapped.`
                 : `Waiting for ${chooser?.displayName ?? "a player"} to pay life or enter tapped.`
+              : prompt.kind === "choose_trigger_mode" && (prompt.spentModes?.length ?? 0) > 0
+              ? actorId === prompt.playerId
+                ? "Choose a mode you have not already chosen this turn."
+                : `Waiting for ${chooser?.displayName ?? "a player"} to choose a mode.`
               : prompt.kind === "divide_piles"
               ? actorId === prompt.playerId
                 ? "Separate the revealed cards into two piles."
@@ -2918,19 +2922,26 @@ export function Battlefield(props: Props) {
             ) : null}
             {actorId === prompt.playerId && prompt.kind === "choose_trigger_mode" ? (
               <>
-                {(triggersOf(state, prompt.sourceId)[prompt.triggerIndex]?.modes ?? []).map((mode, modeIndex) => (
-                  <button
-                    key={mode.label}
-                    type="button"
-                    className="pass-button"
-                    data-testid={`trigger-mode-${modeIndex}`}
-                    onClick={() =>
-                      send({ kind: "resolve_trigger_mode", playerId: actorId, modeIndex })
-                    }
-                  >
-                    {mode.label}
-                  </button>
-                ))}
+                {(triggersOf(state, prompt.sourceId)[prompt.triggerIndex]?.modes ?? []).map((mode, modeIndex) => {
+                  // "…that hasn't been chosen this turn": a spent mode is
+                  // shown and disabled rather than hidden, so the player can
+                  // see what the trigger has already given them.
+                  const spent = (prompt.spentModes ?? []).includes(modeIndex);
+                  return (
+                    <button
+                      key={mode.label}
+                      type="button"
+                      className="pass-button"
+                      data-testid={`trigger-mode-${modeIndex}`}
+                      disabled={spent}
+                      onClick={() =>
+                        send({ kind: "resolve_trigger_mode", playerId: actorId, modeIndex })
+                      }
+                    >
+                      {spent ? `${mode.label} (taken this turn)` : mode.label}
+                    </button>
+                  );
+                })}
               </>
             ) : null}
             {actorId === prompt.playerId && prompt.kind === "enter_as_copy" ? (

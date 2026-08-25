@@ -450,10 +450,17 @@ export class GameHost {
             this.state.definitions[this.state.cards[prompt.sourceId]?.definitionId ?? ""]
               ?.triggers[prompt.triggerIndex]?.modes?.length ?? 0;
           const take = Math.min(Math.max(bounds.min, 1), bounds.max, available);
+          // "…that hasn't been chosen this turn": the spent modes are not
+          // choices any more, so an absent player takes the first ones that
+          // are left. Picking blindly from zero would throw.
+          const spent = new Set(prompt.spentModes ?? []);
+          const open = Array.from({ length: available }, (_, index) => index).filter(
+            (index) => !spent.has(index),
+          );
           this.apply({
             kind: "resolve_trigger_mode",
             playerId: prompt.playerId,
-            modeIndexes: Array.from({ length: take }, (_, index) => index),
+            modeIndexes: open.slice(0, take),
           });
           continue;
         }
