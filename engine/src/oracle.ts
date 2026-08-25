@@ -277,6 +277,7 @@ function compileOneFace(card: OracleCard, definitionId: string): OracleCompileRe
     ...(compiled.delve ? { delve: true } : {}),
     ...(compiled.grantsCostKeyword ? { grantsCostKeyword: compiled.grantsCostKeyword } : {}),
     ...(compiled.grantsFlash ? { grantsFlash: true } : {}),
+    ...(compiled.controlsOpponentSearches ? { controlsOpponentSearches: true } : {}),
     ...(compiled.grantsFlashFor ? { grantsFlashFor: compiled.grantsFlashFor } : {}),
     ...(compiled.castFreeFromHand ? { castFreeFromHand: compiled.castFreeFromHand } : {}),
     ...(compiled.attackTax ? { attackTax: { ...compiled.attackTax } } : {}),

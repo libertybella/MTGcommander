@@ -67292,3 +67292,284 @@ describe("wave 406: Breach the Multiverse", () => {
     expect(round.definitions[definition.id]?.effects).toEqual(definition.effects);
   });
 });
+
+describe("wave 407: Opposition Agent", () => {
+  const compile = (
+    name: string,
+    typeLine: string,
+    oracleText: string,
+    manaCost = "",
+    pt: [string, string] | null = null,
+  ) =>
+    compileOracleCard({
+      oracleId: name.toLowerCase().replace(/[^a-z]+/g, "-"),
+      name,
+      manaCost,
+      typeLine,
+      power: pt?.[0] ?? null,
+      toughness: pt?.[1] ?? null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  const put = (game: GameState, ownerId: string, definition: CardDefinition) => {
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({
+      definitionId: definition.id,
+      ownerId,
+      zone: "battlefield",
+    });
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === ownerId)!.zones.battlefield.push(card.id);
+    card.summoningSick = false;
+    return card.id;
+  };
+
+  const agentText =
+    "Flash\nYou control your opponents while they're searching their libraries.\nWhile an opponent is searching their library, they exile each card they find. You may play those cards for as long as they remain exiled, and you may spend mana as though it were mana of any color to cast them.";
+
+  it("compiles all three of the Agent's lines", () => {
+    const compiled = compile(
+      "Opposition Agent",
+      "Creature — Human Rogue",
+      agentText,
+      "{2}{B}",
+      ["3", "2"],
+    );
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.keywords).toContain("flash");
+    // Two printed sentences, one behaviour: taking control of the search
+    // IS taking the cards.
+    expect(compiled.definition.controlsOpponentSearches).toBe(true);
+  });
+
+  // ---- The hijack ---------------------------------------------------------
+
+  const agent = () =>
+    createCardDefinition({
+      name: "Opposition Agent",
+      typeLine: "Creature — Human Rogue",
+      manaCost: "{2}{B}",
+      power: 3,
+      toughness: 2,
+      controlsOpponentSearches: true,
+    });
+
+  const island = (game: GameState) => {
+    const definition = createCardDefinition({ name: "Island", typeLine: "Basic Land — Island" });
+    game.definitions[definition.id] = definition;
+    return definition;
+  };
+
+  const redSpell = (game: GameState, name: string) => {
+    const definition = createCardDefinition({
+      name,
+      typeLine: "Creature — Dragon",
+      manaCost: "{2}{R}{R}",
+      power: 4,
+      toughness: 4,
+    });
+    game.definitions[definition.id] = definition;
+    return definition;
+  };
+
+  const stackLibrary = (game: GameState, playerId: string, definitions: CardDefinition[]) => {
+    const player = game.players.find((entry) => entry.id === playerId)!;
+    player.zones.library = [];
+    const ids: string[] = [];
+    for (const definition of definitions) {
+      const card = createCardInstance({
+        definitionId: definition.id,
+        ownerId: playerId,
+        zone: "library",
+      });
+      game.cards[card.id] = card;
+      player.zones.library.push(card.id);
+      ids.push(card.id);
+    }
+    return ids;
+  };
+
+  const searchFor = (game: GameState, playerId: string, filter: SearchFilter) =>
+    applyEffects(
+      game,
+      bindCardEffects(
+        game,
+        [
+          {
+            kind: "search_library",
+            playerId: "controller",
+            filter,
+            destination: "hand",
+            count: 1,
+          },
+        ],
+        { controllerId: playerId, sourceId: null, targets: [], targetRequirements: [] },
+      ),
+    );
+
+  it("hands the prompt to the Agent's controller", () => {
+    const { game, p1, p2 } = twoPlayers();
+    put(game, p1.id, agent());
+    stackLibrary(game, p2.id, [island(game)]);
+    const after = searchFor(game, p2.id, { types: ["land"] });
+    const prompt = after.prompts[0];
+    if (prompt?.kind !== "search_library") {
+      throw new Error("expected a search");
+    }
+    // p2 is searching; p1 answers. The searching player never sees their
+    // own library.
+    expect(prompt.playerId).toBe(p1.id);
+    expect(prompt.hijackedFrom).toBe(p2.id);
+  });
+
+  it("offers the searched player's library, not the answerer's", () => {
+    const { game, p1, p2 } = twoPlayers();
+    put(game, p1.id, agent());
+    const [theirsId] = stackLibrary(game, p2.id, [island(game)]);
+    const [minesId] = stackLibrary(game, p1.id, [island(game)]);
+    const after = searchFor(game, p2.id, { types: ["land"] });
+    const options = legalSearchIds(after, after.prompts[0]!);
+    expect(options).toEqual([theirsId]);
+    expect(options).not.toContain(minesId);
+  });
+
+  it("exiles what it finds instead of tutoring it to hand", () => {
+    const { game, p1, p2 } = twoPlayers();
+    put(game, p1.id, agent());
+    const [theirsId] = stackLibrary(game, p2.id, [island(game)]);
+    let after = searchFor(game, p2.id, { types: ["land"] });
+    after = applyResolveSearch(after, p1.id, [theirsId!]);
+    // The printed destination was HAND. It is discarded entirely: a tutor
+    // under an Agent fetches nothing to any hand at all.
+    expect(after.cards[theirsId!]?.zone).toBe("exile");
+    expect(after.exilePlayable?.[0]).toMatchObject({
+      cardId: theirsId,
+      casterId: p1.id,
+      whileExiled: true,
+      anyColorMana: true,
+    });
+  });
+
+  it("leaves an unwatched search exactly as it was", () => {
+    const { game, p1 } = twoPlayers();
+    const [mineId] = stackLibrary(game, p1.id, [island(game)]);
+    let after = searchFor(game, p1.id, { types: ["land"] });
+    expect(after.prompts[0]?.kind).toBe("search_library");
+    expect((after.prompts[0] as { hijackedFrom?: string }).hijackedFrom).toBeUndefined();
+    after = applyResolveSearch(after, p1.id, [mineId!]);
+    expect(after.cards[mineId!]?.zone).toBe("hand");
+  });
+
+  it("does not hijack its own controller's search", () => {
+    const { game, p1 } = twoPlayers();
+    put(game, p1.id, agent());
+    stackLibrary(game, p1.id, [island(game)]);
+    const after = searchFor(game, p1.id, { types: ["land"] });
+    expect(after.prompts[0]?.playerId).toBe(p1.id);
+    expect((after.prompts[0] as { hijackedFrom?: string }).hijackedFrom).toBeUndefined();
+  });
+
+  // ---- Playing what you took ---------------------------------------------
+
+  it("keeps the grant past the turn it was made", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    const [theirsId] = stackLibrary(game, p2.id, [island(game)]);
+    let after: GameState = {
+      ...game,
+      exilePlayable: [{ cardId: theirsId!, casterId: p1.id, whileExiled: true, anyColorMana: true }],
+    };
+    after = moveCard(after, theirsId!, "exile");
+    after = { ...after, turn: { ...after.turn, phase: "ending", step: "end" } };
+    after = advanceStep(after);
+    expect(after.turn.step).toBe("cleanup");
+    // "For as long as they remain exiled" — the turn ending is not what
+    // ends this one.
+    expect(after.exilePlayable).toHaveLength(1);
+  });
+
+  it("drops the grant once the card is no longer exiled", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    const [theirsId] = stackLibrary(game, p2.id, [island(game)]);
+    let after: GameState = {
+      ...game,
+      exilePlayable: [{ cardId: theirsId!, casterId: p1.id, whileExiled: true, anyColorMana: true }],
+    };
+    after = moveCard(after, theirsId!, "graveyard");
+    after = { ...after, turn: { ...after.turn, phase: "ending", step: "end" } };
+    after = advanceStep(after);
+    expect(after.exilePlayable ?? []).toHaveLength(0);
+  });
+
+  it("casts the stolen card off any colour of mana", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    const [theirsId] = stackLibrary(game, p2.id, [redSpell(game, "Their Dragon")]);
+    let after: GameState = {
+      ...game,
+      exilePlayable: [{ cardId: theirsId!, casterId: p1.id, whileExiled: true, anyColorMana: true }],
+    };
+    after = moveCard(after, theirsId!, "exile");
+    after.turn.activePlayerId = p1.id;
+    after.turn.phase = "precombatMain";
+    after.turn.step = "precombatMain";
+    after.priorityPlayerId = p1.id;
+    // {2}{R}{R} paid entirely in black: the two red pips are payable by
+    // any colour, which is a generic pip in everything but the printing.
+    after.players.find((entry) => entry.id === p1.id)!.mana.B = 4;
+    after = applyAction(after, {
+      kind: "cast_spell",
+      playerId: p1.id,
+      cardId: theirsId!,
+      targets: [],
+    });
+    expect(after.stack).toHaveLength(1);
+    expect(after.players.find((entry) => entry.id === p1.id)!.mana.B).toBe(0);
+  });
+
+  it("still charges the right amount of it", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    const [theirsId] = stackLibrary(game, p2.id, [redSpell(game, "Their Dragon")]);
+    let after: GameState = {
+      ...game,
+      exilePlayable: [{ cardId: theirsId!, casterId: p1.id, whileExiled: true, anyColorMana: true }],
+    };
+    after = moveCard(after, theirsId!, "exile");
+    after.turn.activePlayerId = p1.id;
+    after.turn.phase = "precombatMain";
+    after.turn.step = "precombatMain";
+    after.priorityPlayerId = p1.id;
+    after.players.find((entry) => entry.id === p1.id)!.mana.B = 3;
+    // Colour-blind is not free: four mana is still four mana.
+    expect(() =>
+      applyAction(after, { kind: "cast_spell", playerId: p1.id, cardId: theirsId!, targets: [] }),
+    ).toThrow();
+  });
+
+  it("round trips the static, the hijack and the grant", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    const definition = agent();
+    put(game, p1.id, definition);
+    const [theirsId] = stackLibrary(game, p2.id, [island(game)]);
+    const after = searchFor(game, p2.id, { types: ["land"] });
+    const withGrant: GameState = {
+      ...after,
+      exilePlayable: [{ cardId: theirsId!, casterId: p1.id, whileExiled: true, anyColorMana: true }],
+    };
+    const round = parseGameState(serializeGameState(withGrant));
+    // Dropped on the wire the Agent is a 3/2 with flash, the searching
+    // player answers their own prompt, and the stolen card expires at
+    // cleanup in a colour its thief may not have.
+    expect(round.definitions[definition.id]?.controlsOpponentSearches).toBe(true);
+    expect((round.prompts[0] as { hijackedFrom?: string }).hijackedFrom).toBe(p2.id);
+    expect(round.exilePlayable?.[0]).toMatchObject({
+      whileExiled: true,
+      anyColorMana: true,
+    });
+  });
+});

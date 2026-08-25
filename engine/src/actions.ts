@@ -13,7 +13,7 @@ import { eliminatePlayerInPlace } from "./elimination";
 import { applyEffects, bindCardEffects, devotionTo } from "./effects";
 import { hasKeyword } from "./keywords";
 import { controlsMatching, sacrificeColorMatches, sacrificeScopeMatches } from "./legalActions";
-import { addMana, addRestrictedMana, canPayManaCost, manaSpentBetween, parseManaCost, payManaCost, poolWith, tapCard, tapForMana, totalManaAvailable, usableRestrictedMana, type ManaPurpose } from "./mana";
+import { addMana, addRestrictedMana, canPayManaCost, COLOR_PIPS, manaSpentBetween, parseManaCost, payManaCost, poolWith, tapCard, tapForMana, totalManaAvailable, usableRestrictedMana, type ManaPurpose } from "./mana";
 import { colorsAmongControlled, manaAbilityAmount, manaAbilityTapCost, manaAbilitiesFor, manaTapOptionsFor } from "./manaOptions";
 import { createId } from "./ids";
 import { isLiving, livingPlayerCount, requireLiving } from "./players";
@@ -534,6 +534,21 @@ function validateCast(
   // controller. Applied before the tax and the discounts so it works on
   // the printed pips rather than whatever survives them.
   applyPhyrexianColorGrants(state, playerId, cost);
+  // Opposition Agent: "you may spend mana as though it were mana of any
+  // color to cast them". A coloured pip that ANY colour can pay is a
+  // generic pip, so the permission is the cost rewritten rather than a
+  // second spending mode threaded through the mana core. {C} is untouched:
+  // colorless is not a colour, and coloured mana cannot pay for it.
+  if (
+    state.exilePlayable?.some(
+      (entry) => entry.cardId === cardId && entry.casterId === playerId && entry.anyColorMana,
+    )
+  ) {
+    for (const color of COLOR_PIPS) {
+      cost.generic += cost[color];
+      cost[color] = 0;
+    }
+  }
   if (fromCommand) {
     cost.generic += player.commander.tax;
   }

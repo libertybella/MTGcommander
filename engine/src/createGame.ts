@@ -173,6 +173,7 @@ export function createCardDefinition(
         | "storm"
         | "doesntUntap"
         | "grantsFlash"
+        | "controlsOpponentSearches"
         | "convoke"
         | "improvise"
         | "delve"
@@ -539,6 +540,7 @@ export function createCardDefinition(
     ...(input.delve ? { delve: true } : {}),
     ...(input.grantsCostKeyword ? { grantsCostKeyword: { ...input.grantsCostKeyword } } : {}),
     ...(input.grantsFlash ? { grantsFlash: true } : {}),
+    ...(input.controlsOpponentSearches ? { controlsOpponentSearches: true } : {}),
     ...(input.grantsFlashFor ? { grantsFlashFor: { ...input.grantsFlashFor } } : {}),
     ...(input.castFreeFromHand ? { castFreeFromHand: { ...input.castFreeFromHand } } : {}),
     ...(input.extraDrawStepDraws ? { extraDrawStepDraws: true } : {}),

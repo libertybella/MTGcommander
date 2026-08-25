@@ -1423,7 +1423,11 @@ export function legalSearchIds(state: GameState, prompt: PendingPrompt): CardIns
   if (prompt.kind !== "search_library") {
     return [];
   }
-  const player = state.players.find((entry) => entry.id === prompt.playerId);
+  // Opposition Agent: the prompt is ANSWERED by the hijacker and SEARCHES
+  // the hijacked player's library. Reading the answerer's zones here would
+  // hand them their own library instead.
+  const searchedId = prompt.hijackedFrom ?? prompt.playerId;
+  const player = state.players.find((entry) => entry.id === searchedId);
   // Finale of Devastation: "your library AND/OR graveyard" is one pool the
   // search picks from, so both zones are offered together.
   const pool = [
@@ -1458,10 +1462,12 @@ export function applyResolveSearch(
     throw new Error("Choose each card once");
   }
   const legal = new Set(legalSearchIds(state, prompt));
+  // Opposition Agent: whose library this is, which is not the answerer.
+  const searchedId = prompt.hijackedFrom ?? playerId;
   // "If you search your LIBRARY this way, shuffle." Which zone the card
   // came from has to be read before it moves.
   const fromGraveyard = new Set(
-    state.players.find((entry) => entry.id === playerId)?.zones.graveyard ?? [],
+    state.players.find((entry) => entry.id === searchedId)?.zones.graveyard ?? [],
   );
   const tookFromLibraryOnly =
     !prompt.alsoGraveyard ||
@@ -1476,13 +1482,39 @@ export function applyResolveSearch(
   next.prompts.shift();
   if (prompt.destination === "library_top") {
     // Vampiric Tutor: shuffle the rest, then the chosen card goes on top.
-    const player = next.players.find((entry) => entry.id === playerId);
+    const player = next.players.find((entry) => entry.id === searchedId);
     if (player) {
       player.zones.library = player.zones.library.filter((id) => !cardIds.includes(id));
       shuffleInPlace(player.zones.library, random);
       player.zones.library = [...cardIds, ...player.zones.library];
     }
-    dispatchEventsInPlace(next, [{ kind: "searches_library", playerId }]);
+    dispatchEventsInPlace(next, [{ kind: "searches_library", playerId: searchedId }]);
+    return next;
+  }
+  if (prompt.hijackedFrom !== undefined) {
+    // Opposition Agent: "they exile each card they find", and the Agent's
+    // controller may play them for as long as they stay there. The printed
+    // destination is discarded entirely — a tutor to hand fetches nothing
+    // to any hand at all.
+    for (const cardId of cardIds) {
+      next = moveCard(next, cardId, "exile");
+      if (next.cards[cardId]?.zone !== "exile") {
+        continue;
+      }
+      const grants = next.exilePlayable ?? [];
+      grants.push({
+        cardId,
+        casterId: playerId,
+        whileExiled: true,
+        anyColorMana: true,
+      });
+      next.exilePlayable = grants;
+    }
+    const searched = next.players.find((entry) => entry.id === searchedId);
+    if (searched && tookFromLibraryOnly) {
+      shuffleInPlace(searched.zones.library, random);
+    }
+    dispatchEventsInPlace(next, [{ kind: "searches_library", playerId: searchedId }]);
     return next;
   }
   for (const cardId of cardIds) {
@@ -1518,7 +1550,7 @@ export function applyResolveSearch(
       }
     }
   }
-  const player = next.players.find((entry) => entry.id === playerId);
+  const player = next.players.find((entry) => entry.id === searchedId);
   // Taking the card from the graveyard alone means the library was never
   // searched, so it is not shuffled. Finding nothing still shuffles: you
   // looked. A documented reading — the engine cannot know whether a player
@@ -1526,7 +1558,7 @@ export function applyResolveSearch(
   if (player && tookFromLibraryOnly) {
     shuffleInPlace(player.zones.library, random);
   }
-  dispatchEventsInPlace(next, [{ kind: "searches_library", playerId }]);
+  dispatchEventsInPlace(next, [{ kind: "searches_library", playerId: searchedId }]);
   return next;
 }
 

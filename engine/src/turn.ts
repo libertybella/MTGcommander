@@ -607,6 +607,12 @@ function onEnterStep(state: GameState): GameState {
       // Plain grants end with the turn; extended grants (Atsushi) count down
       // at the caster's own cleanups only.
       state.exilePlayable = state.exilePlayable.flatMap((entry) => {
+        // Opposition Agent: "for as long as they remain exiled" — the turn
+        // ending is not what ends this one. It is dropped when the card
+        // leaves exile, which is handled where zones change.
+        if (entry.whileExiled) {
+          return state.cards[entry.cardId]?.zone === "exile" ? [entry] : [];
+        }
         if (entry.remainingOwnCleanups === undefined) {
           return [];
         }

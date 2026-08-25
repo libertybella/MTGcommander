@@ -4346,6 +4346,35 @@ function applyTeamKeywordUntilEot(
   );
 }
 
+/**
+ * Opposition Agent: the OPPONENT of the searching player who controls their
+ * search. Two Agents under different opponents is a real corner — the
+ * earliest timestamp wins, which is the same rule the engine uses to break
+ * every other simultaneous static, rather than leaving it to object order.
+ */
+export function opponentSearchController(
+  state: GameState,
+  searchingPlayerId: PlayerId,
+): PlayerId | null {
+  let best: { controllerId: PlayerId; timestamp: number } | null = null;
+  for (const card of Object.values(state.cards)) {
+    if (
+      card.zone !== "battlefield" ||
+      card.controllerId === searchingPlayerId ||
+      abilitiesRemoved(state, card.id)
+    ) {
+      continue;
+    }
+    if (!state.definitions[card.definitionId]?.controlsOpponentSearches) {
+      continue;
+    }
+    if (!best || card.timestamp < best.timestamp) {
+      best = { controllerId: card.controllerId, timestamp: card.timestamp };
+    }
+  }
+  return best?.controllerId ?? null;
+}
+
 function applySearchLibrary(
   state: GameState,
   effect: Extract<GameEffect, { kind: "search_library" }>,
@@ -4361,9 +4390,12 @@ function applySearchLibrary(
     return state;
   }
   const next = cloneGameState(state);
+  // Opposition Agent: an opponent takes over the search itself, so THEY
+  // answer this prompt — the searching player never sees their own library.
+  const hijacker = opponentSearchController(next, effect.playerId);
   next.prompts.push({
     kind: "search_library",
-    playerId: effect.playerId,
+    playerId: hijacker ?? effect.playerId,
     filter: { ...effect.filter },
     destination: effect.destination,
     count: effect.count,
@@ -4371,6 +4403,7 @@ function applySearchLibrary(
     ...(effect.untapIfLands !== undefined ? { untapIfLands: effect.untapIfLands } : {}),
     ...(effect.landsToBattlefieldTapped ? { landsToBattlefieldTapped: true } : {}),
     ...(effect.alsoGraveyard ? { alsoGraveyard: true } : {}),
+    ...(hijacker ? { hijackedFrom: effect.playerId } : {}),
   });
   return next;
 }

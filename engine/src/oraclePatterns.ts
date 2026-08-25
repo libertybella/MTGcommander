@@ -110,6 +110,7 @@ export type CompiledOracleText = {
   delve?: boolean;
   grantsCostKeyword?: { keyword: "convoke" | "improvise"; types?: string[]; nonTypes?: string[] };
   grantsFlash?: boolean;
+  controlsOpponentSearches?: boolean;
   grantsFlashFor?: { types?: string[]; subtypesAny?: string[]; nonTypes?: string[] };
   castFreeFromHand?: CardDefinition["castFreeFromHand"];
   attackTax?: { generic?: number; perEnchantment?: boolean; lifePer?: number };
@@ -17717,6 +17718,30 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
 
     if (/^You may cast spells as though they had flash$/i.test(sentence)) {
       result.grantsFlash = true;
+      continue;
+    }
+
+    // Opposition Agent's two sentences are one behaviour, so both set the
+    // same flag: taking control of the search IS taking the cards, and no
+    // printed card does one without the other.
+    if (
+      /^You control your opponents while they're searching their libraries$/i.test(sentence) ||
+      /^While an opponent is searching their library, they exile each card they find$/i.test(
+        sentence,
+      )
+    ) {
+      result.controlsOpponentSearches = true;
+      continue;
+    }
+    // The permission that comes with it. Matched separately rather than
+    // fused, because the sentence before it is already a complete rule and
+    // fusing would make one of them unreadable alone.
+    if (
+      /^You may play those cards for as long as they remain exiled, and you may spend mana as though it were mana of any color to cast them$/i.test(
+        sentence,
+      )
+    ) {
+      result.controlsOpponentSearches = true;
       continue;
     }
     // Sigarda's Aid, Shimmer Myr: the same grant narrowed to some spells.

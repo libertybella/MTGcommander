@@ -991,6 +991,7 @@ export function parseGameState(json: string): GameState {
           }
         : {}),
       ...(def.grantsFlash === true ? { grantsFlash: true } : {}),
+      ...(def.controlsOpponentSearches === true ? { controlsOpponentSearches: true } : {}),
       ...(isRecord(def.grantsFlashFor)
         ? {
             grantsFlashFor: {
@@ -2070,6 +2071,8 @@ export function parseGameState(json: string): GameState {
                 casterId: expectString(entry.casterId, `exilePlayable[${index}].casterId`),
                 ...(entry.freeCast === true ? { freeCast: true } : {}),
                 ...(entry.locksCastingAfter === true ? { locksCastingAfter: true } : {}),
+                ...(entry.whileExiled === true ? { whileExiled: true } : {}),
+                ...(entry.anyColorMana === true ? { anyColorMana: true } : {}),
                 ...(entry.remainingOwnCleanups === undefined
                   ? {}
                   : {
@@ -2908,6 +2911,14 @@ function parsePrompts(value: unknown, playerIds: Set<string>): PendingPrompt[] {
           ? { landsToBattlefieldTapped: true }
           : {}),
         ...(entry.alsoGraveyard === true ? { alsoGraveyard: true } : {}),
+        ...(entry.hijackedFrom === undefined
+          ? {}
+          : {
+              hijackedFrom: expectString(
+                entry.hijackedFrom,
+                `prompts[${index}].hijackedFrom`,
+              ),
+            }),
         ...(resumeEffects && resumeEffects.length > 0 ? { resumeEffects } : {}),
       };
     }

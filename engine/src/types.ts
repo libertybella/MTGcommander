@@ -520,6 +520,14 @@ export type CardDefinition = {
    * spells this permanent's controller casts. */
   grantsCostKeyword?: { keyword: "convoke" | "improvise"; types?: string[]; nonTypes?: string[] };
   grantsFlash?: boolean;
+  /**
+   * Opposition Agent: "You control your opponents while they're searching
+   * their libraries", and everything they find is exiled and playable by
+   * you. One flag rather than two, because the second printed sentence is
+   * what the first one does — there is no card that takes control of the
+   * search without taking the cards.
+   */
+  controlsOpponentSearches?: boolean;
   /** Sigarda's Aid, Shimmer Myr: the grant covers only some spells. Kept
    * narrower than a full subject filter because derived.ts cannot reach the
    * trigger matcher without closing an import cycle. */
@@ -1352,6 +1360,19 @@ export type GameState = {
      * because "if you do" means declining the cast costs nothing.
      */
     locksCastingAfter?: boolean;
+    /**
+     * Opposition Agent: "for as long as they remain exiled" — the grant
+     * outlives the turn, so cleanup leaves it alone. It ends when the card
+     * does, by leaving exile.
+     */
+    whileExiled?: boolean;
+    /**
+     * Opposition Agent: "you may spend mana as though it were mana of any
+     * color to cast them". Applied by turning the parsed cost's coloured
+     * pips generic for that one cast, which is what the sentence means and
+     * costs the mana core nothing.
+     */
+    anyColorMana?: boolean;
   }>;
   /** Rebound: cards waiting in exile to be offered free at the caster's
    * next upkeep. */
@@ -5149,6 +5170,13 @@ export type PendingPrompt =
       landsToBattlefieldTapped?: boolean;
       /** Finale of Devastation: the graveyard is part of the pool. */
       alsoGraveyard?: boolean;
+      /**
+       * Opposition Agent: an opponent controls this search. `playerId`
+       * above is already the hijacker, because a prompt is answered by
+       * whoever controls the search; this records whose library is
+       * actually being dug through, and that everything found is exiled.
+       */
+      hijackedFrom?: PlayerId;
       resumeEffects?: GameEffect[];
     }
   | {
