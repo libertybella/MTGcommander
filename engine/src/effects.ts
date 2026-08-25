@@ -6868,6 +6868,17 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
         next = moveCard(state, effect.cardId, "exile");
         if (next.cards[effect.cardId]?.zone === "exile") {
           next = moveCard(next, effect.cardId, "battlefield");
+          // CR 110.2a. What comes back is a NEW object, and nothing has
+          // taken control of it — so it arrives under its owner's control.
+          // Sword of Hearth and Home is printed to exploit exactly this:
+          // blink a creature an opponent stole and it comes home. Every
+          // card that compiled to `flicker` before this named a creature
+          // you already controlled, where owner and controller agree,
+          // which is why it had never shown.
+          const returned = next.cards[effect.cardId];
+          if (returned && returned.zone === "battlefield") {
+            returned.controllerId = returned.ownerId;
+          }
         }
         break;
       }

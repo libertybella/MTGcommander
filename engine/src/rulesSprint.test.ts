@@ -66524,3 +66524,230 @@ describe("wave 403: Loot, Exuberant Explorer", () => {
     });
   });
 });
+
+describe("wave 404: Sword of Hearth and Home", () => {
+  const compile = (name: string, typeLine: string, oracleText: string, manaCost = "") =>
+    compileOracleCard({
+      oracleId: name.toLowerCase().replace(/[^a-z]+/g, "-"),
+      name,
+      manaCost,
+      typeLine,
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  const put = (
+    game: GameState,
+    ownerId: string,
+    definition: CardDefinition,
+    controllerId = ownerId,
+  ) => {
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({
+      definitionId: definition.id,
+      ownerId,
+      zone: "battlefield",
+    });
+    game.cards[card.id] = card;
+    // A stolen permanent stays in its OWNER's zone list and changes only
+    // its controller — that is how the engine models control change.
+    card.controllerId = controllerId;
+    card.summoningSick = false;
+    game.players.find((entry) => entry.id === ownerId)!.zones.battlefield.push(card.id);
+    return card.id;
+  };
+
+  const swordText =
+    "Equipped creature gets +2/+2 and has protection from green and from white.\nWhenever equipped creature deals combat damage to a player, exile up to one target creature you own, then search your library for a basic land card. Put both cards onto the battlefield under your control, then shuffle.\nEquip {2}";
+
+  it("compiles all three of the Sword's lines", () => {
+    const compiled = compile("Sword of Hearth and Home", "Artifact — Equipment", swordText, "{3}");
+    expect(compiled.notes).toEqual([]);
+    const trigger = compiled.definition.triggers[0];
+    expect(trigger?.event).toBe("deals_combat_damage_to_player");
+    expect(trigger?.watch).toBe("attached");
+    // "Up to one" — the trigger still fires and still fetches with no
+    // creature to blink.
+    expect(trigger?.targetRequirements).toEqual([
+      { kind: "creature", owner: "own", optional: true },
+    ]);
+    expect(trigger?.effects).toEqual([
+      { kind: "flicker", cardId: { type: "chosen", index: 0 } },
+      {
+        kind: "search_library",
+        playerId: "controller",
+        filter: { supertypes: ["basic"], types: ["land"] },
+        destination: "battlefield",
+        count: 1,
+      },
+    ]);
+  });
+
+  // ---- Ownership, not control -------------------------------------------
+
+  const bear = (name: string) =>
+    createCardDefinition({
+      name,
+      typeLine: "Creature — Bear",
+      manaCost: "{1}{G}",
+      power: 2,
+      toughness: 2,
+    });
+
+  const requirement: TargetRequirement = { kind: "creature", owner: "own", optional: true };
+
+  it("can target a creature you own that an opponent controls", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    // Stolen: p1 owns it, p2 has it.
+    const stolenId = put(game, p1.id, bear("Stolen Bear"), p2.id);
+    expect(
+      isChosenTargetLegal(game, requirement, { type: "creature", cardId: stolenId }, p1.id),
+    ).toBe(true);
+    expect(
+      legalChoicesForRequirement(game, requirement, p1.id).some(
+        (choice) => choice.type === "creature" && choice.cardId === stolenId,
+      ),
+    ).toBe(true);
+  });
+
+  it("cannot target a creature it does not own, however it is controlled", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    // p2 owns it, p1 controls it: control is not what the clause reads.
+    const borrowedId = put(game, p2.id, bear("Borrowed Bear"), p1.id);
+    expect(
+      isChosenTargetLegal(game, requirement, { type: "creature", cardId: borrowedId }, p1.id),
+    ).toBe(false);
+  });
+
+  // ---- The blink ---------------------------------------------------------
+
+  const blink = (game: GameState, playerId: string, cardId: string) =>
+    applyEffects(
+      game,
+      bindCardEffects(game, [{ kind: "flicker", cardId }], {
+        controllerId: playerId,
+        sourceId: null,
+        targets: [],
+        targetRequirements: [],
+      }),
+    );
+
+  it("brings a stolen creature home", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    const stolenId = put(game, p1.id, bear("Stolen Bear"), p2.id);
+    const after = blink(game, p1.id, stolenId);
+    expect(after.cards[stolenId]?.zone).toBe("battlefield");
+    // CR 110.2a: what comes back is a new object under its OWNER's control.
+    // This is the entire reason the Sword is printed with "you own".
+    expect(after.cards[stolenId]?.controllerId).toBe(p1.id);
+    void p2;
+  });
+
+  it("leaves an ordinary blink where it was", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const mineId = put(game, p1.id, bear("My Bear"));
+    const after = blink(game, p1.id, mineId);
+    expect(after.cards[mineId]?.zone).toBe("battlefield");
+    expect(after.cards[mineId]?.controllerId).toBe(p1.id);
+    // A blinked creature is summoning sick again — it is a new object.
+    expect(after.cards[mineId]?.summoningSick).toBe(true);
+  });
+
+  // ---- Both halves together ----------------------------------------------
+
+  const swing = (game: GameState, playerId: string, cardId: string) =>
+    applyEffects(
+      game,
+      bindCardEffects(
+        game,
+        [
+          { kind: "flicker", cardId: { type: "chosen", index: 0 } },
+          {
+            kind: "search_library",
+            playerId: "controller",
+            filter: { supertypes: ["basic"], types: ["land"] },
+            destination: "battlefield",
+            count: 1,
+          },
+        ],
+        {
+          controllerId: playerId,
+          sourceId: null,
+          targets: [{ type: "creature", cardId }],
+          targetRequirements: [requirement],
+        },
+      ),
+    );
+
+  const stockLibrary = (game: GameState, playerId: string) => {
+    const forest = createCardDefinition({ name: "Forest", typeLine: "Basic Land — Forest" });
+    game.definitions[forest.id] = forest;
+    const player = game.players.find((entry) => entry.id === playerId)!;
+    player.zones.library = [];
+    const card = createCardInstance({
+      definitionId: forest.id,
+      ownerId: playerId,
+      zone: "library",
+    });
+    game.cards[card.id] = card;
+    player.zones.library.push(card.id);
+    return card.id;
+  };
+
+  it("blinks the creature home and fetches the land in one trigger", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const stolenId = put(game, p1.id, bear("Stolen Bear"), p2.id);
+    const forestId = stockLibrary(game, p1.id);
+    let after = swing(game, p1.id, stolenId);
+    // The fetch opens a search prompt; taking the only basic there is.
+    if (after.prompts[0]?.kind === "search_library") {
+      after = applyResolveSearch(after, p1.id, [forestId]);
+    }
+    expect(after.cards[stolenId]?.controllerId).toBe(p1.id);
+    expect(after.cards[forestId]?.zone).toBe("battlefield");
+    // "Put both cards onto the battlefield" — no "tapped" anywhere on it.
+    expect(after.cards[forestId]?.tapped).toBe(false);
+  });
+
+  it("round trips the ownership filter and both effects", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const definition = createCardDefinition({
+      name: "Wave 404 Sword",
+      typeLine: "Artifact — Equipment",
+      manaCost: "{3}",
+      triggers: [
+        {
+          event: "deals_combat_damage_to_player",
+          watch: "attached",
+          targetRequirements: [{ kind: "creature", owner: "own", optional: true }],
+          effects: [
+            { kind: "flicker", cardId: { type: "chosen", index: 0 } },
+            {
+              kind: "search_library",
+              playerId: "controller",
+              filter: { supertypes: ["basic"], types: ["land"] },
+              destination: "battlefield",
+              count: 1,
+            },
+          ],
+        },
+      ],
+    });
+    put(game, p1.id, definition);
+    const round = parseGameState(serializeGameState(game));
+    // Dropped on the wire the filter reads "target creature", and the
+    // Sword blinks an opponent's creature for them.
+    expect(round.definitions[definition.id]?.triggers[0]?.targetRequirements).toEqual([
+      { kind: "creature", owner: "own", optional: true },
+    ]);
+    expect(round.definitions[definition.id]?.triggers[0]?.effects).toHaveLength(2);
+  });
+});

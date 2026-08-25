@@ -6343,6 +6343,26 @@ function compileSimpleClauseInner(sentence: string): SimpleClause | null {
     };
   }
 
+  // Sword of Hearth and Home (fused by fuseBlinkAndFetchInPlace). The
+  // creature comes back under its OWNER's control, which is the point: the
+  // Sword takes back a creature an opponent has stolen. The land arrives
+  // untapped — the card does not say otherwise.
+  if (/^blink-and-fetch up to one target creature you own$/i.test(sentence)) {
+    return {
+      targetRequirements: [{ kind: "creature", owner: "own", optional: true }],
+      effects: [
+        { kind: "flicker", cardId: { type: "chosen", index: 0 } },
+        {
+          kind: "search_library",
+          playerId: "controller",
+          filter: { supertypes: ["basic"], types: ["land"] },
+          destination: "battlefield",
+          count: 1,
+        },
+      ],
+    };
+  }
+
   const flickerDelay = sentence.match(/^flicker-delay (another )?target creature you own$/i);
   if (flickerDelay) {
     return {
@@ -10708,6 +10728,36 @@ function fusePilesInPlace(sentences: string[], lineStart: boolean[]): void {
  * STORM prints the identical grant as one sentence with a `then`, which is
  * the form the reader below already knows.
  */
+/**
+ * Sword of Hearth and Home: "…exile up to one target creature you own, then
+ * search your library for a basic land card." + "Put both cards onto the
+ * battlefield under your control, then shuffle."
+ *
+ * "Both cards" is the creature the first sentence exiled and the land it
+ * searched for, so the second sentence has no meaning apart from the first —
+ * on its own it names a pair nothing has collected.
+ */
+function fuseBlinkAndFetchInPlace(sentences: string[], lineStart: boolean[]): void {
+  for (let index = 0; index + 1 < sentences.length; index += 1) {
+    if (lineStart[index + 1]) {
+      continue;
+    }
+    const head = sentences[index]?.match(
+      /^(.*?)exile up to one target creature you own, then search your library for a basic land card$/i,
+    );
+    const both =
+      /^Put both cards onto the battlefield under your control, then shuffle$/i.test(
+        sentences[index + 1] ?? "",
+      );
+    if (head?.[1] === undefined || !both) {
+      continue;
+    }
+    sentences[index] = `${head[1]}blink-and-fetch up to one target creature you own`;
+    sentences.splice(index + 1, 1);
+    lineStart.splice(index + 1, 1);
+  }
+}
+
 function fuseDigUntilNonlandInPlace(sentences: string[], lineStart: boolean[]): void {
   for (let index = 0; index + 1 < sentences.length; index += 1) {
     if (lineStart[index + 1]) {
@@ -15320,6 +15370,7 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
   fuseTapForXInPlace(sentences, lineStart);
   fuseTemptingOfferInPlace(sentences, lineStart);
   fusePilesInPlace(sentences, lineStart);
+  fuseBlinkAndFetchInPlace(sentences, lineStart);
   fuseDigUntilNonlandInPlace(sentences, lineStart);
   fuseDigUntilInPlace(sentences, lineStart);
   fuseMayPayInPlace(sentences, lineStart);
