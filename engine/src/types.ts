@@ -1109,6 +1109,18 @@ export type GameState = {
     playerId: PlayerId;
     /** CR 702.16 read on a player: it cannot be targeted or damaged. */
     protectionFromEverything?: boolean;
+    /**
+     * Veil of Summer: "You … gain hexproof from blue and from black until
+     * end of turn." Read on a player it stops an opponent's spell of that
+     * colour TARGETING them, and nothing else.
+     */
+    hexproofFromColors?: Color[];
+    /**
+     * This shield ends at CLEANUP rather than at the start of the holder's
+     * next turn. Teferi's Protection wants the long life; a plain "until
+     * end of turn" shield would be a whole extra turn cycle of it.
+     */
+    untilEndOfTurn?: boolean;
     /** Teferi's Protection: "your life total can't change" — both ways. */
     lifeLocked?: boolean;
     /**
@@ -1158,6 +1170,19 @@ export type GameState = {
    * when that PROMPT is answered.
    */
   lastMilledCardIds?: CardInstanceId[];
+  /**
+   * Which COLOURS each player has cast a spell in this turn. The tallies
+   * beside it count spells; Veil of Summer and the Traps ask what colour
+   * they were, and a count cannot be made to answer that afterwards.
+   * Reset with the other per-turn tallies.
+   */
+  spellColorsCastByPlayerThisTurn?: Record<PlayerId, Color[]>;
+  /**
+   * "Spells you control can't be countered this turn." A turn-long grant,
+   * where the shield beside it on a stack object is spent on one spell.
+   * Cleared at cleanup with the rest of the turn.
+   */
+  spellsUncounterableThisTurn?: PlayerId[];
   spellsCastByNameThisGame?: Record<PlayerId, Record<string, number>>;
   /** Esper Sentinel: per-player noncreature casts this turn. */
   noncreatureSpellsCastByPlayerThisTurn?: Record<PlayerId, number>;
@@ -2003,6 +2028,15 @@ export type GameEffect =
   /** "Target creature gains protection from red until end of turn." */
   | { kind: "protection_until_eot"; cardId: CardInstanceId; colors: Color[] }
   | { kind: "hexproof_from_until_eot"; cardId: CardInstanceId; colors: Color[] }
+  /** Veil of Summer: the player AND their permanents, in one effect —
+   * both halves of one sentence, so neither can be dropped alone. */
+  | {
+      kind: "team_hexproof_from_until_eot";
+      playerId: PlayerId;
+      colors: Color[];
+      includePlayer?: boolean;
+    }
+  | { kind: "spells_uncounterable_this_turn"; playerId: PlayerId }
   | {
       kind: "all_pt_until_eot";
       power: number;
@@ -3487,6 +3521,13 @@ export type CardEffect =
   | { kind: "team_protection_until_eot"; playerId: PlayerSelector; colors: Color[] }
   | { kind: "protection_until_eot"; cardId: CardIdSelector; colors: Color[] }
   | { kind: "hexproof_from_until_eot"; cardId: CardIdSelector; colors: Color[] }
+  | {
+      kind: "team_hexproof_from_until_eot";
+      playerId: PlayerSelector;
+      colors: Color[];
+      includePlayer?: boolean;
+    }
+  | { kind: "spells_uncounterable_this_turn"; playerId: PlayerSelector }
   /** "All creatures get -X/-X until end of turn" (Toxic Deluge). */
   | {
       kind: "all_pt_until_eot";
@@ -4003,6 +4044,9 @@ export type TriggerCondition =
    * what a copy, a cascade and a {0} cost all are.
    */
   | { kind: "no_mana_spent_to_cast" }
+  /** Veil of Summer, Refraction Trap: "if an opponent has cast a blue or
+   * black spell this turn". Any ONE opponent, in any of the colours. */
+  | { kind: "opponent_cast_color_this_turn"; colors: Color[] }
   /** Opus and friends: "if at least four mana was spent to cast it", and
    * with a colour, adamant's "at least three white mana". */
   | { kind: "mana_spent_to_cast"; atLeast: number; color?: Color }

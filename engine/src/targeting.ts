@@ -1,6 +1,6 @@
 import { characteristicsOf, isCommander, isCreature, isPlaneswalker } from "./cardTypes";
 import { cardMatchesSubtype } from "./characteristicsEngine";
-import { creaturePower, playerHasHexproof, playerProtectedFromEverything } from "./derived";
+import { creaturePower, playerHasHexproof, playerHexproofFromColors, playerProtectedFromEverything } from "./derived";
 import { hasKeyword, hexproofFromSource, protectedFromSource } from "./keywords";
 import { isLiving, livingPlayers } from "./players";
 import type {
@@ -18,6 +18,7 @@ function isLegalPlayerTarget(
   state: GameState,
   playerId: string,
   casterId?: PlayerId,
+  sourceColors?: Color[],
 ): boolean {
   if (!isLiving(state, playerId)) {
     return false;
@@ -27,6 +28,14 @@ function isLegalPlayerTarget(
   // exactly that, and a blanket check would lock them out of their own.
   if (casterId && casterId !== playerId && playerHasHexproof(state, playerId)) {
     return false;
+  }
+  // Veil of Summer: the player half of the same shield, and opponents only
+  // for the same reason as the line above.
+  if (casterId && casterId !== playerId) {
+    const shield = playerHexproofFromColors(state, playerId);
+    if (shield.length > 0 && (sourceColors ?? []).some((color) => shield.includes(color))) {
+      return false;
+    }
   }
   // Protection from everything is NOT hexproof: CR 702.16e makes no
   // exception for the protected player's own spells, which is why
@@ -356,14 +365,17 @@ export function isChosenTargetLegal(
     return false;
   }
   if (requirement.kind === "player") {
-    return target.type === "player" && isLegalPlayerTarget(state, target.playerId, casterId);
+    return (
+      target.type === "player" &&
+      isLegalPlayerTarget(state, target.playerId, casterId, sourceColors)
+    );
   }
   if (requirement.kind === "opponent") {
     return (
       target.type === "player" &&
       Boolean(casterId) &&
       target.playerId !== casterId &&
-      isLegalPlayerTarget(state, target.playerId, casterId)
+      isLegalPlayerTarget(state, target.playerId, casterId, sourceColors)
     );
   }
   if (requirement.kind === "creature") {

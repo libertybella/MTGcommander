@@ -2,7 +2,7 @@ import { characteristicsOf, isBasic, isCommander, isCreature, isLand, isLegendar
 import { abilitiesRemoved, cardMatchesSubtype, computedCard, controlsGate, dynamicCountOf } from "./characteristicsEngine";
 import { canPayManaCost, type ParsedManaCost } from "./mana";
 import { triggerConditionHolds } from "./triggers";
-import type { ActivatedAbility, AlternativeCastCost, CardDefinition, CardInstance, CardInstanceId, EnterTappedUnless, GameState, ManaPool, PlayerId } from "./types";
+import type { ActivatedAbility, AlternativeCastCost, CardDefinition, CardInstance, CardInstanceId, Color, EnterTappedUnless, GameState, ManaPool, PlayerId } from "./types";
 
 /**
  * CR 307.1: the window a sorcery may be cast in — your own main phase with
@@ -676,6 +676,26 @@ export function playerHasHexproof(state: GameState, playerId: string): boolean {
  * and Teferi's Protection is famous for locking you out of your own
  * targeted effects for the turn.
  */
+/**
+ * Veil of Summer, read on a PLAYER. Like hexproof on a permanent it stops
+ * opponents only, so the caller checks the caster; unlike protection it
+ * stops targeting and nothing else.
+ */
+export function playerHexproofFromColors(state: GameState, playerId: string): Color[] {
+  const colors: Color[] = [];
+  for (const shield of state.playerShields ?? []) {
+    if (shield.playerId !== playerId) {
+      continue;
+    }
+    for (const color of shield.hexproofFromColors ?? []) {
+      if (!colors.includes(color)) {
+        colors.push(color);
+      }
+    }
+  }
+  return colors;
+}
+
 export function playerProtectedFromEverything(
   state: GameState,
   playerId: string,

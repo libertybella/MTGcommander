@@ -1821,6 +1821,18 @@ function parseEffectCondition(phrase: string): TriggerCondition | null {
   ) {
     return { kind: "subject_name_unique" };
   }
+  // Veil of Summer, Refraction Trap: what COLOUR an opponent has cast.
+  const opponentColor = text.match(
+    /^an opponent (?:has )?cast an? (.+?) spell this turn$/i,
+  );
+  const opponentColors = opponentColor?.[1]
+    // "blue or black" is the same set of colours as "blue and black"; the
+    // shared reader spells the join one way.
+    ? parseColorQualityList(opponentColor[1].replace(/\bor\b/gi, "and"))
+    : null;
+  if (opponentColors) {
+    return { kind: "opponent_cast_color_this_turn", colors: opponentColors };
+  }
   // Boromir, Nix, Roiling Vortex: the free-spell hosers.
   if (/^no mana was spent to cast (?:it|that spell|this spell)$/i.test(text)) {
     return { kind: "no_mana_spent_to_cast" };
@@ -6644,6 +6656,15 @@ function compileSimpleClauseInner(sentence: string): SimpleClause | null {
     };
   }
 
+  // Veil of Summer: every spell for the rest of the turn, where the shield
+  // that rides a stack object covers exactly one.
+  if (/^Spells you control can(?:'t|not) be countered this turn$/i.test(sentence)) {
+    return {
+      targetRequirements: [],
+      effects: [{ kind: "spells_uncounterable_this_turn", playerId: "controller" }],
+    };
+  }
+
   if (/^proliferate$/i.test(sentence)) {
     return {
       targetRequirements: [],
@@ -9776,13 +9797,29 @@ function splitOnce(text: string, separator: RegExp): [string, string] | null {
 type PtTerm = number | "x" | "minus_x" | "greatest_power" | "creature_count";
 
 type EotSubject =
-  | { how: "team"; playerId: "controller" | "each_opponent"; subtypes?: string[] }
+  | {
+      how: "team";
+      playerId: "controller" | "each_opponent";
+      subtypes?: string[];
+      /** Veil of Summer: "You and permanents you control" — the player is
+       * part of the same sentence, so the grant carries both halves. */
+      includePlayer?: boolean;
+      permanents?: boolean;
+    }
   | { how: "all" }
   | { how: "card"; cardId: "self" | "subject_card" }
   | { how: "target"; requirement: TargetRequirement };
 
 function parseEotSubject(phrase: string): EotSubject | null {
   const rest = phrase.trim();
+  // Veil of Summer, Lazotep Plating, Surge of Salvation. The player is a
+  // subject of the same grant, not a second sentence.
+  if (/^You and permanents you control$/i.test(rest)) {
+    return { how: "team", playerId: "controller", includePlayer: true, permanents: true };
+  }
+  if (/^permanents you control$/i.test(rest)) {
+    return { how: "team", playerId: "controller", permanents: true };
+  }
   if (/^(?:other )?creatures you control$/i.test(rest)) {
     // "Other creatures you control" excludes the source; the team effects
     // address a player rather than a card set, so the source is included.
@@ -9968,10 +10005,19 @@ function compileUntilEotGrant(sentence: string): SimpleClause | null {
     if (colorShield?.[1] && shieldColors) {
       const hexproof = /^hexproof$/i.test(colorShield[1]);
       if (subject.how === "team") {
-        // Only protection has a team form today; a team hexproof-from grant
-        // is Veil of Summer's, and it needs the player scope beside it.
         if (hexproof) {
-          return null;
+          // "Each opponent" has no printed hexproof grant, and handing one
+          // out to a set this reader cannot name would be guesswork.
+          if (subject.playerId !== "controller") {
+            return null;
+          }
+          effects.push({
+            kind: "team_hexproof_from_until_eot",
+            playerId: "controller",
+            colors: shieldColors,
+            ...(subject.includePlayer ? { includePlayer: true } : {}),
+          });
+          continue;
         }
         effects.push({
           kind: "team_protection_until_eot",
@@ -10007,6 +10053,7 @@ function compileUntilEotGrant(sentence: string): SimpleClause | null {
           kind: "team_keyword_until_eot",
           playerId: subject.playerId,
           keyword,
+          ...(subject.permanents ? { scope: "permanents" as const } : {}),
           ...(subject.subtypes ? { subtypes: [...subject.subtypes] } : {}),
         });
       } else if (subject.how === "all") {

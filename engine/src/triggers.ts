@@ -63,6 +63,14 @@ export function triggerConditionHolds(
   if (!condition) {
     return true;
   }
+  if (condition.kind === "opponent_cast_color_this_turn") {
+    const byPlayer = state.spellColorsCastByPlayerThisTurn ?? {};
+    return state.players.some(
+      (player) =>
+        player.id !== controllerId &&
+        (byPlayer[player.id] ?? []).some((color) => condition.colors.includes(color)),
+    );
+  }
   if (condition.kind === "no_mana_spent_to_cast" || condition.kind === "mana_spent_to_cast") {
     // The subject is the spell the trigger is watching. An ABSENT record is
     // no mana spent, not an unknown: a cascade, a copy and "without paying

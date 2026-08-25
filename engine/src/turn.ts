@@ -193,6 +193,7 @@ function onEnterStep(state: GameState): GameState {
     state.pendingExtraCombats = 0;
     state.spellsCastThisTurn = 0;
     state.spellsCastByPlayerThisTurn = {};
+    state.spellColorsCastByPlayerThisTurn = {};
     state.noncreatureSpellsCastByPlayerThisTurn = {};
     state.creaturesDiedThisTurn = 0;
     state.createdTokenThisTurn = [];
@@ -489,6 +490,17 @@ function onEnterStep(state: GameState): GameState {
     state.activeEffects = state.activeEffects.filter(
       (effect) => effect.duration !== "until_end_of_turn",
     );
+    // Veil of Summer's player half, and the turn-long uncounterable grant.
+    // Both say "this turn", which ends HERE — not at the start of the
+    // holder's next turn, where the Teferi's Protection shields end.
+    if ((state.playerShields ?? []).some((shield) => shield.untilEndOfTurn)) {
+      state.playerShields = (state.playerShields ?? []).filter(
+        (shield) => !shield.untilEndOfTurn,
+      );
+    }
+    if (state.spellsUncounterableThisTurn) {
+      delete state.spellsUncounterableThisTurn;
+    }
     // Birgi: mana that survived the step boundaries stops surviving with
     // the turn. The pool itself is emptied by the step advance either way.
     for (const player of state.players) {

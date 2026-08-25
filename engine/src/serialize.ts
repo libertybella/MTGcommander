@@ -1807,6 +1807,28 @@ export function parseGameState(json: string): GameState {
       raw.spellsCastThisTurn === undefined
         ? 0
         : expectNumber(raw.spellsCastThisTurn, "spellsCastThisTurn"),
+    ...(raw.spellColorsCastByPlayerThisTurn === undefined
+      ? {}
+      : {
+          spellColorsCastByPlayerThisTurn: (() => {
+            if (!isRecord(raw.spellColorsCastByPlayerThisTurn)) {
+              throw new Error("Invalid spellColorsCastByPlayerThisTurn");
+            }
+            const byPlayer: Record<string, Color[]> = {};
+            for (const [key, entry] of Object.entries(raw.spellColorsCastByPlayerThisTurn)) {
+              byPlayer[key] = parseColorArray(entry, `spellColorsCastByPlayerThisTurn.${key}`);
+            }
+            return byPlayer;
+          })(),
+        }),
+    ...(raw.spellsUncounterableThisTurn === undefined
+      ? {}
+      : {
+          spellsUncounterableThisTurn: expectStringArray(
+            raw.spellsUncounterableThisTurn,
+            "spellsUncounterableThisTurn",
+          ),
+        }),
     ...(raw.spellsCastByPlayerThisTurn === undefined
       ? {}
       : {
@@ -1992,6 +2014,15 @@ export function parseGameState(json: string): GameState {
                   ? { protectionFromEverything: true }
                   : {}),
                 ...(entry.lifeLocked === true ? { lifeLocked: true } : {}),
+                ...(entry.hexproofFromColors === undefined
+                  ? {}
+                  : {
+                      hexproofFromColors: parseColorArray(
+                        entry.hexproofFromColors,
+                        `playerShields[${index}].hexproofFromColors`,
+                      ),
+                    }),
+                ...(entry.untilEndOfTurn === true ? { untilEndOfTurn: true } : {}),
                 createdOnTurn: expectNumber(
                   entry.createdOnTurn,
                   `playerShields[${index}].createdOnTurn`,
@@ -4340,6 +4371,15 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
         cardId: parseCardIdSelector(value.cardId, `${label}.cardId`),
         colors: parseColorArray(value.colors, `${label}.colors`),
       };
+    case "team_hexproof_from_until_eot":
+      return {
+        kind,
+        playerId: parsePlayerSelector(value.playerId, `${label}.playerId`),
+        colors: parseColorArray(value.colors, `${label}.colors`),
+        ...(value.includePlayer === true ? { includePlayer: true } : {}),
+      };
+    case "spells_uncounterable_this_turn":
+      return { kind, playerId: parsePlayerSelector(value.playerId, `${label}.playerId`) };
     case "team_protection_until_eot": {
       if (!Array.isArray(value.colors)) {
         throw new Error(`Invalid ${label}.colors`);
@@ -5364,6 +5404,12 @@ function parseTriggerCondition(value: unknown, label: string): TriggerCondition 
         value.kind,
         `${label}.kind`,
       );
+      if (conditionKind === "opponent_cast_color_this_turn") {
+        return {
+          kind: conditionKind,
+          colors: parseColorArray(value.colors, `${label}.colors`),
+        };
+      }
       if (conditionKind === "mana_spent_to_cast") {
         const color = value.color === undefined ? undefined : parseColor(value.color, `${label}.color`);
         return {
@@ -6503,6 +6549,17 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
         ? {}
         : { minPower: expectNumber(value.minPower, `${label}.minPower`) }),
     };
+  }
+  if (kind === "team_hexproof_from_until_eot") {
+    return {
+      kind,
+      playerId: expectString(value.playerId, `${label}.playerId`),
+      colors: parseColorArray(value.colors, `${label}.colors`),
+      ...(value.includePlayer === true ? { includePlayer: true } : {}),
+    };
+  }
+  if (kind === "spells_uncounterable_this_turn") {
+    return { kind, playerId: expectString(value.playerId, `${label}.playerId`) };
   }
   if (kind === "protection_until_eot" || kind === "hexproof_from_until_eot") {
     return {

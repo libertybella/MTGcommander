@@ -274,6 +274,20 @@ export function putSpellOnStack(
   const byPlayer = next.spellsCastByPlayerThisTurn ?? {};
   byPlayer[moved.controllerId] = (byPlayer[moved.controllerId] ?? 0) + 1;
   next.spellsCastByPlayerThisTurn = byPlayer;
+  // Veil of Summer and the Traps ask what COLOUR was cast, which the count
+  // above cannot be made to answer afterwards. Recorded here, beside it.
+  const castColors = definition?.characteristics.colors ?? [];
+  if (castColors.length > 0) {
+    const colorsByPlayer = next.spellColorsCastByPlayerThisTurn ?? {};
+    const seenColors = [...(colorsByPlayer[moved.controllerId] ?? [])];
+    for (const color of castColors) {
+      if (!seenColors.includes(color)) {
+        seenColors.push(color);
+      }
+    }
+    colorsByPlayer[moved.controllerId] = seenColors;
+    next.spellColorsCastByPlayerThisTurn = colorsByPlayer;
+  }
   // Esper Sentinel: per-player noncreature-cast tally for first-spell heads.
   if (!definition?.characteristics.types.includes("creature")) {
     const noncreature = next.noncreatureSpellsCastByPlayerThisTurn ?? {};

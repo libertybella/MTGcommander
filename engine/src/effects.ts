@@ -1449,6 +1449,22 @@ export function bindCardEffect(
       }
       return { kind: effect.kind, cardId, colors: [...effect.colors] };
     }
+    case "team_hexproof_from_until_eot": {
+      const playerId = bindPlayerSelector(state, effect.playerId, context);
+      if (!playerId) {
+        return null;
+      }
+      return {
+        kind: "team_hexproof_from_until_eot",
+        playerId,
+        colors: [...effect.colors],
+        ...(effect.includePlayer ? { includePlayer: true } : {}),
+      };
+    }
+    case "spells_uncounterable_this_turn": {
+      const playerId = bindPlayerSelector(state, effect.playerId, context);
+      return playerId ? { kind: "spells_uncounterable_this_turn", playerId } : null;
+    }
     case "all_pt_until_eot": {
       const power = effect.power === "-x" ? -(context.xValue ?? 0) : effect.power;
       const toughness = effect.toughness === "-x" ? -(context.xValue ?? 0) : effect.toughness;
@@ -3397,6 +3413,11 @@ function cantBeCountered(state: GameState, stackObjectId: StackObjectId): boolea
   // Mistrise Village: the grant was spent at cast and rides the stack object,
   // so a second spell in the same turn is not protected by it.
   if (entry.cantBeCountered) {
+    return true;
+  }
+  // Veil of Summer: "spells you control can't be countered this turn" —
+  // every spell, for the rest of the turn, rather than one of them.
+  if ((state.spellsUncounterableThisTurn ?? []).includes(entry.controllerId)) {
     return true;
   }
   const card = state.cards[entry.sourceId];
@@ -6108,6 +6129,42 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
           untilYourNextTurn: effect.untilYourNextTurn,
         });
         break;
+      case "spells_uncounterable_this_turn":
+        next = cloneGameState(state);
+        if (!(next.spellsUncounterableThisTurn ?? []).includes(effect.playerId)) {
+          next.spellsUncounterableThisTurn = [
+            ...(next.spellsUncounterableThisTurn ?? []),
+            effect.playerId,
+          ];
+        }
+        break;
+      case "team_hexproof_from_until_eot": {
+        requirePlayer(state, effect.playerId);
+        // CR 611.2c: the affected set locks in when the effect is created,
+        // so a creature that arrives later is not covered.
+        const shielded = teamMembers(state, effect.playerId, {});
+        next =
+          shielded.length === 0
+            ? cloneGameState(state)
+            : pushUntilEotEffect(state, shielded, {
+                kind: "grant_hexproof_from",
+                colors: [...effect.colors],
+              });
+        // The player half of the same sentence. It has to end at CLEANUP,
+        // which is not when the shield beside it in `playerShields` ends.
+        if (effect.includePlayer) {
+          next.playerShields = [
+            ...(next.playerShields ?? []),
+            {
+              playerId: effect.playerId,
+              hexproofFromColors: [...effect.colors],
+              untilEndOfTurn: true,
+              createdOnTurn: next.turn.number,
+            },
+          ];
+        }
+        break;
+      }
       case "protection_until_eot":
         next = pushUntilEotEffect(state, [effect.cardId], {
           kind: "grant_protection",

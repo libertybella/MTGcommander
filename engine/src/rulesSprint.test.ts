@@ -60848,3 +60848,344 @@ describe("wave 379: protection and hexproof FROM a named colour", () => {
     ]);
   });
 });
+
+describe("wave 380: Veil of Summer, and the turn-long shields", () => {
+  const compile = (name: string, typeLine: string, oracleText: string, manaCost = "") =>
+    compileOracleCard({
+      oracleId: name.toLowerCase().replace(/[^a-z]+/g, "-"),
+      name,
+      manaCost,
+      typeLine,
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  const put = (
+    game: GameState,
+    ownerId: string,
+    definition: CardDefinition,
+    zone: "battlefield" | "hand" = "battlefield",
+  ) => {
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({ definitionId: definition.id, ownerId, zone });
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === ownerId)!.zones[zone].push(card.id);
+    if (zone === "battlefield") {
+      card.summoningSick = false;
+    }
+    return card.id;
+  };
+
+  const veilText =
+    "Draw a card if an opponent has cast a blue or black spell this turn. Spells you control can't be countered this turn. You and permanents you control gain hexproof from blue and from black until end of turn.";
+
+  it("compiles all three of Veil of Summer's sentences", () => {
+    const compiled = compile("Veil of Summer", "Instant", veilText, "{G}");
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.effects).toEqual([
+      {
+        kind: "if_condition",
+        condition: { kind: "opponent_cast_color_this_turn", colors: ["U", "B"] },
+        then: [{ kind: "draw", playerId: "controller", count: 1 }],
+      },
+      { kind: "spells_uncounterable_this_turn", playerId: "controller" },
+      {
+        kind: "team_hexproof_from_until_eot",
+        playerId: "controller",
+        colors: ["U", "B"],
+        includePlayer: true,
+      },
+    ]);
+  });
+
+  it("keeps 'permanents you control' a permanents grant", () => {
+    const compiled = compile(
+      "Lazotep Plating",
+      "Instant",
+      "Permanents you control gain hexproof until end of turn.",
+      "{1}{B}",
+    );
+    expect(compiled.notes).toEqual([]);
+    // Narrowed to creatures this would leave the artifacts and lands bare,
+    // which is most of what the card is played to save.
+    expect(compiled.definition.effects).toEqual([
+      {
+        kind: "team_keyword_until_eot",
+        playerId: "controller",
+        keyword: "hexproof",
+        scope: "permanents",
+      },
+    ]);
+  });
+
+  // ---- The colour tally --------------------------------------------------
+
+  const spell = (name: string, manaCost: string, typeLine = "Instant") =>
+    createCardDefinition({
+      name,
+      typeLine,
+      manaCost,
+      effects: [{ kind: "gain_life", playerId: "controller", amount: 1 }],
+    });
+
+  const castBy = (game: GameState, playerId: string, definition: CardDefinition) => {
+    const cardId = put(game, playerId, definition, "hand");
+    game.turn.activePlayerId = playerId;
+    game.turn.phase = "precombatMain";
+    game.turn.step = "precombatMain";
+    game.priorityPlayerId = playerId;
+    const player = game.players.find((entry) => entry.id === playerId)!;
+    player.mana.U = 3;
+    player.mana.B = 3;
+    player.mana.R = 3;
+    player.mana.G = 3;
+    return applyAction(game, { kind: "cast_spell", playerId, cardId, targets: [] });
+  };
+
+  const veilCondition = { kind: "opponent_cast_color_this_turn" as const, colors: ["U", "B"] as Color[] };
+
+  it("records the colour of every spell cast", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    const after = castBy(game, p2.id, spell("Blue Spell", "{U}"));
+    expect(after.spellColorsCastByPlayerThisTurn?.[p2.id]).toEqual(["U"]);
+    expect(triggerConditionHolds(after, p1.id, veilCondition)).toBe(true);
+  });
+
+  it("does not fire on the wrong colour", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    const after = castBy(game, p2.id, spell("Red Spell", "{R}"));
+    expect(after.spellColorsCastByPlayerThisTurn?.[p2.id]).toEqual(["R"]);
+    expect(triggerConditionHolds(after, p1.id, veilCondition)).toBe(false);
+  });
+
+  it("does not count the caster's own spells", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const after = castBy(game, p1.id, spell("My Blue Spell", "{U}"));
+    // "An OPPONENT has cast" — casting a blue spell yourself is not a
+    // reason to draw off your own Veil.
+    expect(triggerConditionHolds(after, p1.id, veilCondition)).toBe(false);
+  });
+
+  it("takes either colour, and both from one gold spell", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    const after = castBy(game, p2.id, spell("Dimir Spell", "{U}{B}"));
+    expect(after.spellColorsCastByPlayerThisTurn?.[p2.id]?.sort()).toEqual(["B", "U"]);
+    expect(triggerConditionHolds(after, p1.id, veilCondition)).toBe(true);
+  });
+
+  it("forgets it when the turn does", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    const after = castBy(game, p2.id, spell("Blue Spell", "{U}"));
+    beginNextLivingTurnInPlace(after);
+    expect(after.spellColorsCastByPlayerThisTurn?.[p2.id] ?? []).toEqual([]);
+    expect(triggerConditionHolds(after, p1.id, veilCondition)).toBe(false);
+  });
+
+  // ---- The turn-long uncounterable grant --------------------------------
+
+  const grant = (game: GameState, playerId: string, effect: CardEffect) =>
+    applyEffects(
+      game,
+      bindCardEffects(game, [effect], {
+        controllerId: playerId,
+        sourceId: null,
+        targets: [],
+        targetRequirements: [],
+      }),
+    );
+
+  it("protects EVERY spell for the rest of the turn", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    let after = grant(game, p1.id, {
+      kind: "spells_uncounterable_this_turn",
+      playerId: "controller",
+    });
+    const first = castBy(after, p1.id, spell("First", "{G}"));
+    const countered = applyEffect(first, {
+      kind: "counter_spell",
+      stackObjectId: first.stack[0]!.id,
+    });
+    expect(countered.stack).toHaveLength(1);
+    // And the SECOND one too — the shield that rides a stack object covers
+    // exactly one spell, which is the difference this effect exists for.
+    after = resolveTopOfStack(first);
+    const second = castBy(after, p1.id, spell("Second", "{G}"));
+    const counteredAgain = applyEffect(second, {
+      kind: "counter_spell",
+      stackObjectId: second.stack[0]!.id,
+    });
+    expect(counteredAgain.stack).toHaveLength(1);
+    void p2;
+  });
+
+  it("does not protect an opponent's spells", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    const after = grant(game, p1.id, {
+      kind: "spells_uncounterable_this_turn",
+      playerId: "controller",
+    });
+    const theirs = castBy(after, p2.id, spell("Theirs", "{U}"));
+    const countered = applyEffect(theirs, {
+      kind: "counter_spell",
+      stackObjectId: theirs.stack[0]!.id,
+    });
+    expect(countered.stack).toHaveLength(0);
+  });
+
+  it("ends at cleanup, not at the next turn", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    let after = grant(game, p1.id, {
+      kind: "spells_uncounterable_this_turn",
+      playerId: "controller",
+    });
+    expect(after.spellsUncounterableThisTurn).toEqual([p1.id]);
+    after = { ...after, turn: { ...after.turn, phase: "ending", step: "end" } };
+    after = advanceStep(after);
+    expect(after.turn.step).toBe("cleanup");
+    expect(after.spellsUncounterableThisTurn).toBeUndefined();
+  });
+
+  // ---- The player half of the shield ------------------------------------
+
+  const veilShield = (game: GameState, playerId: string) =>
+    grant(game, playerId, {
+      kind: "team_hexproof_from_until_eot",
+      playerId: "controller",
+      colors: ["U", "B"],
+      includePlayer: true,
+    });
+
+  const canTargetPlayer = (
+    game: GameState,
+    casterId: string,
+    targetId: string,
+    sourceColors: Color[],
+  ) =>
+    isChosenTargetLegal(
+      game,
+      { kind: "player" },
+      { type: "player", playerId: targetId },
+      casterId,
+      sourceColors,
+    );
+
+  it("shields the player from those colours, and only from those", () => {
+    const { game, p1, p2 } = twoPlayers();
+    expect(canTargetPlayer(game, p2.id, p1.id, ["B"])).toBe(true);
+    const after = veilShield(game, p1.id);
+    expect(after.players.find((entry) => entry.id === p1.id)).toBeDefined();
+    expect(canTargetPlayer(after, p2.id, p1.id, ["B"])).toBe(false);
+    expect(canTargetPlayer(after, p2.id, p1.id, ["U"])).toBe(false);
+    expect(canTargetPlayer(after, p2.id, p1.id, ["R"])).toBe(true);
+  });
+
+  it("does not shield the player from themselves", () => {
+    const { game, p1 } = twoPlayers();
+    const after = veilShield(game, p1.id);
+    // Hexproof stops opponents. A Veil controller may still aim their own
+    // black spell at their own face.
+    expect(canTargetPlayer(after, p1.id, p1.id, ["B"])).toBe(true);
+  });
+
+  it("shields the permanents in the same breath", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const bearId = put(
+      game,
+      p1.id,
+      createCardDefinition({
+        name: "Bear",
+        typeLine: "Creature — Bear",
+        manaCost: "{1}{G}",
+        power: 2,
+        toughness: 2,
+      }),
+    );
+    const after = veilShield(game, p1.id);
+    expect(computedCard(after, bearId)?.hexproofFrom.sort()).toEqual(["B", "U"]);
+    expect(
+      isChosenTargetLegal(
+        after,
+        { kind: "creature" },
+        { type: "creature", cardId: bearId },
+        p2.id,
+        ["B"],
+      ),
+    ).toBe(false);
+  });
+
+  it("the player half ends at cleanup, unlike Teferi's", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    let after = veilShield(game, p1.id);
+    // A shield that expires at the START of the holder's next turn would
+    // give Veil of Summer a whole extra turn cycle of protection.
+    after = { ...after, turn: { ...after.turn, phase: "ending", step: "end" } };
+    after = advanceStep(after);
+    expect(after.turn.step).toBe("cleanup");
+    expect(canTargetPlayer(after, p2.id, p1.id, ["B"])).toBe(true);
+  });
+
+  it("leaves a Teferi's-style shield alone at cleanup", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    let after: GameState = {
+      ...game,
+      playerShields: [
+        { playerId: p1.id, protectionFromEverything: true, createdOnTurn: game.turn.number },
+      ],
+    };
+    after = { ...after, turn: { ...after.turn, phase: "ending", step: "end" } };
+    after = advanceStep(after);
+    expect(after.playerShields).toHaveLength(1);
+    void p2;
+  });
+
+  it("round trips the tally, the grant and all three effects", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    let after = castBy(game, p2.id, spell("Blue Spell", "{U}"));
+    after = grant(after, p1.id, {
+      kind: "spells_uncounterable_this_turn",
+      playerId: "controller",
+    });
+    after = veilShield(after, p1.id);
+    const definition = createCardDefinition({
+      name: "Wave 380 Veil",
+      typeLine: "Instant",
+      manaCost: "{G}",
+      effects: [
+        {
+          kind: "if_condition",
+          condition: { kind: "opponent_cast_color_this_turn", colors: ["U", "B"] },
+          then: [{ kind: "draw", playerId: "controller", count: 1 }],
+        },
+        { kind: "spells_uncounterable_this_turn", playerId: "controller" },
+        {
+          kind: "team_hexproof_from_until_eot",
+          playerId: "controller",
+          colors: ["U", "B"],
+          includePlayer: true,
+        },
+      ],
+    });
+    put(after, p1.id, definition, "hand");
+    const round = parseGameState(serializeGameState(after));
+    expect(round.spellColorsCastByPlayerThisTurn?.[p2.id]).toEqual(["U"]);
+    expect(round.spellsUncounterableThisTurn).toEqual([p1.id]);
+    // Dropped on the wire, the player half is the whole reason the card is
+    // played against a targeted removal spell.
+    expect(canTargetPlayer(round, p2.id, p1.id, ["B"])).toBe(false);
+    expect(round.definitions[definition.id]?.effects).toEqual(definition.effects);
+  });
+});
