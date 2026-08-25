@@ -64327,3 +64327,174 @@ describe("wave 393: Tainted Pact, exile until you take one", () => {
     expect(finished.cards[secondId]?.zone).toBe("hand");
   });
 });
+
+describe("wave 394: extra turns", () => {
+  const compile = (name: string, typeLine: string, oracleText: string, manaCost = "") =>
+    compileOracleCard({
+      oracleId: name.toLowerCase().replace(/[^a-z]+/g, "-"),
+      name,
+      manaCost,
+      typeLine,
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  it("compiles Time Warp", () => {
+    const compiled = compile("Time Warp", "Sorcery", "Take an extra turn after this one.", "{3}{U}{U}");
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.effects).toEqual([
+      { kind: "extra_turn", playerId: "controller" },
+    ]);
+  });
+
+  it("compiles the targeted form", () => {
+    const compiled = compile(
+      "Eon Frolicker",
+      "Sorcery",
+      "Target player takes an extra turn after this one.",
+      "{4}{U}",
+    );
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.targetRequirements).toEqual([{ kind: "player" }]);
+    expect(compiled.definition.effects[0]).toMatchObject({ kind: "extra_turn" });
+  });
+
+  // ---- Taking them -------------------------------------------------------
+
+  const grant = (game: GameState, playerId: string, effect: CardEffect) =>
+    applyEffects(
+      game,
+      bindCardEffects(game, [effect], {
+        controllerId: playerId,
+        sourceId: null,
+        targets: [],
+        targetRequirements: [],
+      }),
+    );
+
+  const threeWay = () => {
+    const game = createGameState({ playerCount: 3 });
+    const [p1, p2, p3] = game.players;
+    if (!p1 || !p2 || !p3) {
+      throw new Error("need three players");
+    }
+    fillLibraries(game, 40);
+    return { game, p1, p2, p3 };
+  };
+
+  it("queues the turn rather than taking it now", () => {
+    const { game, p1 } = threeWay();
+    game.turn.activePlayerId = p1.id;
+    const after = grant(game, p1.id, { kind: "extra_turn", playerId: "controller" });
+    // "After this one": the current turn finishes first.
+    expect(after.turn.activePlayerId).toBe(p1.id);
+    expect(after.pendingExtraTurns).toEqual([p1.id]);
+  });
+
+  it("takes it instead of passing round the table", () => {
+    const { game, p1, p2 } = threeWay();
+    game.turn.activePlayerId = p1.id;
+    const after = grant(game, p1.id, { kind: "extra_turn", playerId: "controller" });
+    beginNextLivingTurnInPlace(after);
+    expect(after.turn.activePlayerId).toBe(p1.id);
+    expect(after.pendingExtraTurns).toBeUndefined();
+    // And the seat order resumes afterwards.
+    beginNextLivingTurnInPlace(after);
+    expect(after.turn.activePlayerId).toBe(p2.id);
+  });
+
+  it("gives two in a row for two spells", () => {
+    const { game, p1, p2 } = threeWay();
+    game.turn.activePlayerId = p1.id;
+    let after = grant(game, p1.id, { kind: "extra_turn", playerId: "controller" });
+    after = grant(after, p1.id, { kind: "extra_turn", playerId: "controller" });
+    expect(after.pendingExtraTurns).toEqual([p1.id, p1.id]);
+    beginNextLivingTurnInPlace(after);
+    expect(after.turn.activePlayerId).toBe(p1.id);
+    beginNextLivingTurnInPlace(after);
+    expect(after.turn.activePlayerId).toBe(p1.id);
+    beginNextLivingTurnInPlace(after);
+    expect(after.turn.activePlayerId).toBe(p2.id);
+  });
+
+  it("does not count an extra turn as a new round", () => {
+    const { game, p1 } = threeWay();
+    game.turn.activePlayerId = p1.id;
+    const round = game.turn.number;
+    const after = grant(game, p1.id, { kind: "extra_turn", playerId: "controller" });
+    beginNextLivingTurnInPlace(after);
+    // `turn.number` counts ROUNDS, and the "until your next turn" shields
+    // read it — a Time Warp bumping it would expire them a cycle early.
+    expect(after.turn.number).toBe(round);
+  });
+
+  it("hands the turn to whoever the spell named", () => {
+    const { game, p1, p2 } = threeWay();
+    game.turn.activePlayerId = p1.id;
+    const after = grant(game, p1.id, { kind: "extra_turn", playerId: p2.id });
+    beginNextLivingTurnInPlace(after);
+    expect(after.turn.activePlayerId).toBe(p2.id);
+  });
+
+  it("skips an owed turn for a player who has lost", () => {
+    const { game, p1, p2, p3 } = threeWay();
+    game.turn.activePlayerId = p1.id;
+    const after = grant(game, p1.id, { kind: "extra_turn", playerId: p2.id });
+    after.players.find((entry) => entry.id === p2.id)!.lost = true;
+    beginNextLivingTurnInPlace(after);
+    expect(after.turn.activePlayerId).toBe(p3.id);
+    void p3;
+  });
+
+  // ---- Denying them ------------------------------------------------------
+
+  it("skips a denied player's extra turn", () => {
+    const { game, p1, p2 } = threeWay();
+    game.turn.activePlayerId = p1.id;
+    let after = grant(game, p1.id, { kind: "deny_extra_turns", playerId: p1.id });
+    after = grant(after, p1.id, { kind: "extra_turn", playerId: "controller" });
+    beginNextLivingTurnInPlace(after);
+    // "That player skips that turn instead": the turn was owed and thrown
+    // away, so play moves on round the table.
+    expect(after.turn.activePlayerId).toBe(p2.id);
+  });
+
+  it("denies one player without touching another", () => {
+    const { game, p1, p2, p3 } = threeWay();
+    game.turn.activePlayerId = p1.id;
+    let after = grant(game, p1.id, { kind: "deny_extra_turns", playerId: p2.id });
+    after = grant(after, p1.id, { kind: "extra_turn", playerId: p2.id });
+    after = grant(after, p1.id, { kind: "extra_turn", playerId: p3.id });
+    beginNextLivingTurnInPlace(after);
+    // p2's is thrown away; p3's is still theirs.
+    expect(after.turn.activePlayerId).toBe(p3.id);
+  });
+
+  it("throws away only the turns it denies", () => {
+    const { game, p1, p2 } = threeWay();
+    game.turn.activePlayerId = p1.id;
+    let after = grant(game, p1.id, { kind: "deny_extra_turns", playerId: p1.id });
+    after = grant(after, p1.id, { kind: "extra_turn", playerId: "controller" });
+    after = grant(after, p1.id, { kind: "extra_turn", playerId: "controller" });
+    beginNextLivingTurnInPlace(after);
+    expect(after.turn.activePlayerId).toBe(p2.id);
+    // BOTH were denied, not just the first: the queue is empty.
+    expect(after.pendingExtraTurns).toBeUndefined();
+  });
+
+  it("round trips the queue and the denial", () => {
+    const { game, p1, p2 } = threeWay();
+    game.turn.activePlayerId = p1.id;
+    let after = grant(game, p1.id, { kind: "extra_turn", playerId: "controller" });
+    after = grant(after, p1.id, { kind: "deny_extra_turns", playerId: p2.id });
+    const round = parseGameState(serializeGameState(after));
+    // Dropped on the wire, a Time Warp is five mana for nothing at all.
+    expect(round.pendingExtraTurns).toEqual([p1.id]);
+    expect(round.extraTurnsDenied).toEqual([p2.id]);
+    beginNextLivingTurnInPlace(round);
+    expect(round.turn.activePlayerId).toBe(p1.id);
+  });
+});

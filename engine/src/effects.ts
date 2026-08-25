@@ -1708,6 +1708,11 @@ export function bindCardEffect(
       const playerId = bindPlayerSelector(state, effect.playerId, context);
       return playerId ? { kind: "exile_until_taken", playerId } : null;
     }
+    case "extra_turn":
+    case "deny_extra_turns": {
+      const playerId = bindPlayerSelector(state, effect.playerId, context);
+      return playerId ? { kind: effect.kind, playerId } : null;
+    }
     case "punisher_choice": {
       const chooserId = bindPlayerSelector(state, effect.chooserId, context);
       if (!chooserId || chooserId === context.controllerId) {
@@ -6981,6 +6986,18 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
       }
       case "exile_until_taken":
         next = exileUntilTakenStep(state, effect.playerId, []);
+        break;
+      case "extra_turn":
+        next = cloneGameState(state);
+        // Appended: two of these in one turn are two turns in a row, in
+        // the order they resolved (CR 505.6a).
+        next.pendingExtraTurns = [...(next.pendingExtraTurns ?? []), effect.playerId];
+        break;
+      case "deny_extra_turns":
+        next = cloneGameState(state);
+        if (!(next.extraTurnsDenied ?? []).includes(effect.playerId)) {
+          next.extraTurnsDenied = [...(next.extraTurnsDenied ?? []), effect.playerId];
+        }
         break;
       case "punisher_choice": {
         next = cloneGameState(state);

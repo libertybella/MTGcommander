@@ -5547,6 +5547,25 @@ function compileSimpleClauseInner(sentence: string): SimpleClause | null {
    * clause: "you may tap X untapped Myr you control to do: <rider>", where
    * X is however many were tapped and the rider reads it.
    */
+  // "Take an extra turn after this one." The rider is the whole sentence
+  // on most of the cluster; the ones that add "exile this card" or a
+  // drawback keep those as their own clauses.
+  if (
+    /^Take an extra turn after this one$/i.test(sentence) ||
+    /^You take an extra turn after this one$/i.test(sentence)
+  ) {
+    return {
+      targetRequirements: [],
+      effects: [{ kind: "extra_turn", playerId: "controller" }],
+    };
+  }
+  if (/^Target player takes an extra turn after this one$/i.test(sentence)) {
+    return {
+      targetRequirements: [{ kind: "player" }],
+      effects: [{ kind: "extra_turn", playerId: { type: "chosen", index: 0 } }],
+    };
+  }
+
   if (/^exile until taken$/i.test(sentence)) {
     return {
       targetRequirements: [],

@@ -1126,6 +1126,19 @@ export type GameState = {
    */
   pendingExtraCombats: number;
   /**
+   * Extra turns owed, in the order they will be taken (CR 505.6a). Queued
+   * rather than taken immediately: "an extra turn after this one" means
+   * the current turn finishes first, and two Time Warps in one turn give
+   * two turns in a row rather than nesting.
+   */
+  pendingExtraTurns?: PlayerId[];
+  /**
+   * Stranglehold, Trouble in Pairs: players whose extra turns are skipped.
+   * A DENIAL, so it is read as the turn would begin — the turn is still
+   * queued and then thrown away, which is what the cards say.
+   */
+  extraTurnsDenied?: PlayerId[];
+  /**
    * One-shot delayed actions: "Sacrifice/Exile it at the beginning of the
    * next end step" (temporary tokens and reanimation shells). Processed as
    * the end step begins; entries whose card already left are dropped.
@@ -1995,6 +2008,8 @@ export type GameEffect =
       ifDeclined: CardEffect[];
     }
   | { kind: "exile_until_taken"; playerId: PlayerId }
+  | { kind: "extra_turn"; playerId: PlayerId }
+  | { kind: "deny_extra_turns"; playerId: PlayerId }
   | {
       kind: "divide_into_piles";
       playerId: PlayerId;
@@ -3557,6 +3572,10 @@ export type CardEffect =
    * the card is played to dig PAST what you do not want.
    */
   | { kind: "exile_until_taken"; playerId: PlayerSelector }
+  /** "Take an extra turn after this one." */
+  | { kind: "extra_turn"; playerId: PlayerSelector }
+  /** Trouble in Pairs, Stranglehold: that player's extra turns are skipped. */
+  | { kind: "deny_extra_turns"; playerId: PlayerSelector }
   /**
    * Myr Battlesphere: "you may tap X untapped Myr you control. If you do,
    * this gets +X/+0 and deals X damage to the player it's attacking."

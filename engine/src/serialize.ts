@@ -1880,6 +1880,12 @@ export function parseGameState(json: string): GameState {
     // The prompt that reads this is answered across a client round trip, so
     // the list has to survive the wire or "from among them" silently offers
     // the whole graveyard.
+    ...(raw.pendingExtraTurns === undefined
+      ? {}
+      : { pendingExtraTurns: expectStringArray(raw.pendingExtraTurns, "pendingExtraTurns") }),
+    ...(raw.extraTurnsDenied === undefined
+      ? {}
+      : { extraTurnsDenied: expectStringArray(raw.extraTurnsDenied, "extraTurnsDenied") }),
     ...(raw.modesChosenThisTurn === undefined
       ? {}
       : {
@@ -4716,6 +4722,8 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
         rider: parseCardEffects(value.rider, `${label}.rider`),
       };
     case "exile_until_taken":
+    case "extra_turn":
+    case "deny_extra_turns":
       return { kind, playerId: parsePlayerSelector(value.playerId, `${label}.playerId`) };
     case "punisher_choice":
       return {
@@ -6935,7 +6943,7 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
       amount: expectNumber(value.amount, `${label}.amount`),
     };
   }
-  if (kind === "exile_until_taken") {
+  if (kind === "exile_until_taken" || kind === "extra_turn" || kind === "deny_extra_turns") {
     return { kind, playerId: expectString(value.playerId, `${label}.playerId`) };
   }
   if (kind === "punisher_choice") {

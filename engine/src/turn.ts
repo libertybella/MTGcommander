@@ -120,7 +120,10 @@ function crossesFirstPlayerSeat(state: GameState, currentId: PlayerId, nextId: P
 }
 
 function assignNextPlayerTurn(state: GameState, nextId: PlayerId): void {
-  if (crossesFirstPlayerSeat(state, state.turn.activePlayerId, nextId)) {
+  // An extra turn taken by the player who just had one is not a new ROUND.
+  // `turn.number` counts rounds, and the "until your next turn" shields
+  // read it — a Time Warp bumping it would expire them a cycle early.
+  if (nextId !== state.turn.activePlayerId && crossesFirstPlayerSeat(state, state.turn.activePlayerId, nextId)) {
     state.turn.number += 1;
   }
   state.turn.activePlayerId = nextId;
@@ -128,6 +131,38 @@ function assignNextPlayerTurn(state: GameState, nextId: PlayerId): void {
   // counts rounds, so it cannot carry this. Stamped here because this is the
   // one place a turn begins, extra turns included.
   state.turn.startTimestamp = state.nextTimestamp;
+}
+
+/**
+ * Whose turn is next: an owed extra turn if there is one, otherwise the
+ * next living player round the table.
+ *
+ * A DENIED extra turn is still taken off the queue and then thrown away —
+ * "that player skips that turn instead" (Trouble in Pairs, Stranglehold)
+ * means the turn happened and was skipped, not that it was never owed.
+ * Skipping it here also means a second owed turn is still theirs.
+ */
+function takeNextTurnPlayerId(state: GameState): PlayerId {
+  const queued = state.pendingExtraTurns ?? [];
+  for (let index = 0; index < queued.length; index += 1) {
+    const owed = queued[index]!;
+    const rest = queued.slice(index + 1);
+    if (!isLiving(state, owed)) {
+      continue;
+    }
+    if ((state.extraTurnsDenied ?? []).includes(owed)) {
+      continue;
+    }
+    state.pendingExtraTurns = rest.length > 0 ? rest : undefined;
+    if (state.pendingExtraTurns === undefined) {
+      delete state.pendingExtraTurns;
+    }
+    return owed;
+  }
+  if (queued.length > 0) {
+    delete state.pendingExtraTurns;
+  }
+  return nextTurnPlayerId(state, state.turn.activePlayerId);
 }
 
 function nextTurnPlayerId(state: GameState, currentId: PlayerId): PlayerId {
@@ -587,7 +622,7 @@ export function beginNextLivingTurnInPlace(state: GameState): void {
     return;
   }
   emptyManaPoolsInPlace(state);
-  const nextId = nextTurnPlayerId(state, state.turn.activePlayerId);
+  const nextId = takeNextTurnPlayerId(state);
   assignNextPlayerTurn(state, nextId);
   state.turn.phase = "beginning";
   state.turn.step = "untap";
