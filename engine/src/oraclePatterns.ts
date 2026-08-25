@@ -12154,7 +12154,7 @@ function parseTriggerHead(head: string): TriggerHead | null {
   // Archfiend of Depravity making its own controller sacrifice is a wrong
   // game, not a rough one. It stays a clean miss.
   const stepHead = text.match(
-    /^At the beginning of (your|each|each player's|each opponent's|the) (upkeep|end step|draw step|first main phase|precombat main phase)$/i,
+    /^At the beginning of (your|each|each player's|each opponent's|the|enchanted player's) (upkeep|end step|draw step|first main phase|precombat main phase)$/i,
   );
   if (stepHead?.[1] && stepHead[2]) {
     const eventOf: Record<string, TriggerEvent> = {
@@ -12173,7 +12173,15 @@ function parseTriggerHead(head: string): TriggerHead | null {
       // Sheoldred: "each OPPONENT'S upkeep" skips the controller's own turn,
       // and the step's player becomes the trigger's subject.
       ...(/^each opponent's$/i.test(stepHead[1]) ? { opponentsStepOnly: true } : {}),
+      // Curses: the step belongs to whoever this Aura is attached to. In a
+      // pod that is ONE player's turn a cycle, which neither "your" nor
+      // "each opponent's" says.
+      ...(/^enchanted player's$/i.test(stepHead[1]) ? { enchantedPlayersStep: true } : {}),
     };
+  }
+  // Curses. One trigger for the attack, not one per attacker.
+  if (/^Whenever enchanted player is attacked$/i.test(text)) {
+    return { event: "player_attacked" };
   }
   if (/^Whenever ~ attacks$/i.test(text)) {
     return { event: "attacks" };
@@ -15037,6 +15045,15 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
         effects: [{ kind: "sacrifice", cardId: "reanimated" }],
         targetRequirements: [],
       });
+      continue;
+    }
+
+    // Curses. The host is a player, so the Aura is cast targeting one.
+    if (/^Enchant player$/i.test(sentence)) {
+      result.enchant = "player";
+      if (!result.targetRequirements.some((requirement) => requirement.kind === "player")) {
+        result.targetRequirements.push({ kind: "player" });
+      }
       continue;
     }
 
@@ -19049,6 +19066,27 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
         index += 1;
       }
       continue;
+    }
+
+    /**
+     * Curse of Opulence: "Each opponent attacking that player does the
+     * same." The same WHAT is the sentence before it, so this repeats that
+     * trigger's effects for the attacking opponent rather than becoming an
+     * effect of its own with nothing to copy.
+     */
+    if (/^Each opponent attacking that player does the same$/i.test(sentence)) {
+      const host = result.triggers[result.triggers.length - 1];
+      if (host?.event === "player_attacked" && host.effects.length > 0) {
+        const repeated = host.effects.map((one) =>
+          one.kind === "create_token"
+            ? { ...one, ownerId: "attacking_opponent" as const }
+            : null,
+        );
+        if (repeated.every((one) => one !== null)) {
+          host.effects = [...host.effects, ...(repeated as CardEffect[])];
+          continue;
+        }
+      }
     }
 
     // "Mill three cards. You may put a land card from among them into your

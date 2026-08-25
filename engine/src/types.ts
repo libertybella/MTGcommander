@@ -158,7 +158,10 @@ export type CardDefinition = {
     | "creature_or_planeswalker_own"
     | "creature_land_or_planeswalker"
     | "permanent"
-    | "artifact_own";
+    | "artifact_own"
+    /** Curses. The host is a PLAYER, which is not a permanent and never
+     * leaves — see `attachedToPlayer`. */
+    | "player";
   /**
    * Animate Dead: the Aura is cast on a creature card in a GRAVEYARD, and
    * that card is put onto the battlefield under this spell's controller
@@ -796,6 +799,13 @@ export type CardInstance = {
   deathtouched: boolean;
   /** Auras and Equipment: what this permanent is attached to. */
   attachedTo: CardInstanceId | null;
+  /**
+   * Curses: the player this Aura enchants. A separate field from
+   * `attachedTo` on purpose — that one holds a card id and is torn down on
+   * a zone change, and a player has no zone to change. Sharing one slot
+   * would make every "is my host still legal" check ambiguous.
+   */
+  attachedToPlayer?: PlayerId;
   /**
    * Animate Dead: the creature this permanent put onto the battlefield.
    * Kept apart from `attachedTo` because that link is torn down as the
@@ -2907,7 +2917,18 @@ export type RelativePlayer =
    * player who brought it, and `controllerId` is not reset on a zone
    * change, so the two really do come apart.
    */
-  | "source_owner";
+  | "source_owner"
+  /** Curses: the player this Aura is attached to. Read off the SOURCE at
+   * bind, which is why a Curse whose host has left the game binds to
+   * nobody and its effects simply do not happen. */
+  | "enchanted_player"
+  /**
+   * Curse of Opulence: "each opponent attacking that player does the same".
+   * Only one player attacks in a combat, so this is that player — when
+   * they are an opponent of the Curse's controller, and nobody when the
+   * controller is the one attacking.
+   */
+  | "attacking_opponent";
 /** The controller of the Nth chosen target (Beast Within). */
 export type ChosenControllerRef = { type: "chosen_controller"; index: number };
 /** The owner of the Nth chosen target (Chaos Warp). */
@@ -4070,6 +4091,8 @@ export type TriggerEvent =
   | "chooses_ring_bearer"
   /** The Ring's third tier: "whenever your Ring-bearer becomes blocked". */
   | "becomes_blocked"
+  /** Curses: "whenever enchanted player is attacked". */
+  | "player_attacked"
   | "attacks"
   | "upkeep"
   | "end_step"
@@ -4477,6 +4500,9 @@ export type CardTrigger = {
    * whose upkeep it is rather than all of them.
    */
   opponentsStepOnly?: boolean;
+  /** Curses: "at the beginning of ENCHANTED PLAYER'S upkeep" — the step
+   * belongs to whoever this Aura is attached to, not to its controller. */
+  enchantedPlayersStep?: boolean;
   /** class_level triggers: which level reaching fires this. */
   classLevel?: number;
   /**
@@ -4499,7 +4525,13 @@ export type EngineEvent =
       /** Computed power the moment before death (Elenda's token count). */
       powerAtDeath?: number;
     }
-  | { kind: "attacks"; cardId: CardInstanceId }
+  /** `defenderId` is the player attacked, absent when a planeswalker or a
+   * battle was. Curses read it; every older watcher ignores it. */
+  | { kind: "attacks"; cardId: CardInstanceId; defenderId?: PlayerId }
+  /** Curse of Opulence: one event per player attacked this combat, no
+   * matter how many creatures came at them. A separate event from
+   * `attacks`, which is one per CREATURE. */
+  | { kind: "player_attacked"; playerId: PlayerId; attackingPlayerId: PlayerId }
   /** A card reached a graveyard from any zone at all (Kozilek). */
   | { kind: "put_into_graveyard"; cardId: CardInstanceId }
   /** Call of the Ring: a player named a creature as their Ring-bearer. */

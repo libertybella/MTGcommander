@@ -646,6 +646,9 @@ export function parseGameState(json: string): GameState {
       faceDown: card.faceDown === true,
       ...(card.phasedOut === true ? { phasedOut: true } : {}),
       ...(card.enteredFromCast === true ? { enteredFromCast: true } : {}),
+      ...(card.attachedToPlayer === undefined
+        ? {}
+        : { attachedToPlayer: expectString(card.attachedToPlayer, "card.attachedToPlayer") }),
       ...(card.chosenCardName === undefined
         ? {}
         : { chosenCardName: expectString(card.chosenCardName, "card.chosenCardName") }),
@@ -5334,6 +5337,7 @@ const TRIGGER_EVENT_NAMES: Record<TriggerEvent, true> = {
   put_into_graveyard: true,
   chooses_ring_bearer: true,
   becomes_blocked: true,
+  player_attacked: true,
   attacks: true,
   upkeep: true,
   end_step: true,
@@ -5532,6 +5536,7 @@ function parseTriggers(value: unknown, label: string): CardTrigger[] {
       ...(entry.excludeSelf === true ? { excludeSelf: true } : {}),
       ...(entry.oncePerTurn === true ? { oncePerTurn: true } : {}),
       ...(entry.modesOncePerTurn === true ? { modesOncePerTurn: true } : {}),
+      ...(entry.enchantedPlayersStep === true ? { enchantedPlayersStep: true } : {}),
       ...(entry.oncePerBatch === true ? { oncePerBatch: true } : {}),
       ...(entry.classLevel === undefined
         ? {}
@@ -6137,6 +6142,7 @@ const ENCHANT_RESTRICTIONS: Record<NonNullable<CardDefinition["enchant"]>, true>
   creature_land_or_planeswalker: true,
   permanent: true,
   artifact_own: true,
+  player: true,
 };
 
 function parseContinuousEffectData(value: unknown, label: string): ContinuousEffectData {

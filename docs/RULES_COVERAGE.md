@@ -3010,6 +3010,7 @@ ends. Every printed card of this shape asks about the current turn.
 - **"Choose one that hasn't been chosen this turn"**: a modal trigger with a per-source, per-trigger memory of the modes it already took. With every mode spent the trigger does not happen at all.
 - **Tempting offer**: the controller acts, each opponent is asked in turn whether to do the same thing for themselves, and the controller repeats once per acceptance. The action is stored once and rebound per player; an acceptance that opens a prompt is answered before the next opponent is asked.
 - **Retrace** (CR 702.81), printed or granted (Six, Deeproot Historian): cast from the graveyard by discarding a land, and the card returns to the graveyard afterwards rather than exiling.
+- **Curses**: Auras that enchant a PLAYER, kept on their own attachment field and falling off only when that player leaves the game. Trigger heads for "at the beginning of enchanted player's upkeep" and "whenever enchanted player is attacked" — the latter firing once per attack, not once per attacker.
 - A seeded random-game fuzzer asserts zone integrity and serialize round-trips after every action (CI: 6 games; 500-game burn-ins gate checkpoint tags — they have caught two real livelocks and the trigger-batching bug).
 
 ## Documented gaps (intentional, in plan order)

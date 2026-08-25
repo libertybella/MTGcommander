@@ -119,6 +119,19 @@ function bindPlayerSelector(
           ?.defenderId ?? null)
       : null;
   }
+  if (selector === "attacking_opponent") {
+    // The attacker is the active player; "each opponent attacking" is that
+    // player, and nobody when it is the Curse's own controller.
+    const attackerId = state.turn.activePlayerId;
+    return attackerId === context.controllerId ? null : attackerId;
+  }
+  if (selector === "enchanted_player") {
+    // The Aura's own link, read off the source. A Curse whose host has left
+    // the game binds to nobody and its effects simply do not happen.
+    return context.sourceId
+      ? state.cards[context.sourceId]?.attachedToPlayer ?? null
+      : null;
+  }
   return bindPlayer(state, selector, context.controllerId);
 }
 

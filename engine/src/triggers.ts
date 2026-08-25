@@ -1160,6 +1160,13 @@ function triggerMatchesEvent(
   if (trigger.event === "class_level") {
     return false;
   }
+  if (event.kind === "player_attacked") {
+    if (trigger.event !== "player_attacked") {
+      return false;
+    }
+    // Curses watch the player they are attached to, and nobody else.
+    return watcher.attachedToPlayer === event.playerId;
+  }
   if (event.kind === "step_begins") {
     const stepOf: Partial<Record<TriggerEvent, Step>> = {
       upkeep: "upkeep",
@@ -1170,6 +1177,15 @@ function triggerMatchesEvent(
     const step = stepOf[trigger.event];
     if (!step || event.step !== step) {
       return false;
+    }
+    // Curses: the step belongs to the enchanted PLAYER. Their turn, not
+    // the Aura controller's, and not every opponent's either — a Curse on
+    // one player in a pod of four fires once a cycle.
+    if (trigger.enchantedPlayersStep) {
+      return (
+        watcher.attachedToPlayer !== undefined &&
+        state.turn.activePlayerId === watcher.attachedToPlayer
+      );
     }
     // "At the beginning of EACH OPPONENT'S upkeep" (Sheoldred) is neither
     // of the two below: it fires on somebody else's turn, and never on the
@@ -1494,6 +1510,9 @@ export function dispatchEventsInPlace(state: GameState, events: EngineEvent[]): 
             event.kind === "creates_token" ||
             // Sheoldred: "that player" is whose step just began.
             event.kind === "step_begins" ||
+            // Curses: "that player" is the one who was attacked, which on
+            // a Curse is always the enchanted player.
+            event.kind === "player_attacked" ||
             // Burgeoning: "that player" is who played the land.
             event.kind === "plays_land"
               ? event.playerId

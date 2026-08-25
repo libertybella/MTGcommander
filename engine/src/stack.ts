@@ -628,11 +628,20 @@ export function resolveTopOfStack(state: GameState): GameState {
       : "graveyard"
     : "battlefield";
   let attachTo: CardInstanceId | null = null;
+  let attachToPlayer: PlayerId | null = null;
   if (definition?.enchant && destination === "battlefield") {
     // An Aura enters attached to its target; with no legal target left, the
     // spell fizzled and the card goes to the graveyard instead (CR 303.4).
     const target = top.targets[0];
     if (
+      definition.enchant === "player" &&
+      target?.type === "player" &&
+      hasLegalTargetRemaining(next, requirements, top.targets, top.controllerId, sourceColorsOf(next, top.sourceId), top.sourceId)
+    ) {
+      // A Curse enters attached to a PLAYER, which is not a card id — the
+      // link is set after the permanent arrives, below.
+      attachToPlayer = target.playerId;
+    } else if (
       target?.type === "creature" &&
       hasLegalTargetRemaining(next, requirements, top.targets, top.controllerId, sourceColorsOf(next, top.sourceId), top.sourceId)
     ) {
@@ -716,6 +725,9 @@ export function resolveTopOfStack(state: GameState): GameState {
   }
   if (attachTo && next.cards[top.sourceId]?.zone === "battlefield") {
     next.cards[top.sourceId]!.attachedTo = attachTo;
+  }
+  if (attachToPlayer && next.cards[top.sourceId]?.zone === "battlefield") {
+    next.cards[top.sourceId]!.attachedToPlayer = attachToPlayer;
   }
   applyStateBasedActionsInPlace(next);
   redirectPriorityIfLost(next);

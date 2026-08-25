@@ -62721,3 +62721,296 @@ describe("wave 386: retrace", () => {
     });
   });
 });
+
+describe("wave 387: Auras that enchant a player", () => {
+  const compile = (name: string, typeLine: string, oracleText: string, manaCost = "") =>
+    compileOracleCard({
+      oracleId: name.toLowerCase().replace(/[^a-z]+/g, "-"),
+      name,
+      manaCost,
+      typeLine,
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  const put = (
+    game: GameState,
+    ownerId: string,
+    definition: CardDefinition,
+    zone: "battlefield" | "hand" = "battlefield",
+  ) => {
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({ definitionId: definition.id, ownerId, zone });
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === ownerId)!.zones[zone].push(card.id);
+    if (zone === "battlefield") {
+      card.summoningSick = false;
+    }
+    return card.id;
+  };
+
+  const opulenceText =
+    "Enchant player\nWhenever enchanted player is attacked, create a Gold token.\nEach opponent attacking that player does the same.";
+
+  it("compiles Curse of Opulence, all three lines", () => {
+    const compiled = compile("Curse of Opulence", "Enchantment — Aura Curse", opulenceText, "{W}");
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.enchant).toBe("player");
+    expect(compiled.definition.targetRequirements).toEqual([{ kind: "player" }]);
+    expect(compiled.definition.triggers[0]?.event).toBe("player_attacked");
+    // "Does the same" is the sentence before it, repeated for the attacker.
+    expect(compiled.definition.triggers[0]?.effects).toHaveLength(2);
+    expect(compiled.definition.triggers[0]?.effects[1]).toMatchObject({
+      kind: "create_token",
+      ownerId: "attacking_opponent",
+    });
+  });
+
+  it("compiles the enchanted-player upkeep head", () => {
+    const compiled = compile(
+      "Curse of the Bloody Tome",
+      "Enchantment — Aura Curse",
+      "Enchant player\nAt the beginning of enchanted player's upkeep, that player mills two cards.",
+      "{2}{U}",
+    );
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.triggers[0]).toMatchObject({
+      event: "upkeep",
+      enchantedPlayersStep: true,
+    });
+  });
+
+  // ---- The attachment ----------------------------------------------------
+
+  const curse = (name: string, triggers: CardDefinition["triggers"] = []) =>
+    createCardDefinition({
+      name,
+      typeLine: "Enchantment — Aura Curse",
+      manaCost: "{W}",
+      enchant: "player",
+      targetRequirements: [{ kind: "player" }],
+      triggers,
+    });
+
+  const castCurse = (game: GameState, playerId: string, cardId: string, targetId: string) => {
+    game.turn.activePlayerId = playerId;
+    game.turn.phase = "precombatMain";
+    game.turn.step = "precombatMain";
+    game.priorityPlayerId = playerId;
+    game.players.find((entry) => entry.id === playerId)!.mana.W = 2;
+    return resolveTopOfStack(
+      applyAction(game, {
+        kind: "cast_spell",
+        playerId,
+        cardId,
+        targets: [{ type: "player", playerId: targetId }],
+      }),
+    );
+  };
+
+  it("enters attached to the player it targeted", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    const curseId = put(game, p1.id, curse("Curse"), "hand");
+    const after = castCurse(game, p1.id, curseId, p2.id);
+    expect(after.cards[curseId]?.zone).toBe("battlefield");
+    expect(after.cards[curseId]?.attachedToPlayer).toBe(p2.id);
+    // The card link stays empty: a player is not a card, and sharing one
+    // slot would make every host check ambiguous.
+    expect(after.cards[curseId]?.attachedTo).toBeNull();
+  });
+
+  it("stays put, because a player has no zone to leave", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    const curseId = put(game, p1.id, curse("Curse"), "hand");
+    const after = castCurse(game, p1.id, curseId, p2.id);
+    applyStateBasedActionsInPlace(after);
+    // Every other Aura in the engine is destroyed by this sweep when its
+    // host is gone; a player is never gone.
+    expect(after.cards[curseId]?.zone).toBe("battlefield");
+  });
+
+  it("falls off when the cursed player is out of the game", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    const curseId = put(game, p1.id, curse("Curse"), "hand");
+    const after = castCurse(game, p1.id, curseId, p2.id);
+    after.players.find((entry) => entry.id === p2.id)!.lost = true;
+    applyStateBasedActionsInPlace(after);
+    // The only way a Curse loses its host.
+    expect(after.cards[curseId]?.zone).toBe("graveyard");
+  });
+
+  // ---- The upkeep trigger ------------------------------------------------
+
+  const bloodyTome = () =>
+    curse("Curse of the Bloody Tome", [
+      {
+        event: "upkeep",
+        enchantedPlayersStep: true,
+        effects: [{ kind: "mill", playerId: { type: "subject_player" }, count: 2 }],
+        targetRequirements: [],
+      },
+    ]);
+
+  it("fires on the cursed player's turn, not its controller's", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 30);
+    const curseId = put(game, p1.id, bloodyTome(), "hand");
+    let after = castCurse(game, p1.id, curseId, p2.id);
+    // The controller's own upkeep does nothing.
+    after = { ...after, turn: { ...after.turn, activePlayerId: p1.id } };
+    const beforeMine = after.players.find((entry) => entry.id === p2.id)!.zones.graveyard.length;
+    after = applyEffects(after, []);
+    dispatchEventsInPlace(after, [
+      { kind: "step_begins", step: "upkeep", playerId: p1.id },
+    ]);
+    expect(after.players.find((entry) => entry.id === p2.id)!.zones.graveyard).toHaveLength(
+      beforeMine,
+    );
+    // Theirs does.
+    after = { ...after, turn: { ...after.turn, activePlayerId: p2.id } };
+    dispatchEventsInPlace(after, [
+      { kind: "step_begins", step: "upkeep", playerId: p2.id },
+    ]);
+    expect(after.prompts.length + after.stack.length).toBeGreaterThan(0);
+  });
+
+  // ---- The attacked trigger ----------------------------------------------
+
+  const opulence = () =>
+    curse("Curse of Opulence", [
+      {
+        event: "player_attacked",
+        effects: [
+          {
+            kind: "create_token",
+            ownerId: "controller",
+            name: "Gold",
+            typeLine: "Artifact — Gold Token",
+          },
+          {
+            kind: "create_token",
+            ownerId: "attacking_opponent",
+            name: "Gold",
+            typeLine: "Artifact — Gold Token",
+          },
+        ],
+        targetRequirements: [],
+      },
+    ]);
+
+  const bear = () =>
+    createCardDefinition({
+      name: "Bear",
+      typeLine: "Creature — Bear",
+      manaCost: "{1}{G}",
+      power: 2,
+      toughness: 2,
+    });
+
+  const threeWay = () => {
+    const game = createGameState({ playerCount: 3 });
+    const [p1, p2, p3] = game.players;
+    if (!p1 || !p2 || !p3) {
+      throw new Error("need three players");
+    }
+    return { game, p1, p2, p3 };
+  };
+
+  const attack = (game: GameState, playerId: string, attackerId: string, defenderId: string) => {
+    game.turn.activePlayerId = playerId;
+    game.turn.phase = "combat";
+    game.turn.step = "declareAttackers";
+    game.priorityPlayerId = playerId;
+    return declareAttackers(game, playerId, [{ attackerId, defenderId }]);
+  };
+
+  const tokensOf = (game: GameState, playerId: string) =>
+    game.players
+      .find((entry) => entry.id === playerId)!
+      .zones.battlefield.filter((cardId) => game.cards[cardId]?.isToken).length;
+
+  it("fires once for the attack, not once per attacker", () => {
+    const { game, p1, p2, p3 } = threeWay();
+    fillLibraries(game, 20);
+    const curseId = put(game, p1.id, opulence());
+    game.cards[curseId]!.attachedToPlayer = p2.id;
+    const firstId = put(game, p3.id, bear());
+    const secondId = put(game, p3.id, bear());
+    game.turn.activePlayerId = p3.id;
+    game.turn.phase = "combat";
+    game.turn.step = "declareAttackers";
+    game.priorityPlayerId = p3.id;
+    let after = declareAttackers(game, p3.id, [
+      { attackerId: firstId, defenderId: p2.id },
+      { attackerId: secondId, defenderId: p2.id },
+    ]);
+    while (after.stack.length > 0) {
+      after = resolveTopOfStack(after);
+    }
+    // Two attackers, one Gold — the trigger is about the ATTACK.
+    expect(tokensOf(after, p1.id)).toBe(1);
+  });
+
+  it("gives the attacking opponent one too", () => {
+    const { game, p1, p2, p3 } = threeWay();
+    fillLibraries(game, 20);
+    const curseId = put(game, p1.id, opulence());
+    game.cards[curseId]!.attachedToPlayer = p2.id;
+    const attackerId = put(game, p3.id, bear());
+    let after = attack(game, p3.id, attackerId, p2.id);
+    while (after.stack.length > 0) {
+      after = resolveTopOfStack(after);
+    }
+    expect(tokensOf(after, p1.id)).toBe(1);
+    expect(tokensOf(after, p3.id)).toBe(1);
+  });
+
+  it("gives the controller nothing extra when they are the attacker", () => {
+    const { game, p1, p2 } = threeWay();
+    fillLibraries(game, 20);
+    const curseId = put(game, p1.id, opulence());
+    game.cards[curseId]!.attachedToPlayer = p2.id;
+    const attackerId = put(game, p1.id, bear());
+    let after = attack(game, p1.id, attackerId, p2.id);
+    while (after.stack.length > 0) {
+      after = resolveTopOfStack(after);
+    }
+    // One Gold for cursing them, and no second one: "each OPPONENT
+    // attacking" is nobody when the attacker is you.
+    expect(tokensOf(after, p1.id)).toBe(1);
+  });
+
+  it("ignores an attack on somebody else", () => {
+    const { game, p1, p2, p3 } = threeWay();
+    fillLibraries(game, 20);
+    const curseId = put(game, p1.id, opulence());
+    game.cards[curseId]!.attachedToPlayer = p2.id;
+    const attackerId = put(game, p3.id, bear());
+    let after = attack(game, p3.id, attackerId, p1.id);
+    while (after.stack.length > 0) {
+      after = resolveTopOfStack(after);
+    }
+    expect(tokensOf(after, p1.id)).toBe(0);
+  });
+
+  it("round trips the link and the trigger's step gate", () => {
+    const { game, p1, p2 } = twoPlayers();
+    void threeWay;
+    fillLibraries(game, 20);
+    const definition = bloodyTome();
+    const curseId = put(game, p1.id, definition, "hand");
+    const after = castCurse(game, p1.id, curseId, p2.id);
+    const round = parseGameState(serializeGameState(after));
+    // Dropped on the wire the Aura is a loose enchantment that a state-based
+    // action then destroys, which is a card that does nothing at all.
+    expect(round.cards[curseId]?.attachedToPlayer).toBe(p2.id);
+    expect(round.definitions[definition.id]?.enchant).toBe("player");
+    expect(round.definitions[definition.id]?.triggers[0]?.enchantedPlayersStep).toBe(true);
+  });
+});

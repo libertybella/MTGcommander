@@ -366,13 +366,32 @@ export function declareAttackers(state: GameState, playerId: PlayerId, attacks: 
   next.passesSinceAction = 0;
   next.priorityPlayerId = next.turn.activePlayerId;
   if (next.combat && next.combat.attacks.length > 0) {
-    dispatchEventsInPlace(
-      next,
-      next.combat.attacks.map((attack) => ({
+    // One `attacks` per creature, and one `player_attacked` per PLAYER —
+    // Curse of Opulence makes one Gold for the attack, not one per
+    // attacker, so a second event is the only honest shape.
+    const attackedPlayers: PlayerId[] = [];
+    for (const attack of next.combat.attacks) {
+      if (
+        next.players.some((entry) => entry.id === attack.defenderId) &&
+        !attackedPlayers.includes(attack.defenderId)
+      ) {
+        attackedPlayers.push(attack.defenderId);
+      }
+    }
+    dispatchEventsInPlace(next, [
+      ...next.combat.attacks.map((attack) => ({
         kind: "attacks" as const,
         cardId: attack.attackerId,
+        ...(next.players.some((entry) => entry.id === attack.defenderId)
+          ? { defenderId: attack.defenderId }
+          : {}),
       })),
-    );
+      ...attackedPlayers.map((playerId) => ({
+        kind: "player_attacked" as const,
+        playerId,
+        attackingPlayerId: next.turn.activePlayerId,
+      })),
+    ]);
   }
   return next;
 }

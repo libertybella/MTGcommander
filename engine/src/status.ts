@@ -30,6 +30,9 @@ const AURA_HOSTS: Record<
   artifact_own: (state, cardId, auraControllerId) =>
     characteristicsOf(state, cardId).types.includes("artifact") &&
     state.cards[cardId]?.controllerId === auraControllerId,
+  // A Curse's host is a player, so this card-shaped test never applies to
+  // it. Its legality is checked separately below, against the player.
+  player: () => false,
 };
 
 function shouldLose(state: GameState, player: GameState["players"][number]): boolean {
@@ -240,6 +243,19 @@ function attachmentLegalityInPlace(state: GameState, collectDies: EngineEvent[])
     const isAura = Boolean(definition?.enchant);
     const isEquipment = definition?.characteristics.subtypes.includes("equipment") ?? false;
     if (!isAura && !isEquipment) {
+      continue;
+    }
+    // Curses: the host is a player, who has no zone to leave. The Aura
+    // falls off only when that player is out of the game.
+    if (definition?.enchant === "player") {
+      const cursed = card.attachedToPlayer
+        ? state.players.find((entry) => entry.id === card.attachedToPlayer)
+        : undefined;
+      if (cursed && !cursed.lost) {
+        continue;
+      }
+      moveCardInPlace(state, card.id, "graveyard", { collectDies });
+      changed = true;
       continue;
     }
     const host = card.attachedTo ? state.cards[card.attachedTo] : undefined;
