@@ -3005,6 +3005,7 @@ ends. Every printed card of this shape asks about the current turn.
 - **Hexproof from a colour** (CR 702.11e), printed or granted until end of turn, kept distinct from protection: it stops an opponent's spell of that colour targeting the permanent and nothing else. Protection from a named colour is grantable to a target, to yourself, or to your team.
 - Which **colours** each player has cast a spell in this turn, read by "if an opponent has cast a blue or black spell this turn"; a turn-long "spells you control can't be countered"; and hexproof from a colour granted to a PLAYER, ending at cleanup rather than at the start of their next turn.
 - **Digging the top of a library until a card matches a filter**, with the match and the cards passed over going to separately named zones (hand/battlefield/tapped/graveyard/exile, and bottom-in-a-random-order/graveyard/exile). Running out of library finds nothing and buries what was revealed, as printed.
+- **Naming a card** — free text, any name, including one that appears nowhere in the game (Demonic Consultation exiling its own library depends on it). The effects that read the name were bound before it existed, so they are parked on the prompt and resumed, and read it at apply.
 - A seeded random-game fuzzer asserts zone integrity and serialize round-trips after every action (CI: 6 games; 500-game burn-ins gate checkpoint tags — they have caught two real livelocks and the trigger-batching bug).
 
 ## Documented gaps (intentional, in plan order)

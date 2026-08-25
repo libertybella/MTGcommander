@@ -35,7 +35,7 @@ import { abilityLifeCost, colorsOutsideCommanderIdentity } from "./commanderIden
 import { addRestrictedMana, emptyManaPools, manaRiderFires, parseManaCost, payManaCost, restrictionAdmits, type ManaPurpose } from "./mana";
 import { applyStateBasedActionsInPlace } from "./status";
 import { legalActions, potentialMana, sacrificeColorMatches, sacrificeScopeMatches } from "./legalActions";
-import { applyResolveChooseCard, applyResolveChooseFromHand, applyResolveCreatureType, applyResolveDiscardLandOrGraveyard, applyResolveEnterCopy, applyResolveLookAssign, applyResolvePay, applyResolveSearch, applyResolveTriggerMode, legalEnterCopyIds, legalSearchIds, searchMatches } from "./prompt";
+import { applyResolveCardName, applyResolveChooseCard, applyResolveChooseFromHand, applyResolveCreatureType, applyResolveDiscardLandOrGraveyard, applyResolveEnterCopy, applyResolveLookAssign, applyResolvePay, applyResolveSearch, applyResolveTriggerMode, legalEnterCopyIds, legalSearchIds, searchMatches } from "./prompt";
 import { parseGameState, serializeGameState } from "./serialize";
 import { fillLibraries } from "./testSupport";
 import { applyKeepHand, beginMulligan, isMulliganOpen } from "./mulligan";
@@ -61427,5 +61427,233 @@ describe("wave 381: digging the top of a library until a card matches", () => {
         rest: "graveyard",
       },
     ]);
+  });
+});
+
+describe("wave 382: naming a card, and Demonic Consultation", () => {
+  const compile = (name: string, typeLine: string, oracleText: string, manaCost = "") =>
+    compileOracleCard({
+      oracleId: name.toLowerCase().replace(/[^a-z]+/g, "-"),
+      name,
+      manaCost,
+      typeLine,
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  const put = (
+    game: GameState,
+    ownerId: string,
+    definition: CardDefinition,
+    zone: "battlefield" | "library" | "hand" = "library",
+  ) => {
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({ definitionId: definition.id, ownerId, zone });
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === ownerId)!.zones[zone].push(card.id);
+    return card.id;
+  };
+
+  const consultationText =
+    "Choose a card name. Exile the top six cards of your library, then reveal cards from the top of your library until you reveal a card with the chosen name. Put that card into your hand and exile all other cards revealed this way.";
+
+  it("compiles Demonic Consultation to its three steps", () => {
+    const compiled = compile("Demonic Consultation", "Instant", consultationText, "{B}");
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.effects).toEqual([
+      { kind: "choose_card_name", playerId: "controller" },
+      { kind: "exile_top", playerId: "controller", count: 6 },
+      {
+        kind: "dig_until",
+        playerId: "controller",
+        filter: { nameIsChosen: true },
+        found: "hand",
+        rest: "exile",
+      },
+    ]);
+  });
+
+  // ---- The prompt --------------------------------------------------------
+
+  const spell = (name: string) =>
+    createCardDefinition({ name, typeLine: "Instant", manaCost: "{R}" });
+
+  const consultation = () =>
+    createCardDefinition({
+      name: "Demonic Consultation",
+      typeLine: "Instant",
+      manaCost: "{B}",
+      effects: [
+        { kind: "choose_card_name", playerId: "controller" },
+        { kind: "exile_top", playerId: "controller", count: 6 },
+        {
+          kind: "dig_until",
+          playerId: "controller",
+          filter: { nameIsChosen: true },
+          found: "hand",
+          rest: "exile",
+        },
+      ],
+    });
+
+  const resolveConsultation = (game: GameState, playerId: string) =>
+    applyEffects(
+      game,
+      bindCardEffects(game, consultation().effects, {
+        controllerId: playerId,
+        sourceId: null,
+        targets: [],
+        targetRequirements: [],
+      }),
+    );
+
+  it("stops the batch on the prompt and resumes it with the answer", () => {
+    const { game, p1 } = twoPlayers();
+    for (let i = 0; i < 10; i += 1) {
+      put(game, p1.id, spell(`Filler ${i}`));
+    }
+    const wantedId = put(game, p1.id, spell("Demonic Tutor"));
+    const asked = resolveConsultation(game, p1.id);
+    // Nothing has moved yet: the exile and the dig were bound before the
+    // name existed, so they wait on the prompt rather than running blind.
+    expect(asked.prompts[0]?.kind).toBe("choose_card_name");
+    expect(asked.players.find((entry) => entry.id === p1.id)!.zones.library).toHaveLength(11);
+    const after = applyResolveCardName(asked, p1.id, "Demonic Tutor");
+    expect(after.prompts).toHaveLength(0);
+    expect(after.cards[wantedId]?.zone).toBe("hand");
+  });
+
+  it("takes ANY name, including one nowhere in the game", () => {
+    const { game, p1 } = twoPlayers();
+    for (let i = 0; i < 10; i += 1) {
+      put(game, p1.id, spell(`Filler ${i}`));
+    }
+    const asked = resolveConsultation(game, p1.id);
+    const after = applyResolveCardName(asked, p1.id, "A Card Nobody Owns");
+    // This is the line the card is actually played for: naming a card that
+    // is not in your deck exiles the whole library. Offering only findable
+    // names would delete it.
+    expect(after.players.find((entry) => entry.id === p1.id)!.zones.library).toHaveLength(0);
+    expect(after.players.find((entry) => entry.id === p1.id)!.zones.hand).toHaveLength(0);
+    expect(after.players.find((entry) => entry.id === p1.id)!.zones.exile).toHaveLength(10);
+  });
+
+  it("exiles six blind before it starts looking", () => {
+    const { game, p1 } = twoPlayers();
+    const buriedId = put(game, p1.id, spell("Wanted But Buried"));
+    for (let i = 0; i < 9; i += 1) {
+      put(game, p1.id, spell(`Filler ${i}`));
+    }
+    const asked = resolveConsultation(game, p1.id);
+    const after = applyResolveCardName(asked, p1.id, "Wanted But Buried");
+    // It was in the top six, so the blind exile ate it and the dig never
+    // saw it — which is exactly what the card does.
+    expect(after.cards[buriedId]?.zone).toBe("exile");
+    expect(after.players.find((entry) => entry.id === p1.id)!.zones.hand).toHaveLength(0);
+  });
+
+  it("refuses an empty name", () => {
+    const { game, p1 } = twoPlayers();
+    put(game, p1.id, spell("Anything"));
+    const asked = resolveConsultation(game, p1.id);
+    expect(() => applyResolveCardName(asked, p1.id, "   ")).toThrow();
+  });
+
+  it("refuses an answer from the wrong player", () => {
+    const { game, p1, p2 } = twoPlayers();
+    put(game, p1.id, spell("Anything"));
+    const asked = resolveConsultation(game, p1.id);
+    expect(() => applyResolveCardName(asked, p2.id, "Anything")).toThrow();
+  });
+
+  // ---- The name itself ---------------------------------------------------
+
+  const dig = (game: GameState, playerId: string) =>
+    applyEffects(
+      game,
+      bindCardEffects(
+        game,
+        [
+          {
+            kind: "dig_until",
+            playerId: "controller",
+            filter: { nameIsChosen: true },
+            found: "hand",
+            rest: "exile",
+          },
+        ],
+        { controllerId: playerId, sourceId: null, targets: [], targetRequirements: [] },
+      ),
+    );
+
+  it("matches the name exactly, not the type", () => {
+    const { game, p1 } = twoPlayers();
+    const otherId = put(game, p1.id, spell("Lightning Bolt"));
+    const wantedId = put(game, p1.id, spell("Dark Ritual"));
+    game.lastChosenCardName = "Dark Ritual";
+    const after = dig(game, p1.id);
+    expect(after.cards[wantedId]?.zone).toBe("hand");
+    expect(after.cards[otherId]?.zone).toBe("exile");
+  });
+
+  it("matches nothing at all when no name was chosen", () => {
+    const { game, p1 } = twoPlayers();
+    const cardId = put(game, p1.id, spell("Lightning Bolt"));
+    const after = dig(game, p1.id);
+    // A name nobody chose is not a wildcard. Everything is revealed and
+    // nothing is found, which is the honest answer.
+    expect(after.cards[cardId]?.zone).toBe("exile");
+    expect(after.players.find((entry) => entry.id === p1.id)!.zones.hand).toHaveLength(0);
+  });
+
+  it("remembers the name on a permanent when asked to", () => {
+    const { game, p1 } = twoPlayers();
+    const sourceId = put(game, p1.id, spell("Gideon's Intervention"), "battlefield");
+    const asked = applyEffects(
+      game,
+      bindCardEffects(game, [{ kind: "choose_card_name", playerId: "controller", onSelf: true }], {
+        controllerId: p1.id,
+        sourceId,
+        targets: [],
+        targetRequirements: [],
+      }),
+    );
+    const after = applyResolveCardName(asked, p1.id, "Craterhoof Behemoth");
+    expect(after.cards[sourceId]?.chosenCardName).toBe("Craterhoof Behemoth");
+    expect(after.lastChosenCardName).toBe("Craterhoof Behemoth");
+  });
+
+  it("round trips the name, the prompt and the filter flag", () => {
+    const { game, p1 } = twoPlayers();
+    for (let i = 0; i < 8; i += 1) {
+      put(game, p1.id, spell(`Filler ${i}`));
+    }
+    const definition = consultation();
+    put(game, p1.id, definition, "hand");
+    const asked = resolveConsultation(game, p1.id);
+    const round = parseGameState(serializeGameState(asked));
+    const prompt = round.prompts[0];
+    expect(prompt?.kind).toBe("choose_card_name");
+    if (prompt?.kind !== "choose_card_name") {
+      throw new Error("expected a naming prompt");
+    }
+    // The parked effects must survive too: without them the prompt is
+    // answered and the rest of the card silently never happens.
+    expect(prompt.resumeEffects).toHaveLength(2);
+    expect(round.definitions[definition.id]?.effects[2]).toMatchObject({
+      kind: "dig_until",
+      filter: { nameIsChosen: true },
+    });
+    // Resumed off the wire: the six blind exiles and the dig both run, and
+    // the named card lands in hand beside the spell that was cast.
+    const finished = applyResolveCardName(round, p1.id, "Filler 7");
+    const hand = finished.players.find((entry) => entry.id === p1.id)!.zones.hand;
+    const wanted = hand.find(
+      (cardId) => finished.definitions[finished.cards[cardId]!.definitionId]?.name === "Filler 7",
+    );
+    expect(wanted).toBeDefined();
   });
 });

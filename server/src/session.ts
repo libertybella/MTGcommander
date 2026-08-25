@@ -457,6 +457,23 @@ export class GameHost {
           });
           continue;
         }
+        if (prompt.kind === "choose_card_name") {
+          // A documented auto-take for an unseated player: name the top card
+          // of their own library. Any name is legal, and naming one they do
+          // not have would exile the library — a real line for a human
+          // Demonic Consultation, and never what an absent player wants.
+          const owner = this.state.players.find((entry) => entry.id === prompt.playerId);
+          const topId = owner?.zones.library[0];
+          const named = topId
+            ? this.state.definitions[this.state.cards[topId]?.definitionId ?? ""]?.name
+            : undefined;
+          this.apply({
+            kind: "resolve_card_name",
+            playerId: prompt.playerId,
+            cardName: named ?? "Forest",
+          });
+          continue;
+        }
         if (prompt.kind === "choose_card") {
           const pick = legalIdsForChooseSources(this.state, prompt.sources)[0];
           if (!pick) {

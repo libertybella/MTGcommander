@@ -159,6 +159,14 @@ function nextAction(state: GameState, rng: () => number): GameAction | null {
           playerId,
           discard: rng() < 0.5,
         };
+      case "choose_card_name":
+        // Two of these are names the fuzzer's decks really carry and two
+        // are not, so both branches of Demonic Consultation get walked.
+        return {
+          kind: "resolve_card_name",
+          playerId,
+          cardName: pick(rng, ["Forest", "Island", "Nonexistent Card", "Zzqx"]),
+        };
       case "choose_creature_type":
         return {
           kind: "resolve_creature_type",

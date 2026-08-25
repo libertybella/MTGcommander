@@ -2029,6 +2029,10 @@ export function Battlefield(props: Props) {
               ? actorId === prompt.playerId
                 ? `Pay ${prompt.amount} life or have ${definition(state, prompt.sourceId)?.name ?? "this land"} enter tapped.`
                 : `Waiting for ${chooser?.displayName ?? "a player"} to pay life or enter tapped.`
+              : prompt.kind === "choose_card_name"
+              ? actorId === prompt.playerId
+                ? "Name a card. Any name is legal, including one you do not own."
+                : `Waiting for ${chooser?.displayName ?? "a player"} to name a card.`
               : prompt.kind === "choose_creature_type"
               ? actorId === prompt.playerId
                 ? `Choose a creature type for ${definition(state, prompt.sourceId)?.name ?? "this permanent"}.`
@@ -2629,6 +2633,29 @@ export function Battlefield(props: Props) {
                   {prompt.kind === "pay_or_counter" ? "Decline (countered)" : "Decline"}
                 </button>
               </>
+            ) : null}
+            {actorId === prompt.playerId && prompt.kind === "choose_card_name" ? (
+              <div className="look-row" data-testid="card-name-picker">
+                <button
+                  type="button"
+                  data-testid="card-name-enter"
+                  onClick={() => {
+                    // Free text on purpose. Naming a card you do NOT own is
+                    // the line Demonic Consultation is played for, so a list
+                    // of your own cards would be the wrong control.
+                    const answer = window.prompt("Card name:");
+                    if (answer && answer.trim()) {
+                      send({
+                        kind: "resolve_card_name",
+                        playerId: actorId,
+                        cardName: answer.trim(),
+                      });
+                    }
+                  }}
+                >
+                  Name a card…
+                </button>
+              </div>
             ) : null}
             {actorId === prompt.playerId && prompt.kind === "choose_creature_type" ? (
               <div className="look-row" data-testid="creature-type-picker">

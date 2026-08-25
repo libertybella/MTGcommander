@@ -810,6 +810,8 @@ export type CardInstance = {
   faceDown: boolean;
   /** "As ~ enters, choose a creature type" (Kindred Discovery). Lowercase. */
   chosenCreatureType: string | null;
+  /** Gideon's Intervention: the card name this permanent was told to watch. */
+  chosenCardName?: string;
   /** Cloud Key: the auto-picked card type (documented approximation). */
   chosenCardType?: string | null;
   /** "As this Aura enters, choose a color" (Utopia Sprawl). */
@@ -1171,6 +1173,14 @@ export type GameState = {
    */
   lastMilledCardIds?: CardInstanceId[];
   /**
+   * The card name most recently named by a "choose a card name" prompt.
+   * On the state rather than in a bind context because the prompt is
+   * answered across a client round trip, and because the effects that read
+   * it were BOUND before it existed — `applyEffects` parks them on the
+   * prompt and resumes them, so the name has to be read at apply.
+   */
+  lastChosenCardName?: string;
+  /**
    * Which COLOURS each player has cast a spell in this turn. The tallies
    * beside it count spells; Veil of Summer and the Traps ask what colour
    * they were, and a count cannot be made to answer that afterwards.
@@ -1350,6 +1360,10 @@ export type SearchFilter = {
   manaCostIn?: string[];
   /** "with mana value N or less". */
   maxManaValue?: number;
+  /** Demonic Consultation: "a card with the chosen name". A FLAG, resolved
+   * at apply against the name that was just chosen — at bind time the
+   * prompt that names it has not been answered. */
+  nameIsChosen?: boolean;
   /** "with mana value X or less": resolved to maxManaValue from the announced
    * X when the effect binds (Green Sun's Zenith). */
   maxManaValueX?: boolean;
@@ -1875,6 +1889,13 @@ export type GameEffect =
     }
   /** Mystic Forge: exile the top card(s) of the player's library. */
   | { kind: "exile_top"; playerId: PlayerId; count: number }
+  /**
+   * "Choose a card name." Any name at all, not a name from the chooser's
+   * library: naming a card that is NOT in your deck is exactly how Demonic
+   * Consultation exiles the whole library, and offering only findable
+   * names would delete the line the card is played for.
+   */
+  | { kind: "choose_card_name"; playerId: PlayerId; sourceId?: CardInstanceId }
   /** Necropotence: exile the top card; it comes to hand at the next end
    * step (the face-down detail and "your" end step are documented
    * approximations). */
@@ -3385,6 +3406,7 @@ export type CardEffect =
     }
   /** Mystic Forge: exile the top card(s) of the player's library. */
   | { kind: "exile_top"; playerId: PlayerSelector; count: number }
+  | { kind: "choose_card_name"; playerId: PlayerSelector; onSelf?: boolean }
   /** Necropotence: exile the top card; to hand at the next end step. */
   | { kind: "exile_top_to_hand"; playerId: PlayerSelector }
   /** Living Death: everyone swaps graveyard creatures with board creatures. */
@@ -4552,6 +4574,13 @@ export type PendingPrompt =
       sourceId: CardInstanceId;
     }
   | {
+      kind: "choose_card_name";
+      playerId: PlayerId;
+      /** Gideon's Intervention remembers the name on the permanent. */
+      sourceId?: CardInstanceId;
+      resumeEffects?: GameEffect[];
+    }
+  | {
       kind: "choose_color";
       playerId: PlayerId;
       sourceId: CardInstanceId;
@@ -5547,6 +5576,7 @@ export type GameAction =
   /** Mox Diamond: discard a land, or it goes to the graveyard. */
   | { kind: "choose_discard_land_or_graveyard"; playerId: PlayerId; discard: boolean }
   | { kind: "resolve_creature_type"; playerId: PlayerId; creatureType: string }
+  | { kind: "resolve_card_name"; playerId: PlayerId; cardName: string }
   | { kind: "resolve_color"; playerId: PlayerId; color: Color }
   | { kind: "resolve_scry"; playerId: PlayerId; bottomIds: CardInstanceId[] }
   | { kind: "resolve_surveil"; playerId: PlayerId; graveyardIds: CardInstanceId[] }

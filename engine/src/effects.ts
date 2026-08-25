@@ -1670,6 +1670,17 @@ export function bindCardEffect(
       }
       return { kind: "drain_opponents", playerId, amount };
     }
+    case "choose_card_name": {
+      const playerId = bindPlayerSelector(state, effect.playerId, context);
+      if (!playerId) {
+        return null;
+      }
+      return {
+        kind: "choose_card_name",
+        playerId,
+        ...(effect.onSelf && context.sourceId ? { sourceId: context.sourceId } : {}),
+      };
+    }
     case "dig_until": {
       const playerId = bindPlayerSelector(state, effect.playerId, context);
       if (!playerId) {
@@ -4533,13 +4544,21 @@ function applyDigUntil(
   const player = next.players.find((entry) => entry.id === effect.playerId)!;
   const revealed: CardInstanceId[] = [];
   let found: CardInstanceId | null = null;
+  // "A card with the chosen name" — read HERE, because the prompt that
+  // named it is answered after this effect was bound. A name nobody chose
+  // matches nothing, which is the honest answer rather than everything.
+  const namedFor = effect.filter.nameIsChosen ? next.lastChosenCardName ?? null : null;
   while (player.zones.library.length > 0 && found === null) {
     const cardId = player.zones.library[0]!;
     // Taken out of the library one at a time, so a card that matches is
     // still findable by the filter after the rest have moved.
     moveCardInPlace(next, cardId, "exile");
     revealed.push(cardId);
-    if (searchMatches(next, cardId, effect.filter)) {
+    const definitionName = next.definitions[next.cards[cardId]!.definitionId]?.name;
+    const matches = effect.filter.nameIsChosen
+      ? namedFor !== null && definitionName === namedFor
+      : searchMatches(next, cardId, effect.filter);
+    if (matches) {
       found = cardId;
     }
   }
@@ -6769,6 +6788,16 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
         });
         break;
       }
+      case "choose_card_name":
+        next = cloneGameState(state);
+        if (isLiving(next, effect.playerId)) {
+          next.prompts.push({
+            kind: "choose_card_name",
+            playerId: effect.playerId,
+            ...(effect.sourceId ? { sourceId: effect.sourceId } : {}),
+          });
+        }
+        break;
       case "dig_until":
         next = applyDigUntil(state, effect);
         break;
@@ -6875,7 +6904,8 @@ export function applyEffects(state: GameState, effects: GameEffect[]): GameState
         prompt.kind === "look_and_assign" ||
         prompt.kind === "search_library" ||
         prompt.kind === "pay_or_counter" ||
-        prompt.kind === "pay_or_effect")
+        prompt.kind === "pay_or_effect" ||
+        prompt.kind === "choose_card_name")
     ) {
       const remaining = effects.slice(index + 1);
       if (remaining.length > 0) {

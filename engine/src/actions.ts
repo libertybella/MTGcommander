@@ -32,7 +32,7 @@ import { applyBottomCards, applyKeepHand, applyTakeMulligan, isMulliganOpen, rec
 import { applyRollDie } from "./dice";
 import { applyOpeningRoll, isOpeningRoll } from "./openingRoll";
 import { applyManualOverride } from "./override";
-import { applyChooseEnterReplacement, applyChooseTargets, applyResolveChooseCard, applyResolveChooseFromHand, applyResolveColor, applyResolveCreatureType, applyResolveDiscard, applyResolveEnterCopy, applyResolveLookAssign, applyResolveOrderTriggers, applyResolvePay, applyResolveScry, applyResolveSearch, applyResolveSurveil, applyResolveTriggerMode, currentPrompt, dropLostPlayerPromptsInPlace, isPromptOpen, applyResolveDiscardLandOrGraveyard } from "./prompt";
+import { applyChooseEnterReplacement, applyChooseTargets, applyResolveChooseCard, applyResolveChooseFromHand, applyResolveCardName, applyResolveColor, applyResolveCreatureType, applyResolveDiscard, applyResolveEnterCopy, applyResolveLookAssign, applyResolveOrderTriggers, applyResolvePay, applyResolveScry, applyResolveSearch, applyResolveSurveil, applyResolveTriggerMode, currentPrompt, dropLostPlayerPromptsInPlace, isPromptOpen, applyResolveDiscardLandOrGraveyard } from "./prompt";
 import { manaValueOf } from "./characteristics";
 import { findCardZone, moveCard } from "./zones";
 import type { ActivatedAbility, AdditionalCastCost, CardInstanceId, ChosenTarget, Color, GameAction, GameState, ManaColor, ManaPool, PlayerId } from "./types";
@@ -2098,6 +2098,9 @@ export function applyAction(
         break;
       case "resolve_creature_type":
         next = applyResolveCreatureType(state, action.playerId, action.creatureType);
+        break;
+      case "resolve_card_name":
+        next = applyResolveCardName(state, action.playerId, action.cardName);
         break;
       case "resolve_color":
         next = applyResolveColor(state, action.playerId, action.color);

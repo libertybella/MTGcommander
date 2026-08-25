@@ -646,6 +646,9 @@ export function parseGameState(json: string): GameState {
       faceDown: card.faceDown === true,
       ...(card.phasedOut === true ? { phasedOut: true } : {}),
       ...(card.enteredFromCast === true ? { enteredFromCast: true } : {}),
+      ...(card.chosenCardName === undefined
+        ? {}
+        : { chosenCardName: expectString(card.chosenCardName, "card.chosenCardName") }),
       chosenCreatureType:
         card.chosenCreatureType === undefined || card.chosenCreatureType === null
           ? null
@@ -1846,6 +1849,11 @@ export function parseGameState(json: string): GameState {
     // The prompt that reads this is answered across a client round trip, so
     // the list has to survive the wire or "from among them" silently offers
     // the whole graveyard.
+    ...(raw.lastChosenCardName === undefined
+      ? {}
+      : {
+          lastChosenCardName: expectString(raw.lastChosenCardName, "lastChosenCardName"),
+        }),
     ...(raw.lastMilledCardIds === undefined
       ? {}
       : {
@@ -2433,6 +2441,23 @@ function parsePrompts(value: unknown, playerIds: Set<string>): PendingPrompt[] {
         sourceId: expectString(entry.sourceId, `prompts[${index}].sourceId`),
       };
     }
+    if (kind === "choose_card_name") {
+      return {
+        kind,
+        playerId,
+        ...(entry.sourceId === undefined
+          ? {}
+          : { sourceId: expectString(entry.sourceId, `prompts[${index}].sourceId`) }),
+        ...(entry.resumeEffects === undefined
+          ? {}
+          : {
+              resumeEffects: parseGameEffects(
+                entry.resumeEffects,
+                `prompts[${index}].resumeEffects`,
+              ),
+            }),
+      };
+    }
     if (kind === "choose_creature_type") {
       return {
         kind,
@@ -2842,6 +2867,7 @@ function parseSearchFilter(value: unknown, label: string): SearchFilter {
       ? {}
       : { maxManaValue: expectNumber(value.maxManaValue, `${label}.maxManaValue`) }),
     ...(value.maxManaValueX === true ? { maxManaValueX: true } : {}),
+    ...(value.nameIsChosen === true ? { nameIsChosen: true } : {}),
     ...(value.maxManaValuePlusSacrificed === undefined
       ? {}
       : {
@@ -4472,6 +4498,12 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
                   return { devotion: devotion as Color };
                 })()
               : expectNumber(value.amount, `${label}.amount`),
+      };
+    case "choose_card_name":
+      return {
+        kind,
+        playerId: parsePlayerSelector(value.playerId, `${label}.playerId`),
+        ...(value.onSelf === true ? { onSelf: true } : {}),
       };
     case "dig_until": {
       const digFound = expectString(value.found, `${label}.found`);
@@ -6671,6 +6703,15 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
       amount: expectNumber(value.amount, `${label}.amount`),
     };
   }
+  if (kind === "choose_card_name") {
+    return {
+      kind,
+      playerId: expectString(value.playerId, `${label}.playerId`),
+      ...(value.sourceId === undefined
+        ? {}
+        : { sourceId: expectString(value.sourceId, `${label}.sourceId`) }),
+    };
+  }
   if (kind === "dig_until") {
     const digFound = expectString(value.found, `${label}.found`);
     const digRest = expectString(value.rest, `${label}.rest`);
@@ -7949,6 +7990,9 @@ export function parseGameAction(json: string): GameAction {
       playerId,
       pay: raw.pay === true,
     };
+  }
+  if (kind === "resolve_card_name") {
+    return { kind, playerId, cardName: expectString(raw.cardName, "action.cardName") };
   }
   if (kind === "resolve_creature_type") {
     return {

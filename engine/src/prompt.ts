@@ -343,6 +343,49 @@ export function applyResolveCreatureType(
   return next;
 }
 
+/**
+ * Answer a "choose a card name" prompt. ANY name is legal, including one
+ * that appears nowhere in the game: naming a card you do not own is how
+ * Demonic Consultation exiles its controller's whole library, and offering
+ * only findable names would delete the line the card is played for.
+ *
+ * The name goes on the STATE, because the effects that read it were bound
+ * before the prompt existed — `applyEffects` parks them here and resumes
+ * them, so they read the name at apply.
+ */
+export function applyResolveCardName(
+  state: GameState,
+  playerId: PlayerId,
+  cardName: string,
+): GameState {
+  const prompt = currentPrompt(state);
+  if (!prompt || prompt.kind !== "choose_card_name") {
+    throw new Error("No card-name choice pending");
+  }
+  requireLiving(state, playerId);
+  if (prompt.playerId !== playerId) {
+    throw new Error("It is not that player's choice");
+  }
+  const chosen = cardName.trim();
+  if (chosen.length === 0) {
+    throw new Error("Choose a card name");
+  }
+  let next = cloneGameState(state);
+  next.prompts.shift();
+  next.lastChosenCardName = chosen;
+  // Gideon's Intervention: the name is remembered on the permanent, where a
+  // static ability can keep reading it for as long as it is on the field.
+  const source = prompt.sourceId ? next.cards[prompt.sourceId] : undefined;
+  if (source) {
+    source.chosenCardName = chosen;
+  }
+  const resume = prompt.resumeEffects;
+  if (resume && resume.length > 0) {
+    next = applyEffects(next, resume);
+  }
+  return next;
+}
+
 /** Answer an as-enters color choice (Utopia Sprawl). */
 export function applyResolveColor(
   state: GameState,

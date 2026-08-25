@@ -5487,6 +5487,13 @@ function compileSimpleClauseInner(sentence: string): SimpleClause | null {
   // Curse of the Swine's first half compiles with its rider (see the pair
   // handler in the main loop); a bare variable exile also lands here.
 
+  if (/^Choose a card name$/i.test(sentence)) {
+    return {
+      targetRequirements: [],
+      effects: [{ kind: "choose_card_name", playerId: "controller" }],
+    };
+  }
+
   const digClause = compileDigUntilClause(sentence);
   if (digClause) {
     return { targetRequirements: [], effects: digClause };
@@ -6667,6 +6674,19 @@ function compileSimpleClauseInner(sentence: string): SimpleClause | null {
     return {
       targetRequirements: [],
       effects: [{ kind: "spells_uncounterable_this_turn", playerId: "controller" }],
+    };
+  }
+
+  // Demonic Consultation's blind half. The mill sibling has read this shape
+  // for a long time; the exile one had no reader at all.
+  const blindExileTop = sentence.match(
+    /^Exile the top (\w+) cards? of your library$/i,
+  );
+  const exileTopCount = blindExileTop?.[1] ? parseCount(blindExileTop[1]) : null;
+  if (exileTopCount) {
+    return {
+      targetRequirements: [],
+      effects: [{ kind: "exile_top", playerId: "controller", count: exileTopCount }],
     };
   }
 
@@ -10120,7 +10140,11 @@ function compileDigUntilClause(sentence: string): CardEffect[] | null {
   if (!match?.[1] || !match[2] || !match[3]) {
     return null;
   }
-  const filter = parseSearchDescriptor(match[1]);
+  // Demonic Consultation stops on the name that was just chosen, which no
+  // type descriptor can express.
+  const filter = /^an? card with the chosen name$/i.test(match[1].trim())
+    ? { nameIsChosen: true }
+    : parseSearchDescriptor(match[1]);
   const found = DIG_FOUND[match[2].trim().toLowerCase()];
   const rest = DIG_REST[match[3].trim().toLowerCase().replace(/\.$/, "")];
   if (!filter || !found || !rest) {
@@ -10142,14 +10166,28 @@ function fuseDigUntilInPlace(sentences: string[], lineStart: boolean[]): void {
     const head = sentences[index]?.match(
       /^(.*?)reveal cards from the top of your library until you reveal (an? [^,]+?)$/i,
     );
-    const tail = sentences[index + 1]?.match(
+    // Two word orders for the same sentence: "and the rest into your
+    // graveyard", and Demonic Consultation's "and exile all other cards
+    // revealed this way", where the verb leads. The verb-led form names a
+    // destination the table already spells, so it is normalised to that
+    // spelling rather than given a second entry.
+    const nounTail = sentences[index + 1]?.match(
       /^Put that card (.+?) and (?:all other cards revealed this way|the rest) (.+?)$/i,
     );
-    if (!head || head[1] === undefined || !head[2] || !tail?.[1] || !tail[2]) {
+    const verbTail = sentences[index + 1]?.match(
+      /^Put that card (.+?) and exile all other cards revealed this way$/i,
+    );
+    const tail: [string, string] | null =
+      nounTail?.[1] && nounTail[2]
+        ? [nounTail[1], nounTail[2]]
+        : verbTail?.[1]
+          ? [verbTail[1], "into exile"]
+          : null;
+    if (!head || head[1] === undefined || !head[2] || !tail) {
       continue;
     }
     sentences[index] =
-      `${head[1]}dig from the top for ${head[2]}, putting it ${tail[1]} and the rest ${tail[2]}`;
+      `${head[1]}dig from the top for ${head[2]}, putting it ${tail[0]} and the rest ${tail[1]}`;
     sentences.splice(index + 1, 1);
     lineStart.splice(index + 1, 1);
   }
