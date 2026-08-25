@@ -5025,6 +5025,13 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
         cardId: parseCardIdSelector(value.cardId, `${label}.cardId`),
         subtypes: expectStringArray(value.subtypes, `${label}.subtypes`),
       };
+    case "add_subtypes_all":
+      return {
+        kind,
+        playerId: parsePlayerSelector(value.playerId, `${label}.playerId`),
+        what: "creature",
+        subtypes: expectStringArray(value.subtypes, `${label}.subtypes`),
+      };
     case "mass_reanimate":
     case "return_all_lands":
       return { kind, playerId: parsePlayerSelector(value.playerId, `${label}.playerId`) };
@@ -7310,6 +7317,14 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
     return {
       kind,
       cardId: expectString(value.cardId, `${label}.cardId`),
+      subtypes: expectStringArray(value.subtypes, `${label}.subtypes`),
+    };
+  }
+  if (kind === "add_subtypes_all") {
+    return {
+      kind,
+      playerId: expectString(value.playerId, `${label}.playerId`),
+      what: "creature" as const,
       subtypes: expectStringArray(value.subtypes, `${label}.subtypes`),
     };
   }

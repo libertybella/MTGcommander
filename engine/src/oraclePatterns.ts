@@ -6244,7 +6244,12 @@ function compileSimpleClauseInner(sentence: string): SimpleClause | null {
   }
 
   // Syr Konrad's activation body.
-  match = sentence.match(/^Each player mills (a|an|one|two|three|\d+) cards?$/i);
+  // Breach the Multiverse mills TEN. The list stopped at three while the
+  // target-player mill one screen down already read to ten, so the same
+  // sentence compiled or not depending on which player it named.
+  match = sentence.match(
+    /^Each player mills (a|an|one|two|three|four|five|six|seven|eight|nine|ten|\d+) cards?$/i,
+  );
   if (match?.[1]) {
     const count = parseCount(match[1]);
     if (count) {
@@ -6345,6 +6350,61 @@ function compileSimpleClauseInner(sentence: string): SimpleClause | null {
           kind: "exile_return_end_step",
           self: true,
           ...(flickerSelf[1] ? { returnsTapped: true } : {}),
+        },
+      ],
+    };
+  }
+
+  // Breach the Multiverse (fused by fuseEachGraveyardReanimateInPlace).
+  // One choice per player, every one of them made by the SPELL'S
+  // CONTROLLER, who then keeps all of it.
+  if (
+    /^reanimate one creature or planeswalker from each graveyard$/i.test(sentence)
+  ) {
+    return {
+      targetRequirements: [],
+      effects: [
+        {
+          kind: "choose_card",
+          chooserId: "controller",
+          sources: [
+            {
+              playerId: "each_player",
+              zone: "graveyard",
+              filter: "creature_or_planeswalker",
+            },
+          ],
+          thenEffects: [
+            {
+              kind: "move_card",
+              cardId: "chosen_card",
+              toZone: "battlefield",
+              underControlOf: "controller",
+            },
+          ],
+          // An empty graveyard is not a decline — there is simply nothing
+          // there to choose.
+          thenEffectsIfNone: [],
+        },
+      ],
+    };
+  }
+
+  // Breach the Multiverse's last line. Portal to Phyrexia's type grant over
+  // a whole board: the types ride the permanents, so a creature that
+  // arrives afterwards is not a Phyrexian.
+  const boardSubtype = sentence.match(
+    /^(?:Then )?each creature you control becomes an? ([A-Z][a-z]+) in addition to its other types$/,
+  );
+  if (boardSubtype?.[1]) {
+    return {
+      targetRequirements: [],
+      effects: [
+        {
+          kind: "add_subtypes_all",
+          playerId: "controller",
+          what: "creature",
+          subtypes: [boardSubtype[1].toLowerCase()],
         },
       ],
     };
@@ -10758,6 +10818,34 @@ function fusePilesInPlace(sentences: string[], lineStart: boolean[]): void {
  * searched for, so the second sentence has no meaning apart from the first —
  * on its own it names a pair nothing has collected.
  */
+/**
+ * Breach the Multiverse: "For each player, choose a creature or planeswalker
+ * card in that player's graveyard." + "Put those cards onto the battlefield
+ * under your control."
+ *
+ * "Those cards" is the set the first sentence collected, so the two are one
+ * clause. Read alone the second names a pile nothing has gathered.
+ */
+function fuseEachGraveyardReanimateInPlace(sentences: string[], lineStart: boolean[]): void {
+  for (let index = 0; index + 1 < sentences.length; index += 1) {
+    if (lineStart[index + 1]) {
+      continue;
+    }
+    const head = sentences[index]?.match(
+      /^(.*?)For each player, choose a creature or planeswalker card in that player's graveyard$/i,
+    );
+    const put = /^Put those cards onto the battlefield under your control$/i.test(
+      sentences[index + 1] ?? "",
+    );
+    if (head?.[1] === undefined || !put) {
+      continue;
+    }
+    sentences[index] = `${head[1]}reanimate one creature or planeswalker from each graveyard`;
+    sentences.splice(index + 1, 1);
+    lineStart.splice(index + 1, 1);
+  }
+}
+
 function fuseBlinkAndFetchInPlace(sentences: string[], lineStart: boolean[]): void {
   for (let index = 0; index + 1 < sentences.length; index += 1) {
     if (lineStart[index + 1]) {
@@ -15407,6 +15495,7 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
   fuseTapForXInPlace(sentences, lineStart);
   fuseTemptingOfferInPlace(sentences, lineStart);
   fusePilesInPlace(sentences, lineStart);
+  fuseEachGraveyardReanimateInPlace(sentences, lineStart);
   fuseBlinkAndFetchInPlace(sentences, lineStart);
   fuseDigUntilNonlandInPlace(sentences, lineStart);
   fuseDigUntilInPlace(sentences, lineStart);

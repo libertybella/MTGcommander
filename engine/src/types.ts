@@ -2344,6 +2344,13 @@ export type GameEffect =
     }
   /** Portal to Phyrexia: the reanimated card gains a creature type. */
   | { kind: "add_subtypes"; cardId: CardInstanceId; subtypes: string[] }
+  /**
+   * Breach the Multiverse: "each creature you control becomes a Phyrexian
+   * in addition to its other types". A whole board rather than one
+   * permanent, and like `add_subtypes` it rides the instances — the spell
+   * is gone, so there is nothing left to carry a continuous effect.
+   */
+  | { kind: "add_subtypes_all"; playerId: PlayerId; what: "creature"; subtypes: string[] }
   /** Regenerate (CR 701.15): a shield against the next destruction. */
   | { kind: "regenerate"; cardIds: CardInstanceId[] }
   /**
@@ -3961,6 +3968,8 @@ export type CardEffect =
       echo: NonNullable<CardDefinition["landTapEcho"]>;
     }
   | { kind: "add_subtypes"; cardId: CardIdSelector; subtypes: string[] }
+  /** Breach the Multiverse — see the bound form. */
+  | { kind: "add_subtypes_all"; playerId: PlayerSelector; what: "creature"; subtypes: string[] }
   | {
       kind: "regenerate";
       cardId?: CardIdSelector;

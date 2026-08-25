@@ -66983,3 +66983,312 @@ describe("wave 405: Urza, Lord High Artificer", () => {
     });
   });
 });
+
+describe("wave 406: Breach the Multiverse", () => {
+  const compile = (name: string, typeLine: string, oracleText: string, manaCost = "") =>
+    compileOracleCard({
+      oracleId: name.toLowerCase().replace(/[^a-z]+/g, "-"),
+      name,
+      manaCost,
+      typeLine,
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  const breachText =
+    "Each player mills ten cards. For each player, choose a creature or planeswalker card in that player's graveyard. Put those cards onto the battlefield under your control. Then each creature you control becomes a Phyrexian in addition to its other types.";
+
+  it("compiles all four clauses", () => {
+    const compiled = compile("Breach the Multiverse", "Sorcery", breachText, "{6}{B}");
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.effects).toEqual([
+      { kind: "mill", playerId: "each_player", count: 10 },
+      {
+        kind: "choose_card",
+        chooserId: "controller",
+        sources: [
+          { playerId: "each_player", zone: "graveyard", filter: "creature_or_planeswalker" },
+        ],
+        thenEffects: [
+          {
+            kind: "move_card",
+            cardId: "chosen_card",
+            toZone: "battlefield",
+            underControlOf: "controller",
+          },
+        ],
+        thenEffectsIfNone: [],
+      },
+      {
+        kind: "add_subtypes_all",
+        playerId: "controller",
+        what: "creature",
+        subtypes: ["phyrexian"],
+      },
+    ]);
+  });
+
+  it("reads the count word the each-opponent mill already read", () => {
+    // The two sentences differ only in which players they name, and one of
+    // them stopped counting at three.
+    expect(
+      compile("Ten Each", "Sorcery", "Each player mills ten cards.", "{2}{B}").definition.effects,
+    ).toEqual([{ kind: "mill", playerId: "each_player", count: 10 }]);
+    expect(
+      compile("Seven Each", "Sorcery", "Each player mills seven cards.", "{2}{B}").definition
+        .effects,
+    ).toEqual([{ kind: "mill", playerId: "each_player", count: 7 }]);
+  });
+
+  // ---- One choice per graveyard, all of them yours ------------------------
+
+  const bear = (game: GameState, name: string) => {
+    const definition = createCardDefinition({
+      name,
+      typeLine: "Creature — Bear",
+      manaCost: "{1}{G}",
+      power: 2,
+      toughness: 2,
+    });
+    game.definitions[definition.id] = definition;
+    return definition;
+  };
+
+  const bury = (game: GameState, ownerId: string, definition: CardDefinition) => {
+    const card = createCardInstance({
+      definitionId: definition.id,
+      ownerId,
+      zone: "graveyard",
+    });
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === ownerId)!.zones.graveyard.push(card.id);
+    return card.id;
+  };
+
+  const reanimateEach = (game: GameState, playerId: string) =>
+    applyEffects(
+      game,
+      bindCardEffects(
+        game,
+        [
+          {
+            kind: "choose_card",
+            chooserId: "controller",
+            sources: [
+              { playerId: "each_player", zone: "graveyard", filter: "creature_or_planeswalker" },
+            ],
+            thenEffects: [
+              {
+                kind: "move_card",
+                cardId: "chosen_card",
+                toZone: "battlefield",
+                underControlOf: "controller",
+              },
+            ],
+            thenEffectsIfNone: [],
+          },
+        ],
+        { controllerId: playerId, sourceId: null, targets: [], targetRequirements: [] },
+      ),
+    );
+
+  /**
+   * Answered through `applyAction`, which is the only path that carries a
+   * prompt's parked `resumeEffects` forward — and the parked effects here
+   * are the OTHER players' choices, so a test that resolved the prompt
+   * directly would see one graveyard raided and call it a pass.
+   */
+  const answerAll = (game: GameState, playerId: string) => {
+    let after = game;
+    let guard = 0;
+    while (after.prompts[0]?.kind === "choose_card" && guard < 10) {
+      const prompt = after.prompts[0];
+      const options = legalIdsForChooseSources(after, prompt.sources);
+      after = applyAction(after, {
+        kind: "resolve_choose_card",
+        playerId,
+        cardId: options[0] ?? null,
+      });
+      guard += 1;
+    }
+    return after;
+  };
+
+  it("asks once per player and hands every card to the caster", () => {
+    const game = createGameState({ playerCount: 3 });
+    const [p1, p2, p3] = game.players;
+    if (!p1 || !p2 || !p3) {
+      throw new Error("need three players");
+    }
+    const mineId = bury(game, p1.id, bear(game, "Mine"));
+    const theirsId = bury(game, p2.id, bear(game, "Theirs"));
+    const thirdId = bury(game, p3.id, bear(game, "Third Seat"));
+    const after = answerAll(reanimateEach(game, p1.id), p1.id);
+    for (const cardId of [mineId, theirsId, thirdId]) {
+      expect(after.cards[cardId]?.zone).toBe("battlefield");
+      // "Under YOUR control" — every graveyard was raided, and the caster
+      // keeps all of it.
+      expect(after.cards[cardId]?.controllerId).toBe(p1.id);
+    }
+  });
+
+  it("skips a player with nothing to raise", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const theirsId = bury(game, p2.id, bear(game, "Theirs"));
+    const after = answerAll(reanimateEach(game, p1.id), p1.id);
+    expect(after.cards[theirsId]?.zone).toBe("battlefield");
+    expect(after.prompts).toHaveLength(0);
+  });
+
+  it("sees the cards the mill in the same spell just put there", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const definition = bear(game, "Milled Bear");
+    const card = createCardInstance({
+      definitionId: definition.id,
+      ownerId: p2.id,
+      zone: "library",
+    });
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === p2.id)!.zones.library = [card.id];
+    const after = answerAll(
+      applyEffects(
+        game,
+        bindCardEffects(
+          game,
+          [
+            { kind: "mill", playerId: "each_player", count: 10 },
+            {
+              kind: "choose_card",
+              chooserId: "controller",
+              sources: [
+                {
+                  playerId: "each_player",
+                  zone: "graveyard",
+                  filter: "creature_or_planeswalker",
+                },
+              ],
+              thenEffects: [
+                {
+                  kind: "move_card",
+                  cardId: "chosen_card",
+                  toZone: "battlefield",
+                  underControlOf: "controller",
+                },
+              ],
+              thenEffectsIfNone: [],
+            },
+          ],
+          { controllerId: p1.id, sourceId: null, targets: [], targetRequirements: [] },
+        ),
+      ),
+      p1.id,
+    );
+    // Effects bind as a batch, so the choice must read the graveyard when
+    // it is MADE — at bind time the mill has not run and every graveyard
+    // is still empty.
+    expect(after.cards[card.id]?.zone).toBe("battlefield");
+    expect(after.cards[card.id]?.controllerId).toBe(p1.id);
+  });
+
+  // ---- The Phyrexian sweep ------------------------------------------------
+
+  const putOut = (game: GameState, ownerId: string, definition: CardDefinition) => {
+    const card = createCardInstance({
+      definitionId: definition.id,
+      ownerId,
+      zone: "battlefield",
+    });
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === ownerId)!.zones.battlefield.push(card.id);
+    card.summoningSick = false;
+    return card.id;
+  };
+
+  const phyrexianize = (game: GameState, playerId: string) =>
+    applyEffects(
+      game,
+      bindCardEffects(
+        game,
+        [
+          {
+            kind: "add_subtypes_all",
+            playerId: "controller",
+            what: "creature",
+            subtypes: ["phyrexian"],
+          },
+        ],
+        { controllerId: playerId, sourceId: null, targets: [], targetRequirements: [] },
+      ),
+    );
+
+  it("makes your creatures Phyrexian without taking away what they were", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const mineId = putOut(game, p1.id, bear(game, "Mine"));
+    const theirsId = putOut(game, p2.id, bear(game, "Theirs"));
+    const after = phyrexianize(game, p1.id);
+    expect(cardMatchesSubtype(after, mineId, "phyrexian")).toBe(true);
+    // "In addition to its other types" — still a Bear.
+    expect(cardMatchesSubtype(after, mineId, "bear")).toBe(true);
+    expect(cardMatchesSubtype(after, theirsId, "phyrexian")).toBe(false);
+  });
+
+  it("does not reach a creature that arrives afterwards", () => {
+    const { game, p1 } = twoPlayers();
+    putOut(game, p1.id, bear(game, "Present"));
+    const after = phyrexianize(game, p1.id);
+    // The spell resolved once; it is not a continuous effect, because
+    // there is no permanent left to carry one.
+    const laterId = putOut(after, p1.id, bear(after, "Later"));
+    expect(cardMatchesSubtype(after, laterId, "phyrexian")).toBe(false);
+  });
+
+  it("does not stack the same type twice", () => {
+    const { game, p1 } = twoPlayers();
+    const mineId = putOut(game, p1.id, bear(game, "Mine"));
+    const after = phyrexianize(phyrexianize(game, p1.id), p1.id);
+    expect(after.cards[mineId]?.addedSubtypes).toEqual(["phyrexian"]);
+  });
+
+  it("round trips the sweep and the per-player choice", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const definition = createCardDefinition({
+      name: "Wave 406 Breach",
+      typeLine: "Sorcery",
+      manaCost: "{6}{B}",
+      effects: [
+        {
+          kind: "choose_card",
+          chooserId: "controller",
+          sources: [
+            { playerId: "each_player", zone: "graveyard", filter: "creature_or_planeswalker" },
+          ],
+          thenEffects: [
+            {
+              kind: "move_card",
+              cardId: "chosen_card",
+              toZone: "battlefield",
+              underControlOf: "controller",
+            },
+          ],
+          thenEffectsIfNone: [],
+        },
+        {
+          kind: "add_subtypes_all",
+          playerId: "controller",
+          what: "creature",
+          subtypes: ["phyrexian"],
+        },
+      ],
+    });
+    game.definitions[definition.id] = definition;
+    void p1;
+    const round = parseGameState(serializeGameState(game));
+    // Dropped on the wire the reanimation hands each card back to its
+    // owner and the last line does nothing at all.
+    expect(round.definitions[definition.id]?.effects).toEqual(definition.effects);
+  });
+});

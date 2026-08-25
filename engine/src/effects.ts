@@ -344,6 +344,19 @@ function expandEachOpponent(
         })),
       }));
     }
+    // Breach the Multiverse: "FOR EACH PLAYER, choose a card in THAT
+    // player's graveyard" — one choice per player, all of them made by the
+    // spell's controller. The chooser is fixed, so the split is on the
+    // SOURCE. Without this the source's each-selector reaches bind
+    // unexpanded and throws.
+    const sourcePlayers = effect.sources.length === 1 ? eachOf(effect.sources[0]!.playerId) : null;
+    if (sourcePlayers) {
+      const source = effect.sources[0]!;
+      return sourcePlayers.map((playerId) => ({
+        ...effect,
+        sources: [{ ...source, playerId }],
+      }));
+    }
   }
   if (effect.kind === "deal_damage" && effect.target.type === "player") {
     const players = eachOf(effect.target.playerId);
@@ -2109,6 +2122,13 @@ export function bindCardEffect(
         return null;
       }
       return { kind: "flicker", cardId };
+    }
+    case "add_subtypes_all": {
+      const playerId = bindPlayerSelector(state, effect.playerId, context);
+      if (!playerId) {
+        return null;
+      }
+      return { kind: "add_subtypes_all", playerId, what: effect.what, subtypes: [...effect.subtypes] };
     }
     case "return_self_as_enchantment": {
       const cardId = bindCardId(state, effect.cardId, context);
@@ -7329,6 +7349,27 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
                 state,
                 doomed.map((cardId) => ({ kind: "sacrifice" as const, cardId })),
               );
+        break;
+      }
+      case "add_subtypes_all": {
+        // The same rule as `add_subtypes` below, over a board: the types
+        // ride the instances, and a permanent that arrives afterwards is
+        // not touched — the spell resolved once.
+        next = cloneGameState(state);
+        for (const card of Object.values(next.cards)) {
+          if (
+            card.zone !== "battlefield" ||
+            card.controllerId !== effect.playerId ||
+            !isCreature(next, card.id)
+          ) {
+            continue;
+          }
+          const existing = card.addedSubtypes ?? [];
+          card.addedSubtypes = [
+            ...existing,
+            ...effect.subtypes.filter((subtype) => !existing.includes(subtype)),
+          ];
+        }
         break;
       }
       case "add_subtypes": {
