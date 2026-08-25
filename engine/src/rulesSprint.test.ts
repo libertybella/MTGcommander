@@ -68049,3 +68049,226 @@ describe("wave 409: Tibalt's Trickery", () => {
     expect(round.definitions[definition.id]?.effects).toEqual(definition.effects);
   });
 });
+
+describe("wave 410: Chain of Vapor", () => {
+  const compile = (name: string, typeLine: string, oracleText: string, manaCost = "") =>
+    compileOracleCard({
+      oracleId: name.toLowerCase().replace(/[^a-z]+/g, "-"),
+      name,
+      manaCost,
+      typeLine,
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  const chainText =
+    "Return target nonland permanent to its owner's hand. Then that permanent's controller may sacrifice a land of their choice. If the player does, they may copy this spell and may choose a new target for that copy.";
+
+  it("compiles the whole chain out of pieces that already existed", () => {
+    const compiled = compile("Chain of Vapor", "Instant", chainText, "{U}");
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.targetRequirements).toEqual([{ kind: "nonland_permanent" }]);
+    expect(compiled.definition.effects[0]).toEqual({
+      kind: "move_card",
+      cardId: { type: "chosen", index: 0 },
+      toZone: "hand",
+    });
+    expect(compiled.definition.effects[1]).toMatchObject({
+      kind: "choose_card",
+      chooserId: { type: "chosen_controller", index: 0 },
+      optional: true,
+      thenEffects: [
+        { kind: "sacrifice", cardId: "chosen_card" },
+        { kind: "cast_free_copy", cardId: "self", playerId: { type: "subject_player" } },
+      ],
+      thenEffectsIfNone: [],
+    });
+  });
+
+  // ---- Playing it ---------------------------------------------------------
+
+  const chain = () =>
+    createCardDefinition({
+      name: "Chain of Vapor",
+      typeLine: "Instant",
+      manaCost: "{U}",
+      targetRequirements: [{ kind: "nonland_permanent" }],
+      effects: [
+        { kind: "move_card", cardId: { type: "chosen", index: 0 }, toZone: "hand" },
+        {
+          kind: "choose_card",
+          chooserId: { type: "chosen_controller", index: 0 },
+          optional: true,
+          sources: [
+            {
+              playerId: { type: "chosen_controller", index: 0 },
+              zone: "battlefield",
+              filter: "land",
+            },
+          ],
+          thenEffects: [
+            { kind: "sacrifice", cardId: "chosen_card" },
+            { kind: "cast_free_copy", cardId: "self", playerId: { type: "subject_player" } },
+          ],
+          thenEffectsIfNone: [],
+        },
+      ],
+    });
+
+  const put = (
+    game: GameState,
+    ownerId: string,
+    definition: CardDefinition,
+    zone: "battlefield" | "hand" = "battlefield",
+  ) => {
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({ definitionId: definition.id, ownerId, zone });
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === ownerId)!.zones[zone].push(card.id);
+    if (zone === "battlefield") {
+      card.summoningSick = false;
+    }
+    return card.id;
+  };
+
+  const bear = (name: string) =>
+    createCardDefinition({
+      name,
+      typeLine: "Creature — Bear",
+      manaCost: "{1}{G}",
+      power: 2,
+      toughness: 2,
+    });
+  const island = () => createCardDefinition({ name: "Island", typeLine: "Basic Land — Island" });
+
+  const castChain = (game: GameState, playerId: string, chainId: string, targetId: string) => {
+    game.turn.activePlayerId = playerId;
+    game.turn.phase = "precombatMain";
+    game.turn.step = "precombatMain";
+    game.priorityPlayerId = playerId;
+    game.players.find((entry) => entry.id === playerId)!.mana.U = 5;
+    return resolveTopOfStack(
+      applyAction(game, {
+        kind: "cast_spell",
+        playerId,
+        cardId: chainId,
+        targets: [{ type: "creature", cardId: targetId }],
+      }),
+    );
+  };
+
+  it("bounces the permanent and asks its controller, not the caster", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    const chainId = put(game, p1.id, chain(), "hand");
+    const theirsId = put(game, p2.id, bear("Theirs"));
+    put(game, p2.id, island());
+    const after = castChain(game, p1.id, chainId, theirsId);
+    expect(after.cards[theirsId]?.zone).toBe("hand");
+    const prompt = after.prompts[0];
+    if (prompt?.kind !== "choose_card") {
+      throw new Error("expected a land offer");
+    }
+    // The offer belongs to the player who lost the permanent.
+    expect(prompt.playerId).toBe(p2.id);
+  });
+
+  it("stops there when the offer is declined", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    const chainId = put(game, p1.id, chain(), "hand");
+    const theirsId = put(game, p2.id, bear("Theirs"));
+    const landId = put(game, p2.id, island());
+    let after = castChain(game, p1.id, chainId, theirsId);
+    after = applyAction(after, { kind: "resolve_choose_card", playerId: p2.id, cardId: null });
+    // Declining costs the land nothing and makes no copy.
+    expect(after.cards[landId]?.zone).toBe("battlefield");
+    expect(after.stack).toHaveLength(0);
+    expect(after.prompts).toHaveLength(0);
+  });
+
+  it("makes a copy for the player who paid the land", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    const chainId = put(game, p1.id, chain(), "hand");
+    const theirsId = put(game, p2.id, bear("Theirs"));
+    const landId = put(game, p2.id, island());
+    put(game, p1.id, bear("Mine"));
+    let after = castChain(game, p1.id, chainId, theirsId);
+    after = applyAction(after, { kind: "resolve_choose_card", playerId: p2.id, cardId: landId });
+    expect(after.cards[landId]?.zone).toBe("graveyard");
+    // The copy is theirs to aim, which is why the chain goes round the
+    // table rather than staying with whoever started it.
+    const targeting = after.prompts[0];
+    if (targeting?.kind !== "choose_targets") {
+      throw new Error("expected the copy to ask for a target");
+    }
+    expect(targeting.playerId).toBe(p2.id);
+  });
+
+  it("carries on: the copy bounces and offers again", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    const chainId = put(game, p1.id, chain(), "hand");
+    const theirsId = put(game, p2.id, bear("Theirs"));
+    const theirLandId = put(game, p2.id, island());
+    const mineId = put(game, p1.id, bear("Mine"));
+    put(game, p1.id, island());
+    let after = castChain(game, p1.id, chainId, theirsId);
+    after = applyAction(after, {
+      kind: "resolve_choose_card",
+      playerId: p2.id,
+      cardId: theirLandId,
+    });
+    after = applyChooseTargets(after, p2.id, [{ type: "creature", cardId: mineId }]);
+    after = resolveTopOfStack(after);
+    expect(after.cards[mineId]?.zone).toBe("hand");
+    // And now it is the first player being asked for a land.
+    expect(after.prompts[0]?.kind).toBe("choose_card");
+    expect(after.prompts[0]?.playerId).toBe(p1.id);
+  });
+
+  it("offers nothing to a player with no land", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    const chainId = put(game, p1.id, chain(), "hand");
+    const theirsId = put(game, p2.id, bear("Theirs"));
+    const after = castChain(game, p1.id, chainId, theirsId);
+    expect(after.cards[theirsId]?.zone).toBe("hand");
+    // Nothing to sacrifice is not a decision; the chain just stops.
+    expect(after.prompts).toHaveLength(0);
+    expect(after.stack).toHaveLength(0);
+  });
+
+  it("reads the controller before the bounce takes it away", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    const theirsId = put(game, p2.id, bear("Theirs"));
+    const bound = bindCardEffects(
+      game,
+      chain().effects,
+      {
+        controllerId: p1.id,
+        sourceId: null,
+        targets: [{ type: "creature", cardId: theirsId }],
+        targetRequirements: [{ kind: "nonland_permanent" }],
+      },
+    );
+    // Effects bind as a batch. Read at apply, "that permanent's controller"
+    // would be looked up on a card already sitting in somebody's hand.
+    expect(bound[1]).toMatchObject({ kind: "choose_card", chooserId: p2.id });
+  });
+
+  it("round trips the offer and its copy", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const definition = chain();
+    put(game, p1.id, definition, "hand");
+    const round = parseGameState(serializeGameState(game));
+    // Dropped on the wire the card is a one-mana Unsummon.
+    expect(round.definitions[definition.id]?.effects).toEqual(definition.effects);
+  });
+});

@@ -2318,8 +2318,12 @@ export function applyAction(
           controllerId: chosen.controllerId ?? action.playerId,
           sourceId: chosen.sourceId,
           ...(chosen.cardId ? { chosenCardId: chosen.cardId } : {}),
-          // A declining opponent is "that player" for the punisher.
-          ...(chosen.declined ? { subjectPlayerId: action.playerId } : {}),
+          // "That player" is whoever ANSWERED, declining or not. The
+          // punisher only ever asked on the decline; Chain of Vapor needs
+          // the same reference on the other branch, because the copy
+          // belongs to the player who paid the land rather than to the
+          // caster the ability controller field names.
+          subjectPlayerId: action.playerId,
           // Read BEFORE thenEffects runs, because the first of those
           // effects is usually the sacrifice itself — after it the card
           // is in the graveyard and its power is gone. Disciple of Bolas

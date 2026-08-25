@@ -7582,6 +7582,39 @@ function compileSimpleClauseInner(sentence: string): SimpleClause | null {
     };
   }
 
+  // Chain of Vapor (fused by fuseChainOfVaporInPlace). Every piece of this
+  // already existed: an optional choice over one player's lands, and the
+  // free copy Isochron Scepter makes — which already asks the copy for its
+  // own targets, and asks the player who made it.
+  if (/^chain-bounce target nonland permanent$/i.test(sentence)) {
+    return {
+      targetRequirements: [{ kind: "nonland_permanent" }],
+      effects: [
+        { kind: "move_card", cardId: { type: "chosen", index: 0 }, toZone: "hand" },
+        {
+          kind: "choose_card",
+          chooserId: { type: "chosen_controller", index: 0 },
+          optional: true,
+          sources: [
+            {
+              playerId: { type: "chosen_controller", index: 0 },
+              zone: "battlefield",
+              filter: "land",
+            },
+          ],
+          thenEffects: [
+            { kind: "sacrifice", cardId: "chosen_card" },
+            // "They may copy" — the player who paid the land, not the
+            // caster of the Chain, and the copy picks its own target.
+            { kind: "cast_free_copy", cardId: "self", playerId: { type: "subject_player" } },
+          ],
+          // Declining costs nothing and the chain simply stops.
+          thenEffectsIfNone: [],
+        },
+      ],
+    };
+  }
+
   // Tibalt's Trickery (fused by fuseTrickeryInPlace).
   if (/^trickery the countered spell's controller$/i.test(sentence)) {
     return {
@@ -10875,6 +10908,35 @@ function fusePilesInPlace(sentences: string[], lineStart: boolean[]): void {
  * taking away, and "they" is its controller. Fused into a single clause
  * because everything they name is read at the same instant.
  */
+/**
+ * Chain of Vapor: "…Then that permanent's controller may sacrifice a land of
+ * their choice." + "If the player does, they may copy this spell and may
+ * choose a new target for that copy."
+ *
+ * "The player" is the one the sentence before named, and "this spell" is the
+ * one they are both part of. Fused because neither reads alone — and because
+ * the offer and the copy are one decision, not two.
+ */
+function fuseChainOfVaporInPlace(sentences: string[], lineStart: boolean[]): void {
+  for (let index = 0; index + 2 < sentences.length; index += 1) {
+    if (lineStart[index + 1] || lineStart[index + 2]) {
+      continue;
+    }
+    if (
+      /^Return target nonland permanent to its owner's hand$/i.test(sentences[index] ?? "") &&
+      /^Then that permanent's controller may sacrifice a land of their choice$/i.test(
+        sentences[index + 1] ?? "",
+      ) &&
+      /^If the player does, they may copy this spell and may choose a new target for that copy$/i.test(
+        sentences[index + 2] ?? "",
+      )
+    ) {
+      sentences.splice(index, 3, "chain-bounce target nonland permanent");
+      lineStart.splice(index + 1, 2);
+    }
+  }
+}
+
 function fuseTrickeryInPlace(sentences: string[], lineStart: boolean[]): void {
   for (let index = 0; index + 3 < sentences.length; index += 1) {
     if (lineStart[index + 1] || lineStart[index + 2] || lineStart[index + 3]) {
@@ -15589,6 +15651,7 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
   fuseTapForXInPlace(sentences, lineStart);
   fuseTemptingOfferInPlace(sentences, lineStart);
   fusePilesInPlace(sentences, lineStart);
+  fuseChainOfVaporInPlace(sentences, lineStart);
   fuseTrickeryInPlace(sentences, lineStart);
   fuseExtraCombatUntapInPlace(sentences, lineStart);
   fuseEachGraveyardReanimateInPlace(sentences, lineStart);
