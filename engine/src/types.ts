@@ -4655,6 +4655,22 @@ export type ReplacementEffect =
    * controller's own graveyard is untouched, which is most of the card.
    */
   | { kind: "opponents_graveyard_to_void_exile" }
+  /**
+   * Blightsteel Colossus, Progenitus: THIS card, headed for a graveyard
+   * from any zone, is shuffled into its owner's library instead. A
+   * replacement rather than Kozilek's trigger, and the difference is the
+   * whole point — the card never reaches the graveyard, so nothing that
+   * watches a graveyard ever sees it and there is no window to respond in.
+   */
+  | { kind: "self_to_library_shuffled" }
+  /**
+   * Blightsteel Colossus, Progenitus: THIS card, headed for a graveyard
+   * from any zone, is shuffled into its owner's library instead. A
+   * replacement rather than Kozilek's trigger, and the difference is the
+   * whole point — the card never reaches the graveyard, so nothing that
+   * watches a graveyard ever sees it and there is no window to respond in.
+   */
+  | { kind: "self_to_library_shuffled" }
   /** Laboratory Maniac: the empty-library draw wins instead of losing. */
   | { kind: "empty_draw_wins" }
   /** Anointed Procession / Doubling Season: tokens created under the

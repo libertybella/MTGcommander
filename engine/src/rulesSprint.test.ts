@@ -57521,3 +57521,201 @@ describe("wave 365: infect, and poison counters", () => {
     expect(round.players.find((entry) => entry.id === p1.id)?.poisonCounters).toBe(0);
   });
 });
+
+describe("wave 366: shuffled back instead of dying", () => {
+  const compile = (
+    name: string,
+    typeLine: string,
+    oracleText: string,
+    manaCost = "",
+    pt: [string, string] | null = null,
+  ) =>
+    compileOracleCard({
+      oracleId: name.toLowerCase().replace(/[^a-z]+/g, "-"),
+      name,
+      manaCost,
+      typeLine,
+      power: pt?.[0] ?? null,
+      toughness: pt?.[1] ?? null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  const put = (
+    game: GameState,
+    ownerId: string,
+    definition: CardDefinition,
+    zone: "battlefield" | "hand" = "battlefield",
+  ) => {
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({ definitionId: definition.id, ownerId, zone });
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === ownerId)!.zones[zone].push(card.id);
+    if (zone === "battlefield") {
+      card.summoningSick = false;
+    }
+    return card.id;
+  };
+
+  it("compiles the replacement", () => {
+    const compiled = compile(
+      "Blightsteel Colossus",
+      "Artifact Creature — Phyrexian Golem",
+      "Trample, infect, indestructible\nIf Blightsteel Colossus would be put into a graveyard from anywhere, reveal Blightsteel Colossus and shuffle it into its owner's library instead.",
+      "{12}",
+      ["11", "11"],
+    );
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.replacements).toEqual([
+      { kind: "self_to_library_shuffled" },
+    ]);
+    expect(compiled.definition.keywords).toEqual(
+      expect.arrayContaining(["trample", "infect", "indestructible"]),
+    );
+  });
+
+  const colossus = () =>
+    createCardDefinition({
+      name: "Blightsteel Colossus",
+      typeLine: "Artifact Creature — Phyrexian Golem",
+      manaCost: "{12}",
+      power: 11,
+      toughness: 11,
+      keywords: ["trample", "infect", "indestructible"],
+      replacements: [{ kind: "self_to_library_shuffled" }],
+    });
+
+  it("goes to the library rather than the graveyard", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 10);
+    const colossusId = put(game, p1.id, colossus());
+    const before = game.players.find((entry) => entry.id === p1.id)!.zones.library.length;
+    const after = moveCard(game, colossusId, "graveyard");
+    const owner = after.players.find((entry) => entry.id === p1.id)!;
+    expect(owner.zones.graveyard).not.toContain(colossusId);
+    expect(owner.zones.library).toContain(colossusId);
+    expect(owner.zones.library.length).toBe(before + 1);
+    expect(after.cards[colossusId]?.zone).toBe("library");
+  });
+
+  it("fires no dies trigger, because it never dies", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 10);
+    const watcher = createCardDefinition({
+      name: "Blood Artist",
+      typeLine: "Creature — Vampire",
+      manaCost: "{1}{B}",
+      power: 0,
+      toughness: 1,
+      triggers: [
+        {
+          event: "dies",
+          watch: "any",
+          effects: [{ kind: "gain_life", playerId: "controller", amount: 1 }],
+          targetRequirements: [],
+        },
+      ],
+    });
+    put(game, p1.id, watcher);
+    const colossusId = put(game, p1.id, colossus());
+    const after = moveCard(game, colossusId, "graveyard");
+    // This is the whole difference from Kozilek's TRIGGER: the card never
+    // reaches a graveyard, so nothing that watches one sees it and there is
+    // no window to respond in.
+    expect(after.stack).toHaveLength(0);
+  });
+
+  it("does the same from the stack when countered", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 10);
+    const colossusId = put(game, p1.id, colossus(), "hand");
+    game.turn.activePlayerId = p1.id;
+    game.turn.phase = "precombatMain";
+    game.turn.step = "precombatMain";
+    game.priorityPlayerId = p1.id;
+    game.players.find((entry) => entry.id === p1.id)!.mana.C = 12;
+    const cast = applyAction(game, {
+      kind: "cast_spell",
+      playerId: p1.id,
+      cardId: colossusId,
+      targets: [],
+    });
+    expect(cast.stack).toHaveLength(1);
+    const countered = applyEffect(cast, {
+      kind: "counter_spell",
+      stackObjectId: cast.stack[0]!.id,
+    });
+    expect(
+      countered.players.find((entry) => entry.id === p1.id)!.zones.library,
+    ).toContain(colossusId);
+  });
+
+  it("does the same from the hand when discarded", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 10);
+    const colossusId = put(game, p1.id, colossus(), "hand");
+    const after = moveCard(game, colossusId, "graveyard");
+    expect(
+      after.players.find((entry) => entry.id === p1.id)!.zones.library,
+    ).toContain(colossusId);
+  });
+
+  it("leaves an ordinary creature alone", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 10);
+    const bearId = put(
+      game,
+      p1.id,
+      createCardDefinition({
+        name: "Bear",
+        typeLine: "Creature — Bear",
+        manaCost: "{1}{G}",
+        power: 2,
+        toughness: 2,
+      }),
+    );
+    const after = moveCard(game, bearId, "graveyard");
+    expect(after.players.find((entry) => entry.id === p1.id)!.zones.graveyard).toContain(
+      bearId,
+    );
+  });
+
+  it("stops replacing once its abilities are gone", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 10);
+    const colossusId = put(game, p1.id, colossus());
+    put(
+      game,
+      p1.id,
+      createCardDefinition({
+        name: "Humility",
+        typeLine: "Enchantment",
+        manaCost: "{2}{W}{W}",
+        staticAbilities: [
+          {
+            selector: { scope: "all", types: ["creature"] },
+            effect: { kind: "remove_all_abilities" },
+          },
+        ],
+      }),
+    );
+    const after = moveCard(game, colossusId, "graveyard");
+    // On the battlefield it is an ability like any other. In the hand or on
+    // the stack nothing can silence it, which the tests above cover.
+    expect(after.players.find((entry) => entry.id === p1.id)!.zones.graveyard).toContain(
+      colossusId,
+    );
+  });
+
+  it("round trips the replacement", () => {
+    const { game, p1 } = twoPlayers();
+    const definition = colossus();
+    put(game, p1.id, definition);
+    const round = parseGameState(serializeGameState(game));
+    // Lost on the wire, the Colossus becomes a creature that simply dies.
+    expect(round.definitions[definition.id]?.replacements).toEqual([
+      { kind: "self_to_library_shuffled" },
+    ]);
+  });
+});

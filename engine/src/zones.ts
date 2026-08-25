@@ -54,6 +54,13 @@ function commanderAwareDestination(
     // dies triggers do not fire.
     return "exile";
   }
+  // Blightsteel Colossus: THIS card, and only this card, goes back into the
+  // library instead. Checked after the commander redirect, which outranks it
+  // for a commander that would die — CR 903.9a is a choice, and this engine
+  // makes it one way and says so.
+  if (toZone === "graveyard" && shufflesIntoLibraryInstead(state, cardId)) {
+    return "library";
+  }
   if (toZone === "graveyard" && voidExileApplies(state, cardId)) {
     // Dauthi Voidwalker: an OPPONENT's card only. Scoped by owner, unlike
     // Rest in Peace, which is the whole difference between the two.
@@ -83,6 +90,28 @@ export function voidExileApplies(state: GameState, cardId: CardInstanceId): bool
       (replacement) => replacement.kind === "opponents_graveyard_to_void_exile",
     );
   });
+}
+
+/**
+ * Blightsteel Colossus: the replacement lives on the card being moved, not
+ * on a permanent watching the table, so it applies from every zone — the
+ * battlefield, the stack, the library, the hand.
+ */
+export function shufflesIntoLibraryInstead(
+  state: GameState,
+  cardId: CardInstanceId,
+): boolean {
+  const card = state.cards[cardId];
+  if (!card) {
+    return false;
+  }
+  // On the battlefield the ability can be silenced; anywhere else it cannot.
+  if (card.zone === "battlefield" && abilitiesRemoved(state, cardId)) {
+    return false;
+  }
+  return (state.definitions[card.definitionId]?.replacements ?? []).some(
+    (replacement) => replacement.kind === "self_to_library_shuffled",
+  );
 }
 
 function graveyardReplacedByExile(state: GameState): boolean {
@@ -220,7 +249,16 @@ export function enterOwnerZoneInPlace(
       : undefined;
   // The Ozolith: +1/+1 counters at the moment of leaving (any exit).
   const leftCounters = fromZone === "battlefield" ? card.counters["p1p1"] ?? 0 : 0;
-  insertIntoZone(owner, destination, cardId, options.libraryPosition ?? "top");
+  insertIntoZone(
+    owner,
+    destination,
+    cardId,
+    // "Shuffle it into its owner's library" — not onto the top of it, which
+    // is where a redirected move would otherwise land.
+    destination === "library" && shufflesIntoLibraryInstead(state, cardId)
+      ? "shuffled"
+      : options.libraryPosition ?? "top",
+  );
   card.zone = destination;
   applyZoneChangeFlags(state, card, destination, options.fromCast);
   // Dauthi Voidwalker: the card is exiled WITH a void counter, and the
@@ -525,7 +563,16 @@ export function moveCardInPlace(
   // The Ozolith: +1/+1 counters at the moment of leaving (any exit).
   const leftCounters = located.zone === "battlefield" ? card.counters["p1p1"] ?? 0 : 0;
   removeFromZone(occupant, located.zone, cardId);
-  insertIntoZone(owner, destination, cardId, options.libraryPosition ?? "top");
+  insertIntoZone(
+    owner,
+    destination,
+    cardId,
+    // "Shuffle it into its owner's library" — not onto the top of it, which
+    // is where a redirected move would otherwise land.
+    destination === "library" && shufflesIntoLibraryInstead(state, cardId)
+      ? "shuffled"
+      : options.libraryPosition ?? "top",
+  );
   card.zone = destination;
   applyZoneChangeFlags(state, card, destination, options.fromCast);
   // Dauthi Voidwalker: the card is exiled WITH a void counter, and the

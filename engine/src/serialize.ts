@@ -5359,6 +5359,7 @@ function parseReplacements(value: unknown, label: string): ReplacementEffect[] {
     if (
       kind === "enters_tapped" ||
       kind === "graveyard_to_exile" ||
+      kind === "self_to_library_shuffled" ||
       kind === "opponents_graveyard_to_void_exile" ||
       kind === "empty_draw_wins" ||
       kind === "double_tokens" ||

@@ -2277,6 +2277,15 @@ more questions it can now ask:
   `TopOfLibraryGrant.payLifeInsteadOfMana` replaces the cost OUTRIGHT, the
   same way flashback does, and rides the same life-payment path. A cost
   that had merely been reduced would still refuse a caster with no mana.
+- **"Shuffle it into its owner's library instead"** — Blightsteel Colossus,
+  Progenitus, Darksteel Colossus. A replacement on the CARD, so it applies
+  from every zone (countered on the stack, discarded from hand), and the
+  first redirect that targets the library rather than exile — it overrides
+  the default insert position, because shuffling in is not putting on top.
+  The card never reaches a graveyard, so no dies-watcher sees it and there
+  is no window to respond in; that is the difference from Kozilek's trigger.
+  For a commander, the command-zone redirect wins (CR 903.9a is a choice,
+  and this engine makes it one way).
 - **Infect** (CR 702.90) and **poison counters** (CR 104.3c). Damage from an
   infect source gives a player poison counters instead of costing life, and
   gives a creature -1/-1 counters instead of marked damage — so it kills

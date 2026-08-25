@@ -16797,6 +16797,22 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
       result.replacements.push({ kind: "graveyard_to_exile" });
       continue;
     }
+    /**
+     * Blightsteel Colossus, Progenitus, Darksteel Colossus. A REPLACEMENT,
+     * where Kozilek's shuffle-back is a trigger: this card never reaches
+     * the graveyard at all, so nothing that watches a graveyard sees it and
+     * there is no window to respond in. The reveal is not modelled — every
+     * zone in this engine is already visible to the test harness, and
+     * nothing reads it.
+     */
+    if (
+      /^If (?:~|this creature|this card) would be put into a graveyard from anywhere, reveal (?:~|this creature|this card) and shuffle (?:it|~) into its owner's library instead$/i.test(
+        sentence,
+      )
+    ) {
+      result.replacements.push({ kind: "self_to_library_shuffled" });
+      continue;
+    }
 
     // Anointed Procession / Doubling Season: token doubling.
     if (
