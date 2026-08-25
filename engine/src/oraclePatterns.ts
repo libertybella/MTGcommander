@@ -10176,6 +10176,36 @@ function fuseRepeatXInPlace(sentences: string[], lineStart: boolean[]): void {
  * be read on its own — "those permanents" names a set that only the first
  * one knows.
  */
+/**
+ * Combat Celebrant prints the exert offer and the reflexive trigger it
+ * fires as two sentences, and neither reads on its own — "when you do"
+ * names the offer above it. Collapsed to a marker the clause below builds
+ * the whole attack trigger from.
+ */
+function fuseExertInPlace(sentences: string[], lineStart: boolean[]): void {
+  for (let index = 0; index + 1 < sentences.length; index += 1) {
+    if (lineStart[index + 1] || !sentences[index] || !sentences[index + 1]) {
+      continue;
+    }
+    if (
+      !/^If (?:~|this creature) hasn't been exerted this turn, you may exert it as it attacks$/i.test(
+        sentences[index]!,
+      )
+    ) {
+      continue;
+    }
+    if (
+      !/^When you do, untap all other creatures you control and after this phase, there is an additional combat phase$/i.test(
+        sentences[index + 1]!,
+      )
+    ) {
+      continue;
+    }
+    sentences.splice(index, 2, "combat-celebrant-exert");
+    lineStart.splice(index + 1, 1);
+  }
+}
+
 function fuseRipplesInPlace(sentences: string[], lineStart: boolean[]): void {
   for (let index = 0; index + 1 < sentences.length; index += 1) {
     if (lineStart[index + 1] || !sentences[index] || !sentences[index + 1]) {
@@ -14208,6 +14238,7 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
   fuseSawInHalfInPlace(sentences, lineStart);
   fuseInkshieldInPlace(sentences, lineStart);
   fuseRipplesInPlace(sentences, lineStart);
+  fuseExertInPlace(sentences, lineStart);
   // A printed line is an ability, so these mark where the current line's
   // output begins. Riders that reach BACKWARD — the regeneration denial
   // below — use them to stop at the line they were printed on.
@@ -17913,6 +17944,33 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
             playerId: "source_owner",
             zones: ["graveyard"],
           },
+        ],
+        targetRequirements: [],
+      });
+      continue;
+    }
+
+    /**
+     * Combat Celebrant, once the fuser has joined its offer to the trigger
+     * that offer fires. The "may" is a DOCUMENTED AUTO-TAKE: the engine
+     * always exerts, which for this card is always right — an extra combat
+     * phase and an untapped board cost it one untap step it was going to
+     * spend attacking anyway.
+     */
+    if (/^combat-celebrant-exert$/i.test(sentence)) {
+      result.triggers.push({
+        event: "attacks",
+        watch: "self",
+        condition: { kind: "self_not_exerted_this_turn" },
+        effects: [
+          { kind: "exert", cardId: "self" },
+          {
+            kind: "untap_all",
+            playerId: "controller",
+            what: "creature",
+            excludeSource: true,
+          },
+          { kind: "extra_combat" },
         ],
         targetRequirements: [],
       });

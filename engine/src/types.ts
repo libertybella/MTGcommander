@@ -679,6 +679,13 @@ export type CardInstance = {
   attacking: boolean;
   blockingAttackerId: CardInstanceId | null;
   summoningSick: boolean;
+  /**
+   * Exert (CR 701.39). One flag answering two questions: "has it been
+   * exerted this turn", which gates the attack, and "it doesn't untap
+   * during your next untap step", which is what exerting costs. Cleared by
+   * that untap step, which is also the step it makes the creature miss.
+   */
+  exertedThisTurn?: boolean;
   counters: Record<string, number>;
   /**
    * CR 702.26: a phased-out permanent is treated as though it did not
@@ -1696,7 +1703,16 @@ export type GameEffect =
   /** Mindbreak Trap — see the definition form for why this is not a counter. */
   | { kind: "exile_spell"; stackObjectId: StackObjectId }
   | { kind: "extra_combat" }
-  | { kind: "untap_all"; playerId: PlayerId; what: "creature" | "land" | "attacking" | "nonland" }
+  | {
+      kind: "untap_all";
+      playerId: PlayerId;
+      what: "creature" | "land" | "attacking" | "nonland";
+      /** Combat Celebrant: "all OTHER creatures you control". */
+      excludeSource?: boolean;
+      sourceId?: CardInstanceId;
+    }
+  /** Combat Celebrant: mark the source exerted (CR 701.39). */
+  | { kind: "exert"; cardId: CardInstanceId }
   /** Cryptic Command: "Tap all creatures your opponents control." */
   | { kind: "tap_all"; playerId: PlayerId; what: "creature" | "land" }
   /**
@@ -3162,7 +3178,11 @@ export type CardEffect =
       kind: "untap_all";
       playerId: PlayerSelector;
       what: "creature" | "land" | "attacking" | "nonland";
+      /** Combat Celebrant: "all OTHER creatures you control". */
+      excludeSource?: boolean;
     }
+  /** Combat Celebrant — see the bound form. */
+  | { kind: "exert"; cardId: CardIdSelector }
   | { kind: "tap_all"; playerId: PlayerSelector; what: "creature" | "land" }
   | { kind: "goad"; target: ChosenTargetRef }
   | { kind: "goad_all" }
@@ -3947,6 +3967,11 @@ export type TriggerCondition =
    * survive the move in this engine, which is what makes the intervening-if
    * answerable at all. */
   | { kind: "self_no_counter"; counter: string }
+  /**
+   * Combat Celebrant: "if this creature hasn't been exerted this turn".
+   * The same flag the untap step spends, asked before it is set.
+   */
+  | { kind: "self_not_exerted_this_turn" }
   /** Glint-Horn Buccaneer: "Activate only if this creature is attacking." */
   | { kind: "self_attacking" }
   | { kind: "graveyard_cards_at_least"; count: number }

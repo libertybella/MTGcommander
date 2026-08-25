@@ -244,6 +244,10 @@ function onEnterStep(state: GameState): GameState {
         // Vorinclex froze it: skip this one untap step, then clear.
         if (card.skipNextUntap) {
           card.skipNextUntap = false;
+        } else if (card.exertedThisTurn) {
+          // Exert (CR 701.39): it misses THIS untap step, and the mark is
+          // spent doing so — which is also what frees it to exert again.
+          card.exertedThisTurn = false;
         } else if (!staysTapped) {
           untapInPlace(card);
         }

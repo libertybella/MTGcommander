@@ -191,6 +191,11 @@ export function triggerConditionHolds(
   if (condition.kind === "drew_cards_this_turn") {
     return (state.drawsByPlayerThisTurn?.[controllerId] ?? 0) > condition.moreThan;
   }
+  if (condition.kind === "self_not_exerted_this_turn") {
+    // The WATCHER, not the subject: "this creature hasn't been exerted",
+    // and under an attacks trigger those are the same card anyway.
+    return watcherId ? state.cards[watcherId]?.exertedThisTurn !== true : true;
+  }
   if (condition.kind === "gained_life_this_turn") {
     return (state.lifeGainedByPlayerThisTurn?.[controllerId] ?? 0) >= condition.atLeast;
   }

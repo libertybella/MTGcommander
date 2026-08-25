@@ -58961,3 +58961,195 @@ describe("wave 372: proliferate, and phasing out what it fed", () => {
     ]);
   });
 });
+
+describe("wave 373: exert, and the untap step it costs", () => {
+  const compile = (
+    name: string,
+    typeLine: string,
+    oracleText: string,
+    manaCost = "",
+    pt: [string, string] | null = null,
+  ) =>
+    compileOracleCard({
+      oracleId: name.toLowerCase().replace(/[^a-z]+/g, "-"),
+      name,
+      manaCost,
+      typeLine,
+      power: pt?.[0] ?? null,
+      toughness: pt?.[1] ?? null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  const put = (game: GameState, ownerId: string, definition: CardDefinition) => {
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({
+      definitionId: definition.id,
+      ownerId,
+      zone: "battlefield",
+    });
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === ownerId)!.zones.battlefield.push(card.id);
+    card.summoningSick = false;
+    return card.id;
+  };
+
+  const celebrantText =
+    "If this creature hasn't been exerted this turn, you may exert it as it attacks. When you do, untap all other creatures you control and after this phase, there is an additional combat phase.";
+
+  it("compiles Combat Celebrant to one attack trigger", () => {
+    const compiled = compile(
+      "Combat Celebrant",
+      "Creature — Human Warrior",
+      celebrantText,
+      "{2}{R}",
+      ["4", "1"],
+    );
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.triggers[0]).toEqual({
+      event: "attacks",
+      watch: "self",
+      condition: { kind: "self_not_exerted_this_turn" },
+      effects: [
+        { kind: "exert", cardId: "self" },
+        { kind: "untap_all", playerId: "controller", what: "creature", excludeSource: true },
+        { kind: "extra_combat" },
+      ],
+      targetRequirements: [],
+    });
+  });
+
+  const bear = (name: string) =>
+    createCardDefinition({
+      name,
+      typeLine: "Creature — Bear",
+      manaCost: "{1}{G}",
+      power: 2,
+      toughness: 2,
+    });
+
+  it("untaps the others and leaves the exerted one tapped", () => {
+    const { game, p1 } = twoPlayers();
+    const sourceId = put(game, p1.id, bear("Celebrant"));
+    const otherId = put(game, p1.id, bear("Other"));
+    game.cards[sourceId]!.tapped = true;
+    game.cards[otherId]!.tapped = true;
+    const after = applyEffects(
+      game,
+      bindCardEffects(
+        game,
+        [
+          { kind: "exert", cardId: "self" },
+          {
+            kind: "untap_all",
+            playerId: "controller",
+            what: "creature",
+            excludeSource: true,
+          },
+        ],
+        { controllerId: p1.id, sourceId, targets: [], targetRequirements: [] },
+      ),
+    );
+    // "All OTHER creatures you control" — the attacker stays tapped, which
+    // is the whole cost of the trick.
+    expect(after.cards[sourceId]?.tapped).toBe(true);
+    expect(after.cards[otherId]?.tapped).toBe(false);
+    expect(after.cards[sourceId]?.exertedThisTurn).toBe(true);
+  });
+
+  it("leaves an opponent's creatures tapped", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const sourceId = put(game, p1.id, bear("Celebrant"));
+    const theirsId = put(game, p2.id, bear("Theirs"));
+    game.cards[theirsId]!.tapped = true;
+    const after = applyEffects(
+      game,
+      bindCardEffects(
+        game,
+        [
+          {
+            kind: "untap_all",
+            playerId: "controller",
+            what: "creature",
+            excludeSource: true,
+          },
+        ],
+        { controllerId: p1.id, sourceId, targets: [], targetRequirements: [] },
+      ),
+    );
+    expect(after.cards[theirsId]?.tapped).toBe(true);
+  });
+
+  const exertCondition = { kind: "self_not_exerted_this_turn" } as const;
+
+  it("gates the trigger on not having been exerted this turn", () => {
+    const { game, p1 } = twoPlayers();
+    const sourceId = put(game, p1.id, bear("Celebrant"));
+    expect(triggerConditionHolds(game, p1.id, exertCondition, undefined, sourceId)).toBe(true);
+    game.cards[sourceId]!.exertedThisTurn = true;
+    // Once per turn: the offer is gone until the mark is spent.
+    expect(triggerConditionHolds(game, p1.id, exertCondition, undefined, sourceId)).toBe(false);
+  });
+
+  it("misses the next untap step, and is free again after it", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    const sourceId = put(game, p1.id, bear("Celebrant"));
+    const otherId = put(game, p1.id, bear("Other"));
+    game.cards[sourceId]!.tapped = true;
+    game.cards[otherId]!.tapped = true;
+    game.cards[sourceId]!.exertedThisTurn = true;
+    // Its controller's NEXT untap step, which in a two-player game is the
+    // turn after the opponent's.
+    game.turn.activePlayerId = p2.id;
+    beginNextLivingTurnInPlace(game);
+    expect(game.turn.activePlayerId).toBe(p1.id);
+    // CR 701.39: it does not untap, and the mark is spent doing so.
+    expect(game.cards[sourceId]?.tapped).toBe(true);
+    expect(game.cards[sourceId]?.exertedThisTurn).toBeFalsy();
+    expect(game.cards[otherId]?.tapped).toBe(false);
+    expect(
+      triggerConditionHolds(game, p1.id, exertCondition, undefined, sourceId),
+    ).toBe(true);
+  });
+
+  it("round trips the mark and the other-untap", () => {
+    const { game, p1 } = twoPlayers();
+    const definition = createCardDefinition({
+      name: "Wave 373 Celebrant",
+      typeLine: "Creature — Human Warrior",
+      manaCost: "{2}{R}",
+      power: 4,
+      toughness: 1,
+      triggers: [
+        {
+          event: "attacks",
+          watch: "self",
+          condition: { kind: "self_not_exerted_this_turn" },
+          effects: [
+            { kind: "exert", cardId: "self" },
+            {
+              kind: "untap_all",
+              playerId: "controller",
+              what: "creature",
+              excludeSource: true,
+            },
+            { kind: "extra_combat" },
+          ],
+          targetRequirements: [],
+        },
+      ],
+    });
+    const cardId = put(game, p1.id, definition);
+    game.cards[cardId]!.exertedThisTurn = true;
+    const round = parseGameState(serializeGameState(game));
+    expect(round.cards[cardId]?.exertedThisTurn).toBe(true);
+    expect(round.definitions[definition.id]?.triggers[0]?.effects[1]).toMatchObject({
+      excludeSource: true,
+    });
+    expect(round.definitions[definition.id]?.triggers[0]?.condition).toEqual({
+      kind: "self_not_exerted_this_turn",
+    });
+  });
+});

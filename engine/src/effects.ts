@@ -2406,7 +2406,20 @@ export function bindCardEffect(
       if (!playerId) {
         return null;
       }
-      return { kind: "untap_all", playerId, what: effect.what };
+      return {
+        kind: "untap_all",
+        playerId,
+        what: effect.what,
+        // "All OTHER creatures you control" needs to know which one is
+        // this one, and the source is the only thing that knows.
+        ...(effect.excludeSource && context.sourceId
+          ? { excludeSource: true, sourceId: context.sourceId }
+          : {}),
+      };
+    }
+    case "exert": {
+      const exertId = bindCardId(state, effect.cardId, context);
+      return exertId ? { kind: "exert", cardId: exertId } : null;
     }
     case "tap_all": {
       const playerId = bindPlayerSelector(state, effect.playerId, context);
@@ -5807,6 +5820,17 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
         }
         break;
       }
+      case "exert": {
+        // CR 701.39: exerting is a mark, not an action — the creature is
+        // already attacking and stays tapped; what it buys is skipping its
+        // controller's next untap step.
+        next = cloneGameState(state);
+        const exerted = next.cards[effect.cardId];
+        if (exerted?.zone === "battlefield") {
+          exerted.exertedThisTurn = true;
+        }
+        break;
+      }
       case "untap_all": {
         next = cloneGameState(state);
         const untapped: EngineEvent[] = [];
@@ -5816,6 +5840,9 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
             ? new Set((next.combat?.attacks ?? []).map((attack) => attack.attackerId))
             : null;
         for (const card of Object.values(next.cards)) {
+          if (effect.excludeSource && card.id === effect.sourceId) {
+            continue;
+          }
           if (
             card.zone === "battlefield" &&
             (attackingIds

@@ -2277,6 +2277,10 @@ more questions it can now ask:
   `TopOfLibraryGrant.payLifeInsteadOfMana` replaces the cost OUTRIGHT, the
   same way flashback does, and rides the same life-payment path. A cost
   that had merely been reduced would still refuse a caster with no mana.
+- **Exert** (CR 701.39) — Combat Celebrant. One flag answers both halves:
+  it gates "hasn't been exerted this turn" and it makes the creature miss
+  its controller's next untap step, which is also the step that clears it.
+  Exerting is auto-taken.
 - **"Permanents that had a counter put on them this way"** — Ripples of
   Potential. That set exists only inside the proliferate that made it, so
   the phase-out is a rider on the same effect rather than a separate one

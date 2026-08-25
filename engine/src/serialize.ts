@@ -590,6 +590,7 @@ export function parseGameState(json: string): GameState {
         : {}),
       loyaltyActivatedThisTurn: card.loyaltyActivatedThisTurn === true,
       ...(card.skipNextUntap === true ? { skipNextUntap: true } : {}),
+      ...(card.exertedThisTurn === true ? { exertedThisTurn: true } : {}),
       ...(card.goadedBy === undefined
         ? {}
         : {
@@ -3957,8 +3958,15 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
       if (what !== "creature" && what !== "land" && what !== "attacking" && what !== "nonland") {
         throw new Error(`Invalid ${label}.what`);
       }
-      return { kind, playerId: parsePlayerSelector(value.playerId, `${label}.playerId`), what };
+      return {
+        kind,
+        playerId: parsePlayerSelector(value.playerId, `${label}.playerId`),
+        what,
+        ...(value.excludeSource === true ? { excludeSource: true } : {}),
+      };
     }
+    case "exert":
+      return { kind, cardId: parseCardIdSelector(value.cardId, `${label}.cardId`) };
     case "tap_all": {
       const tapWhat = expectString(value.what, `${label}.what`);
       if (tapWhat !== "creature" && tapWhat !== "land") {
@@ -5321,7 +5329,10 @@ function parseTriggerCondition(value: unknown, label: string): TriggerCondition 
           atLeast: expectNumber(value.atLeast, `${label}.atLeast`),
         };
       }
-      if (conditionKind === "created_token_this_turn") {
+      if (
+        conditionKind === "created_token_this_turn" ||
+        conditionKind === "self_not_exerted_this_turn"
+      ) {
         return { kind: conditionKind };
       }
       if (conditionKind === "controls_commander") {
@@ -7136,7 +7147,18 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
     if (what !== "creature" && what !== "land" && what !== "attacking" && what !== "nonland") {
       throw new Error(`Invalid ${label}.what`);
     }
-    return { kind, playerId: expectString(value.playerId, `${label}.playerId`), what };
+    return {
+      kind,
+      playerId: expectString(value.playerId, `${label}.playerId`),
+      what,
+      ...(value.excludeSource === true ? { excludeSource: true } : {}),
+      ...(value.sourceId === undefined
+        ? {}
+        : { sourceId: expectString(value.sourceId, `${label}.sourceId`) }),
+    };
+  }
+  if (kind === "exert") {
+    return { kind, cardId: expectString(value.cardId, `${label}.cardId`) };
   }
   if (kind === "tap_all") {
     const tapWhat = expectString(value.what, `${label}.what`);
