@@ -2277,6 +2277,11 @@ more questions it can now ask:
   `TopOfLibraryGrant.payLifeInsteadOfMana` replaces the cost OUTRIGHT, the
   same way flashback does, and rides the same life-payment path. A cost
   that had merely been reduced would still refuse a caster with no mana.
+- **"Half its power, round up" and "if it dies this way"** — Saw in Half.
+  The halving resolves at BIND (effects bind as a batch, so that is the last
+  moment the creature is on the battlefield to measure) and the death check
+  at APPLY (the first moment the answer exists). Indestructible, regeneration
+  and totem armor each mean no copies at all.
 - **Token multipliers beyond doubling** — Ojer Taq. `double_tokens` carries
   a `multiplier` and an optional `creaturesOnly` scope; multipliers compound
   (CR 614.1c), so a tripler beside a doubler is six. The shared factor asks

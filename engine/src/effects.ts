@@ -1972,6 +1972,17 @@ export function bindCardEffect(
       if (!ofCardId) {
         return null;
       }
+      /**
+       * Saw in Half measures the creature HERE, before the sibling that
+       * destroys it has run — effects bind as a batch, so this is the one
+       * moment the creature is still on the battlefield to be halved.
+       */
+      const halved = effect.halvePtRoundUp
+        ? {
+            power: Math.ceil(Math.max(0, creaturePower(state, ofCardId)) / 2),
+            toughness: Math.ceil(Math.max(0, creatureToughness(state, ofCardId)) / 2),
+          }
+        : null;
       return {
         kind: "copy_token",
         ownerId,
@@ -1979,7 +1990,9 @@ export function bindCardEffect(
         ...(effect.count && effect.count > 1 ? { count: effect.count } : {}),
         ...(effect.gainsHaste ? { gainsHaste: true } : {}),
         ...(effect.atEndStep ? { atEndStep: effect.atEndStep } : {}),
-        ...(effect.setPt ? { setPt: { ...effect.setPt } } : {}),
+        ...(effect.onlyIfDied ? { onlyIfDied: true } : {}),
+        ...(halved ? { setPt: halved } : {}),
+        ...(!halved && effect.setPt ? { setPt: { ...effect.setPt } } : {}),
         ...(effect.setColors ? { setColors: [...effect.setColors] } : {}),
         ...(effect.addSubtypes ? { addSubtypes: [...effect.addSubtypes] } : {}),
         ...(effect.notLegendary ? { notLegendary: true } : {}),
@@ -6005,9 +6018,21 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
       case "transform":
         next = applyTransform(state, effect.cardId);
         break;
-      case "copy_token":
+      case "copy_token": {
+        /**
+         * Saw in Half: "IF that creature dies this way". The sibling
+         * destruction has run by now, so this is the moment to ask — and
+         * the answer is no whenever indestructible, a regeneration shield
+         * or totem armor stopped it, in which case no copies are made at
+         * all.
+         */
+        if (effect.onlyIfDied && state.cards[effect.ofCardId]?.zone !== "graveyard") {
+          next = cloneGameState(state);
+          break;
+        }
         next = applyCopyToken(state, effect.ownerId, effect.ofCardId, effect);
         break;
+      }
       case "exile_top_play": {
         // Impulse: the exiled cards stay castable/playable by the effect's
         // controller for the rest of the turn (costs paid as normal).

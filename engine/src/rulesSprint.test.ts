@@ -19,7 +19,7 @@ import {
 } from "./index";
 import { activatedOf, cardMatchesSubtype, computedCard, dynamicCountOf, mergeProtection, triggersOf } from "./characteristicsEngine";
 import { mostCommonControlledCreatureType } from "./effects";
-import { altCastPayment, canPlayLandFromTop, creaturePower, hasCoven, queueEnterReplacementChoicesInPlace, topOfLibraryGrant } from "./derived";
+import { altCastPayment, canPlayLandFromTop, creaturePower, creatureToughness, hasCoven, queueEnterReplacementChoicesInPlace, topOfLibraryGrant } from "./derived";
 import { attackLimitFor, blockAllowanceFor, castCostReduction, castableFromTop, drawCapFor, freeEquipGranted, hasFlashGrant, landDropAllowance, maxHandSizeOf, noncreatureSpellCap, permanentsControlledBy, playerHasHexproof, reliefAdjustedCost, selfDiscountAmount, wouldEnterTapped } from "./derived";
 import { characteristicsOf } from "./cardTypes";
 import { keywordCoverage } from "./keywordCatalog";
@@ -58197,6 +58197,202 @@ describe("wave 368: tripled tokens, and a return that arrives transformed", () =
     ]);
     expect(round.definitions[definition.id]?.triggers[0]?.effects[0]).toMatchObject({
       transformed: true,
+    });
+  });
+});
+
+describe("wave 369: halved before, counted after", () => {
+  const compile = (name: string, typeLine: string, oracleText: string, manaCost = "") =>
+    compileOracleCard({
+      oracleId: name.toLowerCase().replace(/[^a-z]+/g, "-"),
+      name,
+      manaCost,
+      typeLine,
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  const put = (game: GameState, ownerId: string, definition: CardDefinition) => {
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({
+      definitionId: definition.id,
+      ownerId,
+      zone: "battlefield",
+    });
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === ownerId)!.zones.battlefield.push(card.id);
+    card.summoningSick = false;
+    return card.id;
+  };
+
+  const sawText =
+    "Destroy target creature. If that creature dies this way, its controller creates two tokens that are copies of that creature, except their power is half that creature's power and their toughness is half that creature's toughness. Round up each time.";
+
+  it("compiles the whole card", () => {
+    const compiled = compile("Saw in Half", "Instant", sawText, "{2}{B}");
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.effects).toEqual([
+      {
+        kind: "move_card",
+        cardId: { type: "chosen", index: 0 },
+        toZone: "graveyard",
+        destroy: true,
+      },
+      {
+        kind: "copy_token",
+        ownerId: { type: "chosen_controller", index: 0 },
+        ofCardId: { type: "chosen", index: 0 },
+        count: 2,
+        halvePtRoundUp: true,
+        onlyIfDied: true,
+      },
+    ]);
+  });
+
+  const sawEffects: CardEffect[] = [
+    {
+      kind: "move_card",
+      cardId: { type: "chosen", index: 0 },
+      toZone: "graveyard",
+      destroy: true,
+    },
+    {
+      kind: "copy_token",
+      ownerId: { type: "chosen_controller", index: 0 },
+      ofCardId: { type: "chosen", index: 0 },
+      count: 2,
+      halvePtRoundUp: true,
+      onlyIfDied: true,
+    },
+  ];
+
+  const saw = (game: GameState, casterId: string, victimId: string) =>
+    applyEffects(
+      game,
+      bindCardEffects(game, sawEffects, {
+        controllerId: casterId,
+        sourceId: null,
+        targets: [{ type: "creature", cardId: victimId }],
+        targetRequirements: [{ kind: "creature" }],
+      }),
+    );
+
+  const beast = (name: string, power: number, toughness: number, extra = {}) =>
+    createCardDefinition({
+      name,
+      typeLine: "Creature — Beast",
+      manaCost: "{4}{G}",
+      power,
+      toughness,
+      ...extra,
+    });
+
+  const tokensOf = (game: GameState, playerId: string) =>
+    Object.values(game.cards).filter(
+      (card) => card.isToken && card.controllerId === playerId && card.zone === "battlefield",
+    );
+
+  it("makes two halves, rounded up, for the creature's controller", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const victimId = put(game, p2.id, beast("Big Beast", 5, 5));
+    const after = saw(game, p1.id, victimId);
+    expect(after.cards[victimId]?.zone).toBe("graveyard");
+    // "Its controller creates" — the tokens are the victim's, which is most
+    // of why the card is played.
+    const tokens = tokensOf(after, p2.id);
+    expect(tokens).toHaveLength(2);
+    expect(tokensOf(after, p1.id)).toHaveLength(0);
+    for (const token of tokens) {
+      // Half of five, rounded up, twice over.
+      expect(creaturePower(after, token.id)).toBe(3);
+      expect(creatureToughness(after, token.id)).toBe(3);
+    }
+  });
+
+  it("measures the creature BEFORE it dies", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const victimId = put(game, p2.id, beast("Bear", 2, 2));
+    const after = saw(game, p1.id, victimId);
+    // Effects bind as a batch, so the halving happens while the creature is
+    // still on the battlefield. Read after the destruction there would be
+    // nothing on the battlefield to measure.
+    for (const token of tokensOf(after, p2.id)) {
+      expect(creaturePower(after, token.id)).toBe(1);
+    }
+  });
+
+  it("makes nothing when the creature does not die", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const victimId = put(
+      game,
+      p2.id,
+      beast("Steel Beast", 4, 4, { keywords: ["indestructible"] }),
+    );
+    const after = saw(game, p1.id, victimId);
+    // "IF that creature dies this way" — it did not, so there are no
+    // copies at all.
+    expect(after.cards[victimId]?.zone).toBe("battlefield");
+    expect(tokensOf(after, p2.id)).toHaveLength(0);
+  });
+
+  it("makes nothing when a regeneration shield eats the destruction", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const victimId = put(game, p2.id, beast("Shielded", 4, 4));
+    const shielded = applyEffect(game, { kind: "regenerate", cardIds: [victimId] });
+    const after = saw(shielded, p1.id, victimId);
+    expect(after.cards[victimId]?.zone).toBe("battlefield");
+    expect(tokensOf(after, p2.id)).toHaveLength(0);
+  });
+
+  it("makes nothing when totem armor takes the hit", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const victimId = put(game, p2.id, beast("Wrapped", 4, 4));
+    const umbraId = put(
+      game,
+      p2.id,
+      createCardDefinition({
+        name: "Eel Umbra",
+        typeLine: "Enchantment — Aura",
+        manaCost: "{1}{U}",
+        totemArmor: true,
+      }),
+    );
+    game.cards[umbraId]!.attachedTo = victimId;
+    const after = saw(game, p1.id, victimId);
+    expect(after.cards[victimId]?.zone).toBe("battlefield");
+    expect(after.cards[umbraId]?.zone).toBe("graveyard");
+    expect(tokensOf(after, p2.id)).toHaveLength(0);
+  });
+
+  it("halves a one-power creature to one, not to nothing", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const victimId = put(game, p2.id, beast("Weakling", 1, 1));
+    const after = saw(game, p1.id, victimId);
+    // Round UP each time: a 1/1 makes two 1/1s, which is the whole joke of
+    // the card.
+    for (const token of tokensOf(after, p2.id)) {
+      expect(creaturePower(after, token.id)).toBe(1);
+      expect(creatureToughness(after, token.id)).toBe(1);
+    }
+  });
+
+  it("round trips both flags", () => {
+    const { game, p1 } = twoPlayers();
+    const definition = createCardDefinition({
+      name: "Wave 369 Saw",
+      typeLine: "Instant",
+      manaCost: "{2}{B}",
+      effects: sawEffects,
+      targetRequirements: [{ kind: "creature" }],
+    });
+    put(game, p1.id, definition);
+    const round = parseGameState(serializeGameState(game));
+    expect(round.definitions[definition.id]?.effects[1]).toMatchObject({
+      halvePtRoundUp: true,
+      onlyIfDied: true,
     });
   });
 });

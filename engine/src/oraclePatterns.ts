@@ -4971,6 +4971,32 @@ function compileSimpleClauseInner(sentence: string): SimpleClause | null {
   }
 
   /**
+   * Saw in Half's rider, once the fuser has joined it to the destruction it
+   * follows. Two halves that pull in opposite directions: the halved P/T is
+   * measured at BIND, while the creature is still on the battlefield to be
+   * measured, and "if that creature dies this way" is asked at APPLY, after
+   * the destruction either worked or was replaced.
+   */
+  if (
+    /^saw-in-half-copies$/i.test(sentence)
+  ) {
+    return {
+      targetRequirements: [],
+      chosenBase: 1,
+      effects: [
+        {
+          kind: "copy_token",
+          ownerId: { type: "chosen_controller", index: 0 },
+          ofCardId: { type: "chosen", index: 0 },
+          count: 2,
+          halvePtRoundUp: true,
+          onlyIfDied: true,
+        },
+      ],
+    };
+  }
+
+  /**
    * Eldritch Evolution. The cap is read from the creature the ADDITIONAL
    * COST already ate — captured on the stack when the cost was paid,
    * because by the time this binds nothing remembers which creature it
@@ -10051,6 +10077,30 @@ function fuseRepeatXInPlace(sentences: string[], lineStart: boolean[]): void {
  * form is what every search clause reads, so the two are joined rather
  * than every one of those clauses learning a second shape.
  */
+/**
+ * Saw in Half prints its rider across two sentences — the copies, then
+ * "Round up each time." — and the rider itself is long enough that reading
+ * it as one clause would be a regex nobody can check. Both are collapsed to
+ * a marker the clause below reads, which keeps the shape of the card in the
+ * fuser and the meaning in the clause.
+ */
+function fuseSawInHalfInPlace(sentences: string[], lineStart: boolean[]): void {
+  for (let index = 0; index + 1 < sentences.length; index += 1) {
+    if (lineStart[index + 1] || !sentences[index] || !sentences[index + 1]) {
+      continue;
+    }
+    const copies =
+      /^If that creature dies this way, its controller creates two tokens that are copies of that creature, except their power is half that creature's power and their toughness is half that creature's toughness$/i.test(
+        sentences[index]!,
+      );
+    if (!copies || !/^Round up each time$/i.test(sentences[index + 1]!)) {
+      continue;
+    }
+    sentences.splice(index, 2, "saw-in-half-copies");
+    lineStart.splice(index + 1, 1);
+  }
+}
+
 function fuseSearchPutInPlace(sentences: string[], lineStart: boolean[]): void {
   for (let index = 0; index + 1 < sentences.length; index += 1) {
     if (lineStart[index + 1] || !sentences[index] || !sentences[index + 1]) {
@@ -14019,6 +14069,7 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
   splitActivationRidersInPlace(sentences, lineStart);
   fuseRepeatXInPlace(sentences, lineStart);
   fuseSearchPutInPlace(sentences, lineStart);
+  fuseSawInHalfInPlace(sentences, lineStart);
   // A printed line is an ability, so these mark where the current line's
   // output begins. Riders that reach BACKWARD — the regeneration denial
   // below — use them to stop at the line they were printed on.

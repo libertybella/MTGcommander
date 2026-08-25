@@ -2034,6 +2034,11 @@ export type GameEffect =
       /** Myriad: exiled when combat ends, not at the end step. */
       atEndCombat?: "exile";
       setPt?: { power: number; toughness: number };
+      /**
+       * Saw in Half: make the copies only if the creature really died —
+       * checked here, at apply, because a destruction can be replaced.
+       */
+      onlyIfDied?: boolean;
       /** Eternalize: the copy is black and a Zombie on top of its own types. */
       setColors?: Color[];
       addSubtypes?: string[];
@@ -3508,6 +3513,20 @@ export type CardEffect =
       ofCardId: ChosenTargetRef | CardInstanceId | "self" | "host";
       /** "create five of those tokens" (kicked Rite of Replication). */
       count?: number;
+      /**
+       * Saw in Half: "their power is half that creature's power … round up".
+       * Resolved to a concrete `setPt` at BIND, which is the only moment it
+       * can be — the sibling destruction has not run yet, so the creature is
+       * still on the battlefield to be measured.
+       */
+      halvePtRoundUp?: boolean;
+      /**
+       * Saw in Half: "IF that creature dies this way". Checked at APPLY,
+       * which is the only moment IT can be — indestructible, regeneration
+       * and totem armor all stop the death, and the copies come only when
+       * the creature really went.
+       */
+      onlyIfDied?: boolean;
       /** "It gains haste" / delayed end-step riders (Jaxis-class shells). */
       gainsHaste?: boolean;
       atEndStep?: "sacrifice" | "exile";
