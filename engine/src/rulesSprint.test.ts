@@ -70085,3 +70085,124 @@ describe("wave 418: Welding Jar", () => {
     });
   });
 });
+
+describe("wave 419: Niv-Mizzet, Visionary", () => {
+  const compile = (name: string, typeLine: string, oracleText: string, manaCost = "") =>
+    compileOracleCard({
+      oracleId: name.toLowerCase().replace(/[^a-z]+/g, "-"),
+      name,
+      manaCost,
+      typeLine,
+      power: "5",
+      toughness: "5",
+      printedKeywords: ["Flying"],
+      imageUrl: "",
+      oracleText,
+    });
+
+  const nivText =
+    "Flying\nYou have no maximum hand size.\nWhenever a source you control deals noncombat damage to an opponent, you draw that many cards.";
+
+  it("compiles the hand-size static and the noncombat draw trigger", () => {
+    const compiled = compile("Niv-Mizzet, Visionary", "Legendary Creature — Dragon Wizard", nivText, "{3}{U}{R}");
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.noMaxHandSize).toBe(true);
+    expect(compiled.definition.triggers[0]).toMatchObject({
+      event: "deals_damage_to_player",
+      watch: "controlled",
+      subjectPlayerOpponent: true,
+      noncombatOnly: true,
+      effects: [{ kind: "draw", playerId: "controller", count: "subject_amount" }],
+    });
+  });
+
+  const niv = () =>
+    createCardDefinition({
+      name: "Niv-Mizzet, Visionary",
+      typeLine: "Legendary Creature — Dragon Wizard",
+      manaCost: "{3}{U}{R}",
+      power: 5,
+      toughness: 5,
+      keywords: ["flying"],
+      noMaxHandSize: true,
+      triggers: [
+        {
+          event: "deals_damage_to_player",
+          watch: "controlled",
+          subjectPlayerOpponent: true,
+          noncombatOnly: true,
+          effects: [{ kind: "draw", playerId: "controller", count: "subject_amount" }],
+          targetRequirements: [],
+        },
+      ],
+    });
+
+  const put = (game: GameState, ownerId: string, definition: CardDefinition) => {
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({ definitionId: definition.id, ownerId, zone: "battlefield" });
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === ownerId)!.zones.battlefield.push(card.id);
+    card.summoningSick = false;
+    return card.id;
+  };
+
+  const bolt = (game: GameState, ownerId: string) => {
+    const def = createCardDefinition({ name: "Zapper", typeLine: "Creature — Elemental", manaCost: "{R}", power: 1, toughness: 1 });
+    return put(game, ownerId, def);
+  };
+
+  it("draws that many when a source you control deals noncombat damage to an opponent", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    put(game, p1.id, niv());
+    const zapperId = bolt(game, p1.id);
+    // Three noncombat damage to the opponent's face.
+    const after = applyEffects(game, [
+      { kind: "deal_damage", sourceId: zapperId, amount: 3, target: { type: "player", playerId: p2.id } },
+    ]);
+    // The reflexive draw is on the stack.
+    expect(after.stack).toHaveLength(1);
+    const resolved = resolveTopOfStack(after);
+    const drew =
+      resolved.players.find((entry) => entry.id === p1.id)!.zones.hand.length -
+      game.players.find((entry) => entry.id === p1.id)!.zones.hand.length;
+    expect(drew).toBe(3);
+  });
+
+  it("does NOT draw off combat damage — the whole point of 'noncombat'", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    put(game, p1.id, niv());
+    const attackerId = bolt(game, p1.id);
+    // The same event the combat step emits, marked as combat.
+    const after = structuredClone(game);
+    dispatchEventsInPlace(after, [
+      { kind: "deals_damage_to_player", cardId: attackerId, playerId: p2.id, amount: 3, combat: true },
+    ]);
+    expect(after.stack).toHaveLength(0);
+  });
+
+  it("ignores noncombat damage dealt to its own controller", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    put(game, p1.id, niv());
+    const zapperId = bolt(game, p1.id);
+    const after = applyEffects(game, [
+      { kind: "deal_damage", sourceId: zapperId, amount: 3, target: { type: "player", playerId: p1.id } },
+    ]);
+    // "to an opponent" — damage to yourself is not it.
+    expect(after.stack).toHaveLength(0);
+  });
+
+  it("round trips the noncombat flag", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const definition = niv();
+    put(game, p1.id, definition);
+    const round = parseGameState(serializeGameState(game));
+    expect(round.definitions[definition.id]?.triggers[0]).toMatchObject({
+      noncombatOnly: true,
+      watch: "controlled",
+    });
+  });
+});

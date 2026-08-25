@@ -800,6 +800,7 @@ function dealDamageToPlayerInPlace(
     cardId: sourceId,
     playerId: defenderId,
     amount: dealt,
+    combat: true,
   });
   collect?.push({ kind: "loses_life", playerId: defenderId, amount: lost });
   if (isCommander(state, sourceId)) {

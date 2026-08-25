@@ -4849,6 +4849,9 @@ export type CardTrigger = {
   /** No Mercy: "deals damage to YOU" — the mirror of the flag above. The
    * damaged player must be the watcher's controller, not merely someone. */
   subjectPlayerSelf?: boolean;
+  /** Niv-Mizzet, Visionary: "deals NONCOMBAT damage" — the same
+   * deals_damage_to_player event, minus the firings the combat step marks. */
+  noncombatOnly?: boolean;
   /** Exalted: only when exactly one creature is attacking. */
   attacksAlone?: boolean;
   /**
@@ -5010,6 +5013,10 @@ export type EngineEvent =
       playerId: PlayerId;
       /** Spinerock Knoll asks how MUCH, not merely whether. */
       amount: number;
+      /** Set when this fires from the combat damage step, so a trigger that
+       * only wants NONCOMBAT damage (Niv-Mizzet, Visionary) can pass it by.
+       * Combat emits this event alongside `combat_damage_to_player`. */
+      combat?: boolean;
     }
   | {
       kind: "draws";

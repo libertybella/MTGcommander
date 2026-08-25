@@ -1314,6 +1314,11 @@ function triggerMatchesEvent(
     if (trigger.subjectPlayerSelf && event.playerId !== watcher.controllerId) {
       return false;
     }
+    // Niv-Mizzet, Visionary: only noncombat damage. Combat marks its own
+    // firing of this event, so skip those.
+    if (trigger.noncombatOnly && event.combat === true) {
+      return false;
+    }
     return subjectMatchesFilter(state, event.cardId, trigger.subjectFilter, watcher);
   }
   if (trigger.event === "deals_damage_to_player") {
@@ -1538,7 +1543,9 @@ export function dispatchEventsInPlace(state: GameState, events: EngineEvent[]): 
             event.kind === "gains_life" ||
             event.kind === "loses_life" ||
             // Old Gnawbone / Kediss: "that many" is the damage just dealt.
-            event.kind === "combat_damage_to_player"
+            event.kind === "combat_damage_to_player" ||
+            // Niv-Mizzet, Visionary: "draw that many cards" off any damage.
+            event.kind === "deals_damage_to_player"
               ? event.amount
               : event.kind === "dies"
                 ? event.powerAtDeath

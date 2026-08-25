@@ -5863,6 +5863,7 @@ function parseTriggers(value: unknown, label: string): CardTrigger[] {
             ),
           }),
       ...(entry.subjectPlayerOpponent === true ? { subjectPlayerOpponent: true } : {}),
+      ...(entry.noncombatOnly === true ? { noncombatOnly: true } : {}),
       ...(entry.subjectPlayerSelf === true ? { subjectPlayerSelf: true } : {}),
       ...(entry.attacksAlone === true ? { attacksAlone: true } : {}),
       // Attach the filter when it has ANY field. This was a whitelist of

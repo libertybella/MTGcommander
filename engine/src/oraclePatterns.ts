@@ -12632,6 +12632,7 @@ type TriggerHead = Pick<
   | "excludeSelf"
   | "subjectFilter"
   | "subjectPlayerOpponent"
+  | "noncombatOnly"
   | "oncePerTurn"
   | "oncePerBatch"
   | "alsoOnCopy"
@@ -13358,6 +13359,15 @@ function parseTriggerHead(head: string): TriggerHead | null {
   }
   if (/^Whenever ~ deals damage to an opponent$/i.test(text)) {
     return { event: "deals_damage_to_player", subjectPlayerOpponent: true };
+  }
+  // Niv-Mizzet, Visionary: any source you control, noncombat damage only.
+  if (/^Whenever a source you control deals noncombat damage to an opponent$/i.test(text)) {
+    return {
+      event: "deals_damage_to_player",
+      watch: "controlled",
+      subjectPlayerOpponent: true,
+      noncombatOnly: true,
+    };
   }
   if (/^Whenever ~ deals damage to a player$/i.test(text)) {
     return { event: "deals_damage_to_player" };

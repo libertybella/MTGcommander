@@ -3053,3 +3053,4 @@ ends. Every printed card of this shape asks about the current turn.
 - Ungated recast permissions: cast from your graveyard with no condition (`castFromGraveyard: {}`) and cast from exile (`castFromExile`), for the printed cost — Squee, the Immortal. Distinct from Gravecrawler's gated graveyard cast and from the per-instance impulse/foretell exile grant.
 
 - Regenerate target artifact (Welding Jar), alongside the existing regenerate-target-creature — a regeneration shield on a non-creature permanent.
+- Noncombat-damage triggers: "a source you control deals noncombat damage to an opponent" draws that many (Niv-Mizzet, Visionary), via a `noncombatOnly` flag that skips the combat step's firing of the shared deals_damage_to_player event.
