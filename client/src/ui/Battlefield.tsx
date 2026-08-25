@@ -2036,6 +2036,10 @@ export function Battlefield(props: Props) {
               ? actorId === prompt.playerId
                 ? "Choose a mode you have not already chosen this turn."
                 : `Waiting for ${chooser?.displayName ?? "a player"} to choose a mode.`
+              : prompt.kind === "punisher_choice"
+              ? actorId === prompt.playerId
+                ? "Take the offer, or refuse it and take what follows."
+                : `Waiting for ${chooser?.displayName ?? "a player"} to choose.`
               : prompt.kind === "replace_draw_with_dredge"
               ? actorId === prompt.playerId
                 ? "Dredge instead of drawing, or take the draw."
@@ -2660,6 +2664,22 @@ export function Battlefield(props: Props) {
                   {prompt.kind === "pay_or_counter" ? "Decline (countered)" : "Decline"}
                 </button>
               </>
+            ) : null}
+            {actorId === prompt.playerId && prompt.kind === "punisher_choice" ? (
+              <div className="look-row" data-testid="punisher-choice">
+                <button
+                  type="button"
+                  onClick={() => send({ kind: "resolve_punisher", playerId: actorId, take: true })}
+                >
+                  Take the offer
+                </button>
+                <button
+                  type="button"
+                  onClick={() => send({ kind: "resolve_punisher", playerId: actorId, take: false })}
+                >
+                  Refuse
+                </button>
+              </div>
             ) : null}
             {actorId === prompt.playerId && prompt.kind === "replace_draw_with_dredge" ? (
               <div className="look-row" data-testid="dredge-picker">

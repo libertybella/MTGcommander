@@ -5547,6 +5547,36 @@ function compileSimpleClauseInner(sentence: string): SimpleClause | null {
    * clause: "you may tap X untapped Myr you control to do: <rider>", where
    * X is however many were tapped and the rider reads it.
    */
+  const punisher = sentence.match(/^punisher offer: (.+?) else: (.+)$/i);
+  if (punisher?.[1] && punisher[2]) {
+    const taken = compileSimpleClause(
+      `You ${punisher[1].replace(/\.$/, "")}`,
+    );
+    const declined = compileSimpleClause(
+      punisher[2].charAt(0).toUpperCase() + punisher[2].slice(1),
+    );
+    if (
+      taken &&
+      !taken.leftover &&
+      taken.targetRequirements.length === 0 &&
+      declined &&
+      !declined.leftover &&
+      declined.targetRequirements.length === 0
+    ) {
+      return {
+        targetRequirements: [],
+        effects: [
+          {
+            kind: "punisher_choice",
+            chooserId: "next_opponent",
+            ifTaken: taken.effects,
+            ifDeclined: declined.effects,
+          },
+        ],
+      };
+    }
+  }
+
   const tapForX = sentence.match(
     /^you may tap X untapped ([A-Z][a-z]+) you control to do: (.+)$/i,
   );
@@ -5580,6 +5610,23 @@ function compileSimpleClauseInner(sentence: string): SimpleClause | null {
    */
   // The subject is optional: a compound clause splits "~ gets +X/+0 and
   // deals X damage to …" and hands this half over without it.
+  const milledDamage = sentence.match(
+    /^~ deals damage to that player equal to the total mana value of those cards$/i,
+  );
+  if (milledDamage) {
+    return {
+      targetRequirements: [],
+      effects: [
+        {
+          kind: "deal_damage",
+          sourceId: "self",
+          target: { type: "player", playerId: { type: "subject_player" } },
+          amount: "milled_mana_value",
+        },
+      ],
+    };
+  }
+
   const attackedDamage = sentence.match(
     /^(?:~ )?deals (\w+) damage to the player or planeswalker it's attacking$/i,
   );
@@ -10314,6 +10361,36 @@ function compileDigUntilClause(sentence: string): CardEffect[] | null {
  * attacking." Fused, because the rider's every X is the count the first
  * sentence produced.
  */
+/**
+ * The punisher choice, printed as two sentences: "Target opponent may have
+ * you draw three cards." / "If the player doesn't, you mill three cards,
+ * then ~ deals damage to that player equal to the total mana value of
+ * those cards."
+ *
+ * Fused, because the second names the first's refusal. Read apart, the
+ * offer would be an effect with no consequence and the punishment an
+ * effect with no condition.
+ */
+function fusePunisherInPlace(sentences: string[], lineStart: boolean[]): void {
+  for (let index = 0; index + 1 < sentences.length; index += 1) {
+    if (lineStart[index + 1]) {
+      continue;
+    }
+    const head = sentences[index]?.match(
+      /^(.*?)(?:Target opponent|Any opponent|Defending player) may have you (.+)$/i,
+    );
+    const rider = sentences[index + 1]?.match(
+      /^If (?:the player doesn't|they don't|no player does), (.+)$/i,
+    );
+    if (head?.[1] === undefined || !head[2] || !rider?.[1]) {
+      continue;
+    }
+    sentences[index] = `${head[1]}punisher offer: ${head[2]} else: ${rider[1]}`;
+    sentences.splice(index + 1, 1);
+    lineStart.splice(index + 1, 1);
+  }
+}
+
 function fuseTapForXInPlace(sentences: string[], lineStart: boolean[]): void {
   for (let index = 0; index + 1 < sentences.length; index += 1) {
     if (lineStart[index + 1]) {
@@ -14917,6 +14994,7 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
   fuseInAdditionTypeInPlace(sentences, lineStart);
   fuseChooseGraveyardCastInPlace(sentences, lineStart);
   fusePutLandRiderInPlace(sentences, lineStart);
+  fusePunisherInPlace(sentences, lineStart);
   fuseTapForXInPlace(sentences, lineStart);
   fuseTemptingOfferInPlace(sentences, lineStart);
   fusePilesInPlace(sentences, lineStart);

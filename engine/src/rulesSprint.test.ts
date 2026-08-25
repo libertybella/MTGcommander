@@ -35,7 +35,7 @@ import { abilityLifeCost, colorsOutsideCommanderIdentity } from "./commanderIden
 import { addRestrictedMana, emptyManaPools, manaRiderFires, parseManaCost, payManaCost, restrictionAdmits, type ManaPurpose } from "./mana";
 import { applyStateBasedActionsInPlace } from "./status";
 import { legalActions, potentialMana, sacrificeColorMatches, sacrificeScopeMatches } from "./legalActions";
-import { applyResolveCardName, applyResolveChoosePile, applyResolveDredge, applyResolveDividePiles, applyResolveTapOwnForX, applyResolveTemptingOffer, applyResolveChooseCard, applyResolveChooseFromHand, applyResolveCreatureType, applyResolveDiscardLandOrGraveyard, applyResolveEnterCopy, applyResolveLookAssign, applyResolvePay, applyResolveSearch, applyResolveTriggerMode, legalEnterCopyIds, legalSearchIds, searchMatches } from "./prompt";
+import { applyResolveCardName, applyResolveChoosePile, applyResolveDredge, applyResolvePunisher, applyResolveDividePiles, applyResolveTapOwnForX, applyResolveTemptingOffer, applyResolveChooseCard, applyResolveChooseFromHand, applyResolveCreatureType, applyResolveDiscardLandOrGraveyard, applyResolveEnterCopy, applyResolveLookAssign, applyResolvePay, applyResolveSearch, applyResolveTriggerMode, legalEnterCopyIds, legalSearchIds, searchMatches } from "./prompt";
 import { parseGameState, serializeGameState } from "./serialize";
 import { fillLibraries } from "./testSupport";
 import { applyKeepHand, beginMulligan, isMulliganOpen } from "./mulligan";
@@ -63874,5 +63874,243 @@ describe("wave 391: dredge", () => {
     expect(prompt.cardIds).toEqual([loamId]);
     const finished = applyResolveDredge(round, p1.id, loamId);
     expect(finished.players.find((entry) => entry.id === p1.id)!.zones.hand).toContain(loamId);
+  });
+});
+
+describe("wave 392: the punisher choice", () => {
+  const compile = (
+    name: string,
+    typeLine: string,
+    oracleText: string,
+    manaCost = "",
+    pt: [string, string] | null = null,
+  ) =>
+    compileOracleCard({
+      oracleId: name.toLowerCase().replace(/[^a-z]+/g, "-"),
+      name,
+      manaCost,
+      typeLine,
+      power: pt?.[0] ?? null,
+      toughness: pt?.[1] ?? null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  const put = (
+    game: GameState,
+    ownerId: string,
+    definition: CardDefinition,
+    zone: "battlefield" | "library" = "battlefield",
+  ) => {
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({ definitionId: definition.id, ownerId, zone });
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === ownerId)!.zones[zone].push(card.id);
+    if (zone === "battlefield") {
+      card.summoningSick = false;
+    }
+    return card.id;
+  };
+
+  const gearhulkText =
+    "First strike\nWhen this creature enters, target opponent may have you draw three cards. If the player doesn't, you mill three cards, then this creature deals damage to that player equal to the total mana value of those cards.";
+
+  it("compiles Combustible Gearhulk as one choice with two branches", () => {
+    const compiled = compile(
+      "Combustible Gearhulk",
+      "Artifact Creature — Construct",
+      gearhulkText,
+      "{4}{R}{R}",
+      ["6", "6"],
+    );
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.triggers[0]?.effects).toEqual([
+      {
+        kind: "punisher_choice",
+        chooserId: "next_opponent",
+        ifTaken: [{ kind: "draw", playerId: "controller", count: 3 }],
+        ifDeclined: [
+          { kind: "mill", playerId: "controller", count: 3 },
+          {
+            kind: "deal_damage",
+            sourceId: "self",
+            target: { type: "player", playerId: { type: "subject_player" } },
+            amount: "milled_mana_value",
+          },
+        ],
+      },
+    ]);
+  });
+
+  // ---- The choice --------------------------------------------------------
+
+  const gearhulk = () =>
+    createCardDefinition({
+      name: "Combustible Gearhulk",
+      typeLine: "Artifact Creature — Construct",
+      manaCost: "{4}{R}{R}",
+      power: 6,
+      toughness: 6,
+      effects: [
+        {
+          kind: "punisher_choice",
+          chooserId: "next_opponent",
+          ifTaken: [{ kind: "draw", playerId: "controller", count: 3 }],
+          ifDeclined: [
+            { kind: "mill", playerId: "controller", count: 3 },
+            {
+              kind: "deal_damage",
+              sourceId: "self",
+              target: { type: "player", playerId: { type: "subject_player" } },
+              amount: "milled_mana_value",
+            },
+          ],
+        },
+      ],
+    });
+
+  const spell = (name: string, manaCost: string) =>
+    createCardDefinition({ name, typeLine: "Instant", manaCost });
+
+  const offer = (game: GameState, playerId: string, sourceId: string | null) =>
+    applyEffects(
+      game,
+      bindCardEffects(game, gearhulk().effects, {
+        controllerId: playerId,
+        sourceId,
+        targets: [],
+        targetRequirements: [],
+      }),
+    );
+
+  it("asks an opponent, not the controller", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    const sourceId = put(game, p1.id, gearhulk());
+    const after = offer(game, p1.id, sourceId);
+    const prompt = after.prompts[0];
+    expect(prompt?.kind).toBe("punisher_choice");
+    // Both branches are the card, so neither may be auto-taken by the
+    // player who would benefit.
+    expect(prompt?.playerId).toBe(p2.id);
+  });
+
+  it("draws three when the offer is taken", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    const sourceId = put(game, p1.id, gearhulk());
+    const before = game.players.find((entry) => entry.id === p1.id)!.zones.hand.length;
+    const after = applyResolvePunisher(offer(game, p1.id, sourceId), p2.id, true);
+    const owner = after.players.find((entry) => entry.id === p1.id)!;
+    expect(owner.zones.hand).toHaveLength(before + 3);
+    expect(owner.zones.graveyard).toHaveLength(0);
+  });
+
+  it("mills three and burns for their mana value when refused", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const sourceId = put(game, p1.id, gearhulk());
+    put(game, p1.id, spell("Two Drop", "{1}{R}"), "library");
+    put(game, p1.id, spell("Three Drop", "{2}{R}"), "library");
+    put(game, p1.id, spell("Four Drop", "{3}{R}"), "library");
+    fillLibraries(game, 10);
+    const before = game.players.find((entry) => entry.id === p2.id)!.life;
+    const after = applyResolvePunisher(offer(game, p1.id, sourceId), p2.id, false);
+    // Two plus three plus four, and it hits the player who refused.
+    expect(after.players.find((entry) => entry.id === p2.id)!.life).toBe(before - 9);
+    expect(after.players.find((entry) => entry.id === p1.id)!.zones.graveyard).toHaveLength(3);
+  });
+
+  it("reads the mana value of the cards THIS mill made", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const sourceId = put(game, p1.id, gearhulk());
+    // A stale list from an earlier mill must not be what the damage reads.
+    // A leftover list from an earlier mill, parked in the graveyard where
+    // it cannot be milled again.
+    const staleDefinition = spell("Stale Ten Drop", "{9}{R}");
+    game.definitions[staleDefinition.id] = staleDefinition;
+    const stale = createCardInstance({
+      definitionId: staleDefinition.id,
+      ownerId: p1.id,
+      zone: "graveyard",
+    });
+    game.cards[stale.id] = stale;
+    game.players.find((entry) => entry.id === p1.id)!.zones.graveyard.push(stale.id);
+    game.lastMilledCardIds = [stale.id];
+    put(game, p1.id, spell("One Drop", "{R}"), "library");
+    put(game, p1.id, spell("One Drop", "{R}"), "library");
+    put(game, p1.id, spell("One Drop", "{R}"), "library");
+    fillLibraries(game, 10);
+    const before = game.players.find((entry) => entry.id === p2.id)!.life;
+    const after = applyResolvePunisher(offer(game, p1.id, sourceId), p2.id, false);
+    expect(after.players.find((entry) => entry.id === p2.id)!.life).toBe(before - 3);
+  });
+
+  it("deals nothing when the milled cards cost nothing", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const sourceId = put(game, p1.id, gearhulk());
+    for (let i = 0; i < 3; i += 1) {
+      put(game, p1.id, createCardDefinition({ name: `Forest ${i}`, typeLine: "Basic Land — Forest" }), "library");
+    }
+    fillLibraries(game, 10);
+    const before = game.players.find((entry) => entry.id === p2.id)!.life;
+    const after = applyResolvePunisher(offer(game, p1.id, sourceId), p2.id, false);
+    // Three lands is zero mana value, and zero damage is no damage rather
+    // than an error.
+    expect(after.players.find((entry) => entry.id === p2.id)!.life).toBe(before);
+    expect(after.players.find((entry) => entry.id === p1.id)!.zones.graveyard).toHaveLength(3);
+  });
+
+  it("refuses an answer from the wrong player", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    const sourceId = put(game, p1.id, gearhulk());
+    const asked = offer(game, p1.id, sourceId);
+    expect(() => applyResolvePunisher(asked, p1.id, true)).toThrow();
+    void p2;
+  });
+
+  it("resumes the rest of the card after the answer", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    const sourceId = put(game, p1.id, gearhulk());
+    const before = game.players.find((entry) => entry.id === p1.id)!.life;
+    let after = applyEffects(
+      game,
+      bindCardEffects(
+        game,
+        [...gearhulk().effects, { kind: "gain_life", playerId: "controller", amount: 2 }],
+        { controllerId: p1.id, sourceId, targets: [], targetRequirements: [] },
+      ),
+    );
+    expect(after.players.find((entry) => entry.id === p1.id)!.life).toBe(before);
+    after = applyResolvePunisher(after, p2.id, true);
+    expect(after.players.find((entry) => entry.id === p1.id)!.life).toBe(before + 2);
+  });
+
+  it("round trips both branches unbound", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    const definition = gearhulk();
+    const sourceId = put(game, p1.id, definition);
+    const asked = offer(game, p1.id, sourceId);
+    const round = parseGameState(serializeGameState(asked));
+    const prompt = round.prompts[0];
+    if (prompt?.kind !== "punisher_choice") {
+      throw new Error("expected a punisher choice");
+    }
+    // Dropped on the wire the refusal costs the opponent nothing, which is
+    // the whole reason anyone takes the offer.
+    expect(prompt.ifDeclined).toHaveLength(2);
+    expect(prompt.controllerId).toBe(p1.id);
+    expect(prompt.playerId).toBe(p2.id);
+    expect(round.definitions[definition.id]?.effects[0]).toMatchObject({
+      kind: "punisher_choice",
+      chooserId: "next_opponent",
+    });
+    const finished = applyResolvePunisher(round, p2.id, true);
+    expect(
+      finished.players.find((entry) => entry.id === p1.id)!.zones.hand.length,
+    ).toBeGreaterThan(0);
   });
 });

@@ -2488,6 +2488,27 @@ function parsePrompts(value: unknown, playerIds: Set<string>): PendingPrompt[] {
         sourceId: expectString(entry.sourceId, `prompts[${index}].sourceId`),
       };
     }
+    if (kind === "punisher_choice") {
+      return {
+        kind,
+        playerId,
+        controllerId: expectString(entry.controllerId, `prompts[${index}].controllerId`),
+        sourceId:
+          entry.sourceId === null
+            ? null
+            : expectString(entry.sourceId, `prompts[${index}].sourceId`),
+        ifTaken: parseCardEffects(entry.ifTaken, `prompts[${index}].ifTaken`),
+        ifDeclined: parseCardEffects(entry.ifDeclined, `prompts[${index}].ifDeclined`),
+        ...(entry.resumeEffects === undefined
+          ? {}
+          : {
+              resumeEffects: parseGameEffects(
+                entry.resumeEffects,
+                `prompts[${index}].resumeEffects`,
+              ),
+            }),
+      };
+    }
     if (kind === "replace_draw_with_dredge") {
       return {
         kind,
@@ -3878,6 +3899,8 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
                 ? ("subject_power" as const)
                 : value.amount === "subject_amount"
                 ? ("subject_amount" as const)
+                : value.amount === "milled_mana_value"
+                ? ("milled_mana_value" as const)
                 : isRecord(value.amount) && typeof value.amount.subtypeCount === "string"
                   ? { subtypeCount: value.amount.subtypeCount }
                   : isRecord(value.amount) && typeof value.amount.sourceCounters === "string"
@@ -4672,6 +4695,13 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
         playerId: parsePlayerSelector(value.playerId, `${label}.playerId`),
         subtype: expectString(value.subtype, `${label}.subtype`),
         rider: parseCardEffects(value.rider, `${label}.rider`),
+      };
+    case "punisher_choice":
+      return {
+        kind,
+        chooserId: parsePlayerSelector(value.chooserId, `${label}.chooserId`),
+        ifTaken: parseCardEffects(value.ifTaken, `${label}.ifTaken`),
+        ifDeclined: parseCardEffects(value.ifDeclined, `${label}.ifDeclined`),
       };
     case "divide_into_piles":
       return {
@@ -6884,6 +6914,17 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
       amount: expectNumber(value.amount, `${label}.amount`),
     };
   }
+  if (kind === "punisher_choice") {
+    return {
+      kind,
+      chooserId: expectString(value.chooserId, `${label}.chooserId`),
+      controllerId: expectString(value.controllerId, `${label}.controllerId`),
+      sourceId: value.sourceId === null ? null : expectString(value.sourceId, `${label}.sourceId`),
+      // Still card effects: "that player" in them is the chooser.
+      ifTaken: parseCardEffects(value.ifTaken, `${label}.ifTaken`),
+      ifDeclined: parseCardEffects(value.ifDeclined, `${label}.ifDeclined`),
+    };
+  }
   if (kind === "tap_own_for_x") {
     return {
       kind,
@@ -7867,6 +7908,7 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
       amount: expectNumber(value.amount, `${label}.amount`),
       // Descent into Avernus: without this the tally is lost on the wire
       // and a reopened game deals the bound zero instead of counting.
+      ...(value.amountFromMilled === true ? { amountFromMilled: true } : {}),
       ...(isRecord(value.amountFromCounters)
         ? {
             amountFromCounters: {
@@ -8203,6 +8245,9 @@ export function parseGameAction(json: string): GameAction {
       playerId,
       pay: raw.pay === true,
     };
+  }
+  if (kind === "resolve_punisher") {
+    return { kind, playerId, take: raw.take === true };
   }
   if (kind === "resolve_dredge") {
     return {

@@ -3014,6 +3014,7 @@ ends. Every printed card of this shape asks about the current turn.
 - **"Tap X of your own, for X"** (Myr Battlesphere): the player picks how many, and the rider that reads X is bound only after they answer. Damage "to the player it's attacking" reads the defending player off the combat record.
 - **Splice onto Arcane** (CR 702.47) for splices that need no targets: the card is revealed from hand and stays there, its cost joins the Arcane spell's in one payment, and its effects resolve after the spell's own.
 - **Dredge** (CR 702.52) as a real draw replacement: the offer precedes the draw, one draw at a time, and declining draws without re-offering. Legal with a library too short to draw safely; illegal with fewer cards than the dredge number.
+- **The punisher choice** (Combustible Gearhulk): an opponent picks which of two branches happens, both real, with the branches bound at answer time so "that player" is the one who chose. Damage "equal to the total mana value of those cards" reads the set the sibling mill just made.
 - A seeded random-game fuzzer asserts zone integrity and serialize round-trips after every action (CI: 6 games; 500-game burn-ins gate checkpoint tags — they have caught two real livelocks and the trigger-batching bug).
 
 ## Documented gaps (intentional, in plan order)

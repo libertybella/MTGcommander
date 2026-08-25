@@ -970,7 +970,8 @@ export function bindCardEffect(
                         context.controllerId,
                         effect.amount.subtypeCount,
                       )
-                    : typeof effect.amount === "object"
+                    : typeof effect.amount === "object" ||
+                        effect.amount === "milled_mana_value"
                       ? 0
                       : effect.amount;
       // A counter tally is read at APPLY, so a zero here is not "no damage"
@@ -979,7 +980,11 @@ export function bindCardEffect(
         typeof effect.amount === "object" && "sourceCounters" in effect.amount
           ? effect.amount.sourceCounters
           : null;
-      if (amount <= 0 && !fromCounters) {
+      // Combustible Gearhulk: the mill that makes "those cards" is a
+      // sibling in this batch and has not run, so the tally is a flag read
+      // at apply rather than a number read here.
+      const fromMilled = effect.amount === "milled_mana_value";
+      if (amount <= 0 && !fromCounters && !fromMilled) {
         return null;
       }
       if (effect.target.type === "chosen") {
@@ -1005,6 +1010,7 @@ export function bindCardEffect(
           amount,
           sourceId: boundSourceId,
           target: { type: "player", playerId },
+          ...(fromMilled ? { amountFromMilled: true } : {}),
           ...(fromCounters && boundSourceId
             ? { amountFromCounters: { cardId: boundSourceId, counter: fromCounters } }
             : {}),
@@ -1696,6 +1702,22 @@ export function bindCardEffect(
         // Unbound: X is not known until the choice is made, and every
         // effect in here reads it.
         rider: effect.rider.map((one) => ({ ...one })),
+      };
+    }
+    case "punisher_choice": {
+      const chooserId = bindPlayerSelector(state, effect.chooserId, context);
+      if (!chooserId || chooserId === context.controllerId) {
+        return null;
+      }
+      return {
+        kind: "punisher_choice",
+        chooserId,
+        controllerId: context.controllerId,
+        sourceId: context.sourceId ?? null,
+        // Unbound: "that player" in either branch is the chooser, and the
+        // branches read them as their subject once one is taken.
+        ifTaken: effect.ifTaken.map((one) => ({ ...one })),
+        ifDeclined: effect.ifDeclined.map((one) => ({ ...one })),
       };
     }
     case "tempting_offer": {
@@ -2915,7 +2937,19 @@ function applyDealDamage(
             bound.amountFromCounters.counter
           ] ?? 0,
       }
-    : bound;
+    : bound.amountFromMilled
+      ? {
+          // Combustible Gearhulk: "those cards" is the set the mill beside
+          // this one just made, which is on the state by the time this runs.
+          ...bound,
+          amount: (state.lastMilledCardIds ?? []).reduce(
+            (total, cardId) =>
+              total +
+              manaValueOf(state.definitions[state.cards[cardId]?.definitionId ?? ""]?.manaCost ?? ""),
+            0,
+          ),
+        }
+      : bound;
   if (effect.amount <= 0) {
     // A tally of zero is no damage at all, not an error.
     return cloneGameState(state);
@@ -6902,6 +6936,21 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
         });
         break;
       }
+      case "punisher_choice": {
+        next = cloneGameState(state);
+        if (!isLiving(next, effect.chooserId)) {
+          break;
+        }
+        next.prompts.push({
+          kind: "punisher_choice",
+          playerId: effect.chooserId,
+          controllerId: effect.controllerId,
+          sourceId: effect.sourceId,
+          ifTaken: effect.ifTaken.map((one) => ({ ...one })),
+          ifDeclined: effect.ifDeclined.map((one) => ({ ...one })),
+        });
+        break;
+      }
       case "tempting_offer": {
         // The controller acts first, then the offer goes round. Their own
         // copy is applied here rather than being left to the chain, so the
@@ -7070,6 +7119,7 @@ export function applyEffects(state: GameState, effects: GameEffect[]): GameState
         prompt.kind === "tempting_offer" ||
         prompt.kind === "tap_own_for_x" ||
         prompt.kind === "replace_draw_with_dredge" ||
+        prompt.kind === "punisher_choice" ||
         prompt.kind === "divide_piles")
     ) {
       const remaining = effects.slice(index + 1);

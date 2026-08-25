@@ -1592,6 +1592,9 @@ export type GameEffect =
        * as a batch — so a bind-time reading is always two short.
        */
       amountFromCounters?: { cardId: CardInstanceId; counter: string };
+      /** The bound half of "milled_mana_value", still a flag: the mill that
+       * makes the set is a sibling in the same batch. */
+      amountFromMilled?: boolean;
       gainLife?: boolean;
     }
   | {
@@ -1982,6 +1985,14 @@ export type GameEffect =
       sourceId: CardInstanceId | null;
       subtype: string;
       rider: CardEffect[];
+    }
+  | {
+      kind: "punisher_choice";
+      chooserId: PlayerId;
+      controllerId: PlayerId;
+      sourceId: CardInstanceId | null;
+      ifTaken: CardEffect[];
+      ifDeclined: CardEffect[];
     }
   | {
       kind: "divide_into_piles";
@@ -3058,6 +3069,10 @@ export type CardEffect =
          * damage is meant to see them.
          */
         | { sourceCounters: string }
+        /** Combustible Gearhulk: the total mana value of the cards the
+         * mill beside this one just made. Read at APPLY — its sibling has
+         * not run when the batch binds. */
+        | "milled_mana_value"
         | { subtypeCount: string };
       /** "You gain life equal to the damage dealt this way." */
       gainLife?: boolean;
@@ -3516,6 +3531,21 @@ export type CardEffect =
   | { kind: "exile_top"; playerId: PlayerSelector; count: number }
   | { kind: "choose_card_name"; playerId: PlayerSelector; onSelf?: boolean }
   | { kind: "tempting_offer"; playerId: PlayerSelector; action: CardEffect[] }
+  /**
+   * The punisher choice (Combustible Gearhulk, Sin Prodder). An OPPONENT
+   * picks which of two things happens, and both are real — that is the
+   * whole card, so neither branch may be auto-taken by the controller.
+   *
+   * The branches are carried UNBOUND because "that player" in them is the
+   * chooser, who is not known until the effect binds and whose identity
+   * the branches must read as their trigger subject.
+   */
+  | {
+      kind: "punisher_choice";
+      chooserId: PlayerSelector;
+      ifTaken: CardEffect[];
+      ifDeclined: CardEffect[];
+    }
   /**
    * Myr Battlesphere: "you may tap X untapped Myr you control. If you do,
    * this gets +X/+0 and deals X damage to the player it's attacking."
@@ -4728,6 +4758,16 @@ export type PendingPrompt =
    * opponents one at a time; `accepted` is how many have said yes so far,
    * and the controller repeats their action that many times at the end.
    */
+  /** The punisher choice: this player picks which branch happens. */
+  | {
+      kind: "punisher_choice";
+      playerId: PlayerId;
+      controllerId: PlayerId;
+      sourceId: CardInstanceId | null;
+      ifTaken: CardEffect[];
+      ifDeclined: CardEffect[];
+      resumeEffects?: GameEffect[];
+    }
   /**
    * Dredge: a draw about to happen, and the cards in this player's
    * graveyard that could replace it. Answering with none takes the draw.
@@ -5801,6 +5841,7 @@ export type GameAction =
   | { kind: "resolve_tap_own_for_x"; playerId: PlayerId; cardIds: CardInstanceId[] }
   /** `cardId` null takes the draw; otherwise that card is dredged. */
   | { kind: "resolve_dredge"; playerId: PlayerId; cardId: CardInstanceId | null }
+  | { kind: "resolve_punisher"; playerId: PlayerId; take: boolean }
   | { kind: "resolve_color"; playerId: PlayerId; color: Color }
   | { kind: "resolve_scry"; playerId: PlayerId; bottomIds: CardInstanceId[] }
   | { kind: "resolve_surveil"; playerId: PlayerId; graveyardIds: CardInstanceId[] }

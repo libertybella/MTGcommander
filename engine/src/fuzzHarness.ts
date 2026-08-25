@@ -159,6 +159,9 @@ function nextAction(state: GameState, rng: () => number): GameAction | null {
           playerId,
           discard: rng() < 0.5,
         };
+      case "punisher_choice":
+        // Both branches, since both are the card.
+        return { kind: "resolve_punisher", playerId, take: rng() < 0.5 };
       case "replace_draw_with_dredge":
         // Both branches: taking the draw and replacing it, so a deck with
         // a dredger walks each one.

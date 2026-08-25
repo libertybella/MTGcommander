@@ -359,6 +359,49 @@ export function applyResolveCreatureType(
 }
 
 /**
+ * The punisher choice. An opponent picks which branch happens, and both
+ * are real: the taken one and the declined one are equally the card, so
+ * neither is auto-taken by its controller.
+ *
+ * The branches bind HERE, with the chooser as the subject player — "deals
+ * damage to that player" means the one who just refused.
+ */
+export function applyResolvePunisher(
+  state: GameState,
+  playerId: PlayerId,
+  take: boolean,
+): GameState {
+  const prompt = currentPrompt(state);
+  if (!prompt || prompt.kind !== "punisher_choice") {
+    throw new Error("No punisher choice pending");
+  }
+  requireLiving(state, playerId);
+  if (prompt.playerId !== playerId) {
+    throw new Error("It is not that player's choice");
+  }
+  let next = cloneGameState(state);
+  next.prompts.shift();
+  const branch = take ? prompt.ifTaken : prompt.ifDeclined;
+  if (branch.length > 0) {
+    next = applyEffects(
+      next,
+      bindCardEffects(next, branch, {
+        controllerId: prompt.controllerId,
+        sourceId: prompt.sourceId,
+        subjectPlayerId: playerId,
+        targets: [],
+        targetRequirements: [],
+      }),
+    );
+  }
+  const resume = prompt.resumeEffects;
+  if (resume && resume.length > 0) {
+    next = applyEffects(next, resume);
+  }
+  return next;
+}
+
+/**
  * Dredge (CR 702.52). Answering with no card takes the draw; answering
  * with one mills that card's dredge number and returns it to hand INSTEAD
  * of drawing.

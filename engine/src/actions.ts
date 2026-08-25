@@ -32,7 +32,7 @@ import { applyBottomCards, applyKeepHand, applyTakeMulligan, isMulliganOpen, rec
 import { applyRollDie } from "./dice";
 import { applyOpeningRoll, isOpeningRoll } from "./openingRoll";
 import { applyManualOverride } from "./override";
-import { applyChooseEnterReplacement, applyChooseTargets, applyResolveChooseCard, applyResolveChooseFromHand, applyResolveCardName, applyResolveChoosePile, applyResolveColor, applyResolveCreatureType, applyResolveDividePiles, applyResolveDredge, applyResolveTapOwnForX, applyResolveTemptingOffer, applyResolveDiscard, applyResolveEnterCopy, applyResolveLookAssign, applyResolveOrderTriggers, applyResolvePay, applyResolveScry, applyResolveSearch, applyResolveSurveil, applyResolveTriggerMode, currentPrompt, dropLostPlayerPromptsInPlace, isPromptOpen, applyResolveDiscardLandOrGraveyard } from "./prompt";
+import { applyChooseEnterReplacement, applyChooseTargets, applyResolveChooseCard, applyResolveChooseFromHand, applyResolveCardName, applyResolveChoosePile, applyResolveColor, applyResolveCreatureType, applyResolveDividePiles, applyResolveDredge, applyResolvePunisher, applyResolveTapOwnForX, applyResolveTemptingOffer, applyResolveDiscard, applyResolveEnterCopy, applyResolveLookAssign, applyResolveOrderTriggers, applyResolvePay, applyResolveScry, applyResolveSearch, applyResolveSurveil, applyResolveTriggerMode, currentPrompt, dropLostPlayerPromptsInPlace, isPromptOpen, applyResolveDiscardLandOrGraveyard } from "./prompt";
 import { manaValueOf } from "./characteristics";
 import { findCardZone, moveCard } from "./zones";
 import type { ActivatedAbility, AdditionalCastCost, CardInstanceId, ChosenTarget, Color, GameAction, GameState, ManaColor, ManaPool, PlayerId } from "./types";
@@ -2207,6 +2207,9 @@ export function applyAction(
         break;
       case "resolve_dredge":
         next = applyResolveDredge(state, action.playerId, action.cardId);
+        break;
+      case "resolve_punisher":
+        next = applyResolvePunisher(state, action.playerId, action.take);
         break;
       case "resolve_color":
         next = applyResolveColor(state, action.playerId, action.color);

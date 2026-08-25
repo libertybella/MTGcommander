@@ -464,6 +464,14 @@ export class GameHost {
           });
           continue;
         }
+        if (prompt.kind === "punisher_choice") {
+          // A documented auto-take: an absent player DECLINES. Every card
+          // in this shape prints the refusal as the punishing branch, and
+          // taking the offer for them hands the controller the half they
+          // were hoping for.
+          this.apply({ kind: "resolve_punisher", playerId: prompt.playerId, take: false });
+          continue;
+        }
         if (prompt.kind === "replace_draw_with_dredge") {
           // A documented auto-take: an absent player DRAWS. Dredging is a
           // deckbuilding decision about what they want in hand, and
