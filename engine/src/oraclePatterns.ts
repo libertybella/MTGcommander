@@ -115,6 +115,9 @@ export type CompiledOracleText = {
   storm?: boolean;
   doesntUntap?: boolean;
   untapRestriction?: { max: number; scope: "land" | "permanent" };
+  /** Devoid (CR 702.114): the card is colorless. Baked into the derived
+   * colors at creation rather than stored, so nothing to serialize. */
+  devoid?: boolean;
   convoke?: boolean;
   improvise?: boolean;
   delve?: boolean;
@@ -18008,6 +18011,14 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
 
     if (/^~ doesn't untap during your untap step$/i.test(sentence)) {
       result.doesntUntap = true;
+      continue;
+    }
+
+    // Devoid (CR 702.114): a colour-defining keyword with no other rules —
+    // the card is colourless. The reminder is already stripped, leaving the
+    // bare word on its own line.
+    if (/^Devoid$/i.test(sentence)) {
+      result.devoid = true;
       continue;
     }
 

@@ -184,7 +184,8 @@ function compileOneFace(card: OracleCard, definitionId: string): OracleCompileRe
     // anywhere but the stack (CR 202.3b).
     manaCost: compiled.manaCostOverride ?? card.manaCost,
     typeLine: card.typeLine,
-    colors: explicitColors(card.colors),
+    // Devoid (CR 702.114) makes the card colourless whatever its mana cost.
+    colors: compiled.devoid ? [] : explicitColors(card.colors),
     oracleText: card.oracleText,
     power: power ?? (typeLine.includes("creature") ? 0 : null),
     toughness: toughness ?? (typeLine.includes("creature") ? 0 : null),

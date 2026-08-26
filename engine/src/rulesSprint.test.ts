@@ -70683,3 +70683,49 @@ describe("wave 423: Earthshaker Dreadmaw (subtype counts)", () => {
     });
   });
 });
+
+describe("wave 424: Devoid", () => {
+  const compile = (name: string, manaCost: string, oracleText: string, colors?: string[]) =>
+    compileOracleCard({
+      oracleId: name.toLowerCase().replace(/[^a-z]+/g, "-"),
+      name,
+      manaCost,
+      typeLine: "Creature — Eldrazi Drone",
+      power: "2",
+      toughness: "2",
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+      ...(colors ? { colors } : {}),
+    });
+
+  it("consumes the keyword and makes a coloured-cost card colourless", () => {
+    const compiled = compile("Eldrazi Drone", "{2}{U}", "Devoid (This card has no color.)\nWhen Eldrazi Drone enters, draw a card.");
+    // The keyword is gone from the leftovers…
+    expect(compiled.notes).toEqual([]);
+    // …and the card is colourless despite its blue pip — robust even with no
+    // Scryfall colour data supplied.
+    expect(compiled.definition.characteristics.colors).toEqual([]);
+  });
+
+  it("agrees with Scryfall's own colourless data", () => {
+    const compiled = compile("Endless One", "{X}", "Devoid (This card has no color.)\nEndless One enters with X +1/+1 counters on it.", []);
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.characteristics.colors).toEqual([]);
+  });
+
+  it("leaves a non-devoid coloured card its colour", () => {
+    const compiled = compile("Blue Bear", "{1}{U}", "When Blue Bear enters, draw a card.");
+    expect(compiled.definition.characteristics.colors).toEqual(["U"]);
+  });
+
+  it("round trips as colourless", () => {
+    const compiled = compile("Eldrazi Drone", "{2}{U}", "Devoid\nWhen Eldrazi Drone enters, draw a card.");
+    const { game, p1 } = twoPlayers();
+    game.definitions[compiled.definition.id] = compiled.definition;
+    const card = createCardInstance({ definitionId: compiled.definition.id, ownerId: p1.id, zone: "battlefield" });
+    game.cards[card.id] = card;
+    const round = parseGameState(serializeGameState(game));
+    expect(round.definitions[compiled.definition.id]?.characteristics.colors).toEqual([]);
+  });
+});
