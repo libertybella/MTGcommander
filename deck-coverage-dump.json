@@ -429,7 +429,7 @@
   "Tandem Lookout": false,
   "Veyran, Voice of Duality": true,
   "Mystic Remora": true,
-  "Sigil of Sleep": false,
+  "Sigil of Sleep": true,
   "Underworld Breach": true,
   "An Offer You Can't Refuse": true,
   "Arcane Denial": true,
@@ -4250,12 +4250,6 @@
    "type": "Creature — Human Scout",
    "notes": [
     "Some oracle text is not compiled: Soulbond; As long as ~ is paired with another creature, each of those creatures has \"Whenever ~ deals damage to an opponent, draw a card.\"."
-   ]
-  },
-  "Sigil of Sleep": {
-   "type": "Enchantment — Aura",
-   "notes": [
-    "Some oracle text is not compiled: Whenever enchanted creature deals damage to a player, return target creature that player controls to its owner's hand."
    ]
   },
   "Flashback": {
@@ -14238,12 +14232,11 @@
   {
    "commander": "Vivi Ornitier",
    "rank": 7,
-   "slots": 6,
+   "slots": 5,
    "misses": [
     "Wizard's Staff",
     "Quicksilver Elemental",
     "Tandem Lookout",
-    "Sigil of Sleep",
     "Flashback",
     "Vivi Ornitier (commander)"
    ]
@@ -15170,6 +15163,33 @@
    ]
   },
   {
+   "commander": "Ghyrson Starn, Kelermorph",
+   "rank": 70,
+   "slots": 20,
+   "misses": [
+    "Caltrops",
+    "Eroded Canyon",
+    "Chandra's Incinerator",
+    "Exalted Flamer of Tzeentch",
+    "Gelectrode",
+    "Tandem Lookout",
+    "Urabrask",
+    "Vivi Ornitier",
+    "Circle of Flame",
+    "Manabarbs",
+    "Cast into the Fire",
+    "Electrolyze",
+    "Lava Dart",
+    "Needle Drop",
+    "Spikefield Hazard",
+    "Ral, Storm Conduit",
+    "End the Festivities",
+    "Smash to Dust",
+    "Tectonic Hazard",
+    "Ghyrson Starn, Kelermorph (commander)"
+   ]
+  },
+  {
    "commander": "Sidar Jabari of Zhalfir",
    "rank": 95,
    "slots": 20,
@@ -15250,34 +15270,6 @@
     "Teferi, Master of Time",
     "Vraska, Betrayal's Sting",
     "Phyresis Outbreak"
-   ]
-  },
-  {
-   "commander": "Ghyrson Starn, Kelermorph",
-   "rank": 70,
-   "slots": 21,
-   "misses": [
-    "Caltrops",
-    "Eroded Canyon",
-    "Chandra's Incinerator",
-    "Exalted Flamer of Tzeentch",
-    "Gelectrode",
-    "Tandem Lookout",
-    "Urabrask",
-    "Vivi Ornitier",
-    "Circle of Flame",
-    "Manabarbs",
-    "Sigil of Sleep",
-    "Cast into the Fire",
-    "Electrolyze",
-    "Lava Dart",
-    "Needle Drop",
-    "Spikefield Hazard",
-    "Ral, Storm Conduit",
-    "End the Festivities",
-    "Smash to Dust",
-    "Tectonic Hazard",
-    "Ghyrson Starn, Kelermorph (commander)"
    ]
   },
   {

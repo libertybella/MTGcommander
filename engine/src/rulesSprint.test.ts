@@ -73288,3 +73288,79 @@ describe("wave 453: 'for each other creature' / 'for each attacking creature' co
     expect(after.players.find((e) => e.id === p1.id)!.zones.hand.length).toBe(before + 3);
   });
 });
+
+describe("wave 454: Sigil of Sleep (bounce a creature THAT player controls)", () => {
+  const compileSigil = () =>
+    compileOracleCard({
+      oracleId: "sigil-of-sleep",
+      name: "Sigil of Sleep",
+      manaCost: "{U}",
+      typeLine: "Enchantment — Aura",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "Enchant creature\nWhenever enchanted creature deals damage to a player, return target creature that player controls to its owner's hand.",
+    });
+
+  it("compiles to an attached deals-damage trigger that bounces the subject's creature", () => {
+    const compiled = compileSigil();
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.triggers).toEqual([
+      {
+        event: "deals_damage_to_player",
+        watch: "attached",
+        effects: [{ kind: "move_card", cardId: { type: "chosen", index: 0 }, toZone: "hand" }],
+        targetRequirements: [{ kind: "creature", controlledBySubject: true }],
+      },
+    ]);
+  });
+
+  const put = (game: GameState, ownerId: string, definition: CardDefinition) => {
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({ definitionId: definition.id, ownerId, zone: "battlefield" });
+    card.summoningSick = false;
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === ownerId)!.zones.battlefield.push(card.id);
+    return card.id;
+  };
+  const bear = (name: string) => createCardDefinition({ name, typeLine: "Creature — Bear", manaCost: "{1}{G}", power: 2, toughness: 2 });
+
+  it("targets only the damaged player's creatures, and bounces the chosen one", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 10);
+    const hostId = put(game, p1.id, bear("Host"));
+    const allyId = put(game, p1.id, bear("Ally")); // your creature — NOT a legal target
+    const victimId = put(game, p2.id, bear("Victim")); // the damaged player's — the target
+    // Attach the Sigil to the host.
+    const sigil = compileSigil().definition;
+    game.definitions[sigil.id] = sigil;
+    const sigilCard = createCardInstance({ definitionId: sigil.id, ownerId: p1.id, zone: "battlefield" });
+    sigilCard.attachedTo = hostId;
+    game.cards[sigilCard.id] = sigilCard;
+    game.players.find((e) => e.id === p1.id)!.zones.battlefield.push(sigilCard.id);
+
+    // The host deals damage to p2 — the Sigil's attached-creature trigger fires.
+    let next = parseGameState(serializeGameState(game));
+    dispatchEventsInPlace(next, [
+      { kind: "deals_damage_to_player", cardId: hostId, playerId: p2.id, amount: 2 },
+    ]);
+    const prompt = next.prompts[0];
+    expect(prompt?.kind).toBe("choose_targets");
+    // "that player" resolved to p2.
+    expect((prompt as { requirements: { controlByPlayer?: string }[] }).requirements[0]?.controlByPlayer).toBe(p2.id);
+    // Only p2's creature is a legal target — not your own Ally.
+    const legal = legalChoicesForRequirement(next, (prompt as { requirements: TargetRequirement[] }).requirements[0]!, p1.id)
+      .filter((c) => c.type === "creature")
+      .map((c) => (c as { cardId: string }).cardId);
+    expect(legal).toContain(victimId);
+    expect(legal).not.toContain(allyId);
+
+    // Choose the victim; the trigger resolves and bounces it to p2's hand.
+    next = applyChooseTargets(next, p1.id, [{ type: "creature", cardId: victimId }]);
+    while (next.stack.length > 0) next = resolveTopOfStack(next);
+    expect(next.cards[victimId]?.zone).toBe("hand");
+    expect(next.players.find((e) => e.id === p2.id)!.zones.hand).toContain(victimId);
+  });
+});

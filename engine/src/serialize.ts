@@ -3718,6 +3718,7 @@ function parseTargetRequirement(value: unknown, label: string): TargetRequiremen
     ...(value.optional === true ? { optional: true } : {}),
     ...(excludeColors.length > 0 ? { excludeColors } : {}),
     ...(control === undefined ? {} : { control }),
+    ...(value.controlledBySubject === true ? { controlledBySubject: true } : {}),
     ...(value.maxManaValue === undefined
       ? {}
       : { maxManaValue: expectNumber(value.maxManaValue, `${label}.maxManaValue`) }),

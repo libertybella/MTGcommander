@@ -522,15 +522,22 @@ export function queueDefinitionTriggerInPlace(
   const subjectManaValue = subject?.cardId
     ? characteristicsOf(state, subject.cardId).manaValue
     : undefined;
-  const requirements = printedRequirements.map((requirement) =>
-    requirement.manaValueBelowSubject
-      ? {
-          ...requirement,
-          manaValueBelowSubject: undefined,
-          maxManaValue: Math.max(0, (subjectManaValue ?? 0) - 1),
-        }
-      : requirement,
-  );
+  const requirements = printedRequirements.map((requirement) => {
+    let resolved = requirement;
+    if (resolved.manaValueBelowSubject) {
+      resolved = {
+        ...resolved,
+        manaValueBelowSubject: undefined,
+        maxManaValue: Math.max(0, (subjectManaValue ?? 0) - 1),
+      };
+    }
+    // Sigil of Sleep: "that player controls" is the DAMAGED player, known
+    // here as the trigger's subject.
+    if (resolved.controlledBySubject && subject?.playerId) {
+      resolved = { ...resolved, controlledBySubject: undefined, controlByPlayer: subject.playerId };
+    }
+    return resolved;
+  });
   if (requirements.length > 0) {
     if (!hasAnyLegalTargetSet(state, requirements, card.controllerId)) {
       return false;

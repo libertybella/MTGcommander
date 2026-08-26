@@ -3132,6 +3132,13 @@ export type TargetRequirement = {
   optional?: boolean;
   /** "target nonblack creature": these colors are illegal. */
   excludeColors?: Color[];
+  /** Sigil of Sleep: "target creature THAT PLAYER controls" — the player is
+   * the trigger's subject (the one just damaged). Resolved at trigger-queue
+   * time into `controlByPlayer`, where the subject is known. */
+  controlledBySubject?: boolean;
+  /** The resolved form of `controlledBySubject`: the target must be controlled
+   * by exactly this player. */
+  controlByPlayer?: PlayerId;
   /** "you don't control" (Cyclonic Rift) / "you control" (Ephemerate). */
   control?: "own" | "not_own";
   /** "with mana value N or less" (Abrupt Decay). */

@@ -233,6 +233,11 @@ function violatesControlFilter(
   requirement: TargetRequirement,
   casterId: PlayerId | undefined,
 ): boolean {
+  // Sigil of Sleep: "that player controls" is a resolved constraint on one
+  // specific player, independent of the caster.
+  if (requirement.controlByPlayer) {
+    return state.cards[cardId]?.controllerId !== requirement.controlByPlayer;
+  }
   if (!requirement.control || !casterId) {
     return false;
   }

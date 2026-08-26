@@ -4804,6 +4804,14 @@ function compileSimpleClauseInner(sentence: string): SimpleClause | null {
     };
   }
 
+  // Sigil of Sleep: bounce a creature the trigger's subject (the just-damaged
+  // player) controls.
+  if (/^return target creature that player controls to its owner's hand$/i.test(sentence)) {
+    return {
+      targetRequirements: [{ kind: "creature", controlledBySubject: true }],
+      effects: [{ kind: "move_card", cardId: { type: "chosen", index: 0 }, toZone: "hand" }],
+    };
+  }
   if (/^return a land you control to its owner's hand$/i.test(sentence)) {
     return {
       targetRequirements: [],
@@ -13618,6 +13626,11 @@ function parseTriggerHead(head: string): TriggerHead | null {
       watch: "attached",
       subjectPlayerOpponent: true,
     };
+  }
+  // Sigil of Sleep: any player, and the body bounces a creature THAT player
+  // controls, so the subject player has to reach the target check.
+  if (/^Whenever enchanted creature deals damage to a player$/i.test(text)) {
+    return { event: "deals_damage_to_player", watch: "attached" };
   }
   if (/^Whenever ~ deals damage to an opponent$/i.test(text)) {
     return { event: "deals_damage_to_player", subjectPlayerOpponent: true };
