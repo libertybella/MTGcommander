@@ -5426,6 +5426,8 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
             ? value.amount
             : expectNumber(value.amount, `${label}.amount`),
         ...(value.includePlayers === true ? { includePlayers: true } : {}),
+      ...(value.opponentsOnly === true ? { opponentsOnly: true } : {}),
+        ...(value.opponentsOnly === true ? { opponentsOnly: true } : {}),
       };
     case "flicker":
       return { kind, cardId: parseCardIdSelector(value.cardId, `${label}.cardId`) };

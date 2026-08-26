@@ -71925,3 +71925,67 @@ describe("wave 437: Warden of Evos Isle (keyword-filtered cost reduction)", () =
     expect(round.definitions[definition.id]?.costReductions?.[0]?.filter?.keyword).toBe("flying");
   });
 });
+
+describe("wave 438: Blazing Volley (one-sided sweep)", () => {
+  const compile = (oracleText: string) =>
+    compileOracleCard({
+      oracleId: "blazing-volley",
+      name: "Blazing Volley",
+      manaCost: "{R}",
+      typeLine: "Sorcery",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  it("compiles the opponents-only sweep", () => {
+    const compiled = compile("Blazing Volley deals 1 damage to each creature your opponents control.");
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.effects).toEqual([
+      { kind: "damage_all", sourceId: "self", amount: 1, opponentsOnly: true },
+    ]);
+  });
+
+  it("leaves the symmetric sweep symmetric", () => {
+    const compiled = compile("Blazing Volley deals 2 damage to each creature.");
+    expect(compiled.definition.effects[0]).toMatchObject({ kind: "damage_all", amount: 2 });
+    expect((compiled.definition.effects[0] as { opponentsOnly?: boolean }).opponentsOnly).toBeUndefined();
+  });
+
+  const put = (game: GameState, ownerId: string, definition: CardDefinition) => {
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({ definitionId: definition.id, ownerId, zone: "battlefield" });
+    card.summoningSick = false;
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === ownerId)!.zones.battlefield.push(card.id);
+    return card.id;
+  };
+  const bear = (name: string) =>
+    createCardDefinition({ name, typeLine: "Creature — Bear", manaCost: "{1}{G}", power: 2, toughness: 2 });
+
+  it("burns the opponents' creatures but spares your own", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    const mineId = put(game, p1.id, bear("My Bear"));
+    const theirsId = put(game, p2.id, bear("Their Bear"));
+    const sourceId = put(game, p1.id, createCardDefinition({ name: "Volley Source", typeLine: "Artifact", manaCost: "{1}" }));
+    // A bound opponents-only sweep from p1's source.
+    const after = applyEffects(game, [
+      { kind: "damage_all", sourceId, amount: 1, opponentsOnly: true },
+    ]);
+    // Their bear took 1, mine took 0.
+    expect(after.cards[theirsId]?.damageMarked).toBe(1);
+    expect(after.cards[mineId]?.damageMarked).toBe(0);
+  });
+
+  it("round trips the opponentsOnly flag", () => {
+    const compiled = compile("Blazing Volley deals 1 damage to each creature your opponents control.");
+    const { game } = twoPlayers();
+    game.definitions[compiled.definition.id] = compiled.definition;
+    const round = parseGameState(serializeGameState(game));
+    const back = round.definitions[compiled.definition.id]?.effects[0] as { opponentsOnly?: boolean } | undefined;
+    expect(back?.opponentsOnly).toBe(true);
+  });
+});

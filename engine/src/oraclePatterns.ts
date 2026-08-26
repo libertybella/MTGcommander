@@ -4858,6 +4858,24 @@ function compileSimpleClauseInner(sentence: string): SimpleClause | null {
     }
   }
 
+  // Blazing Volley: a one-sided sweep — only your opponents' creatures.
+  const oppSweep = sentence.match(
+    /^(?:~|this \w+) deals (\d+|X) damage to each creature your opponents control$/i,
+  );
+  if (oppSweep?.[1]) {
+    return {
+      targetRequirements: [],
+      effects: [
+        {
+          kind: "damage_all",
+          sourceId: "self",
+          amount: oppSweep[1].toUpperCase() === "X" ? ("x" as const) : Number(oppSweep[1]),
+          opponentsOnly: true,
+        },
+      ],
+    };
+  }
+
   // City of Brass: the tapped land pings its own controller.
   match = sentence.match(/^it deals (\d+) damage to you$/i);
   if (match?.[1]) {

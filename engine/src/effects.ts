@@ -2138,6 +2138,7 @@ export function bindCardEffect(
         sourceId: bindSourceId(effect.sourceId, context),
         amount,
         ...(effect.includePlayers ? { includePlayers: true } : {}),
+        ...(effect.opponentsOnly ? { opponentsOnly: true } : {}),
       };
     }
     case "flicker": {
@@ -3315,8 +3316,14 @@ function applyDamageAll(
   const next = cloneGameState(state);
   const sourceColors = sourceColorsOf(next, effect.sourceId ?? null);
   const deathtouch = effect.sourceId ? hasKeyword(next, effect.sourceId, "deathtouch") : false;
+  // Blazing Volley: "each creature your opponents control" — the source's
+  // controller's own creatures are spared.
+  const casterId = effect.sourceId ? next.cards[effect.sourceId]?.controllerId : undefined;
   for (const card of Object.values(next.cards)) {
     if (card.zone !== "battlefield" || !isCreature(next, card.id)) {
+      continue;
+    }
+    if (effect.opponentsOnly && casterId && card.controllerId === casterId) {
       continue;
     }
     if (protectedFromSource(next, card.id, effect.sourceId ?? null, sourceColors)) {

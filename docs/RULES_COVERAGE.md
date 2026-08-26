@@ -3071,3 +3071,4 @@ ends. Every printed card of this shape asks about the current turn.
 - Life-gain bonus: "if you would gain life, you gain that much life plus N instead" (Angel of Vitality) — an additive life-gain replacement that stacks with the doubling one.
 - Invariant-plural tribal lords: "Other Merfolk you control get +N/+N" — the anthem no longer requires a trailing "s" on the tribe.
 - Keyword-filtered spell cost reduction: "creature spells with flying you cast cost {N} less" (Warden of Evos Isle) — a keyword filter on the cost-reduction static.
+- One-sided creature sweep: "deals N damage to each creature your opponents control" (Blazing Volley) — a damage_all that spares your own creatures.

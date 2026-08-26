@@ -2772,6 +2772,8 @@ export type GameEffect =
       sourceId: CardInstanceId | null;
       amount: number;
       includePlayers?: boolean;
+      /** Blazing Volley: only creatures your opponents control. */
+      opponentsOnly?: boolean;
     }
   /** Ephemerate: exile a permanent and return it immediately (re-enters fresh). */
   | { kind: "flicker"; cardId: CardInstanceId }
@@ -4481,6 +4483,8 @@ export type CardEffect =
       /** "creature_count": X = creatures on the battlefield (Chain Reaction). */
       amount: number | "x" | "creature_count";
       includePlayers?: boolean;
+      /** Blazing Volley: only creatures your opponents control. */
+      opponentsOnly?: boolean;
     }
   | { kind: "flicker"; cardId: CardIdSelector }
   /** Enduring cycle: "return it to the battlefield … It's an enchantment." */
