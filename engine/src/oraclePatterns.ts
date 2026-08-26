@@ -8986,7 +8986,7 @@ function compileSimpleClauseInner(sentence: string): SimpleClause | null {
         "( with [a-z ]+| with \"Sacrifice this token: Add \\{C\\}\\.\")?" +
         // Krenko / Myrel: "…, where X is the number of Goblins you control";
         // Chasm Skulker: "…, where X is the number of +1/+1 counters on ~".
-        "(?:, where X is the number of (?:([A-Za-z]+)s you control|([+-]\\d\\/[+-]\\d|[a-z]+) counters on ~))?$",
+        "(?:, where X is the number of (?:([A-Za-z]+)s you control|([+-]\\d\\/[+-]\\d|[a-z]+) counters on ~|(creature cards in your graveyard)))?$",
       "i",
     ),
   );
@@ -9021,13 +9021,16 @@ function compileSimpleClauseInner(sentence: string): SimpleClause | null {
     // effect APPLIES, which is what lets a dies-trigger still see them — the
     // counters ride the card object through the zone change.
     const perCounter = match[8] ? counterKeyOf(match[8].toLowerCase()) : undefined;
+    const perGraveyardCreatures = Boolean(match[9]);
     const dynamic = perSubtype
       ? { perControlledSubtype: perSubtype }
       : perCounter
         ? { perSourceCounters: perCounter }
-        : literalCount === undefined
-          ? { count: "x" as const }
-          : null;
+        : perGraveyardCreatures
+          ? { perDynamicCount: "creature_cards_in_your_graveyard" as const }
+          : literalCount === undefined
+            ? { count: "x" as const }
+            : null;
     if ((dynamic || literalCount) && keywords.every((keyword): keyword is Keyword => Boolean(keyword))) {
       const token: CardEffect = {
         kind: "create_token",

@@ -4230,6 +4230,9 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
                 `${label}.perControlledSubtype`,
               ),
             }),
+        ...(isDynamicCount(value.perDynamicCount)
+          ? { perDynamicCount: value.perDynamicCount }
+          : {}),
         ...(value.count === undefined
           ? {}
           : {

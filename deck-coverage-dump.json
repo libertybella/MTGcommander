@@ -2220,7 +2220,7 @@
   "Athreos, God of Passage": false,
   "Bartolomé del Presidio": true,
   "Doomed Traveler": true,
-  "Hallowed Spiritkeeper": false,
+  "Hallowed Spiritkeeper": true,
   "Hunted Witness": true,
   "Luminous Broodmoth": true,
   "Ministrant of Obligation": true,
@@ -9153,12 +9153,6 @@
     "Some oracle text is not compiled: As long as your devotion to white and black is less than seven, ~ isn't a creature; Whenever another creature you own dies, return it to your hand unless target opponent pays 3 life."
    ]
   },
-  "Hallowed Spiritkeeper": {
-   "type": "Creature — Avatar",
-   "notes": [
-    "Some oracle text is not compiled: When ~ dies, create X 1/1 white Spirit creature tokens with flying, where X is the number of creature cards in your graveyard."
-   ]
-  },
   "Priest of Forgotten Gods": {
    "type": "Creature — Human Cleric",
    "notes": [
@@ -14161,6 +14155,19 @@
    "misses": []
   },
   {
+   "commander": "Teysa Karlov",
+   "rank": 54,
+   "slots": 6,
+   "misses": [
+    "Athreos, God of Passage",
+    "Grim Haruspex",
+    "Priest of Forgotten Gods",
+    "Sephiroth, Fabled SOLDIER",
+    "Teysa, Orzhov Scion",
+    "Rite of Oblivion"
+   ]
+  },
+  {
    "commander": "Sephiroth, Fabled SOLDIER",
    "rank": 27,
    "slots": 7,
@@ -14186,20 +14193,6 @@
     "Muldrotha, the Gravetide",
     "Counterbalance",
     "Enhanced Surveillance"
-   ]
-  },
-  {
-   "commander": "Teysa Karlov",
-   "rank": 54,
-   "slots": 7,
-   "misses": [
-    "Athreos, God of Passage",
-    "Grim Haruspex",
-    "Hallowed Spiritkeeper",
-    "Priest of Forgotten Gods",
-    "Sephiroth, Fabled SOLDIER",
-    "Teysa, Orzhov Scion",
-    "Rite of Oblivion"
    ]
   },
   {

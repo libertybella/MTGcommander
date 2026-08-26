@@ -3657,6 +3657,9 @@ export type CardEffect =
       perControlled?: "land" | "creature" | "artifact";
       /** Krenko, Myrel: "where X is the number of Goblins you control". */
       perControlledSubtype?: string;
+      /** Hallowed Spiritkeeper: a generic "where X is <count>" (e.g. creature
+       * cards in your graveyard), resolved at bind time. */
+      perDynamicCount?: DynamicCount;
       /** Mahadi: one token per creature that died this turn. */
       perDiedCreatures?: boolean;
       /** Elenda: X tokens where X is the dying subject's power, carried on

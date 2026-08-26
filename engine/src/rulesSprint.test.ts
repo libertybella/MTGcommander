@@ -74572,3 +74572,60 @@ describe("wave 469: Annie Joins Up — an ETB bolt and a legendary trigger doubl
     }
   });
 });
+
+describe("wave 470: Hallowed Spiritkeeper — dies into a Spirit per graveyard creature", () => {
+  const compileKeeper = () =>
+    compileOracleCard({
+      oracleId: "hallowed-spiritkeeper", name: "Hallowed Spiritkeeper", manaCost: "{1}{W}{W}",
+      typeLine: "Creature — Avatar", power: "2", toughness: "1", printedKeywords: [], imageUrl: "",
+      oracleText:
+        "Vigilance\nWhen this creature dies, create X 1/1 white Spirit creature tokens with flying, where X is the number of creature cards in your graveyard.",
+    });
+
+  it("compiles vigilance and the graveyard-scaled token dies trigger", () => {
+    const c = compileKeeper();
+    expect(c.notes).toEqual([]);
+    expect(c.definition.keywords).toContain("vigilance");
+    expect(c.definition.triggers?.[0]).toMatchObject({ event: "dies" });
+    expect(c.definition.triggers?.[0]?.effects?.[0]).toMatchObject({
+      kind: "create_token", perDynamicCount: "creature_cards_in_your_graveyard",
+      keywords: ["flying"], power: 1, toughness: 1,
+    });
+  });
+
+  const put = (game: GameState, ownerId: string, definition: CardDefinition, zone: "battlefield" | "graveyard") => {
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({ definitionId: definition.id, ownerId, zone });
+    if (zone === "battlefield") card.summoningSick = false;
+    game.cards[card.id] = card;
+    (game.players.find((e) => e.id === ownerId)!.zones as Record<string, string[]>)[zone].push(card.id);
+    return card.id;
+  };
+
+  it("creates one flying Spirit per creature card in the graveyard (itself included)", () => {
+    const { game, p1 } = twoPlayers();
+    // Two other creature cards already in the graveyard.
+    put(game, p1.id, createCardDefinition({ name: "Bear A", typeLine: "Creature — Bear", manaCost: "{1}{G}", power: 2, toughness: 2 }), "graveyard");
+    put(game, p1.id, createCardDefinition({ name: "Bear B", typeLine: "Creature — Bear", manaCost: "{1}{G}", power: 2, toughness: 2 }), "graveyard");
+    const keeperId = put(game, p1.id, compileKeeper().definition, "battlefield");
+
+    const bfBefore = game.players.find((e) => e.id === p1.id)!.zones.battlefield.length;
+    // Spiritkeeper dies: move to graveyard, then dispatch its dies trigger.
+    let next = game;
+    next.players.find((e) => e.id === p1.id)!.zones.battlefield =
+      next.players.find((e) => e.id === p1.id)!.zones.battlefield.filter((x) => x !== keeperId);
+    next.cards[keeperId]!.zone = "graveyard";
+    next.players.find((e) => e.id === p1.id)!.zones.graveyard.push(keeperId);
+    dispatchEventsInPlace(next, [{ kind: "dies", cardId: keeperId, controllerId: p1.id }]);
+    while (next.stack.length > 0) next = resolveTopOfStack(next);
+
+    // 3 creature cards in the graveyard (two Bears + Spiritkeeper) -> 3 Spirit tokens.
+    const bf = next.players.find((e) => e.id === p1.id)!.zones.battlefield;
+    const spirits = bf.filter((id) => next.cards[id]?.isToken && characteristicsOf(next, id).subtypes.includes("spirit"));
+    expect(spirits.length).toBe(3);
+    // They are 1/1 fliers.
+    expect(next.cards[spirits[0]!] && hasKeyword(next, spirits[0]!, "flying")).toBe(true);
+    // (battlefield had the keeper removed, then +3 tokens.)
+    expect(bf.length).toBe(bfBefore - 1 + 3);
+  });
+});

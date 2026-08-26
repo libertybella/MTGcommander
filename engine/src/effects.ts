@@ -1150,6 +1150,7 @@ export function bindCardEffect(
       const {
         perControlled,
         perControlledSubtype,
+        perDynamicCount,
         perDiedCreatures,
         perSourceCounters,
         countFromSourcePower,
@@ -1210,6 +1211,15 @@ export function bindCardEffect(
       }
       if (perDiedCreatures) {
         count = state.creaturesDiedThisTurn ?? 0;
+        if (count === 0) {
+          return null;
+        }
+      }
+      if (perDynamicCount) {
+        // Hallowed Spiritkeeper: "X is the number of creature cards in your
+        // graveyard" — counted when the dies trigger resolves (its own card is
+        // already there, so it counts itself, as the rules say).
+        count = dynamicCountOf(state, context.controllerId, perDynamicCount, context.sourceId ?? undefined);
         if (count === 0) {
           return null;
         }
