@@ -74891,3 +74891,55 @@ describe("wave 474: Lilysplash Mentor — blink a creature back with a +1/+1 cou
     expect(creatureToughness(act, bearId)).toBe(3);
   });
 });
+
+describe("wave 475: Colossal Grave-Reaver — mill a creature, then put it onto the battlefield", () => {
+  const compileReaver = () =>
+    compileOracleCard({
+      oracleId: "colossal-grave-reaver", name: "Colossal Grave-Reaver", manaCost: "{6}{B}{G}",
+      typeLine: "Creature — Dragon", power: "6", toughness: "6", printedKeywords: [], imageUrl: "",
+      oracleText:
+        "Flying\nWhenever this creature enters or attacks, mill three cards.\n" +
+        "Whenever one or more creature cards are put into your graveyard from your library, put one of them onto the battlefield.",
+    });
+
+  it("compiles flying, the enter/attacks mill, and the mill-to-battlefield reanimator", () => {
+    const c = compileReaver();
+    expect(c.notes).toEqual([]);
+    expect(c.definition.keywords).toContain("flying");
+    expect(c.definition.triggers?.map((t) => t.event)).toEqual([
+      "enter_battlefield", "attacks", "graveyard_from_elsewhere",
+    ]);
+    expect(c.definition.triggers?.[2]).toMatchObject({
+      subjectFilter: { types: ["creature"] },
+      effects: [{ kind: "move_card", cardId: "subject_card", toZone: "battlefield", underControlOf: "controller" }],
+    });
+  });
+
+  const put = (game: GameState, ownerId: string, definition: CardDefinition) => {
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({ definitionId: definition.id, ownerId, zone: "battlefield" });
+    card.summoningSick = false;
+    game.cards[card.id] = card;
+    game.players.find((e) => e.id === ownerId)!.zones.battlefield.push(card.id);
+    return card.id;
+  };
+
+  it("reanimates a creature card milled from the library", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 5);
+    put(game, p1.id, compileReaver().definition);
+    // A creature card on top of the library.
+    const bearDef = createCardDefinition({ name: "Bear", typeLine: "Creature — Bear", manaCost: "{1}{G}", power: 2, toughness: 2 });
+    game.definitions[bearDef.id] = bearDef;
+    const bear = createCardInstance({ definitionId: bearDef.id, ownerId: p1.id, zone: "library" });
+    game.cards[bear.id] = bear;
+    game.players.find((e) => e.id === p1.id)!.zones.library.unshift(bear.id); // top of library
+
+    // Mill one: the Bear hits the graveyard from the library and the Reaver reanimates it.
+    let next = applyEffects(game, [{ kind: "mill", playerId: p1.id, count: 1 }] as unknown as GameEffect[]);
+    while (next.stack.length > 0) next = resolveTopOfStack(next);
+
+    expect(next.cards[bear.id]?.zone).toBe("battlefield");
+    expect(next.cards[bear.id]?.controllerId).toBe(p1.id);
+  });
+});

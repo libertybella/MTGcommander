@@ -5636,6 +5636,39 @@ function compileSimpleClauseInner(sentence: string): SimpleClause | null {
     };
   }
 
+  // Colossal Grave-Reaver / Hedge Shredder: "put one of them onto the
+  // battlefield" — the milled subject is reanimated under your control (a
+  // documented one-representative reading of "one of them").
+  if (/^put one of them onto the battlefield$/i.test(sentence)) {
+    return {
+      targetRequirements: [],
+      effects: [
+        {
+          kind: "move_card",
+          cardId: "subject_card",
+          toZone: "battlefield",
+          underControlOf: "controller",
+        },
+      ],
+    };
+  }
+  // Hedge Shredder: "put them onto the battlefield tapped" — the milled lands
+  // arrive tapped (the whole batch is one representative here too).
+  if (/^put them onto the battlefield tapped$/i.test(sentence)) {
+    return {
+      targetRequirements: [],
+      effects: [
+        {
+          kind: "move_card",
+          cardId: "subject_card",
+          toZone: "battlefield",
+          entersTapped: true,
+          underControlOf: "controller",
+        },
+      ],
+    };
+  }
+
   // Enhanced Surveillance: "Shuffle your graveyard into your library" (an
   // activated ability whose cost is exiling this permanent).
   if (/^Shuffle your graveyard into your library$/i.test(sentence)) {
@@ -13526,7 +13559,7 @@ function parseTriggerHead(head: string): TriggerHead | null {
   // FROM ANYWHERE" — a milled land and a fetch land both count, which is why
   // this is `graveyard_from_elsewhere` and not `dies`.
   const landsToGraveyard = text.match(
-    /^Whenever one or more ([a-z]+) cards are put into your graveyard from anywhere$/i,
+    /^Whenever one or more ([a-z]+) cards are put into your graveyard from (?:anywhere|your library)$/i,
   );
   if (landsToGraveyard?.[1] && SEARCH_CARD_TYPES.has(landsToGraveyard[1].toLowerCase())) {
     return {

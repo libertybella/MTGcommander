@@ -527,7 +527,7 @@
   "Woodland Cemetery": true,
   "Aftermath Analyst": true,
   "Avenger of Zendikar": true,
-  "Colossal Grave-Reaver": false,
+  "Colossal Grave-Reaver": true,
   "Eternal Witness": true,
   "Floral Evoker": false,
   "Gravecrawler": true,
@@ -544,7 +544,7 @@
   "River Kelpie": false,
   "Sakura-Tribe Elder": true,
   "Shigeki, Jukai Visionary": false,
-  "Sidisi, Brood Tyrant": false,
+  "Sidisi, Brood Tyrant": true,
   "Six": true,
   "Skull Prophet": true,
   "Springbloom Druid": true,
@@ -4393,13 +4393,7 @@
   "Hedge Shredder": {
    "type": "Artifact — Vehicle",
    "notes": [
-    "Some oracle text is not compiled: Whenever this Vehicle attacks, you may mill two cards; Whenever one or more land cards are put into your graveyard from your library, put them onto the battlefield tapped; Crew 1."
-   ]
-  },
-  "Colossal Grave-Reaver": {
-   "type": "Creature — Dragon",
-   "notes": [
-    "Some oracle text is not compiled: Whenever one or more creature cards are put into your graveyard from your library, put one of them onto the battlefield."
+    "Some oracle text is not compiled: Whenever this Vehicle attacks, you may mill two cards; Crew 1."
    ]
   },
   "Floral Evoker": {
@@ -4454,12 +4448,6 @@
    "type": "Legendary Enchantment Creature — Snake Druid",
    "notes": [
     "Some oracle text is not compiled: {1}{G}, {T}, Return ~ to its owner's hand: Dig 4 for land card to battlefield_tapped rest graveyard; Channel — {X}{X}{G}{G}, Discard this card: Return X target nonlegendary cards from your graveyard to your hand."
-   ]
-  },
-  "Sidisi, Brood Tyrant": {
-   "type": "Legendary Creature — Snake Shaman",
-   "notes": [
-    "Some oracle text is not compiled: Whenever one or more creature cards are put into your graveyard from your library, create a 2/2 black Zombie creature token."
    ]
   },
   "Steward of the Harvest": {
@@ -14131,6 +14119,17 @@
    "misses": []
   },
   {
+   "commander": "Glarb, Calamity's Augur",
+   "rank": 39,
+   "slots": 4,
+   "misses": [
+    "Hedge Shredder",
+    "Grolnok, the Omnivore",
+    "Muldrotha, the Gravetide",
+    "Counterbalance"
+   ]
+  },
+  {
    "commander": "Teysa Karlov",
    "rank": 54,
    "slots": 4,
@@ -14139,18 +14138,6 @@
     "Grim Haruspex",
     "Priest of Forgotten Gods",
     "Sephiroth, Fabled SOLDIER"
-   ]
-  },
-  {
-   "commander": "Glarb, Calamity's Augur",
-   "rank": 39,
-   "slots": 5,
-   "misses": [
-    "Hedge Shredder",
-    "Colossal Grave-Reaver",
-    "Grolnok, the Omnivore",
-    "Muldrotha, the Gravetide",
-    "Counterbalance"
    ]
   },
   {
@@ -14300,6 +14287,25 @@
    ]
   },
   {
+   "commander": "Muldrotha, the Gravetide",
+   "rank": 37,
+   "slots": 12,
+   "misses": [
+    "Hedge Shredder",
+    "Perpetual Timepiece",
+    "Doc Aurlock, Grizzled Genius",
+    "Gravebreaker Lamia",
+    "Kheru Goldkeeper",
+    "River Kelpie",
+    "Teval, the Balanced Scale",
+    "Underrealm Lich",
+    "Pernicious Deed",
+    "Secrets of the Dead",
+    "Ashiok, Dream Render",
+    "Muldrotha, the Gravetide (commander)"
+   ]
+  },
+  {
    "commander": "Flubs, the Fool",
    "rank": 43,
    "slots": 12,
@@ -14354,26 +14360,6 @@
     "Lunar Convocation",
     "Eerie Ultimatum",
     "Betor, Ancestor's Voice (commander)"
-   ]
-  },
-  {
-   "commander": "Muldrotha, the Gravetide",
-   "rank": 37,
-   "slots": 13,
-   "misses": [
-    "Hedge Shredder",
-    "Perpetual Timepiece",
-    "Doc Aurlock, Grizzled Genius",
-    "Gravebreaker Lamia",
-    "Kheru Goldkeeper",
-    "River Kelpie",
-    "Sidisi, Brood Tyrant",
-    "Teval, the Balanced Scale",
-    "Underrealm Lich",
-    "Pernicious Deed",
-    "Secrets of the Dead",
-    "Ashiok, Dream Render",
-    "Muldrotha, the Gravetide (commander)"
    ]
   },
   {
@@ -14973,6 +14959,33 @@
    ]
   },
   {
+   "commander": "Teval, the Balanced Scale",
+   "rank": 9,
+   "slots": 20,
+   "misses": [
+    "Hedge Shredder",
+    "Floral Evoker",
+    "Jarad, Golgari Lich Lord",
+    "Kheru Goldkeeper",
+    "Kishla Skimmer",
+    "Kotis, Sibsig Champion",
+    "Meren of Clan Nel Toth",
+    "Muldrotha, the Gravetide",
+    "River Kelpie",
+    "Shigeki, Jukai Visionary",
+    "Steward of the Harvest",
+    "The Scarab God",
+    "Crawling Sensation",
+    "Insidious Roots",
+    "Teval's Judgment",
+    "Grapple with the Past",
+    "Lethal Scheme",
+    "Afterlife from the Loam",
+    "Welcome the Dead",
+    "Teval, the Balanced Scale (commander)"
+   ]
+  },
+  {
    "commander": "Miirym, Sentinel Wyrm",
    "rank": 28,
    "slots": 20,
@@ -15134,35 +15147,6 @@
     "Teferi, Master of Time",
     "Vraska, Betrayal's Sting",
     "Phyresis Outbreak"
-   ]
-  },
-  {
-   "commander": "Teval, the Balanced Scale",
-   "rank": 9,
-   "slots": 22,
-   "misses": [
-    "Hedge Shredder",
-    "Colossal Grave-Reaver",
-    "Floral Evoker",
-    "Jarad, Golgari Lich Lord",
-    "Kheru Goldkeeper",
-    "Kishla Skimmer",
-    "Kotis, Sibsig Champion",
-    "Meren of Clan Nel Toth",
-    "Muldrotha, the Gravetide",
-    "River Kelpie",
-    "Shigeki, Jukai Visionary",
-    "Sidisi, Brood Tyrant",
-    "Steward of the Harvest",
-    "The Scarab God",
-    "Crawling Sensation",
-    "Insidious Roots",
-    "Teval's Judgment",
-    "Grapple with the Past",
-    "Lethal Scheme",
-    "Afterlife from the Loam",
-    "Welcome the Dead",
-    "Teval, the Balanced Scale (commander)"
    ]
   },
   {
