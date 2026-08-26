@@ -76,7 +76,7 @@ const KEYWORDS = new Set<Keyword>(Object.keys(IMPLEMENTED_KEYWORDS) as Keyword[]
  * guard had drifted to seven of the union's thirteen, and a state holding Kor
  * Spiritdancer's `auras_attached_to_it` therefore failed to deserialize.
  */
-const DYNAMIC_COUNT_KEYS: Record<DynamicCount, true> = {
+const DYNAMIC_COUNT_KEYS: Record<Extract<DynamicCount, string>, true> = {
   times_it_has_attacked_this_turn: true,
   lands_you_control: true,
   creatures_you_control: true,
@@ -106,8 +106,31 @@ const DYNAMIC_COUNT_KEYS: Record<DynamicCount, true> = {
   attacking_creatures_sharing_a_type_with_it: true,
 };
 
+function isControlledSubtypeCount(
+  value: unknown,
+): value is Extract<DynamicCount, { kind: "controlled_subtype" }> {
+  return (
+    isRecord(value) &&
+    value.kind === "controlled_subtype" &&
+    typeof value.subtype === "string" &&
+    (value.excludeSelf === undefined || typeof value.excludeSelf === "boolean")
+  );
+}
+
 function isDynamicCount(value: unknown): value is DynamicCount {
-  return typeof value === "string" && Object.hasOwn(DYNAMIC_COUNT_KEYS, value);
+  return (
+    (typeof value === "string" && Object.hasOwn(DYNAMIC_COUNT_KEYS, value)) ||
+    isControlledSubtypeCount(value)
+  );
+}
+
+/** Rebuild a DynamicCount value, string or the one object form. */
+function copyDynamicCount(value: Extract<DynamicCount, object>): DynamicCount {
+  return {
+    kind: "controlled_subtype",
+    subtype: value.subtype,
+    ...(value.excludeSelf ? { excludeSelf: true } : {}),
+  };
 }
 
 const MANA_KEYS = ["W", "U", "B", "R", "G", "C"] as const;
@@ -306,7 +329,7 @@ function parseTeamPtTerm(
  * Record<DynamicCount, true> makes a future union member a compile error
  * here rather than a save file that will not open.
  */
-const DYNAMIC_COUNTS_BY_NAME: Record<DynamicCount, true> = {
+const DYNAMIC_COUNTS_BY_NAME: Record<Extract<DynamicCount, string>, true> = {
   times_it_has_attacked_this_turn: true,
   lands_you_control: true,
   creatures_you_control: true,
@@ -337,6 +360,9 @@ const DYNAMIC_COUNTS_BY_NAME: Record<DynamicCount, true> = {
 };
 
 function parseDynamicCount(value: unknown, label: string): DynamicCount {
+  if (isControlledSubtypeCount(value)) {
+    return copyDynamicCount(value);
+  }
   const count = expectString(value, label);
   if (!Object.hasOwn(DYNAMIC_COUNTS_BY_NAME, count)) {
     throw new Error(`Invalid ${label}`);

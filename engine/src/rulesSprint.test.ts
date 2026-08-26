@@ -70576,3 +70576,110 @@ describe("wave 422: Winter Orb and Static Orb", () => {
     expect(round.definitions[definition.id]?.untapRestriction).toEqual({ max: 2, scope: "permanent" });
   });
 });
+
+describe("wave 423: Earthshaker Dreadmaw (subtype counts)", () => {
+  const compile = (name: string, typeLine: string, oracleText: string) =>
+    compileOracleCard({
+      oracleId: name.toLowerCase().replace(/[^a-z]+/g, "-"),
+      name,
+      manaCost: "{5}{G}",
+      typeLine,
+      power: "5",
+      toughness: "5",
+      printedKeywords: ["Trample"],
+      imageUrl: "",
+      oracleText,
+    });
+
+  it("compiles 'for each other Dinosaur you control' as a subtype count", () => {
+    const compiled = compile("Earthshaker Dreadmaw", "Creature — Dinosaur", "Trample\nWhen Earthshaker Dreadmaw enters, draw a card for each other Dinosaur you control.");
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.triggers[0]?.effects[0]).toEqual({
+      kind: "draw",
+      playerId: "controller",
+      count: 1,
+      perDynamicCount: { kind: "controlled_subtype", subtype: "dinosaur", excludeSelf: true },
+    });
+  });
+
+  it("keeps the fixed counts working (no 'other' drops excludeSelf)", () => {
+    const forest = compile("Forest Reader", "Creature — Elf Druid", "When Forest Reader enters, draw a card for each Forest you control.");
+    expect(forest.definition.triggers[0]?.effects[0]).toMatchObject({ perDynamicCount: "forests_you_control" });
+    const elf = compile("Elf Chief", "Creature — Elf", "When Elf Chief enters, draw a card for each Elf you control.");
+    expect(elf.definition.triggers[0]?.effects[0]).toMatchObject({
+      perDynamicCount: { kind: "controlled_subtype", subtype: "elf" },
+    });
+  });
+
+  const dino = (name: string) =>
+    createCardDefinition({ name, typeLine: "Creature — Dinosaur", manaCost: "{2}{G}", power: 3, toughness: 3 });
+  const elf = (name: string) =>
+    createCardDefinition({ name, typeLine: "Creature — Elf", manaCost: "{G}", power: 1, toughness: 1 });
+
+  const put = (game: GameState, ownerId: string, definition: CardDefinition) => {
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({ definitionId: definition.id, ownerId, zone: "battlefield" });
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === ownerId)!.zones.battlefield.push(card.id);
+    return card.id;
+  };
+
+  it("counts other Dinosaurs and excludes the source", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    const selfId = put(game, p1.id, dino("Earthshaker"));
+    put(game, p1.id, dino("Raptor"));
+    put(game, p1.id, dino("Ceratops"));
+    put(game, p1.id, elf("A Non-Dino"));
+    put(game, p2.id, dino("Enemy Dino")); // not yours
+    const count = dynamicCountOf(
+      game,
+      p1.id,
+      { kind: "controlled_subtype", subtype: "dinosaur", excludeSelf: true },
+      selfId,
+    );
+    // Two other Dinosaurs you control: the Elf and the source and the
+    // opponent's dino are all out.
+    expect(count).toBe(2);
+  });
+
+  it("includes the source without excludeSelf", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const selfId = put(game, p1.id, dino("Earthshaker"));
+    put(game, p1.id, dino("Raptor"));
+    const count = dynamicCountOf(game, p1.id, { kind: "controlled_subtype", subtype: "dinosaur" }, selfId);
+    expect(count).toBe(2);
+  });
+
+  it("round trips the subtype count through serialization", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const definition = createCardDefinition({
+      name: "Earthshaker Dreadmaw",
+      typeLine: "Creature — Dinosaur",
+      manaCost: "{5}{G}",
+      power: 5,
+      toughness: 5,
+      triggers: [
+        {
+          event: "enter_battlefield",
+          effects: [
+            {
+              kind: "draw",
+              playerId: "controller",
+              count: 1,
+              perDynamicCount: { kind: "controlled_subtype", subtype: "dinosaur", excludeSelf: true },
+            },
+          ],
+          targetRequirements: [],
+        },
+      ],
+    });
+    put(game, p1.id, definition);
+    const round = parseGameState(serializeGameState(game));
+    expect(round.definitions[definition.id]?.triggers[0]?.effects[0]).toMatchObject({
+      perDynamicCount: { kind: "controlled_subtype", subtype: "dinosaur", excludeSelf: true },
+    });
+  });
+});

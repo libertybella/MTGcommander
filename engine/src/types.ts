@@ -2847,7 +2847,13 @@ export type DynamicCount =
    */
   | "creatures_sharing_a_type_with_it"
   /** Shared Animosity: the same count, narrowed to the ones attacking. */
-  | "attacking_creatures_sharing_a_type_with_it";
+  | "attacking_creatures_sharing_a_type_with_it"
+  /**
+   * Earthshaker Dreadmaw: "for each (other) <subtype> you control" — a
+   * parameterized creature-subtype count. The one object member of this
+   * union; `excludeSelf` drops the source (the "other" in "other Dinosaur").
+   */
+  | { kind: "controlled_subtype"; subtype: string; excludeSelf?: boolean };
 
 /** "As an additional cost to cast this spell, …" — paid at cast time. */
 /**

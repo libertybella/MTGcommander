@@ -330,6 +330,24 @@ export function dynamicCountOf(
   if (!player) {
     return 0;
   }
+  // Earthshaker Dreadmaw: "for each (other) <subtype> you control" — count the
+  // creatures you control of that subtype, dropping the source under "other".
+  // Printed characteristics, like the rest of this function: reading the layer
+  // engine's own output here would recurse. Changelings are the documented
+  // gap this leaves.
+  if (typeof count === "object") {
+    return player.zones.battlefield.filter((id) => {
+      if (count.excludeSelf && id === sourceId) {
+        return false;
+      }
+      const printed = state.definitions[state.cards[id]?.definitionId ?? ""]?.characteristics;
+      return (
+        printed !== undefined &&
+        printed.types.includes("creature") &&
+        printed.subtypes.map((entry) => entry.toLowerCase()).includes(count.subtype)
+      );
+    }).length;
+  }
   if (count === "cards_in_your_hand") {
     return player.zones.hand.length;
   }
@@ -516,7 +534,7 @@ export function dynamicCountOf(
   }
   // Basic land types are SUBTYPES, so a Swamp is anything with the subtype —
   // an Urborg'd Island counts, which is the whole point of the wording.
-  const BASIC_LAND_COUNTS: Partial<Record<DynamicCount, string>> = {
+  const BASIC_LAND_COUNTS: Partial<Record<Extract<DynamicCount, string>, string>> = {
     plains_you_control: "plains",
     islands_you_control: "island",
     swamps_you_control: "swamp",

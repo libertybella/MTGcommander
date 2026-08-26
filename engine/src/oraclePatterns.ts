@@ -430,7 +430,23 @@ const DYNAMIC_COUNTS: [RegExp, DynamicCount][] = [
  */
 function parseDynamicCount(phrase: string): DynamicCount | null {
   const trimmed = phrase.trim();
-  return DYNAMIC_COUNTS.find(([pattern]) => pattern.test(trimmed))?.[1] ?? null;
+  const fixed = DYNAMIC_COUNTS.find(([pattern]) => pattern.test(trimmed))?.[1];
+  if (fixed) {
+    return fixed;
+  }
+  // Earthshaker Dreadmaw: "(other) <Subtype> you control". A capitalised head
+  // noun is a creature type; the fixed table above has already claimed the
+  // basic-land types (Islands, Plains …) and every lowercase noun, so what
+  // reaches here is a tribe. "other" drops the source from the count.
+  const subtype = trimmed.match(/^(other )?([A-Z][a-z]+)s? you control$/);
+  if (subtype?.[2]) {
+    return {
+      kind: "controlled_subtype",
+      subtype: subtype[2].toLowerCase(),
+      ...(subtype[1] ? { excludeSelf: true } : {}),
+    };
+  }
+  return null;
 }
 
 const COUNT_WORDS: Record<string, number> = {
