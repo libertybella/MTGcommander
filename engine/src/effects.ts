@@ -3056,6 +3056,22 @@ function lifeGainFactor(state: GameState, playerId: PlayerId): number {
   return factor;
 }
 
+/** Angel of Vitality-class: the total additive bonus on each life gain. */
+function lifeGainBonus(state: GameState, playerId: PlayerId): number {
+  let bonus = 0;
+  for (const card of Object.values(state.cards)) {
+    if (card.zone !== "battlefield" || card.controllerId !== playerId || abilitiesRemoved(state, card.id)) {
+      continue;
+    }
+    for (const replacement of state.definitions[card.definitionId]?.replacements ?? []) {
+      if (replacement.kind === "life_gain_bonus") {
+        bonus += replacement.amount;
+      }
+    }
+  }
+  return bonus;
+}
+
 function applyGainLife(state: GameState, playerId: PlayerId, amount: number): GameState {
   requirePositiveInteger(amount, "life gain");
   const next = cloneGameState(state);
@@ -3065,7 +3081,9 @@ function applyGainLife(state: GameState, playerId: PlayerId, amount: number): Ga
   if (playerLifeLocked(next, playerId)) {
     return next;
   }
-  const gained = amount * lifeGainFactor(next, playerId);
+  // "That much plus N" adds to the base, then any doubler multiplies the
+  // whole — one reasonable order of two player-ordered replacements.
+  const gained = (amount + lifeGainBonus(next, playerId)) * lifeGainFactor(next, playerId);
   requirePlayer(next, playerId).life += gained;
   next.log.push({ kind: "life_change", playerId, delta: gained });
   dispatchEventsInPlace(next, [{ kind: "gains_life", playerId, amount: gained }]);

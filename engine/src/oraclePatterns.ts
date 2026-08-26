@@ -19396,6 +19396,15 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
       continue;
     }
 
+    // Angel of Vitality: "you gain that much life plus N instead."
+    const lifeBonus = sentence.match(
+      /^If you would gain life, you gain that much life plus (\d+) instead$/i,
+    );
+    if (lifeBonus?.[1]) {
+      result.replacements.push({ kind: "life_gain_bonus", amount: Number(lifeBonus[1]) });
+      continue;
+    }
+
     // Bloodletter of Aclazotz: the mirror, with both halves restrictions —
     // an OPPONENT, and only during YOUR turn.
     if (

@@ -5780,6 +5780,9 @@ export type ReplacementEffect =
     }
   /** Rhox Faithmender / Boon Reflection: life gained is doubled. */
   | { kind: "double_life_gain" }
+  /** Angel of Vitality: "you gain that much life plus N instead" — an
+   * additive bonus on each life-gain event this player's controller enjoys. */
+  | { kind: "life_gain_bonus"; amount: number }
   /**
    * Bloodletter of Aclazotz: "If an OPPONENT would lose life DURING YOUR
    * TURN, they lose twice that much instead." Both halves are restrictions:

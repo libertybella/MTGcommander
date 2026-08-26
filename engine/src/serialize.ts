@@ -6175,6 +6175,9 @@ function parseReplacements(value: unknown, label: string): ReplacementEffect[] {
     ) {
       return { kind };
     }
+    if (kind === "life_gain_bonus") {
+      return { kind, amount: expectNumber(entry.amount, `${label}[${index}].amount`) };
+    }
     if (kind === "double_tokens") {
       return {
         kind,

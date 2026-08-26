@@ -71737,3 +71737,69 @@ Reconfigure {2}{U}`;
     expect(round.definitions[definition.id]?.topOfLibrary?.requiresAttached).toBe(true);
   });
 });
+
+describe("wave 435: Angel of Vitality (life-gain bonus)", () => {
+  const compile = (oracleText: string) =>
+    compileOracleCard({
+      oracleId: "angel-of-vitality",
+      name: "Angel of Vitality",
+      manaCost: "{1}{W}{W}",
+      typeLine: "Creature — Angel",
+      power: "2",
+      toughness: "2",
+      printedKeywords: ["Flying"],
+      imageUrl: "",
+      oracleText,
+    });
+
+  it("compiles 'that much life plus N' as a life-gain bonus replacement", () => {
+    const compiled = compile("Flying\nIf you would gain life, you gain that much life plus 1 instead.\nAngel of Vitality gets +2/+2 as long as you have 25 or more life.");
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.replacements).toContainEqual({ kind: "life_gain_bonus", amount: 1 });
+  });
+
+  it("leaves the doubling replacement alone", () => {
+    const compiled = compile("If you would gain life, you gain twice that much life instead.");
+    expect(compiled.definition.replacements).toContainEqual({ kind: "double_life_gain" });
+  });
+
+  const put = (game: GameState, ownerId: string, definition: CardDefinition) => {
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({ definitionId: definition.id, ownerId, zone: "battlefield" });
+    card.summoningSick = false;
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === ownerId)!.zones.battlefield.push(card.id);
+    return card.id;
+  };
+  const angel = () =>
+    createCardDefinition({ name: "Angel of Vitality", typeLine: "Creature — Angel", manaCost: "{1}{W}{W}", power: 2, toughness: 2, replacements: [{ kind: "life_gain_bonus", amount: 1 }] });
+  const doubler = () =>
+    createCardDefinition({ name: "Rhox Faithmender", typeLine: "Creature — Rhino Monk", manaCost: "{3}{W}", power: 1, toughness: 5, replacements: [{ kind: "double_life_gain" }] });
+
+  it("adds the bonus to each life gain", () => {
+    const { game, p1 } = twoPlayers();
+    put(game, p1.id, angel());
+    const start = p1.life;
+    const after = applyEffects(game, [{ kind: "gain_life", playerId: p1.id, amount: 3 }]);
+    // 3 plus 1.
+    expect(after.players.find((entry) => entry.id === p1.id)!.life - start).toBe(4);
+  });
+
+  it("stacks additively with a doubler ((amount + N) doubled)", () => {
+    const { game, p1 } = twoPlayers();
+    put(game, p1.id, angel());
+    put(game, p1.id, doubler());
+    const start = p1.life;
+    const after = applyEffects(game, [{ kind: "gain_life", playerId: p1.id, amount: 3 }]);
+    // (3 + 1) * 2.
+    expect(after.players.find((entry) => entry.id === p1.id)!.life - start).toBe(8);
+  });
+
+  it("round trips the bonus", () => {
+    const { game, p1 } = twoPlayers();
+    const definition = angel();
+    put(game, p1.id, definition);
+    const round = parseGameState(serializeGameState(game));
+    expect(round.definitions[definition.id]?.replacements).toContainEqual({ kind: "life_gain_bonus", amount: 1 });
+  });
+});
