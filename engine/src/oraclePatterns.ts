@@ -3234,6 +3234,27 @@ function compileSimpleClauseInner(sentence: string): SimpleClause | null {
   // trails it, the enemy-colour manlands front it — and it says the same
   // thing in both places, so one pattern reads both rather than two
   // patterns saying the same thing twice.
+  // Tezzeret the Seeker's -5: "Artifacts you control become artifact
+  // creatures with base power and toughness 5/5 until end of turn." A mass
+  // animate — the type is ADDED (they stay artifacts) and the P/T is SET.
+  const massAnimate = sentence.match(
+    /^(Artifacts|Lands|Creatures) you control become (?:artifact |land |)creatures with base power and toughness (\d+)\/(\d+) until end of turn$/i,
+  );
+  if (massAnimate?.[1] && massAnimate[2] && massAnimate[3]) {
+    return {
+      targetRequirements: [],
+      effects: [
+        {
+          kind: "animate_controlled_until_eot",
+          playerId: "controller",
+          cardType: massAnimate[1].toLowerCase().replace(/s$/, ""),
+          power: Number(massAnimate[2]),
+          toughness: Number(massAnimate[3]),
+        },
+      ],
+    };
+  }
+
   const animate = sentence.match(
     /^(?:Until end of turn, )?(~|Target land you control|Target land) becomes an? (?:(\d+)\/(\d+)|X\/X) ((?:[A-Za-z]+ )*)creature(?: with (all creature types|[a-z, ]+?))?(?: until end of turn)?(?:, where X is (.+))?$/i,
   );
@@ -4189,21 +4210,38 @@ function compileSimpleClauseInner(sentence: string): SimpleClause | null {
   // The noun-phrase parser can only say "up to one", because a phrase is one
   // requirement; the plural head is singularised so it goes through the
   // shared grammar rather than being parsed a second way.
-  const upToTwo = sentence.match(/^(Exile|Destroy) up to two target (.+)$/i);
+  const upToTwo = sentence.match(/^(Exile|Destroy|Untap) up to two target (.+)$/i);
   if (upToTwo?.[1] && upToTwo[2]) {
     const singular = upToTwo[2].replace(/and\/or/gi, "or").replace(/s(?= |$)/gi, "");
     const requirement = parseSimpleTargetPhrase(`target ${singular}`);
     if (requirement) {
-      const toZone = /^exile$/i.test(upToTwo[1]) ? ("exile" as const) : ("graveyard" as const);
+      const verb = upToTwo[1].toLowerCase();
+      // Tezzeret the Seeker's +1: "Untap up to two target artifacts" — two
+      // optional slots, same shape as the exile/destroy cousins.
+      const effects: CardEffect[] =
+        verb === "untap"
+          ? [
+              { kind: "untap", cardId: { type: "chosen", index: 0 } },
+              { kind: "untap", cardId: { type: "chosen", index: 1 } },
+            ]
+          : [
+              {
+                kind: "move_card",
+                cardId: { type: "chosen", index: 0 },
+                toZone: verb === "exile" ? ("exile" as const) : ("graveyard" as const),
+              },
+              {
+                kind: "move_card",
+                cardId: { type: "chosen", index: 1 },
+                toZone: verb === "exile" ? ("exile" as const) : ("graveyard" as const),
+              },
+            ];
       return {
         targetRequirements: [
           { ...requirement, optional: true },
           { ...requirement, optional: true },
         ],
-        effects: [
-          { kind: "move_card", cardId: { type: "chosen", index: 0 }, toZone },
-          { kind: "move_card", cardId: { type: "chosen", index: 1 }, toZone },
-        ],
+        effects,
       };
     }
   }

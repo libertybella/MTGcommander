@@ -2834,6 +2834,19 @@ export function bindCardEffect(
       }
       return { kind: "counter_spell", stackObjectId: entry.id };
     }
+    case "animate_controlled_until_eot": {
+      const acPlayer = bindPlayerSelector(state, effect.playerId, context);
+      if (!acPlayer) {
+        return null;
+      }
+      return {
+        kind: "animate_controlled_until_eot",
+        playerId: acPlayer,
+        cardType: effect.cardType,
+        power: effect.power,
+        toughness: effect.toughness,
+      };
+    }
     case "animate_until_eot": {
       const animated = bindCardId(state, effect.cardId, context);
       if (!animated) {
@@ -7346,6 +7359,31 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
             createdOnTurn: next.turn.number,
           },
         ];
+        break;
+      }
+      case "animate_controlled_until_eot": {
+        // Tezzeret the Seeker's -5. Every controlled permanent of the named
+        // card type becomes a creature (type ADDED, so an artifact stays an
+        // artifact) with a SET base power/toughness; the set locks in now.
+        requirePlayer(state, effect.playerId);
+        const acIds = Object.values(state.cards)
+          .filter(
+            (card) =>
+              card.zone === "battlefield" &&
+              card.controllerId === effect.playerId &&
+              characteristicsOf(state, card.id).types.includes(effect.cardType),
+          )
+          .map((card) => card.id);
+        next = pushUntilEotEffect(state, acIds, {
+          kind: "add_types",
+          types: ["creature"],
+          subtypes: [],
+        });
+        next = pushUntilEotEffect(next, acIds, {
+          kind: "set_pt",
+          power: effect.power,
+          toughness: effect.toughness,
+        });
         break;
       }
       case "animate_until_eot": {

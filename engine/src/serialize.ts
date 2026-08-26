@@ -5203,6 +5203,14 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
         cardType: expectString(value.cardType, `${label}.cardType`),
         ...(value.gainsHaste === true ? { gainsHaste: true } : {}),
       };
+    case "animate_controlled_until_eot":
+      return {
+        kind,
+        playerId: parsePlayerSelector(value.playerId, `${label}.playerId`),
+        cardType: expectString(value.cardType, `${label}.cardType`),
+        power: expectNumber(value.power, `${label}.power`),
+        toughness: expectNumber(value.toughness, `${label}.toughness`),
+      };
     case "prevent_combat_for":
       return { kind, cardId: parseChosenTargetRef(value.cardId, `${label}.cardId`) };
     case "extra_land_drop":
@@ -7535,6 +7543,15 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
       playerId: expectString(value.playerId, `${label}.playerId`),
       cardType: expectString(value.cardType, `${label}.cardType`),
       ...(value.gainsHaste === true ? { gainsHaste: true } : {}),
+    };
+  }
+  if (kind === "animate_controlled_until_eot") {
+    return {
+      kind,
+      playerId: expectString(value.playerId, `${label}.playerId`),
+      cardType: expectString(value.cardType, `${label}.cardType`),
+      power: expectNumber(value.power, `${label}.power`),
+      toughness: expectNumber(value.toughness, `${label}.toughness`),
     };
   }
   if (kind === "prevent_combat_for") {

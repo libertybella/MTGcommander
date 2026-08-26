@@ -2372,6 +2372,18 @@ export type GameEffect =
       allCreatureTypes?: boolean;
       keywords?: Keyword[];
     }
+  /**
+   * Tezzeret the Seeker's -5: every permanent of one card type the player
+   * controls becomes a creature with a SET base power/toughness until end of
+   * turn. The affected set locks in when the effect resolves (CR 611.2c).
+   */
+  | {
+      kind: "animate_controlled_until_eot";
+      playerId: PlayerId;
+      cardType: string;
+      power: number;
+      toughness: number;
+    }
   | {
       kind: "team_set_pt_until_eot";
       playerId: PlayerId;
@@ -4097,6 +4109,13 @@ export type CardEffect =
       colors?: Color[];
       allCreatureTypes?: boolean;
       keywords?: Keyword[];
+    }
+  | {
+      kind: "animate_controlled_until_eot";
+      playerId: PlayerSelector;
+      cardType: string;
+      power: number;
+      toughness: number;
     }
   | {
       kind: "team_set_pt_until_eot";

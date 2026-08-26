@@ -2338,7 +2338,7 @@
   "Mental Misstep": true,
   "Mindbreak Trap": true,
   "Veil of Summer": true,
-  "Tezzeret the Seeker": false,
+  "Tezzeret the Seeker": true,
   "Finale of Devastation": true,
   "Green Sun's Zenith": true,
   "Nature's Rhythm": true,
@@ -9583,12 +9583,6 @@
     "Some oracle text is not compiled: When ~ enters, put X +1/+1 counters on him, then draw half X cards, rounded down."
    ]
   },
-  "Tezzeret the Seeker": {
-   "type": "Legendary Planeswalker — Tezzeret",
-   "notes": [
-    "Some oracle text is not compiled: +1: Untap up to two target artifacts; −5: Artifacts you control become artifact creatures with base power and toughness 5/5 until end of turn."
-   ]
-  },
   "Transmute Artifact": {
    "type": "Sorcery",
    "notes": [
@@ -14268,11 +14262,10 @@
   {
    "commander": "Urza, Lord High Artificer",
    "rank": 67,
-   "slots": 3,
+   "slots": 2,
    "misses": [
     "Rings of Brighthearth",
-    "Uthros, Titanic Godcore",
-    "Tezzeret the Seeker"
+    "Uthros, Titanic Godcore"
    ]
   },
   {
@@ -14442,6 +14435,23 @@
    ]
   },
   {
+   "commander": "Kinnan, Bonder Prodigy",
+   "rank": 59,
+   "slots": 10,
+   "misses": [
+    "Badgermole Cub",
+    "Colossal Skyturtle",
+    "Endurance",
+    "Thrasios, Triton Hero",
+    "Trophy Mage",
+    "Void Winnower",
+    "Wan Shi Tong, Librarian",
+    "Wandering Archaic",
+    "Transmute Artifact",
+    "Kinnan, Bonder Prodigy (commander)"
+   ]
+  },
+  {
    "commander": "Omnath, Locus of Creation",
    "rank": 87,
    "slots": 10,
@@ -14456,24 +14466,6 @@
     "Wrenn and Seven",
     "Scapeshift",
     "Omnath, Locus of Creation (commander)"
-   ]
-  },
-  {
-   "commander": "Kinnan, Bonder Prodigy",
-   "rank": 59,
-   "slots": 11,
-   "misses": [
-    "Badgermole Cub",
-    "Colossal Skyturtle",
-    "Endurance",
-    "Thrasios, Triton Hero",
-    "Trophy Mage",
-    "Void Winnower",
-    "Wan Shi Tong, Librarian",
-    "Wandering Archaic",
-    "Tezzeret the Seeker",
-    "Transmute Artifact",
-    "Kinnan, Bonder Prodigy (commander)"
    ]
   },
   {
@@ -15530,6 +15522,36 @@
    ]
   },
   {
+   "commander": "Kilo, Apogee Mind",
+   "rank": 91,
+   "slots": 23,
+   "misses": [
+    "Astral Cornucopia",
+    "Clock of Omens",
+    "Darksteel Reactor",
+    "Empowered Autogenerator",
+    "Insight Engine",
+    "Inspirit, Flagship Vessel",
+    "Long-Range Sensor",
+    "Lux Artillery",
+    "Moxite Refinery",
+    "Pentad Prism",
+    "Solar Array",
+    "Uthros Research Craft",
+    "Uthros, Titanic Godcore",
+    "Alibou, Ancient Witness",
+    "Crystalline Crawler",
+    "Cyberdrive Awakener",
+    "Patrolling Peacemaker",
+    "Tekuthal, Inquiry Dominus",
+    "All Will Be One",
+    "Pemmin's Aura",
+    "Resourceful Defense",
+    "Thirst for Knowledge",
+    "Tezzeret, Cruel Captain"
+   ]
+  },
+  {
    "commander": "Krenko, Mob Boss",
    "rank": 5,
    "slots": 24,
@@ -15744,37 +15766,6 @@
     "For the Ancestors",
     "Patriarch's Bidding",
     "The First Sliver (commander)"
-   ]
-  },
-  {
-   "commander": "Kilo, Apogee Mind",
-   "rank": 91,
-   "slots": 24,
-   "misses": [
-    "Astral Cornucopia",
-    "Clock of Omens",
-    "Darksteel Reactor",
-    "Empowered Autogenerator",
-    "Insight Engine",
-    "Inspirit, Flagship Vessel",
-    "Long-Range Sensor",
-    "Lux Artillery",
-    "Moxite Refinery",
-    "Pentad Prism",
-    "Solar Array",
-    "Uthros Research Craft",
-    "Uthros, Titanic Godcore",
-    "Alibou, Ancient Witness",
-    "Crystalline Crawler",
-    "Cyberdrive Awakener",
-    "Patrolling Peacemaker",
-    "Tekuthal, Inquiry Dominus",
-    "All Will Be One",
-    "Pemmin's Aura",
-    "Resourceful Defense",
-    "Thirst for Knowledge",
-    "Tezzeret the Seeker",
-    "Tezzeret, Cruel Captain"
    ]
   },
   {

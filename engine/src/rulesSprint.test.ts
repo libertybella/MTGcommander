@@ -72754,3 +72754,205 @@ describe("wave 447: X-loyalty cost (Tezzeret the Seeker's -X)", () => {
     expect(round.definitions[def.id]?.loyaltyAbilities?.[0]?.xLoyaltyCost).toBe(true);
   });
 });
+
+describe("wave 448: Untap up to two target artifacts (Tezzeret the Seeker's +1)", () => {
+  it("compiles two optional untap slots", () => {
+    const compiled = compileOracleCard({
+      oracleId: "seeker-plus",
+      name: "Seeker",
+      manaCost: "{3}{U}{U}",
+      typeLine: "Legendary Planeswalker — Tezzeret",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      loyalty: "4",
+      oracleText: "+1: Untap up to two target artifacts.",
+    });
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.loyaltyAbilities).toEqual([
+      {
+        cost: 1,
+        effects: [
+          { kind: "untap", cardId: { type: "chosen", index: 0 } },
+          { kind: "untap", cardId: { type: "chosen", index: 1 } },
+        ],
+        targetRequirements: [
+          { kind: "artifact", optional: true },
+          { kind: "artifact", optional: true },
+        ],
+      },
+    ]);
+  });
+
+  const mainPhase = (game: GameState, id: string) => {
+    game.turn.activePlayerId = id;
+    game.turn.phase = "precombatMain";
+    game.turn.step = "precombatMain";
+    game.priorityPlayerId = id;
+  };
+  const walkerDef = () =>
+    createCardDefinition({
+      name: "Seeker",
+      typeLine: "Legendary Planeswalker — Tezzeret",
+      loyalty: 4,
+      loyaltyAbilities: [
+        {
+          cost: 1,
+          effects: [
+            { kind: "untap", cardId: { type: "chosen", index: 0 } },
+            { kind: "untap", cardId: { type: "chosen", index: 1 } },
+          ],
+          targetRequirements: [
+            { kind: "artifact", optional: true },
+            { kind: "artifact", optional: true },
+          ],
+        },
+      ],
+    });
+  const putWalker = (game: GameState, ownerId: string) => {
+    const def = walkerDef();
+    game.definitions[def.id] = def;
+    const card = createCardInstance({ definitionId: def.id, ownerId, zone: "battlefield" });
+    card.counters["loyalty"] = 4;
+    game.cards[card.id] = card;
+    game.players.find((e) => e.id === ownerId)!.zones.battlefield.push(card.id);
+    mainPhase(game, ownerId);
+    return card.id;
+  };
+  const putTappedArtifact = (game: GameState, ownerId: string, name: string) => {
+    const def = createCardDefinition({ name, typeLine: "Artifact", manaCost: "{2}" });
+    game.definitions[def.id] = def;
+    const card = createCardInstance({ definitionId: def.id, ownerId, zone: "battlefield" });
+    card.tapped = true;
+    game.cards[card.id] = card;
+    game.players.find((e) => e.id === ownerId)!.zones.battlefield.push(card.id);
+    return card.id;
+  };
+
+  it("untaps two chosen artifacts and adds loyalty", () => {
+    const { game, p1 } = twoPlayers();
+    const walkerId = putWalker(game, p1.id);
+    const a1 = putTappedArtifact(game, p1.id, "Mox A");
+    const a2 = putTappedArtifact(game, p1.id, "Mox B");
+    let next = applyAction(game, {
+      kind: "activate_loyalty",
+      playerId: p1.id,
+      cardId: walkerId,
+      abilityIndex: 0,
+      targets: [
+        { type: "creature", cardId: a1 },
+        { type: "creature", cardId: a2 },
+      ],
+    });
+    expect(next.cards[walkerId]?.counters["loyalty"]).toBe(5);
+    next = resolveTopOfStack(next);
+    expect(next.cards[a1]?.tapped).toBe(false);
+    expect(next.cards[a2]?.tapped).toBe(false);
+  });
+
+  it("permits untapping just one (the second slot is optional)", () => {
+    const { game, p1 } = twoPlayers();
+    const walkerId = putWalker(game, p1.id);
+    const a1 = putTappedArtifact(game, p1.id, "Mox A");
+    const a2 = putTappedArtifact(game, p1.id, "Mox B");
+    let next = applyAction(game, {
+      kind: "activate_loyalty",
+      playerId: p1.id,
+      cardId: walkerId,
+      abilityIndex: 0,
+      targets: [{ type: "creature", cardId: a1 }],
+    });
+    next = resolveTopOfStack(next);
+    expect(next.cards[a1]?.tapped).toBe(false);
+    expect(next.cards[a2]?.tapped).toBe(true);
+  });
+});
+
+describe("wave 449: mass-animate your artifacts (Tezzeret the Seeker's -5)", () => {
+  it("compiles Tezzeret the Seeker in full (all three abilities)", () => {
+    const compiled = compileOracleCard({
+      oracleId: "tezzeret-the-seeker",
+      name: "Tezzeret the Seeker",
+      manaCost: "{3}{U}{U}",
+      typeLine: "Legendary Planeswalker — Tezzeret",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      loyalty: "4",
+      oracleText:
+        "+1: Untap up to two target artifacts.\n−X: Search your library for an artifact card with mana value X or less, put it onto the battlefield, then shuffle.\n−5: Artifacts you control become artifact creatures with base power and toughness 5/5 until end of turn.",
+    });
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.loyaltyAbilities).toHaveLength(3);
+    expect(compiled.definition.loyaltyAbilities?.[2]).toEqual({
+      cost: -5,
+      effects: [
+        { kind: "animate_controlled_until_eot", playerId: "controller", cardType: "artifact", power: 5, toughness: 5 },
+      ],
+      targetRequirements: [],
+    });
+  });
+
+  const put = (game: GameState, ownerId: string, definition: CardDefinition) => {
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({ definitionId: definition.id, ownerId, zone: "battlefield" });
+    card.summoningSick = false;
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === ownerId)!.zones.battlefield.push(card.id);
+    return card.id;
+  };
+  const artifact = (name: string) => createCardDefinition({ name, typeLine: "Artifact", manaCost: "{1}" });
+
+  it("turns your artifacts into 5/5 artifact creatures, sparing non-artifacts and opponents' artifacts", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 10);
+    const mox = put(game, p1.id, artifact("Mox"));
+    const relic = put(game, p1.id, artifact("Relic"));
+    const bear = put(game, p1.id, createCardDefinition({ name: "Bear", typeLine: "Creature — Bear", manaCost: "{1}{G}", power: 2, toughness: 2 }));
+    const foreign = put(game, p2.id, artifact("Foreign Mox"));
+
+    const effects = [
+      { kind: "animate_controlled_until_eot", playerId: "controller", cardType: "artifact", power: 5, toughness: 5 },
+    ] as const;
+    const after = applyEffects(
+      game,
+      bindCardEffects(game, effects as unknown as CardEffect[], { controllerId: p1.id, sourceId: mox, targets: [], targetRequirements: [] }),
+    );
+
+    // Your artifacts are now 5/5 creatures (still artifacts).
+    expect(computedCard(after, mox)?.power).toBe(5);
+    expect(computedCard(after, mox)?.toughness).toBe(5);
+    expect(characteristicsOf(after, mox).types).toContain("creature");
+    expect(characteristicsOf(after, mox).types).toContain("artifact");
+    expect(computedCard(after, relic)?.power).toBe(5);
+    // A creature you control is untouched by an artifact-only animate.
+    expect(computedCard(after, bear)?.power).toBe(2);
+    // An opponent's artifact is not yours to animate.
+    expect(characteristicsOf(after, foreign).types).not.toContain("creature");
+  });
+
+  it("round trips the mass-animate effect", () => {
+    const { game } = twoPlayers();
+    const def = createCardDefinition({
+      name: "Seeker",
+      typeLine: "Legendary Planeswalker — Tezzeret",
+      loyalty: 4,
+      loyaltyAbilities: [
+        {
+          cost: -5,
+          effects: [
+            { kind: "animate_controlled_until_eot", playerId: "controller", cardType: "artifact", power: 5, toughness: 5 },
+          ],
+          targetRequirements: [],
+        },
+      ],
+    });
+    game.definitions[def.id] = def;
+    const round = parseGameState(serializeGameState(game));
+    expect(round.definitions[def.id]?.loyaltyAbilities?.[0]?.effects).toEqual([
+      { kind: "animate_controlled_until_eot", playerId: "controller", cardType: "artifact", power: 5, toughness: 5 },
+    ]);
+  });
+});
