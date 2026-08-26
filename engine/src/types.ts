@@ -3779,7 +3779,7 @@ export type CardEffect =
       kind: "add_counter";
       cardId: CardIdSelector;
       counter: string;
-      amount: number | "source_power" | "subject_amount";
+      amount: number | "source_power" | "subject_amount" | "sacrificed_power";
       /** Proft's Eidetic Memory: "X counters, where X is the number of
        * <count>" — the same shared table draw and gain_life scale by,
        * multiplying `amount` at bind.
@@ -5733,6 +5733,10 @@ export type ActivatedAbility = {
   exertSelf?: boolean;
   /** Spirit Guides: exiling this card (from hand) is part of the cost. */
   exileSelf?: boolean;
+  /** Uthros / Station: tapping ANOTHER untapped creature you control is the
+   * cost. The tapped creature's power is captured (as sacrificedPower) so an
+   * effect can read "equal to its power". */
+  costTapCreatureOther?: boolean;
   /** Life paid as part of the cost (Doom Whisperer). */
   lifeCost?: number;
   /**
@@ -5979,6 +5983,12 @@ export type ManaAbility = {
   countFromChosenTypeCreatures?: boolean;
   /** Sanctum Weaver: the amount is the controller's enchantment count. */
   countFromEnchantments?: boolean;
+  /** Uthros, Titanic Godcore: the amount is the controller's artifact count
+   * ("Add {U} for each artifact you control"). Scales the FIXED colour. */
+  countFromArtifacts?: boolean;
+  /** Uthros: a Station-threshold gate — the mana ability is usable only once
+   * the source has at least this many of the named counter. */
+  requiresManaCounters?: { counter: string; atLeast: number };
   /**
    * Selvala: X is the GREATEST power among creatures you control, not
    * the source's own power (`countFromPower`) and not their sum.
@@ -6383,6 +6393,8 @@ export type GameAction =
       modeIndex?: number;
       /** The permanent sacrificed to a sacrificeCost ability. */
       costSacrificeId?: CardInstanceId;
+      /** Station: another creature tapped to pay the cost. */
+      costTapCreatureId?: CardInstanceId;
     }
   | {
       kind: "activate_loyalty";

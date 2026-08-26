@@ -1378,7 +1378,9 @@ export function bindCardEffect(
             : 0
           : effect.amount === "subject_amount"
             ? Math.max(0, context.subjectAmount ?? 0)
-            : effect.amount;
+            : effect.amount === "sacrificed_power"
+              ? Math.max(0, context.sacrificedPower ?? 0)
+              : effect.amount;
       if (amount <= 0) {
         return null;
       }

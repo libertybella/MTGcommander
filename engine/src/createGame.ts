@@ -351,6 +351,10 @@ export function createCardDefinition(
             ? { countFromGreatestControlledPower: true }
             : {}),
           ...(ability.countFromEnchantments ? { countFromEnchantments: true } : {}),
+          ...(ability.countFromArtifacts ? { countFromArtifacts: true } : {}),
+          ...(ability.requiresManaCounters
+            ? { requiresManaCounters: { ...ability.requiresManaCounters } }
+            : {}),
           ...(ability.costTapCreature ? { costTapCreature: true } : {}),
           ...(ability.costTapArtifact ? { costTapArtifact: true } : {}),
           ...(ability.costTapCreatureLegendary ? { costTapCreatureLegendary: true } : {}),
@@ -408,6 +412,7 @@ export function createCardDefinition(
               }
             : {}),
           ...(ability.exileSelf ? { exileSelf: true } : {}),
+          ...(ability.costTapCreatureOther ? { costTapCreatureOther: true } : {}),
           ...(ability.legendaryDiscount ? { legendaryDiscount: true } : {}),
           ...(ability.subtypeDiscount ? { subtypeDiscount: ability.subtypeDiscount } : {}),
           ...(ability.lifeCostFromCommanderColors

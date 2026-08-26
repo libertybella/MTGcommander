@@ -187,6 +187,13 @@ function manaGateSatisfied(
       return false;
     }
   }
+  // Uthros: a Station threshold — this many charge counters on the source.
+  if (ability.requiresManaCounters && sourceId) {
+    const have = state.cards[sourceId]?.counters[ability.requiresManaCounters.counter] ?? 0;
+    if (have < ability.requiresManaCounters.atLeast) {
+      return false;
+    }
+  }
   // Shrine of the Forsaken Gods: the shared condition vocabulary, on a mana
   // ability rather than an activated one.
   if (

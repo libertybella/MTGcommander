@@ -4419,7 +4419,9 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
             ? ("source_power" as const)
             : value.amount === "subject_amount"
               ? ("subject_amount" as const)
-              : expectNumber(value.amount, `${label}.amount`),
+              : value.amount === "sacrificed_power"
+                ? ("sacrificed_power" as const)
+                : expectNumber(value.amount, `${label}.amount`),
         ...(isDynamicCount(value.perDynamicCount)
           ? { perDynamicCount: value.perDynamicCount }
           : {}),
@@ -5584,6 +5586,7 @@ function parseActivatedAbilities(value: unknown, label: string): ActivatedAbilit
             ),
           }),
       ...(entry.exileSelf === true ? { exileSelf: true } : {}),
+      ...(entry.costTapCreatureOther === true ? { costTapCreatureOther: true } : {}),
       ...(entry.legendaryDiscount === true ? { legendaryDiscount: true } : {}),
       ...(entry.subtypeDiscount === undefined
         ? {}
@@ -6863,6 +6866,21 @@ function parseManaAbilities(value: unknown, label: string): ManaAbility[] {
         ? { countFromGreatestControlledPower: true }
         : {}),
       ...(entry.countFromEnchantments === true ? { countFromEnchantments: true } : {}),
+      ...(entry.countFromArtifacts === true ? { countFromArtifacts: true } : {}),
+      ...(isRecord(entry.requiresManaCounters)
+        ? {
+            requiresManaCounters: {
+              counter: expectString(
+                entry.requiresManaCounters.counter,
+                `${label}[${index}].requiresManaCounters.counter`,
+              ),
+              atLeast: expectNumber(
+                entry.requiresManaCounters.atLeast,
+                `${label}[${index}].requiresManaCounters.atLeast`,
+              ),
+            },
+          }
+        : {}),
       ...(entry.costTapCreature === true ? { costTapCreature: true } : {}),
       ...(entry.costTapArtifact === true ? { costTapArtifact: true } : {}),
       ...(entry.costTapCreatureLegendary === true ? { costTapCreatureLegendary: true } : {}),

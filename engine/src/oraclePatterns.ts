@@ -16949,6 +16949,23 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
       continue;
     }
 
+    // Uthros / Station keyword (reminder text stripped): "Tap another creature
+    // you control: Put charge counters equal to its power on this. Station only
+    // as a sorcery." A fixed sorcery-speed ability the keyword stands in for.
+    if (/^Station$/i.test(sentence)) {
+      result.activated.push({
+        tap: false,
+        manaCost: "",
+        timing: "sorcery",
+        costTapCreatureOther: true,
+        effects: [
+          { kind: "add_counter", cardId: "self", counter: "charge", amount: "sacrificed_power" },
+        ],
+        targetRequirements: [],
+      });
+      continue;
+    }
+
     const loyaltyAbility = sentence.match(/^([+−-]\d+|0|[+−-]X): (.+)$/);
     if (loyaltyAbility?.[1] && loyaltyAbility[2]) {
       const clause = compileSimpleClause(loyaltyAbility[2].trim());
@@ -20692,6 +20709,28 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
       }
       result.leftover.push(sentence);
       continue;
+    }
+
+    // Uthros, Titanic Godcore: a Station-threshold mana ability. "12+ | {U},
+    // {T}: Add {U} for each artifact you control." The "N+ |" gates it on N
+    // charge counters; the amount scales with your artifacts.
+    const stationMana = sentence.match(
+      /^(\d+)\+ \| (.+?): Add \{([WUBRGC])\} for each artifact you control$/i,
+    );
+    if (stationMana?.[1] && stationMana[2] && stationMana[3]) {
+      const stationCost = parseAbilityCost(stationMana[2]);
+      if (stationCost && stationCost.tap) {
+        result.manaAbilities.push({
+          produces: { [stationMana[3].toUpperCase()]: 1 },
+          producesOptions: [],
+          producesAnyColor: false,
+          damageToController: 0,
+          countFromArtifacts: true,
+          requiresManaCounters: { counter: "charge", atLeast: Number(stationMana[1]) },
+          ...(stationCost.manaCost ? { costMana: stationCost.manaCost } : {}),
+        });
+        continue;
+      }
     }
 
     const ability = splitAbility(sentence);

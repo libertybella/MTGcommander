@@ -2543,7 +2543,7 @@
   "Winter Orb": true,
   "Buried Ruin": true,
   "Mystic Sanctuary": true,
-  "Uthros, Titanic Godcore": false,
+  "Uthros, Titanic Godcore": true,
   "The Reality Chip": true,
   "Trinket Mage": true,
   "Vedalken Archmage": true,
@@ -6388,7 +6388,7 @@
   "Exploration Broodship": {
    "type": "Artifact — Spacecraft",
    "notes": [
-    "Some oracle text is not compiled: Station; 3+ | You may play an additional land on each of your turns; 8+ | Flying; Once during each of your turns, you may cast a permanent spell from your graveyard by sacrificing a land in addition to paying its other costs."
+    "Some oracle text is not compiled: 3+ | You may play an additional land on each of your turns; 8+ | Flying; Once during each of your turns, you may cast a permanent spell from your graveyard by sacrificing a land in addition to paying its other costs."
    ]
   },
   "Eumidian Hatchery": {
@@ -6478,7 +6478,7 @@
   "Hearthhull, the Worldseed": {
    "type": "Legendary Artifact — Spacecraft",
    "notes": [
-    "Some oracle text is not compiled: Station; 2+ | {1}, {T}, Sacrifice a land: Draw two cards; 8+ | Flying, vigilance, haste."
+    "Some oracle text is not compiled: 2+ | {1}, {T}, Sacrifice a land: Draw two cards; 8+ | Flying, vigilance, haste."
    ]
   },
   "Halo Fountain": {
@@ -9423,7 +9423,7 @@
   "The Eternity Elevator": {
    "type": "Legendary Artifact — Spacecraft",
    "notes": [
-    "Some oracle text is not compiled: Station; 20+ | {T}: Add X mana of any one color, where X is the number of charge counters on ~."
+    "Some oracle text is not compiled: 20+ | {T}: Add X mana of any one color, where X is the number of charge counters on ~."
    ]
   },
   "Arch of Orazca": {
@@ -10366,12 +10366,6 @@
    "type": "Sorcery",
    "notes": [
     "Some oracle text is not compiled: As an additional cost to cast this spell, sacrifice X creatures; Destroy X target creatures."
-   ]
-  },
-  "Uthros, Titanic Godcore": {
-   "type": "Land — Planet",
-   "notes": [
-    "Some oracle text is not compiled: Station; 12+ | {U}, {T}: Add {U} for each artifact you control."
    ]
   },
   "Asmodeus the Archfiend": {
@@ -13026,7 +13020,7 @@
   "Inspirit, Flagship Vessel": {
    "type": "Legendary Artifact — Spacecraft",
    "notes": [
-    "Some oracle text is not compiled: Station; 1+ | At the beginning of combat on your turn, put your choice of a +1/+1 counter or two charge counters on up to one other target artifact; 8+ | Flying."
+    "Some oracle text is not compiled: 1+ | At the beginning of combat on your turn, put your choice of a +1/+1 counter or two charge counters on up to one other target artifact; 8+ | Flying."
    ]
   },
   "Long-Range Sensor": {
@@ -13056,7 +13050,7 @@
   "Uthros Research Craft": {
    "type": "Artifact — Spacecraft",
    "notes": [
-    "Some oracle text is not compiled: Station; 3+ | Whenever you cast an artifact spell, draw a card; Put a charge counter on this Spacecraft; 12+ | Flying; This Spacecraft gets +1/+0 for each artifact you control."
+    "Some oracle text is not compiled: 3+ | Whenever you cast an artifact spell, draw a card; Put a charge counter on this Spacecraft; 12+ | Flying; This Spacecraft gets +1/+0 for each artifact you control."
    ]
   },
   "Crystalline Crawler": {
@@ -14250,10 +14244,8 @@
   {
    "commander": "Urza, Lord High Artificer",
    "rank": 67,
-   "slots": 1,
-   "misses": [
-    "Uthros, Titanic Godcore"
-   ]
+   "slots": 0,
+   "misses": []
   },
   {
    "commander": "Vivi Ornitier",
@@ -15388,6 +15380,35 @@
    ]
   },
   {
+   "commander": "Kilo, Apogee Mind",
+   "rank": 91,
+   "slots": 22,
+   "misses": [
+    "Astral Cornucopia",
+    "Clock of Omens",
+    "Darksteel Reactor",
+    "Empowered Autogenerator",
+    "Insight Engine",
+    "Inspirit, Flagship Vessel",
+    "Long-Range Sensor",
+    "Lux Artillery",
+    "Moxite Refinery",
+    "Pentad Prism",
+    "Solar Array",
+    "Uthros Research Craft",
+    "Alibou, Ancient Witness",
+    "Crystalline Crawler",
+    "Cyberdrive Awakener",
+    "Patrolling Peacemaker",
+    "Tekuthal, Inquiry Dominus",
+    "All Will Be One",
+    "Pemmin's Aura",
+    "Resourceful Defense",
+    "Thirst for Knowledge",
+    "Tezzeret, Cruel Captain"
+   ]
+  },
+  {
    "commander": "Giada, Font of Hope",
    "rank": 14,
    "slots": 23,
@@ -15505,36 +15526,6 @@
     "Become the Avalanche",
     "Selvala's Stampede",
     "Will of the Temur"
-   ]
-  },
-  {
-   "commander": "Kilo, Apogee Mind",
-   "rank": 91,
-   "slots": 23,
-   "misses": [
-    "Astral Cornucopia",
-    "Clock of Omens",
-    "Darksteel Reactor",
-    "Empowered Autogenerator",
-    "Insight Engine",
-    "Inspirit, Flagship Vessel",
-    "Long-Range Sensor",
-    "Lux Artillery",
-    "Moxite Refinery",
-    "Pentad Prism",
-    "Solar Array",
-    "Uthros Research Craft",
-    "Uthros, Titanic Godcore",
-    "Alibou, Ancient Witness",
-    "Crystalline Crawler",
-    "Cyberdrive Awakener",
-    "Patrolling Peacemaker",
-    "Tekuthal, Inquiry Dominus",
-    "All Will Be One",
-    "Pemmin's Aura",
-    "Resourceful Defense",
-    "Thirst for Knowledge",
-    "Tezzeret, Cruel Captain"
    ]
   },
   {

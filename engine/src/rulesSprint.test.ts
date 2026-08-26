@@ -73109,3 +73109,119 @@ describe("wave 451: Rings of Brighthearth (copy an activated ability)", () => {
     ]);
   });
 });
+
+describe("wave 452: Uthros, Titanic Godcore (Station keyword + 12+ threshold mana)", () => {
+  const uthrosText =
+    "This land enters tapped.\n{T}: Add {U}.\nStation (Tap another creature you control: Put charge counters equal to its power on this Planet. Station only as a sorcery.)\n12+ | {U}, {T}: Add {U} for each artifact you control.";
+  const compileUthros = () =>
+    compileOracleCard({
+      oracleId: "uthros-titanic-godcore",
+      name: "Uthros, Titanic Godcore",
+      manaCost: "",
+      typeLine: "Land — Planet",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText: uthrosText,
+    });
+
+  it("compiles Uthros in full — Station ability, basic mana, and the 12+ threshold", () => {
+    const compiled = compileUthros();
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.activated).toEqual([
+      {
+        tap: false,
+        manaCost: "",
+        timing: "sorcery",
+        costTapCreatureOther: true,
+        effects: [{ kind: "add_counter", cardId: "self", counter: "charge", amount: "sacrificed_power" }],
+        targetRequirements: [],
+      },
+    ]);
+    expect(compiled.definition.manaAbilities?.[1]).toMatchObject({
+      produces: { U: 1 },
+      countFromArtifacts: true,
+      requiresManaCounters: { counter: "charge", atLeast: 12 },
+      costMana: "{U}",
+    });
+  });
+
+  const mainPhase = (game: GameState, id: string) => {
+    game.turn.activePlayerId = id;
+    game.turn.phase = "precombatMain";
+    game.turn.step = "precombatMain";
+    game.priorityPlayerId = id;
+  };
+  const put = (game: GameState, ownerId: string, definition: CardDefinition) => {
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({ definitionId: definition.id, ownerId, zone: "battlefield" });
+    card.summoningSick = false;
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === ownerId)!.zones.battlefield.push(card.id);
+    return card.id;
+  };
+
+  it("Station taps a creature and adds charge counters equal to its power", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 10);
+    const uthrosId = put(game, p1.id, compileUthros().definition);
+    const beastId = put(game, p1.id, createCardDefinition({ name: "Beast", typeLine: "Creature — Beast", manaCost: "{4}{G}", power: 5, toughness: 5 }));
+    mainPhase(game, p1.id);
+    let next = applyAction(game, {
+      kind: "activate_ability",
+      playerId: p1.id,
+      cardId: uthrosId,
+      abilityIndex: 0,
+      costTapCreatureId: beastId,
+    });
+    next = resolveTopOfStack(next);
+    expect(next.cards[uthrosId]?.counters["charge"]).toBe(5);
+    expect(next.cards[beastId]?.tapped).toBe(true);
+  });
+
+  it("the 12+ mana ability is gated on twelve charge counters", () => {
+    const { game, p1 } = twoPlayers();
+    const uthrosId = put(game, p1.id, compileUthros().definition);
+    game.cards[uthrosId]!.counters["charge"] = 11;
+    // Below the threshold, only the basic {T}: Add {U} is offered.
+    expect(manaAbilitiesFor(game, uthrosId)).toHaveLength(1);
+    game.cards[uthrosId]!.counters["charge"] = 12;
+    expect(manaAbilitiesFor(game, uthrosId)).toHaveLength(2);
+  });
+
+  it("at 12+ charge, the ability adds {U} for each artifact you control", () => {
+    const { game, p1 } = twoPlayers();
+    const uthrosId = put(game, p1.id, compileUthros().definition);
+    game.cards[uthrosId]!.counters["charge"] = 12;
+    put(game, p1.id, createCardDefinition({ name: "Relic A", typeLine: "Artifact", manaCost: "{1}" }));
+    put(game, p1.id, createCardDefinition({ name: "Relic B", typeLine: "Artifact", manaCost: "{1}" }));
+    put(game, p1.id, createCardDefinition({ name: "Relic C", typeLine: "Artifact", manaCost: "{1}" }));
+    mainPhase(game, p1.id);
+    game.players.find((e) => e.id === p1.id)!.mana.U = 1; // pays the {U} cost
+    const next = applyAction(game, {
+      kind: "tap_for_mana",
+      playerId: p1.id,
+      cardId: uthrosId,
+      manaIndex: 1,
+    });
+    // Three artifacts (Uthros itself is a land, not counted): {U} x 3 produced,
+    // minus the {U} spent on the cost, from a pool that started with one {U}.
+    expect(next.players.find((e) => e.id === p1.id)!.mana.U).toBe(3);
+    expect(next.cards[uthrosId]?.tapped).toBe(true);
+  });
+
+  it("round trips the Station ability and the threshold mana ability", () => {
+    const compiled = compileUthros();
+    const { game } = twoPlayers();
+    game.definitions[compiled.definition.id] = compiled.definition;
+    const round = parseGameState(serializeGameState(game));
+    const def = round.definitions[compiled.definition.id];
+    expect(def?.activated?.[0]?.costTapCreatureOther).toBe(true);
+    expect(def?.activated?.[0]?.effects?.[0]).toMatchObject({ kind: "add_counter", amount: "sacrificed_power" });
+    expect(def?.manaAbilities?.[1]).toMatchObject({
+      countFromArtifacts: true,
+      requiresManaCounters: { counter: "charge", atLeast: 12 },
+    });
+  });
+});

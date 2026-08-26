@@ -1494,6 +1494,13 @@ function applyTapForMana(
                 cardMatchesSubtype(state, entry.id, chosen)
               );
             }).length
+          : ability.countFromArtifacts
+          ? Object.values(state.cards).filter(
+              (entry) =>
+                entry.zone === "battlefield" &&
+                entry.controllerId === playerId &&
+                characteristicsOf(state, entry.id).types.includes("artifact"),
+            ).length
           : manaAbilityAmount(ability);
   let addition: Partial<ManaPool>;
   if (ability.producesColorsAmong) {
@@ -1515,6 +1522,13 @@ function applyTapForMana(
     addition = { [color]: amount };
   } else {
     addition = ability.produces;
+  }
+  // Uthros: "Add {U} for each artifact you control" scales the fixed colour
+  // by the count worked out above. A zero-artifact tap makes nothing.
+  if (ability.countFromArtifacts) {
+    addition = Object.fromEntries(
+      Object.entries(addition).map(([mana, n]) => [mana, (n ?? 0) * amount]),
+    ) as Partial<ManaPool>;
   }
   // The Urza lands, Ilysian Caryatid: "If you control …, add <more> instead."
   // Checked before the multipliers, since it replaces what the tap makes.
@@ -1819,6 +1833,7 @@ function applyActivateAbility(
   costSacrificeId: CardInstanceId | undefined,
   modeIndex: number | undefined,
   xValue: number | undefined,
+  costTapCreatureId: CardInstanceId | undefined,
 ): GameState {
   requirePlaying(state);
   requirePriority(state, playerId);
@@ -2021,6 +2036,22 @@ function applyActivateAbility(
   } else if (costSacrificeId !== undefined) {
     throw new Error("That ability has no sacrifice cost");
   }
+  if (ability.costTapCreatureOther) {
+    const tapCreature = costTapCreatureId ? state.cards[costTapCreatureId] : undefined;
+    if (
+      !costTapCreatureId ||
+      !tapCreature ||
+      tapCreature.zone !== "battlefield" ||
+      tapCreature.controllerId !== playerId ||
+      tapCreature.tapped ||
+      costTapCreatureId === cardId ||
+      !isCreature(state, costTapCreatureId)
+    ) {
+      throw new Error("Tap another untapped creature you control to activate this");
+    }
+  } else if (costTapCreatureId !== undefined) {
+    throw new Error("That ability has no tap-a-creature cost");
+  }
   // Counters, cards from hand, library and graveyard: costs that are neither
   // mana nor a permanent. Checked together so an ability with an unpayable
   // half never half-pays.
@@ -2077,16 +2108,26 @@ function applyActivateAbility(
     next = moveCard(next, cardId, "exile");
     return resolveTopOfStack(next);
   }
+  if (ability.costTapCreatureOther && costTapCreatureId) {
+    // Station: tapping the creature is the cost. Its power is captured just
+    // below (a tap does not change power) so "counters equal to its power"
+    // can read it.
+    next = tapCard(next, costTapCreatureId);
+    dispatchEventsInPlace(next, [{ kind: "tapped", cardId: costTapCreatureId }]);
+  }
   next = putActivatedAbilityOnStack(
     next,
     cardId,
     abilityIndex,
     targets ?? [],
     modeIndex,
-    // Altar of Dementia: capture the fodder's power before it dies.
+    // Altar of Dementia: capture the fodder's power before it dies. Station:
+    // the tapped creature's power, read the same way.
     ability.sacrificeCost && costSacrificeId
       ? Math.max(0, creaturePower(next, costSacrificeId))
-      : undefined,
+      : ability.costTapCreatureOther && costTapCreatureId
+        ? Math.max(0, creaturePower(next, costTapCreatureId))
+        : undefined,
     xValue,
   );
   if (ability.sacrificeCost && costSacrificeId) {
@@ -2304,6 +2345,7 @@ export function applyAction(
           action.costSacrificeId,
           action.modeIndex,
           action.xValue,
+          action.costTapCreatureId,
         );
         break;
       case "turn_face_up":
