@@ -3977,6 +3977,45 @@ function compileSimpleClauseInner(sentence: string): SimpleClause | null {
     };
   }
 
+  // Priest of Forgotten Gods: "Any number of target players each lose N life
+  // and sacrifice a creature of their choice." Which players is a choice, and
+  // it is approximated as each opponent — the standard multiplayer read, and
+  // the one that makes the ability do anything. The edict reuses the
+  // each-opponent choose-and-sacrifice shape.
+  const targetPlayersLoseAndSac = sentence.match(
+    /^Any number of target players each lose (\d+) life and sacrifice a creature of their choice$/i,
+  );
+  if (targetPlayersLoseAndSac?.[1]) {
+    return {
+      targetRequirements: [],
+      effects: [
+        { kind: "lose_life", playerId: "each_opponent", amount: Number(targetPlayersLoseAndSac[1]) },
+        {
+          kind: "choose_card",
+          chooserId: "each_opponent",
+          sources: [{ playerId: "each_opponent", zone: "battlefield", filter: "creature" }],
+          thenEffects: [{ kind: "sacrifice", cardId: "chosen_card" }],
+        },
+      ],
+    };
+  }
+
+  // Priest of Forgotten Gods: "You add {B}{B} and draw a card" — a mana
+  // ritual welded to a draw, both to the controller.
+  const addAndDraw = sentence.match(/^You add ((?:\{[WUBRGC]\})+) and draw a card$/i);
+  if (addAndDraw?.[1]) {
+    const added = parseAddMana(`add ${addAndDraw[1]}`);
+    if (added?.kind === "fixed") {
+      return {
+        targetRequirements: [],
+        effects: [
+          { kind: "add_mana", playerId: "controller", mana: added.produces },
+          { kind: "draw", playerId: "controller", count: 1 },
+        ],
+      };
+    }
+  }
+
   /**
    * "Gets a poison counter" — the only clause on any of these cards, whoever
    * gets them. "They" and "that player" are the trigger's subject; "that

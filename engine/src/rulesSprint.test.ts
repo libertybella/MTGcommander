@@ -75309,3 +75309,66 @@ describe("wave 480: Morph — cast face down for {3}, turn up for the morph cost
     expect(drew.players.find((e) => e.id === p1.id)!.zones.hand.length).toBe(handBefore + 1);
   });
 });
+describe("wave 481: Priest of Forgotten Gods — sac two, opponents bleed and sacrifice, you refuel", () => {
+  const compilePriest = () =>
+    compileOracleCard({
+      oracleId: "priest-of-forgotten-gods", name: "Priest of Forgotten Gods", manaCost: "{1}{B}",
+      typeLine: "Creature — Human Cleric", power: "1", toughness: "2", printedKeywords: [], imageUrl: "",
+      oracleText:
+        "{T}, Sacrifice two other creatures: Any number of target players each lose 2 life and sacrifice a creature of their choice. You add {B}{B} and draw a card. (Activate only as an instant.)",
+    });
+
+  it("compiles the whole activated ability: sac-two cost, edict, and the refuel", () => {
+    const c = compilePriest();
+    expect(c.notes).toEqual([]);
+    const ability = c.definition.activated?.[0];
+    expect(ability?.tap).toBe(true);
+    expect(ability?.sacrificeCost).toBe("another_creature");
+    expect(ability?.sacrificeCount).toBe(2);
+    expect((ability?.effects ?? []).map((e) => e.kind)).toEqual([
+      "lose_life", "choose_card", "add_mana", "draw",
+    ]);
+  });
+
+  const put = (game: GameState, ownerId: string, definition: CardDefinition) => {
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({ definitionId: definition.id, ownerId, zone: "battlefield" });
+    card.summoningSick = false;
+    game.cards[card.id] = card;
+    game.players.find((e) => e.id === ownerId)!.zones.battlefield.push(card.id);
+    return card.id;
+  };
+
+  it("taps and sacrifices two, then an opponent loses 2 life and sacrifices, and you add BB and draw", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 12);
+    const priestId = put(game, p1.id, compilePriest().definition);
+    const fodderA = put(game, p1.id, createCardDefinition({ name: "Fodder A", typeLine: "Creature — Rat", manaCost: "{B}", power: 1, toughness: 1 }));
+    const fodderB = put(game, p1.id, createCardDefinition({ name: "Fodder B", typeLine: "Creature — Rat", manaCost: "{B}", power: 1, toughness: 1 }));
+    const victimId = put(game, p2.id, createCardDefinition({ name: "Victim", typeLine: "Creature — Ox", manaCost: "{2}", power: 0, toughness: 4 }));
+
+    const ready = advanceSteps(game, 3); // p1's precombat main
+    ready.priorityPlayerId = p1.id;
+    const p2LifeBefore = ready.players.find((e) => e.id === p2.id)!.life;
+
+    // Activate: tap Priest, sacrifice Fodder A (the engine auto-picks the
+    // second victim, Fodder B), putting the ability on the stack.
+    let next = applyAction(ready, {
+      kind: "activate_ability", playerId: p1.id, cardId: priestId, abilityIndex: 0, costSacrificeId: fodderA,
+    });
+    expect(next.cards[priestId]?.tapped).toBe(true);
+    expect(next.cards[fodderA]?.zone).toBe("graveyard");
+    expect(next.cards[fodderB]?.zone).toBe("graveyard");
+
+    // Resolve the ability. The edict opens a choose-a-creature prompt for p2.
+    while (next.stack.length > 0 && next.prompts.length === 0) next = resolveTopOfStack(next);
+    // p2 sacrifices its creature of choice.
+    next = applyAction(next, { kind: "resolve_choose_card", playerId: p2.id, cardId: victimId });
+    while (next.stack.length > 0) next = resolveTopOfStack(next);
+
+    // p2 lost 2 life and sacrificed the Victim; p1 has {B}{B} and drew a card.
+    expect(next.players.find((e) => e.id === p2.id)!.life).toBe(p2LifeBefore - 2);
+    expect(next.cards[victimId]?.zone).toBe("graveyard");
+    expect(next.players.find((e) => e.id === p1.id)!.mana.B).toBe(2);
+  });
+});

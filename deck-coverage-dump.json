@@ -2225,7 +2225,7 @@
   "Luminous Broodmoth": true,
   "Ministrant of Obligation": true,
   "Orzhov Enforcer": true,
-  "Priest of Forgotten Gods": false,
+  "Priest of Forgotten Gods": true,
   "Sifter of Skulls": true,
   "Teysa, Orzhov Scion": true,
   "Corrupted Conviction": true,
@@ -9081,12 +9081,6 @@
     "Some oracle text is not compiled: As long as your devotion to white and black is less than seven, ~ isn't a creature; Whenever another creature you own dies, return it to your hand unless target opponent pays 3 life."
    ]
   },
-  "Priest of Forgotten Gods": {
-   "type": "Creature — Human Cleric",
-   "notes": [
-    "Some oracle text is not compiled: {T}, Sacrifice two other creatures: Any number of target players each lose 2 life and sacrifice a creature of their choice; You add {B}{B} and draw a card."
-   ]
-  },
   "Broodcaller Scourge": {
    "type": "Creature — Dragon",
    "notes": [
@@ -14054,10 +14048,9 @@
   {
    "commander": "Teysa Karlov",
    "rank": 54,
-   "slots": 3,
+   "slots": 2,
    "misses": [
     "Athreos, God of Passage",
-    "Priest of Forgotten Gods",
     "Sephiroth, Fabled SOLDIER"
    ]
   },
