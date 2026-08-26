@@ -764,6 +764,13 @@ function triggerDoublingCopies(state: GameState, candidate: TriggerCandidate): n
       if (filter.attached && candidate.cardId !== doubler.attachedTo) {
         continue;
       }
+      // Annie Joins Up: the ability's source must be a legendary creature.
+      if (
+        filter.legendary &&
+        !characteristicsOf(state, candidate.cardId).supertypes.includes("legendary")
+      ) {
+        continue;
+      }
     }
     copies += 1;
   }

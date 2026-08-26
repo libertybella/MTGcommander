@@ -74483,3 +74483,92 @@ describe("wave 468: Tandem Lookout — Soulbond pairs, and the pair draws on com
     expect(game.cards[lookoutId]?.soulbondPartner).toBeUndefined();
   });
 });
+
+describe("wave 469: Annie Joins Up — an ETB bolt and a legendary trigger doubler", () => {
+  const T =
+    "When Annie Joins Up enters, it deals 5 damage to target creature or planeswalker an opponent controls.\n" +
+    "If a triggered ability of a legendary creature you control triggers, that ability triggers an additional time.";
+  const compileAnnie = () =>
+    compileOracleCard({
+      oracleId: "annie-joins-up", name: "Annie Joins Up", manaCost: "{1}{R}{G}{W}",
+      typeLine: "Legendary Enchantment", power: null, toughness: null, printedKeywords: [], imageUrl: "", oracleText: T,
+    });
+
+  it("compiles the ETB damage (opponent's creature/planeswalker) and the legendary doubler", () => {
+    const c = compileAnnie();
+    expect(c.notes).toEqual([]);
+    expect(c.definition.triggers?.[0]).toMatchObject({
+      event: "enter_battlefield",
+      effects: [{ kind: "deal_damage", amount: 5 }],
+      targetRequirements: [{ kind: "creature_or_planeswalker", control: "not_own" }],
+    });
+    expect(c.definition.triggerDoubling).toEqual({ source: { types: ["creature"], legendary: true } });
+  });
+
+  const put = (game: GameState, ownerId: string, definition: CardDefinition) => {
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({ definitionId: definition.id, ownerId, zone: "battlefield" });
+    card.summoningSick = false;
+    game.cards[card.id] = card;
+    game.players.find((e) => e.id === ownerId)!.zones.battlefield.push(card.id);
+    return card.id;
+  };
+  const castNoncreature = (game: GameState, controllerId: string) => {
+    const bolt = createCardDefinition({ name: "Bolt", typeLine: "Instant", manaCost: "{R}" });
+    game.definitions[bolt.id] = bolt;
+    const inst = createCardInstance({ definitionId: bolt.id, ownerId: controllerId, zone: "stack" });
+    game.cards[inst.id] = inst;
+    dispatchEventsInPlace(game, [{ kind: "casts", cardId: inst.id, controllerId }]);
+    let next: GameState = game;
+    for (let guard = 0; guard < 5; guard += 1) {
+      const ordering = next.prompts.find((p) => p.kind === "order_triggers");
+      if (!ordering || ordering.kind !== "order_triggers") break;
+      next = applyAction(next, { kind: "resolve_order_triggers", playerId: ordering.playerId, order: ordering.entries.map((_, i) => i) });
+    }
+    while (next.stack.length > 0) next = resolveTopOfStack(next);
+    return next;
+  };
+
+  it("the ETB deals 5 damage to a targeted opponent's creature", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const annie = put(game, p1.id, compileAnnie().definition);
+    const enemyId = put(game, p2.id, createCardDefinition({ name: "Ogre", typeLine: "Creature — Ogre", manaCost: "{3}{R}", power: 4, toughness: 4 }));
+    const after = applyEffects(
+      game,
+      bindCardEffects(game, compileAnnie().definition.triggers![0]!.effects, {
+        controllerId: p1.id, sourceId: annie,
+        targets: [{ type: "creature", cardId: enemyId }],
+        targetRequirements: [{ kind: "creature_or_planeswalker", control: "not_own" }],
+      }),
+    );
+    applyStateBasedActionsInPlace(after);
+    expect(after.cards[enemyId]?.zone).toBe("graveyard"); // 4/4 took 5, lethal
+  });
+
+  it("doubles a LEGENDARY creature's trigger but not a nonlegendary one's", () => {
+    const prowess = (name: string, legendary: boolean) =>
+      compileOracleCard({
+        oracleId: name, name, manaCost: "{1}{R}", typeLine: `${legendary ? "Legendary " : ""}Creature — Human Wizard`,
+        power: "2", toughness: "2", printedKeywords: [], imageUrl: "", oracleText: "Prowess",
+      }).definition;
+
+    // Legendary prowess creature: with Annie out, its prowess triggers twice -> +2/+2.
+    {
+      const { game, p1 } = twoPlayers();
+      fillLibraries(game, 10);
+      put(game, p1.id, compileAnnie().definition);
+      const legId = put(game, p1.id, prowess("Legend", true));
+      const after = castNoncreature(game, p1.id);
+      expect(creaturePower(after, legId)).toBe(4); // 2 -> 4 (doubled)
+    }
+    // Nonlegendary prowess creature: Annie does not double it -> +1/+1.
+    {
+      const { game, p1 } = twoPlayers();
+      fillLibraries(game, 10);
+      put(game, p1.id, compileAnnie().definition);
+      const plainId = put(game, p1.id, prowess("Grunt", false));
+      const after = castNoncreature(game, p1.id);
+      expect(creaturePower(after, plainId)).toBe(3); // 2 -> 3 (single)
+    }
+  });
+});

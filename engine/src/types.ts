@@ -663,6 +663,9 @@ export type CardDefinition = {
       /** Wizard's Staff: the ability's source must be THIS permanent's
        * attached creature ("a triggered ability of equipped creature"). */
       attached?: boolean;
+      /** Annie Joins Up: "a triggered ability of a legendary creature you
+       * control". */
+      legendary?: boolean;
     };
   };
   /** "~ enters with X +1/+1 counters on it" (hydras); X from the announced cost. */

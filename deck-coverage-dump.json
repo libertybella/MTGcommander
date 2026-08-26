@@ -921,7 +921,7 @@
   "Vega, the Watcher": false,
   "Venat, Heart of Hydaelyn": false,
   "Yoshimaru, Ever Faithful": true,
-  "Annie Joins Up": false,
+  "Annie Joins Up": true,
   "Flowering of the White Tree": true,
   "Vraska Joins Up": true,
   "Dihada, Binder of Wills": false,
@@ -5426,12 +5426,6 @@
     "Hydaelyn, the Mothercrystal: Some oracle text is not compiled: Blessing of Light — At the beginning of combat on your turn, put a +1/+1 counter on another target creature you control; Until your next turn, it gains indestructible; If that creature is legendary, draw a card."
    ]
   },
-  "Annie Joins Up": {
-   "type": "Legendary Enchantment",
-   "notes": [
-    "Some oracle text is not compiled: When ~ enters, it deals 5 damage to target creature or planeswalker an opponent controls; If a triggered ability of a legendary creature you control triggers, that ability triggers an additional time."
-   ]
-  },
   "Dihada, Binder of Wills": {
    "type": "Legendary Planeswalker — Dihada",
    "notes": [
@@ -9803,7 +9797,7 @@
   "Skysovereign, Consul Flagship": {
    "type": "Legendary Artifact — Vehicle",
    "notes": [
-    "Some oracle text is not compiled: Whenever ~ enters or attacks, it deals 3 damage to target creature or planeswalker an opponent controls; Crew 3."
+    "Some oracle text is not compiled: Crew 3."
    ]
   },
   "Smuggler's Copter": {
@@ -14418,6 +14412,47 @@
    ]
   },
   {
+   "commander": "Voja, Jaws of the Conclave",
+   "rank": 88,
+   "slots": 13,
+   "misses": [
+    "Anara, Wolvid Familiar",
+    "Arwen, Weaver of Hope",
+    "Bramblewood Paragon",
+    "Cemetery Prowler",
+    "Hollowhenge Overlord",
+    "Masked Vandal",
+    "Tolsimir, Friend to Wolves",
+    "Tolsimir, Midnight's Light",
+    "Wolf-Skull Shaman",
+    "Wren's Run Packmaster",
+    "All Will Be One",
+    "Howling Moon",
+    "Voja, Jaws of the Conclave (commander)"
+   ]
+  },
+  {
+   "commander": "Atla Palani, Nest Tender",
+   "rank": 62,
+   "slots": 14,
+   "misses": [
+    "Thornbite Staff",
+    "Dinosaur Egg",
+    "Ghalta and Mavren",
+    "Gisela, Blade of Goldnight",
+    "Gishath, Sun's Avatar",
+    "Marauding Raptor",
+    "Nesting Dragon",
+    "Palani's Hatcher",
+    "Pantlaza, Sun-Favored",
+    "Quartzwood Crasher",
+    "Temple Altisaur",
+    "Vaultborn Tyrant",
+    "Worldspine Wurm",
+    "Life Finds a Way"
+   ]
+  },
+  {
    "commander": "K'rrik, Son of Yawgmoth",
    "rank": 68,
    "slots": 14,
@@ -14460,27 +14495,6 @@
    ]
   },
   {
-   "commander": "Voja, Jaws of the Conclave",
-   "rank": 88,
-   "slots": 14,
-   "misses": [
-    "Anara, Wolvid Familiar",
-    "Arwen, Weaver of Hope",
-    "Bramblewood Paragon",
-    "Cemetery Prowler",
-    "Hollowhenge Overlord",
-    "Masked Vandal",
-    "Tolsimir, Friend to Wolves",
-    "Tolsimir, Midnight's Light",
-    "Wolf-Skull Shaman",
-    "Wren's Run Packmaster",
-    "All Will Be One",
-    "Annie Joins Up",
-    "Howling Moon",
-    "Voja, Jaws of the Conclave (commander)"
-   ]
-  },
-  {
    "commander": "Fire Lord Azula",
    "rank": 11,
    "slots": 15,
@@ -14500,28 +14514,6 @@
     "Crackle with Power",
     "Sozin's Comet",
     "Fire Lord Azula (commander)"
-   ]
-  },
-  {
-   "commander": "Atla Palani, Nest Tender",
-   "rank": 62,
-   "slots": 15,
-   "misses": [
-    "Thornbite Staff",
-    "Dinosaur Egg",
-    "Ghalta and Mavren",
-    "Gisela, Blade of Goldnight",
-    "Gishath, Sun's Avatar",
-    "Marauding Raptor",
-    "Nesting Dragon",
-    "Palani's Hatcher",
-    "Pantlaza, Sun-Favored",
-    "Quartzwood Crasher",
-    "Temple Altisaur",
-    "Vaultborn Tyrant",
-    "Worldspine Wurm",
-    "Annie Joins Up",
-    "Life Finds a Way"
    ]
   },
   {
@@ -15508,6 +15500,37 @@
    ]
   },
   {
+   "commander": "Jodah, the Unifier",
+   "rank": 16,
+   "slots": 24,
+   "misses": [
+    "Heroes' Podium",
+    "Great Hall of the Citadel",
+    "Aragorn, the Uniter",
+    "Chulane, Teller of Tales",
+    "Esika, God of the Tree",
+    "Hajar, Loyal Bodyguard",
+    "Inga and Esika",
+    "Kellan, the Kid",
+    "Kenrith, the Returned King",
+    "Kethis, the Hidden Hand",
+    "Najeela, the Blade-Blossom",
+    "Odric, Lunarch Marshal",
+    "Raff Capashen, Ship's Mage",
+    "Ratadrabik of Urborg",
+    "Reki, the History of Kamigawa",
+    "Serah Farron",
+    "Shanid, Sleepers' Scourge",
+    "Sisay, Weatherlight Captain",
+    "Skrelv, Defector Mite",
+    "Vega, the Watcher",
+    "Venat, Heart of Hydaelyn",
+    "Dihada, Binder of Wills",
+    "Primevals' Glorious Rebirth",
+    "Jodah, the Unifier (commander)"
+   ]
+  },
+  {
    "commander": "Valgavoth, Harrower of Souls",
    "rank": 21,
    "slots": 24,
@@ -15726,38 +15749,6 @@
    ]
   },
   {
-   "commander": "Jodah, the Unifier",
-   "rank": 16,
-   "slots": 25,
-   "misses": [
-    "Heroes' Podium",
-    "Great Hall of the Citadel",
-    "Aragorn, the Uniter",
-    "Chulane, Teller of Tales",
-    "Esika, God of the Tree",
-    "Hajar, Loyal Bodyguard",
-    "Inga and Esika",
-    "Kellan, the Kid",
-    "Kenrith, the Returned King",
-    "Kethis, the Hidden Hand",
-    "Najeela, the Blade-Blossom",
-    "Odric, Lunarch Marshal",
-    "Raff Capashen, Ship's Mage",
-    "Ratadrabik of Urborg",
-    "Reki, the History of Kamigawa",
-    "Serah Farron",
-    "Shanid, Sleepers' Scourge",
-    "Sisay, Weatherlight Captain",
-    "Skrelv, Defector Mite",
-    "Vega, the Watcher",
-    "Venat, Heart of Hydaelyn",
-    "Annie Joins Up",
-    "Dihada, Binder of Wills",
-    "Primevals' Glorious Rebirth",
-    "Jodah, the Unifier (commander)"
-   ]
-  },
-  {
    "commander": "Cloud, Ex-SOLDIER",
    "rank": 23,
    "slots": 25,
@@ -15820,6 +15811,39 @@
     "Kaito, Bane of Nightmares",
     "Temporal Mastery",
     "Yuriko, the Tiger's Shadow (commander)"
+   ]
+  },
+  {
+   "commander": "Toph, the First Metalbender",
+   "rank": 20,
+   "slots": 26,
+   "misses": [
+    "Mycosynth Lattice",
+    "Ba Sing Se",
+    "Secret Tunnel",
+    "Avatar Kyoshi, Earthbender",
+    "Badgermole",
+    "Badgermole Cub",
+    "Bumi, Eclectic Earthbender",
+    "Bumi, Unleashed",
+    "Earthbending Student",
+    "Great Divide Guide",
+    "Tannuk, Memorial Ensign",
+    "The Boulder, Ready to Rumble",
+    "Toph, Earthbending Master",
+    "Toph, Greatest Earthbender",
+    "Toph, Hardheaded Teacher",
+    "Toph, the Blind Bandit",
+    "Bitter Work",
+    "Earthbender Ascension",
+    "The Legend of Kyoshi",
+    "Earthshape",
+    "Earth Rumble",
+    "Earthbending Lesson",
+    "Hour of Revelation",
+    "Rockalanche",
+    "Seismic Sense",
+    "Toph, the First Metalbender (commander)"
    ]
   },
   {
@@ -15952,40 +15976,6 @@
     "Teferi, Time Raveler",
     "Primevals' Glorious Rebirth",
     "Sisay, Weatherlight Captain (commander)"
-   ]
-  },
-  {
-   "commander": "Toph, the First Metalbender",
-   "rank": 20,
-   "slots": 27,
-   "misses": [
-    "Mycosynth Lattice",
-    "Ba Sing Se",
-    "Secret Tunnel",
-    "Avatar Kyoshi, Earthbender",
-    "Badgermole",
-    "Badgermole Cub",
-    "Bumi, Eclectic Earthbender",
-    "Bumi, Unleashed",
-    "Earthbending Student",
-    "Great Divide Guide",
-    "Tannuk, Memorial Ensign",
-    "The Boulder, Ready to Rumble",
-    "Toph, Earthbending Master",
-    "Toph, Greatest Earthbender",
-    "Toph, Hardheaded Teacher",
-    "Toph, the Blind Bandit",
-    "Annie Joins Up",
-    "Bitter Work",
-    "Earthbender Ascension",
-    "The Legend of Kyoshi",
-    "Earthshape",
-    "Earth Rumble",
-    "Earthbending Lesson",
-    "Hour of Revelation",
-    "Rockalanche",
-    "Seismic Sense",
-    "Toph, the First Metalbender (commander)"
    ]
   },
   {
@@ -16164,6 +16154,43 @@
    ]
   },
   {
+   "commander": "Aragorn, the Uniter",
+   "rank": 45,
+   "slots": 30,
+   "misses": [
+    "Great Hall of the Citadel",
+    "Aragorn, Hornburg Hero",
+    "Aragorn, King of Gondor",
+    "Chulane, Teller of Tales",
+    "Fallaji Wayfarer",
+    "Faramir, Prince of Ithilien",
+    "Faramir, Steward of Gondor",
+    "Galadriel, Light of Valinor",
+    "General Ferrous Rokiric",
+    "Hero of Precinct One",
+    "Inga and Esika",
+    "Jetmir, Nexus of Revels",
+    "Katilda, Dawnhart Prime",
+    "Merry, Esquire of Rohan",
+    "Pippin, Guard of the Citadel",
+    "Rienne, Angel of Rebirth",
+    "Éomer, King of Rohan",
+    "Éowyn, Fearless Knight",
+    "Éowyn, Shieldmaiden",
+    "Brokers Ascendancy",
+    "Trace of Abundance",
+    "Bant Charm",
+    "Brokers Charm",
+    "Cabaretti Charm",
+    "Friendly Rivalry",
+    "Jeskai Charm",
+    "Naya Charm",
+    "Forth Eorlingas!",
+    "Taunt from the Rampart",
+    "Aragorn, the Uniter (commander)"
+   ]
+  },
+  {
    "commander": "Obeka, Splitter of Seconds",
    "rank": 98,
    "slots": 30,
@@ -16254,44 +16281,6 @@
     "For the Common Good",
     "Season of the Burrow",
     "Baylen, the Haymaker (commander)"
-   ]
-  },
-  {
-   "commander": "Aragorn, the Uniter",
-   "rank": 45,
-   "slots": 31,
-   "misses": [
-    "Great Hall of the Citadel",
-    "Aragorn, Hornburg Hero",
-    "Aragorn, King of Gondor",
-    "Chulane, Teller of Tales",
-    "Fallaji Wayfarer",
-    "Faramir, Prince of Ithilien",
-    "Faramir, Steward of Gondor",
-    "Galadriel, Light of Valinor",
-    "General Ferrous Rokiric",
-    "Hero of Precinct One",
-    "Inga and Esika",
-    "Jetmir, Nexus of Revels",
-    "Katilda, Dawnhart Prime",
-    "Merry, Esquire of Rohan",
-    "Pippin, Guard of the Citadel",
-    "Rienne, Angel of Rebirth",
-    "Éomer, King of Rohan",
-    "Éowyn, Fearless Knight",
-    "Éowyn, Shieldmaiden",
-    "Annie Joins Up",
-    "Brokers Ascendancy",
-    "Trace of Abundance",
-    "Bant Charm",
-    "Brokers Charm",
-    "Cabaretti Charm",
-    "Friendly Rivalry",
-    "Jeskai Charm",
-    "Naya Charm",
-    "Forth Eorlingas!",
-    "Taunt from the Rampart",
-    "Aragorn, the Uniter (commander)"
    ]
   },
   {

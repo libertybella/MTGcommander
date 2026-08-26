@@ -5119,7 +5119,7 @@ function compileSimpleClauseInner(sentence: string): SimpleClause | null {
     };
   }
 
-  match = sentence.match(/^(?:~ )?deals (\d+) damage to target creature$/i);
+  match = sentence.match(/^(?:~ |it )?deals (\d+) damage to target creature$/i);
   if (match?.[1]) {
     return {
       targetRequirements: [{ kind: "creature" }],
@@ -5134,7 +5134,7 @@ function compileSimpleClauseInner(sentence: string): SimpleClause | null {
     };
   }
 
-  match = sentence.match(/^(?:~ )?deals (\d+) damage to target player or planeswalker$/i);
+  match = sentence.match(/^(?:~ |it )?deals (\d+) damage to target player or planeswalker$/i);
   if (match?.[1]) {
     return {
       targetRequirements: [{ kind: "player_or_planeswalker" }],
@@ -5154,7 +5154,7 @@ function compileSimpleClauseInner(sentence: string): SimpleClause | null {
   // "attacking or blocking creature" work here without teaching this
   // sentence anything about combat. Deliberately last: the two spellings
   // above are more specific and must keep winning.
-  match = sentence.match(/^(?:~ )?deals (\d+) damage to (target .+)$/i);
+  match = sentence.match(/^(?:~ |it )?deals (\d+) damage to (target .+)$/i);
   if (match?.[1] && match[2]) {
     const requirement = parseSimpleTargetPhrase(match[2]);
     if (requirement) {
@@ -17887,6 +17887,14 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
       )
     ) {
       result.triggerDoubling = { source: { attached: true } };
+      continue;
+    }
+    if (
+      /^If a triggered ability of a legendary creature you control triggers, that ability triggers an additional time$/i.test(
+        sentence,
+      )
+    ) {
+      result.triggerDoubling = { source: { types: ["creature"], legendary: true } };
       continue;
     }
     if (
