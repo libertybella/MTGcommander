@@ -2198,6 +2198,9 @@ export function parseGameState(json: string): GameState {
                 ...(entry.locksCastingAfter === true ? { locksCastingAfter: true } : {}),
                 ...(entry.whileExiled === true ? { whileExiled: true } : {}),
                 ...(entry.anyColorMana === true ? { anyColorMana: true } : {}),
+                ...(entry.ownerLosesLifeManaValue === true
+                  ? { ownerLosesLifeManaValue: true }
+                  : {}),
                 ...(entry.remainingOwnCleanups === undefined
                   ? {}
                   : {
@@ -4355,6 +4358,8 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
     case "discard_each_draw_per_type":
       return { kind, drawerId: parsePlayerSelector(value.drawerId, `${label}.drawerId`) };
     case "stash_exile_grant":
+      return { kind, casterId: parsePlayerSelector(value.casterId, `${label}.casterId`) };
+    case "exile_gy_random_free_cast":
       return { kind, casterId: parsePlayerSelector(value.casterId, `${label}.casterId`) };
     case "discard":
       return {
@@ -7102,6 +7107,9 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
       casterId: expectString(value.casterId, `${label}.casterId`),
       cardId: expectString(value.cardId, `${label}.cardId`),
     };
+  }
+  if (kind === "exile_gy_random_free_cast") {
+    return { kind, casterId: expectString(value.casterId, `${label}.casterId`) };
   }
   if (
     kind === "scry" ||

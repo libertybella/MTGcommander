@@ -103,10 +103,17 @@ export function keywordsFromOracle(card: OracleCard): Keyword[] {
     }
   }
   const firstLine = stripReminderText(card.oracleText).split("\n")[0] ?? "";
-  for (const [label, keyword] of Object.entries(KEYWORD_BY_LABEL)) {
-    const pattern = new RegExp(`\\b${label.replace(" ", "[- ]")}\\b`, "i");
-    if (pattern.test(firstLine)) {
-      found.add(keyword);
+  // A turn-conditional static ("During your turn, ~ has indestructible") is NOT
+  // a printed keyword line: the keyword comes and goes with the turn and is
+  // modeled as a requiresYourTurn static, so it must not leak in here as a base
+  // keyword. Printed keyword lists never carry a "during your turn" gate.
+  const turnConditional = /\bduring your turn\b/i.test(firstLine);
+  if (!turnConditional) {
+    for (const [label, keyword] of Object.entries(KEYWORD_BY_LABEL)) {
+      const pattern = new RegExp(`\\b${label.replace(" ", "[- ]")}\\b`, "i");
+      if (pattern.test(firstLine)) {
+        found.add(keyword);
+      }
     }
   }
   return [...found];

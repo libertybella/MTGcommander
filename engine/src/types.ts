@@ -1464,6 +1464,9 @@ export type GameState = {
      * costs the mana core nothing.
      */
     anyColorMana?: boolean;
+    /** Kefka, Dancing Mad: casting this exiled card makes its OWNER lose life
+     * equal to the spell's mana value (the "you cast this way" punisher). */
+    ownerLosesLifeManaValue?: boolean;
   }>;
   /** Rebound: cards waiting in exile to be offered free at the caster's
    * next upkeep. */
@@ -1953,6 +1956,10 @@ export type GameEffect =
    * grant its caster the standing permission to play it from exile with mana
    * of any type for as long as it stays exiled. */
   | { kind: "stash_exile_grant"; casterId: PlayerId; cardId: CardInstanceId }
+  /** Kefka, Dancing Mad: exile one card at random from each opponent's
+   * graveyard, granting its caster a free cast of each; casting one makes its
+   * OWNER lose life equal to that spell's mana value. */
+  | { kind: "exile_gy_random_free_cast"; casterId: PlayerId }
   | { kind: "discard_unless_attacked"; playerId: PlayerId; count: number }
   | { kind: "amass"; playerId: PlayerId; amount: number; subtype?: string }
   | { kind: "reveal_zone"; fromPlayerId: PlayerId; toPlayerId: PlayerId; zone: "hand" }
@@ -3687,6 +3694,7 @@ export type CardEffect =
   | { kind: "discard_random"; playerId: PlayerSelector; count: number }
   | { kind: "discard_each_draw_per_type"; drawerId: PlayerSelector }
   | { kind: "stash_exile_grant"; casterId: PlayerSelector }
+  | { kind: "exile_gy_random_free_cast"; casterId: PlayerSelector }
   | { kind: "discard_unless_attacked"; playerId: PlayerSelector; count: number }
   | { kind: "amass"; playerId: PlayerSelector; amount: number | "x"; subtype?: string }
   | {

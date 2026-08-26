@@ -1226,6 +1226,23 @@ function applyCastSpell(
   ) {
     stacked.selfCastLockUntilEot = [...(stacked.selfCastLockUntilEot ?? []), playerId];
   }
+  // Kefka, Dancing Mad: casting a card exiled by the end-step heist makes its
+  // OWNER lose life equal to the spell's mana value. The grant rides the card,
+  // so it fires here, once, as the spell reaches the stack.
+  if (
+    (paid.exilePlayable ?? []).some(
+      (entry) =>
+        entry.cardId === cardId && entry.casterId === playerId && entry.ownerLosesLifeManaValue,
+    )
+  ) {
+    const ownerId = stacked.cards[cardId]?.ownerId;
+    const manaValue = manaValueOf(
+      stacked.definitions[stacked.cards[cardId]?.definitionId ?? ""]?.manaCost ?? "",
+    );
+    if (ownerId && manaValue > 0) {
+      stacked = applyEffects(stacked, [{ kind: "lose_life", playerId: ownerId, amount: manaValue }]);
+    }
+  }
   // The spliced cards are recorded on the SPELL, not moved: they were
   // revealed from hand and that is where they stay.
   if (splices.length > 0) {

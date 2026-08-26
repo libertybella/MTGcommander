@@ -1236,7 +1236,7 @@
   "Bone Miser": true,
   "Dauthi Voidwalker": true,
   "Displacer Kitten": true,
-  "Kefka, Dancing Mad": false,
+  "Kefka, Dancing Mad": true,
   "Kuja, Genome Sorcerer": true,
   "Ragavan, Nimble Pilferer": true,
   "Tergrid, God of Fright": true,
@@ -5795,7 +5795,7 @@
   "Avatar Kyoshi, Earthbender": {
    "type": "Legendary Creature — Human Avatar",
    "notes": [
-    "Some oracle text is not compiled: During your turn, ~ has hexproof; At the beginning of combat on your turn, earthbend 8, then untap that land."
+    "Some oracle text is not compiled: At the beginning of combat on your turn, earthbend 8, then untap that land."
    ]
   },
   "Badgermole": {
@@ -6338,12 +6338,6 @@
    "type": "Legendary Creature — Human Soldier Mercenary",
    "notes": [
     "Some oracle text is not compiled: When ~ enters, attach up to one target Equipment you control to it; Whenever ~ attacks, draw a card for each equipped attacking creature you control, then if ~ has power 7 or greater, create two Treasure tokens."
-   ]
-  },
-  "Kefka, Dancing Mad": {
-   "type": "Legendary Creature — Human Wizard",
-   "notes": [
-    "Some oracle text is not compiled: During your turn, ~ has indestructible; At the beginning of your end step, exile a card at random from each opponent's graveyard; You may cast any number of spells from among cards exiled this way without paying their mana costs; Then each player who owns a spell you cast this way loses life equal to its mana value."
    ]
   },
   "Exploration Broodship": {
@@ -14173,6 +14167,12 @@
  },
  "decks": [
   {
+   "commander": "Kefka, Court Mage",
+   "rank": 24,
+   "slots": 0,
+   "misses": []
+  },
+  {
    "commander": "Korvold, Fae-Cursed King",
    "rank": 63,
    "slots": 0,
@@ -14183,14 +14183,6 @@
    "rank": 67,
    "slots": 0,
    "misses": []
-  },
-  {
-   "commander": "Kefka, Court Mage",
-   "rank": 24,
-   "slots": 1,
-   "misses": [
-    "Kefka, Dancing Mad"
-   ]
   },
   {
    "commander": "Vivi Ornitier",
@@ -14726,6 +14718,30 @@
    ]
   },
   {
+   "commander": "Kuja, Genome Sorcerer",
+   "rank": 57,
+   "slots": 17,
+   "misses": [
+    "Black Mage's Rod",
+    "Dark Confidant",
+    "Fandaniel, Telophoroi Ascian",
+    "Gandalf, Goblins' Bane",
+    "Gleeful Arsonist",
+    "Mysidian Elder",
+    "Queen Brahne",
+    "Artist's Talent",
+    "Collective Inferno",
+    "Flashback",
+    "Transpose",
+    "Vivi's Persistence",
+    "Wizard's Lightning",
+    "Circle of Power",
+    "Cornered by Black Mages",
+    "Grab the Prize",
+    "Light Up the Stage"
+   ]
+  },
+  {
    "commander": "The Wandering Minstrel",
    "rank": 74,
    "slots": 17,
@@ -14822,31 +14838,6 @@
     "For the Common Good",
     "Rootcast Apprenticeship",
     "Swarmyard Massacre"
-   ]
-  },
-  {
-   "commander": "Kuja, Genome Sorcerer",
-   "rank": 57,
-   "slots": 18,
-   "misses": [
-    "Black Mage's Rod",
-    "Dark Confidant",
-    "Fandaniel, Telophoroi Ascian",
-    "Gandalf, Goblins' Bane",
-    "Gleeful Arsonist",
-    "Kefka, Dancing Mad",
-    "Mysidian Elder",
-    "Queen Brahne",
-    "Artist's Talent",
-    "Collective Inferno",
-    "Flashback",
-    "Transpose",
-    "Vivi's Persistence",
-    "Wizard's Lightning",
-    "Circle of Power",
-    "Cornered by Black Mages",
-    "Grab the Prize",
-    "Light Up the Stage"
    ]
   },
   {
@@ -15929,6 +15920,39 @@
    ]
   },
   {
+   "commander": "Terra, Herald of Hope",
+   "rank": 82,
+   "slots": 26,
+   "misses": [
+    "Key to the City",
+    "Alesha, Who Laughs at Fate",
+    "Banon, the Returners' Leader",
+    "Celes, Rune Knight",
+    "Cyan, Vengeful Samurai",
+    "Fear of Missing Out",
+    "Gau, Feral Youth",
+    "General Leo Cristophe",
+    "Gogo, Mysterious Mime",
+    "Joshua, Phoenix's Dominant",
+    "Locke, Treasure Hunter",
+    "Mog, Moogle Warrior",
+    "Shadow, Mysterious Assassin",
+    "Siegfried, Famed Swordsman",
+    "Sister Hospitaller",
+    "Squall, SeeD Mercenary",
+    "Summon: Esper Valigarmanda",
+    "Summon: Knights of Round",
+    "The Warring Triad",
+    "Twilight Diviner",
+    "Teval's Judgment",
+    "Crackling Doom",
+    "Legions to Ashes",
+    "Rejoin the Fight",
+    "Tragic Arrogance",
+    "Terra, Herald of Hope (commander)"
+   ]
+  },
+  {
    "commander": "Sisay, Weatherlight Captain",
    "rank": 85,
    "slots": 26,
@@ -16027,40 +16051,6 @@
     "Crypt Incursion",
     "Frodo, Adventurous Hobbit (commander)",
     "Sam, Loyal Attendant (commander)"
-   ]
-  },
-  {
-   "commander": "Terra, Herald of Hope",
-   "rank": 82,
-   "slots": 27,
-   "misses": [
-    "Key to the City",
-    "Alesha, Who Laughs at Fate",
-    "Banon, the Returners' Leader",
-    "Celes, Rune Knight",
-    "Cyan, Vengeful Samurai",
-    "Fear of Missing Out",
-    "Gau, Feral Youth",
-    "General Leo Cristophe",
-    "Gogo, Mysterious Mime",
-    "Joshua, Phoenix's Dominant",
-    "Kefka, Dancing Mad",
-    "Locke, Treasure Hunter",
-    "Mog, Moogle Warrior",
-    "Shadow, Mysterious Assassin",
-    "Siegfried, Famed Swordsman",
-    "Sister Hospitaller",
-    "Squall, SeeD Mercenary",
-    "Summon: Esper Valigarmanda",
-    "Summon: Knights of Round",
-    "The Warring Triad",
-    "Twilight Diviner",
-    "Teval's Judgment",
-    "Crackling Doom",
-    "Legions to Ashes",
-    "Rejoin the Fight",
-    "Tragic Arrogance",
-    "Terra, Herald of Hope (commander)"
    ]
   },
   {

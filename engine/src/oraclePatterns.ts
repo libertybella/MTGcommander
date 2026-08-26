@@ -5608,6 +5608,26 @@ function compileSimpleClauseInner(sentence: string): SimpleClause | null {
     return { targetRequirements: [], effects: kujaEffects };
   }
 
+  // Kefka, Dancing Mad: the end-step heist body (three sentences). The first
+  // does the work; the second and third are the descriptive halves realised by
+  // the fused effect + its per-card grant, so they compile to nothing.
+  if (/^exile a card at random from each opponent's graveyard$/i.test(sentence)) {
+    return {
+      targetRequirements: [],
+      effects: [{ kind: "exile_gy_random_free_cast", casterId: "controller" }],
+    };
+  }
+  if (
+    /^You may cast any number of spells from among cards exiled this way without paying their mana costs$/i.test(
+      sentence,
+    ) ||
+    /^Then each player who owns a spell you cast this way loses life equal to its mana value$/i.test(
+      sentence,
+    )
+  ) {
+    return { targetRequirements: [], effects: [] };
+  }
+
   // Tinybones, Bauble Burglar: the discards-trigger body. "it" is the card the
   // opponent just discarded (the trigger subject, now in their graveyard);
   // exile it with a stash counter and grant its caster play-from-exile.
@@ -18341,6 +18361,21 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
     // Razorkin Needlehead: "~ has first strike DURING YOUR TURN". A static
     // gated on the turn, not a keyword the permanent simply has — it loses
     // first strike the moment the turn passes, which is the whole card.
+    // Kefka, Dancing Mad: the LEADING form, "During your turn, ~ has X" — the
+    // same your-turn-gated static grant as Razorkin's trailing form below.
+    const leadTurnKeyword = sentence.match(/^During your turn, ~ has ([a-z ]+)$/i);
+    const leadGranted = leadTurnKeyword?.[1]
+      ? KEYWORD_GRANTS[leadTurnKeyword[1].trim().toLowerCase()]
+      : undefined;
+    if (leadGranted) {
+      result.staticAbilities.push({
+        selector: { scope: "self" },
+        effect: { kind: "grant_keyword", keyword: leadGranted },
+        requiresYourTurn: true,
+      });
+      continue;
+    }
+
     const turnKeyword = sentence.match(/^~ has ([a-z ]+) during your turn$/i);
     const turnGranted = turnKeyword?.[1]
       ? KEYWORD_GRANTS[turnKeyword[1].trim().toLowerCase()]

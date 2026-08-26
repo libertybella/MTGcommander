@@ -74052,3 +74052,93 @@ describe("wave 463: Tinybones, Bauble Burglar — stash an opponent's discard, t
     expect(after.players.find((e) => e.id === p2.id)!.zones.hand.length).toBe(before - 1);
   });
 });
+
+describe("wave 464: Kefka, Dancing Mad — end-step graveyard heist and your-turn indestructible", () => {
+  const T =
+    "During your turn, Kefka has indestructible.\n" +
+    "At the beginning of your end step, exile a card at random from each opponent's graveyard. " +
+    "You may cast any number of spells from among cards exiled this way without paying their mana costs. " +
+    "Then each player who owns a spell you cast this way loses life equal to its mana value.";
+  const compileKefka = () =>
+    compileOracleCard({
+      oracleId: "kefka-dancing-mad", name: "Kefka, Dancing Mad", manaCost: "{5}{B}{R}",
+      typeLine: "Legendary Creature — Human Wizard", power: "6", toughness: "6", printedKeywords: [], imageUrl: "",
+      oracleText: T,
+    });
+
+  it("compiles the your-turn indestructible static and the end-step heist", () => {
+    const c = compileKefka();
+    expect(c.notes).toEqual([]);
+    expect(c.definition.staticAbilities).toContainEqual({
+      selector: { scope: "self" },
+      effect: { kind: "grant_keyword", keyword: "indestructible" },
+      requiresYourTurn: true,
+    });
+    expect(c.definition.triggers?.[0]?.event).toBe("end_step");
+    expect(c.definition.triggers?.[0]?.effects).toEqual([
+      { kind: "exile_gy_random_free_cast", casterId: "controller" },
+    ]);
+  });
+
+  const put = (game: GameState, ownerId: string, definition: CardDefinition, zone: "battlefield" | "graveyard" = "battlefield") => {
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({ definitionId: definition.id, ownerId, zone });
+    if (zone === "battlefield") card.summoningSick = false;
+    game.cards[card.id] = card;
+    (game.players.find((e) => e.id === ownerId)!.zones as Record<string, string[]>)[zone].push(card.id);
+    return card.id;
+  };
+
+  it("exiles one card from EACH opponent's graveyard, grants a free cast, and drains the owner on cast", () => {
+    const game = createGameState({ playerCount: 3 });
+    const [p1, p2, p3] = game.players;
+    fillLibraries(game, 10);
+    put(game, p1!.id, compileKefka().definition);
+    // Each opponent has exactly one card in the graveyard (so the random pick is deterministic).
+    const p2Card = put(game, p2!.id, createCardDefinition({ name: "Ritual", typeLine: "Sorcery", manaCost: "{2}{R}" }), "graveyard");
+    const p3Card = put(game, p3!.id, createCardDefinition({ name: "Relic", typeLine: "Artifact", manaCost: "{4}" }), "graveyard");
+
+    const after = applyEffects(
+      game,
+      bindCardEffects(game, [{ kind: "exile_gy_random_free_cast", casterId: "controller" }] as unknown as CardEffect[], {
+        controllerId: p1!.id, sourceId: p1!.id, targets: [], targetRequirements: [],
+      }),
+    );
+
+    // Both opponents' cards are now exiled, each with a free-cast + owner-drain grant for p1.
+    expect(after.cards[p2Card]?.zone).toBe("exile");
+    expect(after.cards[p3Card]?.zone).toBe("exile");
+    for (const cid of [p2Card, p3Card]) {
+      expect(after.exilePlayable?.find((g) => g.cardId === cid)).toMatchObject({
+        casterId: p1!.id, freeCast: true, ownerLosesLifeManaValue: true,
+      });
+    }
+
+    // p1 casts p2's stolen {2}{R} Sorcery for free during p1's main phase.
+    const ready = advanceSteps(after, 3);
+    ready.priorityPlayerId = p1!.id;
+    ready.players[0]!.mana = { W: 0, U: 0, B: 0, R: 0, G: 0, C: 0 };
+    const p2LifeBefore = ready.players.find((e) => e.id === p2!.id)!.life;
+    const cast = applyAction(ready, { kind: "cast_spell", playerId: p1!.id, cardId: p2Card, targets: [] });
+    // The spell is on the stack (paid nothing), and its OWNER p2 lost life equal to its mana value (3).
+    expect(cast.cards[p2Card]?.zone).toBe("stack");
+    expect(cast.players.find((e) => e.id === p2!.id)!.life).toBe(p2LifeBefore - 3);
+  });
+
+  it("is indestructible during your turn but not during an opponent's", () => {
+    const game = createGameState({ playerCount: 2 });
+    const [p1, p2] = game.players;
+    const kefkaId = put(game, p1!.id, compileKefka().definition);
+    const dies: EngineEvent[] = [];
+
+    // p1's turn: a destroy bounces off (the your-turn indestructible static).
+    game.turn.activePlayerId = p1!.id;
+    destroyPermanentInPlace(game, kefkaId, dies);
+    expect(game.cards[kefkaId]?.zone).toBe("battlefield");
+
+    // p2's turn: the static is off, so the same destroy kills Kefka.
+    game.turn.activePlayerId = p2!.id;
+    destroyPermanentInPlace(game, kefkaId, dies);
+    expect(game.cards[kefkaId]?.zone).toBe("graveyard");
+  });
+});

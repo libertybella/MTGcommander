@@ -863,6 +863,13 @@ export function bindCardEffect(
       }
       return { kind: "stash_exile_grant", casterId, cardId };
     }
+    case "exile_gy_random_free_cast": {
+      const casterId = bindPlayerSelector(state, effect.casterId, context);
+      if (!casterId) {
+        return null;
+      }
+      return { kind: "exile_gy_random_free_cast", casterId };
+    }
     case "amass": {
       const playerId = bindPlayerSelector(state, effect.playerId, context);
       if (!playerId) {
@@ -5493,6 +5500,32 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
           ...(next.exilePlayable ?? []).filter((entry) => entry.cardId !== effect.cardId),
           { cardId: effect.cardId, casterId: effect.casterId, whileExiled: true, anyColorMana: true },
         ];
+        break;
+      }
+      case "exile_gy_random_free_cast": {
+        // Kefka, Dancing Mad. Exile ONE card at random from each opponent's
+        // graveyard, and grant the caster a free cast of each; the punisher
+        // (owner loses life = the cast spell's mana value) rides the grant and
+        // fires in applyCastSpell when the card is actually cast.
+        next = cloneGameState(state);
+        for (const player of next.players) {
+          if (player.id === effect.casterId || player.lost) {
+            continue;
+          }
+          const grave = player.zones.graveyard;
+          if (grave.length === 0) {
+            continue;
+          }
+          const picked = grave[Math.floor(Math.random() * grave.length)];
+          if (!picked) {
+            continue;
+          }
+          moveCardInPlace(next, picked, "exile");
+          next.exilePlayable = [
+            ...(next.exilePlayable ?? []),
+            { cardId: picked, casterId: effect.casterId, freeCast: true, ownerLosesLifeManaValue: true },
+          ];
+        }
         break;
       }
       case "discard_random":
