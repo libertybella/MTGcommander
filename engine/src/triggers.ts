@@ -1596,7 +1596,13 @@ export function dispatchEventsInPlace(state: GameState, events: EngineEvent[]): 
                   ? event.amount
                   : undefined;
           const subjectStackObjectId =
-            event.kind === "activated_ability" ? event.stackObjectId : undefined;
+            event.kind === "activated_ability"
+              ? event.stackObjectId
+              : // Counterbalance: "counter THAT spell" — the just-cast spell is
+                // on the stack, so the trigger's subject is its stack object.
+                event.kind === "casts"
+                ? state.stack.find((entry) => entry.sourceId === event.cardId)?.id
+                : undefined;
           const causeKind =
             event.kind === "enters" || event.kind === "dies" || event.kind === "attacks"
               ? event.kind

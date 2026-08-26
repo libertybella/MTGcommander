@@ -1993,6 +1993,9 @@ export type GameEffect =
   /** Crew: the Vehicle becomes an artifact creature until end of turn (its
    * printed power/toughness switch on with the type). */
   | { kind: "become_creature_until_eot"; cardId: CardInstanceId }
+  /** Counterbalance: reveal the top card of your library and counter the
+   * subject spell if the two share a mana value. */
+  | { kind: "counterbalance"; controllerId: PlayerId; stackObjectId: StackObjectId }
   /** Quicksilver Elemental: this creature gains all of the target creature's
    * activated abilities until end of turn. */
   | { kind: "gain_all_activated_of_target"; selfId: CardInstanceId; targetId: CardInstanceId }
@@ -3747,6 +3750,7 @@ export type CardEffect =
   | { kind: "stash_exile_grant"; casterId: PlayerSelector }
   | { kind: "croak_exile_grant"; casterId: PlayerSelector }
   | { kind: "become_creature_until_eot"; cardId: CardIdSelector }
+  | { kind: "counterbalance" }
   | { kind: "gain_all_activated_of_target"; target: ChosenTargetRef }
   | { kind: "exile_gy_random_free_cast"; casterId: PlayerSelector }
   | { kind: "grant_flashback_until_eot"; cardId: CardIdSelector }

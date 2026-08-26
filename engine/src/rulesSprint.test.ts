@@ -75082,3 +75082,80 @@ describe("wave 477: Hedge Shredder / Crew — tap a creature to turn the Vehicle
     ).toThrow();
   });
 });
+
+describe("wave 478: Counterbalance — reveal the top card, counter a matching-cost spell", () => {
+  const compileCB = () =>
+    compileOracleCard({
+      oracleId: "counterbalance", name: "Counterbalance", manaCost: "{U}{U}", typeLine: "Enchantment",
+      power: null, toughness: null, printedKeywords: [], imageUrl: "",
+      oracleText:
+        "Whenever an opponent casts a spell, you may reveal the top card of your library. If you do, counter that spell if it has the same mana value as the revealed card.",
+    });
+
+  it("compiles the opponent-cast trigger with the counterbalance effect", () => {
+    const c = compileCB();
+    expect(c.notes).toEqual([]);
+    expect(c.definition.triggers?.[0]).toMatchObject({
+      event: "cast_spell", watch: "opponents", effects: [{ kind: "counterbalance" }],
+    });
+  });
+
+  const put = (game: GameState, ownerId: string, definition: CardDefinition) => {
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({ definitionId: definition.id, ownerId, zone: "battlefield" });
+    card.summoningSick = false;
+    game.cards[card.id] = card;
+    game.players.find((e) => e.id === ownerId)!.zones.battlefield.push(card.id);
+    return card.id;
+  };
+  const topOf = (game: GameState, ownerId: string, definition: CardDefinition) => {
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({ definitionId: definition.id, ownerId, zone: "library" });
+    game.cards[card.id] = card;
+    game.players.find((e) => e.id === ownerId)!.zones.library.unshift(card.id);
+    return card.id;
+  };
+  const inHand = (game: GameState, ownerId: string, definition: CardDefinition) => {
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({ definitionId: definition.id, ownerId, zone: "hand" });
+    game.cards[card.id] = card;
+    game.players.find((e) => e.id === ownerId)!.zones.hand.push(card.id);
+    return card.id;
+  };
+
+  const setup = (topManaCost: string) => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 5);
+    put(game, p1.id, compileCB().definition);
+    topOf(game, p1.id, createCardDefinition({ name: "Top", typeLine: "Sorcery", manaCost: topManaCost }));
+    // p2's spell is a {1}{R} (mana value 2) "You gain 3 life" instant.
+    const spellId = inHand(game, p2.id, createCardDefinition({ name: "Solace", typeLine: "Instant", manaCost: "{1}{R}" }));
+    game.definitions[game.cards[spellId]!.definitionId]!.oracleText = "You gain 3 life.";
+    game.definitions[game.cards[spellId]!.definitionId]!.effects = [
+      { kind: "gain_life", playerId: p2.id, amount: 3 },
+    ] as unknown as typeof game.definitions[string]["effects"];
+    game.priorityPlayerId = p2.id;
+    game.players.find((e) => e.id === p2.id)!.mana = { W: 0, U: 0, B: 0, R: 2, G: 0, C: 0 };
+    return { game, p1, p2, spellId };
+  };
+
+  it("counters the spell when the revealed card shares its mana value (its effect never happens)", () => {
+    const { game, p2, spellId } = setup("{1}{G}"); // top MV 2 == spell MV 2
+    const lifeBefore = game.players.find((e) => e.id === p2.id)!.life;
+    let next = applyAction(game, { kind: "cast_spell", playerId: p2.id, cardId: spellId, targets: [] });
+    while (next.stack.length > 0) next = resolveTopOfStack(next);
+    expect(next.cards[spellId]?.zone).toBe("graveyard");
+    // Countered -> no life gained.
+    expect(next.players.find((e) => e.id === p2.id)!.life).toBe(lifeBefore);
+  });
+
+  it("lets the spell resolve (its effect happens) when the mana values differ", () => {
+    const { game, p2, spellId } = setup("{2}{G}{G}"); // top MV 4 != spell MV 2
+    const lifeBefore = game.players.find((e) => e.id === p2.id)!.life;
+    let next = applyAction(game, { kind: "cast_spell", playerId: p2.id, cardId: spellId, targets: [] });
+    while (next.stack.length > 0) next = resolveTopOfStack(next);
+    expect(next.cards[spellId]?.zone).toBe("graveyard");
+    // Not countered -> the spell resolved and its controller gained 3 life.
+    expect(next.players.find((e) => e.id === p2.id)!.life).toBe(lifeBefore + 3);
+  });
+});

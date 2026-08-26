@@ -4389,6 +4389,8 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
       return { kind, casterId: parsePlayerSelector(value.casterId, `${label}.casterId`) };
     case "become_creature_until_eot":
       return { kind, cardId: parseCardIdSelector(value.cardId, `${label}.cardId`) };
+    case "counterbalance":
+      return { kind };
     case "exile_gy_random_free_cast":
       return { kind, casterId: parsePlayerSelector(value.casterId, `${label}.casterId`) };
     case "gain_all_activated_of_target":
@@ -7169,6 +7171,13 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
   }
   if (kind === "become_creature_until_eot") {
     return { kind, cardId: expectString(value.cardId, `${label}.cardId`) };
+  }
+  if (kind === "counterbalance") {
+    return {
+      kind,
+      controllerId: expectString(value.controllerId, `${label}.controllerId`),
+      stackObjectId: expectString(value.stackObjectId, `${label}.stackObjectId`),
+    };
   }
   if (kind === "exile_gy_random_free_cast") {
     return { kind, casterId: expectString(value.casterId, `${label}.casterId`) };

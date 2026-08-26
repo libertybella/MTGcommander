@@ -5637,6 +5637,19 @@ function compileSimpleClauseInner(sentence: string): SimpleClause | null {
     };
   }
 
+  // Counterbalance: the reveal is folded into the counter effect (the library
+  // is public here), so this sentence compiles to nothing on its own.
+  if (/^you may reveal the top card of your library$/i.test(sentence)) {
+    return { targetRequirements: [], effects: [{ kind: "counterbalance" }] };
+  }
+  if (
+    /^If you do, counter that spell if it has the same mana value as the revealed card$/i.test(
+      sentence,
+    )
+  ) {
+    return { targetRequirements: [], effects: [] };
+  }
+
   // Grolnok, the Omnivore: "exile it with a croak counter on it" — the milled
   // permanent card (the trigger subject) is exiled with a croak counter and a
   // standing play-from-exile grant for its owner.

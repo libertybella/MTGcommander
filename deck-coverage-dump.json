@@ -1805,7 +1805,7 @@
   "Lumra, Bellow of the Woods": true,
   "Poison Dart Frog": true,
   "Pollywog Prodigy": true,
-  "Counterbalance": false,
+  "Counterbalance": true,
   "Enhanced Surveillance": true,
   "Force of Vigor": true,
   "Noxious Revival": true,
@@ -7835,12 +7835,6 @@
    "type": "Legendary Creature — Dog Cat",
    "notes": [
     "Some oracle text is not compiled: {R}{G}{W}, {T}: ~ deals damage to any target equal to the number of Dogs you control; You gain life equal to the number of Cats you control."
-   ]
-  },
-  "Counterbalance": {
-   "type": "Enchantment",
-   "notes": [
-    "Some oracle text is not compiled: Whenever an opponent casts a spell, you may reveal the top card of your library; If you do, counter that spell if it has the same mana value as the revealed card."
    ]
   },
   "Heaped Harvest": {
@@ -14072,10 +14066,9 @@
   {
    "commander": "Glarb, Calamity's Augur",
    "rank": 39,
-   "slots": 2,
+   "slots": 1,
    "misses": [
-    "Muldrotha, the Gravetide",
-    "Counterbalance"
+    "Muldrotha, the Gravetide"
    ]
   },
   {

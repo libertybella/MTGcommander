@@ -878,6 +878,16 @@ export function bindCardEffect(
       }
       return { kind: "become_creature_until_eot", cardId };
     }
+    case "counterbalance": {
+      if (!context.subjectStackObjectId) {
+        return null;
+      }
+      return {
+        kind: "counterbalance",
+        controllerId: context.controllerId,
+        stackObjectId: context.subjectStackObjectId,
+      };
+    }
     case "exile_gy_random_free_cast": {
       const casterId = bindPlayerSelector(state, effect.casterId, context);
       if (!casterId) {
@@ -5553,6 +5563,26 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
           ...(next.exilePlayable ?? []).filter((entry) => entry.cardId !== effect.cardId),
           { cardId: effect.cardId, casterId: effect.casterId, whileExiled: true, anyColorMana: true },
         ];
+        break;
+      }
+      case "counterbalance": {
+        // Counterbalance. Reveal the top card of your library (public in this
+        // engine) and, if it shares a mana value with the subject spell,
+        // counter that spell. A mismatch does nothing.
+        const player = state.players.find((entry) => entry.id === effect.controllerId);
+        const top = player?.zones.library[0];
+        const spell = state.stack.find((entry) => entry.id === effect.stackObjectId);
+        if (!top || !spell || spell.sourceId === null) {
+          next = cloneGameState(state);
+          break;
+        }
+        const topMv = manaValueOf(
+          state.definitions[state.cards[top]?.definitionId ?? ""]?.manaCost ?? "",
+        );
+        const spellMv =
+          manaValueOf(state.definitions[state.cards[spell.sourceId]?.definitionId ?? ""]?.manaCost ?? "") +
+          (spell.xValue ?? 0);
+        next = topMv === spellMv ? applyCounterSpell(state, effect.stackObjectId, false) : cloneGameState(state);
         break;
       }
       case "become_creature_until_eot": {
