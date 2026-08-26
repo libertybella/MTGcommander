@@ -1,4 +1,4 @@
-import { abilitiesRemoved, cardMatchesSubtype, computedCard, dynamicCountOf } from "./characteristicsEngine";
+import { abilitiesRemoved, activatedOf, cardMatchesSubtype, computedCard, dynamicCountOf } from "./characteristicsEngine";
 import { manaValueOf } from "./characteristics";
 import { cloneGameState } from "./clone";
 import { createCardDefinition, createCardInstance } from "./createGame";
@@ -869,6 +869,14 @@ export function bindCardEffect(
         return null;
       }
       return { kind: "exile_gy_random_free_cast", casterId };
+    }
+    case "gain_all_activated_of_target": {
+      const selfId = context.sourceId;
+      const targetId = bindCardId(state, effect.target, context);
+      if (!selfId || !targetId) {
+        return null;
+      }
+      return { kind: "gain_all_activated_of_target", selfId, targetId };
     }
     case "grant_flashback_until_eot": {
       const cardId = bindCardId(state, effect.cardId, context);
@@ -5531,6 +5539,25 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
           next.exilePlayable = [
             ...(next.exilePlayable ?? []),
             { cardId: picked, casterId: effect.casterId, freeCast: true, ownerLosesLifeManaValue: true },
+          ];
+        }
+        break;
+      }
+      case "gain_all_activated_of_target": {
+        // Quicksilver Elemental. Copy the target creature's activated abilities
+        // onto this creature until cleanup; the copies now belong to it, so
+        // "self" in their effects resolves to Quicksilver when they activate.
+        const copied = activatedOf(state, effect.targetId);
+        if (copied.length === 0) {
+          next = cloneGameState(state);
+          break;
+        }
+        next = cloneGameState(state);
+        const self = next.cards[effect.selfId];
+        if (self) {
+          self.grantedActivatedUntilEot = [
+            ...(self.grantedActivatedUntilEot ?? []),
+            ...copied.map((ability) => structuredClone(ability)),
           ];
         }
         break;

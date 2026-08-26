@@ -221,6 +221,7 @@ export function createCardDefinition(
         | "castFromGraveyard"
         | "castFromExile"
         | "playExiledWithStashCounters"
+        | "spendBlueAsAnyForAbilities"
         | "ascend"
         | "untapDuringEachUntap"
         | "abilityHaste"
@@ -673,6 +674,9 @@ export function createCardDefinition(
     ...(input.castFromExile ? { castFromExile: true } : {}),
     ...(input.playExiledWithStashCounters
       ? { playExiledWithStashCounters: true }
+      : {}),
+    ...(input.spendBlueAsAnyForAbilities
+      ? { spendBlueAsAnyForAbilities: true }
       : {}),
     ...(input.abilityHaste ? { abilityHaste: true } : {}),
     ...(input.untapDuringEachUntap

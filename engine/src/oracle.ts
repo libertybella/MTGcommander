@@ -313,6 +313,7 @@ function compileOneFace(card: OracleCard, definitionId: string): OracleCompileRe
     ...(compiled.castFromGraveyard ? { castFromGraveyard: { ...compiled.castFromGraveyard } } : {}),
     ...(compiled.castFromExile ? { castFromExile: true } : {}),
     ...(compiled.playExiledWithStashCounters ? { playExiledWithStashCounters: true } : {}),
+    ...(compiled.spendBlueAsAnyForAbilities ? { spendBlueAsAnyForAbilities: true } : {}),
     ...(compiled.ascend ? { ascend: true } : {}),
     ...(compiled.abilityHaste ? { abilityHaste: true } : {}),
     ...(compiled.untapDuringEachUntap

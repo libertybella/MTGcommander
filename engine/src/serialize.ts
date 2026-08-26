@@ -644,6 +644,14 @@ export function parseGameState(json: string): GameState {
             ),
           }
         : {}),
+      ...(Array.isArray(card.grantedActivatedUntilEot)
+        ? {
+            grantedActivatedUntilEot: parseActivatedAbilities(
+              card.grantedActivatedUntilEot,
+              "card.grantedActivatedUntilEot",
+            ),
+          }
+        : {}),
       ...(Array.isArray(card.grantedManaAbilities)
         ? {
             grantedManaAbilities: parseManaAbilities(
@@ -1492,6 +1500,9 @@ export function parseGameState(json: string): GameState {
       ...(def.castFromExile === true ? { castFromExile: true } : {}),
       ...(def.playExiledWithStashCounters === true
         ? { playExiledWithStashCounters: true }
+        : {}),
+      ...(def.spendBlueAsAnyForAbilities === true
+        ? { spendBlueAsAnyForAbilities: true }
         : {}),
       ...(def.castFromGraveyard === undefined
         ? {}
@@ -4362,6 +4373,8 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
       return { kind, casterId: parsePlayerSelector(value.casterId, `${label}.casterId`) };
     case "exile_gy_random_free_cast":
       return { kind, casterId: parsePlayerSelector(value.casterId, `${label}.casterId`) };
+    case "gain_all_activated_of_target":
+      return { kind, target: parseChosenTargetRef(value.target, `${label}.target`) };
     case "grant_flashback_until_eot":
       return { kind, cardId: parseCardIdSelector(value.cardId, `${label}.cardId`) };
     case "discard":
@@ -7113,6 +7126,13 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
   }
   if (kind === "exile_gy_random_free_cast") {
     return { kind, casterId: expectString(value.casterId, `${label}.casterId`) };
+  }
+  if (kind === "gain_all_activated_of_target") {
+    return {
+      kind,
+      selfId: expectString(value.selfId, `${label}.selfId`),
+      targetId: expectString(value.targetId, `${label}.targetId`),
+    };
   }
   if (kind === "grant_flashback_until_eot") {
     return { kind, cardId: expectString(value.cardId, `${label}.cardId`) };

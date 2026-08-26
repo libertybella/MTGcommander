@@ -422,7 +422,7 @@
   "Hullbreaker Horror": true,
   "Niv-Mizzet, Parun": true,
   "Niv-Mizzet, Visionary": true,
-  "Quicksilver Elemental": false,
+  "Quicksilver Elemental": true,
   "Simian Spirit Guide": true,
   "Storm-Kiln Artist": true,
   "Stormcatch Mentor": true,
@@ -4232,12 +4232,6 @@
    "type": "Legendary Creature — Human Cleric",
    "notes": [
     "Some oracle text is not compiled: Whenever ~ attacks an opponent, you may put an Angel, Demon, or Dragon creature card from your hand onto the battlefield tapped and attacking that opponent."
-   ]
-  },
-  "Quicksilver Elemental": {
-   "type": "Creature — Elemental",
-   "notes": [
-    "Some oracle text is not compiled: {U}: ~ gains all activated abilities of target creature until end of turn; You may spend blue mana as though it were mana of any color to pay the activation costs of ~'s abilities."
    ]
   },
   "Tandem Lookout": {
@@ -14175,9 +14169,8 @@
   {
    "commander": "Vivi Ornitier",
    "rank": 7,
-   "slots": 2,
+   "slots": 1,
    "misses": [
-    "Quicksilver Elemental",
     "Tandem Lookout"
    ]
   },

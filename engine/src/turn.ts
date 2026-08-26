@@ -600,6 +600,10 @@ function onEnterStep(state: GameState): GameState {
       if (card.flashbackUntilEot !== undefined) {
         delete card.flashbackUntilEot;
       }
+      // Quicksilver Elemental: copied activated abilities last only this turn.
+      if (card.grantedActivatedUntilEot !== undefined) {
+        delete card.grantedActivatedUntilEot;
+      }
     }
     // CR 514.2: "until end of turn" effects end during cleanup.
     state.activeEffects = state.activeEffects.filter(

@@ -787,6 +787,11 @@ export type CardDefinition = {
    * by the stash_exile_grant effect at exile time (per card), so this flag is
    * a documented marker that the sentence was recognised. */
   playExiledWithStashCounters?: boolean;
+  /** Quicksilver Elemental: "you may spend blue mana as though it were mana of
+   * any color to pay the activation costs of this creature's abilities."
+   * Approximated as making this permanent's ability costs payable by any
+   * colour (documented). */
+  spendBlueAsAnyForAbilities?: boolean;
   /** Ascend: while this is on the battlefield, controlling ten or more
    * permanents grants the city's blessing (checked in the SBA sweep). */
   ascend?: boolean;
@@ -957,6 +962,9 @@ export type CardInstance = {
    * still there on chapter III.
    */
   grantedActivatedAbilities?: ActivatedAbility[];
+  /** Quicksilver Elemental: activated abilities copied from a target creature
+   * "until end of turn" — read after the permanent grants, cleared at cleanup. */
+  grantedActivatedUntilEot?: ActivatedAbility[];
   /** The same, for granted MANA abilities, which never use the stack. */
   grantedManaAbilities?: ManaAbility[];
   /**
@@ -1963,6 +1971,9 @@ export type GameEffect =
    * grant its caster the standing permission to play it from exile with mana
    * of any type for as long as it stays exiled. */
   | { kind: "stash_exile_grant"; casterId: PlayerId; cardId: CardInstanceId }
+  /** Quicksilver Elemental: this creature gains all of the target creature's
+   * activated abilities until end of turn. */
+  | { kind: "gain_all_activated_of_target"; selfId: CardInstanceId; targetId: CardInstanceId }
   /** Kefka, Dancing Mad: exile one card at random from each opponent's
    * graveyard, granting its caster a free cast of each; casting one makes its
    * OWNER lose life equal to that spell's mana value. */
@@ -3704,6 +3715,7 @@ export type CardEffect =
   | { kind: "discard_random"; playerId: PlayerSelector; count: number }
   | { kind: "discard_each_draw_per_type"; drawerId: PlayerSelector }
   | { kind: "stash_exile_grant"; casterId: PlayerSelector }
+  | { kind: "gain_all_activated_of_target"; target: ChosenTargetRef }
   | { kind: "exile_gy_random_free_cast"; casterId: PlayerSelector }
   | { kind: "grant_flashback_until_eot"; cardId: CardIdSelector }
   | { kind: "discard_unless_attacked"; playerId: PlayerSelector; count: number }

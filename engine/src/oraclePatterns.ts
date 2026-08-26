@@ -138,6 +138,7 @@ export type CompiledOracleText = {
   castFromGraveyard?: { types?: string[]; subtypes?: string[] };
   castFromExile?: boolean;
   playExiledWithStashCounters?: boolean;
+  spendBlueAsAnyForAbilities?: boolean;
   ascend?: boolean;
   untapDuringEachUntap?: CardDefinition["untapDuringEachUntap"];
   abilityHaste?: boolean;
@@ -5612,6 +5613,15 @@ function compileSimpleClauseInner(sentence: string): SimpleClause | null {
       });
     }
     return { targetRequirements: [], effects: kujaEffects };
+  }
+
+  // Quicksilver Elemental: "~ gains all activated abilities of target creature
+  // until end of turn." The copied abilities live on this creature until cleanup.
+  if (/^~ gains all activated abilities of target creature until end of turn$/i.test(sentence)) {
+    return {
+      targetRequirements: [{ kind: "creature" }],
+      effects: [{ kind: "gain_all_activated_of_target", target: { type: "chosen", index: 0 } }],
+    };
   }
 
   // Flashback (the card) / Snapcaster Mage: grant flashback to a targeted
@@ -19133,6 +19143,17 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
       )
     ) {
       result.playExiledWithStashCounters = true;
+      continue;
+    }
+
+    // Quicksilver Elemental: spend blue as any colour for this creature's own
+    // ability costs (approximated as any-colour payable; documented).
+    if (
+      /^You may spend blue mana as though it were mana of any color to pay the activation costs of ~'s abilities$/i.test(
+        sentence,
+      )
+    ) {
+      result.spendBlueAsAnyForAbilities = true;
       continue;
     }
 

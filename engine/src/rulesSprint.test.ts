@@ -74317,3 +74317,93 @@ describe("wave 466: Wizard's Staff — granted prowess, doubled for the equipped
     expect(isChosenTargetLegal(game, req, { type: "creature", cardId: bearId }, p1.id)).toBe(false);
   });
 });
+
+describe("wave 467: Quicksilver Elemental — borrow a creature's activated abilities until EOT", () => {
+  const T =
+    "{U}: This creature gains all activated abilities of target creature until end of turn. (If any of the abilities use that creature's name, use this creature's name instead.)\n" +
+    "You may spend blue mana as though it were mana of any color to pay the activation costs of this creature's abilities.";
+  const compileQE = () =>
+    compileOracleCard({
+      oracleId: "quicksilver-elemental", name: "Quicksilver Elemental", manaCost: "{3}{U}{U}",
+      typeLine: "Creature — Elemental", power: "3", toughness: "4", printedKeywords: [], imageUrl: "", oracleText: T,
+    });
+
+  it("compiles the gain-abilities activated ability and the blue-as-any flag", () => {
+    const c = compileQE();
+    expect(c.notes).toEqual([]);
+    expect(c.definition.activated?.[0]).toMatchObject({
+      manaCost: "{U}",
+      effects: [{ kind: "gain_all_activated_of_target", target: { type: "chosen", index: 0 } }],
+      targetRequirements: [{ kind: "creature" }],
+    });
+    expect(c.definition.spendBlueAsAnyForAbilities).toBe(true);
+  });
+
+  const put = (game: GameState, ownerId: string, definition: CardDefinition) => {
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({ definitionId: definition.id, ownerId, zone: "battlefield" });
+    card.summoningSick = false;
+    game.cards[card.id] = card;
+    game.players.find((e) => e.id === ownerId)!.zones.battlefield.push(card.id);
+    return card.id;
+  };
+
+  it("copies the target's ability, resolves it as its own, and pays the red cost with blue", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 10);
+    const qe = put(game, p1.id, compileQE().definition);
+    const firebrand = compileOracleCard({
+      oracleId: "firebrand", name: "Firebrand", manaCost: "{R}", typeLine: "Creature — Elemental",
+      power: "1", toughness: "1", printedKeywords: [], imageUrl: "",
+      oracleText: "{R}: This creature gets +1/+1 until end of turn.",
+    }).definition;
+    const fbId = put(game, p1.id, firebrand);
+
+    // Quicksilver's {U} ability copies Firebrand's activated abilities onto itself.
+    const after = applyEffects(
+      game,
+      bindCardEffects(game, [{ kind: "gain_all_activated_of_target", target: { type: "chosen", index: 0 } }] as unknown as CardEffect[], {
+        controllerId: p1.id, sourceId: qe,
+        targets: [{ type: "creature", cardId: fbId }],
+        targetRequirements: [{ kind: "creature" }],
+      }),
+    );
+    const qeAbilities = activatedOf(after, qe);
+    expect(qeAbilities.length).toBe(2); // printed {U} gain + the copied {R} pump
+    expect(qeAbilities[1]?.manaCost).toBe("{R}");
+
+    // Activate the copied ability on Quicksilver, paying the {R} with BLUE (blue-as-any).
+    after.priorityPlayerId = p1.id;
+    after.players[0]!.mana = { W: 0, U: 1, B: 0, R: 0, G: 0, C: 0 };
+    let act = applyAction(after, { kind: "activate_ability", playerId: p1.id, cardId: qe, abilityIndex: 1, targets: [] });
+    while (act.stack.length > 0) act = resolveTopOfStack(act);
+
+    // The pump resolved as QUICKSILVER's own (self -> Quicksilver): 3 -> 4. Firebrand is untouched.
+    expect(creaturePower(act, qe)).toBe(4);
+    expect(creaturePower(act, fbId)).toBe(1);
+    expect(act.players[0]!.mana.U).toBe(0); // the blue was spent
+  });
+
+  it("the borrowed abilities are gone after cleanup", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 10);
+    const qe = put(game, p1.id, compileQE().definition);
+    const firebrand = compileOracleCard({
+      oracleId: "firebrand", name: "Firebrand", manaCost: "{R}", typeLine: "Creature — Elemental",
+      power: "1", toughness: "1", printedKeywords: [], imageUrl: "",
+      oracleText: "{R}: This creature gets +1/+1 until end of turn.",
+    }).definition;
+    const fbId = put(game, p1.id, firebrand);
+    const after = applyEffects(
+      game,
+      bindCardEffects(game, [{ kind: "gain_all_activated_of_target", target: { type: "chosen", index: 0 } }] as unknown as CardEffect[], {
+        controllerId: p1.id, sourceId: qe,
+        targets: [{ type: "creature", cardId: fbId }],
+        targetRequirements: [{ kind: "creature" }],
+      }),
+    );
+    expect(activatedOf(after, qe).length).toBe(2);
+    const later = advanceSteps(after, 11);
+    expect(activatedOf(later, qe).length).toBe(1); // back to just the printed {U} ability
+  });
+});

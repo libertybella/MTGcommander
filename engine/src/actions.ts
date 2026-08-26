@@ -1972,6 +1972,14 @@ function applyActivateAbility(
   // K'rrik says "in a COST", which is every cost its controller pays —
   // activations included, not only spells.
   applyPhyrexianColorGrants(state, playerId, cost);
+  // Quicksilver Elemental: blue pays for any colour in this permanent's own
+  // ability costs (approximated as any-colour payable; documented).
+  if (state.definitions[card.definitionId]?.spendBlueAsAnyForAbilities) {
+    for (const color of COLOR_PIPS) {
+      cost.generic += cost[color];
+      cost[color] = 0;
+    }
+  }
   // Throne of Eldraine: "Spend only mana of the chosen color to activate
   // this ability." Generic that only one colour may pay IS a pip of that
   // colour, so the restriction is the cost rewritten. With no colour

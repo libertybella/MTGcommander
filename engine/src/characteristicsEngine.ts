@@ -1415,7 +1415,10 @@ export function activatedOf(
   const granted = (computedById ? computedById[cardId] : computedCard(state, cardId))
     ?.grantedActivated;
   const all = given && given.length > 0 ? [...printed, ...given] : printed;
-  return granted && granted.length > 0 ? [...all, ...granted] : all;
+  const withStatic = granted && granted.length > 0 ? [...all, ...granted] : all;
+  // Quicksilver Elemental: abilities copied from a target creature this turn.
+  const untilEot = card.grantedActivatedUntilEot;
+  return untilEot && untilEot.length > 0 ? [...withStatic, ...untilEot] : withStatic;
 }
 
 /**
