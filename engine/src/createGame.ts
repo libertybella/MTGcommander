@@ -172,6 +172,7 @@ export function createCardDefinition(
         | "changeling"
         | "storm"
         | "doesntUntap"
+        | "untapRestriction"
         | "grantsFlash"
         | "controlsOpponentSearches"
         | "convoke"
@@ -540,6 +541,9 @@ export function createCardDefinition(
     ...(input.changeling ? { changeling: true } : {}),
     ...(input.storm ? { storm: true } : {}),
     ...(input.doesntUntap ? { doesntUntap: true } : {}),
+    ...(input.untapRestriction
+      ? { untapRestriction: { max: input.untapRestriction.max, scope: input.untapRestriction.scope } }
+      : {}),
     ...(input.convoke ? { convoke: true } : {}),
     ...(input.improvise ? { improvise: true } : {}),
     ...(input.delve ? { delve: true } : {}),

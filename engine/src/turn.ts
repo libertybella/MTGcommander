@@ -289,6 +289,30 @@ function onEnterStep(state: GameState): GameState {
     // Intruder Alarm, read ONCE for the whole step: an Alarm that leaves
     // mid-sweep must not untap half the board.
     const creatureLock = creaturesDontUntap(state);
+    // Winter Orb / Static Orb: while such a permanent sits untapped anywhere,
+    // no player untaps more than its cap. `permanentCap` bounds every
+    // permanent; `landCap` bounds lands alone (they add). Which ones stay
+    // tapped is the player's choice on the card; here it is iteration order,
+    // a documented approximation that never untaps MORE than the cap allows.
+    let permanentCap = Infinity;
+    let landCap = Infinity;
+    for (const source of Object.values(state.cards)) {
+      const restriction = state.definitions[source.definitionId]?.untapRestriction;
+      if (
+        restriction &&
+        source.zone === "battlefield" &&
+        !source.tapped &&
+        !abilitiesRemoved(state, source.id)
+      ) {
+        if (restriction.scope === "permanent") {
+          permanentCap = Math.min(permanentCap, restriction.max);
+        } else {
+          landCap = Math.min(landCap, restriction.max);
+        }
+      }
+    }
+    let untappedPermanentCount = 0;
+    let untappedLandCount = 0;
     const untapInPlace = (card: (typeof state.cards)[string]) => {
       if (card.tapped) {
         untappedEvents.push({ kind: "untapped", cardId: card.id });
@@ -302,6 +326,13 @@ function onEnterStep(state: GameState): GameState {
           (state.definitions[card.definitionId]?.doesntUntap === true &&
             !abilitiesRemoved(state, card.id)) ||
           (creatureLock && isCreature(state, card.id));
+        // The Orb caps only bite on a permanent that was actually going to
+        // untap — an already-untapped one is not "untapped" and does not count.
+        const isLand = characteristicsOf(state, card.id).types.includes("land");
+        const cappedOut =
+          card.tapped &&
+          (untappedPermanentCount >= permanentCap ||
+            (isLand && untappedLandCount >= landCap));
         // Vorinclex froze it: skip this one untap step, then clear.
         if (card.skipNextUntap) {
           card.skipNextUntap = false;
@@ -309,7 +340,13 @@ function onEnterStep(state: GameState): GameState {
           // Exert (CR 701.39): it misses THIS untap step, and the mark is
           // spent doing so — which is also what frees it to exert again.
           card.exertedThisTurn = false;
-        } else if (!staysTapped) {
+        } else if (!staysTapped && !cappedOut) {
+          if (card.tapped) {
+            untappedPermanentCount += 1;
+            if (isLand) {
+              untappedLandCount += 1;
+            }
+          }
           untapInPlace(card);
         }
         card.summoningSick = false;

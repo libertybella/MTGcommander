@@ -979,6 +979,17 @@ export function parseGameState(json: string): GameState {
       ...(def.changeling === true ? { changeling: true } : {}),
       ...(def.storm === true ? { storm: true } : {}),
       ...(def.doesntUntap === true ? { doesntUntap: true } : {}),
+      ...(isRecord(def.untapRestriction)
+        ? {
+            untapRestriction: {
+              max: expectNumber(def.untapRestriction.max, `definition.${id}.untapRestriction.max`),
+              scope:
+                def.untapRestriction.scope === "land"
+                  ? ("land" as const)
+                  : ("permanent" as const),
+            },
+          }
+        : {}),
       ...(def.convoke === true ? { convoke: true } : {}),
       ...(def.improvise === true ? { improvise: true } : {}),
       ...(def.delve === true ? { delve: true } : {}),

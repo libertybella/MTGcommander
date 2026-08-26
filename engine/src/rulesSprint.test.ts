@@ -70464,3 +70464,115 @@ describe("wave 421: Glarb, Calamity's Augur", () => {
     expect(round.definitions[definition.id]?.topOfLibrary?.castMinManaValue).toBe(4);
   });
 });
+
+describe("wave 422: Winter Orb and Static Orb", () => {
+  const compile = (name: string, oracleText: string) =>
+    compileOracleCard({
+      oracleId: name.toLowerCase().replace(/[^a-z]+/g, "-"),
+      name,
+      manaCost: "{2}",
+      typeLine: "Artifact",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  it("compiles Winter Orb's one-land cap", () => {
+    const compiled = compile("Winter Orb", "As long as this artifact is untapped, players can't untap more than one land during their untap steps.");
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.untapRestriction).toEqual({ max: 1, scope: "land" });
+  });
+
+  it("compiles Static Orb's two-permanent cap", () => {
+    const compiled = compile("Static Orb", "As long as this artifact is untapped, players can't untap more than two permanents during their untap steps.");
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.untapRestriction).toEqual({ max: 2, scope: "permanent" });
+  });
+
+  const orb = (name: string, restriction: { max: number; scope: "land" | "permanent" }) =>
+    createCardDefinition({ name, typeLine: "Artifact", manaCost: "{2}", untapRestriction: restriction });
+  const land = (name: string) => createCardDefinition({ name, typeLine: "Basic Land — Island" });
+  const rock = (name: string) => createCardDefinition({ name, typeLine: "Artifact", manaCost: "{2}" });
+
+  const put = (game: GameState, ownerId: string, definition: CardDefinition, tapped: boolean) => {
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({ definitionId: definition.id, ownerId, zone: "battlefield" });
+    card.tapped = tapped;
+    card.summoningSick = false;
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === ownerId)!.zones.battlefield.push(card.id);
+    return card.id;
+  };
+
+  // Untap logic runs when ENTERING the untap step, which advanceStep does as
+  // it rolls from one player's cleanup into the next player's turn. So to run
+  // the target's untap, the OTHER player is active at cleanup.
+  const runUntapStep = (game: GameState, targetId: string, prevId: string) => {
+    game.turn.activePlayerId = prevId;
+    game.turn.phase = "ending";
+    game.turn.step = "cleanup";
+    const after = advanceStep(game);
+    expect(after.turn.step).toBe("untap");
+    expect(after.turn.activePlayerId).toBe(targetId);
+    return after;
+  };
+
+  const tappedCount = (game: GameState, ids: string[]) =>
+    ids.filter((id) => game.cards[id]?.tapped === true).length;
+
+  it("Winter Orb leaves all but one land tapped", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    put(game, p1.id, orb("Winter Orb", { max: 1, scope: "land" }), false);
+    const lands = [1, 2, 3, 4].map((n) => put(game, p1.id, land(`Island ${n}`), true));
+    const after = runUntapStep(game, p1.id, p2.id);
+    // Four tapped lands, cap of one untap: three stay tapped.
+    expect(tappedCount(after, lands)).toBe(3);
+  });
+
+  it("Winter Orb does not restrict nonland permanents", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    put(game, p1.id, orb("Winter Orb", { max: 1, scope: "land" }), false);
+    const rocks = [1, 2, 3].map((n) => put(game, p1.id, rock(`Rock ${n}`), true));
+    const after = runUntapStep(game, p1.id, p2.id);
+    // Artifacts are not lands: all untap.
+    expect(tappedCount(after, rocks)).toBe(0);
+  });
+
+  it("Static Orb caps every permanent at two untaps", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    put(game, p1.id, orb("Static Orb", { max: 2, scope: "permanent" }), false);
+    const perms = [
+      put(game, p1.id, land("Island A"), true),
+      put(game, p1.id, land("Island B"), true),
+      put(game, p1.id, rock("Rock A"), true),
+      put(game, p1.id, rock("Rock B"), true),
+    ];
+    const after = runUntapStep(game, p1.id, p2.id);
+    // Four tapped permanents, cap of two: two stay tapped.
+    expect(tappedCount(after, perms)).toBe(2);
+  });
+
+  it("a TAPPED Orb imposes nothing — the restriction needs it untapped", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    put(game, p1.id, orb("Winter Orb", { max: 1, scope: "land" }), true); // tapped
+    const lands = [1, 2, 3].map((n) => put(game, p1.id, land(`Island ${n}`), true));
+    const after = runUntapStep(game, p1.id, p2.id);
+    // The Orb is off: everything untaps.
+    expect(tappedCount(after, lands)).toBe(0);
+  });
+
+  it("round trips the restriction", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const definition = orb("Static Orb", { max: 2, scope: "permanent" });
+    put(game, p1.id, definition, false);
+    const round = parseGameState(serializeGameState(game));
+    expect(round.definitions[definition.id]?.untapRestriction).toEqual({ max: 2, scope: "permanent" });
+  });
+});

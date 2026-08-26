@@ -475,6 +475,13 @@ export type CardDefinition = {
   storm?: boolean;
   /** "~ doesn't untap during your untap step." */
   doesntUntap?: boolean;
+  /** Winter Orb / Static Orb: while THIS permanent is untapped, no player may
+   * untap more than `max` permanents of `scope` during their untap step. A
+   * global, symmetric restriction. Which permanents stay tapped is the
+   * player's choice on the printed card; the engine auto-picks (untaps the
+   * first `max` it meets), a documented approximation that is never more
+   * permissive than an optimal choice — the COUNT is identical either way. */
+  untapRestriction?: { max: number; scope: "land" | "permanent" };
   /** Drumbellower / Seedborn Muse: the controller's creatures (or all their
    * permanents) also untap during each other player's untap step.
    * Bender's Waterskin is the one-permanent form: only the source itself. */

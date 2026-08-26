@@ -114,6 +114,7 @@ export type CompiledOracleText = {
   changeling?: boolean;
   storm?: boolean;
   doesntUntap?: boolean;
+  untapRestriction?: { max: number; scope: "land" | "permanent" };
   convoke?: boolean;
   improvise?: boolean;
   delve?: boolean;
@@ -17991,6 +17992,19 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
 
     if (/^~ doesn't untap during your untap step$/i.test(sentence)) {
       result.doesntUntap = true;
+      continue;
+    }
+
+    // Winter Orb (one land) / Static Orb (two permanents): a global untap cap
+    // that holds while this permanent is untapped.
+    const untapCap = sentence.match(
+      /^As long as ~ is untapped, players can't untap more than (one|two|three|four|\d+) (land|permanent)s? during their untap steps?$/i,
+    );
+    if (untapCap?.[1] && untapCap[2]) {
+      result.untapRestriction = {
+        max: parseCount(untapCap[1]) ?? 1,
+        scope: untapCap[2].toLowerCase() === "land" ? "land" : "permanent",
+      };
       continue;
     }
 
