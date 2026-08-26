@@ -781,6 +781,9 @@ export type CardDefinition = {
   /** Squee, the Immortal: castable from EXILE (and, with castFromGraveyard,
    * from the graveyard) with no gate — whoever exiled it, it comes back. */
   castFromExile?: boolean;
+  /** Soulbond (CR 702.94): may pair with another unpaired creature when either
+   * enters; paired while both stay under one control. */
+  soulbond?: boolean;
   /** Tinybones, Bauble Burglar: the descriptive half of the stash mechanic
    * ("During your turn, you may play cards you don't own with stash counters
    * on them from exile ..."). The playable-from-exile permission is realised
@@ -906,6 +909,8 @@ export type CardInstance = {
    * (cost = its own mana cost), cleared at cleanup. Read alongside the
    * definition's printed flashback everywhere the cast path consults it. */
   flashbackUntilEot?: boolean;
+  /** Soulbond: the creature this one is currently paired with (bidirectional). */
+  soulbondPartner?: CardInstanceId;
   /** 0 means not a Class. Class enchantments enter at 1. */
   classLevel: number;
   /** CR 613.7 ordering: stamped when this object entered the battlefield. */
@@ -6125,7 +6130,7 @@ export type EffectSelector = {
   /** "attached": the permanent this source is attached to (auras, equipment).
    * "opponents": everything the source's controller does NOT control
    * (Elesh Norn's "Creatures your opponents control get -2/-2"). */
-  scope: "self" | "controlled" | "all" | "attached" | "opponents";
+  scope: "self" | "controlled" | "all" | "attached" | "opponents" | "soulbond_pair";
   types?: string[];
   subtypes?: string[];
   /** "Legendary creatures you control" (Rising of the Day). */

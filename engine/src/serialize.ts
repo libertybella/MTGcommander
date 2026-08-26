@@ -710,6 +710,9 @@ export function parseGameState(json: string): GameState {
       faceDown: card.faceDown === true,
       ...(card.phasedOut === true ? { phasedOut: true } : {}),
       ...(card.flashbackUntilEot === true ? { flashbackUntilEot: true } : {}),
+      ...(typeof card.soulbondPartner === "string"
+        ? { soulbondPartner: card.soulbondPartner }
+        : {}),
       ...(card.enteredFromCast === true ? { enteredFromCast: true } : {}),
       ...(card.attachedToPlayer === undefined
         ? {}
@@ -1498,6 +1501,7 @@ export function parseGameState(json: string): GameState {
         : {}),
       ...(def.ascend === true ? { ascend: true } : {}),
       ...(def.castFromExile === true ? { castFromExile: true } : {}),
+      ...(def.soulbond === true ? { soulbond: true } : {}),
       ...(def.playExiledWithStashCounters === true
         ? { playExiledWithStashCounters: true }
         : {}),
@@ -6468,7 +6472,8 @@ function parseEffectSelector(value: unknown, label: string): EffectSelector {
     scope !== "controlled" &&
     scope !== "all" &&
     scope !== "attached" &&
-    scope !== "opponents"
+    scope !== "opponents" &&
+    scope !== "soulbond_pair"
   ) {
     throw new Error(`Invalid ${label}.scope`);
   }

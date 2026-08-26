@@ -426,7 +426,7 @@
   "Simian Spirit Guide": true,
   "Storm-Kiln Artist": true,
   "Stormcatch Mentor": true,
-  "Tandem Lookout": false,
+  "Tandem Lookout": true,
   "Veyran, Voice of Duality": true,
   "Mystic Remora": true,
   "Sigil of Sleep": true,
@@ -4234,12 +4234,6 @@
     "Some oracle text is not compiled: Whenever ~ attacks an opponent, you may put an Angel, Demon, or Dragon creature card from your hand onto the battlefield tapped and attacking that opponent."
    ]
   },
-  "Tandem Lookout": {
-   "type": "Creature — Human Scout",
-   "notes": [
-    "Some oracle text is not compiled: Soulbond; As long as ~ is paired with another creature, each of those creatures has \"Whenever ~ deals damage to an opponent, draw a card.\"."
-   ]
-  },
   "Mount Doom": {
    "type": "Legendary Land",
    "notes": [
@@ -5573,7 +5567,7 @@
   "Wingcrafter": {
    "type": "Creature — Human Wizard",
    "notes": [
-    "Some oracle text is not compiled: Soulbond; As long as ~ is paired with another creature, both creatures have flying."
+    "Some oracle text is not compiled: As long as ~ is paired with another creature, both creatures have flying."
    ]
   },
   "Smoke Shroud": {
@@ -14149,6 +14143,12 @@
  },
  "decks": [
   {
+   "commander": "Vivi Ornitier",
+   "rank": 7,
+   "slots": 0,
+   "misses": []
+  },
+  {
    "commander": "Kefka, Court Mage",
    "rank": 24,
    "slots": 0,
@@ -14165,14 +14165,6 @@
    "rank": 67,
    "slots": 0,
    "misses": []
-  },
-  {
-   "commander": "Vivi Ornitier",
-   "rank": 7,
-   "slots": 1,
-   "misses": [
-    "Tandem Lookout"
-   ]
   },
   {
    "commander": "Sephiroth, Fabled SOLDIER",
@@ -14819,6 +14811,31 @@
    ]
   },
   {
+   "commander": "Ghyrson Starn, Kelermorph",
+   "rank": 70,
+   "slots": 18,
+   "misses": [
+    "Caltrops",
+    "Eroded Canyon",
+    "Chandra's Incinerator",
+    "Exalted Flamer of Tzeentch",
+    "Gelectrode",
+    "Urabrask",
+    "Circle of Flame",
+    "Manabarbs",
+    "Cast into the Fire",
+    "Electrolyze",
+    "Lava Dart",
+    "Needle Drop",
+    "Spikefield Hazard",
+    "Ral, Storm Conduit",
+    "End the Festivities",
+    "Smash to Dust",
+    "Tectonic Hazard",
+    "Ghyrson Starn, Kelermorph (commander)"
+   ]
+  },
+  {
    "commander": "Kotis, the Fangkeeper",
    "rank": 79,
    "slots": 18,
@@ -14944,32 +14961,6 @@
     "Kaya, Geist Hunter",
     "Eliminate the Competition",
     "Zurgo Stormrender (commander)"
-   ]
-  },
-  {
-   "commander": "Ghyrson Starn, Kelermorph",
-   "rank": 70,
-   "slots": 19,
-   "misses": [
-    "Caltrops",
-    "Eroded Canyon",
-    "Chandra's Incinerator",
-    "Exalted Flamer of Tzeentch",
-    "Gelectrode",
-    "Tandem Lookout",
-    "Urabrask",
-    "Circle of Flame",
-    "Manabarbs",
-    "Cast into the Fire",
-    "Electrolyze",
-    "Lava Dart",
-    "Needle Drop",
-    "Spikefield Hazard",
-    "Ral, Storm Conduit",
-    "End the Festivities",
-    "Smash to Dust",
-    "Tectonic Hazard",
-    "Ghyrson Starn, Kelermorph (commander)"
    ]
   },
   {

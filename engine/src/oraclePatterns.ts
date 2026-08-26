@@ -137,6 +137,7 @@ export type CompiledOracleText = {
   saga?: { chapters: CardEffect[][] };
   castFromGraveyard?: { types?: string[]; subtypes?: string[] };
   castFromExile?: boolean;
+  soulbond?: boolean;
   playExiledWithStashCounters?: boolean;
   spendBlueAsAnyForAbilities?: boolean;
   ascend?: boolean;
@@ -19130,6 +19131,34 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
         result.castFromExile = true;
       }
       continue;
+    }
+
+    // Soulbond (CR 702.94): the keyword itself. Pairing is resolved when a
+    // creature enters; the reminder text carries no separate rule.
+    if (/^Soulbond$/i.test(sentence)) {
+      result.soulbond = true;
+      continue;
+    }
+
+    // Tandem Lookout: "As long as ~ is paired with another creature, each of
+    // those creatures has '<ability>'." The soulbond_pair scope IS the "while
+    // paired" gate (it affects nobody when the pair is invalid), so the grant
+    // just hangs the quoted ability on the source and its partner.
+    const pairedGrant = sentence.match(
+      /^As long as ~ is paired with another creature, each of those creatures has "(.+)"$/i,
+    );
+    if (pairedGrant?.[1]) {
+      const inner = pairedGrant[1].replace(/\.$/, "");
+      const trigger = /^(?:When|Whenever|At)\b/i.test(inner)
+        ? compileQuotedTrigger(inner)
+        : null;
+      if (trigger) {
+        result.staticAbilities.push({
+          selector: { scope: "soulbond_pair" },
+          effect: { kind: "grant_trigger", trigger },
+        });
+        continue;
+      }
     }
 
     // Tinybones, Bauble Burglar: "During your turn, you may play cards you

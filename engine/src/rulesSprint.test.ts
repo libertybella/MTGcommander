@@ -27,7 +27,7 @@ import { lookedAtCardIds } from "./prompt";
 import { manaValueOf } from "./characteristics";
 import { targetingLifeTaxFor } from "./derived";
 import { hasKeyword } from "./keywords";
-import { dispatchEventsInPlace, queueEnterBattlefieldTriggersInPlace, triggerConditionHolds } from "./triggers";
+import { dispatchEventsInPlace, pairSoulbondInPlace, queueEnterBattlefieldTriggersInPlace, triggerConditionHolds } from "./triggers";
 import { applyCombatDamage, blockRestriction, declareAttackers, declareBlockers } from "./combat";
 import { advanceStep, beginNextLivingTurnInPlace } from "./turn";
 import { colorsAmongControlled, commanderIdentityColors, manaAbilitiesFor, manaTapOptionsFor } from "./manaOptions";
@@ -74405,5 +74405,81 @@ describe("wave 467: Quicksilver Elemental — borrow a creature's activated abil
     expect(activatedOf(after, qe).length).toBe(2);
     const later = advanceSteps(after, 11);
     expect(activatedOf(later, qe).length).toBe(1); // back to just the printed {U} ability
+  });
+});
+
+describe("wave 468: Tandem Lookout — Soulbond pairs, and the pair draws on combat damage", () => {
+  const compileLookout = () =>
+    compileOracleCard({
+      oracleId: "tandem-lookout", name: "Tandem Lookout", manaCost: "{2}{U}",
+      typeLine: "Creature — Human Scout", power: "2", toughness: "1", printedKeywords: [], imageUrl: "",
+      oracleText:
+        'Soulbond (You may pair this creature with another unpaired creature when either enters. They remain paired for as long as you control both of them.)\n' +
+        'As long as Tandem Lookout is paired with another creature, each of those creatures has "Whenever this creature deals damage to an opponent, draw a card."',
+    });
+
+  it("compiles the Soulbond flag and the paired-pair grant", () => {
+    const c = compileLookout();
+    expect(c.notes).toEqual([]);
+    expect(c.definition.soulbond).toBe(true);
+    expect(c.definition.staticAbilities?.[0]).toMatchObject({
+      selector: { scope: "soulbond_pair" },
+      effect: { kind: "grant_trigger", trigger: { event: "deals_damage_to_player" } },
+    });
+  });
+
+  const put = (game: GameState, ownerId: string, definition: CardDefinition) => {
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({ definitionId: definition.id, ownerId, zone: "battlefield" });
+    card.summoningSick = false;
+    game.cards[card.id] = card;
+    game.players.find((e) => e.id === ownerId)!.zones.battlefield.push(card.id);
+    return card.id;
+  };
+
+  it("pairs on enter, grants the trigger to BOTH, and draws when either hits an opponent", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 10);
+    // A partner is already out; the Lookout enters and the pair forms.
+    const bearId = put(game, p1.id, createCardDefinition({ name: "Bear", typeLine: "Creature — Bear", manaCost: "{1}{G}", power: 2, toughness: 2 }));
+    const lookoutId = put(game, p1.id, compileLookout().definition);
+    queueEnterBattlefieldTriggersInPlace(game, lookoutId);
+
+    // Paired both ways.
+    expect(game.cards[lookoutId]?.soulbondPartner).toBe(bearId);
+    expect(game.cards[bearId]?.soulbondPartner).toBe(lookoutId);
+    // Both carry the granted damage-draw trigger.
+    expect(triggersOf(game, lookoutId).some((t) => t.event === "deals_damage_to_player")).toBe(true);
+    expect(triggersOf(game, bearId).some((t) => t.event === "deals_damage_to_player")).toBe(true);
+
+    // The BEAR (the partner) deals damage to an opponent -> its controller draws.
+    const handBefore = game.players.find((e) => e.id === p1.id)!.zones.hand.length;
+    let next = game;
+    dispatchEventsInPlace(next, [{ kind: "deals_damage_to_player", cardId: bearId, playerId: p2.id, amount: 2 }]);
+    while (next.stack.length > 0) next = resolveTopOfStack(next);
+    expect(next.players.find((e) => e.id === p1.id)!.zones.hand.length).toBe(handBefore + 1);
+  });
+
+  it("the pairing ends — and the grant with it — when the partner leaves", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 10);
+    const bearId = put(game, p1.id, createCardDefinition({ name: "Bear", typeLine: "Creature — Bear", manaCost: "{1}{G}", power: 2, toughness: 2 }));
+    const lookoutId = put(game, p1.id, compileLookout().definition);
+    queueEnterBattlefieldTriggersInPlace(game, lookoutId);
+    expect(game.cards[lookoutId]?.soulbondPartner).toBe(bearId);
+    expect(triggersOf(game, lookoutId).some((t) => t.event === "deals_damage_to_player")).toBe(true);
+
+    // The partner leaves the battlefield.
+    const bear = game.cards[bearId]!;
+    game.players.find((e) => e.id === p1.id)!.zones.battlefield =
+      game.players.find((e) => e.id === p1.id)!.zones.battlefield.filter((x) => x !== bearId);
+    bear.zone = "graveyard";
+    game.players.find((e) => e.id === p1.id)!.zones.graveyard.push(bearId);
+
+    // The scope validates the partner live, so the Lookout no longer has the trigger...
+    expect(triggersOf(game, lookoutId).some((t) => t.event === "deals_damage_to_player")).toBe(false);
+    // ...and the next pairing pass drops the stale link.
+    pairSoulbondInPlace(game, p1.id);
+    expect(game.cards[lookoutId]?.soulbondPartner).toBeUndefined();
   });
 });

@@ -220,6 +220,7 @@ export function createCardDefinition(
         | "saga"
         | "castFromGraveyard"
         | "castFromExile"
+        | "soulbond"
         | "playExiledWithStashCounters"
         | "spendBlueAsAnyForAbilities"
         | "ascend"
@@ -672,6 +673,7 @@ export function createCardDefinition(
         }
       : {}),
     ...(input.castFromExile ? { castFromExile: true } : {}),
+    ...(input.soulbond ? { soulbond: true } : {}),
     ...(input.playExiledWithStashCounters
       ? { playExiledWithStashCounters: true }
       : {}),

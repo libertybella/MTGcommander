@@ -658,6 +658,23 @@ function matches(
       return false;
     }
   }
+  // Soulbond: the source and its partner, but only while the pair is valid
+  // (both on the battlefield under one control).
+  if (selector.scope === "soulbond_pair") {
+    const source = instance.sourceId ? state.cards[instance.sourceId] : undefined;
+    const partnerId = source?.soulbondPartner;
+    const partner = partnerId ? state.cards[partnerId] : undefined;
+    const paired = Boolean(
+      source &&
+        partner &&
+        partner.zone === "battlefield" &&
+        partner.controllerId === source.controllerId,
+    );
+    if (!paired) {
+      return false;
+    }
+    return card.id === instance.sourceId || card.id === partnerId;
+  }
   const computed = computedById[card.id];
   if (!computed) {
     return false;

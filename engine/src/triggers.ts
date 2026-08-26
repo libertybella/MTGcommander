@@ -1666,6 +1666,53 @@ export function dispatchEventsInPlace(state: GameState, events: EngineEvent[]): 
 }
 
 /** Queue enter-the-battlefield triggers and notify watchers of the arrival. */
+/**
+ * Soulbond (CR 702.94), a documented approximation of the choice. When any
+ * creature enters, greedily pair each unpaired Soulbond creature its controller
+ * has with an unpaired creature they control (either direction of "when either
+ * enters"). Stale pairings — a partner that has left or changed control — are
+ * dropped first, which is also how a pair ends "when you no longer control
+ * both". No player choice: the first eligible partner is taken.
+ */
+export function pairSoulbondInPlace(state: GameState, controllerId: PlayerId): void {
+  const player = state.players.find((entry) => entry.id === controllerId);
+  if (!player) {
+    return;
+  }
+  const validPartner = (partnerId: CardInstanceId | undefined): boolean => {
+    if (!partnerId) {
+      return false;
+    }
+    const partner = state.cards[partnerId];
+    return Boolean(partner && partner.zone === "battlefield" && partner.controllerId === controllerId);
+  };
+  // Drop stale pairings.
+  for (const id of player.zones.battlefield) {
+    const c = state.cards[id];
+    if (c?.soulbondPartner && !validPartner(c.soulbondPartner)) {
+      delete c.soulbondPartner;
+    }
+  }
+  const isCreature = (id: CardInstanceId): boolean =>
+    characteristicsOf(state, id).types.includes("creature");
+  const unpaired = (id: CardInstanceId): boolean => !state.cards[id]?.soulbondPartner;
+  // Pair each unpaired Soulbond creature with an unpaired creature you control.
+  for (const id of player.zones.battlefield) {
+    const c = state.cards[id];
+    const definition = c ? state.definitions[c.definitionId] : undefined;
+    if (!definition?.soulbond || !isCreature(id) || !unpaired(id)) {
+      continue;
+    }
+    const partnerId = player.zones.battlefield.find(
+      (other) => other !== id && isCreature(other) && unpaired(other),
+    );
+    if (partnerId && state.cards[id] && state.cards[partnerId]) {
+      state.cards[id]!.soulbondPartner = partnerId;
+      state.cards[partnerId]!.soulbondPartner = id;
+    }
+  }
+}
+
 export function queueEnterBattlefieldTriggersInPlace(
   state: GameState,
   cardId: CardInstanceId,
@@ -1675,6 +1722,8 @@ export function queueEnterBattlefieldTriggersInPlace(
     return;
   }
   dispatchEventsInPlace(state, [{ kind: "enters", cardId }]);
+  // Soulbond pairs form as creatures enter (either side triggers the pairing).
+  pairSoulbondInPlace(state, card.controllerId);
   // A Saga enters with a lore counter and its first chapter fires at once
   // (CR 714.2b), after the ordinary enter triggers rather than instead of
   // them — a Saga that also has an ETB gets both.
