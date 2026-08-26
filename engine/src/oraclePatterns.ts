@@ -723,7 +723,7 @@ const SACRIFICE_COUNTS = "two|three|four|five|six|seven|eight|nine|ten|X|\\d+";
 const SACRIFICE_SCOPES =
   "artifacts and\\/or creatures|nonland permanents|creature or artifact|artifact or creature|black creature|creatures|artifacts|Treasures|creature|artifact|Treasure|lands|land|token";
 const SACRIFICE_TYPE_COST = new RegExp(
-  `Sacrifice (?:an? |another |(${SACRIFICE_COUNTS}) (?:other )?)(${SACRIFICE_SCOPES})\\b`,
+  `Sacrifice (?:an? |another |(${SACRIFICE_COUNTS}) (?:other )?(?:(white|blue|black|red|green) )?)(${SACRIFICE_SCOPES})\\b`,
   "i",
 );
 /**
@@ -773,7 +773,7 @@ const EXILE_GRAVEYARD_COST =
 /** Lion's Eye Diamond: the whole hand, so there is nothing to choose. */
 const DISCARD_HAND_COST = /Discard your hand/i;
 const COST_UNIT =
-  `(?:\\{[^}]+\\})+|Sacrifice (?:~|this land|this creature|this artifact|this permanent)|Sacrifice (?:an? |another |(?:${SACRIFICE_COUNTS}) (?:other )?)(?:${SACRIFICE_SCOPES})|Sacrifice (?:an? |(?:one|two|three|four|five|\\d+|X) )[A-Z][a-z]+s?|Discard your hand|Exile ~|Exert ~|Pay \\d+ life|Pay life equal to the number of colors in your commanders?['\u2019]? color identity|Tap an untapped (?:legendary )?creature you control|Tap an untapped artifact you control|Remove (?:a|an|one|two|three|four|five|six|seven|eight|nine|ten|\\d+) (?:[-+]\\d\\/[-+]\\d|[a-z]+) counters? from ~|Put (?:a|an|one|two|three|\\d+) (?:[-+]\\d\\/[-+]\\d|[a-z]+) counters? on ~|Discard (?:an? (?:${DISCARD_COST_TYPES})? ?card|(?:${DISCARD_COST_COUNTS}) cards)|Mill (?:a|one|two|three|\\d+) cards?|Exile (?:a|one|two|three|four|five|\\d+) (?:(?:creature|artifact|land|instant|sorcery) )?cards? from your graveyard`;
+  `(?:\\{[^}]+\\})+|Sacrifice (?:~|this land|this creature|this artifact|this permanent)|Sacrifice (?:an? |another |(?:${SACRIFICE_COUNTS}) (?:other )?(?:(?:white|blue|black|red|green) )?)(?:${SACRIFICE_SCOPES})|Sacrifice (?:an? |(?:one|two|three|four|five|\\d+|X) )[A-Z][a-z]+s?|Discard your hand|Exile ~|Exert ~|Pay \\d+ life|Pay life equal to the number of colors in your commanders?['\u2019]? color identity|Tap an untapped (?:legendary )?creature you control|Tap an untapped artifact you control|Remove (?:a|an|one|two|three|four|five|six|seven|eight|nine|ten|\\d+) (?:[-+]\\d\\/[-+]\\d|[a-z]+) counters? from ~|Put (?:a|an|one|two|three|\\d+) (?:[-+]\\d\\/[-+]\\d|[a-z]+) counters? on ~|Discard (?:an? (?:${DISCARD_COST_TYPES})? ?card|(?:${DISCARD_COST_COUNTS}) cards)|Mill (?:a|one|two|three|\\d+) cards?|Exile (?:a|one|two|three|four|five|\\d+) (?:(?:creature|artifact|land|instant|sorcery) )?cards? from your graveyard`;
 
 function splitAbility(sentence: string): { costText: string; rest: string } | null {
   // "Metalcraft — {T}: …" — the ability word is flavor (Mox Opal).
@@ -817,6 +817,7 @@ function parseAbilityCost(
     | "nonland_permanent"
     | "token";
   sacrificeSubtype?: string;
+  sacrificeColor?: Color;
   sacrificeCount?: number;
   sacrificeCountFromX?: boolean;
   discardHandCost?: boolean;
@@ -854,7 +855,10 @@ function parseAbilityCost(
       : undefined;
   // "artifacts and/or creatures" and the bare plural are the counted forms;
   // they map onto the same scopes as their singulars.
-  const scopeWord = sacrificeTypeMatch?.[2]
+  const sacrificeColor = sacrificeTypeMatch?.[2]
+    ? COLOR_WORD_TO_SYMBOL[sacrificeTypeMatch[2].toLowerCase()]
+    : undefined;
+  const scopeWord = sacrificeTypeMatch?.[3]
     ?.toLowerCase()
     .replace(/^artifacts and\/or creatures$/, "creature_or_artifact")
     .replace(/^(?:creature or artifact|artifact or creature)$/, "creature_or_artifact")
@@ -1016,6 +1020,7 @@ function parseAbilityCost(
     ...(lifeCost ? { lifeCost } : {}),
     ...(lifeCostFromCommanderColors ? { lifeCostFromCommanderColors: true } : {}),
     ...(sacrificeCost ? { sacrificeCost } : {}),
+    ...(sacrificeColor ? { sacrificeColor } : {}),
     ...(sacrificeSubtype ? { sacrificeSubtype } : {}),
     ...((sacrificeCount ?? subtypeCount) && (sacrificeCount ?? subtypeCount)! > 1
       ? { sacrificeCount: (sacrificeCount ?? subtypeCount)! }
@@ -14193,6 +14198,14 @@ function parseTriggerSubjectPhrase(
       rest = rest.replace(/^attacking\s+/i, "");
       continue;
     }
+    // Teysa, Orzhov Scion: "another BLACK creature you control". A colour
+    // adjective narrows the subject; enforced through subjectFilter.colors.
+    const colorAdj = rest.match(/^(white|blue|black|red|green)\s+\S/i);
+    if (colorAdj?.[1] && COLOR_WORD_TO_SYMBOL[colorAdj[1].toLowerCase()]) {
+      filter.colors = [...(filter.colors ?? []), COLOR_WORD_TO_SYMBOL[colorAdj[1].toLowerCase()]!];
+      rest = rest.replace(/^(white|blue|black|red|green)\s+/i, "");
+      continue;
+    }
     break;
   }
   // A bare "token" / "permanent" head names no card type at all.
@@ -16233,6 +16246,7 @@ function extractActivatedModalModes(card: OracleCard): ActivatedModalExtraction 
       ...(cost.sacrificeSelf ? { sacrificeSelf: true } : {}),
       ...(cost.sacrificeCost ? { sacrificeCost: cost.sacrificeCost } : {}),
       ...(cost.sacrificeSubtype ? { sacrificeSubtype: cost.sacrificeSubtype } : {}),
+      ...(cost.sacrificeColor ? { sacrificeColor: cost.sacrificeColor } : {}),
       ...(cost.sacrificeCount ? { sacrificeCount: cost.sacrificeCount } : {}),
       ...(cost.removeCounterCost ? { removeCounterCost: cost.removeCounterCost } : {}),
       ...(cost.addCounterCost ? { addCounterCost: cost.addCounterCost } : {}),
@@ -21340,6 +21354,7 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
         ...(cost.sacrificeSelf ? { sacrificeSelf: true } : {}),
         ...(cost.sacrificeCost ? { sacrificeCost: cost.sacrificeCost } : {}),
         ...(cost.sacrificeSubtype ? { sacrificeSubtype: cost.sacrificeSubtype } : {}),
+        ...(cost.sacrificeColor ? { sacrificeColor: cost.sacrificeColor } : {}),
         ...(cost.sacrificeCount ? { sacrificeCount: cost.sacrificeCount } : {}),
         ...(cost.sacrificeCountFromX ? { sacrificeCountFromX: true } : {}),
         ...(cost.removeCounterCost ? { removeCounterCost: cost.removeCounterCost } : {}),

@@ -1837,6 +1837,7 @@ function sacrificeFodderFor(
         entry.id !== cardId &&
         entry.id !== except &&
         sacrificeScopeMatches(state, entry.id, ability.sacrificeCost!, cardId) &&
+        sacrificeColorMatches(state, entry.id, ability.sacrificeColor) &&
         // "Sacrifice three Foods": the subtype is the whole filter, and
         // leaving it out here would auto-eat permanents the cost never
         // asked for.
@@ -2057,7 +2058,9 @@ function applyActivateAbility(
       !sacrificeScopeMatches(state, costSacrificeId, ability.sacrificeCost, cardId) ||
       // Scavenger Grounds: the land must be a Desert, not just a land.
       (ability.sacrificeSubtype !== undefined &&
-        !cardMatchesSubtype(state, costSacrificeId, ability.sacrificeSubtype))
+        !cardMatchesSubtype(state, costSacrificeId, ability.sacrificeSubtype)) ||
+      // Teysa: "three WHITE creatures" — the named victim must match too.
+      !sacrificeColorMatches(state, costSacrificeId, ability.sacrificeColor)
     ) {
       throw new Error(`Sacrifice a ${ability.sacrificeCost.replace(/_/g, " ")} to activate this`);
     }

@@ -5780,6 +5780,9 @@ export type ActivatedAbility = {
    * alongside `sacrificeCost` so the two filters compose instead of the
    * scope union growing a member per subtype. */
   sacrificeSubtype?: string;
+  /** Teysa, Orzhov Scion: "Sacrifice three WHITE creatures" — the fodder's
+   * colour, composing with sacrificeCost/sacrificeCount. */
+  sacrificeColor?: Color;
   /** The Dominus cycle: "Sacrifice two other creatures" — how many. The
    * activation supplies one and the rest are auto-taken (documented). */
   sacrificeCount?: number;

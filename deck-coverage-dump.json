@@ -2227,7 +2227,7 @@
   "Orzhov Enforcer": true,
   "Priest of Forgotten Gods": false,
   "Sifter of Skulls": true,
-  "Teysa, Orzhov Scion": false,
+  "Teysa, Orzhov Scion": true,
   "Corrupted Conviction": true,
   "Rite of Oblivion": true,
   "Atsushi, the Blazing Sky": true,
@@ -9159,12 +9159,6 @@
     "Some oracle text is not compiled: {T}, Sacrifice two other creatures: Any number of target players each lose 2 life and sacrifice a creature of their choice; You add {B}{B} and draw a card."
    ]
   },
-  "Teysa, Orzhov Scion": {
-   "type": "Legendary Creature — Human Advisor",
-   "notes": [
-    "Some oracle text is not compiled: Sacrifice three white creatures: Exile target creature; Whenever another black creature you control dies, create a 1/1 white Spirit creature token with flying."
-   ]
-  },
   "Broodcaller Scourge": {
    "type": "Creature — Dragon",
    "notes": [
@@ -14151,13 +14145,12 @@
   {
    "commander": "Teysa Karlov",
    "rank": 54,
-   "slots": 5,
+   "slots": 4,
    "misses": [
     "Athreos, God of Passage",
     "Grim Haruspex",
     "Priest of Forgotten Gods",
-    "Sephiroth, Fabled SOLDIER",
-    "Teysa, Orzhov Scion"
+    "Sephiroth, Fabled SOLDIER"
    ]
   },
   {

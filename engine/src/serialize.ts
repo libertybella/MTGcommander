@@ -5711,6 +5711,9 @@ function parseActivatedAbilities(value: unknown, label: string): ActivatedAbilit
       ...(entry.sacrificeCount === undefined
         ? {}
         : { sacrificeCount: expectNumber(entry.sacrificeCount, `${label}[${index}].sacrificeCount`) }),
+      ...(entry.sacrificeColor === undefined
+        ? {}
+        : { sacrificeColor: parseColor(entry.sacrificeColor, `${label}[${index}].sacrificeColor`) }),
       ...(entry.sacrificeCountFromX === true ? { sacrificeCountFromX: true } : {}),
       ...(entry.xCost === undefined ? {} : { xCost: expectNumber(entry.xCost, `${label}.xCost`) }),
       ...(entry.requiresCreatedToken === true ? { requiresCreatedToken: true } : {}),

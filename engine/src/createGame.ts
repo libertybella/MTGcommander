@@ -390,6 +390,7 @@ export function createCardDefinition(
           ...(ability.sacrificeSelf ? { sacrificeSelf: true } : {}),
           ...(ability.sacrificeCost ? { sacrificeCost: ability.sacrificeCost } : {}),
           ...(ability.sacrificeSubtype ? { sacrificeSubtype: ability.sacrificeSubtype } : {}),
+          ...(ability.sacrificeColor ? { sacrificeColor: ability.sacrificeColor } : {}),
           ...(ability.sacrificeCount && ability.sacrificeCount > 1
             ? { sacrificeCount: ability.sacrificeCount }
             : {}),

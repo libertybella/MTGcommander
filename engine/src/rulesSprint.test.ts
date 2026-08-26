@@ -74689,3 +74689,93 @@ describe("wave 471: Rite of Oblivion — sacrifice a nonland permanent to exile 
     expect(resolved.cards[targetId]?.zone).toBe("exile");
   });
 });
+
+describe("wave 472: Teysa, Orzhov Scion — a colour-costed sac exile and a black-death token", () => {
+  const compileTeysa = () =>
+    compileOracleCard({
+      oracleId: "teysa-orzhov-scion", name: "Teysa, Orzhov Scion", manaCost: "{1}{W}{B}",
+      typeLine: "Legendary Creature — Human Advisor", power: "1", toughness: "3", printedKeywords: [], imageUrl: "",
+      oracleText:
+        "Sacrifice three white creatures: Exile target creature.\n" +
+        "Whenever another black creature you control dies, create a 1/1 white Spirit creature token with flying.",
+    });
+
+  it("compiles the white-sacrifice exile ability and the black-death token trigger", () => {
+    const c = compileTeysa();
+    expect(c.notes).toEqual([]);
+    expect(c.definition.activated?.[0]).toMatchObject({
+      sacrificeCost: "creature", sacrificeColor: "W", sacrificeCount: 3,
+      effects: [{ kind: "move_card", toZone: "exile" }],
+      targetRequirements: [{ kind: "creature" }],
+    });
+    expect(c.definition.triggers?.[0]).toMatchObject({
+      event: "dies", watch: "controlled", subjectFilter: { colors: ["B"], types: ["creature"] },
+    });
+  });
+
+  const put = (game: GameState, ownerId: string, definition: CardDefinition) => {
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({ definitionId: definition.id, ownerId, zone: "battlefield" });
+    card.summoningSick = false;
+    game.cards[card.id] = card;
+    game.players.find((e) => e.id === ownerId)!.zones.battlefield.push(card.id);
+    return card.id;
+  };
+  const white = (n: string) => createCardDefinition({ name: n, typeLine: "Creature — Human", manaCost: "{W}", power: 1, toughness: 1 });
+
+  it("sacrifices three white creatures to exile a target, and refuses without three white ones", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const teysa = put(game, p1.id, compileTeysa().definition);
+    const w1 = put(game, p1.id, white("Cleric A"));
+    const w2 = put(game, p1.id, white("Cleric B"));
+    const green = put(game, p1.id, createCardDefinition({ name: "Beast", typeLine: "Creature — Beast", manaCost: "{G}", power: 3, toughness: 3 }));
+    const targetId = put(game, p2.id, createCardDefinition({ name: "Ogre", typeLine: "Creature — Ogre", manaCost: "{3}{R}", power: 4, toughness: 4 }));
+    game.priorityPlayerId = p1.id;
+
+    // Only two white creatures (the Beast is green) -> cannot pay the cost.
+    expect(() =>
+      applyAction(game, { kind: "activate_ability", playerId: p1.id, cardId: teysa, abilityIndex: 0, targets: [{ type: "creature", cardId: targetId }], costSacrificeId: w1 }),
+    ).toThrow();
+
+    // Add a third white creature; now it activates.
+    const w3 = put(game, p1.id, white("Cleric C"));
+    let act = applyAction(game, { kind: "activate_ability", playerId: p1.id, cardId: teysa, abilityIndex: 0, targets: [{ type: "creature", cardId: targetId }], costSacrificeId: w1 });
+    // The three white clerics are sacrificed; the green Beast is spared.
+    for (const id of [w1, w2, w3]) expect(act.cards[id]?.zone).toBe("graveyard");
+    expect(act.cards[green]?.zone).toBe("battlefield");
+    while (act.stack.length > 0) act = resolveTopOfStack(act);
+    expect(act.cards[targetId]?.zone).toBe("exile");
+  });
+
+  it("makes a Spirit when a black creature you control dies, but not a white one", () => {
+    const { game, p1 } = twoPlayers();
+    put(game, p1.id, compileTeysa().definition);
+    const blackId = put(game, p1.id, createCardDefinition({ name: "Zombie", typeLine: "Creature — Zombie", manaCost: "{B}", power: 2, toughness: 2 }));
+    const whiteId = put(game, p1.id, white("Monk"));
+
+    const countSpirits = (g: GameState) =>
+      g.players.find((e) => e.id === p1.id)!.zones.battlefield.filter(
+        (id) => g.cards[id]?.isToken && characteristicsOf(g, id).subtypes.includes("spirit"),
+      ).length;
+
+    // A black creature dies -> one Spirit.
+    let next = game;
+    next.players.find((e) => e.id === p1.id)!.zones.battlefield =
+      next.players.find((e) => e.id === p1.id)!.zones.battlefield.filter((x) => x !== blackId);
+    next.cards[blackId]!.zone = "graveyard";
+    next.players.find((e) => e.id === p1.id)!.zones.graveyard.push(blackId);
+    dispatchEventsInPlace(next, [{ kind: "dies", cardId: blackId, controllerId: p1.id }]);
+    while (next.stack.length > 0) next = resolveTopOfStack(next);
+    expect(countSpirits(next)).toBe(1);
+
+    // A white creature dies -> no new Spirit (the colour filter excludes it).
+    const before = countSpirits(next);
+    next.players.find((e) => e.id === p1.id)!.zones.battlefield =
+      next.players.find((e) => e.id === p1.id)!.zones.battlefield.filter((x) => x !== whiteId);
+    next.cards[whiteId]!.zone = "graveyard";
+    next.players.find((e) => e.id === p1.id)!.zones.graveyard.push(whiteId);
+    dispatchEventsInPlace(next, [{ kind: "dies", cardId: whiteId, controllerId: p1.id }]);
+    while (next.stack.length > 0) next = resolveTopOfStack(next);
+    expect(countSpirits(next)).toBe(before);
+  });
+});
