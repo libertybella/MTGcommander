@@ -698,6 +698,7 @@ export function createCardDefinition(
               ...(entry.filter.chosenSubtype ? { chosenSubtype: true } : {}),
               ...(entry.filter.chosenCardType ? { chosenCardType: true } : {}),
               ...(entry.filter.minPower !== undefined ? { minPower: entry.filter.minPower } : {}),
+              ...(entry.filter.keyword ? { keyword: entry.filter.keyword } : {}),
             },
           })),
         }

@@ -909,6 +909,7 @@ export function castCostReduction(
     characteristics: { types: string[]; subtypes?: string[]; colors: string[] };
     changeling?: boolean;
     power?: number | null;
+    keywords?: string[];
   },
 ): number {
   let total = 0;
@@ -963,6 +964,11 @@ export function castCostReduction(
       }
       // Goreclaw: printed power floor on the discounted spell.
       if (reduction.filter.minPower !== undefined && (spell.power ?? 0) < reduction.filter.minPower) {
+        continue;
+      }
+      // Warden of Evos Isle: "creature spells WITH FLYING". The spell must
+      // carry the named keyword.
+      if (reduction.filter.keyword && !(spell.keywords ?? []).includes(reduction.filter.keyword)) {
         continue;
       }
       if (typesAny && !typesAny.some((type) => spell.characteristics.types.includes(type))) {

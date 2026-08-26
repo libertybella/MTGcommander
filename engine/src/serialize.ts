@@ -1613,6 +1613,9 @@ export function parseGameState(json: string): GameState {
                     ...(colors.length > 0 ? { colors } : {}),
                     ...(entry.filter.chosenSubtype === true ? { chosenSubtype: true } : {}),
                     ...(entry.filter.chosenCardType === true ? { chosenCardType: true } : {}),
+                    ...(typeof entry.filter.keyword === "string"
+                      ? { keyword: entry.filter.keyword }
+                      : {}),
                     ...(entry.filter.minPower === undefined
                       ? {}
                       : {

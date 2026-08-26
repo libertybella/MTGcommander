@@ -2990,6 +2990,8 @@ export type CostReduction = {
     chosenCardType?: boolean;
     /** Goreclaw: the creature spell's printed power must be at least this. */
     minPower?: number;
+    /** Warden of Evos Isle: the spell must have this keyword ("flying"). */
+    keyword?: string;
   };
 };
 

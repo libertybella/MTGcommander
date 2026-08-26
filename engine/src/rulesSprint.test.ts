@@ -71834,3 +71834,94 @@ describe("wave 436: invariant-plural tribal lords (Merfolk)", () => {
     expect(goblins.definition.staticAbilities[0]?.selector?.subtypes).toEqual(["goblin"]);
   });
 });
+
+describe("wave 437: Warden of Evos Isle (keyword-filtered cost reduction)", () => {
+  const compile = (oracleText: string) =>
+    compileOracleCard({
+      oracleId: "warden-of-evos-isle",
+      name: "Warden of Evos Isle",
+      manaCost: "{3}{U}",
+      typeLine: "Creature — Bird Wizard",
+      power: "2",
+      toughness: "3",
+      printedKeywords: ["Flying"],
+      imageUrl: "",
+      oracleText,
+    });
+
+  it("compiles the with-flying discount as a keyword-filtered reduction", () => {
+    const compiled = compile("Flying\nCreature spells with flying you cast cost {1} less to cast.");
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.costReductions?.[0]).toEqual({
+      generic: 1,
+      filter: { types: ["creature"], keyword: "flying" },
+    });
+  });
+
+  const warden = () =>
+    createCardDefinition({
+      name: "Warden of Evos Isle",
+      typeLine: "Creature — Bird Wizard",
+      manaCost: "{3}{U}",
+      power: 2,
+      toughness: 3,
+      keywords: ["flying"],
+      costReductions: [{ generic: 1, filter: { types: ["creature"], keyword: "flying" } }],
+    });
+  const put = (game: GameState, ownerId: string, definition: CardDefinition) => {
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({ definitionId: definition.id, ownerId, zone: "battlefield" });
+    card.summoningSick = false;
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === ownerId)!.zones.battlefield.push(card.id);
+    return card.id;
+  };
+  const flier = (name: string) =>
+    createCardDefinition({ name, typeLine: "Creature — Bird", manaCost: "{2}", power: 1, toughness: 1, keywords: ["flying"] });
+  const grounded = (name: string) =>
+    createCardDefinition({ name, typeLine: "Creature — Bear", manaCost: "{2}", power: 2, toughness: 2 });
+  const inHand = (game: GameState, ownerId: string, definition: CardDefinition) => {
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({ definitionId: definition.id, ownerId, zone: "hand" });
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === ownerId)!.zones.hand.push(card.id);
+    return card.id;
+  };
+  const ready = (game: GameState, playerId: string, colorless: number) => {
+    game.turn.activePlayerId = playerId;
+    game.turn.phase = "precombatMain";
+    game.turn.step = "precombatMain";
+    game.priorityPlayerId = playerId;
+    game.players.find((entry) => entry.id === playerId)!.mana.C = colorless;
+  };
+
+  it("discounts a flying creature spell by {1}", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    put(game, p1.id, warden());
+    const birdId = inHand(game, p1.id, flier("Sky Bird"));
+    ready(game, p1.id, 2);
+    const after = applyAction(game, { kind: "cast_spell", playerId: p1.id, cardId: birdId, targets: [] });
+    // {2} became {1}: one colorless left.
+    expect(after.players.find((entry) => entry.id === p1.id)!.mana.C).toBe(1);
+  });
+
+  it("does not discount a grounded creature spell", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    put(game, p1.id, warden());
+    const bearId = inHand(game, p1.id, grounded("Ground Bear"));
+    ready(game, p1.id, 2);
+    const after = applyAction(game, { kind: "cast_spell", playerId: p1.id, cardId: bearId, targets: [] });
+    // No flying, no discount: {2} paid in full, zero left.
+    expect(after.players.find((entry) => entry.id === p1.id)!.mana.C).toBe(0);
+  });
+
+  it("round trips the keyword filter", () => {
+    const { game, p1 } = twoPlayers();
+    const definition = warden();
+    put(game, p1.id, definition);
+    const round = parseGameState(serializeGameState(game));
+    expect(round.definitions[definition.id]?.costReductions?.[0]?.filter?.keyword).toBe("flying");
+  });
+});

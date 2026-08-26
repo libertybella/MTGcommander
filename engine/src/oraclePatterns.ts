@@ -19233,6 +19233,25 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
       continue;
     }
 
+    // Warden of Evos Isle: "Creature spells WITH FLYING you cast cost {1}
+    // less." A keyword qualifier between the type and the discount.
+    const keywordDiscount = sentence.match(
+      /^(Artifact|Creature|Enchantment|Instant|Sorcery) spells with ([a-z]+) you cast cost \{(\d+)\} less to cast$/i,
+    );
+    if (keywordDiscount && KEYWORD_GRANTS[keywordDiscount[2]!.toLowerCase()]) {
+      result.costReductions = [
+        ...(result.costReductions ?? []),
+        {
+          generic: Number(keywordDiscount[3]),
+          filter: {
+            types: [keywordDiscount[1]!.toLowerCase()],
+            keyword: KEYWORD_GRANTS[keywordDiscount[2]!.toLowerCase()]!,
+          },
+        },
+      ];
+      continue;
+    }
+
     const discount = sentence.match(/^(.+?) spells(?: you cast)? cost \{(\d+)\} less to cast$/i);
     if (discount?.[1] && discount[2]) {
       const what = discount[1].trim().toLowerCase();

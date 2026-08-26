@@ -3070,3 +3070,4 @@ ends. Every printed card of this shape asks about the current turn.
 - Reconfigure (CR 702.151): an Equipment-creature attaches to a creature via a sorcery-speed ability and stops being a creature while attached (The Reality Chip); the play-from-top grant can be gated on being attached (requiresAttached).
 - Life-gain bonus: "if you would gain life, you gain that much life plus N instead" (Angel of Vitality) — an additive life-gain replacement that stacks with the doubling one.
 - Invariant-plural tribal lords: "Other Merfolk you control get +N/+N" — the anthem no longer requires a trailing "s" on the tribe.
+- Keyword-filtered spell cost reduction: "creature spells with flying you cast cost {N} less" (Warden of Evos Isle) — a keyword filter on the cost-reduction static.
