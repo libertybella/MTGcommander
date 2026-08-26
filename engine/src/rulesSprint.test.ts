@@ -72478,3 +72478,69 @@ describe("wave 444: Risky Shortcut (each player loses N life)", () => {
     expect(after.players.find((e) => e.id === p2.id)!.life).toBe(before2 - 2);
   });
 });
+
+describe("wave 445: Elven Ambush (create a token for each <Subtype> you control)", () => {
+  const compile = (name: string, oracleText: string) =>
+    compileOracleCard({
+      oracleId: name.toLowerCase().replace(/[^a-z]+/g, "-"),
+      name,
+      manaCost: "{3}{G}",
+      typeLine: "Instant",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  it("compiles the tribal count onto the token as perControlledSubtype", () => {
+    const compiled = compile("Elven Ambush", "Create a 1/1 green Elf Warrior creature token for each Elf you control.");
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.effects).toEqual([
+      {
+        kind: "create_token",
+        ownerId: "controller",
+        name: "Elf Warrior",
+        typeLine: "Creature — Elf Warrior Token",
+        power: 1,
+        toughness: 1,
+        colors: ["G"],
+        perControlledSubtype: "elf",
+      },
+    ]);
+  });
+
+  const put = (game: GameState, ownerId: string, definition: CardDefinition) => {
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({ definitionId: definition.id, ownerId, zone: "battlefield" });
+    card.summoningSick = false;
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === ownerId)!.zones.battlefield.push(card.id);
+    return card.id;
+  };
+  const elf = (name: string) => createCardDefinition({ name, typeLine: "Creature — Elf Druid", manaCost: "{G}", power: 1, toughness: 1 });
+  const bear = () => createCardDefinition({ name: "Bear", typeLine: "Creature — Bear", manaCost: "{1}{G}", power: 2, toughness: 2 });
+
+  it("creates one token per Elf you control, ignoring non-Elves and opponents' Elves", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    put(game, p1.id, elf("Llanowar"));
+    put(game, p1.id, elf("Fyndhorn"));
+    put(game, p1.id, elf("Elvish Mystic"));
+    put(game, p1.id, bear()); // a non-Elf is not counted
+    put(game, p2.id, elf("Opposing Elf")); // an opponent's Elf is not counted
+    const before = game.players.find((e) => e.id === p1.id)!.zones.battlefield.length;
+
+    const effects = compile("Elven Ambush", "Create a 1/1 green Elf Warrior creature token for each Elf you control.").definition.effects;
+    const after = applyEffects(
+      game,
+      bindCardEffects(game, effects, { controllerId: p1.id, sourceId: game.players.find((e) => e.id === p1.id)!.zones.battlefield[0]!, targets: [], targetRequirements: [] }),
+    );
+    const battlefield = after.players.find((e) => e.id === p1.id)!.zones.battlefield;
+    const tokens = battlefield
+      .map((id) => after.cards[id])
+      .filter((c) => c?.isToken && after.definitions[c.definitionId]?.name === "Elf Warrior");
+    expect(tokens).toHaveLength(3);
+    expect(battlefield.length).toBe(before + 3);
+  });
+});

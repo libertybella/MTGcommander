@@ -8591,11 +8591,17 @@ function compileSimpleClauseInner(sentence: string): SimpleClause | null {
     let body = createdTokens[2];
     let countTail: Partial<Extract<CardEffect, { kind: "create_token" }>> | null = null;
     const perControlledTail = body.match(/^(.*?)\s+for each (land|creature|artifact) you control$/i);
+    // Elven Ambush / Krenko: "for each <Subtype> you control" — the capital
+    // marks it as a subtype (a card TYPE is lowercase and claimed just above).
+    const perSubtypeTail = body.match(/^(.*?)\s+for each ([A-Z][a-z]+) you control$/);
     const perCounterTail = body.match(/^(.*?)\s+for each \+1\/\+1 counter on ~$/i);
     const perSubjectPowerTail = body.match(/^(.*?)\s+equal to its power$/i);
     if (perControlledTail?.[1] && perControlledTail[2]) {
       countTail = { perControlled: perControlledTail[2].toLowerCase() as "land" | "creature" | "artifact" };
       body = perControlledTail[1];
+    } else if (perSubtypeTail?.[1] && perSubtypeTail[2]) {
+      countTail = { perControlledSubtype: singularSubtype(perSubtypeTail[2]) };
+      body = perSubtypeTail[1];
     } else if (perCounterTail?.[1]) {
       countTail = { perSourceCounters: "p1p1" };
       body = perCounterTail[1];

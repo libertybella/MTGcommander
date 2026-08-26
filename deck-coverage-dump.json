@@ -776,14 +776,14 @@
   "Moldervine Reclamation": true,
   "Prowess of the Fair": false,
   "Beast Within": true,
-  "Elven Ambush": false,
+  "Elven Ambush": true,
   "Galadhrim Ambush": false,
   "Golgari Charm": true,
   "Vitalize": true,
   "Tyvar Kell": false,
   "Bounty of Skemfar": false,
   "Casualties of War": true,
-  "Elvish Promenade": false,
+  "Elvish Promenade": true,
   "Harvest Season": false,
   "Kindred Dominance": true,
   "Shamanic Revelation": true,
@@ -2448,7 +2448,7 @@
   "Go-Shintai of Boundless Vigor": false,
   "Go-Shintai of Hidden Cruelty": false,
   "Go-Shintai of Lost Wisdom": false,
-  "Go-Shintai of Shared Purpose": false,
+  "Go-Shintai of Shared Purpose": true,
   "Hei Bai, Forest Guardian": false,
   "Herald of the Pantheon": true,
   "Mesa Enchantress": true,
@@ -2460,7 +2460,7 @@
   "Greater Auramancy": true,
   "Honden of Cleansing Fire": true,
   "Honden of Infinite Rage": false,
-  "Honden of Life's Web": false,
+  "Honden of Life's Web": true,
   "Honden of Night's Reach": false,
   "Honden of Seeing Winds": true,
   "Kyoshi Island Plaza": false,
@@ -5010,12 +5010,6 @@
     "Some oracle text is not compiled: Whenever another nontoken Elf is put into your graveyard from the battlefield, you may create a 1/1 green Elf Warrior creature token."
    ]
   },
-  "Elven Ambush": {
-   "type": "Instant",
-   "notes": [
-    "Some oracle text is not compiled: Create a 1/1 green Elf Warrior creature token for each Elf you control."
-   ]
-  },
   "Galadhrim Ambush": {
    "type": "Instant",
    "notes": [
@@ -5032,12 +5026,6 @@
    "type": "Sorcery",
    "notes": [
     "Some oracle text is not compiled: Reveal the top six cards of your library; You may put up to one land card from among them onto the battlefield tapped and up to one Elf card from among them into your hand; Put the rest on the bottom of your library in a random order."
-   ]
-  },
-  "Elvish Promenade": {
-   "type": "Kindred Sorcery — Elf",
-   "notes": [
-    "Some oracle text is not compiled: Create a 1/1 green Elf Warrior creature token for each Elf you control."
    ]
   },
   "Harvest Season": {
@@ -10068,12 +10056,6 @@
     "Some oracle text is not compiled: At the beginning of your end step, you may pay {1}; When you do, target player mills X cards, where X is the number of Shrines you control."
    ]
   },
-  "Go-Shintai of Shared Purpose": {
-   "type": "Legendary Enchantment Creature — Shrine",
-   "notes": [
-    "Some oracle text is not compiled: At the beginning of your end step, you may pay {1} to do: create a 1/1 colorless Spirit creature token for each Shrine you control."
-   ]
-  },
   "Hei Bai, Forest Guardian": {
    "type": "Legendary Creature — Bear Spirit",
    "notes": [
@@ -10102,12 +10084,6 @@
    "type": "Legendary Enchantment — Shrine",
    "notes": [
     "Some oracle text is not compiled: At the beginning of your upkeep, ~ deals damage to any target equal to the number of Shrines you control."
-   ]
-  },
-  "Honden of Life's Web": {
-   "type": "Legendary Enchantment — Shrine",
-   "notes": [
-    "Some oracle text is not compiled: At the beginning of your upkeep, create a 1/1 colorless Spirit creature token for each Shrine you control."
    ]
   },
   "Honden of Night's Reach": {
@@ -15598,6 +15574,37 @@
    ]
   },
   {
+   "commander": "Lathril, Blade of the Elves",
+   "rank": 13,
+   "slots": 24,
+   "misses": [
+    "Gilt-Leaf Palace",
+    "Wirewood Lodge",
+    "Abomination of Llanowar",
+    "Champions of the Perfect",
+    "Dionus, Elvish Archdruid",
+    "Dwynen, Gilt-Leaf Daen",
+    "Elvish Harbinger",
+    "Ezuri, Renegade Leader",
+    "High Perfect Morcant",
+    "Immaculate Magistrate",
+    "Morcant's Loyalist",
+    "Ruthless Winnower",
+    "Shaman of the Pack",
+    "Skemfar Shadowsage",
+    "Timberwatch Elf",
+    "Wirewood Channeler",
+    "Elderfang Venom",
+    "Prowess of the Fair",
+    "Galadhrim Ambush",
+    "Tyvar Kell",
+    "Bounty of Skemfar",
+    "Harvest Season",
+    "Pact of the Serpent",
+    "Lathril, Blade of the Elves (commander)"
+   ]
+  },
+  {
    "commander": "Valgavoth, Harrower of Souls",
    "rank": 21,
    "slots": 24,
@@ -15912,36 +15919,35 @@
    ]
   },
   {
-   "commander": "Lathril, Blade of the Elves",
-   "rank": 13,
-   "slots": 26,
+   "commander": "Go-Shintai of Life's Origin",
+   "rank": 64,
+   "slots": 25,
    "misses": [
-    "Gilt-Leaf Palace",
-    "Wirewood Lodge",
-    "Abomination of Llanowar",
-    "Champions of the Perfect",
-    "Dionus, Elvish Archdruid",
-    "Dwynen, Gilt-Leaf Daen",
-    "Elvish Harbinger",
-    "Ezuri, Renegade Leader",
-    "High Perfect Morcant",
-    "Immaculate Magistrate",
-    "Morcant's Loyalist",
-    "Ruthless Winnower",
-    "Shaman of the Pack",
-    "Skemfar Shadowsage",
-    "Timberwatch Elf",
-    "Wirewood Channeler",
-    "Elderfang Venom",
-    "Prowess of the Fair",
-    "Elven Ambush",
-    "Galadhrim Ambush",
-    "Tyvar Kell",
-    "Bounty of Skemfar",
-    "Elvish Promenade",
-    "Harvest Season",
-    "Pact of the Serpent",
-    "Lathril, Blade of the Elves (commander)"
+    "White Lotus Hideout",
+    "Go-Shintai of Ancient Wars",
+    "Go-Shintai of Boundless Vigor",
+    "Go-Shintai of Hidden Cruelty",
+    "Go-Shintai of Lost Wisdom",
+    "Hei Bai, Forest Guardian",
+    "Weaver of Harmony",
+    "Yenna, Redtooth Regent",
+    "Zur, Eternal Schemer",
+    "Crescent Island Temple",
+    "Fertile Ground",
+    "Honden of Infinite Rage",
+    "Honden of Night's Reach",
+    "Kyoshi Island Plaza",
+    "Northern Air Temple",
+    "Sanctum of All",
+    "Sanctum of Calm Waters",
+    "Sanctum of Fruitful Harvest",
+    "Sanctum of Shattered Heights",
+    "Sanctum of Stone Fangs",
+    "Sanctum of Tranquil Light",
+    "Southern Air Temple",
+    "Aang's Journey",
+    "Resurgent Belief",
+    "Go-Shintai of Life's Origin (commander)"
    ]
   },
   {
@@ -16142,40 +16148,6 @@
     "Crypt Incursion",
     "Frodo, Adventurous Hobbit (commander)",
     "Sam, Loyal Attendant (commander)"
-   ]
-  },
-  {
-   "commander": "Go-Shintai of Life's Origin",
-   "rank": 64,
-   "slots": 27,
-   "misses": [
-    "White Lotus Hideout",
-    "Go-Shintai of Ancient Wars",
-    "Go-Shintai of Boundless Vigor",
-    "Go-Shintai of Hidden Cruelty",
-    "Go-Shintai of Lost Wisdom",
-    "Go-Shintai of Shared Purpose",
-    "Hei Bai, Forest Guardian",
-    "Weaver of Harmony",
-    "Yenna, Redtooth Regent",
-    "Zur, Eternal Schemer",
-    "Crescent Island Temple",
-    "Fertile Ground",
-    "Honden of Infinite Rage",
-    "Honden of Life's Web",
-    "Honden of Night's Reach",
-    "Kyoshi Island Plaza",
-    "Northern Air Temple",
-    "Sanctum of All",
-    "Sanctum of Calm Waters",
-    "Sanctum of Fruitful Harvest",
-    "Sanctum of Shattered Heights",
-    "Sanctum of Stone Fangs",
-    "Sanctum of Tranquil Light",
-    "Southern Air Temple",
-    "Aang's Journey",
-    "Resurgent Belief",
-    "Go-Shintai of Life's Origin (commander)"
    ]
   },
   {
