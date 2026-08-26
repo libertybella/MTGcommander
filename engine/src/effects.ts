@@ -4215,6 +4215,9 @@ function applyCreateToken(
     // Urza's Saga's Construct: the static belongs to the TOKEN, so it rides
     // the definition every copy is made from.
     ...(effect.bonusPt ? { bonusPt: { ...effect.bonusPt } } : {}),
+    ...(effect.tokenTriggers && effect.tokenTriggers.length > 0
+      ? { triggers: effect.tokenTriggers.map((trigger) => ({ ...trigger })) }
+      : {}),
   });
   next.definitions[definition.id] = definition;
   const owner = next.players.find((player) => player.id === effect.ownerId);

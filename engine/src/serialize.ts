@@ -874,6 +874,9 @@ export function parseGameState(json: string): GameState {
               ...(def.damageReplacement.sourceMustBeCreature === true
                 ? { sourceMustBeCreature: true }
                 : {}),
+              ...(typeof def.damageReplacement.sourceSubtype === "string"
+                ? { sourceSubtype: def.damageReplacement.sourceSubtype }
+                : {}),
               ...(def.damageReplacement.opponentsOnly === true ? { opponentsOnly: true } : {}),
               ...(def.damageReplacement.noncombatOnly === true ? { noncombatOnly: true } : {}),
             },
@@ -4178,6 +4181,9 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
     case "create_token":
       return {
         kind,
+        ...(value.tokenTriggers === undefined
+          ? {}
+          : { tokenTriggers: parseTriggers(value.tokenTriggers, `${label}.tokenTriggers`) }),
         ownerId: parsePlayerSelector(value.ownerId, `${label}.ownerId`),
         name: expectString(value.name, `${label}.name`),
         typeLine: expectString(value.typeLine, `${label}.typeLine`),
@@ -8266,6 +8272,9 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
   if (kind === "create_token") {
     return {
       kind,
+      ...(value.tokenTriggers === undefined
+        ? {}
+        : { tokenTriggers: parseTriggers(value.tokenTriggers, `${label}.tokenTriggers`) }),
       ownerId: expectString(value.ownerId, `${label}.ownerId`),
       name: expectString(value.name, `${label}.name`),
       typeLine: expectString(value.typeLine, `${label}.typeLine`),

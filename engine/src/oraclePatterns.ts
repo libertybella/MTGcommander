@@ -1028,20 +1028,25 @@ function parseAbilityCost(
  * clause, the target clause and the modification are each independent.
  */
 function parseDamageReplacement(sentence: string): DamageReplacement | null {
-  const match = sentence.match(
-    /^If an? (red |white |blue |black |green )?(source|creature) you control would deal (noncombat )?damage to (a permanent or player|an opponent or a permanent an opponent controls), it deals (?:(double|triple) that damage|that much damage plus (\d+))(?: to that (?:permanent or player|player or permanent))? instead$/i,
+  // Trance Kuja: "Flare Star —" is an ability word (CR 207.2c flavour); strip a
+  // leading "<Word(s)> —" only when the rest is the replacement itself.
+  const text = sentence.replace(/^[A-Z][A-Za-z'’ ]*\s*—\s*(?=If an? )/i, "");
+  const match = text.match(
+    /^If an? (red |white |blue |black |green )?(source|creature|[A-Z][a-z]+) you control would deal (noncombat )?damage to (a permanent or player|an opponent or a permanent an opponent controls), it deals (?:(double|triple) that damage|that much damage plus (\d+))(?: to that (?:permanent or player|player or permanent))? instead$/i,
   );
   if (!match?.[2] || !match[4] || (!match[5] && !match[6])) {
     return null;
   }
   const color = match[1]?.trim().toLowerCase();
   const plus = match[6] ? Number(match[6]) : undefined;
+  const isSubtype = !/^(source|creature)$/i.test(match[2]);
   return {
     ...(plus === undefined
       ? { times: /^triple$/i.test(match[5] ?? "") ? 3 : 2 }
       : { plus }),
     ...(color ? { sourceColors: [COLOR_WORDS[color]!] } : {}),
     ...(/^creature$/i.test(match[2]) ? { sourceMustBeCreature: true } : {}),
+    ...(isSubtype ? { sourceSubtype: singularSubtype(`${match[2]}s`) } : {}),
     // Solphim: combat damage is exempt, which is most of what stops the
     // card from simply doubling every attack.
     ...(match[3] ? { noncombatOnly: true } : {}),
@@ -5548,6 +5553,60 @@ function compileSimpleClauseInner(sentence: string): SimpleClause | null {
    * declining. The chosen card leaves the way its zone says, which is why
    * the sacrifice is not a plain `sacrifice`.
    */
+  // Kuja, Genome Sorcerer: a token that carries its own triggered ability —
+  // "Whenever you cast a noncreature spell, this token deals N damage to each
+  // opponent" (the same cast-noncreature/drain Vivi has, on the token).
+  const kujaToken = sentence.match(
+    /^create a tapped (\d+)\/(\d+) (white|blue|black|red|green) ([A-Z][a-z]+) creature token with "Whenever you cast a noncreature spell, this token deals (\d+) damage to each opponent\.?"(?: Then if you control (\w+) or more ([A-Z][a-z]+)s, transform ~)?$/i,
+  );
+  if (kujaToken?.[1] && kujaToken[2] && kujaToken[3] && kujaToken[4] && kujaToken[5]) {
+    const subtype = kujaToken[4].replace(/\b\w/g, (letter) => letter.toUpperCase());
+    const color = COLOR_WORDS[kujaToken[3].toLowerCase()];
+    const kujaEffects: CardEffect[] = [
+      {
+        kind: "create_token",
+        ownerId: "controller",
+        name: subtype,
+        typeLine: `Creature — ${subtype} Token`,
+        power: Number(kujaToken[1]),
+        toughness: Number(kujaToken[2]),
+        entersTapped: true,
+        ...(color ? { colors: [color] } : {}),
+        tokenTriggers: [
+          {
+            event: "cast_spell",
+            watch: "controlled",
+            subjectFilter: { nonTypes: ["creature"] },
+            effects: [
+              {
+                kind: "deal_damage",
+                sourceId: "self",
+                target: { type: "player", playerId: "each_opponent" },
+                amount: Number(kujaToken[5]),
+              },
+            ],
+            targetRequirements: [],
+          },
+        ],
+      },
+    ];
+    // "Then if you control N or more <Subtype>, transform ~" (Kuja flips once
+    // his Wizards muster).
+    const transformAtLeast = kujaToken[6] ? parseCount(kujaToken[6]) : null;
+    if (transformAtLeast && kujaToken[7]) {
+      kujaEffects.push({
+        kind: "if_condition",
+        condition: {
+          kind: "controls_subtype_count",
+          subtype: singularSubtype(`${kujaToken[7]}s`),
+          atLeast: transformAtLeast,
+        },
+        then: [{ kind: "transform", cardId: "self" }],
+      });
+    }
+    return { targetRequirements: [], effects: kujaEffects };
+  }
+
   // Kefka, Court Mage: "each player discards a card, then you draw a card for
   // each card type among cards discarded this way" — one effect (the discard
   // is auto-picked, so the whole thing resolves synchronously).

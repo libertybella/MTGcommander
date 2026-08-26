@@ -73861,3 +73861,113 @@ describe("wave 460: Kefka's discard-each-then-draw-per-distinct-type", () => {
     expect(after.players.find((e) => e.id === p1.id)!.zones.hand.length).toBe(before);
   });
 });
+
+describe("wave 461: Kuja, Genome Sorcerer (a token that carries its own trigger)", () => {
+  const compileKuja = () =>
+    compileOracleCard({
+      oracleId: "kuja-genome-sorcerer", name: "Kuja, Genome Sorcerer", manaCost: "{3}{B}",
+      typeLine: "Legendary Creature — Human Wizard", power: "2", toughness: "3", printedKeywords: [], imageUrl: "",
+      oracleText: "At the beginning of your end step, create a tapped 0/1 black Wizard creature token with \"Whenever you cast a noncreature spell, this token deals 1 damage to each opponent.\"",
+    });
+
+  it("compiles the end-step token with an embedded cast-drain trigger", () => {
+    const c = compileKuja();
+    expect(c.notes).toEqual([]);
+    const eff = c.definition.triggers?.[0]?.effects?.[0] as { kind: string; tokenTriggers?: unknown[]; entersTapped?: boolean };
+    expect(eff.kind).toBe("create_token");
+    expect(eff.entersTapped).toBe(true);
+    expect(eff.tokenTriggers?.[0]).toMatchObject({
+      event: "cast_spell",
+      watch: "controlled",
+      subjectFilter: { nonTypes: ["creature"] },
+      effects: [{ kind: "deal_damage", target: { type: "player", playerId: "each_opponent" }, amount: 1 }],
+    });
+  });
+
+  it("the created token drains each opponent when you cast a noncreature spell", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 10);
+    const tokenEffect = compileKuja().definition.triggers![0]!.effects;
+    // Create the token under p1's control.
+    let next = applyEffects(
+      game,
+      bindCardEffects(game, tokenEffect, { controllerId: p1.id, sourceId: p1.id, targets: [], targetRequirements: [] }),
+    );
+    const p1bf = next.players.find((e) => e.id === p1.id)!.zones.battlefield;
+    const tokenId = p1bf[p1bf.length - 1]!;
+    expect(next.cards[tokenId]?.isToken).toBe(true);
+    expect(next.cards[tokenId]?.tapped).toBe(true);
+
+    // p1 casts a noncreature spell (an instant) -> the token's own trigger fires.
+    const boltDef = createCardDefinition({ name: "Bolt", typeLine: "Instant", manaCost: "{R}" });
+    next.definitions[boltDef.id] = boltDef;
+    const bolt = createCardInstance({ definitionId: boltDef.id, ownerId: p1.id, zone: "stack" });
+    next.cards[bolt.id] = bolt;
+    const p2Life = next.players.find((e) => e.id === p2.id)!.life;
+    dispatchEventsInPlace(next, [{ kind: "casts", cardId: bolt.id, controllerId: p1.id }]);
+    while (next.stack.length > 0) next = resolveTopOfStack(next);
+    expect(next.players.find((e) => e.id === p2.id)!.life).toBe(p2Life - 1);
+  });
+});
+
+describe("wave 462: Kuja's transform-when-mustered and Trance Kuja's Wizard damage doubling", () => {
+  it("compiles the front face with the token AND the muster-transform", () => {
+    const c = compileOracleCard({
+      oracleId: "kuja-genome-sorcerer", name: "Kuja, Genome Sorcerer", manaCost: "{3}{B}",
+      typeLine: "Legendary Creature — Human Wizard", power: "2", toughness: "3", printedKeywords: [], imageUrl: "",
+      oracleText: "At the beginning of your end step, create a tapped 0/1 black Wizard creature token with \"Whenever you cast a noncreature spell, this token deals 1 damage to each opponent.\" Then if you control four or more Wizards, transform Kuja.",
+    });
+    expect(c.notes).toEqual([]);
+    const fx = c.definition.triggers?.[0]?.effects ?? [];
+    expect(fx[0]?.kind).toBe("create_token");
+    expect(fx[1]).toMatchObject({
+      kind: "if_condition",
+      condition: { kind: "controls_subtype_count", subtype: "wizard", atLeast: 4 },
+      then: [{ kind: "transform", cardId: "self" }],
+    });
+  });
+
+  const trance = () =>
+    compileOracleCard({
+      oracleId: "trance-kuja", name: "Trance Kuja, Fate Defied", manaCost: "{3}{B}",
+      typeLine: "Legendary Creature — Avatar Wizard", power: "5", toughness: "5", printedKeywords: [], imageUrl: "",
+      oracleText: "Flare Star — If a Wizard you control would deal damage to a permanent or player, it deals double that damage instead.",
+    }).definition;
+
+  it("compiles Trance Kuja's Wizard-scoped damage doubling", () => {
+    expect(trance().damageReplacement).toMatchObject({ times: 2, sourceSubtype: "wizard" });
+  });
+
+  const put = (game: GameState, ownerId: string, definition: CardDefinition) => {
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({ definitionId: definition.id, ownerId, zone: "battlefield" });
+    card.summoningSick = false;
+    game.cards[card.id] = card;
+    game.players.find((e) => e.id === ownerId)!.zones.battlefield.push(card.id);
+    return card.id;
+  };
+
+  it("doubles a Wizard's damage but not a non-Wizard's", () => {
+    const { game, p1, p2 } = twoPlayers();
+    put(game, p1.id, trance()); // its replacement is now active
+    const wizardId = put(game, p1.id, createCardDefinition({ name: "Mage", typeLine: "Creature — Human Wizard", manaCost: "{1}{U}", power: 2, toughness: 2 }));
+    const bearId = put(game, p1.id, createCardDefinition({ name: "Bear", typeLine: "Creature — Bear", manaCost: "{1}{G}", power: 2, toughness: 2 }));
+
+    // A Wizard deals 3 -> doubled to 6.
+    {
+      const life = game.players.find((e) => e.id === p2.id)!.life;
+      const after = applyEffects(game, bindCardEffects(game, [
+        { kind: "deal_damage", sourceId: wizardId, target: { type: "player", playerId: p2.id }, amount: 3 },
+      ] as unknown as CardEffect[], { controllerId: p1.id, sourceId: wizardId, targets: [], targetRequirements: [] }));
+      expect(after.players.find((e) => e.id === p2.id)!.life).toBe(life - 6);
+    }
+    // A non-Wizard deals 3 -> unchanged.
+    {
+      const life = game.players.find((e) => e.id === p2.id)!.life;
+      const after = applyEffects(game, bindCardEffects(game, [
+        { kind: "deal_damage", sourceId: bearId, target: { type: "player", playerId: p2.id }, amount: 3 },
+      ] as unknown as CardEffect[], { controllerId: p1.id, sourceId: bearId, targets: [], targetRequirements: [] }));
+      expect(after.players.find((e) => e.id === p2.id)!.life).toBe(life - 3);
+    }
+  });
+});

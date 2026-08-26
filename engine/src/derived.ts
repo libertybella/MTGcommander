@@ -391,6 +391,9 @@ export function damageAfterReplacements(
       if (rule.sourceMustBeCreature && !isCreature(state, sourceId)) {
         return false;
       }
+      if (rule.sourceSubtype && !cardMatchesSubtype(state, sourceId, rule.sourceSubtype)) {
+        return false;
+      }
       const colors = characteristicsOf(state, sourceId).colors;
       return (rule.sourceColors ?? []).every((color) => colors.includes(color));
     })

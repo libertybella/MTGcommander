@@ -1919,6 +1919,8 @@ export type GameEffect =
        * definition the token is made from.
        */
       bonusPt?: { power: number; toughness: number; per: DynamicCount };
+      /** Kuja, Genome Sorcerer: the token's own triggered abilities. */
+      tokenTriggers?: CardTrigger[];
       /** Adeline: one token per opponent, each attacking that opponent. */
       attackingEachOpponent?: boolean;
       entersTappedAttacking?: boolean;
@@ -3643,6 +3645,9 @@ export type CardEffect =
       /** Scute Swarm: with this many lands, the token is a copy of the
        * source instead of the printed token. */
       copySelfIfLandsAtLeast?: number;
+      /** Kuja, Genome Sorcerer: a token created "with '<triggered ability>'".
+       * The abilities ride the token's own definition. */
+      tokenTriggers?: CardTrigger[];
     }
   /** count "sacrificed_power": Altar of Dementia reads the sacrificed
    * cost-creature's power, captured on activation. */
@@ -5626,6 +5631,8 @@ export type DamageReplacement = {
   sourceColors?: Color[];
   /** Gratuitous Violence: "a creature you control", not any source. */
   sourceMustBeCreature?: boolean;
+  /** Trance Kuja: "a Wizard you control" — the source must have this subtype. */
+  sourceSubtype?: string;
   /** Torbran, Twinflame Tyrant: only damage aimed at an opponent or a
    * permanent an opponent controls. */
   opponentsOnly?: boolean;

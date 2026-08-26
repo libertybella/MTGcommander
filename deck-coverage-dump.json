@@ -1237,7 +1237,7 @@
   "Dauthi Voidwalker": true,
   "Displacer Kitten": true,
   "Kefka, Dancing Mad": false,
-  "Kuja, Genome Sorcerer": false,
+  "Kuja, Genome Sorcerer": true,
   "Ragavan, Nimble Pilferer": true,
   "Tergrid, God of Fright": true,
   "Tinybones, Bauble Burglar": false,
@@ -6344,13 +6344,6 @@
    "type": "Legendary Creature — Human Wizard",
    "notes": [
     "Some oracle text is not compiled: During your turn, ~ has indestructible; At the beginning of your end step, exile a card at random from each opponent's graveyard; You may cast any number of spells from among cards exiled this way without paying their mana costs; Then each player who owns a spell you cast this way loses life equal to its mana value."
-   ]
-  },
-  "Kuja, Genome Sorcerer": {
-   "type": "Legendary Creature — Human Mutant Wizard",
-   "notes": [
-    "Some oracle text is not compiled: At the beginning of your end step, create a tapped 0/1 black Wizard creature token with \"Whenever you cast a noncreature spell, this token deals 1 damage to each opponent.\" Then if you control four or more Wizards, transform ~.",
-    "Trance Kuja, Fate Defied: Some oracle text is not compiled: Flare Star — If a Wizard you control would deal damage to a permanent or player, it deals double that damage instead."
    ]
   },
   "Tinybones, Bauble Burglar": {
@@ -14200,10 +14193,9 @@
   {
    "commander": "Kefka, Court Mage",
    "rank": 24,
-   "slots": 3,
+   "slots": 2,
    "misses": [
     "Kefka, Dancing Mad",
-    "Kuja, Genome Sorcerer",
     "Tinybones, Bauble Burglar"
    ]
   },
@@ -14840,6 +14832,31 @@
    ]
   },
   {
+   "commander": "Kuja, Genome Sorcerer",
+   "rank": 57,
+   "slots": 18,
+   "misses": [
+    "Black Mage's Rod",
+    "Dark Confidant",
+    "Fandaniel, Telophoroi Ascian",
+    "Gandalf, Goblins' Bane",
+    "Gleeful Arsonist",
+    "Kefka, Dancing Mad",
+    "Mysidian Elder",
+    "Queen Brahne",
+    "Artist's Talent",
+    "Collective Inferno",
+    "Flashback",
+    "Transpose",
+    "Vivi's Persistence",
+    "Wizard's Lightning",
+    "Circle of Power",
+    "Cornered by Black Mages",
+    "Grab the Prize",
+    "Light Up the Stage"
+   ]
+  },
+  {
    "commander": "Kotis, the Fangkeeper",
    "rank": 79,
    "slots": 18,
@@ -14939,32 +14956,6 @@
     "Welcome to . . .",
     "Thunderherd Migration",
     "Gishath, Sun's Avatar (commander)"
-   ]
-  },
-  {
-   "commander": "Kuja, Genome Sorcerer",
-   "rank": 57,
-   "slots": 19,
-   "misses": [
-    "Black Mage's Rod",
-    "Dark Confidant",
-    "Fandaniel, Telophoroi Ascian",
-    "Gandalf, Goblins' Bane",
-    "Gleeful Arsonist",
-    "Kefka, Dancing Mad",
-    "Mysidian Elder",
-    "Queen Brahne",
-    "Artist's Talent",
-    "Collective Inferno",
-    "Flashback",
-    "Transpose",
-    "Vivi's Persistence",
-    "Wizard's Lightning",
-    "Circle of Power",
-    "Cornered by Black Mages",
-    "Grab the Prize",
-    "Light Up the Stage",
-    "Kuja, Genome Sorcerer (commander)"
    ]
   },
   {
