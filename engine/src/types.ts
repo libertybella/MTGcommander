@@ -660,6 +660,9 @@ export type CardDefinition = {
       /** Delney: "a creature you control with power 2 or less". Computed
        * power, so a pump takes the ability back out of range. */
       maxPower?: number;
+      /** Wizard's Staff: the ability's source must be THIS permanent's
+       * attached creature ("a triggered ability of equipped creature"). */
+      attached?: boolean;
     };
   };
   /** "~ enters with X +1/+1 counters on it" (hydras); X from the announced cost. */

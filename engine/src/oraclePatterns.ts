@@ -14975,6 +14975,21 @@ function readGrantParts(split: string[]): ContinuousEffectData[] | null {
         effects.push({ kind: "grant_ward_life", amount: Number(wardLife[1]) });
         continue;
       }
+      // Wizard's Staff: "has prowess" grants the equipped creature the prowess
+      // trigger (CR 702.108) — the same rules text a printed Prowess lowers to.
+      if (word === "prowess") {
+        effects.push({
+          kind: "grant_trigger",
+          trigger: {
+            event: "cast_spell",
+            watch: "controlled",
+            subjectFilter: { nonTypes: ["creature"] },
+            effects: [{ kind: "pt_until_eot", cardId: "self", power: 1, toughness: 1 }],
+            targetRequirements: [],
+          },
+        });
+        continue;
+      }
       const keyword = KEYWORD_GRANTS[word];
       if (!keyword) {
         return null;
@@ -17856,6 +17871,14 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
     // engine has no cast event for it, and a doubler that fired on copies it
     // cannot see would be worse than one that honestly misses them.
     if (
+      /^If a triggered ability of equipped creature triggers, that ability triggers an additional time$/i.test(
+        sentence,
+      )
+    ) {
+      result.triggerDoubling = { source: { attached: true } };
+      continue;
+    }
+    if (
       /^If you casting or copying an instant or sorcery spell causes a triggered ability of a permanent you control to trigger, that ability triggers an additional time$/i.test(
         sentence,
       )
@@ -18089,6 +18112,20 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
         manaCost: `{${restrictedEquip[1]}}`,
         effects: [{ kind: "attach", cardId: "self", toId: { type: "chosen", index: 0 } }],
         targetRequirements: [{ kind: "own_creature", legendaryOnly: true }],
+        timing: "sorcery",
+      });
+      continue;
+    }
+
+    // Wizard's Staff: "Equip Wizard {1}" — a cheaper equip restricted to a
+    // creature of the named subtype (an alternative to the printed Equip cost).
+    const subtypeEquip = sentence.match(/^Equip ([A-Z][a-z]+) \{?(\d+)\}?$/);
+    if (subtypeEquip?.[1] && subtypeEquip[2]) {
+      result.activated.push({
+        tap: false,
+        manaCost: `{${subtypeEquip[2]}}`,
+        effects: [{ kind: "attach", cardId: "self", toId: { type: "chosen", index: 0 } }],
+        targetRequirements: [{ kind: "own_creature", requiredSubtypes: [singularSubtype(`${subtypeEquip[1]}s`)] }],
         timing: "sorcery",
       });
       continue;

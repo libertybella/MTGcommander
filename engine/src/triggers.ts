@@ -759,6 +759,11 @@ function triggerDoublingCopies(state: GameState, candidate: TriggerCandidate): n
       ) {
         continue;
       }
+      // Wizard's Staff: the doubled ability must belong to the creature this
+      // Equipment is attached to.
+      if (filter.attached && candidate.cardId !== doubler.attachedTo) {
+        continue;
+      }
     }
     copies += 1;
   }

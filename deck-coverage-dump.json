@@ -403,7 +403,7 @@
   "Lotus Petal": true,
   "Mox Amber": true,
   "Talisman of Creativity": true,
-  "Wizard's Staff": false,
+  "Wizard's Staff": true,
   "Cascade Bluffs": true,
   "Fiery Islet": true,
   "Frostboil Snarl": true,
@@ -4232,12 +4232,6 @@
    "type": "Legendary Creature — Human Cleric",
    "notes": [
     "Some oracle text is not compiled: Whenever ~ attacks an opponent, you may put an Angel, Demon, or Dragon creature card from your hand onto the battlefield tapped and attacking that opponent."
-   ]
-  },
-  "Wizard's Staff": {
-   "type": "Artifact — Equipment",
-   "notes": [
-    "Some oracle text is not compiled: Equipped creature has prowess; If a triggered ability of equipped creature triggers, that ability triggers an additional time; Equip Wizard {1}."
    ]
   },
   "Quicksilver Elemental": {
@@ -11471,7 +11465,7 @@
   "Sokka, Tenacious Tactician": {
    "type": "Legendary Creature — Human Warrior Ally",
    "notes": [
-    "Some oracle text is not compiled: Menace, prowess; Other Allies you control have menace and prowess."
+    "Some oracle text is not compiled: Menace, prowess."
    ]
   },
   "Sun Warriors": {
@@ -14181,9 +14175,8 @@
   {
    "commander": "Vivi Ornitier",
    "rank": 7,
-   "slots": 3,
+   "slots": 2,
    "misses": [
-    "Wizard's Staff",
     "Quicksilver Elemental",
     "Tandem Lookout"
    ]

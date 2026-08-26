@@ -74215,3 +74215,105 @@ describe("wave 465: Flashback — grant a graveyard instant/sorcery flashback un
     expect(later.cards[spellId]?.flashbackUntilEot).toBeUndefined();
   });
 });
+
+describe("wave 466: Wizard's Staff — granted prowess, doubled for the equipped creature", () => {
+  const T =
+    "Equipped creature has prowess. (Whenever its controller casts a noncreature spell, that creature gets +1/+1 until end of turn.)\n" +
+    "If a triggered ability of equipped creature triggers, that ability triggers an additional time.\n" +
+    "Equip Wizard {1}\n" +
+    "Equip {3}";
+  const compileStaff = () =>
+    compileOracleCard({
+      oracleId: "wizards-staff", name: "Wizard's Staff", manaCost: "{1}{U}", typeLine: "Artifact — Equipment",
+      power: null, toughness: null, printedKeywords: [], imageUrl: "", oracleText: T,
+    });
+
+  it("compiles the prowess grant, the attached trigger-doubling, and both equip costs", () => {
+    const c = compileStaff();
+    expect(c.notes).toEqual([]);
+    expect(c.definition.staticAbilities?.[0]).toMatchObject({
+      selector: { scope: "attached" },
+      effect: { kind: "grant_trigger", trigger: { event: "cast_spell", subjectFilter: { nonTypes: ["creature"] } } },
+    });
+    expect(c.definition.triggerDoubling).toEqual({ source: { attached: true } });
+    expect(c.definition.activated?.map((a) => a.manaCost)).toEqual(["{1}", "{3}"]);
+    expect(c.definition.activated?.[0]?.targetRequirements).toEqual([
+      { kind: "own_creature", requiredSubtypes: ["wizard"] },
+    ]);
+  });
+
+  const put = (game: GameState, ownerId: string, definition: CardDefinition) => {
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({ definitionId: definition.id, ownerId, zone: "battlefield" });
+    card.summoningSick = false;
+    game.cards[card.id] = card;
+    game.players.find((e) => e.id === ownerId)!.zones.battlefield.push(card.id);
+    return card.id;
+  };
+  const castNoncreature = (game: GameState, controllerId: string) => {
+    const bolt = createCardDefinition({ name: "Bolt", typeLine: "Instant", manaCost: "{R}" });
+    game.definitions[bolt.id] = bolt;
+    const inst = createCardInstance({ definitionId: bolt.id, ownerId: controllerId, zone: "stack" });
+    game.cards[inst.id] = inst;
+    dispatchEventsInPlace(game, [{ kind: "casts", cardId: inst.id, controllerId }]);
+    let next: GameState = game;
+    // Doubled/simultaneous triggers raise an order_triggers prompt; order them, then resolve.
+    for (let guard = 0; guard < 5; guard += 1) {
+      const ordering = next.prompts.find((prompt) => prompt.kind === "order_triggers");
+      if (!ordering || ordering.kind !== "order_triggers") break;
+      next = applyAction(next, {
+        kind: "resolve_order_triggers",
+        playerId: ordering.playerId,
+        order: ordering.entries.map((_, i) => i),
+      });
+    }
+    while (next.stack.length > 0) next = resolveTopOfStack(next);
+    return next;
+  };
+
+  it("gives the equipped creature prowess AND doubles it (+2/+2 per noncreature spell)", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 10);
+    const wizId = put(game, p1.id, createCardDefinition({ name: "Mage", typeLine: "Creature — Human Wizard", manaCost: "{1}{U}", power: 2, toughness: 2 }));
+    const staffId = put(game, p1.id, compileStaff().definition);
+    game.cards[staffId]!.attachedTo = wizId;
+
+    expect(creaturePower(game, wizId)).toBe(2);
+    const after = castNoncreature(game, p1.id);
+    // Granted prowess fires, doubled by the staff on the same creature: +2/+2.
+    expect(creaturePower(after, wizId)).toBe(4);
+    expect(creatureToughness(after, wizId)).toBe(4);
+  });
+
+  it("doubles only the ATTACHED creature's triggers — a printed prowess on another creature fires once", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 10);
+    // A control creature with its OWN printed prowess, not carrying the staff.
+    const controlDef = compileOracleCard({
+      oracleId: "monk", name: "Monk", manaCost: "{1}{W}", typeLine: "Creature — Human Monk",
+      power: "1", toughness: "1", printedKeywords: [], imageUrl: "", oracleText: "Prowess",
+    }).definition;
+    const controlId = put(game, p1.id, controlDef);
+    // The staff sits on a DIFFERENT creature.
+    const wizId = put(game, p1.id, createCardDefinition({ name: "Mage", typeLine: "Creature — Human Wizard", manaCost: "{1}{U}", power: 2, toughness: 2 }));
+    const staffId = put(game, p1.id, compileStaff().definition);
+    game.cards[staffId]!.attachedTo = wizId;
+
+    const after = castNoncreature(game, p1.id);
+    // The control creature's own prowess is NOT the equipped creature's, so it fires ONCE: +1/+1.
+    expect(creaturePower(after, controlId)).toBe(2);
+    // The equipped Wizard gets granted-and-doubled prowess: +2/+2.
+    expect(creaturePower(after, wizId)).toBe(4);
+  });
+
+  it("Equip Wizard {1} can target a Wizard but not a non-Wizard", () => {
+    const { game, p1 } = twoPlayers();
+    const staff = compileStaff().definition;
+    const cheapEquip = staff.activated!.find((a) => a.manaCost === "{1}")!;
+    const req = cheapEquip.targetRequirements![0]!;
+    const wizId = put(game, p1.id, createCardDefinition({ name: "Mage", typeLine: "Creature — Human Wizard", manaCost: "{1}{U}", power: 2, toughness: 2 }));
+    const bearId = put(game, p1.id, createCardDefinition({ name: "Bear", typeLine: "Creature — Bear", manaCost: "{1}{G}", power: 2, toughness: 2 }));
+    expect(isChosenTargetLegal(game, req, { type: "creature", cardId: wizId }, p1.id)).toBe(true);
+    expect(isChosenTargetLegal(game, req, { type: "creature", cardId: bearId }, p1.id)).toBe(false);
+  });
+});
