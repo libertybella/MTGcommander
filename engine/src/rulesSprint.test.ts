@@ -72064,3 +72064,112 @@ describe("wave 439: Simic Ascendancy (counter transfer)", () => {
     });
   });
 });
+
+describe("wave 440: Oblivion Ring mechanic (exile until ~ leaves)", () => {
+  const compile = (name: string, oracleText: string) =>
+    compileOracleCard({
+      oracleId: name.toLowerCase().replace(/[^a-z]+/g, "-"),
+      name,
+      manaCost: "{2}{W}",
+      typeLine: "Creature — Human Cleric",
+      power: "2",
+      toughness: "2",
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  it("compiles into a pair of triggers — exile on enter, return on leave", () => {
+    const compiled = compile("Banisher Priest", "When Banisher Priest enters, exile target creature an opponent controls until Banisher Priest leaves the battlefield.");
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.triggers).toHaveLength(2);
+    expect(compiled.definition.triggers[0]).toMatchObject({
+      event: "enter_battlefield",
+      effects: [{ kind: "exile_until_source_leaves", target: { type: "chosen", index: 0 } }],
+      targetRequirements: [{ kind: "creature", control: "not_own" }],
+    });
+    expect(compiled.definition.triggers[1]).toMatchObject({
+      event: "leaves_battlefield",
+      watch: "self",
+      effects: [{ kind: "return_exiled_by_source" }],
+    });
+  });
+
+  it("handles the nonland-permanent scope too", () => {
+    const compiled = compile("White Auracite", "When White Auracite enters, exile target nonland permanent an opponent controls until White Auracite leaves the battlefield.");
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.triggers[0]?.targetRequirements?.[0]).toMatchObject({
+      kind: "nonland_permanent",
+      control: "not_own",
+    });
+  });
+
+  const oring = () =>
+    createCardDefinition({
+      name: "Banisher Priest",
+      typeLine: "Creature — Human Cleric",
+      manaCost: "{2}{W}",
+      power: 2,
+      toughness: 2,
+      triggers: [
+        {
+          event: "enter_battlefield",
+          effects: [{ kind: "exile_until_source_leaves", target: { type: "chosen", index: 0 } }],
+          targetRequirements: [{ kind: "creature", control: "not_own" }],
+        },
+        {
+          event: "leaves_battlefield",
+          watch: "self",
+          effects: [{ kind: "return_exiled_by_source" }],
+          targetRequirements: [],
+        },
+      ],
+    });
+  const put = (game: GameState, ownerId: string, definition: CardDefinition) => {
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({ definitionId: definition.id, ownerId, zone: "battlefield" });
+    card.summoningSick = false;
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === ownerId)!.zones.battlefield.push(card.id);
+    return card.id;
+  };
+  const bear = () => createCardDefinition({ name: "Victim", typeLine: "Creature — Bear", manaCost: "{1}{G}", power: 2, toughness: 2 });
+
+  it("exiles the target, then returns it to its owner when the source dies", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    const priestId = put(game, p1.id, oring());
+    const victimId = put(game, p2.id, bear());
+    // Fire the ETB exile (aimed at the opponent's creature).
+    const etb = oring().triggers![0]!;
+    let after = applyEffects(game, bindCardEffects(game, etb.effects, {
+      controllerId: p1.id,
+      sourceId: priestId,
+      targets: [{ type: "creature", cardId: victimId }],
+      targetRequirements: etb.targetRequirements,
+    }));
+    expect(after.cards[victimId]?.zone).toBe("exile");
+    expect(after.cards[victimId]?.exiledBy).toBe(priestId);
+
+    // The priest dies; its leaves trigger returns the victim to p2.
+    const events: EngineEvent[] = [];
+    destroyPermanentInPlace(after, priestId, events);
+    dispatchEventsInPlace(after, events);
+    if (after.stack.length > 0) after = resolveTopOfStack(after);
+    expect(after.cards[victimId]?.zone).toBe("battlefield");
+    expect(after.cards[victimId]?.controllerId).toBe(p2.id);
+    expect(after.cards[victimId]?.exiledBy).toBeUndefined();
+  });
+
+  it("round trips both triggers and the exiledBy tag", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    const priestId = put(game, p1.id, oring());
+    const victimId = put(game, p2.id, bear());
+    game.cards[victimId]!.zone = "exile";
+    game.cards[victimId]!.exiledBy = priestId;
+    const round = parseGameState(serializeGameState(game));
+    expect(round.cards[victimId]?.exiledBy).toBe(priestId);
+    expect(round.definitions[game.cards[priestId]!.definitionId]?.triggers).toHaveLength(2);
+  });
+});

@@ -19659,6 +19659,32 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
       }
     }
 
+    // Oblivion Ring / Banisher Priest: "When ~ enters, exile target <scope>
+    // until ~ leaves the battlefield." Compiles to a PAIR of triggers — the
+    // entry exiles and tags, the departure returns.
+    const oRing = sentence.match(
+      /^When ~ enters, exile target (.+?) until ~ leaves the battlefield$/i,
+    );
+    if (oRing?.[1]) {
+      const req = parseSimpleTargetPhrase(`target ${oRing[1].trim()}`);
+      if (req) {
+        result.triggers.push({
+          event: "enter_battlefield",
+          effects: [
+            { kind: "exile_until_source_leaves", target: { type: "chosen", index: 0 } },
+          ],
+          targetRequirements: [req],
+        });
+        result.triggers.push({
+          event: "leaves_battlefield",
+          watch: "self",
+          effects: [{ kind: "return_exiled_by_source" }],
+          targetRequirements: [],
+        });
+        continue;
+      }
+    }
+
     const etb = sentence.match(/^When ~ enters, (.+)$/i);
     if (etb?.[1]) {
       // Garruk's Uprising: peel an intervening "if" off the ETB body.

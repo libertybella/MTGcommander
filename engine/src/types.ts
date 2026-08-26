@@ -917,6 +917,10 @@ export type CardInstance = {
   putByAbilityOf?: CardInstanceId;
   /** Damaged by a deathtouch source this turn (CR 704.5h). */
   deathtouched: boolean;
+  /** Oblivion Ring / Banisher Priest: the permanent that exiled this card
+   * "until it leaves the battlefield". When that source leaves, this card
+   * returns. */
+  exiledBy?: CardInstanceId;
   /** Auras and Equipment: what this permanent is attached to. */
   attachedTo: CardInstanceId | null;
   /**
@@ -2222,6 +2226,11 @@ export type GameEffect =
       ifDeclined: CardEffect[];
     }
   | { kind: "exile_until_taken"; playerId: PlayerId }
+  /** Oblivion Ring / Banisher Priest: exile a permanent and tag it as exiled
+   * by the source, so it returns when the source leaves. */
+  | { kind: "exile_until_source_leaves"; cardId: CardInstanceId; sourceId: CardInstanceId }
+  /** …the return, fired by the source's own leaves-battlefield trigger. */
+  | { kind: "return_exiled_by_source"; sourceId: CardInstanceId }
   | { kind: "extra_turn"; playerId: PlayerId }
   | { kind: "commander_cast_counters"; cardId: CardInstanceId }
   | {
@@ -3900,6 +3909,11 @@ export type CardEffect =
    * the card is played to dig PAST what you do not want.
    */
   | { kind: "exile_until_taken"; playerId: PlayerSelector }
+  /** Oblivion Ring / Banisher Priest: exile the chosen permanent until the
+   * source (this card) leaves the battlefield. */
+  | { kind: "exile_until_source_leaves"; target: ChosenTargetRef }
+  /** The paired return, fired by the source's leaves-battlefield trigger. */
+  | { kind: "return_exiled_by_source" }
   /** "Take an extra turn after this one." */
   | { kind: "extra_turn"; playerId: PlayerSelector }
   /**

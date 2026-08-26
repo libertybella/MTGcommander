@@ -1784,6 +1784,18 @@ export function bindCardEffect(
       const playerId = bindPlayerSelector(state, effect.playerId, context);
       return playerId ? { kind: "exile_until_taken", playerId } : null;
     }
+    case "exile_until_source_leaves": {
+      const chosen = chosenTargetAt(context, effect.target.index, state);
+      const cardId = chosen && "cardId" in chosen ? chosen.cardId : undefined;
+      return cardId && context.sourceId
+        ? { kind: "exile_until_source_leaves", cardId, sourceId: context.sourceId }
+        : null;
+    }
+    case "return_exiled_by_source": {
+      return context.sourceId
+        ? { kind: "return_exiled_by_source", sourceId: context.sourceId }
+        : null;
+    }
     case "commander_cast_counters": {
       const cardId = bindCardId(state, effect.cardId, context);
       return cardId ? { kind: "commander_cast_counters", cardId } : null;
@@ -7384,6 +7396,32 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
       case "exile_until_taken":
         next = exileUntilTakenStep(state, effect.playerId, []);
         break;
+      case "exile_until_source_leaves": {
+        // Move the permanent to exile and tag it, so the source's leaves
+        // trigger knows to bring it back.
+        next = moveCard(state, effect.cardId, "exile");
+        const exiled = next.cards[effect.cardId];
+        if (exiled && exiled.zone === "exile") {
+          exiled.exiledBy = effect.sourceId;
+        }
+        break;
+      }
+      case "return_exiled_by_source": {
+        next = cloneGameState(state);
+        for (const card of Object.values(next.cards)) {
+          if (card.exiledBy !== effect.sourceId || card.zone !== "exile") {
+            continue;
+          }
+          delete card.exiledBy;
+          next = moveCard(next, card.id, "battlefield");
+          // CR 610.3 / 400.7: it returns under its owner's control.
+          const returned = next.cards[card.id];
+          if (returned && returned.zone === "battlefield") {
+            returned.controllerId = returned.ownerId;
+          }
+        }
+        break;
+      }
       case "cast_free_copy": {
         next = cloneGameState(state);
         const copied = next.cards[effect.cardId];

@@ -623,6 +623,9 @@ export function parseGameState(json: string): GameState {
         card.attachedTo === undefined || card.attachedTo === null
           ? null
           : expectString(card.attachedTo, "card.attachedTo"),
+      ...(card.exiledBy === undefined
+        ? {}
+        : { exiledBy: expectString(card.exiledBy, "card.exiledBy") }),
       ...(card.reanimatedCardId === undefined
         ? {}
         : { reanimatedCardId: expectString(card.reanimatedCardId, "card.reanimatedCardId") }),
@@ -4918,6 +4921,10 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
     case "extra_turn":
     case "deny_extra_turns":
       return { kind, playerId: parsePlayerSelector(value.playerId, `${label}.playerId`) };
+    case "exile_until_source_leaves":
+      return { kind, target: parseChosenTargetRef(value.target, `${label}.target`) };
+    case "return_exiled_by_source":
+      return { kind };
     case "commander_cast_counters":
       return { kind, cardId: parseCardIdSelector(value.cardId, `${label}.cardId`) };
     case "cast_free_copy":

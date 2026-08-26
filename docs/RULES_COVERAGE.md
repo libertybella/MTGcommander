@@ -3073,3 +3073,4 @@ ends. Every printed card of this shape asks about the current turn.
 - Keyword-filtered spell cost reduction: "creature spells with flying you cast cost {N} less" (Warden of Evos Isle) — a keyword filter on the cost-reduction static.
 - One-sided creature sweep: "deals N damage to each creature your opponents control" (Blazing Volley) — a damage_all that spares your own creatures.
 - Passive counter-added trigger + "put that many <named> counters on ~" (Simic Ascendancy) — transfers the +1/+1 counters just added onto the source as a named counter.
+- Oblivion Ring mechanic (CR 603.6e-style): "when ~ enters, exile target <scope> until ~ leaves the battlefield" — the exiled card is tagged and returns to its owner when the source leaves (Banisher Priest, White Auracite, and the wider O-ring family).
