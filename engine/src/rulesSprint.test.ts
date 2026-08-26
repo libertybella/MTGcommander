@@ -72436,3 +72436,45 @@ describe("wave 443: Elvish Warmaster (batched tribal enters + irregular-plural p
     expect(battlefield.length).toBe(before + 2);
   });
 });
+
+describe("wave 444: Risky Shortcut (each player loses N life)", () => {
+  const compile = (name: string, oracleText: string) =>
+    compileOracleCard({
+      oracleId: name.toLowerCase().replace(/[^a-z]+/g, "-"),
+      name,
+      manaCost: "{2}{B}",
+      typeLine: "Sorcery",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  it("compiles the symmetric life loss to an each_player lose_life", () => {
+    const compiled = compile("Risky Shortcut", "Draw two cards. Each player loses 2 life.");
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.effects).toEqual([
+      { kind: "draw", playerId: "controller", count: 2 },
+      { kind: "lose_life", playerId: "each_player", amount: 2 },
+    ]);
+  });
+
+  it("drains every player, the caster included", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    const before1 = game.players.find((e) => e.id === p1.id)!.life;
+    const before2 = game.players.find((e) => e.id === p2.id)!.life;
+    const srcDef = createCardDefinition({ name: "Risky Shortcut", typeLine: "Sorcery", manaCost: "{2}{B}" });
+    game.definitions[srcDef.id] = srcDef;
+    const src = createCardInstance({ definitionId: srcDef.id, ownerId: p1.id, zone: "battlefield" });
+    game.cards[src.id] = src;
+    const effects = compile("Risky Shortcut", "Draw two cards. Each player loses 2 life.").definition.effects;
+    const after = applyEffects(
+      game,
+      bindCardEffects(game, effects, { controllerId: p1.id, sourceId: src.id, targets: [], targetRequirements: [] }),
+    );
+    expect(after.players.find((e) => e.id === p1.id)!.life).toBe(before1 - 2);
+    expect(after.players.find((e) => e.id === p2.id)!.life).toBe(before2 - 2);
+  });
+});

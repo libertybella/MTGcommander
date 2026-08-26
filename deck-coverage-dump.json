@@ -86,7 +86,7 @@
   "Cleansing Nova": true,
   "Exsanguinate": true,
   "Irenicus's Vile Duplication": true,
-  "Risky Shortcut": false,
+  "Risky Shortcut": true,
   "Syphon Mind": false,
   "Toxic Deluge": true,
   "Vindicate": true,
@@ -3618,12 +3618,6 @@
    "type": "Sorcery",
    "notes": [
     "Some oracle text is not compiled: Create a 0/1 black Wizard creature token with \"Whenever you cast a noncreature spell, this token deals 1 damage to each opponent.\"."
-   ]
-  },
-  "Risky Shortcut": {
-   "type": "Sorcery",
-   "notes": [
-    "Some oracle text is not compiled: Each player loses 2 life."
    ]
   },
   "Syphon Mind": {
@@ -9694,7 +9688,7 @@
   "Summon: Primal Odin": {
    "type": "Enchantment Creature — Saga Knight",
    "notes": [
-    "Some oracle text is not compiled: I — Gungnir — Destroy target creature an opponent controls; II — Zantetsuken — ~ gains \"Whenever ~ deals combat damage to a player, that player loses the game.\"; III — Hall of Sorrow — Draw two cards; Each player loses 2 life."
+    "Some oracle text is not compiled: I — Gungnir — Destroy target creature an opponent controls; II — Zantetsuken — ~ gains \"Whenever ~ deals combat damage to a player, that player loses the game.\"; III — Hall of Sorrow — Draw two cards."
    ]
   },
   "Summon: Titan": {
@@ -14703,6 +14697,29 @@
    ]
   },
   {
+   "commander": "Y'shtola, Night's Blessed",
+   "rank": 1,
+   "slots": 16,
+   "misses": [
+    "Dancer's Chakrams",
+    "Alisaie Leveilleur",
+    "Alphinaud Leveilleur",
+    "Emet-Selch of the Third Seat",
+    "Fandaniel, Telophoroi Ascian",
+    "G'raha Tia, Scion Reborn",
+    "Lyse Hext",
+    "Papalymo Totolymo",
+    "Tataru Taru",
+    "Helm of the Ghastlord",
+    "Lethal Scheme",
+    "Transpose",
+    "Teferi, Time Raveler",
+    "Circle of Power",
+    "Syphon Mind",
+    "Y'shtola, Night's Blessed (commander)"
+   ]
+  },
+  {
    "commander": "Bello, Bard of the Brambles",
    "rank": 31,
    "slots": 16,
@@ -14769,30 +14786,6 @@
     "Mirrodin Besieged",
     "Tezzeret, Master of the Bridge",
     "Urtet, Remnant of Memnarch (commander)"
-   ]
-  },
-  {
-   "commander": "Y'shtola, Night's Blessed",
-   "rank": 1,
-   "slots": 17,
-   "misses": [
-    "Dancer's Chakrams",
-    "Alisaie Leveilleur",
-    "Alphinaud Leveilleur",
-    "Emet-Selch of the Third Seat",
-    "Fandaniel, Telophoroi Ascian",
-    "G'raha Tia, Scion Reborn",
-    "Lyse Hext",
-    "Papalymo Totolymo",
-    "Tataru Taru",
-    "Helm of the Ghastlord",
-    "Lethal Scheme",
-    "Transpose",
-    "Teferi, Time Raveler",
-    "Circle of Power",
-    "Risky Shortcut",
-    "Syphon Mind",
-    "Y'shtola, Night's Blessed (commander)"
    ]
   },
   {

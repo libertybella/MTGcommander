@@ -3881,6 +3881,16 @@ function compileSimpleClauseInner(sentence: string): SimpleClause | null {
     };
   }
 
+  // Risky Shortcut: the symmetric drain. "Each opponent loses N life" is
+  // handled below; the "each player" form — you pay too — is its own line.
+  const eachPlayerLoses = sentence.match(/^Each player loses (\d+) life$/i);
+  if (eachPlayerLoses?.[1]) {
+    return {
+      targetRequirements: [],
+      effects: [{ kind: "lose_life", playerId: "each_player", amount: Number(eachPlayerLoses[1]) }],
+    };
+  }
+
   const drainAll = sentence.match(/^each opponent loses (\d+) life and you gain (\d+) life$/i);
   if (drainAll?.[1] && drainAll[2]) {
     return {
