@@ -719,7 +719,7 @@ const SACRIFICE_TYPE_COST = new RegExp(
  */
 /** "Sacrifice a Food", and the counted plural "Sacrifice three Foods". */
 const SACRIFICE_SUBTYPE_COST =
-  /Sacrifice (?:an? |(one|two|three|four|five|\d+) )([A-Z][a-z]+?)s?\b/;
+  /Sacrifice (?:an? |(one|two|three|four|five|\d+|X) )([A-Z][a-z]+?)s?\b/;
 const LIFE_COST = /Pay (\d+) life/i;
 /** Springleaf Drum, and Relic of Legends' legendary-only variant. */
 const TAP_CREATURE_COST = /Tap an untapped (legendary )?creature you control/i;
@@ -756,7 +756,7 @@ const EXILE_GRAVEYARD_COST =
 /** Lion's Eye Diamond: the whole hand, so there is nothing to choose. */
 const DISCARD_HAND_COST = /Discard your hand/i;
 const COST_UNIT =
-  `(?:\\{[^}]+\\})+|Sacrifice (?:~|this land|this creature|this artifact|this permanent)|Sacrifice (?:an? |another |(?:${SACRIFICE_COUNTS}) (?:other )?)(?:${SACRIFICE_SCOPES})|Sacrifice (?:an? |(?:one|two|three|four|five|\\d+) )[A-Z][a-z]+s?|Discard your hand|Exile ~|Exert ~|Pay \\d+ life|Pay life equal to the number of colors in your commanders?['\u2019]? color identity|Tap an untapped (?:legendary )?creature you control|Tap an untapped artifact you control|Remove (?:a|an|one|two|three|four|five|six|seven|eight|nine|ten|\\d+) (?:[-+]\\d\\/[-+]\\d|[a-z]+) counters? from ~|Put (?:a|an|one|two|three|\\d+) (?:[-+]\\d\\/[-+]\\d|[a-z]+) counters? on ~|Discard (?:an? (?:${DISCARD_COST_TYPES})? ?card|(?:${DISCARD_COST_COUNTS}) cards)|Mill (?:a|one|two|three|\\d+) cards?|Exile (?:a|one|two|three|four|five|\\d+) (?:(?:creature|artifact|land|instant|sorcery) )?cards? from your graveyard`;
+  `(?:\\{[^}]+\\})+|Sacrifice (?:~|this land|this creature|this artifact|this permanent)|Sacrifice (?:an? |another |(?:${SACRIFICE_COUNTS}) (?:other )?)(?:${SACRIFICE_SCOPES})|Sacrifice (?:an? |(?:one|two|three|four|five|\\d+|X) )[A-Z][a-z]+s?|Discard your hand|Exile ~|Exert ~|Pay \\d+ life|Pay life equal to the number of colors in your commanders?['\u2019]? color identity|Tap an untapped (?:legendary )?creature you control|Tap an untapped artifact you control|Remove (?:a|an|one|two|three|four|five|six|seven|eight|nine|ten|\\d+) (?:[-+]\\d\\/[-+]\\d|[a-z]+) counters? from ~|Put (?:a|an|one|two|three|\\d+) (?:[-+]\\d\\/[-+]\\d|[a-z]+) counters? on ~|Discard (?:an? (?:${DISCARD_COST_TYPES})? ?card|(?:${DISCARD_COST_COUNTS}) cards)|Mill (?:a|one|two|three|\\d+) cards?|Exile (?:a|one|two|three|four|five|\\d+) (?:(?:creature|artifact|land|instant|sorcery) )?cards? from your graveyard`;
 
 function splitAbility(sentence: string): { costText: string; rest: string } | null {
   // "Metalcraft — {T}: …" — the ability word is flavor (Mox Opal).
@@ -855,6 +855,9 @@ function parseAbilityCost(
   // "Sacrifice three Foods": the count rides alongside the subtype, the same
   // way it does for a card-type scope.
   const subtypeCount = subtypeMatch?.[1] ? parseCount(subtypeMatch[1].toLowerCase()) : undefined;
+  // Chatterfang: "Sacrifice X Squirrels" — the announced count on a SUBTYPE,
+  // the mirror of the card-type `sacrificeCountFromX` above.
+  const subtypeCountFromX = /^x$/i.test(subtypeMatch?.[1] ?? "");
   const sacrificeCost = sacrificeSubtype
     ? ("permanent" as const)
     : scopeWord
@@ -1000,7 +1003,7 @@ function parseAbilityCost(
     ...((sacrificeCount ?? subtypeCount) && (sacrificeCount ?? subtypeCount)! > 1
       ? { sacrificeCount: (sacrificeCount ?? subtypeCount)! }
       : {}),
-    ...(sacrificeCountFromX ? { sacrificeCountFromX: true } : {}),
+    ...(sacrificeCountFromX || subtypeCountFromX ? { sacrificeCountFromX: true } : {}),
     ...(discardHandCost ? { discardHandCost: true } : {}),
     ...(tapCreature ? { tapCreature: true } : {}),
     ...(tapCreatureLegendary ? { tapCreatureLegendary: true } : {}),
@@ -19346,7 +19349,7 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
       }
     }
     const extraToken = sentence.match(
-      /^If (?:you would create |)?(?:one or more )?([A-Za-z ]*?)tokens? would be created(?: under your control)?, (?:those tokens plus an additional (.+?)|that many (.+?)) are created instead$/i,
+      /^If (?:you would create |)?(?:one or more )?([A-Za-z ]*?)tokens? would be created(?: under your control)?, (?:those tokens plus an additional (.+?)|those tokens plus that many (.+?)|that many (.+?)) are created instead$/i,
     );
     const xornForm = sentence.match(
       /^If you would create one or more ([A-Za-z ]*?)tokens?, instead create those tokens plus an additional (.+)$/i,
@@ -19354,9 +19357,11 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
     const replacementForm = extraToken ?? xornForm;
     if (replacementForm) {
       const scope = (replacementForm[1] ?? "").trim().toLowerCase();
-      const substituting = Boolean(extraToken?.[3]);
+      // Only the bare "that many X" REPLACES; "those tokens plus …" (Xorn, and
+      // Chatterfang's "plus that many Squirrels") keeps the originals and adds.
+      const substituting = Boolean(extraToken?.[4]);
       const descriptor = parseTokenDescriptor(
-        `a ${(extraToken?.[2] ?? extraToken?.[3] ?? xornForm?.[2] ?? "").replace(/^an?\s+/i, "")}`,
+        `a ${(extraToken?.[2] ?? extraToken?.[3] ?? extraToken?.[4] ?? xornForm?.[2] ?? "").replace(/^an?\s+/i, "")}`,
       );
       const match =
         scope === "" || scope === "one or more"

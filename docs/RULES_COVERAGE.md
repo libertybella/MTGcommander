@@ -3063,3 +3063,4 @@ ends. Every printed card of this shape asks about the current turn.
 - Afterlife N (CR 702.133): a creature that dies makes N 1/1 white and black flying Spirit tokens (Ministrant of Obligation and other afterlife creatures).
 - Bare "Draw X cards" (Mind Spring, Braingeyser): the plain X-scaled draw, alongside the already-handled targeted and loot forms.
 - "Return target creature card with power X or less from your graveyard to the battlefield" (Ruthless Technomancer) — a reanimate whose target is bounded by the announced X (maxPowerX), the X here being the number of artifacts sacrificed as the cost.
+- Token doubler "those tokens plus that many <tokens>" additive form (Chatterfang), and "Sacrifice X <Subtype>" as an activated-ability cost with the count read from the announced X (Chatterfang, and any subtype-X sacrifice).

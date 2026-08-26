@@ -71231,3 +71231,105 @@ describe("wave 429: Ruthless Technomancer reanimate (power X or less)", () => {
     ).toThrow();
   });
 });
+
+describe("wave 430: Chatterfang, Squirrel General (Korvold 3→2)", () => {
+  const chatText = `Forestwalk
+If one or more tokens would be created under your control, those tokens plus that many 1/1 green Squirrel creature tokens are created instead.
+{B}, Sacrifice X Squirrels: Target creature gets +X/-X until end of turn.`;
+
+  const compile = () =>
+    compileOracleCard({
+      oracleId: "chatterfang-squirrel-general",
+      name: "Chatterfang, Squirrel General",
+      manaCost: "{3}{G}",
+      typeLine: "Legendary Creature — Squirrel Warrior",
+      power: "4",
+      toughness: "4",
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText: chatText,
+    });
+
+  it("compiles all three of Chatterfang's pieces clean", () => {
+    const compiled = compile();
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.keywords).toContain("forestwalk");
+    // Token doubler: "those tokens plus that many Squirrels" is ADDITIVE.
+    expect(compiled.definition.replacements[0]).toMatchObject({
+      kind: "extra_token",
+      token: { name: "Squirrel", power: 1, toughness: 1, colors: ["G"] },
+    });
+    // Sacrifice X Squirrels: the announced count on a SUBTYPE.
+    expect(compiled.definition.activated[0]).toMatchObject({
+      manaCost: "{B}",
+      sacrificeCost: "permanent",
+      sacrificeSubtype: "squirrel",
+      sacrificeCountFromX: true,
+      effects: [{ kind: "pt_until_eot", power: "x", toughness: "minus_x" }],
+    });
+  });
+
+  it("leaves the substitute-token form as a substitution", () => {
+    const compiled = compileOracleCard({
+      oracleId: "sub", name: "Substituter", manaCost: "{2}", typeLine: "Enchantment",
+      power: null, toughness: null, printedKeywords: [], imageUrl: "",
+      oracleText: "If one or more tokens would be created under your control, that many 1/1 red Goblin creature tokens are created instead.",
+    });
+    // No "those tokens plus" — this one REPLACES, it does not add.
+    expect(compiled.definition.replacements[0]).toMatchObject({ kind: "substitute_tokens" });
+  });
+
+  const chatDef = () => compile().definition;
+  const put = (game: GameState, ownerId: string, definition: CardDefinition) => {
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({ definitionId: definition.id, ownerId, zone: "battlefield" });
+    card.summoningSick = false;
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === ownerId)!.zones.battlefield.push(card.id);
+    return card.id;
+  };
+  const squirrel = (name: string) =>
+    createCardDefinition({ name, typeLine: "Creature — Squirrel", manaCost: "{G}", power: 1, toughness: 1 });
+  const bear = (name: string) =>
+    createCardDefinition({ name, typeLine: "Creature — Bear", manaCost: "{2}{G}", power: 3, toughness: 5 });
+
+  it("pumps a target +X/-X where X is the Squirrels sacrificed", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    const chatId = put(game, p1.id, chatDef());
+    const sqId = put(game, p1.id, squirrel("Squirrel A"));
+    put(game, p1.id, squirrel("Squirrel B"));
+    const victimId = put(game, p2.id, bear("Their Bear"));
+    game.turn.activePlayerId = p1.id;
+    game.turn.phase = "precombatMain";
+    game.turn.step = "precombatMain";
+    game.priorityPlayerId = p1.id;
+    game.players.find((entry) => entry.id === p1.id)!.mana.B = 5;
+    // The announced X (2 Squirrels) must reach the +X/-X, or the card is a
+    // compiles-but-broken pass — the lesson from Ruthless Technomancer.
+    const after = resolveTopOfStack(
+      applyAction(game, {
+        kind: "activate_ability",
+        playerId: p1.id,
+        cardId: chatId,
+        abilityIndex: 0,
+        xValue: 2,
+        costSacrificeId: sqId,
+        targets: [{ type: "creature", cardId: victimId }],
+      }),
+    );
+    expect(creaturePower(after, victimId)).toBe(5);
+    expect(creatureToughness(after, victimId)).toBe(3);
+  });
+
+  it("round trips all three pieces", () => {
+    const { game } = twoPlayers();
+    const definition = chatDef();
+    game.definitions[definition.id] = definition;
+    const round = parseGameState(serializeGameState(game));
+    const back = round.definitions[definition.id]!;
+    expect(back.keywords).toContain("forestwalk");
+    expect(back.replacements[0]).toMatchObject({ kind: "extra_token" });
+    expect(back.activated[0]).toMatchObject({ sacrificeSubtype: "squirrel", sacrificeCountFromX: true });
+  });
+});
