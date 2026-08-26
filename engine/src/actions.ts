@@ -19,7 +19,7 @@ import { createId } from "./ids";
 import { isLiving, livingPlayerCount, requireLiving } from "./players";
 import { passPriority, putActivatedAbilityOnStack, putSpellOnStack, resolveTopOfStack } from "./stack";
 import { applyStateBasedActionsInPlace, redirectPriorityIfLost } from "./status";
-import { dispatchEventsInPlace, triggerConditionHolds } from "./triggers";
+import { dispatchEventsInPlace, queueEnterBattlefieldTriggersInPlace, triggerConditionHolds } from "./triggers";
 import { validateChosenTargets } from "./targeting";
 import {
   DEFAULT_SHORTCUT_POLICY,
@@ -2262,12 +2262,68 @@ function applyTurnFaceUp(
     throw new Error("Only a creature card can be turned face up");
   }
   const player = state.players.find((entry) => entry.id === playerId)!;
-  const cost = parseManaCost(definition.manaCost);
+  // Morph: a card cast face down is turned up by paying its morph cost. A
+  // manifested card (no morph cast) is turned up by paying its printed cost.
+  const morphed = card.morphCast === true && definition.morph !== undefined;
+  const cost = parseManaCost(morphed ? definition.morph!.manaCost : definition.manaCost);
   if (!canPayManaCost(player.mana, cost, player.life)) {
     throw new Error("Cannot pay mana cost");
   }
-  let next = payManaCost(state, playerId, cost);
-  next.cards[cardId]!.faceDown = false;
+  const next = payManaCost(state, playerId, cost);
+  const flipped = next.cards[cardId]!;
+  flipped.faceDown = false;
+  flipped.morphCast = undefined;
+  // Megamorph (CR 702.108): turning it face up for the megamorph cost also
+  // puts a +1/+1 counter on it.
+  if (morphed && definition.morph!.megamorph === true) {
+    flipped.counters = { ...flipped.counters, p1p1: (flipped.counters.p1p1 ?? 0) + 1 };
+  }
+  // Rattleclaw Mystic, Hooded Hydra: "When ~ is turned face up, ...".
+  dispatchEventsInPlace(next, [{ kind: "turns_face_up", cardId }]);
+  next.priorityPlayerId = playerId;
+  next.passesSinceAction = 0;
+  return next;
+}
+
+/**
+ * Morph (CR 702.36): cast a morph card from your hand face down as a 2/2
+ * colorless creature for {3}. Modeled as resolving straight onto the
+ * battlefield (a documented approximation that skips the stack — a face-down
+ * spell cannot be responded to here); it is turned face up later by paying
+ * the morph cost. Offered as a direct action, not enumerated in legalActions,
+ * so the driving AI plays morph cards face up.
+ */
+function applyCastFaceDown(
+  state: GameState,
+  playerId: PlayerId,
+  cardId: CardInstanceId,
+): GameState {
+  requirePlaying(state);
+  requirePriority(state, playerId);
+  const card = state.cards[cardId];
+  if (!card || card.controllerId !== playerId || card.zone !== "hand") {
+    throw new Error(`Card ${cardId} is not in your hand`);
+  }
+  const definition = state.definitions[card.definitionId];
+  if (!definition?.morph) {
+    throw new Error(`Card ${cardId} has no morph ability`);
+  }
+  if (!inSorceryWindow(state, playerId)) {
+    throw new Error("A face-down morph can be cast only at sorcery speed");
+  }
+  const player = state.players.find((entry) => entry.id === playerId)!;
+  const cost = parseManaCost("{3}");
+  if (!canPayManaCost(player.mana, cost, player.life)) {
+    throw new Error("Cannot pay {3} to cast face down");
+  }
+  const paid = payManaCost(state, playerId, cost);
+  const next = moveCard(paid, cardId, "battlefield");
+  const moved = next.cards[cardId];
+  if (moved) {
+    moved.faceDown = true;
+    moved.morphCast = true;
+  }
+  queueEnterBattlefieldTriggersInPlace(next, cardId);
   next.priorityPlayerId = playerId;
   next.passesSinceAction = 0;
   return next;
@@ -2430,6 +2486,9 @@ export function applyAction(
         break;
       case "turn_face_up":
         next = applyTurnFaceUp(state, action.playerId, action.cardId);
+        break;
+      case "cast_face_down":
+        next = applyCastFaceDown(state, action.playerId, action.cardId);
         break;
       case "activate_loyalty":
         next = applyActivateLoyalty(

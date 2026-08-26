@@ -709,6 +709,7 @@ export function parseGameState(json: string): GameState {
       ...(card.evoked === true ? { evoked: true } : {}),
       ...(card.echoDue === true ? { echoDue: true } : {}),
       faceDown: card.faceDown === true,
+      ...(card.morphCast === true ? { morphCast: true } : {}),
       ...(card.phasedOut === true ? { phasedOut: true } : {}),
       ...(card.flashbackUntilEot === true ? { flashbackUntilEot: true } : {}),
       ...(typeof card.soulbondPartner === "string"
@@ -1176,6 +1177,19 @@ export function parseGameState(json: string): GameState {
                         `definition.${id}.flashback.sacrificeCreatures`,
                       ),
                     }),
+              };
+            })(),
+          }),
+      ...(def.morph === undefined
+        ? {}
+        : {
+            morph: (() => {
+              if (!isRecord(def.morph)) {
+                throw new Error(`Invalid definition.${id}.morph`);
+              }
+              return {
+                manaCost: expectString(def.morph.manaCost, `definition.${id}.morph.manaCost`),
+                ...(def.morph.megamorph === true ? { megamorph: true } : {}),
               };
             })(),
           }),
@@ -5836,6 +5850,7 @@ const TRIGGER_EVENT_NAMES: Record<TriggerEvent, true> = {
   you_create_token: true,
   you_sacrifice_token: true,
   becomes_untapped: true,
+  turns_face_up: true,
   becomes_tapped: true,
   plays_land: true,
   taps_for_mana: true,
@@ -8915,6 +8930,13 @@ export function parseGameAction(json: string): GameAction {
     };
   }
   if (kind === "turn_face_up") {
+    return {
+      kind,
+      playerId,
+      cardId: expectString(raw.cardId, "action.cardId"),
+    };
+  }
+  if (kind === "cast_face_down") {
     return {
       kind,
       playerId,

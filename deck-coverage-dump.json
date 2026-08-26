@@ -1841,7 +1841,7 @@
   "Ornithopter of Paradise": true,
   "Phyrexian Metamorph": true,
   "Primordial Sage": true,
-  "Rattleclaw Mystic": false,
+  "Rattleclaw Mystic": true,
   "Soul of the Harvest": true,
   "Spellskite": true,
   "Temur Sabertooth": false,
@@ -2155,7 +2155,7 @@
   "High Market": true,
   "Butcher of Malakir": true,
   "Caustic Caterpillar": true,
-  "Grim Haruspex": false,
+  "Grim Haruspex": true,
   "Protean Hulk": false,
   "Ravenous Chupacabra": true,
   "Twilight Diviner": false,
@@ -7921,12 +7921,6 @@
     "Some oracle text is not compiled: When you cast this spell, you gain half X life and draw half X cards; Round down each time."
    ]
   },
-  "Rattleclaw Mystic": {
-   "type": "Creature — Human Shaman",
-   "notes": [
-    "Some oracle text is not compiled: Morph {2}; When ~ is turned face up, add {G}{U}{R}."
-   ]
-  },
   "Temur Sabertooth": {
    "type": "Creature — Cat",
    "notes": [
@@ -8917,12 +8911,6 @@
    "type": "Legendary Planeswalker — Tezzeret",
    "notes": [
     "Some oracle text is not compiled: Creature and planeswalker spells you cast have affinity for artifacts; +2: ~ deals X damage to each opponent, where X is the number of artifacts you control; You gain X life; Put all artifact cards from among them onto the battlefield."
-   ]
-  },
-  "Grim Haruspex": {
-   "type": "Creature — Human Wizard",
-   "notes": [
-    "Some oracle text is not compiled: Morph {B}."
    ]
   },
   "Protean Hulk": {
@@ -10681,7 +10669,7 @@
   "Hooded Hydra": {
    "type": "Creature — Snake Hydra",
    "notes": [
-    "Some oracle text is not compiled: When ~ dies, create a 1/1 green Snake creature token for each +1/+1 counter on it; Morph {3}{G}{G}; As ~ is turned face up, put five +1/+1 counters on it."
+    "Some oracle text is not compiled: When ~ dies, create a 1/1 green Snake creature token for each +1/+1 counter on it; As ~ is turned face up, put five +1/+1 counters on it."
    ]
   },
   "Hungering Hydra": {
@@ -14066,10 +14054,9 @@
   {
    "commander": "Teysa Karlov",
    "rank": 54,
-   "slots": 4,
+   "slots": 3,
    "misses": [
     "Athreos, God of Passage",
-    "Grim Haruspex",
     "Priest of Forgotten Gods",
     "Sephiroth, Fabled SOLDIER"
    ]
@@ -14091,17 +14078,31 @@
   {
    "commander": "Animar, Soul of Elements",
    "rank": 41,
-   "slots": 9,
+   "slots": 8,
    "misses": [
     "Ancestral Statue",
     "Fierce Empath",
     "Hydroid Krasis",
-    "Rattleclaw Mystic",
     "Temur Sabertooth",
     "Ulamog, the Ceaseless Hunger",
     "Ulamog, the Defiler",
     "Vizier of the Menagerie",
     "Animar, Soul of Elements (commander)"
+   ]
+  },
+  {
+   "commander": "Meren of Clan Nel Toth",
+   "rank": 51,
+   "slots": 8,
+   "misses": [
+    "Mikaeus, the Unhallowed",
+    "Protean Hulk",
+    "Shriekmaw",
+    "Twilight Diviner",
+    "Insidious Roots",
+    "Journey to Eternity",
+    "Rise of the Witch-king",
+    "Meren of Clan Nel Toth (commander)"
    ]
   },
   {
@@ -14134,22 +14135,6 @@
     "Weapons Manufacturing",
     "Daretti, Scrap Savant",
     "Tezzeret, Master of the Bridge"
-   ]
-  },
-  {
-   "commander": "Meren of Clan Nel Toth",
-   "rank": 51,
-   "slots": 9,
-   "misses": [
-    "Grim Haruspex",
-    "Mikaeus, the Unhallowed",
-    "Protean Hulk",
-    "Shriekmaw",
-    "Twilight Diviner",
-    "Insidious Roots",
-    "Journey to Eternity",
-    "Rise of the Witch-king",
-    "Meren of Clan Nel Toth (commander)"
    ]
   },
   {

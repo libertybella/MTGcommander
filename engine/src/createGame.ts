@@ -189,6 +189,7 @@ export function createCardDefinition(
         | "affinityAllCreatures"
         | "topOfLibrary"
         | "flashback"
+        | "morph"
         | "evoke"
         | "splitSecond"
         | "blockPowerGate"
@@ -589,6 +590,9 @@ export function createCardDefinition(
               : {}),
           },
         }
+      : {}),
+    ...(input.morph
+      ? { morph: { manaCost: input.morph.manaCost, ...(input.morph.megamorph ? { megamorph: true } : {}) } }
       : {}),
     ...(input.evoke ? { evoke: { manaCost: input.evoke.manaCost } } : {}),
     ...(input.splitSecond ? { splitSecond: true } : {}),

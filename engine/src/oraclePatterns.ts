@@ -155,6 +155,7 @@ export type CompiledOracleText = {
   selfDiscount?: CardDefinition["selfDiscount"];
   topOfLibrary?: TopOfLibraryGrant;
   flashback?: CardDefinition["flashback"];
+  morph?: CardDefinition["morph"];
   evoke?: CardDefinition["evoke"];
   splitSecond?: boolean;
   blockPowerGate?: CardDefinition["blockPowerGate"];
@@ -13361,6 +13362,10 @@ function parseTriggerHead(head: string): TriggerHead | null {
   if (/^When(?:ever)? ~ dies$/i.test(text)) {
     return { event: "dies" };
   }
+  // Morph: Rattleclaw Mystic, "When ~ is turned face up, add {G}{U}{R}."
+  if (/^When(?:ever)? ~ is turned face up$/i.test(text)) {
+    return { event: "turns_face_up" };
+  }
   if (/^Whenever you gain life$/i.test(text)) {
     return { event: "you_gain_life" };
   }
@@ -18669,6 +18674,16 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
 
     if (/^Changeling$/i.test(sentence)) {
       result.changeling = true;
+      continue;
+    }
+
+    // Morph (CR 702.37) / Megamorph (CR 702.108): "Morph {cost}". The
+    // parenthetical reminder is stripped by normalizeOracleText, leaving just
+    // the keyword and its cost. Casting face down and turning up are handled
+    // as engine actions, not compiled triggers.
+    const morph = sentence.match(/^(Mega)?morph\s*[—–-]?\s*((?:\{[^}]+\})+)$/i);
+    if (morph?.[2]) {
+      result.morph = { manaCost: morph[2], ...(morph[1] ? { megamorph: true } : {}) };
       continue;
     }
 

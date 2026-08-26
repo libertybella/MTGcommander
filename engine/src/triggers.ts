@@ -1042,6 +1042,12 @@ function triggerMatchesEvent(
   if (trigger.event === "becomes_untapped") {
     return false;
   }
+  if (event.kind === "turns_face_up") {
+    return trigger.event === "turns_face_up" && event.cardId === watcher.id;
+  }
+  if (trigger.event === "turns_face_up") {
+    return false;
+  }
   if (event.kind === "tapped") {
     if (trigger.event !== "becomes_tapped") {
       return false;

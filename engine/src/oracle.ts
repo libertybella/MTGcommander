@@ -280,6 +280,7 @@ function compileOneFace(card: OracleCard, definitionId: string): OracleCompileRe
     ...(compiled.changeling ? { changeling: true } : {}),
     ...(compiled.topOfLibrary ? { topOfLibrary: { ...compiled.topOfLibrary } } : {}),
     ...(compiled.flashback ? { flashback: { ...compiled.flashback } } : {}),
+    ...(compiled.morph ? { morph: { ...compiled.morph } } : {}),
     ...(compiled.evoke ? { evoke: { ...compiled.evoke } } : {}),
     ...(compiled.splitSecond ? { splitSecond: true } : {}),
     ...(compiled.blockPowerGate ? { blockPowerGate: { ...compiled.blockPowerGate } } : {}),

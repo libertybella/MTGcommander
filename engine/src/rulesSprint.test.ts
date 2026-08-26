@@ -75214,3 +75214,98 @@ describe("wave 479: Muldrotha, the Gravetide — cast one permanent of each type
     expect(offersCast(cast, p1.id, relicId)).toBe(true);
   });
 });
+describe("wave 480: Morph — cast face down for {3}, turn up for the morph cost", () => {
+  const compileGrim = () =>
+    compileOracleCard({
+      oracleId: "grim-haruspex", name: "Grim Haruspex", manaCost: "{2}{B}",
+      typeLine: "Creature — Human Wizard", power: "3", toughness: "2", printedKeywords: [], imageUrl: "",
+      oracleText:
+        "Morph {B} (You may cast this card face down as a 2/2 creature for {3}. Turn it face up any time for its morph cost.)\nWhenever another nontoken creature you control dies, draw a card.",
+    });
+
+  it("compiles the morph cost alongside the dies-draw trigger", () => {
+    const c = compileGrim();
+    expect(c.notes).toEqual([]);
+    expect(c.definition.morph?.manaCost).toBe("{B}");
+    expect(c.definition.morph?.megamorph).toBeUndefined();
+  });
+
+  it("compiles Rattleclaw's morph and its turned-face-up trigger", () => {
+    const c = compileOracleCard({
+      oracleId: "rattleclaw-mystic", name: "Rattleclaw Mystic", manaCost: "{1}{G}",
+      typeLine: "Creature — Human Shaman", power: "2", toughness: "1", printedKeywords: [], imageUrl: "",
+      oracleText:
+        "{T}: Add {G}, {U}, or {R}.\nMorph {2} (You may cast this card face down as a 2/2 creature for {3}. Turn it face up any time for its morph cost.)\nWhen this creature is turned face up, add {G}{U}{R}.",
+    });
+    expect(c.notes).toEqual([]);
+    expect(c.definition.morph?.manaCost).toBe("{2}");
+    expect((c.definition.triggers ?? []).some((t) => t.event === "turns_face_up")).toBe(true);
+  });
+
+  const putHand = (game: GameState, ownerId: string, definition: CardDefinition) => {
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({ definitionId: definition.id, ownerId, zone: "hand" });
+    game.cards[card.id] = card;
+    game.players.find((e) => e.id === ownerId)!.zones.hand.push(card.id);
+    return card.id;
+  };
+  const putBf = (game: GameState, ownerId: string, definition: CardDefinition) => {
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({ definitionId: definition.id, ownerId, zone: "battlefield" });
+    card.summoningSick = false;
+    game.cards[card.id] = card;
+    game.players.find((e) => e.id === ownerId)!.zones.battlefield.push(card.id);
+    return card.id;
+  };
+
+  it("casts Grim Haruspex face down as a 2/2, turns it up for {B}, and only then does the real dies-draw fire", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 12);
+    const grimId = putHand(game, p1.id, compileGrim().definition);
+    const fodderId = putBf(
+      game, p1.id,
+      createCardDefinition({ name: "Fodder", typeLine: "Creature — Bear", manaCost: "{1}{G}", power: 2, toughness: 2 }),
+    );
+
+    const ready = advanceSteps(game, 3); // p1's precombat main, empty stack
+    ready.priorityPlayerId = p1.id;
+    ready.players[0]!.mana = { W: 0, U: 0, B: 0, R: 0, G: 0, C: 3 };
+
+    // Cast face down for {3}: it enters as a face-down 2/2 with no abilities.
+    let cast = applyAction(ready, { kind: "cast_face_down", playerId: p1.id, cardId: grimId });
+    while (cast.stack.length > 0) cast = resolveTopOfStack(cast);
+    expect(cast.cards[grimId]?.zone).toBe("battlefield");
+    expect(cast.cards[grimId]?.faceDown).toBe(true);
+    expect(cast.cards[grimId]?.morphCast).toBe(true);
+    expect(creaturePower(cast, grimId)).toBe(2);
+    expect(creatureToughness(cast, grimId)).toBe(2);
+
+    // While face down it has no dies-draw: killing the fodder draws nothing.
+    {
+      const probe = structuredClone(cast);
+      const events: EngineEvent[] = [];
+      destroyPermanentInPlace(probe, fodderId, events);
+      dispatchEventsInPlace(probe, events);
+      expect(probe.stack.length).toBe(0);
+    }
+
+    // Turn it face up for its morph cost {B} (not its printed {2}{B}).
+    cast.priorityPlayerId = p1.id;
+    cast.players.find((e) => e.id === p1.id)!.mana = { W: 0, U: 0, B: 1, R: 0, G: 0, C: 0 };
+    const up = applyAction(cast, { kind: "turn_face_up", playerId: p1.id, cardId: grimId });
+    expect(up.cards[grimId]?.faceDown).toBe(false);
+    expect(up.cards[grimId]?.morphCast).toBeUndefined();
+    expect(creaturePower(up, grimId)).toBe(3);
+    expect(creatureToughness(up, grimId)).toBe(2);
+
+    // Now the real Grim Haruspex is out; another owned creature dying draws.
+    const handBefore = up.players.find((e) => e.id === p1.id)!.zones.hand.length;
+    const events: EngineEvent[] = [];
+    destroyPermanentInPlace(up, fodderId, events);
+    dispatchEventsInPlace(up, events);
+    expect(up.stack.length).toBeGreaterThan(0);
+    let drew = up;
+    while (drew.stack.length > 0) drew = resolveTopOfStack(drew);
+    expect(drew.players.find((e) => e.id === p1.id)!.zones.hand.length).toBe(handBefore + 1);
+  });
+});

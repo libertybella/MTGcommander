@@ -399,6 +399,15 @@ export type CardDefinition = {
     sacrificeCreatures?: number;
   };
   /**
+   * Morph (CR 702.37) / Megamorph (CR 702.108): the card may be cast face
+   * down as a 2/2 for {3} and turned face up any time for this cost. When it
+   * is a megamorph cost, turning it up also adds a +1/+1 counter.
+   */
+  morph?: {
+    manaCost: string;
+    megamorph?: boolean;
+  };
+  /**
    * Evoke (CR 702.74): an alternative mana cost, and the permanent is
    * sacrificed as it enters. Taken only when the printed cost is out of
    * reach, the same one-way rule `altCost` follows — a caster who can pay
@@ -1004,6 +1013,9 @@ export type CardInstance = {
   loyaltyActivatedThisTurn: boolean;
   /** Manifested: a face-down 2/2 with no name, types, or abilities (CR 708). */
   faceDown: boolean;
+  /** Morph: this face-down permanent was cast face down (not manifested), so
+   * it is turned up by paying its morph cost rather than its printed cost. */
+  morphCast?: boolean;
   /** "As ~ enters, choose a creature type" (Kindred Discovery). Lowercase. */
   chosenCreatureType: string | null;
   /** Gideon's Intervention: the card name this permanent was told to watch. */
@@ -4761,6 +4773,8 @@ export type TriggerEvent =
   | "you_sacrifice_token"
   /** Any permanent untapped (Mesmeric Orb). Subject is the permanent. */
   | "becomes_untapped"
+  /** Morph: this permanent was turned face up (Rattleclaw Mystic). */
+  | "turns_face_up"
   /**
    * Burgeoning, City of Traitors: a land was PLAYED, which is not the same
    * as a land entering. A fetched or reanimated land enters and was never
@@ -5262,6 +5276,8 @@ export type EngineEvent =
   | { kind: "untapped"; cardId: CardInstanceId }
   /** A permanent went from untapped to tapped (City of Brass). */
   | { kind: "tapped"; cardId: CardInstanceId }
+  /** Morph: a face-down permanent was turned face up (Rattleclaw Mystic). */
+  | { kind: "turns_face_up"; cardId: CardInstanceId }
   /** Burgeoning: a land was played (not merely put onto the battlefield). */
   | { kind: "plays_land"; cardId: CardInstanceId; playerId: PlayerId }
   /** Forbidden Orchard: the same tap, but specifically for mana. */
@@ -6537,6 +6553,7 @@ export type GameAction =
   | { kind: "bottom_cards"; playerId: PlayerId; cardIds: CardInstanceId[] }
   | { kind: "manual_override"; playerId: PlayerId; change: ManualOverrideChange }
   | { kind: "turn_face_up"; playerId: PlayerId; cardId: CardInstanceId }
+  | { kind: "cast_face_down"; playerId: PlayerId; cardId: CardInstanceId }
   | { kind: "undo"; playerId: PlayerId }
   | { kind: "roll_die"; playerId: PlayerId; sides: number }
   | { kind: "opening_roll"; playerId: PlayerId }
