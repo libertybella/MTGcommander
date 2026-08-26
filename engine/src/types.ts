@@ -894,6 +894,10 @@ export type CardInstance = {
    */
   enteredFromCast?: boolean;
   phasedOut?: boolean;
+  /** Flashback / Snapcaster Mage: a temporary flashback grant on this card
+   * (cost = its own mana cost), cleared at cleanup. Read alongside the
+   * definition's printed flashback everywhere the cast path consults it. */
+  flashbackUntilEot?: boolean;
   /** 0 means not a Class. Class enchantments enter at 1. */
   classLevel: number;
   /** CR 613.7 ordering: stamped when this object entered the battlefield. */
@@ -1960,6 +1964,9 @@ export type GameEffect =
    * graveyard, granting its caster a free cast of each; casting one makes its
    * OWNER lose life equal to that spell's mana value. */
   | { kind: "exile_gy_random_free_cast"; casterId: PlayerId }
+  /** Flashback (the card) / Snapcaster: target instant or sorcery card in your
+   * graveyard gains flashback until end of turn (cost = its mana cost). */
+  | { kind: "grant_flashback_until_eot"; cardId: CardInstanceId }
   | { kind: "discard_unless_attacked"; playerId: PlayerId; count: number }
   | { kind: "amass"; playerId: PlayerId; amount: number; subtype?: string }
   | { kind: "reveal_zone"; fromPlayerId: PlayerId; toPlayerId: PlayerId; zone: "hand" }
@@ -3695,6 +3702,7 @@ export type CardEffect =
   | { kind: "discard_each_draw_per_type"; drawerId: PlayerSelector }
   | { kind: "stash_exile_grant"; casterId: PlayerSelector }
   | { kind: "exile_gy_random_free_cast"; casterId: PlayerSelector }
+  | { kind: "grant_flashback_until_eot"; cardId: CardIdSelector }
   | { kind: "discard_unless_attacked"; playerId: PlayerSelector; count: number }
   | { kind: "amass"; playerId: PlayerSelector; amount: number | "x"; subtype?: string }
   | {

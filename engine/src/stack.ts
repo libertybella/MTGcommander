@@ -196,7 +196,8 @@ export function putSpellOnStack(
   // cast from its owner's graveyard; it will exile as it leaves the stack.
   const fromFlashback =
     located?.zone === "graveyard" &&
-    Boolean(state.definitions[state.cards[cardId]?.definitionId ?? ""]?.flashback) &&
+    (Boolean(state.definitions[state.cards[cardId]?.definitionId ?? ""]?.flashback) ||
+      state.cards[cardId]?.flashbackUntilEot === true) &&
     isInstantOrSorcery(state, cardId);
   // Gravecrawler: a gated normal cast from the graveyard (no exile rider).
   const graveyardGate = state.definitions[state.cards[cardId]?.definitionId ?? ""]?.castFromGraveyard;

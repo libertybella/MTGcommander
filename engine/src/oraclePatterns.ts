@@ -1,5 +1,5 @@
 import { manaValueOf } from "./characteristics";
-import { IMPLEMENTED_KEYWORDS } from "./keywordCatalog";
+import { CR702_KEYWORD_ABILITIES, IMPLEMENTED_KEYWORDS } from "./keywordCatalog";
 import { parseManaCost } from "./mana";
 import { parseAmassClause } from "./tokens";
 import type {
@@ -573,7 +573,13 @@ const PERIOD_SHIELD = "\u0001";
 function normalizeOracleText(card: OracleCard): string {
   const printedName = card.name.includes(" // ") ? (card.name.split(" // ")[0] ?? card.name) : card.name;
   let text = stripReminderText(card.oracleText).replace(/\r/g, "");
-  text = text.replace(new RegExp(escapeRegex(printedName), "gi"), "~");
+  // A card literally named after a keyword (Flashback, Foretell, Cascade) uses
+  // that word in its own text AS the keyword, never as a self-reference, so the
+  // name-to-~ rewrite must not clobber it.
+  const KEYWORD_NAMES = new Set([...KEYWORD_LINE, ...CR702_KEYWORD_ABILITIES]);
+  if (!KEYWORD_NAMES.has(printedName.toLowerCase())) {
+    text = text.replace(new RegExp(escapeRegex(printedName), "gi"), "~");
+  }
   // Legends refer to themselves by their short name. That is the part before
   // a comma ("Atsushi, the Blazing Sky" → "Atsushi"), and for the comma-less
   // "X of the Y" / "X the Y" patterns it is the leading word or words
@@ -5606,6 +5612,27 @@ function compileSimpleClauseInner(sentence: string): SimpleClause | null {
       });
     }
     return { targetRequirements: [], effects: kujaEffects };
+  }
+
+  // Flashback (the card) / Snapcaster Mage: grant flashback to a targeted
+  // instant or sorcery card in your graveyard until end of turn. The second
+  // sentence ("The flashback cost is equal to its mana cost") is realised by
+  // the effect (which uses the card's own mana cost), so it compiles to nothing.
+  if (
+    /^Target instant or sorcery card in your graveyard gains flashback until end of turn$/i.test(
+      sentence,
+    )
+  ) {
+    const requirement = parseGraveyardTargetPhrase("instant or sorcery card");
+    if (requirement) {
+      return {
+        targetRequirements: [requirement],
+        effects: [{ kind: "grant_flashback_until_eot", cardId: { type: "chosen", index: 0 } }],
+      };
+    }
+  }
+  if (/^The flashback cost is equal to its mana cost$/i.test(sentence)) {
+    return { targetRequirements: [], effects: [] };
   }
 
   // Kefka, Dancing Mad: the end-step heist body (three sentences). The first

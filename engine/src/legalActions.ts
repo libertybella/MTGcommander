@@ -673,6 +673,7 @@ export function legalActions(state: GameState, playerId: PlayerId): LegalAction[
       : undefined;
     return Boolean(
       definition?.flashback ||
+        state.cards[cardId]?.flashbackUntilEot ||
         (hasLandInHand && retraceReaches(state, playerId, cardId)) ||
         (definition?.castFromGraveyard &&
           controlsMatching(state, playerId, definition.castFromGraveyard)),
@@ -740,13 +741,18 @@ export function legalActions(state: GameState, playerId: PlayerId): LegalAction[
       }
       if (inGraveyard) {
         // Flashback (CR 702.34): castable from the graveyard for its
-        // flashback cost; life portions are validated at cast time.
+        // flashback cost; life portions are validated at cast time. A
+        // temporary grant (Flashback the card / Snapcaster) has no printed
+        // flashback, so its cost is the card's own mana cost.
         const flashback = face.definition.flashback;
+        const grantedFlashback = state.cards[cardId]?.flashbackUntilEot === true;
+        const flashbackCost =
+          flashback?.manaCost ?? (grantedFlashback ? face.definition.manaCost : undefined);
         if (
-          flashback &&
+          flashbackCost !== undefined &&
           (face.definition.characteristics.types.includes("instant") ||
             face.definition.characteristics.types.includes("sorcery")) &&
-          castableFace(state, playerId, face.definition, potential, 0, flashback.manaCost, flashGrant)
+          castableFace(state, playerId, face.definition, potential, 0, flashbackCost, flashGrant)
         ) {
           actions.push({
             kind: "cast_spell",

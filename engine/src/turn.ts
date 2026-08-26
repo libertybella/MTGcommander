@@ -596,6 +596,10 @@ function onEnterStep(state: GameState): GameState {
       if (card.regenerationShields) {
         delete card.regenerationShields;
       }
+      // Flashback / Snapcaster: the temporary flashback grant ends at cleanup.
+      if (card.flashbackUntilEot !== undefined) {
+        delete card.flashbackUntilEot;
+      }
     }
     // CR 514.2: "until end of turn" effects end during cleanup.
     state.activeEffects = state.activeEffects.filter(

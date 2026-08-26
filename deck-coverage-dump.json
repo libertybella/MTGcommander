@@ -436,7 +436,7 @@
   "Brain Freeze": true,
   "Brainstorm": true,
   "Consider": true,
-  "Flashback": false,
+  "Flashback": true,
   "Flusterstorm": true,
   "Force of Will": true,
   "Magic Damper": true,
@@ -4250,12 +4250,6 @@
    "type": "Creature — Human Scout",
    "notes": [
     "Some oracle text is not compiled: Soulbond; As long as ~ is paired with another creature, each of those creatures has \"Whenever ~ deals damage to an opponent, draw a card.\"."
-   ]
-  },
-  "Flashback": {
-   "type": "Instant",
-   "notes": [
-    "Some oracle text is not compiled: Target instant or sorcery card in your graveyard gains ~ until end of turn; The ~ cost is equal to its mana cost."
    ]
   },
   "Mount Doom": {
@@ -14187,12 +14181,11 @@
   {
    "commander": "Vivi Ornitier",
    "rank": 7,
-   "slots": 4,
+   "slots": 3,
    "misses": [
     "Wizard's Staff",
     "Quicksilver Elemental",
-    "Tandem Lookout",
-    "Flashback"
+    "Tandem Lookout"
    ]
   },
   {
@@ -14623,6 +14616,29 @@
    ]
   },
   {
+   "commander": "Kuja, Genome Sorcerer",
+   "rank": 57,
+   "slots": 16,
+   "misses": [
+    "Black Mage's Rod",
+    "Dark Confidant",
+    "Fandaniel, Telophoroi Ascian",
+    "Gandalf, Goblins' Bane",
+    "Gleeful Arsonist",
+    "Mysidian Elder",
+    "Queen Brahne",
+    "Artist's Talent",
+    "Collective Inferno",
+    "Transpose",
+    "Vivi's Persistence",
+    "Wizard's Lightning",
+    "Circle of Power",
+    "Cornered by Black Mages",
+    "Grab the Prize",
+    "Light Up the Stage"
+   ]
+  },
+  {
    "commander": "Urtet, Remnant of Memnarch",
    "rank": 90,
    "slots": 16,
@@ -14715,30 +14731,6 @@
     "Raise the Past",
     "Song of Totentanz",
     "Arabella, Abandoned Doll (commander)"
-   ]
-  },
-  {
-   "commander": "Kuja, Genome Sorcerer",
-   "rank": 57,
-   "slots": 17,
-   "misses": [
-    "Black Mage's Rod",
-    "Dark Confidant",
-    "Fandaniel, Telophoroi Ascian",
-    "Gandalf, Goblins' Bane",
-    "Gleeful Arsonist",
-    "Mysidian Elder",
-    "Queen Brahne",
-    "Artist's Talent",
-    "Collective Inferno",
-    "Flashback",
-    "Transpose",
-    "Vivi's Persistence",
-    "Wizard's Lightning",
-    "Circle of Power",
-    "Cornered by Black Mages",
-    "Grab the Prize",
-    "Light Up the Stage"
    ]
   },
   {

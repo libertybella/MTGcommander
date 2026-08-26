@@ -870,6 +870,13 @@ export function bindCardEffect(
       }
       return { kind: "exile_gy_random_free_cast", casterId };
     }
+    case "grant_flashback_until_eot": {
+      const cardId = bindCardId(state, effect.cardId, context);
+      if (!cardId) {
+        return null;
+      }
+      return { kind: "grant_flashback_until_eot", cardId };
+    }
     case "amass": {
       const playerId = bindPlayerSelector(state, effect.playerId, context);
       if (!playerId) {
@@ -5525,6 +5532,21 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
             ...(next.exilePlayable ?? []),
             { cardId: picked, casterId: effect.casterId, freeCast: true, ownerLosesLifeManaValue: true },
           ];
+        }
+        break;
+      }
+      case "grant_flashback_until_eot": {
+        // Flashback (the card) / Snapcaster Mage. The targeted graveyard card
+        // gains flashback for its own mana cost until cleanup clears the mark.
+        const card = state.cards[effect.cardId];
+        if (!card) {
+          next = cloneGameState(state);
+          break;
+        }
+        next = cloneGameState(state);
+        const marked = next.cards[effect.cardId];
+        if (marked) {
+          marked.flashbackUntilEot = true;
         }
         break;
       }

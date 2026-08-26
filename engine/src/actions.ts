@@ -412,7 +412,7 @@ function validateCast(
     located &&
       located.zone === "graveyard" &&
       located.playerId === playerId &&
-      definition.flashback &&
+      (definition.flashback || state.cards[cardId]?.flashbackUntilEot) &&
       isInstantOrSorcery(state, cardId),
   );
   // Gravecrawler: a normal cast from the graveyard behind a controlled gate.
@@ -542,7 +542,7 @@ function validateCast(
       : overloadSwap
         ? overloadSwap
         : viaFlashback
-          ? definition.flashback?.manaCost ?? ""
+          ? definition.flashback?.manaCost ?? definition.manaCost
           : definition.manaCost,
   );
   // K'rrik: every {B} in the cost becomes a Phyrexian pip for its

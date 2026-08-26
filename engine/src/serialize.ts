@@ -701,6 +701,7 @@ export function parseGameState(json: string): GameState {
       ...(card.echoDue === true ? { echoDue: true } : {}),
       faceDown: card.faceDown === true,
       ...(card.phasedOut === true ? { phasedOut: true } : {}),
+      ...(card.flashbackUntilEot === true ? { flashbackUntilEot: true } : {}),
       ...(card.enteredFromCast === true ? { enteredFromCast: true } : {}),
       ...(card.attachedToPlayer === undefined
         ? {}
@@ -4361,6 +4362,8 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
       return { kind, casterId: parsePlayerSelector(value.casterId, `${label}.casterId`) };
     case "exile_gy_random_free_cast":
       return { kind, casterId: parsePlayerSelector(value.casterId, `${label}.casterId`) };
+    case "grant_flashback_until_eot":
+      return { kind, cardId: parseCardIdSelector(value.cardId, `${label}.cardId`) };
     case "discard":
       return {
         kind,
@@ -7110,6 +7113,9 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
   }
   if (kind === "exile_gy_random_free_cast") {
     return { kind, casterId: expectString(value.casterId, `${label}.casterId`) };
+  }
+  if (kind === "grant_flashback_until_eot") {
+    return { kind, cardId: expectString(value.cardId, `${label}.cardId`) };
   }
   if (
     kind === "scry" ||

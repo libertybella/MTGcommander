@@ -74142,3 +74142,76 @@ describe("wave 464: Kefka, Dancing Mad — end-step graveyard heist and your-tur
     expect(game.cards[kefkaId]?.zone).toBe("graveyard");
   });
 });
+
+describe("wave 465: Flashback — grant a graveyard instant/sorcery flashback until end of turn", () => {
+  const compileFlashback = () =>
+    compileOracleCard({
+      oracleId: "flashback", name: "Flashback", manaCost: "{R}", typeLine: "Instant",
+      power: null, toughness: null, printedKeywords: [], imageUrl: "",
+      oracleText: "Target instant or sorcery card in your graveyard gains flashback until end of turn. The flashback cost is equal to its mana cost.",
+    });
+
+  it("compiles the targeted grant (its own name, a keyword, is not mistaken for a self-reference)", () => {
+    const c = compileFlashback();
+    expect(c.notes).toEqual([]);
+    expect(c.definition.targetRequirements).toEqual([{ kind: "own_graveyard_instant_or_sorcery_card" }]);
+    expect(c.definition.effects).toEqual([
+      { kind: "grant_flashback_until_eot", cardId: { type: "chosen", index: 0 } },
+    ]);
+  });
+
+  const put = (game: GameState, ownerId: string, definition: CardDefinition, zone: "battlefield" | "graveyard") => {
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({ definitionId: definition.id, ownerId, zone });
+    game.cards[card.id] = card;
+    (game.players.find((e) => e.id === ownerId)!.zones as Record<string, string[]>)[zone].push(card.id);
+    return card.id;
+  };
+
+  it("makes the target castable from the graveyard for its mana cost, exiling it after it resolves", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 10);
+    const spellId = put(game, p1.id, createCardDefinition({ name: "Blaze", typeLine: "Sorcery", manaCost: "{1}{R}" }), "graveyard");
+
+    // Cast Flashback at the graveyard sorcery (a chosen graveyard card is a "creature"-typed target ref).
+    const granted = applyEffects(
+      game,
+      bindCardEffects(game, [{ kind: "grant_flashback_until_eot", cardId: { type: "chosen", index: 0 } }] as unknown as CardEffect[], {
+        controllerId: p1.id, sourceId: p1.id,
+        targets: [{ type: "creature", cardId: spellId }],
+        targetRequirements: [{ kind: "own_graveyard_instant_or_sorcery_card" }],
+      }),
+    );
+    expect(granted.cards[spellId]?.flashbackUntilEot).toBe(true);
+
+    // In p1's main phase with {R}{R} available, the sorcery is offered and castable from the graveyard.
+    const ready = advanceSteps(granted, 3);
+    ready.priorityPlayerId = p1.id;
+    ready.players[0]!.mana = { W: 0, U: 0, B: 0, R: 2, G: 0, C: 0 };
+    expect(legalActions(ready, p1.id).some((a) => a.kind === "cast_spell" && a.cardId === spellId)).toBe(true);
+    const cast = applyAction(ready, { kind: "cast_spell", playerId: p1.id, cardId: spellId, targets: [] });
+    expect(cast.cards[spellId]?.zone).toBe("stack");
+    // It resolves and the flashbacked card is EXILED (CR 702.34a), not returned to the graveyard.
+    let resolved = cast;
+    while (resolved.stack.length > 0) resolved = resolveTopOfStack(resolved);
+    expect(resolved.cards[spellId]?.zone).toBe("exile");
+  });
+
+  it("the flashback grant ends at cleanup", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 10);
+    const spellId = put(game, p1.id, createCardDefinition({ name: "Blaze", typeLine: "Sorcery", manaCost: "{1}{R}" }), "graveyard");
+    const granted = applyEffects(
+      game,
+      bindCardEffects(game, [{ kind: "grant_flashback_until_eot", cardId: { type: "chosen", index: 0 } }] as unknown as CardEffect[], {
+        controllerId: p1.id, sourceId: p1.id,
+        targets: [{ type: "creature", cardId: spellId }],
+        targetRequirements: [{ kind: "own_graveyard_instant_or_sorcery_card" }],
+      }),
+    );
+    expect(granted.cards[spellId]?.flashbackUntilEot).toBe(true);
+    // Advance through this turn's cleanup: the grant is gone.
+    const later = advanceSteps(granted, 11);
+    expect(later.cards[spellId]?.flashbackUntilEot).toBeUndefined();
+  });
+});
