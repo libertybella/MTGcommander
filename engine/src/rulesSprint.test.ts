@@ -11927,7 +11927,7 @@ describe("wave 117: gods, recruiters, ouroboroids", () => {
         "Indestructible\nAs long as your devotion to blue is less than five, Thassa isn't a creature.\nAt the beginning of your upkeep, scry 1.\n{1}{U}: Target creature you control can't be blocked this turn.",
     });
     expect(thassa.notes).toEqual([]);
-    expect(thassa.definition.notCreatureBelowDevotion).toEqual({ color: "U", threshold: 5 });
+    expect(thassa.definition.notCreatureBelowDevotion).toEqual({ colors: ["U"], threshold: 5 });
 
     const recruiter = compileOracleCard({
       oracleId: "recruiter",
@@ -11997,7 +11997,7 @@ describe("wave 117: gods, recruiters, ouroboroids", () => {
       typeLine: "Legendary Enchantment Creature — God",
       power: 5,
       toughness: 5,
-      notCreatureBelowDevotion: { color: "U", threshold: 5 },
+      notCreatureBelowDevotion: { colors: ["U"], threshold: 5 },
     });
     const pipDef = createCardDefinition({
       name: "Pips",
@@ -75370,5 +75370,71 @@ describe("wave 481: Priest of Forgotten Gods — sac two, opponents bleed and sa
     expect(next.players.find((e) => e.id === p2.id)!.life).toBe(p2LifeBefore - 2);
     expect(next.cards[victimId]?.zone).toBe("graveyard");
     expect(next.players.find((e) => e.id === p1.id)!.mana.B).toBe(2);
+  });
+});
+describe("wave 482: Athreos, God of Passage — a devotion-gated god who ferries the dead home", () => {
+  const compileAthreos = () =>
+    compileOracleCard({
+      oracleId: "athreos-god-of-passage", name: "Athreos, God of Passage", manaCost: "{1}{W}{B}",
+      typeLine: "Legendary Enchantment Creature — God", power: "5", toughness: "4", printedKeywords: [], imageUrl: "",
+      oracleText:
+        "Indestructible\nAs long as your devotion to white and black is less than seven, Athreos isn't a creature.\nWhenever another creature you own dies, return it to your hand unless target opponent pays 3 life.",
+    });
+
+  it("compiles the two-color devotion gate and the dies-return punisher", () => {
+    const c = compileAthreos();
+    expect(c.notes).toEqual([]);
+    expect(c.definition.notCreatureBelowDevotion).toEqual({ colors: ["W", "B"], threshold: 7 });
+    const trig = (c.definition.triggers ?? []).find((t) => t.event === "dies");
+    expect(trig?.targetRequirements).toEqual([{ kind: "opponent" }]);
+    expect(trig?.effects[0]).toMatchObject({ kind: "unless_pays", life: 3 });
+  });
+
+  const put = (game: GameState, ownerId: string, definition: CardDefinition) => {
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({ definitionId: definition.id, ownerId, zone: "battlefield" });
+    card.summoningSick = false;
+    game.cards[card.id] = card;
+    game.players.find((e) => e.id === ownerId)!.zones.battlefield.push(card.id);
+    return card.id;
+  };
+
+  it("isn't a creature below seven devotion to white and black, and becomes one at seven", () => {
+    const { game, p1 } = twoPlayers();
+    const athreosId = put(game, p1.id, compileAthreos().definition);
+    // Athreos alone: {1}{W}{B} contributes 2 devotion. Below seven -> not a creature.
+    expect(characteristicsOf(game, athreosId).types.includes("creature")).toBe(false);
+    // Three more {W}{B} permanents add 6, for 8 total.
+    for (let i = 0; i < 3; i += 1) {
+      put(game, p1.id, createCardDefinition({ name: `WB${i}`, typeLine: "Enchantment", manaCost: "{W}{B}" }));
+    }
+    expect(characteristicsOf(game, athreosId).types.includes("creature")).toBe(true);
+  });
+
+  it("returns a dead creature you own to your hand unless the opponent pays 3 life", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 8);
+    put(game, p1.id, compileAthreos().definition);
+    const pilgrimId = put(game, p1.id, createCardDefinition({ name: "Pilgrim", typeLine: "Creature — Human", manaCost: "{W}", power: 1, toughness: 1 }));
+
+    // Kill the Pilgrim; Athreos's trigger goes on the stack targeting an opponent.
+    let next = structuredClone(game);
+    const events: EngineEvent[] = [];
+    destroyPermanentInPlace(next, pilgrimId, events);
+    dispatchEventsInPlace(next, events);
+    expect(next.prompts[0]?.kind).toBe("choose_targets");
+    next = applyAction(next, { kind: "choose_targets", playerId: p1.id, targets: [{ type: "player", playerId: p2.id }] });
+    while (next.stack.length > 0 && next.prompts.length === 0) next = resolveTopOfStack(next);
+    expect(next.prompts[0]?.kind).toBe("pay_or_effect");
+
+    // Declined -> the creature comes home to your hand.
+    const declined = applyResolvePay(structuredClone(next), p2.id, false);
+    expect(declined.cards[pilgrimId]?.zone).toBe("hand");
+
+    // Paid -> the opponent loses 3 life and the creature stays dead.
+    const p2LifeBefore = next.players.find((e) => e.id === p2.id)!.life;
+    const paid = applyResolvePay(next, p2.id, true);
+    expect(paid.players.find((e) => e.id === p2.id)!.life).toBe(p2LifeBefore - 3);
+    expect(paid.cards[pilgrimId]?.zone).toBe("graveyard");
   });
 });

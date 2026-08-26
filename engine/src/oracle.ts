@@ -271,7 +271,12 @@ function compileOneFace(card: OracleCard, definitionId: string): OracleCompileRe
     ...(compiled.opponentsCantCastDuringYourTurn ? { opponentsCantCastDuringYourTurn: true } : {}),
     ...(compiled.mustAttack ? { mustAttack: true } : {}),
     ...(compiled.notCreatureBelowDevotion
-      ? { notCreatureBelowDevotion: { ...compiled.notCreatureBelowDevotion } }
+      ? {
+          notCreatureBelowDevotion: {
+            colors: [...compiled.notCreatureBelowDevotion.colors],
+            threshold: compiled.notCreatureBelowDevotion.threshold,
+          },
+        }
       : {}),
     ...(compiled.freeIfCommander ? { freeIfCommander: true } : {}),
     ...(compiled.altCostIfCreatures

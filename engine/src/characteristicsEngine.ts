@@ -236,7 +236,7 @@ function baseComputed(state: GameState, card: CardInstance): ComputedCard {
   const gateHolds =
     gate &&
     card.zone === "battlefield" &&
-    devotionPips(state, card.controllerId, gate.color) < gate.threshold;
+    devotionPips(state, card.controllerId, gate.colors) < gate.threshold;
   return {
     characteristics: {
       supertypes: [...printed.supertypes],
@@ -305,7 +305,7 @@ function baseComputed(state: GameState, card: CardInstance): ComputedCard {
 
 /** CR 700.5 pips of one color across a player's permanents' mana costs.
  * Reads printed definitions directly — no computed pass, no import cycle. */
-function devotionPips(state: GameState, controllerId: string, color: Color): number {
+function devotionPips(state: GameState, controllerId: string, colors: Color[]): number {
   let pips = 0;
   for (const card of Object.values(state.cards)) {
     if (card.zone !== "battlefield" || card.controllerId !== controllerId) {
@@ -313,7 +313,10 @@ function devotionPips(state: GameState, controllerId: string, color: Color): num
     }
     const manaCost = state.definitions[card.definitionId]?.manaCost ?? "";
     for (const symbol of manaCost.matchAll(/\{([^}]+)\}/g)) {
-      if (symbol[1]!.toUpperCase().split("/").includes(color)) {
+      // A single symbol counts once even if it is a hybrid of two of the
+      // devotion colours ({W/B} toward white-and-black devotion).
+      const parts = symbol[1]!.toUpperCase().split("/");
+      if (colors.some((color) => parts.includes(color))) {
         pips += 1;
       }
     }

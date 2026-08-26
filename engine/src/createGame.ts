@@ -556,7 +556,12 @@ export function createCardDefinition(
     ...(input.opponentsCantCastDuringYourTurn ? { opponentsCantCastDuringYourTurn: true } : {}),
     ...(input.mustAttack ? { mustAttack: true } : {}),
     ...(input.notCreatureBelowDevotion
-      ? { notCreatureBelowDevotion: { ...input.notCreatureBelowDevotion } }
+      ? {
+          notCreatureBelowDevotion: {
+            colors: [...input.notCreatureBelowDevotion.colors],
+            threshold: input.notCreatureBelowDevotion.threshold,
+          },
+        }
       : {}),
     ...(input.freeIfCommander ? { freeIfCommander: true } : {}),
     ...(input.altCostIfCreatures ? { altCostIfCreatures: { ...input.altCostIfCreatures } } : {}),

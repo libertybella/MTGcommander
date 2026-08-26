@@ -361,7 +361,7 @@ export type CardDefinition = {
   extraBlocksGranted?: number;
   /** Theros gods: not a creature while devotion to the color is below the
    * threshold (applied before the layer passes — a documented simplification). */
-  notCreatureBelowDevotion?: { color: Color; threshold: number };
+  notCreatureBelowDevotion?: { colors: Color[]; threshold: number };
   /**
    * "If you control a commander, you may cast this spell without paying its
    * mana cost" (the free-spell cycle). Documented approximation: the free

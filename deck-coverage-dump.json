@@ -1618,7 +1618,7 @@
   "Athreos, Shroud-Veiled": false,
   "Carth the Lion": false,
   "Heliod, God of the Sun": true,
-  "Karametra, God of Harvests": false,
+  "Karametra, God of Harvests": true,
   "Keranos, God of Storms": false,
   "Klothys, God of Destiny": false,
   "Kruphix, God of Horizons": false,
@@ -2217,7 +2217,7 @@
   "Maralen, Fae Ascendant": false,
   "Orzhov Basilica": true,
   "Shattered Sanctum": true,
-  "Athreos, God of Passage": false,
+  "Athreos, God of Passage": true,
   "Bartolomé del Presidio": true,
   "Doomed Traveler": true,
   "Hallowed Spiritkeeper": true,
@@ -5911,7 +5911,7 @@
   "Mogis, God of Slaughter": {
    "type": "Legendary Enchantment Creature — God",
    "notes": [
-    "Some oracle text is not compiled: As long as your devotion to black and red is less than seven, ~ isn't a creature; At the beginning of each opponent's upkeep, ~ deals 2 damage to that player unless they sacrifice a creature of their choice."
+    "Some oracle text is not compiled: At the beginning of each opponent's upkeep, ~ deals 2 damage to that player unless they sacrifice a creature of their choice."
    ]
   },
   "Persistent Constrictor": {
@@ -6079,7 +6079,7 @@
   "Iroas, God of Victory": {
    "type": "Legendary Enchantment Creature — God",
    "notes": [
-    "Some oracle text is not compiled: As long as your devotion to red and white is less than seven, ~ isn't a creature; Prevent all damage that would be dealt to attacking creatures you control."
+    "Some oracle text is not compiled: Prevent all damage that would be dealt to attacking creatures you control."
    ]
   },
   "Kellogg, Dangerous Mind": {
@@ -7263,7 +7263,7 @@
   "Athreos, Shroud-Veiled": {
    "type": "Legendary Enchantment Creature — God",
    "notes": [
-    "Some oracle text is not compiled: As long as your devotion to white and black is less than seven, ~ isn't a creature; Whenever a creature with a coin counter on it dies or is put into exile, return that card to the battlefield under your control."
+    "Some oracle text is not compiled: Whenever a creature with a coin counter on it dies or is put into exile, return that card to the battlefield under your control."
    ]
   },
   "Carth the Lion": {
@@ -7272,28 +7272,22 @@
     "Some oracle text is not compiled: Whenever ~ enters or a planeswalker you control dies, Dig 7 for planeswalker to hand; Planeswalkers' loyalty abilities you activate cost an additional [+1] to activate."
    ]
   },
-  "Karametra, God of Harvests": {
-   "type": "Legendary Enchantment Creature — God",
-   "notes": [
-    "Some oracle text is not compiled: As long as your devotion to green and white is less than seven, ~ isn't a creature."
-   ]
-  },
   "Keranos, God of Storms": {
    "type": "Legendary Enchantment Creature — God",
    "notes": [
-    "Some oracle text is not compiled: As long as your devotion to blue and red is less than seven, ~ isn't a creature; Reveal the first card you draw on each of your turns; Whenever you reveal a land card this way, draw a card; Whenever you reveal a nonland card this way, ~ deals 3 damage to any target."
+    "Some oracle text is not compiled: Reveal the first card you draw on each of your turns; Whenever you reveal a land card this way, draw a card; Whenever you reveal a nonland card this way, ~ deals 3 damage to any target."
    ]
   },
   "Klothys, God of Destiny": {
    "type": "Legendary Enchantment Creature — God",
    "notes": [
-    "Some oracle text is not compiled: As long as your devotion to red and green is less than seven, ~ isn't a creature; If it was a land card, add {R} or {G}; Otherwise, you gain 2 life and ~ deals 2 damage to each opponent."
+    "Some oracle text is not compiled: If it was a land card, add {R} or {G}; Otherwise, you gain 2 life and ~ deals 2 damage to each opponent."
    ]
   },
   "Kruphix, God of Horizons": {
    "type": "Legendary Enchantment Creature — God",
    "notes": [
-    "Some oracle text is not compiled: As long as your devotion to green and blue is less than seven, ~ isn't a creature; If you would lose unspent mana, that mana becomes colorless instead."
+    "Some oracle text is not compiled: If you would lose unspent mana, that mana becomes colorless instead."
    ]
   },
   "Nylea, Keen-Eyed": {
@@ -7311,7 +7305,7 @@
   "Xenagos, God of Revels": {
    "type": "Legendary Enchantment Creature — God",
    "notes": [
-    "Some oracle text is not compiled: As long as your devotion to red and green is less than seven, ~ isn't a creature; At the beginning of combat on your turn, another target creature you control gains haste and gets +X/+X until end of turn, where X is that creature's power."
+    "Some oracle text is not compiled: At the beginning of combat on your turn, another target creature you control gains haste and gets +X/+X until end of turn, where X is that creature's power."
    ]
   },
   "Oath of Teferi": {
@@ -9073,12 +9067,6 @@
    "type": "Legendary Creature — Elf Faerie Noble",
    "notes": [
     "Some oracle text is not compiled: Whenever ~ or another Elf or Faerie you control enters, exile the top two cards of target opponent's library; Once each turn, you may cast a spell with mana value less than or equal to the number of Elves and Faeries you control from among cards exiled with ~ this turn without paying its mana cost."
-   ]
-  },
-  "Athreos, God of Passage": {
-   "type": "Legendary Enchantment Creature — God",
-   "notes": [
-    "Some oracle text is not compiled: As long as your devotion to white and black is less than seven, ~ isn't a creature; Whenever another creature you own dies, return it to your hand unless target opponent pays 3 life."
    ]
   },
   "Broodcaller Scourge": {
@@ -14048,9 +14036,8 @@
   {
    "commander": "Teysa Karlov",
    "rank": 54,
-   "slots": 2,
+   "slots": 1,
    "misses": [
-    "Athreos, God of Passage",
     "Sephiroth, Fabled SOLDIER"
    ]
   },
@@ -15631,6 +15618,38 @@
    ]
   },
   {
+   "commander": "Esika, God of the Tree",
+   "rank": 34,
+   "slots": 25,
+   "misses": [
+    "Chromatic Orrery",
+    "Ichormoon Gauntlet",
+    "The Chain Veil",
+    "Athreos, Shroud-Veiled",
+    "Carth the Lion",
+    "Iroas, God of Victory",
+    "Jodah, the Unifier",
+    "Keranos, God of Storms",
+    "Klothys, God of Destiny",
+    "Kruphix, God of Horizons",
+    "Mogis, God of Slaughter",
+    "Nylea, Keen-Eyed",
+    "Sisay, Weatherlight Captain",
+    "Sphinx of the Second Sun",
+    "Vorinclex, Monstrous Raider",
+    "Xenagos, God of Revels",
+    "Oath of Teferi",
+    "Paradox Haze",
+    "Nicol Bolas, Dragon-God",
+    "Nicol Bolas, God-Pharaoh",
+    "Tamiyo, Field Researcher",
+    "Ugin, the Spirit Dragon",
+    "Vraska, Betrayal's Sting",
+    "Primevals' Glorious Rebirth",
+    "Esika, God of the Tree (commander)"
+   ]
+  },
+  {
    "commander": "Yuriko, the Tiger's Shadow",
    "rank": 17,
    "slots": 26,
@@ -15694,39 +15713,6 @@
     "Rockalanche",
     "Seismic Sense",
     "Toph, the First Metalbender (commander)"
-   ]
-  },
-  {
-   "commander": "Esika, God of the Tree",
-   "rank": 34,
-   "slots": 26,
-   "misses": [
-    "Chromatic Orrery",
-    "Ichormoon Gauntlet",
-    "The Chain Veil",
-    "Athreos, Shroud-Veiled",
-    "Carth the Lion",
-    "Iroas, God of Victory",
-    "Jodah, the Unifier",
-    "Karametra, God of Harvests",
-    "Keranos, God of Storms",
-    "Klothys, God of Destiny",
-    "Kruphix, God of Horizons",
-    "Mogis, God of Slaughter",
-    "Nylea, Keen-Eyed",
-    "Sisay, Weatherlight Captain",
-    "Sphinx of the Second Sun",
-    "Vorinclex, Monstrous Raider",
-    "Xenagos, God of Revels",
-    "Oath of Teferi",
-    "Paradox Haze",
-    "Nicol Bolas, Dragon-God",
-    "Nicol Bolas, God-Pharaoh",
-    "Tamiyo, Field Researcher",
-    "Ugin, the Spirit Dragon",
-    "Vraska, Betrayal's Sting",
-    "Primevals' Glorious Rebirth",
-    "Esika, God of the Tree (commander)"
    ]
   },
   {

@@ -108,7 +108,7 @@ export type CompiledOracleText = {
   opponentsLockedDuringYourTurn?: boolean;
   opponentsCantCastDuringYourTurn?: boolean;
   mustAttack?: boolean;
-  notCreatureBelowDevotion?: { color: Color; threshold: number };
+  notCreatureBelowDevotion?: { colors: Color[]; threshold: number };
   freeIfCommander?: boolean;
   altCostIfCreatures?: { cost: string; count: number };
   changeling?: boolean;
@@ -5301,6 +5301,27 @@ function compileSimpleClauseInner(sentence: string): SimpleClause | null {
 
   if (/^(?:then )?populate$/i.test(sentence)) {
     return { targetRequirements: [], effects: [{ kind: "populate", playerId: "controller" }] };
+  }
+
+  // Athreos, God of Passage: "return it to your hand unless target opponent
+  // pays N life." The dead creature ("it", the subject) comes back to its
+  // owner's hand unless the targeted opponent pays the life to keep it dead.
+  const returnUnlessPay = sentence.match(
+    /^return it to your hand unless target opponent pays (\d+) life$/i,
+  );
+  if (returnUnlessPay?.[1]) {
+    return {
+      targetRequirements: [{ kind: "opponent" }],
+      effects: [
+        {
+          kind: "unless_pays",
+          playerId: { type: "chosen", index: 0 },
+          cost: "",
+          life: Number(returnUnlessPay[1]),
+          effects: [{ kind: "move_card", cardId: "subject_card", toZone: "hand" }],
+        },
+      ],
+    };
   }
 
   // Rancor: the Aura's own dies trigger sends it home. "It" is the trigger's
@@ -13677,6 +13698,16 @@ function parseTriggerHead(head: string): TriggerHead | null {
       subjectFilter: { typesAny: ["creature", "artifact"] },
     };
   }
+  // Athreos, God of Passage: watches creatures you OWN, not merely control —
+  // a creature stolen from you still comes home when it dies.
+  if (/^Whenever another creature you own dies$/i.test(text)) {
+    return {
+      event: "dies",
+      watch: "any",
+      excludeSelf: true,
+      subjectFilter: { types: ["creature"], ownedByYou: true },
+    };
+  }
   if (/^Whenever another creature you control dies$/i.test(text)) {
     return {
       event: "dies",
@@ -18893,15 +18924,20 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
       continue;
     }
 
-    // Theros gods: the devotion type gate.
+    // Theros gods: the devotion type gate. Athreos and the other two-color
+    // gods read devotion to a PAIR of colours (a hybrid pip that is either
+    // colour still counts once, which devotionPips handles).
     const devotionGate = sentence.match(
-      /^As long as your devotion to (white|blue|black|red|green) is less than (\w+), ~ isn't a creature$/i,
+      /^As long as your devotion to (white|blue|black|red|green)(?: and (white|blue|black|red|green))? is less than (\w+), ~ isn't a creature$/i,
     );
-    if (devotionGate?.[1] && devotionGate[2]) {
-      const threshold = parseCount(devotionGate[2]);
-      const color = COLOR_WORDS[devotionGate[1].toLowerCase()];
-      if (threshold && color) {
-        result.notCreatureBelowDevotion = { color, threshold };
+    if (devotionGate?.[1] && devotionGate[3]) {
+      const threshold = parseCount(devotionGate[3]);
+      const colors = [
+        COLOR_WORDS[devotionGate[1].toLowerCase()],
+        ...(devotionGate[2] ? [COLOR_WORDS[devotionGate[2].toLowerCase()]] : []),
+      ].filter((c): c is Color => Boolean(c));
+      if (threshold && colors.length > 0) {
+        result.notCreatureBelowDevotion = { colors, threshold };
         continue;
       }
     }

@@ -994,15 +994,19 @@ export function parseGameState(json: string): GameState {
       ...(isRecord(def.notCreatureBelowDevotion)
         ? {
             notCreatureBelowDevotion: (() => {
-              const color = expectString(
-                def.notCreatureBelowDevotion.color,
-                `definition.${id}.notCreatureBelowDevotion.color`,
-              );
-              if (!(COLOR_KEYS as readonly string[]).includes(color)) {
-                throw new Error(`Invalid definition.${id}.notCreatureBelowDevotion.color`);
+              const rawColors = def.notCreatureBelowDevotion.colors;
+              if (!Array.isArray(rawColors) || rawColors.length === 0) {
+                throw new Error(`Invalid definition.${id}.notCreatureBelowDevotion.colors`);
               }
+              const colors = rawColors.map((entry) => {
+                const color = expectString(entry, `definition.${id}.notCreatureBelowDevotion.colors`);
+                if (!(COLOR_KEYS as readonly string[]).includes(color)) {
+                  throw new Error(`Invalid definition.${id}.notCreatureBelowDevotion.colors`);
+                }
+                return color as Color;
+              });
               return {
-                color: color as Color,
+                colors,
                 threshold: expectNumber(
                   def.notCreatureBelowDevotion.threshold,
                   `definition.${id}.notCreatureBelowDevotion.threshold`,
