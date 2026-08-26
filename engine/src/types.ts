@@ -2866,7 +2866,12 @@ export type GameEffect =
       opponentsOnly?: boolean;
     }
   /** Ephemerate: exile a permanent and return it immediately (re-enters fresh). */
-  | { kind: "flicker"; cardId: CardInstanceId }
+  | {
+      kind: "flicker";
+      cardId: CardInstanceId;
+      /** Lilysplash Mentor: "then return it ... with a +1/+1 counter on it." */
+      withCounter?: { counter: string; amount: number };
+    }
   /** Enduring cycle: a dead creature-enchantment returns as a pure
    * enchantment (a cloned definition without the creature type). */
   | { kind: "return_self_as_enchantment"; cardId: CardInstanceId }
@@ -4621,7 +4626,7 @@ export type CardEffect =
       /** Blazing Volley: only creatures your opponents control. */
       opponentsOnly?: boolean;
     }
-  | { kind: "flicker"; cardId: CardIdSelector }
+  | { kind: "flicker"; cardId: CardIdSelector; withCounter?: { counter: string; amount: number } }
   /** Enduring cycle: "return it to the battlefield … It's an enchantment." */
   | { kind: "return_self_as_enchantment"; cardId: CardIdSelector }
   /** "You get an emblem with …" (Elspeth, Sun's Champion). */

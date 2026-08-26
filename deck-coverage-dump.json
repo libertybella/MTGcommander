@@ -1801,7 +1801,7 @@
   "Underground Mortuary": true,
   "Aesi, Tyrant of Gyre Strait": true,
   "Grolnok, the Omnivore": false,
-  "Lilysplash Mentor": false,
+  "Lilysplash Mentor": true,
   "Lumra, Bellow of the Woods": true,
   "Poison Dart Frog": true,
   "Pollywog Prodigy": true,
@@ -7871,12 +7871,6 @@
    "type": "Legendary Creature — Frog",
    "notes": [
     "Some oracle text is not compiled: Whenever a permanent card is put into your graveyard from your library, exile it with a croak counter on it; You may play lands and cast spells from among cards you own in exile with croak counters on them."
-   ]
-  },
-  "Lilysplash Mentor": {
-   "type": "Creature — Frog Druid",
-   "notes": [
-    "Some oracle text is not compiled: {1}{G}{U}: Exile another target creature you control, then return it to the battlefield under its owner's control with a +1/+1 counter on it; Activate only as a sorcery."
    ]
   },
   "Counterbalance": {
@@ -14150,12 +14144,11 @@
   {
    "commander": "Glarb, Calamity's Augur",
    "rank": 39,
-   "slots": 6,
+   "slots": 5,
    "misses": [
     "Hedge Shredder",
     "Colossal Grave-Reaver",
     "Grolnok, the Omnivore",
-    "Lilysplash Mentor",
     "Muldrotha, the Gravetide",
     "Counterbalance"
    ]

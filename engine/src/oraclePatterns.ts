@@ -9491,13 +9491,21 @@ function compileSimpleClauseInner(sentence: string): SimpleClause | null {
   }
 
   match = sentence.match(
-    /^(?:you may )?Exile (.+?), then return (?:it|that card) to the battlefield(?: under (?:its owner's|your) control)?$/i,
+    /^(?:you may )?Exile (.+?), then return (?:it|that card) to the battlefield(?: under (?:its owner's|your) control)?(?: with an? (\+\d\/\+\d|[\w-]+) counters? on it)?$/i,
   );
   const flickerTarget = match?.[1] ? parseSimpleTargetPhrase(match[1]) : null;
   if (flickerTarget) {
     return {
       targetRequirements: [flickerTarget],
-      effects: [{ kind: "flicker", cardId: { type: "chosen", index: 0 } }],
+      effects: [
+        {
+          kind: "flicker",
+          cardId: { type: "chosen", index: 0 },
+          ...(match?.[2]
+            ? { withCounter: { counter: counterKeyOf(match[2].toLowerCase()), amount: 1 } }
+            : {}),
+        },
+      ],
     };
   }
 

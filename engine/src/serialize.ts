@@ -5512,7 +5512,18 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
         ...(value.opponentsOnly === true ? { opponentsOnly: true } : {}),
       };
     case "flicker":
-      return { kind, cardId: parseCardIdSelector(value.cardId, `${label}.cardId`) };
+      return {
+        kind,
+        cardId: parseCardIdSelector(value.cardId, `${label}.cardId`),
+        ...(isRecord(value.withCounter)
+          ? {
+              withCounter: {
+                counter: expectString(value.withCounter.counter, `${label}.withCounter.counter`),
+                amount: expectNumber(value.withCounter.amount, `${label}.withCounter.amount`),
+              },
+            }
+          : {}),
+      };
     case "return_self_as_enchantment":
       return { kind, cardId: parseCardIdSelector(value.cardId, `${label}.cardId`) };
     case "germ_attach":
@@ -7814,7 +7825,18 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
     };
   }
   if (kind === "flicker") {
-    return { kind, cardId: expectString(value.cardId, `${label}.cardId`) };
+    return {
+      kind,
+      cardId: expectString(value.cardId, `${label}.cardId`),
+      ...(isRecord(value.withCounter)
+        ? {
+            withCounter: {
+              counter: expectString(value.withCounter.counter, `${label}.withCounter.counter`),
+              amount: expectNumber(value.withCounter.amount, `${label}.withCounter.amount`),
+            },
+          }
+        : {}),
+    };
   }
   if (kind === "return_self_as_enchantment") {
     return { kind, cardId: expectString(value.cardId, `${label}.cardId`) };

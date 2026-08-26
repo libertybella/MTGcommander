@@ -74840,3 +74840,54 @@ describe("wave 473: Enhanced Surveillance — deeper surveils and a graveyard re
     for (const id of graveIds) expect(act.cards[id]?.zone).toBe("library");
   });
 });
+
+describe("wave 474: Lilysplash Mentor — blink a creature back with a +1/+1 counter", () => {
+  const compileLily = () =>
+    compileOracleCard({
+      oracleId: "lilysplash-mentor", name: "Lilysplash Mentor", manaCost: "{2}{G}{U}",
+      typeLine: "Creature — Frog Druid", power: "2", toughness: "3", printedKeywords: [], imageUrl: "",
+      oracleText:
+        "Reach\n{1}{G}{U}: Exile another target creature you control, then return it to the battlefield under its owner's control with a +1/+1 counter on it. Activate only as a sorcery.",
+    });
+
+  it("compiles the sorcery-speed blink with a +1/+1 counter", () => {
+    const c = compileLily();
+    expect(c.notes).toEqual([]);
+    expect(c.definition.keywords).toContain("reach");
+    expect(c.definition.activated?.[0]).toMatchObject({
+      manaCost: "{1}{G}{U}", timing: "sorcery",
+      effects: [{ kind: "flicker", withCounter: { counter: "p1p1", amount: 1 } }],
+      targetRequirements: [{ kind: "creature", control: "own", excludeSource: true }],
+    });
+  });
+
+  const put = (game: GameState, ownerId: string, definition: CardDefinition) => {
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({ definitionId: definition.id, ownerId, zone: "battlefield" });
+    card.summoningSick = false;
+    game.cards[card.id] = card;
+    game.players.find((e) => e.id === ownerId)!.zones.battlefield.push(card.id);
+    return card.id;
+  };
+
+  it("flickers the target and it comes back with a +1/+1 counter", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 10);
+    const lily = put(game, p1.id, compileLily().definition);
+    const bearId = put(game, p1.id, createCardDefinition({ name: "Bear", typeLine: "Creature — Bear", manaCost: "{1}{G}", power: 2, toughness: 2 }));
+
+    const ready = advanceSteps(game, 3);
+    ready.priorityPlayerId = p1.id;
+    ready.players[0]!.mana = { W: 0, U: 1, B: 0, R: 0, G: 1, C: 1 };
+    expect(creaturePower(ready, bearId)).toBe(2);
+
+    let act = applyAction(ready, { kind: "activate_ability", playerId: p1.id, cardId: lily, abilityIndex: 0, targets: [{ type: "creature", cardId: bearId }] });
+    while (act.stack.length > 0) act = resolveTopOfStack(act);
+
+    // The Bear was blinked home with a +1/+1 counter: it is on the battlefield at 3/3.
+    expect(act.cards[bearId]?.zone).toBe("battlefield");
+    expect(act.cards[bearId]?.counters.p1p1).toBe(1);
+    expect(creaturePower(act, bearId)).toBe(3);
+    expect(creatureToughness(act, bearId)).toBe(3);
+  });
+});

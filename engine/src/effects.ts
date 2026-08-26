@@ -2221,7 +2221,11 @@ export function bindCardEffect(
       if (!cardId) {
         return null;
       }
-      return { kind: "flicker", cardId };
+      return {
+        kind: "flicker",
+        cardId,
+        ...(effect.withCounter ? { withCounter: { ...effect.withCounter } } : {}),
+      };
     }
     case "add_subtypes_all": {
       const playerId = bindPlayerSelector(state, effect.playerId, context);
@@ -7349,6 +7353,15 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
           const returned = next.cards[effect.cardId];
           if (returned && returned.zone === "battlefield") {
             returned.controllerId = returned.ownerId;
+            // Lilysplash Mentor: it comes back with a +1/+1 counter. A blinked
+            // permanent is a new object, so this is the only counter it has.
+            if (effect.withCounter) {
+              returned.counters = {
+                ...returned.counters,
+                [effect.withCounter.counter]:
+                  (returned.counters[effect.withCounter.counter] ?? 0) + effect.withCounter.amount,
+              };
+            }
           }
         }
         break;
