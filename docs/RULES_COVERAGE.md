@@ -3074,3 +3074,4 @@ ends. Every printed card of this shape asks about the current turn.
 - One-sided creature sweep: "deals N damage to each creature your opponents control" (Blazing Volley) — a damage_all that spares your own creatures.
 - Passive counter-added trigger + "put that many <named> counters on ~" (Simic Ascendancy) — transfers the +1/+1 counters just added onto the source as a named counter.
 - Oblivion Ring mechanic (CR 603.6e-style): "when ~ enters, exile target <scope> until ~ leaves the battlefield" — the exiled card is tagged and returns to its owner when the source leaves (Banisher Priest, White Auracite, and the wider O-ring family).
+- Oblivion Ring mechanic, two-sentence form: a separate ETB "exile [another] target <scope>" paired with "when ~ leaves the battlefield, return the exiled card" (Journey to Nowhere, Oblivion Ring, Fiend Hunter) now compiles to the same exile-and-return trigger pair as the one-sentence "until ~ leaves" wording.

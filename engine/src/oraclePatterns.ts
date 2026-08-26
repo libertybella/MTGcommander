@@ -19685,6 +19685,42 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
       }
     }
 
+    // Journey to Nowhere / Oblivion Ring / Fiend Hunter: the two-sentence
+    // form. "When ~ enters, [you may ]exile [another ]target <scope>." paired
+    // with a SEPARATE "When ~ leaves the battlefield, return the exiled card
+    // to the battlefield under its owner's control." Same pair of triggers as
+    // the one-sentence "until ~ leaves" form above. The "you may" is treated
+    // as a mandatory exile — there is no bare optional-effect wrapper, and the
+    // choice is all but automatic. Gated on the return sentence actually being
+    // present, so a plain ETB exile is left alone; the whole scope (including a
+    // leading "another") is handed to parseSimpleTargetPhrase so excludeSource
+    // survives.
+    const oRingSplit = sentence.match(/^When ~ enters, (?:you may )?exile (.+)$/i);
+    const RETURN_EXILED =
+      /^When ~ leaves the battlefield, return the exiled card to the battlefield under its owner's control$/i;
+    if (oRingSplit?.[1] && sentences.some((other) => RETURN_EXILED.test((other ?? "").trim()))) {
+      const req = parseSimpleTargetPhrase(oRingSplit[1].trim());
+      if (req) {
+        result.triggers.push({
+          event: "enter_battlefield",
+          effects: [
+            { kind: "exile_until_source_leaves", target: { type: "chosen", index: 0 } },
+          ],
+          targetRequirements: [req],
+        });
+        result.triggers.push({
+          event: "leaves_battlefield",
+          watch: "self",
+          effects: [{ kind: "return_exiled_by_source" }],
+          targetRequirements: [],
+        });
+        for (let other = 0; other < sentences.length; other += 1) {
+          if (RETURN_EXILED.test((sentences[other] ?? "").trim())) sentences[other] = "";
+        }
+        continue;
+      }
+    }
+
     const etb = sentence.match(/^When ~ enters, (.+)$/i);
     if (etb?.[1]) {
       // Garruk's Uprising: peel an intervening "if" off the ETB body.

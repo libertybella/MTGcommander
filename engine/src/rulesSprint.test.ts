@@ -72173,3 +72173,78 @@ describe("wave 440: Oblivion Ring mechanic (exile until ~ leaves)", () => {
     expect(round.definitions[game.cards[priestId]!.definitionId]?.triggers).toHaveLength(2);
   });
 });
+
+describe("wave 441: Oblivion Ring mechanic (two-sentence form)", () => {
+  const compile = (name: string, oracleText: string) =>
+    compileOracleCard({
+      oracleId: name.toLowerCase().replace(/[^a-z]+/g, "-"),
+      name,
+      manaCost: "{1}{W}",
+      typeLine: "Enchantment",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  it("pairs a separate enter-exile and leave-return into two triggers (Journey to Nowhere)", () => {
+    const compiled = compile(
+      "Journey to Nowhere",
+      "When Journey to Nowhere enters, exile target creature.\nWhen Journey to Nowhere leaves the battlefield, return the exiled card to the battlefield under its owner's control.",
+    );
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.triggers).toHaveLength(2);
+    expect(compiled.definition.triggers[0]).toMatchObject({
+      event: "enter_battlefield",
+      effects: [{ kind: "exile_until_source_leaves", target: { type: "chosen", index: 0 } }],
+      targetRequirements: [{ kind: "creature" }],
+    });
+    expect(compiled.definition.triggers[1]).toMatchObject({
+      event: "leaves_battlefield",
+      watch: "self",
+      effects: [{ kind: "return_exiled_by_source" }],
+    });
+  });
+
+  it("keeps excludeSource from 'another target' and the nonland-permanent scope (Oblivion Ring)", () => {
+    const compiled = compile(
+      "Oblivion Ring",
+      "When Oblivion Ring enters, exile another target nonland permanent.\nWhen Oblivion Ring leaves the battlefield, return the exiled card to the battlefield under its owner's control.",
+    );
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.triggers).toHaveLength(2);
+    expect(compiled.definition.triggers[0]?.targetRequirements?.[0]).toMatchObject({
+      kind: "nonland_permanent",
+      excludeSource: true,
+    });
+  });
+
+  it("reads the 'you may exile' wording (Fiend Hunter) as the same pair", () => {
+    const compiled = compile(
+      "Fiend Hunter",
+      "When Fiend Hunter enters, you may exile another target creature.\nWhen Fiend Hunter leaves the battlefield, return the exiled card to the battlefield under its owner's control.",
+    );
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.triggers).toHaveLength(2);
+    expect(compiled.definition.triggers[0]).toMatchObject({
+      event: "enter_battlefield",
+      effects: [{ kind: "exile_until_source_leaves", target: { type: "chosen", index: 0 } }],
+    });
+    expect(compiled.definition.triggers[0]?.targetRequirements?.[0]).toMatchObject({
+      kind: "creature",
+      excludeSource: true,
+    });
+  });
+
+  it("leaves a plain ETB exile with no return clause untouched", () => {
+    const compiled = compile(
+      "Plain Exiler",
+      "When Plain Exiler enters, exile target creature.",
+    );
+    const hasOring = (compiled.definition.triggers ?? []).some((t) =>
+      (t.effects ?? []).some((e) => e.kind === "exile_until_source_leaves"),
+    );
+    expect(hasOring).toBe(false);
+  });
+});
