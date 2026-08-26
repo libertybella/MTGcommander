@@ -73364,3 +73364,58 @@ describe("wave 454: Sigil of Sleep (bounce a creature THAT player controls)", ()
     expect(next.players.find((e) => e.id === p2.id)!.zones.hand).toContain(victimId);
   });
 });
+
+describe("wave 455: 'Activate only once each turn' on an activated ability", () => {
+  const compileWall = () =>
+    compileOracleCard({
+      oracleId: "wall-of-roots",
+      name: "Wall of Roots",
+      manaCost: "{1}{G}",
+      typeLine: "Creature — Plant Wall",
+      power: "0",
+      toughness: "5",
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText: "Defender\nPut a -0/-1 counter on Wall of Roots: Add {G}. Activate only once each turn.",
+    });
+
+  it("compiles the cap onto the activated ability", () => {
+    const compiled = compileWall();
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.activated?.[0]?.oncePerTurn).toBe(true);
+  });
+
+  const mainPhase = (game: GameState, id: string) => {
+    game.turn.activePlayerId = id;
+    game.turn.phase = "precombatMain";
+    game.turn.step = "precombatMain";
+    game.priorityPlayerId = id;
+  };
+
+  it("produces mana once, then refuses a second activation the same turn", () => {
+    const { game, p1 } = twoPlayers();
+    const def = compileWall().definition;
+    game.definitions[def.id] = def;
+    const wall = createCardInstance({ definitionId: def.id, ownerId: p1.id, zone: "battlefield" });
+    wall.summoningSick = false;
+    game.cards[wall.id] = wall;
+    game.players.find((e) => e.id === p1.id)!.zones.battlefield.push(wall.id);
+    mainPhase(game, p1.id);
+
+    // First activation: pay the -0/-1 counter, resolve, get {G}.
+    let next = applyAction(game, { kind: "activate_ability", playerId: p1.id, cardId: wall.id, abilityIndex: 0 });
+    expect(next.cards[wall.id]?.counters["-0/-1"]).toBe(1);
+    while (next.stack.length > 0) next = resolveTopOfStack(next);
+    expect(next.players.find((e) => e.id === p1.id)!.mana.G).toBe(1);
+
+    // Second activation this turn is refused.
+    expect(() =>
+      applyAction(next, { kind: "activate_ability", playerId: p1.id, cardId: wall.id, abilityIndex: 0 }),
+    ).toThrow(/once each turn/);
+
+    // A new turn clears the cap — it can be activated again.
+    next.oncePerTurnFired = [];
+    const again = applyAction(next, { kind: "activate_ability", playerId: p1.id, cardId: wall.id, abilityIndex: 0 });
+    expect(again.cards[wall.id]?.counters["-0/-1"]).toBe(2);
+  });
+});

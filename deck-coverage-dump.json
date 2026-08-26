@@ -1915,7 +1915,7 @@
   "Wall of Glare": false,
   "Wall of Junk": false,
   "Wall of Omens": true,
-  "Wall of Roots": false,
+  "Wall of Roots": true,
   "Wall of Runes": true,
   "Wall of Stolen Identity": false,
   "Wall of Tanglecord": true,
@@ -3442,7 +3442,7 @@
   "Magda, the Hoardmaster": false,
   "Plundering Barbarian": true,
   "Spark Mage": false,
-  "Three Tree Mascot": false,
+  "Three Tree Mascot": true,
   "Universal Automaton": true,
   "Vault Robber": true,
   "Óin the Brave": false,
@@ -3689,7 +3689,7 @@
   "Ramos, Dragon Engine": {
    "type": "Legendary Artifact Creature — Dragon",
    "notes": [
-    "Some oracle text is not compiled: Whenever you cast a spell, put a +1/+1 counter on ~ for each of that spell's colors; Activate only once each turn."
+    "Some oracle text is not compiled: Whenever you cast a spell, put a +1/+1 counter on ~ for each of that spell's colors."
    ]
   },
   "Rith, Liberated Primeval": {
@@ -8261,12 +8261,6 @@
     "Some oracle text is not compiled: When ~ blocks, return it to its owner's hand at end of combat."
    ]
   },
-  "Wall of Roots": {
-   "type": "Creature — Plant Wall",
-   "notes": [
-    "Some oracle text is not compiled: Activate only once each turn."
-   ]
-  },
   "Wall of Stolen Identity": {
    "type": "Creature — Shapeshifter Wall",
    "notes": [
@@ -12200,7 +12194,7 @@
   "Beledros Witherbloom": {
    "type": "Legendary Creature — Elder Dragon",
    "notes": [
-    "Some oracle text is not compiled: At the beginning of each upkeep, create a 1/1 black and green Pest creature token with \"When this token dies, you gain 1 life.\"; Activate only once each turn."
+    "Some oracle text is not compiled: At the beginning of each upkeep, create a 1/1 black and green Pest creature token with \"When this token dies, you gain 1 life.\"."
    ]
   },
   "Celestine, the Living Saint": {
@@ -13823,12 +13817,6 @@
    "type": "Creature — Dwarf Wizard",
    "notes": [
     "Some oracle text is not compiled: Whenever ~ deals combat damage to a player, you may have ~ deal 1 damage to target creature that player controls."
-   ]
-  },
-  "Three Tree Mascot": {
-   "type": "Artifact Creature — Shapeshifter",
-   "notes": [
-    "Some oracle text is not compiled: Activate only once each turn."
    ]
   },
   "Óin the Brave": {
@@ -15632,6 +15620,37 @@
    ]
   },
   {
+   "commander": "Arcades, the Strategist",
+   "rank": 44,
+   "slots": 24,
+   "misses": [
+    "Meekstone",
+    "Rammas Echor, Ancient Shield",
+    "Axebane Guardian",
+    "Corrupted Shapeshifter",
+    "Crystal Barricade",
+    "Jeskai Barricade",
+    "Perimeter Captain",
+    "Shield Sphere",
+    "Stalwart Shield-Bearers",
+    "The Pride of Hull Clade",
+    "Tree of Redemption",
+    "Walking Bulwark",
+    "Wall of Frost",
+    "Wall of Glare",
+    "Wall of Junk",
+    "Wall of Stolen Identity",
+    "Weathered Sentinels",
+    "Wingmantle Chaplain",
+    "Assault Formation",
+    "High Alert",
+    "Huatli, the Sun's Heart",
+    "Expel the Interlopers",
+    "Slaughter the Strong",
+    "Arcades, the Strategist (commander)"
+   ]
+  },
+  {
    "commander": "Wilhelt, the Rotcleaver",
    "rank": 49,
    "slots": 24,
@@ -15849,38 +15868,6 @@
     "Ultimate Magic: Holy",
     "Unfinished Business",
     "Cloud, Ex-SOLDIER (commander)"
-   ]
-  },
-  {
-   "commander": "Arcades, the Strategist",
-   "rank": 44,
-   "slots": 25,
-   "misses": [
-    "Meekstone",
-    "Rammas Echor, Ancient Shield",
-    "Axebane Guardian",
-    "Corrupted Shapeshifter",
-    "Crystal Barricade",
-    "Jeskai Barricade",
-    "Perimeter Captain",
-    "Shield Sphere",
-    "Stalwart Shield-Bearers",
-    "The Pride of Hull Clade",
-    "Tree of Redemption",
-    "Walking Bulwark",
-    "Wall of Frost",
-    "Wall of Glare",
-    "Wall of Junk",
-    "Wall of Roots",
-    "Wall of Stolen Identity",
-    "Weathered Sentinels",
-    "Wingmantle Chaplain",
-    "Assault Formation",
-    "High Alert",
-    "Huatli, the Sun's Heart",
-    "Expel the Interlopers",
-    "Slaughter the Strong",
-    "Arcades, the Strategist (commander)"
    ]
   },
   {
@@ -16120,7 +16107,7 @@
   {
    "commander": "Magda, Brazen Outlaw",
    "rank": 97,
-   "slots": 28,
+   "slots": 27,
    "misses": [
     "Clock of Omens",
     "Clown Car",
@@ -16144,7 +16131,6 @@
     "Liberated Dwarf",
     "Magda, the Hoardmaster",
     "Spark Mage",
-    "Three Tree Mascot",
     "Óin the Brave",
     "Blood Moon",
     "Sticky Fingers",
@@ -16155,7 +16141,7 @@
   {
    "commander": "Felothar the Steadfast",
    "rank": 72,
-   "slots": 29,
+   "slots": 28,
    "misses": [
     "Colfenor's Urn",
     "Arbor Adherent",
@@ -16175,7 +16161,6 @@
     "Towering Titan",
     "Tree of Redemption",
     "Walking Bulwark",
-    "Wall of Roots",
     "Weathered Sentinels",
     "Assault Formation",
     "Jaws of Defeat",

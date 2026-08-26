@@ -5591,6 +5591,7 @@ function parseActivatedAbilities(value: unknown, label: string): ActivatedAbilit
             ),
           }),
       ...(entry.exileSelf === true ? { exileSelf: true } : {}),
+      ...(entry.oncePerTurn === true ? { oncePerTurn: true } : {}),
       ...(entry.costTapCreatureOther === true ? { costTapCreatureOther: true } : {}),
       ...(entry.legendaryDiscount === true ? { legendaryDiscount: true } : {}),
       ...(entry.subtypeDiscount === undefined
@@ -6872,6 +6873,7 @@ function parseManaAbilities(value: unknown, label: string): ManaAbility[] {
         : {}),
       ...(entry.countFromEnchantments === true ? { countFromEnchantments: true } : {}),
       ...(entry.countFromArtifacts === true ? { countFromArtifacts: true } : {}),
+      ...(entry.oncePerTurn === true ? { oncePerTurn: true } : {}),
       ...(isRecord(entry.requiresManaCounters)
         ? {
             requiresManaCounters: {

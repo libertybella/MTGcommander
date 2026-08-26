@@ -1678,6 +1678,12 @@ function applyTapForMana(
       exerted.skipNextUntap = true;
     }
   }
+  if (ability.oncePerTurn) {
+    const onceKey = `${cardId}:mana-once`;
+    if (!next.oncePerTurnFired.includes(onceKey)) {
+      next.oncePerTurnFired.push(onceKey);
+    }
+  }
   next.priorityPlayerId = playerId;
   // City of Brass: "Whenever this land becomes tapped". Forbidden Orchard
   // asks the narrower question, so both events fire from the one tap.
@@ -1850,6 +1856,9 @@ function applyActivateAbility(
   const ability = activatedOf(state, cardId)[abilityIndex];
   if (!ability) {
     throw new Error(`Unknown activated ability ${abilityIndex}`);
+  }
+  if (ability.oncePerTurn && state.oncePerTurnFired.includes(`${cardId}:act-once`)) {
+    throw new Error("That ability can only be activated once each turn");
   }
   if (card.zone === "battlefield" && abilitiesRemoved(state, cardId)) {
     throw new Error(`Card ${cardId} has lost its abilities`);
@@ -2060,6 +2069,12 @@ function applyActivateAbility(
     throw new Error("Cannot pay that ability's cost");
   }
   let next = payManaCost(state, playerId, cost);
+  if (ability.oncePerTurn) {
+    const onceKey = `${cardId}:act-once`;
+    if (!next.oncePerTurnFired.includes(onceKey)) {
+      next.oncePerTurnFired.push(onceKey);
+    }
+  }
   if (lifeDue > 0) {
     const payer = next.players.find((entry) => entry.id === playerId)!;
     payer.life -= lifeDue;

@@ -187,6 +187,11 @@ function manaGateSatisfied(
       return false;
     }
   }
+  // Three Tree Mascot: "Activate only once each turn" — once spent this turn,
+  // the ability is no longer offered.
+  if (ability.oncePerTurn && sourceId && state.oncePerTurnFired.includes(`${sourceId}:mana-once`)) {
+    return false;
+  }
   // Uthros: a Station threshold — this many charge counters on the source.
   if (ability.requiresManaCounters && sourceId) {
     const have = state.cards[sourceId]?.counters[ability.requiresManaCounters.counter] ?? 0;

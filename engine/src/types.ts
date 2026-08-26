@@ -5744,6 +5744,9 @@ export type ActivatedAbility = {
   exertSelf?: boolean;
   /** Spirit Guides: exiling this card (from hand) is part of the cost. */
   exileSelf?: boolean;
+  /** Wall of Roots / Three Tree Mascot: "Activate only once each turn" —
+   * tracked in oncePerTurnFired under `<cardId>:act-once`. */
+  oncePerTurn?: boolean;
   /** Uthros / Station: tapping ANOTHER untapped creature you control is the
    * cost. The tapped creature's power is captured (as sacrificedPower) so an
    * effect can read "equal to its power". */
@@ -5982,6 +5985,10 @@ export type ManaAbility = {
   costDiscardHand?: boolean;
   /** The ability has no {T} in its cost (usable while tapped, repeatable). */
   noTap?: boolean;
+  /** Three Tree Mascot / Vivi Ornitier: "Activate only once each turn" — the
+   * source may tap for this at most once per turn, tracked in oncePerTurnFired
+   * under `<cardId>:mana-once`. */
+  oncePerTurn?: boolean;
   /** Kami of Whispered Hopes: the amount is the creature's power at tap. */
   countFromPower?: boolean;
   /** Nykthos: the amount is the controller's devotion to the chosen color. */

@@ -484,6 +484,9 @@ function abilityUsable(
   if (ability.timing === "sorcery" && !inSorceryWindow(state, playerId)) {
     return false;
   }
+  if (ability.oncePerTurn && state.oncePerTurnFired.includes(`${card.id}:act-once`)) {
+    return false;
+  }
   if (
     ability.requiresControlled &&
     !controlsMatching(state, playerId, ability.requiresControlled)

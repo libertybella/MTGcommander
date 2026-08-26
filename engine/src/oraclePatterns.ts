@@ -21631,6 +21631,26 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
       }
     }
 
+    // Three Tree Mascot / Vivi Ornitier: "Activate only once each turn" rides
+    // the mana ability it follows. Only a MANA ability carries it here — an
+    // activated ability with the same rider (Wall of Roots) is left to fail
+    // honestly rather than compile a cap this does not yet enforce there.
+    if (/^Activate (?:this ability )?only once each turn$/i.test(sentence)) {
+      // Both Wall of Roots and Three Tree Mascot compile their mana-making
+      // line as an ACTIVATED ability (an add_mana effect with a cost), so the
+      // rider rides that; a true mana ability (Vivi) is the fallback.
+      const lastActivated = result.activated[result.activated.length - 1];
+      if (lastActivated && !lastActivated.oncePerTurn) {
+        lastActivated.oncePerTurn = true;
+        continue;
+      }
+      const lastMana = result.manaAbilities[result.manaAbilities.length - 1];
+      if (lastMana && !lastMana.oncePerTurn) {
+        lastMana.oncePerTurn = true;
+        continue;
+      }
+    }
+
     const basicSearchRider = controllerBasicSearchRider(
       sentence,
       result.targetRequirements.length - 1,

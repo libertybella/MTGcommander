@@ -352,6 +352,7 @@ export function createCardDefinition(
             : {}),
           ...(ability.countFromEnchantments ? { countFromEnchantments: true } : {}),
           ...(ability.countFromArtifacts ? { countFromArtifacts: true } : {}),
+          ...(ability.oncePerTurn ? { oncePerTurn: true } : {}),
           ...(ability.requiresManaCounters
             ? { requiresManaCounters: { ...ability.requiresManaCounters } }
             : {}),
@@ -412,6 +413,7 @@ export function createCardDefinition(
               }
             : {}),
           ...(ability.exileSelf ? { exileSelf: true } : {}),
+          ...(ability.oncePerTurn ? { oncePerTurn: true } : {}),
           ...(ability.costTapCreatureOther ? { costTapCreatureOther: true } : {}),
           ...(ability.legendaryDiscount ? { legendaryDiscount: true } : {}),
           ...(ability.subtypeDiscount ? { subtypeDiscount: ability.subtypeDiscount } : {}),
