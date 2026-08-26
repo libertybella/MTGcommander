@@ -6168,6 +6168,14 @@ function compileSimpleClauseInner(sentence: string): SimpleClause | null {
     }
   }
 
+  // Mind Spring / Braingeyser-style: "Draw X cards", the announced X.
+  if (/^(?:you )?draw X cards$/i.test(sentence)) {
+    return {
+      targetRequirements: [],
+      effects: [{ kind: "draw", playerId: "controller", count: "x" }],
+    };
+  }
+
   // Return of the Wildspeaker: the count reads the board at resolution.
   // Last March of the Ents asks the same question about toughness, so the
   // axis is a capture rather than a second pattern.

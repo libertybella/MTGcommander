@@ -70914,3 +70914,53 @@ describe("wave 426: Afterlife", () => {
     });
   });
 });
+
+describe("wave 427: Draw X cards", () => {
+  const compile = (name: string, typeLine: string, manaCost: string, oracleText: string) =>
+    compileOracleCard({
+      oracleId: name.toLowerCase().replace(/[^a-z]+/g, "-"),
+      name,
+      manaCost,
+      typeLine,
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  it("compiles bare 'Draw X cards' as an X-scaled draw", () => {
+    const compiled = compile("Mind Spring", "Sorcery", "{X}{U}{U}", "Draw X cards.");
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.effects).toEqual([{ kind: "draw", playerId: "controller", count: "x" }]);
+  });
+
+  it("leaves the fixed draw count alone", () => {
+    const compiled = compile("Divination", "Sorcery", "{2}{U}", "Draw two cards.");
+    expect(compiled.definition.effects).toEqual([{ kind: "draw", playerId: "controller", count: 2 }]);
+  });
+
+  it("draws the announced X at resolution", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const before = game.players.find((entry) => entry.id === p1.id)!.zones.hand.length;
+    const bound = bindCardEffects(
+      game,
+      [{ kind: "draw", playerId: "controller", count: "x" }],
+      { controllerId: p1.id, sourceId: null, xValue: 3, targets: [], targetRequirements: [] },
+    );
+    const after = applyEffects(game, bound);
+    const drew = after.players.find((entry) => entry.id === p1.id)!.zones.hand.length - before;
+    expect(drew).toBe(3);
+  });
+
+  it("round trips the X draw", () => {
+    const compiled = compile("Mind Spring", "Sorcery", "{X}{U}{U}", "Draw X cards.");
+    const { game } = twoPlayers();
+    game.definitions[compiled.definition.id] = compiled.definition;
+    const round = parseGameState(serializeGameState(game));
+    expect(round.definitions[compiled.definition.id]?.effects).toEqual([
+      { kind: "draw", playerId: "controller", count: "x" },
+    ]);
+  });
+});
