@@ -2588,6 +2588,19 @@ function foldSacrificeRider(effects: CardEffect[], sentence: string): boolean {
 }
 
 function foldSubjectRider(effects: CardEffect[], sentence: string): boolean {
+  // Wake the Past: "They gain haste until end of turn" rides a mass return
+  // from the graveyard, which is neither a token nor a single move_card, so
+  // it is folded here before the token/permanent search below reaches for a
+  // `last` it would never find.
+  if (/^(?:It|They) gains? haste(?: until end of turn)?$/i.test(sentence)) {
+    for (let i = effects.length - 1; i >= 0; i -= 1) {
+      const effect = effects[i];
+      if (effect?.kind === "return_all_from_graveyard") {
+        effect.gainsHaste = true;
+        return true;
+      }
+    }
+  }
   // Search BACKWARDS for the effect that made the permanent, rather than
   // insisting it be the very last one. "It gains haste until end of turn"
   // compiles as a clause of its own and lands between the token creation
@@ -8910,6 +8923,23 @@ function compileSimpleClauseInner(sentence: string): SimpleClause | null {
     return {
       targetRequirements: [],
       effects: [{ kind: "mass_reanimate", playerId: "controller" }],
+    };
+  }
+
+  // Wake the Past: a mass return of one card type from YOUR own graveyard.
+  const massReturn = sentence.match(
+    /^Return all (artifact|creature|enchantment|planeswalker) cards from your graveyard to the battlefield$/i,
+  );
+  if (massReturn?.[1]) {
+    return {
+      targetRequirements: [],
+      effects: [
+        {
+          kind: "return_all_from_graveyard",
+          playerId: "controller",
+          cardType: massReturn[1].toLowerCase(),
+        },
+      ],
     };
   }
 

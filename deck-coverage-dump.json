@@ -3229,7 +3229,7 @@
   "Mirrodin Besieged": false,
   "Tempered Steel": true,
   "Master's Call": true,
-  "Wake the Past": false,
+  "Wake the Past": true,
   "Urtet, Remnant of Memnarch": false,
   "Cloud Key": true,
   "Darksteel Reactor": false,
@@ -9860,7 +9860,7 @@
   "Resurgent Belief": {
    "type": "Sorcery",
    "notes": [
-    "Some oracle text is not compiled: Suspend 2—{1}{W}; Return all enchantment cards from your graveyard to the battlefield."
+    "Some oracle text is not compiled: Suspend 2—{1}{W}."
    ]
   },
   "Tom Bombadil": {
@@ -13065,12 +13065,6 @@
     "Some oracle text is not compiled: As ~ enters, choose Mirran or Phyrexian; • Mirran — Whenever you cast an artifact spell, create a 1/1 colorless Myr artifact creature token; • Phyrexian — At the beginning of your end step, draw a card, then discard a card; Then if there are fifteen or more artifact cards in your graveyard, target opponent loses the game."
    ]
   },
-  "Wake the Past": {
-   "type": "Sorcery",
-   "notes": [
-    "Some oracle text is not compiled: Return all artifact cards from your graveyard to the battlefield."
-   ]
-  },
   "Urtet, Remnant of Memnarch": {
    "type": "Legendary Artifact Creature — Myr",
    "notes": [
@@ -13230,7 +13224,7 @@
   "Storm of Souls": {
    "type": "Sorcery",
    "notes": [
-    "Some oracle text is not compiled: Return all creature cards from your graveyard to the battlefield; Each of them is a 1/1 Spirit with flying in addition to its other types."
+    "Some oracle text is not compiled: Each of them is a 1/1 Spirit with flying in addition to its other types."
    ]
   },
   "Zinnia, Valley's Voice": {
@@ -14762,6 +14756,29 @@
    ]
   },
   {
+   "commander": "Urtet, Remnant of Memnarch",
+   "rank": 90,
+   "slots": 16,
+   "misses": [
+    "Clock of Omens",
+    "Genesis Chamber",
+    "Lux Artillery",
+    "Myr Reservoir",
+    "Myr Turbine",
+    "Alibou, Ancient Witness",
+    "Brudiclad, Telchor Engineer",
+    "Frogmyr Enforcer",
+    "Ichorclaw Myr",
+    "Myr Galvanizer",
+    "Myr Superion",
+    "Myr Welder",
+    "Perilous Myr",
+    "Mirrodin Besieged",
+    "Tezzeret, Master of the Bridge",
+    "Urtet, Remnant of Memnarch (commander)"
+   ]
+  },
+  {
    "commander": "Y'shtola, Night's Blessed",
    "rank": 1,
    "slots": 17,
@@ -14882,30 +14899,6 @@
    ]
   },
   {
-   "commander": "Urtet, Remnant of Memnarch",
-   "rank": 90,
-   "slots": 17,
-   "misses": [
-    "Clock of Omens",
-    "Genesis Chamber",
-    "Lux Artillery",
-    "Myr Reservoir",
-    "Myr Turbine",
-    "Alibou, Ancient Witness",
-    "Brudiclad, Telchor Engineer",
-    "Frogmyr Enforcer",
-    "Ichorclaw Myr",
-    "Myr Galvanizer",
-    "Myr Superion",
-    "Myr Welder",
-    "Perilous Myr",
-    "Mirrodin Besieged",
-    "Tezzeret, Master of the Bridge",
-    "Wake the Past",
-    "Urtet, Remnant of Memnarch (commander)"
-   ]
-  },
-  {
    "commander": "Chatterfang, Squirrel General",
    "rank": 29,
    "slots": 18,
@@ -14953,6 +14946,31 @@
     "Invigorate",
     "Villainous Wealth",
     "Kotis, the Fangkeeper (commander)"
+   ]
+  },
+  {
+   "commander": "Ragost, Deft Gastronaut",
+   "rank": 93,
+   "slots": 18,
+   "misses": [
+    "Caduceus, Staff of Hermes",
+    "Lembas",
+    "Scrapheap",
+    "Transmutation Font",
+    "Apothecary White",
+    "Astrid Peth",
+    "Haliya, Guided by Light",
+    "Illustrious Wanderglyph",
+    "Ratchet, Field Medic",
+    "Sami, Wildcat Captain",
+    "Syr Ginger, the Meal Ender",
+    "Treasure Nabber",
+    "Weftstalker Ardent",
+    "Sheltered by Ghosts",
+    "Spirit Loop",
+    "Weapons Manufacturing",
+    "Tezzeret, Cruel Captain",
+    "Ragost, Deft Gastronaut (commander)"
    ]
   },
   {
@@ -15161,32 +15179,6 @@
     "Martial Coup",
     "Storm of Souls",
     "Zinnia, Valley's Voice (commander)"
-   ]
-  },
-  {
-   "commander": "Ragost, Deft Gastronaut",
-   "rank": 93,
-   "slots": 19,
-   "misses": [
-    "Caduceus, Staff of Hermes",
-    "Lembas",
-    "Scrapheap",
-    "Transmutation Font",
-    "Apothecary White",
-    "Astrid Peth",
-    "Haliya, Guided by Light",
-    "Illustrious Wanderglyph",
-    "Ratchet, Field Medic",
-    "Sami, Wildcat Captain",
-    "Syr Ginger, the Meal Ender",
-    "Treasure Nabber",
-    "Weftstalker Ardent",
-    "Sheltered by Ghosts",
-    "Spirit Loop",
-    "Weapons Manufacturing",
-    "Tezzeret, Cruel Captain",
-    "Wake the Past",
-    "Ragost, Deft Gastronaut (commander)"
    ]
   },
   {
@@ -15745,6 +15737,37 @@
    ]
   },
   {
+   "commander": "Kilo, Apogee Mind",
+   "rank": 91,
+   "slots": 24,
+   "misses": [
+    "Astral Cornucopia",
+    "Clock of Omens",
+    "Darksteel Reactor",
+    "Empowered Autogenerator",
+    "Insight Engine",
+    "Inspirit, Flagship Vessel",
+    "Long-Range Sensor",
+    "Lux Artillery",
+    "Moxite Refinery",
+    "Pentad Prism",
+    "Solar Array",
+    "Uthros Research Craft",
+    "Uthros, Titanic Godcore",
+    "Alibou, Ancient Witness",
+    "Crystalline Crawler",
+    "Cyberdrive Awakener",
+    "Patrolling Peacemaker",
+    "Tekuthal, Inquiry Dominus",
+    "All Will Be One",
+    "Pemmin's Aura",
+    "Resourceful Defense",
+    "Thirst for Knowledge",
+    "Tezzeret the Seeker",
+    "Tezzeret, Cruel Captain"
+   ]
+  },
+  {
    "commander": "Alela, Cunning Conqueror",
    "rank": 99,
    "slots": 24,
@@ -15901,38 +15924,6 @@
     "Expel the Interlopers",
     "Slaughter the Strong",
     "Arcades, the Strategist (commander)"
-   ]
-  },
-  {
-   "commander": "Kilo, Apogee Mind",
-   "rank": 91,
-   "slots": 25,
-   "misses": [
-    "Astral Cornucopia",
-    "Clock of Omens",
-    "Darksteel Reactor",
-    "Empowered Autogenerator",
-    "Insight Engine",
-    "Inspirit, Flagship Vessel",
-    "Long-Range Sensor",
-    "Lux Artillery",
-    "Moxite Refinery",
-    "Pentad Prism",
-    "Solar Array",
-    "Uthros Research Craft",
-    "Uthros, Titanic Godcore",
-    "Alibou, Ancient Witness",
-    "Crystalline Crawler",
-    "Cyberdrive Awakener",
-    "Patrolling Peacemaker",
-    "Tekuthal, Inquiry Dominus",
-    "All Will Be One",
-    "Pemmin's Aura",
-    "Resourceful Defense",
-    "Thirst for Knowledge",
-    "Tezzeret the Seeker",
-    "Tezzeret, Cruel Captain",
-    "Wake the Past"
    ]
   },
   {

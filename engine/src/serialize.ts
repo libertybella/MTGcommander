@@ -5195,6 +5195,13 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
     case "mass_reanimate":
     case "return_all_lands":
       return { kind, playerId: parsePlayerSelector(value.playerId, `${label}.playerId`) };
+    case "return_all_from_graveyard":
+      return {
+        kind,
+        playerId: parsePlayerSelector(value.playerId, `${label}.playerId`),
+        cardType: expectString(value.cardType, `${label}.cardType`),
+        ...(value.gainsHaste === true ? { gainsHaste: true } : {}),
+      };
     case "prevent_combat_for":
       return { kind, cardId: parseChosenTargetRef(value.cardId, `${label}.cardId`) };
     case "extra_land_drop":
@@ -7517,6 +7524,14 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
   }
   if (kind === "mass_reanimate" || kind === "return_all_lands") {
     return { kind, playerId: expectString(value.playerId, `${label}.playerId`) };
+  }
+  if (kind === "return_all_from_graveyard") {
+    return {
+      kind,
+      playerId: expectString(value.playerId, `${label}.playerId`),
+      cardType: expectString(value.cardType, `${label}.cardType`),
+      ...(value.gainsHaste === true ? { gainsHaste: true } : {}),
+    };
   }
   if (kind === "prevent_combat_for") {
     return { kind, cardId: expectString(value.cardId, `${label}.cardId`) };

@@ -72248,3 +72248,101 @@ describe("wave 441: Oblivion Ring mechanic (two-sentence form)", () => {
     expect(hasOring).toBe(false);
   });
 });
+
+describe("wave 442: Wake the Past (mass return of one card type from your graveyard)", () => {
+  const compile = (name: string, oracleText: string) =>
+    compileOracleCard({
+      oracleId: name.toLowerCase().replace(/[^a-z]+/g, "-"),
+      name,
+      manaCost: "{4}{R}{R}",
+      typeLine: "Sorcery",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  it("compiles to a single mass-return effect with the haste rider folded in", () => {
+    const compiled = compile(
+      "Wake the Past",
+      "Return all artifact cards from your graveyard to the battlefield. They gain haste until end of turn.",
+    );
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.effects).toEqual([
+      {
+        kind: "return_all_from_graveyard",
+        playerId: "controller",
+        cardType: "artifact",
+        gainsHaste: true,
+      },
+    ]);
+  });
+
+  it("compiles without the haste rider when the card omits it", () => {
+    const compiled = compile(
+      "Bare Recall",
+      "Return all creature cards from your graveyard to the battlefield.",
+    );
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.effects).toEqual([
+      { kind: "return_all_from_graveyard", playerId: "controller", cardType: "creature" },
+    ]);
+  });
+
+  const putGrave = (game: GameState, ownerId: string, definition: CardDefinition) => {
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({ definitionId: definition.id, ownerId, zone: "graveyard" });
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === ownerId)!.zones.graveyard.push(card.id);
+    return card.id;
+  };
+
+  it("returns only your artifacts, clears their summoning sickness, leaves the rest", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    const relicId = putGrave(game, p1.id, createCardDefinition({ name: "Relic", typeLine: "Artifact", manaCost: "{2}" }));
+    const constructId = putGrave(game, p1.id, createCardDefinition({ name: "Construct", typeLine: "Artifact Creature — Construct", manaCost: "{4}", power: 4, toughness: 4 }));
+    const bearId = putGrave(game, p1.id, createCardDefinition({ name: "Bear", typeLine: "Creature — Bear", manaCost: "{1}{G}", power: 2, toughness: 2 }));
+    const foreignId = putGrave(game, p2.id, createCardDefinition({ name: "Foreign Relic", typeLine: "Artifact", manaCost: "{1}" }));
+
+    const effects = compile(
+      "Wake the Past",
+      "Return all artifact cards from your graveyard to the battlefield. They gain haste until end of turn.",
+    ).definition.effects;
+    const after = applyEffects(
+      game,
+      bindCardEffects(game, effects, {
+        controllerId: p1.id,
+        sourceId: relicId,
+        targets: [],
+        targetRequirements: [],
+      }),
+    );
+
+    expect(after.cards[relicId]?.zone).toBe("battlefield");
+    expect(after.cards[constructId]?.zone).toBe("battlefield");
+    expect(after.cards[constructId]?.summoningSick).toBe(false);
+    // A non-artifact in your graveyard, and an artifact in an opponent's, stay put.
+    expect(after.cards[bearId]?.zone).toBe("graveyard");
+    expect(after.cards[foreignId]?.zone).toBe("graveyard");
+  });
+
+  it("round trips the mass-return effect through serialization", () => {
+    const compiled = compile(
+      "Wake the Past",
+      "Return all artifact cards from your graveyard to the battlefield. They gain haste until end of turn.",
+    );
+    const { game } = twoPlayers();
+    game.definitions[compiled.definition.id] = compiled.definition;
+    const round = parseGameState(serializeGameState(game));
+    expect(round.definitions[compiled.definition.id]?.effects).toEqual([
+      {
+        kind: "return_all_from_graveyard",
+        playerId: "controller",
+        cardType: "artifact",
+        gainsHaste: true,
+      },
+    ]);
+  });
+});

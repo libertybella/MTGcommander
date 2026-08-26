@@ -2550,6 +2550,17 @@ export type GameEffect =
   | { kind: "mass_reanimate"; playerId: PlayerId }
   /** Splendid Reclamation: every land card in YOUR graveyard returns tapped. */
   | { kind: "return_all_lands"; playerId: PlayerId }
+  /**
+   * Wake the Past: every card of one type in YOUR graveyard returns to the
+   * battlefield at once. `gainsHaste` clears summoning sickness on each, for
+   * the "they gain haste until end of turn" rider these cards carry.
+   */
+  | {
+      kind: "return_all_from_graveyard";
+      playerId: PlayerId;
+      cardType: string;
+      gainsHaste?: boolean;
+    }
   | { kind: "prevent_combat_for"; cardId: CardInstanceId }
   | { kind: "extra_land_drop"; playerId: PlayerId }
   /** "You win the game": every other player loses (CR 104.2a). */
@@ -4238,6 +4249,13 @@ export type CardEffect =
   | { kind: "mass_reanimate"; playerId: PlayerSelector }
   /** Splendid Reclamation: every land card in YOUR graveyard returns tapped. */
   | { kind: "return_all_lands"; playerId: PlayerSelector }
+  /** Wake the Past: every card of one type in YOUR graveyard, at once. */
+  | {
+      kind: "return_all_from_graveyard";
+      playerId: PlayerSelector;
+      cardType: string;
+      gainsHaste?: boolean;
+    }
   /** Maze of Ith: shield the chosen creature from combat damage this turn. */
   | { kind: "prevent_combat_for"; cardId: ChosenTargetRef }
   /** Explore: one extra land drop this turn. */

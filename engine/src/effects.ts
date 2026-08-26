@@ -1648,6 +1648,18 @@ export function bindCardEffect(
       }
       return { kind: "return_all_lands", playerId };
     }
+    case "return_all_from_graveyard": {
+      const playerId = bindPlayerSelector(state, effect.playerId, context);
+      if (!playerId) {
+        return null;
+      }
+      return {
+        kind: "return_all_from_graveyard",
+        playerId,
+        cardType: effect.cardType,
+        ...(effect.gainsHaste ? { gainsHaste: true } : {}),
+      };
+    }
     case "prevent_combat_for": {
       const chosen = chosenTargetAt(context, effect.cardId.index, state);
       if (!chosen || chosen.type !== "creature") {
@@ -6056,6 +6068,25 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
           const arrived = next.cards[cardId];
           if (arrived?.zone === "battlefield") {
             arrived.tapped = true;
+          }
+        }
+        break;
+      }
+      case "return_all_from_graveyard": {
+        // Wake the Past: only the effect's controller's own graveyard, one
+        // card type, and "they gain haste" clears summoning sickness so the
+        // returned artifact creatures can attack at once.
+        requirePlayer(state, effect.playerId);
+        next = cloneGameState(state);
+        const owner = next.players.find((entry) => entry.id === effect.playerId);
+        for (const cardId of [...(owner?.zones.graveyard ?? [])]) {
+          if (!characteristicsOf(next, cardId).types.includes(effect.cardType)) {
+            continue;
+          }
+          moveCardInPlace(next, cardId, "battlefield");
+          const arrived = next.cards[cardId];
+          if (arrived?.zone === "battlefield" && effect.gainsHaste) {
+            arrived.summoningSick = false;
           }
         }
         break;
