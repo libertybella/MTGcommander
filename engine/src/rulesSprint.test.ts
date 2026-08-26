@@ -73419,3 +73419,82 @@ describe("wave 455: 'Activate only once each turn' on an activated ability", () 
     expect(again.cards[wall.id]?.counters["-0/-1"]).toBe(2);
   });
 });
+
+describe("wave 456: Vivi Ornitier (X=power U/R mana, once/turn, your turn; cast-drain trigger)", () => {
+  const compileVivi = () =>
+    compileOracleCard({
+      oracleId: "vivi-ornitier",
+      name: "Vivi Ornitier",
+      manaCost: "{1}{U}{R}",
+      typeLine: "Legendary Creature — Wizard",
+      power: "0",
+      toughness: "4",
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "{0}: Add X mana in any combination of {U} and/or {R}, where X is Vivi Ornitier's power. Activate only during your turn and only once each turn.\nWhenever you cast a noncreature spell, put a +1/+1 counter on Vivi Ornitier and it deals 1 damage to each opponent.",
+    });
+
+  it("compiles the whole commander", () => {
+    const compiled = compileVivi();
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.manaAbilities?.[0]).toMatchObject({
+      producesOptions: ["U", "R"],
+      countFromPower: true,
+      noTap: true,
+      oncePerTurn: true,
+      onlyYourTurn: true,
+    });
+    expect(compiled.definition.triggers?.[0]).toMatchObject({ event: "cast_spell", watch: "controlled" });
+  });
+
+  const mainPhase = (game: GameState, active: string, priority: string) => {
+    game.turn.activePlayerId = active;
+    game.turn.phase = "precombatMain";
+    game.turn.step = "precombatMain";
+    game.priorityPlayerId = priority;
+  };
+  const putVivi = (game: GameState, ownerId: string, power: number) => {
+    const def = compileVivi().definition;
+    game.definitions[def.id] = def;
+    const card = createCardInstance({ definitionId: def.id, ownerId, zone: "battlefield" });
+    card.summoningSick = false;
+    card.counters["p1p1"] = power; // base 0 power + counters
+    game.cards[card.id] = card;
+    game.players.find((e) => e.id === ownerId)!.zones.battlefield.push(card.id);
+    return card.id;
+  };
+
+  it("adds X mana of a chosen color = its power, once per your turn", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const viviId = putVivi(game, p1.id, 3);
+    mainPhase(game, p1.id, p1.id);
+    // Available on your turn.
+    expect(manaAbilitiesFor(game, viviId)).toHaveLength(1);
+    // Activate for {U} x power(3).
+    let next = applyAction(game, { kind: "tap_for_mana", playerId: p1.id, cardId: viviId, manaIndex: 0, color: "U" });
+    expect(next.players.find((e) => e.id === p1.id)!.mana.U).toBe(3);
+    // Once each turn: no longer offered after use.
+    expect(manaAbilitiesFor(next, viviId)).toHaveLength(0);
+
+    // Only during your turn: on the opponent's turn it is not available.
+    mainPhase(game, p2.id, p1.id);
+    expect(manaAbilitiesFor(game, viviId)).toHaveLength(0);
+  });
+
+  it("grows and drains when you cast a noncreature spell", () => {
+    const { game, p1, p2 } = twoPlayers();
+    const viviId = putVivi(game, p1.id, 0);
+    // The spell that triggers it must be NONCREATURE — an instant here.
+    const boltDef = createCardDefinition({ name: "Bolt", typeLine: "Instant", manaCost: "{R}" });
+    game.definitions[boltDef.id] = boltDef;
+    const bolt = createCardInstance({ definitionId: boltDef.id, ownerId: p1.id, zone: "stack" });
+    game.cards[bolt.id] = bolt;
+    const p2Life = game.players.find((e) => e.id === p2.id)!.life;
+    let next = parseGameState(serializeGameState(game));
+    dispatchEventsInPlace(next, [{ kind: "casts", cardId: bolt.id, controllerId: p1.id }]);
+    while (next.stack.length > 0) next = resolveTopOfStack(next);
+    expect(next.cards[viviId]?.counters["p1p1"]).toBe(1);
+    expect(next.players.find((e) => e.id === p2.id)!.life).toBe(p2Life - 1);
+  });
+});

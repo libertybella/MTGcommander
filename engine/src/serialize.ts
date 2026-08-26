@@ -6874,6 +6874,7 @@ function parseManaAbilities(value: unknown, label: string): ManaAbility[] {
       ...(entry.countFromEnchantments === true ? { countFromEnchantments: true } : {}),
       ...(entry.countFromArtifacts === true ? { countFromArtifacts: true } : {}),
       ...(entry.oncePerTurn === true ? { oncePerTurn: true } : {}),
+      ...(entry.onlyYourTurn === true ? { onlyYourTurn: true } : {}),
       ...(isRecord(entry.requiresManaCounters)
         ? {
             requiresManaCounters: {

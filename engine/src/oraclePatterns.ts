@@ -2369,6 +2369,18 @@ function manaAbilityFromAdd(add: AddManaResult): ManaAbility {
       ...(add.count && add.count > 1 ? { count: add.count } : {}),
     };
   }
+  if (add.kind === "options_power") {
+    // Vivi Ornitier: X of one chosen colour among the listed ones, X being the
+    // source's power. "Any combination" is approximated as one colour (the
+    // same documented narrowing Selvala takes).
+    return {
+      produces: {},
+      producesOptions: add.colors,
+      producesAnyColor: false,
+      damageToController: 0,
+      countFromPower: true,
+    };
+  }
   if (add.kind === "any_color_among") {
     return {
       produces: {},
@@ -2417,6 +2429,7 @@ function copyFirstManaAbility(result: CompiledOracleText): void {
 
 type AddManaResult =
   | { kind: "fixed"; produces: Partial<ManaPool> }
+  | { kind: "options_power"; colors: ManaColor[] }
   | { kind: "any_color"; count?: number; countFromPower?: boolean; countFromEnchantments?: boolean }
   | {
       kind: "any_color_among";
@@ -2489,6 +2502,17 @@ function parseAddMana(rest: string): AddManaResult | null {
   // Sanctum Weaver.
   if (/^Add X mana of any one color, where X is the number of enchantments you control$/i.test(text)) {
     return { kind: "any_color", countFromEnchantments: true };
+  }
+  // Vivi Ornitier: "Add X mana in any combination of {U} and/or {R}, where X
+  // is ~'s power."
+  const powerCombo = text.match(
+    /^Add X mana in any combination of \{([WUBRGC])\} and\/or \{([WUBRGC])\}, where X is (?:~|this creature)'s power$/i,
+  );
+  if (powerCombo?.[1] && powerCombo[2]) {
+    return {
+      kind: "options_power",
+      colors: [powerCombo[1].toUpperCase() as ManaColor, powerCombo[2].toUpperCase() as ManaColor],
+    };
   }
   if (!/^Add /i.test(text)) {
     return null;
@@ -4800,6 +4824,27 @@ function compileSimpleClauseInner(sentence: string): SimpleClause | null {
       targetRequirements: [],
       effects: [
         { kind: "move_card", cardId: "self", toZone: "library", libraryPosition: "shuffled" },
+      ],
+    };
+  }
+
+  // Vivi Ornitier: "put a +1/+1 counter on ~ and it deals N damage to each
+  // opponent" — two effects the single-clause grammar does not split on "and
+  // it", so they are read here as the pair they are.
+  const viviGrowth = sentence.match(
+    /^put a \+1\/\+1 counter on ~ and it deals (\d+) damage to each opponent$/i,
+  );
+  if (viviGrowth?.[1]) {
+    return {
+      targetRequirements: [],
+      effects: [
+        { kind: "add_counter", cardId: "self", counter: "p1p1", amount: 1 },
+        {
+          kind: "deal_damage",
+          sourceId: "self",
+          target: { type: "player", playerId: "each_opponent" },
+          amount: Number(viviGrowth[1]),
+        },
       ],
     };
   }
@@ -20845,6 +20890,14 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
         result.manaAbilities.push({ ...manaAbilityFromAdd(add), costMana: cost.manaCost });
         continue;
       }
+      // Vivi Ornitier: "{0}: Add X mana ...", a NO-TAP mana ability. Scoped to
+      // the power-combo add so a generic "{0}: Add {C}" is not turned into a
+      // free repeatable source; the once-each-turn / your-turn riders below
+      // are what keep it honest.
+      if (add && add.kind === "options_power" && !cost.tap) {
+        result.manaAbilities.push({ ...manaAbilityFromAdd(add), noTap: true });
+        continue;
+      }
       // Phyrexian Altar-class: a tapless mana ability paid by sacrificing.
       if (
         add &&
@@ -21635,6 +21688,30 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
     // the mana ability it follows. Only a MANA ability carries it here — an
     // activated ability with the same rider (Wall of Roots) is left to fail
     // honestly rather than compile a cap this does not yet enforce there.
+    // Vivi Ornitier: the two caps printed as one sentence.
+    if (
+      /^Activate (?:this ability )?only during your turn and only once each turn$/i.test(sentence) &&
+      result.manaAbilities.length > 0
+    ) {
+      const last = result.manaAbilities[result.manaAbilities.length - 1];
+      if (last) {
+        last.onlyYourTurn = true;
+        last.oncePerTurn = true;
+        continue;
+      }
+    }
+
+    if (
+      /^Activate (?:this ability )?only during your turn$/i.test(sentence) &&
+      result.manaAbilities.length > 0
+    ) {
+      const last = result.manaAbilities[result.manaAbilities.length - 1];
+      if (last && !last.onlyYourTurn) {
+        last.onlyYourTurn = true;
+        continue;
+      }
+    }
+
     if (/^Activate (?:this ability )?only once each turn$/i.test(sentence)) {
       // Both Wall of Roots and Three Tree Mascot compile their mana-making
       // line as an ACTIVATED ability (an add_mana effect with a cost), so the

@@ -458,7 +458,7 @@
   "Serum Visions": true,
   "Strike It Rich": true,
   "Windfall": true,
-  "Vivi Ornitier": false,
+  "Vivi Ornitier": true,
   "Commander's Sphere": true,
   "Dimir Signet": true,
   "Relic of Sauron": true,
@@ -4256,12 +4256,6 @@
    "type": "Instant",
    "notes": [
     "Some oracle text is not compiled: Target instant or sorcery card in your graveyard gains ~ until end of turn; The ~ cost is equal to its mana cost."
-   ]
-  },
-  "Vivi Ornitier": {
-   "type": "Legendary Creature — Wizard",
-   "notes": [
-    "Some oracle text is not compiled: {0}: Add X mana in any combination of {U} and/or {R}, where X is ~'s power; Activate only during your turn and only once each turn; Whenever you cast a noncreature spell, put a +1/+1 counter on ~ and it deals 1 damage to each opponent."
    ]
   },
   "Mount Doom": {
@@ -14220,25 +14214,23 @@
   {
    "commander": "Vivi Ornitier",
    "rank": 7,
-   "slots": 5,
+   "slots": 4,
    "misses": [
     "Wizard's Staff",
     "Quicksilver Elemental",
     "Tandem Lookout",
-    "Flashback",
-    "Vivi Ornitier (commander)"
+    "Flashback"
    ]
   },
   {
    "commander": "Kefka, Court Mage",
    "rank": 24,
-   "slots": 6,
+   "slots": 5,
    "misses": [
     "Kefka, Dancing Mad",
     "Kuja, Genome Sorcerer",
     "Tergrid, God of Fright",
     "Tinybones, Bauble Burglar",
-    "Vivi Ornitier",
     "Kefka, Court Mage (commander)"
    ]
   },
@@ -15018,6 +15010,32 @@
    ]
   },
   {
+   "commander": "Ghyrson Starn, Kelermorph",
+   "rank": 70,
+   "slots": 19,
+   "misses": [
+    "Caltrops",
+    "Eroded Canyon",
+    "Chandra's Incinerator",
+    "Exalted Flamer of Tzeentch",
+    "Gelectrode",
+    "Tandem Lookout",
+    "Urabrask",
+    "Circle of Flame",
+    "Manabarbs",
+    "Cast into the Fire",
+    "Electrolyze",
+    "Lava Dart",
+    "Needle Drop",
+    "Spikefield Hazard",
+    "Ral, Storm Conduit",
+    "End the Festivities",
+    "Smash to Dust",
+    "Tectonic Hazard",
+    "Ghyrson Starn, Kelermorph (commander)"
+   ]
+  },
+  {
    "commander": "Henzie \"Toolbox\" Torre",
    "rank": 83,
    "slots": 19,
@@ -15148,33 +15166,6 @@
     "Notorious Throng",
     "Stolen by the Fae",
     "Maralen, Fae Ascendant (commander)"
-   ]
-  },
-  {
-   "commander": "Ghyrson Starn, Kelermorph",
-   "rank": 70,
-   "slots": 20,
-   "misses": [
-    "Caltrops",
-    "Eroded Canyon",
-    "Chandra's Incinerator",
-    "Exalted Flamer of Tzeentch",
-    "Gelectrode",
-    "Tandem Lookout",
-    "Urabrask",
-    "Vivi Ornitier",
-    "Circle of Flame",
-    "Manabarbs",
-    "Cast into the Fire",
-    "Electrolyze",
-    "Lava Dart",
-    "Needle Drop",
-    "Spikefield Hazard",
-    "Ral, Storm Conduit",
-    "End the Festivities",
-    "Smash to Dust",
-    "Tectonic Hazard",
-    "Ghyrson Starn, Kelermorph (commander)"
    ]
   },
   {

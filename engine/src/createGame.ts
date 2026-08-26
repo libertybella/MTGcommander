@@ -353,6 +353,7 @@ export function createCardDefinition(
           ...(ability.countFromEnchantments ? { countFromEnchantments: true } : {}),
           ...(ability.countFromArtifacts ? { countFromArtifacts: true } : {}),
           ...(ability.oncePerTurn ? { oncePerTurn: true } : {}),
+          ...(ability.onlyYourTurn ? { onlyYourTurn: true } : {}),
           ...(ability.requiresManaCounters
             ? { requiresManaCounters: { ...ability.requiresManaCounters } }
             : {}),

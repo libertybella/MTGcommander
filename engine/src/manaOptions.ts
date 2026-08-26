@@ -187,6 +187,10 @@ function manaGateSatisfied(
       return false;
     }
   }
+  // Vivi Ornitier: "Activate only during your turn."
+  if (ability.onlyYourTurn && controllerId !== state.turn.activePlayerId) {
+    return false;
+  }
   // Three Tree Mascot: "Activate only once each turn" — once spent this turn,
   // the ability is no longer offered.
   if (ability.oncePerTurn && sourceId && state.oncePerTurnFired.includes(`${sourceId}:mana-once`)) {

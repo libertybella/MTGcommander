@@ -5989,6 +5989,8 @@ export type ManaAbility = {
    * source may tap for this at most once per turn, tracked in oncePerTurnFired
    * under `<cardId>:mana-once`. */
   oncePerTurn?: boolean;
+  /** Vivi Ornitier: "Activate only during your turn." */
+  onlyYourTurn?: boolean;
   /** Kami of Whispered Hopes: the amount is the creature's power at tap. */
   countFromPower?: boolean;
   /** Nykthos: the amount is the controller's devotion to the chosen color. */
