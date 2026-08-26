@@ -1010,7 +1010,7 @@
   "Echo of Eons": false,
   "Molten Psyche": false,
   "Peer into the Abyss": false,
-  "Prosperity": false,
+  "Prosperity": true,
   "Reforge the Soul": false,
   "Wheel of Fortune": true,
   "Whispering Madness": false,
@@ -5730,12 +5730,6 @@
    "type": "Sorcery",
    "notes": [
     "Some oracle text is not compiled: Target player draws cards equal to half the number of cards in their library and loses half their life; Round up each time."
-   ]
-  },
-  "Prosperity": {
-   "type": "Sorcery",
-   "notes": [
-    "Some oracle text is not compiled: Each player draws X cards."
    ]
   },
   "Reforge the Soul": {
@@ -14866,6 +14860,31 @@
    ]
   },
   {
+   "commander": "Nekusar, the Mindrazer",
+   "rank": 18,
+   "slots": 18,
+   "misses": [
+    "Font of Mythos",
+    "Teferi's Puzzle Box",
+    "Ghyrson Starn, Kelermorph",
+    "Seizan, Perverter of Truth",
+    "The Locust God",
+    "Fevered Visions",
+    "Forced Fruition",
+    "Phyrexian Tyranny",
+    "Spiteful Visions",
+    "Baleful Mastery",
+    "Wheel and Deal",
+    "Dark Deal",
+    "Echo of Eons",
+    "Molten Psyche",
+    "Peer into the Abyss",
+    "Reforge the Soul",
+    "Whispering Madness",
+    "Winds of Change"
+   ]
+  },
+  {
    "commander": "Chatterfang, Squirrel General",
    "rank": 29,
    "slots": 18,
@@ -14964,32 +14983,6 @@
     "Tempt with Bunnies",
     "Wear Down",
     "Ms. Bumbleflower (commander)"
-   ]
-  },
-  {
-   "commander": "Nekusar, the Mindrazer",
-   "rank": 18,
-   "slots": 19,
-   "misses": [
-    "Font of Mythos",
-    "Teferi's Puzzle Box",
-    "Ghyrson Starn, Kelermorph",
-    "Seizan, Perverter of Truth",
-    "The Locust God",
-    "Fevered Visions",
-    "Forced Fruition",
-    "Phyrexian Tyranny",
-    "Spiteful Visions",
-    "Baleful Mastery",
-    "Wheel and Deal",
-    "Dark Deal",
-    "Echo of Eons",
-    "Molten Psyche",
-    "Peer into the Abyss",
-    "Prosperity",
-    "Reforge the Soul",
-    "Whispering Madness",
-    "Winds of Change"
    ]
   },
   {

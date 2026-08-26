@@ -72956,3 +72956,37 @@ describe("wave 449: mass-animate your artifacts (Tezzeret the Seeker's -5)", () 
     ]);
   });
 });
+
+describe("wave 450: Prosperity (each player draws X cards)", () => {
+  it("compiles the symmetric draw to an each_player draw of X", () => {
+    const compiled = compileOracleCard({
+      oracleId: "prosperity",
+      name: "Prosperity",
+      manaCost: "{X}{U}",
+      typeLine: "Sorcery",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText: "Each player draws X cards.",
+    });
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.effects).toEqual([
+      { kind: "draw", playerId: "each_player", count: "x" },
+    ]);
+  });
+
+  it("draws X for every player, the caster included", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    const h1 = game.players.find((e) => e.id === p1.id)!.zones.hand.length;
+    const h2 = game.players.find((e) => e.id === p2.id)!.zones.hand.length;
+    const effects = [{ kind: "draw", playerId: "each_player", count: "x" }] as unknown as CardEffect[];
+    const after = applyEffects(
+      game,
+      bindCardEffects(game, effects, { controllerId: p1.id, sourceId: p1.id, targets: [], targetRequirements: [], xValue: 3 }),
+    );
+    expect(after.players.find((e) => e.id === p1.id)!.zones.hand.length).toBe(h1 + 3);
+    expect(after.players.find((e) => e.id === p2.id)!.zones.hand.length).toBe(h2 + 3);
+  });
+});

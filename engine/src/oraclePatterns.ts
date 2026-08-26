@@ -6178,9 +6178,11 @@ function compileSimpleClauseInner(sentence: string): SimpleClause | null {
   }
 
   // Faerie Mastermind: symmetric group draw.
-  const eachDraw = sentence.match(/^each player draws (a|an|one|two|three|\d+) cards?$/i);
+  const eachDraw = sentence.match(/^each player draws (a|an|one|two|three|X|\d+) cards?$/i);
   if (eachDraw?.[1]) {
-    const count = parseCount(eachDraw[1]);
+    // Prosperity: "Each player draws X cards" reads the announced X, the same
+    // "x" count "Draw X cards" already carries.
+    const count = /^x$/i.test(eachDraw[1]) ? ("x" as const) : parseCount(eachDraw[1]);
     if (count) {
       return {
         targetRequirements: [],
