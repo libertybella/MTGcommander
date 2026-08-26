@@ -5045,6 +5045,9 @@ export type CardTrigger = {
   alsoOnCopy?: boolean;
   /** "This ability triggers only once each turn" (Morbid Opportunist). */
   oncePerTurn?: boolean;
+  /** Kefka, Ruler of Ruin: "... during your turn" — fires only while its
+   * controller is the active player. */
+  onlyYourTurn?: boolean;
   /** "Whenever one or more …": fire once per simultaneous event batch. */
   oncePerBatch?: boolean;
   /**

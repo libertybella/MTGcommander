@@ -6362,8 +6362,7 @@
   "Kefka, Court Mage": {
    "type": "Legendary Creature — Human Wizard",
    "notes": [
-    "Some oracle text is not compiled: Whenever ~ enters or attacks, each player discards a card, then you draw a card for each card type among cards discarded this way; {8}: Each opponent sacrifices a permanent of their choice; Activate only as a sorcery.",
-    "Kefka, Ruler of Ruin: Some oracle text is not compiled: Whenever an opponent loses life during your turn, you draw that many cards."
+    "Some oracle text is not compiled: Whenever ~ enters or attacks, each player discards a card, then you draw a card for each card type among cards discarded this way."
    ]
   },
   "Exploration Broodship": {
@@ -10418,7 +10417,7 @@
   "Chakram Retriever": {
    "type": "Creature — Elemental Dog",
    "notes": [
-    "Some oracle text is not compiled: Partner with Chakram Slinger; Whenever you cast a spell during your turn, untap target creature."
+    "Some oracle text is not compiled: Partner with Chakram Slinger."
    ]
   },
   "Defiler of Vigor": {

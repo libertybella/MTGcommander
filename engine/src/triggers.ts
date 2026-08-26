@@ -939,6 +939,10 @@ function triggerMatchesEvent(
   trigger: CardTrigger,
   event: EngineEvent,
 ): boolean {
+  // "... during your turn": the watcher must be the active player.
+  if (trigger.onlyYourTurn && watcher.controllerId !== state.turn.activePlayerId) {
+    return false;
+  }
   if (event.kind === "activated_ability") {
     return trigger.event === "activated_ability" && watcher.controllerId === event.playerId;
   }

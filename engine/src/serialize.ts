@@ -5929,6 +5929,7 @@ function parseTriggers(value: unknown, label: string): CardTrigger[] {
     return {
       event,
       ...(watch === undefined ? {} : { watch }),
+      ...(entry.onlyYourTurn === true ? { onlyYourTurn: true } : {}),
       ...(entry.fromGraveyard === true ? { fromGraveyard: true } : {}),
       ...(entry.onSelfCast === true ? { onSelfCast: true } : {}),
       ...(entry.excludeSelf === true ? { excludeSelf: true } : {}),

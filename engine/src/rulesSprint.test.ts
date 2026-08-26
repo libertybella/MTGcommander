@@ -73719,3 +73719,77 @@ describe("wave 458: target-player discard, self-transform body, and the Magic ab
     expect(next.players.find((e) => e.id === p2.id)!.zones.hand).toHaveLength(0);
   });
 });
+
+describe("wave 459: onlyYourTurn trigger gate + each-opponent permanent edict (Kefka groundwork)", () => {
+  it("compiles 'Whenever an opponent loses life during your turn' as an onlyYourTurn trigger", () => {
+    const c = compileOracleCard({
+      oracleId: "ruler", name: "Ruler", manaCost: "{2}{U}{B}{R}",
+      typeLine: "Legendary Creature — Avatar Wizard", power: "3", toughness: "4", printedKeywords: [], imageUrl: "",
+      oracleText: "Flying\nWhenever an opponent loses life during your turn, you draw that many cards.",
+    });
+    expect(c.notes).toEqual([]);
+    expect(c.definition.triggers?.[0]).toMatchObject({
+      event: "opponent_loses_life",
+      onlyYourTurn: true,
+      effects: [{ kind: "draw", playerId: "controller", count: "subject_amount" }],
+    });
+  });
+
+  it("compiles 'Each opponent sacrifices a permanent of their choice' as a permanent edict", () => {
+    const c = compileOracleCard({
+      oracleId: "edicter", name: "Edicter", manaCost: "{4}",
+      typeLine: "Artifact", power: null, toughness: null, printedKeywords: [], imageUrl: "",
+      oracleText: "{8}: Each opponent sacrifices a permanent of their choice. Activate only as a sorcery.",
+    });
+    expect(c.notes).toEqual([]);
+    expect(c.definition.activated?.[0]?.effects?.[0]).toMatchObject({
+      kind: "choose_card",
+      chooserId: "each_opponent",
+      sources: [{ playerId: "each_opponent", zone: "battlefield", filter: "permanent" }],
+    });
+  });
+
+  const put = (game: GameState, ownerId: string, definition: CardDefinition) => {
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({ definitionId: definition.id, ownerId, zone: "battlefield" });
+    card.summoningSick = false;
+    game.cards[card.id] = card;
+    game.players.find((e) => e.id === ownerId)!.zones.battlefield.push(card.id);
+    return card.id;
+  };
+
+  it("the onlyYourTurn trigger fires on your turn but NOT on the opponent's", () => {
+    const ruler = compileOracleCard({
+      oracleId: "ruler", name: "Ruler", manaCost: "{2}{U}{B}{R}",
+      typeLine: "Legendary Creature — Avatar Wizard", power: "3", toughness: "4", printedKeywords: [], imageUrl: "",
+      oracleText: "Flying\nWhenever an opponent loses life during your turn, you draw that many cards.",
+    }).definition;
+
+    // On p1's turn: p2 loses 2 life -> p1's trigger fires (draws 2).
+    {
+      const { game, p1, p2 } = twoPlayers();
+      fillLibraries(game, 20);
+      put(game, p1.id, ruler);
+      game.turn.activePlayerId = p1.id;
+      const before = game.players.find((e) => e.id === p1.id)!.zones.hand.length;
+      let next = parseGameState(serializeGameState(game));
+      dispatchEventsInPlace(next, [{ kind: "loses_life", playerId: p2.id, amount: 2 }]);
+      while (next.stack.length > 0) next = resolveTopOfStack(next);
+      expect(next.players.find((e) => e.id === p1.id)!.zones.hand.length).toBe(before + 2);
+    }
+
+    // On p2's turn: the same life loss does NOT fire p1's trigger.
+    {
+      const { game, p1, p2 } = twoPlayers();
+      fillLibraries(game, 20);
+      put(game, p1.id, ruler);
+      game.turn.activePlayerId = p2.id;
+      const before = game.players.find((e) => e.id === p1.id)!.zones.hand.length;
+      let next = parseGameState(serializeGameState(game));
+      dispatchEventsInPlace(next, [{ kind: "loses_life", playerId: p2.id, amount: 2 }]);
+      expect(next.stack.length).toBe(0);
+      while (next.stack.length > 0) next = resolveTopOfStack(next);
+      expect(next.players.find((e) => e.id === p1.id)!.zones.hand.length).toBe(before);
+    }
+  });
+});

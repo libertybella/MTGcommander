@@ -10215,7 +10215,7 @@ function compileSimpleClauseInner(sentence: string): SimpleClause | null {
   // edicts (Blasphemous Edict's thirteen) repeat the choice sequentially —
   // a documented approximation of the simultaneous pick.
   match = sentence.match(
-    /^Each (player|opponent|other player) sacrifices (a|one|two|three|thirteen|\d+) (nontoken )?(creatures?|planeswalkers?|creatures? or planeswalkers?|creature tokens?)(?: of their choice)?(?: with the greatest mana value among (.+?) they control)?$/i,
+    /^Each (player|opponent|other player) sacrifices (a|one|two|three|thirteen|\d+) (nontoken )?(creatures?|planeswalkers?|creatures? or planeswalkers?|creature tokens?|permanents?)(?: of their choice)?(?: with the greatest mana value among (.+?) they control)?$/i,
   );
   if (match?.[1] && match[2]) {
     // Only the "creature OR planeswalker" form widens; a bare "planeswalker"
@@ -10265,7 +10265,9 @@ function compileSimpleClauseInner(sentence: string): SimpleClause | null {
             ...(greatestManaValue ? { greatestManaValue: true } : {}),
             filter: withPlaneswalkers
               ? "creature_or_planeswalker"
-              : /^planeswalkers?$/i.test(match[4] ?? "")
+              : /^permanents?$/i.test(match[4] ?? "")
+                ? "permanent"
+                : /^planeswalkers?$/i.test(match[4] ?? "")
                 ? "planeswalker"
                 : // The printed order is "a creature TOKEN", noun then noun —
                   // not an adjective in front like "nontoken creature".
@@ -12979,6 +12981,7 @@ type TriggerHead = Pick<
   | "noncombatOnly"
   | "fromGraveyard"
   | "oncePerTurn"
+  | "onlyYourTurn"
   | "oncePerBatch"
   | "alsoOnCopy"
   | "classLevel"
@@ -12999,6 +13002,13 @@ function parseTriggerHead(head: string): TriggerHead | null {
   // clean and do half of what it says. Refuse instead.
   if (/\band whenever\b/i.test(head)) {
     return null;
+  }
+  // Kefka, Ruler of Ruin: "... during your turn" gates the whole head; parse
+  // what remains and mark the trigger your-turn-only.
+  const yourTurn = head.replace(ABILITY_WORD_PREFIX, "").trim().match(/^(.*?) during your turn$/i);
+  if (yourTurn?.[1]) {
+    const inner = parseTriggerHead(yourTurn[1]);
+    return inner ? { ...inner, onlyYourTurn: true } : null;
   }
   const text = head.replace(ABILITY_WORD_PREFIX, "").trim();
   // "When you cast this spell" (CR 603.2c): the watcher is the spell being
