@@ -3030,7 +3030,7 @@ export type RestrictedMana = {
 
 export type AdditionalCastCost = {
   /** Sacrifice one permanent of this scope. */
-  sacrifice?: "creature" | "artifact" | "creature_or_artifact" | "land";
+  sacrifice?: "creature" | "artifact" | "creature_or_artifact" | "land" | "nonland_permanent";
   /** Natural Order: "sacrifice a GREEN creature". A narrowing of
    * `sacrifice`, never a cost on its own — it is read only where that
    * scope is, and the colour is the permanent's CURRENT one, so a

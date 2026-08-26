@@ -74629,3 +74629,63 @@ describe("wave 470: Hallowed Spiritkeeper — dies into a Spirit per graveyard c
     expect(bf.length).toBe(bfBefore - 1 + 3);
   });
 });
+
+describe("wave 471: Rite of Oblivion — sacrifice a nonland permanent to exile one", () => {
+  const compileRite = () =>
+    compileOracleCard({
+      oracleId: "rite-of-oblivion", name: "Rite of Oblivion", manaCost: "{W}{B}", typeLine: "Sorcery",
+      power: null, toughness: null, printedKeywords: [], imageUrl: "",
+      oracleText:
+        "As an additional cost to cast this spell, sacrifice a nonland permanent.\n" +
+        "Exile target nonland permanent.\nFlashback {2}{W}{B}",
+    });
+
+  it("compiles the additional sacrifice cost, the exile, and flashback", () => {
+    const c = compileRite();
+    expect(c.notes).toEqual([]);
+    expect(c.definition.additionalCost).toEqual({ sacrifice: "nonland_permanent" });
+    expect(c.definition.targetRequirements).toEqual([{ kind: "nonland_permanent" }]);
+    expect(c.definition.effects?.[0]).toMatchObject({ kind: "move_card", toZone: "exile" });
+    expect(c.definition.flashback).toEqual({ manaCost: "{2}{W}{B}" });
+  });
+
+  const put = (game: GameState, ownerId: string, definition: CardDefinition, zone: "battlefield" | "hand") => {
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({ definitionId: definition.id, ownerId, zone });
+    if (zone === "battlefield") card.summoningSick = false;
+    game.cards[card.id] = card;
+    (game.players.find((e) => e.id === ownerId)!.zones as Record<string, string[]>)[zone].push(card.id);
+    return card.id;
+  };
+
+  it("sacrifices the chosen nonland permanent and exiles the target", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 10);
+    const riteId = put(game, p1.id, compileRite().definition, "hand");
+    const fodderId = put(game, p1.id, createCardDefinition({ name: "Bear", typeLine: "Creature — Bear", manaCost: "{1}{G}", power: 2, toughness: 2 }), "battlefield");
+    const targetId = put(game, p2.id, createCardDefinition({ name: "Relic", typeLine: "Artifact", manaCost: "{2}" }), "battlefield");
+
+    const ready = advanceSteps(game, 3);
+    ready.priorityPlayerId = p1.id;
+    ready.players[0]!.mana = { W: 1, U: 0, B: 1, R: 0, G: 0, C: 0 };
+
+    // Casting without paying the sacrifice is refused.
+    expect(() =>
+      applyAction(ready, { kind: "cast_spell", playerId: p1.id, cardId: riteId, targets: [{ type: "creature", cardId: targetId }] }),
+    ).toThrow();
+
+    const cast = applyAction(ready, {
+      kind: "cast_spell", playerId: p1.id, cardId: riteId,
+      targets: [{ type: "creature", cardId: targetId }],
+      costSacrificeId: fodderId,
+    });
+    // The sacrifice was paid: the Bear is in the graveyard; Rite is on the stack.
+    expect(cast.cards[fodderId]?.zone).toBe("graveyard");
+    expect(cast.cards[riteId]?.zone).toBe("stack");
+
+    let resolved = cast;
+    while (resolved.stack.length > 0) resolved = resolveTopOfStack(resolved);
+    // The targeted nonland permanent is exiled.
+    expect(resolved.cards[targetId]?.zone).toBe("exile");
+  });
+});

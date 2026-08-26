@@ -153,7 +153,8 @@ function parseAdditionalCost(value: unknown, label: string): AdditionalCastCost 
     sacrifice !== "creature" &&
     sacrifice !== "artifact" &&
     sacrifice !== "creature_or_artifact" &&
-    sacrifice !== "land"
+    sacrifice !== "land" &&
+    sacrifice !== "nonland_permanent"
   ) {
     throw new Error(`Invalid ${label}.sacrifice`);
   }

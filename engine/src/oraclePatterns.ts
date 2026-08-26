@@ -268,6 +268,10 @@ function parseSingleAdditionalCost(what: string): AdditionalCastCost | null {
   if (what === "sacrifice a land") {
     return { sacrifice: "land" };
   }
+  // Rite of Oblivion: any permanent that is not a land.
+  if (what === "sacrifice a nonland permanent") {
+    return { sacrifice: "nonland_permanent" };
+  }
   if (what === "discard a card") {
     return { discard: 1 };
   }

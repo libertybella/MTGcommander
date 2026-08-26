@@ -2229,7 +2229,7 @@
   "Sifter of Skulls": true,
   "Teysa, Orzhov Scion": false,
   "Corrupted Conviction": true,
-  "Rite of Oblivion": false,
+  "Rite of Oblivion": true,
   "Atsushi, the Blazing Sky": true,
   "Bloomvine Regent": true,
   "Broodcaller Scourge": false,
@@ -9165,12 +9165,6 @@
     "Some oracle text is not compiled: Sacrifice three white creatures: Exile target creature; Whenever another black creature you control dies, create a 1/1 white Spirit creature token with flying."
    ]
   },
-  "Rite of Oblivion": {
-   "type": "Sorcery",
-   "notes": [
-    "Some oracle text is not compiled: As an additional cost to cast this spell, sacrifice a nonland permanent."
-   ]
-  },
   "Broodcaller Scourge": {
    "type": "Creature — Dragon",
    "notes": [
@@ -14157,14 +14151,13 @@
   {
    "commander": "Teysa Karlov",
    "rank": 54,
-   "slots": 6,
+   "slots": 5,
    "misses": [
     "Athreos, God of Passage",
     "Grim Haruspex",
     "Priest of Forgotten Gods",
     "Sephiroth, Fabled SOLDIER",
-    "Teysa, Orzhov Scion",
-    "Rite of Oblivion"
+    "Teysa, Orzhov Scion"
    ]
   },
   {
