@@ -220,6 +220,7 @@ export function createCardDefinition(
         | "saga"
         | "castFromGraveyard"
         | "castFromExile"
+        | "playExiledWithStashCounters"
         | "ascend"
         | "untapDuringEachUntap"
         | "abilityHaste"
@@ -670,6 +671,9 @@ export function createCardDefinition(
         }
       : {}),
     ...(input.castFromExile ? { castFromExile: true } : {}),
+    ...(input.playExiledWithStashCounters
+      ? { playExiledWithStashCounters: true }
+      : {}),
     ...(input.abilityHaste ? { abilityHaste: true } : {}),
     ...(input.untapDuringEachUntap
       ? { untapDuringEachUntap: input.untapDuringEachUntap }

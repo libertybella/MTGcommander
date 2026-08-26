@@ -137,6 +137,7 @@ export type CompiledOracleText = {
   saga?: { chapters: CardEffect[][] };
   castFromGraveyard?: { types?: string[]; subtypes?: string[] };
   castFromExile?: boolean;
+  playExiledWithStashCounters?: boolean;
   ascend?: boolean;
   untapDuringEachUntap?: CardDefinition["untapDuringEachUntap"];
   abilityHaste?: boolean;
@@ -5605,6 +5606,16 @@ function compileSimpleClauseInner(sentence: string): SimpleClause | null {
       });
     }
     return { targetRequirements: [], effects: kujaEffects };
+  }
+
+  // Tinybones, Bauble Burglar: the discards-trigger body. "it" is the card the
+  // opponent just discarded (the trigger subject, now in their graveyard);
+  // exile it with a stash counter and grant its caster play-from-exile.
+  if (/^exile it from their graveyard with a stash counter on it$/i.test(sentence)) {
+    return {
+      targetRequirements: [],
+      effects: [{ kind: "stash_exile_grant", casterId: "controller" }],
+    };
   }
 
   // Kefka, Court Mage: "each player discards a card, then you draw a card for
@@ -19009,6 +19020,20 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
       if (/exile/i.test(sentence)) {
         result.castFromExile = true;
       }
+      continue;
+    }
+
+    // Tinybones, Bauble Burglar: "During your turn, you may play cards you
+    // don't own with stash counters on them from exile, and mana of any type
+    // can be spent to cast those spells." The playable permission is realised
+    // per card by stash_exile_grant at exile time (whileExiled + anyColorMana);
+    // this records the descriptive static so the sentence is compiled.
+    if (
+      /^During your turn, you may play cards you don[’']t own with stash counters on them from exile, and mana of any type can be spent to cast those spells$/i.test(
+        sentence,
+      )
+    ) {
+      result.playExiledWithStashCounters = true;
       continue;
     }
 

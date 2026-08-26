@@ -1240,7 +1240,7 @@
   "Kuja, Genome Sorcerer": true,
   "Ragavan, Nimble Pilferer": true,
   "Tergrid, God of Fright": true,
-  "Tinybones, Bauble Burglar": false,
+  "Tinybones, Bauble Burglar": true,
   "Animate Dead": true,
   "Cabal Ritual": true,
   "Essence Flux": true,
@@ -6344,12 +6344,6 @@
    "type": "Legendary Creature — Human Wizard",
    "notes": [
     "Some oracle text is not compiled: During your turn, ~ has indestructible; At the beginning of your end step, exile a card at random from each opponent's graveyard; You may cast any number of spells from among cards exiled this way without paying their mana costs; Then each player who owns a spell you cast this way loses life equal to its mana value."
-   ]
-  },
-  "Tinybones, Bauble Burglar": {
-   "type": "Legendary Creature — Skeleton Rogue",
-   "notes": [
-    "Some oracle text is not compiled: Whenever an opponent discards a card, exile it from their graveyard with a stash counter on it; During your turn, you may play cards you don't own with stash counters on them from exile, and mana of any type can be spent to cast those spells."
    ]
   },
   "Exploration Broodship": {
@@ -14193,10 +14187,9 @@
   {
    "commander": "Kefka, Court Mage",
    "rank": 24,
-   "slots": 2,
+   "slots": 1,
    "misses": [
-    "Kefka, Dancing Mad",
-    "Tinybones, Bauble Burglar"
+    "Kefka, Dancing Mad"
    ]
   },
   {

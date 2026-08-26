@@ -73971,3 +73971,84 @@ describe("wave 462: Kuja's transform-when-mustered and Trance Kuja's Wizard dama
     }
   });
 });
+
+describe("wave 463: Tinybones, Bauble Burglar — stash an opponent's discard, then play it", () => {
+  const T =
+    "Whenever an opponent discards a card, exile it from their graveyard with a stash counter on it.\n" +
+    "During your turn, you may play cards you don't own with stash counters on them from exile, and mana of any type can be spent to cast those spells.\n" +
+    "{3}{B}, {T}: Each opponent discards a card. Activate only as a sorcery.";
+  const compileTiny = () =>
+    compileOracleCard({
+      oracleId: "tinybones-bauble-burglar", name: "Tinybones, Bauble Burglar", manaCost: "{1}{B}",
+      typeLine: "Legendary Creature \u2014 Skeleton Rogue", power: "1", toughness: "3", printedKeywords: [], imageUrl: "",
+      oracleText: T,
+    });
+
+  it("compiles all three clauses", () => {
+    const c = compileTiny();
+    expect(c.notes).toEqual([]);
+    expect(c.definition.triggers?.[0]).toMatchObject({ event: "discards", watch: "opponents" });
+    expect(c.definition.triggers?.[0]?.effects).toEqual([{ kind: "stash_exile_grant", casterId: "controller" }]);
+    expect(c.definition.playExiledWithStashCounters).toBe(true);
+  });
+
+  const put = (game: GameState, ownerId: string, definition: CardDefinition, zone: "battlefield" | "graveyard" = "battlefield") => {
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({ definitionId: definition.id, ownerId, zone });
+    if (zone === "battlefield") card.summoningSick = false;
+    game.cards[card.id] = card;
+    (game.players.find((e) => e.id === ownerId)!.zones as Record<string, string[]>)[zone].push(card.id);
+    return card.id;
+  };
+
+  it("stashes an opponent's discard in exile with a counter, then lets you cast it with any mana", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 10);
+    put(game, p1.id, compileTiny().definition);
+    // The opponent's discarded RED instant lands in their graveyard first.
+    const boltId = put(game, p2.id, createCardDefinition({ name: "Stolen Jolt", typeLine: "Instant", manaCost: "{R}" }), "graveyard");
+
+    // Reach p1's precombat main so an instant is castable, then round-trip.
+    let next = parseGameState(serializeGameState(advanceSteps(game, 3)));
+    next.priorityPlayerId = p1.id;
+    dispatchEventsInPlace(next, [{ kind: "discards", cardId: boltId, playerId: p2.id }]);
+    while (next.stack.length > 0) next = resolveTopOfStack(next);
+
+    // Exiled from the graveyard with one stash counter.
+    expect(next.cards[boltId]?.zone).toBe("exile");
+    expect(next.cards[boltId]?.counters.stash).toBe(1);
+    // A standing play-from-exile grant for Tinybones' controller, any-colour mana.
+    expect(next.exilePlayable?.find((g) => g.cardId === boltId)).toMatchObject({
+      casterId: p1.id, anyColorMana: true, whileExiled: true,
+    });
+
+    // p1 holds only GREEN, yet may cast the opponent's RED card from exile
+    // (the "mana of any type" clause) — the cast succeeds and spends the green.
+    next.players[0]!.mana = { W: 0, U: 0, B: 0, R: 0, G: 1, C: 0 };
+    const cast = applyAction(next, { kind: "cast_spell", playerId: p1.id, cardId: boltId, targets: [] });
+    expect(cast.cards[boltId]?.zone).toBe("stack");
+    expect(cast.players[0]!.mana.G).toBe(0);
+  });
+
+  it("the {3}{B} ability makes each opponent discard", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 10);
+    const c = compileTiny();
+    const ability = c.definition.activated?.find((a) =>
+      a.effects.some((e) => e.kind === "discard" || e.kind === "discard_random"),
+    );
+    expect(ability).toBeTruthy();
+    put(game, p1.id, c.definition);
+    const handId = createCardDefinition({ name: "Held", typeLine: "Instant", manaCost: "{U}" });
+    game.definitions[handId.id] = handId;
+    const held = createCardInstance({ definitionId: handId.id, ownerId: p2.id, zone: "hand" });
+    game.cards[held.id] = held;
+    p2.zones.hand.push(held.id);
+    const before = game.players.find((e) => e.id === p2.id)!.zones.hand.length;
+    const after = applyEffects(
+      game,
+      bindCardEffects(game, ability!.effects, { controllerId: p1.id, sourceId: p1.id, targets: [], targetRequirements: [] }),
+    );
+    expect(after.players.find((e) => e.id === p2.id)!.zones.hand.length).toBe(before - 1);
+  });
+});

@@ -778,6 +778,12 @@ export type CardDefinition = {
   /** Squee, the Immortal: castable from EXILE (and, with castFromGraveyard,
    * from the graveyard) with no gate — whoever exiled it, it comes back. */
   castFromExile?: boolean;
+  /** Tinybones, Bauble Burglar: the descriptive half of the stash mechanic
+   * ("During your turn, you may play cards you don't own with stash counters
+   * on them from exile ..."). The playable-from-exile permission is realised
+   * by the stash_exile_grant effect at exile time (per card), so this flag is
+   * a documented marker that the sentence was recognised. */
+  playExiledWithStashCounters?: boolean;
   /** Ascend: while this is on the battlefield, controlling ten or more
    * permanents grants the city's blessing (checked in the SBA sweep). */
   ascend?: boolean;
@@ -1942,6 +1948,11 @@ export type GameEffect =
   /** Kefka, Court Mage: each player discards a card, then the drawer draws one
    * for each DISTINCT card type among the cards discarded this way. */
   | { kind: "discard_each_draw_per_type"; drawerId: PlayerId }
+  /** Tinybones, Bauble Burglar: exile the card the opponent just discarded
+   * (the trigger subject, now in their graveyard) with a stash counter, and
+   * grant its caster the standing permission to play it from exile with mana
+   * of any type for as long as it stays exiled. */
+  | { kind: "stash_exile_grant"; casterId: PlayerId; cardId: CardInstanceId }
   | { kind: "discard_unless_attacked"; playerId: PlayerId; count: number }
   | { kind: "amass"; playerId: PlayerId; amount: number; subtype?: string }
   | { kind: "reveal_zone"; fromPlayerId: PlayerId; toPlayerId: PlayerId; zone: "hand" }
@@ -3675,6 +3686,7 @@ export type CardEffect =
   /** Gamble: "discard a card at random". */
   | { kind: "discard_random"; playerId: PlayerSelector; count: number }
   | { kind: "discard_each_draw_per_type"; drawerId: PlayerSelector }
+  | { kind: "stash_exile_grant"; casterId: PlayerSelector }
   | { kind: "discard_unless_attacked"; playerId: PlayerSelector; count: number }
   | { kind: "amass"; playerId: PlayerSelector; amount: number | "x"; subtype?: string }
   | {

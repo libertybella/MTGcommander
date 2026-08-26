@@ -855,6 +855,14 @@ export function bindCardEffect(
       }
       return { kind: "discard_each_draw_per_type", drawerId };
     }
+    case "stash_exile_grant": {
+      const casterId = bindPlayerSelector(state, effect.casterId, context);
+      const cardId = context.subjectCardId;
+      if (!casterId || !cardId) {
+        return null;
+      }
+      return { kind: "stash_exile_grant", casterId, cardId };
+    }
     case "amass": {
       const playerId = bindPlayerSelector(state, effect.playerId, context);
       if (!playerId) {
@@ -5463,6 +5471,28 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
         if (discardedTypes.size > 0) {
           next = applyDraw(next, effect.drawerId, discardedTypes.size, false, false);
         }
+        break;
+      }
+      case "stash_exile_grant": {
+        // Tinybones, Bauble Burglar. The card the opponent just discarded is
+        // in their graveyard; exile it, mark it with a stash counter, and give
+        // its caster a standing play-from-exile grant (any mana, for as long
+        // as it stays exiled). "During your turn" is approximated by the cast
+        // path's own sorcery-speed gate.
+        const target = state.cards[effect.cardId];
+        if (!target || target.zone === "exile") {
+          next = state;
+          break;
+        }
+        next = moveCard(state, effect.cardId, "exile");
+        const moved = next.cards[effect.cardId];
+        if (moved) {
+          moved.counters = { ...moved.counters, stash: (moved.counters.stash ?? 0) + 1 };
+        }
+        next.exilePlayable = [
+          ...(next.exilePlayable ?? []).filter((entry) => entry.cardId !== effect.cardId),
+          { cardId: effect.cardId, casterId: effect.casterId, whileExiled: true, anyColorMana: true },
+        ];
         break;
       }
       case "discard_random":

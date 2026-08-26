@@ -1489,6 +1489,9 @@ export function parseGameState(json: string): GameState {
         : {}),
       ...(def.ascend === true ? { ascend: true } : {}),
       ...(def.castFromExile === true ? { castFromExile: true } : {}),
+      ...(def.playExiledWithStashCounters === true
+        ? { playExiledWithStashCounters: true }
+        : {}),
       ...(def.castFromGraveyard === undefined
         ? {}
         : {
@@ -4351,6 +4354,8 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
     }
     case "discard_each_draw_per_type":
       return { kind, drawerId: parsePlayerSelector(value.drawerId, `${label}.drawerId`) };
+    case "stash_exile_grant":
+      return { kind, casterId: parsePlayerSelector(value.casterId, `${label}.casterId`) };
     case "discard":
       return {
         kind,
@@ -7090,6 +7095,13 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
   }
   if (kind === "discard_each_draw_per_type") {
     return { kind, drawerId: expectString(value.drawerId, `${label}.drawerId`) };
+  }
+  if (kind === "stash_exile_grant") {
+    return {
+      kind,
+      casterId: expectString(value.casterId, `${label}.casterId`),
+      cardId: expectString(value.cardId, `${label}.cardId`),
+    };
   }
   if (
     kind === "scry" ||
