@@ -75438,3 +75438,63 @@ describe("wave 482: Athreos, God of Passage — a devotion-gated god who ferries
     expect(paid.cards[pilgrimId]?.zone).toBe("graveyard");
   });
 });
+describe("wave 483: Sephiroth's front face transforms on the fourth resolution", () => {
+  // The front face of the transform DFC, compiled on its own. Its dies trigger
+  // drains a life and, on the fourth resolution this turn, flips Sephiroth.
+  const compileFront = () =>
+    compileOracleCard({
+      oracleId: "sephiroth-fabled-soldier", name: "Sephiroth, Fabled SOLDIER", manaCost: "{2}{B}",
+      typeLine: "Legendary Creature — Human Avatar Soldier", power: "3", toughness: "3", printedKeywords: [], imageUrl: "",
+      oracleText:
+        "Whenever Sephiroth enters or attacks, you may sacrifice another creature. If you do, draw a card.\nWhenever another creature dies, target opponent loses 1 life and you gain 1 life. If this is the fourth time this ability has resolved this turn, transform Sephiroth.",
+    });
+
+  it("compiles the front face whole, with the fourth-resolution transform rider", () => {
+    const c = compileFront();
+    expect(c.notes).toEqual([]);
+    const dies = (c.definition.triggers ?? []).find(
+      (t) => t.event === "dies" && t.effects.some((e) => e.kind === "nth_resolution_transform"),
+    );
+    expect(dies).toBeDefined();
+    const rider = dies!.effects.find((e) => e.kind === "nth_resolution_transform");
+    expect(rider).toMatchObject({ kind: "nth_resolution_transform", threshold: 4 });
+  });
+
+  it("counts resolutions and flips on the fourth, resetting the count each turn", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 10);
+    const backDef = createCardDefinition({ name: "Sephiroth, One-Winged Angel", typeLine: "Legendary Creature — Angel", power: 5, toughness: 5 });
+    const frontDef = createCardDefinition({ name: "Sephiroth, Fabled SOLDIER", typeLine: "Legendary Creature — Human", power: 3, toughness: 3 });
+    frontDef.otherFaceId = backDef.id;
+    backDef.otherFaceId = frontDef.id;
+    game.definitions[frontDef.id] = frontDef;
+    game.definitions[backDef.id] = backDef;
+    const seph = createCardInstance({ definitionId: frontDef.id, ownerId: p1.id, zone: "battlefield" });
+    seph.summoningSick = false;
+    game.cards[seph.id] = seph;
+    p1.zones.battlefield.push(seph.id);
+
+    const fire = (state: GameState) =>
+      applyEffects(state, [{ kind: "nth_resolution_transform", cardId: seph.id, threshold: 4 }]);
+
+    let next: GameState = game;
+    for (let i = 0; i < 3; i += 1) next = fire(next);
+    // Three resolutions: still the front face.
+    expect(next.cards[seph.id]?.definitionId).toBe(frontDef.id);
+    expect(next.abilityResolutionsThisTurn?.[seph.id]).toBe(3);
+    // The fourth flips it.
+    next = fire(next);
+    expect(next.cards[seph.id]?.definitionId).toBe(backDef.id);
+
+    // The count is per source: a second Sephiroth tracks its own resolutions.
+    const other = createCardInstance({ definitionId: frontDef.id, ownerId: p1.id, zone: "battlefield" });
+    other.summoningSick = false;
+    next.cards[other.id] = other;
+    next.players.find((e) => e.id === p1.id)!.zones.battlefield.push(other.id);
+    next = applyEffects(next, [{ kind: "nth_resolution_transform", cardId: other.id, threshold: 4 }]);
+    // Its first resolution counts one and does not flip it.
+    expect(next.abilityResolutionsThisTurn?.[other.id]).toBe(1);
+    expect(next.cards[other.id]?.definitionId).toBe(frontDef.id);
+    // The reset rides the same per-turn wiring as drawsByPlayerThisTurn.
+  });
+});

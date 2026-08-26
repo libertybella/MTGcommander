@@ -1441,6 +1441,10 @@ export type GameState = {
   /** Muldrotha: the permanent types each player has already played from their
    * graveyard this turn (one per type is allowed). */
   graveyardTypesPlayedThisTurn?: Record<PlayerId, string[]>;
+  /** Sephiroth, Fabled SOLDIER: how many times a given permanent's counted
+   * ability has resolved this turn, for "if this is the Nth time ... this
+   * turn" riders. Keyed by the source card. */
+  abilityResolutionsThisTurn?: Record<CardInstanceId, number>;
   /**
    * The Gaffer: per-player life GAINED this turn, which is not the same as
    * the change in life total — losing 5 and gaining 3 leaves you lower but
@@ -2728,6 +2732,8 @@ export type GameEffect =
     }
   | { kind: "attach"; cardId: CardInstanceId; toId: CardInstanceId }
   | { kind: "transform"; cardId: CardInstanceId }
+  /** Sephiroth: count this resolution; transform the source at the Nth. */
+  | { kind: "nth_resolution_transform"; cardId: CardInstanceId; threshold: number }
   | {
       kind: "copy_token";
       ownerId: PlayerId;
@@ -4490,6 +4496,7 @@ export type CardEffect =
     }
   | { kind: "attach"; cardId: CardIdSelector; toId: ChosenTargetRef | CardInstanceId }
   | { kind: "transform"; cardId: CardIdSelector }
+  | { kind: "nth_resolution_transform"; threshold: number }
   | {
       kind: "copy_token";
       ownerId: PlayerSelector;

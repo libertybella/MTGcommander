@@ -2147,6 +2147,20 @@ export function parseGameState(json: string): GameState {
     ...(raw.createdTokenThisTurn === undefined
       ? {}
       : { createdTokenThisTurn: expectStringArray(raw.createdTokenThisTurn, "createdTokenThisTurn") }),
+    ...(raw.abilityResolutionsThisTurn === undefined
+      ? {}
+      : {
+          abilityResolutionsThisTurn: (() => {
+            if (!isRecord(raw.abilityResolutionsThisTurn)) {
+              throw new Error("Invalid abilityResolutionsThisTurn");
+            }
+            const out: Record<string, number> = {};
+            for (const [key, entry] of Object.entries(raw.abilityResolutionsThisTurn)) {
+              out[key] = expectNumber(entry, `abilityResolutionsThisTurn.${key}`);
+            }
+            return out;
+          })(),
+        }),
     ...(raw.graveyardTypesPlayedThisTurn === undefined
       ? {}
       : {
@@ -5110,6 +5124,8 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
         kind,
         cardId: parseCardIdSelector(value.cardId, `${label}.cardId`),
       };
+    case "nth_resolution_transform":
+      return { kind, threshold: expectNumber(value.threshold, `${label}.threshold`) };
     case "copy_token":
       return {
         kind,
@@ -7520,6 +7536,13 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
   }
   if (kind === "transform") {
     return { kind, cardId: expectString(value.cardId, `${label}.cardId`) };
+  }
+  if (kind === "nth_resolution_transform") {
+    return {
+      kind,
+      cardId: expectString(value.cardId, `${label}.cardId`),
+      threshold: expectNumber(value.threshold, `${label}.threshold`),
+    };
   }
   if (kind === "copy_token") {
     return {

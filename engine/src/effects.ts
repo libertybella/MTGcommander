@@ -2033,6 +2033,16 @@ export function bindCardEffect(
       }
       return { kind: "attach", cardId, toId };
     }
+    case "nth_resolution_transform": {
+      if (!context.sourceId) {
+        return null;
+      }
+      return {
+        kind: "nth_resolution_transform",
+        cardId: context.sourceId,
+        threshold: effect.threshold,
+      };
+    }
     case "transform": {
       const cardId = bindCardId(state, effect.cardId, context);
       if (!cardId) {
@@ -7265,6 +7275,24 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
       case "transform":
         next = applyTransform(state, effect.cardId);
         break;
+      case "nth_resolution_transform": {
+        next = cloneGameState(state);
+        const counts = { ...(next.abilityResolutionsThisTurn ?? {}) };
+        const resolved = (counts[effect.cardId] ?? 0) + 1;
+        counts[effect.cardId] = resolved;
+        next.abilityResolutionsThisTurn = counts;
+        // Only flip while the source is still on the battlefield with its
+        // other face available.
+        const source = next.cards[effect.cardId];
+        if (
+          resolved >= effect.threshold &&
+          source?.zone === "battlefield" &&
+          next.definitions[source.definitionId]?.otherFaceId
+        ) {
+          next = applyTransform(next, effect.cardId);
+        }
+        break;
+      }
       case "copy_token": {
         /**
          * Saw in Half: "IF that creature dies this way". The sibling

@@ -2642,6 +2642,23 @@ function foldSacrificeRider(effects: CardEffect[], sentence: string): boolean {
 }
 
 function foldSubjectRider(effects: CardEffect[], sentence: string): boolean {
+  // Sephiroth, Fabled SOLDIER: "If this is the Nth time this ability has
+  // resolved this turn, transform ~" rides the dies trigger's body — it is a
+  // same-line continuation of the drain, so fold the transform onto the
+  // trigger's effects here (a top-level clause on a permanent never runs).
+  const nthTransform = sentence.match(
+    /^If this is the (first|second|third|fourth|fifth|sixth|\d+)(?:st|nd|rd|th)? time this ability has resolved this turn, transform ~$/i,
+  );
+  if (nthTransform?.[1]) {
+    const ORD: Record<string, number> = {
+      first: 1, second: 2, third: 3, fourth: 4, fifth: 5, sixth: 6,
+    };
+    const threshold = ORD[nthTransform[1].toLowerCase()] ?? Number(nthTransform[1]);
+    if (Number.isFinite(threshold) && threshold >= 1) {
+      effects.push({ kind: "nth_resolution_transform", threshold });
+      return true;
+    }
+  }
   // Wake the Past: "They gain haste until end of turn" rides a mass return
   // from the graveyard, which is neither a token nor a single move_card, so
   // it is folded here before the token/permanent search below reaches for a
