@@ -3528,7 +3528,10 @@ export type CardEffect =
       /** "…creature token with flying" (Utvara Hellkite). */
       keywords?: Keyword[];
       /** Secure the Wastes: "Create X … tokens" — the announced X. */
-      count?: number | "x";
+      /** Ruthless Technomancer: "a number of Treasure tokens equal to that
+       * creature's power" — the sacrificed creature's power, read from the
+       * may_sacrifice context that bound this effect. */
+      count?: number | "x" | "sacrificed_power";
       /** Brass's Bounty: one token per controlled permanent of this type. */
       perControlled?: "land" | "creature" | "artifact";
       /** Krenko, Myrel: "where X is the number of Goblins you control". */

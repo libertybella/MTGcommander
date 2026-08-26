@@ -2795,6 +2795,28 @@ function compileSimpleClauseInner(sentence: string): SimpleClause | null {
       effects: [{ kind: "move_card", cardId: "self", toZone: "battlefield" }],
     };
   }
+
+  // Ruthless Technomancer: reached through a may_sacrifice, where "that
+  // creature's power" is the sacrificed creature — read from the context that
+  // bound this clause as `sacrificed_power`.
+  if (
+    /^Create a number of Treasure tokens equal to that creature's power$/i.test(sentence)
+  ) {
+    return {
+      targetRequirements: [],
+      effects: [
+        {
+          kind: "create_token",
+          ownerId: "controller",
+          name: "Treasure",
+          typeLine: "Artifact — Treasure Token",
+          power: null,
+          toughness: null,
+          count: "sacrificed_power",
+        },
+      ],
+    };
+  }
   /**
    * Siren Stormtamer, and the plain form beside it. "That targets you or a
    * creature you control" is a constraint on what the STACK OBJECT is
@@ -11919,7 +11941,7 @@ function fuseMaySacrificeInPlace(sentences: string[], lineStart: boolean[]): voi
       continue;
     }
     const head = sentences[index]?.match(
-      /^(.+, )?you may sacrifice (a land|another creature)$/i,
+      /^(.+, )?you may sacrifice (a land|another creature)(?: you control)?$/i,
     );
     const rider = sentences[index + 1]?.match(/^If you do, (.+)$/i);
     if (!head || !rider?.[1]) {

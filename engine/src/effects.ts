@@ -1134,7 +1134,11 @@ export function bindCardEffect(
       // Secure the Wastes: "Create X … tokens" reads the announced X. An X of
       // zero makes no tokens rather than one.
       let count: number | undefined =
-        printedCount === "x" ? Math.max(0, context.xValue ?? 0) : printedCount;
+        printedCount === "x"
+          ? Math.max(0, context.xValue ?? 0)
+          : printedCount === "sacrificed_power"
+            ? Math.max(0, context.sacrificedPower ?? 0)
+            : printedCount;
       // A zero that a DYNAMIC source will replace at apply time is "not
       // known yet", not "no tokens" — Descent into Avernus prints no count
       // at all and reads a counter tally its own sibling is still adding to.

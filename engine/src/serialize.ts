@@ -4184,7 +4184,11 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
           ? {}
           : {
               count:
-                value.count === "x" ? ("x" as const) : expectNumber(value.count, `${label}.count`),
+                value.count === "x"
+                  ? ("x" as const)
+                  : value.count === "sacrificed_power"
+                    ? ("sacrificed_power" as const)
+                    : expectNumber(value.count, `${label}.count`),
             }),
         ...(value.perDiedCreatures === true ? { perDiedCreatures: true } : {}),
         ...(value.countFromSubjectAmount === true ? { countFromSubjectAmount: true } : {}),

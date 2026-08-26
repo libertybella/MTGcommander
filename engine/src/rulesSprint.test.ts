@@ -70964,3 +70964,114 @@ describe("wave 427: Draw X cards", () => {
     ]);
   });
 });
+
+describe("wave 428: sacrifice-a-creature-you-control for Treasures (Ruthless Technomancer ETB)", () => {
+  const compile = (name: string, oracleText: string) =>
+    compileOracleCard({
+      oracleId: name.toLowerCase().replace(/[^a-z]+/g, "-"),
+      name,
+      manaCost: "{3}{B}",
+      typeLine: "Creature — Human Wizard",
+      power: "3",
+      toughness: "2",
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  it("fuses the 'you control' sacrifice into a may_sacrifice with a power-scaled Treasure count", () => {
+    const compiled = compile("Ruthless Technomancer", "When Ruthless Technomancer enters, you may sacrifice another creature you control. If you do, create a number of Treasure tokens equal to that creature's power.");
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.triggers[0]).toMatchObject({
+      event: "enter_battlefield",
+      effects: [
+        {
+          kind: "may_sacrifice",
+          what: "another_creature",
+          effects: [
+            {
+              kind: "create_token",
+              name: "Treasure",
+              count: "sacrificed_power",
+            },
+          ],
+        },
+      ],
+    });
+  });
+
+  const technomancer = () =>
+    createCardDefinition({
+      name: "Ruthless Technomancer",
+      typeLine: "Creature — Human Wizard",
+      manaCost: "{3}{B}",
+      power: 3,
+      toughness: 2,
+      triggers: [
+        {
+          event: "enter_battlefield",
+          effects: [
+            {
+              kind: "may_sacrifice",
+              what: "another_creature",
+              effects: [
+                {
+                  kind: "create_token",
+                  ownerId: "controller",
+                  name: "Treasure",
+                  typeLine: "Artifact — Treasure Token",
+                  power: null,
+                  toughness: null,
+                  count: "sacrificed_power",
+                },
+              ],
+            },
+          ],
+          targetRequirements: [],
+        },
+      ],
+    });
+
+  const put = (game: GameState, ownerId: string, definition: CardDefinition) => {
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({ definitionId: definition.id, ownerId, zone: "battlefield" });
+    card.summoningSick = false;
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === ownerId)!.zones.battlefield.push(card.id);
+    return card.id;
+  };
+
+  const bear = (name: string, power: number) =>
+    createCardDefinition({ name, typeLine: "Creature — Bear", manaCost: "{1}{G}", power, toughness: 2 });
+
+  it("makes Treasures equal to the sacrificed creature's power", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const techId = put(game, p1.id, technomancer());
+    put(game, p1.id, bear("Fat Bear", 4));
+    // Fire the ETB directly via its bound effects.
+    const bound = bindCardEffects(
+      game,
+      technomancer().triggers![0]!.effects,
+      { controllerId: p1.id, sourceId: techId, targets: [], targetRequirements: [] },
+    );
+    const after = applyEffects(game, bound);
+    const treasures = Object.values(after.cards).filter(
+      (entry) => entry.isToken && after.definitions[entry.definitionId]?.name === "Treasure",
+    );
+    // The auto-picked fodder is the biggest-power creature (documented) — the
+    // 4-power bear — so four Treasures.
+    expect(treasures).toHaveLength(4);
+  });
+
+  it("round trips the sacrificed-power token count", () => {
+    const { game, p1 } = twoPlayers();
+    const definition = technomancer();
+    put(game, p1.id, definition);
+    const round = parseGameState(serializeGameState(game));
+    expect(round.definitions[definition.id]?.triggers[0]?.effects[0]).toMatchObject({
+      kind: "may_sacrifice",
+      effects: [{ kind: "create_token", count: "sacrificed_power" }],
+    });
+  });
+});
