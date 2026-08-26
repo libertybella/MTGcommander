@@ -18030,6 +18030,32 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
       continue;
     }
 
+    // Afterlife N (CR 702.133): "When this creature dies, create N 1/1 white
+    // and black Spirit creature tokens with flying." The reminder is stripped,
+    // leaving the bare keyword.
+    const afterlife = sentence.match(/^Afterlife (\d+)$/i);
+    if (afterlife?.[1]) {
+      result.triggers.push({
+        event: "dies",
+        watch: "self",
+        effects: [
+          {
+            kind: "create_token",
+            ownerId: "controller",
+            name: "Spirit",
+            typeLine: "Creature — Spirit Token",
+            power: 1,
+            toughness: 1,
+            colors: ["W", "B"],
+            keywords: ["flying"],
+            count: Number(afterlife[1]),
+          },
+        ],
+        targetRequirements: [],
+      });
+      continue;
+    }
+
     // Winter Orb (one land) / Static Orb (two permanents): a global untap cap
     // that holds while this permanent is untapped.
     const untapCap = sentence.match(

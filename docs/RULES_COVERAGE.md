@@ -3060,3 +3060,4 @@ ends. Every printed card of this shape asks about the current turn.
 - Parameterized subtype counts: "for each (other) <tribe> you control" scales any count effect by a creature subtype (Earthshaker Dreadmaw and other tribal payoffs) — DynamicCount object member `controlled_subtype`, printed-subtype count, changelings not yet counted.
 - Devoid (CR 702.114): the colourless keyword — the card is colourless whatever its mana cost, forced in-engine at creation (Eldrazi and other devoid cards).
 - Toxic N (CR 702.180): combat damage to a player also gives N poison counters, additive with the life lost (Blightbelly Rat and other Phyrexian toxic creatures) — distinct from infect, which converts the damage.
+- Afterlife N (CR 702.133): a creature that dies makes N 1/1 white and black flying Spirit tokens (Ministrant of Obligation and other afterlife creatures).

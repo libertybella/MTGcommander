@@ -70812,3 +70812,105 @@ describe("wave 425: Toxic", () => {
     expect(round.definitions[definition.id]?.toxic).toBe(2);
   });
 });
+
+describe("wave 426: Afterlife", () => {
+  const compile = (name: string, oracleText: string) =>
+    compileOracleCard({
+      oracleId: name.toLowerCase().replace(/[^a-z]+/g, "-"),
+      name,
+      manaCost: "{2}{W}",
+      typeLine: "Creature — Human Cleric",
+      power: "1",
+      toughness: "1",
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  it("compiles afterlife into a dies trigger making N Spirits", () => {
+    const compiled = compile("Ministrant of Obligation", "Afterlife 2 (When this creature dies, create two 1/1 white and black Spirit creature tokens with flying.)");
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.triggers[0]).toMatchObject({
+      event: "dies",
+      watch: "self",
+      effects: [
+        {
+          kind: "create_token",
+          name: "Spirit",
+          power: 1,
+          toughness: 1,
+          colors: ["W", "B"],
+          keywords: ["flying"],
+          count: 2,
+        },
+      ],
+    });
+  });
+
+  const afterlifer = (name: string, count: number) =>
+    createCardDefinition({
+      name,
+      typeLine: "Creature — Human Cleric",
+      manaCost: "{2}{W}",
+      power: 1,
+      toughness: 1,
+      triggers: [
+        {
+          event: "dies",
+          watch: "self",
+          effects: [
+            {
+              kind: "create_token",
+              ownerId: "controller",
+              name: "Spirit",
+              typeLine: "Creature — Spirit Token",
+              power: 1,
+              toughness: 1,
+              colors: ["W", "B"],
+              keywords: ["flying"],
+              count,
+            },
+          ],
+          targetRequirements: [],
+        },
+      ],
+    });
+
+  it("makes the Spirits when the creature dies", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const definition = afterlifer("Ministrant", 2);
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({ definitionId: definition.id, ownerId: p1.id, zone: "battlefield" });
+    card.summoningSick = false;
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === p1.id)!.zones.battlefield.push(card.id);
+
+    const events: EngineEvent[] = [];
+    destroyPermanentInPlace(game, card.id, events);
+    dispatchEventsInPlace(game, events);
+    // The dies trigger goes on the stack; resolving it makes the tokens.
+    const after = resolveTopOfStack(game);
+    const spirits = Object.values(after.cards).filter(
+      (entry) =>
+        entry.isToken &&
+        entry.controllerId === p1.id &&
+        entry.zone === "battlefield" &&
+        after.definitions[entry.definitionId]?.name === "Spirit",
+    );
+    expect(spirits).toHaveLength(2);
+    expect(after.definitions[spirits[0]!.definitionId]?.keywords).toContain("flying");
+  });
+
+  it("round trips the afterlife trigger", () => {
+    const { game } = twoPlayers();
+    const definition = afterlifer("Ministrant", 3);
+    game.definitions[definition.id] = definition;
+    const round = parseGameState(serializeGameState(game));
+    expect(round.definitions[definition.id]?.triggers[0]?.effects[0]).toMatchObject({
+      kind: "create_token",
+      count: 3,
+      name: "Spirit",
+    });
+  });
+});
