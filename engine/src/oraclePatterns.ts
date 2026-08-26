@@ -115,6 +115,7 @@ export type CompiledOracleText = {
   storm?: boolean;
   doesntUntap?: boolean;
   toxic?: number;
+  artifactAbilityDiscount?: number;
   untapRestriction?: { max: number; scope: "land" | "permanent" };
   /** Devoid (CR 702.114): the card is colorless. Baked into the derived
    * colors at creation rather than stored, so nothing to serialize. */
@@ -18126,6 +18127,25 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
     const toxicKeyword = sentence.match(/^Toxic (\d+)$/i);
     if (toxicKeyword?.[1]) {
       result.toxic = (result.toxic ?? 0) + Number(toxicKeyword[1]);
+      continue;
+    }
+
+    // Forensic Gadgeteer: "Activated abilities of artifacts you control cost
+    // {N} less to activate." The floor sentence rides beside it (below).
+    const artifactAbilityLess = sentence.match(
+      /^Activated abilities of artifacts you control cost \{(\d+)\} less to activate$/i,
+    );
+    if (artifactAbilityLess?.[1]) {
+      result.artifactAbilityDiscount =
+        (result.artifactAbilityDiscount ?? 0) + Number(artifactAbilityLess[1]);
+      continue;
+    }
+    // The standard floor, already enforced by the payment (it never removes
+    // the last mana): consume it so it is not a leftover.
+    if (
+      /^This effect can't reduce the mana in that cost to less than one mana$/i.test(sentence) &&
+      result.artifactAbilityDiscount
+    ) {
       continue;
     }
 

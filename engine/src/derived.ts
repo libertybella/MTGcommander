@@ -1727,3 +1727,31 @@ export function findFreeHandGrantIndex(
   }
   return best;
 }
+
+/**
+ * Forensic Gadgeteer: the total {N}-less discount on activating an ARTIFACT's
+ * ability, summed across every source the player controls that grants it. The
+ * ability's source must itself be an artifact; the floor (never below one
+ * mana) is applied by the caller against the specific cost.
+ */
+export function artifactAbilityDiscount(
+  state: GameState,
+  playerId: string,
+  sourceCardId: string,
+): number {
+  const source = state.cards[sourceCardId];
+  if (!source || !characteristicsOf(state, sourceCardId).types.includes("artifact")) {
+    return 0;
+  }
+  let discount = 0;
+  for (const card of Object.values(state.cards)) {
+    if (card.zone !== "battlefield" || card.controllerId !== playerId) {
+      continue;
+    }
+    const amount = state.definitions[card.definitionId]?.artifactAbilityDiscount;
+    if (amount && !abilitiesRemoved(state, card.id)) {
+      discount += amount;
+    }
+  }
+  return discount;
+}

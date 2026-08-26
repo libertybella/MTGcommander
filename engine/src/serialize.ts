@@ -1006,6 +1006,7 @@ export function parseGameState(json: string): GameState {
       ...(def.storm === true ? { storm: true } : {}),
       ...(def.doesntUntap === true ? { doesntUntap: true } : {}),
       ...(typeof def.toxic === "number" ? { toxic: expectNumber(def.toxic, `definition.${id}.toxic`) } : {}),
+      ...(typeof def.artifactAbilityDiscount === "number" ? { artifactAbilityDiscount: expectNumber(def.artifactAbilityDiscount, `definition.${id}.artifactAbilityDiscount`) } : {}),
       ...(isRecord(def.untapRestriction)
         ? {
             untapRestriction: {

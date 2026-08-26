@@ -71542,3 +71542,109 @@ Encore {3}{R}`;
     });
   });
 });
+
+describe("wave 433: Forensic Gadgeteer artifact-ability discount (Urza 5→4)", () => {
+  const fgText = `Whenever you cast an artifact spell, investigate.
+Activated abilities of artifacts you control cost {1} less to activate. This effect can't reduce the mana in that cost to less than one mana.`;
+
+  const compileFg = () =>
+    compileOracleCard({
+      oracleId: "forensic-gadgeteer",
+      name: "Forensic Gadgeteer",
+      manaCost: "{2}{U}",
+      typeLine: "Creature — Vedalken Artificer Detective",
+      power: "2",
+      toughness: "3",
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText: fgText,
+    });
+
+  it("compiles the whole card — investigate trigger and the discount", () => {
+    const compiled = compileFg();
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.artifactAbilityDiscount).toBe(1);
+    expect(compiled.definition.triggers[0]).toMatchObject({ event: "cast_spell", watch: "controlled" });
+  });
+
+  const gadgeteer = () =>
+    createCardDefinition({
+      name: "Forensic Gadgeteer",
+      typeLine: "Creature — Vedalken",
+      manaCost: "{2}{U}",
+      power: 2,
+      toughness: 3,
+      artifactAbilityDiscount: 1,
+    });
+  const widget = (cost: string) =>
+    createCardDefinition({
+      name: "Widget",
+      typeLine: "Artifact",
+      manaCost: "{3}",
+      activated: [{ tap: false, manaCost: cost, effects: [{ kind: "draw", playerId: "controller", count: 1 }], targetRequirements: [] }],
+    });
+  const put = (game: GameState, ownerId: string, definition: CardDefinition) => {
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({ definitionId: definition.id, ownerId, zone: "battlefield" });
+    card.summoningSick = false;
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === ownerId)!.zones.battlefield.push(card.id);
+    return card.id;
+  };
+  const ready = (game: GameState, playerId: string, blue: number) => {
+    game.turn.activePlayerId = playerId;
+    game.turn.phase = "precombatMain";
+    game.turn.step = "precombatMain";
+    game.priorityPlayerId = playerId;
+    game.players.find((entry) => entry.id === playerId)!.mana.U = blue;
+  };
+
+  it("shaves {1} off an artifact's ability", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    put(game, p1.id, gadgeteer());
+    const widgetId = put(game, p1.id, widget("{2}"));
+    ready(game, p1.id, 2);
+    const after = applyAction(game, { kind: "activate_ability", playerId: p1.id, cardId: widgetId, abilityIndex: 0, targets: [] });
+    // {2} became {1}: one blue left.
+    expect(after.players.find((entry) => entry.id === p1.id)!.mana.U).toBe(1);
+  });
+
+  it("never reduces below one mana", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    put(game, p1.id, gadgeteer());
+    const widgetId = put(game, p1.id, widget("{1}"));
+    ready(game, p1.id, 1);
+    const after = applyAction(game, { kind: "activate_ability", playerId: p1.id, cardId: widgetId, abilityIndex: 0, targets: [] });
+    // {1} stays {1}: zero left, the floor held.
+    expect(after.players.find((entry) => entry.id === p1.id)!.mana.U).toBe(0);
+  });
+
+  it("does not touch a NONartifact's ability", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    put(game, p1.id, gadgeteer());
+    const creatureAbility = createCardDefinition({
+      name: "Elf Mage",
+      typeLine: "Creature — Elf",
+      manaCost: "{G}",
+      power: 1,
+      toughness: 1,
+      activated: [{ tap: false, manaCost: "{2}", effects: [{ kind: "draw", playerId: "controller", count: 1 }], targetRequirements: [] }],
+    });
+    const elfId = put(game, p1.id, creatureAbility);
+    ready(game, p1.id, 2);
+    const after = applyAction(game, { kind: "activate_ability", playerId: p1.id, cardId: elfId, abilityIndex: 0, targets: [] });
+    // A creature's ability is untouched — {2} stays {2}, zero left.
+    expect(after.players.find((entry) => entry.id === p1.id)!.mana.U).toBe(0);
+  });
+
+  it("round trips the discount", () => {
+    const { game, p1 } = twoPlayers();
+    const definition = gadgeteer();
+    put(game, p1.id, definition);
+    const round = parseGameState(serializeGameState(game));
+    expect(round.definitions[definition.id]?.artifactAbilityDiscount).toBe(1);
+  });
+});

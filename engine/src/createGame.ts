@@ -173,6 +173,7 @@ export function createCardDefinition(
         | "storm"
         | "doesntUntap"
         | "toxic"
+        | "artifactAbilityDiscount"
         | "untapRestriction"
         | "grantsFlash"
         | "controlsOpponentSearches"
@@ -543,6 +544,7 @@ export function createCardDefinition(
     ...(input.storm ? { storm: true } : {}),
     ...(input.doesntUntap ? { doesntUntap: true } : {}),
     ...(typeof input.toxic === "number" ? { toxic: input.toxic } : {}),
+    ...(typeof input.artifactAbilityDiscount === "number" ? { artifactAbilityDiscount: input.artifactAbilityDiscount } : {}),
     ...(input.untapRestriction
       ? { untapRestriction: { max: input.untapRestriction.max, scope: input.untapRestriction.scope } }
       : {}),

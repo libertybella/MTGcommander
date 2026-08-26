@@ -8,7 +8,7 @@ import {
 import { characteristicsOf, hasType, isCommander, isCreature, isInstant, isInstantOrSorcery, isLand, isLegendary, isMainPhase } from "./cardTypes";
 import { abilityLifeCost } from "./commanderIdentity";
 import { cloneGameState } from "./clone";
-import { applyPhyrexianColorGrants, inSorceryWindow, retraceReaches, targetingLifeTaxFor, splitSecondActive, costRelief, affinityArtifactDiscount, allBattlefieldCreatureCount, canActivateTapAbility, canPlayLandFromTop, canPlayLandsFromGraveyard, castCostReduction, castableFromTop, controlsCommander, creaturePower, freeEquipGranted, hasFlashGrant, activationNonManaPayment, altCastPayment, landDropAllowance, manaTapMultiplier, lockedByAbolisher, lockedFromCasting, noncreatureSpellCap, opponentControlsMoreLands, findFreeHandGrantIndex, opponentsCastLockedToHand, selfDiscountAmount, staticFreeCastCap, usesOncePerTurnFreeCast , topOfLibraryGrant } from "./derived";
+import { applyPhyrexianColorGrants, artifactAbilityDiscount, inSorceryWindow, retraceReaches, targetingLifeTaxFor, splitSecondActive, costRelief, affinityArtifactDiscount, allBattlefieldCreatureCount, canActivateTapAbility, canPlayLandFromTop, canPlayLandsFromGraveyard, castCostReduction, castableFromTop, controlsCommander, creaturePower, freeEquipGranted, hasFlashGrant, activationNonManaPayment, altCastPayment, landDropAllowance, manaTapMultiplier, lockedByAbolisher, lockedFromCasting, noncreatureSpellCap, opponentControlsMoreLands, findFreeHandGrantIndex, opponentsCastLockedToHand, selfDiscountAmount, staticFreeCastCap, usesOncePerTurnFreeCast , topOfLibraryGrant } from "./derived";
 import { eliminatePlayerInPlace } from "./elimination";
 import { applyEffects, bindCardEffects, devotionTo } from "./effects";
 import { hasKeyword } from "./keywords";
@@ -1918,6 +1918,16 @@ function applyActivateAbility(
     throw new Error(`Unknown player ${playerId}`);
   }
   const cost = parseManaCost(ability.manaCost);
+  // Forensic Gadgeteer: artifact abilities cost {N} less to activate, never
+  // below one mana total. Only the generic pips come off, and the floor holds
+  // the whole cost at one mana.
+  const abilityDiscount = artifactAbilityDiscount(state, playerId, cardId);
+  if (abilityDiscount > 0) {
+    const colored =
+      cost.W + cost.U + cost.B + cost.R + cost.G + cost.C + cost.hybrid.length + cost.phyrexian.length;
+    const removable = Math.max(0, Math.min(abilityDiscount, cost.generic, cost.generic + colored - 1));
+    cost.generic -= removable;
+  }
   // K'rrik says "in a COST", which is every cost its controller pays —
   // activations included, not only spells.
   applyPhyrexianColorGrants(state, playerId, cost);
