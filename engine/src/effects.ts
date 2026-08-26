@@ -4578,6 +4578,7 @@ function applyCopyToken(
     addSubtypes?: string[];
     notLegendary?: boolean;
     attackingPlayerId?: PlayerId;
+    attackingEachOpponent?: boolean;
     atEndCombat?: "exile";
   },
 ): GameState {
@@ -4585,12 +4586,14 @@ function applyCopyToken(
   const original = state.cards[ofCardId];
   // "stack" is allowed for Offspring: the copy is made as the spell resolves,
   // just before the original itself enters the battlefield. "graveyard" is
-  // allowed for eternalize, which copies the card it is exiling.
+  // allowed for eternalize, which copies the card it is exiling. "exile" is
+  // allowed for Encore, which exiled the card as its cost and then copies it.
   if (
     !original ||
     (original.zone !== "battlefield" &&
       original.zone !== "stack" &&
-      original.zone !== "graveyard")
+      original.zone !== "graveyard" &&
+      original.zone !== "exile")
   ) {
     throw new Error(`Card ${ofCardId} is not on the battlefield`);
   }
@@ -4631,14 +4634,25 @@ function applyCopyToken(
     throw new Error(`Unknown player ${ownerId}`);
   }
   // Token copies are created tokens too — doublers apply (CR 614.1c).
-  const copies =
-    (opts?.count ?? 1) *
-    tokenDoublingFactor(
-      next,
-      ownerId,
-      next.definitions[copyDefinitionId]?.characteristics.types.includes("creature") ?? false,
-    );
-  for (let index = 0; index < copies; index += 1) {
+  const doubling = tokenDoublingFactor(
+    next,
+    ownerId,
+    next.definitions[copyDefinitionId]?.characteristics.types.includes("creature") ?? false,
+  );
+  // Encore (CR 702.139): one copy PER OPPONENT, each meant to attack that
+  // opponent. The forced attack itself is a documented approximation — Encore
+  // is a sorcery-speed graveyard ability, so it resolves with no combat under
+  // way; the copies enter with haste (and are sacrificed at the next end step)
+  // rather than being locked into attacking, which is strictly weaker than
+  // print, never stronger.
+  const opponents = opts?.attackingEachOpponent
+    ? next.players.filter((player) => player.id !== ownerId).map((player) => player.id)
+    : null;
+  const perCopyAttacker: (PlayerId | undefined)[] = opponents
+    ? opponents.flatMap((id) => Array.from({ length: doubling }, () => id))
+    : Array.from({ length: (opts?.count ?? 1) * doubling }, () => opts?.attackingPlayerId);
+  for (let index = 0; index < perCopyAttacker.length; index += 1) {
+    const attacker = perCopyAttacker[index];
     const token = createCardInstance({
       definitionId: copyDefinitionId,
       ownerId,
@@ -4657,13 +4671,13 @@ function applyCopyToken(
     // Myriad: the copy arrives already attacking the named opponent, which
     // is the whole mechanic — a token that merely entered would be a
     // creature with summoning sickness and nothing to do.
-    if (opts?.attackingPlayerId && next.combat?.attackersDeclared) {
+    if (attacker && next.combat?.attackersDeclared) {
       token.tapped = true;
       token.attacking = true;
       token.summoningSick = false;
       next.combat.attacks.push({
         attackerId: token.id,
-        defenderId: opts.attackingPlayerId,
+        defenderId: attacker,
       });
     }
     if (opts?.atEndCombat) {

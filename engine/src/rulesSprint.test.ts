@@ -71434,3 +71434,111 @@ At the beginning of your end step, you may sacrifice another creature. When you 
     expect(trigger?.targetRequirements).toEqual([{ kind: "player_or_creature" }]);
   });
 });
+
+describe("wave 432: Impulsive Pilferer / Encore (Korvold 1→0, FIRST PLAYABLE DECK)", () => {
+  const pilfText = `When Impulsive Pilferer dies, create a Treasure token.
+Encore {3}{R}`;
+
+  const compile = () =>
+    compileOracleCard({
+      oracleId: "impulsive-pilferer",
+      name: "Impulsive Pilferer",
+      manaCost: "{1}{R}",
+      typeLine: "Creature — Goblin Pirate",
+      power: "1",
+      toughness: "1",
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText: pilfText,
+    });
+
+  it("compiles the whole card, dies-Treasure and Encore both", () => {
+    const compiled = compile();
+    expect(compiled.notes).toEqual([]);
+    // The Encore ability: a sorcery-speed graveyard activation that exiles
+    // this card and copies it, one hasty attacking copy per opponent,
+    // sacrificed at the next end step.
+    expect(compiled.definition.activated[0]).toMatchObject({
+      manaCost: "{3}{R}",
+      zone: "graveyard",
+      exileSelf: true,
+      timing: "sorcery",
+      effects: [
+        {
+          kind: "copy_token",
+          ofCardId: "self",
+          attackingEachOpponent: true,
+          gainsHaste: true,
+          atEndStep: "sacrifice",
+        },
+      ],
+    });
+  });
+
+  const put = (game: GameState, ownerId: string, definition: CardDefinition, zone: "graveyard" | "battlefield") => {
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({ definitionId: definition.id, ownerId, zone });
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === ownerId)!.zones[zone].push(card.id);
+    return card.id;
+  };
+
+  it("exiles the card and makes a hasty copy per opponent, doomed at end step", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const cardId = put(game, p1.id, compile().definition, "graveyard");
+    game.turn.activePlayerId = p1.id;
+    game.turn.phase = "precombatMain";
+    game.turn.step = "precombatMain";
+    game.priorityPlayerId = p1.id;
+    game.players.find((entry) => entry.id === p1.id)!.mana.R = 9;
+    // exileSelf abilities resolve on activation (no separate stack step).
+    const after = applyAction(game, {
+      kind: "activate_ability",
+      playerId: p1.id,
+      cardId,
+      abilityIndex: 0,
+      targets: [],
+    });
+    expect(after.cards[cardId]?.zone).toBe("exile");
+    const copies = Object.values(after.cards).filter(
+      (card) =>
+        card.isToken &&
+        card.zone === "battlefield" &&
+        after.definitions[card.definitionId]?.name === "Impulsive Pilferer",
+    );
+    // One opponent in a two-player game → one copy.
+    expect(copies).toHaveLength(1);
+    expect(copies[0]!.summoningSick).toBe(false);
+    expect(after.delayedEndStep?.some((entry) => entry.cardId === copies[0]!.id && entry.action === "sacrifice")).toBe(true);
+  });
+
+  it("is a sorcery-speed graveyard ability, offered only in a main phase", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const cardId = put(game, p1.id, compile().definition, "graveyard");
+    game.players.find((entry) => entry.id === p1.id)!.mana.R = 9;
+    // Opponent's turn: sorcery timing forbids it.
+    game.turn.activePlayerId = game.players[1]!.id;
+    game.turn.phase = "precombatMain";
+    game.turn.step = "precombatMain";
+    game.priorityPlayerId = p1.id;
+    const offered = legalActions(game, p1.id).some(
+      (action) => action.kind === "activate_ability" && action.cardId === cardId,
+    );
+    expect(offered).toBe(false);
+  });
+
+  it("round trips the Encore ability", () => {
+    const { game } = twoPlayers();
+    const definition = compile().definition;
+    game.definitions[definition.id] = definition;
+    const round = parseGameState(serializeGameState(game));
+    expect(round.definitions[definition.id]?.activated[0]).toMatchObject({
+      zone: "graveyard",
+      exileSelf: true,
+      timing: "sorcery",
+      effects: [{ kind: "copy_token", attackingEachOpponent: true, gainsHaste: true, atEndStep: "sacrifice" }],
+    });
+  });
+});

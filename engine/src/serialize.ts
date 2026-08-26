@@ -5005,6 +5005,7 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
           ? {}
           : { count: expectNumber(value.count, `${label}.count`) }),
         ...(value.gainsHaste === true ? { gainsHaste: true } : {}),
+        ...(value.attackingEachOpponent === true ? { attackingEachOpponent: true } : {}),
         ...(value.halvePtRoundUp === true ? { halvePtRoundUp: true } : {}),
         ...(value.onlyIfDied === true ? { onlyIfDied: true } : {}),
         ...(value.atEndStep === "sacrifice" || value.atEndStep === "exile"

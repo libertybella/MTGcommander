@@ -17993,6 +17993,35 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
       continue;
     }
 
+    // Encore (CR 702.139): a graveyard-activated ability — pay the cost and
+    // exile this card — that makes an attacking token copy of it for each
+    // opponent, hasty, sacrificed at the next end step, at sorcery speed. The
+    // forced-attack-that-opponent is a documented approximation (weaker than
+    // print) since the ability resolves outside combat; the copies enter with
+    // haste and can attack.
+    const encore = sentence.match(/^Encore\s*[—–-]?\s*((?:\{[^}]+\})+)$/i);
+    if (encore?.[1]) {
+      result.activated.push({
+        tap: false,
+        manaCost: encore[1],
+        zone: "graveyard",
+        exileSelf: true,
+        timing: "sorcery",
+        effects: [
+          {
+            kind: "copy_token",
+            ownerId: "controller",
+            ofCardId: "self",
+            attackingEachOpponent: true,
+            gainsHaste: true,
+            atEndStep: "sacrifice",
+          },
+        ],
+        targetRequirements: [],
+      });
+      continue;
+    }
+
     if (/^Changeling$/i.test(sentence)) {
       result.changeling = true;
       continue;

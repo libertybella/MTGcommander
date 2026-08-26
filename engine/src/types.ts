@@ -4331,6 +4331,8 @@ export type CardEffect =
       /** "It gains haste" / delayed end-step riders (Jaxis-class shells). */
       gainsHaste?: boolean;
       atEndStep?: "sacrifice" | "exile";
+      /** Encore (CR 702.139): one attacking copy per opponent. */
+      attackingEachOpponent?: boolean;
       /** Offspring: the copy's base power and toughness are overridden (1/1). */
       setPt?: { power: number; toughness: number };
       /** Eternalize: the copy is black and a Zombie on top of its own types. */
