@@ -21216,6 +21216,19 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
       }
     }
 
+    // Voldaren Estate: "{1} less to activate for each <Subtype> you control".
+    // The legendary form above is its own flag; this is the tribal cousin.
+    const subtypeDiscount = sentence.match(
+      /^This ability costs \{1\} less to activate for each ([A-Z][a-z]+) you control$/,
+    );
+    if (subtypeDiscount?.[1] && result.activated.length > 0) {
+      const last = result.activated[result.activated.length - 1];
+      if (last && !last.subtypeDiscount) {
+        last.subtypeDiscount = singularSubtype(subtypeDiscount[1]);
+        continue;
+      }
+    }
+
     // Mox Opal: a count gate riding the previous mana ability.
     const countGate = sentence.match(
       /^Activate only if you control (two|three|four|five|\d+) or more (artifacts|creatures|lands)$/i,

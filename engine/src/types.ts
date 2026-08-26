@@ -5739,6 +5739,9 @@ export type ActivatedAbility = {
   requiresOpponentMoreLands?: boolean;
   /** Kamigawa channel lands: {1} less per legendary creature you control. */
   legendaryDiscount?: boolean;
+  /** Voldaren Estate: {1} less to activate per creature of this subtype you
+   * control. */
+  subtypeDiscount?: string;
   /** "…: Choose one —" activations (Cankerbloom): the activation picks a
    * mode; its effects and targets replace the (empty) top-level ones. */
   modes?: SpellMode[];

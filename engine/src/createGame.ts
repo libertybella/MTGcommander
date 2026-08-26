@@ -409,6 +409,7 @@ export function createCardDefinition(
             : {}),
           ...(ability.exileSelf ? { exileSelf: true } : {}),
           ...(ability.legendaryDiscount ? { legendaryDiscount: true } : {}),
+          ...(ability.subtypeDiscount ? { subtypeDiscount: ability.subtypeDiscount } : {}),
           ...(ability.lifeCostFromCommanderColors
             ? { lifeCostFromCommanderColors: true }
             : {}),

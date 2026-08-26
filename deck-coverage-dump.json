@@ -186,7 +186,7 @@
   "Unclaimed Territory": true,
   "Vault of Champions": true,
   "Vault of the Archangel": true,
-  "Voldaren Estate": false,
+  "Voldaren Estate": true,
   "Blood Artist": true,
   "Bloodletter of Aclazotz": true,
   "Bloodline Keeper": true,
@@ -2470,7 +2470,7 @@
   "Sanctum of Fruitful Harvest": false,
   "Sanctum of Shattered Heights": false,
   "Sanctum of Stone Fangs": false,
-  "Sanctum of Tranquil Light": false,
+  "Sanctum of Tranquil Light": true,
   "Sigil of the Empty Throne": true,
   "Southern Air Temple": false,
   "Sphere of Safety": true,
@@ -3762,12 +3762,6 @@
    "type": "Artifact — Equipment",
    "notes": [
     "Some oracle text is not compiled: If equipped creature is a Vampire, put two +1/+1 counters on it instead."
-   ]
-  },
-  "Voldaren Estate": {
-   "type": "Land",
-   "notes": [
-    "Some oracle text is not compiled: This ability costs {1} less to activate for each Vampire you control."
    ]
   },
   "Captivating Vampire": {
@@ -10134,12 +10128,6 @@
     "Some oracle text is not compiled: At the beginning of your first main phase, each opponent loses X life and you gain X life, where X is the number of Shrines you control."
    ]
   },
-  "Sanctum of Tranquil Light": {
-   "type": "Legendary Enchantment — Shrine",
-   "notes": [
-    "Some oracle text is not compiled: This ability costs {1} less to activate for each Shrine you control."
-   ]
-  },
   "Southern Air Temple": {
    "type": "Legendary Enchantment — Shrine",
    "notes": [
@@ -14861,6 +14849,31 @@
    ]
   },
   {
+   "commander": "Edgar Markov",
+   "rank": 3,
+   "slots": 18,
+   "misses": [
+    "Blade of the Bloodchief",
+    "Captivating Vampire",
+    "Champion of Dusk",
+    "Charismatic Conqueror",
+    "Clavileño, First of the Blessed",
+    "Edgar, Charmed Groom",
+    "Forerunner of the Legion",
+    "Knight of the Ebon Legion",
+    "Malakir Bloodwitch",
+    "Markov Baron",
+    "Master of Dark Rites",
+    "Twilight Prophet",
+    "Vampire Socialite",
+    "Sorin, Imperious Bloodlord",
+    "New Blood",
+    "Olivia's Wrath",
+    "Pact of the Serpent",
+    "Edgar Markov (commander)"
+   ]
+  },
+  {
    "commander": "Chatterfang, Squirrel General",
    "rank": 29,
    "slots": 18,
@@ -14933,32 +14946,6 @@
     "Weapons Manufacturing",
     "Tezzeret, Cruel Captain",
     "Ragost, Deft Gastronaut (commander)"
-   ]
-  },
-  {
-   "commander": "Edgar Markov",
-   "rank": 3,
-   "slots": 19,
-   "misses": [
-    "Blade of the Bloodchief",
-    "Voldaren Estate",
-    "Captivating Vampire",
-    "Champion of Dusk",
-    "Charismatic Conqueror",
-    "Clavileño, First of the Blessed",
-    "Edgar, Charmed Groom",
-    "Forerunner of the Legion",
-    "Knight of the Ebon Legion",
-    "Malakir Bloodwitch",
-    "Markov Baron",
-    "Master of Dark Rites",
-    "Twilight Prophet",
-    "Vampire Socialite",
-    "Sorin, Imperious Bloodlord",
-    "New Blood",
-    "Olivia's Wrath",
-    "Pact of the Serpent",
-    "Edgar Markov (commander)"
    ]
   },
   {
@@ -15698,6 +15685,37 @@
    ]
   },
   {
+   "commander": "Go-Shintai of Life's Origin",
+   "rank": 64,
+   "slots": 24,
+   "misses": [
+    "White Lotus Hideout",
+    "Go-Shintai of Ancient Wars",
+    "Go-Shintai of Boundless Vigor",
+    "Go-Shintai of Hidden Cruelty",
+    "Go-Shintai of Lost Wisdom",
+    "Hei Bai, Forest Guardian",
+    "Weaver of Harmony",
+    "Yenna, Redtooth Regent",
+    "Zur, Eternal Schemer",
+    "Crescent Island Temple",
+    "Fertile Ground",
+    "Honden of Infinite Rage",
+    "Honden of Night's Reach",
+    "Kyoshi Island Plaza",
+    "Northern Air Temple",
+    "Sanctum of All",
+    "Sanctum of Calm Waters",
+    "Sanctum of Fruitful Harvest",
+    "Sanctum of Shattered Heights",
+    "Sanctum of Stone Fangs",
+    "Southern Air Temple",
+    "Aang's Journey",
+    "Resurgent Belief",
+    "Go-Shintai of Life's Origin (commander)"
+   ]
+  },
+  {
    "commander": "The First Sliver",
    "rank": 75,
    "slots": 24,
@@ -15916,38 +15934,6 @@
     "Expel the Interlopers",
     "Slaughter the Strong",
     "Arcades, the Strategist (commander)"
-   ]
-  },
-  {
-   "commander": "Go-Shintai of Life's Origin",
-   "rank": 64,
-   "slots": 25,
-   "misses": [
-    "White Lotus Hideout",
-    "Go-Shintai of Ancient Wars",
-    "Go-Shintai of Boundless Vigor",
-    "Go-Shintai of Hidden Cruelty",
-    "Go-Shintai of Lost Wisdom",
-    "Hei Bai, Forest Guardian",
-    "Weaver of Harmony",
-    "Yenna, Redtooth Regent",
-    "Zur, Eternal Schemer",
-    "Crescent Island Temple",
-    "Fertile Ground",
-    "Honden of Infinite Rage",
-    "Honden of Night's Reach",
-    "Kyoshi Island Plaza",
-    "Northern Air Temple",
-    "Sanctum of All",
-    "Sanctum of Calm Waters",
-    "Sanctum of Fruitful Harvest",
-    "Sanctum of Shattered Heights",
-    "Sanctum of Stone Fangs",
-    "Sanctum of Tranquil Light",
-    "Southern Air Temple",
-    "Aang's Journey",
-    "Resurgent Belief",
-    "Go-Shintai of Life's Origin (commander)"
    ]
   },
   {

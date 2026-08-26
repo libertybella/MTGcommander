@@ -1972,6 +1972,16 @@ function applyActivateAbility(
     ).length;
     cost.generic = Math.max(0, cost.generic - legends);
   }
+  if (ability.subtypeDiscount) {
+    // Voldaren Estate: {1} less per creature of the named subtype you control.
+    const kin = Object.values(state.cards).filter(
+      (entry) =>
+        entry.zone === "battlefield" &&
+        entry.controllerId === playerId &&
+        cardMatchesSubtype(state, entry.id, ability.subtypeDiscount!),
+    ).length;
+    cost.generic = Math.max(0, cost.generic - kin);
+  }
   // Puresteel Paladin: equip abilities cost {0} while a metalcraft granter
   // is live.
   if (

@@ -72544,3 +72544,91 @@ describe("wave 445: Elven Ambush (create a token for each <Subtype> you control)
     expect(battlefield.length).toBe(before + 3);
   });
 });
+
+describe("wave 446: Voldaren Estate ({1} less to activate per Subtype you control)", () => {
+  it("compiles the tribal activation discount onto the ability", () => {
+    const estate = compileOracleCard({
+      oracleId: "voldaren-estate",
+      name: "Voldaren Estate",
+      manaCost: "",
+      typeLine: "Land",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "{T}: Add {C}.\n{5}, {T}: Create a Blood token. This ability costs {1} less to activate for each Vampire you control.",
+    });
+    expect(estate.notes).toEqual([]);
+    const paid = estate.definition.activated.find((a) => a.manaCost === "{5}");
+    expect(paid?.subtypeDiscount).toBe("vampire");
+  });
+
+  const estateDef = () =>
+    createCardDefinition({
+      name: "Estate",
+      typeLine: "Land",
+      activated: [
+        {
+          tap: true,
+          manaCost: "{5}",
+          subtypeDiscount: "vampire",
+          effects: [{ kind: "draw", playerId: "controller", count: 1 }],
+          targetRequirements: [],
+        },
+      ],
+    });
+  const vampire = () => createCardDefinition({ name: "Vampire", typeLine: "Creature — Vampire", manaCost: "{1}{B}", power: 2, toughness: 2 });
+
+  const setup = (vampires: number, mana: number) => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 10);
+    const land = estateDef();
+    game.definitions[land.id] = land;
+    const landCard = createCardInstance({ definitionId: land.id, ownerId: p1.id, zone: "battlefield" });
+    game.cards[landCard.id] = landCard;
+    p1.zones.battlefield.push(landCard.id);
+    const vDef = vampire();
+    game.definitions[vDef.id] = vDef;
+    for (let i = 0; i < vampires; i += 1) {
+      const v = createCardInstance({ definitionId: vDef.id, ownerId: p1.id, zone: "battlefield" });
+      game.cards[v.id] = v;
+      p1.zones.battlefield.push(v.id);
+    }
+    game.players.find((p) => p.id === p1.id)!.mana.G = mana;
+    return { game, p1, landId: landCard.id };
+  };
+
+  it("discounts {5} to {3} with two Vampires and resolves", () => {
+    const { game, p1, landId } = setup(2, 3);
+    const handBefore = game.players.find((p) => p.id === p1.id)!.zones.hand.length;
+    const next = applyAction(game, { kind: "activate_ability", playerId: p1.id, cardId: landId, abilityIndex: 0 });
+    if (next.stack.length > 0) {
+      const resolved = resolveTopOfStack(next);
+      expect(resolved.players.find((p) => p.id === p1.id)!.zones.hand.length).toBe(handBefore + 1);
+    }
+    expect(next.cards[landId]?.tapped).toBe(true);
+  });
+
+  it("is not free — two Vampires and only {2} cannot pay the reduced {3}", () => {
+    const { game, p1, landId } = setup(2, 2);
+    expect(() =>
+      applyAction(game, { kind: "activate_ability", playerId: p1.id, cardId: landId, abilityIndex: 0 }),
+    ).toThrow();
+  });
+
+  it("scales with Vampire count — no Vampires means the full {5}", () => {
+    const { game, p1, landId } = setup(0, 3);
+    expect(() =>
+      applyAction(game, { kind: "activate_ability", playerId: p1.id, cardId: landId, abilityIndex: 0 }),
+    ).toThrow();
+  });
+
+  it("round trips subtypeDiscount through serialization (guards the field lists)", () => {
+    const { game } = twoPlayers();
+    const land = estateDef();
+    game.definitions[land.id] = land;
+    const round = parseGameState(serializeGameState(game));
+    expect(round.definitions[land.id]?.activated?.[0]?.subtypeDiscount).toBe("vampire");
+  });
+});

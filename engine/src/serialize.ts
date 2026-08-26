@@ -5569,6 +5569,9 @@ function parseActivatedAbilities(value: unknown, label: string): ActivatedAbilit
           }),
       ...(entry.exileSelf === true ? { exileSelf: true } : {}),
       ...(entry.legendaryDiscount === true ? { legendaryDiscount: true } : {}),
+      ...(entry.subtypeDiscount === undefined
+        ? {}
+        : { subtypeDiscount: expectString(entry.subtypeDiscount, `${label}[${index}].subtypeDiscount`) }),
       ...(entry.requiresOpponentMoreLands === true ? { requiresOpponentMoreLands: true } : {}),
       ...(entry.modes === undefined
         ? {}

@@ -540,6 +540,15 @@ function abilityUsable(
     ).length;
     cost.generic = Math.max(0, cost.generic - legends);
   }
+  if (ability.subtypeDiscount) {
+    const kin = Object.values(state.cards).filter(
+      (entry) =>
+        entry.zone === "battlefield" &&
+        entry.controllerId === playerId &&
+        cardMatchesSubtype(state, entry.id, ability.subtypeDiscount!),
+    ).length;
+    cost.generic = Math.max(0, cost.generic - kin);
+  }
   // Puresteel Paladin: equips are free while a metalcraft granter is live.
   if (
     ability.effects[0]?.kind === "attach" &&
