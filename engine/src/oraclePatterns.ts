@@ -765,7 +765,7 @@ const COST_UNIT =
 function splitAbility(sentence: string): { costText: string; rest: string } | null {
   // "Metalcraft — {T}: …" — the ability word is flavor (Mox Opal).
   const stripped = sentence.replace(
-    /^(?:Metalcraft|Landfall|Threshold|Delirium|Hellbent|Vivid)\s*[—-]\s*(?=\{)/i,
+    /^(?:Metalcraft|Landfall|Threshold|Delirium|Hellbent|Vivid|Magic)\s*[—-]\s*(?=\{)/i,
     "",
   );
   const match = stripped.match(
@@ -5548,6 +5548,21 @@ function compileSimpleClauseInner(sentence: string): SimpleClause | null {
    * declining. The chosen card leaves the way its zone says, which is why
    * the sacrifice is not a plain `sacrifice`.
    */
+  // Kefka, Court Mage: "Target player discards a card" — a specific chosen
+  // player, their own choice of which card.
+  const targetDiscard = sentence.match(
+    /^Target player discards (a|one|two|three|four|five|\d+) cards?$/i,
+  );
+  if (targetDiscard?.[1]) {
+    const count = parseCount(targetDiscard[1]);
+    if (count) {
+      return {
+        targetRequirements: [{ kind: "player" }],
+        effects: [{ kind: "discard", playerId: { type: "chosen", index: 0 }, count }],
+      };
+    }
+  }
+
   // Tergrid's Lantern: the same punisher aimed at ONE target player. The
   // chosen player answers, and everything the each-opponent form reads off
   // "each_opponent" it reads off the chosen target here.
@@ -9297,6 +9312,17 @@ function compileSimpleClauseInner(sentence: string): SimpleClause | null {
   // Ephemerate / Conjurer's Closet / Restoration Angel / Felidar Guardian /
   // Teleportation Circle flicker. The noun phrase is parsed rather than
   // enumerated, so each new blink is a card, not a branch.
+  // Kefka, Court Mage: a double-faced creature that flips itself. "Exile ~,
+  // then return it to the battlefield transformed" is modelled as a plain
+  // transform — the object-identity difference of a real blink is immaterial
+  // to a card whose only purpose is to arrive on its other face.
+  if (/^Exile ~, then return it to the battlefield transformed$/i.test(sentence)) {
+    return {
+      targetRequirements: [],
+      effects: [{ kind: "transform", cardId: "self" }],
+    };
+  }
+
   match = sentence.match(
     /^(?:you may )?Exile (.+?), then return (?:it|that card) to the battlefield(?: under (?:its owner's|your) control)?$/i,
   );

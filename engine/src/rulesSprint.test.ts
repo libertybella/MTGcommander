@@ -73645,3 +73645,77 @@ describe("wave 457b: Tergrid's Lantern (target-player punisher)", () => {
     expect(next.players.find((e) => e.id === p2.id)!.life).toBe(before - 3);
   });
 });
+
+describe("wave 458: target-player discard, self-transform body, and the Magic ability word", () => {
+  it("compiles 'Target player discards a card' as a chosen-player discard", () => {
+    const c = compileOracleCard({
+      oracleId: "tp-discard", name: "Discarder", manaCost: "{1}{B}",
+      typeLine: "Legendary Creature — Wizard", power: "2", toughness: "2", printedKeywords: [], imageUrl: "",
+      oracleText: "{T}: Target player discards a card. Activate only as a sorcery.",
+    });
+    expect(c.notes).toEqual([]);
+    expect(c.definition.activated?.[0]).toMatchObject({
+      timing: "sorcery",
+      targetRequirements: [{ kind: "player" }],
+      effects: [{ kind: "discard", playerId: { type: "chosen", index: 0 }, count: 1 }],
+    });
+  });
+
+  it("compiles the self-transform body and the Magic ability word", () => {
+    const c = compileOracleCard({
+      oracleId: "magic-transform", name: "Flipper", manaCost: "{1}{U}",
+      typeLine: "Legendary Creature — Wizard", power: "2", toughness: "2", printedKeywords: [], imageUrl: "",
+      oracleText: "Magic — {2}{U}{R}, {T}: Exile Flipper, then return it to the battlefield transformed. Activate only as a sorcery.",
+    });
+    expect(c.notes).toEqual([]);
+    expect(c.definition.activated?.[0]).toMatchObject({
+      manaCost: "{2}{U}{R}",
+      timing: "sorcery",
+      effects: [{ kind: "transform", cardId: "self" }],
+    });
+  });
+
+  const mainPhase = (game: GameState, id: string) => {
+    game.turn.activePlayerId = id;
+    game.turn.phase = "precombatMain";
+    game.turn.step = "precombatMain";
+    game.priorityPlayerId = id;
+  };
+
+  it("a targeted player actually discards", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 5);
+    const def = compileOracleCard({
+      oracleId: "tp-discard", name: "Discarder", manaCost: "{1}{B}",
+      typeLine: "Legendary Creature — Wizard", power: "2", toughness: "2", printedKeywords: [], imageUrl: "",
+      oracleText: "{T}: Target player discards a card. Activate only as a sorcery.",
+    }).definition;
+    game.definitions[def.id] = def;
+    const src = createCardInstance({ definitionId: def.id, ownerId: p1.id, zone: "battlefield" });
+    src.summoningSick = false;
+    game.cards[src.id] = src;
+    game.players.find((e) => e.id === p1.id)!.zones.battlefield.push(src.id);
+    // Give p2 a single card in hand.
+    const handDef = createCardDefinition({ name: "Card", typeLine: "Instant", manaCost: "{R}" });
+    game.definitions[handDef.id] = handDef;
+    const held = createCardInstance({ definitionId: handDef.id, ownerId: p2.id, zone: "hand" });
+    game.cards[held.id] = held;
+    const p2s = game.players.find((e) => e.id === p2.id)!;
+    p2s.zones.hand = [held.id];
+    mainPhase(game, p1.id);
+
+    let next = applyAction(game, {
+      kind: "activate_ability", playerId: p1.id, cardId: src.id, abilityIndex: 0,
+      targets: [{ type: "player", playerId: p2.id }],
+    });
+    while (next.stack.length > 0 || next.prompts.length > 0) {
+      if (next.prompts.length > 0) {
+        next = applyResolveChooseFromHand(next, p2.id, [held.id]);
+      } else {
+        next = resolveTopOfStack(next);
+      }
+    }
+    expect(next.cards[held.id]?.zone).toBe("graveyard");
+    expect(next.players.find((e) => e.id === p2.id)!.zones.hand).toHaveLength(0);
+  });
+});
