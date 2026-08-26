@@ -223,6 +223,7 @@ export function createCardDefinition(
         | "soulbond"
         | "surveilLookBonus"
         | "playExiledWithStashCounters"
+        | "playExiledWithCroakCounters"
         | "spendBlueAsAnyForAbilities"
         | "ascend"
         | "untapDuringEachUntap"
@@ -681,6 +682,9 @@ export function createCardDefinition(
       : {}),
     ...(input.playExiledWithStashCounters
       ? { playExiledWithStashCounters: true }
+      : {}),
+    ...(input.playExiledWithCroakCounters
+      ? { playExiledWithCroakCounters: true }
       : {}),
     ...(input.spendBlueAsAnyForAbilities
       ? { spendBlueAsAnyForAbilities: true }

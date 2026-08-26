@@ -74943,3 +74943,76 @@ describe("wave 475: Colossal Grave-Reaver — mill a creature, then put it onto 
     expect(next.cards[bear.id]?.controllerId).toBe(p1.id);
   });
 });
+
+describe("wave 476: Grolnok, the Omnivore — mill a permanent to exile with a croak counter, then play it", () => {
+  const compileGrolnok = () =>
+    compileOracleCard({
+      oracleId: "grolnok-the-omnivore", name: "Grolnok, the Omnivore", manaCost: "{2}{G}{U}",
+      typeLine: "Legendary Creature — Frog", power: "4", toughness: "4", printedKeywords: [], imageUrl: "",
+      oracleText:
+        "Whenever a Frog you control attacks, mill three cards.\n" +
+        "Whenever a permanent card is put into your graveyard from your library, exile it with a croak counter on it.\n" +
+        "You may play lands and cast spells from among cards you own in exile with croak counters on them.",
+    });
+
+  it("compiles the mill, the mill-to-exile croak, and the play-from-exile static", () => {
+    const c = compileGrolnok();
+    expect(c.notes).toEqual([]);
+    expect(c.definition.playExiledWithCroakCounters).toBe(true);
+    expect(c.definition.triggers?.[1]).toMatchObject({
+      event: "graveyard_from_elsewhere",
+      subjectFilter: { nonTypes: ["instant", "sorcery"] },
+      effects: [{ kind: "croak_exile_grant", casterId: "controller" }],
+    });
+  });
+
+  const put = (game: GameState, ownerId: string, definition: CardDefinition) => {
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({ definitionId: definition.id, ownerId, zone: "battlefield" });
+    card.summoningSick = false;
+    game.cards[card.id] = card;
+    game.players.find((e) => e.id === ownerId)!.zones.battlefield.push(card.id);
+    return card.id;
+  };
+  const topOfLibrary = (game: GameState, ownerId: string, definition: CardDefinition) => {
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({ definitionId: definition.id, ownerId, zone: "library" });
+    game.cards[card.id] = card;
+    game.players.find((e) => e.id === ownerId)!.zones.library.unshift(card.id);
+    return card.id;
+  };
+
+  it("exiles a milled permanent with a croak counter and lets its owner cast it from exile", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 5);
+    put(game, p1.id, compileGrolnok().definition);
+    const bearId = topOfLibrary(game, p1.id, createCardDefinition({ name: "Bear", typeLine: "Creature — Bear", manaCost: "{1}{G}", power: 2, toughness: 2 }));
+
+    let next = applyEffects(game, [{ kind: "mill", playerId: p1.id, count: 1 }] as unknown as GameEffect[]);
+    while (next.stack.length > 0) next = resolveTopOfStack(next);
+
+    // Exiled from the graveyard with a croak counter and a play-from-exile grant.
+    expect(next.cards[bearId]?.zone).toBe("exile");
+    expect(next.cards[bearId]?.counters.croak).toBe(1);
+    expect(next.exilePlayable?.find((g) => g.cardId === bearId)).toMatchObject({ casterId: p1.id, whileExiled: true });
+
+    // In a main phase with {G}{G} the owner casts the exiled Bear.
+    const ready = advanceSteps(next, 3);
+    ready.priorityPlayerId = p1.id;
+    ready.players[0]!.mana = { W: 0, U: 0, B: 0, R: 0, G: 2, C: 0 };
+    expect(legalActions(ready, p1.id).some((a) => a.kind === "cast_spell" && a.cardId === bearId)).toBe(true);
+  });
+
+  it("does not exile a milled instant (the nonpermanent filter excludes it)", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 5);
+    put(game, p1.id, compileGrolnok().definition);
+    const boltId = topOfLibrary(game, p1.id, createCardDefinition({ name: "Bolt", typeLine: "Instant", manaCost: "{R}" }));
+
+    let next = applyEffects(game, [{ kind: "mill", playerId: p1.id, count: 1 }] as unknown as GameEffect[]);
+    while (next.stack.length > 0) next = resolveTopOfStack(next);
+
+    // The instant just sits in the graveyard.
+    expect(next.cards[boltId]?.zone).toBe("graveyard");
+  });
+});

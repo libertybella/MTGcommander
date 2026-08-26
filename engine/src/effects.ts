@@ -863,6 +863,14 @@ export function bindCardEffect(
       }
       return { kind: "stash_exile_grant", casterId, cardId };
     }
+    case "croak_exile_grant": {
+      const casterId = bindPlayerSelector(state, effect.casterId, context);
+      const cardId = context.subjectCardId;
+      if (!casterId || !cardId) {
+        return null;
+      }
+      return { kind: "croak_exile_grant", casterId, cardId };
+    }
     case "exile_gy_random_free_cast": {
       const casterId = bindPlayerSelector(state, effect.casterId, context);
       if (!casterId) {
@@ -5537,6 +5545,26 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
         next.exilePlayable = [
           ...(next.exilePlayable ?? []).filter((entry) => entry.cardId !== effect.cardId),
           { cardId: effect.cardId, casterId: effect.casterId, whileExiled: true, anyColorMana: true },
+        ];
+        break;
+      }
+      case "croak_exile_grant": {
+        // Grolnok, the Omnivore. The permanent card just milled into your
+        // graveyard is exiled with a croak counter, and you may play it from
+        // exile for as long as it stays there (your own card, normal costs).
+        const target = state.cards[effect.cardId];
+        if (!target || target.zone === "exile") {
+          next = state;
+          break;
+        }
+        next = moveCard(state, effect.cardId, "exile");
+        const moved = next.cards[effect.cardId];
+        if (moved) {
+          moved.counters = { ...moved.counters, croak: (moved.counters.croak ?? 0) + 1 };
+        }
+        next.exilePlayable = [
+          ...(next.exilePlayable ?? []).filter((entry) => entry.cardId !== effect.cardId),
+          { cardId: effect.cardId, casterId: effect.casterId, whileExiled: true },
         ];
         break;
       }

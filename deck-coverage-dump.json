@@ -1800,7 +1800,7 @@
   "Undercity Sewers": true,
   "Underground Mortuary": true,
   "Aesi, Tyrant of Gyre Strait": true,
-  "Grolnok, the Omnivore": false,
+  "Grolnok, the Omnivore": true,
   "Lilysplash Mentor": true,
   "Lumra, Bellow of the Woods": true,
   "Poison Dart Frog": true,
@@ -7853,12 +7853,6 @@
    "type": "Legendary Creature — Dog Cat",
    "notes": [
     "Some oracle text is not compiled: {R}{G}{W}, {T}: ~ deals damage to any target equal to the number of Dogs you control; You gain life equal to the number of Cats you control."
-   ]
-  },
-  "Grolnok, the Omnivore": {
-   "type": "Legendary Creature — Frog",
-   "notes": [
-    "Some oracle text is not compiled: Whenever a permanent card is put into your graveyard from your library, exile it with a croak counter on it; You may play lands and cast spells from among cards you own in exile with croak counters on them."
    ]
   },
   "Counterbalance": {
@@ -14121,10 +14115,9 @@
   {
    "commander": "Glarb, Calamity's Augur",
    "rank": 39,
-   "slots": 4,
+   "slots": 3,
    "misses": [
     "Hedge Shredder",
-    "Grolnok, the Omnivore",
     "Muldrotha, the Gravetide",
     "Counterbalance"
    ]

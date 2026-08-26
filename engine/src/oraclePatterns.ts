@@ -140,6 +140,7 @@ export type CompiledOracleText = {
   soulbond?: boolean;
   surveilLookBonus?: number;
   playExiledWithStashCounters?: boolean;
+  playExiledWithCroakCounters?: boolean;
   spendBlueAsAnyForAbilities?: boolean;
   ascend?: boolean;
   untapDuringEachUntap?: CardDefinition["untapDuringEachUntap"];
@@ -5633,6 +5634,16 @@ function compileSimpleClauseInner(sentence: string): SimpleClause | null {
     return {
       targetRequirements: [{ kind: "creature" }],
       effects: [{ kind: "gain_all_activated_of_target", target: { type: "chosen", index: 0 } }],
+    };
+  }
+
+  // Grolnok, the Omnivore: "exile it with a croak counter on it" — the milled
+  // permanent card (the trigger subject) is exiled with a croak counter and a
+  // standing play-from-exile grant for its owner.
+  if (/^exile it with a croak counter on it$/i.test(sentence)) {
+    return {
+      targetRequirements: [],
+      effects: [{ kind: "croak_exile_grant", casterId: "controller" }],
     };
   }
 
@@ -13568,6 +13579,16 @@ function parseTriggerHead(head: string): TriggerHead | null {
       oncePerBatch: true,
     };
   }
+  // Grolnok, the Omnivore: "a permanent card is put into your graveyard from
+  // your library" — a permanent is anything that is not an instant or sorcery.
+  if (
+    /^Whenever a permanent card is put into your graveyard from your library$/i.test(text)
+  ) {
+    return {
+      event: "graveyard_from_elsewhere",
+      subjectFilter: { nonTypes: ["instant", "sorcery"] },
+    };
+  }
 
   // Scrap Trawler: "~ dies OR another artifact you control is put into a
   // graveyard from the battlefield". The Trawler is itself an artifact, so
@@ -19268,6 +19289,18 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
       )
     ) {
       result.playExiledWithStashCounters = true;
+      continue;
+    }
+
+    // Grolnok, the Omnivore: "You may play lands and cast spells from among
+    // cards you own in exile with croak counters on them." Realised per card
+    // by croak_exile_grant; this records the descriptive static.
+    if (
+      /^You may play lands and cast spells from among cards you own in exile with croak counters on them$/i.test(
+        sentence,
+      )
+    ) {
+      result.playExiledWithCroakCounters = true;
       continue;
     }
 

@@ -317,6 +317,7 @@ function compileOneFace(card: OracleCard, definitionId: string): OracleCompileRe
       ? { surveilLookBonus: compiled.surveilLookBonus }
       : {}),
     ...(compiled.playExiledWithStashCounters ? { playExiledWithStashCounters: true } : {}),
+    ...(compiled.playExiledWithCroakCounters ? { playExiledWithCroakCounters: true } : {}),
     ...(compiled.spendBlueAsAnyForAbilities ? { spendBlueAsAnyForAbilities: true } : {}),
     ...(compiled.ascend ? { ascend: true } : {}),
     ...(compiled.abilityHaste ? { abilityHaste: true } : {}),

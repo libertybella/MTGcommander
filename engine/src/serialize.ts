@@ -1509,6 +1509,9 @@ export function parseGameState(json: string): GameState {
       ...(def.playExiledWithStashCounters === true
         ? { playExiledWithStashCounters: true }
         : {}),
+      ...(def.playExiledWithCroakCounters === true
+        ? { playExiledWithCroakCounters: true }
+        : {}),
       ...(def.spendBlueAsAnyForAbilities === true
         ? { spendBlueAsAnyForAbilities: true }
         : {}),
@@ -4382,6 +4385,8 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
       return { kind, drawerId: parsePlayerSelector(value.drawerId, `${label}.drawerId`) };
     case "stash_exile_grant":
       return { kind, casterId: parsePlayerSelector(value.casterId, `${label}.casterId`) };
+    case "croak_exile_grant":
+      return { kind, casterId: parsePlayerSelector(value.casterId, `${label}.casterId`) };
     case "exile_gy_random_free_cast":
       return { kind, casterId: parsePlayerSelector(value.casterId, `${label}.casterId`) };
     case "gain_all_activated_of_target":
@@ -7144,6 +7149,13 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
     return { kind, drawerId: expectString(value.drawerId, `${label}.drawerId`) };
   }
   if (kind === "stash_exile_grant") {
+    return {
+      kind,
+      casterId: expectString(value.casterId, `${label}.casterId`),
+      cardId: expectString(value.cardId, `${label}.cardId`),
+    };
+  }
+  if (kind === "croak_exile_grant") {
     return {
       kind,
       casterId: expectString(value.casterId, `${label}.casterId`),
