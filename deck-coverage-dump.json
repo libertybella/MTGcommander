@@ -1939,7 +1939,7 @@
   "Mithril Coat": true,
   "Raugrin Triome": true,
   "Rivendell": true,
-  "Aragorn and Arwen, Wed": false,
+  "Aragorn and Arwen, Wed": true,
   "Aragorn, Hornburg Hero": false,
   "Aragorn, King of Gondor": false,
   "Fallaji Wayfarer": false,
@@ -3500,7 +3500,7 @@
   "Wavebreak Hippocamp": false,
   "Reconnaissance Mission": true,
   "Faerie Fencing": false,
-  "Keep Watch": false,
+  "Keep Watch": true,
   "Run Away Together": false,
   "Tegwyll's Scouring": false,
   "Azorius Chancery": true,
@@ -8325,12 +8325,6 @@
    "type": "Legendary Creature — Elder Dragon",
    "notes": [
     "Some oracle text is not compiled: Each creature you control with defender assigns combat damage equal to its toughness rather than its power and can attack as though it didn't have defender."
-   ]
-  },
-  "Aragorn and Arwen, Wed": {
-   "type": "Legendary Creature — Human Elf Noble",
-   "notes": [
-    "Some oracle text is not compiled: You gain 1 life for each other creature you control."
    ]
   },
   "Aragorn, Hornburg Hero": {
@@ -14083,12 +14077,6 @@
     "Some oracle text is not compiled: That creature gets an additional -3/-3 until end of turn if you controlled a Faerie as you cast this spell."
    ]
   },
-  "Keep Watch": {
-   "type": "Instant",
-   "notes": [
-    "Some oracle text is not compiled: Draw a card for each attacking creature."
-   ]
-  },
   "Run Away Together": {
    "type": "Instant",
    "notes": [
@@ -15529,6 +15517,36 @@
    ]
   },
   {
+   "commander": "Alela, Cunning Conqueror",
+   "rank": 99,
+   "slots": 23,
+   "misses": [
+    "Misleading Signpost",
+    "Secluded Glen",
+    "Archmage of Echoes",
+    "Blightwing Bandit",
+    "Brazen Borrower",
+    "Faerie Bladecrafter",
+    "Faerie Harbinger",
+    "Malleable Impostor",
+    "Nymris, Oona's Trickster",
+    "Oona's Blackguard",
+    "Rankle, Master of Pranks",
+    "Shadow Puppeteers",
+    "Sower of Temptation",
+    "Spellstutter Sprite",
+    "Talion, the Kindly Lord",
+    "Voracious Tome-Skimmer",
+    "Wavebreak Hippocamp",
+    "Faerie Fencing",
+    "Run Away Together",
+    "Spell Stutter",
+    "Notorious Throng",
+    "Tegwyll's Scouring",
+    "Alela, Cunning Conqueror (commander)"
+   ]
+  },
+  {
    "commander": "Krenko, Mob Boss",
    "rank": 5,
    "slots": 24,
@@ -15743,37 +15761,6 @@
     "For the Ancestors",
     "Patriarch's Bidding",
     "The First Sliver (commander)"
-   ]
-  },
-  {
-   "commander": "Alela, Cunning Conqueror",
-   "rank": 99,
-   "slots": 24,
-   "misses": [
-    "Misleading Signpost",
-    "Secluded Glen",
-    "Archmage of Echoes",
-    "Blightwing Bandit",
-    "Brazen Borrower",
-    "Faerie Bladecrafter",
-    "Faerie Harbinger",
-    "Malleable Impostor",
-    "Nymris, Oona's Trickster",
-    "Oona's Blackguard",
-    "Rankle, Master of Pranks",
-    "Shadow Puppeteers",
-    "Sower of Temptation",
-    "Spellstutter Sprite",
-    "Talion, the Kindly Lord",
-    "Voracious Tome-Skimmer",
-    "Wavebreak Hippocamp",
-    "Faerie Fencing",
-    "Keep Watch",
-    "Run Away Together",
-    "Spell Stutter",
-    "Notorious Throng",
-    "Tegwyll's Scouring",
-    "Alela, Cunning Conqueror (commander)"
    ]
   },
   {
@@ -16376,45 +16363,11 @@
    ]
   },
   {
-   "commander": "Sauron, the Dark Lord",
-   "rank": 8,
-   "slots": 32,
-   "misses": [
-    "Mount Doom",
-    "The Black Gate",
-    "Corsairs of Umbar",
-    "Grishnákh, Brash Instigator",
-    "Lord of the Nazgûl",
-    "Mauhúr, Uruk-hai Captain",
-    "Moria Scavenger",
-    "Nazgûl",
-    "Orcish Siegemaster",
-    "Saruman, the White Hand",
-    "Sauron, Lord of the Rings",
-    "Sauron, the Necromancer",
-    "The Balrog of Moria",
-    "The Great Goblin",
-    "The Mouth of Sauron",
-    "Warg Rider",
-    "Witch-king of Angmar",
-    "In the Darkness Bind Them",
-    "One Ring to Rule Them All",
-    "Orcish Medicine",
-    "Sauron's Ransom",
-    "Soothing of Sméagol",
-    "Foray of Orcs",
-    "Summons of Saruman",
-    "Treason of Isengard",
-    "Sauron, the Dark Lord (commander)"
-   ]
-  },
-  {
    "commander": "Aragorn, the Uniter",
    "rank": 45,
-   "slots": 32,
+   "slots": 31,
    "misses": [
     "Great Hall of the Citadel",
-    "Aragorn and Arwen, Wed",
     "Aragorn, Hornburg Hero",
     "Aragorn, King of Gondor",
     "Chulane, Teller of Tales",
@@ -16445,6 +16398,39 @@
     "Forth Eorlingas!",
     "Taunt from the Rampart",
     "Aragorn, the Uniter (commander)"
+   ]
+  },
+  {
+   "commander": "Sauron, the Dark Lord",
+   "rank": 8,
+   "slots": 32,
+   "misses": [
+    "Mount Doom",
+    "The Black Gate",
+    "Corsairs of Umbar",
+    "Grishnákh, Brash Instigator",
+    "Lord of the Nazgûl",
+    "Mauhúr, Uruk-hai Captain",
+    "Moria Scavenger",
+    "Nazgûl",
+    "Orcish Siegemaster",
+    "Saruman, the White Hand",
+    "Sauron, Lord of the Rings",
+    "Sauron, the Necromancer",
+    "The Balrog of Moria",
+    "The Great Goblin",
+    "The Mouth of Sauron",
+    "Warg Rider",
+    "Witch-king of Angmar",
+    "In the Darkness Bind Them",
+    "One Ring to Rule Them All",
+    "Orcish Medicine",
+    "Sauron's Ransom",
+    "Soothing of Sméagol",
+    "Foray of Orcs",
+    "Summons of Saruman",
+    "Treason of Isengard",
+    "Sauron, the Dark Lord (commander)"
    ]
   },
   {

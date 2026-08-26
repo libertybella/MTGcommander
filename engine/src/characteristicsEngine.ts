@@ -556,6 +556,41 @@ export function dynamicCountOf(
         (state.definitions[card.definitionId]?.characteristics.subtypes ?? []).includes(landType),
     ).length;
   }
+  // Aragorn and Arwen, Wed: "for each OTHER creature you control" — the same
+  // controlled-creature count as below, minus the source itself.
+  if (count === "other_creatures_you_control") {
+    let total = 0;
+    for (const card of Object.values(state.cards)) {
+      if (
+        card.zone !== "battlefield" ||
+        card.controllerId !== controllerId ||
+        card.id === sourceId
+      ) {
+        continue;
+      }
+      if (
+        (state.definitions[card.definitionId]?.characteristics.types ?? []).includes("creature")
+      ) {
+        total += 1;
+      }
+    }
+    return total;
+  }
+  // Keep Watch: "for each attacking creature" — every attacker, any controller.
+  if (count === "attacking_creatures") {
+    let total = 0;
+    for (const card of Object.values(state.cards)) {
+      if (card.zone !== "battlefield" || !card.attacking) {
+        continue;
+      }
+      if (
+        (state.definitions[card.definitionId]?.characteristics.types ?? []).includes("creature")
+      ) {
+        total += 1;
+      }
+    }
+    return total;
+  }
   // A table rather than a chain of ternaries: `count` is narrowed to exactly
   // the rows left, so a new member of the union that belongs here is a tsc
   // error rather than a silent fall-through onto whichever type came last.

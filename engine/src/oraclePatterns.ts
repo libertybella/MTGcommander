@@ -407,6 +407,8 @@ const DYNAMIC_COUNTS: [RegExp, DynamicCount][] = [
   ],
   [/^legendary creatures? you control$/i, "legendary_creatures_you_control"],
   [/^attacking creatures? you control$/i, "attacking_creatures_you_control"],
+  [/^other creatures? you control$/i, "other_creatures_you_control"],
+  [/^attacking creatures?$/i, "attacking_creatures"],
   [/^permanents? you control$/i, "permanents_you_control"],
   [/^Plains you control$/i, "plains_you_control"],
   [/^Islands? you control$/i, "islands_you_control"],

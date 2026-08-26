@@ -73225,3 +73225,66 @@ describe("wave 452: Uthros, Titanic Godcore (Station keyword + 12+ threshold man
     });
   });
 });
+
+describe("wave 453: 'for each other creature' / 'for each attacking creature' counts", () => {
+  const put = (game: GameState, ownerId: string, definition: CardDefinition, attacking = false) => {
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({ definitionId: definition.id, ownerId, zone: "battlefield" });
+    card.summoningSick = false;
+    if (attacking) card.attacking = true;
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === ownerId)!.zones.battlefield.push(card.id);
+    return card.id;
+  };
+  const bear = (name: string) => createCardDefinition({ name, typeLine: "Creature — Bear", manaCost: "{1}{G}", power: 2, toughness: 2 });
+
+  it("Aragorn gains 1 life per OTHER creature you control (not itself)", () => {
+    const aragorn = compileOracleCard({
+      oracleId: "aragorn-and-arwen-wed", name: "Aragorn and Arwen, Wed", manaCost: "{2}{G}{W}",
+      typeLine: "Legendary Creature — Human", power: "3", toughness: "3", printedKeywords: [], imageUrl: "",
+      oracleText: "You gain 1 life for each other creature you control.",
+    });
+    expect(aragorn.notes).toEqual([]);
+    expect(aragorn.definition.effects).toEqual([
+      { kind: "gain_life", playerId: "controller", amount: 1, perDynamicCount: "other_creatures_you_control" },
+    ]);
+
+    const { game, p1 } = twoPlayers();
+    const aragornId = put(game, p1.id, aragorn.definition);
+    put(game, p1.id, bear("Bear A"));
+    put(game, p1.id, bear("Bear B"));
+    const before = game.players.find((e) => e.id === p1.id)!.life;
+    const after = applyEffects(
+      game,
+      bindCardEffects(game, aragorn.definition.effects, { controllerId: p1.id, sourceId: aragornId, targets: [], targetRequirements: [] }),
+    );
+    // Two OTHER creatures — Aragorn itself does not count.
+    expect(after.players.find((e) => e.id === p1.id)!.life).toBe(before + 2);
+  });
+
+  it("Keep Watch draws 1 per attacking creature, any controller", () => {
+    const keep = compileOracleCard({
+      oracleId: "keep-watch", name: "Keep Watch", manaCost: "{2}{U}",
+      typeLine: "Instant", power: null, toughness: null, printedKeywords: [], imageUrl: "",
+      oracleText: "Draw a card for each attacking creature.",
+    });
+    expect(keep.notes).toEqual([]);
+    expect(keep.definition.effects).toEqual([
+      { kind: "draw", playerId: "controller", count: 1, perDynamicCount: "attacking_creatures" },
+    ]);
+
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    put(game, p1.id, bear("Attacker 1"), true);
+    put(game, p1.id, bear("Attacker 2"), true);
+    put(game, p2.id, bear("Enemy Attacker"), true);
+    put(game, p1.id, bear("Idle"), false); // not attacking — not counted
+    const before = game.players.find((e) => e.id === p1.id)!.zones.hand.length;
+    const after = applyEffects(
+      game,
+      bindCardEffects(game, keep.definition.effects, { controllerId: p1.id, sourceId: p1.id, targets: [], targetRequirements: [] }),
+    );
+    // Three attackers across both players; the idle creature is excluded.
+    expect(after.players.find((e) => e.id === p1.id)!.zones.hand.length).toBe(before + 3);
+  });
+});

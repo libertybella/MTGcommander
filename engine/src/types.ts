@@ -2869,6 +2869,10 @@ export type DynamicCount =
   | "legendary_creatures_you_control"
   /** Embercleave. */
   | "attacking_creatures_you_control"
+  /** Aragorn and Arwen, Wed: "for each OTHER creature you control". */
+  | "other_creatures_you_control"
+  /** Keep Watch: "for each attacking creature" — any controller's. */
+  | "attacking_creatures"
   | "permanents_you_control"
   /** Defile: a basic land TYPE, not a name — a Swamp is anything with the
    * subtype, so Urborg's handiwork counts. */
