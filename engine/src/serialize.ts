@@ -1005,6 +1005,7 @@ export function parseGameState(json: string): GameState {
       ...(def.changeling === true ? { changeling: true } : {}),
       ...(def.storm === true ? { storm: true } : {}),
       ...(def.doesntUntap === true ? { doesntUntap: true } : {}),
+      ...(typeof def.toxic === "number" ? { toxic: expectNumber(def.toxic, `definition.${id}.toxic`) } : {}),
       ...(isRecord(def.untapRestriction)
         ? {
             untapRestriction: {

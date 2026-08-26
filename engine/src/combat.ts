@@ -788,6 +788,13 @@ function dealDamageToPlayerInPlace(
   if (poisons) {
     defender.poisonCounters += dealt;
   }
+  // Toxic N (CR 702.180): combat damage to a player ALSO gives N poison
+  // counters, on top of the life it costs — unlike infect, which replaces
+  // the life. The poison is a fixed N, not the damage dealt.
+  const toxic = state.definitions[state.cards[sourceId]?.definitionId ?? ""]?.toxic;
+  if (toxic && dealt > 0) {
+    defender.poisonCounters += toxic;
+  }
   defender.life -= lost;
   collect?.push({
     kind: "combat_damage_to_player",

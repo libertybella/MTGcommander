@@ -70729,3 +70729,86 @@ describe("wave 424: Devoid", () => {
     expect(round.definitions[compiled.definition.id]?.characteristics.colors).toEqual([]);
   });
 });
+
+describe("wave 425: Toxic", () => {
+  const compile = (name: string, oracleText: string) =>
+    compileOracleCard({
+      oracleId: name.toLowerCase().replace(/[^a-z]+/g, "-"),
+      name,
+      manaCost: "{1}{B}",
+      typeLine: "Creature — Phyrexian Rat",
+      power: "1",
+      toughness: "1",
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  it("compiles the toxic keyword with its count", () => {
+    const compiled = compile("Blightbelly Rat", "Toxic 1 (Players dealt combat damage by this creature also get a poison counter.)\nWhen Blightbelly Rat dies, proliferate.");
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.toxic).toBe(1);
+  });
+
+  it("reads a larger toxic number", () => {
+    const compiled = compile("Toxic Three", "Toxic 3");
+    expect(compiled.definition.toxic).toBe(3);
+  });
+
+  const toxicCreature = (name: string, toxic: number, power: number) =>
+    createCardDefinition({ name, typeLine: "Creature — Phyrexian Rat", manaCost: "{1}{B}", power, toughness: 1, toxic });
+
+  const put = (game: GameState, ownerId: string, definition: CardDefinition) => {
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({ definitionId: definition.id, ownerId, zone: "battlefield" });
+    card.summoningSick = false;
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === ownerId)!.zones.battlefield.push(card.id);
+    return card.id;
+  };
+
+  it("deals both life loss AND poison on combat damage to a player", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    const ratId = put(game, p1.id, toxicCreature("Rat", 1, 2));
+    game.combat = {
+      attacks: [{ attackerId: ratId, defenderId: p2.id }],
+      blockers: {},
+      attackersDeclared: true,
+      declaredBlockersFor: [p2.id],
+    };
+    const startLife = game.players.find((entry) => entry.id === p2.id)!.life;
+    const after = applyCombatDamage(game);
+    const victim = after.players.find((entry) => entry.id === p2.id)!;
+    // Power 2 costs two life AND toxic 1 hands over one poison — additive,
+    // unlike infect which would replace the life loss entirely.
+    expect(victim.life).toBe(startLife - 2);
+    expect(victim.poisonCounters).toBe(1);
+  });
+
+  it("gives the fixed toxic count, not the damage dealt", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    const ratId = put(game, p1.id, toxicCreature("Big Rat", 2, 5));
+    game.combat = {
+      attacks: [{ attackerId: ratId, defenderId: p2.id }],
+      blockers: {},
+      attackersDeclared: true,
+      declaredBlockersFor: [p2.id],
+    };
+    const after = applyCombatDamage(game);
+    const victim = after.players.find((entry) => entry.id === p2.id)!;
+    // Five damage, but toxic 2 — the poison is the keyword's number, not the
+    // power.
+    expect(victim.life).toBe(40 - 5);
+    expect(victim.poisonCounters).toBe(2);
+  });
+
+  it("round trips the toxic count", () => {
+    const { game, p1 } = twoPlayers();
+    const definition = toxicCreature("Rat", 2, 1);
+    put(game, p1.id, definition);
+    const round = parseGameState(serializeGameState(game));
+    expect(round.definitions[definition.id]?.toxic).toBe(2);
+  });
+});

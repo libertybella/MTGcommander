@@ -114,6 +114,7 @@ export type CompiledOracleText = {
   changeling?: boolean;
   storm?: boolean;
   doesntUntap?: boolean;
+  toxic?: number;
   untapRestriction?: { max: number; scope: "land" | "permanent" };
   /** Devoid (CR 702.114): the card is colorless. Baked into the derived
    * colors at creation rather than stored, so nothing to serialize. */
@@ -18019,6 +18020,13 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
     // bare word on its own line.
     if (/^Devoid$/i.test(sentence)) {
       result.devoid = true;
+      continue;
+    }
+
+    // Toxic N (CR 702.180): combat damage to a player also gives N poison.
+    const toxicKeyword = sentence.match(/^Toxic (\d+)$/i);
+    if (toxicKeyword?.[1]) {
+      result.toxic = (result.toxic ?? 0) + Number(toxicKeyword[1]);
       continue;
     }
 

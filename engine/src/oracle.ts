@@ -280,6 +280,7 @@ function compileOneFace(card: OracleCard, definitionId: string): OracleCompileRe
     ...(compiled.escalate ? { escalate: compiled.escalate } : {}),
     ...(compiled.storm ? { storm: true } : {}),
     ...(compiled.doesntUntap ? { doesntUntap: true } : {}),
+    ...(typeof compiled.toxic === "number" ? { toxic: compiled.toxic } : {}),
     ...(compiled.untapRestriction ? { untapRestriction: { ...compiled.untapRestriction } } : {}),
     ...(compiled.convoke ? { convoke: true } : {}),
     ...(compiled.improvise ? { improvise: true } : {}),

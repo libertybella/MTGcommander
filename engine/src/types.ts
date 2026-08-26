@@ -475,6 +475,9 @@ export type CardDefinition = {
   storm?: boolean;
   /** "~ doesn't untap during your untap step." */
   doesntUntap?: boolean;
+  /** Toxic N (CR 702.180): combat damage this creature deals to a player
+   * also gives that player N poison counters, on top of the life lost. */
+  toxic?: number;
   /** Winter Orb / Static Orb: while THIS permanent is untapped, no player may
    * untap more than `max` permanents of `scope` during their untap step. A
    * global, symmetric restriction. Which permanents stay tapped is the

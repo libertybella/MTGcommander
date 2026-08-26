@@ -172,6 +172,7 @@ export function createCardDefinition(
         | "changeling"
         | "storm"
         | "doesntUntap"
+        | "toxic"
         | "untapRestriction"
         | "grantsFlash"
         | "controlsOpponentSearches"
@@ -541,6 +542,7 @@ export function createCardDefinition(
     ...(input.changeling ? { changeling: true } : {}),
     ...(input.storm ? { storm: true } : {}),
     ...(input.doesntUntap ? { doesntUntap: true } : {}),
+    ...(typeof input.toxic === "number" ? { toxic: input.toxic } : {}),
     ...(input.untapRestriction
       ? { untapRestriction: { max: input.untapRestriction.max, scope: input.untapRestriction.scope } }
       : {}),
