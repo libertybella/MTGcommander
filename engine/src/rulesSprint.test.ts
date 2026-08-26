@@ -71648,3 +71648,92 @@ Activated abilities of artifacts you control cost {1} less to activate. This eff
     expect(round.definitions[definition.id]?.artifactAbilityDiscount).toBe(1);
   });
 });
+
+describe("wave 434: The Reality Chip — reconfigure + attached play-from-top (Urza 4→3)", () => {
+  const rcText = `You may look at the top card of your library any time.
+As long as The Reality Chip is attached to a creature, you may play lands and cast spells from the top of your library.
+Reconfigure {2}{U}`;
+
+  const compileRc = () =>
+    compileOracleCard({
+      oracleId: "the-reality-chip",
+      name: "The Reality Chip",
+      manaCost: "{1}{U}",
+      typeLine: "Legendary Artifact Creature — Equipment Jellyfish",
+      power: "0",
+      toughness: "3",
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText: rcText,
+    });
+
+  it("compiles reconfigure and the attached-gated top-of-library grant", () => {
+    const compiled = compileRc();
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.reconfigure).toEqual({ manaCost: "{2}{U}" });
+    expect(compiled.definition.topOfLibrary).toMatchObject({ playLands: true, castAll: true, requiresAttached: true });
+    // Reconfigure adds an attach ability at sorcery speed.
+    expect(compiled.definition.activated[0]).toMatchObject({
+      manaCost: "{2}{U}",
+      timing: "sorcery",
+      effects: [{ kind: "attach", cardId: "self" }],
+      targetRequirements: [{ kind: "own_creature" }],
+    });
+  });
+
+  const chipDef = () => compileRc().definition;
+  const put = (game: GameState, ownerId: string, definition: CardDefinition) => {
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({ definitionId: definition.id, ownerId, zone: "battlefield" });
+    card.summoningSick = false;
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === ownerId)!.zones.battlefield.push(card.id);
+    return card.id;
+  };
+  const bear = () => createCardDefinition({ name: "Host Bear", typeLine: "Creature — Bear", manaCost: "{1}{G}", power: 2, toughness: 2 });
+
+  it("is a creature until reconfigured onto a host, then it is not", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const chipId = put(game, p1.id, chipDef());
+    const hostId = put(game, p1.id, bear());
+    expect(characteristicsOf(game, chipId).types.includes("creature")).toBe(true);
+    game.turn.activePlayerId = p1.id;
+    game.turn.phase = "precombatMain";
+    game.turn.step = "precombatMain";
+    game.priorityPlayerId = p1.id;
+    game.players.find((entry) => entry.id === p1.id)!.mana.U = 5;
+    const after = resolveTopOfStack(
+      applyAction(game, { kind: "activate_ability", playerId: p1.id, cardId: chipId, abilityIndex: 0, targets: [{ type: "creature", cardId: hostId }] }),
+    );
+    expect(after.cards[chipId]?.attachedTo).toBe(hostId);
+    // CR 702.151e: an attached reconfigured Equipment is not a creature.
+    expect(characteristicsOf(after, chipId).types.includes("creature")).toBe(false);
+  });
+
+  const bigSpell = () =>
+    createCardDefinition({ name: "Big Spell", typeLine: "Sorcery", manaCost: "{4}", effects: [{ kind: "draw", playerId: "controller", count: 1 }] });
+
+  it("only casts from the top while the chip is attached", () => {
+    const { game, p1 } = twoPlayers();
+    game.players.find((entry) => entry.id === p1.id)!.zones.library = [];
+    const chipId = put(game, p1.id, chipDef());
+    const spellDef = bigSpell();
+    game.definitions[spellDef.id] = spellDef;
+    const spell = createCardInstance({ definitionId: spellDef.id, ownerId: p1.id, zone: "library" });
+    game.cards[spell.id] = spell;
+    game.players.find((entry) => entry.id === p1.id)!.zones.library.unshift(spell.id);
+    expect(castableFromTop(game, p1.id, spell.id)).toBe(false);
+    game.cards[chipId]!.attachedTo = put(game, p1.id, bear());
+    expect(castableFromTop(game, p1.id, spell.id)).toBe(true);
+  });
+
+  it("round trips reconfigure and the attached gate", () => {
+    const { game, p1 } = twoPlayers();
+    const definition = chipDef();
+    put(game, p1.id, definition);
+    const round = parseGameState(serializeGameState(game));
+    expect(round.definitions[definition.id]?.reconfigure).toEqual({ manaCost: "{2}{U}" });
+    expect(round.definitions[definition.id]?.topOfLibrary?.requiresAttached).toBe(true);
+  });
+});

@@ -290,6 +290,7 @@ function compileOneFace(card: OracleCard, definitionId: string): OracleCompileRe
     ...(compiled.grantsFlash ? { grantsFlash: true } : {}),
     ...(compiled.bargain ? { bargain: true } : {}),
     ...(compiled.bestow ? { bestow: { ...compiled.bestow } } : {}),
+    ...(compiled.reconfigure ? { reconfigure: { ...compiled.reconfigure } } : {}),
     ...(compiled.sacrificeIfCastAtInstantSpeed
       ? { sacrificeIfCastAtInstantSpeed: true }
       : {}),

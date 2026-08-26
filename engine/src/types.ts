@@ -724,6 +724,12 @@ export type CardDefinition = {
    * per-INSTANCE type change, which is why nothing here says `enchant`.
    */
   bestow?: { manaCost: string };
+  /** Reconfigure (CR 702.151): an Equipment that is itself a creature. The
+   * cost attaches it to a creature you control (a sorcery-speed activated
+   * ability, added at compile); while attached it is NOT a creature — the
+   * same per-instance type change bestow uses. Unattaching is not modelled
+   * (a documented approximation, strictly weaker than print). */
+  reconfigure?: { manaCost: string };
   /**
    * Pillow forts: creatures can't attack this permanent's controller unless
    * their controller pays, per attacking creature, `generic` mana (Propaganda),
@@ -5470,6 +5476,9 @@ export type TopOfLibraryGrant = {
    * `playLands` are separate, ungated abilities that share this record.
    */
   castRequiresCoven?: boolean;
+  /** The Reality Chip: the grant is live only while the source is attached to
+   * a creature. Checked against the source's `attachedTo` in the aggregator. */
+  requiresAttached?: boolean;
 };
 
 export type EnterTappedUnless =

@@ -242,9 +242,15 @@ function baseComputed(state: GameState, card: CardInstance): ComputedCard {
       supertypes: [...printed.supertypes],
       // Bestow: attached, it is an Aura and not a creature — so it does not
       // attack, does not block, is not counted by a lord, and is not hit by
-      // a board wipe. Every one of those follows from this line.
+      // a board wipe. Every one of those follows from this line. Reconfigure
+      // (CR 702.151) does the same to an Equipment-creature while it is
+      // attached to something.
       types:
-        gateHolds || bestowedAsAura(card)
+        gateHolds ||
+        bestowedAsAura(card) ||
+        (Boolean(definition?.reconfigure) &&
+          card.attachedTo !== null &&
+          card.zone === "battlefield")
           ? printed.types.filter((type) => type !== "creature")
           : [...printed.types],
       // Metallic Mimic: "~ is the chosen type in addition to its other

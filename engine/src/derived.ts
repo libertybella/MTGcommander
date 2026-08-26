@@ -1036,6 +1036,10 @@ export function topOfLibraryGrant(
     if (!grant) {
       continue;
     }
+    // The Reality Chip: the grant is live only while the source is attached.
+    if (grant.requiresAttached && card.attachedTo === null) {
+      continue;
+    }
     if (abilitiesRemoved(state, card.id)) {
       continue;
     }

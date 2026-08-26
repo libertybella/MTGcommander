@@ -127,6 +127,7 @@ export type CompiledOracleText = {
   grantsFlash?: boolean;
   bargain?: boolean;
   bestow?: { manaCost: string };
+  reconfigure?: { manaCost: string };
   controlsOpponentSearches?: boolean;
   grantsFlashFor?: { types?: string[]; subtypesAny?: string[]; nonTypes?: string[] };
   castFreeFromHand?: CardDefinition["castFreeFromHand"];
@@ -16773,6 +16774,22 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
       continue;
     }
 
+    // Reconfigure (CR 702.151): equip for an Equipment that is itself a
+    // creature. The attach ability is equip's; the not-a-creature-while-
+    // attached rule rides the `reconfigure` flag (baseComputed reads it).
+    const reconfigure = sentence.match(/^Reconfigure ((?:\{[^}]+\})+)$/i);
+    if (reconfigure?.[1]) {
+      result.reconfigure = { manaCost: reconfigure[1] };
+      result.activated.push({
+        tap: false,
+        manaCost: reconfigure[1],
+        effects: [{ kind: "attach", cardId: "self", toId: { type: "chosen", index: 0 } }],
+        targetRequirements: [{ kind: "own_creature" }],
+        timing: "sorcery",
+      });
+      continue;
+    }
+
     const loyaltyAbility = sentence.match(/^([+−-]\d+|0): (.+)$/);
     if (loyaltyAbility?.[1] && loyaltyAbility[2]) {
       const clause = compileSimpleClause(loyaltyAbility[2].trim());
@@ -18730,6 +18747,21 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
 
     if (/^You may play lands and cast spells from the top of your library$/i.test(sentence)) {
       result.topOfLibrary = { ...(result.topOfLibrary ?? {}), playLands: true, castAll: true };
+      continue;
+    }
+
+    // The Reality Chip: the same grant, but only while attached to a creature.
+    if (
+      /^As long as ~ is attached to a creature, you may play lands and cast spells from the top of your library$/i.test(
+        sentence,
+      )
+    ) {
+      result.topOfLibrary = {
+        ...(result.topOfLibrary ?? {}),
+        playLands: true,
+        castAll: true,
+        requiresAttached: true,
+      };
       continue;
     }
 

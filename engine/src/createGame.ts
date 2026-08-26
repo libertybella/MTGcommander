@@ -228,6 +228,7 @@ export function createCardDefinition(
         | "additionalCost"
         | "bargain"
         | "bestow"
+        | "reconfigure"
         | "sacrificeIfCastAtInstantSpeed"
         | "attackTax"
         | "dynamicPt"
@@ -668,6 +669,7 @@ export function createCardDefinition(
     ...(input.ascend ? { ascend: true } : {}),
     ...(input.bargain ? { bargain: true } : {}),
     ...(input.bestow ? { bestow: { ...input.bestow } } : {}),
+    ...(input.reconfigure ? { reconfigure: { ...input.reconfigure } } : {}),
     ...(input.sacrificeIfCastAtInstantSpeed ? { sacrificeIfCastAtInstantSpeed: true } : {}),
     ...(input.additionalCost ? { additionalCost: { ...input.additionalCost } } : {}),
     ...(input.attackTax ? { attackTax: { ...input.attackTax } } : {}),

@@ -1223,6 +1223,7 @@ export function parseGameState(json: string): GameState {
                   : {}),
                 ...(grant.castChosenType === true ? { castChosenType: true } : {}),
                 ...(grant.castRequiresCoven === true ? { castRequiresCoven: true } : {}),
+                ...(grant.requiresAttached === true ? { requiresAttached: true } : {}),
                 ...(grant.payLifeInsteadOfMana === true
                   ? { payLifeInsteadOfMana: true }
                   : {}),
@@ -1395,6 +1396,9 @@ export function parseGameState(json: string): GameState {
             })(),
           }),
       ...(def.bargain === true ? { bargain: true } : {}),
+      ...(isRecord(def.reconfigure)
+        ? { reconfigure: { manaCost: expectString(def.reconfigure.manaCost, "definition.reconfigure.manaCost") } }
+        : {}),
       ...(isRecord(def.bestow)
         ? { bestow: { manaCost: expectString(def.bestow.manaCost, "definition.bestow.manaCost") } }
         : {}),
