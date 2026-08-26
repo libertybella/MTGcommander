@@ -3072,3 +3072,4 @@ ends. Every printed card of this shape asks about the current turn.
 - Invariant-plural tribal lords: "Other Merfolk you control get +N/+N" — the anthem no longer requires a trailing "s" on the tribe.
 - Keyword-filtered spell cost reduction: "creature spells with flying you cast cost {N} less" (Warden of Evos Isle) — a keyword filter on the cost-reduction static.
 - One-sided creature sweep: "deals N damage to each creature your opponents control" (Blazing Volley) — a damage_all that spares your own creatures.
+- Passive counter-added trigger + "put that many <named> counters on ~" (Simic Ascendancy) — transfers the +1/+1 counters just added onto the source as a named counter.

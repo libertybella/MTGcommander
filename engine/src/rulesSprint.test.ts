@@ -71989,3 +71989,78 @@ describe("wave 438: Blazing Volley (one-sided sweep)", () => {
     expect(back?.opponentsOnly).toBe(true);
   });
 });
+
+describe("wave 439: Simic Ascendancy (counter transfer)", () => {
+  const compile = (oracleText: string) =>
+    compileOracleCard({
+      oracleId: "simic-ascendancy",
+      name: "Simic Ascendancy",
+      manaCost: "{G}{U}",
+      typeLine: "Enchantment",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  it("compiles the passive counter-added trigger and the growth-counter body", () => {
+    const compiled = compile("Whenever one or more +1/+1 counters are put on a creature you control, put that many growth counters on Simic Ascendancy.");
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.triggers[0]).toMatchObject({
+      event: "counter_added",
+      watch: "controlled",
+      oncePerBatch: true,
+      subjectFilter: { counterName: "p1p1", types: ["creature"] },
+      effects: [{ kind: "add_counter", cardId: "self", counter: "growth", amount: "subject_amount" }],
+    });
+  });
+
+  const simic = () =>
+    createCardDefinition({
+      name: "Simic Ascendancy",
+      typeLine: "Enchantment",
+      manaCost: "{G}{U}",
+      triggers: [
+        {
+          event: "counter_added",
+          watch: "controlled",
+          oncePerBatch: true,
+          subjectFilter: { counterName: "p1p1", types: ["creature"] },
+          effects: [{ kind: "add_counter", cardId: "self", counter: "growth", amount: "subject_amount" }],
+          targetRequirements: [],
+        },
+      ],
+    });
+  const put = (game: GameState, ownerId: string, definition: CardDefinition) => {
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({ definitionId: definition.id, ownerId, zone: "battlefield" });
+    card.summoningSick = false;
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === ownerId)!.zones.battlefield.push(card.id);
+    return card.id;
+  };
+  const bear = () => createCardDefinition({ name: "Bear", typeLine: "Creature — Bear", manaCost: "{1}{G}", power: 2, toughness: 2 });
+
+  it("moves that many growth counters onto itself", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const simicId = put(game, p1.id, simic());
+    const bearId = put(game, p1.id, bear());
+    let after = applyEffects(game, [{ kind: "add_counter", cardId: bearId, counter: "p1p1", amount: 3 }]);
+    if (after.stack.length > 0) after = resolveTopOfStack(after);
+    expect(after.cards[simicId]?.counters?.growth).toBe(3);
+  });
+
+  it("round trips the trigger", () => {
+    const { game, p1 } = twoPlayers();
+    const definition = simic();
+    put(game, p1.id, definition);
+    const round = parseGameState(serializeGameState(game));
+    expect(round.definitions[definition.id]?.triggers[0]?.effects[0]).toMatchObject({
+      kind: "add_counter",
+      counter: "growth",
+      amount: "subject_amount",
+    });
+  });
+});

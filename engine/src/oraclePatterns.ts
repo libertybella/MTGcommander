@@ -6820,6 +6820,23 @@ function compileSimpleClauseInner(sentence: string): SimpleClause | null {
     };
   }
 
+  // Simic Ascendancy: "put that many <named> counters on ~" — the counters go
+  // on the SOURCE, and the count is the batch just added elsewhere.
+  const thatManyNamed = sentence.match(/^put that many ([a-z]+) counters on ~$/i);
+  if (thatManyNamed?.[1] && thatManyNamed[1].toLowerCase() !== "additional") {
+    return {
+      targetRequirements: [],
+      effects: [
+        {
+          kind: "add_counter",
+          cardId: "self",
+          counter: thatManyNamed[1].toLowerCase(),
+          amount: "subject_amount",
+        },
+      ],
+    };
+  }
+
   // The Skullspore Nexus's activation.
   if (
     /^Double target creature's power until end of turn$/i.test(sentence) ||
@@ -13529,6 +13546,22 @@ function parseTriggerHead(head: string): TriggerHead | null {
   );
   if (countersOnTeam?.[1]) {
     const noun = countersOnTeam[1].toLowerCase();
+    return {
+      event: "counter_added",
+      watch: "controlled",
+      oncePerBatch: true,
+      subjectFilter: {
+        counterName: "p1p1",
+        ...(noun === "permanent" ? {} : { types: [noun] }),
+      },
+    };
+  }
+  // Simic Ascendancy: the passive voice of the same event.
+  const countersOnTeamPassive = text.match(
+    /^Whenever (?:a|one or more) \+1\/\+1 counters? (?:is|are) put on an? (creature|permanent|artifact) you control$/i,
+  );
+  if (countersOnTeamPassive?.[1]) {
+    const noun = countersOnTeamPassive[1].toLowerCase();
     return {
       event: "counter_added",
       watch: "controlled",
