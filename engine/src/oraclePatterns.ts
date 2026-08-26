@@ -138,6 +138,7 @@ export type CompiledOracleText = {
   castFromGraveyard?: { types?: string[]; subtypes?: string[] };
   castFromExile?: boolean;
   soulbond?: boolean;
+  castPermanentsFromGraveyard?: boolean;
   surveilLookBonus?: number;
   playExiledWithStashCounters?: boolean;
   playExiledWithCroakCounters?: boolean;
@@ -19276,6 +19277,17 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
         effects: [{ kind: "become_creature_until_eot", cardId: "self" }],
         targetRequirements: [],
       });
+      continue;
+    }
+
+    // Muldrotha, the Gravetide: play a land and cast a permanent spell of each
+    // permanent type from your graveyard, once per type per turn.
+    if (
+      /^During each of your turns, you may play a land and cast a permanent spell of each permanent type from your graveyard$/i.test(
+        sentence,
+      )
+    ) {
+      result.castPermanentsFromGraveyard = true;
       continue;
     }
 

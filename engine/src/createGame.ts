@@ -221,6 +221,7 @@ export function createCardDefinition(
         | "castFromGraveyard"
         | "castFromExile"
         | "soulbond"
+        | "castPermanentsFromGraveyard"
         | "surveilLookBonus"
         | "playExiledWithStashCounters"
         | "playExiledWithCroakCounters"
@@ -678,6 +679,7 @@ export function createCardDefinition(
       : {}),
     ...(input.castFromExile ? { castFromExile: true } : {}),
     ...(input.soulbond ? { soulbond: true } : {}),
+    ...(input.castPermanentsFromGraveyard ? { castPermanentsFromGraveyard: true } : {}),
     ...(input.surveilLookBonus !== undefined
       ? { surveilLookBonus: input.surveilLookBonus }
       : {}),

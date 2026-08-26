@@ -754,6 +754,10 @@ export type CardDefinition = {
   grantsEscape?: { exileOther: number };
   /** "You may play lands from your graveyard" (Crucible of Worlds). */
   playLandsFromGraveyard?: boolean;
+  /** Muldrotha, the Gravetide: while you control this, you may play a land and
+   * cast a permanent spell of each permanent type from your graveyard on each
+   * of your turns (one of each type per turn). */
+  castPermanentsFromGraveyard?: boolean;
   /**
    * Leylines: if in the opening hand, begins the game on the battlefield.
    * Deployed automatically when mulligans finish (the "may" is auto-taken).
@@ -1422,6 +1426,9 @@ export type GameState = {
   createdTokenThisTurn?: PlayerId[];
   /** Faerie Mastermind: per-player draws this turn. */
   drawsByPlayerThisTurn?: Record<PlayerId, number>;
+  /** Muldrotha: the permanent types each player has already played from their
+   * graveyard this turn (one per type is allowed). */
+  graveyardTypesPlayedThisTurn?: Record<PlayerId, string[]>;
   /**
    * The Gaffer: per-player life GAINED this turn, which is not the same as
    * the change in life total — losing 5 and gaining 3 leaves you lower but

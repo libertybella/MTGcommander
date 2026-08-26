@@ -8,7 +8,7 @@ import {
   computedCard,
   grantedActivatedSpread,
 } from "./characteristicsEngine";
-import { castableFromTop, retraceReaches } from "./derived";
+import { castableFromTop, muldrothaTypeAvailable, retraceReaches } from "./derived";
 import { controlsMatching } from "./legalActions";
 import { enterOwnerZone, findCardZone, moveCard, removeCardFromCurrentZone } from "./zones";
 import { applyEffects, bindCardEffects } from "./effects";
@@ -205,6 +205,13 @@ export function putSpellOnStack(
     located?.zone === "graveyard" &&
     Boolean(graveyardGate) &&
     controlsMatching(state, state.cards[cardId]?.controllerId ?? "", graveyardGate!);
+  // Muldrotha, the Gravetide: a permanent card cast from its owner's graveyard,
+  // one of each permanent type per turn.
+  const fromMuldrotha =
+    located?.zone === "graveyard" &&
+    located.playerId === state.cards[cardId]?.controllerId &&
+    !isLand(state, cardId) &&
+    muldrothaTypeAvailable(state, state.cards[cardId]?.controllerId ?? "", cardId) !== null;
   // Impulse exiles: listed cards may be cast from exile this turn — by the
   // listed caster, who takes control of the spell (Etali steals casts).
   const exileEntry =
@@ -245,7 +252,8 @@ export function putSpellOnStack(
       !fromEscape &&
       !fromRetrace &&
       !fromExilePlay &&
-      !fromExileStanding)
+      !fromExileStanding &&
+      !fromMuldrotha)
   ) {
     throw new Error(`Card ${cardId} must be in hand to put on the stack`);
   }

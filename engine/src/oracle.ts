@@ -313,6 +313,7 @@ function compileOneFace(card: OracleCard, definitionId: string): OracleCompileRe
     ...(compiled.castFromGraveyard ? { castFromGraveyard: { ...compiled.castFromGraveyard } } : {}),
     ...(compiled.castFromExile ? { castFromExile: true } : {}),
     ...(compiled.soulbond ? { soulbond: true } : {}),
+    ...(compiled.castPermanentsFromGraveyard ? { castPermanentsFromGraveyard: true } : {}),
     ...(compiled.surveilLookBonus !== undefined
       ? { surveilLookBonus: compiled.surveilLookBonus }
       : {}),

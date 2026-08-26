@@ -11,7 +11,7 @@ import { hasKeyword } from "./keywords";
 import { triggerConditionHolds } from "./triggers";
 import { emptyManaPool } from "./createGame";
 import { pendingBlockerPlayer } from "./combat";
-import { inSorceryWindow, retraceReaches, splitSecondActive, reliefAdjustedCost, affinityArtifactDiscount, activationNonManaPayment, allBattlefieldCreatureCount, altCastPayment, canActivateTapAbility, canPlayLandsFromGraveyard, castCostReduction, castableFromTop, controlsCommander, freeEquipGranted, hasFlashGrant, landDropAllowance, lockedByAbolisher, lockedFromCasting, noncreatureSpellCap, opponentControlsMoreLands, findFreeHandGrantIndex, opponentsCastLockedToHand, permanentsControlledBy, selfDiscountAmount, staticFreeCastCap, topOfLibraryGrant } from "./derived";
+import { inSorceryWindow, retraceReaches, splitSecondActive, reliefAdjustedCost, affinityArtifactDiscount, activationNonManaPayment, allBattlefieldCreatureCount, altCastPayment, canActivateTapAbility, canPlayLandsFromGraveyard, canCastPermanentsFromGraveyard, muldrothaTypeAvailable, castCostReduction, castableFromTop, controlsCommander, freeEquipGranted, hasFlashGrant, landDropAllowance, lockedByAbolisher, lockedFromCasting, noncreatureSpellCap, opponentControlsMoreLands, findFreeHandGrantIndex, opponentsCastLockedToHand, permanentsControlledBy, selfDiscountAmount, staticFreeCastCap, topOfLibraryGrant } from "./derived";
 import { canPayManaCost, parseManaCost, type ParsedManaCost } from "./mana";
 import {
   colorsAmongControlled,
@@ -651,12 +651,25 @@ export function legalActions(state: GameState, playerId: PlayerId): LegalAction[
   // Drannith Magistrate: only hand casts (land PLAYS from the graveyard
   // are not casts and stay legal).
   const handOnly = opponentsCastLockedToHand(state, playerId);
-  const graveyardLandIds = canPlayLandsFromGraveyard(state, playerId)
+  const canGraveLands = canPlayLandsFromGraveyard(state, playerId);
+  const graveyardLandIds = player.zones.graveyard.filter((cardId) => {
+    const definition = state.cards[cardId]
+      ? state.definitions[state.cards[cardId]!.definitionId]
+      : undefined;
+    if (definition?.characteristics.types.includes("land") !== true) {
+      return false;
+    }
+    // Crucible-style (unlimited) or Muldrotha (this turn's one land).
+    return canGraveLands || muldrothaTypeAvailable(state, playerId, cardId) === "land";
+  });
+  // Muldrotha, the Gravetide: nonland permanent cards in your graveyard, one of
+  // each permanent type per turn, cast for the printed cost.
+  const muldrothaGraveyardIds = canCastPermanentsFromGraveyard(state, playerId)
     ? player.zones.graveyard.filter((cardId) => {
-        const definition = state.cards[cardId]
-          ? state.definitions[state.cards[cardId]!.definitionId]
-          : undefined;
-        return definition?.characteristics.types.includes("land") === true;
+        const types = state.cards[cardId]
+          ? state.definitions[state.cards[cardId]!.definitionId]?.characteristics.types ?? []
+          : [];
+        return !types.includes("land") && muldrothaTypeAvailable(state, playerId, cardId) !== null;
       })
     : [];
   // Retrace needs a land in hand to discard; without one the card is not
@@ -697,6 +710,7 @@ export function legalActions(state: GameState, playerId: PlayerId): LegalAction[
     ...player.zones.hand,
     ...graveyardLandIds,
     ...(handOnly ? [] : flashbackIds.filter((id) => !graveyardLandIds.includes(id))),
+    ...(handOnly ? [] : muldrothaGraveyardIds.filter((id) => !flashbackIds.includes(id))),
     ...(handOnly ? [] : exilePlayableIds),
     ...(handOnly ? [] : exileCastIds),
   ]) {
@@ -775,6 +789,15 @@ export function legalActions(state: GameState, playerId: PlayerId): LegalAction[
             fromCommand: false,
           });
           continue;
+        }
+        // Muldrotha, the Gravetide: a permanent card, one per type per turn.
+        if (
+          !flashback &&
+          !face.definition.characteristics.types.includes("land") &&
+          muldrothaTypeAvailable(state, playerId, cardId) !== null &&
+          castableFace(state, playerId, face.definition, potential, 0, undefined, flashGrant)
+        ) {
+          actions.push({ kind: "cast_spell", cardId, faceIndex: face.faceIndex, fromCommand: false });
         }
         // Gravecrawler: a gated normal cast for the printed cost.
         if (

@@ -8,7 +8,7 @@ import {
 import { characteristicsOf, hasType, isCommander, isCreature, isInstant, isInstantOrSorcery, isLand, isLegendary, isMainPhase } from "./cardTypes";
 import { abilityLifeCost } from "./commanderIdentity";
 import { cloneGameState } from "./clone";
-import { applyPhyrexianColorGrants, artifactAbilityDiscount, inSorceryWindow, retraceReaches, targetingLifeTaxFor, splitSecondActive, costRelief, affinityArtifactDiscount, allBattlefieldCreatureCount, canActivateTapAbility, canPlayLandFromTop, canPlayLandsFromGraveyard, castCostReduction, castableFromTop, controlsCommander, creaturePower, freeEquipGranted, hasFlashGrant, activationNonManaPayment, altCastPayment, landDropAllowance, manaTapMultiplier, lockedByAbolisher, lockedFromCasting, noncreatureSpellCap, opponentControlsMoreLands, findFreeHandGrantIndex, opponentsCastLockedToHand, selfDiscountAmount, staticFreeCastCap, usesOncePerTurnFreeCast , topOfLibraryGrant } from "./derived";
+import { applyPhyrexianColorGrants, artifactAbilityDiscount, inSorceryWindow, retraceReaches, targetingLifeTaxFor, splitSecondActive, costRelief, affinityArtifactDiscount, allBattlefieldCreatureCount, canActivateTapAbility, canPlayLandFromTop, canPlayLandsFromGraveyard, muldrothaTypeAvailable, castCostReduction, castableFromTop, controlsCommander, creaturePower, freeEquipGranted, hasFlashGrant, activationNonManaPayment, altCastPayment, landDropAllowance, manaTapMultiplier, lockedByAbolisher, lockedFromCasting, noncreatureSpellCap, opponentControlsMoreLands, findFreeHandGrantIndex, opponentsCastLockedToHand, selfDiscountAmount, staticFreeCastCap, usesOncePerTurnFreeCast , topOfLibraryGrant } from "./derived";
 import { eliminatePlayerInPlace } from "./elimination";
 import { applyEffects, bindCardEffects, devotionTo } from "./effects";
 import { hasKeyword } from "./keywords";
@@ -440,7 +440,18 @@ function validateCast(
       ? retracePayment(state, playerId, cardId)
       : null;
   const viaRetrace = retraceLandId !== null;
-  const fromGraveyard = viaFlashback || viaGraveyardGate || viaEscape || viaRetrace;
+  // Muldrotha, the Gravetide: a permanent card in your graveyard, one of each
+  // permanent type per turn, cast for its printed cost (resolving onto the
+  // battlefield like any permanent spell).
+  const muldrothaType =
+    located &&
+    located.zone === "graveyard" &&
+    located.playerId === playerId &&
+    !isLand(state, cardId)
+      ? muldrothaTypeAvailable(state, playerId, cardId)
+      : null;
+  const viaMuldrotha = muldrothaType !== null;
+  const fromGraveyard = viaFlashback || viaGraveyardGate || viaEscape || viaRetrace || viaMuldrotha;
   // Impulse exiles, and Emry's graveyard grant: listed cards may be cast
   // from where they are. Both zones, because the permission is about the
   // CARD rather than the zone it happens to be in.
@@ -778,6 +789,12 @@ function applyCastSpell(
   );
   const card = faced.cards[cardId];
   const definition = card ? faced.definitions[card.definitionId] : undefined;
+  // Muldrotha: the permanent type this cast will spend, captured before the
+  // card leaves the graveyard for the stack.
+  const muldrothaMark =
+    card && card.zone === "graveyard" && card.ownerId === playerId && !isLand(faced, cardId)
+      ? muldrothaTypeAvailable(faced, playerId, cardId)
+      : null;
   // "Sacrifice an artifact or discard a card": pick the branch the caster's
   // own inputs point at, then treat it as the only cost.
   const additional = chooseAdditionalCostBranch(
@@ -1257,6 +1274,13 @@ function applyCastSpell(
       top.cantBeCountered = true;
     }
   }
+  // Muldrotha: record the permanent type spent this turn once the spell is on
+  // the stack, so a second card of that type is not offered.
+  if (muldrothaMark) {
+    const spent = { ...(stacked.graveyardTypesPlayedThisTurn ?? {}) };
+    spent[playerId] = [...(spent[playerId] ?? []), muldrothaMark];
+    stacked.graveyardTypesPlayedThisTurn = spent;
+  }
   // Path of Ancestry: the rider fires with the spell already on the
   // stack, so its effect resolves ABOVE the spell that mana paid for.
   stacked = drainManaRiders(stacked, cardId);
@@ -1299,10 +1323,15 @@ function applyPlayLand(
   }
 
   const located = findCardZone(faced, cardId);
-  const fromGraveyard =
+  const viaMuldrothaLand =
     located?.zone === "graveyard" &&
     located.playerId === playerId &&
-    canPlayLandsFromGraveyard(faced, playerId);
+    muldrothaTypeAvailable(faced, playerId, cardId) === "land";
+  const fromGraveyard =
+    (located?.zone === "graveyard" &&
+      located.playerId === playerId &&
+      canPlayLandsFromGraveyard(faced, playerId)) ||
+    viaMuldrothaLand;
   const fromLibraryTop =
     located?.zone === "library" &&
     located.playerId === playerId &&
@@ -1334,6 +1363,12 @@ function applyPlayLand(
     throw new Error(`Unknown player ${playerId}`);
   }
   movedPlayer.landsPlayedThisTurn += 1;
+  // Muldrotha: a land replayed from the graveyard spends this turn's "land".
+  if (viaMuldrothaLand) {
+    const spent = { ...(next.graveyardTypesPlayedThisTurn ?? {}) };
+    spent[playerId] = [...(spent[playerId] ?? []), "land"];
+    next.graveyardTypesPlayedThisTurn = spent;
+  }
   // Burgeoning, City of Traitors: PLAYED, which is not the same as entering.
   // A fetched land enters and was never played, and this is the one site a
   // land is played from.

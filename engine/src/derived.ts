@@ -994,6 +994,45 @@ export function castCostReduction(
 }
 
 /** "You may play lands from your graveyard" (Crucible of Worlds). */
+/** The permanent types Muldrotha lets you replay from your graveyard, one each
+ * per turn. */
+export const MULDROTHA_TYPES = ["land", "creature", "artifact", "enchantment", "planeswalker"];
+
+/** Muldrotha, the Gravetide: does this player control a permanent that grants
+ * casting permanents from the graveyard? */
+export function canCastPermanentsFromGraveyard(state: GameState, playerId: string): boolean {
+  return Object.values(state.cards).some((card) => {
+    if (card.zone !== "battlefield" || card.controllerId !== playerId) {
+      return false;
+    }
+    if (abilitiesRemoved(state, card.id)) {
+      return false;
+    }
+    return state.definitions[card.definitionId]?.castPermanentsFromGraveyard === true;
+  });
+}
+
+/** The first permanent type of the graveyard card that Muldrotha has not yet
+ * spent this turn, or null when every type it has is used up (or it is not a
+ * permanent). Only meaningful on the player's own turn. */
+export function muldrothaTypeAvailable(
+  state: GameState,
+  playerId: string,
+  cardId: string,
+): string | null {
+  if (state.turn.activePlayerId !== playerId || !canCastPermanentsFromGraveyard(state, playerId)) {
+    return null;
+  }
+  const spent = state.graveyardTypesPlayedThisTurn?.[playerId] ?? [];
+  const types = characteristicsOf(state, cardId).types;
+  for (const type of MULDROTHA_TYPES) {
+    if (types.includes(type) && !spent.includes(type)) {
+      return type;
+    }
+  }
+  return null;
+}
+
 export function canPlayLandsFromGraveyard(state: GameState, playerId: string): boolean {
   return Object.values(state.cards).some((card) => {
     if (card.zone !== "battlefield" || card.controllerId !== playerId) {

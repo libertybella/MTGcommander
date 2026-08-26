@@ -1503,6 +1503,7 @@ export function parseGameState(json: string): GameState {
       ...(def.ascend === true ? { ascend: true } : {}),
       ...(def.castFromExile === true ? { castFromExile: true } : {}),
       ...(def.soulbond === true ? { soulbond: true } : {}),
+      ...(def.castPermanentsFromGraveyard === true ? { castPermanentsFromGraveyard: true } : {}),
       ...(def.surveilLookBonus === undefined
         ? {}
         : { surveilLookBonus: expectNumber(def.surveilLookBonus, `definition.${id}.surveilLookBonus`) }),
@@ -2128,6 +2129,23 @@ export function parseGameState(json: string): GameState {
     ...(raw.createdTokenThisTurn === undefined
       ? {}
       : { createdTokenThisTurn: expectStringArray(raw.createdTokenThisTurn, "createdTokenThisTurn") }),
+    ...(raw.graveyardTypesPlayedThisTurn === undefined
+      ? {}
+      : {
+          graveyardTypesPlayedThisTurn: (() => {
+            if (!isRecord(raw.graveyardTypesPlayedThisTurn)) {
+              throw new Error("Invalid graveyardTypesPlayedThisTurn");
+            }
+            const out: Record<string, string[]> = {};
+            for (const [key, entry] of Object.entries(raw.graveyardTypesPlayedThisTurn)) {
+              if (!Array.isArray(entry)) {
+                throw new Error(`Invalid graveyardTypesPlayedThisTurn.${key}`);
+              }
+              out[key] = entry.map((t) => expectString(t, `graveyardTypesPlayedThisTurn.${key}`));
+            }
+            return out;
+          })(),
+        }),
     ...(raw.drawsByPlayerThisTurn === undefined
       ? {}
       : {

@@ -75159,3 +75159,58 @@ describe("wave 478: Counterbalance — reveal the top card, counter a matching-c
     expect(next.players.find((e) => e.id === p2.id)!.life).toBe(lifeBefore + 3);
   });
 });
+
+describe("wave 479: Muldrotha, the Gravetide — cast one permanent of each type from your graveyard", () => {
+  const compileMuldrotha = () =>
+    compileOracleCard({
+      oracleId: "muldrotha-the-gravetide", name: "Muldrotha, the Gravetide", manaCost: "{3}{B}{G}{U}",
+      typeLine: "Legendary Creature — Elemental Avatar", power: "6", toughness: "6", printedKeywords: [], imageUrl: "",
+      oracleText: "During each of your turns, you may play a land and cast a permanent spell of each permanent type from your graveyard.",
+    });
+
+  it("compiles the graveyard-permission static", () => {
+    const c = compileMuldrotha();
+    expect(c.notes).toEqual([]);
+    expect(c.definition.castPermanentsFromGraveyard).toBe(true);
+  });
+
+  const put = (game: GameState, ownerId: string, definition: CardDefinition, zone: "battlefield" | "graveyard") => {
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({ definitionId: definition.id, ownerId, zone });
+    if (zone === "battlefield") card.summoningSick = false;
+    game.cards[card.id] = card;
+    (game.players.find((e) => e.id === ownerId)!.zones as Record<string, string[]>)[zone].push(card.id);
+    return card.id;
+  };
+  const offersCast = (g: GameState, playerId: string, cardId: string) =>
+    legalActions(g, playerId).some((a) => a.kind === "cast_spell" && a.cardId === cardId);
+
+  it("casts one creature from the graveyard, then blocks a second creature but still allows an artifact", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 10);
+    put(game, p1.id, compileMuldrotha().definition, "battlefield");
+    const bearId = put(game, p1.id, createCardDefinition({ name: "Bear", typeLine: "Creature — Bear", manaCost: "{1}{G}", power: 2, toughness: 2 }), "graveyard");
+    const ogreId = put(game, p1.id, createCardDefinition({ name: "Ogre", typeLine: "Creature — Ogre", manaCost: "{2}{R}", power: 3, toughness: 3 }), "graveyard");
+    const relicId = put(game, p1.id, createCardDefinition({ name: "Relic", typeLine: "Artifact", manaCost: "{2}" }), "graveyard");
+
+    const ready = advanceSteps(game, 3); // p1's precombat main
+    ready.priorityPlayerId = p1.id;
+    ready.players[0]!.mana = { W: 0, U: 3, B: 3, R: 3, G: 3, C: 3 };
+
+    // Both a creature and an artifact are offered from the graveyard.
+    expect(offersCast(ready, p1.id, bearId)).toBe(true);
+    expect(offersCast(ready, p1.id, relicId)).toBe(true);
+
+    // Cast the Bear from the graveyard; it resolves onto the battlefield.
+    let cast = applyAction(ready, { kind: "cast_spell", playerId: p1.id, cardId: bearId, targets: [] });
+    while (cast.stack.length > 0) cast = resolveTopOfStack(cast);
+    expect(cast.cards[bearId]?.zone).toBe("battlefield");
+    expect(cast.graveyardTypesPlayedThisTurn?.[p1.id]).toContain("creature");
+
+    // A SECOND creature is now blocked (the turn's creature is spent)...
+    cast.priorityPlayerId = p1.id;
+    expect(offersCast(cast, p1.id, ogreId)).toBe(false);
+    // ...but the artifact is still castable (different permanent type).
+    expect(offersCast(cast, p1.id, relicId)).toBe(true);
+  });
+});

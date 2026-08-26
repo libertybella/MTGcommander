@@ -538,7 +538,7 @@
   "Kishla Skimmer": false,
   "Kotis, Sibsig Champion": false,
   "Meren of Clan Nel Toth": false,
-  "Muldrotha, the Gravetide": false,
+  "Muldrotha, the Gravetide": true,
   "Nyx Weaver": true,
   "Ob Nixilis, the Fallen": true,
   "River Kelpie": false,
@@ -4424,12 +4424,6 @@
    "type": "Legendary Creature — Human Shaman",
    "notes": [
     "Some oracle text is not compiled: Whenever another creature you control dies, you get an experience counter; At the beginning of your end step, choose target creature card in your graveyard; If that card's mana value is less than or equal to the number of experience counters you have, return it to the battlefield; Otherwise, put it into your hand."
-   ]
-  },
-  "Muldrotha, the Gravetide": {
-   "type": "Legendary Creature — Elemental Avatar",
-   "notes": [
-    "Some oracle text is not compiled: During each of your turns, you may play a land and cast a permanent spell of each permanent type from your graveyard."
    ]
   },
   "River Kelpie": {
@@ -14052,6 +14046,12 @@
    "misses": []
   },
   {
+   "commander": "Glarb, Calamity's Augur",
+   "rank": 39,
+   "slots": 0,
+   "misses": []
+  },
+  {
    "commander": "Korvold, Fae-Cursed King",
    "rank": 63,
    "slots": 0,
@@ -14062,14 +14062,6 @@
    "rank": 67,
    "slots": 0,
    "misses": []
-  },
-  {
-   "commander": "Glarb, Calamity's Augur",
-   "rank": 39,
-   "slots": 1,
-   "misses": [
-    "Muldrotha, the Gravetide"
-   ]
   },
   {
    "commander": "Teysa Karlov",
@@ -14194,6 +14186,23 @@
    ]
   },
   {
+   "commander": "Muldrotha, the Gravetide",
+   "rank": 37,
+   "slots": 10,
+   "misses": [
+    "Perpetual Timepiece",
+    "Doc Aurlock, Grizzled Genius",
+    "Gravebreaker Lamia",
+    "Kheru Goldkeeper",
+    "River Kelpie",
+    "Teval, the Balanced Scale",
+    "Underrealm Lich",
+    "Pernicious Deed",
+    "Secrets of the Dead",
+    "Ashiok, Dream Render"
+   ]
+  },
+  {
    "commander": "Kinnan, Bonder Prodigy",
    "rank": 59,
    "slots": 10,
@@ -14225,24 +14234,6 @@
     "Wrenn and Seven",
     "Scapeshift",
     "Omnath, Locus of Creation (commander)"
-   ]
-  },
-  {
-   "commander": "Muldrotha, the Gravetide",
-   "rank": 37,
-   "slots": 11,
-   "misses": [
-    "Perpetual Timepiece",
-    "Doc Aurlock, Grizzled Genius",
-    "Gravebreaker Lamia",
-    "Kheru Goldkeeper",
-    "River Kelpie",
-    "Teval, the Balanced Scale",
-    "Underrealm Lich",
-    "Pernicious Deed",
-    "Secrets of the Dead",
-    "Ashiok, Dream Render",
-    "Muldrotha, the Gravetide (commander)"
    ]
   },
   {
@@ -14641,6 +14632,31 @@
    ]
   },
   {
+   "commander": "Teval, the Balanced Scale",
+   "rank": 9,
+   "slots": 18,
+   "misses": [
+    "Floral Evoker",
+    "Jarad, Golgari Lich Lord",
+    "Kheru Goldkeeper",
+    "Kishla Skimmer",
+    "Kotis, Sibsig Champion",
+    "Meren of Clan Nel Toth",
+    "River Kelpie",
+    "Shigeki, Jukai Visionary",
+    "Steward of the Harvest",
+    "The Scarab God",
+    "Crawling Sensation",
+    "Insidious Roots",
+    "Teval's Judgment",
+    "Grapple with the Past",
+    "Lethal Scheme",
+    "Afterlife from the Loam",
+    "Welcome the Dead",
+    "Teval, the Balanced Scale (commander)"
+   ]
+  },
+  {
    "commander": "Nekusar, the Mindrazer",
    "rank": 18,
    "slots": 18,
@@ -14763,32 +14779,6 @@
     "Weapons Manufacturing",
     "Tezzeret, Cruel Captain",
     "Ragost, Deft Gastronaut (commander)"
-   ]
-  },
-  {
-   "commander": "Teval, the Balanced Scale",
-   "rank": 9,
-   "slots": 19,
-   "misses": [
-    "Floral Evoker",
-    "Jarad, Golgari Lich Lord",
-    "Kheru Goldkeeper",
-    "Kishla Skimmer",
-    "Kotis, Sibsig Champion",
-    "Meren of Clan Nel Toth",
-    "Muldrotha, the Gravetide",
-    "River Kelpie",
-    "Shigeki, Jukai Visionary",
-    "Steward of the Harvest",
-    "The Scarab God",
-    "Crawling Sensation",
-    "Insidious Roots",
-    "Teval's Judgment",
-    "Grapple with the Past",
-    "Lethal Scheme",
-    "Afterlife from the Loam",
-    "Welcome the Dead",
-    "Teval, the Balanced Scale (commander)"
    ]
   },
   {
@@ -16036,6 +16026,43 @@
    ]
   },
   {
+   "commander": "The Wise Mothman",
+   "rank": 15,
+   "slots": 30,
+   "misses": [
+    "Nuka-Nuke Launcher",
+    "The Water Crystal",
+    "Mariposa Military Base",
+    "Agent Frank Horrigan",
+    "Alpha Deathclaw",
+    "Bloatfly Swarm",
+    "Cathedral Acolyte",
+    "Feral Ghoul",
+    "Glowing One",
+    "Hancock, Ghoulish Mayor",
+    "Infesting Radroach",
+    "Marcus, Mutant Mayor",
+    "Mirelurk Queen",
+    "Nightkin Ambusher",
+    "Rampaging Yao Guai",
+    "Raul, Trouble Shooter",
+    "Screeching Scorchbeast",
+    "Strong, the Brutish Thespian",
+    "Tato Farmer",
+    "The Master, Transcendent",
+    "Vexing Radgull",
+    "Winding Constrictor",
+    "Fraying Sanity",
+    "Struggle for Project Purity",
+    "Vault 12: The Necropolis",
+    "Contaminated Drink",
+    "Mutational Advantage",
+    "Maddening Cacophony",
+    "Nuclear Fallout",
+    "The Wise Mothman (commander)"
+   ]
+  },
+  {
    "commander": "Aragorn, the Uniter",
    "rank": 45,
    "slots": 30,
@@ -16110,44 +16137,6 @@
    ]
   },
   {
-   "commander": "The Wise Mothman",
-   "rank": 15,
-   "slots": 31,
-   "misses": [
-    "Nuka-Nuke Launcher",
-    "The Water Crystal",
-    "Mariposa Military Base",
-    "Agent Frank Horrigan",
-    "Alpha Deathclaw",
-    "Bloatfly Swarm",
-    "Cathedral Acolyte",
-    "Feral Ghoul",
-    "Glowing One",
-    "Hancock, Ghoulish Mayor",
-    "Infesting Radroach",
-    "Marcus, Mutant Mayor",
-    "Mirelurk Queen",
-    "Muldrotha, the Gravetide",
-    "Nightkin Ambusher",
-    "Rampaging Yao Guai",
-    "Raul, Trouble Shooter",
-    "Screeching Scorchbeast",
-    "Strong, the Brutish Thespian",
-    "Tato Farmer",
-    "The Master, Transcendent",
-    "Vexing Radgull",
-    "Winding Constrictor",
-    "Fraying Sanity",
-    "Struggle for Project Purity",
-    "Vault 12: The Necropolis",
-    "Contaminated Drink",
-    "Mutational Advantage",
-    "Maddening Cacophony",
-    "Nuclear Fallout",
-    "The Wise Mothman (commander)"
-   ]
-  },
-  {
    "commander": "Baylen, the Haymaker",
    "rank": 26,
    "slots": 31,
@@ -16196,6 +16185,45 @@
     "Summons of Saruman",
     "Treason of Isengard",
     "Sauron, the Dark Lord (commander)"
+   ]
+  },
+  {
+   "commander": "Ashling, the Limitless",
+   "rank": 35,
+   "slots": 32,
+   "misses": [
+    "Flamekin Village",
+    "Primal Beyond",
+    "Animar, Soul of Elements",
+    "Cavalier of Thorns",
+    "Champion of the Path",
+    "Eclipsed Flamekin",
+    "Endurance",
+    "Flamebraider",
+    "Flamekin Harbinger",
+    "Fury",
+    "Greenwarden of Murasa",
+    "Horde of Notions",
+    "Impulsivity",
+    "Incandescent Soulstoke",
+    "Jegantha, the Wellspring",
+    "Mass of Mysteries",
+    "Omnath, Locus of the Roil",
+    "Risen Reef",
+    "Shriekmaw",
+    "Smokebraider",
+    "Subterfuge",
+    "Sunderflock",
+    "Titan of Industry",
+    "Twinflame Travelers",
+    "Vernal Sovereign",
+    "Cream of the Crop",
+    "Descendants' Fury",
+    "Fertile Ground",
+    "Ashling's Command",
+    "Kindred Summons",
+    "Haunting Voyage",
+    "Ashling, the Limitless (commander)"
    ]
   },
   {
@@ -16352,46 +16380,6 @@
     "Terminus",
     "Time Wipe",
     "Aminatou, Veil Piercer (commander)"
-   ]
-  },
-  {
-   "commander": "Ashling, the Limitless",
-   "rank": 35,
-   "slots": 33,
-   "misses": [
-    "Flamekin Village",
-    "Primal Beyond",
-    "Animar, Soul of Elements",
-    "Cavalier of Thorns",
-    "Champion of the Path",
-    "Eclipsed Flamekin",
-    "Endurance",
-    "Flamebraider",
-    "Flamekin Harbinger",
-    "Fury",
-    "Greenwarden of Murasa",
-    "Horde of Notions",
-    "Impulsivity",
-    "Incandescent Soulstoke",
-    "Jegantha, the Wellspring",
-    "Mass of Mysteries",
-    "Muldrotha, the Gravetide",
-    "Omnath, Locus of the Roil",
-    "Risen Reef",
-    "Shriekmaw",
-    "Smokebraider",
-    "Subterfuge",
-    "Sunderflock",
-    "Titan of Industry",
-    "Twinflame Travelers",
-    "Vernal Sovereign",
-    "Cream of the Crop",
-    "Descendants' Fury",
-    "Fertile Ground",
-    "Ashling's Command",
-    "Kindred Summons",
-    "Haunting Voyage",
-    "Ashling, the Limitless (commander)"
    ]
   },
   {

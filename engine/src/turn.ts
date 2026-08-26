@@ -252,6 +252,7 @@ function onEnterStep(state: GameState): GameState {
     state.creaturesDiedThisTurn = 0;
     state.createdTokenThisTurn = [];
     state.drawsByPlayerThisTurn = {};
+    state.graveyardTypesPlayedThisTurn = {};
     state.lifeGainedByPlayerThisTurn = {};
     // CR 702.26b: permanents phase in at the start of their controller's
     // untap step, before untapping. Only the active player's own.
