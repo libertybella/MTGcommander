@@ -72990,3 +72990,122 @@ describe("wave 450: Prosperity (each player draws X cards)", () => {
     expect(after.players.find((e) => e.id === p2.id)!.zones.hand.length).toBe(h2 + 3);
   });
 });
+
+describe("wave 451: Rings of Brighthearth (copy an activated ability)", () => {
+  const ringsText =
+    "Whenever you activate an ability, if it isn't a mana ability, you may pay {2}. If you do, copy that ability. You may choose new targets for the copy.";
+  const compileRings = () =>
+    compileOracleCard({
+      oracleId: "rings-of-brighthearth",
+      name: "Rings of Brighthearth",
+      manaCost: "{3}",
+      typeLine: "Artifact",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText: ringsText,
+    });
+
+  it("compiles to an activate-ability trigger with a pay-2 reflexive copy", () => {
+    const compiled = compileRings();
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.triggers).toEqual([
+      {
+        event: "activated_ability",
+        watch: "controlled",
+        effects: [
+          {
+            kind: "may_pay",
+            playerId: "controller",
+            cost: "{2}",
+            effects: [{ kind: "copy_spell", fromSubject: true }],
+          },
+        ],
+        targetRequirements: [],
+      },
+    ]);
+  });
+
+  const mainPhase = (game: GameState, id: string) => {
+    game.turn.activePlayerId = id;
+    game.turn.phase = "precombatMain";
+    game.turn.step = "precombatMain";
+    game.priorityPlayerId = id;
+  };
+  const put = (game: GameState, ownerId: string, definition: CardDefinition) => {
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({ definitionId: definition.id, ownerId, zone: "battlefield" });
+    card.summoningSick = false;
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === ownerId)!.zones.battlefield.push(card.id);
+    return card.id;
+  };
+  const drawSource = () =>
+    createCardDefinition({
+      name: "Draw Rock",
+      typeLine: "Artifact",
+      activated: [
+        {
+          tap: false,
+          manaCost: "{0}",
+          effects: [{ kind: "draw", playerId: "controller", count: 1 }],
+          targetRequirements: [],
+        },
+      ],
+    });
+
+  const setup = (mana: number) => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    put(game, p1.id, compileRings().definition);
+    const rockId = put(game, p1.id, drawSource());
+    mainPhase(game, p1.id);
+    game.players.find((e) => e.id === p1.id)!.mana.G = mana;
+    return { game, p1, p2, rockId };
+  };
+
+  it("copies the ability when you pay {2}: the draw happens twice", () => {
+    const { game, p1, rockId } = setup(2);
+    const handBefore = game.players.find((e) => e.id === p1.id)!.zones.hand.length;
+    // Activate the {0}: Draw a card ability — Rings triggers onto the stack.
+    let next = applyAction(game, { kind: "activate_ability", playerId: p1.id, cardId: rockId, abilityIndex: 0 });
+    expect(next.stack.length).toBe(2);
+    // Resolve the Rings trigger; it offers the pay-{2}.
+    next = resolveTopOfStack(next);
+    expect(next.prompts[0]?.kind).toBe("pay_or_effect");
+    // Pay it — the ability is copied onto the stack.
+    next = applyResolvePay(next, p1.id, true);
+    // Resolve the copy, then the original.
+    while (next.stack.length > 0) next = resolveTopOfStack(next);
+    const handAfter = next.players.find((e) => e.id === p1.id)!.zones.hand.length;
+    expect(handAfter).toBe(handBefore + 2);
+    // And the {2} was actually spent.
+    expect(next.players.find((e) => e.id === p1.id)!.mana.G ?? 0).toBe(0);
+  });
+
+  it("declining the payment leaves a single resolution", () => {
+    const { game, p1, rockId } = setup(2);
+    const handBefore = game.players.find((e) => e.id === p1.id)!.zones.hand.length;
+    let next = applyAction(game, { kind: "activate_ability", playerId: p1.id, cardId: rockId, abilityIndex: 0 });
+    next = resolveTopOfStack(next);
+    next = applyResolvePay(next, p1.id, false);
+    while (next.stack.length > 0) next = resolveTopOfStack(next);
+    expect(next.players.find((e) => e.id === p1.id)!.zones.hand.length).toBe(handBefore + 1);
+  });
+
+  it("round trips the trigger and the fromSubject copy", () => {
+    const compiled = compileRings();
+    const { game } = twoPlayers();
+    game.definitions[compiled.definition.id] = compiled.definition;
+    const round = parseGameState(serializeGameState(game));
+    expect(round.definitions[compiled.definition.id]?.triggers?.[0]?.effects).toEqual([
+      {
+        kind: "may_pay",
+        playerId: "controller",
+        cost: "{2}",
+        effects: [{ kind: "copy_spell", fromSubject: true }],
+      },
+    ]);
+  });
+});

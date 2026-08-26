@@ -19,6 +19,7 @@ import type {
   EngineEvent,
   GameState,
   PlayerId,
+  StackObjectId,
   Step,
   TriggerEvent,
   TriggerCandidate,
@@ -465,7 +466,12 @@ export function queueDefinitionTriggerInPlace(
   state: GameState,
   cardId: CardInstanceId,
   index: number,
-  subject?: { cardId?: CardInstanceId; playerId?: PlayerId; amount?: number },
+  subject?: {
+    cardId?: CardInstanceId;
+    playerId?: PlayerId;
+    amount?: number;
+    stackObjectId?: StackObjectId;
+  },
 ): boolean {
   const card = state.cards[cardId];
   const trigger = card ? triggersOf(state, cardId)[index] : undefined;
@@ -561,6 +567,7 @@ export function queueDefinitionTriggerInPlace(
     ...(subject?.cardId ? { subjectCardId: subject.cardId } : {}),
     ...(subject?.playerId ? { subjectPlayerId: subject.playerId } : {}),
     ...(subject?.amount ? { subjectAmount: subject.amount } : {}),
+    ...(subject?.stackObjectId ? { subjectStackObjectId: subject.stackObjectId } : {}),
   });
   return true;
 }
@@ -658,6 +665,7 @@ export function processTriggerGroupsInPlace(state: GameState, groups: TriggerGro
         cardId: entries[0]!.subjectCardId,
         playerId: entries[0]!.subjectPlayerId,
         amount: entries[0]!.subjectAmount,
+        stackObjectId: entries[0]!.subjectStackObjectId,
       });
       continue;
     }
@@ -924,6 +932,12 @@ function triggerMatchesEvent(
   trigger: CardTrigger,
   event: EngineEvent,
 ): boolean {
+  if (event.kind === "activated_ability") {
+    return trigger.event === "activated_ability" && watcher.controllerId === event.playerId;
+  }
+  if (trigger.event === "activated_ability") {
+    return false;
+  }
   if (event.kind === "gains_life") {
     return trigger.event === "you_gain_life" && watcher.controllerId === event.playerId;
   }
@@ -1558,6 +1572,8 @@ export function dispatchEventsInPlace(state: GameState, events: EngineEvent[]): 
                 : event.kind === "leaves_battlefield" || event.kind === "counter_added"
                   ? event.amount
                   : undefined;
+          const subjectStackObjectId =
+            event.kind === "activated_ability" ? event.stackObjectId : undefined;
           const causeKind =
             event.kind === "enters" || event.kind === "dies" || event.kind === "attacks"
               ? event.kind
@@ -1572,6 +1588,7 @@ export function dispatchEventsInPlace(state: GameState, events: EngineEvent[]): 
             ...(subjectCardId ? { subjectCardId } : {}),
             ...(subjectPlayerId ? { subjectPlayerId } : {}),
             ...(subjectAmount ? { subjectAmount } : {}),
+            ...(subjectStackObjectId ? { subjectStackObjectId } : {}),
             ...(causeKind ? { causeKind } : {}),
           });
         }

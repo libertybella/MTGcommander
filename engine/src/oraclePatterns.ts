@@ -14916,9 +14916,10 @@ function shiftChosen(effect: CardEffect, offset: number): CardEffect {
     case "grant_dies_return":
       return { ...effect, cardId: bumpChosen(effect.cardId) };
     case "counter_spell":
-    case "copy_spell":
     case "bounce_spell_or_permanent":
       return { ...effect, target: bumpChosen(effect.target) };
+    case "copy_spell":
+      return effect.target ? { ...effect, target: bumpChosen(effect.target) } : { ...effect };
     case "exchange_life_toughness":
       return { ...effect, playerId: bumpChosen(effect.playerId) };
     case "gain_life":
@@ -19766,6 +19767,37 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
         index += 1;
         continue;
       }
+    }
+
+    // Rings of Brighthearth: "Whenever you activate an ability, if it isn't a
+    // mana ability, you may pay {2}. If you do, copy that ability. You may
+    // choose new targets for the copy." Mana abilities never reach the stack,
+    // so they never fire this (the intervening-if holds by construction), and
+    // the retarget permission is approximated away — the copy keeps the
+    // original's targets, exactly as Twincast's does.
+    if (
+      /^Whenever you activate an ability, if it isn['’]t a mana ability, you may pay \{2\} to do: copy that ability$/i.test(
+        sentence,
+      )
+    ) {
+      result.triggers.push({
+        event: "activated_ability",
+        watch: "controlled",
+        effects: [
+          {
+            kind: "may_pay",
+            playerId: "controller",
+            cost: "{2}",
+            effects: [{ kind: "copy_spell", fromSubject: true }],
+          },
+        ],
+        targetRequirements: [],
+      });
+      // "You may choose new targets for the copy" is approximated away.
+      if (/^You may choose new targets for the copy$/i.test((sentences[index + 1] ?? "").trim())) {
+        sentences[index + 1] = "";
+      }
+      continue;
     }
 
     // Oblivion Ring / Banisher Priest: "When ~ enters, exile target <scope>

@@ -1818,6 +1818,9 @@ export function parseGameState(json: string): GameState {
       ...(entry.subjectCardId === undefined
         ? {}
         : { subjectCardId: expectString(entry.subjectCardId, `stack[${index}].subjectCardId`) }),
+      ...(entry.subjectStackObjectId === undefined
+        ? {}
+        : { subjectStackObjectId: expectString(entry.subjectStackObjectId, `stack[${index}].subjectStackObjectId`) }),
       ...(entry.subjectPlayerId === undefined
         ? {}
         : { subjectPlayerId: expectString(entry.subjectPlayerId, `stack[${index}].subjectPlayerId`) }),
@@ -4664,6 +4667,10 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
     case "counter_spell":
     case "mill_and_dig_free":
     case "copy_spell": {
+      // Rings of Brighthearth: the targetless "copy that ability" form.
+      if (kind === "copy_spell" && value.fromSubject === true) {
+        return { kind, fromSubject: true };
+      }
       if (!isRecord(value.target)) {
         throw new Error(`Invalid ${label}.target`);
       }
@@ -5708,6 +5715,7 @@ function parseSpellModes(value: unknown, label: string): SpellMode[] {
  * valid but not that every member is present.
  */
 const TRIGGER_EVENT_NAMES: Record<TriggerEvent, true> = {
+  activated_ability: true,
   class_level: true,
   you_lose_life: true,
   enter_battlefield: true,

@@ -57,6 +57,8 @@ export type BindEffectContext = {
   /** The trigger event's subject ("that player" / "that creature"). */
   subjectPlayerId?: PlayerId;
   subjectCardId?: CardInstanceId;
+  /** Rings of Brighthearth: the activated ability "that ability" copies. */
+  subjectStackObjectId?: StackObjectId;
   /** The trigger event's amount ("that much" life gained or lost). */
   subjectAmount?: number;
   /** Fling: the power of the creature sacrificed as a cast cost. */
@@ -2397,6 +2399,21 @@ export function bindCardEffect(
       return { kind: "counter_unless_pays", stackObjectId: chosen.stackObjectId, cost: effect.cost };
     }
     case "copy_spell": {
+      // Rings of Brighthearth: "copy that ability" is the ability that
+      // triggered this, carried on the context as the subject stack object.
+      if (effect.fromSubject) {
+        if (!context.subjectStackObjectId) {
+          return null;
+        }
+        return {
+          kind: "copy_spell",
+          stackObjectId: context.subjectStackObjectId,
+          controllerId: context.controllerId,
+        };
+      }
+      if (!effect.target) {
+        return null;
+      }
       const chosen = chosenTargetAt(context, effect.target.index, state);
       if (!chosen || chosen.type !== "spell") {
         return null;

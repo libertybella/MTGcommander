@@ -1121,6 +1121,8 @@ export type StackObject = {
   subjectPlayerId?: PlayerId;
   /** The triggering event's amount ("that much" life). */
   subjectAmount?: number;
+  /** Rings of Brighthearth: the activated ability this trigger copies. */
+  subjectStackObjectId?: StackObjectId;
   /** Index into the source definition's `activated` for stacked abilities. */
   activatedIndex?: number;
   /** Chosen mode index for modal spells. */
@@ -3827,7 +3829,7 @@ export type CardEffect =
   | { kind: "bounce_spell_or_permanent"; target: ChosenTargetRef }
   /** Tree of Perdition: swap the target's life with the source's toughness. */
   | { kind: "exchange_life_toughness"; playerId: PlayerSelector }
-  | { kind: "copy_spell"; target: ChosenTargetRef }
+  | { kind: "copy_spell"; target?: ChosenTargetRef; fromSubject?: boolean }
   /** Beseech the Mirror — see the bound form. */
   | { kind: "searched_free_or_hand"; playerId: PlayerSelector; maxManaValue: number }
   /**
@@ -4605,6 +4607,8 @@ export type Keyword =
 
 export type TriggerEvent =
   | "enter_battlefield"
+  /** Rings of Brighthearth: "Whenever you activate an ability". */
+  | "activated_ability"
   | "begin_combat"
   | "dies"
   /** The Ozolith: a counter-carrying permanent left the battlefield. */
@@ -5063,6 +5067,10 @@ export type CardTrigger = {
 /** A change the trigger system reacts to. Dispatched synchronously in batches. */
 export type EngineEvent =
   | { kind: "enters"; cardId: CardInstanceId }
+  /** Rings of Brighthearth: a NON-mana activated ability just went on the
+   * stack. `stackObjectId` is that ability, so "copy that ability" can find
+   * it. Mana abilities never reach the stack, so they never dispatch this. */
+  | { kind: "activated_ability"; playerId: PlayerId; stackObjectId: StackObjectId }
   | {
       kind: "dies";
       cardId: CardInstanceId;
@@ -5182,6 +5190,9 @@ export type TriggerCandidate = {
   subjectPlayerId?: PlayerId;
   /** The event's amount ("that much" — life gained or lost). */
   subjectAmount?: number;
+  /** Rings of Brighthearth: the activated ability that triggered this, so
+   * "copy that ability" resolves to the right stack object. */
+  subjectStackObjectId?: StackObjectId;
   /** What caused this trigger, when an event did — read by trigger doublers
    * (Panharmonicon wants "enters", Teysa Karlov "dies", Isshin "attacks"). */
   causeKind?: "enters" | "dies" | "attacks" | "casts";

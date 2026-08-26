@@ -2536,7 +2536,7 @@
   "Tempt with Vengeance": true,
   "Aether Spellbomb": true,
   "Isochron Scepter": true,
-  "Rings of Brighthearth": false,
+  "Rings of Brighthearth": true,
   "Sapphire Medallion": true,
   "Static Orb": true,
   "Welding Jar": true,
@@ -10368,12 +10368,6 @@
     "Some oracle text is not compiled: As an additional cost to cast this spell, sacrifice X creatures; Destroy X target creatures."
    ]
   },
-  "Rings of Brighthearth": {
-   "type": "Artifact",
-   "notes": [
-    "Some oracle text is not compiled: Whenever you activate an ability, if it isn't a mana ability, you may pay {2} to do: copy that ability; You may choose new targets for the copy."
-   ]
-  },
   "Uthros, Titanic Godcore": {
    "type": "Land — Planet",
    "notes": [
@@ -14256,9 +14250,8 @@
   {
    "commander": "Urza, Lord High Artificer",
    "rank": 67,
-   "slots": 2,
+   "slots": 1,
    "misses": [
-    "Rings of Brighthearth",
     "Uthros, Titanic Godcore"
    ]
   },

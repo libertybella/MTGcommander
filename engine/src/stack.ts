@@ -154,6 +154,12 @@ export function putActivatedAbilityOnStack(
   next.passesSinceAction = 0;
   next.priorityPlayerId = card.controllerId;
   queueWardPromptsInPlace(next, stackId, card.controllerId, targets);
+  // Rings of Brighthearth watches this. Mana abilities never reach here (they
+  // do not use the stack), so the "if it isn't a mana ability" clause holds
+  // by construction.
+  dispatchEventsInPlace(next, [
+    { kind: "activated_ability", playerId: card.controllerId, stackObjectId: stackId },
+  ]);
   return next;
 }
 
@@ -495,6 +501,9 @@ export function resolveTopOfStack(state: GameState): GameState {
             ...(top.subjectCardId ? { subjectCardId: top.subjectCardId } : {}),
             ...(top.subjectPlayerId ? { subjectPlayerId: top.subjectPlayerId } : {}),
             ...(top.subjectAmount ? { subjectAmount: top.subjectAmount } : {}),
+            ...(top.subjectStackObjectId
+              ? { subjectStackObjectId: top.subjectStackObjectId }
+              : {}),
           },
         );
         next = applyEffects(next, bound);
