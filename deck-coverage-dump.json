@@ -748,7 +748,7 @@
   "Elvish Champion": true,
   "Elvish Harbinger": false,
   "Elvish Mystic": true,
-  "Elvish Warmaster": false,
+  "Elvish Warmaster": true,
   "Ezuri, Renegade Leader": false,
   "Fyndhorn Elves": true,
   "High Perfect Morcant": false,
@@ -4948,12 +4948,6 @@
    "type": "Creature — Elf Druid",
    "notes": [
     "Some oracle text is not compiled: When ~ enters, you may search your library for an Elf card, reveal it, then shuffle and put that card on top."
-   ]
-  },
-  "Elvish Warmaster": {
-   "type": "Creature — Elf Warrior",
-   "notes": [
-    "Some oracle text is not compiled: Whenever one or more other Elves you control enter, create a 1/1 green Elf Warrior creature token; This ability triggers only once each turn."
    ]
   },
   "Ezuri, Renegade Leader": {
@@ -14644,6 +14638,27 @@
    ]
   },
   {
+   "commander": "Voja, Jaws of the Conclave",
+   "rank": 88,
+   "slots": 14,
+   "misses": [
+    "Anara, Wolvid Familiar",
+    "Arwen, Weaver of Hope",
+    "Bramblewood Paragon",
+    "Cemetery Prowler",
+    "Hollowhenge Overlord",
+    "Masked Vandal",
+    "Tolsimir, Friend to Wolves",
+    "Tolsimir, Midnight's Light",
+    "Wolf-Skull Shaman",
+    "Wren's Run Packmaster",
+    "All Will Be One",
+    "Annie Joins Up",
+    "Howling Moon",
+    "Voja, Jaws of the Conclave (commander)"
+   ]
+  },
+  {
    "commander": "Fire Lord Azula",
    "rank": 11,
    "slots": 15,
@@ -14685,28 +14700,6 @@
     "Worldspine Wurm",
     "Annie Joins Up",
     "Life Finds a Way"
-   ]
-  },
-  {
-   "commander": "Voja, Jaws of the Conclave",
-   "rank": 88,
-   "slots": 15,
-   "misses": [
-    "Anara, Wolvid Familiar",
-    "Arwen, Weaver of Hope",
-    "Bramblewood Paragon",
-    "Cemetery Prowler",
-    "Elvish Warmaster",
-    "Hollowhenge Overlord",
-    "Masked Vandal",
-    "Tolsimir, Friend to Wolves",
-    "Tolsimir, Midnight's Light",
-    "Wolf-Skull Shaman",
-    "Wren's Run Packmaster",
-    "All Will Be One",
-    "Annie Joins Up",
-    "Howling Moon",
-    "Voja, Jaws of the Conclave (commander)"
    ]
   },
   {
@@ -15236,6 +15229,33 @@
    ]
   },
   {
+   "commander": "Maralen, Fae Ascendant",
+   "rank": 53,
+   "slots": 20,
+   "misses": [
+    "Eclipsed Realms",
+    "Alela, Cunning Conqueror",
+    "Champions of the Perfect",
+    "Formidable Speaker",
+    "Glen Elendra Guardian",
+    "High Perfect Morcant",
+    "Lathril, Blade of the Elves",
+    "Morcant's Loyalist",
+    "Oona, Queen of the Fae",
+    "Selfless Safewright",
+    "Spellstutter Sprite",
+    "Talion, the Kindly Lord",
+    "Voracious Tome-Skimmer",
+    "Faebloom Trick",
+    "Galadhrim Ambush",
+    "Glen Elendra's Answer",
+    "Spell Stutter",
+    "Notorious Throng",
+    "Stolen by the Fae",
+    "Maralen, Fae Ascendant (commander)"
+   ]
+  },
+  {
    "commander": "Sidar Jabari of Zhalfir",
    "rank": 95,
    "slots": 20,
@@ -15316,34 +15336,6 @@
     "Teferi, Master of Time",
     "Vraska, Betrayal's Sting",
     "Phyresis Outbreak"
-   ]
-  },
-  {
-   "commander": "Maralen, Fae Ascendant",
-   "rank": 53,
-   "slots": 21,
-   "misses": [
-    "Eclipsed Realms",
-    "Alela, Cunning Conqueror",
-    "Champions of the Perfect",
-    "Elvish Warmaster",
-    "Formidable Speaker",
-    "Glen Elendra Guardian",
-    "High Perfect Morcant",
-    "Lathril, Blade of the Elves",
-    "Morcant's Loyalist",
-    "Oona, Queen of the Fae",
-    "Selfless Safewright",
-    "Spellstutter Sprite",
-    "Talion, the Kindly Lord",
-    "Voracious Tome-Skimmer",
-    "Faebloom Trick",
-    "Galadhrim Ambush",
-    "Glen Elendra's Answer",
-    "Spell Stutter",
-    "Notorious Throng",
-    "Stolen by the Fae",
-    "Maralen, Fae Ascendant (commander)"
    ]
   },
   {
@@ -15927,6 +15919,39 @@
    ]
   },
   {
+   "commander": "Lathril, Blade of the Elves",
+   "rank": 13,
+   "slots": 26,
+   "misses": [
+    "Gilt-Leaf Palace",
+    "Wirewood Lodge",
+    "Abomination of Llanowar",
+    "Champions of the Perfect",
+    "Dionus, Elvish Archdruid",
+    "Dwynen, Gilt-Leaf Daen",
+    "Elvish Harbinger",
+    "Ezuri, Renegade Leader",
+    "High Perfect Morcant",
+    "Immaculate Magistrate",
+    "Morcant's Loyalist",
+    "Ruthless Winnower",
+    "Shaman of the Pack",
+    "Skemfar Shadowsage",
+    "Timberwatch Elf",
+    "Wirewood Channeler",
+    "Elderfang Venom",
+    "Prowess of the Fair",
+    "Elven Ambush",
+    "Galadhrim Ambush",
+    "Tyvar Kell",
+    "Bounty of Skemfar",
+    "Elvish Promenade",
+    "Harvest Season",
+    "Pact of the Serpent",
+    "Lathril, Blade of the Elves (commander)"
+   ]
+  },
+  {
    "commander": "Yuriko, the Tiger's Shadow",
    "rank": 17,
    "slots": 26,
@@ -16056,40 +16081,6 @@
     "Teferi, Time Raveler",
     "Primevals' Glorious Rebirth",
     "Sisay, Weatherlight Captain (commander)"
-   ]
-  },
-  {
-   "commander": "Lathril, Blade of the Elves",
-   "rank": 13,
-   "slots": 27,
-   "misses": [
-    "Gilt-Leaf Palace",
-    "Wirewood Lodge",
-    "Abomination of Llanowar",
-    "Champions of the Perfect",
-    "Dionus, Elvish Archdruid",
-    "Dwynen, Gilt-Leaf Daen",
-    "Elvish Harbinger",
-    "Elvish Warmaster",
-    "Ezuri, Renegade Leader",
-    "High Perfect Morcant",
-    "Immaculate Magistrate",
-    "Morcant's Loyalist",
-    "Ruthless Winnower",
-    "Shaman of the Pack",
-    "Skemfar Shadowsage",
-    "Timberwatch Elf",
-    "Wirewood Channeler",
-    "Elderfang Venom",
-    "Prowess of the Fair",
-    "Elven Ambush",
-    "Galadhrim Ambush",
-    "Tyvar Kell",
-    "Bounty of Skemfar",
-    "Elvish Promenade",
-    "Harvest Season",
-    "Pact of the Serpent",
-    "Lathril, Blade of the Elves (commander)"
    ]
   },
   {

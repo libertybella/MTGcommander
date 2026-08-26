@@ -10614,9 +10614,9 @@ function parseEotSubject(phrase: string): EotSubject | null {
   }
   // Lathliss: "Dragons you control". The capital marks it as a subtype;
   // "Creatures" is claimed above.
-  const tribal = rest.match(/^([A-Z][a-z]+)s you control$/);
+  const tribal = rest.match(/^([A-Z][a-z]+s) you control$/);
   if (tribal?.[1]) {
-    return { how: "team", playerId: "controller", subtypes: [tribal[1].toLowerCase()] };
+    return { how: "team", playerId: "controller", subtypes: [singularSubtype(tribal[1])] };
   }
   // Valley Floodcaller: "Birds, Frogs, Otters, and Rats you control". The
   // effect has carried a subtype LIST all along; only the reader above
@@ -10625,7 +10625,7 @@ function parseEotSubject(phrase: string): EotSubject | null {
   if (tribalList?.[1]) {
     const subtypes = tribalList[1]
       .split(/,\s*(?:and\s+)?|\s+and\s+/)
-      .map((word) => word.trim().replace(/s$/, "").toLowerCase())
+      .map((word) => singularSubtype(word.trim()))
       .filter(Boolean);
     if (subtypes.length >= 2) {
       return { how: "team", playerId: "controller", subtypes };
@@ -10634,9 +10634,9 @@ function parseEotSubject(phrase: string): EotSubject | null {
   // Lord of the Accursed: "All Zombies" — everyone's, so it stays a team
   // effect on the controller only. That is a documented narrowing: the
   // printed card pumps opponents' Zombies too, which no team effect models.
-  const allTribal = rest.match(/^All ([A-Z][a-z]+)s$/);
+  const allTribal = rest.match(/^All ([A-Z][a-z]+s)$/);
   if (allTribal?.[1]) {
-    return { how: "team", playerId: "controller", subtypes: [allTribal[1].toLowerCase()] };
+    return { how: "team", playerId: "controller", subtypes: [singularSubtype(allTribal[1])] };
   }
   if (/^(?:~|It|That creature|They)$/i.test(rest)) {
     return { how: "card", cardId: /^~$/.test(rest) ? "self" : "subject_card" };
@@ -13340,6 +13340,25 @@ function parseTriggerHead(head: string): TriggerHead | null {
       oncePerBatch: true,
       subjectFilter: { types: ["creature"], maxPower: Number(batchEnter[1]) },
     };
+  }
+  // Elvish Warmaster: a batched TRIBAL watch — "one or more other <Subtype>
+  // you control enter", once for the whole simultaneous batch (CR 603.3a).
+  // The "only once each turn" cap rides as a separate sentence. A card TYPE
+  // ("creatures") is claimed by the handlers above, so it is excluded here.
+  const batchTribalEnter = text.match(
+    /^Whenever one or more other ([A-Za-z]+) you control enter$/i,
+  );
+  if (batchTribalEnter?.[1]) {
+    const subtype = singularSubtype(batchTribalEnter[1]);
+    if (!SEARCH_CARD_TYPES.has(subtype) && subtype !== "creature") {
+      return {
+        event: "enter_battlefield",
+        watch: "controlled",
+        excludeSelf: true,
+        oncePerBatch: true,
+        subjectFilter: { subtypes: [subtype] },
+      };
+    }
   }
   // "your …" fires on the controller's step; "each …" on everyone's.
   // "each opponent's …" is deliberately absent: approximating it as every

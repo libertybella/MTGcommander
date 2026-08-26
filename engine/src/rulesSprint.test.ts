@@ -72346,3 +72346,93 @@ describe("wave 442: Wake the Past (mass return of one card type from your gravey
     ]);
   });
 });
+
+describe("wave 443: Elvish Warmaster (batched tribal enters + irregular-plural pump)", () => {
+  const warmasterText =
+    "Whenever one or more other Elves you control enter, create a 1/1 green Elf Warrior creature token. This ability triggers only once each turn.\n{5}{G}{G}: Elves you control get +2/+2 and gain deathtouch until end of turn.";
+  const compileWarmaster = () =>
+    compileOracleCard({
+      oracleId: "elvish-warmaster",
+      name: "Elvish Warmaster",
+      manaCost: "{1}{G}",
+      typeLine: "Creature — Elf Warrior",
+      power: "1",
+      toughness: "1",
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText: warmasterText,
+    });
+
+  it("compiles the batched tribal enter trigger with the once-per-turn cap", () => {
+    const compiled = compileWarmaster();
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.triggers).toHaveLength(1);
+    expect(compiled.definition.triggers[0]).toMatchObject({
+      event: "enter_battlefield",
+      watch: "controlled",
+      excludeSelf: true,
+      oncePerBatch: true,
+      oncePerTurn: true,
+      subjectFilter: { subtypes: ["elf"] },
+    });
+    expect(compiled.definition.triggers[0]?.effects[0]).toMatchObject({ kind: "create_token" });
+  });
+
+  it("singularizes the irregular plural — the pump names 'elf', not 'elve'", () => {
+    const compiled = compileWarmaster();
+    // Regression: `([A-Z][a-z]+)s` used to strip only the trailing s, so
+    // "Elves" became "elve" and the pump matched no real Elf.
+    expect(compiled.definition.activated?.[0]?.effects).toEqual([
+      { kind: "team_pt_until_eot", playerId: "controller", power: 2, toughness: 2, subtypes: ["elf"] },
+      { kind: "team_keyword_until_eot", playerId: "controller", keyword: "deathtouch", subtypes: ["elf"] },
+    ]);
+  });
+
+  const put = (game: GameState, ownerId: string, definition: CardDefinition) => {
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({ definitionId: definition.id, ownerId, zone: "battlefield" });
+    card.summoningSick = false;
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === ownerId)!.zones.battlefield.push(card.id);
+    return card.id;
+  };
+  const elf = () => createCardDefinition({ name: "Llanowar Elves", typeLine: "Creature — Elf Druid", manaCost: "{G}", power: 1, toughness: 1 });
+
+  it("the pump actually buffs an Elf (guards the singularization fix)", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const warId = put(game, p1.id, compileWarmaster().definition);
+    const elfId = put(game, p1.id, elf());
+    const effects = game.definitions[game.cards[warId]!.definitionId]!.activated![0]!.effects;
+    const after = applyEffects(
+      game,
+      bindCardEffects(game, effects, { controllerId: p1.id, sourceId: warId, targets: [], targetRequirements: [] }),
+    );
+    expect(computedCard(after, elfId)?.power).toBe(3);
+    expect(computedCard(after, elfId)?.keywords.includes("deathtouch")).toBe(true);
+  });
+
+  it("makes a token when another Elf enters under your control", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    put(game, p1.id, compileWarmaster().definition);
+    const before = game.players.find((e) => e.id === p1.id)!.zones.battlefield.length;
+    // A fresh Elf enters under p1's control.
+    const elfDef = elf();
+    game.definitions[elfDef.id] = elfDef;
+    const entering = createCardInstance({ definitionId: elfDef.id, ownerId: p1.id, zone: "battlefield" });
+    game.cards[entering.id] = entering;
+    game.players.find((e) => e.id === p1.id)!.zones.battlefield.push(entering.id);
+    let next = parseGameState(serializeGameState(game));
+    queueEnterBattlefieldTriggersInPlace(next, entering.id);
+    expect(next.stack.length).toBe(1);
+    next = resolveTopOfStack(next);
+    const battlefield = next.players.find((e) => e.id === p1.id)!.zones.battlefield;
+    const tokens = battlefield
+      .map((id) => next.cards[id])
+      .filter((c) => c?.isToken && next.definitions[c.definitionId]?.name === "Elf Warrior");
+    expect(tokens).toHaveLength(1);
+    // warmaster + entering Elf + the new token
+    expect(battlefield.length).toBe(before + 2);
+  });
+});
