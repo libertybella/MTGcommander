@@ -3069,3 +3069,4 @@ ends. Every printed card of this shape asks about the current turn.
 - Artifact activated-ability discount: "activated abilities of artifacts you control cost {N} less to activate" with a one-mana floor (Forensic Gadgeteer) — shaves generic pips off an artifact ability at activation.
 - Reconfigure (CR 702.151): an Equipment-creature attaches to a creature via a sorcery-speed ability and stops being a creature while attached (The Reality Chip); the play-from-top grant can be gated on being attached (requiresAttached).
 - Life-gain bonus: "if you would gain life, you gain that much life plus N instead" (Angel of Vitality) — an additive life-gain replacement that stacks with the doubling one.
+- Invariant-plural tribal lords: "Other Merfolk you control get +N/+N" — the anthem no longer requires a trailing "s" on the tribe.

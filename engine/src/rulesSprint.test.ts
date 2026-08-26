@@ -71803,3 +71803,34 @@ describe("wave 435: Angel of Vitality (life-gain bonus)", () => {
     expect(round.definitions[definition.id]?.replacements).toContainEqual({ kind: "life_gain_bonus", amount: 1 });
   });
 });
+
+describe("wave 436: invariant-plural tribal lords (Merfolk)", () => {
+  const compile = (name: string, subtype: string, oracleText: string) =>
+    compileOracleCard({
+      oracleId: name.toLowerCase().replace(/[^a-z]+/g, "-"),
+      name,
+      manaCost: "{1}{U}",
+      typeLine: `Creature — ${subtype}`,
+      power: "2",
+      toughness: "2",
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  it("compiles 'Other Merfolk you control get +1/+1' (its own plural)", () => {
+    const compiled = compile("Merfolk Mistbinder", "Merfolk", "Other Merfolk you control get +1/+1.");
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.staticAbilities[0]).toMatchObject({
+      selector: { scope: "controlled", subtypes: ["merfolk"], excludeSelf: true },
+      effect: { kind: "modify_pt", power: 1, toughness: 1 },
+    });
+  });
+
+  it("still depluralises a regular tribe", () => {
+    const elves = compile("Elvish Archdruid", "Elf", "Other Elves you control get +1/+1.");
+    expect(elves.definition.staticAbilities[0]?.selector?.subtypes).toEqual(["elf"]);
+    const goblins = compile("Goblin King", "Goblin", "Other Goblins you control get +2/+2.");
+    expect(goblins.definition.staticAbilities[0]?.selector?.subtypes).toEqual(["goblin"]);
+  });
+});

@@ -13881,7 +13881,9 @@ function compileAnthem(sentence: string): StaticAbility | null {
     };
   }
   // "Other Elves you control get +1/+1" — tribal anthems (changelings match).
-  const tribalPt = sentence.match(/^(Other )?([A-Z][a-z]+s) you control get \+(\d+)\/\+(\d+)$/);
+  // No trailing "s" required: "Merfolk" and other -folk tribes are their own
+  // plural, and singularSubtype leaves an unpluralisable word alone.
+  const tribalPt = sentence.match(/^(Other )?([A-Z][a-z]+) you control get \+(\d+)\/\+(\d+)$/);
   if (tribalPt?.[2] && tribalPt[3] && tribalPt[4] && tribalPt[2] !== "Creatures") {
     return {
       selector: {
