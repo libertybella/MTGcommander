@@ -902,6 +902,15 @@ export function validateChosenTargets(
         throw new Error("Each target must have a different mana value");
       }
     }
+    // Ruthless Technomancer: "with power X or less" — the sacrificed-artifact
+    // count. Checked here, where the announced X is in hand.
+    if (requirements[0]!.maxPowerX) {
+      for (const target of targets) {
+        if ("cardId" in target && creaturePower(state, target.cardId) > (xValue ?? 0)) {
+          throw new Error("That creature's power is above X");
+        }
+      }
+    }
     return;
   }
   // "Up to N other targets": trailing optional slots may stay unfilled, and
@@ -925,6 +934,15 @@ export function validateChosenTargets(
     const target = targets[index];
     if (!requirement || !target || !isChosenTargetLegal(state, requirement, target, casterId, sourceColors, sourceId)) {
       throw new Error("Illegal target");
+    }
+    // Ruthless Technomancer: "power X or less" on a single fixed target, so
+    // the announced-X bound is checked here rather than in the variable path.
+    if (
+      requirement.maxPowerX &&
+      "cardId" in target &&
+      creaturePower(state, target.cardId) > (xValue ?? 0)
+    ) {
+      throw new Error("That creature's power is above X");
     }
   }
 }

@@ -123,7 +123,17 @@ export function putActivatedAbilityOnStack(
         }
       : requirement,
   );
-  validateChosenTargets(state, requirements, targets, card.controllerId, sourceColorsOf(state, cardId), cardId);
+  validateChosenTargets(
+    state,
+    requirements,
+    targets,
+    card.controllerId,
+    sourceColorsOf(state, cardId),
+    cardId,
+    // Ruthless Technomancer: the announced X (its sacrifice count) bounds
+    // "power X or less", so it has to reach the target check.
+    xValue,
+  );
 
   const next = cloneGameState(state);
   const stackId = createId("stack");

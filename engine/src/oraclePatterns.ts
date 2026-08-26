@@ -9434,6 +9434,27 @@ function compileSimpleClauseInner(sentence: string): SimpleClause | null {
     };
   }
 
+  // Ruthless Technomancer: "Return target creature card with power X or less
+  // from your graveyard to the battlefield." X is the cost's sacrifice count,
+  // read as the announced value at target validation.
+  if (
+    /^Return target creature card with power X or less from your graveyard to the battlefield$/i.test(
+      sentence,
+    )
+  ) {
+    return {
+      targetRequirements: [{ kind: "graveyard_creature_card", maxPowerX: true }],
+      effects: [
+        {
+          kind: "move_card",
+          cardId: { type: "chosen", index: 0 },
+          toZone: "battlefield",
+          underControlOf: "controller",
+        },
+      ],
+    };
+  }
+
   // Reanimate: steal from ANY graveyard; the life clause follows separately.
   // Portal to Phyrexia fuses its type rider onto the end of this, because
   // on a PERMANENT a rider left as its own sentence never runs.
@@ -18057,6 +18078,13 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
     const toxicKeyword = sentence.match(/^Toxic (\d+)$/i);
     if (toxicKeyword?.[1]) {
       result.toxic = (result.toxic ?? 0) + Number(toxicKeyword[1]);
+      continue;
+    }
+
+    // Ruthless Technomancer: "X can't be 0." A restatement of what the X cost
+    // already enforces — `sacrificeCountFromX` requires at least one victim —
+    // so it consumes to nothing.
+    if (/^X can't be (?:0|zero)$/i.test(sentence)) {
       continue;
     }
 

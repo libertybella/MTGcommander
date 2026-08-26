@@ -71075,3 +71075,159 @@ describe("wave 428: sacrifice-a-creature-you-control for Treasures (Ruthless Tec
     });
   });
 });
+
+describe("wave 429: Ruthless Technomancer reanimate (power X or less)", () => {
+  const compile = (oracleText: string) =>
+    compileOracleCard({
+      oracleId: "ruthless-technomancer",
+      name: "Ruthless Technomancer",
+      manaCost: "{3}{B}",
+      typeLine: "Creature — Human Wizard",
+      power: "3",
+      toughness: "2",
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText,
+    });
+
+  it("compiles the whole card clean, cost and body and all", () => {
+    const compiled = compile(
+      "When Ruthless Technomancer enters, you may sacrifice another creature you control. If you do, create a number of Treasure tokens equal to that creature's power.\n{2}{B}, Sacrifice X artifacts: Return target creature card with power X or less from your graveyard to the battlefield. X can't be 0.",
+    );
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.activated[0]).toMatchObject({
+      manaCost: "{2}{B}",
+      sacrificeCost: "artifact",
+      sacrificeCountFromX: true,
+      targetRequirements: [{ kind: "graveyard_creature_card", maxPowerX: true }],
+      effects: [{ kind: "move_card", toZone: "battlefield", underControlOf: "controller" }],
+    });
+  });
+
+  const grave = (name: string, power: number) =>
+    createCardDefinition({ name, typeLine: "Creature — Bear", manaCost: "{1}{G}", power, toughness: 2 });
+
+  const put = (game: GameState, ownerId: string, definition: CardDefinition, zone: "battlefield" | "graveyard") => {
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({ definitionId: definition.id, ownerId, zone });
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === ownerId)!.zones[zone].push(card.id);
+    return card.id;
+  };
+
+  it("accepts a graveyard creature at exactly power X", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const bigId = put(game, p1.id, grave("Three Power", 3), "graveyard");
+    const requirement = { kind: "graveyard_creature_card" as const, maxPowerX: true };
+    // Announced X of 3: a power-3 creature is legal.
+    expect(() =>
+      validateChosenTargets(
+        game,
+        [requirement],
+        [{ type: "creature", cardId: bigId }],
+        p1.id,
+        undefined,
+        undefined,
+        3,
+      ),
+    ).not.toThrow();
+  });
+
+  it("refuses a graveyard creature whose power exceeds X", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const hugeId = put(game, p1.id, grave("Five Power", 5), "graveyard");
+    const requirement = { kind: "graveyard_creature_card" as const, maxPowerX: true };
+    // Announced X of 2: a power-5 creature is above the floor.
+    expect(() =>
+      validateChosenTargets(
+        game,
+        [requirement],
+        [{ type: "creature", cardId: hugeId }],
+        p1.id,
+        undefined,
+        undefined,
+        2,
+      ),
+    ).toThrow();
+  });
+
+  it("round trips maxPowerX on the requirement", () => {
+    const compiled = compile(
+      "{2}{B}, Sacrifice X artifacts: Return target creature card with power X or less from your graveyard to the battlefield. X can't be 0.",
+    );
+    const { game } = twoPlayers();
+    game.definitions[compiled.definition.id] = compiled.definition;
+    const round = parseGameState(serializeGameState(game));
+    expect(round.definitions[compiled.definition.id]?.activated[0]?.targetRequirements).toEqual([
+      { kind: "graveyard_creature_card", maxPowerX: true },
+    ]);
+  });
+
+  const fullCard = () =>
+    compile(
+      "When Ruthless Technomancer enters, you may sacrifice another creature you control. If you do, create a number of Treasure tokens equal to that creature's power.\n{2}{B}, Sacrifice X artifacts: Return target creature card with power X or less from your graveyard to the battlefield. X can't be 0.",
+    ).definition;
+  const artifact = (name: string) => createCardDefinition({ name, typeLine: "Artifact", manaCost: "{1}" });
+  const putBf = (game: GameState, ownerId: string, definition: CardDefinition) => {
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({ definitionId: definition.id, ownerId, zone: "battlefield" });
+    card.summoningSick = false;
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === ownerId)!.zones.battlefield.push(card.id);
+    return card.id;
+  };
+  const readyToActivate = (game: GameState, playerId: string) => {
+    game.turn.activePlayerId = playerId;
+    game.turn.phase = "precombatMain";
+    game.turn.step = "precombatMain";
+    game.priorityPlayerId = playerId;
+    game.players.find((entry) => entry.id === playerId)!.mana.B = 5;
+  };
+
+  it("really reanimates a power-2 creature when two artifacts are sacrificed", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const techId = putBf(game, p1.id, fullCard());
+    const rockId = putBf(game, p1.id, artifact("Rock A"));
+    putBf(game, p1.id, artifact("Rock B"));
+    const preyId = put(game, p1.id, grave("Buried Two", 2), "graveyard");
+    readyToActivate(game, p1.id);
+    // The announced X (its sacrifice count) has to reach the target check, or
+    // the ability rejects every legal target -- a compiles-but-broken pass.
+    const after = resolveTopOfStack(
+      applyAction(game, {
+        kind: "activate_ability",
+        playerId: p1.id,
+        cardId: techId,
+        abilityIndex: 0,
+        xValue: 2,
+        costSacrificeId: rockId,
+        targets: [{ type: "creature", cardId: preyId }],
+      }),
+    );
+    expect(after.cards[preyId]?.zone).toBe("battlefield");
+  });
+
+  it("refuses to reanimate a power-5 creature when only two artifacts are sacrificed", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 20);
+    const techId = putBf(game, p1.id, fullCard());
+    const rockId = putBf(game, p1.id, artifact("Rock A"));
+    putBf(game, p1.id, artifact("Rock B"));
+    const preyId = put(game, p1.id, grave("Buried Five", 5), "graveyard");
+    readyToActivate(game, p1.id);
+    expect(() =>
+      applyAction(game, {
+        kind: "activate_ability",
+        playerId: p1.id,
+        cardId: techId,
+        abilityIndex: 0,
+        xValue: 2,
+        costSacrificeId: rockId,
+        targets: [{ type: "creature", cardId: preyId }],
+      }),
+    ).toThrow();
+  });
+});

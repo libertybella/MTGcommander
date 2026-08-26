@@ -3217,6 +3217,7 @@ function parseSearchFilter(value: unknown, label: string): SearchFilter {
       ? {}
       : { maxManaValue: expectNumber(value.maxManaValue, `${label}.maxManaValue`) }),
     ...(value.maxManaValueX === true ? { maxManaValueX: true } : {}),
+    ...(value.maxPowerX === true ? { maxPowerX: true } : {}),
     ...(isDynamicCount(value.maxManaValueFrom)
       ? { maxManaValueFrom: value.maxManaValueFrom }
       : {}),
@@ -3685,6 +3686,7 @@ function parseTargetRequirement(value: unknown, label: string): TargetRequiremen
       : {}),
     ...(value.targetsYouOrYours === true ? { targetsYouOrYours: true } : {}),
     ...(value.maxManaValueX === true ? { maxManaValueX: true } : {}),
+    ...(value.maxPowerX === true ? { maxPowerX: true } : {}),
     ...(value.maxManaValuePlusSacrificed === undefined
       ? {}
       : {

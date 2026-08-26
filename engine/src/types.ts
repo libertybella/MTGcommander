@@ -3091,6 +3091,12 @@ export type TargetRequirement = {
    */
   maxManaValueX?: boolean;
   /**
+   * Ruthless Technomancer: "with power X or less", where X is the announced
+   * value (here the number of artifacts sacrificed as the cost). Checked
+   * against xValue at target validation, the same place maxManaValueX is.
+   */
+  maxPowerX?: boolean;
+  /**
    * Agadeem's Awakening: "that each have a DIFFERENT mana value". A
    * constraint ACROSS the chosen targets rather than on any one of them,
    * so it is checked where the whole set is in hand — and it is most of
