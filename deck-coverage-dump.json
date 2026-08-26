@@ -511,7 +511,7 @@
   "Sauron, the Dark Lord": false,
   "Cauldron of Essence": true,
   "Conduit of Worlds": true,
-  "Hedge Shredder": false,
+  "Hedge Shredder": true,
   "Cephalid Coliseum": true,
   "Command Beacon": true,
   "Crypt of Agadeem": true,
@@ -1497,10 +1497,10 @@
   "Ulalek, Fused Atrocity": false,
   "Bootleggers' Stash": true,
   "Chimil, the Inner Sun": true,
-  "Esika's Chariot": false,
+  "Esika's Chariot": true,
   "Gilded Lotus": true,
   "Gruul Signet": true,
-  "Rolling Hamsphere": false,
+  "Rolling Hamsphere": true,
   "Copperline Gorge": true,
   "Gruul Turf": true,
   "Raging Ravine": false,
@@ -2392,7 +2392,7 @@
   "Resurgent Belief": false,
   "Tom Bombadil": false,
   "Aerial Surveyor": false,
-  "Cultivator's Caravan": false,
+  "Cultivator's Caravan": true,
   "Imposter Mech": false,
   "Manifold Key": true,
   "Mechtitan Core": false,
@@ -2401,11 +2401,11 @@
   "Peacewalker Colossus": false,
   "Prodigy's Prototype": false,
   "Salvation Engine": false,
-  "Skysovereign, Consul Flagship": false,
+  "Skysovereign, Consul Flagship": true,
   "Smuggler's Copter": false,
   "Surgehacker Mech": false,
   "Voltaic Key": true,
-  "Weatherlight": false,
+  "Weatherlight": true,
   "Mech Hangar": false,
   "Temple of Enlightenment": true,
   "Cosima, God of the Voyage": false,
@@ -2713,7 +2713,7 @@
   "Villainous Wealth": false,
   "Zaxara, the Exemplary": false,
   "Chocobo Racetrack": false,
-  "The Regalia": false,
+  "The Regalia": true,
   "World Map": true,
   "Adventurer's Inn": true,
   "Balamb Garden, SeeD Academy": false,
@@ -4388,12 +4388,6 @@
    "type": "Legendary Creature — Avatar Horror",
    "notes": [
     "Some oracle text is not compiled: Ward—Sacrifice a legendary artifact or legendary creature; Whenever the Ring tempts you, you may discard your hand."
-   ]
-  },
-  "Hedge Shredder": {
-   "type": "Artifact — Vehicle",
-   "notes": [
-    "Some oracle text is not compiled: Whenever this Vehicle attacks, you may mill two cards; Crew 1."
    ]
   },
   "Floral Evoker": {
@@ -6923,18 +6917,6 @@
     "Some oracle text is not compiled: Whenever you cast an Eldrazi spell, you may pay {C}{C} to do: copy all spells you control, then copy all other activated and triggered abilities you control; You may choose new targets for the copies."
    ]
   },
-  "Esika's Chariot": {
-   "type": "Legendary Artifact — Vehicle",
-   "notes": [
-    "Some oracle text is not compiled: Crew 4."
-   ]
-  },
-  "Rolling Hamsphere": {
-   "type": "Artifact — Vehicle",
-   "notes": [
-    "Some oracle text is not compiled: This Vehicle gets +1/+1 for each Hamster you control; Whenever this Vehicle attacks, create three 1/1 red Hamster creature tokens, then it deals X damage to any target, where X is the number of Hamsters you control; Crew 3."
-   ]
-  },
   "Raging Ravine": {
    "type": "Land",
    "notes": [
@@ -8363,7 +8345,7 @@
   "Clown Car": {
    "type": "Artifact — Vehicle",
    "notes": [
-    "Some oracle text is not compiled: When this Vehicle enters, roll X six-sided dice; For each odd result, create a 1/1 white Clown Robot artifact creature token; For each even result, put a +1/+1 counter on this Vehicle; Crew 2."
+    "Some oracle text is not compiled: When ~ enters, roll X six-sided dice; For each odd result, create a 1/1 white Clown Robot artifact creature token; For each even result, put a +1/+1 counter on ~."
    ]
   },
   "Component Pouch": {
@@ -9695,79 +9677,61 @@
   "Aerial Surveyor": {
    "type": "Artifact — Vehicle",
    "notes": [
-    "Some oracle text is not compiled: Whenever this Vehicle attacks, if defending player controls more lands than you, search your library for a basic Plains card, put it onto the battlefield tapped, then shuffle; Crew 2."
-   ]
-  },
-  "Cultivator's Caravan": {
-   "type": "Artifact — Vehicle",
-   "notes": [
-    "Some oracle text is not compiled: Crew 3."
+    "Some oracle text is not compiled: Whenever ~ attacks, if defending player controls more lands than you, search your library for a basic Plains card, put it onto the battlefield tapped, then shuffle."
    ]
   },
   "Imposter Mech": {
    "type": "Artifact — Vehicle",
    "notes": [
-    "Some oracle text is not compiled: You may have this Vehicle enter as a copy of a creature an opponent controls, except it's a Vehicle artifact with crew 3 and it loses all other card types; Crew 3."
+    "Some oracle text is not compiled: You may have ~ enter as a copy of a creature an opponent controls, except it's a Vehicle artifact with crew 3 and it loses all other card types."
    ]
   },
   "Mechtitan Core": {
    "type": "Artifact — Vehicle",
    "notes": [
-    "Some oracle text is not compiled: {5}, Exile this Vehicle and four other artifact creatures and/or Vehicles you control: Create Mechtitan, a legendary 10/10 Construct artifact creature token with flying, vigilance, trample, lifelink, and haste that's all colors; When that token leaves the battlefield, return all cards exiled with this Vehicle except this card to the battlefield tapped under their owners' control; Crew 2."
+    "Some oracle text is not compiled: {5}, Exile ~ and four other artifact creatures and/or Vehicles you control: Create Mechtitan, a legendary 10/10 Construct artifact creature token with flying, vigilance, trample, lifelink, and haste that's all colors; When that token leaves the battlefield, return all cards exiled with ~ except this card to the battlefield tapped under their owners' control."
    ]
   },
   "Mobilizer Mech": {
    "type": "Artifact — Vehicle",
    "notes": [
-    "Some oracle text is not compiled: Whenever this Vehicle becomes crewed, up to one other target Vehicle you control becomes an artifact creature until end of turn; Crew 3."
+    "Some oracle text is not compiled: Whenever ~ becomes crewed, up to one other target Vehicle you control becomes an artifact creature until end of turn."
    ]
   },
   "Parhelion II": {
    "type": "Legendary Artifact — Vehicle",
    "notes": [
-    "Some oracle text is not compiled: Whenever ~ attacks, create two 4/4 white Angel creature tokens with flying and vigilance that are attacking; Crew 4."
+    "Some oracle text is not compiled: Whenever ~ attacks, create two 4/4 white Angel creature tokens with flying and vigilance that are attacking."
    ]
   },
   "Peacewalker Colossus": {
    "type": "Artifact — Vehicle",
    "notes": [
-    "Some oracle text is not compiled: {1}{W}: Another target Vehicle you control becomes an artifact creature until end of turn; Crew 4."
+    "Some oracle text is not compiled: {1}{W}: Another target Vehicle you control becomes an artifact creature until end of turn."
    ]
   },
   "Prodigy's Prototype": {
    "type": "Artifact — Vehicle",
    "notes": [
-    "Some oracle text is not compiled: Whenever one or more Vehicles you control attack, create a 1/1 colorless Pilot creature token with \"This token crews Vehicles as though its power were 2 greater.\"; Crew 2."
+    "Some oracle text is not compiled: Whenever one or more Vehicles you control attack, create a 1/1 colorless Pilot creature token with \"This token crews Vehicles as though its power were 2 greater.\"."
    ]
   },
   "Salvation Engine": {
    "type": "Artifact — Vehicle",
    "notes": [
-    "Some oracle text is not compiled: Other artifact creatures you control get +2/+2; Whenever this Vehicle attacks, return up to one target artifact card from your graveyard to the battlefield; Crew 6."
-   ]
-  },
-  "Skysovereign, Consul Flagship": {
-   "type": "Legendary Artifact — Vehicle",
-   "notes": [
-    "Some oracle text is not compiled: Crew 3."
+    "Some oracle text is not compiled: Other artifact creatures you control get +2/+2; Whenever ~ attacks, return up to one target artifact card from your graveyard to the battlefield."
    ]
   },
   "Smuggler's Copter": {
    "type": "Artifact — Vehicle",
    "notes": [
-    "Some oracle text is not compiled: Whenever this Vehicle attacks or blocks, you may draw a card; If you do, discard a card; Crew 1."
+    "Some oracle text is not compiled: Whenever ~ attacks or blocks, you may draw a card; If you do, discard a card."
    ]
   },
   "Surgehacker Mech": {
    "type": "Artifact — Vehicle",
    "notes": [
-    "Some oracle text is not compiled: When this Vehicle enters, it deals damage equal to twice the number of Vehicles you control to target creature or planeswalker an opponent controls; Crew 4."
-   ]
-  },
-  "Weatherlight": {
-   "type": "Legendary Artifact — Vehicle",
-   "notes": [
-    "Some oracle text is not compiled: Crew 3."
+    "Some oracle text is not compiled: When ~ enters, it deals damage equal to twice the number of Vehicles you control to target creature or planeswalker an opponent controls."
    ]
   },
   "Mech Hangar": {
@@ -9780,7 +9744,7 @@
    "type": "Legendary Creature — God",
    "notes": [
     "Some oracle text is not compiled: At the beginning of your upkeep, you may exile ~; If you do, it gains \"Whenever a land you control enters, if ~ is exiled, you may put a voyage counter on it. If you don't, return ~ to the battlefield with X +1/+1 counters on it and draw X cards, where X is the number of voyage counters on it.\".",
-    "The Omenkeel: Some oracle text is not compiled: Whenever a Vehicle you control deals combat damage to a player, that player exiles that many cards from the top of their library; You may play lands from among those cards for as long as they remain exiled; Crew 1."
+    "The Omenkeel: Some oracle text is not compiled: Whenever a Vehicle you control deals combat damage to a player, that player exiles that many cards from the top of their library; You may play lands from among those cards for as long as they remain exiled."
    ]
   },
   "Cyberdrive Awakener": {
@@ -9828,7 +9792,7 @@
   "Shorikai, Genesis Engine": {
    "type": "Legendary Artifact — Vehicle",
    "notes": [
-    "Some oracle text is not compiled: Create a 1/1 colorless Pilot creature token with \"This token crews Vehicles as though its power were 2 greater.\"; Crew 8."
+    "Some oracle text is not compiled: Create a 1/1 colorless Pilot creature token with \"This token crews Vehicles as though its power were 2 greater.\"."
    ]
   },
   "Thornbite Staff": {
@@ -10864,17 +10828,10 @@
     "Some oracle text is not compiled: Whenever a land you control enters, create a 2/2 green Bird creature token with \"Whenever a land you control enters, this token gets +1/+0 until end of turn.\"."
    ]
   },
-  "The Regalia": {
-   "type": "Legendary Artifact — Vehicle",
-   "notes": [
-    "Some oracle text is not compiled: Crew 1."
-   ]
-  },
   "Balamb Garden, SeeD Academy": {
    "type": "Land — Town",
    "notes": [
-    "Some oracle text is not compiled: This ability costs {1} less to activate for each other Town you control.",
-    "Balamb Garden, Airborne: Some oracle text is not compiled: Crew 1."
+    "Some oracle text is not compiled: This ability costs {1} less to activate for each other Town you control."
    ]
   },
   "Clive's Hideaway": {
@@ -13458,7 +13415,7 @@
   "Cryptcaller Chariot": {
    "type": "Artifact — Vehicle",
    "notes": [
-    "Some oracle text is not compiled: Whenever you discard one or more cards, create that many tapped 2/2 black Zombie creature tokens; Crew 2."
+    "Some oracle text is not compiled: Whenever you discard one or more cards, create that many tapped 2/2 black Zombie creature tokens."
    ]
   },
   "Pumpkin Bombs": {
@@ -13597,25 +13554,25 @@
   "Flywheel Racer": {
    "type": "Artifact — Vehicle",
    "notes": [
-    "Some oracle text is not compiled: Activate only if ~ is a creature; Crew 1."
+    "Some oracle text is not compiled: Activate only if ~ is a creature."
    ]
   },
   "High-Speed Hoverbike": {
    "type": "Artifact — Vehicle",
    "notes": [
-    "Some oracle text is not compiled: When this Vehicle enters, tap up to one target creature; Crew 1."
+    "Some oracle text is not compiled: When ~ enters, tap up to one target creature."
    ]
   },
   "Lifecraft Engine": {
    "type": "Artifact — Vehicle",
    "notes": [
-    "Some oracle text is not compiled: As this Vehicle enters, choose a creature type; Vehicle creatures you control are the chosen creature type in addition to their other types; Each creature you control of the chosen type other than this Vehicle gets +1/+1; Crew 3."
+    "Some oracle text is not compiled: Vehicle creatures you control are the chosen creature type in addition to their other types; Each creature you control of the chosen type other than ~ gets +1/+1."
    ]
   },
   "Unlicensed Hearse": {
    "type": "Artifact — Vehicle",
    "notes": [
-    "Some oracle text is not compiled: {T}: Exile up to two target cards from a single graveyard; ~'s power and toughness are each equal to the number of cards exiled with it; Crew 2."
+    "Some oracle text is not compiled: {T}: Exile up to two target cards from a single graveyard; ~'s power and toughness are each equal to the number of cards exiled with it."
    ]
   },
   "Mutavault": {
@@ -14115,9 +14072,8 @@
   {
    "commander": "Glarb, Calamity's Augur",
    "rank": 39,
-   "slots": 3,
+   "slots": 2,
    "misses": [
-    "Hedge Shredder",
     "Muldrotha, the Gravetide",
     "Counterbalance"
    ]
@@ -14161,6 +14117,22 @@
     "Ulamog, the Defiler",
     "Vizier of the Menagerie",
     "Animar, Soul of Elements (commander)"
+   ]
+  },
+  {
+   "commander": "The Necrobloom",
+   "rank": 42,
+   "slots": 9,
+   "misses": [
+    "Cultivator Colossus",
+    "Elvish Reclaimer",
+    "Knight of the Reliquary",
+    "Thalia and The Gitrog Monster",
+    "Insidious Roots",
+    "Nissa of Shadowed Boughs",
+    "Eerie Ultimatum",
+    "Scapeshift",
+    "The Necrobloom (commander)"
    ]
   },
   {
@@ -14229,23 +14201,6 @@
    ]
   },
   {
-   "commander": "The Necrobloom",
-   "rank": 42,
-   "slots": 10,
-   "misses": [
-    "Hedge Shredder",
-    "Cultivator Colossus",
-    "Elvish Reclaimer",
-    "Knight of the Reliquary",
-    "Thalia and The Gitrog Monster",
-    "Insidious Roots",
-    "Nissa of Shadowed Boughs",
-    "Eerie Ultimatum",
-    "Scapeshift",
-    "The Necrobloom (commander)"
-   ]
-  },
-  {
    "commander": "Kinnan, Bonder Prodigy",
    "rank": 59,
    "slots": 10,
@@ -14282,9 +14237,8 @@
   {
    "commander": "Muldrotha, the Gravetide",
    "rank": 37,
-   "slots": 12,
+   "slots": 11,
    "misses": [
-    "Hedge Shredder",
     "Perpetual Timepiece",
     "Doc Aurlock, Grizzled Genius",
     "Gravebreaker Lamia",
@@ -14373,6 +14327,27 @@
     "All Will Be One",
     "Howling Moon",
     "Voja, Jaws of the Conclave (commander)"
+   ]
+  },
+  {
+   "commander": "Bello, Bard of the Brambles",
+   "rank": 31,
+   "slots": 14,
+   "misses": [
+    "Raging Ravine",
+    "Garruk's Packleader",
+    "Pyreswipe Hawk",
+    "Trailtracker Scout",
+    "Wandertale Mentor",
+    "Wildsear, Scouring Maw",
+    "Case of the Locked Hothouse",
+    "Glorious Sunrise",
+    "Molten Echoes",
+    "Nature's Will",
+    "Path of Discovery",
+    "Sunbird's Invocation",
+    "Thickest in the Thicket",
+    "Bello, Bard of the Brambles (commander)"
    ]
   },
   {
@@ -14484,29 +14459,6 @@
    ]
   },
   {
-   "commander": "Bello, Bard of the Brambles",
-   "rank": 31,
-   "slots": 16,
-   "misses": [
-    "Esika's Chariot",
-    "Rolling Hamsphere",
-    "Raging Ravine",
-    "Garruk's Packleader",
-    "Pyreswipe Hawk",
-    "Trailtracker Scout",
-    "Wandertale Mentor",
-    "Wildsear, Scouring Maw",
-    "Case of the Locked Hothouse",
-    "Glorious Sunrise",
-    "Molten Echoes",
-    "Nature's Will",
-    "Path of Discovery",
-    "Sunbird's Invocation",
-    "Thickest in the Thicket",
-    "Bello, Bard of the Brambles (commander)"
-   ]
-  },
-  {
    "commander": "Hashaton, Scarab's Fist",
    "rank": 32,
    "slots": 16,
@@ -14550,6 +14502,29 @@
     "Cornered by Black Mages",
     "Grab the Prize",
     "Light Up the Stage"
+   ]
+  },
+  {
+   "commander": "The Wandering Minstrel",
+   "rank": 74,
+   "slots": 16,
+   "misses": [
+    "Chocobo Racetrack",
+    "Balamb Garden, SeeD Academy",
+    "Clive's Hideaway",
+    "Eden, Seat of the Sanctum",
+    "The Gold Saucer",
+    "Omnath, Locus of Creation",
+    "PuPu UFO",
+    "The Necrobloom",
+    "Town Greeter",
+    "Traveling Chocobo",
+    "Druid Class",
+    "Planar Genesis",
+    "Prishe's Wanderings",
+    "Scapeshift",
+    "Travel the Overworld",
+    "The Wandering Minstrel (commander)"
    ]
   },
   {
@@ -14645,30 +14620,6 @@
     "Raise the Past",
     "Song of Totentanz",
     "Arabella, Abandoned Doll (commander)"
-   ]
-  },
-  {
-   "commander": "The Wandering Minstrel",
-   "rank": 74,
-   "slots": 17,
-   "misses": [
-    "Chocobo Racetrack",
-    "The Regalia",
-    "Balamb Garden, SeeD Academy",
-    "Clive's Hideaway",
-    "Eden, Seat of the Sanctum",
-    "The Gold Saucer",
-    "Omnath, Locus of Creation",
-    "PuPu UFO",
-    "The Necrobloom",
-    "Town Greeter",
-    "Traveling Chocobo",
-    "Druid Class",
-    "Planar Genesis",
-    "Prishe's Wanderings",
-    "Scapeshift",
-    "Travel the Overworld",
-    "The Wandering Minstrel (commander)"
    ]
   },
   {
@@ -14822,6 +14773,32 @@
    ]
   },
   {
+   "commander": "Teval, the Balanced Scale",
+   "rank": 9,
+   "slots": 19,
+   "misses": [
+    "Floral Evoker",
+    "Jarad, Golgari Lich Lord",
+    "Kheru Goldkeeper",
+    "Kishla Skimmer",
+    "Kotis, Sibsig Champion",
+    "Meren of Clan Nel Toth",
+    "Muldrotha, the Gravetide",
+    "River Kelpie",
+    "Shigeki, Jukai Visionary",
+    "Steward of the Harvest",
+    "The Scarab God",
+    "Crawling Sensation",
+    "Insidious Roots",
+    "Teval's Judgment",
+    "Grapple with the Past",
+    "Lethal Scheme",
+    "Afterlife from the Loam",
+    "Welcome the Dead",
+    "Teval, the Balanced Scale (commander)"
+   ]
+  },
+  {
    "commander": "Ms. Bumbleflower",
    "rank": 10,
    "slots": 19,
@@ -14949,33 +14926,6 @@
     "Martial Coup",
     "Storm of Souls",
     "Zinnia, Valley's Voice (commander)"
-   ]
-  },
-  {
-   "commander": "Teval, the Balanced Scale",
-   "rank": 9,
-   "slots": 20,
-   "misses": [
-    "Hedge Shredder",
-    "Floral Evoker",
-    "Jarad, Golgari Lich Lord",
-    "Kheru Goldkeeper",
-    "Kishla Skimmer",
-    "Kotis, Sibsig Champion",
-    "Meren of Clan Nel Toth",
-    "Muldrotha, the Gravetide",
-    "River Kelpie",
-    "Shigeki, Jukai Visionary",
-    "Steward of the Harvest",
-    "The Scarab God",
-    "Crawling Sensation",
-    "Insidious Roots",
-    "Teval's Judgment",
-    "Grapple with the Past",
-    "Lethal Scheme",
-    "Afterlife from the Loam",
-    "Welcome the Dead",
-    "Teval, the Balanced Scale (commander)"
    ]
   },
   {
@@ -15140,6 +15090,34 @@
     "Teferi, Master of Time",
     "Vraska, Betrayal's Sting",
     "Phyresis Outbreak"
+   ]
+  },
+  {
+   "commander": "Shorikai, Genesis Engine",
+   "rank": 61,
+   "slots": 21,
+   "misses": [
+    "Aerial Surveyor",
+    "Imposter Mech",
+    "Mechtitan Core",
+    "Mobilizer Mech",
+    "Parhelion II",
+    "Peacewalker Colossus",
+    "Prodigy's Prototype",
+    "Salvation Engine",
+    "Smuggler's Copter",
+    "Surgehacker Mech",
+    "Mech Hangar",
+    "Cosima, God of the Voyage",
+    "Cyberdrive Awakener",
+    "Katsumasa, the Animator",
+    "Kotori, Pilot Prodigy",
+    "Master of Etherium",
+    "Swift Reconfiguration",
+    "Tezzeret, Betrayer of Flesh",
+    "Brilliant Restoration",
+    "Dance of the Manse",
+    "Shorikai, Genesis Engine (commander)"
    ]
   },
   {
@@ -15563,37 +15541,6 @@
     "Empty the Laboratory",
     "Zombie Apocalypse",
     "Wilhelt, the Rotcleaver (commander)"
-   ]
-  },
-  {
-   "commander": "Shorikai, Genesis Engine",
-   "rank": 61,
-   "slots": 24,
-   "misses": [
-    "Aerial Surveyor",
-    "Cultivator's Caravan",
-    "Imposter Mech",
-    "Mechtitan Core",
-    "Mobilizer Mech",
-    "Parhelion II",
-    "Peacewalker Colossus",
-    "Prodigy's Prototype",
-    "Salvation Engine",
-    "Skysovereign, Consul Flagship",
-    "Smuggler's Copter",
-    "Surgehacker Mech",
-    "Weatherlight",
-    "Mech Hangar",
-    "Cosima, God of the Voyage",
-    "Cyberdrive Awakener",
-    "Katsumasa, the Animator",
-    "Kotori, Pilot Prodigy",
-    "Master of Etherium",
-    "Swift Reconfiguration",
-    "Tezzeret, Betrayer of Flesh",
-    "Brilliant Restoration",
-    "Dance of the Manse",
-    "Shorikai, Genesis Engine (commander)"
    ]
   },
   {

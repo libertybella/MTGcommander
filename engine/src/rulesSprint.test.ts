@@ -75016,3 +75016,69 @@ describe("wave 476: Grolnok, the Omnivore — mill a permanent to exile with a c
     expect(next.cards[boltId]?.zone).toBe("graveyard");
   });
 });
+
+describe("wave 477: Hedge Shredder / Crew — tap a creature to turn the Vehicle into a creature", () => {
+  const compileShredder = () =>
+    compileOracleCard({
+      oracleId: "hedge-shredder", name: "Hedge Shredder", manaCost: "{2}{G}{G}", typeLine: "Artifact — Vehicle",
+      power: "4", toughness: "4", printedKeywords: [], imageUrl: "",
+      oracleText:
+        "Whenever this Vehicle attacks, you may mill two cards.\n" +
+        "Whenever one or more land cards are put into your graveyard from your library, put them onto the battlefield tapped.\n" +
+        "Crew 1 (Tap any number of creatures you control with total power 1 or more: This Vehicle becomes an artifact creature until end of turn.)",
+    });
+
+  it("compiles the mill triggers and the Crew activated ability", () => {
+    const c = compileShredder();
+    expect(c.notes).toEqual([]);
+    expect(c.definition.triggers?.map((t) => t.event)).toEqual(["attacks", "graveyard_from_elsewhere"]);
+    expect(c.definition.activated?.[0]).toMatchObject({
+      costTapCreatureOther: true, crewPower: 1,
+      effects: [{ kind: "become_creature_until_eot", cardId: "self" }],
+    });
+  });
+
+  const put = (game: GameState, ownerId: string, definition: CardDefinition) => {
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({ definitionId: definition.id, ownerId, zone: "battlefield" });
+    card.summoningSick = false;
+    game.cards[card.id] = card;
+    game.players.find((e) => e.id === ownerId)!.zones.battlefield.push(card.id);
+    return card.id;
+  };
+  const isCreatureNow = (g: GameState, id: string) => characteristicsOf(g, id).types.includes("creature");
+
+  it("crewing taps a creature and the Vehicle becomes a 4/4 artifact creature", () => {
+    const { game, p1 } = twoPlayers();
+    const shredder = put(game, p1.id, compileShredder().definition);
+    const bearId = put(game, p1.id, createCardDefinition({ name: "Bear", typeLine: "Creature — Bear", manaCost: "{1}{G}", power: 2, toughness: 2 }));
+    game.priorityPlayerId = p1.id;
+
+    expect(isCreatureNow(game, shredder)).toBe(false); // a Vehicle is not a creature until crewed
+    let act = applyAction(game, { kind: "activate_ability", playerId: p1.id, cardId: shredder, abilityIndex: 0, targets: [], costTapCreatureId: bearId });
+    while (act.stack.length > 0) act = resolveTopOfStack(act);
+
+    // The Bear is tapped (the crew cost), and the Vehicle is now an artifact creature at its printed 4/4.
+    expect(act.cards[bearId]?.tapped).toBe(true);
+    expect(isCreatureNow(act, shredder)).toBe(true);
+    expect(characteristicsOf(act, shredder).types).toContain("artifact");
+    expect(creaturePower(act, shredder)).toBe(4);
+    expect(creatureToughness(act, shredder)).toBe(4);
+  });
+
+  it("a higher Crew number needs a creature that supplies the power", () => {
+    const heavy = compileOracleCard({
+      oracleId: "heavy-rig", name: "Heavy Rig", manaCost: "{4}", typeLine: "Artifact — Vehicle",
+      power: "6", toughness: "6", printedKeywords: [], imageUrl: "", oracleText: "Crew 3",
+    }).definition;
+    const { game, p1 } = twoPlayers();
+    const rig = put(game, p1.id, heavy);
+    const weakId = put(game, p1.id, createCardDefinition({ name: "Cub", typeLine: "Creature — Bear", manaCost: "{G}", power: 2, toughness: 2 }));
+    game.priorityPlayerId = p1.id;
+
+    // A power-2 creature can't crew a Crew 3 Vehicle.
+    expect(() =>
+      applyAction(game, { kind: "activate_ability", playerId: p1.id, cardId: rig, abilityIndex: 0, targets: [], costTapCreatureId: weakId }),
+    ).toThrow();
+  });
+});

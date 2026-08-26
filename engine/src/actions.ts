@@ -2082,7 +2082,9 @@ function applyActivateAbility(
       tapCreature.controllerId !== playerId ||
       tapCreature.tapped ||
       costTapCreatureId === cardId ||
-      !isCreature(state, costTapCreatureId)
+      !isCreature(state, costTapCreatureId) ||
+      // Crew N: the tapped creature must supply the crew power.
+      (ability.crewPower !== undefined && creaturePower(state, costTapCreatureId) < ability.crewPower)
     ) {
       throw new Error("Tap another untapped creature you control to activate this");
     }

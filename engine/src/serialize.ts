@@ -4387,6 +4387,8 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
       return { kind, casterId: parsePlayerSelector(value.casterId, `${label}.casterId`) };
     case "croak_exile_grant":
       return { kind, casterId: parsePlayerSelector(value.casterId, `${label}.casterId`) };
+    case "become_creature_until_eot":
+      return { kind, cardId: parseCardIdSelector(value.cardId, `${label}.cardId`) };
     case "exile_gy_random_free_cast":
       return { kind, casterId: parsePlayerSelector(value.casterId, `${label}.casterId`) };
     case "gain_all_activated_of_target":
@@ -5654,6 +5656,9 @@ function parseActivatedAbilities(value: unknown, label: string): ActivatedAbilit
       ...(entry.exileSelf === true ? { exileSelf: true } : {}),
       ...(entry.oncePerTurn === true ? { oncePerTurn: true } : {}),
       ...(entry.costTapCreatureOther === true ? { costTapCreatureOther: true } : {}),
+      ...(entry.crewPower === undefined
+        ? {}
+        : { crewPower: expectNumber(entry.crewPower, `${label}[${index}].crewPower`) }),
       ...(entry.legendaryDiscount === true ? { legendaryDiscount: true } : {}),
       ...(entry.subtypeDiscount === undefined
         ? {}
@@ -7161,6 +7166,9 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
       casterId: expectString(value.casterId, `${label}.casterId`),
       cardId: expectString(value.cardId, `${label}.cardId`),
     };
+  }
+  if (kind === "become_creature_until_eot") {
+    return { kind, cardId: expectString(value.cardId, `${label}.cardId`) };
   }
   if (kind === "exile_gy_random_free_cast") {
     return { kind, casterId: expectString(value.casterId, `${label}.casterId`) };

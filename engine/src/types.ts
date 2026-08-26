@@ -1990,6 +1990,9 @@ export type GameEffect =
   /** Grolnok, the Omnivore: exile the milled permanent card with a croak
    * counter and grant its owner a standing play-from-exile permission. */
   | { kind: "croak_exile_grant"; casterId: PlayerId; cardId: CardInstanceId }
+  /** Crew: the Vehicle becomes an artifact creature until end of turn (its
+   * printed power/toughness switch on with the type). */
+  | { kind: "become_creature_until_eot"; cardId: CardInstanceId }
   /** Quicksilver Elemental: this creature gains all of the target creature's
    * activated abilities until end of turn. */
   | { kind: "gain_all_activated_of_target"; selfId: CardInstanceId; targetId: CardInstanceId }
@@ -3743,6 +3746,7 @@ export type CardEffect =
   | { kind: "discard_each_draw_per_type"; drawerId: PlayerSelector }
   | { kind: "stash_exile_grant"; casterId: PlayerSelector }
   | { kind: "croak_exile_grant"; casterId: PlayerSelector }
+  | { kind: "become_creature_until_eot"; cardId: CardIdSelector }
   | { kind: "gain_all_activated_of_target"; target: ChosenTargetRef }
   | { kind: "exile_gy_random_free_cast"; casterId: PlayerSelector }
   | { kind: "grant_flashback_until_eot"; cardId: CardIdSelector }
@@ -5839,6 +5843,10 @@ export type ActivatedAbility = {
    * cost. The tapped creature's power is captured (as sacrificedPower) so an
    * effect can read "equal to its power". */
   costTapCreatureOther?: boolean;
+  /** Crew N (CR 702.122): the tapped creature must supply this much power.
+   * A documented one-crewer approximation of "creatures with total power N
+   * or more". */
+  crewPower?: number;
   /** Life paid as part of the cost (Doom Whisperer). */
   lifeCost?: number;
   /**

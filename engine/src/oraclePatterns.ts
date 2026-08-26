@@ -605,7 +605,7 @@ function normalizeOracleText(card: OracleCard): string {
     }
   }
   text = text.replace(
-    /\bthis (?:creature|artifact|enchantment|land|permanent|planeswalker|Aura|Equipment|Class)\b/gi,
+    /\bthis (?:creature|artifact|enchantment|land|permanent|planeswalker|Aura|Equipment|Class|Vehicle)\b/gi,
     "~",
   );
   text = text.replace(/\benters the battlefield\b/gi, "enters");
@@ -19248,6 +19248,22 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
         result.surveilLookBonus = (result.surveilLookBonus ?? 0) + amount;
         continue;
       }
+    }
+
+    // Crew N (CR 702.122): tap creatures you control with total power N or
+    // more to make this Vehicle an artifact creature until end of turn. The
+    // multi-crewer cost is approximated as one creature supplying the power.
+    const crew = sentence.match(/^Crew (\d+)$/i);
+    if (crew?.[1]) {
+      result.activated.push({
+        tap: false,
+        manaCost: "",
+        costTapCreatureOther: true,
+        crewPower: Number(crew[1]),
+        effects: [{ kind: "become_creature_until_eot", cardId: "self" }],
+        targetRequirements: [],
+      });
+      continue;
     }
 
     // Soulbond (CR 702.94): the keyword itself. Pairing is resolved when a

@@ -871,6 +871,13 @@ export function bindCardEffect(
       }
       return { kind: "croak_exile_grant", casterId, cardId };
     }
+    case "become_creature_until_eot": {
+      const cardId = bindCardId(state, effect.cardId, context);
+      if (!cardId) {
+        return null;
+      }
+      return { kind: "become_creature_until_eot", cardId };
+    }
     case "exile_gy_random_free_cast": {
       const casterId = bindPlayerSelector(state, effect.casterId, context);
       if (!casterId) {
@@ -5546,6 +5553,20 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
           ...(next.exilePlayable ?? []).filter((entry) => entry.cardId !== effect.cardId),
           { cardId: effect.cardId, casterId: effect.casterId, whileExiled: true, anyColorMana: true },
         ];
+        break;
+      }
+      case "become_creature_until_eot": {
+        // Crew: add the creature card type until end of turn. A Vehicle keeps
+        // its printed power/toughness, which take effect once it is a creature.
+        if (state.cards[effect.cardId]?.zone !== "battlefield") {
+          next = cloneGameState(state);
+          break;
+        }
+        next = pushUntilEotEffect(state, [effect.cardId], {
+          kind: "add_types",
+          types: ["creature"],
+          subtypes: [],
+        });
         break;
       }
       case "croak_exile_grant": {

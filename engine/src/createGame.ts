@@ -422,6 +422,7 @@ export function createCardDefinition(
           ...(ability.exileSelf ? { exileSelf: true } : {}),
           ...(ability.oncePerTurn ? { oncePerTurn: true } : {}),
           ...(ability.costTapCreatureOther ? { costTapCreatureOther: true } : {}),
+          ...(ability.crewPower === undefined ? {} : { crewPower: ability.crewPower }),
           ...(ability.legendaryDiscount ? { legendaryDiscount: true } : {}),
           ...(ability.subtypeDiscount ? { subtypeDiscount: ability.subtypeDiscount } : {}),
           ...(ability.lifeCostFromCommanderColors
