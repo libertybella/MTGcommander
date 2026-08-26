@@ -1239,7 +1239,7 @@
   "Kefka, Dancing Mad": false,
   "Kuja, Genome Sorcerer": false,
   "Ragavan, Nimble Pilferer": true,
-  "Tergrid, God of Fright": false,
+  "Tergrid, God of Fright": true,
   "Tinybones, Bauble Burglar": false,
   "Animate Dead": true,
   "Cabal Ritual": true,
@@ -6351,13 +6351,6 @@
    "notes": [
     "Some oracle text is not compiled: At the beginning of your end step, create a tapped 0/1 black Wizard creature token with \"Whenever you cast a noncreature spell, this token deals 1 damage to each opponent.\" Then if you control four or more Wizards, transform ~.",
     "Trance Kuja, Fate Defied: Some oracle text is not compiled: Flare Star — If a Wizard you control would deal damage to a permanent or player, it deals double that damage instead."
-   ]
-  },
-  "Tergrid, God of Fright": {
-   "type": "Legendary Creature — God",
-   "notes": [
-    "Some oracle text is not compiled: Whenever an opponent sacrifices a nontoken permanent or discards a permanent card, you may put that card from a graveyard onto the battlefield under your control.",
-    "Tergrid's Lantern: Some oracle text is not compiled: {T}: Target player loses 3 life unless they sacrifice a nonland permanent of their choice or discard a card."
    ]
   },
   "Tinybones, Bauble Burglar": {
@@ -14225,11 +14218,10 @@
   {
    "commander": "Kefka, Court Mage",
    "rank": 24,
-   "slots": 5,
+   "slots": 4,
    "misses": [
     "Kefka, Dancing Mad",
     "Kuja, Genome Sorcerer",
-    "Tergrid, God of Fright",
     "Tinybones, Bauble Burglar",
     "Kefka, Court Mage (commander)"
    ]

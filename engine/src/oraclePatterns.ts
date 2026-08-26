@@ -5548,6 +5548,45 @@ function compileSimpleClauseInner(sentence: string): SimpleClause | null {
    * declining. The chosen card leaves the way its zone says, which is why
    * the sacrifice is not a plain `sacrifice`.
    */
+  // Tergrid's Lantern: the same punisher aimed at ONE target player. The
+  // chosen player answers, and everything the each-opponent form reads off
+  // "each_opponent" it reads off the chosen target here.
+  const targetPunisher = sentence.match(
+    /^Target player loses (\w+) life unless they sacrifice a (nonland permanent|creature|permanent) of their choice or discard a card$/i,
+  );
+  if (targetPunisher?.[1] && targetPunisher[2]) {
+    const life = parseCount(targetPunisher[1]);
+    const filter =
+      targetPunisher[2].toLowerCase() === "nonland permanent"
+        ? ("nonland" as const)
+        : targetPunisher[2].toLowerCase() === "creature"
+          ? ("creature" as const)
+          : ("any" as const);
+    if (life) {
+      return {
+        targetRequirements: [{ kind: "player" }],
+        effects: [
+          {
+            kind: "choose_card",
+            chooserId: { type: "chosen", index: 0 },
+            sources: [
+              { playerId: { type: "chosen", index: 0 }, zone: "battlefield", filter },
+              { playerId: { type: "chosen", index: 0 }, zone: "hand", filter: "any" },
+            ],
+            optional: true,
+            thenEffects: [{ kind: "sacrifice_or_discard_chosen", cardId: "chosen_card" }],
+            // The none-branch binds with subjectPlayerId = the chooser (the
+            // target) but no targets, so it names the loser as subject_player,
+            // exactly as the each-opponent form does.
+            thenEffectsIfNone: [
+              { kind: "lose_life", playerId: { type: "subject_player" }, amount: life },
+            ],
+          },
+        ],
+      };
+    }
+  }
+
   const hailfire = sentence.match(
     /^Each opponent loses (\w+) life unless that player sacrifices a (nonland permanent|creature|permanent) of their choice or discards a card$/i,
   );
@@ -19844,6 +19883,41 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
         index += 1;
         continue;
       }
+    }
+
+    // Tergrid, God of Fright: "Whenever an opponent sacrifices a nontoken
+    // permanent or discards a permanent card, you may put that card from a
+    // graveyard onto the battlefield under your control." Two watches — a
+    // sacrifice and a discard — each reanimating the card (now in a graveyard)
+    // under your control. "You may" is taken as mandatory: keeping an
+    // opponent's fodder is never a choice you would decline, the same
+    // documented narrowing other reflexive "you may" reanimations take.
+    if (
+      /^Whenever an opponent sacrifices a nontoken permanent or discards a permanent card, you may put that card from a graveyard onto the battlefield under your control$/i.test(
+        sentence,
+      )
+    ) {
+      const steal = {
+        kind: "move_card" as const,
+        cardId: "subject_card" as const,
+        toZone: "battlefield" as const,
+        underControlOf: "controller" as const,
+      };
+      result.triggers.push({
+        event: "player_sacrifices",
+        watch: "opponents",
+        subjectFilter: { nonToken: true },
+        effects: [steal],
+        targetRequirements: [],
+      });
+      result.triggers.push({
+        event: "discards",
+        watch: "opponents",
+        subjectFilter: { nonTypes: ["instant", "sorcery"] },
+        effects: [steal],
+        targetRequirements: [],
+      });
+      continue;
     }
 
     // Rings of Brighthearth: "Whenever you activate an ability, if it isn't a

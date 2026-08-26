@@ -73498,3 +73498,150 @@ describe("wave 456: Vivi Ornitier (X=power U/R mana, once/turn, your turn; cast-
     expect(next.players.find((e) => e.id === p2.id)!.life).toBe(p2Life - 1);
   });
 });
+
+describe("wave 457: Tergrid, God of Fright (steal opponents' sacrifices and discards)", () => {
+  const compileTergrid = () =>
+    compileOracleCard({
+      oracleId: "tergrid-god-of-fright",
+      name: "Tergrid, God of Fright",
+      manaCost: "{4}{B}{B}",
+      typeLine: "Legendary Creature — God",
+      power: "4",
+      toughness: "4",
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "Whenever an opponent sacrifices a nontoken permanent or discards a permanent card, you may put that card from a graveyard onto the battlefield under your control.",
+    });
+
+  it("compiles two watches — a sacrifice and a discard — that reanimate under your control", () => {
+    const compiled = compileTergrid();
+    expect(compiled.notes).toEqual([]);
+    const steal = { kind: "move_card", cardId: "subject_card", toZone: "battlefield", underControlOf: "controller" };
+    expect(compiled.definition.triggers).toEqual([
+      { event: "player_sacrifices", watch: "opponents", subjectFilter: { nonToken: true }, effects: [steal], targetRequirements: [] },
+      { event: "discards", watch: "opponents", subjectFilter: { nonTypes: ["instant", "sorcery"] }, effects: [steal], targetRequirements: [] },
+    ]);
+  });
+
+  const put = (game: GameState, ownerId: string, definition: CardDefinition, zone: "battlefield" | "hand" = "battlefield", token = false) => {
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({ definitionId: definition.id, ownerId, zone });
+    card.isToken = token;
+    game.cards[card.id] = card;
+    game.players.find((e) => e.id === ownerId)!.zones[zone].push(card.id);
+    return card.id;
+  };
+  const bear = (name: string) => createCardDefinition({ name, typeLine: "Creature — Bear", manaCost: "{1}{G}", power: 2, toughness: 2 });
+  const toGrave = (game: GameState, ownerId: string, cardId: string) => {
+    const owner = game.players.find((e) => e.id === ownerId)!;
+    owner.zones.battlefield = owner.zones.battlefield.filter((id) => id !== cardId);
+    owner.zones.hand = owner.zones.hand.filter((id) => id !== cardId);
+    owner.zones.graveyard.push(cardId);
+    game.cards[cardId]!.zone = "graveyard";
+  };
+
+  it("steals an opponent's sacrificed nontoken permanent (but not a token)", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 10);
+    put(game, p1.id, compileTergrid().definition);
+    const beastId = put(game, p2.id, bear("Beast"));
+    const tokenId = put(game, p2.id, bear("Token"), "battlefield", true);
+
+    // A real permanent: sacrificed, then Tergrid takes it.
+    toGrave(game, p2.id, beastId);
+    let next = parseGameState(serializeGameState(game));
+    dispatchEventsInPlace(next, [{ kind: "sacrifices", cardId: beastId, controllerId: p2.id, wasToken: false }]);
+    while (next.stack.length > 0) next = resolveTopOfStack(next);
+    expect(next.cards[beastId]?.zone).toBe("battlefield");
+    expect(next.cards[beastId]?.controllerId).toBe(p1.id);
+
+    // A token: nonToken filter excludes it, so no trigger and it stays gone.
+    toGrave(game, p2.id, tokenId);
+    let tok = parseGameState(serializeGameState(game));
+    dispatchEventsInPlace(tok, [{ kind: "sacrifices", cardId: tokenId, controllerId: p2.id, wasToken: true }]);
+    expect(tok.stack.length).toBe(0);
+  });
+
+  it("steals an opponent's discarded permanent card (but not an instant)", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 10);
+    put(game, p1.id, compileTergrid().definition);
+    const relicId = put(game, p2.id, createCardDefinition({ name: "Relic", typeLine: "Artifact", manaCost: "{2}" }), "hand");
+    const boltId = put(game, p2.id, createCardDefinition({ name: "Bolt", typeLine: "Instant", manaCost: "{R}" }), "hand");
+
+    toGrave(game, p2.id, relicId);
+    let next = parseGameState(serializeGameState(game));
+    dispatchEventsInPlace(next, [{ kind: "discards", cardId: relicId, playerId: p2.id }]);
+    while (next.stack.length > 0) next = resolveTopOfStack(next);
+    expect(next.cards[relicId]?.zone).toBe("battlefield");
+    expect(next.cards[relicId]?.controllerId).toBe(p1.id);
+
+    // An instant is not a permanent card — no trigger.
+    toGrave(game, p2.id, boltId);
+    let inst = parseGameState(serializeGameState(game));
+    dispatchEventsInPlace(inst, [{ kind: "discards", cardId: boltId, playerId: p2.id }]);
+    expect(inst.stack.length).toBe(0);
+  });
+});
+
+describe("wave 457b: Tergrid's Lantern (target-player punisher)", () => {
+  const compileLantern = () =>
+    compileOracleCard({
+      oracleId: "tergrids-lantern",
+      name: "Tergrid's Lantern",
+      manaCost: "{4}",
+      typeLine: "Artifact",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      oracleText:
+        "{T}: Target player loses 3 life unless they sacrifice a nonland permanent of their choice or discard a card.",
+    });
+
+  it("compiles the target-player punisher", () => {
+    const compiled = compileLantern();
+    expect(compiled.notes).toEqual([]);
+    const ability = compiled.definition.activated?.[0];
+    expect(ability?.targetRequirements).toEqual([{ kind: "player" }]);
+    expect(ability?.effects?.[0]).toMatchObject({
+      kind: "choose_card",
+      chooserId: { type: "chosen", index: 0 },
+    });
+  });
+
+  const mainPhase = (game: GameState, id: string) => {
+    game.turn.activePlayerId = id;
+    game.turn.phase = "precombatMain";
+    game.turn.step = "precombatMain";
+    game.priorityPlayerId = id;
+  };
+
+  it("makes a target player with nothing to give lose 3 life", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 5);
+    const def = compileLantern().definition;
+    game.definitions[def.id] = def;
+    const lantern = createCardInstance({ definitionId: def.id, ownerId: p1.id, zone: "battlefield" });
+    lantern.summoningSick = false;
+    game.cards[lantern.id] = lantern;
+    game.players.find((e) => e.id === p1.id)!.zones.battlefield.push(lantern.id);
+    // p2 controls no nonland permanents and holds no cards.
+    const p2State = game.players.find((e) => e.id === p2.id)!;
+    p2State.zones.hand = [];
+    const before = p2State.life;
+    mainPhase(game, p1.id);
+
+    let next = applyAction(game, {
+      kind: "activate_ability",
+      playerId: p1.id,
+      cardId: lantern.id,
+      abilityIndex: 0,
+      targets: [{ type: "player", playerId: p2.id }],
+    });
+    while (next.stack.length > 0) next = resolveTopOfStack(next);
+    // Nothing to sacrifice or discard, so the target loses 3 life.
+    expect(next.players.find((e) => e.id === p2.id)!.life).toBe(before - 3);
+  });
+});
