@@ -5628,9 +5628,23 @@ function compileSimpleClauseInner(sentence: string): SimpleClause | null {
     const inner = compileSimpleClause(
       maySacDo[2].charAt(0).toUpperCase() + maySacDo[2].slice(1),
     );
-    if (inner && !inner.leftover && inner.targetRequirements.length === 0) {
+    if (inner && !inner.leftover) {
+      // "that creature's power" inside a sacrifice is the SACRIFICED creature,
+      // whose power must be captured at BIND — it is dead by the time the
+      // damage applies. The generic clause compiler writes `subject_power`
+      // (read at apply); remap it to `sacrificed_power` (captured at bind).
+      const innerEffects = inner.effects.map((effect) =>
+        effect.kind === "deal_damage" && effect.amount === "subject_power"
+          ? { ...effect, amount: "sacrificed_power" as const }
+          : effect,
+      );
       return {
-        targetRequirements: [],
+        // Ziatora: the inner "deal damage … to any target" carries a target.
+        // It bubbles up to whatever holds this may_sacrifice — the end-step
+        // trigger — so the player CHOOSES the target when the ability goes on
+        // the stack. Only the fodder is auto-picked (the documented
+        // may_sacrifice approximation); the removal target never is.
+        targetRequirements: inner.targetRequirements,
         effects: [
           {
             kind: "may_sacrifice",
@@ -5638,7 +5652,7 @@ function compileSimpleClauseInner(sentence: string): SimpleClause | null {
               maySacDo[1].toLowerCase() === "a land"
                 ? ("land" as const)
                 : ("another_creature" as const),
-            effects: inner.effects,
+            effects: innerEffects,
           },
         ],
       };
@@ -11967,7 +11981,9 @@ function fuseMaySacrificeInPlace(sentences: string[], lineStart: boolean[]): voi
     const head = sentences[index]?.match(
       /^(.+, )?you may sacrifice (a land|another creature)(?: you control)?$/i,
     );
-    const rider = sentences[index + 1]?.match(/^If you do, (.+)$/i);
+    // "When you do" (Ziatora's reflexive) flattens the same as "If you do":
+    // the fodder is auto-taken, so both become "to do: X".
+    const rider = sentences[index + 1]?.match(/^(?:If|When) you do, (.+)$/i);
     if (!head || !rider?.[1]) {
       continue;
     }

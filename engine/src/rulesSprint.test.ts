@@ -71333,3 +71333,104 @@ If one or more tokens would be created under your control, those tokens plus tha
     expect(back.activated[0]).toMatchObject({ sacrificeSubtype: "squirrel", sacrificeCountFromX: true });
   });
 });
+
+describe("wave 431: Ziatora, the Incinerator (Korvold 2→1)", () => {
+  const ziaText = `Flying
+At the beginning of your end step, you may sacrifice another creature. When you do, Ziatora deals damage equal to that creature's power to any target and you create three Treasure tokens.`;
+
+  const compile = () =>
+    compileOracleCard({
+      oracleId: "ziatora-the-incinerator",
+      name: "Ziatora, the Incinerator",
+      manaCost: "{1}{B}{R}{G}",
+      typeLine: "Legendary Creature — Demon Dragon",
+      power: "3",
+      toughness: "3",
+      printedKeywords: ["Flying"],
+      imageUrl: "",
+      oracleText: ziaText,
+    });
+
+  it("compiles the reflexive sacrifice into a targeted may_sacrifice", () => {
+    const compiled = compile();
+    expect(compiled.notes).toEqual([]);
+    const trigger = compiled.definition.triggers[0]!;
+    expect(trigger.event).toBe("end_step");
+    // The damage target bubbles up so the PLAYER picks it — never auto-picked.
+    expect(trigger.targetRequirements).toEqual([{ kind: "player_or_creature" }]);
+    const may = trigger.effects[0]!;
+    expect(may).toMatchObject({ kind: "may_sacrifice", what: "another_creature" });
+    // The damage reads the SACRIFICED power (captured at bind), not subject
+    // power (which would read a creature already dead by damage time).
+    expect((may as { effects: unknown[] }).effects[0]).toMatchObject({
+      kind: "deal_damage",
+      target: { type: "chosen", index: 0 },
+      amount: "sacrificed_power",
+    });
+  });
+
+  const ziaDef = () => compile().definition;
+  const put = (game: GameState, ownerId: string, definition: CardDefinition) => {
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({ definitionId: definition.id, ownerId, zone: "battlefield" });
+    card.summoningSick = false;
+    game.cards[card.id] = card;
+    game.players.find((entry) => entry.id === ownerId)!.zones.battlefield.push(card.id);
+    return card.id;
+  };
+  const bear = (name: string, power: number) =>
+    createCardDefinition({ name, typeLine: "Creature — Bear", manaCost: "{1}{G}", power, toughness: 2 });
+
+  it("deals the sacrificed creature's power to the chosen target and makes three Treasures", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    const ziaId = put(game, p1.id, ziaDef());
+    put(game, p1.id, bear("Fat Fodder", 4));
+    const startLife = p2.life;
+    // Player chooses the target (p2); the fodder is auto-picked biggest-power
+    // (the documented may_sacrifice approximation).
+    const bound = bindCardEffects(game, ziaDef().triggers![0]!.effects, {
+      controllerId: p1.id,
+      sourceId: ziaId,
+      targets: [{ type: "player", playerId: p2.id }],
+      targetRequirements: [{ kind: "player_or_creature" }],
+    });
+    const after = applyEffects(game, bound);
+    expect(startLife - after.players.find((entry) => entry.id === p2.id)!.life).toBe(4);
+    const treasures = Object.values(after.cards).filter(
+      (card) => card.isToken && after.definitions[card.definitionId]?.name === "Treasure",
+    );
+    expect(treasures).toHaveLength(3);
+  });
+
+  it("does nothing when there is no other creature to sacrifice", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    const ziaId = put(game, p1.id, ziaDef());
+    const startLife = p2.life;
+    const bound = bindCardEffects(game, ziaDef().triggers![0]!.effects, {
+      controllerId: p1.id,
+      sourceId: ziaId,
+      targets: [{ type: "player", playerId: p2.id }],
+      targetRequirements: [{ kind: "player_or_creature" }],
+    });
+    const after = applyEffects(game, bound);
+    // No fodder → no sacrifice → no damage and no Treasures.
+    expect(after.players.find((entry) => entry.id === p2.id)!.life).toBe(startLife);
+    expect(
+      Object.values(after.cards).filter(
+        (card) => card.isToken && after.definitions[card.definitionId]?.name === "Treasure",
+      ),
+    ).toHaveLength(0);
+  });
+
+  it("round trips the trigger and its bubbled target", () => {
+    const { game } = twoPlayers();
+    const definition = ziaDef();
+    game.definitions[definition.id] = definition;
+    const round = parseGameState(serializeGameState(game));
+    const trigger = round.definitions[definition.id]?.triggers[0];
+    expect(trigger?.event).toBe("end_step");
+    expect(trigger?.targetRequirements).toEqual([{ kind: "player_or_creature" }]);
+  });
+});
