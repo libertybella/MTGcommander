@@ -2162,6 +2162,7 @@ function applyActivateLoyalty(
   cardId: CardInstanceId,
   abilityIndex: number,
   targets: ChosenTarget[] | undefined,
+  xValue?: number,
 ): GameState {
   requirePlaying(state);
   requirePriority(state, playerId);
@@ -2184,6 +2185,20 @@ function applyActivateLoyalty(
     throw new Error("That planeswalker already used a loyalty ability this turn");
   }
   const loyalty = card.counters["loyalty"] ?? 0;
+  // "-X:" — the player announces X, pays that much loyalty, and X may not
+  // exceed what is on the walker.
+  let payX = 0;
+  if (ability.xLoyaltyCost) {
+    if (xValue === undefined || !Number.isInteger(xValue) || xValue < 0) {
+      throw new Error("Announce a value for X");
+    }
+    if (loyalty - xValue < 0) {
+      throw new Error("Not enough loyalty");
+    }
+    payX = xValue;
+  } else if (xValue !== undefined) {
+    throw new Error("That loyalty ability has no X in its cost");
+  }
   if (ability.cost < 0 && loyalty + ability.cost < 0) {
     throw new Error("Not enough loyalty");
   }
@@ -2193,10 +2208,12 @@ function applyActivateLoyalty(
     targets ?? [],
     playerId,
     definition?.characteristics.colors,
+    cardId,
+    payX,
   );
   let next = cloneGameState(state);
   const walker = next.cards[cardId]!;
-  walker.counters["loyalty"] = loyalty + ability.cost;
+  walker.counters["loyalty"] = loyalty + ability.cost - payX;
   if (walker.counters["loyalty"] === 0) {
     delete walker.counters["loyalty"];
     walker.counters["loyalty"] = 0;
@@ -2209,6 +2226,7 @@ function applyActivateLoyalty(
     kind: "ability",
     targets: (targets ?? []).map((target) => ({ ...target })),
     loyaltyIndex: abilityIndex,
+    ...(ability.xLoyaltyCost ? { xValue: payX } : {}),
   });
   next.passesSinceAction = 0;
   next.priorityPlayerId = playerId;
@@ -2298,6 +2316,7 @@ export function applyAction(
           action.cardId,
           action.abilityIndex,
           action.targets,
+          action.xValue,
         );
         break;
       case "keep_hand":

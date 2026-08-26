@@ -16908,7 +16908,7 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
       continue;
     }
 
-    const loyaltyAbility = sentence.match(/^([+−-]\d+|0): (.+)$/);
+    const loyaltyAbility = sentence.match(/^([+−-]\d+|0|[+−-]X): (.+)$/);
     if (loyaltyAbility?.[1] && loyaltyAbility[2]) {
       const clause = compileSimpleClause(loyaltyAbility[2].trim());
       if (clause && !clause.leftover) {
@@ -16952,8 +16952,12 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
           sentences[rider] = "";
         }
         result.loyaltyAbilities = result.loyaltyAbilities ?? [];
+        const isXLoyalty = /X$/.test(loyaltyAbility[1]);
         result.loyaltyAbilities.push({
-          cost: Number(loyaltyAbility[1].replace("−", "-")),
+          // A "-X:" ability carries cost 0; the X loyalty is paid on top at
+          // activation, once the player announces it.
+          cost: isXLoyalty ? 0 : Number(loyaltyAbility[1].replace("−", "-")),
+          ...(isXLoyalty ? { xLoyaltyCost: true } : {}),
           effects,
           targetRequirements: requirements,
         });

@@ -9586,7 +9586,7 @@
   "Tezzeret the Seeker": {
    "type": "Legendary Planeswalker — Tezzeret",
    "notes": [
-    "Some oracle text is not compiled: +1: Untap up to two target artifacts; −X: Search your library for an artifact card with mana value X or less, put it onto the battlefield, then shuffle; −5: Artifacts you control become artifact creatures with base power and toughness 5/5 until end of turn."
+    "Some oracle text is not compiled: +1: Untap up to two target artifacts; −5: Artifacts you control become artifact creatures with base power and toughness 5/5 until end of turn."
    ]
   },
   "Transmute Artifact": {

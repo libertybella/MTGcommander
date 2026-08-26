@@ -3240,6 +3240,10 @@ export type SpellMode = {
 
 /** A planeswalker loyalty ability ("+1:", "-3:"). */
 export type LoyaltyAbility = {
+  /** Tezzeret the Seeker: a "-X:" ability. The player announces X on
+   * activation, pays X loyalty, and X reaches the effects as the bound
+   * xValue (the same channel activated-ability X uses). */
+  xLoyaltyCost?: boolean;
   cost: number;
   effects: CardEffect[];
   targetRequirements: TargetRequirement[];
@@ -6356,6 +6360,8 @@ export type GameAction =
       cardId: CardInstanceId;
       abilityIndex: number;
       targets?: ChosenTarget[];
+      /** Announced X for a "-X:" loyalty ability. */
+      xValue?: number;
     }
   | { kind: "keep_hand"; playerId: PlayerId }
   | { kind: "mulligan"; playerId: PlayerId }

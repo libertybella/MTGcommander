@@ -72632,3 +72632,125 @@ describe("wave 446: Voldaren Estate ({1} less to activate per Subtype you contro
     expect(round.definitions[land.id]?.activated?.[0]?.subtypeDiscount).toBe("vampire");
   });
 });
+
+describe("wave 447: X-loyalty cost (Tezzeret the Seeker's -X)", () => {
+  const searchEffect = {
+    kind: "search_library" as const,
+    playerId: "controller" as const,
+    filter: { types: ["artifact"], maxManaValueX: true },
+    destination: "battlefield" as const,
+    count: 1,
+  };
+
+  it("compiles a -X: ability with xLoyaltyCost and reads X into the search", () => {
+    const compiled = compileOracleCard({
+      oracleId: "seeker",
+      name: "Seeker",
+      manaCost: "{3}{U}",
+      typeLine: "Legendary Planeswalker — Tezzeret",
+      power: null,
+      toughness: null,
+      printedKeywords: [],
+      imageUrl: "",
+      loyalty: "4",
+      oracleText:
+        "−X: Search your library for an artifact card with mana value X or less, put it onto the battlefield, then shuffle.",
+    });
+    expect(compiled.notes).toEqual([]);
+    expect(compiled.definition.loyaltyAbilities).toEqual([
+      { cost: 0, xLoyaltyCost: true, effects: [searchEffect], targetRequirements: [] },
+    ]);
+  });
+
+  const walkerDef = () =>
+    createCardDefinition({
+      name: "Seeker",
+      typeLine: "Legendary Planeswalker — Tezzeret",
+      loyalty: 4,
+      loyaltyAbilities: [
+        { cost: 0, xLoyaltyCost: true, effects: [searchEffect], targetRequirements: [] },
+      ],
+    });
+  const mainPhase = (game: GameState, id: string) => {
+    game.turn.activePlayerId = id;
+    game.turn.phase = "precombatMain";
+    game.turn.step = "precombatMain";
+    game.priorityPlayerId = id;
+  };
+  const putWalker = (game: GameState, ownerId: string) => {
+    const def = walkerDef();
+    game.definitions[def.id] = def;
+    const card = createCardInstance({ definitionId: def.id, ownerId, zone: "battlefield" });
+    card.counters["loyalty"] = 4;
+    game.cards[card.id] = card;
+    game.players.find((e) => e.id === ownerId)!.zones.battlefield.push(card.id);
+    mainPhase(game, ownerId);
+    return card.id;
+  };
+  const putLibrary = (game: GameState, ownerId: string, name: string, cost: string) => {
+    const def = createCardDefinition({ name, typeLine: "Artifact", manaCost: cost });
+    game.definitions[def.id] = def;
+    const card = createCardInstance({ definitionId: def.id, ownerId, zone: "library" });
+    game.cards[card.id] = card;
+    game.players.find((e) => e.id === ownerId)!.zones.library.push(card.id);
+    return card.id;
+  };
+
+  it("pays exactly X loyalty when activated", () => {
+    const { game, p1 } = twoPlayers();
+    const walkerId = putWalker(game, p1.id);
+    putLibrary(game, p1.id, "Filler", "{1}");
+    const next = applyAction(game, {
+      kind: "activate_loyalty",
+      playerId: p1.id,
+      cardId: walkerId,
+      abilityIndex: 0,
+      xValue: 2,
+    });
+    expect(next.cards[walkerId]?.counters["loyalty"]).toBe(2);
+  });
+
+  it("refuses an X larger than the loyalty on the walker", () => {
+    const { game, p1 } = twoPlayers();
+    const walkerId = putWalker(game, p1.id);
+    expect(() =>
+      applyAction(game, { kind: "activate_loyalty", playerId: p1.id, cardId: walkerId, abilityIndex: 0, xValue: 5 }),
+    ).toThrow();
+  });
+
+  it("refuses activation with no X announced", () => {
+    const { game, p1 } = twoPlayers();
+    const walkerId = putWalker(game, p1.id);
+    expect(() =>
+      applyAction(game, { kind: "activate_loyalty", playerId: p1.id, cardId: walkerId, abilityIndex: 0 }),
+    ).toThrow();
+  });
+
+  it("threads X into the search — only artifacts of mana value <= X are offered", () => {
+    const { game, p1 } = twoPlayers();
+    const walkerId = putWalker(game, p1.id);
+    const cheapId = putLibrary(game, p1.id, "Cheap", "{2}");
+    const dearId = putLibrary(game, p1.id, "Dear", "{5}");
+    let next = applyAction(game, {
+      kind: "activate_loyalty",
+      playerId: p1.id,
+      cardId: walkerId,
+      abilityIndex: 0,
+      xValue: 2,
+    });
+    next = resolveTopOfStack(next);
+    const prompt = next.prompts[0];
+    expect(prompt?.kind).toBe("search_library");
+    const legal = legalSearchIds(next, prompt!);
+    expect(legal).toContain(cheapId);
+    expect(legal).not.toContain(dearId);
+  });
+
+  it("round trips xLoyaltyCost through serialization", () => {
+    const { game } = twoPlayers();
+    const def = walkerDef();
+    game.definitions[def.id] = def;
+    const round = parseGameState(serializeGameState(game));
+    expect(round.definitions[def.id]?.loyaltyAbilities?.[0]?.xLoyaltyCost).toBe(true);
+  });
+});

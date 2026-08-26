@@ -1745,6 +1745,7 @@ export function parseGameState(json: string): GameState {
                 }
                 return {
                   cost: expectNumber(entry.cost, `definition.${id}.loyaltyAbilities[${index}].cost`),
+                  ...(entry.xLoyaltyCost === true ? { xLoyaltyCost: true } : {}),
                   effects: parseCardEffects(
                     entry.effects,
                     `definition.${id}.loyaltyAbilities[${index}].effects`,

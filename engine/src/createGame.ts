@@ -463,6 +463,7 @@ export function createCardDefinition(
       ? {
           loyaltyAbilities: input.loyaltyAbilities.map((ability) => ({
             cost: ability.cost,
+            ...(ability.xLoyaltyCost ? { xLoyaltyCost: true } : {}),
             effects: ability.effects.map((effect) => ({ ...effect })),
             targetRequirements: ability.targetRequirements.map((requirement) => ({ ...requirement })),
           })),
