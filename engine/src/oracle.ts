@@ -313,6 +313,9 @@ function compileOneFace(card: OracleCard, definitionId: string): OracleCompileRe
     ...(compiled.castFromGraveyard ? { castFromGraveyard: { ...compiled.castFromGraveyard } } : {}),
     ...(compiled.castFromExile ? { castFromExile: true } : {}),
     ...(compiled.soulbond ? { soulbond: true } : {}),
+    ...(compiled.surveilLookBonus !== undefined
+      ? { surveilLookBonus: compiled.surveilLookBonus }
+      : {}),
     ...(compiled.playExiledWithStashCounters ? { playExiledWithStashCounters: true } : {}),
     ...(compiled.spendBlueAsAnyForAbilities ? { spendBlueAsAnyForAbilities: true } : {}),
     ...(compiled.ascend ? { ascend: true } : {}),

@@ -1503,6 +1503,9 @@ export function parseGameState(json: string): GameState {
       ...(def.ascend === true ? { ascend: true } : {}),
       ...(def.castFromExile === true ? { castFromExile: true } : {}),
       ...(def.soulbond === true ? { soulbond: true } : {}),
+      ...(def.surveilLookBonus === undefined
+        ? {}
+        : { surveilLookBonus: expectNumber(def.surveilLookBonus, `definition.${id}.surveilLookBonus`) }),
       ...(def.playExiledWithStashCounters === true
         ? { playExiledWithStashCounters: true }
         : {}),

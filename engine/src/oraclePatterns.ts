@@ -138,6 +138,7 @@ export type CompiledOracleText = {
   castFromGraveyard?: { types?: string[]; subtypes?: string[] };
   castFromExile?: boolean;
   soulbond?: boolean;
+  surveilLookBonus?: number;
   playExiledWithStashCounters?: boolean;
   spendBlueAsAnyForAbilities?: boolean;
   ascend?: boolean;
@@ -957,6 +958,7 @@ function parseAbilityCost(
   if (
     symbols.length === 0 &&
     !sacrificeSelf &&
+    !exileSelfCost &&
     !exertSelf &&
     !lifeCost &&
     !lifeCostFromCommanderColors &&
@@ -5631,6 +5633,17 @@ function compileSimpleClauseInner(sentence: string): SimpleClause | null {
     return {
       targetRequirements: [{ kind: "creature" }],
       effects: [{ kind: "gain_all_activated_of_target", target: { type: "chosen", index: 0 } }],
+    };
+  }
+
+  // Enhanced Surveillance: "Shuffle your graveyard into your library" (an
+  // activated ability whose cost is exiling this permanent).
+  if (/^Shuffle your graveyard into your library$/i.test(sentence)) {
+    return {
+      targetRequirements: [],
+      effects: [
+        { kind: "shuffle_zones_into_library", playerId: "controller", zones: ["graveyard"] },
+      ],
     };
   }
 
@@ -19160,6 +19173,19 @@ export function compileOracleText(card: OracleCard, keywords: Keyword[] = []): C
         result.castFromExile = true;
       }
       continue;
+    }
+
+    // Enhanced Surveillance: "You may look at an additional N cards each time
+    // you surveil." A static that deepens this controller's surveils.
+    const surveilBonus = sentence.match(
+      /^You may look at an additional (\w+) cards? each time you surveil$/i,
+    );
+    if (surveilBonus?.[1]) {
+      const amount = parseCount(surveilBonus[1].toLowerCase());
+      if (amount) {
+        result.surveilLookBonus = (result.surveilLookBonus ?? 0) + amount;
+        continue;
+      }
     }
 
     // Soulbond (CR 702.94): the keyword itself. Pairing is resolved when a

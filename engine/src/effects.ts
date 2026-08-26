@@ -3594,7 +3594,16 @@ function applyScry(state: GameState, playerId: PlayerId, count: number): GameSta
 function applySurveil(state: GameState, playerId: PlayerId, count: number): GameState {
   requirePositiveInteger(count, "surveil count");
   const player = requirePlayer(state, playerId);
-  const looked = Math.min(count, player.zones.library.length);
+  // Enhanced Surveillance: each controlled permanent that deepens surveils
+  // adds its bonus to every surveil this player does.
+  let bonus = 0;
+  for (const cardId of player.zones.battlefield) {
+    const extra = state.definitions[state.cards[cardId]?.definitionId ?? ""]?.surveilLookBonus;
+    if (extra) {
+      bonus += extra;
+    }
+  }
+  const looked = Math.min(count + bonus, player.zones.library.length);
   if (looked === 0) {
     return cloneGameState(state);
   }

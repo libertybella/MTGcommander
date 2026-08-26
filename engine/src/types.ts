@@ -787,6 +787,10 @@ export type CardDefinition = {
   /** Soulbond (CR 702.94): may pair with another unpaired creature when either
    * enters; paired while both stay under one control. */
   soulbond?: boolean;
+  /** Enhanced Surveillance: "look at an additional N cards each time you
+   * surveil" — the extra depth this permanent adds to its controller's
+   * surveils. */
+  surveilLookBonus?: number;
   /** Tinybones, Bauble Burglar: the descriptive half of the stash mechanic
    * ("During your turn, you may play cards you don't own with stash counters
    * on them from exile ..."). The playable-from-exile permission is realised

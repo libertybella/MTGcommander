@@ -221,6 +221,7 @@ export function createCardDefinition(
         | "castFromGraveyard"
         | "castFromExile"
         | "soulbond"
+        | "surveilLookBonus"
         | "playExiledWithStashCounters"
         | "spendBlueAsAnyForAbilities"
         | "ascend"
@@ -675,6 +676,9 @@ export function createCardDefinition(
       : {}),
     ...(input.castFromExile ? { castFromExile: true } : {}),
     ...(input.soulbond ? { soulbond: true } : {}),
+    ...(input.surveilLookBonus !== undefined
+      ? { surveilLookBonus: input.surveilLookBonus }
+      : {}),
     ...(input.playExiledWithStashCounters
       ? { playExiledWithStashCounters: true }
       : {}),

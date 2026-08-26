@@ -74779,3 +74779,64 @@ describe("wave 472: Teysa, Orzhov Scion — a colour-costed sac exile and a blac
     expect(countSpirits(next)).toBe(before);
   });
 });
+
+describe("wave 473: Enhanced Surveillance — deeper surveils and a graveyard reshuffle", () => {
+  const compileES = () =>
+    compileOracleCard({
+      oracleId: "enhanced-surveillance", name: "Enhanced Surveillance", manaCost: "{1}{U}", typeLine: "Enchantment",
+      power: null, toughness: null, printedKeywords: [], imageUrl: "",
+      oracleText:
+        "You may look at an additional two cards each time you surveil.\n" +
+        "Exile this enchantment: Shuffle your graveyard into your library.",
+    });
+
+  it("compiles the surveil bonus and the exile-self graveyard reshuffle", () => {
+    const c = compileES();
+    expect(c.notes).toEqual([]);
+    expect(c.definition.surveilLookBonus).toBe(2);
+    expect(c.definition.activated?.[0]).toMatchObject({
+      exileSelf: true,
+      effects: [{ kind: "shuffle_zones_into_library", zones: ["graveyard"] }],
+    });
+  });
+
+  const put = (game: GameState, ownerId: string, definition: CardDefinition, zone: "battlefield" | "graveyard" = "battlefield") => {
+    game.definitions[definition.id] = definition;
+    const card = createCardInstance({ definitionId: definition.id, ownerId, zone });
+    if (zone === "battlefield") card.summoningSick = false;
+    game.cards[card.id] = card;
+    (game.players.find((e) => e.id === ownerId)!.zones as Record<string, string[]>)[zone].push(card.id);
+    return card.id;
+  };
+
+  it("adds two to each surveil while it is out", () => {
+    const { game, p1 } = twoPlayers();
+    fillLibraries(game, 10);
+    put(game, p1.id, compileES().definition);
+    // Surveil 1 -> the enchantment deepens it to a look at 3.
+    const after = applyEffects(game, [{ kind: "surveil", playerId: p1.id, count: 1 }] as unknown as GameEffect[]);
+    const prompt = after.prompts.find((p) => p.kind === "surveil");
+    expect(prompt?.kind === "surveil" ? prompt.count : 0).toBe(3);
+  });
+
+  it("exiles itself to shuffle the graveyard back into the library", () => {
+    const { game, p1 } = twoPlayers();
+    const esId = put(game, p1.id, compileES().definition);
+    // Three cards sit in the graveyard.
+    const graveIds = [0, 1, 2].map((i) =>
+      put(game, p1.id, createCardDefinition({ name: `Corpse ${i}`, typeLine: "Creature — Zombie", manaCost: "{B}", power: 1, toughness: 1 }), "graveyard"),
+    );
+    game.priorityPlayerId = p1.id;
+    const libBefore = game.players.find((e) => e.id === p1.id)!.zones.library.length;
+
+    let act = applyAction(game, { kind: "activate_ability", playerId: p1.id, cardId: esId, abilityIndex: 0, targets: [] });
+    while (act.stack.length > 0) act = resolveTopOfStack(act);
+
+    // The enchantment paid its cost by exiling itself.
+    expect(act.cards[esId]?.zone).toBe("exile");
+    // The graveyard is empty; those cards are now in the library.
+    expect(act.players.find((e) => e.id === p1.id)!.zones.graveyard.length).toBe(0);
+    expect(act.players.find((e) => e.id === p1.id)!.zones.library.length).toBe(libBefore + graveIds.length);
+    for (const id of graveIds) expect(act.cards[id]?.zone).toBe("library");
+  });
+});
