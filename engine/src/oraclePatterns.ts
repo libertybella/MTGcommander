@@ -5548,6 +5548,20 @@ function compileSimpleClauseInner(sentence: string): SimpleClause | null {
    * declining. The chosen card leaves the way its zone says, which is why
    * the sacrifice is not a plain `sacrifice`.
    */
+  // Kefka, Court Mage: "each player discards a card, then you draw a card for
+  // each card type among cards discarded this way" — one effect (the discard
+  // is auto-picked, so the whole thing resolves synchronously).
+  if (
+    /^each player discards a card, then you draw a card for each card type among cards discarded this way$/i.test(
+      sentence,
+    )
+  ) {
+    return {
+      targetRequirements: [],
+      effects: [{ kind: "discard_each_draw_per_type", drawerId: "controller" }],
+    };
+  }
+
   // Kefka, Court Mage: "Target player discards a card" — a specific chosen
   // player, their own choice of which card.
   const targetDiscard = sentence.match(

@@ -1937,6 +1937,9 @@ export type GameEffect =
     }
   /** Gamble: "discard a card at random". */
   | { kind: "discard_random"; playerId: PlayerId; count: number }
+  /** Kefka, Court Mage: each player discards a card, then the drawer draws one
+   * for each DISTINCT card type among the cards discarded this way. */
+  | { kind: "discard_each_draw_per_type"; drawerId: PlayerId }
   | { kind: "discard_unless_attacked"; playerId: PlayerId; count: number }
   | { kind: "amass"; playerId: PlayerId; amount: number; subtype?: string }
   | { kind: "reveal_zone"; fromPlayerId: PlayerId; toPlayerId: PlayerId; zone: "hand" }
@@ -3666,6 +3669,7 @@ export type CardEffect =
     }
   /** Gamble: "discard a card at random". */
   | { kind: "discard_random"; playerId: PlayerSelector; count: number }
+  | { kind: "discard_each_draw_per_type"; drawerId: PlayerSelector }
   | { kind: "discard_unless_attacked"; playerId: PlayerSelector; count: number }
   | { kind: "amass"; playerId: PlayerSelector; amount: number | "x"; subtype?: string }
   | {

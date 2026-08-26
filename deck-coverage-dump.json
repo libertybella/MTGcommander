@@ -1247,7 +1247,7 @@
   "Ghostly Flicker": true,
   "Saw in Half": true,
   "Rise of the Dark Realms": true,
-  "Kefka, Court Mage": false,
+  "Kefka, Court Mage": true,
   "Exploration Broodship": false,
   "Cabaretti Courtyard": true,
   "Dakmor Salvage": true,
@@ -6357,12 +6357,6 @@
    "type": "Legendary Creature — Skeleton Rogue",
    "notes": [
     "Some oracle text is not compiled: Whenever an opponent discards a card, exile it from their graveyard with a stash counter on it; During your turn, you may play cards you don't own with stash counters on them from exile, and mana of any type can be spent to cast those spells."
-   ]
-  },
-  "Kefka, Court Mage": {
-   "type": "Legendary Creature — Human Wizard",
-   "notes": [
-    "Some oracle text is not compiled: Whenever ~ enters or attacks, each player discards a card, then you draw a card for each card type among cards discarded this way."
    ]
   },
   "Exploration Broodship": {
@@ -14204,6 +14198,16 @@
    "misses": []
   },
   {
+   "commander": "Kefka, Court Mage",
+   "rank": 24,
+   "slots": 3,
+   "misses": [
+    "Kefka, Dancing Mad",
+    "Kuja, Genome Sorcerer",
+    "Tinybones, Bauble Burglar"
+   ]
+  },
+  {
    "commander": "Vivi Ornitier",
    "rank": 7,
    "slots": 4,
@@ -14212,17 +14216,6 @@
     "Quicksilver Elemental",
     "Tandem Lookout",
     "Flashback"
-   ]
-  },
-  {
-   "commander": "Kefka, Court Mage",
-   "rank": 24,
-   "slots": 4,
-   "misses": [
-    "Kefka, Dancing Mad",
-    "Kuja, Genome Sorcerer",
-    "Tinybones, Bauble Burglar",
-    "Kefka, Court Mage (commander)"
    ]
   },
   {
@@ -16194,7 +16187,7 @@
   {
    "commander": "Norman Osborn",
    "rank": 96,
-   "slots": 30,
+   "slots": 29,
    "misses": [
     "Cryptcaller Chariot",
     "Pumpkin Bombs",
@@ -16211,7 +16204,6 @@
     "Ghostly Pilferer",
     "Green Goblin, Nemesis",
     "Green Goblin, Revenant",
-    "Kefka, Court Mage",
     "Leader, Super-Genius",
     "Likeness Looter",
     "Magmakin Artillerist",

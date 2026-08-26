@@ -4343,6 +4343,8 @@ function parseCardEffect(value: unknown, label: string): CardEffect {
         ...(value.allControlled === true ? { allControlled: true } : {}),
       };
     }
+    case "discard_each_draw_per_type":
+      return { kind, drawerId: parsePlayerSelector(value.drawerId, `${label}.drawerId`) };
     case "discard":
       return {
         kind,
@@ -7079,6 +7081,9 @@ function parseGameEffect(value: unknown, label: string): GameEffect {
       ...(value.optional === true ? { optional: true } : {}),
       ...(value.turnDraw === true ? { turnDraw: true } : {}),
     };
+  }
+  if (kind === "discard_each_draw_per_type") {
+    return { kind, drawerId: expectString(value.drawerId, `${label}.drawerId`) };
   }
   if (
     kind === "scry" ||

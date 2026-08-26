@@ -73793,3 +73793,71 @@ describe("wave 459: onlyYourTurn trigger gate + each-opponent permanent edict (K
     }
   });
 });
+
+describe("wave 460: Kefka's discard-each-then-draw-per-distinct-type", () => {
+  it("compiles the full Kefka, Court Mage front face", () => {
+    const c = compileOracleCard({
+      oracleId: "kefka-court-mage", name: "Kefka, Court Mage", manaCost: "{2}{U}{B}{R}",
+      typeLine: "Legendary Creature — Human Wizard", power: "3", toughness: "4", printedKeywords: [], imageUrl: "",
+      oracleText: "Whenever Kefka enters or attacks, each player discards a card. Then you draw a card for each card type among cards discarded this way.\n{8}: Each opponent sacrifices a permanent of their choice. Transform Kefka. Activate only as a sorcery.",
+    });
+    expect(c.notes).toEqual([]);
+    expect(c.definition.triggers?.map((t) => t.event)).toEqual(["enter_battlefield", "attacks"]);
+    expect(c.definition.triggers?.[0]?.effects).toEqual([
+      { kind: "discard_each_draw_per_type", drawerId: "controller" },
+    ]);
+  });
+
+  const setHand = (game: GameState, ownerId: string, defs: CardDefinition[]) => {
+    const owner = game.players.find((e) => e.id === ownerId)!;
+    owner.zones.hand = [];
+    const ids: string[] = [];
+    for (const def of defs) {
+      game.definitions[def.id] = def;
+      const card = createCardInstance({ definitionId: def.id, ownerId, zone: "hand" });
+      game.cards[card.id] = card;
+      owner.zones.hand.push(card.id);
+      ids.push(card.id);
+    }
+    return ids;
+  };
+  const inst = (name: string) => createCardDefinition({ name, typeLine: "Instant", manaCost: "{R}" });
+  const crea = (name: string) => createCardDefinition({ name, typeLine: "Creature — Bear", manaCost: "{1}{G}", power: 2, toughness: 2 });
+
+  it("draws one per DISTINCT card type among the cards discarded", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    const [p1Discard] = setHand(game, p1.id, [inst("P1 Bolt"), crea("P1 Filler")]);
+    const [p2Discard] = setHand(game, p2.id, [crea("P2 Beast")]);
+    const before = game.players.find((e) => e.id === p1.id)!.zones.hand.length;
+
+    const effects = [{ kind: "discard_each_draw_per_type", drawerId: "controller" }] as unknown as CardEffect[];
+    const after = applyEffects(
+      game,
+      bindCardEffects(game, effects, { controllerId: p1.id, sourceId: p1Discard!, targets: [], targetRequirements: [] }),
+    );
+
+    // Both discarded their first card.
+    expect(after.cards[p1Discard!]?.zone).toBe("graveyard");
+    expect(after.cards[p2Discard!]?.zone).toBe("graveyard");
+    // Types among them: instant + creature = 2 distinct -> p1 draws 2.
+    // Net p1 hand: -1 (discarded) + 2 (drawn) = +1.
+    expect(after.players.find((e) => e.id === p1.id)!.zones.hand.length).toBe(before + 1);
+  });
+
+  it("counts a shared type once", () => {
+    const { game, p1, p2 } = twoPlayers();
+    fillLibraries(game, 20);
+    const [p1Discard] = setHand(game, p1.id, [crea("P1 Bear")]);
+    setHand(game, p2.id, [crea("P2 Bear")]);
+    const before = game.players.find((e) => e.id === p1.id)!.zones.hand.length;
+
+    const effects = [{ kind: "discard_each_draw_per_type", drawerId: "controller" }] as unknown as CardEffect[];
+    const after = applyEffects(
+      game,
+      bindCardEffects(game, effects, { controllerId: p1.id, sourceId: p1Discard!, targets: [], targetRequirements: [] }),
+    );
+    // Both discarded creatures — one distinct type -> draw 1. Net p1 hand: -1 + 1 = 0.
+    expect(after.players.find((e) => e.id === p1.id)!.zones.hand.length).toBe(before);
+  });
+});

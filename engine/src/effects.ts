@@ -848,6 +848,13 @@ export function bindCardEffect(
         playerId,
       };
     }
+    case "discard_each_draw_per_type": {
+      const drawerId = bindPlayerSelector(state, effect.drawerId, context);
+      if (!drawerId) {
+        return null;
+      }
+      return { kind: "discard_each_draw_per_type", drawerId };
+    }
     case "amass": {
       const playerId = bindPlayerSelector(state, effect.playerId, context);
       if (!playerId) {
@@ -5427,6 +5434,34 @@ export function applyEffect(state: GameState, effect: GameEffect): GameState {
       case "discard":
         next = applyDiscard(state, effect.playerId, effect.count, effect.conniveCounterOn);
         break;
+      case "discard_each_draw_per_type": {
+        // Kefka, Court Mage. Each player discards their first card (the same
+        // auto-pick applyDiscard uses), the card TYPES are counted while still
+        // readable, and the drawer draws one per DISTINCT type. The discards
+        // fire real discard events, so watchers (Tergrid) still see them.
+        next = state;
+        const discardedTypes = new Set<string>();
+        for (const player of next.players) {
+          const first = player.zones.hand[0];
+          if (!first) {
+            continue;
+          }
+          for (const type of characteristicsOf(next, first).types) {
+            discardedTypes.add(type);
+          }
+          next = moveCard(next, first, "graveyard");
+          dispatchEventsInPlace(next, [
+            { kind: "discards", cardId: first, playerId: player.id },
+          ]);
+        }
+        if (next === state) {
+          next = cloneGameState(state);
+        }
+        if (discardedTypes.size > 0) {
+          next = applyDraw(next, effect.drawerId, discardedTypes.size, false, false);
+        }
+        break;
+      }
       case "discard_random":
         next = applyDiscardRandom(state, effect.playerId, effect.count);
         break;
